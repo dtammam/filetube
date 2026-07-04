@@ -121,6 +121,7 @@ header {
 .search-form {
   display: flex;
   width: 100%;
+  min-width: 0; /* allow the form (and its input) to shrink instead of pushing off-screen */
   border: 1px solid var(--border-dark);
   border-radius: 2px;
   overflow: hidden;
@@ -129,6 +130,7 @@ header {
 
 .search-input {
   flex: 1;
+  min-width: 0; /* critical: lets the input shrink below its default intrinsic width */
   border: none;
   padding: 8px 12px;
   font-size: 14px;
