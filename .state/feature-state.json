@@ -1,21 +1,37 @@
 {
-  "feature_id": "mobile-playback-polish",
-  "feature_name": "Native Mobile Playback & Polish",
+  "feature_id": "media-session-hardening",
+  "feature_name": "Media Session Hardening",
   "stage": "qa",
   "created_at": "2026-07-04",
   "updated_at": "2026-07-04",
-  "description": "Native mobile playback & polish. The watch page uses the native iOS <video controls> player + playsinline; custom overlays (skip/double-tap) live on the INLINE surface only — native fullscreen already provides speed menu, PiP, fullscreen, scrubber and must NOT be re-implemented. IN SCOPE: (1) Media Session API — metadata + artwork=/thumbnail/:id so lock screen/Control Center shows thumbnail, title, channel; play/pause/seek handlers. (2) Embedded file metadata -> description: extend the ffprobe scan to pull embedded tags, store on db.metadata, render on the watch page additively UNDER the blurred file-path block. (3) Varying comment counts — deterministic per-item count (4–14) like getStarRating. (4) Press-and-hold-to-2x on mobile inline video, arbitrated with existing single-tap (native play/pause) + double-tap-seek via hold timing; not in native fullscreen. ATTEMPT w/ caveat: rotate-to-fullscreen (iOS gates programmatic fullscreen behind a user gesture — may be Android-only; portrait must not force-exit unless user tapped fullscreen). DROPPED: custom PiP button (native provides one). ROADMAP: background-audio-when-app-switched (OS-gated), mini-player, .srt subtitles. Significant QA/code-review pass required, with the native-vs-custom seam and gesture arbitration in the acceptance criteria.",
+  "description": "Media Session hardening (patch -> v1.2.1), from real device feedback on v1.2.0. IN SCOPE: (1) set + maintain navigator.mediaSession.playbackState and positionState (duration/position/playbackRate), updated on play/pause/ended/seeked/ratechange/timeupdate \u2014 likely cause of the lock-screen Now Playing going blank after backgrounding (we set metadata + handlers but never playbackState/positionState). (2) Re-assert Media Session metadata + state on visibilitychange (foreground) so it can't stay stale. (3) iOS rotate-to-fullscreen EXIT: use mediaPlayer.webkitExitFullscreen() (document.exitFullscreen doesn't control iOS native video fullscreen). (4) Document that true background PLAYBACK / resume-after-suspension is an iOS OS limitation for web video we cannot defeat; native PiP is the real background path \u2014 this branch hardens the control surface, not background playback. Additive + feature-detected everywhere (no throw where mediaSession/positionState/webkitExitFullscreen absent). iOS-device-only for most of it; only pure logic is node:testable. Significant two-reviewer QA/code-review pass required, focused on feature-detection safety and not regressing the v1.2.0 Media Session / rotate code.",
   "tasks": [],
   "completed_tasks": [],
   "artifacts": {
-    "requirements": "docs/exec-plans/active/mobile-playback-polish.md",
-    "design": "docs/exec-plans/active/mobile-playback-polish.md",
-    "exec_plan": "docs/exec-plans/active/mobile-playback-polish.md"
+    "requirements": "docs/exec-plans/active/media-session-hardening.md",
+    "design": "docs/exec-plans/active/media-session-hardening.md",
+    "exec_plan": "docs/exec-plans/active/media-session-hardening.md"
   },
   "history": [
-    { "timestamp": "2026-07-04 00:00", "stage": "bootstrap", "note": "Feature initiated via /kickoff. Prior feature avi-ux-refinement shipped as v1.1.0 and its exec plan moved from docs/exec-plans/active/ to docs/exec-plans/completed/. Tech-debt tracker left intact (Closed row #1 unbounded-cache remains)." },
-    { "timestamp": "2026-07-04 00:00", "stage": "discovery", "note": "Bootstrapped and staged for discovery. No other overlapping active exec plans (only the avi-ux-refinement tombstone remains in active/). Tech-debt tracker Active table empty; Closed row from prior feature untouched. Description captured verbatim. Awaiting /prep-pm-discover to route product-manager." },
-    { "timestamp": "2026-07-04 00:00", "stage": "discovery", "note": "Product-manager wrote exec plan docs/exec-plans/active/mobile-playback-polish.md covering: Media Session metadata/handlers, embedded-tag-to-description (pure parse fn + additive render under file-path block), deterministic 4-14 comment count, hold-to-2x gesture arbitration, best-effort rotate-to-fullscreen. PiP button explicitly dropped (native provides it). Testability plan splits pure/unit-testable logic (comment count, tag parser) from manual-only device/browser verification (Media Session, gestures, rotate, native coexistence). Grounded in public/watch.html, public/js/watch.js, public/js/common.js, server.js (extractMetadataAndThumbnail, /thumbnail/:id, db.metadata shape). No conflicts with ARCHITECTURE.md; no active tech-debt items touched. QA/code-review gate flagged. Ready for engineering-manager review -> principal-engineer design." },
-    { "timestamp": "2026-07-04 00:00", "stage": "design", "note": "Principal-engineer appended ## Technical Design to docs/exec-plans/active/mobile-playback-polish.md and set artifacts.design. Design grounded in read of watch.js (setupSkipControls/populateMetadata/loadComments/skip/SKIP_SECONDS), common.js (getStarRating + module.exports shim), watch.html (video element, description-paragraph, player-wrapper), server.js (extractMetadataAndThumbnail exec, /api/videos/:id spreads ...item so tags auto-pass to client). Key decisions: (1) hold-to-2x EXTENDS the existing single touchend handler with touchstart/move/cancel + a state machine (HOLD_MS=350, MOVE_TOL=10, inNativeFullscreen()/isTouchDevice() guards) so tap/double-tap/hold never cross-fire; (2) setupMediaSession() in populateMetadata reuses skip()/SKIP_SECONDS, feature-detected, two same-URL artwork sizes; (3) parseFfprobeTags(input) pure+exported, whitelists title/comment/description/date, case-insensitive, dedups description==comment, {} on malformed; ffprobe cmd extended to -show_entries format=duration:format_tags, tags stored on db.metadata (no API change); (4) getCommentCount(id, poolSize) pure in common.js, 4-14, clamped, exported; (5) rotate-to-fullscreen orientation handler is portrait-no-op + try/catch. Two new unit tests specified (comment-count, ffprobe-tags). 7-step ordered task breakdown seeded (pure/testable first). Ready for engineering-manager task breakdown." }
+    {
+      "timestamp": "2026-07-04 00:00",
+      "stage": "bootstrap",
+      "note": "Feature initiated via /kickoff. Prior feature mobile-playback-polish shipped as v1.2.0; its exec plan was copied from docs/exec-plans/active/ to docs/exec-plans/completed/ with a 'Shipped v1.2.0' progress-log note. This toolset cannot true-`mv`, so the active copy docs/exec-plans/active/mobile-playback-polish.md remains as a tombstone to be `git rm`'d by the main loop. Tech-debt tracker left untouched (Closed row #1 unbounded-cache remains intact; Active table empty)."
+    },
+    {
+      "timestamp": "2026-07-04 00:00",
+      "stage": "discovery",
+      "note": "Bootstrapped and staged for discovery. Slug media-session-hardening, patch v1.2.1 hardening the Media Session control surface based on real-device feedback on v1.2.0. Description captured verbatim. No overlapping active exec plans (mobile-playback-polish is a shipped tombstone in active/, real content now in completed/). Tech-debt tracker untouched. Awaiting /prep-pm-discover to route product-manager."
+    },
+    {
+      "timestamp": "2026-07-04 00:00",
+      "stage": "discovery",
+      "note": "Product-manager discovery complete. Grounded in real code (public/js/watch.js setupMediaSession ~L188-210, setupRotateFullscreen ~L426-460, inNativeFullscreen). Confirmed via grep: no existing playbackState/positionState/visibilitychange/timeupdate/loadedmetadata/ratechange/seeked wiring today, so the gap described is real. docs/exec-plans/active/ is empty (no overlap); no ARCHITECTURE.md contradiction; not a tech-debt-tracker item. Wrote exec plan with explicit HARD CONSTRAINT (background playback is an iOS OS limitation, out of scope/unfixable; PiP is the real path), concrete acceptance criteria for playbackState/positionState (with setPositionState throw-guard requirements)/visibilitychange re-assert/iOS webkitExitFullscreen fix, a testability section recommending an extractable clampPositionState(duration, position, playbackRate) pure helper for node:test coverage, a risks section (setPositionState throw conditions incl. live-transcode/streaming duration edge cases, timeupdate throttling, no double-registration, visibilitychange ordering), and a QA note requiring a significant two-reviewer pass. Artifacts requirements/exec_plan set to docs/exec-plans/active/media-session-hardening.md. Ready for engineering-manager / principal-engineer design."
+    },
+    {
+      "timestamp": "2026-07-04 00:00",
+      "stage": "qa",
+      "note": "Two-reviewer QA pass: quality-assurance APPROVE-WITH-NITS (throw-safety + no v1.2.0 regression confirmed); /code-review workflow found 4 non-critical position-sync issues. Fixed: pause now force-syncs position, durationchange trigger added, visibilitychange re-asserts state directly (decoupled from MediaMetadata guard), live-mode position skip, throttle-stamp-after-validate, export test. 71 tests green."
+    }
   ]
 }

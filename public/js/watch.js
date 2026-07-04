@@ -137,6 +137,38 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  // ---- Media Session state ("Now Playing" control surface) --------------------
+  // This hardens the CONTROL SURFACE (accurate metadata, play/pause state, and
+  // scrubber position on the lock screen / Control Center). It does NOT enable
+  // true background playback: iOS freezes a backgrounded PWA's <video> and no web
+  // API can resume it — the native Picture-in-Picture button is the only real
+  // "keep playing in the background" path.
+  let currentChannelName = '';
+  let lastPositionSync = 0;
+  const POSITION_SYNC_MS = 5000;
+
+  function setPlaybackState(state) {
+    if (!('mediaSession' in navigator)) return;
+    try { navigator.mediaSession.playbackState = state; } catch (_) {}
+  }
+
+  // Push the scrubber position to the OS. Routed through clampPositionState so a
+  // streaming/unknown duration (AVI live transcode) returns null and we SKIP the
+  // call — setPositionState throws on bad input. `force` bypasses the throttle.
+  function updatePositionState(force) {
+    // In desktop live-transcode mode, currentTime is relative to the stream restart,
+    // not an absolute position — reporting it would mislead the scrubber. (Duration
+    // is also non-finite there, so clampPositionState would skip anyway; belt & braces.)
+    if (liveMode) return;
+    if (!('mediaSession' in navigator) || !('setPositionState' in navigator.mediaSession)) return;
+    const now = Date.now();
+    if (!force && now - lastPositionSync < POSITION_SYNC_MS) return;
+    const state = clampPositionState(mediaPlayer.duration, mediaPlayer.currentTime, mediaPlayer.playbackRate);
+    if (!state) return; // streaming/unknown duration — skip without consuming the throttle window
+    lastPositionSync = now;
+    try { navigator.mediaSession.setPositionState(state); } catch (_) {}
+  }
+
   // Populate metadata to DOM
   function populateMetadata() {
     mediaTitle.textContent = mediaData.title;
@@ -186,6 +218,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // issue commands to the <video>; existing listeners still react, so there's no
   // double-driving of playback.
   function setupMediaSession(channelName) {
+    currentChannelName = channelName || '';
     if (!('mediaSession' in navigator) || typeof MediaMetadata === 'undefined') return;
     try {
       navigator.mediaSession.metadata = new MediaMetadata({
@@ -206,8 +239,21 @@ document.addEventListener('DOMContentLoaded', () => {
       for (const action of Object.keys(handlers)) {
         try { navigator.mediaSession.setActionHandler(action, handlers[action]); } catch (_) {}
       }
+      setPlaybackState(mediaPlayer.paused ? 'paused' : 'playing');
+      updatePositionState(true);
     } catch (_) { /* MediaMetadata construction unsupported */ }
   }
+
+  // Re-assert Media Session when the PWA returns to the foreground, so a widget
+  // that went blank while backgrounded repopulates. Registered once.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible' || !mediaData) return;
+    // Re-assert metadata (repopulates a blanked widget) AND the state directly, so
+    // the re-sync isn't coupled to the MediaMetadata feature guard inside setup.
+    setupMediaSession(currentChannelName);
+    setPlaybackState(mediaPlayer.paused ? 'paused' : 'playing');
+    updatePositionState(true);
+  });
 
   // Shared: is the video in the OS's native fullscreen player? That's its own
   // surface — our inline overlays/gestures don't apply there.
@@ -264,6 +310,17 @@ document.addEventListener('DOMContentLoaded', () => {
       saveProgressToServer(0);
       stopProgressSaver();
     });
+
+    // Keep the lock-screen "Now Playing" state accurate (separate listeners so
+    // the progress-saver side effects above stay the single owner of that logic).
+    mediaPlayer.addEventListener('play', () => { setPlaybackState('playing'); updatePositionState(true); });
+    mediaPlayer.addEventListener('pause', () => { setPlaybackState('paused'); updatePositionState(true); });
+    mediaPlayer.addEventListener('ended', () => setPlaybackState('none'));
+    mediaPlayer.addEventListener('loadedmetadata', () => updatePositionState(true));
+    mediaPlayer.addEventListener('durationchange', () => updatePositionState(true));
+    mediaPlayer.addEventListener('seeked', () => updatePositionState(true));
+    mediaPlayer.addEventListener('ratechange', () => updatePositionState(true));
+    mediaPlayer.addEventListener('timeupdate', () => updatePositionState(false));
   }
 
   // ---- YouTube-style ±15s skipping (buttons, double-tap, keyboard) ----
@@ -447,7 +504,11 @@ document.addEventListener('DOMContentLoaded', () => {
           }
         } else if (!landscape && autoFullscreen && inNativeFullscreen()) {
           autoFullscreen = false;
-          if (document.exitFullscreen) {
+          // iOS native video fullscreen isn't controlled by document.exitFullscreen();
+          // it needs the video element's own webkitExitFullscreen().
+          if (mediaPlayer.webkitExitFullscreen) {
+            mediaPlayer.webkitExitFullscreen();
+          } else if (document.exitFullscreen) {
             const p = document.exitFullscreen();
             if (p && p.catch) p.catch(() => {});
           }

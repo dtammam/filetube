@@ -76,6 +76,7 @@ module.exports = [
     files: ['public/js/main.js', 'public/js/watch.js'],
     languageOptions: {
       globals: {
+        clampPositionState: 'readonly',
         formatDuration: 'readonly',
         formatFileSize: 'readonly',
         formatRelativeTime: 'readonly',
