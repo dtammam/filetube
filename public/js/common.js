@@ -93,6 +93,17 @@ function getStarRating(id) {
   return (sum % 3) + 3; // 3, 4, or 5
 }
 
+// Deterministic per-item comment count (4–14): a given video always shows the
+// same number of mock comments, but different videos vary. Clamped to the pool
+// size so we never ask for more comments than exist.
+function getCommentCount(id, poolSize) {
+  const s = String(id || '');
+  let sum = 0;
+  for (let i = 0; i < s.length; i++) sum += s.charCodeAt(i);
+  const count = 4 + (sum % 11); // 4..14
+  return poolSize ? Math.min(count, poolSize) : count;
+}
+
 // Mock uploader subscriptions counts (based on uploader name length to make it deterministic but diverse)
 function getMockSubCount(uploaderName) {
   const code = uploaderName.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
@@ -166,5 +177,5 @@ document.addEventListener('DOMContentLoaded', () => {
 // Expose pure helpers to Node for unit testing (browsers ignore this block —
 // `module` is undefined there).
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { getStarRating, resolveChannelName };
+  module.exports = { getStarRating, getCommentCount, resolveChannelName };
 }

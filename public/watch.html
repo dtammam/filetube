@@ -82,6 +82,9 @@
               Your browser does not support HTML5 video player.
             </video>
 
+            <!-- Shown while press-and-hold-to-2x is active (mobile inline) -->
+            <div id="speed-badge" class="speed-badge" style="display: none;">2× ▶▶</div>
+
             <!-- YouTube-style ±15s skip controls (shown for video only, toggled via JS) -->
             <div id="skip-controls" class="skip-controls" style="display: none;">
               <button type="button" class="skip-btn skip-back" id="skip-back-btn" aria-label="Rewind 15 seconds">
@@ -154,6 +157,8 @@
               <br><br>
               This file is self-hosted on your network. Playback progress is automatically saved to your FileTube server, allowing you to resume playing this video or audio clip at any time.
             </div>
+            <!-- Additive: embedded file metadata (populated by watch.js; hidden if none) -->
+            <div id="embedded-tags" class="embedded-tags" style="display: none;"></div>
             <button class="expand-description-btn" id="expand-desc-btn">Show more</button>
           </div>
 
