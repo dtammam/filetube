@@ -1,0 +1,59 @@
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# --- Env / secrets ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# --- Logs ---
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# --- Node / JS ---
+node_modules/
+dist/
+build/
+.next/
+out/
+coverage/
+.cache/
+.turbo/
+*.tsbuildinfo
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# --- Go ---
+bin/
+*.exe
+*.test
+
+# --- Uploads / user media (app data) ---
+uploads/
+media/
+storage/
+tmp/
+*.sqlite
+*.sqlite3
+*.db
