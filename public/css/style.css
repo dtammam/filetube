@@ -1,5 +1,16 @@
 /* FileTube Classic Design System - Old-School YouTube (2005-2010 Style) with Modern Responsiveness and Dark Mode */
 
+/* Self-hosted Roboto (variable weight axis, latin subset) for YouTube-like
+   typography without a Google Fonts CDN call — fully offline. Apache-2.0;
+   see public/fonts/README.md. */
+@font-face {
+  font-family: 'Roboto';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/fonts/roboto.woff2') format('woff2');
+}
+
 :root {
   --yt-red: #cc0000;
   --bg-color: #ffffff;
@@ -42,7 +53,9 @@
 }
 
 body {
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: 'Roboto', 'Helvetica Neue', system-ui, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   background-color: var(--bg-color);
   color: var(--text-primary);
   font-size: 13px;
@@ -96,7 +109,7 @@ header {
   font-size: 22px;
   font-weight: bold;
   letter-spacing: -1px;
-  font-family: "Arial Black", Gadget, sans-serif;
+  font-family: 'Roboto', "Arial Black", Gadget, sans-serif;
   color: var(--text-primary);
 }
 
@@ -339,7 +352,7 @@ header {
   aspect-ratio: 16/9;
   background-color: #000;
   border: 1px solid var(--border-color);
-  border-radius: 3px;
+  border-radius: 12px;
   overflow: hidden;
 }
 
@@ -425,7 +438,7 @@ header {
   background-color: #000;
   margin-bottom: 16px;
   border: 1px solid var(--border-color);
-  border-radius: 4px;
+  border-radius: 12px;
   overflow: hidden;
   position: relative;
 }
@@ -789,13 +802,17 @@ header {
   white-space: normal;
   word-break: break-word;
   font-size: 13px;
-  max-height: 120px;
+  display: -webkit-box;
+  -webkit-line-clamp: 5;
+  -webkit-box-orient: vertical;
   overflow: hidden;
   position: relative;
 }
 
 .description-text.expanded {
-  max-height: none;
+  display: block;
+  -webkit-line-clamp: unset;
+  overflow: visible;
 }
 
 .expand-description-btn {
