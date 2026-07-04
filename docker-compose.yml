@@ -1,0 +1,20 @@
+services:
+  server:
+    image: deantammam/filetube:${FILETUBE_IMAGE_TAG:-latest}
+    pull_policy: always
+    ports:
+      - "${SERVER_HOST_PORT:-3000}:3000"
+    environment:
+      DATA_DIR: /app/data
+      PORT: 3000
+      NODE_ENV: production
+    volumes:
+      # Persists configuration, db.json, and thumbnails
+      - ./data:/app/data
+      
+      # MOUNT YOUR MEDIA FILES HERE
+      # Format: - /host/path/to/media:/container/path
+      # Inside FileTube Setup wizard, register directories using their container paths (e.g. /media/videos)
+      # - /path/to/your/videos:/media/videos
+      # - /path/to/your/music:/media/music
+    restart: unless-stopped

@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Setup - FileTube</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <header>
+    <div class="header-left">
+      <button class="menu-toggle" id="menu-toggle">☰</button>
+      <a href="/" class="logo">File<span class="tube">Tube</span></a>
+    </div>
+    <div class="header-right">
+      <button class="theme-toggle" id="theme-toggle-btn">🌙</button>
+    </div>
+  </header>
+
+  <div class="app-container">
+    <aside class="sidebar" id="sidebar">
+      <nav class="sidebar-section">
+        <a href="/" class="sidebar-item">
+          <i class="icon-home"></i> Home
+        </a>
+        <a href="/setup.html" class="sidebar-item active">
+          <i class="icon-cog"></i> Library Settings
+        </a>
+      </nav>
+      <div class="sidebar-section">
+        <div class="sidebar-section-title">Playlists (Folders)</div>
+        <div id="sidebar-folders-list">
+          <!-- Populated dynamically -->
+        </div>
+      </div>
+    </aside>
+
+    <main class="main-content" id="main-content">
+      <div class="setup-box">
+        <h2>FileTube Setup & Configuration</h2>
+        <p>
+          Configure the local directories where your media (videos and audio files) are stored.
+          Each directory will appear as a playlist (or channel) in the sidebar. FileTube scans these folders recursively.
+        </p>
+
+        <div class="form-group">
+          <label for="new-folder-path">Add Media Folder Directory Path</label>
+          <div style="display: flex; gap: 8px;">
+            <input type="text" id="new-folder-path" placeholder="e.g. C:\Users\dean\Videos or /mnt/media" />
+            <button class="btn" id="add-folder-btn" style="flex-shrink: 0;">Add Folder</button>
+          </div>
+          <small style="color: var(--text-secondary); margin-top: 4px; display: block;">
+            For Docker deployments, specify the directory path inside your container (e.g. /media/movies).
+          </small>
+        </div>
+
+        <div class="form-group">
+          <label>Configured Directories</label>
+          <div class="folder-list-builder" id="folders-builder-list">
+            <!-- Dynamically populated rows -->
+            <div class="empty-folders-msg">No folders configured yet. Add one above.</div>
+          </div>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 24px; border-top: 1px solid var(--border-color); padding-top: 16px;">
+          <span id="scan-status" style="font-weight: bold; color: var(--text-secondary);"></span>
+          <button class="btn btn-primary" id="save-config-btn" style="padding: 10px 20px; font-size: 13px;">Save & Scan Library</button>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="/js/common.js"></script>
+  <script>
+    let configuredFolders = [];
+
+    // Load initial folders
+    async function loadConfig() {
+      try {
+        const response = await fetch('/api/config');
+        const data = await response.json();
+        configuredFolders = data.folders || [];
+        renderFolders();
+        renderSidebarFolders(configuredFolders);
+      } catch (err) {
+        console.error('Failed to load configuration:', err);
+      }
+    }
+
+    // Render configured folder rows in wizard
+    function renderFolders() {
+      const container = document.getElementById('folders-builder-list');
+      if (configuredFolders.length === 0) {
+        container.innerHTML = '<div class="empty-folders-msg">No folders configured yet. Add one above.</div>';
+        return;
+      }
+
+      container.innerHTML = '';
+      configuredFolders.forEach((folder, index) => {
+        const row = document.createElement('div');
+        row.className = 'folder-item-row';
+        row.innerHTML = `
+          <span class="folder-path-text">${escapeHtml(folder)}</span>
+          <button class="remove-folder-btn" data-index="${index}">&times;</button>
+        `;
+        container.appendChild(row);
+      });
+
+      // Add delete handlers
+      container.querySelectorAll('.remove-folder-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const index = parseInt(e.target.dataset.index);
+          configuredFolders.splice(index, 1);
+          renderFolders();
+        });
+      });
+    }
+
+    // Helper to render sidebar list
+    function renderSidebarFolders(folders) {
+      const sidebarContainer = document.getElementById('sidebar-folders-list');
+      if (!sidebarContainer) return;
+      if (folders.length === 0) {
+        sidebarContainer.innerHTML = '<div style="padding: 6px 24px; font-style: italic; color: var(--text-secondary);">None</div>';
+        return;
+      }
+      sidebarContainer.innerHTML = folders.map(f => {
+        const base = f.split(/[\\/]/).pop() || f;
+        return `<a href="/?folder=${encodeURIComponent(base)}" class="sidebar-item"><i class="icon-folder"></i> ${escapeHtml(base)}</a>`;
+      }).join('');
+    }
+
+    // HTML escape helper locally
+    function escapeHtml(text) {
+      return text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
+    document.getElementById('add-folder-btn').addEventListener('click', () => {
+      const input = document.getElementById('new-folder-path');
+      const pathValue = input.value.trim();
+      if (!pathValue) return;
+
+      if (configuredFolders.includes(pathValue)) {
+        alert('This folder directory is already added.');
+        return;
+      }
+
+      configuredFolders.push(pathValue);
+      renderFolders();
+      input.value = '';
+    });
+
+    document.getElementById('new-folder-path').addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        document.getElementById('add-folder-btn').click();
+      }
+    });
+
+    document.getElementById('save-config-btn').addEventListener('click', async () => {
+      const statusText = document.getElementById('scan-status');
+      statusText.textContent = 'Saving configuration & scanning directories...';
+      statusText.style.color = 'var(--text-primary)';
+
+      try {
+        const response = await fetch('/api/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ folders: configuredFolders })
+        });
+        const data = await response.json();
+        
+        if (data.success) {
+          statusText.textContent = 'Scan completed successfully!';
+          statusText.style.color = 'green';
+          renderSidebarFolders(data.folders);
+          setTimeout(() => {
+            window.location.href = '/';
+          }, 1000);
+        } else {
+          statusText.textContent = 'Error: ' + data.error;
+          statusText.style.color = 'var(--yt-red)';
+        }
+      } catch (err) {
+        statusText.textContent = 'Error scanning directories.';
+        statusText.style.color = 'var(--yt-red)';
+        console.error(err);
+      }
+    });
+
+    // Start
+    loadConfig();
+  </script>
+</body>
+</html>

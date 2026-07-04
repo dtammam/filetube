@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Watch - FileTube</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <header>
+    <div class="header-left">
+      <button class="menu-toggle" id="menu-toggle">☰</button>
+      <a href="/" class="logo">File<span class="tube">Tube</span></a>
+    </div>
+
+    <div class="header-search">
+      <div class="search-form">
+        <input type="text" id="search-input" class="search-input" placeholder="Search your files..." />
+        <button id="search-btn" class="search-btn">Search</button>
+      </div>
+    </div>
+
+    <div class="header-right">
+      <a href="/setup.html" class="btn"><i class="icon-cog"></i> Settings</a>
+      <button class="theme-toggle" id="theme-toggle-btn">🌙</button>
+    </div>
+  </header>
+
+  <div class="app-container">
+    <aside class="sidebar" id="sidebar">
+      <nav class="sidebar-section">
+        <a href="/" class="sidebar-item">
+          <i class="icon-home"></i> Home
+        </a>
+        <a href="/setup.html" class="sidebar-item">
+          <i class="icon-cog"></i> Library Settings
+        </a>
+      </nav>
+      <div class="sidebar-section">
+        <div class="sidebar-section-title">Playlists (Folders)</div>
+        <div id="sidebar-folders-list">
+          <!-- Populated dynamically -->
+        </div>
+      </div>
+    </aside>
+
+    <main class="main-content" id="main-content">
+      <div class="watch-container">
+        
+        <!-- Left Main Column -->
+        <div class="watch-main">
+          
+          <!-- Media Player Wrapper -->
+          <div class="player-container" id="player-wrapper">
+            <!-- Resume overlay popup -->
+            <div id="resume-overlay" class="resume-overlay" style="display: none;">
+              <h3>Resume Playback?</h3>
+              <p>You watched this media up to <span id="resume-time-str">0:00</span>. Would you like to resume from there?</p>
+              <div class="resume-actions">
+                <button class="btn" id="resume-no-btn">Start from beginning</button>
+                <button class="btn btn-primary" id="resume-yes-btn">Resume</button>
+              </div>
+            </div>
+
+            <!-- Standard video player -->
+            <video id="media-player" controls preload="metadata" style="display: none;">
+              Your browser does not support HTML5 video player.
+            </video>
+
+            <!-- Custom audio visualizer screen -->
+            <div id="audio-visualizer" class="audio-player-visual" style="display: none;">
+              <!-- Spinning vinyl record -->
+              <div class="audio-vinyl" id="vinyl-disc"></div>
+              <div class="audio-title" id="audio-visual-title">Audio Track Title</div>
+              <div class="audio-subtitle" id="audio-visual-folder">Playlist Folder</div>
+            </div>
+          </div>
+
+          <!-- Video Details -->
+          <h1 class="watch-title" id="media-title">Loading title...</h1>
+          
+          <div class="watch-action-bar">
+            <div>
+              <span class="views-count" id="views-count">0 views</span>
+            </div>
+            
+            <div class="watch-actions">
+              <!-- Star Rating -->
+              <div class="star-rating" id="star-rating-control" title="Rate this video!">
+                <span class="star" data-value="1">★</span>
+                <span class="star" data-value="2">★</span>
+                <span class="star" data-value="3">★</span>
+                <span class="star" data-value="4">★</span>
+                <span class="star" data-value="5">★</span>
+                <span class="rating-count" id="rating-text">Rate this</span>
+              </div>
+              
+              <!-- Delete option -->
+              <button class="btn" id="delete-media-btn" style="color: var(--yt-red); border-color: var(--yt-red);">
+                <i class="icon-delete"></i> Delete File
+              </button>
+            </div>
+          </div>
+
+          <!-- Uploader details -->
+          <div class="uploader-info-panel">
+            <div class="uploader-profile">
+              <div class="uploader-avatar" id="uploader-avatar-letter">F</div>
+              <div>
+                <div class="uploader-name" id="uploader-channel-name">Folder Uploader</div>
+                <div class="uploader-subs" id="uploader-subs-count">10.5K subscribers</div>
+              </div>
+            </div>
+            <div>
+              <button class="btn btn-primary" id="subscribe-btn-mock">Subscribe</button>
+            </div>
+          </div>
+
+          <!-- Description Box -->
+          <div class="description-container">
+            <div class="description-meta">
+              Added <span id="added-date-text">unknown date</span> &bull; File Size: <span id="file-size-text">0 MB</span>
+            </div>
+            <div class="description-text" id="description-paragraph">
+              File Path: <span id="file-path-text" style="font-family: monospace;">/loading...</span>
+              <br><br>
+              This file is self-hosted on your network. Playback progress is automatically saved to your FileTube server, allowing you to resume playing this video or audio clip at any time.
+            </div>
+            <button class="expand-description-btn" id="expand-desc-btn">Show more</button>
+          </div>
+
+          <!-- Comments Section -->
+          <div class="comments-section">
+            <div class="comments-header">Comments (<span id="comment-count-badge">0</span>)</div>
+            
+            <div class="comment-input-area">
+              <textarea class="comment-input-box" id="new-comment-text" placeholder="Add a public comment..."></textarea>
+              <button class="btn btn-primary" id="post-comment-btn" style="align-self: flex-end; height: 36px;">Comment</button>
+            </div>
+
+            <div class="comment-list" id="comments-container">
+              <!-- Dynamically populated comments -->
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Right Sidebar (Playlist / Related) -->
+        <div class="watch-sidebar">
+          <div class="related-header">Related Files</div>
+          <div class="related-list" id="related-files-container">
+            <!-- Dynamic related cards -->
+          </div>
+        </div>
+
+      </div>
+    </main>
+  </div>
+
+  <script src="/js/common.js"></script>
+  <script src="/js/watch.js"></script>
+</body>
+</html>

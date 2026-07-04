@@ -49,6 +49,13 @@ bin/
 *.exe
 *.test
 
+# --- FileTube runtime data (regenerable / personal) ---
+# db.json holds folder paths + watch progress; .thumbnails/ is a regenerable cache.
+# In Docker these live under the mounted DATA_DIR (./data); in local dev they land in the repo root.
+/db.json
+.thumbnails/
+/data/
+
 # --- Uploads / user media (app data) ---
 uploads/
 media/
@@ -57,3 +64,6 @@ tmp/
 *.sqlite
 *.sqlite3
 *.db
+
+# --- Local agent/editor settings ---
+.claude/settings.local.json

@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FileTube - Broadcast Yourself (Your Files)</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <header>
+    <div class="header-left">
+      <button class="menu-toggle" id="menu-toggle">☰</button>
+      <a href="/" class="logo">File<span class="tube">Tube</span></a>
+    </div>
+    
+    <div class="header-search">
+      <div class="search-form">
+        <input type="text" id="search-input" class="search-input" placeholder="Search your files..." />
+        <button id="search-btn" class="search-btn">Search</button>
+      </div>
+    </div>
+
+    <div class="header-right">
+      <a href="/setup.html" class="btn"><i class="icon-cog"></i> Settings</a>
+      <button class="theme-toggle" id="theme-toggle-btn">🌙</button>
+    </div>
+  </header>
+
+  <div class="app-container">
+    <aside class="sidebar" id="sidebar">
+      <nav class="sidebar-section">
+        <a href="/" class="sidebar-item active" id="sidebar-home-link">
+          <i class="icon-home"></i> Home
+        </a>
+        <a href="/setup.html" class="sidebar-item">
+          <i class="icon-cog"></i> Library Settings
+        </a>
+      </nav>
+      <div class="sidebar-section">
+        <div class="sidebar-section-title">Playlists (Folders)</div>
+        <div id="sidebar-folders-list">
+          <!-- Populated dynamically -->
+        </div>
+      </div>
+    </aside>
+
+    <main class="main-content" id="main-content">
+      <!-- Welcome message if no libraries are set up -->
+      <div id="welcome-message" class="setup-box" style="display: none; margin: 20px 0;">
+        <h2>Welcome to FileTube!</h2>
+        <p>It looks like you haven't configured any media folders yet. To start enjoying your local video and audio library, click below to configure folders.</p>
+        <a href="/setup.html" class="btn btn-primary" style="padding: 10px 20px;">Configure Media Folders</a>
+      </div>
+
+      <div id="library-content">
+        <!-- Videos Section -->
+        <div class="section-title">
+          <span id="videos-section-header">Recently Added</span>
+          <button class="btn btn-sm" id="rescan-library-btn" style="font-size: 11px; padding: 4px 8px;">🔄 Rescan Files</button>
+        </div>
+
+        <div class="video-grid" id="video-grid">
+          <!-- Video Cards will be inserted here -->
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="/js/common.js"></script>
+  <script src="/js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,24 @@
+# Keep the build context tiny and free of host/runtime cruft.
+.git
+.github
+node_modules
+npm-debug.log*
+
+# Runtime data (regenerable / personal) — never bake into the image
+db.json
+.thumbnails/
+data/
+
+# Local dev / editor
+.claude
+.env
+.env.*
+!.env.example
+
+# Docs & samples not needed at runtime
+README.md
+ROADMAP.md
+LICENSE
+assets
+test_media
+docker-compose.yml
