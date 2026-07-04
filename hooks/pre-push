@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# Pre-push hook — runs full checks before pushing.
+# Customize the commands below for your tech stack.
+set -euo pipefail
+
+# Source profile for tool paths (nvm, cargo, etc.)
+[ -f "$HOME/.profile" ] && source "$HOME/.profile" 2>/dev/null || true
+
+echo "Running pre-push checks..."
+
+# Uncomment and customize for your stack:
+# --- Rust ---
+# cargo test
+# cargo clippy -- -D warnings
+
+# --- Python ---
+# pytest
+# ruff check .
+
+# --- Node/TypeScript ---
+# npx jest
+# npx eslint .
+
+# --- E2E (if applicable) ---
+# npx playwright test --project=chromium
+
+echo "Pre-push checks passed."
