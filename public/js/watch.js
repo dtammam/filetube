@@ -155,6 +155,64 @@ document.addEventListener('DOMContentLoaded', () => {
     // File type from the extension (e.g. ".mp4" -> "MP4")
     fileTypeText.textContent = (mediaData.ext || '').replace('.', '').toUpperCase() || 'Unknown';
     filePathText.textContent = mediaData.filePath;
+
+    renderEmbeddedTags(mediaData.tags);
+    setupMediaSession(channelName);
+  }
+
+  // Additive: render any embedded file metadata (title/artist are shown elsewhere
+  // so they're skipped) under the file-path block. Shows nothing if there are no
+  // usable tags — the existing UI is untouched in that case.
+  function renderEmbeddedTags(tags) {
+    const el = document.getElementById('embedded-tags');
+    if (!el) return;
+    const title = (mediaData.title || '').toLowerCase();
+    // Skip title/artist (shown elsewhere) and any tag whose value just repeats the
+    // title. Cap very long values so a huge embedded description can't blow out layout.
+    const clip = v => v.length > 400 ? v.slice(0, 400) + '…' : v;
+    const entries = Object.entries(tags || {}).filter(([k, v]) =>
+      k !== 'title' && k !== 'artist' && String(v).toLowerCase() !== title);
+    if (!entries.length) { el.style.display = 'none'; return; }
+    const label = k => k.charAt(0).toUpperCase() + k.slice(1);
+    el.innerHTML = '<div class="embedded-tags-title">Embedded info</div>' +
+      entries.map(([k, v]) =>
+        `<div class="embedded-tag"><span class="embedded-tag-key">${escapeHtml(label(k))}:</span> ${escapeHtml(clip(String(v)))}</div>`
+      ).join('');
+    el.style.display = 'block';
+  }
+
+  // Lock-screen / Control Center metadata (thumbnail + title + channel). Feature-
+  // detected and fully wrapped — a silent no-op where unsupported. Handlers only
+  // issue commands to the <video>; existing listeners still react, so there's no
+  // double-driving of playback.
+  function setupMediaSession(channelName) {
+    if (!('mediaSession' in navigator) || typeof MediaMetadata === 'undefined') return;
+    try {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: mediaData.title || 'FileTube',
+        artist: channelName || '',
+        album: 'FileTube',
+        artwork: [
+          { src: `/thumbnail/${mediaId}`, sizes: '256x256', type: 'image/jpeg' },
+          { src: `/thumbnail/${mediaId}`, sizes: '512x512', type: 'image/jpeg' },
+        ],
+      });
+      const handlers = {
+        play: () => { mediaPlayer.play().catch(() => {}); },
+        pause: () => mediaPlayer.pause(),
+        seekbackward: () => skip(-SKIP_SECONDS),
+        seekforward: () => skip(SKIP_SECONDS),
+      };
+      for (const action of Object.keys(handlers)) {
+        try { navigator.mediaSession.setActionHandler(action, handlers[action]); } catch (_) {}
+      }
+    } catch (_) { /* MediaMetadata construction unsupported */ }
+  }
+
+  // Shared: is the video in the OS's native fullscreen player? That's its own
+  // surface — our inline overlays/gestures don't apply there.
+  function inNativeFullscreen() {
+    return !!document.fullscreenElement || !!mediaPlayer.webkitDisplayingFullscreen;
   }
 
   // Configure Player
@@ -173,6 +231,7 @@ document.addEventListener('DOMContentLoaded', () => {
       // Video File
       mediaPlayer.style.display = 'block';
       setupSkipControls();
+      setupRotateFullscreen();
 
       if (mediaData.needsTranscode) {
         if (!isMobileViewport()) {
@@ -270,10 +329,72 @@ document.addEventListener('DOMContentLoaded', () => {
       skip(onLeft ? -SKIP_SECONDS : SKIP_SECONDS);
     });
 
-    // Mobile: detect a double-tap on the same half of the video.
+    // Mobile gestures on the inline video, arbitrated by a single set of touch
+    // listeners so tap / double-tap / press-and-hold never collide:
+    //   • tap            -> native play/pause (we don't preventDefault)
+    //   • double-tap     -> ±15s seek (same half)
+    //   • hold ≥350ms    -> 2× playback until release ("press and hold to speed up")
+    const speedBadge = document.getElementById('speed-badge');
     let lastTapTime = 0;
     let lastTapLeft = false;
+    let holdTimer = null;
+    let holdActive = false;
+    let prevRate = 1;
+    let startX = 0, startY = 0;
+    const HOLD_MS = 500;
+    const MOVE_TOL = 10;
+
+    function engageHold() {
+      // Only speed up during active playback; never re-enter (would capture the
+      // already-elevated rate as prevRate); never engage in native fullscreen.
+      if (holdActive || mediaPlayer.paused || inNativeFullscreen()) return;
+      holdActive = true;
+      prevRate = mediaPlayer.playbackRate || 1;
+      mediaPlayer.playbackRate = 2;
+      if (speedBadge) speedBadge.style.display = 'block';
+    }
+    function releaseHold() {
+      if (!holdActive) return;
+      holdActive = false;
+      mediaPlayer.playbackRate = prevRate || 1;
+      if (speedBadge) speedBadge.style.display = 'none';
+    }
+
+    mediaPlayer.addEventListener('touchstart', (e) => {
+      if (inNativeFullscreen() || e.touches.length > 1) {
+        clearTimeout(holdTimer); // a second finger / fullscreen cancels a pending hold
+        releaseHold();
+        return;
+      }
+      startX = e.touches[0].clientX;
+      startY = e.touches[0].clientY;
+      clearTimeout(holdTimer);
+      holdTimer = setTimeout(engageHold, HOLD_MS);
+    }, { passive: true });
+
+    mediaPlayer.addEventListener('touchmove', (e) => {
+      const t = e.touches[0];
+      if (!t || holdActive) return;
+      // Movement before the hold engages = a scroll/drag, not a hold.
+      if (Math.abs(t.clientX - startX) > MOVE_TOL || Math.abs(t.clientY - startY) > MOVE_TOL) {
+        clearTimeout(holdTimer);
+      }
+    }, { passive: true });
+
+    mediaPlayer.addEventListener('touchcancel', () => {
+      clearTimeout(holdTimer);
+      releaseHold();
+    }, { passive: true });
+
     mediaPlayer.addEventListener('touchend', (e) => {
+      clearTimeout(holdTimer);
+      if (holdActive) {
+        // It was a hold: end 2× and consume the tap so it doesn't also seek/toggle.
+        e.preventDefault();
+        releaseHold();
+        lastTapTime = 0;
+        return;
+      }
       const touch = e.changedTouches[0];
       const rect = mediaPlayer.getBoundingClientRect();
       const onLeft = (touch.clientX - rect.left) < rect.width / 2;
@@ -289,6 +410,53 @@ document.addEventListener('DOMContentLoaded', () => {
         revealSkipButtons();
       }
     }, { passive: false });
+
+    // If native fullscreen is entered mid-gesture (e.g. rotate-to-fullscreen fires
+    // while holding), the inline element stops receiving touchend — force a release
+    // so playbackRate can never get stranded at 2×.
+    function onEnterFullscreen() { clearTimeout(holdTimer); releaseHold(); }
+    document.addEventListener('fullscreenchange', () => { if (document.fullscreenElement) onEnterFullscreen(); });
+    mediaPlayer.addEventListener('webkitbeginfullscreen', onEnterFullscreen);
+  }
+
+  // Rotate-to-fullscreen (best-effort). Landscape -> request fullscreen; portrait
+  // -> exit ONLY if WE auto-entered it (never force-exit a fullscreen the user
+  // opened by tapping). iOS gates programmatic fullscreen behind a user gesture,
+  // so this may be a no-op there — hence everything is wrapped and tolerant.
+  function setupRotateFullscreen() {
+    let autoFullscreen = false;
+    const mql = window.matchMedia('(orientation: landscape)');
+
+    // Once fullscreen is exited by ANY means, forget that WE opened it — so if the
+    // user re-enters fullscreen deliberately, a later portrait rotation won't yank
+    // them back out.
+    function onFsChange() { if (!inNativeFullscreen()) autoFullscreen = false; }
+    document.addEventListener('fullscreenchange', onFsChange);
+    mediaPlayer.addEventListener('webkitendfullscreen', onFsChange);
+
+    function onOrientationChange() {
+      const landscape = mql.matches;
+      try {
+        if (landscape && !inNativeFullscreen()) {
+          autoFullscreen = true;
+          if (mediaPlayer.webkitEnterFullscreen) {
+            mediaPlayer.webkitEnterFullscreen();
+          } else if (mediaPlayer.requestFullscreen) {
+            const p = mediaPlayer.requestFullscreen();
+            if (p && p.catch) p.catch(() => { autoFullscreen = false; });
+          }
+        } else if (!landscape && autoFullscreen && inNativeFullscreen()) {
+          autoFullscreen = false;
+          if (document.exitFullscreen) {
+            const p = document.exitFullscreen();
+            if (p && p.catch) p.catch(() => {});
+          }
+        }
+      } catch (_) { /* fullscreen refused/unsupported — ignore */ }
+    }
+    // Prefer the non-deprecated matchMedia change event; fall back where needed.
+    if (mql.addEventListener) mql.addEventListener('change', onOrientationChange);
+    else window.addEventListener('orientationchange', onOrientationChange);
   }
 
   // Desktop keyboard shortcuts:
@@ -720,11 +888,12 @@ document.addEventListener('DOMContentLoaded', () => {
       { author: 'Daisy Tammam', text: 'wach wif me daddy pleeez', timeStr: '1 week ago' }
     ];
 
-    // Choose 4 comments deterministically based on media ID
+    // Choose a deterministic per-item number of comments (4–14) based on media ID
     const seed = mediaId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    const count = getCommentCount(mediaId, commentBank.length);
     const selected = [];
     const used = new Set();
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < count; i++) {
       let idx = (seed + i * 7) % commentBank.length;
       while (used.has(idx)) idx = (idx + 1) % commentBank.length;
       used.add(idx);

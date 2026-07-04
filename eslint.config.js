@@ -79,6 +79,7 @@ module.exports = [
         formatDuration: 'readonly',
         formatFileSize: 'readonly',
         formatRelativeTime: 'readonly',
+        getCommentCount: 'readonly',
         getMockSubCount: 'readonly',
         getMockViews: 'readonly',
         getStarRating: 'readonly',

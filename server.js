@@ -335,6 +335,40 @@ function reconcileTranscode(item) {
   return before !== item.transcodeStatus;
 }
 
+// Pure: pull a small, normalized set of embedded metadata tags from ffprobe
+// output (accepts the parsed object OR the raw stdout string). Whitelisted so we
+// never surface junk; returns {} on anything malformed. Unit-tested — ffprobe
+// isn't installed in CI, so keeping the parsing separate from the spawn matters.
+const EMBEDDED_TAG_WHITELIST = [
+  'title', 'artist', 'album', 'date', 'genre', 'composer',
+  'description', 'comment', 'synopsis', 'show', 'copyright',
+];
+function parseFfprobeTags(input) {
+  let j = input;
+  if (typeof input === 'string') {
+    try { j = JSON.parse(input); } catch (_) { return {}; }
+  }
+  if (!j || typeof j !== 'object') return {};
+  const raw = (j.format && j.format.tags) || {};
+  if (!raw || typeof raw !== 'object') return {};
+  const lower = {};
+  for (const k of Object.keys(raw)) {
+    const v = raw[k];
+    if (typeof v === 'string' && v.trim()) lower[k.toLowerCase()] = v.trim();
+  }
+  const out = {};
+  for (const key of EMBEDDED_TAG_WHITELIST) {
+    if (lower[key]) out[key] = lower[key];
+  }
+  // "year" is a common alias for date (ID3 etc.) — fall back to it.
+  if (!out.date && lower.year) out.date = lower.year;
+  // description and comment are frequently identical — dedup (case-insensitive).
+  if (out.description && out.comment && out.description.toLowerCase() === out.comment.toLowerCase()) {
+    delete out.comment;
+  }
+  return out;
+}
+
 // Extract duration and thumbnail using FFmpeg
 function extractMetadataAndThumbnail(filePath, mediaId, isAudio) {
   return new Promise((resolve) => {
@@ -342,20 +376,27 @@ function extractMetadataAndThumbnail(filePath, mediaId, isAudio) {
     const thumbPath = path.join(THUMBNAIL_DIR, thumbName);
     
     if (!ffmpegAvailable) {
-      return resolve({ duration: 0, hasThumbnail: false, artist: '' });
+      return resolve({ duration: 0, hasThumbnail: false, artist: '', tags: {} });
     }
 
-    // Get duration + artist tag (used as the "channel" name when present)
-    const ffprobeCmd = `ffprobe -v error -show_entries format=duration:format_tags=artist -of json "${filePath}"`;
-    exec(ffprobeCmd, (err, stdout) => {
+    // Get duration + all format tags (artist -> channel name; the rest -> the
+    // additive "embedded info" block on the watch page).
+    const ffprobeCmd = `ffprobe -v error -show_entries format=duration:format_tags -of json "${filePath}"`;
+    // Bump maxBuffer well above exec's 1MB default — files with large embedded
+    // tags (long descriptions/lyrics) could otherwise overflow it, set `err`, and
+    // regress duration to 0 (which would also mis-time the thumbnail grab).
+    exec(ffprobeCmd, { maxBuffer: 16 * 1024 * 1024 }, (err, stdout) => {
       let duration = 0;
       let artist = '';
+      let tags = {};
       if (!err && stdout) {
         try {
           const j = JSON.parse(stdout);
           duration = parseFloat(j.format && j.format.duration) || 0;
-          const tags = (j.format && j.format.tags) || {};
-          artist = (tags.artist || tags.ARTIST || tags.Artist || '').trim();
+          const rawTags = (j.format && j.format.tags) || {};
+          artist = (rawTags.artist || rawTags.ARTIST || rawTags.Artist || '').trim();
+          // Tag extraction is best-effort — never let it break duration/thumbnail.
+          try { tags = parseFfprobeTags(j); } catch (_) { tags = {}; }
         } catch (_) {}
       }
 
@@ -363,14 +404,14 @@ function extractMetadataAndThumbnail(filePath, mediaId, isAudio) {
         // Try to extract embedded audio artwork
         const extractArtCmd = `ffmpeg -i "${filePath}" -an -vcodec copy -y "${thumbPath}"`;
         exec(extractArtCmd, (artErr) => {
-          resolve({ duration, artist, hasThumbnail: !artErr && fs.existsSync(thumbPath) });
+          resolve({ duration, artist, tags, hasThumbnail: !artErr && fs.existsSync(thumbPath) });
         });
       } else {
         // Extract video frame (at 2 seconds or 10% of duration, whichever is smaller)
         const timestamp = duration > 5 ? 2 : Math.max(0, duration / 2);
         const extractFrameCmd = `ffmpeg -ss ${timestamp} -i "${filePath}" -vframes 1 -q:v 2 -y "${thumbPath}"`;
         exec(extractFrameCmd, (frameErr) => {
-          resolve({ duration, artist, hasThumbnail: !frameErr && fs.existsSync(thumbPath) });
+          resolve({ duration, artist, tags, hasThumbnail: !frameErr && fs.existsSync(thumbPath) });
         });
       }
     });
@@ -442,6 +483,7 @@ async function runScanDirectories() {
         newMetadata[id].duration = meta.duration;
         newMetadata[id].hasThumbnail = meta.hasThumbnail;
         newMetadata[id].artist = meta.artist || '';
+        newMetadata[id].tags = meta.tags || {};
       } catch (err) {
         console.error(`Error extracting metadata for ${info.name}:`, err);
       }
@@ -966,6 +1008,7 @@ module.exports = {
   loadDatabase,
   saveDatabase,
   reconcileTranscode,
+  parseFfprobeTags,
   parseCacheCap,
   selectEvictions,
   cleanupOrphanTmp,

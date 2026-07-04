@@ -562,3 +562,10 @@ CONTRIBUTING.md / RELIABILITY.md):**
   per the explicit "keep this branch focused" instruction, given the branch
   already carries two substantive fixed items and a mandatory heavy QA
   pass.
+
+## Shipped
+
+- 2026-07-04 — Shipped as **v1.1.0**. Feature complete through QA/code-review
+  (see state history). Moved from `docs/exec-plans/active/` to
+  `docs/exec-plans/completed/` by the engineering-manager during the
+  `mobile-playback-polish` kickoff.

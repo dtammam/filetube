@@ -566,6 +566,41 @@ header {
   pointer-events: none; /* native <video> controls stay clickable; buttons re-enable below */
 }
 
+/* Press-and-hold-to-2x badge (mobile inline) */
+.speed-badge {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.75);
+  color: #fff;
+  padding: 4px 12px;
+  border-radius: 14px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  z-index: 20;
+  pointer-events: none;
+}
+
+/* Embedded file metadata block (additive, under the description) */
+.embedded-tags {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-color);
+  font-size: 13px;
+}
+.embedded-tags-title {
+  font-weight: 600;
+  margin-bottom: 4px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: 0.5px;
+}
+.embedded-tag { margin: 2px 0; }
+.embedded-tag-key { color: var(--text-secondary); font-weight: 600; }
+
 .skip-btn {
   position: absolute;
   top: 50%;
