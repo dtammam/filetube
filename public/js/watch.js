@@ -156,12 +156,16 @@ document.addEventListener('DOMContentLoaded', () => {
   // streaming/unknown duration (AVI live transcode) returns null and we SKIP the
   // call — setPositionState throws on bad input. `force` bypasses the throttle.
   function updatePositionState(force) {
+    // In desktop live-transcode mode, currentTime is relative to the stream restart,
+    // not an absolute position — reporting it would mislead the scrubber. (Duration
+    // is also non-finite there, so clampPositionState would skip anyway; belt & braces.)
+    if (liveMode) return;
     if (!('mediaSession' in navigator) || !('setPositionState' in navigator.mediaSession)) return;
     const now = Date.now();
     if (!force && now - lastPositionSync < POSITION_SYNC_MS) return;
-    lastPositionSync = now;
     const state = clampPositionState(mediaPlayer.duration, mediaPlayer.currentTime, mediaPlayer.playbackRate);
-    if (!state) return;
+    if (!state) return; // streaming/unknown duration — skip without consuming the throttle window
+    lastPositionSync = now;
     try { navigator.mediaSession.setPositionState(state); } catch (_) {}
   }
 
@@ -244,7 +248,11 @@ document.addEventListener('DOMContentLoaded', () => {
   // that went blank while backgrounded repopulates. Registered once.
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState !== 'visible' || !mediaData) return;
+    // Re-assert metadata (repopulates a blanked widget) AND the state directly, so
+    // the re-sync isn't coupled to the MediaMetadata feature guard inside setup.
     setupMediaSession(currentChannelName);
+    setPlaybackState(mediaPlayer.paused ? 'paused' : 'playing');
+    updatePositionState(true);
   });
 
   // Shared: is the video in the OS's native fullscreen player? That's its own
@@ -306,9 +314,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // Keep the lock-screen "Now Playing" state accurate (separate listeners so
     // the progress-saver side effects above stay the single owner of that logic).
     mediaPlayer.addEventListener('play', () => { setPlaybackState('playing'); updatePositionState(true); });
-    mediaPlayer.addEventListener('pause', () => setPlaybackState('paused'));
+    mediaPlayer.addEventListener('pause', () => { setPlaybackState('paused'); updatePositionState(true); });
     mediaPlayer.addEventListener('ended', () => setPlaybackState('none'));
     mediaPlayer.addEventListener('loadedmetadata', () => updatePositionState(true));
+    mediaPlayer.addEventListener('durationchange', () => updatePositionState(true));
     mediaPlayer.addEventListener('seeked', () => updatePositionState(true));
     mediaPlayer.addEventListener('ratechange', () => updatePositionState(true));
     mediaPlayer.addEventListener('timeupdate', () => updatePositionState(false));

@@ -4,6 +4,10 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const { clampPositionState } = require('../../public/js/common.js');
 
+test('clampPositionState: is exported for Node (require-safe)', () => {
+  assert.equal(typeof clampPositionState, 'function');
+});
+
 test('clampPositionState: returns a valid object for good input', () => {
   assert.deepEqual(clampPositionState(100, 30, 1), { duration: 100, position: 30, playbackRate: 1 });
 });

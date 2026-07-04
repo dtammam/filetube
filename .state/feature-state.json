@@ -1,10 +1,10 @@
 {
   "feature_id": "media-session-hardening",
   "feature_name": "Media Session Hardening",
-  "stage": "discovery",
+  "stage": "qa",
   "created_at": "2026-07-04",
   "updated_at": "2026-07-04",
-  "description": "Media Session hardening (patch -> v1.2.1), from real device feedback on v1.2.0. IN SCOPE: (1) set + maintain navigator.mediaSession.playbackState and positionState (duration/position/playbackRate), updated on play/pause/ended/seeked/ratechange/timeupdate — likely cause of the lock-screen Now Playing going blank after backgrounding (we set metadata + handlers but never playbackState/positionState). (2) Re-assert Media Session metadata + state on visibilitychange (foreground) so it can't stay stale. (3) iOS rotate-to-fullscreen EXIT: use mediaPlayer.webkitExitFullscreen() (document.exitFullscreen doesn't control iOS native video fullscreen). (4) Document that true background PLAYBACK / resume-after-suspension is an iOS OS limitation for web video we cannot defeat; native PiP is the real background path — this branch hardens the control surface, not background playback. Additive + feature-detected everywhere (no throw where mediaSession/positionState/webkitExitFullscreen absent). iOS-device-only for most of it; only pure logic is node:testable. Significant two-reviewer QA/code-review pass required, focused on feature-detection safety and not regressing the v1.2.0 Media Session / rotate code.",
+  "description": "Media Session hardening (patch -> v1.2.1), from real device feedback on v1.2.0. IN SCOPE: (1) set + maintain navigator.mediaSession.playbackState and positionState (duration/position/playbackRate), updated on play/pause/ended/seeked/ratechange/timeupdate \u2014 likely cause of the lock-screen Now Playing going blank after backgrounding (we set metadata + handlers but never playbackState/positionState). (2) Re-assert Media Session metadata + state on visibilitychange (foreground) so it can't stay stale. (3) iOS rotate-to-fullscreen EXIT: use mediaPlayer.webkitExitFullscreen() (document.exitFullscreen doesn't control iOS native video fullscreen). (4) Document that true background PLAYBACK / resume-after-suspension is an iOS OS limitation for web video we cannot defeat; native PiP is the real background path \u2014 this branch hardens the control surface, not background playback. Additive + feature-detected everywhere (no throw where mediaSession/positionState/webkitExitFullscreen absent). iOS-device-only for most of it; only pure logic is node:testable. Significant two-reviewer QA/code-review pass required, focused on feature-detection safety and not regressing the v1.2.0 Media Session / rotate code.",
   "tasks": [],
   "completed_tasks": [],
   "artifacts": {
@@ -13,8 +13,25 @@
     "exec_plan": "docs/exec-plans/active/media-session-hardening.md"
   },
   "history": [
-    { "timestamp": "2026-07-04 00:00", "stage": "bootstrap", "note": "Feature initiated via /kickoff. Prior feature mobile-playback-polish shipped as v1.2.0; its exec plan was copied from docs/exec-plans/active/ to docs/exec-plans/completed/ with a 'Shipped v1.2.0' progress-log note. This toolset cannot true-`mv`, so the active copy docs/exec-plans/active/mobile-playback-polish.md remains as a tombstone to be `git rm`'d by the main loop. Tech-debt tracker left untouched (Closed row #1 unbounded-cache remains intact; Active table empty)." },
-    { "timestamp": "2026-07-04 00:00", "stage": "discovery", "note": "Bootstrapped and staged for discovery. Slug media-session-hardening, patch v1.2.1 hardening the Media Session control surface based on real-device feedback on v1.2.0. Description captured verbatim. No overlapping active exec plans (mobile-playback-polish is a shipped tombstone in active/, real content now in completed/). Tech-debt tracker untouched. Awaiting /prep-pm-discover to route product-manager." },
-    { "timestamp": "2026-07-04 00:00", "stage": "discovery", "note": "Product-manager discovery complete. Grounded in real code (public/js/watch.js setupMediaSession ~L188-210, setupRotateFullscreen ~L426-460, inNativeFullscreen). Confirmed via grep: no existing playbackState/positionState/visibilitychange/timeupdate/loadedmetadata/ratechange/seeked wiring today, so the gap described is real. docs/exec-plans/active/ is empty (no overlap); no ARCHITECTURE.md contradiction; not a tech-debt-tracker item. Wrote exec plan with explicit HARD CONSTRAINT (background playback is an iOS OS limitation, out of scope/unfixable; PiP is the real path), concrete acceptance criteria for playbackState/positionState (with setPositionState throw-guard requirements)/visibilitychange re-assert/iOS webkitExitFullscreen fix, a testability section recommending an extractable clampPositionState(duration, position, playbackRate) pure helper for node:test coverage, a risks section (setPositionState throw conditions incl. live-transcode/streaming duration edge cases, timeupdate throttling, no double-registration, visibilitychange ordering), and a QA note requiring a significant two-reviewer pass. Artifacts requirements/exec_plan set to docs/exec-plans/active/media-session-hardening.md. Ready for engineering-manager / principal-engineer design." }
+    {
+      "timestamp": "2026-07-04 00:00",
+      "stage": "bootstrap",
+      "note": "Feature initiated via /kickoff. Prior feature mobile-playback-polish shipped as v1.2.0; its exec plan was copied from docs/exec-plans/active/ to docs/exec-plans/completed/ with a 'Shipped v1.2.0' progress-log note. This toolset cannot true-`mv`, so the active copy docs/exec-plans/active/mobile-playback-polish.md remains as a tombstone to be `git rm`'d by the main loop. Tech-debt tracker left untouched (Closed row #1 unbounded-cache remains intact; Active table empty)."
+    },
+    {
+      "timestamp": "2026-07-04 00:00",
+      "stage": "discovery",
+      "note": "Bootstrapped and staged for discovery. Slug media-session-hardening, patch v1.2.1 hardening the Media Session control surface based on real-device feedback on v1.2.0. Description captured verbatim. No overlapping active exec plans (mobile-playback-polish is a shipped tombstone in active/, real content now in completed/). Tech-debt tracker untouched. Awaiting /prep-pm-discover to route product-manager."
+    },
+    {
+      "timestamp": "2026-07-04 00:00",
+      "stage": "discovery",
+      "note": "Product-manager discovery complete. Grounded in real code (public/js/watch.js setupMediaSession ~L188-210, setupRotateFullscreen ~L426-460, inNativeFullscreen). Confirmed via grep: no existing playbackState/positionState/visibilitychange/timeupdate/loadedmetadata/ratechange/seeked wiring today, so the gap described is real. docs/exec-plans/active/ is empty (no overlap); no ARCHITECTURE.md contradiction; not a tech-debt-tracker item. Wrote exec plan with explicit HARD CONSTRAINT (background playback is an iOS OS limitation, out of scope/unfixable; PiP is the real path), concrete acceptance criteria for playbackState/positionState (with setPositionState throw-guard requirements)/visibilitychange re-assert/iOS webkitExitFullscreen fix, a testability section recommending an extractable clampPositionState(duration, position, playbackRate) pure helper for node:test coverage, a risks section (setPositionState throw conditions incl. live-transcode/streaming duration edge cases, timeupdate throttling, no double-registration, visibilitychange ordering), and a QA note requiring a significant two-reviewer pass. Artifacts requirements/exec_plan set to docs/exec-plans/active/media-session-hardening.md. Ready for engineering-manager / principal-engineer design."
+    },
+    {
+      "timestamp": "2026-07-04 00:00",
+      "stage": "qa",
+      "note": "Two-reviewer QA pass: quality-assurance APPROVE-WITH-NITS (throw-safety + no v1.2.0 regression confirmed); /code-review workflow found 4 non-critical position-sync issues. Fixed: pause now force-syncs position, durationchange trigger added, visibilitychange re-asserts state directly (decoupled from MediaMetadata guard), live-mode position skip, throttle-stamp-after-validate, export test. 71 tests green."
+    }
   ]
 }
