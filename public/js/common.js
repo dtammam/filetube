@@ -72,6 +72,16 @@ function formatRelativeTime(epochMs) {
   return rtf.format(diffDays, 'day');
 }
 
+// Resolve the "channel"/author name for a media item, the same way everywhere:
+// the mapped folder's friendly display name (if set), else the file's artist
+// tag, else the immediate folder name. Keeps the list cards and the watch page
+// in agreement (both call this).
+function resolveChannelName(item, folderSettings) {
+  const settings = folderSettings || {};
+  const mapped = settings[item.rootFolder] && settings[item.rootFolder].name;
+  return mapped || item.artist || item.folderName || 'Library';
+}
+
 // Mock uploader subscriptions counts (based on uploader name length to make it deterministic but diverse)
 function getMockSubCount(uploaderName) {
   const code = uploaderName.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);

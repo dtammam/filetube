@@ -59,6 +59,33 @@ test('GET /api/videos returns an array', async () => {
   assert.ok(Array.isArray(await res.json()));
 });
 
+test('GET /api/videos preserves the fields the author resolver needs', async () => {
+  // The list cards resolve the "author" from rootFolder (+ folderSettings),
+  // artist, then folderName (see common.js resolveChannelName). Lock the API
+  // contract so those fields keep flowing to the client.
+  fs.writeFileSync(DB_FILE, JSON.stringify({
+    folders: ['/media/Movies'],
+    folderSettings: { '/media/Movies': { name: 'My Movies', hidden: false } },
+    progress: {},
+    metadata: {
+      m1: {
+        id: 'm1', title: 'Clip A', type: 'video', ext: '.mp4',
+        folderName: 'Movies', rootFolder: '/media/Movies', artist: '',
+        size: 1000, addedAt: 1700000000000,
+      },
+    },
+  }));
+
+  const res = await fetch(`${base}/api/videos`);
+  assert.equal(res.status, 200);
+  const list = await res.json();
+  const item = list.find((i) => i.id === 'm1');
+  assert.ok(item, 'seeded item is returned');
+  assert.equal(item.rootFolder, '/media/Movies');
+  assert.equal(item.folderName, 'Movies');
+  assert.equal(item.artist, '');
+});
+
 test('GET /api/videos/:id returns 404 for an unknown id', async () => {
   const res = await fetch(`${base}/api/videos/does-not-exist`);
   assert.equal(res.status, 404);

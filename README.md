@@ -90,12 +90,33 @@ Navigate to [http://localhost:3000](http://localhost:3000) (or the port you conf
 
 Open the **Settings** gear icon in the top right, add your container paths (e.g. `/media/movies`), and click **Save & Scan Library**.
 
+### Staying up to date (or pinning a version)
+
+Set `FILETUBE_IMAGE_TAG` in your `.env` to choose how you track updates:
+
+| Tag | Behavior |
+|-----|----------|
+| `latest` | Newest **release** (recommended for most people) |
+| `1.4.2` | Pinned to an exact version — never moves |
+| `1.4` / `1` | Latest patch / minor within that line |
+| `edge` | Newest `main` commit (bleeding edge) |
+
+After changing the tag (or when a new release ships), pull and restart:
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+Prefer automatic updates? Point a tool like [Watchtower](https://containrrr.dev/watchtower/)
+at the `latest` tag. See [docs/RELEASING.md](docs/RELEASING.md) for the full tag scheme.
+
 ---
 
 ## Local Development (Without Docker)
 
 ### Prerequisites
-- Node.js (v16+)
+- Node.js (v20+; the Docker image ships Node 22 LTS)
 - FFmpeg installed and in your system PATH (optional, but required for video thumbnails).
 
 ### Run steps

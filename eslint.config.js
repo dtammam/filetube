@@ -79,6 +79,7 @@ module.exports = [
         formatRelativeTime: 'readonly',
         getMockSubCount: 'readonly',
         getMockViews: 'readonly',
+        resolveChannelName: 'readonly',
         showConfirmModal: 'readonly',
       },
     },

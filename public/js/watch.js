@@ -142,10 +142,9 @@ document.addEventListener('DOMContentLoaded', () => {
     mediaTitle.textContent = mediaData.title;
     document.title = `${mediaData.title} - FileTube`;
     
-    // Channel name: the mapped folder's friendly display name (if set), else the
-    // artist tag from the file's metadata, else the immediate folder name.
-    const mappedName = folderSettings[mediaData.rootFolder] && folderSettings[mediaData.rootFolder].name;
-    const channelName = mappedName || mediaData.artist || mediaData.folderName;
+    // Channel name resolution is shared with the list cards (see common.js) so
+    // the author shown here and on the home grid always agree.
+    const channelName = resolveChannelName(mediaData, folderSettings);
     viewsCount.textContent = getMockViews(mediaData.id, mediaData.size);
     uploaderAvatar.textContent = (channelName[0] || 'F').toUpperCase();
     uploaderChannelName.textContent = channelName;

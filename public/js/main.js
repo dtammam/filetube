@@ -13,6 +13,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Sort preference persists across visits
   let currentItems = [];
+  let folderSettings = {}; // { "<path>": { name, hidden } } — for author display, shared with cards
   let currentSort = localStorage.getItem('filetube_sort') || 'newest';
 
   // Parse URL query params
@@ -35,7 +36,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const configRes = await fetch('/api/config');
       const configData = await configRes.json();
       const folders = configData.folders || [];
-      const folderSettings = configData.folderSettings || {};
+      folderSettings = configData.folderSettings || {};
 
       if (folders.length === 0) {
         welcomeMessage.style.display = 'block';
@@ -129,7 +130,9 @@ document.addEventListener('DOMContentLoaded', () => {
     videoGrid.innerHTML = items.map(item => {
       const views = getMockViews(item.id, item.size);
       const relativeTime = formatRelativeTime(item.addedAt);
-      
+      // Author/channel resolved the same way as the watch page (see common.js).
+      const channelName = resolveChannelName(item, folderSettings);
+
       // Calculate duration format
       const durationStr = item.duration > 0 ? formatDuration(item.duration) : (item.type === 'audio' ? 'Audio' : '');
       const durationBadge = durationStr ? `<div class="duration-badge">${durationStr}</div>` : '';
@@ -157,11 +160,12 @@ document.addEventListener('DOMContentLoaded', () => {
               ${escapeHtml(item.title)}
             </a>
             <div class="video-uploader">
-              <a href="/?folder=${encodeURIComponent(item.folderName)}">${escapeHtml(item.folderName)}</a>
+              <a href="/?folder=${encodeURIComponent(item.folderName)}">${escapeHtml(channelName)}</a>
             </div>
             <div class="video-meta">
               <span>${views}</span> &bull; <span>${relativeTime}</span>
             </div>
+            <div class="card-rating" title="5 stars" aria-label="Rated 5 out of 5 stars">★★★★★</div>
           </div>
         </div>
       `;
