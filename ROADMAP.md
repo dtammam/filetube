@@ -4,6 +4,7 @@
 
 - [ ] **Handoff-harness install** — install & seed the agent pipeline on branch `setup/handoff-harness` (no functional app changes). _[next]_
 - [ ] **Test coverage** — add automated tests (unit for scan/config/transcode logic, smoke tests for the HTTP endpoints) wired into CI. _[after harness]_
+- [ ] **Hide a sidebar entry entirely** — a per-folder option to remove a folder from the left sidebar completely (distinct from "Hide from home", which only affects the recent view).
 - [ ] **Transcode cache safety** — size cap + LRU eviction for `data/transcoded/`, a configurable transcode dir (env) so the cache can live on roomy NFS instead of the local disk, and a higher CRF for smaller files.
 - [ ] **Atomic `db.json` writes** — write-temp-then-rename + never overwrite a good DB with an empty one. (A full disk once truncated it to 79 bytes; it recovered, but this should be impossible.)
 - [ ] **PWA home-screen icon (PNG)** — manifest is wired; still needs raster PNGs generated from the SVG. Parked (no rasterizer handy).
