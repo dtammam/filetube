@@ -209,12 +209,22 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!skipControls) return;
     skipControls.classList.add('skip-visible');
     if (skipRevealTimer) clearTimeout(skipRevealTimer);
-    skipRevealTimer = setTimeout(() => skipControls.classList.remove('skip-visible'), 3000);
+    skipRevealTimer = setTimeout(() => skipControls.classList.remove('skip-visible'), 2500);
+  }
+
+  function hideSkipButtons() {
+    if (!skipControls) return;
+    if (skipRevealTimer) clearTimeout(skipRevealTimer);
+    skipControls.classList.remove('skip-visible');
   }
 
   function setupSkipControls() {
     if (!skipControls) return;
     skipControls.style.display = 'block';
+
+    // Reveal on pointer activity over the player (desktop), then auto-hide; hide at once on leave.
+    playerWrapper.addEventListener('mousemove', revealSkipButtons);
+    playerWrapper.addEventListener('mouseleave', hideSkipButtons);
 
     skipBackBtn.addEventListener('click', () => { skip(-SKIP_SECONDS); revealSkipButtons(); });
     skipFwdBtn.addEventListener('click', () => { skip(SKIP_SECONDS); revealSkipButtons(); });

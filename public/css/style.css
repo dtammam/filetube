@@ -113,7 +113,8 @@ header {
   display: flex;
   align-items: center;
   max-width: 600px;
-  width: 100%;
+  flex: 1 1 auto;
+  min-width: 0; /* allow the search box to shrink instead of overflowing the header on mobile */
   margin: 0 16px;
 }
 
@@ -559,7 +560,7 @@ header {
   cursor: pointer;
   opacity: 0;
   transition: opacity 0.2s ease, transform 0.15s ease, background 0.2s ease;
-  pointer-events: auto;
+  pointer-events: none; /* invisible buttons must not catch clicks */
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -568,10 +569,10 @@ header {
 .skip-arrow { font-size: 22px; line-height: 1; }
 .skip-num { font-size: 13px; }
 
-/* Reveal on hover (desktop) or when JS toggles .skip-visible (touch) */
-.player-container:hover .skip-btn,
+/* Shown only while active (JS adds .skip-visible on pointer move / tap), then fade out */
 .skip-controls.skip-visible .skip-btn {
   opacity: 1;
+  pointer-events: auto;
 }
 .skip-btn:hover { background: rgba(0, 0, 0, 0.8); transform: translateY(-50%) scale(1); }
 .skip-btn:active { transform: translateY(-50%) scale(0.9); }
@@ -1064,11 +1065,31 @@ header {
     margin-left: 0;
     padding: 16px;
   }
+  header {
+    padding: 0 8px;
+  }
+  .header-left {
+    gap: 8px;
+  }
+  .logo {
+    font-size: 18px;
+  }
   .header-search {
-    margin: 0 8px;
+    margin: 0 6px;
+  }
+  .search-input {
+    padding: 7px 10px;
+    font-size: 13px;
   }
   .search-btn {
     padding: 0 10px;
+  }
+  .header-right {
+    gap: 6px;
+  }
+  /* Settings is reachable from the sidebar menu — reclaim header space on phones */
+  .header-right .btn {
+    display: none;
   }
   .watch-action-bar {
     flex-direction: column;

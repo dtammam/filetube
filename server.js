@@ -401,7 +401,14 @@ function scanDirRecursive(rootFolder, dirPath, results) {
 
 // Middleware
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
+// Serve the app assets with revalidation (no-cache) so updated HTML/JS/CSS show up
+// immediately behind caches (browsers, nginx) instead of serving stale files.
+// ETag/Last-Modified still allow cheap 304s when nothing changed.
+app.use(express.static(path.join(__dirname, 'public'), {
+  setHeaders: (res) => {
+    res.setHeader('Cache-Control', 'no-cache');
+  }
+}));
 
 // Run scans periodically (every 10 minutes) and on startup
 scanDirectories().catch(console.error);
