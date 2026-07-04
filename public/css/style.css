@@ -1444,13 +1444,13 @@ header {
   header {
     flex-direction: column;
     height: auto;
-    min-height: 96px;
-    padding: 8px;
+    min-height: calc(96px + env(safe-area-inset-top));
+    padding: calc(8px + env(safe-area-inset-top)) 8px 8px;
     gap: 6px;
   }
 
   .app-container {
-    padding-top: 96px;
+    padding-top: calc(96px + env(safe-area-inset-top));
   }
 
   .menu-toggle {
@@ -1489,7 +1489,7 @@ header {
   }
 
   /* ---- Mobile app shell: Playlists sheet -------------------------------- */
-  .playlists-sheet-backdrop {
+  .playlists-sheet-backdrop:not([hidden]) {
     display: block;
     position: fixed;
     inset: 0;
@@ -1497,7 +1497,7 @@ header {
     background: rgba(0, 0, 0, 0.5);
   }
 
-  .playlists-sheet {
+  .playlists-sheet:not([hidden]) {
     display: block;
     position: fixed;
     left: 0;
@@ -1542,4 +1542,12 @@ header {
     flex-direction: column;
     align-items: flex-start;
   }
+}
+
+/* In landscape on a phone, the 16:9 player can fill the viewport; hide the fixed
+   bottom nav so it never overlaps the video (matches the YouTube app going
+   immersive on rotate). The mobile header/search still apply. */
+@media (max-width: 768px) and (orientation: landscape) {
+  .bottom-nav { display: none; }
+  .main-content { padding-bottom: env(safe-area-inset-bottom); }
 }

@@ -60,6 +60,7 @@ function applyTheme(era, mode) {
   } catch (_) { /* storage disabled (private mode/sandbox) — attributes still applied */ }
   const btn = document.getElementById('theme-toggle-btn');
   if (btn) btn.innerHTML = mode === 'dark' ? '☀️' : '🌙';
+  if (typeof updateNavThemeItem === 'function') updateNavThemeItem();
 }
 
 // Runs on DOMContentLoaded: resolves stored/legacy state and (re-)applies it,
@@ -248,24 +249,21 @@ function renderPlaylistsSheet(folders, folderSettings) {
 
 // Lazily fetches /api/config on first open, populates the sheet, then reveals
 // it. Feature-detects its own elements so it's safe to call on any page.
-let playlistsSheetLoaded = false;
 function openPlaylistsSheet() {
   const backdrop = document.getElementById('playlists-backdrop');
   const sheet = document.getElementById('playlists-sheet');
   if (!backdrop || !sheet) return;
   backdrop.hidden = false;
   sheet.hidden = false;
-  if (!playlistsSheetLoaded) {
-    playlistsSheetLoaded = true;
-    fetch('/api/config')
-      .then((r) => r.json())
-      .then((data) => renderPlaylistsSheet(data.folders || [], data.folderSettings || {}))
-      .catch(() => {
-        const list = document.getElementById('playlists-sheet-list');
-        if (list) list.innerHTML = '<div class="sidebar-item">Failed to load folders.</div>';
-        playlistsSheetLoaded = false; // allow retry on next open
-      });
-  }
+  // Fetch fresh on every open — /api/config is tiny, and this avoids showing a
+  // stale folder list if the library changed during the session.
+  fetch('/api/config')
+    .then((r) => r.json())
+    .then((data) => renderPlaylistsSheet(data.folders || [], data.folderSettings || {}))
+    .catch(() => {
+      const list = document.getElementById('playlists-sheet-list');
+      if (list) list.innerHTML = '<div class="sidebar-item">Failed to load folders.</div>';
+    });
 }
 
 function closePlaylistsSheet() {
@@ -275,11 +273,9 @@ function closePlaylistsSheet() {
   if (sheet) sheet.hidden = true;
 }
 
-// Keeps the bottom nav's Dark/Light item mirroring the header #theme-toggle-btn
-// icon/label (🌙/☀️ <-> Dark/Light) without touching applyTheme()/toggleTheme()
-// (out of scope) — the nav item is the only mode changer reachable on mobile
-// (the header toggle is hidden there), so syncing on init + its own click
-// keeps it accurate.
+// Mirrors the bottom nav's Dark/Light item icon/label to the current data-mode.
+// Called from applyTheme(), so it stays in sync no matter how the mode changes
+// (nav item, header toggle, or initial load).
 function updateNavThemeItem() {
   const item = document.getElementById('nav-theme-toggle');
   if (!item) return;
