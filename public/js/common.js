@@ -1,27 +1,85 @@
 // Shared Utility Functions for FileTube
 
-// Load and apply theme
-function initTheme() {
-  const currentTheme = localStorage.getItem('theme') || 'light';
-  document.documentElement.setAttribute('data-theme', currentTheme);
-  
-  const themeBtn = document.getElementById('theme-toggle-btn');
-  if (themeBtn) {
-    themeBtn.innerHTML = currentTheme === 'dark' ? '☀️' : '🌙';
+// ---- Era theme system ----------------------------------------------------
+// Two orthogonal axes applied to <html>: data-theme (era) and data-mode
+// (light|dark). See docs/exec-plans/active/era-themes.md for the full design.
+
+const THEME_ERAS = ['2005', '2009', '2014', '2021'];
+const THEME_MODES = ['light', 'dark'];
+const DEFAULT_ERA = '2021';
+const DEFAULT_MODE = 'light';
+
+// Single source of truth for both the setup-page Appearance picker and the
+// switching logic. Adding a 5th era = one entry here + one CSS block pair.
+const THEME_REGISTRY = [
+  { id: '2005', name: 'Original', year: 2005,
+    blurb: 'Plain HTML, sharp corners, blue underlined links.',
+    swatch: ['#ffffff', '#0000cc'] },
+  { id: '2009', name: 'Classic', year: 2009,
+    blurb: 'Warm grays and glossy red chrome.',
+    swatch: ['#f0f0f0', '#cc0000'] },
+  { id: '2014', name: 'Flat', year: 2014,
+    blurb: 'Clean flat white with a brighter red.',
+    swatch: ['#ffffff', '#e62117'] },
+  { id: '2021', name: 'Modern', year: 2021,
+    blurb: 'Rounded cards and Roboto — today\'s look.',
+    swatch: ['#ffffff', '#cc0000'] }
+];
+
+// Pure: resolves the stored era/mode (with legacy-key migration) into a safe
+// { era, mode } pair. Never throws; never returns an unset axis. Exported for
+// node:test — see test/unit/resolve-theme.test.js. Kept in sync with the
+// inline FOUC bootstrap in <head> on index.html/setup.html/watch.html.
+function resolveTheme(storedEra, storedMode, legacyTheme) {
+  const era = THEME_ERAS.includes(storedEra) ? storedEra : DEFAULT_ERA;
+  let mode;
+  if (THEME_MODES.includes(storedMode)) {
+    mode = storedMode;                       // valid new key wins
+  } else if (storedEra == null && storedMode == null &&
+             (legacyTheme === 'dark' || legacyTheme === 'light')) {
+    mode = legacyTheme;                      // one-time migration of legacy `theme`
+  } else {
+    mode = DEFAULT_MODE;                     // missing/corrupt -> fail safe
   }
+  return { era, mode };
 }
 
+// Applies both attributes + persists both keys. Also flips the header
+// 🌙/☀️ icon to reflect the current mode.
+function applyTheme(era, mode) {
+  const d = document.documentElement;
+  d.setAttribute('data-theme', era);
+  d.setAttribute('data-mode', mode);
+  localStorage.setItem('ft-era', era);
+  localStorage.setItem('ft-mode', mode);
+  const btn = document.getElementById('theme-toggle-btn');
+  if (btn) btn.innerHTML = mode === 'dark' ? '☀️' : '🌙';
+}
+
+// Runs on DOMContentLoaded: resolves stored/legacy state and (re-)applies it,
+// completing the legacy `theme` -> ft-era/ft-mode migration on first load.
+function initTheme() {
+  const { era, mode } = resolveTheme(
+    localStorage.getItem('ft-era'),
+    localStorage.getItem('ft-mode'),
+    localStorage.getItem('theme')
+  );
+  applyTheme(era, mode);
+}
+
+// Header 🌙/☀️ button: flips data-mode only, never touches data-theme (era
+// selection lives solely in the setup-page picker).
 function toggleTheme() {
-  const currentTheme = document.documentElement.getAttribute('data-theme');
-  const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
-  
-  document.documentElement.setAttribute('data-theme', newTheme);
-  localStorage.setItem('theme', newTheme);
-  
-  const themeBtn = document.getElementById('theme-toggle-btn');
-  if (themeBtn) {
-    themeBtn.innerHTML = newTheme === 'dark' ? '☀️' : '🌙';
-  }
+  const d = document.documentElement;
+  const mode = d.getAttribute('data-mode') === 'dark' ? 'light' : 'dark';
+  const era = d.getAttribute('data-theme') || DEFAULT_ERA;
+  applyTheme(era, mode);
+}
+
+// Setup-page Appearance picker: changes era only, keeps the current mode.
+function setTheme(era) {
+  const mode = document.documentElement.getAttribute('data-mode') || DEFAULT_MODE;
+  applyTheme(era, mode);
 }
 
 // Format duration from seconds to MM:SS or HH:MM:SS
@@ -192,5 +250,8 @@ document.addEventListener('DOMContentLoaded', () => {
 // Expose pure helpers to Node for unit testing (browsers ignore this block —
 // `module` is undefined there).
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { getStarRating, getCommentCount, resolveChannelName, clampPositionState };
+  module.exports = {
+    getStarRating, getCommentCount, resolveChannelName, clampPositionState,
+    resolveTheme, THEME_REGISTRY
+  };
 }

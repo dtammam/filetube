@@ -11,6 +11,29 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="FileTube">
   <link rel="stylesheet" href="/css/style.css">
+  <script>
+    /* FOUC guard: set era+mode on <html> before first paint. Mirror of
+       resolveTheme() in /js/common.js — keep the two in sync. */
+    (function () {
+      var d = document.documentElement;
+      try {
+        var eras = ['2005', '2009', '2014', '2021'];
+        var modes = ['light', 'dark'];
+        var e = localStorage.getItem('ft-era');
+        var m = localStorage.getItem('ft-mode');
+        var legacy = localStorage.getItem('theme');
+        var era = eras.indexOf(e) >= 0 ? e : '2021';
+        var mode = modes.indexOf(m) >= 0 ? m
+          : (e == null && m == null && (legacy === 'dark' || legacy === 'light')) ? legacy
+          : 'light';
+        d.setAttribute('data-theme', era);
+        d.setAttribute('data-mode', mode);
+      } catch (_) {
+        d.setAttribute('data-theme', '2021');
+        d.setAttribute('data-mode', 'light');
+      }
+    })();
+  </script>
 </head>
 <body>
   <header>
@@ -72,6 +95,13 @@
           <span id="scan-status" style="font-weight: bold; color: var(--text-secondary);"></span>
           <button class="btn btn-primary" id="save-config-btn" style="padding: 10px 20px; font-size: 13px;">Save & Scan Library</button>
         </div>
+      </div>
+
+      <div class="setup-box">
+        <h2>Appearance</h2>
+        <p>Pick the YouTube era FileTube dresses up as. Light / dark is the
+           🌙 button in the header.</p>
+        <div class="theme-picker" id="theme-picker"><!-- rendered by JS --></div>
       </div>
     </main>
   </div>
@@ -260,6 +290,30 @@
         console.error(err);
       }
     });
+
+    // Appearance (era theme) picker — THEME_REGISTRY/setTheme come from common.js
+    function renderThemePicker() {
+      const container = document.getElementById('theme-picker');
+      const active = document.documentElement.getAttribute('data-theme');
+      container.innerHTML = THEME_REGISTRY.map(t => `
+        <button type="button" class="theme-card${t.id === active ? ' active' : ''}"
+                data-era="${t.id}">
+          <span class="theme-swatch">
+            <span style="background:${t.swatch[0]}"></span>
+            <span style="background:${t.swatch[1]}"></span>
+          </span>
+          <span class="theme-card-name">${t.name}
+            <span class="theme-card-year">${t.year}</span></span>
+          <span class="theme-card-blurb">${t.blurb}</span>
+        </button>`).join('');
+      container.querySelectorAll('.theme-card').forEach(btn => {
+        btn.addEventListener('click', () => {
+          setTheme(btn.dataset.era);   // applies + persists immediately, no Save step
+          renderThemePicker();          // re-highlight active card
+        });
+      });
+    }
+    renderThemePicker();
 
     // Start
     loadConfig();
