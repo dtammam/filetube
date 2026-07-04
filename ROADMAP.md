@@ -1,9 +1,15 @@
 # Roadmap
 
-Planned improvements for FileTube, roughly in priority order. None of these block the first published image.
+## Planned
 
-- [x] **YouTube-style player behavior** — inline iOS playback (no forced fullscreen) plus ±15s skip via on-player buttons, double-tap, and the ← / → keys.
-- [ ] **AVI playback** _(in progress — `feature/avi-transcode`)_ — AVI-class containers are pre-transcoded to MP4 on scan so they play with full skip/resume/seek. A "Preparing video" overlay shows while a file converts.
-- [ ] **Favicon** — add a proper FileTube favicon so browser tabs and bookmarks look finished. _(done on `feature/branding-and-readme`)_
-- [ ] **Example asset images** — produce the app icon (done, SVG) and desktop/iPhone screenshots referenced in the README (`assets/images/`).
-- [ ] **Standardize README** — polish for visibility: real screenshots, badges, consistent structure across repos.
+- [ ] **Clearer scan feedback** — when adding a folder or scanning the library, surface what's actually happening (scanning, number of files found, transcoding progress) instead of a generic "scanning…" message.
+- [ ] **Custom folder display names** — let each mapped folder have a friendly display name shown in the left sidebar, instead of the raw folder basename.
+- [ ] **Include/exclude folders from "Recently added"** — a per-folder toggle controlling whether a folder's files appear in the home/recent display.
+- [ ] **Screenshots** — capture real desktop + iPhone screenshots into `assets/images/` and enable the README screenshot block.
+
+## Shipped
+
+- [x] **YouTube-style player** — inline iOS playback (no forced fullscreen) plus ±15s skip via on-player buttons, double-tap, and the ← / → keys.
+- [x] **AVI playback** — AVI-class containers are pre-transcoded to MP4 on scan so they play with full skip/resume/seek; a "Preparing video" overlay shows while a file converts. _(shipped — verifying on device)_
+- [x] **Favicon + app icon** — self-contained SVG favicon across all pages; matching SVG app icon.
+- [x] **Standardized README** — centered icon, status/Docker/license badges, tidied structure.
