@@ -184,11 +184,13 @@ document.addEventListener('DOMContentLoaded', () => {
           // Mobile with the pre-transcoded MP4 ready: play it (seekable, iOS-safe).
           mediaPlayer.src = streamUrl;
         } else {
-          // Mobile, still converting: hide the empty <video> (mobile shows a
-          // "can't play" icon) and show the "preparing" overlay until ready.
+          // Mobile, no cached MP4 yet: transcode is lazy, so hitting /video/:id kicks
+          // it off on the server. Hide the empty <video> (mobile shows a "can't play"
+          // icon), show the "preparing" overlay, and poll until it's ready.
           awaitingTranscode = true;
           mediaPlayer.style.display = 'none';
           showTranscodeOverlay();
+          fetch(`/video/${mediaId}`).catch(() => {}); // trigger the on-demand transcode
           pollTranscodeUntilReady();
         }
       } else {

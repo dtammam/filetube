@@ -207,23 +207,28 @@ function processTranscodeQueue() {
   });
 }
 
-// Ensure a video that needs transcoding has an up-to-date status, queuing work if missing.
+// Keep an item's transcode flag/status accurate WITHOUT pre-transcoding on scan.
+// Transcoding is now lazy — kicked off on demand when a mobile client requests playback
+// (see /video/:id). This avoids converting the entire library up front (huge disk cost).
 // Mutates the item in place; returns true if the status changed.
 function reconcileTranscode(item) {
-  if (!item || item.type === 'audio') return false;
+  if (!item || item.type === 'audio') {
+    if (item && item.transcodeStatus !== undefined) { delete item.transcodeStatus; return true; }
+    return false;
+  }
   const before = item.transcodeStatus;
   item.needsTranscode = needsTranscode(item.ext);
   if (!item.needsTranscode) {
-    delete item.transcodeStatus;
-    return before !== undefined;
+    if (item.transcodeStatus !== undefined) { delete item.transcodeStatus; return true; }
+    return false;
   }
   if (fs.existsSync(transcodedPath(item.id))) {
-    item.transcodeStatus = 'ready';
-  } else if (item.transcodeStatus !== 'failed') {
-    // 'failed' is sticky until the source file changes (avoids retrying a broken file every scan).
-    item.transcodeStatus = 'pending';
-    queueTranscode(item.id, item.filePath);
+    // Cached MP4 present → ready.
+    if (item.transcodeStatus !== 'ready') { item.transcodeStatus = 'ready'; return true; }
+    return false;
   }
+  // No cached MP4. Clear a stale 'ready'; leave in-flight (pending/processing/failed) alone.
+  if (item.transcodeStatus === 'ready') { delete item.transcodeStatus; return true; }
   return before !== item.transcodeStatus;
 }
 
@@ -773,7 +778,11 @@ app.get('/video/:id', (req, res) => {
     if (fs.existsSync(out)) {
       filePath = out; // ready — stream it with full Range support
     } else {
-      // Still converting (or failed) — tell the client to wait/poll.
+      // Lazy transcode: kick off the conversion on first mobile request (not on scan),
+      // then tell the client to wait/poll. Only AVIs actually watched on mobile get cached.
+      if (item.transcodeStatus !== 'failed') {
+        queueTranscode(item.id, item.filePath);
+      }
       return res.status(503).json({ error: 'transcoding', status: item.transcodeStatus || 'pending' });
     }
   }

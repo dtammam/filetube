@@ -2,27 +2,28 @@
 
 ## Planned
 
-- [ ] **Reorder sidebar folders** — let the user set the display order of mapped folders in the sidebar (simple manual ordering).
-- [ ] **Recursive subfolder display** — when a mapped folder contains subfolders, surface them as their own (nested/expandable) entries in the sidebar instead of flattening everything.
-- [ ] **PWA home-screen icon (PNG)** — web manifest + PNG references are wired; still needs the actual PNGs (`apple-touch-icon.png`, `icon-192.png`, `icon-512.png`) generated from the SVG and committed.
-- [ ] **Screenshots** — capture real desktop + iPhone screenshots into `assets/images/` and enable the README screenshot block.
-
-## Considering
-
-- **AVI live transcode** — tried it; reverted because a live (non-seekable) MP4 stream won't play on iOS Safari (needs HLS or a complete file). Could revisit via HLS segmenting to get instant-start + iOS support, but that's a big lift. Pre-transcode (below) is the pragmatic choice for now.
+- [ ] **Handoff-harness install** — install & seed the agent pipeline on branch `setup/handoff-harness` (no functional app changes). _[next]_
+- [ ] **Test coverage** — add automated tests (unit for scan/config/transcode logic, smoke tests for the HTTP endpoints) wired into CI. _[after harness]_
+- [ ] **Transcode cache safety** — size cap + LRU eviction for `data/transcoded/`, a configurable transcode dir (env) so the cache can live on roomy NFS instead of the local disk, and a higher CRF for smaller files.
+- [ ] **Atomic `db.json` writes** — write-temp-then-rename + never overwrite a good DB with an empty one. (A full disk once truncated it to 79 bytes; it recovered, but this should be impossible.)
+- [ ] **PWA home-screen icon (PNG)** — manifest is wired; still needs raster PNGs generated from the SVG. Parked (no rasterizer handy).
 
 ## Shipped
 
-- [x] **YouTube-style player** — inline iOS playback (no forced fullscreen) plus ±15s skip via on-player buttons, double-tap, and the ← / → keys; buttons hidden on mobile, autoplay disabled on mobile.
-- [x] **AVI playback** — AVI-class containers are pre-transcoded (ultrafast H.264/AAC MP4) on scan so they play with full skip/resume/seek on all devices incl. iOS; a "Preparing video" overlay with live % shows while a file converts.
-- [x] **Simplified audio player** — dropped the spinning vinyl; shows the embedded cover art (or placeholder) as a still with native controls that work on desktop and iOS.
-- [x] **Custom folder display names** — each mapped folder can have a friendly display name shown in the sidebar (set in Setup).
-- [x] **Hidden folders** — per-folder "Hide from home" toggle keeps a folder's files out of the home/recent view (still browsable by opening the folder).
-- [x] **Clearer scan feedback** — Setup now polls scan status and shows live file counts + background transcode count.
+- [x] **YouTube-style player** — inline iOS playback (no forced fullscreen); ±15s skip via on-player buttons, double-tap, and ← / → keys; buttons hidden on mobile; autoplay disabled on mobile.
+- [x] **AVI playback (hybrid + lazy)** — desktop streams a live transcode (instant); mobile/iOS plays a seekable pre-transcoded MP4. Transcoding is **lazy** — only AVIs actually watched on mobile are cached (not the whole library), with a "Preparing video" overlay + live %.
+- [x] **Simplified audio player** — no spinning vinyl; embedded cover art (or placeholder) as a still with native controls that work on desktop and iOS.
+- [x] **Custom folder display names** — friendly per-folder name shown in the sidebar (set in Setup).
+- [x] **Recursive folder view** — opening a mapped folder shows everything under it, including subfolders.
+- [x] **Reorder sidebar folders** — up/down ordering in Setup drives the sidebar order.
+- [x] **Hidden folders** — per-folder "Hide from home" toggle keeps a folder's whole subtree out of the home/recent view (still browsable directly).
+- [x] **Channel names** — uploader shows the folder's friendly name, else the file's artist tag, else the folder name.
+- [x] **Clearer scan feedback** — Setup polls scan status and shows live file counts.
 - [x] **Sort options** — home library sorts by newest/oldest/title/size (persisted).
-- [x] **Caching fix** — static assets served with `Cache-Control: no-cache` so updates aren't served stale by browsers/nginx.
+- [x] **Caching fix** — static assets served `Cache-Control: no-cache` so updates aren't served stale by browsers/nginx.
 - [x] **Mobile search bar** — no longer overflows off-screen; tightened mobile header.
 - [x] **Description + file type** — fixed odd indentation; file type shown next to file size.
-- [x] **Icon** — solid red, full-bleed, no border.
-- [x] **Favicon + app icon + PWA manifest** — SVG favicon/icon across all pages; web manifest wired (Android/Chrome).
-- [x] **Standardized README** — centered icon, status/Docker/license badges, tidied structure.
+- [x] **Bigger mock comments** — larger pool of silly retro comments/usernames.
+- [x] **Icon + favicon + PWA manifest** — solid-red full-bleed SVG icon across all pages; web manifest wired.
+- [x] **Screenshots** — real desktop + iPhone screenshots in `assets/images/`, shown in the README.
+- [x] **Standardized README** — icon, badges, screenshots, tidied structure.
