@@ -32,6 +32,7 @@ function loadDatabase() {
   if (!fs.existsSync(DB_FILE)) {
     const initialDb = {
       folders: [],
+      folderSettings: {},
       progress: {},
       metadata: {}
     };
@@ -40,10 +41,12 @@ function loadDatabase() {
   }
   try {
     const data = fs.readFileSync(DB_FILE, 'utf8');
-    return JSON.parse(data);
+    const db = JSON.parse(data);
+    if (!db.folderSettings) db.folderSettings = {}; // backfill for older databases
+    return db;
   } catch (err) {
     console.error('Error reading db.json, resetting database:', err);
-    return { folders: [], progress: {}, metadata: {} };
+    return { folders: [], folderSettings: {}, progress: {}, metadata: {} };
   }
 }
 
@@ -69,6 +72,17 @@ function needsTranscode(ext) {
 }
 function transcodedPath(id) {
   return path.join(TRANSCODE_DIR, `${id}.mp4`);
+}
+
+// Which configured folder does this file live under? (longest matching prefix)
+function matchRootFolder(filePath, folders) {
+  let best = null;
+  for (const f of folders) {
+    if (filePath === f || filePath.startsWith(f + '/') || filePath.startsWith(f + '\\')) {
+      if (!best || f.length > best.length) best = f;
+    }
+  }
+  return best;
 }
 
 // Generate deterministic ID from filepath
@@ -257,8 +271,22 @@ function extractMetadataAndThumbnail(filePath, mediaId, isAudio) {
   });
 }
 
-// Scan directories and sync with database
+// Live scan state, surfaced via /api/scan-status for the setup/home UI.
+let scanState = { scanning: false, lastScan: null };
+
+// Public entry point: tracks scanning state around the actual scan.
 async function scanDirectories() {
+  scanState.scanning = true;
+  try {
+    await runScanDirectories();
+  } finally {
+    scanState.scanning = false;
+    scanState.lastScan = new Date().toISOString();
+  }
+}
+
+// Scan directories and sync with database
+async function runScanDirectories() {
   const db = loadDatabase();
   const currentFolders = db.folders || [];
   const scannedFiles = new Map(); // path -> file info
@@ -346,8 +374,11 @@ async function scanDirectories() {
     }
   }
 
-  // Reconcile transcode state for browser-incompatible videos (queues jobs as needed).
+  // Backfill each item's configured root folder (for hidden-folder filtering) and
+  // reconcile transcode state for browser-incompatible videos (queues jobs as needed).
   for (const item of Object.values(newMetadata)) {
+    const newRoot = matchRootFolder(item.filePath, currentFolders);
+    if (item.rootFolder !== newRoot) { item.rootFolder = newRoot; dbChanged = true; }
     if (reconcileTranscode(item)) dbChanged = true;
   }
 
@@ -419,12 +450,12 @@ setInterval(() => {
 // API: Get library folders list
 app.get('/api/config', (req, res) => {
   const db = loadDatabase();
-  res.json({ folders: db.folders || [] });
+  res.json({ folders: db.folders || [], folderSettings: db.folderSettings || {} });
 });
 
 // API: Save folder configuration
 app.post('/api/config', async (req, res) => {
-  const { folders } = req.body;
+  const { folders, folderSettings } = req.body;
   if (!Array.isArray(folders)) {
     return res.status(400).json({ error: 'folders must be an array of paths' });
   }
@@ -438,11 +469,26 @@ app.post('/api/config', async (req, res) => {
     }
   }
 
+  // Keep per-folder settings (display name / hidden), pruned to folders that still exist.
+  const cleanSettings = {};
+  if (folderSettings && typeof folderSettings === 'object') {
+    for (const folder of validFolders) {
+      const s = folderSettings[folder];
+      if (s && typeof s === 'object') {
+        cleanSettings[folder] = {
+          name: typeof s.name === 'string' ? s.name.trim() : '',
+          hidden: !!s.hidden
+        };
+      }
+    }
+  }
+
   const db = loadDatabase();
   db.folders = validFolders;
+  db.folderSettings = cleanSettings;
   saveDatabase(db);
 
-  res.json({ success: true, folders: db.folders });
+  res.json({ success: true, folders: db.folders, folderSettings: db.folderSettings });
 
   // Sync directories asynchronously in background
   scanDirectories().catch(console.error);
@@ -458,6 +504,22 @@ app.post('/api/scan', async (req, res) => {
   }
 });
 
+// API: Live scan/transcode status for progress feedback in the UI
+app.get('/api/scan-status', (req, res) => {
+  const db = loadDatabase();
+  const items = Object.values(db.metadata);
+  const transcoding = items.filter(i =>
+    i.needsTranscode && i.transcodeStatus && i.transcodeStatus !== 'ready' && i.transcodeStatus !== 'failed'
+  ).length;
+  res.json({
+    scanning: scanState.scanning,
+    lastScan: scanState.lastScan,
+    fileCount: items.length,
+    folderCount: (db.folders || []).length,
+    transcoding
+  });
+});
+
 // API: Get list of videos/audio
 app.get('/api/videos', (req, res) => {
   const db = loadDatabase();
@@ -465,6 +527,16 @@ app.get('/api/videos', (req, res) => {
   const folderFilter = req.query.folder || '';
   
   let list = Object.values(db.metadata);
+
+  // On the default (home/recent) view — no search, no folder filter — hide files from
+  // folders the user marked hidden. Explicitly opening a folder still shows everything.
+  if (!search && !folderFilter) {
+    const settings = db.folderSettings || {};
+    const hiddenRoots = new Set(Object.keys(settings).filter(f => settings[f] && settings[f].hidden));
+    if (hiddenRoots.size > 0) {
+      list = list.filter(item => !hiddenRoots.has(item.rootFolder));
+    }
+  }
 
   // Search filter
   if (search) {

@@ -6,7 +6,10 @@
   <title>Setup - FileTube</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="apple-touch-icon" href="/favicon.svg">
+  <link rel="manifest" href="/manifest.webmanifest">
   <meta name="theme-color" content="#cc0000">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="FileTube">
   <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
@@ -76,6 +79,7 @@
   <script src="/js/common.js"></script>
   <script>
     let configuredFolders = [];
+    let folderSettings = {}; // { "<path>": { name, hidden } }
 
     // Load initial folders
     async function loadConfig() {
@@ -83,8 +87,9 @@
         const response = await fetch('/api/config');
         const data = await response.json();
         configuredFolders = data.folders || [];
+        folderSettings = data.folderSettings || {};
         renderFolders();
-        renderSidebarFolders(configuredFolders);
+        renderSidebarFolders(configuredFolders, folderSettings);
       } catch (err) {
         console.error('Failed to load configuration:', err);
       }
@@ -100,19 +105,44 @@
 
       container.innerHTML = '';
       configuredFolders.forEach((folder, index) => {
+        const s = folderSettings[folder] || {};
         const row = document.createElement('div');
         row.className = 'folder-item-row';
         row.innerHTML = `
-          <span class="folder-path-text">${escapeHtml(folder)}</span>
-          <button class="remove-folder-btn" data-index="${index}">&times;</button>
+          <div style="flex:1; min-width:0;">
+            <div class="folder-path-text" title="${escapeHtml(folder)}">${escapeHtml(folder)}</div>
+            <div style="display:flex; gap:10px; align-items:center; margin-top:6px; flex-wrap:wrap;">
+              <input type="text" class="folder-name-input" data-index="${index}" placeholder="Display name (optional)"
+                     value="${escapeHtml(s.name || '')}" style="flex:1; min-width:120px; padding:4px 8px; font-size:12px;" />
+              <label style="display:flex; align-items:center; gap:5px; font-size:12px; color:var(--text-secondary); white-space:nowrap;">
+                <input type="checkbox" class="folder-hidden-check" data-index="${index}" ${s.hidden ? 'checked' : ''} /> Hide from home
+              </label>
+            </div>
+          </div>
+          <button class="remove-folder-btn" data-index="${index}" title="Remove folder">&times;</button>
         `;
         container.appendChild(row);
+      });
+
+      // Persist per-folder edits as they happen (keyed by path so row order doesn't matter)
+      container.querySelectorAll('.folder-name-input').forEach(inp => {
+        inp.addEventListener('input', (e) => {
+          const folder = configuredFolders[parseInt(e.target.dataset.index)];
+          folderSettings[folder] = { ...(folderSettings[folder] || {}), name: e.target.value };
+        });
+      });
+      container.querySelectorAll('.folder-hidden-check').forEach(chk => {
+        chk.addEventListener('change', (e) => {
+          const folder = configuredFolders[parseInt(e.target.dataset.index)];
+          folderSettings[folder] = { ...(folderSettings[folder] || {}), hidden: e.target.checked };
+        });
       });
 
       // Add delete handlers
       container.querySelectorAll('.remove-folder-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
           const index = parseInt(e.target.dataset.index);
+          delete folderSettings[configuredFolders[index]];
           configuredFolders.splice(index, 1);
           renderFolders();
         });
@@ -120,7 +150,7 @@
     }
 
     // Helper to render sidebar list
-    function renderSidebarFolders(folders) {
+    function renderSidebarFolders(folders, settings = {}) {
       const sidebarContainer = document.getElementById('sidebar-folders-list');
       if (!sidebarContainer) return;
       if (folders.length === 0) {
@@ -129,7 +159,8 @@
       }
       sidebarContainer.innerHTML = folders.map(f => {
         const base = f.split(/[\\/]/).pop() || f;
-        return `<a href="/?folder=${encodeURIComponent(base)}" class="sidebar-item"><i class="icon-folder"></i> ${escapeHtml(base)}</a>`;
+        const label = (settings[f] && settings[f].name) || base;
+        return `<a href="/?folder=${encodeURIComponent(base)}" class="sidebar-item" title="${escapeHtml(f)}"><i class="icon-folder"></i> ${escapeHtml(label)}</a>`;
       }).join('');
     }
 
@@ -164,32 +195,50 @@
       }
     });
 
+    // Poll the server's scan status and report live progress until the scan finishes.
+    async function pollScanStatus(statusText) {
+      try {
+        const r = await fetch('/api/scan-status');
+        const s = await r.json();
+        if (s.scanning) {
+          statusText.textContent = `Scanning library… ${s.fileCount} file(s) found so far`;
+          statusText.style.color = 'var(--text-primary)';
+          setTimeout(() => pollScanStatus(statusText), 1000);
+        } else {
+          let msg = `Scan complete — ${s.fileCount} file(s) across ${s.folderCount} folder(s).`;
+          if (s.transcoding > 0) msg += ` Converting ${s.transcoding} file(s) in the background…`;
+          statusText.textContent = msg;
+          statusText.style.color = 'green';
+          setTimeout(() => { window.location.href = '/'; }, 1800);
+        }
+      } catch (e) {
+        setTimeout(() => { window.location.href = '/'; }, 1500);
+      }
+    }
+
     document.getElementById('save-config-btn').addEventListener('click', async () => {
       const statusText = document.getElementById('scan-status');
-      statusText.textContent = 'Saving configuration & scanning directories...';
+      statusText.textContent = 'Saving configuration…';
       statusText.style.color = 'var(--text-primary)';
 
       try {
         const response = await fetch('/api/config', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ folders: configuredFolders })
+          body: JSON.stringify({ folders: configuredFolders, folderSettings })
         });
         const data = await response.json();
-        
+
         if (data.success) {
-          statusText.textContent = 'Scan completed successfully!';
-          statusText.style.color = 'green';
-          renderSidebarFolders(data.folders);
-          setTimeout(() => {
-            window.location.href = '/';
-          }, 1000);
+          renderSidebarFolders(data.folders, data.folderSettings || {});
+          // The scan runs in the background — poll it so the user sees real progress.
+          pollScanStatus(statusText);
         } else {
           statusText.textContent = 'Error: ' + data.error;
           statusText.style.color = 'var(--yt-red)';
         }
       } catch (err) {
-        statusText.textContent = 'Error scanning directories.';
+        statusText.textContent = 'Error saving configuration.';
         statusText.style.color = 'var(--yt-red)';
         console.error(err);
       }

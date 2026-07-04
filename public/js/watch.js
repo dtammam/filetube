@@ -33,6 +33,7 @@ document.addEventListener('DOMContentLoaded', () => {
   
   const addedDateText = document.getElementById('added-date-text');
   const fileSizeText = document.getElementById('file-size-text');
+  const fileTypeText = document.getElementById('file-type-text');
   const filePathText = document.getElementById('file-path-text');
   
   const descriptionParagraph = document.getElementById('description-paragraph');
@@ -77,7 +78,7 @@ document.addEventListener('DOMContentLoaded', () => {
       // 1. Get configurations for sidebar
       const configRes = await fetch('/api/config');
       const configData = await configRes.json();
-      renderSidebarFolders(configData.folders || []);
+      renderSidebarFolders(configData.folders || [], configData.folderSettings || {});
 
       // 2. Fetch media details
       const mediaRes = await fetch(`/api/videos/${mediaId}`);
@@ -130,6 +131,8 @@ document.addEventListener('DOMContentLoaded', () => {
     
     addedDateText.textContent = formatRelativeTime(mediaData.addedAt);
     fileSizeText.textContent = formatFileSize(mediaData.size);
+    // File type from the extension (e.g. ".mp4" -> "MP4")
+    fileTypeText.textContent = (mediaData.ext || '').replace('.', '').toUpperCase() || 'Unknown';
     filePathText.textContent = mediaData.filePath;
   }
 
@@ -611,16 +614,17 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // Header folder list rendering
-  function renderSidebarFolders(folders) {
+  function renderSidebarFolders(folders, settings = {}) {
     if (folders.length === 0) {
       sidebarFoldersList.innerHTML = '<div style="padding: 6px 24px; font-style: italic; color: var(--text-secondary);">None</div>';
       return;
     }
     sidebarFoldersList.innerHTML = folders.map(f => {
       const folderName = f.split(/[\\/]/).pop() || f;
+      const label = (settings[f] && settings[f].name) || folderName;
       return `
-        <a href="/?folder=${encodeURIComponent(folderName)}" class="sidebar-item">
-          <i class="icon-folder"></i> ${escapeHtml(folderName)}
+        <a href="/?folder=${encodeURIComponent(folderName)}" class="sidebar-item" title="${escapeHtml(f)}">
+          <i class="icon-folder"></i> ${escapeHtml(label)}
         </a>
       `;
     }).join('');

@@ -9,6 +9,11 @@ document.addEventListener('DOMContentLoaded', () => {
   const searchBtn = document.getElementById('search-btn');
   const rescanBtn = document.getElementById('rescan-library-btn');
   const videosHeader = document.getElementById('videos-section-header');
+  const sortSelect = document.getElementById('sort-select');
+
+  // Sort preference persists across visits
+  let currentItems = [];
+  let currentSort = localStorage.getItem('filetube_sort') || 'newest';
 
   // Parse URL query params
   const urlParams = new URLSearchParams(window.location.search);
@@ -29,6 +34,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const configRes = await fetch('/api/config');
       const configData = await configRes.json();
       const folders = configData.folders || [];
+      const folderSettings = configData.folderSettings || {};
 
       if (folders.length === 0) {
         welcomeMessage.style.display = 'block';
@@ -41,7 +47,7 @@ document.addEventListener('DOMContentLoaded', () => {
       libraryContent.style.display = 'block';
 
       // 2. Render sidebar folders
-      renderSidebarFolders(folders);
+      renderSidebarFolders(folders, folderSettings);
 
       // 3. Fetch and render media files
       let apiUrl = `/api/videos`;
@@ -54,9 +60,9 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       const mediaRes = await fetch(apiUrl);
-      const mediaList = await mediaRes.json();
+      currentItems = await mediaRes.json();
 
-      renderMediaGrid(mediaList);
+      renderSorted();
 
     } catch (err) {
       console.error('Failed to load library data:', err);
@@ -65,21 +71,37 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // Render folders in the sidebar
-  function renderSidebarFolders(folders) {
+  function renderSidebarFolders(folders, settings = {}) {
     if (folders.length === 0) {
       sidebarFoldersList.innerHTML = '<div style="padding: 6px 24px; font-style: italic; color: var(--text-secondary);">None</div>';
       return;
     }
-    
+
     sidebarFoldersList.innerHTML = folders.map(f => {
       const folderName = f.split(/[\\/]/).pop() || f;
+      const label = (settings[f] && settings[f].name) || folderName;
       const isActive = folderFilter === folderName ? 'active' : '';
       return `
-        <a href="/?folder=${encodeURIComponent(folderName)}" class="sidebar-item ${isActive}">
-          <i class="icon-folder"></i> ${escapeHtml(folderName)}
+        <a href="/?folder=${encodeURIComponent(folderName)}" class="sidebar-item ${isActive}" title="${escapeHtml(f)}">
+          <i class="icon-folder"></i> ${escapeHtml(label)}
         </a>
       `;
     }).join('');
+  }
+
+  // Sort the current items by the selected option, then render.
+  function renderSorted() {
+    const items = [...currentItems];
+    switch (currentSort) {
+      case 'oldest': items.sort((a, b) => a.addedAt - b.addedAt); break;
+      case 'title-asc': items.sort((a, b) => (a.title || '').localeCompare(b.title || '')); break;
+      case 'title-desc': items.sort((a, b) => (b.title || '').localeCompare(a.title || '')); break;
+      case 'size-desc': items.sort((a, b) => (b.size || 0) - (a.size || 0)); break;
+      case 'size-asc': items.sort((a, b) => (a.size || 0) - (b.size || 0)); break;
+      case 'newest':
+      default: items.sort((a, b) => b.addedAt - a.addedAt); break;
+    }
+    renderMediaGrid(items);
   }
 
   // Render media items in the grid
@@ -161,6 +183,15 @@ document.addEventListener('DOMContentLoaded', () => {
   searchInput.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') performSearch();
   });
+
+  if (sortSelect) {
+    sortSelect.value = currentSort;
+    sortSelect.addEventListener('change', () => {
+      currentSort = sortSelect.value;
+      localStorage.setItem('filetube_sort', currentSort);
+      renderSorted();
+    });
+  }
 
   rescanBtn.addEventListener('click', async () => {
     rescanBtn.textContent = '🔄 Scanning...';
