@@ -657,12 +657,11 @@ header {
   gap: 12px;
 }
 
-/* Star Rating System */
+/* Star Rating (read-only display) */
 .star-rating {
   display: flex;
   align-items: center;
   gap: 2px;
-  cursor: pointer;
 }
 
 .star {

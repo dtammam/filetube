@@ -95,12 +95,17 @@ const TRANSCODE_CACHE_MAX_BYTES = parseCacheCap(process.env.TRANSCODE_CACHE_MAX_
 // total size drops to <= maxBytes. Never returns a *.tmp.mp4 (in-flight write)
 // or keepPath (the just-produced file) — though keepPath's size still counts
 // toward the total. Evicts least-recently-used first (atime asc, then path).
-function selectEvictions(files, maxBytes, keepPath) {
+function selectEvictions(files, maxBytes, protectedPaths) {
+  // protectedPaths may be a single path, an array, or a Set — never evicted,
+  // though their size still counts toward the total.
+  const keep = protectedPaths instanceof Set
+    ? protectedPaths
+    : new Set(protectedPaths ? [].concat(protectedPaths) : []);
   const eligible = files.filter(f => !f.path.endsWith('.tmp.mp4'));
   let total = eligible.reduce((sum, f) => sum + f.size, 0);
   if (total <= maxBytes) return [];
   const candidates = eligible
-    .filter(f => f.path !== keepPath)
+    .filter(f => !keep.has(f.path))
     .sort((a, b) => (a.atimeMs - b.atimeMs) || (a.path < b.path ? -1 : 1));
   const toDelete = [];
   for (const f of candidates) {
@@ -125,8 +130,18 @@ function cleanupOrphanTmp(dir) {
   return removed;
 }
 
+// Transcodes served to a client recently (path -> last-served epoch ms).
+// Eviction never deletes a file served within RECENT_STREAM_MS, so a file a user
+// is actively watching can't be pulled out from under them. This is the real
+// protection against the eviction-vs-stream race — it does NOT rely on atime,
+// which is unreliable under Linux relatime/noatime.
+const recentlyServed = new Map();
+const RECENT_STREAM_MS = 10 * 60 * 1000; // 10 minutes
+function markServed(p) { recentlyServed.set(p, Date.now()); }
+
 // Enforce the cache cap by evicting LRU transcoded MP4s from TRANSCODE_DIR.
-// justProducedPath (if given) is never evicted. Returns the count deleted.
+// Never evicts justProducedPath or any recently-served file. Returns the count
+// deleted. (LRU order among evictable files is still atime-keyed — best-effort.)
 function evictTranscodeCache(maxBytes, justProducedPath) {
   let entries;
   try { entries = fs.readdirSync(TRANSCODE_DIR); } catch (_) { return 0; }
@@ -139,7 +154,15 @@ function evictTranscodeCache(maxBytes, justProducedPath) {
       files.push({ path: p, size: st.size, atimeMs: st.atimeMs || st.mtimeMs });
     } catch (_) { /* file vanished between readdir and stat; skip */ }
   }
-  const victims = selectEvictions(files, maxBytes, justProducedPath);
+  // Protect the just-produced file and anything served in the recent window.
+  const now = Date.now();
+  const protectedPaths = new Set();
+  if (justProducedPath) protectedPaths.add(justProducedPath);
+  for (const [p, t] of recentlyServed) {
+    if (now - t <= RECENT_STREAM_MS) protectedPaths.add(p);
+    else recentlyServed.delete(p); // prune stale entries
+  }
+  const victims = selectEvictions(files, maxBytes, protectedPaths);
   let removed = 0;
   for (const p of victims) {
     try { fs.unlinkSync(p); removed++; console.log(`Evicted from transcode cache: ${p}`); }
@@ -865,6 +888,12 @@ app.get('/video/:id', (req, res) => {
     return res.status(404).json({ error: 'File does not exist on disk' });
   }
 
+  // Serving a cached transcode? Mark it recently-served so eviction leaves it
+  // alone while it's being watched.
+  if (item.needsTranscode && filePath === transcodedPath(item.id)) {
+    markServed(filePath);
+  }
+
   const stat = fs.statSync(filePath);
   const fileSize = stat.size;
   const range = req.headers.range;
@@ -941,6 +970,7 @@ module.exports = {
   selectEvictions,
   cleanupOrphanTmp,
   evictTranscodeCache,
+  TRANSCODE_CACHE_MAX_BYTES,
   VIDEO_EXTENSIONS,
   AUDIO_EXTENSIONS,
   TRANSCODE_EXTENSIONS,

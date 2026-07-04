@@ -291,26 +291,36 @@ document.addEventListener('DOMContentLoaded', () => {
     }, { passive: false });
   }
 
-  // Desktop keyboard shortcuts (ignored while typing in a field / comment box):
+  // Desktop keyboard shortcuts:
   //   ← / →  seek ∓15s   ·   space  play/pause   ·   f  fullscreen   ·   m  mute
   document.addEventListener('keydown', (e) => {
+    // Let browser/OS accelerators through untouched (Ctrl+F find, Cmd+R, …).
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    // Don't hijack keys while typing, or when a focusable control is active —
+    // Space must still activate a focused button/link/select.
     const el = document.activeElement;
     const tag = (el && el.tagName) || '';
-    if (tag === 'INPUT' || tag === 'TEXTAREA' || (el && el.isContentEditable)) return;
+    if (['INPUT', 'TEXTAREA', 'BUTTON', 'SELECT', 'A'].includes(tag) || (el && el.isContentEditable)) return;
+    // No shortcuts while the "preparing video" overlay is up (no valid src yet).
+    if (awaitingTranscode) return;
     switch (e.key) {
       case 'ArrowLeft': e.preventDefault(); skip(-SKIP_SECONDS); break;
       case 'ArrowRight': e.preventDefault(); skip(SKIP_SECONDS); break;
       case ' ':
       case 'Spacebar': // older browsers report the space key as "Spacebar"
         e.preventDefault();
-        if (mediaPlayer.paused) mediaPlayer.play(); else mediaPlayer.pause();
+        if (mediaPlayer.paused) mediaPlayer.play().catch(() => {}); else mediaPlayer.pause();
         break;
       case 'f':
-      case 'F':
+      case 'F': {
         e.preventDefault();
-        if (document.fullscreenElement) document.exitFullscreen();
-        else if (mediaPlayer.requestFullscreen) mediaPlayer.requestFullscreen();
+        if (document.fullscreenElement) { document.exitFullscreen(); }
+        else if (mediaPlayer.requestFullscreen) {
+          const p = mediaPlayer.requestFullscreen();
+          if (p && p.catch) p.catch(() => {});
+        }
         break;
+      }
       case 'm':
       case 'M':
         e.preventDefault();

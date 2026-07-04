@@ -69,6 +69,32 @@ test('selectEvictions: ties broken by path when atime is equal', () => {
   assert.deepEqual(selectEvictions(files, 60), ['/a.mp4']);
 });
 
+test('selectEvictions: empty input returns []', () => {
+  assert.deepEqual(selectEvictions([], 100), []);
+});
+
+test('selectEvictions: exactly at the cap evicts nothing', () => {
+  const files = [f('/a.mp4', 50, 1), f('/b.mp4', 50, 2)]; // total === cap
+  assert.deepEqual(selectEvictions(files, 100), []);
+});
+
+test('selectEvictions: a single oversized file is evicted without looping forever', () => {
+  assert.deepEqual(selectEvictions([f('/big.mp4', 200, 1)], 100), ['/big.mp4']);
+});
+
+test('selectEvictions: over cap but only a protected file remains -> [] (cannot evict it)', () => {
+  const files = [f('/keep.mp4', 200, 1)];
+  assert.deepEqual(selectEvictions(files, 100, '/keep.mp4'), []);
+});
+
+test('selectEvictions: protected paths are never evicted even when they are the LRU', () => {
+  // /watched is the oldest (would normally be evicted first) but is protected;
+  // the newer /idle file is evicted instead.
+  const files = [f('/watched.mp4', 100, 100), f('/idle.mp4', 100, 200)];
+  const protectedSet = new Set(['/watched.mp4']);
+  assert.deepEqual(selectEvictions(files, 100, protectedSet), ['/idle.mp4']);
+});
+
 // ---- cleanupOrphanTmp (filesystem) ----
 
 test('cleanupOrphanTmp: removes *.tmp.mp4 and leaves finished files', () => {
