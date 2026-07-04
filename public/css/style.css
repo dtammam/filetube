@@ -1336,6 +1336,15 @@ header {
 .icon-menu::before { content: "☰"; }
 .icon-star::before { content: "★"; }
 
+/* New mobile-shell elements never render outside the phone breakpoint.
+   Additive: new selectors only — no existing desktop rule is touched. */
+.bottom-nav,
+.playlists-sheet,
+.playlists-sheet-backdrop,
+.mobile-logo {
+  display: none;
+}
+
 /* Responsive adjustments */
 @media (max-width: 1024px) {
   .watch-container {
@@ -1356,6 +1365,7 @@ header {
   .main-content {
     margin-left: 0;
     padding: 16px;
+    padding-bottom: calc(72px + env(safe-area-inset-bottom));
   }
   header {
     padding: 0 8px;
@@ -1383,6 +1393,146 @@ header {
   .header-right .btn {
     display: none;
   }
+
+  /* ---- Mobile app shell: bottom nav ------------------------------------ */
+  .bottom-nav {
+    display: flex;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 900;
+    justify-content: space-around;
+    align-items: stretch;
+    background: var(--header-bg);
+    border-top: 1px solid var(--border-color);
+    box-shadow: var(--shadow);
+    padding-bottom: env(safe-area-inset-bottom);
+    font-family: var(--font-family);
+  }
+
+  .bottom-nav-item {
+    flex: 1 1 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    padding: 8px 0 6px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    text-decoration: none;
+    color: var(--text-secondary);
+    font-family: inherit;
+    font-size: 11px;
+  }
+
+  .bottom-nav-item i {
+    font-size: 20px;
+    line-height: 1;
+    color: inherit;
+  }
+
+  .bottom-nav-item.active {
+    color: var(--yt-red);
+  }
+
+  /* ---- Mobile app shell: header restructure ----------------------------
+     Centered logo + full-width search below it; header-right (Settings +
+     moon toggle) and the hamburger fold into the bottom nav. */
+  header {
+    flex-direction: column;
+    height: auto;
+    min-height: calc(96px + env(safe-area-inset-top));
+    padding: calc(8px + env(safe-area-inset-top)) 8px 8px;
+    gap: 6px;
+  }
+
+  .app-container {
+    padding-top: calc(96px + env(safe-area-inset-top));
+  }
+
+  .menu-toggle {
+    display: none;   /* hamburger reconciled — Playlists sheet replaces it */
+  }
+
+  .logo {
+    display: none;   /* desktop text logotype hidden on mobile */
+  }
+
+  .mobile-logo {
+    display: block;
+  }
+
+  .mobile-logo img {
+    display: block;
+    height: 28px;
+    width: 28px;
+    margin: 0 auto;
+  }
+
+  .header-left {
+    width: 100%;
+    justify-content: center;
+    gap: 0;
+  }
+
+  .header-search {
+    width: 100%;
+    max-width: none;
+    margin: 0;
+  }
+
+  .header-right {
+    display: none;   /* Settings + moon toggle now live in bottom nav */
+  }
+
+  /* ---- Mobile app shell: Playlists sheet -------------------------------- */
+  .playlists-sheet-backdrop:not([hidden]) {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 1500;
+    background: rgba(0, 0, 0, 0.5);
+  }
+
+  .playlists-sheet:not([hidden]) {
+    display: block;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 1501;
+    max-height: 70vh;
+    overflow-y: auto;
+    background: var(--bg-sidebar);
+    border-top: 1px solid var(--border-color);
+    border-top-left-radius: var(--radius-lg);
+    border-top-right-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+    padding-bottom: env(safe-area-inset-bottom);
+    font-family: var(--font-family);
+  }
+
+  .playlists-sheet-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    font-weight: bold;
+    color: var(--text-primary);
+    border-bottom: 1px solid var(--border-color);
+  }
+
+  .playlists-sheet-close {
+    background: none;
+    border: none;
+    font-size: 22px;
+    line-height: 1;
+    color: var(--text-secondary);
+    cursor: pointer;
+  }
   /* iOS's native player already offers 10s skip; hide the custom ±15s buttons on
      mobile (double-tap-to-seek still works). */
   .skip-btn {
@@ -1392,4 +1542,12 @@ header {
     flex-direction: column;
     align-items: flex-start;
   }
+}
+
+/* In landscape on a phone, the 16:9 player can fill the viewport; hide the fixed
+   bottom nav so it never overlaps the video (matches the YouTube app going
+   immersive on rotate). The mobile header/search still apply. */
+@media (max-width: 768px) and (orientation: landscape) {
+  .bottom-nav { display: none; }
+  .main-content { padding-bottom: env(safe-area-inset-bottom); }
 }

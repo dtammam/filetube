@@ -60,6 +60,7 @@ function applyTheme(era, mode) {
   } catch (_) { /* storage disabled (private mode/sandbox) — attributes still applied */ }
   const btn = document.getElementById('theme-toggle-btn');
   if (btn) btn.innerHTML = mode === 'dark' ? '☀️' : '🌙';
+  if (typeof updateNavThemeItem === 'function') updateNavThemeItem();
 }
 
 // Runs on DOMContentLoaded: resolves stored/legacy state and (re-)applies it,
@@ -202,6 +203,89 @@ function getMockViews(mediaId, sizeBytes) {
   return count.toLocaleString() + ' views';
 }
 
+// ---- Mobile app shell: bottom nav / Playlists sheet -----------------------
+
+// Pure: which bottom-nav item should be marked active for the current route.
+// Home covers "/" and "/index.html" incl. any query (?search=, ?root=,
+// ?folder= are all still the home grid). Settings covers "/setup.html".
+// watch.html (and anything else) has no active item. Exported for node:test.
+function activeNavItem(pathname, search) {
+  if (pathname === '/setup.html') return 'settings';
+  if (pathname === '/' || pathname === '/index.html') return 'home';
+  return null;
+}
+
+// Small local HTML-escape mirroring the per-page escapeHtml helpers, used only
+// by renderPlaylistsSheet so common.js has no dependency on a given page's copy.
+function escapeAttr(text) {
+  return String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+// Renders the Playlists sheet's folder list — functionally equivalent to the
+// existing #sidebar-folders-list (same /?root=<path> links, same folderSettings
+// display-name lookup, same hidden-flag parity: the hidden flag only affects
+// the home grid via the API, not this list, matching the sidebar today).
+function renderPlaylistsSheet(folders, folderSettings) {
+  const list = document.getElementById('playlists-sheet-list');
+  if (!list) return;
+  const settings = folderSettings || {};
+  if (!folders || folders.length === 0) {
+    list.innerHTML = '<div class="sidebar-item">No folders configured.</div>';
+    return;
+  }
+  list.innerHTML = folders.map((f) => {
+    const base = f.split(/[\\/]/).pop() || f;
+    const label = (settings[f] && settings[f].name) || base;
+    return '<a href="/?root=' + encodeURIComponent(f) +
+      '" class="sidebar-item"><i class="icon-folder"></i> ' +
+      escapeAttr(label) + '</a>';
+  }).join('');
+}
+
+// Lazily fetches /api/config on first open, populates the sheet, then reveals
+// it. Feature-detects its own elements so it's safe to call on any page.
+function openPlaylistsSheet() {
+  const backdrop = document.getElementById('playlists-backdrop');
+  const sheet = document.getElementById('playlists-sheet');
+  if (!backdrop || !sheet) return;
+  backdrop.hidden = false;
+  sheet.hidden = false;
+  // Fetch fresh on every open — /api/config is tiny, and this avoids showing a
+  // stale folder list if the library changed during the session.
+  fetch('/api/config')
+    .then((r) => r.json())
+    .then((data) => renderPlaylistsSheet(data.folders || [], data.folderSettings || {}))
+    .catch(() => {
+      const list = document.getElementById('playlists-sheet-list');
+      if (list) list.innerHTML = '<div class="sidebar-item">Failed to load folders.</div>';
+    });
+}
+
+function closePlaylistsSheet() {
+  const backdrop = document.getElementById('playlists-backdrop');
+  const sheet = document.getElementById('playlists-sheet');
+  if (backdrop) backdrop.hidden = true;
+  if (sheet) sheet.hidden = true;
+}
+
+// Mirrors the bottom nav's Dark/Light item icon/label to the current data-mode.
+// Called from applyTheme(), so it stays in sync no matter how the mode changes
+// (nav item, header toggle, or initial load).
+function updateNavThemeItem() {
+  const item = document.getElementById('nav-theme-toggle');
+  if (!item) return;
+  const dark = document.documentElement.getAttribute('data-mode') === 'dark';
+  const icon = item.querySelector('i');
+  const label = item.querySelector('.bottom-nav-label');
+  if (icon) icon.className = dark ? 'icon-sun' : 'icon-moon';
+  if (label) label.textContent = dark ? 'Light' : 'Dark';
+}
+
 // Global modal dialog helpers
 function showConfirmModal(title, bodyText, onConfirm) {
   const modalBackdrop = document.createElement('div');
@@ -252,6 +336,39 @@ document.addEventListener('DOMContentLoaded', () => {
   if (themeToggleBtn) {
     themeToggleBtn.addEventListener('click', toggleTheme);
   }
+
+  // ---- Mobile app shell: bottom nav / Playlists sheet wiring ----
+  // Guarded on the nav's presence so pages without it (or load-order issues)
+  // never throw.
+  const bottomNav = document.getElementById('bottom-nav');
+  if (bottomNav) {
+    // Active-state highlight
+    const key = activeNavItem(window.location.pathname, window.location.search);
+    if (key) {
+      const item = bottomNav.querySelector('[data-nav="' + key + '"]');
+      if (item) item.classList.add('active');
+    }
+
+    // Dark/Light item -> toggleTheme(), then sync its own icon/label
+    const themeItem = document.getElementById('nav-theme-toggle');
+    if (themeItem) {
+      updateNavThemeItem();               // initial state from data-mode
+      themeItem.addEventListener('click', () => {
+        toggleTheme();
+        updateNavThemeItem();
+      });
+    }
+
+    // Playlists item -> open sheet
+    const playlistsBtn = document.getElementById('nav-playlists-btn');
+    if (playlistsBtn) playlistsBtn.addEventListener('click', openPlaylistsSheet);
+
+    // Close wiring (feature-detected)
+    const backdrop = document.getElementById('playlists-backdrop');
+    const closeBtn = document.getElementById('playlists-close');
+    if (backdrop) backdrop.addEventListener('click', closePlaylistsSheet);
+    if (closeBtn) closeBtn.addEventListener('click', closePlaylistsSheet);
+  }
 });
 }
 
@@ -260,6 +377,6 @@ document.addEventListener('DOMContentLoaded', () => {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     getStarRating, getCommentCount, resolveChannelName, clampPositionState,
-    resolveTheme, THEME_REGISTRY
+    resolveTheme, THEME_REGISTRY, activeNavItem
   };
 }

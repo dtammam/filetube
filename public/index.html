@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>FileTube - Broadcast Yourself (Your Files)</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="apple-touch-icon" href="/favicon.svg">
@@ -40,6 +40,9 @@
     <div class="header-left">
       <button class="menu-toggle" id="menu-toggle">☰</button>
       <a href="/" class="logo">File<span class="tube">Tube</span></a>
+      <a href="/" class="mobile-logo" aria-label="FileTube home">
+        <img src="/favicon.svg" alt="FileTube" />
+      </a>
     </div>
     
     <div class="header-search">
@@ -104,6 +107,34 @@
       </div>
     </main>
   </div>
+
+  <nav class="bottom-nav" id="bottom-nav" aria-label="Primary">
+    <a href="/" class="bottom-nav-item" data-nav="home">
+      <i class="icon-home"></i>
+      <span class="bottom-nav-label">Home</span>
+    </a>
+    <button type="button" class="bottom-nav-item" data-nav="playlists" id="nav-playlists-btn">
+      <i class="icon-folder"></i>
+      <span class="bottom-nav-label">Playlists</span>
+    </button>
+    <button type="button" class="bottom-nav-item" data-nav="theme" id="nav-theme-toggle">
+      <i class="icon-moon"></i>
+      <span class="bottom-nav-label">Dark</span>
+    </button>
+    <a href="/setup.html" class="bottom-nav-item" data-nav="settings">
+      <i class="icon-cog"></i>
+      <span class="bottom-nav-label">Settings</span>
+    </a>
+  </nav>
+
+  <div class="playlists-sheet-backdrop" id="playlists-backdrop" hidden></div>
+  <aside class="playlists-sheet" id="playlists-sheet" hidden aria-label="Playlists">
+    <div class="playlists-sheet-header">
+      <span>Playlists</span>
+      <button type="button" class="playlists-sheet-close" id="playlists-close" aria-label="Close">&times;</button>
+    </div>
+    <div class="playlists-sheet-list" id="playlists-sheet-list"></div>
+  </aside>
 
   <script src="/js/common.js"></script>
   <script src="/js/main.js"></script>
