@@ -2,7 +2,7 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { exec } = require('child_process');
+const { exec, spawn } = require('child_process');
 const mime = require('mime-types');
 require('dotenv').config();
 
@@ -13,6 +13,8 @@ const PORT = process.env.PORT || 3000;
 const DATA_DIR = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : (fs.existsSync('/app/data') ? '/app/data' : __dirname);
 const DB_FILE = path.join(DATA_DIR, 'db.json');
 const THUMBNAIL_DIR = path.join(DATA_DIR, '.thumbnails');
+// Browser-incompatible containers (e.g. AVI) are pre-transcoded to MP4 here on scan.
+const TRANSCODE_DIR = path.join(DATA_DIR, 'transcoded');
 
 // Create directories if they don't exist
 if (!fs.existsSync(DATA_DIR)) {
@@ -20,6 +22,9 @@ if (!fs.existsSync(DATA_DIR)) {
 }
 if (!fs.existsSync(THUMBNAIL_DIR)) {
   fs.mkdirSync(THUMBNAIL_DIR, { recursive: true });
+}
+if (!fs.existsSync(TRANSCODE_DIR)) {
+  fs.mkdirSync(TRANSCODE_DIR, { recursive: true });
 }
 
 // Ensure database file exists
@@ -55,6 +60,17 @@ const VIDEO_EXTENSIONS = ['.mp4', '.mkv', '.webm', '.avi', '.mov', '.m4v'];
 const AUDIO_EXTENSIONS = ['.mp3', '.wav', '.ogg', '.m4a', '.flac', '.aac'];
 const ALL_EXTENSIONS = [...VIDEO_EXTENSIONS, ...AUDIO_EXTENSIONS];
 
+// Containers browsers can't decode natively — pre-transcoded to MP4 on scan.
+// (Extend this list if other formats fail to play in the browser.)
+const TRANSCODE_EXTENSIONS = ['.avi', '.flv', '.wmv', '.mpg', '.mpeg'];
+
+function needsTranscode(ext) {
+  return TRANSCODE_EXTENSIONS.includes(ext);
+}
+function transcodedPath(id) {
+  return path.join(TRANSCODE_DIR, `${id}.mp4`);
+}
+
 // Generate deterministic ID from filepath
 function getMediaId(filePath) {
   return crypto.createHash('md5').update(filePath).digest('hex');
@@ -70,6 +86,112 @@ exec('ffmpeg -version', (error) => {
     console.log('FFmpeg is not available in system PATH. Will fall back to dynamic SVG templates for thumbnails.');
   }
 });
+
+// ---- Pre-transcode queue (AVI and other non-web containers -> MP4) ----
+// Jobs run one at a time to avoid overloading a home server with parallel FFmpeg runs.
+const transcodeQueue = [];
+let transcodeBusy = false;
+
+// Persist a media item's transcode status without clobbering unrelated db changes.
+function setTranscodeStatus(id, status) {
+  const db = loadDatabase();
+  if (db.metadata[id] && db.metadata[id].transcodeStatus !== status) {
+    db.metadata[id].transcodeStatus = status;
+    saveDatabase(db);
+  }
+}
+
+function queueTranscode(id, srcPath) {
+  if (!ffmpegAvailable) return;
+  if (transcodeQueue.some(job => job.id === id)) return; // already queued
+  transcodeQueue.push({ id, srcPath });
+  processTranscodeQueue();
+}
+
+function processTranscodeQueue() {
+  if (transcodeBusy || transcodeQueue.length === 0) return;
+  const { id, srcPath } = transcodeQueue.shift();
+
+  // Skip if the source vanished or a finished MP4 already exists.
+  if (!fs.existsSync(srcPath)) { processTranscodeQueue(); return; }
+  const outPath = transcodedPath(id);
+  if (fs.existsSync(outPath)) { setTranscodeStatus(id, 'ready'); processTranscodeQueue(); return; }
+
+  transcodeBusy = true;
+  const tmpPath = outPath + '.tmp.mp4';
+  setTranscodeStatus(id, 'processing');
+  console.log(`Transcoding to MP4: ${srcPath}`);
+
+  // H.264 + AAC in an MP4 with a front-loaded moov atom (+faststart) for smooth streaming.
+  const args = [
+    '-i', srcPath,
+    '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
+    '-c:a', 'aac', '-b:a', '160k',
+    '-movflags', '+faststart',
+    '-y', tmpPath
+  ];
+
+  let proc;
+  try {
+    proc = spawn('ffmpeg', args);
+  } catch (e) {
+    console.error(`Failed to start FFmpeg for ${srcPath}:`, e.message);
+    setTranscodeStatus(id, 'failed');
+    transcodeBusy = false;
+    processTranscodeQueue();
+    return;
+  }
+
+  let errTail = '';
+  proc.stderr.on('data', d => { errTail = (errTail + d.toString()).slice(-1500); });
+
+  proc.on('error', (e) => {
+    console.error(`FFmpeg error for ${srcPath}:`, e.message);
+    try { if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath); } catch (_) {}
+    setTranscodeStatus(id, 'failed');
+    transcodeBusy = false;
+    processTranscodeQueue();
+  });
+
+  proc.on('close', (code) => {
+    if (code === 0 && fs.existsSync(tmpPath)) {
+      try {
+        fs.renameSync(tmpPath, outPath); // atomic: never serve a half-written file
+        setTranscodeStatus(id, 'ready');
+        console.log(`Transcode ready: ${outPath}`);
+      } catch (e) {
+        console.error(`Failed to finalize transcode for ${srcPath}:`, e.message);
+        setTranscodeStatus(id, 'failed');
+      }
+    } else {
+      console.error(`Transcode failed (exit ${code}) for ${srcPath}:\n${errTail}`);
+      try { if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath); } catch (_) {}
+      setTranscodeStatus(id, 'failed');
+    }
+    transcodeBusy = false;
+    processTranscodeQueue();
+  });
+}
+
+// Ensure a video that needs transcoding has an up-to-date status, queuing work if missing.
+// Mutates the item in place; returns true if the status changed.
+function reconcileTranscode(item) {
+  if (!item || item.type === 'audio') return false;
+  const before = item.transcodeStatus;
+  item.needsTranscode = needsTranscode(item.ext);
+  if (!item.needsTranscode) {
+    delete item.transcodeStatus;
+    return before !== undefined;
+  }
+  if (fs.existsSync(transcodedPath(item.id))) {
+    item.transcodeStatus = 'ready';
+  } else if (item.transcodeStatus !== 'failed') {
+    // 'failed' is sticky until the source file changes (avoids retrying a broken file every scan).
+    item.transcodeStatus = 'pending';
+    queueTranscode(item.id, item.filePath);
+  }
+  return before !== item.transcodeStatus;
+}
 
 // Extract duration and thumbnail using FFmpeg
 function extractMetadataAndThumbnail(filePath, mediaId, isAudio) {
@@ -157,7 +279,8 @@ async function scanDirectories() {
         type: isAudio ? 'audio' : 'video',
         addedAt: info.addedAt,
         duration: 0,
-        hasThumbnail: false
+        hasThumbnail: false,
+        needsTranscode: !isAudio && needsTranscode(info.ext)
       };
 
       try {
@@ -187,12 +310,26 @@ async function scanDirectories() {
             console.error('Failed to delete obsolete thumbnail:', e);
           }
         }
+        // Remove any transcoded MP4 sidecar
+        const oldTranscode = transcodedPath(oldId);
+        if (fs.existsSync(oldTranscode)) {
+          try {
+            fs.unlinkSync(oldTranscode);
+          } catch (e) {
+            console.error('Failed to delete obsolete transcode:', e);
+          }
+        }
         // Also remove watch progress
         if (db.progress[oldId]) {
           delete db.progress[oldId];
         }
       }
     }
+  }
+
+  // Reconcile transcode state for browser-incompatible videos (queues jobs as needed).
+  for (const item of Object.values(newMetadata)) {
+    if (reconcileTranscode(item)) dbChanged = true;
   }
 
   if (dbChanged) {
@@ -398,6 +535,12 @@ app.delete('/api/videos/:id', (req, res) => {
       fs.unlinkSync(thumbPath);
     }
 
+    // Clean up transcoded MP4 sidecar, if any
+    const transcodeFile = transcodedPath(item.id);
+    if (fs.existsSync(transcodeFile)) {
+      fs.unlinkSync(transcodeFile);
+    }
+
     // Clean up database entries
     delete db.metadata[item.id];
     delete db.progress[item.id];
@@ -465,7 +608,19 @@ app.get('/video/:id', (req, res) => {
     return res.status(404).json({ error: 'Media file not found' });
   }
 
-  const filePath = item.filePath;
+  let filePath = item.filePath;
+
+  // For browser-incompatible containers (AVI, etc.), serve the pre-transcoded MP4.
+  if (item.needsTranscode) {
+    const out = transcodedPath(item.id);
+    if (fs.existsSync(out)) {
+      filePath = out; // ready — stream it with full Range support
+    } else {
+      // Still converting (or failed) — tell the client to wait/poll.
+      return res.status(503).json({ error: 'transcoding', status: item.transcodeStatus || 'pending' });
+    }
+  }
+
   if (!fs.existsSync(filePath)) {
     return res.status(404).json({ error: 'File does not exist on disk' });
   }
@@ -473,7 +628,7 @@ app.get('/video/:id', (req, res) => {
   const stat = fs.statSync(filePath);
   const fileSize = stat.size;
   const range = req.headers.range;
-  const contentType = mime.lookup(filePath) || (item.type === 'audio' ? 'audio/mpeg' : 'video/mp4');
+  const contentType = item.needsTranscode ? 'video/mp4' : (mime.lookup(filePath) || (item.type === 'audio' ? 'audio/mpeg' : 'video/mp4'));
 
   if (range) {
     const parts = range.replace(/bytes=/, "").split("-");

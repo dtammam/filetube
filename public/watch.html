@@ -65,6 +65,13 @@
               </div>
             </div>
 
+            <!-- Transcode ("Preparing video") overlay for AVI-class files being converted to MP4 -->
+            <div id="transcode-overlay" class="resume-overlay" style="display: none;">
+              <div class="transcode-spinner" id="transcode-spinner"></div>
+              <h3 id="transcode-title">Preparing this video&hellip;</h3>
+              <p id="transcode-message">FileTube is converting this file to a browser-friendly format. This only happens once &mdash; it'll start playing automatically when it's ready.</p>
+            </div>
+
             <!-- Standard video player.
                  playsinline (+ webkit-playsinline) keeps iOS playing in the small
                  in-page player instead of forcing native fullscreen. -->
