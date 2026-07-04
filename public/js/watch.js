@@ -190,6 +190,29 @@ document.addEventListener('DOMContentLoaded', () => {
 
     renderEmbeddedTags(mediaData.tags);
     setupMediaSession(channelName);
+    // Measure once the (async) Roboto webfont has loaded, so line wrapping — and
+    // thus the overflow check — reflects the final font, not the fallback.
+    if (document.fonts && document.fonts.ready) {
+      document.fonts.ready.then(setupDescriptionToggle);
+    } else {
+      setupDescriptionToggle();
+    }
+  }
+
+  // Only offer "Show more" when the description overflows by a meaningful amount;
+  // otherwise show it in full. Avoids the silly toggle that hid a single line.
+  function setupDescriptionToggle() {
+    if (!descriptionParagraph || !expandDescBtn) return;
+    descriptionParagraph.classList.remove('expanded');
+    expandDescBtn.textContent = 'Show more';
+    const lh = parseFloat(getComputedStyle(descriptionParagraph).lineHeight) || 18;
+    const hidden = descriptionParagraph.scrollHeight - descriptionParagraph.clientHeight;
+    if (hidden <= lh * 1.5) {
+      descriptionParagraph.classList.add('expanded'); // fits (or nearly) — show it all
+      expandDescBtn.style.display = 'none';
+    } else {
+      expandDescBtn.style.display = '';
+    }
   }
 
   // Additive: render any embedded file metadata (title/artist are shown elsewhere
