@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
-    "test": "node --test",
+    "test": "node --test test/*/*.test.js",
     "test:unit": "node --test test/unit/*.test.js",
     "lint": "eslint ."
   },
@@ -21,8 +21,8 @@
   "author": "Dean Tammam",
   "license": "MIT",
   "devDependencies": {
-    "@eslint/js": "^10.0.1",
-    "eslint": "^10.6.0",
+    "@eslint/js": "^9.39.4",
+    "eslint": "^9.39.4",
     "globals": "^17.7.0"
   }
 }

@@ -9,12 +9,31 @@ permissions:
   contents: read
 
 jobs:
+  # Lint is Node-independent, so it runs once on a version ESLint supports.
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+  # Tests run on the Docker runtime (18) plus a newer version to catch drift.
   test:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        # 18 matches the Docker runtime; 20 guards against version drift.
         node-version: [18, 20]
     name: test (Node ${{ matrix.node-version }})
     steps:
@@ -29,9 +48,6 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
-
-      - name: Lint
-        run: npm run lint
 
       - name: Test
         run: npm test
