@@ -681,14 +681,16 @@ header {
   margin-left: 6px;
 }
 
-/* Static 5-star rating shown on each media card in the grid/list */
+/* Deterministic 3–5 star rating shown on each media card in the grid/list.
+   .on = gold filled stars, .off = gray remainder (out of 5). */
 .card-rating {
-  color: var(--star-gold);
   font-size: 13px;
   letter-spacing: 2px;
   line-height: 1;
   margin-top: 4px;
 }
+.card-rating .on { color: var(--star-gold); }
+.card-rating .off { color: var(--star-gray); }
 
 /* Uploader Profile Panel */
 .uploader-info-panel {

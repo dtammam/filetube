@@ -53,7 +53,9 @@ module.exports = [
     languageOptions: {
       ecmaVersion: 2023,
       sourceType: 'script',
-      globals: { ...globals.browser },
+      // `module` is referenced only inside a `typeof module` guard so common.js
+      // can export pure helpers to Node tests; harmless in the browser.
+      globals: { ...globals.browser, module: 'readonly' },
     },
     rules: {
       ...commonRules,
@@ -79,6 +81,7 @@ module.exports = [
         formatRelativeTime: 'readonly',
         getMockSubCount: 'readonly',
         getMockViews: 'readonly',
+        getStarRating: 'readonly',
         resolveChannelName: 'readonly',
         showConfirmModal: 'readonly',
       },

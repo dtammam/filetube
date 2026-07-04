@@ -74,6 +74,80 @@ function transcodedPath(id) {
   return path.join(TRANSCODE_DIR, `${id}.mp4`);
 }
 
+// ---- Transcode cache hygiene (size-capped LRU eviction + orphan cleanup) ----
+// The transcoded MP4 cache in TRANSCODE_DIR would otherwise grow unbounded as
+// AVI-class files get watched. We keep it under a cap, evicting least-recently-
+// used files (by access time), and clean up orphaned *.tmp.mp4 on startup.
+const DEFAULT_CACHE_MAX_BYTES = 5 * 1024 ** 3; // 5 GB
+
+// Parse the cap from an env value; fall back to the default on anything invalid
+// (unset, empty, non-integer, <= 0) so a bad TRANSCODE_CACHE_MAX_BYTES can never
+// crash startup.
+function parseCacheCap(raw) {
+  if (raw === undefined || raw === null || raw === '') return DEFAULT_CACHE_MAX_BYTES;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n <= 0) return DEFAULT_CACHE_MAX_BYTES;
+  return n;
+}
+const TRANSCODE_CACHE_MAX_BYTES = parseCacheCap(process.env.TRANSCODE_CACHE_MAX_BYTES);
+
+// Pure: given files [{path, size, atimeMs}], return the paths to delete so the
+// total size drops to <= maxBytes. Never returns a *.tmp.mp4 (in-flight write)
+// or keepPath (the just-produced file) — though keepPath's size still counts
+// toward the total. Evicts least-recently-used first (atime asc, then path).
+function selectEvictions(files, maxBytes, keepPath) {
+  const eligible = files.filter(f => !f.path.endsWith('.tmp.mp4'));
+  let total = eligible.reduce((sum, f) => sum + f.size, 0);
+  if (total <= maxBytes) return [];
+  const candidates = eligible
+    .filter(f => f.path !== keepPath)
+    .sort((a, b) => (a.atimeMs - b.atimeMs) || (a.path < b.path ? -1 : 1));
+  const toDelete = [];
+  for (const f of candidates) {
+    if (total <= maxBytes) break;
+    toDelete.push(f.path);
+    total -= f.size;
+  }
+  return toDelete;
+}
+
+// Delete orphaned *.tmp.mp4 files (left if a transcode process was killed
+// mid-write). Returns the count removed. Safe to call on startup.
+function cleanupOrphanTmp(dir) {
+  let entries;
+  try { entries = fs.readdirSync(dir); } catch (_) { return 0; }
+  let removed = 0;
+  for (const name of entries) {
+    if (!name.endsWith('.tmp.mp4')) continue;
+    try { fs.unlinkSync(path.join(dir, name)); removed++; }
+    catch (e) { console.error(`Failed to remove orphan tmp ${name}:`, e.message); }
+  }
+  return removed;
+}
+
+// Enforce the cache cap by evicting LRU transcoded MP4s from TRANSCODE_DIR.
+// justProducedPath (if given) is never evicted. Returns the count deleted.
+function evictTranscodeCache(maxBytes, justProducedPath) {
+  let entries;
+  try { entries = fs.readdirSync(TRANSCODE_DIR); } catch (_) { return 0; }
+  const files = [];
+  for (const name of entries) {
+    if (!name.endsWith('.mp4') || name.endsWith('.tmp.mp4')) continue;
+    const p = path.join(TRANSCODE_DIR, name);
+    try {
+      const st = fs.statSync(p);
+      files.push({ path: p, size: st.size, atimeMs: st.atimeMs || st.mtimeMs });
+    } catch (_) { /* file vanished between readdir and stat; skip */ }
+  }
+  const victims = selectEvictions(files, maxBytes, justProducedPath);
+  let removed = 0;
+  for (const p of victims) {
+    try { fs.unlinkSync(p); removed++; console.log(`Evicted from transcode cache: ${p}`); }
+    catch (e) { console.error(`Failed to evict ${p}:`, e.message); }
+  }
+  return removed;
+}
+
 // Which configured folder does this file live under? (longest matching prefix)
 function matchRootFolder(filePath, folders) {
   let best = null;
@@ -192,6 +266,12 @@ function processTranscodeQueue() {
         fs.renameSync(tmpPath, outPath); // atomic: never serve a half-written file
         setTranscodeStatus(id, 'ready');
         console.log(`Transcode ready: ${outPath}`);
+        // Keep the cache under its cap now that we've added a file. Runs
+        // synchronously here (inside the single-worker close callback, before
+        // transcodeBusy is released) so it can't race another transcode. The
+        // just-produced file is protected from eviction.
+        try { evictTranscodeCache(TRANSCODE_CACHE_MAX_BYTES, outPath); }
+        catch (e) { console.error('Transcode cache eviction failed:', e.message); }
       } catch (e) {
         console.error(`Failed to finalize transcode for ${srcPath}:`, e.message);
         setTranscodeStatus(id, 'failed');
@@ -825,6 +905,12 @@ app.get('/video/:id', (req, res) => {
 // required by the test suite. This lets tests import `app` and the pure helpers
 // without binding a port or triggering a real scan.
 if (require.main === module) {
+  // Transcode-cache hygiene on startup: drop any orphaned *.tmp.mp4 left by a
+  // killed transcode, then enforce the size cap.
+  const orphans = cleanupOrphanTmp(TRANSCODE_DIR);
+  if (orphans) console.log(`Cleaned up ${orphans} orphaned transcode temp file(s).`);
+  evictTranscodeCache(TRANSCODE_CACHE_MAX_BYTES);
+
   // Scan on startup and then periodically (every 10 minutes). These live here,
   // not at module top-level, so importing the module for tests neither scans
   // nor keeps the event loop alive via the interval.
@@ -851,6 +937,10 @@ module.exports = {
   loadDatabase,
   saveDatabase,
   reconcileTranscode,
+  parseCacheCap,
+  selectEvictions,
+  cleanupOrphanTmp,
+  evictTranscodeCache,
   VIDEO_EXTENSIONS,
   AUDIO_EXTENSIONS,
   TRANSCODE_EXTENSIONS,

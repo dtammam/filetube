@@ -1,0 +1,21 @@
+{
+  "feature_id": "avi-ux-refinement",
+  "feature_name": "AVI + UX Refinement",
+  "stage": "discovery",
+  "created_at": "2026-07-04",
+  "updated_at": "2026-07-04",
+  "description": "AVI + UX refinement — (1) AVI transcode-cache hygiene: size-capped LRU eviction for data/transcoded/ plus startup cleanup of orphaned .tmp.mp4 files, to stop unbounded disk growth from watched AVIs; (2) deterministic per-item star rating (stable 3–5 stars derived from media id) shown identically on home cards and the watch page, replacing the interactive 'Rate this' control (watch.js initRatings); (3) additional small UX refinements to be scoped in discovery. This branch will go through a significant QA / code-review pass.",
+  "tasks": [],
+  "completed_tasks": [],
+  "artifacts": {
+    "requirements": "docs/exec-plans/active/avi-ux-refinement.md",
+    "design": "docs/exec-plans/active/avi-ux-refinement.md",
+    "exec_plan": "docs/exec-plans/active/avi-ux-refinement.md"
+  },
+  "history": [
+    { "timestamp": "2026-07-04 00:00", "stage": "bootstrap", "note": "Feature initiated via /kickoff" },
+    { "timestamp": "2026-07-04 00:00", "stage": "discovery", "note": "Bootstrapped and staged for discovery; no overlapping active plans, tech-debt tracker empty" },
+    { "timestamp": "2026-07-04 00:00", "stage": "discovery", "note": "Exec plan written to docs/exec-plans/active/avi-ux-refinement.md. Included Item 3 = keyboard shortcuts only; theme toggle found already implemented; continue-watching/autoplay-next/srt deferred. Ready for engineering-manager review." },
+    { "timestamp": "2026-07-04 00:00", "stage": "design", "note": "Technical Design appended to exec plan by principal-engineer. Grounded in server.js (parseCacheCap/selectEvictions/cleanupOrphanTmp/evictTranscodeCache, wired into processTranscodeQueue close-handler + startup), common.js getStarRating (with require-safe shims), main.js/watch.js/watch.html rating rendering, and watch.js keydown extension (reusing existing SKIP_SECONDS + handler). 11-item ordered task breakdown provided. artifacts.design set. Ready for engineering-manager task stage." }
+  ]
+}

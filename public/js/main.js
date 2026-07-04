@@ -132,6 +132,8 @@ document.addEventListener('DOMContentLoaded', () => {
       const relativeTime = formatRelativeTime(item.addedAt);
       // Author/channel resolved the same way as the watch page (see common.js).
       const channelName = resolveChannelName(item, folderSettings);
+      // Deterministic 3–5 star rating — the same value shows on this item's watch page.
+      const rating = getStarRating(item.id);
 
       // Calculate duration format
       const durationStr = item.duration > 0 ? formatDuration(item.duration) : (item.type === 'audio' ? 'Audio' : '');
@@ -165,7 +167,7 @@ document.addEventListener('DOMContentLoaded', () => {
             <div class="video-meta">
               <span>${views}</span> &bull; <span>${relativeTime}</span>
             </div>
-            <div class="card-rating" title="5 stars" aria-label="Rated 5 out of 5 stars">★★★★★</div>
+            <div class="card-rating" title="${rating} / 5 stars" aria-label="Rated ${rating} out of 5 stars"><span class="on">${'★'.repeat(rating)}</span><span class="off">${'☆'.repeat(5 - rating)}</span></div>
           </div>
         </div>
       `;
