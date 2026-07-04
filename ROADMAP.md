@@ -2,20 +2,22 @@
 
 ## Planned
 
-- [ ] **Clearer scan feedback** — when adding a folder or scanning the library, surface what's actually happening (scanning, number of files found, transcoding progress) instead of a generic "scanning…" message.
-- [ ] **Custom folder display names** — let each mapped folder have a friendly display name shown in the left sidebar, instead of the raw folder basename.
-- [ ] **Include/exclude folders from "Recently added"** — a per-folder toggle controlling whether a folder's files appear in the home/recent display.
-- [ ] **Sort options** — let the home/library view be sorted (newest, oldest, title, etc.).
-- [ ] **Fix description indentation** — the "File Path" and "This file is self-hosted…" lines in the watch-page description box are indented oddly; align them cleanly.
-- [ ] **Show file type** — display the file type/extension next to the file size in the video description.
-- [ ] **AVI live transcode** — pivot from pre-transcode-on-scan to on-demand live transcoding (starts playing sooner on slow hardware; needs seek handling).
-- [ ] **Icon: solid red, no border** — make the app/favicon icon fully red with no border/outline.
-- [ ] **PWA home-screen icon** — "Add to Home Screen" doesn't use the FileTube icon; add PNG apple-touch-icons + a web manifest so the shortcut shows the real icon.
+- [ ] **Simplify the audio player** — drop the spinning vinyl visualizer (red dot + circle); show a still of the embedded cover art if present, otherwise a simple placeholder. Audio controls should "just work" on both desktop and iOS (currently the HTML5 audio control shows on desktop but is invisible on iOS).
+- [ ] **AVI live transcode** — pivot from pre-transcode-on-scan to on-demand live transcoding (starts playing sooner on slow hardware; needs seek handling). _Tradeoff: live transcode weakens clean seeking/resume — decision pending._
+- [ ] **PWA home-screen icon (PNG)** — the web manifest is wired, but iOS "Add to Home Screen" needs PNG apple-touch-icons (192/512 + 180 apple-touch). Requires rasterizing the SVG.
 - [ ] **Screenshots** — capture real desktop + iPhone screenshots into `assets/images/` and enable the README screenshot block.
 
 ## Shipped
 
-- [x] **YouTube-style player** — inline iOS playback (no forced fullscreen) plus ±15s skip via on-player buttons, double-tap, and the ← / → keys.
-- [x] **AVI playback** — AVI-class containers are pre-transcoded to MP4 on scan so they play with full skip/resume/seek; a "Preparing video" overlay shows while a file converts. _(shipped — verifying on device)_
-- [x] **Favicon + app icon** — self-contained SVG favicon across all pages; matching SVG app icon.
+- [x] **YouTube-style player** — inline iOS playback (no forced fullscreen) plus ±15s skip via on-player buttons, double-tap, and the ← / → keys; buttons hidden on mobile, autoplay disabled on mobile.
+- [x] **AVI playback** — AVI-class containers are pre-transcoded to MP4 on scan so they play with full skip/resume/seek; a "Preparing video" overlay with live % shows while a file converts.
+- [x] **Custom folder display names** — each mapped folder can have a friendly display name shown in the sidebar (set in Setup).
+- [x] **Hidden folders** — per-folder "Hide from home" toggle keeps a folder's files out of the home/recent view (still browsable by opening the folder).
+- [x] **Clearer scan feedback** — Setup now polls scan status and shows live file counts + background transcode count.
+- [x] **Sort options** — home library sorts by newest/oldest/title/size (persisted).
+- [x] **Caching fix** — static assets served with `Cache-Control: no-cache` so updates aren't served stale by browsers/nginx.
+- [x] **Mobile search bar** — no longer overflows off-screen; tightened mobile header.
+- [x] **Description + file type** — fixed odd indentation; file type shown next to file size.
+- [x] **Icon** — solid red, full-bleed, no border.
+- [x] **Favicon + app icon + PWA manifest** — SVG favicon/icon across all pages; web manifest wired (Android/Chrome).
 - [x] **Standardized README** — centered icon, status/Docker/license badges, tidied structure.
