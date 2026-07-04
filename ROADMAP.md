@@ -2,6 +2,8 @@
 
 ## Planned
 
+- [ ] **Real icon assets** — replace the emoji `.icon-*` set + raw inline emojis with self-hosted Google Material Symbols (Apache-2.0), themed via `currentColor` so they work across all era themes. _[in progress]_
+- [ ] **MeTube / yt-dlp delete-sync** — keep MeTube's record in sync when a file is deleted in FileTube. Analyzed; deferred. See [docs/exec-plans/future/metube-yt-dlp-sync.md](docs/exec-plans/future/metube-yt-dlp-sync.md).
 - [ ] **Handoff-harness install** — install & seed the agent pipeline on branch `setup/handoff-harness` (no functional app changes). _[next]_
 - [ ] **Test coverage** — add automated tests (unit for scan/config/transcode logic, smoke tests for the HTTP endpoints) wired into CI. _[after harness]_
 - [ ] **Hide a sidebar entry entirely** — a per-folder option to remove a folder from the left sidebar completely (distinct from "Hide from home", which only affects the recent view).
