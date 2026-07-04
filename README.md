@@ -22,24 +22,24 @@ FileTube is a personal media application that lets you consume your local video 
 - **YouTube-style player** — Plays inline on iOS (no forced fullscreen), with ±15s skip via on-player buttons, double-tap, or the ← / → keys.
 - **Smart resume playback** — Automatically saves your progress and prompts you to resume where you left off.
 - **Auto-generated thumbnails** — Uses FFmpeg to extract video frames or audio cover art automatically.
-- **Audio file support** — Plays audio formats (MP3, FLAC, M4A, etc.) with a custom spinning vinyl disc visual.
+- **Audio file support** — Plays audio formats (MP3, FLAC, M4A, etc.) showing embedded cover art with native controls.
 - **Permanent file deletion** — Delete unwanted media directly from the browser to free up server space.
 - **Dark mode** — Easy toggle between classic light and sleek dark mode.
 - **Self-hosted with Docker** — Start instantly with a single `docker compose up -d`.
 
 ## Screenshots
 
-<!-- TODO: capture real screenshots on a desktop browser and an iPhone, drop them in
-     assets/images/ as desktop_example.png and iphone_example.png, then uncomment:
-<table>
-  <tr>
-    <td align="center"><img src="assets/images/desktop_example.png" alt="FileTube on a desktop browser" width="620"></td>
-    <td align="center"><img src="assets/images/iphone_example.png" alt="FileTube on an iPhone" width="280"></td>
-  </tr>
-</table>
--->
+<p align="center">
+  <img src="assets/images/desktop1.png" alt="FileTube on a desktop browser" width="820">
+</p>
 
-_Screenshots coming soon._
+<p align="center">
+  <img src="assets/images/mobile1.jpg" alt="FileTube on iPhone — home" width="240">
+  &nbsp;
+  <img src="assets/images/mobile2.jpg" alt="FileTube on iPhone — watch" width="240">
+  &nbsp;
+  <img src="assets/images/mobilecomments.png" alt="FileTube on iPhone — comments" width="240">
+</p>
 
 ## Quick Start (Docker)
 
