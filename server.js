@@ -209,16 +209,21 @@ function processTranscodeQueue() {
 // Ensure a video that needs transcoding has an up-to-date status, queuing work if missing.
 // Mutates the item in place; returns true if the status changed.
 function reconcileTranscode(item) {
-  if (!item || item.type === 'audio') {
-    if (item && item.transcodeStatus !== undefined) { delete item.transcodeStatus; return true; }
-    return false;
+  if (!item || item.type === 'audio') return false;
+  const before = item.transcodeStatus;
+  item.needsTranscode = needsTranscode(item.ext);
+  if (!item.needsTranscode) {
+    delete item.transcodeStatus;
+    return before !== undefined;
   }
-  const want = needsTranscode(item.ext);
-  let changed = false;
-  if (item.needsTranscode !== want) { item.needsTranscode = want; changed = true; }
-  // Live transcode is on demand now — clear any legacy pre-transcode status field.
-  if (item.transcodeStatus !== undefined) { delete item.transcodeStatus; changed = true; }
-  return changed;
+  if (fs.existsSync(transcodedPath(item.id))) {
+    item.transcodeStatus = 'ready';
+  } else if (item.transcodeStatus !== 'failed') {
+    // 'failed' is sticky until the source file changes (avoids retrying a broken file every scan).
+    item.transcodeStatus = 'pending';
+    queueTranscode(item.id, item.filePath);
+  }
+  return before !== item.transcodeStatus;
 }
 
 // Extract duration and thumbnail using FFmpeg
@@ -694,65 +699,6 @@ function escapeHtml(text) {
     .replace(/'/g, '&#039;');
 }
 
-// Live on-demand transcode for AVI-class files: pipe a fragmented MP4 (H.264/AAC)
-// from FFmpeg straight to the client. Not byte-seekable — the client seeks by
-// reloading the stream at ?t=<seconds> (fast input seek via -ss before -i).
-function streamLiveTranscode(req, res, item) {
-  if (!ffmpegAvailable) {
-    return res.status(503).json({ error: 'FFmpeg is not available for transcoding' });
-  }
-  const srcPath = item.filePath;
-  if (!fs.existsSync(srcPath)) {
-    return res.status(404).json({ error: 'File does not exist on disk' });
-  }
-
-  const start = Math.max(0, parseFloat(req.query.t) || 0);
-
-  res.writeHead(200, {
-    'Content-Type': 'video/mp4',
-    'Cache-Control': 'no-store',
-    'Connection': 'keep-alive'
-    // No Content-Length / Accept-Ranges: this is a live, non-seekable stream.
-  });
-
-  const args = [];
-  if (start > 0) args.push('-ss', String(start)); // fast seek before input
-  args.push(
-    '-i', srcPath,
-    '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23', '-pix_fmt', 'yuv420p',
-    '-c:a', 'aac', '-b:a', '160k', '-ac', '2',
-    '-movflags', 'frag_keyframe+empty_moov+default_base_moof',
-    '-f', 'mp4', 'pipe:1'
-  );
-
-  let proc;
-  try {
-    proc = spawn('ffmpeg', args);
-  } catch (e) {
-    console.error(`Live transcode failed to start for ${srcPath}:`, e.message);
-    return res.status(500).end();
-  }
-
-  proc.stdout.pipe(res);
-
-  let errTail = '';
-  proc.stderr.on('data', d => { errTail = (errTail + d.toString()).slice(-800); });
-  proc.on('error', (e) => {
-    console.error(`Live transcode error for ${srcPath}:`, e.message);
-    try { res.end(); } catch (_) {}
-  });
-  proc.on('close', (code) => {
-    // 255 / SIGKILL are expected when the client disconnects mid-stream.
-    if (code && code !== 0 && code !== 255) {
-      console.error(`Live transcode exit ${code} for ${srcPath}:\n${errTail}`);
-    }
-    try { res.end(); } catch (_) {}
-  });
-
-  // Stop FFmpeg as soon as the client goes away (seek, pause-then-close, navigation).
-  req.on('close', () => { proc.kill('SIGKILL'); });
-}
-
 // Media streaming endpoint supporting Range requests (highly important for HTML5 seeking/skipping)
 app.get('/video/:id', (req, res) => {
   const db = loadDatabase();
@@ -761,13 +707,19 @@ app.get('/video/:id', (req, res) => {
     return res.status(404).json({ error: 'Media file not found' });
   }
 
-  // Browser-incompatible containers (AVI, etc.) are transcoded live on demand.
-  // Seeking is done by the client restarting the stream at ?t=<seconds>.
+  let filePath = item.filePath;
+
+  // For browser-incompatible containers (AVI, etc.), serve the pre-transcoded MP4.
   if (item.needsTranscode) {
-    return streamLiveTranscode(req, res, item);
+    const out = transcodedPath(item.id);
+    if (fs.existsSync(out)) {
+      filePath = out; // ready — stream it with full Range support
+    } else {
+      // Still converting (or failed) — tell the client to wait/poll.
+      return res.status(503).json({ error: 'transcoding', status: item.transcodeStatus || 'pending' });
+    }
   }
 
-  const filePath = item.filePath;
   if (!fs.existsSync(filePath)) {
     return res.status(404).json({ error: 'File does not exist on disk' });
   }
@@ -775,7 +727,7 @@ app.get('/video/:id', (req, res) => {
   const stat = fs.statSync(filePath);
   const fileSize = stat.size;
   const range = req.headers.range;
-  const contentType = mime.lookup(filePath) || (item.type === 'audio' ? 'audio/mpeg' : 'video/mp4');
+  const contentType = item.needsTranscode ? 'video/mp4' : (mime.lookup(filePath) || (item.type === 'audio' ? 'audio/mpeg' : 'video/mp4'));
 
   if (range) {
     const parts = range.replace(/bytes=/, "").split("-");
