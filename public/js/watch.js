@@ -33,6 +33,7 @@ document.addEventListener('DOMContentLoaded', () => {
   
   const addedDateText = document.getElementById('added-date-text');
   const fileSizeText = document.getElementById('file-size-text');
+  const fileTypeText = document.getElementById('file-type-text');
   const filePathText = document.getElementById('file-path-text');
   
   const descriptionParagraph = document.getElementById('description-paragraph');
@@ -130,6 +131,8 @@ document.addEventListener('DOMContentLoaded', () => {
     
     addedDateText.textContent = formatRelativeTime(mediaData.addedAt);
     fileSizeText.textContent = formatFileSize(mediaData.size);
+    // File type from the extension (e.g. ".mp4" -> "MP4")
+    fileTypeText.textContent = (mediaData.ext || '').replace('.', '').toUpperCase() || 'Unknown';
     filePathText.textContent = mediaData.filePath;
   }
 

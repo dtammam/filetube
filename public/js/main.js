@@ -9,6 +9,11 @@ document.addEventListener('DOMContentLoaded', () => {
   const searchBtn = document.getElementById('search-btn');
   const rescanBtn = document.getElementById('rescan-library-btn');
   const videosHeader = document.getElementById('videos-section-header');
+  const sortSelect = document.getElementById('sort-select');
+
+  // Sort preference persists across visits
+  let currentItems = [];
+  let currentSort = localStorage.getItem('filetube_sort') || 'newest';
 
   // Parse URL query params
   const urlParams = new URLSearchParams(window.location.search);
@@ -54,9 +59,9 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       const mediaRes = await fetch(apiUrl);
-      const mediaList = await mediaRes.json();
+      currentItems = await mediaRes.json();
 
-      renderMediaGrid(mediaList);
+      renderSorted();
 
     } catch (err) {
       console.error('Failed to load library data:', err);
@@ -80,6 +85,21 @@ document.addEventListener('DOMContentLoaded', () => {
         </a>
       `;
     }).join('');
+  }
+
+  // Sort the current items by the selected option, then render.
+  function renderSorted() {
+    const items = [...currentItems];
+    switch (currentSort) {
+      case 'oldest': items.sort((a, b) => a.addedAt - b.addedAt); break;
+      case 'title-asc': items.sort((a, b) => (a.title || '').localeCompare(b.title || '')); break;
+      case 'title-desc': items.sort((a, b) => (b.title || '').localeCompare(a.title || '')); break;
+      case 'size-desc': items.sort((a, b) => (b.size || 0) - (a.size || 0)); break;
+      case 'size-asc': items.sort((a, b) => (a.size || 0) - (b.size || 0)); break;
+      case 'newest':
+      default: items.sort((a, b) => b.addedAt - a.addedAt); break;
+    }
+    renderMediaGrid(items);
   }
 
   // Render media items in the grid
@@ -161,6 +181,15 @@ document.addEventListener('DOMContentLoaded', () => {
   searchInput.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') performSearch();
   });
+
+  if (sortSelect) {
+    sortSelect.value = currentSort;
+    sortSelect.addEventListener('change', () => {
+      currentSort = sortSelect.value;
+      localStorage.setItem('filetube_sort', currentSort);
+      renderSorted();
+    });
+  }
 
   rescanBtn.addEventListener('click', async () => {
     rescanBtn.textContent = '🔄 Scanning...';
