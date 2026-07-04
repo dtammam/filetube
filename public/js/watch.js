@@ -66,6 +66,11 @@ document.addEventListener('DOMContentLoaded', () => {
   let progressInterval = null;
   let awaitingTranscode = false;
 
+  // Narrow (phone) viewport — used to tailor mobile-only player behavior.
+  function isMobileViewport() {
+    return window.matchMedia('(max-width: 768px)').matches;
+  }
+
   // Initialize page
   async function init() {
     try {
@@ -324,8 +329,9 @@ document.addEventListener('DOMContentLoaded', () => {
         
         // Disable auto-play until overlay choice
         mediaPlayer.autoplay = false;
-      } else {
-        // Safe to auto play
+      } else if (!isMobileViewport()) {
+        // Auto-play on desktop only. On mobile, autoplay can trigger the native
+        // fullscreen "zoom" — let the user start playback with a tap instead.
         mediaPlayer.play().catch(() => {});
       }
     } catch (e) {

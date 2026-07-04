@@ -1091,6 +1091,11 @@ header {
   .header-right .btn {
     display: none;
   }
+  /* iOS's native player already offers 10s skip; hide the custom ±15s buttons on
+     mobile (double-tap-to-seek still works). */
+  .skip-btn {
+    display: none;
+  }
   .watch-action-bar {
     flex-direction: column;
     align-items: flex-start;
