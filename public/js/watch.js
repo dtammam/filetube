@@ -14,6 +14,11 @@ document.addEventListener('DOMContentLoaded', () => {
   const skipRippleLeft = document.getElementById('skip-ripple-left');
   const skipRippleRight = document.getElementById('skip-ripple-right');
 
+  const transcodeOverlay = document.getElementById('transcode-overlay');
+  const transcodeSpinner = document.getElementById('transcode-spinner');
+  const transcodeTitle = document.getElementById('transcode-title');
+  const transcodeMessage = document.getElementById('transcode-message');
+
   const resumeOverlay = document.getElementById('resume-overlay');
   const resumeTimeStr = document.getElementById('resume-time-str');
   const resumeYesBtn = document.getElementById('resume-yes-btn');
@@ -59,6 +64,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let mediaData = null;
   let savedProgress = 0;
   let progressInterval = null;
+  let awaitingTranscode = false;
 
   // Initialize page
   async function init() {
@@ -152,8 +158,17 @@ document.addEventListener('DOMContentLoaded', () => {
     } else {
       // Video File
       mediaPlayer.style.display = 'block';
-      mediaPlayer.src = streamUrl;
       setupSkipControls();
+
+      if (mediaData.needsTranscode && mediaData.transcodeStatus !== 'ready') {
+        // Browser can't play this container yet — it's being transcoded to MP4.
+        // Show a "preparing" overlay and start playback once it's ready.
+        awaitingTranscode = true;
+        showTranscodeOverlay();
+        pollTranscodeUntilReady();
+      } else {
+        mediaPlayer.src = streamUrl;
+      }
     }
 
     // Set up progress tracking while media is playing
@@ -240,8 +255,45 @@ document.addEventListener('DOMContentLoaded', () => {
     else if (e.key === 'ArrowRight') { e.preventDefault(); skip(SKIP_SECONDS); }
   });
 
+  // ---- Transcode ("Preparing video") handling for AVI-class files ----
+  function showTranscodeOverlay() {
+    if (transcodeOverlay) transcodeOverlay.style.display = 'flex';
+  }
+  function hideTranscodeOverlay() {
+    if (transcodeOverlay) transcodeOverlay.style.display = 'none';
+  }
+  function showTranscodeFailed() {
+    if (transcodeSpinner) transcodeSpinner.classList.add('failed');
+    if (transcodeTitle) transcodeTitle.textContent = 'Could not prepare this video';
+    if (transcodeMessage) transcodeMessage.textContent = 'FileTube was unable to convert this file to a playable format. The original may be corrupt or use an unsupported codec.';
+  }
+
+  // Poll the server until the MP4 transcode is ready, then load and play it.
+  async function pollTranscodeUntilReady() {
+    try {
+      const res = await fetch(`/api/videos/${mediaId}`);
+      const data = await res.json();
+      if (data.transcodeStatus === 'ready') {
+        awaitingTranscode = false;
+        hideTranscodeOverlay();
+        mediaPlayer.src = `/video/${mediaId}`;
+        handleResumePlayback();
+        return;
+      }
+      if (data.transcodeStatus === 'failed') {
+        showTranscodeFailed();
+        return;
+      }
+      setTimeout(pollTranscodeUntilReady, 3000); // still pending/processing
+    } catch (e) {
+      console.error('Error polling transcode status:', e);
+      setTimeout(pollTranscodeUntilReady, 5000);
+    }
+  }
+
   // Handle Playback resume
   async function handleResumePlayback() {
+    if (awaitingTranscode) return; // wait until the transcoded MP4 is ready
     try {
       const res = await fetch(`/api/progress/${mediaId}`);
       const data = await res.json();

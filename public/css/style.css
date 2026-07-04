@@ -518,6 +518,22 @@ header {
   gap: 12px;
 }
 
+/* "Preparing video" (transcode) spinner */
+.transcode-spinner {
+  width: 44px;
+  height: 44px;
+  margin-bottom: 16px;
+  border: 4px solid rgba(255, 255, 255, 0.25);
+  border-top-color: var(--yt-red);
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+}
+.transcode-spinner.failed {
+  animation: none;
+  border-color: var(--yt-red);
+  border-top-color: var(--yt-red);
+}
+
 /* YouTube-style ±15s skip controls */
 .skip-controls {
   position: absolute;
