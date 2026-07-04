@@ -214,9 +214,15 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // Lock-screen / Control Center metadata (thumbnail + title + channel). Feature-
-  // detected and fully wrapped — a silent no-op where unsupported. Handlers only
-  // issue commands to the <video>; existing listeners still react, so there's no
-  // double-driving of playback.
+  // detected and fully wrapped — a silent no-op where unsupported.
+  //
+  // NOTE: we deliberately DO NOT register custom action handlers (play/pause/seek).
+  // Doing so makes iOS route transport through our JavaScript, and when the PWA is
+  // swiped to the home screen iOS freezes that JS after ~1s — which killed the
+  // background audio that a bare <video> kept alive natively (regression vs v1.1.0).
+  // By leaving transport to the native player we keep iOS's background continuation
+  // AND still show our metadata/thumbnail + playback/position state. Trade-off: no
+  // custom ±15s seek buttons on the lock screen (native play/pause remains).
   function setupMediaSession(channelName) {
     currentChannelName = channelName || '';
     if (!('mediaSession' in navigator) || typeof MediaMetadata === 'undefined') return;
@@ -230,15 +236,6 @@ document.addEventListener('DOMContentLoaded', () => {
           { src: `/thumbnail/${mediaId}`, sizes: '512x512', type: 'image/jpeg' },
         ],
       });
-      const handlers = {
-        play: () => { mediaPlayer.play().catch(() => {}); },
-        pause: () => mediaPlayer.pause(),
-        seekbackward: () => skip(-SKIP_SECONDS),
-        seekforward: () => skip(SKIP_SECONDS),
-      };
-      for (const action of Object.keys(handlers)) {
-        try { navigator.mediaSession.setActionHandler(action, handlers[action]); } catch (_) {}
-      }
       setPlaybackState(mediaPlayer.paused ? 'paused' : 'playing');
       updatePositionState(true);
     } catch (_) { /* MediaMetadata construction unsupported */ }
