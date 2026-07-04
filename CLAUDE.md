@@ -84,7 +84,7 @@ Two Happy Coder sessions against the same working directory:
 ### Project-specific configuration
 
 <!-- Fill these in after hydration -->
-- **Language/framework:** JavaScript (Node.js ≥16) / Express 4
+- **Language/framework:** JavaScript (Node.js 22 LTS; `engines` ≥20) / Express 4
 - **Build command:** `npm ci` (installs dependencies; no compile step — interpreted app)
 - **Test command:** `npm test` (unit + integration via `node:test`); `npm run test:unit` for the fast subset
 - **Lint command:** `npm run lint` (ESLint)

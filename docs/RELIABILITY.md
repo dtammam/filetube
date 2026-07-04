@@ -32,7 +32,7 @@ Standards for keeping this project stable and maintainable.
   (desktop live stream, mobile lazy transcode) are still verified manually in a
   browser; keep FFmpeg out of the automated suite (not installed on CI).
 - **CI** (`.github/workflows/ci.yml`): runs `npm run lint` + `npm test` on Node
-  18 and 20 for every push and PR. `pre-commit` gates lint + unit tests locally;
+  22 for every push and PR. `pre-commit` gates lint + unit tests locally;
   `pre-push` runs the full suite.
 
 ## Monitoring

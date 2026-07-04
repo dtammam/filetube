@@ -1,5 +1,5 @@
-# Use lightweight Node 18 Alpine as base image
-FROM node:18-alpine
+# Use lightweight Node 22 (current LTS) Alpine as base image
+FROM node:22-alpine
 
 # Install FFmpeg and FFprobe for video metadata and thumbnail extraction
 RUN apk add --no-cache ffmpeg

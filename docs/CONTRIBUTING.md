@@ -4,7 +4,7 @@ Coding standards and conventions for this project. All agents read this file.
 
 ## Language & framework
 
-- **Language:** JavaScript (Node.js ≥16)
+- **Language:** JavaScript (Node.js 22 LTS; `engines` ≥20)
 - **Framework:** Express 4 (backend); vanilla JS + DOM on the frontend (no build tooling)
 - **Package manager:** npm
 
@@ -43,7 +43,7 @@ Coding standards and conventions for this project. All agents read this file.
 - Isolation: each test file sets `process.env.DATA_DIR` to a fresh temp dir **before** `require('../../server')`. The runner gives each file its own process, so there is no shared state. Tests never touch real project data.
 - `server.js` exports `app` and the pure helpers; it only starts listening / scanning under `require.main === module`, so importing it is side-effect-free.
 - **Every new feature or bugfix ships with tests.** Add a regression test for each bug you fix. Keep FFmpeg out of the core suite (it isn't installed on CI runners).
-- Gates: `pre-commit` runs lint + unit tests; `pre-push` and CI run lint + the full suite (Node 18 and 20).
+- Gates: `pre-commit` runs lint + unit tests; `pre-push` and CI run lint + the full suite (Node 22).
 
 ## Git conventions
 
