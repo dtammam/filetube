@@ -7,7 +7,13 @@ document.addEventListener('DOMContentLoaded', () => {
   const vinylDisc = document.getElementById('vinyl-disc');
   const audioVisualTitle = document.getElementById('audio-visual-title');
   const audioVisualFolder = document.getElementById('audio-visual-folder');
-  
+
+  const skipControls = document.getElementById('skip-controls');
+  const skipBackBtn = document.getElementById('skip-back-btn');
+  const skipFwdBtn = document.getElementById('skip-fwd-btn');
+  const skipRippleLeft = document.getElementById('skip-ripple-left');
+  const skipRippleRight = document.getElementById('skip-ripple-right');
+
   const resumeOverlay = document.getElementById('resume-overlay');
   const resumeTimeStr = document.getElementById('resume-time-str');
   const resumeYesBtn = document.getElementById('resume-yes-btn');
@@ -147,6 +153,7 @@ document.addEventListener('DOMContentLoaded', () => {
       // Video File
       mediaPlayer.style.display = 'block';
       mediaPlayer.src = streamUrl;
+      setupSkipControls();
     }
 
     // Set up progress tracking while media is playing
@@ -158,6 +165,80 @@ document.addEventListener('DOMContentLoaded', () => {
       stopProgressSaver();
     });
   }
+
+  // ---- YouTube-style ±15s skipping (buttons, double-tap, keyboard) ----
+  const SKIP_SECONDS = 15;
+  let skipRevealTimer = null;
+
+  // Seek by delta seconds, clamped to the media length, with visual feedback.
+  function skip(delta) {
+    const dur = mediaPlayer.duration;
+    if (!isFinite(dur) || dur <= 0) return;
+    mediaPlayer.currentTime = Math.max(0, Math.min(dur, mediaPlayer.currentTime + delta));
+    flashRipple(delta < 0 ? skipRippleLeft : skipRippleRight);
+    saveProgressToServer(mediaPlayer.currentTime);
+  }
+
+  // Briefly pulse the left/right ripple overlay.
+  function flashRipple(el) {
+    if (!el) return;
+    el.classList.remove('active');
+    void el.offsetWidth; // force reflow so rapid repeats re-trigger the animation
+    el.classList.add('active');
+  }
+
+  // Touch devices have no hover — reveal the skip buttons for a few seconds after a tap.
+  function revealSkipButtons() {
+    if (!skipControls) return;
+    skipControls.classList.add('skip-visible');
+    if (skipRevealTimer) clearTimeout(skipRevealTimer);
+    skipRevealTimer = setTimeout(() => skipControls.classList.remove('skip-visible'), 3000);
+  }
+
+  function setupSkipControls() {
+    if (!skipControls) return;
+    skipControls.style.display = 'block';
+
+    skipBackBtn.addEventListener('click', () => { skip(-SKIP_SECONDS); revealSkipButtons(); });
+    skipFwdBtn.addEventListener('click', () => { skip(SKIP_SECONDS); revealSkipButtons(); });
+
+    // Desktop: double-click seeks based on which half was clicked, and we suppress
+    // the browser's default double-click-to-fullscreen so it feels like YouTube.
+    mediaPlayer.addEventListener('dblclick', (e) => {
+      e.preventDefault();
+      const rect = mediaPlayer.getBoundingClientRect();
+      const onLeft = (e.clientX - rect.left) < rect.width / 2;
+      skip(onLeft ? -SKIP_SECONDS : SKIP_SECONDS);
+    });
+
+    // Mobile: detect a double-tap on the same half of the video.
+    let lastTapTime = 0;
+    let lastTapLeft = false;
+    mediaPlayer.addEventListener('touchend', (e) => {
+      const touch = e.changedTouches[0];
+      const rect = mediaPlayer.getBoundingClientRect();
+      const onLeft = (touch.clientX - rect.left) < rect.width / 2;
+      const now = Date.now();
+      const gap = now - lastTapTime;
+      if (gap > 0 && gap < 350 && onLeft === lastTapLeft) {
+        e.preventDefault(); // stop the native single-tap behavior on the seek tap
+        skip(onLeft ? -SKIP_SECONDS : SKIP_SECONDS);
+        lastTapTime = 0; // reset so a third tap doesn't chain
+      } else {
+        lastTapTime = now;
+        lastTapLeft = onLeft;
+        revealSkipButtons();
+      }
+    }, { passive: false });
+  }
+
+  // Desktop keyboard: ← / → jump 15s (ignored while typing in a field).
+  document.addEventListener('keydown', (e) => {
+    const tag = (document.activeElement && document.activeElement.tagName) || '';
+    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+    if (e.key === 'ArrowLeft') { e.preventDefault(); skip(-SKIP_SECONDS); }
+    else if (e.key === 'ArrowRight') { e.preventDefault(); skip(SKIP_SECONDS); }
+  });
 
   // Handle Playback resume
   async function handleResumePlayback() {

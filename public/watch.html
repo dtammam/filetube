@@ -62,10 +62,25 @@
               </div>
             </div>
 
-            <!-- Standard video player -->
-            <video id="media-player" controls preload="metadata" style="display: none;">
+            <!-- Standard video player.
+                 playsinline (+ webkit-playsinline) keeps iOS playing in the small
+                 in-page player instead of forcing native fullscreen. -->
+            <video id="media-player" controls preload="metadata" playsinline webkit-playsinline x5-playsinline style="display: none;">
               Your browser does not support HTML5 video player.
             </video>
+
+            <!-- YouTube-style ±15s skip controls (shown for video only, toggled via JS) -->
+            <div id="skip-controls" class="skip-controls" style="display: none;">
+              <button type="button" class="skip-btn skip-back" id="skip-back-btn" aria-label="Rewind 15 seconds">
+                <span class="skip-arrow">«</span><span class="skip-num">15</span>
+              </button>
+              <button type="button" class="skip-btn skip-forward" id="skip-fwd-btn" aria-label="Forward 15 seconds">
+                <span class="skip-num">15</span><span class="skip-arrow">»</span>
+              </button>
+              <!-- Double-tap ripple feedback -->
+              <div class="skip-ripple skip-ripple-left" id="skip-ripple-left">« 15s</div>
+              <div class="skip-ripple skip-ripple-right" id="skip-ripple-right">15s »</div>
+            </div>
 
             <!-- Custom audio visualizer screen -->
             <div id="audio-visualizer" class="audio-player-visual" style="display: none;">
