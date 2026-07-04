@@ -82,6 +82,17 @@ function resolveChannelName(item, folderSettings) {
   return mapped || item.artist || item.folderName || 'Library';
 }
 
+// Deterministic "rating" for a media item: a stable 3–5 stars derived from its
+// id. Pure and side-effect free, so the SAME item shows the SAME star count on
+// the home card and on its own watch page (a fun cosmetic touch, not a real
+// user rating).
+function getStarRating(id) {
+  const s = String(id || '');
+  let sum = 0;
+  for (let i = 0; i < s.length; i++) sum += s.charCodeAt(i);
+  return (sum % 3) + 3; // 3, 4, or 5
+}
+
 // Mock uploader subscriptions counts (based on uploader name length to make it deterministic but diverse)
 function getMockSubCount(uploaderName) {
   const code = uploaderName.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
@@ -127,7 +138,9 @@ function showConfirmModal(title, bodyText, onConfirm) {
   });
 }
 
-// Sidebar toggle responsive menu helper
+// Sidebar toggle responsive menu helper. Guarded so requiring this file in Node
+// (for unit tests) never touches `document`.
+if (typeof document !== 'undefined') {
 document.addEventListener('DOMContentLoaded', () => {
   initTheme();
   
@@ -148,3 +161,10 @@ document.addEventListener('DOMContentLoaded', () => {
     themeToggleBtn.addEventListener('click', toggleTheme);
   }
 });
+}
+
+// Expose pure helpers to Node for unit testing (browsers ignore this block —
+// `module` is undefined there).
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { getStarRating, resolveChannelName };
+}

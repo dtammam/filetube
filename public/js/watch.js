@@ -120,8 +120,8 @@ document.addEventListener('DOMContentLoaded', () => {
       // 7. Load comments
       loadComments();
 
-      // 8. Initialize ratings
-      initRatings();
+      // 8. Render the deterministic (read-only) star rating
+      renderStarRating();
 
     } catch (err) {
       console.error(err);
@@ -291,12 +291,42 @@ document.addEventListener('DOMContentLoaded', () => {
     }, { passive: false });
   }
 
-  // Desktop keyboard: ← / → jump 15s (ignored while typing in a field).
+  // Desktop keyboard shortcuts:
+  //   ← / →  seek ∓15s   ·   space  play/pause   ·   f  fullscreen   ·   m  mute
   document.addEventListener('keydown', (e) => {
-    const tag = (document.activeElement && document.activeElement.tagName) || '';
-    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
-    if (e.key === 'ArrowLeft') { e.preventDefault(); skip(-SKIP_SECONDS); }
-    else if (e.key === 'ArrowRight') { e.preventDefault(); skip(SKIP_SECONDS); }
+    // Let browser/OS accelerators through untouched (Ctrl+F find, Cmd+R, …).
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    // Don't hijack keys while typing, or when a focusable control is active —
+    // Space must still activate a focused button/link/select.
+    const el = document.activeElement;
+    const tag = (el && el.tagName) || '';
+    if (['INPUT', 'TEXTAREA', 'BUTTON', 'SELECT', 'A'].includes(tag) || (el && el.isContentEditable)) return;
+    // No shortcuts while the "preparing video" overlay is up (no valid src yet).
+    if (awaitingTranscode) return;
+    switch (e.key) {
+      case 'ArrowLeft': e.preventDefault(); skip(-SKIP_SECONDS); break;
+      case 'ArrowRight': e.preventDefault(); skip(SKIP_SECONDS); break;
+      case ' ':
+      case 'Spacebar': // older browsers report the space key as "Spacebar"
+        e.preventDefault();
+        if (mediaPlayer.paused) mediaPlayer.play().catch(() => {}); else mediaPlayer.pause();
+        break;
+      case 'f':
+      case 'F': {
+        e.preventDefault();
+        if (document.fullscreenElement) { document.exitFullscreen(); }
+        else if (mediaPlayer.requestFullscreen) {
+          const p = mediaPlayer.requestFullscreen();
+          if (p && p.catch) p.catch(() => {});
+        }
+        break;
+      }
+      case 'm':
+      case 'M':
+        e.preventDefault();
+        mediaPlayer.muted = !mediaPlayer.muted;
+        break;
+    }
   });
 
   // ---- Transcode ("Preparing video") handling for AVI-class files ----
@@ -474,50 +504,18 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // Local ratings setup
-  function initRatings() {
-    const savedRatingKey = `rating_${mediaId}`;
-    let userRating = localStorage.getItem(savedRatingKey) || 0;
-    
-    // Draw stars
-    drawStars(userRating);
-
-    starRatingControl.addEventListener('mousemove', (e) => {
-      if (e.target.classList.contains('star')) {
-        const hoverVal = parseInt(e.target.dataset.value);
-        highlightStars(hoverVal);
-      }
-    });
-
-    starRatingControl.addEventListener('mouseleave', () => {
-      drawStars(userRating);
-    });
-
-    starRatingControl.addEventListener('click', (e) => {
-      if (e.target.classList.contains('star')) {
-        const val = parseInt(e.target.dataset.value);
-        userRating = val;
-        localStorage.setItem(savedRatingKey, val);
-        drawStars(val);
-        ratingText.textContent = `Rated: ${val}/5!`;
-      }
-    });
-  }
-
-  function highlightStars(count) {
-    const stars = starRatingControl.querySelectorAll('.star');
-    stars.forEach(star => {
+  // Read-only star rating: a deterministic 3–5 value derived from the media id
+  // (shared with the home cards via common.js getStarRating). Not user input —
+  // just a fun cosmetic touch that's consistent across the card and this page.
+  function renderStarRating() {
+    const rating = getStarRating(mediaId);
+    starRatingControl.querySelectorAll('.star').forEach(star => {
       const val = parseInt(star.dataset.value);
-      if (val <= count) {
-        star.classList.add('active');
-      } else {
-        star.classList.remove('active');
-      }
+      star.classList.toggle('active', val <= rating);
     });
-  }
-
-  function drawStars(count) {
-    highlightStars(count);
-    ratingText.textContent = count > 0 ? `Rating: ${count}/5` : 'Rate this';
+    starRatingControl.style.cursor = 'default';
+    starRatingControl.title = `Rated ${rating} / 5`;
+    if (ratingText) ratingText.textContent = `${rating} / 5`;
   }
 
   // Load comments
