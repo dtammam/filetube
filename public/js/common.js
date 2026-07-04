@@ -4,7 +4,6 @@
 // Two orthogonal axes applied to <html>: data-theme (era) and data-mode
 // (light|dark). See docs/exec-plans/active/era-themes.md for the full design.
 
-const THEME_ERAS = ['2005', '2009', '2014', '2021'];
 const THEME_MODES = ['light', 'dark'];
 const DEFAULT_ERA = '2021';
 const DEFAULT_MODE = 'light';
@@ -25,6 +24,11 @@ const THEME_REGISTRY = [
     blurb: 'Rounded cards and Roboto — today\'s look.',
     swatch: ['#ffffff', '#cc0000'] }
 ];
+
+// Valid era ids derived from the registry — adding an entry above makes it valid
+// automatically. (The inline FOUC scripts in <head> keep their own copy of this
+// list, since they must run before common.js loads.)
+const THEME_ERAS = THEME_REGISTRY.map((t) => t.id);
 
 // Pure: resolves the stored era/mode (with legacy-key migration) into a safe
 // { era, mode } pair. Never throws; never returns an unset axis. Exported for
@@ -50,8 +54,10 @@ function applyTheme(era, mode) {
   const d = document.documentElement;
   d.setAttribute('data-theme', era);
   d.setAttribute('data-mode', mode);
-  localStorage.setItem('ft-era', era);
-  localStorage.setItem('ft-mode', mode);
+  try {
+    localStorage.setItem('ft-era', era);
+    localStorage.setItem('ft-mode', mode);
+  } catch (_) { /* storage disabled (private mode/sandbox) — attributes still applied */ }
   const btn = document.getElementById('theme-toggle-btn');
   if (btn) btn.innerHTML = mode === 'dark' ? '☀️' : '🌙';
 }
@@ -59,11 +65,13 @@ function applyTheme(era, mode) {
 // Runs on DOMContentLoaded: resolves stored/legacy state and (re-)applies it,
 // completing the legacy `theme` -> ft-era/ft-mode migration on first load.
 function initTheme() {
-  const { era, mode } = resolveTheme(
-    localStorage.getItem('ft-era'),
-    localStorage.getItem('ft-mode'),
-    localStorage.getItem('theme')
-  );
+  let e = null, m = null, legacy = null;
+  try {
+    e = localStorage.getItem('ft-era');
+    m = localStorage.getItem('ft-mode');
+    legacy = localStorage.getItem('theme');
+  } catch (_) { /* storage unavailable — fall through to safe defaults */ }
+  const { era, mode } = resolveTheme(e, m, legacy);
   applyTheme(era, mode);
 }
 

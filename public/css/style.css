@@ -23,6 +23,7 @@
   --shadow: 0 1px 2px rgba(0,0,0,0.1);
   --shadow-lg: 0 4px 12px rgba(0,0,0,0.25);
   --yt-red: #cc0000;
+  --yt-red-dark: #990000;
   --bg-color: #ffffff;
   --bg-secondary: #f1f1f1;
   --bg-sidebar: #f9f9f9;
@@ -50,6 +51,7 @@
   --shadow: 0 1px 2px rgba(0,0,0,0.1);
   --shadow-lg: 0 4px 12px rgba(0,0,0,0.25);
   --yt-red: #cc0000;
+  --yt-red-dark: #990000;
   --bg-color: #ffffff;
   --bg-secondary: #f1f1f1;
   --bg-sidebar: #f9f9f9;
@@ -94,6 +96,7 @@
   --shadow: none;
   --shadow-lg: 0 2px 6px rgba(0,0,0,0.35);  /* minimal, keeps modals usable */
   --yt-red: #cc0000;
+  --yt-red-dark: #990000;
   --bg-color: #ffffff;
   --bg-secondary: #ececec;
   --bg-sidebar: #f5f5f5;
@@ -136,6 +139,7 @@
   --shadow: 0 1px 2px rgba(0,0,0,0.15);
   --shadow-lg: 0 2px 6px rgba(0,0,0,0.30);
   --yt-red: #cc0000;
+  --yt-red-dark: #990000;
   --bg-color: #ffffff;
   --bg-secondary: #ededed;
   --bg-sidebar: #f0f0f0;
@@ -178,6 +182,7 @@
   --shadow: none;             /* flat design */
   --shadow-lg: 0 1px 4px rgba(0,0,0,0.12);
   --yt-red: #e62117;
+  --yt-red-dark: #c1160f;
   --bg-color: #ffffff;
   --bg-secondary: #f5f5f5;
   --bg-sidebar: #fafafa;
@@ -212,8 +217,11 @@
 /* Per-era bespoke overrides (namespaced, not bare selectors) — flourishes
    that aren't representable as tokens. */
 [data-theme="2005"] a { text-decoration: underline; }       /* always-underlined links */
-[data-theme="2009"] .btn {                                   /* glossy 2009 button */
+[data-theme="2009"][data-mode="light"] .btn {                /* glossy 2009 button (light) */
   background-image: linear-gradient(to bottom, #f7f7f7, #dcdcdc);
+}
+[data-theme="2009"][data-mode="dark"] .btn {                 /* glossy 2009 button (dark) */
+  background-image: linear-gradient(to bottom, #34302a, #211d19);
 }
 
 * {
@@ -366,11 +374,11 @@ header {
 .btn-primary {
   background-color: var(--yt-red);
   color: white;
-  border-color: #990000;
+  border-color: var(--yt-red-dark);
 }
 
 .btn-primary:hover {
-  background-color: #b30000;
+  background-color: var(--yt-red-dark);
 }
 
 .theme-toggle {
@@ -1238,7 +1246,7 @@ header {
 }
 
 .remove-folder-btn:hover {
-  color: #990000;
+  color: var(--yt-red-dark);
 }
 
 .empty-folders-msg {
@@ -1290,7 +1298,7 @@ header {
 .modal-content {
   background-color: var(--bg-color);
   border: 1px solid var(--border-dark);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius);
   max-width: 400px;
   width: 90%;
   padding: 20px;

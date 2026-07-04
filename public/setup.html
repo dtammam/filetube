@@ -151,9 +151,9 @@
           </div>
           <div style="display:flex; flex-direction:column; gap:3px; flex-shrink:0;">
             <button type="button" class="reorder-btn" data-index="${index}" data-dir="up" title="Move up" ${index === 0 ? 'disabled' : ''}
-                    style="background:none;border:1px solid var(--border-dark);border-radius:3px;cursor:pointer;color:var(--text-primary);font-size:10px;line-height:1;padding:2px 6px;">▲</button>
+                    style="background:none;border:1px solid var(--border-dark);border-radius:var(--radius);cursor:pointer;color:var(--text-primary);font-size:10px;line-height:1;padding:2px 6px;">▲</button>
             <button type="button" class="reorder-btn" data-index="${index}" data-dir="down" title="Move down" ${index === configuredFolders.length - 1 ? 'disabled' : ''}
-                    style="background:none;border:1px solid var(--border-dark);border-radius:3px;cursor:pointer;color:var(--text-primary);font-size:10px;line-height:1;padding:2px 6px;">▼</button>
+                    style="background:none;border:1px solid var(--border-dark);border-radius:var(--radius);cursor:pointer;color:var(--text-primary);font-size:10px;line-height:1;padding:2px 6px;">▼</button>
           </div>
           <button class="remove-folder-btn" data-index="${index}" title="Remove folder">&times;</button>
         `;
