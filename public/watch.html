@@ -11,6 +11,29 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="FileTube">
   <link rel="stylesheet" href="/css/style.css">
+  <script>
+    /* FOUC guard: set era+mode on <html> before first paint. Mirror of
+       resolveTheme() in /js/common.js — keep the two in sync. */
+    (function () {
+      var d = document.documentElement;
+      try {
+        var eras = ['2005', '2009', '2014', '2021'];
+        var modes = ['light', 'dark'];
+        var e = localStorage.getItem('ft-era');
+        var m = localStorage.getItem('ft-mode');
+        var legacy = localStorage.getItem('theme');
+        var era = eras.indexOf(e) >= 0 ? e : '2021';
+        var mode = modes.indexOf(m) >= 0 ? m
+          : (e == null && m == null && (legacy === 'dark' || legacy === 'light')) ? legacy
+          : 'light';
+        d.setAttribute('data-theme', era);
+        d.setAttribute('data-mode', mode);
+      } catch (_) {
+        d.setAttribute('data-theme', '2021');
+        d.setAttribute('data-mode', 'light');
+      }
+    })();
+  </script>
 </head>
 <body>
   <header>
@@ -153,7 +176,7 @@
               Added <span id="added-date-text">unknown date</span> &bull; File Size: <span id="file-size-text">0 MB</span> &bull; Type: <span id="file-type-text">—</span>
             </div>
             <div class="description-text" id="description-paragraph">
-              File Path: <span id="file-path-text" style="font-family: monospace;">/loading...</span>
+              File Path: <span id="file-path-text" class="file-path">/loading...</span>
               <br><br>
               This file is self-hosted on your network. Playback progress is automatically saved to your FileTube server, allowing you to resume playing this video or audio clip at any time.
             </div>

@@ -1,5 +1,12 @@
 # Media Session Hardening (v1.2.1)
 
+> **Shipped v1.2.1** (2026-07-04). This exec plan is complete and archived here
+> under `docs/exec-plans/completed/`. The copy that remains at
+> `docs/exec-plans/active/media-session-hardening.md` is a stale tombstone and
+> should be removed with `git rm` by the main loop (this toolset cannot perform
+> a true `mv`, so the content was copied here and the active copy is left for
+> cleanup).
+
 ## Goal
 
 Harden the Media Session control surface added in v1.2.0 so the lock-screen /
@@ -110,38 +117,38 @@ delivering it.
 
 ## Acceptance criteria
 
-- [ ] `navigator.mediaSession.playbackState` is set to `'playing'` on the
+- [x] `navigator.mediaSession.playbackState` is set to `'playing'` on the
       video `play` event and `'paused'` on the video `pause` event; set to
       `'none'` on `ended`. No-op (no throw) when `mediaSession` is unsupported.
-- [ ] `navigator.mediaSession.setPositionState(...)` is called on
+- [x] `navigator.mediaSession.setPositionState(...)` is called on
       `loadedmetadata`, on `seeked`, and on `ratechange`, each time with the
       current `duration`/`currentTime`/`playbackRate`.
-- [ ] During playback, `setPositionState` is also called periodically via a
+- [x] During playback, `setPositionState` is also called periodically via a
       throttled `timeupdate` handler (at most once per ~5s), not on every
       `timeupdate` tick.
-- [ ] `setPositionState` is never called with a non-finite or non-positive
+- [x] `setPositionState` is never called with a non-finite or non-positive
       `duration`, nor with a `position` outside `[0, duration]` — invalid
       inputs are skipped rather than passed through, and every call is
       wrapped so an unexpected throw cannot propagate/break other listeners.
-- [ ] On `document.visibilitychange` transitioning to visible, metadata,
+- [x] On `document.visibilitychange` transitioning to visible, metadata,
       `playbackState`, and (when duration is known-valid) `positionState` are
       all re-asserted, so a previously-blanked Now Playing widget repopulates
       without requiring a play/pause/seek action first.
-- [ ] `setupRotateFullscreen()`'s portrait-exit path calls
+- [x] `setupRotateFullscreen()`'s portrait-exit path calls
       `mediaPlayer.webkitExitFullscreen()` when that method exists on the
       element, and falls back to `document.exitFullscreen()` otherwise; the
       existing "only auto-exit fullscreen WE entered" (`autoFullscreen`) logic
       is unchanged.
-- [ ] No regression: v1.2.0 metadata (title/artist/artwork) and the four
+- [x] No regression: v1.2.0 metadata (title/artist/artwork) and the four
       action handlers (play/pause/seekbackward/seekforward) still function
       exactly as before; rotate-to-landscape entry behavior unchanged.
-- [ ] All new mediaSession/positionState/webkitExitFullscreen usage is
+- [x] All new mediaSession/positionState/webkitExitFullscreen usage is
       feature-detected and demonstrably a silent no-op (no console errors,
       no thrown exceptions) in a browser/environment lacking that API.
-- [ ] A code comment near `setupMediaSession` documents that background
+- [x] A code comment near `setupMediaSession` documents that background
       playback is an iOS OS limitation outside this branch's reach, and that
       PiP is the real background-playback path.
-- [ ] The pure position-state validation logic (see Testability) has
+- [x] The pure position-state validation logic (see Testability) has
       `node:test` unit coverage exercising valid input, NaN/Infinity duration,
       position > duration, and negative position.
 
@@ -521,7 +528,8 @@ importing `clampPositionState` from `../../public/js/common.js`:
 
 ## Task breakdown
 
-(To be filled by engineering-manager)
+(Filled by engineering-manager during the tasks stage; see Ordered task
+breakdown above.)
 
 ## Progress log
 
@@ -533,6 +541,17 @@ importing `clampPositionState` from `../../public/js/common.js`:
   CONSTRAINT / non-goal called out per user direction: background playback
   itself is an iOS OS limitation, out of reach for any web `<video>` — this
   branch only hardens Now Playing widget accuracy.
+- 2026-07-04: **Shipped v1.2.1.** Two-reviewer QA pass complete —
+  quality-assurance returned APPROVE-WITH-NITS (throw-safety + no v1.2.0
+  regression confirmed) and the `/code-review` workflow surfaced 4 non-critical
+  position-sync issues, all fixed: pause now force-syncs position, a
+  `durationchange` trigger was added, `visibilitychange` re-asserts state
+  directly (decoupled from the `MediaMetadata` guard), live-mode position is
+  skipped, the throttle stamp is set after validation, and the
+  `clampPositionState` export test was added. 71 tests green. Plan archived to
+  `docs/exec-plans/completed/`; the active-tree copy at
+  `docs/exec-plans/active/media-session-hardening.md` is now a stale tombstone
+  to be `git rm`'d by the main loop.
 
 ## Decision log
 
@@ -546,3 +565,5 @@ importing `clampPositionState` from `../../public/js/common.js`:
   node:test-able helper so the highest-risk logic (input validation before
   calling `setPositionState`) gets real unit coverage, given that the rest of
   this feature is iOS-device-only and untestable in CI.
+</content>
+</invoke>
