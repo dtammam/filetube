@@ -1,5 +1,11 @@
 # Native Mobile Playback & Polish
 
+> **Shipped v1.2.0** (2026-07-04). This exec plan is complete and archived here
+> under `docs/exec-plans/completed/`. The copy that remains at
+> `docs/exec-plans/active/mobile-playback-polish.md` is a tombstone and should be
+> removed with `git rm` by the main loop (this toolset cannot perform a true
+> `mv`, so the content was copied here and the active copy is left for cleanup).
+
 ## Goal
 
 Make the watch page feel like a native iOS media app — lock-screen media
@@ -615,6 +621,11 @@ fullscreen on device, and native-fullscreen non-leakage.
   builds on top of the existing playback pipeline without touching the
   transcode/eviction logic from the prior feature. No open items in
   `docs/exec-plans/tech-debt-tracker.md` Active table to address or create.
+- 2026-07-04 — **Shipped v1.2.0.** Feature completed, verified, and released.
+  Exec plan archived from `docs/exec-plans/active/` to
+  `docs/exec-plans/completed/`. The active copy is a tombstone to be removed
+  with `git rm` by the main loop. Real-device feedback on this release seeds
+  the follow-up patch feature `media-session-hardening` (v1.2.1).
 
 ## Decision log
 

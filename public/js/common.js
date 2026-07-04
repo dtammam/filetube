@@ -104,6 +104,21 @@ function getCommentCount(id, poolSize) {
   return poolSize ? Math.min(count, poolSize) : count;
 }
 
+// Validate/clamp inputs for MediaSession.setPositionState, which THROWS on bad
+// values (non-finite or <= 0 duration, position > duration, etc.). Returns a safe
+// { duration, position, playbackRate } — or null when it can't be represented
+// (e.g. a live/streaming source with unknown duration) so callers skip the call
+// entirely rather than throw. Pure.
+function clampPositionState(duration, position, playbackRate) {
+  if (!Number.isFinite(duration) || duration <= 0) return null;
+  let pos = Number(position);
+  if (!Number.isFinite(pos) || pos < 0) pos = 0;
+  if (pos > duration) pos = duration;
+  let rate = Number(playbackRate);
+  if (!Number.isFinite(rate) || rate <= 0) rate = 1;
+  return { duration, position: pos, playbackRate: rate };
+}
+
 // Mock uploader subscriptions counts (based on uploader name length to make it deterministic but diverse)
 function getMockSubCount(uploaderName) {
   const code = uploaderName.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
@@ -177,5 +192,5 @@ document.addEventListener('DOMContentLoaded', () => {
 // Expose pure helpers to Node for unit testing (browsers ignore this block —
 // `module` is undefined there).
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { getStarRating, getCommentCount, resolveChannelName };
+  module.exports = { getStarRating, getCommentCount, resolveChannelName, clampPositionState };
 }
