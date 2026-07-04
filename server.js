@@ -91,6 +91,7 @@ exec('ffmpeg -version', (error) => {
 // Jobs run one at a time to avoid overloading a home server with parallel FFmpeg runs.
 const transcodeQueue = [];
 let transcodeBusy = false;
+const transcodeProgress = {}; // id -> percent complete (0-100) while a job runs
 
 // Persist a media item's transcode status without clobbering unrelated db changes.
 function setTranscodeStatus(id, status) {
@@ -120,6 +121,10 @@ function processTranscodeQueue() {
   transcodeBusy = true;
   const tmpPath = outPath + '.tmp.mp4';
   setTranscodeStatus(id, 'processing');
+  transcodeProgress[id] = 0;
+  // Total duration (from the scan's ffprobe) lets us turn FFmpeg's time= into a percentage.
+  const srcMeta = loadDatabase().metadata[id];
+  const totalDuration = (srcMeta && srcMeta.duration) || 0;
   console.log(`Transcoding to MP4: ${srcPath}`);
 
   // H.264 + AAC in an MP4 with a front-loaded moov atom (+faststart) for smooth streaming.
@@ -143,11 +148,24 @@ function processTranscodeQueue() {
   }
 
   let errTail = '';
-  proc.stderr.on('data', d => { errTail = (errTail + d.toString()).slice(-1500); });
+  proc.stderr.on('data', d => {
+    const text = d.toString();
+    errTail = (errTail + text).slice(-1500);
+    // FFmpeg reports progress on stderr as "time=HH:MM:SS.xx"; convert to a percent.
+    if (totalDuration > 0) {
+      const m = text.match(/time=(\d+):(\d+):(\d+(?:\.\d+)?)/g);
+      if (m && m.length) {
+        const last = m[m.length - 1].match(/time=(\d+):(\d+):(\d+(?:\.\d+)?)/);
+        const secs = (+last[1]) * 3600 + (+last[2]) * 60 + parseFloat(last[3]);
+        transcodeProgress[id] = Math.max(0, Math.min(99, Math.round((secs / totalDuration) * 100)));
+      }
+    }
+  });
 
   proc.on('error', (e) => {
     console.error(`FFmpeg error for ${srcPath}:`, e.message);
     try { if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath); } catch (_) {}
+    delete transcodeProgress[id];
     setTranscodeStatus(id, 'failed');
     transcodeBusy = false;
     processTranscodeQueue();
@@ -168,6 +186,7 @@ function processTranscodeQueue() {
       try { if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath); } catch (_) {}
       setTranscodeStatus(id, 'failed');
     }
+    delete transcodeProgress[id];
     transcodeBusy = false;
     processTranscodeQueue();
   });
@@ -477,7 +496,8 @@ app.get('/api/videos/:id', (req, res) => {
   const progress = db.progress[item.id] || { timestamp: 0 };
   res.json({
     ...item,
-    progress: progress.timestamp
+    progress: progress.timestamp,
+    transcodeProgress: transcodeProgress[item.id] || 0
   });
 });
 

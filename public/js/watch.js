@@ -157,16 +157,18 @@ document.addEventListener('DOMContentLoaded', () => {
       audioVisualFolder.textContent = `Folder: ${mediaData.folderName}`;
     } else {
       // Video File
-      mediaPlayer.style.display = 'block';
       setupSkipControls();
 
       if (mediaData.needsTranscode && mediaData.transcodeStatus !== 'ready') {
         // Browser can't play this container yet — it's being transcoded to MP4.
-        // Show a "preparing" overlay and start playback once it's ready.
+        // Keep the <video> hidden (mobile paints a "can't play" icon on an empty
+        // player) and show the "preparing" overlay; start playback once ready.
         awaitingTranscode = true;
+        mediaPlayer.style.display = 'none';
         showTranscodeOverlay();
         pollTranscodeUntilReady();
       } else {
+        mediaPlayer.style.display = 'block';
         mediaPlayer.src = streamUrl;
       }
     }
@@ -276,6 +278,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (data.transcodeStatus === 'ready') {
         awaitingTranscode = false;
         hideTranscodeOverlay();
+        mediaPlayer.style.display = 'block';
         mediaPlayer.src = `/video/${mediaId}`;
         handleResumePlayback();
         return;
@@ -284,7 +287,12 @@ document.addEventListener('DOMContentLoaded', () => {
         showTranscodeFailed();
         return;
       }
-      setTimeout(pollTranscodeUntilReady, 3000); // still pending/processing
+      // still pending/processing — surface progress if the server has it
+      const pct = Math.round(data.transcodeProgress || 0);
+      if (transcodeTitle) {
+        transcodeTitle.textContent = pct > 0 ? `Preparing this video… ${pct}%` : 'Preparing this video…';
+      }
+      setTimeout(pollTranscodeUntilReady, 2000);
     } catch (e) {
       console.error('Error polling transcode status:', e);
       setTimeout(pollTranscodeUntilReady, 5000);
