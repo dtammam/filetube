@@ -234,38 +234,35 @@ function extractMetadataAndThumbnail(filePath, mediaId, isAudio) {
     const thumbPath = path.join(THUMBNAIL_DIR, thumbName);
     
     if (!ffmpegAvailable) {
-      return resolve({ duration: 0, hasThumbnail: false });
+      return resolve({ duration: 0, hasThumbnail: false, artist: '' });
     }
 
-    // Get duration first
-    const ffprobeCmd = `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${filePath}"`;
+    // Get duration + artist tag (used as the "channel" name when present)
+    const ffprobeCmd = `ffprobe -v error -show_entries format=duration:format_tags=artist -of json "${filePath}"`;
     exec(ffprobeCmd, (err, stdout) => {
       let duration = 0;
+      let artist = '';
       if (!err && stdout) {
-        duration = parseFloat(stdout.trim()) || 0;
+        try {
+          const j = JSON.parse(stdout);
+          duration = parseFloat(j.format && j.format.duration) || 0;
+          const tags = (j.format && j.format.tags) || {};
+          artist = (tags.artist || tags.ARTIST || tags.Artist || '').trim();
+        } catch (_) {}
       }
 
       if (isAudio) {
         // Try to extract embedded audio artwork
         const extractArtCmd = `ffmpeg -i "${filePath}" -an -vcodec copy -y "${thumbPath}"`;
         exec(extractArtCmd, (artErr) => {
-          if (!artErr && fs.existsSync(thumbPath)) {
-            resolve({ duration, hasThumbnail: true });
-          } else {
-            // No cover art
-            resolve({ duration, hasThumbnail: false });
-          }
+          resolve({ duration, artist, hasThumbnail: !artErr && fs.existsSync(thumbPath) });
         });
       } else {
         // Extract video frame (at 2 seconds or 10% of duration, whichever is smaller)
         const timestamp = duration > 5 ? 2 : Math.max(0, duration / 2);
         const extractFrameCmd = `ffmpeg -ss ${timestamp} -i "${filePath}" -vframes 1 -q:v 2 -y "${thumbPath}"`;
         exec(extractFrameCmd, (frameErr) => {
-          if (!frameErr && fs.existsSync(thumbPath)) {
-            resolve({ duration, hasThumbnail: true });
-          } else {
-            resolve({ duration, hasThumbnail: false });
-          }
+          resolve({ duration, artist, hasThumbnail: !frameErr && fs.existsSync(thumbPath) });
         });
       }
     });
@@ -328,6 +325,7 @@ async function runScanDirectories() {
         addedAt: info.addedAt,
         duration: 0,
         hasThumbnail: false,
+        artist: '',
         needsTranscode: !isAudio && needsTranscode(info.ext)
       };
 
@@ -335,6 +333,7 @@ async function runScanDirectories() {
         const meta = await extractMetadataAndThumbnail(filePath, id, isAudio);
         newMetadata[id].duration = meta.duration;
         newMetadata[id].hasThumbnail = meta.hasThumbnail;
+        newMetadata[id].artist = meta.artist || '';
       } catch (err) {
         console.error(`Error extracting metadata for ${info.name}:`, err);
       }
@@ -526,16 +525,21 @@ app.get('/api/videos', (req, res) => {
   const db = loadDatabase();
   const search = (req.query.search || '').toLowerCase().trim();
   const folderFilter = req.query.folder || '';
-  
+  const rootFilter = req.query.root || ''; // a configured folder path — matches everything under it (recursive)
+
   let list = Object.values(db.metadata);
 
-  // On the default (home/recent) view — no search, no folder filter — hide files from
-  // folders the user marked hidden. Explicitly opening a folder still shows everything.
-  if (!search && !folderFilter) {
+  // Is a file located under a given folder path? (that folder or any descendant)
+  const underFolder = (filePath, folder) =>
+    filePath === folder || filePath.startsWith(folder + '/') || filePath.startsWith(folder + '\\');
+
+  // On the default (home/recent) view — no explicit filter — hide files from folders
+  // the user marked hidden (their whole subtree). Opening a folder still shows everything.
+  if (!search && !folderFilter && !rootFilter) {
     const settings = db.folderSettings || {};
-    const hiddenRoots = new Set(Object.keys(settings).filter(f => settings[f] && settings[f].hidden));
-    if (hiddenRoots.size > 0) {
-      list = list.filter(item => !hiddenRoots.has(item.rootFolder));
+    const hiddenFolders = Object.keys(settings).filter(f => settings[f] && settings[f].hidden);
+    if (hiddenFolders.length > 0) {
+      list = list.filter(item => !hiddenFolders.some(hf => underFolder(item.filePath, hf)));
     }
   }
 
@@ -544,7 +548,12 @@ app.get('/api/videos', (req, res) => {
     list = list.filter(item => item.title.toLowerCase().includes(search) || item.folderName.toLowerCase().includes(search));
   }
 
-  // Folder uploader filter
+  // Mapped-folder filter: recursive — everything under the configured folder (incl. subfolders).
+  if (rootFilter) {
+    list = list.filter(item => underFolder(item.filePath, rootFilter));
+  }
+
+  // Folder uploader (channel) filter: files whose immediate parent matches.
   if (folderFilter) {
     list = list.filter(item => item.folderName === folderFilter);
   }
@@ -700,6 +709,49 @@ function escapeHtml(text) {
     .replace(/'/g, '&#039;');
 }
 
+// Live on-demand transcode (desktop only — iOS Safari can't play a non-seekable
+// live MP4). Pipes a fragmented H.264/AAC MP4 from FFmpeg; the client "seeks" by
+// reloading at ?t=<seconds> (fast -ss input seek).
+function streamLiveTranscode(req, res, item) {
+  if (!ffmpegAvailable) {
+    return res.status(503).json({ error: 'FFmpeg is not available for transcoding' });
+  }
+  const srcPath = item.filePath;
+  if (!fs.existsSync(srcPath)) {
+    return res.status(404).json({ error: 'File does not exist on disk' });
+  }
+  const start = Math.max(0, parseFloat(req.query.t) || 0);
+
+  res.writeHead(200, { 'Content-Type': 'video/mp4', 'Cache-Control': 'no-store' });
+
+  const args = [];
+  if (start > 0) args.push('-ss', String(start));
+  args.push(
+    '-i', srcPath,
+    '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23', '-pix_fmt', 'yuv420p',
+    '-c:a', 'aac', '-b:a', '160k', '-ac', '2',
+    '-movflags', 'frag_keyframe+empty_moov+default_base_moof',
+    '-f', 'mp4', 'pipe:1'
+  );
+
+  let proc;
+  try {
+    proc = spawn('ffmpeg', args);
+  } catch (e) {
+    console.error(`Live transcode failed to start for ${srcPath}:`, e.message);
+    return res.status(500).end();
+  }
+  proc.stdout.pipe(res);
+  let errTail = '';
+  proc.stderr.on('data', d => { errTail = (errTail + d.toString()).slice(-800); });
+  proc.on('error', (e) => { console.error(`Live transcode error for ${srcPath}:`, e.message); try { res.end(); } catch (_) {} });
+  proc.on('close', (code) => {
+    if (code && code !== 0 && code !== 255) console.error(`Live transcode exit ${code} for ${srcPath}:\n${errTail}`);
+    try { res.end(); } catch (_) {}
+  });
+  req.on('close', () => { proc.kill('SIGKILL'); });
+}
+
 // Media streaming endpoint supporting Range requests (highly important for HTML5 seeking/skipping)
 app.get('/video/:id', (req, res) => {
   const db = loadDatabase();
@@ -710,8 +762,13 @@ app.get('/video/:id', (req, res) => {
 
   let filePath = item.filePath;
 
-  // For browser-incompatible containers (AVI, etc.), serve the pre-transcoded MP4.
+  // Browser-incompatible containers (AVI, etc.):
+  //  - desktop asks for ?live=1 -> live transcode, plays instantly (not iOS-safe)
+  //  - otherwise -> serve the pre-transcoded MP4 (seekable; works on iOS)
   if (item.needsTranscode) {
+    if (req.query.live === '1') {
+      return streamLiveTranscode(req, res, item);
+    }
     const out = transcodedPath(item.id);
     if (fs.existsSync(out)) {
       filePath = out; // ready — stream it with full Range support

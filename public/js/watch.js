@@ -66,6 +66,23 @@ document.addEventListener('DOMContentLoaded', () => {
   let savedProgress = 0;
   let progressInterval = null;
   let awaitingTranscode = false;
+  let folderSettings = {};   // { "<path>": { name, hidden } } — for channel display name
+  let liveMode = false;      // desktop AVI: live transcode (seek = restart stream)
+  let liveOffset = 0;        // seconds into the source that the current live stream started at
+
+  // Absolute position in the source, accounting for live-stream restart offsets.
+  function currentAbsTime() {
+    return liveMode ? liveOffset + (mediaPlayer.currentTime || 0) : mediaPlayer.currentTime;
+  }
+
+  // (Re)start a desktop live transcode at t seconds into the source.
+  function startLiveStream(t, autoplay) {
+    liveOffset = Math.max(0, Math.floor(t || 0));
+    mediaPlayer.style.display = 'block';
+    mediaPlayer.src = `/video/${mediaId}?live=1&t=${liveOffset}`;
+    mediaPlayer.load();
+    if (autoplay) mediaPlayer.play().catch(() => {});
+  }
 
   // Narrow (phone) viewport — used to tailor mobile-only player behavior.
   function isMobileViewport() {
@@ -78,7 +95,8 @@ document.addEventListener('DOMContentLoaded', () => {
       // 1. Get configurations for sidebar
       const configRes = await fetch('/api/config');
       const configData = await configRes.json();
-      renderSidebarFolders(configData.folders || [], configData.folderSettings || {});
+      folderSettings = configData.folderSettings || {};
+      renderSidebarFolders(configData.folders || [], folderSettings);
 
       // 2. Fetch media details
       const mediaRes = await fetch(`/api/videos/${mediaId}`);
@@ -124,10 +142,14 @@ document.addEventListener('DOMContentLoaded', () => {
     mediaTitle.textContent = mediaData.title;
     document.title = `${mediaData.title} - FileTube`;
     
+    // Channel name: the mapped folder's friendly display name (if set), else the
+    // artist tag from the file's metadata, else the immediate folder name.
+    const mappedName = folderSettings[mediaData.rootFolder] && folderSettings[mediaData.rootFolder].name;
+    const channelName = mappedName || mediaData.artist || mediaData.folderName;
     viewsCount.textContent = getMockViews(mediaData.id, mediaData.size);
-    uploaderAvatar.textContent = (mediaData.folderName[0] || 'F').toUpperCase();
-    uploaderChannelName.textContent = mediaData.folderName;
-    uploaderSubsCount.textContent = `${getMockSubCount(mediaData.folderName)} subscribers`;
+    uploaderAvatar.textContent = (channelName[0] || 'F').toUpperCase();
+    uploaderChannelName.textContent = channelName;
+    uploaderSubsCount.textContent = `${getMockSubCount(channelName)} subscribers`;
     
     addedDateText.textContent = formatRelativeTime(mediaData.addedAt);
     fileSizeText.textContent = formatFileSize(mediaData.size);
@@ -150,18 +172,26 @@ document.addEventListener('DOMContentLoaded', () => {
       mediaPlayer.src = streamUrl;
     } else {
       // Video File
+      mediaPlayer.style.display = 'block';
       setupSkipControls();
 
-      if (mediaData.needsTranscode && mediaData.transcodeStatus !== 'ready') {
-        // Browser can't play this container yet — it's being transcoded to MP4.
-        // Keep the <video> hidden (mobile paints a "can't play" icon on an empty
-        // player) and show the "preparing" overlay; start playback once ready.
-        awaitingTranscode = true;
-        mediaPlayer.style.display = 'none';
-        showTranscodeOverlay();
-        pollTranscodeUntilReady();
+      if (mediaData.needsTranscode) {
+        if (!isMobileViewport()) {
+          // Desktop: live transcode for instant playback (seek = restart stream).
+          // Playback is kicked off by handleResumePlayback() -> startLiveStream().
+          liveMode = true;
+        } else if (mediaData.transcodeStatus === 'ready') {
+          // Mobile with the pre-transcoded MP4 ready: play it (seekable, iOS-safe).
+          mediaPlayer.src = streamUrl;
+        } else {
+          // Mobile, still converting: hide the empty <video> (mobile shows a
+          // "can't play" icon) and show the "preparing" overlay until ready.
+          awaitingTranscode = true;
+          mediaPlayer.style.display = 'none';
+          showTranscodeOverlay();
+          pollTranscodeUntilReady();
+        }
       } else {
-        mediaPlayer.style.display = 'block';
         mediaPlayer.src = streamUrl;
       }
     }
@@ -182,10 +212,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Seek by delta seconds, clamped to the media length, with visual feedback.
   function skip(delta) {
+    flashRipple(delta < 0 ? skipRippleLeft : skipRippleRight);
+    if (liveMode) {
+      // Live stream isn't byte-seekable: restart the transcode at the new offset.
+      const total = mediaData.duration || Infinity;
+      const target = Math.max(0, Math.min(total, currentAbsTime() + delta));
+      startLiveStream(target, true);
+      saveProgressToServer(target);
+      return;
+    }
     const dur = mediaPlayer.duration;
     if (!isFinite(dur) || dur <= 0) return;
     mediaPlayer.currentTime = Math.max(0, Math.min(dur, mediaPlayer.currentTime + delta));
-    flashRipple(delta < 0 ? skipRippleLeft : skipRippleRight);
     saveProgressToServer(mediaPlayer.currentTime);
   }
 
@@ -314,9 +352,11 @@ document.addEventListener('DOMContentLoaded', () => {
       if (savedProgress > 5) {
         resumeTimeStr.textContent = formatDuration(savedProgress);
         resumeOverlay.style.display = 'flex';
-        
         // Disable auto-play until overlay choice
         mediaPlayer.autoplay = false;
+      } else if (liveMode) {
+        // Desktop live stream: start from the beginning (autoplays on desktop).
+        startLiveStream(0, true);
       } else if (!isMobileViewport()) {
         // Auto-play on desktop only. On mobile, autoplay can trigger the native
         // fullscreen "zoom" — let the user start playback with a tap instead.
@@ -327,17 +367,25 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // Resume button choices
+  // Resume button choices (user gesture — play() is allowed even on mobile)
   resumeYesBtn.addEventListener('click', () => {
     resumeOverlay.style.display = 'none';
-    mediaPlayer.currentTime = savedProgress;
-    mediaPlayer.play().catch(() => {});
+    if (liveMode) {
+      startLiveStream(savedProgress, true);
+    } else {
+      mediaPlayer.currentTime = savedProgress;
+      mediaPlayer.play().catch(() => {});
+    }
   });
 
   resumeNoBtn.addEventListener('click', () => {
     resumeOverlay.style.display = 'none';
-    mediaPlayer.currentTime = 0;
-    mediaPlayer.play().catch(() => {});
+    if (liveMode) {
+      startLiveStream(0, true);
+    } else {
+      mediaPlayer.currentTime = 0;
+      mediaPlayer.play().catch(() => {});
+    }
     // Clear progress
     saveProgressToServer(0);
   });
@@ -346,8 +394,8 @@ document.addEventListener('DOMContentLoaded', () => {
   function startProgressSaver() {
     if (progressInterval) clearInterval(progressInterval);
     progressInterval = setInterval(() => {
-      if (!mediaPlayer.paused && mediaPlayer.currentTime > 0) {
-        saveProgressToServer(mediaPlayer.currentTime);
+      if (!mediaPlayer.paused && currentAbsTime() > 0) {
+        saveProgressToServer(currentAbsTime());
       }
     }, 4000); // Save progress every 4 seconds
   }
@@ -357,8 +405,8 @@ document.addEventListener('DOMContentLoaded', () => {
       clearInterval(progressInterval);
       progressInterval = null;
     }
-    if (mediaPlayer.currentTime > 0) {
-      saveProgressToServer(mediaPlayer.currentTime);
+    if (currentAbsTime() > 0) {
+      saveProgressToServer(currentAbsTime());
     }
   }
 
@@ -370,7 +418,7 @@ document.addEventListener('DOMContentLoaded', () => {
         body: JSON.stringify({
           id: mediaId,
           timestamp: time,
-          duration: mediaPlayer.duration || mediaData.duration || 0
+          duration: (isFinite(mediaPlayer.duration) ? mediaPlayer.duration : 0) || mediaData.duration || 0
         })
       });
     } catch (e) {
@@ -547,21 +595,36 @@ document.addEventListener('DOMContentLoaded', () => {
       { author: 'buffering_fan', text: 'First! Anyone else watching in 2026? 😂', timeStr: '6 months ago' },
       { author: 'code_runner', text: 'This FileTube container works flawlessly. Glad we can self-host this.', timeStr: '3 months ago' },
       { author: 'anonymous_user', text: 'Is it possible to download? Oh wait, it is already on my disk. Lol.', timeStr: '2 weeks ago' },
-      { author: 'audio_phile', text: 'Great audio upload, sound quality is pristine.', timeStr: '5 days ago' }
+      { author: 'audio_phile', text: 'Great audio upload, sound quality is pristine.', timeStr: '5 days ago' },
+      { author: 'MLG_toaster', text: 'who else is scrolling comments instead of watching 🙋', timeStr: '4 years ago' },
+      { author: 'SubToMePls', text: 'thumbs up if u came here from the homepage', timeStr: '8 months ago' },
+      { author: 'dial_up_survivor', text: 'buffered instantly?? in MY house?? we live in the future', timeStr: '1 year ago' },
+      { author: 'CerealKiller2007', text: 'i showed this to my cat. no reaction. still a banger.', timeStr: '3 weeks ago' },
+      { author: 'notabot_promise', text: 'the algorithm blessed me tonight 🙏', timeStr: '2 days ago' },
+      { author: 'grainy480p_gang', text: 'came for the nostalgia, stayed for the vibes', timeStr: '5 months ago' },
+      { author: 'LocalManYells', text: '0:32 you can literally hear the compression and i love it', timeStr: '11 months ago' },
+      { author: 'ProSkater_1999', text: 'this belongs in a museum. or at least my flash drive.', timeStr: '7 months ago' },
+      { author: 'keyboard_warrior_lite', text: 'im not crying you\'re crying', timeStr: '1 month ago' },
+      { author: 'ServerRoomGremlin', text: 'self-hosted and DRM-free? based.', timeStr: '9 days ago' },
+      { author: 'quantum_potato', text: 'my ISP is shaking rn', timeStr: '6 hours ago' },
+      { author: 'VHS_Wizard', text: 'be right back, adding this to 14 playlists', timeStr: '2 years ago' },
+      { author: 'lurk_mode_off', text: 'first comment in 6 years of watching. worth it.', timeStr: '4 months ago' },
+      { author: 'CtrlAltDefeat', text: 'the resolution is low but my expectations were lower and it STILL exceeded them', timeStr: '3 days ago' },
+      { author: 'SnackTimeSam', text: 'watching this instead of doing my homework, no regrets', timeStr: '1 week ago' },
+      { author: 'aggressively_average', text: 'skipped the intro like a coward. do not recommend. 10/10.', timeStr: '5 weeks ago' },
+      { author: 'MemoryLeakLarry', text: 'i have watched this 47 times and my RAM has not forgiven me', timeStr: '2 months ago' },
+      { author: 'ohno_its_dave', text: 'the double-tap skip is smoother than my dance moves', timeStr: '10 days ago' }
     ];
-    
-    // Choose 3 comments deterministically based on media ID
+
+    // Choose 4 comments deterministically based on media ID
     const seed = mediaId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
     const selected = [];
-    for (let i = 0; i < 3; i++) {
-      const idx = (seed + i * 7) % commentBank.length;
-      const comment = commentBank[idx];
-      // Slightly vary relative times
-      selected.push({
-        author: comment.author,
-        text: comment.text,
-        timeStr: comment.timeStr
-      });
+    const used = new Set();
+    for (let i = 0; i < 4; i++) {
+      let idx = (seed + i * 7) % commentBank.length;
+      while (used.has(idx)) idx = (idx + 1) % commentBank.length;
+      used.add(idx);
+      selected.push(commentBank[idx]);
     }
     return selected;
   }
@@ -607,8 +670,9 @@ document.addEventListener('DOMContentLoaded', () => {
     sidebarFoldersList.innerHTML = folders.map(f => {
       const folderName = f.split(/[\\/]/).pop() || f;
       const label = (settings[f] && settings[f].name) || folderName;
+      // ?root= shows everything under the mapped folder, including subfolders.
       return `
-        <a href="/?folder=${encodeURIComponent(folderName)}" class="sidebar-item" title="${escapeHtml(f)}">
+        <a href="/?root=${encodeURIComponent(f)}" class="sidebar-item" title="${escapeHtml(f)}">
           <i class="icon-folder"></i> ${escapeHtml(label)}
         </a>
       `;

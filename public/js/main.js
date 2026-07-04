@@ -19,6 +19,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const urlParams = new URLSearchParams(window.location.search);
   const searchQuery = urlParams.get('search') || '';
   const folderFilter = urlParams.get('folder') || '';
+  const rootFilter = urlParams.get('root') || ''; // mapped folder (recursive)
 
   if (searchQuery) {
     searchInput.value = searchQuery;
@@ -49,12 +50,20 @@ document.addEventListener('DOMContentLoaded', () => {
       // 2. Render sidebar folders
       renderSidebarFolders(folders, folderSettings);
 
+      // Header for a mapped-folder view uses its friendly name if set.
+      if (rootFilter) {
+        const base = rootFilter.split(/[\\/]/).pop() || rootFilter;
+        const label = (folderSettings[rootFilter] && folderSettings[rootFilter].name) || base;
+        videosHeader.textContent = label;
+      }
+
       // 3. Fetch and render media files
       let apiUrl = `/api/videos`;
       const queryParams = [];
       if (searchQuery) queryParams.push(`search=${encodeURIComponent(searchQuery)}`);
       if (folderFilter) queryParams.push(`folder=${encodeURIComponent(folderFilter)}`);
-      
+      if (rootFilter) queryParams.push(`root=${encodeURIComponent(rootFilter)}`);
+
       if (queryParams.length > 0) {
         apiUrl += `?${queryParams.join('&')}`;
       }
@@ -80,9 +89,10 @@ document.addEventListener('DOMContentLoaded', () => {
     sidebarFoldersList.innerHTML = folders.map(f => {
       const folderName = f.split(/[\\/]/).pop() || f;
       const label = (settings[f] && settings[f].name) || folderName;
-      const isActive = folderFilter === folderName ? 'active' : '';
+      const isActive = rootFilter === f ? 'active' : '';
+      // ?root= shows everything under the mapped folder, including subfolders.
       return `
-        <a href="/?folder=${encodeURIComponent(folderName)}" class="sidebar-item ${isActive}" title="${escapeHtml(f)}">
+        <a href="/?root=${encodeURIComponent(f)}" class="sidebar-item ${isActive}" title="${escapeHtml(f)}">
           <i class="icon-folder"></i> ${escapeHtml(label)}
         </a>
       `;

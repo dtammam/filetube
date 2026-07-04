@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Setup - FileTube</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="apple-touch-icon" href="/favicon.svg">
   <link rel="manifest" href="/manifest.webmanifest">
   <meta name="theme-color" content="#cc0000">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -119,9 +119,26 @@
               </label>
             </div>
           </div>
+          <div style="display:flex; flex-direction:column; gap:3px; flex-shrink:0;">
+            <button type="button" class="reorder-btn" data-index="${index}" data-dir="up" title="Move up" ${index === 0 ? 'disabled' : ''}
+                    style="background:none;border:1px solid var(--border-dark);border-radius:3px;cursor:pointer;color:var(--text-primary);font-size:10px;line-height:1;padding:2px 6px;">▲</button>
+            <button type="button" class="reorder-btn" data-index="${index}" data-dir="down" title="Move down" ${index === configuredFolders.length - 1 ? 'disabled' : ''}
+                    style="background:none;border:1px solid var(--border-dark);border-radius:3px;cursor:pointer;color:var(--text-primary);font-size:10px;line-height:1;padding:2px 6px;">▼</button>
+          </div>
           <button class="remove-folder-btn" data-index="${index}" title="Remove folder">&times;</button>
         `;
         container.appendChild(row);
+      });
+
+      // Reorder handlers — swap positions in the folders array (that order is the sidebar order)
+      container.querySelectorAll('.reorder-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const i = parseInt(e.currentTarget.dataset.index);
+          const j = e.currentTarget.dataset.dir === 'up' ? i - 1 : i + 1;
+          if (j < 0 || j >= configuredFolders.length) return;
+          [configuredFolders[i], configuredFolders[j]] = [configuredFolders[j], configuredFolders[i]];
+          renderFolders();
+        });
       });
 
       // Persist per-folder edits as they happen (keyed by path so row order doesn't matter)
@@ -160,7 +177,7 @@
       sidebarContainer.innerHTML = folders.map(f => {
         const base = f.split(/[\\/]/).pop() || f;
         const label = (settings[f] && settings[f].name) || base;
-        return `<a href="/?folder=${encodeURIComponent(base)}" class="sidebar-item" title="${escapeHtml(f)}"><i class="icon-folder"></i> ${escapeHtml(label)}</a>`;
+        return `<a href="/?root=${encodeURIComponent(f)}" class="sidebar-item" title="${escapeHtml(f)}"><i class="icon-folder"></i> ${escapeHtml(label)}</a>`;
       }).join('');
     }
 
