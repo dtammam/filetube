@@ -9,28 +9,26 @@ permissions:
   contents: read
 
 jobs:
-  test:
+  # Single job on Node 22 (current LTS) — the one version this app targets and
+  # deploys on (see Dockerfile). No matrix: this is a single-target self-hosted
+  # app, so the only Node that matters is the one it ships with.
+  ci:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
 
-      - name: Cache npm dependencies
-        uses: actions/cache@v5
-        with:
-          path: ~/.npm
-          key: ${{ runner.os }}-npm-${{ hashFiles('package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-npm-
-
       - name: Set up Node.js
         uses: actions/setup-node@v5
         with:
-          node-version: 18
+          node-version: 22
           cache: 'npm'
           cache-dependency-path: package-lock.json
 
       - name: Install dependencies
         run: npm ci
 
-      # Note: Add 'npm run lint' or 'npm test' steps below once tests are configured
-      # - run: npm test
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test

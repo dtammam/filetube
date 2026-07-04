@@ -26,7 +26,7 @@ clients (iOS Safari) can play them.
   thumbnails, duration probing, and transcoding to H.264/AAC MP4.
 - **Data directory (`data/`)** — persistent state: `db.json` (metadata),
   `thumbnails/`, and `transcoded/` (cached MP4 sidecars).
-- **Docker** — `Dockerfile` (Node 18 Alpine + ffmpeg) and `docker-compose.yml`
+- **Docker** — `Dockerfile` (Node 22 Alpine + ffmpeg) and `docker-compose.yml`
   for deployment; media folders and `data/` are mounted as volumes.
 
 ## Data flow
@@ -59,7 +59,7 @@ clients (iOS Safari) can play them.
 
 - Single-node, single-process; state lives on local disk (no external services).
 - Requires FFmpeg/FFprobe on PATH; without them, metadata/transcode features degrade.
-- Node.js ≥16.
+- Node.js 22 LTS (`engines` ≥20).
 - The transcode cache in `data/transcoded/` is currently **unbounded** — no size
   cap or eviction — so watched-AVI MP4s accumulate until cleared (known tech debt).
 - iOS Safari cannot play a non-seekable live stream, which is why mobile uses the

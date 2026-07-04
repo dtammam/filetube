@@ -1,0 +1,86 @@
+'use strict';
+
+const js = require('@eslint/js');
+const globals = require('globals');
+
+// Rules shared by every file set.
+const commonRules = {
+  // Empty `catch {}` is an intentional "best-effort, ignore failure" idiom here.
+  'no-empty': ['error', { allowEmptyCatch: true }],
+  // Finicky rule with false positives (e.g. a fallback value assigned before a
+  // try/catch that may throw). Not worth the risk on existing code.
+  'no-useless-assignment': 'off',
+};
+
+module.exports = [
+  // Ignore generated / vendored / runtime paths.
+  {
+    ignores: [
+      'node_modules/**',
+      'data/**',
+      '.thumbnails/**',
+      'coverage/**',
+      '.state/**',
+      'docs/**',
+    ],
+  },
+
+  js.configs.recommended,
+
+  // Node backend + test suite (CommonJS).
+  {
+    files: ['server.js', 'test/**/*.js', 'eslint.config.js'],
+    languageOptions: {
+      ecmaVersion: 2023,
+      sourceType: 'commonjs',
+      globals: { ...globals.node },
+    },
+    rules: {
+      ...commonRules,
+      // Allow unused function args (e.g. Express `next`), leading-underscore
+      // names, and unused caught-error bindings (`catch (_) {}`).
+      'no-unused-vars': ['error', {
+        args: 'none',
+        caughtErrors: 'none',
+        varsIgnorePattern: '^_',
+      }],
+    },
+  },
+
+  // Vanilla browser frontend (all client scripts).
+  {
+    files: ['public/**/*.js'],
+    languageOptions: {
+      ecmaVersion: 2023,
+      sourceType: 'script',
+      globals: { ...globals.browser },
+    },
+    rules: {
+      ...commonRules,
+      // Handlers are often referenced from inline HTML attributes, so functions
+      // can look "unused" to the linter — warn rather than fail.
+      'no-unused-vars': ['warn', {
+        args: 'none',
+        caughtErrors: 'none',
+        varsIgnorePattern: '^_',
+      }],
+    },
+  },
+
+  // common.js is loaded first and exposes these helpers as globals. Declare them
+  // only for the CONSUMER scripts (not common.js itself, which defines them —
+  // declaring them there would trip no-redeclare).
+  {
+    files: ['public/js/main.js', 'public/js/watch.js'],
+    languageOptions: {
+      globals: {
+        formatDuration: 'readonly',
+        formatFileSize: 'readonly',
+        formatRelativeTime: 'readonly',
+        getMockSubCount: 'readonly',
+        getMockViews: 'readonly',
+        showConfirmModal: 'readonly',
+      },
+    },
+  },
+];
