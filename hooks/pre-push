@@ -1,27 +1,22 @@
 #!/usr/bin/env bash
-# Pre-push hook — runs full checks before pushing.
-# Customize the commands below for your tech stack.
+# Pre-push hook — full gate before pushing: lint + the complete test suite
+# (unit + integration).
 set -euo pipefail
 
-# Source profile for tool paths (nvm, cargo, etc.)
+# Source profile for tool paths (nvm, etc.)
 [ -f "$HOME/.profile" ] && source "$HOME/.profile" 2>/dev/null || true
 
 echo "Running pre-push checks..."
 
-# Uncomment and customize for your stack:
-# --- Rust ---
-# cargo test
-# cargo clippy -- -D warnings
+if [ ! -d node_modules ]; then
+  echo "⚠ node_modules missing — run 'npm install' before pushing." >&2
+  exit 1
+fi
 
-# --- Python ---
-# pytest
-# ruff check .
+echo "→ eslint"
+npm run --silent lint
 
-# --- Node/TypeScript ---
-# npx jest
-# npx eslint .
-
-# --- E2E (if applicable) ---
-# npx playwright test --project=chromium
+echo "→ full test suite"
+npm test
 
 echo "Pre-push checks passed."

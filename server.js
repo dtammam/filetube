@@ -446,12 +446,6 @@ app.use(express.static(path.join(__dirname, 'public'), {
   }
 }));
 
-// Run scans periodically (every 10 minutes) and on startup
-scanDirectories().catch(console.error);
-setInterval(() => {
-  scanDirectories().catch(console.error);
-}, 10 * 60 * 1000);
-
 // API: Get library folders list
 app.get('/api/config', (req, res) => {
   const db = loadDatabase();
@@ -827,9 +821,37 @@ app.get('/video/:id', (req, res) => {
   }
 });
 
-// Start the server
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`==================================================`);
-  console.log(`  FileTube server running at http://localhost:${PORT}`);
-  console.log(`==================================================`);
-});
+// Start the server — but only when run directly (`node server.js`), not when
+// required by the test suite. This lets tests import `app` and the pure helpers
+// without binding a port or triggering a real scan.
+if (require.main === module) {
+  // Scan on startup and then periodically (every 10 minutes). These live here,
+  // not at module top-level, so importing the module for tests neither scans
+  // nor keeps the event loop alive via the interval.
+  scanDirectories().catch(console.error);
+  setInterval(() => {
+    scanDirectories().catch(console.error);
+  }, 10 * 60 * 1000);
+
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`==================================================`);
+    console.log(`  FileTube server running at http://localhost:${PORT}`);
+    console.log(`==================================================`);
+  });
+}
+
+// Exported for testing (see test/). Importing this module has no side effects
+// beyond ensuring the data directories exist; it never starts listening.
+module.exports = {
+  app,
+  needsTranscode,
+  transcodedPath,
+  matchRootFolder,
+  getMediaId,
+  loadDatabase,
+  saveDatabase,
+  reconcileTranscode,
+  VIDEO_EXTENSIONS,
+  AUDIO_EXTENSIONS,
+  TRANSCODE_EXTENSIONS,
+};

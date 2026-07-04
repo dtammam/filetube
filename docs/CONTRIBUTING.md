@@ -15,8 +15,9 @@ Coding standards and conventions for this project. All agents read this file.
 | Install | `npm ci` |
 | Run | `npm start` (`node server.js`) |
 | Build | — (interpreted; no compile step) |
-| Test | — (no test suite configured yet) |
-| Lint | — (no linter configured) |
+| Test (all) | `npm test` |
+| Test (fast/unit) | `npm run test:unit` |
+| Lint | `npm run lint` |
 | Format | — (no formatter configured) |
 
 ## Code style
@@ -32,6 +33,17 @@ Coding standards and conventions for this project. All agents read this file.
 
 - Lowercase, single-word or hyphenated filenames (`server.js`, `watch.js`, `docker-compose.yml`)
 - Client scripts live in `public/js/` named after the page they drive (`watch.js` ↔ watch page)
+
+## Testing
+
+- Framework: **`node:test`** (Node's built-in runner) + `node:assert`. No extra runtime deps.
+- Layout:
+  - `test/unit/` — pure logic and DB helpers (`needsTranscode`, `getMediaId`, `matchRootFolder`, `loadDatabase`/`saveDatabase`, `reconcileTranscode`).
+  - `test/integration/` — HTTP tests that boot `app` on an ephemeral port against an isolated temp `DATA_DIR`.
+- Isolation: each test file sets `process.env.DATA_DIR` to a fresh temp dir **before** `require('../../server')`. The runner gives each file its own process, so there is no shared state. Tests never touch real project data.
+- `server.js` exports `app` and the pure helpers; it only starts listening / scanning under `require.main === module`, so importing it is side-effect-free.
+- **Every new feature or bugfix ships with tests.** Add a regression test for each bug you fix. Keep FFmpeg out of the core suite (it isn't installed on CI runners).
+- Gates: `pre-commit` runs lint + unit tests; `pre-push` and CI run lint + the full suite (Node 18 and 20).
 
 ## Git conventions
 

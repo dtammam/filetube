@@ -21,12 +21,19 @@ Standards for keeping this project stable and maintainable.
 
 ## Testing strategy
 
-- **Unit tests:** None configured yet. Recommended: `node:test` or Jest for pure
-  helpers (id hashing, `needsTranscode`, path builders).
-- **Integration tests:** None yet. CI (`.github/workflows/ci.yml`) currently only
-  runs `npm ci`; the `npm test` step is commented out until a suite exists.
-- **E2E tests:** None automated. Verification is manual via the browser (desktop
-  live playback + mobile transcode path).
+- **Unit tests** (`test/unit/`): `node:test` covers the regression-prone pure
+  logic — id hashing, `needsTranscode`, `matchRootFolder` (prefix boundaries),
+  `transcodedPath`, `loadDatabase`/`saveDatabase` (defaults, corrupt-JSON
+  recovery, round-trip), and every branch of `reconcileTranscode`.
+- **Integration tests** (`test/integration/`): boot `app` on an ephemeral port
+  against an isolated temp `DATA_DIR` and exercise the real routes — status
+  codes, validation (400/404), and a watch-progress round-trip. No FFmpeg needed.
+- **E2E tests:** None automated yet. The FFmpeg-dependent transcode paths
+  (desktop live stream, mobile lazy transcode) are still verified manually in a
+  browser; keep FFmpeg out of the automated suite (not installed on CI).
+- **CI** (`.github/workflows/ci.yml`): runs `npm run lint` + `npm test` on Node
+  18 and 20 for every push and PR. `pre-commit` gates lint + unit tests locally;
+  `pre-push` runs the full suite.
 
 ## Monitoring
 

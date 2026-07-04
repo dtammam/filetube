@@ -1,29 +1,24 @@
 #!/usr/bin/env bash
-# Pre-commit hook — runs fast checks before every commit.
-# Customize the commands below for your tech stack.
+# Pre-commit hook — fast gate before every commit: lint + unit tests.
+# Full integration tests run on pre-push instead, to keep commits snappy.
 set -euo pipefail
 
-# Source profile for tool paths (nvm, cargo, etc.)
+# Source profile for tool paths (nvm, etc.)
 [ -f "$HOME/.profile" ] && source "$HOME/.profile" 2>/dev/null || true
 
 echo "Running pre-commit checks..."
 
-# Uncomment and customize for your stack:
-# --- Rust ---
-# cargo fmt -- --check
-# cargo clippy -- -D warnings
+if [ ! -d node_modules ]; then
+  echo "⚠ node_modules missing — run 'npm install' before committing." >&2
+  exit 1
+fi
 
-# --- Python ---
-# ruff check .
-# mypy .
+# Lint (fails on errors, not warnings)
+echo "→ eslint"
+npm run --silent lint
 
-# --- Node/TypeScript ---
-# npx eslint .
-# npx tsc --noEmit
-
-# --- General ---
-# Run unit tests (fast subset only)
-# No test suite configured yet — add a fast unit-test command here once one exists
-# (e.g. `npm test` or `node --test`).
+# Fast unit tests only (no server boot)
+echo "→ unit tests"
+npm run --silent test:unit
 
 echo "Pre-commit checks passed."
