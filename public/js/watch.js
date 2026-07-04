@@ -141,28 +141,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const streamUrl = `/video/${mediaId}`;
     
     if (mediaData.type === 'audio') {
-      // Audio File
-      audioVisualizer.style.display = 'flex';
-      mediaPlayer.style.display = 'block'; // Keep it block but style it small under visualizer, or overlay
-      
-      // Let's overlay the audioVisualizer on top and make video player act as audio
+      // Simple audio player: show the cover art (or placeholder) as a still poster
+      // with the browser's native controls. Works consistently on iOS and desktop;
+      // no spinning visualizer.
+      audioVisualizer.style.display = 'none';
+      mediaPlayer.style.display = 'block';
+      mediaPlayer.poster = `/thumbnail/${mediaId}`;
       mediaPlayer.src = streamUrl;
-      mediaPlayer.style.width = '100%';
-      mediaPlayer.style.height = '42px'; // Height of typical HTML5 audio controls
-      
-      // Sync spin states
-      mediaPlayer.addEventListener('play', () => {
-        audioVisualizer.classList.add('playing');
-      });
-      mediaPlayer.addEventListener('pause', () => {
-        audioVisualizer.classList.remove('playing');
-      });
-      mediaPlayer.addEventListener('ended', () => {
-        audioVisualizer.classList.remove('playing');
-      });
-
-      audioVisualTitle.textContent = mediaData.title;
-      audioVisualFolder.textContent = `Folder: ${mediaData.folderName}`;
     } else {
       // Video File
       setupSkipControls();

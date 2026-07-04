@@ -142,10 +142,11 @@ function processTranscodeQueue() {
   console.log(`Transcoding to MP4: ${srcPath}`);
 
   // H.264 + AAC in an MP4 with a front-loaded moov atom (+faststart) for smooth streaming.
+  // ultrafast + yuv420p: fastest conversion, broadly compatible (incl. iOS Safari).
   const args = [
     '-i', srcPath,
-    '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
-    '-c:a', 'aac', '-b:a', '160k',
+    '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23', '-pix_fmt', 'yuv420p',
+    '-c:a', 'aac', '-b:a', '160k', '-ac', '2',
     '-movflags', '+faststart',
     '-y', tmpPath
   ];

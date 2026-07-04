@@ -146,6 +146,8 @@ header {
   cursor: pointer;
   font-size: 13px;
   font-weight: bold;
+  flex-shrink: 0;      /* keep the "Search" label from being clipped */
+  white-space: nowrap;
 }
 
 .search-btn:hover {
