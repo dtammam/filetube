@@ -66,6 +66,22 @@ document.addEventListener('DOMContentLoaded', () => {
   let savedProgress = 0;
   let progressInterval = null;
   let awaitingTranscode = false;
+  let liveMode = false;   // true for AVI-class files transcoded live on demand
+  let liveOffset = 0;     // seconds into the source that the current live stream started at
+
+  // Absolute position in the source, accounting for live-stream restart offsets.
+  function currentAbsTime() {
+    return liveMode ? liveOffset + (mediaPlayer.currentTime || 0) : mediaPlayer.currentTime;
+  }
+
+  // (Re)start a live-transcoded stream at t seconds into the source.
+  function startLiveStream(t, autoplay) {
+    liveOffset = Math.max(0, Math.floor(t || 0));
+    mediaPlayer.style.display = 'block';
+    mediaPlayer.src = `/video/${mediaId}?t=${liveOffset}`;
+    mediaPlayer.load();
+    if (autoplay) mediaPlayer.play().catch(() => {});
+  }
 
   // Narrow (phone) viewport — used to tailor mobile-only player behavior.
   function isMobileViewport() {
@@ -165,18 +181,14 @@ document.addEventListener('DOMContentLoaded', () => {
       audioVisualFolder.textContent = `Folder: ${mediaData.folderName}`;
     } else {
       // Video File
+      mediaPlayer.style.display = 'block';
       setupSkipControls();
 
-      if (mediaData.needsTranscode && mediaData.transcodeStatus !== 'ready') {
-        // Browser can't play this container yet — it's being transcoded to MP4.
-        // Keep the <video> hidden (mobile paints a "can't play" icon on an empty
-        // player) and show the "preparing" overlay; start playback once ready.
-        awaitingTranscode = true;
-        mediaPlayer.style.display = 'none';
-        showTranscodeOverlay();
-        pollTranscodeUntilReady();
+      if (mediaData.needsTranscode) {
+        // AVI-class file: transcoded live on demand. Playback is started from
+        // handleResumePlayback() via startLiveStream() (seeking = restart at ?t=).
+        liveMode = true;
       } else {
-        mediaPlayer.style.display = 'block';
         mediaPlayer.src = streamUrl;
       }
     }
@@ -197,10 +209,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Seek by delta seconds, clamped to the media length, with visual feedback.
   function skip(delta) {
+    flashRipple(delta < 0 ? skipRippleLeft : skipRippleRight);
+    if (liveMode) {
+      // Live stream isn't byte-seekable: restart the transcode at the new offset.
+      const total = mediaData.duration || Infinity;
+      const target = Math.max(0, Math.min(total, currentAbsTime() + delta));
+      startLiveStream(target, true);
+      saveProgressToServer(target);
+      return;
+    }
     const dur = mediaPlayer.duration;
     if (!isFinite(dur) || dur <= 0) return;
     mediaPlayer.currentTime = Math.max(0, Math.min(dur, mediaPlayer.currentTime + delta));
-    flashRipple(delta < 0 ? skipRippleLeft : skipRippleRight);
     saveProgressToServer(mediaPlayer.currentTime);
   }
 
@@ -329,9 +349,11 @@ document.addEventListener('DOMContentLoaded', () => {
       if (savedProgress > 5) {
         resumeTimeStr.textContent = formatDuration(savedProgress);
         resumeOverlay.style.display = 'flex';
-        
         // Disable auto-play until overlay choice
         mediaPlayer.autoplay = false;
+      } else if (liveMode) {
+        // Start the live transcode from the beginning (desktop autoplays).
+        startLiveStream(0, !isMobileViewport());
       } else if (!isMobileViewport()) {
         // Auto-play on desktop only. On mobile, autoplay can trigger the native
         // fullscreen "zoom" — let the user start playback with a tap instead.
@@ -342,17 +364,25 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // Resume button choices
+  // Resume button choices (user gesture, so play() is allowed even on mobile)
   resumeYesBtn.addEventListener('click', () => {
     resumeOverlay.style.display = 'none';
-    mediaPlayer.currentTime = savedProgress;
-    mediaPlayer.play().catch(() => {});
+    if (liveMode) {
+      startLiveStream(savedProgress, true);
+    } else {
+      mediaPlayer.currentTime = savedProgress;
+      mediaPlayer.play().catch(() => {});
+    }
   });
 
   resumeNoBtn.addEventListener('click', () => {
     resumeOverlay.style.display = 'none';
-    mediaPlayer.currentTime = 0;
-    mediaPlayer.play().catch(() => {});
+    if (liveMode) {
+      startLiveStream(0, true);
+    } else {
+      mediaPlayer.currentTime = 0;
+      mediaPlayer.play().catch(() => {});
+    }
     // Clear progress
     saveProgressToServer(0);
   });
@@ -361,8 +391,8 @@ document.addEventListener('DOMContentLoaded', () => {
   function startProgressSaver() {
     if (progressInterval) clearInterval(progressInterval);
     progressInterval = setInterval(() => {
-      if (!mediaPlayer.paused && mediaPlayer.currentTime > 0) {
-        saveProgressToServer(mediaPlayer.currentTime);
+      if (!mediaPlayer.paused && currentAbsTime() > 0) {
+        saveProgressToServer(currentAbsTime());
       }
     }, 4000); // Save progress every 4 seconds
   }
@@ -372,8 +402,8 @@ document.addEventListener('DOMContentLoaded', () => {
       clearInterval(progressInterval);
       progressInterval = null;
     }
-    if (mediaPlayer.currentTime > 0) {
-      saveProgressToServer(mediaPlayer.currentTime);
+    if (currentAbsTime() > 0) {
+      saveProgressToServer(currentAbsTime());
     }
   }
 
@@ -385,7 +415,7 @@ document.addEventListener('DOMContentLoaded', () => {
         body: JSON.stringify({
           id: mediaId,
           timestamp: time,
-          duration: mediaPlayer.duration || mediaData.duration || 0
+          duration: (isFinite(mediaPlayer.duration) ? mediaPlayer.duration : 0) || mediaData.duration || 0
         })
       });
     } catch (e) {
