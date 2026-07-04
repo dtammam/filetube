@@ -166,12 +166,17 @@ document.addEventListener('DOMContentLoaded', () => {
   function renderEmbeddedTags(tags) {
     const el = document.getElementById('embedded-tags');
     if (!el) return;
-    const entries = Object.entries(tags || {}).filter(([k]) => k !== 'title' && k !== 'artist');
+    const title = (mediaData.title || '').toLowerCase();
+    // Skip title/artist (shown elsewhere) and any tag whose value just repeats the
+    // title. Cap very long values so a huge embedded description can't blow out layout.
+    const clip = v => v.length > 400 ? v.slice(0, 400) + '…' : v;
+    const entries = Object.entries(tags || {}).filter(([k, v]) =>
+      k !== 'title' && k !== 'artist' && String(v).toLowerCase() !== title);
     if (!entries.length) { el.style.display = 'none'; return; }
     const label = k => k.charAt(0).toUpperCase() + k.slice(1);
     el.innerHTML = '<div class="embedded-tags-title">Embedded info</div>' +
       entries.map(([k, v]) =>
-        `<div class="embedded-tag"><span class="embedded-tag-key">${escapeHtml(label(k))}:</span> ${escapeHtml(v)}</div>`
+        `<div class="embedded-tag"><span class="embedded-tag-key">${escapeHtml(label(k))}:</span> ${escapeHtml(clip(String(v)))}</div>`
       ).join('');
     el.style.display = 'block';
   }
@@ -202,6 +207,12 @@ document.addEventListener('DOMContentLoaded', () => {
         try { navigator.mediaSession.setActionHandler(action, handlers[action]); } catch (_) {}
       }
     } catch (_) { /* MediaMetadata construction unsupported */ }
+  }
+
+  // Shared: is the video in the OS's native fullscreen player? That's its own
+  // surface — our inline overlays/gestures don't apply there.
+  function inNativeFullscreen() {
+    return !!document.fullscreenElement || !!mediaPlayer.webkitDisplayingFullscreen;
   }
 
   // Configure Player
@@ -330,14 +341,13 @@ document.addEventListener('DOMContentLoaded', () => {
     let holdActive = false;
     let prevRate = 1;
     let startX = 0, startY = 0;
-    const HOLD_MS = 350;
+    const HOLD_MS = 500;
     const MOVE_TOL = 10;
 
-    // iOS native fullscreen owns the surface — our overlay gestures don't apply.
-    function inNativeFullscreen() {
-      return !!document.fullscreenElement || !!mediaPlayer.webkitDisplayingFullscreen;
-    }
     function engageHold() {
+      // Only speed up during active playback; never re-enter (would capture the
+      // already-elevated rate as prevRate); never engage in native fullscreen.
+      if (holdActive || mediaPlayer.paused || inNativeFullscreen()) return;
       holdActive = true;
       prevRate = mediaPlayer.playbackRate || 1;
       mediaPlayer.playbackRate = 2;
@@ -351,7 +361,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     mediaPlayer.addEventListener('touchstart', (e) => {
-      if (inNativeFullscreen() || e.touches.length > 1) return; // ignore pinch / fullscreen
+      if (inNativeFullscreen() || e.touches.length > 1) {
+        clearTimeout(holdTimer); // a second finger / fullscreen cancels a pending hold
+        releaseHold();
+        return;
+      }
       startX = e.touches[0].clientX;
       startY = e.touches[0].clientY;
       clearTimeout(holdTimer);
@@ -396,6 +410,13 @@ document.addEventListener('DOMContentLoaded', () => {
         revealSkipButtons();
       }
     }, { passive: false });
+
+    // If native fullscreen is entered mid-gesture (e.g. rotate-to-fullscreen fires
+    // while holding), the inline element stops receiving touchend — force a release
+    // so playbackRate can never get stranded at 2×.
+    function onEnterFullscreen() { clearTimeout(holdTimer); releaseHold(); }
+    document.addEventListener('fullscreenchange', () => { if (document.fullscreenElement) onEnterFullscreen(); });
+    mediaPlayer.addEventListener('webkitbeginfullscreen', onEnterFullscreen);
   }
 
   // Rotate-to-fullscreen (best-effort). Landscape -> request fullscreen; portrait
@@ -404,19 +425,27 @@ document.addEventListener('DOMContentLoaded', () => {
   // so this may be a no-op there — hence everything is wrapped and tolerant.
   function setupRotateFullscreen() {
     let autoFullscreen = false;
+    const mql = window.matchMedia('(orientation: landscape)');
+
+    // Once fullscreen is exited by ANY means, forget that WE opened it — so if the
+    // user re-enters fullscreen deliberately, a later portrait rotation won't yank
+    // them back out.
+    function onFsChange() { if (!inNativeFullscreen()) autoFullscreen = false; }
+    document.addEventListener('fullscreenchange', onFsChange);
+    mediaPlayer.addEventListener('webkitendfullscreen', onFsChange);
+
     function onOrientationChange() {
-      const landscape = window.matchMedia('(orientation: landscape)').matches;
+      const landscape = mql.matches;
       try {
-        const inFs = !!document.fullscreenElement || !!mediaPlayer.webkitDisplayingFullscreen;
-        if (landscape && !inFs) {
+        if (landscape && !inNativeFullscreen()) {
           autoFullscreen = true;
           if (mediaPlayer.webkitEnterFullscreen) {
             mediaPlayer.webkitEnterFullscreen();
           } else if (mediaPlayer.requestFullscreen) {
             const p = mediaPlayer.requestFullscreen();
-            if (p && p.catch) p.catch(() => {});
+            if (p && p.catch) p.catch(() => { autoFullscreen = false; });
           }
-        } else if (!landscape && autoFullscreen) {
+        } else if (!landscape && autoFullscreen && inNativeFullscreen()) {
           autoFullscreen = false;
           if (document.exitFullscreen) {
             const p = document.exitFullscreen();
@@ -425,7 +454,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       } catch (_) { /* fullscreen refused/unsupported — ignore */ }
     }
-    window.addEventListener('orientationchange', onOrientationChange);
+    // Prefer the non-deprecated matchMedia change event; fall back where needed.
+    if (mql.addEventListener) mql.addEventListener('change', onOrientationChange);
+    else window.addEventListener('orientationchange', onOrientationChange);
   }
 
   // Desktop keyboard shortcuts:

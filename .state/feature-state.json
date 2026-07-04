@@ -1,7 +1,7 @@
 {
   "feature_id": "mobile-playback-polish",
   "feature_name": "Native Mobile Playback & Polish",
-  "stage": "design",
+  "stage": "qa",
   "created_at": "2026-07-04",
   "updated_at": "2026-07-04",
   "description": "Native mobile playback & polish. The watch page uses the native iOS <video controls> player + playsinline; custom overlays (skip/double-tap) live on the INLINE surface only — native fullscreen already provides speed menu, PiP, fullscreen, scrubber and must NOT be re-implemented. IN SCOPE: (1) Media Session API — metadata + artwork=/thumbnail/:id so lock screen/Control Center shows thumbnail, title, channel; play/pause/seek handlers. (2) Embedded file metadata -> description: extend the ffprobe scan to pull embedded tags, store on db.metadata, render on the watch page additively UNDER the blurred file-path block. (3) Varying comment counts — deterministic per-item count (4–14) like getStarRating. (4) Press-and-hold-to-2x on mobile inline video, arbitrated with existing single-tap (native play/pause) + double-tap-seek via hold timing; not in native fullscreen. ATTEMPT w/ caveat: rotate-to-fullscreen (iOS gates programmatic fullscreen behind a user gesture — may be Android-only; portrait must not force-exit unless user tapped fullscreen). DROPPED: custom PiP button (native provides one). ROADMAP: background-audio-when-app-switched (OS-gated), mini-player, .srt subtitles. Significant QA/code-review pass required, with the native-vs-custom seam and gesture arbitration in the acceptance criteria.",

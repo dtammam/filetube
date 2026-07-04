@@ -20,6 +20,16 @@ test('getCommentCount: clamps to the pool size', () => {
   for (let i = 0; i < 100; i++) {
     assert.ok(getCommentCount('x' + i, 5) <= 5);
   }
+  // Tiny pool of 3 -> always clamped to 3.
+  for (let i = 0; i < 100; i++) {
+    assert.ok(getCommentCount('y' + i, 3) <= 3);
+  }
+});
+
+test('getCommentCount: a large pool never inflates the count beyond 14', () => {
+  for (let i = 0; i < 100; i++) {
+    assert.ok(getCommentCount('z' + i, 9999) <= 14);
+  }
 });
 
 test('getCommentCount: varies across ids (not constant)', () => {

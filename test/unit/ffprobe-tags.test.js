@@ -45,6 +45,19 @@ test('parseFfprobeTags: keeps description and comment when they differ', () => {
   assert.equal(out.comment, 'b');
 });
 
+test('parseFfprobeTags: dedups description/comment case-insensitively', () => {
+  const j = { format: { tags: { description: 'Same Text', comment: 'same text' } } };
+  const out = parseFfprobeTags(j);
+  assert.equal(out.description, 'Same Text');
+  assert.equal(out.comment, undefined, 'case-insensitive duplicate removed');
+});
+
+test('parseFfprobeTags: falls back to the year tag for date', () => {
+  assert.equal(parseFfprobeTags({ format: { tags: { year: '1999' } } }).date, '1999');
+  // an explicit date wins over year
+  assert.equal(parseFfprobeTags({ format: { tags: { date: '2020', year: '1999' } } }).date, '2020');
+});
+
 test('parseFfprobeTags: returns {} on malformed / empty / missing tags', () => {
   assert.deepEqual(parseFfprobeTags('{ not json'), {});
   assert.deepEqual(parseFfprobeTags(null), {});

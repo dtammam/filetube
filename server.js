@@ -360,8 +360,12 @@ function parseFfprobeTags(input) {
   for (const key of EMBEDDED_TAG_WHITELIST) {
     if (lower[key]) out[key] = lower[key];
   }
-  // description and comment are frequently identical — dedup.
-  if (out.description && out.comment && out.description === out.comment) delete out.comment;
+  // "year" is a common alias for date (ID3 etc.) — fall back to it.
+  if (!out.date && lower.year) out.date = lower.year;
+  // description and comment are frequently identical — dedup (case-insensitive).
+  if (out.description && out.comment && out.description.toLowerCase() === out.comment.toLowerCase()) {
+    delete out.comment;
+  }
   return out;
 }
 
@@ -378,7 +382,10 @@ function extractMetadataAndThumbnail(filePath, mediaId, isAudio) {
     // Get duration + all format tags (artist -> channel name; the rest -> the
     // additive "embedded info" block on the watch page).
     const ffprobeCmd = `ffprobe -v error -show_entries format=duration:format_tags -of json "${filePath}"`;
-    exec(ffprobeCmd, (err, stdout) => {
+    // Bump maxBuffer well above exec's 1MB default — files with large embedded
+    // tags (long descriptions/lyrics) could otherwise overflow it, set `err`, and
+    // regress duration to 0 (which would also mis-time the thumbnail grab).
+    exec(ffprobeCmd, { maxBuffer: 16 * 1024 * 1024 }, (err, stdout) => {
       let duration = 0;
       let artist = '';
       let tags = {};
