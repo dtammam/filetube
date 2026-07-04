@@ -1,5 +1,8 @@
 services:
   server:
+    # Set FILETUBE_IMAGE_TAG in .env: `latest` (newest release), a pinned
+    # version like `1.4.2`, `1.4`/`1` (a line), or `edge` (newest main).
+    # See docs/RELEASING.md for the full tag scheme.
     image: deantammam/filetube:${FILETUBE_IMAGE_TAG:-latest}
     pull_policy: always
     ports:

@@ -1,8 +1,17 @@
 name: Publish Docker Image
 
+# Image tagging strategy (Docker image hygiene):
+#   - Push to main            -> `edge` + `sha-<short>`  (bleeding edge, for testing)
+#   - Push a version tag v*.* -> `X.Y.Z`, `X.Y`, `X`, `latest`  (a real release)
+#
+# So `latest` tracks the newest RELEASE (not every commit), users can pin to any
+# `X.Y.Z` / `X.Y` / `X`, and Watchtower can follow `latest` (releases) or `edge`
+# (main). Cut a release by pushing a tag or publishing a GitHub Release — see
+# docs/RELEASING.md.
 on:
   push:
     branches: ['main']
+    tags: ['v*.*.*']
 
 jobs:
   publish:
@@ -28,8 +37,12 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: deantammam/filetube
+          # flavor latest=auto (default): a semver tag also updates `latest`.
           tags: |
-            type=raw,value=latest
+            type=edge,branch=main
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
             type=sha,format=short
 
       - name: Build and push Docker image

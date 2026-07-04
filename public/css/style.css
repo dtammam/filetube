@@ -681,6 +681,15 @@ header {
   margin-left: 6px;
 }
 
+/* Static 5-star rating shown on each media card in the grid/list */
+.card-rating {
+  color: var(--star-gold);
+  font-size: 13px;
+  letter-spacing: 2px;
+  line-height: 1;
+  margin-top: 4px;
+}
+
 /* Uploader Profile Panel */
 .uploader-info-panel {
   display: flex;
