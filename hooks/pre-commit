@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# Pre-commit hook — runs fast checks before every commit.
+# Customize the commands below for your tech stack.
+set -euo pipefail
+
+# Source profile for tool paths (nvm, cargo, etc.)
+[ -f "$HOME/.profile" ] && source "$HOME/.profile" 2>/dev/null || true
+
+echo "Running pre-commit checks..."
+
+# Uncomment and customize for your stack:
+# --- Rust ---
+# cargo fmt -- --check
+# cargo clippy -- -D warnings
+
+# --- Python ---
+# ruff check .
+# mypy .
+
+# --- Node/TypeScript ---
+# npx eslint .
+# npx tsc --noEmit
+
+# --- General ---
+# Run unit tests (fast subset only)
+# No test suite configured yet — add a fast unit-test command here once one exists
+# (e.g. `npm test` or `node --test`).
+
+echo "Pre-commit checks passed."
