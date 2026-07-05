@@ -221,12 +221,18 @@ function formatRelativeTime(epochMs) {
 
 // '' / null / undefined / non-finite / <=0 -> null, meaning "no override, use
 // the default" (mirrors the API's own null = defer-to-env-var contract).
-// Otherwise rounds to the nearest whole byte.
+// Otherwise rounds to the nearest whole byte -- EXCEPT a tiny positive input
+// that rounds to < 1 byte, which is also clamped to null rather than 0: the
+// API rejects cacheMaxBytes:0 with a 400, so posting 0 for "I typed something
+// tiny" would surface a misleading validation error instead of just using the
+// default.
 function gbToBytes(gb) {
   if (gb === '' || gb === null || gb === undefined) return null;
   const n = Number(gb);
   if (!Number.isFinite(n) || n <= 0) return null;
-  return Math.round(n * 1024 * 1024 * 1024);
+  const bytes = Math.round(n * 1024 * 1024 * 1024);
+  if (bytes < 1) return null; // sub-1-byte positive -> "no override", not an invalid 0
+  return bytes;
 }
 
 // null/undefined/non-finite -> null (no value to display). Otherwise bytes

@@ -159,6 +159,27 @@ const recentlyServed = new Map();
 const RECENT_STREAM_MS = 10 * 60 * 1000; // 10 minutes
 function markServed(p) { recentlyServed.set(p, Date.now()); }
 
+// True for a finished transcoded MP4 (`*.mp4` that is NOT the in-flight
+// `*.tmp.mp4` write). Shared by every site that enumerates TRANSCODE_DIR so
+// the exclusion can't drift between copies.
+function isCompletedTranscode(name) {
+  return name.endsWith('.mp4') && !name.endsWith('.tmp.mp4');
+}
+
+// Paths served within RECENT_STREAM_MS (the live-watch protection set shared
+// by evictTranscodeCache, sweepAgedTranscodes, and POST /api/cache/clear),
+// pruning stale entries out of `recentlyServed` as it goes. A single source so
+// all three sites agree on both membership AND stale-entry pruning (the two
+// non-evict copies previously omitted the pruning).
+function activeProtectedPaths(now) {
+  const set = new Set();
+  for (const [p, t] of recentlyServed) {
+    if (now - t <= RECENT_STREAM_MS) set.add(p);
+    else recentlyServed.delete(p); // prune stale entries
+  }
+  return set;
+}
+
 // Enforce the cache cap by evicting LRU transcoded MP4s from TRANSCODE_DIR.
 // Never evicts justProducedPath or any recently-served file. Returns the count
 // deleted. (LRU order among evictable files is still atime-keyed — best-effort.)
@@ -167,7 +188,7 @@ function evictTranscodeCache(maxBytes, justProducedPath) {
   try { entries = fs.readdirSync(TRANSCODE_DIR); } catch (_) { return 0; }
   const files = [];
   for (const name of entries) {
-    if (!name.endsWith('.mp4') || name.endsWith('.tmp.mp4')) continue;
+    if (!isCompletedTranscode(name)) continue;
     const p = path.join(TRANSCODE_DIR, name);
     try {
       const st = fs.statSync(p);
@@ -176,12 +197,8 @@ function evictTranscodeCache(maxBytes, justProducedPath) {
   }
   // Protect the just-produced file and anything served in the recent window.
   const now = Date.now();
-  const protectedPaths = new Set();
+  const protectedPaths = activeProtectedPaths(now);
   if (justProducedPath) protectedPaths.add(justProducedPath);
-  for (const [p, t] of recentlyServed) {
-    if (now - t <= RECENT_STREAM_MS) protectedPaths.add(p);
-    else recentlyServed.delete(p); // prune stale entries
-  }
   const victims = selectEvictions(files, maxBytes, protectedPaths);
   let removed = 0;
   for (const p of victims) {
@@ -255,7 +272,7 @@ function sweepAgedTranscodes(now) {
   try { entries = fs.readdirSync(TRANSCODE_DIR); } catch (_) { return 0; }
   const files = [];
   for (const name of entries) {
-    if (!name.endsWith('.mp4') || name.endsWith('.tmp.mp4')) continue;
+    if (!isCompletedTranscode(name)) continue;
     const p = path.join(TRANSCODE_DIR, name);
     try {
       const st = fs.statSync(p);
@@ -266,10 +283,7 @@ function sweepAgedTranscodes(now) {
   }
   // Same live-watch protection evictTranscodeCache uses — a file served
   // within the recent window is never aged out either.
-  const protectedPaths = new Set();
-  for (const [p, t] of recentlyServed) {
-    if (now - t <= RECENT_STREAM_MS) protectedPaths.add(p);
-  }
+  const protectedPaths = activeProtectedPaths(now);
   const victims = selectAgedOut(files, maxAgeMs, now, protectedPaths);
   let removed = 0;
   for (const p of victims) {
@@ -280,23 +294,64 @@ function sweepAgedTranscodes(now) {
 }
 
 // Pure: decide which old-metadata ids are safe to prune during a scan.
-// `oldMetadata` is the previous db.metadata object; `survivingIds`/
-// `missingRoots` are single/array/Set-normalized. The mount-loss guard
-// (`root && missing.has(root)`) fires BEFORE the pruneMissing toggle check,
-// so an entry rooted under a missing/unmounted folder is retained
-// unconditionally — a missing mount must never be mistaken for a deletion.
-function selectPrunableIds(oldMetadata, survivingIds, missingRoots, pruneMissing) {
+// `oldMetadata` is the previous db.metadata object; `survivingIds` is the set
+// of ids the current scan actually found on disk. `opts` = { missingRoots,
+// unreadablePaths, folders, pruneMissing } (all normalized single/array/Set).
+// Guards run, IN ORDER, BEFORE the pruneMissing toggle check, so each of them
+// holds regardless of the toggle:
+//   1. survives on disk                                  -> keep
+//   2. root (backfilled, or derived via matchRootFolder
+//      for legacy pre-backfill entries) is missing        -> keep (mount-loss, depth 0)
+//   3. root cannot be attributed to any configured folder -> keep (conservative;
+//      covers legacy falsy-rootFolder entries whose derived root is null)
+//   4. filePath falls under any unreadablePaths prefix     -> keep (incomplete
+//      enumeration -- a swallowed readdir/stat error anywhere in that
+//      subtree must never be mistaken for a bulk deletion, at any depth)
+//   5. pruneMissing === false                              -> keep
+//   6. otherwise (present, readable root + file individually gone + prune ON) -> prune
+function selectPrunableIds(oldMetadata, survivingIds, opts) {
+  const { missingRoots, unreadablePaths, folders, pruneMissing } = opts || {};
   const surviving = survivingIds instanceof Set ? survivingIds : new Set(survivingIds);
-  const missing = missingRoots instanceof Set ? missingRoots : new Set(missingRoots);
+  const missing = missingRoots instanceof Set ? missingRoots : new Set(missingRoots || []);
+  const incomplete = unreadablePaths instanceof Set ? unreadablePaths : new Set(unreadablePaths || []);
+  const allFolders = folders || [];
+  const under = (p, prefix) =>
+    p === prefix || p.startsWith(prefix + '/') || p.startsWith(prefix + '\\');
   const prune = [];
   for (const [id, entry] of Object.entries(oldMetadata)) {
-    if (surviving.has(id)) continue;             // file still on disk -> keep
-    const root = entry && entry.rootFolder;
-    if (root && missing.has(root)) continue;     // MOUNT-LOSS GUARD: never prune under a missing root
-    if (!pruneMissing) continue;                 // toggle OFF -> retain stale entry
-    prune.push(id);                              // root present + file individually gone + prune ON
+    if (surviving.has(id)) continue;                       // (1) file still on disk -> keep
+    const filePath = entry && entry.filePath;
+    let root = entry && entry.rootFolder;
+    if (!root && filePath) root = matchRootFolder(filePath, allFolders); // (iii) derive for legacy entries
+    if (root && missing.has(root)) continue;                // (2) MOUNT-LOSS GUARD
+    if (!root) continue;                                    // (3) unattributable -> retain
+    if (filePath && [...incomplete].some((pre) => under(filePath, pre))) continue; // (4) any-depth guard
+    if (!pruneMissing) continue;                            // (5) toggle OFF -> retain stale entry
+    prune.push(id);                                         // (6) root present + readable + file gone + prune ON
   }
   return prune;
+}
+
+// Pure: reconcile a scan's freshly-built metadata map with a FRESHLY re-read
+// on-disk metadata map (taken immediately before the final save, see the
+// `runScanDirectories` save block). `newMetadata` is authoritative for
+// membership (a scan-pruned id stays pruned even if it still exists in
+// `freshMetadata`) and every scan-derived field, EXCEPT `lastServedAt`: a
+// concurrent `recordServed` call may have persisted a NEWER timestamp on
+// `freshMetadata[id]` while the scan was still running (the scan's own
+// snapshot of that entry is stale). Adopt the newer of the two so a serve
+// recorded mid-scan is never reverted -- on-disk `lastServedAt` is the single
+// source of truth and this merge only ever advances it, never regresses it.
+// Mutates and returns `newMetadata`; does no FS I/O (pure).
+function mergeScannedMetadata(freshMetadata, newMetadata) {
+  for (const [id, entry] of Object.entries(newMetadata)) {
+    const prior = freshMetadata[id];
+    if (prior && typeof prior.lastServedAt === 'number' &&
+        (typeof entry.lastServedAt !== 'number' || prior.lastServedAt > entry.lastServedAt)) {
+      entry.lastServedAt = prior.lastServedAt;
+    }
+  }
+  return newMetadata;
 }
 
 // Sum of st.size for non-*.tmp.mp4 *.mp4 files in dir. Used for the Settings
@@ -307,7 +362,7 @@ function transcodeCacheSize(dir) {
   try { entries = fs.readdirSync(dir); } catch (_) { return 0; }
   let total = 0;
   for (const name of entries) {
-    if (!name.endsWith('.mp4') || name.endsWith('.tmp.mp4')) continue;
+    if (!isCompletedTranscode(name)) continue;
     try { total += fs.statSync(path.join(dir, name)).size; } catch (_) { /* vanished; skip */ }
   }
   return total;
@@ -365,24 +420,54 @@ function setTranscodeStatus(id, status) {
   }
 }
 
+// id -> last-PERSISTED lastServedAt (epoch ms), the WRITE-THROTTLE for
+// recordServed below. This is a DEDICATED map, deliberately separate from
+// `recentlyServed` (path-keyed, updated unthrottled on every serve, pruned by
+// eviction — different semantics/lifecycle). It exists ONLY to let
+// recordServed short-circuit its hot-path disk read; on-disk
+// db.metadata[id].lastServedAt remains the single source of truth
+// (mergeScannedMetadata's contract), recordServed is still the only writer,
+// and this map is NEVER read as truth nor fed into mergeScannedMetadata.
+// Empty on boot -> the first serve per item after a restart still does one
+// loadDatabase (acceptable; no served signal is lost worse than before).
+const persistedServedAt = new Map();
+
 // Persist a media item's last-served timestamp (db.metadata[id].lastServedAt,
 // epoch ms) — the D3 age-retention signal `selectAgedOut`/`sweepAgedTranscodes`
 // key off. This runs on the `/video/:id` streaming hot path, which fires many
-// Range requests per playback, so it mirrors setTranscodeStatus's no-clobber
-// pattern PLUS a staleness throttle: skip the write entirely when we already
-// recorded a serve within RECENT_STREAM_MS, so a Range-request burst yields at
-// most one db.json write per ~10-minute window per item and can never clobber
-// a concurrent write. This is additive alongside the in-memory `markServed`/
+// Range requests per playback, so the ~10-minute throttle short-circuits on a
+// `persistedServedAt` Map lookup FIRST — no `loadDatabase` at all when this id
+// was persisted within RECENT_STREAM_MS. Only when it may actually be due (no
+// map entry, or the entry is stale) do we `loadDatabase`, check the on-disk
+// value (which may already be fresh, e.g. right after boot), and persist +
+// update the map. This mirrors setTranscodeStatus's no-clobber pattern while
+// avoiding the full-DB read the old throttle-write-only version still paid on
+// every Range request. Additive alongside the in-memory `markServed`/
 // `recentlyServed` guard (which remains the real eviction-race protection) —
 // recordServed is a separate, persisted-timestamp concern for the age sweep.
 function recordServed(id) {
   const now = Date.now();
-  const db = loadDatabase();
+  const last = persistedServedAt.get(id);
+  if (last !== undefined && (now - last) < RECENT_STREAM_MS) return; // hot path: no disk read
+  const db = loadDatabase(); // only reached when a persist may actually be due
   const entry = db.metadata[id];
   if (!entry) return;
-  if (entry.lastServedAt && (now - entry.lastServedAt) < RECENT_STREAM_MS) return;
+  if (typeof entry.lastServedAt === 'number' && (now - entry.lastServedAt) < RECENT_STREAM_MS) {
+    persistedServedAt.set(id, entry.lastServedAt); // sync map to on-disk truth (e.g. first serve after boot)
+    return;
+  }
   entry.lastServedAt = now;
   saveDatabase(db);
+  persistedServedAt.set(id, now);
+}
+
+// Test-observability accessor: lets tests simulate a persisted-serve entry
+// aging out of the write-throttle map (without waiting RECENT_STREAM_MS in
+// real time) so they can exercise recordServed's "due" path deterministically.
+// Harmless — production code never calls this; only recordServed itself
+// mutates `persistedServedAt`.
+function clearPersistedServedAt(id) {
+  persistedServedAt.delete(id);
 }
 
 function queueTranscode(id, srcPath) {
@@ -598,20 +683,32 @@ function extractMetadataAndThumbnail(filePath, mediaId, isAudio) {
 }
 
 // Live scan state, surfaced via /api/scan-status for the setup/home UI.
-let scanState = { scanning: false, lastScan: null };
+// `rescanRequested` is an internal bookkeeping flag (never serialized by
+// /api/scan-status) for the coalesced-follow-up mechanism in
+// `scanDirectories`, below.
+let scanState = { scanning: false, lastScan: null, rescanRequested: false };
 
 // Public entry point: tracks scanning state around the actual scan.
-// Overlap guard: if a scan is already running, this is a no-op. This covers
-// EVERY caller of scanDirectories() — the periodic timer (armScanTimer,
-// below), the background scan kicked off by POST /api/config, and any manual
-// trigger — so two scans never run concurrently. The early return happens
-// before scanState.scanning is (re)set and before the try/finally, so it does
-// not touch scanState.lastScan or otherwise disturb the in-progress scan.
+// Overlap guard: while a scan is already running, a new call never starts a
+// second concurrent `runScanDirectories` -- but instead of silently dropping
+// the request, it records `rescanRequested` so the in-flight scan runs
+// exactly ONE bounded follow-up pass after it finishes (coalesced: many
+// requests during a scan collapse into a single follow-up, never an
+// unbounded queue). This covers EVERY caller of scanDirectories() — the
+// periodic timer (armScanTimer, below), the background scan kicked off by
+// POST /api/config, and any manual trigger — so two scans never run
+// concurrently, and no requested scan is silently lost.
 async function scanDirectories() {
-  if (scanState.scanning) return;
+  if (scanState.scanning) {
+    scanState.rescanRequested = true;
+    return;
+  }
   scanState.scanning = true;
   try {
-    await runScanDirectories();
+    do {
+      scanState.rescanRequested = false;
+      await runScanDirectories();
+    } while (scanState.rescanRequested); // one coalesced follow-up per demand cycle
   } finally {
     scanState.scanning = false;
     scanState.lastScan = new Date().toISOString();
@@ -626,6 +723,10 @@ async function runScanDirectories() {
   // Configured root folders that are absent/unmounted this scan (the single
   // existence-check seam, reused by selectPrunableIds' mount-loss guard below).
   const missingRoots = new Set();
+  // Directories whose readdir/stat threw during this scan (EACCES/EIO/ESTALE
+  // etc.) -- a first-class "could not enumerate this subtree" signal at ANY
+  // depth, reused by selectPrunableIds' any-depth guard below.
+  const unreadablePaths = new Set();
 
   for (const folder of currentFolders) {
     if (!fs.existsSync(folder)) {
@@ -633,7 +734,7 @@ async function runScanDirectories() {
       missingRoots.add(folder);
       continue;
     }
-    scanDirRecursive(folder, folder, scannedFiles);
+    scanDirRecursive(folder, folder, scannedFiles, unreadablePaths);
   }
 
   // Update db.metadata
@@ -693,7 +794,12 @@ async function runScanDirectories() {
   const survivingIds = new Set(Object.keys(newMetadata));
   const oldIds = Object.keys(db.metadata);
   const prunable = new Set(
-    selectPrunableIds(db.metadata, survivingIds, missingRoots, db.settings.pruneMissing)
+    selectPrunableIds(db.metadata, survivingIds, {
+      missingRoots,
+      unreadablePaths,
+      folders: currentFolders,
+      pruneMissing: db.settings.pruneMissing,
+    })
   );
 
   for (const oldId of oldIds) {
@@ -703,8 +809,11 @@ async function runScanDirectories() {
 
   if (prunable.size > 0) {
     dbChanged = true;
-    // Clean up thumbnails/transcodes/progress ONLY for genuinely-pruned ids —
-    // retained (mount-loss or toggle-off) entries must keep their sidecars.
+    // Clean up thumbnails/transcodes ONLY for genuinely-pruned ids — retained
+    // (mount-loss, unreadable-subtree, or toggle-off) entries must keep their
+    // sidecars. These are idempotent FS ops and snapshot-independent, so they
+    // stay here; the corresponding `db.progress` prune moves onto the FRESH
+    // db re-read at save time, below (fix A: re-read-merge-on-save).
     for (const oldId of prunable) {
       const thumbPath = path.join(THUMBNAIL_DIR, `${oldId}.jpg`);
       if (fs.existsSync(thumbPath)) {
@@ -723,10 +832,6 @@ async function runScanDirectories() {
           console.error('Failed to delete obsolete transcode:', e);
         }
       }
-      // Also remove watch progress
-      if (db.progress[oldId]) {
-        delete db.progress[oldId];
-      }
     }
   }
 
@@ -739,8 +844,17 @@ async function runScanDirectories() {
   }
 
   if (dbChanged) {
-    db.metadata = newMetadata;
-    saveDatabase(db);
+    // Re-read-merge-on-save (fix A): the scan holds `db` across many awaited
+    // extractMetadataAndThumbnail calls, so writing `db` back directly would
+    // clobber ANY db.settings/folders/folderSettings/progress/lastServedAt
+    // written concurrently (POST /api/settings, POST /api/config,
+    // recordServed, watch-progress) during the scan. Instead, re-read a FRESH
+    // db right before saving and write back only what this scan owns
+    // (metadata), merged so a concurrent lastServedAt is never regressed.
+    const fresh = loadDatabase();
+    fresh.metadata = mergeScannedMetadata(fresh.metadata, newMetadata);
+    for (const id of prunable) delete fresh.progress[id]; // apply prune to the FRESH progress map
+    saveDatabase(fresh);
     console.log('Database synced successfully.');
   }
 }
@@ -766,20 +880,34 @@ function armScanTimer() {
   return scanTimer;
 }
 
+// Test-observability accessor: exposes the current module-level `scanTimer`
+// (or null) without reaching into module internals, so tests can assert the
+// timer's identity/interval was (or wasn't) re-armed by a given call.
+function currentScanTimer() {
+  return scanTimer;
+}
+
 // Recursive directory scanning helper
-function scanDirRecursive(rootFolder, dirPath, results) {
+function scanDirRecursive(rootFolder, dirPath, results, unreadable) {
   let files;
   try {
     files = fs.readdirSync(dirPath, { withFileTypes: true });
   } catch (err) {
     console.error(`Error reading directory ${dirPath}:`, err);
+    // First-class "could not enumerate this subtree" signal, at ANY depth --
+    // a transiently-unreadable directory (EACCES/EIO/ESTALE, a dropped nested
+    // mount) must never be mistaken for its contents having been deleted.
+    // selectPrunableIds retains every entry under this path. A child dir that
+    // vanishes/becomes unreadable mid-recursion throws on its OWN readdirSync
+    // call below and is recorded there, so nested depth is covered too.
+    if (unreadable) unreadable.add(dirPath);
     return;
   }
 
   for (const file of files) {
     const fullPath = path.join(dirPath, file.name);
     if (file.isDirectory()) {
-      scanDirRecursive(rootFolder, fullPath, results);
+      scanDirRecursive(rootFolder, fullPath, results, unreadable);
     } else if (file.isFile()) {
       const ext = path.extname(file.name).toLowerCase();
       if (ALL_EXTENSIONS.includes(ext)) {
@@ -867,11 +995,15 @@ app.post('/api/config', async (req, res) => {
 
 // API: Scan files on demand
 app.post('/api/scan', async (req, res) => {
-  // Explicit pre-check: scanDirectories() itself no-ops while a scan is
-  // already running (overlap guard), so without this check the route would
-  // misleadingly return 200 for a request that triggered nothing. Surface a
-  // 409 instead so callers (and the UI) know a scan is already in flight.
+  // Explicit pre-check: scanDirectories() itself no-ops (beyond flagging a
+  // coalesced follow-up) while a scan is already running (overlap guard), so
+  // without this check the route would misleadingly return 200 for a request
+  // that triggered nothing new synchronously. Surface a 409 instead so
+  // callers (and the UI) know a scan is already in flight -- but also flag
+  // the follow-up so a manual "Scan now" fired during a scan isn't lost: the
+  // in-flight scan will run one more pass for it after it finishes.
   if (scanState.scanning) {
+    scanState.rescanRequested = true;
     return res.status(409).json({ error: 'scan already in progress' });
   }
   try {
@@ -900,7 +1032,7 @@ app.get('/api/scan-status', (req, res) => {
 
 // Valid POST /api/settings values for the two enum-like fields. `cacheMaxBytes`
 // and `pruneMissing` are validated inline (positive-int-or-null, boolean).
-const SCAN_INTERVAL_VALID_VALUES = new Set([0, 30, 60, 360, 720, 1440]);
+const SCAN_INTERVAL_VALID_VALUES = new Set([0, ...SCAN_INTERVAL_MINUTE_OPTIONS]);
 const CACHE_MAX_AGE_DAYS_VALID_VALUES = new Set([0, 7, 14, 30, 90]);
 
 // Shape returned by both GET and POST /api/settings — the four persisted keys
@@ -954,13 +1086,16 @@ app.post('/api/settings', (req, res) => {
 
   // All provided keys validated -- safe to merge and persist.
   const db = loadDatabase();
+  const prevInterval = db.settings.scanIntervalMinutes; // captured BEFORE the merge
   db.settings = { ...db.settings, ...body };
   saveDatabase(db);
-  // Re-arm the periodic scan timer live so an interval change takes effect
-  // immediately with no restart. armScanTimer() re-reads the just-saved
-  // db.settings.scanIntervalMinutes itself, and it's a safe no-op-equivalent
-  // (clear + re-arm the same value) when the interval didn't change.
-  armScanTimer();
+  // Re-arm the periodic scan timer live ONLY when scanIntervalMinutes actually
+  // changed, so an interval change takes effect immediately with no restart.
+  // armScanTimer() does clearInterval + setInterval, which RESETS the
+  // countdown -- re-arming unconditionally on every save (even for an
+  // unrelated setting, or the same interval value) would defer the periodic
+  // scan indefinitely if settings are saved more often than the interval.
+  if (db.settings.scanIntervalMinutes !== prevInterval) armScanTimer();
   res.json(settingsResponse(db.settings));
 });
 
@@ -975,24 +1110,22 @@ app.get('/api/cache/size', (req, res) => {
 
 // API: "Clear cache now" -- delete cached transcodes on demand. Excludes
 // *.tmp.mp4 (an in-flight transcode write; deleting it would corrupt the
-// transcode in progress) and anything currently protected by the
-// recentlyServed window (mirrors evictTranscodeCache's protected-set build,
-// server.js:177-184) so a clear can never yank a file out from under an
-// actively-watched stream. Does NOT touch db.metadata[id].lastServedAt -- a
-// future re-transcode naturally re-records it on next watch. Per-file
+// transcode in progress) and anything currently protected by
+// activeProtectedPaths (the same recentlyServed-within-RECENT_STREAM_MS set
+// evictTranscodeCache/sweepAgedTranscodes use) so a clear can never yank a
+// file out from under an actively-watched stream. Does NOT touch
+// db.metadata[id].lastServedAt -- a future re-transcode naturally re-records
+// it on next watch. Per-file
 // try/catch so a single failed unlink never fails the whole clear.
 app.post('/api/cache/clear', (req, res) => {
   let entries;
   try { entries = fs.readdirSync(TRANSCODE_DIR); } catch (_) { entries = []; }
   const now = Date.now();
-  const protectedPaths = new Set();
-  for (const [p, t] of recentlyServed) {
-    if (now - t <= RECENT_STREAM_MS) protectedPaths.add(p);
-  }
+  const protectedPaths = activeProtectedPaths(now);
   let removed = 0;
   let freedBytes = 0;
   for (const name of entries) {
-    if (!name.endsWith('.mp4') || name.endsWith('.tmp.mp4')) continue;
+    if (!isCompletedTranscode(name)) continue;
     const p = path.join(TRANSCODE_DIR, name);
     if (protectedPaths.has(p)) continue;
     try {
@@ -1360,16 +1493,21 @@ module.exports = {
   selectEvictions,
   cleanupOrphanTmp,
   evictTranscodeCache,
+  activeProtectedPaths,
+  isCompletedTranscode,
   scanIntervalMs,
   selectAgedOut,
   selectPrunableIds,
+  mergeScannedMetadata,
   transcodeCacheSize,
   effectiveCacheCap,
   recordServed,
+  clearPersistedServedAt,
   sweepAgedTranscodes,
   scanState,
   scanDirectories,
   armScanTimer,
+  currentScanTimer,
   TRANSCODE_CACHE_MAX_BYTES,
   VIDEO_EXTENSIONS,
   AUDIO_EXTENSIONS,

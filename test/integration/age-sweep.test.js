@@ -19,6 +19,7 @@ const {
   app,
   sweepAgedTranscodes,
   recordServed,
+  clearPersistedServedAt,
   evictTranscodeCache,
 } = require('../../server');
 
@@ -220,14 +221,64 @@ test('recordServed: a burst of calls within the window yields at most one persis
 
   // Simulate the window having elapsed by rewriting the persisted timestamp
   // to just past RECENT_STREAM_MS ago -- the next call should now update it.
+  // Also clear this id's entry in the in-memory write-throttle map (the hot
+  // path that now short-circuits BEFORE any disk read, see the "no hot-path
+  // read" test below) so recordServed actually re-consults the (rewritten)
+  // on-disk value instead of trusting its still-fresh in-memory timestamp.
   const staleDb = readDb();
   staleDb.metadata[id].lastServedAt = Date.now() - RECENT_STREAM_MS - 1000;
   writeDb(staleDb);
+  clearPersistedServedAt(id);
 
   recordServed(id);
   const afterWindow = readDb();
   assert.notEqual(afterWindow.metadata[id].lastServedAt, staleDb.metadata[id].lastServedAt, 'after the window elapses, the next serve updates lastServedAt');
   assert.equal(afterWindow.metadata[id].unrelatedField, 'keep-me', 'unrelated field still untouched after the update');
+});
+
+// ---- E: recordServed's hot-path throttle skips the DISK READ, not just the write ----
+
+test('recordServed (E, headline): a within-window call short-circuits on the in-memory map -- NO hot-path disk read', () => {
+  const id = 'vid-no-hotpath-read';
+  writeDb({
+    folders: [], folderSettings: {}, progress: {},
+    metadata: { [id]: { id } },
+    settings: baseSettings(),
+  });
+
+  recordServed(id); // first call for this id: no map entry yet -> loadDatabase + persists once
+  assert.ok(fs.existsSync(DB_FILE), 'first call persists to db.json');
+  const persisted = readDb().metadata[id].lastServedAt;
+  assert.equal(typeof persisted, 'number');
+
+  // Delete db.json entirely. If the throttled path did ANY loadDatabase, it
+  // would recreate an empty db.json (loadDatabase writes a fresh DB when the
+  // file is missing) -- so "db.json stays absent" is direct proof no disk
+  // read happened.
+  fs.rmSync(DB_FILE);
+
+  recordServed(id); // still within RECENT_STREAM_MS -> map lookup only, no loadDatabase
+  assert.ok(!fs.existsSync(DB_FILE), 'a throttled call must NOT read/recreate db.json (no hot-path disk read)');
+
+  // Once the map entry ages out (simulated here rather than waiting 10 real
+  // minutes), the next call is due again and DOES read (and, since the file
+  // is absent, recreate) the database.
+  clearPersistedServedAt(id);
+  recordServed(id);
+  assert.ok(fs.existsSync(DB_FILE), 'an out-of-window/due call reads (and recreates) db.json');
+});
+
+test('recordServed (E): empty map on boot -- the first serve per fresh id persists exactly once', () => {
+  const id = 'vid-fresh-boot';
+  writeDb({
+    folders: [], folderSettings: {}, progress: {},
+    metadata: { [id]: { id } },
+    settings: baseSettings(),
+  });
+
+  recordServed(id); // no prior map entry for this id (as if freshly booted)
+  const db = readDb();
+  assert.equal(typeof db.metadata[id].lastServedAt, 'number', 'the first serve for a fresh id persists a lastServedAt');
 });
 
 test('recordServed: a missing metadata entry is a safe no-op', () => {

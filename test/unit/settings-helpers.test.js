@@ -13,6 +13,7 @@ const {
   scanIntervalMs,
   selectAgedOut,
   selectPrunableIds,
+  mergeScannedMetadata,
   transcodeCacheSize,
   effectiveCacheCap,
   TRANSCODE_CACHE_MAX_BYTES,
@@ -90,6 +91,8 @@ test('selectAgedOut: maxAgeMs of 0/falsy returns [] (retention Off)', () => {
 });
 
 // ---- selectPrunableIds ----
+// New options-object contract: selectPrunableIds(oldMetadata, survivingIds,
+// { missingRoots, unreadablePaths, folders, pruneMissing }).
 
 test('selectPrunableIds: MOUNT-LOSS GUARD - an entry under a missing root is retained regardless of the toggle', () => {
   const oldMetadata = {
@@ -98,12 +101,12 @@ test('selectPrunableIds: MOUNT-LOSS GUARD - an entry under a missing root is ret
   // pruneMissing true would normally prune a gone file, but /mnt/movies is
   // entirely missing (unmounted) at scan time -> guard must retain it anyway.
   assert.deepEqual(
-    selectPrunableIds(oldMetadata, [], ['/mnt/movies'], true),
+    selectPrunableIds(oldMetadata, [], { missingRoots: ['/mnt/movies'], pruneMissing: true }),
     []
   );
   // Also holds with pruneMissing false (redundant but confirms guard fires first).
   assert.deepEqual(
-    selectPrunableIds(oldMetadata, [], ['/mnt/movies'], false),
+    selectPrunableIds(oldMetadata, [], { missingRoots: ['/mnt/movies'], pruneMissing: false }),
     []
   );
 });
@@ -113,7 +116,7 @@ test('selectPrunableIds: pruneMissing true + root present + file gone -> id IS p
     id1: { rootFolder: '/mnt/movies' },
   };
   assert.deepEqual(
-    selectPrunableIds(oldMetadata, [], [], true),
+    selectPrunableIds(oldMetadata, [], { missingRoots: [], pruneMissing: true }),
     ['id1']
   );
 });
@@ -123,7 +126,7 @@ test('selectPrunableIds: pruneMissing false + root present + file gone -> id NOT
     id1: { rootFolder: '/mnt/movies' },
   };
   assert.deepEqual(
-    selectPrunableIds(oldMetadata, [], [], false),
+    selectPrunableIds(oldMetadata, [], { missingRoots: [], pruneMissing: false }),
     []
   );
 });
@@ -134,20 +137,136 @@ test('selectPrunableIds: a surviving id is never pruned', () => {
     id2: { rootFolder: '/mnt/movies' },
   };
   assert.deepEqual(
-    selectPrunableIds(oldMetadata, ['id1'], [], true),
+    selectPrunableIds(oldMetadata, ['id1'], { missingRoots: [], pruneMissing: true }),
     ['id2']
   );
 });
 
-test('selectPrunableIds: accepts survivingIds/missingRoots as Sets as well as arrays', () => {
+test('selectPrunableIds: accepts survivingIds/missingRoots/unreadablePaths as Sets as well as arrays', () => {
   const oldMetadata = {
     id1: { rootFolder: '/mnt/a' },
     id2: { rootFolder: '/mnt/b' },
   };
   assert.deepEqual(
-    selectPrunableIds(oldMetadata, new Set(['id1']), new Set(['/mnt/b']), true),
+    selectPrunableIds(oldMetadata, new Set(['id1']), {
+      missingRoots: new Set(['/mnt/b']),
+      unreadablePaths: new Set(),
+      pruneMissing: true,
+    }),
     []
   );
+});
+
+test('selectPrunableIds: (i) nested-mount drop - file under a PRESENT top root but its subdir is unreadable -> retained', () => {
+  const oldMetadata = {
+    id1: { rootFolder: '/mnt/movies', filePath: '/mnt/movies/nested/sub/gone.mp4' },
+  };
+  assert.deepEqual(
+    selectPrunableIds(oldMetadata, [], {
+      missingRoots: [], // /mnt/movies itself is present
+      unreadablePaths: ['/mnt/movies/nested/sub'], // but this subdir could not be enumerated
+      pruneMissing: true,
+    }),
+    [],
+    'a file under an unreadable subtree must never be mistaken for a deletion, even under a present root'
+  );
+});
+
+test('selectPrunableIds: (ii) unreadable-prefix retains at any depth, not just an exact-path match', () => {
+  const oldMetadata = {
+    id1: { rootFolder: '/mnt/movies', filePath: '/mnt/movies/a/b/c/d.mp4' },
+    id2: { rootFolder: '/mnt/movies', filePath: '/mnt/movies/other/e.mp4' },
+  };
+  assert.deepEqual(
+    selectPrunableIds(oldMetadata, [], {
+      missingRoots: [],
+      unreadablePaths: ['/mnt/movies/a'],
+      pruneMissing: true,
+    }),
+    ['id2'],
+    'only the entry under the unreadable prefix is retained; an unrelated present-root file still prunes'
+  );
+});
+
+test('selectPrunableIds: (iii) legacy falsy-rootFolder entry under a missing/unresolvable root -> retained', () => {
+  const oldMetadata = {
+    id1: { rootFolder: null, filePath: '/mnt/legacy/old.mp4' }, // pre-backfill entry
+  };
+  assert.deepEqual(
+    selectPrunableIds(oldMetadata, [], {
+      missingRoots: ['/mnt/legacy'],
+      folders: ['/mnt/legacy'],
+      pruneMissing: true,
+    }),
+    [],
+    'derived root (/mnt/legacy) is missing -> retained despite the falsy stored rootFolder'
+  );
+});
+
+test('selectPrunableIds: (iii companion) legacy falsy-rootFolder entry under a PRESENT, attributable root + file gone -> pruned', () => {
+  const oldMetadata = {
+    id1: { rootFolder: null, filePath: '/mnt/present/old.mp4' },
+  };
+  assert.deepEqual(
+    selectPrunableIds(oldMetadata, [], {
+      missingRoots: [],
+      folders: ['/mnt/present'],
+      pruneMissing: true,
+    }),
+    ['id1'],
+    'once a root can be attributed and is present, a legacy entry prunes like any other -- no over-retention'
+  );
+});
+
+test('selectPrunableIds: an entry whose root cannot be attributed to any configured folder is retained (conservative)', () => {
+  const oldMetadata = {
+    id1: { rootFolder: null, filePath: '/somewhere/unrelated/old.mp4' },
+  };
+  assert.deepEqual(
+    selectPrunableIds(oldMetadata, [], {
+      missingRoots: [],
+      folders: ['/mnt/present'], // does not match /somewhere/unrelated
+      pruneMissing: true,
+    }),
+    []
+  );
+});
+
+// ---- mergeScannedMetadata ----
+
+test('mergeScannedMetadata: fresh lastServedAt newer than scanned -> adopts fresh (never regresses on-disk value)', () => {
+  const freshMetadata = { id1: { lastServedAt: 2000 } };
+  const newMetadata = { id1: { id: 'id1', lastServedAt: 1000 } };
+  const merged = mergeScannedMetadata(freshMetadata, newMetadata);
+  assert.equal(merged.id1.lastServedAt, 2000);
+});
+
+test('mergeScannedMetadata: scanned lastServedAt newer than fresh -> keeps scanned value', () => {
+  const freshMetadata = { id1: { lastServedAt: 1000 } };
+  const newMetadata = { id1: { id: 'id1', lastServedAt: 2000 } };
+  const merged = mergeScannedMetadata(freshMetadata, newMetadata);
+  assert.equal(merged.id1.lastServedAt, 2000);
+});
+
+test('mergeScannedMetadata: a new scanned entry with no prior fresh entry is unchanged', () => {
+  const freshMetadata = {};
+  const newMetadata = { id1: { id: 'id1', lastServedAt: 500 } };
+  const merged = mergeScannedMetadata(freshMetadata, newMetadata);
+  assert.deepEqual(merged, { id1: { id: 'id1', lastServedAt: 500 } });
+});
+
+test('mergeScannedMetadata: a fresh entry absent from newMetadata (pruned this scan) is omitted', () => {
+  const freshMetadata = { id1: { lastServedAt: 1000 }, id2: { lastServedAt: 2000 } };
+  const newMetadata = { id2: { id: 'id2', lastServedAt: 2000 } }; // id1 was pruned
+  const merged = mergeScannedMetadata(freshMetadata, newMetadata);
+  assert.deepEqual(Object.keys(merged), ['id2']);
+});
+
+test('mergeScannedMetadata: fresh entry has no lastServedAt -> scanned value (even absent) is left as-is', () => {
+  const freshMetadata = { id1: {} };
+  const newMetadata = { id1: { id: 'id1' } };
+  const merged = mergeScannedMetadata(freshMetadata, newMetadata);
+  assert.equal(merged.id1.lastServedAt, undefined);
 });
 
 // ---- transcodeCacheSize ----

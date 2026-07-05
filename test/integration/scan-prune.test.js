@@ -163,6 +163,79 @@ test('(c) pruneMissing=false + present root + individually-gone file: retained a
   assert.ok(fs.existsSync(path.join(TRANSCODE_DIR, `${id}.mp4`)), 'transcode sidecar should NOT be deleted when retained');
 });
 
+// ---- (e) B: mount-loss guard depth -- unreadable subtree / nested-mount drop ----
+// Simulate a nested/child mount dropping (or any transiently-unreadable
+// subdirectory, e.g. EACCES/EIO/ESTALE) by chmod-ing a subdirectory
+// unreadable. This is realistic for BOTH the "nested mount under a present
+// root drops" case and the "subdirectory read error" case -- both surface as
+// a readdir failure on that subtree, which scanDirRecursive now records into
+// `unreadablePaths` and selectPrunableIds retains unconditionally. Skipped
+// when running as root (root bypasses chmod 000 restrictions).
+const runningAsRoot = typeof process.getuid === 'function' && process.getuid() === 0;
+
+test('(e) nested-mount / subdir read-error: an entry under an UNREADABLE subdirectory is retained, not pruned', { skip: runningAsRoot }, async () => {
+  const presentRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-present-'));
+  const subDir = path.join(presentRoot, 'nested-mount');
+  fs.mkdirSync(subDir);
+  const filePath = path.join(subDir, 'movie.mp4');
+  fs.writeFileSync(filePath, 'video-bytes');
+  const id = getMediaId(filePath);
+
+  writeDb({
+    folders: [presentRoot],
+    folderSettings: {},
+    progress: { [id]: { position: 5 } },
+    metadata: {
+      [id]: {
+        id, name: 'movie.mp4', title: 'movie', filePath, folderName: 'nested-mount',
+        size: fs.statSync(filePath).size, ext: '.mp4', type: 'video', addedAt: Date.now(),
+        duration: 10, hasThumbnail: false, artist: '', rootFolder: presentRoot,
+      },
+    },
+    settings: baseSettings({ pruneMissing: true }),
+  });
+
+  // Drop the nested mount / make the subtree unreadable (simulates a dropped
+  // nested mount or a transient EACCES/EIO on that subtree).
+  fs.chmodSync(subDir, 0o000);
+  try {
+    await scanDirectories();
+  } finally {
+    fs.chmodSync(subDir, 0o755); // restore so cleanup/rmSync works
+  }
+
+  const db = readDb();
+  assert.ok(db.metadata[id], 'entry under an unreadable subtree must be retained, not mistaken for a bulk deletion');
+  assert.ok(db.progress[id], 'watch progress for a retained (unreadable-subtree) entry must not be touched');
+});
+
+// ---- (f) B: legacy rootFolder-less entry under a missing root -----------
+test('(f) legacy entry with no rootFolder under a missing/unresolvable root is retained', async () => {
+  const missingRoot = path.join(os.tmpdir(), `filetube-missing-legacy-${Date.now()}`);
+  const filePath = path.join(missingRoot, 'legacy.mp4');
+  const id = getMediaId(filePath);
+
+  writeDb({
+    folders: [missingRoot],
+    folderSettings: {},
+    progress: {},
+    metadata: {
+      [id]: {
+        id, name: 'legacy.mp4', title: 'legacy', filePath, folderName: 'legacy-lib',
+        size: 100, ext: '.mp4', type: 'video', addedAt: Date.now(),
+        duration: 10, hasThumbnail: false, artist: '',
+        // No rootFolder -- simulates a pre-backfill legacy entry.
+      },
+    },
+    settings: baseSettings({ pruneMissing: true }),
+  });
+
+  await scanDirectories();
+
+  const db = readDb();
+  assert.ok(db.metadata[id], 'a legacy rootFolder-less entry whose derived root is missing must be retained');
+});
+
 // ---- (d) zero-regression: a normal, all-present scan behaves as before ----
 
 test('(d) all roots present and all files present: no spurious retention or pruning', async () => {

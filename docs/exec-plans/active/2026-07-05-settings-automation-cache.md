@@ -823,6 +823,452 @@ before reporting done) → build-specialist verifies → next task. The two-revi
   two-reviewer QA gate (`quality-assurance` agent + a separate `/code-review`
   pass) plus Dean's on-device manual pass.
 
+## Remediation design (review round 1)
+
+The two-reviewer QA gate returned **CHANGES REQUESTED**; both reviewers
+independently confirmed the whole-db clobber race (A). This section is a scoped
+remediation design for the confirmed findings A/B/C/D/E + cleanup. It does **not**
+re-open D1-D4 or the original `## Design`. All line numbers below were re-verified
+against the current `server.js` on `feat/settings-automation`. Everything here must
+keep the full suite green and `test/unit/transcode-cache.test.js` passing.
+
+### Shared correctness contract (settles A ↔ E coherence)
+
+**On-disk `db.metadata[id].lastServedAt` is the single source of truth** for the
+age-retention signal. `recordServed` (E) is the only writer; it persists a fresh
+timestamp. The scan-save merge (A) re-reads the fresh on-disk value and never
+regresses it. Every in-memory structure (`persistedServedAt` in E) is *only* a
+write-throttle optimization and is never consulted as the value — so A and E cannot
+disagree regardless of which fix lands first.
+
+### A — Whole-DB clobber race (MUST-FIX)
+
+**Root cause.** `runScanDirectories` (`server.js:622`) snapshots the whole db at
+`const db = loadDatabase()` (`623`), holds it across many `await
+extractMetadataAndThumbnail` calls (`672`), then at `741-745` does
+`db.metadata = newMetadata; saveDatabase(db)` — writing the **entire stale snapshot**
+back. Any `POST /api/settings` (`db.settings`), `POST /api/config`
+(`db.folders`/`db.folderSettings`), watch-progress write (`db.progress`), or
+`recordServed` (`lastServedAt`) that landed on disk *during* the scan is reverted.
+
+**Fix — re-read-merge-on-save.** Replace the final save block so the scan writes
+back only the data it owns (`metadata`) onto a **freshly re-read** db, preserving
+everything written concurrently:
+
+```js
+if (dbChanged) {
+  const fresh = loadDatabase();                 // pick up concurrent settings/folders/progress/lastServedAt
+  fresh.metadata = mergeScannedMetadata(fresh.metadata, newMetadata);
+  for (const id of prunable) delete fresh.progress[id];   // apply prune to the FRESH progress map
+  saveDatabase(fresh);
+  console.log('Database synced successfully.');
+}
+```
+
+`fresh.settings` / `fresh.folders` / `fresh.folderSettings` are taken from the
+re-read (never touched by the scan), so concurrent writes survive. The prune's
+`delete db.progress[oldId]` at `727-729` **moves out** of the sidecar-cleanup loop
+and becomes the `delete fresh.progress[id]` above — the thumbnail/transcode `unlink`
+FS cleanup (`708-725`) stays where it is (idempotent disk ops, snapshot-independent).
+
+**`lastServedAt` reconciliation (new pure exported helper).** `newMetadata` was
+built from the stale snapshot, so a surviving/reused entry (`648`) or a
+mount-loss/toggle-off retained entry (`701`) carries the *stale* `lastServedAt`. A
+concurrent `recordServed` during the scan wrote a *newer* one to the on-disk entry.
+Reconcile per surviving entry by taking the newer of the two:
+
+```js
+// Pure: newMetadata is authoritative for membership and all scan-derived fields,
+// but each entry adopts the NEWER lastServedAt of (stale scan value, fresh on-disk
+// value) so a recordServed that ran mid-scan is never reverted. Entries present in
+// freshMetadata but absent from newMetadata were pruned this scan -> intentionally
+// dropped. Returns newMetadata (mutated in place).
+function mergeScannedMetadata(freshMetadata, newMetadata) {
+  for (const [id, entry] of Object.entries(newMetadata)) {
+    const prior = freshMetadata[id];
+    if (prior && typeof prior.lastServedAt === 'number' &&
+        (typeof entry.lastServedAt !== 'number' || prior.lastServedAt > entry.lastServedAt)) {
+      entry.lastServedAt = prior.lastServedAt;
+    }
+  }
+  return newMetadata;
+}
+```
+
+Exported via `module.exports`. This is the exact seam that keeps A ↔ E coherent:
+the on-disk value wins whenever it is newer, and `recordServed` only ever advances
+it, so `max` semantics never lose a serve signal in either direction.
+
+**Regression tests** (new `test/integration/scan-clobber.test.js`, plus a
+deterministic unit test):
+
+- **Unit** `mergeScannedMetadata`: (a) fresh newer than scan → adopts fresh;
+  (b) scan newer than fresh → keeps scan's; (c) new entry with no prior → unchanged;
+  (d) prior id absent from newMetadata (pruned) → dropped. FS-free, deterministic.
+- **Integration interleave — settings:** seed a folder containing one new media
+  file (so the scan hits its `await` yield). Fire `scanDirectories()` (do not await)
+  and, in the same tick, `POST /api/settings {scanIntervalMinutes: 720}`. Await
+  both. Assert on-disk `db.settings.scanIntervalMinutes === 720` **and** the new
+  file is indexed. Fails on today's clobber; passes after the re-read-merge.
+- **Integration interleave — lastServedAt:** seed a surviving metadata entry; during
+  the in-flight scan call `recordServed(id)` (persists a fresh ts). After the scan,
+  assert the entry's `lastServedAt` is the concurrent value, not the pre-scan value.
+
+### B — Mount-loss guard too shallow (MUST-FIX)
+
+**Root cause.** The guard only retains entries whose `rootFolder` is a *top-level*
+configured root in `missingRoots`. Three depth/attribution gaps remain:
+
+- **(i) nested/child mount under a present root** — files' `rootFolder` is the
+  present top root, so `selectPrunableIds` never fires the guard and prunes them.
+- **(ii) swallowed subdirectory read error** — `scanDirRecursive` (`770`) catches
+  a `readdirSync` failure (EACCES/EIO/ESTALE), logs, and `return`s (`774-777`), so a
+  transiently-unreadable subtree looks like mass deletion and its entries prune.
+- **(iii) falsy `rootFolder`** — legacy pre-backfill entries fall straight through
+  `root && missing.has(root)` (`295`) to the toggle and prune even under a missing
+  root.
+
+**Fix — "could-not-enumerate" as a first-class, depth-independent signal.**
+`scanDirRecursive` surfaces an `unreadablePaths` **Set** (every directory whose
+`readdirSync`/`statSync` threw — the enumeration was incomplete there), and the
+prune decision retains any entry whose `filePath` is under *any* un-enumerable path,
+at any depth. This is the chosen mechanism over per-entry `existsSync` because
+`existsSync` cannot distinguish "file deleted" from "subtree unreadable" (both read
+as absent), whereas the enumeration-error set positively marks the incomplete
+subtree. Realistic mount failures (NFS/CIFS/USB drops, stale handles) **error** on
+readdir/stat and are captured; a cleanly-unmounted local mount that reverts to a
+pristine empty directory throws nothing and is FS-indistinguishable from a bulk
+delete — documented as a residual (see Risks) and tech-debt-tracked, not
+heuristically guessed.
+
+`scanDirRecursive` change — thread an `unreadable` Set (like `results`) and record
+the failing dir on the existing catch:
+
+```js
+function scanDirRecursive(rootFolder, dirPath, results, unreadable) {
+  let files;
+  try {
+    files = fs.readdirSync(dirPath, { withFileTypes: true });
+  } catch (err) {
+    console.error(`Error reading directory ${dirPath}:`, err);
+    unreadable.add(dirPath);          // first-class "could not enumerate this subtree" signal
+    return;
+  }
+  // ...unchanged; a child dir that vanished mid-scan (ENOENT) throws on its own
+  // recursive readdirSync and is added there, so nested depth is covered.
+}
+```
+
+`runScanDirectories` builds the set and passes it (plus the current folders, for
+legacy attribution) into the new `selectPrunableIds` contract:
+
+```js
+const unreadablePaths = new Set();
+for (const folder of currentFolders) {
+  if (!fs.existsSync(folder)) { missingRoots.add(folder); continue; }
+  scanDirRecursive(folder, folder, scannedFiles, unreadablePaths);
+}
+// ...
+const prunable = new Set(selectPrunableIds(db.metadata, survivingIds, {
+  missingRoots, unreadablePaths, folders: currentFolders,
+  pruneMissing: db.settings.pruneMissing,
+}));
+```
+
+**New `selectPrunableIds` contract (signature change — authorized; its unit tests
+update with it):**
+
+```js
+// selectPrunableIds(oldMetadata, survivingIds, opts)
+//   opts = { missingRoots, unreadablePaths, folders, pruneMissing }
+// Per old id, in order:
+//   1. survives on disk            -> keep
+//   2. root (backfilled, or derived via matchRootFolder for legacy entries)
+//      is in missingRoots          -> keep   (mount-loss guard, depth 0)
+//   3. root cannot be attributed to any configured folder (null) -> keep (conservative, (iii))
+//   4. filePath is under any unreadablePaths prefix -> keep (incomplete enumeration, (i)+(ii), any depth)
+//   5. pruneMissing === false      -> keep
+//   6. otherwise                   -> prune  (present root + file individually gone + prune ON)
+function selectPrunableIds(oldMetadata, survivingIds, opts) {
+  const { missingRoots, unreadablePaths, folders, pruneMissing } = opts;
+  const surviving = survivingIds instanceof Set ? survivingIds : new Set(survivingIds);
+  const missing = missingRoots instanceof Set ? missingRoots : new Set(missingRoots);
+  const incomplete = unreadablePaths instanceof Set ? unreadablePaths : new Set(unreadablePaths);
+  const under = (p, prefix) =>
+    p === prefix || p.startsWith(prefix + '/') || p.startsWith(prefix + '\\');
+  const prune = [];
+  for (const [id, entry] of Object.entries(oldMetadata)) {
+    if (surviving.has(id)) continue;
+    const filePath = entry && entry.filePath;
+    let root = entry && entry.rootFolder;
+    if (!root && filePath) root = matchRootFolder(filePath, folders || []); // (iii) derive for legacy
+    if (root && missing.has(root)) continue;                                // (2) mount-loss guard
+    if (!root) continue;                                                    // (3) unattributable -> retain
+    if (filePath && [...incomplete].some(pre => under(filePath, pre))) continue; // (4) any-depth guard
+    if (!pruneMissing) continue;                                            // (5) toggle off
+    prune.push(id);
+  }
+  return prune;
+}
+```
+
+`matchRootFolder` is already in-module and pure, so legacy derivation adds no new
+dependency. The guard checks (2)/(3)/(4) all fire **before** the `pruneMissing`
+check, so they hold regardless of the toggle.
+
+**Regression tests** (unit in `test/unit/settings-helpers.test.js`, updated to the
+new options-object contract; integration in `test/integration/scan-prune.test.js`):
+
+- **(i) nested-mount drop (unit):** `oldMetadata` entry with `rootFolder` = a
+  *present* top root, `filePath` under a nested dir; `unreadablePaths` contains that
+  nested dir → entry retained even with `pruneMissing: true`.
+- **(ii) subdirectory read error (integration):** index a file under `root/sub`,
+  then make `root/sub` unreadable (`chmod 000`, skip if the test runs as root) →
+  rescan → entry retained; restore perms → next scan prunes only if the file is
+  truly gone. Falls back to the unit case above when perms can't be dropped on CI.
+- **(iii) legacy `rootFolder`-less entry under a missing root (unit):** entry with
+  no `rootFolder`, `filePath` under `folders[0]`, `missingRoots` = `{folders[0]}` →
+  retained (derived root is missing). Companion: same entry but root **present** and
+  file gone with `pruneMissing: true` → pruned (proves no over-retention).
+- Update the existing 5 `selectPrunableIds` cases to pass the options object.
+
+### C — Overlap guard drops the /api/config background rescan (MUST-FIX)
+
+**Root cause.** `scanDirectories()` early-returns when `scanState.scanning`
+(`611`). The fire-and-forget `scanDirectories().catch(...)` in `POST /api/config`
+(`865`) is therefore a silent no-op during any in-flight scan → newly-added folders
+are never indexed (and with the interval Off, never recovered).
+
+**Fix — bounded, coalesced "rescan requested" follow-up.** Add
+`rescanRequested` to `scanState`; when a trigger arrives while scanning, record the
+request instead of dropping it, and run exactly one follow-up after the current scan
+drains. Coalesced (many requests → one follow-up), demand-bounded (a follow-up that
+itself gets new requests loops once more), never unbounded-queued:
+
+```js
+let scanState = { scanning: false, lastScan: null, rescanRequested: false };
+
+async function scanDirectories() {
+  if (scanState.scanning) { scanState.rescanRequested = true; return; }
+  scanState.scanning = true;
+  try {
+    do {
+      scanState.rescanRequested = false;
+      await runScanDirectories();
+    } while (scanState.rescanRequested);   // one coalesced follow-up per demand cycle
+  } finally {
+    scanState.scanning = false;
+    scanState.lastScan = new Date().toISOString();
+  }
+}
+```
+
+`POST /api/scan` keeps its 409 UX but no longer drops the user's intent — it flags
+the follow-up before returning:
+
+```js
+if (scanState.scanning) {
+  scanState.rescanRequested = true;                                   // manual Scan-now benefits too
+  return res.status(409).json({ error: 'scan already in progress' });
+}
+```
+
+The timer path (`armScanTimer`'s `setInterval`) also routes through
+`scanDirectories()`, so it benefits identically. The overlap guard the fix was added
+for is preserved: only one `runScanDirectories` ever executes at a time; the
+`do/while` runs strictly sequentially. `/api/scan-status` shape is unchanged
+(`rescanRequested` is internal, not serialized).
+
+**Regression test** (integration, `test/integration/scan-followup.test.js` or added
+to `scan-api.test.js`): seed folder A with a file and begin `scanDirectories()`
+(in-flight via its `await`); during the scan, `POST /api/config` adding folder B
+(with a file). After scans settle (poll until `scanState.scanning === false`),
+assert folder B's file is indexed — proving the coalesced follow-up ran. Plus a
+focused check: with `scanState.scanning = true`, a `scanDirectories()` call sets
+`rescanRequested` and does not re-enter `runScanDirectories`.
+
+### D — armScanTimer re-arm resets the countdown (SHOULD-FIX)
+
+**Root cause.** `POST /api/settings` calls `armScanTimer()` unconditionally
+(`963`); `clearInterval` + `setInterval` resets the periodic countdown, so saving
+any setting more often than the interval defers the scan indefinitely. The
+`959-962` "safe no-op-equivalent" comment is wrong.
+
+**Fix — re-arm only when the interval actually changed:**
+
+```js
+const db = loadDatabase();
+const prevInterval = db.settings.scanIntervalMinutes;
+db.settings = { ...db.settings, ...body };
+saveDatabase(db);
+// Re-arm ONLY when scanIntervalMinutes actually changed. Re-arming on every save
+// would clear+recreate the setInterval and RESET its countdown, so saving any
+// unrelated setting (or the same interval) more frequently than the interval
+// itself would defer the periodic scan forever.
+if (db.settings.scanIntervalMinutes !== prevInterval) armScanTimer();
+res.json(settingsResponse(db.settings));
+```
+
+**Regression test** (integration, `scan-api.test.js`/`settings-cache-api.test.js`):
+add a small `currentScanTimer()` accessor to `module.exports` (returns the module's
+`scanTimer`; harmless, test-observability only, since `scanTimer` is reassigned and
+not otherwise reachable). Arm at 30m; `POST /api/settings {pruneMissing:false}`
+(non-interval) → assert the same timer object / unchanged `_idleStart` (not
+re-armed). `POST {scanIntervalMinutes:360}` → assert a new timer with the new
+`_idleTimeout` (re-armed). The existing "re-arm on interval change" case stays.
+
+### E — recordServed full-DB read on the streaming hot path (SHOULD-FIX)
+
+**Root cause.** `recordServed` (`378`) calls `loadDatabase()` (`380`) — a
+synchronous full `db.json` read+parse — on **every** `/video/:id` Range request
+(`1281`). The `RECENT_STREAM_MS` throttle (`383`) only skips the *write*, not the
+read, so a playback that fires dozens of Range requests re-reads the whole db each
+time.
+
+**Fix — in-memory last-persisted map short-circuits the read:**
+
+```js
+const persistedServedAt = new Map(); // id -> last-PERSISTED lastServedAt (epoch ms)
+
+function recordServed(id) {
+  const now = Date.now();
+  const last = persistedServedAt.get(id);
+  if (last !== undefined && (now - last) < RECENT_STREAM_MS) return; // hot path: no disk read
+  const db = loadDatabase();                                          // only when we may persist
+  const entry = db.metadata[id];
+  if (!entry) return;
+  if (typeof entry.lastServedAt === 'number' && (now - entry.lastServedAt) < RECENT_STREAM_MS) {
+    persistedServedAt.set(id, entry.lastServedAt); // sync map to on-disk truth (e.g. first serve after boot)
+    return;
+  }
+  entry.lastServedAt = now;
+  saveDatabase(db);
+  persistedServedAt.set(id, now);
+}
+```
+
+A dedicated id-keyed map is used rather than reusing `recentlyServed` (which is
+path-keyed, updated on *every* serve unthrottled, and pruned by eviction) — its
+semantics are "recently served," not "last **persisted** serve," which is what the
+throttle needs. **Startup behavior:** the map is empty on boot, so the first serve
+per item after boot does exactly one `loadDatabase` (and persists only if the
+on-disk ts is stale) — acceptable; no served signal is lost worse than today.
+**Coherence with A:** on-disk `lastServedAt` remains the source of truth; the map
+only avoids reads; A's `max`-merge never regresses it. On-disk `lastServedAt` is
+never lost across a restart any worse than today (the throttle still persists at
+most once per window).
+
+**Regression test** (integration, `age-sweep.test.js`): call `recordServed(id)`
+once (persists). Delete `db.json`. Call `recordServed(id)` again within
+`RECENT_STREAM_MS` → assert `db.json` is **still absent** (the map short-circuited
+before any `loadDatabase`, proving no hot-path read). Then simulate window elapse
+(clear the map entry or advance) → `recordServed(id)` re-reads and recreates
+`db.json`. Deterministic, proves the read is skipped on the throttled path. Keep the
+existing "burst yields ≤1 write/window/item" assertion.
+
+### Cleanup
+
+1. **Shared "actively-served protected paths" helper — un-freeze
+   `evictTranscodeCache` (explicit decision).** The protected-set build is
+   triplicated: `evictTranscodeCache` (`179-184`, **with** stale-entry pruning
+   `recentlyServed.delete(p)`), `sweepAgedTranscodes` (`269-272`, no pruning),
+   `/api/cache/clear` (`988-991`, no pruning). Introduce:
+
+   ```js
+   // Paths served within RECENT_STREAM_MS (the live-watch protection set), pruning
+   // stale entries from recentlyServed as it goes. Exact behavior of the current
+   // evictTranscodeCache build.
+   function activeProtectedPaths(now) {
+     const set = new Set();
+     for (const [p, t] of recentlyServed) {
+       if (now - t <= RECENT_STREAM_MS) set.add(p);
+       else recentlyServed.delete(p);
+     }
+     return set;
+   }
+   ```
+
+   **Decision: touch (un-freeze) `evictTranscodeCache` to call this helper.** It is
+   safe because the helper reproduces `evictTranscodeCache`'s exact behavior
+   (build + prune stale), and `test/unit/transcode-cache.test.js`'s
+   `evictTranscodeCache` case (`116-135`) never populates `recentlyServed` and never
+   asserts on its pruning — so the frozen test stays **byte-identical and green**
+   with no edit. `sweepAgedTranscodes` and `/api/cache/clear` adopt the helper and
+   thereby **gain** the previously-omitted stale-entry pruning (a strict
+   improvement). `evictTranscodeCache` still `add`s `justProducedPath` on top of the
+   returned set.
+
+2. **`.tmp.mp4` / cache-file predicate (shared filter).** The
+   `name.endsWith('.mp4') && !name.endsWith('.tmp.mp4')` test is copy-pasted in
+   `evictTranscodeCache` (`170`), `sweepAgedTranscodes` (`258`), `transcodeCacheSize`
+   (`310`), and `/api/cache/clear` (`995`). Extract
+   `isCompletedTranscode(name)` → `name.endsWith('.mp4') && !name.endsWith('.tmp.mp4')`
+   and use it at all four sites. Pure, trivially unit-testable.
+
+3. **Single source for the scan-interval value lists.**
+   `SCAN_INTERVAL_MINUTE_OPTIONS` (`197`, non-zero `{30,60,360,720,1440}`) and
+   `SCAN_INTERVAL_VALID_VALUES` (`903`, adds `0`) duplicate the non-zero set. Derive
+   the second: `const SCAN_INTERVAL_VALID_VALUES = new Set([0, ...SCAN_INTERVAL_MINUTE_OPTIONS]);`
+   Move the declaration below `SCAN_INTERVAL_MINUTE_OPTIONS`. No behavior change.
+
+4. **`gbToBytes` sub-1-byte clamp (`public/js/common.js:225`).** A tiny positive GB
+   input rounds to `0` bytes → the UI POSTs `cacheMaxBytes: 0` → server 400 with a
+   misleading message. Clamp:
+
+   ```js
+   const bytes = Math.round(n * 1024 * 1024 * 1024);
+   if (bytes < 1) return null; // sub-1-byte positive -> "no override", not an invalid 0
+   return bytes;
+   ```
+
+   Add a `gb-bytes.test.js` case: a tiny positive (`1e-12`) → `null`.
+
+### Non-blocking → tech-debt-tracked
+
+`sweepAgedTranscodes` and `evictTranscodeCache` each do an independent
+`readdir`+`statSync` back-to-back at both call sites (a double directory pass per
+produce). Not folded into this fix round to keep it tight and low-risk — recorded in
+`docs/exec-plans/tech-debt-tracker.md` as an Active item.
+
+### Architecture invariant recorded
+
+`docs/ARCHITECTURE.md` gains one sentence on the **re-read-merge-on-save** rule: a
+long-running scan must never write back a whole-db snapshot — it re-reads the fresh
+db at save time and writes back only scan-owned `metadata`, preserving concurrently
+written `settings`/`folders`/`folderSettings`/`progress` and never regressing
+`lastServedAt`.
+
+### Recommended fix-round task grouping
+
+Two SDE fix tasks, each independently testable and build-verifiable. The A ↔ E
+`lastServedAt` coherence is guaranteed by the settled "on-disk value is source of
+truth" contract above, so the two tasks are order-independent; recommend **FR1
+first** (headline correctness) then **FR2**.
+
+- **FR1 — Scan-lifecycle correctness cluster (A + B + C + D).** Cohesive: every
+  change lives in `scanDirectories` / `runScanDirectories` / `scanDirRecursive` /
+  `armScanTimer` / `selectPrunableIds`, and A's save block and B's prune inputs edit
+  the *same* tail of `runScanDirectories` (splitting them would create merge
+  friction). Includes the new `mergeScannedMetadata` helper (A), the
+  `selectPrunableIds` options-object contract change **with its unit-test update**
+  (B), the `rescanRequested` coalescing (C), and the conditional timer re-arm +
+  `currentScanTimer()` accessor (D). Tests: `scan-clobber.test.js` (new),
+  `scan-prune.test.js` (extended, contract update), `scan-followup`/`scan-api`
+  (extended), `settings-helpers.test.js` (contract + `mergeScannedMetadata`).
+  Ordering inside FR1: B's `selectPrunableIds` signature change and its test update
+  land together (never a red intermediate).
+- **FR2 — Hot path + cleanup (E + cleanup 1-4).** Independent of FR1 (different
+  functions): `recordServed` in-memory throttle (E), `activeProtectedPaths` helper
+  with `evictTranscodeCache` un-frozen (cleanup 1), `isCompletedTranscode` predicate
+  (cleanup 2), `SCAN_INTERVAL_VALID_VALUES` derivation (cleanup 3), `gbToBytes`
+  clamp (cleanup 4). Tests: `age-sweep.test.js` (E's no-read proof),
+  `gb-bytes.test.js` (clamp), and `transcode-cache.test.js` must stay green
+  **unmodified** (proves the un-freeze is behavior-preserving).
+
+Re-review after implementation is the focused re-check of the changed hunks (per the
+`review_round_1.re_review` plan); the full suite and `transcode-cache.test.js` must
+stay green.
+
 ## Decision log
 
 - 2026-07-05 — D1: Auto-scan default 30 minutes; options Off/30m/1h/6h/12h/

@@ -1,115 +1,130 @@
-# Principal Engineer — Design: Settings: Automation & Cache Housekeeping (v1.8.0)
+# Principal Engineer — Remediation Design (review round 1): Settings: Automation & Cache Housekeeping
 
-You are the principal-engineer agent for FileTube. Produce the **technical design**
-for a feature whose requirements + acceptance criteria are already written and
-approved. You have no shared context with the EM — read the files below.
+You are the principal-engineer agent for FileTube. The feature is fully implemented
+(T1-T8, 168 tests green) but the **two-reviewer QA gate returned CHANGES REQUESTED** —
+both reviewers independently confirmed a whole-db clobber race. Produce a **scoped
+remediation design** for the confirmed findings before the SDE implements. This is a
+targeted design pass, NOT a re-design of the feature. Do NOT write application code.
 
 ## Read first
-- `docs/exec-plans/active/2026-07-05-settings-automation-cache.md` — the exec plan.
-  Requirements, the six items with D1-D4 baked in, the two documented behavior
-  changes, and the full acceptance-criteria list ([UNIT]/[MANUAL]/[PROCESS]) are
-  already there. **Write your work into its `## Design` section** (currently a
-  placeholder near the end). Do NOT change Scope/AC/Decision-log content above it.
-- `docs/ARCHITECTURE.md`, `docs/CONTRIBUTING.md`, `docs/RELIABILITY.md` — architecture,
-  coding standards, reliability/testing standards. Consult RELIABILITY.md for the
-  performance/invariant expectations before finalizing.
-- `server.js` — the whole backend (single monolith). Key seams are cited in the exec
-  plan and again below.
-- `public/setup.html` — the settings page you'll extend (Appearance box at 115-124 is
-  the structural template for the new "Automation & Storage" box).
+- `.state/feature-state.json` → `review_round_1` — the full consolidated triage (verdict,
+  MUST-FIX A/B/C, SHOULD-FIX D/E, cleanup, non-blocking, re-review plan). This is the
+  authoritative finding list.
+- `docs/exec-plans/active/2026-07-05-settings-automation-cache.md` — the exec plan (your
+  original `## Design` + the AC accounting). **Write your remediation into a NEW
+  `## Remediation design (review round 1)` section** near the end; don't rewrite the
+  original design/AC above it.
+- `docs/CONTRIBUTING.md` / `docs/RELIABILITY.md` — standards; the "never let one bad
+  file/dir take down a scan — reconcile per-item and continue" invariant is directly
+  relevant to Root Cause B.
+- `server.js` — the exact CURRENT seams (verified line numbers):
+  - `recordServed(id)` at **378** (full-DB read on the hot path — finding E).
+  - `scanDirectories()` overlap guard `if (scanState.scanning) return;` at **611-612**.
+  - `runScanDirectories`: the `db.metadata = newMetadata; saveDatabase(db)` clobber at
+    **742** (Root Cause A), the mount-loss comment at **692**.
+  - `scanDirRecursive` at **770**, its swallowed read error at **775** (Root Cause B-ii).
+  - `POST /api/config` background `scanDirectories().catch(...)` at **865** (Root Cause C).
+  - `armScanTimer()` at **756**; the unconditional re-arm + wrong "safe no-op" comment at
+    **960-963** (finding D).
+  - `SCAN_INTERVAL_MINUTE_OPTIONS` at **197** vs `SCAN_INTERVAL_VALID_VALUES` at **903**
+    (cleanup 2).
+  - The triplicated "actively-served protected paths" set: `evictTranscodeCache` ~181-184,
+    `sweepAgedTranscodes` ~269-272, `/api/cache/clear` ~988-991 (cleanup 1).
+  - `selectPrunableIds` (exported, unit-tested in `test/unit/settings-helpers.test.js`).
 
-## Settled — do NOT re-litigate (D1-D4)
-D1 auto-scan default 30m (Off/30m/1h/6h/12h/24h; replaces the hardcoded 10-min
-`setInterval` at `server.js:989`; overlap-guarded; persisted in db.json). D2
-prune-missing default ON with a MANDATORY mount-loss guard that ships regardless of
-the toggle. D3 age-retention default 30d keyed off a last-served timestamp we control
-(db.json), atime fallback, layered on the size-cap LRU backstop. D4 companions as
-scoped. Additive/zero-regression except the two documented behavior changes. Ship
-v1.8.0. See the exec plan's Decision log. If — and only if — a genuinely NEW product
-decision surfaces (not one of these), stop and flag it for the EM; otherwise design it.
+## What to design (resolve each; confirm or refine the reviewers' fix direction)
 
-## Resolve these 6 open questions IN THE DESIGN (proposed defaults provided — adopt
-them unless you have a concrete, code-grounded reason to deviate; if you deviate, say
-why explicitly). These come from the PM's "Open questions / decisions for design":
+### Root Cause A — whole-db clobber race (MUST-FIX; the headline, independently confirmed)
+`runScanDirectories` holds a stale whole-db snapshot across many `await`ed
+`extractMetadataAndThumbnail` calls, then overwrites the entire object at save. Concurrent
+`POST /api/settings` writes and `recordServed` `lastServedAt` writes made during a scan are
+reverted — the latter can cause a genuinely-watched transcode to be wrongly aged-out.
+Design the fix: before the final save, **re-read the fresh db from disk and write back only
+scan-owned data** (metadata) while preserving concurrently-written `db.settings`,
+`db.folders`, `db.folderSettings`, `db.progress`, AND any `lastServedAt` written to
+surviving metadata entries during the scan. Specify exactly how the merge treats each
+metadata entry (a scan-updated entry vs a concurrently-touched `lastServedAt` on a surviving
+entry) so no field is lost in either direction. Note the interaction with finding E (below)
+— your A and E designs must be coherent about where `lastServedAt` is the source of truth.
+Specify the regression test: interleave a settings write / `recordServed` with an in-flight
+scan and assert neither is lost.
 
-1. **db.json `settings` shape + back-compat.** Proposed:
-   `settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30 }`,
-   backfilled by `loadDatabase()` exactly like `db.folderSettings` is today
-   (`server.js:35, 45-49`) so old db.json files load with zero migration. `cacheMaxBytes: null`
-   means "no UI override — defer to `TRANSCODE_CACHE_MAX_BYTES` env var / 5 GB default."
-   Specify how the effective cap is resolved (UI value → env var → 5 GB default) and where.
-2. **D3 last-served timestamp — where recorded, interaction with Clear-cache-now & startup.**
-   Proposed: `db.metadata[id].lastServedAt`, written at the SAME call site as the existing
-   in-memory `markServed()` (confirmed at `server.js:935-936`, inside `/video/:id`) and also
-   when a transcode is first produced (near the `evictTranscodeCache(..., outPath)` post-produce
-   call, `server.js:296`). "Clear cache now" need NOT touch these timestamps (a re-transcode
-   re-records them). Note: writing `db.metadata` on every serve means a `loadDatabase`/mutate/
-   `saveDatabase` per stream-start — design this to avoid clobbering concurrent db writes and to
-   keep the streaming hot path cheap (e.g. only write when the value is stale/changed, mirroring
-   `setTranscodeStatus`'s no-clobber pattern at `server.js:207-214`).
-3. **Age-sweep scheduling.** Proposed: piggyback the existing `evictTranscodeCache` call sites
-   (startup `server.js:983` + post-produce `server.js:296`) — run the age filter immediately
-   before the size-cap filter, same cadence, no third timer. Decide whether the age sweep is a
-   new exported pure selector (e.g. `selectAgedOut(files, maxAgeMs, now)`) composed with
-   `selectEvictions`, or folded in — the AC requires a pure, exported, unit-tested selector
-   that never returns `.tmp.mp4` and respects the `recentlyServed`/`RECENT_STREAM_MS` guard.
-4. **Clear-cache-now vs in-flight `.tmp.mp4`.** Proposed: do NOT delete `.tmp.mp4` (mirror
-   `selectEvictions`'s existing `.tmp.mp4` exclusion, `server.js:104,150`) so a user clear can't
-   corrupt an in-progress transcode; also respect the `recentlyServed` protection.
-5. **"Scan already running" surfacing.** Proposed: `/api/scan` returns `200 {success:true}` when
-   it starts a scan, `409 {error:'scan already in progress'}` when `scanState.scanning` is already
-   true; the setup.html handler joins the existing scan-status poll either way rather than erroring.
-   Apply the same overlap guard to the automatic-timer path (a fired timer while scanning is a no-op).
-6. **UI placement.** Proposed: one "Automation & Storage" `setup-box` with two labeled
-   subsections — "Scan" (interval select, last-scanned line, "Scan now") and "Transcode cache"
-   (age-retention select, size-cap input, size display, "Clear cache now") — mirroring the
-   Appearance box's `h2`/`h3` pattern (`public/setup.html:115-124`).
+### Root Cause B — mount-loss guard too shallow (MUST-FIX; a data-loss gap in the guard we shipped)
+The guard only checks TOP-LEVEL roots. Design a fix that makes **"could not enumerate this
+directory/subtree" a first-class signal**, so entries under ANY un-enumerable path are
+RETAINED regardless of depth:
+- (i) Nested/child mount dropping under a present root: the top root exists, so the current
+  guard doesn't fire and `pruneMissing` prunes the vanished subtree. 
+- (ii) `scanDirRecursive` swallows a subdir read error (EACCES/EIO) at 775 and returns, so a
+  transiently-unreadable subtree looks like mass deletion.
+- (iii) `selectPrunableIds`' guard is skipped when `entry.rootFolder` is falsy (legacy
+  pre-backfill entries).
+Design direction to confirm/refine: propagate an "unreadable/incomplete" path set out of
+`scanDirRecursive` (a dir that errored, or a configured subpath that vanished mid-scan), and
+feed it into the prune decision so any entry whose `filePath` is under an un-enumerable path
+is retained — not just top-level missing roots. Decide whether this **extends
+`selectPrunableIds`' signature** (e.g. add an `incompletePaths`/`unreadablePaths` param) —
+that's acceptable now (we're fixing a real correctness gap); if you change its contract,
+say so and require its unit tests be updated. Handle falsy-`rootFolder` conservatively
+(derive via `matchRootFolder`, or default to retain). Specify regression tests for: a
+nested-mount drop, a subdirectory read error, and a `rootFolder`-less legacy entry under a
+missing root.
 
-## Emphasis (highest-risk elements — call these out explicitly in the design)
-- **The mount-loss guard is the single highest-risk element and must ship
-  UNCONDITIONALLY, independent of the prune toggle.** Today `runScanDirectories`
-  (`server.js:436-540`) rebuilds `db.metadata` from scratch (line 450) and drops any id
-  not re-scanned; `server.js:442` silently `continue`s past a missing/unmounted root, so
-  its entries vanish permanently on the next scan. Design the guard so that if a configured
-  root folder fails its existence check, NO entry rooted under it (`matchRootFolder` /
-  `item.rootFolder`, `server.js:174-183, 530-531`) is pruned in that pass — even with pruning
-  ON. Individual per-file pruning happens only when the root IS present but the specific file
-  is gone. Make this a clean, unit-testable seam (the AC demands a hard regression test that
-  simulates a missing root and asserts its entries survive regardless of the toggle).
-- **D3 age sweep keys off our own `lastServedAt`, atime ONLY as fallback.** The existing
-  `evictTranscodeCache` comment (`server.js:135-137`) already warns atime is unreliable under
-  relatime/noatime and uses `recentlyServed` as the real guard — the age sweep must not
-  reintroduce that trap. A file with a fresh recorded `lastServedAt` must never be aged out even
-  if its atime is stale (the AC tests exactly this).
-- **Additive / zero-regression except the two documented behavior changes** (10min→30m default;
-  prune made safe/controllable). The size-cap eviction path and the `/video/:id` streaming path
-  must not change behavior for existing installs. Do not alter `parseCacheCap`/`selectEvictions`
-  signatures (existing `test/unit/transcode-cache.test.js` must pass unmodified) — compose, don't
-  rewrite. New pure logic goes through `module.exports` (`server.js:1002-1020`) for node:test.
+### Root Cause C — overlap guard drops the /api/config background rescan (MUST-FIX)
+`if (scanState.scanning) return;` silently no-ops the fire-and-forget rescan that `POST
+/api/config` triggers when folders change — so newly-added folders are never indexed (and
+with interval Off, never recovered). Design a **"rescan requested" flag** (or small queue)
+so a scan requested while one is running runs once after the current finishes. Make sure a
+manual `/api/scan` and the timer path benefit too, without allowing unbounded stacking (one
+pending follow-up is enough). Confirm this doesn't reintroduce the overlap the guard was
+added to prevent.
 
-## Deliverable — write into the exec plan's `## Design` section
-Cover, concretely (function names, file locations, data shapes — enough that the SDE can
-implement task-by-task without re-deriving decisions):
-- **Approach** — the overall shape; what's additive vs the two intentional changes.
-- **Components to change** — `server.js` (settings load/backfill, the timer refactor + overlap
-  guard, the mount-loss guard in the scan/prune path, `lastServedAt` recording, the age-sweep
-  selector + composition with size-cap eviction, cache-size + clear-cache + settings API
-  endpoints, `module.exports` additions) and `public/setup.html` (the new box + JS wiring); any
-  new `test/unit/` and `test/integration/` files.
-- **Data model impact** — the additive `db.settings` object and `db.metadata[id].lastServedAt`;
-  confirm no existing field is renamed/removed and old db.json loads clean.
-- **API changes** — new/changed endpoints (settings GET/POST, cache-size, clear-cache, the
-  `/api/scan` 409 behavior) with request/response shapes and status codes (per RELIABILITY.md's
-  explicit-status-code convention).
-- **Risks & mitigations** — mount-loss guard correctness, db-write contention on the streaming
-  hot path, atime-fallback edge cases, back-compat.
-- **Alternatives considered** — at least for the age-sweep scheduling and the settings-shape
-  choices you resolve above.
-- Update `docs/ARCHITECTURE.md` ONLY if you introduce a genuinely new component/decision worth
-  recording (e.g. the settings object or the persisted last-served timestamp as an architectural
-  note; also worth updating the stale "transcode cache is currently unbounded" note at
-  ARCHITECTURE.md:63-64, since Closed tech-debt #1 already capped it).
+### Finding D — timer re-arm resets the countdown (SHOULD-FIX)
+`POST /api/settings` calls `armScanTimer()` unconditionally; clear+recreate resets the
+periodic countdown, so frequent saves defer the scan indefinitely. Design: re-arm ONLY when
+`scanIntervalMinutes` actually changed (compare old vs new before saving), and correct the
+false "safe no-op" comment.
 
-Then update `.state/feature-state.json`: set `artifacts.design` to the exec plan path and append
-a design-complete history entry. Do NOT write application code or the task breakdown — the EM
-breaks the design into tasks next (`/prep-em-tasks`).
+### Finding E — recordServed full-DB read on every Range request (SHOULD-FIX, hot path)
+The ~10-min throttle skips the WRITE but still does a synchronous full-`db.json` READ on
+every `/video` Range request. Design an **in-memory last-persisted-served map (id -> ts)**
+(or reuse the in-memory `recentlyServed`) to short-circuit the throttle WITHOUT a disk read;
+only `loadDatabase` when actually persisting. Ensure this stays coherent with the Root
+Cause A merge (A must still persist `lastServedAt` correctly, and E must not lose a served
+signal across a restart any worse than today). Note startup behavior (the in-memory map is
+empty on boot — is that acceptable? it just means the first serve after boot persists).
+
+### Cleanup (fold in since we're editing this code — PE decides scope)
+- One shared **"actively-served protected paths"** helper replacing the triplication; the two
+  new copies (`sweepAgedTranscodes`, `/api/cache/clear`) currently OMIT `evictTranscodeCache`'s
+  stale-entry pruning — the shared helper should include it. **Decide explicitly:** can the
+  helper be introduced WITHOUT changing `evictTranscodeCache`'s behavior (keeping the frozen
+  `transcode-cache.test.js` green), or is it now acceptable to touch `evictTranscodeCache`
+  (un-freeze it) given we're fixing correctness here? State the call and the test impact.
+- One source for the scan-interval value lists (197 vs 903).
+- `gbToBytes` (`public/js/common.js`): clamp sub-1-byte positives to `null` so a tiny GB input
+  doesn't POST `cacheMaxBytes:0` and trip a misleading 400.
+- The `.tmp.mp4` exclusion predicate copy-pasted ~4 sites → optionally one shared filter.
+
+### Non-blocking (PE's call: fold in or tech-debt-track)
+- `sweepAgedTranscodes` + `evictTranscodeCache` each do an independent readdir+statSync
+  back-to-back at both call sites (double directory pass per produce). If you don't fold it
+  into the shared-enumeration work, add it to `docs/exec-plans/tech-debt-tracker.md`.
+
+## Also produce: a recommended fix-round task grouping
+The coordinator will have the EM break your design into SDE fix task(s). Recommend the
+grouping: the scan-lifecycle cluster (A + C + D, and possibly B) is cohesive and could be
+ONE SDE task; E + the cleanup could be another; or split further if you see risk. State your
+recommendation and the rationale (keep each task independently testable and build-verifiable).
+Flag any ORDERING constraints (e.g. B's `selectPrunableIds` signature change should land with
+its test update; A and E should land together since they share `lastServedAt` ownership).
+
+## Deliverable
+Write the `## Remediation design (review round 1)` section into the exec plan: for each of
+A/B/C/D/E + cleanup, give the concrete approach (function/seam, data shape, and the specific
+regression test each needs), the frozen-helper/`selectPrunableIds`-contract decisions, and the
+recommended task grouping + ordering. Update `docs/ARCHITECTURE.md` only if a fix introduces a
+genuinely new invariant worth recording (e.g. the re-read-merge-on-save rule). Then update
+`.state/feature-state.json`: append a remediation-design-complete history entry (you may leave
+`artifacts.design` as-is — it already points at this exec plan). Do NOT write code or the task
+breakdown — the EM breaks your remediation design into fix task(s) next.

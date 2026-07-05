@@ -15,7 +15,7 @@ const TRANSCODE_DIR = path.join(DATA_DIR, 'transcoded');
 
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
-const { app, armScanTimer } = require('../../server');
+const { app, armScanTimer, currentScanTimer } = require('../../server');
 
 const DEFAULT_SETTINGS = {
   scanIntervalMinutes: 30,
@@ -151,6 +151,48 @@ test('POST /api/settings re-arms the scan timer live so the new interval takes e
     assert.equal(after720._idleTimeout, 720 * 60 * 1000, 'timer now reflects the new 12h interval, not the old 30m one');
   } finally {
     clearInterval(after720);
+  }
+});
+
+// ---- D: re-arm gated on an ACTUAL scanIntervalMinutes change --------------
+
+test('D: POST /api/settings does NOT re-arm the timer when a non-interval setting is saved', async () => {
+  writeDb({ folders: [], folderSettings: {}, progress: {}, metadata: {}, settings: baseSettings() });
+
+  const baseline = armScanTimer(); // arm explicitly so currentScanTimer() has a known baseline object
+  try {
+    const res = await fetch(`${base}/api/settings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pruneMissing: false }), // non-interval key
+    });
+    assert.equal(res.status, 200);
+
+    const after = currentScanTimer();
+    assert.strictEqual(after, baseline, 'the timer object must be the SAME instance -- the route must not have re-armed it');
+    assert.equal(after._idleTimeout, 30 * 60 * 1000, 'the countdown/interval is unchanged');
+  } finally {
+    clearInterval(currentScanTimer());
+  }
+});
+
+test('D: POST /api/settings DOES re-arm the timer when scanIntervalMinutes actually changes', async () => {
+  writeDb({ folders: [], folderSettings: {}, progress: {}, metadata: {}, settings: baseSettings() });
+
+  const baseline = armScanTimer(); // 30m baseline
+  try {
+    const res = await fetch(`${base}/api/settings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ scanIntervalMinutes: 360 }),
+    });
+    assert.equal(res.status, 200);
+
+    const after = currentScanTimer();
+    assert.notStrictEqual(after, baseline, 'an interval change must produce a NEW (re-armed) timer instance');
+    assert.equal(after._idleTimeout, 360 * 60 * 1000, 'the new timer reflects the changed interval');
+  } finally {
+    clearInterval(currentScanTimer());
   }
 });
 

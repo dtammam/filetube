@@ -28,6 +28,11 @@ test('gbToBytes: non-finite or non-positive values -> null (never a negative/NaN
   assert.equal(gbToBytes('not a number'), null);
 });
 
+test('gbToBytes: a tiny positive value that rounds to < 1 byte -> null, not 0 (avoids a misleading 400)', () => {
+  assert.equal(gbToBytes(1e-12), null);
+  assert.equal(gbToBytes(1e-15), null);
+});
+
 test('bytesToGb: converts bytes to a GB number rounded to 2 decimals', () => {
   assert.equal(bytesToGb(1024 * 1024 * 1024), 1);
   assert.equal(bytesToGb(5 * 1024 * 1024 * 1024), 5);

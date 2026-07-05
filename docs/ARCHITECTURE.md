@@ -64,6 +64,14 @@ clients (iOS Safari) can play them.
   `POST /api/settings` changes it; `GET/POST /api/settings`, `GET /api/cache/size`,
   and `POST /api/cache/clear` expose these settings and the transcode-cache
   housekeeping to the Settings UI.
+- **Re-read-merge-on-save (concurrency invariant):** a long-running scan must never
+  write back a whole-`db.json` snapshot taken at its start — concurrent writes
+  (settings, folders, watch progress, `lastServedAt`) would be clobbered. The scan
+  re-reads the fresh db at save time and writes back only the data it owns
+  (`metadata`), preserving concurrently written `settings`/`folders`/
+  `folderSettings`/`progress` and never regressing `db.metadata[id].lastServedAt`
+  (the on-disk value is the source of truth; in-memory serve maps are only
+  write-throttles).
 
 ## Constraints
 

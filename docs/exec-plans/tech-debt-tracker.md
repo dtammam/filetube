@@ -4,6 +4,7 @@
 
 | # | Description | Severity | Added | Source |
 |---|-------------|----------|-------|--------|
+| 2 | `sweepAgedTranscodes` and `evictTranscodeCache` each do an independent `readdir`+`statSync` over `TRANSCODE_DIR` back-to-back at both call sites (startup + post-produce), a double directory pass per produce. Minor perf; fold into a single shared enumeration if the cache-hygiene path is revisited. | Low | 2026-07-05 | settings-automation-cache review round 1 (PE remediation, non-blocking) |
 <!-- Items added by agents when persistent failures or gaps are found -->
 
 ## Closed
