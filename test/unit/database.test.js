@@ -14,6 +14,7 @@ const assert = require('node:assert');
 const {
   loadDatabase,
   saveDatabase,
+  updateDatabase,
   transcodedPath,
   reconcileTranscode,
 } = require('../../server');
@@ -123,6 +124,129 @@ test('saveDatabase + loadDatabase: a metadata lastServedAt survives a round-trip
   saveDatabase(original);
   const db = loadDatabase();
   assert.equal(db.metadata.abc.lastServedAt, 1735689600000, 'lastServedAt is preserved unchanged');
+});
+
+// ---- [UNIT] Atomic write: saveDatabase is write-temp-then-rename -----------
+
+// Any leftover `${DB_FILE}.<pid>.<seq>.tmp` file in DATA_DIR after a save.
+function orphanTmpFiles() {
+  return fs.readdirSync(process.env.DATA_DIR).filter((name) => name.startsWith('db.json.') && name.endsWith('.tmp'));
+}
+
+test('saveDatabase: a successful save yields valid, complete JSON and leaves no orphan *.tmp file', () => {
+  const db = {
+    folders: ['/media/movies'],
+    folderSettings: {},
+    progress: {},
+    metadata: { abc: { id: 'abc', title: 'Test' } },
+    settings: DEFAULT_SETTINGS,
+  };
+  saveDatabase(db);
+
+  const onDisk = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+  assert.deepEqual(onDisk, db, 'a successful save produces valid, complete JSON');
+  assert.deepEqual(orphanTmpFiles(), [], 'no leftover temp file after a successful save');
+});
+
+test('saveDatabase: a forced write failure leaves the prior db.json intact and no orphan *.tmp remains', () => {
+  const original = { folders: ['/keep'], folderSettings: {}, progress: {}, metadata: {}, settings: DEFAULT_SETTINGS };
+  saveDatabase(original);
+  const before = fs.readFileSync(DB_FILE, 'utf8');
+
+  // Simulate an interrupted write (e.g. disk full/IO error) at the temp-file
+  // write step -- stub the fd-based write fs.writeFileSync uses internally.
+  const realWriteFileSync = fs.writeFileSync;
+  fs.writeFileSync = () => { throw new Error('simulated disk write failure'); };
+  try {
+    saveDatabase({ folders: ['/never-committed'], folderSettings: {}, progress: {}, metadata: {}, settings: DEFAULT_SETTINGS });
+  } finally {
+    fs.writeFileSync = realWriteFileSync;
+  }
+
+  assert.equal(
+    fs.readFileSync(DB_FILE, 'utf8'), before,
+    'db.json must be byte-identical to its pre-failure content -- never torn/partially written'
+  );
+  assert.deepEqual(orphanTmpFiles(), [], 'the failed write\'s temp file must be cleaned up, not left as an orphan');
+});
+
+test('saveDatabase: a forced rename failure leaves the prior db.json intact and no orphan *.tmp remains', () => {
+  const original = { folders: ['/keep2'], folderSettings: {}, progress: {}, metadata: {}, settings: DEFAULT_SETTINGS };
+  saveDatabase(original);
+  const before = fs.readFileSync(DB_FILE, 'utf8');
+
+  // Simulate a failure at the atomic-rename step itself (e.g. an exotic
+  // cross-device edge case) -- the temp file was already written, so this
+  // exercises the cleanup path specifically.
+  const realRenameSync = fs.renameSync;
+  fs.renameSync = () => { throw new Error('simulated rename failure'); };
+  try {
+    saveDatabase({ folders: ['/never-committed-2'], folderSettings: {}, progress: {}, metadata: {}, settings: DEFAULT_SETTINGS });
+  } finally {
+    fs.renameSync = realRenameSync;
+  }
+
+  assert.equal(
+    fs.readFileSync(DB_FILE, 'utf8'), before,
+    'db.json must be byte-identical to its pre-failure content when only the rename step fails'
+  );
+  assert.deepEqual(orphanTmpFiles(), [], 'the temp file written before the failed rename must be cleaned up');
+});
+
+// ---- [UNIT] Serialization correctness: updateDatabase(mutatorFn) -----------
+
+test('updateDatabase: two back-to-back calls mutating DIFFERENT fields both survive (neither clobbers the other)', async () => {
+  saveDatabase({ folders: [], folderSettings: {}, progress: {}, metadata: {}, settings: DEFAULT_SETTINGS });
+
+  const order = [];
+  const first = updateDatabase((db) => {
+    order.push('first');
+    db.folders = ['/from-first'];
+    return true;
+  });
+  const second = updateDatabase((db) => {
+    order.push('second');
+    // The second mutator must see the FIRST mutator's already-committed
+    // state, not a stale pre-first snapshot -- proof the read happens fresh
+    // INSIDE the lock, at execution time, not at enqueue time.
+    assert.deepEqual(db.folders, ['/from-first'], 'the second mutator must observe the first mutator\'s committed write');
+    db.folderSettings = { '/from-first': { name: 'X', hidden: false } };
+    return true;
+  });
+
+  await Promise.all([first, second]);
+
+  assert.deepEqual(order, ['first', 'second'], 'mutators run in enqueue order');
+  const finalDb = loadDatabase();
+  assert.deepEqual(finalDb.folders, ['/from-first'], 'the first mutator\'s field survives');
+  assert.deepEqual(
+    finalDb.folderSettings, { '/from-first': { name: 'X', hidden: false } },
+    'the second mutator\'s field survives too -- neither writer clobbered the other'
+  );
+});
+
+test('updateDatabase: a mutator returning false skips the save entirely (no-op guard path)', async () => {
+  saveDatabase({ folders: ['/unchanged'], folderSettings: {}, progress: {}, metadata: {}, settings: DEFAULT_SETTINGS });
+
+  const result = await updateDatabase(() => false);
+
+  assert.equal(result, false);
+  assert.deepEqual(loadDatabase().folders, ['/unchanged'], 'a false-returning mutator must not persist any change');
+});
+
+test('updateDatabase: a throwing mutator rejects only its own promise; the chain still processes the next write', async () => {
+  saveDatabase({ folders: [], folderSettings: {}, progress: {}, metadata: {}, settings: DEFAULT_SETTINGS });
+
+  const failing = updateDatabase(() => { throw new Error('boom'); });
+  const succeeding = updateDatabase((db) => { db.folders = ['/after-failure']; return true; });
+
+  await assert.rejects(failing, /boom/, 'the throwing mutator\'s own promise must reject');
+  await succeeding;
+
+  assert.deepEqual(
+    loadDatabase().folders, ['/after-failure'],
+    'a write enqueued after a failing mutator must still commit -- one failure must never wedge the chain'
+  );
 });
 
 test('reconcileTranscode: audio items never carry a transcode status', () => {

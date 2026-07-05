@@ -339,7 +339,10 @@ test('(h) FR3.2: a pruned id\'s persistedServedAt entry is cleared, so a re-adde
 
   // Seed the write-throttle map (mirrors the /video Range-request hot path):
   // this persists a lastServedAt AND sets a "recent" persistedServedAt[id].
-  recordServed(id);
+  // recordServed's actual write is serialized through updateDatabase (a
+  // promise chain), so `await` it to observe the persisted write
+  // deterministically -- see server.js's recordServed doc comment.
+  await recordServed(id);
   assert.equal(typeof readDb().metadata[id].lastServedAt, 'number', 'sanity: recordServed persisted an initial lastServedAt');
 
   // The file is deleted -> the scan prunes this id (pruneMissing on).
@@ -358,7 +361,7 @@ test('(h) FR3.2: a pruned id\'s persistedServedAt entry is cleared, so a re-adde
   // If the stale persistedServedAt[id] entry from the PRIOR incarnation had
   // survived the prune, this call would short-circuit on the map lookup and
   // never persist -- proving the prune-path cleanup actually ran.
-  recordServed(id);
+  await recordServed(id);
   assert.equal(typeof readDb().metadata[id].lastServedAt, 'number',
     're-added same-id file must persist lastServedAt normally, not be suppressed by a stale pre-prune persistedServedAt entry');
 });

@@ -1,94 +1,109 @@
-# Software Developer — Fix Round 3b (FR3b): FR3.3 transcodeStatus clobber (PE option b)
+# Software Developer — Task 2: deferred-rescan tail (tech-debt #3)
 
-You are the software-developer agent for FileTube. Implement **FR3b only** — the single
-FR3.3 fix below, exactly as the principal-engineer designed it — then stop and report.
-FR3a (the three mechanical fixes) is merged and build-verified (suite at 190); build on it.
-This is the LAST remediation task before the final focused re-review. You have no shared
-context with the EM.
+You are the Software Developer. Implement **Task 2 ONLY** — the deferred-rescan
+tail fold-in. This is part of the HARDENING commit (with Task 1), NOT the mobile
+logo (Task 3). You have no shared context with the EM — everything you need is
+below or in the referenced files. Do NOT touch Task 3 (logo CSS).
+
+## Context
+
+Task 1 (the serialized `updateDatabase` + atomic `saveDatabase` + 7-writer
+conversion + scan collapse) is DONE and build-verified (lint 0, npm test 201/201).
+Task 2 closes the v1.8.0 **FR3.4** edge: the coalesced rescan drain in
+`scanDirectories` is bounded (`MAX_RESCAN_FOLLOWUPS = 1`) so it can't livelock, but
+when the drain budget is exhausted with `scanState.rescanRequested` still `true`,
+that pending rescan is currently DROPPED. Symptom: with auto-scan Off, a folder-add
+landing during the single follow-up pass isn't indexed until a manual "Scan now".
+No data loss (the folder is persisted), but the media doesn't appear until a rescan.
+This is tech-debt tracker **Active #3**.
 
 ## Read first
-- `docs/exec-plans/active/2026-07-05-settings-automation-cache.md` → the
-  `## Remediation design (review round 1)` section, subsection **`### FR3.3 — transcodeStatus
-  merge rule`** — the PE's authoritative design (option b). Follow it exactly.
-- `.state/feature-state.json` → `review_round_2.FR3_3_transcodeStatus_clobber` and the `FR3b` task.
-- `server.js` — the exact seam (the `runScanDirectories` tail, current line numbers):
-  - the reconcile loop at **863-868**:
-    ```
-    for (const item of Object.values(newMetadata)) {
-      const newRoot = matchRootFolder(item.filePath, currentFolders);
-      if (item.rootFolder !== newRoot) { item.rootFolder = newRoot; dbChanged = true; }
-      if (reconcileTranscode(item)) dbChanged = true;
-    }
-    ```
-  - the save block at **870-890**, where `const fresh = loadDatabase()` currently sits at
-    **878** (inside `if (dbChanged)`), followed by `mergeScannedMetadata` (879), the prune loop
-    (880-887), and `saveDatabase(fresh)` (888).
-  - `reconcileTranscode(item)` body at **583-599** (DO NOT change it), `setTranscodeStatus` at
-    **~415-419**, `mergeScannedMetadata` at **346-355** (DO NOT change it), the re-queue trigger
-    at **~1398** (`if (item.transcodeStatus !== 'failed')`).
 
-## The problem (why this matters)
-`runScanDirectories` reuses the STALE scan-start snapshot for a surviving entry and runs
-`reconcileTranscode` on it; a `setTranscodeStatus('processing'/'failed')` a transcode worker
-wrote to disk DURING the scan is then reverted at save. Erasing `'failed'` re-queues the item
-(the `!== 'failed'` trigger) → a wasted re-transcode loop whenever a scan coincides.
+- `docs/exec-plans/active/2026-07-05-harden-db-writes-and-logo.md` — the `## Design`
+  section's "Fold-in #3 (MANDATORY): deferred-rescan tail" gives the exact snippet and
+  rationale. It is authoritative.
+- `.state/feature-state.json` — the T2 task entry (`tasks[1]`) for `done_when`.
+- `docs/exec-plans/tech-debt-tracker.md` — Active #3 (move to Closed) and Active #2
+  (leave OPEN — deferred per the design; do NOT touch the double-readdir code).
+- `docs/CONTRIBUTING.md` (node:test; every change ships tests) / `docs/RELIABILITY.md`.
 
-## The fix — PE option (b), implement EXACTLY as designed
-Seed `reconcileTranscode` from the FRESH on-disk `transcodeStatus` instead of the stale
-snapshot, so reconcile's "leave in-flight alone" branch preserves a worker's concurrent
-`processing`/`failed`, while reconcile still legitimately WINS with `'ready'` (finished MP4 on
-disk) and still CLEARS a stale `'ready'`. **Both `mergeScannedMetadata` and `reconcileTranscode`
-bodies stay UNCHANGED** — the only edit is in the `runScanDirectories` tail:
+## Current seams (verified line numbers)
 
-1. **Move `const fresh = loadDatabase()` UP** — out of the `if (dbChanged)` save block (878) to
-   **just before the reconcile loop** (before 863-864). This is safe because the reconcile-loop →
-   save tail has **NO `await`** — one fresh read here is identical to a save-time read.
-2. **Seed each item's status from `fresh` before reconciling.** Inside the reconcile loop, BEFORE
-   the `reconcileTranscode(item)` call, add:
-   ```js
-   const priorStatus = fresh.metadata[item.id] && fresh.metadata[item.id].transcodeStatus;
-   if (priorStatus === undefined) delete item.transcodeStatus;
-   else item.transcodeStatus = priorStatus;
-   ```
-   (This overwrites the stale snapshot's `transcodeStatus` with the current on-disk value, so
-   `reconcileTranscode`'s "in-flight → leave alone" branch sees the worker's concurrent write and
-   preserves it, while its MP4-present → `'ready'` and stale-`'ready'` → clear branches still
-   apply correctly.)
-3. **The save block reuses the moved `fresh`** — do NOT call `loadDatabase()` a second time in
-   the save block; use the `fresh` read in step 1. Keep `mergeScannedMetadata(fresh.metadata,
-   newMetadata)`, the prune loop (incl. FR3.2's `clearPersistedServedAt`), and `saveDatabase(fresh)`
-   exactly as they are otherwise.
+- `scanState = { scanning, lastScan, rescanRequested }` — server.js:777.
+- `MAX_RESCAN_FOLLOWUPS = 1` — server.js:789.
+- `scanDirectories()` — server.js:804. The bounded drain is the do/while at 812-816;
+  the `finally` clears `scanState.scanning` and sets `lastScan` at 817-820. The drain
+  exits with `scanState.rescanRequested` possibly STILL `true` (budget spent) — that is
+  the drop this task fixes.
 
-Accepted minor cost (PE-approved): one `loadDatabase()` now runs on every scan (including no-op
-scans) instead of only when `dbChanged`. That's fine.
+## What to build (per the design — do not deviate)
 
-## Regression tests (integration, mirror the existing scan-clobber harness in scan-api.test.js)
-1. **[INTEGRATION] HEADLINE:** a mid-scan `setTranscodeStatus(id, 'failed')` on a surviving entry
-   SURVIVES the scan's final save, AND `GET /video/:id` returns the failed status **without
-   re-enqueuing** the item. This MUST fail under the current code (proves it's a real guard).
-2. **[INTEGRATION]** A legitimate `'ready'` (a finished MP4 present on disk) still WINS over a
-   stale `'processing'`/absent snapshot after the scan.
-3. **[INTEGRATION]** A stale `'ready'` with NO cached MP4 is still CLEARED by the scan.
-4. **[INTEGRATION]** Conflict edge — MP4 present AND a concurrent `'failed'` write → `'ready'`
-   wins (a real finished file beats an in-flight-failed signal).
+Add, at module level near `scanDirectories`:
 
-## Out of scope / constraints
-- **`mergeScannedMetadata` and `reconcileTranscode` bodies stay UNCHANGED** — only the seed +
-  the moved `fresh` read in the `runScanDirectories` tail.
-- **`test/unit/transcode-cache.test.js` stays UNMODIFIED**, and **`test/unit/database.test.js`'s
-  `reconcileTranscode` cases stay green and UNMODIFIED** (you didn't change `reconcileTranscode`,
-  so they must still pass as-is — proof the body is untouched).
-- Do NOT touch the FR3a fixes (per-file-stat `unreadable.add`, persistedServedAt prune-delete,
-  bounded drain) — leave intact.
-- Everything additive/zero-regression except the intended FR3.3 change.
-- **PATH export before `npm`**; `npm run lint` 0 errors; run `npm run test:unit` during dev and
-  `npm test` (full, 190+ now) before reporting; fix any failure you introduce.
+```js
+let deferredRescanTimer = null;
+const DEFERRED_RESCAN_DELAY_MS = 5000;
+function scheduleDeferredRescan() {
+  if (deferredRescanTimer) return;        // never stack/chain more than one
+  deferredRescanTimer = setTimeout(() => {
+    deferredRescanTimer = null;
+    scanDirectories().catch(console.error);
+  }, DEFERRED_RESCAN_DELAY_MS);
+  deferredRescanTimer.unref();            // never keep the process/test alive
+}
+```
 
-## When done
-Report a concise summary: the moved `fresh = loadDatabase()`, the per-item status seed before
-`reconcileTranscode`, confirmation the save block reuses `fresh` (no double read) and that
-`mergeScannedMetadata`/`reconcileTranscode` bodies are byte-unchanged; the 4 new integration
-tests; and the `npm run lint` + `npm test` results. This is the last remediation task — after
-the EM routes the build-specialist to verify FR3b, the coordinator does the FINAL focused
-re-review of the FR3 hunks, then acceptance → PR/v1.8.0. Do not edit `.state/feature-state.json`
-(EM owns task status).
+Hook it into `scanDirectories`'s `finally`: **read `scanState.rescanRequested` BEFORE
+clearing `scanning`**, and call `scheduleDeferredRescan()` when it is still set. For
+example, capture `const stillPending = scanState.rescanRequested;` at the top of the
+`finally`, then after setting `scanState.scanning = false` / `lastScan`, do
+`if (stillPending) scheduleDeferredRescan();`. (The deferred pass runs later, after
+`scanning` is already false, so it re-enters cleanly.)
+
+Add a `currentDeferredRescanTimer()` test accessor (returns `deferredRescanTimer`) and
+export it via `module.exports` alongside the existing scan exports.
+
+Why this is safe/bounded (keep these properties):
+
+- **No livelock:** the drain itself stays bounded per invocation (`MAX_RESCAN_FOLLOWUPS`
+  unchanged); the deferred timer just re-enters that bounded scan after a 5 s gap. Under
+  sustained demand it self-heals in discrete 5 s-spaced passes, not a tight loop.
+- **At most one pending:** the `if (deferredRescanTimer) return;` guard prevents stacking.
+- **Never keeps the process alive:** `.unref()`, so `node:test` exits cleanly.
+- **No dangling timer:** the callback nulls its own handle; tests must clear it in teardown.
+
+Do NOT change `MAX_RESCAN_FOLLOWUPS`, the drain loop condition, or the overlap guard
+(`if (scanState.scanning) { scanState.rescanRequested = true; return; }`).
+
+## tech-debt-tracker update
+
+In `docs/exec-plans/tech-debt-tracker.md`: move **Active #3** to the **Closed** table with
+a resolution noting the deferred `unref()`'d single-guarded 5 s rescan tail. Leave **Active #2**
+(double `readdir` over `TRANSCODE_DIR`) OPEN — it is explicitly deferred by the design; do not
+touch `sweepAgedTranscodes`/`evictTranscodeCache`.
+
+## Test (per the design's Tests #5)
+
+Add an integration test (in `test/integration/scan-api.test.js`, mirroring the existing scan
+harness — no FFmpeg): with `scanIntervalMinutes` Off, drive `scanDirectories` so the drain
+exits with `scanState.rescanRequested` still `true` (budget spent). Assert:
+
+- exactly ONE `unref()`'d timer is scheduled — `currentDeferredRescanTimer()` is non-null, and
+  a SECOND exhaustion while one is pending does NOT stack a second timer;
+- running/firing the deferred pass indexes the pending folder's work;
+- no dangling timer / clean exit — clear the timer in teardown.
+
+## Hard constraints
+
+- Full suite stays green (**201 existing + your new test**); `test/unit/transcode-cache.test.js`
+  stays FROZEN / byte-identical.
+- Every timer `unref()`'d; no dangling timer under `node:test` (clean exit, no hang).
+- `npm run lint` 0 errors (no new warnings beyond the 11-warning baseline).
+- Scoped OUT of Task 2: the mobile logo CSS (Task 3) and fold-in #2 (double readdir, deferred).
+- Before any npm/node command: `export PATH="/home/coder/.local/share/fnm/node-versions/v24.14.0/installation/bin:$PATH"`.
+- Run `npm run lint` and `npm test` and fix any failures before reporting done. Report the files
+  changed and tests added.
+
+When done, tell the coordinator Task 2 is complete so the EM can route to the build-specialist
+(`/prep-build-verify`). After T2 build-verifies, the two-reviewer QA gate runs on the combined
+T1+T2 hardening, then Task 3 (logo).
