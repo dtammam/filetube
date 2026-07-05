@@ -458,6 +458,7 @@ header {
 
 .sidebar-item i {
   width: 18px;
+  height: 18px;
   text-align: center;
   font-size: 16px;
   color: var(--text-secondary);
@@ -1343,7 +1344,6 @@ header {
   width: 1em;
   height: 1em;
   vertical-align: -0.15em;
-  background-color: currentColor;
   -webkit-mask-repeat: no-repeat;
   mask-repeat: no-repeat;
   -webkit-mask-position: center;
@@ -1364,6 +1364,16 @@ header {
 .icon-refresh { -webkit-mask-image: url(/assets/icons/refresh.svg); mask-image: url(/assets/icons/refresh.svg); }
 .icon-arrow-up { -webkit-mask-image: url(/assets/icons/keyboard_arrow_up.svg); mask-image: url(/assets/icons/keyboard_arrow_up.svg); }
 .icon-arrow-down { -webkit-mask-image: url(/assets/icons/keyboard_arrow_down.svg); mask-image: url(/assets/icons/keyboard_arrow_down.svg); }
+
+/* Paint the icon fill only where CSS masks are supported, so a browser without
+   mask support (or a failed/404 mask) renders nothing instead of a solid
+   currentColor square. */
+@supports (mask-image: url("#")) or (-webkit-mask-image: url("#")) {
+  .icon-home, .icon-folder, .icon-cog, .icon-delete, .icon-moon, .icon-sun,
+  .icon-menu, .icon-search, .icon-play, .icon-refresh, .icon-arrow-up, .icon-arrow-down {
+    background-color: currentColor;
+  }
+}
 
 /* Out of scope: gold rating star — NOT a mask/currentColor icon. Leave as-is. */
 .icon-star::before { content: "★"; }
