@@ -126,7 +126,7 @@ const ICON_SET_REGISTRY = [
 
 // Pure: resolves a stored icon-set preference (+ the current era, needed only
 // for 'auto') into one of the four CONCRETE set ids. Never throws; never
-// returns 'auto'. Exported for node:test — see test/unit/resolve-icon-set.js.
+// returns 'auto'. Exported for node:test — see test/unit/resolve-icon-set.test.js.
 // Kept in sync with the inline FOUC bootstrap in <head> on
 // index.html/setup.html/watch.html (see the comment there).
 function resolveIconSet(storedSet, era) {

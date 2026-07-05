@@ -1383,7 +1383,7 @@ header {
    unscoped outlined mask block, @supports fill guard, and .icon-star above are
    UNTOUCHED — outlined (default/unset data-icons) needs no scoped rules here,
    it already renders via the unscoped block. See resolveIconSet() in
-   /js/common.js and docs/exec-plans/completed/icon-sets.md. A scoped selector
+   /js/common.js and docs/exec-plans/active/icon-sets.md. A scoped selector
    like [data-icons="rounded"] .icon-home is (0,2,0) specificity, beating both
    the unscoped (0,1,0) mask rule and the @supports (0,1,0) fill rule above —
    no !important needed. */

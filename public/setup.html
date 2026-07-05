@@ -380,8 +380,10 @@
         </button>`).join('');
       container.querySelectorAll('.theme-card').forEach(btn => {
         btn.addEventListener('click', () => {
-          setIconSet(btn.dataset.iconsPref);   // applies + persists immediately, no Save
-          renderIconPicker();                   // re-highlight
+          // Applies + persists immediately (no Save). setIconSet -> applyIconSet
+          // already re-renders this picker (feature-detected), so the highlight
+          // refreshes without a second renderIconPicker() call here.
+          setIconSet(btn.dataset.iconsPref);
         });
       });
     }
