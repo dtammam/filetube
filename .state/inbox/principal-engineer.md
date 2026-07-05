@@ -1,62 +1,82 @@
-# Principal Engineer — SHORT design note: FR3.3 transcodeStatus merge rule
+# Principal Engineer — SHORT design note: HR1b finding D (DELETE-vs-scan membership resurrection)
 
-You are the principal-engineer agent for FileTube. This is a **narrow, single-issue design
-note** — NOT a re-design. Review round 2 (focused re-review of remediation commit b0388d6)
-found one subtle finding, FR3.3, that interacts with `reconcileTranscode`'s legitimate scan
-updates and needs a designed rule before the SDE implements it. The other three round-2
-findings (FR3.1/3.2/3.4) are mechanical and are already routed to the SDE — do NOT design
-those. Do NOT write application code.
+You are the Principal Engineer. This is a **narrow, single-issue design note** — NOT a
+redesign. Produce the exact reconciliation rule for one concurrency bug the two-reviewer
+QA gate surfaced, so the Software Developer can implement it correctly next. Do NOT write
+application code; write the rule + tests into the exec plan. Do NOT design the mechanical
+HR1a fixes (those are already scoped to the SDE) or anything else.
+
+## The issue (finding D — PRE-EXISTING, but we are fixing it)
+
+EM decision (flagged to Dean): FIX this, don't tech-debt-track it — it is the SAME
+stale-snapshot clobber class this branch is named for closing, just at the MEMBERSHIP
+dimension; leaving it undercuts the "class eliminated" headline claim. It edits the subtle,
+load-bearing scan Phase-2 reconcile, so it gets your short note first.
+
+The scan Phase-2 mutator (server.js:1003-1031) does:
+
+```js
+fresh.metadata = mergeScannedMetadata(fresh.metadata, newMetadata);
+```
+
+`newMetadata` is built in **Phase 1** (outside the lock, server.js ~985+) from a
+pre-delete snapshot of the filesystem. Membership is taken WHOLESALE from `newMetadata`.
+So a `DELETE /api/videos/:id` that COMMITS during the scan (removing `db.metadata[id]` +
+unlinking the file, via the serialized `updateDatabase`) is UNDONE: the id is resurrected
+as a dangling entry (file gone, entry back) until the next prune scan.
 
 ## Read first
-- `.state/feature-state.json` → `review_round_2.FR3_3_transcodeStatus_clobber` (the finding).
-- `docs/exec-plans/active/2026-07-05-settings-automation-cache.md` → your
-  `## Remediation design (review round 1)` section (the A↔E `lastServedAt`-single-source-of-truth
-  merge contract you already set — FR3.3 is the analogous question for `transcodeStatus`).
-- `server.js` — the exact seams:
-  - `mergeScannedMetadata(freshMetadata, newMetadata)` at **346-355** — currently rescues ONLY
-    `lastServedAt` (max-merge on surviving entries).
-  - `setTranscodeStatus(id, status)` at **~415-419** — the concurrent writer that sets
-    `'processing'`/`'ready'`/`'failed'` during transcode jobs (no-clobber, writes db.json).
-  - `reconcileTranscode(item)` at **581-599** — runs in `runScanDirectories`'s per-item loop
-    (over `newMetadata`, BEFORE the merge/save): sets `'ready'` when a finished MP4 exists,
-    clears a stale `'ready'` when the MP4 is gone, clears status when `!needsTranscode`.
-  - `runScanDirectories`: surviving-entry reuse (`newMetadata[id] = db.metadata[id]`, the STALE
-    scan-start snapshot), then the reconcile loop, then the re-read-merge save.
-  - The re-queue trigger at **~1398** (`if (item.transcodeStatus !== 'failed')`) — an erased
-    `'failed'` gets the item re-queued, causing the wasted re-transcode loop.
 
-## The problem (precisely)
-`runScanDirectories` reuses the STALE scan-start snapshot for a surviving entry, runs
-`reconcileTranscode` on it, then merges into a FRESH re-read at save. `mergeScannedMetadata`
-rescues `lastServedAt` from fresh but NOT `transcodeStatus` — so a `setTranscodeStatus('failed'`
-or `'processing')` that a transcode job wrote to disk DURING the scan is reverted to the stale
-snapshot value. Erasing `'failed'` re-queues the item every time a scan coincides (bounded,
-self-heals, but wasteful). We must preserve the concurrently-written in-flight `transcodeStatus`
-**without** clobbering the scan's LEGITIMATE `reconcileTranscode` decisions (a real `'ready'`
-when an MP4 appeared; clearing a genuinely-stale `'ready'`).
+- `server.js`: the Phase-1 scan snapshot / `newMetadata` build (~825 for the initial
+  `loadDatabase()` snapshot; the extraction loop building `newMetadata`), the `selectPrunableIds`
+  and `prunable` set, `mergeScannedMetadata` (server.js:410), and the Phase-2 mutator
+  (1003-1031, incl. the FR3.3 transcodeStatus seed and the progress/persistedServedAt prune).
+- `docs/exec-plans/active/2026-07-05-harden-db-writes-and-logo.md` — its `## Design` section
+  (the scan-collapse invariants). Append your note there.
+- `.state/feature-state.json` — `review_hr1.D_delete_vs_scan_resurrection` and the `HR1b` task.
+- v1.8.0's mount-loss guard / `mergeScannedMetadata` (lastServedAt-only-advances) / FR3.3
+  contracts you must not regress: `docs/exec-plans/completed/2026-07-05-settings-automation-cache.md`.
 
-## What to design (just this)
-Specify the exact `transcodeStatus` reconcile rule for `mergeScannedMetadata` (or a small
-restructure if you prefer — e.g. have the reconcile step read fresh), such that for a SURVIVING
-entry:
-- A concurrently-written in-flight status (`'processing'`/`'failed'`) on `fresh` is PRESERVED
-  when the scan's own reconcile did not make a legitimate authoritative change (i.e. the scan's
-  value is just the stale snapshot carried forward).
-- The scan's reconcile still WINS when it legitimately set `'ready'` (a finished MP4 is present)
-  or legitimately cleared a stale `'ready'`/`!needsTranscode` status.
-Think through the concrete cases and state the decision for each: fresh=`failed`/`processing`
-vs scan-reconcile=unchanged-stale / =`ready`(MP4 appeared) / =cleared(MP4 gone) / =cleared
-(no longer needsTranscode). Give the rule as a short deterministic predicate the SDE can
-implement, and confirm it composes with the existing `lastServedAt` max-merge (both fields
-reconciled in the same pass). Note any residual/edge case you deliberately leave (bounded) so
-it's documented, not guessed.
+## Proposed rule (confirm or refine, then specify exactly)
+
+In the Phase-2 mutator, reconcile membership against the FRESH (in-lock) db:
+
+- An id in `newMetadata` that WAS present in the Phase-1 db snapshot but is NOW ABSENT from
+  `fresh.metadata` was DELETED concurrently -> do NOT resurrect it (drop it from the merge).
+- A genuinely-NEW id the scan found (absent from BOTH the Phase-1 snapshot AND `fresh.metadata`)
+  is still ADDED (that's the scan's whole job).
+- An id present in `fresh.metadata` and still scanned is merged as today.
+
+This requires capturing the Phase-1 snapshot's metadata id-set (the keys of the scan-start
+`loadDatabase()` snapshot) and passing it into the reconcile. Specify: where that id-set is
+captured, the exact change at/around the `mergeScannedMetadata` call (whether the drop happens
+in the mutator before/within the merge, or by extending `mergeScannedMetadata`'s contract — your
+call, but keep it auditable and keep `mergeScannedMetadata`'s lastServedAt-max semantics intact).
+
+## Must confirm no regression
+
+- **Mount-loss guard:** a missing/unmounted root still retains its entries (they're absent from
+  `newMetadata` because unscanned, but must NOT be dropped — the drop rule must key off
+  "was in Phase-1 snapshot AND scanned in newMetadata AND now absent from fresh", i.e. a genuine
+  concurrent delete, NOT "unscanned this pass"). Make the distinction explicit so an unmounted
+  root or an unreadable subtree is NOT mistaken for a concurrent delete.
+- **`lastServedAt` on-disk authority:** unchanged (mergeScannedMetadata still only advances).
+- **FR3.3 transcodeStatus seed:** unchanged.
+- **Prune path:** the existing `prunable`/mount-loss prune of genuinely-gone files still applies;
+  the new drop rule is specifically for a CONCURRENT delete during the scan.
 
 ## Deliverable
-Append a short subsection (e.g. `### FR3.3 — transcodeStatus merge rule`) to the exec plan's
-`## Remediation design (review round 1)` section with: the rule, the per-case decisions, whether
-it lives in `mergeScannedMetadata` or a reconcile restructure, and the required tests (a mid-scan
-`'failed'` on a surviving entry survives the scan save and the item is NOT re-queued; a scan that
-legitimately marks `'ready'` still wins; a stale `'ready'` is still cleared). Then update
-`.state/feature-state.json` with a short history entry noting the FR3.3 note is done. Do NOT write
-code or touch the mechanical FR3a fixes. The EM will route the FR3b SDE implementation against
-your note after FR3a build-verifies.
+
+Append a short "### HR1b (finding D) — DELETE-vs-scan membership reconciliation" subsection to the
+exec plan's `## Design`: the confirmed rule, the exact change site(s), the mount-loss/lastServedAt/
+FR3.3/prune non-regression argument, and the regression test spec:
+
+- **Headline test:** a `DELETE /api/videos/:id` committing DURING an in-flight scan leaves the entry
+  DELETED (not resurrected) after the scan save — must FAIL pre-fix, PASS after (mirror the
+  scan-clobber harness in `test/integration/scan-api.test.js`; no FFmpeg).
+- Plus: a genuinely-new scanned id is still added; the non-concurrent case is unchanged; an
+  unmounted-root / unreadable-subtree entry is NOT dropped (guard against the false-positive).
+
+This note is design-only — no code, no conflict with HR1a (which edits routes/saveDatabase/
+recordServed/loadDatabase/startup). Sequencing: the HR1b SDE task runs AFTER HR1a build-verifies
+AND this note lands. When done, tell the coordinator the D note is ready.

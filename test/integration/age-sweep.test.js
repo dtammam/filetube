@@ -198,7 +198,7 @@ test('.tmp.mp4 is never deleted by the sweep even with a very stale atime and no
 
 // ---- recordServed: no-clobber + throttle ----------------------------------
 
-test('recordServed: a burst of calls within the window yields at most one persisted write (no-clobber/throttle)', () => {
+test('recordServed: a burst of calls within the window yields at most one persisted write (no-clobber/throttle)', async () => {
   const id = 'vid-throttle';
   writeDb({
     folders: [], folderSettings: {}, progress: {},
@@ -206,7 +206,11 @@ test('recordServed: a burst of calls within the window yields at most one persis
     settings: baseSettings(),
   });
 
-  recordServed(id);
+  // recordServed is fire-and-forget in production (its actual disk write is
+  // serialized through updateDatabase, a promise chain), so tests that need
+  // to observe the persisted write deterministically must `await` its
+  // returned promise -- see server.js's recordServed doc comment.
+  await recordServed(id);
   const afterFirst = readDb();
   const t1 = afterFirst.metadata[id].lastServedAt;
   assert.equal(typeof t1, 'number', 'first call records a lastServedAt');
@@ -214,7 +218,7 @@ test('recordServed: a burst of calls within the window yields at most one persis
 
   // Burst: several immediate calls within RECENT_STREAM_MS must not rewrite
   // lastServedAt (this is the no-clobber/throttle guarantee).
-  for (let i = 0; i < 5; i++) recordServed(id);
+  for (let i = 0; i < 5; i++) await recordServed(id);
   const afterBurst = readDb();
   assert.equal(afterBurst.metadata[id].lastServedAt, t1, 'a burst within the window must not change lastServedAt');
   assert.equal(afterBurst.metadata[id].unrelatedField, 'keep-me', 'an unrelated field must never be clobbered');
@@ -230,7 +234,7 @@ test('recordServed: a burst of calls within the window yields at most one persis
   writeDb(staleDb);
   clearPersistedServedAt(id);
 
-  recordServed(id);
+  await recordServed(id);
   const afterWindow = readDb();
   assert.notEqual(afterWindow.metadata[id].lastServedAt, staleDb.metadata[id].lastServedAt, 'after the window elapses, the next serve updates lastServedAt');
   assert.equal(afterWindow.metadata[id].unrelatedField, 'keep-me', 'unrelated field still untouched after the update');
@@ -238,7 +242,7 @@ test('recordServed: a burst of calls within the window yields at most one persis
 
 // ---- E: recordServed's hot-path throttle skips the DISK READ, not just the write ----
 
-test('recordServed (E, headline): a within-window call short-circuits on the in-memory map -- NO hot-path disk read', () => {
+test('recordServed (E, headline): a within-window call short-circuits on the in-memory map -- NO hot-path disk read', async () => {
   const id = 'vid-no-hotpath-read';
   writeDb({
     folders: [], folderSettings: {}, progress: {},
@@ -246,7 +250,7 @@ test('recordServed (E, headline): a within-window call short-circuits on the in-
     settings: baseSettings(),
   });
 
-  recordServed(id); // first call for this id: no map entry yet -> loadDatabase + persists once
+  await recordServed(id); // first call for this id: no map entry yet -> loadDatabase + persists once
   assert.ok(fs.existsSync(DB_FILE), 'first call persists to db.json');
   const persisted = readDb().metadata[id].lastServedAt;
   assert.equal(typeof persisted, 'number');
@@ -257,18 +261,18 @@ test('recordServed (E, headline): a within-window call short-circuits on the in-
   // read happened.
   fs.rmSync(DB_FILE);
 
-  recordServed(id); // still within RECENT_STREAM_MS -> map lookup only, no loadDatabase
+  await recordServed(id); // still within RECENT_STREAM_MS -> map lookup only, no loadDatabase
   assert.ok(!fs.existsSync(DB_FILE), 'a throttled call must NOT read/recreate db.json (no hot-path disk read)');
 
   // Once the map entry ages out (simulated here rather than waiting 10 real
   // minutes), the next call is due again and DOES read (and, since the file
   // is absent, recreate) the database.
   clearPersistedServedAt(id);
-  recordServed(id);
+  await recordServed(id);
   assert.ok(fs.existsSync(DB_FILE), 'an out-of-window/due call reads (and recreates) db.json');
 });
 
-test('recordServed (E): empty map on boot -- the first serve per fresh id persists exactly once', () => {
+test('recordServed (E): empty map on boot -- the first serve per fresh id persists exactly once', async () => {
   const id = 'vid-fresh-boot';
   writeDb({
     folders: [], folderSettings: {}, progress: {},
@@ -276,7 +280,7 @@ test('recordServed (E): empty map on boot -- the first serve per fresh id persis
     settings: baseSettings(),
   });
 
-  recordServed(id); // no prior map entry for this id (as if freshly booted)
+  await recordServed(id); // no prior map entry for this id (as if freshly booted)
   const db = readDb();
   assert.equal(typeof db.metadata[id].lastServedAt, 'number', 'the first serve for a fresh id persists a lastServedAt');
 });
@@ -284,4 +288,75 @@ test('recordServed (E): empty map on boot -- the first serve per fresh id persis
 test('recordServed: a missing metadata entry is a safe no-op', () => {
   writeDb({ folders: [], folderSettings: {}, progress: {}, metadata: {}, settings: baseSettings() });
   assert.doesNotThrow(() => recordServed('does-not-exist'));
+});
+
+// ---- C: recordServed must not leak a persistedServedAt entry for an id that ----
+// ---- doesn't exist (e.g. concurrently DELETEd/pruned) ---------------------
+
+test('recordServed (C): a non-existent id never inserts a persistedServedAt entry (no leak, no false-suppression)', async () => {
+  const staleId = 'vid-concurrently-deleted';
+  writeDb({ folders: [], folderSettings: {}, progress: {}, metadata: {}, settings: baseSettings() });
+
+  // Simulate a serve/transcode-completion recordServed racing a concurrent
+  // delete: the entry doesn't exist (yet, or anymore) when recordServed fires.
+  await recordServed(staleId);
+  assert.equal(readDb().metadata[staleId], undefined, 'a missing entry must never be created/resurrected by recordServed');
+
+  // The id now legitimately appears (e.g. re-added by a scan) with a STALE
+  // on-disk lastServedAt that is due for an update. If the earlier no-op call
+  // had leaked a persistedServedAt map entry (the pre-fix bug), this next
+  // call would incorrectly short-circuit on that bogus throttle-map hit and
+  // skip the due update -- proving the leak by its suppression effect.
+  const db = readDb();
+  const staleTimestamp = Date.now() - RECENT_STREAM_MS - 1000;
+  db.metadata[staleId] = { id: staleId, lastServedAt: staleTimestamp };
+  writeDb(db);
+
+  await recordServed(staleId);
+  const after = readDb();
+  assert.notEqual(
+    after.metadata[staleId].lastServedAt, staleTimestamp,
+    'the entry now exists and is due -- it must be updated, not suppressed by a leaked throttle-map entry from the earlier no-op call'
+  );
+});
+
+// ---- HR2: recordServed's up-front optimistic set de-dupes a same-id burst ----
+// ---- instead of each call enqueuing its own updateDatabase ----------------
+
+test('recordServed (HR2): a synchronous burst of same-id calls enqueues only ONE updateDatabase call', async () => {
+  const id = 'vid-burst-dedup';
+  writeDb({
+    folders: [], folderSettings: {}, progress: {},
+    metadata: { [id]: { id } },
+    settings: baseSettings(),
+  });
+
+  // Fire N calls back-to-back with NO `await` between them -- this mirrors a
+  // burst of same-id /video Range requests landing while dbWriteChain is
+  // backlogged (e.g. mid-scan): every call runs in the SAME synchronous tick,
+  // so only an UP-FRONT optimistic `persistedServedAt.set` (before the
+  // `updateDatabase` enqueue) can de-dupe them. Without it, each call's
+  // `persistedServedAt.get(id)` is still `undefined` at this point in the
+  // tick (the in-mutator set from a prior call only runs later, on a
+  // microtask, once the mutator actually executes against the lock) -- so
+  // all N would enqueue their own `updateDatabase`/`loadDatabase`, which is
+  // exactly the regression this test guards against.
+  const N = 5;
+  const results = [];
+  for (let i = 0; i < N; i++) results.push(recordServed(id));
+
+  // The first call is due (no persistedServedAt entry yet) and takes the
+  // enqueue path, returning a Promise. Every subsequent call in the SAME
+  // synchronous burst must short-circuit on the hot-path guard and return
+  // `undefined` immediately -- no Promise, no enqueue, no disk read.
+  assert.ok(results[0] instanceof Promise, 'the first call in the burst is due and enqueues an updateDatabase');
+  for (let i = 1; i < N; i++) {
+    assert.strictEqual(
+      results[i], undefined,
+      `burst call #${i + 1} must short-circuit on the hot-path guard, not enqueue its own updateDatabase`
+    );
+  }
+
+  await results[0];
+  assert.equal(typeof readDb().metadata[id].lastServedAt, 'number', 'the single enqueued call persisted lastServedAt');
 });

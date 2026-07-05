@@ -16,6 +16,7 @@ const {
   scanState,
   scanDirectories,
   armScanTimer,
+  currentDeferredRescanTimer,
   loadDatabase,
   saveDatabase,
   getMediaId,
@@ -39,12 +40,29 @@ after(async () => {
   await new Promise((resolve) => server.close(resolve));
 });
 
-beforeEach(() => {
+beforeEach(async () => {
   // Start each test from a clean, idle scan state and a fresh db.json so
   // settings-driven assertions (armScanTimer) aren't polluted across tests.
   scanState.scanning = false;
   scanState.rescanRequested = false;
   if (fs.existsSync(DB_FILE)) fs.rmSync(DB_FILE);
+  // A budget-exhausted drain (FR3.4's sustained-demand test included) can
+  // leave a deferred rescan armed (tech-debt #3's fix, below). Fire it
+  // directly -- rather than merely clearTimeout-ing it, which would leave
+  // the module's internal handle referencing a dead-but-non-null Timeout
+  // forever -- so it never fires a stray background scan during a LATER
+  // test, and so every test (including this suite's own deferred-rescan
+  // test) starts from a genuinely clean (deferredRescanTimer === null)
+  // precondition rather than an artifact of test order.
+  const leftoverTimer = currentDeferredRescanTimer();
+  if (leftoverTimer) {
+    leftoverTimer._onTimeout();
+    let waited = 0;
+    while (scanState.scanning && waited < 200) {
+      waited++;
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+  }
 });
 
 test('POST /api/scan returns 200 {success:true} when idle', async () => {
@@ -177,6 +195,119 @@ test('FR3.4: sustained scan requests during an in-flight scan do not chain unbou
     `the in-flight drain must settle well before a ${DEMAND_BUDGET}-request continuous-demand budget runs out ` +
     `(only consumed ${attempts}) -- an unbounded drain would keep chaining for as long as demand keeps arriving ` +
     'and would exhaust the whole budget without ever letting scanState.scanning go false');
+});
+
+// ---- tech-debt #3: deferred-rescan tail for a budget-exhausted drain ------
+
+// Drives scanDirectories() through one full "budget-exhausted, rescan still
+// pending" cycle: pass 1 (on `folder`, which has one new file to await on)
+// gets a follow-up flagged mid-flight by `triggerFolder` landing (a new
+// folder with its own new file, unseen by pass 1's already-snapshotted
+// folder list -- mirrors test C above); MAX_RESCAN_FOLLOWUPS = 1 means that
+// follow-up (pass 2, which picks up `triggerFolder`) is the LAST pass the
+// drain will ever run, so sustained demand for the rest of the drain (fired
+// for as long as scanState.scanning stays true) is guaranteed to land at
+// least once while pass 2 is still mid-flight -- flagging rescanRequested
+// one final time that the bounded drain can no longer service. Returns the
+// number of sustained-demand attempts consumed (for the "well under budget"
+// assertion), leaving scanState.rescanRequested = true afterward -- the
+// tech-debt #3 drop this task's deferred-rescan tail must no longer lose.
+async function exhaustDrainWithPendingRescan(folder, triggerFolder) {
+  const scanPromise = scanDirectories(); // pass 1: pauses on `folder`'s new file
+
+  const db = loadDatabase();
+  db.folders = [...db.folders, triggerFolder];
+  saveDatabase(db);
+  await scanDirectories(); // sets rescanRequested = true (pass 1 still in flight)
+  assert.equal(scanState.rescanRequested, true, 'pass 1 in flight must flag the one allowed follow-up');
+
+  const DEMAND_BUDGET = 60; // generous; the two-pass drain settles well before this
+  let attempts = 0;
+  while (scanState.scanning && attempts < DEMAND_BUDGET) {
+    attempts++;
+    await scanDirectories();
+  }
+  await scanPromise;
+
+  assert.equal(scanState.scanning, false, 'the drain must settle back to idle');
+  assert.ok(attempts < DEMAND_BUDGET,
+    `the drain must settle well before the ${DEMAND_BUDGET}-attempt demand budget runs out (only consumed ${attempts})`);
+  assert.equal(scanState.rescanRequested, true,
+    'the budget-exhausted drain must leave the pending rescan flagged, not silently clear it');
+}
+
+test('deferred rescan (tech-debt #3): a budget-exhausted drain schedules exactly one rate-limited follow-up that self-heals the pending work, never stacks a second, and leaves no dangling timer', async () => {
+  const dirA = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-deferred-a-'));
+  const dirB = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-deferred-b-'));
+  const dirD = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-deferred-d-'));
+  const dirC = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-deferred-c-'));
+  fs.writeFileSync(path.join(dirA, 'a.mp4'), 'a');
+  fs.writeFileSync(path.join(dirB, 'b.mp4'), 'b');
+  fs.writeFileSync(path.join(dirD, 'd.mp4'), 'd');
+  fs.writeFileSync(path.join(dirC, 'c.mp4'), 'c');
+
+  saveDatabase({
+    folders: [dirA],
+    folderSettings: {},
+    progress: {},
+    metadata: {},
+    // Off: no periodic timer to self-heal a dropped rescan -- exactly the
+    // scenario tech-debt #3 documents.
+    settings: { scanIntervalMinutes: 0, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30 },
+  });
+
+  assert.equal(currentDeferredRescanTimer(), null, 'precondition: no deferred rescan pending');
+
+  try {
+    // Round 1: exhaust the drain's budget with a rescan still pending.
+    await exhaustDrainWithPendingRescan(dirA, dirB);
+
+    const timer = currentDeferredRescanTimer();
+    assert.ok(timer, 'a deferred rescan must be scheduled when the drain exhausts its budget with a rescan still pending');
+    assert.equal(timer.hasRef(), false, "the deferred timer must be unref()'d so it never keeps the process/test runner alive");
+
+    // Round 2: at-most-one-pending. A second budget exhaustion while a
+    // deferred rescan is already scheduled must not stack a second timer --
+    // the single guard (`if (deferredRescanTimer) return`) must fire, so the
+    // SAME timer identity survives untouched.
+    await exhaustDrainWithPendingRescan(dirA, dirD);
+    assert.equal(currentDeferredRescanTimer(), timer,
+      'a second budget exhaustion while one deferred rescan is already pending must not stack a new timer');
+
+    // A folder-add that lands after the drain has already settled (the exact
+    // "auto-scan Off" gap tech-debt #3 describes) is still sitting unindexed,
+    // relying entirely on the deferred timer to ever pick it up.
+    const dbBeforeFire = loadDatabase();
+    dbBeforeFire.folders = [...dbBeforeFire.folders, dirC];
+    saveDatabase(dbBeforeFire);
+
+    // Trigger the deferred pass deterministically instead of a flaky real
+    // 5s wait: invoke the already-scheduled Timeout's callback directly (the
+    // accessor pattern the rest of this suite already uses for
+    // `currentScanTimer`, extended to actually fire it here).
+    timer._onTimeout();
+    assert.equal(currentDeferredRescanTimer(), null, 'firing the deferred timer must clear its own handle');
+
+    // The fired callback's scanDirectories() call runs asynchronously (fire-
+    // and-forget, mirroring armScanTimer's periodic callback) -- poll for it
+    // to settle without a fixed real-time sleep.
+    let waited = 0;
+    while (scanState.scanning && waited < 200) {
+      waited++;
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+    assert.equal(scanState.scanning, false, 'the deferred follow-up scan must complete');
+
+    const finalDb = loadDatabase();
+    const paths = Object.values(finalDb.metadata).map((m) => m.filePath);
+    assert.ok(paths.some((p) => p.endsWith('d.mp4')), "round 2's folder must be indexed by its own coalesced follow-up");
+    assert.ok(paths.some((p) => p.endsWith('c.mp4')), 'the deferred follow-up must index the folder-add left pending after the drain settled');
+  } finally {
+    // No dangling timer: whether the assertions above passed or threw, never
+    // leave a live timer behind for later tests/process exit.
+    const leftover = currentDeferredRescanTimer();
+    if (leftover) clearTimeout(leftover);
+  }
 });
 
 test('armScanTimer arms a 30-minute interval by default (old/fresh db.json with no settings)', () => {

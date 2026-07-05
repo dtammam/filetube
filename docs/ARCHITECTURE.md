@@ -64,14 +64,35 @@ clients (iOS Safari) can play them.
   `POST /api/settings` changes it; `GET/POST /api/settings`, `GET /api/cache/size`,
   and `POST /api/cache/clear` expose these settings and the transcode-cache
   housekeeping to the Settings UI.
-- **Re-read-merge-on-save (concurrency invariant):** a long-running scan must never
-  write back a whole-`db.json` snapshot taken at its start — concurrent writes
-  (settings, folders, watch progress, `lastServedAt`) would be clobbered. The scan
-  re-reads the fresh db at save time and writes back only the data it owns
-  (`metadata`), preserving concurrently written `settings`/`folders`/
-  `folderSettings`/`progress` and never regressing `db.metadata[id].lastServedAt`
-  (the on-disk value is the source of truth; in-memory serve maps are only
-  write-throttles).
+- **Re-read-merge-on-save (concurrency invariant):** every `db.json` writer
+  (`setTranscodeStatus`, `recordServed`, the scan's final merge, `POST
+  /api/config`, `POST /api/settings`, `POST /api/progress`, `DELETE
+  /api/videos/:id`) is serialized through one in-process async-mutex,
+  `updateDatabase(mutatorFn)` — a module-level promise chain that, per call,
+  loads a FRESH `db` from disk, applies the caller's synchronous mutator, and
+  (unless the mutator returns `false`) saves atomically. Because the read,
+  mutate, and save happen inside one serialized critical section, no two
+  writers can ever race a read-modify-write against each other; a failed
+  mutation is isolated so it rejects only that caller's promise and never
+  wedges the chain for subsequent writes. `saveDatabase` itself is atomic
+  on disk (write to a unique same-directory temp file, `fsync`, then
+  `rename` over `db.json`), so a crash mid-write can never leave a
+  half-written/truncated database — the temp is cleaned up on any failure
+  and the original is left intact. Readers (`loadDatabase()`) are
+  unchanged: every GET route still reads fresh from disk and never observes
+  a torn file, thanks to the atomic rename. The long-running scan still
+  never writes back a whole-`db.json` snapshot taken at its start —
+  concurrent writes (settings, folders, watch progress, `lastServedAt`)
+  would be clobbered — but instead of a standalone explicit re-read, its
+  final merge (root backfill, the FR3.3 `transcodeStatus` seed,
+  `mergeScannedMetadata`, and the progress/`persistedServedAt` prune) runs as
+  ONE `updateDatabase` mutator, so it merges into the fresh
+  db-at-lock-time rather than overwriting the scan's start-of-scan snapshot;
+  `db.metadata[id].lastServedAt` is never regressed by this merge (the
+  on-disk value is the source of truth; in-memory serve maps like
+  `persistedServedAt` are only write-throttles). The scan's FFmpeg-awaiting
+  extraction loop runs entirely OUTSIDE the lock, so writes stay unblocked
+  for the whole scan — only the final synchronous merge+save is serialized.
 
 ## Constraints
 

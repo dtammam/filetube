@@ -112,6 +112,26 @@ test('POST /api/config rejects a non-array folders payload', async () => {
   assert.equal(res.status, 400);
 });
 
+// ---- A: async write routes return 500 JSON (not a hang) when the ----------
+// ---- underlying updateDatabase/saveDatabase rejects ------------------------
+
+test('POST /api/config returns 500 JSON (not a hang) when persisting the configuration fails', async () => {
+  const realWriteFileSync = fs.writeFileSync;
+  fs.writeFileSync = () => { throw new Error('simulated disk failure'); };
+  try {
+    const res = await fetch(`${base}/api/config`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ folders: [] }),
+    });
+    assert.equal(res.status, 500);
+    const json = await res.json();
+    assert.equal(typeof json.error, 'string');
+  } finally {
+    fs.writeFileSync = realWriteFileSync;
+  }
+});
+
 test('POST /api/progress validates required fields', async () => {
   const res = await fetch(`${base}/api/progress`, {
     method: 'POST',
@@ -128,6 +148,49 @@ test('POST /api/progress returns 404 for unknown media', async () => {
     body: JSON.stringify({ id: 'ghost', timestamp: 10 }),
   });
   assert.equal(res.status, 404);
+});
+
+test('POST /api/progress returns 500 JSON (not a hang) when persisting the write fails', async () => {
+  fs.writeFileSync(DB_FILE, JSON.stringify({
+    folders: [], folderSettings: {}, progress: {},
+    metadata: { vidFail: { id: 'vidFail', title: 'Clip', duration: 10 } },
+  }));
+
+  const realWriteFileSync = fs.writeFileSync;
+  fs.writeFileSync = () => { throw new Error('simulated disk failure'); };
+  try {
+    const res = await fetch(`${base}/api/progress`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: 'vidFail', timestamp: 5 }),
+    });
+    assert.equal(res.status, 500);
+    const json = await res.json();
+    assert.equal(typeof json.error, 'string');
+  } finally {
+    fs.writeFileSync = realWriteFileSync;
+  }
+});
+
+test('DELETE /api/videos/:id returns 500 JSON (not a hang) when the db-metadata cleanup fails to persist', async () => {
+  // filePath deliberately points at a nonexistent file so the FS-unlink step
+  // (already try/catch-guarded, unrelated to this fix) is a no-op and the
+  // route proceeds to the db.metadata/progress cleanup this test targets.
+  fs.writeFileSync(DB_FILE, JSON.stringify({
+    folders: [], folderSettings: {}, progress: {},
+    metadata: { vidDelFail: { id: 'vidDelFail', title: 'Clip', filePath: '/nonexistent/clip.mp4' } },
+  }));
+
+  const realWriteFileSync = fs.writeFileSync;
+  fs.writeFileSync = () => { throw new Error('simulated disk failure'); };
+  try {
+    const res = await fetch(`${base}/api/videos/vidDelFail`, { method: 'DELETE' });
+    assert.equal(res.status, 500);
+    const json = await res.json();
+    assert.equal(typeof json.error, 'string');
+  } finally {
+    fs.writeFileSync = realWriteFileSync;
+  }
 });
 
 test('watch progress round-trips through save and read', async () => {
