@@ -1269,6 +1269,118 @@ Re-review after implementation is the focused re-check of the changed hunks (per
 `review_round_1.re_review` plan); the full suite and `transcode-cache.test.js` must
 stay green.
 
+### FR3.3 — transcodeStatus merge (remediation round 2)
+
+**Finding.** Fix A's re-read-merge rescues only `lastServedAt`;
+`mergeScannedMetadata` makes `newMetadata` authoritative for `transcodeStatus`.
+`newMetadata[id].transcodeStatus` for a surviving entry is the **stale scan-start
+snapshot**. A `setTranscodeStatus(id, 'processing'|'failed')` the transcode worker
+writes to disk *during* the scan is therefore reverted at save. An erased `'failed'`
+re-queues the permanently-failing transcode on the next `/video/:id`
+(`server.js:1398`, `transcodeStatus !== 'failed'`) — a wasted re-transcode loop
+every time a scan coincides. Pre-existing, self-heals, bounded; close it now that the
+scan owns the merge.
+
+**Constraint (why not a blind "prefer fresh").** The scan *legitimately* updates
+`transcodeStatus`: `reconcileTranscode` (`server.js:581-599`) sets `'ready'` when a
+finished MP4 is on disk, and clears a stale `'ready'` (or an audio/`!needsTranscode`
+status) when the file is gone. Those decisions must **win**. Only the case where the
+scan left the snapshot value *untouched* must yield to a concurrent worker write.
+
+**Chosen rule — option (b): reconcile against the fresh on-disk status.** Before
+`reconcileTranscode(item)` runs in the `runScanDirectories` tail, **seed** the item's
+`transcodeStatus` from the fresh on-disk value instead of the stale snapshot. Then
+`reconcileTranscode`'s existing branches do the right thing for free: its
+"leave in-flight (`pending`/`processing`/`failed`) alone" branch preserves the
+concurrent write, while it still overrides to `'ready'` (finished MP4 present) or
+clears a genuinely-stale `'ready'`. `mergeScannedMetadata` stays **unchanged**
+(single responsibility: `lastServedAt` max-merge); `reconcileTranscode` stays
+**unchanged** (its unit tests in `database.test.js` are untouched). This addresses
+the root cause — reconcile deciding against a stale base for a concurrently-written
+field — rather than patching the symptom at merge time.
+
+Per-surviving-entry decision table (`snapshot` = stale scan-start value; `fresh` =
+on-disk value at save; `MP4` = final `transcodedPath(id)` exists):
+
+| reconcile situation | fresh on-disk | merged result | why |
+| --- | --- | --- | --- |
+| audio / `!needsTranscode` | any | cleared | scan owns type/ext detection |
+| MP4 present | any (incl. `failed`/`processing`) | `ready` | on-disk MP4 = streamable file; scan wins |
+| MP4 gone, fresh `ready` | `ready` | cleared | stale `ready`, no file — scan clears it |
+| MP4 gone, fresh in-flight | `processing`/`failed` | **preserved** | worker's concurrent write is the truth |
+| MP4 gone, fresh absent | absent | absent → pending/queue | normal lazy-transcode path |
+
+**Conflict edge (scan `ready` vs concurrent `failed`): `ready` wins, and that is
+correct.** `reconcileTranscode` only emits `'ready'` when a completed (non-`.tmp`)
+MP4 actually exists on disk — positive proof of a streamable artifact — so a
+concurrent `'failed'` about a since-completed file is stale; the item streams the
+cached MP4 and is not re-queued. Near-impossible in practice (a failed transcode
+leaves no final `.mp4`); documented benign, no residual.
+
+**Exact change (in `runScanDirectories`, the reconcile loop + save block,
+`server.js:838-859`).** No change to `mergeScannedMetadata`. Move the fix-A
+`const fresh = loadDatabase()` **up**, to just before the reconcile loop, and reuse
+it for both the seed and the save merge (the tail from the loop to `saveDatabase` has
+**no `await`**, so a single fresh read is identical to one taken at save time and
+captures every concurrent write):
+
+```js
+const fresh = loadDatabase(); // read once; base for reconcile seed AND the save merge
+for (const item of Object.values(newMetadata)) {
+  const newRoot = matchRootFolder(item.filePath, currentFolders);
+  if (item.rootFolder !== newRoot) { item.rootFolder = newRoot; dbChanged = true; }
+  // FR3.3: base transcodeStatus on the FRESH on-disk value (a concurrent worker
+  // write), not the stale scan-start snapshot, so reconcileTranscode preserves an
+  // in-flight 'processing'/'failed' and still wins with 'ready'/clear-stale.
+  const priorStatus = fresh.metadata[item.id] && fresh.metadata[item.id].transcodeStatus;
+  if (priorStatus === undefined) delete item.transcodeStatus;
+  else item.transcodeStatus = priorStatus;
+  if (reconcileTranscode(item)) dbChanged = true;
+}
+
+if (dbChanged) {
+  fresh.metadata = mergeScannedMetadata(fresh.metadata, newMetadata);
+  for (const id of prunable) delete fresh.progress[id];
+  saveDatabase(fresh);
+  console.log('Database synced successfully.');
+}
+```
+
+Zero-regression: with no concurrent write, `fresh.metadata[id].transcodeStatus`
+equals the snapshot, so the seed is a no-op and `dbChanged`/reconcile behave exactly
+as today (a static scan that produced no write still produces none). Accepted minor
+cost: one `loadDatabase()` now runs on every scan (including no-op scans) instead of
+only when `dbChanged` — a single sync read on an infrequent path.
+
+**Ordering.** FR3b sequences **after** FR3a build-verifies; both edit the same
+`runScanDirectories` prune/merge tail (FR3a adds `persistedServedAt` cleanup in the
+prune path), so land them in order to avoid merge friction. No interaction beyond
+co-location — FR3a's changes are independent of the seed logic.
+
+**Regression tests** (integration, `test/integration/scan-api.test.js`, mirroring the
+existing fix-A `scan-clobber` interleave harness; `reconcileTranscode`'s own unit
+tests stay unmodified):
+
+- **Mid-scan `'failed'` survives + not re-queued (headline).** Seed a surviving
+  `needsTranscode` entry (no cached MP4) with an undefined/`'pending'` snapshot
+  status; include a new file so the scan yields at its extract `await`. Fire
+  `scanDirectories()` (don't await); during the scan call
+  `setTranscodeStatus(id, 'failed')`. After the scan, assert on-disk
+  `db.metadata[id].transcodeStatus === 'failed'`, and that `/video/:id` returns the
+  `'failed'` status without enqueuing a job (the `!== 'failed'` guard holds). Fails
+  under current code (reverts to snapshot), passes after the fix.
+- **Legitimate `'ready'` still wins over a stale snapshot.** Seed a surviving entry
+  with a stale `'processing'`/undefined snapshot AND a finished MP4 at
+  `transcodedPath(id)`; run the scan (no concurrency). Assert on-disk status
+  `=== 'ready'`.
+- **Stale `'ready'` still cleared.** Seed a surviving entry with `'ready'` and NO
+  cached MP4; run the scan. Assert `transcodeStatus` is absent.
+- **Conflict edge (scan `'ready'` vs concurrent `'failed'`).** Cached MP4 present;
+  during the in-flight scan call `setTranscodeStatus(id, 'failed')`. Assert result
+  `=== 'ready'` (MP4 on disk is authoritative).
+
+Full suite green; `transcode-cache.test.js` UNMODIFIED; lint 0.
+
 ## Decision log
 
 - 2026-07-05 — D1: Auto-scan default 30 minutes; options Off/30m/1h/6h/12h/

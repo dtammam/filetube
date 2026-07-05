@@ -461,11 +461,13 @@ function recordServed(id) {
   persistedServedAt.set(id, now);
 }
 
-// Test-observability accessor: lets tests simulate a persisted-serve entry
-// aging out of the write-throttle map (without waiting RECENT_STREAM_MS in
-// real time) so they can exercise recordServed's "due" path deterministically.
-// Harmless — production code never calls this; only recordServed itself
-// mutates `persistedServedAt`.
+// Removes a single id's write-throttle entry from `persistedServedAt`. Called
+// for real by `runScanDirectories`' prune path (FR3.2) so a pruned id's entry
+// doesn't linger forever (unbounded map growth under churn) or suppress
+// `lastServedAt` persistence for a re-added same-id path within
+// RECENT_STREAM_MS. Also used by tests to simulate a persisted-serve entry
+// aging out of the throttle map (without waiting RECENT_STREAM_MS in real
+// time) so they can exercise recordServed's "due" path deterministically.
 function clearPersistedServedAt(id) {
   persistedServedAt.delete(id);
 }
@@ -688,16 +690,31 @@ function extractMetadataAndThumbnail(filePath, mediaId, isAudio) {
 // `scanDirectories`, below.
 let scanState = { scanning: false, lastScan: null, rescanRequested: false };
 
+// FR3.4: hard cap on coalesced follow-up passes per `scanDirectories()` call.
+// `runScanDirectories` yields at every awaited `extractMetadataAndThumbnail`
+// call, so under CONTINUOUS new-file ingest plus sustained /api/scan (or
+// /api/config) requests, `rescanRequested` can keep getting re-set before the
+// drain loop rechecks it -- an unbounded `while (scanState.rescanRequested)`
+// would then chain passes forever, wedging `scanState.scanning` true
+// permanently (a livelock: every /api/scan call gets a perpetual 409). Set to
+// 1 so fix C's guarantee still holds -- a rescan requested during an
+// in-flight scan still runs at least once more after it -- while making the
+// drain provably bounded regardless of how many requests arrive.
+const MAX_RESCAN_FOLLOWUPS = 1;
+
 // Public entry point: tracks scanning state around the actual scan.
 // Overlap guard: while a scan is already running, a new call never starts a
 // second concurrent `runScanDirectories` -- but instead of silently dropping
-// the request, it records `rescanRequested` so the in-flight scan runs
-// exactly ONE bounded follow-up pass after it finishes (coalesced: many
-// requests during a scan collapse into a single follow-up, never an
-// unbounded queue). This covers EVERY caller of scanDirectories() — the
-// periodic timer (armScanTimer, below), the background scan kicked off by
-// POST /api/config, and any manual trigger — so two scans never run
-// concurrently, and no requested scan is silently lost.
+// the request, it records `rescanRequested` so the in-flight scan runs a
+// BOUNDED number of coalesced follow-up passes (MAX_RESCAN_FOLLOWUPS, above)
+// after it finishes (many requests during a scan collapse into at most that
+// many follow-ups, never an unbounded/livelocked chain). This covers EVERY
+// caller of scanDirectories() — the periodic timer (armScanTimer, below), the
+// background scan kicked off by POST /api/config, and any manual trigger —
+// so two scans never run concurrently, and a requested scan is never
+// silently lost (though under sustained continuous demand a request made
+// after the follow-up budget is exhausted waits for the NEXT demand cycle,
+// which is the trade-off that keeps this provably bounded).
 async function scanDirectories() {
   if (scanState.scanning) {
     scanState.rescanRequested = true;
@@ -705,10 +722,12 @@ async function scanDirectories() {
   }
   scanState.scanning = true;
   try {
+    let followups = 0;
     do {
       scanState.rescanRequested = false;
       await runScanDirectories();
-    } while (scanState.rescanRequested); // one coalesced follow-up per demand cycle
+      followups++;
+    } while (scanState.rescanRequested && followups <= MAX_RESCAN_FOLLOWUPS);
   } finally {
     scanState.scanning = false;
     scanState.lastScan = new Date().toISOString();
@@ -723,9 +742,14 @@ async function runScanDirectories() {
   // Configured root folders that are absent/unmounted this scan (the single
   // existence-check seam, reused by selectPrunableIds' mount-loss guard below).
   const missingRoots = new Set();
-  // Directories whose readdir/stat threw during this scan (EACCES/EIO/ESTALE
-  // etc.) -- a first-class "could not enumerate this subtree" signal at ANY
-  // depth, reused by selectPrunableIds' any-depth guard below.
+  // Directories that are un-enumerable this scan (EACCES/EIO/ESTALE etc.) --
+  // populated both when a directory's OWN readdir throws AND when a per-FILE
+  // stat throws for an entry inside an otherwise-readable directory (a
+  // transient stat error one level deeper is treated the same as a readdir
+  // failure: the whole containing directory is marked un-enumerable so its
+  // entries are retained rather than pruned). A first-class "could not
+  // enumerate this subtree" signal at ANY depth, reused by selectPrunableIds'
+  // any-depth guard below.
   const unreadablePaths = new Set();
 
   for (const folder of currentFolders) {
@@ -835,25 +859,43 @@ async function runScanDirectories() {
     }
   }
 
+  // Re-read-merge-on-save (fix A), moved UP (FR3.3): the scan holds `db` across
+  // many awaited extractMetadataAndThumbnail calls, so writing `db` back
+  // directly would clobber ANY db.settings/folders/folderSettings/progress/
+  // lastServedAt/transcodeStatus written concurrently (POST /api/settings,
+  // POST /api/config, recordServed, watch-progress, a transcode worker's
+  // setTranscodeStatus) during the scan. Read a FRESH db here, before the
+  // reconcile loop, and reuse it below both to seed each item's transcodeStatus
+  // (FR3.3) and as the save-merge base. Safe because the loop-to-save tail has
+  // no `await`, so this single read is identical to one taken right at save
+  // time and captures every concurrent write.
+  const fresh = loadDatabase();
+
   // Backfill each item's configured root folder (for hidden-folder filtering) and
   // reconcile transcode state for browser-incompatible videos (queues jobs as needed).
   for (const item of Object.values(newMetadata)) {
     const newRoot = matchRootFolder(item.filePath, currentFolders);
     if (item.rootFolder !== newRoot) { item.rootFolder = newRoot; dbChanged = true; }
+    // FR3.3: base transcodeStatus on the FRESH on-disk value (a concurrent
+    // worker write), not the stale scan-start snapshot, so reconcileTranscode
+    // preserves an in-flight 'processing'/'failed' and still wins with
+    // 'ready'/clear-stale.
+    const priorStatus = fresh.metadata[item.id] && fresh.metadata[item.id].transcodeStatus;
+    if (priorStatus === undefined) delete item.transcodeStatus;
+    else item.transcodeStatus = priorStatus;
     if (reconcileTranscode(item)) dbChanged = true;
   }
 
   if (dbChanged) {
-    // Re-read-merge-on-save (fix A): the scan holds `db` across many awaited
-    // extractMetadataAndThumbnail calls, so writing `db` back directly would
-    // clobber ANY db.settings/folders/folderSettings/progress/lastServedAt
-    // written concurrently (POST /api/settings, POST /api/config,
-    // recordServed, watch-progress) during the scan. Instead, re-read a FRESH
-    // db right before saving and write back only what this scan owns
-    // (metadata), merged so a concurrent lastServedAt is never regressed.
-    const fresh = loadDatabase();
     fresh.metadata = mergeScannedMetadata(fresh.metadata, newMetadata);
-    for (const id of prunable) delete fresh.progress[id]; // apply prune to the FRESH progress map
+    for (const id of prunable) {
+      delete fresh.progress[id]; // apply prune to the FRESH progress map
+      // Also drop the write-throttle map entry (FR3.2): without this, a
+      // pruned id's persistedServedAt entry lingers forever (unbounded growth
+      // under churn) and can suppress lastServedAt persistence if the same id
+      // is re-added (e.g. same path restored) within RECENT_STREAM_MS.
+      clearPersistedServedAt(id);
+    }
     saveDatabase(fresh);
     console.log('Database synced successfully.');
   }
@@ -929,6 +971,17 @@ function scanDirRecursive(rootFolder, dirPath, results, unreadable) {
           });
         } catch (err) {
           console.error(`Error stating file ${fullPath}:`, err);
+          // Mirror the readdir-failure guard above at file granularity: a
+          // transient per-file stat error (ESTALE/EIO/EACCES on a flaky mount)
+          // even though THIS directory's own readdir succeeded must not
+          // silently drop the file -- without this, the file is non-surviving
+          // but its directory would never be recorded as un-enumerable, so
+          // selectPrunableIds would treat it as genuinely gone and prune it
+          // (pruneMissing default true) on a retryable error = permanent data
+          // loss. Marking the whole directory unreadable is conservative (the
+          // entire subtree is retained for this pass and re-evaluated on the
+          // next scan) but never loses data to a transient failure.
+          if (unreadable) unreadable.add(dirPath);
         }
       }
     }

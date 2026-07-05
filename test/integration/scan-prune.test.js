@@ -14,7 +14,7 @@ const TRANSCODE_DIR = path.join(DATA_DIR, 'transcoded');
 
 const { test, beforeEach } = require('node:test');
 const assert = require('node:assert');
-const { scanDirectories, getMediaId } = require('../../server');
+const { scanDirectories, getMediaId, recordServed } = require('../../server');
 
 function baseSettings(overrides) {
   return {
@@ -234,6 +234,133 @@ test('(f) legacy entry with no rootFolder under a missing/unresolvable root is r
 
   const db = readDb();
   assert.ok(db.metadata[id], 'a legacy rootFolder-less entry whose derived root is missing must be retained');
+});
+
+// ---- (g) FR3.1: per-FILE statSync throw (readdir succeeded) ---------------
+// A transient per-file stat error (ESTALE/EIO/EACCES on a flaky mount) even
+// though the containing directory's OWN readdir succeeds must not be
+// mistaken for the file having been deleted -- scanDirRecursive now marks the
+// CONTAINING directory unreadable (mirroring the readdir-failure guard, one
+// level deeper), so selectPrunableIds retains every entry under it. A
+// genuinely-gone file elsewhere in the SAME scan (a different, fully-readable
+// directory under the same present root) must still prune normally -- proving
+// the fix isn't a blanket "retain everything this scan" no-op. (A
+// genuinely-gone file inside the SAME directory as the flaky file would also
+// be retained this pass by design -- the whole subtree is conservatively kept
+// for one pass and re-evaluated next scan -- so this test uses a sibling
+// directory to demonstrate selective, not blanket, retention.)
+test('(g) FR3.1: a present file whose statSync throws mid-scan is retained, while a genuinely-gone file elsewhere in the same scan still prunes', async () => {
+  const presentRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-present-'));
+  const flakyDir = path.join(presentRoot, 'flaky-subtree');
+  fs.mkdirSync(flakyDir);
+  const flakyPath = path.join(flakyDir, 'flaky.mp4');
+  fs.writeFileSync(flakyPath, 'video-bytes');
+  const flakySize = fs.statSync(flakyPath).size;
+  const flakyId = getMediaId(flakyPath);
+
+  const otherDir = path.join(presentRoot, 'other');
+  fs.mkdirSync(otherDir);
+  const goneFilePath = path.join(otherDir, 'gone.mp4');
+  // Deliberately never created on disk -> a genuinely-deleted file in an
+  // UNRELATED, fully-readable directory elsewhere in the same scan.
+  const goneId = getMediaId(goneFilePath);
+
+  writeDb({
+    folders: [presentRoot],
+    folderSettings: {},
+    progress: { [flakyId]: { position: 3 }, [goneId]: { position: 9 } },
+    metadata: {
+      [flakyId]: {
+        id: flakyId, name: 'flaky.mp4', title: 'flaky', filePath: flakyPath, folderName: 'flaky-subtree',
+        size: flakySize, ext: '.mp4', type: 'video', addedAt: Date.now(),
+        duration: 10, hasThumbnail: false, artist: '', rootFolder: presentRoot,
+      },
+      [goneId]: {
+        id: goneId, name: 'gone.mp4', title: 'gone', filePath: goneFilePath, folderName: 'other',
+        size: 100, ext: '.mp4', type: 'video', addedAt: Date.now(),
+        duration: 10, hasThumbnail: false, artist: '', rootFolder: presentRoot,
+      },
+    },
+    settings: baseSettings({ pruneMissing: true }),
+  });
+
+  // Simulate a transient per-file stat error for exactly the flaky file, even
+  // though its directory's own readdir succeeds -- the scenario FR3.1 closes.
+  // Every other statSync call passes through untouched.
+  const originalStatSync = fs.statSync;
+  fs.statSync = (p, ...rest) => {
+    if (p === flakyPath) {
+      const err = new Error(`EACCES: permission denied, stat '${p}'`);
+      err.code = 'EACCES';
+      throw err;
+    }
+    return originalStatSync.call(fs, p, ...rest);
+  };
+
+  try {
+    await scanDirectories();
+  } finally {
+    fs.statSync = originalStatSync;
+  }
+
+  const db = readDb();
+  assert.ok(db.metadata[flakyId], 'a present file whose statSync throws mid-scan must be retained, not pruned as if genuinely deleted');
+  assert.ok(db.progress[flakyId], 'watch progress for the retained flaky entry must not be touched');
+  assert.ok(!db.metadata[goneId], 'a genuinely-gone file elsewhere in the same scan must still prune (not a blanket no-op)');
+  assert.ok(!db.progress[goneId], 'watch progress for the genuinely-pruned entry should be removed');
+});
+
+// ---- (h) FR3.2: persistedServedAt cleanup on prune -------------------------
+// The `persistedServedAt` write-throttle map must be cleared for an id when
+// the scan prunes it -- otherwise a stale map entry can suppress
+// `lastServedAt` persistence for a re-added same-id path (same filePath,
+// hence same md5-derived id) within RECENT_STREAM_MS, because recordServed's
+// hot-path short-circuit would see a "recent" map entry left over from the
+// file's PRIOR incarnation and never touch disk for the new one.
+test('(h) FR3.2: a pruned id\'s persistedServedAt entry is cleared, so a re-added same-id file persists lastServedAt normally', async () => {
+  const presentRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-present-'));
+  const filePath = path.join(presentRoot, 'churn.mp4');
+  fs.writeFileSync(filePath, 'v1');
+  const id = getMediaId(filePath);
+
+  writeDb({
+    folders: [presentRoot],
+    folderSettings: {},
+    progress: {},
+    metadata: {
+      [id]: {
+        id, name: 'churn.mp4', title: 'churn', filePath, folderName: path.basename(presentRoot),
+        size: fs.statSync(filePath).size, ext: '.mp4', type: 'video', addedAt: Date.now(),
+        duration: 10, hasThumbnail: false, artist: '', rootFolder: presentRoot,
+      },
+    },
+    settings: baseSettings({ pruneMissing: true }),
+  });
+
+  // Seed the write-throttle map (mirrors the /video Range-request hot path):
+  // this persists a lastServedAt AND sets a "recent" persistedServedAt[id].
+  recordServed(id);
+  assert.equal(typeof readDb().metadata[id].lastServedAt, 'number', 'sanity: recordServed persisted an initial lastServedAt');
+
+  // The file is deleted -> the scan prunes this id (pruneMissing on).
+  fs.rmSync(filePath);
+  await scanDirectories();
+  assert.ok(!readDb().metadata[id], 'sanity: the id was actually pruned by this scan');
+
+  // The SAME path is re-added (a new file lands at the identical filePath, so
+  // getMediaId derives the identical id) -- a fresh incarnation with no
+  // lastServedAt of its own.
+  fs.writeFileSync(filePath, 'v2');
+  await scanDirectories();
+  assert.ok(readDb().metadata[id], 'sanity: the re-added file was picked back up by the scan');
+  assert.equal(readDb().metadata[id].lastServedAt, undefined, 'sanity: the freshly re-added entry starts with no lastServedAt');
+
+  // If the stale persistedServedAt[id] entry from the PRIOR incarnation had
+  // survived the prune, this call would short-circuit on the map lookup and
+  // never persist -- proving the prune-path cleanup actually ran.
+  recordServed(id);
+  assert.equal(typeof readDb().metadata[id].lastServedAt, 'number',
+    're-added same-id file must persist lastServedAt normally, not be suppressed by a stale pre-prune persistedServedAt entry');
 });
 
 // ---- (d) zero-regression: a normal, all-present scan behaves as before ----
