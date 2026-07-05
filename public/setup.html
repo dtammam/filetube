@@ -38,14 +38,14 @@
 <body>
   <header>
     <div class="header-left">
-      <button class="menu-toggle" id="menu-toggle">☰</button>
+      <button class="menu-toggle" id="menu-toggle" aria-label="Open menu"><i class="icon-menu"></i></button>
       <a href="/" class="logo">File<span class="tube">Tube</span></a>
       <a href="/" class="mobile-logo" aria-label="FileTube home">
         <img src="/favicon.svg" alt="FileTube" />
       </a>
     </div>
     <div class="header-right">
-      <button class="theme-toggle" id="theme-toggle-btn">🌙</button>
+      <button class="theme-toggle" id="theme-toggle-btn" aria-label="Toggle light or dark mode"><i class="icon-moon"></i></button>
     </div>
   </header>
 
@@ -103,7 +103,7 @@
       <div class="setup-box">
         <h2>Appearance</h2>
         <p>Pick the YouTube era FileTube dresses up as. Light / dark is the
-           🌙 button in the header.</p>
+           theme-toggle button in the header.</p>
         <div class="theme-picker" id="theme-picker"><!-- rendered by JS --></div>
       </div>
     </main>
@@ -182,9 +182,9 @@
           </div>
           <div style="display:flex; flex-direction:column; gap:3px; flex-shrink:0;">
             <button type="button" class="reorder-btn" data-index="${index}" data-dir="up" title="Move up" ${index === 0 ? 'disabled' : ''}
-                    style="background:none;border:1px solid var(--border-dark);border-radius:var(--radius);cursor:pointer;color:var(--text-primary);font-size:10px;line-height:1;padding:2px 6px;">▲</button>
+                    style="background:none;border:1px solid var(--border-dark);border-radius:var(--radius);cursor:pointer;color:var(--text-primary);font-size:16px;line-height:1;padding:2px 6px;"><i class="icon-arrow-up"></i></button>
             <button type="button" class="reorder-btn" data-index="${index}" data-dir="down" title="Move down" ${index === configuredFolders.length - 1 ? 'disabled' : ''}
-                    style="background:none;border:1px solid var(--border-dark);border-radius:var(--radius);cursor:pointer;color:var(--text-primary);font-size:10px;line-height:1;padding:2px 6px;">▼</button>
+                    style="background:none;border:1px solid var(--border-dark);border-radius:var(--radius);cursor:pointer;color:var(--text-primary);font-size:16px;line-height:1;padding:2px 6px;"><i class="icon-arrow-down"></i></button>
           </div>
           <button class="remove-folder-btn" data-index="${index}" title="Remove folder">&times;</button>
         `;

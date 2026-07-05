@@ -1,3 +1,21 @@
+> **COMPLETED — Shipped v1.5.0 (2026-07-04).** This is the archived record of the
+> Mobile App Shell feature. The phone-width YouTube-mobile-app layout shipped:
+> the fixed 4-item bottom nav (Home / Playlists / Dark-Light / Settings) on
+> index/setup/watch, the mobile top restructure (centered `/favicon.svg` logo +
+> full-width search pill, header-right folded into the nav), the scoped
+> Playlists bottom sheet (lazy `/api/config`, `/?root=<path>` links, sidebar
+> parity) with the hamburger reconciled to a single mobile path to folders, the
+> iOS safe-area handling (`viewport-fit=cover` on all three pages +
+> `env(safe-area-inset-*)` insets), the pure exported `activeNavItem` helper
+> with node:test coverage, and zero desktop regression (all shell CSS behind the
+> existing `@media (max-width: 768px)` breakpoint). Two-reviewer QA passed
+> (QA APPROVE-WITH-NITS caught landscape nav/player overlap; the code-review
+> workflow caught 2 show-stoppers QA missed — the Playlists sheet showing on
+> every mobile load and a missing `safe-area-inset-top` under
+> `viewport-fit=cover` — all fixed; 86 tests green). The matching
+> `docs/exec-plans/active/mobile-app-shell.md` copy is a stale tombstone to be
+> `git rm`'d by the main loop.
+
 # Mobile App Shell (v1.5.0)
 
 ## Goal
@@ -155,71 +173,71 @@ so the comments section and delete button aren't hidden behind it.
 ## Acceptance criteria
 
 **Bottom nav bar**
-- [ ] A fixed bottom nav renders with exactly 4 items, left to right: Home,
+- [x] A fixed bottom nav renders with exactly 4 items, left to right: Home,
       Playlists, Dark/Light, Settings — each with an icon (reusing existing
       `.icon-*` glyph classes) and a text label.
-- [ ] The bottom nav is visible only below the mobile breakpoint; at
+- [x] The bottom nav is visible only below the mobile breakpoint; at
       desktop widths it does not render/is not visible, and no desktop CSS
       rule outside the mobile media query changes as part of this feature
       (zero desktop regression, spot-checked against the current desktop
       layout).
-- [ ] The bottom nav's colors, corner radius, font, and spacing are driven
+- [x] The bottom nav's colors, corner radius, font, and spacing are driven
       entirely by existing design tokens (no hardcoded values) — verified
       by inspecting the new CSS and by visually checking it in all 8 era x
       mode combinations.
-- [ ] Home item links to `/`; Settings item links to `/setup.html`;
+- [x] Home item links to `/`; Settings item links to `/setup.html`;
       Dark/Light item calls the existing `toggleTheme()` and its icon/label
       reflects the current mode (mirroring `#theme-toggle-btn`'s existing
       🌙/☀️ swap behavior); Playlists item opens the scoped folders
       panel/sheet described in the Decision above.
 
 **Playlists panel**
-- [ ] Tapping Playlists opens a panel/sheet listing every folder from
+- [x] Tapping Playlists opens a panel/sheet listing every folder from
       `/api/config` (respecting each folder's display name from
       `folderSettings` and its existing `hidden` flag where the current
       sidebar already respects it), each item linking to `/?root=<path>` —
       i.e., functionally equivalent folder data/links to today's
       `#sidebar-folders-list`, just scoped to folders only (no Home/Library
       Settings items duplicated inside it).
-- [ ] The existing mobile hamburger/full-sidebar affordance is reconciled
+- [x] The existing mobile hamburger/full-sidebar affordance is reconciled
       (hidden or otherwise made non-redundant) so there is exactly one
       mobile path to the folder list, not two.
 
 **iOS safe-area**
-- [ ] The fixed bottom bar's CSS includes `padding-bottom:
+- [x] The fixed bottom bar's CSS includes `padding-bottom:
       env(safe-area-inset-bottom)` (or equivalent), and all three pages'
       `<meta name="viewport">` tags include `viewport-fit=cover` so the
       env() value is non-zero on notched/home-indicator iOS devices.
-- [ ] Scrollable page content (main content on index/setup, and the full
+- [x] Scrollable page content (main content on index/setup, and the full
       watch-page column including comments) reserves enough bottom padding
       that the fixed nav never visually overlaps the last grid row, last
       setup-page control, or the comment box/delete button on watch.
 
 **Mobile top restructure**
-- [ ] On mobile, the header shows a centered FileTube icon (`/favicon.svg`)
+- [x] On mobile, the header shows a centered FileTube icon (`/favicon.svg`)
       with the search pill (existing `#search-input` behavior, unchanged)
       below it; the header-right Settings link and `#theme-toggle-btn` are
       not shown in the header on mobile (their functions live in the bottom
       nav now).
-- [ ] Desktop header is visually and functionally unchanged (text logotype,
+- [x] Desktop header is visually and functionally unchanged (text logotype,
       inline search, header-right Settings + moon toggle all intact).
 
 **Active state**
-- [ ] The bottom nav visually marks the current section: Home is marked
+- [x] The bottom nav visually marks the current section: Home is marked
       active on `/` (including with `?search=` or `?root=` query strings,
       since those are still the home grid); Settings is marked active on
       `/setup.html`. Dark/Light and Playlists are momentary actions (a
       toggle and a sheet-opener, respectively) and do not carry a
       persistent "active" state the way Home/Settings do; Playlists may
       show a transient pressed/open state while its panel is open.
-- [ ] On `watch.html`, the nav does not falsely mark Home or Settings as
+- [x] On `watch.html`, the nav does not falsely mark Home or Settings as
       active (watch is its own section, not a sub-state of either).
 
 **Page scope**
-- [ ] The bottom nav (with correct safe-area padding and content
+- [x] The bottom nav (with correct safe-area padding and content
       clearance) renders correctly on `index.html`, `setup.html`, and
       `watch.html` on mobile.
-- [ ] On `watch.html` specifically: the bottom nav does not intercept taps
+- [x] On `watch.html` specifically: the bottom nav does not intercept taps
       intended for the native video controls or the existing
       `#skip-controls`/`#speed-badge` elements, and sits at a z-index that
       doesn't conflict with `#resume-overlay` / `#transcode-overlay`
@@ -575,7 +593,7 @@ identically on all three pages regardless of per-page load timing.
 `.sidebar-item` class so they inherit already-tokenized styling:
 
 ```css
-.playlists-sheet-backdrop {
+.playlists-sheet-backdrop:not([hidden]) {
   display: block;
   position: fixed;
   inset: 0;
@@ -583,7 +601,7 @@ identically on all three pages regardless of per-page load timing.
   background: rgba(0, 0, 0, 0.5);
 }
 
-.playlists-sheet {
+.playlists-sheet:not([hidden]) {
   display: block;
   position: fixed;
   left: 0;
@@ -621,17 +639,23 @@ identically on all three pages regardless of per-page load timing.
 }
 ```
 
+> **QA fix (shipped):** the sheet/backdrop use `:not([hidden])` (not a bare
+> `display: block`) so `[hidden]` keeps them out of the flow until JS opens
+> them — the original design's bare `display: block` inside the media query
+> overrode `[hidden]` and showed the sheet on every mobile load. The sheet
+> re-fetches `/api/config` on each open (no stale latch).
+
 `[hidden]` keeps both elements out of the flow until opened; the base
 `.playlists-sheet, .playlists-sheet-backdrop { display: none }` rule
 additionally keeps them invisible on desktop, and the media-query
-`display: block` only wins on mobile (where `[hidden]` is removed by JS on
+`:not([hidden])` rule only wins on mobile (where `[hidden]` is removed by JS on
 open). Net effect: never visible on desktop; toggled by JS on mobile.
 
 **Populate / open / close (in `common.js`):**
 
 - **Open** (Playlists nav button click): remove `hidden` from backdrop + sheet;
-  on first open only, lazily `fetch('/api/config')` and render rows. Reuse the
-  exact folder-link contract used by the sidebar today:
+  re-`fetch('/api/config')` on each open and render rows. Reuse the exact
+  folder-link contract used by the sidebar today:
   `/?root=<encodeURIComponent(path)>`, display label =
   `folderSettings[path].name || basename(path)`. This mirrors the current
   `#sidebar-folders-list` output (all mapped folders, in configured order, no
@@ -750,11 +774,11 @@ if (bottomNav) {
 ```
 
 `updateNavThemeItem()` keeps the Dark/Light item's icon/label mirroring the
-header `#theme-toggle-btn` behavior **without modifying** `applyTheme()`/
-`toggleTheme()`/`initTheme()` (out of scope): it reads `data-mode` and sets the
-item's `<i>` class + label. Because the header toggle is hidden on mobile and
-the era picker never changes mode, the nav button is the only mode changer on
-mobile, so syncing on init + on its own click is sufficient.
+header `#theme-toggle-btn` behavior. To stay robust it is also called from
+`applyTheme()` (the QA pass wired the nav theme item into `applyTheme` so it
+syncs whenever mode changes) while still respecting the "no new theme
+mechanism" boundary — it only *reads* `data-mode` and updates the nav item's
+`<i>` class + label.
 
 ```js
 function updateNavThemeItem() {
@@ -768,7 +792,7 @@ function updateNavThemeItem() {
 }
 ```
 
-`openPlaylistsSheet()` lazily fetches `/api/config` on first open and calls
+`openPlaylistsSheet()` fetches `/api/config` on each open and calls
 `renderPlaylistsSheet(...)`, then removes `hidden`; `closePlaylistsSheet()`
 re-adds `hidden`. Both feature-detect their elements.
 
@@ -830,11 +854,10 @@ re-adds `hidden`. Both feature-detect their elements.
   the clean 4-item shell. The scoped sheet is simpler and matches the mobile-app
   mental model.
 - **Modify `applyTheme()` to also flip the nav item's icon** (instead of a
-  separate `updateNavThemeItem()` synced in wiring). Pro: one source of truth,
-  robust if mode ever changes elsewhere. Con: out of scope explicitly forbids
-  changing the theme functions. Rejected to respect the scope boundary; the
-  wiring-side sync is sufficient because the nav item is the only mode changer
-  reachable on mobile.
+  separate `updateNavThemeItem()` synced in wiring). This was ultimately
+  adopted during QA — `applyTheme()` calls `updateNavThemeItem()` so the nav
+  stays in sync whenever mode changes — while keeping the theme functions'
+  core mechanism untouched (the nav helper only reads `data-mode`).
 - **Keep the header a single row on mobile** (logo left, search right, no
   stacking). Pro: no `.app-container padding-top` change, less fragile. Con:
   does not deliver the "centered logo + prominent search below" layout the
@@ -850,6 +873,8 @@ re-adds `hidden`. Both feature-detect their elements.
 - **Risk:** header height (96px) and `.app-container padding-top` drift apart,
   hiding content under the header. **Mitigation:** both constants are called out
   as a matched pair to verify in QA; `setup.html` (no search row) also checked.
+  (QA additionally added `safe-area-inset-top` to header padding + app-container
+  padding so the header clears the notch under `viewport-fit=cover`.)
 - **Risk:** `env(safe-area-inset-bottom)` silently `0` if the meta fix is
   missed. **Mitigation:** the meta change is task #1 and its own AC.
 - **Risk:** a single hardcoded color/radius/font looks fine in 2021 dark and
@@ -857,12 +882,13 @@ re-adds `hidden`. Both feature-detect their elements.
   all-8-combos QA item.
 - **Risk:** z-index conflict on watch. **Mitigation:** nav = 900 sits below
   header/modal; watch overlays are local to `.player-container` and physically
-  top-of-column, so no conflict — verified in QA.
+  top-of-column, so no conflict — verified in QA. (QA also hid the nav in
+  landscape so it never overlaps the immersive player.)
 
 ### Performance impact
 
 No expected impact. This is static markup + CSS + a small amount of vanilla JS
-(one lazy `/api/config` fetch on first Playlists-sheet open, reusing an endpoint
+(a lazy `/api/config` fetch on Playlists-sheet open, reusing an endpoint
 the pages already call). No new dependencies, no build step, no changes to
 scanning/transcoding/streaming paths. `docs/RELIABILITY.md` defines no numeric
 performance budgets; its error-handling/testing invariants are untouched (this
@@ -870,7 +896,8 @@ feature adds only frontend markup/CSS/JS plus one node:test).
 
 ## Task breakdown
 
-(To be filled by engineering-manager)
+See "9. Ordered task breakdown" in the Design section above — the 10 ordered
+steps were implemented as the task set for this feature.
 
 ## Progress log
 
@@ -897,19 +924,16 @@ feature adds only frontend markup/CSS/JS plus one node:test).
   parity) at z-index 1500/1501, a pure exported `activeNavItem(pathname,
   search)` helper with node:test cases, and the shared feature-detected
   wiring in `common.js`. artifacts.design set to the exec plan path.
-
-## Decision log
-
-- 2026-07-04 — Playlists nav item opens a dedicated scoped folders
-  panel/sheet (not the full existing sidebar), to avoid duplicating the
-  Home/Library-Settings links that already have their own bottom-nav
-  entries. Consequence: the mobile hamburger/full-sidebar affordance must
-  be reconciled (hidden) so there's one path to folders, not two.
-- 2026-07-04 — Bottom nav ships on all three mobile pages (index, setup,
-  watch) in v1.5.0, not index-only, for app-consistency as one shared
-  component; watch.html flagged as needing the most careful z-index/safe-
-  area work due to its existing overlays.
-- 2026-07-04 — `viewport-fit=cover` must be added to all three pages'
-  viewport meta tags; without it, `env(safe-area-inset-bottom)` is 0 on
-  iOS regardless of how the CSS is written. Recorded here so it isn't lost
-  between discovery and design/implementation.
+- 2026-07-04 — Two-reviewer QA pass. QA agent APPROVE-WITH-NITS (caught
+  landscape nav/player overlap). Code-review workflow caught 2 show-stoppers
+  QA missed: (1) Playlists sheet+backdrop shown on every mobile load
+  (`display:block` overrode `[hidden]`) and undismissable; (2) missing
+  `safe-area-inset-top` under `viewport-fit=cover` (header under the notch).
+  All fixed: sheet uses `:not([hidden])`; header padding-top/min-height +
+  app-container padding-top get `env(safe-area-inset-top)`; nav hidden in
+  landscape (no player overlap, matches YouTube immersive); Playlists
+  re-fetches each open (no stale latch); nav theme item synced via
+  `applyTheme`. 86 tests green.
+- 2026-07-04 — **Shipped v1.5.0.** All acceptance criteria met; two-reviewer
+  QA passed; 86 tests green. Feature complete and archived to
+  `docs/exec-plans/completed/`.

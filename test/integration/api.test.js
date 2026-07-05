@@ -36,6 +36,12 @@ test('GET / serves the static app shell', async () => {
   assert.match(body, /<html/i);
 });
 
+test('GET /assets/icons/*.svg serves the bundled icons', async () => {
+  const res = await fetch(`${base}/assets/icons/home.svg`);
+  assert.equal(res.status, 200);
+  assert.match(await res.text(), /<svg/i);
+});
+
 test('GET /api/config returns folders and folderSettings', async () => {
   const res = await fetch(`${base}/api/config`);
   assert.equal(res.status, 200);

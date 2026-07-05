@@ -458,6 +458,7 @@ header {
 
 .sidebar-item i {
   width: 18px;
+  height: 18px;
   text-align: center;
   font-size: 16px;
   color: var(--text-secondary);
@@ -1324,16 +1325,57 @@ header {
   gap: 10px;
 }
 
-/* Custom icon fonts replacement using SVG/simple text icons */
-.icon-play::before { content: "▶"; }
-.icon-delete::before { content: "🗑"; }
-.icon-cog::before { content: "⚙"; }
-.icon-search::before { content: "🔍"; }
-.icon-moon::before { content: "🌙"; }
-.icon-sun::before { content: "☀️"; }
-.icon-folder::before { content: "📁"; }
-.icon-home::before { content: "🏠"; }
-.icon-menu::before { content: "☰"; }
+/* Chrome icons: Material Symbols Outlined SVG used as an alpha mask, painted
+   in currentColor so they theme across all era x mode combos automatically.
+   NOTE: icon-star is intentionally NOT in this group (gold rating, stays ★). */
+.icon-home,
+.icon-folder,
+.icon-cog,
+.icon-delete,
+.icon-moon,
+.icon-sun,
+.icon-menu,
+.icon-search,
+.icon-play,
+.icon-refresh,
+.icon-arrow-up,
+.icon-arrow-down {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.15em;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+}
+
+.icon-home { -webkit-mask-image: url(/assets/icons/home.svg); mask-image: url(/assets/icons/home.svg); }
+.icon-folder { -webkit-mask-image: url(/assets/icons/folder.svg); mask-image: url(/assets/icons/folder.svg); }
+.icon-cog { -webkit-mask-image: url(/assets/icons/settings.svg); mask-image: url(/assets/icons/settings.svg); }
+.icon-delete { -webkit-mask-image: url(/assets/icons/delete.svg); mask-image: url(/assets/icons/delete.svg); }
+.icon-moon { -webkit-mask-image: url(/assets/icons/dark_mode.svg); mask-image: url(/assets/icons/dark_mode.svg); }
+.icon-sun { -webkit-mask-image: url(/assets/icons/light_mode.svg); mask-image: url(/assets/icons/light_mode.svg); }
+.icon-menu { -webkit-mask-image: url(/assets/icons/menu.svg); mask-image: url(/assets/icons/menu.svg); }
+.icon-search { -webkit-mask-image: url(/assets/icons/search.svg); mask-image: url(/assets/icons/search.svg); }
+.icon-play { -webkit-mask-image: url(/assets/icons/play_arrow.svg); mask-image: url(/assets/icons/play_arrow.svg); }
+.icon-refresh { -webkit-mask-image: url(/assets/icons/refresh.svg); mask-image: url(/assets/icons/refresh.svg); }
+.icon-arrow-up { -webkit-mask-image: url(/assets/icons/keyboard_arrow_up.svg); mask-image: url(/assets/icons/keyboard_arrow_up.svg); }
+.icon-arrow-down { -webkit-mask-image: url(/assets/icons/keyboard_arrow_down.svg); mask-image: url(/assets/icons/keyboard_arrow_down.svg); }
+
+/* Paint the icon fill only where CSS masks are supported, so a browser without
+   mask support (or a failed/404 mask) renders nothing instead of a solid
+   currentColor square. */
+@supports (mask-image: url("#")) or (-webkit-mask-image: url("#")) {
+  .icon-home, .icon-folder, .icon-cog, .icon-delete, .icon-moon, .icon-sun,
+  .icon-menu, .icon-search, .icon-play, .icon-refresh, .icon-arrow-up, .icon-arrow-down {
+    background-color: currentColor;
+  }
+}
+
+/* Out of scope: gold rating star — NOT a mask/currentColor icon. Leave as-is. */
 .icon-star::before { content: "★"; }
 
 /* New mobile-shell elements never render outside the phone breakpoint.

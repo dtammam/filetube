@@ -210,7 +210,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   rescanBtn.addEventListener('click', async () => {
-    rescanBtn.textContent = '🔄 Scanning...';
+    rescanBtn.innerHTML = '<i class="icon-refresh"></i> Scanning...';
     rescanBtn.disabled = true;
     try {
       const res = await fetch('/api/scan', { method: 'POST' });
@@ -219,13 +219,13 @@ document.addEventListener('DOMContentLoaded', () => {
         window.location.reload();
       } else {
         alert('Failed to rescan: ' + data.error);
-        rescanBtn.textContent = '🔄 Rescan Files';
+        rescanBtn.innerHTML = '<i class="icon-refresh"></i> Rescan Files';
         rescanBtn.disabled = false;
       }
     } catch (err) {
       console.error(err);
       alert('Network error trigger scanner.');
-      rescanBtn.textContent = '🔄 Rescan Files';
+      rescanBtn.innerHTML = '<i class="icon-refresh"></i> Rescan Files';
       rescanBtn.disabled = false;
     }
   });

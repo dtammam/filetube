@@ -49,7 +49,7 @@ function resolveTheme(storedEra, storedMode, legacyTheme) {
 }
 
 // Applies both attributes + persists both keys. Also flips the header
-// 🌙/☀️ icon to reflect the current mode.
+// moon/sun icon to reflect the current mode.
 function applyTheme(era, mode) {
   const d = document.documentElement;
   d.setAttribute('data-theme', era);
@@ -59,7 +59,11 @@ function applyTheme(era, mode) {
     localStorage.setItem('ft-mode', mode);
   } catch (_) { /* storage disabled (private mode/sandbox) — attributes still applied */ }
   const btn = document.getElementById('theme-toggle-btn');
-  if (btn) btn.innerHTML = mode === 'dark' ? '☀️' : '🌙';
+  if (btn) {
+    btn.innerHTML = mode === 'dark'
+      ? '<i class="icon-sun"></i>'
+      : '<i class="icon-moon"></i>';
+  }
   if (typeof updateNavThemeItem === 'function') updateNavThemeItem();
 }
 
@@ -76,7 +80,7 @@ function initTheme() {
   applyTheme(era, mode);
 }
 
-// Header 🌙/☀️ button: flips data-mode only, never touches data-theme (era
+// Header moon/sun button: flips data-mode only, never touches data-theme (era
 // selection lives solely in the setup-page picker).
 function toggleTheme() {
   const d = document.documentElement;
