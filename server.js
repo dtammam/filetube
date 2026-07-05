@@ -6,6 +6,13 @@ const { exec, spawn } = require('child_process');
 const mime = require('mime-types');
 require('dotenv').config();
 
+// Optional yt-dlp subscription module (v1.11.0): dormant by default.
+// Requiring it has NO side effects -- it only defines functions; every side
+// effect it can cause (route registration, timer arming) is gated behind
+// `isEnabled(config)` inside the functions themselves. See
+// lib/ytdlp/index.js for the dormant-wiring mechanism.
+const ytdlp = require('./lib/ytdlp');
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -1769,6 +1776,16 @@ app.get('/video/:id', (req, res) => {
   }
 });
 
+// Optional yt-dlp subscription module (v1.11.0): registered AFTER every
+// existing route so enabling it can never shadow/interfere with one. This
+// call is a no-op when FILETUBE_YTDLP_ENABLED is unset/off --
+// registerRoutes' first line early-returns before adding anything to the
+// router, so every /api/subscriptions* request falls through to Express's
+// native 404 (see lib/ytdlp/index.js). `deps` are the existing primitives
+// the module's later tasks (persistence/poll) need; T1 doesn't call any of
+// them from the disabled path.
+ytdlp.registerRoutes(app, { updateDatabase, loadDatabase, scanDirectories, getMediaId });
+
 // Start the server — but only when run directly (`node server.js`), not when
 // required by the test suite. This lets tests import `app` and the pure helpers
 // without binding a port or triggering a real scan.
@@ -1805,6 +1822,12 @@ if (require.main === module) {
   // the module for tests neither scans nor keeps the event loop alive.
   scanDirectories().catch(console.error);
   armScanTimer();
+
+  // Same no-op guarantee as registerRoutes above: startBackground early-
+  // returns (and arms no timer) when the yt-dlp module is disabled. Placed
+  // inside this guard (not at module top-level) so importing server.js for
+  // tests never arms the yt-dlp poll timer either.
+  ytdlp.startBackground({ updateDatabase, loadDatabase, scanDirectories, getMediaId });
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`==================================================`);
@@ -1851,4 +1874,10 @@ module.exports = {
   VIDEO_EXTENSIONS,
   AUDIO_EXTENSIONS,
   TRANSCODE_EXTENSIONS,
+  // Optional yt-dlp subscription module (v1.11.0) -- re-exported so tests can
+  // observe the dormant-wiring no-op guarantee without a second require of
+  // lib/ytdlp (see AC1-9 in docs/exec-plans/active/2026-07-05-yt-dlp-integration-module.md).
+  currentYtdlpPollTimer: ytdlp.currentYtdlpPollTimer,
+  parseYtdlpConfig: ytdlp.parseYtdlpConfig,
+  isEnabled: ytdlp.isEnabled,
 };

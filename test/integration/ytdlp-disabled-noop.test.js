@@ -1,0 +1,142 @@
+'use strict';
+
+// [INTEGRATION] The acceptance north star for the optional yt-dlp module
+// (v1.11.0): when disabled (the default), FileTube behaves byte-identically
+// to today. Proves, in ONE process:
+//   - AC1: every /api/subscriptions* path 404s when disabled.
+//   - AC2: currentYtdlpPollTimer() reports null/not-armed when disabled.
+//   - AC4: require('../../lib/ytdlp') has no side effects (no route added to
+//     a bare express() app, no timer armed, just by requiring).
+//   - AC8: the SAME process can flip the config on and off and observe both
+//     the route and the timer toggle accordingly (not just two separate runs).
+//
+// Isolated DATA_DIR before requiring the app, per the existing integration-
+// test pattern (test/integration/api.test.js, scan-api.test.js).
+const os = require('node:os');
+const fs = require('node:fs');
+const path = require('node:path');
+process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-test-'));
+// The master flag must be unset/off for the "disabled by default" half of
+// this proof -- delete any inherited value so the test is deterministic
+// regardless of the shell environment it runs under.
+delete process.env.FILETUBE_YTDLP_ENABLED;
+
+const { test, before, after } = require('node:test');
+const assert = require('node:assert');
+const express = require('express');
+const { app, currentYtdlpPollTimer } = require('../../server');
+const ytdlp = require('../../lib/ytdlp');
+
+let server;
+let base;
+
+before(async () => {
+  await new Promise((resolve) => {
+    server = app.listen(0, '127.0.0.1', resolve);
+  });
+  base = `http://127.0.0.1:${server.address().port}`;
+});
+
+after(async () => {
+  // fetch (undici) pools keep-alive sockets; force them shut so close()
+  // resolves promptly instead of waiting on idle connections (avoids CI hangs).
+  server.closeAllConnections?.();
+  await new Promise((resolve) => server.close(resolve));
+});
+
+// ---- Disabled path is a no-op (AC1, AC2) ----
+
+test('GET /api/subscriptions/health 404s when the module is disabled', async () => {
+  const res = await fetch(`${base}/api/subscriptions/health`);
+  assert.equal(res.status, 404);
+});
+
+test('any other /api/subscriptions* path 404s when the module is disabled', async () => {
+  const list = await fetch(`${base}/api/subscriptions`);
+  assert.equal(list.status, 404);
+  const byId = await fetch(`${base}/api/subscriptions/some-id`);
+  assert.equal(byId.status, 404);
+});
+
+test('currentYtdlpPollTimer() reports null when the module is disabled', () => {
+  assert.equal(currentYtdlpPollTimer(), null);
+});
+
+// ---- require() is side-effect-free (AC4) ----
+
+test('requiring lib/ytdlp adds no route to a bare express() app and arms no timer', async () => {
+  // Requiring the module (done at file-load time, above) must not have
+  // registered anything anywhere on its own -- only an explicit
+  // registerRoutes/armYtdlpTimer call can do that. A brand-new app that
+  // never had registerRoutes called against it must 404 the same way.
+  const bareApp = express();
+  const bareServer = await new Promise((resolve) => {
+    const s = bareApp.listen(0, '127.0.0.1', () => resolve(s));
+  });
+  try {
+    const res = await fetch(`http://127.0.0.1:${bareServer.address().port}/api/subscriptions/health`);
+    assert.equal(res.status, 404);
+  } finally {
+    bareServer.closeAllConnections?.();
+    await new Promise((resolve) => bareServer.close(resolve));
+  }
+  assert.equal(ytdlp.currentYtdlpPollTimer(), null);
+});
+
+// ---- Same-process on/off toggle (AC8) ----
+
+test('registerRoutes/armYtdlpTimer toggle on and off within the same process', async () => {
+  const disabledConfig = ytdlp.parseYtdlpConfig({});
+  const enabledConfig = ytdlp.parseYtdlpConfig({
+    FILETUBE_YTDLP_ENABLED: 'true',
+    FILETUBE_YTDLP_POLL_MINUTES: '1',
+  });
+  assert.equal(ytdlp.isEnabled(disabledConfig), false);
+  assert.equal(ytdlp.isEnabled(enabledConfig), true);
+
+  // OFF: a fresh app with the disabled config gets no route.
+  const offApp = express();
+  ytdlp.registerRoutes(offApp, {}, disabledConfig);
+  const offServer = await new Promise((resolve) => {
+    const s = offApp.listen(0, '127.0.0.1', () => resolve(s));
+  });
+  try {
+    const res = await fetch(`http://127.0.0.1:${offServer.address().port}/api/subscriptions/health`);
+    assert.equal(res.status, 404);
+  } finally {
+    offServer.closeAllConnections?.();
+    await new Promise((resolve) => offServer.close(resolve));
+  }
+
+  // ON: a different fresh app with the enabled config gets the health route.
+  const onApp = express();
+  ytdlp.registerRoutes(onApp, {}, enabledConfig);
+  const onServer = await new Promise((resolve) => {
+    const s = onApp.listen(0, '127.0.0.1', () => resolve(s));
+  });
+  try {
+    const res = await fetch(`http://127.0.0.1:${onServer.address().port}/api/subscriptions/health`);
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { enabled: true });
+  } finally {
+    onServer.closeAllConnections?.();
+    await new Promise((resolve) => onServer.close(resolve));
+  }
+
+  try {
+    // Timer: disabled config arms nothing.
+    assert.equal(ytdlp.armYtdlpTimer(disabledConfig), null);
+    assert.equal(ytdlp.currentYtdlpPollTimer(), null);
+
+    // Timer: enabled config + pollMinutes > 0 arms a .unref()'d interval.
+    const timer = ytdlp.armYtdlpTimer(enabledConfig);
+    assert.notEqual(timer, null);
+    assert.equal(ytdlp.currentYtdlpPollTimer(), timer);
+    assert.equal(typeof timer.hasRef, 'function');
+    assert.equal(timer.hasRef(), false, 'the poll timer must be .unref()\'d');
+  } finally {
+    // Clean up so no dangling timer survives this test / keeps the runner alive.
+    ytdlp.armYtdlpTimer(disabledConfig);
+    assert.equal(ytdlp.currentYtdlpPollTimer(), null);
+  }
+});

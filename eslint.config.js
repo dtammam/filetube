@@ -27,9 +27,10 @@ module.exports = [
 
   js.configs.recommended,
 
-  // Node backend + test suite (CommonJS).
+  // Node backend + test suite (CommonJS). `lib/**` is the optional yt-dlp
+  // integration module (v1.11.0) -- same backend/CommonJS ruleset as server.js.
   {
-    files: ['server.js', 'test/**/*.js', 'eslint.config.js'],
+    files: ['server.js', 'lib/**/*.js', 'test/**/*.js', 'eslint.config.js'],
     languageOptions: {
       ecmaVersion: 2023,
       sourceType: 'commonjs',
