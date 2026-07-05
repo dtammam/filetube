@@ -1,3 +1,21 @@
+<!-- ============================================================= -->
+<!-- COMPLETED — Ready for PR as v1.8.0 (2026-07-05).               -->
+<!-- Feature: Settings: Automation & Cache Housekeeping. Shipped    -->
+<!-- the 8 build tasks (T1-T8) + 3 remediation rounds (FR1: round-1 -->
+<!-- whole-db clobber race + settings-revert + mount-loss guard;    -->
+<!-- FR2: hot-path recordServed + eviction cleanup; FR3a: per-file  -->
+<!-- stat retain + throttle-map cleanup + bounded rescan drain;     -->
+<!-- FR3b: transcodeStatus preserve via seed-reconcile-from-fresh). -->
+<!-- 194 tests green, lint 0. Two-reviewer QA (quality-assurance    -->
+<!-- agent + /code-review) exercised across 3 review rounds;        -->
+<!-- severity converged to one low-severity self-healing tail       -->
+<!-- (tech-debt-tracker Active #3). Automated AC covered by the     -->
+<!-- suite; [MANUAL] setup.html AC pending Dean's on-device pass    -->
+<!-- against the PR (non-blocking). This toolset cannot mv — the    -->
+<!-- coordinator should `git mv` this file to                       -->
+<!-- docs/exec-plans/completed/ when committing the doc changes.    -->
+<!-- ============================================================= -->
+
 # Settings: Automation & Cache Housekeeping
 
 ## Goal
