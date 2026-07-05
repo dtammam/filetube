@@ -90,6 +90,33 @@ Navigate to [http://localhost:3000](http://localhost:3000) (or the port you conf
 
 Open the **Settings** gear icon in the top right, add your container paths (e.g. `/media/movies`), and click **Save & Scan Library**.
 
+### Automation & Storage
+
+The **Settings → Automation & Storage** box controls the two things the
+server does in the background:
+
+- **Scan interval** — Off (manual only) / 30m / 1h / 6h / 12h / 24h, **default
+  30 minutes**. A "Scan now" button and a "Last scanned: N ago" line are also
+  here. Only one scan (automatic or manual) ever runs at a time.
+- **Remove entries for deleted files during scan** — on by default. When a
+  file that was previously scanned is no longer on disk, its library entry
+  (and thumbnail/transcode) is removed on the next scan. This is guarded: if
+  an entire configured folder is missing (e.g. an unmounted network share),
+  FileTube treats that as a mount problem, not a deletion, and never prunes
+  entries under it — regardless of this toggle.
+- **Transcode cache** — a live size display, a "Clear cache now" button, an
+  age-retention setting (Off / 7 / 14 / 30 / 90 days, **default 30**) that
+  removes cached transcoded MP4s not watched within the window, and a
+  size-cap field. The age-retention sweep and the size cap both run
+  independently; the size cap is the hard backstop regardless of the age
+  setting.
+
+The transcode cache's size cap can also be set via the `TRANSCODE_CACHE_MAX_BYTES`
+environment variable. Precedence: the UI cap, when set, wins; leaving the UI
+field blank defers to `TRANSCODE_CACHE_MAX_BYTES` if set, or a 5 GB built-in
+default otherwise. Existing deployments that only set the env var keep working
+unchanged.
+
 ### Staying up to date (or pinning a version)
 
 Set `FILETUBE_IMAGE_TAG` in your `.env` to choose how you track updates:

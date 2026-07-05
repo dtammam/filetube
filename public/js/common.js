@@ -214,6 +214,36 @@ function formatRelativeTime(epochMs) {
   return rtf.format(diffDays, 'day');
 }
 
+// GB <-> bytes conversion for the Settings-page "Transcode cache" size-cap
+// input: users think in GB, but the API persists/consumes raw bytes
+// (`cacheMaxBytes`). Both pure/side-effect-free so they're reusable from the
+// setup.html inline script and independently unit-testable.
+
+// '' / null / undefined / non-finite / <=0 -> null, meaning "no override, use
+// the default" (mirrors the API's own null = defer-to-env-var contract).
+// Otherwise rounds to the nearest whole byte -- EXCEPT a tiny positive input
+// that rounds to < 1 byte, which is also clamped to null rather than 0: the
+// API rejects cacheMaxBytes:0 with a 400, so posting 0 for "I typed something
+// tiny" would surface a misleading validation error instead of just using the
+// default.
+function gbToBytes(gb) {
+  if (gb === '' || gb === null || gb === undefined) return null;
+  const n = Number(gb);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  const bytes = Math.round(n * 1024 * 1024 * 1024);
+  if (bytes < 1) return null; // sub-1-byte positive -> "no override", not an invalid 0
+  return bytes;
+}
+
+// null/undefined/non-finite -> null (no value to display). Otherwise bytes
+// converted to GB, rounded to 2 decimal places for a clean input/placeholder value.
+function bytesToGb(bytes) {
+  if (bytes === null || bytes === undefined) return null;
+  const n = Number(bytes);
+  if (!Number.isFinite(n)) return null;
+  return Math.round((n / (1024 * 1024 * 1024)) * 100) / 100;
+}
+
 // Resolve the "channel"/author name for a media item, the same way everywhere:
 // the mapped folder's friendly display name (if set), else the file's artist
 // tag, else the immediate folder name. Keeps the list cards and the watch page
@@ -454,6 +484,7 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     getStarRating, getCommentCount, resolveChannelName, clampPositionState,
     resolveTheme, THEME_REGISTRY, activeNavItem,
-    resolveIconSet, ICON_SET_REGISTRY, ICON_SETS
+    resolveIconSet, ICON_SET_REGISTRY, ICON_SETS,
+    gbToBytes, bytesToGb
   };
 }

@@ -1189,7 +1189,8 @@ header {
   font-size: 13px;
 }
 
-.form-group input[type="text"] {
+.form-group input[type="text"],
+.form-group input[type="number"] {
   width: 100%;
   padding: 10px;
   border: 1px solid var(--border-dark);
@@ -1198,6 +1199,25 @@ header {
   background-color: var(--bg-color);
   color: var(--text-primary);
   outline: none;
+}
+
+/* Settings <select> controls (Automation & Storage box) — same visual weight
+   as the text/number inputs above, sized to content rather than full-width. */
+.setup-select {
+  padding: 10px;
+  border: 1px solid var(--border-dark);
+  border-radius: var(--radius);
+  font-size: 13px;
+  background-color: var(--bg-color);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.field-error {
+  color: var(--yt-red);
+  font-size: 12px;
+  margin-top: 4px;
+  display: none;
 }
 
 .folder-list-builder {

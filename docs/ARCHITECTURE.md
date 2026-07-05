@@ -54,13 +54,34 @@ clients (iOS Safari) can play them.
   success, so a half-written file is never served.
 - **JSON file database:** `db.json` instead of a real DB — simple, portable,
   good enough for a single-user home media server.
+- **Server-side automation settings:** scan cadence, prune-on-scan, and transcode-
+  cache size/age limits are persisted in a top-level `db.settings` object (not
+  per-browser `localStorage`), backfilled with defaults on load like
+  `folderSettings`. Scan pruning carries a mandatory mount-loss guard: a
+  missing/unmounted root folder never prunes its library entries (a mount failure is
+  not a deletion). The periodic scan is armed by `armScanTimer()`, which reads
+  `db.settings.scanIntervalMinutes` and re-arms live (no restart) whenever
+  `POST /api/settings` changes it; `GET/POST /api/settings`, `GET /api/cache/size`,
+  and `POST /api/cache/clear` expose these settings and the transcode-cache
+  housekeeping to the Settings UI.
+- **Re-read-merge-on-save (concurrency invariant):** a long-running scan must never
+  write back a whole-`db.json` snapshot taken at its start — concurrent writes
+  (settings, folders, watch progress, `lastServedAt`) would be clobbered. The scan
+  re-reads the fresh db at save time and writes back only the data it owns
+  (`metadata`), preserving concurrently written `settings`/`folders`/
+  `folderSettings`/`progress` and never regressing `db.metadata[id].lastServedAt`
+  (the on-disk value is the source of truth; in-memory serve maps are only
+  write-throttles).
 
 ## Constraints
 
 - Single-node, single-process; state lives on local disk (no external services).
 - Requires FFmpeg/FFprobe on PATH; without them, metadata/transcode features degrade.
 - Node.js 22 LTS (`engines` ≥20).
-- The transcode cache in `data/transcoded/` is currently **unbounded** — no size
-  cap or eviction — so watched-AVI MP4s accumulate until cleared (known tech debt).
+- The transcode cache in `data/transcoded/` is **bounded**: a size-capped LRU
+  eviction (default 5 GB, `TRANSCODE_CACHE_MAX_BYTES`/UI override) plus an optional
+  age-retention sweep (default 30 days) keep it from growing unbounded. Age is keyed
+  off a FileTube-controlled `db.metadata[id].lastServedAt` timestamp (filesystem
+  atime is only a fallback, being unreliable under `relatime`/`noatime`).
 - iOS Safari cannot play a non-seekable live stream, which is why mobile uses the
   pre-transcoded, seekable MP4 path.

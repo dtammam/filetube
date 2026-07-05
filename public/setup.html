@@ -122,6 +122,78 @@
            matches it to the era above.</p>
         <div class="theme-picker" id="icon-picker"><!-- rendered by JS --></div>
       </div>
+
+      <div class="setup-box">
+        <h2>Automation & Storage</h2>
+        <p>
+          Control how often FileTube rescans your library and how the on-demand
+          transcode cache is kept in check.
+        </p>
+
+        <h3>Scan</h3>
+        <div class="form-group">
+          <label for="scan-interval-select">Scan interval</label>
+          <select id="scan-interval-select" class="setup-select">
+            <option value="0">Off (manual only)</option>
+            <option value="30" selected>Every 30 minutes</option>
+            <option value="60">Every 1 hour</option>
+            <option value="360">Every 6 hours</option>
+            <option value="720">Every 12 hours</option>
+            <option value="1440">Every 24 hours</option>
+          </select>
+          <small id="scan-interval-error" class="field-error"></small>
+        </div>
+
+        <div class="form-group">
+          <label style="display:flex; align-items:center; gap:8px; font-weight:normal;">
+            <input type="checkbox" id="prune-missing-check" checked />
+            Remove entries for deleted files during scan
+          </label>
+          <small style="color: var(--text-secondary); margin-top:4px; display:block;">
+            Only removes an entry when its file is individually gone from a
+            folder that IS present — a folder that's currently unmounted or
+            unreachable is treated as a mount failure, never a deletion, so its
+            entries are always kept.
+          </small>
+          <small id="prune-missing-error" class="field-error"></small>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 24px; border-top: 1px solid var(--border-color); padding-top: 16px; flex-wrap: wrap; gap: 10px;">
+          <span id="automation-scan-status" style="font-weight: bold; color: var(--text-secondary);" aria-live="polite">Last scanned: loading…</span>
+          <button class="btn" id="scan-now-btn">Scan now</button>
+        </div>
+
+        <h3 style="margin-top:28px;">Transcode cache</h3>
+        <div class="form-group">
+          <label>Current size</label>
+          <div style="display:flex; justify-content: space-between; align-items:center; gap:10px; flex-wrap:wrap;">
+            <span id="cache-size-display" style="color: var(--text-secondary);" aria-live="polite">Loading…</span>
+            <button class="btn" id="clear-cache-btn">Clear cache now</button>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="cache-age-select">Delete cached files not watched in</label>
+          <select id="cache-age-select" class="setup-select">
+            <option value="0">Off (never expire by age)</option>
+            <option value="7">7 days</option>
+            <option value="14">14 days</option>
+            <option value="30" selected>30 days</option>
+            <option value="90">90 days</option>
+          </select>
+          <small id="cache-age-error" class="field-error"></small>
+        </div>
+
+        <div class="form-group">
+          <label for="cache-cap-input">Cache size cap (GB)</label>
+          <input type="number" id="cache-cap-input" min="0" step="0.1" placeholder="Default" style="max-width: 160px;" />
+          <small style="color: var(--text-secondary); margin-top:4px; display:block;">
+            Leave blank to use the default (the <code>TRANSCODE_CACHE_MAX_BYTES</code>
+            environment variable, or 5 GB if that isn't set).
+          </small>
+          <small id="cache-cap-error" class="field-error"></small>
+        </div>
+      </div>
     </main>
   </div>
 
@@ -388,6 +460,234 @@
       });
     }
     renderIconPicker();
+
+    // ---- Automation & Storage --------------------------------------------
+    // Persisted server-side (db.settings via /api/settings), NOT localStorage
+    // like the theme/icon prefs above — these govern server automation
+    // (scan cadence, cache housekeeping), not per-browser display prefs.
+    // Save UX choice: immediate-apply per control on 'change' (mirrors the
+    // theme/icon pickers' no-Save-button precedent above), rather than a
+    // single batched "Save" button — least surprising given the surrounding
+    // page already commits changes as they're made.
+
+    // Shows/clears a field-level validation error next to a control (400s
+    // from POST /api/settings), instead of silently swallowing them or using
+    // a page-wide alert.
+    function setFieldError(el, message) {
+      if (!el) return;
+      if (message) {
+        el.textContent = message;
+        el.style.display = 'block';
+      } else {
+        el.textContent = '';
+        el.style.display = 'none';
+      }
+    }
+
+    // POSTs a single changed key to /api/settings. Returns the parsed response
+    // body on success (200), or null on failure (400 validation error or a
+    // network/fetch failure) — either way surfaces the message via errorEl
+    // rather than throwing/crashing the page.
+    async function saveAutomationSetting(key, value, errorEl) {
+      try {
+        const r = await fetch('/api/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ [key]: value })
+        });
+        const data = await r.json();
+        if (!r.ok) {
+          setFieldError(errorEl, data.error || 'Failed to save setting.');
+          return null;
+        }
+        setFieldError(errorEl, null);
+        return data;
+      } catch (err) {
+        console.error('Failed to save automation setting:', key, err);
+        setFieldError(errorEl, 'Failed to save setting (network error).');
+        return null;
+      }
+    }
+
+    // GET /api/settings on load: populate all four controls, plus the
+    // size-cap placeholder from effectiveCacheMaxBytes (the env-var/5GB
+    // default that applies whenever no UI override is persisted).
+    async function loadAutomationSettings() {
+      try {
+        const r = await fetch('/api/settings');
+        const s = await r.json();
+        document.getElementById('scan-interval-select').value = String(s.scanIntervalMinutes);
+        document.getElementById('prune-missing-check').checked = !!s.pruneMissing;
+        document.getElementById('cache-age-select').value = String(s.cacheMaxAgeDays);
+        const capInput = document.getElementById('cache-cap-input');
+        capInput.value = s.cacheMaxBytes != null ? bytesToGb(s.cacheMaxBytes) : '';
+        const defaultGb = bytesToGb(s.effectiveCacheMaxBytes);
+        capInput.placeholder = defaultGb != null ? `${defaultGb} GB (default)` : 'Default';
+      } catch (err) {
+        console.error('Failed to load automation settings:', err);
+      }
+    }
+
+    // GET /api/cache/size -> "Current size: X" via the shared formatFileSize.
+    async function loadCacheSize() {
+      const el = document.getElementById('cache-size-display');
+      try {
+        const r = await fetch('/api/cache/size');
+        const s = await r.json();
+        el.textContent = 'Current size: ' + formatFileSize(s.bytes);
+      } catch (err) {
+        el.textContent = 'Current size: unknown';
+        console.error('Failed to load cache size:', err);
+      }
+    }
+
+    // Renders the "Last scanned"/scanning-progress line from a /api/scan-status
+    // payload. Shared by the initial load and the in-place poller below.
+    function renderScanStatusLine(s) {
+      const el = document.getElementById('automation-scan-status');
+      if (!el) return;
+      if (s.scanning) {
+        el.textContent = `Scanning library… ${s.fileCount} file(s) found so far`;
+      } else {
+        const last = s.lastScan ? formatRelativeTime(new Date(s.lastScan).getTime()) : 'never';
+        el.textContent = `Last scanned: ${last}`;
+      }
+    }
+
+    // Non-redirecting scan-status poller for this box. NOTE: the existing
+    // pollScanStatus() above (used by "Save & Scan Library") navigates to "/"
+    // when the scan finishes -- fine for the folders flow, but wrong here: a
+    // user watching "Scan now" on the Settings page shouldn't be bounced off
+    // the page they're editing. This poller just keeps refreshing the
+    // "Last scanned" line (and the cache-size display, since a scan can touch
+    // on-disk state) in place until the scan completes.
+    function pollAutomationScanStatus() {
+      const btn = document.getElementById('scan-now-btn');
+      fetch('/api/scan-status')
+        .then(r => r.json())
+        .then(s => {
+          renderScanStatusLine(s);
+          if (s.scanning) {
+            setTimeout(pollAutomationScanStatus, 1000);
+          } else {
+            if (btn) btn.disabled = false;
+            loadCacheSize();
+          }
+        })
+        .catch(() => {
+          // Transient fetch failure -- retry rather than leaving the button
+          // stuck disabled or surfacing an error on the settings page.
+          setTimeout(pollAutomationScanStatus, 1500);
+        });
+    }
+
+    // GET /api/scan-status on load: populate the line, and join an
+    // already-in-progress scan (e.g. the periodic timer fired while this page
+    // was loading) instead of showing a stale "Last scanned" line.
+    async function loadScanStatusLine() {
+      try {
+        const r = await fetch('/api/scan-status');
+        const s = await r.json();
+        renderScanStatusLine(s);
+        if (s.scanning) {
+          document.getElementById('scan-now-btn').disabled = true;
+          pollAutomationScanStatus();
+        }
+      } catch (err) {
+        console.error('Failed to load scan status:', err);
+      }
+    }
+
+    document.getElementById('scan-interval-select').addEventListener('change', (e) => {
+      saveAutomationSetting('scanIntervalMinutes', parseInt(e.target.value, 10),
+        document.getElementById('scan-interval-error'));
+    });
+
+    document.getElementById('prune-missing-check').addEventListener('change', (e) => {
+      saveAutomationSetting('pruneMissing', e.target.checked,
+        document.getElementById('prune-missing-error'));
+    });
+
+    document.getElementById('cache-age-select').addEventListener('change', (e) => {
+      saveAutomationSetting('cacheMaxAgeDays', parseInt(e.target.value, 10),
+        document.getElementById('cache-age-error'));
+    });
+
+    // Size-cap input: 'change' (fires on blur/Enter, not per keystroke) is a
+    // natural debounce for a free-typed number field. Blank -> null ("use the
+    // default"); a non-empty value that isn't a valid positive number is
+    // rejected client-side (with the same field-error styling as a server 400)
+    // without ever calling the API.
+    document.getElementById('cache-cap-input').addEventListener('change', async (e) => {
+      const errorEl = document.getElementById('cache-cap-error');
+      const raw = e.target.value.trim();
+      const bytes = gbToBytes(raw);
+      if (raw !== '' && bytes === null) {
+        setFieldError(errorEl, 'Enter a positive number of GB, or leave blank for the default.');
+        return;
+      }
+      const saved = await saveAutomationSetting('cacheMaxBytes', bytes, errorEl);
+      if (saved) {
+        // Reflect the (possibly changed) effective default in the placeholder.
+        const defaultGb = bytesToGb(saved.effectiveCacheMaxBytes);
+        e.target.placeholder = defaultGb != null ? `${defaultGb} GB (default)` : 'Default';
+      }
+    });
+
+    document.getElementById('scan-now-btn').addEventListener('click', async () => {
+      const btn = document.getElementById('scan-now-btn');
+      btn.disabled = true;
+      try {
+        const r = await fetch('/api/scan', { method: 'POST' });
+        if (r.status === 409) {
+          // A scan (automatic or manual) is already running -- join its
+          // progress instead of surfacing an error (no error toast for 409).
+          pollAutomationScanStatus();
+          return;
+        }
+        const data = await r.json();
+        if (data.success) {
+          pollAutomationScanStatus();
+        } else {
+          btn.disabled = false;
+          console.error('Scan failed to start:', data.error);
+        }
+      } catch (err) {
+        btn.disabled = false;
+        console.error('Failed to start scan:', err);
+      }
+    });
+
+    document.getElementById('clear-cache-btn').addEventListener('click', () => {
+      showConfirmModal(
+        'Clear transcode cache?',
+        'This deletes all cached transcoded files. They will be regenerated automatically the next time they\'re watched.',
+        async () => {
+          const btn = document.getElementById('clear-cache-btn');
+          const original = btn.textContent;
+          btn.disabled = true;
+          btn.textContent = 'Clearing…';
+          try {
+            const r = await fetch('/api/cache/clear', { method: 'POST' });
+            const data = await r.json();
+            if (data.success) {
+              await loadCacheSize();
+            } else {
+              console.error('Failed to clear cache:', data.error);
+            }
+          } catch (err) {
+            console.error('Failed to clear cache:', err);
+          } finally {
+            btn.disabled = false;
+            btn.textContent = original;
+          }
+        }
+      );
+    });
+
+    loadAutomationSettings();
+    loadCacheSize();
+    loadScanStatusLine();
 
     // Start
     loadConfig();
