@@ -1581,7 +1581,7 @@ header {
   }
 
   /* ---- Mobile app shell: header restructure ----------------------------
-     Centered logo + full-width search below it; header-right (Settings +
+     Top-left logo + full-width search below it; header-right (Settings +
      moon toggle) and the hamburger fold into the bottom nav. */
   header {
     flex-direction: column;
@@ -1611,12 +1611,12 @@ header {
     display: block;
     height: 28px;
     width: 28px;
-    margin: 0 auto;
+    margin: 0;
   }
 
   .header-left {
     width: 100%;
-    justify-content: center;
+    justify-content: flex-start;
     gap: 0;
   }
 
