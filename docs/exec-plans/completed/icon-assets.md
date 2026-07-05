@@ -1,3 +1,11 @@
+<!-- COMPLETED — Shipped v1.6.0 (2026-07-05). Archived from docs/exec-plans/active/.
+     Real emoji-to-Material-Symbols chrome-icon swap: 12 self-hosted Apache-2.0
+     Outlined SVGs rendered via CSS mask-image + background-color:currentColor,
+     themed across all 8 era x mode combos; gold ★ ratings untouched. Two-reviewer
+     QA APPROVE-WITH-NITS; code-review caught + fixed an icon-only-button a11y
+     regression (aria-labels), @supports mask fallback, squared sidebar icon box,
+     and added CI tests (bundled SVGs / no-CDN / no-stray-emoji / served-200). -->
+
 # Real Icon Assets (Icon Assets, v1.6.0)
 
 ## Goal
@@ -177,69 +185,69 @@ needed.
 ## Acceptance criteria
 
 **Icon set / mapping**
-- [ ] Every current emoji/glyph used by a `.icon-*` class has a named
+- [x] Every current emoji/glyph used by a `.icon-*` class has a named
   Material Symbols Outlined replacement (mapping table below); no `.icon-*`
   class is left rendering its old emoji `content`.
-- [ ] The 3 new classes (`icon-refresh`, `icon-arrow-up`, `icon-arrow-down`)
+- [x] The 3 new classes (`icon-refresh`, `icon-arrow-up`, `icon-arrow-down`)
   exist and are documented alongside the original 10.
 
 **Delivery mechanism**
-- [ ] `.icon-*` classes render via `mask-image` (or equivalent
+- [x] `.icon-*` classes render via `mask-image` (or equivalent
   currentColor-driven technique) over self-hosted SVG assets +
   `background-color: currentColor`, not `content: "<emoji>"`.
-- [ ] Icons render in the current theme's text color with no hardcoded fill,
+- [x] Icons render in the current theme's text color with no hardcoded fill,
   verified via a `currentColor`/token inheritance path (e.g.
   `.sidebar-item i`, `.bottom-nav-item i`) across all 8 era×mode combos.
-- [ ] Icon size is consistent across all consumers of a given class, and
+- [x] Icon size is consistent across all consumers of a given class, and
   icons align on the baseline with adjacent text/labels (no visible vertical
   offset vs. today's glyph rendering).
-- [ ] Existing `<i class="icon-x">` markup that isn't explicitly rewritten
+- [x] Existing `<i class="icon-x">` markup that isn't explicitly rewritten
   above continues to render its icon, unchanged, everywhere it currently
   appears (Settings/Home/Folder/Delete/moon-sun across index/setup/watch and
   the bottom nav).
 
 **Bundling / offline**
-- [ ] SVG assets (or the data driving `mask-image`) live in the repo under
+- [x] SVG assets (or the data driving `mask-image`) live in the repo under
   version control and are shipped inside the Docker image (verified: no
   `Dockerfile` change needed since `COPY public/ ./public/` already covers
   new files).
-- [ ] No network reference to `fonts.gstatic.com`, `fonts.googleapis.com`, or
+- [x] No network reference to `fonts.gstatic.com`, `fonts.googleapis.com`, or
   any other external icon/font CDN anywhere in `public/`.
-- [ ] Icons render correctly with the container's network access disabled
+- [x] Icons render correctly with the container's network access disabled
   (offline check).
-- [ ] An Apache-2.0 attribution file exists for the bundled icon set,
+- [x] An Apache-2.0 attribution file exists for the bundled icon set,
   mirroring `public/fonts/README.md`.
 
 **Emoji removal**
-- [ ] The 3 static `🌙` sites (`index.html:57`, `setup.html:48`,
+- [x] The 3 static `🌙` sites (`index.html:57`, `setup.html:48`,
   `watch.html:57`) render `<i class="icon-moon">`/`<i class="icon-sun">`
   instead of a literal emoji character.
-- [ ] `common.js` `applyTheme` sets/swaps the icon class (mirroring the
+- [x] `common.js` `applyTheme` sets/swaps the icon class (mirroring the
   existing `updateNavThemeItem` pattern) instead of `btn.innerHTML =
   '☀️'/'🌙'`.
-- [ ] The rescan button (`index.html:100` + all 3 `main.js` state strings)
+- [x] The rescan button (`index.html:100` + all 3 `main.js` state strings)
   renders `<i class="icon-refresh">` instead of `🔄`, in all three states
   (idle "Rescan Files", "Scanning...", and the error-reset path).
-- [ ] Both folder-reorder buttons (`setup.html:185,187`) render `<i
+- [x] Both folder-reorder buttons (`setup.html:185,187`) render `<i
   class="icon-arrow-up">`/`<i class="icon-arrow-down">` instead of `▲`/`▼`,
   with `title="Move up"`/`title="Move down"` preserved for accessibility.
-- [ ] The hamburger (`#menu-toggle`, all 3 pages) renders `<i
+- [x] The hamburger (`#menu-toggle`, all 3 pages) renders `<i
   class="icon-menu">` instead of the literal `☰` character.
-- [ ] Zero chrome emoji/glyph characters (🌙 ☀️ 🔄 ▲ ▼ ☰) remain anywhere in
+- [x] Zero chrome emoji/glyph characters (🌙 ☀️ 🔄 ▲ ▼ ☰) remain anywhere in
   `public/*.html` or `public/js/*.js`, **except** the gold `★`/`☆` rating
   display, which is explicitly kept.
 
 **No regression**
-- [ ] `toggleTheme()`, `applyTheme()`, `setTheme()`, `resolveTheme()`, and
+- [x] `toggleTheme()`, `applyTheme()`, `setTheme()`, `resolveTheme()`, and
   `updateNavThemeItem()` behave identically to today (mode/era persistence,
   FOUC-guard behavior, bottom-nav Dark/Light label sync) — only the glyph
   render path changed.
-- [ ] Rescan button's `disabled`/click/fetch/reload/alert behavior in
+- [x] Rescan button's `disabled`/click/fetch/reload/alert behavior in
   `main.js` is unchanged — only the string it renders changed from
   `textContent` (emoji+text) to icon+text markup.
-- [ ] Folder reorder swap logic (`setup.html`'s `reorder-btn` click handler)
+- [x] Folder reorder swap logic (`setup.html`'s `reorder-btn` click handler)
   is unchanged — only the button's inner glyph changed.
-- [ ] Visual check across index.html, setup.html, watch.html, and the mobile
+- [x] Visual check across index.html, setup.html, watch.html, and the mobile
   bottom nav: nothing is missing, duplicated, or misaligned relative to
   today's emoji baseline.
 
@@ -263,9 +271,9 @@ currentColor`. The SVG is used only as an alpha **mask**: its own black fill is
 irrelevant (a solid shape = a fully-opaque mask), and the visible pixels are
 painted with `currentColor`. Because every icon consumer already resolves
 `color` from the theme tokens (`.sidebar-item i` → `--text-secondary`,
-`.bottom-nav-item i` → `inherit` → `--text-primary`/`--yt-red`, `.btn`/
-`.theme-toggle`/`.menu-toggle` → `--text-primary`), the icons theme across all
-eight era×mode combos with **zero per-theme rules**. This is a pure
+`.bottom-nav-item i` → `inherit` → `--text-primary`/`--yt-red` (active),
+`.btn`/`.theme-toggle`/`.menu-toggle` → `--text-primary`), the icons theme
+across all eight era×mode combos with **zero per-theme rules**. This is a pure
 CSS-rendering swap plus a handful of markup/JS edits at the raw-emoji sites; all
 existing `<i class="icon-x">` markup keeps working unmodified.
 
@@ -549,7 +557,8 @@ reload with egress blocked.
 
 ## Task breakdown
 
-(To be filled by engineering-manager.)
+(Executed by engineering-manager during the tasks stage; all tasks built,
+verified, and reviewed — see Progress log.)
 
 ## Icon mapping reference (for design/build)
 
@@ -659,7 +668,7 @@ tooling exists in this repo, and CI doesn't run a browser).
 
 ## QA note
 
-This branch requires a **significant, two-reviewer QA pass** before
+This branch required a **significant, two-reviewer QA pass** before
 acceptance (quality-assurance stage + `/code-review`), specifically covering:
 - All-8-combos rendering (4 eras × 2 modes) for every icon on every page.
 - `currentColor` theming correctness (no icon stuck in the wrong color in any
@@ -677,6 +686,23 @@ acceptance (quality-assurance stage + `/code-review`), specifically covering:
   main.js`, `public/index.html`, `public/setup.html`, `public/watch.html`,
   and `Dockerfile`. No conflicts found with active exec plans (none currently
   active) or the tech-debt tracker. Awaiting principal-engineer design.
+- 2026-07-04: Principal-engineer design complete (## Technical Design). Mask-image
+  over 12 self-hosted Material Symbols Outlined SVGs + `background-color:
+  currentColor`; explicit (non-wildcard) selector list to protect `icon-star`;
+  single-line `applyTheme` change; enumerated raw-emoji edits + reorder sizing fix.
+- 2026-07-05: **Shipped v1.6.0.** Implementation, verification, two-reviewer QA,
+  and acceptance complete. QA agent returned APPROVE-WITH-NITS (flagged the
+  missing CI-checkable tests). The `/code-review` pass then caught an
+  accessibility regression QA missed — the icon-only header buttons
+  (`#menu-toggle`, `#theme-toggle-btn`) lost their accessible names once the
+  emoji text was removed. Fixes folded in before merge: `aria-label`s added to
+  the menu-toggle + theme-toggle across all 3 pages; an `@supports` guard so
+  browsers without mask support degrade to a blank box rather than an opaque
+  square; the sidebar icon box squared up; and the CI-checkable tests added
+  (bundled-SVGs-exist, no-CDN grep, no-stray-chrome-emoji grep, plus a
+  served-200 integration check). Dead `icon-play`/`icon-search` classes kept as
+  pre-existing class API (bundled assets, no consumer). All acceptance criteria
+  met; 90 tests green; no new tech debt.
 
 ## Decision log
 
@@ -697,3 +723,6 @@ acceptance (quality-assurance stage + `/code-review`), specifically covering:
   (`icon-refresh`, `icon-arrow-up`, `icon-arrow-down`) not present in the
   original 10-class inventory, because the rescan (🔄) and reorder (▲/▼)
   glyphs have no existing `.icon-*` slot to reuse.
+- 2026-07-05 (code-review): Icon-only buttons need explicit `aria-label`s —
+  removing the emoji text stripped their accessible name. Added across all 3
+  pages; recorded as the load-bearing a11y fix for this feature.

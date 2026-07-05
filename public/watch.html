@@ -12,8 +12,9 @@
   <meta name="apple-mobile-web-app-title" content="FileTube">
   <link rel="stylesheet" href="/css/style.css">
   <script>
-    /* FOUC guard: set era+mode on <html> before first paint. Mirror of
-       resolveTheme() in /js/common.js — keep the two in sync. */
+    /* FOUC guard: set era+mode+icons on <html> before first paint. Mirror of
+       resolveTheme()/resolveIconSet() in /js/common.js — keep all three in
+       sync (see the matching comment there). */
     (function () {
       var d = document.documentElement;
       try {
@@ -28,9 +29,20 @@
           : 'light';
         d.setAttribute('data-theme', era);
         d.setAttribute('data-mode', mode);
+
+        /* Also resolve the icon set before paint. Inline mirror of
+           resolveIconSet() in /js/common.js — keep the two in sync. */
+        var iconSets = ['outlined', 'rounded', 'filled', 'emoji'];
+        var iconAutoMap = { '2005': 'emoji', '2009': 'emoji', '2014': 'filled', '2021': 'rounded' };
+        var storedIcons = localStorage.getItem('ft-icons');
+        var iconSet = iconSets.indexOf(storedIcons) >= 0 ? storedIcons
+          : storedIcons === 'auto' ? iconAutoMap[era]   // `era` already validated above
+          : 'outlined';
+        d.setAttribute('data-icons', iconSet);
       } catch (_) {
         d.setAttribute('data-theme', '2021');
         d.setAttribute('data-mode', 'light');
+        d.setAttribute('data-icons', 'outlined');
       }
     })();
   </script>
