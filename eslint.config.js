@@ -87,6 +87,7 @@ module.exports = [
         getMockSubCount: 'readonly',
         getMockViews: 'readonly',
         getStarRating: 'readonly',
+        rankRelated: 'readonly',
         resolveChannelName: 'readonly',
         resolveTheme: 'readonly',
         setTheme: 'readonly',

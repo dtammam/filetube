@@ -254,6 +254,159 @@ function resolveChannelName(item, folderSettings) {
   return mapped || item.artist || item.folderName || 'Library';
 }
 
+// ---- Related-items similarity ranking (rankRelated) -----------------------
+// See docs/exec-plans/active/2026-07-05-audio-art-and-related.md ("Feature 2")
+// for the full design/rationale. Pure and deterministic; replaces the
+// most-recent/same-folder sort previously inline in watch.js's
+// loadRelatedFiles(). Named constants below are the score weights + the
+// fallback/result-size guarantees.
+
+const RESULT_COUNT = 10;   // matches today's slice(0, 10)
+// "Genuinely similar" guarantee point: whenever fewer than 6 candidates clear
+// score > 0, the shortfall is filled from the most-recent tail (today's exact
+// fallback behavior). NOTE: there is no literal `if (similar.length <
+// SIMILAR_FLOOR)` branch below — rankRelated always concatenates
+// similar + recent and slices to RESULT_COUNT, a safe superset that satisfies
+// this guarantee unconditionally (recent already contains every candidate, so
+// the guarantee holds whether similar has 0, 5, or 50 entries). SIMILAR_FLOOR
+// exists to document/name that guarantee point, not to gate a code path.
+const SIMILAR_FLOOR = 6;
+const W_TOKEN = 3;   // per shared title/filename/tag token (primary signal)
+const W_FOLDER = 2;  // same non-empty folderName (secondary signal)
+const W_CHANNEL = 1; // same resolved channel/artist, cross-folder only (tertiary)
+
+// Small, fixed stopword set: articles/conjunctions/prepositions plus common
+// media-noise tokens that would otherwise inflate "similarity" on every item.
+const RANK_STOPWORDS = new Set([
+  'the', 'a', 'an', 'and', 'or', 'of', 'to', 'in', 'on', 'for', 'with',
+  'feat', 'ft', 'official', 'video', 'audio', 'hd', 'mp3', 'mp4', 'avi',
+  'mkv', 'mov', 'webm'
+]);
+
+// Lowercase, split on non-alphanumeric runs, drop <2-char tokens and the
+// stopword set above, dedupe. Never throws; non-string/empty input yields an
+// empty Set. Exported for node:test — see test/unit/rank-related.test.js.
+function tokenize(str) {
+  const tokens = new Set();
+  if (typeof str !== 'string' || !str) return tokens;
+  const parts = str.toLowerCase().split(/[^a-z0-9]+/);
+  for (const part of parts) {
+    if (part.length < 2) continue;
+    if (RANK_STOPWORDS.has(part)) continue;
+    tokens.add(part);
+  }
+  return tokens;
+}
+
+// An item's token set = tokenize(title) UNION tokenize(basename of filePath)
+// UNION tokenize(the tags field). tags is optional; missing/null contributes
+// nothing. tags may be:
+//  - an OBJECT (the real /api/videos shape, e.g. { artist, album, title,
+//    comment, date, ... } from server.js's parseFfprobeTags) -> tokenize the
+//    joined string VALUES (Object.values filtered to strings), so embedded
+//    artist/album/title metadata contributes to similarity;
+//  - an ARRAY (kept for safety/forward-compat) -> tokenize each entry;
+//  - a plain STRING -> tokenize it directly.
+// Missing title/filePath contribute nothing. Never throws.
+function relatedItemTokens(item) {
+  const tokens = new Set();
+  if (!item) return tokens;
+  for (const t of tokenize(item.title)) tokens.add(t);
+  if (typeof item.filePath === 'string' && item.filePath) {
+    const base = item.filePath.split(/[\\/]/).pop() || '';
+    for (const t of tokenize(base)) tokens.add(t);
+  }
+  const tags = item.tags;
+  if (tags && typeof tags === 'object' && !Array.isArray(tags)) {
+    const values = Object.values(tags).filter((v) => typeof v === 'string');
+    for (const t of tokenize(values.join(' '))) tokens.add(t);
+  } else if (Array.isArray(tags)) {
+    for (const tag of tags) {
+      for (const t of tokenize(tag)) tokens.add(t);
+    }
+  } else if (typeof tags === 'string') {
+    for (const t of tokenize(tags)) tokens.add(t);
+  }
+  return tokens;
+}
+
+function sharedTokenCount(setA, setB) {
+  let count = 0;
+  for (const t of setA) if (setB.has(t)) count++;
+  return count;
+}
+
+// Explicit total-order tie-break: addedAt DESC (missing sorts as oldest), then
+// id ASC. Used both as the similar-set secondary sort and as the whole-list
+// "recent" fallback order — never relies on Array.sort's stability alone.
+function byRecencyThenId(a, b) {
+  const aAdded = Number.isFinite(a.addedAt) ? a.addedAt : -Infinity;
+  const bAdded = Number.isFinite(b.addedAt) ? b.addedAt : -Infinity;
+  if (bAdded !== aAdded) return bAdded - aAdded;
+  const aId = String(a.id || '');
+  const bId = String(b.id || '');
+  if (aId < bId) return -1;
+  if (aId > bId) return 1;
+  return 0;
+}
+
+// Pure. Returns an ordered array of related items (never the current item),
+// best-match first, padded with most-recent so the result is never empty and
+// never worse than today's most-recent/same-folder list. Length capped at
+// RESULT_COUNT. Deterministic for identical input: score DESC, then addedAt
+// DESC, then id ASC (see byRecencyThenId) — an explicit total order, not
+// left to sort stability.
+function rankRelated(currentItem, allItems) {
+  const current = currentItem || {};
+  const items = Array.isArray(allItems) ? allItems : [];
+  const candidates = items.filter((item) => item && item !== current && item.id !== current.id);
+  if (candidates.length === 0) return [];
+
+  const currentTokens = relatedItemTokens(current);
+  const currentChannel = resolveChannelName(current);
+  const currentFolder = current.folderName || '';
+  // W_CHANNEL requires an ACTUAL channel signal on both sides, not just a
+  // resolveChannelName() match — resolveChannelName falls back to the literal
+  // string 'Library' when an item has neither artist nor folderName, so two
+  // otherwise-unrelated items that are both missing artist+folderName would
+  // both resolve to 'Library' and spuriously "match". Guarding on the raw
+  // inputs (rather than coupling to resolveChannelName's internal default)
+  // keeps that degenerate case out of the similar bucket.
+  const currentHasChannelSignal = !!(current.artist || current.folderName);
+
+  const scored = candidates.map((item) => {
+    const shared = sharedTokenCount(currentTokens, relatedItemTokens(item));
+    const itemFolder = item.folderName || '';
+    const sameFolder = !!currentFolder && !!itemFolder && currentFolder === itemFolder;
+    let score = W_TOKEN * shared;
+    if (sameFolder) score += W_FOLDER;
+    const itemHasChannelSignal = !!(item.artist || item.folderName);
+    if (!sameFolder && currentHasChannelSignal && itemHasChannelSignal &&
+        resolveChannelName(item) === currentChannel) {
+      score += W_CHANNEL;
+    }
+    return { item, score };
+  });
+
+  const byScoreThenRecency = (a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    return byRecencyThenId(a.item, b.item);
+  };
+
+  const similar = scored.filter((s) => s.score > 0).sort(byScoreThenRecency).map((s) => s.item);
+  const recent = candidates.slice().sort(byRecencyThenId); // today's ordering — the fallback pool
+
+  const result = [];
+  const seen = new Set();
+  for (const item of [...similar, ...recent]) {
+    if (seen.has(item.id)) continue;
+    seen.add(item.id);
+    result.push(item);
+    if (result.length >= RESULT_COUNT) break;
+  }
+  return result;
+}
+
 // Deterministic "rating" for a media item: a stable 3–5 stars derived from its
 // id. Pure and side-effect free, so the SAME item shows the SAME star count on
 // the home card and on its own watch page (a fun cosmetic touch, not a real
@@ -485,6 +638,7 @@ if (typeof module !== 'undefined' && module.exports) {
     getStarRating, getCommentCount, resolveChannelName, clampPositionState,
     resolveTheme, THEME_REGISTRY, activeNavItem,
     resolveIconSet, ICON_SET_REGISTRY, ICON_SETS,
-    gbToBytes, bytesToGb
+    gbToBytes, bytesToGb,
+    tokenize, rankRelated, RESULT_COUNT, SIMILAR_FLOOR
   };
 }

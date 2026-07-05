@@ -711,15 +711,11 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       const res = await fetch('/api/videos');
       const allFiles = await res.json();
-      
-      // Filter out current file
-      const filtered = allFiles.filter(f => f.id !== mediaId);
 
-      // Prioritize files in the same folder, then other folders
-      const sameFolder = filtered.filter(f => f.folderName === mediaData.folderName);
-      const otherFolders = filtered.filter(f => f.folderName !== mediaData.folderName);
-      
-      const related = [...sameFolder, ...otherFolders].slice(0, 10);
+      // Fuzzy-similar ranking (title/filename token overlap, shared folder,
+      // shared channel/artist), falling back to most-recent when thin. See
+      // docs/exec-plans/active/2026-07-05-audio-art-and-related.md ("Feature 2").
+      const related = rankRelated({ ...mediaData, id: mediaId }, allFiles);
 
       if (related.length === 0) {
         relatedContainer.innerHTML = '<div style="color: var(--text-secondary); font-style: italic;">No other files found.</div>';
