@@ -631,9 +631,12 @@ header {
 /* Audio thumbnail-as-background art (Feature 1, v1.10.0). Hidden by default;
    only shown for audio items whose setupPlayer() audio branch resolves a real
    thumbnail (resolveAudioArtUrl) and opts #player-wrapper into .audio-mode.
-   Sits BELOW #media-player (z-index 0 vs 1) and below the resume/transcode
-   overlays (z-index 10) and skip controls (z-index 6), so those stay visible
-   and clickable in audio mode. Video items never get .audio-mode, so the
+   In audio mode, #media-player is position: relative with z-index: 1, so it
+   (and its native, tappable media controls) paints ABOVE this art layer; this
+   layer is additionally pointer-events: none so it can never intercept taps
+   regardless of stacking. It also sits below the resume/transcode overlays
+   (z-index 10) and skip controls (z-index 6), so those stay visible and
+   clickable in audio mode. Video items never get .audio-mode, so the
    .player-container #000 background + video { object-fit: contain } rules
    above are completely unaffected. */
 .audio-bg-art {
@@ -644,6 +647,7 @@ header {
   background-position: center;
   background-repeat: no-repeat;
   display: none;
+  pointer-events: none;
 }
 
 #player-wrapper.audio-mode #audio-bg-art {
@@ -651,6 +655,7 @@ header {
 }
 
 #player-wrapper.audio-mode #media-player {
+  position: relative;
   background: transparent;
   z-index: 1;
 }
