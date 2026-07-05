@@ -123,6 +123,31 @@ test('POST /api/settings persists a valid partial update and a subsequent GET re
   assert.equal(onDisk.settings.scanIntervalMinutes, 360, 'persisted to db.json, not just returned in the response');
 });
 
+// ---- A: async write routes return 500 JSON (not a hang) when the ----------
+// ---- underlying updateDatabase/saveDatabase rejects ------------------------
+
+test('POST /api/settings returns 500 JSON (not a hang) when persisting the settings write fails', async () => {
+  writeDb({ folders: [], folderSettings: {}, progress: {}, metadata: {}, settings: baseSettings() });
+
+  const realWriteFileSync = fs.writeFileSync;
+  fs.writeFileSync = () => { throw new Error('simulated disk failure'); };
+  try {
+    const res = await fetch(`${base}/api/settings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pruneMissing: false }),
+    });
+    assert.equal(res.status, 500);
+    const json = await res.json();
+    assert.equal(typeof json.error, 'string');
+  } finally {
+    fs.writeFileSync = realWriteFileSync;
+  }
+
+  // Untouched by the failed write -- the prior settings must still be intact.
+  assert.equal(readDb().settings.pruneMissing, true, 'a failed save must not leave a partially-applied change');
+});
+
 test('POST /api/settings re-arms the scan timer live so the new interval takes effect without a restart', async () => {
   writeDb({ folders: [], folderSettings: {}, progress: {}, metadata: {}, settings: baseSettings() });
 

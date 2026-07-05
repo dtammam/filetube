@@ -17,6 +17,7 @@ const {
   updateDatabase,
   transcodedPath,
   reconcileTranscode,
+  cleanupOrphanDbTmp,
 } = require('../../server');
 
 beforeEach(() => {
@@ -148,7 +149,7 @@ test('saveDatabase: a successful save yields valid, complete JSON and leaves no 
   assert.deepEqual(orphanTmpFiles(), [], 'no leftover temp file after a successful save');
 });
 
-test('saveDatabase: a forced write failure leaves the prior db.json intact and no orphan *.tmp remains', () => {
+test('saveDatabase: a forced write failure leaves the prior db.json intact, no orphan *.tmp remains, and the error is RETHROWN', () => {
   const original = { folders: ['/keep'], folderSettings: {}, progress: {}, metadata: {}, settings: DEFAULT_SETTINGS };
   saveDatabase(original);
   const before = fs.readFileSync(DB_FILE, 'utf8');
@@ -158,7 +159,11 @@ test('saveDatabase: a forced write failure leaves the prior db.json intact and n
   const realWriteFileSync = fs.writeFileSync;
   fs.writeFileSync = () => { throw new Error('simulated disk write failure'); };
   try {
-    saveDatabase({ folders: ['/never-committed'], folderSettings: {}, progress: {}, metadata: {}, settings: DEFAULT_SETTINGS });
+    assert.throws(
+      () => saveDatabase({ folders: ['/never-committed'], folderSettings: {}, progress: {}, metadata: {}, settings: DEFAULT_SETTINGS }),
+      /simulated disk write failure/,
+      'saveDatabase must PROPAGATE (rethrow) a write failure, not swallow it as a false success'
+    );
   } finally {
     fs.writeFileSync = realWriteFileSync;
   }
@@ -170,7 +175,7 @@ test('saveDatabase: a forced write failure leaves the prior db.json intact and n
   assert.deepEqual(orphanTmpFiles(), [], 'the failed write\'s temp file must be cleaned up, not left as an orphan');
 });
 
-test('saveDatabase: a forced rename failure leaves the prior db.json intact and no orphan *.tmp remains', () => {
+test('saveDatabase: a forced rename failure leaves the prior db.json intact, no orphan *.tmp remains, and the error is RETHROWN', () => {
   const original = { folders: ['/keep2'], folderSettings: {}, progress: {}, metadata: {}, settings: DEFAULT_SETTINGS };
   saveDatabase(original);
   const before = fs.readFileSync(DB_FILE, 'utf8');
@@ -181,7 +186,11 @@ test('saveDatabase: a forced rename failure leaves the prior db.json intact and 
   const realRenameSync = fs.renameSync;
   fs.renameSync = () => { throw new Error('simulated rename failure'); };
   try {
-    saveDatabase({ folders: ['/never-committed-2'], folderSettings: {}, progress: {}, metadata: {}, settings: DEFAULT_SETTINGS });
+    assert.throws(
+      () => saveDatabase({ folders: ['/never-committed-2'], folderSettings: {}, progress: {}, metadata: {}, settings: DEFAULT_SETTINGS }),
+      /simulated rename failure/,
+      'saveDatabase must PROPAGATE (rethrow) a rename failure, not swallow it as a false success'
+    );
   } finally {
     fs.renameSync = realRenameSync;
   }
@@ -247,6 +256,88 @@ test('updateDatabase: a throwing mutator rejects only its own promise; the chain
     loadDatabase().folders, ['/after-failure'],
     'a write enqueued after a failing mutator must still commit -- one failure must never wedge the chain'
   );
+});
+
+test('updateDatabase: a saveDatabase disk failure REJECTS the call (no false success), and the chain still processes the next write', async () => {
+  saveDatabase({ folders: ['/before-failure'], folderSettings: {}, progress: {}, metadata: {}, settings: DEFAULT_SETTINGS });
+
+  const realWriteFileSync = fs.writeFileSync;
+  fs.writeFileSync = () => { throw new Error('simulated disk write failure'); };
+  let failing;
+  try {
+    failing = updateDatabase((db) => { db.folders = ['/never-committed']; return true; });
+    await assert.rejects(
+      failing, /simulated disk write failure/,
+      'a disk-write failure inside saveDatabase must make updateDatabase REJECT, not resolve a false success'
+    );
+  } finally {
+    fs.writeFileSync = realWriteFileSync;
+  }
+
+  assert.deepEqual(
+    loadDatabase().folders, ['/before-failure'],
+    'db.json must be unchanged after the rejected write -- no false-success/silent data loss'
+  );
+
+  // The chain must not be wedged by the failed write -- the next enqueued
+  // write still commits normally.
+  await updateDatabase((db) => { db.folders = ['/after-recovery']; return true; });
+  assert.deepEqual(loadDatabase().folders, ['/after-recovery']);
+});
+
+// ---- [UNIT] loadDatabase backfill: ALL top-level keys, not just folderSettings/settings ----
+
+test('loadDatabase: backfills ALL top-level keys (folders/progress/metadata), not just folderSettings/settings', () => {
+  fs.writeFileSync(DB_FILE, JSON.stringify({ folderSettings: { '/x': { name: 'X', hidden: false } } }));
+  const db = loadDatabase();
+  assert.deepEqual(db.folders, [], 'missing folders backfilled to []');
+  assert.deepEqual(db.progress, {}, 'missing progress backfilled to {}');
+  assert.deepEqual(db.metadata, {}, 'missing metadata backfilled to {}');
+  assert.deepEqual(db.folderSettings, { '/x': { name: 'X', hidden: false } }, 'existing folderSettings preserved');
+  assert.deepEqual(db.settings, DEFAULT_SETTINGS);
+});
+
+test('loadDatabase: a partial db.json missing metadata/progress lets a mutator write into them without throwing', async () => {
+  fs.writeFileSync(DB_FILE, JSON.stringify({ folders: ['/x'] }));
+  await assert.doesNotReject(
+    updateDatabase((db) => {
+      db.metadata['new-id'] = { id: 'new-id' };
+      db.progress['new-id'] = { timestamp: 0 };
+      return true;
+    }),
+    'a partial (missing metadata/progress) db.json must not throw a TypeError in a mutator'
+  );
+  const after = loadDatabase();
+  assert.equal(after.metadata['new-id'].id, 'new-id');
+  assert.equal(after.progress['new-id'].timestamp, 0);
+});
+
+// ---- [UNIT] startup sweep: orphaned db.json.*.tmp -------------------------
+
+test('cleanupOrphanDbTmp: removes only db.json.*.tmp files, leaves db.json and unrelated files alone', () => {
+  saveDatabase({ folders: [], folderSettings: {}, progress: {}, metadata: {}, settings: DEFAULT_SETTINGS });
+  const orphan1 = path.join(process.env.DATA_DIR, 'db.json.12345.0.tmp');
+  const orphan2 = path.join(process.env.DATA_DIR, 'db.json.6789.3.tmp');
+  const unrelated = path.join(process.env.DATA_DIR, 'not-a-db-temp.txt');
+  fs.writeFileSync(orphan1, 'stale');
+  fs.writeFileSync(orphan2, 'stale');
+  fs.writeFileSync(unrelated, 'keep me');
+
+  const removed = cleanupOrphanDbTmp(process.env.DATA_DIR);
+
+  assert.equal(removed, 2);
+  assert.ok(!fs.existsSync(orphan1));
+  assert.ok(!fs.existsSync(orphan2));
+  assert.ok(fs.existsSync(unrelated), 'unrelated files must never be touched');
+  assert.ok(fs.existsSync(DB_FILE), 'db.json itself must never be removed by the sweep');
+  fs.rmSync(unrelated);
+});
+
+test('cleanupOrphanDbTmp: an unreadable/missing directory is a safe no-op (returns 0, never throws)', () => {
+  assert.doesNotThrow(() => {
+    const removed = cleanupOrphanDbTmp(path.join(process.env.DATA_DIR, 'does-not-exist'));
+    assert.equal(removed, 0);
+  });
 });
 
 test('reconcileTranscode: audio items never carry a transcode status', () => {

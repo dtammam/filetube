@@ -54,13 +54,28 @@ function loadDatabase() {
       metadata: {},
       settings: withDefaultSettings()
     };
-    fs.writeFileSync(DB_FILE, JSON.stringify(initialDb, null, 2), 'utf8');
+    try {
+      fs.writeFileSync(DB_FILE, JSON.stringify(initialDb, null, 2), 'utf8');
+    } catch (err) {
+      // An EACCES/ENOSPC etc. here must never throw OUTSIDE a try/catch (this
+      // call site predates updateDatabase/saveDatabase's error handling). Log
+      // and hand back the in-memory default regardless -- the caller can still
+      // operate against it, and the next successful saveDatabase persists it.
+      console.error('Error creating initial db.json:', err);
+    }
     return initialDb;
   }
   try {
     const data = fs.readFileSync(DB_FILE, 'utf8');
     const db = JSON.parse(data);
-    if (!db.folderSettings) db.folderSettings = {}; // backfill for older databases
+    // Backfill EVERY top-level key (not just folderSettings/settings) so a
+    // valid-JSON but partial/legacy db.json (hand-edited, or written by an
+    // older version) can never make a mutator throw a TypeError against a
+    // missing `folders`/`progress`/`metadata`.
+    if (!Array.isArray(db.folders)) db.folders = [];
+    if (!db.folderSettings || typeof db.folderSettings !== 'object') db.folderSettings = {}; // backfill for older databases
+    if (!db.progress || typeof db.progress !== 'object') db.progress = {};
+    if (!db.metadata || typeof db.metadata !== 'object') db.metadata = {};
     db.settings = withDefaultSettings(db.settings); // backfill for older databases
     return db;
   } catch (err) {
@@ -81,11 +96,24 @@ let dbTmpSeq = 0;
 // would silently become a copy, which is not atomic). `fsync`ing the fd
 // before the rename flushes the bytes to disk first, so a crash either
 // leaves the OLD db.json fully intact (crash before rename) or the NEW one
-// fully intact (crash after) -- never a half-written/truncated file. On ANY
-// failure the temp file is cleaned up (best-effort) so no orphan `*.tmp`
-// accumulates, and the original DB_FILE is left untouched. Stays
-// SYNCHRONOUS on purpose: the mutate-then-save critical section inside
-// updateDatabase (below) must complete in a single tick.
+// fully intact (crash after) -- never a half-written/truncated file.
+//
+// Durability note: this guards against PROCESS crashes (this app's threat
+// model per RELIABILITY.md), not power loss -- the rename is not followed by
+// a fsync of DATA_DIR itself, so a power-loss right at/after the rename can,
+// on some filesystems, REVERT to the old db.json on next mount. It can never
+// leave a torn/half-written file either way.
+//
+// On a write/rename failure this call's own temp file is cleaned up on a
+// best-effort basis, the original DB_FILE is left untouched, and the error
+// is RETHROWN so the caller (updateDatabase) REJECTS instead of silently
+// resolving a false success. The best-effort cleanup can itself not run at
+// all (e.g. the process is SIGKILLed/OOM-killed between openSync and the
+// rename) and leave an orphan `db.json.<pid>.<seq>.tmp` behind -- the
+// startup sweep (cleanupOrphanDbTmp, mirroring cleanupOrphanTmp for
+// transcodes) reclaims those on the next boot. Stays SYNCHRONOUS on purpose:
+// the mutate-then-save critical section inside updateDatabase (below) must
+// complete in a single tick.
 function saveDatabase(db) {
   const tmp = `${DB_FILE}.${process.pid}.${dbTmpSeq++}.tmp`;
   try {
@@ -101,10 +129,11 @@ function saveDatabase(db) {
   } catch (err) {
     console.error('Error saving db.json:', err);
     try {
-      if (fs.existsSync(tmp)) fs.unlinkSync(tmp); // no orphan *.tmp left behind
+      if (fs.existsSync(tmp)) fs.unlinkSync(tmp); // best-effort cleanup for THIS call's temp
     } catch (cleanupErr) {
       console.error('Error cleaning up temp db file:', cleanupErr);
     }
+    throw err; // PROPAGATE: caller (updateDatabase) must reject, never a false success
   }
 }
 
@@ -210,6 +239,24 @@ function cleanupOrphanTmp(dir) {
     if (!name.endsWith('.tmp.mp4')) continue;
     try { fs.unlinkSync(path.join(dir, name)); removed++; }
     catch (e) { console.error(`Failed to remove orphan tmp ${name}:`, e.message); }
+  }
+  return removed;
+}
+
+// Delete orphaned `db.json.<pid>.<seq>.tmp` files (left if the process was
+// SIGKILLed/OOM-killed between saveDatabase's openSync(tmp) and its rename --
+// see saveDatabase's comment). Mirrors cleanupOrphanTmp's shape/contract
+// exactly; the original DB_FILE is never touched. Returns the count removed.
+// Safe to call on startup.
+function cleanupOrphanDbTmp(dir) {
+  let entries;
+  try { entries = fs.readdirSync(dir); } catch (_) { return 0; }
+  const prefix = `${path.basename(DB_FILE)}.`;
+  let removed = 0;
+  for (const name of entries) {
+    if (!name.startsWith(prefix) || !name.endsWith('.tmp')) continue;
+    try { fs.unlinkSync(path.join(dir, name)); removed++; }
+    catch (e) { console.error(`Failed to remove orphan db temp ${name}:`, e.message); }
   }
   return removed;
 }
@@ -517,6 +564,17 @@ const persistedServedAt = new Map();
 // every Range request. Additive alongside the in-memory `markServed`/
 // `recentlyServed` guard (which remains the real eviction-race protection) —
 // recordServed is a separate, persisted-timestamp concern for the age sweep.
+//
+// `persistedServedAt` is set ONLY once the mutator has confirmed (inside the
+// lock, against the fresh db) that the id's metadata entry actually exists —
+// NEVER set it up-front/optimistically before that check. Setting it before
+// confirming existence would insert a permanent throttle-map entry for an id
+// that was concurrently DELETEd/pruned (reachable e.g. via the transcode
+// close-callback's recordServed, which has no same-tick existence guard) —
+// an entry no cleanup ever reclaims, causing unbounded map growth under
+// delete-while-streaming churn AND suppressing a legitimate re-add of the
+// same id within RECENT_STREAM_MS (re-opening the FR3.2 leak).
+//
 // Returns the updateDatabase promise on the "due" branch (already
 // .catch-guarded), or `undefined` on the throttled hot path -- production
 // call sites never await this (fire-and-forget), but tests that need to
@@ -525,24 +583,19 @@ function recordServed(id) {
   const now = Date.now();
   const last = persistedServedAt.get(id);
   if (last !== undefined && (now - last) < RECENT_STREAM_MS) return undefined; // hot path: no disk read, no lock
-  // Optimistically mark this id "fresh" in the throttle map BEFORE enqueuing
-  // the write -- a burst of Range requests for the same id landing before the
-  // write actually commits will all hit the hot-path short-circuit above
-  // instead of each enqueuing its own updateDatabase call. The map is a
-  // write-throttle only (never truth, never fed into mergeScannedMetadata),
-  // so this optimistic set is contract-safe even if the enqueued write below
-  // turns out to be a no-op (already-fresh on disk).
-  persistedServedAt.set(id, now);
   return updateDatabase(db => {
     const entry = db.metadata[id];
-    if (!entry) return false;
+    if (!entry) return false; // concurrently deleted/pruned -- never mark the throttle map
     // Re-check the on-disk value inside the lock -- it may already be fresh
     // (e.g. right after boot, before this id has any persistedServedAt map
-    // entry of its own).
+    // entry of its own). The entry exists either way at this point, so
+    // marking the throttle map is safe in both branches below.
     if (typeof entry.lastServedAt === 'number' && (now - entry.lastServedAt) < RECENT_STREAM_MS) {
+      persistedServedAt.set(id, now);
       return false;
     }
     entry.lastServedAt = now;
+    persistedServedAt.set(id, now);
     return true;
   }).catch(err => console.error('Error persisting lastServedAt:', err));
 }
@@ -940,6 +993,11 @@ async function runScanDirectories() {
   // `db.metadata = newMetadata` further down never silently wipes a mount-loss.
   const survivingIds = new Set(Object.keys(newMetadata));
   const oldIds = Object.keys(db.metadata);
+  // HR1b (finding D): the Phase-1 snapshot's id-set, closed over into the
+  // Phase-2 mutator below. Used to distinguish "concurrently DELETEd during
+  // this scan" (in phase1Ids, now absent from the fresh in-lock db -- drop,
+  // don't resurrect) from "genuinely-new file" (absent from phase1Ids -- add).
+  const phase1Ids = new Set(oldIds);
   const prunable = new Set(
     selectPrunableIds(db.metadata, survivingIds, {
       missingRoots,
@@ -1017,6 +1075,20 @@ async function runScanDirectories() {
     }
 
     if (!dbChanged) return false;
+
+    // HR1b (finding D): never resurrect an id DELETEd concurrently during this
+    // scan. An id in the Phase-1 snapshot (phase1Ids) that is now ABSENT from
+    // the fresh in-lock db was removed by a DELETE /api/videos/:id that
+    // committed while the scan ran; the Phase-1 pre-delete newMetadata must
+    // not re-insert it. (An id NOT in phase1Ids is a genuinely-new file and is
+    // still added; an id still present in fresh -- incl. mount-loss-retained
+    // entries -- is kept, merged as today.)
+    for (const id of Object.keys(newMetadata)) {
+      if (phase1Ids.has(id) &&
+          !Object.prototype.hasOwnProperty.call(fresh.metadata, id)) {
+        delete newMetadata[id];
+      }
+    }
 
     fresh.metadata = mergeScannedMetadata(fresh.metadata, newMetadata);
     for (const id of prunable) {
@@ -1166,11 +1238,19 @@ app.post('/api/config', async (req, res) => {
     }
   }
 
-  await updateDatabase(db => {
-    db.folders = validFolders;
-    db.folderSettings = cleanSettings;
-    return true;
-  });
+  try {
+    await updateDatabase(db => {
+      db.folders = validFolders;
+      db.folderSettings = cleanSettings;
+      return true;
+    });
+  } catch (err) {
+    // Express 4 does not catch a rejected async-handler promise, so a
+    // rejection left unguarded here would hang the request instead of
+    // returning 500 (mirrors POST /api/scan's pattern above).
+    console.error('Error saving folder configuration:', err);
+    return res.status(500).json({ error: `Could not save folder configuration: ${err.message}` });
+  }
 
   // Respond with the locally-computed values (not a `db` read back out of the
   // mutator) -- they're already known and identical to what was just saved.
@@ -1276,12 +1356,20 @@ app.post('/api/settings', async (req, res) => {
   // mutator (the fresh-inside-the-lock db), not from a separate outer read.
   let prevInterval;
   let saved;
-  await updateDatabase(db => {
-    prevInterval = db.settings.scanIntervalMinutes; // captured BEFORE the merge
-    db.settings = { ...db.settings, ...body };
-    saved = db.settings;
-    return true;
-  });
+  try {
+    await updateDatabase(db => {
+      prevInterval = db.settings.scanIntervalMinutes; // captured BEFORE the merge
+      db.settings = { ...db.settings, ...body };
+      saved = db.settings;
+      return true;
+    });
+  } catch (err) {
+    // Express 4 does not catch a rejected async-handler promise, so a
+    // rejection left unguarded here would hang the request instead of
+    // returning 500 (mirrors POST /api/scan's pattern above).
+    console.error('Error saving settings:', err);
+    return res.status(500).json({ error: `Could not save settings: ${err.message}` });
+  }
   // Re-arm the periodic scan timer live ONLY when scanIntervalMinutes actually
   // changed, so an interval change takes effect immediately with no restart.
   // armScanTimer() does clearInterval + setInterval, which RESETS the
@@ -1421,18 +1509,26 @@ app.post('/api/progress', async (req, res) => {
   // fresh-inside-the-lock db, not a separately-read (potentially stale)
   // snapshot; `notFound` is captured via closure and handled after the await.
   let notFound = false;
-  await updateDatabase(db => {
-    if (!db.metadata[id]) {
-      notFound = true;
-      return false;
-    }
-    db.progress[id] = {
-      timestamp,
-      duration: duration || db.metadata[id].duration || 0,
-      updatedAt: new Date().toISOString()
-    };
-    return true;
-  });
+  try {
+    await updateDatabase(db => {
+      if (!db.metadata[id]) {
+        notFound = true;
+        return false;
+      }
+      db.progress[id] = {
+        timestamp,
+        duration: duration || db.metadata[id].duration || 0,
+        updatedAt: new Date().toISOString()
+      };
+      return true;
+    });
+  } catch (err) {
+    // Express 4 does not catch a rejected async-handler promise, so a
+    // rejection left unguarded here would hang the request instead of
+    // returning 500 (mirrors POST /api/scan's pattern above).
+    console.error('Error saving watch progress:', err);
+    return res.status(500).json({ error: `Could not save watch progress: ${err.message}` });
+  }
   if (notFound) return res.status(404).json({ error: 'Media not found' });
   res.json({ success: true });
 });
@@ -1479,11 +1575,21 @@ app.delete('/api/videos/:id', async (req, res) => {
   // Idempotent under a concurrent duplicate delete (deleting an already-gone
   // key is a no-op either way; `return true` unconditionally is fine since
   // the mutator's `delete` calls are naturally idempotent).
-  await updateDatabase(freshDb => {
-    delete freshDb.metadata[item.id];
-    delete freshDb.progress[item.id];
-    return true;
-  });
+  try {
+    await updateDatabase(freshDb => {
+      delete freshDb.metadata[item.id];
+      delete freshDb.progress[item.id];
+      return true;
+    });
+  } catch (err) {
+    // Express 4 does not catch a rejected async-handler promise, so a
+    // rejection left unguarded here would hang the request instead of
+    // returning 500. The file (and its thumbnail/transcode sidecar) is
+    // already gone from disk at this point -- only the db-metadata cleanup
+    // failed to persist.
+    console.error(`Error updating database after deleting ${filePath}:`, err);
+    return res.status(500).json({ error: `File deleted from disk but failed to update database: ${err.message}` });
+  }
 
   res.json({ success: true, message: 'File deleted successfully' });
 });
@@ -1660,10 +1766,27 @@ app.get('/video/:id', (req, res) => {
 // required by the test suite. This lets tests import `app` and the pure helpers
 // without binding a port or triggering a real scan.
 if (require.main === module) {
+  // Defense-in-depth: every genuine db.json write path already guards its own
+  // `updateDatabase` call with a try/catch or `.catch`, but a stray unguarded
+  // rejection/throw slipping past that (a bug, not an expected path) must LOG
+  // rather than hang a request or crash the process -- Node 22's default for
+  // an unhandled rejection is to terminate. Log-only, never exit.
+  process.on('unhandledRejection', (reason) => {
+    console.error('Unhandled promise rejection:', reason);
+  });
+  process.on('uncaughtException', (err) => {
+    console.error('Uncaught exception:', err);
+  });
+
   // Transcode-cache hygiene on startup: drop any orphaned *.tmp.mp4 left by a
   // killed transcode, then enforce the size cap.
   const orphans = cleanupOrphanTmp(TRANSCODE_DIR);
   if (orphans) console.log(`Cleaned up ${orphans} orphaned transcode temp file(s).`);
+  // Same idea for db.json's own atomic-write temp files: a SIGKILL/OOM
+  // between saveDatabase's openSync(tmp) and its rename can leave an orphan
+  // `db.json.<pid>.<seq>.tmp` behind; sweep it on every boot.
+  const dbOrphans = cleanupOrphanDbTmp(DATA_DIR);
+  if (dbOrphans) console.log(`Cleaned up ${dbOrphans} orphaned db.json temp file(s).`);
   // Age sweep runs as a separate step immediately before the size-cap
   // eviction (never folded into evictTranscodeCache itself).
   sweepAgedTranscodes(Date.now());
@@ -1699,6 +1822,7 @@ module.exports = {
   parseCacheCap,
   selectEvictions,
   cleanupOrphanTmp,
+  cleanupOrphanDbTmp,
   evictTranscodeCache,
   activeProtectedPaths,
   isCompletedTranscode,

@@ -289,3 +289,33 @@ test('recordServed: a missing metadata entry is a safe no-op', () => {
   writeDb({ folders: [], folderSettings: {}, progress: {}, metadata: {}, settings: baseSettings() });
   assert.doesNotThrow(() => recordServed('does-not-exist'));
 });
+
+// ---- C: recordServed must not leak a persistedServedAt entry for an id that ----
+// ---- doesn't exist (e.g. concurrently DELETEd/pruned) ---------------------
+
+test('recordServed (C): a non-existent id never inserts a persistedServedAt entry (no leak, no false-suppression)', async () => {
+  const staleId = 'vid-concurrently-deleted';
+  writeDb({ folders: [], folderSettings: {}, progress: {}, metadata: {}, settings: baseSettings() });
+
+  // Simulate a serve/transcode-completion recordServed racing a concurrent
+  // delete: the entry doesn't exist (yet, or anymore) when recordServed fires.
+  await recordServed(staleId);
+  assert.equal(readDb().metadata[staleId], undefined, 'a missing entry must never be created/resurrected by recordServed');
+
+  // The id now legitimately appears (e.g. re-added by a scan) with a STALE
+  // on-disk lastServedAt that is due for an update. If the earlier no-op call
+  // had leaked a persistedServedAt map entry (the pre-fix bug), this next
+  // call would incorrectly short-circuit on that bogus throttle-map hit and
+  // skip the due update -- proving the leak by its suppression effect.
+  const db = readDb();
+  const staleTimestamp = Date.now() - RECENT_STREAM_MS - 1000;
+  db.metadata[staleId] = { id: staleId, lastServedAt: staleTimestamp };
+  writeDb(db);
+
+  await recordServed(staleId);
+  const after = readDb();
+  assert.notEqual(
+    after.metadata[staleId].lastServedAt, staleTimestamp,
+    'the entry now exists and is due -- it must be updated, not suppressed by a leaked throttle-map entry from the earlier no-op call'
+  );
+});

@@ -546,6 +546,126 @@ but must state: (i) all writers serialize through `updateDatabase`, (ii)
 into fresh state under the lock rather than overwriting a start-of-scan
 snapshot.
 
+### HR1b (finding D) — DELETE-vs-scan membership reconciliation
+
+**Problem (pre-existing, same clobber class at the MEMBERSHIP dimension).** The
+Phase-2 mutator ends with `fresh.metadata = mergeScannedMetadata(fresh.metadata,
+newMetadata)`, which takes membership WHOLESALE from `newMetadata`. `newMetadata`
+is assembled in Phase 1 (outside the lock, across the FFmpeg awaits) from the
+scan-start `loadDatabase()` snapshot. So if a `DELETE /api/videos/Z` commits
+during the scan (unlinking Z's file and removing `fresh.metadata[Z]` /
+`fresh.progress[Z]` via its own serialized mutator), the scan's Phase-2 merge
+re-inserts Z from `newMetadata` — resurrecting a dangling entry (file gone,
+entry back) until the next prune scan. It only manifests when the scan already
+has some other change (`dbChanged === true`) so the save path runs; a no-op scan
+returns `false` and never overwrites `fresh.metadata`.
+
+**The reconciliation rule (single per-id test).** Capture the Phase-1 snapshot's
+metadata id-set and, inside the Phase-2 mutator, drop from `newMetadata` any id
+that was in that snapshot but is now absent from the fresh in-lock db:
+
+| id in Phase-1 snapshot? | id in `fresh.metadata`? | classification | action |
+| --- | --- | --- | --- |
+| yes | no | concurrently DELETEd/removed during the scan | DROP from `newMetadata` (do not resurrect) |
+| yes | yes | still present (incl. mount-loss / unreadable / toggle-off retained) | KEEP — merge as today |
+| no | no | genuinely-new file the scan just found | KEEP — add (the scan's job) |
+| no | yes | (not reachable: only the scan adds metadata) | KEEP |
+
+The `id in Phase-1 snapshot?` column is the load-bearing discriminator: it is
+what separates a genuine concurrent delete (drop) from both a genuinely-new file
+(add — absent from the snapshot) and a mount-loss-retained entry (keep — present
+in fresh). A NAIVE "any `newMetadata` id absent from `fresh` → drop" rule is
+WRONG: it would eat every genuinely-new file (row 3).
+
+**How "in Phase-1 snapshot" is captured.** Phase 1 already computes `const oldIds
+= Object.keys(db.metadata)` (server.js ~942) off the scan-start snapshot. Add,
+right there, `const phase1Ids = new Set(oldIds);` and close over it into the
+Phase-2 mutator. No new read, no lock interaction — it is a pure key-set of the
+snapshot the scan already holds.
+
+**Exact change (in the Phase-2 mutator, not in `mergeScannedMetadata`).** Insert
+one drop loop immediately BEFORE the `fresh.metadata = mergeScannedMetadata(...)`
+assignment (server.js ~1021), the single point where membership is decided:
+
+```js
+// HR1b: never resurrect an id DELETEd concurrently during this scan. An id in
+// the Phase-1 snapshot that is now ABSENT from the fresh in-lock db was removed
+// by a DELETE /api/videos/:id that committed while the scan ran; the Phase-1
+// pre-delete newMetadata must not re-insert it. (An id NOT in the snapshot is a
+// genuinely-new file and is still added; an id still present in fresh -- incl.
+// mount-loss-retained entries -- is kept.)
+for (const id of Object.keys(newMetadata)) {
+  if (phase1Ids.has(id) &&
+      !Object.prototype.hasOwnProperty.call(fresh.metadata, id)) {
+    delete newMetadata[id];
+  }
+}
+fresh.metadata = mergeScannedMetadata(fresh.metadata, newMetadata);
+```
+
+`mergeScannedMetadata` is left byte-unchanged (its `lastServedAt`-max contract
+stays pure and auditable); the reconcile is a distinct, self-documenting step in
+the mutator. Placing it just before the assignment keeps it out of the
+`if (!dbChanged) return false` early-out, so it only runs on the save path.
+
+**Non-regression argument.**
+
+- **Mount-loss guard:** a retained entry (missing/unmounted root, unreadable
+  subtree, or `pruneMissing` off) is non-surviving but was copied back into
+  `newMetadata` in Phase 1 AND is still present in `fresh.metadata` (nothing
+  deleted it). It is row 2 → KEEP. The drop keys off "absent from fresh" (a
+  genuine delete), never off "unscanned this pass", so an unmounted root is never
+  mistaken for a concurrent delete. `selectPrunableIds` is untouched.
+- **`lastServedAt` on-disk authority:** unchanged. `mergeScannedMetadata` still
+  only advances `lastServedAt` from `fresh.metadata[id]`; dropped ids are simply
+  not in `newMetadata`, and they were already absent from `fresh` (the DELETE
+  removed them), so nothing is regressed or resurrected.
+- **FR3.3 `transcodeStatus` seed:** unchanged. The reconcile loop still seeds
+  each kept item from `fresh.metadata[item.id]`; a dropped id's seed is moot.
+- **Prune path:** orthogonal and preserved. `prunable` (Phase 1) handles files
+  genuinely gone from disk under a readable/mounted root at scan time; a
+  concurrently-DELETEd id was surviving at Phase-1 snapshot time so it is NOT in
+  `prunable` — the drop rule closes exactly the gap prune cannot see. Its
+  `fresh.progress[id]` was already removed by the DELETE's own mutator, so no
+  extra progress cleanup is needed here.
+
+**Residual edges.**
+
+- *Same-path re-add mid-scan:* `getMediaId` hashes the file path, so a DELETE of
+  path P followed by a new file dropped at P shares id Z. This scan drops the
+  stale Z (row 1); the new file at P is indexed by the NEXT scan (fresh
+  extraction on differing size/mtime). Correct — no stale entry resurrected, no
+  new file lost.
+- *reconcileTranscode over a to-be-dropped id:* the reconcile loop runs before
+  the drop, so it may `existsSync`-probe a concurrently-deleted source. That is
+  harmless (existsSync-only + in-place mutation on the local item, which is then
+  dropped before the merge, so it never reaches `fresh.metadata`; any job it
+  would enqueue is for an absent source and no-ops). The SDE MAY hoist the drop
+  above the reconcile loop to skip even that probe — optional, not required.
+
+**Regression tests (mirror `test/integration/scan-api.test.js` / the
+scan-clobber harness; no FFmpeg — interleave a `DELETE`-equivalent
+`updateDatabase` between the scan's Phase 1 and Phase 2, as scan-clobber already
+interleaves writers).**
+
+1. **Headline (fails pre-fix, passes post-fix):** seed metadata for id Z (file
+   present) plus enough for the scan to have a real change (a new file N so
+   `dbChanged` is true). Interleave a `DELETE` of Z (remove `fresh.metadata[Z]`
+   + `fresh.progress[Z]`, unlink Z's file) that commits AFTER Phase 1 builds
+   `newMetadata` but BEFORE the Phase-2 mutator runs. After the scan: assert Z is
+   ABSENT from `db.metadata` (not resurrected) and N is present. Pre-fix this
+   fails (Z back).
+2. **Mount-loss retained entry NOT dropped (false-positive guard):** an entry R
+   under a missing/unmounted root (so R is non-surviving, non-prunable, retained,
+   and still in `fresh.metadata`); run a scan with some other change. Assert R
+   still present after the scan.
+3. **Genuinely-new file still added:** a scanned file N absent from the Phase-1
+   snapshot and from `fresh.metadata` is present in `db.metadata` after the scan
+   (guards against the naive drop eating new files).
+4. **Non-concurrent case unchanged:** a normal scan with no interleaved delete
+   leaves all surviving ids intact (existing scan-api coverage suffices; assert
+   explicitly if convenient).
+
 ### `recordServed` throttle coherence
 
 `persistedServedAt` stays a write-throttle only: the ~10-minute hot-path check
