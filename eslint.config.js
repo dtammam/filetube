@@ -88,6 +88,7 @@ module.exports = [
         getMockViews: 'readonly',
         getStarRating: 'readonly',
         rankRelated: 'readonly',
+        resolveAudioArtUrl: 'readonly',
         resolveChannelName: 'readonly',
         resolveTheme: 'readonly',
         setTheme: 'readonly',

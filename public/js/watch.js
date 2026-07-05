@@ -1,8 +1,28 @@
 // FileTube Watch Page Logic
 
 document.addEventListener('DOMContentLoaded', () => {
+  // Audio thumbnail-as-background art (Feature 1, v1.10.0). Feasibility finding
+  // (docs/exec-plans/active/2026-07-05-audio-art-and-related.md, "Feature 1"):
+  // (a) the <video>'s `poster` attribute -- already set below for audio -- is
+  //     confirmed INSUFFICIENT by construction: poster only paints until the
+  //     first frame/playback starts, and an audio-only <video> has no frame,
+  //     so iOS paints its default black once playback begins;
+  // (b) a CSS background-image layer BEHIND a transparent audio <video> is the
+  //     approach implemented here (#audio-bg-art + .audio-mode below) --
+  //     verifiably correct on desktop/PWA regardless of iOS;
+  // (c) iOS-during-playback is UNKNOWN in this dev environment (no device) --
+  //     Dean's on-device [MANUAL] pass is the arbiter. If iOS still forces
+  //     black, flip AUDIO_PLAYER_MODE to 'visualizer' below (one line) to fall
+  //     back to the existing #audio-visualizer vinyl view. Desktop/PWA renders
+  //     the art either way.
+  // Optional acceptance-time refinement (not built): gate the fallback to
+  // iOS-only via a UA check so desktop keeps the background art even if iOS
+  // needs the visualizer fallback. Left as a hook, not implemented.
+  const AUDIO_PLAYER_MODE = 'background'; // 'background' (default) | 'visualizer' (fallback)
+
   const mediaPlayer = document.getElementById('media-player');
   const playerWrapper = document.getElementById('player-wrapper');
+  const audioBgArt = document.getElementById('audio-bg-art');
   const audioVisualizer = document.getElementById('audio-visualizer');
   const vinylDisc = document.getElementById('vinyl-disc');
   const audioVisualTitle = document.getElementById('audio-visual-title');
@@ -286,15 +306,43 @@ document.addEventListener('DOMContentLoaded', () => {
     const streamUrl = `/video/${mediaId}`;
     
     if (mediaData.type === 'audio') {
-      // Simple audio player: show the cover art (or placeholder) as a still poster
-      // with the browser's native controls. Works consistently on iOS and desktop;
-      // no spinning visualizer.
-      audioVisualizer.style.display = 'none';
+      // Audio player: native controls plus either (a) the 'background' art
+      // layer behind a transparent player (default, see AUDIO_PLAYER_MODE
+      // comment above) or (b) the retained #audio-visualizer fallback.
       mediaPlayer.style.display = 'block';
       mediaPlayer.poster = `/thumbnail/${mediaId}`;
       mediaPlayer.src = streamUrl;
+
+      // Defensive reset so a stale audio-mode/art never bleeds in from a prior
+      // setupPlayer() call (today each item load is a fresh page navigation,
+      // so this is a no-op in practice, but keeps the toggle correct if
+      // setupPlayer() is ever invoked more than once per page, e.g. future
+      // SPA-style navigation between items).
+      playerWrapper.classList.remove('audio-mode');
+      audioBgArt.style.display = 'none';
+      audioBgArt.style.backgroundImage = '';
+      audioVisualizer.style.display = 'none';
+
+      if (AUDIO_PLAYER_MODE === 'background') {
+        const artUrl = resolveAudioArtUrl(mediaData);
+        if (artUrl) {
+          audioBgArt.style.backgroundImage = `url("${artUrl}")`;
+          audioBgArt.style.display = 'block';
+          playerWrapper.classList.add('audio-mode');
+        }
+        // else: no real thumbnail (placeholder-only) -- leave the art layer
+        // hidden and fall through to today's plain poster/black behavior;
+        // stretching the SVG placeholder full-bleed would look worse than
+        // nothing.
+      } else {
+        // AUDIO_PLAYER_MODE === 'visualizer': the pre-v1.10.0 fallback view.
+        audioVisualizer.style.display = 'flex';
+        audioVisualTitle.textContent = mediaData.title || '';
+        audioVisualFolder.textContent = mediaData.folderName || '';
+      }
     } else {
-      // Video File
+      // Video File -- never opts into audio-mode or the art layer, so
+      // object-fit: contain + the #000 letterbox stay exactly as they were.
       mediaPlayer.style.display = 'block';
       setupSkipControls();
       setupRotateFullscreen();

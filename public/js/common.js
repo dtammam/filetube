@@ -254,6 +254,20 @@ function resolveChannelName(item, folderSettings) {
   return mapped || item.artist || item.folderName || 'Library';
 }
 
+// ---- Audio thumbnail-as-background art (resolveAudioArtUrl) ---------------
+// See docs/exec-plans/active/2026-07-05-audio-art-and-related.md ("Feature 1")
+// for the full feasibility finding/design. Resolve the background-art image
+// URL for an audio item, or null when the item would only resolve to the SVG
+// placeholder (no real extracted thumbnail). GET /thumbnail/:id (server.js)
+// never 404s, but a stretched 160x90 placeholder makes a poor full-bleed
+// background, so callers use null to SKIP the art layer (leave it hidden and
+// fall back to today's plain poster/black) rather than stretch the
+// placeholder. Pure and deterministic; never throws on a missing/null item.
+function resolveAudioArtUrl(item) {
+  if (!item || !item.id || !item.hasThumbnail) return null;
+  return `/thumbnail/${item.id}`;
+}
+
 // ---- Related-items similarity ranking (rankRelated) -----------------------
 // See docs/exec-plans/active/2026-07-05-audio-art-and-related.md ("Feature 2")
 // for the full design/rationale. Pure and deterministic; replaces the
@@ -639,6 +653,7 @@ if (typeof module !== 'undefined' && module.exports) {
     resolveTheme, THEME_REGISTRY, activeNavItem,
     resolveIconSet, ICON_SET_REGISTRY, ICON_SETS,
     gbToBytes, bytesToGb,
-    tokenize, rankRelated, RESULT_COUNT, SIMILAR_FLOOR
+    tokenize, rankRelated, RESULT_COUNT, SIMILAR_FLOOR,
+    resolveAudioArtUrl
   };
 }
