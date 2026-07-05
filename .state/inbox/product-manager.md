@@ -1,105 +1,111 @@
-# Product Manager — Discovery: harden db.json write concurrency + mobile logo top-left
+# Product Manager — Discovery for v1.10.0 (feat/audio-art-and-related)
 
-You are the Product Manager. Produce **requirements and acceptance criteria** for a
-new FileTube feature branch targeting **v1.9.0**. You have no shared context with
-the EM — everything you need is below or in the referenced files.
+You are the Product Manager. Produce requirements + acceptance criteria for ONE
+branch containing TWO independent, additive media-experience features for FileTube.
+They ship as SEPARATE commits/tasks and must revert independently.
 
-## Read first
+## First, read (self-contained — you share no context with the EM)
 
-- `.state/feature-state.json` (the `description`, `grounding`, and `prior_release` fields)
-- `docs/CONTRIBUTING.md` (standards — every feature ships tests; node:test; ESLint 0 errors)
-- `docs/RELIABILITY.md` (error-handling / testing strategy; degrade-don't-crash; FS in try/catch)
-- `docs/exec-plans/completed/2026-07-05-settings-automation-cache.md` (the v1.8.0 exec plan — the race remediation FR1/FR3 that this feature makes STRUCTURAL; read its Design + Remediation-design sections)
-- `docs/exec-plans/tech-debt-tracker.md` (Active #2 and #3 — both fold-in candidates here)
-- Ground the concurrency item in the real code before writing: `server.js` — `saveDatabase` (line 73, currently a plain `fs.writeFileSync` — NOT atomic), and the writer call sites at lines 419, 460, 899, 1041, 1144, 1291, 1329. Skim `runScanDirectories`, `POST /api/settings`, `POST /api/progress`, `recordServed`, `setTranscodeStatus`, and `POST /api/config`'s background scan to confirm each does load-whole-file -> mutate -> save-whole-file.
-- Ground the logo item: `public/css/style.css` mobile `@media` block ~1583-1631 (`.mobile-logo`, `.header-left{justify-content:center}`, `.logo{display:none}`, `.header-right{display:none}`). Confirm which HTML carries the mobile logo (`public/*.html` — home/index and watch) and the header markup / aria-labels / FileTube-home link.
+- `.state/feature-state.json` — the feature description, `grounding`, and constraints (READ the `grounding` block; it has exact file:line anchors).
+- `CLAUDE.md`, `docs/CONTRIBUTING.md`, `docs/RELIABILITY.md`, `docs/ARCHITECTURE.md`.
+- `public/watch.html` (player markup: `#media-player` at :119 with `playsinline`; `#audio-visualizer` vinyl view at :139-145; `#player-wrapper` at :98).
+- `public/js/watch.js` — especially `setupPlayer()` (:285-344, audio branch :288-295), `loadRelatedFiles()` (:710-753), `setupMediaSession()` (:249-265, lock-screen only), and the v1.2.2 iOS background-audio / no-custom-action-handler rationale (:242-248).
+- `public/js/common.js` tail (:483, the `module.exports` browser+node UMD pattern) and a couple of `test/unit/*.test.js` that exercise those helpers (e.g. `clamp-position-state.test.js`, `star-rating.test.js`) so you can model the testability expectation.
+- Server anchors: `GET /thumbnail/:id` (`server.js:1605`, never 404s — real jpg or SVG placeholder) and `GET /api/videos` (`server.js:1432`, newest-first list; item field shape is in state `grounding`).
 
 ## Deliverable
 
-Write a NEW exec plan to `docs/exec-plans/active/2026-07-05-harden-db-writes-and-logo.md`
-with: goal, scope, out-of-scope, constraints, and acceptance criteria. Then update
-`.state/feature-state.json`: set `artifacts.requirements` and `artifacts.exec_plan` to
-that path. Do NOT write the Design section — that's the Principal Engineer's next stage.
-Do NOT write application code.
+Write the exec plan to `docs/exec-plans/active/2026-07-05-audio-art-and-related.md`
+with a Goal, Scope, Out-of-scope, Constraints, and TWO clearly separated
+requirements+acceptance-criteria sections (Feature 1, Feature 2). Then update
+`.state/feature-state.json`: set `artifacts.requirements` and `artifacts.exec_plan`
+to that path (leave `artifacts.design` null — that's the PE's).
 
-This is ONE branch doing TWO INDEPENDENT things, kept as **separate commits/tasks**
-so the risky backend change and the cosmetic frontend change revert independently.
-**Keep the two items in clearly separate sections of the plan** (Item 1 / Item 2),
-each with its own scope + AC. Tag every acceptance criterion `[UNIT]`,
-`[INTEGRATION]`, `[MANUAL]`, or `[PROCESS]`.
+Tag EVERY acceptance criterion with exactly one of: **[UNIT]**, **[INTEGRATION]**,
+**[MANUAL]**, **[PROCESS]** (lint/build/tests-green). Keep the two features'
+AC in separate sections so they map to separate commits.
 
-## Item 1 (the big one) — HARDEN db.json write concurrency
+Cross-check: nothing you put in Out-of-scope may conflict with a CONTRIBUTING.md
+mandatory standard (tests-with-every-change, lint-0, additive/zero-regression).
 
-Root-cause fix for the race CLASS that v1.8.0 patched finding-by-finding. `db.json`
-is a single JSON file that MANY paths do "load whole file -> mutate one thing ->
-write whole file back" on, with NO locking. Any two overlapping -> one clobbers the
-other. v1.8.0 mitigated the specific interleavings (settings, lastServedAt,
-transcodeStatus, progress-on-prune) with a re-read-merge-before-save in
-`runScanDirectories`, but (a) that still has a hair-thin lost-update window (read
-fresh -> save; a write landing in the gap is lost) and (b) it's finding-by-finding,
-not structural.
+## Feature 1 — audio playback shows the thumbnail as background art (FEASIBILITY-GATED)
 
-**GOAL:** eliminate the class structurally — serialize db.json read-modify-write
-behind a single mechanism. The **Principal Engineer** will choose and justify the
-approach next stage (write-queue/mutex vs. single in-memory source-of-truth with
-debounced/atomic writes vs. whole-file + a lock with fresh-read-inside-the-lock).
-Your job is the requirements + AC the design must satisfy. Whatever is chosen must:
+**Problem:** on iOS Safari an AUDIO-only file plays in the HTML5 player as a BLACK
+background (no video track). Dean wants the item's THUMBNAIL shown as the art/
+background so audio "looks like a video is playing." Video files already show their
+frame fine ("it works perfectly for video").
 
-- Make concurrent read-modify-write from ALL writer paths **provably non-clobbering**.
-  Headline AC `[INTEGRATION]`: a regression test that interleaves a settings write +
-  a progress write + a recordServed + a scan and asserts NOTHING is lost — the v1.8.0
-  `test/integration/scan-clobber.test.js` is the template.
-- Preserve **ALL** v1.8.0 behavior and keep the **194-test suite green** (including the
-  frozen suites, e.g. `transcode-cache.test.js` byte-identical).
-- Ideally let us SIMPLIFY the `runScanDirectories` re-read-merge once a real lock
-  exists — but carefully; it's load-bearing (don't regress the mount-loss guard /
-  lastServedAt authority / transcodeStatus seed / bounded rescan drain fixes).
-- Keep saves **atomic on disk** (write-temp-then-rename) so a crash mid-write can't
-  corrupt db.json. (`saveDatabase` at server.js:73 is currently a plain writeFileSync.)
+**This is explicitly feasibility-gated.** Dean said: "If it's not [technically
+possible], I can drop the ambitions knowing this is PWA only." So:
 
-**FOLD IN** (both in tech-debt-tracker.md, both in this code area):
-- (a) **Active #3** — the FR3.4 dropped-rescan tail: when the coalesced rescan drain
-  budget is exhausted with `rescanRequested` still set, schedule ONE deferred/
-  rate-limited rescan via a short unref'd timer instead of dropping it (resolves the
-  "folder-add during the follow-up pass with auto-scan Off gets lost" edge). Give it AC.
-- (b) **Active #2** (OPTIONAL — only if the PE finds it low-risk) — `sweepAgedTranscodes`
-  then `evictTranscodeCache` each walk `TRANSCODE_DIR` with their own readdir+statSync;
-  share one enumeration. Mark this AC as conditional on the PE's risk call.
+- Requirements MUST call out a **FEASIBILITY SPIKE** owned by Discovery→Design:
+  can mobile Safari (iOS) render the thumbnail behind/around an audio-only
+  `<video>` DURING playback? Frame the candidate approaches for the PE to test:
+  - **(a) `poster` attribute** — NOTE the code ALREADY does this (`watch.js:288-295`
+    sets `mediaPlayer.poster='/thumbnail/'+mediaId` for audio and hides
+    `#audio-visualizer`). `poster` typically disappears once playback starts, which
+    is very likely the exact black screen being reported. So (a) alone is suspect.
+  - **(b) CSS background-image** (thumbnail) on `#player-wrapper` behind a
+    transparent / still-poster'd player, with `object-fit: cover`-style framing.
+  - **(c)** iOS's native audio takeover may force black regardless — a real
+    possibility the spike must be allowed to conclude.
+- The lock-screen Media Session artwork (`setupMediaSession`) is ALREADY wired and
+  is the LOCK SCREEN, not the in-page player. Do NOT conflate them.
+- **If achievable on iOS:** implement thumbnail-as-audio-background (cover framing so
+  it reads like video), WITHOUT regressing how video files display.
+- **If NOT achievable on iOS:** degrade gracefully — keep/restore the existing PWA
+  custom `#audio-visualizer` (vinyl/cover-art view) as the documented **PWA-only**
+  fallback. Dean ACCEPTS this fallback explicitly.
+- **Acceptance criteria MUST cover BOTH** the works-case AND the graceful-fallback
+  case, AND must state the feasibility finding explicitly (the finding itself is a
+  deliverable). Most AC here are **[MANUAL]** on-device (Dean confirms on iOS), plus
+  any **[UNIT]** for a pure helper (e.g. resolving the right thumbnail URL / deciding
+  whether to show background art for an audio item — note `hasThumbnail` distinguishes
+  a real thumbnail from the SVG placeholder).
+- Hard non-regression AC: preserve the v1.2.2 iOS background-audio behavior AND the
+  `playsinline` inline-playback behavior.
 
-## Item 2 (small, cosmetic) — mobile logo top-left
+## Feature 2 — related items = fuzzy-similar, not just most-recent
 
-**DECISION ALREADY MADE by Dean — do NOT re-ask:** on MOBILE, the logo must sit
-TOP-LEFT on BOTH the home screen and the watch/video page, matching the desktop
-layout — REMOVING the centered app-shell `.mobile-logo`. Desktop is already top-left
-(unchanged — leave it).
+**Problem:** "Related Files" is essentially most-recent today (`loadRelatedFiles`:
+newest-first, same-folder-first, slice 10). Dean wants it to feel actually RELATED:
+"if there's some keyword or something related... a basic [fuzzy] search where if
+there's a certain part that's fuzzy similar, show those." **Keep it SIMPLE — "nothing
+crazy," a basic tokenize + score, NOT a search engine.**
 
-Scope: rework the mobile header so the logo is top-left. **Decide** (you and the PE)
-what happens to the mobile search once the logo is no longer centered above it — e.g.
-logo top-left with search beside or below it — keep it clean and usable. The bottom-nav
-app-shell (Home/Playlists/Dark/Settings) **STAYS**. Preserve a11y (aria-labels, the
-FileTube-home link), the `safe-area-inset-top` handling, and NO regression to
-theme/icon/appearance. This is `[MANUAL]`-visual (Dean confirms on-device); low risk,
-small diff, SEPARATE commit from the hardening.
+- Requirements: a lightweight similarity ranking. The CORE must be a **PURE,
+  exported, UNIT-TESTABLE** ranking function — e.g. `rankRelated(currentItem, allItems)
+  -> ordered list` — with deterministic scoring, defined tie-breaks, a fallback
+  threshold, and self-exclusion. Candidate similarity signals (the PE will CHOOSE
+  the final set — surface this as an open question, don't over-specify): title/
+  filename token overlap, shared folder, shared artist/channel/tags.
+- **Never-empty / no-regression:** FALL BACK to most-recent when there aren't enough
+  similar items (fewer than some N), so the list is never empty or worse than today.
+  Keep the current `.related-card` rendering working.
+- Note the pure-fn home is the PE's call — the repo already has a browser+node
+  dual-export precedent (`common.js:483`) so `rankRelated` can be a shared client-side
+  fn fed by the existing `/api/videos` with NO new server endpoint; don't mandate a
+  home, just require it be pure + node:testable.
+- Acceptance criteria: **[UNIT]** for the ranking function (similar items rank above
+  unrelated; self excluded; deterministic; fallback-to-recent when < N similar; tie
+  breaks defined) PLUS **[MANUAL]** that the related list feels related on real content.
+  Additive/zero-regression.
 
-## Constraints (all items)
+## Out of scope (do NOT act on)
 
-- Node 22, `node:test` (`npm test`), ESLint (`npm run lint`, **0 errors**; the 11
-  "defined but never used" exported-globals warnings are the allowed baseline).
-- Additive / zero-regression; ships to prod Docker `deantammam/filetube` on a `v*.*.*` tag.
-- Every feature/bugfix ships tests (CONTRIBUTING). Keep FFmpeg out of the automated suite.
-- The two items must be independently revertible (separate commits/tasks).
+- The "optional yt-dlp integration module" (`docs/exec-plans/future/yt-dlp-integration-module.md`,
+  referenced by ROADMAP) is the branch-AFTER-next, explicitly PARKED.
 
-## Open questions to surface (do NOT block — propose a default for each)
+## Open questions to surface for the design gate (headline)
 
-1. **Headline for the design gate:** which hardening approach? (write-queue/mutex vs.
-   in-memory source-of-truth + atomic writes vs. locked whole-file with fresh-read-in-lock.)
-   Flag this as the PE's call — the EM will relay the PE's proposal to Dean.
-2. Should the serialized path be sync (all writes through one queued function) or is a
-   full in-memory db object with periodic/debounced atomic flush acceptable given the
-   crash-safety requirement? Note the trade-off for the PE.
-3. Does simplifying/removing the v1.8.0 re-read-merge risk any of the FR1/FR3 invariants,
-   or should it stay as a belt-and-suspenders inside the lock? (PE decides.)
-4. Item 2 mobile search placement — propose beside-or-below and let Dean confirm on-device.
+End the exec plan with an "Open questions" section highlighting the two the EM will
+relay to Dean before the design gate:
 
-Do NOT re-open the mobile-logo top-left decision. When done, tell the coordinator the
-work is complete so the EM can route to the Principal Engineer (`/prep-pe-design`).
+1. **F1 feasibility framing** — which approach(es) to actually test on real iOS
+   (poster vs CSS background vs accept-native-black), and confirmation that the
+   `#audio-visualizer` fallback is the accepted degrade.
+2. **F2 similarity signals** — which signals to rank on (title/filename tokens,
+   folder, artist/channel, tags) and the fallback threshold N.
+
+Keep requirements product-level (what/why + testable AC); the HOW (poster vs CSS,
+exact scoring formula, pure-fn home) is the Principal Engineer's design stage.
