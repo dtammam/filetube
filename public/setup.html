@@ -12,8 +12,9 @@
   <meta name="apple-mobile-web-app-title" content="FileTube">
   <link rel="stylesheet" href="/css/style.css">
   <script>
-    /* FOUC guard: set era+mode on <html> before first paint. Mirror of
-       resolveTheme() in /js/common.js — keep the two in sync. */
+    /* FOUC guard: set era+mode+icons on <html> before first paint. Mirror of
+       resolveTheme()/resolveIconSet() in /js/common.js — keep all three in
+       sync (see the matching comment there). */
     (function () {
       var d = document.documentElement;
       try {
@@ -28,9 +29,20 @@
           : 'light';
         d.setAttribute('data-theme', era);
         d.setAttribute('data-mode', mode);
+
+        /* Also resolve the icon set before paint. Inline mirror of
+           resolveIconSet() in /js/common.js — keep the two in sync. */
+        var iconSets = ['outlined', 'rounded', 'filled', 'emoji'];
+        var iconAutoMap = { '2005': 'emoji', '2009': 'emoji', '2014': 'filled', '2021': 'rounded' };
+        var storedIcons = localStorage.getItem('ft-icons');
+        var iconSet = iconSets.indexOf(storedIcons) >= 0 ? storedIcons
+          : storedIcons === 'auto' ? iconAutoMap[era]   // `era` already validated above
+          : 'outlined';
+        d.setAttribute('data-icons', iconSet);
       } catch (_) {
         d.setAttribute('data-theme', '2021');
         d.setAttribute('data-mode', 'light');
+        d.setAttribute('data-icons', 'outlined');
       }
     })();
   </script>
@@ -105,6 +117,10 @@
         <p>Pick the YouTube era FileTube dresses up as. Light / dark is the
            theme-toggle button in the header.</p>
         <div class="theme-picker" id="theme-picker"><!-- rendered by JS --></div>
+        <h3 style="margin-top:20px;">Icons</h3>
+        <p>Pick the icon style for FileTube's chrome. <strong>Auto</strong>
+           matches it to the era above.</p>
+        <div class="theme-picker" id="icon-picker"><!-- rendered by JS --></div>
       </div>
     </main>
   </div>
@@ -345,6 +361,31 @@
       });
     }
     renderThemePicker();
+
+    // Icons picker — ICON_SET_REGISTRY/setIconSet come from common.js. Mirrors
+    // renderThemePicker() above (no Save step, re-highlight on click). The
+    // active card is the raw STORED pref (never data-icons, which never holds
+    // 'auto'), defaulting to 'outlined' when unset.
+    function renderIconPicker() {
+      const container = document.getElementById('icon-picker');
+      if (!container) return;
+      let pref = null;
+      try { pref = localStorage.getItem('ft-icons'); } catch (_) { /* fall through to default */ }
+      const active = (pref === 'auto' || ICON_SETS.includes(pref)) ? pref : 'outlined';
+      container.innerHTML = ICON_SET_REGISTRY.map(s => `
+        <button type="button" class="theme-card${s.id === active ? ' active' : ''}"
+                data-icons-pref="${s.id}">
+          <span class="theme-card-name">${s.name}</span>
+          <span class="theme-card-blurb">${s.blurb}</span>
+        </button>`).join('');
+      container.querySelectorAll('.theme-card').forEach(btn => {
+        btn.addEventListener('click', () => {
+          setIconSet(btn.dataset.iconsPref);   // applies + persists immediately, no Save
+          renderIconPicker();                   // re-highlight
+        });
+      });
+    }
+    renderIconPicker();
 
     // Start
     loadConfig();

@@ -1378,6 +1378,86 @@ header {
 /* Out of scope: gold rating star — NOT a mask/currentColor icon. Leave as-is. */
 .icon-star::before { content: "★"; }
 
+/* ---- Icon-set axis (data-icons) -------------------------------------------
+   Third, orthogonal appearance axis (theme x mode x icon-set). The base rule,
+   unscoped outlined mask block, @supports fill guard, and .icon-star above are
+   UNTOUCHED — outlined (default/unset data-icons) needs no scoped rules here,
+   it already renders via the unscoped block. See resolveIconSet() in
+   /js/common.js and docs/exec-plans/completed/icon-sets.md. A scoped selector
+   like [data-icons="rounded"] .icon-home is (0,2,0) specificity, beating both
+   the unscoped (0,1,0) mask rule and the @supports (0,1,0) fill rule above —
+   no !important needed. */
+
+/* Rounded set: Material Symbols Rounded, same filenames as outlined. */
+[data-icons="rounded"] .icon-home { -webkit-mask-image: url(/assets/icons/rounded/home.svg); mask-image: url(/assets/icons/rounded/home.svg); }
+[data-icons="rounded"] .icon-folder { -webkit-mask-image: url(/assets/icons/rounded/folder.svg); mask-image: url(/assets/icons/rounded/folder.svg); }
+[data-icons="rounded"] .icon-cog { -webkit-mask-image: url(/assets/icons/rounded/settings.svg); mask-image: url(/assets/icons/rounded/settings.svg); }
+[data-icons="rounded"] .icon-delete { -webkit-mask-image: url(/assets/icons/rounded/delete.svg); mask-image: url(/assets/icons/rounded/delete.svg); }
+[data-icons="rounded"] .icon-moon { -webkit-mask-image: url(/assets/icons/rounded/dark_mode.svg); mask-image: url(/assets/icons/rounded/dark_mode.svg); }
+[data-icons="rounded"] .icon-sun { -webkit-mask-image: url(/assets/icons/rounded/light_mode.svg); mask-image: url(/assets/icons/rounded/light_mode.svg); }
+[data-icons="rounded"] .icon-menu { -webkit-mask-image: url(/assets/icons/rounded/menu.svg); mask-image: url(/assets/icons/rounded/menu.svg); }
+[data-icons="rounded"] .icon-search { -webkit-mask-image: url(/assets/icons/rounded/search.svg); mask-image: url(/assets/icons/rounded/search.svg); }
+[data-icons="rounded"] .icon-play { -webkit-mask-image: url(/assets/icons/rounded/play_arrow.svg); mask-image: url(/assets/icons/rounded/play_arrow.svg); }
+[data-icons="rounded"] .icon-refresh { -webkit-mask-image: url(/assets/icons/rounded/refresh.svg); mask-image: url(/assets/icons/rounded/refresh.svg); }
+[data-icons="rounded"] .icon-arrow-up { -webkit-mask-image: url(/assets/icons/rounded/keyboard_arrow_up.svg); mask-image: url(/assets/icons/rounded/keyboard_arrow_up.svg); }
+[data-icons="rounded"] .icon-arrow-down { -webkit-mask-image: url(/assets/icons/rounded/keyboard_arrow_down.svg); mask-image: url(/assets/icons/rounded/keyboard_arrow_down.svg); }
+
+/* Filled set: Material Icons Classic (2014). Note the two substitute
+   filenames (wb_sunny/brightness_2) — see public/assets/icons/README.md. */
+[data-icons="filled"] .icon-home { -webkit-mask-image: url(/assets/icons/filled/home.svg); mask-image: url(/assets/icons/filled/home.svg); }
+[data-icons="filled"] .icon-folder { -webkit-mask-image: url(/assets/icons/filled/folder.svg); mask-image: url(/assets/icons/filled/folder.svg); }
+[data-icons="filled"] .icon-cog { -webkit-mask-image: url(/assets/icons/filled/settings.svg); mask-image: url(/assets/icons/filled/settings.svg); }
+[data-icons="filled"] .icon-delete { -webkit-mask-image: url(/assets/icons/filled/delete.svg); mask-image: url(/assets/icons/filled/delete.svg); }
+[data-icons="filled"] .icon-menu { -webkit-mask-image: url(/assets/icons/filled/menu.svg); mask-image: url(/assets/icons/filled/menu.svg); }
+[data-icons="filled"] .icon-search { -webkit-mask-image: url(/assets/icons/filled/search.svg); mask-image: url(/assets/icons/filled/search.svg); }
+[data-icons="filled"] .icon-play { -webkit-mask-image: url(/assets/icons/filled/play_arrow.svg); mask-image: url(/assets/icons/filled/play_arrow.svg); }
+[data-icons="filled"] .icon-refresh { -webkit-mask-image: url(/assets/icons/filled/refresh.svg); mask-image: url(/assets/icons/filled/refresh.svg); }
+[data-icons="filled"] .icon-arrow-up { -webkit-mask-image: url(/assets/icons/filled/keyboard_arrow_up.svg); mask-image: url(/assets/icons/filled/keyboard_arrow_up.svg); }
+[data-icons="filled"] .icon-arrow-down { -webkit-mask-image: url(/assets/icons/filled/keyboard_arrow_down.svg); mask-image: url(/assets/icons/filled/keyboard_arrow_down.svg); }
+[data-icons="filled"] .icon-sun  { -webkit-mask-image: url(/assets/icons/filled/wb_sunny.svg);     mask-image: url(/assets/icons/filled/wb_sunny.svg); }
+[data-icons="filled"] .icon-moon { -webkit-mask-image: url(/assets/icons/filled/brightness_2.svg); mask-image: url(/assets/icons/filled/brightness_2.svg); }
+
+/* Emoji set: restores the pre-v1.6.0 ::before emoji per icon. No-square fix
+   (AC7): this grouped rule neutralizes BOTH the mask (mask-image: none) AND
+   the @supports currentColor fill (background-color: transparent) at (0,2,0)
+   specificity, so no solid currentColor box renders behind/around the emoji
+   in any theme combo. width/height: auto lets the glyph size naturally
+   instead of being clipped to a 1em mask box. */
+[data-icons="emoji"] .icon-home,
+[data-icons="emoji"] .icon-folder,
+[data-icons="emoji"] .icon-cog,
+[data-icons="emoji"] .icon-delete,
+[data-icons="emoji"] .icon-moon,
+[data-icons="emoji"] .icon-sun,
+[data-icons="emoji"] .icon-menu,
+[data-icons="emoji"] .icon-search,
+[data-icons="emoji"] .icon-play,
+[data-icons="emoji"] .icon-refresh,
+[data-icons="emoji"] .icon-arrow-up,
+[data-icons="emoji"] .icon-arrow-down {
+  -webkit-mask-image: none;
+  mask-image: none;
+  background-color: transparent;  /* CRITICAL: overrides the @supports currentColor fill -> no solid box */
+  width: auto;                    /* let the glyph size naturally, no 1em clip/overlap */
+  height: auto;
+}
+
+[data-icons="emoji"] .icon-home::before      { content: "\1F3E0"; } /* 🏠 */
+[data-icons="emoji"] .icon-folder::before    { content: "\1F4C1"; } /* 📁 */
+[data-icons="emoji"] .icon-cog::before       { content: "\2699";  } /* ⚙ */
+[data-icons="emoji"] .icon-delete::before    { content: "\1F5D1"; } /* 🗑 */
+[data-icons="emoji"] .icon-moon::before      { content: "\1F319"; } /* 🌙 */
+[data-icons="emoji"] .icon-sun::before       { content: "\2600\FE0F"; } /* ☀️ */
+[data-icons="emoji"] .icon-menu::before      { content: "\2630";  } /* ☰ */
+[data-icons="emoji"] .icon-search::before    { content: "\1F50D"; } /* 🔍 */
+[data-icons="emoji"] .icon-play::before      { content: "\25B6";  } /* ▶ */
+[data-icons="emoji"] .icon-refresh::before   { content: "\1F504"; } /* 🔄 */
+[data-icons="emoji"] .icon-arrow-up::before  { content: "\25B2";  } /* ▲ */
+[data-icons="emoji"] .icon-arrow-down::before{ content: "\25BC";  } /* ▼ */
+
+/* .icon-star is deliberately absent from every block above: the gold ★
+   rating renders identically regardless of icon-set selection (AC8). */
+
 /* New mobile-shell elements never render outside the phone breakpoint.
    Additive: new selectors only — no existing desktop rule is touched. */
 .bottom-nav,

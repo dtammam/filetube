@@ -55,7 +55,10 @@ module.exports = [
       sourceType: 'script',
       // `module` is referenced only inside a `typeof module` guard so common.js
       // can export pure helpers to Node tests; harmless in the browser.
-      globals: { ...globals.browser, module: 'readonly' },
+      // `renderIconPicker` is defined inline in setup.html (not a public/js/*
+      // file) and feature-detected from common.js's applyIconSet(), so it must
+      // be declared here for common.js's own lint pass.
+      globals: { ...globals.browser, module: 'readonly', renderIconPicker: 'readonly' },
     },
     rules: {
       ...commonRules,
@@ -89,6 +92,10 @@ module.exports = [
         setTheme: 'readonly',
         showConfirmModal: 'readonly',
         THEME_REGISTRY: 'readonly',
+        resolveIconSet: 'readonly',
+        setIconSet: 'readonly',
+        ICON_SET_REGISTRY: 'readonly',
+        ICON_SETS: 'readonly',
       },
     },
   },

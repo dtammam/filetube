@@ -90,9 +90,80 @@ function toggleTheme() {
 }
 
 // Setup-page Appearance picker: changes era only, keeps the current mode.
+// Also re-runs icon-set resolution (below): an `auto` ft-icons preference
+// must recompute against the NEW era immediately, since resolveIconSet() maps
+// era -> concrete set. toggleTheme() never changes era, so it never needs
+// this call.
 function setTheme(era) {
   const mode = document.documentElement.getAttribute('data-mode') || DEFAULT_MODE;
   applyTheme(era, mode);
+  let pref = null;
+  try { pref = localStorage.getItem('ft-icons'); } catch (_) { /* fall through to default */ }
+  applyIconSet(pref);
+}
+
+// ---- Icon-set system ------------------------------------------------------
+// A third, orthogonal appearance axis (theme x mode x icon-set) layered on
+// top of the era/mode system above, with no change to resolveTheme/
+// applyTheme/toggleTheme. See docs/exec-plans/active/icon-sets.md for the
+// full design. Two axes: a persisted `ft-icons` preference (one of the 4
+// concrete sets, or the meta-value 'auto') and a `data-icons` attribute on
+// <html> that always holds one of the 4 CONCRETE values — 'auto' is never
+// written to data-icons.
+
+const ICON_SETS = ['outlined', 'rounded', 'filled', 'emoji'];
+const DEFAULT_ICON_SET = 'outlined';
+const AUTO_ERA_ICON_MAP = { '2005': 'emoji', '2009': 'emoji', '2014': 'filled', '2021': 'rounded' };
+
+// Single source of truth for the setup-page Icons picker. Auto listed first.
+const ICON_SET_REGISTRY = [
+  { id: 'auto', name: 'Auto', blurb: 'Matches the icon style to whichever era you\'ve picked.' },
+  { id: 'outlined', name: 'Outlined', blurb: 'Material Symbols Outlined — today\'s default look.' },
+  { id: 'rounded', name: 'Rounded', blurb: 'Material Symbols Rounded — a softer, modern style.' },
+  { id: 'filled', name: 'Filled', blurb: '2014-flavored solid Material icons — the original flat era.' },
+  { id: 'emoji', name: 'Emoji', blurb: 'The original emoji glyphs — \u{1F3E0} \u{1F4C1} \u{2699}\u{FE0F} and friends.' }
+];
+
+// Pure: resolves a stored icon-set preference (+ the current era, needed only
+// for 'auto') into one of the four CONCRETE set ids. Never throws; never
+// returns 'auto'. Exported for node:test — see test/unit/resolve-icon-set.js.
+// Kept in sync with the inline FOUC bootstrap in <head> on
+// index.html/setup.html/watch.html (see the comment there).
+function resolveIconSet(storedSet, era) {
+  if (ICON_SETS.includes(storedSet)) return storedSet;      // valid explicit set
+  if (storedSet === 'auto') {                                // meta -> era map
+    const e = THEME_ERAS.includes(era) ? era : DEFAULT_ERA;  // invalid era -> DEFAULT_ERA mapping
+    return AUTO_ERA_ICON_MAP[e];
+  }
+  return DEFAULT_ICON_SET;                                    // null/garbage -> outlined
+}
+
+// Resolves the pref against the CURRENT era (read from data-theme), sets
+// data-icons to the concrete result, and persists the PREF (never the
+// resolved value, so 'auto' survives to recompute on future era changes).
+function applyIconSet(storedSetPref) {
+  const d = document.documentElement;
+  const era = d.getAttribute('data-theme') || DEFAULT_ERA;
+  d.setAttribute('data-icons', resolveIconSet(storedSetPref, era));
+  if (storedSetPref === 'auto' || ICON_SETS.includes(storedSetPref)) {
+    try { localStorage.setItem('ft-icons', storedSetPref); }
+    catch (_) { /* storage disabled — attribute still applied */ }
+  }
+  // else: unset/garbage pref -> resolves to 'outlined' but DON'T persist, so a
+  // fresh/never-chosen user's ft-icons stays UNSET (avoids writing "null").
+  if (typeof renderIconPicker === 'function') renderIconPicker(); // re-highlight if present
+}
+
+// Setup-page Icons picker entry (no Save step), mirrors setTheme().
+function setIconSet(storedSetPref) {
+  applyIconSet(storedSetPref);
+}
+
+// DOMContentLoaded: read the stored pref and apply against the loaded era.
+function initIconSet() {
+  let pref = null;
+  try { pref = localStorage.getItem('ft-icons'); } catch (_) { /* fall through to default */ }
+  applyIconSet(pref);
 }
 
 // Format duration from seconds to MM:SS or HH:MM:SS
@@ -323,7 +394,8 @@ function showConfirmModal(title, bodyText, onConfirm) {
 if (typeof document !== 'undefined') {
 document.addEventListener('DOMContentLoaded', () => {
   initTheme();
-  
+  initIconSet();   // reads ft-icons + the just-applied data-theme
+
   const menuToggle = document.getElementById('menu-toggle');
   const sidebar = document.getElementById('sidebar');
   const mainContent = document.getElementById('main-content');
@@ -381,6 +453,7 @@ document.addEventListener('DOMContentLoaded', () => {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     getStarRating, getCommentCount, resolveChannelName, clampPositionState,
-    resolveTheme, THEME_REGISTRY, activeNavItem
+    resolveTheme, THEME_REGISTRY, activeNavItem,
+    resolveIconSet, ICON_SET_REGISTRY, ICON_SETS
   };
 }
