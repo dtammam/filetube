@@ -1,75 +1,107 @@
-# Software Developer — T3 (Item 2): mobile logo top-left
+# Software Developer — T2 (Feature 1): audio thumbnail-as-background art
 
-You are the Software Developer. Implement **T3 ONLY** — the mobile logo cosmetic
-change. This is Item 2, a SEPARATE commit from ALL the db.json hardening (Item 1),
-CSS-only, low-risk. You have no shared context with the EM — everything you need is
-below. Do NOT touch server.js or any hardening code.
+You are the Software Developer. Implement **T2 ONLY** — Feature 1 (show an
+audio-only item's thumbnail as cover-framed background art behind the player).
+This is commit 2 of 2 on `feat/audio-art-and-related`, a SEPARATE commit from T1.
+Do NOT touch T1's `rankRelated` / related-list code.
 
-## Goal
+## Context / feasibility finding (put a short version in code comments)
 
-On MOBILE, move the logo to TOP-LEFT on BOTH the home page and the watch/video page,
-matching the desktop layout (which is already top-left — leave desktop alone). Remove the
-centered `.mobile-logo` treatment. The search stays FULL-WIDTH on the row below the logo.
-Decision is locked by Dean; do not re-open it. This is `[MANUAL]`-visual (Dean confirms
-on-device) + `[PROCESS]` (lint/tests green) — build-specialist verify only, NOT the
-two-reviewer gate.
+On iOS Safari an audio-only `<video>` paints black once playback starts. The
+`poster` attribute is ALREADY set for audio (`watch.js:294`) and is exactly what
+disappears on play — poster alone is insufficient BY CONSTRUCTION. The design is
+approach (b): a CSS `background-image` art layer BEHIND the player. This is fully
+correct on desktop/PWA regardless of iOS; on iOS it is win-or-fallback and **Dean's
+on-device `[MANUAL]` pass is the arbiter**. If iOS still paints black, the retained
+`#audio-visualizer` vinyl view is the graceful degrade, selectable by a one-line
+`AUDIO_PLAYER_MODE` flip. Your job: implement the `'background'` default cleanly and
+keep the fallback one line away — do not depend on any specific iOS result.
 
-## Read first
+## First, read (self-contained — you share no context with the EM)
 
-- `docs/exec-plans/active/2026-07-05-harden-db-writes-and-logo.md` — the `## Design`
-  section's "### Item 2 — mobile logo top-left (CSS only)" is authoritative.
-- `.state/feature-state.json` — the `T3` task entry for `done_when`.
-- `public/css/style.css` — the mobile app-shell block (see exact lines below).
+- `.state/feature-state.json` — the **T2** task object (`tasks[1]`): `description`, `files`, `done_when`. That is the contract.
+- `docs/exec-plans/active/2026-07-05-audio-art-and-related.md` — the `## Design` section, **"Feature 1 — Audio thumbnail-as-background art"** (feasibility finding, approach, component changes, the `resolveAudioArtUrl` contract + its unit tests, and the non-regression argument). Implement exactly to it.
+- `public/watch.html` — `#player-wrapper` (`:98`) and its children (resume/transcode overlays, `#media-player` at `:119` with `playsinline`/`webkit-playsinline`, `#audio-visualizer` at `:139-145`).
+- `public/js/watch.js` — `setupPlayer()` audio branch (`:288-295`), and the audio-visualizer element refs at the top (`audioVisualizer`, `:6`; `audioVisualTitle`/`audioVisualFolder`). `setupMediaSession` (`:249-265`) and the v1.2.2 no-action-handlers rationale (`:242-248`) — leave BOTH untouched.
+- `public/js/common.js` — the UMD dual-export tail (`~483`) where `resolveAudioArtUrl` gets added/exported.
+- `public/css/style.css` — the `.player-container` / `#player-wrapper` rules (the `#000` background + `video { object-fit: contain }`) and the `.audio-player-visual` / `#audio-visualizer` styling, so your new rules layer correctly.
+- `test/unit/resolve-theme.test.js` or similar for the `common.js` unit-test style.
 
-## Exact change (two edits, both inside ONE block)
+## Implement
 
-The target is the **"Mobile app shell: header restructure"** block, which starts at
-`public/css/style.css:1583` (the lead comment `/* ---- Mobile app shell: header
-restructure ... */`). Make BOTH edits inside THIS block only:
+### 1. `public/watch.html` — add the art layer
+Add `<div id="audio-bg-art" class="audio-bg-art"></div>` as the **FIRST child** of
+`#player-wrapper` (before the resume/transcode overlays and the `<video>`). Do NOT
+change `#media-player`, its `playsinline`/`webkit-playsinline` attributes, or the
+`#audio-visualizer` markup (it stays as the retained fallback).
 
-1. `.mobile-logo img` (style.css:1610-1614): change `margin: 0 auto;` (line 1614) to
-   `margin: 0;`. Keep `display: block;` and `height: 28px; width: 28px;`.
-2. `.header-left` (style.css:1617-1619, the one INSIDE this mobile app-shell block):
-   change `justify-content: center;` (line 1619) to `justify-content: flex-start;`.
-   Keep `width: 100%;` and `gap: 0;`.
+### 2. `public/css/style.css` — add two rules
+- `.audio-bg-art { position: absolute; inset: 0; z-index: 0; background-size: cover; background-position: center; background-repeat: no-repeat; display: none; }`
+- `#player-wrapper.audio-mode #media-player { background: transparent; z-index: 1; }`
 
-Also update this block's lead comment (around 1583-1585) from describing a "Centered logo"
-to "Top-left logo + full-width search below it".
+Leave the existing `.player-container` `#000` background and
+`.player-container video { object-fit: contain }` rules UNCHANGED, so the art only
+shows for audio items that opt in via `.audio-mode`. Ensure `#player-wrapper` /
+`.player-container` establishes a positioning context — it already does as the
+overlay container; verify the resume/transcode overlays still stack ABOVE the art
+(art `z-index: 0` sits below `#media-player` `z-index: 1` and the overlays).
 
-IMPORTANT — pick the RIGHT rule: there are OTHER `.header-left` and `justify-content:
-center` declarations elsewhere in the file (e.g. a `.header-left` at ~1515/1561 in a
-different breakpoint, and many unrelated `justify-content: center` lines). Edit ONLY the
-two declarations inside the mobile app-shell block starting at line 1583. Do not touch any
-other rule.
+### 3. `public/js/common.js` — add + export `resolveAudioArtUrl`
+```
+// Resolve the background-art image URL for an audio item, or null when the item
+// would only resolve to the SVG placeholder (no real extracted thumbnail).
+// /thumbnail/:id never 404s, but a stretched 160x90 placeholder makes a poor
+// full-bleed background, so callers use null to SKIP the art layer (show nothing
+// rather than the placeholder). Pure + deterministic.
+resolveAudioArtUrl(item)
+  -> '/thumbnail/' + item.id   when item && item.id && item.hasThumbnail truthy
+  -> null                      otherwise (no item, no id, or hasThumbnail falsy)
+```
+Add it to the `module.exports` object in the UMD block (like `resolveTheme` etc.).
 
-## What stays exactly as-is
+### 4. `public/js/watch.js` — the mode switch + audio-branch toggle
+- Add a module-level constant near the top:
+  `const AUDIO_PLAYER_MODE = 'background';` with a comment: `'background'` (shipped) | `'visualizer'` (retained `#audio-visualizer` fallback — one-line flip if iOS paints black).
+  Optional, NOT required: note in a comment that a future iOS-only UA-gate could
+  select the fallback on iOS while desktop keeps the art — leave it as a hook, don't build it.
+- Grab the art element (e.g. `const audioBgArt = document.getElementById('audio-bg-art');`) alongside the other element refs.
+- In the audio branch of `setupPlayer()` (`~288-295`):
+  - When `AUDIO_PLAYER_MODE === 'background'`: call `resolveAudioArtUrl(mediaData)`.
+    If it returns a URL, set `audioBgArt.style.backgroundImage = 'url("' + url + '")'`,
+    `audioBgArt.style.display = 'block'`, add class `audio-mode` to `#player-wrapper`
+    (`playerWrapper.classList.add('audio-mode')`), and keep `#audio-visualizer`
+    hidden. If it returns `null`, leave the art layer hidden and fall through to
+    today's plain poster behavior (do NOT set the placeholder as a full-bleed bg).
+  - When `AUDIO_PLAYER_MODE === 'visualizer'`: show `#audio-visualizer` (as before
+    the poster-only change — set its display and populate `audioVisualTitle` /
+    `audioVisualFolder` if that's what the retained view expects) and leave the art
+    layer hidden.
+  - Keep the existing `mediaPlayer.poster` and `mediaPlayer.src` assignments as they are.
+- The VIDEO branch takes NEITHER path — no `audio-mode` class, no art layer — so
+  video frame display / `object-fit` / letterbox are untouched.
 
-- The header stays `flex-direction: column`, so `.header-search` stays `width: 100%`
-  full-width on the row BELOW the logo (do not change `.header-search`).
-- `.logo` stays hidden, `.mobile-logo` stays shown, `.header-right` stays hidden.
-- The bottom-nav app-shell (Home/Playlists/Dark/Settings) is untouched.
-- `safe-area-inset-top` handling: the header's `padding: calc(8px + env(safe-area-inset-top))
-  ...` and `min-height` are untouched.
-- Desktop (>768px) is provably unchanged — both edits are inside the mobile `@media` block.
-- a11y: `aria-label="FileTube home"` and the logo's link-to-home + tab order are DOM-driven
-  and untouched (CSS-only change). No `public/js/*.js` selector breaks (no class/id/DOM change).
-- No icon-set (Outlined/Rounded/Filled/Emoji/Auto) or theme (light/dark) regression — only
-  alignment changes.
+### 5. `test/unit/resolve-audio-art-url.test.js`
+- `{ id: 'abc', hasThumbnail: true }` -> `'/thumbnail/abc'`.
+- `{ id: 'abc', hasThumbnail: false }` -> `null` (placeholder case).
+- `hasThumbnail` missing/undefined -> `null`.
+- `item` `null`/`undefined` -> `null` (no throw).
+- item without `id` -> `null`.
+- deterministic: same input -> same output across repeated calls.
 
-## Scope / constraints
+## MUST NOT regress (design non-regression argument — verify)
+- **Video-frame display**: video items never get `.audio-mode`/art; `object-fit: contain` + `#000` unchanged.
+- **`playsinline`/`webkit-playsinline`**: `#media-player` attributes untouched; no fullscreen API introduced.
+- **v1.2.2 iOS background-audio**: do NOT add any Media Session action handlers; transport stays native.
+- **Lock-screen Media Session**: `setupMediaSession` is a SEPARATE OS surface — do not modify it.
+- Keep the existing `#audio-visualizer` markup as the retained fallback.
 
-- `public/css/style.css` is the only file you should need to change. NO server.js / backend
-  changes (if you think one is genuinely needed, STOP and flag it rather than editing server.js).
-- Both `index.html` (home) and `watch.html` (watch) share this header + stylesheet, so this
-  one CSS change covers both. `setup.html` shares the header too (no `.header-search`) — glance
-  that it stays visually consistent, but no separate edit is expected.
-- `npm run lint` 0 errors (no new warnings beyond the 11-warning baseline); `npm test` stays
-  green (this is CSS-only; confirm no existing test asserts on header markup — none is expected).
-- `test/unit/transcode-cache.test.js` and all other suites stay green/unmodified.
-- Before any npm/node command: `export PATH="/home/coder/.local/share/fnm/node-versions/v24.14.0/installation/bin:$PATH"`.
-- Run `npm run lint` and `npm test` and fix any failures before reporting done. Report the
-  exact lines changed.
+## Do NOT
+- Do NOT touch T1's `rankRelated`/`tokenize`/`loadRelatedFiles` code.
+- Do NOT add a server route, DB field, or dependency; no Node built-ins in `common.js` (browser file).
 
-When done, tell the coordinator T3 is complete so the EM can route to the build-specialist
-(`/prep-build-verify`). After T3 build-verifies, the coordinator takes the whole branch to a PR
-(two commits: the hardening + the logo). Dean does the [MANUAL] on-device visual confirmation on the PR.
+## Definition of done (report these back)
+- `#audio-bg-art` added; the two CSS rules added; `resolveAudioArtUrl` added+exported; `AUDIO_PLAYER_MODE` + audio-branch toggle wired; video branch untouched.
+- `test/unit/resolve-audio-art-url.test.js` passes.
+- Full suite green (234 + new); **lint 0** (no new warnings beyond the 11 baseline).
+- **Before any npm/node command:** `export PATH="/home/coder/.local/share/fnm/node-versions/v24.14.0/installation/bin:$PATH"` then `npm run lint` and `npm test`.
+- Report files changed + tests added. This is mostly `[MANUAL]` (Dean on-device iOS is the arbiter) + build-verify — NO two-reviewer gate. Keep the diff scoped to `watch.html` + `style.css` + `common.js` + the `setupPlayer` audio branch + the new test.

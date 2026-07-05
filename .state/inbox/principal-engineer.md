@@ -1,82 +1,113 @@
-# Principal Engineer — SHORT design note: HR1b finding D (DELETE-vs-scan membership resurrection)
+# Principal Engineer — Design for v1.10.0 (feat/audio-art-and-related)
 
-You are the Principal Engineer. This is a **narrow, single-issue design note** — NOT a
-redesign. Produce the exact reconciliation rule for one concurrency bug the two-reviewer
-QA gate surfaced, so the Software Developer can implement it correctly next. Do NOT write
-application code; write the rule + tests into the exec plan. Do NOT design the mechanical
-HR1a fixes (those are already scoped to the SDE) or anything else.
+You are the Principal Engineer. Produce the technical design for TWO independent,
+additive media-experience features that ship as SEPARATE commits. Write your design
+into the exec plan's `## Design` section and set `artifacts.design` in state.
 
-## The issue (finding D — PRE-EXISTING, but we are fixing it)
+## First, read (self-contained — you share no context with the EM)
 
-EM decision (flagged to Dean): FIX this, don't tech-debt-track it — it is the SAME
-stale-snapshot clobber class this branch is named for closing, just at the MEMBERSHIP
-dimension; leaving it undercuts the "class eliminated" headline claim. It edits the subtle,
-load-bearing scan Phase-2 reconcile, so it gets your short note first.
+- `docs/exec-plans/active/2026-07-05-audio-art-and-related.md` — the requirements + tagged AC you are designing to. Read it fully (Goal, Scope, Out-of-scope, Constraints, both Feature sections, Decision log, Open questions).
+- `.state/feature-state.json` — the `grounding` block (exact file:line anchors) and constraints.
+- `docs/ARCHITECTURE.md`, `docs/CONTRIBUTING.md`, `docs/RELIABILITY.md`.
+- `public/watch.html` (`#media-player` :119 w/ `playsinline`; `#audio-visualizer` :139-145; `#player-wrapper` :98).
+- `public/js/watch.js` — `setupPlayer()` (:285-344; audio branch :288-295), `loadRelatedFiles()` (:710-753), `setupMediaSession()` (:249-265), the v1.2.2 background-audio rationale (:242-248).
+- `public/js/common.js` — the UMD dual-export tail (`:483`) and `resolveChannelName` (`:251-255`, resolves `mapped name -> item.artist -> item.folderName -> 'Library'`). A few `test/unit/*.test.js` (e.g. `clamp-position-state.test.js`, `star-rating.test.js`) to model the test style.
+- `public/css/style.css` — the `#audio-visualizer` / `.audio-player-visual` styling and the `.player-container` rules, so your CSS-background approach layers correctly.
+- `server.js` `GET /thumbnail/:id` (:1605) and `GET /api/videos` (:1432) for the data shape.
 
-The scan Phase-2 mutator (server.js:1003-1031) does:
+## The coordinator has resolved the two open questions to DEFAULTS — design to these
 
-```js
-fresh.metadata = mergeScannedMetadata(fresh.metadata, newMetadata);
-```
+Neither open question is a product fork. Proceed with:
+- **F1:** design **approach (b)** — CSS background-image. (Dean's `#audio-visualizer` fallback is pre-approved; his on-device pass is the arbiter.)
+- **F2:** signals = **title/filename token overlap (primary) + shared-folder boost (secondary)**, fallback to most-recent when **fewer than N=6** items score as similar. Dean may redirect F2 weighting later but we are NOT blocking on it.
 
-`newMetadata` is built in **Phase 1** (outside the lock, server.js ~985+) from a
-pre-delete snapshot of the filesystem. Membership is taken WHOLESALE from `newMetadata`.
-So a `DELETE /api/videos/:id` that COMMITS during the scan (removing `db.metadata[id]` +
-unlinking the file, via the serialized `updateDatabase`) is UNDONE: the id is resurrected
-as a dangling entry (file gone, entry back) until the next prune scan.
+## Feature 1 — Audio thumbnail-as-background art (feasibility-gated)
 
-## Read first
+**Key fact:** `poster` is ALREADY shipped (`watch.js:288-295`) and IS exactly what
+produces the iOS black-on-playback (poster vanishes once playback starts). So the
+poster approach ALONE is **insufficient** — design approach **(b)**:
 
-- `server.js`: the Phase-1 scan snapshot / `newMetadata` build (~825 for the initial
-  `loadDatabase()` snapshot; the extraction loop building `newMetadata`), the `selectPrunableIds`
-  and `prunable` set, `mergeScannedMetadata` (server.js:410), and the Phase-2 mutator
-  (1003-1031, incl. the FR3.3 transcodeStatus seed and the progress/persistedServedAt prune).
-- `docs/exec-plans/active/2026-07-05-harden-db-writes-and-logo.md` — its `## Design` section
-  (the scan-collapse invariants). Append your note there.
-- `.state/feature-state.json` — `review_hr1.D_delete_vs_scan_resurrection` and the `HR1b` task.
-- v1.8.0's mount-loss guard / `mergeScannedMetadata` (lastServedAt-only-advances) / FR3.3
-  contracts you must not regress: `docs/exec-plans/completed/2026-07-05-settings-automation-cache.md`.
+- A **CSS `background-image`** (the item's thumbnail) on `#player-wrapper` (or a
+  dedicated art layer inside it) sitting BEHIND the audio-playing `<video>`,
+  framed `background-size: cover` (+ center) so it reads like a video frame, not
+  letterboxed art. Ensure the `<video>` area is transparent/lets the background
+  show for audio (the `<video>` has no video track, so it should not paint opaque
+  black over the art — verify how to achieve that: e.g. the background lives on
+  the wrapper and the audio `<video>` is sized/positioned so its black fill
+  doesn't cover the art, OR the art layer sits above a `background:transparent`
+  region — you decide the exact layering, but it must be robust).
+- Because real iOS can't be tested here, design so that:
+  1. the CSS-background approach is **SAFE and correct on desktop/PWA** and
+     degrades cleanly (no broken layout, no black-on-black, no video regression);
+  2. the iOS uncertainty and the accepted fallback are **documented explicitly** —
+     if iOS still paints black over the background, the existing `#audio-visualizer`
+     (vinyl/cover-art) view is shown as the graceful degrade;
+  3. **BOTH outcomes are acceptable** and Dean's on-device `[MANUAL]` pass decides
+     which ships — your design must not depend on a specific iOS result.
+- **MUST NOT regress:** video-frame display (only the audio path changes; no
+  overlay/dimming bleeding onto video), `playsinline`/`webkit-playsinline`, the
+  v1.2.2 iOS background-audio behavior (no custom Media Session action handlers),
+  or the lock-screen Media Session artwork (`setupMediaSession` — a SEPARATE surface).
+- Include a **pure `[UNIT]`-testable helper** that resolves the audio background-art
+  image URL for an item (real thumbnail vs SVG-placeholder decision via
+  `hasThumbnail`), UMD dual-exported so it's `node:test`-able. Specify its unit tests.
+- Decide whether you keep BOTH the CSS-background art AND the `#audio-visualizer`
+  as a runtime fallback, or pick one — and state exactly how the fallback is
+  selected. State the feasibility finding/approach explicitly in the Design section
+  (a required deliverable per the AC).
 
-## Proposed rule (confirm or refine, then specify exactly)
+## Feature 2 — related items = fuzzy-similar (rankRelated)
 
-In the Phase-2 mutator, reconcile membership against the FRESH (in-lock) db:
+Design a **pure, exported, unit-testable** `rankRelated(currentItem, allItems)
+-> ordered list`:
 
-- An id in `newMetadata` that WAS present in the Phase-1 db snapshot but is NOW ABSENT from
-  `fresh.metadata` was DELETED concurrently -> do NOT resurrect it (drop it from the merge).
-- A genuinely-NEW id the scan found (absent from BOTH the Phase-1 snapshot AND `fresh.metadata`)
-  is still ADDED (that's the scan's whole job).
-- An id present in `fresh.metadata` and still scanned is merged as today.
+- **UMD dual-exported** like `common.js`'s existing helpers; **fed by the existing
+  `/api/videos`** — NO new server endpoint, no new DB fields.
+- **Default signals:** title/filename token overlap (primary) + shared-`folderName`
+  boost (secondary). You finalize the exact scoring: tokenization rules, stopword
+  handling, how filename vs. title tokens combine, the shared-folder weight, and a
+  **deterministic, stable tie-break** (e.g. equal score -> newer `addedAt` first) so
+  ordering never flaps.
+- **Self-exclusion:** the current item is never in its own list.
+- **Fallback threshold N=6:** when fewer than 6 items score as genuinely similar,
+  fall back to / pad with most-recent so the list is **never empty and never worse
+  than today**. Keep the slice length consistent with today (10).
+- **Home:** a pure helper usable from `loadRelatedFiles` (`~710-753`) — pick
+  `common.js` vs. a new `public/js/*.js` module and justify briefly; make sure it's
+  loaded as a `<script>` on `watch.html` if it's a new file.
+- **Keep it simple** — basic tokenize + score, no fuzzy-match library, no inverted
+  index, no ML.
+- Specify the **`[UNIT]` tests:** similar-ranks-above-unrelated; self-excluded;
+  deterministic + stable tie-break (repeated calls identical); fallback-below-
+  threshold (never empty, degrades to recent); edge cases (empty `allItems`, single
+  item = only the current item, items missing optional fields like tags/artist —
+  no throw, self-exclusion + never-empty preserved).
 
-This requires capturing the Phase-1 snapshot's metadata id-set (the keys of the scan-start
-`loadDatabase()` snapshot) and passing it into the reconcile. Specify: where that id-set is
-captured, the exact change at/around the `mergeScannedMetadata` call (whether the drop happens
-in the mutator before/within the merge, or by extending `mergeScannedMetadata`'s contract — your
-call, but keep it auditable and keep `mergeScannedMetadata`'s lastServedAt-max semantics intact).
+## Cross-cutting constraints (both features)
 
-## Must confirm no regression
+- Additive / zero-regression; every change ships with tests; **lint 0 errors** (11
+  allowed "defined but never used" exported-global warnings are the baseline);
+  keep the **217+ test suite green**. `node:test`/`node:assert` only, no new deps.
+- Any npm/node command needs `export PATH="/home/coder/.local/share/fnm/node-versions/v24.14.0/installation/bin:$PATH"` first (fnm not auto-sourced).
+- The yt-dlp future module is OUT OF SCOPE — do not touch it.
 
-- **Mount-loss guard:** a missing/unmounted root still retains its entries (they're absent from
-  `newMetadata` because unscanned, but must NOT be dropped — the drop rule must key off
-  "was in Phase-1 snapshot AND scanned in newMetadata AND now absent from fresh", i.e. a genuine
-  concurrent delete, NOT "unscanned this pass"). Make the distinction explicit so an unmounted
-  root or an unreadable subtree is NOT mistaken for a concurrent delete.
-- **`lastServedAt` on-disk authority:** unchanged (mergeScannedMetadata still only advances).
-- **FR3.3 transcodeStatus seed:** unchanged.
-- **Prune path:** the existing `prunable`/mount-loss prune of genuinely-gone files still applies;
-  the new drop rule is specifically for a CONCURRENT delete during the scan.
+## Deliverables
 
-## Deliverable
+1. Write the `## Design` section of `docs/exec-plans/active/2026-07-05-audio-art-and-related.md`:
+   - F1: the stated feasibility approach/finding, the exact CSS layering + fallback
+     selection, the video/playsinline/background-audio/lock-screen non-regression
+     argument, and the background-art-URL helper + its unit tests.
+   - F2: the final signal set + scoring formula + tie-break + N, the pure fn's home,
+     the `loadRelatedFiles` wiring, and the unit test list.
+   - Update `docs/ARCHITECTURE.md` only if you introduce a genuinely new component
+     (a new shared client module counts as a small note; a CSS-only art layer likely
+     does not).
+2. Set `artifacts.design` in `.state/feature-state.json` to the exec plan path.
+3. **Propose the task breakdown** (the EM finalizes it) — likely: (T1) F2 rankRelated
+   helper + `loadRelatedFiles` wiring with strong unit tests (gets the QA gate / a
+   code-review pass if you find the scoring subtle); (T2) F1 CSS-background art +
+   `#audio-visualizer` fallback + the URL helper, mostly `[MANUAL]` + build-verify.
+   Keep F1 and F2 as SEPARATE commits/tasks.
 
-Append a short "### HR1b (finding D) — DELETE-vs-scan membership reconciliation" subsection to the
-exec plan's `## Design`: the confirmed rule, the exact change site(s), the mount-loss/lastServedAt/
-FR3.3/prune non-regression argument, and the regression test spec:
-
-- **Headline test:** a `DELETE /api/videos/:id` committing DURING an in-flight scan leaves the entry
-  DELETED (not resurrected) after the scan save — must FAIL pre-fix, PASS after (mirror the
-  scan-clobber harness in `test/integration/scan-api.test.js`; no FFmpeg).
-- Plus: a genuinely-new scanned id is still added; the non-concurrent case is unchanged; an
-  unmounted-root / unreadable-subtree entry is NOT dropped (guard against the false-positive).
-
-This note is design-only — no code, no conflict with HR1a (which edits routes/saveDatabase/
-recordServed/loadDatabase/startup). Sequencing: the HR1b SDE task runs AFTER HR1a build-verifies
-AND this note lands. When done, tell the coordinator the D note is ready.
+Do NOT write application code — this is the design stage. Specify what changes,
+where, and how it's tested; the software-developer implements per task afterward.

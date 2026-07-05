@@ -96,6 +96,13 @@
           
           <!-- Media Player Wrapper -->
           <div class="player-container" id="player-wrapper">
+            <!-- Audio thumbnail-as-background art layer (Feature 1, v1.10.0).
+                 First child so it paints behind everything else; hidden unless
+                 the audio branch of setupPlayer() opts an audio item in via the
+                 .audio-mode class on #player-wrapper. Video items never touch
+                 this element. -->
+            <div id="audio-bg-art" class="audio-bg-art"></div>
+
             <!-- Resume overlay popup -->
             <div id="resume-overlay" class="resume-overlay" style="display: none;">
               <h3>Resume Playback?</h3>
