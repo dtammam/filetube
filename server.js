@@ -565,15 +565,20 @@ const persistedServedAt = new Map();
 // `recentlyServed` guard (which remains the real eviction-race protection) —
 // recordServed is a separate, persisted-timestamp concern for the age sweep.
 //
-// `persistedServedAt` is set ONLY once the mutator has confirmed (inside the
-// lock, against the fresh db) that the id's metadata entry actually exists —
-// NEVER set it up-front/optimistically before that check. Setting it before
-// confirming existence would insert a permanent throttle-map entry for an id
-// that was concurrently DELETEd/pruned (reachable e.g. via the transcode
-// close-callback's recordServed, which has no same-tick existence guard) —
-// an entry no cleanup ever reclaims, causing unbounded map growth under
-// delete-while-streaming churn AND suppressing a legitimate re-add of the
-// same id within RECENT_STREAM_MS (re-opening the FR3.2 leak).
+// `persistedServedAt` is set OPTIMISTICALLY, up front, before the
+// `updateDatabase` enqueue -- this is what lets a burst of same-id calls
+// within RECENT_STREAM_MS (e.g. many Range requests for one playback while
+// dbWriteChain is backlogged, such as during a scan) short-circuit on the
+// hot-path Map lookup after the FIRST call, instead of each enqueuing its own
+// `updateDatabase` (and paying a synchronous loadDatabase inside the lock).
+// Because the set happens before the mutator confirms the id's metadata
+// entry still exists, the no-entry branch below MUST undo it
+// (`persistedServedAt.delete(id)`) -- otherwise an id concurrently
+// DELETEd/pruned (reachable e.g. via the transcode close-callback's
+// recordServed, which has no same-tick existence guard) would leave a
+// permanent throttle-map entry no cleanup ever reclaims (unbounded map growth
+// under delete-while-streaming churn), and would suppress a legitimate
+// re-add of the same id within RECENT_STREAM_MS (re-opening the FR3.2 leak).
 //
 // Returns the updateDatabase promise on the "due" branch (already
 // .catch-guarded), or `undefined` on the throttled hot path -- production
@@ -583,19 +588,21 @@ function recordServed(id) {
   const now = Date.now();
   const last = persistedServedAt.get(id);
   if (last !== undefined && (now - last) < RECENT_STREAM_MS) return undefined; // hot path: no disk read, no lock
+  persistedServedAt.set(id, now); // optimistic -- de-dupes a same-id burst while the write is enqueued/backlogged
   return updateDatabase(db => {
     const entry = db.metadata[id];
-    if (!entry) return false; // concurrently deleted/pruned -- never mark the throttle map
+    if (!entry) {
+      persistedServedAt.delete(id); // undo the optimistic set -- concurrently deleted/pruned, never mark the throttle map
+      return false;
+    }
     // Re-check the on-disk value inside the lock -- it may already be fresh
     // (e.g. right after boot, before this id has any persistedServedAt map
-    // entry of its own). The entry exists either way at this point, so
-    // marking the throttle map is safe in both branches below.
+    // entry of its own). The entry exists either way at this point, so the
+    // up-front optimistic set already stands in both branches below.
     if (typeof entry.lastServedAt === 'number' && (now - entry.lastServedAt) < RECENT_STREAM_MS) {
-      persistedServedAt.set(id, now);
       return false;
     }
     entry.lastServedAt = now;
-    persistedServedAt.set(id, now);
     return true;
   }).catch(err => console.error('Error persisting lastServedAt:', err));
 }

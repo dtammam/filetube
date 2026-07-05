@@ -319,3 +319,44 @@ test('recordServed (C): a non-existent id never inserts a persistedServedAt entr
     'the entry now exists and is due -- it must be updated, not suppressed by a leaked throttle-map entry from the earlier no-op call'
   );
 });
+
+// ---- HR2: recordServed's up-front optimistic set de-dupes a same-id burst ----
+// ---- instead of each call enqueuing its own updateDatabase ----------------
+
+test('recordServed (HR2): a synchronous burst of same-id calls enqueues only ONE updateDatabase call', async () => {
+  const id = 'vid-burst-dedup';
+  writeDb({
+    folders: [], folderSettings: {}, progress: {},
+    metadata: { [id]: { id } },
+    settings: baseSettings(),
+  });
+
+  // Fire N calls back-to-back with NO `await` between them -- this mirrors a
+  // burst of same-id /video Range requests landing while dbWriteChain is
+  // backlogged (e.g. mid-scan): every call runs in the SAME synchronous tick,
+  // so only an UP-FRONT optimistic `persistedServedAt.set` (before the
+  // `updateDatabase` enqueue) can de-dupe them. Without it, each call's
+  // `persistedServedAt.get(id)` is still `undefined` at this point in the
+  // tick (the in-mutator set from a prior call only runs later, on a
+  // microtask, once the mutator actually executes against the lock) -- so
+  // all N would enqueue their own `updateDatabase`/`loadDatabase`, which is
+  // exactly the regression this test guards against.
+  const N = 5;
+  const results = [];
+  for (let i = 0; i < N; i++) results.push(recordServed(id));
+
+  // The first call is due (no persistedServedAt entry yet) and takes the
+  // enqueue path, returning a Promise. Every subsequent call in the SAME
+  // synchronous burst must short-circuit on the hot-path guard and return
+  // `undefined` immediately -- no Promise, no enqueue, no disk read.
+  assert.ok(results[0] instanceof Promise, 'the first call in the burst is due and enqueues an updateDatabase');
+  for (let i = 1; i < N; i++) {
+    assert.strictEqual(
+      results[i], undefined,
+      `burst call #${i + 1} must short-circuit on the hot-path guard, not enqueue its own updateDatabase`
+    );
+  }
+
+  await results[0];
+  assert.equal(typeof readDb().metadata[id].lastServedAt, 'number', 'the single enqueued call persisted lastServedAt');
+});

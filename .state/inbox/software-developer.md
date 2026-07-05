@@ -1,111 +1,93 @@
-# Software Developer — HR1b: finding D (DELETE-vs-scan membership resurrection)
+# Software Developer — HR2: restore recordServed's up-front throttle without re-leaking
 
-You are the Software Developer. Implement **HR1b ONLY** — the finding-D membership
-reconciliation in the scan Phase-2 mutator, exactly per the Principal Engineer's note.
-This is the LAST hardening fix. You have no shared context with the EM — everything you
-need is below. Do NOT touch T3 (mobile logo) or re-open HR1a's error-handling changes.
+You are the Software Developer. Implement **HR2 ONLY** — a small, surgical fix to
+`recordServed` that restores the streaming-hot-path write-throttle while KEEPING
+finding-C's no-leak fix. This is the LAST hardening fix before the review cycle stops.
+You have no shared context with the EM — everything you need is below. Do NOT touch
+T3 (mobile logo) or any other function.
 
 ## Context
 
-HR1a (route try/catch, saveDatabase rethrow, recordServed leak, loadDatabase backfill,
-temp sweep) is DONE and build-verified (lint 0, npm test 212/212). HR1b closes finding D,
-the last item from the two-reviewer gate.
+The HR1a finding-C fix moved `persistedServedAt.set(id, now)` from BEFORE the
+`updateDatabase` enqueue to INSIDE the mutator (to stop leaking a throttle-map entry for
+a concurrently-deleted id). That fixed the leak but reintroduced a HOT-PATH regression the
+focused re-review caught:
 
-**The bug:** the scan builds `newMetadata` in Phase 1 (outside the lock) from a pre-delete
-snapshot. The Phase-2 mutator sets `fresh.metadata = mergeScannedMetadata(fresh.metadata,
-newMetadata)`, taking membership WHOLESALE from `newMetadata`. So a `DELETE /api/videos/:id`
-that COMMITS during the scan (removing `db.metadata[id]` via the serialized `updateDatabase`)
-is UNDONE — the id is resurrected as a dangling entry until the next prune scan. This is the
-same stale-snapshot clobber class this branch closes, at the membership dimension.
+While `dbWriteChain` is backlogged (e.g. during a scan), `persistedServedAt.get(id)` stays
+`undefined`, so a burst of same-id `/video` Range requests EACH pass the hot-path
+short-circuit and enqueue their OWN `updateDatabase` — each doing a full synchronous
+`loadDatabase()` inside the lock. This is the redundant-read amplification the v1.8.0
+`persistedServedAt` map was built to prevent. Bounded (drains turn-by-turn; only the first
+commit actually writes) but it's on the streaming hot path and reachable whenever a
+scan/backlog overlaps streaming.
 
-## Read first
+## Current code (server.js:582-601)
 
-- `docs/exec-plans/active/2026-07-05-harden-db-writes-and-logo.md` — the `## Design` section's
-  "### HR1b (finding D) — DELETE-vs-scan membership reconciliation" subsection is AUTHORITATIVE.
-- `.state/feature-state.json` — the `HR1b` task entry (`pe_rule`) and `review_hr1.D_delete_vs_scan_resurrection`.
-- `server.js` — `runScanDirectories`: the Phase-1 snapshot (`const db = loadDatabase()` ~825),
-  `survivingIds`/`oldIds` at server.js:994-995, the `selectPrunableIds`/`prunable` computation,
-  and the Phase-2 mutator (`await updateDatabase(fresh => { ... })` at ~1003), whose
-  `fresh.metadata = mergeScannedMetadata(fresh.metadata, newMetadata)` is at ~1021.
-- `test/integration/scan-clobber.test.js` / `test/integration/scan-api.test.js` — the interleave
-  harness to mirror (no FFmpeg; concurrency simulated by interleaving synchronous calls in the same
-  tick, then awaiting).
+```js
+function recordServed(id) {
+  const now = Date.now();
+  const last = persistedServedAt.get(id);
+  if (last !== undefined && (now - last) < RECENT_STREAM_MS) return undefined; // hot path: no disk read, no lock
+  return updateDatabase(db => {
+    const entry = db.metadata[id];
+    if (!entry) return false; // concurrently deleted/pruned -- never mark the throttle map
+    if (typeof entry.lastServedAt === 'number' && (now - entry.lastServedAt) < RECENT_STREAM_MS) {
+      persistedServedAt.set(id, now);
+      return false;
+    }
+    entry.lastServedAt = now;
+    persistedServedAt.set(id, now);
+    return true;
+  }).catch(err => console.error('Error persisting lastServedAt:', err));
+}
+```
 
-## The reconciliation rule (per the PE — implement exactly)
+## The fix (satisfy BOTH the throttle AND finding-C's no-leak)
 
-A single per-id test keyed on "was this id in the Phase-1 snapshot?":
-
-- **(in Phase-1 snapshot) AND (now ABSENT from `fresh.metadata`)** = concurrently DELETEd
-  during the scan -> **DROP** it from `newMetadata` (don't resurrect).
-- **still present in `fresh.metadata`** (including mount-loss / unreadable / toggle-off RETAINED
-  entries) -> **KEEP** (merged as today).
-- **NOT in the Phase-1 snapshot** (a genuinely-new scanned file) -> **KEEP/ADD** (the scan's job).
-
-The "was in the Phase-1 snapshot" column is the load-bearing discriminator: the naive
-"absent-from-fresh -> drop" rule is WRONG (it would eat genuinely-new files).
-
-## Exact change
-
-1. Capture the Phase-1 id-set. There is already `const oldIds = Object.keys(db.metadata);` at
-   server.js:995 (where `db` is the scan-start snapshot). Add right after it:
-
-   ```js
-   const phase1Ids = new Set(oldIds);
-   ```
-
-   `phase1Ids` is closed over into the Phase-2 mutator (no new read, no lock).
-
-2. In the Phase-2 mutator, immediately BEFORE
-   `fresh.metadata = mergeScannedMetadata(fresh.metadata, newMetadata);` (~1021), add the drop loop:
-
-   ```js
-   // finding D: a DELETE that committed DURING this scan removed the id from the
-   // fresh (in-lock) db. newMetadata was built from a pre-delete Phase-1 snapshot,
-   // so merging it wholesale would RESURRECT the just-deleted entry. Drop any id
-   // that was present at Phase-1 but is now absent from fresh -- a genuine concurrent
-   // delete -- while still adding genuinely-new scanned ids (absent from phase1Ids).
-   for (const id of Object.keys(newMetadata)) {
-     if (phase1Ids.has(id) && !Object.prototype.hasOwnProperty.call(fresh.metadata, id)) {
-       delete newMetadata[id];
-     }
-   }
-   ```
-
-   (Per the PE's optional note, you MAY hoist this drop loop above the reconcile loop — the
-   reconcileTranscode probe of a to-be-dropped id is harmless existsSync-only, but hoisting
-   avoids it entirely. Either placement before the merge is acceptable.)
+1. **Restore the up-front optimistic set BEFORE the enqueue** — right after the hot-path
+   short-circuit (line 585, `if (last !== undefined ...) return undefined;`), add
+   `persistedServedAt.set(id, now);` before the `return updateDatabase(...)`. This restores
+   burst de-dup: requests 2..N for the same id within the window now short-circuit on the
+   hot path instead of each enqueuing a `loadDatabase`.
+2. **Undo the optimistic set in the mutator's no-entry branch** — in the
+   `if (!entry) return false;` branch (line 588), add `persistedServedAt.delete(id);` before
+   `return false`, so a concurrently-deleted/pruned id leaves NO leaked throttle entry
+   (preserves finding-C exactly).
+3. Keep the hot-path short-circuit (585) and the already-fresh mutator branch (593-596) as
+   they are. The two in-branch `persistedServedAt.set(id, now)` calls at 594/598 become
+   redundant with the up-front set but are harmless — you may leave them or remove them; the
+   correctness contract is: optimistic set up front, delete on no-entry.
 
 ## DO NOT TOUCH
 
-- `mergeScannedMetadata`'s body stays **byte-unchanged** (its lastServedAt-max contract + its
-  `database.test.js` unit cases must stay green unmodified — proof the merge itself is untouched).
-- `updateDatabase`'s body stays unchanged.
-- HR1a's error-handling / loadDatabase backfill / temp-sweep changes — leave them exactly as they are.
-- `selectPrunableIds` and the mount-loss/prune path are untouched (the drop is orthogonal — a
-  concurrently-deleted id was surviving at snapshot time so it's not in `prunable`; the drop closes
-  exactly prune's blind spot).
+- `updateDatabase`'s body and `mergeScannedMetadata`'s body stay unchanged.
+- HR1a's route try/catch / loadDatabase backfill / temp sweep — untouched.
+- HR1b's Phase-2 drop loop — untouched.
+- The `clearPersistedServedAt` prune helper — untouched.
 
-## Tests (integration; mirror the scan-clobber/scan-api harness; no FFmpeg)
+## Tests
 
-1. **HEADLINE** — a `DELETE /api/videos/:id` committing DURING a scan (after Phase-1 builds
-   `newMetadata`, before Phase-2 commits) leaves the id DELETED (not resurrected) after the scan
-   save. Must FAIL against pre-fix code (id resurrected) and PASS after.
-2. A mount-loss-retained entry (missing/unmounted root) is NOT wrongly dropped by the new loop
-   (false-positive guard — it's still in `fresh`, so KEEP).
-3. A genuinely-new scanned file (absent from the Phase-1 snapshot) is STILL added.
-4. The non-concurrent case (no delete during the scan) is unchanged — normal scan behavior holds.
+- **(a)** the existing finding-C no-leak test (`recordServed` for a NON-EXISTENT id leaves
+  NO `persistedServedAt` entry after the call) must STILL pass — now the entry is set
+  optimistically then deleted by the mutator's no-entry branch. Confirm it stays green.
+- **(b)** NEW test — a burst of N same-id `recordServed` calls made WHILE a write is queued
+  (`dbWriteChain` backlogged) enqueues only ONE `updateDatabase` (requests 2..N short-circuit
+  on the hot path). This must FAIL against the current in-mutator-only ordering (where all N
+  enqueue) and PASS after the up-front set. Assert on the number of `updateDatabase`/
+  `loadDatabase` invocations (e.g. spy/count) or the number of enqueued writes. Put it where
+  the recordServed/throttle behavior is already exercised (`test/integration/age-sweep.test.js`
+  or a sibling); mirror the existing harness, no FFmpeg.
 
 ## Hard constraints
 
-- `test/unit/transcode-cache.test.js` stays FROZEN / byte-identical; `database.test.js`
-  `mergeScannedMetadata`/reconcile cases stay green unmodified.
-- Full suite green (**212 existing + your new tests**); every timer `unref()`'d (clean exit).
+- `test/unit/transcode-cache.test.js` stays FROZEN / byte-identical.
+- Full suite green (**216 existing + your new test**); every timer `unref()`'d (clean exit).
 - `npm run lint` 0 errors (no new warnings beyond the 11-warning baseline).
-- Scoped OUT: T3 (mobile logo) and any re-touch of HR1a.
+- Scoped OUT: T3 (mobile logo) and any re-touch of HR1a/HR1b.
 - Before any npm/node command: `export PATH="/home/coder/.local/share/fnm/node-versions/v24.14.0/installation/bin:$PATH"`.
-- Run `npm run lint` and `npm test` and fix any failures before reporting done. Report the files
-  changed and tests added.
+- Run `npm run lint` and `npm test` and fix any failures before reporting done. Report the
+  files changed and tests added.
 
-When done, tell the coordinator HR1b is complete so the EM can route to the build-specialist
-(`/prep-build-verify`). After HR1b build-verifies, the coordinator runs a focused re-review of the
-combined HR1 hunks, then T3 (logo), then the PR.
+When done, tell the coordinator HR2 is complete so the EM can route to the build-specialist
+(`/prep-build-verify`). After HR2 build-verifies, the coordinator does a TARGETED re-review of
+just the `recordServed` function; if clean, the review cycle STOPS and we move to T3 (logo) + PR.
