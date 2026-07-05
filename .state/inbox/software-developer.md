@@ -1,93 +1,75 @@
-# Software Developer — HR2: restore recordServed's up-front throttle without re-leaking
+# Software Developer — T3 (Item 2): mobile logo top-left
 
-You are the Software Developer. Implement **HR2 ONLY** — a small, surgical fix to
-`recordServed` that restores the streaming-hot-path write-throttle while KEEPING
-finding-C's no-leak fix. This is the LAST hardening fix before the review cycle stops.
-You have no shared context with the EM — everything you need is below. Do NOT touch
-T3 (mobile logo) or any other function.
+You are the Software Developer. Implement **T3 ONLY** — the mobile logo cosmetic
+change. This is Item 2, a SEPARATE commit from ALL the db.json hardening (Item 1),
+CSS-only, low-risk. You have no shared context with the EM — everything you need is
+below. Do NOT touch server.js or any hardening code.
 
-## Context
+## Goal
 
-The HR1a finding-C fix moved `persistedServedAt.set(id, now)` from BEFORE the
-`updateDatabase` enqueue to INSIDE the mutator (to stop leaking a throttle-map entry for
-a concurrently-deleted id). That fixed the leak but reintroduced a HOT-PATH regression the
-focused re-review caught:
+On MOBILE, move the logo to TOP-LEFT on BOTH the home page and the watch/video page,
+matching the desktop layout (which is already top-left — leave desktop alone). Remove the
+centered `.mobile-logo` treatment. The search stays FULL-WIDTH on the row below the logo.
+Decision is locked by Dean; do not re-open it. This is `[MANUAL]`-visual (Dean confirms
+on-device) + `[PROCESS]` (lint/tests green) — build-specialist verify only, NOT the
+two-reviewer gate.
 
-While `dbWriteChain` is backlogged (e.g. during a scan), `persistedServedAt.get(id)` stays
-`undefined`, so a burst of same-id `/video` Range requests EACH pass the hot-path
-short-circuit and enqueue their OWN `updateDatabase` — each doing a full synchronous
-`loadDatabase()` inside the lock. This is the redundant-read amplification the v1.8.0
-`persistedServedAt` map was built to prevent. Bounded (drains turn-by-turn; only the first
-commit actually writes) but it's on the streaming hot path and reachable whenever a
-scan/backlog overlaps streaming.
+## Read first
 
-## Current code (server.js:582-601)
+- `docs/exec-plans/active/2026-07-05-harden-db-writes-and-logo.md` — the `## Design`
+  section's "### Item 2 — mobile logo top-left (CSS only)" is authoritative.
+- `.state/feature-state.json` — the `T3` task entry for `done_when`.
+- `public/css/style.css` — the mobile app-shell block (see exact lines below).
 
-```js
-function recordServed(id) {
-  const now = Date.now();
-  const last = persistedServedAt.get(id);
-  if (last !== undefined && (now - last) < RECENT_STREAM_MS) return undefined; // hot path: no disk read, no lock
-  return updateDatabase(db => {
-    const entry = db.metadata[id];
-    if (!entry) return false; // concurrently deleted/pruned -- never mark the throttle map
-    if (typeof entry.lastServedAt === 'number' && (now - entry.lastServedAt) < RECENT_STREAM_MS) {
-      persistedServedAt.set(id, now);
-      return false;
-    }
-    entry.lastServedAt = now;
-    persistedServedAt.set(id, now);
-    return true;
-  }).catch(err => console.error('Error persisting lastServedAt:', err));
-}
-```
+## Exact change (two edits, both inside ONE block)
 
-## The fix (satisfy BOTH the throttle AND finding-C's no-leak)
+The target is the **"Mobile app shell: header restructure"** block, which starts at
+`public/css/style.css:1583` (the lead comment `/* ---- Mobile app shell: header
+restructure ... */`). Make BOTH edits inside THIS block only:
 
-1. **Restore the up-front optimistic set BEFORE the enqueue** — right after the hot-path
-   short-circuit (line 585, `if (last !== undefined ...) return undefined;`), add
-   `persistedServedAt.set(id, now);` before the `return updateDatabase(...)`. This restores
-   burst de-dup: requests 2..N for the same id within the window now short-circuit on the
-   hot path instead of each enqueuing a `loadDatabase`.
-2. **Undo the optimistic set in the mutator's no-entry branch** — in the
-   `if (!entry) return false;` branch (line 588), add `persistedServedAt.delete(id);` before
-   `return false`, so a concurrently-deleted/pruned id leaves NO leaked throttle entry
-   (preserves finding-C exactly).
-3. Keep the hot-path short-circuit (585) and the already-fresh mutator branch (593-596) as
-   they are. The two in-branch `persistedServedAt.set(id, now)` calls at 594/598 become
-   redundant with the up-front set but are harmless — you may leave them or remove them; the
-   correctness contract is: optimistic set up front, delete on no-entry.
+1. `.mobile-logo img` (style.css:1610-1614): change `margin: 0 auto;` (line 1614) to
+   `margin: 0;`. Keep `display: block;` and `height: 28px; width: 28px;`.
+2. `.header-left` (style.css:1617-1619, the one INSIDE this mobile app-shell block):
+   change `justify-content: center;` (line 1619) to `justify-content: flex-start;`.
+   Keep `width: 100%;` and `gap: 0;`.
 
-## DO NOT TOUCH
+Also update this block's lead comment (around 1583-1585) from describing a "Centered logo"
+to "Top-left logo + full-width search below it".
 
-- `updateDatabase`'s body and `mergeScannedMetadata`'s body stay unchanged.
-- HR1a's route try/catch / loadDatabase backfill / temp sweep — untouched.
-- HR1b's Phase-2 drop loop — untouched.
-- The `clearPersistedServedAt` prune helper — untouched.
+IMPORTANT — pick the RIGHT rule: there are OTHER `.header-left` and `justify-content:
+center` declarations elsewhere in the file (e.g. a `.header-left` at ~1515/1561 in a
+different breakpoint, and many unrelated `justify-content: center` lines). Edit ONLY the
+two declarations inside the mobile app-shell block starting at line 1583. Do not touch any
+other rule.
 
-## Tests
+## What stays exactly as-is
 
-- **(a)** the existing finding-C no-leak test (`recordServed` for a NON-EXISTENT id leaves
-  NO `persistedServedAt` entry after the call) must STILL pass — now the entry is set
-  optimistically then deleted by the mutator's no-entry branch. Confirm it stays green.
-- **(b)** NEW test — a burst of N same-id `recordServed` calls made WHILE a write is queued
-  (`dbWriteChain` backlogged) enqueues only ONE `updateDatabase` (requests 2..N short-circuit
-  on the hot path). This must FAIL against the current in-mutator-only ordering (where all N
-  enqueue) and PASS after the up-front set. Assert on the number of `updateDatabase`/
-  `loadDatabase` invocations (e.g. spy/count) or the number of enqueued writes. Put it where
-  the recordServed/throttle behavior is already exercised (`test/integration/age-sweep.test.js`
-  or a sibling); mirror the existing harness, no FFmpeg.
+- The header stays `flex-direction: column`, so `.header-search` stays `width: 100%`
+  full-width on the row BELOW the logo (do not change `.header-search`).
+- `.logo` stays hidden, `.mobile-logo` stays shown, `.header-right` stays hidden.
+- The bottom-nav app-shell (Home/Playlists/Dark/Settings) is untouched.
+- `safe-area-inset-top` handling: the header's `padding: calc(8px + env(safe-area-inset-top))
+  ...` and `min-height` are untouched.
+- Desktop (>768px) is provably unchanged — both edits are inside the mobile `@media` block.
+- a11y: `aria-label="FileTube home"` and the logo's link-to-home + tab order are DOM-driven
+  and untouched (CSS-only change). No `public/js/*.js` selector breaks (no class/id/DOM change).
+- No icon-set (Outlined/Rounded/Filled/Emoji/Auto) or theme (light/dark) regression — only
+  alignment changes.
 
-## Hard constraints
+## Scope / constraints
 
-- `test/unit/transcode-cache.test.js` stays FROZEN / byte-identical.
-- Full suite green (**216 existing + your new test**); every timer `unref()`'d (clean exit).
-- `npm run lint` 0 errors (no new warnings beyond the 11-warning baseline).
-- Scoped OUT: T3 (mobile logo) and any re-touch of HR1a/HR1b.
+- `public/css/style.css` is the only file you should need to change. NO server.js / backend
+  changes (if you think one is genuinely needed, STOP and flag it rather than editing server.js).
+- Both `index.html` (home) and `watch.html` (watch) share this header + stylesheet, so this
+  one CSS change covers both. `setup.html` shares the header too (no `.header-search`) — glance
+  that it stays visually consistent, but no separate edit is expected.
+- `npm run lint` 0 errors (no new warnings beyond the 11-warning baseline); `npm test` stays
+  green (this is CSS-only; confirm no existing test asserts on header markup — none is expected).
+- `test/unit/transcode-cache.test.js` and all other suites stay green/unmodified.
 - Before any npm/node command: `export PATH="/home/coder/.local/share/fnm/node-versions/v24.14.0/installation/bin:$PATH"`.
 - Run `npm run lint` and `npm test` and fix any failures before reporting done. Report the
-  files changed and tests added.
+  exact lines changed.
 
-When done, tell the coordinator HR2 is complete so the EM can route to the build-specialist
-(`/prep-build-verify`). After HR2 build-verifies, the coordinator does a TARGETED re-review of
-just the `recordServed` function; if clean, the review cycle STOPS and we move to T3 (logo) + PR.
+When done, tell the coordinator T3 is complete so the EM can route to the build-specialist
+(`/prep-build-verify`). After T3 build-verifies, the coordinator takes the whole branch to a PR
+(two commits: the hardening + the logo). Dean does the [MANUAL] on-device visual confirmation on the PR.

@@ -1,5 +1,19 @@
 # Harden db.json write concurrency + mobile logo top-left
 
+> **STATUS: COMPLETED — ready for PR (v1.9.0).** Both items shipped on branch
+> `harden/db-writes-and-logo`. Item 1 (db.json write-concurrency hardening) was
+> fully reviewed to convergence: two-reviewer QA gate -> HR1 (error-handling
+> remediation A/B/C + loadDatabase backfill + orphan-temp sweep) -> HR1 focused
+> re-review -> HR1b (finding-D DELETE-vs-scan reconcile) -> HR2 (recordServed
+> throttle) -> clean. Item 2 (mobile logo top-left) is CSS-only, build-verified;
+> its logo-rendering AC is `[MANUAL]`, pending Dean's on-device pass against the
+> PR (non-blocking). 217 tests green, lint 0. Commits: f6313df (hardening core +
+> deferred-rescan), 7520d60 (HR1 gate fixes), cca1e9b (HR2 throttle), cd00dee
+> (logo). Two low-severity self-healing tails tech-debt-tracked (Active #4
+> same-path re-add drop, #5 manual-DELETE clearPersistedServedAt); #2
+> double-readdir remains deferred. **Retire: `git mv` this file to
+> `docs/exec-plans/completed/` when committing the doc/state changes.**
+
 ## Goal
 
 Two independent changes on one branch, kept as separate commits/tasks so each
