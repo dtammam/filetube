@@ -58,6 +58,40 @@ test('any other /api/subscriptions* path 404s when the module is disabled', asyn
   assert.equal(byId.status, 404);
 });
 
+// T2's CRUD + settings routes are registered inside the same `isEnabled`
+// gate as `/health` above, so they must be equally absent when disabled.
+test('T2 CRUD + settings routes 404 when the module is disabled', async () => {
+  const getList = await fetch(`${base}/api/subscriptions`);
+  assert.equal(getList.status, 404);
+
+  const post = await fetch(`${base}/api/subscriptions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ channelUrl: 'https://www.youtube.com/@x', format: 'video' }),
+  });
+  assert.equal(post.status, 404);
+
+  const del = await fetch(`${base}/api/subscriptions/some-id`, { method: 'DELETE' });
+  assert.equal(del.status, 404);
+
+  const getSettings = await fetch(`${base}/api/subscriptions/settings`);
+  assert.equal(getSettings.status, 404);
+
+  const postSettings = await fetch(`${base}/api/subscriptions/settings`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ allowMembersOnly: true }),
+  });
+  assert.equal(postSettings.status, 404);
+});
+
+test('disabled path never writes a db.ytdlp namespace', () => {
+  const dbPath = path.join(process.env.DATA_DIR, 'db.json');
+  if (!fs.existsSync(dbPath)) return; // nothing persisted yet is also fine
+  const raw = JSON.parse(fs.readFileSync(dbPath, 'utf8'));
+  assert.equal(raw.ytdlp, undefined, 'a disabled module must never materialize db.ytdlp');
+});
+
 test('currentYtdlpPollTimer() reports null when the module is disabled', () => {
   assert.equal(currentYtdlpPollTimer(), null);
 });
