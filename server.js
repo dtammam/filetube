@@ -27,6 +27,23 @@ if (!fs.existsSync(TRANSCODE_DIR)) {
   fs.mkdirSync(TRANSCODE_DIR, { recursive: true });
 }
 
+// Default automation/cache-housekeeping settings. `0` means "Off" for
+// scanIntervalMinutes/cacheMaxAgeDays; `cacheMaxBytes: null` defers to the
+// env var / built-in default rather than a UI-set override.
+const DEFAULT_SETTINGS = {
+  scanIntervalMinutes: 30,
+  pruneMissing: true,
+  cacheMaxBytes: null,
+  cacheMaxAgeDays: 30
+};
+
+// Per-key merge so a partial/older `settings` object keeps whatever keys it
+// already has and only gets the missing ones defaulted (mirrors the
+// `folderSettings` backfill pattern below).
+function withDefaultSettings(settings) {
+  return { ...DEFAULT_SETTINGS, ...(settings || {}) };
+}
+
 // Ensure database file exists
 function loadDatabase() {
   if (!fs.existsSync(DB_FILE)) {
@@ -34,7 +51,8 @@ function loadDatabase() {
       folders: [],
       folderSettings: {},
       progress: {},
-      metadata: {}
+      metadata: {},
+      settings: withDefaultSettings()
     };
     fs.writeFileSync(DB_FILE, JSON.stringify(initialDb, null, 2), 'utf8');
     return initialDb;
@@ -43,10 +61,12 @@ function loadDatabase() {
     const data = fs.readFileSync(DB_FILE, 'utf8');
     const db = JSON.parse(data);
     if (!db.folderSettings) db.folderSettings = {}; // backfill for older databases
+    db.settings = withDefaultSettings(db.settings); // backfill for older databases
     return db;
   } catch (err) {
     console.error('Error reading db.json, resetting database:', err);
-    return { folders: [], folderSettings: {}, progress: {}, metadata: {} };
+    // Every code path out of loadDatabase must hand back a settings-bearing DB.
+    return { folders: [], folderSettings: {}, progress: {}, metadata: {}, settings: withDefaultSettings() };
   }
 }
 
@@ -171,6 +191,138 @@ function evictTranscodeCache(maxBytes, justProducedPath) {
   return removed;
 }
 
+// Valid "scan every N minutes" choices for the Settings UI (0 = Off / manual
+// "Scan now" only). Anything not in this set (missing, unrecognized, negative)
+// falls back to the 30-minute default rather than silently doing nothing.
+const SCAN_INTERVAL_MINUTE_OPTIONS = new Set([30, 60, 360, 720, 1440]);
+const DEFAULT_SCAN_INTERVAL_MINUTES = 30;
+
+// Map a persisted `scanIntervalMinutes` preference to milliseconds for
+// setInterval. 0 -> null (Off, no periodic scan). Anything unrecognized falls
+// back to the 30-minute default so a corrupt/old value can never disable
+// scanning silently.
+function scanIntervalMs(minutes) {
+  if (minutes === 0) return null;
+  if (SCAN_INTERVAL_MINUTE_OPTIONS.has(minutes)) return minutes * 60000;
+  return DEFAULT_SCAN_INTERVAL_MINUTES * 60000;
+}
+
+// Pure: given transcoded-cache files [{path, lastServedAt?, atimeMs}], return
+// the paths eligible for age-based deletion — those whose most-recently-known
+// served time is older than `now - maxAgeMs`. `lastServedAt` (a persisted,
+// FileTube-controlled timestamp) is authoritative whenever it is a number;
+// `atimeMs` is only a fallback for pre-upgrade files that predate it. This
+// keeps the age sweep immune to the atime unreliability under relatime/
+// noatime (see the `recentlyServed` comment above). Never returns a
+// *.tmp.mp4 (in-flight write) or a protected path. maxAgeMs <= 0/falsy means
+// retention is "Off" -> always [].
+function selectAgedOut(files, maxAgeMs, now, protectedPaths) {
+  if (!maxAgeMs || maxAgeMs <= 0) return [];
+  const keep = protectedPaths instanceof Set
+    ? protectedPaths
+    : new Set(protectedPaths ? [].concat(protectedPaths) : []);
+  const cutoff = now - maxAgeMs;
+  const agedOut = [];
+  for (const f of files) {
+    if (f.path.endsWith('.tmp.mp4')) continue;
+    if (keep.has(f.path)) continue;
+    const effective = typeof f.lastServedAt === 'number' ? f.lastServedAt : f.atimeMs;
+    if (effective < cutoff) agedOut.push(f.path);
+  }
+  return agedOut;
+}
+
+// Filesystem wrapper around the pure `selectAgedOut` selector — the D3 age-
+// retention sweep. Structured like `evictTranscodeCache`, but kept as a
+// SEPARATE step (never folded in): reads db.settings.cacheMaxAgeDays (0/falsy
+// = "Off", in which case selectAgedOut always returns [] and nothing is
+// touched — evictTranscodeCache's size-cap LRU path stays completely
+// unaffected). Builds {path, lastServedAt, atimeMs} for every non-*.tmp.mp4
+// *.mp4 in TRANSCODE_DIR, looking up lastServedAt via
+// db.metadata[basename(path,'.mp4')].lastServedAt (falls back to atime for
+// files predating this feature). Protects the same recentlyServed-within-
+// RECENT_STREAM_MS set evictTranscodeCache builds, so a file actively being
+// watched is never aged out even if its recorded/atime age looks stale.
+// Call sites (post-produce, startup) run this immediately BEFORE
+// evictTranscodeCache — never inside it, so the frozen
+// test/unit/transcode-cache.test.js (which never invokes the age sweep)
+// keeps passing unmodified. Returns the count removed.
+function sweepAgedTranscodes(now) {
+  const db = loadDatabase();
+  const cacheMaxAgeDays = db.settings && db.settings.cacheMaxAgeDays;
+  const maxAgeMs = cacheMaxAgeDays ? cacheMaxAgeDays * 24 * 60 * 60 * 1000 : 0;
+  let entries;
+  try { entries = fs.readdirSync(TRANSCODE_DIR); } catch (_) { return 0; }
+  const files = [];
+  for (const name of entries) {
+    if (!name.endsWith('.mp4') || name.endsWith('.tmp.mp4')) continue;
+    const p = path.join(TRANSCODE_DIR, name);
+    try {
+      const st = fs.statSync(p);
+      const id = path.basename(name, '.mp4');
+      const meta = db.metadata[id];
+      files.push({ path: p, lastServedAt: meta && meta.lastServedAt, atimeMs: st.atimeMs || st.mtimeMs });
+    } catch (_) { /* file vanished between readdir and stat; skip */ }
+  }
+  // Same live-watch protection evictTranscodeCache uses — a file served
+  // within the recent window is never aged out either.
+  const protectedPaths = new Set();
+  for (const [p, t] of recentlyServed) {
+    if (now - t <= RECENT_STREAM_MS) protectedPaths.add(p);
+  }
+  const victims = selectAgedOut(files, maxAgeMs, now, protectedPaths);
+  let removed = 0;
+  for (const p of victims) {
+    try { fs.unlinkSync(p); removed++; console.log(`Aged out of transcode cache: ${p}`); }
+    catch (e) { console.error(`Failed to remove aged-out transcode ${p}:`, e.message); }
+  }
+  return removed;
+}
+
+// Pure: decide which old-metadata ids are safe to prune during a scan.
+// `oldMetadata` is the previous db.metadata object; `survivingIds`/
+// `missingRoots` are single/array/Set-normalized. The mount-loss guard
+// (`root && missing.has(root)`) fires BEFORE the pruneMissing toggle check,
+// so an entry rooted under a missing/unmounted folder is retained
+// unconditionally — a missing mount must never be mistaken for a deletion.
+function selectPrunableIds(oldMetadata, survivingIds, missingRoots, pruneMissing) {
+  const surviving = survivingIds instanceof Set ? survivingIds : new Set(survivingIds);
+  const missing = missingRoots instanceof Set ? missingRoots : new Set(missingRoots);
+  const prune = [];
+  for (const [id, entry] of Object.entries(oldMetadata)) {
+    if (surviving.has(id)) continue;             // file still on disk -> keep
+    const root = entry && entry.rootFolder;
+    if (root && missing.has(root)) continue;     // MOUNT-LOSS GUARD: never prune under a missing root
+    if (!pruneMissing) continue;                 // toggle OFF -> retain stale entry
+    prune.push(id);                              // root present + file individually gone + prune ON
+  }
+  return prune;
+}
+
+// Sum of st.size for non-*.tmp.mp4 *.mp4 files in dir. Used for the Settings
+// "current cache size" display. try/catch so a missing/unreadable dir or a
+// file that vanished mid-scan (readdir vs stat race) never throws.
+function transcodeCacheSize(dir) {
+  let entries;
+  try { entries = fs.readdirSync(dir); } catch (_) { return 0; }
+  let total = 0;
+  for (const name of entries) {
+    if (!name.endsWith('.mp4') || name.endsWith('.tmp.mp4')) continue;
+    try { total += fs.statSync(path.join(dir, name)).size; } catch (_) { /* vanished; skip */ }
+  }
+  return total;
+}
+
+// Resolve the effective transcode-cache byte cap: a UI-set `cacheMaxBytes`
+// (positive integer) takes precedence; otherwise fall back to the existing
+// env-var-or-5GB-default module constant, so env-only deployments keep
+// working unchanged when no UI override is persisted.
+function effectiveCacheCap(settings) {
+  const uiCap = settings && settings.cacheMaxBytes;
+  if (Number.isInteger(uiCap) && uiCap > 0) return uiCap;
+  return TRANSCODE_CACHE_MAX_BYTES;
+}
+
 // Which configured folder does this file live under? (longest matching prefix)
 function matchRootFolder(filePath, folders) {
   let best = null;
@@ -211,6 +363,26 @@ function setTranscodeStatus(id, status) {
     db.metadata[id].transcodeStatus = status;
     saveDatabase(db);
   }
+}
+
+// Persist a media item's last-served timestamp (db.metadata[id].lastServedAt,
+// epoch ms) — the D3 age-retention signal `selectAgedOut`/`sweepAgedTranscodes`
+// key off. This runs on the `/video/:id` streaming hot path, which fires many
+// Range requests per playback, so it mirrors setTranscodeStatus's no-clobber
+// pattern PLUS a staleness throttle: skip the write entirely when we already
+// recorded a serve within RECENT_STREAM_MS, so a Range-request burst yields at
+// most one db.json write per ~10-minute window per item and can never clobber
+// a concurrent write. This is additive alongside the in-memory `markServed`/
+// `recentlyServed` guard (which remains the real eviction-race protection) —
+// recordServed is a separate, persisted-timestamp concern for the age sweep.
+function recordServed(id) {
+  const now = Date.now();
+  const db = loadDatabase();
+  const entry = db.metadata[id];
+  if (!entry) return;
+  if (entry.lastServedAt && (now - entry.lastServedAt) < RECENT_STREAM_MS) return;
+  entry.lastServedAt = now;
+  saveDatabase(db);
 }
 
 function queueTranscode(id, srcPath) {
@@ -289,12 +461,19 @@ function processTranscodeQueue() {
         fs.renameSync(tmpPath, outPath); // atomic: never serve a half-written file
         setTranscodeStatus(id, 'ready');
         console.log(`Transcode ready: ${outPath}`);
+        // A freshly-produced file starts with a fresh lastServedAt, so it
+        // isn't immediately eligible for the age sweep.
+        recordServed(id);
         // Keep the cache under its cap now that we've added a file. Runs
         // synchronously here (inside the single-worker close callback, before
         // transcodeBusy is released) so it can't race another transcode. The
-        // just-produced file is protected from eviction.
-        try { evictTranscodeCache(TRANSCODE_CACHE_MAX_BYTES, outPath); }
-        catch (e) { console.error('Transcode cache eviction failed:', e.message); }
+        // just-produced file is protected from eviction. The age sweep runs
+        // as a SEPARATE step immediately before the size-cap eviction (never
+        // folded into evictTranscodeCache — see its comment above).
+        try {
+          sweepAgedTranscodes(Date.now());
+          evictTranscodeCache(effectiveCacheCap(loadDatabase().settings), outPath);
+        } catch (e) { console.error('Transcode cache eviction failed:', e.message); }
       } catch (e) {
         console.error(`Failed to finalize transcode for ${srcPath}:`, e.message);
         setTranscodeStatus(id, 'failed');
@@ -422,7 +601,14 @@ function extractMetadataAndThumbnail(filePath, mediaId, isAudio) {
 let scanState = { scanning: false, lastScan: null };
 
 // Public entry point: tracks scanning state around the actual scan.
+// Overlap guard: if a scan is already running, this is a no-op. This covers
+// EVERY caller of scanDirectories() — the periodic timer (armScanTimer,
+// below), the background scan kicked off by POST /api/config, and any manual
+// trigger — so two scans never run concurrently. The early return happens
+// before scanState.scanning is (re)set and before the try/finally, so it does
+// not touch scanState.lastScan or otherwise disturb the in-progress scan.
 async function scanDirectories() {
+  if (scanState.scanning) return;
   scanState.scanning = true;
   try {
     await runScanDirectories();
@@ -437,10 +623,14 @@ async function runScanDirectories() {
   const db = loadDatabase();
   const currentFolders = db.folders || [];
   const scannedFiles = new Map(); // path -> file info
+  // Configured root folders that are absent/unmounted this scan (the single
+  // existence-check seam, reused by selectPrunableIds' mount-loss guard below).
+  const missingRoots = new Set();
 
   for (const folder of currentFolders) {
     if (!fs.existsSync(folder)) {
       console.warn(`Configured folder does not exist: ${folder}`);
+      missingRoots.add(folder);
       continue;
     }
     scanDirRecursive(folder, folder, scannedFiles);
@@ -491,35 +681,51 @@ async function runScanDirectories() {
     }
   }
 
-  // Check if any files were deleted
+  // Mount-loss guard + toggleable prune (D2). A non-surviving old id is
+  // NEVER dropped just because it wasn't rescanned — that would conflate
+  // "file individually deleted" with "its whole mount disappeared". Instead,
+  // selectPrunableIds (pure, T2-verified) decides which non-surviving ids are
+  // actually safe to prune: its mount-loss guard fires BEFORE the
+  // pruneMissing toggle, so anything rooted under a currently-missing/
+  // unmounted folder is retained regardless of the toggle. Everything NOT in
+  // the prunable set is copied back into newMetadata below, so
+  // `db.metadata = newMetadata` further down never silently wipes a mount-loss.
+  const survivingIds = new Set(Object.keys(newMetadata));
   const oldIds = Object.keys(db.metadata);
-  const newIds = Object.keys(newMetadata);
-  if (oldIds.length !== newIds.length || oldIds.some(id => !newMetadata[id])) {
+  const prunable = new Set(
+    selectPrunableIds(db.metadata, survivingIds, missingRoots, db.settings.pruneMissing)
+  );
+
+  for (const oldId of oldIds) {
+    if (survivingIds.has(oldId) || prunable.has(oldId)) continue;
+    newMetadata[oldId] = db.metadata[oldId]; // retained: not pruned this scan
+  }
+
+  if (prunable.size > 0) {
     dbChanged = true;
-    // Clean up thumbnails for deleted files
-    for (const oldId of oldIds) {
-      if (!newMetadata[oldId]) {
-        const thumbPath = path.join(THUMBNAIL_DIR, `${oldId}.jpg`);
-        if (fs.existsSync(thumbPath)) {
-          try {
-            fs.unlinkSync(thumbPath);
-          } catch (e) {
-            console.error('Failed to delete obsolete thumbnail:', e);
-          }
+    // Clean up thumbnails/transcodes/progress ONLY for genuinely-pruned ids —
+    // retained (mount-loss or toggle-off) entries must keep their sidecars.
+    for (const oldId of prunable) {
+      const thumbPath = path.join(THUMBNAIL_DIR, `${oldId}.jpg`);
+      if (fs.existsSync(thumbPath)) {
+        try {
+          fs.unlinkSync(thumbPath);
+        } catch (e) {
+          console.error('Failed to delete obsolete thumbnail:', e);
         }
-        // Remove any transcoded MP4 sidecar
-        const oldTranscode = transcodedPath(oldId);
-        if (fs.existsSync(oldTranscode)) {
-          try {
-            fs.unlinkSync(oldTranscode);
-          } catch (e) {
-            console.error('Failed to delete obsolete transcode:', e);
-          }
+      }
+      // Remove any transcoded MP4 sidecar
+      const oldTranscode = transcodedPath(oldId);
+      if (fs.existsSync(oldTranscode)) {
+        try {
+          fs.unlinkSync(oldTranscode);
+        } catch (e) {
+          console.error('Failed to delete obsolete transcode:', e);
         }
-        // Also remove watch progress
-        if (db.progress[oldId]) {
-          delete db.progress[oldId];
-        }
+      }
+      // Also remove watch progress
+      if (db.progress[oldId]) {
+        delete db.progress[oldId];
       }
     }
   }
@@ -537,6 +743,27 @@ async function runScanDirectories() {
     saveDatabase(db);
     console.log('Database synced successfully.');
   }
+}
+
+// Periodic scan timer, driven by the persisted `scanIntervalMinutes`
+// preference (see `scanIntervalMs`, above) rather than a hardcoded interval.
+// Re-invokable: clears any previously-armed timer before (re-)arming, so a
+// settings change can re-arm it live later (POST /api/settings) without a
+// restart. `.unref()` so an armed timer never keeps the process — or a test
+// runner that happens to call this directly — alive. Arms no timer at all
+// when the effective interval is Off (scanIntervalMs returns null).
+let scanTimer = null;
+function armScanTimer() {
+  if (scanTimer) {
+    clearInterval(scanTimer);
+    scanTimer = null;
+  }
+  const db = loadDatabase();
+  const ms = scanIntervalMs(db.settings.scanIntervalMinutes);
+  if (ms) {
+    scanTimer = setInterval(() => scanDirectories().catch(console.error), ms).unref();
+  }
+  return scanTimer;
 }
 
 // Recursive directory scanning helper
@@ -640,6 +867,13 @@ app.post('/api/config', async (req, res) => {
 
 // API: Scan files on demand
 app.post('/api/scan', async (req, res) => {
+  // Explicit pre-check: scanDirectories() itself no-ops while a scan is
+  // already running (overlap guard), so without this check the route would
+  // misleadingly return 200 for a request that triggered nothing. Surface a
+  // 409 instead so callers (and the UI) know a scan is already in flight.
+  if (scanState.scanning) {
+    return res.status(409).json({ error: 'scan already in progress' });
+  }
   try {
     await scanDirectories();
     res.json({ success: true });
@@ -662,6 +896,115 @@ app.get('/api/scan-status', (req, res) => {
     folderCount: (db.folders || []).length,
     transcoding
   });
+});
+
+// Valid POST /api/settings values for the two enum-like fields. `cacheMaxBytes`
+// and `pruneMissing` are validated inline (positive-int-or-null, boolean).
+const SCAN_INTERVAL_VALID_VALUES = new Set([0, 30, 60, 360, 720, 1440]);
+const CACHE_MAX_AGE_DAYS_VALID_VALUES = new Set([0, 7, 14, 30, 90]);
+
+// Shape returned by both GET and POST /api/settings — the four persisted keys
+// plus a read-only `effectiveCacheMaxBytes` (UI prefill for the "no override"
+// case, since cacheMaxBytes:null defers to the env var / 5 GB default).
+function settingsResponse(settings) {
+  return {
+    scanIntervalMinutes: settings.scanIntervalMinutes,
+    pruneMissing: settings.pruneMissing,
+    cacheMaxBytes: settings.cacheMaxBytes,
+    cacheMaxAgeDays: settings.cacheMaxAgeDays,
+    effectiveCacheMaxBytes: effectiveCacheCap(settings)
+  };
+}
+
+// API: Read the Automation & Storage settings for Settings-page prefill.
+app.get('/api/settings', (req, res) => {
+  const db = loadDatabase();
+  res.json(settingsResponse(db.settings));
+});
+
+// API: Update the Automation & Storage settings. Body may be a PARTIAL object
+// (only the keys the user changed). Validates every provided key against its
+// allowed range before touching anything — on any invalid field the whole
+// request is rejected with 400 and nothing is persisted. Only the four known
+// keys are accepted; an unrecognized key is rejected too, keeping db.settings
+// free of arbitrary/typo'd keys.
+app.post('/api/settings', (req, res) => {
+  const body = req.body || {};
+  const KNOWN_KEYS = ['scanIntervalMinutes', 'pruneMissing', 'cacheMaxBytes', 'cacheMaxAgeDays'];
+  for (const key of Object.keys(body)) {
+    if (!KNOWN_KEYS.includes(key)) {
+      return res.status(400).json({ error: `unknown settings key: ${key}` });
+    }
+  }
+  if ('scanIntervalMinutes' in body && !SCAN_INTERVAL_VALID_VALUES.has(body.scanIntervalMinutes)) {
+    return res.status(400).json({ error: 'scanIntervalMinutes must be one of 0, 30, 60, 360, 720, 1440' });
+  }
+  if ('pruneMissing' in body && typeof body.pruneMissing !== 'boolean') {
+    return res.status(400).json({ error: 'pruneMissing must be a boolean' });
+  }
+  if ('cacheMaxBytes' in body) {
+    const v = body.cacheMaxBytes;
+    if (v !== null && !(Number.isInteger(v) && v > 0)) {
+      return res.status(400).json({ error: 'cacheMaxBytes must be null or a positive integer' });
+    }
+  }
+  if ('cacheMaxAgeDays' in body && !CACHE_MAX_AGE_DAYS_VALID_VALUES.has(body.cacheMaxAgeDays)) {
+    return res.status(400).json({ error: 'cacheMaxAgeDays must be one of 0, 7, 14, 30, 90' });
+  }
+
+  // All provided keys validated -- safe to merge and persist.
+  const db = loadDatabase();
+  db.settings = { ...db.settings, ...body };
+  saveDatabase(db);
+  // Re-arm the periodic scan timer live so an interval change takes effect
+  // immediately with no restart. armScanTimer() re-reads the just-saved
+  // db.settings.scanIntervalMinutes itself, and it's a safe no-op-equivalent
+  // (clear + re-arm the same value) when the interval didn't change.
+  armScanTimer();
+  res.json(settingsResponse(db.settings));
+});
+
+// API: Current transcode-cache size on disk, for the Settings-page display.
+app.get('/api/cache/size', (req, res) => {
+  const db = loadDatabase();
+  res.json({
+    bytes: transcodeCacheSize(TRANSCODE_DIR),
+    effectiveCacheMaxBytes: effectiveCacheCap(db.settings)
+  });
+});
+
+// API: "Clear cache now" -- delete cached transcodes on demand. Excludes
+// *.tmp.mp4 (an in-flight transcode write; deleting it would corrupt the
+// transcode in progress) and anything currently protected by the
+// recentlyServed window (mirrors evictTranscodeCache's protected-set build,
+// server.js:177-184) so a clear can never yank a file out from under an
+// actively-watched stream. Does NOT touch db.metadata[id].lastServedAt -- a
+// future re-transcode naturally re-records it on next watch. Per-file
+// try/catch so a single failed unlink never fails the whole clear.
+app.post('/api/cache/clear', (req, res) => {
+  let entries;
+  try { entries = fs.readdirSync(TRANSCODE_DIR); } catch (_) { entries = []; }
+  const now = Date.now();
+  const protectedPaths = new Set();
+  for (const [p, t] of recentlyServed) {
+    if (now - t <= RECENT_STREAM_MS) protectedPaths.add(p);
+  }
+  let removed = 0;
+  let freedBytes = 0;
+  for (const name of entries) {
+    if (!name.endsWith('.mp4') || name.endsWith('.tmp.mp4')) continue;
+    const p = path.join(TRANSCODE_DIR, name);
+    if (protectedPaths.has(p)) continue;
+    try {
+      const size = fs.statSync(p).size;
+      fs.unlinkSync(p);
+      removed++;
+      freedBytes += size;
+    } catch (e) {
+      console.error(`Failed to clear cached transcode ${p}:`, e.message);
+    }
+  }
+  res.json({ success: true, removed, freedBytes });
 });
 
 // API: Get list of videos/audio
@@ -931,9 +1274,11 @@ app.get('/video/:id', (req, res) => {
   }
 
   // Serving a cached transcode? Mark it recently-served so eviction leaves it
-  // alone while it's being watched.
+  // alone while it's being watched, and persist the last-served timestamp
+  // (throttled/no-clobber) that the age-retention sweep keys off.
   if (item.needsTranscode && filePath === transcodedPath(item.id)) {
     markServed(filePath);
+    recordServed(item.id);
   }
 
   const stat = fs.statSync(filePath);
@@ -980,15 +1325,17 @@ if (require.main === module) {
   // killed transcode, then enforce the size cap.
   const orphans = cleanupOrphanTmp(TRANSCODE_DIR);
   if (orphans) console.log(`Cleaned up ${orphans} orphaned transcode temp file(s).`);
-  evictTranscodeCache(TRANSCODE_CACHE_MAX_BYTES);
+  // Age sweep runs as a separate step immediately before the size-cap
+  // eviction (never folded into evictTranscodeCache itself).
+  sweepAgedTranscodes(Date.now());
+  evictTranscodeCache(effectiveCacheCap(loadDatabase().settings));
 
-  // Scan on startup and then periodically (every 10 minutes). These live here,
-  // not at module top-level, so importing the module for tests neither scans
-  // nor keeps the event loop alive via the interval.
+  // Scan on startup and then periodically per the persisted scanIntervalMinutes
+  // preference (default 30 minutes; armScanTimer arms no timer at all when the
+  // preference is Off). These live here, not at module top-level, so importing
+  // the module for tests neither scans nor keeps the event loop alive.
   scanDirectories().catch(console.error);
-  setInterval(() => {
-    scanDirectories().catch(console.error);
-  }, 10 * 60 * 1000);
+  armScanTimer();
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`==================================================`);
@@ -1013,6 +1360,16 @@ module.exports = {
   selectEvictions,
   cleanupOrphanTmp,
   evictTranscodeCache,
+  scanIntervalMs,
+  selectAgedOut,
+  selectPrunableIds,
+  transcodeCacheSize,
+  effectiveCacheCap,
+  recordServed,
+  sweepAgedTranscodes,
+  scanState,
+  scanDirectories,
+  armScanTimer,
   TRANSCODE_CACHE_MAX_BYTES,
   VIDEO_EXTENSIONS,
   AUDIO_EXTENSIONS,
