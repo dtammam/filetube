@@ -86,6 +86,12 @@
     </aside>
 
     <main class="main-content" id="main-content">
+      <!-- Per-view content boundary (FR-1, T1): the SPA-lite router in
+           common.js swaps ONLY this node's contents on in-app navigation; the
+           header/sidebar/bottom-nav above and below stay mounted. A fresh
+           full page load (or a direct deep link) needs no router involvement
+           at all -- this markup is already the complete, correct home view. -->
+      <div id="view-root" data-view="home">
       <!-- Welcome message if no libraries are set up -->
       <div id="welcome-message" class="setup-box" style="display: none; margin: 20px 0;">
         <h2>Welcome to FileTube!</h2>
@@ -116,8 +122,56 @@
           <!-- Video Cards will be inserted here -->
         </div>
       </div>
+      </div>
     </main>
   </div>
+
+  <!-- Persistent player dock + host template (FR-1, T1/T2). Both live
+       OUTSIDE #view-root so in-app navigation never tears them down. The
+       template is cloned ONCE, ever, by the persistent player controller
+       (public/js/player.js) into a single live #player-host, reparented
+       between the watch view's #player-slot (FULL) and #player-dock (DOCKED)
+       here. #player-dock stays [hidden] (zero visible chrome, no layout
+       shift) unless a video is actively loaded AND the user has navigated
+       away from its watch page -- see player.js's dock()/expand()/close(). -->
+  <div id="player-dock" hidden></div>
+  <template id="player-host-template">
+    <div class="player-container" id="player-wrapper">
+      <div id="audio-bg-art" class="audio-bg-art"></div>
+      <div id="resume-overlay" class="resume-overlay" style="display: none;">
+        <h3>Resume Playback?</h3>
+        <p>You watched this media up to <span id="resume-time-str">0:00</span>. Would you like to resume from there?</p>
+        <div class="resume-actions">
+          <button class="btn" id="resume-no-btn">Start from beginning</button>
+          <button class="btn btn-primary" id="resume-yes-btn">Resume</button>
+        </div>
+      </div>
+      <div id="transcode-overlay" class="resume-overlay" style="display: none;">
+        <div class="transcode-spinner" id="transcode-spinner"></div>
+        <h3 id="transcode-title">Preparing this video&hellip;</h3>
+        <p id="transcode-message">FileTube is converting this file to a browser-friendly format. This only happens once &mdash; it'll start playing automatically when it's ready.</p>
+      </div>
+      <video id="media-player" controls preload="metadata" playsinline webkit-playsinline x5-playsinline style="display: none;">
+        Your browser does not support HTML5 video player.
+      </video>
+      <div id="speed-badge" class="speed-badge" style="display: none;">2× ▶▶</div>
+      <div id="skip-controls" class="skip-controls" style="display: none;">
+        <button type="button" class="skip-btn skip-back" id="skip-back-btn" aria-label="Rewind 15 seconds">
+          <span class="skip-arrow">«</span><span class="skip-num">15</span>
+        </button>
+        <button type="button" class="skip-btn skip-forward" id="skip-fwd-btn" aria-label="Forward 15 seconds">
+          <span class="skip-num">15</span><span class="skip-arrow">»</span>
+        </button>
+        <div class="skip-ripple skip-ripple-left" id="skip-ripple-left">« 15s</div>
+        <div class="skip-ripple skip-ripple-right" id="skip-ripple-right">15s »</div>
+      </div>
+      <div id="audio-visualizer" class="audio-player-visual" style="display: none;">
+        <div class="audio-vinyl" id="vinyl-disc"></div>
+        <div class="audio-title" id="audio-visual-title">Audio Track Title</div>
+        <div class="audio-subtitle" id="audio-visual-folder">Playlist Folder</div>
+      </div>
+    </div>
+  </template>
 
   <nav class="bottom-nav" id="bottom-nav" aria-label="Primary">
     <a href="/" class="bottom-nav-item" data-nav="home">
@@ -147,7 +201,17 @@
     <div class="playlists-sheet-list" id="playlists-sheet-list"></div>
   </aside>
 
+  <!-- FR-1, T1: every shell loads ALL core view scripts (common.js's router
+       + registry, then each registered view module) regardless of which page
+       is the entry point, so any of the four views is already registered by
+       the time the router boots or an in-app swap targets it.
+       subscriptions.js stays lazy-loaded (fetched only on the first
+       /subscriptions navigation) -- see common.js's
+       ensureSubscriptionsScriptLoaded. -->
   <script src="/js/common.js"></script>
   <script src="/js/main.js"></script>
+  <script src="/js/watch.js"></script>
+  <script src="/js/setup.js"></script>
+  <script src="/js/player.js"></script>
 </body>
 </html>

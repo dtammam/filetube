@@ -101,11 +101,35 @@ test('rejects a URL containing shell metacharacters', () => {
   assert.equal(validateChannelUrl(`https://www.youtube.com/@a'quote"`).ok, false);
 });
 
-test('rejects a URL containing whitespace anywhere, including embedded newlines', () => {
-  assert.equal(validateChannelUrl('https://www.youtube.com/@a b').ok, false);
-  assert.equal(validateChannelUrl('https://www.youtube.com/@a\nrm -rf /').ok, false);
-  assert.equal(validateChannelUrl('https://www.youtube.com/@a\tb').ok, false);
-  assert.equal(validateChannelUrl(' https://www.youtube.com/@a').ok, false);
+// NOTE (FR-5, v1.16.0): validateChannelUrl now trims surrounding whitespace
+// and, when internal whitespace remains, extracts the first
+// `https?://\S+` run as the candidate BEFORE the checks below run -- this is
+// what lets the real-world YouTube share-sheet paste
+// ("Title\nhttps://youtu.be/<id>?si=<token>") validate. A clean URL followed
+// or preceded by other whitespace-separated text is therefore now ACCEPTED
+// (the extracted candidate itself is clean); see the FR-5 acceptance/
+// security-regression tests further down for the exact accept/reject matrix.
+// A metachar directly ATTACHED to the URL (no whitespace between them) is
+// still rejected because it becomes PART of the extracted candidate and
+// FORBIDDEN_CHARS still runs on it, unchanged -- see "rejects a URL
+// containing shell metacharacters" above.
+test('whitespace-padded/prose-wrapped input with a clean embedded URL now extracts and validates (FR-5)', () => {
+  assert.equal(validateChannelUrl('https://www.youtube.com/@a b').ok, true);
+  assert.equal(validateChannelUrl('https://www.youtube.com/@a\tb').ok, true);
+  assert.equal(validateChannelUrl(' https://www.youtube.com/@a').ok, true);
+});
+
+test('a metachar attached directly to an otherwise-whitespace-wrapped URL is still rejected (extraction cannot drop an attached metachar)', () => {
+  // The metachar/text after the URL is on the SAME whitespace-delimited
+  // token as the URL itself (no space between "/@a" and ";rm"), so it is
+  // included in the extracted candidate and FORBIDDEN_CHARS still rejects it.
+  const result = validateChannelUrl('https://www.youtube.com/@a;rm -rf /');
+  assert.equal(result.ok, false);
+});
+
+test('whitespace with no extractable http(s) substring is still rejected', () => {
+  assert.equal(validateChannelUrl('just some prose with no url').ok, false);
+  assert.equal(validateChannelUrl('   ').ok, false);
 });
 
 test('rejects a URL containing raw control characters', () => {
@@ -352,4 +376,113 @@ test('classifySingleVideo: never throws across a representative attack/edge-case
   for (const input of inputs) {
     assert.doesNotThrow(() => classifySingleVideo(input));
   }
+});
+
+// ---- FR-5 (v1.16.0): share-URL validator robustness -- mandated security- --
+// ---- regression + acceptance tests (docs/exec-plans/active/2026-07-06-    --
+// ---- v1.16-watch-experience.md, "## Acceptance criteria" > FR-5). The     --
+// ---- real-world trigger is a YouTube share-sheet paste, which arrives as  --
+// ---- prose with an embedded URL and/or stray surrounding whitespace, e.g. --
+// ---- "Title\nhttps://youtu.be/<id>?si=<token>". validateChannelUrl now    --
+// ---- trims + (when whitespace remains) extracts the first `https?://\S+` --
+// ---- run as the candidate BEFORE the UNCHANGED strict validation runs on  --
+// ---- that candidate -- every existing guard must still apply to it.      --
+
+test('FR-5 (a): a hostile embedded URL is STILL rejected -- extraction cannot smuggle a disallowed host past the allowlist', () => {
+  const result = validateChannelUrl('click https://evil.com/x');
+  assert.equal(result.ok, false, 'the extracted candidate (https://evil.com/x) must still fail the host allowlist');
+});
+
+test('FR-5 (b): a bare share-sheet URL with a trailing ?si= param passes -- trims and validates', () => {
+  const result = validateChannelUrl(' https://youtu.be/dQw4w9WgXcQ?si=abc123\n');
+  assert.equal(result.ok, true);
+});
+
+test('FR-5 (c): an extracted candidate carrying a shell metachar is STILL rejected', () => {
+  const semicolon = validateChannelUrl('Title\nhttps://youtu.be/dQw4w9WgXcQ;rm');
+  assert.equal(semicolon.ok, false, 'a metachar attached to the extracted candidate must still trip FORBIDDEN_CHARS');
+
+  const backtick = validateChannelUrl('Title\nhttps://youtu.be/dQw4w9WgXcQ`whoami`');
+  assert.equal(backtick.ok, false);
+
+  const leadingDash = validateChannelUrl('Title\n-–exec=rm -rf /');
+  assert.equal(leadingDash.ok, false, 'a leading "-" candidate must still be rejected');
+
+  const userinfo = validateChannelUrl('Title\nhttps://user:pass@www.youtube.com/@x');
+  assert.equal(userinfo.ok, false, 'embedded userinfo in the extracted candidate must still be rejected');
+});
+
+test('FR-5 (d): a disallowed host is STILL rejected even when embedded in surrounding text', () => {
+  const result = validateChannelUrl('Check this out\nhttps://youtube.com.evil.com/@channel');
+  assert.equal(result.ok, false);
+});
+
+test('FR-5 (e): whitespace with no extractable http(s) substring still yields rejection', () => {
+  const result = validateChannelUrl('Title\nnot a url at all');
+  assert.equal(result.ok, false);
+});
+
+test('FR-5: oversized input is STILL rejected on the RAW length, before any extraction work', () => {
+  const huge = 'Title\nhttps://youtu.be/dQw4w9WgXcQ?si=' + 'a'.repeat(3000);
+  const result = validateChannelUrl(huge);
+  assert.equal(result.ok, false);
+});
+
+test('FR-5: a channel/playlist/handle URL on the one-off single-video path is STILL rejected (kind channel/playlist), even wrapped in share-sheet text', () => {
+  const channel = classifySingleVideo('Check out this channel\nhttps://www.youtube.com/@somechannel');
+  assert.equal(channel.ok, false);
+  assert.equal(channel.kind, 'channel');
+
+  const playlist = classifySingleVideo('Check out this playlist\nhttps://www.youtube.com/playlist?list=PLabc123XYZ');
+  assert.equal(playlist.ok, false);
+  assert.equal(playlist.kind, 'playlist');
+});
+
+test('FR-5: ACCEPT -- a trimmed share-sheet URL (surrounding whitespace only) validates as a video', () => {
+  const result = validateChannelUrl(' https://youtu.be/dQw4w9WgXcQ?si=xyz\n');
+  assert.equal(result.ok, true);
+});
+
+// KNOWN DESIGN-DOC DISCREPANCY (flagged, not silently "fixed" -- see the SDE
+// completion report): the exec plan's mandated test #6 reads `ACCEPT:
+// "Title\nhttps://www.youtube.com/watch?v=<id>&si=<x>" extracts -> valid
+// video`, and its FR-5 design narrative claims "?si=/&feature=/&pp= pass as
+// before". That is NOT actually true today, independent of this task's
+// whitespace/extraction change: `FORBIDDEN_CHARS` has *always* included the
+// bare `&` character (it is explicitly in the file's own documented
+// reject-list, `lib/ytdlp/url.js` FORBIDDEN_CHARS comment), so ANY
+// `youtube.com/watch?v=...&si=...`-shaped URL -- even a clean, no-whitespace
+// one, entirely independent of extraction -- was rejected before this task
+// and is STILL rejected after it (verified against the pre-task code). This
+// task's brief is explicit that FORBIDDEN_CHARS must NOT be weakened, so
+// this test documents the actual (guard-preserving) behavior rather than the
+// plan's literal (unattainable-without-weakening-a-guard) wording. A
+// `youtu.be/<id>?si=<x>` share link (a single query param, no `&`) DOES pass
+// -- see the "ACCEPT" tests above -- which is the realistic form this
+// normalization pre-step was built to accept.
+test('FR-5 (documented discrepancy): a watch-URL share payload using "&si=" is STILL rejected -- "&" is, and remains, in FORBIDDEN_CHARS regardless of extraction', () => {
+  const result = validateChannelUrl('Title\nhttps://www.youtube.com/watch?v=dQw4w9WgXcQ&si=xyz');
+  assert.equal(result.ok, false, 'FORBIDDEN_CHARS already rejects a bare (whitespace-free) "&"-joined URL, independent of this task\'s change -- not a regression, but a real limitation to flag for EM/PE');
+});
+
+test('FR-5: classifySingleVideo on a share-sheet payload returns kind "video", the correct videoId, and a clean canonical watchUrl (no ?si)', () => {
+  const result = classifySingleVideo('Check this out https://youtu.be/dQw4w9WgXcQ?si=xyz123');
+  assert.equal(result.ok, true);
+  assert.equal(result.kind, 'video');
+  assert.equal(result.videoId, 'dQw4w9WgXcQ');
+  assert.equal(result.watchUrl, 'https://www.youtube.com/watch?v=dQw4w9WgXcQ');
+  assert.ok(!result.watchUrl.includes('si='), 'buildWatchUrl must rebuild a clean canonical URL, dropping ?si=');
+});
+
+// See the "documented discrepancy" test above -- a `&`-joined query string
+// (as on a shared youtube.com/watch link) is rejected by the pre-existing,
+// unweakened FORBIDDEN_CHARS guard, so classifySingleVideo (which runs
+// validateChannelUrl first) correctly rejects it too, via classifySingleVideo's
+// OWN 'invalid' kind (validateChannelUrl itself failed, before classification
+// logic ever inspects the path/host) rather than a video/channel/playlist
+// classification.
+test('FR-5: classifySingleVideo on a youtube.com/watch share-sheet payload with "&si=" is rejected (kind invalid) -- same pre-existing FORBIDDEN_CHARS limitation as validateChannelUrl', () => {
+  const result = classifySingleVideo('Title\nhttps://www.youtube.com/watch?v=dQw4w9WgXcQ&si=xyz123');
+  assert.equal(result.ok, false);
+  assert.equal(result.kind, 'invalid');
 });

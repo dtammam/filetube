@@ -645,6 +645,82 @@ header {
   object-fit: contain;
 }
 
+/* Persistent docked mini-player (FR-1, T2). `#player-dock` is present on
+   every shell (index.html/watch.html/setup.html/subscriptions.html) but
+   stays `[hidden]` -- and therefore invisible with zero layout impact --
+   until player.js's dock() reparents the live player host into it (only
+   when the user navigates away from the watch view WHILE media is loaded;
+   see player.js). On the watch page itself the player always renders via
+   `.player-container` above, completely unaffected by any of this -- the
+   watch page is never "docked" while it is the active view. Era-themed via
+   existing tokens (--shadow-lg/--radius-lg); the video's own #000 letterbox
+   background matches `.player-container` above (not a themed surface). */
+#player-dock {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  width: 280px;
+  z-index: 950; /* above the mobile .bottom-nav (900), below modals/sheets (2000+) */
+  box-shadow: var(--shadow-lg);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+#player-dock[hidden] {
+  display: none;
+}
+
+/* The reparented host shrinks to fit purely via this ancestor scoping --
+   no JS class-toggling needed for sizing/chrome differences between FULL
+   and DOCKED. */
+#player-dock .player-container {
+  width: 100%;
+  margin-bottom: 0;
+  border: none;
+  border-radius: 0;
+  cursor: pointer;
+}
+
+/* The +-15s skip overlay and 2x speed badge are FULL-player affordances --
+   impractical to tap accurately at mini-player size, so they're hidden
+   purely via CSS while docked. The underlying skip()/hold-to-2x logic is
+   untouched and works again immediately once the host expands back into
+   `.watch-main .player-container` (see player.js). */
+#player-dock .skip-controls,
+#player-dock .speed-badge {
+  display: none !important;
+}
+
+.player-dock-close {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  z-index: 5;
+  width: 24px;
+  height: 24px;
+  line-height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.player-dock-close:hover {
+  background: rgba(0, 0, 0, 0.8);
+}
+
+@media (max-width: 768px) {
+  #player-dock {
+    width: 160px;
+    right: 8px;
+    /* Clear the fixed .bottom-nav (see its own rule, ~72px incl. safe-area) */
+    bottom: calc(72px + env(safe-area-inset-bottom) + 8px);
+  }
+}
+
 /* Audio thumbnail-as-background art (Feature 1, v1.10.0). Hidden by default;
    only shown for audio items whose setupPlayer() audio branch resolves a real
    thumbnail (resolveAudioArtUrl) and opts #player-wrapper into .audio-mode.
@@ -900,6 +976,39 @@ header {
   0% { opacity: 0; }
   25% { opacity: 1; }
   100% { opacity: 0; }
+}
+
+/* Prev/Next controls (FR-2, T3) -- a slim, minimal row directly under the
+   player; disabled at the ends (no wrap-around). Era-token colors only, so
+   this reads correctly across every era/light/dark combination. */
+.watch-prevnext {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 10px 0 4px;
+}
+
+.watch-prevnext-btn {
+  background-color: var(--btn-bg);
+  border: 1px solid var(--border-dark);
+  color: var(--text-primary);
+  padding: 6px 14px;
+  border-radius: var(--radius);
+  font-weight: bold;
+  font-size: 12px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.watch-prevnext-btn:hover:not(:disabled) {
+  background-color: var(--btn-hover);
+}
+
+.watch-prevnext-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 /* Video Information Layout */
