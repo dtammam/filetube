@@ -89,6 +89,28 @@ test('isArchived: never throws on a missing/non-string id', () => {
   assert.equal(isArchived('youtube abc123', 'youtube', undefined), false);
 });
 
+// ---- C2 (T4 fix round): the extractor compare is case-INSENSITIVE, the id --
+// ---- stays an EXACT match. yt-dlp writes archive lines with a lowercased --
+// ---- extractor (`youtube <id>`), but `--dump-json`'s `extractor_key` is ---
+// ---- TitleCase (`Youtube`) -- a case-sensitive compare never matched a ----
+// ---- real YouTube video against its own archive line. ---------------------
+
+test('isArchived: matches a lowercase archive line against a TitleCase extractor_key (C2)', () => {
+  const archiveText = 'youtube abc123\n';
+  assert.equal(isArchived(archiveText, 'Youtube', 'abc123'), true);
+});
+
+test('isArchived: matches regardless of which side is cased (archive vs extractor)', () => {
+  assert.equal(isArchived('Youtube abc123\n', 'youtube', 'abc123'), true);
+  assert.equal(isArchived('YOUTUBE abc123\n', 'YouTube', 'abc123'), true);
+});
+
+test('isArchived: the id itself stays an EXACT (case-sensitive) match even though the extractor is not', () => {
+  const archiveText = 'youtube AbC123\n';
+  assert.equal(isArchived(archiveText, 'Youtube', 'AbC123'), true);
+  assert.equal(isArchived(archiveText, 'Youtube', 'abc123'), false, 'a differently-cased id must NOT match -- only the extractor is case-insensitive');
+});
+
 // ---- shouldDeferPremiere (poll-and-defer, AC 24-26) ------------------------
 
 test('shouldDeferPremiere: release_timestamp inside the now..now+2h window defers', () => {

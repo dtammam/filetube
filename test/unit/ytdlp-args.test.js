@@ -56,32 +56,38 @@ test('buildYtdlpListArgs never embeds the URL into an option (it is its own arra
 });
 
 // ---- buildYtdlpDownloadArgs: audio vs video, quality default -------------
+//
+// C1 (T4 fix round): `buildYtdlpDownloadArgs(sub, config, targetIds)` now
+// targets per-survivor `watch?v=<id>` URLs built from `targetIds`, NOT
+// `sub.channelUrl` -- see the "C1: per-survivor watch-URL targeting" section
+// below for the dedicated structural-binding tests. These tests pass a
+// representative `targetIds` array throughout.
 
 test('buildYtdlpDownloadArgs (audio): includes -x/--extract-audio and an audio-format flag', () => {
   const config = makeConfig();
-  const result = args.buildYtdlpDownloadArgs(baseSub({ format: 'audio' }), config);
+  const result = args.buildYtdlpDownloadArgs(baseSub({ format: 'audio' }), config, ['vid1']);
   assert.ok(result.includes('-x'));
   assert.ok(result.includes('--audio-format'));
 });
 
 test('buildYtdlpDownloadArgs (video): includes a -f quality selector, defaulting to best', () => {
   const config = makeConfig();
-  const result = args.buildYtdlpDownloadArgs(baseSub({ format: 'video', quality: 'best' }), config);
+  const result = args.buildYtdlpDownloadArgs(baseSub({ format: 'video', quality: 'best' }), config, ['vid1']);
   const fIndex = result.indexOf('-f');
   assert.ok(fIndex >= 0);
   assert.match(result[fIndex + 1], /best/);
 });
 
-test('buildYtdlpDownloadArgs: the URL is the last, positional argument after "--"', () => {
+test('buildYtdlpDownloadArgs: the target watch URL is the last, positional argument after "--"', () => {
   const config = makeConfig();
-  const result = args.buildYtdlpDownloadArgs(baseSub(), config);
+  const result = args.buildYtdlpDownloadArgs(baseSub(), config, ['vid1']);
   assert.equal(result[result.length - 2], '--');
-  assert.equal(result[result.length - 1], 'https://www.youtube.com/@somechannel');
+  assert.equal(result[result.length - 1], 'https://www.youtube.com/watch?v=vid1');
 });
 
 test('buildYtdlpDownloadArgs: -o output template is present and confined under the download dir', () => {
   const config = makeConfig();
-  const result = args.buildYtdlpDownloadArgs(baseSub(), config);
+  const result = args.buildYtdlpDownloadArgs(baseSub(), config, ['vid1']);
   const oIndex = result.indexOf('-o');
   assert.ok(oIndex >= 0);
   const template = result[oIndex + 1];
@@ -90,7 +96,7 @@ test('buildYtdlpDownloadArgs: -o output template is present and confined under t
 
 test('buildYtdlpDownloadArgs: --download-archive path is confined under the download dir', () => {
   const config = makeConfig();
-  const result = args.buildYtdlpDownloadArgs(baseSub(), config);
+  const result = args.buildYtdlpDownloadArgs(baseSub(), config, ['vid1']);
   const archIndex = result.indexOf('--download-archive');
   assert.ok(archIndex >= 0);
   const archivePath = result[archIndex + 1];
@@ -99,7 +105,60 @@ test('buildYtdlpDownloadArgs: --download-archive path is confined under the down
 
 test('buildYtdlpDownloadArgs: an invalid format throws rather than silently producing bad args', () => {
   const config = makeConfig();
-  assert.throws(() => args.buildYtdlpDownloadArgs(baseSub({ format: 'gif' }), config));
+  assert.throws(() => args.buildYtdlpDownloadArgs(baseSub({ format: 'gif' }), config, ['vid1']));
+});
+
+// ---- C1: per-survivor watch-URL targeting (structural download scoping) --
+
+test('buildYtdlpDownloadArgs: maps multiple targetIds to their own watch?v= URLs, ONE spawn, N positional URLs', () => {
+  const config = makeConfig();
+  const result = args.buildYtdlpDownloadArgs(baseSub(), config, ['survivorA', 'survivorB']);
+  const sepIndex = result.indexOf('--');
+  assert.ok(sepIndex >= 0);
+  const targets = result.slice(sepIndex + 1);
+  assert.deepEqual(targets, [
+    'https://www.youtube.com/watch?v=survivorA',
+    'https://www.youtube.com/watch?v=survivorB',
+  ]);
+});
+
+test('buildYtdlpDownloadArgs: never falls back to sub.channelUrl as a download target', () => {
+  const config = makeConfig();
+  const result = args.buildYtdlpDownloadArgs(baseSub({ channelUrl: 'https://www.youtube.com/@somechannel' }), config, ['vid1']);
+  assert.ok(!result.includes('https://www.youtube.com/@somechannel'), 'the whole-channel URL must never appear as a download target');
+});
+
+test('buildYtdlpDownloadArgs: an id that fails isSafeVideoId is dropped from the target set, not passed through', () => {
+  const config = makeConfig();
+  const result = args.buildYtdlpDownloadArgs(baseSub(), config, ['goodId', '../etc/passwd', 'also-good-id']);
+  const sepIndex = result.indexOf('--');
+  const targets = result.slice(sepIndex + 1);
+  assert.deepEqual(targets, [
+    'https://www.youtube.com/watch?v=goodId',
+    'https://www.youtube.com/watch?v=also-good-id',
+  ]);
+});
+
+test('buildYtdlpDownloadArgs: throws when targetIds is empty (never silently builds a channel-wide or empty target)', () => {
+  const config = makeConfig();
+  assert.throws(() => args.buildYtdlpDownloadArgs(baseSub(), config, []));
+});
+
+test('buildYtdlpDownloadArgs: throws when every id in targetIds is unsafe (never falls back to any other target)', () => {
+  const config = makeConfig();
+  assert.throws(() => args.buildYtdlpDownloadArgs(baseSub(), config, ['../traversal', 'has space', 'semi;colon']));
+});
+
+test('buildYtdlpDownloadArgs: throws when targetIds is missing/non-array', () => {
+  const config = makeConfig();
+  assert.throws(() => args.buildYtdlpDownloadArgs(baseSub(), config, undefined));
+  assert.throws(() => args.buildYtdlpDownloadArgs(baseSub(), config, null));
+});
+
+test('buildYtdlpDownloadArgs: never places --abort-on-error (per-video failure isolation relies on yt-dlp\'s default continue-on-error)', () => {
+  const config = makeConfig();
+  const result = args.buildYtdlpDownloadArgs(baseSub(), config, ['vid1', 'vid2']);
+  assert.ok(!result.includes('--abort-on-error'));
 });
 
 // ---- --cookies: conditional on BOTH configured AND present on disk -------
@@ -131,10 +190,33 @@ test('buildYtdlpDownloadArgs: --cookies present/absent branches mirror buildYtdl
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-ytdlp-cookies-'));
   const cookiesFile = path.join(dir, 'cookies.txt');
   fs.writeFileSync(cookiesFile, 'secret-cookie-data');
-  const present = args.buildYtdlpDownloadArgs(baseSub(), makeConfig({ cookiesFile }));
+  const present = args.buildYtdlpDownloadArgs(baseSub(), makeConfig({ cookiesFile }), ['vid1']);
   assert.ok(present.includes('--cookies'));
-  const absent = args.buildYtdlpDownloadArgs(baseSub(), makeConfig({ cookiesFile: '/nope/cookies.txt' }));
+  const absent = args.buildYtdlpDownloadArgs(baseSub(), makeConfig({ cookiesFile: '/nope/cookies.txt' }), ['vid1']);
   assert.ok(!absent.includes('--cookies'));
+});
+
+// ---- C4: cookiesUsable -- the single shared "cookies actually usable" ----
+// ---- predicate (fs.existsSync), used by BOTH cookiesArgs and index.js's ---
+// ---- cookiesConfigured gate ------------------------------------------------
+
+test('cookiesUsable: true only when cookiesFile is set AND exists on disk', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-ytdlp-cookies-'));
+  const cookiesFile = path.join(dir, 'cookies.txt');
+  fs.writeFileSync(cookiesFile, 'secret-cookie-data');
+  assert.equal(args.cookiesUsable({ cookiesFile }), true);
+});
+
+test('cookiesUsable: false when cookiesFile is set but does not exist on disk (a set-but-unmounted path fails safe)', () => {
+  assert.equal(args.cookiesUsable({ cookiesFile: '/nonexistent/path/cookies.txt' }), false);
+});
+
+test('cookiesUsable: false when cookiesFile is unset/null/empty or config is missing', () => {
+  assert.equal(args.cookiesUsable({ cookiesFile: null }), false);
+  assert.equal(args.cookiesUsable({ cookiesFile: '' }), false);
+  assert.equal(args.cookiesUsable({}), false);
+  assert.equal(args.cookiesUsable(null), false);
+  assert.equal(args.cookiesUsable(undefined), false);
 });
 
 // ---- quality/format sanitization (T2-QA-folded; security-adjacent) -------
@@ -169,7 +251,7 @@ test('normalizeQuality: non-string input is neutralized to the safe default', ()
 
 test('a hostile quality value never becomes its own arg-array token in the download args', () => {
   const config = makeConfig();
-  const result = args.buildYtdlpDownloadArgs(baseSub({ format: 'video', quality: '--exec=whoami' }), config);
+  const result = args.buildYtdlpDownloadArgs(baseSub({ format: 'video', quality: '--exec=whoami' }), config, ['vid1']);
   assert.ok(!result.includes('--exec=whoami'));
   for (const el of result) {
     assert.ok(!el.includes('whoami'), `hostile quality leaked into arg: ${el}`);
@@ -254,7 +336,7 @@ test('resolveArchivePath: resolves to a dotfile under the download root', () => 
 
 test('buildYtdlpDownloadArgs: includes --restrict-filenames (defense-in-depth against a hostile video title)', () => {
   const config = makeConfig();
-  const result = args.buildYtdlpDownloadArgs(baseSub(), config);
+  const result = args.buildYtdlpDownloadArgs(baseSub(), config, ['vid1']);
   assert.ok(result.includes('--restrict-filenames'));
 });
 

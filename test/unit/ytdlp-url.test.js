@@ -8,7 +8,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { validateChannelUrl } = require('../../lib/ytdlp/url');
+const { validateChannelUrl, isSafeVideoId, buildWatchUrl } = require('../../lib/ytdlp/url');
 
 // ---- accepts a representative set of real YouTube URL shapes --------------
 
@@ -187,4 +187,74 @@ test('rejects a URL with a username but no password', () => {
 test('a normal URL with no userinfo is still accepted', () => {
   const result = validateChannelUrl('https://www.youtube.com/@x');
   assert.equal(result.ok, true);
+});
+
+// ---- C1: isSafeVideoId / buildWatchUrl (per-survivor download-scoping) ----
+//
+// These reuse the SAME `ID_PARAM_PATTERN`/`MAX_ID_PARAM_LENGTH` predicate
+// already exercised above via the `?v=`/`?list=` SF5 tests -- single-sourced,
+// not a second regex.
+
+test('isSafeVideoId: accepts a valid id (alphanumeric plus - and _)', () => {
+  assert.equal(isSafeVideoId('dQw4w9WgXcQ'), true);
+  assert.equal(isSafeVideoId('abc-DEF_123'), true);
+});
+
+test('isSafeVideoId: rejects an id containing a path-traversal sequence', () => {
+  assert.equal(isSafeVideoId('../etc/passwd'), false);
+  assert.equal(isSafeVideoId('..'), false);
+});
+
+test('isSafeVideoId: a "-"-leading id is charset-valid (option-injection is defended elsewhere: it is always embedded after "watch?v=" in a URL that itself never starts with "-")', () => {
+  // `isSafeVideoId` is the SAME charset/length predicate already used for
+  // `?v=`/`?list=` query params (`isSafeIdParam`/`ID_PARAM_PATTERN`), which
+  // does not itself anchor against a leading "-" -- unlike `validateChannelUrl`'s
+  // own `raw.startsWith('-')` check, which guards the WHOLE argv token. A
+  // leading "-" inside an id is harmless here because `buildWatchUrl` always
+  // prepends the fixed `https://www.youtube.com/watch?v=` prefix, so the
+  // resulting URL argv token can never itself start with "-".
+  assert.equal(isSafeVideoId('-exec'), true);
+});
+
+test('isSafeVideoId: rejects whitespace and shell metacharacters', () => {
+  assert.equal(isSafeVideoId('abc def'), false);
+  assert.equal(isSafeVideoId('abc;rm -rf /'), false);
+  assert.equal(isSafeVideoId('abc\ndef'), false);
+  assert.equal(isSafeVideoId('abc$(whoami)'), false);
+});
+
+test('isSafeVideoId: rejects an oversized id (over MAX_ID_PARAM_LENGTH)', () => {
+  assert.equal(isSafeVideoId('a'.repeat(65)), false);
+  assert.equal(isSafeVideoId('a'.repeat(64)), true);
+});
+
+test('isSafeVideoId: rejects empty/non-string input, never throws', () => {
+  assert.doesNotThrow(() => isSafeVideoId(''));
+  assert.equal(isSafeVideoId(''), false);
+  assert.equal(isSafeVideoId(null), false);
+  assert.equal(isSafeVideoId(undefined), false);
+  assert.equal(isSafeVideoId(42), false);
+});
+
+test('buildWatchUrl: builds a canonical watch URL for a safe id', () => {
+  assert.equal(buildWatchUrl('dQw4w9WgXcQ'), 'https://www.youtube.com/watch?v=dQw4w9WgXcQ');
+});
+
+test('buildWatchUrl: returns null (never a malformed/partial URL) for an unsafe id', () => {
+  assert.equal(buildWatchUrl('../etc/passwd'), null);
+  assert.equal(buildWatchUrl('abc def'), null);
+  assert.equal(buildWatchUrl(''), null);
+  assert.equal(buildWatchUrl(null), null);
+  assert.equal(buildWatchUrl(undefined), null);
+});
+
+test('buildWatchUrl: the host is always the hardcoded www.youtube.com, never derived from input', () => {
+  const result = buildWatchUrl('dQw4w9WgXcQ');
+  assert.ok(result.startsWith('https://www.youtube.com/watch?v='));
+});
+
+test('buildWatchUrl: a "-"-leading id is embedded safely -- the resulting URL argv token never itself starts with "-"', () => {
+  const result = buildWatchUrl('-exec');
+  assert.equal(result, 'https://www.youtube.com/watch?v=-exec');
+  assert.ok(!result.startsWith('-'), 'the URL token itself must never start with "-", regardless of the id');
 });

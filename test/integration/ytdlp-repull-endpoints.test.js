@@ -4,11 +4,15 @@
 // (re-pull-all) and `POST /api/subscriptions/:id/repull` (re-pull-one),
 // registered by `registerRoutes` inside the same `isEnabled` gate as every
 // other subscriptions route (AC 15-16, 33), plus `startBackground`'s
-// `db.folders` registration (AC 17). `run.runList`/`run.runDownload` are
-// mocked -- no real yt-dlp binary or network is ever touched. Uses a fresh
-// `express()` app per test (the same same-process pattern already
-// established in ytdlp-disabled-noop.test.js) rather than booting the real
-// server.js, so this file needs no DATA_DIR isolation dance.
+// download-directory creation and the module-owned `extraScanRoots` scan-root
+// mechanism (AC 17, C3+C7 T4 fix round -- `startBackground` no longer writes
+// `db.folders` at all; see the `extraScanRoots` tests below and
+// server.js's `runScanDirectories` (currentFolders merge) for the
+// replacement). `run.runList`/`run.runDownload` are mocked -- no real
+// yt-dlp binary or network is ever touched. Uses a fresh `express()` app per
+// test (the same same-process pattern already established in
+// ytdlp-disabled-noop.test.js) rather than booting the real server.js, so
+// this file needs no DATA_DIR isolation dance.
 
 const os = require('node:os');
 const fs = require('node:fs');
@@ -129,9 +133,9 @@ test('POST /api/subscriptions/:id/repull polls only that one subscription (202),
   }
 });
 
-// ---- AC17: db.folders registration on enable -------------------------------
+// ---- AC17 / C3+C7: module-owned scan root on enable, NEVER db.folders -----
 
-test('startBackground registers the download dir into db.folders (idempotently) and creates it on disk', async () => {
+test('startBackground creates the download directory on disk but NEVER touches db.folders (C3+C7: module-owned scan root)', async () => {
   const downloadDir = path.join(tmpDir, 'downloads-subdir');
   const config = enabledConfig({ FILETUBE_YTDLP_DOWNLOAD_DIR: downloadDir });
   let db = { folders: ['/existing/media'] };
@@ -149,25 +153,47 @@ test('startBackground registers the download dir into db.folders (idempotently) 
 
   try {
     ytdlp.startBackground(deps, config);
-    // ensureDownloadDirRegistered's updateDatabase call is fire-and-forget
-    // from startBackground's perspective -- give it a tick to land.
     await new Promise((resolve) => setImmediate(resolve));
 
     assert.equal(fs.existsSync(downloadDir), true, 'the download directory must be created on disk');
-    assert.ok(db.folders.includes(downloadDir), 'the download dir must be registered into db.folders');
-    assert.ok(db.folders.includes('/existing/media'), 'an existing folder must not be clobbered');
+    assert.deepEqual(db.folders, ['/existing/media'], 'db.folders must never be written to by startBackground (C3+C7)');
+    assert.deepEqual(updateDatabaseCalls, [], 'startBackground must never call updateDatabase at all');
 
-    // Calling it again must be idempotent -- no duplicate entry, no extra
-    // meaningful write.
-    const callsBefore = updateDatabaseCalls.length;
+    // Calling it again must remain a no-op with respect to db.folders/updateDatabase.
     ytdlp.startBackground(deps, config);
     await new Promise((resolve) => setImmediate(resolve));
-    const occurrences = db.folders.filter((f) => f === downloadDir).length;
-    assert.equal(occurrences, 1, 'the download dir must never be registered twice');
-    assert.ok(updateDatabaseCalls.length >= callsBefore);
+    assert.deepEqual(db.folders, ['/existing/media']);
+    assert.deepEqual(updateDatabaseCalls, []);
+
+    // The module-owned scan root mechanism (extraScanRoots) is what the
+    // scanner merges instead -- proven independently here.
+    assert.deepEqual(ytdlp.extraScanRoots(config), [path.resolve(downloadDir)]);
   } finally {
     ytdlp.armYtdlpTimer(ytdlp.parseYtdlpConfig({})); // clear the timer this armed
   }
+});
+
+// D1 (T4 fix round #2): extraScanRoots gates on fs.existsSync(downloadDir),
+// NOT on config.enabled. These two cases were previously a single test
+// asserting "disabled -> []" unconditionally -- that wording no longer holds
+// when the directory happens to exist (see the D1-preserved case below,
+// which is the actual acceptance-critical behavior change).
+
+test('D1: extraScanRoots returns [] when disabled AND the download dir does not exist on disk (fresh-install/never-enabled case)', () => {
+  const neverCreatedDir = path.join(tmpDir, 'never-created-subdir');
+  const disabledConfig = ytdlp.parseYtdlpConfig({ FILETUBE_YTDLP_DOWNLOAD_DIR: neverCreatedDir });
+  assert.equal(fs.existsSync(neverCreatedDir), false, 'sanity: this case requires the dir to be absent');
+  assert.deepEqual(ytdlp.extraScanRoots(disabledConfig), []);
+});
+
+test('D1: extraScanRoots STILL returns the resolved dir when disabled but the dir EXISTS on disk (was-enabled-then-disabled-with-content case)', () => {
+  const existingDir = fs.mkdtempSync(path.join(tmpDir, 'already-exists-'));
+  const disabledConfig = ytdlp.parseYtdlpConfig({ FILETUBE_YTDLP_DOWNLOAD_DIR: existingDir });
+  assert.deepEqual(
+    ytdlp.extraScanRoots(disabledConfig),
+    [path.resolve(existingDir)],
+    'a disabled module must still contribute a download dir that exists with content -- disabling must never destroy it (Dean\'s D1 decision)',
+  );
 });
 
 test('startBackground never touches db.folders or creates a directory when disabled', async () => {
@@ -191,4 +217,102 @@ test('startBackground never touches db.folders or creates a directory when disab
   assert.deepEqual(calls, []);
   assert.equal(fs.existsSync(downloadDir), false);
   assert.equal(ytdlp.currentYtdlpPollTimer(), null);
+});
+
+// ---- D2: migrateStaleDownloadDirFromFolders (deterministic, fake deps) -----
+
+test('D2: migrateStaleDownloadDirFromFolders removes a matching downloadDir entry from db.folders and leaves the rest alone', async () => {
+  const downloadDir = path.join(tmpDir, 'stale-download-dir');
+  const config = ytdlp.parseYtdlpConfig({ FILETUBE_YTDLP_DOWNLOAD_DIR: downloadDir });
+  let db = { folders: ['/existing/media', downloadDir, '/another/kept/folder'] };
+  const deps = {
+    loadDatabase: () => db,
+    updateDatabase: (mutatorFn) => Promise.resolve(mutatorFn(db)),
+  };
+
+  await ytdlp.migrateStaleDownloadDirFromFolders(deps, config);
+
+  assert.deepEqual(db.folders, ['/existing/media', '/another/kept/folder'], 'only the stale downloadDir entry must be removed');
+});
+
+test('D2: migrateStaleDownloadDirFromFolders never calls updateDatabase when db.folders has no matching entry (clean db.json stays untouched)', async () => {
+  const downloadDir = path.join(tmpDir, 'stale-download-dir-2');
+  const config = ytdlp.parseYtdlpConfig({ FILETUBE_YTDLP_DOWNLOAD_DIR: downloadDir });
+  let db = { folders: ['/existing/media'] };
+  const updateDatabaseCalls = [];
+  const deps = {
+    loadDatabase: () => db,
+    updateDatabase: (mutatorFn) => {
+      updateDatabaseCalls.push(1);
+      return Promise.resolve(mutatorFn(db));
+    },
+  };
+
+  await ytdlp.migrateStaleDownloadDirFromFolders(deps, config);
+
+  assert.deepEqual(updateDatabaseCalls, [], 'a clean db.json must never take the updateDatabase lock');
+  assert.deepEqual(db.folders, ['/existing/media']);
+});
+
+test('D2: migrateStaleDownloadDirFromFolders is idempotent -- a second call after the entry is gone is a no-op', async () => {
+  const downloadDir = path.join(tmpDir, 'stale-download-dir-3');
+  const config = ytdlp.parseYtdlpConfig({ FILETUBE_YTDLP_DOWNLOAD_DIR: downloadDir });
+  let db = { folders: [downloadDir] };
+  const updateDatabaseCalls = [];
+  const deps = {
+    loadDatabase: () => db,
+    updateDatabase: (mutatorFn) => {
+      updateDatabaseCalls.push(1);
+      return Promise.resolve(mutatorFn(db));
+    },
+  };
+
+  await ytdlp.migrateStaleDownloadDirFromFolders(deps, config);
+  assert.deepEqual(db.folders, []);
+  assert.equal(updateDatabaseCalls.length, 1);
+
+  await ytdlp.migrateStaleDownloadDirFromFolders(deps, config);
+  assert.deepEqual(db.folders, [], 'still empty after the second call');
+  assert.equal(updateDatabaseCalls.length, 1, 'the second call must never re-enter updateDatabase -- nothing left to migrate');
+});
+
+test('F2: migrateStaleDownloadDirFromFolders never throws when deps.updateDatabase throws SYNCHRONOUSLY', async () => {
+  const downloadDir = path.join(tmpDir, 'stale-download-dir-4');
+  const config = ytdlp.parseYtdlpConfig({ FILETUBE_YTDLP_DOWNLOAD_DIR: downloadDir });
+  const db = { folders: [downloadDir] };
+  const deps = {
+    loadDatabase: () => db,
+    // A synchronous throw thrown during the CALL ITSELF (not a rejected
+    // promise it returns) -- e.g. a real `updateDatabase` throwing while
+    // acquiring its lock before it ever gets to returning a promise. The
+    // documented contract is "never throws; log and try again next start",
+    // so this must be caught and swallowed, not propagated.
+    updateDatabase: () => {
+      throw new Error('synchronous updateDatabase failure');
+    },
+  };
+
+  // Must resolve (not reject/throw) despite the synchronous throw above.
+  await assert.doesNotReject(ytdlp.migrateStaleDownloadDirFromFolders(deps, config));
+  // The stale entry is still present -- the migration is safe to retry on
+  // the next start, per the "try again next start" contract.
+  assert.deepEqual(db.folders, [downloadDir]);
+});
+
+test('F2: startBackground never throws when migrateStaleDownloadDirFromFolders hits a synchronous updateDatabase throw', () => {
+  const downloadDir = path.join(tmpDir, 'stale-download-dir-5');
+  const config = ytdlp.parseYtdlpConfig({ FILETUBE_YTDLP_ENABLED: '1', FILETUBE_YTDLP_DOWNLOAD_DIR: downloadDir });
+  const db = { folders: [downloadDir] };
+  const deps = {
+    loadDatabase: () => db,
+    updateDatabase: () => {
+      throw new Error('synchronous updateDatabase failure');
+    },
+  };
+
+  // `startBackground` calls `migrateStaleDownloadDirFromFolders` unawaited
+  // with no call-site `.catch` -- a synchronous throw escaping the migration
+  // function would otherwise crash the startup path. Asserting the call
+  // itself never throws is the regression test for that startup-crash risk.
+  assert.doesNotThrow(() => ytdlp.startBackground(deps, config));
 });

@@ -1,113 +1,145 @@
-# Principal Engineer — Design for v1.10.0 (feat/audio-art-and-related)
+# Principal Engineer — T4 Fix-Round Design Note (SCOPED)
 
-You are the Principal Engineer. Produce the technical design for TWO independent,
-additive media-experience features that ship as SEPARATE commits. Write your design
-into the exec plan's `## Design` section and set `artifacts.design` in state.
+Feature: **Optional yt-dlp subscription integration module** (target v1.11.0),
+branch `feat/ytdlp-integration`. You are being called for a **narrow, mid-implementation
+design decision**, NOT discovery and NOT a whole-module re-design. Task **T4** (the
+download/poll loop, committed at `d0f53a0`) went through its first two-reviewer gate
+(the quality-assurance agent + a separate adversarial `/code-review`, 11 findings) and
+came back **CHANGES REQUESTED**. Both reviewers **independently confirmed the same
+architectural critical (C1)**. C1 needs a design decision from you before the SDE can
+remediate. C2–C7 are localized fixes the SDE will implement against your note; you only
+need to (a) DECIDE the C1 mechanism and (b) reconcile C3+C7 into ONE folder-registration
+approach.
 
-## First, read (self-contained — you share no context with the EM)
+## Read first (grounding)
 
-- `docs/exec-plans/active/2026-07-05-audio-art-and-related.md` — the requirements + tagged AC you are designing to. Read it fully (Goal, Scope, Out-of-scope, Constraints, both Feature sections, Decision log, Open questions).
-- `.state/feature-state.json` — the `grounding` block (exact file:line anchors) and constraints.
-- `docs/ARCHITECTURE.md`, `docs/CONTRIBUTING.md`, `docs/RELIABILITY.md`.
-- `public/watch.html` (`#media-player` :119 w/ `playsinline`; `#audio-visualizer` :139-145; `#player-wrapper` :98).
-- `public/js/watch.js` — `setupPlayer()` (:285-344; audio branch :288-295), `loadRelatedFiles()` (:710-753), `setupMediaSession()` (:249-265), the v1.2.2 background-audio rationale (:242-248).
-- `public/js/common.js` — the UMD dual-export tail (`:483`) and `resolveChannelName` (`:251-255`, resolves `mapped name -> item.artist -> item.folderName -> 'Library'`). A few `test/unit/*.test.js` (e.g. `clamp-position-state.test.js`, `star-rating.test.js`) to model the test style.
-- `public/css/style.css` — the `#audio-visualizer` / `.audio-player-visual` styling and the `.player-container` rules, so your CSS-background approach layers correctly.
-- `server.js` `GET /thumbnail/:id` (:1605) and `GET /api/videos` (:1432) for the data shape.
+- `.state/feature-state.json` — the `tasks[T4].review_result` field has the full,
+  ranked C1–C7 triage + the low/tech-debt tail + the regression tests the fix must add.
+  Also see `locked_decisions` (esp. **D2** members-only fail-safe, **D3** delete-stays-gone)
+  and `hard_constraint` (OPTIONAL / ADDITIVE / disabled == byte-identical to today).
+- `docs/exec-plans/active/2026-07-05-yt-dlp-integration-module.md` — the exec plan
+  (## Design + acceptance criteria; you will append a **## T4 Fix-Round Design Note**).
+- `docs/ARCHITECTURE.md`, `docs/CONTRIBUTING.md`, `docs/RELIABILITY.md` — spawn try/catch +
+  graceful-degrade + keep binaries out of the core test suite; single serialized
+  `updateDatabase` writer; poll-and-defer premiere model.
+- Code you are reasoning about (do NOT edit — design only):
+  - `lib/ytdlp/index.js` — `runSubscriptionCycle` (the survivorCount loop + the single
+    `run.runDownload(sub, config)` at **line 170**), `quarantineEscapedDownloads` (line 87),
+    `ensureDownloadDirRegistered` (line 472), `startBackground` (line 503, early-returns
+    when disabled), the `cookiesConfigured = Boolean(config && config.cookiesFile)` at line 140.
+  - `lib/ytdlp/args.js` — `buildYtdlpListArgs` / `buildYtdlpDownloadArgs` (both take only
+    `sub.channelUrl`, emit `--download-archive` + the positional URL after `--`; NO
+    `--match-filter` / `--playlist-items` / per-id list), `cookiesArgs` (attaches `--cookies`
+    whenever the file EXISTS, independent of any toggle), `resolveChannelDir`,
+    `realpathUnderChannelDir`, `OUTPUT_TEMPLATE`.
+  - `lib/ytdlp/url.js` — `validateChannelUrl`; ids/params already constrained to
+    `/^[A-Za-z0-9_-]+$/` and bounded length (relevant to safe watch-URL construction).
+  - `lib/ytdlp/rules.js` — `isArchived` (case-sensitive needle, C2), `shouldSkip`,
+    `shouldDeferPremiere`, `parseYtdlpVideoList`.
+  - `server.js` — `POST /api/config` at **line 1226** rebuilds `db.folders = validFolders`
+    wholesale (line 1257, `fs.existsSync`-filtered); `GET /api/config` at line 1220;
+    `scanDirectories()` call site at line 1274. This is the C3/C7 blast radius.
 
-## The coordinator has resolved the two open questions to DEFAULTS — design to these
+## Decision 1 — C1: the download-scoping mechanism (THE decision)
 
-Neither open question is a product fork. Proceed with:
-- **F1:** design **approach (b)** — CSS background-image. (Dean's `#audio-visualizer` fallback is pre-approved; his on-device pass is the arbiter.)
-- **F2:** signals = **title/filename token overlap (primary) + shared-folder boost (secondary)**, fallback to most-recent when **fewer than N=6** items score as similar. Dean may redirect F2 weighting later but we are NOT blocking on it.
+**The bug:** `run.runDownload(sub, config)` downloads the WHOLE channel URL. The pure
+filters `isArchived` / `shouldDeferPremiere` / `shouldSkip` only decrement/gate an integer
+`survivorCount`, whose ONLY effect is `if (survivorCount === 0) return; else runDownload(entire channel)`.
+So skip/defer decisions are **advisory** — they decide WHETHER any download runs, never
+WHICH videos. `--download-archive` is the only bound on what yt-dlp actually fetches. Two
+confirmed breaches:
 
-## Feature 1 — Audio thumbnail-as-background art (feasibility-gated)
+- **(a) Premiere/live hang:** a channel with one public survivor A + one `is_live` video B
+  → `shouldDeferPremiere(B)=true` so B is un-counted, but the whole-channel `runDownload`
+  still fetches B (not archived) → yt-dlp records the live broadcast until
+  `DEFAULT_DOWNLOAD_TIMEOUT_MS` (60 min) SIGKILL; the killed capture is never archived →
+  recurs every cycle → because `runPoll` is sequential, that one sub wedges the whole poll
+  loop ~60 min/cycle. **This is the exact hang poll-and-defer existed to prevent.**
+- **(b) Members-only bypass (violates D2):** with a cookies file mounted but
+  `allowMembersOnly=false`, `shouldSkip` marks the `subscriber_only` video `skip:true`, yet
+  `cookiesArgs` attaches `--cookies` whenever the file EXISTS → the single whole-channel
+  `runDownload` authenticates and downloads the members-only content the operator disabled.
 
-**Key fact:** `poster` is ALREADY shipped (`watch.js:288-295`) and IS exactly what
-produces the iOS black-on-playback (poster vanishes once playback starts). So the
-poster approach ALONE is **insufficient** — design approach **(b)**:
+**Your job:** pick and specify the mechanism that makes skip/defer **structurally binding
+on the child process**. Options (coordinator's recommendation is **option 1**):
 
-- A **CSS `background-image`** (the item's thumbnail) on `#player-wrapper` (or a
-  dedicated art layer inside it) sitting BEHIND the audio-playing `<video>`,
-  framed `background-size: cover` (+ center) so it reads like a video frame, not
-  letterboxed art. Ensure the `<video>` area is transparent/lets the background
-  show for audio (the `<video>` has no video track, so it should not paint opaque
-  black over the art — verify how to achieve that: e.g. the background lives on
-  the wrapper and the audio `<video>` is sized/positioned so its black fill
-  doesn't cover the art, OR the art layer sits above a `background:transparent`
-  region — you decide the exact layering, but it must be robust).
-- Because real iOS can't be tested here, design so that:
-  1. the CSS-background approach is **SAFE and correct on desktop/PWA** and
-     degrades cleanly (no broken layout, no black-on-black, no video regression);
-  2. the iOS uncertainty and the accepted fallback are **documented explicitly** —
-     if iOS still paints black over the background, the existing `#audio-visualizer`
-     (vinyl/cover-art) view is shown as the graceful degrade;
-  3. **BOTH outcomes are acceptable** and Dean's on-device `[MANUAL]` pass decides
-     which ships — your design must not depend on a specific iOS result.
-- **MUST NOT regress:** video-frame display (only the audio path changes; no
-  overlay/dimming bleeding onto video), `playsinline`/`webkit-playsinline`, the
-  v1.2.2 iOS background-audio behavior (no custom Media Session action handlers),
-  or the lock-screen Media Session artwork (`setupMediaSession` — a SEPARATE surface).
-- Include a **pure `[UNIT]`-testable helper** that resolves the audio background-art
-  image URL for an item (real thumbnail vs SVG-placeholder decision via
-  `hasThumbnail`), UMD dual-exported so it's `node:test`-able. Specify its unit tests.
-- Decide whether you keep BOTH the CSS-background art AND the `#audio-visualizer`
-  as a runtime fallback, or pick one — and state exactly how the fallback is
-  selected. State the feasibility finding/approach explicitly in the Design section
-  (a required deliverable per the AC).
+1. **(recommended) Per-survivor watch URLs.** Stop passing the channel URL to `runDownload`.
+   Build explicit `https://www.youtube.com/watch?v=<id>` targets from the survivor id set the
+   JS filters already produce, and pass those as the download targets (one invocation with N
+   positional URLs, or per-id — you decide, weighing spawn count on a home server vs. failure
+   isolation). A skipped members-only id or deferred premiere id is then simply never handed
+   to yt-dlp. Composes with `--download-archive` for dedup. Ids are already constrained by
+   `url.js` (`/^[A-Za-z0-9_-]+$/`, ≤64) so watch-URL construction is safe; keep the `--`
+   separator + host-allowlist discipline. **Note `buildYtdlpDownloadArgs` currently takes the
+   sub's `channelUrl` — this needs a signature/shape change to accept a target list; specify
+   the new shape.**
+2. `--match-filter` expression derived from the SAME rules. Declarative but must EXACTLY
+   mirror the JS rules or drift; still a channel-wide crawl; harder to keep members-only +
+   premiere logic in sync. **Not recommended (two sources of truth).**
+3. `--playlist-items` by index — fragile (indices shift between list and download passes).
+   **Reject.**
 
-## Feature 2 — related items = fuzzy-similar (rankRelated)
+**Cookies-toggle interaction to resolve explicitly in your note:** confirm that public
+surviving items may STILL attach `--cookies` (public items can need cookies for
+age-gate/region — that's fine), while the toggle purely controls WHICH ids survive (it does,
+via `shouldSkip`) — option 1 largely resolves breach (b) by never targeting a skipped id.
+Keep the existing SF1 cookies-redaction discipline. Also decide whether C4 (below) —
+`cookiesConfigured` should reflect file-EXISTS, not just path-set, sharing ONE
+`fs.existsSync` helper with `cookiesArgs` — is a pure SDE fix or needs any shape guidance
+from you.
 
-Design a **pure, exported, unit-testable** `rankRelated(currentItem, allItems)
--> ordered list`:
+## Decision 2 — reconcile C3 + C7 into ONE folder-registration approach
 
-- **UMD dual-exported** like `common.js`'s existing helpers; **fed by the existing
-  `/api/videos`** — NO new server endpoint, no new DB fields.
-- **Default signals:** title/filename token overlap (primary) + shared-`folderName`
-  boost (secondary). You finalize the exact scoring: tokenization rules, stopword
-  handling, how filename vs. title tokens combine, the shared-folder weight, and a
-  **deterministic, stable tie-break** (e.g. equal score -> newer `addedAt` first) so
-  ordering never flaps.
-- **Self-exclusion:** the current item is never in its own list.
-- **Fallback threshold N=6:** when fewer than 6 items score as genuinely similar,
-  fall back to / pad with most-recent so the list is **never empty and never worse
-  than today**. Keep the slice length consistent with today (10).
-- **Home:** a pure helper usable from `loadRelatedFiles` (`~710-753`) — pick
-  `common.js` vs. a new `public/js/*.js` module and justify briefly; make sure it's
-  loaded as a `<script>` on `watch.html` if it's a new file.
-- **Keep it simple** — basic tokenize + score, no fuzzy-match library, no inverted
-  index, no ML.
-- Specify the **`[UNIT]` tests:** similar-ranks-above-unrelated; self-excluded;
-  deterministic + stable tie-break (repeated calls identical); fallback-below-
-  threshold (never empty, degrades to recent); edge cases (empty `allItems`, single
-  item = only the current item, items missing optional fields like tags/artist —
-  no throw, self-exclusion + never-empty preserved).
+- **C3 (HIGH):** `downloadDir` is injected into the client-owned `db.folders` only once, by
+  `ensureDownloadDirRegistered` at process start. `POST /api/config` (server.js:1226) rebuilds
+  `db.folders` solely from the submitted array (line 1257) and wholesale-replaces it — any
+  save omitting `downloadDir`, or made while the download volume is transiently unmounted,
+  **evicts it** → the scanner skips the download tree → survivors never indexed (AC17 broken)
+  until restart.
+- **C7 (MEDIUM):** once enabled+registered, disabling the module never de-registers
+  `downloadDir` (startBackground early-returns at line 504) → the core scanner keeps indexing
+  it and `GET /api/config` keeps listing it → the "disabled == byte-identical to a
+  never-enabled install" guarantee breaks; a folder the operator never knowingly added stays
+  live with the feature off.
 
-## Cross-cutting constraints (both features)
+Both point at the same root cause: **the module injects its download root into the
+client-owned `db.folders`.** Decide ONE approach and specify it. Lean toward the cleaner
+option that resolves both at once — e.g. the scanner becomes aware of `downloadDir` via a
+**module-owned path independent of `db.folders`** (so a `POST /api/config` save can't evict
+it and disabling structurally removes it), OR keep `db.folders` injection but re-register
+defensively before each post-download scan AND de-register on disabled startup. Whatever you
+pick must preserve: (i) the disabled path stays byte-identical to a never-enabled install;
+(ii) `GET /api/config` must not surface a module folder the operator never added when the
+module is off; (iii) no change to the existing scanner's per-folder semantics; (iv) all
+writes still go through the single serialized `updateDatabase` writer. If your approach
+touches `server.js` core scan/config code, keep it minimal + additive and call out exactly
+which anchors change.
 
-- Additive / zero-regression; every change ships with tests; **lint 0 errors** (11
-  allowed "defined but never used" exported-global warnings are the baseline);
-  keep the **217+ test suite green**. `node:test`/`node:assert` only, no new deps.
-- Any npm/node command needs `export PATH="/home/coder/.local/share/fnm/node-versions/v24.14.0/installation/bin:$PATH"` first (fnm not auto-sourced).
-- The yt-dlp future module is OUT OF SCOPE — do not touch it.
+## What to produce (design only — do NOT write code or tests)
 
-## Deliverables
+1. Append a **## T4 Fix-Round Design Note** section to
+   `docs/exec-plans/active/2026-07-05-yt-dlp-integration-module.md` containing:
+   - The chosen C1 mechanism, WHY, and the concrete `buildYtdlpDownloadArgs` (and any
+     `runDownload`) **signature/shape change** — enough for the SDE to implement without
+     re-deciding. Include how survivor ids flow from the JS filters into the target list, and
+     how it composes with `--download-archive`.
+   - The cookies-toggle resolution (public survivors keep cookies; skipped ids never target;
+     C4 file-exists helper guidance).
+   - The single reconciled C3+C7 folder-registration approach, with the exact server.js /
+     index.js anchors that change and the invariants it preserves.
+   - A short "leave intact" list: the parts both reviewers confirmed SOLID — no lock held
+     across the download await, no unhandled rejection, SF1 status redaction, disabled ==
+     provable no-op — so the SDE doesn't churn them.
+   - A one-line note on each of C2, C5, C6 confirming they are pure SDE fixes needing no
+     design input (or flag any that do).
+2. Update `docs/ARCHITECTURE.md` ONLY if the folder-registration mechanism changes how the
+   scanner discovers the download tree (new module-owned path, etc.).
+3. Do NOT implement. Do NOT touch `lib/ytdlp/*.js`, `server.js`, or any test file.
 
-1. Write the `## Design` section of `docs/exec-plans/active/2026-07-05-audio-art-and-related.md`:
-   - F1: the stated feasibility approach/finding, the exact CSS layering + fallback
-     selection, the video/playsinline/background-audio/lock-screen non-regression
-     argument, and the background-art-URL helper + its unit tests.
-   - F2: the final signal set + scoring formula + tie-break + N, the pure fn's home,
-     the `loadRelatedFiles` wiring, and the unit test list.
-   - Update `docs/ARCHITECTURE.md` only if you introduce a genuinely new component
-     (a new shared client module counts as a small note; a CSS-only art layer likely
-     does not).
-2. Set `artifacts.design` in `.state/feature-state.json` to the exec plan path.
-3. **Propose the task breakdown** (the EM finalizes it) — likely: (T1) F2 rankRelated
-   helper + `loadRelatedFiles` wiring with strong unit tests (gets the QA gate / a
-   code-review pass if you find the scoring subtle); (T2) F1 CSS-background art +
-   `#audio-visualizer` fallback + the URL helper, mostly `[MANUAL]` + build-verify.
-   Keep F1 and F2 as SEPARATE commits/tasks.
+**If your C1 decision diverges from option 1**, say so explicitly and state the tradeoff —
+the coordinator needs to flag it to Dean before implementation proceeds.
 
-Do NOT write application code — this is the design stage. Specify what changes,
-where, and how it's tested; the software-developer implements per task afterward.
+Environment note: any `node`/`npm` command in this repo needs
+`export PATH="/home/coder/.local/share/fnm/node-versions/v24.14.0/installation/bin:$PATH"`
+first (fnm is not auto-sourced) — though this is a design task, so you likely won't run the
+suite.

@@ -199,11 +199,11 @@ test('buildYtdlpDownloadArgs + a failed run: the real cookies path from config n
   const config = { downloadDir, cookiesFile };
   const sub = { channelUrl: 'https://www.youtube.com/@x', name: 'x', format: 'video', quality: 'best' };
 
-  const builtArgs = buildYtdlpDownloadArgs(sub, config);
+  const builtArgs = buildYtdlpDownloadArgs(sub, config, ['vid1']);
   assert.ok(builtArgs.includes(cookiesFile), 'sanity: the real path IS in the raw args before redaction');
 
   const spawnChild = stubSpawn();
-  const resultPromise = run.runDownload(sub, config);
+  const resultPromise = run.runDownload(sub, config, ['vid1']);
   const child = spawnChild();
   child.emit('close', 1, null);
   const result = await resultPromise;
@@ -268,7 +268,7 @@ test('runDownload arms a NON-ZERO download timeout (DEFAULT_DOWNLOAD_TIMEOUT_MS)
     const downloadDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-ytdlp-dl-'));
     const config = { downloadDir, cookiesFile: null };
     const sub = { channelUrl: 'https://www.youtube.com/@x', name: 'x', format: 'video', quality: 'best' };
-    const resultPromise = run.runDownload(sub, config);
+    const resultPromise = run.runDownload(sub, config, ['vid1']);
     const child = spawnChild();
     child.emit('close', 0, null);
     result = await resultPromise;
@@ -320,7 +320,7 @@ test('runDownload uses child_process.spawn (arg-array, no shell), NOT execFile -
   const downloadDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-ytdlp-dl-'));
   const config = { downloadDir, cookiesFile: null };
   const sub = { channelUrl: 'https://www.youtube.com/@x', name: 'x', format: 'audio', quality: 'best' };
-  const resultPromise = run.runDownload(sub, config);
+  const resultPromise = run.runDownload(sub, config, ['vid1']);
   const child = spawnChild();
   child.emit('close', 0, null);
   await resultPromise;
@@ -342,7 +342,7 @@ test('runDownload survives a stderr progress stream far larger than the old 10MB
   const downloadDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-ytdlp-dl-'));
   const config = { downloadDir, cookiesFile: null };
   const sub = { channelUrl: 'https://www.youtube.com/@x', name: 'x', format: 'video', quality: 'best' };
-  const resultPromise = run.runDownload(sub, config);
+  const resultPromise = run.runDownload(sub, config, ['vid1']);
   const child = spawnChild();
   // Simulate a much-larger-than-10MB stream of progress lines on stderr --
   // this must never itself cause a failure (there is no buffer to overflow).
@@ -374,7 +374,7 @@ test('runDownload: an "error" event on child.stderr settles the promise (never h
   const downloadDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-ytdlp-dl-'));
   const config = { downloadDir, cookiesFile: null };
   const sub = { channelUrl: 'https://www.youtube.com/@x', name: 'x', format: 'video', quality: 'best' };
-  const resultPromise = run.runDownload(sub, config);
+  const resultPromise = run.runDownload(sub, config, ['vid1']);
   const child = spawnChild();
   assert.doesNotThrow(() => child.stderr.emit('error', new Error('stream boom')));
   const result = await resultPromise;
@@ -401,7 +401,7 @@ test('runDownload: a non-zero exit code resolves a structured, redacted failure 
   const downloadDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-ytdlp-dl-'));
   const config = { downloadDir, cookiesFile: null };
   const sub = { channelUrl: 'https://www.youtube.com/@x', name: 'x', format: 'video', quality: 'best' };
-  const resultPromise = run.runDownload(sub, config);
+  const resultPromise = run.runDownload(sub, config, ['vid1']);
   const child = spawnChild();
   child.emit('close', 1, null);
   const result = await resultPromise;
@@ -416,7 +416,7 @@ test('runDownload: a synchronous spawn ENOENT (binary missing) resolves cleanly,
   const downloadDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-ytdlp-dl-'));
   const config = { downloadDir, cookiesFile: null };
   const sub = { channelUrl: 'https://www.youtube.com/@x', name: 'x', format: 'video', quality: 'best' };
-  const result = await run.runDownload(sub, config);
+  const result = await run.runDownload(sub, config, ['vid1']);
   assert.equal(result.ok, false);
 });
 
@@ -425,7 +425,7 @@ test('runDownload: an "error" event from the child (e.g. ENOENT after spawn) res
   const downloadDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-ytdlp-dl-'));
   const config = { downloadDir, cookiesFile: null };
   const sub = { channelUrl: 'https://www.youtube.com/@x', name: 'x', format: 'video', quality: 'best' };
-  const resultPromise = run.runDownload(sub, config);
+  const resultPromise = run.runDownload(sub, config, ['vid1']);
   const child = spawnChild();
   child.emit('error', Object.assign(new Error('spawn yt-dlp ENOENT'), { code: 'ENOENT' }));
   const result = await resultPromise;

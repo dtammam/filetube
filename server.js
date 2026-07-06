@@ -927,7 +927,32 @@ async function scanDirectories() {
 // Scan directories and sync with database
 async function runScanDirectories() {
   const db = loadDatabase();
-  const currentFolders = db.folders || [];
+  // Merge in the yt-dlp module's own scan root (C3+C7 + D1 reframe + E1 fix,
+  // T4 fix rounds #2/#3): `extraScanRoots(ytdlpConfig)` returns
+  // `[path.resolve(downloadDir)]` when **`isEnabled(config)` OR
+  // `fs.existsSync(downloadDir)`** (an OR-gate, not either condition alone),
+  // and `[]` only when `downloadDir` is unset/blank, or the module has NEVER
+  // been enabled AND the dir doesn't exist. Consequences: a never-enabled
+  // install (the dir was never created) is byte-identical to
+  // `db.folders || []`, same as before. An ENABLED module ALWAYS contributes
+  // `downloadDir` here, even during a TRANSIENT unmount (NFS/external-drive
+  // unmount, rename, EACCES) -- so it lands in `missingRoots` below and the
+  // mount-loss guard in `selectPrunableIds` protects its ids' metadata,
+  // thumbnails, transcode sidecars, and `db.progress` entries from
+  // `pruneMissing` instead of them being silently reaped while still enabled
+  // (E1: gating this purely on `fs.existsSync` — dropping `config.enabled`
+  // from the decision — reopened exactly that mount-loss data-destruction
+  // class the v1.8.0 guard exists to prevent; do NOT "simplify" this back to
+  // pure existence-gating). A was-enabled-then-disabled install whose
+  // download dir still holds content ALSO keeps contributing it here (Dean's
+  // decision: disabling must never destroy already-downloaded content).
+  // When enabled it contributes `downloadDir` here rather than via a
+  // `db.folders` write, so a `POST /api/config` save can never evict it.
+  // De-duplicated via `Set` in case an operator also manually added the same
+  // directory to `db.folders`. `ytdlpConfig` is parsed ONCE per scan (D7b
+  // efficiency nit) rather than re-parsing ENV on every call.
+  const ytdlpConfig = ytdlp.parseYtdlpConfig();
+  const currentFolders = Array.from(new Set([...(db.folders || []), ...ytdlp.extraScanRoots(ytdlpConfig)]));
   const scannedFiles = new Map(); // path -> file info
   // Configured root folders that are absent/unmounted this scan (the single
   // existence-check seam, reused by selectPrunableIds' mount-loss guard below).
