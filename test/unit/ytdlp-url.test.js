@@ -8,7 +8,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { validateChannelUrl, isSafeVideoId, buildWatchUrl } = require('../../lib/ytdlp/url');
+const { validateChannelUrl, isSafeVideoId, buildWatchUrl, classifySingleVideo } = require('../../lib/ytdlp/url');
 
 // ---- accepts a representative set of real YouTube URL shapes --------------
 
@@ -257,4 +257,99 @@ test('buildWatchUrl: a "-"-leading id is embedded safely -- the resulting URL ar
   const result = buildWatchUrl('-exec');
   assert.equal(result, 'https://www.youtube.com/watch?v=-exec');
   assert.ok(!result.startsWith('-'), 'the URL token itself must never start with "-", regardless of the id');
+});
+
+// ---- FR-A: classifySingleVideo -- one-shot download URL classifier --------
+//
+// Reuses validateChannelUrl as its FIRST step, so it must reject everything
+// validateChannelUrl already rejects (hostile/invalid/non-YouTube/non-http(s))
+// -- these tests deliberately re-exercise a representative slice of the
+// security surface above through the classifier, not just the "happy path"
+// shape checks.
+
+test('classifySingleVideo: accepts a youtu.be/<id> short link -- ok, kind video, correct videoId', () => {
+  const result = classifySingleVideo('https://youtu.be/dQw4w9WgXcQ');
+  assert.equal(result.ok, true);
+  assert.equal(result.kind, 'video');
+  assert.equal(result.videoId, 'dQw4w9WgXcQ');
+  assert.equal(result.watchUrl, 'https://www.youtube.com/watch?v=dQw4w9WgXcQ');
+});
+
+test('classifySingleVideo: accepts a youtube.com/watch?v=<id> URL (incl. www./m./music.) -- ok, kind video', () => {
+  for (const host of ['www.youtube.com', 'm.youtube.com', 'music.youtube.com', 'youtube.com']) {
+    const result = classifySingleVideo(`https://${host}/watch?v=dQw4w9WgXcQ`);
+    assert.equal(result.ok, true, `expected ${host} watch URL to classify as a single video`);
+    assert.equal(result.kind, 'video');
+    assert.equal(result.videoId, 'dQw4w9WgXcQ');
+    assert.equal(result.watchUrl, 'https://www.youtube.com/watch?v=dQw4w9WgXcQ');
+  }
+});
+
+test('classifySingleVideo: rejects a channel URL (@handle) -- ok:false, kind channel', () => {
+  const result = classifySingleVideo('https://www.youtube.com/@somechannel');
+  assert.equal(result.ok, false);
+  assert.equal(result.kind, 'channel');
+  assert.equal(typeof result.error, 'string');
+});
+
+test('classifySingleVideo: rejects a /channel/UC... URL -- ok:false, kind channel', () => {
+  const result = classifySingleVideo('https://www.youtube.com/channel/UC1234567890abcdef');
+  assert.equal(result.ok, false);
+  assert.equal(result.kind, 'channel');
+});
+
+test('classifySingleVideo: rejects a /c/<name> and /user/<name> URL -- ok:false, kind channel', () => {
+  assert.equal(classifySingleVideo('https://www.youtube.com/c/SomeChannel').kind, 'channel');
+  assert.equal(classifySingleVideo('https://www.youtube.com/user/SomeUser').kind, 'channel');
+});
+
+test('classifySingleVideo: rejects a /playlist?list=... URL -- ok:false, kind playlist', () => {
+  const result = classifySingleVideo('https://www.youtube.com/playlist?list=PLabc123XYZ');
+  assert.equal(result.ok, false);
+  assert.equal(result.kind, 'playlist');
+});
+
+test('classifySingleVideo: rejects a non-YouTube host -- ok:false, kind invalid, never throws', () => {
+  const result = classifySingleVideo('https://evil.com/watch?v=dQw4w9WgXcQ');
+  assert.equal(result.ok, false);
+  assert.equal(result.kind, 'invalid');
+});
+
+test('classifySingleVideo: rejects a non-http(s) scheme -- ok:false, kind invalid', () => {
+  assert.equal(classifySingleVideo('javascript:alert(1)').ok, false);
+  assert.equal(classifySingleVideo('javascript:alert(1)').kind, 'invalid');
+  assert.equal(classifySingleVideo('file:///etc/passwd').ok, false);
+});
+
+test('classifySingleVideo: rejects a metachar/shell-injection URL -- ok:false, no throw', () => {
+  const result = classifySingleVideo('https://www.youtube.com/watch?v=x; rm -rf /');
+  assert.equal(result.ok, false);
+  assert.equal(result.kind, 'invalid');
+});
+
+test('classifySingleVideo: rejects a percent-decoded-hostile ?v= value (SF5) -- ok:false', () => {
+  const result = classifySingleVideo('https://www.youtube.com/watch?v=%3B%20rm%20-rf%20%2F');
+  assert.equal(result.ok, false);
+});
+
+test('classifySingleVideo: rejects empty/non-string/malformed input, never throws', () => {
+  for (const input of ['', '   ', undefined, null, 42, {}, [], 'not a url']) {
+    assert.doesNotThrow(() => classifySingleVideo(input));
+    const result = classifySingleVideo(input);
+    assert.equal(result.ok, false);
+    assert.equal(result.kind, 'invalid');
+  }
+});
+
+test('classifySingleVideo: never throws across a representative attack/edge-case sweep', () => {
+  const inputs = [
+    'https://youtu.be/dQw4w9WgXcQ',
+    'https://www.youtube.com/@a; rm -rf /',
+    '-–exec=rm -rf /',
+    'https://user:pass@www.youtube.com/watch?v=dQw4w9WgXcQ',
+    'https://www.youtube.com',
+  ];
+  for (const input of inputs) {
+    assert.doesNotThrow(() => classifySingleVideo(input));
+  }
 });

@@ -95,6 +95,46 @@ test('buildYtdlpListArgs OMITS --playlist-end when maxVideos is missing/malforme
   }
 });
 
+// ---- FR-C: per-subscription maxVideos override (precedence over global) --
+
+test('buildYtdlpListArgs: a per-sub maxVideos overrides the global config default', () => {
+  const config = makeConfig({ maxVideos: 25 });
+  const result = args.buildYtdlpListArgs(baseSub({ maxVideos: 10 }), config);
+  const idx = result.indexOf('--playlist-end');
+  assert.ok(idx >= 0);
+  assert.equal(result[idx + 1], '10', 'the per-sub override (10) must win over the global default (25)');
+});
+
+test('buildYtdlpListArgs: an UNSET per-sub maxVideos falls back to the global default UNCHANGED (AC19)', () => {
+  const config = makeConfig({ maxVideos: 25 });
+  const result = args.buildYtdlpListArgs(baseSub(), config); // no sub.maxVideos
+  const idx = result.indexOf('--playlist-end');
+  assert.ok(idx >= 0);
+  assert.equal(result[idx + 1], '25');
+});
+
+test('buildYtdlpListArgs: a per-sub maxVideos of 0 means unlimited (omits --playlist-end) even when the global has a bound', () => {
+  const config = makeConfig({ maxVideos: 25 });
+  const result = args.buildYtdlpListArgs(baseSub({ maxVideos: 0 }), config);
+  assert.ok(!result.includes('--playlist-end'), 'sub.maxVideos: 0 must override the global bound with "unlimited"');
+});
+
+test('buildYtdlpListArgs: a null per-sub maxVideos (nullish) also falls back to the global default', () => {
+  const config = makeConfig({ maxVideos: 25 });
+  const result = args.buildYtdlpListArgs(baseSub({ maxVideos: null }), config);
+  const idx = result.indexOf('--playlist-end');
+  assert.ok(idx >= 0);
+  assert.equal(result[idx + 1], '25');
+});
+
+test('buildYtdlpListArgs: an invalid per-sub maxVideos (non-integer) is not treated as a bound (playlistEndArgs fails safe to omit)', () => {
+  const config = makeConfig({ maxVideos: 25 });
+  const result = args.buildYtdlpListArgs(baseSub({ maxVideos: 1.5 }), config);
+  // playlistEndArgs only emits the flag for a positive integer -- a
+  // malformed per-sub override is NOT silently coerced into a bound.
+  assert.ok(!result.includes('--playlist-end'), 'a non-integer maxVideos must not produce a --playlist-end bound');
+});
+
 // ---- buildYtdlpDownloadArgs: audio vs video, quality default -------------
 //
 // C1 (T4 fix round): `buildYtdlpDownloadArgs(sub, config, targetIds)` now
@@ -141,6 +181,37 @@ test('buildYtdlpDownloadArgs: --download-archive path is confined under the down
   assert.ok(archIndex >= 0);
   const archivePath = result[archIndex + 1];
   assert.ok(archivePath.startsWith(path.resolve(config.downloadDir) + path.sep));
+});
+
+// ---- FR-H: --embed-metadata + --embed-thumbnail for BOTH audio and video --
+
+test('buildYtdlpDownloadArgs (audio): includes --embed-metadata and --embed-thumbnail (AC48/50)', () => {
+  const config = makeConfig();
+  const result = args.buildYtdlpDownloadArgs(baseSub({ format: 'audio' }), config, ['vid1']);
+  assert.ok(result.includes('--embed-metadata'), 'audio download must embed metadata');
+  assert.ok(result.includes('--embed-thumbnail'), 'audio download must embed the thumbnail');
+});
+
+test('buildYtdlpDownloadArgs (video): includes --embed-metadata and --embed-thumbnail (AC49/50)', () => {
+  const config = makeConfig();
+  const result = args.buildYtdlpDownloadArgs(baseSub({ format: 'video' }), config, ['vid1']);
+  assert.ok(result.includes('--embed-metadata'), 'video download must embed metadata');
+  assert.ok(result.includes('--embed-thumbnail'), 'video download must embed the thumbnail');
+});
+
+test('buildYtdlpDownloadArgs: --embed-metadata and --embed-thumbnail are each their own argv element (never concatenated)', () => {
+  const config = makeConfig();
+  const result = args.buildYtdlpDownloadArgs(baseSub(), config, ['vid1']);
+  assert.ok(result.some((el) => el === '--embed-metadata'));
+  assert.ok(result.some((el) => el === '--embed-thumbnail'));
+  assert.ok(!result.some((el) => el.includes('--embed-metadata--embed-thumbnail')));
+});
+
+test('buildYtdlpDownloadArgs: --restrict-filenames + "--" discipline still hold alongside the new embed flags', () => {
+  const config = makeConfig();
+  const result = args.buildYtdlpDownloadArgs(baseSub(), config, ['vid1']);
+  assert.ok(result.includes('--restrict-filenames'));
+  assert.equal(result[result.length - 2], '--', '"--" must still immediately precede the target URL');
 });
 
 test('buildYtdlpDownloadArgs: an invalid format throws rather than silently producing bad args', () => {
