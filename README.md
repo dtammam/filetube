@@ -117,6 +117,14 @@ field blank defers to `TRANSCODE_CACHE_MAX_BYTES` if set, or a 5 GB built-in
 default otherwise. Existing deployments that only set the env var keep working
 unchanged.
 
+Two more transcode-related environment variables (both optional, both default
+to today's behavior with no config changes needed):
+
+| Variable | Default | What it does |
+|----------|---------|---------------|
+| `TRANSCODE_DIR` | `<DATA_DIR>/transcoded` | Where the on-demand transcoded MP4 cache is written. Point it at a different disk/mount if you want the cache off your main data volume (e.g. faster local storage, or a large external/NFS share). The directory is created on boot if missing; the existing size-cap eviction and age-retention sweep both key off this same directory. |
+| `TRANSCODE_CRF` | `23` | The x264 CRF (quality) used for both on-demand transcode paths (cached and live). Lower = higher quality/larger files, higher = smaller files/lower quality. Valid range is `1`-`51`; anything unset/invalid/out of range falls back to `23` (a warning is logged, the server never crashes). Opt-in only — the default is unchanged. |
+
 ### Staying up to date (or pinning a version)
 
 Set `FILETUBE_IMAGE_TAG` in your `.env` to choose how you track updates:

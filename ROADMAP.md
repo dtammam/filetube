@@ -6,7 +6,8 @@
 
 - [ ] **Watch-page scroll layout bug** — on certain videos, scrolling UP makes the whole bottom panel jump to the middle of the screen; scrolling down snaps it back; a page refresh makes it behave. Intermittent/video-dependent CSS or layout/scroll-position bug on the watch page (likely sticky/position interaction). Repro + fix. _(bug)_
 - [ ] **Rescan should list what it'll transcode (regression)** — the Setup "Save & Rescan" flow used to surface all the videos it would convert/transcode; it no longer does. Restore that feedback so the user can see the pending transcode set before/while it runs. _(bug/regression)_
-- [ ] **Mobile player oversized / not iOS-sized (regression)** — on mobile the video player is bigger than it should be (not sized appropriately for iOS); it regressed at some point (likely a side effect of the mobile-logo-top-left or audio-bg-art CSS work). Find what changed and restore the correct mobile player sizing. _(bug/regression)_
+- [ ] **Mobile player oversized / not iOS-sized (regression)** — on mobile the video player is bigger than it should be (not sized appropriately for iOS); it regressed at some point (likely a side effect of the mobile-logo-top-left or audio-bg-art CSS work). Find what changed and restore the correct mobile player sizing. _(bug/regression — 45vh cap shipped v1.13.0; re-verify)_
+- [ ] **Mobile UI scale polish** — the home page scale is off on mobile: (a) the sort-controls row (heading + "Newest first" dropdown + the v1.14.0 "Shuffle again" button) overflows the viewport — the shuffle button is cut off on the right; it must wrap/scale/shorten on mobile; (b) the video cards read a bit large/zoomed — tighten card sizing so more than ~one card is comfortably in view. On-device pass is the arbiter. _(bug — v1.14.0 regression + general mobile scale)_
 
 ### ⚡ Quick wins (small, low-risk, additive — good "warm-up" batch)
 

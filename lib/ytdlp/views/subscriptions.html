@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>Subscriptions - FileTube</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-  <link rel="apple-touch-icon" href="/favicon.svg">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png">
   <link rel="manifest" href="/manifest.webmanifest">
   <meta name="theme-color" content="#cc0000">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -135,6 +135,16 @@
             skipped, regardless of this toggle.
           </small>
           <small id="sub-members-only-error" class="field-error"></small>
+        </div>
+
+        <!-- v1.15.0 item 4: per-subscription skip-Shorts toggle for a NEW
+             subscription -- default unchecked (download everything). Sent as
+             `skipShorts` in the add-subscription POST body. -->
+        <div class="form-group">
+          <label style="display:flex; align-items:center; gap:8px; font-weight:normal;">
+            <input type="checkbox" id="sub-add-skipshorts" />
+            Skip Shorts (exclude this channel's YouTube Shorts)
+          </label>
         </div>
 
         <div style="display:flex; justify-content:space-between; align-items:center; margin-top:16px; border-top:1px solid var(--border-color); padding-top:16px; flex-wrap:wrap; gap:10px;">

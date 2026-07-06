@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>Setup - FileTube</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-  <link rel="apple-touch-icon" href="/favicon.svg">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png">
   <link rel="manifest" href="/manifest.webmanifest">
   <meta name="theme-color" content="#cc0000">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -268,7 +268,14 @@
         const s = folderSettings[folder] || {};
         const row = document.createElement('div');
         row.className = 'folder-item-row';
+        // Item 1 (v1.15.0): native HTML5 drag-and-drop, a progressive
+        // enhancement OVER the up/down buttons below (which stay as the
+        // keyboard/tap-accessible fallback -- see the reorder-btn handlers
+        // and their comment further down).
+        row.draggable = true;
+        row.dataset.index = String(index);
         row.innerHTML = `
+          <span class="drag-handle" draggable="false" title="Drag to reorder" aria-hidden="true"></span>
           <div style="flex:1; min-width:0;">
             <div class="folder-path-text" title="${escapeHtml(folder)}">${escapeHtml(folder)}</div>
             <div style="display:flex; gap:10px; align-items:center; margin-top:8px; flex-wrap:wrap;">
@@ -293,7 +300,10 @@
         container.appendChild(row);
       });
 
-      // Reorder handlers — swap positions in the folders array (that order is the sidebar order)
+      // Reorder handlers — swap positions in the folders array (that order is the sidebar order).
+      // This is the keyboard/tap-accessible FALLBACK (item 1, v1.15.0) — it
+      // stays fully functional alongside the drag-and-drop handlers below,
+      // for mobile/keyboard users where native DnD is awkward.
       container.querySelectorAll('.reorder-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
           const i = parseInt(e.currentTarget.dataset.index);
@@ -301,6 +311,52 @@
           if (j < 0 || j >= configuredFolders.length) return;
           [configuredFolders[i], configuredFolders[j]] = [configuredFolders[j], configuredFolders[i]];
           renderFolders();
+        });
+      });
+
+      // Drag-and-drop reorder (item 1, v1.15.0) — a progressive enhancement
+      // over the up/down buttons above; both mutate the SAME
+      // `configuredFolders` array, and the Save button (below) persists it
+      // through the existing POST /api/config path either way. No immediate
+      // save here (mirrors the up/down buttons -- Save is still required).
+      let dragSrcIndex = null;
+      container.querySelectorAll('.folder-item-row').forEach((row) => {
+        row.addEventListener('dragstart', (e) => {
+          dragSrcIndex = parseInt(row.dataset.index, 10);
+          row.classList.add('dragging');
+          if (e.dataTransfer) {
+            e.dataTransfer.effectAllowed = 'move';
+            // Firefox requires data to be set for the drag to initiate at all.
+            e.dataTransfer.setData('text/plain', String(dragSrcIndex));
+          }
+        });
+        row.addEventListener('dragover', (e) => {
+          e.preventDefault();
+          if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+          const rect = row.getBoundingClientRect();
+          const before = (e.clientY - rect.top) < rect.height / 2;
+          row.classList.toggle('drag-over-before', before);
+          row.classList.toggle('drag-over-after', !before);
+        });
+        row.addEventListener('dragleave', () => {
+          row.classList.remove('drag-over-before', 'drag-over-after');
+        });
+        row.addEventListener('drop', (e) => {
+          e.preventDefault();
+          const targetIndex = parseInt(row.dataset.index, 10);
+          const before = row.classList.contains('drag-over-before');
+          row.classList.remove('drag-over-before', 'drag-over-after');
+          if (dragSrcIndex === null || Number.isNaN(targetIndex)) return;
+          const toIndex = computeDropIndex(dragSrcIndex, targetIndex, before);
+          configuredFolders = moveArrayItem(configuredFolders, dragSrcIndex, toIndex);
+          dragSrcIndex = null;
+          renderFolders();
+        });
+        row.addEventListener('dragend', () => {
+          dragSrcIndex = null;
+          container.querySelectorAll('.folder-item-row').forEach((r) => {
+            r.classList.remove('dragging', 'drag-over-before', 'drag-over-after');
+          });
         });
       });
 
@@ -342,6 +398,17 @@
     // Helper to render sidebar list. A folder flagged hiddenFromSidebar
     // (v1.14.0 item 3) is omitted here too -- the Setup page's own sidebar
     // is the same left sidebar as everywhere else.
+    //
+    // Item 1 (v1.15.0): the sidebar has no Save button (unlike the wizard
+    // list above), so a drag-and-drop reorder here persists IMMEDIATELY via
+    // the SAME POST /api/config path the wizard's Save button uses --
+    // computed the same way the design's sidebar reorder always is: (1) the
+    // reordered VISIBLE subset via moveArrayItem, (2) rebuilt into the FULL
+    // folders order via rebuildFullFolderOrder (hidden-from-sidebar folders
+    // keep their absolute positions), (3) POSTed, then the full config is
+    // reloaded so the synthetic Downloads folder's GET-time position splice
+    // (server.js) is reflected everywhere (wizard list + sidebar).
+    let sidebarDragSrcIndex = null;
     function renderSidebarFolders(folders, settings = {}) {
       const sidebarContainer = document.getElementById('sidebar-folders-list');
       if (!sidebarContainer) return;
@@ -350,11 +417,61 @@
         sidebarContainer.innerHTML = '<div style="padding: 6px 24px; font-style: italic; color: var(--text-secondary);">None</div>';
         return;
       }
-      sidebarContainer.innerHTML = visible.map(f => {
+      sidebarContainer.innerHTML = visible.map((f, index) => {
         const base = f.split(/[\\/]/).pop() || f;
         const label = (settings[f] && settings[f].name) || base;
-        return `<a href="/?root=${encodeURIComponent(f)}" class="sidebar-item" title="${escapeHtml(f)}"><i class="icon-folder"></i> ${escapeHtml(label)}</a>`;
+        return `<a href="/?root=${encodeURIComponent(f)}" class="sidebar-item" data-index="${index}" draggable="true" title="${escapeHtml(f)}"><i class="icon-folder"></i> ${escapeHtml(label)}</a>`;
       }).join('');
+
+      const items = sidebarContainer.querySelectorAll('.sidebar-item[data-index]');
+      items.forEach((el) => {
+        el.addEventListener('dragstart', (e) => {
+          sidebarDragSrcIndex = parseInt(el.dataset.index, 10);
+          el.classList.add('dragging');
+          if (e.dataTransfer) {
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', String(sidebarDragSrcIndex));
+          }
+        });
+        el.addEventListener('dragover', (e) => {
+          e.preventDefault();
+          if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+          const rect = el.getBoundingClientRect();
+          const before = (e.clientY - rect.top) < rect.height / 2;
+          el.classList.toggle('drag-over-before', before);
+          el.classList.toggle('drag-over-after', !before);
+        });
+        el.addEventListener('dragleave', () => {
+          el.classList.remove('drag-over-before', 'drag-over-after');
+        });
+        el.addEventListener('drop', async (e) => {
+          e.preventDefault();
+          const targetIndex = parseInt(el.dataset.index, 10);
+          const before = el.classList.contains('drag-over-before');
+          el.classList.remove('drag-over-before', 'drag-over-after');
+          const fromIndex = sidebarDragSrcIndex;
+          sidebarDragSrcIndex = null;
+          if (fromIndex === null || Number.isNaN(targetIndex)) return;
+          const toIndex = computeDropIndex(fromIndex, targetIndex, before);
+          const newVisibleOrder = moveArrayItem(visible, fromIndex, toIndex);
+          const rebuiltFull = rebuildFullFolderOrder(folders, settings, newVisibleOrder);
+          try {
+            const res = await fetch('/api/config', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ folders: rebuiltFull, folderSettings: settings })
+            });
+            const data = await res.json();
+            if (data.success) await loadConfig();
+          } catch (err) {
+            console.error('Failed to persist sidebar folder reorder:', err);
+          }
+        });
+        el.addEventListener('dragend', () => {
+          sidebarDragSrcIndex = null;
+          items.forEach((r) => r.classList.remove('dragging', 'drag-over-before', 'drag-over-after'));
+        });
+      });
     }
 
     // ---- Default landing view (v1.14.0 item 4) -----------------------------

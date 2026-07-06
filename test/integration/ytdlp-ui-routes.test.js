@@ -196,6 +196,8 @@ test('AC32: GET /subscriptions serves the page HTML when enabled, referencing th
     assert.match(body, /sub-add-url/, 'page must contain the add-subscription form');
     assert.match(body, /sub-add-format/, 'page must contain the audio/video format control');
     assert.match(body, /sub-members-only-check/, 'page must contain the members-only toggle');
+    // v1.15.0 item 4 UI: per-subscription skip-Shorts toggle on the add form.
+    assert.match(body, /<input type="checkbox" id="sub-add-skipshorts"/, 'page must contain the skip-Shorts toggle on the add form (item 4 UI)');
     assert.match(body, /sub-repull-all-btn/, 'page must contain the re-pull-all control');
 
     // T5/FR-B: the free-text quality input is gone -- a dropdown with the
@@ -450,6 +452,91 @@ test('T5: add with maxVideos, pause/resume toggle, inline edit (PATCH), one-shot
     assert.equal(snapshot.oneShots[oneShotBody.jobId].state, 'done');
     assert.equal(typeof snapshot.oneShots[oneShotBody.jobId].updatedAt, 'string');
     assert.ok(snapshot.subscriptions, 'the subscriptions namespace must always be present, even if empty');
+  } finally {
+    await close();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+// ---- v1.15.0 item 4 UI: the add form's/edit panel's skipShorts control -----
+//
+// The backend field/validation/PATCH-round-trip is already covered by
+// test/unit/ytdlp-store.test.js and test/integration/ytdlp-patch-pause.test.js
+// (T1) -- this test proves the UI layer's OWN contract: the exact request
+// body the add form (lib/ytdlp/client/subscriptions.js) composes, including
+// `skipShorts`, is accepted end-to-end by the real registered routes.
+
+test('item 4 UI: adding a subscription with skipShorts:true (the add form\'s checked-checkbox body shape) persists it', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-ytdlp-ui-'));
+  const deps = makeFakeDeps();
+  const { base, close } = await bootApp({ config: enabledConfig(tmpDir), deps });
+  try {
+    const addRes = await fetch(`${base}/api/subscriptions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        channelUrl: 'https://www.youtube.com/@shortsskipper',
+        format: 'video',
+        quality: 'best',
+        skipShorts: true,
+      }),
+    });
+    assert.equal(addRes.status, 201);
+    const added = await addRes.json();
+    assert.equal(added.skipShorts, true, 'the add form\'s checked skip-Shorts checkbox must persist as skipShorts:true');
+
+    const list = await (await fetch(`${base}/api/subscriptions`)).json();
+    assert.equal(list[0].skipShorts, true);
+  } finally {
+    await close();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('item 4 UI: adding a subscription without touching the toggle (the add form\'s unchecked-checkbox body shape) defaults skipShorts to false', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-ytdlp-ui-'));
+  const deps = makeFakeDeps();
+  const { base, close } = await bootApp({ config: enabledConfig(tmpDir), deps });
+  try {
+    const addRes = await fetch(`${base}/api/subscriptions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ channelUrl: 'https://www.youtube.com/@defaultchannel', format: 'video', quality: 'best', skipShorts: false }),
+    });
+    assert.equal(addRes.status, 201);
+    assert.equal((await addRes.json()).skipShorts, false, 'default (unchecked) must be false -- download everything');
+  } finally {
+    await close();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('item 4 UI: the edit panel\'s Save patch (skipShorts alongside format/quality/filetype/maxVideos) round-trips end-to-end', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-ytdlp-ui-'));
+  const deps = makeFakeDeps();
+  const { base, close } = await bootApp({ config: enabledConfig(tmpDir), deps });
+  try {
+    const addRes = await fetch(`${base}/api/subscriptions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ channelUrl: 'https://www.youtube.com/@editme', format: 'video', quality: 'best' }),
+    });
+    const added = await addRes.json();
+    assert.equal(added.skipShorts, false);
+
+    // Exactly the shape createSubscriptionRow's edit-panel Save button sends
+    // (format/quality/filetype/skipShorts always present, maxVideos only
+    // when the input is non-blank).
+    const editRes = await fetch(`${base}/api/subscriptions/${added.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ format: 'video', quality: 'best', filetype: 'mp4', skipShorts: true }),
+    });
+    assert.equal(editRes.status, 200);
+    assert.equal((await editRes.json()).skipShorts, true);
+
+    const list = await (await fetch(`${base}/api/subscriptions`)).json();
+    assert.equal(list[0].skipShorts, true);
   } finally {
     await close();
     fs.rmSync(tmpDir, { recursive: true, force: true });

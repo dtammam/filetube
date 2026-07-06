@@ -93,6 +93,21 @@ test('cleanDisplayTitle: works with a space (not just an underscore) before the 
   assert.equal(cleanDisplayTitle('My Great Video [dQw4w9WgXcQ]'), 'My Great Video');
 });
 
+// v1.15.0 item 5: --windows-filenames (replacing --restrict-filenames)
+// produces spaces-and-punctuation on-disk names instead of the previous
+// ASCII-folded/underscored form -- cleanDisplayTitle must still strip the
+// `[id]` suffix identically for BOTH shapes, producing the same clean
+// display title (AC5.3).
+test('cleanDisplayTitle: a --windows-filenames-shaped name (spaces + punctuation) and the legacy --restrict-filenames-shaped name (underscores) clean to the identical display title', () => {
+  // `cleanDisplayTitle` is always called on the basename WITHOUT its
+  // extension (server.js: `path.basename(info.name, info.ext)`), mirroring
+  // real usage here.
+  const windowsFilenamesShape = 'Link Miguel en Vivo [wN4p6TKlBzQ]';
+  const restrictFilenamesShape = 'Link_Miguel_en_Vivo [wN4p6TKlBzQ]';
+  assert.equal(cleanDisplayTitle(windowsFilenamesShape), 'Link Miguel en Vivo');
+  assert.equal(cleanDisplayTitle(windowsFilenamesShape), cleanDisplayTitle(restrictFilenamesShape));
+});
+
 test('cleanDisplayTitle: collapses a run of consecutive underscores to a single space', () => {
   // restrict-filenames can emit multiple consecutive underscores when several
   // non-ASCII/special characters appear back-to-back.

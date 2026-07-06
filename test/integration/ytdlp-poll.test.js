@@ -245,6 +245,47 @@ test('C1: the download child is targeted ONLY at the surviving id -- a deferred 
   assert.ok(!targetUrls.some((u) => u.includes('skippedMembersC')));
 });
 
+// ---- v1.15.0 item 4: BINDING Shorts exclusion in the survivor loop --------
+
+test('skipShorts: true on the subscription excludes a Shorts video (JS filter, structurally binding) while a normal video still survives', async () => {
+  const deps = makeFakeDeps();
+  await addSub(deps, { skipShorts: true });
+
+  const shortVideo = { id: 'shortA', availability: 'public', webpage_url: 'https://www.youtube.com/shorts/shortA' };
+  const normalVideo = { id: 'normalB', availability: 'public', webpage_url: 'https://www.youtube.com/watch?v=normalB' };
+  run.runList = async () => ({ ok: true, stdout: ndjson([shortVideo, normalVideo]), stderr: '' });
+
+  let capturedTargetIds = null;
+  run.runDownload = async (_sub, _config, targetIds) => {
+    capturedTargetIds = targetIds;
+    return { ok: true, code: 0, stdout: '', stderr: '' };
+  };
+
+  await ytdlp.runPoll(deps, baseConfig());
+
+  assert.deepEqual(capturedTargetIds, ['normalB']);
+  assert.ok(!capturedTargetIds.includes('shortA'), 'a Short must never reach the download target set when skipShorts is enabled');
+});
+
+test('skipShorts: false/absent on the subscription downloads BOTH Shorts and normal videos (default = download everything)', async () => {
+  const deps = makeFakeDeps();
+  await addSub(deps); // skipShorts unset -> backfilled/defaulted to false
+
+  const shortVideo = { id: 'shortC', availability: 'public', webpage_url: 'https://www.youtube.com/shorts/shortC' };
+  const normalVideo = { id: 'normalD', availability: 'public', webpage_url: 'https://www.youtube.com/watch?v=normalD' };
+  run.runList = async () => ({ ok: true, stdout: ndjson([shortVideo, normalVideo]), stderr: '' });
+
+  let capturedTargetIds = null;
+  run.runDownload = async (_sub, _config, targetIds) => {
+    capturedTargetIds = targetIds;
+    return { ok: true, code: 0, stdout: '', stderr: '' };
+  };
+
+  await ytdlp.runPoll(deps, baseConfig());
+
+  assert.deepEqual(capturedTargetIds.sort(), ['normalD', 'shortC']);
+});
+
 // ---- Members-only, cookies-present-but-toggle-off MANDATED regression -----
 // ---- test: proves breach (b) (D2) is closed STRUCTURALLY, independent of --
 // ---- whether a cookies file happens to exist on disk. ---------------------

@@ -127,6 +127,50 @@ test('PATCH /api/subscriptions/:id toggles paused independent of other fields', 
   }
 });
 
+// ---- v1.15.0 item 4: PATCH round-trips skipShorts (AC4.3) ------------------
+
+test('PATCH /api/subscriptions/:id round-trips skipShorts: set true -> read back true; set false -> read back false', async () => {
+  const deps = makeFakeDeps();
+  const created = await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@skipshorts', format: 'video' });
+  assert.equal(created.skipShorts, false, 'default is false (download everything)');
+
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    const onRes = await patchJson(base, `/api/subscriptions/${created.id}`, { skipShorts: true });
+    assert.equal(onRes.status, 200);
+    assert.equal((await onRes.json()).skipShorts, true);
+
+    const listAfterOn = await fetch(`${base}/api/subscriptions`);
+    assert.equal((await listAfterOn.json())[0].skipShorts, true);
+
+    const offRes = await patchJson(base, `/api/subscriptions/${created.id}`, { skipShorts: false });
+    assert.equal(offRes.status, 200);
+    assert.equal((await offRes.json()).skipShorts, false);
+
+    const listAfterOff = await fetch(`${base}/api/subscriptions`);
+    assert.equal((await listAfterOff.json())[0].skipShorts, false);
+  } finally {
+    await close();
+  }
+});
+
+test('PATCH /api/subscriptions/:id with a non-boolean skipShorts responds 400 and leaves the record unchanged', async () => {
+  const deps = makeFakeDeps();
+  const created = await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@skipshortsbad', format: 'video' });
+
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    const res = await patchJson(base, `/api/subscriptions/${created.id}`, { skipShorts: 'yes-please' });
+    assert.equal(res.status, 400);
+
+    const listRes = await fetch(`${base}/api/subscriptions`);
+    const [listed] = await listRes.json();
+    assert.equal(listed.skipShorts, false, 'the rejected patch must not have written anything');
+  } finally {
+    await close();
+  }
+});
+
 // ---- AC24: PATCH on an unknown id -> 404 -----------------------------------
 
 test('PATCH /api/subscriptions/:id with an unknown id responds 404', async () => {

@@ -36,7 +36,7 @@ module.exports = [
   // apply for those files while everything else in `lib/**` stays on this
   // Node/CommonJS ruleset.
   {
-    files: ['server.js', 'lib/**/*.js', 'test/**/*.js', 'eslint.config.js'],
+    files: ['server.js', 'lib/**/*.js', 'test/**/*.js', 'scripts/**/*.js', 'eslint.config.js'],
     languageOptions: {
       ecmaVersion: 2023,
       sourceType: 'commonjs',
@@ -111,6 +111,9 @@ module.exports = [
         shouldShowShuffleButton: 'readonly',
         visibleSidebarFolders: 'readonly',
         resolveDefaultView: 'readonly',
+        moveArrayItem: 'readonly',
+        computeDropIndex: 'readonly',
+        rebuildFullFolderOrder: 'readonly',
       },
     },
   },

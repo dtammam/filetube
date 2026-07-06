@@ -464,6 +464,23 @@ header {
   color: var(--text-secondary);
 }
 
+/* Item 1 (v1.15.0): sidebar drag-and-drop folder reordering. The dragged
+   item dims; the row currently under the pointer shows a drop-indicator
+   line (top or bottom half, matching the drop position that will actually
+   be used -- see computeDropIndex in public/js/common.js). Era-theme tokens
+   only, no hardcoded colors. */
+.sidebar-item.dragging {
+  opacity: 0.5;
+}
+
+.sidebar-item.drag-over-before {
+  box-shadow: inset 0 2px 0 0 var(--yt-red);
+}
+
+.sidebar-item.drag-over-after {
+  box-shadow: inset 0 -2px 0 0 var(--yt-red);
+}
+
 /* Main Content Area */
 .main-content {
   flex: 1;
@@ -1280,10 +1297,44 @@ header {
   border: 1px solid var(--border-color);
   border-radius: var(--radius);
   margin-bottom: 10px;
+  cursor: grab;
 }
 
 .folder-item-row:last-child {
   margin-bottom: 0;
+}
+
+/* Item 1 (v1.15.0): Setup folder-list drag-and-drop reordering -- a
+   progressive enhancement over the up/down .reorder-btn fallback (which
+   stays visible/functional for keyboard/tap users). The dragged row dims;
+   the row currently under the pointer shows a drop-indicator line matching
+   the half (top/bottom) that will actually be used on drop (see
+   computeDropIndex in public/js/common.js). Era-theme tokens only. */
+.drag-handle {
+  flex-shrink: 0;
+  width: 16px;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1;
+  letter-spacing: -2px;
+  cursor: grab;
+  user-select: none;
+}
+
+.drag-handle::before {
+  content: "\22EE\22EE";
+}
+
+.folder-item-row.dragging {
+  opacity: 0.5;
+}
+
+.folder-item-row.drag-over-before {
+  box-shadow: inset 0 2px 0 0 var(--yt-red);
+}
+
+.folder-item-row.drag-over-after {
+  box-shadow: inset 0 -2px 0 0 var(--yt-red);
 }
 
 .folder-path-text {
@@ -1452,6 +1503,95 @@ header {
   gap: 10px;
 }
 
+/* v1.15.0 item 3: one-off download header button + compact modal, built at
+   runtime by public/js/common.js's injectOneOffDownloadButtonIfEnabled(),
+   ONLY when the optional yt-dlp module is enabled. Deliberately its own
+   class names (not a reuse of .modal-backdrop/.modal-content above) since
+   this modal carries a real form, not just a title/body/actions block --
+   kept visually consistent via the same era-theme CSS custom-property
+   tokens (var(--bg-color)/--border-dark/--radius/--text-primary/etc.). */
+.oneoff-modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 2100; /* above the generic .modal-backdrop (2000) -- never hidden behind another dialog */
+}
+
+.oneoff-modal {
+  background-color: var(--bg-color);
+  border: 1px solid var(--border-dark);
+  border-radius: var(--radius);
+  max-width: 420px;
+  width: 92%;
+  padding: 20px;
+  box-shadow: var(--shadow-lg);
+}
+
+.oneoff-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.oneoff-modal-title {
+  font-size: 16px;
+  font-weight: bold;
+  color: var(--text-primary);
+}
+
+.oneoff-modal-close {
+  background: none;
+  border: none;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--text-secondary);
+  padding: 2px 6px;
+}
+
+.oneoff-modal-close:hover {
+  color: var(--text-primary);
+}
+
+.oneoff-modal-field {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-dark);
+  border-radius: var(--radius);
+  background-color: var(--bg-color);
+  color: var(--text-primary);
+  font-size: 13px;
+}
+
+.oneoff-modal-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.oneoff-modal-row select {
+  flex: 1;
+  min-width: 100px;
+}
+
+.oneoff-modal-status {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin: 4px 0 12px;
+  min-height: 16px;
+}
+
 /* Chrome icons: Material Symbols Outlined SVG used as an alpha mask, painted
    in currentColor so they theme across all era x mode combos automatically.
    NOTE: icon-star is intentionally NOT in this group (gold rating, stays ★). */
@@ -1504,6 +1644,11 @@ header {
 
 /* Out of scope: gold rating star — NOT a mask/currentColor icon. Leave as-is. */
 .icon-star::before { content: "★"; }
+
+/* v1.15.0 item 3: one-off download header button icon. Fixed unicode glyph,
+   independent of the icon-set system (mirrors .icon-star above) -- no new
+   SVG asset is needed across the 4 icon sets for a single header button. */
+.icon-download::before { content: "\2B07"; }
 
 /* ---- Icon-set axis (data-icons) -------------------------------------------
    Third, orthogonal appearance axis (theme x mode x icon-set). The base rule,
@@ -1824,6 +1969,61 @@ header {
   .folder-item-row .remove-folder-btn,
   .sub-row-actions {
     align-self: flex-end;
+  }
+
+  /* ---- v1.15.0 item 2: home-page sort-row overflow fix -----------------
+     Pre-fix: `.section-title` was a single non-wrapping flex row of
+     [heading + .section-actions], and `.section-actions` (sort <select> +
+     "Shuffle again" + "Rescan Files") was a single non-wrapping flex row too
+     -- on a ~375-414px phone the combined width overflowed the viewport and
+     the last button (Shuffle again / Rescan Files) was clipped off-screen.
+     Fix: let the heading take its own full-width line, then let the actions
+     row wrap onto (and within) the line(s) below it, and shrink the button
+     labels to icon-only so the row fits comfortably instead of relying on
+     wrapping alone. */
+  .section-title {
+    flex-wrap: wrap;
+  }
+
+  .section-actions {
+    flex-wrap: wrap;
+    width: 100%;
+  }
+
+  /* Icon-only "Shuffle again" / "Rescan Files" on phones -- the icon (with
+     its title/aria-label) still fully identifies the action; the text label
+     is what was pushing the row past the viewport width. */
+  .section-actions .btn-label {
+    display: none;
+  }
+
+  .section-actions .btn {
+    min-width: 32px;
+    justify-content: center;
+  }
+
+  /* ---- v1.15.0 item 2: tighter video-card grid on phones ---------------
+     Pre-fix: `.video-grid` used the desktop `minmax(210px, 1fr)` / 20px gap
+     everywhere, so a ~375-414px phone only fit a single (oversized-feeling)
+     column. Tighten the column minimum + gap + card text so 2 columns fit
+     comfortably without feeling cramped, while desktop (this rule is scoped
+     inside the 768px query) is untouched. */
+  .video-grid {
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 12px;
+  }
+
+  .video-title {
+    font-size: 12px;
+    max-height: 31px;
+  }
+
+  .video-uploader {
+    font-size: 11px;
+  }
+
+  .video-meta {
+    font-size: 10px;
   }
 }
 

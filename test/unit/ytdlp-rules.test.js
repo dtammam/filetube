@@ -12,6 +12,7 @@ const {
   isArchived,
   shouldDeferPremiere,
   shouldSkip,
+  isShort,
   PREMIERE_WINDOW_MS,
 } = require('../../lib/ytdlp/rules');
 
@@ -203,4 +204,34 @@ test('shouldSkip: never throws regardless of input shape', () => {
   assert.doesNotThrow(() => shouldSkip(null, null));
   assert.doesNotThrow(() => shouldSkip(undefined, undefined));
   assert.equal(shouldSkip(null, undefined).skip, false); // no availability field -- treated as public
+});
+
+// ---- isShort (v1.15.0 item 4: per-subscription Shorts exclusion) ----------
+
+test('isShort: true when webpage_url contains "/shorts/"', () => {
+  assert.equal(isShort({ webpage_url: 'https://www.youtube.com/shorts/abc123defgh' }), true);
+});
+
+test('isShort: true when only original_url or url (not webpage_url) contains "/shorts/"', () => {
+  assert.equal(isShort({ original_url: 'https://www.youtube.com/shorts/abc123defgh' }), true);
+  assert.equal(isShort({ url: 'https://www.youtube.com/shorts/abc123defgh' }), true);
+});
+
+test('isShort: false for a normal /watch URL', () => {
+  assert.equal(isShort({ webpage_url: 'https://www.youtube.com/watch?v=abc123defgh' }), false);
+});
+
+test('isShort: false when missing/odd fields (never throws) -- fails open toward "not a short"', () => {
+  assert.doesNotThrow(() => isShort(null));
+  assert.doesNotThrow(() => isShort(undefined));
+  assert.equal(isShort(null), false);
+  assert.equal(isShort(undefined), false);
+  assert.equal(isShort({}), false);
+  assert.equal(isShort({ webpage_url: 42 }), false);
+  assert.equal(isShort({ webpage_url: null }), false);
+  assert.equal(isShort('not-an-object'), false);
+});
+
+test('isShort: false when the fields are present but do not contain "/shorts/"', () => {
+  assert.equal(isShort({ webpage_url: 'https://www.youtube.com/@somechannel' }), false);
 });

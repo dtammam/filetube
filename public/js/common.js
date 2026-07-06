@@ -523,6 +523,71 @@ function visibleSidebarFolders(folders, settings) {
   return list.filter((f) => !(s[f] && s[f].hiddenFromSidebar));
 }
 
+// ---- Folder drag-and-drop reordering (v1.15.0 item 1) ----------------------
+//
+// These three pure helpers are the SHARED reorder model behind both the
+// native HTML5 drag-and-drop (Setup folder list + left sidebar) and the
+// existing up/down `.reorder-btn` fallback -- they mutate/derive the SAME
+// `configuredFolders`/`folders` array the up/down buttons already swap
+// entries in, so a DnD reorder and an equivalent up/down sequence always
+// converge on the identical persisted order. No server change: the existing
+// `POST /api/config` handler already derives the synthetic Downloads
+// folder's `order` from its POSITION in the submitted `folders` array
+// (never writing it into `db.folders` -- see server.js), so these helpers
+// only need to produce the same reordered `folders` array the up/down path
+// already sends.
+
+// Pure: returns a NEW array with the item at `fromIndex` moved to land at
+// `toIndex` (splice-out + splice-in), leaving every other item's relative
+// order intact and never mutating the input array. Out-of-range indexes are
+// clamped rather than throwing; a no-op (`fromIndex` out of bounds) returns
+// an unchanged copy. This is the core "move item from i to j" primitive
+// shared by the Setup list's row DnD and the sidebar's visible-subset DnD.
+// Exported for node:test.
+function moveArrayItem(arr, fromIndex, toIndex) {
+  const list = Array.isArray(arr) ? arr.slice() : [];
+  if (!Number.isInteger(fromIndex) || fromIndex < 0 || fromIndex >= list.length) return list;
+  const clampedTo = Math.max(0, Math.min(Number.isInteger(toIndex) ? toIndex : fromIndex, list.length - 1));
+  const [item] = list.splice(fromIndex, 1);
+  list.splice(clampedTo, 0, item);
+  return list;
+}
+
+// Pure: converts a drop gesture (source index, the row/item index the user
+// dropped ON, and whether the drop targeted the top/before half of that
+// row vs the bottom/after half -- the visual drop-indicator's own state)
+// into the final index `moveArrayItem` should move the dragged entry to.
+// Accounts for the index shift caused by removing the source item before
+// re-inserting it. Dropping an item onto itself (`fromIndex === targetIndex`)
+// is a no-op (returns `fromIndex`). Exported for node:test.
+function computeDropIndex(fromIndex, targetIndex, insertBefore) {
+  if (fromIndex === targetIndex) return fromIndex;
+  const targetIndexAfterRemoval = fromIndex < targetIndex ? targetIndex - 1 : targetIndex;
+  return insertBefore ? targetIndexAfterRemoval : targetIndexAfterRemoval + 1;
+}
+
+// Pure: rebuilds the FULL folders order after a sidebar drag-and-drop
+// reordered only the VISIBLE subset (`visibleSidebarFolders` above) -- a
+// folder flagged `hiddenFromSidebar` never appears in the sidebar, so it
+// keeps its absolute position in the full array; each slot that held a
+// visible folder is filled, in order, from `newVisibleOrder` (the reordered
+// visible list, e.g. the output of `moveArrayItem` applied to
+// `visibleSidebarFolders(fullFolders, settings)`). `newVisibleOrder` must be
+// a permutation of that same visible list (same length/membership, new
+// order) -- callers derive it that way, never from an unrelated array. This
+// lets the sidebar's immediate-save DnD (no Save button there, unlike the
+// Setup list) submit the SAME full-array shape `POST /api/config` expects,
+// so the synthetic Downloads folder's position -> `folderSettings.order`
+// exactly as the Setup page's up/down buttons already produce. Exported for
+// node:test.
+function rebuildFullFolderOrder(fullFolders, settings, newVisibleOrder) {
+  const full = Array.isArray(fullFolders) ? fullFolders : [];
+  const visibleSet = new Set(visibleSidebarFolders(full, settings));
+  const queue = Array.isArray(newVisibleOrder) ? newVisibleOrder.slice() : [];
+  let i = 0;
+  return full.map((f) => (visibleSet.has(f) ? queue[i++] : f));
+}
+
 // ---- Default landing view (v1.14.0 item 4) ---------------------------------
 
 // Pure: resolves the EFFECTIVE ?root= folder filter for a home-page load,
@@ -643,6 +708,410 @@ function injectSubscriptionsNavLinkIfEnabled() {
           navLink.classList.add('active');
         }
       }
+    })
+    .catch(() => { /* network/parse failure -- fail closed, inject nothing */ });
+}
+
+// ---- v1.15.0 item 3: one-off download header button + compact modal -------
+//
+// A small header download button + compact modal for one-off yt-dlp
+// downloads, gated EXACTLY like the /subscriptions nav-link injection above
+// (probe `/api/subscriptions/health`, inject only on a genuine 2xx, fail
+// closed on 404/network error) -- when the optional module is disabled,
+// nothing is ever created (no button, no modal markup), keeping the header
+// byte-identical (docs/exec-plans/active/2026-07-06-v1.15-bigswing.md, item
+// 3). Reuses the existing `POST /api/ytdlp/download` one-off endpoint and
+// `GET /api/subscriptions/status` live-poll endpoint the /subscriptions
+// page's own one-off form already calls -- no server change.
+//
+// The dropdown option lists below are a deliberate, hardcoded MIRROR of
+// `lib/ytdlp/client/subscriptions.js`'s FORMAT_OPTIONS/QUALITY_OPTIONS/
+// FILETYPE_OPTIONS (which itself mirrors args.js's server-side allowlists) --
+// this file (public/js/common.js) is served unconditionally to every page,
+// so it cannot `require()` the gated `lib/ytdlp/client/subscriptions.js`
+// module (that file is only ever served via the enabled-gated route). The
+// server independently RE-VALIDATES format/quality/filetype on every
+// request, so any drift here can only ever be neutralized, never trusted
+// as-is. Keep these three lists in sync with subscriptions.js's copies if
+// the allowlists ever change.
+
+const ONEOFF_FORMAT_OPTIONS = [
+  { value: 'video', label: 'Video' },
+  { value: 'audio', label: 'Audio only' },
+];
+const ONEOFF_QUALITY_OPTIONS = ['best', '2160p', '1440p', '1080p', '720p', '480p', '360p'];
+const ONEOFF_DEFAULT_QUALITY = 'best';
+const ONEOFF_FILETYPE_OPTIONS = {
+  video: [
+    { value: 'mp4', label: 'MP4 (recommended)' },
+    { value: 'mkv', label: 'MKV' },
+    { value: 'webm', label: 'WebM' },
+    { value: 'default', label: 'Default (yt-dlp)' },
+  ],
+  audio: [
+    { value: 'mp3', label: 'MP3 (recommended)' },
+    { value: 'm4a', label: 'M4A' },
+    { value: 'opus', label: 'Opus' },
+    { value: 'default', label: 'Default (yt-dlp)' },
+  ],
+};
+const ONEOFF_DEFAULT_FILETYPE = { video: 'mp4', audio: 'mp3' };
+
+// ~2.5s poll cadence for the modal's live status, matching subscriptions.js's
+// STATUS_POLL_BASE_MS -- consistent cadence across both one-off surfaces.
+const ONEOFF_STATUS_POLL_MS = 2500;
+
+// Pure decision, mirroring `shouldInjectSubscriptionsNav` exactly: inject iff
+// the health probe resolved with a genuine 2xx. `node:test`-covered directly
+// (see test/unit/ytdlp-oneoff-modal.test.js) -- the DOM-mutation half below
+// it is a thin, untested-by-necessity shell around it, same posture as the
+// subscriptions nav-link injection.
+function shouldInjectOneOffButton(response) {
+  return Boolean(response && response.ok === true);
+}
+
+/**
+ * Pure reducer (no DOM): given the CURRENT `format` and the filetype value
+ * selected before the format changed, decides the filetype `<select>`'s new
+ * option list + selected value. Mirrors
+ * `lib/ytdlp/client/subscriptions.js`'s `reduceFiletypeOptions` exactly (see
+ * that file's comment for the full rationale) -- duplicated here rather than
+ * shared, since this file is served to every page while that one is only
+ * ever served by the enabled-gated route.
+ */
+function reduceOneOffFiletypeOptions(format, prevFiletype) {
+  const fmt = format === 'audio' ? 'audio' : 'video';
+  const options = ONEOFF_FILETYPE_OPTIONS[fmt];
+  const stillValid = options.some((opt) => opt.value === prevFiletype);
+  const selected = stillValid ? prevFiletype : ONEOFF_DEFAULT_FILETYPE[fmt];
+  return { format: fmt, options, selected };
+}
+
+/**
+ * Pure: builds the exact JSON body the modal's Download button POSTs to
+ * `POST /api/ytdlp/download` -- `{ url, format, quality }` plus `filetype`
+ * when it is defined. No DOM/fetch involved, so it is directly unit-testable
+ * against the four field values a real click would read off the form.
+ */
+function buildOneOffDownloadBody(url, format, quality, filetype) {
+  const body = { url, format, quality };
+  if (filetype !== undefined) body.filetype = filetype;
+  return body;
+}
+
+/**
+ * FR-E-style live-status formatter for the modal's status line -- mirrors
+ * `lib/ytdlp/client/subscriptions.js`'s `formatLiveStatusText` exactly
+ * (same `LiveEntry` shape from `GET /api/subscriptions/status`'s `oneShots`
+ * namespace: `{state, title, index, total, percent, error}`). Pure string
+ * formatting only -- no DOM -- so it cannot itself introduce an XSS path;
+ * callers still render the returned string via `textContent` only, never
+ * `innerHTML` (see `buildOneOffModal` below). `entry.error`/`entry.title`
+ * are already redacted/confined server-side (activity.js never stores a raw
+ * error/stderr), but this function makes no assumption about that -- it
+ * treats them as arbitrary strings either way.
+ */
+function formatOneOffStatusText(entry) {
+  if (!entry || typeof entry !== 'object') return null;
+  const state = entry.state;
+  if (state === 'queued') return 'Queued…';
+  if (state === 'listing') return 'Checking for new videos…';
+  if (state === 'downloading') {
+    const title = typeof entry.title === 'string' && entry.title.trim() !== '' ? entry.title.trim() : 'Downloading';
+    const index = typeof entry.index === 'number' && entry.index > 0 ? entry.index : null;
+    const total = typeof entry.total === 'number' && entry.total > 0 ? entry.total : null;
+    const percent = typeof entry.percent === 'number' && Number.isFinite(entry.percent)
+      ? Math.max(0, Math.min(100, Math.round(entry.percent)))
+      : 0;
+    const position = index !== null && total !== null ? (index + ' of ' + total) : '';
+    return [title, position, percent + '%'].filter((part) => part !== '').join(' — ');
+  }
+  if (state === 'done') return 'Done';
+  if (state === 'error') return typeof entry.error === 'string' && entry.error.trim() !== '' ? entry.error : 'error';
+  return null; // 'idle' (or an unrecognized future state) -- no live override
+}
+
+// Builds a `<select>` populated from `options` (an array of `{value, label}`
+// objects) via `createElement`/`textContent` ONLY -- mirrors
+// `lib/ytdlp/client/subscriptions.js`'s `buildSelect`.
+function buildOneOffSelect(doc, options, selectedValue) {
+  const d = doc || document;
+  const select = d.createElement('select');
+  let matchedValue = null;
+  options.forEach((opt) => {
+    const option = d.createElement('option');
+    option.value = opt.value;
+    option.textContent = opt.label;
+    if (opt.value === selectedValue) {
+      option.selected = true;
+      matchedValue = opt.value;
+    }
+    select.appendChild(option);
+  });
+  select.value = matchedValue !== null ? matchedValue : (options.length > 0 ? options[0].value : undefined);
+  return select;
+}
+
+// Removes all children of `el` without ever touching innerHTML.
+function clearOneOffChildren(el) {
+  while (el.firstChild) el.removeChild(el.firstChild);
+}
+
+// Rebuilds `filetypeSelect`'s `<option>` list in place from `format`'s
+// current value, via `reduceOneOffFiletypeOptions` -- wired to the format
+// select's `change` listener, mirroring subscriptions.js's
+// `repopulateFiletypeSelect`. `createElement`/`textContent` only.
+function repopulateOneOffFiletypeSelect(doc, format, filetypeSelect) {
+  if (!filetypeSelect) return;
+  const d = doc || document;
+  const { options, selected } = reduceOneOffFiletypeOptions(format, filetypeSelect.value);
+  clearOneOffChildren(filetypeSelect);
+  let matchedValue = null;
+  options.forEach((opt) => {
+    const option = d.createElement('option');
+    option.value = opt.value;
+    option.textContent = opt.label;
+    if (opt.value === selected) {
+      option.selected = true;
+      matchedValue = opt.value;
+    }
+    filetypeSelect.appendChild(option);
+  });
+  filetypeSelect.value = matchedValue !== null ? matchedValue : (options.length > 0 ? options[0].value : undefined);
+}
+
+/**
+ * Builds the compact one-off download modal as real DOM nodes -- backdrop +
+ * dialog, appended to `document.body` by the caller. `createElement`/
+ * `textContent` ONLY (never `innerHTML`, matching this file's discipline for
+ * every dynamic string). `handlers` = `{ onDownload(body), onClose() }`
+ * decouples DOM construction from network calls, mirroring
+ * `createSubscriptionRow`'s pattern, so this function stays pure/DOM-only
+ * and directly unit-testable with a fake `document` (no real fetch).
+ *
+ * SECURITY: the only strings ever rendered into this modal after the initial
+ * build are the status line (via `setOneOffModalStatus`, `textContent` only)
+ * and whatever the user themselves typed into the URL field (never echoed
+ * back as markup) -- there is no server/user-derived string rendered any
+ * other way.
+ */
+function buildOneOffModal(doc, handlers) {
+  const d = doc || document;
+  const h = handlers || {};
+
+  const backdrop = d.createElement('div');
+  backdrop.className = 'oneoff-modal-backdrop';
+  backdrop.hidden = true;
+  backdrop.addEventListener('click', (e) => {
+    if (e && e.target === backdrop && typeof h.onClose === 'function') h.onClose();
+  });
+
+  const modal = d.createElement('div');
+  modal.className = 'oneoff-modal';
+  modal.hidden = true;
+  backdrop.appendChild(modal);
+
+  const header = d.createElement('div');
+  header.className = 'oneoff-modal-header';
+  const title = d.createElement('span');
+  title.className = 'oneoff-modal-title';
+  title.textContent = 'One-off download';
+  header.appendChild(title);
+  const closeBtn = d.createElement('button');
+  closeBtn.type = 'button';
+  closeBtn.className = 'oneoff-modal-close';
+  closeBtn.setAttribute('aria-label', 'Close');
+  closeBtn.textContent = '×';
+  closeBtn.addEventListener('click', () => {
+    if (typeof h.onClose === 'function') h.onClose();
+  });
+  header.appendChild(closeBtn);
+  modal.appendChild(header);
+
+  const urlInput = d.createElement('input');
+  urlInput.type = 'text';
+  urlInput.className = 'oneoff-modal-field';
+  urlInput.setAttribute('placeholder', 'https://www.youtube.com/watch?v=...');
+  modal.appendChild(urlInput);
+
+  const row = d.createElement('div');
+  row.className = 'oneoff-modal-row';
+
+  const formatSelect = buildOneOffSelect(d, ONEOFF_FORMAT_OPTIONS, 'video');
+  row.appendChild(formatSelect);
+
+  const qualitySelect = buildOneOffSelect(
+    d,
+    ONEOFF_QUALITY_OPTIONS.map((q) => ({ value: q, label: q })),
+    ONEOFF_DEFAULT_QUALITY
+  );
+  row.appendChild(qualitySelect);
+
+  const filetypeSelect = buildOneOffSelect(d, ONEOFF_FILETYPE_OPTIONS.video, ONEOFF_DEFAULT_FILETYPE.video);
+  row.appendChild(filetypeSelect);
+
+  formatSelect.addEventListener('change', () => {
+    repopulateOneOffFiletypeSelect(d, formatSelect.value, filetypeSelect);
+  });
+
+  modal.appendChild(row);
+
+  const statusEl = d.createElement('div');
+  statusEl.className = 'oneoff-modal-status';
+  statusEl.setAttribute('aria-live', 'polite');
+  modal.appendChild(statusEl);
+
+  const downloadBtn = d.createElement('button');
+  downloadBtn.type = 'button';
+  downloadBtn.className = 'btn btn-primary';
+  downloadBtn.textContent = 'Download';
+  downloadBtn.addEventListener('click', () => {
+    const url = typeof urlInput.value === 'string' ? urlInput.value.trim() : '';
+    if (!url) {
+      statusEl.textContent = 'Enter a video URL.';
+      return;
+    }
+    const body = buildOneOffDownloadBody(url, formatSelect.value, qualitySelect.value, filetypeSelect.value);
+    if (typeof h.onDownload === 'function') h.onDownload(body);
+  });
+  modal.appendChild(downloadBtn);
+
+  // Renders a live-status entry (or clears the line when `null`/no entry) --
+  // `textContent` only, never `innerHTML`, no matter what `entry.title`/
+  // `entry.error` contain.
+  function setStatus(entry) {
+    statusEl.textContent = formatOneOffStatusText(entry) || '';
+  }
+
+  return { backdrop, modal, urlInput, formatSelect, qualitySelect, filetypeSelect, downloadBtn, closeBtn, statusEl, setStatus };
+}
+
+// Idempotent (checks for the button's existence first) and defensive --
+// missing `.header-right` (a page without this shared header) is simply
+// skipped, never thrown on. Mirrors `injectSubscriptionsNavLinkIfEnabled`'s
+// gating exactly: the button/modal are ONLY ever created after a genuine 2xx
+// from `/api/subscriptions/health`; a 404 (module disabled) or a network
+// failure means this function creates nothing at all -- the header stays
+// byte-identical to a disabled install (AC3.3/ACX.1).
+function injectOneOffDownloadButtonIfEnabled() {
+  if (typeof document === 'undefined' || typeof fetch === 'undefined') return;
+  if (document.getElementById('ytdlp-oneoff-btn')) return; // already injected
+
+  fetch('/api/subscriptions/health')
+    .then((res) => {
+      if (!shouldInjectOneOffButton(res)) return; // disabled (404) -- inject nothing
+
+      const headerRight = document.querySelector('.header-right');
+      if (!headerRight) return; // page has no shared header -- nothing to attach to
+
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.id = 'ytdlp-oneoff-btn';
+      btn.className = 'btn';
+      btn.setAttribute('aria-label', 'Download a video');
+      btn.title = 'Download a video';
+      const icon = document.createElement('i');
+      icon.className = 'icon-download';
+      btn.appendChild(icon);
+      btn.appendChild(document.createTextNode(' Download'));
+
+      // Dean-locked placement: immediately before the Settings link when one
+      // exists in this header (index.html/watch.html); pages whose header
+      // has no Settings link (setup.html/subscriptions.html) simply get the
+      // button appended to `.header-right`.
+      const settingsLink = headerRight.querySelector('a[href="/setup.html"]');
+      if (settingsLink) {
+        headerRight.insertBefore(btn, settingsLink);
+      } else {
+        headerRight.appendChild(btn);
+      }
+
+      let modalState = null;
+      let pollTimer = null;
+      let currentJobId = null;
+
+      function stopPolling() {
+        if (pollTimer) {
+          clearTimeout(pollTimer);
+          pollTimer = null;
+        }
+      }
+
+      function pollStatusOnce() {
+        if (!currentJobId || !modalState) return;
+        fetch('/api/subscriptions/status')
+          .then((r) => (r.ok ? r.json() : Promise.reject(new Error('status endpoint returned ' + r.status))))
+          .then((snapshot) => {
+            if (!modalState) return; // modal was torn down mid-flight -- nothing to render into
+            const entry = snapshot && snapshot.oneShots ? snapshot.oneShots[currentJobId] : undefined;
+            modalState.setStatus(entry || { state: 'queued' });
+            if (entry && (entry.state === 'done' || entry.state === 'error')) {
+              stopPolling(); // terminal -- stop polling this job
+              return;
+            }
+            pollTimer = setTimeout(pollStatusOnce, ONEOFF_STATUS_POLL_MS);
+          })
+          .catch(() => {
+            // Transient/network hiccup -- keep polling at the same cadence
+            // rather than giving up (mirrors subscriptions.js's backoff
+            // intent, kept simple here since the modal is a short-lived,
+            // actively-watched surface).
+            pollTimer = setTimeout(pollStatusOnce, ONEOFF_STATUS_POLL_MS);
+          });
+      }
+
+      function closeModal() {
+        if (!modalState) return;
+        modalState.backdrop.hidden = true;
+        modalState.modal.hidden = true;
+        stopPolling();
+        currentJobId = null;
+      }
+
+      function openModal() {
+        if (!modalState) {
+          modalState = buildOneOffModal(document, {
+            onClose: closeModal,
+            onDownload: (body) => {
+              modalState.setStatus({ state: 'queued' });
+              modalState.statusEl.textContent = 'Starting…';
+              fetch('/api/ytdlp/download', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+              })
+                .then(async (r) => {
+                  const data = await r.json().catch(() => ({}));
+                  if (!r.ok) {
+                    // SECURITY: the server's validation error string, rendered
+                    // via the modal's own textContent-only setStatus/statusEl
+                    // path -- never innerHTML.
+                    modalState.statusEl.textContent = data.error || 'Could not start download.';
+                    return;
+                  }
+                  currentJobId = data.jobId;
+                  modalState.statusEl.textContent = 'Queued…';
+                  stopPolling();
+                  pollStatusOnce();
+                })
+                .catch(() => {
+                  modalState.statusEl.textContent = 'Could not start download (network error).';
+                });
+            },
+          });
+          document.body.appendChild(modalState.backdrop);
+        }
+        modalState.backdrop.hidden = false;
+        modalState.modal.hidden = false;
+      }
+
+      btn.addEventListener('click', openModal);
+
+      // Esc closes the modal while it is open -- backdrop-click and the [x]
+      // button are wired inside buildOneOffModal itself.
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && modalState && !modalState.backdrop.hidden) closeModal();
+      });
     })
     .catch(() => { /* network/parse failure -- fail closed, inject nothing */ });
 }
@@ -779,6 +1248,12 @@ document.addEventListener('DOMContentLoaded', () => {
   // injects a sidebar link on pages that have one but no bottom nav.
   injectSubscriptionsNavLinkIfEnabled();
 
+  // v1.15.0 item 3: one-off download header button + modal, gated by the
+  // SAME capability probe pattern -- runs on every page for the same reason
+  // (index.html/watch.html/setup.html/subscriptions.html all share the
+  // header and load common.js).
+  injectOneOffDownloadButtonIfEnabled();
+
   // ---- Mobile app shell: bottom nav / Playlists sheet wiring ----
   // Guarded on the nav's presence so pages without it (or load-order issues)
   // never throw.
@@ -826,6 +1301,11 @@ if (typeof module !== 'undefined' && module.exports) {
     resolveAudioArtUrl,
     shouldInjectSubscriptionsNav,
     fisherYatesShuffle, sortItems, shouldShowShuffleButton,
-    visibleSidebarFolders, resolveDefaultView
+    visibleSidebarFolders, resolveDefaultView,
+    moveArrayItem, computeDropIndex, rebuildFullFolderOrder,
+    shouldInjectOneOffButton, reduceOneOffFiletypeOptions, buildOneOffDownloadBody,
+    formatOneOffStatusText, buildOneOffModal,
+    ONEOFF_FORMAT_OPTIONS, ONEOFF_QUALITY_OPTIONS, ONEOFF_DEFAULT_QUALITY,
+    ONEOFF_FILETYPE_OPTIONS, ONEOFF_DEFAULT_FILETYPE, ONEOFF_STATUS_POLL_MS
   };
 }
