@@ -9,6 +9,12 @@
 - [ ] **Hide a sidebar entry entirely** — a per-folder option to remove a folder from the left sidebar completely (distinct from "Hide from home", which only affects the recent view).
 - [ ] **Configurable transcode dir (env)** — so the transcode cache can live on roomy NFS instead of the local disk, plus a higher CRF for smaller files. (Size-cap eviction itself has shipped — see "Automation & Storage" below.)
 - [ ] **PWA home-screen icon (PNG)** — manifest is wired; still needs raster PNGs generated from the SVG. Parked (no rasterizer handy).
+- [ ] **Watch-page scroll layout bug** — on certain videos, scrolling UP makes the whole bottom panel jump to the middle of the screen; scrolling down snaps it back; a page refresh makes it behave. Intermittent/video-dependent CSS or layout/scroll-position bug on the watch page (likely sticky/position interaction). Repro + fix. _(bug)_
+- [ ] **Prev/next video navigation (playlist order)** — a back (and forward) control on the watch page that steps to the previous/next media within an arbitrary ordered "playlist" the app derives (e.g. the current sort order, or the related-items ranking). Ties into the related-items work.
+- [ ] **Autoplay option** — a Settings toggle that, when on, auto-plays the next media when the current one ends (next = the derived playlist/prev-next order above). Off by default; persisted like the other appearance/behavior prefs.
+- [ ] **Random ("feeling lucky") sort** — a new home-library sort option for a fully random order alongside newest/oldest/title/size, ideally with a "shuffle again"/refresh affordance to re-roll. Fun/discovery feature; low risk (additive to the existing sort options).
+- [ ] **Default landing view (Settings)** — a Settings dropdown to choose which view loads on page open: "Most Recent" (the default) or any mapped folder (e.g. Music). Unconfigured falls back to Most Recent; whatever's chosen becomes the first/default view, with all other views still reachable as today. Persisted like the other prefs.
+- [ ] **Persist home view state on back-navigation** — when returning to home from a video (e.g. tapping the top logo), preserve the prior home view + scroll position instead of a hard reload that jumps to the top. Feels jarring today. Likely SPA-style state retention / restore-on-back (bfcache, history state, or a saved scroll offset). Pairs with the prev/next navigation item.
 
 ## Shipped
 
