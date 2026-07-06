@@ -29,6 +29,12 @@ module.exports = [
 
   // Node backend + test suite (CommonJS). `lib/**` is the optional yt-dlp
   // integration module (v1.11.0) -- same backend/CommonJS ruleset as server.js.
+  // NOTE: `lib/ytdlp/client/**` is overridden to the vanilla-browser ruleset
+  // below (it ships browser-only code, not Node backend code) -- ESLint's
+  // flat config merges `languageOptions` across every matching block in
+  // array order, so the later, more specific block's `globals`/`sourceType`
+  // apply for those files while everything else in `lib/**` stays on this
+  // Node/CommonJS ruleset.
   {
     files: ['server.js', 'lib/**/*.js', 'test/**/*.js', 'eslint.config.js'],
     languageOptions: {
@@ -48,14 +54,16 @@ module.exports = [
     },
   },
 
-  // Vanilla browser frontend (all client scripts).
+  // Vanilla browser frontend (all client scripts, incl. the optional yt-dlp
+  // module's page controller -- see the note on the block above).
   {
-    files: ['public/**/*.js'],
+    files: ['public/**/*.js', 'lib/ytdlp/client/**/*.js'],
     languageOptions: {
       ecmaVersion: 2023,
       sourceType: 'script',
       // `module` is referenced only inside a `typeof module` guard so common.js
-      // can export pure helpers to Node tests; harmless in the browser.
+      // (and lib/ytdlp/client/subscriptions.js) can export pure helpers to
+      // Node tests; harmless in the browser.
       // `renderIconPicker` is defined inline in setup.html (not a public/js/*
       // file) and feature-detected from common.js's applyIconSet(), so it must
       // be declared here for common.js's own lint pass.
