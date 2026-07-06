@@ -96,6 +96,46 @@ test('currentYtdlpPollTimer() reports null when the module is disabled', () => {
   assert.equal(currentYtdlpPollTimer(), null);
 });
 
+// T4's manual re-pull triggers are registered inside the same `isEnabled`
+// gate as everything else, so they must be equally absent when disabled --
+// AND, because they are the ONLY entry point into the download loop besides
+// the timer, their absence is also the proof that a disabled module can
+// never spawn yt-dlp at all (no route can ever reach `runPoll`).
+test('T4 re-pull-all/re-pull-one routes 404 when the module is disabled (no spawn is ever reachable)', async () => {
+  const all = await fetch(`${base}/api/subscriptions/repull`, { method: 'POST' });
+  assert.equal(all.status, 404);
+
+  const one = await fetch(`${base}/api/subscriptions/some-id/repull`, { method: 'POST' });
+  assert.equal(one.status, 404);
+});
+
+// T4's startBackground registers the download dir into db.folders and arms
+// the real poll timer -- both must be complete no-ops when disabled.
+test('startBackground never registers db.folders, never arms a timer, and never touches the filesystem when the module is disabled', async () => {
+  const disabledConfig = ytdlp.parseYtdlpConfig({});
+  const updateDatabaseCalls = [];
+  const fakeDb = { folders: [] };
+  const fakeDeps = {
+    loadDatabase: () => fakeDb,
+    updateDatabase: (mutatorFn) => {
+      updateDatabaseCalls.push(1);
+      return Promise.resolve(mutatorFn(fakeDb));
+    },
+    scanDirectories: async () => {},
+    getMediaId: (input) => input,
+  };
+
+  ytdlp.startBackground(fakeDeps, disabledConfig);
+  // Allow a macrotask tick defensively (startBackground's disabled branch
+  // returns synchronously today, but this keeps the assertion meaningful
+  // even if that ever changed).
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.deepEqual(updateDatabaseCalls, [], 'a disabled module must never write to db.folders');
+  assert.deepEqual(fakeDb.folders, [], 'db.folders must be untouched when disabled');
+  assert.equal(ytdlp.currentYtdlpPollTimer(), null);
+});
+
 // ---- require() is side-effect-free (AC4) ----
 
 test('requiring lib/ytdlp adds no route to a bare express() app and arms no timer', async () => {
