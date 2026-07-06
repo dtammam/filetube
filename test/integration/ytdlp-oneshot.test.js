@@ -378,6 +378,38 @@ test('POST /api/ytdlp/download accepts a valid filetype and threads it through t
   }
 });
 
+// ---- v1.15.0 item 6: runOneShot threads oneOff:true (archive bypass) ------
+
+test('POST /api/ytdlp/download (one-shot) threads oneOff:true to run.runDownload, and the resulting built args bypass the shared archive', async () => {
+  const deps = makeFakeDeps();
+  const config = enabledConfig();
+  let capturedOpts = null;
+  let capturedBuiltArgs = null;
+  const originalRunDownload = run.runDownload;
+  run.runDownload = async (sub, cfg, targetIds, opts) => {
+    capturedOpts = opts;
+    capturedBuiltArgs = args.buildYtdlpDownloadArgs(sub, cfg, targetIds, { oneOff: opts && opts.oneOff });
+    return { ok: true, code: 0, stdout: '', stderr: '' };
+  };
+
+  const { base, close } = await startTestApp(deps, config);
+  try {
+    const res = await postJson(base, '/api/ytdlp/download', { url: SINGLE_VIDEO_URL });
+    assert.equal(res.status, 202);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    assert.ok(capturedOpts, 'run.runDownload must have been invoked with an opts object');
+    assert.equal(capturedOpts.oneOff, true, 'runOneShot must pass oneOff:true to run.runDownload');
+
+    assert.ok(capturedBuiltArgs.includes('--no-download-archive'));
+    assert.ok(capturedBuiltArgs.includes('--force-overwrites'));
+    assert.ok(!capturedBuiltArgs.includes('--download-archive'), 'a one-off download must never carry the shared --download-archive flag');
+  } finally {
+    run.runDownload = originalRunDownload;
+    await close();
+  }
+});
+
 test('POST /api/ytdlp/download with a mismatched-format filetype (audio format, video filetype) responds 400', async () => {
   const deps = makeFakeDeps();
   let downloadCalls = 0;

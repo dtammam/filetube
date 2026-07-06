@@ -207,10 +207,10 @@ test('buildYtdlpDownloadArgs: --embed-metadata and --embed-thumbnail are each th
   assert.ok(!result.some((el) => el.includes('--embed-metadata--embed-thumbnail')));
 });
 
-test('buildYtdlpDownloadArgs: --restrict-filenames + "--" discipline still hold alongside the new embed flags', () => {
+test('buildYtdlpDownloadArgs: --windows-filenames + "--" discipline still hold alongside the new embed flags', () => {
   const config = makeConfig();
   const result = args.buildYtdlpDownloadArgs(baseSub(), config, ['vid1']);
-  assert.ok(result.includes('--restrict-filenames'));
+  assert.ok(result.includes('--windows-filenames'));
   assert.equal(result[result.length - 2], '--', '"--" must still immediately precede the target URL');
 });
 
@@ -330,6 +330,88 @@ test('cookiesUsable: false when cookiesFile is unset/null/empty or config is mis
   assert.equal(args.cookiesUsable(undefined), false);
 });
 
+// ---- v1.15.0 item 4: skip-shorts --match-filter (defense-in-depth) --------
+
+test('buildYtdlpListArgs: emits the fixed --match-filter Shorts-exclusion argument when sub.skipShorts is strictly true', () => {
+  const config = makeConfig();
+  const result = args.buildYtdlpListArgs(baseSub({ skipShorts: true }), config);
+  const idx = result.indexOf('--match-filter');
+  assert.ok(idx >= 0, '--match-filter must be present when skipShorts is true');
+  assert.equal(result[idx + 1], args.SHORTS_MATCH_FILTER);
+  assert.equal(args.SHORTS_MATCH_FILTER, 'webpage_url!*=/shorts/', 'the filter must be the exact fixed constant');
+  assert.ok(idx < result.indexOf('--'), '--match-filter must precede the "--" separator');
+});
+
+test('buildYtdlpListArgs: omits --match-filter when skipShorts is false/absent/undefined', () => {
+  const config = makeConfig();
+  assert.ok(!args.buildYtdlpListArgs(baseSub({ skipShorts: false }), config).includes('--match-filter'));
+  assert.ok(!args.buildYtdlpListArgs(baseSub(), config).includes('--match-filter'));
+  assert.ok(!args.buildYtdlpListArgs(baseSub({ skipShorts: undefined }), config).includes('--match-filter'));
+});
+
+test('buildYtdlpListArgs: a hostile/malformed skipShorts value (object, metacharacter-laden string, 1, null) NEVER produces --match-filter or a stray argv token (strict === true re-assert)', () => {
+  const config = makeConfig();
+  const hostileValues = [{ evil: true }, 'true; rm -rf /', 1, 'true', null, [true]];
+  for (const hostile of hostileValues) {
+    const result = args.buildYtdlpListArgs(baseSub({ skipShorts: hostile }), config);
+    assert.ok(!result.includes('--match-filter'), `skipShorts=${JSON.stringify(hostile)} must not emit --match-filter`);
+    for (const el of result) {
+      assert.ok(!el.includes('rm -rf'), 'a hostile skipShorts value must never leak into any argv element');
+    }
+  }
+});
+
+test('buildYtdlpListArgs: --match-filter never influences buildYtdlpDownloadArgs (download pass targets explicit ids only)', () => {
+  const config = makeConfig();
+  const result = args.buildYtdlpDownloadArgs(baseSub({ skipShorts: true }), config, ['vid1']);
+  assert.ok(!result.includes('--match-filter'), 'the download pass must never carry the Shorts match-filter -- it is a LIST-pass-only, defense-in-depth flag');
+});
+
+// ---- v1.15.0 item 6: one-off archive bypass (oneOff opt) ------------------
+
+test('buildYtdlpDownloadArgs: a one-off build (opts.oneOff: true) includes --no-download-archive + --force-overwrites, and OMITS --download-archive', () => {
+  const config = makeConfig();
+  const result = args.buildYtdlpDownloadArgs(baseSub(), config, ['vid1'], { oneOff: true });
+  assert.ok(result.includes('--no-download-archive'));
+  assert.ok(result.includes('--force-overwrites'));
+  assert.ok(!result.includes('--download-archive'), 'a one-off must never carry the shared --download-archive flag');
+});
+
+test('buildYtdlpDownloadArgs: a subscription-cycle build (no opts / oneOff falsy) keeps --download-archive UNCHANGED and carries neither one-off flag (regression)', () => {
+  const config = makeConfig();
+  const noOpts = args.buildYtdlpDownloadArgs(baseSub(), config, ['vid1']);
+  assert.ok(noOpts.includes('--download-archive'));
+  assert.ok(!noOpts.includes('--no-download-archive'));
+  assert.ok(!noOpts.includes('--force-overwrites'));
+
+  const explicitlyFalse = args.buildYtdlpDownloadArgs(baseSub(), config, ['vid1'], { oneOff: false });
+  assert.ok(explicitlyFalse.includes('--download-archive'));
+  assert.ok(!explicitlyFalse.includes('--no-download-archive'));
+  assert.ok(!explicitlyFalse.includes('--force-overwrites'));
+});
+
+test('buildYtdlpDownloadArgs: the one-off and subscription code paths diverge ONLY in the archive-related flags -- everything else (embed/format/confinement/"--"discipline) is identical', () => {
+  const config = makeConfig();
+  const subscriptionArgs = args.buildYtdlpDownloadArgs(baseSub(), config, ['vid1']);
+  const oneOffArgs = args.buildYtdlpDownloadArgs(baseSub(), config, ['vid1'], { oneOff: true });
+
+  const archiveRelated = new Set(['--download-archive', '--no-download-archive', '--force-overwrites']);
+  // Strip the archive path value (which immediately follows --download-archive
+  // in the subscription array) before comparing, alongside the flag tokens.
+  const stripArchiveRelated = (arr) => {
+    const out = [];
+    for (let i = 0; i < arr.length; i++) {
+      if (archiveRelated.has(arr[i])) {
+        if (arr[i] === '--download-archive') i += 1; // also skip its path value
+        continue;
+      }
+      out.push(arr[i]);
+    }
+    return out;
+  };
+  assert.deepEqual(stripArchiveRelated(subscriptionArgs), stripArchiveRelated(oneOffArgs));
+});
+
 // ---- quality/format sanitization (T2-QA-folded; security-adjacent) -------
 
 test('normalizeQuality: passes through an allowlisted value unchanged', () => {
@@ -443,12 +525,13 @@ test('resolveArchivePath: resolves to a dotfile under the download root', () => 
   assert.ok(path.basename(archivePath).startsWith('.'));
 });
 
-// ---- SF4: --restrict-filenames + isPathUnder / realpathUnderChannelDir ---
+// ---- SF4: --windows-filenames + isPathUnder / realpathUnderChannelDir ----
 
-test('buildYtdlpDownloadArgs: includes --restrict-filenames (defense-in-depth against a hostile video title)', () => {
+test('buildYtdlpDownloadArgs: includes --windows-filenames (defense-in-depth against a hostile video title), NOT --restrict-filenames', () => {
   const config = makeConfig();
   const result = args.buildYtdlpDownloadArgs(baseSub(), config, ['vid1']);
-  assert.ok(result.includes('--restrict-filenames'));
+  assert.ok(result.includes('--windows-filenames'));
+  assert.ok(!result.includes('--restrict-filenames'), 'the old flag must be fully replaced, not merely supplemented');
 });
 
 test('isPathUnder: accepts the root itself and a nested descendant', () => {
@@ -500,6 +583,70 @@ test('realpathUnderChannelDir: rejects a symlink planted inside the channel dir 
   const linkPath = path.join(channelDir, 'video.mp4');
   fs.symlinkSync(outsideFile, linkPath);
   assert.equal(args.realpathUnderChannelDir(linkPath, channelDir), false);
+});
+
+// ---- v1.15.0 item 5 MANDATED SECURITY REGRESSION: --windows-filenames -----
+// ---- must not weaken the SF4 confinement guard -----------------------------
+//
+// The flag swap (--restrict-filenames -> --windows-filenames) only changes
+// which characters yt-dlp's OWN filename sanitizer permits; it is NEVER the
+// authoritative guard. These tests prove the guard itself -- resolveChannelDir
+// + realpathUnderChannelDir -- still rejects/contains a hostile, traversal-
+// and-control-char-laden title/name, independent of which sanitizer flag was
+// used to produce the on-disk name.
+
+test('SECURITY REGRESSION (item 5): a hostile title containing "../", both path separators, and control characters cannot escape the channel dir via resolveChannelDir -- confinement holds regardless of the filename flag', () => {
+  const config = makeConfig();
+  // sanitizeChannelName/resolveChannelDir operate on the CHANNEL name (the
+  // directory the -o template is rooted at); a hostile "title" attack is
+  // structurally the same shape here -- both are attacker-controlled yt-dlp
+  // metadata strings that must never let the confined dir escape.
+  const hostileName = '../../../etc/passwd\\..\\..\\evil\x00\x01\x1f';
+  const dir = args.resolveChannelDir(config, baseSub({ name: hostileName }));
+  const root = path.resolve(config.downloadDir);
+  assert.ok(dir === root || dir.startsWith(root + path.sep), `hostile name escaped the confined root: ${dir}`);
+});
+
+test('SECURITY REGRESSION (item 5): --windows-filenames replaces --restrict-filenames, but a symlink escape produced under a hostile-shaped filename is STILL rejected by realpathUnderChannelDir/quarantine (the guard, not the flag, is authoritative)', () => {
+  const config = makeConfig();
+  const channelDir = args.resolveChannelDir(config, baseSub());
+  fs.mkdirSync(channelDir, { recursive: true });
+
+  // A single flat filename that LOOKS like a hostile, traversal-laden title
+  // (".." segments, embedded control-char remnants collapsed to safe chars,
+  // an [id]-shaped suffix) but, because it can only ever be ONE filesystem
+  // path segment (no real OS separator can live inside a filename), is not
+  // itself an escape -- it must be accepted as living under the channel dir
+  // regardless of which sanitizer flag produced it.
+  const hostileLookingButContainedName = '.._.._.._etc_passwd [aBcDeFgHiJk].mp4';
+  const containedPath = path.join(channelDir, hostileLookingButContainedName);
+  fs.writeFileSync(containedPath, 'x');
+  assert.equal(
+    args.realpathUnderChannelDir(containedPath, channelDir),
+    true,
+    'a merely suspicious-looking, non-escaping filename must resolve under the channel dir'
+  );
+
+  // The actual attack vector this guard exists for: a SYMLINK planted inside
+  // the channel dir (its own name irrelevant) that points OUTSIDE the
+  // confined root -- this must be rejected identically whether the filename
+  // sanitizer in effect is --restrict-filenames or --windows-filenames,
+  // because the check runs on the file's REAL resolved path, never on the
+  // flag that produced its name.
+  const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-ytdlp-outside-'));
+  const outsideFile = path.join(outsideDir, 'passwd');
+  fs.writeFileSync(outsideFile, 'root:x:0:0:root:/root:/bin/bash');
+  const escapingLinkPath = path.join(channelDir, '.._.._.._escaped [zYxWvUtSrQp].mp4');
+  fs.symlinkSync(outsideFile, escapingLinkPath);
+  assert.equal(
+    args.realpathUnderChannelDir(escapingLinkPath, channelDir),
+    false,
+    'confinement must reject an escaping symlink regardless of the filename-sanitizer flag'
+  );
+});
+
+test('SECURITY REGRESSION (item 5): OUTPUT_TEMPLATE still carries %(id)s, preserving id-based uniqueness for --download-archive dedup under the new filename flag', () => {
+  assert.ok(args.OUTPUT_TEMPLATE.includes('%(id)s'), 'the id token must remain in the output template so two same-titled videos never collide on disk');
 });
 
 // ---- v1.13.0 item 4: normalizeFiletype (spawn-args-flagged allowlist) -----
@@ -621,12 +768,12 @@ test('buildYtdlpDownloadArgs: a video filetype value degrades safely for a misma
   assert.equal(result[result.indexOf('--audio-format') + 1], 'mp3', 'a video-only filetype on an audio sub must degrade to the audio default, not leak through');
 });
 
-test('buildYtdlpDownloadArgs: --restrict-filenames/"--"/arg-array discipline intact alongside the filetype mapping', () => {
+test('buildYtdlpDownloadArgs: --windows-filenames/"--"/arg-array discipline intact alongside the filetype mapping', () => {
   const config = makeConfig();
   const result = args.buildYtdlpDownloadArgs(baseSub({ format: 'video', filetype: 'mkv' }), config, ['vid1']);
   assert.ok(Array.isArray(result));
   assert.ok(result.every((el) => typeof el === 'string'));
-  assert.ok(result.includes('--restrict-filenames'));
+  assert.ok(result.includes('--windows-filenames'));
   assert.equal(result[result.length - 2], '--', '"--" must still immediately precede the target URL');
   assert.equal(result[result.length - 1], 'https://www.youtube.com/watch?v=vid1');
 });

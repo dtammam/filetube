@@ -228,6 +228,18 @@ test('validatePaused: accepts undefined and strict booleans, rejects anything el
   assert.equal(store.validatePaused(null).ok, false);
 });
 
+// ---- v1.15.0 item 4: validateSkipShorts (mirrors validatePaused exactly) --
+
+test('validateSkipShorts: accepts undefined and strict booleans, rejects anything else', () => {
+  assert.deepEqual(store.validateSkipShorts(undefined), { ok: true, value: undefined });
+  assert.deepEqual(store.validateSkipShorts(true), { ok: true, value: true });
+  assert.deepEqual(store.validateSkipShorts(false), { ok: true, value: false });
+  assert.equal(store.validateSkipShorts('true').ok, false);
+  assert.equal(store.validateSkipShorts(1).ok, false);
+  assert.equal(store.validateSkipShorts(null).ok, false);
+  assert.equal(store.validateSkipShorts({}).ok, false);
+});
+
 test('validateSubscriptionInput: rejects an out-of-range/non-integer maxVideos', () => {
   assert.equal(store.validateSubscriptionInput({ channelUrl: 'https://www.youtube.com/@x', maxVideos: -1 }).ok, false);
   assert.equal(store.validateSubscriptionInput({ channelUrl: 'https://www.youtube.com/@x', maxVideos: 1.5 }).ok, false);
@@ -238,18 +250,24 @@ test('validateSubscriptionInput: rejects a non-boolean paused', () => {
   assert.equal(store.validateSubscriptionInput({ channelUrl: 'https://www.youtube.com/@x', paused: 'yes' }).ok, false);
 });
 
-test('validateSubscriptionInput: accepts unset maxVideos/paused (stays undefined)', () => {
+test('validateSubscriptionInput: accepts unset maxVideos/paused/skipShorts (stays undefined)', () => {
   const result = store.validateSubscriptionInput({ channelUrl: 'https://www.youtube.com/@x' });
   assert.equal(result.ok, true);
   assert.equal(result.value.maxVideos, undefined);
   assert.equal(result.value.paused, undefined);
+  assert.equal(result.value.skipShorts, undefined);
 });
 
-test('validateSubscriptionInput: accepts a valid maxVideos/paused and passes them through', () => {
-  const result = store.validateSubscriptionInput({ channelUrl: 'https://www.youtube.com/@x', maxVideos: 5, paused: true });
+test('validateSubscriptionInput: accepts a valid maxVideos/paused/skipShorts and passes them through', () => {
+  const result = store.validateSubscriptionInput({ channelUrl: 'https://www.youtube.com/@x', maxVideos: 5, paused: true, skipShorts: true });
   assert.equal(result.ok, true);
   assert.equal(result.value.maxVideos, 5);
   assert.equal(result.value.paused, true);
+  assert.equal(result.value.skipShorts, true);
+});
+
+test('validateSubscriptionInput: rejects a non-boolean skipShorts', () => {
+  assert.equal(store.validateSubscriptionInput({ channelUrl: 'https://www.youtube.com/@x', skipShorts: 'yes' }).ok, false);
 });
 
 // ---- validateSubscriptionPatch (PATCH /api/subscriptions/:id body) ----
@@ -264,10 +282,17 @@ test('validateSubscriptionPatch: accepts a subset of fields, only including prov
   assert.deepEqual(result.value, { paused: true });
 });
 
-test('validateSubscriptionPatch: rejects an invalid format/maxVideos/paused', () => {
+test('validateSubscriptionPatch: rejects an invalid format/maxVideos/paused/skipShorts', () => {
   assert.equal(store.validateSubscriptionPatch({ format: 'gif' }).ok, false);
   assert.equal(store.validateSubscriptionPatch({ maxVideos: -5 }).ok, false);
   assert.equal(store.validateSubscriptionPatch({ paused: 'nope' }).ok, false);
+  assert.equal(store.validateSubscriptionPatch({ skipShorts: 'nope' }).ok, false);
+});
+
+test('validateSubscriptionPatch: accepts skipShorts as its own subset key', () => {
+  const result = store.validateSubscriptionPatch({ skipShorts: true });
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.value, { skipShorts: true });
 });
 
 // ---- FR-D: updateSubscription (AC21, AC24) ----
@@ -303,6 +328,17 @@ test('updateSubscription: can toggle paused independent of other fields', async 
   assert.equal(resumed.paused, false);
 });
 
+test('updateSubscription: can toggle skipShorts independent of other fields', async () => {
+  const deps = makeFakeDeps();
+  const added = await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@shorts', format: 'video' });
+  assert.equal(added.skipShorts, false);
+  const skipped = await store.updateSubscription(deps, added.id, { skipShorts: true });
+  assert.equal(skipped.skipShorts, true);
+  assert.equal(skipped.format, 'video');
+  const resumed = await store.updateSubscription(deps, added.id, { skipShorts: false });
+  assert.equal(resumed.skipShorts, false);
+});
+
 test('updateSubscription: returns null for an unknown id and does not create a new record', async () => {
   const deps = makeFakeDeps();
   await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@stays', format: 'video' });
@@ -323,13 +359,23 @@ test('updateSubscription: an invalid value within the patch is defensively ignor
 
 // ---- ensureYtdlp: per-subscription `paused` backfill (FR-D) ----
 
-test('ensureYtdlp: backfills paused=false on a legacy subscription lacking the field', () => {
+test('ensureYtdlp: backfills paused=false and skipShorts=false on a legacy subscription lacking both fields', () => {
   const legacySub = { id: 'legacy1', channelUrl: 'https://www.youtube.com/@legacy', name: 'Legacy', format: 'video', quality: 'best', addedAt: '2020-01-01T00:00:00.000Z', lastCheckedAt: null, lastStatus: null };
   const db = { ytdlp: { allowMembersOnly: false, subscriptions: [legacySub] } };
   const ns = store.ensureYtdlp(db);
   assert.equal(ns.subscriptions[0].paused, false);
+  assert.equal(ns.subscriptions[0].skipShorts, false);
   // maxVideos stays unset (undefined), not backfilled to any number.
   assert.equal(ns.subscriptions[0].maxVideos, undefined);
+});
+
+test('ensureYtdlp: skipShorts backfill is non-destructive -- an already-boolean value is left untouched, and no other field is altered', () => {
+  const modernSub = { id: 'modern-shorts', channelUrl: 'https://www.youtube.com/@modernshorts', name: 'Modern Shorts', format: 'video', quality: 'best', addedAt: '2026-01-01T00:00:00.000Z', lastCheckedAt: null, lastStatus: null, paused: false, skipShorts: true };
+  const db = { ytdlp: { allowMembersOnly: false, subscriptions: [modernSub] } };
+  const ns = store.ensureYtdlp(db);
+  assert.equal(ns.subscriptions[0].skipShorts, true);
+  assert.equal(ns.subscriptions[0].name, 'Modern Shorts');
+  assert.equal(ns.subscriptions[0].format, 'video');
 });
 
 test('ensureYtdlp: leaves an already-boolean paused field untouched', () => {
