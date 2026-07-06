@@ -1185,13 +1185,19 @@ header {
 }
 
 /* Setup Wizard Styles */
+/* v1.13.0 item 6: widened from 650px -- the Setup (Library Settings) and
+   /subscriptions pages read cramped on a normal desktop viewport at 650px,
+   with the multi-control add/one-shot rows wrapping onto several lines
+   awkwardly. 780px gives those rows (URL + format + quality + filetype +
+   button) real room to sit on one line at common desktop widths while
+   still centering as a comfortably-readable column, not a full-bleed page. */
 .setup-box {
-  max-width: 650px;
-  margin: 40px auto;
+  max-width: 780px;
+  margin: 32px auto;
   border: 1px solid var(--border-color);
   background-color: var(--bg-sidebar);
   border-radius: var(--radius);
-  padding: 30px;
+  padding: 32px;
   box-shadow: var(--shadow);
 }
 
@@ -1208,23 +1214,24 @@ header {
   font-size: 14px;
   margin-bottom: 20px;
   color: var(--text-primary);
+  line-height: 1.5;
 }
 
 .form-group {
-  margin-bottom: 20px;
+  margin-bottom: 24px;
 }
 
 .form-group label {
   display: block;
   font-weight: bold;
-  margin-bottom: 8px;
+  margin-bottom: 10px;
   font-size: 13px;
 }
 
 .form-group input[type="text"],
 .form-group input[type="number"] {
   width: 100%;
-  padding: 10px;
+  padding: 10px 12px;
   border: 1px solid var(--border-dark);
   border-radius: var(--radius);
   font-size: 13px;
@@ -1236,7 +1243,7 @@ header {
 /* Settings <select> controls (Automation & Storage box) — same visual weight
    as the text/number inputs above, sized to content rather than full-width. */
 .setup-select {
-  padding: 10px;
+  padding: 10px 12px;
   border: 1px solid var(--border-dark);
   border-radius: var(--radius);
   font-size: 13px;
@@ -1256,21 +1263,23 @@ header {
   border: 1px solid var(--border-color);
   background-color: var(--bg-color);
   border-radius: var(--radius);
-  padding: 10px;
+  padding: 12px;
   margin-bottom: 16px;
-  max-height: 200px;
+  max-height: 240px;
   overflow-y: auto;
 }
 
 .folder-item-row {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
-  padding: 6px 8px;
+  gap: 10px;
+  padding: 10px 12px;
   background-color: var(--bg-secondary);
   border: 1px solid var(--border-color);
   border-radius: var(--radius);
-  margin-bottom: 8px;
+  margin-bottom: 10px;
 }
 
 .folder-item-row:last-child {
@@ -1307,6 +1316,72 @@ header {
   font-style: italic;
   text-align: center;
   padding: 12px 0;
+}
+
+/* v1.13.0 item 1/6 -- the /subscriptions page's OWN row layout, used by
+   lib/ytdlp/client/subscriptions.js's createSubscriptionRow/createOneShotRow.
+   This is DELIBERATELY separate from .folder-item-row/.folder-path-text
+   above: that pair was found to collapse its info column to ~1 character
+   wide (subscription names/URLs wrapped one character per line, v1.12.0
+   BUG). `.sub-row` wraps (flex-wrap: wrap) instead of forcing everything
+   onto one strict line, and `.sub-row-info` carries a guaranteed minimum
+   width (240px) via flex-basis, so it can never be squeezed toward zero --
+   if the row is genuinely too narrow, `.sub-row-actions` wraps onto its own
+   line below instead of crushing the text column. Long names/URLs wrap at
+   normal word/URL-segment boundaries (`overflow-wrap`/`word-break:
+   break-word`), never mid-character (`break-all`). */
+.sub-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  margin-bottom: 10px;
+}
+
+.sub-row:last-child {
+  margin-bottom: 0;
+}
+
+.sub-row-info {
+  flex: 1 1 240px;
+  min-width: 240px;
+  max-width: 100%;
+}
+
+.sub-row-name {
+  font-family: var(--mono-font);
+  font-size: 13px;
+  font-weight: bold;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+.sub-row-url {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: 4px;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+.sub-row-meta,
+.sub-row-status {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+.sub-row-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+  align-items: center;
+  flex-wrap: wrap;
 }
 
 /* Appearance (era theme) picker — setup.html */
@@ -1716,6 +1791,51 @@ header {
     flex-direction: column;
     align-items: flex-start;
   }
+
+  /* ---- v1.13.0 item 6: mobile-portrait polish for the Setup (Library ------
+     Settings) page and the /subscriptions page. Comfortable spacing/
+     wrapping for rows and controls, and larger tap targets, without
+     touching desktop (these rules only apply inside this max-width:768px
+     query). */
+  .setup-box {
+    margin: 20px auto;
+    padding: 20px 16px;
+  }
+
+  .form-group {
+    margin-bottom: 20px;
+  }
+
+  /* Every control a user taps on these two pages gets a comfortable minimum
+     tap-target height on a phone -- scoped to .setup-box so it never affects
+     buttons/selects elsewhere in the app (e.g. the header/player controls). */
+  .setup-box .btn,
+  .setup-box .setup-select,
+  .setup-box input[type="text"],
+  .setup-box input[type="number"] {
+    min-height: 44px;
+  }
+
+  /* The add-subscription/one-shot rows (URL + several selects + a button)
+     already `flex-wrap: wrap` inline in subscriptions.html -- give the
+     wrapped controls room to breathe and let the button take the full row
+     width once it wraps onto its own line, rather than sitting cramped next
+     to the last select. */
+  .setup-box .form-group > div[style*="flex"] {
+    row-gap: 10px;
+  }
+
+  .folder-item-row,
+  .sub-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .folder-item-row .remove-folder-btn,
+  .sub-row-actions {
+    align-self: flex-end;
+  }
 }
 
 /* In landscape on a phone, the 16:9 player can fill the viewport; hide the fixed
@@ -1724,4 +1844,21 @@ header {
 @media (max-width: 768px) and (orientation: landscape) {
   .bottom-nav { display: none; }
   .main-content { padding-bottom: env(safe-area-inset-bottom); }
+}
+
+/* v1.13.0 item 2: cap the player on a PHONE IN PORTRAIT so it no longer
+   dominates the screen. Before this change, .player-container (line ~614)
+   had NO mobile-specific height cap at all -- only width:100%/aspect-ratio:
+   16/9 applied everywhere (the pre-existing max-height:70vh a few rules
+   above belongs to .playlists-sheet, a different element, not the player).
+   Scoped to `orientation: portrait` specifically (not just max-width:768px,
+   which some phones also match in landscape) so desktop, mobile landscape,
+   and the audio-mode/.audio-bg-art layout are all completely unaffected --
+   the existing aspect-ratio + object-fit:contain letterboxing still governs
+   sizing; this only adds a ceiling on the resulting height. Value: 45vh
+   (middle of the requested 40-50vh range) -- tune on-device as needed. */
+@media (max-width: 768px) and (orientation: portrait) {
+  .player-container {
+    max-height: 45vh;
+  }
 }

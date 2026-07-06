@@ -215,6 +215,16 @@ test('AC32: GET /subscriptions serves the page HTML when enabled, referencing th
     assert.match(body, /oneshot-quality/, 'page must contain the one-shot quality dropdown (AC15)');
     assert.match(body, /oneshot-download-btn/, 'page must contain the one-shot submit control');
     assert.match(body, /oneshot-list-container/, 'page must contain the one-shot live-status list container');
+
+    // v1.13.0 item 4 (AC13/17): the filetype/container dropdown is present
+    // on BOTH the add-subscription form and the one-shot form, defaulting to
+    // the video option set (mp4 selected) to match each form's default
+    // format select.
+    assert.match(body, /<select id="sub-add-filetype"/, 'the subscription add form must present a filetype/container dropdown');
+    assert.match(body, /<select id="oneshot-filetype"/, 'the one-shot form must present a filetype/container dropdown');
+    for (const filetype of ['mp4', 'mkv', 'webm', 'default']) {
+      assert.match(body, new RegExp(`<option value="${filetype}"`), `sub-add-filetype/oneshot-filetype must offer ${filetype}`);
+    }
   } finally {
     await close();
     fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -233,6 +243,10 @@ test('AC32: GET /js/subscriptions.js serves the client controller as javascript 
     assert.match(body, /createOneShotRow/, 'T5: the one-shot job row builder must be present');
     assert.match(body, /formatLiveStatusText/, 'T5: the live status-poll formatter must be present');
     assert.match(body, /textContent/);
+    // v1.13.0 item 4: the format-dependent filetype select builder/reducer
+    // must be present in the served client bundle.
+    assert.match(body, /buildFiletypeSelect/, 'the filetype/container select builder must be present');
+    assert.match(body, /reduceFiletypeOptions/, 'the format->filetype repopulation reducer must be present');
     // No LIVE (non-comment) `.innerHTML =` assignment anywhere in the served
     // file -- the hard XSS bar from the shipped v1.11.0 /subscriptions page,
     // now covering the new one-shot/edit/pause code paths too.
@@ -338,7 +352,9 @@ test('T5: add with maxVideos, pause/resume toggle, inline edit (PATCH), one-shot
 
   const { base, close } = await bootApp({ config: enabledConfig(tmpDir), deps });
   try {
-    // Add form: channelUrl + format/quality DROPDOWN values + maxVideos.
+    // Add form: channelUrl + format/quality/filetype DROPDOWN values + maxVideos
+    // -- v1.13.0 item 4's `filetype` field is now part of the exact body
+    // shape the add form composes (lib/ytdlp/client/subscriptions.js).
     const addRes = await fetch(`${base}/api/subscriptions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -346,12 +362,14 @@ test('T5: add with maxVideos, pause/resume toggle, inline edit (PATCH), one-shot
         channelUrl: 'https://www.youtube.com/@somechannel',
         format: 'video',
         quality: '720p',
+        filetype: 'mkv',
         maxVideos: 10,
       }),
     });
     assert.equal(addRes.status, 201);
     const added = await addRes.json();
     assert.equal(added.quality, '720p');
+    assert.equal(added.filetype, 'mkv', 'the add form\'s filetype selection must persist on the created subscription');
     assert.equal(added.maxVideos, 10);
     assert.equal(added.paused, false, 'a fresh subscription must default to unpaused (FR-D backfill)');
 
@@ -364,18 +382,20 @@ test('T5: add with maxVideos, pause/resume toggle, inline edit (PATCH), one-shot
     assert.equal(pauseRes.status, 200);
     assert.equal((await pauseRes.json()).paused, true);
 
-    // Inline edit panel's Save sends format/quality (always) + maxVideos
-    // (only when the input was non-blank) -- other fields (addedAt,
-    // lastCheckedAt, lastStatus, paused) must be preserved untouched (AC21).
+    // Inline edit panel's Save sends format/quality/filetype (always) +
+    // maxVideos (only when the input was non-blank) -- other fields
+    // (addedAt, lastCheckedAt, lastStatus, paused) must be preserved
+    // untouched (AC21). filetype='mp3' is valid for the new format='audio'.
     const editRes = await fetch(`${base}/api/subscriptions/${added.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ format: 'audio', quality: 'best', maxVideos: 3 }),
+      body: JSON.stringify({ format: 'audio', quality: 'best', filetype: 'mp3', maxVideos: 3 }),
     });
     assert.equal(editRes.status, 200);
     const edited = await editRes.json();
     assert.equal(edited.format, 'audio');
     assert.equal(edited.quality, 'best');
+    assert.equal(edited.filetype, 'mp3', 'the edit panel\'s filetype selection must persist (AC17)');
     assert.equal(edited.maxVideos, 3);
     assert.equal(edited.paused, true, 'the earlier pause must survive an edit that does not touch it (AC21)');
     assert.equal(edited.channelUrl, added.channelUrl);
@@ -398,12 +418,13 @@ test('T5: add with maxVideos, pause/resume toggle, inline edit (PATCH), one-shot
     assert.equal(unknownPatch.status, 404);
 
     // One-shot form: exactly the body shape subscriptions.js's download
-    // button composes -- {url, format, quality, folder} (folder omitted when
-    // blank, format/quality always the two dropdown values).
+    // button composes -- {url, format, quality, filetype, folder} (folder
+    // omitted when blank, format/quality/filetype always the three dropdown
+    // values, per v1.13.0 item 4).
     const oneShotRes = await fetch(`${base}/api/ytdlp/download`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url: 'https://youtu.be/dQw4w9WgXcQ', format: 'video', quality: 'best' }),
+      body: JSON.stringify({ url: 'https://youtu.be/dQw4w9WgXcQ', format: 'video', quality: 'best', filetype: 'webm' }),
     });
     assert.equal(oneShotRes.status, 202);
     const oneShotBody = await oneShotRes.json();
