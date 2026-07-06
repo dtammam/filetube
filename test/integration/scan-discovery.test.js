@@ -18,7 +18,7 @@ const DB_FILE = path.join(DATA_DIR, 'db.json');
 
 const { test, beforeEach } = require('node:test');
 const assert = require('node:assert');
-const { scanDirectories, getMediaId } = require('../../server');
+const { scanDirectories, getMediaId, isYtdlpIntermediate } = require('../../server');
 
 function baseSettings(overrides) {
   return {
@@ -146,6 +146,88 @@ test('scanDirectories: an AVI (browser-incompatible container) is flagged needsT
   const db = readDb();
   assert.equal(db.metadata[getMediaId(aviPath)].needsTranscode, true);
   assert.equal(db.metadata[getMediaId(mp4Path)].needsTranscode, false);
+});
+
+// ---- v1.15.1 hotfix: yt-dlp intermediate/partial-download artifacts are
+// excluded from the scan entirely (isYtdlpIntermediate), even when they
+// carry a whitelisted media extension -- so a download killed by the
+// download timeout (or otherwise failed) never leaves a broken library card
+// (no thumbnail, raw yt-dlp-shaped name) behind. ----------------------------
+
+test('isYtdlpIntermediate: recognizes yt-dlp per-format fragments, merge temps, and partial markers', () => {
+  const intermediateNames = [
+    'Some Title [wSx0Or20MZE].f399.mp4',
+    'Some Title [wSx0Or20MZE].f251.webm',
+    'Some Title [wSx0Or20MZE].temp.mp4',
+    'Some Title [wSx0Or20MZE].temp.mkv',
+    'Some Title [wSx0Or20MZE].mp4.part',
+    'Some Title [wSx0Or20MZE].mp4.ytdl',
+    'Some Title [wSx0Or20MZE].mp4.part-Frag3',
+  ];
+  for (const name of intermediateNames) {
+    assert.equal(isYtdlpIntermediate(name), true, `${name} should be recognized as a yt-dlp intermediate`);
+  }
+});
+
+test('isYtdlpIntermediate: an ordinary media filename (including one with extra dots) is never treated as an intermediate', () => {
+  const normalNames = [
+    'Movie.mp4',
+    'My.Video.2024.mp4',
+    'Link Miguel en Vivo [wSx0Or20MZE].mp3',
+    'Season 1 Episode 2.mkv',
+    'readme.txt',
+    'poster.jpg',
+  ];
+  for (const name of normalNames) {
+    assert.equal(isYtdlpIntermediate(name), false, `${name} must NOT be treated as a yt-dlp intermediate`);
+  }
+});
+
+test('isYtdlpIntermediate: FileTube\'s OWN ".tmp.mp4" transcode-temp pattern (one "m") is a DIFFERENT shape and is left untouched', () => {
+  assert.equal(isYtdlpIntermediate('abc123.tmp.mp4'), false);
+});
+
+test('isYtdlpIntermediate: defensive on non-string/empty input, never throws', () => {
+  for (const bad of [undefined, null, 42, {}, [], '']) {
+    assert.doesNotThrow(() => isYtdlpIntermediate(bad));
+    assert.equal(isYtdlpIntermediate(bad), false);
+  }
+});
+
+test('scanDirectories: a yt-dlp per-format fragment/merge-temp file left after a killed/failed download is never indexed', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-discovery-ytdlp-intermediates-'));
+  const goodPath = path.join(root, 'Good Video [wSx0Or20MZE].mp4');
+  const fragmentPath = path.join(root, 'Killed Video [wSx0Or20MZE].f399.mp4');
+  const audioFragmentPath = path.join(root, 'Killed Video [wSx0Or20MZE].f251.webm');
+  const mergeTempPath = path.join(root, 'Killed Video [wSx0Or20MZE].temp.mp4');
+  const partPath = path.join(root, 'Killed Video [wSx0Or20MZE].mp4.part');
+  const ytdlPath = path.join(root, 'Killed Video [wSx0Or20MZE].mp4.ytdl');
+  for (const p of [goodPath, fragmentPath, audioFragmentPath, mergeTempPath, partPath, ytdlPath]) {
+    fs.writeFileSync(p, 'bytes');
+  }
+  writeDb({ folders: [root], folderSettings: {}, progress: {}, metadata: {}, settings: baseSettings() });
+
+  await scanDirectories();
+
+  const db = readDb();
+  assert.ok(db.metadata[getMediaId(goodPath)], 'a normal completed download must still be indexed');
+  const ids = Object.keys(db.metadata);
+  assert.equal(ids.length, 1, 'exactly one entry -- every yt-dlp intermediate must be excluded from the scan');
+  for (const p of [fragmentPath, audioFragmentPath, mergeTempPath, partPath, ytdlPath]) {
+    assert.ok(!db.metadata[getMediaId(p)], `${p} (yt-dlp intermediate) must never be indexed`);
+  }
+});
+
+test('scanDirectories: a normal media filename with extra dots is still indexed (not mistaken for a yt-dlp intermediate)', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-discovery-dotted-names-'));
+  const dottedPath = path.join(root, 'My.Video.2024.mp4');
+  fs.writeFileSync(dottedPath, 'bytes');
+  writeDb({ folders: [root], folderSettings: {}, progress: {}, metadata: {}, settings: baseSettings() });
+
+  await scanDirectories();
+
+  const db = readDb();
+  assert.ok(db.metadata[getMediaId(dottedPath)], 'a normal dotted filename must still be indexed');
 });
 
 test('scanDirectories: size and addedAt are populated from the real filesystem stat', async () => {

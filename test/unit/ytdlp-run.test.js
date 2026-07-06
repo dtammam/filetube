@@ -7,7 +7,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { redactArgs, redactString } = require('../../lib/ytdlp/run');
+const { redactArgs, redactString, resolveDownloadTimeoutMs, DEFAULT_DOWNLOAD_TIMEOUT_MS } = require('../../lib/ytdlp/run');
 
 test('redactArgs replaces the value after --cookies with a redaction marker', () => {
   const args = ['--dump-json', '--cookies', '/secret/path/to/cookies.txt', '--', 'https://www.youtube.com/@x'];
@@ -85,4 +85,33 @@ test('redactString is a safe passthrough on non-string input', () => {
 test('redactString never throws regardless of input shape', () => {
   assert.doesNotThrow(() => redactString(42, '/a/cookies.txt'));
   assert.doesNotThrow(() => redactString('text', 42));
+});
+
+// ---- resolveDownloadTimeoutMs (v1.15.1 hotfix): threads
+// config.downloadTimeoutMinutes into the download spawn timeout ----
+
+test('resolveDownloadTimeoutMs converts a valid config.downloadTimeoutMinutes to milliseconds', () => {
+  assert.equal(resolveDownloadTimeoutMs({ downloadTimeoutMinutes: 180 }), 180 * 60 * 1000);
+  assert.equal(resolveDownloadTimeoutMs({ downloadTimeoutMinutes: 1 }), 60 * 1000);
+  assert.equal(resolveDownloadTimeoutMs({ downloadTimeoutMinutes: 1440 }), 1440 * 60 * 1000);
+});
+
+test('resolveDownloadTimeoutMs falls back to DEFAULT_DOWNLOAD_TIMEOUT_MS when config lacks a valid downloadTimeoutMinutes', () => {
+  for (const config of [
+    {},
+    { downloadTimeoutMinutes: 0 },
+    { downloadTimeoutMinutes: -5 },
+    { downloadTimeoutMinutes: 1.5 },
+    { downloadTimeoutMinutes: 'garbage' },
+    { downloadTimeoutMinutes: null },
+    { downloadTimeoutMinutes: undefined },
+    null,
+    undefined,
+  ]) {
+    assert.equal(resolveDownloadTimeoutMs(config), DEFAULT_DOWNLOAD_TIMEOUT_MS, `${JSON.stringify(config)} should fall back to the default`);
+  }
+});
+
+test('DEFAULT_DOWNLOAD_TIMEOUT_MS is 180 minutes (raised from the previous 60-minute ceiling)', () => {
+  assert.equal(DEFAULT_DOWNLOAD_TIMEOUT_MS, 180 * 60 * 1000);
 });

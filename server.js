@@ -12,6 +12,15 @@ require('dotenv').config();
 // `isEnabled(config)` inside the functions themselves. See
 // lib/ytdlp/index.js for the dormant-wiring mechanism.
 const ytdlp = require('./lib/ytdlp');
+// v1.15.1 hotfix: pure predicate for yt-dlp's own intermediate/partial-
+// download artifacts (merge temps, per-format fragments, `.part`/`.ytdl`
+// markers) left in its download dir mid-download or after a killed/failed
+// download -- see lib/ytdlpIntermediates.js's module comment for why this
+// is a standalone LEAF module rather than something scanDirRecursive (below)
+// defines locally: lib/ytdlp/index.js's own best-effort post-failure cleanup
+// needs the exact same predicate, and a leaf module lets both sides
+// `require()` it directly without any circular dependency.
+const { isYtdlpIntermediate } = require('./lib/ytdlpIntermediates');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -1364,6 +1373,18 @@ function scanDirRecursive(rootFolder, dirPath, results, unreadable) {
     if (file.isDirectory()) {
       scanDirRecursive(rootFolder, fullPath, results, unreadable);
     } else if (file.isFile()) {
+      // v1.15.1 hotfix: a yt-dlp download that is killed (e.g. the download
+      // timeout) or otherwise fails leaves intermediate/partial artifacts
+      // (merge temps, per-format fragments, `.part`/`.ytdl` markers) behind
+      // in its download dir -- several of these shapes carry a whitelisted
+      // media extension (e.g. `foo [id].f399.mp4`) and would otherwise be
+      // indexed as a broken library card (no thumbnail, a raw yt-dlp-shaped
+      // name). Skipped BEFORE the extension check below, regardless of the
+      // file's own extension, so it can never slip through via a media ext.
+      // This is intentionally distinct from FileTube's OWN `.tmp.mp4`
+      // transcode-cache temp file (a different pattern, in a different
+      // directory) -- that exclusion is unaffected.
+      if (isYtdlpIntermediate(file.name)) continue;
       const ext = path.extname(file.name).toLowerCase();
       if (ALL_EXTENSIONS.includes(ext)) {
         try {
@@ -2282,6 +2303,10 @@ module.exports = {
   VIDEO_EXTENSIONS,
   AUDIO_EXTENSIONS,
   TRANSCODE_EXTENSIONS,
+  // v1.15.1 hotfix: re-exported so tests can exercise the exact predicate
+  // scanDirRecursive uses to exclude yt-dlp's own intermediate/partial
+  // download artifacts (see lib/ytdlpIntermediates.js).
+  isYtdlpIntermediate,
   // Optional yt-dlp subscription module (v1.11.0) -- re-exported so tests can
   // observe the dormant-wiring no-op guarantee without a second require of
   // lib/ytdlp (see AC1-9 in docs/exec-plans/active/2026-07-05-yt-dlp-integration-module.md).

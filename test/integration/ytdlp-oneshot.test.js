@@ -467,6 +467,41 @@ test('a one-shot background failure (ok:false result) sets the activity error st
   }
 });
 
+// v1.15.1 hotfix: a failed one-shot download cleans up any yt-dlp
+// intermediate artifacts it left in the (confined) target folder, but never
+// touches an unrelated, already-completed file sitting in the same folder.
+test('a FAILED one-shot download cleans up yt-dlp intermediate artifacts in its target folder, but leaves a completed final file untouched', async () => {
+  const deps = makeFakeDeps();
+  const config = enabledConfig();
+  const channelDir = args.resolveChannelDir(config, { name: 'One-Off' });
+  fs.mkdirSync(channelDir, { recursive: true });
+  const finalPath = path.join(channelDir, 'Already Downloaded [dQw4w9WgXcQ].mp4');
+  const fragmentPath = path.join(channelDir, 'Killed Video [wSx0Or20MZE].f399.mp4');
+  const mergeTempPath = path.join(channelDir, 'Killed Video [wSx0Or20MZE].temp.mp4');
+  fs.writeFileSync(finalPath, 'a real, already-completed video');
+  fs.writeFileSync(fragmentPath, 'yt-dlp leftover bytes');
+  fs.writeFileSync(mergeTempPath, 'yt-dlp leftover bytes');
+
+  run.runDownload = async () => ({ ok: false, code: 'ETIMEDOUT', stdout: '', stderr: '', error: 'yt-dlp timed out and was killed' });
+
+  const { base, close } = await startTestApp(deps, config);
+  try {
+    const res = await postJson(base, '/api/ytdlp/download', { url: SINGLE_VIDEO_URL });
+    const { jobId } = await res.json();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    const statusRes = await fetch(`${base}/api/subscriptions/status`);
+    const snap = await statusRes.json();
+    assert.equal(snap.oneShots[jobId].state, 'error');
+
+    assert.equal(fs.existsSync(fragmentPath), false, 'the per-format fragment must be cleaned up after the failed download');
+    assert.equal(fs.existsSync(mergeTempPath), false, 'the merge temp must be cleaned up after the failed download');
+    assert.equal(fs.existsSync(finalPath), true, 'a completed/final file must never be removed by the cleanup');
+  } finally {
+    await close();
+  }
+});
+
 test('a one-shot background SYNCHRONOUS THROW from runDownload is caught (never an unhandled rejection) and sets the activity error state', async () => {
   const deps = makeFakeDeps();
   run.runDownload = () => {
