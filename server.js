@@ -75,7 +75,12 @@ const DEFAULT_SETTINGS = {
   pruneMissing: true,
   cacheMaxBytes: null,
   cacheMaxAgeDays: 30,
-  defaultView: ''
+  defaultView: '',
+  // v1.16.0 FR-3 (T3): auto-plays the next video (per the client's
+  // deriveOrderedIds/computeNeighbors, common.js) on the player's 'ended'
+  // event. OFF by default -- mirrors defaultView's pattern exactly (see
+  // settingsResponse/KNOWN_KEYS/the POST validation branch below).
+  autoplayNext: false
 };
 
 // Per-key merge so a partial/older `settings` object keeps whatever keys it
@@ -1687,7 +1692,7 @@ app.get('/api/scan-status', (req, res) => {
 const SCAN_INTERVAL_VALID_VALUES = new Set([0, ...SCAN_INTERVAL_MINUTE_OPTIONS]);
 const CACHE_MAX_AGE_DAYS_VALID_VALUES = new Set([0, 7, 14, 30, 90]);
 
-// Shape returned by both GET and POST /api/settings — the four persisted keys
+// Shape returned by both GET and POST /api/settings — the five persisted keys
 // plus a read-only `effectiveCacheMaxBytes` (UI prefill for the "no override"
 // case, since cacheMaxBytes:null defers to the env var / 5 GB default).
 function settingsResponse(settings) {
@@ -1697,6 +1702,7 @@ function settingsResponse(settings) {
     cacheMaxBytes: settings.cacheMaxBytes,
     cacheMaxAgeDays: settings.cacheMaxAgeDays,
     defaultView: settings.defaultView,
+    autoplayNext: settings.autoplayNext,
     effectiveCacheMaxBytes: effectiveCacheCap(settings)
   };
 }
@@ -1715,7 +1721,7 @@ app.get('/api/settings', (req, res) => {
 // free of arbitrary/typo'd keys.
 app.post('/api/settings', async (req, res) => {
   const body = req.body || {};
-  const KNOWN_KEYS = ['scanIntervalMinutes', 'pruneMissing', 'cacheMaxBytes', 'cacheMaxAgeDays', 'defaultView'];
+  const KNOWN_KEYS = ['scanIntervalMinutes', 'pruneMissing', 'cacheMaxBytes', 'cacheMaxAgeDays', 'defaultView', 'autoplayNext'];
   for (const key of Object.keys(body)) {
     if (!KNOWN_KEYS.includes(key)) {
       return res.status(400).json({ error: `unknown settings key: ${key}` });
@@ -1746,6 +1752,11 @@ app.post('/api/settings', async (req, res) => {
   // to reject a since-removed folder path.
   if ('defaultView' in body && typeof body.defaultView !== 'string') {
     return res.status(400).json({ error: 'defaultView must be a string (folder path, or empty for Most Recent)' });
+  }
+  // v1.16.0 FR-3 (T3): autoplayNext -- boolean, mirrors pruneMissing's own
+  // validation exactly.
+  if ('autoplayNext' in body && typeof body.autoplayNext !== 'boolean') {
+    return res.status(400).json({ error: 'autoplayNext must be a boolean' });
   }
 
   // All provided keys validated -- safe to merge and persist. `prevInterval`

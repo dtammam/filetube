@@ -86,67 +86,40 @@
     </aside>
 
     <main class="main-content" id="main-content">
+      <!-- Per-view content boundary (FR-1, T1): see index.html's matching
+           comment. The router swaps ONLY this node on in-app navigation. -->
+      <div id="view-root" data-view="watch">
       <div class="watch-container">
-        
+
         <!-- Left Main Column -->
         <div class="watch-main">
-          
-          <!-- Media Player Wrapper -->
-          <div class="player-container" id="player-wrapper">
-            <!-- Audio thumbnail-as-background art layer (Feature 1, v1.10.0).
-                 First child so it paints behind everything else; hidden unless
-                 the audio branch of setupPlayer() opts an audio item in via the
-                 .audio-mode class on #player-wrapper. Video items never touch
-                 this element. -->
-            <div id="audio-bg-art" class="audio-bg-art"></div>
 
-            <!-- Resume overlay popup -->
-            <div id="resume-overlay" class="resume-overlay" style="display: none;">
-              <h3>Resume Playback?</h3>
-              <p>You watched this media up to <span id="resume-time-str">0:00</span>. Would you like to resume from there?</p>
-              <div class="resume-actions">
-                <button class="btn" id="resume-no-btn">Start from beginning</button>
-                <button class="btn btn-primary" id="resume-yes-btn">Resume</button>
-              </div>
-            </div>
+          <!-- Player mount point (FR-1/FR-1, T1/T2). The STATIC player markup
+               lives in the shell's #player-host-template (outside #view-root,
+               next to #player-dock -- see the shell markup right after
+               .app-container below). The persistent player controller
+               (player.js) clones that template into a SINGLE live host ONCE,
+               ever, and reparents it into THIS slot (FULL) or the fixed
+               #player-dock (DOCKED) -- see watch.js's init(), which calls
+               window.FileTube.player.load(id, data, { slot: this element }). -->
+          <div id="player-slot"></div>
 
-            <!-- Transcode ("Preparing video") overlay for AVI-class files being converted to MP4 -->
-            <div id="transcode-overlay" class="resume-overlay" style="display: none;">
-              <div class="transcode-spinner" id="transcode-spinner"></div>
-              <h3 id="transcode-title">Preparing this video&hellip;</h3>
-              <p id="transcode-message">FileTube is converting this file to a browser-friendly format. This only happens once &mdash; it'll start playing automatically when it's ready.</p>
-            </div>
-
-            <!-- Standard video player.
-                 playsinline (+ webkit-playsinline) keeps iOS playing in the small
-                 in-page player instead of forcing native fullscreen. -->
-            <video id="media-player" controls preload="metadata" playsinline webkit-playsinline x5-playsinline style="display: none;">
-              Your browser does not support HTML5 video player.
-            </video>
-
-            <!-- Shown while press-and-hold-to-2x is active (mobile inline) -->
-            <div id="speed-badge" class="speed-badge" style="display: none;">2× ▶▶</div>
-
-            <!-- YouTube-style ±15s skip controls (shown for video only, toggled via JS) -->
-            <div id="skip-controls" class="skip-controls" style="display: none;">
-              <button type="button" class="skip-btn skip-back" id="skip-back-btn" aria-label="Rewind 15 seconds">
-                <span class="skip-arrow">«</span><span class="skip-num">15</span>
-              </button>
-              <button type="button" class="skip-btn skip-forward" id="skip-fwd-btn" aria-label="Forward 15 seconds">
-                <span class="skip-num">15</span><span class="skip-arrow">»</span>
-              </button>
-              <!-- Double-tap ripple feedback -->
-              <div class="skip-ripple skip-ripple-left" id="skip-ripple-left">« 15s</div>
-              <div class="skip-ripple skip-ripple-right" id="skip-ripple-right">15s »</div>
-            </div>
-
-            <!-- Custom audio visualizer screen -->
-            <div id="audio-visualizer" class="audio-player-visual" style="display: none;">
-              <!-- Spinning vinyl record -->
-              <div class="audio-vinyl" id="vinyl-disc"></div>
-              <div class="audio-title" id="audio-visual-title">Audio Track Title</div>
-              <div class="audio-subtitle" id="audio-visual-folder">Playlist Folder</div>
-            </div>
+          <!-- Prev/Next controls (FR-2, T3): step to the previous/next media
+               in the derived playlist order (the current home sort order --
+               deriveOrderedIds/computeNeighbors in common.js), re-derived on
+               every init() so a refresh/deep-link still computes the correct
+               position. Disabled at the ends (no wrap) -- watch.js toggles
+               `disabled` and wires the click handlers; labels stay static
+               here (no innerHTML). Navigation goes through the SPA router
+               (stays FULL -- watch -> watch never docks, see common.js's
+               shouldDockOnTransition). -->
+          <div class="watch-prevnext" id="watch-prevnext">
+            <button type="button" class="watch-prevnext-btn" id="watch-prev-btn" aria-label="Previous video" disabled>
+              <span aria-hidden="true">&lsaquo;</span> Previous
+            </button>
+            <button type="button" class="watch-prevnext-btn" id="watch-next-btn" aria-label="Next video" disabled>
+              Next <span aria-hidden="true">&rsaquo;</span>
+            </button>
           </div>
 
           <!-- Video Details -->
@@ -229,8 +202,73 @@
         </div>
 
       </div>
+      </div>
     </main>
   </div>
+
+  <!-- Persistent player dock + host template (FR-1, T1/T2) -- see
+       index.html's matching comment for the full explanation. #player-dock
+       here is where the host reparents to when the user navigates AWAY from
+       this watch page while media is loaded (see player.js's dock()). -->
+  <div id="player-dock" hidden></div>
+  <template id="player-host-template">
+    <div class="player-container" id="player-wrapper">
+      <!-- Audio thumbnail-as-background art layer (Feature 1, v1.10.0).
+           First child so it paints behind everything else; hidden unless
+           the audio branch of setupPlayer() opts an audio item in via the
+           .audio-mode class on #player-wrapper. Video items never touch
+           this element. -->
+      <div id="audio-bg-art" class="audio-bg-art"></div>
+
+      <!-- Resume overlay popup -->
+      <div id="resume-overlay" class="resume-overlay" style="display: none;">
+        <h3>Resume Playback?</h3>
+        <p>You watched this media up to <span id="resume-time-str">0:00</span>. Would you like to resume from there?</p>
+        <div class="resume-actions">
+          <button class="btn" id="resume-no-btn">Start from beginning</button>
+          <button class="btn btn-primary" id="resume-yes-btn">Resume</button>
+        </div>
+      </div>
+
+      <!-- Transcode ("Preparing video") overlay for AVI-class files being converted to MP4 -->
+      <div id="transcode-overlay" class="resume-overlay" style="display: none;">
+        <div class="transcode-spinner" id="transcode-spinner"></div>
+        <h3 id="transcode-title">Preparing this video&hellip;</h3>
+        <p id="transcode-message">FileTube is converting this file to a browser-friendly format. This only happens once &mdash; it'll start playing automatically when it's ready.</p>
+      </div>
+
+      <!-- Standard video player.
+           playsinline (+ webkit-playsinline) keeps iOS playing in the small
+           in-page player instead of forcing native fullscreen. -->
+      <video id="media-player" controls preload="metadata" playsinline webkit-playsinline x5-playsinline style="display: none;">
+        Your browser does not support HTML5 video player.
+      </video>
+
+      <!-- Shown while press-and-hold-to-2x is active (mobile inline) -->
+      <div id="speed-badge" class="speed-badge" style="display: none;">2× ▶▶</div>
+
+      <!-- YouTube-style ±15s skip controls (shown for video only, toggled via JS) -->
+      <div id="skip-controls" class="skip-controls" style="display: none;">
+        <button type="button" class="skip-btn skip-back" id="skip-back-btn" aria-label="Rewind 15 seconds">
+          <span class="skip-arrow">«</span><span class="skip-num">15</span>
+        </button>
+        <button type="button" class="skip-btn skip-forward" id="skip-fwd-btn" aria-label="Forward 15 seconds">
+          <span class="skip-num">15</span><span class="skip-arrow">»</span>
+        </button>
+        <!-- Double-tap ripple feedback -->
+        <div class="skip-ripple skip-ripple-left" id="skip-ripple-left">« 15s</div>
+        <div class="skip-ripple skip-ripple-right" id="skip-ripple-right">15s »</div>
+      </div>
+
+      <!-- Custom audio visualizer screen -->
+      <div id="audio-visualizer" class="audio-player-visual" style="display: none;">
+        <!-- Spinning vinyl record -->
+        <div class="audio-vinyl" id="vinyl-disc"></div>
+        <div class="audio-title" id="audio-visual-title">Audio Track Title</div>
+        <div class="audio-subtitle" id="audio-visual-folder">Playlist Folder</div>
+      </div>
+    </div>
+  </template>
 
   <nav class="bottom-nav" id="bottom-nav" aria-label="Primary">
     <a href="/" class="bottom-nav-item" data-nav="home">
@@ -260,7 +298,12 @@
     <div class="playlists-sheet-list" id="playlists-sheet-list"></div>
   </aside>
 
+  <!-- FR-1, T1: see index.html's matching comment -- every shell loads all
+       core view scripts so any view is already registered when needed. -->
   <script src="/js/common.js"></script>
+  <script src="/js/main.js"></script>
   <script src="/js/watch.js"></script>
+  <script src="/js/setup.js"></script>
+  <script src="/js/player.js"></script>
 </body>
 </html>

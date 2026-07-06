@@ -23,6 +23,7 @@ const DEFAULT_SETTINGS = {
   cacheMaxBytes: null,
   cacheMaxAgeDays: 30,
   defaultView: '', // v1.14.0 item 4: '' is the "Most Recent" sentinel
+  autoplayNext: false, // v1.16.0 FR-3 (T3): OFF by default
 };
 
 function baseSettings(overrides) {
@@ -75,7 +76,7 @@ beforeEach(() => {
 
 // ---- GET /api/settings -----------------------------------------------------
 
-test('GET /api/settings returns the 6-field shape with backfilled defaults on a fresh DB', async () => {
+test('GET /api/settings returns the 7-field shape with backfilled defaults on a fresh DB', async () => {
   const res = await fetch(`${base}/api/settings`);
   assert.equal(res.status, 200);
   const json = await res.json();
@@ -85,6 +86,7 @@ test('GET /api/settings returns the 6-field shape with backfilled defaults on a 
     cacheMaxBytes: null,
     cacheMaxAgeDays: 30,
     defaultView: '', // v1.14.0 item 4: '' is the "Most Recent" sentinel
+    autoplayNext: false, // v1.16.0 FR-3 (T3): OFF by default
     effectiveCacheMaxBytes: 5 * 1024 ** 3, // env unset -> 5 GB default
   });
 });

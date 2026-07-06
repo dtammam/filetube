@@ -507,6 +507,41 @@ function shouldShowShuffleButton(sortKey) {
   return sortKey === 'random';
 }
 
+// ---- Prev/next derived-order helpers (FR-2, T3) ----------------------------
+//
+// The watch page's Prev/Next controls (public/js/watch.js) and the persistent
+// player controller's autoplay-next 'ended' handler (public/js/player.js,
+// FR-3) both need the SAME ordered "playlist" + position -- the current home
+// sort order (the same order the home grid shows, `sortItems` above, driven
+// by the persisted `filetube_sort`). These two pure helpers are the single
+// source of truth both call, so the two features can never diverge on what
+// counts as "next". Exported for node:test.
+
+// Wraps `sortItems` (above) and projects the result down to just the ordered
+// list of ids -- the shape `computeNeighbors` (below) consumes. Re-derived
+// fresh from the FULL library (`GET /api/videos`) + the persisted sort on
+// every call, so it's durable across a refresh/deep-link (no reliance on
+// transient navigation state). `rng` is forwarded to `sortItems` only for the
+// `random` sort key (unit-test determinism -- see `fisherYatesShuffle`).
+function deriveOrderedIds(items, sortKey, rng) {
+  return sortItems(items, sortKey, rng).map((item) => item && item.id);
+}
+
+// Given the ordered id list and the CURRENT media's id, returns
+// `{ prevId, nextId }` -- each `null` at the respective end of the order (no
+// wrap-around), and both `null` when `currentId` isn't found in the list at
+// all (e.g. it was removed from the library mid-session, or a stale/garbage
+// id). Never throws on a non-array `orderedIds`.
+function computeNeighbors(orderedIds, currentId) {
+  const ids = Array.isArray(orderedIds) ? orderedIds : [];
+  const index = ids.indexOf(currentId);
+  if (index === -1) return { prevId: null, nextId: null };
+  return {
+    prevId: index > 0 ? ids[index - 1] : null,
+    nextId: index < ids.length - 1 ? ids[index + 1] : null,
+  };
+}
+
 // ---- Hide-from-sidebar (v1.14.0 item 3) ------------------------------------
 
 // Pure: filters `folders` down to the ones that should appear in a
@@ -1210,6 +1245,610 @@ function escapeAttr(text) {
     .replace(/'/g, '&#039;');
 }
 
+// ---- SPA-lite router + view registry (FR-1, T1) ---------------------------
+//
+// FileTube is a persistent app shell: the header/sidebar/bottom-nav (and, once
+// T2 lands, the player) stay mounted across in-app navigation -- only each
+// page's `#view-root` fragment is swapped. Every one of the four view URLs
+// (`/`, `/watch.html`, `/setup.html`, `/subscriptions`) still resolves to a
+// COMPLETE, correct server-rendered document on its own -- this router is
+// strictly a progressive-enhancement layer on top of that (see `bootRouter`
+// near the bottom of this section, which runs the exact same `init()` a swap
+// runs). No framework/router library/bundler (CONTRIBUTING.md) -- vanilla DOM
+// + the `history` API only.
+//
+// Pure helpers first (route derivation, click-interception decision,
+// history.state (de)serialization) -- these are node:test-covered directly
+// (see test/unit/router-helpers.test.js). The DOM-heavy swap/fetch machinery
+// below them is a thin, untested-by-necessity shell around them, the same
+// posture the rest of this file already uses for its nav-link injection.
+
+// The four routes this app knows about today. Anything else (external links,
+// `/thumbnail/*`, downloads, a future route) falls through to a normal
+// browser navigation -- this router never tries to "handle" a path it doesn't
+// recognize, and adding a route here alone does not make it reachable (the
+// shell only ever links to it when the corresponding feature is present --
+// see the disabled-module note on `ensureSubscriptionsScriptLoaded` below).
+function deriveRouteView(pathname) {
+  if (pathname === '/' || pathname === '/index.html') return 'home';
+  if (pathname === '/watch.html') return 'watch';
+  if (pathname === '/setup.html') return 'setup';
+  // The /subscriptions route + nav link only ever exist server-side (and are
+  // only ever linked to from the shell) when the optional yt-dlp module is
+  // enabled -- this pure mapping is unconditional (harmless when nothing ever
+  // links here; mirrors activeNavItem's own unconditional mapping above).
+  if (pathname === '/subscriptions') return 'subscriptions';
+  return null;
+}
+
+// Pure decision: should a plain `<a>` click be intercepted for an in-app swap
+// instead of a normal browser navigation? Exported for node:test so every
+// branch (modifier keys, target=_blank, cross-origin, unknown route) is
+// covered without a real DOM/click event.
+function shouldInterceptLinkClick({ button, metaKey, ctrlKey, shiftKey, altKey, targetAttr, sameOrigin, view }) {
+  if (button !== 0) return false; // only a plain left-click
+  if (metaKey || ctrlKey || shiftKey || altKey) return false; // let the browser open-in-new-tab/window etc.
+  if (targetAttr === '_blank') return false;
+  if (!sameOrigin) return false;
+  if (!view) return false; // not one of the four known routes
+  return true;
+}
+
+// The `history.pushState`/`history.state` shape, in one place so the router
+// and its `popstate` handler always agree on the fields. `scrollY` defaults
+// to 0 (a fresh in-app navigation starts at the top, like a real page load).
+function buildHistoryState(view, url, scrollY) {
+  return { view, url: String(url), scrollY: (typeof scrollY === 'number' && scrollY >= 0) ? scrollY : 0 };
+}
+
+// Defensive parse of `event.state` (a `popstate` can fire with a `null` state
+// -- e.g. the very first entry, before this router ever called
+// `pushState`/`replaceState`). Falls back to deriving fresh state from the
+// CURRENT location so `popstate` never throws on a state-less entry.
+function parseHistoryState(state, fallbackLocation) {
+  if (state && typeof state === 'object' && typeof state.view === 'string') {
+    return buildHistoryState(state.view, state.url, state.scrollY);
+  }
+  const loc = (fallbackLocation && typeof fallbackLocation === 'object') ? fallbackLocation : {};
+  const view = deriveRouteView(loc.pathname || '');
+  return buildHistoryState(view, (loc.pathname || '') + (loc.search || ''), 0);
+}
+
+// FR-4 (T4): normalizes an absolute OR relative URL/href string down to its
+// "pathname+search" form, resolved against `baseHref`. A given history
+// entry's stored `url` may be an absolute href (`navigate()`'s `pushState`
+// calls) or a bare relative path (`bootRouter`'s initial `replaceState`,
+// `parseHistoryState`'s own fallback) -- this lets home-URL-cache
+// comparisons treat both forms identically instead of ever spuriously
+// mismatching on origin/absoluteness alone. Never throws; an unparseable
+// href is returned unchanged. Exported for node:test.
+function toPathAndQuery(href, baseHref) {
+  try {
+    const u = new URL(String(href), baseHref);
+    return u.pathname + u.search;
+  } catch (_) {
+    return String(href);
+  }
+}
+
+// Pure (W2, v1.16.0): whether a navigation attempt tagged `gen` is now STALE
+// -- i.e. a NEWER navigation has since bumped `currentGeneration` past it.
+// Mirrors player.js's `loadGeneration` staleness check exactly (same
+// "monotonic counter, compare-at-resolution" pattern). Exported for
+// node:test; see the `navGeneration` module comment (below, in the router
+// runtime section) for the full rationale and its two callers
+// (`navigate()`/`handlePopState()`).
+function isStaleNavGeneration(gen, currentGeneration) {
+  return gen !== currentGeneration;
+}
+
+// Pure decision backing `applyPlayerTransition` (below, FR-1, T2): should
+// leaving `fromView` for `toView` dock the persistent player? Exported for
+// node:test coverage -- the actual DOM side effect (calling
+// `window.FileTube.player.dock()`) is a thin, untested-by-necessity runtime
+// wrapper around this, the same pure/runtime split every other helper in
+// this file uses. Only ever true when actually leaving the watch view for a
+// DIFFERENT known view -- watch -> watch (a related-card/prev-next click
+// into another video) must NOT dock (see the caller's comment for why).
+// Whether there's actually anything loaded to dock is a STATEFUL guard that
+// intentionally lives in `player.dock()` itself, not here.
+function shouldDockOnTransition(fromView, toView) {
+  return fromView === 'watch' && typeof toView === 'string' && toView !== 'watch';
+}
+
+// Guarded so requiring this file in Node (for unit tests) never touches
+// `window`/`document`. Everything in this block is the actual router RUNTIME
+// (registry storage, fetch/swap, click/popstate wiring) -- the pure helpers
+// above are what node:test exercises directly.
+if (typeof window !== 'undefined') {
+  const viewRegistry = Object.create(null);
+  let currentViewName = null;
+  // FR-4 (T4) -- the URL (pathname+search) the CURRENT view is displaying,
+  // kept in lockstep with currentViewName by every path that sets it
+  // (swapToView, restoreHomeFromCache, bootRouter). This is what lets
+  // "leaving home" record which home URL is being cached, independent of
+  // whether a given history entry happened to store an absolute href
+  // (navigate()'s pushState) or a relative one (bootRouter's initial
+  // replaceState / parseHistoryState's fallback) -- see toPathAndQuery.
+  let currentViewUrl = null;
+  // FR-4 (T4) -- single-entry cache of the last home #view-root NODE (not a
+  // re-render) retained across an in-app round trip, so returning to the
+  // EXACT SAME home URL reattaches it instantly instead of re-fetching and
+  // re-rendering (no flash, no scroll-jump, no image-height race -- see
+  // restoreHomeFromCache below). Populated only when leaving home for a
+  // DIFFERENT kind of view (swapToView's home-cache branch); consumed
+  // (nulled) either by a matching reattach (restoreHomeFromCache) or, if
+  // it's about to be orphaned by a fresh home re-init for a DIFFERENT home
+  // URL, destroyed and discarded first (swapToView's `view === 'home'`
+  // branch). main.js's home view registers ALL of its listeners --
+  // including the ones it binds onto the PERSISTENT shell's
+  // #sidebar-folders-list, not just its own #view-root subtree -- through
+  // ONE AbortController per init() call (reused via closure, not per-node),
+  // so at most one home instance's listeners may ever be live at a time;
+  // this cache must never let two coexist (see the comments on both
+  // branches below for exactly how that's kept true). The shell's header
+  // #search-input/#search-btn are a separate, SHELL-owned control (bound
+  // once at boot, never per-view -- see the C1 remediation comment on
+  // common.js's DOMContentLoaded handler), so they are unaffected by any of
+  // this.
+  // In-memory only: a real page load/refresh starts with this null, so a
+  // fresh or deep-linked home load is never affected by a previous session.
+  let homeViewCache = null;
+
+  // W2 remediation (v1.16.0): a monotonically-increasing navigation-
+  // generation token -- mirrors player.js's `loadGeneration` guard exactly.
+  // `navigate()`/`handlePopState()` each bump this at the START of every
+  // navigation ATTEMPT (before any fetch); their fetch `.then()`/`.catch()`
+  // callbacks re-check it and DISCARD their response (no swap, no
+  // `pushState`, no fallback hard-navigation) if a NEWER navigation has
+  // since started. Without this, two quick clicks (or a fast back/forward)
+  // could let an earlier, slower fetch resolve AFTER a later, faster one --
+  // flashing the wrong view, or running an extra destroy()/init() cycle
+  // before the page "settles" on the correct one.
+  let navGeneration = 0;
+
+  // `FileTube.registerView(name, { init, destroy })` -- called by each view
+  // module (main.js/watch.js/setup.js, and lazily lib/ytdlp/client/
+  // subscriptions.js) at its own top-level parse time, which happens before
+  // `DOMContentLoaded` fires (a plain `<script>` tag runs synchronously
+  // during HTML parsing) -- so every view is already registered by the time
+  // `bootRouter()` (below) runs.
+  function registerView(name, handlers) {
+    if (!name || !handlers || typeof handlers.init !== 'function') return;
+    viewRegistry[name] = handlers;
+  }
+
+  function getViewRoot() {
+    return document.getElementById('view-root');
+  }
+
+  // Updates the CURRENT history entry's stored scrollY (via `replaceState`,
+  // which never adds a new entry) right before we navigate away from it, so
+  // a later `popstate` back to this entry restores where the user actually
+  // scrolled to -- not wherever they happened to be when the entry was first
+  // pushed.
+  function recordScrollForCurrentState() {
+    if (!window.history.state) return;
+    const updated = buildHistoryState(window.history.state.view, window.history.state.url, window.scrollY);
+    window.history.replaceState(updated, '');
+  }
+
+  // Extracts `#view-root` (+ `<title>`) from a fetched HTML document string.
+  // Returns `null` on any parse failure or a document with no `#view-root`
+  // (a malformed/unexpected response) -- the caller falls back to a real
+  // navigation rather than ever swapping in nothing.
+  function extractViewFragment(html) {
+    try {
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      const root = doc.getElementById('view-root');
+      if (!root) return null;
+      return { root, title: doc.title || '' };
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // Invoked with (fromView, toView) immediately before every DOM swap (an
+  // in-app click, `popstate`, and NOT the initial progressive-enhancement
+  // boot -- there is no "from" view then), so the persistent player
+  // controller (player.js, T2) can dock the player as appropriate BEFORE the
+  // outgoing view's `#view-root` is destroyed/replaced.
+  //
+  // Only ONE transition is decided here: leaving the watch view for any other
+  // in-shell view docks the player (a no-op if nothing is loaded, per
+  // `player.dock()`'s own guard -- so there is never a dock when nothing is
+  // playing). watch -> watch (a related-card/prev-next click into a
+  // DIFFERENT video) intentionally does NOT dock here: the host simply stays
+  // wherever it currently is (inside the old `#player-slot`, about to be
+  // replaced) and the incoming watch view's own `init()` reparents it into
+  // the NEW `#player-slot` via `player.load()` -- see watch.js. That reparent
+  // (old-slot -> new-slot) happens synchronously inside the same `swapToView`
+  // call as the `replaceWith` below (no browser idle time in between), which
+  // is the least-risky sequencing available to this fetch-based router (see
+  // player.js's "iOS reparent risk" comment for the full rationale + the
+  // documented fixed-overlay fallback).
+  //
+  // Returning TO the watch view (DOCKED -> FULL, i.e. tapping the dock, or a
+  // fresh watch entry) is likewise NOT decided here -- by the time this hook
+  // runs, the new view's `#player-slot` doesn't exist yet (the fetched
+  // fragment hasn't been swapped in). watch.js's `init(root)` handles it: it
+  // always calls `player.load(id, data, { slot })`, which is a no-restart
+  // "adopt" (just a reparent) whenever `id` already matches the persistent
+  // controller's `currentId`.
+  function applyPlayerTransition(fromView, toView) {
+    if (!window.FileTube || !window.FileTube.player) return; // player.js not loaded (shouldn't happen -- every shell loads it)
+    if (shouldDockOnTransition(fromView, toView)) {
+      window.FileTube.player.dock();
+    }
+  }
+
+  // Re-derives which shell nav item (bottom-nav + sidebar) should be marked
+  // active for the CURRENT location. Previously this only ran once at
+  // DOMContentLoaded (baked into that page's static "active" class); now that
+  // in-app navigation can change the URL without a fresh document, it must be
+  // re-run after every swap too.
+  function updateActiveNavHighlight() {
+    const key = activeNavItem(window.location.pathname, window.location.search);
+    const bottomNav = document.getElementById('bottom-nav');
+    if (bottomNav) {
+      bottomNav.querySelectorAll('.bottom-nav-item.active').forEach((el) => el.classList.remove('active'));
+      const item = key && bottomNav.querySelector('[data-nav="' + key + '"]');
+      if (item) item.classList.add('active');
+    }
+    const sidebar = document.getElementById('sidebar');
+    if (sidebar) {
+      sidebar.querySelectorAll('.sidebar-item.active').forEach((el) => el.classList.remove('active'));
+      const hrefByNavKey = { home: '/', settings: '/setup.html', subscriptions: '/subscriptions' };
+      const href = key ? hrefByNavKey[key] : null;
+      const match = href && sidebar.querySelector('a.sidebar-item[href="' + href + '"]');
+      if (match) match.classList.add('active');
+    }
+  }
+
+  // Lazily fetches `/js/subscriptions.js` exactly once per session (T1 scope
+  // item 4). A disabled install never links to `/subscriptions` in the first
+  // place (the nav link is only ever injected on a genuine 2xx from
+  // `injectSubscriptionsNavLinkIfEnabled`'s probe above), so nothing ever
+  // calls this on a disabled install; the script itself is served only by a
+  // route registered inside the module's own `isEnabled` gate
+  // (lib/ytdlp/index.js), so even a stray call here just rejects (handled by
+  // `navigate`'s fallback-to-real-navigation below) rather than leaking
+  // anything.
+  let subscriptionsScriptPromise = null;
+  function ensureSubscriptionsScriptLoaded() {
+    if (viewRegistry.subscriptions) return Promise.resolve();
+    if (subscriptionsScriptPromise) return subscriptionsScriptPromise;
+    subscriptionsScriptPromise = new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = '/js/subscriptions.js';
+      script.addEventListener('load', () => resolve());
+      script.addEventListener('error', () => {
+        subscriptionsScriptPromise = null; // allow a later retry instead of wedging forever
+        reject(new Error('failed to load /js/subscriptions.js'));
+      });
+      document.body.appendChild(script);
+    });
+    return subscriptionsScriptPromise;
+  }
+
+  function ensureViewScriptLoaded(view) {
+    return view === 'subscriptions' ? ensureSubscriptionsScriptLoaded() : Promise.resolve();
+  }
+
+  // The one swap routine every navigation (an in-app click, `popstate`, and
+  // the progressive-enhancement boot) funnels through -- exactly one code
+  // path, matching the per-view `init`/`destroy` contract.
+  function swapToView(view, root, title, scrollY, url) {
+    applyPlayerTransition(currentViewName, view);
+    const oldRoot = getViewRoot();
+
+    // FR-4 (T4): leaving home for a DIFFERENT kind of view retains the live
+    // node -- and its already-bound listeners -- instead of destroying it,
+    // so a later return to this EXACT URL can reattach it instantly (see
+    // restoreHomeFromCache). Home -> home (a different filter/search/sort
+    // URL) falls through to the `else` branch below instead: that's a
+    // genuinely different render, not a "return", and must build clean --
+    // exactly like a fresh/deep-link load, which never even reaches this
+    // function with a cache to worry about, since homeViewCache resets on
+    // every real page load.
+    if (currentViewName === 'home' && view !== 'home' && oldRoot) {
+      homeViewCache = { url: currentViewUrl, node: oldRoot, title: document.title, scrollY: window.scrollY };
+    } else {
+      // A stale, never-reattached home-cache entry is about to be orphaned
+      // by the fresh `home` init() a few lines down (this branch only runs
+      // on a NON-cache-hit swap -- a cache hit goes through
+      // restoreHomeFromCache and never calls swapToView at all). Destroy
+      // its listeners NOW: main.js's home view keeps exactly one
+      // AbortController alive per instance, reused via closure rather than
+      // tracked per-node, so this is the only safe moment to tear down the
+      // OLD (cached, about-to-be-discarded) instance's listeners without
+      // touching the brand-new controller init() is about to create below.
+      // Skipping this would leave TWO live listener sets bound to the
+      // persistent shell's #sidebar-folders-list -- the stale cached
+      // instance's, and the fresh one's -- silently double-firing every
+      // sidebar-drag handler.
+      if (view === 'home' && homeViewCache) {
+        const staleHome = viewRegistry.home;
+        if (staleHome && typeof staleHome.destroy === 'function') {
+          try { staleHome.destroy(); } catch (err) { console.error('Stale home-cache destroy() failed', err); }
+        }
+        homeViewCache = null;
+      }
+      const outgoing = currentViewName && viewRegistry[currentViewName];
+      if (outgoing && typeof outgoing.destroy === 'function') {
+        try { outgoing.destroy(); } catch (err) { console.error('View destroy() failed for', currentViewName, err); }
+      }
+    }
+
+    if (oldRoot && root && oldRoot !== root) {
+      oldRoot.replaceWith(root);
+    }
+    root.id = 'view-root';
+    if (title) document.title = title;
+    currentViewName = view;
+    currentViewUrl = typeof url === 'string' ? url : currentViewUrl;
+    updateActiveNavHighlight();
+    window.scrollTo(0, typeof scrollY === 'number' ? scrollY : 0);
+    const incoming = viewRegistry[view];
+    if (incoming && typeof incoming.init === 'function') {
+      try { incoming.init(root); } catch (err) { console.error('View init() failed for', view, err); }
+    }
+  }
+
+  // FR-4 (T4): reattaches a cached home node with NO fetch and NO
+  // destroy()/init() cycle for home itself -- the entire point of the
+  // cache. `cached` is the popped `homeViewCache` entry (the caller already
+  // confirmed `cached.url === url`); `url`/`scrollY` are passed explicitly
+  // rather than re-read off the (already-nulled) module cache.
+  function restoreHomeFromCache(cached, url, scrollY) {
+    homeViewCache = null; // consumed -- live again; the NEXT leave-home re-caches it fresh
+    applyPlayerTransition(currentViewName, 'home');
+    if (currentViewName !== 'home') {
+      const outgoing = currentViewName && viewRegistry[currentViewName];
+      if (outgoing && typeof outgoing.destroy === 'function') {
+        try { outgoing.destroy(); } catch (err) { console.error('View destroy() failed for', currentViewName, err); }
+      }
+    }
+    const oldRoot = getViewRoot();
+    if (oldRoot && oldRoot !== cached.node) {
+      oldRoot.replaceWith(cached.node);
+    }
+    cached.node.id = 'view-root';
+    if (cached.title) document.title = cached.title;
+    currentViewName = 'home';
+    currentViewUrl = url;
+    updateActiveNavHighlight();
+
+    // C3 remediation (v1.16.0): #sidebar-folders-list lives OUTSIDE
+    // #view-root, in the persistent shell -- so it is NOT part of
+    // `cached.node` and was left exactly as whichever OTHER view (e.g.
+    // watch.js) rendered it last (a plain, non-draggable link list) after
+    // home was cached. Ask the still-live cached home instance to re-render
+    // it back to its draggable + active-highlighted state -- a thin,
+    // single-purpose hook (`restoreSidebar`), NOT a full `init(cached.node)`
+    // re-run (see the comment on that below for why re-running init() would
+    // double-bind everything else).
+    if (viewRegistry.home && typeof viewRegistry.home.restoreSidebar === 'function') {
+      try { viewRegistry.home.restoreSidebar(); } catch (err) { console.error('Home restoreSidebar() failed', err); }
+    }
+
+    // Restore scroll AFTER the cached node is back in the live document --
+    // its images/thumbnails already finished loading/decoding before it was
+    // detached, and nothing here re-renders the grid, so its layout heights
+    // are exactly what they were when the user left: there is no
+    // image-height race to wait out (the race the design flags only arises
+    // when a FRESH re-render's lazy images haven't resolved their intrinsic
+    // size yet at the moment scroll is restored).
+    window.scrollTo(0, typeof scrollY === 'number' ? scrollY : cached.scrollY);
+    // Deliberately NOT calling viewRegistry.home.init(cached.node): its
+    // listeners (bound once, in the ORIGINAL init() call that produced this
+    // node) are still fully live and intact -- never torn down while cached
+    // (see swapToView's home-cache branch above) -- so re-running init()
+    // here would register a SECOND AbortController/listener set on the SAME
+    // node, double-firing every handler (search is now shell-owned and
+    // unaffected either way -- see the C1 remediation comment on
+    // common.js's DOMContentLoaded handler). Reattaching the live node
+    // exactly as it was left, plus the targeted sidebar restore above, IS
+    // the restore.
+  }
+
+  // `navigate(url, { replace })`: fetch -> parse -> extract `#view-root` ->
+  // `pushState`/`replaceState` -> swap. Falls back to a REAL navigation
+  // (`window.location.assign`) on ANY failure (network error, non-2xx,
+  // missing `#view-root`, an unknown route, or the lazy subscriptions script
+  // failing to load) so in-app navigation never dead-ends. Programmatic
+  // callers (search submit, a future FR-2 prev/next, dock-expand) call this
+  // directly instead of assigning `window.location`.
+  //
+  // History MUST be updated (`pushState`/`replaceState`) BEFORE the swap runs
+  // (i.e. before `swapToView`/`restoreHomeFromCache`, both of which
+  // synchronously run the incoming view's `init()`): `window.location` is the
+  // router's single source of truth for "which URL are we on", and several
+  // views read it SYNCHRONOUSLY during `init()` (e.g. watch.js reads `?v=`
+  // off `window.location.search` to know which media to load). `pushState`
+  // is the only thing that advances `window.location` -- swapping first would
+  // leave `init()` reading the OUTGOING page's stale URL (this was a
+  // release-blocking bug: every in-app click into a video read the previous
+  // page's `?v=`, so it silently no-op'd or loaded the wrong media). This
+  // mirrors `handlePopState` below, where the browser has ALREADY updated
+  // `window.location` before `popstate` fires -- by pushing/replacing first
+  // here too, both paths reach `swapToView`/`restoreHomeFromCache` (and, via
+  // those, `updateActiveNavHighlight`) with an already-correct URL.
+  function navigate(url, options) {
+    const opts = options || {};
+    let parsed;
+    try {
+      parsed = new URL(url, window.location.href);
+    } catch (_) {
+      window.location.assign(url);
+      return Promise.resolve();
+    }
+    const view = deriveRouteView(parsed.pathname);
+    if (!view) {
+      window.location.assign(url);
+      return Promise.resolve();
+    }
+    recordScrollForCurrentState();
+
+    // W2 remediation: this navigation attempt's own generation -- bumped
+    // BEFORE the (possible) fetch below, so any PRIOR still-in-flight
+    // navigate()/popstate fetch immediately becomes stale.
+    const gen = ++navGeneration;
+
+    // FR-4 (T4): a cache hit skips the fetch entirely -- only a
+    // byte-identical home URL counts as "returning" (see the homeViewCache
+    // module comment above); a different home filter/search/sort URL falls
+    // through to the normal fetch+destroy+init path below and always builds
+    // clean.
+    const targetUrl = parsed.pathname + parsed.search;
+    if (view === 'home' && homeViewCache && homeViewCache.url === targetUrl) {
+      const cached = homeViewCache;
+      // Update the URL BEFORE reattaching the cached node (see the ordering
+      // comment above `navigate` — restoreHomeFromCache's `updateActiveNavHighlight`
+      // call must observe the target URL, not the outgoing one).
+      const state = buildHistoryState('home', parsed.href, cached.scrollY);
+      if (opts.replace) window.history.replaceState(state, '', parsed.href);
+      else window.history.pushState(state, '', parsed.href);
+      restoreHomeFromCache(cached, targetUrl, cached.scrollY);
+      return Promise.resolve();
+    }
+
+    return ensureViewScriptLoaded(view)
+      .then(() => fetch(parsed.href, { credentials: 'same-origin' }))
+      .then((res) => {
+        if (!res.ok) throw new Error('navigate: fetch failed with status ' + res.status);
+        return res.text();
+      })
+      .then((html) => {
+        if (isStaleNavGeneration(gen, navGeneration)) return; // a newer navigation has since started -- discard this stale response
+        const fragment = extractViewFragment(html);
+        if (!fragment) throw new Error('navigate: response had no #view-root');
+        // Update the URL BEFORE swapping (see the ordering comment above
+        // `navigate`) -- the winning (non-stale) navigation pushes/replaces
+        // exactly once, then swaps exactly once, so `window.location` is
+        // already correct when the incoming view's `init()` reads it.
+        const state = buildHistoryState(view, parsed.href, 0);
+        if (opts.replace) window.history.replaceState(state, '', parsed.href);
+        else window.history.pushState(state, '', parsed.href);
+        swapToView(view, fragment.root, fragment.title, 0, targetUrl);
+      })
+      .catch((err) => {
+        if (isStaleNavGeneration(gen, navGeneration)) return; // stale -- a newer navigation is already handling itself
+        console.error('SPA navigation failed; falling back to a full page load:', err);
+        window.location.assign(url);
+      });
+  }
+
+  function handleDocumentClick(event) {
+    const anchor = event.target && typeof event.target.closest === 'function' ? event.target.closest('a[href]') : null;
+    if (!anchor) return;
+    let target;
+    try {
+      target = new URL(anchor.getAttribute('href'), window.location.href);
+    } catch (_) {
+      return;
+    }
+    const sameOrigin = target.origin === window.location.origin;
+    const view = sameOrigin ? deriveRouteView(target.pathname) : null;
+    const shouldIntercept = shouldInterceptLinkClick({
+      button: event.button,
+      metaKey: event.metaKey,
+      ctrlKey: event.ctrlKey,
+      shiftKey: event.shiftKey,
+      altKey: event.altKey,
+      targetAttr: anchor.getAttribute('target'),
+      sameOrigin,
+      view,
+    });
+    if (!shouldIntercept) return;
+    event.preventDefault();
+    navigate(target.href);
+  }
+
+  // Re-derives the view from `location` (the browser has ALREADY updated it
+  // by the time `popstate` fires) and runs the same swap, without touching
+  // history itself (the entry already exists) -- restores the scrollY that
+  // was recorded for it when the user originally navigated away.
+  function handlePopState(event) {
+    const state = parseHistoryState(event.state, window.location);
+    if (!state.view) return; // an unknown route — the browser has already navigated there natively
+
+    // FR-4 (T4): back/forward INTO the exact cached home URL reattaches the
+    // node directly, restoring its scroll -- no fetch, no re-render, no
+    // image-height race. Only a byte-identical match counts (see the
+    // homeViewCache module comment above); `toPathAndQuery` normalizes
+    // `state.url` since a history entry's stored url may be absolute
+    // (navigate()'s pushState) or relative (bootRouter's initial
+    // replaceState / parseHistoryState's own fallback).
+    const targetUrl = toPathAndQuery(state.url, window.location.href);
+
+    // W2 remediation: this popstate's own generation, bumped BEFORE the
+    // (possible) fetch below -- same guard `navigate()` uses (see the
+    // `navGeneration` module comment above). A rapid back/back or
+    // click-then-back sequence can otherwise let an earlier fetch resolve
+    // after a later one and swap in the wrong view.
+    const gen = ++navGeneration;
+
+    if (state.view === 'home' && homeViewCache && homeViewCache.url === targetUrl) {
+      const cached = homeViewCache;
+      restoreHomeFromCache(cached, targetUrl, state.scrollY);
+      return;
+    }
+
+    ensureViewScriptLoaded(state.view)
+      .then(() => fetch(state.url, { credentials: 'same-origin' }))
+      .then((res) => {
+        if (!res.ok) throw new Error('popstate: fetch failed with status ' + res.status);
+        return res.text();
+      })
+      .then((html) => {
+        if (isStaleNavGeneration(gen, navGeneration)) return; // a newer navigation has since started -- discard this stale response
+        const fragment = extractViewFragment(html);
+        if (!fragment) throw new Error('popstate: response had no #view-root');
+        swapToView(state.view, fragment.root, fragment.title, state.scrollY, targetUrl);
+      })
+      .catch((err) => {
+        if (isStaleNavGeneration(gen, navGeneration)) return; // stale -- a newer navigation is already handling itself
+        // Never leave back/forward stranded on a half-swapped page — a real
+        // reload always lands on the correct, complete document (progressive
+        // enhancement's own fallback guarantee).
+        console.error('Back/forward SPA swap failed; reloading the page instead:', err);
+        window.location.reload();
+      });
+  }
+
+  document.addEventListener('click', handleDocumentClick);
+  window.addEventListener('popstate', handlePopState);
+
+  // Progressive-enhancement boot, called once from the existing
+  // `DOMContentLoaded` handler below: on a fresh full page load the document
+  // already IS the correct, complete view (server-rendered) -- this just
+  // registers it as "current" and runs its `init()`, the IDENTICAL path a
+  // swap runs (one code path per view, no divergence). Also seeds
+  // `history.state` if this is the first entry, so the very first `popstate`
+  // back to it has a scrollY to restore.
+  function bootRouter() {
+    const view = deriveRouteView(window.location.pathname);
+    const root = getViewRoot();
+    if (!view || !root) return; // not a known route, or this page has no shell yet
+    if (!window.history.state) {
+      window.history.replaceState(buildHistoryState(view, window.location.pathname + window.location.search, 0), '');
+    }
+    currentViewName = view;
+    currentViewUrl = window.location.pathname + window.location.search; // FR-4 (T4): keep in lockstep with currentViewName
+    updateActiveNavHighlight();
+    const handlers = viewRegistry[view];
+    if (handlers && typeof handlers.init === 'function') {
+      try { handlers.init(root); } catch (err) { console.error('View init() failed for', view, err); }
+    }
+  }
+
+  window.FileTube = window.FileTube || {};
+  window.FileTube.registerView = registerView;
+  window.FileTube.navigate = navigate;
+  window.FileTube.bootRouter = bootRouter;
+}
+
 // Renders the Playlists sheet's folder list — functionally equivalent to the
 // existing #sidebar-folders-list (same /?root=<path> links, same folderSettings
 // display-name lookup, same hidden-flag parity: the `hidden` ("Hide from
@@ -1326,6 +1965,38 @@ document.addEventListener('DOMContentLoaded', () => {
     themeToggleBtn.addEventListener('click', toggleTheme);
   }
 
+  // Shell-owned header search box (C1 remediation, v1.16.0): #search-input/
+  // #search-btn live in the PERSISTENT shell (outside #view-root) on every
+  // page (index/watch/setup/subscriptions all carry the identical markup --
+  // see each page's header comment). Search is a global action (navigate to
+  // `/?search=...`), so it is bound EXACTLY ONCE here, at real-page-load boot
+  // -- never per-view -- which fixes two bugs at once: (1) a view's init()
+  // can no longer null-crash on a shell search control that a DIFFERENT
+  // first-loaded page happened to lack (the whole point of making all 4
+  // shells byte-uniform); (2) two views can never each bind their OWN
+  // listener to this same persistent element, which used to double-fire
+  // every search (double history entry + double fetch). Views that still
+  // need to READ/SET the input's value (e.g. main.js populating it from
+  // `?search=`) do so directly -- only the LISTENER binding moved here.
+  const searchInput = document.getElementById('search-input');
+  const searchBtn = document.getElementById('search-btn');
+  function performGlobalSearch() {
+    if (!searchInput) return;
+    const query = searchInput.value.trim();
+    const url = query ? `/?search=${encodeURIComponent(query)}` : '/';
+    if (window.FileTube && typeof window.FileTube.navigate === 'function') {
+      window.FileTube.navigate(url);
+    } else {
+      window.location.href = url;
+    }
+  }
+  if (searchBtn) searchBtn.addEventListener('click', performGlobalSearch);
+  if (searchInput) {
+    searchInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') performGlobalSearch();
+    });
+  }
+
   // Optional yt-dlp subscriptions nav-link capability probe (D4, T5). Runs on
   // every page (not just inside the `bottomNav` guard below) since it also
   // injects a sidebar link on pages that have one but no bottom nav.
@@ -1337,18 +2008,21 @@ document.addEventListener('DOMContentLoaded', () => {
   // header and load common.js).
   injectOneOffDownloadButtonIfEnabled();
 
+  // SPA-lite router boot (FR-1, T1): derives the current view from `location`
+  // and runs its `init()` -- the identical path an in-app swap runs. Also
+  // applies the initial active-nav highlight (bottom-nav + sidebar), which
+  // used to be baked into each page's static HTML/inline logic below and now
+  // must be re-derivable after every swap too (see updateActiveNavHighlight
+  // in the router section above).
+  if (window.FileTube && typeof window.FileTube.bootRouter === 'function') {
+    window.FileTube.bootRouter();
+  }
+
   // ---- Mobile app shell: bottom nav / Playlists sheet wiring ----
   // Guarded on the nav's presence so pages without it (or load-order issues)
   // never throw.
   const bottomNav = document.getElementById('bottom-nav');
   if (bottomNav) {
-    // Active-state highlight
-    const key = activeNavItem(window.location.pathname, window.location.search);
-    if (key) {
-      const item = bottomNav.querySelector('[data-nav="' + key + '"]');
-      if (item) item.classList.add('active');
-    }
-
     // Dark/Light item -> toggleTheme(), then sync its own icon/label
     const themeItem = document.getElementById('nav-theme-toggle');
     if (themeItem) {
@@ -1384,6 +2058,7 @@ if (typeof module !== 'undefined' && module.exports) {
     resolveAudioArtUrl,
     shouldInjectSubscriptionsNav,
     fisherYatesShuffle, sortItems, shouldShowShuffleButton,
+    deriveOrderedIds, computeNeighbors,
     visibleSidebarFolders, resolveDefaultView,
     moveArrayItem, computeDropIndex, rebuildFullFolderOrder,
     shouldInjectOneOffButton, reduceOneOffFiletypeOptions, buildOneOffDownloadBody,
@@ -1391,6 +2066,8 @@ if (typeof module !== 'undefined' && module.exports) {
     ONEOFF_FORMAT_OPTIONS, ONEOFF_QUALITY_OPTIONS, ONEOFF_DEFAULT_QUALITY,
     ONEOFF_FILETYPE_OPTIONS, ONEOFF_DEFAULT_FILETYPE, ONEOFF_STATUS_POLL_MS,
     decideOneOffTerminalAction, triggerLibraryRescanAndRefresh,
-    injectOneOffDownloadButtonIfEnabled
+    injectOneOffDownloadButtonIfEnabled,
+    deriveRouteView, shouldInterceptLinkClick, buildHistoryState, parseHistoryState,
+    shouldDockOnTransition, toPathAndQuery, isStaleNavGeneration
   };
 }

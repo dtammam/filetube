@@ -64,10 +64,11 @@ module.exports = [
       // `module` is referenced only inside a `typeof module` guard so common.js
       // (and lib/ytdlp/client/subscriptions.js) can export pure helpers to
       // Node tests; harmless in the browser.
-      // `renderIconPicker` is defined inline in setup.html (not a public/js/*
-      // file) and feature-detected from common.js's applyIconSet(), so it must
-      // be declared here for common.js's own lint pass.
-      globals: { ...globals.browser, module: 'readonly', renderIconPicker: 'readonly' },
+      // `FileTube` is the SPA-lite router/view-registry namespace common.js
+      // attaches to `window` (FR-1, T1); every other view script
+      // (main/watch/setup/subscriptions) calls `FileTube.registerView`/
+      // `FileTube.navigate`.
+      globals: { ...globals.browser, module: 'readonly', FileTube: 'readonly' },
     },
     rules: {
       ...commonRules,
@@ -85,7 +86,7 @@ module.exports = [
   // only for the CONSUMER scripts (not common.js itself, which defines them —
   // declaring them there would trip no-redeclare).
   {
-    files: ['public/js/main.js', 'public/js/watch.js'],
+    files: ['public/js/main.js', 'public/js/watch.js', 'public/js/setup.js', 'public/js/player.js'],
     languageOptions: {
       globals: {
         clampPositionState: 'readonly',
@@ -114,6 +115,29 @@ module.exports = [
         moveArrayItem: 'readonly',
         computeDropIndex: 'readonly',
         rebuildFullFolderOrder: 'readonly',
+        // FR-2/FR-3 (T3) shared prev/next order-derivation helpers -- consumed
+        // by watch.js (Prev/Next controls) and player.js (autoplay-next).
+        deriveOrderedIds: 'readonly',
+        computeNeighbors: 'readonly',
+        // setup.js-only (FR-1, T1 extraction from setup.html's former inline script)
+        gbToBytes: 'readonly',
+        bytesToGb: 'readonly',
+      },
+    },
+  },
+
+  // `renderIconPicker` is DEFINED in public/js/setup.js (a real global
+  // function, deliberately not IIFE-wrapped -- see that file's module
+  // comment) and feature-detected/called from common.js's `applyIconSet()`.
+  // Declared as a global ONLY for the consumer (common.js), mirroring the
+  // block above's "declare only where consumed, not where defined" rule --
+  // declaring it for setup.js too would trip `no-redeclare` against its own
+  // `function renderIconPicker() {}`.
+  {
+    files: ['public/js/common.js'],
+    languageOptions: {
+      globals: {
+        renderIconPicker: 'readonly',
       },
     },
   },

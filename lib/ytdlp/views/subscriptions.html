@@ -54,6 +54,19 @@
         <img src="/favicon.svg" alt="FileTube" />
       </a>
     </div>
+
+    <!-- Shell-owned header search box (C1 remediation, v1.16.0): identical
+         markup on every shell (index/watch/setup/subscriptions) so the
+         persistent-shell header is byte-uniform no matter which page first
+         loaded it -- see public/js/common.js's DOMContentLoaded handler,
+         which binds #search-input/#search-btn ONCE at boot (not per-view). -->
+    <div class="header-search">
+      <div class="search-form">
+        <input type="text" id="search-input" class="search-input" placeholder="Search your files..." />
+        <button id="search-btn" class="search-btn">Search</button>
+      </div>
+    </div>
+
     <div class="header-right">
       <button class="theme-toggle" id="theme-toggle-btn" aria-label="Toggle light or dark mode"><i class="icon-moon"></i></button>
     </div>
@@ -83,6 +96,9 @@
     </aside>
 
     <main class="main-content" id="main-content">
+      <!-- Per-view content boundary (FR-1, T1): see index.html's matching
+           comment. The router swaps ONLY this node on in-app navigation. -->
+      <div id="view-root" data-view="subscriptions">
       <div class="setup-box">
         <h2>Subscriptions</h2>
         <p>
@@ -202,8 +218,51 @@
           <!-- Populated dynamically by /js/subscriptions.js -->
         </div>
       </div>
+      </div>
     </main>
   </div>
+
+  <!-- Persistent player dock + host template (FR-1, T1/T2) -- see
+       index.html's matching comment. The docked mini-player keeps playing
+       here too when the user browses to Subscriptions with media loaded. -->
+  <div id="player-dock" hidden></div>
+  <template id="player-host-template">
+    <div class="player-container" id="player-wrapper">
+      <div id="audio-bg-art" class="audio-bg-art"></div>
+      <div id="resume-overlay" class="resume-overlay" style="display: none;">
+        <h3>Resume Playback?</h3>
+        <p>You watched this media up to <span id="resume-time-str">0:00</span>. Would you like to resume from there?</p>
+        <div class="resume-actions">
+          <button class="btn" id="resume-no-btn">Start from beginning</button>
+          <button class="btn btn-primary" id="resume-yes-btn">Resume</button>
+        </div>
+      </div>
+      <div id="transcode-overlay" class="resume-overlay" style="display: none;">
+        <div class="transcode-spinner" id="transcode-spinner"></div>
+        <h3 id="transcode-title">Preparing this video&hellip;</h3>
+        <p id="transcode-message">FileTube is converting this file to a browser-friendly format. This only happens once &mdash; it'll start playing automatically when it's ready.</p>
+      </div>
+      <video id="media-player" controls preload="metadata" playsinline webkit-playsinline x5-playsinline style="display: none;">
+        Your browser does not support HTML5 video player.
+      </video>
+      <div id="speed-badge" class="speed-badge" style="display: none;">2× ▶▶</div>
+      <div id="skip-controls" class="skip-controls" style="display: none;">
+        <button type="button" class="skip-btn skip-back" id="skip-back-btn" aria-label="Rewind 15 seconds">
+          <span class="skip-arrow">«</span><span class="skip-num">15</span>
+        </button>
+        <button type="button" class="skip-btn skip-forward" id="skip-fwd-btn" aria-label="Forward 15 seconds">
+          <span class="skip-num">15</span><span class="skip-arrow">»</span>
+        </button>
+        <div class="skip-ripple skip-ripple-left" id="skip-ripple-left">« 15s</div>
+        <div class="skip-ripple skip-ripple-right" id="skip-ripple-right">15s »</div>
+      </div>
+      <div id="audio-visualizer" class="audio-player-visual" style="display: none;">
+        <div class="audio-vinyl" id="vinyl-disc"></div>
+        <div class="audio-title" id="audio-visual-title">Audio Track Title</div>
+        <div class="audio-subtitle" id="audio-visual-folder">Playlist Folder</div>
+      </div>
+    </div>
+  </template>
 
   <nav class="bottom-nav" id="bottom-nav" aria-label="Primary">
     <a href="/" class="bottom-nav-item" data-nav="home">
@@ -235,7 +294,20 @@
     <div class="playlists-sheet-list" id="playlists-sheet-list"></div>
   </aside>
 
+  <!-- FR-1, T1: every shell loads the core view scripts so home/watch/setup
+       are already registered when the router boots or when navigating away
+       from here -- see index.html's matching comment. subscriptions.js
+       itself is NOT added to the other three shells (it stays lazy-loaded,
+       fetched only on the first in-app /subscriptions navigation, via
+       common.js's ensureSubscriptionsScriptLoaded); it is loaded directly
+       here only because a full load/deep link of THIS page needs it
+       immediately (progressive enhancement -- no router involvement
+       required for a hard load to work). -->
   <script src="/js/common.js"></script>
+  <script src="/js/main.js"></script>
+  <script src="/js/watch.js"></script>
+  <script src="/js/setup.js"></script>
+  <script src="/js/player.js"></script>
   <script src="/js/subscriptions.js"></script>
 </body>
 </html>
