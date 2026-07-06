@@ -100,7 +100,16 @@
               <option value="video" selected>Video</option>
               <option value="audio">Audio only</option>
             </select>
-            <input type="text" id="sub-add-quality" placeholder="Quality (default: best)" style="max-width:180px; padding:10px; border:1px solid var(--border-dark); border-radius:var(--radius); font-size:13px; background-color:var(--bg-color); color:var(--text-primary);" />
+            <select id="sub-add-quality" class="setup-select">
+              <option value="best" selected>best</option>
+              <option value="2160p">2160p</option>
+              <option value="1440p">1440p</option>
+              <option value="1080p">1080p</option>
+              <option value="720p">720p</option>
+              <option value="480p">480p</option>
+              <option value="360p">360p</option>
+            </select>
+            <input type="number" id="sub-add-maxvideos" min="0" placeholder="Max videos (blank=default, 0=unlimited)" style="max-width:220px; padding:10px; border:1px solid var(--border-dark); border-radius:var(--radius); font-size:13px; background-color:var(--bg-color); color:var(--text-primary);" />
             <button class="btn btn-primary" id="sub-add-btn" type="button">Add subscription</button>
           </div>
           <small id="sub-add-error" class="field-error"></small>
@@ -121,6 +130,40 @@
         <div style="display:flex; justify-content:space-between; align-items:center; margin-top:16px; border-top:1px solid var(--border-color); padding-top:16px; flex-wrap:wrap; gap:10px;">
           <span id="sub-repull-status" style="font-weight:bold; color: var(--text-secondary);" aria-live="polite"></span>
           <button class="btn" id="sub-repull-all-btn" type="button">Re-pull all now</button>
+        </div>
+      </div>
+
+      <div class="setup-box">
+        <h2>One-off download</h2>
+        <p>
+          Download a single YouTube video once -- no subscription is created.
+          Lands in a "One-Off" folder by default.
+        </p>
+        <div class="form-group">
+          <label for="oneshot-url">Video URL</label>
+          <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <input type="text" id="oneshot-url" placeholder="https://www.youtube.com/watch?v=..." style="flex:1; min-width:220px; padding:10px; border:1px solid var(--border-dark); border-radius:var(--radius); font-size:13px; background-color:var(--bg-color); color:var(--text-primary);" />
+            <select id="oneshot-format" class="setup-select">
+              <option value="video" selected>Video</option>
+              <option value="audio">Audio only</option>
+            </select>
+            <select id="oneshot-quality" class="setup-select">
+              <option value="best" selected>best</option>
+              <option value="2160p">2160p</option>
+              <option value="1440p">1440p</option>
+              <option value="1080p">1080p</option>
+              <option value="720p">720p</option>
+              <option value="480p">480p</option>
+              <option value="360p">360p</option>
+            </select>
+            <input type="text" id="oneshot-folder" placeholder="Folder (default: One-Off)" style="max-width:180px; padding:10px; border:1px solid var(--border-dark); border-radius:var(--radius); font-size:13px; background-color:var(--bg-color); color:var(--text-primary);" />
+            <button class="btn btn-primary" id="oneshot-download-btn" type="button">Download</button>
+          </div>
+          <small id="oneshot-error" class="field-error"></small>
+          <small id="oneshot-status" style="color:var(--text-secondary); display:block; margin-top:4px;" aria-live="polite"></small>
+        </div>
+        <div id="oneshot-list-container" class="folder-list-builder">
+          <!-- Populated dynamically by /js/subscriptions.js from GET /api/subscriptions/status's oneShots -->
         </div>
       </div>
 
