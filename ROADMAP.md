@@ -6,6 +6,7 @@
 
 - [ ] **Watch-page scroll layout bug** — on certain videos, scrolling UP makes the whole bottom panel jump to the middle of the screen; scrolling down snaps it back; a page refresh makes it behave. Intermittent/video-dependent CSS or layout/scroll-position bug on the watch page (likely sticky/position interaction). Repro + fix. _(bug)_
 - [ ] **Rescan should list what it'll transcode (regression)** — the Setup "Save & Rescan" flow used to surface all the videos it would convert/transcode; it no longer does. Restore that feedback so the user can see the pending transcode set before/while it runs. _(bug/regression)_
+- [ ] **Mobile player oversized / not iOS-sized (regression)** — on mobile the video player is bigger than it should be (not sized appropriately for iOS); it regressed at some point (likely a side effect of the mobile-logo-top-left or audio-bg-art CSS work). Find what changed and restore the correct mobile player sizing. _(bug/regression)_
 
 ### ⚡ Quick wins (small, low-risk, additive — good "warm-up" batch)
 
@@ -23,6 +24,8 @@
 ### 🎨 UI polish
 
 - [ ] **Fix the janky /subscriptions UI (v1.12.0)** — the "Your subscriptions" list renders the channel name/URL vertically (one character per line) and the option/row layout is cramped/broken. Looks like a flex width-collapse + per-character `word-break` in the subscription row. Fix the layout so names/URLs/controls read cleanly, and tidy the add/edit/one-shot option controls. _(bug — visible in the shipped v1.12.0 page)_
+- [ ] **Synthetic "Downloads" folder: renamable + reorderable in Setup** — the auto-listed yt-dlp download folder shows in the sidebar but is display-only (not in `db.folders`), so it can't be renamed or reordered in the Setup folder list like real folders. Surface it in Setup's folder-management UI with a persisted friendly-name (folderSettings key already exists) and a position in the folder order. Ties into the folder drag-and-drop item. _(v1.12.0 follow-up)_
+- [ ] **Filetype/container dropdown for downloads** — add a third dropdown to the one-off + subscription forms to choose the output container/filetype (e.g. **mp4** for video, **mp3/m4a** for audio) instead of yt-dlp's default (webm/mkv). Improves iOS compatibility (webm plays poorly on iOS). Wire to yt-dlp `--merge-output-format` / `--recode-video` (video) and `-x --audio-format` (audio).
 - [ ] **Folder management UI is janky — add drag-and-drop reordering** — the mapped-folder management UX needs work; specifically, allow drag-and-drop to reorder folders both in the left sidebar and in the Setup folder list (replacing/augmenting the up/down buttons). Smoother, more direct manipulation.
 - [ ] **Make the "Subscribe" button mean something (or add a notification bell)** — today the retro "Subscribe" button is cosmetic. Give it real behavior: either a **toggle that controls whether that channel/folder surfaces on the main/default (home) view** (subscribe = pin it to your default page), or a new **notification-bell** affordance that "simulates" seeing new content (retro-YouTube flavor). Explore which reads better. Ties into "Default landing view" and, for real channels, the yt-dlp subscription module.
 
