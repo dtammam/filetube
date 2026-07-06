@@ -72,7 +72,14 @@ test('validateSubscriptionInput: rejects a non-http(s) scheme', () => {
 });
 
 test('validateSubscriptionInput: rejects an invalid format', () => {
-  const result = store.validateSubscriptionInput({ channelUrl: 'https://example.com/@x', format: 'gif' });
+  const result = store.validateSubscriptionInput({ channelUrl: 'https://www.youtube.com/@x', format: 'gif' });
+  assert.equal(result.ok, false);
+});
+
+test('validateSubscriptionInput: rejects a non-YouTube host even with a plausible path shape', () => {
+  // T3 upgrade: the URL check is no longer a bare http(s)-scheme check --
+  // it now runs the full lib/ytdlp/url.js allowlist via validateChannelUrl.
+  const result = store.validateSubscriptionInput({ channelUrl: 'https://example.com/@x' });
   assert.equal(result.ok, false);
 });
 
@@ -84,18 +91,16 @@ test('validateSubscriptionInput: accepts a valid https URL and defaults format t
 });
 
 test('validateSubscriptionInput: quality defaults to best when omitted, passes through when supplied', () => {
-  const withoutQuality = store.validateSubscriptionInput({ channelUrl: 'https://example.com/@x', format: 'audio' });
+  const withoutQuality = store.validateSubscriptionInput({ channelUrl: 'https://www.youtube.com/@x', format: 'audio' });
   assert.equal(withoutQuality.value.quality, 'best');
-  const withQuality = store.validateSubscriptionInput({ channelUrl: 'https://example.com/@x', format: 'audio', quality: '720p' });
+  const withQuality = store.validateSubscriptionInput({ channelUrl: 'https://www.youtube.com/@x', format: 'audio', quality: '720p' });
   assert.equal(withQuality.value.quality, '720p');
 });
 
-test('isBasicHttpUrl: accepts https/http, rejects empty and non-http schemes', () => {
-  assert.equal(store.isBasicHttpUrl('https://example.com'), true);
-  assert.equal(store.isBasicHttpUrl('http://example.com'), true);
-  assert.equal(store.isBasicHttpUrl(''), false);
-  assert.equal(store.isBasicHttpUrl(undefined), false);
-  assert.equal(store.isBasicHttpUrl('ftp://example.com'), false);
+test('validateSubscriptionInput: normalizes the persisted channelUrl (lowercased host)', () => {
+  const result = store.validateSubscriptionInput({ channelUrl: 'https://WWW.YOUTUBE.COM/@Mixed' });
+  assert.equal(result.ok, true);
+  assert.equal(result.value.channelUrl, 'https://www.youtube.com/@Mixed');
 });
 
 // ---- deriveDisplayName (pure) ----

@@ -1,0 +1,251 @@
+'use strict';
+
+// [UNIT] lib/ytdlp/args.js -- pure arg builders + path confinement (AC 27,
+// 30, and the T2-QA-folded quality/format sanitization). No child process,
+// no real fs writes; the only I/O is `fs.existsSync` (cookies presence
+// check), which the tests drive with a real temp file so both branches are
+// covered.
+
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { test } = require('node:test');
+const assert = require('node:assert');
+const args = require('../../lib/ytdlp/args');
+
+function makeConfig(overrides = {}) {
+  return {
+    downloadDir: fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-ytdlp-test-')),
+    cookiesFile: null,
+    ...overrides,
+  };
+}
+
+function baseSub(overrides = {}) {
+  return {
+    id: 'abc123',
+    channelUrl: 'https://www.youtube.com/@somechannel',
+    name: 'Some Channel',
+    format: 'video',
+    quality: 'best',
+    ...overrides,
+  };
+}
+
+// ---- buildYtdlpListArgs: flat array shape, `--` before the URL ------------
+
+test('buildYtdlpListArgs returns a flat string[] with the URL positional after "--"', () => {
+  const config = makeConfig();
+  const result = args.buildYtdlpListArgs(baseSub(), config);
+  assert.ok(Array.isArray(result));
+  assert.ok(result.every((el) => typeof el === 'string'));
+  const sepIndex = result.indexOf('--');
+  assert.ok(sepIndex >= 0, 'expected a "--" separator');
+  assert.equal(sepIndex, result.length - 2, '"--" must immediately precede the URL');
+  assert.equal(result[result.length - 1], 'https://www.youtube.com/@somechannel');
+  assert.ok(result.includes('--download-archive'));
+});
+
+test('buildYtdlpListArgs never embeds the URL into an option (it is its own array element, always last)', () => {
+  const config = makeConfig();
+  const result = args.buildYtdlpListArgs(baseSub({ channelUrl: 'https://youtu.be/dQw4w9WgXcQ' }), config);
+  // No element other than the last one contains the URL as a substring.
+  for (let i = 0; i < result.length - 1; i++) {
+    assert.ok(!result[i].includes('dQw4w9WgXcQ'), `unexpected URL fragment in arg[${i}]: ${result[i]}`);
+  }
+});
+
+// ---- buildYtdlpDownloadArgs: audio vs video, quality default -------------
+
+test('buildYtdlpDownloadArgs (audio): includes -x/--extract-audio and an audio-format flag', () => {
+  const config = makeConfig();
+  const result = args.buildYtdlpDownloadArgs(baseSub({ format: 'audio' }), config);
+  assert.ok(result.includes('-x'));
+  assert.ok(result.includes('--audio-format'));
+});
+
+test('buildYtdlpDownloadArgs (video): includes a -f quality selector, defaulting to best', () => {
+  const config = makeConfig();
+  const result = args.buildYtdlpDownloadArgs(baseSub({ format: 'video', quality: 'best' }), config);
+  const fIndex = result.indexOf('-f');
+  assert.ok(fIndex >= 0);
+  assert.match(result[fIndex + 1], /best/);
+});
+
+test('buildYtdlpDownloadArgs: the URL is the last, positional argument after "--"', () => {
+  const config = makeConfig();
+  const result = args.buildYtdlpDownloadArgs(baseSub(), config);
+  assert.equal(result[result.length - 2], '--');
+  assert.equal(result[result.length - 1], 'https://www.youtube.com/@somechannel');
+});
+
+test('buildYtdlpDownloadArgs: -o output template is present and confined under the download dir', () => {
+  const config = makeConfig();
+  const result = args.buildYtdlpDownloadArgs(baseSub(), config);
+  const oIndex = result.indexOf('-o');
+  assert.ok(oIndex >= 0);
+  const template = result[oIndex + 1];
+  assert.ok(template.startsWith(path.resolve(config.downloadDir) + path.sep));
+});
+
+test('buildYtdlpDownloadArgs: --download-archive path is confined under the download dir', () => {
+  const config = makeConfig();
+  const result = args.buildYtdlpDownloadArgs(baseSub(), config);
+  const archIndex = result.indexOf('--download-archive');
+  assert.ok(archIndex >= 0);
+  const archivePath = result[archIndex + 1];
+  assert.ok(archivePath.startsWith(path.resolve(config.downloadDir) + path.sep));
+});
+
+test('buildYtdlpDownloadArgs: an invalid format throws rather than silently producing bad args', () => {
+  const config = makeConfig();
+  assert.throws(() => args.buildYtdlpDownloadArgs(baseSub({ format: 'gif' }), config));
+});
+
+// ---- --cookies: conditional on BOTH configured AND present on disk -------
+
+test('buildYtdlpListArgs: --cookies is present when the cookies file is configured and exists', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-ytdlp-cookies-'));
+  const cookiesFile = path.join(dir, 'cookies.txt');
+  fs.writeFileSync(cookiesFile, 'this-is-the-real-cookie-file-contents');
+  const config = makeConfig({ cookiesFile });
+  const result = args.buildYtdlpListArgs(baseSub(), config);
+  const idx = result.indexOf('--cookies');
+  assert.ok(idx >= 0);
+  assert.equal(result[idx + 1], cookiesFile);
+});
+
+test('buildYtdlpListArgs: --cookies is ABSENT when cookiesFile is configured but does not exist on disk', () => {
+  const config = makeConfig({ cookiesFile: '/nonexistent/path/cookies.txt' });
+  const result = args.buildYtdlpListArgs(baseSub(), config);
+  assert.ok(!result.includes('--cookies'));
+});
+
+test('buildYtdlpListArgs: --cookies is ABSENT when cookiesFile is unset', () => {
+  const config = makeConfig({ cookiesFile: null });
+  const result = args.buildYtdlpListArgs(baseSub(), config);
+  assert.ok(!result.includes('--cookies'));
+});
+
+test('buildYtdlpDownloadArgs: --cookies present/absent branches mirror buildYtdlpListArgs', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-ytdlp-cookies-'));
+  const cookiesFile = path.join(dir, 'cookies.txt');
+  fs.writeFileSync(cookiesFile, 'secret-cookie-data');
+  const present = args.buildYtdlpDownloadArgs(baseSub(), makeConfig({ cookiesFile }));
+  assert.ok(present.includes('--cookies'));
+  const absent = args.buildYtdlpDownloadArgs(baseSub(), makeConfig({ cookiesFile: '/nope/cookies.txt' }));
+  assert.ok(!absent.includes('--cookies'));
+});
+
+// ---- quality/format sanitization (T2-QA-folded; security-adjacent) -------
+
+test('normalizeQuality: passes through an allowlisted value unchanged', () => {
+  assert.equal(args.normalizeQuality('best'), 'best');
+  assert.equal(args.normalizeQuality('1080p'), '1080p');
+});
+
+test('normalizeQuality: a hostile "--exec" value is neutralized to the safe default, never emitted verbatim', () => {
+  assert.equal(args.normalizeQuality('--exec'), 'best');
+});
+
+test('normalizeQuality: an option-like "-f evil" value is neutralized to the safe default', () => {
+  assert.equal(args.normalizeQuality('-f evil'), 'best');
+});
+
+test('normalizeQuality: a value with shell metacharacters is neutralized to the safe default', () => {
+  assert.equal(args.normalizeQuality('best; rm -rf /'), 'best');
+});
+
+test('normalizeQuality: a ~10KB string is neutralized to the safe default (never truncated-and-passed-through)', () => {
+  const huge = '1080p'.padEnd(10 * 1024, 'x');
+  assert.equal(args.normalizeQuality(huge), 'best');
+});
+
+test('normalizeQuality: non-string input is neutralized to the safe default', () => {
+  assert.equal(args.normalizeQuality(undefined), 'best');
+  assert.equal(args.normalizeQuality(null), 'best');
+  assert.equal(args.normalizeQuality(1080), 'best');
+});
+
+test('a hostile quality value never becomes its own arg-array token in the download args', () => {
+  const config = makeConfig();
+  const result = args.buildYtdlpDownloadArgs(baseSub({ format: 'video', quality: '--exec=whoami' }), config);
+  assert.ok(!result.includes('--exec=whoami'));
+  for (const el of result) {
+    assert.ok(!el.includes('whoami'), `hostile quality leaked into arg: ${el}`);
+  }
+});
+
+test('assertFormat: accepts "audio"/"video", rejects anything else', () => {
+  assert.equal(args.assertFormat('audio'), 'audio');
+  assert.equal(args.assertFormat('video'), 'video');
+  assert.throws(() => args.assertFormat('gif'));
+  assert.throws(() => args.assertFormat(undefined));
+  assert.throws(() => args.assertFormat('--exec'));
+});
+
+// ---- sanitizeChannelName / resolveChannelDir: path-traversal confinement -
+
+test('sanitizeChannelName: strips path separators', () => {
+  assert.equal(args.sanitizeChannelName('a/b\\c'), 'a-b-c');
+});
+
+test('sanitizeChannelName: neutralizes ".." traversal sequences and falls back when nothing safe remains', () => {
+  assert.equal(args.sanitizeChannelName('..'), 'channel');
+  assert.equal(args.sanitizeChannelName('../../etc'), 'etc');
+});
+
+test('sanitizeChannelName: neutralizes an absolute path', () => {
+  const result = args.sanitizeChannelName('/etc/passwd');
+  assert.ok(!result.startsWith('/'));
+});
+
+test('sanitizeChannelName: strips control characters and unicode dot-lookalikes', () => {
+  assert.ok(!args.sanitizeChannelName('a\x01b').includes('\x01'));
+  const result = args.sanitizeChannelName('a．．b'); // fullwidth dots
+  assert.ok(!result.includes('．'));
+});
+
+test('sanitizeChannelName: bounds length and never returns an empty string', () => {
+  assert.equal(args.sanitizeChannelName(''), 'channel');
+  assert.equal(args.sanitizeChannelName('   '), 'channel');
+  assert.equal(args.sanitizeChannelName(null), 'channel');
+  const long = args.sanitizeChannelName('a'.repeat(500));
+  assert.ok(long.length <= 150);
+});
+
+test('resolveChannelDir: confines a normal channel name under the download root', () => {
+  const config = makeConfig();
+  const dir = args.resolveChannelDir(config, baseSub({ name: 'Some Channel' }));
+  const root = path.resolve(config.downloadDir);
+  assert.ok(dir === root || dir.startsWith(root + path.sep));
+});
+
+test('resolveChannelDir: a "../" traversal attempt in the channel name stays confined under the root', () => {
+  const config = makeConfig();
+  const dir = args.resolveChannelDir(config, baseSub({ name: '../../../etc' }));
+  const root = path.resolve(config.downloadDir);
+  assert.ok(dir === root || dir.startsWith(root + path.sep), `escaped root: ${dir}`);
+});
+
+test('resolveChannelDir: an absolute-path channel name stays confined under the root', () => {
+  const config = makeConfig();
+  const dir = args.resolveChannelDir(config, baseSub({ name: '/etc/passwd' }));
+  const root = path.resolve(config.downloadDir);
+  assert.ok(dir === root || dir.startsWith(root + path.sep), `escaped root: ${dir}`);
+});
+
+test('resolveChannelDir: embedded separator tricks stay confined under the root', () => {
+  const config = makeConfig();
+  const dir = args.resolveChannelDir(config, baseSub({ name: 'a/../../../b' }));
+  const root = path.resolve(config.downloadDir);
+  assert.ok(dir === root || dir.startsWith(root + path.sep), `escaped root: ${dir}`);
+});
+
+test('resolveArchivePath: resolves to a dotfile under the download root', () => {
+  const config = makeConfig();
+  const archivePath = args.resolveArchivePath(config);
+  const root = path.resolve(config.downloadDir);
+  assert.ok(archivePath.startsWith(root + path.sep));
+  assert.ok(path.basename(archivePath).startsWith('.'));
+});
