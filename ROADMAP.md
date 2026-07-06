@@ -2,25 +2,45 @@
 
 ## Planned
 
-- [ ] **Real icon assets** — replace the emoji `.icon-*` set + raw inline emojis with self-hosted Google Material Symbols (Apache-2.0), themed via `currentColor` so they work across all era themes. _[in progress]_
-- [ ] **Optional yt-dlp integration module** — replace MeTube with a native, toggleable yt-dlp module (one source of truth: subscriptions poll → download into the media dir → existing UI surfaces them → delete removes everywhere). Per-channel audio/video + quality, dedupe via yt-dlp's download-archive, maintainable member-only skip rules, poll-and-defer premiere delay. Parked for the branch-after-next; architectural take documented. See [docs/exec-plans/future/yt-dlp-integration-module.md](docs/exec-plans/future/yt-dlp-integration-module.md). _(Supersedes the earlier delete-sync-only note, [metube-yt-dlp-sync.md](docs/exec-plans/future/metube-yt-dlp-sync.md).)_
-- [ ] **Handoff-harness install** — install & seed the agent pipeline on branch `setup/handoff-harness` (no functional app changes). _[next]_
-- [ ] **Test coverage** — add automated tests (unit for scan/config/transcode logic, smoke tests for the HTTP endpoints) wired into CI. _[after harness]_
+### 🐞 Bugs & regressions (fix first)
+
+- [ ] **Watch-page scroll layout bug** — on certain videos, scrolling UP makes the whole bottom panel jump to the middle of the screen; scrolling down snaps it back; a page refresh makes it behave. Intermittent/video-dependent CSS or layout/scroll-position bug on the watch page (likely sticky/position interaction). Repro + fix. _(bug)_
+- [ ] **Rescan should list what it'll transcode (regression)** — the Setup "Save & Rescan" flow used to surface all the videos it would convert/transcode; it no longer does. Restore that feedback so the user can see the pending transcode set before/while it runs. _(bug/regression)_
+
+### ⚡ Quick wins (small, low-risk, additive — good "warm-up" batch)
+
+- [ ] **Random ("feeling lucky") sort** — a new home-library sort option for a fully random order alongside newest/oldest/title/size, ideally with a "shuffle again"/refresh affordance to re-roll. Fun/discovery feature; low risk (additive to the existing sort options).
+- [ ] **Mobile logo = desktop FileTube icon** — use the same FileTube icon/logo from the desktop view in the mobile top-left (currently differs); unify so the top-left brand mark is consistent across desktop and mobile.
 - [ ] **Hide a sidebar entry entirely** — a per-folder option to remove a folder from the left sidebar completely (distinct from "Hide from home", which only affects the recent view).
+- [ ] **Default landing view (Settings)** — a Settings dropdown to choose which view loads on page open: "Most Recent" (the default) or any mapped folder (e.g. Music). Unconfigured falls back to Most Recent; whatever's chosen becomes the first/default view, with all other views still reachable as today. Persisted like the other prefs.
+
+### 🎬 Playback & navigation (interrelated — best done as one coherent round)
+
+- [ ] **Prev/next video navigation (playlist order)** — a back (and forward) control on the watch page that steps to the previous/next media within an arbitrary ordered "playlist" the app derives (e.g. the current sort order, or the related-items ranking). Ties into the related-items work. _(foundation for the two below)_
+- [ ] **Autoplay option** — a Settings toggle that, when on, auto-plays the next media when the current one ends (next = the derived playlist/prev-next order above). Off by default; persisted like the other appearance/behavior prefs.
+- [ ] **Persist home view state on back-navigation** — when returning to home from a video (e.g. tapping the top logo), preserve the prior home view + scroll position instead of a hard reload that jumps to the top. Feels jarring today. Likely SPA-style state retention / restore-on-back (bfcache, history state, or a saved scroll offset). Pairs with the prev/next navigation item.
+
+### 🎨 UI polish
+
+- [ ] **Folder management UI is janky — add drag-and-drop reordering** — the mapped-folder management UX needs work; specifically, allow drag-and-drop to reorder folders both in the left sidebar and in the Setup folder list (replacing/augmenting the up/down buttons). Smoother, more direct manipulation.
+- [ ] **Make the "Subscribe" button mean something (or add a notification bell)** — today the retro "Subscribe" button is cosmetic. Give it real behavior: either a **toggle that controls whether that channel/folder surfaces on the main/default (home) view** (subscribe = pin it to your default page), or a new **notification-bell** affordance that "simulates" seeing new content (retro-YouTube flavor). Explore which reads better. Ties into "Default landing view" and, for real channels, the yt-dlp subscription module.
+
+### 🔧 Infra / housekeeping
+
 - [ ] **Configurable transcode dir (env)** — so the transcode cache can live on roomy NFS instead of the local disk, plus a higher CRF for smaller files. (Size-cap eviction itself has shipped — see "Automation & Storage" below.)
 - [ ] **PWA home-screen icon (PNG)** — manifest is wired; still needs raster PNGs generated from the SVG. Parked (no rasterizer handy).
-- [ ] **Watch-page scroll layout bug** — on certain videos, scrolling UP makes the whole bottom panel jump to the middle of the screen; scrolling down snaps it back; a page refresh makes it behave. Intermittent/video-dependent CSS or layout/scroll-position bug on the watch page (likely sticky/position interaction). Repro + fix. _(bug)_
-- [ ] **Prev/next video navigation (playlist order)** — a back (and forward) control on the watch page that steps to the previous/next media within an arbitrary ordered "playlist" the app derives (e.g. the current sort order, or the related-items ranking). Ties into the related-items work.
-- [ ] **Autoplay option** — a Settings toggle that, when on, auto-plays the next media when the current one ends (next = the derived playlist/prev-next order above). Off by default; persisted like the other appearance/behavior prefs.
-- [ ] **Random ("feeling lucky") sort** — a new home-library sort option for a fully random order alongside newest/oldest/title/size, ideally with a "shuffle again"/refresh affordance to re-roll. Fun/discovery feature; low risk (additive to the existing sort options).
-- [ ] **Default landing view (Settings)** — a Settings dropdown to choose which view loads on page open: "Most Recent" (the default) or any mapped folder (e.g. Music). Unconfigured falls back to Most Recent; whatever's chosen becomes the first/default view, with all other views still reachable as today. Persisted like the other prefs.
-- [ ] **Persist home view state on back-navigation** — when returning to home from a video (e.g. tapping the top logo), preserve the prior home view + scroll position instead of a hard reload that jumps to the top. Feels jarring today. Likely SPA-style state retention / restore-on-back (bfcache, history state, or a saved scroll offset). Pairs with the prev/next navigation item.
-- [ ] **Rescan should list what it'll transcode (regression)** — the Setup "Save & Rescan" flow used to surface all the videos it would convert/transcode; it no longer does. Restore that feedback so the user can see the pending transcode set before/while it runs. _(bug/regression)_
-- [ ] **Folder management UI is janky — add drag-and-drop reordering** — the mapped-folder management UX needs work; specifically, allow drag-and-drop to reorder folders both in the left sidebar and in the Setup folder list (replacing/augmenting the up/down buttons). Smoother, more direct manipulation.
-- [ ] **Mobile logo = desktop FileTube icon** — use the same FileTube icon/logo from the desktop view in the mobile top-left (currently differs); unify so the top-left brand mark is consistent across desktop and mobile.
-- [ ] **Make the "Subscribe" button mean something (or add a notification bell)** — today the retro "Subscribe" button is cosmetic. Give it real behavior: either a **toggle that controls whether that channel/folder surfaces on the main/default (home) view** (subscribe = pin it to your default page), or a new **notification-bell** affordance that "simulates" seeing new content (retro-YouTube flavor). Explore which reads better. Ties into the "Default landing view" item above and, for real channels, the yt-dlp subscription module.
+- [ ] **Broaden core test coverage** — the yt-dlp module is now heavily tested and CI runs the full `node:test` suite, but the core app's scan/config/transcode logic and HTTP endpoints still have thin coverage. Backfill unit + smoke tests there. _(partially progressed)_
+
+### 🧹 Tech-debt (see [docs/exec-plans/tech-debt-tracker.md](docs/exec-plans/tech-debt-tracker.md))
+
+- [ ] **yt-dlp prune/mount-loss deep redesign** (#10) — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress; benefits all folders, not just the module.
+- [ ] **yt-dlp narrow-config edges** (#12–14) — dedup-collapse discards a duplicate alias's ephemeral progress; download-dir == an existing mapped folder loses its mount-loss row; cosmetic title-clean when the download dir is an ancestor of a library folder. All mitigated today by "use a dedicated download dir."
 
 ## Shipped
+
+- [x] **Optional yt-dlp integration module (v1.11.0–v1.12.0)** — native, toggleable, off-by-default yt-dlp module: subscribe to channels → poll → download into the media dir → the existing UI surfaces them; per-channel audio/video + quality dropdowns + "download last N"; dedupe via yt-dlp's download-archive; members-only skip toggle; poll-and-defer premieres; pause/edit subscriptions; a one-shot URL download endpoint (`POST /api/ytdlp/download`, single-video, for the iOS-Shortcut workflow); live download status via polling; clean display titles; duplicate-entry fix + display-only synthetic download folder; embedded metadata/thumbnails; pinned in-container yt-dlp. Two-reviewer gate on every risky task (it caught a data-loss blocker + a maxBuffer bug on large channels among many). See the completed exec plans in `docs/exec-plans/completed/`.
+- [x] **Real icon assets** — replaced the emoji `.icon-*` set + raw inline emojis with self-hosted Google Material Symbols (Apache-2.0), themed via `currentColor`, plus an icon-set system (Outlined/Rounded/Filled/Emoji + auto-per-era).
+- [x] **Agent SDLC pipeline (handoff-harness)** — the multi-agent engineering pipeline (`.claude/agents` + commands + `.state`) is installed and in active use to drive every feature.
 
 - [x] **YouTube-style player** — inline iOS playback (no forced fullscreen); ±15s skip via on-player buttons, double-tap, and ← / → keys; buttons hidden on mobile; autoplay disabled on mobile.
 - [x] **AVI playback (hybrid + lazy)** — desktop streams a live transcode (instant); mobile/iOS plays a seekable pre-transcoded MP4. Transcoding is **lazy** — only AVIs actually watched on mobile are cached (not the whole library), with a "Preparing video" overlay + live %.
