@@ -183,6 +183,41 @@ test('isYtdlpIntermediate: an ordinary media filename (including one with extra 
   }
 });
 
+// v1.15.1 hotfix-2 (CRITICAL data-loss regression test): the original
+// patterns matched on suffix shape ALONE, with no requirement for yt-dlp's
+// own " [<id>]" bracket -- so a real user file that merely shared a suffix
+// shape (e.g. "Vacation.f2.mp4") was wrongly recognized as a yt-dlp
+// intermediate, which meant the scan silently excluded it AND
+// cleanupFailedDownloadIntermediates (lib/ytdlp/index.js) permanently
+// deleted it after any failed download in the same directory. Every one of
+// these bracket-less lookalikes must never match.
+test('isYtdlpIntermediate: a bracket-less lookalike file (no yt-dlp " [<id>]" bracket) is never treated as an intermediate', () => {
+  const lookalikeNames = [
+    'Vacation.f2.mp4',
+    'Draft.temp.mp4',
+    'notes.part',
+    'data.ytdl',
+    'My.Video.2024.mp4',
+    'Episode.4.mp4',
+    'song.remix.mp3',
+  ];
+  for (const name of lookalikeNames) {
+    assert.equal(isYtdlpIntermediate(name), false, `${name} (no id bracket) must NOT be treated as a yt-dlp intermediate`);
+  }
+});
+
+test('isYtdlpIntermediate: genuine yt-dlp intermediates WITH the id bracket are still recognized', () => {
+  const genuineNames = [
+    'Some Title [wSx0Or20MZE].f399.mp4',
+    'Some Title [wSx0Or20MZE].temp.mp4',
+    'Some Title [wSx0Or20MZE].mp4.part',
+    'Some Title [wSx0Or20MZE].ytdl',
+  ];
+  for (const name of genuineNames) {
+    assert.equal(isYtdlpIntermediate(name), true, `${name} (has id bracket) should be recognized as a yt-dlp intermediate`);
+  }
+});
+
 test('isYtdlpIntermediate: FileTube\'s OWN ".tmp.mp4" transcode-temp pattern (one "m") is a DIFFERENT shape and is left untouched', () => {
   assert.equal(isYtdlpIntermediate('abc123.tmp.mp4'), false);
 });
@@ -216,6 +251,22 @@ test('scanDirectories: a yt-dlp per-format fragment/merge-temp file left after a
   for (const p of [fragmentPath, audioFragmentPath, mergeTempPath, partPath, ytdlPath]) {
     assert.ok(!db.metadata[getMediaId(p)], `${p} (yt-dlp intermediate) must never be indexed`);
   }
+});
+
+test('scanDirectories: a bracket-less lookalike file (no yt-dlp id bracket) is still indexed, never excluded as an intermediate', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-discovery-bracketless-'));
+  const fragmentLookalike = path.join(root, 'Vacation.f2.mp4');
+  const tempLookalike = path.join(root, 'Draft.temp.mp4');
+  for (const p of [fragmentLookalike, tempLookalike]) {
+    fs.writeFileSync(p, 'bytes');
+  }
+  writeDb({ folders: [root], folderSettings: {}, progress: {}, metadata: {}, settings: baseSettings() });
+
+  await scanDirectories();
+
+  const db = readDb();
+  assert.ok(db.metadata[getMediaId(fragmentLookalike)], 'Vacation.f2.mp4 (no id bracket) must still be indexed');
+  assert.ok(db.metadata[getMediaId(tempLookalike)], 'Draft.temp.mp4 (no id bracket) must still be indexed');
 });
 
 test('scanDirectories: a normal media filename with extra dots is still indexed (not mistaken for a yt-dlp intermediate)', async () => {

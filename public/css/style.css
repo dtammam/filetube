@@ -1683,6 +1683,14 @@ header {
    SVG asset is needed across the 4 icon sets for a single header button. */
 .icon-download::before { content: "\2B07"; }
 
+/* v1.15.1 hotfix: "Shuffle again" needs its OWN icon, distinct from
+   "Rescan Files" (both previously used .icon-refresh, indistinguishable on
+   mobile where the buttons collapse to icon-only). Fixed unicode glyph,
+   independent of the icon-set system (mirrors .icon-download/.icon-star
+   above) -- no new SVG asset needed across the 4 icon sets for this single
+   button. U+1F500 TWISTED RIGHTWARDS ARROWS (shuffle glyph). */
+.icon-shuffle::before { content: "\1F500"; }
+
 /* ---- Icon-set axis (data-icons) -------------------------------------------
    Third, orthogonal appearance axis (theme x mode x icon-set). The base rule,
    unscoped outlined mask block, @supports fill guard, and .icon-star above are

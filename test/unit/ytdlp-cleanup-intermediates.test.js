@@ -37,6 +37,33 @@ test('cleanupFailedDownloadIntermediates removes yt-dlp intermediates but leaves
   assert.equal(fs.existsSync(unrelatedPath), true, 'an unrelated module file must never be removed');
 });
 
+// v1.15.1 hotfix-2 (CRITICAL data-loss regression test): a REAL user file
+// that merely shares a suffix shape with a yt-dlp intermediate -- but lacks
+// yt-dlp's own " [<id>]" bracket -- must SURVIVE a failed-download cleanup
+// sweep of its directory. Pre-fix, every one of these was wrongly deleted.
+test('cleanupFailedDownloadIntermediates never deletes a bracket-less lookalike file (no yt-dlp id bracket)', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-ytdlp-cleanup-bracketless-'));
+  const lookalikePaths = [
+    path.join(dir, 'Vacation.f2.mp4'),
+    path.join(dir, 'Draft.temp.mp4'),
+    path.join(dir, 'notes.part'),
+    path.join(dir, 'data.ytdl'),
+    path.join(dir, 'My.Video.2024.mp4'),
+    path.join(dir, 'Episode.4.mp4'),
+    path.join(dir, 'song.remix.mp3'),
+  ];
+  for (const p of lookalikePaths) {
+    fs.writeFileSync(p, 'bytes');
+  }
+
+  const removed = cleanupFailedDownloadIntermediates(dir);
+
+  assert.equal(removed, 0, 'no bracket-less file should ever be removed');
+  for (const p of lookalikePaths) {
+    assert.equal(fs.existsSync(p), true, `${p} (a real file with no yt-dlp id bracket) must survive cleanup`);
+  }
+});
+
 test('cleanupFailedDownloadIntermediates on a missing/unreadable directory never throws and returns 0', () => {
   const missingDir = path.join(os.tmpdir(), `filetube-ytdlp-cleanup-missing-${Date.now()}`);
   assert.doesNotThrow(() => {
