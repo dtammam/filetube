@@ -544,3 +544,87 @@ test('runExclusive: a poll trigger arriving while a one-shot is in-flight queues
     await close();
   }
 });
+
+// ---- FIX-7 (two-reviewer gate): a poll queued behind an in-flight one-shot -
+// must already show its targeted subscriptions as 'queued' in the status ---
+// snapshot, not stale/idle, for the ENTIRE time it waits its turn on the ----
+// shared runExclusive FIFO. -------------------------------------------------
+
+test('FIX-7 regression: a poll queued behind an in-flight one-shot shows its targeted subscriptions as "queued" in the status snapshot while it waits', async () => {
+  const deps = makeFakeDeps();
+  const sub = await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@chanA', format: 'video' });
+  const config = enabledConfig();
+
+  let resolveOneShotDownload;
+  let pollListStarted = false;
+  run.runDownload = () => new Promise((resolve) => {
+    resolveOneShotDownload = () => resolve({ ok: true, code: 0, stdout: '', stderr: '' });
+  });
+  run.runList = async () => {
+    pollListStarted = true;
+    return { ok: true, stdout: '', stderr: '' };
+  };
+
+  const { base, close } = await startTestApp(deps, config);
+  try {
+    const oneShotRes = await postJson(base, '/api/ytdlp/download', { url: SINGLE_VIDEO_URL });
+    assert.equal(oneShotRes.status, 202);
+    // Give the one-shot's runExclusive job a moment to actually start.
+    await new Promise((resolve) => setImmediate(resolve));
+
+    // A poll trigger arrives while the one-shot's download is still pending
+    // -- it must queue behind it on the shared FIFO (NFR2), never spawning
+    // concurrently.
+    const pollPromise = ytdlp.runPoll(deps, config);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.equal(pollListStarted, false, 'sanity: the poll job must not have started its spawn yet -- it is still queued behind the one-shot');
+
+    // FIX-7: even though the poll's OWN turn on the FIFO hasn't arrived,
+    // its targeted subscription must already read 'queued' in the status
+    // snapshot -- pre-fix, this write only happened INSIDE the
+    // runExclusive callback, so it never ran until the poll actually got
+    // its turn, leaving the snapshot looking stale/idle the whole time a
+    // poll was genuinely pending.
+    const midSnap = await (await fetch(`${base}/api/subscriptions/status`)).json();
+    assert.equal(midSnap.subscriptions[sub.id].state, 'queued', 'the targeted subscription must show "queued" while the poll waits behind an in-flight one-shot');
+
+    resolveOneShotDownload();
+    await pollPromise;
+    assert.equal(pollListStarted, true, 'sanity: the poll eventually ran once the one-shot ahead of it completed');
+  } finally {
+    await close();
+  }
+});
+
+// ---- FIX-10 (two-reviewer gate, LOW): bound the one-shot pending queue -----
+// depth -- reject once too many are already queued, rather than growing it --
+// without bound. `run.runDownload` here is mocked to NEVER resolve, so every
+// accepted one-shot's `runExclusive` job stays pending for the rest of this
+// test -- deliberately placed LAST in this file so its permanently-inflated
+// `ytdlpQueueLength` (a module-level singleton shared by every test file that
+// requires `lib/ytdlp` in this SAME process) can never affect an earlier or
+// later test's own FIFO-ordering assertions.
+
+test('FIX-10 regression: POST /api/ytdlp/download rejects once the pending one-shot queue exceeds the cap, instead of enqueuing unbounded', async () => {
+  const deps = makeFakeDeps();
+  run.runDownload = () => new Promise(() => {}); // never resolves -- keeps every queued job pending indefinitely
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    const cap = ytdlp.MAX_ONESHOT_QUEUE_LENGTH;
+    assert.equal(typeof cap, 'number');
+    assert.ok(cap > 0);
+
+    for (let i = 0; i < cap; i++) {
+      const res = await postJson(base, '/api/ytdlp/download', { url: SINGLE_VIDEO_URL });
+      assert.equal(res.status, 202, `request ${i} should be accepted (still under the cap)`);
+    }
+
+    const overCapRes = await postJson(base, '/api/ytdlp/download', { url: SINGLE_VIDEO_URL });
+    assert.equal(overCapRes.status, 503, 'a one-shot POST beyond the cap must be rejected, not enqueued');
+    const body = await overCapRes.json();
+    assert.equal(typeof body.error, 'string');
+    assert.ok(body.error.length > 0);
+  } finally {
+    await close();
+  }
+});

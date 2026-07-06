@@ -149,6 +149,55 @@ test('GET /api/subscriptions/status never surfaces a cookies path, even for an e
   }
 });
 
+// ---- FIX-6 (two-reviewer gate): a delete mid-download must not be ---------
+// resurrected by the in-flight cycle's own terminal write once it finishes --
+
+test('FIX-6 regression: deleting a subscription MID-DOWNLOAD -- once the download finishes, the status snapshot still does not contain the deleted subscription', async () => {
+  const deps = makeFakeDeps();
+  const sub = await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@deletemidflight', format: 'video' });
+
+  let resolveDownload;
+  run.runList = async () => ({
+    ok: true,
+    stdout: JSON.stringify({ id: 'vid1', extractor_key: 'Youtube', availability: 'public' }),
+    stderr: '',
+  });
+  run.runDownload = () => new Promise((resolve) => {
+    resolveDownload = () => resolve({ ok: true, code: 0, stdout: '', stderr: '' });
+  });
+
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    const pollPromise = ytdlp.runPoll(deps, enabledConfig());
+    // Give the poll a moment to reach the in-flight downloading state --
+    // this captured `sub` object keeps running the cycle even after the
+    // DELETE below removes its subscription row.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    const midSnap = await (await fetch(`${base}/api/subscriptions/status`)).json();
+    assert.ok(midSnap.subscriptions[sub.id], 'sanity: the subscription must be live/in-flight before the delete');
+
+    // Delete the subscription WHILE its download is still in flight.
+    const delRes = await fetch(`${base}/api/subscriptions/${sub.id}`, { method: 'DELETE' });
+    assert.equal(delRes.status, 200);
+
+    const rightAfterDeleteSnap = await (await fetch(`${base}/api/subscriptions/status`)).json();
+    assert.equal(rightAfterDeleteSnap.subscriptions[sub.id], undefined, 'the entry must be gone immediately after delete');
+
+    // Now let the in-flight download actually finish -- pre-fix, the
+    // orchestrator's own terminal `activity.setSubscription(sub.id, {state:
+    // 'done', ...})` call would silently RE-CREATE a permanent, stale entry
+    // for an id that no longer has a subscription row.
+    resolveDownload();
+    await pollPromise;
+
+    const afterFinishSnap = await (await fetch(`${base}/api/subscriptions/status`)).json();
+    assert.equal(afterFinishSnap.subscriptions[sub.id], undefined, 'FIX-6: the deleted subscription must NOT be resurrected by the in-flight cycle\'s own terminal write once the download finishes');
+  } finally {
+    await close();
+  }
+});
+
 // ---- clearSubscription: a deleted subscription drops out of the snapshot --
 
 test('deleting a subscription clears its live entry from the status snapshot', async () => {

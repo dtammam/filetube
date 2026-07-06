@@ -140,6 +140,41 @@ test('a pruned one-shot is removed from the underlying live map, not just hidden
   assert.equal(snap.oneShots.job1, undefined);
 });
 
+// ---- FIX-5 (two-reviewer gate): prune-on-write, not just prune-on-read -----
+
+test('FIX-5: setOneShot prunes stale terminal one-shots on WRITE -- the map stays bounded even if getSnapshot is never called', () => {
+  const t0 = 0;
+  // Seed one terminal one-shot, then let time pass well beyond the TTL.
+  activity.setOneShot('job-old', { state: 'done', percent: 100 }, t0);
+
+  // Many SUBSEQUENT one-shot writes, all far enough past the TTL that
+  // 'job-old' is stale -- crucially, NO getSnapshot() call happens anywhere
+  // in this test. Pre-fix, getSnapshot was the ONLY prune trigger, so
+  // 'job-old' (and every one of these) would accumulate forever in a
+  // deployment that never polls the status endpoint.
+  const farPast = t0 + activity.ONESHOT_TTL_MS + 1;
+  for (let i = 0; i < 25; i++) {
+    activity.setOneShot(`job-new-${i}`, { state: 'downloading', percent: i }, farPast + i);
+  }
+
+  // Reach into the live map via a snapshot taken at the SAME farPast instant
+  // (not letting getSnapshot's own prune do the work retroactively for
+  // 'job-old' -- it must already be gone from a prior setOneShot call).
+  const snap = activity.getSnapshot(farPast + 25);
+  assert.equal(snap.oneShots['job-old'], undefined, 'a stale terminal one-shot must already have been pruned by a later setOneShot WRITE, not left for getSnapshot to clean up');
+});
+
+test('FIX-5: setOneShot pruning never removes a still-active (non-terminal) or fresh one-shot entry', () => {
+  const t0 = 0;
+  activity.setOneShot('job-active', { state: 'downloading', percent: 5 }, t0);
+  // A later write, far past the TTL relative to t0 -- must prune terminal
+  // entries only, never a non-terminal in-flight one.
+  activity.setOneShot('job-fresh', { state: 'downloading' }, t0 + activity.ONESHOT_TTL_MS + 1);
+  const snap = activity.getSnapshot(t0 + activity.ONESHOT_TTL_MS + 1);
+  assert.ok(snap.oneShots['job-active'], 'a non-terminal one-shot must survive prune-on-write regardless of age');
+  assert.ok(snap.oneShots['job-fresh']);
+});
+
 // ---- resetForTests ----------------------------------------------------------
 
 test('resetForTests clears both namespaces entirely', () => {

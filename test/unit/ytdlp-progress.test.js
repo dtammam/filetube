@@ -28,11 +28,16 @@ test('parseProgressLine: handles yt-dlp\'s "Unknown speed ETA Unknown" variant (
   assert.equal(patch.eta, 'Unknown');
 });
 
-test('parseProgressLine: a finished-download summary line ("100% of X in Y at Z", no ETA) still extracts percent 100 / done', () => {
+test('parseProgressLine: FIX-4 -- a finished-download summary line ("100% of X in Y at Z", no ETA) still extracts percent 100, but stays "downloading" (item-level, never terminal on its own)', () => {
   const patch = parseProgressLine('[download] 100% of  120.50MiB in 00:00:38 at 3.13MiB/s');
   assert.ok(patch);
   assert.equal(patch.percent, 100);
-  assert.equal(patch.state, 'done');
+  // FIX-4 (two-reviewer gate): a per-item 100% must NOT flip the whole
+  // subscription/one-shot to a terminal state -- one spawn can target many
+  // survivor ids, so item 1 finishing must not make a status poll falsely
+  // report the WHOLE download complete. Only the orchestrator (after its
+  // `runDownload` await settles for every target) may set 'done'.
+  assert.equal(patch.state, 'downloading');
 });
 
 test('parseProgressLine: a mid-progress percent (< 100) is state "downloading"', () => {
@@ -47,7 +52,12 @@ test('parseProgressLine: a Destination line yields a downloading patch with a cl
   assert.ok(patch);
   assert.equal(patch.state, 'downloading');
   assert.equal(patch.title, 'Amazing Video Title');
-  assert.equal(patch.destination, '/downloads/SomeChannel/Amazing_Video_Title [dQw4w9WgXcQ].mp4');
+});
+
+test('parseProgressLine: FIX-8 -- a Destination line NEVER surfaces the absolute path in the returned patch', () => {
+  const patch = parseProgressLine('[download] Destination: /downloads/SomeChannel/Amazing_Video_Title [dQw4w9WgXcQ].mp4');
+  assert.equal(patch.destination, undefined, 'the absolute download-dir path must never be present on the patch (leaks into the unauthenticated status snapshot otherwise)');
+  assert.ok(!Object.prototype.hasOwnProperty.call(patch, 'destination'));
 });
 
 test('parseProgressLine: a Destination line whose basename has no bracketed id keeps the raw title UNCHANGED (mirrors FR-F: no match = no-op)', () => {
@@ -57,10 +67,12 @@ test('parseProgressLine: a Destination line whose basename has no bracketed id k
 
 // ---- already-downloaded ----------------------------------------------------
 
-test('parseProgressLine: "has already been downloaded" yields a done/100% patch with a cleaned title', () => {
+test('parseProgressLine: FIX-4 -- "has already been downloaded" yields a 100% patch with a cleaned title, but stays "downloading" (item-level, never terminal on its own)', () => {
   const patch = parseProgressLine('[download] Amazing_Video_Title [dQw4w9WgXcQ].mp4 has already been downloaded');
   assert.ok(patch);
-  assert.equal(patch.state, 'done');
+  // FIX-4 (two-reviewer gate): item 1 of a multi-item subscription download
+  // being already-archived must not flip the WHOLE subscription to 'done'.
+  assert.equal(patch.state, 'downloading');
   assert.equal(patch.percent, 100);
   assert.equal(patch.title, 'Amazing Video Title');
 });

@@ -353,6 +353,49 @@ test('enabled: a file placed directly in FILETUBE_YTDLP_DOWNLOAD_DIR is scanned/
   }
 });
 
+// ---- FIX-9 (two-reviewer gate): cleanDisplayTitle's false-positive fix -----
+// must be scoped to files actually rooted under the yt-dlp download dir, not
+// applied library-wide -- a coincidentally 11-char-bracketed non-yt-dlp file
+// must be left completely untouched.
+
+test('FIX-9 regression: a non-yt-dlp library file with a coincidentally 11-char bracket keeps its raw title, while a genuine yt-dlp download (under the module root) is still cleaned', async () => {
+  const libraryDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-fix9-library-'));
+  process.env.FILETUBE_YTDLP_ENABLED = 'true';
+  process.env.FILETUBE_YTDLP_DOWNLOAD_DIR = downloadDir;
+  try {
+    // A legit, non-yt-dlp file whose bracketed suffix HAPPENS to be exactly
+    // 11 id-shaped characters ('Holiday2024' is 11 chars) -- the false-
+    // positive shape this fix protects against.
+    const libraryFilePath = path.join(libraryDir, 'Vacation_2024 [Holiday2024].mp4');
+    fs.writeFileSync(libraryFilePath, 'not a real video');
+
+    // A genuine yt-dlp download under the module's own root, same bracket shape.
+    const downloadFilePath = path.join(downloadDir, 'Amazing_Video_Title [dQw4w9WgXcQ].mp4');
+    fs.writeFileSync(downloadFilePath, 'not a real video');
+
+    await updateDatabase((db) => {
+      db.folders = [libraryDir];
+      return true;
+    });
+
+    await scanDirectories();
+
+    const db = loadDatabase();
+    const libraryEntry = Object.values(db.metadata || {}).find((m) => m.filePath === libraryFilePath);
+    const downloadEntry = Object.values(db.metadata || {}).find((m) => m.filePath === downloadFilePath);
+    assert.ok(libraryEntry, 'sanity: the library file must be indexed');
+    assert.ok(downloadEntry, 'sanity: the yt-dlp download-dir file must be indexed');
+
+    assert.equal(libraryEntry.title, 'Vacation_2024 [Holiday2024]', 'FIX-9: a non-yt-dlp library file must keep its raw title unchanged, even though its bracket happens to be 11 id-shaped characters');
+    assert.equal(downloadEntry.title, 'Amazing Video Title', 'a genuine yt-dlp download (under the module root) must still have its title cleaned');
+  } finally {
+    delete process.env.FILETUBE_YTDLP_ENABLED;
+    delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
+    fs.rmSync(libraryDir, { recursive: true, force: true });
+    await updateDatabase((db) => { db.folders = []; return true; });
+  }
+});
+
 test('extraScanRoots() is path.resolve-normalized and empty when disabled/unconfigured', () => {
   assert.deepEqual(ytdlp.extraScanRoots(ytdlp.parseYtdlpConfig({})), []);
   const cfg = ytdlp.parseYtdlpConfig({

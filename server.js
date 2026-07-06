@@ -1005,18 +1005,55 @@ async function runScanDirectories() {
   // decision: disabling must never destroy already-downloaded content).
   // When enabled it contributes `downloadDir` here rather than via a
   // `db.folders` write, so a `POST /api/config` save can never evict it.
-  // De-duplicated via `Set` in case an operator also manually added the same
-  // directory to `db.folders`. `ytdlpConfig` is parsed ONCE per scan (D7b
-  // efficiency nit) rather than re-parsing ENV on every call. Each root is
-  // run through `normalizeScanRoot` (FR-G hardening, v1.12.0) BEFORE the
-  // `Set`-dedup, so a divergent spelling (bind-mount/symlink/relative) of a
-  // root already covered by `db.folders` or `extraScanRoots` collapses to
-  // one entry instead of walking the same tree twice under two different
-  // path-based ids.
+  // De-duplicated via a `normalizeScanRoot`-keyed `Set` in case an operator
+  // also manually added the same directory to `db.folders`. `ytdlpConfig` is
+  // parsed ONCE per scan (D7b efficiency nit) rather than re-parsing ENV on
+  // every call.
+  //
+  // FIX-1 (two-reviewer gate, BLOCKER, data-loss regression): `normalizeScanRoot`
+  // is a DEDUP KEY ONLY here -- it must NEVER change the string that is
+  // actually WALKED/scanned. The prior version of this code did
+  // `[...].map(normalizeScanRoot)`, i.e. it realpath'd the ACTUAL scan roots
+  // themselves. For an operator whose `db.folders` entry is a symlink or
+  // bind-mount (common under Docker/NAS), that silently re-spelled the root
+  // to its realpath -> `scanDirRecursive` walked the RESOLVED path instead of
+  // the one on record -> every file's absolute path changed -> `getMediaId`
+  // (an `md5(absolute path)` hash) produced brand-new ids for every file
+  // under that root -> the OLD ids stopped surviving the scan -> the
+  // default-ON `pruneMissing` toggle REAPED them (metadata, thumbnails,
+  // transcode sidecars, AND `db.progress` watch positions) on the very next
+  // scan after upgrade. A silent data-loss regression for any symlinked/
+  // bind-mounted library folder, not just the yt-dlp module's own root.
+  //
+  // The fix: build the RAW root list first (original, un-realpath'd
+  // spellings), then dedup by iterating it and computing
+  // `normalizeScanRoot(root)` purely as a comparison KEY -- if that key was
+  // already seen, this entry is dropped (it is the SAME real tree as an
+  // earlier entry, under a different spelling); otherwise the ORIGINAL root
+  // string (never the normalized key) is kept. Two divergent spellings of
+  // the same real tree still collapse to exactly one scanned entry (the
+  // FIRST-seen original spelling wins and is what actually gets walked), and
+  // a root's on-disk spelling is now NEVER altered by this merge -- so no
+  // existing file's path-based id can ever change as a side effect of
+  // deduping. `db.folders` is iterated before `extraScanRoots` below, so a
+  // manually-added `db.folders` alias of the module's own download dir (the
+  // AC38/AC41 scenario) is the spelling that is kept and walked, exactly as
+  // before this fix -- only the REALPATH-REWRITING side effect is removed.
   const ytdlpConfig = ytdlp.parseYtdlpConfig();
-  const currentFolders = Array.from(new Set(
-    [...(db.folders || []), ...ytdlp.extraScanRoots(ytdlpConfig)].map(normalizeScanRoot)
-  ));
+  const currentFolders = [];
+  const seenScanRootKeys = new Set();
+  for (const rawRoot of [...(db.folders || []), ...ytdlp.extraScanRoots(ytdlpConfig)]) {
+    const key = normalizeScanRoot(rawRoot);
+    if (seenScanRootKeys.has(key)) continue; // same real tree as an earlier entry -- drop, never re-walk
+    seenScanRootKeys.add(key);
+    currentFolders.push(rawRoot); // the ORIGINAL spelling -- never the normalized key
+  }
+  // FIX-9 (two-reviewer gate): the yt-dlp module's own download root(s),
+  // captured once here so the metadata loop below can scope
+  // `cleanDisplayTitle` to files actually written by the module -- see that
+  // loop's own comment for why a scan-wide cleanup was a false-positive risk
+  // for ordinary library files.
+  const ytdlpDownloadRoots = ytdlp.extraScanRoots(ytdlpConfig);
   const scannedFiles = new Map(); // path -> file info
   // Configured root folders that are absent/unmounted this scan (the single
   // existence-check seam, reused by selectPrunableIds' mount-loss guard below).
@@ -1054,12 +1091,28 @@ async function runScanDirectories() {
       // New or updated file
       console.log(`Scanning new/updated file: ${info.name}`);
       const isAudio = AUDIO_EXTENSIONS.includes(info.ext);
-      
+
+      // FIX-9 (two-reviewer gate): `cleanDisplayTitle` strips a trailing
+      // ` [<11-char id>]` bracket -- exactly the shape `--restrict-filenames`
+      // produces for a yt-dlp download, but ALSO a shape an ordinary,
+      // non-yt-dlp library file can innocently have (e.g.
+      // `Vacation_2024 [Holiday2024].mp4` -- `Holiday2024` is coincidentally
+      // 11 characters). Applying the cleanup scan-wide was a false-positive
+      // risk for any such legitimately-named file. Scoped here to files that
+      // are actually rooted under the module's OWN download dir
+      // (`ytdlpDownloadRoots`, computed once above from `extraScanRoots`) --
+      // reusing `matchRootFolder`'s existing prefix-match semantics rather
+      // than a second, parallel path-matching helper. A non-yt-dlp file
+      // (anywhere else in the library) always keeps its raw basename,
+      // regardless of what it happens to look like.
+      const rawTitle = path.basename(info.name, info.ext);
+      const title = matchRootFolder(filePath, ytdlpDownloadRoots) ? cleanDisplayTitle(rawTitle) : rawTitle;
+
       // Initialize metadata entry
       newMetadata[id] = {
         id,
         name: info.name,
-        title: cleanDisplayTitle(path.basename(info.name, info.ext)),
+        title,
         filePath,
         folderName: info.folderName,
         size: info.size,
@@ -1348,18 +1401,43 @@ app.post('/api/config', async (req, res) => {
     return res.status(400).json({ error: 'folders must be an array of paths' });
   }
 
-  // Validate that folders exist locally, and normalize (FR-G AC40, v1.12.0):
-  // resolve each surviving entry to its canonical form at write time so a
-  // later divergent-but-equivalent spelling (a relative path, a trailing
-  // slash, a `..` segment) of an already-configured folder never creates a
-  // second `db.folders` entry -- collapsed here via a Set keyed on the
-  // resolved form, mirroring `normalizeScanRoot`'s dedup at scan time.
+  // FR-G part 2: the module's synthetic download-dir root(s) are never
+  // written into `db.folders` here, but a `folderSettings` entry keyed by a
+  // synthetic root's resolved path IS allowed to persist on its own (e.g. a
+  // rename) even though the root itself is absent from `folders` -- this is
+  // how a rename sticks across restarts without the folder ever becoming a
+  // "real" `db.folders` row (see GET /api/config above). Computed BEFORE the
+  // `validFolders` loop below (FIX-2) so that loop can exclude a synthetic
+  // root a client round-tripped back from `GET /api/config`'s display-only
+  // merge.
+  const ytdlpConfig = ytdlp.parseYtdlpConfig();
+  const syntheticRoots = new Set(ytdlp.extraScanRoots(ytdlpConfig));
+
+  // Validate that folders exist locally, and DEDUPLICATE a submitted list
+  // using a resolved key -- WITHOUT rewriting the persisted spelling itself.
+  //
+  // FIX-1 (two-reviewer gate, BLOCKER, data-loss regression, same class as
+  // the scan-side fix above): this used to `path.resolve()` every surviving
+  // entry and persist THAT into `db.folders`. `getMediaId` hashes the
+  // absolute `filePath` a file was scanned under, so rewriting an EXISTING
+  // operator's stored folder spelling here -- even one that already resolved
+  // to itself, but especially a relative/symlink/bind-mount spelling that
+  // doesn't -- would change every file's id under that root on the very next
+  // scan, and `pruneMissing` (default ON) would reap the old ids' metadata/
+  // thumbnails/`db.progress` the same way the scan-side bug did. A save that
+  // didn't intend to change anything must leave existing stored strings
+  // byte-identical.
+  //
+  // The fix: `path.resolve` is used ONLY as a comparison key to drop a
+  // submitted entry that resolves to one already kept (or to a synthetic
+  // root, FIX-2 below) -- the ORIGINAL (trimmed, as-submitted) string is
+  // what's pushed into `validFolders` and ultimately persisted.
   const validFolders = [];
   const seenResolved = new Set();
   // The client's `folderSettings` object is keyed by whatever folder string
-  // it last received (which may still be an unresolved legacy spelling for
-  // an entry that predates this normalization) -- remember the resolved form
-  // for each submitted original so the settings lookup below still finds it.
+  // it last received -- remember the resolved form for each submitted
+  // original so the settings lookup below still finds it, independent of
+  // `validFolders` now holding un-resolved spellings.
   const resolvedFromOriginal = new Map();
   for (const folder of folders) {
     if (typeof folder !== 'string') continue;
@@ -1369,17 +1447,21 @@ app.post('/api/config', async (req, res) => {
     resolvedFromOriginal.set(trimmed, resolved);
     if (seenResolved.has(resolved)) continue;
     seenResolved.add(resolved);
-    validFolders.push(resolved);
+    // FIX-2 (two-reviewer gate, BLOCKER-adjacent, C7 reap-surface reopened):
+    // `GET /api/config` merges the module's synthetic download-dir root into
+    // its RESPONSE for display purposes only (never into `db.folders`) -- but
+    // a normal settings-page save round-trips that same `folders` array back
+    // into THIS handler. Without this check, the synthetic entry passed the
+    // (typeof-string/trim/existsSync)-only filter above and got persisted
+    // into `db.folders` on the very next save, reopening the exact
+    // "downloadDir must never be in db.folders" violation C3/C7 exists to
+    // prevent (disable-reap risk: a `db.folders`-resident downloadDir can be
+    // evicted by a later save, or double-walked alongside `extraScanRoots`).
+    // Excluded here, unconditionally -- its `folderSettings` entry (a rename)
+    // is untouched by this and still persists via `cleanSettings` below.
+    if (syntheticRoots.has(resolved)) continue;
+    validFolders.push(trimmed);
   }
-
-  // FR-G part 2: the module's synthetic download-dir root(s) are never
-  // written into `db.folders` here, but a `folderSettings` entry keyed by a
-  // synthetic root's resolved path IS allowed to persist on its own (e.g. a
-  // rename) even though the root itself is absent from `folders` -- this is
-  // how a rename sticks across restarts without the folder ever becoming a
-  // "real" `db.folders` row (see GET /api/config above).
-  const ytdlpConfig = ytdlp.parseYtdlpConfig();
-  const syntheticRoots = new Set(ytdlp.extraScanRoots(ytdlpConfig));
 
   // Keep per-folder settings (display name / hidden), pruned to folders that
   // still exist OR are a synthetic root.

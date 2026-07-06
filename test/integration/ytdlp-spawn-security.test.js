@@ -824,6 +824,58 @@ test('runDownload: a stdout stream "error" followed by a "close" does not double
   assert.deepEqual(child.killCalls, ['SIGKILL'], 'the stdout error must have killed the child exactly once');
 });
 
+// ---- FIX-3 (two-reviewer gate): onProgress dispatch must stop once the ----
+// ---- download promise has already settled -- a late/buffered 'data' -------
+// ---- event must never resurrect a non-terminal patch that could overwrite -
+// ---- the orchestrator's own terminal state transition (a phantom entry ----
+// ---- stuck non-terminal forever). ------------------------------------------
+
+test('runDownload: FIX-3 regression -- once settled via a stream "error", a LATE stdout "data" event does not dispatch onProgress', async () => {
+  const spawnChild = stubSpawn();
+  const downloadDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-ytdlp-dl-'));
+  const config = { downloadDir, cookiesFile: null };
+  const sub = { channelUrl: 'https://www.youtube.com/@x', name: 'x', format: 'video', quality: 'best' };
+  const patches = [];
+  const resultPromise = run.runDownload(sub, config, ['vid1'], { onProgress: (p) => patches.push(p) });
+  const child = spawnChild();
+
+  // Settle the promise via a stderr stream error BEFORE any progress line
+  // has arrived (mirrors a real, if rare, underlying fd/read failure).
+  child.stderr.emit('error', new Error('stderr stream boom'));
+  const result = await resultPromise;
+  assert.equal(result.ok, false);
+  assert.equal(result.code, 'ESTDERR');
+
+  // A buffered/late stdout chunk arriving AFTER the promise already settled
+  // must NOT resurrect onProgress with a non-terminal patch -- pre-fix, this
+  // dispatch was unconditional and would have overwritten the orchestrator's
+  // own terminal 'error' state with a stray 'downloading' patch.
+  child.stdout.emit('data', Buffer.from('[download]  55.0% of  10.0MiB at 1.00MiB/s ETA 00:05\n'));
+  assert.equal(patches.length, 0, 'onProgress must never fire once the download promise has already settled');
+});
+
+test('runDownload: FIX-3 regression -- once settled via a normal "close", a LATE stdout "data" event does not dispatch onProgress again', async () => {
+  const spawnChild = stubSpawn();
+  const downloadDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-ytdlp-dl-'));
+  const config = { downloadDir, cookiesFile: null };
+  const sub = { channelUrl: 'https://www.youtube.com/@x', name: 'x', format: 'video', quality: 'best' };
+  const patches = [];
+  const resultPromise = run.runDownload(sub, config, ['vid1'], { onProgress: (p) => patches.push(p) });
+  const child = spawnChild();
+
+  child.stdout.emit('data', Buffer.from('[download]  10.0% of  10.0MiB at 1.00MiB/s ETA 00:09\n'));
+  child.emit('close', 0, null);
+  await resultPromise;
+  assert.equal(patches.length, 1, 'sanity: the in-flight progress line received BEFORE close must still be parsed');
+
+  // A buffered stdout chunk that arrives AFTER 'close' already fired (and
+  // resolved the promise) must not dispatch a fresh onProgress call -- this
+  // is the exact "phantom stuck download" mechanism FIX-3 closes: a
+  // never-terminal patch landing after the orchestrator already moved on.
+  child.stdout.emit('data', Buffer.from('[download]  20.0% of  10.0MiB at 1.00MiB/s ETA 00:08\n'));
+  assert.equal(patches.length, 1, 'a late stdout data event after close must not fire onProgress again');
+});
+
 test('runDownload: SF1 cookies redaction still holds with onProgress attached and stdout piped', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-ytdlp-cookies-'));
   const cookiesFile = path.join(dir, 'cookies.txt');

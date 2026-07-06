@@ -110,6 +110,46 @@ test('AC44: the synthetic folder is renamable via a persisted folderSettings ent
   }
 });
 
+// ---- FIX-2 (two-reviewer gate, BLOCKER-adjacent, C7 reap-surface reopened) -
+// a normal settings-page save round-trips GET /api/config's synthetic-folder-
+// merged response straight back into POST /api/config -- the synthetic root
+// must never slip into db.folders via that round-trip, even though it passes
+// the (typeof-string/trim/existsSync)-only filter validFolders used to apply.
+
+test('FIX-2 regression: POST /api/config with the synthetic download folder present in the submitted folders array does not persist it into db.folders, but a submitted folderSettings rename for it still persists', async () => {
+  process.env.FILETUBE_YTDLP_ENABLED = 'true';
+  process.env.FILETUBE_YTDLP_DOWNLOAD_DIR = downloadDir;
+  try {
+    const resolvedDownloadDir = path.resolve(downloadDir);
+
+    // Simulate the realistic round-trip: GET /api/config's synthetic merge
+    // included the download dir in `folders` -- the client (a normal
+    // settings-page save that doesn't special-case it) echoes that array
+    // straight back into POST, alongside a rename for it.
+    const getBody = await (await fetch(`${base}/api/config`)).json();
+    assert.ok(getBody.folders.includes(resolvedDownloadDir), 'sanity: GET must have surfaced the synthetic entry for this round-trip to be meaningful');
+
+    const postRes = await fetch(`${base}/api/config`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        folders: getBody.folders,
+        folderSettings: { ...getBody.folderSettings, [resolvedDownloadDir]: { name: 'Renamed Downloads', hidden: false } },
+      }),
+    });
+    const postBody = await postRes.json();
+    assert.equal(postRes.status, 200);
+    assert.ok(!postBody.folders.includes(resolvedDownloadDir), 'FIX-2: the synthetic download folder must NEVER be written into db.folders, even when round-tripped back from GET');
+
+    const persisted = loadDatabase();
+    assert.ok(!(persisted.folders || []).includes(resolvedDownloadDir), 'FIX-2: db.folders itself must never contain the synthetic root after this save');
+    assert.equal(persisted.folderSettings[resolvedDownloadDir].name, 'Renamed Downloads', 'a submitted folderSettings rename for the synthetic root must still persist, independent of the folders-array exclusion');
+  } finally {
+    delete process.env.FILETUBE_YTDLP_ENABLED;
+    delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
+  }
+});
+
 test('AC45: self-heals -- the synthetic folder reappears from extraScanRoots even if its folderSettings entry never existed / was cleared', async () => {
   process.env.FILETUBE_YTDLP_ENABLED = 'true';
   process.env.FILETUBE_YTDLP_DOWNLOAD_DIR = downloadDir;
