@@ -22,6 +22,25 @@
 //   - `migrateStaleDownloadDirFromFolders` still strips a REAL persisted
 //     `db.folders` entry (unchanged from v1.11.0, re-asserted here for the
 //     FR-G-adjacent regression net).
+//
+// v1.13.0 item 3 (synthetic folder ORDER persistence, folder-model-flagged --
+// extends the above, does not replace it): the synthetic entry's Setup-page
+// reorder previously always reverted to append-last on the next GET. Fixed by
+// storing an integer `order` on the SAME `folderSettings[resolvedDownloadDir]`
+// entry that already carries the rename `name` (never a `db.folders` row, and
+// never a new top-level pref). Proves:
+//   - AC8: reordering the synthetic folder among real folders persists across
+//     a fresh `GET /api/config` after the corresponding `POST`.
+//   - AC9: a rename and a reorder submitted together both persist together.
+//   - AC10: after any rename/reorder round trip, the synthetic folder is
+//     still absent from persisted `db.json` (`db.folders`), not just the API
+//     response.
+//   - AC11: disabled -- `syntheticRoots` is empty, so the order-persistence
+//     branches never fire; real-folder POST/GET stays byte-identical (no
+//     `order` field ever appears on a real folder's settings entry).
+//   - AC12: no scan/prune path reads or is affected by the stored `order` --
+//     `extraScanRoots()` and the E1 mount-loss guard behave identically
+//     whether or not an `order` value has been persisted.
 
 const os = require('node:os');
 const fs = require('node:fs');
@@ -242,5 +261,185 @@ test('migrateStaleDownloadDirFromFolders still strips a REAL persisted db.folder
     delete process.env.FILETUBE_YTDLP_ENABLED;
     delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
     fs.rmSync(staleDir, { recursive: true, force: true });
+  }
+});
+
+// ---- v1.13.0 item 3: synthetic folder ORDER persistence ------------------
+
+test('AC8: reordering the synthetic folder among real folders persists across a fresh GET /api/config', async () => {
+  process.env.FILETUBE_YTDLP_ENABLED = 'true';
+  process.env.FILETUBE_YTDLP_DOWNLOAD_DIR = downloadDir;
+  const realA = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-order-a-'));
+  const realB = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-order-b-'));
+  try {
+    await updateDatabase((db) => { db.folders = [realA, realB]; db.folderSettings = {}; return true; });
+    const resolvedDownloadDir = path.resolve(downloadDir);
+
+    // Sanity: with no order ever stored, GET still appends the synthetic
+    // folder last -- today's backward-compatible default.
+    const initial = await (await fetch(`${base}/api/config`)).json();
+    assert.deepEqual(initial.folders, [realA, realB, resolvedDownloadDir], 'sanity: append-last with no stored order');
+
+    // Simulate the Setup page's up/down reorder: the synthetic entry moves
+    // to the middle of the submitted `folders` array.
+    const reordered = [realA, resolvedDownloadDir, realB];
+    const postRes = await fetch(`${base}/api/config`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ folders: reordered, folderSettings: initial.folderSettings }),
+    });
+    const postBody = await postRes.json();
+    assert.equal(postRes.status, 200);
+    assert.deepEqual(postBody.folders, [realA, realB], 'the synthetic root is still never pushed into the persisted validFolders/db.folders response');
+
+    const getBody = await (await fetch(`${base}/api/config`)).json();
+    assert.deepEqual(getBody.folders, [realA, resolvedDownloadDir, realB], 'AC8: the reordered position persists across a fresh GET');
+  } finally {
+    delete process.env.FILETUBE_YTDLP_ENABLED;
+    delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
+    fs.rmSync(realA, { recursive: true, force: true });
+    fs.rmSync(realB, { recursive: true, force: true });
+  }
+});
+
+test('AC9: rename and reorder submitted together both persist together across a fresh GET', async () => {
+  process.env.FILETUBE_YTDLP_ENABLED = 'true';
+  process.env.FILETUBE_YTDLP_DOWNLOAD_DIR = downloadDir;
+  const realA = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-order-c-'));
+  try {
+    await updateDatabase((db) => { db.folders = [realA]; db.folderSettings = {}; return true; });
+    const resolvedDownloadDir = path.resolve(downloadDir);
+
+    // Move the synthetic folder ahead of the one real folder AND rename it,
+    // in the same save -- both must survive the round trip.
+    const postRes = await fetch(`${base}/api/config`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        folders: [resolvedDownloadDir, realA],
+        folderSettings: { [resolvedDownloadDir]: { name: 'My Renamed Downloads', hidden: false } },
+      }),
+    });
+    assert.equal(postRes.status, 200);
+
+    const getBody = await (await fetch(`${base}/api/config`)).json();
+    assert.deepEqual(getBody.folders, [resolvedDownloadDir, realA], 'AC9: the reorder persists');
+    assert.equal(getBody.folderSettings[resolvedDownloadDir].name, 'My Renamed Downloads', 'AC9: the rename persists alongside the reorder');
+  } finally {
+    delete process.env.FILETUBE_YTDLP_ENABLED;
+    delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
+    fs.rmSync(realA, { recursive: true, force: true });
+  }
+});
+
+test('AC10: after a rename/reorder round trip, the synthetic folder is still absent from persisted db.folders on disk', async () => {
+  process.env.FILETUBE_YTDLP_ENABLED = 'true';
+  process.env.FILETUBE_YTDLP_DOWNLOAD_DIR = downloadDir;
+  const realA = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-order-d-'));
+  try {
+    await updateDatabase((db) => { db.folders = [realA]; db.folderSettings = {}; return true; });
+    const resolvedDownloadDir = path.resolve(downloadDir);
+
+    await fetch(`${base}/api/config`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        folders: [resolvedDownloadDir, realA],
+        folderSettings: { [resolvedDownloadDir]: { name: 'Reordered Downloads', hidden: false } },
+      }),
+    });
+
+    const persisted = loadDatabase();
+    assert.ok(!(persisted.folders || []).includes(resolvedDownloadDir), 'AC10: db.folders on disk must never contain the synthetic root after a reorder save');
+    assert.ok(Number.isInteger(persisted.folderSettings[resolvedDownloadDir].order), 'the order is stored on the synthetic root\'s folderSettings entry, not in db.folders');
+  } finally {
+    delete process.env.FILETUBE_YTDLP_ENABLED;
+    delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
+    fs.rmSync(realA, { recursive: true, force: true });
+  }
+});
+
+test('AC10b: a stale/out-of-range stored order is clamped rather than throwing or moving folders out of bounds', async () => {
+  process.env.FILETUBE_YTDLP_ENABLED = 'true';
+  process.env.FILETUBE_YTDLP_DOWNLOAD_DIR = downloadDir;
+  const realA = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-order-e-'));
+  try {
+    const resolvedDownloadDir = path.resolve(downloadDir);
+    await updateDatabase((db) => {
+      db.folders = [realA];
+      db.folderSettings = { [resolvedDownloadDir]: { name: 'Downloads', order: 99 } };
+      return true;
+    });
+
+    const getBody = await (await fetch(`${base}/api/config`)).json();
+    assert.deepEqual(getBody.folders, [realA, resolvedDownloadDir], 'an out-of-range order clamps to append-last rather than erroring');
+  } finally {
+    delete process.env.FILETUBE_YTDLP_ENABLED;
+    delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
+    fs.rmSync(realA, { recursive: true, force: true });
+  }
+});
+
+test('AC11: disabled -- real-folder POST/GET order behavior is byte-identical, no order field ever appears on a real folder', async () => {
+  // Module disabled for this test -- syntheticRoots is empty, so every
+  // order-persistence branch (syntheticOrders.set / the order field in
+  // cleanSettings / the GET splice) is inert.
+  const realA = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-order-f-'));
+  const realB = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-order-g-'));
+  try {
+    assert.equal(process.env.FILETUBE_YTDLP_ENABLED, undefined, 'sanity: module must be disabled');
+    await updateDatabase((db) => { db.folders = []; db.folderSettings = {}; return true; });
+
+    const postRes = await fetch(`${base}/api/config`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        folders: [realB, realA],
+        folderSettings: { [realA]: { name: 'A', hidden: false }, [realB]: { name: 'B', hidden: false } },
+      }),
+    });
+    const postBody = await postRes.json();
+    assert.deepEqual(postBody.folders, [realB, realA], 'real-folder order stays purely positional, unchanged behavior');
+    assert.deepEqual(Object.keys(postBody.folderSettings[realA]).sort(), ['hidden', 'name'], 'AC11: a real folder never gets an order field');
+    assert.deepEqual(Object.keys(postBody.folderSettings[realB]).sort(), ['hidden', 'name'], 'AC11: a real folder never gets an order field');
+
+    const getBody = await (await fetch(`${base}/api/config`)).json();
+    assert.deepEqual(getBody.folders, [realB, realA], 'AC11: GET is byte-identical to db.folders when there is no synthetic contribution');
+  } finally {
+    fs.rmSync(realA, { recursive: true, force: true });
+    fs.rmSync(realB, { recursive: true, force: true });
+  }
+});
+
+test('AC12: a stored synthetic order does not affect extraScanRoots or the E1 mount-loss scan/prune guard', async () => {
+  process.env.FILETUBE_YTDLP_ENABLED = 'true';
+  process.env.FILETUBE_YTDLP_DOWNLOAD_DIR = downloadDir;
+  try {
+    const resolvedDownloadDir = path.resolve(downloadDir);
+    // Seed an arbitrary stored order BEFORE scanning -- it must have zero
+    // bearing on the scan/prune path, which reads extraScanRoots() directly.
+    await updateDatabase((db) => {
+      db.folders = [];
+      db.folderSettings = { [resolvedDownloadDir]: { name: 'Downloads', order: 3 } };
+      return true;
+    });
+
+    const filePath = path.join(downloadDir, 'order-proof.mp4');
+    fs.writeFileSync(filePath, 'not a real video');
+
+    await scanDirectories();
+    const id = getMediaId(filePath);
+    assert.ok(loadDatabase().metadata[id], 'AC12: the file is scanned/indexed via extraScanRoots alone, independent of any stored order');
+
+    // Mount-loss (E1): remove the directory and rescan -- the guard must
+    // still protect the id, regardless of the stored order value.
+    fs.rmSync(downloadDir, { recursive: true, force: true });
+    await scanDirectories();
+    assert.ok(loadDatabase().metadata[id], 'AC12: E1 mount-loss guard is unaffected by a stored synthetic order value');
+
+    fs.mkdirSync(downloadDir, { recursive: true }); // restore for the shared after() cleanup
+  } finally {
+    delete process.env.FILETUBE_YTDLP_ENABLED;
+    delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
   }
 });

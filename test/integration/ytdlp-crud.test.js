@@ -105,6 +105,32 @@ test('POST /api/subscriptions with a bad body returns 400', async () => {
   assert.equal(badFormat.status, 400);
 });
 
+// ---- v1.13.0 item 4: filetype accepted + validated at the POST boundary ---
+
+test('POST /api/subscriptions accepts a valid filetype and persists it', async () => {
+  const addRes = await fetch(`${base}/api/subscriptions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ channelUrl: 'https://www.youtube.com/@ftype', format: 'video', filetype: 'mkv' }),
+  });
+  assert.equal(addRes.status, 201);
+  const created = await addRes.json();
+  assert.equal(created.filetype, 'mkv');
+
+  const delRes = await fetch(`${base}/api/subscriptions/${created.id}`, { method: 'DELETE' });
+  assert.equal(delRes.status, 200);
+});
+
+test('POST /api/subscriptions with a mismatched-format filetype (audio format, video filetype) returns 400', async () => {
+  const res = await fetch(`${base}/api/subscriptions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ channelUrl: 'https://www.youtube.com/@ftypebad', format: 'audio', filetype: 'mp4' }),
+  });
+  assert.equal(res.status, 400);
+  assert.ok((await res.json()).error);
+});
+
 test('DELETE /api/subscriptions/:id with an unknown id returns 404', async () => {
   const res = await fetch(`${base}/api/subscriptions/no-such-id`, { method: 'DELETE' });
   assert.equal(res.status, 404);

@@ -786,9 +786,16 @@ function reconcileTranscode(item) {
 // output (accepts the parsed object OR the raw stdout string). Whitelisted so we
 // never surface junk; returns {} on anything malformed. Unit-tested — ffprobe
 // isn't installed in CI, so keeping the parsing separate from the spawn matters.
+// NOTE: 'synopsis' is deliberately excluded -- yt-dlp's --embed-metadata writes
+// the same text into BOTH 'description' and 'synopsis' (plus the source URL
+// into 'comment'), which made the watch page show an identical Description
+// and Synopsis line for every downloaded item. Dropping it here is a blanket
+// change (not conditioned on the file's source); a non-yt-dlp file carrying a
+// genuinely distinct synopsis tag will also no longer surface it -- an
+// accepted, narrow limitation (see docs/exec-plans/active/2026-07-06-v1.13-polish.md item 7).
 const EMBEDDED_TAG_WHITELIST = [
   'title', 'artist', 'album', 'date', 'genre', 'composer',
-  'description', 'comment', 'synopsis', 'show', 'copyright',
+  'description', 'comment', 'show', 'copyright',
 ];
 function parseFfprobeTags(input) {
   let j = input;
@@ -1383,7 +1390,20 @@ app.get('/api/config', (req, res) => {
   const ytdlpConfig = ytdlp.parseYtdlpConfig();
   const synthRoots = ytdlp.extraScanRoots(ytdlpConfig); // [] when disabled & dir absent
   for (const root of synthRoots) {
-    if (!folders.some(f => path.resolve(f) === root)) folders.push(root);
+    if (!folders.some(f => path.resolve(f) === root)) {
+      // Item 3 (v1.13.0, order persistence): a prior reorder (persisted via
+      // POST /api/config's synthetic folderSettings[root].order, alongside
+      // the existing name rename) sticks -- splice the synthetic root in at
+      // its stored display index instead of always appending last. A
+      // missing/non-integer order (never reordered, or a stale/cleared
+      // value) falls back to `folders.length`, reproducing the prior
+      // always-append-last behavior byte-for-byte (backward compatible).
+      // `order` is display-only: it is never read by any scan/prune path,
+      // and `extraScanRoots()` above remains the sole authoritative root.
+      const storedOrder = folderSettings[root] && folderSettings[root].order;
+      const idx = Number.isInteger(storedOrder) ? Math.max(0, Math.min(storedOrder, folders.length)) : folders.length;
+      folders.splice(idx, 0, root);
+    }
     // A prior rename (persisted via POST /api/config's synthetic
     // folderSettings allowance below) sticks; otherwise default to a
     // friendly 'Downloads' label so the sidebar never shows a bare path.
@@ -1454,6 +1474,13 @@ app.post('/api/config', async (req, res) => {
   // mismatch here made the setting silently unreachable, even though it was
   // faithfully persisted.
   const originalByResolved = new Map();
+  // Item 3 (v1.13.0, order persistence): resolved synthetic root -> its
+  // display index in the SUBMITTED `folders` order (the count of real
+  // folders that preceded it), derived purely from client-submitted
+  // position -- no new client logic needed, the client already sends the
+  // reordered array via the existing up/down Setup-page controls. Never
+  // read by any scan/prune path.
+  const syntheticOrders = new Map();
   for (const folder of folders) {
     if (typeof folder !== 'string') continue;
     const trimmed = folder.trim();
@@ -1474,7 +1501,13 @@ app.post('/api/config', async (req, res) => {
     // evicted by a later save, or double-walked alongside `extraScanRoots`).
     // Excluded here, unconditionally -- its `folderSettings` entry (a rename)
     // is untouched by this and still persists via `cleanSettings` below.
-    if (syntheticRoots.has(resolved)) continue;
+    if (syntheticRoots.has(resolved)) {
+      // Record its intended display index (== how many real folders
+      // preceded it in the submitted order) BEFORE skipping it -- it is
+      // still never pushed into `validFolders`/`db.folders`.
+      syntheticOrders.set(resolved, validFolders.length);
+      continue;
+    }
     validFolders.push(trimmed);
     originalByResolved.set(resolved, trimmed); // QW2
   }
@@ -1500,6 +1533,19 @@ app.post('/api/config', async (req, res) => {
         name: typeof s.name === 'string' ? s.name.trim() : '',
         hidden: !!s.hidden
       };
+      // Item 3 (v1.13.0, order persistence): `order` is ONLY ever written
+      // for a synthetic root -- real (`db.folders`) folders keep their
+      // order purely positional in `db.folders`, exactly as before this
+      // change. Prefer the index just derived from the submitted `folders`
+      // array (`syntheticOrders`); fall back to a client-submitted `s.order`
+      // so a save that doesn't round-trip the synthetic root inside
+      // `folders` (but still round-trips its `folderSettings` entry, e.g.
+      // a rename-only save) doesn't silently drop a previously-stored
+      // order. Only stored when it resolves to an integer.
+      if (syntheticRoots.has(resolvedKey)) {
+        const order = syntheticOrders.has(resolvedKey) ? syntheticOrders.get(resolvedKey) : (Number.isInteger(s.order) ? s.order : undefined);
+        if (Number.isInteger(order)) cleanSettings[storageKey].order = order;
+      }
     }
   }
 
@@ -1807,6 +1853,11 @@ app.delete('/api/videos/:id', async (req, res) => {
   }
 
   const filePath = item.filePath;
+  // Opt-in "remove from library anyway" -- only meaningful once the client has
+  // already seen the read-only/permission-denied error below and asked us to
+  // proceed. See docs/exec-plans/active/2026-07-06-v1.13-polish.md item 5.
+  const removeAnyway = req.query.removeAnyway === 'true' || req.query.removeAnyway === '1';
+  let fileRemainsOnDisk = false;
 
   try {
     // Delete actual file from filesystem
@@ -1829,14 +1880,41 @@ app.delete('/api/videos/:id', async (req, res) => {
       fs.unlinkSync(transcodeFile);
     }
   } catch (err) {
-    // FS failure -- db is left completely untouched (the updateDatabase
-    // metadata/progress cleanup below never runs), preserving today's
-    // 500-on-FS-failure contract.
-    console.error(`Error deleting file ${filePath}:`, err);
-    return res.status(500).json({ error: `Could not delete file: ${err.message}` });
+    const readOnly = err && (err.code === 'EROFS' || err.code === 'EACCES');
+
+    if (readOnly && removeAnyway) {
+      // The caller has already been told about the read-only/permission
+      // failure and explicitly asked to remove the library entry anyway.
+      // Best-effort the sidecars too, but a sidecar failure must never block
+      // the db cleanup below -- the underlying file is deliberately left on
+      // disk either way, and will be re-indexed on the mount's next rescan.
+      fileRemainsOnDisk = true;
+      const thumbPath = path.join(THUMBNAIL_DIR, `${item.id}.jpg`);
+      try { if (fs.existsSync(thumbPath)) fs.unlinkSync(thumbPath); } catch (_) { /* best-effort */ }
+      const transcodeFile = transcodedPath(item.id);
+      try { if (fs.existsSync(transcodeFile)) fs.unlinkSync(transcodeFile); } catch (_) { /* best-effort */ }
+    } else if (readOnly) {
+      // Distinct, actionable failure -- db is left COMPLETELY untouched (the
+      // updateDatabase cleanup below never runs) so the client can offer a
+      // "remove from library anyway?" follow-up (re-request with
+      // ?removeAnyway=true) rather than silently losing the library entry.
+      console.error(`Cannot delete file ${filePath} (${err.code}):`, err.message);
+      return res.status(409).json({
+        error: `Could not delete the file: this location is read-only or permission-denied (${err.code}). The file was not removed.`,
+        code: err.code,
+        readOnly: true,
+      });
+    } else {
+      // FS failure -- db is left completely untouched (the updateDatabase
+      // metadata/progress cleanup below never runs), preserving today's
+      // 500-on-FS-failure contract.
+      console.error(`Error deleting file ${filePath}:`, err);
+      return res.status(500).json({ error: `Could not delete file: ${err.message}` });
+    }
   }
 
-  // Clean up database entries only after the FS cleanup above succeeded.
+  // Clean up database entries -- either after the FS cleanup above succeeded,
+  // or after an opt-in removeAnyway on a read-only/permission failure.
   // Idempotent under a concurrent duplicate delete (deleting an already-gone
   // key is a no-op either way; `return true` unconditionally is fine since
   // the mutator's `delete` calls are naturally idempotent).
@@ -1854,6 +1932,14 @@ app.delete('/api/videos/:id', async (req, res) => {
     // failed to persist.
     console.error(`Error updating database after deleting ${filePath}:`, err);
     return res.status(500).json({ error: `File deleted from disk but failed to update database: ${err.message}` });
+  }
+
+  if (fileRemainsOnDisk) {
+    return res.json({
+      success: true,
+      fileRemainsOnDisk: true,
+      message: 'Removed from your library. Note: the file remains on disk -- if this location is still scanned, it may reappear on the next scan.',
+    });
   }
 
   res.json({ success: true, message: 'File deleted successfully' });

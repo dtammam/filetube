@@ -339,6 +339,125 @@ test('ensureYtdlp: leaves an already-boolean paused field untouched', () => {
   assert.equal(ns.subscriptions[0].paused, true);
 });
 
+// ---- v1.13.0 item 4: validateFiletype (format-aware, spawn-args-flagged) --
+
+test('validateFiletype: accepts undefined (unset -> resolves to "default" at build time)', () => {
+  assert.deepEqual(store.validateFiletype('video', undefined), { ok: true, value: undefined });
+  assert.deepEqual(store.validateFiletype('audio', undefined), { ok: true, value: undefined });
+});
+
+test('validateFiletype: accepts a value in the given format\'s allowlist', () => {
+  assert.deepEqual(store.validateFiletype('video', 'mp4'), { ok: true, value: 'mp4' });
+  assert.deepEqual(store.validateFiletype('video', 'default'), { ok: true, value: 'default' });
+  assert.deepEqual(store.validateFiletype('audio', 'opus'), { ok: true, value: 'opus' });
+});
+
+test('validateFiletype: rejects a value that is valid for the OTHER format (mismatched combo)', () => {
+  assert.equal(store.validateFiletype('audio', 'mp4').ok, false);
+  assert.equal(store.validateFiletype('video', 'mp3').ok, false);
+});
+
+test('validateFiletype: rejects a hostile/garbage value', () => {
+  assert.equal(store.validateFiletype('video', 'mp4; rm -rf /').ok, false);
+  assert.equal(store.validateFiletype('video', '../x').ok, false);
+  assert.equal(store.validateFiletype('video', 42).ok, false);
+  assert.equal(store.validateFiletype('video', { evil: true }).ok, false);
+});
+
+test('validateFiletype: rejects any value when format itself is unknown/invalid', () => {
+  assert.equal(store.validateFiletype('gif', 'mp4').ok, false);
+  assert.equal(store.validateFiletype(undefined, 'mp4').ok, false);
+});
+
+test('validateSubscriptionInput: rejects a mismatched-format filetype (audio format + video filetype)', () => {
+  const result = store.validateSubscriptionInput({ channelUrl: 'https://www.youtube.com/@x', format: 'audio', filetype: 'mp4' });
+  assert.equal(result.ok, false);
+});
+
+test('validateSubscriptionInput: accepts a valid format-matched filetype and passes it through', () => {
+  const result = store.validateSubscriptionInput({ channelUrl: 'https://www.youtube.com/@x', format: 'video', filetype: 'mkv' });
+  assert.equal(result.ok, true);
+  assert.equal(result.value.filetype, 'mkv');
+});
+
+test('validateSubscriptionInput: accepts unset filetype (stays undefined)', () => {
+  const result = store.validateSubscriptionInput({ channelUrl: 'https://www.youtube.com/@x' });
+  assert.equal(result.ok, true);
+  assert.equal(result.value.filetype, undefined);
+});
+
+test('validateSubscriptionPatch: coarsely rejects a hostile filetype even without a format in the same patch', () => {
+  assert.equal(store.validateSubscriptionPatch({ filetype: 'mp4; rm -rf /' }).ok, false);
+  assert.equal(store.validateSubscriptionPatch({ filetype: '../x' }).ok, false);
+  assert.equal(store.validateSubscriptionPatch({ filetype: 42 }).ok, false);
+});
+
+test('validateSubscriptionPatch: allows a plausible-but-cross-format filetype through (coarse check only; args.normalizeFiletype is the authoritative gate)', () => {
+  // format is absent from this patch, so the coarse check only verifies
+  // membership in EITHER allowlist -- a video filetype is plausible on its
+  // own, even though it might mismatch the sub's actual (unknown-here) format.
+  const result = store.validateSubscriptionPatch({ filetype: 'mp4' });
+  assert.equal(result.ok, true);
+  assert.equal(result.value.filetype, 'mp4');
+});
+
+test('validateSubscriptionPatch: accepts an empty/unset filetype', () => {
+  assert.deepEqual(store.validateSubscriptionPatch({}).value.filetype, undefined);
+});
+
+// ---- v1.13.0 item 4: addSubscription/updateSubscription carry filetype ----
+
+test('addSubscription: a valid filetype is persisted on the new record', async () => {
+  const deps = makeFakeDeps();
+  const record = await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@ftype', format: 'video', filetype: 'mkv' });
+  assert.equal(record.filetype, 'mkv');
+});
+
+test('addSubscription: an invalid filetype fails safe to undefined rather than corrupting the record', async () => {
+  const deps = makeFakeDeps();
+  const record = await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@ftypebad', format: 'video', filetype: 'mp4; rm -rf /' });
+  assert.equal(record.filetype, undefined);
+});
+
+test('addSubscription: an unset filetype stays undefined on the new record (resolves to default at build time, AC16)', async () => {
+  const deps = makeFakeDeps();
+  const record = await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@ftypeunset', format: 'video' });
+  assert.equal(record.filetype, undefined);
+});
+
+test('updateSubscription: patches the filetype field', async () => {
+  const deps = makeFakeDeps();
+  const added = await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@ftypeedit', format: 'video' });
+  const updated = await store.updateSubscription(deps, added.id, { filetype: 'webm' });
+  assert.equal(updated.filetype, 'webm');
+});
+
+test('updateSubscription: an invalid filetype in the patch is defensively ignored (record unchanged)', async () => {
+  const deps = makeFakeDeps();
+  const added = await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@ftypeguard', format: 'video', filetype: 'mp4' });
+  const result = await store.updateSubscription(deps, added.id, { filetype: 'mp3' }); // mp3 is audio-only, sub stays 'video'
+  assert.equal(result.filetype, 'mp4', 'a filetype invalid for the sub\'s (unchanged) format must not overwrite the existing value');
+});
+
+test('updateSubscription: a simultaneous format+filetype patch validates against the NEW format', async () => {
+  const deps = makeFakeDeps();
+  const added = await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@ftypeswap', format: 'video', filetype: 'mp4' });
+  const updated = await store.updateSubscription(deps, added.id, { format: 'audio', filetype: 'opus' });
+  assert.equal(updated.format, 'audio');
+  assert.equal(updated.filetype, 'opus');
+});
+
+// ---- v1.13.0 item 4: backfill is non-destructive (AC16, NOT the paused ---
+// destructive-style backfill) ------------------------------------------------
+
+test('ensureYtdlp: a legacy sub without filetype is left untouched (no destructive backfill, unlike paused)', () => {
+  const legacySub = { id: 'legacy2', channelUrl: 'https://www.youtube.com/@legacy2', name: 'Legacy2', format: 'video', quality: 'best', addedAt: '2020-01-01T00:00:00.000Z', lastCheckedAt: null, lastStatus: null };
+  const db = { ytdlp: { allowMembersOnly: false, subscriptions: [legacySub] } };
+  const ns = store.ensureYtdlp(db);
+  assert.equal(ns.subscriptions[0].filetype, undefined);
+  assert.ok(!Object.prototype.hasOwnProperty.call(ns.subscriptions[0], 'filetype'), 'ensureYtdlp must not force-write a filetype key onto a legacy record');
+});
+
 test('ensureYtdlp: backfill mutates each sub object independently, never sharing state across unrelated db instances', () => {
   const subA = { id: 'a', channelUrl: 'https://www.youtube.com/@a', name: 'A' };
   const subB = { id: 'b', channelUrl: 'https://www.youtube.com/@b', name: 'B' };

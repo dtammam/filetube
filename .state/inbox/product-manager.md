@@ -1,170 +1,141 @@
-# Product Manager -- Discovery brief
+# Discovery inbox -- Product Manager
 
-## Feature
-**yt-dlp module MeTube parity** for FileTube. Target release **v1.12.0**.
-Feature id: `ytdlp-metube-parity`. Branch: `feature/ytdlp-metube-parity` (off `main`, which Dean states is v1.11.1).
+**Feature:** v1.13.0 "v1.12.0 polish + mobile fixes"
+**Feature id:** `v1.13-polish`
+**Branch (coordinator-owned):** `feature/v1.13-polish` off `main`
+**Stage:** Discovery (LIGHT -- these 5 items are well-specified; do NOT re-open the v1.12.0 architecture)
 
-This is ONE cohesive feature spanning 9 workstreams (A-I). It EXTENDS the already-shipped
-optional yt-dlp module (v1.11.0/v1.11.1: `lib/ytdlp/*` + the dedicated `/subscriptions` page).
-It does NOT re-litigate that module's architecture or its locked decisions D1-D5.
+## Your job
 
-Your Discovery job: produce crisp **requirements + acceptance criteria** grouped by workstream,
-seed a new active exec plan, and confirm scope. **Do NOT design the implementation. Do NOT write code.**
+Turn the 5 scope items below into a crisp exec plan with **concrete, numbered,
+tagged acceptance criteria**. Write it to:
 
-**Dean's north-star framing:** keep it to MeTube's SIMPLE shape -- a form + a list with
-per-item status. This is NOT a job-queue cathedral. Do not gold-plate. Prefer reusing existing
-`lib/ytdlp` primitives over new machinery. Hold the UX simple.
+`docs/exec-plans/active/2026-07-06-v1.13-polish.md`
 
-## Read first (in this order)
-1. `.state/feature-state.json` -- the full captured scope: the 9 workstreams (A-I), the confirmed
-   bug mechanics (`confirmed_mechanics_do_not_reinvestigate`), the carried constraints
-   (`confirmed_carryover_constraints`), and the `hard_constraint` (disabled = byte-identical no-op).
-2. `docs/exec-plans/completed/2026-07-05-yt-dlp-integration-module.md` -- the shipped v1.11.0 feature:
-   its 34 ACs, locked decisions D1-D5, and the security core (validateChannelUrl, arg-array spawn,
-   path confinement, cookies redaction) you will REUSE, not rebuild.
-3. `docs/CONTRIBUTING.md` -- standards (Node 22, `node:test`, `npm test`, `npm run lint` 0 errors,
-   additive/zero-regression, every feature ships with tests, keep FFmpeg/binaries out of the core suite).
-4. `docs/RELIABILITY.md` -- spawn try/catch + graceful degrade, explicit HTTP status codes, per-item
-   scan resilience, no external monitoring (health via status endpoints -- relevant to workstream E).
+Then update `.state/feature-state.json`: set `artifacts.requirements` and
+`artifacts.exec_plan` to that path.
 
-## The hard constraint (acceptance north star -- carry through EVERY AC group)
-OPTIONAL / ADDITIVE / MUST-NOT-DEGRADE. When the module is DISABLED (default,
-`FILETUBE_YTDLP_ENABLED` off) FileTube stays BYTE-IDENTICAL: no new routes (including the NEW
-one-shot download, status, and edit endpoints), no background poll, no subscriptions/one-shot UI.
-There MUST be an explicit AC that the disabled path is a no-op.
+Structure the plan with: **Goal, Scope, Out-of-scope, Constraints (lead with the
+NO-REGRESSION / disabled-no-op constraint), Functional Requirements (FR-1..FR-5),
+NFRs (security for item 4, reliability for item 5), Acceptance Criteria** (numbered
+`AC1..`, each tagged `[UNIT]` / `[INTEGRATION]` / `[MANUAL]` -- items 1 and 2 are
+`[MANUAL]` Dean-on-device visual passes plus any feasible DOM/CSS-presence checks),
+and an **Open Questions / Product Decisions** section resolving the two forks below.
 
-**EXCEPTION-BY-DESIGN (call this out explicitly in the plan):** bug fix **F** (clean display titles)
-and the **G-hardening** (realpath/resolve scan-root normalization) touch CORE scan/title code that
-runs for ALL users, including non-yt-dlp libraries. Those must be scoped so:
-- non-yt-dlp library files are NOT rewritten (F's regex is tightly scoped to the yt-dlp filename shape), and
-- behavior for existing non-yt-dlp trees is unchanged (G's realpath/resolve collapses only divergent
-  spellings of the SAME tree; it must not merge or drop distinct trees).
-Write ACs that PROVE both (a regression AC that a plain non-yt-dlp title/tree is untouched).
+Read first: `.state/feature-state.json` (full scope + confirmed root causes),
+`docs/CONTRIBUTING.md` (vanilla DOM, textContent not innerHTML, node:test, lint 0,
+no new deps), `docs/RELIABILITY.md` (graceful FS-failure handling), and the prior
+feature record `docs/exec-plans/completed/2026-07-06-ytdlp-metube-parity.md` for the
+locked v1.12.0 decisions this builds on (D1-D5, the T3/T4 security core, FR-G
+synthetic-folder / E1 mount-loss protection).
 
-## Nothing here is an open investigation -- write CONCRETE ACs
-Dean has LOCKED the product decisions. **You are not expected to surface new forks.** The bug fixes
-F/G/I have confirmed mechanics with file:line evidence (EM re-verified :511, :955, :998 against the
-current code) -- write them as **concrete pass/fail ACs**, not "investigate whether...". If you find a
-GENUINE new product decision not covered below, flag it to the EM to relay to Dean before Design;
-otherwise proceed on these locks.
+## Context -- this is polish on top of shipped v1.12.0
 
-## Workstreams -> group into AC sets
+v1.12.0 (yt-dlp MeTube parity) shipped. This round polishes that surface + fixes
+two mobile/UX regressions + one always-on server DELETE gap. The EM has ALREADY
+verified every diagnosed root cause against current code (file:line evidence in
+`.state/feature-state.json` under `scope_items`). Write the bug items as concrete
+pass/fail ACs against that evidence -- do NOT re-investigate the mechanics.
 
-**A. One-shot URL download** (`POST /api/ytdlp/download`, inside the isEnabled gate). Absorbs the
-parked `feature/ytdlp-oneshot-download` discovery. LOCKED: paste a single-video URL -> downloads once
-into a folder, no persistent subscription; serialize with the poll loop (no parallel spawns);
-single-video only (reject channel/playlist with **400**); default subfolder **"One-Off"**; **202 +
-background**, fire-and-forget. REUSE all T3/T4 security (validateChannelUrl, arg-array + `--`, path
-confinement on the folder param, cookies redaction, timeout+SIGKILL, --restrict-filenames). Small UI:
-paste URL + the B dropdowns. ACs: 202 on valid single-video; 400 on channel/playlist/invalid URL;
-download lands under the confined folder and is indexed; disabled => route 404; never a parallel spawn
-(serialized with poll).
+## The 5 items (concise -- full detail + confirmed file:line in feature-state.json)
 
-**B. Format + quality DROPDOWNS** on BOTH the subscription form AND the one-shot form. Media type =
-audio/video; quality = the existing `normalizeQuality` allowlist values (default **best**). Replace any
-free-text with dropdowns. ACs: both forms present the dropdowns; only allowlist values accepted; default
-best; server re-validates (a hostile value never becomes a stray yt-dlp option -- reuses the existing
-sanitization).
+**Item 1 -- Fix janky /subscriptions list (BUG, shipped v1.12.0).** The "Your
+subscriptions" list renders each name/URL vertically (one char per line).
+Confirmed cause: rows use `className='folder-item-row'` (a Setup class) + an info
+column with inline `flex:1; min-width:0;` that collapses to ~1ch, so the name +
+`word-break:break-all` URL wrap per character. FIX: give the /subscriptions list
+its OWN row layout so the info column takes full width with normal wrapping (long
+URLs break-word, not per-char); tidy the cramped add/edit/one-shot controls. KEEP
+the XSS-safe `textContent` rendering + the disabled-absence. Files:
+`lib/ytdlp/views/subscriptions.html`, `lib/ytdlp/client/subscriptions.js` (served
+inside the isEnabled gate, NOT public/). Arbiter: Dean on-device.
 
-**C. Per-channel "download last N"** -- per-subscription override of the global
-`FILETUBE_YTDLP_MAX_VIDEOS` (default 25), settable in the add/edit form, applied as `--playlist-end N`
-for that sub's list pass; the global default applies when unset. ACs: per-sub N persists and is honored;
-unset falls back to the global; bounds validation (positive integer, sane cap).
+**Item 2 -- Mobile player oversized (regression).** `.player-container` is
+`width:100%; aspect-ratio:16/9` (style.css:614/616) with a `max-height:70vh` cap
+(:1681) that's too tall for a phone. FIX: cap the mobile PORTRAIT player to a
+sensible height (target ~40-50vh portrait -- make a reasonable change, Dean tunes
+on-device). Must NOT break desktop, landscape, or the audio-mode / audio-bg-art
+layout. Require the SDE to record exact before/after values. Arbiter: Dean
+on-device. Write ACs as `[MANUAL]` device passes + any feasible CSS-rule-presence
+assertion.
 
-**D. Pause/resume + EDIT a subscription** -- an edit endpoint (e.g. `PATCH /api/subscriptions/:id`) to
-change format/quality/N without delete-readd, plus a `paused` flag (paused subs SKIPPED by the poll loop;
-UI toggle). Add/edit via the same form. ACs: edit changes fields without losing lastStatus/archive;
-paused sub is skipped by poll and by re-pull; unpause resumes; 404 on unknown id; disabled => route 404.
+**Item 3 -- Synthetic "Downloads" folder: renamable + reorderable in Setup.**
+NEEDS a small PE design (flag it as such -- your job is the ACs + the constraint,
+PE designs the mechanism). Confirmed current behavior: the synthetic download
+folder is derived display-only in GET /api/config (NOT in `db.folders`), already
+renders in Setup and already renames via a `folderSettings` entry -- but REORDER
+does NOT stick because the server strips synthetic roots from `db.folders` and
+re-appends the synthetic entry last on the next GET. So the real gap is **order
+persistence for a non-db.folders entry.** CRITICAL CONSTRAINT (bake into an AC):
+the synthetic folder MUST STAY OUT of `db.folders` (that's the C3/C7 disable-reap
++ E1 mount-loss protection); its order must be stored SEPARATELY (a
+`folderSettings.order` field or a dedicated pref) and merged into the sidebar +
+Setup display order WITHOUT persisting a `db.folders` row. Write ACs that assert
+BOTH: (a) rename + reorder persist across reload for the synthetic folder, AND (b)
+the synthetic folder is still absent from `db.folders` and no scan/prune path
+depends on it (disable-no-op + mount-loss unregressed). Flagged for extra review.
 
-**E. Live status via POLLING** (Dean-confirmed: polling, NO WebSocket). Replace the static "Pending..."
-with real progress parsed from yt-dlp's stdout/stderr (% / eta during download) into a
-per-subscription/per-download status: **state** (queued/listing/downloading/done/error), current video
-title, **N of M**, **percent**. Expose via a status field on `GET /api/subscriptions` (or a dedicated
-`GET /api/subscriptions/status`) that the `/subscriptions` UI polls every **~2-3s**. Keep it simple:
-in-memory current-activity + the persisted `lastStatus`. MeTube UX shape (pending -> downloading % ->
-finished/error per item). ACs: an in-flight download surfaces state+percent+N-of-M via the status
-endpoint; the UI reflects it on a ~2-3s poll; terminal states (done/error) render; error status carries
-NO cookies path (reuse SF1 redaction); disabled => status route 404.
+**Item 4 -- Filetype/container dropdown for one-off + subscription.** NEEDS a small
+PE design (merge vs recode; default; allowlist). Add a THIRD dropdown (alongside
+format + quality): VIDEO -> mp4 / mkv / webm / "default"; AUDIO -> mp3 / m4a / opus
+/ "default". Wire to `lib/ytdlp/args.js`: video -> `--merge-output-format <ext>`
+(PE decides merge vs `--recode-video`; recommend merge for mp4); audio ->
+`-x --audio-format <fmt>`. Add a `filetype`/`container` field to the subscription
+record + the one-shot body; validate against an allowlist (reject hostile ->
+default); backfill existing subs (undefined -> default) via `updateDatabase`. Add
+the dropdown to the add + one-shot forms AND the edit (PATCH) path. SECURITY (bake
+into an NFR + AC): the filetype value flows into yt-dlp spawn args -- same bar as
+v1.12.0 T3/T4 (arg-array via execFile, `--` separator, no shell, no injection via
+the filetype value; keep `--restrict-filenames`). Flagged for extra review. See
+the default fork below.
 
-**F. Clean display titles (BUG) -- DISPLAY-ONLY.** Confirmed: the title is
-`path.basename(info.name, info.ext)` at **server.js:998**, which for downloads is the
-`--restrict-filenames` name `Title_With_Underscores [<id>].ext`. FIX: a tightly-scoped helper that strips
-a trailing ` [<11-char youtube id>]` and converts `_`->space (regex ~ `/^(.*?)[ _]\[[A-Za-z0-9_-]{11}\]$/`)
-at title derivation. **DO NOT remove `--restrict-filenames`** (SF4 security). The `[id]` is CONFIRMED
-non-load-bearing (`getMediaId` hashes the PATH at server.js:511; dedup uses the separate
-`.ytdlp-archive.txt`) -> display-only cleanup is safe: no id churn, no db migration, works for existing
-files. ACs: a yt-dlp filename renders a clean human title; a plain non-yt-dlp library title
-(e.g. `My_Home_Movie` or a legit `Something [notanid]`) is UNCHANGED (regression AC); no media id changes;
-no db migration required.
+**Item 5 -- Graceful delete on read-only mounts (server, always-on).** DELETE
+/api/videos/:id currently 500s with a generic "Could not delete file" on an unlink
+failure (e.g. EROFS) and leaves the db untouched (catch at server.js:1831-1836).
+FIX: catch the unlink failure and return a clear, SPECIFIC message (distinguish
+EROFS/EACCES "read-only or permission" from other errors). See the "remove-anyway"
+fork below. KEEP the existing success path + the thumbnail/transcode/db.progress
+cleanup + the updateDatabase-error handling intact. Write ACs for the branch logic
+as `[INTEGRATION]`/`[UNIT]` (a simulated unlink failure -> specific message; happy
+path unchanged).
 
-**G. Fix duplicate entries + auto-register the download folder (BUG #6 + FEATURE #7, unified).**
-Confirmed root cause of duplicates: media id = md5(absolute path) (server.js:511) + `currentFolders =
-Set([...db.folders, ...extraScanRoots])` (server.js:955) dedups only BYTE-IDENTICAL root strings, while
-db.folders is stored as-typed/unresolved (~server.js:1258-1264) and extraScanRoots returns
-`path.resolve(downloadDir)` -> a bind-mount/symlink/relative spelling of the same tree is walked twice ->
-two path-ids -> two rows. FIX has two parts (write ACs for both):
-  1. **Hardening:** realpath/normalize the merged scan roots before the Set dedup, and `path.resolve`
-     db.folders entries on write, so divergent spellings collapse. (Realpath-per-ROOT, not per-file.)
-  2. **Display-only folder merge (Dean-approved):** `GET /api/config` + the sidebar/playlists UI include
-     the module's extraScanRoots as a SYNTHETIC folder WITHOUT writing db.folders. extraScanRoots stays
-     the AUTHORITATIVE scan root + mount-loss protection (E1 intact); the db presence is a pure UI
-     affordance. Renamable via a persisted `folderSettings[downloadDir].name` (persist ONLY the
-     folderSettings, not the folder). Self-heals on launch (derived from extraScanRoots each time).
-This delivers "folder shows in playlists, renamable, regenerated if deleted" AND removes the need for a
-manual add (which is what causes the duplicates). **NOTE (state it in the plan):** this SOFTENS the prior
-locked decision C7(ii) ("config never lists a folder the operator didn't add") -- this softening is
-INTENDED and Dean-approved. ACs: two divergent spellings of the same download tree produce ONE row
-(no duplicate); the download folder appears in playlists WITHOUT a db.folders entry; it is renamable and
-the name persists; deleting it from the UI regenerates it on next launch; disabled => the synthetic folder
-is absent; no scan/prune path depends on the synthetic db.folders presence (E1 mount-loss protection stays
-intact). Design of the merge is PE's job -- you specify the observable behavior.
+## Product decisions to resolve (surface these explicitly in Open Questions)
 
-**H. Embed metadata + thumbnails** -- add `--embed-metadata` (and `--embed-thumbnail` where supported) to
-the download args for audio AND video (MeTube embeds metadata for audio only; Dean wants it explicit for
-both). ACs: audio downloads carry embedded metadata + thumbnail; video downloads carry embedded metadata
-(+ thumbnail where the container supports it); confirm the flags + postprocessor deps are available in the
-pinned image (ffmpeg is present) -- note as a build/verification AC.
+These are GENUINE forks -- state the recommendation, note the tradeoff, and record
+the chosen default so PE/SDE can proceed. (Dean has pre-endorsed both recommended
+defaults in the bootstrap; confirm and document, don't re-litigate.)
 
-**I. Deleted-stays-gone -- CONFIRMED already working, NO code change.** `.ytdlp-archive.txt` persists
-through UI delete + prune-missing; the next poll skips archived ids; subscription-delete deliberately does
-not touch the archive (D3). Write an AC that ASSERTS the guarantee (delete a downloaded video -> next poll
-does NOT re-download it) plus a **docs note** on the archive-persistence dependency: for network-share
-download dirs, if the share/archive is unavailable at poll time, dedup is lost and the channel
-re-downloads. This is an assertion + docs AC only.
+1. **Item 4 default filetype.** RECOMMENDED: default VIDEO -> **mp4** (best iOS
+   compatibility; webm-on-iOS is the pain we're solving) via
+   `--merge-output-format mp4`; default AUDIO -> **mp3**. Offer "default" (yt-dlp's
+   own choice) as an explicit option but NOT the default. Confirm and document.
 
-## Cross-cutting ACs to include
-- **Disabled = no-op:** every NEW route (one-shot download, status, edit/pause) 404s when disabled; no
-  poll armed; no new UI; the full existing suite stays green with the module present-but-disabled.
-- **Security reuse:** the one-shot endpoint reuses the T3/T4 core verbatim (arg-array, `--`, path
-  confinement, cookies redaction on every sink incl. the surfaced status/error, timeout+SIGKILL). Add an
-  AC that a hostile one-shot URL never reaches a shell and its cookies path never surfaces in any
-  log/response/db field.
-- **Node 22:** ACs verifiable under `node:test` with mocked spawn (no real binary/network); tests must
-  pass on Node 22 (not just 24).
-- **F/G core-scan exception:** the two regression ACs above (non-yt-dlp title untouched; distinct trees
-  not merged) so the "must-not-degrade" guarantee is provable for the code paths that DON'T sit behind
-  the isEnabled gate.
+2. **Item 5 "remove from library anyway".** RECOMMENDED: **YES** -- a clearly
+   labeled option to delete the db entry even when the file could not be unlinked
+   (e.g. read-only mount), WITH an honest user-facing caveat that a still-scanned
+   read-only mount re-adds it on the next rescan (UX-clarity fix, not a true
+   removal). Decide the shape (a request param on DELETE vs a follow-up choice in
+   the same flow) and the exact copy. Confirm and document.
 
-## Testability
-Every AC must be tagged `[UNIT]` / `[INTEGRATION]` / `[MANUAL]` / `[PROCESS]` (mirror the v1.11.0 exec
-plan's convention). Keep FFmpeg/the real yt-dlp binary OUT of the automated suite -- status parsing,
-arg building, URL validation, title cleanup, and folder-dedup are all pure/mockable; the download itself
-and the embedded-metadata/thumbnail postprocessing are `[MANUAL]`/on-device + a build-verification AC.
+## Constraints (lead the plan with these)
 
-## Deliverables
-1. Create the active exec plan at **`docs/exec-plans/active/2026-07-06-ytdlp-metube-parity.md`** with:
-   Goal / Scope / Out-of-scope / Constraints (lead with OPTIONAL-ADDITIVE-NO-DEGRADE + the F/G exception),
-   requirements grouped by workstream A-I, the cross-cutting + security NFRs, testability requirements,
-   and a numbered, tagged acceptance-criteria list.
-2. Cross-check: nothing in Out-of-scope may conflict with CONTRIBUTING.md's mandatory standards
-   (tests, lint-0, additive/zero-regression) -- keep those explicitly in-scope.
-3. Update `.state/feature-state.json`: set `artifacts.requirements` and `artifacts.exec_plan` to the exec
-   plan path (already pre-filled to that path -- confirm/keep it).
-4. If (and only if) you surface a GENUINE new product fork not covered by the locks above, list it under
-   an "Open Questions" section for the EM to relay to Dean; otherwise state explicitly that no new forks
-   arose (all product decisions were pre-locked).
+- **ADDITIVE / NO REGRESSIONS.** The yt-dlp module disabled-no-op guarantee is
+  UNCHANGED: when `FILETUBE_YTDLP_ENABLED` is off, the /subscriptions page + new
+  dropdowns + one-shot form + status polling stay absent and FileTube is
+  byte-identical. Items 1/3/4 touch module-gated code; item 2 (CSS) + item 5
+  (DELETE) are always-on core -- scope tightly, prove non-regression.
+- **E1 mount-loss + C3/C7 disable-reap intact** (item 3): `extraScanRoots` stays
+  the authoritative scan/mount-loss root; the synthetic folder stays out of
+  `db.folders`; no scan/prune path depends on synthetic presence.
+- **Security core reuse** (item 4): arg-array via execFile, `--` separator, no
+  shell, `--restrict-filenames` kept, allowlist-validate the filetype value, no
+  injection via it.
+- **CONTRIBUTING.md**: vanilla DOM, `textContent` not `innerHTML` (KEEP the
+  XSS-safe rendering in subscriptions.js), `node:test`, lint 0, **no new deps**.
 
-**Do NOT** design endpoint internals, the status-parser mechanism, or the folder-merge implementation --
-that is the Principal Engineer's Design stage. Specify OBSERVABLE behavior and acceptance criteria only.
+## When done
 
-When done, return to the EM session and run `/prep-pe-design`.
+Return a summary of the ACs (grouped by item, with counts and the two resolved
+product decisions). The coordinator will commit your plan and route to the
+principal-engineer via `/prep-pe-design` (PE has real-but-small design work on
+items 3 and 4 only; items 1/2/5 are direct-to-implementation fixes).

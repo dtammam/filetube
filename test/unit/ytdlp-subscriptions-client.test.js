@@ -22,6 +22,8 @@ const {
   FORMAT_OPTIONS,
   QUALITY_OPTIONS,
   DEFAULT_QUALITY_OPTION,
+  FILETYPE_OPTIONS,
+  DEFAULT_FILETYPE_OPTION,
   STATUS_POLL_BASE_MS,
   STATUS_POLL_MAX_MS,
   nextPollDelay,
@@ -31,6 +33,8 @@ const {
   formatLiveStatusText,
   buildFormatSelect,
   buildQualitySelect,
+  buildFiletypeSelect,
+  reduceFiletypeOptions,
   createSubscriptionRow,
   createSubscriptionsListElement,
   createOneShotRow,
@@ -184,6 +188,64 @@ test('buildQualitySelect: builds one option per QUALITY_ALLOWLIST value and defa
   assert.strictEqual(select.value, 'best');
 });
 
+// ---- v1.13.0 item 4: filetype/container dropdown ----------------------------
+
+test('FILETYPE_OPTIONS: video offers exactly mp4/mkv/webm/default (mirrors args.js VALID_FILETYPES.video), mp4 first', () => {
+  assert.deepStrictEqual(FILETYPE_OPTIONS.video.map((o) => o.value), ['mp4', 'mkv', 'webm', 'default']);
+});
+
+test('FILETYPE_OPTIONS: audio offers exactly mp3/m4a/opus/default (mirrors args.js VALID_FILETYPES.audio), mp3 first', () => {
+  assert.deepStrictEqual(FILETYPE_OPTIONS.audio.map((o) => o.value), ['mp3', 'm4a', 'opus', 'default']);
+});
+
+test('DEFAULT_FILETYPE_OPTION: mp4 for video, mp3 for audio (best-compatibility recommended defaults)', () => {
+  assert.deepStrictEqual(DEFAULT_FILETYPE_OPTION, { video: 'mp4', audio: 'mp3' });
+});
+
+test('buildFiletypeSelect: video format builds the video option set and defaults to mp4 when unset', () => {
+  const select = buildFiletypeSelect(fakeDoc, 'video', undefined);
+  assert.deepStrictEqual(select.children.map((o) => o.value), ['mp4', 'mkv', 'webm', 'default']);
+  assert.strictEqual(select.value, 'mp4');
+});
+
+test('buildFiletypeSelect: audio format builds the audio option set and respects an explicit selection', () => {
+  const select = buildFiletypeSelect(fakeDoc, 'audio', 'opus');
+  assert.deepStrictEqual(select.children.map((o) => o.value), ['mp3', 'm4a', 'opus', 'default']);
+  assert.strictEqual(select.value, 'opus');
+});
+
+test('buildFiletypeSelect: an unrecognized format falls back to the video option set (safe default)', () => {
+  const select = buildFiletypeSelect(fakeDoc, 'not-a-format', undefined);
+  assert.deepStrictEqual(select.children.map((o) => o.value), ['mp4', 'mkv', 'webm', 'default']);
+});
+
+test('reduceFiletypeOptions: video format returns the video options with mp4 selected when there was no prior value', () => {
+  const result = reduceFiletypeOptions('video', undefined);
+  assert.strictEqual(result.format, 'video');
+  assert.deepStrictEqual(result.options.map((o) => o.value), ['mp4', 'mkv', 'webm', 'default']);
+  assert.strictEqual(result.selected, 'mp4');
+});
+
+test('reduceFiletypeOptions: a prior value that is still valid for the (unchanged) format survives', () => {
+  const result = reduceFiletypeOptions('audio', 'opus');
+  assert.strictEqual(result.selected, 'opus');
+});
+
+test('reduceFiletypeOptions: "default" survives a format switch (it is a member of both allowlists)', () => {
+  const result = reduceFiletypeOptions('audio', 'default');
+  assert.strictEqual(result.selected, 'default');
+});
+
+test('reduceFiletypeOptions: switching format invalidates a prior value that only applied to the OLD format, falling back to the new format\'s recommended default', () => {
+  // Was on 'video' with 'webm' selected; the user switches the format select
+  // to 'audio' -- 'webm' is not a member of FILETYPE_OPTIONS.audio, so it
+  // must fall back to the audio default ('mp3'), never silently keep 'webm'.
+  const result = reduceFiletypeOptions('audio', 'webm');
+  assert.strictEqual(result.format, 'audio');
+  assert.deepStrictEqual(result.options.map((o) => o.value), ['mp3', 'm4a', 'opus', 'default']);
+  assert.strictEqual(result.selected, 'mp3');
+});
+
 // ---- FR-E: live status formatting + poll-delay reducer ----------------------
 
 test('formatLiveStatusText: returns null when there is no live entry (falls back to persisted status)', () => {
@@ -290,6 +352,51 @@ test('createSubscriptionRow: builds a row with the expected fields and wires the
   assert.deepStrictEqual(deleteCalls, [sub]);
 });
 
+// ---- v1.13.0 item 1 (AC1/AC3): dedicated, non-collapsing row layout --------
+
+test('createSubscriptionRow: uses the dedicated .sub-row/.sub-row-info layout, NOT the collapsing Setup .folder-item-row + inline flex:1;min-width:0 combo', () => {
+  const sub = {
+    id: 'row-1',
+    name: 'Channel',
+    channelUrl: 'https://www.youtube.com/@channel',
+  };
+  const row = createSubscriptionRow(sub, fakeDoc, {});
+
+  assert.strictEqual(row.className, 'sub-row', 'the row must use the dedicated .sub-row class, not Setup\'s .folder-item-row');
+  assert.notStrictEqual(row.className, 'folder-item-row');
+
+  // The info column (name/URL/meta/status) must be identifiable by its own
+  // dedicated class -- not the bare inline `flex:1; min-width:0` style that
+  // caused the info column to collapse to ~1 character wide.
+  const infoEl = row.children.find((el) => el.className === 'sub-row-info');
+  assert.ok(infoEl, 'an element with the dedicated .sub-row-info class must exist');
+  assert.notStrictEqual(infoEl.attributes.style, 'flex:1; min-width:0;', 'must not reuse the collapsing inline style');
+
+  // The URL element must wrap by word/URL-segment, never one character per
+  // line (`break-all`) -- the CSS class carries `overflow-wrap`/
+  // `word-break: break-word` instead (verified separately against
+  // style.css); here we assert the element no longer carries the old
+  // `word-break:break-all` inline style directly.
+  const urlEl = [...row.walk()].find((el) => el.textContent === sub.channelUrl);
+  assert.ok(urlEl, 'the channelUrl must still render as textContent somewhere in the row');
+  assert.strictEqual(urlEl.className, 'sub-row-url');
+  assert.ok(
+    !urlEl.attributes.style || !urlEl.attributes.style.includes('break-all'),
+    'the URL element must not use word-break:break-all inline (per-character wrap risk)'
+  );
+
+  const actionsEl = row.children.find((el) => el.className === 'sub-row-actions');
+  assert.ok(actionsEl, 'the actions column must use the dedicated .sub-row-actions class');
+});
+
+test('createOneShotRow: also uses the dedicated .sub-row/.sub-row-info layout (same fix as createSubscriptionRow)', () => {
+  const entry = { state: 'queued', label: 'One-Off', url: 'https://www.youtube.com/watch?v=abc' };
+  const row = createOneShotRow('job-x', entry, fakeDoc, {});
+  assert.strictEqual(row.className, 'sub-row');
+  const infoEl = row.children.find((el) => el.className === 'sub-row-info');
+  assert.ok(infoEl, 'an element with the dedicated .sub-row-info class must exist');
+});
+
 // ---- FR-D: pause/resume + inline edit ---------------------------------------
 
 test('createSubscriptionRow: shows "Pause" for an active subscription and "Resume" for a paused one, wiring onTogglePause', () => {
@@ -307,13 +414,14 @@ test('createSubscriptionRow: shows "Pause" for an active subscription and "Resum
   assert.ok(resumeBtn, 'a paused subscription must show a Resume button');
 });
 
-test('createSubscriptionRow: the inline edit form starts hidden and Save collects format/quality/maxVideos into a patch', () => {
+test('createSubscriptionRow: the inline edit form starts hidden and Save collects format/quality/filetype/maxVideos into a patch', () => {
   const sub = {
     id: 'e1',
     name: 'Editable Channel',
     channelUrl: 'https://www.youtube.com/@editable',
     format: 'video',
     quality: '720p',
+    filetype: 'mkv',
     maxVideos: 5,
   };
   const saveCalls = [];
@@ -332,7 +440,21 @@ test('createSubscriptionRow: the inline edit form starts hidden and Save collect
   assert.strictEqual(id, 'e1');
   assert.strictEqual(patch.format, 'video');
   assert.strictEqual(patch.quality, '720p');
+  assert.strictEqual(patch.filetype, 'mkv');
   assert.strictEqual(patch.maxVideos, 5);
+});
+
+test('createSubscriptionRow: the edit panel\'s filetype select defaults to the recommended option (mp4/mp3) when the subscription has none set', () => {
+  const sub = { id: 'e3', name: 'C', channelUrl: 'https://www.youtube.com/@c', format: 'audio' };
+  const row = createSubscriptionRow(sub, fakeDoc, {});
+  const editPanel = row.children.find((el) => el.className === 'sub-edit-panel');
+  const selects = editPanel.children.filter((el) => el.tagName === 'SELECT');
+  // format, quality, filetype -- in that order (buildFormatSelect,
+  // buildQualitySelect, buildFiletypeSelect, per the Design's build order).
+  assert.strictEqual(selects.length, 3, 'expected format/quality/filetype selects in the edit panel');
+  const filetypeSelect = selects[2];
+  assert.deepStrictEqual(filetypeSelect.children.map((o) => o.value), ['mp3', 'm4a', 'opus', 'default']);
+  assert.strictEqual(filetypeSelect.value, 'mp3');
 });
 
 test('createSubscriptionRow: Edit toggles the panel visible, and Cancel hides it again', () => {

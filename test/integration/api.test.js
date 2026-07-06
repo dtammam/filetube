@@ -10,7 +10,8 @@ const DB_FILE = path.join(process.env.DATA_DIR, 'db.json');
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-const { app } = require('../../server');
+const { app, transcodedPath } = require('../../server');
+const THUMBNAIL_DIR = path.join(process.env.DATA_DIR, '.thumbnails');
 
 let server;
 let base;
@@ -191,6 +192,152 @@ test('DELETE /api/videos/:id returns 500 JSON (not a hang) when the db-metadata 
   } finally {
     fs.writeFileSync = realWriteFileSync;
   }
+});
+
+// ---- Item 5 (v1.13 polish): graceful DELETE on read-only/permission-denied ----
+// ---- mounts -- see docs/exec-plans/active/2026-07-06-v1.13-polish.md item 5 --
+
+function seedDeleteTarget(id, filePath) {
+  fs.writeFileSync(filePath, 'video-bytes');
+  fs.writeFileSync(DB_FILE, JSON.stringify({
+    folders: [], folderSettings: {},
+    progress: { [id]: { timestamp: 5, duration: 10 } },
+    metadata: { [id]: { id, title: 'Clip', filePath } },
+  }));
+}
+
+test('DELETE /api/videos/:id returns a clear 409 (not a generic 500) on an EROFS unlink failure, and leaves the db untouched', async () => {
+  const filePath = path.join(os.tmpdir(), `filetube-delete-erofs-${Date.now()}.mp4`);
+  seedDeleteTarget('vidErofs', filePath);
+
+  const realUnlinkSync = fs.unlinkSync;
+  fs.unlinkSync = () => { const e = new Error('read-only file system'); e.code = 'EROFS'; throw e; };
+  try {
+    const res = await fetch(`${base}/api/videos/vidErofs`, { method: 'DELETE' });
+    assert.equal(res.status, 409);
+    const json = await res.json();
+    assert.match(json.error, /read-only|permission/i);
+    assert.equal(json.code, 'EROFS');
+
+    const dbAfter = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+    assert.ok(dbAfter.metadata.vidErofs, 'db entry must be untouched without removeAnyway');
+    assert.ok(dbAfter.progress.vidErofs, 'progress entry must be untouched without removeAnyway');
+  } finally {
+    fs.unlinkSync = realUnlinkSync;
+    fs.rmSync(filePath, { force: true });
+  }
+});
+
+test('DELETE /api/videos/:id?removeAnyway=true removes the db entry when unlink fails with EROFS, and notes the file remains on disk', async () => {
+  const filePath = path.join(os.tmpdir(), `filetube-delete-erofs-anyway-${Date.now()}.mp4`);
+  seedDeleteTarget('vidErofsAnyway', filePath);
+
+  const realUnlinkSync = fs.unlinkSync;
+  fs.unlinkSync = () => { const e = new Error('read-only file system'); e.code = 'EROFS'; throw e; };
+  try {
+    const res = await fetch(`${base}/api/videos/vidErofsAnyway?removeAnyway=true`, { method: 'DELETE' });
+    assert.equal(res.status, 200);
+    const json = await res.json();
+    assert.equal(json.success, true);
+    assert.equal(json.fileRemainsOnDisk, true);
+    assert.match(json.message, /remains on disk/i);
+    assert.match(json.message, /scan/i);
+
+    const dbAfter = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+    assert.ok(!dbAfter.metadata.vidErofsAnyway, 'db entry must be removed with removeAnyway on a read-only failure');
+    assert.ok(!dbAfter.progress.vidErofsAnyway, 'progress entry must be removed too');
+    assert.ok(fs.existsSync(filePath), 'the underlying file must remain on disk (unlink was skipped)');
+  } finally {
+    fs.unlinkSync = realUnlinkSync;
+    fs.rmSync(filePath, { force: true });
+  }
+});
+
+test('DELETE /api/videos/:id returns a 409 distinguishable from EROFS on an EACCES unlink failure, and leaves the db untouched', async () => {
+  const filePath = path.join(os.tmpdir(), `filetube-delete-eacces-${Date.now()}.mp4`);
+  seedDeleteTarget('vidEacces', filePath);
+
+  const realUnlinkSync = fs.unlinkSync;
+  fs.unlinkSync = () => { const e = new Error('permission denied'); e.code = 'EACCES'; throw e; };
+  try {
+    const res = await fetch(`${base}/api/videos/vidEacces`, { method: 'DELETE' });
+    assert.equal(res.status, 409);
+    const json = await res.json();
+    assert.match(json.error, /permission|read-only/i);
+    assert.equal(json.code, 'EACCES');
+    assert.notEqual(json.code, 'EROFS');
+
+    const dbAfter = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+    assert.ok(dbAfter.metadata.vidEacces, 'db entry must be untouched without removeAnyway');
+  } finally {
+    fs.unlinkSync = realUnlinkSync;
+    fs.rmSync(filePath, { force: true });
+  }
+});
+
+test('DELETE /api/videos/:id?removeAnyway=true removes the db entry when unlink fails with EACCES', async () => {
+  const filePath = path.join(os.tmpdir(), `filetube-delete-eacces-anyway-${Date.now()}.mp4`);
+  seedDeleteTarget('vidEaccesAnyway', filePath);
+
+  const realUnlinkSync = fs.unlinkSync;
+  fs.unlinkSync = () => { const e = new Error('permission denied'); e.code = 'EACCES'; throw e; };
+  try {
+    const res = await fetch(`${base}/api/videos/vidEaccesAnyway?removeAnyway=true`, { method: 'DELETE' });
+    assert.equal(res.status, 200);
+    const json = await res.json();
+    assert.equal(json.success, true);
+    assert.equal(json.fileRemainsOnDisk, true);
+
+    const dbAfter = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+    assert.ok(!dbAfter.metadata.vidEaccesAnyway);
+  } finally {
+    fs.unlinkSync = realUnlinkSync;
+    fs.rmSync(filePath, { force: true });
+  }
+});
+
+test('DELETE /api/videos/:id still returns a generic 500 (not 409) for a non-EROFS/EACCES unlink failure, and leaves the db untouched (regression)', async () => {
+  const filePath = path.join(os.tmpdir(), `filetube-delete-other-${Date.now()}.mp4`);
+  seedDeleteTarget('vidOtherErr', filePath);
+
+  const realUnlinkSync = fs.unlinkSync;
+  fs.unlinkSync = () => { const e = new Error('input/output error'); e.code = 'EIO'; throw e; };
+  try {
+    const res = await fetch(`${base}/api/videos/vidOtherErr`, { method: 'DELETE' });
+    assert.equal(res.status, 500);
+    const json = await res.json();
+    assert.match(json.error, /Could not delete file/);
+
+    const dbAfter = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+    assert.ok(dbAfter.metadata.vidOtherErr, 'db entry must stay untouched on a generic FS failure');
+  } finally {
+    fs.unlinkSync = realUnlinkSync;
+    fs.rmSync(filePath, { force: true });
+  }
+});
+
+test('DELETE /api/videos/:id happy path (unlink succeeds) still fully cleans up file, sidecars, and db (regression)', async () => {
+  const id = 'vidHappyDelete';
+  const filePath = path.join(os.tmpdir(), `filetube-delete-happy-${Date.now()}.mp4`);
+  seedDeleteTarget(id, filePath);
+  const thumbPath = path.join(THUMBNAIL_DIR, `${id}.jpg`);
+  fs.writeFileSync(thumbPath, 'thumb-bytes');
+  const transcodeFile = transcodedPath(id);
+  fs.writeFileSync(transcodeFile, 'transcode-bytes');
+
+  const res = await fetch(`${base}/api/videos/${id}`, { method: 'DELETE' });
+  assert.equal(res.status, 200);
+  const json = await res.json();
+  assert.equal(json.success, true);
+  assert.equal(json.fileRemainsOnDisk, undefined, 'happy path never carries the removeAnyway caveat flag');
+
+  assert.ok(!fs.existsSync(filePath), 'the media file itself must be gone');
+  assert.ok(!fs.existsSync(thumbPath), 'the thumbnail sidecar must be gone');
+  assert.ok(!fs.existsSync(transcodeFile), 'the transcode sidecar must be gone');
+
+  const dbAfter = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+  assert.ok(!dbAfter.metadata[id]);
+  assert.ok(!dbAfter.progress[id]);
 });
 
 test('watch progress round-trips through save and read', async () => {

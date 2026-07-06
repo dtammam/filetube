@@ -89,11 +89,11 @@
 
         <div class="form-group">
           <label for="new-folder-path">Add Media Folder Directory Path</label>
-          <div style="display: flex; gap: 8px;">
-            <input type="text" id="new-folder-path" placeholder="e.g. C:\Users\dean\Videos or /mnt/media" />
+          <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+            <input type="text" id="new-folder-path" placeholder="e.g. C:\Users\dean\Videos or /mnt/media" style="flex: 1 1 220px; min-width: 0;" />
             <button class="btn" id="add-folder-btn" style="flex-shrink: 0;">Add Folder</button>
           </div>
-          <small style="color: var(--text-secondary); margin-top: 4px; display: block;">
+          <small style="color: var(--text-secondary); margin-top: 6px; display: block;">
             For Docker deployments, specify the directory path inside your container (e.g. /media/movies).
           </small>
         </div>
@@ -106,7 +106,7 @@
           </div>
         </div>
 
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 24px; border-top: 1px solid var(--border-color); padding-top: 16px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 24px; border-top: 1px solid var(--border-color); padding-top: 16px; flex-wrap: wrap; gap: 10px;">
           <span id="scan-status" style="font-weight: bold; color: var(--text-secondary);"></span>
           <button class="btn btn-primary" id="save-config-btn" style="padding: 10px 20px; font-size: 13px;">Save & Scan Library</button>
         </div>
@@ -260,19 +260,19 @@
         row.innerHTML = `
           <div style="flex:1; min-width:0;">
             <div class="folder-path-text" title="${escapeHtml(folder)}">${escapeHtml(folder)}</div>
-            <div style="display:flex; gap:10px; align-items:center; margin-top:6px; flex-wrap:wrap;">
+            <div style="display:flex; gap:10px; align-items:center; margin-top:8px; flex-wrap:wrap;">
               <input type="text" class="folder-name-input" data-index="${index}" placeholder="Display name (optional)"
-                     value="${escapeHtml(s.name || '')}" style="flex:1; min-width:120px; padding:4px 8px; font-size:12px;" />
-              <label style="display:flex; align-items:center; gap:5px; font-size:12px; color:var(--text-secondary); white-space:nowrap;">
+                     value="${escapeHtml(s.name || '')}" style="flex:1; min-width:120px; padding:8px 10px; font-size:12px;" />
+              <label style="display:flex; align-items:center; gap:6px; font-size:12px; color:var(--text-secondary); white-space:nowrap;">
                 <input type="checkbox" class="folder-hidden-check" data-index="${index}" ${s.hidden ? 'checked' : ''} /> Hide from home
               </label>
             </div>
           </div>
-          <div style="display:flex; flex-direction:column; gap:3px; flex-shrink:0;">
+          <div style="display:flex; flex-direction:column; gap:6px; flex-shrink:0;">
             <button type="button" class="reorder-btn" data-index="${index}" data-dir="up" title="Move up" ${index === 0 ? 'disabled' : ''}
-                    style="background:none;border:1px solid var(--border-dark);border-radius:var(--radius);cursor:pointer;color:var(--text-primary);font-size:16px;line-height:1;padding:2px 6px;"><i class="icon-arrow-up"></i></button>
+                    style="background:none;border:1px solid var(--border-dark);border-radius:var(--radius);cursor:pointer;color:var(--text-primary);font-size:16px;line-height:1;padding:6px 10px;"><i class="icon-arrow-up"></i></button>
             <button type="button" class="reorder-btn" data-index="${index}" data-dir="down" title="Move down" ${index === configuredFolders.length - 1 ? 'disabled' : ''}
-                    style="background:none;border:1px solid var(--border-dark);border-radius:var(--radius);cursor:pointer;color:var(--text-primary);font-size:16px;line-height:1;padding:2px 6px;"><i class="icon-arrow-down"></i></button>
+                    style="background:none;border:1px solid var(--border-dark);border-radius:var(--radius);cursor:pointer;color:var(--text-primary);font-size:16px;line-height:1;padding:6px 10px;"><i class="icon-arrow-down"></i></button>
           </div>
           <button class="remove-folder-btn" data-index="${index}" title="Remove folder">&times;</button>
         `;
