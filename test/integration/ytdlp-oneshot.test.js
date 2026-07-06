@@ -684,6 +684,182 @@ test('FIX-7 regression: a poll queued behind an in-flight one-shot shows its tar
 // requires `lib/ytdlp` in this SAME process) can never affect an earlier or
 // later test's own FIFO-ordering assertions.
 
+// ---- Review-gate item 6 regression fix: a one-off records its id in the ---
+// SHARED archive after success, so a LATER subscription poll of the same ---
+// video is deduped (no duplicate library entry), while the one-off DOWNLOAD -
+// pass itself keeps ignoring the archive (still re-downloads on request). ---
+
+test('after a successful one-shot download, the video id is appended to the shared archive as "youtube <id>"', async () => {
+  const deps = makeFakeDeps();
+  const config = enabledConfig();
+  run.runDownload = async () => ({ ok: true, code: 0, stdout: '', stderr: '' });
+
+  const { base, close } = await startTestApp(deps, config);
+  try {
+    const res = await postJson(base, '/api/ytdlp/download', { url: SINGLE_VIDEO_URL });
+    assert.equal(res.status, 202);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    const archiveText = fs.readFileSync(args.resolveArchivePath(config), 'utf8');
+    assert.ok(
+      archiveText.split('\n').includes('youtube dQw4w9WgXcQ'),
+      `expected the archive to contain "youtube dQw4w9WgXcQ", got: ${archiveText}`,
+    );
+  } finally {
+    await close();
+  }
+});
+
+test('a one-off download that FAILS never records anything in the shared archive', async () => {
+  const deps = makeFakeDeps();
+  const config = enabledConfig();
+  run.runDownload = async () => ({ ok: false, code: 1, stdout: '', stderr: '', error: 'yt-dlp exited with code 1' });
+
+  const { base, close } = await startTestApp(deps, config);
+  try {
+    const res = await postJson(base, '/api/ytdlp/download', { url: SINGLE_VIDEO_URL });
+    assert.equal(res.status, 202);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    const archivePath = args.resolveArchivePath(config);
+    const archiveText = fs.existsSync(archivePath) ? fs.readFileSync(archivePath, 'utf8') : '';
+    assert.ok(!archiveText.includes('dQw4w9WgXcQ'), 'a failed one-off must never record the video id in the archive');
+  } finally {
+    await close();
+  }
+});
+
+test('idempotent: one-off-ing the same video twice appends "youtube <id>" to the shared archive exactly once', async () => {
+  const deps = makeFakeDeps();
+  const config = enabledConfig();
+  run.runDownload = async () => ({ ok: true, code: 0, stdout: '', stderr: '' });
+
+  const { base, close } = await startTestApp(deps, config);
+  try {
+    const first = await postJson(base, '/api/ytdlp/download', { url: SINGLE_VIDEO_URL });
+    assert.equal(first.status, 202);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    const second = await postJson(base, '/api/ytdlp/download', { url: SINGLE_VIDEO_URL });
+    assert.equal(second.status, 202);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    const archiveText = fs.readFileSync(args.resolveArchivePath(config), 'utf8');
+    const occurrences = archiveText.split('\n').filter((line) => line.trim() === 'youtube dQw4w9WgXcQ').length;
+    assert.equal(occurrences, 1, `expected exactly one archive line for the id, got ${occurrences} in: ${archiveText}`);
+  } finally {
+    await close();
+  }
+});
+
+test('a re-download of an already-archived video still actually re-downloads (the one-off download pass itself ignores the archive)', async () => {
+  const deps = makeFakeDeps();
+  const config = enabledConfig();
+  // Pre-seed the archive as if a subscription (or a prior one-off) already
+  // recorded this id -- the one-off DOWNLOAD pass must still spawn (never
+  // silently skip) since buildYtdlpDownloadArgs's oneOff branch keeps
+  // --no-download-archive regardless of what's already recorded.
+  fs.mkdirSync(config.downloadDir, { recursive: true });
+  fs.writeFileSync(args.resolveArchivePath(config), 'youtube dQw4w9WgXcQ\n', 'utf8');
+
+  let downloadCalls = 0;
+  run.runDownload = async () => {
+    downloadCalls += 1;
+    return { ok: true, code: 0, stdout: '', stderr: '' };
+  };
+
+  const { base, close } = await startTestApp(deps, config);
+  try {
+    const res = await postJson(base, '/api/ytdlp/download', { url: SINGLE_VIDEO_URL });
+    assert.equal(res.status, 202);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    assert.equal(downloadCalls, 1, 'a one-off of an already-archived video must still actually re-download');
+
+    // Still recorded exactly once afterward (idempotent re-assert of the
+    // append, not a duplicate line from the re-download).
+    const archiveText = fs.readFileSync(args.resolveArchivePath(config), 'utf8');
+    const occurrences = archiveText.split('\n').filter((line) => line.trim() === 'youtube dQw4w9WgXcQ').length;
+    assert.equal(occurrences, 1);
+  } finally {
+    await close();
+  }
+});
+
+test('a subscription poll for a video that was previously one-offed now SKIPS it (isArchived true), preventing a duplicate download', async () => {
+  const deps = makeFakeDeps();
+  const config = enabledConfig();
+
+  // Step 1: one-off the video -- records it in the shared archive.
+  run.runDownload = async () => ({ ok: true, code: 0, stdout: '', stderr: '' });
+  const oneOffRes = await (async () => {
+    const { base, close } = await startTestApp(deps, config);
+    try {
+      const res = await postJson(base, '/api/ytdlp/download', { url: SINGLE_VIDEO_URL });
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      return res;
+    } finally {
+      await close();
+    }
+  })();
+  assert.equal(oneOffRes.status, 202);
+
+  // Step 2: the SAME video now appears in a subscription's list pass -- the
+  // subscription poll must treat it as already-archived and never target it
+  // for download.
+  const sub = await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@somechannel', format: 'video' });
+  run.runList = async () => ({
+    ok: true,
+    stdout: JSON.stringify({ id: 'dQw4w9WgXcQ', extractor_key: 'Youtube', availability: 'public' }),
+    stderr: '',
+  });
+  let downloadCalls = 0;
+  run.runDownload = async (_sub, _cfg, targetIds) => {
+    downloadCalls += 1;
+    return { ok: true, code: 0, stdout: '', stderr: '' };
+  };
+
+  const result = await ytdlp.runPoll(deps, config);
+  assert.equal(result.started, true);
+  assert.equal(downloadCalls, 0, 'a video already recorded by a prior one-off must never be re-downloaded by a subscription poll');
+
+  const [persisted] = store.listSubscriptions(deps).filter((s) => s.id === sub.id);
+  assert.ok(persisted.lastStatus.startsWith('ok'), `expected a safe ok status, got: ${persisted.lastStatus}`);
+});
+
+test('a failure to append to the archive does NOT fail the one-off -- the download still reports success and the failure is only logged', async () => {
+  const deps = makeFakeDeps();
+  const config = enabledConfig();
+  run.runDownload = async () => ({ ok: true, code: 0, stdout: '', stderr: '' });
+
+  // Force the append to fail: make the resolved archive path itself a
+  // directory, so fs.appendFileSync against it throws (EISDIR).
+  fs.mkdirSync(args.resolveArchivePath(config), { recursive: true });
+
+  const originalConsoleError = console.error;
+  const errorLogs = [];
+  console.error = (...msgArgs) => { errorLogs.push(msgArgs.join(' ')); };
+
+  const { base, close } = await startTestApp(deps, config);
+  try {
+    const res = await postJson(base, '/api/ytdlp/download', { url: SINGLE_VIDEO_URL });
+    assert.equal(res.status, 202);
+    const { jobId } = await res.json();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    const statusRes = await fetch(`${base}/api/subscriptions/status`);
+    const snap = await statusRes.json();
+    assert.equal(snap.oneShots[jobId].state, 'done', 'the one-off must still report success even though the archive append failed');
+    assert.ok(
+      errorLogs.some((line) => line.includes('failed to record one-off download')),
+      'the append failure must be logged',
+    );
+  } finally {
+    console.error = originalConsoleError;
+    await close();
+  }
+});
+
 test('FIX-10 regression: POST /api/ytdlp/download rejects once the pending one-shot queue exceeds the cap, instead of enqueuing unbounded', async () => {
   const deps = makeFakeDeps();
   run.runDownload = () => new Promise(() => {}); // never resolves -- keeps every queued job pending indefinitely
