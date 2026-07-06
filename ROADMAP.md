@@ -22,6 +22,7 @@
 
 ### 🎨 UI polish
 
+- [ ] **Fix the janky /subscriptions UI (v1.12.0)** — the "Your subscriptions" list renders the channel name/URL vertically (one character per line) and the option/row layout is cramped/broken. Looks like a flex width-collapse + per-character `word-break` in the subscription row. Fix the layout so names/URLs/controls read cleanly, and tidy the add/edit/one-shot option controls. _(bug — visible in the shipped v1.12.0 page)_
 - [ ] **Folder management UI is janky — add drag-and-drop reordering** — the mapped-folder management UX needs work; specifically, allow drag-and-drop to reorder folders both in the left sidebar and in the Setup folder list (replacing/augmenting the up/down buttons). Smoother, more direct manipulation.
 - [ ] **Make the "Subscribe" button mean something (or add a notification bell)** — today the retro "Subscribe" button is cosmetic. Give it real behavior: either a **toggle that controls whether that channel/folder surfaces on the main/default (home) view** (subscribe = pin it to your default page), or a new **notification-bell** affordance that "simulates" seeing new content (retro-YouTube flavor). Explore which reads better. Ties into "Default landing view" and, for real channels, the yt-dlp subscription module.
 
