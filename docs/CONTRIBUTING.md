@@ -2,6 +2,12 @@
 
 Coding standards and conventions for this project. All agents read this file.
 
+Dev, CI, and Docker all target **Node.js 22 LTS**. Use the pinned version via
+`.nvmrc` / `.node-version` at the repo root (e.g. `nvm use` / `fnm use`) so
+local runs match CI and the `node:22-alpine` Dockerfile base image — running
+tests on a newer local Node (e.g. 24) can mask timing-sensitive test bugs
+that only surface on 22 (see the CI workflow).
+
 ## Language & framework
 
 - **Language:** JavaScript (Node.js 22 LTS; `engines` ≥20)

@@ -302,10 +302,28 @@ test('spawnYtdlp: a simulated timeout (execFile error.killed) resolves cleanly, 
   assert.ok(!JSON.stringify(result).includes(cookiesFile));
 });
 
-test('spawnYtdlpDownload: a real (short) timeout fires its own kill() and resolves cleanly with ETIMEDOUT, never hangs', async () => {
+test('spawnYtdlpDownload: a real (short) timeout fires its own kill() and resolves cleanly with ETIMEDOUT, never hangs', async (t) => {
+  // This test drives lib/ytdlp/run.js's `.unref()`'d download timeout. In
+  // PRODUCTION that `.unref()` is correct and load-bearing (a real child
+  // process keeps the event loop alive on its own, so the unref'd timer still
+  // fires -- see the module comment in lib/ytdlp/run.js). But here the
+  // `child` is a fake `EventEmitter` (stubSpawn's `makeFakeChild`), not a real
+  // OS process/handle, so nothing else keeps the loop alive while awaiting
+  // `resultPromise`: on Node 22 the loop can drain and exit BEFORE the unref'd
+  // 5ms timer fires, hanging this test forever (it never hung on Node 24,
+  // which happened to keep the loop alive long enough -- pure timing luck,
+  // not a guarantee). Using node:test's fake timers makes the timeout fire
+  // deterministically (via `.tick()`) regardless of what else is keeping the
+  // loop alive, on every Node version -- while still genuinely exercising the
+  // real timeout -> kill() -> 'close' -> ETIMEDOUT-resolve path end to end
+  // (the fake child's `kill()` still schedules a real, un-mocked
+  // `setImmediate` 'close' event, which IS enough on its own to keep the loop
+  // alive for that one microtask).
+  t.mock.timers.enable({ apis: ['setTimeout'] });
   const spawnChild = stubSpawn();
   const resultPromise = run.spawnYtdlpDownload(['--', 'https://www.youtube.com/@x'], { timeoutMs: 5, killSignal: 'SIGKILL' });
   const child = spawnChild();
+  t.mock.timers.tick(5);
   const result = await resultPromise;
   assert.equal(result.ok, false);
   assert.equal(result.code, 'ETIMEDOUT');
