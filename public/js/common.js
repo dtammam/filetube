@@ -458,6 +458,89 @@ function clampPositionState(duration, position, playbackRate) {
   return { duration, position: pos, playbackRate: rate };
 }
 
+// ---- Random ("feeling lucky") sort (v1.14.0 item 1) -----------------------
+
+// Pure Fisher-Yates shuffle: returns a NEW array containing every element of
+// `items` exactly once, in a uniformly random order -- never mutates the
+// input. `rng` defaults to Math.random but accepts an injected deterministic
+// generator (a zero-arg function returning a number in [0, 1)) so this is
+// unit-testable without relying on real randomness: the SAME rng call
+// sequence always produces the SAME output order. Exported for node:test.
+function fisherYatesShuffle(items, rng) {
+  const rand = typeof rng === 'function' ? rng : Math.random;
+  const arr = Array.isArray(items) ? items.slice() : [];
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+// Pure: the same sort switch previously inlined in renderSorted()
+// (public/js/main.js), extracted here so every case -- including the new
+// `random` option -- is unit-testable without a browser/DOM harness. Returns
+// a NEW array; never mutates `items`. `rng` is only consulted for the
+// `random` case (see fisherYatesShuffle above). Unrecognized/missing
+// `sortKey` falls back to `newest`, matching the pre-existing switch's
+// default branch byte-for-byte (AC: existing 5 sorts unchanged).
+function sortItems(items, sortKey, rng) {
+  const list = Array.isArray(items) ? items.slice() : [];
+  switch (sortKey) {
+    case 'oldest': list.sort((a, b) => a.addedAt - b.addedAt); return list;
+    case 'title-asc': list.sort((a, b) => (a.title || '').localeCompare(b.title || '')); return list;
+    case 'title-desc': list.sort((a, b) => (b.title || '').localeCompare(a.title || '')); return list;
+    case 'size-desc': list.sort((a, b) => (b.size || 0) - (a.size || 0)); return list;
+    case 'size-asc': list.sort((a, b) => (a.size || 0) - (b.size || 0)); return list;
+    case 'random': return fisherYatesShuffle(list, rng);
+    case 'newest':
+    default: list.sort((a, b) => b.addedAt - a.addedAt); return list;
+  }
+}
+
+// Pure: whether the "shuffle again" re-roll button should be visible for the
+// current sort selection -- visible only when `random` is selected. The
+// `random` PREFERENCE persists in localStorage exactly like the other sorts;
+// the shuffle order itself is ephemeral (re-randomizes on every fresh load
+// and on every re-roll click, since sortItems() re-shuffles each call).
+// Exported for node:test.
+function shouldShowShuffleButton(sortKey) {
+  return sortKey === 'random';
+}
+
+// ---- Hide-from-sidebar (v1.14.0 item 3) ------------------------------------
+
+// Pure: filters `folders` down to the ones that should appear in a
+// left-sidebar-style folder list (the desktop sidebar in main.js/setup.html,
+// and the mobile Playlists sheet below), omitting any folder whose
+// `folderSettings[path].hiddenFromSidebar` is true. Distinct from (and
+// independent of) the existing `hidden` ("Hide from home") flag, which never
+// affects either list. A filtered-out folder is NOT removed from `folders`
+// itself -- it remains fully reachable via a direct /?root=<path> link; this
+// only controls whether a LINK to it is rendered. Exported for node:test.
+function visibleSidebarFolders(folders, settings) {
+  const list = Array.isArray(folders) ? folders : [];
+  const s = settings || {};
+  return list.filter((f) => !(s[f] && s[f].hiddenFromSidebar));
+}
+
+// ---- Default landing view (v1.14.0 item 4) ---------------------------------
+
+// Pure: resolves the EFFECTIVE ?root= folder filter for a home-page load,
+// applying the configured `defaultView` (db.settings.defaultView) ONLY on a
+// bare load -- no ?search=/?folder=/?root= already present -- and only when
+// the stored folder still exists among the currently configured `folders`.
+// A deep link (any of searchQuery/folderFilter/rootFilter already set)
+// always wins and returns `rootFilter` unchanged; a stored default that no
+// longer exists falls back to `rootFilter` (i.e. Most Recent) rather than
+// throwing or partially applying. Exported for node:test.
+function resolveDefaultView(rootFilter, searchQuery, folderFilter, defaultView, folders) {
+  const isBareLoad = !searchQuery && !folderFilter && !rootFilter;
+  if (isBareLoad && defaultView && Array.isArray(folders) && folders.includes(defaultView)) {
+    return defaultView;
+  }
+  return rootFilter || '';
+}
+
 // Mock uploader subscriptions counts (based on uploader name length to make it deterministic but diverse)
 function getMockSubCount(uploaderName) {
   const code = uploaderName.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
@@ -577,17 +660,21 @@ function escapeAttr(text) {
 
 // Renders the Playlists sheet's folder list — functionally equivalent to the
 // existing #sidebar-folders-list (same /?root=<path> links, same folderSettings
-// display-name lookup, same hidden-flag parity: the hidden flag only affects
-// the home grid via the API, not this list, matching the sidebar today).
+// display-name lookup, same hidden-flag parity: the `hidden` ("Hide from
+// home") flag only affects the home grid via the API, not this list, matching
+// the sidebar today). `hiddenFromSidebar` (v1.14.0 item 3) DOES affect this
+// list -- it's the mobile equivalent of the left sidebar, so a folder hidden
+// from one is hidden from both (via visibleSidebarFolders()).
 function renderPlaylistsSheet(folders, folderSettings) {
   const list = document.getElementById('playlists-sheet-list');
   if (!list) return;
   const settings = folderSettings || {};
-  if (!folders || folders.length === 0) {
+  const visible = visibleSidebarFolders(folders, settings);
+  if (visible.length === 0) {
     list.innerHTML = '<div class="sidebar-item">No folders configured.</div>';
     return;
   }
-  list.innerHTML = folders.map((f) => {
+  list.innerHTML = visible.map((f) => {
     const base = f.split(/[\\/]/).pop() || f;
     const label = (settings[f] && settings[f].name) || base;
     return '<a href="/?root=' + encodeURIComponent(f) +
@@ -737,6 +824,8 @@ if (typeof module !== 'undefined' && module.exports) {
     gbToBytes, bytesToGb,
     tokenize, rankRelated, RESULT_COUNT, SIMILAR_FLOOR,
     resolveAudioArtUrl,
-    shouldInjectSubscriptionsNav
+    shouldInjectSubscriptionsNav,
+    fisherYatesShuffle, sortItems, shouldShowShuffleButton,
+    visibleSidebarFolders, resolveDefaultView
   };
 }

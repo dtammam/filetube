@@ -52,9 +52,6 @@
     <div class="header-left">
       <button class="menu-toggle" id="menu-toggle" aria-label="Open menu"><i class="icon-menu"></i></button>
       <a href="/" class="logo">File<span class="tube">Tube</span></a>
-      <a href="/" class="mobile-logo" aria-label="FileTube home">
-        <img src="/favicon.svg" alt="FileTube" />
-      </a>
     </div>
     <div class="header-right">
       <button class="theme-toggle" id="theme-toggle-btn" aria-label="Toggle light or dark mode"><i class="icon-moon"></i></button>
@@ -129,6 +126,19 @@
           Control how often FileTube rescans your library and how the on-demand
           transcode cache is kept in check.
         </p>
+
+        <h3>Home page</h3>
+        <div class="form-group">
+          <label for="default-view-select">Default view when opening FileTube</label>
+          <select id="default-view-select" class="setup-select">
+            <option value="">Most Recent</option>
+            <!-- Additional options (one per configured folder) populated dynamically -->
+          </select>
+          <small style="color: var(--text-secondary); margin-top:4px; display:block;">
+            If the chosen folder is later removed, FileTube falls back to Most Recent automatically.
+          </small>
+          <small id="default-view-error" class="field-error"></small>
+        </div>
 
         <h3>Scan</h3>
         <div class="form-group">
@@ -239,6 +249,7 @@
         folderSettings = data.folderSettings || {};
         renderFolders();
         renderSidebarFolders(configuredFolders, folderSettings);
+        populateDefaultViewSelect();
       } catch (err) {
         console.error('Failed to load configuration:', err);
       }
@@ -265,6 +276,9 @@
                      value="${escapeHtml(s.name || '')}" style="flex:1; min-width:120px; padding:8px 10px; font-size:12px;" />
               <label style="display:flex; align-items:center; gap:6px; font-size:12px; color:var(--text-secondary); white-space:nowrap;">
                 <input type="checkbox" class="folder-hidden-check" data-index="${index}" ${s.hidden ? 'checked' : ''} /> Hide from home
+              </label>
+              <label style="display:flex; align-items:center; gap:6px; font-size:12px; color:var(--text-secondary); white-space:nowrap;">
+                <input type="checkbox" class="folder-hidden-sidebar-check" data-index="${index}" ${s.hiddenFromSidebar ? 'checked' : ''} /> Hide from sidebar
               </label>
             </div>
           </div>
@@ -303,6 +317,16 @@
           folderSettings[folder] = { ...(folderSettings[folder] || {}), hidden: e.target.checked };
         });
       });
+      // "Hide from sidebar" (v1.14.0 item 3) -- independent of "Hide from
+      // home" above: omits the folder from the left sidebar/Playlists sheet
+      // list only. The folder stays fully browsable via its direct
+      // /?root=<path> link and keeps its own "Hide from home" behavior.
+      container.querySelectorAll('.folder-hidden-sidebar-check').forEach(chk => {
+        chk.addEventListener('change', (e) => {
+          const folder = configuredFolders[parseInt(e.target.dataset.index)];
+          folderSettings[folder] = { ...(folderSettings[folder] || {}), hiddenFromSidebar: e.target.checked };
+        });
+      });
 
       // Add delete handlers
       container.querySelectorAll('.remove-folder-btn').forEach(btn => {
@@ -315,19 +339,44 @@
       });
     }
 
-    // Helper to render sidebar list
+    // Helper to render sidebar list. A folder flagged hiddenFromSidebar
+    // (v1.14.0 item 3) is omitted here too -- the Setup page's own sidebar
+    // is the same left sidebar as everywhere else.
     function renderSidebarFolders(folders, settings = {}) {
       const sidebarContainer = document.getElementById('sidebar-folders-list');
       if (!sidebarContainer) return;
-      if (folders.length === 0) {
+      const visible = visibleSidebarFolders(folders, settings);
+      if (visible.length === 0) {
         sidebarContainer.innerHTML = '<div style="padding: 6px 24px; font-style: italic; color: var(--text-secondary);">None</div>';
         return;
       }
-      sidebarContainer.innerHTML = folders.map(f => {
+      sidebarContainer.innerHTML = visible.map(f => {
         const base = f.split(/[\\/]/).pop() || f;
         const label = (settings[f] && settings[f].name) || base;
         return `<a href="/?root=${encodeURIComponent(f)}" class="sidebar-item" title="${escapeHtml(f)}"><i class="icon-folder"></i> ${escapeHtml(label)}</a>`;
       }).join('');
+    }
+
+    // ---- Default landing view (v1.14.0 item 4) -----------------------------
+    // Populates the "Most Recent" + one-per-configured-folder <select> and,
+    // once known, applies the currently saved db.settings.defaultView value.
+    // Called from BOTH loadConfig() (once configuredFolders/folderSettings
+    // are known) and loadAutomationSettings() (once the saved value is
+    // known) -- whichever resolves LAST ends up with both pieces of data and
+    // converges on the correct final state, regardless of fetch ordering.
+    let loadedDefaultView = null; // null until the /api/settings fetch resolves
+    function populateDefaultViewSelect() {
+      const select = document.getElementById('default-view-select');
+      if (!select) return;
+      const options = ['<option value="">Most Recent</option>'].concat(
+        configuredFolders.map(f => {
+          const base = f.split(/[\\/]/).pop() || f;
+          const label = (folderSettings[f] && folderSettings[f].name) || base;
+          return `<option value="${escapeHtml(f)}">${escapeHtml(label)}</option>`;
+        })
+      );
+      select.innerHTML = options.join('');
+      if (loadedDefaultView !== null) select.value = loadedDefaultView;
     }
 
     // HTML escape helper locally
@@ -523,6 +572,12 @@
         capInput.value = s.cacheMaxBytes != null ? bytesToGb(s.cacheMaxBytes) : '';
         const defaultGb = bytesToGb(s.effectiveCacheMaxBytes);
         capInput.placeholder = defaultGb != null ? `${defaultGb} GB (default)` : 'Default';
+        // v1.14.0 item 4: remember the saved value and (re-)populate the
+        // select — whichever of loadConfig()/loadAutomationSettings()
+        // resolves last applies the saved selection (see
+        // populateDefaultViewSelect() above).
+        loadedDefaultView = typeof s.defaultView === 'string' ? s.defaultView : '';
+        populateDefaultViewSelect();
       } catch (err) {
         console.error('Failed to load automation settings:', err);
       }
@@ -597,6 +652,13 @@
         console.error('Failed to load scan status:', err);
       }
     }
+
+    // Default view (v1.14.0 item 4): saves the selected folder path (or ''
+    // for "Most Recent") the same way as every other automation setting.
+    document.getElementById('default-view-select').addEventListener('change', (e) => {
+      saveAutomationSetting('defaultView', e.target.value,
+        document.getElementById('default-view-error'));
+    });
 
     document.getElementById('scan-interval-select').addEventListener('change', (e) => {
       saveAutomationSetting('scanIntervalMinutes', parseInt(e.target.value, 10),

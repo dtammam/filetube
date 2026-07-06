@@ -10,17 +10,22 @@ document.addEventListener('DOMContentLoaded', () => {
   const rescanBtn = document.getElementById('rescan-library-btn');
   const videosHeader = document.getElementById('videos-section-header');
   const sortSelect = document.getElementById('sort-select');
+  const shuffleAgainBtn = document.getElementById('shuffle-again-btn');
 
   // Sort preference persists across visits
   let currentItems = [];
-  let folderSettings = {}; // { "<path>": { name, hidden } } — for author display, shared with cards
+  let folderSettings = {}; // { "<path>": { name, hidden, hiddenFromSidebar } } — for author display, shared with cards
   let currentSort = localStorage.getItem('filetube_sort') || 'newest';
 
   // Parse URL query params
   const urlParams = new URLSearchParams(window.location.search);
   const searchQuery = urlParams.get('search') || '';
   const folderFilter = urlParams.get('folder') || '';
-  const rootFilter = urlParams.get('root') || ''; // mapped folder (recursive)
+  // mapped folder (recursive) -- `let` because a bare home load (no query
+  // param at all) may apply the configured item-4 defaultView in its place
+  // (see loadLibrary()); any explicit query param always wins and this stays
+  // as-parsed.
+  let rootFilter = urlParams.get('root') || '';
 
   if (searchQuery) {
     searchInput.value = searchQuery;
@@ -47,6 +52,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
       welcomeMessage.style.display = 'none';
       libraryContent.style.display = 'block';
+
+      // Item 4 (v1.14.0): on a BARE home load (no ?search=/?folder=/?root=
+      // at all) apply the configured default view -- an explicit deep link
+      // always wins (resolveDefaultView only ever changes rootFilter when
+      // none of the three params were present), and a stored default folder
+      // that no longer exists falls back to Most Recent. Only fetched on a
+      // bare load -- a deep-link visit never pays for this extra request.
+      // A network/parse failure here must never block the rest of the page.
+      if (!searchQuery && !folderFilter && !rootFilter) {
+        try {
+          const settingsRes = await fetch('/api/settings');
+          const settingsData = await settingsRes.json();
+          rootFilter = resolveDefaultView(rootFilter, searchQuery, folderFilter, settingsData.defaultView, folders);
+        } catch (err) {
+          console.error('Failed to load default view setting:', err);
+        }
+      }
 
       // 2. Render sidebar folders
       renderSidebarFolders(folders, folderSettings);
@@ -80,14 +102,18 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // Render folders in the sidebar
+  // Render folders in the sidebar. A folder flagged
+  // folderSettings[path].hiddenFromSidebar (item 3, v1.14.0) is omitted from
+  // this list -- it stays fully browsable via a direct /?root=<path> link,
+  // this only controls whether a LINK to it is rendered here.
   function renderSidebarFolders(folders, settings = {}) {
-    if (folders.length === 0) {
+    const visibleFolders = visibleSidebarFolders(folders, settings);
+    if (visibleFolders.length === 0) {
       sidebarFoldersList.innerHTML = '<div style="padding: 6px 24px; font-style: italic; color: var(--text-secondary);">None</div>';
       return;
     }
 
-    sidebarFoldersList.innerHTML = folders.map(f => {
+    sidebarFoldersList.innerHTML = visibleFolders.map(f => {
       const folderName = f.split(/[\\/]/).pop() || f;
       const label = (settings[f] && settings[f].name) || folderName;
       const isActive = rootFilter === f ? 'active' : '';
@@ -100,19 +126,19 @@ document.addEventListener('DOMContentLoaded', () => {
     }).join('');
   }
 
-  // Sort the current items by the selected option, then render.
+  // Sort the current items by the selected option, then render. `random`
+  // (item 1, v1.14.0) shuffles a fresh order on EVERY call -- including the
+  // initial load and each "shuffle again" click -- since the shuffle order
+  // itself is ephemeral (only the `random` sort PREFERENCE persists).
   function renderSorted() {
-    const items = [...currentItems];
-    switch (currentSort) {
-      case 'oldest': items.sort((a, b) => a.addedAt - b.addedAt); break;
-      case 'title-asc': items.sort((a, b) => (a.title || '').localeCompare(b.title || '')); break;
-      case 'title-desc': items.sort((a, b) => (b.title || '').localeCompare(a.title || '')); break;
-      case 'size-desc': items.sort((a, b) => (b.size || 0) - (a.size || 0)); break;
-      case 'size-asc': items.sort((a, b) => (a.size || 0) - (b.size || 0)); break;
-      case 'newest':
-      default: items.sort((a, b) => b.addedAt - a.addedAt); break;
-    }
+    const items = sortItems(currentItems, currentSort);
     renderMediaGrid(items);
+  }
+
+  // Item 1 (v1.14.0): show/hide the "shuffle again" re-roll button to match
+  // the current sort selection (visible only for `random`).
+  function updateShuffleButtonVisibility() {
+    if (shuffleAgainBtn) shuffleAgainBtn.hidden = !shouldShowShuffleButton(currentSort);
   }
 
   // Render media items in the grid
@@ -202,9 +228,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if (sortSelect) {
     sortSelect.value = currentSort;
+    updateShuffleButtonVisibility();
     sortSelect.addEventListener('change', () => {
       currentSort = sortSelect.value;
       localStorage.setItem('filetube_sort', currentSort);
+      updateShuffleButtonVisibility();
+      renderSorted();
+    });
+  }
+
+  // "Shuffle again" re-roll (item 1, v1.14.0): re-randomizes the visible
+  // order in place WITHOUT changing the selected sort or its persisted
+  // localStorage value -- renderSorted() re-shuffles on every call while
+  // currentSort === 'random'.
+  if (shuffleAgainBtn) {
+    shuffleAgainBtn.addEventListener('click', () => {
       renderSorted();
     });
   }

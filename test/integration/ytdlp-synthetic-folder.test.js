@@ -400,8 +400,11 @@ test('AC11: disabled -- real-folder POST/GET order behavior is byte-identical, n
     });
     const postBody = await postRes.json();
     assert.deepEqual(postBody.folders, [realB, realA], 'real-folder order stays purely positional, unchanged behavior');
-    assert.deepEqual(Object.keys(postBody.folderSettings[realA]).sort(), ['hidden', 'name'], 'AC11: a real folder never gets an order field');
-    assert.deepEqual(Object.keys(postBody.folderSettings[realB]).sort(), ['hidden', 'name'], 'AC11: a real folder never gets an order field');
+    // v1.14.0 item 3 added `hiddenFromSidebar` (always present, backfilled
+    // false) alongside `hidden`/`name` -- AC11 itself (no `order` field on a
+    // real folder) is otherwise unaffected.
+    assert.deepEqual(Object.keys(postBody.folderSettings[realA]).sort(), ['hidden', 'hiddenFromSidebar', 'name'], 'AC11: a real folder never gets an order field');
+    assert.deepEqual(Object.keys(postBody.folderSettings[realB]).sort(), ['hidden', 'hiddenFromSidebar', 'name'], 'AC11: a real folder never gets an order field');
 
     const getBody = await (await fetch(`${base}/api/config`)).json();
     assert.deepEqual(getBody.folders, [realB, realA], 'AC11: GET is byte-identical to db.folders when there is no synthetic contribution');
