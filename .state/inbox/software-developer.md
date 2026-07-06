@@ -1,92 +1,161 @@
-# Software Developer — Task T5: /subscriptions UI page + client + nav injection
+# Software Developer — Task T6: Dockerfile pinned yt-dlp + docs (LAST task before v1.11.0)
 
 Feature: **Optional yt-dlp subscription integration module**, branch `feat/ytdlp-integration`.
-T1–T4 are DONE and committed (config/wiring, persistence+CRUD, invocation+security, the
-download loop — all verified green, 488 tests). T5 builds the **UI layer** on top of the
-existing, tested API. No new product or architectural decision — the page, its controls, the
-dedicated-page decision (D4), and the nav-injection approach were all locked in discovery/
-design. Implement straight from the design; scope tightly to the UI.
-
-> **PREREQUISITE:** do NOT start until the coordinator confirms the T4 commit has landed
-> (it's the clean rollback point before T5).
+T1–T5 are DONE and committed (config/wiring, persistence+CRUD, invocation+security, download
+loop, and the /subscriptions UI — 510 tests green). T6 is the final task: **bundle a pinned
+yt-dlp in the container and document the feature.** No app logic — Dockerfile + docs only.
 
 ## Read first
 
-- `.state/feature-state.json` → `tasks[T5]` (description + `done_when` + `routing_note`) and
-  `locked_decisions.D4` (DEDICATED /subscriptions page linked from Settings; when disabled the
-  nav link AND the route are structurally absent, NOT CSS-hidden).
-- `docs/exec-plans/active/2026-07-05-yt-dlp-integration-module.md` → the UI section of the
-  `## Design` + the acceptance criteria (esp. **AC3** disabled ⇒ page+nav absent, **AC32**
-  enabled ⇒ full UI flow works).
-- `docs/CONTRIBUTING.md` (2-space, semicolons, single quotes, vanilla DOM in `public/js/`,
-  no framework/bundler, `node:test`, lint 0, every change ships with tests).
-- Existing patterns to mirror:
-  - `lib/ytdlp/index.js` `registerRoutes(app, deps, config)` — the `isEnabled` early-return
-    gate; ALL T5 routes (the page + its assets) register INSIDE this gate so they 404 when
-    disabled. The `GET /api/subscriptions/health` probe (200 enabled / 404 disabled) already
-    exists here. The CRUD + re-pull + settings endpoints T5 binds to
-    (`GET/POST/DELETE /api/subscriptions`, `GET/POST /api/subscriptions/settings`,
-    `POST /api/subscriptions/repull`, `POST /api/subscriptions/:id/repull`) are already
-    implemented and tested — T5 is a client for them, do not change them.
-  - `server.js:1238` `express.static(public)` — **keep T5's page + client OUT of `public/`**
-    (in `lib/ytdlp/views/` + `lib/ytdlp/client/`) so `express.static` cannot serve them when
-    the module is disabled; serve them only via the conditional routes inside `registerRoutes`.
-  - `public/js/common.js` — the bottom-nav / Settings surface (`getActiveNavForRoute` ~:482,
-    the nav wiring ~:613+). This is where the capability probe + nav-link injection go.
+- `.state/feature-state.json` → `tasks[T6]` (description + `done_when` + `routing_note`) and
+  `locked_decisions.D1` (the exactly-five ENV vars) + `locked_decisions.D5` (pinned in the
+  image + rebuild-to-update; NO runtime auto-update, NO in-app update action).
+- `docs/CONTRIBUTING.md` (Docker/Alpine conventions) and the exec plan's Design section.
+- Current files you'll change:
+  - `Dockerfile` — `FROM node:22-alpine`; `RUN apk add --no-cache ffmpeg` (line 5);
+    `npm ci --only=production`; `CMD [ "npm", "start" ]`. **There is NO `USER` directive today
+    — the app runs as root. Do NOT change that posture (neither improve nor worsen it in this
+    task; see Security below).**
+  - `lib/ytdlp/config.js` — `parseYtdlpConfig` reads `FILETUBE_YTDLP_VERSION` into
+    `config.version` as an **optional informational string** (it does not enforce it against the
+    installed binary). This is why the **Dockerfile pin is the source of truth** for the bundled
+    binary and the `ENV` line below should mirror it.
+  - `.env.example` — currently only `FILETUBE_IMAGE_TAG`, `SERVER_HOST_PORT`, `DATA_DIR`.
+  - `README.md` — has a `## Quick Start (Docker)` (~line 44) with an ENV table (~line 65); add a
+    new optional-feature section.
+  - `docker-compose.yml` — reference the new ENV/volume knobs as needed (cookies mount, download
+    dir volume).
 
-## What to build
+## Dockerfile
 
-1. **`lib/ytdlp/views/subscriptions.html`** — the dedicated page shell (retro YouTube style,
-   consistent with the existing pages). No inline secrets; no framework.
-2. **`lib/ytdlp/client/subscriptions.js`** — a vanilla per-page controller:
-   - List each subscription: name / format / quality / last-checked / status.
-   - Add form: channel URL + audio|video + optional quality.
-   - Per-row delete + re-pull-one; a re-pull-all action; the members-only toggle bound to
-     `db.ytdlp.allowMembersOnly` (via `GET/POST /api/subscriptions/settings`).
-   - NO queue visualization, NO per-video picker, NO progress bars (out of scope).
-3. **`lib/ytdlp/index.js`** — inside `registerRoutes` (the `isEnabled` gate), add the routes
-   that serve the page HTML + the client JS (both from `lib/ytdlp/`, not `public/`). Keep the
-   disabled path a no-op (routes absent ⇒ native 404).
-4. **`public/js/common.js`** — capability probe: `fetch('GET /api/subscriptions/health')`; on
-   **200** inject a 'Subscriptions' nav link into the Settings surface; on **404** do nothing
-   (the link is ABSENT from the DOM, not CSS-hidden — D4/AC3).
+### CRITICAL #0 — add `COPY lib/ ./lib/` (the image won't boot without it)
 
-## SECURITY — non-negotiable (T2-QA-folded)
+`server.js:14` has an UNCONDITIONAL top-level `const ytdlp = require('./lib/ytdlp');` that runs
+on EVERY startup, BEFORE any `isEnabled` gate. The current Dockerfile only does
+`COPY server.js ./` and `COPY public/ ./public/` — it **never copies `lib/`**. `lib/` is
+entirely new on this branch (main's server.js has no `./lib` require, so main's Dockerfile was
+correct; THIS branch introduces the dependency). Built from this branch as-is, the image is
+missing `lib/ytdlp` → `require('./lib/ytdlp')` throws `MODULE_NOT_FOUND` → **the container won't
+boot FOR ANYONE, including users who never enable the feature** — a catastrophic violation of the
+"must not degrade existing experience" rule.
 
-Every server/user-derived string rendered in the UI — subscription **`name`**, the
-**status** string, channel URL, etc. — MUST be rendered as **TEXT** (`textContent` or proper
-escaping / safe DOM construction), **NEVER via `innerHTML`** with interpolated data. A
-subscription name is derived from yt-dlp metadata at add-time and a malicious channel could
-craft it — no XSS-injection surface in the UI. (Note: `common.js` uses `innerHTML` elsewhere
-with static/trusted strings; do NOT follow that pattern for the subscription data — build
-those nodes with `createElement` + `textContent`.)
+- **Add `COPY lib/ ./lib/` to the Dockerfile** (next to the existing `COPY server.js ./` /
+  `COPY public/ ./public/` lines, before `CMD`). This also brings in the `sendFile`-served UI
+  assets `lib/ytdlp/views/subscriptions.html` + `lib/ytdlp/client/subscriptions.js` (T5), which
+  live under `lib/`, not `public/`.
+- `.dockerignore` has been checked and does NOT exclude `lib/` (it excludes `.git`,
+  `node_modules`, `data/`, docs, `test_media`, etc.) — so no ignore edit is needed; just add the
+  COPY.
+- Add a one-line comment at that COPY noting server startup does `require('./lib/ytdlp')`, so the
+  layer is load-bearing even when the feature is disabled.
 
-## Tests
+### yt-dlp install
 
-- **AC3 (disabled):** with the module disabled, the `/subscriptions` page route 404s AND the
-  nav link is absent from the served DOM (assert the probe returns 404 ⇒ no injection). Assets
-  are not reachable via `express.static` either.
-- **AC32 (enabled):** the full UI flow — list / add / delete / re-pull-all / re-pull-one /
-  status / members-toggle — works against the real routes (integration test booting `app` on
-  an ephemeral port against an isolated temp `DATA_DIR`, mirroring the existing integration
-  suite). Include a test that a hostile subscription `name` is rendered as text, not HTML
-  (assert no element is created from the injected markup / it appears escaped).
-- Keep the disabled-no-op guarantee intact (the 488 existing tests stay green).
+- Add the yt-dlp runtime deps to the existing ffmpeg layer (don't disturb the node/npm layers):
+  `RUN apk add --no-cache ffmpeg python3 py3-pip` (ffmpeg stays; yt-dlp reuses it).
+- Pin the version with a build ARG and install it, keeping the image lean:
+  - `ARG YTDLP_VERSION=<pick a specific recent stable release, e.g. 2025.xx.xx>` (pin an exact
+    version, not a range/latest).
+  - `RUN pip install --no-cache-dir --break-system-packages "yt-dlp==${YTDLP_VERSION}"`
+    (`--no-cache-dir` keeps the image small; `--break-system-packages` is required because
+    Alpine's py3-pip is PEP-668 externally-managed — add a one-line comment saying so).
+  - `ENV FILETUBE_YTDLP_VERSION=${YTDLP_VERSION}` — so the running app's parsed config
+    (`config.version`) reflects the actual bundled binary. Document (in a comment + the README)
+    that the **Dockerfile ARG pin is the source of truth**; the env var is informational /
+    operator-overridable but does NOT change which binary is installed.
+- Rationale to capture in a comment: **pip over a static binary** — the base image is
+  `node:22-alpine` (musl libc), and yt-dlp's standalone `yt-dlp_linux` PyInstaller binary is
+  glibc-built and will NOT run on Alpine; the pip install is the portable path. Pinned +
+  build-ARG-gated; **no runtime self-update** (D5).
+- **Verify in your reasoning (Docker isn't locally testable — see Verification):** after the pip
+  install, `yt-dlp` resolves on `PATH` (pip installs the console script to a bin dir on `PATH`),
+  because `lib/ytdlp/run.js` spawns it by bare name `yt-dlp` via execFile. ffmpeg is already on
+  `PATH` from the existing layer (yt-dlp needs it — good).
+- Keep it minimal — do not add unrelated tools, do not add a package manager cache, do not
+  reorder/rebuild the existing ffmpeg/node/npm layers beyond adding python3+py3-pip+the pip
+  install.
+
+## .env.example
+
+**APPEND** (do NOT remove the existing `FILETUBE_IMAGE_TAG` / `SERVER_HOST_PORT` / `DATA_DIR`
+entries) the **five** yt-dlp ENV vars with fail-safe-off defaults and a one-line description
+each, plus a note that the whole feature is optional/additive and OFF by default:
+
+- `FILETUBE_YTDLP_ENABLED` (default off — only `true`/`1`/`yes` enable it; anything else stays
+  disabled)
+- `FILETUBE_YTDLP_COOKIES_FILE` (path to a mounted cookies file for members-only/age-gated
+  content; unset = no cookies)
+- `FILETUBE_YTDLP_POLL_MINUTES` (background poll interval; `0` = manual re-pull only; default
+  60)
+- `FILETUBE_YTDLP_DOWNLOAD_DIR` (where downloads land; defaults to a `ytdlp-downloads` subdir
+  alongside `DATA_DIR`)
+- `FILETUBE_YTDLP_VERSION` (informational — reflects the pinned bundled binary; set by the image
+  build)
+
+## README.md
+
+Add an **"Optional: YouTube subscriptions (yt-dlp)"** section covering:
+- what it does (subscribe to channels; FileTube periodically downloads new videos into a media
+  folder the normal scanner indexes; they appear in the normal UI; deleting in FileTube removes
+  them everywhere).
+- how to enable (`FILETUBE_YTDLP_ENABLED=true`) and that it's **off by default / a clean no-op
+  when disabled** (no new routes, no nav link, no background job, no assumption yt-dlp is used).
+- the five ENV vars (mirror `.env.example`).
+- mounting a **cookies file** for members-only/age-gated content, and the members-only toggle
+  (skipped unless the toggle is on AND a cookies file is present — fail-safe).
+- the **pinned-version / rebuild-to-update** model (D5): the bundled yt-dlp is pinned in the
+  image; to update, pull/rebuild a newer FileTube image — there is no in-app or runtime update.
+
+## docker-compose.yml
+
+Reference the new knobs as needed — e.g. the download-dir volume and a read-only cookies-file
+mount, and surface the ENV vars (commented examples are fine). Keep existing services/volumes
+intact.
+
+## SECURITY — flag, don't block
+
+Adding `python3` + `py3-pip` and a **pip install as root** expands the image's attack surface
+(a Python runtime + pip in the image). This is inherent to Dean's bundled-yt-dlp decision and
+the app already runs as root, so T6 does **not worsen** the existing privilege posture — but:
+do NOT introduce anything that increases privilege, do NOT add a pip cache, and call out in
+your report that the image now ships a Python runtime (so the coordinator can note it). The
+child-process spawn safety (arg-array/no-shell, URL allowlist, path confinement, cookies
+redaction) was already reviewed in T3 and is unchanged by T6.
+
+## Verification — Docker is NOT available in this dev env (confirmed)
+
+The unit/integration suite cannot test a Dockerfile, and Docker is **confirmed unavailable**
+locally, so the Dockerfile change cannot be locally build-tested. Its first real verification is
+the CI **"Publish Docker Image"** build on the eventual tag push. Therefore the T6 build-
+specialist will:
+
+- run `npm run lint` + `npm test` — must stay green (510); the code suite is unchanged by a
+  Dockerfile/docs task, so any change here is a red flag.
+- do a **careful line review of the Dockerfile**, explicitly confirming: **`COPY lib/ ./lib/`
+  is present** (the boot-critical item), yt-dlp is pinned to an explicit version, `python3` +
+  `py3-pip` added, `--break-system-packages --no-cache-dir` used, the image stays lean, `CMD`
+  unchanged, and `.dockerignore` does not exclude `lib/` (it doesn't).
+- reason through (not execute) that `yt-dlp` resolves on `PATH` for `lib/ytdlp/run.js`'s spawn.
+
+The coordinator will WATCH the CI Docker build after the tag and only call v1.11.0 shipped once
+that build is green AND Dean confirms on-device.
 
 ## Done when
 
-- `/subscriptions` page + nav link present and the full UI flow works when enabled (AC32);
-  page route 404s and the nav link is absent from the served DOM (not CSS-hidden) when disabled
-  (AC3); assets live outside `public/`.
-- No `innerHTML` with server/user-derived data (XSS-safe).
-- FULL suite green + lint 0. Run the project commands and fix any failures before reporting:
+- Dockerfile installs a PINNED yt-dlp via pip alongside ffmpeg, build-ARG gated, no runtime
+  auto-update; the `ENV FILETUBE_YTDLP_VERSION` mirrors the ARG.
+- README + `.env.example` document all 5 ENV vars with defaults + the opt-in/disabled-by-default
+  statement (AC34); docker-compose references the new knobs.
+- The existing app is undisturbed: `npm run lint` 0 and `npm test` 510 green (the code suite is
+  unchanged by a Dockerfile/docs task, but run it to confirm nothing regressed):
   - `export PATH="/home/coder/.local/share/fnm/node-versions/v24.14.0/installation/bin:$PATH"`
     (fnm not auto-sourced — FIRST, before every npm/node command)
-  - `npm run lint` (0 warnings beyond the documented exported-globals baseline)
+  - `npm run lint`
   - `npm test`
-- Report files changed, tests added, and lint/test results.
+- Report files changed, the pinned yt-dlp version you chose, the Python-runtime attack-surface
+  note, and whether you were able to build the image locally.
 
-Then this goes to `/prep-build-verify`; after build-verify passes, a **QA-agent review** (not
-the full two-reviewer gate — T5 isn't a gate task, but the XSS surface + the AC3
-disabled-absent guarantee warrant one focused review). Do NOT commit unless the coordinator
-asks — the coordinator owns git for this feature.
+Then `/prep-build-verify` (the build-specialist does the Docker build if available). No
+two-reviewer gate for T6. After T6 verifies: this is the LAST task — next is `/prep-pm-accept`
+(full 34-AC acceptance pass) then `/prep-em-done` (commit + push + PR + tag v1.11.0). Do NOT
+commit unless the coordinator asks — the coordinator owns git for this feature.

@@ -140,6 +140,67 @@ at the `latest` tag. See [docs/RELEASING.md](docs/RELEASING.md) for the full tag
 
 ---
 
+## Optional: YouTube subscriptions (yt-dlp)
+
+FileTube can optionally subscribe to YouTube channels and periodically
+download their new videos into a media folder that the normal library scanner
+already indexes — the downloaded videos then show up in the regular FileTube
+UI like any other file, with no separate player or catalog. Deleting one in
+FileTube removes it from disk (and it stays deleted; the next poll will not
+re-download it).
+
+This feature is **off by default and fully additive**. When disabled (the
+default), it is a clean no-op: no extra routes, no nav link, no background
+polling, and no assumption that `yt-dlp` is even installed. Existing
+installs are completely unaffected unless you opt in.
+
+### Enabling it
+
+Set `FILETUBE_YTDLP_ENABLED=true` in your `.env` (or the container's
+environment) and restart. The Docker image already bundles a pinned
+`yt-dlp`, so no extra setup is required — a **Subscriptions** link appears
+in the UI once enabled.
+
+| Variable | Default | What it does |
+|----------|---------|---------------|
+| `FILETUBE_YTDLP_ENABLED` | off | Master switch. Only `true`, `1`, or `yes` enable the feature; anything else (including unset) stays disabled. |
+| `FILETUBE_YTDLP_COOKIES_FILE` | unset | Path (inside the container) to a mounted `cookies.txt`, used for members-only or age-gated videos. Unset = no cookies. |
+| `FILETUBE_YTDLP_POLL_MINUTES` | `60` | How often, in minutes, FileTube checks subscriptions for new videos. `0` = manual re-pull only (no background poll). |
+| `FILETUBE_YTDLP_DOWNLOAD_DIR` | `<DATA_DIR>/ytdlp-downloads` | Where downloaded videos are saved. |
+| `FILETUBE_YTDLP_VERSION` | (build-time) | Informational only — reflects the `yt-dlp` version pinned into the image. Does not trigger or change an install. |
+
+### Members-only / age-gated content
+
+Members-only and age-gated videos require cookies from a logged-in YouTube
+session. To support these:
+
+1. Export a `cookies.txt` from a signed-in browser session (e.g. with a
+   cookies-export extension) and mount it into the container, read-only:
+
+   ```yaml
+   volumes:
+     - /path/to/your/cookies.txt:/app/data/cookies.txt:ro
+   ```
+
+2. Set `FILETUBE_YTDLP_COOKIES_FILE=/app/data/cookies.txt` to point at it.
+3. Turn on the **"Allow members-only content"** toggle on the Subscriptions
+   page.
+
+Members-only videos are only ever downloaded when **both** the toggle is on
+**and** a cookies file is configured — either one missing means they're
+skipped. This is fail-safe by design: an unconfigured or misconfigured
+cookies file simply results in members-only videos being skipped, never a
+crash or a silent bypass.
+
+### Keeping yt-dlp up to date
+
+The bundled `yt-dlp` binary is **pinned inside the Docker image** at build
+time — there is no runtime or in-app auto-update. To pick up a newer
+`yt-dlp` release, pull or rebuild a newer FileTube image (see
+[Staying up to date](#staying-up-to-date-or-pinning-a-version), above).
+
+---
+
 ## Local Development (Without Docker)
 
 ### Prerequisites
