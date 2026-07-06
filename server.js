@@ -36,12 +36,18 @@ if (!fs.existsSync(TRANSCODE_DIR)) {
 
 // Default automation/cache-housekeeping settings. `0` means "Off" for
 // scanIntervalMinutes/cacheMaxAgeDays; `cacheMaxBytes: null` defers to the
-// env var / built-in default rather than a UI-set override.
+// env var / built-in default rather than a UI-set override. `defaultView`
+// (v1.14.0 item 4) is the folder path/key to render on a bare home load
+// (the SAME identity as a `folderSettings` key / `item.rootFolder` / the
+// `?root=` param); `''` is the sentinel for "Most Recent" (today's default
+// behavior, applied whenever this is unset, empty, or the stored folder no
+// longer exists).
 const DEFAULT_SETTINGS = {
   scanIntervalMinutes: 30,
   pruneMissing: true,
   cacheMaxBytes: null,
-  cacheMaxAgeDays: 30
+  cacheMaxAgeDays: 30,
+  defaultView: ''
 };
 
 // Per-key merge so a partial/older `settings` object keeps whatever keys it
@@ -1531,7 +1537,13 @@ app.post('/api/config', async (req, res) => {
       const storageKey = syntheticRoots.has(resolvedKey) ? resolvedKey : (originalByResolved.get(resolvedKey) || resolvedKey);
       cleanSettings[storageKey] = {
         name: typeof s.name === 'string' ? s.name.trim() : '',
-        hidden: !!s.hidden
+        hidden: !!s.hidden,
+        // v1.14.0 item 3: "Hide from sidebar" -- distinct from `hidden`
+        // ("Hide from home"). Independently boolean-coerced (never dropped
+        // like the pre-fix whitelist did), so a folder can be hidden from
+        // one, both, or neither, in any combination. Backfill for a legacy
+        // entry that never set it: `undefined` -> `false` (not hidden).
+        hiddenFromSidebar: !!s.hiddenFromSidebar
       };
       // Item 3 (v1.13.0, order persistence): `order` is ONLY ever written
       // for a synthetic root -- real (`db.folders`) folders keep their
@@ -1622,6 +1634,7 @@ function settingsResponse(settings) {
     pruneMissing: settings.pruneMissing,
     cacheMaxBytes: settings.cacheMaxBytes,
     cacheMaxAgeDays: settings.cacheMaxAgeDays,
+    defaultView: settings.defaultView,
     effectiveCacheMaxBytes: effectiveCacheCap(settings)
   };
 }
@@ -1640,7 +1653,7 @@ app.get('/api/settings', (req, res) => {
 // free of arbitrary/typo'd keys.
 app.post('/api/settings', async (req, res) => {
   const body = req.body || {};
-  const KNOWN_KEYS = ['scanIntervalMinutes', 'pruneMissing', 'cacheMaxBytes', 'cacheMaxAgeDays'];
+  const KNOWN_KEYS = ['scanIntervalMinutes', 'pruneMissing', 'cacheMaxBytes', 'cacheMaxAgeDays', 'defaultView'];
   for (const key of Object.keys(body)) {
     if (!KNOWN_KEYS.includes(key)) {
       return res.status(400).json({ error: `unknown settings key: ${key}` });
@@ -1660,6 +1673,17 @@ app.post('/api/settings', async (req, res) => {
   }
   if ('cacheMaxAgeDays' in body && !CACHE_MAX_AGE_DAYS_VALID_VALUES.has(body.cacheMaxAgeDays)) {
     return res.status(400).json({ error: 'cacheMaxAgeDays must be one of 0, 7, 14, 30, 90' });
+  }
+  // v1.14.0 item 4: defaultView is a free-form folder path/key (the same
+  // identity as a folderSettings key / ?root= param) or '' for "Most
+  // Recent" -- only a string type check here (never validated against the
+  // currently configured folders): a folder can be temporarily unmounted/
+  // renamed/removed without 400ing a save, and the CLIENT falls back to
+  // Most Recent at render time when the stored folder no longer exists
+  // (resolveDefaultView in public/js/common.js), so this route never needs
+  // to reject a since-removed folder path.
+  if ('defaultView' in body && typeof body.defaultView !== 'string') {
+    return res.status(400).json({ error: 'defaultView must be a string (folder path, or empty for Most Recent)' });
   }
 
   // All provided keys validated -- safe to merge and persist. `prevInterval`

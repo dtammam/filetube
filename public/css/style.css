@@ -1589,8 +1589,7 @@ header {
    Additive: new selectors only — no existing desktop rule is touched. */
 .bottom-nav,
 .playlists-sheet,
-.playlists-sheet-backdrop,
-.mobile-logo {
+.playlists-sheet-backdrop {
   display: none;
 }
 
@@ -1706,20 +1705,10 @@ header {
     display: none;   /* hamburger reconciled — Playlists sheet replaces it */
   }
 
-  .logo {
-    display: none;   /* desktop text logotype hidden on mobile */
-  }
-
-  .mobile-logo {
-    display: block;
-  }
-
-  .mobile-logo img {
-    display: block;
-    height: 28px;
-    width: 28px;
-    margin: 0;
-  }
+  /* v1.14.0 item 2: mobile top-left brand mark matches desktop -- the same
+     "FileTube" text wordmark (.logo, styled above) renders on mobile too, so
+     there is no separate mobile-only rule here to hide it (the pre-1.14
+     `.logo { display: none }` + `.mobile-logo` image swap is removed). */
 
   .header-left {
     width: 100%;
