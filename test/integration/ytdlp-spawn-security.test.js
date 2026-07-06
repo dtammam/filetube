@@ -355,6 +355,47 @@ test('runDownload survives a stderr progress stream far larger than the old 10MB
   assert.equal(result.ok, true);
 });
 
+// ---- SF7: an 'error' event on the piped stderr stream itself must settle --
+// ---- the promise, not throw (an EventEmitter with zero 'error' listeners --
+// ---- throws synchronously, which would otherwise hang this promise forever)
+
+test('spawnYtdlpDownload: an "error" event on child.stderr settles the promise (never hangs, never throws)', async () => {
+  const spawnChild = stubSpawn();
+  const resultPromise = run.spawnYtdlpDownload(['--', 'https://www.youtube.com/@x']);
+  const child = spawnChild();
+  assert.doesNotThrow(() => child.stderr.emit('error', new Error('stream boom')));
+  const result = await resultPromise;
+  assert.equal(result.ok, false);
+  assert.equal(result.code, 'ESTDERR');
+});
+
+test('runDownload: an "error" event on child.stderr settles the promise (never hangs, never throws)', async () => {
+  const spawnChild = stubSpawn();
+  const downloadDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-ytdlp-dl-'));
+  const config = { downloadDir, cookiesFile: null };
+  const sub = { channelUrl: 'https://www.youtube.com/@x', name: 'x', format: 'video', quality: 'best' };
+  const resultPromise = run.runDownload(sub, config);
+  const child = spawnChild();
+  assert.doesNotThrow(() => child.stderr.emit('error', new Error('stream boom')));
+  const result = await resultPromise;
+  assert.equal(result.ok, false);
+});
+
+test('spawnYtdlpDownload: a stderr stream "error" followed by a "close" does not double-resolve', async () => {
+  const spawnChild = stubSpawn();
+  const resultPromise = run.spawnYtdlpDownload(['--', 'https://www.youtube.com/@x']);
+  const child = spawnChild();
+  child.stderr.emit('error', new Error('stream boom'));
+  // A 'close' arriving afterwards (e.g. the process still exits normally)
+  // must be a no-op -- the `settled` guard must prevent a second resolve
+  // (which, on a Promise, would simply be silently ignored, but proves the
+  // guard itself is in place rather than relying on that Promise behavior).
+  child.emit('close', 0, null);
+  const result = await resultPromise;
+  assert.equal(result.ok, false);
+  assert.equal(result.code, 'ESTDERR', 'the FIRST settle (the stderr error) must win, not the later close');
+});
+
 test('runDownload: a non-zero exit code resolves a structured, redacted failure (never throws)', async () => {
   const spawnChild = stubSpawn();
   const downloadDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-ytdlp-dl-'));
