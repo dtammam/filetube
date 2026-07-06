@@ -80,7 +80,16 @@ clients (iOS Safari) can play them.
     practice.
   Subscriptions persist in `db.json` under `db.ytdlp` via the same
   `updateDatabase` primitive; dedup is yt-dlp's own `--download-archive` file
-  (a deleted video stays recorded, never re-downloaded). The poll mirrors
+  (a deleted video stays recorded, never re-downloaded) — FileTube's own
+  delete/prune-missing paths intentionally never touch this file (only the
+  media metadata/thumbnail/transcode sidecar), so a deleted download stays
+  gone across future polls. This guarantee is only as durable as the archive
+  file itself: it lives inside `FILETUBE_YTDLP_DOWNLOAD_DIR`, so if that
+  directory is a network share (SMB/NFS) that is transiently unmounted at
+  poll time, or is wiped outright, dedup state is lost and a subsequent poll
+  re-downloads each subscribed channel's videos up to its `maxVideos` window
+  — keep the download directory on stable, always-mounted storage. The poll
+  mirrors
   `armScanTimer` (`.unref()`'d, re-armable, off when the interval is 0), and
   long downloads run OUTSIDE the `updateDatabase` lock (only a short
   last-checked/status write re-enters it). Security-critical surface (command

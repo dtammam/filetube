@@ -170,6 +170,10 @@ in the UI once enabled.
 | `FILETUBE_YTDLP_VERSION` | (build-time) | Informational only — reflects the `yt-dlp` version pinned into the image. Does not trigger or change an install. |
 | `FILETUBE_YTDLP_MAX_VIDEOS` | `25` | Caps each channel's listing to its newest N videos, so a fresh subscribe (or any re-pull) never attempts a channel's entire back-catalog. `0` = unlimited (consider the whole channel). |
 
+**Recommendation:** point `FILETUBE_YTDLP_DOWNLOAD_DIR` at a dedicated
+directory — not an existing mapped library folder, and not an ancestor
+directory of one.
+
 ### Members-only / age-gated content
 
 Members-only and age-gated videos require cookies from a logged-in YouTube
@@ -192,6 +196,24 @@ Members-only videos are only ever downloaded when **both** the toggle is on
 skipped. This is fail-safe by design: an unconfigured or misconfigured
 cookies file simply results in members-only videos being skipped, never a
 crash or a silent bypass.
+
+### Deduplication depends on a persistent download directory
+
+The "deleted stays gone" guarantee above (and dedup in general — a channel
+re-poll never re-downloading a video it already has) relies on a single
+module-owned file, `.ytdlp-archive.txt`, stored directly inside
+`FILETUBE_YTDLP_DOWNLOAD_DIR`. Every completed download records its id there,
+and every poll checks it before downloading anything.
+
+That file has to actually persist for the guarantee to hold. If
+`FILETUBE_YTDLP_DOWNLOAD_DIR` points at a network share (SMB/NFS/etc.) and
+the share is unmounted or unreachable at poll time, or if the download
+directory is wiped for any other reason, dedup state is lost — the next poll
+has no record of what was already fetched and will re-download each
+subscribed channel's videos, up to its `FILETUBE_YTDLP_MAX_VIDEOS` window.
+**Recommendation:** keep the download directory (and the archive file inside
+it) on storage that is always mounted and reliably persistent, the same way
+you'd treat `DATA_DIR`.
 
 ### Keeping yt-dlp up to date
 

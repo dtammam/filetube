@@ -189,3 +189,166 @@ test('setSubscriptionStatus updates lastCheckedAt/lastStatus for a known id, fal
   const missing = await store.setSubscriptionStatus(deps, 'nope', { lastStatus: 'ok' });
   assert.equal(missing, false);
 });
+
+// ---- FR-C/FR-D: validateMaxVideos / validatePaused (AC20) ----
+
+test('validateMaxVideos: accepts undefined (unset -> global default at build time)', () => {
+  assert.deepEqual(store.validateMaxVideos(undefined), { ok: true, value: undefined });
+});
+
+test('validateMaxVideos: accepts 0 (a distinct, valid "unlimited" value)', () => {
+  assert.deepEqual(store.validateMaxVideos(0), { ok: true, value: 0 });
+});
+
+test('validateMaxVideos: accepts an in-range positive integer', () => {
+  assert.deepEqual(store.validateMaxVideos(10), { ok: true, value: 10 });
+  assert.deepEqual(store.validateMaxVideos(store.MAX_SUB_MAX_VIDEOS), { ok: true, value: store.MAX_SUB_MAX_VIDEOS });
+});
+
+test('validateMaxVideos: rejects a non-integer (never silently coerced/truncated)', () => {
+  assert.equal(store.validateMaxVideos(1.5).ok, false);
+  assert.equal(store.validateMaxVideos('10').ok, false);
+  assert.equal(store.validateMaxVideos(NaN).ok, false);
+});
+
+test('validateMaxVideos: rejects a negative value', () => {
+  assert.equal(store.validateMaxVideos(-1).ok, false);
+});
+
+test('validateMaxVideos: rejects a value over MAX_SUB_MAX_VIDEOS', () => {
+  assert.equal(store.validateMaxVideos(store.MAX_SUB_MAX_VIDEOS + 1).ok, false);
+});
+
+test('validatePaused: accepts undefined and strict booleans, rejects anything else', () => {
+  assert.deepEqual(store.validatePaused(undefined), { ok: true, value: undefined });
+  assert.deepEqual(store.validatePaused(true), { ok: true, value: true });
+  assert.deepEqual(store.validatePaused(false), { ok: true, value: false });
+  assert.equal(store.validatePaused('true').ok, false);
+  assert.equal(store.validatePaused(1).ok, false);
+  assert.equal(store.validatePaused(null).ok, false);
+});
+
+test('validateSubscriptionInput: rejects an out-of-range/non-integer maxVideos', () => {
+  assert.equal(store.validateSubscriptionInput({ channelUrl: 'https://www.youtube.com/@x', maxVideos: -1 }).ok, false);
+  assert.equal(store.validateSubscriptionInput({ channelUrl: 'https://www.youtube.com/@x', maxVideos: 1.5 }).ok, false);
+  assert.equal(store.validateSubscriptionInput({ channelUrl: 'https://www.youtube.com/@x', maxVideos: store.MAX_SUB_MAX_VIDEOS + 1 }).ok, false);
+});
+
+test('validateSubscriptionInput: rejects a non-boolean paused', () => {
+  assert.equal(store.validateSubscriptionInput({ channelUrl: 'https://www.youtube.com/@x', paused: 'yes' }).ok, false);
+});
+
+test('validateSubscriptionInput: accepts unset maxVideos/paused (stays undefined)', () => {
+  const result = store.validateSubscriptionInput({ channelUrl: 'https://www.youtube.com/@x' });
+  assert.equal(result.ok, true);
+  assert.equal(result.value.maxVideos, undefined);
+  assert.equal(result.value.paused, undefined);
+});
+
+test('validateSubscriptionInput: accepts a valid maxVideos/paused and passes them through', () => {
+  const result = store.validateSubscriptionInput({ channelUrl: 'https://www.youtube.com/@x', maxVideos: 5, paused: true });
+  assert.equal(result.ok, true);
+  assert.equal(result.value.maxVideos, 5);
+  assert.equal(result.value.paused, true);
+});
+
+// ---- validateSubscriptionPatch (PATCH /api/subscriptions/:id body) ----
+
+test('validateSubscriptionPatch: accepts an empty patch (no-op)', () => {
+  assert.deepEqual(store.validateSubscriptionPatch({}), { ok: true, value: {} });
+});
+
+test('validateSubscriptionPatch: accepts a subset of fields, only including provided keys', () => {
+  const result = store.validateSubscriptionPatch({ paused: true });
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.value, { paused: true });
+});
+
+test('validateSubscriptionPatch: rejects an invalid format/maxVideos/paused', () => {
+  assert.equal(store.validateSubscriptionPatch({ format: 'gif' }).ok, false);
+  assert.equal(store.validateSubscriptionPatch({ maxVideos: -5 }).ok, false);
+  assert.equal(store.validateSubscriptionPatch({ paused: 'nope' }).ok, false);
+});
+
+// ---- FR-D: updateSubscription (AC21, AC24) ----
+
+test('updateSubscription: patches only the provided fields, preserving addedAt/lastCheckedAt/lastStatus/id/channelUrl/name', async () => {
+  const deps = makeFakeDeps();
+  const added = await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@edit', format: 'video', quality: 'best', name: 'Edit Me' });
+  await store.setSubscriptionStatus(deps, added.id, { lastCheckedAt: '2026-07-05T00:00:00.000Z', lastStatus: 'ok: 3 downloaded' });
+
+  const updated = await store.updateSubscription(deps, added.id, { format: 'audio', maxVideos: 7 });
+
+  assert.equal(updated.format, 'audio');
+  assert.equal(updated.maxVideos, 7);
+  // Untouched fields preserved exactly.
+  assert.equal(updated.id, added.id);
+  assert.equal(updated.channelUrl, added.channelUrl);
+  assert.equal(updated.name, 'Edit Me');
+  assert.equal(updated.addedAt, added.addedAt);
+  assert.equal(updated.lastCheckedAt, '2026-07-05T00:00:00.000Z');
+  assert.equal(updated.lastStatus, 'ok: 3 downloaded');
+  // quality/paused untouched since they were not in the patch.
+  assert.equal(updated.quality, 'best');
+});
+
+test('updateSubscription: can toggle paused independent of other fields', async () => {
+  const deps = makeFakeDeps();
+  const added = await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@pause', format: 'video' });
+  assert.equal(added.paused, false);
+  const paused = await store.updateSubscription(deps, added.id, { paused: true });
+  assert.equal(paused.paused, true);
+  assert.equal(paused.format, 'video');
+  const resumed = await store.updateSubscription(deps, added.id, { paused: false });
+  assert.equal(resumed.paused, false);
+});
+
+test('updateSubscription: returns null for an unknown id and does not create a new record', async () => {
+  const deps = makeFakeDeps();
+  await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@stays', format: 'video' });
+  const result = await store.updateSubscription(deps, 'no-such-id', { paused: true });
+  assert.equal(result, null);
+  assert.equal(store.listSubscriptions(deps).length, 1);
+});
+
+test('updateSubscription: an invalid value within the patch is defensively ignored rather than corrupting the record', async () => {
+  const deps = makeFakeDeps();
+  const added = await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@guard', format: 'video', quality: 'best', maxVideos: 3 });
+  // A hostile/garbage maxVideos slipping past an upstream validator must not
+  // be written -- the field stays at its previous value.
+  const result = await store.updateSubscription(deps, added.id, { maxVideos: -99, format: 'gif' });
+  assert.equal(result.maxVideos, 3, 'an invalid maxVideos in the patch must not overwrite the existing value');
+  assert.equal(result.format, 'video', 'an invalid format in the patch must not overwrite the existing value');
+});
+
+// ---- ensureYtdlp: per-subscription `paused` backfill (FR-D) ----
+
+test('ensureYtdlp: backfills paused=false on a legacy subscription lacking the field', () => {
+  const legacySub = { id: 'legacy1', channelUrl: 'https://www.youtube.com/@legacy', name: 'Legacy', format: 'video', quality: 'best', addedAt: '2020-01-01T00:00:00.000Z', lastCheckedAt: null, lastStatus: null };
+  const db = { ytdlp: { allowMembersOnly: false, subscriptions: [legacySub] } };
+  const ns = store.ensureYtdlp(db);
+  assert.equal(ns.subscriptions[0].paused, false);
+  // maxVideos stays unset (undefined), not backfilled to any number.
+  assert.equal(ns.subscriptions[0].maxVideos, undefined);
+});
+
+test('ensureYtdlp: leaves an already-boolean paused field untouched', () => {
+  const modernSub = { id: 'modern1', channelUrl: 'https://www.youtube.com/@modern', name: 'Modern', format: 'video', quality: 'best', addedAt: '2026-01-01T00:00:00.000Z', lastCheckedAt: null, lastStatus: null, paused: true };
+  const db = { ytdlp: { allowMembersOnly: false, subscriptions: [modernSub] } };
+  const ns = store.ensureYtdlp(db);
+  assert.equal(ns.subscriptions[0].paused, true);
+});
+
+test('ensureYtdlp: backfill mutates each sub object independently, never sharing state across unrelated db instances', () => {
+  const subA = { id: 'a', channelUrl: 'https://www.youtube.com/@a', name: 'A' };
+  const subB = { id: 'b', channelUrl: 'https://www.youtube.com/@b', name: 'B' };
+  const dbA = { ytdlp: { allowMembersOnly: false, subscriptions: [subA] } };
+  const dbB = { ytdlp: { allowMembersOnly: false, subscriptions: [subB] } };
+  store.ensureYtdlp(dbA);
+  store.ensureYtdlp(dbB);
+  assert.equal(dbA.ytdlp.subscriptions[0].paused, false);
+  assert.equal(dbB.ytdlp.subscriptions[0].paused, false);
+  // Mutating one sub's paused flag must never affect the other db's sub.
+  dbA.ytdlp.subscriptions[0].paused = true;
+  assert.equal(dbB.ytdlp.subscriptions[0].paused, false, 'backfill must not share sub objects/arrays across db instances');
+});

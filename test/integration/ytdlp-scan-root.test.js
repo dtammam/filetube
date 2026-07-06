@@ -8,8 +8,18 @@
 //   - Enabled: a file placed directly in `FILETUBE_YTDLP_DOWNLOAD_DIR` is
 //     scanned/indexed by the EXISTING scanner with zero scanner changes
 //     (AC17), even though the directory was NEVER added to `db.folders`.
-//   - `GET /api/config` never lists the download dir (it reads/writes only
-//     `db.folders`, which never contains it) -- closes C7(ii).
+//   - `db.folders` (the persisted array) never lists the download dir --
+//     closes C3+C7(i). NOTE (v1.12.0, FR-G part 2, Dean-approved): the prior
+//     C7(ii) ("`GET /api/config` never lists a folder the operator didn't
+//     add") is INTENTIONALLY SOFTENED starting v1.12.0 -- the download dir
+//     now DOES appear in the `GET /api/config` RESPONSE as a synthetic,
+//     display-only folder (merged in, never persisted into `db.folders`; see
+//     `test/integration/ytdlp-synthetic-folder.test.js` for the dedicated
+//     coverage of that behavior). The invariant this file keeps proving is
+//     the one that actually matters for C3/C7's original intent: the
+//     download dir is never WRITTEN to `db.folders`, so a `POST
+//     /api/config` save can never evict it and it carries no scan/prune
+//     authority of its own -- `extraScanRoots()` remains authoritative.
 //   - Disabled AND the directory was never created (fresh-install case):
 //     `extraScanRoots()` contributes nothing, so `currentFolders` is exactly
 //     `db.folders` -- byte-identical to a never-enabled install (ACs 1-6).
@@ -289,9 +299,15 @@ test('D2: an upgraded db.json with a stale downloadDir entry in db.folders is mi
     const migratedDb = loadDatabase();
     assert.ok(!migratedDb.folders.includes(upgradeDir), 'the stale downloadDir entry must be removed from db.folders');
 
+    // FR-G part 2 (v1.12.0, Dean-approved C7(ii) softening): the migrated-out
+    // dir DOES still appear in the GET /api/config RESPONSE -- but only as
+    // the synthetic, display-only merge (derived fresh from extraScanRoots
+    // on every request), never because it was re-added to db.folders (which
+    // migratedDb.folders above already proved stays clean).
     const configRes = await fetch(`${base}/api/config`);
     const configBody = await configRes.json();
-    assert.ok(!configBody.folders.includes(upgradeDir), 'GET /api/config must never surface the migrated-out downloadDir');
+    assert.ok(configBody.folders.includes(path.resolve(upgradeDir)), 'GET /api/config must surface the migrated dir as the FR-G synthetic folder (not because it was re-added to db.folders)');
+    assert.ok(!loadDatabase().folders.includes(upgradeDir), 'the underlying db.folders must still never contain it -- the GET response merge is display-only');
 
     // Content must still be scanned -- via extraScanRoots, independent of
     // db.folders now being clean.
@@ -323,13 +339,60 @@ test('enabled: a file placed directly in FILETUBE_YTDLP_DOWNLOAD_DIR is scanned/
     assert.ok(paths.includes(filePath), 'the file in the module-owned download dir must be indexed by the existing scanner');
     assert.ok(!(db.folders || []).includes(downloadDir), 'downloadDir must NEVER be written into db.folders (C3+C7)');
 
-    // C7(ii): GET /api/config never surfaces a folder the operator never added.
+    // FR-G part 2 (v1.12.0, Dean-approved C7(ii) softening): GET /api/config
+    // NOW surfaces the module's download dir in its response folders array,
+    // as a synthetic, display-only merge -- but db.folders (asserted above)
+    // still never contains it, so it still carries no persisted-config
+    // authority and a POST /api/config save can never evict it.
     const configRes = await fetch(`${base}/api/config`);
     const configBody = await configRes.json();
-    assert.ok(!configBody.folders.includes(downloadDir), 'GET /api/config must never list the module-owned download dir');
+    assert.ok(configBody.folders.includes(path.resolve(downloadDir)), 'GET /api/config must surface the module-owned download dir as the FR-G synthetic folder');
   } finally {
     delete process.env.FILETUBE_YTDLP_ENABLED;
     delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
+  }
+});
+
+// ---- FIX-9 (two-reviewer gate): cleanDisplayTitle's false-positive fix -----
+// must be scoped to files actually rooted under the yt-dlp download dir, not
+// applied library-wide -- a coincidentally 11-char-bracketed non-yt-dlp file
+// must be left completely untouched.
+
+test('FIX-9 regression: a non-yt-dlp library file with a coincidentally 11-char bracket keeps its raw title, while a genuine yt-dlp download (under the module root) is still cleaned', async () => {
+  const libraryDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-fix9-library-'));
+  process.env.FILETUBE_YTDLP_ENABLED = 'true';
+  process.env.FILETUBE_YTDLP_DOWNLOAD_DIR = downloadDir;
+  try {
+    // A legit, non-yt-dlp file whose bracketed suffix HAPPENS to be exactly
+    // 11 id-shaped characters ('Holiday2024' is 11 chars) -- the false-
+    // positive shape this fix protects against.
+    const libraryFilePath = path.join(libraryDir, 'Vacation_2024 [Holiday2024].mp4');
+    fs.writeFileSync(libraryFilePath, 'not a real video');
+
+    // A genuine yt-dlp download under the module's own root, same bracket shape.
+    const downloadFilePath = path.join(downloadDir, 'Amazing_Video_Title [dQw4w9WgXcQ].mp4');
+    fs.writeFileSync(downloadFilePath, 'not a real video');
+
+    await updateDatabase((db) => {
+      db.folders = [libraryDir];
+      return true;
+    });
+
+    await scanDirectories();
+
+    const db = loadDatabase();
+    const libraryEntry = Object.values(db.metadata || {}).find((m) => m.filePath === libraryFilePath);
+    const downloadEntry = Object.values(db.metadata || {}).find((m) => m.filePath === downloadFilePath);
+    assert.ok(libraryEntry, 'sanity: the library file must be indexed');
+    assert.ok(downloadEntry, 'sanity: the yt-dlp download-dir file must be indexed');
+
+    assert.equal(libraryEntry.title, 'Vacation_2024 [Holiday2024]', 'FIX-9: a non-yt-dlp library file must keep its raw title unchanged, even though its bracket happens to be 11 id-shaped characters');
+    assert.equal(downloadEntry.title, 'Amazing Video Title', 'a genuine yt-dlp download (under the module root) must still have its title cleaned');
+  } finally {
+    delete process.env.FILETUBE_YTDLP_ENABLED;
+    delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
+    fs.rmSync(libraryDir, { recursive: true, force: true });
+    await updateDatabase((db) => { db.folders = []; return true; });
   }
 });
 

@@ -109,6 +109,28 @@ test('T4 re-pull-all/re-pull-one routes 404 when the module is disabled (no spaw
   assert.equal(one.status, 404);
 });
 
+// T3's one-shot/edit/status routes are registered inside the SAME
+// `isEnabled` gate as everything else, so they must be equally absent when
+// disabled (AC 1, 3, 25, 32 -- restated here for grouping completeness).
+test('T3 one-shot download / edit-pause / status routes 404 when the module is disabled (AC1/3/32)', async () => {
+  const oneShot = await fetch(`${base}/api/ytdlp/download`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url: 'https://youtu.be/dQw4w9WgXcQ' }),
+  });
+  assert.equal(oneShot.status, 404, 'POST /api/ytdlp/download must 404 when disabled (AC1)');
+
+  const patch = await fetch(`${base}/api/subscriptions/some-id`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ paused: true }),
+  });
+  assert.equal(patch.status, 404, 'PATCH /api/subscriptions/:id must 404 when disabled (AC3/25)');
+
+  const status = await fetch(`${base}/api/subscriptions/status`);
+  assert.equal(status.status, 404, 'GET /api/subscriptions/status must 404 when disabled (AC32)');
+});
+
 // T4's startBackground registers the download dir into db.folders and arms
 // the real poll timer -- both must be complete no-ops when disabled.
 test('startBackground never registers db.folders, never arms a timer, and never touches the filesystem when the module is disabled', async () => {

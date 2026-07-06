@@ -654,3 +654,336 @@ test('runList builds list args and calls the spawn boundary', async () => {
   assert.equal(argv[argv.length - 1], 'https://www.youtube.com/@x');
   assert.notEqual(opts && opts.shell, true);
 });
+
+// ---- T2/FR-E: onProgress threaded through the DOWNLOAD path ----------------
+//
+// yt-dlp writes `--newline` progress to STDOUT during a download (the
+// download path previously ignored stdout entirely). These tests prove:
+// onProgress fires with parsed patches, stdout is never accumulated (SF3),
+// and every pre-existing SF1/SF3/SF7/SF2/settled-once invariant on this path
+// still holds now that stdout is piped.
+
+test('runDownload: --newline is present in the built download args (download-path only)', () => {
+  const downloadDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-ytdlp-dl-'));
+  const config = { downloadDir, cookiesFile: null };
+  const sub = { channelUrl: 'https://www.youtube.com/@x', name: 'x', format: 'video', quality: 'best' };
+  const builtArgs = buildYtdlpDownloadArgs(sub, config, ['vid1']);
+  assert.ok(builtArgs.includes('--newline'));
+});
+
+test('runDownload: onProgress fires with parsed patches for progress lines emitted on stdout', async () => {
+  const spawnChild = stubSpawn();
+  const downloadDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-ytdlp-dl-'));
+  const config = { downloadDir, cookiesFile: null };
+  const sub = { channelUrl: 'https://www.youtube.com/@x', name: 'x', format: 'video', quality: 'best' };
+  const patches = [];
+  const resultPromise = run.runDownload(sub, config, ['vid1'], { onProgress: (p) => patches.push(p) });
+  const child = spawnChild();
+
+  child.stdout.emit('data', Buffer.from('[download] Destination: /downloads/x/Some_Title [dQw4w9WgXcQ].mp4\n'));
+  child.stdout.emit('data', Buffer.from('[download]  47.2% of  120.5MiB at 3.20MiB/s ETA 00:25\n'));
+  child.stdout.emit('data', Buffer.from('[download] 100% of  120.50MiB in 00:00:38 at 3.13MiB/s\n'));
+  child.emit('close', 0, null);
+  const result = await resultPromise;
+
+  assert.equal(result.ok, true);
+  assert.equal(patches.length, 3, `expected 3 parsed progress patches, got ${JSON.stringify(patches)}`);
+  assert.equal(patches[0].title, 'Some Title');
+  assert.equal(patches[1].percent, 47.2);
+  assert.equal(patches[2].percent, 100);
+});
+
+test('runDownload: a non-progress line on stdout produces no onProgress call (parser returns null, not a garbage patch)', async () => {
+  const spawnChild = stubSpawn();
+  const downloadDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-ytdlp-dl-'));
+  const config = { downloadDir, cookiesFile: null };
+  const sub = { channelUrl: 'https://www.youtube.com/@x', name: 'x', format: 'video', quality: 'best' };
+  const patches = [];
+  const resultPromise = run.runDownload(sub, config, ['vid1'], { onProgress: (p) => patches.push(p) });
+  const child = spawnChild();
+  child.stdout.emit('data', Buffer.from('[youtube] Extracting URL: https://www.youtube.com/watch?v=dQw4w9WgXcQ\n'));
+  child.emit('close', 0, null);
+  await resultPromise;
+  assert.equal(patches.length, 0);
+});
+
+test('runDownload: progress lines split ACROSS multiple stdout data chunks (no trailing newline per chunk) are still parsed correctly', async () => {
+  const spawnChild = stubSpawn();
+  const downloadDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-ytdlp-dl-'));
+  const config = { downloadDir, cookiesFile: null };
+  const sub = { channelUrl: 'https://www.youtube.com/@x', name: 'x', format: 'video', quality: 'best' };
+  const patches = [];
+  const resultPromise = run.runDownload(sub, config, ['vid1'], { onProgress: (p) => patches.push(p) });
+  const child = spawnChild();
+
+  const line = '[download]  75.0% of  10.0MiB at 1.00MiB/s ETA 00:05\n';
+  // Split the single line across three separate 'data' events, mid-line.
+  child.stdout.emit('data', Buffer.from(line.slice(0, 10)));
+  child.stdout.emit('data', Buffer.from(line.slice(10, 25)));
+  child.stdout.emit('data', Buffer.from(line.slice(25)));
+  child.emit('close', 0, null);
+  await resultPromise;
+
+  assert.equal(patches.length, 1, 'a line split across chunk boundaries must be parsed exactly once, not zero or twice');
+  assert.equal(patches[0].percent, 75);
+});
+
+test('runDownload: a final progress line with NO trailing newline before the process closes is still parsed (flush on close)', async () => {
+  const spawnChild = stubSpawn();
+  const downloadDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-ytdlp-dl-'));
+  const config = { downloadDir, cookiesFile: null };
+  const sub = { channelUrl: 'https://www.youtube.com/@x', name: 'x', format: 'video', quality: 'best' };
+  const patches = [];
+  const resultPromise = run.runDownload(sub, config, ['vid1'], { onProgress: (p) => patches.push(p) });
+  const child = spawnChild();
+  // No trailing "\n" -- yt-dlp's very last write before exit commonly lacks one.
+  child.stdout.emit('data', Buffer.from('[download] 100% of  10.0MiB in 00:00:05 at 2.00MiB/s'));
+  child.emit('close', 0, null);
+  await resultPromise;
+  assert.equal(patches.length, 1);
+  assert.equal(patches[0].percent, 100);
+});
+
+test('runDownload: stdout is PARSED-AND-DISCARDED -- result.stdout stays "" regardless of onProgress or stream volume', async () => {
+  const spawnChild = stubSpawn();
+  const downloadDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-ytdlp-dl-'));
+  const config = { downloadDir, cookiesFile: null };
+  const sub = { channelUrl: 'https://www.youtube.com/@x', name: 'x', format: 'video', quality: 'best' };
+  const resultPromise = run.runDownload(sub, config, ['vid1'], { onProgress: () => {} });
+  const child = spawnChild();
+  const chunk = '[download]  10.0% of  10.0MiB at 1.00MiB/s ETA 00:09\n'.repeat(5000);
+  for (let i = 0; i < 5; i++) child.stdout.emit('data', Buffer.from(chunk));
+  child.emit('close', 0, null);
+  const result = await resultPromise;
+  assert.equal(result.ok, true);
+  assert.equal(result.stdout, '', 'stdout must never be accumulated on the download path, onProgress or not');
+});
+
+test('runDownload: a THROWING onProgress callback never breaks the download promise -- it still resolves cleanly', async () => {
+  const spawnChild = stubSpawn();
+  const downloadDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-ytdlp-dl-'));
+  const config = { downloadDir, cookiesFile: null };
+  const sub = { channelUrl: 'https://www.youtube.com/@x', name: 'x', format: 'video', quality: 'best' };
+  const resultPromise = run.runDownload(sub, config, ['vid1'], {
+    onProgress: () => { throw new Error('boom from a hostile/buggy onProgress'); },
+  });
+  const child = spawnChild();
+  assert.doesNotThrow(() => {
+    child.stdout.emit('data', Buffer.from('[download]  50.0% of  10.0MiB at 1.00MiB/s ETA 00:05\n'));
+  });
+  child.emit('close', 0, null);
+  const result = await resultPromise;
+  assert.equal(result.ok, true, 'a throwing onProgress must never fail/hang the download itself');
+});
+
+test('runDownload: with NO onProgress, behavior is unchanged (backward-compatible) -- resolves ok, stdout empty, no crash from piped stdout', async () => {
+  const spawnChild = stubSpawn();
+  const downloadDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-ytdlp-dl-'));
+  const config = { downloadDir, cookiesFile: null };
+  const sub = { channelUrl: 'https://www.youtube.com/@x', name: 'x', format: 'video', quality: 'best' };
+  const resultPromise = run.runDownload(sub, config, ['vid1']); // no 4th arg at all
+  const child = spawnChild();
+  child.stdout.emit('data', Buffer.from('[download]  20.0% of  10.0MiB at 1.00MiB/s ETA 00:08\n'));
+  child.emit('close', 0, null);
+  const result = await resultPromise;
+  assert.equal(result.ok, true);
+  assert.equal(result.stdout, '');
+});
+
+// ---- SF7 (download path, stdout side): the stdout stream is now piped on --
+// ---- the download path too, so it needs the exact same 'error'-settles-  --
+// ---- the-promise-and-kills-the-child guard the list path already has for --
+// ---- BOTH its streams. ------------------------------------------------------
+
+test('runDownload: an "error" event on child.stdout settles the promise (never hangs, never throws) and kills the child', async () => {
+  const spawnChild = stubSpawn();
+  const downloadDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-ytdlp-dl-'));
+  const config = { downloadDir, cookiesFile: null };
+  const sub = { channelUrl: 'https://www.youtube.com/@x', name: 'x', format: 'video', quality: 'best' };
+  const resultPromise = run.runDownload(sub, config, ['vid1']);
+  const child = spawnChild();
+  assert.doesNotThrow(() => child.stdout.emit('error', new Error('stdout stream boom')));
+  const result = await resultPromise;
+  assert.equal(result.ok, false);
+  assert.equal(result.code, 'ESTDOUT');
+  assert.deepEqual(child.killCalls, ['SIGKILL'], 'a stdout stream error must kill the still-running child, not just settle the promise');
+});
+
+test('runDownload: a stdout stream "error" followed by a "close" does not double-resolve (settled-once guard)', async () => {
+  const spawnChild = stubSpawn();
+  const downloadDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-ytdlp-dl-'));
+  const config = { downloadDir, cookiesFile: null };
+  const sub = { channelUrl: 'https://www.youtube.com/@x', name: 'x', format: 'video', quality: 'best' };
+  const resultPromise = run.runDownload(sub, config, ['vid1']);
+  const child = spawnChild();
+  child.stdout.emit('error', new Error('stdout stream boom'));
+  child.emit('close', 0, null); // must be a no-op: the stdout error already settled it
+  const result = await resultPromise;
+  assert.equal(result.ok, false);
+  assert.equal(result.code, 'ESTDOUT', 'the FIRST settle (the stdout error) must win, not the later close');
+  assert.deepEqual(child.killCalls, ['SIGKILL'], 'the stdout error must have killed the child exactly once');
+});
+
+// ---- FIX-3 (two-reviewer gate): onProgress dispatch must stop once the ----
+// ---- download promise has already settled -- a late/buffered 'data' -------
+// ---- event must never resurrect a non-terminal patch that could overwrite -
+// ---- the orchestrator's own terminal state transition (a phantom entry ----
+// ---- stuck non-terminal forever). ------------------------------------------
+
+test('runDownload: FIX-3 regression -- once settled via a stream "error", a LATE stdout "data" event does not dispatch onProgress', async () => {
+  const spawnChild = stubSpawn();
+  const downloadDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-ytdlp-dl-'));
+  const config = { downloadDir, cookiesFile: null };
+  const sub = { channelUrl: 'https://www.youtube.com/@x', name: 'x', format: 'video', quality: 'best' };
+  const patches = [];
+  const resultPromise = run.runDownload(sub, config, ['vid1'], { onProgress: (p) => patches.push(p) });
+  const child = spawnChild();
+
+  // Settle the promise via a stderr stream error BEFORE any progress line
+  // has arrived (mirrors a real, if rare, underlying fd/read failure).
+  child.stderr.emit('error', new Error('stderr stream boom'));
+  const result = await resultPromise;
+  assert.equal(result.ok, false);
+  assert.equal(result.code, 'ESTDERR');
+
+  // A buffered/late stdout chunk arriving AFTER the promise already settled
+  // must NOT resurrect onProgress with a non-terminal patch -- pre-fix, this
+  // dispatch was unconditional and would have overwritten the orchestrator's
+  // own terminal 'error' state with a stray 'downloading' patch.
+  child.stdout.emit('data', Buffer.from('[download]  55.0% of  10.0MiB at 1.00MiB/s ETA 00:05\n'));
+  assert.equal(patches.length, 0, 'onProgress must never fire once the download promise has already settled');
+});
+
+test('runDownload: FIX-3 regression -- once settled via a normal "close", a LATE stdout "data" event does not dispatch onProgress again', async () => {
+  const spawnChild = stubSpawn();
+  const downloadDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-ytdlp-dl-'));
+  const config = { downloadDir, cookiesFile: null };
+  const sub = { channelUrl: 'https://www.youtube.com/@x', name: 'x', format: 'video', quality: 'best' };
+  const patches = [];
+  const resultPromise = run.runDownload(sub, config, ['vid1'], { onProgress: (p) => patches.push(p) });
+  const child = spawnChild();
+
+  child.stdout.emit('data', Buffer.from('[download]  10.0% of  10.0MiB at 1.00MiB/s ETA 00:09\n'));
+  child.emit('close', 0, null);
+  await resultPromise;
+  assert.equal(patches.length, 1, 'sanity: the in-flight progress line received BEFORE close must still be parsed');
+
+  // A buffered stdout chunk that arrives AFTER 'close' already fired (and
+  // resolved the promise) must not dispatch a fresh onProgress call -- this
+  // is the exact "phantom stuck download" mechanism FIX-3 closes: a
+  // never-terminal patch landing after the orchestrator already moved on.
+  child.stdout.emit('data', Buffer.from('[download]  20.0% of  10.0MiB at 1.00MiB/s ETA 00:08\n'));
+  assert.equal(patches.length, 1, 'a late stdout data event after close must not fire onProgress again');
+});
+
+test('runDownload: SF1 cookies redaction still holds with onProgress attached and stdout piped', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-ytdlp-cookies-'));
+  const cookiesFile = path.join(dir, 'cookies.txt');
+  fs.writeFileSync(cookiesFile, 'session=abc123');
+  const downloadDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-ytdlp-dl-'));
+  const config = { downloadDir, cookiesFile };
+  const sub = { channelUrl: 'https://www.youtube.com/@x', name: 'x', format: 'video', quality: 'best' };
+
+  const spawnChild = stubSpawn();
+  const resultPromise = run.runDownload(sub, config, ['vid1'], { onProgress: () => {} });
+  const child = spawnChild();
+  child.stdout.emit('data', Buffer.from('[download]  10.0% of  10.0MiB at 1.00MiB/s ETA 00:09\n'));
+  child.stderr.emit('data', Buffer.from(`ERROR: Cookies file: ${cookiesFile}\n`));
+  child.emit('close', 1, null);
+  const result = await resultPromise;
+
+  assert.equal(result.ok, false);
+  const serialized = JSON.stringify(result);
+  assert.ok(!serialized.includes(cookiesFile), `cookies path leaked into the returned result: ${serialized}`);
+  const allLogs = capturedLogs.join('\n');
+  assert.ok(!allLogs.includes(cookiesFile), `cookies path leaked into a log line: ${allLogs}`);
+});
+
+test('runDownload: SF3 bounded stderr tail still holds with onProgress attached and BOTH streams under heavy volume', async () => {
+  const spawnChild = stubSpawn();
+  const downloadDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-ytdlp-dl-'));
+  const config = { downloadDir, cookiesFile: null };
+  const sub = { channelUrl: 'https://www.youtube.com/@x', name: 'x', format: 'video', quality: 'best' };
+  const patches = [];
+  const resultPromise = run.runDownload(sub, config, ['vid1'], { onProgress: (p) => patches.push(p) });
+  const child = spawnChild();
+  const stdoutChunk = '[download]  10.0% of  10.0MiB at 1.00MiB/s ETA 00:09\n'.repeat(2000);
+  const stderrChunk = 'some diagnostic warning line\n'.repeat(2000);
+  for (let i = 0; i < 20; i++) {
+    child.stdout.emit('data', Buffer.from(stdoutChunk));
+    child.stderr.emit('data', Buffer.from(stderrChunk));
+  }
+  child.emit('close', 0, null);
+  const result = await resultPromise;
+  assert.equal(result.ok, true);
+  assert.ok(patches.length > 0, 'onProgress must still fire under heavy volume');
+  assert.ok(
+    Buffer.byteLength(result.stderr, 'utf8') <= run.STDERR_TAIL_LIMIT,
+    `returned stderr tail (${Buffer.byteLength(result.stderr, 'utf8')} bytes) exceeded STDERR_TAIL_LIMIT (${run.STDERR_TAIL_LIMIT})`,
+  );
+  assert.equal(result.stdout, '', 'stdout must still never be accumulated');
+});
+
+test('runDownload: a multibyte UTF-8 character split across two stdout Buffer chunks in a Destination line still parses an intact title', async () => {
+  const spawnChild = stubSpawn();
+  const downloadDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-ytdlp-dl-'));
+  const config = { downloadDir, cookiesFile: null };
+  const sub = { channelUrl: 'https://www.youtube.com/@x', name: 'x', format: 'video', quality: 'best' };
+  const patches = [];
+  const resultPromise = run.runDownload(sub, config, ['vid1'], { onProgress: (p) => patches.push(p) });
+  const child = spawnChild();
+
+  const line = '[download] Destination: /downloads/x/Amazing camping clip 🎬 finale [dQw4w9WgXcQ].mp4\n';
+  const fullBuffer = Buffer.from(line, 'utf8');
+  const emojiBytes = Buffer.from('🎬', 'utf8');
+  const emojiByteIndex = fullBuffer.indexOf(emojiBytes);
+  assert.ok(emojiByteIndex > 0, 'sanity: emoji must be present in the encoded buffer');
+  const splitOffset = emojiByteIndex + 1; // split mid-character
+  const chunk1 = fullBuffer.subarray(0, splitOffset);
+  const chunk2 = fullBuffer.subarray(splitOffset);
+
+  child.stdout.emit('data', chunk1);
+  child.stdout.emit('data', chunk2);
+  child.emit('close', 0, null);
+  await resultPromise;
+
+  assert.equal(patches.length, 1);
+  assert.ok(!patches[0].title.includes('�'), `title was corrupted by the chunk-boundary split: ${patches[0].title}`);
+  assert.equal(patches[0].title, 'Amazing camping clip 🎬 finale');
+});
+
+test('runDownload: SF2 timeout+SIGKILL still fires with onProgress attached (progress plumbing does not interfere with the timeout path)', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const spawnChild = stubSpawn();
+  const patches = [];
+  const resultPromise = run.spawnYtdlpDownload(['--', 'https://www.youtube.com/@x'], {
+    timeoutMs: 5,
+    killSignal: 'SIGKILL',
+    onProgress: (p) => patches.push(p),
+  });
+  const child = spawnChild();
+  child.stdout.emit('data', Buffer.from('[download]  1.0% of  10.0MiB at 1.00MiB/s ETA 00:59\n'));
+  t.mock.timers.tick(5);
+  const result = await resultPromise;
+  assert.equal(result.ok, false);
+  assert.equal(result.code, 'ETIMEDOUT');
+  assert.deepEqual(child.killCalls, ['SIGKILL']);
+  assert.ok(patches.length >= 1, 'progress parsed before the timeout must still have fired');
+});
+
+test('runDownload: never sets shell:true and stdio pipes stdout+stderr (arg-array, no shell) with onProgress attached', async () => {
+  const spawnChild = stubSpawn();
+  const downloadDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-ytdlp-dl-'));
+  const config = { downloadDir, cookiesFile: null };
+  const sub = { channelUrl: 'https://www.youtube.com/@x', name: 'x', format: 'video', quality: 'best' };
+  const resultPromise = run.runDownload(sub, config, ['vid1'], { onProgress: () => {} });
+  const child = spawnChild();
+  child.emit('close', 0, null);
+  await resultPromise;
+  const { cmd, argv, opts } = capturedSpawnCalls[0];
+  assert.equal(cmd, 'yt-dlp');
+  assert.ok(Array.isArray(argv));
+  assert.deepEqual(opts.stdio, ['ignore', 'pipe', 'pipe']);
+  assert.notEqual(opts && opts.shell, true);
+  assert.equal(opts && opts.maxBuffer, undefined);
+});

@@ -18,6 +18,8 @@ const {
   transcodedPath,
   getMediaId,
   matchRootFolder,
+  cleanDisplayTitle,
+  normalizeScanRoot,
 } = require('../../server');
 
 test('needsTranscode: browser-incompatible containers need transcoding', () => {
@@ -78,4 +80,109 @@ test('matchRootFolder: no match returns null', () => {
 test('matchRootFolder: does not falsely match a sibling with a shared name prefix', () => {
   // '/media/movies' must NOT be considered under '/media/movie' (boundary check).
   assert.equal(matchRootFolder('/media/movies/a.mp4', ['/media/movie']), null);
+});
+
+// ---- FR-F (v1.12.0, yt-dlp module parity): cleanDisplayTitle ----------------
+// [UNIT] AC33/34/35/36/37 (see docs/exec-plans/active/2026-07-06-ytdlp-metube-parity.md).
+
+test('cleanDisplayTitle: strips a trailing bracketed 11-char yt-dlp id and turns underscores into spaces (AC33)', () => {
+  assert.equal(cleanDisplayTitle('Title_With_Underscores [dQw4w9WgXcQ]'), 'Title With Underscores');
+});
+
+test('cleanDisplayTitle: works with a space (not just an underscore) before the bracket', () => {
+  assert.equal(cleanDisplayTitle('My Great Video [dQw4w9WgXcQ]'), 'My Great Video');
+});
+
+test('cleanDisplayTitle: collapses a run of consecutive underscores to a single space', () => {
+  // restrict-filenames can emit multiple consecutive underscores when several
+  // non-ASCII/special characters appear back-to-back.
+  assert.equal(cleanDisplayTitle('A___B [dQw4w9WgXcQ]'), 'A B');
+});
+
+test('cleanDisplayTitle: REGRESSION -- a plain non-yt-dlp file with no bracket is left completely unchanged (AC34)', () => {
+  assert.equal(cleanDisplayTitle('My_Home_Movie'), 'My_Home_Movie');
+});
+
+test('cleanDisplayTitle: REGRESSION -- a bracket whose content is not exactly 11 id-shaped characters is left unchanged (AC35)', () => {
+  assert.equal(cleanDisplayTitle('Something [notanid]'), 'Something [notanid]');
+  assert.equal(cleanDisplayTitle('Movie [2024]'), 'Movie [2024]');
+  assert.equal(cleanDisplayTitle('Song [Remix]'), 'Song [Remix]');
+});
+
+test('cleanDisplayTitle: REGRESSION -- a 12-character bracket token (one char too many) is left unchanged (boundary check)', () => {
+  assert.equal(cleanDisplayTitle('Video [dQw4w9WgXcQx]'), 'Video [dQw4w9WgXcQx]');
+});
+
+test('cleanDisplayTitle: REGRESSION -- a 10-character bracket token (one char too few) is left unchanged (boundary check)', () => {
+  const tenCharToken = 'dQw4w9WgXc';
+  assert.equal(tenCharToken.length, 10, 'sanity: the token under test must be exactly 10 characters');
+  assert.equal(cleanDisplayTitle(`Video [${tenCharToken}]`), `Video [${tenCharToken}]`);
+});
+
+test('cleanDisplayTitle: display-only -- getMediaId is identical whether or not the title is cleaned (AC36, no id churn)', () => {
+  const filePath = '/data/yt-dlp/Title_With_Underscores [dQw4w9WgXcQ].mp4';
+  const before = getMediaId(filePath);
+  // Cleaning the title never touches filePath/getMediaId's input.
+  cleanDisplayTitle('Title_With_Underscores [dQw4w9WgXcQ]');
+  const after = getMediaId(filePath);
+  assert.equal(before, after, 'getMediaId must be unaffected by title derivation');
+});
+
+test('cleanDisplayTitle: empty string and a bare bracket-only name never throw', () => {
+  assert.equal(cleanDisplayTitle(''), '');
+  assert.equal(cleanDisplayTitle('[dQw4w9WgXcQ]'), '[dQw4w9WgXcQ]'); // no leading space/underscore -> no match, unchanged
+});
+
+// ---- FR-G part 1 (v1.12.0): normalizeScanRoot -------------------------------
+// [UNIT] AC38/39 (see the exec plan). Uses real temp dirs + a real symlink so
+// `fs.realpathSync` behavior is exercised for real, not mocked.
+
+test('normalizeScanRoot: a symlink alias and its real target normalize to the SAME string (AC38, same-tree collapse)', () => {
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-normalize-'));
+  const realDir = path.join(base, 'real');
+  const linkDir = path.join(base, 'alias-link');
+  fs.mkdirSync(realDir);
+  fs.symlinkSync(realDir, linkDir, 'dir');
+  try {
+    assert.equal(normalizeScanRoot(linkDir), normalizeScanRoot(realDir), 'a symlink alias must normalize to the same real path as its target');
+    assert.equal(normalizeScanRoot(realDir), fs.realpathSync(realDir));
+  } finally {
+    fs.rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test('normalizeScanRoot: a relative-with-".." spelling normalizes to the same string as the resolved-absolute spelling (AC38)', () => {
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-normalize-rel-'));
+  const target = path.join(base, 'movies');
+  fs.mkdirSync(target);
+  try {
+    const divergentSpelling = path.join(base, 'movies', '..', 'movies');
+    assert.equal(normalizeScanRoot(divergentSpelling), normalizeScanRoot(target));
+  } finally {
+    fs.rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test('normalizeScanRoot: REGRESSION -- two genuinely distinct real trees are never collapsed (AC39)', () => {
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-normalize-distinct-'));
+  const dirA = path.join(base, 'a');
+  const dirB = path.join(base, 'b');
+  fs.mkdirSync(dirA);
+  fs.mkdirSync(dirB);
+  try {
+    assert.notEqual(normalizeScanRoot(dirA), normalizeScanRoot(dirB));
+  } finally {
+    fs.rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test('normalizeScanRoot: a missing/unmounted root falls back to path.resolve (never dropped, never throws)', () => {
+  const missing = path.join(os.tmpdir(), `filetube-normalize-missing-${Date.now()}-${Math.random()}`);
+  assert.equal(fs.existsSync(missing), false, 'sanity: must genuinely not exist');
+  assert.equal(normalizeScanRoot(missing), path.resolve(missing));
+});
+
+test('normalizeScanRoot: the missing-root fallback is stable/deterministic across repeated calls (so it can be relied on as a Set key)', () => {
+  const missing = path.join(os.tmpdir(), `filetube-normalize-missing-stable-${Date.now()}`);
+  assert.equal(normalizeScanRoot(missing), normalizeScanRoot(missing));
 });
