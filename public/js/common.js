@@ -986,45 +986,73 @@ function buildOneOffModal(doc, handlers) {
   return { backdrop, modal, urlInput, formatSelect, qualitySelect, filetypeSelect, downloadBtn, closeBtn, statusEl, setStatus };
 }
 
-// Idempotent (checks for the button's existence first) and defensive --
-// missing `.header-right` (a page without this shared header) is simply
-// skipped, never thrown on. Mirrors `injectSubscriptionsNavLinkIfEnabled`'s
-// gating exactly: the button/modal are ONLY ever created after a genuine 2xx
-// from `/api/subscriptions/health`; a 404 (module disabled) or a network
-// failure means this function creates nothing at all -- the header stays
+/**
+ * v1.15.1 FIX 6 -- pure reducer for a TERMINAL live-status `entry` (the
+ * `pollStatusOnce` loop below only calls this once `state` is `'done'` or
+ * `'error'`): decides whether the modal should auto-close (and after how
+ * long) and whether a library rescan+refresh should fire. `'done'` closes
+ * the modal after a brief pause (so the user sees the "Done" status line)
+ * and triggers a rescan so the new file shows up without a manual refresh;
+ * `'error'` leaves the modal open (the error stays visible) and never
+ * rescans. Any other input (including a non-terminal state, reached
+ * defensively) takes no action. Exported/`node:test`-covered directly, same
+ * posture as `shouldInjectOneOffButton`/`formatOneOffStatusText` above.
+ */
+function decideOneOffTerminalAction(entry) {
+  if (entry && typeof entry === 'object' && entry.state === 'done') {
+    return { close: true, closeDelayMs: 1200, rescan: true };
+  }
+  return { close: false, closeDelayMs: 0, rescan: false };
+}
+
+/**
+ * v1.15.1 FIX 6 -- reuses the SAME `POST /api/scan` endpoint the home page's
+ * "Rescan Files" button (`public/js/main.js`) calls, then refreshes the
+ * current page so the newly-downloaded video appears without the user
+ * manually reloading. Best-effort: the SERVER already rescans after a
+ * one-off download completes (`runOneShot` -> `scanDirectories`), so even if
+ * this client-triggered request never resolves (a transient network hiccup),
+ * the library data is already fresh server-side for the user's next visit.
+ * `fetchImpl`/`reloadFn` are injectable (mirrors `buildOneOffModal`'s
+ * `doc`/`handlers` injection) so this is directly `node:test`-covered
+ * without a real network call or a real page reload.
+ */
+function triggerLibraryRescanAndRefresh(fetchImpl, reloadFn) {
+  const doFetch = fetchImpl || (typeof fetch !== 'undefined' ? fetch : null);
+  const doReload = reloadFn || (() => { if (typeof window !== 'undefined') window.location.reload(); });
+  if (!doFetch) return;
+  doFetch('/api/scan', { method: 'POST' })
+    .catch(() => { /* best-effort -- the server already scanned after the one-off */ })
+    .then(doReload);
+}
+
+// Idempotent (checks for the button/nav-entry's existence first) and
+// defensive -- a page missing `.header-right` and/or the bottom-nav Settings
+// item simply skips whichever entry point it doesn't have, never throwing.
+// Mirrors `injectSubscriptionsNavLinkIfEnabled`'s gating exactly: every entry
+// point is ONLY ever created after a genuine 2xx from
+// `/api/subscriptions/health`; a 404 (module disabled) or a network failure
+// means this function creates nothing at all -- the header/bottom-nav stay
 // byte-identical to a disabled install (AC3.3/ACX.1).
 function injectOneOffDownloadButtonIfEnabled() {
   if (typeof document === 'undefined' || typeof fetch === 'undefined') return;
-  if (document.getElementById('ytdlp-oneoff-btn')) return; // already injected
+  if (document.getElementById('ytdlp-oneoff-btn') || document.querySelector('[data-nav="oneoff-download"]')) return; // already injected
 
   fetch('/api/subscriptions/health')
     .then((res) => {
       if (!shouldInjectOneOffButton(res)) return; // disabled (404) -- inject nothing
 
       const headerRight = document.querySelector('.header-right');
-      if (!headerRight) return; // page has no shared header -- nothing to attach to
-
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.id = 'ytdlp-oneoff-btn';
-      btn.className = 'btn';
-      btn.setAttribute('aria-label', 'Download a video');
-      btn.title = 'Download a video';
-      const icon = document.createElement('i');
-      icon.className = 'icon-download';
-      btn.appendChild(icon);
-      btn.appendChild(document.createTextNode(' Download'));
-
-      // Dean-locked placement: immediately before the Settings link when one
-      // exists in this header (index.html/watch.html); pages whose header
-      // has no Settings link (setup.html/subscriptions.html) simply get the
-      // button appended to `.header-right`.
-      const settingsLink = headerRight.querySelector('a[href="/setup.html"]');
-      if (settingsLink) {
-        headerRight.insertBefore(btn, settingsLink);
-      } else {
-        headerRight.appendChild(btn);
-      }
+      // v1.15.1 FIX 4: the desktop header button lives inside `.header-right`,
+      // which is CSS-hidden at the phone breakpoint (same rule that hides
+      // Settings/the moon toggle there -- see style.css's `.header-right {
+      // display: none }` inside `@media (max-width: 768px)`), so on mobile the
+      // button existed in the DOM but was never reachable. This bottom-nav
+      // entry (mirroring `injectSubscriptionsNavLinkIfEnabled`'s own
+      // bottom-nav injection) gives mobile an equally-discoverable entry
+      // point into the SAME modal.
+      const settingsNavItem = document.querySelector('#bottom-nav [data-nav="settings"]');
+      if (!headerRight && !settingsNavItem) return; // page has neither surface -- nothing to attach to
 
       let modalState = null;
       let pollTimer = null;
@@ -1047,6 +1075,15 @@ function injectOneOffDownloadButtonIfEnabled() {
             modalState.setStatus(entry || { state: 'queued' });
             if (entry && (entry.state === 'done' || entry.state === 'error')) {
               stopPolling(); // terminal -- stop polling this job
+
+              // v1.15.1 FIX 6: on 'done', auto-close the modal (after a brief
+              // pause so the user sees the "Done" status) and refresh the
+              // library so the new file shows up without a manual reload; on
+              // 'error' the reducer leaves the modal open so the message
+              // stays visible.
+              const action = decideOneOffTerminalAction(entry);
+              if (action.rescan) triggerLibraryRescanAndRefresh();
+              if (action.close) setTimeout(closeModal, action.closeDelayMs);
               return;
             }
             pollTimer = setTimeout(pollStatusOnce, ONEOFF_STATUS_POLL_MS);
@@ -1105,7 +1142,53 @@ function injectOneOffDownloadButtonIfEnabled() {
         modalState.modal.hidden = false;
       }
 
-      btn.addEventListener('click', openModal);
+      // Desktop: header button, Dean-locked placement (immediately before
+      // the Settings link when one exists in this header; pages whose
+      // header has no Settings link get the button appended to
+      // `.header-right`).
+      if (headerRight) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.id = 'ytdlp-oneoff-btn';
+        btn.className = 'btn';
+        btn.setAttribute('aria-label', 'Download a video');
+        btn.title = 'Download a video';
+        const icon = document.createElement('i');
+        icon.className = 'icon-download';
+        btn.appendChild(icon);
+        btn.appendChild(document.createTextNode(' Download'));
+
+        const settingsLink = headerRight.querySelector('a[href="/setup.html"]');
+        if (settingsLink) {
+          headerRight.insertBefore(btn, settingsLink);
+        } else {
+          headerRight.appendChild(btn);
+        }
+
+        btn.addEventListener('click', openModal);
+      }
+
+      // v1.15.1 FIX 4: mobile bottom-nav entry, inserted right after the
+      // existing Settings item (mirroring `injectSubscriptionsNavLinkIfEnabled`'s
+      // own bottom-nav injection) -- a `<button>` (not a link) since it opens
+      // the modal in place rather than navigating.
+      if (settingsNavItem && settingsNavItem.parentElement) {
+        const navBtn = document.createElement('button');
+        navBtn.type = 'button';
+        navBtn.className = 'bottom-nav-item';
+        navBtn.setAttribute('data-nav', 'oneoff-download');
+        navBtn.setAttribute('aria-label', 'Download a video');
+        const navIcon = document.createElement('i');
+        navIcon.className = 'icon-download';
+        const navLabel = document.createElement('span');
+        navLabel.className = 'bottom-nav-label';
+        navLabel.textContent = 'Download';
+        navBtn.appendChild(navIcon);
+        navBtn.appendChild(navLabel);
+        settingsNavItem.insertAdjacentElement('afterend', navBtn);
+
+        navBtn.addEventListener('click', openModal);
+      }
 
       // Esc closes the modal while it is open -- backdrop-click and the [x]
       // button are wired inside buildOneOffModal itself.
@@ -1306,6 +1389,8 @@ if (typeof module !== 'undefined' && module.exports) {
     shouldInjectOneOffButton, reduceOneOffFiletypeOptions, buildOneOffDownloadBody,
     formatOneOffStatusText, buildOneOffModal,
     ONEOFF_FORMAT_OPTIONS, ONEOFF_QUALITY_OPTIONS, ONEOFF_DEFAULT_QUALITY,
-    ONEOFF_FILETYPE_OPTIONS, ONEOFF_DEFAULT_FILETYPE, ONEOFF_STATUS_POLL_MS
+    ONEOFF_FILETYPE_OPTIONS, ONEOFF_DEFAULT_FILETYPE, ONEOFF_STATUS_POLL_MS,
+    decideOneOffTerminalAction, triggerLibraryRescanAndRefresh,
+    injectOneOffDownloadButtonIfEnabled
   };
 }

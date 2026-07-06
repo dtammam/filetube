@@ -65,6 +65,31 @@ test('parseProgressLine: a Destination line whose basename has no bracketed id k
   assert.equal(patch.title, 'My_Home_Movie');
 });
 
+// ---- v1.15.1 hotfix: a Destination line for a yt-dlp per-format fragment/
+// merge-temp file is cleaned of BOTH the [id] bracket AND the fragment/
+// merge-temp infix, instead of leaking the raw ".f399"/".temp" shape into
+// the live status. ------------------------------------------------------
+
+test('parseProgressLine: a Destination line for a per-format fragment (".f399.mp4") is tidied to just the title -- no [id], no .f399', () => {
+  const patch = parseProgressLine('[download] Destination: /downloads/x/TRUMP FIXED THE WORLD CUP [wSx0Or20MZE].f399.mp4');
+  assert.equal(patch.title, 'TRUMP FIXED THE WORLD CUP');
+});
+
+test('parseProgressLine: a Destination line for an audio-only fragment (".f251.webm") is tidied the same way', () => {
+  const patch = parseProgressLine('[download] Destination: /downloads/x/Some_Video [wSx0Or20MZE].f251.webm');
+  assert.equal(patch.title, 'Some Video');
+});
+
+test('parseProgressLine: a Destination line for a merge temp (".temp.mp4") is tidied to just the title', () => {
+  const patch = parseProgressLine('[download] Destination: /downloads/x/Some_Video [wSx0Or20MZE].temp.mp4');
+  assert.equal(patch.title, 'Some Video');
+});
+
+test('parseProgressLine: a normal Destination line ("<Title> [<id>].mp4", no fragment infix) still tidies to just the title', () => {
+  const patch = parseProgressLine('[download] Destination: /downloads/x/Some_Video [wSx0Or20MZE].mp4');
+  assert.equal(patch.title, 'Some Video');
+});
+
 // ---- already-downloaded ----------------------------------------------------
 
 test('parseProgressLine: FIX-4 -- "has already been downloaded" yields a 100% patch with a cleaned title, but stays "downloading" (item-level, never terminal on its own)', () => {
@@ -161,4 +186,27 @@ test('tidyTitle: a non-11-char bracket token is left unchanged', () => {
 test('tidyTitle: non-string input passes through unchanged rather than throwing', () => {
   assert.equal(tidyTitle(null), null);
   assert.equal(tidyTitle(undefined), undefined);
+});
+
+// v1.15.1 hotfix: tidyTitle now also strips a trailing ".f<digits>"
+// (per-format fragment) or ".temp" (merge temp) infix that can follow the
+// [id] bracket once `basenameNoExt` has already stripped the file's FINAL
+// extension (e.g. "<Title> [<id>].f399.mp4" arrives here as
+// "<Title> [<id>].f399") -- see the module comment above tidyTitle.
+
+test('tidyTitle: a Destination-derived name with "[<id>].f399" (fragment infix) tidies to just the title -- no [id], no .f399', () => {
+  assert.equal(tidyTitle('TRUMP FIXED THE WORLD CUP [wSx0Or20MZE].f399'), 'TRUMP FIXED THE WORLD CUP');
+});
+
+test('tidyTitle: a Destination-derived name with "[<id>].temp" (merge-temp infix) tidies to just the title', () => {
+  assert.equal(tidyTitle('Some_Title [wSx0Or20MZE].temp'), 'Some Title');
+});
+
+test('tidyTitle: a normal "<Title> [<id>]" (no fragment/temp infix) still tidies exactly as before', () => {
+  assert.equal(tidyTitle('Some_Title [wSx0Or20MZE]'), 'Some Title');
+});
+
+test('tidyTitle: a non-yt-dlp-shaped name is left unchanged', () => {
+  assert.equal(tidyTitle('just a plain filename stem'), 'just a plain filename stem');
+  assert.equal(tidyTitle('report.f399'), 'report.f399');
 });

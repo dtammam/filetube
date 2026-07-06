@@ -133,6 +133,32 @@ test('parseYtdlpConfig: maxVideos of 0 is valid and means unlimited (not invalid
   assert.equal(parseYtdlpConfig({ FILETUBE_YTDLP_MAX_VIDEOS: '0' }).maxVideos, 0);
 });
 
+// ---- FILETUBE_YTDLP_DOWNLOAD_TIMEOUT_MINUTES: v1.15.1 hotfix ----
+//
+// Default 180 (3 hours, raised from the previous hardcoded 60-minute
+// ceiling); any invalid/hostile input (including 0 -- unlike maxVideos/
+// pollMinutes, 0 does NOT mean "unlimited" here, since an unbounded download
+// timeout is exactly what SF2 forbids) falls back to the default; a valid
+// value must land within [1, 1440].
+
+test('parseYtdlpConfig: downloadTimeoutMinutes defaults to 180 when unset', () => {
+  const config = parseYtdlpConfig({});
+  assert.equal(config.downloadTimeoutMinutes, 180);
+});
+
+test('parseYtdlpConfig: downloadTimeoutMinutes accepts a valid override', () => {
+  assert.equal(parseYtdlpConfig({ FILETUBE_YTDLP_DOWNLOAD_TIMEOUT_MINUTES: '240' }).downloadTimeoutMinutes, 240);
+  assert.equal(parseYtdlpConfig({ FILETUBE_YTDLP_DOWNLOAD_TIMEOUT_MINUTES: '1' }).downloadTimeoutMinutes, 1);
+  assert.equal(parseYtdlpConfig({ FILETUBE_YTDLP_DOWNLOAD_TIMEOUT_MINUTES: '1440' }).downloadTimeoutMinutes, 1440);
+});
+
+test('parseYtdlpConfig: downloadTimeoutMinutes falls back to 180 on hostile/invalid values, including 0', () => {
+  for (const bad of [undefined, null, '', 'abc', '-1', '1.5', 'NaN', {}, 'garbage', '0', '1441', '-100']) {
+    const config = parseYtdlpConfig({ FILETUBE_YTDLP_DOWNLOAD_TIMEOUT_MINUTES: bad });
+    assert.equal(config.downloadTimeoutMinutes, 180, `${JSON.stringify(bad)} should fall back to the default`);
+  }
+});
+
 test('isEnabled: true only for a config with enabled === true', () => {
   assert.equal(isEnabled({ enabled: true }), true);
   assert.equal(isEnabled({ enabled: false }), false);

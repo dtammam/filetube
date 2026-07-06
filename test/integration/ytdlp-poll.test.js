@@ -999,3 +999,57 @@ test('quarantine does not recurse into subdirectories (documents the flat OUTPUT
 
   fs.rmSync(outsideDir, { recursive: true, force: true });
 });
+
+// ---- v1.15.1 hotfix: yt-dlp intermediate/partial artifacts left by a
+// FAILED/timed-out download are cleaned up (defense-in-depth on top of
+// server.js's scan-time exclusion), while a completed/final file in the same
+// dir is left untouched --------------------------------------------------
+
+test('a FAILED download cleans up yt-dlp intermediate artifacts in the channel dir, but leaves a completed final file untouched', async () => {
+  const deps = makeFakeDeps();
+  const sub = await addSub(deps);
+  const config = baseConfig();
+
+  run.runList = async () => ({ ok: true, stdout: ndjson([{ id: 'v1', availability: 'public' }]), stderr: '' });
+
+  const channelDir = args.resolveChannelDir(config, sub);
+  fs.mkdirSync(channelDir, { recursive: true });
+  const finalPath = path.join(channelDir, 'Already Downloaded [dQw4w9WgXcQ].mp4');
+  const fragmentPath = path.join(channelDir, 'Killed Video [wSx0Or20MZE].f399.mp4');
+  const audioFragmentPath = path.join(channelDir, 'Killed Video [wSx0Or20MZE].f251.webm');
+  const mergeTempPath = path.join(channelDir, 'Killed Video [wSx0Or20MZE].temp.mp4');
+  const partPath = path.join(channelDir, 'Killed Video [wSx0Or20MZE].mp4.part');
+  fs.writeFileSync(finalPath, 'a real, already-completed video');
+  for (const p of [fragmentPath, audioFragmentPath, mergeTempPath, partPath]) {
+    fs.writeFileSync(p, 'yt-dlp leftover bytes');
+  }
+
+  run.runDownload = async () => ({ ok: false, code: 'ETIMEDOUT', stdout: '', stderr: '', error: 'yt-dlp timed out and was killed' });
+
+  await ytdlp.runPoll(deps, config);
+
+  for (const p of [fragmentPath, audioFragmentPath, mergeTempPath, partPath]) {
+    assert.equal(fs.existsSync(p), false, `intermediate ${p} must be cleaned up after a failed download`);
+  }
+  assert.equal(fs.existsSync(finalPath), true, 'a completed/final file must never be removed by the cleanup');
+
+  const [persisted] = store.listSubscriptions(deps);
+  assert.ok(persisted.lastStatus.startsWith('error:'), `the download failure must still surface as an error status, got: ${persisted.lastStatus}`);
+});
+
+test('the intermediate cleanup is best-effort: a vanished/unreadable channel dir never throws and still reports the download failure', async () => {
+  const deps = makeFakeDeps();
+  await addSub(deps);
+  const config = baseConfig();
+
+  run.runList = async () => ({ ok: true, stdout: ndjson([{ id: 'v1', availability: 'public' }]), stderr: '' });
+  // Deliberately never mkdir the channel dir -- cleanupFailedDownloadIntermediates's
+  // own readdirSync will throw ENOENT internally; this proves that failure is
+  // swallowed rather than propagating out of runSubscriptionCycle.
+  run.runDownload = async () => ({ ok: false, code: 1, stdout: '', stderr: '', error: 'yt-dlp exited with code 1' });
+
+  await assert.doesNotReject(ytdlp.runPoll(deps, config));
+
+  const [persisted] = store.listSubscriptions(deps);
+  assert.ok(persisted.lastStatus.startsWith('error:'), `expected the download failure to still surface as an error status, got: ${persisted.lastStatus}`);
+});

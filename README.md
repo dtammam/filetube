@@ -177,6 +177,7 @@ in the UI once enabled.
 | `FILETUBE_YTDLP_DOWNLOAD_DIR` | `<DATA_DIR>/ytdlp-downloads` | Where downloaded videos are saved. |
 | `FILETUBE_YTDLP_VERSION` | (build-time) | Informational only — reflects the `yt-dlp` version pinned into the image. Does not trigger or change an install. |
 | `FILETUBE_YTDLP_MAX_VIDEOS` | `25` | Caps each channel's listing to its newest N videos, so a fresh subscribe (or any re-pull) never attempts a channel's entire back-catalog. `0` = unlimited (consider the whole channel). |
+| `FILETUBE_YTDLP_DOWNLOAD_TIMEOUT_MINUTES` | `180` | Ceiling (minutes) for a single download before it's killed and treated as a failure. Raise this if you download very large/multi-gigabyte videos on a slow connection. Must be an integer from `1` to `1440`; anything else falls back to the default. |
 
 **Recommendation:** point `FILETUBE_YTDLP_DOWNLOAD_DIR` at a dedicated
 directory — not an existing mapped library folder, and not an ancestor

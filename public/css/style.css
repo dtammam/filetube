@@ -1527,10 +1527,16 @@ header {
   background-color: var(--bg-color);
   border: 1px solid var(--border-dark);
   border-radius: var(--radius);
-  max-width: 420px;
+  max-width: 460px;
   width: 92%;
   padding: 20px;
   box-shadow: var(--shadow-lg);
+  box-sizing: border-box;
+  /* v1.15.1 FIX 5: cap the modal's own height and let IT scroll (rather than
+     the page behind it) so a short viewport (a phone in landscape, or a
+     small desktop window) never clips the Download button off-screen. */
+  max-height: 85vh;
+  overflow-y: auto;
 }
 
 .oneoff-modal-header {
@@ -1580,9 +1586,26 @@ header {
   margin-bottom: 10px;
 }
 
+/* v1.15.1 FIX 5: pre-fix, `min-width: 100px` was narrower than the longest
+   option label (e.g. "MP4 (recommended)"), so the closed <select> clipped
+   its own selected-option text -- the box itself was too small for its
+   content, not a wrapping problem. `min-width: 150px` fits every label in
+   ONEOFF_FORMAT_OPTIONS/ONEOFF_QUALITY_OPTIONS/ONEOFF_FILETYPE_OPTIONS in
+   full; `flex-wrap: wrap` above (unchanged) means once three 150px selects
+   no longer fit on one line, the row wraps onto additional lines instead of
+   squeezing each select back down. Also styled to match `.oneoff-modal-field`
+   (the URL input) -- previously these selects had no border/radius/padding
+   of their own, reading as bare native controls next to the styled input. */
 .oneoff-modal-row select {
-  flex: 1;
-  min-width: 100px;
+  flex: 1 1 150px;
+  min-width: 150px;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border: 1px solid var(--border-dark);
+  border-radius: var(--radius);
+  background-color: var(--bg-color);
+  color: var(--text-primary);
+  font-size: 13px;
 }
 
 .oneoff-modal-status {
@@ -1590,6 +1613,16 @@ header {
   color: var(--text-secondary);
   margin: 4px 0 12px;
   min-height: 16px;
+}
+
+/* v1.15.1 FIX 5: a clear, full-width primary call-to-action reads better in
+   this narrow modal than the small inline-flex `.btn` default used
+   everywhere else (header/setup buttons, which sit alongside other controls
+   and should stay compact). */
+.oneoff-modal .btn-primary {
+  width: 100%;
+  justify-content: center;
+  margin-top: 2px;
 }
 
 /* Chrome icons: Material Symbols Outlined SVG used as an alpha mask, painted
@@ -1649,6 +1682,14 @@ header {
    independent of the icon-set system (mirrors .icon-star above) -- no new
    SVG asset is needed across the 4 icon sets for a single header button. */
 .icon-download::before { content: "\2B07"; }
+
+/* v1.15.1 hotfix: "Shuffle again" needs its OWN icon, distinct from
+   "Rescan Files" (both previously used .icon-refresh, indistinguishable on
+   mobile where the buttons collapse to icon-only). Fixed unicode glyph,
+   independent of the icon-set system (mirrors .icon-download/.icon-star
+   above) -- no new SVG asset needed across the 4 icon sets for this single
+   button. U+1F500 TWISTED RIGHTWARDS ARROWS (shuffle glyph). */
+.icon-shuffle::before { content: "\1F500"; }
 
 /* ---- Icon-set axis (data-icons) -------------------------------------------
    Third, orthogonal appearance axis (theme x mode x icon-set). The base rule,
@@ -2024,6 +2065,33 @@ header {
 
   .video-meta {
     font-size: 10px;
+  }
+
+  /* ---- v1.15.1 FIX 5: one-off modal comfortable on a phone -------------
+     Pre-fix: the format/quality/filetype row could still crowd two-across
+     on a narrow phone even after the min-width fix above, and every control
+     was sized for a mouse pointer, not a finger. Stack the three selects
+     one-per-row (each full-width) and give every tappable control in the
+     modal the same 44px comfortable minimum tap-target height used by the
+     Setup/Subscriptions mobile polish (v1.13.0 item 6) above; near-full-width
+     modal with tighter padding so it reads like a native mobile sheet. */
+  .oneoff-modal {
+    width: 94%;
+    padding: 16px;
+  }
+
+  .oneoff-modal-row {
+    flex-direction: column;
+  }
+
+  .oneoff-modal-row select {
+    width: 100%;
+  }
+
+  .oneoff-modal-field,
+  .oneoff-modal-row select,
+  .oneoff-modal .btn-primary {
+    min-height: 44px;
   }
 }
 

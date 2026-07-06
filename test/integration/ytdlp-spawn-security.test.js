@@ -329,6 +329,36 @@ test('runDownload arms a NON-ZERO download timeout (DEFAULT_DOWNLOAD_TIMEOUT_MS)
   assert.equal(capturedDelays[0], run.DEFAULT_DOWNLOAD_TIMEOUT_MS);
 });
 
+// v1.15.1 hotfix: a config with an explicit (parsed) downloadTimeoutMinutes
+// arms the timer at THAT duration, not the fallback default -- proving the
+// config value actually threads all the way to the real spawn timeout, not
+// just the pure `resolveDownloadTimeoutMs` helper in isolation.
+test('runDownload arms the timeout from config.downloadTimeoutMinutes when present, overriding DEFAULT_DOWNLOAD_TIMEOUT_MS', async () => {
+  const spawnChild = stubSpawn();
+  const originalSetTimeout = global.setTimeout;
+  const capturedDelays = [];
+  global.setTimeout = (fn, delay, ...rest) => {
+    capturedDelays.push(delay);
+    return originalSetTimeout(fn, delay, ...rest);
+  };
+  let result;
+  try {
+    const downloadDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-ytdlp-dl-'));
+    const config = { downloadDir, cookiesFile: null, downloadTimeoutMinutes: 5 };
+    const sub = { channelUrl: 'https://www.youtube.com/@x', name: 'x', format: 'video', quality: 'best' };
+    const resultPromise = run.runDownload(sub, config, ['vid1']);
+    const child = spawnChild();
+    child.emit('close', 0, null);
+    result = await resultPromise;
+  } finally {
+    global.setTimeout = originalSetTimeout;
+  }
+  assert.equal(result.ok, true);
+  assert.ok(capturedDelays.length >= 1, 'runDownload must arm a timer');
+  assert.equal(capturedDelays[0], 5 * 60 * 1000, 'the armed delay must reflect config.downloadTimeoutMinutes, not the fallback default');
+  assert.notEqual(capturedDelays[0], run.DEFAULT_DOWNLOAD_TIMEOUT_MS);
+});
+
 test('spawnYtdlp: a simulated timeout resolves cleanly, never hangs, and never leaks the cookies path', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-ytdlp-cookies-'));
