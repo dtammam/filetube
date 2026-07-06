@@ -140,3 +140,51 @@ test('never throws regardless of input shape', () => {
     assert.doesNotThrow(() => validateChannelUrl(input));
   }
 });
+
+// ---- SF5: percent-DECODED ?v=/?list= id params are constrained to a safe --
+// ---- charset -- the raw-metachar check above runs PRE-decode, so a value --
+// ---- like `%3B%20rm%20-rf%20%2F` (decodes to `; rm -rf /`) carries no raw --
+// ---- metacharacter and must be caught here instead. ------------------------
+
+test('rejects a ?v= value whose percent-DECODED form contains shell metacharacters/whitespace', () => {
+  const result = validateChannelUrl('https://www.youtube.com/watch?v=%3B%20rm%20-rf%20%2F');
+  assert.equal(result.ok, false);
+});
+
+test('rejects a ?list= value whose percent-DECODED form contains shell metacharacters/whitespace', () => {
+  const result = validateChannelUrl('https://www.youtube.com/playlist?list=%3B%20rm%20-rf%20%2F');
+  assert.equal(result.ok, false);
+});
+
+test('accepts a normal, already-safe ?v= video id', () => {
+  const result = validateChannelUrl('https://www.youtube.com/watch?v=dQw4w9WgXcQ');
+  assert.equal(result.ok, true);
+});
+
+test('accepts a normal, already-safe ?list= playlist id', () => {
+  const result = validateChannelUrl('https://www.youtube.com/playlist?list=PLabc123XYZ_-9');
+  assert.equal(result.ok, true);
+});
+
+test('rejects a ?v= value that decodes to something over the bounded id length', () => {
+  const huge = 'a'.repeat(200);
+  const result = validateChannelUrl(`https://www.youtube.com/watch?v=${huge}`);
+  assert.equal(result.ok, false);
+});
+
+// ---- SF6: embedded userinfo (user:pass@host) is rejected -------------------
+
+test('rejects a URL with embedded userinfo (user:pass@host)', () => {
+  const result = validateChannelUrl('https://user:pass@www.youtube.com/@x');
+  assert.equal(result.ok, false);
+});
+
+test('rejects a URL with a username but no password', () => {
+  const result = validateChannelUrl('https://user@www.youtube.com/@x');
+  assert.equal(result.ok, false);
+});
+
+test('a normal URL with no userinfo is still accepted', () => {
+  const result = validateChannelUrl('https://www.youtube.com/@x');
+  assert.equal(result.ok, true);
+});

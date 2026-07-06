@@ -249,3 +249,62 @@ test('resolveArchivePath: resolves to a dotfile under the download root', () => 
   assert.ok(archivePath.startsWith(root + path.sep));
   assert.ok(path.basename(archivePath).startsWith('.'));
 });
+
+// ---- SF4: --restrict-filenames + isPathUnder / realpathUnderChannelDir ---
+
+test('buildYtdlpDownloadArgs: includes --restrict-filenames (defense-in-depth against a hostile video title)', () => {
+  const config = makeConfig();
+  const result = args.buildYtdlpDownloadArgs(baseSub(), config);
+  assert.ok(result.includes('--restrict-filenames'));
+});
+
+test('isPathUnder: accepts the root itself and a nested descendant', () => {
+  assert.ok(args.isPathUnder('/data/downloads', '/data/downloads'));
+  assert.ok(args.isPathUnder('/data/downloads/channel/video.mp4', '/data/downloads'));
+});
+
+test('isPathUnder: rejects an escaping path (../ traversal out of the root)', () => {
+  assert.ok(!args.isPathUnder('/data/downloads/../etc/passwd', '/data/downloads'));
+  assert.ok(!args.isPathUnder('/etc/passwd', '/data/downloads'));
+});
+
+test('isPathUnder: rejects a sibling directory whose name merely starts with the root\'s name', () => {
+  // A naive `startsWith(root)` (no separator) would wrongly accept this.
+  assert.ok(!args.isPathUnder('/data/downloads-evil/file.mp4', '/data/downloads'));
+});
+
+test('isPathUnder: rejects non-string input rather than throwing', () => {
+  assert.equal(args.isPathUnder(null, '/data/downloads'), false);
+  assert.equal(args.isPathUnder('/data/downloads', undefined), false);
+  assert.equal(args.isPathUnder('', ''), false);
+});
+
+test('realpathUnderChannelDir: accepts a real file that resolves under the channel dir', () => {
+  const config = makeConfig();
+  const channelDir = args.resolveChannelDir(config, baseSub());
+  fs.mkdirSync(channelDir, { recursive: true });
+  const filePath = path.join(channelDir, 'video.mp4');
+  fs.writeFileSync(filePath, 'x');
+  assert.equal(args.realpathUnderChannelDir(filePath, channelDir), true);
+});
+
+test('realpathUnderChannelDir: fails closed (false, never throws) when the file does not exist', () => {
+  const config = makeConfig();
+  const channelDir = args.resolveChannelDir(config, baseSub());
+  fs.mkdirSync(channelDir, { recursive: true });
+  const missing = path.join(channelDir, 'does-not-exist.mp4');
+  assert.doesNotThrow(() => args.realpathUnderChannelDir(missing, channelDir));
+  assert.equal(args.realpathUnderChannelDir(missing, channelDir), false);
+});
+
+test('realpathUnderChannelDir: rejects a symlink planted inside the channel dir that points outside it', () => {
+  const config = makeConfig();
+  const channelDir = args.resolveChannelDir(config, baseSub());
+  fs.mkdirSync(channelDir, { recursive: true });
+  const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-ytdlp-outside-'));
+  const outsideFile = path.join(outsideDir, 'secret.txt');
+  fs.writeFileSync(outsideFile, 'secret');
+  const linkPath = path.join(channelDir, 'video.mp4');
+  fs.symlinkSync(outsideFile, linkPath);
+  assert.equal(args.realpathUnderChannelDir(linkPath, channelDir), false);
+});
