@@ -464,6 +464,23 @@ header {
   color: var(--text-secondary);
 }
 
+/* Item 1 (v1.15.0): sidebar drag-and-drop folder reordering. The dragged
+   item dims; the row currently under the pointer shows a drop-indicator
+   line (top or bottom half, matching the drop position that will actually
+   be used -- see computeDropIndex in public/js/common.js). Era-theme tokens
+   only, no hardcoded colors. */
+.sidebar-item.dragging {
+  opacity: 0.5;
+}
+
+.sidebar-item.drag-over-before {
+  box-shadow: inset 0 2px 0 0 var(--yt-red);
+}
+
+.sidebar-item.drag-over-after {
+  box-shadow: inset 0 -2px 0 0 var(--yt-red);
+}
+
 /* Main Content Area */
 .main-content {
   flex: 1;
@@ -1280,10 +1297,44 @@ header {
   border: 1px solid var(--border-color);
   border-radius: var(--radius);
   margin-bottom: 10px;
+  cursor: grab;
 }
 
 .folder-item-row:last-child {
   margin-bottom: 0;
+}
+
+/* Item 1 (v1.15.0): Setup folder-list drag-and-drop reordering -- a
+   progressive enhancement over the up/down .reorder-btn fallback (which
+   stays visible/functional for keyboard/tap users). The dragged row dims;
+   the row currently under the pointer shows a drop-indicator line matching
+   the half (top/bottom) that will actually be used on drop (see
+   computeDropIndex in public/js/common.js). Era-theme tokens only. */
+.drag-handle {
+  flex-shrink: 0;
+  width: 16px;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1;
+  letter-spacing: -2px;
+  cursor: grab;
+  user-select: none;
+}
+
+.drag-handle::before {
+  content: "\22EE\22EE";
+}
+
+.folder-item-row.dragging {
+  opacity: 0.5;
+}
+
+.folder-item-row.drag-over-before {
+  box-shadow: inset 0 2px 0 0 var(--yt-red);
+}
+
+.folder-item-row.drag-over-after {
+  box-shadow: inset 0 -2px 0 0 var(--yt-red);
 }
 
 .folder-path-text {

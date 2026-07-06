@@ -523,6 +523,71 @@ function visibleSidebarFolders(folders, settings) {
   return list.filter((f) => !(s[f] && s[f].hiddenFromSidebar));
 }
 
+// ---- Folder drag-and-drop reordering (v1.15.0 item 1) ----------------------
+//
+// These three pure helpers are the SHARED reorder model behind both the
+// native HTML5 drag-and-drop (Setup folder list + left sidebar) and the
+// existing up/down `.reorder-btn` fallback -- they mutate/derive the SAME
+// `configuredFolders`/`folders` array the up/down buttons already swap
+// entries in, so a DnD reorder and an equivalent up/down sequence always
+// converge on the identical persisted order. No server change: the existing
+// `POST /api/config` handler already derives the synthetic Downloads
+// folder's `order` from its POSITION in the submitted `folders` array
+// (never writing it into `db.folders` -- see server.js), so these helpers
+// only need to produce the same reordered `folders` array the up/down path
+// already sends.
+
+// Pure: returns a NEW array with the item at `fromIndex` moved to land at
+// `toIndex` (splice-out + splice-in), leaving every other item's relative
+// order intact and never mutating the input array. Out-of-range indexes are
+// clamped rather than throwing; a no-op (`fromIndex` out of bounds) returns
+// an unchanged copy. This is the core "move item from i to j" primitive
+// shared by the Setup list's row DnD and the sidebar's visible-subset DnD.
+// Exported for node:test.
+function moveArrayItem(arr, fromIndex, toIndex) {
+  const list = Array.isArray(arr) ? arr.slice() : [];
+  if (!Number.isInteger(fromIndex) || fromIndex < 0 || fromIndex >= list.length) return list;
+  const clampedTo = Math.max(0, Math.min(Number.isInteger(toIndex) ? toIndex : fromIndex, list.length - 1));
+  const [item] = list.splice(fromIndex, 1);
+  list.splice(clampedTo, 0, item);
+  return list;
+}
+
+// Pure: converts a drop gesture (source index, the row/item index the user
+// dropped ON, and whether the drop targeted the top/before half of that
+// row vs the bottom/after half -- the visual drop-indicator's own state)
+// into the final index `moveArrayItem` should move the dragged entry to.
+// Accounts for the index shift caused by removing the source item before
+// re-inserting it. Dropping an item onto itself (`fromIndex === targetIndex`)
+// is a no-op (returns `fromIndex`). Exported for node:test.
+function computeDropIndex(fromIndex, targetIndex, insertBefore) {
+  if (fromIndex === targetIndex) return fromIndex;
+  const targetIndexAfterRemoval = fromIndex < targetIndex ? targetIndex - 1 : targetIndex;
+  return insertBefore ? targetIndexAfterRemoval : targetIndexAfterRemoval + 1;
+}
+
+// Pure: rebuilds the FULL folders order after a sidebar drag-and-drop
+// reordered only the VISIBLE subset (`visibleSidebarFolders` above) -- a
+// folder flagged `hiddenFromSidebar` never appears in the sidebar, so it
+// keeps its absolute position in the full array; each slot that held a
+// visible folder is filled, in order, from `newVisibleOrder` (the reordered
+// visible list, e.g. the output of `moveArrayItem` applied to
+// `visibleSidebarFolders(fullFolders, settings)`). `newVisibleOrder` must be
+// a permutation of that same visible list (same length/membership, new
+// order) -- callers derive it that way, never from an unrelated array. This
+// lets the sidebar's immediate-save DnD (no Save button there, unlike the
+// Setup list) submit the SAME full-array shape `POST /api/config` expects,
+// so the synthetic Downloads folder's position -> `folderSettings.order`
+// exactly as the Setup page's up/down buttons already produce. Exported for
+// node:test.
+function rebuildFullFolderOrder(fullFolders, settings, newVisibleOrder) {
+  const full = Array.isArray(fullFolders) ? fullFolders : [];
+  const visibleSet = new Set(visibleSidebarFolders(full, settings));
+  const queue = Array.isArray(newVisibleOrder) ? newVisibleOrder.slice() : [];
+  let i = 0;
+  return full.map((f) => (visibleSet.has(f) ? queue[i++] : f));
+}
+
 // ---- Default landing view (v1.14.0 item 4) ---------------------------------
 
 // Pure: resolves the EFFECTIVE ?root= folder filter for a home-page load,
@@ -1237,6 +1302,7 @@ if (typeof module !== 'undefined' && module.exports) {
     shouldInjectSubscriptionsNav,
     fisherYatesShuffle, sortItems, shouldShowShuffleButton,
     visibleSidebarFolders, resolveDefaultView,
+    moveArrayItem, computeDropIndex, rebuildFullFolderOrder,
     shouldInjectOneOffButton, reduceOneOffFiletypeOptions, buildOneOffDownloadBody,
     formatOneOffStatusText, buildOneOffModal,
     ONEOFF_FORMAT_OPTIONS, ONEOFF_QUALITY_OPTIONS, ONEOFF_DEFAULT_QUALITY,

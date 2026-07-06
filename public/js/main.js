@@ -16,6 +16,15 @@ document.addEventListener('DOMContentLoaded', () => {
   let currentItems = [];
   let folderSettings = {}; // { "<path>": { name, hidden, hiddenFromSidebar } } — for author display, shared with cards
   let currentSort = localStorage.getItem('filetube_sort') || 'newest';
+  // Item 1 (v1.15.0): the FULL folders array (as last received from
+  // GET/POST /api/config, including the synthetic Downloads folder when the
+  // yt-dlp module contributes one) -- kept alongside folderSettings so the
+  // sidebar's drag-and-drop reorder can rebuild the full order after
+  // reordering just the VISIBLE subset (see renderSidebarFolders below).
+  let allFolders = [];
+  // Tracks the source index of an in-progress sidebar drag; module-scoped
+  // (rather than per-render-call) so dragend can always clear it.
+  let sidebarDragSrcIndex = null;
 
   // Parse URL query params
   const urlParams = new URLSearchParams(window.location.search);
@@ -106,24 +115,102 @@ document.addEventListener('DOMContentLoaded', () => {
   // folderSettings[path].hiddenFromSidebar (item 3, v1.14.0) is omitted from
   // this list -- it stays fully browsable via a direct /?root=<path> link,
   // this only controls whether a LINK to it is rendered here.
+  //
+  // Item 1 (v1.15.0): also wires native HTML5 drag-and-drop reordering. The
+  // home sidebar has no Save button, so a drop persists IMMEDIATELY via the
+  // SAME POST /api/config path the Setup page's up/down buttons use: (1) the
+  // reordered VISIBLE subset via moveArrayItem, (2) rebuilt into the FULL
+  // folders order via rebuildFullFolderOrder (a hidden-from-sidebar folder
+  // keeps its absolute position -- it never appears here to be dragged),
+  // (3) POSTed, then the config is re-fetched (GET) so the synthetic
+  // Downloads folder's position-splice (server.js) is reflected. The
+  // up/down buttons on the Setup page remain the keyboard/tap-accessible
+  // fallback for reordering (this sidebar has no such fallback of its own).
   function renderSidebarFolders(folders, settings = {}) {
+    allFolders = Array.isArray(folders) ? folders : [];
     const visibleFolders = visibleSidebarFolders(folders, settings);
     if (visibleFolders.length === 0) {
       sidebarFoldersList.innerHTML = '<div style="padding: 6px 24px; font-style: italic; color: var(--text-secondary);">None</div>';
       return;
     }
 
-    sidebarFoldersList.innerHTML = visibleFolders.map(f => {
+    sidebarFoldersList.innerHTML = visibleFolders.map((f, index) => {
       const folderName = f.split(/[\\/]/).pop() || f;
       const label = (settings[f] && settings[f].name) || folderName;
       const isActive = rootFilter === f ? 'active' : '';
       // ?root= shows everything under the mapped folder, including subfolders.
       return `
-        <a href="/?root=${encodeURIComponent(f)}" class="sidebar-item ${isActive}" title="${escapeHtml(f)}">
+        <a href="/?root=${encodeURIComponent(f)}" class="sidebar-item ${isActive}" data-index="${index}" draggable="true" title="${escapeHtml(f)}">
           <i class="icon-folder"></i> ${escapeHtml(label)}
         </a>
       `;
     }).join('');
+
+    const items = sidebarFoldersList.querySelectorAll('.sidebar-item[data-index]');
+    items.forEach((el) => {
+      el.addEventListener('dragstart', (e) => {
+        sidebarDragSrcIndex = parseInt(el.dataset.index, 10);
+        el.classList.add('dragging');
+        if (e.dataTransfer) {
+          e.dataTransfer.effectAllowed = 'move';
+          // Firefox requires data to be set for the drag to initiate at all.
+          e.dataTransfer.setData('text/plain', String(sidebarDragSrcIndex));
+        }
+      });
+      el.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+        const rect = el.getBoundingClientRect();
+        const before = (e.clientY - rect.top) < rect.height / 2;
+        el.classList.toggle('drag-over-before', before);
+        el.classList.toggle('drag-over-after', !before);
+      });
+      el.addEventListener('dragleave', () => {
+        el.classList.remove('drag-over-before', 'drag-over-after');
+      });
+      el.addEventListener('drop', async (e) => {
+        e.preventDefault();
+        const targetIndex = parseInt(el.dataset.index, 10);
+        const before = el.classList.contains('drag-over-before');
+        el.classList.remove('drag-over-before', 'drag-over-after');
+        const fromIndex = sidebarDragSrcIndex;
+        sidebarDragSrcIndex = null;
+        if (fromIndex === null || Number.isNaN(targetIndex)) return;
+        const toIndex = computeDropIndex(fromIndex, targetIndex, before);
+        const newVisibleOrder = moveArrayItem(visibleFolders, fromIndex, toIndex);
+        const rebuiltFull = rebuildFullFolderOrder(allFolders, settings, newVisibleOrder);
+        await persistSidebarFolderOrder(rebuiltFull, settings);
+      });
+      el.addEventListener('dragend', () => {
+        sidebarDragSrcIndex = null;
+        items.forEach((r) => r.classList.remove('dragging', 'drag-over-before', 'drag-over-after'));
+      });
+    });
+  }
+
+  // Persists a sidebar drag-and-drop reorder via the existing
+  // POST /api/config path (same one the Setup page's Save button uses), then
+  // re-fetches GET /api/config and re-renders the sidebar so the synthetic
+  // Downloads folder's GET-time position splice (server.js) is reflected.
+  async function persistSidebarFolderOrder(newFolders, settings) {
+    try {
+      const postRes = await fetch('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ folders: newFolders, folderSettings: settings })
+      });
+      const postData = await postRes.json();
+      if (!postData.success) {
+        console.error('Failed to persist sidebar folder reorder:', postData.error);
+        return;
+      }
+      const getRes = await fetch('/api/config');
+      const getData = await getRes.json();
+      folderSettings = getData.folderSettings || {};
+      renderSidebarFolders(getData.folders || [], folderSettings);
+    } catch (err) {
+      console.error('Failed to persist sidebar folder reorder:', err);
+    }
   }
 
   // Sort the current items by the selected option, then render. `random`
