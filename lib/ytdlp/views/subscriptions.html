@@ -137,6 +137,16 @@
           <small id="sub-members-only-error" class="field-error"></small>
         </div>
 
+        <!-- v1.15.0 item 4: per-subscription skip-Shorts toggle for a NEW
+             subscription -- default unchecked (download everything). Sent as
+             `skipShorts` in the add-subscription POST body. -->
+        <div class="form-group">
+          <label style="display:flex; align-items:center; gap:8px; font-weight:normal;">
+            <input type="checkbox" id="sub-add-skipshorts" />
+            Skip Shorts (exclude this channel's YouTube Shorts)
+          </label>
+        </div>
+
         <div style="display:flex; justify-content:space-between; align-items:center; margin-top:16px; border-top:1px solid var(--border-color); padding-top:16px; flex-wrap:wrap; gap:10px;">
           <span id="sub-repull-status" style="font-weight:bold; color: var(--text-secondary);" aria-live="polite"></span>
           <button class="btn" id="sub-repull-all-btn" type="button">Re-pull all now</button>

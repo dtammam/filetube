@@ -444,6 +444,42 @@ test('createSubscriptionRow: the inline edit form starts hidden and Save collect
   assert.strictEqual(patch.maxVideos, 5);
 });
 
+// ---- v1.15.0 item 4 UI: per-subscription skip-Shorts edit-panel toggle -----
+
+test('createSubscriptionRow: the edit panel includes a Skip Shorts checkbox reflecting the subscription\'s persisted value', () => {
+  const skipping = { id: 's1', name: 'A', channelUrl: 'https://www.youtube.com/@a', skipShorts: true };
+  const skippingRow = createSubscriptionRow(skipping, fakeDoc, {});
+  const skippingPanel = skippingRow.children.find((el) => el.className === 'sub-edit-panel');
+  const skippingCheck = [...skippingPanel.walk()].find((el) => el.tagName === 'INPUT' && el.type === 'checkbox');
+  assert.ok(skippingCheck, 'a Skip Shorts checkbox must exist in the edit panel');
+  assert.strictEqual(skippingCheck.checked, true, 'a subscription with skipShorts:true must render checked');
+
+  const notSkipping = { id: 's2', name: 'B', channelUrl: 'https://www.youtube.com/@b', skipShorts: false };
+  const notSkippingRow = createSubscriptionRow(notSkipping, fakeDoc, {});
+  const notSkippingPanel = notSkippingRow.children.find((el) => el.className === 'sub-edit-panel');
+  const notSkippingCheck = [...notSkippingPanel.walk()].find((el) => el.tagName === 'INPUT' && el.type === 'checkbox');
+  assert.strictEqual(notSkippingCheck.checked, false, 'a subscription with skipShorts:false (or unset) must render unchecked by default');
+});
+
+test('createSubscriptionRow: Save always includes skipShorts (true or false) in the patch, reflecting the checkbox state', () => {
+  const sub = { id: 'e4', name: 'C', channelUrl: 'https://www.youtube.com/@c', skipShorts: false };
+  const saveCalls = [];
+  const row = createSubscriptionRow(sub, fakeDoc, { onSaveEdit: (id, patch) => saveCalls.push([id, patch]) });
+  const editPanel = row.children.find((el) => el.className === 'sub-edit-panel');
+  const skipShortsCheck = [...editPanel.walk()].find((el) => el.tagName === 'INPUT' && el.type === 'checkbox');
+  const saveBtn = [...editPanel.walk()].find((el) => el.tagName === 'BUTTON' && el.textContent === 'Save');
+
+  // User checks the box, then saves -- the patch must reflect true.
+  skipShortsCheck.checked = true;
+  saveBtn.click();
+  assert.strictEqual(saveCalls[0][1].skipShorts, true);
+
+  // Unchecking and saving again must send false, not omit the field.
+  skipShortsCheck.checked = false;
+  saveBtn.click();
+  assert.strictEqual(saveCalls[1][1].skipShorts, false);
+});
+
 test('createSubscriptionRow: the edit panel\'s filetype select defaults to the recommended option (mp4/mp3) when the subscription has none set', () => {
   const sub = { id: 'e3', name: 'C', channelUrl: 'https://www.youtube.com/@c', format: 'audio' };
   const row = createSubscriptionRow(sub, fakeDoc, {});
@@ -538,7 +574,9 @@ test('createSubscriptionRow: a hostile subscription name is rendered as inert TE
   assert.ok(!tagNames.has('SCRIPT'), 'no <script> element must ever be created from subscription data');
   assert.ok(!tagNames.has('IMG'), 'no <img> element must ever be created from subscription data');
   for (const tag of tagNames) {
-    assert.ok(['DIV', 'BUTTON', 'SELECT', 'OPTION', 'INPUT'].includes(tag), `unexpected element tag created from row data: ${tag}`);
+    // v1.15.0 item 4 UI: LABEL/SPAN added for the edit panel's Skip Shorts
+    // checkbox + its text label.
+    assert.ok(['DIV', 'BUTTON', 'SELECT', 'OPTION', 'INPUT', 'LABEL', 'SPAN'].includes(tag), `unexpected element tag created from row data: ${tag}`);
   }
 });
 

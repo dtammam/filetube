@@ -1452,6 +1452,95 @@ header {
   gap: 10px;
 }
 
+/* v1.15.0 item 3: one-off download header button + compact modal, built at
+   runtime by public/js/common.js's injectOneOffDownloadButtonIfEnabled(),
+   ONLY when the optional yt-dlp module is enabled. Deliberately its own
+   class names (not a reuse of .modal-backdrop/.modal-content above) since
+   this modal carries a real form, not just a title/body/actions block --
+   kept visually consistent via the same era-theme CSS custom-property
+   tokens (var(--bg-color)/--border-dark/--radius/--text-primary/etc.). */
+.oneoff-modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 2100; /* above the generic .modal-backdrop (2000) -- never hidden behind another dialog */
+}
+
+.oneoff-modal {
+  background-color: var(--bg-color);
+  border: 1px solid var(--border-dark);
+  border-radius: var(--radius);
+  max-width: 420px;
+  width: 92%;
+  padding: 20px;
+  box-shadow: var(--shadow-lg);
+}
+
+.oneoff-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.oneoff-modal-title {
+  font-size: 16px;
+  font-weight: bold;
+  color: var(--text-primary);
+}
+
+.oneoff-modal-close {
+  background: none;
+  border: none;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--text-secondary);
+  padding: 2px 6px;
+}
+
+.oneoff-modal-close:hover {
+  color: var(--text-primary);
+}
+
+.oneoff-modal-field {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-dark);
+  border-radius: var(--radius);
+  background-color: var(--bg-color);
+  color: var(--text-primary);
+  font-size: 13px;
+}
+
+.oneoff-modal-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.oneoff-modal-row select {
+  flex: 1;
+  min-width: 100px;
+}
+
+.oneoff-modal-status {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin: 4px 0 12px;
+  min-height: 16px;
+}
+
 /* Chrome icons: Material Symbols Outlined SVG used as an alpha mask, painted
    in currentColor so they theme across all era x mode combos automatically.
    NOTE: icon-star is intentionally NOT in this group (gold rating, stays ★). */
@@ -1504,6 +1593,11 @@ header {
 
 /* Out of scope: gold rating star — NOT a mask/currentColor icon. Leave as-is. */
 .icon-star::before { content: "★"; }
+
+/* v1.15.0 item 3: one-off download header button icon. Fixed unicode glyph,
+   independent of the icon-set system (mirrors .icon-star above) -- no new
+   SVG asset is needed across the 4 icon sets for a single header button. */
+.icon-download::before { content: "\2B07"; }
 
 /* ---- Icon-set axis (data-icons) -------------------------------------------
    Third, orthogonal appearance axis (theme x mode x icon-set). The base rule,
