@@ -15,6 +15,9 @@
 - [ ] **Random ("feeling lucky") sort** — a new home-library sort option for a fully random order alongside newest/oldest/title/size, ideally with a "shuffle again"/refresh affordance to re-roll. Fun/discovery feature; low risk (additive to the existing sort options).
 - [ ] **Default landing view (Settings)** — a Settings dropdown to choose which view loads on page open: "Most Recent" (the default) or any mapped folder (e.g. Music). Unconfigured falls back to Most Recent; whatever's chosen becomes the first/default view, with all other views still reachable as today. Persisted like the other prefs.
 - [ ] **Persist home view state on back-navigation** — when returning to home from a video (e.g. tapping the top logo), preserve the prior home view + scroll position instead of a hard reload that jumps to the top. Feels jarring today. Likely SPA-style state retention / restore-on-back (bfcache, history state, or a saved scroll offset). Pairs with the prev/next navigation item.
+- [ ] **Rescan should list what it'll transcode (regression)** — the Setup "Save & Rescan" flow used to surface all the videos it would convert/transcode; it no longer does. Restore that feedback so the user can see the pending transcode set before/while it runs. _(bug/regression)_
+- [ ] **Folder management UI is janky — add drag-and-drop reordering** — the mapped-folder management UX needs work; specifically, allow drag-and-drop to reorder folders both in the left sidebar and in the Setup folder list (replacing/augmenting the up/down buttons). Smoother, more direct manipulation.
+- [ ] **Mobile logo = desktop FileTube icon** — use the same FileTube icon/logo from the desktop view in the mobile top-left (currently differs); unify so the top-left brand mark is consistent across desktop and mobile.
 
 ## Shipped
 
