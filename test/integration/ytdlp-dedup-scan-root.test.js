@@ -265,7 +265,7 @@ test('FIX-1 regression (BLOCKER) (c): POST /api/config re-saving an existing (no
   }
 });
 
-test('AC40: a folderSettings rename submitted under the pre-resolve spelling still persists against the resolved key', async () => {
+test('AC40/QW2: a folderSettings rename submitted under a non-canonical spelling persists keyed by the SAME original spelling db.folders uses (not the resolved key)', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-resolve-settings-'));
   try {
     const divergentSpelling = `${dir}${path.sep}.`;
@@ -279,9 +279,55 @@ test('AC40: a folderSettings rename submitted under the pre-resolve spelling sti
     });
     const body = await res.json();
     assert.equal(res.status, 200);
+    // QW2 (fast-follow, correctness fix): FIX-1 already reverted `db.folders`
+    // to store the ORIGINAL submitted spelling -- so `folderSettings` must be
+    // keyed by that SAME original spelling, not by `path.resolve`'s
+    // comparison key, or the client's `item.rootFolder`-keyed lookups
+    // (resolveChannelName, the sidebar, the GET /api/videos hidden-folder
+    // filter) can never find it.
+    assert.equal(body.folders[0], divergentSpelling, 'sanity: db.folders keeps the original, non-canonical spelling (FIX-1)');
     const resolved = path.resolve(dir);
-    assert.ok(body.folderSettings[resolved], 'the settings entry must be keyed by the RESOLVED path, even though submitted under a pre-resolve spelling');
-    assert.equal(body.folderSettings[resolved].name, 'My Custom Name');
+    assert.equal(body.folderSettings[resolved], undefined, 'QW2: the settings entry must NOT be keyed by the resolved path');
+    assert.ok(body.folderSettings[divergentSpelling], 'QW2: the settings entry must be keyed by the SAME original spelling db.folders uses');
+    assert.equal(body.folderSettings[divergentSpelling].name, 'My Custom Name');
+
+    const persisted = loadDatabase();
+    assert.equal(persisted.folders[0], divergentSpelling);
+    assert.equal(persisted.folderSettings[resolved], undefined, 'QW2: db.folderSettings on disk must not be keyed by the resolved path either');
+    assert.ok(persisted.folderSettings[divergentSpelling], 'QW2: db.folderSettings on disk must be keyed by the original spelling');
+    assert.equal(persisted.folderSettings[divergentSpelling].name, 'My Custom Name');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+    await updateDatabase((db) => { db.folders = []; db.folderSettings = {}; return true; });
+  }
+});
+
+test('QW2: a rename on a non-canonical folder spelling round-trips AND is reachable by the item.rootFolder lookup the client actually uses', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-resolve-settings-reach-'));
+  try {
+    const divergentSpelling = `${dir}${path.sep}.`;
+
+    const res = await fetch(`${base}/api/config`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        folders: [divergentSpelling],
+        folderSettings: { [divergentSpelling]: { name: 'Renamed Folder', hidden: false } },
+      }),
+    });
+    assert.equal(res.status, 200);
+
+    // A GET /api/config round-trip (what the settings page actually does on
+    // load) must surface the rename under the exact same key `db.folders`
+    // holds -- this is the key the client's `resolveChannelName` looks up via
+    // `item.rootFolder` (server.js: an indexed file's `rootFolder` is set to
+    // the raw, as-scanned `db.folders` entry, i.e. `divergentSpelling` here,
+    // never its resolved form).
+    const getRes = await fetch(`${base}/api/config`);
+    const getBody = await getRes.json();
+    assert.ok(getBody.folders.includes(divergentSpelling), 'sanity: db.folders still holds the original spelling');
+    assert.ok(getBody.folderSettings[divergentSpelling], 'QW2: the rename must be reachable keyed by the exact db.folders spelling (item.rootFolder)');
+    assert.equal(getBody.folderSettings[divergentSpelling].name, 'Renamed Folder');
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
     await updateDatabase((db) => { db.folders = []; db.folderSettings = {}; return true; });

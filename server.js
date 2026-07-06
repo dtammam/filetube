@@ -1439,6 +1439,21 @@ app.post('/api/config', async (req, res) => {
   // original so the settings lookup below still finds it, independent of
   // `validFolders` now holding un-resolved spellings.
   const resolvedFromOriginal = new Map();
+  // QW2 (fast-follow, correctness fix): resolved key -> the ORIGINAL
+  // (trimmed, as-submitted) spelling that actually survived into
+  // `validFolders` for that resolved root. `db.folders` (via FIX-1) stores
+  // the original submitted spelling, not the resolved one -- so
+  // `db.folderSettings` must be keyed the SAME way, or a non-canonical
+  // spelling (trailing separator, relative path, a `.`/`..` segment -- not
+  // symlinks, those are a separate FR-G concern) ends up with `db.folders`
+  // and `db.folderSettings` keyed by two DIFFERENT strings. The client's
+  // rename/hidden lookups (`resolveChannelName` in public/js/common.js,
+  // public/js/main.js, and the GET /api/videos hidden-folder filter below)
+  // all index `folderSettings` by the RAW as-scanned spelling
+  // (`item.rootFolder`, which comes from `db.folders`) -- so a resolved-key
+  // mismatch here made the setting silently unreachable, even though it was
+  // faithfully persisted.
+  const originalByResolved = new Map();
   for (const folder of folders) {
     if (typeof folder !== 'string') continue;
     const trimmed = folder.trim();
@@ -1461,6 +1476,7 @@ app.post('/api/config', async (req, res) => {
     // is untouched by this and still persists via `cleanSettings` below.
     if (syntheticRoots.has(resolved)) continue;
     validFolders.push(trimmed);
+    originalByResolved.set(resolved, trimmed); // QW2
   }
 
   // Keep per-folder settings (display name / hidden), pruned to folders that
@@ -1471,7 +1487,16 @@ app.post('/api/config', async (req, res) => {
       if (!s || typeof s !== 'object') continue;
       const resolvedKey = resolvedFromOriginal.get(key) || path.resolve(key);
       if (!seenResolved.has(resolvedKey) && !syntheticRoots.has(resolvedKey)) continue;
-      cleanSettings[resolvedKey] = {
+      // QW2: the dedup/synthetic-root MEMBERSHIP CHECK above stays keyed by
+      // the resolved path (that part was already correct) -- but the key we
+      // actually STORE under matches `db.folders`' spelling for that root: a
+      // synthetic root (never in `db.folders`, always already a resolved
+      // path from `extraScanRoots`) keeps the resolved key unchanged; a real
+      // `db.folders` entry is stored under the SAME original spelling that
+      // survived into `validFolders`, so the client's `item.rootFolder`
+      // lookups can actually find it.
+      const storageKey = syntheticRoots.has(resolvedKey) ? resolvedKey : (originalByResolved.get(resolvedKey) || resolvedKey);
+      cleanSettings[storageKey] = {
         name: typeof s.name === 'string' ? s.name.trim() : '',
         hidden: !!s.hidden
       };

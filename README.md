@@ -170,6 +170,10 @@ in the UI once enabled.
 | `FILETUBE_YTDLP_VERSION` | (build-time) | Informational only — reflects the `yt-dlp` version pinned into the image. Does not trigger or change an install. |
 | `FILETUBE_YTDLP_MAX_VIDEOS` | `25` | Caps each channel's listing to its newest N videos, so a fresh subscribe (or any re-pull) never attempts a channel's entire back-catalog. `0` = unlimited (consider the whole channel). |
 
+**Recommendation:** point `FILETUBE_YTDLP_DOWNLOAD_DIR` at a dedicated
+directory — not an existing mapped library folder, and not an ancestor
+directory of one.
+
 ### Members-only / age-gated content
 
 Members-only and age-gated videos require cookies from a logged-in YouTube

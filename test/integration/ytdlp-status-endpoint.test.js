@@ -198,6 +198,67 @@ test('FIX-6 regression: deleting a subscription MID-DOWNLOAD -- once the downloa
   }
 });
 
+// ---- QW1 (fast-follow): a NON-TERMINAL onProgress patch arriving after a --
+// mid-download delete must not resurrect the subscription either -- FIX-6
+// only guarded the cycle's own terminal write; QW1 closes the same window
+// for every in-flight progress patch.
+
+test('QW1 regression: a progress patch arriving AFTER a subscription is deleted mid-download does not resurrect it in the status snapshot', async () => {
+  const deps = makeFakeDeps();
+  const sub = await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@deletemidprogress', format: 'video' });
+
+  let resolveDownload;
+  let capturedOnProgress;
+  run.runList = async () => ({
+    ok: true,
+    stdout: JSON.stringify({ id: 'vid1', extractor_key: 'Youtube', availability: 'public' }),
+    stderr: '',
+  });
+  run.runDownload = (subArg, config, targetIds, opts) => {
+    capturedOnProgress = opts.onProgress;
+    return new Promise((resolve) => {
+      resolveDownload = () => resolve({ ok: true, code: 0, stdout: '', stderr: '' });
+    });
+  };
+
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    const pollPromise = ytdlp.runPoll(deps, enabledConfig());
+    // Give the poll a moment to reach the in-flight downloading state and
+    // capture the cycle's onProgress callback.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    const midSnap = await (await fetch(`${base}/api/subscriptions/status`)).json();
+    assert.ok(midSnap.subscriptions[sub.id], 'sanity: the subscription must be live/in-flight before the delete');
+
+    // Delete the subscription WHILE its download is still in flight.
+    const delRes = await fetch(`${base}/api/subscriptions/${sub.id}`, { method: 'DELETE' });
+    assert.equal(delRes.status, 200);
+
+    const rightAfterDeleteSnap = await (await fetch(`${base}/api/subscriptions/status`)).json();
+    assert.equal(rightAfterDeleteSnap.subscriptions[sub.id], undefined, 'the entry must be gone immediately after delete');
+
+    // A yt-dlp progress line arrives AFTER the delete but BEFORE the cycle's
+    // own terminal write -- pre-fix, the unguarded `onProgress` callback
+    // would have called `activity.setSubscription(sub.id, ...)` directly and
+    // briefly re-created the deleted id's live entry.
+    capturedOnProgress({ state: 'downloading', percent: 55, title: 'Late Progress' });
+
+    const afterProgressSnap = await (await fetch(`${base}/api/subscriptions/status`)).json();
+    assert.equal(afterProgressSnap.subscriptions[sub.id], undefined, 'QW1: a non-terminal onProgress patch must NOT resurrect a deleted subscription');
+
+    // Let the in-flight download finish (its own terminal write is already
+    // guarded by FIX-6) and re-confirm the entry stays gone.
+    resolveDownload();
+    await pollPromise;
+
+    const afterFinishSnap = await (await fetch(`${base}/api/subscriptions/status`)).json();
+    assert.equal(afterFinishSnap.subscriptions[sub.id], undefined, 'the deleted subscription must remain absent once the download finishes');
+  } finally {
+    await close();
+  }
+});
+
 // ---- clearSubscription: a deleted subscription drops out of the snapshot --
 
 test('deleting a subscription clears its live entry from the status snapshot', async () => {
