@@ -335,7 +335,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   rescanBtn.addEventListener('click', async () => {
-    rescanBtn.innerHTML = '<i class="icon-refresh"></i> Scanning...';
+    rescanBtn.innerHTML = '<i class="icon-refresh"></i> <span class="btn-label">Scanning...</span>';
     rescanBtn.disabled = true;
     try {
       const res = await fetch('/api/scan', { method: 'POST' });
@@ -344,13 +344,13 @@ document.addEventListener('DOMContentLoaded', () => {
         window.location.reload();
       } else {
         alert('Failed to rescan: ' + data.error);
-        rescanBtn.innerHTML = '<i class="icon-refresh"></i> Rescan Files';
+        rescanBtn.innerHTML = '<i class="icon-refresh"></i> <span class="btn-label">Rescan Files</span>';
         rescanBtn.disabled = false;
       }
     } catch (err) {
       console.error(err);
       alert('Network error trigger scanner.');
-      rescanBtn.innerHTML = '<i class="icon-refresh"></i> Rescan Files';
+      rescanBtn.innerHTML = '<i class="icon-refresh"></i> <span class="btn-label">Rescan Files</span>';
       rescanBtn.disabled = false;
     }
   });

@@ -1970,6 +1970,61 @@ header {
   .sub-row-actions {
     align-self: flex-end;
   }
+
+  /* ---- v1.15.0 item 2: home-page sort-row overflow fix -----------------
+     Pre-fix: `.section-title` was a single non-wrapping flex row of
+     [heading + .section-actions], and `.section-actions` (sort <select> +
+     "Shuffle again" + "Rescan Files") was a single non-wrapping flex row too
+     -- on a ~375-414px phone the combined width overflowed the viewport and
+     the last button (Shuffle again / Rescan Files) was clipped off-screen.
+     Fix: let the heading take its own full-width line, then let the actions
+     row wrap onto (and within) the line(s) below it, and shrink the button
+     labels to icon-only so the row fits comfortably instead of relying on
+     wrapping alone. */
+  .section-title {
+    flex-wrap: wrap;
+  }
+
+  .section-actions {
+    flex-wrap: wrap;
+    width: 100%;
+  }
+
+  /* Icon-only "Shuffle again" / "Rescan Files" on phones -- the icon (with
+     its title/aria-label) still fully identifies the action; the text label
+     is what was pushing the row past the viewport width. */
+  .section-actions .btn-label {
+    display: none;
+  }
+
+  .section-actions .btn {
+    min-width: 32px;
+    justify-content: center;
+  }
+
+  /* ---- v1.15.0 item 2: tighter video-card grid on phones ---------------
+     Pre-fix: `.video-grid` used the desktop `minmax(210px, 1fr)` / 20px gap
+     everywhere, so a ~375-414px phone only fit a single (oversized-feeling)
+     column. Tighten the column minimum + gap + card text so 2 columns fit
+     comfortably without feeling cramped, while desktop (this rule is scoped
+     inside the 768px query) is untouched. */
+  .video-grid {
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 12px;
+  }
+
+  .video-title {
+    font-size: 12px;
+    max-height: 31px;
+  }
+
+  .video-uploader {
+    font-size: 11px;
+  }
+
+  .video-meta {
+    font-size: 10px;
+  }
 }
 
 /* In landscape on a phone, the 16:9 player can fill the viewport; hide the fixed

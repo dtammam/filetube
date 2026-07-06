@@ -20,8 +20,18 @@ const PORT = process.env.PORT || 3000;
 const DATA_DIR = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : (fs.existsSync('/app/data') ? '/app/data' : __dirname);
 const DB_FILE = path.join(DATA_DIR, 'db.json');
 const THUMBNAIL_DIR = path.join(DATA_DIR, '.thumbnails');
+
+// Resolve the transcode cache directory: `TRANSCODE_DIR` env override (resolved
+// to an absolute path) takes precedence; otherwise default to `<dataDir>/
+// transcoded` (unchanged default). Pure/testable — takes `env`/`dataDir`
+// explicitly instead of reading `process.env`/`DATA_DIR` directly, mirroring
+// the `parseCacheCap`-style env-parsing convention used elsewhere in this file.
+function resolveTranscodeDir(env, dataDir) {
+  const raw = env && env.TRANSCODE_DIR;
+  return raw ? path.resolve(raw) : path.join(dataDir, 'transcoded');
+}
 // Browser-incompatible containers (e.g. AVI) are pre-transcoded to MP4 here on scan.
-const TRANSCODE_DIR = path.join(DATA_DIR, 'transcoded');
+const TRANSCODE_DIR = resolveTranscodeDir(process.env, DATA_DIR);
 
 // Create directories if they don't exist
 if (!fs.existsSync(DATA_DIR)) {
@@ -32,6 +42,15 @@ if (!fs.existsSync(THUMBNAIL_DIR)) {
 }
 if (!fs.existsSync(TRANSCODE_DIR)) {
   fs.mkdirSync(TRANSCODE_DIR, { recursive: true });
+}
+// Writability guard (AC7.4): a custom TRANSCODE_DIR (e.g. external/NFS
+// storage) that exists but isn't writable must degrade gracefully (log
+// clearly; per-file transcode failures are already handled) rather than
+// crash the whole process at boot.
+try {
+  fs.accessSync(TRANSCODE_DIR, fs.constants.W_OK);
+} catch (e) {
+  console.error(`Transcode cache directory is not writable: ${TRANSCODE_DIR} (${e.message}). On-demand transcoding will fail until this is fixed.`);
 }
 
 // Default automation/cache-housekeeping settings. `0` means "Off" for
@@ -216,6 +235,28 @@ function parseCacheCap(raw) {
   return n;
 }
 const TRANSCODE_CACHE_MAX_BYTES = parseCacheCap(process.env.TRANSCODE_CACHE_MAX_BYTES);
+
+// ---- Opt-in higher CRF (item 7, v1.15.0) ----
+// x264 CRF: lower = higher quality/larger files, higher = smaller files/lower
+// quality. Default (23) is unchanged for everyone who doesn't opt in.
+const DEFAULT_CRF = 23;
+const MIN_CRF = 1;
+const MAX_CRF = 51; // x264's valid CRF range
+
+// Parse TRANSCODE_CRF from an env value; fall back to the default (with a
+// logged warning) on anything invalid (unset, empty, non-integer, out of the
+// x264 [1, 51] range) so a bad env value can never crash startup or produce a
+// degenerate encode.
+function parseCrf(raw) {
+  if (raw === undefined || raw === null || raw === '') return DEFAULT_CRF;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < MIN_CRF || n > MAX_CRF) {
+    console.warn(`Invalid TRANSCODE_CRF value "${raw}" -- falling back to the default CRF (${DEFAULT_CRF}).`);
+    return DEFAULT_CRF;
+  }
+  return n;
+}
+const TRANSCODE_CRF = parseCrf(process.env.TRANSCODE_CRF);
 
 // Pure: given files [{path, size, atimeMs}], return the paths to delete so the
 // total size drops to <= maxBytes. Never returns a *.tmp.mp4 (in-flight write)
@@ -688,7 +729,7 @@ function processTranscodeQueue() {
   // ultrafast + yuv420p: fastest conversion, broadly compatible (incl. iOS Safari).
   const args = [
     '-i', srcPath,
-    '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23', '-pix_fmt', 'yuv420p',
+    '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', String(TRANSCODE_CRF), '-pix_fmt', 'yuv420p',
     '-c:a', 'aac', '-b:a', '160k', '-ac', '2',
     '-movflags', '+faststart',
     '-y', tmpPath
@@ -2035,7 +2076,7 @@ function streamLiveTranscode(req, res, item) {
   if (start > 0) args.push('-ss', String(start));
   args.push(
     '-i', srcPath,
-    '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23', '-pix_fmt', 'yuv420p',
+    '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', String(TRANSCODE_CRF), '-pix_fmt', 'yuv420p',
     '-c:a', 'aac', '-b:a', '160k', '-ac', '2',
     '-movflags', 'frag_keyframe+empty_moov+default_base_moof',
     '-f', 'mp4', 'pipe:1'
@@ -2213,6 +2254,8 @@ module.exports = {
   reconcileTranscode,
   parseFfprobeTags,
   parseCacheCap,
+  resolveTranscodeDir,
+  parseCrf,
   selectEvictions,
   cleanupOrphanTmp,
   cleanupOrphanDbTmp,
@@ -2234,6 +2277,8 @@ module.exports = {
   currentScanTimer,
   currentDeferredRescanTimer,
   TRANSCODE_CACHE_MAX_BYTES,
+  TRANSCODE_CRF,
+  TRANSCODE_DIR,
   VIDEO_EXTENSIONS,
   AUDIO_EXTENSIONS,
   TRANSCODE_EXTENSIONS,
