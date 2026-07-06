@@ -8,8 +8,18 @@
 //   - Enabled: a file placed directly in `FILETUBE_YTDLP_DOWNLOAD_DIR` is
 //     scanned/indexed by the EXISTING scanner with zero scanner changes
 //     (AC17), even though the directory was NEVER added to `db.folders`.
-//   - `GET /api/config` never lists the download dir (it reads/writes only
-//     `db.folders`, which never contains it) -- closes C7(ii).
+//   - `db.folders` (the persisted array) never lists the download dir --
+//     closes C3+C7(i). NOTE (v1.12.0, FR-G part 2, Dean-approved): the prior
+//     C7(ii) ("`GET /api/config` never lists a folder the operator didn't
+//     add") is INTENTIONALLY SOFTENED starting v1.12.0 -- the download dir
+//     now DOES appear in the `GET /api/config` RESPONSE as a synthetic,
+//     display-only folder (merged in, never persisted into `db.folders`; see
+//     `test/integration/ytdlp-synthetic-folder.test.js` for the dedicated
+//     coverage of that behavior). The invariant this file keeps proving is
+//     the one that actually matters for C3/C7's original intent: the
+//     download dir is never WRITTEN to `db.folders`, so a `POST
+//     /api/config` save can never evict it and it carries no scan/prune
+//     authority of its own -- `extraScanRoots()` remains authoritative.
 //   - Disabled AND the directory was never created (fresh-install case):
 //     `extraScanRoots()` contributes nothing, so `currentFolders` is exactly
 //     `db.folders` -- byte-identical to a never-enabled install (ACs 1-6).
@@ -289,9 +299,15 @@ test('D2: an upgraded db.json with a stale downloadDir entry in db.folders is mi
     const migratedDb = loadDatabase();
     assert.ok(!migratedDb.folders.includes(upgradeDir), 'the stale downloadDir entry must be removed from db.folders');
 
+    // FR-G part 2 (v1.12.0, Dean-approved C7(ii) softening): the migrated-out
+    // dir DOES still appear in the GET /api/config RESPONSE -- but only as
+    // the synthetic, display-only merge (derived fresh from extraScanRoots
+    // on every request), never because it was re-added to db.folders (which
+    // migratedDb.folders above already proved stays clean).
     const configRes = await fetch(`${base}/api/config`);
     const configBody = await configRes.json();
-    assert.ok(!configBody.folders.includes(upgradeDir), 'GET /api/config must never surface the migrated-out downloadDir');
+    assert.ok(configBody.folders.includes(path.resolve(upgradeDir)), 'GET /api/config must surface the migrated dir as the FR-G synthetic folder (not because it was re-added to db.folders)');
+    assert.ok(!loadDatabase().folders.includes(upgradeDir), 'the underlying db.folders must still never contain it -- the GET response merge is display-only');
 
     // Content must still be scanned -- via extraScanRoots, independent of
     // db.folders now being clean.
@@ -323,10 +339,14 @@ test('enabled: a file placed directly in FILETUBE_YTDLP_DOWNLOAD_DIR is scanned/
     assert.ok(paths.includes(filePath), 'the file in the module-owned download dir must be indexed by the existing scanner');
     assert.ok(!(db.folders || []).includes(downloadDir), 'downloadDir must NEVER be written into db.folders (C3+C7)');
 
-    // C7(ii): GET /api/config never surfaces a folder the operator never added.
+    // FR-G part 2 (v1.12.0, Dean-approved C7(ii) softening): GET /api/config
+    // NOW surfaces the module's download dir in its response folders array,
+    // as a synthetic, display-only merge -- but db.folders (asserted above)
+    // still never contains it, so it still carries no persisted-config
+    // authority and a POST /api/config save can never evict it.
     const configRes = await fetch(`${base}/api/config`);
     const configBody = await configRes.json();
-    assert.ok(!configBody.folders.includes(downloadDir), 'GET /api/config must never list the module-owned download dir');
+    assert.ok(configBody.folders.includes(path.resolve(downloadDir)), 'GET /api/config must surface the module-owned download dir as the FR-G synthetic folder');
   } finally {
     delete process.env.FILETUBE_YTDLP_ENABLED;
     delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
