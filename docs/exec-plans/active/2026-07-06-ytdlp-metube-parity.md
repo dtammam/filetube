@@ -971,13 +971,46 @@ gate.
 
 ## Task breakdown
 
-(To be filled by engineering-manager, after Design. Likely multiple
-independently-committable software-developer tasks: server endpoints
-(one-shot + edit/pause), status/progress parsing + exposure, args/metadata
-builder changes (dropdowns, per-channel N, embed flags), and the two
-bug-fix areas (title cleanup, folder dedup/merge) — each shipping its own
-tests, with the one-shot endpoint, status parser, and folder merge flagged
-for the two-reviewer gate.)
+Formalized by the engineering-manager from the PE's proposed 6-task split
+(adopted verbatim — it already builds up in dependency order). Each task is
+independently committable and ships its own tests. The coordinator owns git;
+SDEs do not commit. Node 22 is the test/verify standard. Sequence T1 → T6.
+
+- **T1 — Lib primitives (pure, no routes).** `args.js` per-sub `maxVideos`
+  precedence in `buildYtdlpListArgs` (FR-C) + `--embed-metadata`/
+  `--embed-thumbnail` for both audio & video in `buildYtdlpDownloadArgs`
+  (FR-H); `url.classifySingleVideo` reusing `validateChannelUrl` (FR-A);
+  `store.updateSubscription` + `maxVideos`/`paused` validation & `ensureYtdlp`
+  backfill (FR-D). Unit tests for C/H/D-validation/classify. The foundation
+  everything downstream builds on. No gate.
+- **T2 — FR-E progress + activity (TWO-REVIEWER GATE).** New
+  `lib/ytdlp/progress.js` (pure `parseProgressLine`) + `lib/ytdlp/activity.js`
+  (ephemeral in-process map); thread `onProgress` through `run.runDownload`/
+  `spawnYtdlpDownload` (download-path `--newline` + stdout/stderr line-split,
+  no accumulation) preserving SF1/SF3/SF7. Unit tests (parser fixtures,
+  activity map, error-entry-has-no-cookies-path).
+- **T3 — Server endpoints + orchestration (`index.js`) (TWO-REVIEWER GATE).**
+  `runExclusive` FIFO spawn-serialization gate, `runOneShot`,
+  `POST /api/ytdlp/download` (FR-A), `PATCH /api/subscriptions/:id` (FR-D),
+  `GET /api/subscriptions/status` (FR-E exposure), activity wiring in the poll
+  loop, `clearSubscription` on delete. Integration tests for A/D/E-exposure +
+  serialization spy + disabled-no-op. Gated on the one-shot user-URL spawn
+  (T3/T4-class security).
+- **T4 — FR-F + FR-G core `server.js` (TWO-REVIEWER GATE).**
+  `cleanDisplayTitle` at line 998; `normalizeScanRoot` + the line-955 merge;
+  `path.resolve` on `POST /api/config` write; display-only synthetic folder in
+  `GET`/`POST /api/config`. Unit + integration tests (F regressions incl.
+  non-yt-dlp untouched; G collapse/distinct/synthetic/self-heal/mount-loss).
+  Gated because it touches core always-on code (folder-merge + realpath).
+- **T5 — UI.** `subscriptions.html` + `client/subscriptions.js`:
+  format/quality dropdowns (FR-B), `maxVideos` input, pause toggle + edit form
+  (FR-D), one-shot form (FR-A), status polling (2.5s) + one-shot rows (FR-E).
+  Every server/user-derived string via `textContent`, never `innerHTML`
+  (XSS). QA-agent review after build-verify (not the full two-reviewer gate).
+- **T6 — FR-I assertion + docs.** Regression test that delete + prune-missing
+  does not re-download an archived video (AC 52) + a README/`ARCHITECTURE.md`
+  archive-persistence note for network-share download dirs (AC 53). No
+  production code change; no gate.
 
 ## Progress log
 
