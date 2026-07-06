@@ -55,6 +55,46 @@ test('buildYtdlpListArgs never embeds the URL into an option (it is its own arra
   }
 });
 
+// ---- buildYtdlpListArgs: --playlist-end bounding (v1.11.1 hotfix) ---------
+//
+// Regression coverage for the production bug: subscribing to a real, large
+// channel used to enumerate its ENTIRE back-catalog with no scope limit at
+// all. `config.maxVideos` (parsed by lib/ytdlp/config.js, default 25) now
+// bounds the LIST pass via `--playlist-end`.
+
+test('buildYtdlpListArgs includes "--playlist-end 25" for the documented default maxVideos', () => {
+  const config = makeConfig({ maxVideos: 25 });
+  const result = args.buildYtdlpListArgs(baseSub(), config);
+  const idx = result.indexOf('--playlist-end');
+  assert.ok(idx >= 0, '--playlist-end should be present by default');
+  assert.equal(result[idx + 1], '25');
+  // Must come before the `--` separator (never after it, where it could be
+  // mistaken for a positional argument).
+  assert.ok(idx < result.indexOf('--'), '--playlist-end must precede the "--" separator');
+});
+
+test('buildYtdlpListArgs includes "--playlist-end <N>" for a configured, non-default maxVideos', () => {
+  const config = makeConfig({ maxVideos: 100 });
+  const result = args.buildYtdlpListArgs(baseSub(), config);
+  const idx = result.indexOf('--playlist-end');
+  assert.ok(idx >= 0);
+  assert.equal(result[idx + 1], '100');
+});
+
+test('buildYtdlpListArgs OMITS --playlist-end entirely when maxVideos is 0 (unlimited)', () => {
+  const config = makeConfig({ maxVideos: 0 });
+  const result = args.buildYtdlpListArgs(baseSub(), config);
+  assert.ok(!result.includes('--playlist-end'), 'maxVideos: 0 must mean no bound at all');
+});
+
+test('buildYtdlpListArgs OMITS --playlist-end when maxVideos is missing/malformed (fails safe to no limit)', () => {
+  for (const bad of [undefined, null, -1, 1.5, 'abc', NaN]) {
+    const config = makeConfig({ maxVideos: bad });
+    const result = args.buildYtdlpListArgs(baseSub(), config);
+    assert.ok(!result.includes('--playlist-end'), `maxVideos=${JSON.stringify(bad)} should omit --playlist-end`);
+  }
+});
+
 // ---- buildYtdlpDownloadArgs: audio vs video, quality default -------------
 //
 // C1 (T4 fix round): `buildYtdlpDownloadArgs(sub, config, targetIds)` now

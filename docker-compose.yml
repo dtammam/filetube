@@ -12,11 +12,12 @@ services:
       PORT: 3000
       NODE_ENV: production
       # Optional: YouTube subscriptions (yt-dlp) -- off by default, additive.
-      # Uncomment to enable; see .env.example / README.md for all 5 vars.
+      # Uncomment to enable; see .env.example / README.md for all vars.
       # FILETUBE_YTDLP_ENABLED: "true"
       # FILETUBE_YTDLP_COOKIES_FILE: /app/data/cookies.txt
       # FILETUBE_YTDLP_POLL_MINUTES: 60
       # FILETUBE_YTDLP_DOWNLOAD_DIR: /app/data/ytdlp-downloads
+      # FILETUBE_YTDLP_MAX_VIDEOS: 25
     volumes:
       # Persists configuration, db.json, and thumbnails
       - ./data:/app/data

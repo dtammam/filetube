@@ -96,10 +96,41 @@ test('parseYtdlpConfig: never throws regardless of input shape', () => {
     FILETUBE_YTDLP_COOKIES_FILE: 123,
     FILETUBE_YTDLP_DOWNLOAD_DIR: false,
     FILETUBE_YTDLP_VERSION: NaN,
+    FILETUBE_YTDLP_MAX_VIDEOS: {},
   }];
   for (const input of inputs) {
     assert.doesNotThrow(() => parseYtdlpConfig(input), `should not throw for ${JSON.stringify(input)}`);
   }
+});
+
+// ---- FILETUBE_YTDLP_MAX_VIDEOS: bound the per-channel listing (v1.11.1 hotfix) ----
+//
+// Default 25 (newest videos); 0 is a distinct, valid value meaning
+// "unlimited" (consider the whole channel); any other invalid/hostile input
+// falls back to the default rather than throwing or disabling the module.
+
+test('parseYtdlpConfig: maxVideos defaults to 25 when unset', () => {
+  const config = parseYtdlpConfig({});
+  assert.equal(config.maxVideos, 25);
+});
+
+test('parseYtdlpConfig: maxVideos falls back to the documented default on invalid values', () => {
+  // Note: `[]` is deliberately excluded here -- `Number([])` coerces to `0`
+  // (a valid, non-default value meaning "unlimited"), same reason
+  // parsePollMinutes's own bad-value test above excludes it too.
+  for (const bad of [undefined, null, '', 'abc', '-1', '1.5', 'NaN', {}, 'garbage']) {
+    const config = parseYtdlpConfig({ FILETUBE_YTDLP_MAX_VIDEOS: bad });
+    assert.equal(config.maxVideos, 25, `${JSON.stringify(bad)} should fall back to the default`);
+  }
+});
+
+test('parseYtdlpConfig: maxVideos accepts a valid non-negative integer', () => {
+  assert.equal(parseYtdlpConfig({ FILETUBE_YTDLP_MAX_VIDEOS: '10' }).maxVideos, 10);
+  assert.equal(parseYtdlpConfig({ FILETUBE_YTDLP_MAX_VIDEOS: '500' }).maxVideos, 500);
+});
+
+test('parseYtdlpConfig: maxVideos of 0 is valid and means unlimited (not invalid)', () => {
+  assert.equal(parseYtdlpConfig({ FILETUBE_YTDLP_MAX_VIDEOS: '0' }).maxVideos, 0);
 });
 
 test('isEnabled: true only for a config with enabled === true', () => {
