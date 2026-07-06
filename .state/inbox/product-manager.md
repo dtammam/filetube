@@ -1,111 +1,97 @@
-# Product Manager — Discovery for v1.10.0 (feat/audio-art-and-related)
+# Product Manager — Discovery brief
 
-You are the Product Manager. Produce requirements + acceptance criteria for ONE
-branch containing TWO independent, additive media-experience features for FileTube.
-They ship as SEPARATE commits/tasks and must revert independently.
+## Feature
+**Optional yt-dlp subscription integration module** for FileTube. Target release **v1.11.0**.
+Feature id: `yt-dlp-integration-module`.
 
-## First, read (self-contained — you share no context with the EM)
+This is a big, multi-task feature. Your job in this Discovery stage is to produce
+crisp **requirements + acceptance criteria**, seed a new active exec plan, and
+frame the genuine **open-question forks** for Dean to decide before design.
+Do NOT design the implementation and do NOT write code.
 
-- `.state/feature-state.json` — the feature description, `grounding`, and constraints (READ the `grounding` block; it has exact file:line anchors).
-- `CLAUDE.md`, `docs/CONTRIBUTING.md`, `docs/RELIABILITY.md`, `docs/ARCHITECTURE.md`.
-- `public/watch.html` (player markup: `#media-player` at :119 with `playsinline`; `#audio-visualizer` vinyl view at :139-145; `#player-wrapper` at :98).
-- `public/js/watch.js` — especially `setupPlayer()` (:285-344, audio branch :288-295), `loadRelatedFiles()` (:710-753), `setupMediaSession()` (:249-265, lock-screen only), and the v1.2.2 iOS background-audio / no-custom-action-handler rationale (:242-248).
-- `public/js/common.js` tail (:483, the `module.exports` browser+node UMD pattern) and a couple of `test/unit/*.test.js` that exercise those helpers (e.g. `clamp-position-state.test.js`, `star-rating.test.js`) so you can model the testability expectation.
-- Server anchors: `GET /thumbnail/:id` (`server.js:1605`, never 404s — real jpg or SVG placeholder) and `GET /api/videos` (`server.js:1432`, newest-first list; item field shape is in state `grounding`).
+## Read first (in this order)
+1. `docs/exec-plans/future/yt-dlp-integration-module.md` — the parked design vision + the architect's take. This is the primary source; base your plan on it.
+2. `.state/feature-state.json` — the captured constraints, decided architecture, security flags, and the 5 open questions (in `open_questions_to_relay_to_dean`).
+3. `docs/CONTRIBUTING.md` — coding/testing standards (Node 22, `node:test`, `npm test`, ESLint 0 errors, additive/zero-regression, every feature ships with tests, keep FFmpeg/binaries out of the core suite).
+4. `docs/ARCHITECTURE.md` — system context. Note especially: the v1.9.0 `updateDatabase(mutatorFn)` serialized-writer primitive (one source of truth for `db.json`), the `armScanTimer()` settings-driven `.unref()`'d poll model, `db.settings`, and the existing scan -> index -> UI pipeline.
+5. `docs/RELIABILITY.md` — spawn calls wrapped in try/catch and degrade gracefully (never crash), plain console logging, keep binary-dependent paths out of the automated suite.
 
-## Deliverable
+## THE #1 HARD CONSTRAINT — thread it through EVERY requirement and AC
+**OPTIONAL / ADDITIVE / MUST-NOT-DEGRADE.** When the feature is **DISABLED (the
+default)**, FileTube must behave **BYTE-IDENTICALLY to today**:
+- no new routes registered,
+- no background job started,
+- no subscriptions UI shown/served,
+- no assumption that yt-dlp is installed/available,
+- the existing **241-test suite stays green with zero behavior change**.
 
-Write the exec plan to `docs/exec-plans/active/2026-07-05-audio-art-and-related.md`
-with a Goal, Scope, Out-of-scope, Constraints, and TWO clearly separated
-requirements+acceptance-criteria sections (Feature 1, Feature 2). Then update
-`.state/feature-state.json`: set `artifacts.requirements` and `artifacts.exec_plan`
-to that path (leave `artifacts.design` null — that's the PE's).
+Enabling it is **purely additive**. There MUST be an explicit acceptance
+criterion (and a called-out test/verification) that **the disabled path is a
+no-op** — a byte-identical behavior guarantee, not "looks fine." This is the
+acceptance north star. Every AC must respect it.
 
-Tag EVERY acceptance criterion with exactly one of: **[UNIT]**, **[INTEGRATION]**,
-**[MANUAL]**, **[PROCESS]** (lint/build/tests-green). Keep the two features'
-AC in separate sections so they map to separate commits.
+## Architecture is DECIDED (do not relitigate — these are givens, not options)
+- Optional, **dormant-by-default, IN-PROCESS module** inside FileTube (NOT a standalone service — that reintroduces the two-systems/orphan problem Dean is escaping).
+- yt-dlp is **bundled in the container** (reusing the FFmpeg it already ships), but the module stays dormant unless enabled via ENV. Pin a yt-dlp version; keep updating it straightforward (the PE decides pip vs binary at design).
+- Subscription config persists in **`db.json` via the v1.9.0 serialized `updateDatabase` primitive** (one source of truth).
+- Downloads land in a media folder the **existing scanner indexes** -> they appear in the normal UI -> deleting in FileTube removes them everywhere (no orphans).
+- **Dedup via yt-dlp's built-in `--download-archive`** (MeTube did not use one — that was a source of its orphan problem).
+- **Premiere handling via POLL-AND-DEFER** (a poll that finds a premiere still inside its release+~2h window skips it that cycle; a later poll grabs it) — NOT a live per-video timer. Restart-safe, idempotent (the archive prevents dupes). Lesson from v1.9.0 deferred-rescan work.
+- **Members-only skip as an ISOLATED, easily-updatable `shouldSkip(videoMeta)` rules layer** (config-driven, not hardcoded deep in the guts — YouTube changes this over time). **FAIL SAFE**: on uncertainty, skip + log, never grab the wrong thing. Prefer yt-dlp structured availability metadata over string-matching error text where possible.
+- Members-only auth via yt-dlp **`--cookies` file** (NOT username/password, which mostly fails for YouTube now). Without creds, members-only content is **skipped** (fail-safe).
 
-Cross-check: nothing you put in Out-of-scope may conflict with a CONTRIBUTING.md
-mandatory standard (tests-with-every-change, lint-0, additive/zero-regression).
+## SCOPE — keep it LEAN (this is what Dean values from MeTube; do NOT rebuild MeTube)
+1. Subscribe to a channel by URL; unsubscribe / delete a channel/subscription.
+2. Per-channel **AUDIO-ONLY vs VIDEO** (chosen per subscription).
+3. Per-channel **QUALITY**, default **"best"** for all.
+4. **Re-pull ALL** subscriptions, or **a single** subscription, on demand (manual trigger) — PLUS the scheduled background poll.
+5. **Dedup** via `--download-archive` (skip already-pulled).
+6. **Skip members-only** content as a **TOGGLE (default: skip)**, via the isolated fail-safe rules layer.
+7. **Premiere handling**: defer premiered videos ~2h via poll-and-defer.
+8. A **SIMPLE subscriptions UI**: list subs, add by URL with audio/video + quality, delete, re-pull-all / re-pull-one buttons, show last-checked/status. Placement (Settings vs dedicated page) is an open question for the PE — but it MUST be **completely absent/inert when the feature is disabled** (additive).
 
-## Feature 1 — audio playback shows the thumbnail as background art (FEASIBILITY-GATED)
+## ENV PARAMETERS to document (finalize exact names with Dean/PE)
+Dean wants the "optional yt-dlp ENV parameters" documented (README / `.env.example`):
+- a **master enable flag** (e.g. `FILETUBE_YTDLP_ENABLED`, default off),
+- an optional **cookies-file path**,
+- an optional **poll interval**,
+- an optional **download root**,
+- an optional **pinned yt-dlp version**.
 
-**Problem:** on iOS Safari an AUDIO-only file plays in the HTML5 player as a BLACK
-background (no video track). Dean wants the item's THUMBNAIL shown as the art/
-background so audio "looks like a video is playing." Video files already show their
-frame fine ("it works perfectly for video").
+## SECURITY (must be reflected in requirements/ACs; the PE will own the mechanics at design)
+- Spawns yt-dlp as a **child process with user-provided channel URLs** — NEVER shell-interpolate. Use `execFile`/`spawn` with an **argument array** (no `shell:true`).
+- **Validate/normalize** subscription URLs (allowlist expected channel URL shapes; reject the rest, fail-safe).
+- **Constrain the download path** so a subscription can't write outside the media dir (path-traversal guard).
+- Cookies/creds: **never log them**; treat the ENV as a path to a mounted **read-only** file; **no secrets in db.json**.
 
-**This is explicitly feasibility-gated.** Dean said: "If it's not [technically
-possible], I can drop the ambitions knowing this is PWA only." So:
+## Testability expectations (bake into ACs)
+Extract **pure, unit-testable helpers** so they are `node:test`-covered without invoking real yt-dlp/network:
+- URL parse/validate,
+- the yt-dlp **arg builder** (format audio/video + quality),
+- the **`shouldSkip`** rules,
+- the **premiere poll-and-defer decision** (release_timestamp + 2h window),
+- **dedup/archive** logic.
+Mock/integration-test the process invocation itself. Do NOT require real yt-dlp or network in the automated suite (mirror how FFmpeg is kept out).
 
-- Requirements MUST call out a **FEASIBILITY SPIKE** owned by Discovery→Design:
-  can mobile Safari (iOS) render the thumbnail behind/around an audio-only
-  `<video>` DURING playback? Frame the candidate approaches for the PE to test:
-  - **(a) `poster` attribute** — NOTE the code ALREADY does this (`watch.js:288-295`
-    sets `mediaPlayer.poster='/thumbnail/'+mediaId` for audio and hides
-    `#audio-visualizer`). `poster` typically disappears once playback starts, which
-    is very likely the exact black screen being reported. So (a) alone is suspect.
-  - **(b) CSS background-image** (thumbnail) on `#player-wrapper` behind a
-    transparent / still-poster'd player, with `object-fit: cover`-style framing.
-  - **(c)** iOS's native audio takeover may force black regardless — a real
-    possibility the spike must be allowed to conclude.
-- The lock-screen Media Session artwork (`setupMediaSession`) is ALREADY wired and
-  is the LOCK SCREEN, not the in-page player. Do NOT conflate them.
-- **If achievable on iOS:** implement thumbnail-as-audio-background (cover framing so
-  it reads like video), WITHOUT regressing how video files display.
-- **If NOT achievable on iOS:** degrade gracefully — keep/restore the existing PWA
-  custom `#audio-visualizer` (vinyl/cover-art view) as the documented **PWA-only**
-  fallback. Dean ACCEPTS this fallback explicitly.
-- **Acceptance criteria MUST cover BOTH** the works-case AND the graceful-fallback
-  case, AND must state the feasibility finding explicitly (the finding itself is a
-  deliverable). Most AC here are **[MANUAL]** on-device (Dean confirms on iOS), plus
-  any **[UNIT]** for a pure helper (e.g. resolving the right thumbnail URL / deciding
-  whether to show background art for an audio item — note `hasThumbnail` distinguishes
-  a real thumbnail from the SVG placeholder).
-- Hard non-regression AC: preserve the v1.2.2 iOS background-audio behavior AND the
-  `playsinline` inline-playback behavior.
+## OPEN QUESTIONS to frame CRISPLY for Dean (state each as a genuine fork with a recommended default)
+The EM will relay these to Dean before we commit to a design. Frame each with the trade-offs and a recommended default:
+1. **Exact enable mechanism + full ENV param set** — confirm master flag name and the complete set/names of the optional ENV params above.
+2. **Creds/cookies handling + members-only default** — confirm cookies-file mechanism, read-only mount, and skip-members-only-by-default; confirm no-creds => members-only skipped (fail-safe).
+3. **UI placement** — Settings section vs dedicated page.
+4. **Download folder structure + how "re-pull" interacts with `--download-archive`** — per-channel folder layout; does "re-pull single/all" only fetch NEW items (archive respected) or can it force re-fetch of archived items; what does deleting a video in FileTube do to the archive entry (re-downloadable vs stay-skipped).
+5. **yt-dlp bundling/update strategy in the Dockerfile** — pip vs static binary, version pinning, and slim-base vs bundled-in-container (Dean leans bundled-in-container since FFmpeg already ships).
 
-## Feature 2 — related items = fuzzy-similar, not just most-recent
+## Deliverables (produce these)
+1. Create a NEW active exec plan at **`docs/exec-plans/active/2026-07-05-yt-dlp-integration-module.md`**, based on the future/ vision doc. Include: Goal, In-scope, Out-of-scope (explicitly: NOT a MeTube rebuild, NOT a full download manager), Constraints (lead with OPTIONAL/ADDITIVE/NO-DEGRADE), Functional requirements, Non-functional/security requirements, Testability requirements, and a numbered **Acceptance Criteria** list.
+2. Tag EVERY acceptance criterion with exactly one of **[UNIT]**, **[INTEGRATION]**, **[MANUAL]**, **[PROCESS]** (lint/build/tests-green), so they map cleanly to test/verification work later. Make ACs verifiable/explicit (each pass/fail checkable). Include the mandatory **disabled-path-is-a-no-op** AC and the security ACs (no shell interpolation, path-traversal-safe, creds-never-logged).
+3. Cross-check: nothing in Out-of-scope may conflict with `docs/CONTRIBUTING.md` mandatory standards (tests-with-every-feature, lint 0, additive/zero-regression).
+4. In the exec plan, add an **## Open Questions** section with the 5 forks framed for Dean (trade-offs + recommended default each).
+5. Update `.state/feature-state.json`: set `artifacts.requirements` and `artifacts.exec_plan` to `docs/exec-plans/active/2026-07-05-yt-dlp-integration-module.md`.
 
-**Problem:** "Related Files" is essentially most-recent today (`loadRelatedFiles`:
-newest-first, same-folder-first, slice 10). Dean wants it to feel actually RELATED:
-"if there's some keyword or something related... a basic [fuzzy] search where if
-there's a certain part that's fuzzy similar, show those." **Keep it SIMPLE — "nothing
-crazy," a basic tokenize + score, NOT a search engine.**
+## Do NOT
+- Do NOT design the technical solution (that's the PE's Design stage next).
+- Do NOT write application code or tests.
+- Do NOT move the vision doc out of `future/` — leave it in place and create the new active plan.
+- Keep requirements product-level (what/why + testable AC); the HOW (module layout, exact arg-builder, Dockerfile mechanics, pure-fn homes) is the Principal Engineer's Design stage.
 
-- Requirements: a lightweight similarity ranking. The CORE must be a **PURE,
-  exported, UNIT-TESTABLE** ranking function — e.g. `rankRelated(currentItem, allItems)
-  -> ordered list` — with deterministic scoring, defined tie-breaks, a fallback
-  threshold, and self-exclusion. Candidate similarity signals (the PE will CHOOSE
-  the final set — surface this as an open question, don't over-specify): title/
-  filename token overlap, shared folder, shared artist/channel/tags.
-- **Never-empty / no-regression:** FALL BACK to most-recent when there aren't enough
-  similar items (fewer than some N), so the list is never empty or worse than today.
-  Keep the current `.related-card` rendering working.
-- Note the pure-fn home is the PE's call — the repo already has a browser+node
-  dual-export precedent (`common.js:483`) so `rankRelated` can be a shared client-side
-  fn fed by the existing `/api/videos` with NO new server endpoint; don't mandate a
-  home, just require it be pure + node:testable.
-- Acceptance criteria: **[UNIT]** for the ranking function (similar items rank above
-  unrelated; self excluded; deterministic; fallback-to-recent when < N similar; tie
-  breaks defined) PLUS **[MANUAL]** that the related list feels related on real content.
-  Additive/zero-regression.
-
-## Out of scope (do NOT act on)
-
-- The "optional yt-dlp integration module" (`docs/exec-plans/future/yt-dlp-integration-module.md`,
-  referenced by ROADMAP) is the branch-AFTER-next, explicitly PARKED.
-
-## Open questions to surface for the design gate (headline)
-
-End the exec plan with an "Open questions" section highlighting the two the EM will
-relay to Dean before the design gate:
-
-1. **F1 feasibility framing** — which approach(es) to actually test on real iOS
-   (poster vs CSS background vs accept-native-black), and confirmation that the
-   `#audio-visualizer` fallback is the accepted degrade.
-2. **F2 similarity signals** — which signals to rank on (title/filename tokens,
-   folder, artist/channel, tags) and the fallback threshold N.
-
-Keep requirements product-level (what/why + testable AC); the HOW (poster vs CSS,
-exact scoring formula, pure-fn home) is the Principal Engineer's design stage.
+When done, report the requirements + acceptance criteria summary and the 5 open questions so the EM can relay the genuine forks to Dean.

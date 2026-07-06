@@ -480,11 +480,88 @@ function getMockViews(mediaId, sizeBytes) {
 // Pure: which bottom-nav item should be marked active for the current route.
 // Home covers "/" and "/index.html" incl. any query (?search=, ?root=,
 // ?folder= are all still the home grid). Settings covers "/setup.html".
+// "/subscriptions" (the optional yt-dlp module's page, D4) covers
+// 'subscriptions' -- this route only ever exists server-side when the module
+// is enabled, but the pure mapping itself is unconditional (harmless when the
+// route/page never gets served, since nothing then ever navigates there).
 // watch.html (and anything else) has no active item. Exported for node:test.
 function activeNavItem(pathname, search) {
   if (pathname === '/setup.html') return 'settings';
+  if (pathname === '/subscriptions') return 'subscriptions';
   if (pathname === '/' || pathname === '/index.html') return 'home';
   return null;
+}
+
+// ---- Optional yt-dlp subscriptions nav-link injection (D4, T5) ------------
+//
+// The /subscriptions page + its nav link only exist when the OPTIONAL yt-dlp
+// module is enabled (docs/exec-plans/active/2026-07-05-yt-dlp-integration-
+// module.md, locked decision D4). Rather than a CSS-hidden link that always
+// exists in the DOM, the link is injected ONLY on a genuine 2xx from the
+// capability probe below -- when the module is disabled the probe's route
+// doesn't exist server-side at all (see lib/ytdlp/index.js's registerRoutes,
+// gated on isEnabled) so it 404s and `shouldInjectSubscriptionsNav` (below)
+// returns false, meaning this function does nothing: the link is
+// structurally ABSENT from the DOM, not merely hidden (AC3).
+//
+// Pure decision extracted to its own function so it is node:test-covered
+// without a browser/DOM -- the actual DOM mutation below is a thin,
+// untested-by-necessity shell around it (this codebase has no browser/DOM
+// test harness for any per-page script; see public/js/main.js, watch.js).
+function shouldInjectSubscriptionsNav(response) {
+  return Boolean(response && response.ok === true);
+}
+
+// Idempotent (checks for an existing injected link first) and defensive --
+// missing sidebar/bottom-nav elements (a page that doesn't have them) are
+// simply skipped, never thrown on.
+function injectSubscriptionsNavLinkIfEnabled() {
+  if (typeof document === 'undefined' || typeof fetch === 'undefined') return;
+  if (document.querySelector('[data-nav="subscriptions"]')) return; // already injected
+
+  fetch('/api/subscriptions/health')
+    .then((res) => {
+      if (!shouldInjectSubscriptionsNav(res)) return; // disabled (404) -- inject nothing
+
+      // Sidebar entry, inserted right after the existing "Library Settings"
+      // link so it reads as a sibling settings-adjacent surface.
+      const settingsSidebarLink = document.querySelector('a.sidebar-item[href="/setup.html"]');
+      if (settingsSidebarLink && settingsSidebarLink.parentElement) {
+        const sidebarLink = document.createElement('a');
+        sidebarLink.href = '/subscriptions';
+        sidebarLink.className = 'sidebar-item';
+        const sidebarIcon = document.createElement('i');
+        sidebarIcon.className = 'icon-refresh';
+        sidebarLink.appendChild(sidebarIcon);
+        sidebarLink.appendChild(document.createTextNode(' Subscriptions'));
+        settingsSidebarLink.insertAdjacentElement('afterend', sidebarLink);
+      }
+
+      // Bottom-nav entry (mobile app shell), inserted right after the
+      // existing Settings item.
+      const settingsNavItem = document.querySelector('#bottom-nav [data-nav="settings"]');
+      if (settingsNavItem && settingsNavItem.parentElement) {
+        const navLink = document.createElement('a');
+        navLink.href = '/subscriptions';
+        navLink.className = 'bottom-nav-item';
+        navLink.setAttribute('data-nav', 'subscriptions');
+        const navIcon = document.createElement('i');
+        navIcon.className = 'icon-refresh';
+        const navLabel = document.createElement('span');
+        navLabel.className = 'bottom-nav-label';
+        navLabel.textContent = 'Subs';
+        navLink.appendChild(navIcon);
+        navLink.appendChild(navLabel);
+        settingsNavItem.insertAdjacentElement('afterend', navLink);
+
+        // Match the existing active-state highlight logic (DOMContentLoaded,
+        // below) in case injection resolves after that already ran.
+        if (activeNavItem(window.location.pathname, window.location.search) === 'subscriptions') {
+          navLink.classList.add('active');
+        }
+      }
+    })
+    .catch(() => { /* network/parse failure -- fail closed, inject nothing */ });
 }
 
 // Small local HTML-escape mirroring the per-page escapeHtml helpers, used only
@@ -610,6 +687,11 @@ document.addEventListener('DOMContentLoaded', () => {
     themeToggleBtn.addEventListener('click', toggleTheme);
   }
 
+  // Optional yt-dlp subscriptions nav-link capability probe (D4, T5). Runs on
+  // every page (not just inside the `bottomNav` guard below) since it also
+  // injects a sidebar link on pages that have one but no bottom nav.
+  injectSubscriptionsNavLinkIfEnabled();
+
   // ---- Mobile app shell: bottom nav / Playlists sheet wiring ----
   // Guarded on the nav's presence so pages without it (or load-order issues)
   // never throw.
@@ -654,6 +736,7 @@ if (typeof module !== 'undefined' && module.exports) {
     resolveIconSet, ICON_SET_REGISTRY, ICON_SETS,
     gbToBytes, bytesToGb,
     tokenize, rankRelated, RESULT_COUNT, SIMILAR_FLOOR,
-    resolveAudioArtUrl
+    resolveAudioArtUrl,
+    shouldInjectSubscriptionsNav
   };
 }

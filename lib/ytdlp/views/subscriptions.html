@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Subscriptions - FileTube</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="apple-touch-icon" href="/favicon.svg">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="theme-color" content="#cc0000">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="FileTube">
+  <link rel="stylesheet" href="/css/style.css">
+  <script>
+    /* FOUC guard: set era+mode+icons on <html> before first paint. Mirror of
+       resolveTheme()/resolveIconSet() in /js/common.js -- keep all three in
+       sync (see the matching comment there and in setup.html). */
+    (function () {
+      var d = document.documentElement;
+      try {
+        var eras = ['2005', '2009', '2014', '2021'];
+        var modes = ['light', 'dark'];
+        var e = localStorage.getItem('ft-era');
+        var m = localStorage.getItem('ft-mode');
+        var legacy = localStorage.getItem('theme');
+        var era = eras.indexOf(e) >= 0 ? e : '2021';
+        var mode = modes.indexOf(m) >= 0 ? m
+          : (e == null && m == null && (legacy === 'dark' || legacy === 'light')) ? legacy
+          : 'light';
+        d.setAttribute('data-theme', era);
+        d.setAttribute('data-mode', mode);
+
+        var iconSets = ['outlined', 'rounded', 'filled', 'emoji'];
+        var iconAutoMap = { '2005': 'emoji', '2009': 'emoji', '2014': 'filled', '2021': 'rounded' };
+        var storedIcons = localStorage.getItem('ft-icons');
+        var iconSet = iconSets.indexOf(storedIcons) >= 0 ? storedIcons
+          : storedIcons === 'auto' ? iconAutoMap[era]
+          : 'outlined';
+        d.setAttribute('data-icons', iconSet);
+      } catch (_) {
+        d.setAttribute('data-theme', '2021');
+        d.setAttribute('data-mode', 'light');
+        d.setAttribute('data-icons', 'outlined');
+      }
+    })();
+  </script>
+</head>
+<body>
+  <header>
+    <div class="header-left">
+      <button class="menu-toggle" id="menu-toggle" aria-label="Open menu"><i class="icon-menu"></i></button>
+      <a href="/" class="logo">File<span class="tube">Tube</span></a>
+      <a href="/" class="mobile-logo" aria-label="FileTube home">
+        <img src="/favicon.svg" alt="FileTube" />
+      </a>
+    </div>
+    <div class="header-right">
+      <button class="theme-toggle" id="theme-toggle-btn" aria-label="Toggle light or dark mode"><i class="icon-moon"></i></button>
+    </div>
+  </header>
+
+  <div class="app-container">
+    <aside class="sidebar" id="sidebar">
+      <nav class="sidebar-section">
+        <a href="/" class="sidebar-item">
+          <i class="icon-home"></i> Home
+        </a>
+        <a href="/setup.html" class="sidebar-item">
+          <i class="icon-cog"></i> Library Settings
+        </a>
+        <!-- The "Subscriptions" sidebar link is injected here by
+             public/js/common.js's capability probe (D4) -- it is intentionally
+             NOT hardcoded, so this page's own sidebar behaves identically to
+             every other page's (the link only ever exists when the module is
+             enabled, proven by the same probe everywhere). -->
+      </nav>
+      <div class="sidebar-section">
+        <div class="sidebar-section-title">Playlists (Folders)</div>
+        <div id="sidebar-folders-list">
+          <!-- Populated dynamically -->
+        </div>
+      </div>
+    </aside>
+
+    <main class="main-content" id="main-content">
+      <div class="setup-box">
+        <h2>Subscriptions</h2>
+        <p>
+          Automatically download new videos from YouTube channels you subscribe
+          to here. Downloaded media lands in your library like any other file --
+          deleting it in FileTube removes it everywhere, and it stays deleted
+          (it will not be re-downloaded by a later check).
+        </p>
+
+        <div class="form-group">
+          <label for="sub-add-url">Channel or playlist URL</label>
+          <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <input type="text" id="sub-add-url" placeholder="https://www.youtube.com/@channel" style="flex:1; min-width:220px; padding:10px; border:1px solid var(--border-dark); border-radius:var(--radius); font-size:13px; background-color:var(--bg-color); color:var(--text-primary);" />
+            <select id="sub-add-format" class="setup-select">
+              <option value="video" selected>Video</option>
+              <option value="audio">Audio only</option>
+            </select>
+            <input type="text" id="sub-add-quality" placeholder="Quality (default: best)" style="max-width:180px; padding:10px; border:1px solid var(--border-dark); border-radius:var(--radius); font-size:13px; background-color:var(--bg-color); color:var(--text-primary);" />
+            <button class="btn btn-primary" id="sub-add-btn" type="button">Add subscription</button>
+          </div>
+          <small id="sub-add-error" class="field-error"></small>
+        </div>
+
+        <div class="form-group">
+          <label style="display:flex; align-items:center; gap:8px; font-weight:normal;">
+            <input type="checkbox" id="sub-members-only-check" />
+            Allow members-only content (requires a configured cookies file)
+          </label>
+          <small style="color: var(--text-secondary); margin-top:4px; display:block;">
+            When off (default), members-only/subscriber-only videos are always
+            skipped, regardless of this toggle.
+          </small>
+          <small id="sub-members-only-error" class="field-error"></small>
+        </div>
+
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:16px; border-top:1px solid var(--border-color); padding-top:16px; flex-wrap:wrap; gap:10px;">
+          <span id="sub-repull-status" style="font-weight:bold; color: var(--text-secondary);" aria-live="polite"></span>
+          <button class="btn" id="sub-repull-all-btn" type="button">Re-pull all now</button>
+        </div>
+      </div>
+
+      <div class="setup-box">
+        <h2>Your subscriptions</h2>
+        <div id="sub-list-container" class="folder-list-builder">
+          <!-- Populated dynamically by /js/subscriptions.js -->
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <nav class="bottom-nav" id="bottom-nav" aria-label="Primary">
+    <a href="/" class="bottom-nav-item" data-nav="home">
+      <i class="icon-home"></i>
+      <span class="bottom-nav-label">Home</span>
+    </a>
+    <button type="button" class="bottom-nav-item" data-nav="playlists" id="nav-playlists-btn">
+      <i class="icon-folder"></i>
+      <span class="bottom-nav-label">Playlists</span>
+    </button>
+    <button type="button" class="bottom-nav-item" data-nav="theme" id="nav-theme-toggle">
+      <i class="icon-moon"></i>
+      <span class="bottom-nav-label">Dark</span>
+    </button>
+    <a href="/setup.html" class="bottom-nav-item" data-nav="settings">
+      <i class="icon-cog"></i>
+      <span class="bottom-nav-label">Settings</span>
+    </a>
+    <!-- Same as the sidebar above: the "Subscriptions" bottom-nav item is
+         injected by common.js's capability probe, not hardcoded here. -->
+  </nav>
+
+  <div class="playlists-sheet-backdrop" id="playlists-backdrop" hidden></div>
+  <aside class="playlists-sheet" id="playlists-sheet" hidden aria-label="Playlists">
+    <div class="playlists-sheet-header">
+      <span>Playlists</span>
+      <button type="button" class="playlists-sheet-close" id="playlists-close" aria-label="Close">&times;</button>
+    </div>
+    <div class="playlists-sheet-list" id="playlists-sheet-list"></div>
+  </aside>
+
+  <script src="/js/common.js"></script>
+  <script src="/js/subscriptions.js"></script>
+</body>
+</html>

@@ -30,6 +30,13 @@ test('activeNavItem: /setup.html is settings', () => {
   assert.strictEqual(activeNavItem('/setup.html', ''), 'settings');
 });
 
+// T5: the optional yt-dlp module's dedicated page (D4). The route/nav link
+// only ever exist server-side when the module is enabled, but this pure
+// mapping is unconditional -- harmless when nothing ever navigates there.
+test('activeNavItem: /subscriptions is subscriptions', () => {
+  assert.strictEqual(activeNavItem('/subscriptions', ''), 'subscriptions');
+});
+
 test('activeNavItem: /watch.html with a video query is null (no false highlight)', () => {
   assert.strictEqual(activeNavItem('/watch.html', '?v=abc123'), null);
 });

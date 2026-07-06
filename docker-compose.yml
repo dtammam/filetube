@@ -11,13 +11,24 @@ services:
       DATA_DIR: /app/data
       PORT: 3000
       NODE_ENV: production
+      # Optional: YouTube subscriptions (yt-dlp) -- off by default, additive.
+      # Uncomment to enable; see .env.example / README.md for all 5 vars.
+      # FILETUBE_YTDLP_ENABLED: "true"
+      # FILETUBE_YTDLP_COOKIES_FILE: /app/data/cookies.txt
+      # FILETUBE_YTDLP_POLL_MINUTES: 60
+      # FILETUBE_YTDLP_DOWNLOAD_DIR: /app/data/ytdlp-downloads
     volumes:
       # Persists configuration, db.json, and thumbnails
       - ./data:/app/data
-      
+
       # MOUNT YOUR MEDIA FILES HERE
       # Format: - /host/path/to/media:/container/path
       # Inside FileTube Setup wizard, register directories using their container paths (e.g. /media/videos)
       # - /path/to/your/videos:/media/videos
       # - /path/to/your/music:/media/music
+
+      # Optional: mount a cookies.txt (read-only) for yt-dlp members-only /
+      # age-gated content. Only used if FILETUBE_YTDLP_COOKIES_FILE is set
+      # above and points at this same in-container path.
+      # - /path/to/your/cookies.txt:/app/data/cookies.txt:ro
     restart: unless-stopped

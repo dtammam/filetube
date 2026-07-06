@@ -28,6 +28,61 @@ clients (iOS Safari) can play them.
   `thumbnails/`, and `transcoded/` (cached MP4 sidecars).
 - **Docker** — `Dockerfile` (Node 22 Alpine + ffmpeg) and `docker-compose.yml`
   for deployment; media folders and `data/` are mounted as volumes.
+- **`lib/ytdlp/` — optional yt-dlp subscription module (v1.11.0, dormant by
+  default).** A self-contained directory of pure helpers (config/ENV parse, URL
+  allowlist, argument-array builders, path-confinement resolver, `shouldSkip`
+  rules, premiere poll-and-defer, archive dedup) plus a thin wiring surface
+  (`registerRoutes`, `armYtdlpTimer`/`currentYtdlpPollTimer`, `runPoll`,
+  `startBackground`). It is **inert unless `FILETUBE_YTDLP_ENABLED` is truthy**:
+  `require()`-ing it is side-effect-free, and every side effect (route
+  registration, poll arming, directory creation, presence check) early-returns
+  when disabled — so with the flag off FileTube is byte-identical to today (no
+  `/subscriptions` route or nav link, no poll timer, no yt-dlp assumption). When
+  enabled it spawns a **pinned, bundled** yt-dlp as a child process
+  (arg-array, never a shell) to download channel subscriptions into
+  `FILETUBE_YTDLP_DOWNLOAD_DIR`. The download tree is scanned via a
+  **module-owned scan root** (`extraScanRoots()`, merged into the scanner's
+  folder set) rather than by injecting into the client-owned `db.folders` — so
+  the existing scanner indexes the results (one source of truth, normal delete
+  semantics) while `GET`/`POST /api/config` never see or evict it.
+  `extraScanRoots()` contributes the resolved download directory whenever
+  **the module is enabled OR the directory exists on disk** (an OR-gate, not
+  either condition alone):
+  - **never-enabled** ⇒ the directory was never created ⇒ inert, `[]` —
+    byte-identical to a never-enabled install (the fresh-install no-op
+    guarantee is unchanged).
+  - **enabled** ⇒ always contributed, **unconditionally, even if the
+    directory is transiently absent** (an NFS/external-drive unmount, a
+    rename, or an EACCES) — this is deliberate: it is what lands the download
+    root in the scanner's `missingRoots` set so the mandatory mount-loss guard
+    (below) protects previously-downloaded content instead of the default-on
+    prune-missing pass reaping it. (An earlier revision of this gate checked
+    only `fs.existsSync`, dropping the enabled flag from the decision
+    entirely — an infra hiccup while enabled would then silently defeat the
+    mount-loss guard and permanently delete downloaded content's metadata,
+    thumbnails, transcode sidecars, and watch-progress. Fixed: enabled always
+    means "a scan root," full stop.)
+  - **was-enabled-then-disabled, directory still holds content** ⇒ still
+    contributed (`fs.existsSync` is true) ⇒ still scanned, so the default-on
+    prune-missing pass never deletes that content just because the module was
+    turned off (disabling stops new downloads and polling, but never destroys
+    what was already downloaded).
+  - **disabled AND the directory is simultaneously, transiently absent** ⇒
+    `[]` — a **known, narrow limitation**: with the module off, a volume
+    unmount coinciding with that off state is unprotected (the same reap the
+    mount-loss guard would otherwise prevent). This is inherent to
+    deliberately NOT persisting a "managed root" marker independent of
+    `config.enabled`/`fs.existsSync` (see the module-owned scan-root design
+    above) — not closed by design; revisit only if it proves to bite in
+    practice.
+  Subscriptions persist in `db.json` under `db.ytdlp` via the same
+  `updateDatabase` primitive; dedup is yt-dlp's own `--download-archive` file
+  (a deleted video stays recorded, never re-downloaded). The poll mirrors
+  `armScanTimer` (`.unref()`'d, re-armable, off when the interval is 0), and
+  long downloads run OUTSIDE the `updateDatabase` lock (only a short
+  last-checked/status write re-enters it). Security-critical surface (command
+  injection, path traversal, cookies handling); ships behind the full
+  two-reviewer QA gate.
 
 ## Data flow
 
