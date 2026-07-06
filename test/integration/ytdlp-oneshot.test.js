@@ -351,6 +351,53 @@ test('a custom folder value is honored (confined) instead of the "One-Off" defau
   }
 });
 
+// ---- v1.13.0 item 4: one-shot filetype validated + threaded through -------
+
+test('POST /api/ytdlp/download accepts a valid filetype and threads it through to buildYtdlpDownloadArgs (video -> --merge-output-format)', async () => {
+  const deps = makeFakeDeps();
+  const config = enabledConfig();
+  let capturedArgs = null;
+  const originalRunDownload = run.runDownload;
+  run.runDownload = async (sub, cfg, targetIds) => {
+    capturedArgs = args.buildYtdlpDownloadArgs(sub, cfg, targetIds);
+    return { ok: true, code: 0, stdout: '', stderr: '' };
+  };
+
+  const { base, close } = await startTestApp(deps, config);
+  try {
+    const res = await postJson(base, '/api/ytdlp/download', { url: SINGLE_VIDEO_URL, format: 'video', filetype: 'mkv' });
+    assert.equal(res.status, 202);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.ok(capturedArgs, 'runDownload must have been invoked');
+    const idx = capturedArgs.indexOf('--merge-output-format');
+    assert.ok(idx >= 0, '--merge-output-format must be present in the actually-built argv');
+    assert.equal(capturedArgs[idx + 1], 'mkv');
+  } finally {
+    run.runDownload = originalRunDownload;
+    await close();
+  }
+});
+
+test('POST /api/ytdlp/download with a mismatched-format filetype (audio format, video filetype) responds 400', async () => {
+  const deps = makeFakeDeps();
+  let downloadCalls = 0;
+  run.runDownload = async () => {
+    downloadCalls += 1;
+    return { ok: true, code: 0, stdout: '', stderr: '' };
+  };
+
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    const res = await postJson(base, '/api/ytdlp/download', { url: SINGLE_VIDEO_URL, format: 'audio', filetype: 'mp4' });
+    assert.equal(res.status, 400);
+    assert.ok((await res.json()).error);
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(downloadCalls, 0, 'an invalid filetype must never reach a spawn');
+  } finally {
+    await close();
+  }
+});
+
 // ---- Never creates a subscription ------------------------------------------
 
 test('a one-shot download never creates a subscription record, success or failure', async () => {

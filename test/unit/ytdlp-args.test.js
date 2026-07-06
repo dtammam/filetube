@@ -501,3 +501,132 @@ test('realpathUnderChannelDir: rejects a symlink planted inside the channel dir 
   fs.symlinkSync(outsideFile, linkPath);
   assert.equal(args.realpathUnderChannelDir(linkPath, channelDir), false);
 });
+
+// ---- v1.13.0 item 4: normalizeFiletype (spawn-args-flagged allowlist) -----
+
+test('normalizeFiletype: passes through a valid per-format value unchanged', () => {
+  assert.equal(args.normalizeFiletype('video', 'mp4'), 'mp4');
+  assert.equal(args.normalizeFiletype('video', 'mkv'), 'mkv');
+  assert.equal(args.normalizeFiletype('video', 'webm'), 'webm');
+  assert.equal(args.normalizeFiletype('video', 'default'), 'default');
+  assert.equal(args.normalizeFiletype('audio', 'mp3'), 'mp3');
+  assert.equal(args.normalizeFiletype('audio', 'm4a'), 'm4a');
+  assert.equal(args.normalizeFiletype('audio', 'opus'), 'opus');
+  assert.equal(args.normalizeFiletype('audio', 'default'), 'default');
+});
+
+test('normalizeFiletype: an unset/missing value normalizes to "default"', () => {
+  assert.equal(args.normalizeFiletype('video', undefined), 'default');
+  assert.equal(args.normalizeFiletype('audio', undefined), 'default');
+  assert.equal(args.normalizeFiletype('video', null), 'default');
+});
+
+test('normalizeFiletype: a hostile/injection-shaped value is neutralized to "default", never thrown', () => {
+  assert.equal(args.normalizeFiletype('video', 'mp4; rm -rf /'), 'default');
+  assert.equal(args.normalizeFiletype('video', '../x'), 'default');
+  assert.equal(args.normalizeFiletype('video', '--exec=whoami'), 'default');
+  assert.equal(args.normalizeFiletype('audio', '-f evil'), 'default');
+});
+
+test('normalizeFiletype: a value that is only valid for the OTHER format degrades to "default"', () => {
+  // A video extension supplied alongside format:'audio' (and vice versa)
+  // must never leak through -- the allowlist is format-PARTITIONED.
+  assert.equal(args.normalizeFiletype('audio', 'mp4'), 'default');
+  assert.equal(args.normalizeFiletype('audio', 'mkv'), 'default');
+  assert.equal(args.normalizeFiletype('audio', 'webm'), 'default');
+  assert.equal(args.normalizeFiletype('video', 'mp3'), 'default');
+  assert.equal(args.normalizeFiletype('video', 'm4a'), 'default');
+  assert.equal(args.normalizeFiletype('video', 'opus'), 'default');
+});
+
+test('normalizeFiletype: a non-string value (object, number, array) never throws and normalizes to "default"', () => {
+  assert.doesNotThrow(() => args.normalizeFiletype('video', { evil: true }));
+  assert.equal(args.normalizeFiletype('video', { evil: true }), 'default');
+  assert.equal(args.normalizeFiletype('video', 42), 'default');
+  assert.equal(args.normalizeFiletype('video', ['mp4']), 'default');
+});
+
+test('normalizeFiletype: an unknown/invalid format also normalizes to "default" rather than throwing', () => {
+  assert.doesNotThrow(() => args.normalizeFiletype('gif', 'mp4'));
+  assert.equal(args.normalizeFiletype('gif', 'mp4'), 'default');
+  assert.equal(args.normalizeFiletype(undefined, 'mp4'), 'default');
+});
+
+// ---- v1.13.0 item 4: buildYtdlpDownloadArgs filetype mapping --------------
+
+test('buildYtdlpDownloadArgs (video, filetype mp4): emits --merge-output-format mp4 as its own argv element, before "--"', () => {
+  const config = makeConfig();
+  const result = args.buildYtdlpDownloadArgs(baseSub({ format: 'video', filetype: 'mp4' }), config, ['vid1']);
+  const idx = result.indexOf('--merge-output-format');
+  assert.ok(idx >= 0, '--merge-output-format must be present for a non-default video filetype');
+  assert.equal(result[idx + 1], 'mp4');
+  assert.ok(idx < result.indexOf('--'), '--merge-output-format must precede the "--" separator');
+  // Never --recode-video (lossless remux only, per the design).
+  assert.ok(!result.includes('--recode-video'));
+});
+
+test('buildYtdlpDownloadArgs (video, filetype mkv/webm): emits --merge-output-format with the chosen container', () => {
+  const config = makeConfig();
+  const mkvResult = args.buildYtdlpDownloadArgs(baseSub({ format: 'video', filetype: 'mkv' }), config, ['vid1']);
+  assert.equal(mkvResult[mkvResult.indexOf('--merge-output-format') + 1], 'mkv');
+  const webmResult = args.buildYtdlpDownloadArgs(baseSub({ format: 'video', filetype: 'webm' }), config, ['vid1']);
+  assert.equal(webmResult[webmResult.indexOf('--merge-output-format') + 1], 'webm');
+});
+
+test('buildYtdlpDownloadArgs (video, filetype "default" or unset): omits --merge-output-format entirely (today\'s behavior)', () => {
+  const config = makeConfig();
+  const explicitDefault = args.buildYtdlpDownloadArgs(baseSub({ format: 'video', filetype: 'default' }), config, ['vid1']);
+  assert.ok(!explicitDefault.includes('--merge-output-format'));
+  const unset = args.buildYtdlpDownloadArgs(baseSub({ format: 'video', filetype: undefined }), config, ['vid1']);
+  assert.ok(!unset.includes('--merge-output-format'));
+});
+
+test('buildYtdlpDownloadArgs (audio, filetype m4a/opus): --audio-format reflects the chosen filetype', () => {
+  const config = makeConfig();
+  const m4a = args.buildYtdlpDownloadArgs(baseSub({ format: 'audio', filetype: 'm4a' }), config, ['vid1']);
+  const m4aIdx = m4a.indexOf('--audio-format');
+  assert.ok(m4aIdx >= 0);
+  assert.equal(m4a[m4aIdx + 1], 'm4a');
+
+  const opus = args.buildYtdlpDownloadArgs(baseSub({ format: 'audio', filetype: 'opus' }), config, ['vid1']);
+  assert.equal(opus[opus.indexOf('--audio-format') + 1], 'opus');
+});
+
+test('buildYtdlpDownloadArgs (audio, filetype "default" or unset): --audio-format stays mp3 (unchanged historical behavior)', () => {
+  const config = makeConfig();
+  const explicitDefault = args.buildYtdlpDownloadArgs(baseSub({ format: 'audio', filetype: 'default' }), config, ['vid1']);
+  assert.equal(explicitDefault[explicitDefault.indexOf('--audio-format') + 1], 'mp3');
+  const unset = args.buildYtdlpDownloadArgs(baseSub({ format: 'audio', filetype: undefined }), config, ['vid1']);
+  assert.equal(unset[unset.indexOf('--audio-format') + 1], 'mp3');
+});
+
+test('buildYtdlpDownloadArgs: a hostile filetype never reaches argv verbatim (normalized to "default"/mp3 first)', () => {
+  const config = makeConfig();
+  const videoResult = args.buildYtdlpDownloadArgs(baseSub({ format: 'video', filetype: 'mp4; rm -rf /' }), config, ['vid1']);
+  assert.ok(!videoResult.includes('--merge-output-format'), 'a hostile video filetype must normalize to "default" (flag omitted)');
+  for (const el of videoResult) {
+    assert.ok(!el.includes('rm -rf'), `hostile filetype leaked into arg: ${el}`);
+  }
+
+  const audioResult = args.buildYtdlpDownloadArgs(baseSub({ format: 'audio', filetype: '--exec=whoami' }), config, ['vid1']);
+  assert.equal(audioResult[audioResult.indexOf('--audio-format') + 1], 'mp3', 'a hostile audio filetype must normalize to the safe default (mp3)');
+  for (const el of audioResult) {
+    assert.ok(!el.includes('whoami'), `hostile filetype leaked into arg: ${el}`);
+  }
+});
+
+test('buildYtdlpDownloadArgs: a video filetype value degrades safely for a mismatched audio format', () => {
+  const config = makeConfig();
+  const result = args.buildYtdlpDownloadArgs(baseSub({ format: 'audio', filetype: 'mp4' }), config, ['vid1']);
+  assert.equal(result[result.indexOf('--audio-format') + 1], 'mp3', 'a video-only filetype on an audio sub must degrade to the audio default, not leak through');
+});
+
+test('buildYtdlpDownloadArgs: --restrict-filenames/"--"/arg-array discipline intact alongside the filetype mapping', () => {
+  const config = makeConfig();
+  const result = args.buildYtdlpDownloadArgs(baseSub({ format: 'video', filetype: 'mkv' }), config, ['vid1']);
+  assert.ok(Array.isArray(result));
+  assert.ok(result.every((el) => typeof el === 'string'));
+  assert.ok(result.includes('--restrict-filenames'));
+  assert.equal(result[result.length - 2], '--', '"--" must still immediately precede the target URL');
+  assert.equal(result[result.length - 1], 'https://www.youtube.com/watch?v=vid1');
+});

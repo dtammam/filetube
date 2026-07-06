@@ -66,6 +66,14 @@ test('parseFfprobeTags: returns {} on malformed / empty / missing tags', () => {
   assert.deepEqual(parseFfprobeTags({ format: { tags: {} } }), {});
 });
 
+test('parseFfprobeTags: drops synopsis (duplicate of description) while keeping description and comment', () => {
+  const j = { format: { tags: { description: 'A great clip', synopsis: 'A great clip', comment: 'https://example.com/watch?v=x' } } };
+  const out = parseFfprobeTags(j);
+  assert.equal(out.description, 'A great clip');
+  assert.equal(out.comment, 'https://example.com/watch?v=x');
+  assert.equal(out.synopsis, undefined, 'synopsis is never surfaced, even when present in ffprobe tags');
+});
+
 test('parseFfprobeTags: skips empty-string tag values', () => {
   const j = { format: { tags: { title: '   ', genre: 'Rock' } } };
   const out = parseFfprobeTags(j);

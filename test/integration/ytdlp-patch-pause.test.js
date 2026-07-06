@@ -169,6 +169,40 @@ test('PATCH /api/subscriptions/:id with an invalid body responds 400 (bad format
   }
 });
 
+// ---- v1.13.0 item 4: PATCH accepts/validates filetype ----------------------
+
+test('PATCH /api/subscriptions/:id accepts a valid filetype patch', async () => {
+  const deps = makeFakeDeps();
+  const created = await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@ftypepatch', format: 'video' });
+
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    const res = await patchJson(base, `/api/subscriptions/${created.id}`, { filetype: 'webm' });
+    assert.equal(res.status, 200);
+    assert.equal((await res.json()).filetype, 'webm');
+  } finally {
+    await close();
+  }
+});
+
+test('PATCH /api/subscriptions/:id with a hostile filetype value responds 400 (coarse boundary reject)', async () => {
+  const deps = makeFakeDeps();
+  const created = await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@ftypehostile', format: 'video' });
+
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    const res = await patchJson(base, `/api/subscriptions/${created.id}`, { filetype: 'mp4; rm -rf /' });
+    assert.equal(res.status, 400);
+    assert.ok((await res.json()).error);
+
+    const listRes = await fetch(`${base}/api/subscriptions`);
+    const [listed] = await listRes.json();
+    assert.equal(listed.filetype, undefined, 'the rejected patch must not have written anything');
+  } finally {
+    await close();
+  }
+});
+
 // ---- AC22/23: pause skips the scheduled/re-pull-all case, unpause resumes --
 
 test('a paused subscription is skipped by runPoll(deps, config) with no subId (the scheduled/re-pull-all case)', async () => {
