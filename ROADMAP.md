@@ -18,6 +18,7 @@
 - [ ] **Rescan should list what it'll transcode (regression)** — the Setup "Save & Rescan" flow used to surface all the videos it would convert/transcode; it no longer does. Restore that feedback so the user can see the pending transcode set before/while it runs. _(bug/regression)_
 - [ ] **Folder management UI is janky — add drag-and-drop reordering** — the mapped-folder management UX needs work; specifically, allow drag-and-drop to reorder folders both in the left sidebar and in the Setup folder list (replacing/augmenting the up/down buttons). Smoother, more direct manipulation.
 - [ ] **Mobile logo = desktop FileTube icon** — use the same FileTube icon/logo from the desktop view in the mobile top-left (currently differs); unify so the top-left brand mark is consistent across desktop and mobile.
+- [ ] **Make the "Subscribe" button mean something (or add a notification bell)** — today the retro "Subscribe" button is cosmetic. Give it real behavior: either a **toggle that controls whether that channel/folder surfaces on the main/default (home) view** (subscribe = pin it to your default page), or a new **notification-bell** affordance that "simulates" seeing new content (retro-YouTube flavor). Explore which reads better. Ties into the "Default landing view" item above and, for real channels, the yt-dlp subscription module.
 
 ## Shipped
 
