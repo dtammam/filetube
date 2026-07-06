@@ -40,7 +40,10 @@ clients (iOS Safari) can play them.
   `/subscriptions` route or nav link, no poll timer, no yt-dlp assumption). When
   enabled it spawns a **pinned, bundled** yt-dlp as a child process
   (arg-array, never a shell) to download channel subscriptions into
-  `FILETUBE_YTDLP_DOWNLOAD_DIR`. The download tree is scanned via a
+  `FILETUBE_YTDLP_DOWNLOAD_DIR`. Each channel's metadata LISTING is capped to
+  its newest `FILETUBE_YTDLP_MAX_VIDEOS` videos (default 25; `0` = unlimited)
+  via yt-dlp's own `--playlist-end` flag, so a fresh subscribe never attempts
+  a channel's entire back-catalog. The download tree is scanned via a
   **module-owned scan root** (`extraScanRoots()`, merged into the scanner's
   folder set) rather than by injecting into the client-owned `db.folders` — so
   the existing scanner indexes the results (one source of truth, normal delete
