@@ -1,5 +1,17 @@
 # Optional yt-dlp Subscription Integration Module
 
+> **STATUS: SHIPPED as v1.11.0 (2026-07-06).** All 6 tasks (T1–T6) done, merged to
+> main via `--no-ff` (`3dec854`), tag `v1.11.0` pushed, CI "Publish Docker Image"
+> build succeeded (image live on Docker Hub with `lib/` + pinned `yt-dlp==2026.7.4`).
+> PM acceptance: **34/34 ACs MET**. A post-tag Node-22 CI red was a test-only
+> fragility (a `.unref()`'d timeout test hanging on Node 22 / passing on Node 24 —
+> not a production bug), fixed with `node:test` fake timers (510/510 on Node 22 & 24,
+> `1ce2db3`); Node standardized to 22 LTS (`.nvmrc` / `.node-version`). No redundant
+> v1.11.1 cut (the fix is tests/docs/`.nvmrc` only, not in the image). **Carried
+> forward:** tech-debt #10 (deep prune/mount-loss redesign — accepted "ship now,
+> track") + the 6 ROADMAP items. Remaining human arbiter: Dean's on-device
+> pull-and-test of the image.
+
 Target release: **v1.11.0**. Feature id: `yt-dlp-integration-module`.
 Supersedes/derives from the parked vision doc:
 `docs/exec-plans/future/yt-dlp-integration-module.md` (left in place, not moved).
