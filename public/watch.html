@@ -117,6 +117,21 @@
             <button type="button" class="watch-prevnext-btn" id="watch-prev-btn" aria-label="Previous video" disabled>
               <span aria-hidden="true">&lsaquo;</span> Previous
             </button>
+
+            <!-- Autoplay toggle (FR-4a, T3): backed by the SAME persisted
+                 db.settings.autoplayNext the Settings-page checkbox writes
+                 (server.js's POST /api/settings partial merge -- see there).
+                 watch.js reads it on load and writes it on change; the two
+                 surfaces sync by re-fetch on next load (no shared client
+                 state, no server change). -->
+            <label class="watch-autoplay-label" for="watch-autoplay-check">
+              <span class="watch-autoplay-switch">
+                <input type="checkbox" id="watch-autoplay-check" aria-label="Autoplay next video" />
+                <span class="watch-autoplay-track"><span class="watch-autoplay-thumb"></span></span>
+              </span>
+              <span class="watch-autoplay-text">Autoplay</span>
+            </label>
+
             <button type="button" class="watch-prevnext-btn" id="watch-next-btn" aria-label="Next video" disabled>
               Next <span aria-hidden="true">&rsaquo;</span>
             </button>

@@ -13,16 +13,19 @@ const ICON_DIR = path.join(PUB, 'assets', 'icons');
 const EXPECTED = [
   'home', 'folder', 'settings', 'search', 'dark_mode', 'light_mode',
   'menu', 'play_arrow', 'delete', 'refresh', 'keyboard_arrow_up', 'keyboard_arrow_down',
+  'download', // FR-7 (v1.17.0, T6): real download.svg mask, added across all 3 vector sets
 ];
 
-// icon-sets extends the outlined set above with two more full 12-icon vector
+// icon-sets extends the outlined set above with two more full 13-icon vector
 // sets, bundled under subdirectories using the SAME glyph names as `outlined`
-// except for the filled set's two documented substitutes (README.md).
+// except for the filled set's two documented substitutes + one documented
+// rename (README.md).
 const ROUNDED_EXPECTED = EXPECTED;
 const FILLED_EXPECTED = [
   'home', 'folder', 'settings', 'search', 'menu', 'play_arrow', 'delete',
   'refresh', 'keyboard_arrow_up', 'keyboard_arrow_down',
   'wb_sunny', 'brightness_2', // substitutes for light_mode/dark_mode (see README.md)
+  'download', // renamed from the source's file_download for cross-set filename parity (see README.md)
 ];
 
 test('icon assets: all Material Symbol SVGs are bundled and valid', () => {

@@ -106,6 +106,9 @@
     const prevBtn = root.querySelector('#watch-prev-btn');
     const nextBtn = root.querySelector('#watch-next-btn');
 
+    // FR-4a (v1.17.0, T3): visible autoplay toggle -- see setupAutoplayToggle() below.
+    const autoplayCheck = root.querySelector('#watch-autoplay-check');
+
     // #sidebar-folders-list lives in the PERSISTENT shell (outside
     // #view-root) -- wiring it through this view's own AbortController is
     // still safe (destroy() always runs before the next view re-wires it).
@@ -197,6 +200,10 @@
         // 8. Prev/Next (FR-2, T3): derive this video's position in the
         // current home sort order and wire the controls.
         setupPrevNext();
+
+        // 9. Autoplay toggle (FR-4a, v1.17.0, T3): read/write the persisted
+        // autoplayNext setting.
+        setupAutoplayToggle();
 
       } catch (err) {
         console.error(err);
@@ -355,6 +362,39 @@
         prevBtn.disabled = true;
         nextBtn.disabled = true;
       }
+    }
+
+    // FR-4a (v1.17.0, T3): visible watch-page autoplay toggle -- backed by
+    // the SAME persisted db.settings.autoplayNext the buried Settings-page
+    // checkbox already reads/writes (public/js/setup.js's
+    // loadAutomationSettings/saveAutomationSetting, server.js's GET/POST
+    // /api/settings -- an existing partial-KNOWN_KEYS merge, unchanged here).
+    // Sync between the two surfaces is by RE-FETCH ON LOAD (no shared client
+    // state, no server change): flipping this toggle POSTs the new value
+    // immediately, so player.js's handleAutoplayNext (which re-fetches
+    // /api/settings fresh on every 'ended') picks it up on the very next
+    // completed video, and the Settings page reflects it the next time THAT
+    // page loads.
+    async function setupAutoplayToggle() {
+      if (!autoplayCheck) return;
+      try {
+        const res = await fetch('/api/settings');
+        const settings = await res.json();
+        autoplayCheck.checked = !!settings.autoplayNext;
+      } catch (e) {
+        console.error('Error fetching autoplay setting:', e);
+      }
+      autoplayCheck.addEventListener('change', async () => {
+        try {
+          await fetch('/api/settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ autoplayNext: autoplayCheck.checked }),
+          });
+        } catch (e) {
+          console.error('Error saving autoplay setting:', e);
+        }
+      }, { signal });
     }
 
     // Navigates to another video's watch page through the SPA router (smooth,
@@ -616,7 +656,11 @@
             const data = await res.json();
 
             if (data.success) {
-              alert('File deleted successfully.');
+              // FR-3(a), T2: the post-success alert() was blocking friction --
+              // a brief, non-blocking, auto-dismissing toast (common.js) gives
+              // the same feedback without requiring a dismiss tap before the
+              // navigate() below can proceed.
+              showToast('File deleted.');
               if (window.FileTube && typeof window.FileTube.navigate === 'function') window.FileTube.navigate('/');
               else window.location.href = '/';
             } else {

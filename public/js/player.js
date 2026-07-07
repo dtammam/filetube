@@ -135,11 +135,82 @@ function nextPlayerState(fromView, toView, currentState, hasMedia) {
   return currentState; // watch -> watch (different media) or an unrecognized transition: unchanged by this hook
 }
 
+// Should this PWA-lifecycle event pause + persist the currently-loaded media
+// (FR-5, T4)? Dean's locked "smart" behavior (2026-07-06): backgrounding the
+// whole app pauses+persists a playing VIDEO (so it doesn't keep going
+// invisibly), but lets playing AUDIO/background-music keep going (lock-
+// screen/screen-off background audio is a core use case, not a bug). A true
+// close/unload ends the audio session anyway once the page is torn down --
+// there is nothing further for this decision to do in that case beyond not
+// fighting it. `eventType` is one of 'pagehide' | 'freeze' |
+// 'visibilitychangeHidden' (an unrecognized type is always false -- this
+// helper is only ever consulted from those three listeners, so an unknown
+// value indicates a caller bug, not a real lifecycle transition). `ctx.isAudio`
+// is whether the CURRENTLY LOADED media is audio (not video); `ctx.isPlaying`
+// is whether it is currently playing (a paused/never-started player has
+// nothing to pause or persist -- a deliberate no-op).
+var LIFECYCLE_PAUSE_EVENTS = { pagehide: true, freeze: true, visibilitychangeHidden: true };
+function shouldPauseForLifecycleEvent(eventType, ctx) {
+  if (!LIFECYCLE_PAUSE_EVENTS[eventType]) return false;
+  if (!ctx || !ctx.isPlaying) return false; // nothing playing -- no-op
+  if (ctx.isAudio) return false; // audio/background-music: keep playing in the background
+  return true; // video: pause + persist so it doesn't keep going invisibly
+}
+
+// Should the resume overlay show for this load (FR-4b, T3)? True whenever
+// there's meaningful saved progress (>5s) -- UNLESS this specific load was
+// reached by autoplay advancing to the next video (see `handleAutoplayNext`,
+// which sets the one-shot `autoplayAdvancePending` flag immediately before
+// navigating; `load()` then captures it into a per-load snapshot at load
+// START -- see `captureAutoplayAdvanceForLoad` -- which `handleResumePlayback`
+// reads). An autoplay-advanced load skips the "Resume at..." prompt entirely and just
+// plays on, so the autoplay flow is never interrupted by a manual decision.
+// A normal navigation (autoplayAdvance falsy) to a video with saved progress
+// is unaffected -- still shows the overlay exactly as before. Deliberately
+// NOT keyed off the `autoplayNext` SETTING itself: a manual navigation while
+// the setting happens to be ON must still show the overlay (see the exec
+// plan's "Alternatives considered").
+function shouldShowResumeOverlay(ctx) {
+  var savedProgress = (ctx && ctx.savedProgress) || 0;
+  var autoplayAdvance = !!(ctx && ctx.autoplayAdvance);
+  return savedProgress > 5 && !autoplayAdvance;
+}
+
+// Bug-fix (v1.17.0 two-reviewer gate, FR-4b leak): pure helper for the
+// "capture-then-reset" step every NEW (non-adopt) load must perform on the
+// one-shot `autoplayAdvancePending` flag, at load START -- not deferred to
+// whenever `handleResumePlayback` happens to run for that load (which may be
+// well after load start if a transcode is pending). Given the flag's CURRENT
+// value at the moment a new load begins, returns the per-load snapshot to use
+// for THIS load's resume decision (`value`) and what the module-level flag
+// must be reset to right away (`nextPending`, always `false`). The call site
+// (see `load()`) does:
+//   var captured = captureAutoplayAdvanceForLoad(autoplayAdvancePending);
+//   loadAutoplayAdvance = captured.value;
+//   autoplayAdvancePending = captured.nextPending;
+// Doing this unconditionally at load start -- rather than reading/consuming
+// the global lazily inside `handleResumePlayback` -- is what prevents the
+// flag from leaking into a LATER, unrelated load: if an autoplay-advanced
+// load needs a transcode that then fails (or the user navigates away before
+// the transcode finishes), `handleResumePlayback` never runs again for that
+// load, but the global has ALREADY been cleared by this load's own capture
+// step, so a subsequent manual load can never observe a stale `true`.
+function captureAutoplayAdvanceForLoad(pending) {
+  return { value: !!pending, nextPending: false };
+}
+
 // Guarded so requiring this file in Node (for unit tests) never touches
 // `window`/`document` -- mirrors common.js's own `if (typeof window ...)`
 // runtime guard immediately below.
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { isAdoptLoad, shouldDockOnTransition, nextPlayerState };
+  module.exports = {
+    isAdoptLoad,
+    shouldDockOnTransition,
+    nextPlayerState,
+    shouldPauseForLifecycleEvent,
+    shouldShowResumeOverlay,
+    captureAutoplayAdvanceForLoad,
+  };
 }
 
 (function () {
@@ -175,6 +246,33 @@ if (typeof module !== 'undefined' && module.exports) {
   var liveMode = false;   // desktop AVI: live transcode (seek = restart stream)
   var liveOffset = 0;     // seconds into the source that the current live stream started at
   var savedProgress = 0;
+
+  // One-shot flag (FR-4b, T3): set true in handleAutoplayNext immediately
+  // before navigate(). Bug-fix (v1.17.0 two-reviewer gate): this global is
+  // captured into `loadAutoplayAdvance` (a PER-LOAD snapshot, below) and
+  // unconditionally reset to false at the very START of the next NEW
+  // (non-adopt) load -- see `load()` and `captureAutoplayAdvanceForLoad`
+  // above -- rather than being read/consumed lazily inside
+  // `handleResumePlayback`. Consuming it lazily there leaked: when the
+  // autoplay-advanced load needed a transcode, `handleResumePlayback` would
+  // return early (still `awaitingTranscode`) WITHOUT consuming the flag, and
+  // if that transcode then failed (or the user navigated away first),
+  // `handleResumePlayback` never ran again for that load -- leaving the
+  // global `true` for a LATER, unrelated manual load to wrongly consume,
+  // silently skipping its resume overlay. Capturing+resetting at load START
+  // instead means the global is cleared the instant the NEXT load begins,
+  // regardless of how (or whether) that load's own resume decision resolves.
+  var autoplayAdvancePending = false;
+
+  // Per-load snapshot of `autoplayAdvancePending`, captured exactly once at
+  // the start of every genuine (non-adopt) load -- see `load()`. This is what
+  // `handleResumePlayback` actually reads (via `shouldShowResumeOverlay`),
+  // so a load reached by autoplay-advancing still suppresses its resume
+  // overlay correctly even if `handleResumePlayback` runs much later (e.g.
+  // after a transcode finishes) -- the guard `gen !== loadGeneration` at the
+  // top of `handleResumePlayback`/`pollTranscodeUntilReady` already ensures a
+  // STALE gen's poll chain can never read a since-overwritten value here.
+  var loadAutoplayAdvance = false;
 
   var currentChannelName = '';
   var lastPositionSync = 0;
@@ -282,6 +380,70 @@ if (typeof module !== 'undefined' && module.exports) {
     setupMediaSession(currentId, currentChannelName, currentData.title);
     setPlaybackState(mediaPlayer.paused ? 'paused' : 'playing');
     updatePositionState(true);
+  });
+
+  // ---- FR-5 (T4): background/force-close lifecycle pause+persist ------------
+  //
+  // Wired ONCE, alongside (not instead of) the foreground re-assert above,
+  // which stays completely intact -- these are additional listeners, not a
+  // replacement, and never fight each other (one only acts on `hidden`/
+  // pagehide/freeze, the other only on returning to `visible`).
+  //
+  // Hooked events -- deliberately events that fire ONLY when the whole
+  // app/tab is actually backgrounding or closing, never on an in-app SPA
+  // view swap or the FULL<->DOCKED reparent (`common.js`'s router does a
+  // same-document `innerHTML`/reparent swap, which fires none of these):
+  //   - `pagehide` on `window` -- fires on the page being unloaded/closed or
+  //     entering the back/forward cache; the most reliable "this page is
+  //     going away" signal across browsers.
+  //   - `freeze` on `document` -- Page Lifecycle API; fires when a
+  //     backgrounded tab/PWA is frozen (supported on Chrome/Android; a
+  //     harmless no-op listener on browsers that never fire it, e.g. current
+  //     iOS Safari -- which is exactly why `visibilitychange` below is also
+  //     hooked, since it IS reliable on iOS).
+  //   - `visibilitychange` with `document.hidden === true` -- fires reliably
+  //     on iOS Safari/PWA the moment the app is backgrounded (Home button,
+  //     app-switcher, screen lock). This is the one that actually covers iOS.
+  //
+  // `shouldPauseForLifecycleEvent` (pure, unit-tested above) makes the actual
+  // pause-vs-keep-playing call: VIDEO playing -> pause + persist; AUDIO
+  // playing -> no-op (left running so lock-screen/background music keeps
+  // going, per Dean's locked decision); nothing playing -> no-op. On a real
+  // pause, `saveProgressToServer` (the SAME function every other
+  // progress-save path already uses -- no duplicate persistence logic) is
+  // called directly rather than relying solely on the async 'pause' event's
+  // own `stopProgressSaver()`, since `pagehide`/`freeze` may not leave enough
+  // time for a queued task to run before the page is torn down.
+  //
+  // Bug-fix (v1.17.0 two-reviewer gate, FR-5 persistence): this is the ONE
+  // persist call site passed `{ keepalive: true }` (see `saveProgressToServer`
+  // below). A real `pagehide` (tab/app force-closed, not just backgrounded) can
+  // have the browser tear down the page's document/task queue before an
+  // ordinary, non-keepalive `fetch` finishes -- some browsers cancel any
+  // in-flight non-keepalive request on unload, silently dropping this exact
+  // save and defeating FR-5's "clean resume on reopen after force-close"
+  // promise. `keepalive: true` (small-body, still a normal `fetch`, no new
+  // request/response shape) tells the browser to let the request complete
+  // even after the document is gone. Every OTHER progress-save call site
+  // (the 4s interval, pause, skip, ended, resumeNoBtn) stays exactly as
+  // before -- those all run mid-session with the page fully alive, so there
+  // is nothing for keepalive to protect against there, and always setting it
+  // would be an unnecessary behavior change to a working path.
+  function handleBackgroundLifecycle(eventType) {
+    if (!mediaPlayer || !currentId) return; // nothing loaded -- no-op
+    var ctx = {
+      isAudio: !!(currentData && currentData.type === 'audio'),
+      isPlaying: !mediaPlayer.paused,
+    };
+    if (!shouldPauseForLifecycleEvent(eventType, ctx)) return;
+    mediaPlayer.pause();
+    saveProgressToServer(currentAbsTime(), { keepalive: true });
+  }
+
+  window.addEventListener('pagehide', function () { handleBackgroundLifecycle('pagehide'); });
+  document.addEventListener('freeze', function () { handleBackgroundLifecycle('freeze'); });
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'hidden') handleBackgroundLifecycle('visibilitychangeHidden');
   });
 
   // ---- skip (+-15s), ripple, hold-to-2x, dbl-tap ------------------------------
@@ -411,15 +573,37 @@ if (typeof module !== 'undefined' && module.exports) {
 
   function handleResumePlayback(gen, id) {
     if (gen !== loadGeneration || awaitingTranscode) return;
+    // Bug-fix (v1.17.0 two-reviewer gate, FR-4b leak): read the PER-LOAD
+    // snapshot captured at load START (`loadAutoplayAdvance`), NOT the
+    // module-level `autoplayAdvancePending` global -- the global is already
+    // consumed/reset by `load()` itself the instant this load began (see the
+    // comment above `autoplayAdvancePending`'s declaration), so it would be
+    // long gone (or worse, belong to a DIFFERENT, since-started load) by the
+    // time this runs, if this is the post-transcode re-entry into
+    // `handleResumePlayback` from `pollTranscodeUntilReady`. The
+    // `gen !== loadGeneration` guard just above ensures this only ever reads
+    // `loadAutoplayAdvance` while it still reflects THIS load.
+    var autoplayAdvance = loadAutoplayAdvance;
     fetch('/api/progress/' + id)
       .then(function (res) { return res.json(); })
       .then(function (data) {
         if (gen !== loadGeneration) return;
         savedProgress = data.timestamp || 0;
-        if (savedProgress > 5) {
+        if (shouldShowResumeOverlay({ savedProgress: savedProgress, autoplayAdvance: autoplayAdvance })) {
           if (resumeTimeStr) resumeTimeStr.textContent = formatDuration(savedProgress);
           if (resumeOverlay) resumeOverlay.style.display = 'flex';
           mediaPlayer.autoplay = false;
+        } else if (savedProgress > 5) {
+          // Overlay suppressed (autoplay just advanced here) WITH real saved
+          // progress: resume directly instead of prompting, matching the
+          // resumeYesBtn handler below -- autoplay-to-next never interrupts
+          // with a "resume?" dialog.
+          if (liveMode) {
+            startLiveStream(savedProgress, true);
+          } else {
+            mediaPlayer.currentTime = savedProgress;
+            mediaPlayer.play().catch(function () {});
+          }
         } else if (liveMode) {
           startLiveStream(0, true);
         } else if (!isMobileViewport()) {
@@ -461,9 +645,15 @@ if (typeof module !== 'undefined' && module.exports) {
     }
   }
 
-  function saveProgressToServer(time) {
+  // `opts.keepalive` (bug-fix, v1.17.0 two-reviewer gate, FR-5): when true,
+  // adds `keepalive: true` to the fetch so the request survives the page
+  // being torn down mid-flight (see `handleBackgroundLifecycle` above, the
+  // ONLY call site that passes it). Every other call site is unaffected --
+  // omitting `opts` (or `opts.keepalive`) reproduces the exact prior
+  // request shape/behavior.
+  function saveProgressToServer(time, opts) {
     if (!currentId) return;
-    fetch('/api/progress', {
+    var fetchOpts = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -471,7 +661,9 @@ if (typeof module !== 'undefined' && module.exports) {
         timestamp: time,
         duration: (mediaPlayer && isFinite(mediaPlayer.duration) ? mediaPlayer.duration : 0) || (currentData && currentData.duration) || 0,
       }),
-    }).catch(function (e) {
+    };
+    if (opts && opts.keepalive) fetchOpts.keepalive = true;
+    fetch('/api/progress', fetchOpts).catch(function (e) {
       console.error('Error auto-saving progress:', e);
     });
   }
@@ -511,16 +703,22 @@ if (typeof module !== 'undefined' && module.exports) {
   // started this playback, so the resulting load is generally allowed to
   // autoplay same as any other in-app watch-page load -- but the existing
   // desktop-only autoplay gate in handleResumePlayback() above still applies
-  // to the NEXT video exactly as it would for any other navigation (a
-  // related-card click, Prev/Next, a fresh watch load): this deliberately
-  // does NOT special-case mobile to re-enable autoplay there (that would
-  // regress the "no general mobile initial-load autoplay" hard constraint).
-  // Whichever play() call the next media's own load ends up attempting is
-  // already wrapped in `.catch(() => {})` (mountInSlot/handleResumePlayback/
-  // startLiveStream above) -- if iOS treats the gesture chain as lapsed by
-  // the time navigate()'s fetch+swap completes and rejects the play(), that
-  // rejection is swallowed exactly like every other best-effort play() in
-  // this file: the next video ends up loaded and paused, never an error.
+  // to the NEXT video's fresh-start (savedProgress <= 5) case exactly as it
+  // would for any other navigation (a related-card click, Prev/Next, a fresh
+  // watch load): this deliberately does NOT special-case mobile to re-enable
+  // autoplay THERE (that would regress the "no general mobile initial-load
+  // autoplay" hard constraint). FR-4b (T3) is a narrower exception: when the
+  // NEXT video has real saved progress (>5s), `autoplayAdvancePending` (set
+  // just below) suppresses the resume-overlay prompt and resumes directly on
+  // EVERY platform -- this is a deliberate, already-in-motion autoplay
+  // action continuing itself, not a general initial-load autoplay, so it
+  // isn't the case the mobile gate exists to prevent. Whichever play() call
+  // the next media's own load ends up attempting is already wrapped in
+  // `.catch(() => {})` (mountInSlot/handleResumePlayback/startLiveStream
+  // above) -- if iOS treats the gesture chain as lapsed by the time
+  // navigate()'s fetch+swap completes and rejects the play(), that rejection
+  // is swallowed exactly like every other best-effort play() in this file:
+  // the next video ends up loaded and paused, never an error.
   //
   // C6 remediation (v1.16.0): the id whose neighbor we want is CAPTURED here,
   // at 'ended' time (the video that just finished) -- not re-read off the
@@ -548,6 +746,11 @@ if (typeof module !== 'undefined' && module.exports) {
             var neighbors = computeNeighbors(orderedIds, endedId);
             if (!neighbors.nextId) return; // end of the order -- no wrap, no-op
             if (window.FileTube && typeof window.FileTube.navigate === 'function') {
+              // FR-4b (T3): arm the one-shot flag IMMEDIATELY before
+              // navigating -- consumed by the next video's own
+              // handleResumePlayback (via shouldShowResumeOverlay) to skip
+              // the resume-overlay prompt for THIS specific advance only.
+              autoplayAdvancePending = true;
               window.FileTube.navigate('/watch.html?v=' + encodeURIComponent(neighbors.nextId));
             }
           });
@@ -577,6 +780,18 @@ if (typeof module !== 'undefined' && module.exports) {
     mediaPlayer.addEventListener('ended', function () {
       saveProgressToServer(0);
       clearProgressInterval();
+      // FR-4c (T3): also reset the LIVE element position (not just the
+      // just-persisted server value above) so replaying is a single tap with
+      // a clean poster frame at 0 -- applies to EVERY completed video,
+      // independent of the autoplay setting (whether or not the separate
+      // handleAutoplayNext listener below goes on to navigate to a next
+      // video makes no difference here: a genuine autoplay-advance replaces
+      // `mediaPlayer.src` via setupForMedia() moments later anyway, so
+      // resetting this element's position first is harmless). Guarded off
+      // `liveMode`: a live desktop-transcode source is re-`src`'d (via
+      // startLiveStream), never seeked, so touching currentTime here would
+      // be meaningless/unsafe.
+      if (!liveMode && mediaPlayer) mediaPlayer.currentTime = 0;
     });
     mediaPlayer.addEventListener('play', function () { setPlaybackState('playing'); updatePositionState(true); });
     mediaPlayer.addEventListener('pause', function () { setPlaybackState('paused'); updatePositionState(true); });
@@ -913,6 +1128,15 @@ if (typeof module !== 'undefined' && module.exports) {
       expand(options.slot);
       return true;
     }
+    // Bug-fix (v1.17.0 two-reviewer gate, FR-4b leak): capture+reset the
+    // autoplay-advance flag HERE, at the earliest point of every genuine
+    // NEW load -- before teardownMediaState()/setupForMedia() do anything
+    // else -- so the global can never survive past the start of the very
+    // next load, no matter what happens (transcode pending/failed, the user
+    // navigating away) during THIS load's own resume decision.
+    var capturedAutoplayAdvance = captureAutoplayAdvanceForLoad(autoplayAdvancePending);
+    loadAutoplayAdvance = capturedAutoplayAdvance.value;
+    autoplayAdvancePending = capturedAutoplayAdvance.nextPending;
     teardownMediaState();
     currentId = id;
     currentData = data || {};

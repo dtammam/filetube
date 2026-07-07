@@ -103,6 +103,12 @@ module.exports = [
         resolveTheme: 'readonly',
         setTheme: 'readonly',
         showConfirmModal: 'readonly',
+        // FR-3 (T2): the toast helper (watch.js's post-delete success +
+        // main.js's card trash-can outcomes) and the card trash-can's pure
+        // arm/disarm reducer (main.js only, but declared alongside its
+        // sibling helpers here for consistency).
+        showToast: 'readonly',
+        nextArmState: 'readonly',
         THEME_REGISTRY: 'readonly',
         resolveIconSet: 'readonly',
         setIconSet: 'readonly',
