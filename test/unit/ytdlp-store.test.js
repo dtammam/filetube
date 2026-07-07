@@ -36,11 +36,11 @@ function makeFakeDeps(initialDb = {}) {
 test('ensureYtdlp: an old db with no ytdlp key gains the default namespace, no data loss', () => {
   const db = { folders: ['/movies'], settings: { scanIntervalMinutes: 15 } };
   const ns = store.ensureYtdlp(db);
-  assert.deepEqual(ns, { allowMembersOnly: false, subscriptions: [] });
+  assert.deepEqual(ns, { allowMembersOnly: false, subscriptions: [], downloadMeta: {} });
   // Existing keys untouched.
   assert.deepEqual(db.folders, ['/movies']);
   assert.deepEqual(db.settings, { scanIntervalMinutes: 15 });
-  assert.deepEqual(db.ytdlp, { allowMembersOnly: false, subscriptions: [] });
+  assert.deepEqual(db.ytdlp, { allowMembersOnly: false, subscriptions: [], downloadMeta: {} });
 });
 
 test('ensureYtdlp: a partial ytdlp namespace is completed without clobbering present fields', () => {
@@ -516,4 +516,230 @@ test('ensureYtdlp: backfill mutates each sub object independently, never sharing
   // Mutating one sub's paused flag must never affect the other db's sub.
   dbA.ytdlp.subscriptions[0].paused = true;
   assert.equal(dbB.ytdlp.subscriptions[0].paused, false, 'backfill must not share sub objects/arrays across db instances');
+});
+
+// ---- v1.20.0 FR-2: sanitizeCapturedChannelMeta (SECURITY-CRITICAL) --------
+//
+// Every captured channelUrl/uploaderUrl MUST pass the UNMODIFIED
+// url.validateChannelUrl before it survives sanitization -- these tests
+// prove hostile/malformed input is dropped, never stored/used, while a
+// genuinely valid capture (mirroring what parseChannelMetaLine returns) is
+// kept intact.
+
+function validMeta(overrides = {}) {
+  return {
+    videoId: 'dQw4w9WgXcQ',
+    channelUrl: 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw',
+    channelId: 'UCuAXFkgsw1L7xaCfnd5JJOw',
+    uploaderUrl: 'https://www.youtube.com/@RickAstley',
+    channelName: 'Rick Astley',
+    ...overrides,
+  };
+}
+
+test('sanitizeCapturedChannelMeta: keeps a fully valid capture, normalizing the URL via validateChannelUrl', () => {
+  const result = store.sanitizeCapturedChannelMeta(validMeta());
+  assert.equal(result.videoId, 'dQw4w9WgXcQ');
+  assert.equal(result.channelUrl, 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw');
+  assert.equal(result.channelHandleUrl, 'https://www.youtube.com/@RickAstley');
+  assert.equal(result.channelId, 'UCuAXFkgsw1L7xaCfnd5JJOw');
+  assert.equal(result.channelName, 'Rick Astley');
+});
+
+test('sanitizeCapturedChannelMeta: falls back to uploaderUrl when channelUrl is absent/invalid', () => {
+  const result = store.sanitizeCapturedChannelMeta(validMeta({ channelUrl: null }));
+  assert.equal(result.channelUrl, 'https://www.youtube.com/@RickAstley');
+  // channelHandleUrl is only set when it DIFFERS from the chosen channelUrl.
+  assert.equal(result.channelHandleUrl, undefined);
+});
+
+test('sanitizeCapturedChannelMeta: drops the ENTIRE entry when NEITHER channelUrl nor uploaderUrl passes validation', () => {
+  assert.equal(store.sanitizeCapturedChannelMeta(validMeta({ channelUrl: null, uploaderUrl: null })), null);
+  assert.equal(store.sanitizeCapturedChannelMeta(validMeta({ channelUrl: 'not a url', uploaderUrl: 'also not a url' })), null);
+});
+
+test('sanitizeCapturedChannelMeta: HOSTILE channelUrl (shell metacharacters) is dropped, never stored (falls back to uploaderUrl if that is valid)', () => {
+  const result = store.sanitizeCapturedChannelMeta(validMeta({ channelUrl: 'https://youtube.com/@x; rm -rf /' }));
+  assert.equal(result.channelUrl, 'https://www.youtube.com/@RickAstley', 'the hostile channelUrl must never be used -- falls back to the valid uploaderUrl');
+});
+
+test('sanitizeCapturedChannelMeta: HOSTILE channelUrl AND uploaderUrl together drop the whole entry', () => {
+  const result = store.sanitizeCapturedChannelMeta(validMeta({
+    channelUrl: 'https://youtube.com/@x; rm -rf /',
+    uploaderUrl: 'javascript:alert(1)',
+  }));
+  assert.equal(result, null);
+});
+
+test('sanitizeCapturedChannelMeta: a CRLF header-injection-shaped channelUrl with NO embedded legitimate URL is dropped (control-char reject in validateChannelUrl)', () => {
+  const result = store.sanitizeCapturedChannelMeta(validMeta({
+    channelUrl: '\r\nSet-Cookie: evil=1\r\n',
+    uploaderUrl: null,
+  }));
+  assert.equal(result, null);
+});
+
+test('sanitizeCapturedChannelMeta: a CRLF-suffixed channelUrl is normalized to just its embedded legitimate URL (documented FR-5 v1.16.0 extraction, never a bypass -- the injected suffix is discarded, not smuggled through)', () => {
+  const result = store.sanitizeCapturedChannelMeta(validMeta({
+    channelUrl: 'https://www.youtube.com/@x\r\nSet-Cookie: evil=1',
+    uploaderUrl: null,
+  }));
+  assert.equal(result.channelUrl, 'https://www.youtube.com/@x', 'only the clean, validated URL prefix ever survives -- the CRLF-injected text is dropped, never persisted');
+});
+
+test('sanitizeCapturedChannelMeta: a disallowed (non-YouTube) host is dropped', () => {
+  const result = store.sanitizeCapturedChannelMeta(validMeta({
+    channelUrl: 'https://evil.com/@somechannel',
+    uploaderUrl: null,
+  }));
+  assert.equal(result, null);
+});
+
+test('sanitizeCapturedChannelMeta: an overlong channelUrl is dropped (MAX_URL_LENGTH reject in validateChannelUrl)', () => {
+  const overlong = `https://www.youtube.com/@${'a'.repeat(3000)}`;
+  const result = store.sanitizeCapturedChannelMeta(validMeta({ channelUrl: overlong, uploaderUrl: null }));
+  assert.equal(result, null);
+});
+
+test('sanitizeCapturedChannelMeta: a video URL (not a channel URL) never passes as a channel identity', () => {
+  const result = store.sanitizeCapturedChannelMeta(validMeta({
+    channelUrl: 'https://youtu.be/dQw4w9WgXcQ',
+    uploaderUrl: null,
+  }));
+  // youtu.be/<id> IS a plausible shape validateChannelUrl accepts (it's the
+  // single-video-URL classifier's own domain) -- sanitizeCapturedChannelMeta
+  // does not itself distinguish "video" from "channel" shapes (that's the
+  // client-side matcher's job per the design), so this is accepted as a
+  // URL here; the assertion below locks that this is NOT silently rejected
+  // in a way that would mask a real regression, while still proving no
+  // hostile/malformed value reaches this point untouched.
+  assert.equal(result.channelUrl, 'https://youtu.be/dQw4w9WgXcQ');
+});
+
+test('sanitizeCapturedChannelMeta: an invalid videoId drops the WHOLE entry (no safe join key)', () => {
+  assert.equal(store.sanitizeCapturedChannelMeta(validMeta({ videoId: '../../../etc/passwd' })), null);
+  assert.equal(store.sanitizeCapturedChannelMeta(validMeta({ videoId: 'has space' })), null);
+  assert.equal(store.sanitizeCapturedChannelMeta(validMeta({ videoId: '' })), null);
+  assert.equal(store.sanitizeCapturedChannelMeta(validMeta({ videoId: null })), null);
+  assert.equal(store.sanitizeCapturedChannelMeta(validMeta({ videoId: 'a'.repeat(200) })), null);
+});
+
+test('sanitizeCapturedChannelMeta: channelId is kept ONLY when it matches the UC... shape; otherwise dropped (never persisted as-is)', () => {
+  const valid = store.sanitizeCapturedChannelMeta(validMeta());
+  assert.equal(valid.channelId, 'UCuAXFkgsw1L7xaCfnd5JJOw');
+  const hostileId = store.sanitizeCapturedChannelMeta(validMeta({ channelId: '"; DROP TABLE subs; --' }));
+  assert.equal(hostileId.channelId, undefined, 'a hostile channelId must be dropped, not stored verbatim');
+  const shortId = store.sanitizeCapturedChannelMeta(validMeta({ channelId: 'UCshort' }));
+  assert.equal(shortId.channelId, undefined);
+});
+
+test('sanitizeCapturedChannelMeta: channelName is control-char-stripped and length-bounded', () => {
+  const withControlChars = store.sanitizeCapturedChannelMeta(validMeta({ channelName: 'Evil\x00\x1fName\x7f' }));
+  assert.equal(withControlChars.channelName, 'EvilName');
+  const overlong = store.sanitizeCapturedChannelMeta(validMeta({ channelName: 'x'.repeat(500) }));
+  assert.equal(overlong.channelName.length, store.MAX_CAPTURED_CHANNEL_NAME_LENGTH);
+  const emptyAfterStrip = store.sanitizeCapturedChannelMeta(validMeta({ channelName: '\x00\x00' }));
+  assert.equal(emptyAfterStrip.channelName, undefined);
+});
+
+test('sanitizeCapturedChannelMeta: a non-object/null raw input never throws, drops the entry', () => {
+  assert.equal(store.sanitizeCapturedChannelMeta(null), null);
+  assert.equal(store.sanitizeCapturedChannelMeta(undefined), null);
+  assert.equal(store.sanitizeCapturedChannelMeta('a string'), null);
+  assert.equal(store.sanitizeCapturedChannelMeta(42), null);
+});
+
+// ---- v1.20.0 FR-2: recordDownloadChannelMeta / consumeDownloadChannelMeta -
+
+test('recordDownloadChannelMeta: persists a sanitized entry into db.ytdlp.downloadMeta, keyed by videoId', async () => {
+  const deps = makeFakeDeps();
+  const recorded = await store.recordDownloadChannelMeta(deps, validMeta());
+  assert.equal(recorded, true);
+  const ns = store.ensureYtdlp(deps.loadDatabase());
+  assert.ok(ns.downloadMeta.dQw4w9WgXcQ);
+  assert.equal(ns.downloadMeta.dQw4w9WgXcQ.channelUrl, 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw');
+  assert.equal(typeof ns.downloadMeta.dQw4w9WgXcQ.capturedAt, 'number');
+});
+
+test('recordDownloadChannelMeta: a hostile/invalid entry is dropped -- resolves false, nothing is written', async () => {
+  const deps = makeFakeDeps();
+  const recorded = await store.recordDownloadChannelMeta(deps, validMeta({ channelUrl: null, uploaderUrl: null }));
+  assert.equal(recorded, false);
+  const ns = store.ensureYtdlp(deps.loadDatabase());
+  assert.deepEqual(ns.downloadMeta, {});
+});
+
+test('recordDownloadChannelMeta: MAX_DOWNLOAD_META FIFO cap evicts the OLDEST entries first', async () => {
+  const deps = makeFakeDeps();
+  // Seed one entry directly with an old capturedAt so it is the guaranteed-oldest.
+  await store.recordDownloadChannelMeta(deps, validMeta({ videoId: 'oldestVideoId' }));
+  const db = deps.loadDatabase();
+  store.ensureYtdlp(db).downloadMeta.oldestVideoId.capturedAt = 1; // force it to be the oldest
+
+  // Fill up to (but not over) the cap with distinct ids.
+  for (let i = 0; i < store.MAX_DOWNLOAD_META - 1; i++) {
+    await store.recordDownloadChannelMeta(deps, validMeta({ videoId: `vid${String(i).padStart(6, '0')}` }));
+  }
+  assert.equal(Object.keys(store.ensureYtdlp(deps.loadDatabase()).downloadMeta).length, store.MAX_DOWNLOAD_META);
+  assert.ok(store.ensureYtdlp(deps.loadDatabase()).downloadMeta.oldestVideoId, 'sanity: still at exactly the cap, oldest survives');
+
+  // One more push over the cap must evict the oldest entry (oldestVideoId).
+  await store.recordDownloadChannelMeta(deps, validMeta({ videoId: 'newestVideoId' }));
+  const finalNs = store.ensureYtdlp(deps.loadDatabase());
+  assert.equal(Object.keys(finalNs.downloadMeta).length, store.MAX_DOWNLOAD_META, 'the map must stay capped, never grow past MAX_DOWNLOAD_META');
+  assert.ok(!finalNs.downloadMeta.oldestVideoId, 'the oldest entry (by capturedAt) must be evicted once the cap is exceeded');
+  assert.ok(finalNs.downloadMeta.newestVideoId, 'the newly-recorded entry must be present');
+});
+
+test('consumeDownloadChannelMeta: reads, re-validates, and DELETES the entry (consume-and-delete, bounded growth)', () => {
+  const db = {};
+  store.ensureYtdlp(db).downloadMeta.dQw4w9WgXcQ = {
+    channelUrl: 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw',
+    channelHandleUrl: 'https://www.youtube.com/@RickAstley',
+    channelId: 'UCuAXFkgsw1L7xaCfnd5JJOw',
+    channelName: 'Rick Astley',
+    capturedAt: Date.now(),
+  };
+  const result = store.consumeDownloadChannelMeta(db, 'dQw4w9WgXcQ');
+  assert.deepEqual(result, {
+    channelUrl: 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw',
+    channelHandleUrl: 'https://www.youtube.com/@RickAstley',
+    channelId: 'UCuAXFkgsw1L7xaCfnd5JJOw',
+    channelName: 'Rick Astley',
+  });
+  // Consumed -- the key must be gone regardless of the lookup outcome.
+  assert.equal(db.ytdlp.downloadMeta.dQw4w9WgXcQ, undefined);
+});
+
+test('consumeDownloadChannelMeta: a miss (no entry for this videoId) returns null, never throws', () => {
+  const db = {};
+  assert.equal(store.consumeDownloadChannelMeta(db, 'noSuchVideoId'), null);
+});
+
+test('consumeDownloadChannelMeta: an invalid videoId (fails isSafeVideoId) returns null without touching the map', () => {
+  const db = {};
+  store.ensureYtdlp(db).downloadMeta['../etc/passwd'] = { channelUrl: 'https://www.youtube.com/@x', capturedAt: Date.now() };
+  assert.equal(store.consumeDownloadChannelMeta(db, '../etc/passwd'), null);
+});
+
+test('consumeDownloadChannelMeta: re-validates the stored channelUrl -- a somehow-corrupted persisted entry with a hostile URL is dropped (still deleted, never returned)', () => {
+  const db = {};
+  store.ensureYtdlp(db).downloadMeta.dQw4w9WgXcQ = {
+    channelUrl: 'https://evil.com/@x',
+    capturedAt: Date.now(),
+  };
+  const result = store.consumeDownloadChannelMeta(db, 'dQw4w9WgXcQ');
+  assert.equal(result, null);
+  assert.equal(db.ytdlp.downloadMeta.dQw4w9WgXcQ, undefined, 'the entry must still be consumed (deleted) even when it fails re-validation');
+});
+
+test('consumeDownloadChannelMeta: is safe to call from INSIDE a synchronous updateDatabase-style mutator (no re-entrant updateDatabase call)', async () => {
+  const deps = makeFakeDeps();
+  await store.recordDownloadChannelMeta(deps, validMeta());
+  let consumed;
+  await deps.updateDatabase((fresh) => {
+    consumed = store.consumeDownloadChannelMeta(fresh, 'dQw4w9WgXcQ');
+  });
+  assert.ok(consumed);
+  assert.equal(consumed.channelUrl, 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw');
 });

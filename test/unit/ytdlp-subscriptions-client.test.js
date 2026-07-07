@@ -537,6 +537,53 @@ test('createSubscriptionsListElement: renders one row per subscription', () => {
   assert.strictEqual(container.children.length, 2);
 });
 
+// ---- v1.20.0 FR-4: per-channel Playlist link ------------------------------
+
+test('createSubscriptionRow: renders a "View as Playlist" link to /?root=<encodeURIComponent(channelDir)> when channelDir is present', () => {
+  const sub = {
+    id: 'pl1',
+    name: 'Playlist Channel',
+    channelUrl: 'https://www.youtube.com/@playlistchannel',
+    channelDir: '/data/ytdlp-downloads/Playlist Channel',
+  };
+  const row = createSubscriptionRow(sub, fakeDoc, {});
+  const link = [...row.walk()].find((el) => el.tagName === 'A');
+  assert.ok(link, 'a playlist link must be rendered when channelDir is present');
+  assert.strictEqual(link.className, 'sub-row-playlist-link');
+  assert.strictEqual(link.href, '/?root=' + encodeURIComponent(sub.channelDir));
+  assert.strictEqual(link.textContent, 'View as Playlist');
+});
+
+test('createSubscriptionRow: omits the playlist link entirely when channelDir is absent', () => {
+  const sub = { id: 'pl2', name: 'No Dir Channel', channelUrl: 'https://www.youtube.com/@nodir' };
+  const row = createSubscriptionRow(sub, fakeDoc, {});
+  const link = [...row.walk()].find((el) => el.tagName === 'A');
+  assert.strictEqual(link, undefined, 'no playlist link must be rendered when channelDir is missing');
+});
+
+test('createSubscriptionRow: omits the playlist link when channelDir is an empty string', () => {
+  const sub = { id: 'pl3', name: 'Empty Dir Channel', channelUrl: 'https://www.youtube.com/@emptydir', channelDir: '' };
+  const row = createSubscriptionRow(sub, fakeDoc, {});
+  const link = [...row.walk()].find((el) => el.tagName === 'A');
+  assert.strictEqual(link, undefined, 'an empty-string channelDir must not render a link');
+});
+
+test('createSubscriptionRow: a channelDir containing characters requiring escaping is properly encodeURIComponent-encoded in the href, never raw-interpolated', () => {
+  // A path with a space and an ampersand -- both must be percent-encoded in
+  // the query string, proving the link is built via encodeURIComponent, not
+  // raw string concatenation.
+  const sub = {
+    id: 'pl4',
+    name: 'Channel & Co',
+    channelUrl: 'https://www.youtube.com/@channelandco',
+    channelDir: '/data/ytdlp-downloads/Channel & Co',
+  };
+  const row = createSubscriptionRow(sub, fakeDoc, {});
+  const link = [...row.walk()].find((el) => el.tagName === 'A');
+  assert.ok(link);
+  assert.strictEqual(link.href, '/?root=%2Fdata%2Fytdlp-downloads%2FChannel%20%26%20Co');
+});
+
 // ---- SECURITY (T5 mandatory regression test): a hostile subscription name --
 
 test('createSubscriptionRow: a hostile subscription name is rendered as inert TEXT, never interpreted as markup (XSS regression)', () => {

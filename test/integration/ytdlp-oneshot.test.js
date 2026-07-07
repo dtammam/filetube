@@ -895,6 +895,115 @@ test('a failure to append to the archive does NOT fail the one-off -- the downlo
   }
 });
 
+// ---- v1.20.0 FR-2: one-shot channel-identity capture (NO fallback) --------
+
+test('a successful one-shot download persists its captured (sanitized) channel identity into db.ytdlp.downloadMeta', async () => {
+  const deps = makeFakeDeps();
+  run.runDownload = async () => ({
+    ok: true,
+    code: 0,
+    stdout: '',
+    stderr: '',
+    channelMeta: [{
+      videoId: 'dQw4w9WgXcQ',
+      channelUrl: 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw',
+      channelId: 'UCuAXFkgsw1L7xaCfnd5JJOw',
+      uploaderUrl: 'https://www.youtube.com/@RickAstley',
+      channelName: 'Rick Astley',
+    }],
+  });
+
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    const res = await postJson(base, '/api/ytdlp/download', { url: SINGLE_VIDEO_URL });
+    assert.equal(res.status, 202);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    const ns = store.ensureYtdlp(deps.loadDatabase());
+    assert.ok(ns.downloadMeta.dQw4w9WgXcQ, 'the captured channel identity must be persisted, keyed by the video id');
+    assert.equal(ns.downloadMeta.dQw4w9WgXcQ.channelUrl, 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw');
+    assert.equal(ns.downloadMeta.dQw4w9WgXcQ.channelName, 'Rick Astley');
+  } finally {
+    await close();
+  }
+});
+
+test('a one-shot capture MISS (no channelMeta captured) leaves NO downloadMeta entry -- the one-shot path has no fallback, unlike subscriptions', async () => {
+  const deps = makeFakeDeps();
+  run.runDownload = async () => ({ ok: true, code: 0, stdout: '', stderr: '', channelMeta: [] });
+
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    const res = await postJson(base, '/api/ytdlp/download', { url: SINGLE_VIDEO_URL });
+    assert.equal(res.status, 202);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    const ns = store.ensureYtdlp(deps.loadDatabase());
+    assert.equal(ns.downloadMeta.dQw4w9WgXcQ, undefined, 'a one-shot capture miss must leave no channel identity -- no fallback exists for the one-shot path');
+  } finally {
+    await close();
+  }
+});
+
+test('a one-shot with a HOSTILE captured channelUrl records nothing (dropped by the sanitizer, never stored)', async () => {
+  const deps = makeFakeDeps();
+  run.runDownload = async () => ({
+    ok: true,
+    code: 0,
+    stdout: '',
+    stderr: '',
+    channelMeta: [{
+      videoId: 'dQw4w9WgXcQ',
+      channelUrl: 'https://evil.com/@x; rm -rf /',
+      channelId: null,
+      uploaderUrl: null,
+      channelName: 'Hostile',
+    }],
+  });
+
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    const res = await postJson(base, '/api/ytdlp/download', { url: SINGLE_VIDEO_URL });
+    assert.equal(res.status, 202);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    const ns = store.ensureYtdlp(deps.loadDatabase());
+    assert.equal(ns.downloadMeta.dQw4w9WgXcQ, undefined, 'a hostile captured channelUrl must never be persisted');
+  } finally {
+    await close();
+  }
+});
+
+test('a one-shot download FAILURE never persists a channel-identity capture (only a successful download\'s channelMeta is recorded)', async () => {
+  const deps = makeFakeDeps();
+  run.runDownload = async () => ({
+    ok: false,
+    code: 1,
+    stdout: '',
+    stderr: '',
+    error: 'yt-dlp exited with code 1',
+    channelMeta: [{
+      videoId: 'dQw4w9WgXcQ',
+      channelUrl: 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw',
+      channelId: null,
+      uploaderUrl: null,
+      channelName: 'Should Not Be Stored',
+    }],
+  });
+
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    const res = await postJson(base, '/api/ytdlp/download', { url: SINGLE_VIDEO_URL });
+    assert.equal(res.status, 202);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    const ns = store.ensureYtdlp(deps.loadDatabase());
+    assert.equal(ns.downloadMeta.dQw4w9WgXcQ, undefined, 'a FAILED download must never persist a channel-identity capture');
+  } finally {
+    await close();
+  }
+});
+
 test('FIX-10 regression: POST /api/ytdlp/download rejects once the pending one-shot queue exceeds the cap, instead of enqueuing unbounded', async () => {
   const deps = makeFakeDeps();
   run.runDownload = () => new Promise(() => {}); // never resolves -- keeps every queued job pending indefinitely

@@ -865,3 +865,83 @@ test('buildYtdlpDownloadArgs (video, one-off vs subscription): both paths receiv
   assert.equal(subscriptionArgs[sIdxSub + 1], args.VIDEO_FORMAT_SORT);
   assert.equal(oneOffArgs[sIdxOneOff + 1], args.VIDEO_FORMAT_SORT);
 });
+
+// ---- v1.20.0 FR-2: --print after_move:FTCHMETA capture template -----------
+//
+// SECURITY-CRITICAL / two-reviewer gate: this is a FIXED literal (sentinel +
+// %(field)s placeholders only) added unconditionally to the download-pass
+// argv -- these tests prove the exact literal, its position (before the
+// `--`/positional targets), that it is present for BOTH format branches and
+// BOTH the subscription and one-off calling conventions (one shared
+// builder), and -- most importantly -- that the `after_move:` WHEN-prefix
+// is present so this remains a REAL download, never `--simulate`.
+
+test('buildYtdlpDownloadArgs: includes the fixed "--print after_move:FTCHMETA..." literal, unmodified by any sub/config field', () => {
+  const config = makeConfig();
+  const result = args.buildYtdlpDownloadArgs(baseSub(), config, ['vid1']);
+  const idx = result.indexOf('--print');
+  assert.ok(idx >= 0, 'expected a --print flag in the download args');
+  assert.equal(result[idx + 1], args.CHANNEL_META_PRINT_TEMPLATE);
+  assert.equal(
+    result[idx + 1],
+    'after_move:FTCHMETA %(.{id,channel_url,channel_id,uploader_url,channel})j',
+  );
+});
+
+test('buildYtdlpDownloadArgs: the --print template starts with "after_move:" (load-bearing -- a bare --print implies --simulate and would skip the download)', () => {
+  const config = makeConfig();
+  const result = args.buildYtdlpDownloadArgs(baseSub(), config, ['vid1']);
+  const idx = result.indexOf('--print');
+  assert.ok(result[idx + 1].startsWith('after_move:'), 'the after_move: WHEN-prefix must be present');
+});
+
+test('buildYtdlpDownloadArgs: the --print flag precedes the "-o"/"--"/positional targets', () => {
+  const config = makeConfig();
+  const result = args.buildYtdlpDownloadArgs(baseSub(), config, ['vid1']);
+  const printIdx = result.indexOf('--print');
+  const sepIdx = result.indexOf('--');
+  const oIdx = result.indexOf('-o');
+  assert.ok(printIdx >= 0 && sepIdx >= 0 && oIdx >= 0);
+  assert.ok(printIdx < sepIdx, '--print must precede the "--" separator');
+  assert.ok(printIdx < oIdx || oIdx < printIdx, 'sanity: -o is also present'); // position relative to -o is not itself security-relevant
+});
+
+test('buildYtdlpDownloadArgs (audio): the --print capture template is ALSO present (applies to both format branches)', () => {
+  const config = makeConfig();
+  const result = args.buildYtdlpDownloadArgs(baseSub({ format: 'audio' }), config, ['vid1']);
+  const idx = result.indexOf('--print');
+  assert.ok(idx >= 0);
+  assert.equal(result[idx + 1], args.CHANNEL_META_PRINT_TEMPLATE);
+});
+
+test('buildYtdlpDownloadArgs (one-off vs subscription): both calling conventions get the IDENTICAL --print template (one shared builder, no divergent one-off logic)', () => {
+  const config = makeConfig();
+  const subscriptionArgs = args.buildYtdlpDownloadArgs(baseSub(), config, ['vid1']);
+  const oneOffArgs = args.buildYtdlpDownloadArgs(baseSub(), config, ['vid1'], { oneOff: true });
+  assert.equal(subscriptionArgs[subscriptionArgs.indexOf('--print') + 1], args.CHANNEL_META_PRINT_TEMPLATE);
+  assert.equal(oneOffArgs[oneOffArgs.indexOf('--print') + 1], args.CHANNEL_META_PRINT_TEMPLATE);
+});
+
+test('buildYtdlpDownloadArgs: the --print template never changes shape regardless of sub/config content (fixed literal, never interpolated)', () => {
+  const config = makeConfig();
+  const hostileSub = baseSub({
+    name: 'Evil"; rm -rf /; #',
+    channelUrl: 'https://www.youtube.com/@somechannel',
+  });
+  const result = args.buildYtdlpDownloadArgs(hostileSub, config, ['vid1']);
+  const idx = result.indexOf('--print');
+  assert.equal(result[idx + 1], args.CHANNEL_META_PRINT_TEMPLATE, 'the --print literal must be byte-identical regardless of sub content');
+});
+
+test('buildYtdlpDownloadArgs: only ONE --print flag is ever emitted per build (no duplication)', () => {
+  const config = makeConfig();
+  const result = args.buildYtdlpDownloadArgs(baseSub(), config, ['vid1', 'vid2']);
+  const count = result.filter((el) => el === '--print').length;
+  assert.equal(count, 1);
+});
+
+test('CHANNEL_META_PRINT_TEMPLATE / CHANNEL_META_SENTINEL are exported for reuse by lib/ytdlp/run.js\'s parser', () => {
+  assert.equal(args.CHANNEL_META_SENTINEL, 'FTCHMETA');
+  assert.ok(args.CHANNEL_META_PRINT_TEMPLATE.includes(args.CHANNEL_META_SENTINEL));
+  assert.ok(args.CHANNEL_META_PRINT_TEMPLATE.startsWith('after_move:'));
+});

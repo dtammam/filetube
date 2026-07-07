@@ -105,14 +105,19 @@ test('parseYtdlpConfig: never throws regardless of input shape', () => {
 
 // ---- FILETUBE_YTDLP_MAX_VIDEOS: bound the per-channel listing (v1.11.1 hotfix) ----
 //
-// Default 3 (newest videos; lowered from 25 in v1.17.0 -- "25 is just
-// aggro"); 0 is a distinct, valid value meaning "unlimited" (consider the
-// whole channel); any other invalid/hostile input falls back to the default
-// rather than throwing or disabling the module.
+// Default 2 (newest videos; lowered from 25 to 3 in v1.18.0 -- "25 is just
+// aggro" -- then from 3 to 2 in v1.20.0, FR-5 -- "even 3 rarely gets hit");
+// 0 is a distinct, valid value meaning "unlimited" (consider the whole
+// channel); any other invalid/hostile input falls back to the default
+// rather than throwing or disabling the module. This default only applies
+// to NEW subscriptions -- an already-persisted subscription's stored
+// `maxVideos` is untouched (see lib/ytdlp/args.js's
+// `subMaxVideos ?? config.maxVideos` resolution, exercised in
+// test/unit/ytdlp-args.test.js).
 
-test('parseYtdlpConfig: maxVideos defaults to 3 when unset', () => {
+test('parseYtdlpConfig: maxVideos defaults to 2 when unset', () => {
   const config = parseYtdlpConfig({});
-  assert.equal(config.maxVideos, 3);
+  assert.equal(config.maxVideos, 2);
 });
 
 test('parseYtdlpConfig: maxVideos falls back to the documented default on invalid values', () => {
@@ -121,7 +126,7 @@ test('parseYtdlpConfig: maxVideos falls back to the documented default on invali
   // parsePollMinutes's own bad-value test above excludes it too.
   for (const bad of [undefined, null, '', 'abc', '-1', '1.5', 'NaN', {}, 'garbage']) {
     const config = parseYtdlpConfig({ FILETUBE_YTDLP_MAX_VIDEOS: bad });
-    assert.equal(config.maxVideos, 3, `${JSON.stringify(bad)} should fall back to the default`);
+    assert.equal(config.maxVideos, 2, `${JSON.stringify(bad)} should fall back to the default`);
   }
 });
 

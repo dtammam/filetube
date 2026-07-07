@@ -1017,3 +1017,223 @@ test('runDownload: never sets shell:true and stdio pipes stdout+stderr (arg-arra
   assert.notEqual(opts && opts.shell, true);
   assert.equal(opts && opts.maxBuffer, undefined);
 });
+
+// ---- v1.20.0 FR-2: --print after_move:FTCHMETA capture, end-to-end against --
+// ---- the REAL spawn boundary (two-reviewer gate: proves this remains a  ----
+// ---- REAL download, never --simulate, and that the captured line is    ----
+// ---- parsed/bounded/never forwarded to onProgress). ------------------------
+
+test('runDownload: the built argv includes "--print" immediately followed by an "after_move:"-prefixed literal (never a bare --print, which would imply --simulate)', async () => {
+  const spawnChild = stubSpawn();
+  const downloadDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-ytdlp-dl-'));
+  const config = { downloadDir, cookiesFile: null };
+  const sub = { channelUrl: 'https://www.youtube.com/@x', name: 'x', format: 'video', quality: 'best' };
+  const resultPromise = run.runDownload(sub, config, ['vid1']);
+  const child = spawnChild();
+  child.emit('close', 0, null);
+  await resultPromise;
+  const { argv } = capturedSpawnCalls[0];
+  const idx = argv.indexOf('--print');
+  assert.ok(idx >= 0, 'expected --print in the real spawned argv');
+  assert.ok(argv[idx + 1].startsWith('after_move:'), 'the print WHEN-prefix must be after_move: -- a bare --print implies --simulate and would skip the download');
+  assert.ok(!argv.includes('--simulate'), 'the download argv must never include --simulate');
+});
+
+// Small helper mirroring the real FTCHMETA line shape (post-fix JSON format,
+// see CHANNEL_META_PRINT_TEMPLATE's doc comment in lib/ytdlp/args.js) so
+// these tests read as "realistic yt-dlp stdout" rather than hand-rolled
+// strings.
+function ftchmetaLine(fields) {
+  return `FTCHMETA ${JSON.stringify(fields)}\n`;
+}
+
+test('runDownload: a genuine download still completes ok:true (--print after_move: never turns the spawn into a --simulate no-op)', async () => {
+  const spawnChild = stubSpawn();
+  const downloadDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-ytdlp-dl-'));
+  const config = { downloadDir, cookiesFile: null };
+  const sub = { channelUrl: 'https://www.youtube.com/@x', name: 'x', format: 'video', quality: 'best' };
+  const resultPromise = run.runDownload(sub, config, ['vid1']);
+  const child = spawnChild();
+  // Realistic sequence: a progress line, then the FTCHMETA print line
+  // (after_move: fires AFTER the file has been moved to its final path),
+  // then a clean exit.
+  child.stdout.emit('data', Buffer.from('[download] 100% of  10.0MiB in 00:00:05 at 2.00MiB/s\n'));
+  child.stdout.emit('data', Buffer.from(ftchmetaLine({
+    id: 'vid1',
+    channel_url: 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw',
+    channel_id: 'UCuAXFkgsw1L7xaCfnd5JJOw',
+    uploader_url: 'https://www.youtube.com/@x',
+    channel: 'Some Channel',
+  })));
+  child.emit('close', 0, null);
+  const result = await resultPromise;
+  assert.equal(result.ok, true, 'the download must still complete successfully -- --print after_move: never blocks/skips it');
+  assert.equal(result.code, 0);
+});
+
+test('runDownload: a captured FTCHMETA line is parsed onto result.channelMeta and is NEVER forwarded to onProgress', async () => {
+  const spawnChild = stubSpawn();
+  const downloadDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-ytdlp-dl-'));
+  const config = { downloadDir, cookiesFile: null };
+  const sub = { channelUrl: 'https://www.youtube.com/@x', name: 'x', format: 'video', quality: 'best' };
+  const patches = [];
+  const resultPromise = run.runDownload(sub, config, ['vid1'], { onProgress: (p) => patches.push(p) });
+  const child = spawnChild();
+  child.stdout.emit('data', Buffer.from('[download]  50.0% of  10.0MiB at 1.00MiB/s ETA 00:05\n'));
+  child.stdout.emit('data', Buffer.from(ftchmetaLine({
+    id: 'vid1',
+    channel_url: 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw',
+    channel_id: 'UCuAXFkgsw1L7xaCfnd5JJOw',
+    uploader_url: 'https://www.youtube.com/@x',
+    channel: 'Some Channel',
+  })));
+  child.emit('close', 0, null);
+  const result = await resultPromise;
+  assert.equal(result.ok, true);
+  assert.equal(result.channelMeta.length, 1);
+  assert.deepEqual(result.channelMeta[0], {
+    videoId: 'vid1',
+    channelUrl: 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw',
+    channelId: 'UCuAXFkgsw1L7xaCfnd5JJOw',
+    uploaderUrl: 'https://www.youtube.com/@x',
+    channelName: 'Some Channel',
+  });
+  // The FTCHMETA line must never be misinterpreted as a progress patch --
+  // only the one real progress line above produced an onProgress call.
+  assert.equal(patches.length, 1);
+  assert.equal(patches[0].percent, 50);
+});
+
+test('runDownload: result.stdout stays "" even with a captured FTCHMETA line present (SF3 unaffected)', async () => {
+  const spawnChild = stubSpawn();
+  const downloadDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-ytdlp-dl-'));
+  const config = { downloadDir, cookiesFile: null };
+  const sub = { channelUrl: 'https://www.youtube.com/@x', name: 'x', format: 'video', quality: 'best' };
+  const resultPromise = run.runDownload(sub, config, ['vid1']);
+  const child = spawnChild();
+  child.stdout.emit('data', Buffer.from(ftchmetaLine({
+    id: 'vid1',
+    channel_url: 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw',
+    channel_id: 'UCuAXFkgsw1L7xaCfnd5JJOw',
+    uploader_url: 'https://www.youtube.com/@x',
+    channel: 'Some Channel',
+  })));
+  child.emit('close', 0, null);
+  const result = await resultPromise;
+  assert.equal(result.stdout, '');
+});
+
+test('runDownload: a malformed/hostile-shaped FTCHMETA line is captured RAW (unvalidated) on channelMeta -- validation is store.sanitizeCapturedChannelMeta\'s job, never run.js\'s', async () => {
+  const spawnChild = stubSpawn();
+  const downloadDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-ytdlp-dl-'));
+  const config = { downloadDir, cookiesFile: null };
+  const sub = { channelUrl: 'https://www.youtube.com/@x', name: 'x', format: 'video', quality: 'best' };
+  const resultPromise = run.runDownload(sub, config, ['vid1']);
+  const child = spawnChild();
+  child.stdout.emit('data', Buffer.from(ftchmetaLine({
+    id: 'vid1',
+    channel_url: 'https://evil.com/@x; rm -rf /',
+    channel_id: null,
+    uploader_url: null,
+    channel: 'Hostile Channel',
+  })));
+  child.emit('close', 0, null);
+  const result = await resultPromise;
+  assert.equal(result.channelMeta.length, 1);
+  assert.equal(result.channelMeta[0].channelUrl, 'https://evil.com/@x; rm -rf /', 'run.js itself does no validation -- the hostile string passes through raw, to be dropped downstream by store.sanitizeCapturedChannelMeta');
+});
+
+// ---- two-reviewer-gate fix (post-release): stdout-only capture parsing +  --
+// ---- injection-proof (JSON-escaped) payload, defeating capture-line       --
+// ---- forgery via an embedded newline in an attacker-controlled field. -----
+
+test('SECURITY: runDownload NEVER captures an FTCHMETA-shaped line arriving on STDERR -- only stdout is a legitimate --print destination', async () => {
+  const spawnChild = stubSpawn();
+  const downloadDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-ytdlp-dl-'));
+  const config = { downloadDir, cookiesFile: null };
+  const sub = { channelUrl: 'https://www.youtube.com/@x', name: 'x', format: 'video', quality: 'best' };
+  const resultPromise = run.runDownload(sub, config, ['vid1']);
+  const child = spawnChild();
+  // A perfectly well-formed FTCHMETA line, but on stderr -- e.g. what a
+  // multi-line, attacker-controlled video description echoed to stderr
+  // could otherwise be made to contain. This must be ignored entirely: no
+  // capture, and it also must not be misread as a progress patch.
+  child.stderr.emit('data', Buffer.from(ftchmetaLine({
+    id: 'attacker-id',
+    channel_url: 'https://www.youtube.com/@attacker',
+    channel_id: null,
+    uploader_url: null,
+    channel: 'Attacker Channel',
+  })));
+  child.emit('close', 0, null);
+  const result = await resultPromise;
+  assert.equal(result.ok, true);
+  assert.equal(result.channelMeta.length, 0, 'an FTCHMETA line on stderr must never be captured');
+});
+
+test('SECURITY: a legitimate stdout FTCHMETA line is still captured normally even when an FTCHMETA-shaped line ALSO appears on stderr (stderr is inert)', async () => {
+  const spawnChild = stubSpawn();
+  const downloadDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-ytdlp-dl-'));
+  const config = { downloadDir, cookiesFile: null };
+  const sub = { channelUrl: 'https://www.youtube.com/@x', name: 'x', format: 'video', quality: 'best' };
+  const resultPromise = run.runDownload(sub, config, ['vid1']);
+  const child = spawnChild();
+  child.stderr.emit('data', Buffer.from(ftchmetaLine({
+    id: 'attacker-id',
+    channel_url: 'https://www.youtube.com/@attacker',
+    channel_id: null,
+    uploader_url: null,
+    channel: 'Attacker Channel',
+  })));
+  child.stdout.emit('data', Buffer.from(ftchmetaLine({
+    id: 'vid1',
+    channel_url: 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw',
+    channel_id: 'UCuAXFkgsw1L7xaCfnd5JJOw',
+    uploader_url: 'https://www.youtube.com/@x',
+    channel: 'Real Channel',
+  })));
+  child.emit('close', 0, null);
+  const result = await resultPromise;
+  assert.equal(result.channelMeta.length, 1, 'only the genuine stdout capture is ever recorded');
+  assert.equal(result.channelMeta[0].videoId, 'vid1');
+  assert.equal(result.channelMeta[0].channelName, 'Real Channel');
+});
+
+test('SECURITY: a forged-newline channel NAME (JSON-escaped, as real yt-dlp output always is) cannot produce a second/rogue capture entry on stdout', async () => {
+  const spawnChild = stubSpawn();
+  const downloadDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-ytdlp-dl-'));
+  const config = { downloadDir, cookiesFile: null };
+  const sub = { channelUrl: 'https://www.youtube.com/@x', name: 'x', format: 'video', quality: 'best' };
+  const resultPromise = run.runDownload(sub, config, ['vid1']);
+  const child = spawnChild();
+  // A hostile channel display name that itself contains what LOOKS LIKE a
+  // second FTCHMETA line -- but because the whole print output is a single
+  // JSON object, the embedded "\nFTCHMETA ..." text is JSON-escaped (the
+  // raw byte stream contains the two characters backslash-n, never an
+  // actual newline byte), so it can never split into a second line.
+  const forgedName = 'Innocent\nFTCHMETA ' + JSON.stringify({
+    id: 'other-id',
+    channel_url: 'https://youtube.com/@attacker',
+    channel_id: null,
+    uploader_url: null,
+    channel: 'attacker',
+  });
+  const rawLine = ftchmetaLine({
+    id: 'vid1',
+    channel_url: 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw',
+    channel_id: 'UCuAXFkgsw1L7xaCfnd5JJOw',
+    uploader_url: 'https://www.youtube.com/@x',
+    channel: forgedName,
+  });
+  // Sanity: the only raw newline byte in the emitted chunk is the trailing
+  // line terminator `ftchmetaLine` itself appends -- the forged text inside
+  // the JSON string contributes none.
+  assert.equal(rawLine.indexOf('\n'), rawLine.length - 1, 'the forged newline must be JSON-escaped, not a raw byte, anywhere before the line terminator');
+  child.stdout.emit('data', Buffer.from(rawLine));
+  child.emit('close', 0, null);
+  const result = await resultPromise;
+  assert.equal(result.channelMeta.length, 1, 'the forged embedded text must never produce a SECOND capture entry');
+  assert.equal(result.channelMeta[0].videoId, 'vid1', 'the real videoId from this one line, never the forged "other-id"');
+  assert.equal(result.channelMeta[0].channelUrl, 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw');
+  assert.equal(result.channelMeta[0].channelName, forgedName, 'the forged text survives only as an inert display-name string');
+});

@@ -19,6 +19,7 @@ const {
   getMediaId,
   matchRootFolder,
   cleanDisplayTitle,
+  extractYtdlpVideoId,
   normalizeScanRoot,
 } = require('../../server');
 
@@ -146,6 +147,42 @@ test('cleanDisplayTitle: display-only -- getMediaId is identical whether or not 
 test('cleanDisplayTitle: empty string and a bare bracket-only name never throw', () => {
   assert.equal(cleanDisplayTitle(''), '');
   assert.equal(cleanDisplayTitle('[dQw4w9WgXcQ]'), '[dQw4w9WgXcQ]'); // no leading space/underscore -> no match, unchanged
+});
+
+// ---- v1.20.0 FR-2: extractYtdlpVideoId -- sibling to cleanDisplayTitle, ----
+// reusing the identical ` [<11-char id>]` bracket shape (never a forked
+// regex) so the two helpers can never disagree about what counts as a
+// yt-dlp-shaped filename.
+
+test('extractYtdlpVideoId: extracts the bracketed 11-char id from a yt-dlp-shaped basename', () => {
+  assert.equal(extractYtdlpVideoId('Title_With_Underscores [dQw4w9WgXcQ]'), 'dQw4w9WgXcQ');
+});
+
+test('extractYtdlpVideoId: works with a space (not just an underscore) before the bracket', () => {
+  assert.equal(extractYtdlpVideoId('My Great Video [dQw4w9WgXcQ]'), 'dQw4w9WgXcQ');
+});
+
+test('extractYtdlpVideoId: a plain non-yt-dlp file with no bracket returns null', () => {
+  assert.equal(extractYtdlpVideoId('My_Home_Movie'), null);
+});
+
+test('extractYtdlpVideoId: a bracket whose content is not exactly 11 id-shaped characters returns null (mirrors cleanDisplayTitle\'s own boundary)', () => {
+  assert.equal(extractYtdlpVideoId('Something [notanid]'), null);
+  assert.equal(extractYtdlpVideoId('Something [12charactersX]'), null); // 12 chars, one too many
+  assert.equal(extractYtdlpVideoId('Something [9charsxx]'), null); // 9 chars, one too few
+});
+
+test('extractYtdlpVideoId: agrees with cleanDisplayTitle on the SAME input (shared bracket regex, never forked)', () => {
+  const shaped = 'Link Miguel en Vivo [wN4p6TKlBzQ]';
+  assert.equal(extractYtdlpVideoId(shaped), 'wN4p6TKlBzQ');
+  assert.equal(cleanDisplayTitle(shaped), 'Link Miguel en Vivo');
+  const unshaped = 'Vacation_2024 [Holiday2024]'; // coincidentally 11 chars but not a real id shape check target here
+  assert.equal(extractYtdlpVideoId(unshaped), 'Holiday2024', 'a coincidental 11-char bracket still "matches" the shape (scoping to yt-dlp roots is the caller\'s job, mirroring cleanDisplayTitle)');
+});
+
+test('extractYtdlpVideoId: empty string and a bare bracket-only name never throw', () => {
+  assert.equal(extractYtdlpVideoId(''), null);
+  assert.equal(extractYtdlpVideoId('[dQw4w9WgXcQ]'), null); // no leading space/underscore -> no match
 });
 
 // ---- FR-G part 1 (v1.12.0): normalizeScanRoot -------------------------------
