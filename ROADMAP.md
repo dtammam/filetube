@@ -2,6 +2,11 @@
 
 ## Planned
 
+### 🎯 Next branch focus — iOS playability + player polish
+
+- [ ] **iOS playability: some mp4s won't play (codec, not container)** — FileTube decides whether to transcode by file EXTENSION (`needsTranscode` in server.js only fires for `.avi/.flv/.wmv/.mpg/.mpeg`); every `.mp4` is assumed browser-playable and served as-is. But an `.mp4` container can hold a codec iOS/browsers can't decode (H.265/HEVC video, AC-3/DTS audio, 10-bit/exotic profiles), so those files appear in the library but won't play. Two complementary fixes: **(a) yt-dlp downloads (what we control):** add format-sorting flags so downloads always land as **H.264/AAC in mp4** (e.g. `-S "vcodec:h264,acodec:aac"` / prefer avc1+mp4a, `--merge-output-format mp4` / `--recode-video mp4`) instead of VP9/AV1/webm — "playable on mobile is the point," so make it the default for the mp4 filetype. **(b) manually-added files:** use ffprobe (already run at scan for duration/thumbnails) to detect the real video/audio codec and transcode by CODEC not container. Generalizes `needsTranscode` from extension-based to codec-based. _(Dean: "I want it to be on mobile" — the whole point.)_
+- [ ] **Stale player poster/cached image when switching videos** — side effect of the v1.16.0 persistent player (one reused `<video>`/audio-bg-art element so playback survives navigation): when you load a new item, the PREVIOUS video's poster/cover-art lingers until the new media actually decodes a frame or you press play. Fix: on `load()`, immediately reset the art/poster (audio-bg-art `src` / video poster) to a neutral static placeholder so the old image clears instantly. _(player polish — persistent-player side effect)_
+
 ### 🐞 Bugs & regressions (fix first)
 
 - [ ] **Watch-page scroll layout bug** — on certain videos, scrolling UP makes the whole bottom panel jump to the middle of the screen; scrolling down snaps it back; a page refresh makes it behave. Intermittent/video-dependent CSS or layout/scroll-position bug on the watch page (likely sticky/position interaction). Repro + fix. _(bug)_
