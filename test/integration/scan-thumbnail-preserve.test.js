@@ -13,6 +13,17 @@
 // `probeCodecsOnly` (no frame-grab). Its thumbnail is restored ONLY if it is
 // genuinely missing.
 //
+// v1.19.1 hotfix follow-up: the plain `reusable` fast-path (a VIDEO item that
+// ALREADY carries codec fields -- e.g. it already ran through the v1.18.1
+// backfill on a prior scan, or was scanned fresh under v1.19+) previously
+// copied `existing` as-is with NO thumbnail check at all -- so a video whose
+// thumbnail was clobbered/lost by the v1.18.0 regression on an EARLIER scan,
+// but which already picked up codec fields on that same earlier scan, would
+// never heal on subsequent rescans. `restoreMissingThumbnail` (extracted from
+// the backfill-only branch above) is now also called from the `reusable`
+// branch for VIDEO items only -- see tests (g)/(h)/(i) below. Audio items are
+// explicitly excluded (test (e) already proves no probe/spawn for them).
+//
 // This suite needs to observe *whether an ffmpeg/ffprobe spawn happened at
 // all* (not just what it would have returned), so it monkeypatches
 // `child_process.exec`/`execFile` BEFORE requiring server.js -- server.js
@@ -363,14 +374,17 @@ test('(e) audio items bypass the codec-backfill branch entirely (no probe, no fr
   assert.equal(execCalls.length, 0, 'no ffmpeg spawn at all for an unchanged audio item');
 });
 
-// (f) An already-migrated video (codec fields already present) still takes
-// the plain reuse fast-path -- no probe at all.
-test('(f) an already-migrated video (has codec fields) takes the plain reuse fast-path, no probe', async () => {
+// (f) An already-migrated video (codec fields already present) with a GOOD
+// existing thumbnail still takes the plain reuse fast-path -- no probe, no
+// frame-grab, completely untouched.
+test('(f) an already-migrated video (has codec fields) with a good thumbnail takes the plain reuse fast-path, no probe, no frame-grab', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-f-'));
   const filePath = path.join(root, 'migrated.mp4');
   const bytes = 'already-migrated-video';
   fs.writeFileSync(filePath, bytes);
   const id = getMediaId(filePath);
+  const thumbPath = path.join(THUMBNAIL_DIR, `${id}.jpg`);
+  fs.writeFileSync(thumbPath, 'MIGRATED-GOOD-THUMB');
 
   writeDb({
     folders: [root],
@@ -393,5 +407,124 @@ test('(f) an already-migrated video (has codec fields) takes the plain reuse fas
   const db = readDb();
   assert.equal(db.metadata[id].artist, 'MIGRATED-SENTINEL', 'already-migrated video reused untouched');
   assert.equal(execFileCalls.length, 0, 'no codec probe for an already-migrated video');
-  assert.equal(execCalls.length, 0, 'no ffmpeg spawn at all for an already-migrated, unchanged video');
+  assert.equal(execCalls.length, 0, 'no ffmpeg spawn at all for an already-migrated video with a good thumbnail');
+  assert.equal(fs.readFileSync(thumbPath, 'utf8'), 'MIGRATED-GOOD-THUMB', 'existing thumbnail bytes must be untouched');
+});
+
+// (g) v1.19.1 hotfix: a reused VIDEO (already carries codec fields -- takes
+// the plain `reusable` fast-path, NOT the legacyVideoCodecBackfillOnly
+// branch) whose thumbnail is genuinely MISSING (hasThumbnail:false) gets
+// healed: the frame-grab fires, hasThumbnail flips true, and it is persisted
+// (dbChanged) -- even though no codec backfill was needed.
+test('(g) reused video (codec fields present) with hasThumbnail:false is healed on the plain reuse fast-path', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-g-'));
+  const filePath = path.join(root, 'reused-no-thumb.mp4');
+  const bytes = 'reused-video-missing-thumb';
+  fs.writeFileSync(filePath, bytes);
+  const id = getMediaId(filePath);
+  const thumbPath = path.join(THUMBNAIL_DIR, `${id}.jpg`);
+  // No thumbnail file on disk.
+
+  writeDb({
+    folders: [root],
+    folderSettings: {},
+    progress: {},
+    metadata: {
+      [id]: {
+        id, name: 'reused-no-thumb.mp4', title: 'Reused No Thumb', filePath,
+        folderName: path.basename(root), size: Buffer.byteLength(bytes), ext: '.mp4',
+        type: 'video', addedAt: 1700000000006, duration: 42, hasThumbnail: false,
+        artist: 'REUSE-SENTINEL', needsTranscode: false,
+        videoCodec: 'h264', audioCodec: 'aac',
+      },
+    },
+    settings: baseSettings(),
+  });
+
+  await scanDirectories();
+
+  const db = readDb();
+  const item = db.metadata[id];
+  // No SEPARATE codec-only probe (`probeCodecsOnly`) is invoked -- codec
+  // fields are already present, so this is the reusable fast-path, not
+  // backfill-only. The single ffprobe call observed here is the one
+  // `extractMetadataAndThumbnail` itself issues internally as part of the
+  // thumbnail restore (duration + stream probing ahead of the frame-grab).
+  assert.equal(execFileCalls.length, 1, 'exactly one ffprobe call, from extractMetadataAndThumbnail\'s own internal probe (not a separate codec-only backfill probe)');
+  assert.equal(execCalls.some(c => /^ffmpeg -ss /.test(c)), true, 'the frame-grab must be attempted to heal the missing thumbnail on the reuse fast-path');
+  assert.equal(item.hasThumbnail, true, 'hasThumbnail flips true once the frame-grab succeeds, and is persisted to the DB');
+  assert.equal(fs.existsSync(thumbPath), true, 'the thumbnail file now exists on disk');
+  assert.equal(item.artist, 'REUSE-SENTINEL', 'unrelated fields untouched by the heal');
+  assert.equal(item.duration, 42, 'unrelated fields untouched by the heal');
+});
+
+// (h) v1.19.1 hotfix: same as (g), but `hasThumbnail` was (incorrectly)
+// recorded true even though the .jpg file is actually absent on disk --
+// the reuse fast-path must still detect and heal it.
+test('(h) reused video (codec fields present) whose hasThumbnail=true but the .jpg is actually absent is still healed', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-h-'));
+  const filePath = path.join(root, 'reused-ghost-thumb.mp4');
+  const bytes = 'reused-video-ghost-thumb';
+  fs.writeFileSync(filePath, bytes);
+  const id = getMediaId(filePath);
+  const thumbPath = path.join(THUMBNAIL_DIR, `${id}.jpg`);
+  // Deliberately no file at thumbPath, despite hasThumbnail: true below.
+
+  writeDb({
+    folders: [root],
+    folderSettings: {},
+    progress: {},
+    metadata: {
+      [id]: {
+        id, name: 'reused-ghost-thumb.mp4', title: 'Reused Ghost Thumb', filePath,
+        folderName: path.basename(root), size: Buffer.byteLength(bytes), ext: '.mp4',
+        type: 'video', addedAt: 1700000000007, duration: 7, hasThumbnail: true,
+        artist: '', needsTranscode: false,
+        videoCodec: 'h264', audioCodec: 'aac',
+      },
+    },
+    settings: baseSettings(),
+  });
+
+  await scanDirectories();
+
+  const db = readDb();
+  assert.equal(execCalls.some(c => /^ffmpeg -ss /.test(c)), true, 'a missing on-disk file must trigger healing even if hasThumbnail was true, on the reuse fast-path');
+  assert.equal(db.metadata[id].hasThumbnail, true);
+  assert.equal(fs.existsSync(thumbPath), true);
+});
+
+// (i) v1.19.1 hotfix: a reused AUDIO item with hasThumbnail:false must NEVER
+// be healed/probed -- audio "thumbnails" are embedded cover art legitimately
+// absent for many files; re-probing every scan would be needless churn.
+test('(i) reused audio item with hasThumbnail:false is NOT healed/probed on the reuse fast-path', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-i-'));
+  const filePath = path.join(root, 'reused-track.mp3');
+  const bytes = 'reused-audio-bytes';
+  fs.writeFileSync(filePath, bytes);
+  const id = getMediaId(filePath);
+  const thumbPath = path.join(THUMBNAIL_DIR, `${id}.jpg`);
+
+  writeDb({
+    folders: [root],
+    folderSettings: {},
+    progress: {},
+    metadata: {
+      [id]: {
+        id, name: 'reused-track.mp3', title: 'reused-track', filePath,
+        folderName: path.basename(root), size: Buffer.byteLength(bytes), ext: '.mp3',
+        type: 'audio', addedAt: 1700000000008, duration: 42, hasThumbnail: false,
+        artist: 'AUDIO-REUSE-SENTINEL',
+      },
+    },
+    settings: baseSettings(),
+  });
+
+  await scanDirectories();
+
+  const db = readDb();
+  assert.equal(db.metadata[id].artist, 'AUDIO-REUSE-SENTINEL', 'audio item reused untouched');
+  assert.equal(execFileCalls.length, 0, 'no codec/embedded-art probe for an unchanged audio item');
+  assert.equal(execCalls.length, 0, 'no ffmpeg spawn at all for an unchanged audio item, even with hasThumbnail:false');
+  assert.equal(fs.existsSync(thumbPath), false, 'no thumbnail file created for audio');
 });
