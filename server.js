@@ -1087,6 +1087,39 @@ function extractMetadataAndThumbnail(filePath, mediaId, isAudio) {
   });
 }
 
+// v1.19.1 hotfix: shared "restore a genuinely-missing thumbnail" helper,
+// extracted from the `legacyVideoCodecBackfillOnly` branch so the plain
+// `reusable` fast-path (below) can call the SAME logic for VIDEO items whose
+// thumbnail was clobbered/lost by a prior v1.18.0 scan but which already
+// carry codec fields (and so never reach the backfill-only branch). Restores
+// the on-disk thumbnail ONLY if it is genuinely missing -- either the item's
+// own `hasThumbnail` flag is false, or the on-disk .jpg is absent/empty. A
+// present, non-empty thumbnail is left completely untouched -- no frame-grab,
+// ever, for a file that already has one. Returns `true` iff a restore was
+// actually attempted (so the caller knows to persist `dbChanged`), `false`
+// otherwise.
+async function restoreMissingThumbnail(existing, id, filePath) {
+  const thumbPath = path.join(THUMBNAIL_DIR, `${id}.jpg`);
+  let thumbnailMissing = !existing.hasThumbnail;
+  if (!thumbnailMissing) {
+    try {
+      thumbnailMissing = !fs.existsSync(thumbPath) || fs.statSync(thumbPath).size === 0;
+    } catch (_) {
+      thumbnailMissing = true;
+    }
+  }
+  if (!thumbnailMissing) return false;
+
+  console.log(`Restoring missing thumbnail for legacy video: ${path.basename(filePath)}`);
+  try {
+    const thumbMeta = await extractMetadataAndThumbnail(filePath, id, false);
+    existing.hasThumbnail = !!thumbMeta.hasThumbnail;
+  } catch (err) {
+    console.error(`Error restoring thumbnail for ${path.basename(filePath)}:`, err);
+  }
+  return true;
+}
+
 // Live scan state, surfaced via /api/scan-status for the setup/home UI.
 // `rescanRequested` is an internal bookkeeping flag (never serialized by
 // /api/scan-status) for the coalesced-follow-up mechanism in
@@ -1333,6 +1366,19 @@ async function runScanDirectories() {
     const reusable = unchanged && (isAudio || hasCodecFields);
     const legacyVideoCodecBackfillOnly = unchanged && !isAudio && !hasCodecFields;
     if (reusable) {
+      // v1.19.1 hotfix: a reused VIDEO (already carries codec fields --
+      // migrated by a prior scan, or genuinely new) can STILL have a
+      // thumbnail that was clobbered/lost by the v1.18.0 regression before
+      // this fix line existed; that case previously took this exact fast
+      // path and copied `existing` as-is, so the missing icon never healed
+      // on rescan. Restore it here, VIDEO-only -- audio "thumbnails" are
+      // embedded cover art that is legitimately absent for many files, so
+      // re-probing them every scan would be needless churn (and the v1.18
+      // bug never affected audio in the first place).
+      if (!isAudio) {
+        const healed = await restoreMissingThumbnail(existing, id, filePath);
+        if (healed) dbChanged = true;
+      }
       newMetadata[id] = existing;
     } else if (legacyVideoCodecBackfillOnly) {
       // v1.18.1 hotfix: reuse the existing entry AS-IS (title, duration,
@@ -1354,29 +1400,12 @@ async function runScanDirectories() {
         console.error(`Error backfilling codec fields for ${info.name}:`, err);
       }
 
-      // Restore the thumbnail ONLY if it is genuinely missing -- either the
-      // item's own `hasThumbnail` flag is false, or the on-disk .jpg is
-      // absent/empty (e.g. a v1.18.0 scan already clobbered it before this
-      // hotfix landed). A present, non-empty thumbnail is left completely
-      // untouched -- no frame-grab, ever, for a file that already has one.
-      const thumbPath = path.join(THUMBNAIL_DIR, `${id}.jpg`);
-      let thumbnailMissing = !existing.hasThumbnail;
-      if (!thumbnailMissing) {
-        try {
-          thumbnailMissing = !fs.existsSync(thumbPath) || fs.statSync(thumbPath).size === 0;
-        } catch (_) {
-          thumbnailMissing = true;
-        }
-      }
-      if (thumbnailMissing) {
-        console.log(`Restoring missing thumbnail for legacy video: ${info.name}`);
-        try {
-          const thumbMeta = await extractMetadataAndThumbnail(filePath, id, false);
-          existing.hasThumbnail = !!thumbMeta.hasThumbnail;
-        } catch (err) {
-          console.error(`Error restoring thumbnail for ${info.name}:`, err);
-        }
-      }
+      // Restore the thumbnail ONLY if it is genuinely missing -- shared with
+      // the `reusable` fast-path above (v1.19.1 hotfix) via
+      // `restoreMissingThumbnail`. A present, non-empty thumbnail is left
+      // completely untouched -- no frame-grab, ever, for a file that already
+      // has one.
+      await restoreMissingThumbnail(existing, id, filePath);
 
       newMetadata[id] = existing;
       dbChanged = true;
