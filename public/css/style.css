@@ -512,8 +512,22 @@ header {
   align-items: center;
   gap: 8px;
   flex-shrink: 0;
+  min-width: 0; /* v1.17.0 FR-1: let this flex item (and its children) shrink
+                   instead of forcing the row past the viewport width */
 }
 
+/* v1.17.0 FR-1 (named via the console overflow diagnostic, see Decision log):
+   `<select>` is a flex item here with no author `min-width`, so its UA default
+   `min-width: auto` resolves to its *intrinsic* (unshrinkable) content width --
+   driven by its longest `<option>` ("I'm Feeling Lucky (random)"). On a phone
+   viewport, once `.section-actions` wraps (see the mobile block below), the
+   select still refuses to shrink below that intrinsic width and its right
+   edge pushes past 100vw, forcing mobile Safari to zoom the whole page out
+   (read as: header/search render tiny, pinch-zoom "fixes" it). `max-width:
+   100%` + `min-width: 0` let it shrink to fit its row like every other flex
+   child; the visible text truncates via the UA's native select rendering,
+   which is harmless (the full option list is unaffected). This is the actual
+   overflow source, not a shell-level `overflow-x` mask. */
 .sort-select {
   background-color: var(--btn-bg);
   color: var(--text-primary);
@@ -523,6 +537,8 @@ header {
   font-size: 12px;
   font-weight: normal;
   cursor: pointer;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .video-grid {
@@ -582,6 +598,61 @@ header {
 .progress-bar-fill {
   height: 100%;
   background-color: var(--yt-red);
+}
+
+/* v1.17.0 FR-3(b), T2: home/library card trash-can affordance. A sibling of
+   .thumbnail-container (not a child -- a <button> can't nest inside the
+   card's <a>), positioned via .video-card's own `position: relative` to sit
+   over the thumbnail's top-right corner, opposite .duration-badge
+   (bottom-right). Visible (not hover-only) at a reduced opacity by default
+   so it's equally discoverable on touch/mobile (no :hover there) and on
+   desktop; full opacity on hover/focus/armed. First tap adds `.armed`
+   (revealing the inline "Sure?" confirm via CSS, see main.js's
+   nextArmState-driven click handler); a second tap on the SAME armed button
+   deletes. Era tokens only. */
+.card-delete-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  border: none;
+  border-radius: var(--radius);
+  background-color: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: bold;
+  line-height: 1;
+  opacity: 0.85;
+  transition: opacity 0.15s ease, background-color 0.15s ease;
+}
+
+.card-delete-btn:hover,
+.card-delete-btn:focus-visible,
+.card-delete-btn.armed {
+  opacity: 1;
+}
+
+.card-delete-btn .icon-delete {
+  width: 14px;
+  height: 14px;
+}
+
+.card-delete-btn .card-delete-confirm {
+  display: none;
+  white-space: nowrap;
+}
+
+.card-delete-btn.armed {
+  background-color: var(--yt-red);
+}
+
+.card-delete-btn.armed .card-delete-confirm {
+  display: inline;
 }
 
 .video-info {
@@ -716,8 +787,19 @@ header {
   #player-dock {
     width: 160px;
     right: 8px;
-    /* Clear the fixed .bottom-nav (see its own rule, ~72px incl. safe-area) */
-    bottom: calc(72px + env(safe-area-inset-bottom) + 8px);
+    /* Clear the fixed .bottom-nav (see its own rule, ~72px incl. safe-area).
+       Shares --mobile-bottom-nav-h (defined once, v1.17.0 FR-2) with
+       `.main-content`'s padding-bottom so both stay in lockstep across the
+       iOS address-bar/home-indicator collapse animation instead of each
+       independently re-resolving env(safe-area-inset-bottom). */
+    bottom: calc(var(--mobile-bottom-nav-h) + 8px);
+  }
+
+  /* v1.17.0 FR-3(a), T2: clear the fixed mobile .bottom-nav the same way
+     #player-dock does above, so the toast never renders underneath/behind
+     it. */
+  .toast {
+    bottom: calc(var(--mobile-bottom-nav-h) + 12px);
   }
 }
 
@@ -983,6 +1065,7 @@ header {
    this reads correctly across every era/light/dark combination. */
 .watch-prevnext {
   display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: 8px;
   margin: 10px 0 4px;
@@ -1009,6 +1092,73 @@ header {
 .watch-prevnext-btn:disabled {
   opacity: 0.4;
   cursor: default;
+}
+
+/* Autoplay toggle (FR-4a, T3) -- a YouTube-style switch sitting between
+   Previous/Next, backed by the same persisted `autoplayNext` setting the
+   Settings-page checkbox writes (watch.js wires the fetch/POST). Era-token
+   colors only, matching the Prev/Next buttons above. */
+.watch-autoplay-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: bold;
+  font-size: 12px;
+  color: var(--text-primary);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.watch-autoplay-switch {
+  position: relative;
+  display: inline-block;
+  width: 34px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.watch-autoplay-switch input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.watch-autoplay-track {
+  position: absolute;
+  inset: 0;
+  background-color: var(--border-dark);
+  border-radius: 999px;
+  transition: background-color 0.15s ease;
+}
+
+.watch-autoplay-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  background-color: #fff;
+  border-radius: 50%;
+  transition: transform 0.15s ease;
+  box-shadow: var(--shadow);
+}
+
+.watch-autoplay-switch input:checked ~ .watch-autoplay-track {
+  background-color: var(--yt-red);
+}
+
+.watch-autoplay-switch input:checked ~ .watch-autoplay-track .watch-autoplay-thumb {
+  transform: translateX(16px);
+}
+
+.watch-autoplay-switch input:focus-visible ~ .watch-autoplay-track {
+  outline: 2px solid var(--yt-red);
+  outline-offset: 2px;
 }
 
 /* Video Information Layout */
@@ -1612,6 +1762,36 @@ header {
   gap: 10px;
 }
 
+/* v1.17.0 FR-3(a), T2: brief, non-blocking, auto-dismissing notification --
+   see common.js's showToast(). Replaces the blocking post-delete
+   alert('File deleted successfully.') on the watch page; also used by the
+   home/library card trash-can (T2) below. Era tokens only -- no hardcoded
+   colors, so it stays legible across every era/light-dark combo. Content is
+   always textContent (never innerHTML), so nothing rendered here can ever
+   carry markup. */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%) translateY(8px);
+  z-index: 2200; /* above the one-off download modal backdrop (2100) */
+  max-width: calc(100vw - 32px);
+  background-color: var(--bg-sidebar);
+  color: var(--text-primary);
+  padding: 10px 18px;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  font-size: 13px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.toast.toast-visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
 /* v1.15.0 item 3: one-off download header button + compact modal, built at
    runtime by public/js/common.js's injectOneOffDownloadButtonIfEnabled(),
    ONLY when the optional yt-dlp module is enabled. Deliberately its own
@@ -1630,6 +1810,20 @@ header {
   justify-content: center;
   align-items: center;
   z-index: 2100; /* above the generic .modal-backdrop (2000) -- never hidden behind another dialog */
+}
+
+/* v1.17.0 FR-6, T5 fix: WITHOUT this override, the `display: flex` above
+   beats the UA `[hidden] { display: none }` rule (an author `display`
+   declaration always wins over the UA stylesheet's), so setting
+   `backdrop.hidden = true` never actually hid this full-viewport,
+   `position: fixed`, `z-index: 2100` overlay -- it stayed painted and ate
+   every touch, reading as a dimmed/dead page. The attribute selector
+   out-specifies the base rule on its own (no `!important` needed). common.js's
+   `closeModal` now also fully removes this node from the DOM on every dismiss
+   path (backdrop tap, [x], Esc, done auto-close) rather than relying on
+   `hidden` alone -- this CSS fix is the belt to that suspenders. */
+.oneoff-modal-backdrop[hidden] {
+  display: none;
 }
 
 .oneoff-modal {
@@ -1748,7 +1942,8 @@ header {
 .icon-play,
 .icon-refresh,
 .icon-arrow-up,
-.icon-arrow-down {
+.icon-arrow-down,
+.icon-download {
   display: inline-block;
   width: 1em;
   height: 1em;
@@ -1773,13 +1968,18 @@ header {
 .icon-refresh { -webkit-mask-image: url(/assets/icons/refresh.svg); mask-image: url(/assets/icons/refresh.svg); }
 .icon-arrow-up { -webkit-mask-image: url(/assets/icons/keyboard_arrow_up.svg); mask-image: url(/assets/icons/keyboard_arrow_up.svg); }
 .icon-arrow-down { -webkit-mask-image: url(/assets/icons/keyboard_arrow_down.svg); mask-image: url(/assets/icons/keyboard_arrow_down.svg); }
+/* FR-7 (v1.17.0, T6): real download.svg mask, same treatment as every other
+   chrome icon above -- replaces the old fixed "\2B07" unicode glyph (removed
+   below the @supports guard). */
+.icon-download { -webkit-mask-image: url(/assets/icons/download.svg); mask-image: url(/assets/icons/download.svg); }
 
 /* Paint the icon fill only where CSS masks are supported, so a browser without
    mask support (or a failed/404 mask) renders nothing instead of a solid
    currentColor square. */
 @supports (mask-image: url("#")) or (-webkit-mask-image: url("#")) {
   .icon-home, .icon-folder, .icon-cog, .icon-delete, .icon-moon, .icon-sun,
-  .icon-menu, .icon-search, .icon-play, .icon-refresh, .icon-arrow-up, .icon-arrow-down {
+  .icon-menu, .icon-search, .icon-play, .icon-refresh, .icon-arrow-up, .icon-arrow-down,
+  .icon-download {
     background-color: currentColor;
   }
 }
@@ -1787,16 +1987,12 @@ header {
 /* Out of scope: gold rating star — NOT a mask/currentColor icon. Leave as-is. */
 .icon-star::before { content: "★"; }
 
-/* v1.15.0 item 3: one-off download header button icon. Fixed unicode glyph,
-   independent of the icon-set system (mirrors .icon-star above) -- no new
-   SVG asset is needed across the 4 icon sets for a single header button. */
-.icon-download::before { content: "\2B07"; }
-
 /* v1.15.1 hotfix: "Shuffle again" needs its OWN icon, distinct from
    "Rescan Files" (both previously used .icon-refresh, indistinguishable on
    mobile where the buttons collapse to icon-only). Fixed unicode glyph,
-   independent of the icon-set system (mirrors .icon-download/.icon-star
-   above) -- no new SVG asset needed across the 4 icon sets for this single
+   independent of the icon-set system (mirrors .icon-star above -- unlike
+   .icon-download, which moved to a real SVG mask in v1.17.0 FR-7, see
+   below) -- no new SVG asset needed across the 4 icon sets for this single
    button. U+1F500 TWISTED RIGHTWARDS ARROWS (shuffle glyph). */
 .icon-shuffle::before { content: "\1F500"; }
 
@@ -1823,6 +2019,7 @@ header {
 [data-icons="rounded"] .icon-refresh { -webkit-mask-image: url(/assets/icons/rounded/refresh.svg); mask-image: url(/assets/icons/rounded/refresh.svg); }
 [data-icons="rounded"] .icon-arrow-up { -webkit-mask-image: url(/assets/icons/rounded/keyboard_arrow_up.svg); mask-image: url(/assets/icons/rounded/keyboard_arrow_up.svg); }
 [data-icons="rounded"] .icon-arrow-down { -webkit-mask-image: url(/assets/icons/rounded/keyboard_arrow_down.svg); mask-image: url(/assets/icons/rounded/keyboard_arrow_down.svg); }
+[data-icons="rounded"] .icon-download { -webkit-mask-image: url(/assets/icons/rounded/download.svg); mask-image: url(/assets/icons/rounded/download.svg); }
 
 /* Filled set: Material Icons Classic (2014). Note the two substitute
    filenames (wb_sunny/brightness_2) — see public/assets/icons/README.md. */
@@ -1838,6 +2035,7 @@ header {
 [data-icons="filled"] .icon-arrow-down { -webkit-mask-image: url(/assets/icons/filled/keyboard_arrow_down.svg); mask-image: url(/assets/icons/filled/keyboard_arrow_down.svg); }
 [data-icons="filled"] .icon-sun  { -webkit-mask-image: url(/assets/icons/filled/wb_sunny.svg);     mask-image: url(/assets/icons/filled/wb_sunny.svg); }
 [data-icons="filled"] .icon-moon { -webkit-mask-image: url(/assets/icons/filled/brightness_2.svg); mask-image: url(/assets/icons/filled/brightness_2.svg); }
+[data-icons="filled"] .icon-download { -webkit-mask-image: url(/assets/icons/filled/download.svg); mask-image: url(/assets/icons/filled/download.svg); }
 
 /* Emoji set: restores the pre-v1.6.0 ::before emoji per icon. No-square fix
    (AC7): this grouped rule neutralizes BOTH the mask (mask-image: none) AND
@@ -1856,13 +2054,21 @@ header {
 [data-icons="emoji"] .icon-play,
 [data-icons="emoji"] .icon-refresh,
 [data-icons="emoji"] .icon-arrow-up,
-[data-icons="emoji"] .icon-arrow-down {
+[data-icons="emoji"] .icon-arrow-down,
+[data-icons="emoji"] .icon-download {
   -webkit-mask-image: none;
   mask-image: none;
   background-color: transparent;  /* CRITICAL: overrides the @supports currentColor fill -> no solid box */
   width: auto;                    /* let the glyph size naturally, no 1em clip/overlap */
   height: auto;
 }
+
+/* FR-7 (v1.17.0, T6): emoji-set glyph for the download icon -- U+1F4E5
+   INBOX TRAY, matching the same "restores the pre-v1.6.0-style ::before
+   emoji" pattern as the group above (icon-download itself predates the
+   emoji-set restoration, so it needs its OWN ::before entry here, same as
+   every other .icon-* the emoji set covers). */
+[data-icons="emoji"] .icon-download::before { content: "\1F4E5"; }
 
 [data-icons="emoji"] .icon-home::before      { content: "\1F3E0"; } /* 🏠 */
 [data-icons="emoji"] .icon-folder::before    { content: "\1F4C1"; } /* 📁 */
@@ -1899,6 +2105,29 @@ header {
 }
 
 @media (max-width: 768px) {
+  /* v1.17.0 FR-2 (Decision log): a single source of truth for the mobile
+     shell's fixed-header/bottom-nav offsets, computed ONCE and consumed by
+     every rule that needs to reserve space for them. Before this fix, the
+     SAME logical value (header height incl. notch inset; bottom-nav height
+     incl. home-indicator inset) was written as an independent
+     `calc(... + env(safe-area-inset-*))` expression on each consuming rule
+     (`header`'s `min-height` AND `.app-container`'s `padding-top` both
+     independently calc'd the header offset; `.main-content`'s
+     `padding-bottom` AND `#player-dock`'s `bottom` both independently calc'd
+     the bottom-nav offset). On iOS Safari, `env(safe-area-inset-*)` is
+     re-resolved as the dynamic address bar/home-indicator collapses or
+     expands during scroll; with two independent calc() expressions there is
+     a window where the fixed `header`/`.bottom-nav` and the in-flow content's
+     reserved offset resolve the inset a frame apart, producing the reported
+     "bottom panel jumps to mid-screen on scroll up, snaps back on scroll
+     down" glitch (a refresh settles it because the animation is no longer
+     in-flight). A single custom property resolved once per style pass and
+     read by every consumer removes that divergence window -- the content top/
+     bottom offset is now invariant with the fixed shell across the animation. */
+  :root {
+    --mobile-header-h: calc(96px + env(safe-area-inset-top));
+    --mobile-bottom-nav-h: calc(72px + env(safe-area-inset-bottom));
+  }
   .sidebar {
     transform: translateX(-230px);
   }
@@ -1908,7 +2137,7 @@ header {
   .main-content {
     margin-left: 0;
     padding: 16px;
-    padding-bottom: calc(72px + env(safe-area-inset-bottom));
+    padding-bottom: var(--mobile-bottom-nav-h);
   }
   header {
     padding: 0 8px;
@@ -1987,13 +2216,13 @@ header {
   header {
     flex-direction: column;
     height: auto;
-    min-height: calc(96px + env(safe-area-inset-top));
+    min-height: var(--mobile-header-h);
     padding: calc(8px + env(safe-area-inset-top)) 8px 8px;
     gap: 6px;
   }
 
   .app-container {
-    padding-top: calc(96px + env(safe-area-inset-top));
+    padding-top: var(--mobile-header-h);
   }
 
   .menu-toggle {

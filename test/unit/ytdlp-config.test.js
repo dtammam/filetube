@@ -105,13 +105,14 @@ test('parseYtdlpConfig: never throws regardless of input shape', () => {
 
 // ---- FILETUBE_YTDLP_MAX_VIDEOS: bound the per-channel listing (v1.11.1 hotfix) ----
 //
-// Default 25 (newest videos); 0 is a distinct, valid value meaning
-// "unlimited" (consider the whole channel); any other invalid/hostile input
-// falls back to the default rather than throwing or disabling the module.
+// Default 3 (newest videos; lowered from 25 in v1.17.0 -- "25 is just
+// aggro"); 0 is a distinct, valid value meaning "unlimited" (consider the
+// whole channel); any other invalid/hostile input falls back to the default
+// rather than throwing or disabling the module.
 
-test('parseYtdlpConfig: maxVideos defaults to 25 when unset', () => {
+test('parseYtdlpConfig: maxVideos defaults to 3 when unset', () => {
   const config = parseYtdlpConfig({});
-  assert.equal(config.maxVideos, 25);
+  assert.equal(config.maxVideos, 3);
 });
 
 test('parseYtdlpConfig: maxVideos falls back to the documented default on invalid values', () => {
@@ -120,7 +121,7 @@ test('parseYtdlpConfig: maxVideos falls back to the documented default on invali
   // parsePollMinutes's own bad-value test above excludes it too.
   for (const bad of [undefined, null, '', 'abc', '-1', '1.5', 'NaN', {}, 'garbage']) {
     const config = parseYtdlpConfig({ FILETUBE_YTDLP_MAX_VIDEOS: bad });
-    assert.equal(config.maxVideos, 25, `${JSON.stringify(bad)} should fall back to the default`);
+    assert.equal(config.maxVideos, 3, `${JSON.stringify(bad)} should fall back to the default`);
   }
 });
 

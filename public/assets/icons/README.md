@@ -4,15 +4,16 @@ FileTube's chrome iconography ships as three self-hosted, offline vector
 icon sets — plus a colorful emoji set defined directly in `style.css` (no
 SVG files) — selectable via the `data-icons` axis (see
 `docs/exec-plans/active/icon-sets.md`). Each vector set covers the same
-12 `.icon-*` classes, is used as a CSS `mask-image`, and is painted with
+13 `.icon-*` classes, is used as a CSS `mask-image`, and is painted with
 `currentColor`, so a single unmodified asset renders correctly in every
 FileTube theme (era × light/dark).
 
 ## Material Symbols (Outlined) — `outlined` (default)
 
-Twelve individual SVG icons from Google's Material Symbols set (Outlined
+Thirteen individual SVG icons from Google's Material Symbols set (Outlined
 style), living at the top level of this directory (`public/assets/icons/*.svg`)
-— this is the v1.6.0 baseline set and FileTube's default look.
+— twelve are the v1.6.0 baseline set (FileTube's default look); `download.svg`
+was added in v1.17.0 (FR-7).
 
 - Icon set: **Material Symbols**, © Google
 - License: **Apache License 2.0** — https://www.apache.org/licenses/LICENSE-2.0
@@ -34,10 +35,11 @@ Apache-2.0 permits redistribution; these files are included unmodified.
 | `refresh.svg` | `refresh` | `.icon-refresh` |
 | `keyboard_arrow_up.svg` | `keyboard_arrow_up` | `.icon-arrow-up` |
 | `keyboard_arrow_down.svg` | `keyboard_arrow_down` | `.icon-arrow-down` |
+| `download.svg` | `download` | `.icon-download` |
 
 ## Material Symbols (Rounded) — `rounded`
 
-Twelve SVG icons from the same Material Symbols family, Rounded style — a
+Thirteen SVG icons from the same Material Symbols family, Rounded style — a
 softer, modern look. Bundled under `public/assets/icons/rounded/` using the
 **same filenames** as the outlined set (only the glyph outline differs).
 
@@ -62,14 +64,16 @@ Apache-2.0 permits redistribution; these files are included unmodified.
 | `rounded/refresh.svg` | `refresh` | `.icon-refresh` |
 | `rounded/keyboard_arrow_up.svg` | `keyboard_arrow_up` | `.icon-arrow-up` |
 | `rounded/keyboard_arrow_down.svg` | `keyboard_arrow_down` | `.icon-arrow-down` |
+| `rounded/download.svg` | `download` | `.icon-download` |
 
 ## Material Icons Classic (2014) — `filled`
 
-Twelve SVG icons from the original 2014 Material Icons launch set (the
+Thirteen SVG icons from the original 2014 Material Icons launch set (the
 "Classic"/filled style), bundled under `public/assets/icons/filled/` —
 authentic to Material Design's original June 2014 release. Filenames match
-the actual source glyph name (self-documenting), which is why two of them
-differ from the `.icon-*` class name they back (see substitutes below).
+the actual source glyph name (self-documenting), which is why three of them
+differ from the `.icon-*` class name they back (see substitutes/renames
+below).
 
 - Icon set: **Material Icons** (Classic), © Google
 - License: **Apache License 2.0** — https://www.apache.org/licenses/LICENSE-2.0
@@ -92,6 +96,7 @@ Apache-2.0 permits redistribution; these files are included unmodified.
 | `filled/keyboard_arrow_down.svg` | `keyboard_arrow_down` (`hardware`) | `.icon-arrow-down` |
 | `filled/wb_sunny.svg` | `wb_sunny` (`image`) — **substitute** | `.icon-sun` |
 | `filled/brightness_2.svg` | `brightness_2` (`image`) — **substitute** | `.icon-moon` |
+| `filled/download.svg` | `file_download` (`file`) — **renamed** | `.icon-download` |
 
 ### Substitute glyphs: `icon-sun` / `icon-moon` have no 2014 counterpart
 
@@ -109,6 +114,18 @@ period-correct substitutes are used instead:
   was kept as the closest period-authentic "night mode" stand-in (apps of
   that era commonly reused a brightness glyph this way before Material had an
   official moon icon). No fallback to `brightness_3` was needed.
+
+### Renamed glyph: `icon-download` ships as `filled/download.svg`, not `filled/file_download.svg`
+
+The 2014 Classic set's actual source glyph for a download arrow lives under
+the `file` category as `file_download` (unlike `icon-sun`/`icon-moon` above,
+this ISN'T a substitute glyph — it's the same "download" pictograph used by
+`outlined`/`rounded`, just filed under a different category name in the
+Classic launch set). The file is saved as `download.svg` here (not
+`file_download.svg`) so all three vector sets share one filename per
+`.icon-*` class, matching `outlined`/`rounded`'s own `download.svg` — content
+is unmodified from the upstream `file_download` asset, only the filename
+differs from its source path.
 
 ## Emoji — `emoji`
 
@@ -132,3 +149,4 @@ intentionally colorful rather than `currentColor`-themed.
 | `.icon-refresh` | 🔄 |
 | `.icon-arrow-up` | ▲ |
 | `.icon-arrow-down` | ▼ |
+| `.icon-download` | 📥 |

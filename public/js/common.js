@@ -1132,12 +1132,26 @@ function injectOneOffDownloadButtonIfEnabled() {
           });
       }
 
+      // v1.17.0 FR-6, T5 fix: hardened into a FULL teardown, shared by every
+      // dismiss path (backdrop tap, [x], Esc, and the 'done' auto-close --
+      // see openModal's onClose wiring, the Esc keydown handler below, and
+      // pollStatusOnce's action.close branch above -- none of them have
+      // their own divergent close logic, they all call this one function).
+      // Root cause (style.css): `.oneoff-modal-backdrop` sets `display: flex`
+      // with no `[hidden]` override, so the old `backdrop.hidden = true`
+      // alone never actually hid the full-viewport overlay -- it stayed
+      // painted and ate every touch. Now the backdrop node is fully removed
+      // from the DOM (`backdrop.remove()`, belt to the CSS fix's suspenders)
+      // and `currentJobId`/`modalState` are both nulled so `openModal`
+      // rebuilds a fresh modal next time (the once-bound `keydown` Esc
+      // handler below already guards on `modalState &&`, so nulling it makes
+      // that handler an inert no-op once closed).
       function closeModal() {
         if (!modalState) return;
-        modalState.backdrop.hidden = true;
-        modalState.modal.hidden = true;
         stopPolling();
         currentJobId = null;
+        modalState.backdrop.remove();
+        modalState = null;
       }
 
       function openModal() {
@@ -1154,6 +1168,15 @@ function injectOneOffDownloadButtonIfEnabled() {
               })
                 .then(async (r) => {
                   const data = await r.json().catch(() => ({}));
+                  // v1.17.0 FR-6, T5 fix: closeModal now nulls `modalState` as
+                  // part of its full teardown (see above) -- if the user
+                  // dismisses the modal after submitting but before this
+                  // response arrives, `modalState` is already null here.
+                  // Guarded the same way pollStatusOnce already guards itself
+                  // ("modal was torn down mid-flight -- nothing to render
+                  // into"): the download itself still proceeds server-side
+                  // either way, only the (now-gone) status line is skipped.
+                  if (!modalState) return;
                   if (!r.ok) {
                     // SECURITY: the server's validation error string, rendered
                     // via the modal's own textContent-only setStatus/statusEl
@@ -1167,6 +1190,7 @@ function injectOneOffDownloadButtonIfEnabled() {
                   pollStatusOnce();
                 })
                 .catch(() => {
+                  if (!modalState) return;
                   modalState.statusEl.textContent = 'Could not start download (network error).';
                 });
             },
@@ -1941,6 +1965,51 @@ function showConfirmModal(title, bodyText, onConfirm) {
   });
 }
 
+// v1.17.0 FR-3(a): a brief, non-blocking, auto-dismissing notification --
+// replaces the blocking `alert('File deleted successfully.')` friction the
+// watch page's post-delete success branch used to have (T2). Appends a real
+// DOM node built via `textContent` ONLY (never `innerHTML`), so `msg` can
+// only ever render as plain text no matter what it contains. Auto-dismisses
+// on a ~2.5s timer with a token-themed fade (see `.toast`/`.toast-visible` in
+// style.css) and removes itself -- no user interaction required. Reused by
+// both the watch-page delete flow (watch.js) and the home/library card
+// trash-can affordance (main.js). Guarded for Node (no-op there, matching
+// this file's other document-touching helpers).
+function showToast(msg) {
+  if (typeof document === 'undefined') return;
+  const toast = document.createElement('div');
+  toast.className = 'toast';
+  toast.textContent = msg;
+  document.body.appendChild(toast);
+  // Next frame so the initial (opacity:0) state is committed before adding
+  // .toast-visible -- guarantees the fade-in actually transitions instead of
+  // snapping straight to visible.
+  const raf = typeof requestAnimationFrame === 'function' ? requestAnimationFrame : (fn) => setTimeout(fn, 0);
+  raf(() => toast.classList.add('toast-visible'));
+  setTimeout(() => {
+    toast.classList.remove('toast-visible');
+    setTimeout(() => toast.remove(), 300); // let the fade-out finish first
+  }, 2500);
+}
+
+// v1.17.0 FR-3(b): pure arm/disarm reducer for the home/library card
+// trash-can affordance (main.js's delegated #video-grid click listener). A
+// first tap on an IDLE card's delete control ARMS it (no network call --
+// just an inline "Sure?" re-confirm); a second tap on the SAME already-armed
+// control is what actually deletes; any 'disarm' action (a ~3s timeout, a
+// document scroll, or interacting with a different card/anywhere else)
+// resets to idle without ever deleting. No DOM/timers here on purpose -- the
+// DOM layer owns those and only fires `DELETE /api/videos/:id` when
+// `deleted` comes back `true`. Directly `node:test`-covered.
+function nextArmState(current, action) {
+  if (action === 'disarm') return { state: 'idle', deleted: false };
+  if (action === 'tap') {
+    if (current === 'armed') return { state: 'idle', deleted: true };
+    return { state: 'armed', deleted: false };
+  }
+  return { state: current === 'armed' ? 'armed' : 'idle', deleted: false };
+}
+
 // Sidebar toggle responsive menu helper. Guarded so requiring this file in Node
 // (for unit tests) never touches `document`.
 if (typeof document !== 'undefined') {
@@ -2067,6 +2136,7 @@ if (typeof module !== 'undefined' && module.exports) {
     ONEOFF_FILETYPE_OPTIONS, ONEOFF_DEFAULT_FILETYPE, ONEOFF_STATUS_POLL_MS,
     decideOneOffTerminalAction, triggerLibraryRescanAndRefresh,
     injectOneOffDownloadButtonIfEnabled,
+    showToast, nextArmState,
     deriveRouteView, shouldInterceptLinkClick, buildHistoryState, parseHistoryState,
     shouldDockOnTransition, toPathAndQuery, isStaleNavGeneration
   };

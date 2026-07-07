@@ -6,16 +6,24 @@
 // OWN grid/sidebar controls (plus the SHARED shell's sidebar-folder-list,
 // which lives outside #view-root) is registered through ONE per-view
 // AbortController, so `destroy()` removes all of them in a single call when
-// the user navigates away — no leaks. This view has NO `document`-level
-// listeners and NO timers, which is what makes its `#view-root` node safe to
-// retain across a round trip: the router's home `viewCache` (FR-4, T4,
-// public/js/common.js) detaches and holds onto this EXACT node -- WITHOUT
-// calling destroy() -- when leaving home for another view, and later
-// reattaches it (WITHOUT calling init() again) on a matching return, so this
-// view's single AbortController-per-instance stays bound exactly once per
-// live/cached instance -- never zero, never two -- across any number of
-// cache hits. See common.js's homeViewCache/swapToView/restoreHomeFromCache
-// comments for the full contract this view must keep honoring.
+// the user navigates away — no leaks. Prior to v1.17.0 (FR-3(b), T2) this
+// view had NO `document`-level listeners and NO timers, which is what made
+// its `#view-root` node safe to retain across a round trip: the router's
+// home `viewCache` (FR-4, T4, public/js/common.js) detaches and holds onto
+// this EXACT node -- WITHOUT calling destroy() -- when leaving home for
+// another view, and later reattaches it (WITHOUT calling init() again) on a
+// matching return, so this view's single AbortController-per-instance stays
+// bound exactly once per live/cached instance -- never zero, never two --
+// across any number of cache hits. See common.js's
+// homeViewCache/swapToView/restoreHomeFromCache comments for the full
+// contract this view must keep honoring. T2's card trash-can arm/disarm now
+// adds a `document` click/scroll listener (still AbortSignal-bound to the
+// SAME per-instance controller, so it is still cleaned up exactly once by
+// destroy()) plus a plain (non-Signal) ~3s `setTimeout` for the auto-disarm,
+// which `destroy()` now explicitly clears via `disarmCardDeleteFn` -- see
+// that comment below. Both are deliberately harmless while this view is
+// CACHED-but-not-destroyed (a no-op state reset against an already-detached
+// node), matching the design's "disarm on any document click/scroll" intent.
 //
 // NOTE (C1 remediation, v1.16.0): the shared shell's header #search-input/
 // #search-btn are SHELL-owned -- bound exactly once at real-page-load boot
@@ -35,6 +43,11 @@
   // home's draggable + active-highlighted rendering. Cleared in destroy() so
   // a torn-down instance can never be (mis)invoked after the fact.
   let restoreSidebarFn = null;
+  // v1.17.0 FR-3(b), T2: set inside init() to that instance's own
+  // disarmCardDelete() closure, so destroy() can clear a pending ~3s
+  // auto-disarm setTimeout (a plain timer, NOT AbortSignal-bound) rather
+  // than leaving it to fire later against an already-torn-down instance.
+  let disarmCardDeleteFn = null;
 
   function init(root) {
     controller = new AbortController();
@@ -61,6 +74,20 @@
     const videosHeader = root.querySelector('#videos-section-header');
     const sortSelect = root.querySelector('#sort-select');
     const shuffleAgainBtn = root.querySelector('#shuffle-again-btn');
+
+    // v1.17.0 FR-3(b), T2: card trash-can arm/disarm state, driven by
+    // common.js's pure `nextArmState` reducer. `armedBtn` is the ACTUAL
+    // `.card-delete-btn` DOM node currently armed (or null); `armState`
+    // mirrors the reducer's `'idle'|'armed'` for that node. Only one card is
+    // ever armed at a time -- arming a different card, a ~3s timeout, or any
+    // document click/scroll outside the armed button all disarm. Reset (via
+    // disarmCardDelete()) at the top of every renderMediaGrid() call, since a
+    // re-render replaces the grid's children -- an armed reference to a
+    // about-to-be-detached node must never leak/double-fire across it.
+    let armState = 'idle';
+    let armedBtn = null;
+    let armDisarmTimer = null;
+    const CARD_ARM_TIMEOUT_MS = 3000;
 
     // Sort preference persists across visits
     let currentItems = [];
@@ -280,8 +307,73 @@
       if (shuffleAgainBtn) shuffleAgainBtn.hidden = !shouldShowShuffleButton(currentSort);
     }
 
+    // v1.17.0 FR-3(b), T2: clears any pending auto-disarm timer and drops the
+    // armed reference WITHOUT requiring the armed node to still be attached
+    // (classList.remove on a detached node is a harmless no-op) -- safe to
+    // call unconditionally from a re-render, a timeout, an outside click/
+    // scroll, or after a delete.
+    function disarmCardDelete() {
+      if (armDisarmTimer) {
+        clearTimeout(armDisarmTimer);
+        armDisarmTimer = null;
+      }
+      if (armedBtn) armedBtn.classList.remove('armed');
+      armState = 'idle';
+      armedBtn = null;
+    }
+    disarmCardDeleteFn = disarmCardDelete;
+
+    // Arms `btn` (revealing its inline "Sure?" affordance via the `.armed`
+    // CSS class) and starts the ~3s auto-disarm timer. Disarms whatever was
+    // PREVIOUSLY armed first, so only one card is ever armed at a time.
+    function armCardDelete(btn) {
+      disarmCardDelete();
+      armState = 'armed';
+      armedBtn = btn;
+      btn.classList.add('armed');
+      armDisarmTimer = setTimeout(disarmCardDelete, CARD_ARM_TIMEOUT_MS);
+    }
+
+    // v1.17.0 FR-3(b), T2: fires the SAME `DELETE /api/videos/:id` endpoint
+    // the watch page's delete flow uses -- no new endpoint, no contract
+    // change. `id` is read straight off the tapped button's OWN `data-id`
+    // (never a closed-over/stale value), so there is no id mixup between
+    // cards. On a 409 (read-only/permission-denied mount, `{readOnly:true}`)
+    // this surfaces an explanatory toast and stops -- it NEVER follows up
+    // with `?removeAnyway=true` (that opt-in UI stays out of scope per the
+    // design; only a path that has already seen a 409 may ever send it, and
+    // this path never does). On success, the item is dropped from
+    // `currentItems` and re-rendered via the SAME `renderSorted()`/
+    // `renderMediaGrid()` path every other library refresh already uses --
+    // no `window.location.reload()`/full navigation.
+    async function deleteCardById(id) {
+      try {
+        const res = await fetch(`/api/videos/${id}`, { method: 'DELETE' });
+        if (res.status === 409) {
+          showToast('File is on a read-only location -- not deleted.');
+          return;
+        }
+        const data = await res.json().catch(() => ({}));
+        if (data.success) {
+          currentItems = currentItems.filter((item) => item.id !== id);
+          renderSorted();
+          showToast('File deleted.');
+        } else {
+          showToast('Error deleting file: ' + (data.error || 'unknown error'));
+        }
+      } catch (err) {
+        console.error('Failed to delete video from card:', err);
+        showToast('Network error occurred while trying to delete file.');
+      }
+    }
+
     // Render media items in the grid
     function renderMediaGrid(items) {
+      // Any re-render replaces the grid's children -- an armed reference to
+      // a node that's about to be detached must never leak/double-fire
+      // across it (hard constraint: reset arm state on re-render).
+      disarmCardDelete();
+
       if (items.length === 0) {
         videoGrid.innerHTML = `
           <div style="grid-column: 1 / -1; text-align: center; padding: 40px; color: var(--text-secondary); font-size: 14px;">
@@ -322,6 +414,9 @@
               ${durationBadge}
               ${progressBar}
             </a>
+            <button type="button" class="card-delete-btn" data-id="${escapeHtml(item.id)}" aria-label="Delete this video">
+              <i class="icon-delete"></i><span class="card-delete-confirm">Sure?</span>
+            </button>
             <div class="video-info">
               <a href="/watch.html?v=${item.id}" class="video-title" title="${escapeHtml(item.title)}">
                 ${escapeHtml(item.title)}
@@ -396,6 +491,45 @@
       }
     }, { signal });
 
+    // v1.17.0 FR-3(b), T2: ONE delegated click listener on #video-grid (never
+    // per-card -- the grid's children are fully replaced on every
+    // renderMediaGrid() call, so a per-card listener would leak/duplicate).
+    // Drives the pure `nextArmState` reducer: a tap on an idle card's delete
+    // button arms it (no delete yet); a tap on the SAME already-armed button
+    // is the confirming second tap that actually deletes. A tap that lands on
+    // a DIFFERENT card's delete button re-arms the new one (only one card is
+    // ever armed at a time) rather than deleting the previously-armed one.
+    videoGrid.addEventListener('click', (e) => {
+      const btn = e.target.closest('.card-delete-btn');
+      if (!btn) return; // any other click inside the grid -- outside-click disarm (below) handles it
+      e.preventDefault();
+      const isArmedCard = armedBtn === btn;
+      const result = nextArmState(isArmedCard ? armState : 'idle', 'tap');
+      if (result.deleted) {
+        const id = btn.dataset.id;
+        disarmCardDelete();
+        deleteCardById(id);
+      } else {
+        armCardDelete(btn);
+      }
+    }, { signal });
+
+    // Disarms the currently-armed card on any click elsewhere in the document
+    // (outside the armed button itself -- that tap is handled by the grid
+    // listener above, which always runs first since it fires during the same
+    // bubble phase closer to the target) or on any scroll. `scroll` does not
+    // bubble, so `capture: true` is required to observe it regardless of
+    // which element actually scrolled.
+    document.addEventListener('click', (e) => {
+      if (armState !== 'armed') return;
+      const btn = e.target.closest ? e.target.closest('.card-delete-btn') : null;
+      if (btn === armedBtn) return; // this click IS the armed tap -- already handled above
+      disarmCardDelete();
+    }, { signal });
+    window.addEventListener('scroll', () => {
+      if (armState === 'armed') disarmCardDelete();
+    }, { signal, capture: true, passive: true });
+
     // Start initialization
     loadLibrary();
   }
@@ -405,6 +539,8 @@
       controller.abort();
       controller = null;
     }
+    if (typeof disarmCardDeleteFn === 'function') disarmCardDeleteFn();
+    disarmCardDeleteFn = null;
     restoreSidebarFn = null;
   }
 
