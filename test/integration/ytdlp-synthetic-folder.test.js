@@ -446,3 +446,71 @@ test('AC12: a stored synthetic order does not affect extraScanRoots or the E1 mo
     delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
   }
 });
+
+// ---- v1.19.0 FR-4 (Fork FR-4b, Option A): additive, read-only `syntheticFolders` ----
+//
+// A small, additive, response-only field so the client (Setup's
+// renderFolders()) can robustly identify which `folders` entry is the
+// synthetic download root -- e.g. to disable its remove button -- without
+// touching the synthetic-root HANDLING (splice/rename/order/db.folders-
+// exclusion) proven by the whole suite above, which must keep passing
+// UNMODIFIED as the regression bar.
+
+test('FR-4: GET /api/config includes syntheticFolders containing the resolved download dir when the module is enabled', async () => {
+  process.env.FILETUBE_YTDLP_ENABLED = 'true';
+  process.env.FILETUBE_YTDLP_DOWNLOAD_DIR = downloadDir;
+  try {
+    const res = await fetch(`${base}/api/config`);
+    const body = await res.json();
+    assert.ok(Array.isArray(body.syntheticFolders), 'syntheticFolders must be an array');
+    assert.deepEqual(body.syntheticFolders, [path.resolve(downloadDir)]);
+    // Additive: existing folders/folderSettings keys are unaffected.
+    assert.ok(body.folders.includes(path.resolve(downloadDir)));
+  } finally {
+    delete process.env.FILETUBE_YTDLP_ENABLED;
+    delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
+  }
+});
+
+test('FR-4: GET /api/config returns an empty syntheticFolders array when the module is disabled (byte-identical folders/folderSettings contract)', async () => {
+  assert.equal(process.env.FILETUBE_YTDLP_ENABLED, undefined, 'sanity: module must be disabled');
+  const res = await fetch(`${base}/api/config`);
+  const body = await res.json();
+  assert.deepEqual(body.syntheticFolders, []);
+});
+
+test('FR-4: syntheticFolders is read-only -- POST /api/config ignores a client-submitted syntheticFolders and never writes the synthetic root into db.folders even when the client echoes it back', async () => {
+  process.env.FILETUBE_YTDLP_ENABLED = 'true';
+  process.env.FILETUBE_YTDLP_DOWNLOAD_DIR = downloadDir;
+  try {
+    const resolvedDownloadDir = path.resolve(downloadDir);
+    const getBody = await (await fetch(`${base}/api/config`)).json();
+
+    // A naive client echoes syntheticFolders straight back on POST, alongside
+    // an attempt to smuggle an ADDITIONAL fake synthetic path through it.
+    const postRes = await fetch(`${base}/api/config`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        folders: [],
+        folderSettings: getBody.folderSettings,
+        syntheticFolders: [...getBody.syntheticFolders, '/not/actually/synthetic'],
+      }),
+    });
+    const postBody = await postRes.json();
+    assert.equal(postRes.status, 200);
+    assert.ok(!(postBody.folders || []).includes(resolvedDownloadDir), 'the real synthetic root must still never be written into db.folders');
+
+    const persisted = loadDatabase();
+    assert.ok(!(persisted.folders || []).includes(resolvedDownloadDir), 'db.folders on disk must never contain the synthetic root');
+    assert.ok(!(persisted.folders || []).includes('/not/actually/synthetic'), 'a client-submitted syntheticFolders entry must never be persisted anywhere -- the field is read-only/response-only');
+
+    // A fresh GET still derives syntheticFolders authoritatively from
+    // extraScanRoots(), ignoring whatever the client POSTed for that field.
+    const freshGet = await (await fetch(`${base}/api/config`)).json();
+    assert.deepEqual(freshGet.syntheticFolders, [resolvedDownloadDir]);
+  } finally {
+    delete process.env.FILETUBE_YTDLP_ENABLED;
+    delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
+  }
+});

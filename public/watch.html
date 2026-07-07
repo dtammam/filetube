@@ -156,6 +156,18 @@
                 <span class="rating-count" id="rating-text"></span>
               </div>
               
+              <!-- Download option (FR-3, v1.19.0): saves the ORIGINAL source
+                   file to the device, via GET /video/:id?download=1 (server
+                   sets Content-Disposition: attachment). href/download are
+                   set per media load by watch.js's populateMetadata() --
+                   inert until then. iOS Safari note: Content-Disposition:
+                   attachment is the authoritative same-origin download path
+                   on iOS Safari 13+; the anchor `download` attribute here is
+                   a belt-and-suspenders hint for desktop browsers. -->
+              <a class="btn" id="download-media-btn">
+                <i class="icon-download"></i> Download
+              </a>
+
               <!-- Delete option -->
               <button class="btn" id="delete-media-btn" style="color: var(--yt-red); border-color: var(--yt-red);">
                 <i class="icon-delete"></i> Delete File

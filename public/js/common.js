@@ -623,6 +623,17 @@ function rebuildFullFolderOrder(fullFolders, settings, newVisibleOrder) {
   return full.map((f) => (visibleSet.has(f) ? queue[i++] : f));
 }
 
+// FR-4 (v1.19.0): pure decision helper -- is `dir` the yt-dlp module's
+// synthetic download folder? Fed by `GET /api/config`'s additive, read-only
+// `syntheticFolders` array (see server.js) so Setup's `renderFolders()` can
+// disable that one row's remove button without re-deriving/guessing a path
+// match itself. Never mutates anything; a non-array `syntheticFolders`
+// (e.g. an older cached response shape) safely resolves to "not synthetic"
+// rather than throwing. Exported for node:test.
+function isSyntheticFolder(dir, syntheticFolders) {
+  return Array.isArray(syntheticFolders) && syntheticFolders.includes(dir);
+}
+
 // ---- Default landing view (v1.14.0 item 4) ---------------------------------
 
 // Pure: resolves the EFFECTIVE ?root= folder filter for a home-page load,
@@ -2130,6 +2141,7 @@ if (typeof module !== 'undefined' && module.exports) {
     deriveOrderedIds, computeNeighbors,
     visibleSidebarFolders, resolveDefaultView,
     moveArrayItem, computeDropIndex, rebuildFullFolderOrder,
+    isSyntheticFolder,
     shouldInjectOneOffButton, reduceOneOffFiletypeOptions, buildOneOffDownloadBody,
     formatOneOffStatusText, buildOneOffModal,
     ONEOFF_FORMAT_OPTIONS, ONEOFF_QUALITY_OPTIONS, ONEOFF_DEFAULT_QUALITY,

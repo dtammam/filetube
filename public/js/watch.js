@@ -82,6 +82,7 @@
     const mediaTitle = root.querySelector('#media-title');
     const viewsCount = root.querySelector('#views-count');
     const deleteBtn = root.querySelector('#delete-media-btn');
+    const downloadBtn = root.querySelector('#download-media-btn');
     const uploaderAvatar = root.querySelector('#uploader-avatar-letter');
     const uploaderChannelName = root.querySelector('#uploader-channel-name');
     const uploaderSubsCount = root.querySelector('#uploader-subs-count');
@@ -231,6 +232,21 @@
       // File type from the extension (e.g. ".mp4" -> "MP4")
       fileTypeText.textContent = (mediaData.ext || '').replace('.', '').toUpperCase() || 'Unknown';
       filePathText.textContent = mediaData.filePath;
+
+      // FR-3 (v1.19.0): wire the Download button per media load -- the SPA
+      // reuses this same anchor node across in-app navigations, so both
+      // attributes are re-set every time populateMetadata() runs (never left
+      // stale from a previous item). The actual save is authoritative on the
+      // server's `Content-Disposition: attachment` header (works for both
+      // audio and video, and for a needsTranscode item it downloads the
+      // ORIGINAL file, never the transcode -- see server.js); the anchor's
+      // `download` attribute here is just a belt-and-suspenders filename hint
+      // for browsers that honor it (mainly desktop -- iOS Safari 13+ relies
+      // on the Content-Disposition header instead, per the design note).
+      if (downloadBtn) {
+        downloadBtn.href = `/video/${encodeURIComponent(mediaData.id)}?download=1`;
+        downloadBtn.setAttribute('download', `${mediaData.title || 'download'}${mediaData.ext || ''}`);
+      }
 
       renderEmbeddedTags(mediaData.tags);
       // Measure once the (async) Roboto webfont has loaded, so line wrapping — and

@@ -953,12 +953,62 @@ function codecNeedsTranscode(videoCodec, audioCodec) {
   return false;
 }
 
+// Shared ffprobe arg-array builder (v1.18.1 hotfix extraction) -- SINGLE
+// source of truth for the probe args `extractMetadataAndThumbnail` and the
+// codec-only `probeCodecsOnly` (below) both use, so the two spawns can never
+// silently drift apart. `execFile` (not `exec`) so `filePath` is passed as
+// its own arg-array element rather than interpolated into a shell command
+// string -- this narrows the pre-existing injection surface on this line
+// without widening anything.
+function buildFfprobeArgs(filePath) {
+  return [
+    '-v', 'error',
+    '-show_entries', 'format=duration:format_tags:stream=codec_name,codec_type:stream_disposition=attached_pic',
+    '-of', 'json',
+    filePath,
+  ];
+}
+
+// v1.18.1 hotfix: a lightweight, CODEC-ONLY probe used by the scan's
+// legacy-video backfill branch (below, ~line 1280s). Runs ONLY the ffprobe
+// codec probe -- the SAME args `extractMetadataAndThumbnail` uses (via
+// `buildFfprobeArgs`, so the two can never diverge) -- and parses the result
+// with the existing `parseFfprobeStreams`. It NEVER runs an ffmpeg frame-grab
+// / art-extraction spawn and NEVER touches the thumbnail file: that is
+// precisely what lets a pre-v1.18 (or probe-failed) video's codec fields be
+// backfilled without re-generating (and thus clobbering) its existing
+// thumbnail -- the v1.18.0 regression this hotfix fixes. Same degrade-safe
+// contract as `extractMetadataAndThumbnail`'s codec fields: `videoCodec`/
+// `audioCodec` are always an explicit lowercased string or `null` (never
+// `undefined`) -- `null` on ffmpeg-unavailable, a probe error, or
+// unparseable/absent stream data.
+function probeCodecsOnly(filePath) {
+  return new Promise((resolve) => {
+    if (!ffmpegAvailable) {
+      resolve({ videoCodec: null, audioCodec: null });
+      return;
+    }
+    execFile('ffprobe', buildFfprobeArgs(filePath), { maxBuffer: 16 * 1024 * 1024 }, (err, stdout) => {
+      let videoCodec = null;
+      let audioCodec = null;
+      if (!err && stdout) {
+        try {
+          const streams = parseFfprobeStreams(stdout);
+          videoCodec = streams.videoCodec !== undefined ? streams.videoCodec : null;
+          audioCodec = streams.audioCodec !== undefined ? streams.audioCodec : null;
+        } catch (_) { videoCodec = null; audioCodec = null; }
+      }
+      resolve({ videoCodec, audioCodec });
+    });
+  });
+}
+
 // Extract duration and thumbnail using FFmpeg
 function extractMetadataAndThumbnail(filePath, mediaId, isAudio) {
   return new Promise((resolve) => {
     const thumbName = `${mediaId}.jpg`;
     const thumbPath = path.join(THUMBNAIL_DIR, thumbName);
-    
+
     if (!ffmpegAvailable) {
       // FIX (v1.18.0 two-reviewer follow-up): explicit `null`, not an absent
       // key, even on this "ffmpeg isn't installed at all" path -- so a
@@ -972,20 +1022,11 @@ function extractMetadataAndThumbnail(filePath, mediaId, isAudio) {
     // Get duration + all format tags (artist -> channel name; the rest -> the
     // additive "embedded info" block on the watch page) AND, per stream, its
     // codec + attached_pic disposition (FR-1b, v1.18.0 + two-reviewer
-    // follow-up) -- ONE probe, no second spawn. `execFile` (not `exec`) so
-    // `filePath` is passed as its own arg-array element rather than
-    // interpolated into a shell command string -- this narrows the
-    // pre-existing injection surface on this line without widening anything.
-    const ffprobeArgs = [
-      '-v', 'error',
-      '-show_entries', 'format=duration:format_tags:stream=codec_name,codec_type:stream_disposition=attached_pic',
-      '-of', 'json',
-      filePath,
-    ];
+    // follow-up) -- ONE probe, no second spawn.
     // Bump maxBuffer well above the 1MB default — files with large embedded
     // tags (long descriptions/lyrics) could otherwise overflow it, set `err`, and
     // regress duration to 0 (which would also mis-time the thumbnail grab).
-    execFile('ffprobe', ffprobeArgs, { maxBuffer: 16 * 1024 * 1024 }, (err, stdout) => {
+    execFile('ffprobe', buildFfprobeArgs(filePath), { maxBuffer: 16 * 1024 * 1024 }, (err, stdout) => {
       let duration = 0;
       let artist = '';
       let tags = {};
@@ -1025,16 +1066,20 @@ function extractMetadataAndThumbnail(filePath, mediaId, isAudio) {
       }
 
       if (isAudio) {
-        // Try to extract embedded audio artwork
-        const extractArtCmd = `ffmpeg -i "${filePath}" -an -vcodec copy -y "${thumbPath}"`;
-        exec(extractArtCmd, (artErr) => {
+        // Try to extract embedded audio artwork. `execFile` (not `exec`) so
+        // `filePath`/`thumbPath` are passed as opaque argv elements, never
+        // shell-interpreted -- a media file path containing shell
+        // metacharacters could otherwise be a command-injection vector
+        // (matches the ffprobe `execFile` hardening above).
+        execFile('ffmpeg', ['-i', filePath, '-an', '-vcodec', 'copy', '-y', thumbPath], (artErr) => {
           resolve({ duration, artist, tags, videoCodec, audioCodec, hasThumbnail: !artErr && fs.existsSync(thumbPath) });
         });
       } else {
-        // Extract video frame (at 2 seconds or 10% of duration, whichever is smaller)
+        // Extract video frame (at 2 seconds or 10% of duration, whichever is
+        // smaller). `execFile` (not `exec`) for the same arg-array/no-shell
+        // reason as the audio-art branch above.
         const timestamp = duration > 5 ? 2 : Math.max(0, duration / 2);
-        const extractFrameCmd = `ffmpeg -ss ${timestamp} -i "${filePath}" -vframes 1 -q:v 2 -y "${thumbPath}"`;
-        exec(extractFrameCmd, (frameErr) => {
+        execFile('ffmpeg', ['-ss', String(timestamp), '-i', filePath, '-vframes', '1', '-q:v', '2', '-y', thumbPath], (frameErr) => {
           resolve({ duration, artist, tags, videoCodec, audioCodec, hasThumbnail: !frameErr && fs.existsSync(thumbPath) });
         });
       }
@@ -1263,24 +1308,78 @@ async function runScanDirectories() {
     const isAudio = AUDIO_EXTENSIONS.includes(info.ext);
 
     // If metadata already exists and file hasn't changed (based on size/mtime), reuse it.
-    // FR-1b (v1.18.0) backfill: a VIDEO item is only reused once it already
-    // carries the probed codec fields (`videoCodec`/`audioCodec` -- present,
-    // even if `null`, once a probe has actually run). A pre-v1.18 entry (or
-    // one whose last probe failed) is missing both keys entirely (see
-    // `extractMetadataAndThumbnail`'s comment on `undefined` vs. `null`) and
-    // is re-extracted ONE more time here to backfill them -- probe-only, this
-    // never itself queues a transcode (reconcileTranscode still gates actual
-    // transcode entry on the ext/codec check, below). Audio items are
-    // unaffected (skip this extra guard) — reconcileTranscode already
-    // short-circuits `type === 'audio'`.
+    // FR-1b (v1.18.0) backfill, HOTFIXED in v1.18.1: a VIDEO item is only
+    // taken on the plain reuse fast-path once it already carries the probed
+    // codec fields (`videoCodec`/`audioCodec` -- present, even if `null`,
+    // once a probe has actually run). A pre-v1.18 entry (or one whose last
+    // probe failed) is missing both keys entirely (see
+    // `extractMetadataAndThumbnail`'s comment on `undefined` vs. `null`).
+    //
+    // v1.18.0 REGRESSION (fixed here): that "missing codec fields" case used
+    // to fall into the full re-init/`extractMetadataAndThumbnail` branch
+    // below -- which runs an ffmpeg FRAME-GRAB, clobbering every pre-v1.18
+    // video's existing thumbnail on the very first post-upgrade scan (icons
+    // silently lost for the whole library). The fix: `unchanged` (same
+    // filePath+size) VIDEO items missing codec fields get their OWN
+    // `legacyVideoCodecBackfillOnly` branch below -- codec-only probe (no
+    // frame-grab, no re-init, existing thumbnail left untouched unless it is
+    // genuinely missing). Audio items are unaffected (skip this extra guard)
+    // -- reconcileTranscode already short-circuits `type === 'audio'`.
     const existing = db.metadata[id];
     const hasCodecFields = !!existing &&
       Object.prototype.hasOwnProperty.call(existing, 'videoCodec') &&
       Object.prototype.hasOwnProperty.call(existing, 'audioCodec');
-    const reusable = !!existing && existing.filePath === filePath && existing.size === info.size &&
-      (isAudio || hasCodecFields);
+    const unchanged = !!existing && existing.filePath === filePath && existing.size === info.size;
+    const reusable = unchanged && (isAudio || hasCodecFields);
+    const legacyVideoCodecBackfillOnly = unchanged && !isAudio && !hasCodecFields;
     if (reusable) {
       newMetadata[id] = existing;
+    } else if (legacyVideoCodecBackfillOnly) {
+      // v1.18.1 hotfix: reuse the existing entry AS-IS (title, duration,
+      // addedAt, artist, tags, hasThumbnail, and the on-disk thumbnail .jpg
+      // are all preserved -- no re-init, no `cleanDisplayTitle` recompute).
+      // Only the codec fields (and the `needsTranscode` they feed) are
+      // backfilled, via the codec-only probe -- no ffmpeg frame-grab runs.
+      console.log(`Backfilling codec fields for legacy video: ${info.name}`);
+      try {
+        const { videoCodec, audioCodec } = await probeCodecsOnly(filePath);
+        existing.videoCodec = videoCodec;
+        existing.audioCodec = audioCodec;
+        // Authoritative recompute now that the codecs are known -- also
+        // redone below by the final reconcileTranscode pass, but set here
+        // too so `existing.needsTranscode` is correct even if that pass is
+        // ever bypassed for this item.
+        existing.needsTranscode = needsTranscode(existing.ext, videoCodec, audioCodec);
+      } catch (err) {
+        console.error(`Error backfilling codec fields for ${info.name}:`, err);
+      }
+
+      // Restore the thumbnail ONLY if it is genuinely missing -- either the
+      // item's own `hasThumbnail` flag is false, or the on-disk .jpg is
+      // absent/empty (e.g. a v1.18.0 scan already clobbered it before this
+      // hotfix landed). A present, non-empty thumbnail is left completely
+      // untouched -- no frame-grab, ever, for a file that already has one.
+      const thumbPath = path.join(THUMBNAIL_DIR, `${id}.jpg`);
+      let thumbnailMissing = !existing.hasThumbnail;
+      if (!thumbnailMissing) {
+        try {
+          thumbnailMissing = !fs.existsSync(thumbPath) || fs.statSync(thumbPath).size === 0;
+        } catch (_) {
+          thumbnailMissing = true;
+        }
+      }
+      if (thumbnailMissing) {
+        console.log(`Restoring missing thumbnail for legacy video: ${info.name}`);
+        try {
+          const thumbMeta = await extractMetadataAndThumbnail(filePath, id, false);
+          existing.hasThumbnail = !!thumbMeta.hasThumbnail;
+        } catch (err) {
+          console.error(`Error restoring thumbnail for ${info.name}:`, err);
+        }
+      }
+
+      newMetadata[id] = existing;
+      dbChanged = true;
     } else {
       // New or updated file
       console.log(`Scanning new/updated file: ${info.name}`);
@@ -1621,7 +1720,14 @@ app.get('/api/config', (req, res) => {
       folderSettings[root] = { ...(folderSettings[root] || {}), name: (folderSettings[root] && folderSettings[root].name) || 'Downloads' };
     }
   }
-  res.json({ folders, folderSettings });
+  // FR-4 (v1.19.0): additive, READ-ONLY, response-only field so the client
+  // can robustly identify which `folders` entry is the synthetic download
+  // root (e.g. to disable its remove button) without re-deriving/guessing a
+  // path match itself. This is exactly `synthRoots` above -- never persisted,
+  // never accepted back on POST, and does not change any synthetic-root
+  // HANDLING (the splice/rename/order logic above, and the db.folders-
+  // exclusion in POST /api/config below, are both untouched).
+  res.json({ folders, folderSettings, syntheticFolders: synthRoots });
 });
 
 // API: Save folder configuration
@@ -2282,6 +2388,39 @@ function streamLiveTranscode(req, res, item) {
   req.on('close', () => { proc.kill('SIGKILL'); });
 }
 
+// FR-3 (v1.19.0, download-to-device): builds a header-injection-SAFE
+// `Content-Disposition: attachment` value from a media item's display
+// `title` (never the raw on-disk name, which may carry yt-dlp's
+// `--restrict-filenames`/`[id]` suffix or ffmpeg-transcode naming) and its
+// ORIGINAL extension. Two forms, per RFC 6266 (and RFC 5987 for the
+// extended parameter):
+//  - an ASCII `filename="..."` fallback for legacy clients:
+//    `replace(/[^\x20-\x7E]/g, '_')` strips every character OUTSIDE the
+//    printable-ASCII range 0x20-0x7E -- this removes CR/LF and every other
+//    control character -- and a second pass strips `"`/`\` (the two
+//    characters a quoted-string would otherwise need backslash-escaping
+//    for). A title containing CR/LF/quotes can therefore never terminate
+//    the header early or inject a second header/param.
+//  - a `filename*=UTF-8''<percent-encoded>` form carrying the REAL
+//    (possibly non-ASCII) name: `encodeURIComponent` percent-encodes CR/LF
+//    (`%0D`/`%0A`) and every other unsafe byte, so this form is equally
+//    injection-safe and also gives modern browsers the correct non-ASCII
+//    display name. `encodeURIComponent` over-encodes a few characters RFC
+//    5987 technically allows bare (e.g. `!`) -- browsers accept this.
+// Pure, no I/O -- exported for unit tests (see test/unit).
+function contentDispositionAttachment(title, ext) {
+  const safeExt = String(ext || '').replace(/[^A-Za-z0-9.]/g, '');
+  const rawName = (title === undefined || title === null || title === '') ? 'download' : String(title);
+  const fullName = rawName + safeExt;
+  const asciiName = fullName.replace(/[^\x20-\x7E]/g, '_').replace(/["\\]/g, '_') || 'download';
+  // `encodeURIComponent` does not encode `'` (it is not in its reserved set),
+  // but RFC 5987's `ext-value` grammar treats `'` as a delimiter (it separates
+  // charset/language/value) -- so a bare `'` here is not a valid `attr-char`
+  // and must be percent-encoded to keep the `filename*` value well-formed.
+  const encoded = encodeURIComponent(fullName).replace(/'/g, '%27');
+  return `attachment; filename="${asciiName}"; filename*=UTF-8''${encoded}`;
+}
+
 // Media streaming endpoint supporting Range requests (highly important for HTML5 seeking/skipping)
 app.get('/video/:id', (req, res) => {
   const db = loadDatabase();
@@ -2290,12 +2429,22 @@ app.get('/video/:id', (req, res) => {
     return res.status(404).json({ error: 'Media file not found' });
   }
 
+  // FR-3 (v1.19.0): a download-intent request (`?download=1`) ALWAYS
+  // bypasses the needsTranscode/live-transcode branch below and serves the
+  // ORIGINAL file (`item.filePath`) -- even when a cached transcode already
+  // exists -- because the transcode is a browser-playability sidecar, never
+  // the canonical file a "Download" click should hand back. This is the
+  // ONLY thing `download=1` changes: the id -> `db.metadata[id]` lookup, the
+  // 404s, and the Range-capable send below are otherwise identical to
+  // ordinary playback.
+  const isDownload = req.query.download === '1';
+
   let filePath = item.filePath;
 
   // Browser-incompatible containers (AVI, etc.):
   //  - desktop asks for ?live=1 -> live transcode, plays instantly (not iOS-safe)
   //  - otherwise -> serve the pre-transcoded MP4 (seekable; works on iOS)
-  if (item.needsTranscode) {
+  if (item.needsTranscode && !isDownload) {
     if (req.query.live === '1') {
       return streamLiveTranscode(req, res, item);
     }
@@ -2316,10 +2465,15 @@ app.get('/video/:id', (req, res) => {
     return res.status(404).json({ error: 'File does not exist on disk' });
   }
 
+  // Is the file we're about to send the cached transcoded copy? (Never true
+  // for a download request -- `isDownload` skips the branch above that's the
+  // only place `filePath` is ever set to `transcodedPath(item.id)`.)
+  const servingCachedTranscode = filePath === transcodedPath(item.id);
+
   // Serving a cached transcode? Mark it recently-served so eviction leaves it
   // alone while it's being watched, and persist the last-served timestamp
   // (throttled/no-clobber) that the age-retention sweep keys off.
-  if (item.needsTranscode && filePath === transcodedPath(item.id)) {
+  if (servingCachedTranscode) {
     markServed(filePath);
     recordServed(item.id);
   }
@@ -2327,7 +2481,11 @@ app.get('/video/:id', (req, res) => {
   const stat = fs.statSync(filePath);
   const fileSize = stat.size;
   const range = req.headers.range;
-  const contentType = item.needsTranscode ? 'video/mp4' : (mime.lookup(filePath) || (item.type === 'audio' ? 'audio/mpeg' : 'video/mp4'));
+  const contentType = servingCachedTranscode ? 'video/mp4' : (mime.lookup(filePath) || (item.type === 'audio' ? 'audio/mpeg' : 'video/mp4'));
+
+  if (isDownload) {
+    res.setHeader('Content-Disposition', contentDispositionAttachment(item.title, item.ext));
+  }
 
   if (range) {
     const parts = range.replace(/bytes=/, "").split("-");
@@ -2429,6 +2587,7 @@ module.exports = {
   matchRootFolder,
   getMediaId,
   cleanDisplayTitle,
+  contentDispositionAttachment,
   normalizeScanRoot,
   loadDatabase,
   saveDatabase,
@@ -2437,6 +2596,7 @@ module.exports = {
   parseFfprobeTags,
   parseFfprobeStreams,
   codecNeedsTranscode,
+  probeCodecsOnly,
   PLAYABLE_VIDEO_CODECS,
   PLAYABLE_AUDIO_CODECS,
   parseCacheCap,

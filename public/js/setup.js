@@ -16,6 +16,12 @@
 
 let configuredFolders = [];
 let folderSettings = {}; // { "<path>": { name, hidden } }
+// FR-4 (v1.19.0): the yt-dlp module's synthetic download-folder path(s), as
+// surfaced by GET /api/config's additive, read-only `syntheticFolders`
+// field -- lets renderFolders() disable that one row's remove button (see
+// isSyntheticFolder() in common.js) without ever touching the server-side
+// db.folders-exclusion invariant.
+let syntheticFolders = [];
 let loadedDefaultView = null; // null until the /api/settings fetch resolves
 let controller = null;
 // C4 remediation (v1.16.0): tracks pollScanStatus's one-shot post-scan
@@ -41,6 +47,7 @@ async function loadConfig() {
     const data = await response.json();
     configuredFolders = data.folders || [];
     folderSettings = data.folderSettings || {};
+    syntheticFolders = data.syntheticFolders || [];
     renderFolders();
     renderSidebarFolders(configuredFolders, folderSettings);
     populateDefaultViewSelect();
@@ -93,6 +100,26 @@ function renderFolders() {
       <button class="remove-folder-btn" data-index="${index}" title="Remove folder">&times;</button>
     `;
     container.appendChild(row);
+
+    // FR-4 (v1.19.0): the synthetic download folder self-heals on the very
+    // next GET /api/config no matter what the client does (see server.js) --
+    // removing it accomplishes nothing durable, so disable (never hide -- the
+    // row itself must still display) its remove button with a static,
+    // explanatory tooltip instead of leaving a live-looking control that
+    // silently does nothing. Set as DOM properties (not string-interpolated
+    // into the innerHTML template above) so a disabled button dispatches no
+    // click at all -- the remove handler below never runs for this row even
+    // without its own defensive guard, which is added anyway (belt-and-
+    // suspenders) in case a future change re-enables the control. The tooltip
+    // text is a static literal (no dynamic/user data), so no innerHTML
+    // interpolation of dynamic strings is introduced.
+    if (isSyntheticFolder(folder, syntheticFolders)) {
+      const removeBtn = row.querySelector('.remove-folder-btn');
+      if (removeBtn) {
+        removeBtn.disabled = true;
+        removeBtn.title = "This is the auto-managed downloads folder — rename or reorder it here, but it can't be removed (disable the yt-dlp module to remove it).";
+      }
+    }
   });
 
   // Reorder handlers — swap positions in the folders array (that order is the sidebar order).
@@ -183,6 +210,13 @@ function renderFolders() {
   container.querySelectorAll('.remove-folder-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {
       const index = parseInt(e.target.dataset.index);
+      // FR-4 (v1.19.0): defensive guard, belt-and-suspenders alongside the
+      // `disabled` DOM property set above (which already stops a click from
+      // ever reaching this handler for the synthetic row) -- removing it
+      // would accomplish nothing durable anyway (see server.js's synthetic-
+      // folder self-heal), so never mutate state for it even if this handler
+      // somehow ran.
+      if (isSyntheticFolder(configuredFolders[index], syntheticFolders)) return;
       delete folderSettings[configuredFolders[index]];
       configuredFolders.splice(index, 1);
       renderFolders();
@@ -739,6 +773,7 @@ function init(root) {
   controller = new AbortController();
   configuredFolders = [];
   folderSettings = {};
+  syntheticFolders = [];
   loadedDefaultView = null;
 
   wireStaticControls(controller.signal);

@@ -93,6 +93,19 @@ test('mobile: video-card text (.video-title/.video-uploader/.video-meta) shrinks
   assert.ok(metaRule, 'expected a mobile .video-meta rule');
 });
 
+test('v1.19.0 FR-6 (mobile): #videos-section-header resets min-width and wraps long content -- a long Search Results for "<query>" heading must not force horizontal overflow (same flex min-width:auto family as the v1.17.0 .sort-select fix)', () => {
+  const body = mobileBlock();
+  const rule = /#videos-section-header\s*\{([^}]*)\}/.exec(body);
+  assert.ok(rule, 'expected a mobile #videos-section-header rule');
+  assert.match(rule[1], /min-width:\s*0/, 'the heading must be allowed to shrink below its intrinsic content width');
+  assert.match(rule[1], /(overflow-wrap|word-break):\s*break-word/, 'a long unbroken query token must wrap, not force overflow');
+});
+
+test('desktop: #videos-section-header has exactly one rule in the whole stylesheet -- the mobile block above -- so desktop rendering is unaffected by the FR-6 fix', () => {
+  const occurrences = (css.match(/#videos-section-header\s*\{/g) || []).length;
+  assert.strictEqual(occurrences, 1, '#videos-section-header should be styled exactly once (inside the mobile breakpoint block), leaving desktop untouched');
+});
+
 test('desktop: the base .video-grid/.section-actions rules are untouched (210px/20px, no flex-wrap)', () => {
   const gridRule = /(?:^|\n)\.video-grid\s*\{([^}]*)\}/.exec(css);
   assert.ok(gridRule, 'expected the base .video-grid rule');

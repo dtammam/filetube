@@ -1,19 +1,30 @@
 'use strict';
 
-// [INTEGRATION] v1.18.0 T2 (FR-1b), part 4 -- the reuse-unchanged-metadata
-// guard's codec-field backfill. A VIDEO item is only reused across a scan
-// (skipping re-extraction) once it already carries BOTH `videoCodec` and
-// `audioCodec` keys; a pre-v1.18 (or probe-failed) entry lacking those keys
-// gets re-extracted exactly once to backfill them. Audio items are exempt
+// [INTEGRATION] v1.18.0 T2 (FR-1b), part 4, HOTFIXED in v1.18.1 -- the
+// reuse-unchanged-metadata guard's codec-field backfill. A VIDEO item is
+// only taken on the PLAIN reuse fast-path once it already carries BOTH
+// `videoCodec` and `audioCodec` keys; a pre-v1.18 (or probe-failed) entry
+// lacking those keys is backfilled via the dedicated
+// `legacyVideoCodecBackfillOnly` scan branch instead. Audio items are exempt
 // (reconcileTranscode already short-circuits `type === 'audio'`).
 //
-// No FFmpeg needed: with ffmpegAvailable false (the CI default, per
-// docs/RELIABILITY.md), extractMetadataAndThumbnail's early-return resolves
-// `{ duration: 0, hasThumbnail: false, artist: '', tags: {} }` -- no
-// `videoCodec`/`audioCodec` keys at all. That makes "was this item
-// re-extracted?" directly observable: a sentinel `artist` value survives a
-// scan only if the item was REUSED (never re-extracted); it gets reset to ''
-// if the item was re-extracted (mirrors the scan-discovery.test.js pattern).
+// v1.18.0 REGRESSION, fixed in v1.18.1: that backfill branch used to be the
+// SAME full re-init + `extractMetadataAndThumbnail` path new files take --
+// which runs an ffmpeg frame-grab, clobbering the item's existing thumbnail
+// (and resetting title/duration/artist/tags) on every legacy video's first
+// post-upgrade scan. It is now a dedicated, narrower branch: codec fields
+// are backfilled via the codec-only `probeCodecsOnly` (no frame-grab), and
+// every other field (title/duration/addedAt/artist/tags/hasThumbnail) is
+// preserved untouched -- the thumbnail is regenerated ONLY if it is
+// genuinely missing (see test/integration/scan-thumbnail-preserve.test.js
+// for the full backfill+thumbnail-preserve/restore matrix, using mocked
+// ffmpeg/ffprobe so both branches -- with and without a real spawn -- are
+// directly observable).
+//
+// No FFmpeg needed in THIS file: with ffmpegAvailable false (the CI default,
+// per docs/RELIABILITY.md), the codec-only probe and any thumbnail-restore
+// attempt both degrade safely to `null`/`false` without ever spawning
+// anything -- so the sentinel fields below stay intact regardless.
 const os = require('node:os');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -47,12 +58,13 @@ beforeEach(() => {
   if (fs.existsSync(DB_FILE)) fs.rmSync(DB_FILE);
 });
 
-test('scanDirectories: a legacy video item missing videoCodec/audioCodec is re-extracted (backfill probe)', async () => {
+test('scanDirectories: a legacy video item missing videoCodec/audioCodec is codec-backfilled WITHOUT a full re-extraction (thumbnail-preserve hotfix)', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-backfill-legacy-'));
   const filePath = path.join(root, 'legacy.mp4');
   const bytes = 'legacy-video-bytes';
   fs.writeFileSync(filePath, bytes);
   const id = getMediaId(filePath);
+  const addedAt = Date.now();
 
   writeDb({
     folders: [root],
@@ -62,7 +74,7 @@ test('scanDirectories: a legacy video item missing videoCodec/audioCodec is re-e
       [id]: {
         id, name: 'legacy.mp4', title: 'legacy', filePath,
         folderName: path.basename(root), size: Buffer.byteLength(bytes), ext: '.mp4',
-        type: 'video', addedAt: Date.now(), duration: 42, hasThumbnail: false,
+        type: 'video', addedAt, duration: 42, hasThumbnail: false,
         artist: 'LEGACY-SENTINEL', needsTranscode: false,
         // no videoCodec / audioCodec -- pre-v1.18 shape
       },
@@ -73,8 +85,20 @@ test('scanDirectories: a legacy video item missing videoCodec/audioCodec is re-e
   await scanDirectories();
 
   const db = readDb();
-  assert.ok(db.metadata[id], 'item must still be indexed after the scan');
-  assert.equal(db.metadata[id].artist, '', 're-extraction ran (sentinel artist was overwritten), proving the backfill guard did NOT reuse the legacy entry');
+  const item = db.metadata[id];
+  assert.ok(item, 'item must still be indexed after the scan');
+  // The v1.18.1 hotfix: this is the dedicated codec-backfill branch, NOT the
+  // full-reinit path new files take -- non-codec fields must survive
+  // untouched (a full re-extraction would have reset title/duration/artist).
+  assert.equal(item.title, 'legacy', 'title must be preserved, not recomputed');
+  assert.equal(item.duration, 42, 'duration must be preserved, not reset to 0');
+  assert.equal(item.addedAt, addedAt, 'addedAt must be preserved, not recomputed');
+  assert.equal(item.artist, 'LEGACY-SENTINEL', 'artist must be preserved -- proves the legacy entry was NOT fully re-extracted');
+  // Codec fields are backfilled (explicit null with ffmpeg unavailable).
+  assert.equal(item.videoCodec, null);
+  assert.equal(item.audioCodec, null);
+  assert.equal(Object.prototype.hasOwnProperty.call(item, 'videoCodec'), true);
+  assert.equal(Object.prototype.hasOwnProperty.call(item, 'audioCodec'), true);
 });
 
 test('scanDirectories: a video item that already carries codec fields is reused (no re-probe)', async () => {

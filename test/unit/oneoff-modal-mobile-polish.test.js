@@ -248,6 +248,21 @@ test('FIX 5 (mobile): the three selects stack one-per-row on a phone instead of 
   assert.match(body, /\.oneoff-modal-row select\s*\{[^}]*width:\s*100%/);
 });
 
+test('v1.19.0 FR-1 (mobile): .oneoff-modal-row select resets flex to 0 0 auto -- the base rule\'s 150px flex-basis/flex-grow:1 (a width hint under the desktop row layout) must not be reinterpreted as a min-height/growth-target under the mobile column layout', () => {
+  const body = mobileBlock();
+  // The base (non-mobile) `.oneoff-modal-row select` rule (~1910) also
+  // appears in `body` (mobileBlock()'s captured range spans well beyond the
+  // literal @media block -- see the other tests in this file), so this must
+  // assert the FIX is present somewhere in the mobile CSS, not merely that
+  // *a* `.oneoff-modal-row select {}` rule exists (the base rule alone would
+  // satisfy a naive first-match check without actually closing the bug).
+  assert.match(
+    body,
+    /\.oneoff-modal-row select\s*\{[^}]*flex:\s*0 0 auto[^}]*width:\s*100%/,
+    'expected a mobile .oneoff-modal-row select rule with flex reset to 0 0 auto (so the inherited 150px basis is no longer reinterpreted as a minimum height under flex-direction: column) alongside the existing width: 100%'
+  );
+});
+
 test('FIX 5 (mobile): the modal itself is near-full-width with tighter padding, and every tappable control has a comfortable minimum tap-target height', () => {
   const body = mobileBlock();
   const modalRule = /\.oneoff-modal\s*\{([^}]*)\}/.exec(body);

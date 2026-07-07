@@ -58,6 +58,20 @@ test('mobile: .folder-item-row and .sub-row stack vertically on a narrow phone (
   assert.match(block[1], /\.folder-item-row,\s*\n\s*\.sub-row\s*\{[^}]*flex-direction:\s*column/);
 });
 
+test('v1.19.0 FR-2a: #sub-list-container gets a SCOPED size override (taller/roomier than the shared .folder-list-builder default), which the Setup folder builder and one-shot list do not', () => {
+  const sharedRule = /\.folder-list-builder\s*\{([^}]*)\}/.exec(css);
+  assert.ok(sharedRule, 'expected the shared .folder-list-builder rule');
+  assert.match(sharedRule[1], /max-height:\s*240px/, 'the shared class default must be unchanged -- #folders-builder-list and #oneshot-list-container must not grow');
+  assert.match(sharedRule[1], /padding:\s*12px/, 'the shared class padding must be unchanged');
+
+  const scopedRule = /#sub-list-container\s*\{([^}]*)\}/.exec(css);
+  assert.ok(scopedRule, 'expected a scoped #sub-list-container override (an ID selector, not a change to the shared class)');
+  const maxHeightMatch = /max-height:\s*(\d+)px/.exec(scopedRule[1]);
+  assert.ok(maxHeightMatch && Number(maxHeightMatch[1]) > 240, '#sub-list-container must be taller than the shared 240px default');
+  const paddingMatch = /padding:\s*(\d+)px/.exec(scopedRule[1]);
+  assert.ok(paddingMatch && Number(paddingMatch[1]) > 12, '#sub-list-container must have roomier padding than the shared 12px default');
+});
+
 test('the /subscriptions page and the Setup page share the same .setup-box/.form-group/.folder-item-row selectors (one fix improves both)', () => {
   const setupHtml = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'setup.html'), 'utf8');
   const subsHtml = fs.readFileSync(
