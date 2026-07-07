@@ -31,6 +31,41 @@
 // reads/sets #search-input's value (to reflect the current `?search=`
 // query); it never (re-)binds a listener to it.
 //
+// Pure, DOM-free helpers (v1.22.0 FR-9, T-H) -- kept at module scope, above
+// the view IIFE below, so `node:test` can `require()` them directly without
+// touching `window`/`document` (mirrors watch.js's/player.js's own
+// top-of-file pure-helper + `module.exports` guard pattern).
+
+// buildCardDownloadHref: the home/library card's "save to device" anchor
+// href -- reuses the EXISTING, unmodified `/video/:id?download=1` route
+// (shipped v1.19.0 on the watch page; see watch.js's `downloadBtn` wiring)
+// unchanged. Source-agnostic: works identically for a yt-dlp-managed item
+// and a plain local file, since the route itself doesn't care how the file
+// got onto disk. `encodeURIComponent` on the id mirrors watch.js exactly.
+function buildCardDownloadHref(id) {
+  return `/video/${encodeURIComponent(id)}?download=1`;
+}
+
+// buildCardDownloadFilename: the anchor's `download` attribute value -- a
+// belt-and-suspenders filename hint for browsers that honor it (the actual
+// save is authoritative on the server's `Content-Disposition: attachment`
+// header). Byte-identical fallback logic to watch.js's `downloadBtn` wiring
+// (`title || 'download'` plus the raw extension, e.g. ".mp4") so a missing
+// title/ext can never produce a blank or "undefined"-suffixed filename.
+// Returned RAW (not HTML-escaped) -- callers building an HTML attribute
+// string must escape it themselves, exactly like this file's other
+// interpolated attribute values (see `escapeHtml` below).
+function buildCardDownloadFilename(title, ext) {
+  return `${title || 'download'}${ext || ''}`;
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = {
+    buildCardDownloadHref,
+    buildCardDownloadFilename,
+  };
+}
+
 // Wrapped in its own IIFE so its helpers (escapeHtml, renderSorted, etc.)
 // stay private to this file and never collide with the same-named helpers in
 // watch.js/setup.js, which all load on every page (FR-1, T1).
@@ -417,6 +452,9 @@
             <button type="button" class="card-delete-btn" data-id="${escapeHtml(item.id)}" aria-label="Delete this video">
               <i class="icon-delete"></i><span class="card-delete-confirm">Sure?</span>
             </button>
+            <a class="card-download-btn" href="${buildCardDownloadHref(item.id)}" download="${escapeHtml(buildCardDownloadFilename(item.title, item.ext))}" aria-label="Save to device" title="Save to device">
+              <i class="icon-download"></i>
+            </a>
             <div class="video-info">
               <a href="/watch.html?v=${item.id}" class="video-title" title="${escapeHtml(item.title)}">
                 ${escapeHtml(item.title)}
@@ -542,6 +580,20 @@
     window.addEventListener('scroll', () => {
       if (armState === 'armed') disarmCardDelete();
     }, { signal, capture: true, passive: true });
+
+    // v1.22.0 FR-5 (AC32-AC38): desktop-sidebar channel pins -- a SEPARATE
+    // fetch against the module's own gated pin store, independent of
+    // loadLibrary()'s folder-list rendering above: renderPinnedSidebar
+    // inserts `#sidebar-pinned-section` as a SIBLING of, never a child of,
+    // `#sidebar-folders-list`, so it is unaffected regardless of fetch/
+    // render ordering between the two. A 404 (module disabled) resolves to
+    // `[]` (no pins rendered), preserving the disabled-module no-op
+    // guarantee -- this never logs/throws on a 404. Read-only: never writes
+    // db.folders/folderSettings.
+    fetch('/api/subscriptions/pins')
+      .then((r) => (r.ok ? r.json() : []))
+      .catch(() => [])
+      .then((pins) => renderPinnedSidebar(pins));
 
     // Start initialization
     loadLibrary();

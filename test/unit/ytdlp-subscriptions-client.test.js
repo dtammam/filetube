@@ -878,6 +878,50 @@ test('buildSettingsSheet: Save sends maxVideos: 0 (unlimited sentinel) when the 
   assert.strictEqual(saveCalls[0][1].maxVideos, 0);
 });
 
+// ---- v1.22.0 FR-6: max-duration download gate, settings-sheet field --------
+
+test('buildSettingsSheet: renders a second number input pre-filled with the persisted maxDurationSeconds', () => {
+  const sub = {
+    id: 's2', name: 'C', channelUrl: 'https://www.youtube.com/@c', maxVideos: 5, maxDurationSeconds: 3600,
+  };
+  const sheetBackdrop = buildSettingsSheet(sub, fakeDoc, {});
+  const numberInputs = [...sheetBackdrop.walk()].filter((el) => el.tagName === 'INPUT' && el.type === 'number');
+  assert.strictEqual(numberInputs.length, 2, 'expected maxVideos + maxDurationSeconds number inputs');
+  assert.strictEqual(numberInputs[0].value, '5');
+  assert.strictEqual(numberInputs[1].value, '3600');
+});
+
+test('buildSettingsSheet: Save omits maxDurationSeconds entirely when the field is left blank (blank = unchanged)', () => {
+  const sub = { id: 'e4', name: 'C', channelUrl: 'https://www.youtube.com/@c' };
+  const saveCalls = [];
+  const sheetBackdrop = buildSettingsSheet(sub, fakeDoc, { onSave: (id, patch) => saveCalls.push([id, patch]) });
+  const saveBtn = [...sheetBackdrop.walk()].find((el) => el.tagName === 'BUTTON' && el.textContent === 'Save');
+  saveBtn.click();
+  assert.strictEqual('maxDurationSeconds' in saveCalls[0][1], false);
+});
+
+test('buildSettingsSheet: Save sends maxDurationSeconds: 0 (unlimited sentinel) when the field is explicitly set to 0', () => {
+  const sub = { id: 'e5', name: 'C', channelUrl: 'https://www.youtube.com/@c' };
+  const saveCalls = [];
+  const sheetBackdrop = buildSettingsSheet(sub, fakeDoc, { onSave: (id, patch) => saveCalls.push([id, patch]) });
+  const numberInputs = [...sheetBackdrop.walk()].filter((el) => el.tagName === 'INPUT' && el.type === 'number');
+  numberInputs[1].value = '0';
+  const saveBtn = [...sheetBackdrop.walk()].find((el) => el.tagName === 'BUTTON' && el.textContent === 'Save');
+  saveBtn.click();
+  assert.strictEqual(saveCalls[0][1].maxDurationSeconds, 0);
+});
+
+test('buildSettingsSheet: Save sends a positive maxDurationSeconds override entered by the user', () => {
+  const sub = { id: 'e6', name: 'C', channelUrl: 'https://www.youtube.com/@c' };
+  const saveCalls = [];
+  const sheetBackdrop = buildSettingsSheet(sub, fakeDoc, { onSave: (id, patch) => saveCalls.push([id, patch]) });
+  const numberInputs = [...sheetBackdrop.walk()].filter((el) => el.tagName === 'INPUT' && el.type === 'number');
+  numberInputs[1].value = '3600';
+  const saveBtn = [...sheetBackdrop.walk()].find((el) => el.tagName === 'BUTTON' && el.textContent === 'Save');
+  saveBtn.click();
+  assert.strictEqual(saveCalls[0][1].maxDurationSeconds, 3600);
+});
+
 test('buildSettingsSheet: Pause/Resume label reflects the subscription\'s paused state and wires onTogglePause', () => {
   const pausedCalls = [];
   const pausedSheet = buildSettingsSheet(

@@ -2366,6 +2366,74 @@ function renderPinnedPlaylists(pins) {
   list.appendChild(section);
 }
 
+// v1.22.0 FR-5 (AC32-AC38): renders the pinned-channel section into the
+// DESKTOP left-nav sidebar (main.js/watch.js/setup.js each call this from
+// their own init(), passing the SAME GET /api/subscriptions/pins response --
+// see each file's call site). `#sidebar-folders-list` lives in the
+// persistent shell OUTSIDE `#view-root`, so THREE independent
+// `renderSidebarFolders` implementations exist (main.js/watch.js/setup.js,
+// out of scope to de-duplicate here) -- several of them reassign
+// `sidebarFoldersList.innerHTML` wholesale (drag-reorder persist, cache
+// restore). Rather than append pins INSIDE `#sidebar-folders-list` (which
+// any of those rebuilds would silently wipe), this renders a SEPARATE
+// sibling section, `#sidebar-pinned-section`, inserted immediately AFTER
+// `#sidebar-folders-list` in the shell -- structurally unreachable from any
+// of those three folder renderers, so it survives every one of their
+// rebuilds untouched (AC32/AC33).
+//
+// Otherwise mirrors `renderPinnedPlaylists` above EXACTLY: reuses the SAME
+// pure `derivePinnedPlaylistEntries` helper (AC34 -- no second, divergent
+// derivation of "what to display for a pin"), the same
+// createElement/textContent/createTextNode-only construction (AC35 -- a
+// pin's `label` is the same creator-controlled snapshot, never `innerHTML`),
+// the same idempotent remove-then-rebuild (repeated calls, e.g. once per
+// view's init(), never accumulate duplicates), and the same render-NOTHING-
+// when-there-are-zero-pins no-op -- which is what makes a disabled module
+// (its own `GET /api/subscriptions/pins` 404 resolved to `[]` by the call
+// sites below) look identical to an enabled-but-unused one: the sidebar
+// renders exactly as it does today, folders only (AC37).
+//
+// Read-only consumer of the existing gated pin store: this function never
+// writes anything -- no fetch, no POST, no `db.folders`/`folderSettings`
+// access of any kind (AC36).
+function renderPinnedSidebar(pins) {
+  const folderList = document.getElementById('sidebar-folders-list');
+  if (!folderList || !folderList.parentNode) return;
+  const existing = document.getElementById('sidebar-pinned-section');
+  if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
+
+  const entries = derivePinnedPlaylistEntries(pins);
+  if (entries.length === 0) return;
+
+  const section = document.createElement('div');
+  section.id = 'sidebar-pinned-section';
+  section.className = 'sidebar-pinned-section';
+
+  const heading = document.createElement('div');
+  heading.className = 'sidebar-section-title';
+  heading.textContent = 'Pinned';
+  section.appendChild(heading);
+
+  entries.forEach((entry) => {
+    const link = document.createElement('a');
+    link.className = 'sidebar-item';
+    link.href = '/?root=' + encodeURIComponent(entry.channelDir);
+    const icon = document.createElement('i');
+    icon.className = 'icon-star';
+    link.appendChild(icon);
+    // SECURITY: entry.label is untrusted -- a dedicated text node (not
+    // link.textContent, which would also wipe the icon appended above) so
+    // both the icon and the label survive, neither ever passed through
+    // innerHTML. Same discipline as renderPinnedPlaylists above.
+    link.appendChild(document.createTextNode(' ' + entry.label));
+    section.appendChild(link);
+  });
+
+  // Insert as folderList's NEXT SIBLING (never a child of it) -- see the
+  // function comment above for why this placement is load-bearing.
+  folderList.parentNode.insertBefore(section, folderList.nextSibling);
+}
+
 // Lazily fetches /api/config on first open, populates the sheet, then reveals
 // it. Feature-detects its own elements so it's safe to call on any page.
 function openPlaylistsSheet() {
@@ -3196,7 +3264,7 @@ if (typeof module !== 'undefined' && module.exports) {
     canonicalizeChannelUrl, channelIdentityMatches, resolveFileChannelIdentity,
     shouldShowSubscribeButton, decideSubscribeButtonState,
     buildSubscribeRequestBody, buildSubscribeModal,
-    derivePinnedPlaylistEntries,
+    derivePinnedPlaylistEntries, renderPinnedSidebar,
     isYtdlpManagedItem, deleteFlowFor, showHardDeleteModal,
     nextDownloadChipPollDelay, buildOneShotRetryBody, chipItemLifecycle,
     buildDownloadChipItem, reduceDownloadChipState, formatDownloadChipSummary,

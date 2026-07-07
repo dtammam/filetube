@@ -50,6 +50,12 @@
 //                                  playing <video>.
 //   getState()                  -- 'closed' | 'full' | 'docked'.
 //   currentId                   -- (getter) id of the loaded media, or null.
+//   isLoopEnabled()/setLoop(on) -- FR-7 (TF, v1.22.0): read/write the
+//                                  watch-page-local loop/repeat preference
+//                                  (`localStorage['ft-loop']`), acted on by
+//                                  the persistent 'ended' listener below;
+//                                  watch.js's setupLoopToggle drives these
+//                                  rather than duplicating the storage key.
 //
 // ---- The docked-player state machine -------------------------------------
 // See docs/exec-plans/active/2026-07-06-v1.16-watch-experience.md, "The
@@ -149,12 +155,22 @@ function nextPlayerState(fromView, toView, currentState, hasMedia) {
 // is whether the CURRENTLY LOADED media is audio (not video); `ctx.isPlaying`
 // is whether it is currently playing (a paused/never-started player has
 // nothing to pause or persist -- a deliberate no-op).
+//
+// FR-8(a) (TG, v1.22.0, AC55-AC57): `ctx.isMobile` scopes the VIDEO branch to
+// mobile/PWA form factors only -- reusing the SAME `isMobileFormFactor()`
+// signal FR-1 introduces (AC78, never a second/divergent "is this mobile"
+// implementation; see the call site, `handleBackgroundLifecycle` below). On
+// DESKTOP, backgrounding the tab (switching tabs, a second monitor, minimizing)
+// no longer pauses a playing video -- Dean's cross-tab-playback ask -- while
+// the existing MOBILE "smart" behavior (pause+persist a backgrounded video,
+// keep audio going) is completely unchanged (AC57). Audio stays exempt either
+// way via the `ctx.isAudio` check above, untouched.
 var LIFECYCLE_PAUSE_EVENTS = { pagehide: true, freeze: true, visibilitychangeHidden: true };
 function shouldPauseForLifecycleEvent(eventType, ctx) {
   if (!LIFECYCLE_PAUSE_EVENTS[eventType]) return false;
   if (!ctx || !ctx.isPlaying) return false; // nothing playing -- no-op
   if (ctx.isAudio) return false; // audio/background-music: keep playing in the background
-  return true; // video: pause + persist so it doesn't keep going invisibly
+  return !!ctx.isMobile; // video: pause + persist only on mobile/PWA form factors (desktop keeps playing across tabs)
 }
 
 // Should the resume overlay show for this load (FR-4b, T3)? True whenever
@@ -295,6 +311,64 @@ function shouldArtSingleTapAct(state, onSingleTap) {
   return !!onSingleTap && state === 'full';
 }
 
+// ---- FR-1 (T1, v1.22.0): responsive controls-mode pure helpers ------------
+// See the exec plan's "## Design (FR-1)" (docs/exec-plans/active/
+// 2026-07-08-v1.22-player-parity.md). Both hoisted here, same "pure helpers
+// first" split as every other decision above, so both are directly
+// `node:test`-able with no DOM/browser harness.
+
+// Is this device a "mobile form factor" for control-surface purposes? Takes
+// EXPLICIT signals (no DOM) so it's unit-testable. The primary signal is a
+// touch-first device with no precise hover pointer -- `signals.coarsePointer
+// && signals.noHover` -- the combined heuristic that correctly classifies a
+// desktop window narrowed below the mobile breakpoint (fine pointer + hover
+// -> desktop) and a large tablet in portrait (coarse pointer + no hover,
+// even above the width breakpoint -> mobile), unlike a bare-width check. The
+// width-based `signals.narrowViewport` fallback is used ONLY when the
+// pointer/hover queries themselves are unsupported (very old browsers,
+// reported as `coarsePointer`/`noHover` being `undefined`) -- modern
+// browsers always take the primary branch. Reused, unmodified, by FR-8(a)'s
+// `isMobileFormFactor()` call (AC78 -- one shared "is this mobile" signal,
+// never two divergent implementations).
+function resolveMobileFormFactor(signals) {
+  var opts = signals || {};
+  if (opts.coarsePointer === undefined || opts.noHover === undefined) {
+    return !!opts.narrowViewport; // unsupported media query -- fall back to width
+  }
+  return !!(opts.coarsePointer && opts.noHover);
+}
+
+// Which control surface should own `#media-player` for this media type on
+// this form factor? `'native'` iff it's VIDEO on a mobile form factor (the
+// v1.21 regression this FR fixes); `'custom'` for every other combination
+// (desktop video, desktop audio, mobile audio all keep the v1.21 custom
+// bar, byte-identical). Deliberately state-independent (FULL/DOCKED
+// dock-suppression is applied by the caller, `applyControlsMode`, below) so
+// this stays a clean two-argument lookup for the AC10 regression-lock test.
+function resolveControlsMode(mediaType, isMobile) {
+  return mediaType === 'video' && !!isMobile ? 'native' : 'custom';
+}
+
+// ---- FR-7 (TF, v1.22.0): loop/repeat pure decision helper ------------------
+// Given the loop toggle's state, the persisted `autoplayNext` setting, and
+// whether a next item exists in the derived playlist order, decides what the
+// 'ended' handler should do: `'repeat'` (replay this item), `'advance'`
+// (autoplay to the next item), or `'stop'` (today's default -- leave it
+// reset at 0). `loop: true` ALWAYS yields `'repeat'`, regardless of
+// `autoplayNext`'s value or whether a next item even exists -- loop takes
+// precedence over autoplay-advance, per Dean's reconciliation instruction
+// (loop = repeat THIS; autoplay = next), AC49's regression lock. This is a
+// pure lookup table over explicit booleans (no DOM/storage read) so it's
+// directly `node:test`-able; the live 'ended'-cluster wiring below (the new
+// loop listener + `handleAutoplayNext`'s early-return) is a hand-written
+// mirror of this exact precedence against LIVE state read at 'ended' time.
+function resolveEndedAction(ctx) {
+  var opts = ctx || {};
+  if (opts.loop) return 'repeat';
+  if (opts.autoplayNext && opts.hasNext) return 'advance';
+  return 'stop';
+}
+
 // Guarded so requiring this file in Node (for unit tests) never touches
 // `window`/`document` -- mirrors common.js's own `if (typeof window ...)`
 // runtime guard immediately below.
@@ -310,6 +384,9 @@ if (typeof module !== 'undefined' && module.exports) {
     seekCommitTarget,
     classifyTapGesture,
     shouldArtSingleTapAct,
+    resolveMobileFormFactor,
+    resolveControlsMode,
+    resolveEndedAction,
   };
 }
 
@@ -336,6 +413,10 @@ if (typeof module !== 'undefined' && module.exports) {
   // FR-2 (T2, v1.21.0): the custom control bar + cover-art play/pause glyph.
   var playerControls, ppBtn, timeCur, seekBar, timeDur, muteBtn, volBar, fsBtn, artPlayGlyph;
 
+  // FR-8(b) (TG, v1.22.0): native Picture-in-Picture button, queried/wired
+  // once alongside the rest of the custom bar above.
+  var pipBtn;
+
   var dockCloseBtn = null;
   var dockChromeReady = false;
 
@@ -357,6 +438,7 @@ if (typeof module !== 'undefined' && module.exports) {
   var volumeSettable = true;    // iOS Safari feature-detect result (see volumeIsSettable); assumed true until probed
   var VOLUME_STORAGE_KEY = 'ft-volume';
   var MUTED_STORAGE_KEY = 'ft-muted';
+  var LOOP_STORAGE_KEY = 'ft-loop'; // FR-7 (TF, v1.22.0) -- watch-page-local preference, NOT a server db.settings setting (mirrors the v1.21 FR-9 ft-theater pattern)
 
   // One-shot flag (FR-4b, T3): set true in handleAutoplayNext immediately
   // before navigate(). Bug-fix (v1.17.0 two-reviewer gate): this global is
@@ -397,6 +479,54 @@ if (typeof module !== 'undefined' && module.exports) {
 
   function isMobileViewport() {
     return window.matchMedia('(max-width: 768px)').matches;
+  }
+
+  // FR-1 (T1, v1.22.0): browser wrapper around `resolveMobileFormFactor`
+  // (pure, above) -- reads the actual `window.matchMedia` results and
+  // delegates the decision to the pure helper. Detects an unsupported media
+  // query the same way every browser does: an unrecognized/invalid query
+  // string normalizes to `mql.media === 'not all'`, which is reported as
+  // `undefined` so the pure helper falls back to width. This is the SAME
+  // named helper FR-8(a) reuses for its pause-on-hidden scoping (AC78) --
+  // never a second, divergent "is this mobile" implementation.
+  function matchMediaBool(query) {
+    if (typeof window.matchMedia !== 'function') return undefined;
+    var mql = window.matchMedia(query);
+    if (mql.media === 'not all') return undefined; // query unsupported by this engine
+    return mql.matches;
+  }
+
+  function isMobileFormFactor() {
+    return resolveMobileFormFactor({
+      coarsePointer: matchMediaBool('(pointer: coarse)'),
+      noHover: matchMediaBool('(hover: none)'),
+      narrowViewport: window.matchMedia('(max-width: 768px)').matches,
+    });
+  }
+
+  // FR-1 (T1, v1.22.0): the impure applier -- decides + applies the
+  // native-vs-custom control surface for the CURRENTLY loaded media. Sets
+  // `.ff-mobile` on `host` (`#player-wrapper`) from the SAME
+  // `isMobileFormFactor()` call that decides the `controls` attribute, so
+  // CSS (which reacts to `.ff-mobile`) and the attribute can never disagree
+  // (see the exec plan's "single source of truth"). The native `controls`
+  // attribute is only ever present while `state === STATE_FULL` (the AC9
+  // dock-suppression -- a docked mini-player never shows the native strip,
+  // mirroring the existing `#player-dock .skip-controls { display: none }`
+  // FULL-only-affordance precedent). Called synchronously from
+  // `mountInSlot()`/`dock()` -- the existing reparent/state-transition
+  // points -- never from a `matchMedia` change-listener (AC7: capability is
+  // stable across orientation/resize, so re-deriving live is unnecessary).
+  function applyControlsMode() {
+    if (!host || !mediaPlayer) return;
+    var mobile = isMobileFormFactor();
+    host.classList.toggle('ff-mobile', mobile);
+    var mode = resolveControlsMode(currentData && currentData.type, mobile);
+    if (mode === 'native' && state === STATE_FULL) {
+      mediaPlayer.setAttribute('controls', '');
+    } else {
+      mediaPlayer.removeAttribute('controls');
+    }
   }
 
   function inNativeFullscreen() {
@@ -448,6 +578,7 @@ if (typeof module !== 'undefined' && module.exports) {
     muteBtn = host.querySelector('#mute-btn');
     volBar = host.querySelector('#vol-bar');
     fsBtn = host.querySelector('#fs-btn');
+    pipBtn = host.querySelector('#pip-btn');
     artPlayGlyph = host.querySelector('#art-play-glyph');
     wireHostListeners();
     return host;
@@ -554,6 +685,7 @@ if (typeof module !== 'undefined' && module.exports) {
     var ctx = {
       isAudio: !!(currentData && currentData.type === 'audio'),
       isPlaying: !mediaPlayer.paused,
+      isMobile: isMobileFormFactor(), // FR-8(a) (TG, v1.22.0): reuse FR-1's shared signal (AC78), not a second one
     };
     if (!shouldPauseForLifecycleEvent(eventType, ctx)) return;
     mediaPlayer.pause();
@@ -994,6 +1126,13 @@ if (typeof module !== 'undefined' && module.exports) {
   // controller has since moved on to different media -- this is a no-op
   // rather than acting on stale data.
   function handleAutoplayNext() {
+    // FR-7 (TF, v1.22.0, AC49): loop takes precedence over autoplay-advance
+    // -- when loop is ON, the new loop listener below (registered alongside
+    // this one in wireHostListeners) replays THIS item instead, so this
+    // entire autoplay-advance path must short-circuit BEFORE doing any of
+    // its own settings/videos fetches. Mirrors `resolveEndedAction`'s
+    // `loop: true` -> `'repeat'` precedence exactly.
+    if (isLoopEnabled()) return;
     var endedId = currentId;
     if (!endedId) return;
     fetch('/api/settings')
@@ -1171,6 +1310,22 @@ if (typeof module !== 'undefined' && module.exports) {
     } catch (_) { /* storage disabled/full -- persistence is best-effort only */ }
   }
 
+  // ---- loop/repeat (FR-7, TF, v1.22.0) --------------------------------------
+  // Guarded try/catch exactly like `loadStoredVolume`/`loadStoredMuted` above
+  // (storage disabled/unavailable degrades to "loop off," never throws).
+  // Exposed on the public API (below) so watch.js's `setupLoopToggle` reads/
+  // writes the SAME `localStorage['ft-loop']` key through these two
+  // functions rather than duplicating the key/guard logic in a second file --
+  // this controller is the one place that actually ACTS on the setting (the
+  // 'ended' listener below), so it owns the read/write too.
+  function isLoopEnabled() {
+    try { return localStorage.getItem(LOOP_STORAGE_KEY) === '1'; } catch (_) { return false; }
+  }
+
+  function setLoop(on) {
+    try { localStorage.setItem(LOOP_STORAGE_KEY, on ? '1' : '0'); } catch (_) { /* storage disabled/full -- best-effort only */ }
+  }
+
   // Browser-only feature-detect (not `node:test`-covered -- see the inbox/
   // exec-plan note: DOM-heavy iOS behavior is Dean's on-device arbiter).
   // iOS Safari silently ignores script writes to HTMLMediaElement.volume
@@ -1289,6 +1444,25 @@ if (typeof module !== 'undefined' && module.exports) {
     mediaPlayer.addEventListener('pause', function () { setPlaybackState('paused'); updatePositionState(true); });
     mediaPlayer.addEventListener('ended', function () { setPlaybackState('none'); });
     mediaPlayer.addEventListener('ended', handleAutoplayNext); // FR-3, T3 -- a THIRD, separate 'ended' listener; the two above are untouched
+    // FR-7 (TF, v1.22.0, AC48/AC51/AC53): loop/repeat -- a FOURTH, separate
+    // 'ended' listener, reconciling with the three above rather than
+    // replacing any of them (the reset-to-0 listener above already put this
+    // element at 0; `handleAutoplayNext`'s own early-return, above, is what
+    // actually enforces "loop wins over autoplay" -- this listener is just
+    // the replay action itself). Mirrors `resumeNoBtn`'s own restart logic
+    // exactly: a live-transcode source is re-`src`'d via `startLiveStream`,
+    // never seeked. State-independent of FULL/DOCKED -- only reads `liveMode`
+    // /`mediaPlayer` (this controller's own state), same as
+    // `handleAutoplayNext` above.
+    mediaPlayer.addEventListener('ended', function () {
+      if (!isLoopEnabled()) return;
+      if (liveMode) {
+        startLiveStream(0, true);
+      } else {
+        mediaPlayer.currentTime = 0;
+        mediaPlayer.play().catch(function () {});
+      }
+    });
     mediaPlayer.addEventListener('loadedmetadata', function () { updatePositionState(true); });
     mediaPlayer.addEventListener('durationchange', function () { updatePositionState(true); });
     mediaPlayer.addEventListener('seeked', function () { updatePositionState(true); });
@@ -1419,6 +1593,34 @@ if (typeof module !== 'undefined' && module.exports) {
           if (pf && pf.catch) pf.catch(function () {});
         }
       });
+    }
+
+    // FR-8(b) (TG, v1.22.0, AC58-AC60): native Picture-in-Picture -- wired
+    // ONCE here, alongside the rest of the custom bar, so it rides the
+    // persistent host across FULL/DOCKED/CLOSED exactly like every other
+    // control-bar listener above. Feature-detected via
+    // `document.pictureInPictureEnabled`: browsers/contexts without support
+    // (or where it's been disabled) never show a dead/inert button (AC58).
+    // Hidden in `.audio-mode` via CSS (no PiP concept for an audio-only
+    // element) -- independent of `.ff-mobile`, since PiP only ever matters
+    // where the custom bar itself is the active control surface. Toggling
+    // PiP is completely independent of the in-app dock (AC60): the two are
+    // separate, additive affordances that never fight over `mediaPlayer`.
+    if (pipBtn) {
+      if (!document.pictureInPictureEnabled) {
+        pipBtn.style.display = 'none';
+      } else {
+        pipBtn.addEventListener('click', function () {
+          if (!mediaPlayer) return;
+          if (document.pictureInPictureElement) {
+            var px = document.exitPictureInPicture();
+            if (px && px.catch) px.catch(function () {});
+          } else {
+            var pr = mediaPlayer.requestPictureInPicture();
+            if (pr && pr.catch) pr.catch(function () {});
+          }
+        });
+      }
     }
 
     // Click/tap-the-cover-art-to-play/pause (AC9): acts ONLY while FULL --
@@ -1580,6 +1782,12 @@ if (typeof module !== 'undefined' && module.exports) {
     if (transcodeOverlay) transcodeOverlay.style.display = 'none';
     if (transcodeSpinner) transcodeSpinner.classList.remove('failed');
     if (host) host.classList.remove('audio-mode');
+    // FR-1 (T1, v1.22.0): belt-and-suspenders -- `mountInSlot()` (called a
+    // few lines below, in `load()`) re-derives the real controls-mode for
+    // the NEW media via `applyControlsMode()` microseconds later, but
+    // clearing it here too means no native strip can flash on a mobile-
+    // video -> mobile-audio load in between.
+    if (mediaPlayer) mediaPlayer.removeAttribute('controls');
     if (audioBgArt) { audioBgArt.style.display = 'none'; audioBgArt.style.backgroundImage = ''; }
     if (audioVisualizer) audioVisualizer.style.display = 'none';
     if (skipControls) skipControls.style.display = 'none';
@@ -1669,6 +1877,7 @@ if (typeof module !== 'undefined' && module.exports) {
       slotEl.appendChild(host);
     }
     state = STATE_FULL;
+    applyControlsMode(); // FR-1: re-derive native-vs-custom for this FULL transition (AC9)
     hideDock();
     if (wasPlaying && mediaPlayer.paused) mediaPlayer.play().catch(function () {});
   }
@@ -1714,6 +1923,7 @@ if (typeof module !== 'undefined' && module.exports) {
     if (host.parentNode !== dockEl) dockEl.appendChild(host);
     dockEl.hidden = false;
     state = STATE_DOCKED;
+    applyControlsMode(); // FR-1: DOCKED always suppresses native controls (AC9)
     if (wasPlaying && mediaPlayer.paused) mediaPlayer.play().catch(function () {});
   }
 
@@ -1783,6 +1993,8 @@ if (typeof module !== 'undefined' && module.exports) {
     dock: dock,
     close: close,
     getState: function () { return state; },
+    isLoopEnabled: isLoopEnabled, // FR-7 (TF, v1.22.0) -- watch.js's setupLoopToggle reads/writes through these
+    setLoop: setLoop,
   };
   Object.defineProperty(api, 'currentId', {
     enumerable: true,

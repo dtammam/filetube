@@ -147,6 +147,9 @@ module.exports = [
         // arm.
         isYtdlpManagedItem: 'readonly',
         showHardDeleteModal: 'readonly',
+        // FR-5 (TC, v1.22.0): desktop-sidebar channel-pins renderer, called
+        // from each of main.js/watch.js/setup.js's own init().
+        renderPinnedSidebar: 'readonly',
       },
     },
   },

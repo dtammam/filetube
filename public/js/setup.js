@@ -784,6 +784,20 @@ function init(root) {
   loadCacheSize();
   loadScanStatusLine();
 
+  // v1.22.0 FR-5 (AC32-AC38): desktop-sidebar channel pins -- a SEPARATE
+  // fetch against the module's own gated pin store, independent of
+  // loadConfig()'s folder-list rendering above: renderPinnedSidebar inserts
+  // `#sidebar-pinned-section` as a SIBLING of, never a child of,
+  // `#sidebar-folders-list`, so it is unaffected regardless of fetch/render
+  // ordering between the two. A 404 (module disabled) resolves to `[]` (no
+  // pins rendered), preserving the disabled-module no-op guarantee -- this
+  // never logs/throws on a 404. Read-only: never writes db.folders/
+  // folderSettings.
+  fetch('/api/subscriptions/pins')
+    .then((r) => (r.ok ? r.json() : []))
+    .catch(() => [])
+    .then((pins) => renderPinnedSidebar(pins));
+
   // Start
   loadConfig();
 }

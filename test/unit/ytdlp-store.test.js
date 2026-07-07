@@ -219,6 +219,38 @@ test('validateMaxVideos: rejects a value over MAX_SUB_MAX_VIDEOS', () => {
   assert.equal(store.validateMaxVideos(store.MAX_SUB_MAX_VIDEOS + 1).ok, false);
 });
 
+// ---- v1.22.0 FR-6: validateMaxDurationSeconds (mirrors validateMaxVideos) --
+
+test('validateMaxDurationSeconds: accepts undefined (unset -> global default at build time)', () => {
+  assert.deepEqual(store.validateMaxDurationSeconds(undefined), { ok: true, value: undefined });
+});
+
+test('validateMaxDurationSeconds: accepts 0 (a distinct, valid "unbounded" value)', () => {
+  assert.deepEqual(store.validateMaxDurationSeconds(0), { ok: true, value: 0 });
+});
+
+test('validateMaxDurationSeconds: accepts an in-range positive integer', () => {
+  assert.deepEqual(store.validateMaxDurationSeconds(3600), { ok: true, value: 3600 });
+  assert.deepEqual(
+    store.validateMaxDurationSeconds(store.MAX_SUB_MAX_DURATION_SECONDS),
+    { ok: true, value: store.MAX_SUB_MAX_DURATION_SECONDS }
+  );
+});
+
+test('validateMaxDurationSeconds: rejects a non-integer (never silently coerced/truncated)', () => {
+  assert.equal(store.validateMaxDurationSeconds(1.5).ok, false);
+  assert.equal(store.validateMaxDurationSeconds('3600').ok, false);
+  assert.equal(store.validateMaxDurationSeconds(NaN).ok, false);
+});
+
+test('validateMaxDurationSeconds: rejects a negative value', () => {
+  assert.equal(store.validateMaxDurationSeconds(-1).ok, false);
+});
+
+test('validateMaxDurationSeconds: rejects a value over MAX_SUB_MAX_DURATION_SECONDS', () => {
+  assert.equal(store.validateMaxDurationSeconds(store.MAX_SUB_MAX_DURATION_SECONDS + 1).ok, false);
+});
+
 test('validatePaused: accepts undefined and strict booleans, rejects anything else', () => {
   assert.deepEqual(store.validatePaused(undefined), { ok: true, value: undefined });
   assert.deepEqual(store.validatePaused(true), { ok: true, value: true });
@@ -256,6 +288,41 @@ test('validateSubscriptionInput: accepts unset maxVideos/paused/skipShorts (stay
   assert.equal(result.value.maxVideos, undefined);
   assert.equal(result.value.paused, undefined);
   assert.equal(result.value.skipShorts, undefined);
+});
+
+// ---- v1.22.0 FR-6: maxDurationSeconds wired into validateSubscriptionInput/Patch --
+
+test('validateSubscriptionInput: accepts unset maxDurationSeconds (stays undefined -> inherit global default)', () => {
+  const result = store.validateSubscriptionInput({ channelUrl: 'https://www.youtube.com/@x' });
+  assert.equal(result.ok, true);
+  assert.equal(result.value.maxDurationSeconds, undefined);
+});
+
+test('validateSubscriptionInput: accepts a valid maxDurationSeconds override', () => {
+  const result = store.validateSubscriptionInput({ channelUrl: 'https://www.youtube.com/@x', maxDurationSeconds: 3600 });
+  assert.equal(result.ok, true);
+  assert.equal(result.value.maxDurationSeconds, 3600);
+});
+
+test('validateSubscriptionInput: rejects an out-of-range/non-integer maxDurationSeconds', () => {
+  assert.equal(store.validateSubscriptionInput({ channelUrl: 'https://www.youtube.com/@x', maxDurationSeconds: -1 }).ok, false);
+  assert.equal(store.validateSubscriptionInput({ channelUrl: 'https://www.youtube.com/@x', maxDurationSeconds: 1.5 }).ok, false);
+  assert.equal(
+    store.validateSubscriptionInput({ channelUrl: 'https://www.youtube.com/@x', maxDurationSeconds: store.MAX_SUB_MAX_DURATION_SECONDS + 1 }).ok,
+    false
+  );
+});
+
+test('validateSubscriptionPatch: accepts/omits maxDurationSeconds like maxVideos', () => {
+  const empty = store.validateSubscriptionPatch({});
+  assert.equal('maxDurationSeconds' in empty.value, false);
+
+  const patched = store.validateSubscriptionPatch({ maxDurationSeconds: 0 });
+  assert.equal(patched.ok, true);
+  assert.equal(patched.value.maxDurationSeconds, 0);
+
+  const rejected = store.validateSubscriptionPatch({ maxDurationSeconds: -5 });
+  assert.equal(rejected.ok, false);
 });
 
 test('validateSubscriptionInput: accepts a valid maxVideos/paused/skipShorts and passes them through', () => {
@@ -355,6 +422,41 @@ test('updateSubscription: an invalid value within the patch is defensively ignor
   const result = await store.updateSubscription(deps, added.id, { maxVideos: -99, format: 'gif' });
   assert.equal(result.maxVideos, 3, 'an invalid maxVideos in the patch must not overwrite the existing value');
   assert.equal(result.format, 'video', 'an invalid format in the patch must not overwrite the existing value');
+});
+
+// ---- v1.22.0 FR-6: addSubscription/updateSubscription carry maxDurationSeconds --
+
+test('addSubscription: an unset maxDurationSeconds stays undefined on the new record (resolves to the global default at build time)', async () => {
+  const deps = makeFakeDeps();
+  const record = await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@durunset', format: 'video' });
+  assert.equal(record.maxDurationSeconds, undefined);
+});
+
+test('addSubscription: a valid maxDurationSeconds is persisted on the new record', async () => {
+  const deps = makeFakeDeps();
+  const record = await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@durset', format: 'video', maxDurationSeconds: 1800 });
+  assert.equal(record.maxDurationSeconds, 1800);
+});
+
+test('addSubscription: an invalid maxDurationSeconds fails safe to undefined rather than corrupting the record', async () => {
+  const deps = makeFakeDeps();
+  const record = await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@durbad', format: 'video', maxDurationSeconds: -5 });
+  assert.equal(record.maxDurationSeconds, undefined);
+});
+
+test('updateSubscription: patches maxDurationSeconds independent of other fields, 0 accepted as unbounded', async () => {
+  const deps = makeFakeDeps();
+  const added = await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@durpatch', format: 'video', maxDurationSeconds: 3600 });
+  const updated = await store.updateSubscription(deps, added.id, { maxDurationSeconds: 0 });
+  assert.equal(updated.maxDurationSeconds, 0);
+  assert.equal(updated.format, 'video');
+});
+
+test('updateSubscription: an invalid maxDurationSeconds within the patch is defensively ignored rather than corrupting the record', async () => {
+  const deps = makeFakeDeps();
+  const added = await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@durguard', format: 'video', maxDurationSeconds: 3600 });
+  const result = await store.updateSubscription(deps, added.id, { maxDurationSeconds: -99 });
+  assert.equal(result.maxDurationSeconds, 3600, 'an invalid maxDurationSeconds in the patch must not overwrite the existing value');
 });
 
 // ---- ensureYtdlp: per-subscription `paused` backfill (FR-D) ----
