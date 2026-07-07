@@ -19,15 +19,15 @@ FileTube is a personal media application that lets you consume your local video 
 ## Features
 
 - **Nostalgic YouTube layout** — Classic grid, uploader channels, star ratings, and mock comments.
-- **YouTube-style player with custom blocky controls** — Theme-aware, app-owned playback controls (not the browser's native bar) for both video and audio; plays inline on iOS (no forced fullscreen), with ±15s skip via on-player buttons, double-tap, or the ← / → keys.
-- **Docked mini-player + continuous browsing** — Keep watching while you browse: the player docks to a corner instead of stopping when you navigate away, with prev/next controls and an optional autoplay-next setting. Video also has a one-tap theatre mode for a bigger, focused view.
+- **YouTube-style player with custom blocky controls** — Theme-aware, app-owned playback controls (not the browser's native bar) for both video and audio; plays inline on iOS (no forced fullscreen), with ±15s skip (on-player buttons, double-tap, or the ← / → keys), press-and-hold for 2×, an adjustable playback-speed control (1×–2×), a loop/repeat toggle, and a full-screen view for both video and audio.
+- **Docked mini-player + continuous browsing** — Keep watching while you browse: the player docks to a corner instead of stopping when you navigate away, with prev/next controls and an optional autoplay-next setting. Video also has a one-tap theatre mode, native Picture-in-Picture, and keeps playing across browser tabs on desktop.
 - **Smart resume playback** — Automatically saves your progress and prompts you to resume where you left off.
 - **Auto-generated thumbnails** — Uses FFmpeg to extract video frames or audio cover art automatically.
 - **Audio file support** — Plays audio formats (MP3, FLAC, M4A, etc.) with embedded cover art shown behind the custom player controls.
 - **iOS-first playability** — Browser-incompatible containers and codecs (AVI, HEVC/VP9/AV1, AC-3, etc.) are transcoded on demand to H.264/AAC MP4, so files that wouldn't otherwise play on iPhone/iPad just work.
-- **Download to your device** — Save a copy of the original file straight from the watch page.
+- **Download to your device** — Save a copy of the original file straight from the watch page or any library card.
 - **Quick, deliberate delete** — A two-tap trash-can right on each library card, plus a confirm step on the watch page, so nothing disappears from a single accidental tap.
-- **Optional YouTube subscriptions (yt-dlp)** — Off by default. A subscriptions-first page lists your channels for quick browsing and management, with per-subscription audio/video + quality + filetype + "download last N" + skip-Shorts controls, one-shot URL downloads, and a persistent status chip with retry for anything that fails. Pin your favorite channels for one-tap access, or subscribe to a creator right from a downloaded video's watch page — view any channel's downloads as its own playlist.
+- **Optional YouTube subscriptions (yt-dlp)** — Off by default. A subscriptions-first page lists your channels for quick browsing and management, with per-subscription audio/video + quality + filetype + "download last N" + max-length + skip-Shorts controls, one-shot URL downloads, and a persistent status chip with retry for anything that fails. Pin your favorite channels for one-tap access (in the desktop sidebar or the mobile Playlists sheet), or subscribe to a creator right from a downloaded video's watch page — even on videos you downloaded before subscribing — and view any channel's downloads as its own playlist.
 - **PWA install** — Add FileTube to your phone or desktop home screen like a native app.
 - **Era themes + icon sets** — Skin the UI as classic 2005, 2009, 2014, or 2021 YouTube, each with a matching icon style (or let it follow the era automatically), on top of a light/dark mode toggle.
 - **Configurable transcode cache** — Point the on-demand transcode cache at its own directory, tune quality (CRF), and cap its size so it never grows unbounded.
@@ -184,6 +184,7 @@ in the UI once enabled.
 | `FILETUBE_YTDLP_DOWNLOAD_DIR` | `<DATA_DIR>/ytdlp-downloads` | Where downloaded videos are saved. |
 | `FILETUBE_YTDLP_VERSION` | (build-time) | Informational only — reflects the `yt-dlp` version pinned into the image. Does not trigger or change an install. |
 | `FILETUBE_YTDLP_MAX_VIDEOS` | `25` | Caps each channel's listing to its newest N videos, so a fresh subscribe (or any re-pull) never attempts a channel's entire back-catalog. `0` = unlimited (consider the whole channel). |
+| `FILETUBE_YTDLP_MAX_DURATION_SECONDS` | `7200` | Skips videos longer than this many seconds (default 2h), so very long items and live streams aren't auto-downloaded. Each subscription can override it on the Subscriptions page. `0` = no length limit. (Videos with an unknown length are skipped, so a capped subscription never accidentally records an unbounded live stream.) |
 | `FILETUBE_YTDLP_DOWNLOAD_TIMEOUT_MINUTES` | `180` | Ceiling (minutes) for a single download before it's killed and treated as a failure. Raise this if you download very large/multi-gigabyte videos on a slow connection. Must be an integer from `1` to `1440`; anything else falls back to the default. |
 
 **Recommendation:** point `FILETUBE_YTDLP_DOWNLOAD_DIR` at a dedicated

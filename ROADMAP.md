@@ -2,6 +2,14 @@
 
 ## Planned
 
+### 🎬 Player / mobile UX
+
+- [ ] **Optional mobile control style — custom bar vs. native iOS (deferred, Dean)** — the whole v1.22.x mobile-player arc landed on ONE hardcoded answer: mobile uses our custom control bar everywhere (video + audio), because native inline iOS controls auto-hide / re-reveal unreliably under our gesture layer (see v1.22.1). It works well now — but Dean isn't sure he loves the custom bar on mobile and may prefer **native iOS controls** there, accepting the trade-offs. Rather than re-litigate one global default, make it **optional / device-aware**:
+  - A **setting** (and/or env/config) to pick the mobile control style: **custom bar** (today — era theming, the loop toggle, the persistent 1×–2× speed button, click-art-to-play, a cohesive retro look, one consistent bar across audio + video) vs **native iOS** (`<video controls>` — free full-screen / scrubber / playback-speed / AirPlay / PiP and the familiar iOS feel, but loses the themed bar + loop + speed-button styling + click-art, and reintroduces the inline auto-hide quirk the custom bar was chosen to avoid).
+  - Consider a **device-based default** (e.g. native on iOS, custom on desktop) with a manual override — so it "just works" out of the box but stays a deliberate, overridable choice, not a silently-locked one.
+  - **Scope/notes:** this reopens the mobile-VIDEO native-vs-custom decision from v1.22.0 / v1.22.1 (their exec plans are in `docs/exec-plans/completed/`). Mobile AUDIO would likely stay custom regardless — there's no native audio-fullscreen concept, which is exactly why v1.22.2 built the CSS "expanded now-playing" view. Reuse the existing shared form-factor helper (`resolveMobileFormFactor` / `isMobileFormFactor`) as the single detection seam; do not introduce a second "is this mobile" signal.
+  - _(Deferred by Dean — "I don't know that I want to do it now / have the capacity." Captured so the custom-bar default stays a conscious choice we can revisit, with the option to hand control back to the user or the device.)_
+
 ### 🧪 Testing / infra
 
 - [ ] **Broaden core test coverage** — the core app's scan/config/transcode logic + HTTP endpoints have thinner coverage than the yt-dlp module. Backfill unit + smoke tests. _(partially progressed)_
