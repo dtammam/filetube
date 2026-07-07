@@ -335,14 +335,74 @@ test('armScanTimer arms no timer when scanIntervalMinutes is Off (0)', () => {
   assert.strictEqual(timer, null, 'Off should arm no timer at all');
 });
 
-test('GET /api/scan-status response shape is unchanged', async () => {
+test('GET /api/scan-status response shape (FR-3: transcodeNames/transcodeOverflow added)', async () => {
   const res = await fetch(`${base}/api/scan-status`);
   assert.equal(res.status, 200);
   const json = await res.json();
   assert.deepEqual(
     Object.keys(json).sort(),
-    ['fileCount', 'folderCount', 'lastScan', 'scanning', 'transcoding'].sort()
+    ['fileCount', 'folderCount', 'lastScan', 'scanning', 'transcodeNames', 'transcodeOverflow', 'transcoding'].sort()
   );
+});
+
+// ---- FR-3 (v1.18.0, T4): restored pending-transcode list, bounded ---------
+
+// Builds a metadata entry the same shape scanDirectories/reconcileTranscode
+// would produce -- this test writes the db directly (no real scan/ffprobe)
+// since GET /api/scan-status only ever reads the already-computed
+// `needsTranscode`/`transcodeStatus` fields, the SAME filter the endpoint has
+// always used for the `transcoding` count.
+function pendingItem(id, title, overrides) {
+  return {
+    id, name: `${title}.mp4`, title, filePath: `/x/${title}.mp4`,
+    folderName: 'x', size: 1, ext: '.mp4', type: 'video', addedAt: Date.now(),
+    duration: 1, hasThumbnail: false, artist: '',
+    needsTranscode: true, transcodeStatus: 'pending',
+    ...overrides,
+  };
+}
+
+test('GET /api/scan-status: transcodeNames reflects codec-flagged items via the SAME needsTranscode/transcodeStatus filter as `transcoding`', async () => {
+  const metadata = {
+    'legacy-avi': pendingItem('legacy-avi', 'legacy-clip', { ext: '.avi', needsTranscode: true }),
+    'hevc-mp4': pendingItem('hevc-mp4', 'hevc-clip', { ext: '.mp4', videoCodec: 'hevc', needsTranscode: true }),
+    'ready-mp4': pendingItem('ready-mp4', 'already-ready', { ext: '.mp4', videoCodec: 'h264', audioCodec: 'aac', needsTranscode: false, transcodeStatus: undefined }),
+    'not-flagged': pendingItem('not-flagged', 'never-needed-it', { needsTranscode: false, transcodeStatus: undefined }),
+  };
+  saveDatabase({ folders: [], folderSettings: {}, progress: {}, metadata, settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30 } });
+
+  const res = await fetch(`${base}/api/scan-status`);
+  assert.equal(res.status, 200);
+  const json = await res.json();
+  assert.equal(json.transcoding, 2, 'only the two in-flight-needing-transcode items count');
+  assert.deepEqual(json.transcodeNames.sort(), ['hevc-clip', 'legacy-clip'].sort(), 'the codec-flagged HEVC .mp4 appears exactly like the legacy .avi -- same filter, no divergent path');
+  assert.equal(json.transcodeOverflow, 0, 'no overflow under the cap');
+});
+
+test('GET /api/scan-status: transcodeNames is capped at 10 with the remainder reported via transcodeOverflow', async () => {
+  const metadata = {};
+  for (let i = 0; i < 15; i++) {
+    metadata[`item-${i}`] = pendingItem(`item-${i}`, `clip-${i}`);
+  }
+  saveDatabase({ folders: [], folderSettings: {}, progress: {}, metadata, settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30 } });
+
+  const res = await fetch(`${base}/api/scan-status`);
+  assert.equal(res.status, 200);
+  const json = await res.json();
+  assert.equal(json.transcoding, 15, 'the count reflects the full pending set, uncapped');
+  assert.equal(json.transcodeNames.length, 10, 'the names array is capped at TRANSCODE_LIST_CAP');
+  assert.equal(json.transcodeOverflow, 5, '15 pending - 10 shown = 5 overflow');
+});
+
+test('GET /api/scan-status: an empty pending-transcode set returns an empty transcodeNames array and zero overflow', async () => {
+  saveDatabase({ folders: [], folderSettings: {}, progress: {}, metadata: {}, settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30 } });
+
+  const res = await fetch(`${base}/api/scan-status`);
+  assert.equal(res.status, 200);
+  const json = await res.json();
+  assert.equal(json.transcoding, 0);
+  assert.deepEqual(json.transcodeNames, []);
+  assert.equal(json.transcodeOverflow, 0);
 });
 
 // ---- FR3.3: transcodeStatus merge preserves a concurrent worker write -----

@@ -777,3 +777,91 @@ test('buildYtdlpDownloadArgs: --windows-filenames/"--"/arg-array discipline inta
   assert.equal(result[result.length - 2], '--', '"--" must still immediately precede the target URL');
   assert.equal(result[result.length - 1], 'https://www.youtube.com/watch?v=vid1');
 });
+
+// ---- v1.18.0 FR-1a: iOS-compatible H.264/AAC format sort (soft -S) --------
+
+test('VIDEO_FORMAT_SORT is the exact fixed literal expected by the design', () => {
+  assert.equal(args.VIDEO_FORMAT_SORT, 'vcodec:h264,acodec:aac');
+});
+
+test('buildYtdlpDownloadArgs (video): "-S VIDEO_FORMAT_SORT" is present, immediately after "-f <selector>", for every QUALITY_SELECTORS tier', () => {
+  const config = makeConfig();
+  const tiers = ['best', '2160p', '1440p', '1080p', '720p', '480p', '360p', 'default' /* -> normalizes to 'best' */];
+  for (const quality of tiers) {
+    const result = args.buildYtdlpDownloadArgs(baseSub({ format: 'video', quality }), config, ['vid1']);
+    const fIndex = result.indexOf('-f');
+    assert.ok(fIndex >= 0, `-f missing for quality=${quality}`);
+    assert.equal(result[fIndex + 2], '-S', `-S must immediately follow "-f <selector>" for quality=${quality}`);
+    assert.equal(result[fIndex + 3], args.VIDEO_FORMAT_SORT, `-S value must be VIDEO_FORMAT_SORT for quality=${quality}`);
+    // -S must land before --merge-output-format and well before "--"/positional targets.
+    const sIndex = fIndex + 2;
+    assert.ok(sIndex < result.indexOf('--'), '-S must precede the "--" separator');
+    const mergeIdx = result.indexOf('--merge-output-format');
+    if (mergeIdx >= 0) {
+      assert.ok(sIndex < mergeIdx, '-S must precede --merge-output-format when present');
+    }
+  }
+});
+
+test('buildYtdlpDownloadArgs (video, filetype "default"/"mkv"/"webm"): -S is still present regardless of container selection (fork #2 resolved scope)', () => {
+  const config = makeConfig();
+  for (const filetype of ['default', 'mkv', 'webm', 'mp4', undefined]) {
+    const result = args.buildYtdlpDownloadArgs(baseSub({ format: 'video', filetype }), config, ['vid1']);
+    const sIndex = result.indexOf('-S');
+    assert.ok(sIndex >= 0, `-S missing for filetype=${filetype}`);
+    assert.equal(result[sIndex + 1], args.VIDEO_FORMAT_SORT);
+  }
+});
+
+test('buildYtdlpDownloadArgs (audio): NEVER includes -S / VIDEO_FORMAT_SORT (no video-codec preference leaks into audio extraction)', () => {
+  const config = makeConfig();
+  for (const filetype of ['default', 'mp3', 'm4a', 'opus', undefined]) {
+    const result = args.buildYtdlpDownloadArgs(baseSub({ format: 'audio', filetype }), config, ['vid1']);
+    assert.ok(!result.includes('-S'), `audio download must never carry -S (filetype=${filetype})`);
+    assert.ok(!result.includes(args.VIDEO_FORMAT_SORT), `audio download must never carry VIDEO_FORMAT_SORT (filetype=${filetype})`);
+  }
+});
+
+test('buildYtdlpDownloadArgs (video, filetype mp4): --merge-output-format mp4 still fires exactly as before, alongside the new -S', () => {
+  const config = makeConfig();
+  const result = args.buildYtdlpDownloadArgs(baseSub({ format: 'video', filetype: 'mp4' }), config, ['vid1']);
+  const mergeIdx = result.indexOf('--merge-output-format');
+  assert.ok(mergeIdx >= 0, '--merge-output-format must still be emitted for filetype mp4');
+  assert.equal(result[mergeIdx + 1], 'mp4');
+  assert.ok(result.includes('-S'), '-S must also be present for filetype mp4');
+});
+
+test('buildYtdlpDownloadArgs (video, filetype "default"/"mkv"/"webm"): --merge-output-format trigger condition is UNCHANGED by the new -S (still omitted for default, still emitted for mkv/webm)', () => {
+  const config = makeConfig();
+  const defaultResult = args.buildYtdlpDownloadArgs(baseSub({ format: 'video', filetype: 'default' }), config, ['vid1']);
+  assert.ok(!defaultResult.includes('--merge-output-format'), '--merge-output-format must stay omitted for filetype "default"');
+  const unsetResult = args.buildYtdlpDownloadArgs(baseSub({ format: 'video', filetype: undefined }), config, ['vid1']);
+  assert.ok(!unsetResult.includes('--merge-output-format'), '--merge-output-format must stay omitted when filetype is unset');
+  const mkvResult = args.buildYtdlpDownloadArgs(baseSub({ format: 'video', filetype: 'mkv' }), config, ['vid1']);
+  assert.equal(mkvResult[mkvResult.indexOf('--merge-output-format') + 1], 'mkv');
+  const webmResult = args.buildYtdlpDownloadArgs(baseSub({ format: 'video', filetype: 'webm' }), config, ['vid1']);
+  assert.equal(webmResult[webmResult.indexOf('--merge-output-format') + 1], 'webm');
+});
+
+test('buildYtdlpDownloadArgs (video): "--" separator and positional target discipline still hold with -S present', () => {
+  const config = makeConfig();
+  const result = args.buildYtdlpDownloadArgs(baseSub({ format: 'video' }), config, ['vid1', 'vid2']);
+  const sepIndex = result.indexOf('--');
+  assert.ok(sepIndex >= 0);
+  assert.deepEqual(result.slice(sepIndex + 1), [
+    'https://www.youtube.com/watch?v=vid1',
+    'https://www.youtube.com/watch?v=vid2',
+  ]);
+  assert.ok(result.indexOf('-S') < sepIndex, '-S must precede the "--" separator');
+});
+
+test('buildYtdlpDownloadArgs (video, one-off vs subscription): both paths receive the SAME -S args (shared builder, no divergent one-off logic for FR-1a)', () => {
+  const config = makeConfig();
+  const subscriptionArgs = args.buildYtdlpDownloadArgs(baseSub({ format: 'video' }), config, ['vid1']);
+  const oneOffArgs = args.buildYtdlpDownloadArgs(baseSub({ format: 'video' }), config, ['vid1'], { oneOff: true });
+  const sIdxSub = subscriptionArgs.indexOf('-S');
+  const sIdxOneOff = oneOffArgs.indexOf('-S');
+  assert.ok(sIdxSub >= 0 && sIdxOneOff >= 0);
+  assert.equal(subscriptionArgs[sIdxSub + 1], args.VIDEO_FORMAT_SORT);
+  assert.equal(oneOffArgs[sIdxOneOff + 1], args.VIDEO_FORMAT_SORT);
+});

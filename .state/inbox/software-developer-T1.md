@@ -1,122 +1,111 @@
-# Software Developer inbox — T1 (FR-1 + FR-2 mobile layout, ANCHOR)
+# Software Developer inbox — T1 (FR-1a: yt-dlp iOS-compatible H.264/AAC format sort)
 
-Feature: **v1.17.0 "Polish"** (feature_id `v1.17-polish`), branch
-`feature/v1.17-polish` off `main` (v1.16.0). This is **Task T1**, the anchor of
-the branch. It runs in **parallel** with T2/T3/T5/T6/T7 — you touch only mobile
-layout CSS (and shells/`main.js` markup **only if** the diagnostic forces it).
+Feature: **v1.18.0 "iOS playability + player polish"** (feature_id
+`v1.18-ios-playability`), branch `feature/v1.18-ios-playability` off `main`
+(v1.17.1). This is **Task T1**. It runs **in PARALLEL with T2 and T3** — your
+file set (`lib/ytdlp/args.js` + its test) is DISJOINT from theirs, so there is
+no working-tree conflict. Do **not** touch `server.js`, `public/js/player.js`,
+or `public/js/setup.js`.
 
-Review tier: **LIGHTER single-QA** — but **Dean's on-device pass (iOS Safari,
-phone width) is the ARBITER**. There is NO headless-browser/E2E infra in this
-repo (`docs/RELIABILITY.md`), so you cannot claim the visual fix as
-`[UNIT]`/`[INTEGRATION]`; the one testable artifact is the console diagnostic.
+**Review tier: TWO-REVIEWER GATE** (quality-assurance agent + a separate
+adversarial `/code-review`). This is the yt-dlp **arg-array spawn core** — the
+gate is not because any guard is being loosened (none is) but to *prove* every
+existing security guard stays byte-identical and no new injection surface is
+introduced. Small diff, high sensitivity.
 
-## Read first
+## Read first (grounding)
 
 - `.state/feature-state.json` — the `tasks` entry `"id": "T1"` is the
-  authoritative scope; also read `hard_constraints` and `cross_cutting`.
-- `docs/exec-plans/active/2026-07-06-v1.17-polish.md` — read **`## Design` →
-  `### FR-1 + FR-2 — joint mobile-layout investigation`** in full (it lists what
-  was already ruled OUT so you do not churn it, the mandatory diagnostic, the
-  ranked suspects, and the FR-2 safe-area hypothesis), plus FR-1/FR-2 acceptance
-  criteria and the `## Decision log`.
-- `docs/CONTRIBUTING.md` (standards) and `docs/RELIABILITY.md` (no E2E harness).
-- `public/css/style.css` — especially the header/search-box CSS (~303-344), the
-  mobile column layout (~1987-2022), `#sort-select` (~517-526), the mobile
-  portrait `.player-container { max-height:45vh }` cap (~2226-2230), the fixed
-  `header`/`.app-container` safe-area rules (~1990/1996), `.bottom-nav`
-  (~1941-1955), and the `.playlists-sheet-backdrop :not([hidden])` precedent.
+  authoritative scope; also read `hard_constraints`.
+- `docs/exec-plans/active/2026-07-07-v1.18-ios-playability.md` — read **`## Design`
+  → the `lib/ytdlp/args.js` component-changes bullet (FR-1a)**, the FR-1a
+  acceptance criteria, the **`### Security preservation notes` → FR-1a bullet**,
+  and the **`### Alternatives considered`** (why a *soft* `-S` sort, not a hard
+  `-f` codec filter).
+- `docs/CONTRIBUTING.md` (coding standards) and `docs/RELIABILITY.md`.
+- `lib/ytdlp/args.js` — `buildYtdlpDownloadArgs`, the `QUALITY_SELECTORS` map,
+  the existing `args.push('-f', QUALITY_SELECTORS[quality]);` line, the
+  `--merge-output-format` emission (only when `normalizeFiletype` resolves to a
+  non-`'default'` container), the `SHORTS_MATCH_FILTER` constant (pattern to
+  mirror), and the audio branch (`-x --audio-format`).
 
-## Task — implement THIS ONE task only (FR-1 + FR-2)
+## Task — implement THIS ONE task only (FR-1a)
 
-**Step 0 (MANDATORY, gates the fix). NAME the offender before touching CSS.**
-Per the AC you must identify the specific element that overflows `100vw`, not
-"some CSS somewhere," and you must NOT add another `overflow-x:hidden` /
-`min-width:0` band-aid on top of the existing ones. Run this in Safari Web
-Inspector (on-device or the responsive simulator) on the home, watch, and setup
-pages at 375-414px width and record the output in your report + the Decision log:
+1. Add a module-level **exported fixed literal**:
+   `const VIDEO_FORMAT_SORT = 'vcodec:h264,acodec:aac';`
+   Mirror how `SHORTS_MATCH_FILTER` is declared/exported so it is easy to audit.
+2. In the **VIDEO branch only** of `buildYtdlpDownloadArgs`, push
+   `'-S', VIDEO_FORMAT_SORT` **immediately after** the existing
+   `args.push('-f', QUALITY_SELECTORS[quality]);`, and **before**
+   `--merge-output-format` and well before the `--` / positional targets.
+3. This is a **soft sort** — it must apply to **every** video download and
+   **every** quality tier (`best`/`2160p`/`1440p`/`1080p`/`720p`/`480p`/`360p`),
+   including `'default'`/`'mkv'`/`'webm'` selections (fork #2 resolved scope). It
+   must **not exclude** non-avc1 formats (the 2160p/1440p tiers, where YouTube
+   serves only VP9/AV1, must still resolve to best-available — do NOT convert
+   this into a hard `-f` filter).
+4. Leave the `--merge-output-format mp4` trigger **byte-identical** (still only
+   when `normalizeFiletype` resolves to `'mp4'`). The new `-S` must not force a
+   container change for `'mkv'`/`'webm'`/`'default'`.
+5. The **audio branch** (`-x --audio-format`) is untouched — no video-codec
+   preference may leak into audio extraction.
+6. **DEFER** the `--recode-video mp4` fallback (PE-recommended defer; non-blocking
+   Dean confirmation pending) — do NOT implement it in this task.
 
-```js
-[...document.querySelectorAll('*')].filter(e => e.getBoundingClientRect().right > document.documentElement.clientWidth + 1).map(e => e.tagName + '.' + e.className + ' -> ' + Math.round(e.getBoundingClientRect().right))
-```
+`VIDEO_FORMAT_SORT` is a fixed literal, **never interpolated from any input**, so
+it adds no injection surface.
 
-**FR-1 fix.** Apply the source fix to the NAMED offender only. The ranked prime
-suspect is the home sort `<select id="sort-select">` (no `max-width`/`min-width:0`;
-its longest option "I'm Feeling Lucky (random)" gives a large intrinsic width and
-it refuses to shrink inside the wrapped `.section-actions` row, pushing past the
-viewport). If confirmed: `.section-actions .sort-select { max-width:100%;
-min-width:0; }` and ensure `.section-actions { min-width:0 }`. If the diagnostic
-points elsewhere, fix **that** element with the same discipline (constrain the
-offender via `max-width:100%`/`min-width:0`/`flex-wrap`), never a shell-level
-`overflow-x` mask. Then re-verify the folded-in "certain videos wrong-size" /
-"cards read large" reports — these are almost certainly symptoms of the same
-zoom-out, not separate bugs. The 45vh mobile player cap is correct as written;
-do not change it unless on-device proves otherwise.
+## Hard constraints (non-negotiable — the gate will verify each)
 
-**FR-2 fix (watch-page scroll-jump).** Hypothesis: iOS dynamic-viewport
-(address-bar collapse) recompute — `env(safe-area-inset-top)` is baked into BOTH
-the fixed `header` `min-height: calc(96px + env(safe-area-inset-top))` AND
-`.app-container { padding-top: calc(96px + env(safe-area-inset-top)) }`, so when
-the address bar collapses on scroll both jump together and the content block
-shifts (read as the bottom panel jumping; video-dependent because only
-long-enough pages scroll; a refresh settles it). Fix direction: make the content
-top **invariant** across the address-bar animation — give `.app-container` a
-stable pixel `padding-top` and absorb the notch inset separately (dedicated fixed
-spacer, or move the inset onto `header` padding only, not the content offset).
-Secondary suspect: the fixed `.bottom-nav` / docked `#player-dock` bottom offset
-repainting at stale positions during the same animation — verify whether the
-"panel" Dean sees is the bottom nav and apply the same stable-offset approach.
-
-Record in the `## Decision log` whether one root-cause fix closed both or they
-diverged (the design's conclusion is they diverge: FR-1 = X-axis `>100vw`
-overflow, FR-2 = Y-axis safe-area recompute — investigated jointly, two fixes).
-
-## Hard constraints (non-negotiable)
-
-- **No `overflow-x:hidden` / new blanket band-aid** — the AC forbids it and this
-  bug has regressed behind exactly such patches before. Fix the measured offender.
-- **No regressions** to the header/search collapse, docked mini-player,
-  resume overlay, skip controls, dock/expand transition, or other pages' notch
-  handling (the header/`.app-container` rules are shared by all four shells — if
-  you change the safe-area offset, verify home + watch + setup on-device).
-- Any new/changed CSS uses existing **era-theme tokens** — no hardcoded colors
-  that break the 2005/2009/2014/2021 eras or light/dark modes.
-- No new runtime dependencies. 2-space indent, semicolons, single quotes,
-  `textContent` (not `innerHTML`) for any NEW dynamic strings. Lint 0 warnings.
-- Prefer CSS-only fixes; only touch `public/*.html` /
-  `lib/ytdlp/views/subscriptions.html` / `public/js/main.js` if markup genuinely
-  must change to constrain the offender — do NOT expand into other FRs' surfaces.
+- Every existing yt-dlp security guard stays **byte-identical**: arg-array /
+  no-shell construction (no shell string anywhere in `args.js`), the `--`
+  separator immediately before positional target URLs, the `targetIds` →
+  `watch?v=<id>` host-hardcoded URL construction, the `ALLOWED_HOSTS` allowlist
+  (`lib/ytdlp/url.js`, do not touch), `resolveChannelDir`/`isPathUnder`/SF4 path
+  confinement, `--download-archive` (subscriptions) vs. `--no-download-archive
+  --force-overwrites` (one-off), `--windows-filenames`, the Shorts
+  `--match-filter` gate, and `normalizeQuality`/`assertFormat`/`normalizeFiletype`'s
+  allowlist-or-safe-default posture.
+- The one-off path (`opts.oneOff`/`runOneShot`) and the subscription path share
+  the builder — both must get the SAME `-S` args (no divergent one-off logic).
+- No new runtime dependencies. 2-space indent, semicolons, single quotes. Lint 0
+  warnings.
 
 ## Tests
 
-No pure DOM helper is expected here (the design says extract none — there is no
-pure decision to extract; the console diagnostic is the testable artifact).
-If your fix happens to produce a pure helper, add `node:test` coverage. Otherwise
-the arbiter is Dean's on-device pass. `npm run lint` must be 0 warnings and
-`npm test` must stay green on Node 22.
+Extend `test/unit/ytdlp-args.test.js`:
+- `-S VIDEO_FORMAT_SORT` is present in the video branch for **every**
+  `QUALITY_SELECTORS` tier (not just one), positioned after `-f` and before the
+  `--`/positional targets.
+- The `format: 'audio'` branch does NOT include `-S VIDEO_FORMAT_SORT`.
+- `--merge-output-format` still emits exactly when `normalizeFiletype` → `'mp4'`
+  and NOT for `'mkv'`/`'webm'`/`'default'`.
+- Every existing `ytdlp-args.test.js` assertion (arg-array shape, `--` position,
+  archive-dedup, `--windows-filenames`, shorts filter, one-off vs subscription)
+  still passes unchanged.
 
 ## Toolchain / commands
 
-Node 22 is the standard. Before any npm/node command export the fnm node PATH
-(per repo convention), then use the Node 22 test toolchain:
+Node 22 is the standard. Before any npm/node command, export the fnm node PATH
+(per repo convention), then use the Node 22 test toolchain bin:
 
-- Node 22 test toolchain bin: `/tmp/claude-1000/-home-coder-projects-filetube/139c0e56-b545-4e8e-ba05-f892f6dd6d0d/scratchpad/node-v22.23.1-linux-x64/bin`
+- `/tmp/claude-1000/-home-coder-projects-filetube/139c0e56-b545-4e8e-ba05-f892f6dd6d0d/scratchpad/node-v22.23.1-linux-x64/bin`
 
-Run `npm run lint` (0 warnings) and `npm test`; fix any failure before reporting.
+Run `npm run lint` (must be 0 warnings) and `npm test` (must stay green on
+Node 22). Fix any failure before reporting done.
 
 ## Git — DO NOT commit
 
-The **coordinator owns ALL git**. Do NOT stage, commit, or push. Report files
-changed + full test/lint output; the coordinator commits per task.
+The **coordinator (EM) owns ALL git**. Do NOT stage, commit, or push. Report
+files changed + full lint/test output; the coordinator commits per task.
 
 ## Report back
 
-- The **console-diagnostic output** (the named offending element[s]) — this is
-  required evidence, not optional.
-- Files changed (paths + one-line summary each) and the exact CSS rules added/
-  changed for FR-1 and FR-2.
-- Whether FR-1 and FR-2 resolved to one fix or two (for the Decision log), and
-  whether the folded-in wrong-size/cards-large symptoms cleared once overflow was
-  gone.
+- Files changed (paths + one-line summary each) and the exact args added.
+- Confirmation that `-S` lands in the video branch for every tier and the audio
+  branch is untouched.
+- A short "guards unchanged" checklist confirming each item above is
+  byte-identical (evidence the two reviewers will re-verify).
 - Lint + Node 22 test result.
 - Any deviation from the design or new fork (with a recommendation) — do NOT
   expand scope into other FRs' files.

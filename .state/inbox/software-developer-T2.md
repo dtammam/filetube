@@ -1,109 +1,156 @@
-# Software Developer inbox — T2 (FR-3 quicker delete flow)
+# Software Developer inbox — T2 (FR-1b: codec probe + codec-aware needsTranscode + lazy wiring)
 
-Feature: **v1.17.0 "Polish"** (feature_id `v1.17-polish`), branch
-`feature/v1.17-polish` off `main` (v1.16.0). This is **Task T2**. It runs in
-**parallel** with T1/T3/T5/T6/T7.
+Feature: **v1.18.0 "iOS playability + player polish"** (feature_id
+`v1.18-ios-playability`), branch `feature/v1.18-ios-playability` off `main`
+(v1.17.1). This is **Task T2**. It runs **in PARALLEL with T1 and T3** — your
+file set (`server.js` + new pure helpers + tests) is DISJOINT from theirs. Do
+**not** touch `lib/ytdlp/args.js` (T1) or `public/js/player.js` (T3).
 
-Review tier: **TWO-REVIEWER GATE** — this touches the delete endpoint's contract
-(reuse only) and adds a net-new client delete path; it gets adversarial review.
-Do NOT change `server.js` or the `DELETE /api/videos/:id` contract.
+**IMPORTANT — you edit `server.js`, and T4 also edits `server.js` but is BLOCKED
+until you finish.** Nobody else will touch `server.js` while you work.
 
-## Read first
+**Review tier: TWO-REVIEWER GATE** (quality-assurance agent + a separate
+adversarial `/code-review`). This touches the **ffprobe-on-user-files** call and
+grows the **transcode-spawn trigger surface**. The gate proves no guard moved and
+no injection surface is widened (the `execFile` conversion below strictly narrows
+it).
 
-- `.state/feature-state.json` — the `tasks` entry `"id": "T2"` is authoritative;
-  also read `hard_constraints` (FR-3 items) and `cross_cutting`.
-- `docs/exec-plans/active/2026-07-06-v1.17-polish.md` — read **`## Design` →
-  `### FR-3 — Quicker delete`** in full, plus the FR-3 acceptance criteria.
-- `docs/CONTRIBUTING.md` (vanilla DOM, `textContent` not `innerHTML`, `node:test`,
-  lint 0, no new deps).
-- Code: `public/js/watch.js` (the `deleteBtn` handler, ~605-631, incl. the
-  pre-delete `showConfirmModal('Confirm Permanent Deletion', ...)` guard and the
-  post-success `alert('File deleted successfully.')`); `public/js/common.js`
-  (home of `showConfirmModal` and the one-off modal — where `showToast` lands);
-  `public/js/main.js` `renderMediaGrid` (~295-339) and its existing AbortSignal
-  delegated-listener pattern; `server.js` `DELETE /api/videos/:id` (~1945) and its
-  `EROFS`/`EACCES` → `409` + `removeAnyway` contract (READ ONLY — do not change).
+## Read first (grounding)
 
-## Task — implement THIS ONE task only (FR-3)
+- `.state/feature-state.json` — the `tasks` entry `"id": "T2"` is the
+  authoritative scope; also read `hard_constraints`.
+- `docs/exec-plans/active/2026-07-07-v1.18-ios-playability.md` — read **`## Design`
+  → the five `server.js` component-changes bullets (FR-1b parts 1–5)**, the
+  FR-1b acceptance criteria, `### Data model changes`, `### API changes`,
+  `### Risks and mitigations`, and `### Security preservation notes` → FR-1b.
+- `docs/CONTRIBUTING.md` and `docs/RELIABILITY.md` ("never let one bad/corrupt
+  file take down a scan"; keep ffmpeg/ffprobe OUT of the automated suite — mock
+  their output).
+- `server.js` — `extractMetadataAndThumbnail` (the existing scan-time `ffprobe`
+  call, `-show_entries format=duration:format_tags`, ~line 899; and the two
+  other ffmpeg art/frame `exec()` calls ~920/~927), `parseFfprobeTags` (the pure
+  helper to mirror), `needsTranscode`/`TRANSCODE_EXTENSIONS` (~227-231),
+  `reconcileTranscode` (~825-844), the scan-time seed (~1193), the
+  reuse-unchanged-metadata guard (~1156), `queueTranscode` and the `/video/:id`
+  handler (~2159), `processTranscodeQueue` (~724-819, the `-c:v libx264 ... -c:a
+  aac` spawn ~744-750).
+- `test/unit/pure-helpers.test.js` (the existing `needsTranscode`/
+  `TRANSCODE_EXTENSIONS` regression bar) and `test/unit/database.test.js`.
 
-**(a) Watch-page success alert → toast.** In `public/js/watch.js` remove
-`alert('File deleted successfully.')` from the DELETE-success branch and replace
-it with `showToast('File deleted.')`. **Keep** the pre-delete
-`showConfirmModal('Confirm Permanent Deletion', ...)` guard exactly as-is (it is
-a legitimate are-you-sure step, NOT the friction being removed). Leave the error
-branches' `alert(...)` as-is (out of scope).
+## Task — implement THIS ONE task only (FR-1b), five parts
 
-**New `showToast(msg)` helper in `public/js/common.js`.** Appends a `.toast` node
-to `document.body` using **`textContent` only** (no `innerHTML`), auto-dismisses
-on a ~2.5s timer with a token-themed fade, then removes the node. Non-blocking,
-no user interaction required. Add `.toast` CSS in `public/css/style.css` using
-**era tokens only** (e.g. `--bg-sidebar`/`--text-primary`/`--shadow-lg`/
-`--radius`) — no hardcoded colors.
+**Part 1 — ffprobe extension + hardening.** Extend the scan's existing single
+`ffprobe` `-show_entries` from `format=duration:format_tags` to
+`format=duration:format_tags:stream=codec_name,codec_type` (adds a `streams[]`
+array to the SAME single JSON probe — no second spawn). **Convert that one call**
+from the shell-string `exec()` to `execFile('ffprobe', [args...], ...)` with
+`filePath` as a distinct arg-array element, removing the path interpolation on
+the exact line you edit. **Leave the two other ffmpeg art/frame `exec()` calls
+as-is** and add a one-line note to `docs/exec-plans/tech-debt-tracker.md` that
+they remain shell-string `exec()` (deferred hardening — do not widen the diff).
 
-**(b) Card trash-can (net-new on home/library cards).** In `public/js/main.js`
-`renderMediaGrid`, add a trash affordance to each `.video-card`
-(`<button class="card-delete-btn" data-id="..." aria-label="Delete"><i
-class="icon-delete"></i></button>`, positioned over the thumbnail via CSS). Wire
-a **single delegated** click listener on `#video-grid` (NOT per-card — the grid
-re-renders), bound through the file's existing AbortController pattern. Drive
-arm/disarm with a **pure, unit-tested reducer**:
+**Part 2 — pure helpers** (next to `parseFfprobeTags`, so ffmpeg is not needed in
+CI):
+- `parseFfprobeStreams(input)` — accepts the parsed object OR raw stdout string
+  (same robustness contract as `parseFfprobeTags`: `JSON.parse` inside a
+  try/catch, returns `{}` on anything malformed, **never throws**). Returns
+  `{ videoCodec, audioCodec }` = the lowercased `codec_name` of the first
+  `codec_type === 'video'` stream and first `codec_type === 'audio'` stream, or
+  `undefined` for a stream type that is absent.
+- `PLAYABLE_VIDEO_CODECS = new Set(['h264', 'avc1'])` and
+  `PLAYABLE_AUDIO_CODECS = new Set(['aac'])` — named, **exported**, documented
+  allowlist constants mirroring `TRANSCODE_EXTENSIONS`.
+- `codecNeedsTranscode(videoCodec, audioCodec)` — returns `true` only on a
+  **positive** identification of a non-allowlisted codec:
+  `if (videoCodec && !PLAYABLE_VIDEO_CODECS.has(videoCodec)) return true;`
+  `if (audioCodec && !PLAYABLE_AUDIO_CODECS.has(audioCodec)) return true;`
+  `return false;`. `undefined`/missing codecs → `false` (a failed/ambiguous probe
+  must never *falsely* flag a file — this is the "degrade safely" AC).
 
-- `nextArmState(current, action)` where `current` ∈ `'idle'|'armed'`, `action` ∈
-  `'tap'|'disarm'`: `idle+tap -> {state:'armed', deleted:false}`;
-  `armed+tap -> {state:'idle', deleted:true}`; `*+disarm -> {state:'idle',
-  deleted:false}`.
+**Part 3 — generalize `needsTranscode`.** Change the signature to
+`needsTranscode(ext, videoCodec, audioCodec)` with the codec args **optional**:
+`if (TRANSCODE_EXTENSIONS.includes(ext)) return true;` (existing extension flow
+preserved exactly), then `return codecNeedsTranscode(videoCodec, audioCodec);`.
+Called with one arg it must be **byte-identical** to today (every existing
+`pure-helpers.test.js` case passes unchanged). Update the `reconcileTranscode`
+call site to `needsTranscode(item.ext, item.videoCodec, item.audioCodec)` (the
+authoritative recompute, running after the probe attaches codecs to the item).
+**Leave the scan-time seed (~1193) ext-only** — codecs aren't known yet there;
+`reconcileTranscode` overwrites it.
 
-The DOM layer toggles an `.armed` class (revealing an inline "Sure?" affordance
-via CSS/`textContent`), starts a ~3s auto-disarm timer, and disarms on any
-document `click`/`scroll` outside the armed button. **Only a `deleted:true`
-result fires the network call.**
+**Part 4 — item model + one-time backfill.** Store the probed codecs on the item
+alongside `duration`/`tags`: `item.videoCodec` / `item.audioCodec` = the probed
+lowercased string, or `null` when the probe ran but that stream type was absent
+(so a probed-but-no-video item is distinguishable from an un-probed one after a
+JSON round-trip). Extend the reuse-unchanged-metadata guard (~server.js:1156) so
+a **video** item is only reused when it already carries the codec fields — a
+pre-v1.18 entry is re-extracted **once** on the next scan to backfill (probe-only,
+never an eager transcode). Audio items skip this (`reconcile` short-circuits
+`type === 'audio'`).
 
-**Delete call — reuse `DELETE /api/videos/:id` EXACTLY** (no new endpoint, no
-contract change): on `{success:true}` remove the card from the DOM (or trigger the
-existing SPA library refresh) and `showToast('File deleted.')`; on `409`
-(`{readOnly:true}`) surface a toast that the file is on a read-only mount — the
-`removeAnyway` follow-up UI stays **out of scope**, so the card path must NEVER
-send `removeAnyway` without having first seen a `409`; on other errors, an error
-toast.
+**Part 5 — lazy transcode wiring: NO new code.** Codec-flagged files must ride the
+**existing** lazy pipeline: `reconcileTranscode` only seeds/clears status (no
+queue kick); the real `queueTranscode` fires on first mobile watch in
+`/video/:id` exactly as for AVI today; `player.js` already branches on
+`needsTranscode`/`transcodeStatus`. Do **not** introduce any eager, scan-time
+transcode-triggering path. Do **not** change `processTranscodeQueue`'s spawn.
 
-## Hard constraints (non-negotiable)
+## Hard constraints (non-negotiable — the gate will verify each)
 
-- **No change to `server.js` or the delete endpoint's behavior/validation/auth
-  posture** (success, 404, 500, and the `409`+`removeAnyway` path stay exactly as
-  they are; existing tests for them stay green, never weakened).
-- The pre-delete "Confirm Permanent Deletion" modal is unchanged.
-- `textContent` (not `innerHTML`) for ALL new dynamic strings (toast text, arm
-  labels). No new runtime dependencies. 2-space/semicolons/single-quotes. Lint 0.
-- New CSS uses existing **era-theme tokens** only.
-- One AbortSignal-bound delegated listener on `#video-grid`; arm state on the DOM
-  node + a single timer, reset on re-render (no double-fire / leak across
-  re-render).
+- **No regressions.** Every existing extension case (`.avi`/`.flv`/`.wmv`/`.mpg`/
+  `.mpeg` transcode; web-native containers don't; case-sensitivity) passes
+  unchanged through the generalized `needsTranscode`. The desktop `?live=1`
+  path, the mobile lazy-transcode + preparing-overlay + poll, the transcode
+  cache's size-capped LRU eviction, and the single-worker queue are reused
+  **unchanged** — only the trigger set grows.
+- **Codec allowlist is H.264/AVC video + AAC audio ONLY** — HEVC/VP9/AV1/AC-3/
+  DTS/E-AC-3 etc. are deliberately NOT allowlisted (per Dean's stated intent).
+- **Probing is free, transcoding stays lazy.** Codec probe piggybacks the
+  already-running per-file ffprobe call; NEVER eager-transcode a library on scan.
+- A per-item probe failure (ffprobe unavailable, malformed output, unreadable
+  file) degrades safely — the item is NOT flagged on bad data and the scan
+  continues for every other file.
+- No new runtime dependencies. 2-space/semicolons/single-quotes. Lint 0 warnings.
 
 ## Tests
 
-- `node:test` unit test for `nextArmState` covering: `idle→armed` on first tap
-  (no delete), `armed→delete` on second tap, and a disarm path (outside tap /
-  timeout) that never deletes.
-- Keep the existing `DELETE /api/videos/:id` integration tests green (extend, do
-  not weaken, if you touch them).
+Use `node:test` with **MOCKED ffprobe output** (ffmpeg stays out of CI per
+`docs/RELIABILITY.md`):
+- `parseFfprobeStreams`: parsed-object and raw-string inputs; malformed/empty →
+  `{}`; video-only, audio-only, both, neither; lowercasing.
+- Allowlist + `codecNeedsTranscode`: h264/avc1 + aac pass; HEVC/VP9/AV1/AC-3/DTS
+  flag; `undefined`/missing → `false` (degrade-safe).
+- Generalized `needsTranscode`: all existing extension cases unchanged (one-arg
+  call byte-identical); codec-triggered `true` for a web-safe container with a
+  non-allowlisted codec.
+- Integration test (mocked ffprobe) for `reconcileTranscode` status transitions
+  on an HEVC-`.mp4` fixture (seed `pending`, clear stale `ready`, leave in-flight
+  alone, clear the flag when a file no longer needs transcoding).
 
 ## Toolchain / commands
 
-Node 22 is the standard. Before any npm/node command export the fnm node PATH
-(per repo convention), then use the Node 22 test toolchain bin:
-`/tmp/claude-1000/-home-coder-projects-filetube/139c0e56-b545-4e8e-ba05-f892f6dd6d0d/scratchpad/node-v22.23.1-linux-x64/bin`.
-Run `npm run lint` (0 warnings) and `npm test`; fix any failure before reporting.
+Node 22 standard. Export the fnm node PATH first, then use the Node 22 test bin:
+
+- `/tmp/claude-1000/-home-coder-projects-filetube/139c0e56-b545-4e8e-ba05-f892f6dd6d0d/scratchpad/node-v22.23.1-linux-x64/bin`
+
+Run `npm run lint` (0 warnings) and `npm test` (green on Node 22). Fix any
+failure before reporting done.
 
 ## Git — DO NOT commit
 
-The **coordinator owns ALL git**. Do NOT stage, commit, or push. Report files
-changed + full test/lint output; the coordinator commits per task.
+The **coordinator (EM) owns ALL git**. Do NOT stage, commit, or push. Report
+files changed + full lint/test output; the coordinator commits per task.
 
 ## Report back
 
-- Files changed (paths + one-line summary each), calling out the new `showToast`
-  helper, the `.toast` CSS, and the card trash affordance + `nextArmState`.
-- The `nextArmState` unit test + Node 22 pass/fail output; lint result.
-- Confirmation that `server.js` / the delete endpoint contract were NOT touched
-  and that the card path never sends `removeAnyway` pre-`409`.
-- Any deviation from the design or new fork (with a recommendation).
+- Files changed (paths + one-line summary each).
+- The new helper signatures + the allowlist constant contents.
+- Confirmation the `execFile` conversion is on the one probe line only (and the
+  tech-debt note for the two remaining `exec()` calls).
+- Confirmation NO eager scan-time transcode path was added (part 5 is
+  wiring-only).
+- Confirmation every existing `pure-helpers.test.js` extension case still passes.
+- Lint + Node 22 test result.
+- Any deviation or new fork (with a recommendation) — do NOT expand into T1/T3/T4
+  files. **Signal clearly when T2 is done/verified so the coordinator can unblock
+  T4.**

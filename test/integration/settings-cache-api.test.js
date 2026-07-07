@@ -359,14 +359,14 @@ test('POST /api/cache/clear on an empty cache is a safe no-op', async () => {
 
 // ---- Existing routes unaffected --------------------------------------------
 
-test('existing GET /api/scan-status response shape is unaffected by Task 6', async () => {
+test('existing GET /api/scan-status response shape is unaffected by Task 6 (plus v1.18 FR-3 additive fields)', async () => {
   writeDb({ folders: [], folderSettings: {}, progress: {}, metadata: {}, settings: baseSettings() });
   const res = await fetch(`${base}/api/scan-status`);
   assert.equal(res.status, 200);
   const json = await res.json();
   assert.deepEqual(
     Object.keys(json).sort(),
-    ['fileCount', 'folderCount', 'lastScan', 'scanning', 'transcoding'].sort()
+    ['fileCount', 'folderCount', 'lastScan', 'scanning', 'transcodeNames', 'transcodeOverflow', 'transcoding'].sort()
   );
 });
 

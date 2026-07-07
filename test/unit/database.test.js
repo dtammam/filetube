@@ -384,3 +384,55 @@ test('reconcileTranscode: leaves in-flight status untouched when no cache yet', 
   assert.equal(item.transcodeStatus, 'processing', 'pending/processing/failed left alone');
   assert.equal(changed, false);
 });
+
+// FR-1b (v1.18.0): codec-aware needsTranscode's status transitions, exercised
+// against a representative HEVC-.mp4 fixture (a nominally web-safe container
+// whose codec is NOT allowlisted) -- mocked ffprobe output plumbed in as
+// item.videoCodec/item.audioCodec, no real ffmpeg needed (docs/RELIABILITY.md).
+test('reconcileTranscode: HEVC-in-mp4 (codec-flagged) seeds "pending" on first sight', () => {
+  const item = { id: 'hevc-1', type: 'video', ext: '.mp4', videoCodec: 'hevc', audioCodec: 'aac' };
+  const changed = reconcileTranscode(item);
+  assert.equal(item.needsTranscode, true, 'HEVC video codec is not allowlisted -> flagged despite .mp4');
+  assert.equal(item.transcodeStatus, undefined, 'reconcile only seeds/clears status, never queues -- no status yet means no cache and no in-flight job');
+  assert.equal(changed, false, 'nothing to change yet: needsTranscode flips true but no transcodeStatus existed before or after');
+});
+
+test('reconcileTranscode: HEVC-in-mp4 with a cached MP4 is marked ready', () => {
+  const item = { id: 'hevc-2', type: 'video', ext: '.mp4', videoCodec: 'hevc', audioCodec: 'aac' };
+  const cached = transcodedPath(item.id);
+  fs.writeFileSync(cached, 'fake mp4 bytes');
+  try {
+    const changed = reconcileTranscode(item);
+    assert.equal(item.needsTranscode, true);
+    assert.equal(item.transcodeStatus, 'ready');
+    assert.equal(changed, true);
+  } finally {
+    fs.rmSync(cached);
+  }
+});
+
+test('reconcileTranscode: HEVC-in-mp4 clears a stale "ready" when the cached MP4 is gone', () => {
+  const item = { id: 'hevc-3', type: 'video', ext: '.mp4', videoCodec: 'hevc', audioCodec: 'aac', transcodeStatus: 'ready' };
+  const changed = reconcileTranscode(item);
+  assert.equal(item.needsTranscode, true);
+  assert.equal(item.transcodeStatus, undefined, 'stale ready is cleared even for a codec-flagged (not extension-flagged) item');
+  assert.equal(changed, true);
+});
+
+test('reconcileTranscode: HEVC-in-mp4 leaves an in-flight status alone', () => {
+  const item = { id: 'hevc-4', type: 'video', ext: '.mp4', videoCodec: 'hevc', audioCodec: 'aac', transcodeStatus: 'processing' };
+  const changed = reconcileTranscode(item);
+  assert.equal(item.needsTranscode, true);
+  assert.equal(item.transcodeStatus, 'processing');
+  assert.equal(changed, false);
+});
+
+test('reconcileTranscode: clears needsTranscode + transcodeStatus once the file no longer needs transcoding (codec backfilled as allowlisted)', () => {
+  // Simulates a re-probe correcting a prior wrong flag (or a re-mux to H.264/AAC):
+  // once videoCodec/audioCodec are both allowlisted, the item must fully clear.
+  const item = { id: 'hevc-5', type: 'video', ext: '.mp4', videoCodec: 'h264', audioCodec: 'aac', needsTranscode: true, transcodeStatus: 'ready' };
+  const changed = reconcileTranscode(item);
+  assert.equal(item.needsTranscode, false);
+  assert.equal(item.transcodeStatus, undefined);
+  assert.equal(changed, true);
+});
