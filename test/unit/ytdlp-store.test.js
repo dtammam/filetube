@@ -36,11 +36,11 @@ function makeFakeDeps(initialDb = {}) {
 test('ensureYtdlp: an old db with no ytdlp key gains the default namespace, no data loss', () => {
   const db = { folders: ['/movies'], settings: { scanIntervalMinutes: 15 } };
   const ns = store.ensureYtdlp(db);
-  assert.deepEqual(ns, { allowMembersOnly: false, subscriptions: [], downloadMeta: {} });
+  assert.deepEqual(ns, { allowMembersOnly: false, subscriptions: [], downloadMeta: {}, pins: [] });
   // Existing keys untouched.
   assert.deepEqual(db.folders, ['/movies']);
   assert.deepEqual(db.settings, { scanIntervalMinutes: 15 });
-  assert.deepEqual(db.ytdlp, { allowMembersOnly: false, subscriptions: [], downloadMeta: {} });
+  assert.deepEqual(db.ytdlp, { allowMembersOnly: false, subscriptions: [], downloadMeta: {}, pins: [] });
 });
 
 test('ensureYtdlp: a partial ytdlp namespace is completed without clobbering present fields', () => {
@@ -742,4 +742,221 @@ test('consumeDownloadChannelMeta: is safe to call from INSIDE a synchronous upda
   });
   assert.ok(consumed);
   assert.equal(consumed.channelUrl, 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw');
+});
+
+// ---- v1.21.0 FR-5: channel pins (HEAVY, two-reviewer, data-safety gate) ---
+
+// ---- ensureYtdlp: pins backfill (non-destructive, mirrors subscriptions) --
+
+test('ensureYtdlp: an old db with no ytdlp key gains an empty pins array alongside the rest of the default namespace', () => {
+  const db = {};
+  const ns = store.ensureYtdlp(db);
+  assert.deepEqual(ns.pins, []);
+});
+
+test('ensureYtdlp: a partial ytdlp namespace without pins is completed with an empty array, without clobbering present pins-adjacent fields', () => {
+  const db = { ytdlp: { allowMembersOnly: true, subscriptions: [] } };
+  const ns = store.ensureYtdlp(db);
+  assert.deepEqual(ns.pins, []);
+  assert.equal(ns.allowMembersOnly, true, 'unrelated already-present fields must be left untouched');
+});
+
+test('ensureYtdlp: an already-present pins array (even non-empty) is left completely untouched', () => {
+  const existingPin = { id: 'p1', channelDir: '/data/ytdlp-downloads/Chan', label: 'Chan', pinnedAt: '2020-01-01T00:00:00.000Z' };
+  const db = { ytdlp: { allowMembersOnly: false, subscriptions: [], pins: [existingPin] } };
+  const ns = store.ensureYtdlp(db);
+  assert.deepEqual(ns.pins, [existingPin]);
+});
+
+test('ensureYtdlp: backfill mutates each db\'s pins array independently, never sharing state across unrelated db instances', () => {
+  const dbA = {};
+  const dbB = {};
+  store.ensureYtdlp(dbA);
+  store.ensureYtdlp(dbB);
+  dbA.ytdlp.pins.push({ id: 'only-in-a' });
+  assert.deepEqual(dbB.ytdlp.pins, [], 'backfill must not share the pins array reference across db instances');
+});
+
+// ---- sanitizePinLabel (pure) -----------------------------------------------
+
+test('sanitizePinLabel: strips control characters and trims', () => {
+  assert.equal(store.sanitizePinLabel('Evil\x00\x1fChannel\x7f'), 'EvilChannel');
+  assert.equal(store.sanitizePinLabel('  My Channel  '), 'My Channel');
+});
+
+test('sanitizePinLabel: length-bounds to MAX_PIN_LABEL_LENGTH', () => {
+  const overlong = 'x'.repeat(500);
+  assert.equal(store.sanitizePinLabel(overlong).length, store.MAX_PIN_LABEL_LENGTH);
+});
+
+test('sanitizePinLabel: a non-string input yields an empty string, never throws', () => {
+  assert.equal(store.sanitizePinLabel(undefined), '');
+  assert.equal(store.sanitizePinLabel(null), '');
+  assert.equal(store.sanitizePinLabel(42), '');
+  assert.equal(store.sanitizePinLabel({}), '');
+});
+
+// ---- isChannelDirConfined (pure, SECURITY-CRITICAL confinement predicate) -
+
+test('isChannelDirConfined: true for the download root itself and for a direct/nested descendant', () => {
+  const config = { downloadDir: '/data/ytdlp-downloads' };
+  assert.equal(store.isChannelDirConfined(config, '/data/ytdlp-downloads'), true);
+  assert.equal(store.isChannelDirConfined(config, '/data/ytdlp-downloads/My Channel'), true);
+  assert.equal(store.isChannelDirConfined(config, '/data/ytdlp-downloads/A/B'), true);
+});
+
+test('isChannelDirConfined: false for a path outside the download root (including a sibling-prefix lookalike)', () => {
+  const config = { downloadDir: '/data/ytdlp-downloads' };
+  assert.equal(store.isChannelDirConfined(config, '/data/other'), false);
+  assert.equal(store.isChannelDirConfined(config, '/etc/passwd'), false);
+  // Sibling directory that merely SHARES a string prefix with the root must
+  // never be treated as "under" it -- this is exactly what a naive
+  // `startsWith(root)` (without the trailing separator) would get wrong.
+  assert.equal(store.isChannelDirConfined(config, '/data/ytdlp-downloads-evil'), false);
+});
+
+test('isChannelDirConfined: a traversal-shaped candidate that RESOLVES outside the root is rejected', () => {
+  const config = { downloadDir: '/data/ytdlp-downloads' };
+  assert.equal(store.isChannelDirConfined(config, '/data/ytdlp-downloads/../../etc/passwd'), false);
+});
+
+test('isChannelDirConfined: fails closed on a missing/blank channelDir or downloadDir', () => {
+  assert.equal(store.isChannelDirConfined({ downloadDir: '/data/ytdlp-downloads' }, ''), false);
+  assert.equal(store.isChannelDirConfined({ downloadDir: '/data/ytdlp-downloads' }, undefined), false);
+  assert.equal(store.isChannelDirConfined({ downloadDir: '' }, '/data/ytdlp-downloads/x'), false);
+  assert.equal(store.isChannelDirConfined({}, '/data/ytdlp-downloads/x'), false);
+});
+
+// ---- validatePinInput (pure) -----------------------------------------------
+
+test('validatePinInput: rejects a missing/blank channelDir', () => {
+  const config = { downloadDir: '/data/ytdlp-downloads' };
+  assert.equal(store.validatePinInput(config, {}).ok, false);
+  assert.equal(store.validatePinInput(config, { channelDir: '' }).ok, false);
+  assert.equal(store.validatePinInput(config, { channelDir: '   ' }).ok, false);
+});
+
+test('validatePinInput: rejects a channelDir OUTSIDE the configured download directory', () => {
+  const config = { downloadDir: '/data/ytdlp-downloads' };
+  const result = store.validatePinInput(config, { channelDir: '/etc/passwd', label: 'Evil' });
+  assert.equal(result.ok, false);
+});
+
+test('validatePinInput: rejects a missing/empty label even when channelDir is valid', () => {
+  const config = { downloadDir: '/data/ytdlp-downloads' };
+  assert.equal(store.validatePinInput(config, { channelDir: '/data/ytdlp-downloads/Chan' }).ok, false);
+  assert.equal(store.validatePinInput(config, { channelDir: '/data/ytdlp-downloads/Chan', label: '   ' }).ok, false);
+});
+
+test('validatePinInput: accepts a confined channelDir and a sanitized label', () => {
+  const config = { downloadDir: '/data/ytdlp-downloads' };
+  const result = store.validatePinInput(config, { channelDir: '/data/ytdlp-downloads/Chan', label: '  My Chan\x00  ' });
+  assert.equal(result.ok, true);
+  assert.equal(result.value.channelDir, '/data/ytdlp-downloads/Chan');
+  assert.equal(result.value.label, 'My Chan');
+});
+
+// ---- reduceAddPin / reduceRemovePin (pure reducers) ------------------------
+
+test('reduceAddPin: appends a new pin and reports changed:true', () => {
+  const result = store.reduceAddPin([], { id: 'p1', channelDir: '/d/a', label: 'A', pinnedAt: '2026-01-01T00:00:00.000Z' });
+  assert.equal(result.changed, true);
+  assert.equal(result.pins.length, 1);
+  assert.equal(result.record.id, 'p1');
+});
+
+test('reduceAddPin: idempotent by id -- an existing id returns the array UNCHANGED and the EXISTING record, not a new one', () => {
+  const existing = { id: 'p1', channelDir: '/d/a', label: 'Old Label', pinnedAt: '2020-01-01T00:00:00.000Z' };
+  const result = store.reduceAddPin([existing], { id: 'p1', channelDir: '/d/a', label: 'New Label', pinnedAt: '2026-01-01T00:00:00.000Z' });
+  assert.equal(result.changed, false);
+  assert.deepEqual(result.pins, [existing]);
+  assert.equal(result.record, existing, 'the existing record must be returned unmodified, never overwritten by the re-pin');
+});
+
+test('reduceAddPin: never mutates its input array', () => {
+  const input = [{ id: 'p1', channelDir: '/d/a', label: 'A', pinnedAt: '2020-01-01T00:00:00.000Z' }];
+  const frozenInput = Object.freeze(input.slice());
+  assert.doesNotThrow(() => store.reduceAddPin(frozenInput, { id: 'p2', channelDir: '/d/b', label: 'B', pinnedAt: '2026-01-01T00:00:00.000Z' }));
+});
+
+test('reduceAddPin: evicts the OLDEST entry (FIFO, by insertion order) once MAX_PINS is exceeded', () => {
+  let pins = [];
+  for (let i = 0; i < store.MAX_PINS; i++) {
+    pins = store.reduceAddPin(pins, { id: `p${i}`, channelDir: `/d/${i}`, label: `${i}`, pinnedAt: '2020-01-01T00:00:00.000Z' }).pins;
+  }
+  assert.equal(pins.length, store.MAX_PINS);
+  assert.equal(pins[0].id, 'p0', 'sanity: still at exactly the cap, oldest survives');
+
+  const result = store.reduceAddPin(pins, { id: 'overflow', channelDir: '/d/overflow', label: 'Overflow', pinnedAt: '2026-01-01T00:00:00.000Z' });
+  assert.equal(result.pins.length, store.MAX_PINS, 'the list must stay capped, never grow past MAX_PINS');
+  assert.ok(!result.pins.some((p) => p.id === 'p0'), 'the oldest entry must be evicted once the cap is exceeded');
+  assert.ok(result.pins.some((p) => p.id === 'overflow'), 'the newly-added entry must be present');
+});
+
+test('reduceRemovePin: removes a matching id and reports changed:true', () => {
+  const pins = [{ id: 'p1', channelDir: '/d/a', label: 'A', pinnedAt: '2020-01-01T00:00:00.000Z' }];
+  const result = store.reduceRemovePin(pins, 'p1');
+  assert.equal(result.changed, true);
+  assert.deepEqual(result.pins, []);
+});
+
+test('reduceRemovePin: an unknown id is a no-op, changed:false, array unchanged', () => {
+  const pins = [{ id: 'p1', channelDir: '/d/a', label: 'A', pinnedAt: '2020-01-01T00:00:00.000Z' }];
+  const result = store.reduceRemovePin(pins, 'no-such-id');
+  assert.equal(result.changed, false);
+  assert.deepEqual(result.pins, pins);
+});
+
+test('reduceRemovePin: never mutates its input array', () => {
+  const input = [{ id: 'p1', channelDir: '/d/a', label: 'A', pinnedAt: '2020-01-01T00:00:00.000Z' }];
+  const frozenInput = Object.freeze(input.slice());
+  assert.doesNotThrow(() => store.reduceRemovePin(frozenInput, 'p1'));
+});
+
+// ---- listPins / addPin / removePin (persistence, via the fake deps) -------
+
+test('addPin: creates a well-formed record and listPins reflects it', async () => {
+  const deps = makeFakeDeps();
+  const record = await store.addPin(deps, { channelDir: '/data/ytdlp-downloads/Chan', label: 'Chan' });
+  assert.equal(record.channelDir, '/data/ytdlp-downloads/Chan');
+  assert.equal(record.label, 'Chan');
+  assert.equal(typeof record.id, 'string');
+  assert.equal(typeof record.pinnedAt, 'string');
+  const list = store.listPins(deps);
+  assert.equal(list.length, 1);
+  assert.deepEqual(list[0], record);
+});
+
+test('addPin: idempotent -- re-pinning the same channelDir does not create a duplicate', async () => {
+  const deps = makeFakeDeps();
+  const first = await store.addPin(deps, { channelDir: '/data/ytdlp-downloads/Chan', label: 'Chan' });
+  const second = await store.addPin(deps, { channelDir: '/data/ytdlp-downloads/Chan', label: 'Chan (renamed client-side)' });
+  assert.equal(second.id, first.id);
+  assert.equal(store.listPins(deps).length, 1);
+  assert.equal(store.listPins(deps)[0].label, 'Chan', 're-pinning must not overwrite the original snapshot label');
+});
+
+test('removePin: removes an existing pin and returns true', async () => {
+  const deps = makeFakeDeps();
+  const record = await store.addPin(deps, { channelDir: '/data/ytdlp-downloads/Chan', label: 'Chan' });
+  const removed = await store.removePin(deps, record.id);
+  assert.equal(removed, true);
+  assert.deepEqual(store.listPins(deps), []);
+});
+
+test('removePin: returns false for an unknown id and leaves the list untouched', async () => {
+  const deps = makeFakeDeps();
+  await store.addPin(deps, { channelDir: '/data/ytdlp-downloads/Chan', label: 'Chan' });
+  const removed = await store.removePin(deps, 'no-such-id');
+  assert.equal(removed, false);
+  assert.equal(store.listPins(deps).length, 1);
+});
+
+test('addPin/removePin: never write into db.folders/db.folderSettings (structural regression lock)', async () => {
+  const deps = makeFakeDeps({ folders: ['/movies'], folderSettings: { '/movies': { name: 'Movies' } } });
+  const record = await store.addPin(deps, { channelDir: '/data/ytdlp-downloads/Chan', label: 'Chan' });
+  await store.removePin(deps, record.id);
+  const db = deps.loadDatabase();
+  assert.deepEqual(db.folders, ['/movies'], 'db.folders must be byte-identical -- pins never touch it');
+  assert.deepEqual(db.folderSettings, { '/movies': { name: 'Movies' } }, 'db.folderSettings must be byte-identical -- pins never touch it');
 });

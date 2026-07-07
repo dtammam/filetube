@@ -109,6 +109,43 @@ test('PATCH /api/subscriptions/:id changes format/quality/maxVideos without a de
   }
 });
 
+// v1.21.0 FR-1/FR-3 (T3), AC2: regression-locks the already-correct
+// server-side PATCH -> GET round-trip for `maxVideos`, INCLUDING the `0`
+// "unlimited" sentinel -- the pre-v1.21 bug (a client render-timing race,
+// see the settings-sheet/poll fix in lib/ytdlp/client/subscriptions.js) was
+// never a server-side validation/persistence problem, so this proves the
+// server path this round's UI rearchitect builds on top of stays correct.
+test('PATCH /api/subscriptions/:id -> GET /api/subscriptions round-trips maxVideos, including 0 (unlimited)', async () => {
+  const deps = makeFakeDeps();
+  const created = await store.addSubscription(deps, {
+    channelUrl: 'https://www.youtube.com/@maxvideosroundtrip',
+    format: 'video',
+    maxVideos: 3,
+  });
+
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    // 3 -> 2 (a normal, finite value -- the exact edit Dean's on-device AC3
+    // scenario exercises via the new settings sheet).
+    const toTwo = await patchJson(base, `/api/subscriptions/${created.id}`, { maxVideos: 2 });
+    assert.equal(toTwo.status, 200);
+    assert.equal((await toTwo.json()).maxVideos, 2);
+    const afterTwo = await fetch(`${base}/api/subscriptions`);
+    assert.equal((await afterTwo.json())[0].maxVideos, 2);
+
+    // 2 -> 0 (the "unlimited" sentinel -- must be preserved as the literal
+    // number 0, never dropped/treated as falsy-therefore-unset).
+    const toZero = await patchJson(base, `/api/subscriptions/${created.id}`, { maxVideos: 0 });
+    assert.equal(toZero.status, 200);
+    assert.equal((await toZero.json()).maxVideos, 0);
+    const afterZero = await fetch(`${base}/api/subscriptions`);
+    const [listedAfterZero] = await afterZero.json();
+    assert.equal(listedAfterZero.maxVideos, 0, 'maxVideos:0 (unlimited) must round-trip as 0, not be lost/treated as unset');
+  } finally {
+    await close();
+  }
+});
+
 test('PATCH /api/subscriptions/:id toggles paused independent of other fields', async () => {
   const deps = makeFakeDeps();
   const created = await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@pauseme', format: 'video' });

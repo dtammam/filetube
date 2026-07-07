@@ -199,6 +199,102 @@ function captureAutoplayAdvanceForLoad(pending) {
   return { value: !!pending, nextPending: false };
 }
 
+// ---- FR-2 (T2, v1.21.0): custom control-bar pure helpers -------------------
+// Both hoisted above the browser-only runtime below, same "pure helpers
+// first" split every other state-machine decision in this file already uses
+// (see the module comment above `isAdoptLoad`) -- this is what makes them
+// directly `node:test`-able with no DOM/browser harness.
+
+// Clamp a raw (string or number) volume value into [0, 1]. Returns `null`
+// for anything that doesn't parse to a finite number at all (garbage, NaN,
+// an empty string, `null`/`undefined` -- e.g. a corrupt/tampered
+// `localStorage['ft-volume']` entry, or no stored value yet); the caller
+// treats `null` as "no usable stored preference" and leaves the element's
+// current/default volume alone rather than silently coercing garbage to 0.
+// An out-of-range but otherwise-numeric value (e.g. `1.5`, `-0.2`, a stale
+// value from a future version with a wider range) is clamped to the nearest
+// bound instead of being rejected -- only genuinely unparseable input
+// produces `null` (AC10, unit-tested against both cases).
+function clampVolume(raw) {
+  var n = typeof raw === 'number' ? raw : parseFloat(raw);
+  if (!isFinite(n)) return null;
+  return Math.max(0, Math.min(1, n));
+}
+
+// Pure reducer for the seek bar's `change` (commit) handler (AC15/AC16):
+// given the slider's [0,1] ratio and the source's duration, returns the
+// absolute target time in seconds to seek (or, for a live-transcode source,
+// restart the stream) to. `liveMode`/`liveTotal` mirror the existing skip()
+// live-transcode handling above -- for a desktop live-transcode source,
+// `duration` (typically `mediaPlayer.duration`) reflects only the SHORT,
+// currently-live-restarted stream, not the full original source, so the
+// ratio must instead be applied against `liveTotal` (the full source
+// duration, e.g. `currentData.duration`). `ratio` is clamped to [0,1] and
+// the result is clamped to [0, total] so an out-of-range ratio, or a total
+// that hasn't resolved yet (0/NaN/Infinity), can never produce a negative or
+// NaN seek target -- it degrades to `0` instead.
+//
+// v1.21 FIX 5 (post-gate hardening, optional): in live mode, an absent/
+// unresolved `liveTotal` NO LONGER falls back to `duration` -- `duration`
+// (the short live-restarted stream's own length, e.g. a few buffered
+// seconds) is a completely different quantity than the full source length a
+// ratio must be resolved against here, so silently substituting it could
+// compute a wildly WRONG absolute seek target (e.g. a "seek to the middle"
+// tap landing seconds from the very start of a long video, because the
+// ratio was applied against the short buffered window instead of the real
+// total). Treating an unresolved `liveTotal` the SAME as an unresolved
+// `duration` in the non-live branch below -- degrade to `0` -- is honest
+// about not yet knowing the real total, rather than confidently returning a
+// plausible-looking but incorrect number.
+function seekCommitTarget(ctx) {
+  var opts = ctx || {};
+  var liveMode = !!opts.liveMode;
+  var total = liveMode ? opts.liveTotal : opts.duration;
+  if (!isFinite(total) || total <= 0) return 0;
+  var ratio = opts.ratio;
+  if (!isFinite(ratio)) ratio = 0;
+  ratio = Math.max(0, Math.min(1, ratio));
+  return Math.max(0, Math.min(total, ratio * total));
+}
+
+// v1.21 post-gate hardening (FIX 1): pure single-vs-double-tap decision
+// table behind the touchend handling in `wireSkipHoldGestures` below (see
+// that function -- attached to BOTH the video surface, `#media-player`, and
+// the audio cover-art surface, `#audio-bg-art`, so +-15s double-tap-skip
+// works for both media types, per AC12). Given the gap since the previous
+// tap and whether both taps landed on the same half of the interaction
+// surface, returns whether THIS tap completes a double-tap (`'skip-back'`/
+// `'skip-fwd'`) or is -- so far -- only a single-tap candidate
+// (`'single-tap'`). Deliberately does NOT decide press-and-hold-2x: a hold
+// is a function of ELAPSED HOLD TIME (armed by a `setTimeout` at
+// `touchstart`, see `engageHold`), not of touchend classification, so
+// folding it into this table would be artificial -- `wireSkipHoldGestures`
+// still runs its own, untouched `if (holdActive)` short-circuit first,
+// exactly as the video surface always has.
+function classifyTapGesture(ctx) {
+  var opts = ctx || {};
+  var gap = opts.now - opts.lastTapTime;
+  if (opts.lastTapTime > 0 && gap > 0 && gap < opts.doubleTapMs && opts.onLeft === opts.lastTapLeft) {
+    return opts.onLeft ? 'skip-back' : 'skip-fwd';
+  }
+  return 'single-tap';
+}
+
+// v1.21 FIX A (post-post-gate correction -- docked-audio tap-to-expand
+// regression introduced by FIX 1): pure gate behind the touchend
+// single-tap branch in `wireSkipHoldGestures` below. `onSingleTap` (the
+// audio cover-art play/pause toggle) is only ever meaningful while FULL --
+// mirrors the mouse `#audio-bg-art` 'click' listener's existing
+// `state !== STATE_FULL` guard, which the touch path had been missing.
+// When this returns false (no `onSingleTap` at all -- i.e. the video
+// surface -- or audio but DOCKED/CLOSED), the caller must NOT
+// preventDefault/arm the toggle, so the tap's synthetic 'click' is left
+// free to bubble to `#player-dock`'s tap-to-expand handler exactly as it
+// did before FIX 1.
+function shouldArtSingleTapAct(state, onSingleTap) {
+  return !!onSingleTap && state === 'full';
+}
+
 // Guarded so requiring this file in Node (for unit tests) never touches
 // `window`/`document` -- mirrors common.js's own `if (typeof window ...)`
 // runtime guard immediately below.
@@ -210,6 +306,10 @@ if (typeof module !== 'undefined' && module.exports) {
     shouldPauseForLifecycleEvent,
     shouldShowResumeOverlay,
     captureAutoplayAdvanceForLoad,
+    clampVolume,
+    seekCommitTarget,
+    classifyTapGesture,
+    shouldArtSingleTapAct,
   };
 }
 
@@ -233,6 +333,9 @@ if (typeof module !== 'undefined' && module.exports) {
   var transcodeOverlay, transcodeSpinner, transcodeTitle, transcodeMessage;
   var resumeOverlay, resumeTimeStr, resumeYesBtn, resumeNoBtn;
 
+  // FR-2 (T2, v1.21.0): the custom control bar + cover-art play/pause glyph.
+  var playerControls, ppBtn, timeCur, seekBar, timeDur, muteBtn, volBar, fsBtn, artPlayGlyph;
+
   var dockCloseBtn = null;
   var dockChromeReady = false;
 
@@ -246,6 +349,14 @@ if (typeof module !== 'undefined' && module.exports) {
   var liveMode = false;   // desktop AVI: live transcode (seek = restart stream)
   var liveOffset = 0;     // seconds into the source that the current live stream started at
   var savedProgress = 0;
+
+  // FR-2 (T2, v1.21.0): seek-bar scrub/fill-loop + volume-persistence state.
+  var isScrubbing = false;      // seek-bar drag in progress -- visual only, no currentTime commit until 'change'
+  var seekFillRafId = null;     // requestAnimationFrame handle for the seek-bar fill loop; null when not running
+  var artGlyphTimer = null;     // fade-out timer for the cover-art play/pause overlay glyph
+  var volumeSettable = true;    // iOS Safari feature-detect result (see volumeIsSettable); assumed true until probed
+  var VOLUME_STORAGE_KEY = 'ft-volume';
+  var MUTED_STORAGE_KEY = 'ft-muted';
 
   // One-shot flag (FR-4b, T3): set true in handleAutoplayNext immediately
   // before navigate(). Bug-fix (v1.17.0 two-reviewer gate): this global is
@@ -329,6 +440,15 @@ if (typeof module !== 'undefined' && module.exports) {
     resumeTimeStr = host.querySelector('#resume-time-str');
     resumeYesBtn = host.querySelector('#resume-yes-btn');
     resumeNoBtn = host.querySelector('#resume-no-btn');
+    playerControls = host.querySelector('#player-controls');
+    ppBtn = host.querySelector('#pp-btn');
+    timeCur = host.querySelector('#time-cur');
+    seekBar = host.querySelector('#seek-bar');
+    timeDur = host.querySelector('#time-dur');
+    muteBtn = host.querySelector('#mute-btn');
+    volBar = host.querySelector('#vol-bar');
+    fsBtn = host.querySelector('#fs-btn');
+    artPlayGlyph = host.querySelector('#art-play-glyph');
     wireHostListeners();
     return host;
   }
@@ -494,6 +614,16 @@ if (typeof module !== 'undefined' && module.exports) {
   var startX = 0, startY = 0;
   var HOLD_MS = 500;
   var MOVE_TOL = 10;
+  // v1.21 FIX 1 (post-gate hardening): the double-tap/double-click window,
+  // named+shared so `wireSkipHoldGestures`'s touchend classification and the
+  // audio cover-art's `scheduleArtSingleTap` debounce (below) always agree
+  // on how long a "was this the first half of a double-tap?" pause lasts --
+  // was a bare `350` literal inline in the (now-factored) touchend handler.
+  var DOUBLE_TAP_MS = 350;
+  // Pending single-tap/single-click play-pause action on the audio cover-art
+  // surface (`#audio-bg-art`), armed by `scheduleArtSingleTap` and cancelled
+  // by `cancelPendingArtTap` -- see both, below.
+  var pendingArtTapTimer = null;
 
   function engageHold() {
     if (holdActive || !mediaPlayer || mediaPlayer.paused || inNativeFullscreen() || state !== STATE_FULL) return;
@@ -516,6 +646,140 @@ if (typeof module !== 'undefined' && module.exports) {
     clearTimeout(holdTimer);
     releaseHold();
     hideSkipButtons();
+  }
+
+  // v1.21 FIX 1 (post-gate hardening, both reviewers -- FR-2 regression,
+  // AC12): schedules `action` (the audio cover-art's single-tap/single-click
+  // play-pause toggle) to run after `DOUBLE_TAP_MS`, UNLESS
+  // `cancelPendingArtTap` is called first -- by `wireSkipHoldGestures`'s own
+  // touchend double-tap branch (touch path) or by the `#audio-bg-art` click
+  // listener itself on a second click within the window (mouse path, see
+  // `wireHostListeners`). Without this, a double-tap/double-click-to-skip
+  // would ALSO fire the single-tap play-pause toggle from its first
+  // tap/click before the skip landed -- the "double-toggle flicker" both the
+  // QA and adversarial gate flagged.
+  function scheduleArtSingleTap(action) {
+    cancelPendingArtTap();
+    pendingArtTapTimer = setTimeout(function () {
+      pendingArtTapTimer = null;
+      action();
+    }, DOUBLE_TAP_MS);
+  }
+
+  function cancelPendingArtTap() {
+    if (pendingArtTapTimer) {
+      clearTimeout(pendingArtTapTimer);
+      pendingArtTapTimer = null;
+    }
+  }
+
+  // v1.21 FIX 1 (post-gate hardening, both reviewers -- FR-2 regression,
+  // AC12): the dblclick + touchstart/touchmove/touchcancel/touchend
+  // ±15s-skip/press-hold-2x gesture wiring, factored out of
+  // `wireHostListeners` so it can be attached to WHICHEVER surface is the
+  // active interaction target for the current media -- `#media-player`
+  // (video; every item that isn't `.audio-mode`) or `#audio-bg-art` (audio;
+  // FR-2 made `#media-player` `pointer-events: none` in `.audio-mode`, see
+  // style.css, so the cover-art layer is what actually receives taps there).
+  // Root cause this fixes: before this factor-out, these gestures were
+  // wired ONLY on `#media-player`, so once FR-2 shipped they went dead for
+  // every audio item (AC12 requires ±15s skip -- buttons/double-tap/
+  // hold-2x/keyboard -- for BOTH audio and video).
+  //
+  // `onSingleTap`, when provided, is invoked once a touchend has been
+  // classified as a (so far) lone tap AND `DOUBLE_TAP_MS` has since elapsed
+  // with no follow-up double-tap -- i.e. only ever passed for
+  // `#audio-bg-art` (the FR-2 cover-art click-to-play/pause toggle,
+  // debounced via `scheduleArtSingleTap`/`cancelPendingArtTap` above).
+  // Called with no second argument for `#media-player`, every statement
+  // below is IDENTICAL to the pre-fix inline wiring that used to live in
+  // `wireHostListeners` -- video's dblclick/touch skip and press-hold-2x
+  // behavior is byte-for-byte unchanged by this refactor.
+  function wireSkipHoldGestures(el, onSingleTap) {
+    if (!el) return;
+
+    el.addEventListener('dblclick', function (e) {
+      e.preventDefault();
+      var rect = el.getBoundingClientRect();
+      var onLeft = (e.clientX - rect.left) < rect.width / 2;
+      skip(onLeft ? -SKIP_SECONDS : SKIP_SECONDS);
+    });
+
+    el.addEventListener('touchstart', function (e) {
+      if (inNativeFullscreen() || e.touches.length > 1) {
+        clearTimeout(holdTimer);
+        releaseHold();
+        return;
+      }
+      startX = e.touches[0].clientX;
+      startY = e.touches[0].clientY;
+      clearTimeout(holdTimer);
+      holdTimer = setTimeout(engageHold, HOLD_MS);
+    }, { passive: true });
+
+    el.addEventListener('touchmove', function (e) {
+      var t = e.touches[0];
+      if (!t || holdActive) return;
+      if (Math.abs(t.clientX - startX) > MOVE_TOL || Math.abs(t.clientY - startY) > MOVE_TOL) {
+        clearTimeout(holdTimer);
+      }
+    }, { passive: true });
+
+    el.addEventListener('touchcancel', function () {
+      clearTimeout(holdTimer);
+      releaseHold();
+    }, { passive: true });
+
+    el.addEventListener('touchend', function (e) {
+      clearTimeout(holdTimer);
+      if (holdActive) {
+        e.preventDefault();
+        releaseHold();
+        lastTapTime = 0;
+        return;
+      }
+      var touch = e.changedTouches[0];
+      var rect = el.getBoundingClientRect();
+      var onLeft = (touch.clientX - rect.left) < rect.width / 2;
+      var now = Date.now();
+      var gesture = classifyTapGesture({
+        now: now,
+        lastTapTime: lastTapTime,
+        lastTapLeft: lastTapLeft,
+        onLeft: onLeft,
+        doubleTapMs: DOUBLE_TAP_MS,
+      });
+      if (gesture === 'skip-back' || gesture === 'skip-fwd') {
+        e.preventDefault();
+        if (onSingleTap) cancelPendingArtTap(); // the pending single-tap toggle from this double-tap's FIRST half must never fire
+        skip(gesture === 'skip-back' ? -SKIP_SECONDS : SKIP_SECONDS);
+        lastTapTime = 0;
+      } else {
+        lastTapTime = now;
+        lastTapLeft = onLeft;
+        revealSkipButtons();
+        if (shouldArtSingleTapAct(state, onSingleTap)) {
+          // Suppress the synthetic 'click' the browser would otherwise
+          // dispatch after this touchend -- the tap is handled entirely by
+          // the debounced timer below, so a stray synthetic click could
+          // otherwise double-fire the toggle. `#media-player` (no
+          // `onSingleTap`) never reaches this branch, so video's touchend
+          // keeps its original never-preventDefault-on-a-single-tap
+          // behavior exactly as before.
+          //
+          // v1.21 FIX A (post-post-gate correction): gated to
+          // `state === STATE_FULL` via `shouldArtSingleTapAct` -- while
+          // DOCKED, this branch must NOT preventDefault/arm the toggle, so
+          // the tap's synthetic 'click' is left to bubble to
+          // `#player-dock`'s tap-to-expand handler, restoring docked-audio
+          // tap-to-expand on touch (a regression FIX 1 introduced by running
+          // this branch unconditionally). Video (`#media-player`, no
+          // `onSingleTap`) is unaffected either way.
+          e.preventDefault();
+          scheduleArtSingleTap(onSingleTap);
+        }
+      }
+    }, { passive: false });
   }
 
   // ---- transcode ("Preparing video") overlay ---------------------------------
@@ -760,12 +1024,240 @@ if (typeof module !== 'undefined' && module.exports) {
       });
   }
 
+  // ---- FR-2 (T2, v1.21.0): custom blocky control bar -------------------------
+  //
+  // Replaces the native <audio>/<video controls> bar (unstyleable -- the
+  // pure-white-in-dark-mode + rounded/derpy look) with app-owned markup
+  // themed entirely off the era CSS variables (see style.css's "v1.21 FR-2"
+  // section). Every listener that drives it is wired exactly once, from
+  // wireHostListeners() below, so the bar rides the persistent host across
+  // FULL/DOCKED/CLOSED "by construction" -- same guarantee every other
+  // listener in this file already has.
+
+  // ---- play/pause ----------------------------------------------------------
+
+  function updatePlayPauseUI() {
+    if (!ppBtn || !mediaPlayer) return;
+    var playing = !mediaPlayer.paused && !mediaPlayer.ended;
+    ppBtn.classList.toggle('is-playing', playing);
+    ppBtn.setAttribute('aria-label', playing ? 'Pause' : 'Play');
+    ppBtn.setAttribute('aria-pressed', playing ? 'true' : 'false');
+  }
+
+  function togglePlayPause() {
+    if (!mediaPlayer) return;
+    if (mediaPlayer.paused) mediaPlayer.play().catch(function () {});
+    else mediaPlayer.pause();
+  }
+
+  // v1.21 FIX 1 (post-gate hardening): the audio cover-art surface's actual
+  // single-tap/single-click play-pause action -- factored so both the
+  // `#audio-bg-art` 'click' listener (mouse path) and
+  // `wireSkipHoldGestures`'s `onSingleTap` callback (touch path) invoke the
+  // IDENTICAL toggle-then-flash-glyph behavior via `scheduleArtSingleTap`,
+  // rather than two independently-written copies drifting apart.
+  function toggleArtPlayPause() {
+    if (!mediaPlayer) return;
+    var willPlay = mediaPlayer.paused;
+    togglePlayPause();
+    flashArtGlyph(willPlay);
+  }
+
+  // Cover-art click-to-play overlay glyph (AC9): flashes via the same
+  // remove/reflow/add idiom `flashRipple` (above) already uses for the
+  // skip-ripple feedback, so a rapid repeat click always re-triggers the fade.
+  function flashArtGlyph(playing) {
+    if (!artPlayGlyph) return;
+    artPlayGlyph.classList.toggle('art-play-glyph-playing', playing);
+    artPlayGlyph.classList.remove('art-play-glyph-flash');
+    void artPlayGlyph.offsetWidth; // force reflow so rapid repeats re-trigger the animation
+    artPlayGlyph.classList.add('art-play-glyph-flash');
+    if (artGlyphTimer) clearTimeout(artGlyphTimer);
+    artGlyphTimer = setTimeout(function () {
+      if (artPlayGlyph) artPlayGlyph.classList.remove('art-play-glyph-flash');
+      artGlyphTimer = null;
+    }, 650);
+  }
+
+  // ---- seek: visual scrub (rAF fill loop) vs. committed change -------------
+
+  // The duration to measure the seek ratio against -- for a live-transcode
+  // source this is the FULL original source length (currentData.duration),
+  // not `mediaPlayer.duration` (which only reflects the short, currently
+  // live-restarted stream). Mirrors `seekCommitTarget`'s own liveMode branch.
+  //
+  // v1.21 FIX C (post-post-gate correction, cosmetic): an absent/unresolved
+  // `currentData.duration` in live mode no longer falls back to
+  // `mediaPlayer.duration` (the short live-restarted stream's own length) --
+  // degrades to `0` instead, exactly like `seekCommitTarget`'s FIX 5 does for
+  // the committed seek target, so the visual fill bar/time and the actual
+  // commit always agree on the absent-liveTotal case rather than the fill
+  // bar showing a plausible-looking but wrong total.
+  function seekTotalDuration() {
+    if (liveMode) return (currentData && currentData.duration) || 0;
+    return (mediaPlayer && mediaPlayer.duration) || 0;
+  }
+
+  function updateSeekVisual() {
+    if (!mediaPlayer) return;
+    var total = seekTotalDuration();
+    var cur = currentAbsTime();
+    var ratio = total > 0 ? Math.max(0, Math.min(1, cur / total)) : 0;
+    if (seekBar) {
+      seekBar.value = String(ratio);
+      seekBar.style.setProperty('--seek-fill', (ratio * 100) + '%');
+    }
+    if (timeCur) timeCur.textContent = formatDuration(cur);
+    if (timeDur) timeDur.textContent = formatDuration(total);
+  }
+
+  // Runs only while playing (self-terminating below) -- NOT driven by the
+  // ~4Hz 'timeupdate' event (the existing Media Session `updatePositionState`
+  // 'timeupdate' wiring is completely untouched by this). Skips the actual
+  // DOM update while the user is mid-scrub (`isScrubbing`) so a live seek
+  // 'input' visual is never fought by a stale playback position, but keeps
+  // the rAF chain itself alive so the loop resumes updating immediately once
+  // the scrub ends, with no extra start/stop bookkeeping needed there.
+  function fillTick() {
+    if (!isScrubbing) updateSeekVisual();
+    if (mediaPlayer && !mediaPlayer.paused) {
+      seekFillRafId = requestAnimationFrame(fillTick);
+    } else {
+      seekFillRafId = null;
+    }
+  }
+
+  function startFillLoop() {
+    if (seekFillRafId != null) return;
+    seekFillRafId = requestAnimationFrame(fillTick);
+  }
+
+  // docs/RELIABILITY.md: the rAF loop must be cancelled on pause/close --
+  // `fillTick` already self-terminates once `mediaPlayer.paused`, and this is
+  // additionally called explicitly from the 'pause'/'ended' listeners and
+  // from teardownMediaState()/close() below, for defense-in-depth (e.g. a
+  // direct `mediaPlayer.load()` with no intervening 'pause' event).
+  function stopFillLoop() {
+    if (seekFillRafId != null) {
+      cancelAnimationFrame(seekFillRafId);
+      seekFillRafId = null;
+    }
+  }
+
+  // Called from teardownMediaState() at the start of every genuine (non-adopt)
+  // load, so the PREVIOUS media's fill/time never lingers on the bar while
+  // the next media's own 'loadedmetadata'/'seeked' listeners haven't fired yet.
+  function resetSeekVisual() {
+    isScrubbing = false;
+    if (seekBar) { seekBar.value = '0'; seekBar.style.setProperty('--seek-fill', '0%'); }
+    if (timeCur) timeCur.textContent = '0:00';
+    if (timeDur) timeDur.textContent = '0:00';
+  }
+
+  // ---- volume: clamp/persist + iOS feature-detect --------------------------
+
+  function loadStoredVolume() {
+    try { return clampVolume(localStorage.getItem(VOLUME_STORAGE_KEY)); } catch (_) { return null; }
+  }
+
+  function loadStoredMuted() {
+    try { return localStorage.getItem(MUTED_STORAGE_KEY) === '1'; } catch (_) { return false; }
+  }
+
+  function persistVolume(vol, muted) {
+    try {
+      localStorage.setItem(VOLUME_STORAGE_KEY, String(vol));
+      localStorage.setItem(MUTED_STORAGE_KEY, muted ? '1' : '0');
+    } catch (_) { /* storage disabled/full -- persistence is best-effort only */ }
+  }
+
+  // Browser-only feature-detect (not `node:test`-covered -- see the inbox/
+  // exec-plan note: DOM-heavy iOS behavior is Dean's on-device arbiter).
+  // iOS Safari silently ignores script writes to HTMLMediaElement.volume
+  // (hardware-buttons-only, fixed at 1.0). Probes by writing a value distinct
+  // from the element's CURRENT volume and reading it back; restores the
+  // original value either way, so the probe itself never has a visible side
+  // effect regardless of the outcome.
+  function volumeIsSettable(el) {
+    if (!el) return false;
+    try {
+      var original = el.volume;
+      var probe = original > 0.5 ? 0.1 : 0.9;
+      el.volume = probe;
+      var settable = Math.abs(el.volume - probe) < 0.01;
+      el.volume = original;
+      return settable;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function updateVolumeUI() {
+    if (!mediaPlayer) return;
+    var vol = mediaPlayer.volume;
+    var muted = mediaPlayer.muted;
+    if (muteBtn) {
+      muteBtn.classList.toggle('is-muted', muted || vol === 0);
+      muteBtn.setAttribute('aria-label', muted ? 'Unmute' : 'Mute');
+      muteBtn.setAttribute('aria-pressed', muted ? 'true' : 'false');
+    }
+    if (volBar) {
+      volBar.value = String(vol);
+      volBar.style.setProperty('--vol-fill', (vol * 100) + '%');
+    }
+  }
+
+  // Runs exactly once, from wireHostListeners(): probes iOS settability and
+  // HIDES the volume controls when unsettable (AC11 -- degrade silently,
+  // never an error) instead of applying a stored preference that could never
+  // actually take effect there; otherwise applies the stored preference
+  // BEFORE any playback starts (AC10).
+  function initVolume() {
+    if (!mediaPlayer) return;
+    volumeSettable = volumeIsSettable(mediaPlayer);
+    if (!volumeSettable) {
+      if (volBar) volBar.style.display = 'none';
+      if (muteBtn) muteBtn.style.display = 'none';
+      return; // skip applying the stored preference -- script can't set it anyway
+    }
+    var storedVolume = loadStoredVolume();
+    if (storedVolume !== null) mediaPlayer.volume = storedVolume;
+    mediaPlayer.muted = loadStoredMuted();
+    updateVolumeUI();
+  }
+
+  // ---- fullscreen retarget (AC14, load-bearing) -----------------------------
+  //
+  // Desktop: retargets from the <video> element to `host` (`.player-container`)
+  // so the custom control bar -- a SIBLING of the video, not a descendant --
+  // stays visible while fullscreen (removing native `controls` would
+  // otherwise strip fullscreen controls entirely once the video itself goes
+  // fullscreen). iOS keeps `webkitEnterFullscreen()`, which shows iOS's own
+  // native fullscreen chrome (not this bar) exactly as before this change --
+  // completely unaffected. Returns the `requestFullscreen()` promise (or
+  // `null`) so every call site can `.catch()` it exactly as the pre-existing
+  // call sites already did.
+  function enterFullscreen() {
+    if (!mediaPlayer) return null;
+    if (mediaPlayer.webkitEnterFullscreen) {
+      try { mediaPlayer.webkitEnterFullscreen(); } catch (_) { /* unsupported/refused -- ignore */ }
+      return null;
+    }
+    var target = (host && host.requestFullscreen) ? host : mediaPlayer;
+    if (target && target.requestFullscreen) {
+      try { return target.requestFullscreen(); } catch (_) { return null; }
+    }
+    return null;
+  }
+
   // ---- one-time element-scoped listener wiring (never re-run) ----------------
   // Every listener here is attached to the HOST or an element inside it, so it
   // travels with the host wherever it's reparented -- no add/remove churn
   // across FULL<->DOCKED is needed for these. Only the FULL-only DOCUMENT
   // shortcuts (keydown, orientation) are additionally guarded by `state`.
   function wireHostListeners() {
+    initVolume(); // FR-2 (T2, v1.21.0): apply/hide the persisted volume BEFORE any playback below
+
     mediaPlayer.addEventListener('play', startProgressSaver);
     mediaPlayer.addEventListener('pause', stopProgressSaver);
     // C2 remediation (v1.16.0): reset to 0 on 'ended', and do NOT re-save the
@@ -803,6 +1295,23 @@ if (typeof module !== 'undefined' && module.exports) {
     mediaPlayer.addEventListener('ratechange', function () { updatePositionState(true); });
     mediaPlayer.addEventListener('timeupdate', function () { updatePositionState(false); });
 
+    // FR-2 (T2, v1.21.0): the custom control bar's own reactions to native
+    // media events -- additional listeners alongside every one above, none of
+    // which they replace or interfere with.
+    mediaPlayer.addEventListener('play', updatePlayPauseUI);
+    mediaPlayer.addEventListener('pause', updatePlayPauseUI);
+    mediaPlayer.addEventListener('ended', updatePlayPauseUI);
+    mediaPlayer.addEventListener('play', startFillLoop);
+    mediaPlayer.addEventListener('pause', stopFillLoop);
+    mediaPlayer.addEventListener('ended', function () { stopFillLoop(); updateSeekVisual(); });
+    mediaPlayer.addEventListener('loadedmetadata', function () { if (!isScrubbing) updateSeekVisual(); });
+    mediaPlayer.addEventListener('durationchange', function () { if (!isScrubbing) updateSeekVisual(); });
+    mediaPlayer.addEventListener('seeked', function () { if (!isScrubbing) updateSeekVisual(); });
+    mediaPlayer.addEventListener('volumechange', function () {
+      updateVolumeUI();
+      if (volumeSettable) persistVolume(mediaPlayer.volume, mediaPlayer.muted);
+    });
+
     if (resumeYesBtn) {
       resumeYesBtn.addEventListener('click', function () {
         if (resumeOverlay) resumeOverlay.style.display = 'none';
@@ -832,61 +1341,132 @@ if (typeof module !== 'undefined' && module.exports) {
     host.addEventListener('mousemove', revealSkipButtons);
     host.addEventListener('mouseleave', hideSkipButtons);
 
-    mediaPlayer.addEventListener('dblclick', function (e) {
-      e.preventDefault();
-      var rect = mediaPlayer.getBoundingClientRect();
-      var onLeft = (e.clientX - rect.left) < rect.width / 2;
-      skip(onLeft ? -SKIP_SECONDS : SKIP_SECONDS);
-    });
+    // ---- FR-2 (T2, v1.21.0): the custom control bar's own listeners --------
 
-    mediaPlayer.addEventListener('touchstart', function (e) {
-      if (inNativeFullscreen() || e.touches.length > 1) {
-        clearTimeout(holdTimer);
-        releaseHold();
-        return;
-      }
-      startX = e.touches[0].clientX;
-      startY = e.touches[0].clientY;
-      clearTimeout(holdTimer);
-      holdTimer = setTimeout(engageHold, HOLD_MS);
-    }, { passive: true });
+    if (playerControls) {
+      // A single delegated stopPropagation (mirrors dockCloseBtn's own
+      // e.stopPropagation() in ensureDockChrome() below): every control-bar
+      // click -- a button OR a plain click-not-drag on a range track -- must
+      // never bubble to `#player-dock`'s tap-to-expand listener, or tapping
+      // play/pause (or the seek/volume track) while DOCKED would BOTH act on
+      // the control AND navigate to the watch page.
+      playerControls.addEventListener('click', function (e) { e.stopPropagation(); });
+    }
 
-    mediaPlayer.addEventListener('touchmove', function (e) {
-      var t = e.touches[0];
-      if (!t || holdActive) return;
-      if (Math.abs(t.clientX - startX) > MOVE_TOL || Math.abs(t.clientY - startY) > MOVE_TOL) {
-        clearTimeout(holdTimer);
-      }
-    }, { passive: true });
+    if (ppBtn) ppBtn.addEventListener('click', togglePlayPause);
 
-    mediaPlayer.addEventListener('touchcancel', function () {
-      clearTimeout(holdTimer);
-      releaseHold();
-    }, { passive: true });
+    if (seekBar) {
+      // Visual scrub only (AC15): updates the fill/current-time display but
+      // NEVER touches `currentTime` -- only 'change' below commits.
+      seekBar.addEventListener('input', function () {
+        isScrubbing = true;
+        var ratio = Math.max(0, Math.min(1, Number(seekBar.value) || 0));
+        var total = seekTotalDuration();
+        seekBar.style.setProperty('--seek-fill', (ratio * 100) + '%');
+        if (timeCur) timeCur.textContent = formatDuration(ratio * total);
+      });
+      // The ONLY place a scrub is committed -- pure `seekCommitTarget`
+      // resolves the absolute target for both a normal source and a
+      // live-transcode one (AC16), and a committed live-mode seek restarts
+      // the stream exactly as the existing skip() does above.
+      seekBar.addEventListener('change', function () {
+        isScrubbing = false;
+        if (!mediaPlayer) return;
+        var ratio = Number(seekBar.value);
+        var target = seekCommitTarget({
+          duration: mediaPlayer.duration,
+          ratio: ratio,
+          liveMode: liveMode,
+          liveTotal: currentData && currentData.duration,
+        });
+        if (liveMode) {
+          startLiveStream(target, true);
+        } else {
+          mediaPlayer.currentTime = target;
+        }
+        saveProgressToServer(target);
+        if (!mediaPlayer.paused) startFillLoop();
+      });
+    }
 
-    mediaPlayer.addEventListener('touchend', function (e) {
-      clearTimeout(holdTimer);
-      if (holdActive) {
-        e.preventDefault();
-        releaseHold();
-        lastTapTime = 0;
-        return;
-      }
-      var touch = e.changedTouches[0];
-      var rect = mediaPlayer.getBoundingClientRect();
-      var onLeft = (touch.clientX - rect.left) < rect.width / 2;
-      var now = Date.now();
-      var gap = now - lastTapTime;
-      if (gap > 0 && gap < 350 && onLeft === lastTapLeft) {
-        e.preventDefault();
-        skip(onLeft ? -SKIP_SECONDS : SKIP_SECONDS);
-        lastTapTime = 0;
-      } else {
-        lastTapTime = now;
-        lastTapLeft = onLeft;
-        revealSkipButtons();
-      }
-    }, { passive: false });
+    if (muteBtn) {
+      muteBtn.addEventListener('click', function () {
+        if (mediaPlayer) mediaPlayer.muted = !mediaPlayer.muted;
+      });
+    }
+
+    if (volBar) {
+      volBar.addEventListener('input', function () {
+        if (!mediaPlayer) return;
+        var v = clampVolume(volBar.value);
+        if (v === null) return;
+        mediaPlayer.volume = v;
+        if (v > 0 && mediaPlayer.muted) mediaPlayer.muted = false; // raising volume off 0 implies un-muting, matching native <audio controls> behavior
+      });
+    }
+
+    if (fsBtn) {
+      fsBtn.addEventListener('click', function () {
+        if (inNativeFullscreen()) {
+          if (document.exitFullscreen) {
+            var pe = document.exitFullscreen();
+            if (pe && pe.catch) pe.catch(function () {});
+          } else if (mediaPlayer.webkitExitFullscreen) {
+            mediaPlayer.webkitExitFullscreen();
+          }
+        } else {
+          var pf = enterFullscreen();
+          if (pf && pf.catch) pf.catch(function () {});
+        }
+      });
+    }
+
+    // Click/tap-the-cover-art-to-play/pause (AC9): acts ONLY while FULL --
+    // stopPropagation there so the toggle never also reaches anything behind
+    // the art layer. While DOCKED the click is deliberately left un-stopped
+    // so it bubbles to `#player-dock`'s existing tap-to-expand handler
+    // completely unchanged -- the art surface never fights the dock, exactly
+    // like the existing hold-to-2x/keyboard-shortcut `state !== STATE_FULL`
+    // guards above.
+    //
+    // v1.21 FIX 1 (post-gate hardening): debounced via
+    // scheduleArtSingleTap/cancelPendingArtTap (see above) rather than
+    // toggling immediately -- a MOUSE double-click fires TWO native 'click'
+    // events before 'dblclick', and without this debounce each would
+    // immediately toggle play/pause (play, then pause) before the
+    // 'dblclick' handler (wired below via wireSkipHoldGestures) got a
+    // chance to skip -- the "double-toggle flicker" both reviewers flagged.
+    // On the SECOND click within the window, cancel the pending toggle
+    // (rather than rescheduling it) and let 'dblclick' handle the skip
+    // instead; the equivalent touch case is handled inside
+    // wireSkipHoldGestures's own touchend classification.
+    if (audioBgArt) {
+      audioBgArt.addEventListener('click', function (e) {
+        if (state !== STATE_FULL) return;
+        e.stopPropagation();
+        if (!mediaPlayer) return;
+        if (pendingArtTapTimer) {
+          cancelPendingArtTap();
+          return;
+        }
+        scheduleArtSingleTap(toggleArtPlayPause);
+      });
+    }
+
+    // v1.21 FIX 1 (post-gate hardening, both reviewers -- FR-2 regression,
+    // AC12): wire the SAME ±15s double-tap-skip/press-hold-2x gesture model
+    // onto BOTH interaction surfaces -- `#media-player` for video (called
+    // with no `onSingleTap`, so its wiring/behavior is byte-identical to
+    // before this fix), and `#audio-bg-art` for audio (with `onSingleTap`
+    // wired to the same click-to-play/pause toggle the 'click' listener
+    // above uses, debounced identically). Only one of the two surfaces is
+    // ever actually interactive at a time -- style.css makes `#media-player`
+    // `pointer-events: none` in `.audio-mode` (so taps reach the art layer
+    // instead) and `#audio-bg-art` is `display: none` outside `.audio-mode`
+    // -- so attaching both here is safe: whichever surface a tap/click/hold
+    // actually lands on is the only one that ever fires.
+    wireSkipHoldGestures(mediaPlayer);
+    wireSkipHoldGestures(audioBgArt, toggleArtPlayPause);
 
     function onEnterFullscreen() { clearTimeout(holdTimer); releaseHold(); }
     document.addEventListener('fullscreenchange', function () { if (document.fullscreenElement) onEnterFullscreen(); });
@@ -907,12 +1487,13 @@ if (typeof module !== 'undefined' && module.exports) {
       try {
         if (landscape && !inNativeFullscreen()) {
           autoFullscreen = true;
-          if (mediaPlayer.webkitEnterFullscreen) {
-            mediaPlayer.webkitEnterFullscreen();
-          } else if (mediaPlayer.requestFullscreen) {
-            var p = mediaPlayer.requestFullscreen();
-            if (p && p.catch) p.catch(function () { autoFullscreen = false; });
-          }
+          // FR-2 (T2, v1.21.0): retargeted through enterFullscreen() --
+          // still iOS-native on iOS (webkitEnterFullscreen, no promise),
+          // still desktop .player-container-fullscreen elsewhere, so the
+          // custom bar shows if this ever runs on a desktop browser that
+          // reports a landscape orientationchange.
+          var p = enterFullscreen();
+          if (p && p.catch) p.catch(function () { autoFullscreen = false; });
         } else if (!landscape && autoFullscreen && inNativeFullscreen()) {
           autoFullscreen = false;
           if (mediaPlayer.webkitExitFullscreen) {
@@ -950,8 +1531,11 @@ if (typeof module !== 'undefined' && module.exports) {
           e.preventDefault();
           if (document.fullscreenElement) {
             document.exitFullscreen();
-          } else if (mediaPlayer.requestFullscreen) {
-            var p3 = mediaPlayer.requestFullscreen();
+          } else {
+            // FR-2 (T2, v1.21.0): retargeted through enterFullscreen() --
+            // desktop now goes fullscreen on .player-container (host), not
+            // the bare <video>, so the custom bar is visible while fullscreen.
+            var p3 = enterFullscreen();
             if (p3 && p3.catch) p3.catch(function () {});
           }
           break;
@@ -976,6 +1560,22 @@ if (typeof module !== 'undefined' && module.exports) {
     liveMode = false;
     liveOffset = 0;
     savedProgress = 0;
+    // FR-2 (T2, v1.21.0): stop the rAF fill loop (docs/RELIABILITY.md: must
+    // be cancelled on pause/close -- `mediaPlayer.pause()` below already
+    // triggers this via the 'pause' listener, this is defense-in-depth) and
+    // reset the seek bar / art-glyph timer so the PREVIOUS media's fill/time
+    // never lingers on the bar while the next media's own listeners haven't
+    // fired yet.
+    stopFillLoop();
+    resetSeekVisual();
+    if (artGlyphTimer) { clearTimeout(artGlyphTimer); artGlyphTimer = null; }
+    // v1.21 FIX B (post-post-gate correction): cancel any pending debounced
+    // art single-tap toggle (see scheduleArtSingleTap/cancelPendingArtTap
+    // above) -- without this, a single art tap followed by a teardown/new
+    // load within the DOUBLE_TAP_MS window would fire a stray
+    // toggleArtPlayPause() on the persistent element afterward.
+    cancelPendingArtTap();
+    if (artPlayGlyph) artPlayGlyph.classList.remove('art-play-glyph-flash', 'art-play-glyph-playing');
     if (resumeOverlay) resumeOverlay.style.display = 'none';
     if (transcodeOverlay) transcodeOverlay.style.display = 'none';
     if (transcodeSpinner) transcodeSpinner.classList.remove('failed');
@@ -1122,6 +1722,17 @@ if (typeof module !== 'undefined' && module.exports) {
     if (progressInterval) { clearInterval(progressInterval); progressInterval = null; }
     if (transcodePollTimer) { clearTimeout(transcodePollTimer); transcodePollTimer = null; }
     resetTransientPlaybackUi();
+    // FR-2 (T2, v1.21.0): explicitly cancel the rAF fill loop + art-glyph
+    // timer here too (docs/RELIABILITY.md) -- defense-in-depth alongside the
+    // 'pause' listener's own stopFillLoop() call, which mediaPlayer.pause()
+    // below already triggers.
+    stopFillLoop();
+    if (artGlyphTimer) { clearTimeout(artGlyphTimer); artGlyphTimer = null; }
+    // v1.21 FIX B (post-post-gate correction): see the identical call/
+    // comment in teardownMediaState() above -- cancel any pending debounced
+    // art single-tap toggle so it can never fire on the (about to be
+    // detached) persistent element after close().
+    cancelPendingArtTap();
     if (mediaPlayer) {
       try {
         mediaPlayer.pause();

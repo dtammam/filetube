@@ -499,6 +499,14 @@
     // is the confirming second tap that actually deletes. A tap that lands on
     // a DIFFERENT card's delete button re-arms the new one (only one card is
     // ever armed at a time) rather than deleting the previously-armed one.
+    //
+    // FR-7 (v1.21.0, T6): the confirming second tap is where the escalation
+    // happens. A yt-dlp-managed item's second tap stays this EXACT,
+    // unchanged immediate-delete (AC47). A LOCAL item's second tap does NOT
+    // delete immediately -- it opens the checkbox-gated `showHardDeleteModal`
+    // (common.js) as a conscious 3rd action; only confirming THERE calls
+    // `deleteCardById` (AC46/AC49). Both paths converge on the exact same,
+    // unmodified `deleteCardById` -> `DELETE /api/videos/:id` (AC48).
     videoGrid.addEventListener('click', (e) => {
       const btn = e.target.closest('.card-delete-btn');
       if (!btn) return; // any other click inside the grid -- outside-click disarm (below) handles it
@@ -508,7 +516,12 @@
       if (result.deleted) {
         const id = btn.dataset.id;
         disarmCardDelete();
-        deleteCardById(id);
+        const item = currentItems.find((it) => it.id === id);
+        if (isYtdlpManagedItem(item)) {
+          deleteCardById(id);
+        } else {
+          showHardDeleteModal(item, () => deleteCardById(id));
+        }
       } else {
         armCardDelete(btn);
       }

@@ -52,6 +52,10 @@ test('mobile player height: the landscape-orientation media query does not touch
 });
 
 test('mobile player height: the audio-mode/.audio-bg-art rules are untouched by this change (still present, unscoped by any new media query)', () => {
-  assert.match(css, /#player-wrapper\.audio-mode #audio-bg-art\s*\{\s*display:\s*block;\s*\}/);
+  // v1.21 FR-2 (T2) additively extended this rule with pointer-events/cursor
+  // (the cover-art click-to-play surface) -- still asserting the same core
+  // "audio mode reveals the art" declaration this test has always guarded,
+  // just no longer requiring it to be the ONLY declaration in the block.
+  assert.match(css, /#player-wrapper\.audio-mode #audio-bg-art\s*\{[^}]*display:\s*block;[^}]*\}/);
   assert.match(css, /#player-wrapper\.audio-mode #media-player\s*\{/);
 });

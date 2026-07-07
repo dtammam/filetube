@@ -201,3 +201,35 @@ test('omitting now falls back to the real clock without throwing', () => {
   const entry = activity.setSubscription('sub1', { state: 'queued' });
   assert.ok(typeof entry.updatedAt === 'string' && entry.updatedAt.length > 0);
 });
+
+// ---- v1.21.0 FR-8: additive one-shot format/quality/filetype fields --------
+
+test('FR-8: setOneShot/getSnapshot round-trip the additive format/quality/filetype fields, unmodified', () => {
+  const t0 = 0;
+  activity.setOneShot('job1', {
+    state: 'queued',
+    label: 'My Folder',
+    url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+    format: 'audio',
+    quality: '720p',
+    filetype: 'mp3',
+  }, t0);
+  const snap = activity.getSnapshot(t0);
+  assert.equal(snap.oneShots.job1.format, 'audio');
+  assert.equal(snap.oneShots.job1.quality, '720p');
+  assert.equal(snap.oneShots.job1.filetype, 'mp3');
+  assert.equal(snap.oneShots.job1.label, 'My Folder');
+  assert.equal(snap.oneShots.job1.url, 'https://www.youtube.com/watch?v=dQw4w9WgXcQ');
+});
+
+test('FR-8: a later patch (e.g. a downloading progress tick) that omits format/quality/filetype preserves them (shallow-merge)', () => {
+  const t0 = 0;
+  activity.setOneShot('job1', {
+    state: 'queued', label: 'Folder', url: 'https://www.youtube.com/watch?v=abc', format: 'video', quality: 'best', filetype: 'mp4',
+  }, t0);
+  const merged = activity.setOneShot('job1', { state: 'downloading', percent: 40 }, t0 + 1);
+  assert.equal(merged.format, 'video');
+  assert.equal(merged.quality, 'best');
+  assert.equal(merged.filetype, 'mp4');
+  assert.equal(merged.percent, 40);
+});

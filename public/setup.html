@@ -243,6 +243,7 @@
   <template id="player-host-template">
     <div class="player-container" id="player-wrapper">
       <div id="audio-bg-art" class="audio-bg-art"></div>
+      <div id="art-play-glyph" class="art-play-glyph" aria-hidden="true"></div>
       <div id="resume-overlay" class="resume-overlay" style="display: none;">
         <h3>Resume Playback?</h3>
         <p>You watched this media up to <span id="resume-time-str">0:00</span>. Would you like to resume from there?</p>
@@ -256,7 +257,7 @@
         <h3 id="transcode-title">Preparing this video&hellip;</h3>
         <p id="transcode-message">FileTube is converting this file to a browser-friendly format. This only happens once &mdash; it'll start playing automatically when it's ready.</p>
       </div>
-      <video id="media-player" controls preload="metadata" playsinline webkit-playsinline x5-playsinline style="display: none;">
+      <video id="media-player" preload="metadata" playsinline webkit-playsinline x5-playsinline style="display: none;">
         Your browser does not support HTML5 video player.
       </video>
       <div id="speed-badge" class="speed-badge" style="display: none;">2× ▶▶</div>
@@ -274,6 +275,21 @@
         <div class="audio-vinyl" id="vinyl-disc"></div>
         <div class="audio-title" id="audio-visual-title">Audio Track Title</div>
         <div class="audio-subtitle" id="audio-visual-folder">Playlist Folder</div>
+      </div>
+      <div id="player-controls" class="player-controls">
+        <button type="button" id="pp-btn" class="pc-btn pp-btn" aria-label="Play" aria-pressed="false">
+          <span class="pp-icon-play" aria-hidden="true"></span>
+          <span class="pp-icon-pause" aria-hidden="true"></span>
+        </button>
+        <span id="time-cur" class="pc-time">0:00</span>
+        <input type="range" id="seek-bar" class="pc-range pc-seek" min="0" max="1" step="0.001" value="0" aria-label="Seek">
+        <span id="time-dur" class="pc-time">0:00</span>
+        <button type="button" id="mute-btn" class="pc-btn mute-btn" aria-label="Mute" aria-pressed="false">
+          <span class="mute-icon-on" aria-hidden="true"></span>
+          <span class="mute-icon-off" aria-hidden="true"></span>
+        </button>
+        <input type="range" id="vol-bar" class="pc-range pc-vol" min="0" max="1" step="0.01" value="1" aria-label="Volume">
+        <button type="button" id="fs-btn" class="pc-btn fs-btn" aria-label="Fullscreen">⛶</button>
       </div>
     </div>
   </template>

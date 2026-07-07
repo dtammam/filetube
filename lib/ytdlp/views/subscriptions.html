@@ -99,8 +99,27 @@
       <!-- Per-view content boundary (FR-1, T1): see index.html's matching
            comment. The router swaps ONLY this node on in-app navigation. -->
       <div id="view-root" data-view="subscriptions">
+      <!-- v1.21.0 FR-3 (T3): subscriptions-FIRST information architecture.
+           "Your subscriptions" is now the FIRST, primary content on this
+           page (AC18) -- a dense `.sub-list` list (no 240px scroll cap,
+           AC24), replacing the old .folder-list-builder container. Add a
+           subscription / one-off download are DEMOTED below it into native
+           `<details>`/`<summary>` disclosures (AC23) -- fully reachable, no
+           JS required to expand them, just not the top-of-page focus
+           anymore. See lib/ytdlp/client/subscriptions.js's createSubscriptionRow
+           for the new row anatomy (avatar + name + one muted metadata line +
+           FR-4 channel link + a single trailing kebab/gear opening an
+           in-shell settings bottom-sheet, built entirely in JS -- see that
+           file's buildSettingsSheet). -->
       <div class="setup-box">
-        <h2>Subscriptions</h2>
+        <h2>Your subscriptions</h2>
+        <div id="sub-list-container" class="sub-list">
+          <!-- Populated dynamically by /js/subscriptions.js -->
+        </div>
+      </div>
+
+      <details class="setup-box sub-collapsible" id="sub-add-details">
+        <summary>+ Add a subscription</summary>
         <p>
           Automatically download new videos from YouTube channels you subscribe
           to here. Downloaded media lands in your library like any other file --
@@ -167,10 +186,10 @@
           <span id="sub-repull-status" style="font-weight:bold; color: var(--text-secondary);" aria-live="polite"></span>
           <button class="btn" id="sub-repull-all-btn" type="button">Re-pull all now</button>
         </div>
-      </div>
+      </details>
 
-      <div class="setup-box">
-        <h2>One-off download</h2>
+      <details class="setup-box sub-collapsible" id="oneshot-details">
+        <summary>One-off download</summary>
         <p>
           Download a single YouTube video once -- no subscription is created.
           Lands in a "One-Off" folder by default.
@@ -210,14 +229,7 @@
         <div id="oneshot-list-container" class="folder-list-builder">
           <!-- Populated dynamically by /js/subscriptions.js from GET /api/subscriptions/status's oneShots -->
         </div>
-      </div>
-
-      <div class="setup-box">
-        <h2>Your subscriptions</h2>
-        <div id="sub-list-container" class="folder-list-builder">
-          <!-- Populated dynamically by /js/subscriptions.js -->
-        </div>
-      </div>
+      </details>
       </div>
     </main>
   </div>
@@ -229,6 +241,7 @@
   <template id="player-host-template">
     <div class="player-container" id="player-wrapper">
       <div id="audio-bg-art" class="audio-bg-art"></div>
+      <div id="art-play-glyph" class="art-play-glyph" aria-hidden="true"></div>
       <div id="resume-overlay" class="resume-overlay" style="display: none;">
         <h3>Resume Playback?</h3>
         <p>You watched this media up to <span id="resume-time-str">0:00</span>. Would you like to resume from there?</p>
@@ -242,7 +255,7 @@
         <h3 id="transcode-title">Preparing this video&hellip;</h3>
         <p id="transcode-message">FileTube is converting this file to a browser-friendly format. This only happens once &mdash; it'll start playing automatically when it's ready.</p>
       </div>
-      <video id="media-player" controls preload="metadata" playsinline webkit-playsinline x5-playsinline style="display: none;">
+      <video id="media-player" preload="metadata" playsinline webkit-playsinline x5-playsinline style="display: none;">
         Your browser does not support HTML5 video player.
       </video>
       <div id="speed-badge" class="speed-badge" style="display: none;">2× ▶▶</div>
@@ -260,6 +273,21 @@
         <div class="audio-vinyl" id="vinyl-disc"></div>
         <div class="audio-title" id="audio-visual-title">Audio Track Title</div>
         <div class="audio-subtitle" id="audio-visual-folder">Playlist Folder</div>
+      </div>
+      <div id="player-controls" class="player-controls">
+        <button type="button" id="pp-btn" class="pc-btn pp-btn" aria-label="Play" aria-pressed="false">
+          <span class="pp-icon-play" aria-hidden="true"></span>
+          <span class="pp-icon-pause" aria-hidden="true"></span>
+        </button>
+        <span id="time-cur" class="pc-time">0:00</span>
+        <input type="range" id="seek-bar" class="pc-range pc-seek" min="0" max="1" step="0.001" value="0" aria-label="Seek">
+        <span id="time-dur" class="pc-time">0:00</span>
+        <button type="button" id="mute-btn" class="pc-btn mute-btn" aria-label="Mute" aria-pressed="false">
+          <span class="mute-icon-on" aria-hidden="true"></span>
+          <span class="mute-icon-off" aria-hidden="true"></span>
+        </button>
+        <input type="range" id="vol-bar" class="pc-range pc-vol" min="0" max="1" step="0.01" value="1" aria-label="Volume">
+        <button type="button" id="fs-btn" class="pc-btn fs-btn" aria-label="Fullscreen">⛶</button>
       </div>
     </div>
   </template>

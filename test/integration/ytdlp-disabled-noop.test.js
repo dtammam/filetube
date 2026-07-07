@@ -131,6 +131,24 @@ test('T3 one-shot download / edit-pause / status routes 404 when the module is d
   assert.equal(status.status, 404, 'GET /api/subscriptions/status must 404 when disabled (AC32)');
 });
 
+// v1.21.0 FR-5 (AC69): the 3 channel-pin routes are registered inside the
+// SAME `isEnabled` gate as everything else, so they must be equally absent
+// (native Express 404, no separate no-op guard) when disabled.
+test('T5 channel-pin routes (list/add/remove) 404 when the module is disabled', async () => {
+  const list = await fetch(`${base}/api/subscriptions/pins`);
+  assert.equal(list.status, 404, 'GET /api/subscriptions/pins must 404 when disabled');
+
+  const add = await fetch(`${base}/api/subscriptions/pins`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ channelDir: '/data/ytdlp-downloads/x', label: 'x' }),
+  });
+  assert.equal(add.status, 404, 'POST /api/subscriptions/pins must 404 when disabled');
+
+  const del = await fetch(`${base}/api/subscriptions/pins/some-id`, { method: 'DELETE' });
+  assert.equal(del.status, 404, 'DELETE /api/subscriptions/pins/:id must 404 when disabled');
+});
+
 // T4's startBackground registers the download dir into db.folders and arms
 // the real poll timer -- both must be complete no-ops when disabled.
 test('startBackground never registers db.folders, never arms a timer, and never touches the filesystem when the module is disabled', async () => {

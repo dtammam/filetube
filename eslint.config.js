@@ -141,6 +141,12 @@ module.exports = [
         // Subscribe button wiring.
         decideSubscribeButtonState: 'readonly',
         buildSubscribeModal: 'readonly',
+        // FR-7 (T6, v1.21.0): the fail-safe yt-dlp-vs-local detection
+        // predicate and the escalated, checkbox-gated hard-delete confirm,
+        // consumed by watch.js's delete button and main.js's card two-tap
+        // arm.
+        isYtdlpManagedItem: 'readonly',
+        showHardDeleteModal: 'readonly',
       },
     },
   },
