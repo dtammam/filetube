@@ -393,6 +393,22 @@ function shouldDesktopVideoTapToggle(playerState, isMobile) {
   return playerState === 'full' && !isMobile;
 }
 
+// ---- FR-1 (T1, v1.22.2): #fs-btn audio-vs-video branch decision -----------
+// iPhone Safari refuses `requestFullscreen()`/`webkitEnterFullscreen()` on a
+// non-video element, so `#fs-btn`'s native-Fullscreen-API path (see
+// `enterFullscreen()` below) is a dead no-op for audio -- exactly why
+// v1.22.1 hid the button for mobile audio in the first place. This round
+// re-shows it (style.css, T2) and gives the SAME button a second, CSS-only
+// destination for audio: a full-viewport `.audio-expanded` class toggle on
+// `host` (`#player-wrapper`), never the Fullscreen API. This pure lookup is
+// the exact seam the live `#fs-btn` click handler branches on (below) --
+// kept here, `node:test`-able with no DOM, so the audio/video split is
+// locked independently of the live handler's own wiring.
+function resolveFsButtonAction(ctx) {
+  var opts = ctx || {};
+  return opts.audioMode ? 'audio-expand' : 'native-fullscreen';
+}
+
 // Guarded so requiring this file in Node (for unit tests) never touches
 // `window`/`document` -- mirrors common.js's own `if (typeof window ...)`
 // runtime guard immediately below.
@@ -412,6 +428,7 @@ if (typeof module !== 'undefined' && module.exports) {
     resolveEndedAction,
     nextPlaybackRate,
     shouldDesktopVideoTapToggle,
+    resolveFsButtonAction,
   };
 }
 
@@ -1510,6 +1527,34 @@ if (typeof module !== 'undefined' && module.exports) {
     return null;
   }
 
+  // ---- FR-1 (T1, v1.22.2): audio "fullscreen" -- CSS full-viewport expand ---
+  // NOT the Fullscreen API (see `resolveFsButtonAction` above) -- a plain
+  // class toggle on `host` (`#player-wrapper`), styled by T2 as
+  // `position: fixed; inset: 0` only when BOTH `.audio-mode` and
+  // `.audio-expanded` are present. FULL-only, matching every other
+  // fullscreen/gesture guard in this file (`state !== STATE_FULL` checks
+  // throughout) -- a docked mini-player audio item has no expand affordance.
+  function toggleAudioExpand() {
+    if (!host || state !== STATE_FULL) return;
+    var expanded = host.classList.toggle('audio-expanded');
+    // Cheap a11y (gate round, v1.22.2): reflect the toggle state on the
+    // reused `#fs-btn` so assistive tech announces it as a real toggle
+    // button, not a stateless one.
+    if (fsBtn) fsBtn.setAttribute('aria-pressed', expanded ? 'true' : 'false');
+  }
+
+  // Force-clears the expanded class. Called from every FULL-exit path
+  // (`teardownMediaState()`, `dock()`, `close()` below) so the expanded view
+  // can NEVER survive a dock/close/navigate-away and start the next FULL
+  // session already expanded (AC5). Also the target of the secondary desktop
+  // Escape exit affordance (see the dedicated keydown listener in
+  // `wireHostListeners` below). Safe to call unconditionally (no-ops if the
+  // class isn't present or `host` doesn't exist yet).
+  function exitAudioExpand() {
+    if (host) host.classList.remove('audio-expanded');
+    if (fsBtn) fsBtn.setAttribute('aria-pressed', 'false');
+  }
+
   // ---- one-time element-scoped listener wiring (never re-run) ----------------
   // Every listener here is attached to the HOST or an element inside it, so it
   // travels with the host wherever it's reparented -- no add/remove churn
@@ -1706,6 +1751,13 @@ if (typeof module !== 'undefined' && module.exports) {
 
     if (fsBtn) {
       fsBtn.addEventListener('click', function () {
+        var action = resolveFsButtonAction({ audioMode: host.classList.contains('audio-mode') });
+        if (action === 'audio-expand') {
+          toggleAudioExpand();
+          return;
+        }
+        // 'native-fullscreen' -- EXISTING video path, byte-identical to
+        // before this FR (AC4): never touched for `.audio-mode`.
         if (inNativeFullscreen()) {
           if (document.exitFullscreen) {
             var pe = document.exitFullscreen();
@@ -1884,6 +1936,19 @@ if (typeof module !== 'undefined' && module.exports) {
         case 'f':
         case 'F': {
           e.preventDefault();
+          // FR-4 (gate round, v1.22.2): route through the SAME
+          // `resolveFsButtonAction` branch `#fs-btn`'s click handler uses
+          // above, so the desktop `f`/`F` shortcut and clicking `#fs-btn`
+          // are never two diverging "fullscreen audio" affordances. Audio
+          // takes the CSS expand toggle; the video path below is otherwise
+          // completely untouched (AC4).
+          var fsAction = resolveFsButtonAction({ audioMode: host.classList.contains('audio-mode') });
+          if (fsAction === 'audio-expand') {
+            toggleAudioExpand();
+            break;
+          }
+          // 'native-fullscreen' -- EXISTING video path, byte-identical to
+          // before this fix: never touched for `.audio-mode`.
           if (document.fullscreenElement) {
             document.exitFullscreen();
           } else {
@@ -1901,6 +1966,22 @@ if (typeof module !== 'undefined' && module.exports) {
           mediaPlayer.muted = !mediaPlayer.muted;
           break;
       }
+    });
+
+    // ---- FR-1 (T1, v1.22.2): desktop Escape exit for the audio expand -----
+    // Deliberately a SEPARATE listener from the FULL-only shortcut switch
+    // above, not a new `case 'Escape':` folded into it -- that switch
+    // early-returns on a focused `BUTTON` (exactly `#fs-btn`, the control the
+    // user just tapped to enter the expanded view), and this keeps the
+    // video-only tail of the `f`/`F` case (the `document.fullscreenElement`
+    // branch) byte-identical to before this FR (AC4). Fires ONLY while FULL
+    // + expanded, so it can never interfere with video fullscreen's own
+    // Escape handling (the browser's native Fullscreen API already owns
+    // Escape for that case) or with DOCKED/CLOSED audio.
+    document.addEventListener('keydown', function (e) {
+      if (state !== STATE_FULL) return;
+      if (!host || !host.classList.contains('audio-expanded')) return;
+      if (e.key === 'Escape' || e.key === 'Esc') exitAudioExpand();
     });
   }
 
@@ -1935,6 +2016,7 @@ if (typeof module !== 'undefined' && module.exports) {
     if (transcodeOverlay) transcodeOverlay.style.display = 'none';
     if (transcodeSpinner) transcodeSpinner.classList.remove('failed');
     if (host) host.classList.remove('audio-mode');
+    exitAudioExpand(); // FR-1 (T1, v1.22.2, AC5): every genuine new load force-clears any expanded state left over from the previous media
     // FR-1 (T1, v1.22.0): belt-and-suspenders -- `mountInSlot()` (called a
     // few lines below, in `load()`) re-derives the real controls-mode for
     // the NEW media via `applyControlsMode()` microseconds later, but
@@ -2073,6 +2155,7 @@ if (typeof module !== 'undefined' && module.exports) {
     ensureDockChrome(dockEl);
     var wasPlaying = !mediaPlayer.paused;
     resetTransientPlaybackUi();
+    exitAudioExpand(); // FR-1 (T1, v1.22.2, AC5): never dock a fixed-overlay expanded wrapper
     if (host.parentNode !== dockEl) dockEl.appendChild(host);
     dockEl.hidden = false;
     state = STATE_DOCKED;
@@ -2096,6 +2179,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // art single-tap toggle so it can never fire on the (about to be
     // detached) persistent element after close().
     cancelPendingArtTap();
+    exitAudioExpand(); // FR-1 (T1, v1.22.2, AC5): never leave a closed player's host expanded for a future re-open
     if (mediaPlayer) {
       try {
         mediaPlayer.pause();

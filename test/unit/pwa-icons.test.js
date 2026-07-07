@@ -166,3 +166,51 @@ test('every page that ships a manifest link also points apple-touch-icon at the 
     assert.match(html, /<link rel="apple-touch-icon" href="\/icons\/icon-192\.png">/, `${p} should use the PNG apple-touch-icon`);
   }
 });
+
+// ---- FR-2 (v1.22.2): raster favicon fallback (tab vs. bookmark parity) ----
+
+test('every page ships PNG rel="icon" fallbacks (192 and 512) alongside the SVG favicon', () => {
+  const pages = [
+    path.join(__dirname, '..', '..', 'public', 'index.html'),
+    path.join(__dirname, '..', '..', 'public', 'watch.html'),
+    path.join(__dirname, '..', '..', 'public', 'setup.html'),
+    path.join(__dirname, '..', '..', 'lib', 'ytdlp', 'views', 'subscriptions.html'),
+  ];
+  for (const p of pages) {
+    const html = fs.readFileSync(p, 'utf8');
+    assert.match(
+      html,
+      /<link rel="icon" type="image\/svg\+xml" href="\/favicon\.svg">/,
+      `${p} should keep the existing SVG favicon link`
+    );
+    assert.match(
+      html,
+      /<link rel="icon" type="image\/png" sizes="192x192" href="\/icons\/icon-192\.png">/,
+      `${p} should add a 192px PNG rel="icon" fallback`
+    );
+    assert.match(
+      html,
+      /<link rel="icon" type="image\/png" sizes="512x512" href="\/icons\/icon-512\.png">/,
+      `${p} should add a 512px PNG rel="icon" fallback`
+    );
+  }
+});
+
+test('the four shells\' icon <link> blocks (SVG + PNG fallbacks + apple-touch-icon + manifest) are byte-identical', () => {
+  const pages = [
+    path.join(__dirname, '..', '..', 'public', 'index.html'),
+    path.join(__dirname, '..', '..', 'public', 'watch.html'),
+    path.join(__dirname, '..', '..', 'public', 'setup.html'),
+    path.join(__dirname, '..', '..', 'lib', 'ytdlp', 'views', 'subscriptions.html'),
+  ];
+  const extractIconBlock = (html) => {
+    const start = html.indexOf('<link rel="icon"');
+    const end = html.indexOf('<link rel="manifest"');
+    assert.ok(start !== -1 && end !== -1 && end > start, 'expected an icon block followed by a manifest link');
+    return html.slice(start, end);
+  };
+  const [first, ...rest] = pages.map((p) => extractIconBlock(fs.readFileSync(p, 'utf8')));
+  for (let i = 0; i < rest.length; i += 1) {
+    assert.equal(rest[i], first, `${pages[i + 1]} icon block should be byte-identical to ${pages[0]}`);
+  }
+});
