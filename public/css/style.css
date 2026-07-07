@@ -997,7 +997,14 @@ header {
   font-size: 11px;
   letter-spacing: 0.5px;
 }
-.embedded-tag { margin: 2px 0; }
+/* overflow-wrap:anywhere so a long unbroken embedded value (a URL, id, or an
+   underscored yt-dlp filename with no spaces to wrap at) breaks and wraps
+   inside the description box instead of forcing the whole watch view wider
+   than the viewport -- the real fix for the "some videos size wrong on
+   mobile" report (only files WITH embedded metadata / long paths hit it).
+   Capping the value length (watch.js clip()) doesn't help an unbroken token;
+   this does. */
+.embedded-tag { margin: 2px 0; overflow-wrap: anywhere; }
 .embedded-tag-key { color: var(--text-secondary); font-weight: 600; }
 
 .skip-btn {
@@ -1606,6 +1613,7 @@ header {
 
 .file-path {
   font-family: var(--mono-font);
+  overflow-wrap: anywhere; /* long underscored paths (no spaces) must break, not overflow */
 }
 
 .remove-folder-btn {
