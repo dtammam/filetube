@@ -311,42 +311,31 @@ function shouldArtSingleTapAct(state, onSingleTap) {
   return !!onSingleTap && state === 'full';
 }
 
-// ---- FR-1 (T1, v1.22.0): responsive controls-mode pure helpers ------------
+// ---- FR-1 (T1, v1.22.0 -- retired v1.22.1): mobile-form-factor pure helper -
 // See the exec plan's "## Design (FR-1)" (docs/exec-plans/active/
-// 2026-07-08-v1.22-player-parity.md). Both hoisted here, same "pure helpers
-// first" split as every other decision above, so both are directly
+// 2026-07-07-v1.22.1-mobile-player-fixes.md). Hoisted here, same "pure
+// helpers first" split as every other decision above, so it's directly
 // `node:test`-able with no DOM/browser harness.
-
-// Is this device a "mobile form factor" for control-surface purposes? Takes
-// EXPLICIT signals (no DOM) so it's unit-testable. The primary signal is a
-// touch-first device with no precise hover pointer -- `signals.coarsePointer
-// && signals.noHover` -- the combined heuristic that correctly classifies a
-// desktop window narrowed below the mobile breakpoint (fine pointer + hover
-// -> desktop) and a large tablet in portrait (coarse pointer + no hover,
-// even above the width breakpoint -> mobile), unlike a bare-width check. The
-// width-based `signals.narrowViewport` fallback is used ONLY when the
-// pointer/hover queries themselves are unsupported (very old browsers,
-// reported as `coarsePointer`/`noHover` being `undefined`) -- modern
-// browsers always take the primary branch. Reused, unmodified, by FR-8(a)'s
-// `isMobileFormFactor()` call (AC78 -- one shared "is this mobile" signal,
-// never two divergent implementations).
+//
+// v1.22.1 FR-1: the sibling helper that used to live here,
+// `resolveControlsMode(mediaType, isMobile)`, is REMOVED. It decided
+// `'native'` (the iOS `controls` attribute) vs. `'custom'` (this file's own
+// control bar) -- but the `'native'` case (mobile video) is exactly the
+// v1.22.0 regression this round fixes: iOS's inline `<video controls
+// playsinline>` strip auto-hides during playback and never reliably
+// re-reveals under FileTube's own gesture layer, leaving mobile-video users
+// with NO visible controls at all. The fix retires the native-controls path
+// entirely -- mobile video now routes through the SAME custom
+// `#player-controls` bar already used by desktop video/audio and mobile
+// audio, so every case is `'custom'` and the lookup is vestigial. See
+// `applyControlsMode()` below, which now only toggles `.ff-mobile` (CSS
+// touch-sizing/volume-hiding) and always removes the `controls` attribute.
 function resolveMobileFormFactor(signals) {
   var opts = signals || {};
   if (opts.coarsePointer === undefined || opts.noHover === undefined) {
     return !!opts.narrowViewport; // unsupported media query -- fall back to width
   }
   return !!(opts.coarsePointer && opts.noHover);
-}
-
-// Which control surface should own `#media-player` for this media type on
-// this form factor? `'native'` iff it's VIDEO on a mobile form factor (the
-// v1.21 regression this FR fixes); `'custom'` for every other combination
-// (desktop video, desktop audio, mobile audio all keep the v1.21 custom
-// bar, byte-identical). Deliberately state-independent (FULL/DOCKED
-// dock-suppression is applied by the caller, `applyControlsMode`, below) so
-// this stays a clean two-argument lookup for the AC10 regression-lock test.
-function resolveControlsMode(mediaType, isMobile) {
-  return mediaType === 'video' && !!isMobile ? 'native' : 'custom';
 }
 
 // ---- FR-7 (TF, v1.22.0): loop/repeat pure decision helper ------------------
@@ -369,6 +358,41 @@ function resolveEndedAction(ctx) {
   return 'stop';
 }
 
+// ---- FR-4 (T1, v1.22.1): persistent playback-speed pure helper ------------
+// The fixed cycle of rates `#speed-btn` steps through on every click/tap:
+// 1x -> 1.25x -> 1.5x -> 1.75x -> 2x -> 1x (wraps). Kept as a MODULE-LEVEL
+// constant (not a function-local literal) so the live click handler below
+// and this pure helper always agree on the exact same list.
+var PLAYBACK_RATES = [1, 1.25, 1.5, 1.75, 2];
+
+// Given the CURRENTLY active rate, returns the NEXT rate in the cycle above.
+// An unrecognized `current` (e.g. the element's default `1` read before any
+// `#speed-btn` interaction has ever happened, or a stale/foreign value) is
+// treated the same as "start of the cycle" -- returns the FIRST rate, never
+// throws or produces `NaN`/`undefined`. Deliberately a pure lookup (no DOM),
+// per the "pure helpers first" split every other decision in this file uses
+// -- the live handler (`wireHostListeners`, below) is a thin mirror that
+// calls this then sets `mediaPlayer.playbackRate` + the button's label.
+function nextPlaybackRate(current) {
+  var idx = PLAYBACK_RATES.indexOf(current);
+  if (idx === -1) return PLAYBACK_RATES[0];
+  return PLAYBACK_RATES[(idx + 1) % PLAYBACK_RATES.length];
+}
+
+// ---- FR-5 (T1, v1.22.1): desktop click-video-to-toggle-play/pause guard ---
+// Pure gate behind the new desktop-only `#media-player` 'click' listener
+// (`wireHostListeners`, below), mirroring `shouldArtSingleTapAct`'s role for
+// the audio cover-art surface. Acts ONLY while FULL (matches every other
+// FULL-only gesture/shortcut guard in this file) AND only on a non-mobile
+// form factor (AC29 -- desktop-only; reuses the SAME `isMobileFormFactor()`
+// signal the caller passes in, never a second/divergent "is this mobile"
+// check). Mobile video's existing gesture layer and FR-1's custom-bar fix
+// are completely untouched by this -- on mobile, taps are owned by `#pp-btn`
+// and `wireSkipHoldGestures`, not this listener.
+function shouldDesktopVideoTapToggle(playerState, isMobile) {
+  return playerState === 'full' && !isMobile;
+}
+
 // Guarded so requiring this file in Node (for unit tests) never touches
 // `window`/`document` -- mirrors common.js's own `if (typeof window ...)`
 // runtime guard immediately below.
@@ -385,8 +409,9 @@ if (typeof module !== 'undefined' && module.exports) {
     classifyTapGesture,
     shouldArtSingleTapAct,
     resolveMobileFormFactor,
-    resolveControlsMode,
     resolveEndedAction,
+    nextPlaybackRate,
+    shouldDesktopVideoTapToggle,
   };
 }
 
@@ -417,6 +442,10 @@ if (typeof module !== 'undefined' && module.exports) {
   // once alongside the rest of the custom bar above.
   var pipBtn;
 
+  // FR-4 (T1, v1.22.1): persistent playback-speed cycle button, queried/
+  // wired once alongside the rest of the custom bar above.
+  var speedBtn;
+
   var dockCloseBtn = null;
   var dockChromeReady = false;
 
@@ -439,6 +468,7 @@ if (typeof module !== 'undefined' && module.exports) {
   var VOLUME_STORAGE_KEY = 'ft-volume';
   var MUTED_STORAGE_KEY = 'ft-muted';
   var LOOP_STORAGE_KEY = 'ft-loop'; // FR-7 (TF, v1.22.0) -- watch-page-local preference, NOT a server db.settings setting (mirrors the v1.21 FR-9 ft-theater pattern)
+  var RATE_STORAGE_KEY = 'ft-rate'; // FR-4 (T1, v1.22.1) -- watch-page-local preference, same pattern as VOLUME/LOOP above
 
   // One-shot flag (FR-4b, T3): set true in handleAutoplayNext immediately
   // before navigate(). Bug-fix (v1.17.0 two-reviewer gate): this global is
@@ -504,29 +534,29 @@ if (typeof module !== 'undefined' && module.exports) {
     });
   }
 
-  // FR-1 (T1, v1.22.0): the impure applier -- decides + applies the
-  // native-vs-custom control surface for the CURRENTLY loaded media. Sets
-  // `.ff-mobile` on `host` (`#player-wrapper`) from the SAME
-  // `isMobileFormFactor()` call that decides the `controls` attribute, so
-  // CSS (which reacts to `.ff-mobile`) and the attribute can never disagree
-  // (see the exec plan's "single source of truth"). The native `controls`
-  // attribute is only ever present while `state === STATE_FULL` (the AC9
-  // dock-suppression -- a docked mini-player never shows the native strip,
-  // mirroring the existing `#player-dock .skip-controls { display: none }`
-  // FULL-only-affordance precedent). Called synchronously from
-  // `mountInSlot()`/`dock()` -- the existing reparent/state-transition
-  // points -- never from a `matchMedia` change-listener (AC7: capability is
-  // stable across orientation/resize, so re-deriving live is unnecessary).
+  // FR-1 (T1, v1.22.0 -- RETIRED, v1.22.1): the impure applier. v1.22.0 used
+  // this to decide native-vs-custom control surface for the CURRENTLY loaded
+  // media; v1.22.1 retires the native `controls` path entirely (see the pure
+  // helper section above) -- iOS's inline `<video controls playsinline>`
+  // strip auto-hides during playback and does not reliably re-reveal under
+  // this file's own gesture layer, leaving mobile-video users with NO
+  // visible controls at all (v1.22.1 FR-1, the CRITICAL regression this
+  // fixes). Mobile video now routes through the SAME always-rendered custom
+  // `#player-controls` bar desktop video/audio and mobile audio already use,
+  // so there is no more per-media-type/per-form-factor branch here: this
+  // function ALWAYS removes the `controls` attribute, and its only remaining
+  // job is toggling `.ff-mobile` on `host` (`#player-wrapper`) from
+  // `isMobileFormFactor()` -- still needed by CSS for mobile touch-target
+  // sizing and volume-control hiding (T2's `style.css` changes). Called
+  // synchronously from `mountInSlot()`/`dock()` -- the existing
+  // reparent/state-transition points -- never from a `matchMedia`
+  // change-listener (AC7: capability is stable across orientation/resize, so
+  // re-deriving live is unnecessary).
   function applyControlsMode() {
     if (!host || !mediaPlayer) return;
     var mobile = isMobileFormFactor();
     host.classList.toggle('ff-mobile', mobile);
-    var mode = resolveControlsMode(currentData && currentData.type, mobile);
-    if (mode === 'native' && state === STATE_FULL) {
-      mediaPlayer.setAttribute('controls', '');
-    } else {
-      mediaPlayer.removeAttribute('controls');
-    }
+    mediaPlayer.removeAttribute('controls');
   }
 
   function inNativeFullscreen() {
@@ -579,6 +609,7 @@ if (typeof module !== 'undefined' && module.exports) {
     volBar = host.querySelector('#vol-bar');
     fsBtn = host.querySelector('#fs-btn');
     pipBtn = host.querySelector('#pip-btn');
+    speedBtn = host.querySelector('#speed-btn');
     artPlayGlyph = host.querySelector('#art-play-glyph');
     wireHostListeners();
     return host;
@@ -745,7 +776,16 @@ if (typeof module !== 'undefined' && module.exports) {
   var lastTapLeft = false;
   var startX = 0, startY = 0;
   var HOLD_MS = 500;
-  var MOVE_TOL = 10;
+  // v1.22.1 FR-2 (bug-fix): raised from `10` -- the hold-cancel tolerance
+  // used ONLY by the `touchmove` listener below to abort an armed
+  // `holdTimer` (press-and-hold-2x). At `10`px, ordinary thumb jitter during
+  // a genuine stationary-ish press-and-hold on mobile (most reproducible on
+  // `#audio-bg-art`, the cover-art surface, but shared by `#media-player`
+  // too) easily exceeded the tolerance before `HOLD_MS` elapsed, so
+  // `engageHold` never fired and 2x never engaged. This does NOT affect
+  // tap/double-tap classification (`classifyTapGesture`, above) -- that
+  // table is driven purely by tap POSITION and timing, never by movement.
+  var MOVE_TOL = 16;
   // v1.21 FIX 1 (post-gate hardening): the double-tap/double-click window,
   // named+shared so `wireSkipHoldGestures`'s touchend classification and the
   // audio cover-art's `scheduleArtSingleTap` debounce (below) always agree
@@ -1381,6 +1421,71 @@ if (typeof module !== 'undefined' && module.exports) {
     updateVolumeUI();
   }
 
+  // ---- playback speed (FR-4, T1, v1.22.1; FIX 1, v1.22.1 gate round) ---------
+  // The ONE persistent, clickable speed control -- `#speed-btn`, a `.pc-btn`
+  // cycle button on `#player-controls` -- covers every case now that FR-1
+  // routes mobile video through this same custom bar: desktop audio/video,
+  // mobile audio, mobile video. Deliberately separate from `speedBadge`
+  // (`#speed-badge`), the transient `pointer-events: none` "2x ▶▶" overlay
+  // shown only for the duration of a press-and-hold gesture -- the two never
+  // conflict: `engageHold`/`releaseHold` (above) save/restore the LIVE
+  // `mediaPlayer.playbackRate` around a hold, so whatever base rate
+  // `#speed-btn` most recently set is exactly what a hold restores to
+  // afterward.
+  //
+  // Both persistent-rate paths (this init path and the `#speed-btn` click
+  // handler below) set `mediaPlayer.defaultPlaybackRate` ALONGSIDE
+  // `playbackRate` -- never JUST `playbackRate`. Per the HTML media load
+  // algorithm, `mediaPlayer.load()` (called by `teardownMediaState()` on
+  // every genuine new load and by `startLiveStream()` on every desktop
+  // live-transcode skip/seek) resets `playbackRate` back to
+  // `defaultPlaybackRate`. Without also setting `defaultPlaybackRate`, the
+  // user's chosen rate silently reverted to 1x on every subsequent item while
+  // `#speed-btn`'s label kept showing the stale rate. Setting
+  // `defaultPlaybackRate` makes the browser preserve the chosen rate across
+  // every future load/skip automatically -- no reapply listener needed. The
+  // transient hold-2x path (`engageHold`/`releaseHold`, above) deliberately
+  // touches ONLY `playbackRate`, never `defaultPlaybackRate` -- otherwise the
+  // transient 2x would leak into becoming the new persistent base rate.
+  //
+  // Persisted to `localStorage['ft-rate']`, mirroring `VOLUME_STORAGE_KEY`/
+  // `LOOP_STORAGE_KEY` above -- same guarded try/catch idiom (storage
+  // disabled/full degrades to "no stored preference," never throws).
+  function loadStoredPlaybackRate() {
+    try {
+      var raw = parseFloat(localStorage.getItem(RATE_STORAGE_KEY));
+      return PLAYBACK_RATES.indexOf(raw) !== -1 ? raw : null; // only a value from the known cycle is trusted -- garbage/foreign values are ignored, not coerced
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function persistPlaybackRate(rate) {
+    try { localStorage.setItem(RATE_STORAGE_KEY, String(rate)); } catch (_) { /* storage disabled/full -- best-effort only */ }
+  }
+
+  function updateSpeedBtnUI(rate) {
+    if (!speedBtn) return;
+    speedBtn.textContent = rate + '×'; // e.g. "1.5×" -- textContent only, never innerHTML
+  }
+
+  // Runs exactly once, from wireHostListeners(): applies the stored
+  // preference (if any) BEFORE any playback starts, mirroring `initVolume`'s
+  // own "apply before playback" ordering -- so speed survives navigation
+  // (AC-FR4, the persistent single `<video>` element's own `playbackRate`
+  // would otherwise just default back to `1` on a fresh page load). Also sets
+  // `defaultPlaybackRate` (see the block comment above) so every SUBSEQUENT
+  // `load()` -- one per navigated-to item, this function itself only ever
+  // runs once -- preserves the rate too, without a per-load reapply listener.
+  function initPlaybackRate() {
+    if (!mediaPlayer) return;
+    var stored = loadStoredPlaybackRate();
+    var rate = stored !== null ? stored : (mediaPlayer.playbackRate || 1);
+    mediaPlayer.playbackRate = rate;
+    mediaPlayer.defaultPlaybackRate = rate;
+    updateSpeedBtnUI(rate);
+  }
+
   // ---- fullscreen retarget (AC14, load-bearing) -----------------------------
   //
   // Desktop: retargets from the <video> element to `host` (`.player-container`)
@@ -1412,6 +1517,7 @@ if (typeof module !== 'undefined' && module.exports) {
   // shortcuts (keydown, orientation) are additionally guarded by `state`.
   function wireHostListeners() {
     initVolume(); // FR-2 (T2, v1.21.0): apply/hide the persisted volume BEFORE any playback below
+    initPlaybackRate(); // FR-4 (T1, v1.22.1): apply the persisted speed BEFORE any playback below
 
     mediaPlayer.addEventListener('play', startProgressSaver);
     mediaPlayer.addEventListener('pause', stopProgressSaver);
@@ -1579,6 +1685,25 @@ if (typeof module !== 'undefined' && module.exports) {
       });
     }
 
+    // FR-4 (T1, v1.22.1): the persistent speed cycle button -- placed
+    // immediately before `#fs-btn` in the markup (see the four shells'
+    // `#player-host-template`), wired here alongside the rest of the custom
+    // bar. Pure `nextPlaybackRate` decides the next rate; this is a thin
+    // mirror that applies it + updates the label + persists it. Also sets
+    // `defaultPlaybackRate` (FIX 1, v1.22.1 gate round -- see the block
+    // comment above `loadStoredPlaybackRate`) so the chosen rate survives
+    // every subsequent `load()`, not just the current item.
+    if (speedBtn) {
+      speedBtn.addEventListener('click', function () {
+        if (!mediaPlayer) return;
+        var rate = nextPlaybackRate(mediaPlayer.playbackRate);
+        mediaPlayer.playbackRate = rate;
+        mediaPlayer.defaultPlaybackRate = rate;
+        updateSpeedBtnUI(rate);
+        persistPlaybackRate(rate);
+      });
+    }
+
     if (fsBtn) {
       fsBtn.addEventListener('click', function () {
         if (inNativeFullscreen()) {
@@ -1652,6 +1777,34 @@ if (typeof module !== 'undefined' && module.exports) {
           return;
         }
         scheduleArtSingleTap(toggleArtPlayPause);
+      });
+    }
+
+    // FR-5 (T1, v1.22.1): desktop-only click-video-to-toggle-play/pause on
+    // `#media-player` -- mirrors the `#audio-bg-art` click handler directly
+    // above, reusing the SAME `scheduleArtSingleTap`/`cancelPendingArtTap`
+    // debounce (not a second mechanism) so a mouse double-click's first
+    // 'click' never also toggles play/pause before 'dblclick' skips (the
+    // existing ±15s skip, wired below via `wireSkipHoldGestures`). Uses the
+    // plain `togglePlayPause()` (NOT `toggleArtPlayPause`, whose cover-art
+    // glyph flash is audio-only). Desktop-only (AC29): gated by the pure
+    // `shouldDesktopVideoTapToggle` guard (FULL-only + `!isMobileFormFactor()`
+    // -- the SAME shared mobile signal every other form-factor check in this
+    // file uses, never a second/divergent one) -- mobile video's existing
+    // gesture layer (`#pp-btn` + `wireSkipHoldGestures`, below) is completely
+    // untouched, since on mobile this guard is always false. No
+    // `stopPropagation` needed: `#player-controls` is a SIBLING of
+    // `#media-player` (not a descendant) in every shell's
+    // `#player-host-template`, so a control-bar button click never bubbles
+    // here in the first place.
+    if (mediaPlayer) {
+      mediaPlayer.addEventListener('click', function () {
+        if (!shouldDesktopVideoTapToggle(state, isMobileFormFactor())) return;
+        if (pendingArtTapTimer) {
+          cancelPendingArtTap();
+          return;
+        }
+        scheduleArtSingleTap(togglePlayPause);
       });
     }
 
@@ -1877,7 +2030,7 @@ if (typeof module !== 'undefined' && module.exports) {
       slotEl.appendChild(host);
     }
     state = STATE_FULL;
-    applyControlsMode(); // FR-1: re-derive native-vs-custom for this FULL transition (AC9)
+    applyControlsMode(); // re-toggles .ff-mobile for this FULL transition and clears the native `controls` attribute (always removed, never set -- v1.22.1 FR-1)
     hideDock();
     if (wasPlaying && mediaPlayer.paused) mediaPlayer.play().catch(function () {});
   }
@@ -1923,7 +2076,7 @@ if (typeof module !== 'undefined' && module.exports) {
     if (host.parentNode !== dockEl) dockEl.appendChild(host);
     dockEl.hidden = false;
     state = STATE_DOCKED;
-    applyControlsMode(); // FR-1: DOCKED always suppresses native controls (AC9)
+    applyControlsMode(); // re-toggles .ff-mobile for this DOCKED transition and clears the native `controls` attribute (always removed, never set -- v1.22.1 FR-1)
     if (wasPlaying && mediaPlayer.paused) mediaPlayer.play().catch(function () {});
   }
 

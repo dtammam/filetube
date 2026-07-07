@@ -12,17 +12,28 @@
 // post-post-gate correction): the state gate behind that same touchend
 // handler's single-tap branch -- decides whether the audio cover-art tap
 // should act (preventDefault + arm the debounced play/pause toggle) or leave
-// the tap alone to bubble to `#player-dock`'s tap-to-expand handler. The
-// DOM-heavy wiring (actual range-input listeners, the rAF fill loop, the iOS
-// `volumeIsSettable` feature-detect, cover-art click-to-play, fullscreen
-// retarget, the actual touch/mouse event listeners) is intentionally NOT
-// covered here (no jsdom/browser harness in this codebase -- see
-// CONTRIBUTING.md); Dean's on-device pass (especially iOS Safari) is the
-// documented arbiter for that feel, per the exec plan's HEAVIEST-gate note
-// for this FR.
+// the tap alone to bubble to `#player-dock`'s tap-to-expand handler. Also
+// (v1.22.1) `nextPlaybackRate` (FR-4's `#speed-btn` cycle lookup) and
+// `shouldDesktopVideoTapToggle` (FR-5's desktop-only video click-to-toggle
+// guard). The DOM-heavy wiring (actual range-input listeners, the rAF fill
+// loop, the iOS `volumeIsSettable` feature-detect, cover-art click-to-play,
+// fullscreen retarget, the actual touch/mouse event listeners) is
+// intentionally NOT covered here (no jsdom/browser harness in this codebase
+// -- see CONTRIBUTING.md); Dean's on-device pass (especially iOS Safari) is
+// the documented arbiter for that feel, per the exec plan's HEAVIEST-gate
+// note for this FR.
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { clampVolume, seekCommitTarget, classifyTapGesture, shouldArtSingleTapAct } = require('../../public/js/player.js');
+const fs = require('node:fs');
+const path = require('node:path');
+const {
+  clampVolume,
+  seekCommitTarget,
+  classifyTapGesture,
+  shouldArtSingleTapAct,
+  nextPlaybackRate,
+  shouldDesktopVideoTapToggle,
+} = require('../../public/js/player.js');
 
 // ---- clampVolume -------------------------------------------------------------
 
@@ -172,4 +183,92 @@ test('shouldArtSingleTapAct: does NOT act while CLOSED (or any other non-FULL st
 test('shouldArtSingleTapAct: never acts with no onSingleTap at all (the video surface), even while FULL', () => {
   assert.strictEqual(shouldArtSingleTapAct('full', undefined), false);
   assert.strictEqual(shouldArtSingleTapAct('full', null), false);
+});
+
+// ---- nextPlaybackRate (FR-4, v1.22.1) ----------------------------------------
+
+test('nextPlaybackRate: steps forward through the fixed rate cycle', () => {
+  assert.strictEqual(nextPlaybackRate(1), 1.25);
+  assert.strictEqual(nextPlaybackRate(1.25), 1.5);
+  assert.strictEqual(nextPlaybackRate(1.5), 1.75);
+  assert.strictEqual(nextPlaybackRate(1.75), 2);
+});
+
+test('nextPlaybackRate: wraps from the fastest rate back to the slowest', () => {
+  assert.strictEqual(nextPlaybackRate(2), 1);
+});
+
+test('nextPlaybackRate: an unrecognized/foreign current rate degrades to the first rate in the cycle, never throws', () => {
+  assert.strictEqual(nextPlaybackRate(3), 1);
+  assert.strictEqual(nextPlaybackRate(0), 1);
+  assert.strictEqual(nextPlaybackRate(undefined), 1);
+  assert.strictEqual(nextPlaybackRate(null), 1);
+  assert.strictEqual(nextPlaybackRate(NaN), 1);
+});
+
+// ---- shouldDesktopVideoTapToggle (FR-5, v1.22.1) -----------------------------
+
+test('shouldDesktopVideoTapToggle: acts (true) on desktop while FULL', () => {
+  assert.strictEqual(shouldDesktopVideoTapToggle('full', false), true);
+});
+
+test('shouldDesktopVideoTapToggle: does NOT act on mobile, even while FULL (AC29 -- desktop-only)', () => {
+  assert.strictEqual(shouldDesktopVideoTapToggle('full', true), false);
+});
+
+test('shouldDesktopVideoTapToggle: does NOT act while DOCKED or CLOSED, even on desktop', () => {
+  assert.strictEqual(shouldDesktopVideoTapToggle('docked', false), false);
+  assert.strictEqual(shouldDesktopVideoTapToggle('closed', false), false);
+});
+
+// ---- FIX 1 (v1.22.1 gate round): persisted rate must survive mediaPlayer.load() ---
+// `mediaPlayer.load()` (called by teardownMediaState() on every genuine new
+// item and by startLiveStream() on every desktop live-transcode skip/seek)
+// resets `playbackRate` back to `defaultPlaybackRate` per the HTML media load
+// algorithm. Both places that set the PERSISTENT rate (initPlaybackRate() and
+// the #speed-btn click handler) must therefore set `defaultPlaybackRate`
+// ALONGSIDE `playbackRate`, so the browser preserves the chosen rate across
+// every future load automatically. The TRANSIENT hold-2x path (engageHold/
+// releaseHold) must do the opposite -- touch ONLY `playbackRate` -- otherwise
+// a press-and-hold gesture would leak into becoming the new persistent base
+// rate. No jsdom/browser harness in this codebase (see CONTRIBUTING.md), so
+// this is locked directly against the source text, mirroring
+// test/unit/player-form-factor.test.js's applyControlsMode() source-contract
+// posture.
+
+const PLAYER_JS = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'player.js'), 'utf8');
+const initPlaybackRateMatch = /function initPlaybackRate\(\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);
+const speedBtnClickMatch = /speedBtn\.addEventListener\(\s*['"]click['"],\s*function \(\) \{([\s\S]*?)\n {6}\}\);/.exec(PLAYER_JS);
+const engageHoldMatch = /function engageHold\(\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);
+const releaseHoldMatch = /function releaseHold\(\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);
+
+test('FIX 1: initPlaybackRate() and the #speed-btn click handler are found for inspection', () => {
+  assert.ok(initPlaybackRateMatch, 'expected to find initPlaybackRate()\'s source body in player.js');
+  assert.ok(speedBtnClickMatch, 'expected to find the #speed-btn click handler\'s source body in player.js');
+  assert.ok(engageHoldMatch, 'expected to find engageHold()\'s source body in player.js');
+  assert.ok(releaseHoldMatch, 'expected to find releaseHold()\'s source body in player.js');
+});
+
+test('FIX 1: initPlaybackRate() sets defaultPlaybackRate alongside playbackRate -- the stored rate must survive every future load()', () => {
+  const body = initPlaybackRateMatch[1];
+  assert.match(body, /mediaPlayer\.playbackRate\s*=\s*rate\s*;/);
+  assert.match(body, /mediaPlayer\.defaultPlaybackRate\s*=\s*rate\s*;/);
+});
+
+test('FIX 1: the #speed-btn click handler sets defaultPlaybackRate alongside playbackRate -- a manually-chosen rate must also survive every future load()', () => {
+  const body = speedBtnClickMatch[1];
+  assert.match(body, /mediaPlayer\.playbackRate\s*=\s*rate\s*;/);
+  assert.match(body, /mediaPlayer\.defaultPlaybackRate\s*=\s*rate\s*;/);
+});
+
+test('FIX 1: engageHold() (transient hold-2x) sets ONLY playbackRate, never defaultPlaybackRate -- the transient 2x must not become the persistent base rate', () => {
+  const body = engageHoldMatch[1];
+  assert.match(body, /mediaPlayer\.playbackRate\s*=\s*2\s*;/);
+  assert.ok(!/defaultPlaybackRate/.test(body), 'engageHold() must not touch mediaPlayer.defaultPlaybackRate');
+});
+
+test('FIX 1: releaseHold() (transient hold-2x restore) sets ONLY playbackRate, never defaultPlaybackRate', () => {
+  const body = releaseHoldMatch[1];
+  assert.match(body, /mediaPlayer\.playbackRate\s*=\s*prevRate/);
+  assert.ok(!/defaultPlaybackRate/.test(body), 'releaseHold() must not touch mediaPlayer.defaultPlaybackRate');
 });

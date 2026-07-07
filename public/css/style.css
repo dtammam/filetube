@@ -3127,12 +3127,12 @@ a.sub-row-channel-link:focus-visible {
 
 /* ---- docked mini-player: compact bar (play/pause + seek only) ------------ */
 /* Mirrors the existing `#player-dock .skip-controls, .speed-badge { display:
-   none !important; }` precedent just above -- time/volume/fullscreen/PiP
-   (v1.22 FR-8) are impractical at 160-280px mini-dock width, so only
-   play/pause + a slim seek bar (restoring exactly what the native controls
-   used to offer at this size) stay. The underlying play/seek logic is
-   completely untouched and the full bar reappears immediately once the host
-   expands back to FULL. */
+   none !important; }` precedent just above -- time/volume/fullscreen/speed
+   (v1.22.1 FR-4)/PiP (v1.22 FR-8) are impractical at 160-280px mini-dock
+   width, so only play/pause + a slim seek bar (restoring exactly what the
+   native controls used to offer at this size) stay. The underlying play/seek
+   logic is completely untouched and the full bar reappears immediately once
+   the host expands back to FULL. */
 #player-dock .player-controls {
   height: 26px;
   padding: 0 4px;
@@ -3142,7 +3142,8 @@ a.sub-row-channel-link:focus-visible {
 #player-dock .mute-btn,
 #player-dock .pc-vol,
 #player-dock .fs-btn,
-#player-dock .pip-btn {
+#player-dock .pip-btn,
+#player-dock .speed-btn {
   display: none;
 }
 #player-dock .pc-btn {
@@ -3168,20 +3169,28 @@ a.sub-row-channel-link:focus-visible {
     height: 44px; /* comfortable >=44px touch target row, matching the existing mobile tap-target convention elsewhere in this file */
   }
   .pc-btn {
-    width: 36px;
-    height: 36px;
+    width: 44px;
+    height: 44px;
+  }
+  /* #speed-btn keeps its auto width (see the FR-4 rule below) even on
+     mobile, but the touch-target FLOOR still needs to hit >=44px like every
+     other .pc-btn here -- min-width (not a fixed width) lets a longer label
+     grow past 44px instead of clipping. */
+  #speed-btn {
+    min-width: 44px;
   }
 }
 
-/* === v1.22 FR-1: responsive controls =========================================
-   Reacts to `.ff-mobile` (set by player.js's applyControlsMode(), from the SAME
-   isMobileFormFactor() call that toggles the native `controls` attribute on
-   #media-player) and the existing `.audio-mode` class. `.ff-mobile` is the
-   single source of truth for "is this mobile" in CSS -- no second/divergent
-   mobile condition is introduced here. Desktop (both media types) and mobile
-   audio (minus volume) stay byte-identical to v1.21: none of these rules match
-   without `.ff-mobile`, and the mobile-audio rule below only ever hides
-   #vol-bar/#mute-btn, never anything else in the v1.21 FR-2 section above. */
+/* === v1.22/v1.22.1 FR-1: responsive controls =================================
+   Reacts to `.ff-mobile` (set by player.js's applyControlsMode(), from the
+   SAME isMobileFormFactor() signal) and the existing `.audio-mode` class.
+   `.ff-mobile` is the single source of truth for "is this mobile" in CSS --
+   no second/divergent mobile condition is introduced here. As of v1.22.1,
+   mobile VIDEO is no longer special-cased with a hidden custom bar: the
+   native `controls` attribute is retired in player.js, so mobile video now
+   renders through this SAME custom bar as mobile audio and desktop -- only
+   volume (all mobile) and #fs-btn (mobile audio only) are hidden below.
+   Desktop (both media types) stays byte-identical to v1.21/v1.22. */
 
 /* AC6 -- press-hold-2x must not select text / raise the iOS callout. Applied
    to the gesture surfaces wireSkipHoldGestures() binds to (player.js), NOT the
@@ -3196,27 +3205,30 @@ a.sub-row-channel-link:focus-visible {
   -webkit-touch-callout: none;
 }
 
-/* AC4 -- mobile VIDEO: native controls own the strip; hide the custom bar.
-   :not(.audio-mode) keeps the bar for mobile AUDIO. */
-#player-wrapper.ff-mobile:not(.audio-mode) .player-controls {
+/* v1.22.1 FR-1 -- the v1.22 AC4 "hide the custom bar for mobile video" rule
+   and its AC9-correction DOCKED re-assert are RETIRED: with the native
+   `controls` attribute gone (player.js), mobile video never has the bar
+   hidden in FULL, so the existing `#player-dock .player-controls`/
+   `.pc-time`/`.mute-btn`/`.pc-vol`/`.fs-btn`/`.pip-btn` trim rules above
+   already handle DOCKED for mobile video exactly as they already did for
+   mobile audio and desktop -- no re-assert needed. */
+
+/* AC3/v1.22.1 FR-1/FR-2 -- volume is non-functional on ALL mobile (iOS
+   ignores the `volume` property on any media element, video or audio), so
+   #vol-bar/#mute-btn are hidden across the board on mobile now, not just
+   mobile audio -- mirrors initVolume()'s existing iOS volumeIsSettable
+   degrade. Play/pause, seek, and #fs-btn remain for mobile video. */
+#player-wrapper.ff-mobile #vol-bar,
+#player-wrapper.ff-mobile #mute-btn {
   display: none;
 }
 
-/* AC9 correction -- while DOCKED the native strip is off (dock isn't FULL), so the
-   custom compact bar (play/pause + slim seek) must return for mobile video too, exactly
-   as it does for mobile audio and desktop. Re-assert over the FR-1 hide (1,3,0) via the
-   #player-dock ancestor (2,3,0). The existing `#player-dock .pc-time/.mute-btn/.pc-vol/
-   .fs-btn/.pip-btn { display:none }` rule still trims it to just play/pause + seek. */
-#player-dock #player-wrapper.ff-mobile:not(.audio-mode) .player-controls {
-  display: flex;
-}
-
-/* AC3/AC11 -- mobile AUDIO: keep the custom bar, drop volume (hardware
-   volume buttons make #vol-bar/#mute-btn redundant on mobile -- mirrors
-   initVolume()'s existing iOS volumeIsSettable degrade, now deliberate for
-   ALL mobile audio, not just iOS). Play/pause, seek, and #fs-btn remain. */
-#player-wrapper.ff-mobile.audio-mode #vol-bar,
-#player-wrapper.ff-mobile.audio-mode #mute-btn {
+/* v1.22.1 FR-2 -- mobile AUDIO only: #fs-btn is a dead tap there (no
+   fullscreen concept for an audio-only element on iOS --
+   webkitEnterFullscreen() no-ops). It stays visible for mobile VIDEO
+   (works -- a real user gesture into native iOS fullscreen) and for
+   desktop (both media types). */
+#player-wrapper.ff-mobile.audio-mode #fs-btn {
   display: none;
 }
 
@@ -3234,6 +3246,24 @@ a.sub-row-channel-link:focus-visible {
 }
 #player-wrapper.audio-mode .pip-btn {
   display: none;
+}
+
+/* === v1.22.1 FR-4: persistent playback-speed control (#speed-btn) ==========
+   Reuses `.pc-btn`'s sizing/theming (era tokens, no new colors) for the
+   border/background/hover/active states. The one difference: `.pc-btn`'s
+   base 30px (44px on mobile, above) square is sized for icon glyphs, while
+   #speed-btn's label is variable-width text ("1x" .. "1.25x" .. "2x", set
+   by player.js's cycle handler) that would either overflow a fixed square
+   or jitter the bar's layout as it cycles. Overriding just `width` (an ID
+   selector beats `.pc-btn`'s class selector, so this wins at every
+   breakpoint without `!important`) to `auto` + a `min-width`/padding keeps
+   the label comfortably legible while `.pc-btn`'s height (30px desktop,
+   44px mobile) stays the sole touch-target source of truth. */
+#speed-btn {
+  width: auto;
+  min-width: 30px;
+  padding: 0 6px;
+  font-size: 12px;
 }
 
 /* === v1.21 FR-3: subscriptions list / settings sheet ======================
