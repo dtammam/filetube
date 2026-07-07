@@ -953,12 +953,62 @@ function codecNeedsTranscode(videoCodec, audioCodec) {
   return false;
 }
 
+// Shared ffprobe arg-array builder (v1.18.1 hotfix extraction) -- SINGLE
+// source of truth for the probe args `extractMetadataAndThumbnail` and the
+// codec-only `probeCodecsOnly` (below) both use, so the two spawns can never
+// silently drift apart. `execFile` (not `exec`) so `filePath` is passed as
+// its own arg-array element rather than interpolated into a shell command
+// string -- this narrows the pre-existing injection surface on this line
+// without widening anything.
+function buildFfprobeArgs(filePath) {
+  return [
+    '-v', 'error',
+    '-show_entries', 'format=duration:format_tags:stream=codec_name,codec_type:stream_disposition=attached_pic',
+    '-of', 'json',
+    filePath,
+  ];
+}
+
+// v1.18.1 hotfix: a lightweight, CODEC-ONLY probe used by the scan's
+// legacy-video backfill branch (below, ~line 1280s). Runs ONLY the ffprobe
+// codec probe -- the SAME args `extractMetadataAndThumbnail` uses (via
+// `buildFfprobeArgs`, so the two can never diverge) -- and parses the result
+// with the existing `parseFfprobeStreams`. It NEVER runs an ffmpeg frame-grab
+// / art-extraction spawn and NEVER touches the thumbnail file: that is
+// precisely what lets a pre-v1.18 (or probe-failed) video's codec fields be
+// backfilled without re-generating (and thus clobbering) its existing
+// thumbnail -- the v1.18.0 regression this hotfix fixes. Same degrade-safe
+// contract as `extractMetadataAndThumbnail`'s codec fields: `videoCodec`/
+// `audioCodec` are always an explicit lowercased string or `null` (never
+// `undefined`) -- `null` on ffmpeg-unavailable, a probe error, or
+// unparseable/absent stream data.
+function probeCodecsOnly(filePath) {
+  return new Promise((resolve) => {
+    if (!ffmpegAvailable) {
+      resolve({ videoCodec: null, audioCodec: null });
+      return;
+    }
+    execFile('ffprobe', buildFfprobeArgs(filePath), { maxBuffer: 16 * 1024 * 1024 }, (err, stdout) => {
+      let videoCodec = null;
+      let audioCodec = null;
+      if (!err && stdout) {
+        try {
+          const streams = parseFfprobeStreams(stdout);
+          videoCodec = streams.videoCodec !== undefined ? streams.videoCodec : null;
+          audioCodec = streams.audioCodec !== undefined ? streams.audioCodec : null;
+        } catch (_) { videoCodec = null; audioCodec = null; }
+      }
+      resolve({ videoCodec, audioCodec });
+    });
+  });
+}
+
 // Extract duration and thumbnail using FFmpeg
 function extractMetadataAndThumbnail(filePath, mediaId, isAudio) {
   return new Promise((resolve) => {
     const thumbName = `${mediaId}.jpg`;
     const thumbPath = path.join(THUMBNAIL_DIR, thumbName);
-    
+
     if (!ffmpegAvailable) {
       // FIX (v1.18.0 two-reviewer follow-up): explicit `null`, not an absent
       // key, even on this "ffmpeg isn't installed at all" path -- so a
@@ -972,20 +1022,11 @@ function extractMetadataAndThumbnail(filePath, mediaId, isAudio) {
     // Get duration + all format tags (artist -> channel name; the rest -> the
     // additive "embedded info" block on the watch page) AND, per stream, its
     // codec + attached_pic disposition (FR-1b, v1.18.0 + two-reviewer
-    // follow-up) -- ONE probe, no second spawn. `execFile` (not `exec`) so
-    // `filePath` is passed as its own arg-array element rather than
-    // interpolated into a shell command string -- this narrows the
-    // pre-existing injection surface on this line without widening anything.
-    const ffprobeArgs = [
-      '-v', 'error',
-      '-show_entries', 'format=duration:format_tags:stream=codec_name,codec_type:stream_disposition=attached_pic',
-      '-of', 'json',
-      filePath,
-    ];
+    // follow-up) -- ONE probe, no second spawn.
     // Bump maxBuffer well above the 1MB default — files with large embedded
     // tags (long descriptions/lyrics) could otherwise overflow it, set `err`, and
     // regress duration to 0 (which would also mis-time the thumbnail grab).
-    execFile('ffprobe', ffprobeArgs, { maxBuffer: 16 * 1024 * 1024 }, (err, stdout) => {
+    execFile('ffprobe', buildFfprobeArgs(filePath), { maxBuffer: 16 * 1024 * 1024 }, (err, stdout) => {
       let duration = 0;
       let artist = '';
       let tags = {};
@@ -1263,24 +1304,78 @@ async function runScanDirectories() {
     const isAudio = AUDIO_EXTENSIONS.includes(info.ext);
 
     // If metadata already exists and file hasn't changed (based on size/mtime), reuse it.
-    // FR-1b (v1.18.0) backfill: a VIDEO item is only reused once it already
-    // carries the probed codec fields (`videoCodec`/`audioCodec` -- present,
-    // even if `null`, once a probe has actually run). A pre-v1.18 entry (or
-    // one whose last probe failed) is missing both keys entirely (see
-    // `extractMetadataAndThumbnail`'s comment on `undefined` vs. `null`) and
-    // is re-extracted ONE more time here to backfill them -- probe-only, this
-    // never itself queues a transcode (reconcileTranscode still gates actual
-    // transcode entry on the ext/codec check, below). Audio items are
-    // unaffected (skip this extra guard) — reconcileTranscode already
-    // short-circuits `type === 'audio'`.
+    // FR-1b (v1.18.0) backfill, HOTFIXED in v1.18.1: a VIDEO item is only
+    // taken on the plain reuse fast-path once it already carries the probed
+    // codec fields (`videoCodec`/`audioCodec` -- present, even if `null`,
+    // once a probe has actually run). A pre-v1.18 entry (or one whose last
+    // probe failed) is missing both keys entirely (see
+    // `extractMetadataAndThumbnail`'s comment on `undefined` vs. `null`).
+    //
+    // v1.18.0 REGRESSION (fixed here): that "missing codec fields" case used
+    // to fall into the full re-init/`extractMetadataAndThumbnail` branch
+    // below -- which runs an ffmpeg FRAME-GRAB, clobbering every pre-v1.18
+    // video's existing thumbnail on the very first post-upgrade scan (icons
+    // silently lost for the whole library). The fix: `unchanged` (same
+    // filePath+size) VIDEO items missing codec fields get their OWN
+    // `legacyVideoCodecBackfillOnly` branch below -- codec-only probe (no
+    // frame-grab, no re-init, existing thumbnail left untouched unless it is
+    // genuinely missing). Audio items are unaffected (skip this extra guard)
+    // -- reconcileTranscode already short-circuits `type === 'audio'`.
     const existing = db.metadata[id];
     const hasCodecFields = !!existing &&
       Object.prototype.hasOwnProperty.call(existing, 'videoCodec') &&
       Object.prototype.hasOwnProperty.call(existing, 'audioCodec');
-    const reusable = !!existing && existing.filePath === filePath && existing.size === info.size &&
-      (isAudio || hasCodecFields);
+    const unchanged = !!existing && existing.filePath === filePath && existing.size === info.size;
+    const reusable = unchanged && (isAudio || hasCodecFields);
+    const legacyVideoCodecBackfillOnly = unchanged && !isAudio && !hasCodecFields;
     if (reusable) {
       newMetadata[id] = existing;
+    } else if (legacyVideoCodecBackfillOnly) {
+      // v1.18.1 hotfix: reuse the existing entry AS-IS (title, duration,
+      // addedAt, artist, tags, hasThumbnail, and the on-disk thumbnail .jpg
+      // are all preserved -- no re-init, no `cleanDisplayTitle` recompute).
+      // Only the codec fields (and the `needsTranscode` they feed) are
+      // backfilled, via the codec-only probe -- no ffmpeg frame-grab runs.
+      console.log(`Backfilling codec fields for legacy video: ${info.name}`);
+      try {
+        const { videoCodec, audioCodec } = await probeCodecsOnly(filePath);
+        existing.videoCodec = videoCodec;
+        existing.audioCodec = audioCodec;
+        // Authoritative recompute now that the codecs are known -- also
+        // redone below by the final reconcileTranscode pass, but set here
+        // too so `existing.needsTranscode` is correct even if that pass is
+        // ever bypassed for this item.
+        existing.needsTranscode = needsTranscode(existing.ext, videoCodec, audioCodec);
+      } catch (err) {
+        console.error(`Error backfilling codec fields for ${info.name}:`, err);
+      }
+
+      // Restore the thumbnail ONLY if it is genuinely missing -- either the
+      // item's own `hasThumbnail` flag is false, or the on-disk .jpg is
+      // absent/empty (e.g. a v1.18.0 scan already clobbered it before this
+      // hotfix landed). A present, non-empty thumbnail is left completely
+      // untouched -- no frame-grab, ever, for a file that already has one.
+      const thumbPath = path.join(THUMBNAIL_DIR, `${id}.jpg`);
+      let thumbnailMissing = !existing.hasThumbnail;
+      if (!thumbnailMissing) {
+        try {
+          thumbnailMissing = !fs.existsSync(thumbPath) || fs.statSync(thumbPath).size === 0;
+        } catch (_) {
+          thumbnailMissing = true;
+        }
+      }
+      if (thumbnailMissing) {
+        console.log(`Restoring missing thumbnail for legacy video: ${info.name}`);
+        try {
+          const thumbMeta = await extractMetadataAndThumbnail(filePath, id, false);
+          existing.hasThumbnail = !!thumbMeta.hasThumbnail;
+        } catch (err) {
+          console.error(`Error restoring thumbnail for ${info.name}:`, err);
+        }
+      }
+
+      newMetadata[id] = existing;
+      dbChanged = true;
     } else {
       // New or updated file
       console.log(`Scanning new/updated file: ${info.name}`);
@@ -2437,6 +2532,7 @@ module.exports = {
   parseFfprobeTags,
   parseFfprobeStreams,
   codecNeedsTranscode,
+  probeCodecsOnly,
   PLAYABLE_VIDEO_CODECS,
   PLAYABLE_AUDIO_CODECS,
   parseCacheCap,
