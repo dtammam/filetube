@@ -1516,8 +1516,26 @@ if (typeof module !== 'undefined' && module.exports) {
   // call sites already did.
   function enterFullscreen() {
     if (!mediaPlayer) return null;
-    if (mediaPlayer.webkitEnterFullscreen) {
-      try { mediaPlayer.webkitEnterFullscreen(); } catch (_) { /* unsupported/refused -- ignore */ }
+    // iOS iPhone: requestFullscreen() is refused on every element, so the ONLY
+    // way to fullscreen an inline <video> is its own webkitEnterFullscreen().
+    // It requires the video to actually support fullscreen (a loaded video
+    // track) -- `webkitSupportsFullscreen` is the readiness gate. Calling
+    // webkitEnterFullscreen() while that is false silently no-ops, which on
+    // Dean's device reads as "the mobile-video fullscreen button does nothing"
+    // (the v1.22.1 regression: the custom #fs-btn replaced the native controls'
+    // own fullscreen button, and this readiness case was never handled).
+    if (typeof mediaPlayer.webkitEnterFullscreen === 'function') {
+      if (mediaPlayer.webkitSupportsFullscreen) {
+        try { mediaPlayer.webkitEnterFullscreen(); } catch (_) { /* refused -- ignore */ }
+      } else {
+        // Tapped before the video track is known (e.g. during load/transcode):
+        // enter as soon as it becomes available. `{ once: true }` so it never
+        // leaks across items.
+        var enterWhenReady = function () {
+          try { mediaPlayer.webkitEnterFullscreen(); } catch (_) { /* refused -- ignore */ }
+        };
+        mediaPlayer.addEventListener('loadedmetadata', enterWhenReady, { once: true });
+      }
       return null;
     }
     var target = (host && host.requestFullscreen) ? host : mediaPlayer;

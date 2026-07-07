@@ -3292,7 +3292,20 @@ a.sub-row-channel-link:focus-visible {
   margin: 0;
   border: none;
   border-radius: 0;
-  background-color: var(--bg-color);
+  /* Black backdrop (not a themed surface) so the contained cover art below
+     letterboxes against black -- the universal fullscreen-media convention,
+     matching the video path's own black letterbox, per Dean's "max to the
+     width with black space above". */
+  background-color: #000;
+}
+
+/* Expanded audio shows the WHOLE cover art scaled to fit (contain), NOT the
+   zoomed cover-crop the ambient in-slot background uses -- so a portrait or
+   non-16:9 image fits to the viewport with black bars instead of being blown
+   up and cropped. Only overrides `background-size` in the expanded scope; the
+   normal (non-expanded) audio-mode ambient art keeps `cover` (see ~913). */
+#player-wrapper.audio-mode.audio-expanded #audio-bg-art {
+  background-size: contain;
 }
 
 /* The control bar (and `#fs-btn`, the exit affordance) is `position:
