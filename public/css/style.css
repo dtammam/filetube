@@ -810,14 +810,29 @@ header {
 /* Audio thumbnail-as-background art (Feature 1, v1.10.0). Hidden by default;
    only shown for audio items whose setupPlayer() audio branch resolves a real
    thumbnail (resolveAudioArtUrl) and opts #player-wrapper into .audio-mode.
-   In audio mode, #media-player is position: relative with z-index: 1, so it
-   (and its native, tappable media controls) paints ABOVE this art layer; this
-   layer is additionally pointer-events: none so it can never intercept taps
-   regardless of stacking. It also sits below the resume/transcode overlays
-   (z-index 10) and skip controls (z-index 6), so those stay visible and
-   clickable in audio mode. Video items never get .audio-mode, so the
-   .player-container #000 background + video { object-fit: contain } rules
-   above are completely unaffected. */
+   In audio mode, #media-player is position: relative with z-index: 1 -- this
+   layer sits below it. It also sits below the resume/transcode overlays
+   (z-index 10), skip controls (z-index 6), and the v1.21 FR-2 control bar
+   (z-index 8, see below), so those stay visible and clickable in audio mode.
+   Video items never get .audio-mode, so the .player-container #000
+   background + video { object-fit: contain } rules above are completely
+   unaffected.
+   pointer-events (v1.21 FR-2, T2): #media-player now renders NO native
+   controls/frame of its own in audio mode (the native `controls` attribute
+   is removed app-wide) and is transparent, so it is made pointer-events:none
+   ONLY in .audio-mode -- letting a tap "pass through" it to THIS layer,
+   whose own pointer-events:auto (below, .audio-mode-scoped only) is what the
+   cover-art click-to-play/pause handler (player.js) actually receives taps
+   on. Outside .audio-mode (i.e. every video item) both stay exactly as
+   before: this layer stays pointer-events:none/display:none (never shown),
+   and #media-player keeps normal pointer-events for its dblclick/touch
+   skip + hold-to-2x gestures.
+   FIX 1 (post-gate hardening, v1.21): the double-tap-skip/press-hold-2x
+   gesture handlers are NOT video-only -- player.js's wireSkipHoldGestures()
+   is wired onto BOTH #media-player (video) and THIS layer (audio, since it
+   is the surface that actually receives taps in .audio-mode per the
+   pointer-events swap above), so ±15s skip/hold-2x keep working for audio
+   even though #media-player itself no longer receives pointer events there. */
 .audio-bg-art {
   position: absolute;
   inset: 0;
@@ -831,12 +846,66 @@ header {
 
 #player-wrapper.audio-mode #audio-bg-art {
   display: block;
+  pointer-events: auto;
+  cursor: pointer;
 }
 
 #player-wrapper.audio-mode #media-player {
   position: relative;
   background: transparent;
   z-index: 1;
+  pointer-events: none;
+}
+
+/* Fading play/pause overlay glyph for the click-the-art surface (v1.21
+   FR-2, AC9). Drawn purely in CSS (a blocky triangle/two-bar pause via
+   border/box-shadow, matching the control bar's icon technique below) so no
+   new image asset is needed; flashed via player.js's flashArtGlyph(), which
+   reuses the same remove/reflow/add class-toggle idiom flashRipple() (skip
+   controls) already established in this codebase. */
+.art-play-glyph {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  opacity: 0;
+}
+
+.art-play-glyph::before {
+  content: '';
+  display: block;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 18px 0 18px 30px;
+  border-color: transparent transparent transparent rgba(255, 255, 255, 0.92);
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.6));
+}
+
+.art-play-glyph.art-play-glyph-playing::before {
+  /* Two blocky bars (pause), drawn from a single zero-width element via
+     box-shadow duplication -- same "square/beveled" language as the pp-btn
+     icon below. */
+  width: 10px;
+  height: 36px;
+  border: none;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 18px 0 0 rgba(255, 255, 255, 0.92);
+  margin-right: 9px;
+}
+
+.art-play-glyph.art-play-glyph-flash {
+  animation: art-play-glyph-fade 650ms ease-out;
+}
+
+@keyframes art-play-glyph-fade {
+  0% { opacity: 0; transform: scale(0.85); }
+  15% { opacity: 1; transform: scale(1); }
+  70% { opacity: 1; }
+  100% { opacity: 0; }
 }
 
 /* Custom Audio Player Visuals */
@@ -966,7 +1035,7 @@ header {
   position: absolute;
   inset: 0;
   z-index: 6;
-  pointer-events: none; /* native <video> controls stay clickable; buttons re-enable below */
+  pointer-events: none; /* lets taps/clicks pass through to whichever interaction surface is active underneath -- #media-player (video) or #audio-bg-art (audio), per the v1.21 FR-2 pointer-events swap above; buttons re-enable below. (Stale pre-FR-2 wording fixed, v1.21 FIX 1: this no longer refers to the native <video controls> bar -- that attribute is removed app-wide, see the FR-2 control bar section.) */
 }
 
 /* Press-and-hold-to-2x badge (mobile inline) */
@@ -1556,19 +1625,16 @@ header {
   overflow-y: auto;
 }
 
-/* v1.19.0 FR-2a: `.folder-list-builder` (above) is shared by three lists --
-   the Setup folder-management builder (#folders-builder-list), the
-   subscriptions one-shot job list (#oneshot-list-container), and this
-   subscriptions list (#sub-list-container). Dean's "box too small" ask is
-   specific to the subscriptions list, so this is a SCOPED ID override (not
-   a change to the shared class) -- the other two lists keep their existing
-   240px/12px sizing untouched. Does not touch .sub-row/.sub-row-info/
-   .sub-row-name/.sub-row-url (the already-shipped v1.13.0 word-wrap fix,
-   ~1651-1703 below) -- only the container's own box size changes. */
-#sub-list-container {
-  max-height: 420px;
-  padding: 16px;
-}
+/* v1.21.0 FR-3, T3: `#sub-list-container` no longer uses `.folder-list-builder`
+   at all (superseding the v1.19.0 FR-2a scoped 420px override that used to
+   live here) -- the subscriptions list is now the page's PRIMARY content, so
+   it gets its OWN `.sub-list` class with NO scroll cap (AC24), rather than a
+   bigger-but-still-capped box. See the labeled "v1.21 FR-3" section near the
+   end of this file for `.sub-list`/`.sub-row-avatar`/`.sub-row-kebab`/
+   `.sub-sheet-*`/`.sub-collapsible`. The Setup folder-management builder
+   (#folders-builder-list) and the one-shot job list (#oneshot-list-container)
+   are UNCHANGED -- still `.folder-list-builder` at its original 240px/12px
+   sizing. */
 
 .folder-item-row {
   display: flex;
@@ -1664,28 +1730,73 @@ header {
    This is DELIBERATELY separate from .folder-item-row/.folder-path-text
    above: that pair was found to collapse its info column to ~1 character
    wide (subscription names/URLs wrapped one character per line, v1.12.0
-   BUG). `.sub-row` wraps (flex-wrap: wrap) instead of forcing everything
-   onto one strict line, and `.sub-row-info` carries a guaranteed minimum
-   width (240px) via flex-basis, so it can never be squeezed toward zero --
-   if the row is genuinely too narrow, `.sub-row-actions` wraps onto its own
-   line below instead of crushing the text column. Long names/URLs wrap at
-   normal word/URL-segment boundaries (`overflow-wrap`/`word-break:
-   break-word`), never mid-character (`break-all`). */
+   BUG). `.sub-row-info` carries a guaranteed minimum width (240px) via
+   flex-basis, so it can never be squeezed toward zero. Long names/URLs wrap
+   at normal word/URL-segment boundaries (`overflow-wrap`/`word-break:
+   break-word`), never mid-character (`break-all`) and never vertical --
+   this word-wrap fix is preserved UNCHANGED by v1.21.0 FR-3, T3's row
+   rewrite below (only the row's own anatomy/layout changed, not this text
+   -wrapping behavior).
+
+   v1.21.0 FR-3, T3: the row anatomy changed from a two-column
+   [info | actions-cluster] layout to a dense THREE-part row -- avatar +
+   info (name / one muted meta+status line / FR-4 channel link) + a single
+   trailing kebab -- per the UI research's "list, not grid; one row =
+   avatar + name + one muted metadata line + a single trailing kebab/gear"
+   guidance. `align-items: center` (not the old `flex-start`) since there is
+   no longer a multi-line button cluster to top-align against; `flex-wrap`
+   is dropped from the row itself (the kebab must always stay pinned to the
+   trailing edge) -- `.sub-row-info`'s own text still wraps internally via
+   `overflow-wrap`/`word-break: break-word` exactly as before. Zebra
+   striping (odd/even) + a 1px separator (instead of the old per-row
+   border+radius+margin "card" look) per the research's retro translation. */
 .sub-row {
   display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  align-items: flex-start;
+  align-items: center;
   gap: 12px;
-  padding: 12px 14px;
+  padding: 10px 14px;
   background-color: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius);
-  margin-bottom: 10px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.sub-row:nth-child(even) {
+  background-color: var(--bg-color);
 }
 
 .sub-row:last-child {
-  margin-bottom: 0;
+  border-bottom: none;
+}
+
+.sub-row-navigable {
+  cursor: pointer;
+}
+
+.sub-row-navigable:hover,
+.sub-row-navigable:focus-within {
+  outline: 1px solid var(--border-dark);
+  outline-offset: -1px;
+}
+
+/* Beveled single-letter avatar (`name[0]`, uppercased) -- research: "one
+   row = avatar + name + ...". Fixed-size so it never squeezes .sub-row-info;
+   the inset/outset border pair is the retro "beveled" look used elsewhere
+   in this file (e.g. .drag-handle's era styling), era tokens only. */
+.sub-row-avatar {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  font-size: 15px;
+  color: var(--text-primary);
+  background-color: var(--bg-color);
+  border-top: 1px solid var(--border-dark);
+  border-left: 1px solid var(--border-dark);
+  border-bottom: 1px solid var(--border-color);
+  border-right: 1px solid var(--border-color);
+  border-radius: var(--radius);
 }
 
 .sub-row-info {
@@ -1702,6 +1813,11 @@ header {
   word-break: break-word;
 }
 
+/* Still used by the one-shot job row (createOneShotRow) -- a plain,
+   non-link URL line (one-shot jobs are ephemeral activity entries, not
+   subscriptions, so the FR-4 clickable-channel-link treatment below does
+   not apply to them). Preserves the original v1.13.0 word-wrap fix
+   unchanged. */
 .sub-row-url {
   font-size: 11px;
   color: var(--text-secondary);
@@ -1710,11 +1826,47 @@ header {
   word-break: break-word;
 }
 
+/* v1.21.0 FR-3: ONE muted metadata line -- `.sub-row-meta` (static,
+   format/quality/count + the FR-4 subscribed date, only rebuilt on a full
+   render) and `.sub-row-status` (the live-poll target, see
+   applyStatusUpdatesInPlace in subscriptions.js) sit on the SAME visual
+   line via `display: inline-flex` + wrap, separated by a thin bullet, even
+   though they remain two distinct DOM nodes -- keeping them separate is
+   what lets the ~2.5s poll update ONLY the status fragment in place without
+   ever touching/rebuilding the rest of the row (the FR-1 fix). */
 .sub-row-meta,
 .sub-row-status {
+  display: inline;
   font-size: 11px;
   color: var(--text-secondary);
-  margin-top: 2px;
+}
+
+/* Only prefixes a bullet when `.sub-row-status` immediately follows
+   `.sub-row-meta` (the subscription-row anatomy) -- the one-shot job row's
+   standalone `.sub-row-status` (no preceding `.sub-row-meta` sibling) is
+   deliberately unaffected, so it never grows a stray leading "· ". */
+.sub-row-meta + .sub-row-status:not(:empty)::before {
+  content: " · ";
+}
+
+/* v1.21.0 FR-4 -- the channel URL row is now a real, clickable link
+   (previously inert text via .sub-row-url) opening the actual YouTube
+   channel in a new tab. `href`/`target`/`rel` are set directly on the
+   anchor in JS (never a template string); this rule is purely cosmetic. */
+.sub-row-channel-link {
+  display: block;
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: 4px;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  text-decoration: none;
+}
+
+a.sub-row-channel-link:hover,
+a.sub-row-channel-link:focus-visible {
+  color: var(--yt-red);
+  text-decoration: underline;
 }
 
 .sub-row-actions {
@@ -1727,11 +1879,13 @@ header {
 
 /* v1.20.0 FR-4 -- per-subscription "View as Playlist" link
    (lib/ytdlp/client/subscriptions.js's createSubscriptionRow), a distinct
-   block from the .sub-row-* set above so a later task (T3) can append its own
-   distinct block here without merge conflicts. Rendered only when the row's
+   block from the .sub-row-* set above. Rendered only when the row's
    `channelDir` was resolved server-side; links to `/?root=<channelDir>`,
    reusing the existing sidebar/Playlists-sheet `?root=` pattern. Era-theme
-   custom properties only, no hardcoded colors. */
+   custom properties only, no hardcoded colors. v1.21.0 FR-3: kept as its
+   own explicit, always-visible link even though the whole row is now also
+   tap-to-navigate -- redundant on purpose (keyboard/assistive-tech users
+   get an explicit target, not just a full-row pointer affordance). */
 .sub-row-playlist-link {
   display: inline-block;
   margin-top: 6px;
@@ -1743,6 +1897,35 @@ header {
 .sub-row-playlist-link:hover,
 .sub-row-playlist-link:focus-visible {
   text-decoration: underline;
+}
+
+/* v1.21.0 FR-3: the single trailing kebab/gear (AC19) -- chunky,
+   right-aligned, per the UI research's retro translation ("chunky
+   right-aligned button"). Square corners (era radius token, 0 on the 2005/
+   2009 eras), beveled border matching .sub-row-avatar. */
+.sub-row-kebab {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  line-height: 1;
+  font-family: inherit;
+  color: var(--text-secondary);
+  background-color: var(--bg-color);
+  border-top: 1px solid var(--border-dark);
+  border-left: 1px solid var(--border-dark);
+  border-bottom: 1px solid var(--border-color);
+  border-right: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.sub-row-kebab:hover,
+.sub-row-kebab:focus-visible {
+  color: var(--yt-red);
 }
 
 /* Appearance (era theme) picker — setup.html */
@@ -2448,17 +2631,23 @@ header {
     row-gap: 10px;
   }
 
-  .folder-item-row,
-  .sub-row {
+  .folder-item-row {
     flex-direction: column;
     align-items: stretch;
     gap: 10px;
   }
 
-  .folder-item-row .remove-folder-btn,
-  .sub-row-actions {
+  .folder-item-row .remove-folder-btn {
     align-self: flex-end;
   }
+
+  /* v1.21.0 FR-3, T3: `.sub-row` DELIBERATELY stays a horizontal flex row
+     on mobile too (avatar left / info middle / kebab or dismiss-button
+     right) -- unlike `.folder-item-row` above, it no longer has a cramped
+     multi-button cluster to fall back to a column for; a compact horizontal
+     row is the more comfortable mobile list pattern here (contact-list
+     style), per the UI research's "dense vertical LIST" guidance (the list
+     is vertical; each ROW stays horizontal). */
 
   /* ---- v1.15.0 item 2: home-page sort-row overflow fix -----------------
      Pre-fix: `.section-title` was a single non-wrapping flex row of
@@ -2606,5 +2795,987 @@ header {
 @media (max-width: 768px) and (orientation: portrait) {
   .player-container {
     max-height: 45vh;
+  }
+}
+
+/* === v1.21 FR-2: player controls / audio-mode ===============================
+   Custom blocky app-owned control bar that replaces the native
+   <audio>/<video controls> bar (unstyleable -- the pure-white-in-dark-mode +
+   rounded/derpy look, per docs/ui-research-2026-07.md #4). Drives BOTH audio
+   and video (one shared #media-player). Every color below comes from the
+   existing era CSS custom properties (:root / [data-theme] blocks at the top
+   of this file) so light/dark + all four eras "just work" with zero new
+   tokens (AC7); every corner is hard `border-radius: 0` (not `var(--radius)`)
+   so the bar reads as deliberately blocky/beveled in EVERY era, including
+   2021/2014/2009, which otherwise round most other chrome (AC8). `color-
+   scheme: dark light` on the wrapper lets any remaining native form-control
+   chrome (e.g. focus rings) pick a sane light/dark default too. */
+
+#player-wrapper {
+  color-scheme: dark light;
+}
+
+.player-controls {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 8; /* above .skip-controls (6), below .resume-overlay/.transcode-overlay (10) -- an overlay fully covers the bar exactly like it already covers skip-controls */
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 40px;
+  padding: 0 8px;
+  background-color: var(--header-bg);
+  border-top: 2px solid var(--border-dark);
+  border-radius: 0;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.15); /* faint top highlight -- beveled/outset, Winamp-style, not glossy/translucent */
+}
+
+.pc-time {
+  font-family: var(--mono-font);
+  font-size: 11px;
+  color: var(--text-secondary);
+  min-width: 36px;
+  text-align: center;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+/* ---- blocky beveled buttons (play/pause, mute, fullscreen) --------------- */
+
+.pc-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--border-dark);
+  border-radius: 0;
+  background-color: var(--btn-bg);
+  color: var(--text-primary);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  /* Outset bevel: light top-left, dark bottom-right -- inverts to an inset
+     "pressed" look on :active below (Winamp/beveled-hardware-button feel,
+     per docs/ui-research-2026-07.md's "beveled inset/outset bar" note). */
+  box-shadow: inset 1px 1px 0 rgba(255, 255, 255, 0.5), inset -1px -1px 0 rgba(0, 0, 0, 0.3);
+}
+
+.pc-btn:hover {
+  background-color: var(--btn-hover);
+}
+
+.pc-btn:active {
+  box-shadow: inset -1px -1px 0 rgba(255, 255, 255, 0.35), inset 1px 1px 0 rgba(0, 0, 0, 0.3);
+}
+
+/* Play/pause glyphs -- drawn purely in CSS (no new image asset): a triangle
+   via the classic CSS border trick, and two blocky bars for pause via a
+   single zero-width element duplicated with box-shadow. `currentColor` (=
+   `.pc-btn`'s `color: var(--text-primary)`) keeps both fully era/dark-mode
+   themed with no separate color token needed. */
+.pp-btn .pp-icon-play,
+.pp-btn .pp-icon-pause {
+  display: block;
+}
+.pp-btn .pp-icon-pause {
+  display: none;
+}
+.pp-btn.is-playing .pp-icon-play {
+  display: none;
+}
+.pp-btn.is-playing .pp-icon-pause {
+  display: block;
+}
+.pp-icon-play {
+  width: 0;
+  height: 0;
+  margin-left: 2px; /* optical-center the triangle inside the square button */
+  border-style: solid;
+  border-width: 8px 0 8px 13px;
+  border-color: transparent transparent transparent currentColor;
+}
+.pp-icon-pause {
+  width: 4px;
+  height: 15px;
+  margin-right: 7px; /* account for the shadow bar's offset so the pair is optically centered */
+  background-color: currentColor;
+  box-shadow: 7px 0 0 currentColor;
+}
+
+/* Mute glyphs -- a stylized speaker (rectangle body + cone) via clip-path on
+   one pseudo-element, freeing the second pseudo-element for the "muted"
+   diagonal slash. */
+.mute-btn .mute-icon-on,
+.mute-btn .mute-icon-off {
+  display: block;
+}
+.mute-btn .mute-icon-off {
+  display: none;
+}
+.mute-btn.is-muted .mute-icon-on {
+  display: none;
+}
+.mute-btn.is-muted .mute-icon-off {
+  display: block;
+}
+.mute-icon-on,
+.mute-icon-off {
+  position: relative;
+  width: 16px;
+  height: 14px;
+}
+.mute-icon-on::before,
+.mute-icon-off::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-color: currentColor;
+  clip-path: polygon(0 35%, 35% 35%, 62% 8%, 62% 92%, 35% 65%, 0 65%);
+}
+.mute-icon-off::after {
+  content: '';
+  position: absolute;
+  left: 1px;
+  top: 0;
+  width: 2px;
+  height: 17px;
+  background-color: currentColor;
+  transform: rotate(45deg);
+  transform-origin: top left;
+}
+
+/* Fullscreen glyph is a plain static dingbat character (⛶) in the markup --
+   same "text glyph, not an icon-font asset" idiom the existing dock close
+   button (`×`) and skip buttons (`«`/`»`) already use in this codebase. */
+.fs-btn {
+  font-size: 14px;
+}
+
+/* ---- seek / volume range inputs ------------------------------------------ */
+
+.pc-range {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  flex: 1 1 auto;
+  height: 16px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.pc-vol {
+  flex: 0 0 56px;
+}
+
+/* Square (border-radius: 0) thumb, both engines. */
+.pc-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 10px;
+  height: 16px;
+  margin-top: -5px; /* vertically center the 16px thumb on the 6px track below */
+  border: 1px solid var(--border-dark);
+  border-radius: 0;
+  background-color: var(--text-primary);
+  box-shadow: inset 1px 1px 0 rgba(255, 255, 255, 0.4);
+}
+.pc-range::-moz-range-thumb {
+  width: 10px;
+  height: 16px;
+  border: 1px solid var(--border-dark);
+  border-radius: 0;
+  background-color: var(--text-primary);
+}
+
+/* Track base (both sliders) -- beveled inset groove; the FILLED portion is
+   layered on top per-slider below (WebKit: a driven CSS var + gradient;
+   Firefox: the native ::-moz-range-progress, which fills to `.value`
+   automatically with no JS-driven var needed). A faint repeating stripe
+   texture gives the "segmented/LCD-style" Winamp-nostalgia read called out
+   in docs/ui-research-2026-07.md #4, without needing a real multi-segment
+   DOM. */
+.pc-range::-webkit-slider-runnable-track {
+  height: 6px;
+  border: 1px solid var(--border-dark);
+  border-radius: 0;
+  box-shadow: inset 1px 1px 0 rgba(0, 0, 0, 0.25);
+  background-color: var(--btn-bg);
+}
+.pc-range::-moz-range-track {
+  height: 6px;
+  border: 1px solid var(--border-dark);
+  border-radius: 0;
+  background-color: var(--btn-bg);
+}
+.pc-range::-moz-range-progress {
+  height: 6px;
+  border-radius: 0;
+  background-color: var(--yt-red);
+}
+
+/* `--seek-fill`/`--vol-fill` are set as inline custom properties on #seek-bar/
+   #vol-bar themselves by player.js's rAF fill loop / scrub / volume-UI
+   update functions -- they inherit into these WebKit-only track
+   pseudo-elements (standard, widely-used technique; Firefox needs none of
+   this, see ::-moz-range-progress above). Defaults (0%/100%) keep the bar
+   sane before the first JS update ever runs. */
+#seek-bar::-webkit-slider-runnable-track {
+  background-image:
+    repeating-linear-gradient(to right, rgba(0, 0, 0, 0.12) 0 2px, transparent 2px 4px),
+    linear-gradient(to right, var(--yt-red) 0%, var(--yt-red) var(--seek-fill, 0%), var(--btn-bg) var(--seek-fill, 0%), var(--btn-bg) 100%);
+}
+#vol-bar::-webkit-slider-runnable-track {
+  background-image:
+    repeating-linear-gradient(to right, rgba(0, 0, 0, 0.12) 0 2px, transparent 2px 4px),
+    linear-gradient(to right, var(--yt-red) 0%, var(--yt-red) var(--vol-fill, 100%), var(--btn-bg) var(--vol-fill, 100%), var(--btn-bg) 100%);
+}
+
+/* ---- docked mini-player: compact bar (play/pause + seek only) ------------ */
+/* Mirrors the existing `#player-dock .skip-controls, .speed-badge { display:
+   none !important; }` precedent just above -- time/volume/fullscreen are
+   impractical at 160-280px mini-dock width, so only play/pause + a slim seek
+   bar (restoring exactly what the native controls used to offer at this
+   size) stay. The underlying play/seek logic is completely untouched and
+   the full bar reappears immediately once the host expands back to FULL. */
+#player-dock .player-controls {
+  height: 26px;
+  padding: 0 4px;
+  gap: 4px;
+}
+#player-dock .pc-time,
+#player-dock .mute-btn,
+#player-dock .pc-vol,
+#player-dock .fs-btn {
+  display: none;
+}
+#player-dock .pc-btn {
+  width: 22px;
+  height: 22px;
+}
+
+/* ---- fullscreen retarget safety net (AC14) -------------------------------- */
+/* Desktop fullscreen now targets `.player-container` (host) instead of the
+   bare <video> (see player.js's enterFullscreen()) specifically so this bar
+   -- a SIBLING of the video, not a descendant -- stays visible/usable while
+   fullscreen. Most browsers auto-size a `:fullscreen` element to the
+   viewport via their UA stylesheet; this is an explicit belt-and-suspenders
+   rule for any that don't. */
+.player-container:fullscreen,
+.player-container:-webkit-full-screen {
+  width: 100%;
+  height: 100%;
+}
+
+@media (max-width: 768px) {
+  .player-controls {
+    height: 44px; /* comfortable >=44px touch target row, matching the existing mobile tap-target convention elsewhere in this file */
+  }
+  .pc-btn {
+    width: 36px;
+    height: 36px;
+  }
+}
+
+/* === v1.21 FR-3: subscriptions list / settings sheet ======================
+   T3: the subscriptions-FIRST rearchitect. `.sub-row`/`.sub-row-avatar`/
+   `.sub-row-meta`/`.sub-row-status`/`.sub-row-channel-link`/`.sub-row-kebab`
+   are defined near line ~1735 above (alongside the pre-existing .sub-row-*
+   set they extend, to keep one source of truth for the row rather than a
+   second, conflicting override block here). This section holds everything
+   genuinely NEW and self-contained: the primary list's outer frame, the
+   demoted-forms `<details>` styling, and the settings bottom-sheet (built
+   entirely in JS -- lib/ytdlp/client/subscriptions.js's buildSettingsSheet
+   -- and appended to document.body on demand, never present in
+   subscriptions.html's static markup). Era CSS custom properties only. */
+
+/* Primary list container (AC24): replaces `.folder-list-builder` for
+   `#sub-list-container` -- no scroll cap, sized for a PRIMARY list rather
+   than a secondary builder box. Row separators/zebra striping live on
+   `.sub-row` itself; this is just the outer frame + rounded-corner clip. */
+.sub-list {
+  border: 1px solid var(--border-color);
+  background-color: var(--bg-secondary);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+/* Native `<details>`/`<summary>` disclosures demoting add-subscription/
+   one-off download BELOW the list (AC23) -- no JS required to expand them.
+   Reuses `.setup-box` for the same card chrome the rest of this page
+   already uses; only `<summary>` gets new styling here, replacing the old
+   `<h2>` as the clickable "heading" -- the native disclosure triangle is
+   the sole open/close affordance. */
+.sub-collapsible > summary {
+  font-size: 22px;
+  font-weight: bold;
+  color: var(--yt-red);
+  cursor: pointer;
+  padding-bottom: 12px;
+}
+
+.sub-collapsible[open] > summary {
+  border-bottom: 1px solid var(--border-color);
+  margin-bottom: 16px;
+}
+
+.sub-collapsible > summary::-webkit-details-marker,
+.sub-collapsible > summary::marker {
+  color: var(--yt-red);
+}
+
+/* ---- settings bottom-sheet (AC21/AC22) ------------------------------------
+   Mirrors the existing `.playlists-sheet`/`-backdrop` silhouette (fixed,
+   bottom-anchored, era tokens) but is its OWN class set (this sheet carries
+   a real settings form, not just a list) and -- unlike the Playlists sheet,
+   which is mobile-only (desktop uses the sidebar instead) -- renders at
+   EVERY viewport width: the kebab that opens it lives in the row at every
+   width, so the sheet must too. This is a wholly separate top-level DOM
+   subtree from `#sub-list-container`'s rows -- the ~2.5s live-status poll
+   (`applyStatusUpdatesInPlace`) has no reference to it and never rebuilds
+   it, which is what makes an open/unsaved edit here immune to the FR-1
+   poll-clobber bug class by construction (AC22). */
+.sub-sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1600; /* above the Playlists sheet (1501); below the toast (2200)/generic modal (2000+), which never coexist with this page's own sheet in practice */
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.sub-sheet {
+  width: 100%;
+  max-width: 480px;
+  max-height: 85vh;
+  overflow-y: auto;
+  background-color: var(--bg-sidebar);
+  border: 1px solid var(--border-color);
+  border-bottom: none;
+  border-top-left-radius: var(--radius-lg);
+  border-top-right-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  padding-bottom: env(safe-area-inset-bottom);
+  font-family: var(--font-family);
+}
+
+.sub-sheet-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.sub-sheet-avatar {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  font-size: 16px;
+  color: var(--text-primary);
+  background-color: var(--bg-color);
+  border: 1px solid var(--border-dark);
+  border-radius: var(--radius);
+}
+
+.sub-sheet-titlewrap {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* READ-ONLY (coordinator decision): rendered as plain text, no input
+   control backs this field anywhere in the sheet -- see
+   buildSettingsSheet's doc comment in subscriptions.js. */
+.sub-sheet-name {
+  font-family: var(--mono-font);
+  font-size: 15px;
+  font-weight: bold;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+.sub-sheet-subtext {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+.sub-sheet-close {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  font-size: 22px;
+  line-height: 1;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.sub-sheet-close:hover,
+.sub-sheet-close:focus-visible {
+  color: var(--yt-red);
+}
+
+.sub-sheet-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px;
+}
+
+.sub-sheet-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.sub-sheet-field .setup-select,
+.sub-sheet-field input {
+  padding: 10px;
+  border: 1px solid var(--border-dark);
+  border-radius: var(--radius);
+  font-size: 13px;
+  background-color: var(--bg-color);
+  color: var(--text-primary);
+}
+
+.sub-sheet-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: normal;
+  color: var(--text-primary);
+}
+
+.sub-sheet-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 16px;
+  border-top: 1px solid var(--border-color);
+}
+
+.sub-sheet-actions .btn {
+  flex: 1 1 auto;
+}
+
+.sub-sheet-delete {
+  color: var(--yt-red);
+}
+
+/* === v1.21 FR-6: mobile grid density ========================================
+   T4. The pre-existing v1.15.0 `@media (max-width: 768px)` rule (line ~2707)
+   already tightens `.video-grid` to `minmax(140px, 1fr)` / 12px gap, which
+   SHOULD auto-fill 2 columns on a ~360-414px phone -- but Dean's on-device
+   report says it still reads as ~1 oversized column. `auto-fill`+`minmax()`
+   is a fluid, content-driven column count (it can round down to 1 column
+   depending on exact viewport/scrollbar/padding math), not a deterministic
+   one. Rather than keep guessing at the `minmax()` floor, force the outcome
+   directly with a narrower phone-only breakpoint: below 480px, drop the
+   fluid `auto-fill` calculation entirely and hard-set exactly 2 equal
+   columns. This guarantees 2 comfortable columns regardless of any card
+   min-width math (AC41). Nested INSIDE the existing 768px query's viewport
+   range, so it only ever narrows what already applies there -- the 768px
+   rule's `minmax(140px, 1fr)`/12px-gap declarations stay byte-identical for
+   481-768px phones/small tablets, and the desktop `minmax(210px, 1fr)`/20px
+   rule outside any media query (line ~550) is completely untouched (AC42).
+   The already-shipped `aspect-ratio: 16/9`/`object-fit: cover` thumbnail
+   treatment (line ~568) is unaffected by a column-count-only change, so
+   cards stay uniform with or without a thumbnail (AC40/AC43). */
+@media (max-width: 480px) {
+  .video-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+}
+
+/* === v1.21 FR-5: channel pins ===============================================
+   T5. Two new, additive surfaces, both era-theme custom properties only (no
+   hardcoded colors):
+     1. `.sub-row-pin` -- the star/pin toggle on a subscription row
+        (lib/ytdlp/client/subscriptions.js's createSubscriptionRow), sitting
+        between `.sub-row-info` and `.sub-row-kebab`. Mirrors `.sub-row-kebab`'s
+        chunky/beveled 32x32 silhouette (line ~1901 above) for visual
+        consistency, but stays visually distinct via its glyph alone (a plain
+        textContent star, not an icon-set mask) so pin (quick-access shortcut)
+        reads as a clearly different action from the kebab (settings), per the
+        UI research's "pin and subscribe are different intents" guidance.
+     2. `.playlists-pinned-section` -- the pinned-channel-playlist subsection
+        appended into the Playlists sheet's `#playlists-sheet-list`
+        (public/js/common.js's renderPinnedPlaylists), ALONGSIDE (never
+        merged into) the existing `.sidebar-item`-based folders list above it
+        -- a top border + spacing visually separates the two groups. Reuses
+        the existing `.sidebar-section-title`/`.sidebar-item` classes
+        verbatim for its heading/links (no new link/heading styling needed),
+        plus `.icon-star` (the existing fixed-glyph star, line ~2276 above)
+        on each pinned entry so it reads as "pinned," matching the research's
+        "left-nav Pinned list with a star icon" retro translation. */
+.sub-row-pin {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  line-height: 1;
+  font-family: inherit;
+  color: var(--text-secondary);
+  background-color: var(--bg-color);
+  border-top: 1px solid var(--border-dark);
+  border-left: 1px solid var(--border-dark);
+  border-bottom: 1px solid var(--border-color);
+  border-right: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.sub-row-pin:hover,
+.sub-row-pin:focus-visible {
+  color: var(--yt-red);
+}
+
+/* Pinned (filled star) state: a warm gold accent regardless of era/mode, so
+   "this is pinned" reads at a glance without depending on the outline-vs-
+   filled glyph difference alone. */
+.sub-row-pin-active {
+  color: #e0a800;
+}
+
+.sub-row-pin-active:hover,
+.sub-row-pin-active:focus-visible {
+  color: var(--yt-red);
+}
+
+.playlists-pinned-section {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-color);
+}
+
+/* === v1.21 FR-7: hard-delete confirm ========================================
+   T6. `common.js`'s `showHardDeleteModal` -- the extra-deliberate confirm for
+   a LOCAL (non-yt-dlp) file's delete (both the watch page's delete button and
+   the home/library card's two-tap arm route here for a local item; a
+   yt-dlp-managed item's flow is completely unchanged and never reaches this
+   CSS at all). Deliberately its OWN class family (`.hard-delete-modal-*`,
+   never `.modal-*`/`.oneoff-modal-*`) so it reads as visually/
+   interactionally DISTINCT from both the existing quick confirm modal and
+   the one-off/subscribe modals -- a red hard-warning treatment (era
+   `--yt-red` token, never a hardcoded color) plus a checkbox-gated Delete
+   button, so deleting an irreplaceable file is a conscious 3rd action, not a
+   quick tap-through. Sizing/scroll (`max-height`/`overflow-y`) mirrors the
+   v1.19.0 `.oneoff-modal` fix so a short viewport never clips the actions
+   row off-screen; `z-index: 2250` sits above every other overlay in this
+   file (`.modal-backdrop` 2000, `.oneoff-modal-backdrop` 2100, `.toast`
+   2200) so it is NEVER hidden behind another dialog/toast. */
+.hard-delete-modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.65);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 2250;
+}
+
+.hard-delete-modal {
+  background-color: var(--bg-color);
+  border: 2px solid var(--yt-red);
+  border-radius: var(--radius);
+  max-width: 420px;
+  width: 92%;
+  padding: 20px;
+  box-shadow: var(--shadow-lg);
+  box-sizing: border-box;
+  max-height: 85vh;
+  overflow-y: auto;
+}
+
+.hard-delete-modal-title {
+  font-size: 16px;
+  font-weight: bold;
+  color: var(--yt-red);
+  margin-bottom: 10px;
+}
+
+.hard-delete-modal-warning {
+  font-size: 13px;
+  font-weight: bold;
+  color: var(--yt-red);
+  background-color: var(--btn-bg);
+  border: 1px solid var(--yt-red);
+  border-radius: var(--radius);
+  padding: 8px 10px;
+  margin-bottom: 12px;
+}
+
+.hard-delete-modal-filename {
+  font-size: 13px;
+  font-weight: bold;
+  color: var(--text-primary);
+  word-break: break-word;
+  margin-bottom: 4px;
+}
+
+.hard-delete-modal-path {
+  font-size: 11px;
+  color: var(--text-secondary);
+  word-break: break-all;
+  margin-bottom: 14px;
+}
+
+.hard-delete-modal-checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  font-size: 13px;
+  font-weight: bold;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.hard-delete-modal-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.hard-delete-modal-actions .btn {
+  flex: 1;
+  justify-content: center;
+}
+
+/* The Delete Permanently button -- its own class (never `.btn-primary`) so
+   it never accidentally inherits a future styling change meant for the
+   ordinary primary action; deliberately red/high-alert regardless of
+   era/mode, and visibly greyed-out + inert while disabled (before the
+   checkbox is ticked). */
+.hard-delete-modal-confirm-btn {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 16px;
+  border: 1px solid var(--yt-red);
+  border-radius: var(--radius);
+  background-color: var(--yt-red);
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.hard-delete-modal-confirm-btn:disabled {
+  background-color: var(--btn-bg);
+  border-color: var(--border-dark);
+  color: var(--text-secondary);
+  cursor: not-allowed;
+}
+
+/* Comfortable 44px tap targets on a phone, matching the v1.19.0 mobile
+   polish already applied to `.oneoff-modal`/`.subscribe-modal-checkbox-row`. */
+@media (max-width: 768px) {
+  .hard-delete-modal {
+    width: 94%;
+    padding: 16px;
+  }
+
+  .hard-delete-modal-checkbox-row,
+  .hard-delete-modal-actions .btn,
+  .hard-delete-modal-confirm-btn {
+    min-height: 44px;
+  }
+}
+
+/* === v1.21 FR-8: download status chip ========================================
+   T7. App-wide, persistent bottom-LEFT corner chip
+   (public/js/common.js's `injectDownloadStatusChip`) -- the OPPOSITE corner
+   from `#player-dock` (bottom-right, line ~733 above), so the two can never
+   spatially overlap on any viewport width; `z-index: 940` keeps it (like
+   `#player-dock`'s own 950) above the mobile `.bottom-nav` (900) and below
+   every modal/sheet (2000+). `flex-direction: column-reverse` makes the
+   expanded panel render ABOVE the collapsed summary pill in the layout
+   (while staying AFTER it in DOM/source order, so the summary button is
+   still first in tab order) -- "dock as a slim bottom strip that expands
+   upward" per docs/ui-research-2026-07.md §5. Retro: outset/inset 1px-border
+   bevels (mirrors `.sub-row-pin`'s beveled treatment above), a
+   repeating-gradient segmented/striped progress fill (never a plain smooth
+   `background-color` bar), era tokens only -- no hardcoded surface colors,
+   so every era/light-dark combination stays themed. */
+#dl-status-chip {
+  position: fixed;
+  left: 16px;
+  bottom: 16px;
+  z-index: 940;
+  max-width: min(320px, calc(100vw - 32px));
+  font-family: var(--font-family);
+  display: flex;
+  flex-direction: column-reverse;
+}
+
+/* Mirrors the `.oneoff-modal-backdrop[hidden]` fix above (line ~2054): the
+   base rule sets its own `display`, which -- being an author-origin rule --
+   beats the UA `[hidden] { display: none }` default regardless of
+   specificity, so the override must be explicit here too. */
+#dl-status-chip[hidden] {
+  display: none;
+}
+
+.dl-status-chip-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background-color: var(--header-bg);
+  color: var(--text-primary);
+  border-top: 1px solid var(--border-dark);
+  border-left: 1px solid var(--border-dark);
+  border-bottom: 1px solid var(--border-color);
+  border-right: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: bold;
+  cursor: pointer;
+  max-width: 100%;
+}
+
+.dl-status-chip-summary:hover,
+.dl-status-chip-summary:focus-visible {
+  color: var(--yt-red);
+}
+
+.dl-status-chip-dot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--yt-red);
+  animation: dl-status-chip-pulse 1.4s ease-in-out infinite;
+}
+
+/* A sticky, unacknowledged error swaps the pulsing dot for a solid, static
+   one -- "stop pulsing (still working)," reads instead as "needs attention." */
+.dl-status-chip-has-error .dl-status-chip-dot {
+  animation: none;
+  background-color: var(--yt-red-dark);
+}
+
+@keyframes dl-status-chip-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+.dl-status-chip-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dl-status-chip-panel {
+  margin-bottom: 6px;
+  padding: 8px;
+  max-height: 60vh;
+  overflow-y: auto;
+  background-color: var(--bg-color);
+  border-top: 1px solid var(--border-dark);
+  border-left: 1px solid var(--border-dark);
+  border-bottom: 1px solid var(--border-color);
+  border-right: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dl-status-chip-panel[hidden] {
+  display: none;
+}
+
+.dl-status-chip-item {
+  padding: 8px;
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+}
+
+.dl-status-chip-item-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: bold;
+  color: var(--text-primary);
+}
+
+.dl-status-chip-item-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dl-status-chip-item-percent {
+  flex-shrink: 0;
+  color: var(--text-secondary);
+  font-weight: normal;
+}
+
+/* Beveled inset groove (mirrors the FR-2 control bar's `.pc-range` track,
+   line ~2989 above) -- the FILLED portion below is the segmented/striped
+   part, not this track. */
+.dl-status-chip-progress {
+  margin-top: 6px;
+  height: 8px;
+  background-color: var(--bg-color);
+  border: 1px solid var(--border-dark);
+  border-radius: var(--radius);
+  box-shadow: inset 1px 1px 0 rgba(0, 0, 0, 0.25);
+  overflow: hidden;
+}
+
+/* Segmented/striped fill (docs/ui-research-2026-07.md §5's "segmented/
+   striped progress bar") -- a repeating diagonal-stripe gradient over the
+   solid era-red fill, never a flat smooth bar alone. */
+.dl-status-chip-progress-fill {
+  height: 100%;
+  min-width: 2px;
+  background-color: var(--yt-red);
+  background-image: repeating-linear-gradient(
+    45deg,
+    rgba(255, 255, 255, 0.25) 0,
+    rgba(255, 255, 255, 0.25) 4px,
+    transparent 4px,
+    transparent 8px
+  );
+}
+
+.dl-status-chip-progress-fill-error {
+  background-color: var(--yt-red-dark);
+}
+
+.dl-status-chip-item-status {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dl-status-chip-item-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.dl-status-chip-retry-btn,
+.dl-status-chip-dismiss-btn {
+  flex: 1;
+  padding: 4px 8px;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: bold;
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.dl-status-chip-retry-btn {
+  background-color: var(--yt-red);
+  border: 1px solid var(--yt-red-dark);
+  color: #ffffff;
+}
+
+.dl-status-chip-dismiss-btn {
+  background-color: var(--btn-bg);
+  border: 1px solid var(--border-dark);
+  color: var(--text-primary);
+}
+
+.dl-status-chip-dismiss-btn:hover {
+  background-color: var(--btn-hover);
+}
+
+/* Mobile: clear the fixed `.bottom-nav` the SAME way `#player-dock`'s own
+   mobile rule does (line ~790 above), sharing the identical
+   `--mobile-bottom-nav-h` token -- AC57's "coordinates with the FR-2 dock so
+   the two never overlap on mobile" is satisfied structurally: the dock stays
+   pinned to the RIGHT edge, this chip to the LEFT, both lifted the same
+   amount above the bottom-nav. */
+@media (max-width: 768px) {
+  #dl-status-chip {
+    left: 8px;
+    bottom: calc(var(--mobile-bottom-nav-h) + 8px);
+    max-width: min(260px, calc(100vw - 16px));
+  }
+
+  .dl-status-chip-panel {
+    max-height: 50vh;
+  }
+}
+
+/* === v1.21 FR-9: theatre mode ================================================
+   T8. A "Theatre" toggle (built dynamically by watch.js, appended next to the
+   Prev/Next bar -- watch.html's `#player-host-template` region stays T2-owned
+   and untouched this task, see the wave-plan file-ownership note) adds/
+   removes `.theater-mode` on `.watch-container` (inside `#view-root`).
+   WATCH-VIEW layout class only: `#player-dock` (the v1.16 DOCKED mini-player
+   host, line ~733 above) is a completely separate DOM subtree outside
+   `#view-root`, so it is structurally unreachable from this selector and is
+   never affected (AC61). Toggling never touches the `<video>`/host itself --
+   purely a class flip on an ancestor -- so playback is undisturbed.
+
+   Desktop-only by construction: these rules widen `.watch-main`/the player to
+   the majority of page width by stacking `.watch-sidebar` (the related-items
+   list) below it -- exactly the same column layout the existing
+   `@media (max-width: 1024px)` rule (line ~2386 above, untouched) already
+   applies unconditionally below that breakpoint, so `.theater-mode` is a
+   harmless no-op there (AC62). The toggle button itself is hidden below that
+   same breakpoint (AC64) so it's never shown as an inert control on phones,
+   where the layout is already effectively full-width. */
+.watch-container.theater-mode {
+  flex-direction: column;
+}
+
+.watch-container.theater-mode .watch-sidebar {
+  width: 100%;
+}
+
+/* Groups the dynamically-inserted `#watch-theater-btn` with the existing
+   Next button (watch.js wraps both in this container) so the toggle reads as
+   part of the Prev/Next bar's trailing group rather than disrupting the
+   existing `.watch-prevnext`'s `justify-content: space-between` 3-slot
+   layout (Prev / Autoplay / Next). */
+.watch-nextgroup {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.watch-theater-btn[aria-pressed="true"] {
+  background-color: var(--btn-hover);
+  border-color: var(--text-primary);
+}
+
+@media (max-width: 1024px) {
+  .watch-theater-btn {
+    display: none;
   }
 }

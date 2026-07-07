@@ -1,21 +1,21 @@
 'use strict';
 
 // [UNIT] lib/ytdlp/client/subscriptions.js -- the vanilla per-page controller
-// for the optional yt-dlp /subscriptions page (T5). Requiring this file in
-// Node is inert (its DOMContentLoaded wiring is guarded on `typeof document`,
-// mirroring public/js/common.js), so its pure formatting helpers and its
-// DOM-construction function (`createSubscriptionRow`) can be exercised
-// directly here.
+// for the optional yt-dlp /subscriptions page (T5, v1.21.0 T3). Requiring
+// this file in Node is inert (its DOMContentLoaded wiring is guarded on
+// `typeof document`, mirroring public/js/common.js), so its pure formatting
+// helpers and its DOM-construction functions (`createSubscriptionRow`,
+// `buildSettingsSheet`) can be exercised directly here.
 //
 // This codebase has no jsdom/browser-DOM test harness (public/js/main.js and
 // watch.js have no DOM-level tests either) -- so this file supplies a
 // PURPOSE-BUILT, minimal fake `document`/`Element` (test-only, not a new
-// runtime dependency) sufficient to exercise `createSubscriptionRow`'s real
-// construction path. Its `innerHTML` setter unconditionally THROWS: if any
-// future edit to subscriptions.js ever used `innerHTML` to render a
-// subscription's `name`/`channelUrl`/status, this test would fail loudly
-// rather than silently passing -- a stronger regression guard than merely
-// asserting equality on the output.
+// runtime dependency) sufficient to exercise `createSubscriptionRow`'s/
+// `buildSettingsSheet`'s real construction paths. Its `innerHTML` setter
+// unconditionally THROWS: if any future edit to subscriptions.js ever used
+// `innerHTML` to render a subscription's `name`/`channelUrl`/status, this
+// test would fail loudly rather than silently passing -- a stronger
+// regression guard than merely asserting equality on the output.
 const { test } = require('node:test');
 const assert = require('node:assert');
 const {
@@ -30,12 +30,17 @@ const {
   formatSubMeta,
   formatMaxVideos,
   formatSubStatus,
+  formatSubscribedDate,
   formatLiveStatusText,
+  pinLabelFallback,
+  resolvePinLabel,
   buildFormatSelect,
   buildQualitySelect,
   buildFiletypeSelect,
   reduceFiletypeOptions,
   createSubscriptionRow,
+  buildSettingsSheet,
+  applyStatusUpdatesInPlace,
   createSubscriptionsListElement,
   createOneShotRow,
   createOneShotsListElement,
@@ -62,7 +67,24 @@ class FakeElement {
 
   appendChild(child) {
     this.children.push(child);
+    if (child instanceof FakeElement) child.parentNode = this;
     return child;
+  }
+
+  // v1.21 FIX 2 test support: a minimal `closest(tagName)` -- walks up
+  // `parentNode` (set by `appendChild` above), including this element
+  // itself, and matches purely on tag name (uppercased, mirroring real DOM
+  // tag-name comparisons). Sufficient for the row-click-guard tests below
+  // (`event.target.closest('a')`); this fake never implements full CSS
+  // selector matching.
+  closest(tagName) {
+    const wanted = String(tagName).toUpperCase();
+    let node = this;
+    while (node) {
+      if (node.tagName === wanted) return node;
+      node = node.parentNode || null;
+    }
+    return null;
   }
 
   setAttribute(name, value) {
@@ -73,11 +95,13 @@ class FakeElement {
     (this._listeners[type] = this._listeners[type] || []).push(handler);
   }
 
-  // Simulates a click by invoking every registered 'click' listener --
-  // lets a test prove a button's handler actually fires with the right args,
-  // without a real browser event loop.
-  click() {
-    (this._listeners.click || []).forEach((fn) => fn());
+  // Simulates a click by invoking every registered 'click' listener,
+  // optionally passing a fake event object (so a handler that calls
+  // `event.stopPropagation()` doesn't throw) -- lets a test prove a button's
+  // handler actually fires with the right args, without a real browser event
+  // loop or event bubbling.
+  click(fakeEvent) {
+    (this._listeners.click || []).forEach((fn) => fn(fakeEvent));
   }
 
   get textContent() {
@@ -160,6 +184,73 @@ test('formatSubStatus: renders a real timestamp and status string', () => {
   const result = formatSubStatus({ lastCheckedAt: iso, lastStatus: 'ok: downloaded 2 new video(s)' });
   assert.ok(result.startsWith('Last checked: '));
   assert.ok(result.endsWith('— ok: downloaded 2 new video(s)'));
+});
+
+// ---- v1.21.0 FR-4 (AC28/AC29): formatSubscribedDate -------------------------
+
+test('formatSubscribedDate: a valid ISO timestamp renders a "Subscribed on <date>" string', () => {
+  const result = formatSubscribedDate('2026-07-05T12:00:00.000Z');
+  assert.ok(result.startsWith('Subscribed on '), `expected a "Subscribed on " prefix, got: ${result}`);
+  assert.notStrictEqual(result, 'Subscribed on date unknown');
+});
+
+test('formatSubscribedDate: missing/undefined/null/blank addedAt degrades to "date unknown" (never fabricated, never crashes)', () => {
+  assert.strictEqual(formatSubscribedDate(undefined), 'date unknown');
+  assert.strictEqual(formatSubscribedDate(null), 'date unknown');
+  assert.strictEqual(formatSubscribedDate(''), 'date unknown');
+  assert.strictEqual(formatSubscribedDate('   '), 'date unknown');
+});
+
+test('formatSubscribedDate: a garbage/unparseable string degrades to "date unknown" (e.g. a hand-edited/corrupted db.json)', () => {
+  assert.strictEqual(formatSubscribedDate('not-a-date'), 'date unknown');
+  assert.strictEqual(formatSubscribedDate('2026-13-99'), 'date unknown');
+});
+
+test('formatSubscribedDate: a non-string input (wrong type entirely) degrades to "date unknown" rather than throwing', () => {
+  assert.strictEqual(formatSubscribedDate(12345), 'date unknown');
+  assert.strictEqual(formatSubscribedDate({}), 'date unknown');
+  assert.strictEqual(formatSubscribedDate([]), 'date unknown');
+});
+
+// ---- v1.21 FIX 4: pinLabelFallback / resolvePinLabel -------------------------
+
+test('pinLabelFallback: returns the final path segment of a POSIX channelDir', () => {
+  assert.strictEqual(pinLabelFallback('/data/ytdlp-downloads/Some Channel'), 'Some Channel');
+});
+
+test('pinLabelFallback: strips trailing slashes before taking the basename', () => {
+  assert.strictEqual(pinLabelFallback('/data/ytdlp-downloads/Some Channel/'), 'Some Channel');
+  assert.strictEqual(pinLabelFallback('/data/ytdlp-downloads/Some Channel///'), 'Some Channel');
+});
+
+test('pinLabelFallback: also handles a backslash-separated (Windows-style) channelDir', () => {
+  assert.strictEqual(pinLabelFallback('C:\\data\\ytdlp-downloads\\Some Channel'), 'Some Channel');
+});
+
+test('pinLabelFallback: a non-string/empty input degrades to "" rather than throwing', () => {
+  assert.strictEqual(pinLabelFallback(undefined), '');
+  assert.strictEqual(pinLabelFallback(null), '');
+  assert.strictEqual(pinLabelFallback(42), '');
+  assert.strictEqual(pinLabelFallback(''), '');
+});
+
+test('resolvePinLabel: prefers a non-empty, trimmed sub.name over the channelDir fallback', () => {
+  assert.strictEqual(
+    resolvePinLabel({ name: '  My Channel  ', channelDir: '/data/ytdlp-downloads/other-dir' }),
+    'My Channel'
+  );
+});
+
+test('resolvePinLabel: falls back to the channelDir basename when name is missing/blank/whitespace-only', () => {
+  assert.strictEqual(resolvePinLabel({ name: '', channelDir: '/data/ytdlp-downloads/Unnamed Channel' }), 'Unnamed Channel');
+  assert.strictEqual(resolvePinLabel({ name: '   ', channelDir: '/data/ytdlp-downloads/Unnamed Channel' }), 'Unnamed Channel');
+  assert.strictEqual(resolvePinLabel({ channelDir: '/data/ytdlp-downloads/Unnamed Channel' }), 'Unnamed Channel');
+});
+
+test('resolvePinLabel: never returns an empty string, even when both name and channelDir basename are unusable', () => {
+  assert.strictEqual(resolvePinLabel({ name: '', channelDir: '/' }), 'Untitled channel');
+  assert.strictEqual(resolvePinLabel({}), 'Untitled channel');
+  assert.strictEqual(resolvePinLabel(null), 'Untitled channel');
 });
 
 // ---- FR-B: dropdown option values -------------------------------------------
@@ -310,9 +401,9 @@ test('nextPollDelay: failure never exceeds the max cap, even after many consecut
   assert.strictEqual(delay, STATUS_POLL_MAX_MS);
 });
 
-// ---- DOM construction: structure + handler wiring --------------------------
+// ---- v1.21.0 FR-3 (T3): DOM construction -- new row anatomy ----------------
 
-test('createSubscriptionRow: builds a row with the expected fields and wires the delete/re-pull handlers', () => {
+test('createSubscriptionRow: builds the new anatomy -- avatar + name + one muted meta line + channel link + a single trailing kebab', () => {
   const sub = {
     id: 'abc123',
     name: 'My Channel',
@@ -322,192 +413,54 @@ test('createSubscriptionRow: builds a row with the expected fields and wires the
     lastCheckedAt: null,
     lastStatus: null,
   };
-  const repullCalls = [];
-  const deleteCalls = [];
-  const row = createSubscriptionRow(sub, fakeDoc, {
-    onRepull: (id) => repullCalls.push(id),
-    onDelete: (s) => deleteCalls.push(s),
-  });
+  const row = createSubscriptionRow(sub, fakeDoc, {});
+
+  assert.strictEqual(row.className, 'sub-row');
+  // AC19: exactly avatar + info + kebab as direct children.
+  assert.deepStrictEqual(row.children.map((el) => el.className), ['sub-row-avatar', 'sub-row-info', 'sub-row-kebab']);
+
+  const avatar = row.children[0];
+  assert.strictEqual(avatar.textContent, 'M', 'the avatar shows the first letter of the name, uppercased');
 
   const texts = [...row.walk()].map((el) => el.textContent).filter(Boolean);
   assert.ok(texts.includes('My Channel'));
-  assert.ok(texts.includes('https://www.youtube.com/@mychannel'));
-  assert.ok(texts.some((t) => t.includes('Video')));
+  assert.ok(texts.some((t) => t.includes('Video')), 'the meta line must include the formatSubMeta fragment');
 
+  const kebab = row.children[2];
+  assert.strictEqual(kebab.tagName, 'BUTTON');
+  assert.strictEqual(kebab.className, 'sub-row-kebab');
+
+  // The old inline Pause/Edit/Re-pull/Delete cluster and edit panel are
+  // entirely gone -- there is exactly ONE button in the whole row (the
+  // kebab), not six.
   const buttons = [...row.walk()].filter((el) => el.tagName === 'BUTTON');
-  assert.strictEqual(buttons.length, 6, 'expected Pause, Edit, Re-pull, Delete, and the edit panel\'s Save/Cancel');
-  const repullBtn = buttons.find((b) => b.textContent === 'Re-pull');
-  const deleteBtn = buttons.find((b) => b.textContent === '×');
-  const pauseBtn = buttons.find((b) => b.textContent === 'Pause');
-  const editBtn = buttons.find((b) => b.textContent === 'Edit');
-  assert.ok(repullBtn, 'Re-pull button must exist');
-  assert.ok(deleteBtn, 'Delete button must exist');
-  assert.ok(pauseBtn, 'Pause button must exist (subscription is not paused)');
-  assert.ok(editBtn, 'Edit button must exist');
-
-  repullBtn.click();
-  assert.deepStrictEqual(repullCalls, ['abc123']);
-
-  deleteBtn.click();
-  assert.deepStrictEqual(deleteCalls, [sub]);
+  assert.strictEqual(buttons.length, 1, 'expected only the single trailing kebab button');
 });
 
-// ---- v1.13.0 item 1 (AC1/AC3): dedicated, non-collapsing row layout --------
+test('createSubscriptionRow: avatar falls back to "?" for a missing/blank channel name', () => {
+  const row = createSubscriptionRow({ id: 'av2', name: '', channelUrl: 'https://www.youtube.com/@blank' }, fakeDoc, {});
+  assert.strictEqual(row.children[0].textContent, '?');
+});
 
-test('createSubscriptionRow: uses the dedicated .sub-row/.sub-row-info layout, NOT the collapsing Setup .folder-item-row + inline flex:1;min-width:0 combo', () => {
+test('createSubscriptionRow: the metadata line combines formatSubMeta with the FR-4 subscribed date', () => {
   const sub = {
-    id: 'row-1',
-    name: 'Channel',
-    channelUrl: 'https://www.youtube.com/@channel',
-  };
-  const row = createSubscriptionRow(sub, fakeDoc, {});
-
-  assert.strictEqual(row.className, 'sub-row', 'the row must use the dedicated .sub-row class, not Setup\'s .folder-item-row');
-  assert.notStrictEqual(row.className, 'folder-item-row');
-
-  // The info column (name/URL/meta/status) must be identifiable by its own
-  // dedicated class -- not the bare inline `flex:1; min-width:0` style that
-  // caused the info column to collapse to ~1 character wide.
-  const infoEl = row.children.find((el) => el.className === 'sub-row-info');
-  assert.ok(infoEl, 'an element with the dedicated .sub-row-info class must exist');
-  assert.notStrictEqual(infoEl.attributes.style, 'flex:1; min-width:0;', 'must not reuse the collapsing inline style');
-
-  // The URL element must wrap by word/URL-segment, never one character per
-  // line (`break-all`) -- the CSS class carries `overflow-wrap`/
-  // `word-break: break-word` instead (verified separately against
-  // style.css); here we assert the element no longer carries the old
-  // `word-break:break-all` inline style directly.
-  const urlEl = [...row.walk()].find((el) => el.textContent === sub.channelUrl);
-  assert.ok(urlEl, 'the channelUrl must still render as textContent somewhere in the row');
-  assert.strictEqual(urlEl.className, 'sub-row-url');
-  assert.ok(
-    !urlEl.attributes.style || !urlEl.attributes.style.includes('break-all'),
-    'the URL element must not use word-break:break-all inline (per-character wrap risk)'
-  );
-
-  const actionsEl = row.children.find((el) => el.className === 'sub-row-actions');
-  assert.ok(actionsEl, 'the actions column must use the dedicated .sub-row-actions class');
-});
-
-test('createOneShotRow: also uses the dedicated .sub-row/.sub-row-info layout (same fix as createSubscriptionRow)', () => {
-  const entry = { state: 'queued', label: 'One-Off', url: 'https://www.youtube.com/watch?v=abc' };
-  const row = createOneShotRow('job-x', entry, fakeDoc, {});
-  assert.strictEqual(row.className, 'sub-row');
-  const infoEl = row.children.find((el) => el.className === 'sub-row-info');
-  assert.ok(infoEl, 'an element with the dedicated .sub-row-info class must exist');
-});
-
-// ---- FR-D: pause/resume + inline edit ---------------------------------------
-
-test('createSubscriptionRow: shows "Pause" for an active subscription and "Resume" for a paused one, wiring onTogglePause', () => {
-  const active = { id: 'a1', name: 'A', channelUrl: 'https://www.youtube.com/@a', paused: false };
-  const toggleCalls = [];
-  const activeRow = createSubscriptionRow(active, fakeDoc, { onTogglePause: (s) => toggleCalls.push(s) });
-  const activeBtn = [...activeRow.walk()].find((el) => el.tagName === 'BUTTON' && el.textContent === 'Pause');
-  assert.ok(activeBtn, 'an active subscription must show a Pause button');
-  activeBtn.click();
-  assert.deepStrictEqual(toggleCalls, [active]);
-
-  const paused = { id: 'p1', name: 'P', channelUrl: 'https://www.youtube.com/@p', paused: true };
-  const pausedRow = createSubscriptionRow(paused, fakeDoc, {});
-  const resumeBtn = [...pausedRow.walk()].find((el) => el.tagName === 'BUTTON' && el.textContent === 'Resume');
-  assert.ok(resumeBtn, 'a paused subscription must show a Resume button');
-});
-
-test('createSubscriptionRow: the inline edit form starts hidden and Save collects format/quality/filetype/maxVideos into a patch', () => {
-  const sub = {
-    id: 'e1',
-    name: 'Editable Channel',
-    channelUrl: 'https://www.youtube.com/@editable',
-    format: 'video',
+    id: 'm1',
+    name: 'Meta',
+    channelUrl: 'https://www.youtube.com/@meta',
+    format: 'audio',
     quality: '720p',
-    filetype: 'mkv',
-    maxVideos: 5,
+    maxVideos: 10,
+    addedAt: '2026-01-02T00:00:00.000Z',
   };
-  const saveCalls = [];
-  const row = createSubscriptionRow(sub, fakeDoc, { onSaveEdit: (id, patch) => saveCalls.push([id, patch]) });
-
-  const editPanel = row.children.find((el) => el.className === 'sub-edit-panel');
-  assert.ok(editPanel, 'an edit panel must exist');
-  assert.strictEqual(editPanel.hidden, true, 'the edit panel must start hidden');
-
-  const saveBtn = [...editPanel.walk()].find((el) => el.tagName === 'BUTTON' && el.textContent === 'Save');
-  assert.ok(saveBtn, 'a Save button must exist inside the edit panel');
-  saveBtn.click();
-
-  assert.strictEqual(saveCalls.length, 1);
-  const [id, patch] = saveCalls[0];
-  assert.strictEqual(id, 'e1');
-  assert.strictEqual(patch.format, 'video');
-  assert.strictEqual(patch.quality, '720p');
-  assert.strictEqual(patch.filetype, 'mkv');
-  assert.strictEqual(patch.maxVideos, 5);
-});
-
-// ---- v1.15.0 item 4 UI: per-subscription skip-Shorts edit-panel toggle -----
-
-test('createSubscriptionRow: the edit panel includes a Skip Shorts checkbox reflecting the subscription\'s persisted value', () => {
-  const skipping = { id: 's1', name: 'A', channelUrl: 'https://www.youtube.com/@a', skipShorts: true };
-  const skippingRow = createSubscriptionRow(skipping, fakeDoc, {});
-  const skippingPanel = skippingRow.children.find((el) => el.className === 'sub-edit-panel');
-  const skippingCheck = [...skippingPanel.walk()].find((el) => el.tagName === 'INPUT' && el.type === 'checkbox');
-  assert.ok(skippingCheck, 'a Skip Shorts checkbox must exist in the edit panel');
-  assert.strictEqual(skippingCheck.checked, true, 'a subscription with skipShorts:true must render checked');
-
-  const notSkipping = { id: 's2', name: 'B', channelUrl: 'https://www.youtube.com/@b', skipShorts: false };
-  const notSkippingRow = createSubscriptionRow(notSkipping, fakeDoc, {});
-  const notSkippingPanel = notSkippingRow.children.find((el) => el.className === 'sub-edit-panel');
-  const notSkippingCheck = [...notSkippingPanel.walk()].find((el) => el.tagName === 'INPUT' && el.type === 'checkbox');
-  assert.strictEqual(notSkippingCheck.checked, false, 'a subscription with skipShorts:false (or unset) must render unchecked by default');
-});
-
-test('createSubscriptionRow: Save always includes skipShorts (true or false) in the patch, reflecting the checkbox state', () => {
-  const sub = { id: 'e4', name: 'C', channelUrl: 'https://www.youtube.com/@c', skipShorts: false };
-  const saveCalls = [];
-  const row = createSubscriptionRow(sub, fakeDoc, { onSaveEdit: (id, patch) => saveCalls.push([id, patch]) });
-  const editPanel = row.children.find((el) => el.className === 'sub-edit-panel');
-  const skipShortsCheck = [...editPanel.walk()].find((el) => el.tagName === 'INPUT' && el.type === 'checkbox');
-  const saveBtn = [...editPanel.walk()].find((el) => el.tagName === 'BUTTON' && el.textContent === 'Save');
-
-  // User checks the box, then saves -- the patch must reflect true.
-  skipShortsCheck.checked = true;
-  saveBtn.click();
-  assert.strictEqual(saveCalls[0][1].skipShorts, true);
-
-  // Unchecking and saving again must send false, not omit the field.
-  skipShortsCheck.checked = false;
-  saveBtn.click();
-  assert.strictEqual(saveCalls[1][1].skipShorts, false);
-});
-
-test('createSubscriptionRow: the edit panel\'s filetype select defaults to the recommended option (mp4/mp3) when the subscription has none set', () => {
-  const sub = { id: 'e3', name: 'C', channelUrl: 'https://www.youtube.com/@c', format: 'audio' };
   const row = createSubscriptionRow(sub, fakeDoc, {});
-  const editPanel = row.children.find((el) => el.className === 'sub-edit-panel');
-  const selects = editPanel.children.filter((el) => el.tagName === 'SELECT');
-  // format, quality, filetype -- in that order (buildFormatSelect,
-  // buildQualitySelect, buildFiletypeSelect, per the Design's build order).
-  assert.strictEqual(selects.length, 3, 'expected format/quality/filetype selects in the edit panel');
-  const filetypeSelect = selects[2];
-  assert.deepStrictEqual(filetypeSelect.children.map((o) => o.value), ['mp3', 'm4a', 'opus', 'default']);
-  assert.strictEqual(filetypeSelect.value, 'mp3');
+  const info = row.children[1];
+  const metaEl = info.children.find((el) => el.className === 'sub-row-meta');
+  assert.ok(metaEl, 'a .sub-row-meta element must exist');
+  assert.ok(metaEl.textContent.includes(formatSubMeta(sub)));
+  assert.ok(metaEl.textContent.includes(formatSubscribedDate(sub.addedAt)));
 });
 
-test('createSubscriptionRow: Edit toggles the panel visible, and Cancel hides it again', () => {
-  const sub = { id: 'e2', name: 'C', channelUrl: 'https://www.youtube.com/@c' };
-  const row = createSubscriptionRow(sub, fakeDoc, {});
-  const editPanel = row.children.find((el) => el.className === 'sub-edit-panel');
-  const editBtn = [...row.walk()].find((el) => el.tagName === 'BUTTON' && el.textContent === 'Edit');
-
-  editBtn.click();
-  assert.strictEqual(editPanel.hidden, false, 'clicking Edit must reveal the panel');
-
-  const cancelBtn = [...editPanel.walk()].find((el) => el.tagName === 'BUTTON' && el.textContent === 'Cancel');
-  cancelBtn.click();
-  assert.strictEqual(editPanel.hidden, true, 'clicking Cancel must hide the panel again');
-});
-
-test('createSubscriptionRow: a live downloading status overrides the persisted lastStatus line', () => {
+test('createSubscriptionRow: a live downloading status overrides the persisted lastStatus line in .sub-row-status (a separate element from .sub-row-meta)', () => {
   const sub = {
     id: 'l1',
     name: 'Live Channel',
@@ -517,29 +470,123 @@ test('createSubscriptionRow: a live downloading status overrides the persisted l
   };
   const liveEntry = { state: 'downloading', title: 'Ep 1', index: 1, total: 3, percent: 10 };
   const row = createSubscriptionRow(sub, fakeDoc, {}, liveEntry);
-  const texts = [...row.walk()].map((el) => el.textContent);
-  assert.ok(texts.some((t) => t.includes('Ep 1 — 1 of 3 — 10%')), 'the live status must be shown instead of lastStatus');
-  assert.ok(!texts.some((t) => t.includes('ok: downloaded 1 new video(s)')), 'the persisted status must not also render');
+  const info = row.children[1];
+  const statusEl = info.children.find((el) => el.className === 'sub-row-status');
+  const metaEl = info.children.find((el) => el.className === 'sub-row-meta');
+  assert.ok(statusEl.textContent.includes('Ep 1 — 1 of 3 — 10%'));
+  assert.ok(!statusEl.textContent.includes('ok: downloaded 1 new video(s)'), 'the persisted status must not also render in .sub-row-status');
+  assert.ok(!metaEl.textContent.includes('Ep 1'), 'the live status must never bleed into the separate, poll-immune .sub-row-meta element');
 });
 
-test('createSubscriptionsListElement: renders an empty-state message when there are no subscriptions', () => {
-  const container = createSubscriptionsListElement([], fakeDoc, {});
-  const texts = [...container.walk()].map((el) => el.textContent).filter(Boolean);
-  assert.ok(texts.some((t) => t.includes('No subscriptions yet')));
+test('createSubscriptionRow: renders a real clickable channel <a> (href/target/rel set, textContent-only label) when channelUrl is present (AC30/AC31)', () => {
+  const sub = { id: 'l2', name: 'Link Ch', channelUrl: 'https://www.youtube.com/@linkch' };
+  const row = createSubscriptionRow(sub, fakeDoc, {});
+  const info = row.children[1];
+  const link = info.children.find((el) => el.className === 'sub-row-channel-link');
+  assert.ok(link);
+  assert.strictEqual(link.tagName, 'A');
+  assert.strictEqual(link.href, sub.channelUrl);
+  assert.strictEqual(link.target, '_blank');
+  assert.strictEqual(link.rel, 'noopener noreferrer');
+  assert.strictEqual(link.textContent, sub.channelUrl);
 });
 
-test('createSubscriptionsListElement: renders one row per subscription', () => {
-  const subs = [
-    { id: '1', name: 'Channel A', channelUrl: 'https://www.youtube.com/@a' },
-    { id: '2', name: 'Channel B', channelUrl: 'https://www.youtube.com/@b' },
-  ];
-  const container = createSubscriptionsListElement(subs, fakeDoc, {});
-  assert.strictEqual(container.children.length, 2);
+test('createSubscriptionRow: omits the <a> tag (renders a plain, non-link element) when channelUrl is absent', () => {
+  const sub = { id: 'l3', name: 'No URL' };
+  const row = createSubscriptionRow(sub, fakeDoc, {});
+  const info = row.children[1];
+  const link = info.children.find((el) => el.className === 'sub-row-channel-link');
+  assert.ok(link);
+  assert.notStrictEqual(link.tagName, 'A', 'must not render an <a> with no real href to point to');
+  assert.strictEqual(link.textContent, '');
 });
 
-// ---- v1.20.0 FR-4: per-channel Playlist link ------------------------------
+// ---- AC20: row tap navigation, gated on a resolved channelDir --------------
 
-test('createSubscriptionRow: renders a "View as Playlist" link to /?root=<encodeURIComponent(channelDir)> when channelDir is present', () => {
+test('createSubscriptionRow: row tap invokes onRowTap when channelDir is resolved', () => {
+  const sub = { id: 'r1', name: 'Nav', channelUrl: 'https://www.youtube.com/@nav', channelDir: '/data/x' };
+  const tapCalls = [];
+  const row = createSubscriptionRow(sub, fakeDoc, { onRowTap: (s) => tapCalls.push(s) });
+  row.click();
+  assert.deepStrictEqual(tapCalls, [sub]);
+});
+
+test('createSubscriptionRow: no row-tap listener is attached at all when channelDir is unresolved (fail-safe non-navigating)', () => {
+  const sub = { id: 'r2', name: 'NoNav', channelUrl: 'https://www.youtube.com/@nonav' };
+  const tapCalls = [];
+  const row = createSubscriptionRow(sub, fakeDoc, { onRowTap: (s) => tapCalls.push(s) });
+  row.click();
+  assert.deepStrictEqual(tapCalls, [], 'a row with no resolved channelDir must never navigate');
+});
+
+test('createSubscriptionRow: an empty-string channelDir is also treated as unresolved (non-navigating)', () => {
+  const sub = { id: 'r3', name: 'EmptyDir', channelUrl: 'https://www.youtube.com/@emptydir', channelDir: '' };
+  const tapCalls = [];
+  const row = createSubscriptionRow(sub, fakeDoc, { onRowTap: (s) => tapCalls.push(s) });
+  row.click();
+  assert.deepStrictEqual(tapCalls, []);
+});
+
+// ---- v1.21 FIX 2 (post-gate hardening, QA -- FR-3/FR-4): a click landing
+// on the channel link or the playlist link must NOT also fire row-tap
+// navigation (previously both links opened AND navigated the current tab
+// away, since only the kebab/pin-toggle stopPropagation'd).
+
+test('createSubscriptionRow: clicking the channel link does not also trigger row-tap navigation', () => {
+  const sub = { id: 'rl1', name: 'LinkRow', channelUrl: 'https://www.youtube.com/@linkrow', channelDir: '/data/lr' };
+  const tapCalls = [];
+  const row = createSubscriptionRow(sub, fakeDoc, { onRowTap: (s) => tapCalls.push(s) });
+  const channelLink = [...row.walk()].find((el) => el.className === 'sub-row-channel-link');
+  assert.ok(channelLink, 'expected a .sub-row-channel-link to exist');
+  assert.strictEqual(channelLink.tagName, 'A');
+  row.click({ target: channelLink });
+  assert.deepStrictEqual(tapCalls, [], 'a click on the channel link must never also navigate the row');
+});
+
+test('createSubscriptionRow: clicking the "View as Playlist" link does not also trigger row-tap navigation', () => {
+  const sub = { id: 'rl2', name: 'PlaylistRow', channelUrl: 'https://www.youtube.com/@plrow', channelDir: '/data/pr' };
+  const tapCalls = [];
+  const row = createSubscriptionRow(sub, fakeDoc, { onRowTap: (s) => tapCalls.push(s) });
+  const playlistLink = [...row.walk()].find((el) => el.className === 'sub-row-playlist-link');
+  assert.ok(playlistLink, 'expected a .sub-row-playlist-link to exist');
+  row.click({ target: playlistLink });
+  assert.deepStrictEqual(tapCalls, [], 'a click on the playlist link must never also navigate the row');
+});
+
+test('createSubscriptionRow: a click on the row body (not a link) still navigates', () => {
+  const sub = { id: 'rl3', name: 'BodyRow', channelUrl: 'https://www.youtube.com/@bodyrow', channelDir: '/data/br' };
+  const tapCalls = [];
+  const row = createSubscriptionRow(sub, fakeDoc, { onRowTap: (s) => tapCalls.push(s) });
+  const nameEl = [...row.walk()].find((el) => el.className === 'sub-row-name');
+  assert.ok(nameEl, 'expected a .sub-row-name to exist');
+  row.click({ target: nameEl });
+  assert.deepStrictEqual(tapCalls, [sub], 'clicking any non-link part of the row body must still navigate');
+});
+
+// ---- AC21/AC22: kebab opens the settings sheet, independent of row tap ----
+
+test('createSubscriptionRow: the kebab button opens the settings sheet via onOpenSettings, and never also fires row-tap navigation', () => {
+  const sub = { id: 'k1', name: 'K', channelUrl: 'https://www.youtube.com/@k', channelDir: '/data/k' };
+  const tapCalls = [];
+  const openCalls = [];
+  const row = createSubscriptionRow(sub, fakeDoc, {
+    onRowTap: (s) => tapCalls.push(s),
+    onOpenSettings: (s) => openCalls.push(s),
+  });
+  // v1.21.0 FR-5: a navigable row (channelDir present) now also renders a
+  // pin-toggle star BEFORE the kebab -- look the kebab up by className
+  // rather than a fixed index so this test stays correct regardless of
+  // sibling ordering.
+  const kebab = row.children.find((el) => el.className === 'sub-row-kebab');
+  assert.ok(kebab, 'expected a .sub-row-kebab child to exist');
+  kebab.click({ stopPropagation: () => {} });
+  assert.deepStrictEqual(openCalls, [sub]);
+  assert.deepStrictEqual(tapCalls, [], 'the kebab click must never also trigger row navigation');
+});
+
+// ---- v1.20.0 FR-4: per-channel Playlist link (unchanged, still present) ---
+
+test('createSubscriptionRow: still renders a "View as Playlist" link to /?root=<encodeURIComponent(channelDir)> when channelDir is present', () => {
   const sub = {
     id: 'pl1',
     name: 'Playlist Channel',
@@ -547,9 +594,8 @@ test('createSubscriptionRow: renders a "View as Playlist" link to /?root=<encode
     channelDir: '/data/ytdlp-downloads/Playlist Channel',
   };
   const row = createSubscriptionRow(sub, fakeDoc, {});
-  const link = [...row.walk()].find((el) => el.tagName === 'A');
+  const link = [...row.walk()].find((el) => el.className === 'sub-row-playlist-link');
   assert.ok(link, 'a playlist link must be rendered when channelDir is present');
-  assert.strictEqual(link.className, 'sub-row-playlist-link');
   assert.strictEqual(link.href, '/?root=' + encodeURIComponent(sub.channelDir));
   assert.strictEqual(link.textContent, 'View as Playlist');
 });
@@ -557,21 +603,11 @@ test('createSubscriptionRow: renders a "View as Playlist" link to /?root=<encode
 test('createSubscriptionRow: omits the playlist link entirely when channelDir is absent', () => {
   const sub = { id: 'pl2', name: 'No Dir Channel', channelUrl: 'https://www.youtube.com/@nodir' };
   const row = createSubscriptionRow(sub, fakeDoc, {});
-  const link = [...row.walk()].find((el) => el.tagName === 'A');
+  const link = [...row.walk()].find((el) => el.className === 'sub-row-playlist-link');
   assert.strictEqual(link, undefined, 'no playlist link must be rendered when channelDir is missing');
 });
 
-test('createSubscriptionRow: omits the playlist link when channelDir is an empty string', () => {
-  const sub = { id: 'pl3', name: 'Empty Dir Channel', channelUrl: 'https://www.youtube.com/@emptydir', channelDir: '' };
-  const row = createSubscriptionRow(sub, fakeDoc, {});
-  const link = [...row.walk()].find((el) => el.tagName === 'A');
-  assert.strictEqual(link, undefined, 'an empty-string channelDir must not render a link');
-});
-
 test('createSubscriptionRow: a channelDir containing characters requiring escaping is properly encodeURIComponent-encoded in the href, never raw-interpolated', () => {
-  // A path with a space and an ampersand -- both must be percent-encoded in
-  // the query string, proving the link is built via encodeURIComponent, not
-  // raw string concatenation.
   const sub = {
     id: 'pl4',
     name: 'Channel & Co',
@@ -579,12 +615,80 @@ test('createSubscriptionRow: a channelDir containing characters requiring escapi
     channelDir: '/data/ytdlp-downloads/Channel & Co',
   };
   const row = createSubscriptionRow(sub, fakeDoc, {});
-  const link = [...row.walk()].find((el) => el.tagName === 'A');
+  const link = [...row.walk()].find((el) => el.className === 'sub-row-playlist-link');
   assert.ok(link);
   assert.strictEqual(link.href, '/?root=%2Fdata%2Fytdlp-downloads%2FChannel%20%26%20Co');
 });
 
-// ---- SECURITY (T5 mandatory regression test): a hostile subscription name --
+// ---- v1.21.0 FR-5 (AC35): the star/pin toggle -------------------------------
+
+test('createSubscriptionRow: renders an OUTLINE star (unpinned) by default when channelDir is present, before the kebab', () => {
+  const sub = { id: 'pin1', name: 'Pinnable', channelUrl: 'https://www.youtube.com/@pinnable', channelDir: '/data/x' };
+  const row = createSubscriptionRow(sub, fakeDoc, {});
+  const pinBtn = row.children.find((el) => el.className && el.className.indexOf('sub-row-pin') === 0);
+  assert.ok(pinBtn, 'expected a .sub-row-pin child to exist for a navigable row');
+  assert.strictEqual(pinBtn.className, 'sub-row-pin', 'unpinned must not carry the -active modifier class');
+  assert.strictEqual(pinBtn.textContent, '☆');
+  assert.strictEqual(pinBtn.attributes['aria-pressed'], 'false');
+  // Ordering: pin toggle comes before the kebab, both after avatar+info.
+  const kebabIndex = row.children.findIndex((el) => el.className === 'sub-row-kebab');
+  const pinIndex = row.children.indexOf(pinBtn);
+  assert.ok(pinIndex >= 0 && kebabIndex > pinIndex, 'the pin toggle must render before the kebab');
+});
+
+test('createSubscriptionRow: renders a FILLED star (pinned) with the -active modifier when pinned=true', () => {
+  const sub = { id: 'pin2', name: 'Pinned', channelUrl: 'https://www.youtube.com/@pinned', channelDir: '/data/y' };
+  const row = createSubscriptionRow(sub, fakeDoc, {}, undefined, true);
+  const pinBtn = row.children.find((el) => el.className && el.className.indexOf('sub-row-pin') === 0);
+  assert.strictEqual(pinBtn.className, 'sub-row-pin sub-row-pin-active');
+  assert.strictEqual(pinBtn.textContent, '★');
+  assert.strictEqual(pinBtn.attributes['aria-pressed'], 'true');
+});
+
+test('createSubscriptionRow: omits the pin toggle entirely when channelDir is absent (fail-safe, mirrors the playlist link)', () => {
+  const sub = { id: 'pin3', name: 'NoDir', channelUrl: 'https://www.youtube.com/@nodir' };
+  const row = createSubscriptionRow(sub, fakeDoc, {}, undefined, true);
+  const pinBtn = row.children.find((el) => el.className && el.className.indexOf('sub-row-pin') === 0);
+  assert.strictEqual(pinBtn, undefined, 'no pin toggle can exist without a resolved channelDir to pin');
+});
+
+test('createSubscriptionRow: clicking the pin toggle calls onTogglePin(sub, pinned) and never also fires row-tap navigation', () => {
+  const sub = { id: 'pin4', name: 'Tap', channelUrl: 'https://www.youtube.com/@tap', channelDir: '/data/z' };
+  const tapCalls = [];
+  const pinCalls = [];
+  const row = createSubscriptionRow(sub, fakeDoc, {
+    onRowTap: (s) => tapCalls.push(s),
+    onTogglePin: (s, p) => pinCalls.push([s, p]),
+  }, undefined, false);
+  const pinBtn = row.children.find((el) => el.className && el.className.indexOf('sub-row-pin') === 0);
+  pinBtn.click({ stopPropagation: () => {} });
+  assert.deepStrictEqual(pinCalls, [[sub, false]]);
+  assert.deepStrictEqual(tapCalls, [], 'the pin toggle click must never also trigger row navigation');
+});
+
+test('createSubscriptionsListElement: derives each row\'s pinned flag from the pinnedChannelDirs Set, matched by channelDir', () => {
+  const subs = [
+    { id: '1', name: 'A', channelUrl: 'https://www.youtube.com/@a', channelDir: '/data/a' },
+    { id: '2', name: 'B', channelUrl: 'https://www.youtube.com/@b', channelDir: '/data/b' },
+  ];
+  const container = createSubscriptionsListElement(subs, fakeDoc, {}, undefined, new Set(['/data/b']));
+  const rowA = container.children[0];
+  const rowB = container.children[1];
+  const pinA = rowA.children.find((el) => el.className && el.className.indexOf('sub-row-pin') === 0);
+  const pinB = rowB.children.find((el) => el.className && el.className.indexOf('sub-row-pin') === 0);
+  assert.strictEqual(pinA.className, 'sub-row-pin', 'row A\'s channelDir is not in the pinned set');
+  assert.strictEqual(pinB.className, 'sub-row-pin sub-row-pin-active', 'row B\'s channelDir IS in the pinned set');
+});
+
+test('createSubscriptionsListElement: an omitted pinnedChannelDirs defaults every row to unpinned (never throws)', () => {
+  const subs = [{ id: '1', name: 'A', channelUrl: 'https://www.youtube.com/@a', channelDir: '/data/a' }];
+  assert.doesNotThrow(() => createSubscriptionsListElement(subs, fakeDoc, {}));
+  const container = createSubscriptionsListElement(subs, fakeDoc, {});
+  const pin = container.children[0].children.find((el) => el.className && el.className.indexOf('sub-row-pin') === 0);
+  assert.strictEqual(pin.className, 'sub-row-pin');
+});
+
+// ---- SECURITY (mandatory regression test): a hostile subscription name -----
 
 test('createSubscriptionRow: a hostile subscription name is rendered as inert TEXT, never interpreted as markup (XSS regression)', () => {
   const hostileName = '<script>window.__xss = true;</script><img src=x onerror="window.__xss2 = true">';
@@ -613,17 +717,12 @@ test('createSubscriptionRow: a hostile subscription name is rendered as inert TE
 
   // No <script> or <img> element must ever exist in the built row -- if the
   // implementation had used innerHTML with this string, a real browser (or
-  // any HTML parser) would have created exactly those elements from it. The
-  // row (including its inline edit panel) only ever calls `createElement`
-  // with a fixed, known set of tags -- these are the ONLY tag names that can
-  // legitimately appear.
+  // any HTML parser) would have created exactly those elements from it.
   const tagNames = new Set(allNodes.map((el) => el.tagName));
   assert.ok(!tagNames.has('SCRIPT'), 'no <script> element must ever be created from subscription data');
   assert.ok(!tagNames.has('IMG'), 'no <img> element must ever be created from subscription data');
   for (const tag of tagNames) {
-    // v1.15.0 item 4 UI: LABEL/SPAN added for the edit panel's Skip Shorts
-    // checkbox + its text label.
-    assert.ok(['DIV', 'BUTTON', 'SELECT', 'OPTION', 'INPUT', 'LABEL', 'SPAN'].includes(tag), `unexpected element tag created from row data: ${tag}`);
+    assert.ok(['DIV', 'BUTTON', 'A'].includes(tag), `unexpected element tag created from row data: ${tag}`);
   }
 });
 
@@ -641,20 +740,35 @@ test('createSubscriptionRow: a hostile lastStatus (composed error text) is also 
 
   const row = createSubscriptionRow(sub, fakeDoc, {});
   const allNodes = [...row.walk()];
-  const statusNode = allNodes.find((el) => el.textContent.endsWith(hostileStatus));
+  // formatSubStatus prefixes "Last checked: <date> — " -- the hostile
+  // fragment survives verbatim as a SUFFIX of .sub-row-status's textContent.
+  const statusNode = allNodes.find((el) => typeof el.textContent === 'string' && el.textContent.endsWith(hostileStatus));
   assert.ok(statusNode, 'the hostile status text must be present verbatim as textContent');
   const tagNames = new Set(allNodes.map((el) => el.tagName));
   assert.ok(!tagNames.has('IMG'), 'no <img> element must ever be created from a status string');
 });
 
+test('createSubscriptionRow: a hostile channelUrl never becomes an XSS vector -- it is only ever assigned via .href, and its label is plain textContent', () => {
+  // `javascript:`-scheme URLs cannot reach this code path in practice
+  // (validateChannelUrl confines add-time input to http(s) youtube URLs
+  // server-side), but this proves the CLIENT-side rendering mechanism itself
+  // (.href/.textContent) carries no interpolation risk regardless.
+  const hostileUrl = 'https://www.youtube.com/@c"><script>alert(1)</script>';
+  const sub = { id: 'evil-3', name: 'Channel', channelUrl: hostileUrl };
+  const row = createSubscriptionRow(sub, fakeDoc, {});
+  const allNodes = [...row.walk()];
+  const link = allNodes.find((el) => el.className === 'sub-row-channel-link');
+  assert.strictEqual(link.href, hostileUrl, 'href is assigned verbatim as a property, never parsed as markup');
+  assert.strictEqual(link.textContent, hostileUrl);
+  const tagNames = new Set(allNodes.map((el) => el.tagName));
+  assert.ok(!tagNames.has('SCRIPT'));
+});
+
 test('createSubscriptionRow: a hostile LIVE error status (FR-E) is also rendered as inert text, never innerHTML', () => {
   const hostileLiveError = 'error: <img src=x onerror=alert(1)>';
-  const sub = { id: 'evil-3', name: 'Channel', channelUrl: 'https://www.youtube.com/@c' };
+  const sub = { id: 'evil-4', name: 'Channel', channelUrl: 'https://www.youtube.com/@c' };
   const liveEntry = { state: 'error', error: hostileLiveError };
 
-  // Must not throw (the fake's innerHTML setter would throw if it were ever
-  // assigned) -- proves formatLiveStatusText's output reaches the DOM only
-  // via textContent.
   const row = createSubscriptionRow(sub, fakeDoc, {}, liveEntry);
   const allNodes = [...row.walk()];
   const statusNode = allNodes.find((el) => el.textContent === hostileLiveError);
@@ -663,7 +777,249 @@ test('createSubscriptionRow: a hostile LIVE error status (FR-E) is also rendered
   assert.ok(!tagNames.has('IMG'), 'no <img> element must ever be created from a live error string');
 });
 
-// ---- FR-A/FR-E: one-shot job rows -------------------------------------------
+// ---- createSubscriptionsListElement (empty state + ordering contract) -----
+
+test('createSubscriptionsListElement: renders an empty-state message when there are no subscriptions', () => {
+  const container = createSubscriptionsListElement([], fakeDoc, {});
+  const texts = [...container.walk()].map((el) => el.textContent).filter(Boolean);
+  assert.ok(texts.some((t) => t.includes('No subscriptions yet')));
+});
+
+test('createSubscriptionsListElement: renders one row per subscription, in order (container.children[i] <-> subs[i])', () => {
+  const subs = [
+    { id: '1', name: 'Channel A', channelUrl: 'https://www.youtube.com/@a' },
+    { id: '2', name: 'Channel B', channelUrl: 'https://www.youtube.com/@b' },
+  ];
+  const container = createSubscriptionsListElement(subs, fakeDoc, {});
+  assert.strictEqual(container.children.length, 2);
+  assert.strictEqual(container.children[0].children[1].children.find((el) => el.className === 'sub-row-name').textContent, 'Channel A');
+  assert.strictEqual(container.children[1].children[1].children.find((el) => el.className === 'sub-row-name').textContent, 'Channel B');
+});
+
+// ---- v1.21.0 FR-3 (AC21): the settings bottom-sheet -------------------------
+
+test('buildSettingsSheet: renders the channel name READ-ONLY (plain text, no input control) with the subscribed date, and all editable fields', () => {
+  const sub = {
+    id: 's1',
+    name: 'Editable Channel',
+    channelUrl: 'https://www.youtube.com/@editable',
+    format: 'video',
+    quality: '720p',
+    filetype: 'mkv',
+    maxVideos: 5,
+    skipShorts: true,
+    addedAt: '2026-02-01T00:00:00.000Z',
+    paused: false,
+  };
+  const sheetBackdrop = buildSettingsSheet(sub, fakeDoc, {});
+  assert.strictEqual(sheetBackdrop.className, 'sub-sheet-backdrop');
+  const sheet = sheetBackdrop.children.find((el) => el.className === 'sub-sheet');
+  assert.ok(sheet);
+
+  const allNodes = [...sheetBackdrop.walk()];
+
+  // Name is read-only: no INPUT/SELECT anywhere carries the channel name as
+  // its value -- it only ever appears as plain textContent.
+  const nameEl = allNodes.find((el) => el.className === 'sub-sheet-name');
+  assert.ok(nameEl);
+  assert.strictEqual(nameEl.textContent, sub.name);
+  assert.notStrictEqual(nameEl.tagName, 'INPUT');
+
+  const subtextEl = allNodes.find((el) => el.className === 'sub-sheet-subtext');
+  assert.strictEqual(subtextEl.textContent, formatSubscribedDate(sub.addedAt));
+
+  const selects = allNodes.filter((el) => el.tagName === 'SELECT');
+  assert.strictEqual(selects.length, 3, 'expected format/quality/filetype selects');
+  assert.strictEqual(selects[0].value, 'video');
+  assert.strictEqual(selects[1].value, '720p');
+  assert.strictEqual(selects[2].value, 'mkv');
+
+  const maxVideosInput = allNodes.find((el) => el.tagName === 'INPUT' && el.type === 'number');
+  assert.ok(maxVideosInput);
+  assert.strictEqual(maxVideosInput.value, '5');
+
+  const skipShortsCheck = allNodes.find((el) => el.tagName === 'INPUT' && el.type === 'checkbox');
+  assert.ok(skipShortsCheck);
+  assert.strictEqual(skipShortsCheck.checked, true);
+});
+
+test('buildSettingsSheet: Save collects format/quality/filetype/maxVideos/skipShorts into a patch and calls onSave(id, patch)', () => {
+  const sub = { id: 'e1', name: 'C', channelUrl: 'https://www.youtube.com/@c', format: 'video', quality: 'best' };
+  const saveCalls = [];
+  const sheetBackdrop = buildSettingsSheet(sub, fakeDoc, { onSave: (id, patch) => saveCalls.push([id, patch]) });
+  const saveBtn = [...sheetBackdrop.walk()].find((el) => el.tagName === 'BUTTON' && el.textContent === 'Save');
+  assert.ok(saveBtn);
+  saveBtn.click();
+  assert.strictEqual(saveCalls.length, 1);
+  const [id, patch] = saveCalls[0];
+  assert.strictEqual(id, 'e1');
+  assert.strictEqual(patch.format, 'video');
+  assert.strictEqual(patch.quality, 'best');
+  assert.strictEqual(typeof patch.skipShorts, 'boolean');
+});
+
+test('buildSettingsSheet: Save omits maxVideos entirely when the field is left blank (blank = unchanged)', () => {
+  const sub = { id: 'e2', name: 'C', channelUrl: 'https://www.youtube.com/@c' };
+  const saveCalls = [];
+  const sheetBackdrop = buildSettingsSheet(sub, fakeDoc, { onSave: (id, patch) => saveCalls.push([id, patch]) });
+  const saveBtn = [...sheetBackdrop.walk()].find((el) => el.tagName === 'BUTTON' && el.textContent === 'Save');
+  saveBtn.click();
+  assert.strictEqual('maxVideos' in saveCalls[0][1], false);
+});
+
+test('buildSettingsSheet: Save sends maxVideos: 0 (unlimited sentinel) when the field is explicitly set to 0', () => {
+  const sub = { id: 'e3', name: 'C', channelUrl: 'https://www.youtube.com/@c' };
+  const saveCalls = [];
+  const sheetBackdrop = buildSettingsSheet(sub, fakeDoc, { onSave: (id, patch) => saveCalls.push([id, patch]) });
+  const maxVideosInput = [...sheetBackdrop.walk()].find((el) => el.tagName === 'INPUT' && el.type === 'number');
+  maxVideosInput.value = '0';
+  const saveBtn = [...sheetBackdrop.walk()].find((el) => el.tagName === 'BUTTON' && el.textContent === 'Save');
+  saveBtn.click();
+  assert.strictEqual(saveCalls[0][1].maxVideos, 0);
+});
+
+test('buildSettingsSheet: Pause/Resume label reflects the subscription\'s paused state and wires onTogglePause', () => {
+  const pausedCalls = [];
+  const pausedSheet = buildSettingsSheet(
+    { id: 'p1', name: 'C', channelUrl: 'https://www.youtube.com/@c', paused: true },
+    fakeDoc,
+    { onTogglePause: (s) => pausedCalls.push(s) }
+  );
+  const resumeBtn = [...pausedSheet.walk()].find((el) => el.tagName === 'BUTTON' && el.textContent === 'Resume');
+  assert.ok(resumeBtn, 'a paused subscription must show a Resume button');
+  resumeBtn.click();
+  assert.strictEqual(pausedCalls.length, 1);
+
+  const activeSheet = buildSettingsSheet({ id: 'p2', name: 'C', channelUrl: 'https://www.youtube.com/@c', paused: false }, fakeDoc, {});
+  const pauseBtn = [...activeSheet.walk()].find((el) => el.tagName === 'BUTTON' && el.textContent === 'Pause');
+  assert.ok(pauseBtn, 'an active subscription must show a Pause button');
+});
+
+test('buildSettingsSheet: Re-pull wires onRepull(id) and Delete wires onDelete(sub)', () => {
+  const sub = { id: 'd1', name: 'C', channelUrl: 'https://www.youtube.com/@c' };
+  const repullCalls = [];
+  const deleteCalls = [];
+  const sheetBackdrop = buildSettingsSheet(sub, fakeDoc, {
+    onRepull: (id) => repullCalls.push(id),
+    onDelete: (s) => deleteCalls.push(s),
+  });
+  const repullBtn = [...sheetBackdrop.walk()].find((el) => el.tagName === 'BUTTON' && el.textContent === 'Re-pull');
+  const deleteBtn = [...sheetBackdrop.walk()].find((el) => el.tagName === 'BUTTON' && el.textContent === 'Delete');
+  repullBtn.click();
+  deleteBtn.click();
+  assert.deepStrictEqual(repullCalls, ['d1']);
+  assert.deepStrictEqual(deleteCalls, [sub]);
+});
+
+test('buildSettingsSheet: the close button and a backdrop click both invoke onClose', () => {
+  const sub = { id: 'c1', name: 'C', channelUrl: 'https://www.youtube.com/@c' };
+  const closeCalls = [];
+  const sheetBackdrop = buildSettingsSheet(sub, fakeDoc, { onClose: () => closeCalls.push(1) });
+  const closeBtn = [...sheetBackdrop.walk()].find((el) => el.tagName === 'BUTTON' && el.className === 'sub-sheet-close');
+  closeBtn.click();
+  sheetBackdrop.click({ stopPropagation: () => {} });
+  assert.strictEqual(closeCalls.length, 2);
+});
+
+test('buildSettingsSheet: a hostile subscription name is rendered as inert text (XSS regression, mirrors the row-level guarantee)', () => {
+  const hostileName = '<script>window.__xssSheet = true;</script>';
+  const sub = { id: 'evil-sheet', name: hostileName, channelUrl: 'https://www.youtube.com/@evil' };
+  const sheetBackdrop = buildSettingsSheet(sub, fakeDoc, {});
+  const allNodes = [...sheetBackdrop.walk()];
+  assert.ok(allNodes.some((el) => el.textContent === hostileName));
+  const tagNames = new Set(allNodes.map((el) => el.tagName));
+  assert.ok(!tagNames.has('SCRIPT'));
+});
+
+// ---- v1.21.0 FR-1 fix (AC1/AC4/AC22): the targeted in-place poll update ----
+
+test('applyStatusUpdatesInPlace: updates ONLY each row\'s .sub-row-status text, never replacing/rebuilding the row element', () => {
+  const subA = { id: 'a', name: 'A', channelUrl: 'https://www.youtube.com/@a', lastStatus: 'pending', lastCheckedAt: null };
+  const rowA = createSubscriptionRow(subA, fakeDoc, {});
+  const rowElementsById = { a: rowA };
+  const beforeChildCount = rowA.children.length;
+  const beforeNameText = rowA.children[1].children.find((el) => el.className === 'sub-row-name').textContent;
+
+  applyStatusUpdatesInPlace(rowElementsById, [subA], {
+    subscriptions: { a: { state: 'downloading', title: 'Ep', index: 1, total: 2, percent: 50 } },
+  });
+
+  // Same row object reference -- never rebuilt/replaced -- and its structure
+  // (child count) is untouched.
+  assert.strictEqual(rowElementsById.a, rowA);
+  assert.strictEqual(rowA.children.length, beforeChildCount, 'row structure must be unchanged -- no rebuild');
+  assert.strictEqual(rowA.children[1].children.find((el) => el.className === 'sub-row-name').textContent, beforeNameText);
+
+  const statusEl = rowA.children[1].children.find((el) => el.className === 'sub-row-status');
+  assert.ok(statusEl.textContent.includes('Ep'));
+  assert.ok(statusEl.textContent.includes('50%'));
+});
+
+test('applyStatusUpdatesInPlace: falls back to the persisted formatSubStatus line when there is no live entry for a sub', () => {
+  const sub = { id: 'b', name: 'B', channelUrl: 'https://www.youtube.com/@b', lastStatus: 'ok: downloaded 1 new video(s)', lastCheckedAt: '2026-07-05T00:00:00.000Z' };
+  const row = createSubscriptionRow(sub, fakeDoc, {}, { state: 'downloading', percent: 10 });
+  const rowElementsById = { b: row };
+  applyStatusUpdatesInPlace(rowElementsById, [sub], { subscriptions: {} });
+  const statusEl = row.children[1].children.find((el) => el.className === 'sub-row-status');
+  assert.ok(statusEl.textContent.includes('ok: downloaded 1 new video(s)'));
+});
+
+test('applyStatusUpdatesInPlace: an id with no row reference, or an empty/missing rowElementsById, is a safe no-op (never throws)', () => {
+  assert.doesNotThrow(() => applyStatusUpdatesInPlace({}, [{ id: 'missing' }], { subscriptions: {} }));
+  assert.doesNotThrow(() => applyStatusUpdatesInPlace(null, [{ id: 'x' }], { subscriptions: {} }));
+  assert.doesNotThrow(() => applyStatusUpdatesInPlace({}, null, { subscriptions: {} }));
+});
+
+test('applyStatusUpdatesInPlace: NEVER touches an independently-open settings sheet -- the FR-1 poll-clobber bug class cannot recur because the sheet is not part of the row map (AC1/AC4/AC22)', () => {
+  // This is the direct regression proof for T3's FR-1 fold-in: the ~2.5s
+  // live-status poll must not drop an in-progress, unsaved settings-sheet
+  // edit (e.g. a "download last N" count change from 3 -> 2).
+  const sub = { id: 'e1', name: 'Editable', channelUrl: 'https://www.youtube.com/@editable', maxVideos: 3 };
+  const sheetSaveCalls = [];
+  const sheetBackdrop = buildSettingsSheet(sub, fakeDoc, { onSave: (id, patch) => sheetSaveCalls.push([id, patch]) });
+  const maxVideosInput = [...sheetBackdrop.walk()].find((el) => el.tagName === 'INPUT' && el.type === 'number');
+
+  // The user opens the sheet and edits the count (3 -> 2) but has NOT saved
+  // yet.
+  maxVideosInput.value = '2';
+
+  // A row for the SAME subscription exists in the list (as it would in the
+  // real page) -- it is what the poll actually has a reference to via
+  // rowElementsById. The sheet itself is a wholly separate top-level node
+  // NEVER added to that map (see buildSettingsSheet's doc comment).
+  const row = createSubscriptionRow(sub, fakeDoc, {});
+  const rowElementsById = { e1: row };
+
+  // A live poll tick arrives while the sheet is open with the unsaved edit.
+  applyStatusUpdatesInPlace(rowElementsById, [sub], {
+    subscriptions: { e1: { state: 'downloading', percent: 10 } },
+  });
+
+  // The unsaved input value must survive completely untouched.
+  assert.strictEqual(maxVideosInput.value, '2', 'a live poll tick must never clobber the open sheet\'s unsaved edit');
+
+  // The row's OWN status line was still updated in place, proving the poll
+  // did run -- it just had no way to reach the sheet.
+  const rowStatusEl = row.children[1].children.find((el) => el.className === 'sub-row-status');
+  assert.ok(rowStatusEl.textContent.includes('10%'));
+
+  // Saving now must still send the edited value.
+  const saveBtn = [...sheetBackdrop.walk()].find((el) => el.tagName === 'BUTTON' && el.textContent === 'Save');
+  saveBtn.click();
+  assert.strictEqual(sheetSaveCalls.length, 1);
+  assert.strictEqual(sheetSaveCalls[0][0], 'e1');
+  assert.strictEqual(sheetSaveCalls[0][1].maxVideos, 2, 'Save must persist the edited count, not the original 3');
+});
+
+// ---- FR-A/FR-E: one-shot job rows (unchanged by T3) -------------------------
+
+test('createOneShotRow: also uses the dedicated .sub-row/.sub-row-info layout', () => {
+  const entry = { state: 'queued', label: 'One-Off', url: 'https://www.youtube.com/watch?v=abc' };
+  const row = createOneShotRow('job-x', entry, fakeDoc, {});
+  assert.strictEqual(row.className, 'sub-row');
+  const infoEl = row.children.find((el) => el.className === 'sub-row-info');
+  assert.ok(infoEl, 'an element with the dedicated .sub-row-info class must exist');
+});
 
 test('createOneShotRow: renders label/url/status and wires the dismiss handler', () => {
   const entry = {

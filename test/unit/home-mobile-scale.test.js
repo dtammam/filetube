@@ -106,6 +106,36 @@ test('desktop: #videos-section-header has exactly one rule in the whole styleshe
   assert.strictEqual(occurrences, 1, '#videos-section-header should be styled exactly once (inside the mobile breakpoint block), leaving desktop untouched');
 });
 
+// v1.21.0 FR-6, T4 -- the 768px auto-fill/minmax rule above SHOULD produce 2
+// columns on a phone but reportedly didn't feel deterministic on-device;
+// force it with a narrower, phone-only breakpoint that hard-sets exactly 2
+// columns instead of relying on minmax()'s fluid auto-fill math.
+test('mobile (<=480px): .video-grid forces exactly 2 columns via repeat(2, 1fr), guaranteed regardless of card min-width', () => {
+  const phoneBlockRe = /@media \(max-width: 480px\) \{([\s\S]*?)\n\}\n/;
+  const block = phoneBlockRe.exec(css);
+  assert.ok(block, 'expected a @media (max-width: 480px) block');
+  const rule = /\.video-grid\s*\{([^}]*)\}/.exec(block[1]);
+  assert.ok(rule, 'expected a .video-grid rule inside the 480px block');
+  assert.match(rule[1], /grid-template-columns:\s*repeat\(2,\s*1fr\)/, 'phones must get a deterministic 2-column grid');
+});
+
+test('mobile (<=480px): the .video-grid gap stays tight (< the 768px block\'s 12px) so 2 columns are comfortable, not cramped', () => {
+  const phoneBlockRe = /@media \(max-width: 480px\) \{([\s\S]*?)\n\}\n/;
+  const block = phoneBlockRe.exec(css);
+  const rule = /\.video-grid\s*\{([^}]*)\}/.exec(block[1]);
+  const gapMatch = /gap:\s*(\d+)px/.exec(rule[1]);
+  assert.ok(gapMatch, 'expected an explicit gap in the 480px .video-grid rule');
+  assert.ok(Number(gapMatch[1]) <= 12, 'the 480px gap should be no larger than the 768px block\'s 12px');
+});
+
+test('the existing 768px .video-grid rule (minmax(140px,1fr)/12px gap) stays byte-identical -- the 480px breakpoint is additive, not a replacement', () => {
+  const body = mobileBlock();
+  const rule = /\.video-grid\s*\{([^}]*)\}/.exec(body);
+  assert.ok(rule, 'expected the pre-existing mobile .video-grid rule inside the 768px block');
+  assert.match(rule[1], /grid-template-columns:\s*repeat\(auto-fill,\s*minmax\(140px,\s*1fr\)\)/);
+  assert.match(rule[1], /gap:\s*12px/);
+});
+
 test('desktop: the base .video-grid/.section-actions rules are untouched (210px/20px, no flex-wrap)', () => {
   const gridRule = /(?:^|\n)\.video-grid\s*\{([^}]*)\}/.exec(css);
   assert.ok(gridRule, 'expected the base .video-grid rule');

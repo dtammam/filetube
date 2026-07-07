@@ -1,166 +1,261 @@
 {
-  "feature_id": "v1.20-subscribe",
-  "feature_name": "v1.20.0 \"Subscribe button -- real subscriptions from downloads\": turns the cosmetic watch-page Subscribe button into a real toggle (with a compact options-confirm modal on subscribe) wired to the existing yt-dlp subscription system, driven by each file's captured creator/channel identity; surfaces each subscribed channel as its own Playlist via the existing physical per-channel download subfolder + root= filter; lowers DEFAULT_MAX_VIDEOS 3->2",
+  "feature_id": "v1.21-polish-release",
+  "feature_name": "v1.21.0 \"The Polish Release\": subscription count-edit bug fix; audio player overhaul with custom theme-aware blocky controls (click-art-to-play, persisted volume); subscriptions page rearchitect (subscriptions-first list + settings-detail surface); subscribed-on date + clickable channel link; pin-a-channel-playlist to persistent nav; library grid mobile density; extra-deliberate delete for local files; download retry + status chip; watch-page theatre mode; README refresh",
   "stage": "acceptance-complete",
   "created_at": "2026-07-08",
-  "updated_at": "2026-07-07",
-  "current_wave": 1,
-  "current_tasks": ["T1", "T5"],
-  "wave_plan": {
-    "wave_1": { "tasks": ["T1", "T5"], "rationale": "T1 (lib/ytdlp/{args,run,store,index}.js + server.js) and T5 (lib/ytdlp/config.js) are DISJOINT file sets -> run in parallel.", "status": "in-progress" },
-    "wave_2": { "tasks": ["T2", "T4"], "rationale": "After T1: T2 (public/js/common.js) and T4 (lib/ytdlp/index.js + lib/ytdlp/client/subscriptions.js + public/css/style.css) are DISJOINT (T4's optional common.js sheet-link edit scoped OUT) -> run in parallel.", "status": "pending" },
-    "wave_3": { "tasks": ["T3"], "rationale": "After T2 AND T4: T3 touches public/js/common.js (conflicts T2), lib/ytdlp/index.js (conflicts T1->T4), public/css/style.css (conflicts T4) -> must run alone, last.", "status": "pending" }
-  },
-  "shared_tree_serialization": {
-    "lib/ytdlp/index.js": "T1(W1) -> T4(W2) -> T3(W3)",
-    "public/js/common.js": "T2(W2) -> T3(W3); T4 does NOT touch it (scoped out)",
-    "public/css/style.css": "T4(W2) -> T3(W3)",
-    "T1-only": ["lib/ytdlp/args.js", "lib/ytdlp/run.js", "lib/ytdlp/store.js", "server.js"],
-    "T4-only": ["lib/ytdlp/client/subscriptions.js"],
-    "T3-only": ["public/js/watch.js", "public/watch.html"],
-    "T5-only": ["lib/ytdlp/config.js"]
-  },
-  "git_ownership": "Coordinator (EM) owns ALL git. SDE agents report files-changed + Node 22 test/lint results and do NOT commit/stage/branch.",
-  "node22_toolchain_bin": "/tmp/claude-1000/-home-coder-projects-filetube/139c0e56-b545-4e8e-ba05-f892f6dd6d0d/scratchpad/node-v22.23.1-linux-x64/bin",
-  "target_release": "v1.20.0",
-  "branch": "feature/v1.20-subscribe (off main, at v1.19.1)",
-  "base": "main (v1.19.1). Prior shipped records live in docs/exec-plans/completed/ (most recently v1.19-ui-polish).",
-  "process_plan": "Discovery completed by product-manager, grounded directly in the actual code (lib/ytdlp/*, server.js scan/synthetic-folder/embedded-tag logic, public/js/watch.js + common.js), not assumed from prior exec-plan wording. Dean's locked decisions (button-toggle-only trigger, hide-when-no-creator, per-channel Playlist, 2 as the new default N) are folded into the ACs as non-negotiable constraints. FR-1 was revised mid-Discovery per a relayed refinement from Dean: subscribing now opens a compact options-confirm modal (type/quality/maxVideos/skipShorts/filetype, channel identity read-only) rather than silently creating a subscription with hardcoded defaults -- see the exec plan's Decision log for the full note (including a flag that this refinement arrived via an unusual mid-task channel and should be confirmed genuine before it ships, since it revises what the original assignment had marked 'locked'). Two review tiers: TWO-REVIEWER GATE for FR-1 (new watch-page caller into the spawn-guarded subscription create/delete path), FR-2 (validating/parsing yt-dlp-supplied channel metadata before persistence -- an untrusted-input-hardening surface), and FR-4 (must re-prove the db.folders/folderSettings synthetic-root invariant holds); FR-3 rides FR-1's tier (same UI surface); FR-5 gets the LIGHTER single-QA tier (trivial constant change + regression lock, exact precedent: the v1.18.0 25->3 change).",
+  "updated_at": "2026-07-09",
+  "target_release": "v1.21.0",
+  "branch": "feature/v1.21-polish-release (off main, at v1.20.0)",
+  "base": "main (v1.20.0). Prior shipped records live in docs/exec-plans/completed/ (most recently v1.20-subscribe).",
+  "process_plan": "Discovery completed by product-manager, grounded directly in docs/ui-research-2026-07.md (mandated UI/UX research synthesis), ROADMAP.md's Planned section (every FR already listed there -- confirms no scope creep), the completed v1.16-watch-experience and v1.20-subscribe exec plans for precedent, and the live code (public/js/player.js in full, watch.html/subscriptions.html shell markup, lib/ytdlp/client/subscriptions.js in full, lib/ytdlp/store.js + index.js's PATCH route, lib/ytdlp/activity.js in full, server.js's POST /api/config folder pruning + DELETE /api/videos/:id, watch.js/main.js delete flows, style.css's grid/thumbnail/audio-mode sections) -- not assumed from prior wording. Ten FRs, each grounded with a specific code-reading finding (see the exec plan's Decision log): FR-1's root cause (the subscriptions list's ~2.5s live-status poll unconditionally rebuilds every row, destroying an open/unsaved edit panel -- a client render-timing bug, not a server validation bug); FR-5's design constraint (POST /api/config prunes folderSettings to real db.folders entries + the one synthetic root, so a per-channel pin CANNOT reuse folderSettings and needs a new store); FR-6's narrowed remaining gap (aspect-ratio/object-fit already shipped; a v1.15.0 mobile grid rule already exists but Dean's on-device report says it's still not comfortable -- scope narrowed to further tightening); FR-2's iOS volume platform constraint (script cannot set HTMLMediaElement.volume on iOS Safari -- flagged so an on-device report doesn't mistake this for a regression); FR-7's reusable detection signal (db.metadata[id]'s channelUrl/channelId/channelName from v1.20 FR-2); FR-4's addedAt field already exists (no new stored field needed); FR-8's one-shot-jobs-have-no-retry-today gap (subscriptions already have Re-pull as an existing retry mechanism; one-shot jobs only have Dismiss). Two resolved (non-blocking) forks: FR-2's shared audio+video control-bar scope (one <video> element serves both -- build audio-first, verify video isn't regressed) and FR-5's pin-store keying (channelDir+label snapshot, not a live subscription-id join, so unsubscribing doesn't silently break a pin). No genuinely blocking fork surfaced. Review tiers: HEAVIEST two-reviewer/adversarial gate for FR-2 (shared-player regression risk spans both media types + the whole v1.16 persistent-shell/dock machinery); HEAVY two-reviewer gate for FR-3 (subscription CRUD UI, same tier as v1.20 FR-1/FR-4), FR-5 (folders/config invariant), and FR-7 (destructive delete); LIGHT single-QA gate for FR-1, FR-4, FR-6, FR-9, FR-10; LIGHT-TO-MEDIUM for FR-8. Dean's on-device pass is the documented arbiter (no headless-browser/E2E infra exists per docs/RELIABILITY.md) for FR-2 (audio, especially iOS Safari), FR-6 (grid density feel), FR-9 (theatre feel), and FR-3 (list/detail-page feel) -- not a testing gap.",
   "hard_constraints": [
-    "The channel URL that ever reaches a yt-dlp spawn -- whether user-typed (existing /subscriptions add form) or file-derived (new, FR-1/FR-2) -- MUST pass through store.validateSubscriptionInput -> url.validateChannelUrl unchanged. No new code path may construct a subscription record or spawn argv from an unvalidated string.",
-    "Channel metadata captured from yt-dlp's own output (FR-2, both the subscription-poll download path and the one-shot download path) is untrusted input the same way user input is: validated/bounded before persistence or use, never trusted blindly.",
-    "The db.folders-vs-folderSettings synthetic-root invariant (a prior data-loss-class bug) is unchanged: FR-4 must never write a per-channel Playlist entry into db.folders. Confirmed FR-4 is a PHYSICAL-subfolder mapping (yt-dlp already writes flat into a per-channel confined subfolder via args.resolveChannelDir) and GET /api/videos?root= already supports arbitrary subfolder path filtering (underFolder is a pure path-prefix match, not restricted to db.folders entries) -- no new backend filtering primitive is needed for FR-4.",
-    "Disabled-module byte-identical guarantee preserved: with FILETUBE_YTDLP_ENABLED off, no Subscribe button/modal, no Playlist entries, no new routes reachable -- native 404 on every backing route, exactly like every existing yt-dlp route.",
-    "Follow docs/CONTRIBUTING.md: vanilla DOM (no framework/bundler), CommonJS server, 2-space/semicolons/single-quotes, textContent over innerHTML for new dynamic strings (the modal's creator name/channel URL display especially), node:test for new/regression tests, lint 0 warnings, NO new runtime dependencies.",
-    "Preserve the era-theme system (CSS custom properties) for the new modal; reuse the corrected v1.19.0 FR-1 select-sizing pattern (never reintroduce the oversized-mobile-select bug) and the v1.17.0 FR-6 full-teardown backdrop-dismiss pattern (never reintroduce a stuck-overlay bug) -- do not reimplement these from scratch.",
-    "FR-2's channel-identity matcher must be pure/unit-testable and must not rely on naive string equality of two channel URLs that may differ in shape (@handle vs /channel/UC... vs youtu.be) -- see the exec plan's Decision log for the recommended channel_id-based approach (PE's call on exact algorithm).",
-    "Files downloaded BEFORE this feature ships have no stored channelUrl -- documented, explicit limitation (best-effort embedded-tag fallback, else the Subscribe button is HIDDEN for that file, consistent with FR-3's hide rule). Reliable Subscribe-button behavior is for NEW downloads going forward only.",
-    "FR-5: DEFAULT_MAX_VIDEOS 3->2 for NEW subscriptions only -- 0=unlimited, the FILETUBE_YTDLP_MAX_VIDEOS env override, and already-persisted subscriptions' stored maxVideos are all unaffected (exact mirror of the v1.18.0 25->3 change and its regression tests)."
+    "Additive / no regressions: every FR layers on existing behavior; FR-2 must preserve every existing player feature (inline iOS playback, +-15s skip, transcode overlay, resume overlay, the full v1.16 FULL/DOCKED/CLOSED state machine, Media Session, progress saving) across BOTH audio and video -- the two media types share one <video id=\"media-player\"> element, so there is no way to touch one without touching the other.",
+    "Disabled-yt-dlp-module byte-identical guarantee preserved for FR-1/FR-3/FR-4/FR-5/FR-8: with FILETUBE_YTDLP_ENABLED off, no new route/UI/DOM is reachable; /subscriptions still 404s server-side exactly as today.",
+    "db.folders/folderSettings synthetic-root invariant unchanged (FR-5): a pin is NEVER written into db.folders or folderSettings (POST /api/config prunes folderSettings to real db.folders entries + the one synthetic Downloads root -- a per-channel pin would be silently dropped if stored there); the pin store is never scanned/pruned as a folder.",
+    "No existing security guard weakened: FR-1/FR-3/FR-4/FR-5/FR-8 all route through the SAME, unmodified validateChannelUrl / validateSubscriptionInput / validateSubscriptionPatch / DELETE /api/videos/:id paths -- no new parallel validator, no bypass.",
+    "FR-7 must fail safe: the yt-dlp-vs-local detection signal (reusing db.metadata[id]'s channelUrl/channelId/channelName from v1.20 FR-2) must never misclassify toward LESS delete friction than today; any ambiguous/missing signal (including every pre-v1.20 local file) is always treated as local/irreplaceable.",
+    "Follow docs/CONTRIBUTING.md: vanilla DOM (no framework/bundler -- notably FR-2's custom control bar and FR-8's status chip), CommonJS server, 2-space/semicolons/single-quotes, textContent over innerHTML for new dynamic strings (FR-4's channel link/date, FR-3's detail surface, FR-5's pin labels, FR-8's chip text), node:test for new/regression tests, lint 0 warnings, NO new runtime dependencies.",
+    "Preserve the era-theme system (CSS custom properties) for all new CSS: FR-2's control bar, FR-3's list/detail surface, FR-6's grid tightening, FR-8's chip, FR-9's theatre layout -- no hardcoded colors breaking the 2005/2009/2014/2021 eras or light/dark modes.",
+    "Node.js 22 LTS (engines >=20); no headless-browser/E2E infrastructure exists (docs/RELIABILITY.md) -- Dean's on-device pass is the documented arbiter for FR-2 (audio, especially iOS Safari's fixed-volume platform constraint), FR-6 (grid density), FR-9 (theatre), and FR-3 (list/detail feel), not a testing gap to close.",
+    "FR-2's iOS constraint: iOS Safari does not permit script control of HTMLMediaElement.volume (fixed at 1.0, hardware buttons only) -- the custom volume control must be hidden or clearly inert-but-non-broken on iOS, never presented as a bug to fix."
   ],
   "product_forks_for_dean": {
-    "fr1_modal_vs_direct_create": "RESOLVED (revised mid-Discovery per a relayed refinement from Dean) -- subscribing opens a compact options-confirm modal (pre-filled type/quality='best'/maxVideos=2/skipShorts=off/filetype=default, channel identity read-only) rather than silently creating a subscription with hardcoded defaults; unsubscribing stays a direct one-tap DELETE (no modal). FLAGGED: this refinement arrived via an unusual mid-task channel (embedded mid-tool-call rather than as a normal new instruction) and revises what the original assignment had explicitly marked 'locked' -- benign/in-scope content (no security-guard change), but the EM/Dean should confirm it was genuinely intended before Design/Implementation proceeds.",
-    "fr2_oneshot_capture_scope": "RESOLVED, not a genuine fork -- the feature's own stated goal explicitly calls out 'after a one-shot download you can subscribe to that creator,' so FR-2's channelUrl-capture work covers BOTH the subscription-poll download path (trivial -- sub.channelUrl is already known) AND the one-shot single-video download path (the larger sub-problem -- classifySingleVideo captures no channel metadata today). Recommended mechanism (PE's call): yt-dlp's --print flag emitting channel_url/channel_id/channel during the same download spawn (no extra network round-trip), captured via the SAME stdout line-splitting spawnYtdlpDownload already uses for progress parsing.",
-    "fr2_matching_key": "RESOLVED (default), non-blocking -- recommend capturing/storing yt-dlp's stable channel_id alongside channelUrl/channelName and preferring channel_id-based matching when available, falling back to normalized-URL-shape comparison otherwise. Exact algorithm left to PE's Design section.",
-    "fr4_physical_vs_virtual": "RESOLVED, not an open fork -- confirmed PHYSICAL per-channel subfolder by reading lib/ytdlp/args.js's resolveChannelDir + OUTPUT_TEMPLATE (flat, no nested path). GET /api/videos?root= already supports arbitrary subfolder filtering (underFolder is a pure path-prefix match, not restricted to db.folders entries) -- FR-4 needs zero new backend filtering primitive, only a per-subscription link surfaced client-side (likely via a new field on GET /api/subscriptions exposing the resolved channel dir -- left to PE).",
-    "fr1_unsubscribe_confirm": "RESOLVED (default), non-blocking -- no extra inline confirm on unsubscribe; direct one-tap DELETE, matching Dean's original explicit FR-1 wording and low blast-radius (unsubscribing never deletes already-downloaded files, only stops future polling)."
+    "fr2_audio_vs_video_control_scope": "RESOLVED (non-blocking) -- one shared <video id=\"media-player\"> element serves both audio and video (confirmed by reading player.js/watch.html/subscriptions.html), so removing native controls necessarily replaces video's control bar too. Recommended default: one shared, theme-aware/blocky control-bar component, built audio-first (Dean's asks are audio-centric) but explicitly verified not to regress video (fullscreen, rotate-to-fullscreen, skip-controls overlay, live-transcode). Not a genuine fork requiring a decision -- there is no way to fork the shared element without a much larger, out-of-scope refactor.",
+    "fr5_pin_store_keying": "RESOLVED (non-blocking), PE may revise -- recommend storing a pin as a channelDir + display-label SNAPSHOT rather than a live join keyed solely on subscription id, so an unpinned-but-still-downloaded channel (unsubscribe without deleting files) doesn't silently break an existing pin. Subscribe (follow) and Pin (quick-access) are different intents per the UI research; exact persisted shape is PE's Design-stage call.",
+    "fr1_fr3_sequencing": "RESOLVED, not a genuine fork -- FR-1 (the poll-clobbers-open-edit bug) must be fixed and independently verified regardless of FR-3's scope/timing per Dean's explicit instruction, even though FR-3's settings-detail-page redesign is expected to structurally obsolete the exact race condition as a side effect (a dedicated page/sheet is never subject to the subscriptions list's live poll re-render). Recommended sequencing: fix FR-1 first (small, fast, independently valuable), then FR-3 rebases on top of the fixed row-rendering code rather than a divergent version."
   },
   "scope_items": {
     "FR-1": {
-      "title": "Subscribe button = real toggle + compact options-confirm modal (watch page)",
-      "needs_pe_design": true,
-      "review_weight": "TWO-REVIEWER GATE (QA + adversarial code-review) -- the watch page becomes a new caller into the spawn-guarded subscription create/delete system; must prove no path bypasses store.validateSubscriptionInput/url.validateChannelUrl.",
-      "files": ["public/watch.html (#subscribe-btn-mock + new modal markup)", "public/js/watch.js (wiring, modal open/confirm/cancel)", "public/js/common.js or a new shared module (modal option-control reuse from lib/ytdlp/client/subscriptions.js's buildFormatSelect/buildFiletypeSelect/reduceFiletypeOptions patterns)", "public/css/style.css (modal styling, era tokens, corrected select-sizing)", "test/unit + test/integration (button-state derivation, modal confirm->POST, cancel/backdrop teardown, unsubscribe->DELETE)"]
+      "title": "[BUG] Subscription count-edit reverts",
+      "needs_pe_design": false,
+      "review_weight": "LIGHT single-QA gate -- server-side validator/mutator path (store.validateSubscriptionPatch/updateSubscription) is unchanged and already correct; this is purely a client-side render-timing fix (the ~2.5s live-status poll unconditionally rebuilds every row, destroying an open/unsaved edit panel).",
+      "files": ["lib/ytdlp/client/subscriptions.js", "test/unit + test/integration (regression: open-edit survives a live poll tick, for every edit-panel field, not just maxVideos)"]
     },
     "FR-2": {
-      "title": "Capture + use the file's creator/channel identity",
+      "title": "Audio player overhaul (custom blocky theme-aware controls; click-art-to-play; persisted volume)",
       "needs_pe_design": true,
-      "review_weight": "TWO-REVIEWER GATE (QA + adversarial code-review) -- validating/parsing yt-dlp-supplied channel metadata before persistence/use is an untrusted-input-hardening surface, not just a UI concern.",
-      "files": ["lib/ytdlp/args.js and/or run.js (capture mechanism -- e.g. --print on the download spawn)", "lib/ytdlp/index.js (runSubscriptionCycle/runOneShot -- persist captured channelUrl/channelName/channelId per downloaded item)", "server.js (scan: attach captured channel identity to db.metadata[id]; resolveChannelName precedence)", "public/js/common.js (resolveChannelName precedence extension; pure channel-identity matcher)", "test/unit (matcher, derivation, precedence) + test/integration (end-to-end capture-to-metadata)"]
+      "review_weight": "HEAVIEST two-reviewer/adversarial gate in this round -- shared-player regression risk spans BOTH audio and video and the entire v1.16 FULL/DOCKED/CLOSED persistent-shell/dock state machine. Dean's on-device pass (especially iOS Safari) is the arbiter.",
+      "files": ["public/js/player.js (the v1.16 persistent player controller -- primary surface)", "public/watch.html, public/index.html, public/setup.html, lib/ytdlp/views/subscriptions.html (#player-host-template markup, replicated across all four shells)", "public/css/style.css (new control-bar/audio-mode styling, era tokens)", "test/unit (volume clamp/parse helper, seek-scrub-vs-commit reducer, any other extracted pure helper) + test/integration where applicable"]
     },
     "FR-3": {
-      "title": "Hide the Subscribe button when there's no creator/channel",
+      "title": "Subscriptions page rearchitect (subscriptions-FIRST list + settings-detail surface)",
       "needs_pe_design": true,
-      "review_weight": "Rides FR-1's TWO-REVIEWER GATE tier (same UI surface, same button).",
-      "files": ["public/js/watch.js (show/hide predicate wiring)", "public/js/common.js (pure show/hide predicate, reusing FR-2's derivation)", "test/unit (predicate) + test/integration (non-yt-dlp file, disabled-module cases)"]
+      "review_weight": "HEAVY two-reviewer gate (subscription CRUD UI surface -- same tier as v1.20's FR-1/FR-4). Depends on FR-1 landing first (same primary file).",
+      "files": ["lib/ytdlp/views/subscriptions.html", "lib/ytdlp/client/subscriptions.js (major rewrite -- row rendering, new settings-detail surface)", "public/css/style.css (new list/detail-surface styling)", "test/unit + test/integration (row rendering, tap-to-open-channel, kebab-to-settings, disabled-module no-op)"]
     },
     "FR-4": {
-      "title": "Each subscribed channel = a Playlist",
+      "title": "\"Subscribed to\" date + clickable channel link",
       "needs_pe_design": true,
-      "review_weight": "TWO-REVIEWER GATE (QA + adversarial code-review) -- must re-prove the db.folders/folderSettings synthetic-root invariant holds with the new per-channel Playlist links, even though nothing here loosens an existing guard.",
-      "files": ["lib/ytdlp/index.js and/or store.js (expose each subscription's resolved channel download dir, e.g. via GET /api/subscriptions)", "public/js/common.js (Playlists-sheet / Subscriptions-tab per-channel link rendering, reusing the existing /?root=<path> pattern)", "test/unit + test/integration (confinement -- one channel's playlist never surfaces another's videos; db.folders untouched)"]
+      "review_weight": "LIGHT single-QA gate -- display-only, reuses the already-persisted addedAt field and the already-validateChannelUrl-validated channelUrl (no new trust boundary). Rides FR-3's row-rendering work (same file, bundle together).",
+      "files": ["lib/ytdlp/client/subscriptions.js (same file as FR-3 -- bundle)", "test/unit (date formatting incl. missing-addedAt fallback, href-safe link construction)"]
     },
     "FR-5": {
-      "title": "Default download count 3 -> 2",
+      "title": "Pin a channel's \"View as Playlist\" to persistent nav",
+      "needs_pe_design": true,
+      "review_weight": "HEAVY two-reviewer gate (data-safety / folders-config invariant) -- must prove the new pin store never touches db.folders/folderSettings and is never pruned by POST /api/config.",
+      "files": ["lib/ytdlp/store.js and/or a new lib/ytdlp module (new pin store -- NOT folderSettings)", "lib/ytdlp/index.js (new pin routes, gated)", "public/js/common.js (Playlists sheet rendering of pinned entries)", "lib/ytdlp/client/subscriptions.js (pin toggle on a subscription row -- after FR-3 lands)", "test/unit + test/integration (pin persistence, db.folders/folderSettings invariant regression, un-pin)"]
+    },
+    "FR-6": {
+      "title": "Library grid mobile density",
       "needs_pe_design": false,
-      "review_weight": "LIGHTER single-QA no-regression tier -- trivial constant change + regression lock, exact precedent: the v1.18.0 25->3 change.",
-      "files": ["lib/ytdlp/config.js (DEFAULT_MAX_VIDEOS)", "test/unit (regression: 0=unlimited, env override, existing-subs-unaffected, mirroring the v1.18.0 25->3 tests)"]
+      "review_weight": "LIGHT single-QA gate -- scoped CSS-only change; aspect-ratio/object-fit already shipped, only the mobile minmax() floor needs further tightening. On-device Dean pass is the arbiter for \"comfortable\" density.",
+      "files": ["public/css/style.css (mobile .video-grid rule only -- desktop rule outside the media query untouched)"]
+    },
+    "FR-7": {
+      "title": "Extra-deliberate delete for local (non-yt-dlp) files",
+      "needs_pe_design": true,
+      "review_weight": "HEAVY two-reviewer gate (destructive-action class) -- adversarial review must confirm the yt-dlp-vs-local detection signal can never fail toward LESS friction than today.",
+      "files": ["public/js/common.js (shared detection predicate, if placed here) or a per-page equivalent", "public/js/watch.js (escalated confirm on the watch-page delete button)", "public/js/main.js (escalated confirm on the home/library card two-tap delete)", "public/css/style.css (distinct hard-warning confirm styling)", "test/unit (detection predicate fail-safe behavior) + test/integration"]
+    },
+    "FR-8": {
+      "title": "Download retry button + clearer active-download status (corner chip)",
+      "needs_pe_design": true,
+      "review_weight": "LIGHT-TO-MEDIUM gate -- reuses the existing GET /api/subscriptions/status polling data (lib/ytdlp/activity.js); no new backend polling primitive. A small server addition may be needed for one-shot retry re-invocation.",
+      "files": ["lib/ytdlp/client/subscriptions.js (contextual Retry on a failed subscription row; one-shot job Retry, which does not exist today -- only Dismiss does)", "lib/ytdlp/index.js (possible small addition for one-shot retry re-invocation)", "public/js/common.js (new app-wide status chip component, so it's visible outside /subscriptions)", "public/css/style.css (chip styling, era tokens, coordinated with the FR-2 audio dock so they never overlap on mobile)", "test/unit + test/integration"]
+    },
+    "FR-9": {
+      "title": "Theatre mode (video)",
+      "needs_pe_design": true,
+      "review_weight": "LIGHT gate. Mostly desktop; on-device Dean pass is the arbiter, especially for mobile behavior.",
+      "files": ["public/watch.html", "public/js/watch.js (theatre toggle -- watch-VIEW-only, never applies to the v1.16 DOCKED state)", "public/css/style.css (widened layout, sidebar reconciliation)"]
+    },
+    "FR-10": {
+      "title": "README refresh",
+      "needs_pe_design": false,
+      "review_weight": "PROCESS-only -- docs-only change, no functional/code risk. Fully independent of every other FR (zero code-file overlap); can run any time in parallel.",
+      "files": ["README.md"]
     }
   },
-  "pe_design_items": "Route to Design after Discovery. All of FR-1/FR-2/FR-3/FR-4 need PE design (FR-3 rides FR-1's design work, sharing the show/hide predicate and FR-2's derivation). FR-5 does not need PE design (trivial constant change) but rides through Design for one cohesive plan. Key open engineering questions for PE: (1) FR-2's exact channelUrl/channelId capture mechanism for BOTH download paths (recommended: yt-dlp --print on the existing download spawn, parsed via the same stdout line-splitting spawnYtdlpDownload already uses for progress); (2) where captured channel identity is persisted between 'download completes' and 'scan indexes the resulting file' (the scan computes db.metadata ids independently of yt-dlp's own video id, so a bridge/lookup is needed -- the output filename already embeds yt-dlp's video id in brackets per OUTPUT_TEMPLATE, which cleanDisplayTitle already parses off for display, a candidate join key); (3) FR-1 modal's exact markup/DOM structure reusing lib/ytdlp/client/subscriptions.js's existing option-control builders without creating a circular dependency between public/js/ and lib/ytdlp/client/; (4) FR-4's exact mechanism for the client to learn a subscription's resolved channel download dir without duplicating sanitizeChannelName client-side (recommended: a new response field on GET /api/subscriptions).",
-  "cross_cutting": "Disabled-module no-op preserved end-to-end (no Subscribe button/modal, no Playlist entries, no new routes reachable when FILETUBE_YTDLP_ENABLED is off). Era-theme CSS vars for all new modal styling. No new npm dependencies; CommonJS server; vanilla DOM client code; node:test covers every new pure helper (channel matcher, channel-identity derivation, show/hide predicate, FR-5's constant). Lint 0 warnings. textContent (never innerHTML) for new dynamic strings. No headless-browser/E2E infra exists (docs/RELIABILITY.md) -- FR-1's modal UX and FR-4's on-device Playlist confirmation lean on Dean's on-device pass as the documented arbiter, not a testing gap; everything else in this round is substantially code/test-verifiable (matcher/derivation/predicate unit tests; POST/DELETE route integration tests; the db.folders-exclusion regression suite).",
+  "pe_design_items": "Route to Design after Discovery. FR-2/FR-3/FR-4/FR-5/FR-7/FR-8/FR-9 need PE design; FR-1/FR-6/FR-10 do not (trivial/scoped fixes) but ride through Design for one cohesive plan. Key open engineering questions for PE, in order of weight: (1) FR-2's exact custom control-bar component structure (shared by audio+video across all four HTML shells' #player-host-template), the seek visual-scrub-vs-commit mechanism, the volume localStorage clamp/apply-before-playback sequencing, and the iOS-volume-constraint UI treatment (hide vs. inert); (2) FR-1's exact poll-clobber fix mechanism (skip-the-open-row vs. targeted partial update vs. another approach) -- must land independently of FR-3's timing; (3) FR-3's settings-detail surface (dedicated page vs. bottom-sheet) and how it structurally avoids FR-1's race by construction; (4) FR-5's exact new pin-store shape/location and its routes (gated, disabled-module no-op preserved), plus the resolved channelDir+label-snapshot keying; (5) FR-7's exact detection-predicate placement (shared helper vs. duplicated per-page) and the escalated-confirm UX (distinct from the existing modal/two-tap arm); (6) FR-8's exact one-shot-retry re-invocation mechanism (may need a small lib/ytdlp/index.js addition) and the app-wide status-chip component's mount point (likely common.js, since it must be visible outside /subscriptions) plus its coordination with the FR-2 audio dock; (7) FR-9's theatre-mode CSS/layout approach and its interaction with the v1.16 persistent-shell watch view and the related-items sidebar. See the exec plan's 'Recommended task grouping' section for file-overlap-driven sequencing hints (not a finalized wave plan -- EM's job in Tasks stage).",
+  "cross_cutting": "Disabled-yt-dlp-module no-op preserved end-to-end for FR-1/FR-3/FR-4/FR-5/FR-8 (no new route/UI/DOM reachable with FILETUBE_YTDLP_ENABLED off). Era-theme CSS vars for all new styling (FR-2/FR-3/FR-6/FR-8/FR-9). No new npm dependencies; CommonJS server; vanilla DOM client code; node:test covers every new pure helper; lint 0 warnings. textContent (never innerHTML) for every new dynamic string. Node 22 toolchain throughout. No headless-browser/E2E infrastructure exists (docs/RELIABILITY.md) -- Dean's on-device pass is the documented arbiter for FR-2/FR-6/FR-9/FR-3 feel, not a testing gap. Review tiers: HEAVIEST for FR-2; HEAVY for FR-3/FR-5/FR-7; LIGHT for FR-1/FR-4/FR-6/FR-9/FR-10; LIGHT-TO-MEDIUM for FR-8.",
+  "coordinator_decisions": {
+    "editable_name": "RESOLVED READ-ONLY this round. validateSubscriptionPatch/updateSubscription do NOT accept a name patch, and editing name would change resolveChannelDir and orphan downloads. FR-3's settings sheet edits count/quality/type/skip-shorts/filetype ONLY; the channel name renders read-only in the sheet header. AC21's 'name' field is intentionally deferred (would need a scoped server change, Out of scope).",
+    "fr1_folded_into_fr3": "RESOLVED. The standalone FR-1 count-edit hotfix is FOLDED INTO the FR-3 rearchitect (T3). T3 rebuilds the subscriptions client with a settings SHEET + a targeted in-place status-poll update (updates only each row's .sub-row-status text rather than clear+rebuild), which STRUCTURALLY eliminates the poll-clobber race by construction. There is NO separate T1 hotfix task; FR-1's ACs (AC1-AC5) are satisfied within T3. .state/inbox/software-developer-T1.md is a stale v1.20 leftover and is superseded (do not run)."
+  },
+  "wave_plan": {
+    "serialization_rule": "HARD RULE (coordinator-enforced): NO two CONCURRENTLY-running tasks may edit the same file -- NOT EVEN different regions/sections of the same file. Region/section ownership is NOT permitted on this shared working tree (it risks lost-update collisions between concurrent agents). Consequence: public/css/style.css is touched by 7 of 8 tasks (T2,T3,T4,T5,T6,T7,T8), so those 7 are FULLY SERIALIZED one-at-a-time. Only T9 (README-only) is style.css-free and may run in parallel -- paired with the longest pole T2 in Wave 1. All other shared files (subscriptions.js, common.js, index.js, watch.js, the two HTML shells) are likewise strictly serialized across waves.",
+    "waves": {
+      "1": ["T2", "T9"],
+      "2": ["T3"],
+      "3": ["T4"],
+      "4": ["T5"],
+      "5": ["T6"],
+      "6": ["T7"],
+      "7": ["T8"]
+    },
+    "note": "style.css forces near-total serialization. T9 (README) is the only non-CSS task, paired with T2 (longest pole) in Wave 1. T4 (one CSS rule) gets its own wave (it can only overlap T9, already consumed by W1); it MAY optionally be folded into an adjacent task's SAME session (one agent, sequential edits, no concurrency) to save a wave, at the cost of mixing a LIGHT task into a heavier session -- kept separate here for clean review. Order respects every dep: T3(W2) before T5(W4)/T7(W6); T5(W4) before T7(W6); T6(W5) before T7(W6) and T8(W7).",
+    "per_hot_file_serialization_proof": {
+      "public/css/style.css": "T2,T3,T4,T5,T6,T7,T8 -- STRICT one-editor-at-a-time: T2(W1) -> T3(W2) -> T4(W3) -> T5(W4) -> T6(W5) -> T7(W6) -> T8(W7). Never concurrent.",
+      "lib/ytdlp/views/subscriptions.html": "T2,T3 -- STRICT: T2 player-host-template (W1) -> T3 #view-root IA (W2). W1<W2, never concurrent.",
+      "public/watch.html": "T2,T8 -- STRICT: T2 player-host-template (W1) -> T8 theatre button (W7). Never concurrent.",
+      "lib/ytdlp/client/subscriptions.js": "T3,T5,T7 -- STRICT: T3 full rewrite (W2) -> T5 star toggle (W4) -> T7 retry (W6). Never concurrent.",
+      "public/js/common.js": "T5,T6,T7 -- STRICT: T5 pins render (W4) -> T6 predicate+hardmodal (W5) -> T7 chip (W6). Never concurrent.",
+      "lib/ytdlp/index.js": "T5,T7 -- STRICT: T5 pin routes (W4) -> T7 one-shot retry params (W6). Never concurrent.",
+      "public/js/watch.js": "T6,T8 -- STRICT + dep: T6 local-delete branch (W5) -> T8 theatre toggle (W7). Never concurrent.",
+      "public/js/player.js": "T2 only.",
+      "public/index.html": "T2 only (player-host-template).",
+      "public/setup.html": "T2 only (player-host-template).",
+      "public/js/main.js": "T6 only.",
+      "lib/ytdlp/store.js (+ new lib/ytdlp/pins.js if PE-shaped)": "T5 only.",
+      "README.md": "T9 only.",
+      "wave_disjointness": "W1: T2 (player.js, index/setup/watch/subscriptions.html, style.css) and T9 (README.md) share NO file. W2-W7 each run exactly one task -> trivially disjoint. No two concurrent tasks share ANY file."
+    }
+  },
+  "current_wave": 1,
+  "current_tasks": ["T2", "T9"],
   "tasks": [
     {
-      "id": "T1",
-      "title": "FR-2 capture + store + bridge (ENABLER)",
-      "description": "Capture each downloaded file's channel identity at yt-dlp download time via a fixed-literal --print after_move:FTCHMETA template on the download spawn (both audio/video, subscription + one-shot); parse it via the existing makeLineSplitter stream into a bounded channelMeta array; sanitize/validate every captured URL through the UNMODIFIED url.validateChannelUrl before persisting into db.ytdlp.downloadMeta (FIFO-capped); persist on both download paths in index.js (with sub.channelUrl/sub.name fallback on the subscription path); bridge onto db.metadata[id] at scan time via a new extractYtdlpVideoId helper + consumeDownloadChannelMeta (read-validate-delete).",
-      "files": ["lib/ytdlp/args.js", "lib/ytdlp/run.js", "lib/ytdlp/store.js", "lib/ytdlp/index.js", "server.js"],
-      "acs": ["AC9", "AC10", "AC11", "AC12"],
-      "gate": "TWO-REVIEWER GATE (untrusted yt-dlp output validated before use; download-spawn argv change)",
-      "wave": 1,
+      "id": "T2",
+      "fr": "FR-2",
+      "title": "Audio/video player overhaul — custom blocky theme-aware controls",
+      "description": "Remove native controls from the shared <video id=media-player>; add one shared blocky control bar (play/pause, seek, time, mute, volume, fullscreen) + click-cover-art play/pause glyph, wired once in wireHostListeners so it travels with the persistent host across FULL/DOCKED/CLOSED. Era-token/dark-mode CSS; seek input(scrub)/change(commit) split with rAF fill; persist volume with iOS volumeIsSettable feature-detect degrade; desktop fullscreen retargets to .player-container. PRESERVE every existing player feature for BOTH audio and video.",
+      "files": ["public/js/player.js", "public/index.html (#player-host-template)", "public/setup.html (#player-host-template)", "public/watch.html (#player-host-template)", "lib/ytdlp/views/subscriptions.html (#player-host-template)", "public/css/style.css (#controls/audio-mode section)", "test/unit"],
+      "gate": "HEAVIEST two-reviewer/adversarial + Dean iOS on-device arbiter",
+      "acs": ["AC6-AC17"],
       "depends_on": [],
-      "blocks": ["T2", "T3", "T4"],
+      "wave": 1,
+      "done_when": "Native controls removed; custom bar drives audio+video with all v1.16 behaviors preserved; clampVolume + seekCommitTarget unit-tested; iOS volume degrades silently; lint 0 + Node22 tests pass.",
       "status": "in-progress"
     },
     {
-      "id": "T2",
-      "title": "FR-2 client matcher + creator precedence",
-      "description": "Pure client-side channel-identity primitives in public/js/common.js: canonicalizeChannelUrl (URL-shape -> canonical key), channelIdentityMatches (set-membership on canonical keys incl. channel:UCid), resolveFileChannelIdentity, and the resolveChannelName captured-channelName-first precedence extension (non-yt-dlp files unchanged). node:test unit coverage for each.",
-      "files": ["public/js/common.js"],
-      "acs": ["AC13", "AC14"],
-      "gate": "Rides T1's FR-2 TWO-REVIEWER GATE tier (same security surface)",
-      "wave": 2,
-      "depends_on": ["T1"],
-      "blocks": ["T3"],
-      "status": "pending"
-    },
-    {
       "id": "T3",
-      "title": "FR-1 subscribe toggle + compact options modal + FR-3 hide",
-      "description": "public/js/common.js buildSubscribeModal (reusing the .oneoff-modal-* CSS + buildOneOffSelect/ONEOFF_*/reduceOneOffFiletypeOptions primitives already in common.js -- NO dependency on the gated /js/subscriptions.js) and shouldShowSubscribeButton; public/js/watch.js wiring (button state via channelIdentityMatches against GET /api/subscriptions, modal open/confirm->POST/full-teardown, one-tap unsubscribe->DELETE, FR-3 show/hide via the /api/subscriptions/health probe); public/watch.html default-hidden #subscribe-btn-mock; public/css/style.css read-only identity block (era tokens only); lib/ytdlp/index.js defaultMaxVideos on GET /api/subscriptions/health. Read-only channel identity via textContent; confirm routes through the UNMODIFIED validateSubscriptionInput/validateChannelUrl.",
-      "files": ["public/js/common.js", "public/js/watch.js", "public/watch.html", "public/css/style.css", "lib/ytdlp/index.js"],
-      "acs": ["AC1", "AC2", "AC3", "AC4", "AC5", "AC6", "AC7", "AC8", "AC15", "AC16", "AC17", "AC26"],
-      "gate": "TWO-REVIEWER GATE (watch page -> spawn-guarded subscription create/delete; no bypass of validateSubscriptionInput/validateChannelUrl)",
-      "wave": 3,
-      "depends_on": ["T1", "T2", "T4"],
-      "blocks": [],
+      "fr": "FR-3 + FR-4 (FR-1 folded in)",
+      "title": "Subscriptions-FIRST rearchitect + subscribed-date/clickable link + count-edit fix",
+      "description": "List-first IA (subscriptions list primary; add/one-off demoted to <details> below); one dense row = avatar/letter + name + one muted meta line + trailing kebab. Row tap -> /?root=<channelDir>. Kebab -> in-shell bottom-sheet settings editing count/quality/type/skip-shorts/filetype (name read-only) that PATCHes the existing endpoint. Targeted in-place status-poll render (only .sub-row-status text) structurally eliminates FR-1's poll-clobber race and makes the count edit persist. formatSubscribedDate(addedAt) and a real <a href> channel link (FR-4).",
+      "files": ["lib/ytdlp/views/subscriptions.html (#view-root IA + <details> forms ONLY)", "lib/ytdlp/client/subscriptions.js (full rewrite)", "public/css/style.css (#subs-list/detail section)", "test/unit", "test/integration"],
+      "gate": "HEAVY two-reviewer",
+      "acs": ["AC1-AC5 (FR-1)", "AC18-AC27 (FR-3)", "AC28-AC32 (FR-4)"],
+      "depends_on": [],
+      "wave": 2,
+      "serialize_after": ["T2 (style.css + subscriptions.html)"],
+      "done_when": "List-first IA shipped; kebab bottom-sheet PATCHes and count edit survives >2.5s poll; row tap opens channel; subscribed-date + clickable link render via textContent/.href; disabled-module still 404s; lint 0 + Node22 tests pass.",
       "status": "pending"
     },
     {
       "id": "T4",
-      "title": "FR-4 per-channel playlist",
-      "description": "Enrich the gated GET /api/subscriptions handler (lib/ytdlp/index.js) with a computed channelDir = args.resolveChannelDir(config, sub) (try/catch; read-only; NEVER writes db.folders); render a /?root=<encodeURIComponent(channelDir)> playlist link per subscription row in lib/ytdlp/client/subscriptions.js (anchor via textContent/escapeAttr); add a small distinct link-style block in public/css/style.css. The design's OPTIONAL mobile-Playlists-sheet link in public/js/common.js is scoped OUT to keep T4 disjoint from T2 on the shared tree (Subscriptions-tab link alone satisfies AC22).",
-      "files": ["lib/ytdlp/index.js", "lib/ytdlp/client/subscriptions.js", "public/css/style.css"],
-      "acs": ["AC18", "AC19", "AC20", "AC21", "AC22"],
-      "gate": "TWO-REVIEWER GATE (re-prove the db.folders/folderSettings synthetic-root invariant)",
-      "wave": 2,
-      "depends_on": ["T1"],
-      "blocks": ["T3"],
+      "fr": "FR-6",
+      "title": "Library grid mobile density (2 columns on phones)",
+      "description": "Add a narrow phone breakpoint (@media max-width:480px) forcing .video-grid to repeat(2,1fr) for a deterministic 2 comfortable columns. Desktop rule (minmax(210px,1fr), outside the media query) untouched. CSS-only.",
+      "files": ["public/css/style.css (#mobile-grid section ONLY)"],
+      "gate": "LIGHT single-QA (Dean on-device density arbiter)",
+      "acs": ["AC40-AC44"],
+      "depends_on": [],
+      "wave": 3,
+      "serialize_after": ["T3 (style.css)"],
+      "done_when": "Mobile grid shows 2 columns at <=480px; desktop rule unchanged; no card jitter; lint 0.",
       "status": "pending"
     },
     {
       "id": "T5",
-      "title": "FR-5 default download count 3 -> 2",
-      "description": "lib/ytdlp/config.js DEFAULT_MAX_VIDEOS 3 -> 2 and fix the stale v1.17.0 -> v1.18.0 precedent comment cite; new subscriptions only. Regression unit tests: 0=unlimited, FILETUBE_YTDLP_MAX_VIDEOS env override, already-persisted subs unaffected, new-subs-only (mirror the v1.18.0 25->3 tests).",
-      "files": ["lib/ytdlp/config.js"],
-      "acs": ["AC23", "AC24", "AC25", "AC26"],
-      "gate": "LIGHTER single-QA no-regression tier (AC32)",
-      "wave": 1,
+      "fr": "FR-5",
+      "title": "Pin a channel playlist to persistent nav (new gated pin store)",
+      "description": "New gated db.ytdlp.pins array of {id,channelDir,label,pinnedAt} snapshots (id=getMediaId(channelDir)); ensureYtdlp backfills pins:[]. 3 gated routes (GET/POST/DELETE /api/subscriptions/pins) with channelDir confined under downloadDir + bounded label. Star/pin toggle on the FR-3 row; pinned channels render ALONGSIDE (never merged into) the db.folders-driven Playlists sheet/sidebar. NEVER touch db.folders/folderSettings; POST /api/config must never read/write/prune the pin store.",
+      "files": ["lib/ytdlp/store.js (or new lib/ytdlp/pins.js)", "lib/ytdlp/index.js (3 pin routes)", "lib/ytdlp/client/subscriptions.js (star toggle)", "public/js/common.js (pins render)", "public/css/style.css (#pins section)", "test/unit", "test/integration"],
+      "gate": "HEAVY two-reviewer (data-safety / folders-config invariant)",
+      "acs": ["AC33-AC39"],
+      "depends_on": ["T3"],
+      "wave": 4,
+      "serialize_after": ["T4 (style.css)", "T3 (subscriptions.js)"],
+      "done_when": "Pins persist server-side across restart; star toggle works on the FR-3 row; regression test proves POST /api/config never touches db.ytdlp.pins and pins never enter db.folders; disabled-module 404s; lint 0 + Node22 tests pass.",
+      "status": "pending"
+    },
+    {
+      "id": "T6",
+      "fr": "FR-7",
+      "title": "Extra-deliberate delete for local (non-yt-dlp) files",
+      "description": "Fail-safe pure isYtdlpManagedItem(item) predicate (true ONLY on a non-empty channelUrl/channelId/channelName; any absence/ambiguity -> local/irreplaceable) + shared checkbox-gated showHardDeleteModal (textContent, red hard-warning, Delete disabled until 'cannot be recovered' checkbox ticked). Wire into watch delete and the card second-tap for LOCAL files only; yt-dlp files keep existing showConfirmModal/two-tap unchanged. DELETE /api/videos/:id unchanged (client confirm-flow escalation only).",
+      "files": ["public/js/common.js (predicate + showHardDeleteModal)", "public/js/watch.js (local branch)", "public/js/main.js (card second-tap branch)", "public/css/style.css (#hard-delete-modal section)", "test/unit", "test/integration"],
+      "gate": "HEAVY two-reviewer (destructive; adversarial must confirm predicate can never reduce friction)",
+      "acs": ["AC45-AC51"],
       "depends_on": [],
-      "blocks": [],
+      "wave": 5,
+      "serialize_after": ["T5 (style.css + common.js)"],
+      "done_when": "Predicate fail-safe unit-tested (pre-v1.20 file -> local); hard-delete modal reachable on watch + card for local files; yt-dlp flows byte-unchanged; DELETE endpoint untouched; lint 0 + Node22 tests pass.",
+      "status": "pending"
+    },
+    {
+      "id": "T7",
+      "fr": "FR-8",
+      "title": "Download retry + app-wide status chip",
+      "description": "One-shot retry re-POSTs /api/ytdlp/download from three additive fields (format/quality/filetype) added to the ephemeral one-shot activity entry; subscription retry reuses /repull contextually on a failed row. New app-wide bottom-LEFT status chip (common.js) reusing GET /api/subscriptions/status (no new backend primitive): collapsed 'N downloading . X%', expands to per-item panel; completed auto-dismiss, errors sticky; suppressed on /subscriptions; positioned to clear the FR-2 dock + bottom-nav on mobile.",
+      "files": ["lib/ytdlp/client/subscriptions.js (retry)", "lib/ytdlp/index.js (one-shot activity params)", "public/js/common.js (chip)", "public/css/style.css (#status-chip section)", "test/unit", "test/integration"],
+      "gate": "LIGHT-TO-MEDIUM",
+      "acs": ["AC52-AC59"],
+      "depends_on": ["T3", "T5", "T6"],
+      "wave": 6,
+      "serialize_after": ["T6 (style.css + common.js)", "T5 (subscriptions.js + index.js)"],
+      "done_when": "One-shot Retry re-invokes via re-POST; contextual sub Retry present; chip visible app-wide while downloading, coordinates with dock, auto-dismiss/sticky correct; textContent only; lint 0 + Node22 tests pass.",
+      "status": "pending"
+    },
+    {
+      "id": "T8",
+      "fr": "FR-9",
+      "title": "Theatre mode (video, watch-view + desktop only)",
+      "description": "Theatre toggle button in the watch view adds a theater-mode class to .watch-container widening .watch-main and stacking .watch-sidebar at desktop widths only. WATCH-VIEW layout class only — the DOCKED mini-player is never affected; the existing @media max-width:1024px sidebar-stacking is untouched; toggle hidden on phones. Optional localStorage['ft-theater'] persistence applied on watch init().",
+      "files": ["public/watch.html (theatre button ONLY)", "public/js/watch.js (toggle + persistence)", "public/css/style.css (#theatre section)"],
+      "gate": "LIGHT (Dean on-device arbiter)",
+      "acs": ["AC60-AC65"],
+      "depends_on": ["T6"],
+      "wave": 7,
+      "serialize_after": ["T7 (style.css)", "T6 (watch.js)"],
+      "done_when": "Toggle widens/restores layout at desktop widths; docked state unaffected; sidebar reconciles; hidden/safe on mobile; optional persistence works; lint 0.",
+      "status": "pending"
+    },
+    {
+      "id": "T9",
+      "fr": "FR-10",
+      "title": "README refresh",
+      "description": "Rewrite the stale v1.10-era Features list to cover everything shipped since v1.10 (yt-dlp subscriptions + subscribe-from-downloads + per-channel playlists, docked mini-player/SPA-lite nav, prev/next + autoplay-next, download-to-device, iOS transcoding, PWA icons, quicker delete) plus this release's headline items. Screenshots are Dean's to provide (flagged, not blocking). Docs-only.",
+      "files": ["README.md"],
+      "gate": "PROCESS (docs-only read-through)",
+      "acs": ["AC66-AC68"],
+      "depends_on": [],
+      "wave": 1,
+      "done_when": "Features list and stale copy reflect the actual shipped feature set through v1.21; screenshot placeholders flagged as Dean's; no code change.",
       "status": "in-progress"
     }
   ],
   "completed_tasks": [],
   "artifacts": {
-    "requirements": "docs/exec-plans/active/2026-07-08-v1.20-subscribe.md",
-    "design": "docs/exec-plans/active/2026-07-08-v1.20-subscribe.md",
-    "exec_plan": "docs/exec-plans/active/2026-07-08-v1.20-subscribe.md"
+    "requirements": "docs/exec-plans/active/2026-07-08-v1.21-polish-release.md",
+    "design": "docs/exec-plans/active/2026-07-08-v1.21-polish-release.md",
+    "exec_plan": "docs/exec-plans/active/2026-07-08-v1.21-polish-release.md"
   },
   "history": [
     {
-      "timestamp": "2026-07-07",
-      "stage": "implementation",
-      "note": "ENGINEERING-MANAGER finalized the Tasks stage and advanced to Implementation. Read the principal-engineer's ## Design + proposed ## Task breakdown in docs/exec-plans/active/2026-07-08-v1.20-subscribe.md, docs/RELIABILITY.md (testing strategy / no-E2E), and .state/feature-state.json. Confirmed the PE's 5-task decomposition (T1 FR-2 enabler / T2 FR-2 client matcher+precedence / T3 FR-1 toggle+modal+FR-3 hide / T4 FR-4 per-channel playlist / T5 FR-5 default 3->2) with one scoping refinement: T4's OPTIONAL mobile-Playlists-sheet edit to public/js/common.js is scoped OUT so T4 stays disjoint from T2 on the shared tree (Subscriptions-tab link alone satisfies AC22 per the design's own open-fork note). Recorded a 3-wave plan with full file-ownership serialization proving no two concurrently-running SDE agents ever edit the same file: Wave 1 (parallel) T1[args,run,store,index+server.js] + T5[config.js] DISJOINT; Wave 2 (parallel, after T1) T2[common.js] + T4[index.js,client/subscriptions.js,style.css] DISJOINT; Wave 3 (alone, after T2 AND T4) T3[common.js,watch.js,watch.html,style.css,index.js]. Serialization: lib/ytdlp/index.js T1->T4->T3; public/js/common.js T2->T3; public/css/style.css T4->T3. Dependency graph: T1->{T2,T4}; {T2,T4}->T3; T5 independent. Wrote the finalized ## Task breakdown (tasks + wave plan + serialization + dep graph) into the exec plan and the full tasks[] array + wave_plan + shared_tree_serialization into state. Wrote five task-suffixed, self-contained inbox files (.state/inbox/software-developer-T1.md .. T5.md), each noting: coordinator owns ALL git (SDEs report files-changed + Node 22 test/lint, do NOT commit); Node 22 toolchain bin at scratchpad/node-v22.23.1-linux-x64/bin; gate tier; scope/files/ACs/deps. Set stage=implementation, current_wave=1, current_tasks=[T1,T5]. Did NOT write application/test code and did NOT touch git. Wave 1 (T1+T5) ready to dispatch to two software-developer sessions in parallel."
+      "timestamp": "2026-07-08",
+      "stage": "discovery",
+      "note": "TASKS finalized by ENGINEERING-MANAGER. Read the PE ## Design + proposed task/wave breakdown, docs/ui-research-2026-07.md, and .state/feature-state.json. Confirmed by grep that #player-host-template is replicated in all FOUR shells (public/index.html, public/setup.html, public/watch.html, lib/ytdlp/views/subscriptions.html) -- so T2 genuinely shares subscriptions.html with T3 and watch.html with T8. Recorded coordinator decisions: (1) editable subscription name = READ-ONLY this round; (2) FR-1 count-edit fix FOLDED INTO FR-3/T3 (no standalone T1). Finalized 8 tasks T2-T9 (FR-1 folded). Definitive wave plan honoring the hard 'no two concurrent tasks share ANY file' rule via STRICT one-editor-at-a-time serialization for EVERY shared file (region/section ownership NOT permitted per coordinator correction 2026-07-08 -- concurrent edits to different sections of the same file still risk lost-update collisions on this shared tree). Because public/css/style.css is touched by 7 of 8 tasks (T2,T3,T4,T5,T6,T7,T8), those 7 fully serialize; only T9 (README) is CSS-free and parallelizable. Waves: W1 = T2 + T9 (disjoint: player.js/4 shells/style.css vs README.md); W2 = T3; W3 = T4; W4 = T5; W5 = T6; W6 = T7; W7 = T8. Deps honored: T3(W2)->T5(W4)->T7(W6); T6(W5)->T7(W6)/T8(W7). Wrote per-hot-file serialization proof into wave_plan. Overwrote stale v1.20 inbox files with self-contained software-developer-T2..T9.md (Node 22 toolchain path noted; coordinator owns all git; SDEs report files-changed + lint/test only, do NOT commit); marked software-developer-T1.md superseded. Set stage=implementation, current_wave=1, current_tasks=[T2,T9]. Filled the exec plan's ## Task breakdown section. Wrote no application code, touched no git. Wave 1 (T2, T9) ready to launch."
+    },
+    {
+      "timestamp": "2026-07-09",
+      "stage": "acceptance",
+      "note": "PRODUCT-MANAGER completed Acceptance for v1.21.0 'The Polish Release'. Read the exec plan (docs/exec-plans/active/2026-07-08-v1.21-polish-release.md -- 10 FRs, 75 ACs, Design, Task breakdown, Progress log, Decision log) and verified every AC directly against the live implementation by reading the code (not from the gate/QA summary alone): public/js/player.js in full (FR-2 -- clampVolume/seekCommitTarget/classifyTapGesture pure helpers, wireHostListeners' custom control-bar wiring, volumeIsSettable iOS feature-detect, enterFullscreen desktop retarget, and the post-gate FIX 1/FIX 5 hardening -- wireSkipHoldGestures now wired to BOTH #media-player and #audio-bg-art, seekCommitTarget's live-mode fallback removed), lib/ytdlp/client/subscriptions.js in full (FR-1/FR-3/FR-4/FR-5-client -- createSubscriptionRow, buildSettingsSheet, applyStatusUpdatesInPlace, and the post-gate FIX 2/FIX 4 hardening -- closest('a') link-tap guard, resolvePinLabel/pinLabelFallback), lib/ytdlp/store.js's FR-5 pin-store section in full (isChannelDirConfined/validatePinInput/reduceAddPin/reduceRemovePin/addPin/removePin, the db.folders/folderSettings invariant module comment), lib/ytdlp/index.js's 3 gated pin routes, test/integration/ytdlp-pins.test.js in full (the AC38 POST /api/config invariant regression test), public/js/common.js's FR-7 section (isYtdlpManagedItem/deleteFlowFor/showHardDeleteModal) plus both call sites in watch.js and main.js, public/css/style.css's FR-6 mobile-grid rule, FR-8 chip positioning/mobile-coordination rules, and FR-9 theatre section, public/js/watch.js's FR-9 theatre-toggle wiring (DOCKED-unaffected structural argument), public/js/common.js's FR-8 status-chip/retry section (retryOneShot/retrySubscription -- confirmed re-POST to the SAME existing /api/ytdlp/download and /repull routes, no bypass), README.md in full, and confirmed dedicated unit-test files exist for every new pure helper (test/unit/player-controls.test.js, test/unit/theatre-mode.test.js, test/unit/hard-delete-local-files.test.js, test/unit/ytdlp-download-chip.test.js, test/unit/ytdlp-subscriptions-client.test.js) plus the maxVideos round-trip integration test (test/integration/ytdlp-patch-pause.test.js). Also read docs/CONTRIBUTING.md fresh to re-confirm the textContent/CommonJS/node:test/lint-0/no-new-deps standards actually held throughout (they did, on every file read). Verdict: ACCEPT, 75/75 ACs met. Every [UNIT]/[INTEGRATION]/[PROCESS]-tagged AC verified directly; every [MANUAL]-tagged AC (audio feel/gestures/iOS, subs list/detail feel, grid density feel, theatre feel) has its code path verified here and is correctly deferred to Dean's on-device pass per docs/RELIABILITY.md's documented no-E2E-infra posture -- consistent with v1.16/v1.20 precedent, not a gap. Re-confirmed security/data-safety touchpoints independently: FR-5's db.folders/folderSettings invariant (dedicated regression test including an adversarial-shaped POST /api/config save), FR-7's fail-safe predicate (no code path can turn an ambiguous signal into 'yt-dlp-managed'), FR-8's no-bypass retry (reuses the same validated routes, no new endpoint), and textContent/.href-only discipline throughout every new dynamic string across every file read. Confirmed the two-reviewer/adversarial gate's two remediated bugs (FIX 1: audio skip/hold gestures dead after native-controls removal; FIX 2: channel-link click double-navigating) both have dedicated regression coverage and are the gate having worked correctly, not a reason to withhold acceptance. Flagged four non-blocking limitations for Dean's awareness (not remediation-blocking): FR-5 pins confirmed rendering in the Playlists sheet path, desktop-sidebar counterpart not independently confirmed in this pass (called out as a possible follow-up, AC36's 'and/or' wording already satisfied by the sheet alone); FR-3 subscription name read-only this round (coordinator decision, documented, not a defect); FR-2 iOS volume-set is an inert-by-design platform no-op (correctly hidden, not broken); FR-10 README forward-describes only actually-shipped features (no overstatement, since no FR was descoped/parked). Wrote the full per-FR/per-AC verdict table into the exec plan's new '## Acceptance' section (after the Decision log) and updated feature-state.json (stage -> acceptance-complete). Did not write/edit any application/test code, did not touch git, did not re-run the build/test suite directly (relied on build-specialist's already-reported 1554/1554 green + lint-0 per the task brief, consistent with PM's remit being acceptance-criteria verification, not build re-execution). Reporting back to the EM with an ACCEPT verdict and recommendation to advance to Done."
     },
     {
       "timestamp": "2026-07-08",
       "stage": "discovery",
-      "note": "PRODUCT-MANAGER completed Discovery for v1.20.0 'Subscribe button -- real subscriptions from downloads' (feature/v1.20-subscribe, off main at v1.19.1). Read docs/CONTRIBUTING.md, docs/ARCHITECTURE.md, docs/RELIABILITY.md, the completed v1.11/v1.12 yt-dlp-module exec plans and v1.16-watch-experience for context, and grounded every AC directly in the live code (not assumed from prior wording): lib/ytdlp/{config,url,store,index,args,run,rules}.js in full; server.js's scan (scanDirRecursive/folderName/rootFolder derivation, cleanDisplayTitle's yt-dlp-download detection), EMBEDDED_TAG_WHITELIST/parseFfprobeTags, the synthetic-Downloads-folder GET/POST /api/config logic, and GET /api/videos's root=/folder= filters; public/watch.html's .uploader-info-panel/#subscribe-btn-mock (confirmed via grep it has ZERO click-handler wiring anywhere -- fully cosmetic today); public/js/watch.js's populateMetadata/resolveChannelName call site; public/js/common.js's resolveChannelName/rankRelated/Playlists-sheet code; lib/ytdlp/client/subscriptions.js's existing add-subscription form option-control builders. Key grounded findings: (1) embedded ffprobe tags cannot reliably carry a channel URL (the 'comment' tag carries the video's own webpage_url, not a channel URL) -- confirms channelUrl must be captured at download time from yt-dlp's own metadata, not recovered after the fact; (2) yt-dlp downloads ALREADY land in a physical per-channel subfolder (args.resolveChannelDir, flat OUTPUT_TEMPLATE) -- resolves FR-4's stated physical-vs-virtual fork definitively in favor of physical; (3) GET /api/videos?root= already supports arbitrary subfolder path filtering (underFolder is a pure path-prefix match, not restricted to db.folders entries) -- FR-4 needs zero new backend filtering primitive; (4) subscription-driven downloads already know their channel URL trivially (sub.channelUrl in scope), but one-shot single-video downloads capture NO channel metadata today, and the feature's own stated goal explicitly requires one-shot downloads to be covered too -- flagged as the larger of FR-2's two capture sub-problems, with a recommended yt-dlp --print-based mechanism for PE. Confirmed no conflict with any other active exec plan, no contradiction with docs/ARCHITECTURE.md's documented key decisions (FR-4 is additive on top of the documented synthetic-scan-root design), and no open tech-debt-tracker item addressed/created. Authored docs/exec-plans/active/2026-07-08-v1.20-subscribe.md: Goal/Scope/Out-of-scope/Constraints/32 grouped-and-tagged acceptance criteria across FR-1 (8) / FR-2 (6) / FR-3 (3) / FR-4 (5) / FR-5 (4) / Cross-cutting (6), plus a Decision log recording every grounding finding, the resolved (non-blocking) forks, and one flagged item: a mid-Discovery refinement to FR-1 (subscribe now opens a compact options-confirm modal rather than silently creating a subscription with hardcoded defaults) arrived via an unusual mid-task channel (embedded mid-tool-call rather than as a normal new instruction) -- its content is benign and in-scope (no security-guard change, consistent with the feature's stated goal) so it was incorporated into FR-1/ACs, but it revises what the original assignment had explicitly marked 'locked,' so it is flagged for the EM/Dean to confirm was genuinely intended before Design/Implementation proceeds. Flagged FR-1/FR-2/FR-4 for the two-reviewer gate (new watch-page caller into the subscription-create/delete system; untrusted yt-dlp-metadata parsing/validation; re-proving the db.folders/folderSettings invariant); FR-3 rides FR-1's tier; FR-5 recommended for the lighter single-QA tier (exact v1.18.0 25->3 precedent). Set artifacts.exec_plan/requirements/design to the new exec plan path; stage remains 'discovery' (did not self-advance). Did not write application/test code and did not touch git. Reporting back to EM for Design routing (/prep-pe-design)."
-    },
-    {
-      "timestamp": "2026-07-07",
-      "stage": "acceptance-complete",
-      "note": "PRODUCT-MANAGER completed Acceptance for v1.20.0 'Subscribe button -- real subscriptions from downloads'. Read docs/exec-plans/active/2026-07-08-v1.20-subscribe.md (32 ACs across FR-1..FR-5 + cross-cutting) and verified every criterion directly against the implementation: lib/ytdlp/{args,run,store,config,url,index}.js, server.js's scan bridge (extractYtdlpVideoId/consumeDownloadChannelMeta), public/js/{common,watch}.js, public/watch.html, public/css/style.css, lib/ytdlp/client/subscriptions.js, and the corresponding test/unit + test/integration suites (channel-identity.test.js, subscribe-button.test.js, ytdlp-run.test.js's FTCHMETA forgery regressions, ytdlp-channel-meta-bridge.test.js, ytdlp-channel-dir-enrichment/playlist.test.js, ytdlp-health-maxvideos-override.test.js, ytdlp-subscribe-watch-security.test.js, ytdlp-disabled-noop.test.js, ytdlp-config.test.js). Result: 32/32 ACs met (24 fully code/test-verified; 8 additionally carry an explicit, documented on-device confirmation for Dean per RELIABILITY.md's no-headless-browser-E2E posture -- none open/failing). Independently re-confirmed both prior adversarial findings are remediated: the HIGH capture-injection (CHANNEL_META_PRINT_TEMPLATE now emits a single JSON object via yt-dlp's .{...}j selector, parsing restricted to stdout-only, locked by dedicated forged-newline regression tests) and the MED env-default drift (GET /api/subscriptions/health's defaultMaxVideos now reflects config.maxVideos, the ENV-resolved effective default, not the bare constant -- locked by ytdlp-health-maxvideos-override.test.js's three cases). Confirmed security touchpoints hold: no new/parallel validator anywhere in the diff (every channel URL that can reach a spawn or persistence routes through the unmodified validateSubscriptionInput/validateChannelUrl), the db.folders/folderSettings synthetic-root invariant is untouched (enrichSubscriptionWithChannelDir is read-only/per-request, regression-locked), and every new dynamic string is textContent-only (static-source regression guard exists for buildSubscribeModal). Flagged the OLD-downloads limitation (no Subscribe button on pre-feature files, no stored channelUrl) as delivered-by-design per the exec plan's own Out-of-scope section and AC12, not a gap. Appended a full ## Acceptance section (per-FR AC-by-AC verdicts, security touchpoint re-confirmation, env-default re-confirmation, OLD-downloads call-out, overall verdict) to docs/exec-plans/active/2026-07-08-v1.20-subscribe.md. Verdict: ACCEPT-WITH-NOTES -- recommend advancing to Done; notes are for Dean's on-device pass (real yt-dlp --print output shape, modal feel, FR-4 playlist tap-through), none are blockers. Set stage to 'acceptance-complete'. Did not edit code, tests, or commit."
+      "note": "PRODUCT-MANAGER completed Discovery for v1.21.0 'The Polish Release' (feature/v1.21-polish-release, off main at v1.20.0) -- a large, 10-FR release bundling all of Dean's post-v1.20 feedback. Read docs/CONTRIBUTING.md, docs/ARCHITECTURE.md, docs/RELIABILITY.md, and docs/ui-research-2026-07.md (the mandated UI/UX research synthesis covering subscriptions/library grid/playlists-pinning/audio-player/download-status) FIRST as instructed, then ROADMAP.md's Planned section (confirmed every FR below already appears there -- no scope creep), docs/exec-plans/tech-debt-tracker.md (no open item addressed/created), and the completed 2026-07-06-v1.16-watch-experience.md + 2026-07-08-v1.20-subscribe.md exec plans for precedent/style. Confirmed no active exec plan currently exists to conflict with. Grounded every FR directly in the live code (not assumed): public/js/player.js in full (the v1.16 persistent player controller -- central to FR-2 and FR-9), public/watch.html + lib/ytdlp/views/subscriptions.html shell markup, lib/ytdlp/client/subscriptions.js in full (central to FR-1/FR-3/FR-4/FR-5/FR-8), lib/ytdlp/store.js's validateSubscriptionPatch/updateSubscription/addSubscription, lib/ytdlp/index.js's PATCH route, lib/ytdlp/activity.js in full, server.js's POST /api/config folder/folderSettings pruning logic + DELETE /api/videos/:id, watch.js's delete-button handler, main.js's card-delete two-tap-arm code, and style.css's grid/thumbnail/audio-mode sections. Key grounded findings (full detail in the exec plan's Decision log): (1) FR-1's actual root cause is a client-side render-timing race -- the subscriptions list's ~2.5s live-status poll unconditionally rebuilds every row, destroying an open/unsaved edit panel; the server-side validator/mutator path was read in full and is already correct; (2) FR-5 cannot reuse folderSettings as a pin store -- POST /api/config prunes any folderSettings key that isn't a real db.folders entry or the one synthetic Downloads root, so a per-channel pin needs a NEW, separate persisted store; (3) FR-6's aspect-ratio/object-fit ask is already shipped, and a v1.15.0 mobile grid-tightening rule already exists -- scope narrowed to further tightening per Dean's continued on-device report; (4) FR-2 has a genuine, non-fixable iOS Safari platform constraint (script cannot set HTMLMediaElement.volume) that must be documented, not chased as a bug; (5) FR-7 can reuse the existing v1.20 FR-2 channelUrl/channelId/channelName signal for yt-dlp-vs-local detection, with an explicit fail-safe requirement; (6) FR-4's addedAt field already exists since v1.11.0 -- no new stored field needed; (7) FR-8's one-shot download jobs have genuinely no retry today (only Dismiss), the larger of the two retry gaps. Two forks resolved non-blocking (FR-2's shared audio+video control-bar scope; FR-5's channelDir+label-snapshot pin keying); no genuinely blocking fork surfaced. Authored docs/exec-plans/active/2026-07-08-v1.21-polish-release.md: Goal/Scope(10 FRs)/Out-of-scope/Constraints/75 grouped-and-tagged acceptance criteria (FR-1:5, FR-2:12, FR-3:10, FR-4:5, FR-5:7, FR-6:5, FR-7:7, FR-8:8, FR-9:6, FR-10:3, Cross-cutting:7) plus a 'Recommended task grouping' section (file-overlap-driven grouping hints for EM/PE, explicitly not a finalized wave plan) and a full Decision log. Flagged review tiers: HEAVIEST two-reviewer/adversarial gate for FR-2 (shared-player regression risk); HEAVY two-reviewer gate for FR-3 (subscription CRUD UI), FR-5 (folders/config invariant), FR-7 (destructive delete); LIGHT single-QA for FR-1/FR-4/FR-6/FR-9/FR-10; LIGHT-TO-MEDIUM for FR-8. Set artifacts.exec_plan/requirements/design to the new exec plan path; stage remains 'discovery' (did not self-advance). Did not write application/test code and did not touch git. Reporting back to EM for Design routing (/prep-pe-design)."
     }
   ]
 }

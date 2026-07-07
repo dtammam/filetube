@@ -252,6 +252,12 @@
            this element. -->
       <div id="audio-bg-art" class="audio-bg-art"></div>
 
+      <!-- v1.21 FR-2 (T2): fading play/pause overlay glyph for the
+           click-the-cover-art surface (#audio-bg-art's click handler, wired
+           once in player.js's wireHostListeners()). Sits above the art,
+           below the resume/transcode overlays. -->
+      <div id="art-play-glyph" class="art-play-glyph" aria-hidden="true"></div>
+
       <!-- Resume overlay popup -->
       <div id="resume-overlay" class="resume-overlay" style="display: none;">
         <h3>Resume Playback?</h3>
@@ -271,8 +277,12 @@
 
       <!-- Standard video player.
            playsinline (+ webkit-playsinline) keeps iOS playing in the small
-           in-page player instead of forcing native fullscreen. -->
-      <video id="media-player" controls preload="metadata" playsinline webkit-playsinline x5-playsinline style="display: none;">
+           in-page player instead of forcing native fullscreen. The native
+           `controls` attribute is REMOVED (v1.21 FR-2, T2) -- native
+           <video controls> is unstyleable (the pure-white-in-dark-mode +
+           rounded/derpy look); #player-controls below is the app-owned
+           replacement, themed off the era CSS vars. -->
+      <video id="media-player" preload="metadata" playsinline webkit-playsinline x5-playsinline style="display: none;">
         Your browser does not support HTML5 video player.
       </video>
 
@@ -298,6 +308,30 @@
         <div class="audio-vinyl" id="vinyl-disc"></div>
         <div class="audio-title" id="audio-visual-title">Audio Track Title</div>
         <div class="audio-subtitle" id="audio-visual-folder">Playlist Folder</div>
+      </div>
+
+      <!-- Custom blocky control bar (v1.21 FR-2, T2) -- app-owned replacement
+           for the removed native `controls` bar. Drives BOTH audio and video
+           (one shared <video id="media-player"> element). Every listener is
+           wired ONCE in player.js's wireHostListeners(), so this bar travels
+           with the persistent host across FULL/DOCKED/CLOSED. Styled
+           entirely from the era CSS vars (see style.css's "v1.21 FR-2"
+           section) -- dark mode "just works," no native-control pure-white
+           surface. -->
+      <div id="player-controls" class="player-controls">
+        <button type="button" id="pp-btn" class="pc-btn pp-btn" aria-label="Play" aria-pressed="false">
+          <span class="pp-icon-play" aria-hidden="true"></span>
+          <span class="pp-icon-pause" aria-hidden="true"></span>
+        </button>
+        <span id="time-cur" class="pc-time">0:00</span>
+        <input type="range" id="seek-bar" class="pc-range pc-seek" min="0" max="1" step="0.001" value="0" aria-label="Seek">
+        <span id="time-dur" class="pc-time">0:00</span>
+        <button type="button" id="mute-btn" class="pc-btn mute-btn" aria-label="Mute" aria-pressed="false">
+          <span class="mute-icon-on" aria-hidden="true"></span>
+          <span class="mute-icon-off" aria-hidden="true"></span>
+        </button>
+        <input type="range" id="vol-bar" class="pc-range pc-vol" min="0" max="1" step="0.01" value="1" aria-label="Volume">
+        <button type="button" id="fs-btn" class="pc-btn fs-btn" aria-label="Fullscreen">⛶</button>
       </div>
     </div>
   </template>

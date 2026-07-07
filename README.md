@@ -19,12 +19,19 @@ FileTube is a personal media application that lets you consume your local video 
 ## Features
 
 - **Nostalgic YouTube layout** — Classic grid, uploader channels, star ratings, and mock comments.
-- **YouTube-style player** — Plays inline on iOS (no forced fullscreen), with ±15s skip via on-player buttons, double-tap, or the ← / → keys.
+- **YouTube-style player with custom blocky controls** — Theme-aware, app-owned playback controls (not the browser's native bar) for both video and audio; plays inline on iOS (no forced fullscreen), with ±15s skip via on-player buttons, double-tap, or the ← / → keys.
+- **Docked mini-player + continuous browsing** — Keep watching while you browse: the player docks to a corner instead of stopping when you navigate away, with prev/next controls and an optional autoplay-next setting. Video also has a one-tap theatre mode for a bigger, focused view.
 - **Smart resume playback** — Automatically saves your progress and prompts you to resume where you left off.
 - **Auto-generated thumbnails** — Uses FFmpeg to extract video frames or audio cover art automatically.
-- **Audio file support** — Plays audio formats (MP3, FLAC, M4A, etc.) showing embedded cover art with native controls.
-- **Permanent file deletion** — Delete unwanted media directly from the browser to free up server space.
-- **Dark mode** — Easy toggle between classic light and sleek dark mode.
+- **Audio file support** — Plays audio formats (MP3, FLAC, M4A, etc.) with embedded cover art shown behind the custom player controls.
+- **iOS-first playability** — Browser-incompatible containers and codecs (AVI, HEVC/VP9/AV1, AC-3, etc.) are transcoded on demand to H.264/AAC MP4, so files that wouldn't otherwise play on iPhone/iPad just work.
+- **Download to your device** — Save a copy of the original file straight from the watch page.
+- **Quick, deliberate delete** — A two-tap trash-can right on each library card, plus a confirm step on the watch page, so nothing disappears from a single accidental tap.
+- **Optional YouTube subscriptions (yt-dlp)** — Off by default. A subscriptions-first page lists your channels for quick browsing and management, with per-subscription audio/video + quality + filetype + "download last N" + skip-Shorts controls, one-shot URL downloads, and a persistent status chip with retry for anything that fails. Pin your favorite channels for one-tap access, or subscribe to a creator right from a downloaded video's watch page — view any channel's downloads as its own playlist.
+- **PWA install** — Add FileTube to your phone or desktop home screen like a native app.
+- **Era themes + icon sets** — Skin the UI as classic 2005, 2009, 2014, or 2021 YouTube, each with a matching icon style (or let it follow the era automatically), on top of a light/dark mode toggle.
+- **Configurable transcode cache** — Point the on-demand transcode cache at its own directory, tune quality (CRF), and cap its size so it never grows unbounded.
+- **Auto-scan with safe pruning** — The library rescans on a configurable interval and safely removes entries for files that were actually deleted (never for an unmounted share).
 - **Self-hosted with Docker** — Start instantly with a single `docker compose up -d`.
 
 ## Screenshots

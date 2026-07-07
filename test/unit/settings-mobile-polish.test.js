@@ -51,25 +51,50 @@ test('mobile: a media query gives .setup-box comfortable controls (min-height ta
   );
 });
 
-test('mobile: .folder-item-row and .sub-row stack vertically on a narrow phone (comfortable wrapping, not per-row overflow)', () => {
+test('mobile: .folder-item-row stacks vertically on a narrow phone (comfortable wrapping, not per-row overflow)', () => {
   const mobileBlockRe = /@media \(max-width: 768px\) \{([\s\S]*?)\n\}\n\n\/\* In landscape/;
   const block = mobileBlockRe.exec(css);
   assert.ok(block);
-  assert.match(block[1], /\.folder-item-row,\s*\n\s*\.sub-row\s*\{[^}]*flex-direction:\s*column/);
+  assert.match(block[1], /\.folder-item-row\s*\{[^}]*flex-direction:\s*column/);
 });
 
-test('v1.19.0 FR-2a: #sub-list-container gets a SCOPED size override (taller/roomier than the shared .folder-list-builder default), which the Setup folder builder and one-shot list do not', () => {
+// v1.21.0 FR-3, T3: `.sub-row`'s anatomy changed from a cramped multi-button
+// cluster (which needed the column-stack fallback above) to a dense
+// avatar+info+kebab row -- it now DELIBERATELY stays a horizontal flex row
+// at every width, including mobile (a compact contact-list-style row is
+// more comfortable there than stacking three thin sub-elements), so it must
+// NOT be swept into the .folder-item-row column-stack rule anymore. See
+// public/css/style.css's ".sub-row DELIBERATELY stays a horizontal flex
+// row on mobile too" comment for the full rationale.
+test('mobile: .sub-row is NOT swept into the .folder-item-row column-stack rule (v1.21.0 FR-3 -- it deliberately stays horizontal)', () => {
+  const mobileBlockRe = /@media \(max-width: 768px\) \{([\s\S]*?)\n\}\n\n\/\* In landscape/;
+  const block = mobileBlockRe.exec(css);
+  assert.ok(block);
+  assert.doesNotMatch(
+    block[1],
+    /\.folder-item-row,\s*\n\s*\.sub-row\s*\{[^}]*flex-direction:\s*column/,
+    '.sub-row must not share .folder-item-row\'s column-stack rule -- its new avatar+info+kebab anatomy stays horizontal on mobile'
+  );
+});
+
+// v1.21.0 FR-3, T3 (AC24): the v1.19.0 FR-2a `#sub-list-container` scoped
+// max-height override (superseded) is gone entirely -- the subscriptions
+// list is now the page's PRIMARY content and gets its own `.sub-list` class
+// with NO scroll cap, rather than a bigger-but-still-capped box. The Setup
+// folder builder and the one-shot job list are UNCHANGED -- still
+// `.folder-list-builder` at its original 240px/12px sizing.
+test('v1.21.0 FR-3: #sub-list-container no longer carries a scoped max-height override -- .sub-list has no scroll cap (AC24), while the shared .folder-list-builder default (Setup builder + one-shot list) is untouched', () => {
   const sharedRule = /\.folder-list-builder\s*\{([^}]*)\}/.exec(css);
   assert.ok(sharedRule, 'expected the shared .folder-list-builder rule');
   assert.match(sharedRule[1], /max-height:\s*240px/, 'the shared class default must be unchanged -- #folders-builder-list and #oneshot-list-container must not grow');
   assert.match(sharedRule[1], /padding:\s*12px/, 'the shared class padding must be unchanged');
 
   const scopedRule = /#sub-list-container\s*\{([^}]*)\}/.exec(css);
-  assert.ok(scopedRule, 'expected a scoped #sub-list-container override (an ID selector, not a change to the shared class)');
-  const maxHeightMatch = /max-height:\s*(\d+)px/.exec(scopedRule[1]);
-  assert.ok(maxHeightMatch && Number(maxHeightMatch[1]) > 240, '#sub-list-container must be taller than the shared 240px default');
-  const paddingMatch = /padding:\s*(\d+)px/.exec(scopedRule[1]);
-  assert.ok(paddingMatch && Number(paddingMatch[1]) > 12, '#sub-list-container must have roomier padding than the shared 12px default');
+  assert.ok(!scopedRule, '#sub-list-container must no longer carry its own rule block -- AC24 replaces the v1.19.0 FR-2a "bigger box" override with .sub-list\'s uncapped container instead');
+
+  const subListRule = /\.sub-list\s*\{([^}]*)\}/.exec(css);
+  assert.ok(subListRule, 'expected a .sub-list rule (the new, uncapped primary-list container)');
+  assert.doesNotMatch(subListRule[1], /max-height/, '.sub-list must have NO scroll cap (AC24) -- it is the page\'s PRIMARY content now');
 });
 
 test('the /subscriptions page and the Setup page share the same .setup-box/.form-group/.folder-item-row selectors (one fix improves both)', () => {

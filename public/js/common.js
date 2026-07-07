@@ -2290,6 +2290,82 @@ function renderPlaylistsSheet(folders, folderSettings) {
   }).join('');
 }
 
+// v1.21.0 FR-5: pure filter/derive step for the pinned-playlist Playlists-
+// sheet subsection (see renderPinnedPlaylists below) -- drops any entry
+// missing a usable channelDir (defensive; the server should never send one,
+// but this keeps rendering fail-safe against a malformed/future response
+// shape) and derives each entry's display label: the persisted snapshot
+// `label` when present, else the channelDir's own basename, else a generic
+// fallback -- never blank. Pure and side-effect-free, so it is directly
+// unit-testable without a DOM (unlike renderPinnedPlaylists itself, which --
+// like this file's other DOM-heavy render functions -- is exercised only
+// indirectly/manually).
+function derivePinnedPlaylistEntries(pins) {
+  const list = Array.isArray(pins) ? pins : [];
+  return list
+    .filter((p) => p && typeof p.channelDir === 'string' && p.channelDir !== '')
+    .map((p) => {
+      const trimmedLabel = typeof p.label === 'string' ? p.label.trim() : '';
+      const base = p.channelDir.split(/[\\/]/).pop() || p.channelDir;
+      return { channelDir: p.channelDir, label: trimmedLabel !== '' ? trimmedLabel : (base || 'Pinned channel') };
+    });
+}
+
+// v1.21.0 FR-5 (AC35/AC36): renders the pinned-channel-playlist subsection
+// into the Playlists sheet -- appended AFTER, and structurally SEPARATE
+// from (never merged into), the db.folders-driven list `renderPlaylistsSheet`
+// builds above, per the design's explicit "alongside, never merged into"
+// invariant. Idempotent: any previously-rendered pinned section is removed
+// first, so repeated opens never accumulate duplicates. Renders NOTHING
+// (no section at all, no empty-state message) when there are zero pins --
+// this is what makes a disabled module (openPlaylistsSheet below resolves a
+// 404 to `[]`) and an enabled-but-unused module look identical here, both
+// preserving the disabled-module no-op guarantee.
+//
+// SECURITY: unlike renderPlaylistsSheet above (which HTML-escapes
+// operator-owned folder labels into an innerHTML template string), this
+// function builds every node via createElement/textContent/createTextNode
+// ONLY -- a pin's `label` is a channel-name SNAPSHOT captured from
+// yt-dlp-derived metadata, the SAME untrusted, creator-controlled trust
+// level lib/ytdlp/client/subscriptions.js treats a subscription's own
+// `name` at (textContent-only, never innerHTML) -- this function holds
+// itself to that same, stricter discipline for that reason.
+function renderPinnedPlaylists(pins) {
+  const list = document.getElementById('playlists-sheet-list');
+  if (!list) return;
+  const existing = document.getElementById('playlists-pinned-section');
+  if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
+
+  const entries = derivePinnedPlaylistEntries(pins);
+  if (entries.length === 0) return;
+
+  const section = document.createElement('div');
+  section.id = 'playlists-pinned-section';
+  section.className = 'playlists-pinned-section';
+
+  const heading = document.createElement('div');
+  heading.className = 'sidebar-section-title';
+  heading.textContent = 'Pinned';
+  section.appendChild(heading);
+
+  entries.forEach((entry) => {
+    const link = document.createElement('a');
+    link.className = 'sidebar-item';
+    link.href = '/?root=' + encodeURIComponent(entry.channelDir);
+    const icon = document.createElement('i');
+    icon.className = 'icon-star';
+    link.appendChild(icon);
+    // SECURITY: entry.label is untrusted -- a dedicated text node (not
+    // link.textContent, which would also wipe the icon appended above) so
+    // both the icon and the label survive, neither ever passed through
+    // innerHTML.
+    link.appendChild(document.createTextNode(' ' + entry.label));
+    section.appendChild(link);
+  });
+
+  list.appendChild(section);
+}
+
 // Lazily fetches /api/config on first open, populates the sheet, then reveals
 // it. Feature-detects its own elements so it's safe to call on any page.
 function openPlaylistsSheet() {
@@ -2300,13 +2376,27 @@ function openPlaylistsSheet() {
   sheet.hidden = false;
   // Fetch fresh on every open — /api/config is tiny, and this avoids showing a
   // stale folder list if the library changed during the session.
-  fetch('/api/config')
+  const foldersRendered = fetch('/api/config')
     .then((r) => r.json())
     .then((data) => renderPlaylistsSheet(data.folders || [], data.folderSettings || {}))
     .catch(() => {
       const list = document.getElementById('playlists-sheet-list');
       if (list) list.innerHTML = '<div class="sidebar-item">Failed to load folders.</div>';
     });
+
+  // v1.21.0 FR-5: pinned channel playlists are a SEPARATE fetch against the
+  // module's own gated store, chained AFTER `foldersRendered` resolves --
+  // `renderPlaylistsSheet` assigns `list.innerHTML` wholesale, which would
+  // otherwise wipe out an already-appended pinned section if this fetch
+  // happened to resolve first. A 404 (module disabled) resolves to `[]`
+  // (treated as "no pins"), preserving the disabled-module no-op guarantee --
+  // this never logs/throws on a 404.
+  foldersRendered.then(() => {
+    fetch('/api/subscriptions/pins')
+      .then((r) => (r.ok ? r.json() : []))
+      .catch(() => [])
+      .then((pins) => renderPinnedPlaylists(pins));
+  });
 }
 
 function closePlaylistsSheet() {
@@ -2357,6 +2447,157 @@ function showConfirmModal(title, bodyText, onConfirm) {
   });
 }
 
+// ---- FR-7 (v1.21.0, T6): extra-deliberate delete for local files ----------
+// See docs/exec-plans/active/2026-07-08-v1.21-polish-release.md ("FR-7 --
+// extra-deliberate delete for local (non-yt-dlp) files") for the full
+// design/rationale. A yt-dlp-downloaded file is re-downloadable, so it keeps
+// today's lighter flow completely unchanged (the watch page's
+// `showConfirmModal` above / main.js's v1.17.0 two-tap card arm). A LOCAL
+// file is irreplaceable, so it gets ONE additional, more deliberate step --
+// this checkbox-gated hard-warning confirm -- before the SAME, unmodified
+// `DELETE /api/videos/:id` (+ its `removeAnyway`/409 read-only path) fires.
+
+// Pure, fail-safe (AC45/AC50/AC51 -- destructive-action two-reviewer gate).
+// Reuses the v1.20 FR-2 signal (never a new, divergent detection mechanism):
+// `true` ONLY when `item.channelUrl`/`channelId`/`channelName` is a
+// non-empty, non-whitespace string -- server.js only ever sets these three
+// fields for a yt-dlp-managed download (see `db.metadata[id]`, spread via
+// `...item` on both `GET /api/videos` and `GET /api/videos/:id`). ANY
+// absence/ambiguity -- a plain local file (every pre-v1.20 download has
+// none of these fields), a malformed/missing `item`, `null`/`undefined`
+// fields, or empty/whitespace-only strings -- resolves to `false`, meaning
+// "treat as LOCAL/irreplaceable" -> routes through the MORE deliberate
+// `showHardDeleteModal` below. There is no code path in this function that
+// can turn a `false` into a `true` on ambiguous input, so it can only ever
+// ADD friction relative to today, never remove it. Never throws. Exported
+// for node:test.
+function isYtdlpManagedItem(item) {
+  if (!item || typeof item !== 'object') return false;
+  const hasSignal = (v) => typeof v === 'string' && v.trim() !== '';
+  return hasSignal(item.channelUrl) || hasSignal(item.channelId) || hasSignal(item.channelName);
+}
+
+// Pure decision helper mirroring the predicate above into the two-word
+// vocabulary the two delete surfaces (watch.js/main.js) actually branch on:
+// `'normal'` = the existing, byte-unchanged confirm flow (AC47); `'hard'` =
+// the escalated `showHardDeleteModal` (AC46/AC49). A tiny separate function
+// (rather than inlining `isYtdlpManagedItem(item) ? 'normal' : 'hard'` at
+// each call site) so both surfaces share exactly ONE source of truth for
+// "which flow" and it stays directly node:test-covered. Exported for
+// node:test.
+function deleteFlowFor(item) {
+  return isYtdlpManagedItem(item) ? 'normal' : 'hard';
+}
+
+/**
+ * The escalated, checkbox-gated hard-delete confirm for a LOCAL
+ * (non-yt-dlp) file (AC46) -- visually/interactionally DISTINCT from
+ * `showConfirmModal` above (its own `.hard-delete-modal-*` classes/red
+ * hard-warning treatment, never `.modal-*`), and from the one-off/subscribe
+ * modals (its own classes, not `.oneoff-modal-*`). Self-contained like
+ * `showConfirmModal` -- appends itself to `doc.body` and tears itself down,
+ * so both call sites (`watch.js`'s delete button, `main.js`'s card two-tap
+ * arm) just call `showHardDeleteModal(item, onConfirm)` with no boilerplate.
+ * `doc` is optional (defaults to `document`) purely so this is directly
+ * node:test-covered against a fake DOM, mirroring `buildSubscribeModal`/
+ * `buildOneOffModal`'s injectable-`doc` pattern above.
+ *
+ * The Delete button starts DISABLED and only enables once the "I understand
+ * this file cannot be recovered" checkbox is ticked -- a conscious extra
+ * action beyond the existing confirm modal / two-tap arm (a 3rd, deliberate
+ * step). Reuses the v1.17.0 one-off-modal backdrop-dismiss FULL-teardown
+ * pattern (`.remove()`, not merely `hidden`, so it can never get stuck as a
+ * dead/dimmed overlay -- see the FR-6 fix note above `.oneoff-modal-backdrop`
+ * in style.css) -- a backdrop tap or Cancel fully detaches the node and never
+ * calls `onConfirm`.
+ *
+ * SECURITY: every dynamic string (the file's title/filePath) is rendered via
+ * `createElement`/`textContent` ONLY -- never `innerHTML` (unlike the older
+ * `showConfirmModal` above) -- so a hostile filename/title can never be
+ * parsed as markup.
+ */
+function showHardDeleteModal(item, onConfirm, doc) {
+  const d = doc || document;
+  const it = item || {};
+
+  const backdrop = d.createElement('div');
+  backdrop.className = 'hard-delete-modal-backdrop';
+  backdrop.addEventListener('click', (e) => {
+    if (e && e.target === backdrop) teardown();
+  });
+
+  const modal = d.createElement('div');
+  modal.className = 'hard-delete-modal';
+  backdrop.appendChild(modal);
+
+  const title = d.createElement('div');
+  title.className = 'hard-delete-modal-title';
+  title.textContent = 'Permanently delete this local file?';
+  modal.appendChild(title);
+
+  const warning = d.createElement('div');
+  warning.className = 'hard-delete-modal-warning';
+  warning.textContent = 'This is a local file and cannot be recovered or re-downloaded once deleted.';
+  modal.appendChild(warning);
+
+  const nameEl = d.createElement('div');
+  nameEl.className = 'hard-delete-modal-filename';
+  nameEl.textContent = typeof it.title === 'string' && it.title !== '' ? it.title : 'this file';
+  modal.appendChild(nameEl);
+
+  const pathEl = d.createElement('div');
+  pathEl.className = 'hard-delete-modal-path';
+  pathEl.textContent = typeof it.filePath === 'string' ? it.filePath : '';
+  modal.appendChild(pathEl);
+
+  const checkboxLabel = d.createElement('label');
+  checkboxLabel.className = 'hard-delete-modal-checkbox-row';
+  const checkbox = d.createElement('input');
+  checkbox.type = 'checkbox';
+  checkbox.checked = false;
+  checkboxLabel.appendChild(checkbox);
+  checkboxLabel.appendChild(d.createTextNode(' I understand this file cannot be recovered.'));
+  modal.appendChild(checkboxLabel);
+
+  const actionsRow = d.createElement('div');
+  actionsRow.className = 'hard-delete-modal-actions';
+
+  const cancelBtn = d.createElement('button');
+  cancelBtn.type = 'button';
+  cancelBtn.className = 'btn';
+  cancelBtn.textContent = 'Cancel';
+  cancelBtn.addEventListener('click', () => teardown());
+  actionsRow.appendChild(cancelBtn);
+
+  // Starts disabled -- only the checkbox's 'change' handler below can ever
+  // enable it (AC46's "conscious extra action").
+  const deleteBtn = d.createElement('button');
+  deleteBtn.type = 'button';
+  deleteBtn.className = 'hard-delete-modal-confirm-btn';
+  deleteBtn.textContent = 'Delete Permanently';
+  deleteBtn.disabled = true;
+  deleteBtn.addEventListener('click', () => {
+    if (deleteBtn.disabled) return; // belt-and-suspenders -- a disabled button shouldn't fire, but never trust that alone
+    teardown();
+    if (typeof onConfirm === 'function') onConfirm();
+  });
+  actionsRow.appendChild(deleteBtn);
+
+  modal.appendChild(actionsRow);
+
+  checkbox.addEventListener('change', () => {
+    deleteBtn.disabled = !checkbox.checked;
+  });
+
+  function teardown() {
+    backdrop.remove();
+  }
+
+  d.body.appendChild(backdrop);
+
+  return { backdrop, modal, title, warning, nameEl, pathEl, checkbox, cancelBtn, deleteBtn, teardown };
+}
+
 // v1.17.0 FR-3(a): a brief, non-blocking, auto-dismissing notification --
 // replaces the blocking `alert('File deleted successfully.')` friction the
 // watch page's post-delete success branch used to have (T2). Appends a real
@@ -2400,6 +2641,421 @@ function nextArmState(current, action) {
     return { state: 'armed', deleted: false };
   }
   return { state: current === 'armed' ? 'armed' : 'idle', deleted: false };
+}
+
+// === v1.21.0 FR-8 (T7): app-wide active-download status chip ===============
+// See docs/exec-plans/active/2026-07-08-v1.21-polish-release.md ("FR-8 --
+// download retry + status chip") and docs/ui-research-2026-07.md §5.
+//
+// A fixed, bottom-LEFT corner chip -- gated behind the SAME
+// `GET /api/subscriptions/health` capability probe every other optional-
+// module surface in this file uses (`injectSubscriptionsNavLinkIfEnabled`/
+// `injectOneOffDownloadButtonIfEnabled`) -- visible from ANY page while a
+// yt-dlp download (subscription OR one-shot) is active, so a user who
+// started a download and navigated away still has an at-a-glance affordance.
+// It polls the EXISTING `GET /api/subscriptions/status` snapshot itself (no
+// new backend polling primitive -- AC59), independently of the dedicated
+// `/subscriptions` page's own ~2.5s poll and the one-off modal's per-job
+// poll above; all three are cheap, independent readers of the same
+// in-memory `activity` map. Collapsed = "N downloading · X%" (AC55); tap
+// expands a per-item panel (name/%/state) with Retry + Dismiss on a sticky
+// errored item (AC56) -- a completed item is never even shown (auto-
+// dismiss). Retry covers BOTH failure kinds through their EXISTING,
+// unmodified mechanisms: a one-shot re-POSTs a reconstructed body to
+// `POST /api/ytdlp/download` (the SAME `classifySingleVideo`/format-
+// allowlist/`normalizeQuality`/`validateFiletype` validation path a brand
+// new request goes through -- no bypass); a subscription calls the SAME
+// `POST /api/subscriptions/:id/repull` the settings sheet's own Re-pull
+// button already uses (no new endpoint either way -- AC52/AC53). All chip
+// text is assigned via `textContent` ONLY -- never `innerHTML` -- matching
+// this file's blanket discipline for every server/user-derived string
+// (a subscription/one-shot's in-flight video `title`, a one-shot's `label`
+// folder name, and the redacted `error` string can all be operator/attacker-
+// influenced, exactly like `formatOneOffStatusText`'s callers already
+// assume).
+
+const DL_CHIP_POLL_BASE_MS = 5000; // slower app-wide cadence than /subscriptions's own dedicated ~2.5s poll
+const DL_CHIP_POLL_MAX_MS = 30000;
+
+// v1.21 FIX 3 (post-gate hardening, adversarial -- FR-8): module-scoped,
+// SYNCHRONOUS in-flight/injected guard for `injectDownloadStatusChip`
+// below. The function's OLD guard (`document.getElementById('dl-status-chip')`)
+// only helps once the chip node exists -- but that node is only created
+// inside the function's `fetch('/api/subscriptions/health').then(...)`
+// callback, i.e. AFTER an async round-trip. Two calls to
+// `injectDownloadStatusChip()` issued before that fetch resolves (e.g. two
+// shell-init code paths both calling it during the same page load) would
+// BOTH pass the old guard, race the fetch, and each build its own chip/poll
+// loop/popstate listener -- two chips, two overlapping polls. This flag is
+// set TRUE synchronously, before the fetch even starts, so a second/
+// concurrent call is a no-op regardless of network timing. Deliberately
+// never reset back to `false` -- injection is a one-shot, page-lifetime
+// action (mirrors the chip DOM node itself, which is also never removed).
+let dlStatusChipInjectStarted = false;
+
+/**
+ * Pure poll-delay reducer, same shape/intent as `lib/ytdlp/client/
+ * subscriptions.js`'s `nextPollDelay` (duplicated rather than shared -- this
+ * file is served to every page, that one only via the enabled-gated route):
+ * `success` resets to the base ~5s cadence; failure doubles the previous
+ * delay, capped at `DL_CHIP_POLL_MAX_MS`.
+ */
+function nextDownloadChipPollDelay(prevDelayMs, success) {
+  if (success) return DL_CHIP_POLL_BASE_MS;
+  const base = typeof prevDelayMs === 'number' && prevDelayMs > 0 ? prevDelayMs : DL_CHIP_POLL_BASE_MS;
+  return Math.min(base * 2, DL_CHIP_POLL_MAX_MS);
+}
+
+/**
+ * Pure (AC52's one-shot retry mechanism): reconstructs the JSON body a Retry
+ * re-POST to `POST /api/ytdlp/download` needs, from a failed one-shot job's
+ * ephemeral activity `LiveEntry` (the exact shape `GET /api/subscriptions/
+ * status`'s `oneShots` namespace returns). `url` (the already-validated
+ * watch URL) and `label` (the folder name) existed on every one-shot entry
+ * before this release; `format`/`quality`/`filetype` are v1.21.0 FR-8's
+ * additive fields (lib/ytdlp/index.js's download route + `runOneShot`).
+ * Returns `null` for an entry with no reconstructable `url` -- callers must
+ * treat `null` as "cannot retry" and never POST it. This function performs
+ * NO validation of its own: the caller always re-POSTs the result through
+ * the SAME `POST /api/ytdlp/download` route, which independently
+ * re-validates every field (`classifySingleVideo`/format allowlist/
+ * `normalizeQuality`/`validateFiletype`/`resolveChannelDir`) exactly as it
+ * does for a brand-new one-off request -- there is no bypass.
+ */
+function buildOneShotRetryBody(entry) {
+  if (!entry || typeof entry !== 'object') return null;
+  if (typeof entry.url !== 'string' || entry.url.trim() === '') return null;
+  const body = { url: entry.url };
+  if (typeof entry.format === 'string' && entry.format.trim() !== '') body.format = entry.format;
+  if (typeof entry.quality === 'string' && entry.quality.trim() !== '') body.quality = entry.quality;
+  if (typeof entry.filetype === 'string' && entry.filetype.trim() !== '') body.filetype = entry.filetype;
+  if (typeof entry.label === 'string' && entry.label.trim() !== '') body.folder = entry.label;
+  return body;
+}
+
+/**
+ * Pure (AC56's auto-dismiss-vs-sticky decision): classifies a LiveEntry's
+ * `state` into the chip's lifecycle bucket -- `'auto-dismiss'` (a completed
+ * download never even enters the chip's visible item list -- transient,
+ * nothing to acknowledge), `'sticky'` (an errored download stays visible
+ * until the user explicitly Dismisses it), or `'active'` (queued/listing/
+ * downloading, or any unrecognized future state, defensively treated as
+ * still in-flight rather than silently dropped).
+ */
+function chipItemLifecycle(state) {
+  if (state === 'done') return 'auto-dismiss';
+  if (state === 'error') return 'sticky';
+  return 'active';
+}
+
+/**
+ * Pure: builds one chip item descriptor from a raw `LiveEntry`, or `null`
+ * for an invalid id/entry. `kind` is `'subscription'` or `'oneshot'` (the
+ * two `GET /api/subscriptions/status` namespaces); `key` (`kind + ':' + id`)
+ * disambiguates a coincidentally-equal id across the two namespaces for the
+ * dismissed-set/DOM keying below. `name` prefers the in-flight video
+ * `title` (set by the shared progress parser for BOTH subscriptions and
+ * one-shots once downloading starts), falling back to the one-shot's
+ * `label` (folder name -- subscriptions have no equivalent field), then a
+ * generic per-kind placeholder for an entry with neither yet (e.g. still
+ * `queued`/`listing`).
+ */
+function buildDownloadChipItem(kind, id, entry) {
+  if (!id || !entry || typeof entry !== 'object') return null;
+  const state = typeof entry.state === 'string' ? entry.state : 'queued';
+  const percent = typeof entry.percent === 'number' && Number.isFinite(entry.percent)
+    ? Math.max(0, Math.min(100, Math.round(entry.percent)))
+    : 0;
+  const title = typeof entry.title === 'string' && entry.title.trim() !== '' ? entry.title.trim() : '';
+  const label = typeof entry.label === 'string' && entry.label.trim() !== '' ? entry.label.trim() : '';
+  const name = title || label || (kind === 'oneshot' ? 'One-off download' : 'Subscription download');
+  return {
+    key: kind + ':' + id,
+    id,
+    kind,
+    name,
+    percent,
+    state,
+    statusText: formatOneOffStatusText(entry) || state,
+    retryable: state === 'error',
+  };
+}
+
+/**
+ * Pure aggregate reducer (AC54-AC56): given the RAW `{subscriptions,
+ * oneShots}` snapshot `GET /api/subscriptions/status` returns and the
+ * CURRENT set of user-dismissed item keys, returns `{count, hasError,
+ * items}` -- everything the chip's DOM layer needs to decide whether to
+ * render at all (`count === 0` -> hidden, AC54's "hides when the snapshot
+ * is empty") and what to show. A `'done'` entry is UNCONDITIONALLY excluded
+ * (auto-dismiss -- it never even reaches `items`); an `'error'` entry is
+ * excluded once its key is in `dismissedKeys` (acknowledged); every other
+ * state is always included.
+ */
+function reduceDownloadChipState(snapshot, dismissedKeys) {
+  const dismissed = dismissedKeys instanceof Set
+    ? dismissedKeys
+    : new Set(Array.isArray(dismissedKeys) ? dismissedKeys : []);
+  const subs = (snapshot && snapshot.subscriptions && typeof snapshot.subscriptions === 'object') ? snapshot.subscriptions : {};
+  const oneShots = (snapshot && snapshot.oneShots && typeof snapshot.oneShots === 'object') ? snapshot.oneShots : {};
+  const items = [];
+  Object.entries(subs).forEach(([id, entry]) => {
+    const item = buildDownloadChipItem('subscription', id, entry);
+    if (item) items.push(item);
+  });
+  Object.entries(oneShots).forEach(([id, entry]) => {
+    const item = buildDownloadChipItem('oneshot', id, entry);
+    if (item) items.push(item);
+  });
+  const visible = items.filter((item) => {
+    const lifecycle = chipItemLifecycle(item.state);
+    if (lifecycle === 'auto-dismiss') return false;
+    if (lifecycle === 'sticky') return !dismissed.has(item.key);
+    return true;
+  });
+  return {
+    count: visible.length,
+    hasError: visible.some((item) => item.state === 'error'),
+    items: visible,
+  };
+}
+
+/**
+ * Pure (AC55's collapsed "N downloading · X%" text). When at least one item
+ * is actively in-flight (queued/listing/downloading), `N` is the active
+ * count and `X%` is the average percent across just those (an errored item
+ * never drags the average down, and is never counted in `N` here -- it is
+ * flagged separately via `.hasError`/the chip's error-dot CSS, not the
+ * headline count). When NOTHING is active but at least one error is still
+ * sticky, the summary instead reads "N download(s) failed" so an
+ * all-errored chip is never mislabeled "0 downloading · 0%".
+ */
+function formatDownloadChipSummary(state) {
+  if (!state || !Array.isArray(state.items) || state.items.length === 0) return '';
+  const active = state.items.filter((item) => item.state !== 'error');
+  if (active.length > 0) {
+    const avg = Math.round(active.reduce((sum, item) => sum + item.percent, 0) / active.length);
+    return active.length + ' downloading · ' + avg + '%';
+  }
+  const errorCount = state.items.length;
+  return errorCount + (errorCount === 1 ? ' download failed' : ' downloads failed');
+}
+
+/**
+ * Pure mount-suppression gate: "the chip suppresses itself on /subscriptions
+ * -- that page owns its own inline status" (avoids redundant, visually
+ * duplicated status surfaces on the one page that already has a dedicated
+ * one). Its own tiny pure function (rather than inlined) so it is directly
+ * unit-testable without a real `window.location`.
+ */
+function shouldShowDownloadChipOnPath(pathname) {
+  return typeof pathname === 'string' && pathname !== '/subscriptions';
+}
+
+/**
+ * Builds + wires the chip and appends it to `document.body`, gated behind
+ * the capability probe described above. Idempotent (checks for its own DOM
+ * node first) and defensive, mirroring `injectOneOffDownloadButtonIfEnabled`
+ * exactly: a 404 (module disabled) or a network failure means this function
+ * creates NOTHING at all -- no DOM, no poll -- keeping a disabled install
+ * byte-identical (the chip is entirely absent, not merely hidden).
+ */
+function injectDownloadStatusChip() {
+  if (typeof document === 'undefined' || typeof fetch === 'undefined') return;
+  if (document.getElementById('dl-status-chip')) return; // already injected
+  // v1.21 FIX 3: synchronous in-flight guard -- see `dlStatusChipInjectStarted`'s
+  // own doc comment above for why the `getElementById` check alone is
+  // insufficient (the chip node doesn't exist until the fetch below
+  // resolves). Set BEFORE the fetch so a second/concurrent call, however
+  // close in time, is always a no-op.
+  if (dlStatusChipInjectStarted) return;
+  dlStatusChipInjectStarted = true;
+
+  fetch('/api/subscriptions/health')
+    .then((res) => {
+      if (!(res && res.ok === true)) return; // disabled (404) -- inject nothing
+
+      const dismissedKeys = new Set();
+      let latestSnapshot = { subscriptions: {}, oneShots: {} };
+      let expanded = false;
+      let pollTimer = null;
+      let pollDelay = DL_CHIP_POLL_BASE_MS;
+
+      const chip = document.createElement('div');
+      chip.id = 'dl-status-chip';
+      chip.className = 'dl-status-chip';
+      chip.hidden = true;
+
+      const summaryBtn = document.createElement('button');
+      summaryBtn.type = 'button';
+      summaryBtn.className = 'dl-status-chip-summary';
+      summaryBtn.setAttribute('aria-expanded', 'false');
+      summaryBtn.setAttribute('aria-label', 'Active downloads');
+      const dot = document.createElement('span');
+      dot.className = 'dl-status-chip-dot';
+      summaryBtn.appendChild(dot);
+      const summaryText = document.createElement('span');
+      summaryText.className = 'dl-status-chip-text';
+      summaryBtn.appendChild(summaryText);
+      chip.appendChild(summaryBtn);
+
+      const panel = document.createElement('div');
+      panel.className = 'dl-status-chip-panel';
+      panel.hidden = true;
+      chip.appendChild(panel);
+
+      summaryBtn.addEventListener('click', () => {
+        expanded = !expanded;
+        summaryBtn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+        panel.hidden = !expanded;
+        chip.classList.toggle('dl-status-chip-expanded', expanded);
+      });
+
+      function retryOneShot(rawEntry, key) {
+        const body = buildOneShotRetryBody(rawEntry);
+        if (!body) return;
+        fetch('/api/ytdlp/download', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        })
+          .then((r) => {
+            if (r.ok) {
+              // A retry is a NORMAL new one-shot job (a fresh jobId) -- the
+              // OLD failed entry never transitions itself, so it must be
+              // dismissed explicitly or it would linger, sticky, alongside
+              // the brand-new job that appears on the next poll.
+              dismissedKeys.add(key);
+              render();
+            }
+          })
+          .catch(() => { /* best-effort -- the item stays visible; the user can retry again */ });
+      }
+
+      function retrySubscription(id) {
+        // No body needed -- the SAME existing endpoint the settings sheet's
+        // own Re-pull button already calls (AC52/AC53); re-uses the SAME
+        // subscription id, so the next poll naturally overwrites this same
+        // entry's state -- no explicit dismiss needed here.
+        fetch('/api/subscriptions/' + encodeURIComponent(id) + '/repull', { method: 'POST' })
+          .catch(() => { /* best-effort -- the next poll reflects whatever actually happened */ });
+      }
+
+      function buildItemRow(item, rawEntry) {
+        const row = document.createElement('div');
+        row.className = 'dl-status-chip-item';
+
+        const nameRow = document.createElement('div');
+        nameRow.className = 'dl-status-chip-item-row';
+        const nameEl = document.createElement('span');
+        nameEl.className = 'dl-status-chip-item-name';
+        nameEl.textContent = item.name;
+        nameRow.appendChild(nameEl);
+        const pctEl = document.createElement('span');
+        pctEl.className = 'dl-status-chip-item-percent';
+        pctEl.textContent = item.percent + '%';
+        nameRow.appendChild(pctEl);
+        row.appendChild(nameRow);
+
+        const track = document.createElement('div');
+        track.className = 'dl-status-chip-progress';
+        const fill = document.createElement('div');
+        fill.className = 'dl-status-chip-progress-fill';
+        if (item.state === 'error') fill.classList.add('dl-status-chip-progress-fill-error');
+        fill.style.width = item.percent + '%';
+        track.appendChild(fill);
+        row.appendChild(track);
+
+        const statusEl = document.createElement('div');
+        statusEl.className = 'dl-status-chip-item-status';
+        statusEl.textContent = item.statusText;
+        row.appendChild(statusEl);
+
+        if (item.state === 'error') {
+          const actions = document.createElement('div');
+          actions.className = 'dl-status-chip-item-actions';
+
+          const retryBtn = document.createElement('button');
+          retryBtn.type = 'button';
+          retryBtn.className = 'dl-status-chip-retry-btn';
+          retryBtn.textContent = 'Retry';
+          retryBtn.addEventListener('click', () => {
+            if (item.kind === 'oneshot') retryOneShot(rawEntry, item.key);
+            else retrySubscription(item.id);
+          });
+          actions.appendChild(retryBtn);
+
+          const dismissBtn = document.createElement('button');
+          dismissBtn.type = 'button';
+          dismissBtn.className = 'dl-status-chip-dismiss-btn';
+          dismissBtn.textContent = 'Dismiss';
+          dismissBtn.addEventListener('click', () => {
+            dismissedKeys.add(item.key);
+            render();
+          });
+          actions.appendChild(dismissBtn);
+
+          row.appendChild(actions);
+        }
+
+        return row;
+      }
+
+      function render() {
+        const state = reduceDownloadChipState(latestSnapshot, dismissedKeys);
+        if (!shouldShowDownloadChipOnPath(window.location.pathname) || state.count === 0) {
+          chip.hidden = true;
+          return;
+        }
+        chip.hidden = false;
+        summaryText.textContent = formatDownloadChipSummary(state);
+        chip.classList.toggle('dl-status-chip-has-error', state.hasError);
+
+        while (panel.firstChild) panel.removeChild(panel.firstChild);
+        state.items.forEach((item) => {
+          const rawEntry = item.kind === 'oneshot'
+            ? (latestSnapshot.oneShots || {})[item.id]
+            : (latestSnapshot.subscriptions || {})[item.id];
+          panel.appendChild(buildItemRow(item, rawEntry));
+        });
+      }
+
+      function scheduleNextPoll(delay) {
+        if (pollTimer) clearTimeout(pollTimer);
+        pollTimer = setTimeout(pollOnce, delay);
+      }
+
+      function pollOnce() {
+        if (typeof document !== 'undefined' && document.hidden) {
+          scheduleNextPoll(DL_CHIP_POLL_BASE_MS);
+          return;
+        }
+        fetch('/api/subscriptions/status')
+          .then((r) => (r.ok ? r.json() : Promise.reject(new Error('status endpoint returned ' + r.status))))
+          .then((snapshot) => {
+            latestSnapshot = snapshot && typeof snapshot === 'object'
+              ? { subscriptions: snapshot.subscriptions || {}, oneShots: snapshot.oneShots || {} }
+              : { subscriptions: {}, oneShots: {} };
+            pollDelay = nextDownloadChipPollDelay(pollDelay, true);
+            render();
+          })
+          .catch(() => {
+            pollDelay = nextDownloadChipPollDelay(pollDelay, false);
+          })
+          .finally(() => scheduleNextPoll(pollDelay));
+      }
+
+      // Route changes via the SPA router's pushState-based `navigate()`
+      // don't fire `popstate` -- `render()`'s own path check (re-evaluated
+      // on every poll tick, at worst one ~5s cadence later) is what
+      // eventually reconciles that case too; this listener just makes the
+      // common back/forward-navigation case instant.
+      window.addEventListener('popstate', render);
+
+      document.body.appendChild(chip);
+      pollOnce();
+    })
+    .catch(() => { /* network/parse failure -- fail closed, inject nothing */ });
 }
 
 // Sidebar toggle responsive menu helper. Guarded so requiring this file in Node
@@ -2469,6 +3125,11 @@ document.addEventListener('DOMContentLoaded', () => {
   // header and load common.js).
   injectOneOffDownloadButtonIfEnabled();
 
+  // v1.21.0 FR-8 (T7): app-wide active-download status chip, gated by the
+  // SAME capability probe pattern -- runs on every page for the same reason
+  // as the two injections above.
+  injectDownloadStatusChip();
+
   // SPA-lite router boot (FR-1, T1): derives the current view from `location`
   // and runs its `init()` -- the identical path an in-app swap runs. Also
   // applies the initial active-nav highlight (bottom-nav + sidebar), which
@@ -2534,6 +3195,11 @@ if (typeof module !== 'undefined' && module.exports) {
     shouldDockOnTransition, toPathAndQuery, isStaleNavGeneration,
     canonicalizeChannelUrl, channelIdentityMatches, resolveFileChannelIdentity,
     shouldShowSubscribeButton, decideSubscribeButtonState,
-    buildSubscribeRequestBody, buildSubscribeModal
+    buildSubscribeRequestBody, buildSubscribeModal,
+    derivePinnedPlaylistEntries,
+    isYtdlpManagedItem, deleteFlowFor, showHardDeleteModal,
+    nextDownloadChipPollDelay, buildOneShotRetryBody, chipItemLifecycle,
+    buildDownloadChipItem, reduceDownloadChipState, formatDownloadChipSummary,
+    shouldShowDownloadChipOnPath, injectDownloadStatusChip
   };
 }

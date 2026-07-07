@@ -23,6 +23,44 @@
 // player BEFORE this view's `destroy()` runs, so the video keeps playing in
 // the corner dock. `destroy()` here only tears down this view's OWN
 // (non-player) listeners.
+// Pure, DOM-free helpers (v1.21 FR-9, T8) -- kept at module scope, above the
+// view IIFE below, so `node:test` can `require()` them directly without
+// touching `window`/`document` (mirrors player.js's own top-of-file pure-
+// helper + `module.exports` guard pattern).
+
+// nextTheaterState: the toggle's reducer -- flips the current boolean state.
+// Kept as a named pure function (rather than an inline `!x` at the click
+// site) so the toggle's actual state transition is isolated and unit-tested
+// separately from the DOM-mutating class/attribute updates it drives.
+function nextTheaterState(isActive) {
+  return !isActive;
+}
+
+// isTheaterModeActive: parses the raw `localStorage.getItem('ft-theater')`
+// return value (a string, or `null` if unset or storage is disabled/throws)
+// into a boolean. Fail-safe like player.js's `clampVolume` -- ANY value
+// other than the exact persisted "on" sentinel ('1') is treated as "off,"
+// including `null`, `undefined`, or a garbage/foreign stored value, so a
+// corrupted or missing preference can never surprise the user with an
+// unexpected wide layout on load.
+function isTheaterModeActive(rawValue) {
+  return rawValue === '1';
+}
+
+// theaterModeStorageValue: the inverse serializer -- what gets written back
+// to `localStorage['ft-theater']` for a given boolean state.
+function theaterModeStorageValue(isActive) {
+  return isActive ? '1' : '0';
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = {
+    nextTheaterState,
+    isTheaterModeActive,
+    theaterModeStorageValue,
+  };
+}
+
 (function () {
   let controller = null;
 
@@ -110,6 +148,12 @@
 
     // FR-4a (v1.17.0, T3): visible autoplay toggle -- see setupAutoplayToggle() below.
     const autoplayCheck = root.querySelector('#watch-autoplay-check');
+
+    // FR-9 (v1.21.0, T8): theatre-mode toggle -- see setupTheatreToggle()
+    // below. Wired synchronously here (not inside initWatch()'s async flow)
+    // since it needs no network data and should be applied immediately, per
+    // the design's "applied on watch init()."
+    setupTheatreToggle();
 
     // #sidebar-folders-list lives in the PERSISTENT shell (outside
     // #view-root) -- wiring it through this view's own AbortController is
@@ -428,6 +472,81 @@
           });
         } catch (e) {
           console.error('Error saving autoplay setting:', e);
+        }
+      }, { signal });
+    }
+
+    // FR-9 (v1.21.0, T8): the "Theatre" toggle. Widens the player to the
+    // majority of page width by stacking `.watch-sidebar` (the related-items
+    // list) below `.watch-main`, at desktop widths only -- see the
+    // ".watch-container.theater-mode" rules ("v1.21 FR-9" section in
+    // style.css). Built entirely in JS rather than watch.html: this task's
+    // file-ownership contract leaves `#player-host-template`/the rest of
+    // watch.html's static markup to T2, so the button is created here and
+    // appended next to the existing Prev/Next bar instead.
+    //
+    // WATCH-VIEW-ONLY / DOCKED-unaffected (AC61): this toggles a class on
+    // `.watch-container` ONLY -- `#player-dock` (the v1.16 persistent
+    // mini-player host) lives entirely OUTSIDE `#view-root`/`.watch-container`
+    // in the shell markup, so it is structurally unreachable from this
+    // selector. The toggle never touches the `<video>` element, its `src`,
+    // or playback state in any way -- purely a class flip on an ancestor
+    // element -- so entering/leaving theatre mode never disturbs playback.
+    //
+    // Persistence (AC63, optional per design -- implemented): the last
+    // choice is stored in `localStorage['ft-theater']` and re-applied here on
+    // every `init()` (fresh page load OR an in-app SPA navigation back into
+    // the watch view), via the pure `isTheaterModeActive`/
+    // `theaterModeStorageValue` helpers (module scope, above the IIFE --
+    // unit-tested in test/unit).
+    function setupTheatreToggle() {
+      const watchContainer = root.querySelector('.watch-container');
+      const prevNextBar = root.querySelector('#watch-prevnext');
+      if (!watchContainer || !prevNextBar || !nextBtn) return;
+
+      const theaterBtn = document.createElement('button');
+      theaterBtn.type = 'button';
+      theaterBtn.id = 'watch-theater-btn';
+      theaterBtn.className = 'watch-prevnext-btn watch-theater-btn';
+      theaterBtn.setAttribute('aria-pressed', 'false');
+      theaterBtn.setAttribute('aria-label', 'Toggle theatre mode');
+      theaterBtn.textContent = 'Theatre';
+
+      // Groups the new button with the existing Next button (rather than
+      // appending it as a bare 4th child of `.watch-prevnext`) so it doesn't
+      // disturb that row's existing `justify-content: space-between` 3-slot
+      // layout (Prev / Autoplay / Next) -- see the ".watch-nextgroup" rule
+      // in style.css. `nextBtn` is only reparented, never recreated, so the
+      // click listener `setupPrevNext()` wires onto it (elsewhere in this
+      // file) keeps working unaffected by this move, regardless of call
+      // order.
+      const nextGroup = document.createElement('div');
+      nextGroup.className = 'watch-nextgroup';
+      nextBtn.parentNode.insertBefore(nextGroup, nextBtn);
+      nextGroup.appendChild(nextBtn);
+      nextGroup.appendChild(theaterBtn);
+
+      let isActive = false;
+      try {
+        isActive = isTheaterModeActive(localStorage.getItem('ft-theater'));
+      } catch (_) {
+        isActive = false; // storage disabled/unavailable -- default to off, never throw
+      }
+      applyTheatreState(isActive);
+
+      function applyTheatreState(active) {
+        watchContainer.classList.toggle('theater-mode', active);
+        theaterBtn.setAttribute('aria-pressed', active ? 'true' : 'false');
+      }
+
+      theaterBtn.addEventListener('click', () => {
+        isActive = nextTheaterState(isActive);
+        applyTheatreState(isActive);
+        try {
+          localStorage.setItem('ft-theater', theaterModeStorageValue(isActive));
+        } catch (_) {
+          // storage disabled/unavailable -- the choice just doesn't persist
+          // past this visit; the toggle itself still works.
         }
       }, { signal });
     }
@@ -806,37 +925,51 @@
       return selected;
     }
 
-    // Deletion logic
-    deleteBtn.addEventListener('click', () => {
-      showConfirmModal(
-        'Confirm Permanent Deletion',
-        `Are you sure you want to permanently delete <strong>${escapeHtml(mediaData.title)}</strong>?<br><br><span style="color:var(--yt-red); font-weight:bold;">Warning: This will delete the actual file from your computer's disk:</span><br><code style="word-break:break-all; font-size:11px;">${escapeHtml(mediaData.filePath)}</code>`,
-        async () => {
-          try {
-            // Stop playback and release the (about to be deleted) media
-            // resource -- there is nothing left to save progress for or dock.
-            if (window.FileTube && window.FileTube.player) window.FileTube.player.close();
+    // Deletion logic. FR-7 (v1.21.0, T6): a yt-dlp-managed file is
+    // re-downloadable, so it keeps this EXACT, unmodified confirm flow
+    // (AC47). A LOCAL file is irreplaceable, so it routes through the more
+    // deliberate, checkbox-gated `showHardDeleteModal` (common.js) instead
+    // (AC46/AC49) -- both paths converge on the exact same
+    // `performMediaDelete()` below, which fires the SAME, unmodified
+    // `DELETE /api/videos/:id` (AC48).
+    async function performMediaDelete() {
+      try {
+        // Stop playback and release the (about to be deleted) media
+        // resource -- there is nothing left to save progress for or dock.
+        if (window.FileTube && window.FileTube.player) window.FileTube.player.close();
 
-            const res = await fetch(`/api/videos/${mediaId}`, { method: 'DELETE' });
-            const data = await res.json();
+        const res = await fetch(`/api/videos/${mediaId}`, { method: 'DELETE' });
+        const data = await res.json();
 
-            if (data.success) {
-              // FR-3(a), T2: the post-success alert() was blocking friction --
-              // a brief, non-blocking, auto-dismissing toast (common.js) gives
-              // the same feedback without requiring a dismiss tap before the
-              // navigate() below can proceed.
-              showToast('File deleted.');
-              if (window.FileTube && typeof window.FileTube.navigate === 'function') window.FileTube.navigate('/');
-              else window.location.href = '/';
-            } else {
-              alert('Error deleting file: ' + data.error);
-            }
-          } catch (err) {
-            console.error(err);
-            alert('Network error occurred while trying to delete file.');
-          }
+        if (data.success) {
+          // FR-3(a), T2: the post-success alert() was blocking friction --
+          // a brief, non-blocking, auto-dismissing toast (common.js) gives
+          // the same feedback without requiring a dismiss tap before the
+          // navigate() below can proceed.
+          showToast('File deleted.');
+          if (window.FileTube && typeof window.FileTube.navigate === 'function') window.FileTube.navigate('/');
+          else window.location.href = '/';
+        } else {
+          alert('Error deleting file: ' + data.error);
         }
-      );
+      } catch (err) {
+        console.error(err);
+        alert('Network error occurred while trying to delete file.');
+      }
+    }
+
+    deleteBtn.addEventListener('click', () => {
+      if (isYtdlpManagedItem(mediaData)) {
+        // yt-dlp-managed -- existing, byte-unchanged confirm flow (AC47).
+        showConfirmModal(
+          'Confirm Permanent Deletion',
+          `Are you sure you want to permanently delete <strong>${escapeHtml(mediaData.title)}</strong>?<br><br><span style="color:var(--yt-red); font-weight:bold;">Warning: This will delete the actual file from your computer's disk:</span><br><code style="word-break:break-all; font-size:11px;">${escapeHtml(mediaData.filePath)}</code>`,
+          performMediaDelete
+        );
+      } else {
+        // Local/irreplaceable -- the escalated, checkbox-gated confirm (AC46/AC49).
+        showHardDeleteModal(mediaData, performMediaDelete);
+      }
     }, { signal });
 
     // Description expand/collapse toggle

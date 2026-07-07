@@ -1,17 +1,17 @@
-# Software Developer inbox — T3 (v1.20 FR-1 toggle + compact options modal + FR-3 hide)
+# Software Developer inbox — T3 (v1.21 FR-3 + FR-4, with FR-1 folded in)
 
-Feature: **v1.20.0 "Subscribe button — real subscriptions from downloads"**
-(feature_id `v1.20-subscribe`), branch `feature/v1.20-subscribe` (off `main` at
-v1.19.1). This file **supersedes any prior-feature content**. This is **Task T3**.
-Wave **3** — runs ALONE, LAST. **Depends on T1 AND T2 AND T4.** Do not start until
-the coordinator confirms T2 and T4 are both done/verified (you edit
-`public/js/common.js` after T2, and `lib/ytdlp/index.js` + `public/css/style.css`
-after T4 — shared working tree, no concurrent edits).
+Feature: **v1.21.0 "The Polish Release"** (feature_id `v1.21-polish-release`),
+branch `feature/v1.21-polish-release` (off `main` at v1.20.0). This file
+**supersedes any prior-feature content.** This is **Task T3**, **Wave 2** — runs
+ALONE (strict per-file serialization: you share `style.css` + `subscriptions.html`
+with T2 and `subscriptions.js` with T5/T7, so no task runs concurrently with you).
+**Start only after the coordinator confirms T2 is integrated** (T2 leads the
+`style.css` + `subscriptions.html` chain). **T3 blocks T5 and T7** (both rebase on
+your new `subscriptions.js`).
 
-**Review tier: TWO-REVIEWER GATE** (quality-assurance + a separate adversarial
-`/code-review`). The watch page becomes a new caller into the spawn-guarded
-subscription create/delete system; you must prove no new path bypasses
-`store.validateSubscriptionInput` → `url.validateChannelUrl`.
+**Review tier: HEAVY two-reviewer gate** (subscription CRUD UI surface — same
+tier as v1.20 FR-1/FR-4). Dean's on-device pass is the arbiter for list/detail
+feel.
 
 ## Environment
 
@@ -22,110 +22,102 @@ subscription create/delete system; you must prove no new path bypasses
 ## Git — DO NOT commit
 
 The **coordinator (EM) owns ALL git.** Do NOT `git add`/`commit`/`branch`/
-`stash`/`push`. Report files changed + full `npm run lint` (0 warnings) and
-`npm test` output under Node 22; fix any failure before reporting done.
+`stash`/`push`. Report exact files changed + full `npm run lint` (0 warnings) and
+`npm test` (Node 22) output. Fix any failure before reporting done.
+
+## Coordinator decisions (do NOT reopen)
+
+- **FR-1 is FOLDED INTO this task.** There is no separate FR-1 hotfix. Your new
+  rendering must satisfy FR-1's ACs (AC1–AC5): the count edit (and every settings
+  field) must PERSIST and must NOT be clobbered by the ~2.5s live-status poll. You
+  achieve this **structurally**: settings move OFF the list into a bottom-sheet
+  the poll never re-renders, and the list poll updates only each row's
+  `.sub-row-status` text IN PLACE (no `clearChildren`+full-rebuild). Do NOT port
+  the old inline `editPanel` or an `openEditIds` guard — they are obsolete.
+- **Subscription name = READ-ONLY.** `validateSubscriptionPatch`/
+  `updateSubscription` do NOT accept a `name` patch, and editing name would
+  change `resolveChannelDir` and orphan downloads. Render the channel name
+  read-only in the sheet header. The sheet edits **count(maxVideos)/quality/
+  type(format)/filetype/skipShorts** only.
 
 ## Read first (you share NO memory with the EM)
 
-- `docs/exec-plans/active/2026-07-08-v1.20-subscribe.md` — read the **## Design**
-  sections **"FR-1 — subscribe toggle + compact options modal"** and **"FR-3 —
-  hide when no channel / module disabled"**, plus the T3 bullet in **## Task
-  breakdown**. Implement to that design.
-- `.state/feature-state.json` — the `tasks[]` entry `"id":"T3"` and
-  `hard_constraints` (validator routing, era-theme, select-sizing/full-teardown
-  reuse, `textContent`).
-- `docs/CONTRIBUTING.md` (vanilla DOM, `textContent` not `innerHTML` for dynamic
-  strings, 2-space, semicolons, single-quotes, `node:test`, lint 0, no new deps)
-  and `docs/RELIABILITY.md` (no headless-browser/E2E — modal UX leans on Dean's
-  on-device pass as the documented arbiter; everything else is unit/integration).
-- T2's helpers already in `public/js/common.js`: `resolveFileChannelIdentity`,
-  `channelIdentityMatches`, `canonicalizeChannelUrl`, extended `resolveChannelName`.
-- Live code: `public/js/common.js` — the one-off modal primitives you REUSE:
-  `.oneoff-modal-backdrop`/`.oneoff-modal` CSS (carries the v1.17.0 FR-6
-  full-teardown + v1.19.0 `flex:0 0 auto` select-sizing fixes), `buildOneOffModal`,
-  `buildOneOffSelect`, `ONEOFF_FORMAT_OPTIONS`, `ONEOFF_QUALITY_OPTIONS`,
-  `ONEOFF_FILETYPE_OPTIONS`, `reduceOneOffFiletypeOptions`/
-  `repopulateOneOffFiletypeSelect`. `public/js/watch.js` — `populateMetadata`,
-  the `resolveChannelName` call site. `public/watch.html` — `#subscribe-btn-mock`
-  (currently cosmetic, no handler). `lib/ytdlp/index.js` — the gated
-  `GET /api/subscriptions/health` handler and `config` in scope.
+- `docs/exec-plans/active/2026-07-08-v1.21-polish-release.md` — the **## Design**
+  sections **"FR-3 — subscriptions-first rearchitect (HEAVY)"** and **"FR-4 —
+  subscribed date + clickable channel link (LIGHT)"**, plus **AC1–AC5, AC18–AC32**.
+- `docs/ui-research-2026-07.md` §1 (list-not-grid, one row = avatar+name+one muted
+  meta line+trailing kebab, detail-page/sheet settings, row-tap-opens-channel).
+- `docs/CONTRIBUTING.md` (vanilla DOM, `textContent` over `innerHTML`, `node:test`,
+  lint 0, no new deps).
+- Live code (in full): `lib/ytdlp/client/subscriptions.js` (current
+  `renderSubscriptions`/`createSubscriptionRow`/`pollStatusOnce`/`loadSubscriptions`,
+  the inline `editPanel`, `repullOne`, the one-shot rendering) and
+  `lib/ytdlp/views/subscriptions.html` (current `#view-root` order:
+  add-form → one-off form+list → "Your subscriptions" `.folder-list-builder`).
+  Note `sub.addedAt` (persisted since v1.11.0), `sub.channelUrl` (already
+  `validateChannelUrl`-validated), `sub.channelDir` (v1.20 FR-4 per-channel link),
+  and `window.FileTube.navigate`. Confirm `PATCH /api/subscriptions/:id` accepts
+  `maxVideos:0` = unlimited (unchanged server path).
 
-## Task — implement THIS ONE task only (FR-1 + FR-3)
+## Task — implement THIS ONE task only (FR-3 + FR-4 + FR-1 folded)
 
-1. **`shouldShowSubscribeButton({ moduleEnabled, channelIdentity })`
-   (`common.js`, pure, `node:test`).** `true` iff `moduleEnabled === true` AND
-   `channelIdentity` non-null; else the button is REMOVED from the DOM
-   (`.remove()`, absent — not greyed).
-2. **`buildSubscribeModal(doc, opts, handlers)` (`common.js`).** Mirror
-   `buildOneOffModal`'s structure and REUSE its primitives (`.oneoff-modal-*`
-   CSS + the ONEOFF option builders/reducer above — NO dependency on the gated
-   `/js/subscriptions.js`). Contents:
-   - READ-ONLY channel identity: `channelName` + `channelUrl`, both via
-     `textContent` (never an editable field).
-   - type (`format`) select pre-filled from `mediaData.type`; quality select
-     pre-filled `'best'`; filetype select (format-coupled via the shared
-     reducer); a "download last N" number input pre-filled from
-     `defaultMaxVideos` (read from `GET /api/subscriptions/health`, fallback `2`);
-     a skip-Shorts checkbox default off; Subscribe + Cancel buttons.
-3. **`defaultMaxVideos` on `/health` (`lib/ytdlp/index.js`).** The gated
-   `GET /api/subscriptions/health` body gains
-   `defaultMaxVideos: config.DEFAULT_MAX_VIDEOS` (single server-side source; no
-   second hardcoded literal). This lands AFTER T4's `index.js` edit — additive.
-4. **Wiring (`public/js/watch.js`).** In `populateMetadata`, compute
-   `identity = resolveFileChannelIdentity(mediaData)`; probe
-   `GET /api/subscriptions/health` (200 → module enabled; 404 → disabled); apply
-   `shouldShowSubscribeButton` — remove `#subscribe-btn-mock` when false. When
-   shown, `GET /api/subscriptions`, find the matching sub via
-   `channelIdentityMatches(identity, sub.channelUrl)`, render "Subscribe" vs.
-   "Subscribed", and hold the matched `sub.id`.
-   - **Subscribe (not subscribed):** open `buildSubscribeModal`. Confirm →
-     `POST /api/subscriptions` with `{ channelUrl: identity.channelUrl, format,
-     quality, maxVideos, skipShorts, filetype }` through the EXISTING, UNMODIFIED
-     `store.validateSubscriptionInput` → `url.validateChannelUrl` (no bypass). On
-     success: full-teardown the modal, flip to "Subscribed", record new sub id.
-     Cancel / backdrop / `[x]` / Esc → the shared full-teardown
-     (`backdrop.remove()` + null state), NO POST.
-   - **Unsubscribe (subscribed):** direct one-tap `DELETE /api/subscriptions/:id`
-     for the matched id; flip back to "Subscribe". NO modal.
-5. **`public/watch.html`.** Keep `#subscribe-btn-mock`, default `hidden`.
-6. **`public/css/style.css`.** Add ONLY a small read-only channel-identity block
-   style (era-theme tokens only, no hardcoded colors). Reuse `.oneoff-modal-*`
-   for the modal chrome — do not reimplement it.
+1. **New IA (`subscriptions.html`, `#view-root` region ONLY).** Reorder so "Your
+   subscriptions" is FIRST/primary; wrap the add-subscription and one-off forms in
+   native `<details>`/`<summary>` ("+ Add a subscription", "One-off download")
+   BELOW the list (AC18/AC23, no JS). Replace the `.folder-list-builder` (240px
+   cap) with a new `.sub-list` container, no scroll cap (AC24).
+2. **New row (`subscriptions.js` `createSubscriptionRow` rewrite).** One dense row
+   = avatar/letter (`name[0]`, beveled) + channel name + ONE muted meta line
+   (`formatSubMeta` format/quality/count + FR-4 subscribed date) + FR-4 channel
+   `<a>` link + a single trailing kebab/gear `<button>` (AC19). Remove the inline
+   Pause/Edit/Re-pull/Delete cluster and `editPanel`.
+   - **Row tap (AC20):** row body (outside kebab) → `window.FileTube.navigate` to
+     `/?root=<channelDir>`. Rows without a resolved `channelDir` are non-navigating.
+   - **Kebab → in-shell bottom-sheet (AC21/AC22):** the sheet holds
+     maxVideos/quality/format/filetype/skipShorts + Pause/Resume, Re-pull, Delete,
+     Save; name read-only in the header. Save PATCHes the existing, unmodified
+     `PATCH /api/subscriptions/:id`. The sheet is NOT part of the poll-rerendered
+     list → FR-1's race cannot recur by construction.
+   - **Poll rerender (FR-1 fix):** `pollStatusOnce` updates only each row's
+     `.sub-row-status` text in place; never `clearChildren`+rebuild while polling.
+3. **FR-4 helpers (bundled).** Pure `formatSubscribedDate(addedAt)` (unit-tested)
+   → "Subscribed on <date>"; missing/invalid → "date unknown" (never fabricated/
+   crash, AC28/AC29). Channel link built via `.href = sub.channelUrl` +
+   `target="_blank" rel="noopener noreferrer"` and `textContent` (AC30/AC31).
+4. **Styling (`style.css`)** — add ONE labeled section
+   `/* === v1.21 FR-3: subscriptions list / settings sheet === */`: zebra rows,
+   1px separators, beveled avatars, era chips, the bottom-sheet — **era CSS vars
+   only**.
+
+Preserve the disabled-module no-op: `/subscriptions` still 404s server-side when
+`FILETUBE_YTDLP_ENABLED` is off; nothing new is server-reachable (AC25/AC69).
 
 ## Tests to add
 
-- **Unit** (`test/unit/`): `shouldShowSubscribeButton` truth table; the button
-  state derivation (matching identity vs sub list → Subscribe/Subscribed via the
-  T2 matcher); `buildSubscribeModal` build (pre-fills, read-only identity via
-  `textContent`, format↔filetype coupling via the shared reducer) and its
-  full-teardown (backdrop detached, state nulled, no leaked listeners).
-- **Integration** (`test/integration/`): confirm → `POST /api/subscriptions`
-  routes through `validateSubscriptionInput`/`validateChannelUrl`; cancel/backdrop
-  → NO POST; subscribed → `DELETE /api/subscriptions/:id`; disabled-module
-  (health 404) → button absent regardless of metadata.
+Unit: `formatSubscribedDate` (valid, missing, garbage → "date unknown");
+href-safe link construction; a pure reducer/helper for "poll updates status text
+without rebuilding an open sheet" (AC1/AC4). Integration: `PATCH
+/api/subscriptions/:id` → `GET /api/subscriptions` round-trip for `maxVideos`
+incl. `0` = unlimited (AC2); disabled-module 404 (AC25).
 
-## Hard constraints
+## File-ownership / serialization contract (STRICT — shared tree)
 
-- TWO-REVIEWER GATE. The modal creates subscriptions ONLY via
-  `POST /api/subscriptions` → the UNMODIFIED validators; no new code constructs a
-  subscription record or spawn argv from an unvalidated string. Do NOT modify any
-  validator or host allowlist.
-- `textContent` (never `innerHTML`) for creator name / channel URL / any error
-  text. Era-theme CSS custom properties only. Reuse the v1.17.0 full-teardown +
-  v1.19.0 select-sizing patterns (do not reintroduce the stuck-overlay or
-  oversized-mobile-select bugs). No new npm deps. Lint 0 warnings.
-- Disabled-module byte-identical: button/modal require the 200 health probe; no
-  new always-present DOM or route.
-- Your files: `public/js/common.js`, `public/js/watch.js`, `public/watch.html`,
-  `public/css/style.css`, `lib/ytdlp/index.js` (+ tests). Do NOT touch
-  `lib/ytdlp/client/subscriptions.js`, `lib/ytdlp/{args,run,store,config}.js`, or
-  `server.js`. Merge your `common.js` / `index.js` / `style.css` edits ON TOP of
-  T2's and T4's already-landed changes (do not revert them).
+- You are the SOLE editor of `lib/ytdlp/client/subscriptions.js` this wave (T5
+  adds a star toggle in Wave 2, T7 adds retry in Wave 4 — AFTER you; keep your
+  row/kebab structure clean for them to attach to).
+- In `lib/ytdlp/views/subscriptions.html` you edit `#view-root` + the collapsible
+  forms. Leave the `<template id="player-host-template">` block exactly as T2 left
+  it (T2 already integrated; do not disturb the player template).
+- In `public/css/style.css` add ONLY your labeled `FR-3` section. Do NOT touch
+  `public/js/common.js`, `lib/ytdlp/index.js`, `store.js`, `player.js`, or any
+  other file.
 
 ## Report back
 
-Files changed (path + one-line each); the modal contents + the confirm→POST /
-unsubscribe→DELETE wiring; a "no validator bypass" checklist (every channel URL
-still passes `validateSubscriptionInput`/`validateChannelUrl`); which ACs lean on
-Dean's on-device pass vs are unit/integration-covered; lint + Node 22 test
-result; any deviation/new fork with a recommendation.
+Files changed (path + one-line each); the new row anatomy + kebab-sheet field
+list (with name read-only noted); how the poll-clobber race is structurally
+eliminated (sheet-off-list + in-place status text) satisfying AC1–AC5; the
+`formatSubscribedDate` signature + fallback; confirmation all dynamic strings use
+`textContent`/`.href` (no `innerHTML`) and the disabled-module 404 still holds;
+lint + Node 22 test result; any deviation/fork with a recommendation. Signal when
+T3 is done/verified so the coordinator can schedule Wave 2 (T5).

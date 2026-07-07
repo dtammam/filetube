@@ -1,90 +1,123 @@
-# Software Developer inbox — T2 (v1.20 FR-2 client matcher + creator precedence)
+# Software Developer inbox — T2 (v1.21 FR-2: audio/video player overhaul)
 
-Feature: **v1.20.0 "Subscribe button — real subscriptions from downloads"**
-(feature_id `v1.20-subscribe`), branch `feature/v1.20-subscribe` (off `main` at
-v1.19.1). This file **supersedes any prior-feature content**. This is **Task T2**.
-Wave **2** — runs in PARALLEL with T4 (disjoint file sets). **Depends on T1** and
-must not start until the coordinator confirms T1 is done/verified. T2 **blocks
-T3**.
+Feature: **v1.21.0 "The Polish Release"** (feature_id `v1.21-polish-release`),
+branch `feature/v1.21-polish-release` (off `main` at v1.20.0). This file
+**supersedes any prior-feature content.** This is **Task T2**, **Wave 1** —
+runs in PARALLEL with **T9 only** (README; disjoint file sets). T2 is the longest
+pole. Because T2 edits `public/css/style.css`, and 6 other tasks also edit it,
+**no other code task may run until T2's changes are integrated** — you lead the
+serialized CSS chain (T2 → T3 → T4 → T5 → T6 → T7 → T8). Finish cleanly so the
+coordinator can integrate and start Wave 2 (T3).
 
-**Review tier: TWO-REVIEWER GATE** — rides T1's FR-2 tier (this is the same
-untrusted-channel-identity security surface, now on the client matcher).
+**Review tier: HEAVIEST two-reviewer / adversarial gate this round** (shared-player
+regression risk spans BOTH audio and video and the entire v1.16
+FULL/DOCKED/CLOSED persistent-shell/dock machinery). **Dean's on-device pass —
+especially iOS Safari — is the arbiter** for feel and for any regression outside
+`node:test` (no headless/E2E infra exists per `docs/RELIABILITY.md`).
 
 ## Environment
 
 - **Node 22 toolchain bin** (prepend to PATH before any npm/node command):
   `/tmp/claude-1000/-home-coder-projects-filetube/139c0e56-b545-4e8e-ba05-f892f6dd6d0d/scratchpad/node-v22.23.1-linux-x64/bin`
+  e.g. `export PATH="/tmp/claude-1000/-home-coder-projects-filetube/139c0e56-b545-4e8e-ba05-f892f6dd6d0d/scratchpad/node-v22.23.1-linux-x64/bin:$PATH"`
 - Use absolute paths (cwd resets between bash calls).
 
 ## Git — DO NOT commit
 
 The **coordinator (EM) owns ALL git.** Do NOT `git add`/`commit`/`branch`/
-`stash`/`push`. Report files changed + full `npm run lint` (0 warnings) and
-`npm test` output under Node 22; fix any failure before reporting done.
+`stash`/`push`. When done, report exact files changed/created plus full
+`npm run lint` (0 warnings) and `npm test` output under Node 22. Fix any failure
+before reporting done.
 
 ## Read first (you share NO memory with the EM)
 
-- `docs/exec-plans/active/2026-07-08-v1.20-subscribe.md` — read the **## Design**
-  section, especially **"Matcher (`public/js/common.js`…)"** and **"Creator
-  display precedence"** under FR-2, plus the T2 bullet in **## Task breakdown**.
-- `.state/feature-state.json` — the `tasks[]` entry `"id":"T2"`; note T1 has
-  landed the stored field shapes you consume (`channelUrl`, `channelName`,
-  `channelId`, `channelHandleUrl` on yt-dlp `db.metadata` items).
-- `docs/CONTRIBUTING.md` (vanilla DOM, 2-space, semicolons, single-quotes,
-  `node:test`, lint 0, no new deps) and `docs/RELIABILITY.md`.
-- Live code: `public/js/common.js` — the existing `resolveChannelName` and its
-  current precedence chain (mapped folder friendly-name → `item.artist` →
-  `item.folderName` → `'Library'`); how helpers are exported for `node:test` in
-  this repo.
+- `docs/exec-plans/active/2026-07-08-v1.21-polish-release.md` — the **## Design**
+  section **"FR-2 — custom blocky audio/video controls (HEAVIEST)"** (names every
+  element id, helper, and behavior) plus the FR-2 scope block and **AC6–AC17**.
+- `docs/CONTRIBUTING.md` (vanilla DOM, no framework/bundler, 2-space, semicolons,
+  single-quotes, `textContent` over `innerHTML`, `node:test`, lint 0, **no new
+  deps**) and `docs/RELIABILITY.md` (rAF loop must be cancelled on pause/close;
+  no new budget impact).
+- Live code (read in full): `public/js/player.js` — the v1.16 persistent player
+  controller: `ensureHost`/`wireHostListeners`, the FULL/DOCKED/CLOSED state
+  machine, `STATE_FULL`, skip controls, hold-to-2x, double-tap, `currentAbsTime`,
+  `startLiveStream`, `pollTranscodeUntilReady`, resume/transcode overlays, Media
+  Session wiring, `updatePositionState`, progress saving. The
+  `<template id="player-host-template">` in all four shells and `#audio-bg-art`/
+  `.audio-mode` + existing control styling in `public/css/style.css`.
 
-## Task — implement THIS ONE task only (FR-2 client side)
+## Task — implement THIS ONE task only (FR-2)
 
-All in `public/js/common.js`, pure and `node:test`-covered:
+Follow the Design's FR-2 section exactly. Summary:
 
-1. `canonicalizeChannelUrl(url)` → canonical key or `null`. Parse; lowercase
-   host; then `/channel/<UC…>` → `channel:<UCid>` (case PRESERVED — ids are
-   case-sensitive); `/@handle` → `handle:<lowercased>`; `/user/<name>` →
-   `user:<lowercased>`; `/c/<name>` → `c:<lowercased>`; a `youtu.be`/`/watch`
-   video URL → `null` (a video URL is not a channel identity); anything
-   unrecognized → `null` (conservative).
-2. `channelIdentityMatches(fileIdentity, subUrl)` → boolean. Build the file's
-   key-SET from `{ canonicalizeChannelUrl(channelUrl),
-   'channel:'+channelId (when present), canonicalizeChannelUrl(channelHandleUrl)
-   }` (drop nulls); return `true` iff `canonicalizeChannelUrl(subUrl)` is in that
-   set. This lets a `/channel/UC…` file match a `/@handle` subscription (shared
-   handle key from `uploader_url`) or a `/channel/UC…` subscription (channel-id
-   key), and NEVER false-matches two forms that can't be proven equal.
-3. `resolveFileChannelIdentity(item)` → `{ channelUrl, channelId,
-   channelHandleUrl } | null` (null when no `channelUrl`) — single-sources what
-   FR-1/FR-3 (T3) consume. Never throws on a missing/malformed item.
-4. Extend `resolveChannelName` precedence: captured `item.channelName`
-   (non-empty) ranks FIRST, THEN the existing chain unchanged. It must rank first
-   ONLY when present, so non-yt-dlp files are completely unchanged.
+1. **Markup — all FOUR shells' `#player-host-template`** (`public/index.html`,
+   `public/setup.html`, `public/watch.html`, `lib/ytdlp/views/subscriptions.html`;
+   keep them byte-identical): remove the `controls` attribute from
+   `<video id="media-player">`; inside `#player-wrapper` add
+   `<div id="player-controls" class="player-controls">` (play/pause `#pp-btn`,
+   `#time-cur`, `<input type="range" id="seek-bar">`, `#time-dur`, mute `#mute-btn`,
+   `<input type="range" id="vol-bar" min="0" max="1" step="0.01">`, fullscreen
+   `#fs-btn`) and `<div id="art-play-glyph" class="art-play-glyph">`.
+2. **Controller (`public/js/player.js`), all listeners wired ONCE in
+   `wireHostListeners()`** so the bar travels with the host across
+   FULL/DOCKED/CLOSED: play/pause → `updatePlayPauseUI()`; click-`#audio-bg-art`
+   toggles play/pause + flashes glyph **only when `state === STATE_FULL`**
+   (`stopPropagation` there; docked taps bubble to `#player-dock` unchanged);
+   seek `input` = visual scrub only (`--seek-fill` var + `#time-cur`, an
+   `isScrubbing` flag, never touch `currentTime`), `change` = the ONLY commit via
+   pure `seekCommitTarget({duration,ratio,liveMode,liveTotal})`; a `rAF` fill loop
+   while playing (not `timeupdate`), cancelled on pause/close/scrub; live-transcode
+   uses `currentAbsTime()` and `startLiveStream(target)` on a committed seek in
+   `liveMode`; volume via pure `clampVolume(raw)` → `[0,1]|null`, read from
+   `localStorage['ft-volume']` and applied BEFORE playback, persisted on
+   `volumechange`; **iOS**: run `volumeIsSettable(el)` feature-detect once and
+   HIDE `#vol-bar`/`#mute-btn` + skip apply when not settable (degrade silently,
+   never an error); fullscreen retarget via `enterFullscreen()` preferring
+   `mediaPlayer.webkitEnterFullscreen()` (iOS) else `host.requestFullscreen()`
+   (desktop) — update the `f`-key handler, rotate-to-fullscreen path, and `#fs-btn`.
+3. **Styling (`public/css/style.css`)** — add ONE new labeled section
+   `/* === v1.21 FR-2: player controls / audio-mode === */`: fixed-height flex
+   bar pinned to `.player-container` bottom, always visible, `border-radius:0`,
+   beveled inset/outset borders + square range thumbs/segmented fill via
+   `::-webkit-slider-*`/`::-moz-range-*`, all colors from **era CSS vars** (dark
+   mode "just works"), `color-scheme: dark light`. In `.audio-mode` re-enable
+   `pointer-events` on `#audio-bg-art` for the click-to-play surface.
+
+**PRESERVE (AC12/AC14), all untouched:** inline iOS playback, ±15s skip
+(buttons/double-tap/hold-2x/keyboard), transcode "Preparing…" overlay + polling,
+resume overlay, the full FULL/DOCKED/CLOSED machine (reparent, dock,
+tap-to-expand, `[x]` close, iOS reparent-resume-guard), Media Session
+metadata/state/position, progress saving. Media Session stays as-is; adding
+seek/track action handlers is OPTIONAL (AC13), not required.
 
 ## Tests to add
 
-`node:test` unit coverage (all pure): `canonicalizeChannelUrl` for each URL shape
-(`/channel/UC…` case-preserved, `/@handle`, `/user`, `/c`, video URL → null,
-garbage → null); `channelIdentityMatches` for cross-shape match (handle vs
-channel-id), non-match of unprovable forms, empty/partial identity;
-`resolveFileChannelIdentity` (present, absent, malformed → null, no throw);
-`resolveChannelName` (captured name wins when present; non-yt-dlp item unchanged
-across the full existing chain).
+`node:test` unit coverage for the extracted pure helpers: `clampVolume`
+(in-range, out-of-range clamp, garbage/`NaN`/empty → `null`) and
+`seekCommitTarget` (normal source; live-transcode with `liveMode`/`liveTotal`;
+ratio 0 and 1 boundaries). The `volumeIsSettable` feature-detect is browser-only
+(not unit-tested).
 
-## Hard constraints
+## File-ownership / serialization contract (STRICT — shared tree)
 
-- Pure / unit-testable; never naive string `===` on two channel URLs of
-  differing shape. No new npm deps. Lint 0 warnings. `textContent` posture for
-  any display strings (no `innerHTML`).
-- **Do NOT touch** `lib/ytdlp/index.js`, `lib/ytdlp/client/subscriptions.js`,
-  `public/css/style.css` (T4 owns those this wave), or `public/js/watch.js` /
-  `public/watch.html` (T3). You are the SOLE editor of `public/js/common.js` this
-  wave — keep your edits additive so T3 (Wave 3) merges cleanly on top.
+Hard rule: while you are running you are the **ONLY** editor of every file you
+touch (no other concurrent task shares any file with you this wave — only T9 on
+`README.md` runs alongside). Your files: `public/js/player.js`,
+`public/index.html`, `public/setup.html`, `public/watch.html`,
+`lib/ytdlp/views/subscriptions.html`, `public/css/style.css`. You may edit these
+freely (later tasks serialize AFTER you integrate). Do NOT touch
+`public/js/common.js`, `public/js/watch.js`, `public/js/main.js`,
+`public/js/main.js`, or `lib/ytdlp/**` (subscriptions.js/index.js/store.js).
+Keep the `style.css` additions in a clearly labeled `/* v1.21 FR-2 */` block and
+the four shells' `#player-host-template` byte-identical — this makes the
+coordinator's integration and the following serialized CSS edits clean.
 
 ## Report back
 
-Files changed (path + one-line each); the four helper signatures + the canonical
-key scheme; confirmation matching is set-membership on canonical keys (no naive
-`===`) and that non-yt-dlp `resolveChannelName` output is unchanged; lint + Node
-22 test result; any deviation/new fork with a recommendation. Signal when T2 is
-done/verified so the coordinator can schedule T3 (needs T2 AND T4).
+Files changed (path + one-line each); the control-bar element ids; the
+`clampVolume`/`seekCommitTarget`/`enterFullscreen`/`volumeIsSettable` signatures;
+a short "every v1.16 behavior preserved" checklist (skip, dock, overlays, Media
+Session, progress) and the fullscreen-retarget + art-play-only-in-FULL notes for
+Dean's iOS pass; lint + Node 22 test result; any deviation/fork with a
+recommendation. Flag clearly that this is the HEAVIEST gate and needs Dean's iOS
+on-device arbitration.
