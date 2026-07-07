@@ -370,10 +370,16 @@ test('existing GET /api/scan-status response shape is unaffected by Task 6 (plus
   );
 });
 
-test('existing GET /api/config response shape is unaffected by Task 6', async () => {
+test('existing GET /api/config response shape is unaffected by Task 6 (plus v1.19.0 FR-4\'s additive, read-only syntheticFolders field)', async () => {
   writeDb({ folders: ['/x'], folderSettings: {}, progress: {}, metadata: {}, settings: baseSettings() });
   const res = await fetch(`${base}/api/config`);
   assert.equal(res.status, 200);
   const json = await res.json();
-  assert.deepEqual(Object.keys(json).sort(), ['folderSettings', 'folders'].sort());
+  // v1.19.0 FR-4 (Fork FR-4b, Option A) intentionally added `syntheticFolders`
+  // -- a read-only, response-only field the client uses to identify the
+  // yt-dlp module's synthetic download folder -- to this response. Updating
+  // this lock to include it (rather than leaving the assertion to fail) is
+  // the correct move: the shape is still fully additive/backward-compatible,
+  // and `folders`/`folderSettings` themselves are untouched.
+  assert.deepEqual(Object.keys(json).sort(), ['folderSettings', 'folders', 'syntheticFolders'].sort());
 });

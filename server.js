@@ -1066,16 +1066,20 @@ function extractMetadataAndThumbnail(filePath, mediaId, isAudio) {
       }
 
       if (isAudio) {
-        // Try to extract embedded audio artwork
-        const extractArtCmd = `ffmpeg -i "${filePath}" -an -vcodec copy -y "${thumbPath}"`;
-        exec(extractArtCmd, (artErr) => {
+        // Try to extract embedded audio artwork. `execFile` (not `exec`) so
+        // `filePath`/`thumbPath` are passed as opaque argv elements, never
+        // shell-interpreted -- a media file path containing shell
+        // metacharacters could otherwise be a command-injection vector
+        // (matches the ffprobe `execFile` hardening above).
+        execFile('ffmpeg', ['-i', filePath, '-an', '-vcodec', 'copy', '-y', thumbPath], (artErr) => {
           resolve({ duration, artist, tags, videoCodec, audioCodec, hasThumbnail: !artErr && fs.existsSync(thumbPath) });
         });
       } else {
-        // Extract video frame (at 2 seconds or 10% of duration, whichever is smaller)
+        // Extract video frame (at 2 seconds or 10% of duration, whichever is
+        // smaller). `execFile` (not `exec`) for the same arg-array/no-shell
+        // reason as the audio-art branch above.
         const timestamp = duration > 5 ? 2 : Math.max(0, duration / 2);
-        const extractFrameCmd = `ffmpeg -ss ${timestamp} -i "${filePath}" -vframes 1 -q:v 2 -y "${thumbPath}"`;
-        exec(extractFrameCmd, (frameErr) => {
+        execFile('ffmpeg', ['-ss', String(timestamp), '-i', filePath, '-vframes', '1', '-q:v', '2', '-y', thumbPath], (frameErr) => {
           resolve({ duration, artist, tags, videoCodec, audioCodec, hasThumbnail: !frameErr && fs.existsSync(thumbPath) });
         });
       }
@@ -1716,7 +1720,14 @@ app.get('/api/config', (req, res) => {
       folderSettings[root] = { ...(folderSettings[root] || {}), name: (folderSettings[root] && folderSettings[root].name) || 'Downloads' };
     }
   }
-  res.json({ folders, folderSettings });
+  // FR-4 (v1.19.0): additive, READ-ONLY, response-only field so the client
+  // can robustly identify which `folders` entry is the synthetic download
+  // root (e.g. to disable its remove button) without re-deriving/guessing a
+  // path match itself. This is exactly `synthRoots` above -- never persisted,
+  // never accepted back on POST, and does not change any synthetic-root
+  // HANDLING (the splice/rename/order logic above, and the db.folders-
+  // exclusion in POST /api/config below, are both untouched).
+  res.json({ folders, folderSettings, syntheticFolders: synthRoots });
 });
 
 // API: Save folder configuration
@@ -2377,6 +2388,39 @@ function streamLiveTranscode(req, res, item) {
   req.on('close', () => { proc.kill('SIGKILL'); });
 }
 
+// FR-3 (v1.19.0, download-to-device): builds a header-injection-SAFE
+// `Content-Disposition: attachment` value from a media item's display
+// `title` (never the raw on-disk name, which may carry yt-dlp's
+// `--restrict-filenames`/`[id]` suffix or ffmpeg-transcode naming) and its
+// ORIGINAL extension. Two forms, per RFC 6266 (and RFC 5987 for the
+// extended parameter):
+//  - an ASCII `filename="..."` fallback for legacy clients:
+//    `replace(/[^\x20-\x7E]/g, '_')` strips every character OUTSIDE the
+//    printable-ASCII range 0x20-0x7E -- this removes CR/LF and every other
+//    control character -- and a second pass strips `"`/`\` (the two
+//    characters a quoted-string would otherwise need backslash-escaping
+//    for). A title containing CR/LF/quotes can therefore never terminate
+//    the header early or inject a second header/param.
+//  - a `filename*=UTF-8''<percent-encoded>` form carrying the REAL
+//    (possibly non-ASCII) name: `encodeURIComponent` percent-encodes CR/LF
+//    (`%0D`/`%0A`) and every other unsafe byte, so this form is equally
+//    injection-safe and also gives modern browsers the correct non-ASCII
+//    display name. `encodeURIComponent` over-encodes a few characters RFC
+//    5987 technically allows bare (e.g. `!`) -- browsers accept this.
+// Pure, no I/O -- exported for unit tests (see test/unit).
+function contentDispositionAttachment(title, ext) {
+  const safeExt = String(ext || '').replace(/[^A-Za-z0-9.]/g, '');
+  const rawName = (title === undefined || title === null || title === '') ? 'download' : String(title);
+  const fullName = rawName + safeExt;
+  const asciiName = fullName.replace(/[^\x20-\x7E]/g, '_').replace(/["\\]/g, '_') || 'download';
+  // `encodeURIComponent` does not encode `'` (it is not in its reserved set),
+  // but RFC 5987's `ext-value` grammar treats `'` as a delimiter (it separates
+  // charset/language/value) -- so a bare `'` here is not a valid `attr-char`
+  // and must be percent-encoded to keep the `filename*` value well-formed.
+  const encoded = encodeURIComponent(fullName).replace(/'/g, '%27');
+  return `attachment; filename="${asciiName}"; filename*=UTF-8''${encoded}`;
+}
+
 // Media streaming endpoint supporting Range requests (highly important for HTML5 seeking/skipping)
 app.get('/video/:id', (req, res) => {
   const db = loadDatabase();
@@ -2385,12 +2429,22 @@ app.get('/video/:id', (req, res) => {
     return res.status(404).json({ error: 'Media file not found' });
   }
 
+  // FR-3 (v1.19.0): a download-intent request (`?download=1`) ALWAYS
+  // bypasses the needsTranscode/live-transcode branch below and serves the
+  // ORIGINAL file (`item.filePath`) -- even when a cached transcode already
+  // exists -- because the transcode is a browser-playability sidecar, never
+  // the canonical file a "Download" click should hand back. This is the
+  // ONLY thing `download=1` changes: the id -> `db.metadata[id]` lookup, the
+  // 404s, and the Range-capable send below are otherwise identical to
+  // ordinary playback.
+  const isDownload = req.query.download === '1';
+
   let filePath = item.filePath;
 
   // Browser-incompatible containers (AVI, etc.):
   //  - desktop asks for ?live=1 -> live transcode, plays instantly (not iOS-safe)
   //  - otherwise -> serve the pre-transcoded MP4 (seekable; works on iOS)
-  if (item.needsTranscode) {
+  if (item.needsTranscode && !isDownload) {
     if (req.query.live === '1') {
       return streamLiveTranscode(req, res, item);
     }
@@ -2411,10 +2465,15 @@ app.get('/video/:id', (req, res) => {
     return res.status(404).json({ error: 'File does not exist on disk' });
   }
 
+  // Is the file we're about to send the cached transcoded copy? (Never true
+  // for a download request -- `isDownload` skips the branch above that's the
+  // only place `filePath` is ever set to `transcodedPath(item.id)`.)
+  const servingCachedTranscode = filePath === transcodedPath(item.id);
+
   // Serving a cached transcode? Mark it recently-served so eviction leaves it
   // alone while it's being watched, and persist the last-served timestamp
   // (throttled/no-clobber) that the age-retention sweep keys off.
-  if (item.needsTranscode && filePath === transcodedPath(item.id)) {
+  if (servingCachedTranscode) {
     markServed(filePath);
     recordServed(item.id);
   }
@@ -2422,7 +2481,11 @@ app.get('/video/:id', (req, res) => {
   const stat = fs.statSync(filePath);
   const fileSize = stat.size;
   const range = req.headers.range;
-  const contentType = item.needsTranscode ? 'video/mp4' : (mime.lookup(filePath) || (item.type === 'audio' ? 'audio/mpeg' : 'video/mp4'));
+  const contentType = servingCachedTranscode ? 'video/mp4' : (mime.lookup(filePath) || (item.type === 'audio' ? 'audio/mpeg' : 'video/mp4'));
+
+  if (isDownload) {
+    res.setHeader('Content-Disposition', contentDispositionAttachment(item.title, item.ext));
+  }
 
   if (range) {
     const parts = range.replace(/bytes=/, "").split("-");
@@ -2524,6 +2587,7 @@ module.exports = {
   matchRootFolder,
   getMediaId,
   cleanDisplayTitle,
+  contentDispositionAttachment,
   normalizeScanRoot,
   loadDatabase,
   saveDatabase,

@@ -365,7 +365,11 @@ header {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  text-decoration: none; /* .btn is used on <a> too (e.g. #download-media-btn) -- keep it button-like, never underlined */
 }
+
+/* The 2005 era-theme underlines all <a>; an <a class="btn"> is a button, not a link -- keep it clean. */
+[data-theme="2005"] a.btn { text-decoration: none; }
 
 .btn:hover {
   background-color: var(--btn-hover);
@@ -1552,6 +1556,20 @@ header {
   overflow-y: auto;
 }
 
+/* v1.19.0 FR-2a: `.folder-list-builder` (above) is shared by three lists --
+   the Setup folder-management builder (#folders-builder-list), the
+   subscriptions one-shot job list (#oneshot-list-container), and this
+   subscriptions list (#sub-list-container). Dean's "box too small" ask is
+   specific to the subscriptions list, so this is a SCOPED ID override (not
+   a change to the shared class) -- the other two lists keep their existing
+   240px/12px sizing untouched. Does not touch .sub-row/.sub-row-info/
+   .sub-row-name/.sub-row-url (the already-shipped v1.13.0 word-wrap fix,
+   ~1651-1703 below) -- only the container's own box size changes. */
+#sub-list-container {
+  max-height: 420px;
+  padding: 16px;
+}
+
 .folder-item-row {
   display: flex;
   flex-wrap: wrap;
@@ -1627,6 +1645,11 @@ header {
 
 .remove-folder-btn:hover {
   color: var(--yt-red-dark);
+}
+
+.remove-folder-btn:disabled {
+  cursor: default;
+  opacity: 0.5;
 }
 
 .empty-folders-msg {
@@ -2389,6 +2412,29 @@ header {
     justify-content: center;
   }
 
+  /* v1.19.0 FR-6: search reuses this same home view/heading (main.js sets
+     only the header text on `?search=`; #video-grid's mobile sizing above
+     is already correct and NOT the culprit). `#videos-section-header` is a
+     flex child of `.section-title` with the UA default `min-width: auto`
+     (its intrinsic content width). "Recently Added" is short, but
+     `Search Results for "<query>"` with a long/unbroken query token
+     establishes an intrinsic min-width wider than the phone viewport,
+     forcing horizontal overflow -- the exact same family of bug as the
+     v1.17.0 FR-1 `.sort-select` fix above (`min-width: auto` on a flex
+     child), which is what makes mobile Safari zoom the whole page out
+     (reads as "everything is too big"). Fix at the named element, not an
+     `overflow-x` band-aid: `min-width: 0` lets the heading shrink to its
+     row (`.section-title` already wraps and `.section-actions` is
+     `width: 100%` above, so the heading takes its own line), and
+     `overflow-wrap`/`word-break: break-word` wrap a long query token
+     instead of forcing overflow. Desktop (outside this 768px block) is
+     unaffected. */
+  #videos-section-header {
+    min-width: 0;
+    overflow-wrap: break-word;
+    word-break: break-word;
+  }
+
   /* ---- v1.15.0 item 2: tighter video-card grid on phones ---------------
      Pre-fix: `.video-grid` used the desktop `minmax(210px, 1fr)` / 20px gap
      everywhere, so a ~375-414px phone only fit a single (oversized-feeling)
@@ -2430,7 +2476,19 @@ header {
     flex-direction: column;
   }
 
+  /* v1.19.0 FR-1: the base rule's `flex: 1 1 150px` (a WIDTH hint for the
+     desktop row layout above) was never reset here after flipping the row
+     to a column main axis -- under `flex-direction: column` that same
+     150px flex-basis is reinterpreted as a MINIMUM HEIGHT, and the
+     still-active `flex-grow: 1` stretched each select to fill the modal's
+     vertical space (~1/4-screen-tall selects). Resetting to `flex: 0 0
+     auto` drops the basis back to `auto` (content height) and zeroes
+     grow/shrink, so each select renders at its normal single-line native
+     height (matching `.setup-select`'s ~36-40px) -- the 44px min-height
+     below still applies as a comfortable tap-target FLOOR, not a growth
+     target. */
   .oneoff-modal-row select {
+    flex: 0 0 auto;
     width: 100%;
   }
 

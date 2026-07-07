@@ -121,6 +121,9 @@ module.exports = [
         moveArrayItem: 'readonly',
         computeDropIndex: 'readonly',
         rebuildFullFolderOrder: 'readonly',
+        // FR-4 (v1.19.0): setup.js's synthetic-download-folder remove-button
+        // disable check.
+        isSyntheticFolder: 'readonly',
         // FR-2/FR-3 (T3) shared prev/next order-derivation helpers -- consumed
         // by watch.js (Prev/Next controls) and player.js (autoplay-next).
         deriveOrderedIds: 'readonly',

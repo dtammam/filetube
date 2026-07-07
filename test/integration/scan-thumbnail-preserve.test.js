@@ -22,6 +22,19 @@
 // suite's "mock ffmpeg/ffprobe, keep ffmpeg itself out of CI" standard
 // (docs/RELIABILITY.md) while additionally proving NON-invocation, which
 // test/unit/ffprobe-codecs.test.js's pure-parser mocking cannot do.
+//
+// v1.19.0 two-reviewer-gate follow-up (FIX A): `extractMetadataAndThumbnail`'s
+// two ffmpeg thumbnail spawns (audio-art extraction + video frame-grab) were
+// hardened from shell-string `exec` to arg-array `execFile` (command-injection
+// hardening, matching the ffprobe `execFile` call). Both are now observed via
+// the `mockExecFile` double below (keyed on `bin === 'ffmpeg'`), which
+// re-derives an equivalent command string and pushes it onto `execCalls` so
+// every existing `execCalls.some(c => /^ffmpeg -ss /.test(c))`-style assertion
+// below still meaningfully proves invocation/non-invocation of the frame-grab
+// specifically (still fails if the frame-grab fires when it must not, and vice
+// versa) -- `exec` itself is no longer used for either ffmpeg thumbnail
+// spawn, so `mockExec` only remains wired for the (unused-by-this-suite)
+// `ffmpeg -version` availability check.
 const os = require('node:os');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -43,22 +56,6 @@ cp.exec = function mockExec(cmd, cb) {
     cb(null, 'ffmpeg version mock 1.0', '');
     return;
   }
-  if (/^ffmpeg -ss /.test(cmd)) {
-    // Video frame-grab (extractMetadataAndThumbnail's non-audio branch).
-    const m = cmd.match(/-y "([^"]+)"\s*$/);
-    const outPath = m && m[1];
-    if (frameGrabSucceeds && outPath) {
-      fs.writeFileSync(outPath, 'mock-thumbnail-bytes');
-      cb(null, '', '');
-    } else {
-      cb(new Error('mock: frame-grab disabled for this test'));
-    }
-    return;
-  }
-  if (/^ffmpeg -i /.test(cmd)) {
-    cb(new Error('mock: no embedded art (not exercised by this suite)'));
-    return;
-  }
   cb(new Error(`unexpected exec() call in test mock: ${cmd}`));
 };
 
@@ -67,6 +64,33 @@ cp.execFile = function mockExecFile(bin, args, opts, cb) {
   if (bin === 'ffprobe') {
     execFileCalls.push(args);
     cb(null, JSON.stringify(nextFfprobeJson), '');
+    return;
+  }
+  if (bin === 'ffmpeg') {
+    // v1.19.0 FIX A: both ffmpeg thumbnail spawns moved from shell-string
+    // `exec` to arg-array `execFile`. Re-derive an equivalent command string
+    // and push it onto `execCalls` so every pre-existing
+    // `execCalls.some(c => /^ffmpeg -ss /.test(c))`-style assertion below
+    // still observes frame-grab invocation/non-invocation exactly as before.
+    const cmd = ['ffmpeg', ...args].join(' ');
+    execCalls.push(cmd);
+    if (args[0] === '-ss') {
+      // Video frame-grab (extractMetadataAndThumbnail's non-audio branch):
+      // ['-ss', timestamp, '-i', filePath, '-vframes', '1', '-q:v', '2', '-y', thumbPath]
+      const outPath = args[args.length - 1];
+      if (frameGrabSucceeds && outPath) {
+        fs.writeFileSync(outPath, 'mock-thumbnail-bytes');
+        cb(null, '', '');
+      } else {
+        cb(new Error('mock: frame-grab disabled for this test'));
+      }
+      return;
+    }
+    if (args[0] === '-i') {
+      cb(new Error('mock: no embedded art (not exercised by this suite)'));
+      return;
+    }
+    cb(new Error(`unexpected ffmpeg execFile() args in test mock: ${JSON.stringify(args)}`));
     return;
   }
   cb(new Error(`unexpected execFile() call in test mock: ${bin}`));
