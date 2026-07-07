@@ -1725,6 +1725,26 @@ header {
   flex-wrap: wrap;
 }
 
+/* v1.20.0 FR-4 -- per-subscription "View as Playlist" link
+   (lib/ytdlp/client/subscriptions.js's createSubscriptionRow), a distinct
+   block from the .sub-row-* set above so a later task (T3) can append its own
+   distinct block here without merge conflicts. Rendered only when the row's
+   `channelDir` was resolved server-side; links to `/?root=<channelDir>`,
+   reusing the existing sidebar/Playlists-sheet `?root=` pattern. Era-theme
+   custom properties only, no hardcoded colors. */
+.sub-row-playlist-link {
+  display: inline-block;
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--yt-red);
+  text-decoration: none;
+}
+
+.sub-row-playlist-link:hover,
+.sub-row-playlist-link:focus-visible {
+  text-decoration: underline;
+}
+
 /* Appearance (era theme) picker — setup.html */
 .theme-picker {
   display: grid;
@@ -1957,6 +1977,65 @@ header {
   width: 100%;
   justify-content: center;
   margin-top: 2px;
+}
+
+/* v1.20.0 FR-1 (T3): the watch-page Subscribe modal's READ-ONLY channel
+   identity block, rendered inside the SAME `.oneoff-modal` shell (see
+   common.js's `buildSubscribeModal`) -- deliberately its own small class pair
+   rather than reusing `.oneoff-modal-field` (an editable input's styling),
+   since this content is plain text the user can never edit. Era-theme tokens
+   only, no hardcoded colors. */
+.subscribe-modal-identity {
+  margin-bottom: 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-dark);
+  border-radius: var(--radius);
+  background-color: var(--btn-bg);
+}
+
+.subscribe-modal-identity-name {
+  font-weight: bold;
+  color: var(--text-primary);
+  font-size: 13px;
+}
+
+.subscribe-modal-identity-url {
+  color: var(--text-secondary);
+  font-size: 11px;
+  word-break: break-all;
+  margin-top: 2px;
+}
+
+/* The modal's skip-Shorts checkbox row -- a plain label/checkbox pairing,
+   sized to match the modal's other 44px-tall mobile tap targets via the
+   existing `@media (max-width: 768px)` block below. */
+.subscribe-modal-checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+  font-size: 13px;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+/* Cancel/Subscribe side-by-side, each taking an equal share of the row --
+   deliberately its OWN class rather than `.oneoff-modal-row` (whose
+   `.btn-primary` override below forces a single full-width button, meant for
+   the one-off modal's single Download CTA). */
+.subscribe-modal-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.subscribe-modal-actions .btn {
+  flex: 1;
+  justify-content: center;
+}
+
+.subscribe-modal-actions .btn-primary {
+  width: auto;
 }
 
 /* Chrome icons: Material Symbols Outlined SVG used as an alpha mask, painted
@@ -2495,6 +2574,12 @@ header {
   .oneoff-modal-field,
   .oneoff-modal-row select,
   .oneoff-modal .btn-primary {
+    min-height: 44px;
+  }
+
+  /* v1.20.0 FR-1 (T3): same comfortable tap-target floor for the subscribe
+     modal's skip-Shorts checkbox row. */
+  .subscribe-modal-checkbox-row {
     min-height: 44px;
   }
 }

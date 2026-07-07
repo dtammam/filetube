@@ -607,6 +607,24 @@ function cleanDisplayTitle(baseName) {
   return m[1].replace(/_+/g, ' ').trim();
 }
 
+// v1.20.0 FR-2: sibling to cleanDisplayTitle, above -- extracts the yt-dlp
+// video id from the SAME trailing ` [<11-char id>]` bracket suffix
+// cleanDisplayTitle recognizes (and strips), reusing the identical bracket
+// shape rather than a second, forked regex, so the two helpers can never
+// disagree about what counts as a yt-dlp-shaped filename. Returns the
+// bracketed id -- already charset/length-bounded by the regex itself
+// (exactly 11 characters of `[A-Za-z0-9_-]`, the same shape
+// `url.isSafeVideoId` accepts) -- or `null` when the basename doesn't match
+// this shape at all (an ordinary, non-yt-dlp library file). Scan-time-only:
+// callers are expected to scope this to files actually rooted under the
+// yt-dlp module's own download dir first (mirroring cleanDisplayTitle's own
+// FIX-9 scoping), so a coincidentally-bracketed non-yt-dlp file is never fed
+// through this at all.
+function extractYtdlpVideoId(baseName) {
+  const m = /^(.*?)[ _]\[([A-Za-z0-9_-]{11})\]$/.exec(baseName);
+  return m ? m[2] : null;
+}
+
 // Check if ffmpeg is available
 let ffmpegAvailable = false;
 exec('ffmpeg -version', (error) => {
@@ -1335,6 +1353,13 @@ async function runScanDirectories() {
   // Update db.metadata
   const newMetadata = {};
   let dbChanged = false;
+  // v1.20.0 FR-2: ids that are genuinely NEW/UPDATED this scan (the "else"
+  // branch below, not the reuse/legacy-backfill fast paths) -- the Phase-2
+  // channel-identity bridge (below) is scoped to these only, mirroring
+  // FIX-9's own new-file-only scoping: an already-indexed reuse-fast-path
+  // item already carries whatever identity it was assigned on first index
+  // (or none), so there is nothing new to consume for it.
+  const freshlyScannedIds = new Set();
 
   for (const [filePath, info] of scannedFiles.entries()) {
     const id = getMediaId(filePath);
@@ -1412,6 +1437,9 @@ async function runScanDirectories() {
     } else {
       // New or updated file
       console.log(`Scanning new/updated file: ${info.name}`);
+      // v1.20.0 FR-2: mark this id as freshly-scanned -- see the Phase-2
+      // channel-identity bridge, below.
+      freshlyScannedIds.add(id);
 
       // FIX-9 (two-reviewer gate): `cleanDisplayTitle` strips a trailing
       // ` [<11-char id>]` bracket -- exactly the shape `--restrict-filenames`
@@ -1561,6 +1589,34 @@ async function runScanDirectories() {
       if (priorStatus === undefined) delete item.transcodeStatus;
       else item.transcodeStatus = priorStatus;
       if (reconcileTranscode(item)) dbChanged = true;
+
+      // v1.20.0 FR-2: bridge each freshly-scanned yt-dlp download's captured
+      // channel identity onto its db.metadata item, inside the SAME
+      // serialized mutator that already owns db.ytdlp -- ytdlp.consumeDownloadChannelMeta
+      // reads+re-validates+DELETES fresh.ytdlp.downloadMeta[videoId]
+      // (read-validate-delete, bounding the map's growth to "lives only
+      // until first index"). Scoped to items that are (a) genuinely
+      // new/updated this scan (freshlyScannedIds -- an already-indexed
+      // reuse-fast-path item keeps whatever identity it already has) and (b)
+      // actually rooted under the module's OWN download dir
+      // (`ytdlpDownloadRoots`), mirroring FIX-9's own scoping -- a non-yt-dlp
+      // file is NEVER fed a videoId lookup, no matter what its filename
+      // happens to look like. A lookup miss (no capture ever recorded for
+      // this id, or the entry failed re-validation) leaves the item with no
+      // channel identity, exactly as documented (AC12).
+      if (freshlyScannedIds.has(item.id) && matchRootFolder(item.filePath, ytdlpDownloadRoots)) {
+        const videoId = extractYtdlpVideoId(path.basename(item.name, item.ext));
+        if (videoId) {
+          const consumed = ytdlp.consumeDownloadChannelMeta(fresh, videoId);
+          if (consumed) {
+            item.channelUrl = consumed.channelUrl;
+            if (consumed.channelHandleUrl) item.channelHandleUrl = consumed.channelHandleUrl;
+            if (consumed.channelId) item.channelId = consumed.channelId;
+            if (consumed.channelName) item.channelName = consumed.channelName;
+            dbChanged = true;
+          }
+        }
+      }
     }
 
     if (!dbChanged) return false;
@@ -2616,6 +2672,7 @@ module.exports = {
   matchRootFolder,
   getMediaId,
   cleanDisplayTitle,
+  extractYtdlpVideoId,
   contentDispositionAttachment,
   normalizeScanRoot,
   loadDatabase,

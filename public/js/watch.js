@@ -86,6 +86,7 @@
     const uploaderAvatar = root.querySelector('#uploader-avatar-letter');
     const uploaderChannelName = root.querySelector('#uploader-channel-name');
     const uploaderSubsCount = root.querySelector('#uploader-subs-count');
+    const subscribeBtn = root.querySelector('#subscribe-btn-mock');
 
     const addedDateText = root.querySelector('#added-date-text');
     const fileSizeText = root.querySelector('#file-size-text');
@@ -130,6 +131,14 @@
 
     let mediaData = null;
     let folderSettings = {};   // { "<path>": { name, hidden } } — for channel display name
+    // FIX C (two-reviewer-gate follow-up): the FR-2-derived display name,
+    // computed once in initWatch() via the SAME resolveChannelName() call
+    // that drives the on-page uploader display, cached here so the Subscribe
+    // modal (below) can read it directly rather than back-reading the
+    // rendered `#uploader-channel-name` DOM node's textContent -- a future
+    // refactor of that DOM node's rendering can no longer silently break the
+    // modal's pre-fill.
+    let currentChannelName = '';
 
     // W1 remediation (v1.16.0): for the DOCKED -> FULL "adopt" path (tapping
     // the docked mini-player while the SAME video is already loaded),
@@ -171,6 +180,7 @@
         // so the author shown here, on the home grid, AND on the persistent
         // player's Media Session metadata all agree.
         const channelName = resolveChannelName(mediaData, folderSettings);
+        currentChannelName = channelName;
 
         // 3. Populate metadata details
         populateMetadata(channelName);
@@ -205,6 +215,15 @@
         // 9. Autoplay toggle (FR-4a, v1.17.0, T3): read/write the persisted
         // autoplayNext setting.
         setupAutoplayToggle();
+
+        // 10. Subscribe toggle (FR-1/FR-3, v1.20.0, T3): resolve this file's
+        // channel identity, probe the module + existing subscription list,
+        // and wire the button's click handler. Its own async setup function
+        // (mirroring setupPrevNext/setupAutoplayToggle's pattern above)
+        // rather than inlined into populateMetadata(), which stays a plain
+        // synchronous DOM-fill -- the state this needs (module-enabled probe
+        // + subscription list) is computed here, on this same media load.
+        setupSubscribeButton();
 
       } catch (err) {
         console.error(err);
@@ -412,6 +431,136 @@
         }
       }, { signal });
     }
+
+    // FR-1/FR-3 (v1.20.0, T3): the watch-page Subscribe toggle. Lives entirely
+    // in this closure -- `currentSubState`/`defaultMaxVideosForModal`/
+    // `subscribeModalState` are mutable, private to this view instance, and
+    // torn down implicitly on the next init() (a fresh view, fresh closure).
+    //
+    // SECURITY: every subscription create still goes through the UNMODIFIED
+    // server-side `POST /api/subscriptions` -> `store.validateSubscriptionInput`
+    // -> `url.validateChannelUrl` -- this view never constructs a spawn argv
+    // or persists anything itself; the modal's confirm handler below is a
+    // thin fetch() around that existing endpoint (see common.js's
+    // `buildSubscribeModal`/`buildSubscribeRequestBody`). The DELETE below
+    // targets ONLY the subscription id `decideSubscribeButtonState` itself
+    // matched against THIS file's channel identity (via `channelIdentityMatches`,
+    // common.js) -- never an arbitrary client-supplied id.
+    let currentSubState = { visible: false, subscribed: false, subId: null, identity: null };
+    let defaultMaxVideosForModal = 2;
+    let subscribeModalState = null;
+
+    function applySubscribeButtonLabel(subscribed) {
+      if (!subscribeBtn) return;
+      subscribeBtn.textContent = subscribed ? 'Subscribed' : 'Subscribe';
+      // Reuses the existing era-themed .btn/.btn-primary tokens (no new CSS)
+      // -- "Subscribed" drops the red primary styling for the neutral .btn
+      // look, "Subscribe" keeps it, mirroring the real YouTube's own
+      // subscribed/unsubscribed button treatment.
+      subscribeBtn.classList.toggle('btn-primary', !subscribed);
+    }
+
+    function closeSubscribeModal() {
+      if (!subscribeModalState) return;
+      subscribeModalState.backdrop.remove();
+      subscribeModalState = null;
+    }
+
+    function openSubscribeModal() {
+      if (subscribeModalState || !currentSubState.identity) return; // already open, or nothing to subscribe to
+      subscribeModalState = buildSubscribeModal(
+        document,
+        {
+          channelName: currentChannelName,
+          channelUrl: currentSubState.identity.channelUrl,
+          format: mediaData && mediaData.type === 'audio' ? 'audio' : 'video',
+          defaultMaxVideos: defaultMaxVideosForModal,
+        },
+        {
+          onClose: closeSubscribeModal,
+          onConfirm: (body) => {
+            subscribeModalState.setError('');
+            fetch('/api/subscriptions', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(body),
+            })
+              .then(async (r) => {
+                const data = await r.json().catch(() => ({}));
+                if (!subscribeModalState) return; // torn down mid-flight -- nothing left to update
+                if (!r.ok) {
+                  // SECURITY: the server's own validation error, rendered via
+                  // the modal's textContent-only setError -- never innerHTML.
+                  subscribeModalState.setError(data.error || 'Could not subscribe.');
+                  return;
+                }
+                closeSubscribeModal();
+                currentSubState = { ...currentSubState, subscribed: true, subId: data.id };
+                applySubscribeButtonLabel(true);
+              })
+              .catch(() => {
+                if (subscribeModalState) subscribeModalState.setError('Network error -- could not subscribe.');
+              });
+          },
+        }
+      );
+      document.body.appendChild(subscribeModalState.backdrop);
+      subscribeModalState.backdrop.hidden = false;
+      subscribeModalState.modal.hidden = false;
+    }
+
+    // One-tap unsubscribe (Dean's explicit direction -- no options modal for
+    // removal, low blast radius: this only stops future polling, it never
+    // deletes already-downloaded files).
+    function handleUnsubscribe() {
+      const subId = currentSubState.subId;
+      if (!subId) return;
+      fetch(`/api/subscriptions/${encodeURIComponent(subId)}`, { method: 'DELETE' })
+        .then((r) => {
+          if (!r.ok) return;
+          currentSubState = { ...currentSubState, subscribed: false, subId: null };
+          applySubscribeButtonLabel(false);
+        })
+        .catch((e) => console.error('Error unsubscribing:', e));
+    }
+
+    async function setupSubscribeButton() {
+      if (!subscribeBtn) return;
+      try {
+        const healthRes = await fetch('/api/subscriptions/health');
+        const moduleEnabled = healthRes.ok;
+        let subs = [];
+        if (moduleEnabled) {
+          const healthData = await healthRes.json().catch(() => ({}));
+          if (Number.isInteger(healthData.defaultMaxVideos) && healthData.defaultMaxVideos >= 0) {
+            defaultMaxVideosForModal = healthData.defaultMaxVideos;
+          }
+          const subsRes = await fetch('/api/subscriptions');
+          subs = subsRes.ok ? await subsRes.json().catch(() => []) : [];
+        }
+        currentSubState = decideSubscribeButtonState(mediaData, subs, moduleEnabled);
+      } catch (e) {
+        console.error('Error resolving subscribe button state:', e);
+        currentSubState = { visible: false, subscribed: false, subId: null, identity: null };
+      }
+
+      if (!currentSubState.visible) {
+        subscribeBtn.remove(); // absent, not merely disabled/greyed (AC15)
+        return;
+      }
+      subscribeBtn.hidden = false;
+      applySubscribeButtonLabel(currentSubState.subscribed);
+      subscribeBtn.addEventListener('click', () => {
+        if (currentSubState.subscribed) handleUnsubscribe();
+        else openSubscribeModal();
+      }, { signal });
+    }
+
+    // Esc closes the subscribe modal while it's open -- backdrop-tap and the
+    // [x] button are wired inside buildSubscribeModal itself (common.js).
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && subscribeModalState) closeSubscribeModal();
+    }, { signal });
 
     // Navigates to another video's watch page through the SPA router (smooth,
     // no reload) -- watch -> watch never docks (see common.js's

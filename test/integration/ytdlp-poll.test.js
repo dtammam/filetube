@@ -1053,3 +1053,102 @@ test('the intermediate cleanup is best-effort: a vanished/unreadable channel dir
   const [persisted] = store.listSubscriptions(deps);
   assert.ok(persisted.lastStatus.startsWith('error:'), `expected the download failure to still surface as an error status, got: ${persisted.lastStatus}`);
 });
+
+// ---- v1.20.0 FR-2: capture persistence + subscription fallback -----------
+
+test('runPoll: a successfully captured channelMeta entry is recorded into db.ytdlp.downloadMeta after a successful download', async () => {
+  const deps = makeFakeDeps();
+  await addSub(deps, { channelUrl: 'https://www.youtube.com/@somechannel', name: 'Some Channel' });
+
+  const survivorVideo = { id: 'survivor1', availability: 'public' };
+  run.runList = async () => ({ ok: true, stdout: ndjson([survivorVideo]), stderr: '' });
+  run.runDownload = async () => ({
+    ok: true,
+    code: 0,
+    stdout: '',
+    stderr: '',
+    channelMeta: [{
+      videoId: 'survivor1',
+      channelUrl: 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw',
+      channelId: 'UCuAXFkgsw1L7xaCfnd5JJOw',
+      uploaderUrl: 'https://www.youtube.com/@somechannel',
+      channelName: 'Some Channel (captured)',
+    }],
+  });
+
+  await ytdlp.runPoll(deps, baseConfig());
+
+  const ns = store.ensureYtdlp(deps.loadDatabase());
+  assert.ok(ns.downloadMeta.survivor1, 'the captured entry must be persisted');
+  assert.equal(ns.downloadMeta.survivor1.channelUrl, 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw');
+  assert.equal(ns.downloadMeta.survivor1.channelName, 'Some Channel (captured)');
+});
+
+test('runPoll: a survivor with NO usable capture falls back to the subscription\'s own already-validated channelUrl/name', async () => {
+  const deps = makeFakeDeps();
+  await addSub(deps, { channelUrl: 'https://www.youtube.com/@fallbackchannel', name: 'Fallback Channel' });
+
+  const survivorVideo = { id: 'survivor2', availability: 'public' };
+  run.runList = async () => ({ ok: true, stdout: ndjson([survivorVideo]), stderr: '' });
+  // No channelMeta at all (e.g. an edge container/postprocess that never
+  // fired the print) -- must still get an identity via fallback.
+  run.runDownload = async () => ({ ok: true, code: 0, stdout: '', stderr: '', channelMeta: [] });
+
+  await ytdlp.runPoll(deps, baseConfig());
+
+  const ns = store.ensureYtdlp(deps.loadDatabase());
+  assert.ok(ns.downloadMeta.survivor2, 'the fallback entry must be persisted');
+  assert.equal(ns.downloadMeta.survivor2.channelUrl, 'https://www.youtube.com/@fallbackchannel');
+  assert.equal(ns.downloadMeta.survivor2.channelName, 'Fallback Channel');
+});
+
+test('runPoll: a HOSTILE captured channelUrl is dropped by the sanitizer, and the survivor still falls back to the subscription\'s own channelUrl', async () => {
+  const deps = makeFakeDeps();
+  await addSub(deps, { channelUrl: 'https://www.youtube.com/@fallbackchannel2', name: 'Fallback Channel 2' });
+
+  const survivorVideo = { id: 'survivor3', availability: 'public' };
+  run.runList = async () => ({ ok: true, stdout: ndjson([survivorVideo]), stderr: '' });
+  run.runDownload = async () => ({
+    ok: true,
+    code: 0,
+    stdout: '',
+    stderr: '',
+    channelMeta: [{
+      videoId: 'survivor3',
+      channelUrl: 'https://evil.com/@x; rm -rf /',
+      channelId: null,
+      uploaderUrl: null,
+      channelName: 'Hostile',
+    }],
+  });
+
+  await ytdlp.runPoll(deps, baseConfig());
+
+  const ns = store.ensureYtdlp(deps.loadDatabase());
+  assert.ok(ns.downloadMeta.survivor3, 'a fallback entry must still be recorded for this survivor');
+  assert.equal(ns.downloadMeta.survivor3.channelUrl, 'https://www.youtube.com/@fallbackchannel2', 'the hostile captured URL must never be stored -- the subscription\'s own trusted channelUrl is used instead');
+});
+
+test('runPoll: multiple survivors each get their OWN captured identity (no cross-contamination between videos in the same cycle)', async () => {
+  const deps = makeFakeDeps();
+  await addSub(deps, { channelUrl: 'https://www.youtube.com/@multi', name: 'Multi Channel' });
+
+  const videos = [{ id: 'multi1', availability: 'public' }, { id: 'multi2', availability: 'public' }];
+  run.runList = async () => ({ ok: true, stdout: ndjson(videos), stderr: '' });
+  run.runDownload = async () => ({
+    ok: true,
+    code: 0,
+    stdout: '',
+    stderr: '',
+    channelMeta: [
+      { videoId: 'multi1', channelUrl: 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw', channelId: 'UCuAXFkgsw1L7xaCfnd5JJOw', uploaderUrl: null, channelName: 'Multi Channel' },
+      { videoId: 'multi2', channelUrl: 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw', channelId: 'UCuAXFkgsw1L7xaCfnd5JJOw', uploaderUrl: null, channelName: 'Multi Channel' },
+    ],
+  });
+
+  await ytdlp.runPoll(deps, baseConfig());
+
+  const ns = store.ensureYtdlp(deps.loadDatabase());
+  assert.ok(ns.downloadMeta.multi1);
+  assert.ok(ns.downloadMeta.multi2);
+});

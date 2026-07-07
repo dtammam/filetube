@@ -131,6 +131,16 @@ module.exports = [
         // setup.js-only (FR-1, T1 extraction from setup.html's former inline script)
         gbToBytes: 'readonly',
         bytesToGb: 'readonly',
+        // FR-2 (T2, v1.20.0): channel-identity matcher primitives, consumed by
+        // watch.js's Subscribe button wiring (T3).
+        canonicalizeChannelUrl: 'readonly',
+        channelIdentityMatches: 'readonly',
+        resolveFileChannelIdentity: 'readonly',
+        // FR-1/FR-3 (T3, v1.20.0): subscribe-button state derivation and the
+        // compact subscribe-confirm modal builder, consumed by watch.js's
+        // Subscribe button wiring.
+        decideSubscribeButtonState: 'readonly',
+        buildSubscribeModal: 'readonly',
       },
     },
   },

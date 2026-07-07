@@ -39,7 +39,11 @@ after(async () => {
 test('module is enabled: /api/subscriptions/health reports enabled', async () => {
   const res = await fetch(`${base}/api/subscriptions/health`);
   assert.equal(res.status, 200);
-  assert.deepEqual(await res.json(), { enabled: true });
+  // v1.20.0 FR-1 (T3), AC26: additive `defaultMaxVideos` field, single-sourced
+  // from lib/ytdlp/config.js's DEFAULT_MAX_VIDEOS (now 2, FR-5) -- the
+  // watch-page Subscribe modal's "download last N" pre-fill reads this same
+  // value so there is no second, independently hardcoded literal.
+  assert.deepEqual(await res.json(), { enabled: true, defaultMaxVideos: 2 });
 });
 
 test('GET /api/subscriptions starts empty', async () => {

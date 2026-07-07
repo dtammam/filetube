@@ -7,7 +7,14 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { redactArgs, redactString, resolveDownloadTimeoutMs, DEFAULT_DOWNLOAD_TIMEOUT_MS } = require('../../lib/ytdlp/run');
+const {
+  redactArgs,
+  redactString,
+  resolveDownloadTimeoutMs,
+  DEFAULT_DOWNLOAD_TIMEOUT_MS,
+  parseChannelMetaLine,
+  MAX_CAPTURED_META,
+} = require('../../lib/ytdlp/run');
 
 test('redactArgs replaces the value after --cookies with a redaction marker', () => {
   const args = ['--dump-json', '--cookies', '/secret/path/to/cookies.txt', '--', 'https://www.youtube.com/@x'];
@@ -114,4 +121,130 @@ test('resolveDownloadTimeoutMs falls back to DEFAULT_DOWNLOAD_TIMEOUT_MS when co
 
 test('DEFAULT_DOWNLOAD_TIMEOUT_MS is 180 minutes (raised from the previous 60-minute ceiling)', () => {
   assert.equal(DEFAULT_DOWNLOAD_TIMEOUT_MS, 180 * 60 * 1000);
+});
+
+// ---- v1.20.0 FR-2: parseChannelMetaLine -- pure FTCHMETA line parser ------
+//
+// Recognizes ONLY the sentinel-prefixed line lib/ytdlp/args.js's
+// CHANNEL_META_PRINT_TEMPLATE produces; everything else (progress lines,
+// warnings, blank output) must fall through untouched (returns null) so
+// spawnYtdlpDownload's existing parseProgressLine path is unaffected.
+//
+// (two-reviewer-gate fix, post-release): the payload is now a single JSON
+// object (see CHANNEL_META_PRINT_TEMPLATE's `.{...}j` selector) instead of a
+// tab-delimited string -- these tests exercise the NEW format, including the
+// injection-proofing an embedded newline in a free-text field now gets from
+// JSON-escaping.
+
+test('parseChannelMetaLine: parses a well-formed FTCHMETA JSON line into its 5 fields', () => {
+  const line = `FTCHMETA ${JSON.stringify({
+    id: 'dQw4w9WgXcQ',
+    channel_url: 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw',
+    channel_id: 'UCuAXFkgsw1L7xaCfnd5JJOw',
+    uploader_url: 'https://www.youtube.com/@RickAstley',
+    channel: 'Rick Astley',
+  })}`;
+  const result = parseChannelMetaLine(line);
+  assert.deepEqual(result, {
+    videoId: 'dQw4w9WgXcQ',
+    channelUrl: 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw',
+    channelId: 'UCuAXFkgsw1L7xaCfnd5JJOw',
+    uploaderUrl: 'https://www.youtube.com/@RickAstley',
+    channelName: 'Rick Astley',
+  });
+});
+
+test('parseChannelMetaLine: yt-dlp\'s JSON `null` (unavailable field) and an empty string both normalize to null (absent), never literal data', () => {
+  const line = `FTCHMETA ${JSON.stringify({
+    id: 'vid123',
+    channel_url: null,
+    channel_id: '',
+    uploader_url: null,
+    channel: '',
+  })}`;
+  const result = parseChannelMetaLine(line);
+  assert.deepEqual(result, {
+    videoId: 'vid123',
+    channelUrl: null,
+    channelId: null,
+    uploaderUrl: null,
+    channelName: null,
+  });
+});
+
+test('parseChannelMetaLine: a channel name containing literal tab/newline characters still round-trips intact (JSON-escaped, never truncated/misaligned)', () => {
+  const line = `FTCHMETA ${JSON.stringify({
+    id: 'vid123',
+    channel_url: 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw',
+    channel_id: 'UCuAXFkgsw1L7xaCfnd5JJOw',
+    uploader_url: 'https://www.youtube.com/@x',
+    channel: 'Channel\tWith\nTabs and\nNewlines',
+  })}`;
+  const result = parseChannelMetaLine(line);
+  assert.equal(result.channelName, 'Channel\tWith\nTabs and\nNewlines');
+});
+
+test('parseChannelMetaLine: SECURITY -- a channel name containing a forged "\\nFTCHMETA <json>" sequence cannot produce a second/rogue capture line', () => {
+  // The forged text is JSON-escaped (as real yt-dlp output always is for this
+  // template) -- the "\n" here is the literal two-character escape sequence
+  // INSIDE the JSON string, never a raw newline byte, so the whole print
+  // output is structurally a single line. `parseChannelMetaLine` only ever
+  // sees ONE call for this one line (the line-splitter boundary is proven
+  // separately in the integration spawn tests); this test proves that even
+  // when handed the full string, the parser extracts it as ONE benign field
+  // value, never as a nested/rogue capture.
+  const forgedName = 'Innocent\nFTCHMETA ' + JSON.stringify({
+    id: 'attacker-controlled-id',
+    channel_url: 'https://www.youtube.com/@attacker',
+    channel_id: null,
+    uploader_url: null,
+    channel: 'Attacker Channel',
+  });
+  const line = `FTCHMETA ${JSON.stringify({
+    id: 'realVideoId',
+    channel_url: 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw',
+    channel_id: 'UCuAXFkgsw1L7xaCfnd5JJOw',
+    uploader_url: 'https://www.youtube.com/@real',
+    channel: forgedName,
+  })}`;
+  // Exactly one embedded raw newline character would have appeared in a
+  // tab-delimited rendering of this payload; in the JSON-encoded line it is
+  // escaped, so the line itself contains no raw "\n" byte at all.
+  assert.ok(!line.includes('\n'), 'the whole JSON-encoded print line must contain no raw newline byte');
+  const result = parseChannelMetaLine(line);
+  assert.equal(result.videoId, 'realVideoId', 'the real video id from THIS line must be the one returned');
+  assert.equal(result.channelUrl, 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw');
+  assert.equal(result.channelName, forgedName, 'the forged text is captured as an inert display-name STRING, never as a second parseable record');
+});
+
+test('parseChannelMetaLine: a non-FTCHMETA line (a normal progress/warning line) returns null', () => {
+  assert.equal(parseChannelMetaLine('[download]  47.2% of  120.5MiB at 3.20MiB/s ETA 00:25'), null);
+  assert.equal(parseChannelMetaLine('[youtube] Extracting URL: https://www.youtube.com/watch?v=dQw4w9WgXcQ'), null);
+  assert.equal(parseChannelMetaLine(''), null);
+});
+
+test('parseChannelMetaLine: a line merely CONTAINING the sentinel (not starting with it) is not mistaken for a match', () => {
+  assert.equal(parseChannelMetaLine('some prefix FTCHMETA {"id":"vid"}'), null);
+});
+
+test('parseChannelMetaLine: malformed JSON returns null rather than throwing or guessing', () => {
+  assert.equal(parseChannelMetaLine('FTCHMETA {not valid json'), null);
+  assert.equal(parseChannelMetaLine('FTCHMETA '), null);
+  assert.equal(parseChannelMetaLine('FTCHMETA'), null);
+  // Valid JSON, but not an object (e.g. an array or a bare scalar) -- also
+  // rejected rather than guessing at field access on a non-object shape.
+  assert.equal(parseChannelMetaLine('FTCHMETA [1,2,3]'), null);
+  assert.equal(parseChannelMetaLine('FTCHMETA "just a string"'), null);
+  assert.equal(parseChannelMetaLine('FTCHMETA null'), null);
+});
+
+test('parseChannelMetaLine: non-string input never throws, returns null', () => {
+  assert.equal(parseChannelMetaLine(null), null);
+  assert.equal(parseChannelMetaLine(undefined), null);
+  assert.equal(parseChannelMetaLine(42), null);
+  assert.equal(parseChannelMetaLine({}), null);
+});
+
+test('MAX_CAPTURED_META is a sane positive bound', () => {
+  assert.ok(Number.isInteger(MAX_CAPTURED_META) && MAX_CAPTURED_META > 0);
 });

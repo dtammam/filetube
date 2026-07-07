@@ -213,7 +213,9 @@ test('registerRoutes/armYtdlpTimer toggle on and off within the same process', a
   try {
     const res = await fetch(`http://127.0.0.1:${onServer.address().port}/api/subscriptions/health`);
     assert.equal(res.status, 200);
-    assert.deepEqual(await res.json(), { enabled: true });
+    // v1.20.0 FR-1 (T3), AC26: additive `defaultMaxVideos` field (see
+    // ytdlp-crud.test.js's dedicated health-shape test for the full comment).
+    assert.deepEqual(await res.json(), { enabled: true, defaultMaxVideos: 2 });
   } finally {
     onServer.closeAllConnections?.();
     await new Promise((resolve) => onServer.close(resolve));

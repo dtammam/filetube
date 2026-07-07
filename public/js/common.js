@@ -245,13 +245,394 @@ function bytesToGb(bytes) {
 }
 
 // Resolve the "channel"/author name for a media item, the same way everywhere:
-// the mapped folder's friendly display name (if set), else the file's artist
-// tag, else the immediate folder name. Keeps the list cards and the watch page
-// in agreement (both call this).
+// FR-2 (v1.20.0)'s captured `item.channelName` (a yt-dlp download's real
+// channel/uploader name) ranks FIRST when present -- see
+// docs/exec-plans/active/2026-07-08-v1.20-subscribe.md ("Creator display
+// precedence"). It ranks first ONLY when present, so a non-yt-dlp file (or a
+// pre-feature download with no captured identity) falls through to the
+// UNCHANGED existing chain: the mapped folder's friendly display name (if
+// set), else the file's artist tag, else the immediate folder name. Keeps the
+// list cards and the watch page in agreement (both call this).
 function resolveChannelName(item, folderSettings) {
+  if (item && typeof item.channelName === 'string' && item.channelName.trim() !== '') {
+    return item.channelName;
+  }
   const settings = folderSettings || {};
   const mapped = settings[item.rootFolder] && settings[item.rootFolder].name;
   return mapped || item.artist || item.folderName || 'Library';
+}
+
+// ---- FR-2 channel-identity matcher (T2, v1.20.0) ---------------------------
+// See docs/exec-plans/active/2026-07-08-v1.20-subscribe.md ("Matcher") for the
+// full design/rationale. Pure, client-side, node:test-covered -- the server
+// never needs to match a file to a subscription, so this lives entirely in
+// common.js. Conservative by construction: two URL shapes that cannot be
+// PROVEN to name the same channel never produce the same canonical key -- when
+// in doubt, no match (never a false positive). Never naive string `===` on two
+// channel URLs of differing shape.
+
+// Self-contained allowlist -- deliberately duplicated from (not imported from)
+// lib/ytdlp/url.js's server-side ALLOWED_HOSTS, since this file is a vanilla
+// browser script with no module dependency on the Node-only yt-dlp lib.
+const CHANNEL_URL_HOSTS = new Set([
+  'youtube.com',
+  'www.youtube.com',
+  'm.youtube.com',
+  'music.youtube.com',
+  'youtu.be',
+]);
+
+// Canonicalize a YouTube channel URL to a stable key, or `null` when the URL
+// is not a recognizable CHANNEL identity: an unparseable/non-string input, an
+// unrecognized host, or a single-VIDEO URL (`youtu.be/<id>` or `/watch?v=`,
+// neither of which is a channel identity). Recognized shapes: `/channel/<id>`
+// -> `channel:<id>` (case PRESERVED -- channel ids are case-sensitive);
+// `/@handle` -> `handle:<lowercased>`; `/user/<name>` -> `user:<lowercased>`;
+// `/c/<name>` -> `c:<lowercased>` (host case-folded; path case only folded for
+// the handle/user/c shapes, where casing is not meaningfully distinct on
+// YouTube). Anything else unrecognized -> `null` (conservative -- never
+// guesses). Exported for node:test.
+function canonicalizeChannelUrl(url) {
+  if (typeof url !== 'string' || url.trim() === '') return null;
+  let parsed;
+  try {
+    parsed = new URL(url.trim());
+  } catch {
+    return null;
+  }
+  const host = parsed.hostname.toLowerCase();
+  if (!CHANNEL_URL_HOSTS.has(host)) return null;
+
+  // youtu.be's entire path IS a video id -- never a channel identity.
+  if (host === 'youtu.be') return null;
+  // /watch?v=... is a single-video URL on every other allowed host.
+  if (parsed.pathname === '/watch') return null;
+
+  const path = parsed.pathname.replace(/\/+$/, ''); // ignore trailing slash(es)
+
+  let m = path.match(/^\/channel\/([A-Za-z0-9_-]+)$/);
+  if (m) return `channel:${m[1]}`;
+  m = path.match(/^\/@([A-Za-z0-9._-]+)$/);
+  if (m) return `handle:${m[1].toLowerCase()}`;
+  m = path.match(/^\/user\/([A-Za-z0-9._-]+)$/);
+  if (m) return `user:${m[1].toLowerCase()}`;
+  m = path.match(/^\/c\/([A-Za-z0-9._-]+)$/);
+  if (m) return `c:${m[1].toLowerCase()}`;
+  return null; // unrecognized shape -- conservative, no false match
+}
+
+// Does a subscription's `channelUrl` identify the SAME channel as a file's
+// captured identity? Builds the FILE's canonical key-SET from every field
+// that can independently prove a channel identity -- `channelUrl`,
+// `'channel:' + channelId` (when present), `channelHandleUrl` -- dropping any
+// that don't canonicalize, then checks whether the subscription's OWN
+// canonical key is a MEMBER of that set. This is set-membership on canonical
+// keys, never naive string equality, so a file whose `channelUrl` is
+// `/channel/UC...` correctly matches a subscription added as `/@handle` (via
+// the shared handle key sourced from `channelHandleUrl`) or as `/channel/UC...`
+// (via the channel-id key) -- and never false-matches two forms that can't be
+// proven equal. Never throws on a missing/partial identity; a `null`/absent
+// `fileIdentity` or an unparseable `subUrl` safely resolves to `false`.
+// Exported for node:test.
+function channelIdentityMatches(fileIdentity, subUrl) {
+  const subKey = canonicalizeChannelUrl(subUrl);
+  if (!subKey || !fileIdentity) return false;
+
+  const keys = new Set();
+  const urlKey = canonicalizeChannelUrl(fileIdentity.channelUrl);
+  if (urlKey) keys.add(urlKey);
+  if (typeof fileIdentity.channelId === 'string' && fileIdentity.channelId) {
+    keys.add(`channel:${fileIdentity.channelId}`);
+  }
+  const handleKey = canonicalizeChannelUrl(fileIdentity.channelHandleUrl);
+  if (handleKey) keys.add(handleKey);
+
+  return keys.has(subKey);
+}
+
+// Single-sources a media item's captured channel identity for FR-1/FR-3 (T3)
+// to consume (Subscribe button state derivation via channelIdentityMatches,
+// and the show/hide predicate). Returns `null` when the item has no captured
+// `channelUrl` -- non-yt-dlp files and pre-feature downloads (AC12) both fall
+// here. Never throws on a missing/malformed item.
+function resolveFileChannelIdentity(item) {
+  if (!item || typeof item.channelUrl !== 'string' || item.channelUrl === '') return null;
+  const identity = { channelUrl: item.channelUrl };
+  if (typeof item.channelId === 'string' && item.channelId) {
+    identity.channelId = item.channelId;
+  }
+  if (typeof item.channelHandleUrl === 'string' && item.channelHandleUrl) {
+    identity.channelHandleUrl = item.channelHandleUrl;
+  }
+  return identity;
+}
+
+// ---- FR-1/FR-3 subscribe toggle + compact modal (T3, v1.20.0) -------------
+// See docs/exec-plans/active/2026-07-08-v1.20-subscribe.md ("FR-1 -- subscribe
+// toggle + compact options modal" / "FR-3 -- hide when no channel / module
+// disabled") for the full design/rationale. Pure decision helpers first
+// (node:test-covered directly); `buildSubscribeModal` is a DOM builder in the
+// exact style of `buildOneOffModal` above, reusing its primitives
+// (`.oneoff-modal-*` CSS + `buildOneOffSelect`/`ONEOFF_*`/
+// `reduceOneOffFiletypeOptions`) so this modal carries the v1.17.0
+// full-teardown + v1.19.0 select-sizing fixes "for free" and takes on NO
+// dependency on the gated, lazy-loaded `/js/subscriptions.js`.
+
+// Fallback only -- the real source of truth is the server's
+// `GET /api/subscriptions/health` `defaultMaxVideos` field
+// (`lib/ytdlp/config.js`'s `DEFAULT_MAX_VIDEOS`, AC26). This is used ONLY if
+// that response is somehow missing the field (an old/unexpected server
+// response shape), so the modal never renders a blank/NaN "download last N".
+const SUBSCRIBE_MODAL_FALLBACK_MAX_VIDEOS = 2;
+
+// Pure (AC15): the Subscribe button is shown iff the yt-dlp module is
+// enabled (the existing `/api/subscriptions/health` capability probe) AND the
+// current file has a resolvable channel identity (FR-2's
+// `resolveFileChannelIdentity`, non-null). Otherwise it must be REMOVED from
+// the DOM entirely (`.remove()` -- absent, never merely disabled/greyed) --
+// see `decideSubscribeButtonState` below, which callers actually use.
+// Exported for node:test.
+function shouldShowSubscribeButton({ moduleEnabled, channelIdentity }) {
+  return moduleEnabled === true && channelIdentity != null;
+}
+
+// Pure reducer combining FR-2's identity derivation + matcher with FR-3's
+// show/hide predicate into the single state `public/js/watch.js` needs to
+// render the button and wire its click handler: whether it's visible at all,
+// whether the CURRENT file already has a matching subscription
+// ("Subscribed" vs. "Subscribe"), and -- when subscribed -- which
+// subscription id the unsubscribe path should DELETE. `item` is the raw
+// `db.metadata`-shaped media object (as returned by `GET /api/videos/:id`);
+// `subs` is the raw array from `GET /api/subscriptions`; `moduleEnabled`
+// comes from the health probe. Never throws on malformed/missing input --
+// mirrors every other pure helper in this file's defensive posture. A
+// disabled module (moduleEnabled !== true) always resolves to fully hidden,
+// regardless of the file's metadata, preserving the disabled-module
+// byte-identical contract (AC17). Exported for node:test.
+function decideSubscribeButtonState(item, subs, moduleEnabled) {
+  const identity = resolveFileChannelIdentity(item);
+  const visible = shouldShowSubscribeButton({ moduleEnabled, channelIdentity: identity });
+  if (!visible) {
+    return { visible: false, subscribed: false, subId: null, identity: null };
+  }
+  const list = Array.isArray(subs) ? subs : [];
+  const match = list.find((sub) => channelIdentityMatches(identity, sub && sub.channelUrl));
+  return {
+    visible: true,
+    subscribed: Boolean(match),
+    subId: match ? match.id : null,
+    identity,
+  };
+}
+
+/**
+ * Pure: builds the exact JSON body `POST /api/subscriptions` expects
+ * (matching `store.validateSubscriptionInput`'s field names EXACTLY --
+ * `channelUrl`/`format`/`quality`/`name`/`maxVideos`/`skipShorts`/`filetype`,
+ * see lib/ytdlp/store.js) from the compact modal's read-only-derived identity
+ * plus its editable controls. The `channelUrl`/`name` are the FR-2-derived,
+ * already-validated-once values (never a free-text field the user can edit,
+ * AC3) -- this function does not (and cannot) weaken or bypass the server's
+ * OWN re-validation (`validateSubscriptionInput` -> `validateChannelUrl`),
+ * it only shapes the request the same way the existing `/subscriptions` add
+ * form already does (mirrors its own body-building, AC7). `rawMaxVideos` is
+ * the number input's raw string value -- parsed the SAME way the add form
+ * parses its own maxVideos field (a non-negative integer, else omitted, so
+ * the server falls back to its own default rather than receiving a bogus
+ * value).
+ */
+function buildSubscribeRequestBody(channelUrl, name, format, quality, rawMaxVideos, skipShorts, filetype) {
+  const body = { channelUrl, format, quality, skipShorts: Boolean(skipShorts) };
+  if (typeof name === 'string' && name.trim() !== '') body.name = name.trim();
+  if (filetype !== undefined) body.filetype = filetype;
+  // Mirrors the existing add-subscription form's own parse EXACTLY (see
+  // lib/ytdlp/client/subscriptions.js's addBtn click handler): the `!== ''`
+  // guard matters -- `Number('')` is `0`, a spuriously "valid" non-negative
+  // integer that would otherwise silently coerce a blank field to
+  // `maxVideos: 0` (unlimited) instead of omitting it.
+  const trimmed = typeof rawMaxVideos === 'string' ? rawMaxVideos.trim() : rawMaxVideos;
+  if (trimmed !== '' && trimmed !== undefined && trimmed !== null) {
+    const parsed = Number(trimmed);
+    if (Number.isInteger(parsed) && parsed >= 0) body.maxVideos = parsed;
+  }
+  return body;
+}
+
+/**
+ * Builds the compact subscribe-confirm modal as real DOM nodes (backdrop +
+ * dialog, appended to `document.body` by the caller) -- mirrors
+ * `buildOneOffModal`'s structure/primitives exactly (same `.oneoff-modal-*`
+ * CSS classes, same `buildOneOffSelect`/`ONEOFF_*`/
+ * `reduceOneOffFiletypeOptions`/`repopulateOneOffFiletypeSelect` building
+ * blocks), so it carries the v1.17.0 full-teardown + v1.19.0 select-sizing
+ * fixes "for free" and never drifts from the one-off modal's own
+ * format<->filetype coupling (AC7).
+ *
+ * `opts` = `{ channelName, channelUrl, format, defaultMaxVideos }` --
+ * `channelName`/`channelUrl` are the FR-2-derived, READ-ONLY channel identity
+ * (rendered via `textContent` ONLY, AC3/AC30 -- never an editable field);
+ * `format` pre-fills the type select from the file's own media type
+ * (`'audio'`/`'video'`); `defaultMaxVideos` pre-fills "download last N" (falls
+ * back to `SUBSCRIBE_MODAL_FALLBACK_MAX_VIDEOS` when omitted/invalid, AC26).
+ *
+ * `handlers` = `{ onConfirm(body), onClose() }` -- decouples DOM construction
+ * from the network call, mirroring `buildOneOffModal`'s own
+ * `{ onDownload, onClose }` split, so this function stays pure/DOM-only and
+ * directly unit-testable with a fake `document` (no real fetch). `onConfirm`
+ * receives the EXACT body `buildSubscribeRequestBody` produces -- the caller
+ * (`watch.js`) is the only place that ever calls `fetch('/api/subscriptions')`.
+ *
+ * SECURITY: the ONLY dynamic strings ever rendered into this modal are the
+ * read-only `channelName`/`channelUrl` identity block, both via `textContent`
+ * (never `innerHTML`) -- there is no free-text field for either, so there is
+ * no way for a user (or a hostile captured value) to inject markup through
+ * this modal.
+ */
+function buildSubscribeModal(doc, opts, handlers) {
+  const d = doc || document;
+  const o = opts || {};
+  const h = handlers || {};
+
+  const backdrop = d.createElement('div');
+  backdrop.className = 'oneoff-modal-backdrop';
+  backdrop.hidden = true;
+  backdrop.addEventListener('click', (e) => {
+    if (e && e.target === backdrop && typeof h.onClose === 'function') h.onClose();
+  });
+
+  const modal = d.createElement('div');
+  modal.className = 'oneoff-modal';
+  modal.hidden = true;
+  backdrop.appendChild(modal);
+
+  const header = d.createElement('div');
+  header.className = 'oneoff-modal-header';
+  const title = d.createElement('span');
+  title.className = 'oneoff-modal-title';
+  title.textContent = 'Subscribe';
+  header.appendChild(title);
+  const closeBtn = d.createElement('button');
+  closeBtn.type = 'button';
+  closeBtn.className = 'oneoff-modal-close';
+  closeBtn.setAttribute('aria-label', 'Close');
+  closeBtn.textContent = '×';
+  closeBtn.addEventListener('click', () => {
+    if (typeof h.onClose === 'function') h.onClose();
+  });
+  header.appendChild(closeBtn);
+  modal.appendChild(header);
+
+  // READ-ONLY channel identity -- textContent only, AC3/AC30. Never an
+  // editable input: the channelUrl that reaches POST /api/subscriptions is
+  // ALWAYS the FR-2-derived value the caller passes in, not anything typed
+  // here.
+  const identity = d.createElement('div');
+  identity.className = 'subscribe-modal-identity';
+  const identityName = d.createElement('div');
+  identityName.className = 'subscribe-modal-identity-name';
+  identityName.textContent = typeof o.channelName === 'string' && o.channelName ? o.channelName : 'This channel';
+  identity.appendChild(identityName);
+  const identityUrl = d.createElement('div');
+  identityUrl.className = 'subscribe-modal-identity-url';
+  identityUrl.textContent = typeof o.channelUrl === 'string' ? o.channelUrl : '';
+  identity.appendChild(identityUrl);
+  modal.appendChild(identity);
+
+  const row = d.createElement('div');
+  row.className = 'oneoff-modal-row';
+
+  const initialFormat = o.format === 'audio' ? 'audio' : 'video';
+  const formatSelect = buildOneOffSelect(d, ONEOFF_FORMAT_OPTIONS, initialFormat);
+  row.appendChild(formatSelect);
+
+  const qualitySelect = buildOneOffSelect(
+    d,
+    ONEOFF_QUALITY_OPTIONS.map((q) => ({ value: q, label: q })),
+    ONEOFF_DEFAULT_QUALITY
+  );
+  row.appendChild(qualitySelect);
+
+  const filetypeSelect = buildOneOffSelect(d, ONEOFF_FILETYPE_OPTIONS[initialFormat], ONEOFF_DEFAULT_FILETYPE[initialFormat]);
+  row.appendChild(filetypeSelect);
+
+  formatSelect.addEventListener('change', () => {
+    repopulateOneOffFiletypeSelect(d, formatSelect.value, filetypeSelect);
+  });
+
+  modal.appendChild(row);
+
+  // "Download last N" -- pre-filled from the SAME server-side
+  // DEFAULT_MAX_VIDEOS constant surfaced via /api/subscriptions/health
+  // (AC26), never a second, independently hardcoded literal.
+  const maxVideosInput = d.createElement('input');
+  maxVideosInput.type = 'number';
+  maxVideosInput.min = '0';
+  maxVideosInput.className = 'oneoff-modal-field';
+  const initialMaxVideos = Number.isInteger(o.defaultMaxVideos) && o.defaultMaxVideos >= 0
+    ? o.defaultMaxVideos
+    : SUBSCRIBE_MODAL_FALLBACK_MAX_VIDEOS;
+  maxVideosInput.value = String(initialMaxVideos);
+  modal.appendChild(maxVideosInput);
+
+  // Skip-Shorts toggle, default OFF (mirrors the existing add-subscription
+  // form's own default -- download everything unless the user opts out).
+  const skipShortsLabel = d.createElement('label');
+  skipShortsLabel.className = 'subscribe-modal-checkbox-row';
+  const skipShortsCheck = d.createElement('input');
+  skipShortsCheck.type = 'checkbox';
+  skipShortsCheck.checked = false;
+  skipShortsLabel.appendChild(skipShortsCheck);
+  skipShortsLabel.appendChild(d.createTextNode(' Skip Shorts'));
+  modal.appendChild(skipShortsLabel);
+
+  const statusEl = d.createElement('div');
+  statusEl.className = 'oneoff-modal-status';
+  statusEl.setAttribute('aria-live', 'polite');
+  modal.appendChild(statusEl);
+
+  const actionsRow = d.createElement('div');
+  actionsRow.className = 'subscribe-modal-actions';
+
+  const cancelBtn = d.createElement('button');
+  cancelBtn.type = 'button';
+  cancelBtn.className = 'btn';
+  cancelBtn.textContent = 'Cancel';
+  cancelBtn.addEventListener('click', () => {
+    if (typeof h.onClose === 'function') h.onClose();
+  });
+  actionsRow.appendChild(cancelBtn);
+
+  const confirmBtn = d.createElement('button');
+  confirmBtn.type = 'button';
+  confirmBtn.className = 'btn btn-primary';
+  confirmBtn.textContent = 'Subscribe';
+  confirmBtn.addEventListener('click', () => {
+    const body = buildSubscribeRequestBody(
+      o.channelUrl,
+      o.channelName,
+      formatSelect.value,
+      qualitySelect.value,
+      maxVideosInput.value,
+      skipShortsCheck.checked,
+      filetypeSelect.value
+    );
+    if (typeof h.onConfirm === 'function') h.onConfirm(body);
+  });
+  actionsRow.appendChild(confirmBtn);
+
+  modal.appendChild(actionsRow);
+
+  // Renders an error string (or clears it) -- textContent only, never
+  // innerHTML, no matter what the server's validation error contains.
+  function setError(message) {
+    statusEl.textContent = message || '';
+  }
+
+  return {
+    backdrop, modal, closeBtn, identityName, identityUrl,
+    formatSelect, qualitySelect, filetypeSelect, maxVideosInput, skipShortsCheck,
+    confirmBtn, cancelBtn, statusEl, setError,
+  };
 }
 
 // ---- Audio thumbnail-as-background art (resolveAudioArtUrl) ---------------
@@ -2150,6 +2531,9 @@ if (typeof module !== 'undefined' && module.exports) {
     injectOneOffDownloadButtonIfEnabled,
     showToast, nextArmState,
     deriveRouteView, shouldInterceptLinkClick, buildHistoryState, parseHistoryState,
-    shouldDockOnTransition, toPathAndQuery, isStaleNavGeneration
+    shouldDockOnTransition, toPathAndQuery, isStaleNavGeneration,
+    canonicalizeChannelUrl, channelIdentityMatches, resolveFileChannelIdentity,
+    shouldShowSubscribeButton, decideSubscribeButtonState,
+    buildSubscribeRequestBody, buildSubscribeModal
   };
 }

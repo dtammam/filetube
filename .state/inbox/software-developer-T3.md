@@ -1,107 +1,131 @@
-# Software Developer inbox — T3 (FR-2: player stale-poster / FOUC reset on Next)
+# Software Developer inbox — T3 (v1.20 FR-1 toggle + compact options modal + FR-3 hide)
 
-Feature: **v1.18.0 "iOS playability + player polish"** (feature_id
-`v1.18-ios-playability`), branch `feature/v1.18-ios-playability` off `main`
-(v1.17.1). This is **Task T3**. It runs **in PARALLEL with T1 and T2** — your
-file set (`public/js/player.js` + any test) is DISJOINT from theirs. Do **not**
-touch `lib/ytdlp/args.js` (T1), `server.js` (T2), or `public/js/setup.js` (T4).
+Feature: **v1.20.0 "Subscribe button — real subscriptions from downloads"**
+(feature_id `v1.20-subscribe`), branch `feature/v1.20-subscribe` (off `main` at
+v1.19.1). This file **supersedes any prior-feature content**. This is **Task T3**.
+Wave **3** — runs ALONE, LAST. **Depends on T1 AND T2 AND T4.** Do not start until
+the coordinator confirms T2 and T4 are both done/verified (you edit
+`public/js/common.js` after T2, and `lib/ytdlp/index.js` + `public/css/style.css`
+after T4 — shared working tree, no concurrent edits).
 
-**Review tier: LIGHTER single-QA no-regression.** Dean's **on-device iOS Safari
-pass — specifically the prev/next Next-button transition — is the ARBITER** for
-"feels smooth, no flash." There is NO headless-browser/E2E infra in this repo
-(`docs/RELIABILITY.md`), so you cannot claim the visual fix as
-`[UNIT]`/`[INTEGRATION]`.
+**Review tier: TWO-REVIEWER GATE** (quality-assurance + a separate adversarial
+`/code-review`). The watch page becomes a new caller into the spawn-guarded
+subscription create/delete system; you must prove no new path bypasses
+`store.validateSubscriptionInput` → `url.validateChannelUrl`.
 
-## Read first (grounding)
+## Environment
 
-- `.state/feature-state.json` — the `tasks` entry `"id": "T3"` is the
-  authoritative scope; also read `hard_constraints`.
-- `docs/exec-plans/active/2026-07-07-v1.18-ios-playability.md` — read **`## Design`
-  → the `public/js/player.js` — `teardownMediaState()` (FR-2) component bullet**,
-  the FR-2 acceptance criteria, the `### Alternatives considered` → FR-2 bullet
-  (why the `#000` container background, not a new asset/CSS), and the
-  `### Risks and mitigations` → the `mediaPlayer.load()` risk bullet.
-- `docs/CONTRIBUTING.md` and `docs/RELIABILITY.md` (no E2E harness).
-- `public/js/player.js` — `load()` (the `adopt` same-media dock↔full early-return
-  vs. genuine-new-load branching), `teardownMediaState()` (~970-987, incl. the
-  existing `mediaPlayer.pause()` and the audio-bg-art clear ~line 983),
-  `setupForMedia()` (~989-1040, incl. the audio-branch
-  `mediaPlayer.poster = '/thumbnail/' + id` at ~line 995 and where the new `src`
-  is assigned).
-
-## Task — implement THIS ONE task only (FR-2)
-
-In `teardownMediaState()`, **after the existing `mediaPlayer.pause()`**, add a
-visual reset that runs on every genuine (non-`adopt`) load, **before**
-`setupForMedia` assigns the new source:
-
-1. `mediaPlayer.removeAttribute('poster');` — clears the audio branch's
-   `/thumbnail/<prevId>` poster.
-2. `mediaPlayer.removeAttribute('src'); mediaPlayer.load();` — drops the
-   last-decoded video frame; the element resets to the media-empty state and
-   paints **nothing**, revealing the existing `#000` `.player-container`
-   background (the CSS-only neutral placeholder — **no new image asset, no new
-   CSS**).
-3. Keep the existing audio-bg-art clear (~line 983).
-
-`setupForMedia` then assigns the fresh `src` a few lines later, as today.
-
-Critical correctness points:
-- Use `removeAttribute('src')`, **NOT** `src = ''` (an empty string resolves to
-  the page URL and triggers a spurious reload).
-- This is a **media-element `load()`**, NOT a page reload.
-- Do **not** touch `load()`'s `adopt`/non-adopt branching. The `adopt` (dock↔full)
-  path returns early in `load()` **before** `teardownMediaState()` is ever
-  called, so playback continuity is preserved untouched — verify this is still
-  true after your change.
-
-## Hard constraints (non-negotiable)
-
-- Preserve **every** other persistent-player behavior: playback continuity across
-  in-app navigation, dock↔full transitions, iOS inline playback (`playsinline`),
-  Media Session lock-screen metadata/position, the resume overlay, and the
-  transcode "preparing…" overlay + polling.
-- No new page reload; no change to the adopt/non-adopt branch.
-- No new CSS, no new image asset (the `#000` container background is the neutral
-  placeholder). If you find CSS genuinely needed, STOP and flag it as a fork
-  rather than editing `public/css/style.css` (that would collide with nobody this
-  round, but the design explicitly says none is needed — deviating needs a note).
-- No new runtime dependencies. 2-space/semicolons/single-quotes;
-  `textContent` (not `innerHTML`) for any new dynamic strings. Lint 0 warnings.
-
-## Tests
-
-Per the design, no pure visual-reset helper is cleanly extractable from the
-player IIFE, so this AC leans on the MANUAL on-device pass (documented, not a
-gap). **If** your implementation happens to yield a cleanly extractable pure
-helper (e.g. a state-description function), add `node:test` coverage asserting
-the previous poster/frame + audio-bg-art are cleared to neutral BEFORE the new
-source is assigned, for every genuine non-`adopt` load. Otherwise `npm run lint`
-must be 0 warnings and `npm test` must stay green on Node 22.
-
-## Toolchain / commands
-
-Node 22 standard. Export the fnm node PATH first, then use the Node 22 test bin:
-
-- `/tmp/claude-1000/-home-coder-projects-filetube/139c0e56-b545-4e8e-ba05-f892f6dd6d0d/scratchpad/node-v22.23.1-linux-x64/bin`
-
-Run `npm run lint` (0 warnings) and `npm test` (green on Node 22). Fix any
-failure before reporting done.
+- **Node 22 toolchain bin** (prepend to PATH before any npm/node command):
+  `/tmp/claude-1000/-home-coder-projects-filetube/139c0e56-b545-4e8e-ba05-f892f6dd6d0d/scratchpad/node-v22.23.1-linux-x64/bin`
+- Use absolute paths (cwd resets between bash calls).
 
 ## Git — DO NOT commit
 
-The **coordinator (EM) owns ALL git**. Do NOT stage, commit, or push. Report
-files changed + full lint/test output; the coordinator commits per task.
+The **coordinator (EM) owns ALL git.** Do NOT `git add`/`commit`/`branch`/
+`stash`/`push`. Report files changed + full `npm run lint` (0 warnings) and
+`npm test` output under Node 22; fix any failure before reporting done.
+
+## Read first (you share NO memory with the EM)
+
+- `docs/exec-plans/active/2026-07-08-v1.20-subscribe.md` — read the **## Design**
+  sections **"FR-1 — subscribe toggle + compact options modal"** and **"FR-3 —
+  hide when no channel / module disabled"**, plus the T3 bullet in **## Task
+  breakdown**. Implement to that design.
+- `.state/feature-state.json` — the `tasks[]` entry `"id":"T3"` and
+  `hard_constraints` (validator routing, era-theme, select-sizing/full-teardown
+  reuse, `textContent`).
+- `docs/CONTRIBUTING.md` (vanilla DOM, `textContent` not `innerHTML` for dynamic
+  strings, 2-space, semicolons, single-quotes, `node:test`, lint 0, no new deps)
+  and `docs/RELIABILITY.md` (no headless-browser/E2E — modal UX leans on Dean's
+  on-device pass as the documented arbiter; everything else is unit/integration).
+- T2's helpers already in `public/js/common.js`: `resolveFileChannelIdentity`,
+  `channelIdentityMatches`, `canonicalizeChannelUrl`, extended `resolveChannelName`.
+- Live code: `public/js/common.js` — the one-off modal primitives you REUSE:
+  `.oneoff-modal-backdrop`/`.oneoff-modal` CSS (carries the v1.17.0 FR-6
+  full-teardown + v1.19.0 `flex:0 0 auto` select-sizing fixes), `buildOneOffModal`,
+  `buildOneOffSelect`, `ONEOFF_FORMAT_OPTIONS`, `ONEOFF_QUALITY_OPTIONS`,
+  `ONEOFF_FILETYPE_OPTIONS`, `reduceOneOffFiletypeOptions`/
+  `repopulateOneOffFiletypeSelect`. `public/js/watch.js` — `populateMetadata`,
+  the `resolveChannelName` call site. `public/watch.html` — `#subscribe-btn-mock`
+  (currently cosmetic, no handler). `lib/ytdlp/index.js` — the gated
+  `GET /api/subscriptions/health` handler and `config` in scope.
+
+## Task — implement THIS ONE task only (FR-1 + FR-3)
+
+1. **`shouldShowSubscribeButton({ moduleEnabled, channelIdentity })`
+   (`common.js`, pure, `node:test`).** `true` iff `moduleEnabled === true` AND
+   `channelIdentity` non-null; else the button is REMOVED from the DOM
+   (`.remove()`, absent — not greyed).
+2. **`buildSubscribeModal(doc, opts, handlers)` (`common.js`).** Mirror
+   `buildOneOffModal`'s structure and REUSE its primitives (`.oneoff-modal-*`
+   CSS + the ONEOFF option builders/reducer above — NO dependency on the gated
+   `/js/subscriptions.js`). Contents:
+   - READ-ONLY channel identity: `channelName` + `channelUrl`, both via
+     `textContent` (never an editable field).
+   - type (`format`) select pre-filled from `mediaData.type`; quality select
+     pre-filled `'best'`; filetype select (format-coupled via the shared
+     reducer); a "download last N" number input pre-filled from
+     `defaultMaxVideos` (read from `GET /api/subscriptions/health`, fallback `2`);
+     a skip-Shorts checkbox default off; Subscribe + Cancel buttons.
+3. **`defaultMaxVideos` on `/health` (`lib/ytdlp/index.js`).** The gated
+   `GET /api/subscriptions/health` body gains
+   `defaultMaxVideos: config.DEFAULT_MAX_VIDEOS` (single server-side source; no
+   second hardcoded literal). This lands AFTER T4's `index.js` edit — additive.
+4. **Wiring (`public/js/watch.js`).** In `populateMetadata`, compute
+   `identity = resolveFileChannelIdentity(mediaData)`; probe
+   `GET /api/subscriptions/health` (200 → module enabled; 404 → disabled); apply
+   `shouldShowSubscribeButton` — remove `#subscribe-btn-mock` when false. When
+   shown, `GET /api/subscriptions`, find the matching sub via
+   `channelIdentityMatches(identity, sub.channelUrl)`, render "Subscribe" vs.
+   "Subscribed", and hold the matched `sub.id`.
+   - **Subscribe (not subscribed):** open `buildSubscribeModal`. Confirm →
+     `POST /api/subscriptions` with `{ channelUrl: identity.channelUrl, format,
+     quality, maxVideos, skipShorts, filetype }` through the EXISTING, UNMODIFIED
+     `store.validateSubscriptionInput` → `url.validateChannelUrl` (no bypass). On
+     success: full-teardown the modal, flip to "Subscribed", record new sub id.
+     Cancel / backdrop / `[x]` / Esc → the shared full-teardown
+     (`backdrop.remove()` + null state), NO POST.
+   - **Unsubscribe (subscribed):** direct one-tap `DELETE /api/subscriptions/:id`
+     for the matched id; flip back to "Subscribe". NO modal.
+5. **`public/watch.html`.** Keep `#subscribe-btn-mock`, default `hidden`.
+6. **`public/css/style.css`.** Add ONLY a small read-only channel-identity block
+   style (era-theme tokens only, no hardcoded colors). Reuse `.oneoff-modal-*`
+   for the modal chrome — do not reimplement it.
+
+## Tests to add
+
+- **Unit** (`test/unit/`): `shouldShowSubscribeButton` truth table; the button
+  state derivation (matching identity vs sub list → Subscribe/Subscribed via the
+  T2 matcher); `buildSubscribeModal` build (pre-fills, read-only identity via
+  `textContent`, format↔filetype coupling via the shared reducer) and its
+  full-teardown (backdrop detached, state nulled, no leaked listeners).
+- **Integration** (`test/integration/`): confirm → `POST /api/subscriptions`
+  routes through `validateSubscriptionInput`/`validateChannelUrl`; cancel/backdrop
+  → NO POST; subscribed → `DELETE /api/subscriptions/:id`; disabled-module
+  (health 404) → button absent regardless of metadata.
+
+## Hard constraints
+
+- TWO-REVIEWER GATE. The modal creates subscriptions ONLY via
+  `POST /api/subscriptions` → the UNMODIFIED validators; no new code constructs a
+  subscription record or spawn argv from an unvalidated string. Do NOT modify any
+  validator or host allowlist.
+- `textContent` (never `innerHTML`) for creator name / channel URL / any error
+  text. Era-theme CSS custom properties only. Reuse the v1.17.0 full-teardown +
+  v1.19.0 select-sizing patterns (do not reintroduce the stuck-overlay or
+  oversized-mobile-select bugs). No new npm deps. Lint 0 warnings.
+- Disabled-module byte-identical: button/modal require the 200 health probe; no
+  new always-present DOM or route.
+- Your files: `public/js/common.js`, `public/js/watch.js`, `public/watch.html`,
+  `public/css/style.css`, `lib/ytdlp/index.js` (+ tests). Do NOT touch
+  `lib/ytdlp/client/subscriptions.js`, `lib/ytdlp/{args,run,store,config}.js`, or
+  `server.js`. Merge your `common.js` / `index.js` / `style.css` edits ON TOP of
+  T2's and T4's already-landed changes (do not revert them).
 
 ## Report back
 
-- Files changed (paths + one-line summary each) and the exact lines added to
-  `teardownMediaState()`.
-- Confirmation the `adopt` path still returns before `teardownMediaState()` (no
-  continuity regression) and that `removeAttribute('src')` + `load()` (not
-  `src=''`) is used.
-- Whether any pure helper was extractable (and tested) or the AC leans on Dean's
-  on-device pass.
-- Lint + Node 22 test result.
-- Any deviation from the design or new fork (with a recommendation) — do NOT
-  expand scope into other FRs' files or into `public/css/style.css`.
+Files changed (path + one-line each); the modal contents + the confirm→POST /
+unsubscribe→DELETE wiring; a "no validator bypass" checklist (every channel URL
+still passes `validateSubscriptionInput`/`validateChannelUrl`); which ACs lean on
+Dean's on-device pass vs are unit/integration-covered; lint + Node 22 test
+result; any deviation/new fork with a recommendation.
