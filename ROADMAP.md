@@ -2,26 +2,45 @@
 
 ## Planned
 
-### 🐞 Bugs & regressions (fix first)
+### 🐞 Bugs (fix first)
 
-- [ ] **Watch-page scroll layout bug** — on certain videos, scrolling UP makes the whole bottom panel jump to the middle of the screen; scrolling down snaps it back; a page refresh makes it behave. Intermittent/video-dependent CSS or layout/scroll-position bug on the watch page (likely sticky/position interaction). Repro + fix. _(bug)_
-- [ ] **Mobile player oversized / not iOS-sized (regression)** — on mobile the video player is bigger than it should be (not sized appropriately for iOS); it regressed at some point (likely a side effect of the mobile-logo-top-left or audio-bg-art CSS work). Find what changed and restore the correct mobile player sizing. _(bug/regression — 45vh cap shipped v1.13.0; re-verify)_
-- [ ] **Mobile player STILL launches wrong-size on some videos (post-v1.16.0)** — Dean reports mobile is "mostly better but still happening": certain videos launch at the wrong size, forcing a scroll/resize to correct. Residual after the v1.13.0 45vh cap + v1.15.0 mobile-scale work — needs a proper root-cause pass (likely per-video aspect-ratio / intrinsic-size interaction with the mobile height cap, or the persistent-player host CSS from v1.16.0). On-device arbiter. _(bug — recurring)_
-- [ ] **Mobile UI scale polish** — the home page scale is off on mobile: (a) the sort-controls row (heading + "Newest first" dropdown + the v1.14.0 "Shuffle again" button) overflows the viewport — the shuffle button is cut off on the right; it must wrap/scale/shorten on mobile; (b) the video cards read a bit large/zoomed — tighten card sizing so more than ~one card is comfortably in view. On-device pass is the arbiter. _(bug — v1.14.0 regression + general mobile scale)_
+- [ ] **Subscription count edit reverts** — editing a subscription's "download last N" (e.g. 3→2, or any number) switches back to the first/original number even after pressing Edit; the per-sub value doesn't persist. The v1.20.0 default-2 change works, but the edit flow is broken. Root-cause in PATCH /api/subscriptions or the /subscriptions client edit form. _(bug — Dean, post-v1.20.0)_
+- [ ] **Watch-page scroll layout bug** — on certain videos, scrolling UP makes the whole bottom panel jump to the middle of the screen; scrolling down snaps it back; a refresh fixes it. Likely sticky/position interaction on the watch page. (May share a root cause with the v1.17.x mobile-layout fixes — re-verify whether still reproducible before deep work.) _(bug)_
 
-### 🎨 UI polish
+### 🎧 Audio player upgrades (Dean — best done as one coherent round)
 
-- [ ] **Make the "Subscribe" button mean something (or add a notification bell)** — today the retro "Subscribe" button is cosmetic. Give it real behavior: either a **toggle that controls whether that channel/folder surfaces on the main/default (home) view** (subscribe = pin it to your default page), or a new **notification-bell** affordance that "simulates" seeing new content (retro-YouTube flavor). Explore which reads better. Ties into the default-landing-view feature and, for real channels, the yt-dlp subscription module. _(needs a product decision — which behavior reads better — before build)_
-- [ ] **Card-level download-to-device** — the watch-page download-to-device button shipped v1.19.0; a fast-follow could add the same affordance on the home/library cards for one-tap grabbing without opening the video. _(deferred fast-follow from v1.19.0)_
+- [ ] **Audio player dark-mode** — the audio "now playing" view renders pure white in the browser regardless of light/dark theme; make it follow the theme (candidate: reuse the video player/controls chrome for audio, or theme the audio-mode surface with the era tokens). _(Dean — "if it's crazy out of scope we can skip," but likely doable)_
+- [ ] **Blocky, non-derpy media controls** — the default rounded Chromium `<audio>`/`<video>` controls look a bit derpy / non-native; build a custom BLOCKY control bar that fits the retro skin (custom controls over native, or heavily-styled). _(Dean)_
+- [ ] **Click the cover-art to play/pause** — the audio background art is currently just visual; make tapping/clicking it toggle play/pause like a video surface (Spotify/Apple-Music pattern). _(Dean)_
+- [ ] **Persist volume across tracks** — remember the media-control level (volume, etc.) and keep it between songs until the user changes it (localStorage, applied on load). _(Dean)_
 
-### 🔧 Infra / housekeeping
+### 📺 Subscriptions + library rearchitect (informed by the UI-research pass)
 
-- [ ] **Broaden core test coverage** — the yt-dlp module is now heavily tested and CI runs the full `node:test` suite, but the core app's scan/config/transcode logic and HTTP endpoints still have thin coverage. Backfill unit + smoke tests there. _(partially progressed)_
+- [ ] **Rearchitect the /subscriptions page — subscriptions-FIRST** — today the page is add-subscription-form at top → one-off download → a small scroll window for the actual subs, which buries them and makes finding a sub "not intuitive or smooth" (Dean). Reorganize so the SUBSCRIPTIONS LIST is the primary, smooth-to-navigate content (bigger, better proportioned), with add-subscription + one-off-download as secondary/collapsible actions. This is the headline of the round. _(Dean — the page IA is wrong)_
+- [ ] **"Subscribed to" date + clickable channel link** — in Your Subscriptions, show a subscribed-on date per channel and make the channel link an actual clickable URL. _(Dean)_
+- [ ] **Pin a channel's "View as Playlist"** — v1.20.0 added "View as Playlist" (a filtered view of a channel's videos via `?root=`); make it PINNABLE so it sticks as a persistent entry under Playlists/Folders, not just a transient view. _(Dean — extends v1.20.0 FR-4)_
+- [ ] **Library grid mobile density** — tighten card sizing so more than ~one card is comfortably in view on mobile (cards read a bit large/zoomed). _(carried; informed by the research pass)_
+
+### 🗑️ Delete safety
+
+- [ ] **Extra-deliberate delete for local (non-yt-dlp) files** — a yt-dlp download is re-downloadable (the v1.17.0 two-tap arm is fine for it), but a LOCAL file is irreplaceable. For non-yt-dlp files, add a more deliberate 3rd step — a proper hard-warning confirm button in a distinct spot — so deleting an irreplaceable file is a conscious decision. _(Dean)_
+
+### 📥 yt-dlp / downloads
+
+- [ ] **Retry button on a failed download** — if a yt-dlp download exits non-zero (fails), surface a Retry button rather than just failing silently. _(Dean)_
+- [ ] **Clearer active-download status** — a clearer, optional/dismissible status surface for active downloads (candidate: a bottom-left corner chip/tray) instead of the current window. _(Dean)_
+
+### 🎨 UI polish / 🔧 Infra / 📄 Docs
+
+- [ ] **Card-level download-to-device** — the watch-page download-to-device button shipped v1.19.0; a fast-follow could add the same affordance on the home/library cards for one-tap grabbing without opening the video. _(deferred fast-follow)_
+- [ ] **Broaden core test coverage** — the core app's scan/config/transcode logic and HTTP endpoints still have thinner coverage than the yt-dlp module. Backfill unit + smoke tests. _(partially progressed)_
+- [ ] **README update** — refresh the README to reflect everything shipped since v1.10 (the yt-dlp subscription module + subscribe-from-downloads + per-channel playlists, the docked mini-player / SPA-lite nav, prev/next + autoplay, download-to-device, iOS codec transcoding, PWA icons, quicker delete, etc.) and add fresh screenshots. _(Dean)_
 
 ### 🧹 Tech-debt (see [docs/exec-plans/tech-debt-tracker.md](docs/exec-plans/tech-debt-tracker.md))
 
-- [ ] **yt-dlp prune/mount-loss deep redesign** (#10) — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress; benefits all folders, not just the module.
-- [ ] **yt-dlp narrow-config edges** (#12–14) — dedup-collapse discards a duplicate alias's ephemeral progress; download-dir == an existing mapped folder loses its mount-loss row; cosmetic title-clean when the download dir is an ancestor of a library folder. All mitigated today by "use a dedicated download dir."
+- [ ] **yt-dlp prune/mount-loss deep redesign** (#10) — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
+- [ ] **yt-dlp narrow-config edges** (#12–14) — dedup-collapse discards a duplicate alias's ephemeral progress; download-dir == a mapped folder loses its mount-loss row; cosmetic title-clean when the download dir is an ancestor of a library folder. Mitigated by "use a dedicated download dir."
+- [ ] **v1.20.0 channel-capture edges** (#16–18) — a manually-named `[<id>].mp4` under the download root can absorb an unconsumed channel identity; the subscription fallback records identity for failed-download survivors; `channelDir` discloses an absolute server path. All LOW/bounded.
 
 ## Shipped
 
