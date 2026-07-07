@@ -32,6 +32,7 @@
 
 ### 🎨 UI polish / 🔧 Infra / 📄 Docs
 
+- [ ] **Theatre mode (video)** — a button on the watch page that widens the video to the majority of the page width (YouTube-style theater mode), toggling back to the normal layout. Nice on desktop especially; reconcile with the persistent-player shell + the related-items sidebar. _(Dean)_
 - [ ] **Card-level download-to-device** — the watch-page download-to-device button shipped v1.19.0; a fast-follow could add the same affordance on the home/library cards for one-tap grabbing without opening the video. _(deferred fast-follow)_
 - [ ] **Broaden core test coverage** — the core app's scan/config/transcode logic and HTTP endpoints still have thinner coverage than the yt-dlp module. Backfill unit + smoke tests. _(partially progressed)_
 - [ ] **README update** — refresh the README to reflect everything shipped since v1.10 (the yt-dlp subscription module + subscribe-from-downloads + per-channel playlists, the docked mini-player / SPA-lite nav, prev/next + autoplay, download-to-device, iOS codec transcoding, PWA icons, quicker delete, etc.) and add fresh screenshots. _(Dean)_
