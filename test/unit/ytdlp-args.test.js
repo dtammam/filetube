@@ -367,6 +367,113 @@ test('buildYtdlpListArgs: --match-filter never influences buildYtdlpDownloadArgs
   assert.ok(!result.includes('--match-filter'), 'the download pass must never carry the Shorts match-filter -- it is a LIST-pass-only, defense-in-depth flag');
 });
 
+// ---- v1.22.0 FR-6: max-duration download gate, --match-filter AND-join ----
+//
+// CRITICAL, verified: yt-dlp OR's multiple --match-filter flags together, so
+// combining "skip Shorts" with "under the max duration" MUST be a single
+// --match-filter with clauses joined by " & " (yt-dlp's own AND operator),
+// never two separate --match-filter args.
+
+test('buildMatchFilterArg: neither clause active -> []', () => {
+  assert.deepEqual(args.buildMatchFilterArg({ skipShorts: false, maxDurationSeconds: undefined }), []);
+  assert.deepEqual(args.buildMatchFilterArg({ skipShorts: false, maxDurationSeconds: 0 }), []);
+  assert.deepEqual(args.buildMatchFilterArg(), []);
+});
+
+test('buildMatchFilterArg: skipShorts alone -> a single --match-filter with only the Shorts clause', () => {
+  assert.deepEqual(
+    args.buildMatchFilterArg({ skipShorts: true, maxDurationSeconds: undefined }),
+    ['--match-filter', 'webpage_url!*=/shorts/']
+  );
+});
+
+test('buildMatchFilterArg: maxDurationSeconds alone -> a single --match-filter with only the duration clause', () => {
+  assert.deepEqual(
+    args.buildMatchFilterArg({ skipShorts: false, maxDurationSeconds: 7200 }),
+    ['--match-filter', 'duration < 7200']
+  );
+});
+
+test('buildMatchFilterArg: BOTH active -> ONE --match-filter, clauses AND-joined with " & " (never two separate --match-filter args)', () => {
+  const result = args.buildMatchFilterArg({ skipShorts: true, maxDurationSeconds: 7200 });
+  assert.deepEqual(result, ['--match-filter', 'webpage_url!*=/shorts/ & duration < 7200']);
+  // Exactly one --match-filter flag in the result (not two).
+  assert.equal(result.filter((el) => el === '--match-filter').length, 1);
+});
+
+test('buildMatchFilterArg: a non-integer/negative/zero maxDurationSeconds never contributes a duration clause (fails safe to omit)', () => {
+  for (const bad of [0, -1, 1.5, 'abc', NaN, undefined, null]) {
+    const result = args.buildMatchFilterArg({ skipShorts: false, maxDurationSeconds: bad });
+    assert.deepEqual(result, [], `maxDurationSeconds=${JSON.stringify(bad)} should contribute no clause`);
+  }
+});
+
+test('buildYtdlpListArgs: emits the combined AND-joined --match-filter when both skipShorts and an effective maxDurationSeconds are active', () => {
+  const config = makeConfig({ maxDurationSeconds: 7200 });
+  const result = args.buildYtdlpListArgs(baseSub({ skipShorts: true }), config);
+  const idx = result.indexOf('--match-filter');
+  assert.ok(idx >= 0);
+  assert.equal(result[idx + 1], 'webpage_url!*=/shorts/ & duration < 7200');
+  // Exactly one --match-filter arg -- never two separate ones (which yt-dlp
+  // would OR together instead of AND).
+  assert.equal(result.filter((el) => el === '--match-filter').length, 1);
+  assert.ok(idx < result.indexOf('--'), '--match-filter must precede the "--" separator');
+});
+
+test('buildYtdlpListArgs: emits --match-filter for maxDurationSeconds alone (skipShorts off)', () => {
+  const config = makeConfig({ maxDurationSeconds: 3600 });
+  const result = args.buildYtdlpListArgs(baseSub({ skipShorts: false }), config);
+  const idx = result.indexOf('--match-filter');
+  assert.ok(idx >= 0);
+  assert.equal(result[idx + 1], 'duration < 3600');
+});
+
+test('buildYtdlpListArgs: OMITS --match-filter entirely when maxDurationSeconds is 0 (unbounded) and skipShorts is off', () => {
+  const config = makeConfig({ maxDurationSeconds: 0 });
+  const result = args.buildYtdlpListArgs(baseSub({ skipShorts: false }), config);
+  assert.ok(!result.includes('--match-filter'));
+});
+
+test('buildYtdlpListArgs: a per-sub maxDurationSeconds overrides the global config default (effectiveMaxDurationSeconds resolution)', () => {
+  const config = makeConfig({ maxDurationSeconds: 7200 });
+  const result = args.buildYtdlpListArgs(baseSub({ maxDurationSeconds: 1800 }), config);
+  const idx = result.indexOf('--match-filter');
+  assert.ok(idx >= 0);
+  assert.equal(result[idx + 1], 'duration < 1800', 'the per-sub override (1800) must win over the global default (7200)');
+});
+
+test('buildYtdlpListArgs: an UNSET per-sub maxDurationSeconds falls back to the global default UNCHANGED', () => {
+  const config = makeConfig({ maxDurationSeconds: 7200 });
+  const result = args.buildYtdlpListArgs(baseSub(), config); // no sub.maxDurationSeconds
+  const idx = result.indexOf('--match-filter');
+  assert.ok(idx >= 0);
+  assert.equal(result[idx + 1], 'duration < 7200');
+});
+
+test('buildYtdlpListArgs: a per-sub maxDurationSeconds of 0 means unbounded (omits the duration clause) even when the global has a bound', () => {
+  const config = makeConfig({ maxDurationSeconds: 7200 });
+  const result = args.buildYtdlpListArgs(baseSub({ maxDurationSeconds: 0 }), config);
+  assert.ok(!result.includes('--match-filter'), 'sub.maxDurationSeconds: 0 must override the global bound with "unbounded"');
+});
+
+test('buildYtdlpListArgs: --match-filter (duration clause) never influences buildYtdlpDownloadArgs (download pass targets explicit ids only)', () => {
+  const config = makeConfig({ maxDurationSeconds: 3600 });
+  const result = args.buildYtdlpDownloadArgs(baseSub(), config, ['vid1']);
+  assert.ok(!result.includes('--match-filter'), 'the download pass must never carry the duration match-filter -- it is a LIST-pass-only flag');
+});
+
+test('buildYtdlpListArgs: <n> in the duration clause is always the exact bounded integer, never a hostile string (security posture)', () => {
+  // maxDurationSeconds only ever reaches buildYtdlpListArgs as an already
+  // config/store-validated bounded integer -- this asserts the emitted
+  // clause is a FIXED "duration < <n>" shape with `n` interpolated as a
+  // plain number, never anything that could carry shell/argv metacharacters.
+  const config = makeConfig({ maxDurationSeconds: 12345 });
+  const result = args.buildYtdlpListArgs(baseSub(), config);
+  const idx = result.indexOf('--match-filter');
+  assert.equal(result[idx + 1], 'duration < 12345');
+  assert.match(result[idx + 1], /^duration < \d+$/);
+});
+
 // ---- v1.15.0 item 6: one-off archive bypass (oneOff opt) ------------------
 
 test('buildYtdlpDownloadArgs: a one-off build (opts.oneOff: true) includes --no-download-archive + --force-overwrites, and OMITS --download-archive', () => {

@@ -132,6 +132,22 @@
               <span class="watch-autoplay-text">Autoplay</span>
             </label>
 
+            <!-- Loop/repeat toggle (v1.22.0 FR-7, TF): a watch-page-local
+                 preference (localStorage['ft-loop'], NOT the persisted
+                 server db.settings.autoplayNext above) -- watch.js's
+                 setupLoopToggle() reads/writes it through
+                 window.FileTube.player.isLoopEnabled()/setLoop(), and
+                 player.js's own 'ended' listener is what actually replays
+                 the current item. Reuses the autoplay toggle's exact
+                 markup/CSS classes (era tokens) -- no new CSS. -->
+            <label class="watch-autoplay-label" for="watch-loop-check">
+              <span class="watch-autoplay-switch">
+                <input type="checkbox" id="watch-loop-check" aria-label="Loop current video" />
+                <span class="watch-autoplay-track"><span class="watch-autoplay-thumb"></span></span>
+              </span>
+              <span class="watch-autoplay-text">Loop</span>
+            </label>
+
             <button type="button" class="watch-prevnext-btn" id="watch-next-btn" aria-label="Next video" disabled>
               Next <span aria-hidden="true">&rsaquo;</span>
             </button>
@@ -180,7 +196,14 @@
             <div class="uploader-profile">
               <div class="uploader-avatar" id="uploader-avatar-letter">F</div>
               <div>
-                <div class="uploader-name" id="uploader-channel-name">Folder Uploader</div>
+                <!-- v1.22.0 FR-3 (AC23-27): a real <a>, not a <div> -- no
+                     default `href` so, with the module off or no resolvable
+                     identity, it renders as inert plain text (never a dead
+                     link, AC25). `href` is wired by watch.js's
+                     setupSubscribeButton() once the module-enabled probe
+                     resolves; `.textContent` is set by populateMetadata()
+                     exactly as before (unchanged, XSS-safe). -->
+                <a class="uploader-channel-link" id="uploader-channel-name">Folder Uploader</a>
                 <div class="uploader-subs" id="uploader-subs-count">10.5K subscribers</div>
               </div>
             </div>
@@ -332,6 +355,7 @@
         </button>
         <input type="range" id="vol-bar" class="pc-range pc-vol" min="0" max="1" step="0.01" value="1" aria-label="Volume">
         <button type="button" id="fs-btn" class="pc-btn fs-btn" aria-label="Fullscreen">⛶</button>
+        <button type="button" id="pip-btn" class="pc-btn pip-btn" aria-label="Picture in picture">⧉</button>
       </div>
     </div>
   </template>

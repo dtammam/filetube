@@ -1,123 +1,72 @@
-# Software Developer inbox — T2 (v1.21 FR-2: audio/video player overhaul)
+# SDE Task T2 — FR-1: Responsive-controls CSS + text-selection fix + mute-slash nit
 
-Feature: **v1.21.0 "The Polish Release"** (feature_id `v1.21-polish-release`),
-branch `feature/v1.21-polish-release` (off `main` at v1.20.0). This file
-**supersedes any prior-feature content.** This is **Task T2**, **Wave 1** —
-runs in PARALLEL with **T9 only** (README; disjoint file sets). T2 is the longest
-pole. Because T2 edits `public/css/style.css`, and 6 other tasks also edit it,
-**no other code task may run until T2's changes are integrated** — you lead the
-serialized CSS chain (T2 → T3 → T4 → T5 → T6 → T7 → T8). Finish cleanly so the
-coordinator can integrate and start Wave 2 (T3).
+Feature: **v1.22.0 "Player Parity + Roadmap"** — branch `feature/v1.22-player-parity`.
+Exec plan (READ `## Design (FR-1)`, esp. "The `.ff-mobile` class is the single source of truth", and the "Mute '/' slash mis-position nit" note): `docs/exec-plans/active/2026-07-08-v1.22-player-parity.md`.
+Standards: `docs/CONTRIBUTING.md`.
 
-**Review tier: HEAVIEST two-reviewer / adversarial gate this round** (shared-player
-regression risk spans BOTH audio and video and the entire v1.16
-FULL/DOCKED/CLOSED persistent-shell/dock machinery). **Dean's on-device pass —
-especially iOS Safari — is the arbiter** for feel and for any regression outside
-`node:test` (no headless/E2E infra exists per `docs/RELIABILITY.md`).
+**HEAVIEST-gated** (Dean iOS arbiter). Pairs with T1 (player.js). This task is the
+CSS half of FR-1 and touches **ONLY `public/css/style.css`**.
 
-## Environment
+## Contract from T1 (frozen in the design)
+T1 sets `.ff-mobile` on the player host (`#player-wrapper` in the design; if T1
+reports a different host id, use that) from the SAME `isMobileFormFactor()` call
+that toggles the native `controls` attribute. Your CSS is purely REACTIVE to that
+class + the existing `.audio-mode` class. Do NOT add a second "is-mobile" media
+query for bar visibility — the `.ff-mobile` class is the single source of truth.
 
-- **Node 22 toolchain bin** (prepend to PATH before any npm/node command):
-  `/tmp/claude-1000/-home-coder-projects-filetube/139c0e56-b545-4e8e-ba05-f892f6dd6d0d/scratchpad/node-v22.23.1-linux-x64/bin`
-  e.g. `export PATH="/tmp/claude-1000/-home-coder-projects-filetube/139c0e56-b545-4e8e-ba05-f892f6dd6d0d/scratchpad/node-v22.23.1-linux-x64/bin:$PATH"`
-- Use absolute paths (cwd resets between bash calls).
+## Scope — add ONE new section to `style.css`, plus the mute-slash tweak
 
-## Git — DO NOT commit
+Add a `/* === v1.22 FR-1: responsive controls === */` section:
 
-The **coordinator (EM) owns ALL git.** Do NOT `git add`/`commit`/`branch`/
-`stash`/`push`. When done, report exact files changed/created plus full
-`npm run lint` (0 warnings) and `npm test` output under Node 22. Fix any failure
-before reporting done.
+```css
+/* AC6 — press-hold-2x must not select text / raise the iOS callout.
+   Applied to the gesture surfaces, NOT the native control strip. */
+#media-player,
+#audio-bg-art,
+.skip-controls,
+.speed-badge {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
 
-## Read first (you share NO memory with the EM)
+/* AC4 — mobile VIDEO: native controls own the strip; hide the custom bar.
+   :not(.audio-mode) keeps the bar for mobile AUDIO. */
+#player-wrapper.ff-mobile:not(.audio-mode) .player-controls {
+  display: none;
+}
 
-- `docs/exec-plans/active/2026-07-08-v1.21-polish-release.md` — the **## Design**
-  section **"FR-2 — custom blocky audio/video controls (HEAVIEST)"** (names every
-  element id, helper, and behavior) plus the FR-2 scope block and **AC6–AC17**.
-- `docs/CONTRIBUTING.md` (vanilla DOM, no framework/bundler, 2-space, semicolons,
-  single-quotes, `textContent` over `innerHTML`, `node:test`, lint 0, **no new
-  deps**) and `docs/RELIABILITY.md` (rAF loop must be cancelled on pause/close;
-  no new budget impact).
-- Live code (read in full): `public/js/player.js` — the v1.16 persistent player
-  controller: `ensureHost`/`wireHostListeners`, the FULL/DOCKED/CLOSED state
-  machine, `STATE_FULL`, skip controls, hold-to-2x, double-tap, `currentAbsTime`,
-  `startLiveStream`, `pollTranscodeUntilReady`, resume/transcode overlays, Media
-  Session wiring, `updatePositionState`, progress saving. The
-  `<template id="player-host-template">` in all four shells and `#audio-bg-art`/
-  `.audio-mode` + existing control styling in `public/css/style.css`.
+/* AC3 — mobile AUDIO: keep the custom bar, drop volume + mute
+   (hardware buttons make them redundant; matches today's iOS degrade). */
+#player-wrapper.ff-mobile.audio-mode #vol-bar,
+#player-wrapper.ff-mobile.audio-mode #mute-btn {
+  display: none;
+}
+```
+Verify the actual selector names in `style.css` (`.player-controls` / `#player-controls`,
+`#vol-bar`, `#mute-btn`, `#audio-bg-art`, `.skip-controls`, `.speed-badge`) and
+match them exactly. Do NOT modify the v1.21 FR-2 section. Do NOT touch the
+existing `@media (max-width: 768px)` block (it now governs the mobile-audio bar).
 
-## Task — implement THIS ONE task only (FR-2)
+**Folded-in mute-slash nit:** the muted-state diagonal slash is
+`.mute-icon-off::after` (~style.css:2940) — currently `left: 1px; top: 0;
+transform-origin: top left; transform: rotate(45deg)`, which places the slash too
+far left of the speaker glyph's optical center (Dean's report). Shift it right
+and/or re-anchor (`transform-origin`/small `translate`) so the diagonal crosses
+the speaker center — a 1–3 line VALUE tweak, `currentColor` only. Exact pixel
+value is Dean's visual arbiter; make a reasonable centered value and report it.
 
-Follow the Design's FR-2 section exactly. Summary:
+## Constraints
+- **No color tokens touched, no new hardcoded colors** (AC12) — display/`user-select`/
+  transform values only; era-theme token system preserved.
 
-1. **Markup — all FOUR shells' `#player-host-template`** (`public/index.html`,
-   `public/setup.html`, `public/watch.html`, `lib/ytdlp/views/subscriptions.html`;
-   keep them byte-identical): remove the `controls` attribute from
-   `<video id="media-player">`; inside `#player-wrapper` add
-   `<div id="player-controls" class="player-controls">` (play/pause `#pp-btn`,
-   `#time-cur`, `<input type="range" id="seek-bar">`, `#time-dur`, mute `#mute-btn`,
-   `<input type="range" id="vol-bar" min="0" max="1" step="0.01">`, fullscreen
-   `#fs-btn`) and `<div id="art-play-glyph" class="art-play-glyph">`.
-2. **Controller (`public/js/player.js`), all listeners wired ONCE in
-   `wireHostListeners()`** so the bar travels with the host across
-   FULL/DOCKED/CLOSED: play/pause → `updatePlayPauseUI()`; click-`#audio-bg-art`
-   toggles play/pause + flashes glyph **only when `state === STATE_FULL`**
-   (`stopPropagation` there; docked taps bubble to `#player-dock` unchanged);
-   seek `input` = visual scrub only (`--seek-fill` var + `#time-cur`, an
-   `isScrubbing` flag, never touch `currentTime`), `change` = the ONLY commit via
-   pure `seekCommitTarget({duration,ratio,liveMode,liveTotal})`; a `rAF` fill loop
-   while playing (not `timeupdate`), cancelled on pause/close/scrub; live-transcode
-   uses `currentAbsTime()` and `startLiveStream(target)` on a committed seek in
-   `liveMode`; volume via pure `clampVolume(raw)` → `[0,1]|null`, read from
-   `localStorage['ft-volume']` and applied BEFORE playback, persisted on
-   `volumechange`; **iOS**: run `volumeIsSettable(el)` feature-detect once and
-   HIDE `#vol-bar`/`#mute-btn` + skip apply when not settable (degrade silently,
-   never an error); fullscreen retarget via `enterFullscreen()` preferring
-   `mediaPlayer.webkitEnterFullscreen()` (iOS) else `host.requestFullscreen()`
-   (desktop) — update the `f`-key handler, rotate-to-fullscreen path, and `#fs-btn`.
-3. **Styling (`public/css/style.css`)** — add ONE new labeled section
-   `/* === v1.21 FR-2: player controls / audio-mode === */`: fixed-height flex
-   bar pinned to `.player-container` bottom, always visible, `border-radius:0`,
-   beveled inset/outset borders + square range thumbs/segmented fill via
-   `::-webkit-slider-*`/`::-moz-range-*`, all colors from **era CSS vars** (dark
-   mode "just works"), `color-scheme: dark light`. In `.audio-mode` re-enable
-   `pointer-events` on `#audio-bg-art` for the click-to-play surface.
+## Acceptance criteria owned: AC3, AC4, AC6, AC12, mute-slash nit. (Feel = Dean iOS arbiter.)
 
-**PRESERVE (AC12/AC14), all untouched:** inline iOS playback, ±15s skip
-(buttons/double-tap/hold-2x/keyboard), transcode "Preparing…" overlay + polling,
-resume overlay, the full FULL/DOCKED/CLOSED machine (reparent, dock,
-tap-to-expand, `[x]` close, iOS reparent-resume-guard), Media Session
-metadata/state/position, progress saving. Media Session stays as-is; adding
-seek/track action handlers is OPTIONAL (AC13), not required.
+## Gate & reporting
+- **Gate:** HEAVIEST two-reviewer/adversarial + Dean iOS arbiter.
+- Run Node 22 lint before reporting done. **Report:** files changed + the exact
+  mute-slash values you chose (Dean will confirm on-device).
 
-## Tests to add
-
-`node:test` unit coverage for the extracted pure helpers: `clampVolume`
-(in-range, out-of-range clamp, garbage/`NaN`/empty → `null`) and
-`seekCommitTarget` (normal source; live-transcode with `liveMode`/`liveTotal`;
-ratio 0 and 1 boundaries). The `volumeIsSettable` feature-detect is browser-only
-(not unit-tested).
-
-## File-ownership / serialization contract (STRICT — shared tree)
-
-Hard rule: while you are running you are the **ONLY** editor of every file you
-touch (no other concurrent task shares any file with you this wave — only T9 on
-`README.md` runs alongside). Your files: `public/js/player.js`,
-`public/index.html`, `public/setup.html`, `public/watch.html`,
-`lib/ytdlp/views/subscriptions.html`, `public/css/style.css`. You may edit these
-freely (later tasks serialize AFTER you integrate). Do NOT touch
-`public/js/common.js`, `public/js/watch.js`, `public/js/main.js`,
-`public/js/main.js`, or `lib/ytdlp/**` (subscriptions.js/index.js/store.js).
-Keep the `style.css` additions in a clearly labeled `/* v1.21 FR-2 */` block and
-the four shells' `#player-host-template` byte-identical — this makes the
-coordinator's integration and the following serialized CSS edits clean.
-
-## Report back
-
-Files changed (path + one-line each); the control-bar element ids; the
-`clampVolume`/`seekCommitTarget`/`enterFullscreen`/`volumeIsSettable` signatures;
-a short "every v1.16 behavior preserved" checklist (skip, dock, overlays, Media
-Session, progress) and the fullscreen-retarget + art-play-only-in-FULL notes for
-Dean's iOS pass; lint + Node 22 test result; any deviation/fork with a
-recommendation. Flag clearly that this is the HEAVIEST gate and needs Dean's iOS
-on-device arbitration.
+---
+**Toolchain:** Node 22 at `/tmp/claude-1000/-home-coder-projects-filetube/139c0e56-b545-4e8e-ba05-f892f6dd6d0d/scratchpad/node-v22.23.1-linux-x64/bin` — on PATH before `npm`/`node`. Lint: `npm run lint`. Absolute paths (cwd resets between bash calls).
+**Git:** COORDINATOR owns ALL git. Do NOT commit. Report files-changed + lint output only.

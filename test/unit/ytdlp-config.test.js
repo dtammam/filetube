@@ -97,6 +97,7 @@ test('parseYtdlpConfig: never throws regardless of input shape', () => {
     FILETUBE_YTDLP_DOWNLOAD_DIR: false,
     FILETUBE_YTDLP_VERSION: NaN,
     FILETUBE_YTDLP_MAX_VIDEOS: {},
+    FILETUBE_YTDLP_MAX_DURATION_SECONDS: {},
   }];
   for (const input of inputs) {
     assert.doesNotThrow(() => parseYtdlpConfig(input), `should not throw for ${JSON.stringify(input)}`);
@@ -163,6 +164,37 @@ test('parseYtdlpConfig: downloadTimeoutMinutes falls back to 180 on hostile/inva
     const config = parseYtdlpConfig({ FILETUBE_YTDLP_DOWNLOAD_TIMEOUT_MINUTES: bad });
     assert.equal(config.downloadTimeoutMinutes, 180, `${JSON.stringify(bad)} should fall back to the default`);
   }
+});
+
+// ---- FILETUBE_YTDLP_MAX_DURATION_SECONDS: v1.22.0 FR-6 max-duration gate ----
+//
+// Default 7200 (2h); 0 is a distinct, valid value meaning "unbounded"
+// (consider items of any length); any other invalid/hostile input falls back
+// to the default rather than throwing or disabling the module. Mirrors
+// FILETUBE_YTDLP_MAX_VIDEOS's semantics exactly (same shape, different
+// default/env var) -- see lib/ytdlp/args.js's
+// `subMaxDurationSeconds ?? config.maxDurationSeconds` resolution, exercised
+// in test/unit/ytdlp-args.test.js.
+
+test('parseYtdlpConfig: maxDurationSeconds defaults to 7200 (2h) when unset', () => {
+  const config = parseYtdlpConfig({});
+  assert.equal(config.maxDurationSeconds, 7200);
+});
+
+test('parseYtdlpConfig: maxDurationSeconds falls back to the documented default on invalid values', () => {
+  for (const bad of [undefined, null, '', 'abc', '-1', '1.5', 'NaN', {}, 'garbage']) {
+    const config = parseYtdlpConfig({ FILETUBE_YTDLP_MAX_DURATION_SECONDS: bad });
+    assert.equal(config.maxDurationSeconds, 7200, `${JSON.stringify(bad)} should fall back to the default`);
+  }
+});
+
+test('parseYtdlpConfig: maxDurationSeconds accepts a valid non-negative integer override', () => {
+  assert.equal(parseYtdlpConfig({ FILETUBE_YTDLP_MAX_DURATION_SECONDS: '3600' }).maxDurationSeconds, 3600);
+  assert.equal(parseYtdlpConfig({ FILETUBE_YTDLP_MAX_DURATION_SECONDS: '36000' }).maxDurationSeconds, 36000);
+});
+
+test('parseYtdlpConfig: maxDurationSeconds of 0 is valid and means unbounded (not invalid)', () => {
+  assert.equal(parseYtdlpConfig({ FILETUBE_YTDLP_MAX_DURATION_SECONDS: '0' }).maxDurationSeconds, 0);
 });
 
 test('isEnabled: true only for a config with enabled === true', () => {

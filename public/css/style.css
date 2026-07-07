@@ -33,8 +33,8 @@
   --border-color: #e2e2e2;
   --border-dark: #cccccc;
   --header-bg: #ffffff;
-  --btn-bg: #ececec;
-  --btn-hover: #e0e0e0;
+  --btn-bg: #dcdcdc;
+  --btn-hover: #d0d0d0;
   --card-bg: #ffffff;
   --star-gold: #ffcc00;
   --star-gray: #e0e0e0;
@@ -61,8 +61,13 @@
   --border-color: #e2e2e2;
   --border-dark: #cccccc;
   --header-bg: #ffffff;
-  --btn-bg: #ececec;
-  --btn-hover: #e0e0e0;
+  /* v1.22.0 FR-4 (AC28-30): darkened from #ececec -- against --bg-sidebar
+     #f9f9f9 the old value read as near-invisible chrome (contrast ~1.1),
+     making neutral .btn instances (e.g. the "Subscribed" state) look like
+     washed-out grey-on-white. --btn-hover darkened to match, preserving the
+     existing hover-darkens-further relationship. Light mode only. */
+  --btn-bg: #dcdcdc;
+  --btn-hover: #d0d0d0;
   --card-bg: #ffffff;
   --star-gold: #ffcc00;
   --star-gray: #e0e0e0;
@@ -106,8 +111,13 @@
   --border-color: #cccccc;
   --border-dark: #999999;
   --header-bg: #ffffff;
-  --btn-bg: #e4e4e4;
-  --btn-hover: #d8d8d8;
+  /* v1.22.0 FR-4 (AC28-30): darkened from #e4e4e4 -- against --bg-sidebar
+     #f5f5f5 the old value read as near-invisible chrome (contrast ~1.2),
+     making neutral .btn instances (e.g. the "Subscribed" state) look like
+     washed-out grey-on-white. --btn-hover darkened to match. Light mode
+     only. */
+  --btn-bg: #d2d2d2;
+  --btn-hover: #c6c6c6;
   --card-bg: #ffffff;
   --star-gold: #ffcc00;
   --star-gray: #cccccc;
@@ -149,8 +159,13 @@
   --border-color: #d5d5d5;
   --border-dark: #b0b0b0;
   --header-bg: #f5f5f5;
-  --btn-bg: #e3e3e3;
-  --btn-hover: #d6d6d6;
+  /* v1.22.0 FR-4 (AC28-30): darkened from #e3e3e3 -- against --bg-sidebar
+     #f0f0f0 the old value read as near-invisible chrome (contrast ~1.1),
+     making neutral .btn instances (e.g. the "Subscribed" state) look like
+     washed-out grey-on-white; the glossy .btn gradient below is fixed to
+     match. --btn-hover darkened proportionally. Light mode only. */
+  --btn-bg: #d0d0d0;
+  --btn-hover: #c4c4c4;
   --card-bg: #ffffff;
   --star-gold: #ffcc00;
   --star-gray: #d0d0d0;
@@ -192,8 +207,13 @@
   --border-color: #e0e0e0;
   --border-dark: #cccccc;
   --header-bg: #ffffff;
-  --btn-bg: #f5f5f5;
-  --btn-hover: #e8e8e8;
+  /* v1.22.0 FR-4 (AC28-30): darkened from #f5f5f5 -- the worst offender of
+     the four eras: against --bg-sidebar #fafafa the old value read as
+     essentially invisible chrome (contrast ~1.04), making neutral .btn
+     instances (e.g. the "Subscribed" state) look like washed-out
+     grey-on-white. --btn-hover darkened to match. Light mode only. */
+  --btn-bg: #e2e2e2;
+  --btn-hover: #d6d6d6;
   --card-bg: #ffffff;
   --star-gold: #ffc107;
   --star-gray: #e0e0e0;
@@ -218,7 +238,15 @@
    that aren't representable as tokens. */
 [data-theme="2005"] a { text-decoration: underline; }       /* always-underlined links */
 [data-theme="2009"][data-mode="light"] .btn {                /* glossy 2009 button (light) */
-  background-image: linear-gradient(to bottom, #f7f7f7, #dcdcdc);
+  /* v1.22.0 FR-4 (AC28-30): darkened from #f7f7f7/#dcdcdc -- this
+     background-image fully paints over --btn-bg, so the light-mode fix
+     above didn't reach this override; the old light stop (#f7f7f7) was
+     nearly indistinguishable from the near-white page/sidebar behind it,
+     the worst instance of the grey-on-white "Subscribed" button look.
+     Darkened both gradient stops, keeping the same top-lighter/
+     bottom-darker glossy shape. The dark-mode override immediately below
+     is untouched. */
+  background-image: linear-gradient(to bottom, #e0e0e0, #c4c4c4);
 }
 [data-theme="2009"][data-mode="dark"] .btn {                 /* glossy 2009 button (dark) */
   background-image: linear-gradient(to bottom, #34302a, #211d19);
@@ -370,6 +398,13 @@ header {
 
 /* The 2005 era-theme underlines all <a>; an <a class="btn"> is a button, not a link -- keep it clean. */
 [data-theme="2005"] a.btn { text-decoration: none; }
+/* Same specificity fix for the FR-3 creator-name link: [data-theme="2005"] a
+   ((0,1,1)) would otherwise beat the plain .uploader-channel-link class
+   ((0,1,0)) and force an underline even at rest, defeating the hover-only
+   affordance above. Re-add the underline explicitly on :hover so the
+   affordance still works under the 2005 theme. */
+[data-theme="2005"] a.uploader-channel-link { text-decoration: none; }
+[data-theme="2005"] a.uploader-channel-link:hover { text-decoration: underline; }
 
 .btn:hover {
   background-color: var(--btn-hover);
@@ -657,6 +692,44 @@ header {
 
 .card-delete-btn.armed .card-delete-confirm {
   display: inline;
+}
+
+/* v1.22.0 FR-9, T-H: home/library card "save to device" affordance. A
+   SIBLING of `.thumbnail-container` (not a child -- see main.js's card
+   template comment: an `<a>` can't nest inside another `<a>` without
+   breaking navigation semantics, so this button never intercepts the
+   thumbnail's watch-page link), positioned over the thumbnail's
+   TOP-LEFT corner -- opposite `.card-delete-btn` (top-right) so the two
+   overlays never overlap. Mirrors `.card-delete-btn`'s look/positioning
+   exactly (same size/opacity/hover behavior); no confirm step needed since
+   a download is non-destructive. Era tokens only. */
+.card-download-btn {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 6px;
+  border: none;
+  border-radius: var(--radius);
+  background-color: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  cursor: pointer;
+  opacity: 0.85;
+  transition: opacity 0.15s ease, background-color 0.15s ease;
+}
+
+.card-download-btn:hover,
+.card-download-btn:focus-visible {
+  opacity: 1;
+  background-color: var(--yt-red);
+}
+
+.card-download-btn .icon-download {
+  width: 14px;
+  height: 14px;
 }
 
 .video-info {
@@ -1342,6 +1415,22 @@ header {
   font-size: 14px;
   font-weight: bold;
   color: var(--text-primary);
+}
+
+/* v1.22.0 FR-3 support: #uploader-channel-name is now an <a>
+   (public/watch.html) -- mirror the old .uploader-name look and neutralize
+   default browser link styling so it doesn't read as a hyperlink; a
+   discreet hover underline keeps it discoverable as clickable. */
+.uploader-channel-link {
+  font-size: 14px;
+  font-weight: bold;
+  color: var(--text-primary);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.uploader-channel-link:hover {
+  text-decoration: underline;
 }
 
 .uploader-subs {
@@ -2940,7 +3029,9 @@ a.sub-row-channel-link:focus-visible {
 .mute-icon-off::after {
   content: '';
   position: absolute;
-  left: 1px;
+  left: 5px; /* v1.22 FR-1 nit fix: was 1px, sitting over the speaker BODY only;
+                +4px re-centers the diagonal over the glyph's optical center
+                (body + cone), matching Dean's on-device report. */
   top: 0;
   width: 2px;
   height: 17px;
@@ -3036,11 +3127,12 @@ a.sub-row-channel-link:focus-visible {
 
 /* ---- docked mini-player: compact bar (play/pause + seek only) ------------ */
 /* Mirrors the existing `#player-dock .skip-controls, .speed-badge { display:
-   none !important; }` precedent just above -- time/volume/fullscreen are
-   impractical at 160-280px mini-dock width, so only play/pause + a slim seek
-   bar (restoring exactly what the native controls used to offer at this
-   size) stay. The underlying play/seek logic is completely untouched and
-   the full bar reappears immediately once the host expands back to FULL. */
+   none !important; }` precedent just above -- time/volume/fullscreen/PiP
+   (v1.22 FR-8) are impractical at 160-280px mini-dock width, so only
+   play/pause + a slim seek bar (restoring exactly what the native controls
+   used to offer at this size) stay. The underlying play/seek logic is
+   completely untouched and the full bar reappears immediately once the host
+   expands back to FULL. */
 #player-dock .player-controls {
   height: 26px;
   padding: 0 4px;
@@ -3049,7 +3141,8 @@ a.sub-row-channel-link:focus-visible {
 #player-dock .pc-time,
 #player-dock .mute-btn,
 #player-dock .pc-vol,
-#player-dock .fs-btn {
+#player-dock .fs-btn,
+#player-dock .pip-btn {
   display: none;
 }
 #player-dock .pc-btn {
@@ -3078,6 +3171,69 @@ a.sub-row-channel-link:focus-visible {
     width: 36px;
     height: 36px;
   }
+}
+
+/* === v1.22 FR-1: responsive controls =========================================
+   Reacts to `.ff-mobile` (set by player.js's applyControlsMode(), from the SAME
+   isMobileFormFactor() call that toggles the native `controls` attribute on
+   #media-player) and the existing `.audio-mode` class. `.ff-mobile` is the
+   single source of truth for "is this mobile" in CSS -- no second/divergent
+   mobile condition is introduced here. Desktop (both media types) and mobile
+   audio (minus volume) stay byte-identical to v1.21: none of these rules match
+   without `.ff-mobile`, and the mobile-audio rule below only ever hides
+   #vol-bar/#mute-btn, never anything else in the v1.21 FR-2 section above. */
+
+/* AC6 -- press-hold-2x must not select text / raise the iOS callout. Applied
+   to the gesture surfaces wireSkipHoldGestures() binds to (player.js), NOT the
+   native control strip -- user-select/touch-callout never affect tap
+   handling, so native-control tappability (AC4/AC5) is unaffected. */
+#media-player,
+#audio-bg-art,
+.skip-controls,
+.speed-badge {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* AC4 -- mobile VIDEO: native controls own the strip; hide the custom bar.
+   :not(.audio-mode) keeps the bar for mobile AUDIO. */
+#player-wrapper.ff-mobile:not(.audio-mode) .player-controls {
+  display: none;
+}
+
+/* AC9 correction -- while DOCKED the native strip is off (dock isn't FULL), so the
+   custom compact bar (play/pause + slim seek) must return for mobile video too, exactly
+   as it does for mobile audio and desktop. Re-assert over the FR-1 hide (1,3,0) via the
+   #player-dock ancestor (2,3,0). The existing `#player-dock .pc-time/.mute-btn/.pc-vol/
+   .fs-btn/.pip-btn { display:none }` rule still trims it to just play/pause + seek. */
+#player-dock #player-wrapper.ff-mobile:not(.audio-mode) .player-controls {
+  display: flex;
+}
+
+/* AC3/AC11 -- mobile AUDIO: keep the custom bar, drop volume (hardware
+   volume buttons make #vol-bar/#mute-btn redundant on mobile -- mirrors
+   initVolume()'s existing iOS volumeIsSettable degrade, now deliberate for
+   ALL mobile audio, not just iOS). Play/pause, seek, and #fs-btn remain. */
+#player-wrapper.ff-mobile.audio-mode #vol-bar,
+#player-wrapper.ff-mobile.audio-mode #mute-btn {
+  display: none;
+}
+
+/* === v1.22 FR-8: native Picture-in-Picture button ============================
+   `#pip-btn` sits on the custom bar alongside `#fs-btn` (same `.pc-btn` sizing/
+   theming -- no new color tokens needed). `document.pictureInPictureEnabled`
+   feature-detection (player.js's wireHostListeners()) hides it entirely where
+   unsupported, so this rule only ever needs to cover the ONE case CSS alone
+   can't feature-detect: hiding it for AUDIO (no PiP concept for an audio-only
+   element) -- independent of `.ff-mobile`, since PiP is available on desktop
+   (custom bar always active there) and mobile audio (custom bar kept, AC3)
+   alike, wherever the custom bar itself is the active control surface. */
+.pip-btn {
+  font-size: 13px;
+}
+#player-wrapper.audio-mode .pip-btn {
+  display: none;
 }
 
 /* === v1.21 FR-3: subscriptions list / settings sheet ======================
@@ -3778,4 +3934,20 @@ a.sub-row-channel-link:focus-visible {
   .watch-theater-btn {
     display: none;
   }
+}
+
+/* === v1.22 FR-5: desktop-sidebar channel pins ===============================
+   TC. `#sidebar-pinned-section` (public/js/common.js's renderPinnedSidebar)
+   is inserted as a SIBLING of, never a child of, `#sidebar-folders-list` --
+   see that function's comment for why. Mirrors the v1.21 FR-5
+   `.playlists-pinned-section` rule above (line ~3400) exactly: a top border +
+   spacing visually separates the pinned group from the folders list above
+   it, era tokens only, no hardcoded colors. Reuses the existing
+   `.sidebar-section-title`/`.sidebar-item`/`.icon-star` classes verbatim for
+   its heading/links/glyph, so no new link/heading/icon styling is needed
+   here. */
+#sidebar-pinned-section {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-color);
 }

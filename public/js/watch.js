@@ -53,11 +53,26 @@ function theaterModeStorageValue(isActive) {
   return isActive ? '1' : '0';
 }
 
+// resolveUploaderLinkHref (v1.22.0 FR-3, T-D, AC23-27): the creator-name
+// `<a>`'s href decision. Coordinator decision -- the GENERAL `/subscriptions`
+// fallback link only this round (no per-channel deep-link): when the
+// yt-dlp module is enabled, the link routes to `/subscriptions` (the
+// shell's existing global anchor click handler -- common.js's
+// `handleDocumentClick`/`navigate()` -- intercepts it exactly like today's
+// `[data-nav="subscriptions"]` nav link, so no new routing code is needed
+// here). When the module is disabled (or the probe failed), `null` is
+// returned so the caller leaves the `<a>`'s `href` unset -- it renders as
+// inert plain text, never a dead/broken link (AC25).
+function resolveUploaderLinkHref({ moduleEnabled }) {
+  return moduleEnabled ? '/subscriptions' : null;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     nextTheaterState,
     isTheaterModeActive,
     theaterModeStorageValue,
+    resolveUploaderLinkHref,
   };
 }
 
@@ -149,11 +164,19 @@ if (typeof module !== 'undefined' && module.exports) {
     // FR-4a (v1.17.0, T3): visible autoplay toggle -- see setupAutoplayToggle() below.
     const autoplayCheck = root.querySelector('#watch-autoplay-check');
 
+    // v1.22.0 FR-7 (TF): visible loop/repeat toggle -- see setupLoopToggle() below.
+    const loopCheck = root.querySelector('#watch-loop-check');
+
     // FR-9 (v1.21.0, T8): theatre-mode toggle -- see setupTheatreToggle()
     // below. Wired synchronously here (not inside initWatch()'s async flow)
     // since it needs no network data and should be applied immediately, per
     // the design's "applied on watch init()."
     setupTheatreToggle();
+
+    // v1.22.0 FR-7 (TF): loop/repeat toggle -- see setupLoopToggle() below.
+    // Also wired synchronously (needs only localStorage, no network data),
+    // mirroring setupTheatreToggle()'s placement above.
+    setupLoopToggle();
 
     // #sidebar-folders-list lives in the PERSISTENT shell (outside
     // #view-root) -- wiring it through this view's own AbortController is
@@ -163,6 +186,20 @@ if (typeof module !== 'undefined' && module.exports) {
     // no longer touches them at all.
     const sidebarFoldersList = document.getElementById('sidebar-folders-list');
     const relatedContainer = root.querySelector('#related-files-container');
+
+    // v1.22.0 FR-5 (AC32-AC38): desktop-sidebar channel pins -- a SEPARATE
+    // fetch against the module's own gated pin store, independent of
+    // initWatch()'s own folder-list fetch/render below: renderPinnedSidebar
+    // inserts `#sidebar-pinned-section` as a SIBLING of, never a child of,
+    // `#sidebar-folders-list`, so it is unaffected regardless of fetch/
+    // render ordering between the two. A 404 (module disabled) resolves to
+    // `[]` (no pins rendered), preserving the disabled-module no-op
+    // guarantee -- this never logs/throws on a 404. Read-only: never writes
+    // db.folders/folderSettings.
+    fetch('/api/subscriptions/pins')
+      .then((r) => (r.ok ? r.json() : []))
+      .catch(() => [])
+      .then((pins) => renderPinnedSidebar(pins));
 
     // Parse media ID
     const urlParams = new URLSearchParams(window.location.search);
@@ -551,6 +588,28 @@ if (typeof module !== 'undefined' && module.exports) {
       }, { signal });
     }
 
+    // v1.22.0 FR-7 (TF): the "Loop" toggle -- mirrors setupAutoplayToggle()'s
+    // shape (read on load, write on change) but is a watch-page-LOCAL
+    // preference persisted in `localStorage['ft-loop']` (coordinator
+    // decision -- like theatre mode, NOT a cross-device `db.settings`
+    // preference like `autoplayNext`), so there's no `/api/settings`
+    // fetch/POST here at all. The actual read/write goes through
+    // `window.FileTube.player.isLoopEnabled()`/`setLoop()` (player.js) --
+    // that controller is the one that ACTS on the setting in its 'ended'
+    // listener, so it owns the storage key; this just keeps the visible
+    // checkbox in sync with it. State-independent of FULL/DOCKED (AC53):
+    // the setting itself lives in localStorage and is read fresh by
+    // player.js on every 'ended', regardless of which view (if any) is
+    // currently mounted.
+    function setupLoopToggle() {
+      if (!loopCheck) return;
+      const player = window.FileTube && window.FileTube.player;
+      loopCheck.checked = !!(player && player.isLoopEnabled());
+      loopCheck.addEventListener('change', () => {
+        if (player) player.setLoop(loopCheck.checked);
+      }, { signal });
+    }
+
     // FR-1/FR-3 (v1.20.0, T3): the watch-page Subscribe toggle. Lives entirely
     // in this closure -- `currentSubState`/`defaultMaxVideosForModal`/
     // `subscribeModalState` are mutable, private to this view instance, and
@@ -645,9 +704,10 @@ if (typeof module !== 'undefined' && module.exports) {
 
     async function setupSubscribeButton() {
       if (!subscribeBtn) return;
+      let moduleEnabled = false;
       try {
         const healthRes = await fetch('/api/subscriptions/health');
-        const moduleEnabled = healthRes.ok;
+        moduleEnabled = healthRes.ok;
         let subs = [];
         if (moduleEnabled) {
           const healthData = await healthRes.json().catch(() => ({}));
@@ -660,7 +720,17 @@ if (typeof module !== 'undefined' && module.exports) {
         currentSubState = decideSubscribeButtonState(mediaData, subs, moduleEnabled);
       } catch (e) {
         console.error('Error resolving subscribe button state:', e);
+        moduleEnabled = false;
         currentSubState = { visible: false, subscribed: false, subId: null, identity: null };
+      }
+
+      // v1.22.0 FR-3 (AC23-27): wire the creator-name link's href off the
+      // SAME moduleEnabled probe above -- no extra fetch. General
+      // /subscriptions fallback only (coordinator decision, no deep-link
+      // this round); left unset (inert plain text) when disabled/errored.
+      if (uploaderChannelName) {
+        const uploaderLinkHref = resolveUploaderLinkHref({ moduleEnabled });
+        if (uploaderLinkHref) uploaderChannelName.href = uploaderLinkHref;
       }
 
       if (!currentSubState.visible) {

@@ -1617,6 +1617,39 @@ async function runScanDirectories() {
           }
         }
       }
+
+      // v1.22.0 FR-2: retroactive, folder-based backfill -- the sibling to
+      // the freshlyScannedIds-scoped bridge above, but deliberately NOT
+      // scoped to freshlyScannedIds: an already-indexed item (the
+      // reusable/legacyVideoCodecBackfillOnly fast paths above) that is
+      // STILL missing channel identity -- a pre-v1.20 download indexed long
+      // before capture existed, or one the AC20 periodic-scan race left
+      // un-bridged (freshlyScannedIds with no matching downloadMeta entry
+      // yet) -- gets a second chance HERE, on every scan, by inferring
+      // identity from its own download FOLDER instead of the consumed
+      // per-video downloadMeta map. Never overwrites an item that already
+      // has channelUrl (AC17, NEVER-OVERWRITE guard) -- only a genuine gap
+      // is filled. Scoped to ytdlpDownloadRoots exactly like the bridge
+      // above (matchRootFolder, same semantics) -- a non-yt-dlp library file
+      // is NEVER fed the matcher, no matter what folder it happens to sit
+      // in. Because this runs unconditionally every scan for every
+      // identity-less yt-dlp item, it also heals the AC20 race itself: a
+      // file the periodic auto-scan indexed before its downloadMeta was
+      // written simply picks up its identity from its own folder on the
+      // very next scan.
+      if (!item.channelUrl && matchRootFolder(item.filePath, ytdlpDownloadRoots)) {
+        const backfilled = ytdlp.backfillChannelIdentityFromFolder(fresh, item, ytdlpConfig);
+        if (backfilled) {
+          item.channelUrl = backfilled.channelUrl;
+          // AC80: writing channelName here is what makes the real creator
+          // name (not the generic "Downloads"/folder label) appear on the
+          // watch page + cards -- resolveChannelName (common.js) already
+          // ranks a captured item.channelName first; no client change needed.
+          if (backfilled.channelName) item.channelName = backfilled.channelName;
+          if (backfilled.channelId) item.channelId = backfilled.channelId;
+          dbChanged = true;
+        }
+      }
     }
 
     if (!dbChanged) return false;
