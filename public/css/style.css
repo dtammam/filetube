@@ -1366,6 +1366,16 @@ header {
   font-size: 11px;
   color: var(--text-secondary);
   margin-left: 6px;
+  /* v1.22.2 FR-3: without wrap protection, "N / 5" (watch.js's
+     renderStarRating()) wraps to a second line under a width squeeze in the
+     `.watch-actions` row. `white-space: nowrap` keeps the count atomic;
+     `flex-shrink: 0` (this is a flex child of `.star-rating`) stops it from
+     being compressed instead of the stars shrinking around it. Scoped to
+     this class only -- the home-card `.card-rating` glyph variant
+     (main.js, star glyphs not "N / 5" text) is a separate class/selector
+     and is unaffected. */
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 /* Deterministic 3–5 star rating shown on each media card in the grid/list.
@@ -3189,7 +3199,9 @@ a.sub-row-channel-link:focus-visible {
    mobile VIDEO is no longer special-cased with a hidden custom bar: the
    native `controls` attribute is retired in player.js, so mobile video now
    renders through this SAME custom bar as mobile audio and desktop -- only
-   volume (all mobile) and #fs-btn (mobile audio only) are hidden below.
+   volume (all mobile) is hidden below; as of v1.22.2 FR-1, `#fs-btn` is a
+   real working affordance for mobile audio too (see the "expanded
+   now-playing" overlay section below) and is no longer hidden.
    Desktop (both media types) stays byte-identical to v1.21/v1.22. */
 
 /* AC6 -- press-hold-2x must not select text / raise the iOS callout. Applied
@@ -3223,13 +3235,79 @@ a.sub-row-channel-link:focus-visible {
   display: none;
 }
 
-/* v1.22.1 FR-2 -- mobile AUDIO only: #fs-btn is a dead tap there (no
-   fullscreen concept for an audio-only element on iOS --
-   webkitEnterFullscreen() no-ops). It stays visible for mobile VIDEO
-   (works -- a real user gesture into native iOS fullscreen) and for
-   desktop (both media types). */
-#player-wrapper.ff-mobile.audio-mode #fs-btn {
-  display: none;
+/* v1.22.1 FR-2's mobile-AUDIO "#fs-btn is a dead tap there" hide rule
+   (`#player-wrapper.ff-mobile.audio-mode #fs-btn { display: none; }`) is
+   RETIRED in v1.22.2 FR-1: `#fs-btn`'s click handler now branches on
+   `.audio-mode` (player.js's resolveFsButtonAction()) to a CSS expand
+   toggle instead of the dead `enterFullscreen()` call, so the button is a
+   real, working affordance for mobile audio again -- it must stay visible
+   there. See the v1.22.2 FR-1 overlay rule below. */
+
+/* === v1.22.2 FR-1: audio full-viewport "expanded now-playing" overlay ======
+   Toggled by player.js's toggleAudioExpand()/exitAudioExpand() (driven from
+   `#fs-btn` when `.audio-mode` is active, FULL-only) via a plain class swap
+   on the persistent `#player-wrapper` host -- never the browser Fullscreen
+   API (iPhone Safari refuses requestFullscreen()/webkitEnterFullscreen() on
+   a non-video element, which is exactly why v1.22.1 hid this button for
+   mobile audio in the first place). Scoped to the compound
+   `.audio-mode.audio-expanded` selector (the frozen T1<->T2 contract) so it
+   can only ever engage for audio in FULL: T1 force-clears `.audio-expanded`
+   in teardownMediaState()/dock()/close(), so a DOCKED or video
+   `#player-wrapper` is never affected.
+   Once `#player-wrapper` (== `.player-container`, same node) goes
+   `position: fixed; inset: 0`, its two existing absolutely-positioned
+   children need no new geometry to "fill the screen": `#audio-bg-art` is
+   already `inset: 0; background-size: cover` and `.player-controls` is
+   already `position: absolute; left/right: 0; bottom: 0` -- both simply
+   grow to the new viewport-sized containing block, giving the "big art +
+   control bar pinned to the bottom" full-screen now-playing read. The
+   existing mobile `@media (max-width: 768px)` rules above (`.player-controls`
+   44px height, `.pc-btn` 44x44px) are unscoped to `.audio-expanded`, so the
+   >=44px touch-target floor is preserved here too.
+   `background-color: var(--bg-color)` (the same page-
+   background token `body`/`.modal-content`/etc. already use) replaces
+   `.player-container`'s hardcoded `#000` video-letterbox background with a
+   themed solid surface -- era tokens only, no hardcoded color.
+   `max-height: none` overrides the pre-existing mobile-portrait
+   `.player-container { max-height: 45vh }` rule above (~2894-2898): that
+   rule targets `.player-container`, the SAME node as `#player-wrapper`
+   (confirmed no other `max-height`/`height`/`min-height` rule anywhere in
+   this file is scoped to `.player-container`/`#player-wrapper`), and without
+   this override the 45vh cap fights `inset: 0`'s implied full-viewport
+   height -- on an iPhone in portrait the "fullscreen" overlay would only
+   ever fill the TOP 45% of the screen instead of the whole viewport.
+   z-index: 1100 -- high enough to sit above the app chrome it must fully
+   cover while expanded (site header 1000, `#player-dock` 950/940, the
+   mobile `.bottom-nav` 900) but deliberately BELOW every modal/toast tier
+   (`.modal-backdrop` 2000, `.toast` 2200, `.oneoff-modal-backdrop` 2100,
+   `.hard-delete-modal-backdrop` 2250) so an async toast or modal firing
+   while the audio view is expanded still renders on top and stays visible,
+   rather than being buried under the overlay. */
+#player-wrapper.audio-mode.audio-expanded {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  aspect-ratio: auto;
+  max-height: none;
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  background-color: var(--bg-color);
+}
+
+/* The control bar (and `#fs-btn`, the exit affordance) is `position:
+   absolute; bottom: 0` (see `.player-controls` above); once the wrapper
+   goes `position: fixed; inset: 0` that bottom edge IS the true viewport
+   edge, which on an iPhone can sit under the home-indicator safe area.
+   `bottom: env(safe-area-inset-bottom, 0px)` lifts the whole bar clear of
+   it -- chosen over `padding-bottom` because the bar is absolutely
+   positioned via `bottom: 0`, so only shifting that offset actually moves
+   it; padding would just add dead space below the (still bottom-pinned)
+   bar instead. Scoped to the compound `.audio-mode.audio-expanded
+   .player-controls` selector so ONLY the expanded overlay's bar is
+   affected -- the normal in-slot and docked bars are untouched. */
+#player-wrapper.audio-mode.audio-expanded .player-controls {
+  bottom: env(safe-area-inset-bottom, 0px);
 }
 
 /* === v1.22 FR-8: native Picture-in-Picture button ============================
