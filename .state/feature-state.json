@@ -1,302 +1,68 @@
 {
-  "feature_id": "v1.22-player-parity",
-  "feature_name": "v1.22.0 \"Player Parity + Roadmap\": TOP-PRIORITY mobile-player regression fix (native controls restored on mobile VIDEO, v1.21 custom bar kept on desktop + mobile audio, old gesture layer restored with a text-selection fix); retroactive Subscribe-button backfill from download-folder identity; creator-name link to /subscriptions; era-theme light-mode contrast audit; desktop-sidebar channel pins (v1.21 FR-5 follow-up); configurable max-duration download gate (default 2h); loop/repeat toggle; desktop cross-tab playback + native Picture-in-Picture; card-level download-to-device; watch-page scroll-jump re-verification",
+  "feature_id": "v1.22.1-mobile-player-fixes",
+  "feature_name": "v1.22.1 mobile-player follow-up: targeted bug-fix round on the v1.22.0 FR-1 responsive player. FIVE grounded on-device bugs -- (1) mobile AUDIO missing playback-speed/hold-2x + non-functional fullscreen button; (2) mobile VIDEO shows NO visible controls in FULL [CRITICAL live regression -- neither the hidden custom bar nor the native strip appears, only the double-tap 15s skip works]; (3) rotate-to-landscape does not enter fullscreen (audio + video); (4) desktop custom bar has NO persistent playback-speed control (audio + video); (5) desktop click-on-video does not toggle play/pause. Unifying theme across bugs 1 + 4: playback speed is not a first-class control on the custom bar anywhere. Dean directive: keep this round SUPER quick -- smallest correct fixes over any refactor, minimize tasks/waves, heavy gate ONLY where genuinely regression-prone. Almost all changes confined to public/js/player.js + public/css/style.css (+ maybe the four shells for a speed button).",
   "stage": "done",
-  "created_at": "2026-07-08",
-  "updated_at": "2026-07-08",
-  "target_release": "v1.22.0",
-  "branch": "feature/v1.22-player-parity (off main, at v1.21.0)",
-  "base": "main (v1.21.0). Prior shipped records live in docs/exec-plans/completed/ (most recently v1.21-polish-release).",
-  "process_plan": "Discovery completed by product-manager, grounded directly in ROADMAP.md's v1.22 candidate list (every FR below already listed there -- confirms no scope creep), docs/ui-research-2026-07.md, the completed 2026-07-06-v1.16-watch-experience.md (persistent-player/dock architecture FR-1 must not break) and 2026-07-08-v1.21-polish-release.md (custom control-bar FR-1 partially reverses on mobile video) exec plans, and the live code (public/js/player.js in full, public/watch.html/index.html/setup.html/lib/ytdlp/views/subscriptions.html's #player-host-template, public/css/style.css's player/control-bar/theme-token sections, server.js's scan merge + freshlyScannedIds channel-identity bridge, lib/ytdlp/args.js/index.js/store.js/url.js, public/js/common.js/main.js/watch.js/setup.js). Ten FRs, each grounded with a specific code-reading finding (see the exec plan's Decision log): FR-1's root cause (v1.21 FR-2 removed native `controls` app-wide including mobile video, where it regresses fullscreen/speed/download/AirPlay/PiP + causes a text-selection glitch during hold-2x -- no `user-select`/`-webkit-touch-callout` exists anywhere on the player surface); FR-2's root cause (channel-identity bridging in server.js only ever runs on a file's FIRST scan via `freshlyScannedIds` -- an already-indexed item is never revisited, explaining both the pre-v1.20 gap and a suspected periodic-auto-scan race for the subscription-path gap); FR-5's scope (THREE independently duplicated `renderSidebarFolders` implementations in main.js/watch.js/setup.js, since `#sidebar-folders-list` lives outside `#view-root` in the persistent shell); FR-6's pattern to mirror exactly (`DEFAULT_MAX_VIDEOS`/`validateMaxVideos`/`effectiveMaxVideos` in config.js/store.js/args.js); FR-4's finding (every Subscribe-adjacent CSS surface is already token-driven, no hardcoded colors -- this is a token-VALUE audit, not a missing-token bug); FR-10's finding (the v1.17.0 fix -- `--mobile-header-h`/`--mobile-bottom-nav-h` -- is confirmed still in place, zero `position:sticky` anywhere in style.css -- this is a re-verification, not presumed-still-broken work). Six minor forks resolved non-blocking (see product_forks_for_dean); no genuinely blocking fork surfaced. Review tiers: HEAVIEST two-reviewer/adversarial gate for FR-1 (persistent-player regression risk, Dean iOS on-device arbiter); two-reviewer gate for FR-2 (data + spawn-guard-adjacent), FR-5 (folders/config invariant), FR-6 (yt-dlp args/spawn); LIGHT-TO-MEDIUM for FR-8; LIGHT single-QA for FR-3, FR-4, FR-7, FR-9, FR-10 (FR-4 has Dean's on-device contrast pass as arbiter). FR-1 is flagged independently shippable first for fast regression relief (no file-overlap dependency on the rest of the round except FR-8's later PiP-button touch on the same #player-controls bar).",
+  "created_at": "2026-07-07",
+  "updated_at": "2026-07-07",
+  "target_release": "v1.22.1",
+  "branch": "feature/v1.22.1-mobile-player-fixes (off main, at v1.22.0)",
+  "base": "main (v1.22.0). Prior shipped record: docs/exec-plans/completed/ v1.22.0 'Player Parity + Roadmap' (the round that introduced the FR-1 responsive-controls split these four bugs regress/expose).",
+  "scope_summary": "FOUR bugs from Dean's iOS on-device test of v1.22.0, driven as one lean round. Resist scope creep beyond these four. Coordinator owns ALL git; SDEs report files-changed + Node 22 test/lint output and DO NOT commit. Node 22 toolchain at /tmp/claude-1000/-home-coder-projects-filetube/139c0e56-b545-4e8e-ba05-f892f6dd6d0d/scratchpad/node-v22.23.1-linux-x64/bin (prepend to PATH). Tests npm test, lint npm run lint (baseline 0 errors, 8 pre-existing common.js warnings). No headless/E2E -- Dean's iOS on-device pass is the documented arbiter (docs/RELIABILITY.md).",
+  "grounded_diagnosis": {
+    "bug1_mobile_audio": "Design per v1.22.0 FR-1: mobile AUDIO keeps the v1.21 custom bar (minus #vol-bar/#mute-btn, hidden by style.css:3218-3220). #fs-btn REMAINS on the custom bar for audio -> Dean taps it, it routes through enterFullscreen() (player.js:1395) which on iOS calls mediaPlayer.webkitEnterFullscreen(); for an AUDIO item there is no video surface so iOS no-ops/refuses -> 'fullscreen button doesn't work'. Fix: either remove #fs-btn for mobile audio (audio has no fullscreen concept -- matches AC11's own intent) or make it meaningful (fullscreen the cover-art) -- PM/PE decide. hold-2x is wired on #audio-bg-art (player.js:1671 wireSkipHoldGestures(audioBgArt,...)) and guarded state!==STATE_FULL; confirm during Design why it does not engage on device (candidate: gesture/tap classification, or the pointer-events swap in .audio-mode). No persistent speed affordance exists on the custom bar at all -> UNIFIES with bug 4.",
+    "bug2_mobile_video_CRITICAL": "LEADING HYPOTHESIS (PE must confirm root cause precisely in Design before designing the fix). resolveControlsMode(currentData.type,'video',mobile) returns 'native' and applyControlsMode() sets the native `controls` attribute only while state===STATE_FULL (player.js:520-530), while style.css:3201 hides the custom bar for #player-wrapper.ff-mobile:not(.audio-mode). So on mobile VIDEO in FULL the custom bar is hidden AND the `controls` attribute is present -- yet Dean sees NEITHER. Ruled out: no ::-webkit-media-controls{display:none} suppression exists in style.css (grepped); currentData.type is exactly 'video' for video so the string check is correct; if isMobileFormFactor() returned FALSE the custom bar would SHOW (contradicts 'no controls'), so .ff-mobile IS being set. Strongest remaining root cause: FileTube's own gesture layer (wireSkipHoldGestures on #media-player, player.js:1670, plus the .skip-controls overlay) SWALLOWS the single taps that iOS Safari needs to RE-REVEAL its auto-hidden inline native controls -- iOS inline `<video controls playsinline>` controls auto-hide, and only a tap ON the video re-shows them, but the gesture handler intercepts/handles that tap (single-tap->play/pause, double-tap->skip, hold->2x) so the native strip, once auto-hidden, never returns. This EXACTLY matches 'no visible controls -- if i tap forward/back i can get the 15s skip but that's it' (the .skip-controls overlay still receives the double-tap). Secondary candidate to check: a transparent overlay (.skip-controls) covering the native strip region. The v1.22.0 FR-1 design assumption that 'gestures already coexist with a native control strip the way they did pre-v1.21' appears WRONG for iOS -- PE must root-cause on the actual iOS behavior and pick the approach that ACTUALLY WORKS on iOS (native-with-reveal-tap-passthrough, OR a properly touch-sized custom bar for mobile video too -- whatever gives play/pause + seek + fullscreen + speed on iOS).",
+    "bug3_rotate_fullscreen": "An orientationchange->fullscreen listener ALREADY EXISTS (player.js:1685-1711): matchMedia('(orientation: landscape)') change -> enterFullscreen() when state===STATE_FULL and not already fullscreen. It routes through enterFullscreen() -> mediaPlayer.webkitEnterFullscreen() on iOS. LEADING ROOT CAUSE: iOS Safari refuses programmatic fullscreen (webkitEnterFullscreen / requestFullscreen) that is NOT initiated by a direct user gesture; an orientationchange event does NOT count as a user activation on iPhone, so the call is silently refused. This is a genuine iOS PLATFORM LIMITATION -- flag as a SCOPE CALL for Dean: on iPhone Safari, YouTube-app-style auto-rotate-to-fullscreen of an inline element may simply not be permitted; the native fullscreen button (bug-2 fix) is the reliable path. For AUDIO there is no fullscreen concept at all. PE to confirm and scope honestly.",
+    "bug4_desktop_speed": "The v1.21 custom #player-controls bar replaced native <audio>/<video> controls but never re-exposed a playback-speed affordance, so DESKTOP lost speed control for BOTH audio and video (native context-menu/speed menu gone with the custom bar). Fix (unifies with bug 1): add a PERSISTENT playback-speed control to the custom bar -- visible & tappable on desktop AND the mobile custom bar, touch-target >=44px on mobile -- cycling 1x/1.25/1.5/1.75/2x (or a small menu; PE's call). A .speed-badge element ALREADY EXISTS for the hold-2x gesture (style.css:1115, player.js speedBadge) -- PE must decide whether the persistent control reuses/extends .speed-badge or is a new #speed-btn, so the two do NOT conflict. On mobile VIDEO: if bug-2's fix routes to native controls, iOS native already provides a speed menu -> confirm whether our speed control is needed there or would double up; do NOT double up. PiP on desktop video is GOOD -- leave it untouched.",
+    "bug5_desktop_click_to_pause": "On DESKTOP, clicking the video surface does NOT toggle play/pause. Grounded: #audio-bg-art has a click->toggle listener (player.js:1646, FULL-only, debounced via scheduleArtSingleTap) but #media-player (VIDEO) has wireSkipHoldGestures(mediaPlayer) wired with NO onSingleTap (player.js:1670), so a single click/tap on the video does nothing. Fix: add YouTube-style click-on-video->toggle-play/pause for DESKTOP video. Must (a) isolate from the #player-controls bar and .skip-controls so a control-click or a double-tap-skip does not ALSO toggle play (reuse the existing scheduleArtSingleTap/cancelPendingArtTap debounce the audio path already uses to avoid the double-click flicker vs dblclick-skip); (b) NOT break mobile single-tap semantics (on mobile video, if bug-2 routes to native controls, native owns the tap; the desktop click-to-pause must be scoped so it does not conflict with the mobile gesture path). Small additive change on the video interaction surface -- PE confirms exact scoping."
+  },
+  "unification_note": "Bugs 1 (mobile-audio speed/hold-2x) and 4 (desktop speed) share ONE root theme: playback speed is not a first-class control on the custom bar anywhere. Design should add ONE persistent speed control (desktop + mobile custom bar, audio + video) and keep the mobile hold-2x gesture as the quick-access shortcut. Do NOT create two divergent speed mechanisms.",
+  "proposed_fr_shape_for_pm": "Recommend the PM structure the exec plan as 5 grounded FRs (lean, one bug each): FR-1 = bug 2 (mobile-video controls, CRITICAL, HEAVIEST gate + Dean iOS arbiter, root-cause FIRST); FR-2 = bug 1 (mobile-audio fs-btn fix/removal + hold-2x); FR-3 = bug 3 (rotate-to-fullscreen audio+video, with an explicit iOS platform-limit scope call for Dean -- may be a no-code/honest-scope outcome); FR-4 = bug 4 unified with bug-1 speed (ONE persistent playback-speed control on the custom bar, desktop+mobile, audio+video, reconciled with the existing .speed-badge); FR-5 = bug 5 (desktop click-video-to-toggle-play/pause, reusing the audio path's scheduleArtSingleTap debounce). All five almost certainly touch only public/js/player.js + public/css/style.css (+ the four byte-identical shells IF FR-4 adds a #speed-btn to #player-controls). KEEP IT MINIMAL per Dean: smallest correct fix per bug, no refactor of the FR-1 architecture beyond each root cause.",
   "hard_constraints": [
-    "Additive / no regressions: FR-1 must preserve every other v1.16/v1.21 player feature (dock FULL/DOCKED/CLOSED, prev/next, autoplay-next, transcode + resume overlays, Media Session, progress saving, audio-bg-art) across the new native-mobile-video/custom-everywhere-else split -- the persistent <video id=\"media-player\"> element and its one-time wireHostListeners() model are unchanged in kind; only controls-attribute presence + #player-controls visibility become conditional.",
-    "Desktop and mobile-audio custom-bar behavior must be byte-identical to v1.21 -- no regression to what Dean already likes. Only mobile video changes.",
-    "Disabled-yt-dlp-module byte-identical guarantee preserved for FR-2/FR-3/FR-5/FR-6: with FILETUBE_YTDLP_ENABLED off, no new route/UI/DOM is reachable; /subscriptions still 404s server-side exactly as today.",
-    "db.folders/folderSettings synthetic-root invariant unchanged (FR-5): a pin is NEVER written into db.folders or folderSettings; the pin store is never scanned/pruned as a folder. FR-5's sidebar rendering is a read-only consumer of the existing v1.21 pin store/routes -- no new write surface.",
-    "No existing security guard weakened: FR-2's inferred channelUrl passes the SAME, unmodified validateChannelUrl before use (defense-in-depth re-validation, not blind trust one hop removed); FR-6's --match-filter value is always a re-validated bounded integer interpolated into a fixed-shape string, never raw user text, passed via the existing spawn argv array (never a shell).",
-    "Follow docs/CONTRIBUTING.md: vanilla DOM (no framework/bundler), CommonJS server, 2-space/semicolons/single-quotes, textContent over innerHTML for new dynamic strings (FR-3's channel link, FR-5's sidebar pin labels, FR-9's card button), node:test for new/regression tests, lint 0 warnings, NO new runtime dependencies.",
-    "Preserve the era-theme system (CSS custom properties) for all new/changed CSS: FR-1's mobile-video area + gesture-surface user-select fix, FR-4's contrast fixes (may change token VALUES per era/light combo, never introduce a hardcoded color bypassing the token system), FR-5's sidebar pins, FR-8's PiP button.",
-    "Node.js 22 LTS (engines >=20); no headless-browser/E2E infrastructure exists (docs/RELIABILITY.md) -- Dean's on-device pass (especially iOS Safari) is the documented arbiter for FR-1 (mobile feel, native-vs-custom split, gesture layer), FR-4 (contrast), and FR-8 (PiP feel) -- not a testing gap.",
-    "FR-1's and FR-8(a)'s mobile-detection signal must be the SAME named, pure, reused helper -- never two divergent 'is this mobile' implementations across the round."
+    "SMALL, surgical scope: exactly these four bugs. NO broad rework of the v1.22.0 FR-1 architecture beyond what each bug's root cause requires. Resist scope creep.",
+    "Additive / no regressions: must preserve every v1.16/v1.21/v1.22.0 player feature (dock FULL/DOCKED/CLOSED, prev/next, autoplay-next, transcode + resume overlays, Media Session, progress saving, audio-bg-art, loop toggle, cross-tab, PiP). The persistent <video id=media-player> single element + one-time wireHostListeners() model is unchanged in kind.",
+    "DESKTOP behavior that Dean already likes stays intact EXCEPT the additive speed control (bug 4): desktop video PiP is explicitly good -- leave it. Do not regress desktop audio/video custom-bar behavior otherwise.",
+    "The four shells share a byte-identical #player-host-template (public/index.html, public/setup.html, public/watch.html, lib/ytdlp/views/subscriptions.html) -- if any new control id (e.g. #speed-btn) is added to #player-controls it MUST be byte-identical across ALL FOUR shells (parity-test), same discipline as v1.22.0's #pip-btn.",
+    "Preserve the era-theme token system for all new/changed CSS (speed control styling, any mobile-video control fix, touch-target sizing) -- no hardcoded colors bypassing the tokens; >=44px touch targets on mobile per the existing convention.",
+    "Follow docs/CONTRIBUTING.md: vanilla DOM (no framework/bundler), 2-space/semicolons/single-quotes, textContent over innerHTML, node:test for every new pure helper + regression lock, lint 0 warnings, NO new runtime dependencies.",
+    "Reuse the SINGLE shared mobile-detection helper (resolveMobileFormFactor/isMobileFormFactor) -- never introduce a second divergent 'is this mobile' signal.",
+    "Node.js 22 LTS toolchain; no headless-browser/E2E infra (docs/RELIABILITY.md) -- Dean's iOS on-device pass is the documented arbiter for every mobile-feel item here (bugs 1/2/3) and the desktop speed control feel (bug 4)."
   ],
-  "product_forks_for_dean": {
-    "fr1_mobile_detection_signal": "RESOLVED (recommendation, PE owns exact heuristic) -- combine viewport width with a coarse-pointer/no-hover media-query or touch-capability check (the only existing signal, isMobileViewport()'s bare matchMedia(max-width:768px), is explicitly called out by Dean as insufficient since the same shell serves a narrowed desktop window and a large tablet). Must be exposed as one named, unit-testable pure helper reused by both FR-1 and FR-8(a).",
-    "fr2_backfill_never_overwrite": "RESOLVED, not a genuine fork -- the folder-based backfill only ever fills a genuine gap (item has no channelUrl yet); it must never overwrite an item that already has a captured identity from the existing freshlyScannedIds bridge or a prior backfill.",
-    "fr3_deep_link_target": "RESOLVED (recommendation) -- deep-link to the specific channel/subscription when identity is resolvable (reusing watch.js's existing decideSubscribeButtonState resolution); otherwise fall back to the general /subscriptions page. Either outcome is safe; not blocking.",
-    "fr6_default_and_sentinel": "RESOLVED -- 7200 seconds (2h) default, exactly as specified; 0/blank = unbounded, mirroring DEFAULT_MAX_VIDEOS's existing 0-means-unlimited semantics precisely (no new sentinel invented).",
-    "fr7_persistence_mechanism": "RESOLVED (recommendation, PE may revise) -- localStorage (mirroring the v1.21 FR-9 theatre-mode ft-theater pattern), not a server db.settings setting -- loop is a watch-page-local preference like theatre mode, not a cross-device Settings-page preference like autoplayNext.",
-    "fr8a_desktop_scoping": "RESOLVED, not a genuine fork -- reuses FR-1's mobile-detection helper (fork #1) rather than a separate signal or a new user-facing setting, so 'what counts as mobile' is provably identical across both features."
-  },
-  "scope_items": {
-    "FR-1": {
-      "title": "[TOP PRIORITY, heaviest] Diverging-but-cohesive controls: native on mobile VIDEO, custom on desktop + mobile audio",
-      "needs_pe_design": true,
-      "review_weight": "HEAVIEST two-reviewer/adversarial gate this round -- persistent-player regression risk spans the whole v1.16 FULL/DOCKED/CLOSED shell + every player feature (dock, prev/next, autoplay-next, transcode/resume overlays, Media Session, progress saving). Dean's iOS on-device pass is the arbiter for feel.",
-      "files": ["public/js/player.js (primary -- ensureHost/wireHostListeners/wireSkipHoldGestures/enterFullscreen)", "public/index.html, public/setup.html, public/watch.html, lib/ytdlp/views/subscriptions.html (#player-host-template, byte-identical across all four)", "public/css/style.css (#player-controls / mobile-video / gesture-surface user-select sections, era tokens)", "test/unit (mobile-detection helper, any control-surface decision helper)"]
-    },
-    "FR-2": {
-      "title": "Retroactive Subscribe-button backfill from download-folder identity",
-      "needs_pe_design": true,
-      "review_weight": "Two-reviewer gate (db.metadata mutation + spawn-guard-adjacent surface via validateChannelUrl reuse).",
-      "files": ["server.js (scan merge -- new backfill block, sibling to the existing freshlyScannedIds-scoped bridge)", "lib/ytdlp/index.js (enrichSubscriptionWithChannelDir reuse; investigate/fix the periodic-scan race)", "test/unit + test/integration (backfill matcher, never-overwrite invariant, validateChannelUrl reuse)"]
-    },
-    "FR-3": {
-      "title": "Subscriber/creator name -> subscriptions page link",
-      "needs_pe_design": true,
-      "review_weight": "LIGHT single-QA gate -- display/navigation-only, reuses already-validated identity resolution.",
-      "files": ["public/watch.html (#uploader-channel-name -> <a>)", "public/js/watch.js (SPA navigate wiring, deep-link-else-fallback)", "test/unit (textContent/href-safe construction)"]
-    },
-    "FR-4": {
-      "title": "Grey-on-white contrast in light mode on certain era themes",
-      "needs_pe_design": false,
-      "review_weight": "LIGHT single-QA gate -- CSS token-value audit only (every relevant surface already token-driven, no missing-token bug). On-device Dean pass is the arbiter.",
-      "files": ["public/css/style.css (era/light-mode token value adjustments only)"]
-    },
-    "FR-5": {
-      "title": "Pins in the desktop sidebar (v1.21 FR-5 follow-up)",
-      "needs_pe_design": true,
-      "review_weight": "Two-reviewer gate (data-safety / folders-config invariant) -- must reprove db.folders/folderSettings are never touched; this task is a read-only consumer of the existing pin store.",
-      "files": ["public/js/main.js, public/js/watch.js, public/js/setup.js (all three duplicated renderSidebarFolders implementations)", "public/js/common.js (reused derivePinnedPlaylistEntries helper)", "public/css/style.css (#sidebar pins section)", "test/unit + test/integration (regression: pin store never touches db.folders/folderSettings)"]
-    },
-    "FR-6": {
-      "title": "Max-duration download gate (parameter, default 2h, changeable like max-videos)",
-      "needs_pe_design": true,
-      "review_weight": "Two-reviewer gate (yt-dlp args/spawn surface).",
-      "files": ["lib/ytdlp/config.js (DEFAULT_MAX_DURATION_SECONDS/parseMaxDurationSeconds)", "lib/ytdlp/store.js (validateMaxDurationSeconds mirroring validateMaxVideos)", "lib/ytdlp/args.js (buildYtdlpListArgs --match-filter duration addition)", "lib/ytdlp/views/subscriptions.html + lib/ytdlp/client/subscriptions.js (settings sheet + add-form field)", "test/unit (parse/validate/args-builder, multi-filter combination with skip-Shorts)"]
-    },
-    "FR-7": {
-      "title": "Loop / repeat toggle",
-      "needs_pe_design": true,
-      "review_weight": "LIGHT gate -- additive, isolated to the existing 'ended' handler cluster in player.js plus one watch-page toggle.",
-      "files": ["public/js/player.js ('ended' handler reconciliation with autoplayNext, live-transcode restart path)", "public/watch.html + public/js/watch.js (toggle control + localStorage persistence)", "test/unit (shouldLoopOnEnded-style pure decision helper)"]
-    },
-    "FR-8": {
-      "title": "Desktop cross-tab video + native Picture-in-Picture",
-      "needs_pe_design": true,
-      "review_weight": "LIGHT-TO-MEDIUM gate. Dean's on-device pass (desktop browser) is the arbiter for PiP feel.",
-      "files": ["public/js/player.js (shouldPauseForLifecycleEvent scoping reusing FR-1's mobile helper; new PiP button wiring in #player-controls)", "public/css/style.css (PiP button styling, era tokens)", "test/unit (pause-on-hidden scoping regression)"]
-    },
-    "FR-9": {
-      "title": "Card-level download-to-device",
-      "needs_pe_design": true,
-      "review_weight": "LIGHT gate -- pure UI addition reusing the existing, unmodified /video/:id?download=1 route (no new server route).",
-      "files": ["public/js/main.js (card template + download button, isolated from thumbnail-container's anchor)", "public/css/style.css (card download-button styling)", "test/unit (textContent/href-safe construction)"]
-    },
-    "FR-10": {
-      "title": "Watch-page scroll-jump -- verify + fix if still repro",
-      "needs_pe_design": false,
-      "review_weight": "PROCESS/LIGHT -- grounded finding: the v1.17.0 fix (--mobile-header-h/--mobile-bottom-nav-h) is confirmed still in place, zero position:sticky anywhere in style.css. This is a re-verification; only becomes code work if Dean's on-device pass finds a NEW reproduction.",
-      "files": ["public/css/style.css (only if AC69 finds a new reproduction)"]
-    }
-  },
-  "pe_design_items": "Route to Design after Discovery. All FRs except FR-4/FR-10 need PE design (FR-4/FR-10 ride through Design for one cohesive plan but are trivial/scoped -- a token-value audit and a re-verification respectively). Key open engineering questions for PE, in order of weight: (1) FR-1's exact combined mobile-detection heuristic (product fork #1), the exact controls-attribute/#player-controls-visibility toggle mechanism consistent with the one-time wireHostListeners() model, confirming wireSkipHoldGestures(mediaPlayer)'s existing wiring needs NO change, the exact user-select/-webkit-touch-callout CSS fix scope, #fs-btn/#vol-bar conditional presence across the four form-factor x media-type cases, and a proof that dock/prev-next/autoplay-next/overlays/Media Session/progress-saving are unaffected by the toggle; (2) FR-2's exact backfill matcher mechanics (folder-path-to-channelDir comparison, likely reusing enrichSubscriptionWithChannelDir) and confirming/fixing the suspected periodic-scan race; (3) FR-6's exact --match-filter combination mechanics when skip-Shorts AND max-duration are both active (verify yt-dlp's real multi-filter behavior, don't assume) plus the settings-sheet/add-form field additions; (4) FR-5's de-duplicate-vs-three-parallel-additions call for the three renderSidebarFolders implementations (recommend the smaller/lower-risk parallel-additions option unless duplication cost is judged worth paying down now); (5) FR-7's exact 'ended'-handler reconciliation ordering (loop must short-circuit before handleAutoplayNext) and its pure decision helper; (6) FR-8's PiP button placement/feature-detect gating in #player-controls and confirming reuse of FR-1's mobile-detection helper for the pause-on-hidden scoping; (7) FR-3/FR-9 are comparatively direct. See the exec plan's ## Flag for the principal-engineer section for full detail. FR-1 is flagged as independently shippable/verifiable first (no file-overlap dependency on the rest of the round except FR-8's later #player-controls touch) -- EM may choose to sequence it as a fast-relief first wave.",
-  "cross_cutting": "Disabled-yt-dlp-module no-op preserved end-to-end for FR-2/FR-3/FR-5/FR-6 (no new route/UI/DOM reachable with FILETUBE_YTDLP_ENABLED off; FR-2's backfill/FR-5's sidebar-pin fetch/FR-6's duration gate never run when disabled). Era-theme CSS vars for all new/changed styling (FR-1/FR-4/FR-5/FR-8). No new npm dependencies; CommonJS server; vanilla DOM client code; node:test covers every new pure helper; lint 0 warnings. textContent (never innerHTML) for every new dynamic string (FR-3/FR-5/FR-9). Node 22 toolchain throughout. No headless-browser/E2E infrastructure exists (docs/RELIABILITY.md) -- Dean's on-device pass is the documented arbiter for FR-1 (mobile feel/iOS)/FR-4 (contrast)/FR-8 (PiP feel), not a testing gap. FR-1's and FR-8(a)'s mobile-detection signal must be the SAME reused helper, never two divergent implementations. Review tiers: HEAVIEST for FR-1; two-reviewer for FR-2/FR-5/FR-6; LIGHT-TO-MEDIUM for FR-8; LIGHT single-QA for FR-3/FR-4/FR-7/FR-9/FR-10. FR-1 is independently shippable first for fast regression relief.",
-  "coordinator_decisions": {
-    "fr3_link_target": "General /subscriptions fallback link only (no channel deep-link this round).",
-    "fr6_field_unit": "SECONDS (mirrors maxVideos); env default FILETUBE_YTDLP_MAX_DURATION_SECONDS=7200 (2h); 0/blank = unbounded.",
-    "fr2_creator_display": "Satisfied by resolveChannelName precedence once backfill writes channelName (AC80); save-to-device button is a regression-lock (AC81), no code change expected.",
-    "fr1_mute_slash_nit": "Folded into FR-1's T2 style.css task (owns the .mute-icon-off::after block).",
-    "fr1_t1_t2_split": "FR-1 split into T1 (player.js logic) + T2 (style.css). Disjoint files; T2 is written against T1's frozen .ff-mobile contract; both HEAVIEST gate + Dean iOS arbiter.",
-    "git_ownership": "Coordinator owns ALL git. SDEs report files-changed + Node 22 test/lint output and DO NOT commit."
-  },
-  "wave_plan": {
-    "principle": "Shared working tree: no two CONCURRENT tasks may edit the same file. The SERVER track (TA on server.js/lib/ytdlp/index.js, TB on the rest of lib/ytdlp/*) is fully disjoint from each other and from the CLIENT track, so both run in parallel in Wave 1. Client hot-file order enforced: player.js = T1 -> TF -> TG ; style.css = T2 -> TC -> TE -> TF -> TG -> TH ; watch.js = TC -> TD -> TF ; watch.html = TD -> TF -> TG ; main.js = TC -> TH.",
-    "waves": {
-      "1": ["T1", "T2", "TA", "TB"],
-      "2": ["TC", "TI"],
-      "3": ["TE", "TD"],
-      "4": ["TF"],
-      "5": ["TG"],
-      "6": ["TH"]
-    },
-    "hot_file_serialization_proof": {
-      "public/js/player.js": ["T1 (W1)", "TF (W4)", "TG (W5)"],
-      "public/css/style.css": ["T2 (W1)", "TC (W2)", "TE (W3)", "TF (W4)", "TG (W5)", "TH (W6)"],
-      "public/js/watch.js": ["TC (W2)", "TD (W3)", "TF (W4)"],
-      "public/watch.html": ["TD (W3)", "TF (W4)", "TG (W5)"],
-      "public/js/main.js": ["TC (W2)", "TH (W6)"],
-      "public/js/common.js": ["TC (W2)"],
-      "public/js/setup.js": ["TC (W2)"],
-      "server.js + lib/ytdlp/index.js": ["TA (W1)"],
-      "lib/ytdlp/{config,store,args}.js + client/subscriptions.js + views/subscriptions.html": ["TB (W1)"],
-      "public/index.html + public/setup.html + lib/ytdlp/views/subscriptions.html (extra shells)": ["TG (W5)"]
-    },
-    "wave3_disjointness_note": "TE touches only style.css; TD touches only watch.html + watch.js -> disjoint, safe to run concurrently.",
-    "process_track": "TI (FR-10 scroll-jump re-verify) is Dean on-device, no code, no file lock -- may run any time; nominally slotted in Wave 2."
-  },
-  "current_wave": 6,
-  "current_tasks": [],
-  "tasks": [
-    {
-      "id": "T1",
-      "fr": "FR-1",
-      "title": "Player controls-mode logic + shared form-factor helper",
-      "description": "Add resolveMobileFormFactor/isMobileFormFactor, resolveControlsMode, applyControlsMode(); wire applyControlsMode into mountInSlot/dock; removeAttribute('controls') in teardownMediaState; export the two pure helpers; add test/unit/player-form-factor.test.js (AC1, AC10) with a regression lock on the four-way table. Leave wireSkipHoldGestures and isMobileViewport untouched.",
-      "files": ["public/js/player.js", "test/unit/player-form-factor.test.js"],
-      "acs": ["AC1", "AC7", "AC8", "AC9", "AC10", "AC11(js)"],
-      "gate": "HEAVIEST two-reviewer/adversarial + Dean iOS on-device arbiter",
-      "depends_on": [],
-      "wave": 1,
-      "status": "done",
-      "done_when": "Pure helpers exported + unit-tested; controls attribute/.ff-mobile toggled only in applyControlsMode/teardownMediaState; wireHostListeners unchanged; Node 22 lint + tests pass."
-    },
-    {
-      "id": "T2",
-      "fr": "FR-1",
-      "title": "Responsive-controls CSS + text-selection fix + mute-slash nit",
-      "description": "Add the /* === v1.22 FR-1 === */ style.css section: user-select/-webkit-touch-callout guards on the gesture surfaces (AC6); hide the custom bar on mobile video (AC4); drop #vol-bar+#mute-btn on mobile audio (AC3). Also fix the muted-state diagonal-slash mis-position in .mute-icon-off::after (folded-in nit). No new color tokens; do not touch the v1.21 FR-2 section.",
-      "files": ["public/css/style.css"],
-      "acs": ["AC3", "AC4", "AC6", "AC12", "mute-slash-nit"],
-      "gate": "HEAVIEST two-reviewer/adversarial + Dean iOS on-device arbiter",
-      "depends_on": ["T1 (.ff-mobile contract, frozen in design)"],
-      "wave": 1,
-      "status": "done",
-      "done_when": "New FR-1 CSS section added reacting to .ff-mobile/.audio-mode per the design's schematic; mute-slash re-anchored; era tokens only; Node 22 lint passes."
-    },
-    {
-      "id": "TA",
-      "fr": "FR-2",
-      "title": "Retroactive folder-based Subscribe-button backfill",
-      "description": "Add pure matchChannelDirToSubscription(filePath, resolvedSubs) (exact parent-dir equality, not prefix) + ytdlp.backfillChannelIdentityFromFolder(fresh, item, config) wrapper (resolvedSubs memoized once/scan via enrichSubscriptionWithChannelDir; re-validate matched channelUrl via url.validateChannelUrl) in lib/ytdlp/index.js; add a sibling backfill block in server.js Phase-2 mutator NOT scoped to freshlyScannedIds, never overwriting an existing channelUrl, scoped to ytdlpDownloadRoots. Backfill writes channelName (from sub.name) for creator display (AC80). Add regression-lock that save-to-device button stays ungated (AC81). Unit + integration.",
-      "files": ["server.js", "lib/ytdlp/index.js", "test/unit", "test/integration"],
-      "acs": ["AC15", "AC16", "AC17", "AC18", "AC19", "AC20", "AC21", "AC22", "AC80", "AC81"],
-      "gate": "two-reviewer (db.metadata mutation + spawn-guard-adjacent)",
-      "depends_on": [],
-      "wave": 1,
-      "status": "done",
-      "done_when": "Pure matcher unit-tested (exact match; prefix rejected; never-overwrite); integration: identity-less yt-dlp item under channelDir gets channelUrl+channelName on scan, no yt-dlp spawn; validateChannelUrl re-validation; disabled-module no-op; Node 22 tests + lint pass."
-    },
-    {
-      "id": "TB",
-      "fr": "FR-6",
-      "title": "Max-duration download gate (default 2h, mirrors maxVideos)",
-      "description": "config.js: DEFAULT_MAX_DURATION_SECONDS=7200 + parseMaxDurationSeconds (0 = valid unbounded, invalid/unset -> 7200) + parse FILETUBE_YTDLP_MAX_DURATION_SECONDS into config.maxDurationSeconds. store.js: MAX_SUB_MAX_DURATION_SECONDS + validateMaxDurationSeconds mirroring validateMaxVideos, wired into validateSubscriptionInput/Patch/addSubscription/updateSubscription. args.js: effectiveMaxDurationSeconds + pure buildMatchFilterArg(clauses) that AND-joins SHORTS_MATCH_FILTER and 'duration < <n>' into ONE --match-filter with ' & ' (yt-dlp OR-combines separate flags -- verified). UI: expose maxDurationSeconds (SECONDS) in the settings sheet + add-form. Unit tests.",
-      "files": ["lib/ytdlp/config.js", "lib/ytdlp/store.js", "lib/ytdlp/args.js", "lib/ytdlp/client/subscriptions.js", "lib/ytdlp/views/subscriptions.html", "test/unit"],
-      "acs": ["AC39", "AC40", "AC41", "AC42", "AC43", "AC44", "AC45", "AC46", "AC47"],
-      "gate": "two-reviewer (yt-dlp args/spawn surface)",
-      "depends_on": [],
-      "wave": 1,
-      "status": "done",
-      "done_when": "parse/validate/effective/buildMatchFilterArg unit-tested (both-active AND-join, each-alone, neither -> omit); UI field added; bounded integer in fixed-shape string via spawn argv; Node 22 tests + lint pass."
-    },
-    {
-      "id": "TC",
-      "fr": "FR-5",
-      "title": "Pins in the desktop sidebar (shared renderPinnedSidebar)",
-      "description": "Add ONE shared renderPinnedSidebar(pins) to common.js mirroring renderPinnedPlaylists (reuse derivePinnedPlaylistEntries; createElement/textContent/createTextNode only). Insert a SEPARATE sibling #sidebar-pinned-section after #sidebar-folders-list (never a child). Each of main.js/watch.js/setup.js on init() fetches GET /api/subscriptions/pins (404 -> []) and calls renderPinnedSidebar (idempotent). Small #sidebar-pinned-section CSS (era tokens). NEVER writes db.folders/folderSettings. Unit + integration invariant lock.",
-      "files": ["public/js/common.js", "public/js/main.js", "public/js/watch.js", "public/js/setup.js", "public/css/style.css", "test/unit", "test/integration"],
-      "acs": ["AC32", "AC33", "AC34", "AC35", "AC36", "AC37", "AC38", "AC73", "AC75"],
-      "gate": "two-reviewer (folders/config invariant)",
-      "depends_on": [],
-      "wave": 2,
-      "status": "done",
-      "done_when": "Shared pin renderer reused at all three call sites; sibling section survives folder-list innerHTML rebuilds; db.folders/folderSettings never touched (regression-locked); disabled-module -> folders-only; Node 22 tests + lint pass."
-    },
-    {
-      "id": "TD",
-      "fr": "FR-3",
-      "title": "Creator name -> /subscriptions SPA link (general fallback)",
-      "description": "Change #uploader-channel-name from <div> to <a class=\"uploader-channel-link\"> (no href by default). populateMetadata keeps setting .textContent. In setupSubscribeButton, set link.href = '/subscriptions' when module enabled (general fallback ONLY -- no deep-link, per coordinator decision); leave href unset when disabled/no identity. Pure resolveUploaderLinkHref({moduleEnabled}) unit-test target. textContent/.href-safe, never innerHTML.",
-      "files": ["public/watch.html", "public/js/watch.js", "test/unit"],
-      "acs": ["AC23", "AC24(fallback)", "AC25", "AC26", "AC27"],
-      "gate": "light single-QA",
-      "depends_on": [],
-      "wave": 3,
-      "status": "done",
-      "done_when": "<a> navigates via SPA router to /subscriptions with no reload; inert plain text when no identity; pure href helper unit-tested; Node 22 tests + lint pass."
-    },
-    {
-      "id": "TE",
-      "fr": "FR-4",
-      "title": "Era-theme light-mode contrast token-value audit/fix",
-      "description": "Audit each era's [data-mode=\"light\"] block for grey-on-white/low-contrast (neutral .btn/--btn-bg + --text-primary; --text-secondary; the 'Subscribed' neutral button Dean flagged). Fix by adjusting the offending CSS custom-property VALUE in that specific era x light block only -- never a hardcoded color, never touching dark mode or a non-flagged era's light mode. Dean on-device arbiter for final values.",
-      "files": ["public/css/style.css"],
-      "acs": ["AC28", "AC29", "AC30", "AC31"],
-      "gate": "light single-QA + Dean on-device arbiter",
-      "depends_on": [],
-      "wave": 3,
-      "status": "done",
-      "done_when": "Offending era x light token values darkened/adjusted; no dark-mode or non-flagged-era regression; token system preserved; Node 22 lint passes."
-    },
-    {
-      "id": "TF",
-      "fr": "FR-7",
-      "title": "Loop / repeat toggle",
-      "description": "Pure resolveEndedAction({loop, autoplayNext, hasNext}) -> 'repeat'|'advance'|'stop' (loop always wins), exported for unit test. isLoopEnabled()/setLoop() via localStorage['ft-loop'] (guarded, theatre-mode pattern). Add a loop 'ended' listener that replays THIS item (startLiveStream(0,true) for live; else currentTime=0 + play()); gate handleAutoplayNext with early 'if (isLoopEnabled()) return;' so loop short-circuits before autoplay-advance. Watch-page toggle button (setupLoopToggle in watch.js, mirroring setupAutoplayToggle but localStorage). Reuse autoplay-toggle CSS class (likely no new CSS).",
-      "files": ["public/js/player.js", "public/watch.html", "public/js/watch.js", "public/css/style.css", "test/unit"],
-      "acs": ["AC48", "AC49", "AC50", "AC51", "AC52", "AC53", "AC54"],
-      "gate": "light",
-      "depends_on": ["T1 (FR-1 player.js)"],
-      "wave": 4,
-      "status": "done",
-      "done_when": "resolveEndedAction unit-tested (loop precedence); loop replays this item incl. live-transcode; loop-off byte-identical to today; persists across reload; Node 22 tests + lint pass."
-    },
-    {
-      "id": "TG",
-      "fr": "FR-8",
-      "title": "Desktop cross-tab video + native Picture-in-Picture",
-      "description": "(a) Scope pause-on-hidden to mobile: add isMobile to shouldPauseForLifecycleEvent ctx, video branch terminal 'return true' -> 'return !!ctx.isMobile'; call site handleBackgroundLifecycle adds isMobile: isMobileFormFactor() (REUSE FR-1's helper, AC78). Unit-test new signature. (b) Add <button id=\"pip-btn\" class=\"pc-btn pip-btn\"> to #player-controls in #player-host-template -- BYTE-IDENTICAL across ALL FOUR shells (index.html, setup.html, watch.html, lib/ytdlp/views/subscriptions.html). Wire ONCE in wireHostListeners; feature-detect document.pictureInPictureEnabled, hide in .audio-mode; toggle requestPictureInPicture/exitPictureInPicture. Small .pip-btn CSS (era tokens).",
-      "files": ["public/js/player.js", "public/index.html", "public/setup.html", "public/watch.html", "lib/ytdlp/views/subscriptions.html", "public/css/style.css", "test/unit"],
-      "acs": ["AC55", "AC56", "AC57", "AC58", "AC59", "AC60", "AC61", "AC78"],
-      "gate": "light-to-medium + Dean desktop on-device arbiter",
-      "depends_on": ["T1 (FR-1 isMobileFormFactor + #player-controls)", "TF (player.js/watch.html/style.css order)"],
-      "wave": 5,
-      "status": "done",
-      "done_when": "Desktop video keeps playing across tab switches; mobile pause-on-hidden byte-identical (unit-regression); PiP button feature-detected, four-shell byte-identical (parity-test); reuses isMobileFormFactor; Node 22 tests + lint pass."
-    },
-    {
-      "id": "TH",
-      "fr": "FR-9",
-      "title": "Card-level download-to-device",
-      "description": "Add a .card-download-btn overlay anchor to main.js's card template as a SIBLING of .thumbnail-container's <a> (never nested -- no watch navigation, AC64), mirroring .card-delete-btn placement/event-isolation. Reuse the existing /video/${id}?download=1 route unchanged; href id via encodeURIComponent, download filename hint escaped; textContent/.href-safe. Small .card-download-btn CSS mirroring .card-delete-btn (era tokens). Unit-test pure href/filename builder + isolation.",
-      "files": ["public/js/main.js", "public/css/style.css", "test/unit"],
-      "acs": ["AC62", "AC63", "AC64", "AC65", "AC66", "AC67"],
-      "gate": "light",
-      "depends_on": [],
-      "wave": 6,
-      "status": "done",
-      "done_when": "Card download button reuses ?download=1, does not navigate to watch, works for yt-dlp + local items, href/filename-safe; Node 22 tests + lint pass."
-    },
-    {
-      "id": "TI",
-      "fr": "FR-10",
-      "title": "Watch-page scroll-jump re-verification (process/no-code)",
-      "description": "PROCESS task, no SDE code. Dean re-verifies on-device that the bottom-panel scroll-jump no longer reproduces (v1.17.0 --mobile-header-h/--mobile-bottom-nav-h fix confirmed in place; zero position:sticky repo-wide). If it does NOT reproduce -> close as resolved, no code change (AC70). If it DOES -> new finding, scope a small follow-up (AC71).",
-      "files": [],
-      "acs": ["AC68", "AC69", "AC70", "AC71"],
-      "gate": "process (Dean on-device arbiter)",
-      "depends_on": [],
-      "wave": 2,
-      "status": "done",
-      "done_when": "Dean confirms on-device; documented as resolved (no code) or scoped as a new follow-up."
-    }
+  "ios_scope_flags_for_dean": [
+    "Bug 3 (rotate-to-fullscreen): iOS Safari likely refuses programmatic fullscreen without a direct user gesture -- auto-rotate-to-fullscreen of an inline element may be impossible on iPhone. If PE confirms, this is scoped honestly (native fullscreen BUTTON is the reliable path), not silently 'fixed'.",
+    "Bug 2 (mobile-video controls): the ACTUAL iOS behavior (native inline controls auto-hide + gesture-layer tap-swallow) drives whether the fix is native-with-passthrough or a touch-sized custom bar -- PE picks whatever demonstrably works on iOS, which Dean's on-device pass arbitrates.",
+    "Bug 1 (mobile-audio fullscreen button): audio has no native fullscreen concept on iOS -- the honest fix is likely REMOVING #fs-btn for mobile audio rather than making it work."
   ],
-  "completed_tasks": ["T1", "T2", "TA", "TB", "TC", "TD", "TE", "TF", "TG", "TH", "TI"],
+  "review_tiers_proposed": "Per Dean's 'keep it super quick' directive -- heavy gate ONLY where genuinely regression-prone. HEAVIEST two-reviewer/adversarial + Dean iOS arbiter for FR-1 (bug 2, CRITICAL persistent-player mount/dock controls path) and for ANYTHING touching the persistent-player mount/dock/applyControlsMode path. LIGHT single-QA + Dean on-device for the smaller additive bits: FR-2 (bug 1), FR-3 (bug 3 rotate listener), FR-4 (speed control -- light UNLESS its shell/#player-controls touch is judged higher-risk by PE, in which case a parity-test on the four shells suffices), FR-5 (click-to-pause). Dean's on-device pass (iOS + desktop) is the ultimate arbiter across the board.",
+  "dean_speed_directive": "Keep the ENTIRE round minimal and fast. Prefer the smallest correct fix over any refactor. Minimize the number of tasks/waves. Anticipated task shape: just T1 (public/js/player.js -- all five bugs' JS logic + new pure helpers/tests) and T2 (public/css/style.css -- speed-button styling, touch targets, mobile-video control-visibility/overlay fix; T2 written against T1's frozen .ff-mobile/#speed-btn contract), + a small addition to the four shells folded into T1 only IF FR-4 needs a #speed-btn in #player-host-template. player.js and style.css are disjoint files so T1||T2 can run in one parallel wave with a frozen contract (mirrors v1.22.0's T1/T2 split). EM to finalize the exact task/wave plan after PE Design.",
   "artifacts": {
-    "requirements": "docs/exec-plans/active/2026-07-08-v1.22-player-parity.md",
-    "design": "docs/exec-plans/active/2026-07-08-v1.22-player-parity.md",
-    "exec_plan": "docs/exec-plans/active/2026-07-08-v1.22-player-parity.md"
+    "requirements": "docs/exec-plans/active/2026-07-07-v1.22.1-mobile-player-fixes.md",
+    "design": "docs/exec-plans/active/2026-07-07-v1.22.1-mobile-player-fixes.md (## Design section)",
+    "exec_plan": "docs/exec-plans/active/2026-07-07-v1.22.1-mobile-player-fixes.md"
   },
+  "pe_design": {
+    "completed_at": "2026-07-07",
+    "fr1_rootcause_verdict": "Architectural: v1.22.0 made the iOS native control strip the SOLE mobile-video control surface with NO fallback (applyControlsMode sets `controls` only in FULL; style.css:3201 hides the custom bar for .ff-mobile:not(.audio-mode)) -- so if the native strip fails to present, the user has nothing. The coordinator's 'skip-overlay eats the reveal tap' hypothesis is PARTIALLY REFUTED by CSS: .skip-controls is pointer-events:none with only small left/right pill buttons (12%) active for 2.5s, so the video CENTER stays tap-through and a lone tap's touchend does not preventDefault -- a center tap reaches #media-player. The real, un-fixable-from-JS factor is iOS Safari's internal auto-hide/re-reveal of inline <video controls playsinline> controls (shadow-DOM behavior a page cannot observe or drive), which under our non-passive touchend + full-surface skip overlay + gesture layer demonstrably does not re-reveal on Dean's device. v1.22.0's 'gestures coexist with native strip like pre-v1.21' was wrong (pre-v1.21 `controls` was hard-coded in markup, always present, no FULL-only JS gating, no hidden-custom-bar fallback).",
+    "fr1_fix": "Direction (B) -- RETIRE the mobile-video native-controls path and route mobile video through the same custom #player-controls bar that already works for desktop + mobile audio. Demonstrably works (bar always rendered, not dependent on iOS shadow-DOM reveal); smaller/lower-risk (deletes special-casing vs adding skip-zone geometry); matches Dean's stated preference (custom-bar parity when achievable -- it is); native still available on-demand+reliably via #fs-btn -> webkitEnterFullscreen (user gesture -> full native iOS fullscreen chrome). AC2 set delivered via custom bar (pp/seek/fs-btn/#speed-btn/existing download btn); AC3 gestures preserved (wireSkipHoldGestures unchanged). player.js: drop the setAttribute('controls') branch in applyControlsMode, remove now-vestigial resolveControlsMode+export (repoint AC5 test). style.css: delete mobile-video bar-hide (3199-3203) + DOCKED re-assert (3205-3212); .pc-btn 36px->44px on mobile; extend volume-hide to mobile video + add mobile-audio #fs-btn hide.",
+    "fr3_ios_verdict": "PLATFORM LIMIT -- auto-rotate-to-fullscreen is NOT achievable on iPhone Safari (programmatic fullscreen refused without a direct user gesture; orientationchange/matchMedia is not user activation). Do NOT ship fake auto-rotate. Accepted resolution: the reliable MANUAL fullscreen button restored by FR-1 (mobile-video custom bar #fs-btn -> webkitEnterFullscreen). CODE CHANGE: NONE -- existing orientationchange listener (player.js:1685-1711) is already state-guarded + try/catch + promise-catch, cannot crash/loop (AC16 met as-is), and still works harmlessly on desktop/Android; removing it is pure churn. NEEDS DEAN'S EXPLICIT SIGN-OFF (AC15).",
+    "fr4_mechanism": "New #speed-btn CYCLE button on #player-controls (1x->1.25->1.5->1.75->2x->1x), NOT an extension of the transient pointer-events:none .speed-badge hold-2x indicator (kept separate; hold-2x reads/restores live playbackRate so base rate set by #speed-btn is preserved). Cycle over menu = smallest fix (no popup/positioning/fullscreen-layer work). Pure helper nextPlaybackRate(current) unit-tested. localStorage['ft-rate'] persistence (recommended, mirrors ft-loop/ft-volume). Covers ALL cases incl. mobile video (FR-1 routes it to custom bar) -> no double-up (AC21, no native inline menu to collide). NEW id -> byte-identical across the four shells (index/setup/watch/subscriptions), #pip-btn discipline; placed before #fs-btn; folded into T1.",
+    "fr2_note": "#fs-btn hidden via CSS for mobile audio (not markup removal -> no 4-shell churn, no fsBtn ref breakage); resolves the dangling v1.22.0 AC11 fork. hold-2x: leading concrete hypothesis = touchmove clears holdTimer at MOVE_TOL=10px before HOLD_MS=500ms (thumb jitter on cover art); fix = loosen hold-cancel tolerance (~16px). HYPOTHESIS -- Dean's on-device pass is arbiter; change stays tiny/localized.",
+    "fr5_note": "Desktop-only click listener on #media-player mirroring the #audio-bg-art handler, reusing scheduleArtSingleTap/cancelPendingArtTap; guarded by state===FULL and isMobileFormFactor() (desktop-only, AC29, reuses shared helper); uses plain togglePlayPause (not toggleArtPlayPause). No control-bar double-fire (AC27) -- #player-controls is a SIBLING of #media-player, clicks don't bubble. dblclick-skip preserved via the pending-timer cancel (AC28).",
+    "task_plan": "One wave, T1||T2 (mirrors v1.22.0). T1 = public/js/player.js + the four shells (#speed-btn) + unit tests (all five FRs' JS; FR-3 no-code). T2 = public/css/style.css (against T1's frozen .ff-mobile/#speed-btn contract). Disjoint files. Review: HEAVIEST two-reviewer + Dean iOS for FR-1; LIGHT single-QA + on-device for FR-2/3/4/5, with the four-shell parity test as FR-4's gating check.",
+    "no_code_written": true,
+    "no_git_touched": true
+  },
+  "tasks": [],
+  "completed_tasks": [],
   "history": [
     {
-      "timestamp": "2026-07-08",
+      "timestamp": "2026-07-07",
+      "stage": "bootstrap",
+      "note": "ENGINEERING-MANAGER opened v1.22.1 'mobile-player follow-up' -- a targeted, lean bug-fix round off main (v1.22.0) for FIVE grounded on-device bugs Dean found in the v1.22.0 FR-1 responsive player (bug 5 + the 'keep it super quick' directive arrived mid-Discovery and were folded in). Grounded the diagnosis directly in the live code before routing: read public/js/player.js (resolveMobileFormFactor/isMobileFormFactor/resolveControlsMode/applyControlsMode:333-530, enterFullscreen:1395, the four 'ended' listeners + loop:1416-1465, mountInSlot/dock/close/load state transitions:1873-1988, the orientationchange->fullscreen listener:1685-1711, the audio click-to-toggle:1646, wireSkipHoldGestures wiring:1670-1671 [note: #media-player wired with NO onSingleTap -> grounds bug 5], keyboard shortcuts:1716-1749) and public/css/style.css (the v1.22 FR-1 responsive-controls section:3176-3237 incl. the mobile-video custom-bar hide:3201, the #player-dock re-assert:3210, the mobile-audio vol/mute drop:3218, the PiP section:3223; confirmed NO ::-webkit-media-controls suppression exists anywhere). Diagnosed each bug (see grounded_diagnosis): bug 1 mobile-audio fs-btn no-op + missing speed; bug 2 [CRITICAL] mobile-video NO visible controls -- leading root cause is the gesture layer swallowing the single taps iOS needs to re-reveal auto-hidden inline native controls (custom bar hidden by CSS, native strip perpetually hidden) -- PE must confirm precisely in Design; bug 3 rotate-to-fullscreen listener ALREADY exists but iOS refuses non-user-gesture fullscreen (platform-limit scope call for Dean); bug 4 desktop custom bar has no persistent speed control (unifies with bug 1 -- ONE speed control theme); bug 5 desktop click-video-to-pause missing (#media-player has no onSingleTap). Set stage=discovery, wrote the product-manager Discovery inbox with the full grounded brief + Dean's minimal-scope/lean-gate directive. No application/test code written; no git touched. Coordinator informed of the plan shape (5 FRs, likely just T1 player.js || T2 style.css in one wave, heavy gate only on bug 2 / mount-dock path) and that the PM inbox is ready."
+    },
+    {
+      "timestamp": "2026-07-07",
       "stage": "discovery",
-      "note": "PRODUCT-MANAGER completed Discovery for v1.22.0 'Player Parity + Roadmap' (feature/v1.22-player-parity, off main at v1.21.0) -- a 10-FR release LEADING with the top-priority mobile-player regression fix (FR-1), then working through the rest of Dean's post-v1.21 ROADMAP.md v1.22 candidate list. Read docs/CONTRIBUTING.md, docs/ARCHITECTURE.md, docs/RELIABILITY.md first, then the completed 2026-07-06-v1.16-watch-experience.md (persistent-player/dock architecture) and 2026-07-08-v1.21-polish-release.md (custom control-bar introduction, the FR-1 regression's origin) exec plans, docs/ui-research-2026-07.md, and ROADMAP.md's v1.22 candidate list (confirmed every FR below already listed there -- no scope creep). Grounded every FR directly in the live code: public/js/player.js in full (ensureHost/wireHostListeners one-time-wiring model, isMobileViewport()'s existing bare-width signal, wireSkipHoldGestures's existing unconditional #media-player wiring, enterFullscreen's desktop-retarget/iOS-native branch, shouldPauseForLifecycleEvent + its three lifecycle listeners, the 'ended' listener cluster); public/watch.html's #player-host-template (confirmed byte-identical across all four shells via grep) and public/css/style.css's player/control-bar sections (confirmed NO user-select/-webkit-touch-callout anywhere on the player surface -- grounds FR-1's text-selection fix); server.js's scan merge ~1360-1620 (the freshlyScannedIds-scoped channel-identity bridge -- grounds FR-2's root cause: an already-indexed item is never revisited); lib/ytdlp/args.js (resolveChannelDir, sanitizeChannelName, playlistEndArgs, SHORTS_MATCH_FILTER's fixed-literal --match-filter pattern -- grounds FR-6); lib/ytdlp/index.js (runSubscriptionCycle's persistCapturedChannelMeta + survivor-fallback recording, the already-exported enrichSubscriptionWithChannelDir -- grounds FR-2's backfill building blocks and the suspected periodic-scan race); lib/ytdlp/store.js (validateMaxVideos/MAX_SUB_MAX_VIDEOS -- the pattern FR-6 mirrors); lib/ytdlp/url.js in full (validateChannelUrl -- the guard FR-2's backfilled value must still pass); public/js/common.js (renderPinnedPlaylists/derivePinnedPlaylistEntries/restoreHomeFromCache's #sidebar-folders-list-lives-outside-#view-root finding); public/js/main.js/watch.js/setup.js (confirmed THREE independent renderSidebarFolders implementations -- grounds FR-5's scope); public/js/watch.js (#uploader-channel-name is a <div> not a link -- grounds FR-3; downloadBtn's existing ?download=1 pattern -- grounds FR-9); public/css/style.css's theme token blocks + Subscribe-adjacent CSS (all token-driven, no hardcoded colors found -- grounds FR-4 as a token-VALUE audit) and the --mobile-header-h/--mobile-bottom-nav-h v1.17.0 fix (grounds FR-10 as a re-verification, zero position:sticky repo-wide). No genuinely blocking fork surfaced; six minor forks resolved with a recommendation (see product_forks_for_dean). Authored docs/exec-plans/active/2026-07-08-v1.22-player-parity.md: Goal/Scope(10 FRs)/Out-of-scope/Constraints/Product-forks/Flag-for-PE/79 grouped-and-tagged acceptance criteria (FR-1:14, FR-2:8, FR-3:5, FR-4:4, FR-5:7, FR-6:9, FR-7:7, FR-8:7, FR-9:6, FR-10:4, Cross-cutting:8) plus a full Decision log entry. Flagged review tiers: HEAVIEST two-reviewer/adversarial gate for FR-1 (persistent-player regression risk, Dean iOS on-device arbiter); two-reviewer gate for FR-2 (data + spawn-guard-adjacent), FR-5 (folders/config invariant), FR-6 (yt-dlp args/spawn); LIGHT-TO-MEDIUM for FR-8; LIGHT single-QA for FR-3/FR-4/FR-7/FR-9/FR-10. Flagged FR-1 as independently shippable first for fast regression relief (self-contained, no file overlap with the rest of the round except FR-8's later #player-controls touch). Set feature-state.json to stage=discovery with scope_items/hard_constraints/product_forks_for_dean/pe_design_items/cross_cutting populated; artifacts point at the new exec plan. Did not write application/test code and did not touch git. Reporting back to the EM for Design routing (/prep-pe-design)."
-    },
-    {
-      "timestamp": "2026-07-08",
-      "stage": "design",
-      "note": "PRINCIPAL-ENGINEER completed Design. Authored ## Design (FR-1) as a standalone fast-track (responsive control-surface split on the single persistent <video> + #player-controls; new pure resolveMobileFormFactor/isMobileFormFactor + resolveControlsMode helpers + thin applyControlsMode() applier wired into mountInSlot/dock; .ff-mobile class as single source of truth; NO HTML shell changes; only player.js + style.css touched; T1/T2 task split) and ## Design (FR-2..FR-10) with per-FR mechanics, a file-overlap map, gate tiers, and a proposed task breakdown (T-A..T-I). Added AC80/AC81 for FR-2's display clarifications. Confirmed coordinator decisions: FR-3 general /subscriptions fallback (no deep-link), FR-6 field unit = SECONDS default 7200, mute-slash nit folded into FR-1's T2, FR-2 creator display via resolveChannelName precedence once channelName backfilled."
-    },
-    {
-      "timestamp": "2026-07-08",
-      "stage": "implementation",
-      "note": "ENGINEERING-MANAGER finalized the Task breakdown + a definitive collision-free wave plan and moved stage -> implementation with Wave 1 armed. Ten FRs -> 11 tasks: FR-1 split T1 (player.js logic + form-factor/controls-mode helpers + unit tests) / T2 (style.css responsive controls + text-selection fix + folded-in mute-slash nit); TA=FR-2 backfill (server.js + lib/ytdlp/index.js); TB=FR-6 max-duration gate (lib/ytdlp/config,store,args + client/subscriptions.js + views/subscriptions.html); TC=FR-5 desktop sidebar pins (common.js/main.js/watch.js/setup.js/style.css); TD=FR-3 creator link (watch.html/watch.js); TE=FR-4 contrast tokens (style.css); TF=FR-7 loop toggle (player.js/watch.html/watch.js/style.css, after FR-1); TG=FR-8 cross-tab+PiP (player.js/four shells/style.css, after FR-1 & TF); TH=FR-9 card download (main.js/style.css); TI=FR-10 process re-verify (no code). DEFINITIVE collision-free waves (no two CONCURRENT tasks share ANY file): W1 = T1 || T2 || TA || TB (client-foundation player.js + style.css disjoint from the fully-disjoint server track TA[server.js/index.js] || TB[lib/ytdlp/*]); W2 = TC (+ TI process); W3 = TE || TD (style.css vs watch.html/watch.js, disjoint); W4 = TF; W5 = TG; W6 = TH. Per-hot-file serialization proof: player.js T1->TF->TG ; style.css T2->TC->TE->TF->TG->TH ; watch.js TC->TD->TF ; watch.html TD->TF->TG ; main.js TC->TH ; common.js/setup.js TC only ; server.js+index.js TA only ; lib/ytdlp/{config,store,args}+client/views TB only ; extra shells (index/setup/subscriptions.html) TG only -- every hot file touched by exactly one task per wave. Gate tiers: HEAVIEST two-reviewer/adversarial + Dean iOS arbiter for T1/T2 (FR-1); two-reviewer for TA/TB/TC (FR-2/FR-6/FR-5); light-to-medium for TG (FR-8); light for TD/TE/TF/TH (FR-3/FR-4/FR-7/FR-9); process for TI (FR-10). Wrote self-contained task-suffixed inbox files for T1/T2/TA/TB/TC/TD/TE/TF/TG/TH (coordinator owns ALL git; SDEs report files-changed + Node 22 test/lint, do NOT commit; Node 22 toolchain path recorded); superseded stale prior-round inbox files. Wave 1 tasks armed in current_tasks. No application code written; no git touched."
-    },
-    {
-      "timestamp": "2026-07-08",
-      "stage": "done",
-      "note": "COORDINATOR drove all six waves to completion on the shared working tree with zero file collisions (per-wave serialization held): W1 T1/T2/TA/TB, W2 TC, W3 TD||TE, W4 TF, W5 TG, W6 TH; TI (FR-10 scroll re-verify) folded into the on-device checklist (no code needed -- v1.17.0 --mobile-header-h/--mobile-bottom-nav-h fix confirmed still in place). Final suite 1677/1677 green on Node 22, lint 0 errors (8 pre-existing common.js warnings baseline). Two-reviewer gate on the full diff: quality-assurance APPROVE (all five security/invariant concerns confirmed clean with matching regression-lock tests); independent adversarial finder surfaced 1 real MEDIUM regression (docked mobile VIDEO lost all controls -- the FR-1 .ff-mobile hide (1,3,0) out-specified the compact-dock rule, and native controls are FULL-only) + 2 minor real issues (FR-4 :root fallback --btn-hover inverted lighter-than-bg; FR-6 duration<N drops unknown-duration items) + 2 low/no-op notes (FR-2 symlink-realpath missed-backfill edge; sanitized-name collision, both pre-existing & safe under the never-overwrite guard). Fix-round: dock regression fixed via #player-dock re-assert (2,3,0) restoring play/pause+seek in the dock, WITH a new test that exercises the DOCKED state (the gap that let it slip); :root --btn-hover corrected #e0e0e0->#d0d0d0. FR-6 unknown-duration resolved as a Dean PRODUCT DECISION: KEEP strict `duration < N` (drop unknown/live-stream items so a 2h cap never accidentally records an unbounded live stream) -- documented in a buildDurationClause code comment, no operator change. Dock fix re-confirmed CLEAN by the same adversarial reviewer (restores docked bar without leaking into FULL mobile-video; no audio/desktop-dock regression). Bumped package.json 1.21.0 -> 1.22.0. Ready for release commit -> merge to main -> tag v1.22.0 -> push (Docker CI). FR-4 (contrast values), FR-1 mobile feel, FR-8 PiP feel remain Dean's on-device arbiter per RELIABILITY.md."
+      "note": "PRODUCT-MANAGER completed Discovery. Confirmed the EM's grounded diagnosis directly against the live code (player.js lines 330-530/820-915/1380-1420/1640-1720, style.css 1107-1125/3176-3237, watch.html's #player-controls markup) and the shipped v1.22.0 FR-1 design -- no corrections to the original grounding needed. Narrowed FR-1's leading hypothesis with a concrete finding: wireSkipHoldGestures's touchend handler does NOT call preventDefault() on a genuine lone tap for #media-player (only a classified double-tap-skip does) -- so 'the gesture layer swallows every tap' is not the full story; flagged explicitly for PE to root-cause the exact iOS mechanism on real device behavior before designing FR-1's fix (Design's #1 job), rather than assume. Authored docs/exec-plans/active/2026-07-07-v1.22.1-mobile-player-fixes.md: 5 lean FRs (one bug each) -- FR-1 bug2/CRITICAL (outcome-focused ACs, mechanism deliberately left to PE), FR-2 bug1 (mobile-audio fs-btn + hold-2x; speed access deferred to FR-4), FR-3 bug3 (rotate-to-fullscreen, explicit iOS platform-limit scope call surfaced for Dean's sign-off -- accepts either a working auto-rotate or a documented platform-limit + reliable manual-fullscreen fallback), FR-4 bug4 unified with bug-1's speed gap (ONE persistent playback-speed control, desktop+mobile, reconciled with the existing transient #speed-badge hold-2x indicator, not duplicated onto native mobile-video controls), FR-5 bug5 (desktop click-video-to-pause, reusing the audio path's scheduleArtSingleTap/cancelPendingArtTap debounce). 37 acceptance criteria total, grouped/tagged per FR + cross-cutting, with review tiers (HEAVIEST two-reviewer+Dean-iOS-arbiter for FR-1 only; LIGHT single-QA+on-device for FR-2/3/4/5) per Dean's lean-gate directive. One non-blocking product-fork recommendation: remove (not repurpose) #fs-btn for mobile audio, which also resolves a dangling fork the v1.22.0 FR-1 design left open (AC11 wording vs. shipped behavior). No overlap found with any active exec plan (none exists) or the tech-debt tracker. Set stage=design, wrote artifacts.requirements/exec_plan. No application/test code written; no git touched. Routing back to EM for /prep-pe-design."
     }
   ]
 }
