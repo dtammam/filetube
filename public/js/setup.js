@@ -290,6 +290,20 @@ function populateDefaultViewSelect() {
   if (loadedDefaultView !== null) select.value = loadedDefaultView;
 }
 
+// FR-3 (v1.18.0): builds the "…: name1, name2 +K more" suffix appended after
+// the existing "Converting N file(s) in the background" message, from the
+// (bounded) `transcodeNames`/`transcodeOverflow` fields GET /api/scan-status
+// now returns. Pure/extractable so it's unit-testable without a DOM/fetch --
+// returns '' (no suffix) when there are no names to show, so a stale/older
+// response shape (missing transcodeNames) degrades to the pre-FR-3 message
+// rather than throwing.
+function transcodeNamesSuffix(s) {
+  if (!Array.isArray(s.transcodeNames) || s.transcodeNames.length === 0) return '';
+  let suffix = `: ${s.transcodeNames.join(', ')}`;
+  if (s.transcodeOverflow > 0) suffix += ` +${s.transcodeOverflow} more`;
+  return suffix;
+}
+
 // Poll the server's scan status and report live progress until the scan finishes.
 function pollScanStatus(statusText) {
   if (!controller || controller.signal.aborted) return; // view torn down -- stop the chain
@@ -298,12 +312,14 @@ function pollScanStatus(statusText) {
     .then((s) => {
       if (!controller || controller.signal.aborted) return;
       if (s.scanning) {
-        statusText.textContent = `Scanning library… ${s.fileCount} file(s) found so far`;
+        let msg = `Scanning library… ${s.fileCount} file(s) found so far`;
+        if (s.transcoding > 0) msg += ` Converting ${s.transcoding} file(s) in the background${transcodeNamesSuffix(s)}`;
+        statusText.textContent = msg;
         statusText.style.color = 'var(--text-primary)';
         setTimeout(() => pollScanStatus(statusText), 1000);
       } else {
         let msg = `Scan complete — ${s.fileCount} file(s) across ${s.folderCount} folder(s).`;
-        if (s.transcoding > 0) msg += ` Converting ${s.transcoding} file(s) in the background…`;
+        if (s.transcoding > 0) msg += ` Converting ${s.transcoding} file(s) in the background${transcodeNamesSuffix(s)}`;
         statusText.textContent = msg;
         statusText.style.color = 'green';
         // C4 remediation (v1.16.0): re-check `signal.aborted` INSIDE the
@@ -752,4 +768,10 @@ function destroy() {
 
 if (typeof window !== 'undefined' && window.FileTube && typeof window.FileTube.registerView === 'function') {
   window.FileTube.registerView('setup', { init, destroy });
+}
+
+// Guarded so requiring this file in Node (for unit tests) never touches
+// `window`/`document` -- mirrors player.js's own module.exports guard.
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { transcodeNamesSuffix };
 }

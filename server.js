@@ -2,7 +2,7 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { exec, spawn } = require('child_process');
+const { exec, execFile, spawn } = require('child_process');
 const mime = require('mime-types');
 require('dotenv').config();
 
@@ -226,8 +226,14 @@ const ALL_EXTENSIONS = [...VIDEO_EXTENSIONS, ...AUDIO_EXTENSIONS];
 // (Extend this list if other formats fail to play in the browser.)
 const TRANSCODE_EXTENSIONS = ['.avi', '.flv', '.wmv', '.mpg', '.mpeg'];
 
-function needsTranscode(ext) {
-  return TRANSCODE_EXTENSIONS.includes(ext);
+// FR-1b (v1.18.0): extension-OR-codec. `videoCodec`/`audioCodec` are OPTIONAL
+// (undefined for every pre-v1.18 call site) so single-arg callers get the
+// exact byte-identical extension-only result they always have -- see
+// `codecNeedsTranscode` (next to `parseFfprobeStreams`, below) for the
+// codec-allowlist half of this check.
+function needsTranscode(ext, videoCodec, audioCodec) {
+  if (TRANSCODE_EXTENSIONS.includes(ext)) return true;
+  return codecNeedsTranscode(videoCodec, audioCodec);
 }
 function transcodedPath(id) {
   return path.join(TRANSCODE_DIR, `${id}.mp4`);
@@ -828,7 +834,12 @@ function reconcileTranscode(item) {
     return false;
   }
   const before = item.transcodeStatus;
-  item.needsTranscode = needsTranscode(item.ext);
+  // FR-1b (v1.18.0): the authoritative recompute -- runs after the scan's
+  // probe has attached `videoCodec`/`audioCodec` to the item, so a nominally
+  // web-safe container with a non-allowlisted codec (HEVC, VP9, AC-3, ...)
+  // gets flagged here even though the scan-time seed (ext-only, codecs aren't
+  // known yet at that point) did not.
+  item.needsTranscode = needsTranscode(item.ext, item.videoCodec, item.audioCodec);
   if (!item.needsTranscode) {
     if (item.transcodeStatus !== undefined) { delete item.transcodeStatus; return true; }
     return false;
@@ -884,6 +895,64 @@ function parseFfprobeTags(input) {
   return out;
 }
 
+// FR-1b (v1.18.0): the browser-compatible codec allowlist — deliberately
+// conservative (H.264/AVC video + AAC audio ONLY; HEVC/VP9/AV1/AC-3/DTS/
+// E-AC-3 etc. are NOT allowlisted despite partial device support), mirroring
+// the `TRANSCODE_EXTENSIONS` pattern above. ffprobe reports `h264`; `avc1` is
+// included defensively (some tools/containers surface that name instead).
+const PLAYABLE_VIDEO_CODECS = new Set(['h264', 'avc1']);
+const PLAYABLE_AUDIO_CODECS = new Set(['aac']);
+
+// Pure: pull the first video/audio stream's codec_name out of ffprobe's
+// -show_entries stream=codec_name,codec_type:stream_disposition=attached_pic
+// output (accepts the parsed object OR the raw stdout string — same
+// robustness contract as parseFfprobeTags: JSON.parse in a try/catch, never
+// throws, returns {} on anything malformed). Returns { videoCodec,
+// audioCodec }, lowercased; either key is simply absent (undefined) when
+// that stream type isn't present in the probe output.
+//
+// Cover-art / attached_pic trap: many VIDEO-container files (.mp4/.mkv/
+// .mov/.webm/.m4v) carry an embedded COVER-ART image as its own
+// `codec_type: 'video'` stream (codec_name mjpeg/png,
+// `disposition.attached_pic === 1`). Picking the FIRST video stream
+// unconditionally can select that cover-art stream instead of the real
+// video track when it happens to be ordered first — wrongly flagging an
+// otherwise-playable file for transcode (or hiding a genuinely
+// non-allowlisted real codec behind an allowlisted-looking cover-art one).
+// We skip any stream whose `disposition.attached_pic === 1` when picking
+// the video stream; audio-stream selection is unaffected. Missing/undefined
+// disposition info degrades safely to "not attached_pic" (an ordinary video
+// stream), so a probe whose output lacks disposition entries at all still
+// behaves exactly as it did before this fix. If every video stream in the
+// file is attached_pic (no real video track — effectively an audio file in
+// a video container), `videoCodec` is left absent/undefined (never
+// flagged).
+function parseFfprobeStreams(input) {
+  let j = input;
+  if (typeof input === 'string') {
+    try { j = JSON.parse(input); } catch (_) { return {}; }
+  }
+  if (!j || typeof j !== 'object') return {};
+  const streams = Array.isArray(j.streams) ? j.streams : [];
+  const out = {};
+  const isAttachedPic = (s) => !!(s.disposition && s.disposition.attached_pic === 1);
+  const videoStream = streams.find(s => s && s.codec_type === 'video' && s.codec_name && !isAttachedPic(s));
+  if (videoStream) out.videoCodec = String(videoStream.codec_name).toLowerCase();
+  const audioStream = streams.find(s => s && s.codec_type === 'audio' && s.codec_name);
+  if (audioStream) out.audioCodec = String(audioStream.codec_name).toLowerCase();
+  return out;
+}
+
+// Pure: true only on a POSITIVE identification of a non-allowlisted codec.
+// `undefined`/missing codecs (a probe that failed, or hasn't run yet) always
+// return false — a failed/ambiguous probe must never *falsely* flag a file
+// for transcoding (the "degrade safely" contract in docs/RELIABILITY.md).
+function codecNeedsTranscode(videoCodec, audioCodec) {
+  if (videoCodec && !PLAYABLE_VIDEO_CODECS.has(videoCodec)) return true;
+  if (audioCodec && !PLAYABLE_AUDIO_CODECS.has(audioCodec)) return true;
+  return false;
+}
+
 // Extract duration and thumbnail using FFmpeg
 function extractMetadataAndThumbnail(filePath, mediaId, isAudio) {
   return new Promise((resolve) => {
@@ -891,27 +960,67 @@ function extractMetadataAndThumbnail(filePath, mediaId, isAudio) {
     const thumbPath = path.join(THUMBNAIL_DIR, thumbName);
     
     if (!ffmpegAvailable) {
-      return resolve({ duration: 0, hasThumbnail: false, artist: '', tags: {} });
+      // FIX (v1.18.0 two-reviewer follow-up): explicit `null`, not an absent
+      // key, even on this "ffmpeg isn't installed at all" path -- so a
+      // no-ffmpeg deployment's reuse-guard `hasCodecFields` check (below,
+      // ~line 1241) sees the codec keys as present (probed once, no usable
+      // codec) instead of re-extracting (ffprobe attempt + ffmpeg thumbnail
+      // attempt) every video item on every single scan forever.
+      return resolve({ duration: 0, hasThumbnail: false, artist: '', tags: {}, videoCodec: null, audioCodec: null });
     }
 
     // Get duration + all format tags (artist -> channel name; the rest -> the
-    // additive "embedded info" block on the watch page).
-    const ffprobeCmd = `ffprobe -v error -show_entries format=duration:format_tags -of json "${filePath}"`;
-    // Bump maxBuffer well above exec's 1MB default — files with large embedded
+    // additive "embedded info" block on the watch page) AND, per stream, its
+    // codec + attached_pic disposition (FR-1b, v1.18.0 + two-reviewer
+    // follow-up) -- ONE probe, no second spawn. `execFile` (not `exec`) so
+    // `filePath` is passed as its own arg-array element rather than
+    // interpolated into a shell command string -- this narrows the
+    // pre-existing injection surface on this line without widening anything.
+    const ffprobeArgs = [
+      '-v', 'error',
+      '-show_entries', 'format=duration:format_tags:stream=codec_name,codec_type:stream_disposition=attached_pic',
+      '-of', 'json',
+      filePath,
+    ];
+    // Bump maxBuffer well above the 1MB default — files with large embedded
     // tags (long descriptions/lyrics) could otherwise overflow it, set `err`, and
     // regress duration to 0 (which would also mis-time the thumbnail grab).
-    exec(ffprobeCmd, { maxBuffer: 16 * 1024 * 1024 }, (err, stdout) => {
+    execFile('ffprobe', ffprobeArgs, { maxBuffer: 16 * 1024 * 1024 }, (err, stdout) => {
       let duration = 0;
       let artist = '';
       let tags = {};
+      // FIX (v1.18.0 two-reviewer follow-up): default to explicit `null`
+      // (a probe ATTEMPT was made -- this callback only runs once execFile
+      // has already returned, whatever the outcome) rather than `undefined`.
+      // Previously an errored/unparseable probe left these `undefined`,
+      // which `JSON.stringify` drops entirely -> the key came back ABSENT
+      // after the DB round-trip -> the reuse-guard's `hasCodecFields` check
+      // (~line 1241) was false forever -> that file was re-extracted (a
+      // fresh ffprobe + ffmpeg thumbnail spawn) on EVERY subsequent scan.
+      // `null` here means "probed, no usable codec determined" (either the
+      // probe failed/errored, or -- when overwritten below -- it succeeded
+      // but that stream type is genuinely absent from the file); either way
+      // the reuse guard now sees the keys present and stops re-probing this
+      // file until its size/mtime actually changes. `codecNeedsTranscode`
+      // treats `null` exactly like `undefined` (falsy -> never flags), so
+      // this is degrade-safe: a corrupt/unprobeable file is simply never
+      // flagged for transcode on codec grounds (it may still be flagged by
+      // extension).
+      let videoCodec = null;
+      let audioCodec = null;
       if (!err && stdout) {
         try {
           const j = JSON.parse(stdout);
           duration = parseFloat(j.format && j.format.duration) || 0;
           const rawTags = (j.format && j.format.tags) || {};
           artist = (rawTags.artist || rawTags.ARTIST || rawTags.Artist || '').trim();
-          // Tag extraction is best-effort — never let it break duration/thumbnail.
+          // Tag/codec extraction is best-effort — never let it break duration/thumbnail.
           try { tags = parseFfprobeTags(j); } catch (_) { tags = {}; }
+          try {
+            const streams = parseFfprobeStreams(j);
+            videoCodec = streams.videoCodec !== undefined ? streams.videoCodec : null;
+            audioCodec = streams.audioCodec !== undefined ? streams.audioCodec : null;
+          } catch (_) { videoCodec = null; audioCodec = null; }
         } catch (_) {}
       }
 
@@ -919,14 +1028,14 @@ function extractMetadataAndThumbnail(filePath, mediaId, isAudio) {
         // Try to extract embedded audio artwork
         const extractArtCmd = `ffmpeg -i "${filePath}" -an -vcodec copy -y "${thumbPath}"`;
         exec(extractArtCmd, (artErr) => {
-          resolve({ duration, artist, tags, hasThumbnail: !artErr && fs.existsSync(thumbPath) });
+          resolve({ duration, artist, tags, videoCodec, audioCodec, hasThumbnail: !artErr && fs.existsSync(thumbPath) });
         });
       } else {
         // Extract video frame (at 2 seconds or 10% of duration, whichever is smaller)
         const timestamp = duration > 5 ? 2 : Math.max(0, duration / 2);
         const extractFrameCmd = `ffmpeg -ss ${timestamp} -i "${filePath}" -vframes 1 -q:v 2 -y "${thumbPath}"`;
         exec(extractFrameCmd, (frameErr) => {
-          resolve({ duration, artist, tags, hasThumbnail: !frameErr && fs.existsSync(thumbPath) });
+          resolve({ duration, artist, tags, videoCodec, audioCodec, hasThumbnail: !frameErr && fs.existsSync(thumbPath) });
         });
       }
     });
@@ -1151,14 +1260,30 @@ async function runScanDirectories() {
 
   for (const [filePath, info] of scannedFiles.entries()) {
     const id = getMediaId(filePath);
-    
-    // If metadata already exists and file hasn't changed (based on size/mtime), reuse it
-    if (db.metadata[id] && db.metadata[id].filePath === filePath && db.metadata[id].size === info.size) {
-      newMetadata[id] = db.metadata[id];
+    const isAudio = AUDIO_EXTENSIONS.includes(info.ext);
+
+    // If metadata already exists and file hasn't changed (based on size/mtime), reuse it.
+    // FR-1b (v1.18.0) backfill: a VIDEO item is only reused once it already
+    // carries the probed codec fields (`videoCodec`/`audioCodec` -- present,
+    // even if `null`, once a probe has actually run). A pre-v1.18 entry (or
+    // one whose last probe failed) is missing both keys entirely (see
+    // `extractMetadataAndThumbnail`'s comment on `undefined` vs. `null`) and
+    // is re-extracted ONE more time here to backfill them -- probe-only, this
+    // never itself queues a transcode (reconcileTranscode still gates actual
+    // transcode entry on the ext/codec check, below). Audio items are
+    // unaffected (skip this extra guard) — reconcileTranscode already
+    // short-circuits `type === 'audio'`.
+    const existing = db.metadata[id];
+    const hasCodecFields = !!existing &&
+      Object.prototype.hasOwnProperty.call(existing, 'videoCodec') &&
+      Object.prototype.hasOwnProperty.call(existing, 'audioCodec');
+    const reusable = !!existing && existing.filePath === filePath && existing.size === info.size &&
+      (isAudio || hasCodecFields);
+    if (reusable) {
+      newMetadata[id] = existing;
     } else {
       // New or updated file
       console.log(`Scanning new/updated file: ${info.name}`);
-      const isAudio = AUDIO_EXTENSIONS.includes(info.ext);
 
       // FIX-9 (two-reviewer gate): `cleanDisplayTitle` strips a trailing
       // ` [<11-char id>]` bracket -- exactly the shape `--restrict-filenames`
@@ -1199,6 +1324,18 @@ async function runScanDirectories() {
         newMetadata[id].hasThumbnail = meta.hasThumbnail;
         newMetadata[id].artist = meta.artist || '';
         newMetadata[id].tags = meta.tags || {};
+        // FR-1b (v1.18.0, + two-reviewer follow-up): probed codecs,
+        // piggybacked on the same ffprobe call above. `meta.videoCodec`/
+        // `meta.audioCodec` are now ALWAYS an explicit lowercased string or
+        // `null` (never `undefined`) once a probe attempt has run --
+        // `extractMetadataAndThumbnail` sets `null` on any failed/errored/
+        // unavailable probe, not just a stream type genuinely absent from a
+        // successful probe -- so the key always survives the JSON round-trip
+        // and this item is probed/attempted only ONCE, not re-extracted on
+        // every subsequent scan (see the reuse-guard `hasCodecFields` check
+        // below, which relies on the keys being present).
+        newMetadata[id].videoCodec = meta.videoCodec;
+        newMetadata[id].audioCodec = meta.audioCodec;
       } catch (err) {
         console.error(`Error extracting metadata for ${info.name}:`, err);
       }
@@ -1671,19 +1808,32 @@ app.post('/api/scan', async (req, res) => {
   }
 });
 
+// FR-3 (v1.18.0): bounds the `transcodeNames` list GET /api/scan-status
+// returns below -- codec-based detection (T2/FR-1b) can flag substantially
+// more files than the old extension-only set on a large library, so the
+// names array is capped rather than unbounded (fork #6 in the exec plan).
+const TRANSCODE_LIST_CAP = 10;
+
 // API: Live scan/transcode status for progress feedback in the UI
 app.get('/api/scan-status', (req, res) => {
   const db = loadDatabase();
   const items = Object.values(db.metadata);
-  const transcoding = items.filter(i =>
+  // Same filter that has always produced the `transcoding` count -- this is
+  // T2's generalized, codec-aware `needsTranscode`/`transcodeStatus` (a
+  // codec-flagged HEVC .mp4 rides this exact filter, not a divergent one).
+  const pending = items.filter(i =>
     i.needsTranscode && i.transcodeStatus && i.transcodeStatus !== 'ready' && i.transcodeStatus !== 'failed'
-  ).length;
+  );
+  const transcodeNames = pending.slice(0, TRANSCODE_LIST_CAP).map(i => i.title || i.name);
+  const transcodeOverflow = Math.max(0, pending.length - transcodeNames.length);
   res.json({
     scanning: scanState.scanning,
     lastScan: scanState.lastScan,
     fileCount: items.length,
     folderCount: (db.folders || []).length,
-    transcoding
+    transcoding: pending.length,
+    transcodeNames,
+    transcodeOverflow
   });
 });
 
@@ -2285,6 +2435,10 @@ module.exports = {
   updateDatabase,
   reconcileTranscode,
   parseFfprobeTags,
+  parseFfprobeStreams,
+  codecNeedsTranscode,
+  PLAYABLE_VIDEO_CODECS,
+  PLAYABLE_AUDIO_CODECS,
   parseCacheCap,
   resolveTranscodeDir,
   parseCrf,

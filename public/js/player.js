@@ -983,7 +983,28 @@ if (typeof module !== 'undefined' && module.exports) {
     if (audioBgArt) { audioBgArt.style.display = 'none'; audioBgArt.style.backgroundImage = ''; }
     if (audioVisualizer) audioVisualizer.style.display = 'none';
     if (skipControls) skipControls.style.display = 'none';
-    if (mediaPlayer) mediaPlayer.pause();
+    if (mediaPlayer) {
+      mediaPlayer.pause();
+      // FR-2 (v1.18.0): reset the visible poster/last-decoded frame to
+      // neutral BEFORE setupForMedia assigns the new source, so the
+      // OUTGOING item's image never lingers/flashes during the transition
+      // (stale poster + FOUC on Next). `removeAttribute('poster')` clears
+      // the audio branch's `/thumbnail/<prevId>` poster (setupForMedia only
+      // ever sets `.poster` for audio); `removeAttribute('src')` + `load()`
+      // drops the previous video's last-decoded frame, resetting the
+      // element to the media-empty state, which paints nothing -- revealing
+      // the existing `#000` `.player-container` background beneath (the
+      // CSS-only neutral placeholder; no new asset/CSS). `removeAttribute`
+      // (not `src = ''`) avoids the "empty string resolves to the page URL"
+      // reload quirk. This is a media-ELEMENT `load()`, not a page reload,
+      // and only ever runs here -- on a genuine (non-`adopt`) load; the
+      // `adopt` dock<->full path returns before `teardownMediaState()` is
+      // ever called (see `load()`), so playback continuity there is
+      // untouched.
+      mediaPlayer.removeAttribute('poster');
+      mediaPlayer.removeAttribute('src');
+      mediaPlayer.load();
+    }
   }
 
   function setupForMedia(id, data) {
