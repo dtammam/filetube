@@ -34,9 +34,9 @@ test('index.html: the sort-row heading, sort-select, and Shuffle/Rescan buttons 
   assert.match(html, /id="rescan-library-btn"/);
 });
 
-test('index.html: the Shuffle again / Rescan Files button labels are wrapped in .btn-label (so mobile CSS can hide just the text)', () => {
-  assert.match(html, /id="shuffle-again-btn"[^>]*>[\s\S]*?<span class="btn-label">Shuffle again<\/span>/);
-  assert.match(html, /id="rescan-library-btn"[^>]*>[\s\S]*?<span class="btn-label">Rescan Files<\/span>/);
+test('index.html: the Shuffle / Rescan button labels are wrapped in .btn-label (short one-word visible labels so the mobile actions row fits on one line; full names live in aria-label)', () => {
+  assert.match(html, /id="shuffle-again-btn"[^>]*>[\s\S]*?<span class="btn-label">Shuffle<\/span>/);
+  assert.match(html, /id="rescan-library-btn"[^>]*>[\s\S]*?<span class="btn-label">Rescan<\/span>/);
 });
 
 test('index.html: the Shuffle again / Rescan Files buttons carry an accessible name independent of the visible label', () => {
