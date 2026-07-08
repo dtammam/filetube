@@ -2,6 +2,10 @@
 
 ## Planned
 
+### 🐞 Bugs — high priority
+
+- [ ] **[HIGH] Delete fails on an already-missing file (ENOENT) → orphaned entry stays in the library** — deleting certain videos fails and the item doesn't disappear (still listed, still looks playable even though the file is gone). Root cause (confirmed in `DELETE /api/videos/:id`, `server.js` ~2333-2385): if `fs.unlinkSync(filePath)` throws a non-read-only FS error — notably **ENOENT** (the file is already gone from disk: removed/moved externally, a stored-path mismatch, or a TOCTOU race after the `existsSync` guard) — the handler returns **500 and leaves the DB metadata COMPLETELY untouched**, so the orphaned entry persists on every reopen. Observed: `Error deleting file: ... ENOENT: no such file or directory, unlink '/media/ytdlp/Gggmanlives/Black Flag Resynced Changed More Than I Thought... [aDLIGH1fiqI].mp4'`. **Fix:** treat ENOENT (and other "already-absent" outcomes) as **success** — the desired end state (file not present) is already true, so fall through to the existing DB cleanup (remove metadata + thumbnail + transcode + progress) and return 200, making delete idempotent / fail-safe. Keep the read-only (`EROFS`/`EACCES`) → 409 "remove anyway?" path exactly as-is; only auto-succeed on the file-already-gone case. Add a regression test (delete of an item whose file is missing removes the entry). _(Dean — high-prio bug)_
+
 ### 🎬 Player / mobile UX
 
 - [ ] **Optional mobile control style — custom bar vs. native iOS (deferred, Dean)** — the whole v1.22.x mobile-player arc landed on ONE hardcoded answer: mobile uses our custom control bar everywhere (video + audio), because native inline iOS controls auto-hide / re-reveal unreliably under our gesture layer (see v1.22.1). It works well now — but Dean isn't sure he loves the custom bar on mobile and may prefer **native iOS controls** there, accepting the trade-offs. Rather than re-litigate one global default, make it **optional / device-aware**:
@@ -39,6 +43,7 @@
 
 ### 🎨 Visual polish
 
+- [ ] **Consistent user / uploader avatar icons** — the uploader/channel avatar is currently just the first letter uppercased. Give each "user"/channel a consistent, deterministic generated icon (identicon-style, or a stable color + glyph derived from the channel name) so the same channel always shows the same avatar — more fun + recognizable, on-brand retro. (Ties into the "use the YouTube channel's real icon" item above — real avatar when available, generated one as the fallback.) _(Dean)_
 - [ ] **More elegant buttons (less blocky)** — the blocky beveled buttons are on-brand retro, but Dean wants them a touch more refined/elegant: subtler bevels/rounding, tighter spacing + typography, cleaner hover — a polish pass that keeps the era-theme system and the 2000s character, not a redesign. _(Dean)_
 
 ### 🔐 Accounts & security
