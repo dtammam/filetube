@@ -1059,7 +1059,15 @@ if (typeof module !== 'undefined' && module.exports) {
           }
         } else if (liveMode) {
           startLiveStream(0, true);
-        } else if (!isMobileViewport()) {
+        } else {
+          // v1.23.6 (Dean): auto-start on load for MOBILE too, not just
+          // desktop -- picking a song/video just plays, no manual tap needed.
+          // On iOS the FIRST play of a session may be refused (no user gesture
+          // survives the async progress fetch) -> the .catch swallows it and
+          // the play button stays exactly as before; once the user has tapped
+          // play once, the persistent <video> is unlocked and every later pick
+          // auto-plays. The resume-overlay / saved-progress branches above are
+          // unchanged (they intentionally do NOT auto-play).
           mediaPlayer.play().catch(function () {});
         }
       })

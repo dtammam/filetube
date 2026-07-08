@@ -3294,18 +3294,17 @@ a.sub-row-channel-link:focus-visible {
   }
 }
 
-/* DOCKED restore: overlay layout for the mini-player (bar already trimmed to
-   play/pause + seek by the #player-dock rules). */
+/* DOCKED mini-player (v1.23.6, Dean): same bar-below layout, just using the
+   trimmed mini-player bar height (26px, see `#player-dock .player-controls`)
+   instead of the full 40/44px. The universal `aspect-ratio:auto` +
+   `#media-player { aspect-ratio:16/9 }` rules above already apply here -- only
+   the reserved strip height differs, so the tiny bar sits below the mini
+   picture/art rather than covering it. */
 #player-dock #player-wrapper {
-  aspect-ratio: 16 / 9;
-  padding-bottom: 0;
-}
-#player-dock #player-wrapper #media-player {
-  aspect-ratio: auto;
-  height: 100%;
+  padding-bottom: 26px;
 }
 #player-dock #player-wrapper.audio-mode #audio-bg-art {
-  bottom: 0;
+  bottom: 26px;
 }
 
 /* FULLSCREEN restore: desktop fullscreen targets the container and keeps the
