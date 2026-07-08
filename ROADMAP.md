@@ -27,6 +27,7 @@
 - [ ] **Make yt-dlp errors visible + obvious** — lots of silent **exit-code-1** failures; surface the actual failure reason in the status chip / panel (bad URL, members-only, geo-block, format, network) instead of a generic fail, so it's clear WHY a download failed. Investigate the exit-code-1 spike itself too (may be partly the URL-param rejection above, or a yt-dlp/cookies issue). _(Dean)_
 - [ ] **Cancel an in-progress download from the main page** — add a cancel affordance (on the home status chip) that aborts a running download: cleanly kill the spawned yt-dlp process (arg-array spawn, no orphan), mark it **cancelled** (not failed), and reflect it in the status UI. Needs a cancel endpoint + process-handle tracking. _(Dean)_
 - [ ] **Clearer download progress** — make in-progress downloads' progress more visible + obvious (percent, speed, ETA, per-item), not just a terse status chip. Pairs with the visible-errors + cancel items above into one richer download-status surface. _(Dean)_
+- [ ] **Subtitle grab + closed captions** — grab subtitles / closed captions for downloads (yt-dlp `--write-subs` / `--write-auto-subs`, with language + format selection, as an embedded track or a sidecar `.vtt`/`.srt`) and render them in the player as a toggleable **CC track**: a `<track kind="captions">` on the persistent `<video>` plus a CC button on the control bar (convert `.srt` → `.vtt` server-side if needed). For LOCAL files, also pick up a sidecar subtitle file sitting next to the media. _(Dean)_
 
 ### 📚 Library & discovery
 
