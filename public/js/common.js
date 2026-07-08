@@ -923,6 +923,21 @@ function computeNeighbors(orderedIds, currentId) {
   };
 }
 
+// Pure: the parent folder of a file path -- strips the trailing `/file` or
+// `\file` segment (handles both separators). Returns '' when there is no
+// separator (a bare filename) or the input isn't a usable string. Shared by
+// prev/next (watch.js) AND autoplay-next (player.js) so both scope "previous"
+// and "next" to the SAME folder the current item lives in (Dean: prev/next
+// should walk the item's folder/channel, not the whole library). A `?root=`
+// query for this folder always includes the current item -- which also fixes
+// prev/next being greyed out for items in "Hide from home" folders (the
+// unscoped /api/videos list excludes those).
+function parentFolder(filePath) {
+  if (!filePath || typeof filePath !== 'string') return '';
+  var folder = filePath.replace(/[\\/][^\\/]*$/, '');
+  return folder === filePath ? '' : folder;
+}
+
 // ---- Hide-from-sidebar (v1.14.0 item 3) ------------------------------------
 
 // Pure: filters `folders` down to the ones that should appear in a
@@ -3248,7 +3263,7 @@ if (typeof module !== 'undefined' && module.exports) {
     resolveAudioArtUrl,
     shouldInjectSubscriptionsNav,
     fisherYatesShuffle, sortItems, shouldShowShuffleButton,
-    deriveOrderedIds, computeNeighbors,
+    deriveOrderedIds, computeNeighbors, parentFolder,
     visibleSidebarFolders, resolveDefaultView,
     moveArrayItem, computeDropIndex, rebuildFullFolderOrder,
     isSyntheticFolder,

@@ -472,7 +472,14 @@ if (typeof module !== 'undefined' && module.exports) {
     async function setupPrevNext() {
       if (!prevBtn || !nextBtn) return;
       try {
-        const res = await fetch('/api/videos');
+        // Prev/Next walk the CURRENT ITEM'S FOLDER (Dean: "next/prev should be
+        // in the folder your content is in, not all files"), scoped via the
+        // home view's existing `?root=<folder>` filter. This also fixes prev/next
+        // being greyed out for items in "Hide from home" folders -- the unscoped
+        // /api/videos list excludes those, so the current item wasn't found and
+        // computeNeighbors returned nothing. A folder query always includes it.
+        const folder = parentFolder(mediaData && mediaData.filePath);
+        const res = await fetch(folder ? '/api/videos?root=' + encodeURIComponent(folder) : '/api/videos');
         const allFiles = await res.json();
         let sortKey = 'newest';
         try { sortKey = localStorage.getItem('filetube_sort') || 'newest'; } catch (_) { /* storage disabled -- fall back to newest */ }

@@ -128,6 +128,7 @@ module.exports = [
         // by watch.js (Prev/Next controls) and player.js (autoplay-next).
         deriveOrderedIds: 'readonly',
         computeNeighbors: 'readonly',
+        parentFolder: 'readonly',
         // setup.js-only (FR-1, T1 extraction from setup.html's former inline script)
         gbToBytes: 'readonly',
         bytesToGb: 'readonly',

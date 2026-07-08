@@ -9,7 +9,25 @@
 // source of truth both features are verified against -- no divergent order.
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { deriveOrderedIds, computeNeighbors } = require('../../public/js/common.js');
+const { deriveOrderedIds, computeNeighbors, parentFolder } = require('../../public/js/common.js');
+
+// parentFolder: prev/next + autoplay-next scope "next" to the item's folder.
+test('parentFolder: strips the trailing file segment (forward slash)', () => {
+  assert.strictEqual(parentFolder('/media/music/Artist/song.mp3'), '/media/music/Artist');
+});
+test('parentFolder: yt-dlp channel file -> the channel folder', () => {
+  assert.strictEqual(parentFolder('/data/ytdlp-downloads/Chan/vid [id].mp4'), '/data/ytdlp-downloads/Chan');
+});
+test('parentFolder: Windows backslash separators', () => {
+  assert.strictEqual(parentFolder('C:\\Media\\Sub\\clip.mp4'), 'C:\\Media\\Sub');
+});
+test('parentFolder: bare filename / empty / non-string -> "" (caller falls back to unscoped)', () => {
+  assert.strictEqual(parentFolder('song.mp3'), '');
+  assert.strictEqual(parentFolder(''), '');
+  assert.strictEqual(parentFolder(undefined), '');
+  assert.strictEqual(parentFolder(null), '');
+  assert.strictEqual(parentFolder(42), '');
+});
 
 // A tiny deterministic PRNG (mulberry32), mirroring
 // test/unit/quickwins-sort.test.js's own copy, so the `random` sort key is

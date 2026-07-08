@@ -1204,7 +1204,12 @@ if (typeof module !== 'undefined' && module.exports) {
       .then(function (res) { return res.ok ? res.json() : null; })
       .then(function (settings) {
         if (!settings || !settings.autoplayNext) return; // OFF (default) -- 'ended' behavior stays exactly as today
-        return fetch('/api/videos')
+        // Scope autoplay-advance to the CURRENT ITEM'S FOLDER, identical to the
+        // Prev/Next buttons (watch.js) via the SAME parentFolder helper -- so
+        // "next" means the same thing whether you tap Next or a video ends
+        // (Dean: walk the item's folder, not the whole library).
+        var advanceFolder = parentFolder(currentData && currentData.filePath);
+        return fetch(advanceFolder ? '/api/videos?root=' + encodeURIComponent(advanceFolder) : '/api/videos')
           .then(function (res) { return res.json(); })
           .then(function (videos) {
             if (currentId !== endedId) return; // controller has moved on -- stale, no-op
