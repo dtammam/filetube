@@ -9,6 +9,7 @@
   - Consider a **device-based default** (e.g. native on iOS, custom on desktop) with a manual override — so it "just works" out of the box but stays a deliberate, overridable choice, not a silently-locked one.
   - **Scope/notes:** this reopens the mobile-VIDEO native-vs-custom decision from v1.22.0 / v1.22.1 (their exec plans are in `docs/exec-plans/completed/`). Mobile AUDIO would likely stay custom regardless — there's no native audio-fullscreen concept, which is exactly why v1.22.2 built the CSS "expanded now-playing" view. Reuse the existing shared form-factor helper (`resolveMobileFormFactor` / `isMobileFormFactor`) as the single detection seam; do not introduce a second "is this mobile" signal.
   - _(Deferred by Dean — "I don't know that I want to do it now / have the capacity." Captured so the custom-bar default stays a conscious choice we can revisit, with the option to hand control back to the user or the device.)_
+- [ ] **Background audio for video (keep playing on lock / app-switch)** — today mobile VIDEO pauses when you lock the screen or switch apps (iOS suspends inline web video, so FileTube pauses cleanly + saves position via `shouldPauseForLifecycleEvent`), while AUDIO keeps playing (background audio + MediaSession). Dean wants videos to OPTIONALLY keep playing their **audio** in the background, YouTube-Premium style. **Not trivial on iOS web** — Apple blocks background inline video; the only levers are native Picture-in-Picture (limited on iPhone) or swapping the video to an audio context / hidden `<audio>` on background (fragile, iOS-version-dependent). Treat as exploratory, scope carefully. _(Dean)_
 
 ### 📱 Mobile polish — residual (v1.23.0 shipped the quick wins)
 
@@ -20,6 +21,16 @@
 - [ ] **Accept share-sheet URL params in the one-shot download API** — a URL like `https://youtu.be/<id>?is=<token>` (and the `?si=` share param) is accepted by the download **page** but **rejected by the API/endpoint** — the URL validator (`validateChannelUrl` / FORBIDDEN_CHARS, which is also the yt-dlp spawn guard) is stricter than the UI. Normalize/strip tracking query params (`si`, `is`, …) before validation, or extend the allowlist — WITHOUT weakening the injection guard. Security-sensitive (spawn guard) → two-reviewer gate. May also cut into the exit-code-1 spike below. _(Dean)_
 - [ ] **Make yt-dlp errors visible + obvious** — lots of silent **exit-code-1** failures; surface the actual failure reason in the status chip / panel (bad URL, members-only, geo-block, format, network) instead of a generic fail, so it's clear WHY a download failed. Investigate the exit-code-1 spike itself too (may be partly the URL-param rejection above, or a yt-dlp/cookies issue). _(Dean)_
 - [ ] **Cancel an in-progress download from the main page** — add a cancel affordance (on the home status chip) that aborts a running download: cleanly kill the spawned yt-dlp process (arg-array spawn, no orphan), mark it **cancelled** (not failed), and reflect it in the status UI. Needs a cancel endpoint + process-handle tracking. _(Dean)_
+- [ ] **Clearer download progress** — make in-progress downloads' progress more visible + obvious (percent, speed, ETA, per-item), not just a terse status chip. Pairs with the visible-errors + cancel items above into one richer download-status surface. _(Dean)_
+
+### 📚 Library & discovery
+
+- [ ] **Format toggle — videos / audio / both** — a toggle (or filter chips) on the library that switches the list between **videos only**, **audio files only**, or **both**. The item type (audio vs video) is already known per file, so this is primarily a client-side filter + a persisted preference. _(Dean)_
+- [ ] **Fun stats page** — a dedicated stats / "insights" page so people can view information about their library: counts + total duration + total size, breakdowns by folder / channel / type, longest / shortest / newest, maybe most-watched (would need lightweight view tracking). Presented in a fun retro-dashboard style, on-brand with the era themes. _(Dean — "I want people to view information")_
+
+### 🔐 Accounts & security
+
+- [ ] **Multi-user + permission-gated deletion (finally adds auth)** — FileTube currently has **NO AUTH** (LAN-only by design; anyone who can reach it can download / delete / change config). Dean wants **multi-user accounts** where destructive actions — especially **deletion** (and likely config changes / downloads) — are **gated behind certain accounts / roles**. This is the long-standing security gap made real: login/session, a permission model (e.g. admin vs. viewer), and fail-safe gating so a non-privileged account can browse + play but never delete. Significant, foundational — scope carefully (session store, password hashing, migration for existing single-user installs, and keep the current LAN-only no-auth mode available as an explicit option so nobody's existing setup breaks). _(Dean)_
 
 ### 🧪 Testing / infra
 
