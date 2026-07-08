@@ -3260,34 +3260,69 @@ a.sub-row-channel-link:focus-visible {
   display: none;
 }
 
-/* === v1.23.4: mobile inline-video control bar sits BELOW the picture ========
-   (Supersedes the v1.23.3 scrim.) The solid bar was covering the bottom slice
-   of the inline video. Instead of overlaying it, reserve a strip BELOW the
-   16/9 picture and let the (still absolute) bar drop into it -- so the video is
-   FULLY visible and the solid blocky bar sits directly under it: the classic
-   retro media-player layout (picture + a control strip beneath). Pure layout,
-   no colors. Scoped to mobile VIDEO, non-docked: desktop + mobile audio keep
-   the overlay bar, fullscreen uses iOS native controls, and the DOCKED
-   mini-player is explicitly restored to its overlay layout below (a 44px strip
-   would swamp the tiny dock, where `.ff-mobile` still applies). */
-#player-wrapper.ff-mobile:not(.audio-mode) {
-  aspect-ratio: auto;      /* total height becomes picture(16/9) + the bar strip */
-  padding-bottom: 44px;    /* reserve the strip; the absolute bar drops into it */
+/* === v1.23.5: inline control bar sits BELOW the picture/art (all players) ===
+   (Supersedes the v1.23.3 scrim and the v1.23.4 mobile-video-only version.) The
+   solid control bar was overlaying the bottom of the inline picture (video) AND
+   cover art (audio), on desktop AND mobile. Reserve a strip below the 16/9
+   content and drop the (still-absolute) bar into it, so the picture/art is
+   FULLY visible with the solid blocky bar directly beneath it -- the classic
+   retro media-player layout, IDENTICAL for video + audio and desktop + mobile.
+   The strip matches the bar's own height (40px; 44px on phones -- border-box,
+   so exact, no sliver). Pure layout, no colors. Excluded/restored so their
+   existing layouts stay untouched:
+     - the audio "expanded now-playing" overlay  ( :not(.audio-expanded) )
+     - the DOCKED mini-player (stays overlay -- a strip would swamp it)
+     - desktop/native FULLSCREEN (the bar overlays there by design, AC14). */
+#player-wrapper:not(.audio-expanded) {
+  aspect-ratio: auto;      /* height becomes 16/9 content + the bar strip */
+  padding-bottom: 40px;
 }
-#player-wrapper.ff-mobile:not(.audio-mode) #media-player {
-  aspect-ratio: 16 / 9;    /* picture keeps 16/9; height derives from the width */
-  height: auto;            /* override the base `height: 100%` overlay sizing */
+#player-wrapper:not(.audio-expanded) #media-player {
+  aspect-ratio: 16 / 9;    /* content keeps 16/9; height derives from the width */
+  height: auto;            /* override the base overlay `height: 100%` */
 }
-/* DOCKED restore: `.ff-mobile` persists in the dock, so without this the strip
-   rules above would deform the mini-player. Put it back to the overlay layout
-   (its bar is already trimmed to play/pause + seek by the #player-dock rules). */
-#player-dock #player-wrapper.ff-mobile:not(.audio-mode) {
+#player-wrapper.audio-mode:not(.audio-expanded) #audio-bg-art {
+  bottom: 40px;            /* cover art fills the 16/9 area, above the bar strip */
+}
+
+@media (max-width: 768px) {
+  #player-wrapper:not(.audio-expanded) {
+    padding-bottom: 44px;  /* match the 44px mobile bar height */
+  }
+  #player-wrapper.audio-mode:not(.audio-expanded) #audio-bg-art {
+    bottom: 44px;
+  }
+}
+
+/* DOCKED restore: overlay layout for the mini-player (bar already trimmed to
+   play/pause + seek by the #player-dock rules). */
+#player-dock #player-wrapper {
   aspect-ratio: 16 / 9;
   padding-bottom: 0;
 }
-#player-dock #player-wrapper.ff-mobile:not(.audio-mode) #media-player {
+#player-dock #player-wrapper #media-player {
   aspect-ratio: auto;
   height: 100%;
+}
+#player-dock #player-wrapper.audio-mode #audio-bg-art {
+  bottom: 0;
+}
+
+/* FULLSCREEN restore: desktop fullscreen targets the container and keeps the
+   custom bar overlaying (AC14); a reserved strip would clip the picture. Put
+   the overlay layout back for both the standard and -webkit- fullscreen. */
+#player-wrapper:fullscreen,
+#player-wrapper:-webkit-full-screen {
+  padding-bottom: 0;
+}
+#player-wrapper:fullscreen #media-player,
+#player-wrapper:-webkit-full-screen #media-player {
+  aspect-ratio: auto;
+  height: 100%;
+}
+#player-wrapper.audio-mode:fullscreen #audio-bg-art,
+#player-wrapper.audio-mode:-webkit-full-screen #audio-bg-art {
+  bottom: 0;
 }
 
 /* v1.22.1 FR-2's mobile-AUDIO "#fs-btn is a dead tap there" hide rule
