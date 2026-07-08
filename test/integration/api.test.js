@@ -253,6 +253,31 @@ test('DELETE /api/videos/:id?removeAnyway=true removes the db entry when unlink 
   }
 });
 
+test('DELETE /api/videos/:id succeeds (200) and removes the db entry when the file is already gone (ENOENT) -- no orphaned, un-deletable item', async () => {
+  // Regression: an ENOENT unlink (file already deleted/moved externally, or a
+  // stored-path mismatch / TOCTOU race after existsSync) used to return 500 and
+  // leave the db entry orphaned, so the item stayed in the list and looked
+  // playable. Delete is now idempotent: file-already-gone is a SUCCESS.
+  const filePath = path.join(os.tmpdir(), `filetube-delete-enoent-${Date.now()}.mp4`);
+  seedDeleteTarget('vidEnoent', filePath);
+
+  const realUnlinkSync = fs.unlinkSync;
+  fs.unlinkSync = () => { const e = new Error('no such file or directory'); e.code = 'ENOENT'; throw e; };
+  try {
+    const res = await fetch(`${base}/api/videos/vidEnoent`, { method: 'DELETE' });
+    assert.equal(res.status, 200);
+    const json = await res.json();
+    assert.equal(json.success, true);
+
+    const dbAfter = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+    assert.ok(!dbAfter.metadata.vidEnoent, 'db entry must be removed when the file is already gone (fixes the orphaned-item bug)');
+    assert.ok(!dbAfter.progress.vidEnoent, 'progress entry must be removed too');
+  } finally {
+    fs.unlinkSync = realUnlinkSync;
+    fs.rmSync(filePath, { force: true });
+  }
+});
+
 test('DELETE /api/videos/:id returns a 409 distinguishable from EROFS on an EACCES unlink failure, and leaves the db untouched', async () => {
   const filePath = path.join(os.tmpdir(), `filetube-delete-eacces-${Date.now()}.mp4`);
   seedDeleteTarget('vidEacces', filePath);

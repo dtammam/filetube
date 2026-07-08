@@ -2352,8 +2352,24 @@ app.delete('/api/videos/:id', async (req, res) => {
     }
   } catch (err) {
     const readOnly = err && (err.code === 'EROFS' || err.code === 'EACCES');
+    const alreadyGone = err && err.code === 'ENOENT';
 
-    if (readOnly && removeAnyway) {
+    if (alreadyGone) {
+      // The file (or a sidecar) is already absent on disk -- the desired end
+      // state ("not on disk") is already true, so a delete here is a SUCCESS,
+      // not a failure. (Reached when existsSync() saw the file but the unlink
+      // then hit ENOENT: an external delete/move, a stored-path mismatch, or a
+      // TOCTOU race.) Best-effort the remaining sidecars and FALL THROUGH to
+      // the DB cleanup below so the orphaned library entry is finally removed
+      // -- fixes delete failing with a 500 and leaving the item stuck in the
+      // list, still appearing playable.
+      console.warn(`Delete: file already gone (${filePath}) -- removing the library entry anyway.`);
+      const thumbPath = path.join(THUMBNAIL_DIR, `${item.id}.jpg`);
+      try { if (fs.existsSync(thumbPath)) fs.unlinkSync(thumbPath); } catch (_) { /* best-effort */ }
+      const transcodeFile = transcodedPath(item.id);
+      try { if (fs.existsSync(transcodeFile)) fs.unlinkSync(transcodeFile); } catch (_) { /* best-effort */ }
+      // (fileRemainsOnDisk stays false -- the file is genuinely gone.)
+    } else if (readOnly && removeAnyway) {
       // The caller has already been told about the read-only/permission
       // failure and explicitly asked to remove the library entry anyway.
       // Best-effort the sidecars too, but a sidecar failure must never block
