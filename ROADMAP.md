@@ -25,6 +25,7 @@
 
 ### 📚 Library & discovery
 
+- [ ] **Move files between folders** — let the user move a file to another folder from the UI (e.g. relocate a yt-dlp download elsewhere in the network / into a curated library folder). Server-side: a move endpoint that `fs.rename`s within the mounted volumes (fall back to copy+delete across devices/mounts) and updates `db.metadata` filePath + any thumbnail/transcode/progress keyed off it; must be fail-safe (validate the target is under a configured/allowed mount, never escape the sandbox — same confinement discipline as the delete + yt-dlp paths) and interact cleanly with the next scan (a moved file must not look like a delete+new-add that loses watch progress). UI: a per-item "Move to…" picker over the known folders. _(Dean — "move something I downloaded with yt-dlp somewhere in my network")_
 - [ ] **Format toggle — videos / audio / both** — a toggle (or filter chips) on the library that switches the list between **videos only**, **audio files only**, or **both**. The item type (audio vs video) is already known per file, so this is primarily a client-side filter + a persisted preference. _(Dean)_
 - [ ] **Fun stats page** — a dedicated stats / "insights" page so people can view information about their library: counts + total duration + total size, breakdowns by folder / channel / type, longest / shortest / newest, maybe most-watched (would need lightweight view tracking). Presented in a fun retro-dashboard style, on-brand with the era themes. _(Dean — "I want people to view information")_
 

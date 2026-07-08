@@ -3247,6 +3247,18 @@ document.addEventListener('DOMContentLoaded', () => {
     const closeBtn = document.getElementById('playlists-close');
     if (backdrop) backdrop.addEventListener('click', closePlaylistsSheet);
     if (closeBtn) closeBtn.addEventListener('click', closePlaylistsSheet);
+
+    // Tapping a playlist/folder LINK inside the sheet navigates (SPA) -- close
+    // the sheet too so the user isn't left with the overlay open after picking
+    // one (Dean: no extra manual close). Delegated on the whole sheet so it
+    // covers both the async-rendered folder list and the pinned-playlist
+    // section; does NOT preventDefault, so the navigation still happens.
+    const sheet = document.getElementById('playlists-sheet');
+    if (sheet) {
+      sheet.addEventListener('click', (e) => {
+        if (e.target && e.target.closest && e.target.closest('a')) closePlaylistsSheet();
+      });
+    }
   }
 });
 }
