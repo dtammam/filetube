@@ -1,5 +1,32 @@
 /* FileTube Classic Design System - Old-School YouTube (2005-2010 Style) with Modern Responsiveness and Dark Mode */
 
+/* v1.23 (Dean, on-device): kill iOS Safari's legacy double-tap-to-zoom on
+   interactive controls. Tapping buttons/links/nav and double-tapping
+   Home/Playlists was zooming the page in and forcing a pinch-out; the
+   Subscriptions page had the same tap-zoom behavior. `touch-action:
+   manipulation` keeps normal single-tap AND two-finger pinch-zoom (so
+   accessibility zoom is preserved) but drops ONLY the legacy double-tap-zoom
+   gesture that was firing on these targets. Global (harmless on desktop /
+   non-touch). */
+a,
+button,
+select,
+input,
+textarea,
+label,
+summary,
+[role="button"],
+[data-nav],
+.btn,
+.pc-btn,
+.bottom-nav-item,
+.video-card,
+.sidebar-item,
+.card-download-btn,
+.card-delete-btn {
+  touch-action: manipulation;
+}
+
 /* Self-hosted Roboto (variable weight axis, latin subset) for YouTube-like
    typography without a Google Fonts CDN call — fully offline. Apache-2.0;
    see public/fonts/README.md. */
@@ -2767,16 +2794,14 @@ a.sub-row-channel-link:focus-visible {
     width: 100%;
   }
 
-  /* Icon-only "Shuffle again" / "Rescan Files" on phones -- the icon (with
-     its title/aria-label) still fully identifies the action; the text label
-     is what was pushing the row past the viewport width. */
-  .section-actions .btn-label {
-    display: none;
-  }
-
+  /* v1.23 (Dean): show the button WORDS on phones -- icon-only was reading as
+     "just an emoji" for Shuffle. `.section-actions` is `width: 100%` +
+     `flex-wrap` (above), so the labelled buttons wrap onto their own line
+     instead of overflowing the viewport (the original icon-only reason is no
+     longer needed now that the row wraps). */
   .section-actions .btn {
-    min-width: 32px;
     justify-content: center;
+    min-width: 44px; /* comfortable mobile tap target even for the short-label buttons */
   }
 
   /* v1.19.0 FR-6: search reuses this same home view/heading (main.js sets

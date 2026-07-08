@@ -54,12 +54,16 @@ test('mobile: .section-actions wraps and takes the full row width beneath the he
   assert.match(body, /\.section-actions\s*\{[^}]*flex-wrap:\s*wrap[^}]*width:\s*100%/);
 });
 
-test('mobile: the Shuffle again / Rescan Files button labels collapse to icon-only (.btn-label hidden) so the row always fits', () => {
+test('mobile: the Shuffle again / Rescan Files button WORDS are shown, not collapsed to icon-only (v1.23: Shuffle must not read as just an emoji)', () => {
   const body = mobileBlock();
-  assert.match(body, /\.section-actions \.btn-label\s*\{[^}]*display:\s*none/);
+  assert.doesNotMatch(
+    body,
+    /\.section-actions \.btn-label\s*\{[^}]*display:\s*none/,
+    'section-actions button labels must NOT be hidden on mobile -- the row wraps (width:100% + flex-wrap) so the words fit'
+  );
 });
 
-test('mobile: icon-only .section-actions buttons keep a comfortable minimum tap-target width', () => {
+test('mobile: .section-actions buttons keep a comfortable minimum tap-target width', () => {
   const body = mobileBlock();
   const rule = /\.section-actions \.btn\s*\{([^}]*)\}/.exec(body);
   assert.ok(rule, 'expected a mobile .section-actions .btn rule');
