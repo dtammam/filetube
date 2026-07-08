@@ -20,18 +20,40 @@ const { resolveUploaderLinkHref } = require('../../public/js/watch.js');
 
 // ---- resolveUploaderLinkHref -------------------------------------------------
 
-test('resolveUploaderLinkHref: module enabled -> the general /subscriptions fallback', () => {
-  assert.strictEqual(resolveUploaderLinkHref({ moduleEnabled: true }), '/subscriptions');
+test('resolveUploaderLinkHref: links to the item folder content view (/?root=<parent dir>), forward slashes', () => {
+  assert.strictEqual(
+    resolveUploaderLinkHref({ filePath: '/media/music/Artist X/song.mp3' }),
+    '/?root=' + encodeURIComponent('/media/music/Artist X')
+  );
 });
 
-test('resolveUploaderLinkHref: module disabled -> null (caller leaves href unset, AC25)', () => {
-  assert.strictEqual(resolveUploaderLinkHref({ moduleEnabled: false }), null);
+test('resolveUploaderLinkHref: a yt-dlp channel file resolves to its channel folder', () => {
+  assert.strictEqual(
+    resolveUploaderLinkHref({ filePath: '/data/ytdlp-downloads/Some Channel/vid [id].mp4' }),
+    '/?root=' + encodeURIComponent('/data/ytdlp-downloads/Some Channel')
+  );
 });
 
-test('resolveUploaderLinkHref: a falsy-but-not-strictly-false moduleEnabled still fails closed to null', () => {
-  assert.strictEqual(resolveUploaderLinkHref({ moduleEnabled: undefined }), null);
-  assert.strictEqual(resolveUploaderLinkHref({ moduleEnabled: 0 }), null);
-  assert.strictEqual(resolveUploaderLinkHref({ moduleEnabled: '' }), null);
+test('resolveUploaderLinkHref: handles Windows-style backslash separators', () => {
+  assert.strictEqual(
+    resolveUploaderLinkHref({ filePath: 'C:\\Media\\Folder\\clip.mp4' }),
+    '/?root=' + encodeURIComponent('C:\\Media\\Folder')
+  );
+});
+
+test('resolveUploaderLinkHref: encodeURIComponent-encodes the folder path', () => {
+  // spaces/special chars in the folder must be encoded into the query value
+  const href = resolveUploaderLinkHref({ filePath: '/a b/c&d/f.mp3' });
+  assert.strictEqual(href, '/?root=' + encodeURIComponent('/a b/c&d'));
+  assert.ok(!/ /.test(href), 'no raw spaces in the built href');
+});
+
+test('resolveUploaderLinkHref: no usable folder (bare filename / empty / non-string) -> null (inert plain text)', () => {
+  assert.strictEqual(resolveUploaderLinkHref({ filePath: 'song.mp3' }), null); // no separator
+  assert.strictEqual(resolveUploaderLinkHref({ filePath: '' }), null);
+  assert.strictEqual(resolveUploaderLinkHref({ filePath: undefined }), null);
+  assert.strictEqual(resolveUploaderLinkHref({ filePath: null }), null);
+  assert.strictEqual(resolveUploaderLinkHref({ filePath: 42 }), null);
 });
 
 // ---- textContent/.href-only construction, never innerHTML (AC26) ------------
@@ -56,14 +78,22 @@ test('uploader channel link: textContent sets the display name, href sets the li
   link.textContent = channelName;
   assert.strictEqual(link.textContent, channelName);
 
-  // setupSubscribeButton()'s assignment, module enabled.
-  const href = resolveUploaderLinkHref({ moduleEnabled: true });
+  // populateMetadata()'s href assignment: the item's folder content view.
+  const href = resolveUploaderLinkHref({ filePath: '/media/vids/Cool Channel/clip.mp4' });
   if (href) link.href = href;
-  assert.strictEqual(link.href, '/subscriptions');
+  else link.removeAttribute && link.removeAttribute('href');
+  assert.strictEqual(link.href, '/?root=' + encodeURIComponent('/media/vids/Cool Channel'));
 
-  // Module disabled: href is left unset (caller never assigns).
-  const disabledLink = { _href: '', set href(v) { this._href = v; }, get href() { return this._href; } };
-  const disabledHref = resolveUploaderLinkHref({ moduleEnabled: false });
-  if (disabledHref) disabledLink.href = disabledHref;
-  assert.strictEqual(disabledLink.href, '');
+  // No usable folder: href is cleared (caller removes it -> inert plain text).
+  const bareLink = {
+    _href: 'stale',
+    set href(v) { this._href = v; },
+    get href() { return this._href; },
+    removeAttribute(_n) { this._href = ''; },
+  };
+  const bareHref = resolveUploaderLinkHref({ filePath: 'song.mp3' });
+  if (bareHref) bareLink.href = bareHref;
+  else bareLink.removeAttribute('href');
+  assert.strictEqual(bareHref, null);
+  assert.strictEqual(bareLink.href, '', 'a stale href must be cleared when there is no folder');
 });

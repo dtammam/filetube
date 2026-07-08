@@ -53,18 +53,22 @@ function theaterModeStorageValue(isActive) {
   return isActive ? '1' : '0';
 }
 
-// resolveUploaderLinkHref (v1.22.0 FR-3, T-D, AC23-27): the creator-name
-// `<a>`'s href decision. Coordinator decision -- the GENERAL `/subscriptions`
-// fallback link only this round (no per-channel deep-link): when the
-// yt-dlp module is enabled, the link routes to `/subscriptions` (the
-// shell's existing global anchor click handler -- common.js's
-// `handleDocumentClick`/`navigate()` -- intercepts it exactly like today's
-// `[data-nav="subscriptions"]` nav link, so no new routing code is needed
-// here). When the module is disabled (or the probe failed), `null` is
-// returned so the caller leaves the `<a>`'s `href` unset -- it renders as
-// inert plain text, never a dead/broken link (AC25).
-function resolveUploaderLinkHref({ moduleEnabled }) {
-  return moduleEnabled ? '/subscriptions' : null;
+// resolveUploaderLinkHref (v1.22.0 FR-3, updated v1.23.x per Dean): the
+// creator/uploader name now links to THIS item's FOLDER content view --
+// "show me this channel/creator's stuff" -- via the home view's existing
+// `/?root=<folder>` filter (the same links the sidebar folders and channel
+// pins use; the server's root filter is a prefix match that accepts any
+// folder path, incl. a yt-dlp channelDir subfolder, which is why pins work).
+// Derived purely from the item's own `filePath`: its parent directory. Works
+// for BOTH local folders and yt-dlp channels (a downloaded video lives inside
+// its channel's folder, so the parent dir IS the channel dir) and needs no
+// yt-dlp module. Returns null when there is no usable parent folder (bare
+// filename / empty) so the caller leaves the `<a>` inert plain text.
+function resolveUploaderLinkHref({ filePath }) {
+  if (!filePath || typeof filePath !== 'string') return null;
+  var folder = filePath.replace(/[\\/][^\\/]*$/, ''); // strip trailing /file or \file
+  if (!folder || folder === filePath) return null; // no separator -> no folder
+  return '/?root=' + encodeURIComponent(folder);
 }
 
 if (typeof module !== 'undefined' && module.exports) {
@@ -325,6 +329,13 @@ if (typeof module !== 'undefined' && module.exports) {
       viewsCount.textContent = getMockViews(mediaData.id, mediaData.size);
       uploaderAvatar.textContent = (channelName[0] || 'F').toUpperCase();
       uploaderChannelName.textContent = channelName;
+      // Creator/uploader name links to THIS item's folder content view
+      // (/?root=<folder>) -- routed by the shell's global anchor handler like a
+      // sidebar-folder link. Re-set (or cleared) every load so the SPA-reused
+      // node never keeps a stale href from the previous item.
+      const uploaderLinkHref = resolveUploaderLinkHref({ filePath: mediaData.filePath });
+      if (uploaderLinkHref) uploaderChannelName.href = uploaderLinkHref;
+      else uploaderChannelName.removeAttribute('href');
       uploaderSubsCount.textContent = `${getMockSubCount(channelName)} subscribers`;
 
       addedDateText.textContent = formatRelativeTime(mediaData.addedAt);
@@ -724,14 +735,9 @@ if (typeof module !== 'undefined' && module.exports) {
         currentSubState = { visible: false, subscribed: false, subId: null, identity: null };
       }
 
-      // v1.22.0 FR-3 (AC23-27): wire the creator-name link's href off the
-      // SAME moduleEnabled probe above -- no extra fetch. General
-      // /subscriptions fallback only (coordinator decision, no deep-link
-      // this round); left unset (inert plain text) when disabled/errored.
-      if (uploaderChannelName) {
-        const uploaderLinkHref = resolveUploaderLinkHref({ moduleEnabled });
-        if (uploaderLinkHref) uploaderChannelName.href = uploaderLinkHref;
-      }
+      // (The creator-name link's href is wired in populateMetadata now -- it
+      // points at the item's folder content view, /?root=<folder>, independent
+      // of the yt-dlp module. See resolveUploaderLinkHref.)
 
       if (!currentSubState.visible) {
         subscribeBtn.remove(); // absent, not merely disabled/greyed (AC15)
