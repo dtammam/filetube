@@ -10,6 +10,17 @@
   - **Scope/notes:** this reopens the mobile-VIDEO native-vs-custom decision from v1.22.0 / v1.22.1 (their exec plans are in `docs/exec-plans/completed/`). Mobile AUDIO would likely stay custom regardless — there's no native audio-fullscreen concept, which is exactly why v1.22.2 built the CSS "expanded now-playing" view. Reuse the existing shared form-factor helper (`resolveMobileFormFactor` / `isMobileFormFactor`) as the single detection seam; do not introduce a second "is this mobile" signal.
   - _(Deferred by Dean — "I don't know that I want to do it now / have the capacity." Captured so the custom-bar default stays a conscious choice we can revisit, with the option to hand control back to the user or the device.)_
 
+### 📱 Mobile polish (v1.23 candidate — Dean, on-device)
+
+- [ ] **Kill iOS tap / double-tap zoom** — tapping controls (download button, etc.) zooms in slightly; double-tapping Home / Playlists makes the browser zoom in; and some pages (Subscriptions) render at a slightly different zoom, forcing a pinch-out. Classic iOS double-tap-to-zoom + focus-zoom + inconsistent viewport. Fix: `touch-action: manipulation` on tappable controls (kills the double-tap zoom WITHOUT disabling pinch), ensure form inputs are ≥16px font so iOS doesn't zoom-on-focus, and audit the viewport `<meta>` across all four shells for consistency. Do NOT hard-disable pinch-zoom (a11y) unless Dean okays it. Covers three of Dean's reports (download-button zoom, double-tap-home/playlists zoom, subs-page zoom drift). _(Dean — "please none of that. Yuck!")_
+- [ ] **Mobile control labels: words, not emoji/icons** — on mobile, the **Shuffle** control renders as an emoji and **Playlists** ("pull lists") is icon-only; give them text labels so they read clearly. _(Dean)_
+
+### 📥 Downloads / yt-dlp UX (v1.23 candidate — Dean)
+
+- [ ] **Accept share-sheet URL params in the one-shot download API** — a URL like `https://youtu.be/<id>?is=<token>` (and the `?si=` share param) is accepted by the download **page** but **rejected by the API/endpoint** — the URL validator (`validateChannelUrl` / FORBIDDEN_CHARS, which is also the yt-dlp spawn guard) is stricter than the UI. Normalize/strip tracking query params (`si`, `is`, …) before validation, or extend the allowlist — WITHOUT weakening the injection guard. Security-sensitive (spawn guard) → two-reviewer gate. May also cut into the exit-code-1 spike below. _(Dean)_
+- [ ] **Make yt-dlp errors visible + obvious** — lots of silent **exit-code-1** failures; surface the actual failure reason in the status chip / panel (bad URL, members-only, geo-block, format, network) instead of a generic fail, so it's clear WHY a download failed. Investigate the exit-code-1 spike itself too (may be partly the URL-param rejection above, or a yt-dlp/cookies issue). _(Dean)_
+- [ ] **Cancel an in-progress download from the main page** — add a cancel affordance (on the home status chip) that aborts a running download: cleanly kill the spawned yt-dlp process (arg-array spawn, no orphan), mark it **cancelled** (not failed), and reflect it in the status UI. Needs a cancel endpoint + process-handle tracking. _(Dean)_
+
 ### 🧪 Testing / infra
 
 - [ ] **Broaden core test coverage** — the core app's scan/config/transcode logic + HTTP endpoints have thinner coverage than the yt-dlp module. Backfill unit + smoke tests. _(partially progressed)_
