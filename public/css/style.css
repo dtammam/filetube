@@ -3260,6 +3260,27 @@ a.sub-row-channel-link:focus-visible {
   display: none;
 }
 
+/* === v1.23.3: mobile-video control-bar scrim (Dean, on-device) ==============
+   The SOLID mobile-video control bar was covering the bottom slice of the
+   inline picture. Make it a translucent bottom scrim so the video shows THROUGH
+   it, with a text-shadow on the controls for legibility over bright frames --
+   the standard inline-video pattern. Scoped to mobile VIDEO only: desktop and
+   mobile AUDIO keep the solid blocky retro bar, and fullscreen uses iOS's own
+   native controls (unaffected). Black-based scrim (rgba, not an era token)
+   intentionally, matching the video letterbox (#000) -- a deliberate exception
+   like the v1.22.2 audio-expand backdrop, kept in its own section so the
+   token-purity guard on the FR-1 section still holds. */
+#player-wrapper.ff-mobile:not(.audio-mode) .player-controls {
+  background-color: transparent;
+  background-image: linear-gradient(to top, rgba(0, 0, 0, 0.82), rgba(0, 0, 0, 0));
+  border-top: none;
+  box-shadow: none;
+}
+#player-wrapper.ff-mobile:not(.audio-mode) .player-controls .pc-btn,
+#player-wrapper.ff-mobile:not(.audio-mode) .player-controls .pc-time {
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+}
+
 /* v1.22.1 FR-2's mobile-AUDIO "#fs-btn is a dead tap there" hide rule
    (`#player-wrapper.ff-mobile.audio-mode #fs-btn { display: none; }`) is
    RETIRED in v1.22.2 FR-1: `#fs-btn`'s click handler now branches on
