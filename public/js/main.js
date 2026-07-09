@@ -109,6 +109,11 @@ if (typeof module !== 'undefined' && module.exports) {
     const videosHeader = root.querySelector('#videos-section-header');
     const sortSelect = root.querySelector('#sort-select');
     const shuffleAgainBtn = root.querySelector('#shuffle-again-btn');
+    // C2/C3 (v1.24.0, T3-WIRE): the shared "actions" row that already holds
+    // the sort <select>/shuffle/rescan controls -- the format toggle mounts
+    // into it too (renderFormatToggle inserts itself as the FIRST child, so
+    // it never disturbs the existing controls' order/listeners).
+    const sectionActions = root.querySelector('.section-actions');
 
     // v1.17.0 FR-3(b), T2: card trash-can arm/disarm state, driven by
     // common.js's pure `nextArmState` reducer. `armedBtn` is the ACTUAL
@@ -331,8 +336,21 @@ if (typeof module !== 'undefined' && module.exports) {
     // (item 1, v1.14.0) shuffles a fresh order on EVERY call -- including the
     // initial load and each "shuffle again" click -- since the shuffle order
     // itself is ephemeral (only the `random` sort PREFERENCE persists).
+    //
+    // C3 (v1.24.0, T3-WIRE): the persisted format-filter preference is
+    // applied BEFORE sorting -- every home/folder/playlist/channel view funnels
+    // through this one function, so filtering here covers all of them.
+    // C2 (v1.24.0, T3-WIRE): the item-count badge reflects the SAME
+    // already-filtered `items` the grid actually renders, never a separately
+    // computed count. Both `renderItemCountBadge`/`renderFormatToggle` are
+    // idempotent (see common.js) -- safe to call on every render (initial
+    // load, sort change, shuffle-again, post-delete re-render) without ever
+    // accumulating duplicate badges/toggles.
     function renderSorted() {
-      const items = sortItems(currentItems, currentSort);
+      const filtered = filterByMediaType(currentItems, getStoredFormatFilter());
+      const items = sortItems(filtered, currentSort);
+      renderItemCountBadge(videosHeader, items);
+      renderFormatToggle(sectionActions, getStoredFormatFilter(), () => renderSorted());
       renderMediaGrid(items);
     }
 

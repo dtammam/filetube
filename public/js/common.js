@@ -102,6 +102,70 @@ function setTheme(era) {
   applyIconSet(pref);
 }
 
+// ---- F1: deterministic avatar fallback (v1.24.0, T3) -----------------------
+//
+// Replaces the old "first letter on a fixed color" uploader/channel avatar
+// (e.g. watch.html's `.uploader-avatar` today always renders `var(--yt-red)`
+// -- the LETTER was the only thing that ever varied) with a genuinely
+// deterministic per-name avatar: same input name -> same {glyph, color}
+// EVERY time, and different names are visually distinguishable by color, not
+// just by letter. `AVATAR_PALETTE` is deliberately literal hex values lifted
+// from this file's own THEME_REGISTRY swatch tokens (+ their CSS "-dark"
+// companions from style.css's :root blocks) rather than a brand-new,
+// unrelated color set, so a generated avatar always harmonizes with the
+// retro era-theme system already on screen. Pure/DOM-free -- unit-tested
+// directly, no browser needed.
+const AVATAR_PALETTE = [
+  '#0000cc', // 2005 era accent (link blue)
+  '#cc0000', // 2009/2021 era accent (--yt-red)
+  '#990000', // 2009/2021 era accent-dark (--yt-red-dark)
+  '#e62117', // 2014 era accent
+  '#c1160f', // 2014 era accent-dark
+  '#4a154b', // existing video-placeholder purple (server.js thumbnail fallback)
+  '#2b3e50', // existing audio-placeholder navy (server.js thumbnail fallback)
+];
+
+// Pure, deterministic string hash (djb2 variant) -- same string always
+// produces the same non-negative integer, on any platform/Node version
+// (no reliance on object iteration order, Math.random, or locale). Used only
+// to pick a stable index into AVATAR_PALETTE; never used for anything
+// security-sensitive.
+function hashAvatarSeed(str) {
+  let hash = 5381;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) + hash + str.charCodeAt(i)) | 0; // hash*33 + c
+  }
+  return Math.abs(hash);
+}
+
+// Pure: `name` -> a deterministic `{ glyph, color }` pair. A blank/missing
+// name falls back to a literal '?' glyph (still deterministic -- always maps
+// to the same palette color) rather than throwing or rendering empty.
+// Exported for node:test; this is the FROZEN contract `watch.js` (T4, same
+// wave) imports as a global (see eslint.config.js's consumer-globals block).
+function deriveAvatar(name) {
+  const label = typeof name === 'string' ? name.trim() : '';
+  const safeLabel = label !== '' ? label : '?';
+  const glyph = safeLabel.charAt(0).toUpperCase();
+  const color = AVATAR_PALETTE[hashAvatarSeed(safeLabel) % AVATAR_PALETTE.length];
+  return { glyph, color };
+}
+
+// Pure: the avatar PRECEDENCE every uploader/channel avatar render site
+// should apply -- a real captured `channelAvatarUrl` (C6, populated by T11 in
+// Wave 3; always absent/null today) wins when present and non-blank, else
+// falls back to the deterministic `deriveAvatar(name)`. Building this seam
+// now (rather than in T11) means T11 never has to re-touch a client render
+// site -- it only ever needs to start POPULATING the field server-side.
+// Returns either `{ type: 'url', url }` or `{ type: 'generated', glyph, color }`.
+function resolveAvatarSource(name, channelAvatarUrl) {
+  if (typeof channelAvatarUrl === 'string' && channelAvatarUrl.trim() !== '') {
+    return { type: 'url', url: channelAvatarUrl.trim() };
+  }
+  const generated = deriveAvatar(name);
+  return { type: 'generated', glyph: generated.glyph, color: generated.color };
+}
+
 // ---- Icon-set system ------------------------------------------------------
 // A third, orthogonal appearance axis (theme x mode x icon-set) layered on
 // top of the era/mode system above, with no change to resolveTheme/
@@ -857,6 +921,17 @@ function fisherYatesShuffle(items, rng) {
   return arr;
 }
 
+// Pure helper for the `release-date` case only (below) -- an item's captured
+// `releaseDate` (epoch ms; populated by T5/T11's scan-time capture, absent
+// today) when present, else the existing `addedAt` epoch ms every item
+// already has, else 0 (never NaN/undefined, so the comparator below is
+// always well-defined). Kept as a small named helper rather than inlined so
+// the fallback rule is unit-testable/readable in isolation.
+function resolveReleaseDateSortValue(item) {
+  if (item && typeof item.releaseDate === 'number' && !Number.isNaN(item.releaseDate)) return item.releaseDate;
+  return (item && item.addedAt) || 0;
+}
+
 // Pure: the same sort switch previously inlined in renderSorted()
 // (public/js/main.js), extracted here so every case -- including the new
 // `random` option -- is unit-testable without a browser/DOM harness. Returns
@@ -864,6 +939,11 @@ function fisherYatesShuffle(items, rng) {
 // `random` case (see fisherYatesShuffle above). Unrecognized/missing
 // `sortKey` falls back to `newest`, matching the pre-existing switch's
 // default branch byte-for-byte (AC: existing 5 sorts unchanged).
+//
+// C5 (v1.24.0, T3): `release-date` is a NEW, AVAILABLE-ONLY case (never the
+// default -- Dean's decision 8) sorting newest-release-first via
+// `resolveReleaseDateSortValue` above. Every pre-existing case below is
+// untouched byte-for-byte (REGRESSION-locked by test/unit/quickwins-sort.test.js).
 function sortItems(items, sortKey, rng) {
   const list = Array.isArray(items) ? items.slice() : [];
   switch (sortKey) {
@@ -873,6 +953,7 @@ function sortItems(items, sortKey, rng) {
     case 'size-desc': list.sort((a, b) => (b.size || 0) - (a.size || 0)); return list;
     case 'size-asc': list.sort((a, b) => (a.size || 0) - (b.size || 0)); return list;
     case 'random': return fisherYatesShuffle(list, rng);
+    case 'release-date': list.sort((a, b) => resolveReleaseDateSortValue(b) - resolveReleaseDateSortValue(a)); return list;
     case 'newest':
     default: list.sort((a, b) => b.addedAt - a.addedAt); return list;
   }
@@ -886,6 +967,140 @@ function sortItems(items, sortKey, rng) {
 // Exported for node:test.
 function shouldShowShuffleButton(sortKey) {
   return sortKey === 'random';
+}
+
+// ---- C2/C3: item count + format-toggle library controls (v1.24.0, T3) -----
+//
+// Both are client-side only (no server change) and injected via
+// createElement/textContent -- neither control is baked into any HTML shell
+// (index.html/watch.html/setup.html/subscriptions.html all stay untouched
+// this wave; T1 owns those shells' markup). A CALLER (whichever view is
+// rendering the current item list -- home/folder/playlist/channel all funnel
+// through the same grid) owns invoking `renderItemCountBadge`/
+// `renderFormatToggle` once per render with the CURRENT (already
+// format-filtered) list; these are pure/DOM-builder primitives, not a
+// self-driving feature, so the same count is never computed two different
+// ways in two different places.
+
+// Pure: item count for a rendered list. Never throws on a non-array input.
+function countItems(list) {
+  return Array.isArray(list) ? list.length : 0;
+}
+
+// Pure: "N items" / "1 item" display text for a count -- kept separate from
+// countItems so the exact label text is unit-testable without a DOM.
+function formatItemCountLabel(count) {
+  const n = Number.isFinite(count) ? count : 0;
+  return n === 1 ? '1 item' : `${n} items`;
+}
+
+// Idempotently renders/updates a small item-count badge as a SIBLING of
+// `headerEl` (e.g. `#videos-section-header`) -- never a child of it, since a
+// view's own header text is frequently reassigned via `.textContent` on
+// every render (main.js's `videosHeader.textContent = ...`), which would
+// silently wipe a child node. Mirrors `renderPinnedSidebar`'s
+// sibling-insertion reasoning (below) and its idempotent
+// remove-then-reuse-by-id posture. No-ops safely when `headerEl` has no
+// parent yet (defensive; never throws).
+function renderItemCountBadge(headerEl, list) {
+  if (!headerEl || !headerEl.parentNode) return;
+  let badge = document.getElementById('library-item-count');
+  if (!badge || badge.parentNode !== headerEl.parentNode) {
+    if (badge && badge.parentNode) badge.parentNode.removeChild(badge);
+    badge = document.createElement('span');
+    badge.id = 'library-item-count';
+    badge.className = 'library-item-count';
+    headerEl.parentNode.insertBefore(badge, headerEl.nextSibling);
+  }
+  badge.textContent = formatItemCountLabel(countItems(list));
+}
+
+// Format-toggle preference persistence -- mirrors the existing sort
+// preference pattern exactly (`filetube_sort` in main.js/watch.js/player.js):
+// a single localStorage key, validated on read, best-effort (try/catch) on
+// write so a private-mode/sandboxed browser never throws.
+const FORMAT_FILTER_STORAGE_KEY = 'filetube_format';
+const FORMAT_FILTER_MODES = ['both', 'video', 'audio'];
+
+function getStoredFormatFilter() {
+  let stored = null;
+  try { stored = localStorage.getItem(FORMAT_FILTER_STORAGE_KEY); } catch (_) { /* storage disabled -- fall back to default */ }
+  return FORMAT_FILTER_MODES.includes(stored) ? stored : 'both';
+}
+
+function setStoredFormatFilter(mode) {
+  const normalized = FORMAT_FILTER_MODES.includes(mode) ? mode : 'both';
+  try { localStorage.setItem(FORMAT_FILTER_STORAGE_KEY, normalized); } catch (_) { /* storage disabled -- best effort */ }
+  return normalized;
+}
+
+// Pure: partitions `list` down to just the video items, just the audio
+// items, or the whole list unchanged ('both', or any unrecognized/missing
+// mode -- fails safe to showing everything rather than silently hiding
+// items on a bad/garbage mode string). An item whose own `type` is missing
+// or isn't exactly 'video'/'audio' (a malformed/future item shape) FAILS
+// SAFE the other way too -- it is never excluded by either filter, since we
+// cannot confidently say it doesn't match. Never mutates `list`; never throws.
+function filterByMediaType(list, mode) {
+  const items = Array.isArray(list) ? list : [];
+  if (mode !== 'video' && mode !== 'audio') return items.slice();
+  return items.filter((item) => {
+    const t = item && item.type;
+    if (t !== 'video' && t !== 'audio') return true; // ambiguous/missing -- never hidden
+    return t === mode;
+  });
+}
+
+const FORMAT_TOGGLE_OPTIONS = [
+  { mode: 'both', label: 'All' },
+  { mode: 'video', label: 'Videos' },
+  { mode: 'audio', label: 'Audio' },
+];
+
+// Builds a fresh "All / Videos / Audio" toggle control (createElement +
+// textContent only -- no innerHTML). Clicking a button persists the choice
+// via `setStoredFormatFilter`, updates the pressed/active state on all three
+// buttons, and (when supplied) invokes `onChange(normalizedMode)` so a
+// mounting caller can re-filter + re-render its own grid without this
+// function needing to know anything about that caller's render pipeline
+// (mirrors the `onConfirm`-callback convention `showConfirmModal` already
+// uses elsewhere in this file).
+function buildFormatToggleControl(currentMode, onChange) {
+  const active = FORMAT_FILTER_MODES.includes(currentMode) ? currentMode : 'both';
+  const container = document.createElement('div');
+  container.className = 'format-toggle';
+  container.id = 'library-format-toggle';
+  FORMAT_TOGGLE_OPTIONS.forEach((opt) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn btn-sm format-toggle-btn' + (opt.mode === active ? ' active' : '');
+    btn.dataset.formatMode = opt.mode;
+    btn.setAttribute('aria-pressed', opt.mode === active ? 'true' : 'false');
+    btn.appendChild(document.createTextNode(opt.label));
+    btn.addEventListener('click', () => {
+      const normalized = setStoredFormatFilter(opt.mode);
+      Array.prototype.forEach.call(container.querySelectorAll('.format-toggle-btn'), (b) => {
+        const isActive = b.dataset.formatMode === normalized;
+        b.classList.toggle('active', isActive);
+        b.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+      });
+      if (typeof onChange === 'function') onChange(normalized);
+    });
+    container.appendChild(btn);
+  });
+  return container;
+}
+
+// Idempotently mounts the format-toggle control as the FIRST child of
+// `actionsEl` (e.g. `.section-actions`, ahead of the sort <select>) -- any
+// prior instance is removed first, so repeated calls (e.g. once per render)
+// never accumulate duplicates. No-ops safely when `actionsEl` is absent.
+function renderFormatToggle(actionsEl, currentMode, onChange) {
+  if (!actionsEl) return;
+  const existing = document.getElementById('library-format-toggle');
+  if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
+  const control = buildFormatToggleControl(currentMode, onChange);
+  actionsEl.insertBefore(control, actionsEl.firstChild);
 }
 
 // ---- Prev/next derived-order helpers (FR-2, T3) ----------------------------
@@ -2315,6 +2530,13 @@ function renderPlaylistsSheet(folders, folderSettings) {
 // unit-testable without a DOM (unlike renderPinnedPlaylists itself, which --
 // like this file's other DOM-heavy render functions -- is exercised only
 // indirectly/manually).
+//
+// F1 (v1.24.0, T3): also threads through `channelAvatarUrl` (C6, populated by
+// T11 in Wave 3 -- always absent/null on a pin record today), normalized to
+// `null` when absent/blank/non-string, so `resolveAvatarSource` has a single,
+// already-validated field to read. Building this passthrough now means T11
+// never has to touch this client file -- it only ever adds the field
+// server-side.
 function derivePinnedPlaylistEntries(pins) {
   const list = Array.isArray(pins) ? pins : [];
   return list
@@ -2322,8 +2544,37 @@ function derivePinnedPlaylistEntries(pins) {
     .map((p) => {
       const trimmedLabel = typeof p.label === 'string' ? p.label.trim() : '';
       const base = p.channelDir.split(/[\\/]/).pop() || p.channelDir;
-      return { channelDir: p.channelDir, label: trimmedLabel !== '' ? trimmedLabel : (base || 'Pinned channel') };
+      const avatarUrl = typeof p.channelAvatarUrl === 'string' && p.channelAvatarUrl.trim() !== '' ? p.channelAvatarUrl.trim() : null;
+      return {
+        channelDir: p.channelDir,
+        label: trimmedLabel !== '' ? trimmedLabel : (base || 'Pinned channel'),
+        channelAvatarUrl: avatarUrl,
+      };
     });
+}
+
+// F1 (v1.24.0, T3): the small avatar node shared by renderPinnedPlaylists and
+// renderPinnedSidebar below -- REPLACES the old generic `<i class="icon-star">`
+// glyph with the avatar precedence (`resolveAvatarSource` above): a real
+// captured channel icon (`<img>`, C6) when present, else the deterministic
+// generated `{glyph, color}` avatar (`<span>`). createElement/textContent
+// only, matching this file's SECURITY discipline for pin data (a pin's
+// label/channelAvatarUrl are the same untrusted, creator-controlled snapshot
+// `renderPinnedPlaylists`'s own comment already documents).
+function buildPinAvatarNode(label, channelAvatarUrl) {
+  const source = resolveAvatarSource(label, channelAvatarUrl);
+  if (source.type === 'url') {
+    const img = document.createElement('img');
+    img.className = 'pinned-avatar pinned-avatar-img';
+    img.src = source.url;
+    img.alt = '';
+    return img;
+  }
+  const glyph = document.createElement('span');
+  glyph.className = 'pinned-avatar pinned-avatar-generated';
+  if (glyph.style) glyph.style.backgroundColor = source.color;
+  glyph.appendChild(document.createTextNode(source.glyph));
+  return glyph;
 }
 
 // v1.21.0 FR-5 (AC35/AC36): renders the pinned-channel-playlist subsection
@@ -2367,12 +2618,12 @@ function renderPinnedPlaylists(pins) {
     const link = document.createElement('a');
     link.className = 'sidebar-item';
     link.href = '/?root=' + encodeURIComponent(entry.channelDir);
-    const icon = document.createElement('i');
-    icon.className = 'icon-star';
-    link.appendChild(icon);
+    // F1: real channel icon when captured (C6), else a deterministic
+    // generated avatar -- replaces the old generic icon-star glyph.
+    link.appendChild(buildPinAvatarNode(entry.label, entry.channelAvatarUrl));
     // SECURITY: entry.label is untrusted -- a dedicated text node (not
-    // link.textContent, which would also wipe the icon appended above) so
-    // both the icon and the label survive, neither ever passed through
+    // link.textContent, which would also wipe the avatar appended above) so
+    // both the avatar and the label survive, neither ever passed through
     // innerHTML.
     link.appendChild(document.createTextNode(' ' + entry.label));
     section.appendChild(link);
@@ -2433,12 +2684,12 @@ function renderPinnedSidebar(pins) {
     const link = document.createElement('a');
     link.className = 'sidebar-item';
     link.href = '/?root=' + encodeURIComponent(entry.channelDir);
-    const icon = document.createElement('i');
-    icon.className = 'icon-star';
-    link.appendChild(icon);
+    // F1: real channel icon when captured (C6), else a deterministic
+    // generated avatar -- replaces the old generic icon-star glyph.
+    link.appendChild(buildPinAvatarNode(entry.label, entry.channelAvatarUrl));
     // SECURITY: entry.label is untrusted -- a dedicated text node (not
-    // link.textContent, which would also wipe the icon appended above) so
-    // both the icon and the label survive, neither ever passed through
+    // link.textContent, which would also wipe the avatar appended above) so
+    // both the avatar and the label survive, neither ever passed through
     // innerHTML. Same discipline as renderPinnedPlaylists above.
     link.appendChild(document.createTextNode(' ' + entry.label));
     section.appendChild(link);
@@ -3291,10 +3542,16 @@ if (typeof module !== 'undefined' && module.exports) {
     canonicalizeChannelUrl, channelIdentityMatches, resolveFileChannelIdentity,
     shouldShowSubscribeButton, decideSubscribeButtonState,
     buildSubscribeRequestBody, buildSubscribeModal,
-    derivePinnedPlaylistEntries, renderPinnedSidebar,
+    derivePinnedPlaylistEntries, renderPinnedSidebar, renderPinnedPlaylists,
     isYtdlpManagedItem, deleteFlowFor, showHardDeleteModal,
     nextDownloadChipPollDelay, buildOneShotRetryBody, chipItemLifecycle,
     buildDownloadChipItem, reduceDownloadChipState, formatDownloadChipSummary,
-    shouldShowDownloadChipOnPath, injectDownloadStatusChip
+    shouldShowDownloadChipOnPath, injectDownloadStatusChip,
+    // v1.24.0 (T3): C2 item count, C3 format toggle, C5 release-date sort
+    // case (folded into sortItems above), F1 avatar fallback.
+    countItems, formatItemCountLabel, renderItemCountBadge,
+    getStoredFormatFilter, setStoredFormatFilter, filterByMediaType,
+    FORMAT_FILTER_MODES, buildFormatToggleControl, renderFormatToggle,
+    deriveAvatar, resolveAvatarSource, AVATAR_PALETTE
   };
 }

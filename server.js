@@ -913,6 +913,78 @@ function parseFfprobeTags(input) {
   return out;
 }
 
+// C5-local (v1.24): parse a single embedded-date STRING into epoch ms.
+// Handles two shapes seen in the wild: ffmpeg's own ISO-8601-ish
+// `creation_time` (e.g. "2023-04-01T12:00:00.000000Z", parseable by
+// `Date.parse`) and yt-dlp's `--embed-metadata`, which frequently writes the
+// compact `YYYYMMDD` form (its `upload_date` shape, e.g. "20230401") into the
+// `date` tag -- a form `Date.parse` does NOT recognize (returns NaN) on
+// Node/V8. Pure; never throws; returns `NaN` (not a value) on anything
+// unparseable so the caller's `Number.isFinite` check can skip it uniformly.
+function parseDateStringMs(raw) {
+  const s = String(raw).trim();
+  if (/^\d{8}$/.test(s)) {
+    const year = Number(s.slice(0, 4));
+    const month = Number(s.slice(4, 6));
+    const day = Number(s.slice(6, 8));
+    return Date.UTC(year, month - 1, day);
+  }
+  return Date.parse(s);
+}
+
+// C5-local (v1.24): pull an embedded release/creation date out of ffprobe's
+// format tags (accepts the parsed object OR the raw stdout string -- same
+// robustness contract as `parseFfprobeTags`/`parseFfprobeStreams`: a
+// try/catch JSON.parse, never throws, degrades to `null` on anything
+// malformed). Deliberately reads directly from `format.tags` rather than
+// `parseFfprobeTags`'s whitelisted/lowercased output: `creation_time` is not
+// (and should not become) part of `EMBEDDED_TAG_WHITELIST` -- that list also
+// drives the "embedded info" block rendered on the watch page, and surfacing
+// a raw timestamp there was never asked for. Checked in order of
+// specificity: `creation_time` (a full timestamp) -> `date` -> `year` (a
+// bare year is still better than nothing). Returns epoch ms, or `null` if no
+// tag is present/parseable -- the caller (`deriveReleaseDate`) treats `null`
+// as "fall through to the mtime fallback".
+function parseEmbeddedReleaseDateMs(input) {
+  let j = input;
+  if (typeof input === 'string') {
+    try { j = JSON.parse(input); } catch (_) { return null; }
+  }
+  if (!j || typeof j !== 'object') return null;
+  const raw = (j.format && j.format.tags) || {};
+  if (!raw || typeof raw !== 'object') return null;
+  const lower = {};
+  for (const k of Object.keys(raw)) {
+    const v = raw[k];
+    if (typeof v === 'string' && v.trim()) lower[k.toLowerCase()] = v.trim();
+  }
+  const candidates = [lower.creation_time, lower.date, lower.year];
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    const ms = parseDateStringMs(candidate);
+    if (Number.isFinite(ms)) return ms;
+  }
+  return null;
+}
+
+// C5-local (v1.24): the release-date PRECEDENCE helper -- embedded date (from
+// a probe the scan already ran) wins; filesystem `mtime` is the fragile-but-
+// honest last resort (it resets on copy, but every local file has one).
+// Pure and deliberately tiny/decoupled from `parseEmbeddedReleaseDateMs` so
+// the SCHEMA-ONLY BACKFILL PATH (an already-indexed item whose entry
+// predates this field) can call it with `embeddedMs=null` to force the
+// mtime-only branch WITHOUT spawning a fresh probe -- see the scan loop's
+// backfill branches below, which pass `null` here on purpose (the
+// thumbnail-backfill-regression lesson: adding this field to an existing
+// item must never trigger re-processing). Returns epoch ms, or `null` only
+// if `mtimeMs` itself is unusable (never expected in practice -- every
+// scanned file has a `stat` result).
+function deriveReleaseDate(embeddedMs, mtimeMs) {
+  if (Number.isFinite(embeddedMs)) return embeddedMs;
+  if (Number.isFinite(mtimeMs) && mtimeMs > 0) return mtimeMs;
+  return null;
+}
+
 // FR-1b (v1.18.0): the browser-compatible codec allowlist — deliberately
 // conservative (H.264/AVC video + AAC audio ONLY; HEVC/VP9/AV1/AC-3/DTS/
 // E-AC-3 etc. are NOT allowlisted despite partial device support), mirroring
@@ -1034,7 +1106,7 @@ function extractMetadataAndThumbnail(filePath, mediaId, isAudio) {
       // ~line 1241) sees the codec keys as present (probed once, no usable
       // codec) instead of re-extracting (ffprobe attempt + ffmpeg thumbnail
       // attempt) every video item on every single scan forever.
-      return resolve({ duration: 0, hasThumbnail: false, artist: '', tags: {}, videoCodec: null, audioCodec: null });
+      return resolve({ duration: 0, hasThumbnail: false, artist: '', tags: {}, videoCodec: null, audioCodec: null, embeddedReleaseDateMs: null });
     }
 
     // Get duration + all format tags (artist -> channel name; the rest -> the
@@ -1067,6 +1139,11 @@ function extractMetadataAndThumbnail(filePath, mediaId, isAudio) {
       // extension).
       let videoCodec = null;
       let audioCodec = null;
+      // C5-local (v1.24): embedded release date, piggybacked on this SAME
+      // probe (no second spawn) -- `null` means "no usable embedded date"
+      // (probe failed/errored, or the file genuinely carries none), which
+      // the caller (`deriveReleaseDate`) treats as "fall through to mtime".
+      let embeddedReleaseDateMs = null;
       if (!err && stdout) {
         try {
           const j = JSON.parse(stdout);
@@ -1080,6 +1157,7 @@ function extractMetadataAndThumbnail(filePath, mediaId, isAudio) {
             videoCodec = streams.videoCodec !== undefined ? streams.videoCodec : null;
             audioCodec = streams.audioCodec !== undefined ? streams.audioCodec : null;
           } catch (_) { videoCodec = null; audioCodec = null; }
+          try { embeddedReleaseDateMs = parseEmbeddedReleaseDateMs(j); } catch (_) { embeddedReleaseDateMs = null; }
         } catch (_) {}
       }
 
@@ -1090,7 +1168,7 @@ function extractMetadataAndThumbnail(filePath, mediaId, isAudio) {
         // metacharacters could otherwise be a command-injection vector
         // (matches the ffprobe `execFile` hardening above).
         execFile('ffmpeg', ['-i', filePath, '-an', '-vcodec', 'copy', '-y', thumbPath], (artErr) => {
-          resolve({ duration, artist, tags, videoCodec, audioCodec, hasThumbnail: !artErr && fs.existsSync(thumbPath) });
+          resolve({ duration, artist, tags, videoCodec, audioCodec, embeddedReleaseDateMs, hasThumbnail: !artErr && fs.existsSync(thumbPath) });
         });
       } else {
         // Extract video frame (at 2 seconds or 10% of duration, whichever is
@@ -1098,7 +1176,7 @@ function extractMetadataAndThumbnail(filePath, mediaId, isAudio) {
         // reason as the audio-art branch above.
         const timestamp = duration > 5 ? 2 : Math.max(0, duration / 2);
         execFile('ffmpeg', ['-ss', String(timestamp), '-i', filePath, '-vframes', '1', '-q:v', '2', '-y', thumbPath], (frameErr) => {
-          resolve({ duration, artist, tags, videoCodec, audioCodec, hasThumbnail: !frameErr && fs.existsSync(thumbPath) });
+          resolve({ duration, artist, tags, videoCodec, audioCodec, embeddedReleaseDateMs, hasThumbnail: !frameErr && fs.existsSync(thumbPath) });
         });
       }
     });
@@ -1404,6 +1482,17 @@ async function runScanDirectories() {
         const healed = await restoreMissingThumbnail(existing, id, filePath);
         if (healed) dbChanged = true;
       }
+      // C5-local (v1.24): SCHEMA-ONLY backfill of `releaseDate` for an item
+      // that predates this field -- the thumbnail-backfill-regression
+      // lesson means this must NEVER trigger a fresh probe. `embeddedMs` is
+      // passed as `null` on purpose: only the already-known `info.mtimeMs`
+      // (from the scan's existing `stat`, no extra I/O) is used. An item
+      // that already carries `releaseDate` (from its original scan, or a
+      // prior backfill pass) is left completely untouched.
+      if (!Object.prototype.hasOwnProperty.call(existing, 'releaseDate')) {
+        existing.releaseDate = deriveReleaseDate(null, info.mtimeMs);
+        dbChanged = true;
+      }
       newMetadata[id] = existing;
     } else if (legacyVideoCodecBackfillOnly) {
       // v1.18.1 hotfix: reuse the existing entry AS-IS (title, duration,
@@ -1431,6 +1520,15 @@ async function runScanDirectories() {
       // completely untouched -- no frame-grab, ever, for a file that already
       // has one.
       await restoreMissingThumbnail(existing, id, filePath);
+
+      // C5-local (v1.24): same schema-only `releaseDate` backfill as the
+      // plain reuse fast-path above -- mtime-only, no fresh probe (the
+      // codec-only probe just above this is pre-existing behavior, unrelated
+      // to and not reused for the date).
+      if (!Object.prototype.hasOwnProperty.call(existing, 'releaseDate')) {
+        existing.releaseDate = deriveReleaseDate(null, info.mtimeMs);
+        dbChanged = true;
+      }
 
       newMetadata[id] = existing;
       dbChanged = true;
@@ -1492,8 +1590,17 @@ async function runScanDirectories() {
         // below, which relies on the keys being present).
         newMetadata[id].videoCodec = meta.videoCodec;
         newMetadata[id].audioCodec = meta.audioCodec;
+        // C5-local (v1.24): embedded date (from this SAME probe) -> mtime
+        // fallback. `meta.embeddedReleaseDateMs` is `null` on ffmpeg-
+        // unavailable/probe-failure/no-usable-tag; `deriveReleaseDate`
+        // falls through to `info.mtimeMs` in every one of those cases.
+        newMetadata[id].releaseDate = deriveReleaseDate(meta.embeddedReleaseDateMs, info.mtimeMs);
       } catch (err) {
         console.error(`Error extracting metadata for ${info.name}:`, err);
+        // Metadata extraction itself failed (before `meta` resolved) -- the
+        // item still gets a `releaseDate` via the mtime-only fallback
+        // rather than the field being left entirely absent.
+        newMetadata[id].releaseDate = deriveReleaseDate(null, info.mtimeMs);
       }
       dbChanged = true;
     }
@@ -1613,6 +1720,18 @@ async function runScanDirectories() {
             if (consumed.channelHandleUrl) item.channelHandleUrl = consumed.channelHandleUrl;
             if (consumed.channelId) item.channelId = consumed.channelId;
             if (consumed.channelName) item.channelName = consumed.channelName;
+            // C5-local/C5-ytdlp (T5 write path, reused by T11 in Wave 3): a
+            // yt-dlp-captured `upload_date`/`release_date` is authoritative
+            // and supersedes the local-scan fallback (embedded probe date /
+            // mtime) already set on `item.releaseDate` above -- yt-dlp's own
+            // metadata is more precise than a filesystem timestamp.
+            // `consumed.releaseDate` is always `undefined` today (T5, Wave
+            // 1) -- `consumeDownloadChannelMeta` doesn't populate it yet, so
+            // this is a no-op until T11 wires the bridge, at which point no
+            // FURTHER server.js edit is needed.
+            if (typeof consumed.releaseDate === 'number' && Number.isFinite(consumed.releaseDate)) {
+              item.releaseDate = consumed.releaseDate;
+            }
             dbChanged = true;
           }
         }
@@ -1760,6 +1879,10 @@ function scanDirRecursive(rootFolder, dirPath, results, unreadable) {
             ext,
             size: stats.size,
             addedAt: stats.birthtimeMs || stats.mtimeMs,
+            // C5-local (v1.24): the release-date fallback wants the actual
+            // filesystem `mtime` (not `addedAt`'s birthtime-preferring
+            // value) -- reused from THIS SAME `stat` call, no extra I/O.
+            mtimeMs: stats.mtimeMs,
             folderName
           });
         } catch (err) {
@@ -2732,6 +2855,12 @@ module.exports = {
   parseFfprobeStreams,
   codecNeedsTranscode,
   probeCodecsOnly,
+  // C5-local (v1.24): the release-date precedence helpers -- re-exported so
+  // tests can exercise the embedded-date parsing / embedded->mtime
+  // precedence directly, without a real ffprobe binary (mirrors
+  // `parseFfprobeTags`/`parseFfprobeStreams`'s existing testing contract).
+  parseEmbeddedReleaseDateMs,
+  deriveReleaseDate,
   PLAYABLE_VIDEO_CODECS,
   PLAYABLE_AUDIO_CODECS,
   parseCacheCap,
