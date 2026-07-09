@@ -2239,6 +2239,11 @@ if (typeof window !== 'undefined') {
     if (incoming && typeof incoming.init === 'function') {
       try { incoming.init(root); } catch (err) { console.error('View init() failed for', view, err); }
     }
+    // B1 fast-follow (v1.24.1): reconcile the "Re-pull this channel now"
+    // button against the view/root just swapped in -- see that section's
+    // own comment (above `probeAndReconcileRepullButton`) for why this is
+    // hooked here instead of a MutationObserver.
+    probeAndReconcileRepullButton();
   }
 
   // FR-4 (T4): reattaches a cached home node with NO fetch and NO
@@ -2296,6 +2301,12 @@ if (typeof window !== 'undefined') {
     // common.js's DOMContentLoaded handler). Reattaching the live node
     // exactly as it was left, plus the targeted sidebar restore above, IS
     // the restore.
+
+    // B1 fast-follow (v1.24.1): reconcile the "Re-pull this channel now"
+    // button too -- a cache-hit reattach is still a navigation into a
+    // (possibly different) `?root=` folder, even though it skips home's own
+    // init(). See `probeAndReconcileRepullButton`'s comment above.
+    probeAndReconcileRepullButton();
   }
 
   // `navigate(url, { replace })`: fetch -> parse -> extract `#view-root` ->
@@ -2487,6 +2498,12 @@ if (typeof window !== 'undefined') {
     if (handlers && typeof handlers.init === 'function') {
       try { handlers.init(root); } catch (err) { console.error('View init() failed for', view, err); }
     }
+    // B1 fast-follow (v1.24.1): reconcile the "Re-pull this channel now"
+    // button on the very first, progressive-enhancement load too -- this is
+    // the ONLY hook that ever runs for a session that enters directly on
+    // watch.html/setup.html/subscriptions.html (no swap ever happens for
+    // those), and it fires again harmlessly if a page IS the home view.
+    probeAndReconcileRepullButton();
   }
 
   window.FileTube = window.FileTube || {};
@@ -3392,6 +3409,178 @@ function injectDownloadStatusChip() {
     .catch(() => { /* network/parse failure -- fail closed, inject nothing */ });
 }
 
+// ---- B1 fast-follow (v1.24.1): "Re-pull this channel now", relocated ------
+//
+// v1.24.0's B1 button (per-channel re-pull, T6) started life as an inline
+// `<script>` at the bottom of `public/index.html`. That only ever ran when
+// the browser's INITIALLY loaded document happened to be index.html -- the
+// SPA router above (`swapToView`/`restoreHomeFromCache`/`bootRouter`) never
+// re-executes a target page's inline `<script>`s on an in-app swap (only
+// `#view-root`'s fragment is replaced), so a session that ENTERED on
+// watch.html/setup.html/subscriptions.html (e.g. a shared video link ->
+// click the creator name -> land in the channel folder) never saw this
+// button for the tab's entire life. The old widget's only workaround was a
+// `MutationObserver` on `#main-content`, since an inline index.html script
+// has no access to the router's internals -- relocating the logic HERE
+// (a script every shell loads, on every entry point) lets it instead hook
+// the router's own choke points directly: `probeAndReconcileRepullButton()`
+// is called once at the end of `swapToView`, `restoreHomeFromCache`, and
+// `bootRouter` (the progressive-enhancement boot) -- see those functions,
+// below -- so it fires on every entry point AND every subsequent in-app
+// navigation, with no observer/polling loop at all.
+//
+// Pure helpers first (match + gating), exported for node:test -- mirrors
+// `shouldShowSubscribeButton`'s shape exactly. The DOM-heavy button
+// builder/reconciler below them follows the same disabled-module-inert +
+// one-time-probe pattern as `injectDownloadStatusChip` above.
+
+const REPULL_BTN_ID = 'sub-repull-channel-btn';
+
+// Pure: does subscription `sub` (from `GET /api/subscriptions`) identify the
+// SAME folder as `root` (the current view's `?root=` folder)? An exact,
+// case-sensitive path match on `channelDir` -- exactly what the original
+// widget did. Returns the matching subscription, or `null` when `root` is
+// falsy, `subs` isn't an array, or nothing matches. Exported for node:test.
+function findRepullSubscriptionForRoot(root, subs) {
+  if (!root || !Array.isArray(subs)) return null;
+  return subs.find((s) => s && typeof s.channelDir === 'string' && s.channelDir === root) || null;
+}
+
+// Pure gating (mirrors `shouldShowSubscribeButton`'s shape): the disabled-
+// module inert contract -- `moduleEnabled !== true` always resolves to `null`
+// (no button), REGARDLESS of `root`/`subs`, so a disabled install can never
+// surface this button no matter what `/api/subscriptions` would have
+// returned. Exported for node:test.
+function shouldShowRepullButton(moduleEnabled, root, subs) {
+  return moduleEnabled === true ? findRepullSubscriptionForRoot(root, subs) : null;
+}
+
+// One-time-per-tab capability latch (mirrors `dlStatusChipInjectStarted`'s
+// posture): once the health probe resolves (success OR failure), it is
+// NEVER re-fetched again for the rest of the tab's life -- a disabled
+// install is permanently inert (no DOM writes, no repeated fetches) from
+// that point on.
+let repullHealthChecked = false;
+let repullModuleEnabled = false;
+
+// Short-TTL cache + in-flight de-duplication for `GET /api/subscriptions`:
+// a burst of reconcile calls (e.g. rapid back/forward navigation) collapses
+// onto ONE in-flight request, and a fresh result is reused for
+// `REPULL_SUBS_CACHE_MS` rather than re-fetched on every single hop -- so
+// this never turns navigation into a `/api/subscriptions` fetch storm.
+let repullSubsCache = null;        // { list, fetchedAt }
+let repullSubsFetchPromise = null; // in-flight promise shared by concurrent callers
+
+const REPULL_SUBS_CACHE_MS = 5000; // same order of magnitude as DL_CHIP_POLL_BASE_MS's cadence
+
+function fetchSubscriptionsForRepull() {
+  const now = Date.now();
+  if (repullSubsCache && (now - repullSubsCache.fetchedAt) < REPULL_SUBS_CACHE_MS) {
+    return Promise.resolve(repullSubsCache.list);
+  }
+  if (repullSubsFetchPromise) return repullSubsFetchPromise;
+  repullSubsFetchPromise = fetch('/api/subscriptions')
+    .then((res) => (res.ok ? res.json() : []))
+    .catch(() => [])
+    .then((list) => {
+      const safe = Array.isArray(list) ? list : [];
+      repullSubsCache = { list: safe, fetchedAt: Date.now() };
+      repullSubsFetchPromise = null;
+      return safe;
+    });
+  return repullSubsFetchPromise;
+}
+
+function removeRepullButton() {
+  const btn = document.getElementById(REPULL_BTN_ID);
+  if (btn) btn.remove();
+}
+
+// No-double-inject guard: `getElementById` only ever finds a node still
+// attached to the LIVE document -- once the router replaces `#view-root`'s
+// whole subtree (an in-app navigation, popstate, or the home view-cache
+// reattach), the OLD button (and its old click-listener closure) is simply
+// gone and this builds fresh against the CURRENT `.section-actions`. When a
+// button already exists in the CURRENT view, this reuses it (just updating
+// `dataset.subId`) instead of appending a second one.
+function ensureRepullButton(sub) {
+  const actions = document.querySelector('.section-actions');
+  if (!actions) { removeRepullButton(); return; }
+  let btn = document.getElementById(REPULL_BTN_ID);
+  let label;
+  if (btn) {
+    label = btn.querySelector('.btn-label');
+  } else {
+    btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn btn-sm';
+    btn.id = REPULL_BTN_ID;
+    btn.style.fontSize = '11px';
+    btn.style.padding = '4px 8px';
+    btn.title = 'Re-pull this channel now';
+    btn.setAttribute('aria-label', 'Re-pull this channel now');
+    const icon = document.createElement('i');
+    icon.className = 'icon-refresh';
+    btn.appendChild(icon);
+    btn.appendChild(document.createTextNode(' '));
+    label = document.createElement('span');
+    label.className = 'btn-label';
+    label.textContent = 'Re-pull';
+    btn.appendChild(label);
+    actions.appendChild(btn);
+    btn.addEventListener('click', () => {
+      if (btn.disabled) return;
+      btn.disabled = true;
+      const originalLabel = label.textContent;
+      label.textContent = 'Checking…';
+      fetch('/api/subscriptions/' + encodeURIComponent(btn.dataset.subId) + '/repull', { method: 'POST' })
+        .catch((err) => console.error('Re-pull-this-channel failed:', err))
+        .finally(() => {
+          setTimeout(() => {
+            btn.disabled = false;
+            label.textContent = originalLabel;
+          }, 1500);
+        });
+    });
+  }
+  btn.dataset.subId = sub.id;
+}
+
+// Re-derives the button's presence/target from scratch against the CURRENT
+// location + subscription list. `repullModuleEnabled` gates everything below
+// it (see `shouldShowRepullButton`) -- a disabled install never even
+// fetches `/api/subscriptions` here.
+function reconcileRepullButton() {
+  if (typeof document === 'undefined') return;
+  if (!repullModuleEnabled) { removeRepullButton(); return; }
+  const rootAtCallTime = new URLSearchParams(window.location.search).get('root') || '';
+  if (!rootAtCallTime) { removeRepullButton(); return; }
+  fetchSubscriptionsForRepull().then((subs) => {
+    // Re-read the root at RESOLUTION time, not call time: if the user has
+    // since navigated elsewhere (a slow/cache-miss fetch racing a faster
+    // subsequent navigation), this must reconcile against wherever they NOW
+    // are, never a stale snapshot of where they were when the fetch started.
+    const root = new URLSearchParams(window.location.search).get('root') || '';
+    const match = shouldShowRepullButton(repullModuleEnabled, root, subs);
+    if (match) ensureRepullButton(match); else removeRepullButton();
+  });
+}
+
+// One-time capability probe (mirrors `injectDownloadStatusChip`'s own
+// pattern): the FIRST call fires `GET /api/subscriptions/health` and
+// latches the result forever (`repullHealthChecked`); every call after that
+// just reconciles directly, with no further health fetch.
+function probeAndReconcileRepullButton() {
+  if (typeof document === 'undefined' || typeof fetch === 'undefined') return;
+  if (!repullHealthChecked) {
+    fetch('/api/subscriptions/health')
+      .then((res) => { repullHealthChecked = true; repullModuleEnabled = res.ok; reconcileRepullButton(); })
+      .catch(() => { repullHealthChecked = true; repullModuleEnabled = false; });
+    return;
+  }
+  reconcileRepullButton();
+}
+
 // Sidebar toggle responsive menu helper. Guarded so requiring this file in Node
 // (for unit tests) never touches `document`.
 if (typeof document !== 'undefined') {
@@ -3552,6 +3741,10 @@ if (typeof module !== 'undefined' && module.exports) {
     countItems, formatItemCountLabel, renderItemCountBadge,
     getStoredFormatFilter, setStoredFormatFilter, filterByMediaType,
     FORMAT_FILTER_MODES, buildFormatToggleControl, renderFormatToggle,
-    deriveAvatar, resolveAvatarSource, AVATAR_PALETTE
+    deriveAvatar, resolveAvatarSource, AVATAR_PALETTE,
+    // v1.24.1 (B1 fast-follow): relocated "Re-pull this channel now" widget.
+    REPULL_BTN_ID, findRepullSubscriptionForRoot, shouldShowRepullButton,
+    ensureRepullButton, removeRepullButton, reconcileRepullButton,
+    fetchSubscriptionsForRepull, probeAndReconcileRepullButton
   };
 }

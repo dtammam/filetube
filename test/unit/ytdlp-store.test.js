@@ -1062,3 +1062,168 @@ test('addPin/removePin: never write into db.folders/db.folderSettings (structura
   assert.deepEqual(db.folders, ['/movies'], 'db.folders must be byte-identical -- pins never touch it');
   assert.deepEqual(db.folderSettings, { '/movies': { name: 'Movies' } }, 'db.folderSettings must be byte-identical -- pins never touch it');
 });
+
+// ---- v1.24.0 B4 (FR-8): `order` field backfill + reduceReorder/reorderSubscriptions ----
+
+test('ensureYtdlp: backfills order by current array index on legacy subscriptions lacking the field', () => {
+  const legacyA = { id: 'legacy-a', channelUrl: 'https://www.youtube.com/@a', name: 'A', format: 'video', quality: 'best', addedAt: '2020-01-01T00:00:00.000Z', lastCheckedAt: null, lastStatus: null };
+  const legacyB = { id: 'legacy-b', channelUrl: 'https://www.youtube.com/@b', name: 'B', format: 'video', quality: 'best', addedAt: '2020-01-02T00:00:00.000Z', lastCheckedAt: null, lastStatus: null };
+  const db = { ytdlp: { allowMembersOnly: false, subscriptions: [legacyA, legacyB] } };
+  const ns = store.ensureYtdlp(db);
+  assert.equal(ns.subscriptions[0].order, 0);
+  assert.equal(ns.subscriptions[1].order, 1);
+});
+
+test('ensureYtdlp: order backfill is non-destructive -- an already-integer order is left untouched even if it does not match array position', () => {
+  const sub = { id: 'modern-order', channelUrl: 'https://www.youtube.com/@modernorder', name: 'Modern', format: 'video', quality: 'best', addedAt: '2026-01-01T00:00:00.000Z', lastCheckedAt: null, lastStatus: null, order: 42 };
+  const db = { ytdlp: { allowMembersOnly: false, subscriptions: [sub] } };
+  const ns = store.ensureYtdlp(db);
+  assert.equal(ns.subscriptions[0].order, 42);
+});
+
+test('ensureYtdlp: re-backfills a present-but-non-integer (corrupt) order value rather than trusting it', () => {
+  const sub = { id: 'corrupt-order', channelUrl: 'https://www.youtube.com/@corrupt', name: 'Corrupt', format: 'video', quality: 'best', addedAt: '2020-01-01T00:00:00.000Z', lastCheckedAt: null, lastStatus: null, order: 'not-a-number' };
+  const db = { ytdlp: { allowMembersOnly: false, subscriptions: [sub] } };
+  const ns = store.ensureYtdlp(db);
+  assert.equal(ns.subscriptions[0].order, 0);
+});
+
+test('addSubscription: assigns order = the tail position (current length) to a newly-added subscription', async () => {
+  const deps = makeFakeDeps();
+  const first = await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@ordfirst', format: 'video' });
+  const second = await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@ordsecond', format: 'video' });
+  assert.equal(first.order, 0);
+  assert.equal(second.order, 1);
+});
+
+test('addSubscription: a new subscription always sorts LAST even after deletions left gaps in order (regression)', async () => {
+  // Reproduction: add A,B,C,D (order 0-3) -> delete B,C (order gap: a=0,
+  // d=3) -> add E. Before the fix, E.order was `ns.subscriptions.length`
+  // (2 at this point), landing E BETWEEN a and d (A, E, D) instead of last.
+  const deps = makeFakeDeps();
+  const a = await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@gapa', format: 'video' });
+  const b = await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@gapb', format: 'video' });
+  const c = await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@gapc', format: 'video' });
+  const d = await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@gapd', format: 'video' });
+  await store.deleteSubscription(deps, b.id);
+  await store.deleteSubscription(deps, c.id);
+  const e = await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@gape', format: 'video' });
+  assert.ok(e.order > d.order, 'a newly-added subscription must always sort after every surviving one, even across a gapped order sequence');
+  const list = store.listSubscriptions(deps);
+  assert.deepEqual(list.map((s) => s.id), [a.id, d.id, e.id], 'E must render LAST, with A and D retaining their relative order');
+});
+
+test('listSubscriptions: returns subscriptions sorted by order ascending, regardless of underlying array/insertion order', () => {
+  const subA = { id: 'a', channelUrl: 'https://www.youtube.com/@a', name: 'A', format: 'video', quality: 'best', addedAt: '2020-01-01T00:00:00.000Z', lastCheckedAt: null, lastStatus: null, order: 2 };
+  const subB = { id: 'b', channelUrl: 'https://www.youtube.com/@b', name: 'B', format: 'video', quality: 'best', addedAt: '2020-01-02T00:00:00.000Z', lastCheckedAt: null, lastStatus: null, order: 0 };
+  const subC = { id: 'c', channelUrl: 'https://www.youtube.com/@c', name: 'C', format: 'video', quality: 'best', addedAt: '2020-01-03T00:00:00.000Z', lastCheckedAt: null, lastStatus: null, order: 1 };
+  // Insertion order is A, B, C -- but `order` says B, C, A.
+  const deps = makeFakeDeps({ ytdlp: { allowMembersOnly: false, subscriptions: [subA, subB, subC] } });
+  const list = store.listSubscriptions(deps);
+  assert.deepEqual(list.map((s) => s.id), ['b', 'c', 'a']);
+});
+
+test('listSubscriptions: never mutates the underlying db.ytdlp.subscriptions array order', () => {
+  const subA = { id: 'a', order: 1 };
+  const subB = { id: 'b', order: 0 };
+  const deps = makeFakeDeps({ ytdlp: { allowMembersOnly: false, subscriptions: [subA, subB] } });
+  store.listSubscriptions(deps);
+  const db = deps.loadDatabase();
+  assert.deepEqual(db.ytdlp.subscriptions.map((s) => s.id), ['a', 'b'], 'a read must never reorder the persisted array itself');
+});
+
+test('reduceReorder: assigns order = position for every id present in orderedIds', () => {
+  const subs = [
+    { id: 'a', order: 0 },
+    { id: 'b', order: 1 },
+    { id: 'c', order: 2 },
+  ];
+  const result = store.reduceReorder(subs, ['c', 'a', 'b']);
+  assert.equal(result.find((s) => s.id === 'c').order, 0);
+  assert.equal(result.find((s) => s.id === 'a').order, 1);
+  assert.equal(result.find((s) => s.id === 'b').order, 2);
+});
+
+test('reduceReorder: ignores unknown ids in orderedIds -- they never create phantom entries or shift real positions', () => {
+  const subs = [
+    { id: 'a', order: 0 },
+    { id: 'b', order: 1 },
+  ];
+  const result = store.reduceReorder(subs, ['b', 'no-such-id', 'a']);
+  assert.equal(result.length, 2, 'an unknown id must never add an entry to the result');
+  assert.equal(result.find((s) => s.id === 'b').order, 0);
+  assert.equal(result.find((s) => s.id === 'a').order, 1);
+});
+
+test('reduceReorder: ids missing from orderedIds keep tail order, in their original relative order', () => {
+  const subs = [
+    { id: 'a', order: 0 },
+    { id: 'b', order: 1 },
+    { id: 'c', order: 2 },
+    { id: 'd', order: 3 },
+  ];
+  // Only 'c' is explicitly reordered to the front; b/a/d never appear.
+  const result = store.reduceReorder(subs, ['c']);
+  assert.equal(result.find((s) => s.id === 'c').order, 0, 'the explicitly-ordered id gets position 0');
+  // Tail keeps ORIGINAL relative order (a, b, d), not orderedIds order.
+  assert.equal(result.find((s) => s.id === 'a').order, 1);
+  assert.equal(result.find((s) => s.id === 'b').order, 2);
+  assert.equal(result.find((s) => s.id === 'd').order, 3);
+});
+
+test('reduceReorder: a duplicate id in orderedIds is only honored on its first occurrence', () => {
+  const subs = [
+    { id: 'a', order: 0 },
+    { id: 'b', order: 1 },
+  ];
+  const result = store.reduceReorder(subs, ['b', 'b', 'a']);
+  assert.equal(result.find((s) => s.id === 'b').order, 0);
+  assert.equal(result.find((s) => s.id === 'a').order, 1);
+});
+
+test('reduceReorder: an empty orderedIds is a pure identity re-numbering by existing array order', () => {
+  const subs = [
+    { id: 'a', order: 5 },
+    { id: 'b', order: 9 },
+  ];
+  const result = store.reduceReorder(subs, []);
+  assert.equal(result.find((s) => s.id === 'a').order, 0);
+  assert.equal(result.find((s) => s.id === 'b').order, 1);
+});
+
+test('reduceReorder: never mutates its input array or subscription objects', () => {
+  const subA = Object.freeze({ id: 'a', order: 0 });
+  const subB = Object.freeze({ id: 'b', order: 1 });
+  const input = Object.freeze([subA, subB]);
+  assert.doesNotThrow(() => store.reduceReorder(input, ['b', 'a']));
+  assert.equal(subA.order, 0, 'the original object must be untouched');
+  assert.equal(subB.order, 1, 'the original object must be untouched');
+});
+
+test('reduceReorder: defends against a non-array orderedIds by falling back to identity re-numbering', () => {
+  const subs = [{ id: 'a', order: 0 }, { id: 'b', order: 1 }];
+  assert.doesNotThrow(() => store.reduceReorder(subs, undefined));
+  assert.doesNotThrow(() => store.reduceReorder(subs, 'not-an-array'));
+  const result = store.reduceReorder(subs, null);
+  assert.equal(result.find((s) => s.id === 'a').order, 0);
+  assert.equal(result.find((s) => s.id === 'b').order, 1);
+});
+
+test('reorderSubscriptions: persists the new order so a subsequent listSubscriptions reflects it', async () => {
+  const deps = makeFakeDeps();
+  const first = await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@reordone', format: 'video' });
+  const second = await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@reordtwo', format: 'video' });
+  assert.deepEqual(store.listSubscriptions(deps).map((s) => s.id), [first.id, second.id]);
+  await store.reorderSubscriptions(deps, [second.id, first.id]);
+  assert.deepEqual(store.listSubscriptions(deps).map((s) => s.id), [second.id, first.id]);
+});
+
+test('reorderSubscriptions: never writes into db.folders/db.folderSettings (structural regression lock)', async () => {
+  const deps = makeFakeDeps({ folders: ['/movies'], folderSettings: { '/movies': { name: 'Movies' } } });
+  const first = await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@reordguarda', format: 'video' });
+  const second = await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@reordguardb', format: 'video' });
+  await store.reorderSubscriptions(deps, [second.id, first.id]);
+  const db = deps.loadDatabase();
+  assert.deepEqual(db.folders, ['/movies'], 'db.folders must be byte-identical -- reorder never touches it');
+  assert.deepEqual(db.folderSettings, { '/movies': { name: 'Movies' } }, 'db.folderSettings must be byte-identical -- reorder never touches it');
+});

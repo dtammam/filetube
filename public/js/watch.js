@@ -71,6 +71,27 @@ function resolveUploaderLinkHref({ filePath }) {
   return '/?root=' + encodeURIComponent(folder);
 }
 
+// resolveChannelDirFromFilePath (v1.24.0, T6, B3): the RAW (non-URL-encoded)
+// parent-folder path for a media item's file -- the same "one directory up"
+// derivation `resolveUploaderLinkHref` above already uses for the `/?root=`
+// creator link, just returned as a plain path instead of a pre-built href.
+// Used ONLY as a pin target when the current file has no active subscription
+// to source a server-resolved `channelDir` from (see `setupPinButton` below):
+// for a video already living inside its downloaded channel's own folder, this
+// parent directory already IS that channel's folder; for a pre-subscription
+// one-off download it is at least the folder the file currently lives in --
+// the best available confined target client-side (the server's own
+// `isChannelDirConfined` check still gates the actual pin request, exactly
+// like every other pin -- this is not a new trust boundary). Fails safe
+// (returns `null`) on the same conditions as `resolveUploaderLinkHref`, never
+// throws.
+function resolveChannelDirFromFilePath(filePath) {
+  if (!filePath || typeof filePath !== 'string') return null;
+  var folder = filePath.replace(/[\\/][^\\/]*$/, '');
+  if (!folder || folder === filePath) return null;
+  return folder;
+}
+
 // ---- G1: Zak Goldin weighted mock-commenter + comment-bank selection ------
 // (v1.24.0, T4). Pure/DOM-free, hoisted to module scope (like the pure
 // helpers above) so node:test can exercise both the flat commentBank
@@ -347,6 +368,7 @@ if (typeof module !== 'undefined' && module.exports) {
     isTheaterModeActive,
     theaterModeStorageValue,
     resolveUploaderLinkHref,
+    resolveChannelDirFromFilePath,
     MOCK_COMMENT_BANK,
     selectDeterministicComments,
     hashZakGoldinSeed,
@@ -420,6 +442,13 @@ if (typeof module !== 'undefined' && module.exports) {
     const uploaderChannelName = root.querySelector('#uploader-channel-name');
     const uploaderSubsCount = root.querySelector('#uploader-subs-count');
     const subscribeBtn = root.querySelector('#subscribe-btn-mock');
+    // B3 (v1.24.0, T6): the pin-channel button is NOT part of watch.html's
+    // static markup -- this view builds it at runtime (see setupPinButton
+    // below) and mounts it as a sibling of subscribeBtn. Captured here
+    // (subscribeBtn's PARENT), before anything might `.remove()` subscribeBtn
+    // itself, so there is always somewhere to mount into regardless of
+    // whether subscribeBtn survives this load.
+    const subscribeBtnContainer = subscribeBtn ? subscribeBtn.parentNode : null;
 
     const addedDateText = root.querySelector('#added-date-text');
     const fileSizeText = root.querySelector('#file-size-text');
@@ -959,6 +988,11 @@ if (typeof module !== 'undefined' && module.exports) {
     let currentSubState = { visible: false, subscribed: false, subId: null, identity: null };
     let defaultMaxVideosForModal = 2;
     let subscribeModalState = null;
+    // B3 (v1.24.0, T6): pin-from-watch state + the button itself -- created
+    // (at most once) per view instance by setupPinButton below, fresh for
+    // every media load like every other closure in this init().
+    let pinBtn = null;
+    let currentPinState = { channelDir: null, label: '', pinned: false, pinId: null };
 
     function applySubscribeButtonLabel(subscribed) {
       if (!subscribeBtn) return;
@@ -1034,13 +1068,131 @@ if (typeof module !== 'undefined' && module.exports) {
         .catch((e) => console.error('Error unsubscribing:', e));
     }
 
+    // B3 (v1.24.0, T6): mirrors applySubscribeButtonLabel's exact
+    // primary-when-actionable / neutral-when-already-done convention (a
+    // discoverable red "do this" state vs. a settled/neutral "already done"
+    // state) -- reuses the SAME era-themed .btn/.btn-primary tokens, no new
+    // CSS.
+    function applyPinButtonLabel(pinned) {
+      if (!pinBtn) return;
+      pinBtn.textContent = pinned ? 'Pinned ★' : 'Pin channel';
+      pinBtn.setAttribute('aria-pressed', pinned ? 'true' : 'false');
+      pinBtn.classList.toggle('btn-primary', !pinned);
+    }
+
+    // Re-fetches the pin list and re-renders the shared sidebar shortcut via
+    // common.js's EXISTING renderPinnedSidebar -- the SAME function/DOM
+    // section the /subscriptions page's own pin toggle refreshes -- so
+    // pinning/unpinning from the watch page updates the sidebar immediately,
+    // without a page reload (AC: "the pinned-sidebar shortcut updates
+    // immediately").
+    function refreshPinnedSidebar() {
+      fetch('/api/subscriptions/pins')
+        .then((r) => (r.ok ? r.json() : []))
+        .catch(() => [])
+        .then((pins) => renderPinnedSidebar(pins));
+    }
+
+    // One-tap pin/unpin, mirroring subscriptions.js's togglePin exactly:
+    // `POST`/`DELETE /api/subscriptions/pins` (the SAME gated pins store/
+    // route T8 exposes -- never db.folders), producing the identical pin
+    // record shape `{channelDir, label}` the subscriptions-page pin flow
+    // sends (AC: "identical pin record shape... single source of truth").
+    function handleTogglePin() {
+      if (!currentPinState.channelDir || !pinBtn) return;
+      const wasPinned = currentPinState.pinned;
+      pinBtn.disabled = true;
+      const request = wasPinned
+        ? (currentPinState.pinId
+          ? fetch('/api/subscriptions/pins/' + encodeURIComponent(currentPinState.pinId), { method: 'DELETE' })
+          : Promise.resolve({ ok: true, json: () => Promise.resolve({}) }))
+        : fetch('/api/subscriptions/pins', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ channelDir: currentPinState.channelDir, label: currentPinState.label }),
+        });
+      request
+        .then(async (res) => {
+          if (!res || !res.ok) {
+            const data = res && typeof res.json === 'function' ? await res.json().catch(() => ({})) : {};
+            console.error('Pin toggle failed:', (data && data.error) || (res && res.status));
+            return;
+          }
+          if (wasPinned) {
+            currentPinState = { ...currentPinState, pinned: false, pinId: null };
+          } else {
+            const data = await res.json().catch(() => ({}));
+            currentPinState = { ...currentPinState, pinned: true, pinId: (data && data.id) || null };
+          }
+        })
+        .catch((err) => console.error('Pin toggle failed (network error):', err))
+        .finally(() => {
+          pinBtn.disabled = false;
+          applyPinButtonLabel(currentPinState.pinned);
+          refreshPinnedSidebar();
+        });
+    }
+
+    // B3 (v1.24.0, T6): resolves the pin target + initial pinned state and
+    // (re)creates the button -- called once per media load, right after
+    // `currentSubState` resolves in setupSubscribeButton below, reusing the
+    // SAME `subs`/module-enabled probe that function already fetched (no
+    // second `/api/subscriptions` round-trip). `channelDir` prefers an
+    // ACTUAL subscription's server-resolved directory (the exact same value
+    // the /subscriptions page's own pin flow uses) when this file is already
+    // subscribed; otherwise it falls back to this file's own parent folder
+    // (`resolveChannelDirFromFilePath`) -- the best available target for a
+    // not-yet-subscribed channel, still re-validated server-side by
+    // `isChannelDirConfined` exactly like every other pin request (never a
+    // new trust boundary). Visible under the SAME gate as the Subscribe
+    // button (`currentSubState.visible` -- module enabled AND a resolvable
+    // channel identity), per the AC's "when it has channel identity."
+    async function setupPinButton(subs) {
+      if (!subscribeBtnContainer) return;
+      if (!currentSubState.visible) {
+        if (pinBtn) { pinBtn.remove(); pinBtn = null; }
+        return;
+      }
+      const matchedSub = currentSubState.subscribed && Array.isArray(subs)
+        ? subs.find((s) => s && s.id === currentSubState.subId)
+        : null;
+      const channelDir = (matchedSub && typeof matchedSub.channelDir === 'string' && matchedSub.channelDir !== '')
+        ? matchedSub.channelDir
+        : resolveChannelDirFromFilePath(mediaData && mediaData.filePath);
+      if (!channelDir) {
+        if (pinBtn) { pinBtn.remove(); pinBtn = null; }
+        return;
+      }
+      let pinned = false;
+      let pinId = null;
+      try {
+        const pinsRes = await fetch('/api/subscriptions/pins');
+        const pins = pinsRes.ok ? await pinsRes.json().catch(() => []) : [];
+        const existing = Array.isArray(pins) ? pins.find((p) => p && p.channelDir === channelDir) : null;
+        if (existing) { pinned = true; pinId = existing.id; }
+      } catch (e) {
+        console.error('Error loading pin state:', e);
+      }
+      currentPinState = { channelDir, label: currentChannelName, pinned, pinId };
+      if (!pinBtn) {
+        pinBtn = document.createElement('button');
+        pinBtn.type = 'button';
+        pinBtn.id = 'pin-channel-btn';
+        pinBtn.className = 'btn';
+        pinBtn.style.marginLeft = '8px';
+        subscribeBtnContainer.appendChild(pinBtn);
+        pinBtn.addEventListener('click', handleTogglePin, { signal });
+      }
+      applyPinButtonLabel(pinned);
+    }
+
     async function setupSubscribeButton() {
       if (!subscribeBtn) return;
       let moduleEnabled = false;
+      let subs = [];
       try {
         const healthRes = await fetch('/api/subscriptions/health');
         moduleEnabled = healthRes.ok;
-        let subs = [];
         if (moduleEnabled) {
           const healthData = await healthRes.json().catch(() => ({}));
           if (Number.isInteger(healthData.defaultMaxVideos) && healthData.defaultMaxVideos >= 0) {
@@ -1053,6 +1205,7 @@ if (typeof module !== 'undefined' && module.exports) {
       } catch (e) {
         console.error('Error resolving subscribe button state:', e);
         moduleEnabled = false;
+        subs = [];
         currentSubState = { visible: false, subscribed: false, subId: null, identity: null };
       }
 
@@ -1062,6 +1215,7 @@ if (typeof module !== 'undefined' && module.exports) {
 
       if (!currentSubState.visible) {
         subscribeBtn.remove(); // absent, not merely disabled/greyed (AC15)
+        if (pinBtn) { pinBtn.remove(); pinBtn = null; } // B3: same gate, same fate
         return;
       }
       subscribeBtn.hidden = false;
@@ -1070,6 +1224,10 @@ if (typeof module !== 'undefined' && module.exports) {
         if (currentSubState.subscribed) handleUnsubscribe();
         else openSubscribeModal();
       }, { signal });
+
+      // B3 (v1.24.0, T6): set up (or tear down) the pin button using the
+      // SAME subs/identity probe this function just resolved.
+      setupPinButton(subs);
     }
 
     // Esc closes the subscribe modal while it's open -- backdrop-tap and the

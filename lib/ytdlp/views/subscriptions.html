@@ -14,6 +14,56 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="FileTube">
   <link rel="stylesheet" href="/css/style.css">
+  <style>
+    /* v1.24.0 T6 (A5): prominent "check all subscriptions now" header row --
+       the existing #sub-repull-all-btn/#sub-repull-status controls
+       (previously buried inside the collapsed "+ Add a subscription"
+       <details>, easy to miss) relocate here, directly under the page's
+       primary "Your subscriptions" heading -- reachable without scrolling or
+       expanding anything, on both desktop and mobile. Era tokens only, no
+       hardcoded colors -- consistent with every other rule in this file/
+       public/css/style.css. */
+    .sub-list-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .sub-list-header h2 {
+      margin: 0;
+    }
+    .sub-list-header-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .sub-repull-status {
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    /* v1.24.0 T6 (B4): drag-and-drop reorder on the subscriptions management
+       list -- mirrors public/css/style.css's .sidebar-item.dragging/
+       .drag-over-before/.drag-over-after (v1.15.0 folder DnD) exactly, same
+       era tokens. Scoped to this page only: the reorder affordance applies
+       to THIS management list, never the pinned sidebar (a distinct
+       concept -- see B4's design note). */
+    .sub-row[draggable="true"] {
+      cursor: grab;
+    }
+    .sub-row-dragging {
+      opacity: 0.5;
+    }
+    .sub-row-drag-over-before {
+      box-shadow: inset 0 2px 0 0 var(--yt-red);
+    }
+    .sub-row-drag-over-after {
+      box-shadow: inset 0 -2px 0 0 var(--yt-red);
+    }
+  </style>
   <script>
     /* FOUC guard: set era+mode+icons on <html> before first paint. Mirror of
        resolveTheme()/resolveIconSet() in /js/common.js -- keep all three in
@@ -115,7 +165,22 @@
            in-shell settings bottom-sheet, built entirely in JS -- see that
            file's buildSettingsSheet). -->
       <div class="setup-box">
-        <h2>Your subscriptions</h2>
+        <div class="sub-list-header">
+          <h2>Your subscriptions</h2>
+          <!-- v1.24.0 T6 (A5): "check all subscriptions now" -- moved up
+               here from the collapsed "+ Add a subscription" disclosure
+               below (same ids, same wiring in /js/subscriptions.js; only the
+               markup's POSITION changed) so it's reachable without
+               scrolling or expanding anything, on both desktop and mobile.
+               Calls the EXISTING POST /api/subscriptions/repull unchanged --
+               no new backend route. -->
+          <div class="sub-list-header-actions">
+            <span id="sub-repull-status" class="sub-repull-status" aria-live="polite"></span>
+            <button class="btn btn-primary btn-sm" id="sub-repull-all-btn" type="button">
+              <i class="icon-refresh"></i> Check all subscriptions now
+            </button>
+          </div>
+        </div>
         <div id="sub-list-container" class="sub-list">
           <!-- Populated dynamically by /js/subscriptions.js -->
         </div>
@@ -189,10 +254,6 @@
           </label>
         </div>
 
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:16px; border-top:1px solid var(--border-color); padding-top:16px; flex-wrap:wrap; gap:10px;">
-          <span id="sub-repull-status" style="font-weight:bold; color: var(--text-secondary);" aria-live="polite"></span>
-          <button class="btn" id="sub-repull-all-btn" type="button">Re-pull all now</button>
-        </div>
       </details>
 
       <details class="setup-box sub-collapsible" id="oneshot-details">

@@ -235,5 +235,15 @@
   <script src="/js/watch.js"></script>
   <script src="/js/setup.js"></script>
   <script src="/js/player.js"></script>
+  <!-- v1.24.1 fast-follow: the B1 "Re-pull this channel now" widget (v1.24.0
+       T6) used to live here as an inline <script>, which only ever ran when
+       the browser's INITIALLY loaded document was this page -- the SPA
+       router (common.js) never re-executes a target page's inline scripts on
+       an in-app swap, so a session entering on watch.html/setup.html/
+       subscriptions.html never saw it. It has been relocated into
+       common.js's router runtime (probeAndReconcileRepullButton, hooked into
+       swapToView/restoreHomeFromCache/bootRouter -- every navigation AND
+       every entry point), which every shell already loads above. See
+       common.js's own comment at that section for the full rationale. -->
 </body>
 </html>

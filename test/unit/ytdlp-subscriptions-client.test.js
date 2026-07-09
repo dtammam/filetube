@@ -32,6 +32,8 @@ const {
   formatSubStatus,
   formatSubscribedDate,
   formatLiveStatusText,
+  formatNextCheckText,
+  formatRowStatusLine,
   pinLabelFallback,
   resolvePinLabel,
   buildFormatSelect,
@@ -387,6 +389,67 @@ test('formatLiveStatusText: "error" with no error text falls back to a generic l
   assert.strictEqual(formatLiveStatusText({ state: 'error' }), 'error');
 });
 
+// ---- A4 (v1.24.0, T6): poll-timing display ---------------------------------
+
+test('formatNextCheckText: null/non-finite nextPollDue yields null (no estimate available)', () => {
+  assert.strictEqual(formatNextCheckText(null), null);
+  assert.strictEqual(formatNextCheckText(undefined), null);
+  assert.strictEqual(formatNextCheckText(NaN), null);
+  assert.strictEqual(formatNextCheckText('not-a-number'), null);
+});
+
+test('formatNextCheckText: a due-in-the-future timestamp renders minutes', () => {
+  const text = formatNextCheckText(Date.now() + 42 * 60000);
+  assert.match(text, /^Next check: in 4[12] min$/); // tolerate a ms of test-run jitter
+});
+
+test('formatNextCheckText: exactly 1 minute out uses singular "min"', () => {
+  const text = formatNextCheckText(Date.now() + 60000);
+  assert.ok(text === 'Next check: in 1 min' || text === 'Next check: due now');
+});
+
+test('formatNextCheckText: a due time in the past (or right now) renders "due now"', () => {
+  assert.strictEqual(formatNextCheckText(Date.now() - 5000), 'Next check: due now');
+  assert.strictEqual(formatNextCheckText(Date.now()), 'Next check: due now');
+});
+
+test('formatNextCheckText: over an hour out rounds to hours (plural)', () => {
+  assert.strictEqual(formatNextCheckText(Date.now() + 130 * 60000), 'Next check: in 2 hrs');
+});
+
+test('formatNextCheckText: exactly 1 hour out uses singular "hr"', () => {
+  assert.strictEqual(formatNextCheckText(Date.now() + 61 * 60000), 'Next check: in 1 hr');
+});
+
+test('formatRowStatusLine: an active live status (e.g. downloading) wins outright, no next-check suffix appended', () => {
+  const sub = { lastCheckedAt: '2026-07-05T00:00:00.000Z', lastStatus: 'ok' };
+  const liveEntry = { state: 'downloading', title: 'Ep 1', percent: 40, nextPollDue: Date.now() + 60000 };
+  const text = formatRowStatusLine(sub, liveEntry);
+  assert.ok(text.includes('Ep 1'));
+  assert.ok(!text.includes('Next check'), 'an active state must never show a redundant next-check suffix');
+});
+
+test('formatRowStatusLine: idle with a nextPollDue estimate appends the suffix to the persisted status line', () => {
+  const sub = { lastCheckedAt: '2026-07-05T00:00:00.000Z', lastStatus: 'ok: downloaded 1 new video(s)' };
+  const liveEntry = { state: 'idle', nextPollDue: Date.now() + 30 * 60000 };
+  const text = formatRowStatusLine(sub, liveEntry);
+  assert.ok(text.startsWith('Last checked: '));
+  assert.ok(text.includes('ok: downloaded 1 new video(s)'));
+  assert.ok(text.includes('Next check: in 30 min'), text);
+});
+
+test('formatRowStatusLine: no live entry at all (never polled this session) omits the suffix entirely', () => {
+  const sub = { lastCheckedAt: null, lastStatus: null };
+  assert.strictEqual(formatRowStatusLine(sub, undefined), 'Last checked: never checked — pending');
+});
+
+test('formatRowStatusLine: manual-only polling (nextPollDue null) omits the suffix entirely', () => {
+  const sub = { lastCheckedAt: '2026-07-05T00:00:00.000Z', lastStatus: 'ok' };
+  const liveEntry = { state: 'idle', nextPollDue: null };
+  const text = formatRowStatusLine(sub, liveEntry);
+  assert.ok(!text.includes('Next check'));
+});
+
 test('nextPollDelay: success resets to the base ~2.5s cadence', () => {
   assert.strictEqual(nextPollDelay(20000, true), STATUS_POLL_BASE_MS);
 });
@@ -664,6 +727,26 @@ test('createSubscriptionRow: clicking the pin toggle calls onTogglePin(sub, pinn
   pinBtn.click({ stopPropagation: () => {} });
   assert.deepStrictEqual(pinCalls, [[sub, false]]);
   assert.deepStrictEqual(tapCalls, [], 'the pin toggle click must never also trigger row navigation');
+});
+
+// ---- B4 (v1.24.0, T6, FR-8): DnD reorder attributes ------------------------
+// Reordering applies to every row with a real id (unlike the Playlist link/
+// pin toggle, it does not need a resolved channelDir) -- the live wiring
+// (subscriptions.js's wireSubRowDragAndDrop, untestable DOM drag events, see
+// its own doc comment) reads `data-sub-id` back off each row; this only
+// proves the pure builder sets the two attributes it must.
+
+test('createSubscriptionRow: sets draggable="true" and data-sub-id for reordering, even without a resolved channelDir', () => {
+  const sub = { id: 'drag1', name: 'Draggable', channelUrl: 'https://www.youtube.com/@drag1' };
+  const row = createSubscriptionRow(sub, fakeDoc, {});
+  assert.strictEqual(row.attributes.draggable, 'true');
+  assert.strictEqual(row.attributes['data-sub-id'], 'drag1');
+});
+
+test('createSubscriptionRow: omits draggable/data-sub-id when the subscription has no usable id (fail-safe, never a bogus attribute)', () => {
+  const row = createSubscriptionRow({ name: 'NoId' }, fakeDoc, {});
+  assert.strictEqual(row.attributes.draggable, undefined);
+  assert.strictEqual(row.attributes['data-sub-id'], undefined);
 });
 
 test('createSubscriptionsListElement: derives each row\'s pinned flag from the pinnedChannelDirs Set, matched by channelDir', () => {
