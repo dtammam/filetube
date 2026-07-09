@@ -1449,3 +1449,166 @@ test('reorderSubscriptions: never writes into db.folders/db.folderSettings (stru
   assert.deepEqual(db.folders, ['/movies'], 'db.folders must be byte-identical -- reorder never touches it');
   assert.deepEqual(db.folderSettings, { '/movies': { name: 'Movies' } }, 'db.folderSettings must be byte-identical -- reorder never touches it');
 });
+
+// ---- v1.24.3: pinned-channel `order` field backfill + reducePinReorder/reorderPins ----
+
+test('ensureYtdlp: backfills pin order by current array index on legacy pins lacking the field', () => {
+  const legacyA = { id: 'legacy-pin-a', channelDir: '/d/a', label: 'A', pinnedAt: '2020-01-01T00:00:00.000Z' };
+  const legacyB = { id: 'legacy-pin-b', channelDir: '/d/b', label: 'B', pinnedAt: '2020-01-02T00:00:00.000Z' };
+  const db = { ytdlp: { allowMembersOnly: false, subscriptions: [], pins: [legacyA, legacyB] } };
+  const ns = store.ensureYtdlp(db);
+  assert.equal(ns.pins[0].order, 0);
+  assert.equal(ns.pins[1].order, 1);
+});
+
+test('ensureYtdlp: pin order backfill is non-destructive -- an already-integer order is left untouched even if it does not match array position', () => {
+  const pin = { id: 'modern-pin', channelDir: '/d/modern', label: 'Modern', pinnedAt: '2026-01-01T00:00:00.000Z', order: 42 };
+  const db = { ytdlp: { allowMembersOnly: false, subscriptions: [], pins: [pin] } };
+  const ns = store.ensureYtdlp(db);
+  assert.equal(ns.pins[0].order, 42);
+});
+
+test('ensureYtdlp: re-backfills a present-but-non-integer (corrupt) pin order value rather than trusting it', () => {
+  const pin = { id: 'corrupt-pin', channelDir: '/d/corrupt', label: 'Corrupt', pinnedAt: '2020-01-01T00:00:00.000Z', order: 'not-a-number' };
+  const db = { ytdlp: { allowMembersOnly: false, subscriptions: [], pins: [pin] } };
+  const ns = store.ensureYtdlp(db);
+  assert.equal(ns.pins[0].order, 0);
+});
+
+test('reduceAddPin: assigns order = the tail position (current length) to a newly-added pin', () => {
+  const first = store.reduceAddPin([], { id: 'p1', channelDir: '/d/1', label: '1', pinnedAt: '2020-01-01T00:00:00.000Z' });
+  assert.equal(first.record.order, 0);
+  const second = store.reduceAddPin(first.pins, { id: 'p2', channelDir: '/d/2', label: '2', pinnedAt: '2020-01-02T00:00:00.000Z' });
+  assert.equal(second.record.order, 1);
+});
+
+test('reduceAddPin: a new pin always sorts LAST even after a removal left gaps in order (regression, mirrors addSubscription\'s own order-gap fix)', () => {
+  // Reproduction: add A,B,C,D (order 0-3) -> unpin B,C (order gap: a=0, d=3)
+  // -> add E. Using `list.length` for the new order (2 at this point) would
+  // land E BETWEEN a and d (A, E, D) instead of last.
+  let pins = [];
+  pins = store.reduceAddPin(pins, { id: 'a', channelDir: '/d/a', label: 'A', pinnedAt: '2020-01-01T00:00:00.000Z' }).pins;
+  pins = store.reduceAddPin(pins, { id: 'b', channelDir: '/d/b', label: 'B', pinnedAt: '2020-01-02T00:00:00.000Z' }).pins;
+  pins = store.reduceAddPin(pins, { id: 'c', channelDir: '/d/c', label: 'C', pinnedAt: '2020-01-03T00:00:00.000Z' }).pins;
+  pins = store.reduceAddPin(pins, { id: 'd', channelDir: '/d/d', label: 'D', pinnedAt: '2020-01-04T00:00:00.000Z' }).pins;
+  pins = store.reduceRemovePin(pins, 'b').pins;
+  pins = store.reduceRemovePin(pins, 'c').pins;
+  const eResult = store.reduceAddPin(pins, { id: 'e', channelDir: '/d/e', label: 'E', pinnedAt: '2020-01-05T00:00:00.000Z' });
+  const dOrder = eResult.pins.find((p) => p.id === 'd').order;
+  assert.ok(eResult.record.order > dOrder, 'a newly-added pin must always sort after every surviving one, even across a gapped order sequence');
+});
+
+test('listPins: returns pins sorted by order ascending, regardless of underlying array/insertion order', () => {
+  const pinA = { id: 'a', channelDir: '/d/a', label: 'A', pinnedAt: '2020-01-01T00:00:00.000Z', order: 2 };
+  const pinB = { id: 'b', channelDir: '/d/b', label: 'B', pinnedAt: '2020-01-02T00:00:00.000Z', order: 0 };
+  const pinC = { id: 'c', channelDir: '/d/c', label: 'C', pinnedAt: '2020-01-03T00:00:00.000Z', order: 1 };
+  // Insertion order is A, B, C -- but `order` says B, C, A.
+  const deps = makeFakeDeps({ ytdlp: { allowMembersOnly: false, subscriptions: [], pins: [pinA, pinB, pinC] } });
+  const list = store.listPins(deps);
+  assert.deepEqual(list.map((p) => p.id), ['b', 'c', 'a']);
+});
+
+test('listPins: never mutates the underlying db.ytdlp.pins array order', () => {
+  const pinA = { id: 'a', channelDir: '/d/a', order: 1 };
+  const pinB = { id: 'b', channelDir: '/d/b', order: 0 };
+  const deps = makeFakeDeps({ ytdlp: { allowMembersOnly: false, subscriptions: [], pins: [pinA, pinB] } });
+  store.listPins(deps);
+  const db = deps.loadDatabase();
+  assert.deepEqual(db.ytdlp.pins.map((p) => p.id), ['a', 'b'], 'a read must never reorder the persisted array itself');
+});
+
+test('reducePinReorder: assigns order = position for every id present in orderedIds', () => {
+  const pins = [
+    { id: 'a', channelDir: '/d/a', order: 0 },
+    { id: 'b', channelDir: '/d/b', order: 1 },
+    { id: 'c', channelDir: '/d/c', order: 2 },
+  ];
+  const result = store.reducePinReorder(pins, ['c', 'a', 'b']);
+  assert.equal(result.find((p) => p.id === 'c').order, 0);
+  assert.equal(result.find((p) => p.id === 'a').order, 1);
+  assert.equal(result.find((p) => p.id === 'b').order, 2);
+});
+
+test('reducePinReorder: ignores unknown ids in orderedIds -- they never create phantom entries or shift real positions', () => {
+  const pins = [
+    { id: 'a', channelDir: '/d/a', order: 0 },
+    { id: 'b', channelDir: '/d/b', order: 1 },
+  ];
+  const result = store.reducePinReorder(pins, ['b', 'no-such-id', 'a']);
+  assert.equal(result.length, 2, 'an unknown id must never add an entry to the result');
+  assert.equal(result.find((p) => p.id === 'b').order, 0);
+  assert.equal(result.find((p) => p.id === 'a').order, 1);
+});
+
+test('reducePinReorder: ids missing from orderedIds keep tail order, in their original relative order', () => {
+  const pins = [
+    { id: 'a', channelDir: '/d/a', order: 0 },
+    { id: 'b', channelDir: '/d/b', order: 1 },
+    { id: 'c', channelDir: '/d/c', order: 2 },
+    { id: 'd', channelDir: '/d/d', order: 3 },
+  ];
+  // Only 'c' is explicitly reordered to the front; b/a/d never appear.
+  const result = store.reducePinReorder(pins, ['c']);
+  assert.equal(result.find((p) => p.id === 'c').order, 0, 'the explicitly-ordered id gets position 0');
+  // Tail keeps ORIGINAL relative order (a, b, d), not orderedIds order.
+  assert.equal(result.find((p) => p.id === 'a').order, 1);
+  assert.equal(result.find((p) => p.id === 'b').order, 2);
+  assert.equal(result.find((p) => p.id === 'd').order, 3);
+});
+
+test('reducePinReorder: a duplicate id in orderedIds is only honored on its first occurrence', () => {
+  const pins = [
+    { id: 'a', channelDir: '/d/a', order: 0 },
+    { id: 'b', channelDir: '/d/b', order: 1 },
+  ];
+  const result = store.reducePinReorder(pins, ['b', 'b', 'a']);
+  assert.equal(result.find((p) => p.id === 'b').order, 0);
+  assert.equal(result.find((p) => p.id === 'a').order, 1);
+});
+
+test('reducePinReorder: an empty orderedIds is a pure identity re-numbering by existing array order', () => {
+  const pins = [
+    { id: 'a', channelDir: '/d/a', order: 5 },
+    { id: 'b', channelDir: '/d/b', order: 9 },
+  ];
+  const result = store.reducePinReorder(pins, []);
+  assert.equal(result.find((p) => p.id === 'a').order, 0);
+  assert.equal(result.find((p) => p.id === 'b').order, 1);
+});
+
+test('reducePinReorder: never mutates its input array or pin objects', () => {
+  const pinA = Object.freeze({ id: 'a', channelDir: '/d/a', order: 0 });
+  const pinB = Object.freeze({ id: 'b', channelDir: '/d/b', order: 1 });
+  const input = Object.freeze([pinA, pinB]);
+  assert.doesNotThrow(() => store.reducePinReorder(input, ['b', 'a']));
+  assert.equal(pinA.order, 0, 'the original object must be untouched');
+  assert.equal(pinB.order, 1, 'the original object must be untouched');
+});
+
+test('reducePinReorder: defends against a non-array orderedIds by falling back to identity re-numbering', () => {
+  const pins = [{ id: 'a', channelDir: '/d/a', order: 0 }, { id: 'b', channelDir: '/d/b', order: 1 }];
+  assert.doesNotThrow(() => store.reducePinReorder(pins, undefined));
+  assert.doesNotThrow(() => store.reducePinReorder(pins, 'not-an-array'));
+  const result = store.reducePinReorder(pins, null);
+  assert.equal(result.find((p) => p.id === 'a').order, 0);
+  assert.equal(result.find((p) => p.id === 'b').order, 1);
+});
+
+test('reorderPins: persists the new order so a subsequent listPins reflects it', async () => {
+  const deps = makeFakeDeps();
+  const first = await store.addPin(deps, { channelDir: '/data/ytdlp-downloads/First', label: 'First' });
+  const second = await store.addPin(deps, { channelDir: '/data/ytdlp-downloads/Second', label: 'Second' });
+  assert.deepEqual(store.listPins(deps).map((p) => p.id), [first.id, second.id]);
+  await store.reorderPins(deps, [second.id, first.id]);
+  assert.deepEqual(store.listPins(deps).map((p) => p.id), [second.id, first.id]);
+});
+
+test('reorderPins: never writes into db.folders/db.folderSettings (structural regression lock)', async () => {
+  const deps = makeFakeDeps({ folders: ['/movies'], folderSettings: { '/movies': { name: 'Movies' } } });
+  const first = await store.addPin(deps, { channelDir: '/data/ytdlp-downloads/GuardA', label: 'GuardA' });
+  const second = await store.addPin(deps, { channelDir: '/data/ytdlp-downloads/GuardB', label: 'GuardB' });
+  await store.reorderPins(deps, [second.id, first.id]);
+  const db = deps.loadDatabase();
+  assert.deepEqual(db.folders, ['/movies'], 'db.folders must be byte-identical -- pin reorder never touches it');
+  assert.deepEqual(db.folderSettings, { '/movies': { name: 'Movies' } }, 'db.folderSettings must be byte-identical -- pin reorder never touches it');
+});

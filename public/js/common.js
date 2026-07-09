@@ -2677,8 +2677,18 @@ function renderPinnedPlaylists(pins) {
 // renders exactly as it does today, folders only (AC37).
 //
 // Read-only consumer of the existing gated pin store: this function never
-// writes anything -- no fetch, no POST, no `db.folders`/`folderSettings`
-// access of any kind (AC36).
+// writes anything on its OWN -- no fetch, no POST, no `db.folders`/
+// `folderSettings` access of any kind (AC36). The DnD it wires below (v1.24.3)
+// is the one exception -- a drop event fires a POST, exactly as documented at
+// `wirePinnedSidebarDragAndDrop`/`persistPinReorder`'s own comments.
+//
+// v1.24.3: also wires native HTML5 drag-and-drop reordering on the rendered
+// rows -- mirrors main.js's `renderSidebarFolders` folder DnD (v1.15.0 item
+// 1) and lib/ytdlp/client/subscriptions.js's subscription-row DnD (v1.24.0
+// B4/T6). Both `renderPinnedSidebar` and `renderPinnedPlaylists` already
+// DISPLAY pins in the persisted order for free (they read the SAME
+// `GET /api/subscriptions/pins` response, which `store.listPins` now returns
+// order-sorted) -- only this sidebar surface gets the drag GESTURE.
 function renderPinnedSidebar(pins) {
   const folderList = document.getElementById('sidebar-folders-list');
   if (!folderList || !folderList.parentNode) return;
@@ -2687,6 +2697,17 @@ function renderPinnedSidebar(pins) {
 
   const entries = derivePinnedPlaylistEntries(pins);
   if (entries.length === 0) return;
+
+  // v1.24.3: `entries` (built above) drops any pin lacking a usable
+  // channelDir -- `derivePinnedPlaylistEntries`'s own frozen, unit-tested
+  // `{channelDir, label, channelAvatarUrl}` shape deliberately does NOT
+  // carry a pin's `id` (widening it would break
+  // test/unit/pinned-playlist-entries.test.js's exact-shape assertions), so
+  // the drag wiring below needs its OWN same-predicate, same-order filtered
+  // view of the RAW `pins` to recover each rendered row's `id`. `validPins[i]`
+  // is therefore guaranteed to be the source record for `entries[i]`.
+  const validPins = (Array.isArray(pins) ? pins : [])
+    .filter((p) => p && typeof p.channelDir === 'string' && p.channelDir !== '');
 
   const section = document.createElement('div');
   section.id = 'sidebar-pinned-section';
@@ -2697,10 +2718,17 @@ function renderPinnedSidebar(pins) {
   heading.textContent = 'Pinned';
   section.appendChild(heading);
 
-  entries.forEach((entry) => {
+  entries.forEach((entry, index) => {
     const link = document.createElement('a');
     link.className = 'sidebar-item';
     link.href = '/?root=' + encodeURIComponent(entry.channelDir);
+    // v1.24.3: drag-and-drop reorder target -- see
+    // wirePinnedSidebarDragAndDrop below. `data-pin-id` is how a drop
+    // recovers WHICH pin a rendered row represents (the reorder route is
+    // keyed by pin id, not channelDir).
+    link.setAttribute('draggable', 'true');
+    const sourcePin = validPins[index];
+    if (sourcePin && typeof sourcePin.id === 'string') link.dataset.pinId = sourcePin.id;
     // F1: real channel icon when captured (C6), else a deterministic
     // generated avatar -- replaces the old generic icon-star glyph.
     link.appendChild(buildPinAvatarNode(entry.label, entry.channelAvatarUrl));
@@ -2715,6 +2743,114 @@ function renderPinnedSidebar(pins) {
   // Insert as folderList's NEXT SIBLING (never a child of it) -- see the
   // function comment above for why this placement is load-bearing.
   folderList.parentNode.insertBefore(section, folderList.nextSibling);
+
+  // v1.24.3: (re-)wire drag-and-drop on every full rebuild -- a fresh set of
+  // `.sidebar-item` elements needs fresh listeners each time, exactly like
+  // subscriptions.js's `wireSubRowDragAndDrop` re-wires after every
+  // renderSubscriptions() call. Since this function always REBUILDS the
+  // whole section from scratch (the `existing`/removeChild above), the
+  // previous section's nodes -- and their listeners -- are simply detached
+  // and eligible for GC, never doubly wired.
+  wirePinnedSidebarDragAndDrop(section, validPins);
+}
+
+// v1.24.3: drag-and-drop reorder for the PINNED SIDEBAR section -- mirrors
+// main.js's `renderSidebarFolders` folder DnD (v1.15.0 item 1) and
+// lib/ytdlp/client/subscriptions.js's `wireSubRowDragAndDrop` (v1.24.0 B4/T6)
+// as closely as this shared file's own row anatomy allows: native HTML5
+// `dragstart`/`dragover`(preventDefault)/`dragleave`/`drop`/`dragend`, a
+// drop-before/after half-height indicator (`computeDropIndex`'s own
+// contract), and an immediate persist on drop (no separate Save step, same
+// as the folder sidebar's own "no Save button" posture). Reuses
+// `moveArrayItem`/`computeDropIndex` VERBATIM -- both already defined in
+// THIS file for the folder DnD above, referenced the same bare-identifier
+// way that folder DnD code itself does (no `window.` qualification needed
+// here, unlike subscriptions.js, which is a SEPARATE file).
+//
+// Reuses the EXISTING `.sidebar-item.dragging`/`.drag-over-before`/
+// `.drag-over-after` CSS classes (style.css, ~L554-583) rather than a
+// second, forked class family -- every pinned row already carries the SAME
+// `.sidebar-item` class the folder sidebar's own draggable rows do (see
+// `renderPinnedSidebar` above), so no new CSS class family is needed for the
+// drag visual feedback.
+//
+// DOM drag events are untestable-by-necessity (mirrors the subscription
+// reorder's own documented posture, lib/ytdlp/client/subscriptions.js) -- the
+// underlying `moveArrayItem`/`computeDropIndex` are already unit-tested
+// (test/unit/folder-dnd-reorder.test.js), and the server-side persistence
+// this drop ultimately POSTs to is proven end-to-end by
+// test/integration/ytdlp-pin-reorder.test.js.
+// @param {HTMLElement} section the freshly-built `#sidebar-pinned-section`
+// @param {Array<object>} validPins the SAME filtered/ordered pin records
+//   `renderPinnedSidebar` rendered rows FROM (index-aligned with the rows)
+function wirePinnedSidebarDragAndDrop(section, validPins) {
+  const rows = Array.prototype.slice.call(section.querySelectorAll('.sidebar-item[data-pin-id]'));
+  let dragSrcIndex = null;
+  rows.forEach((rowEl, index) => {
+    rowEl.addEventListener('dragstart', (e) => {
+      dragSrcIndex = index;
+      rowEl.classList.add('dragging');
+      if (e.dataTransfer) {
+        e.dataTransfer.effectAllowed = 'move';
+        // Firefox requires data to be set for the drag to initiate at all
+        // (mirrors main.js's/subscriptions.js's identical DnD workaround).
+        e.dataTransfer.setData('text/plain', String(index));
+      }
+    });
+    rowEl.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+      const rect = rowEl.getBoundingClientRect();
+      const before = (e.clientY - rect.top) < rect.height / 2;
+      rowEl.classList.toggle('drag-over-before', before);
+      rowEl.classList.toggle('drag-over-after', !before);
+    });
+    rowEl.addEventListener('dragleave', () => {
+      rowEl.classList.remove('drag-over-before', 'drag-over-after');
+    });
+    rowEl.addEventListener('drop', (e) => {
+      e.preventDefault();
+      const before = rowEl.classList.contains('drag-over-before');
+      rowEl.classList.remove('drag-over-before', 'drag-over-after');
+      const fromIndex = dragSrcIndex;
+      dragSrcIndex = null;
+      if (fromIndex === null || Number.isNaN(index)) return;
+      const toIndex = computeDropIndex(fromIndex, index, before);
+      const reordered = moveArrayItem(validPins, fromIndex, toIndex);
+      persistPinReorder(reordered.map((p) => p && p.id).filter((id) => typeof id === 'string' && id !== ''));
+    });
+    rowEl.addEventListener('dragend', () => {
+      dragSrcIndex = null;
+      rows.forEach((r) => r.classList.remove('dragging', 'drag-over-before', 'drag-over-after'));
+    });
+  });
+}
+
+// POSTs the dragged order to the new `POST /api/subscriptions/pins/reorder`
+// route, which responds with the SAME reordered+enriched shape
+// `GET /api/subscriptions/pins` returns -- re-render the sidebar section
+// wholesale with it (simplest correct way to reflect the server's
+// authoritative order, including its own unknown-id/tail-position tolerance
+// -- see `store.reducePinReorder`'s doc comment). A failed request RELOADS
+// pins from the server instead of trusting the optimistic client-side order,
+// so a rejected/errored drag can never leave the sidebar silently diverged
+// from what is actually persisted -- mirrors
+// lib/ytdlp/client/subscriptions.js's `persistReorder` fail-safe EXACTLY.
+function persistPinReorder(orderedIds) {
+  fetch('/api/subscriptions/pins/reorder', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ orderedIds }),
+  })
+    .then((r) => (r.ok ? r.json() : Promise.reject(new Error('pin reorder failed with status ' + r.status))))
+    .then((pins) => renderPinnedSidebar(pins))
+    .catch((err) => {
+      console.error('Pin reorder failed:', err);
+      fetch('/api/subscriptions/pins')
+        .then((r) => (r.ok ? r.json() : []))
+        .catch(() => [])
+        .then((pins) => renderPinnedSidebar(pins));
+    });
 }
 
 // Lazily fetches /api/config on first open, populates the sheet, then reveals
