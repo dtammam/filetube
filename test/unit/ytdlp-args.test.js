@@ -991,7 +991,9 @@ test('buildYtdlpDownloadArgs: includes the fixed "--print after_move:FTCHMETA...
   assert.equal(result[idx + 1], args.CHANNEL_META_PRINT_TEMPLATE);
   assert.equal(
     result[idx + 1],
-    'after_move:FTCHMETA %(.{id,channel_url,channel_id,uploader_url,channel})j',
+    // v1.24.0 C5-ytdlp/C6 (T11): field-selector grew upload_date/release_date/
+    // channel_thumbnail -- still a fixed literal, still JSON-escaped/one-line-safe.
+    'after_move:FTCHMETA %(.{id,channel_url,channel_id,uploader_url,channel,upload_date,release_date,channel_thumbnail})j',
   );
 });
 
@@ -1051,4 +1053,36 @@ test('CHANNEL_META_PRINT_TEMPLATE / CHANNEL_META_SENTINEL are exported for reuse
   assert.equal(args.CHANNEL_META_SENTINEL, 'FTCHMETA');
   assert.ok(args.CHANNEL_META_PRINT_TEMPLATE.includes(args.CHANNEL_META_SENTINEL));
   assert.ok(args.CHANNEL_META_PRINT_TEMPLATE.startsWith('after_move:'));
+});
+
+// ---- v1.24.0 C5-ytdlp/C6 (T11): upload_date/release_date/channel_thumbnail -
+//
+// The print-template field-selector grew three keys for release-date (C5)
+// and channel-avatar (C6) capture. These tests prove the addition stayed
+// inside the SAME fixed-literal, JSON-escaped `.{...}j` selector -- no new
+// `%(field)s`-style interpolation was introduced, and the ONLY `%(` in the
+// whole literal is the single, fixed field-selector construct itself.
+
+test('CHANNEL_META_PRINT_TEMPLATE: the field-selector includes upload_date, release_date, and channel_thumbnail', () => {
+  assert.ok(args.CHANNEL_META_PRINT_TEMPLATE.includes('upload_date'));
+  assert.ok(args.CHANNEL_META_PRINT_TEMPLATE.includes('release_date'));
+  assert.ok(args.CHANNEL_META_PRINT_TEMPLATE.includes('channel_thumbnail'));
+});
+
+test('CHANNEL_META_PRINT_TEMPLATE: the new fields live INSIDE the single .{...}j selector, not as separate %(field)s interpolations', () => {
+  // Exactly one `%(` in the whole literal -- the fixed `.{...}j` selector --
+  // proves no field was added as its own standalone %(field)s placeholder
+  // (which would reopen the pre-fix tab-delimited-newline-forgery class of
+  // bug this template's SECURITY comment documents above).
+  const percentOpenCount = (args.CHANNEL_META_PRINT_TEMPLATE.match(/%\(/g) || []).length;
+  assert.equal(percentOpenCount, 1, 'expected exactly one %( -- everything selected must ride the single JSON-escaped .{...}j conversion');
+  assert.ok(args.CHANNEL_META_PRINT_TEMPLATE.includes('.{id,channel_url,channel_id,uploader_url,channel,upload_date,release_date,channel_thumbnail})j'));
+});
+
+test('CHANNEL_META_PRINT_TEMPLATE: still a fixed literal -- byte-identical regardless of sub/config content (new fields did not reopen per-sub interpolation)', () => {
+  const config = makeConfig();
+  const hostileSub = baseSub({ name: '"; rm -rf /; #', channelUrl: 'https://www.youtube.com/@x' });
+  const result = args.buildYtdlpDownloadArgs(hostileSub, config, ['vid1']);
+  const idx = result.indexOf('--print');
+  assert.equal(result[idx + 1], args.CHANNEL_META_PRINT_TEMPLATE);
 });

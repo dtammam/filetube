@@ -2949,6 +2949,165 @@ function showHardDeleteModal(item, onConfirm, doc) {
   return { backdrop, modal, title, warning, nameEl, pathEl, checkbox, cancelBtn, deleteBtn, teardown };
 }
 
+// ---- C1 (v1.24 UX Round, Wave 3): per-item "Move to..." picker -------------
+//
+// Client half of C1 (server.js's `POST /api/videos/:id/move` +
+// `moveItemToFolder`/`computeMoveTarget` -- see that file's own comment for
+// the full path-confinement + id re-key design). `showMoveModal` is a pure,
+// self-contained DOM builder (mirrors `showHardDeleteModal`'s pattern above:
+// it appends itself to `doc.body` and tears itself down, no caller
+// boilerplate) so a future per-card/per-watch-page trigger just calls
+// `showMoveModal(item, folders, onMove)` with no other wiring. `folders` is
+// the SAME `data.folders` array `GET /api/config` already returns (the
+// existing "known folders" list `openPlaylistsSheet`/`renderPlaylistsSheet`
+// above already fetch) -- no new data source. `requestMoveItem` below is the
+// actual `POST /api/videos/:id/move` call, kept separate (mirrors
+// `triggerLibraryRescanAndRefresh`'s injectable-`fetchImpl` pattern) so a
+// caller can compose them however its surface needs (e.g. show a status line
+// while the request is in flight, or auto-refresh on success).
+//
+// SECURITY: every dynamic string (the item's title, each folder path) is
+// rendered via `createElement`/`textContent` ONLY -- never `innerHTML` --
+// mirroring `showHardDeleteModal`'s discipline exactly.
+//
+// CSS: reuses the existing GENERIC `.modal-backdrop`/`.modal-content`/
+// `.modal-title`/`.modal-body`/`.modal-actions` classes (`showConfirmModal`'s
+// family, style.css ~L2156) plus `.btn`/`.btn-primary` -- deliberately NOT
+// `.hard-delete-modal-*` (that family's red/warning treatment reads as
+// destructive, the wrong tone for a routine move) nor `.oneoff-modal-*` (a
+// bigger form-shaped shell this doesn't need). No new CSS class is
+// introduced; the folder `<select>` renders with default browser chrome
+// (functional, plain -- this task does not own style.css).
+
+/**
+ * Pure, self-contained "Move to..." picker modal. `item` needs at least
+ * `title` (used for the confirmation copy; falls back to a generic label
+ * when absent). `folders` is a plain array of folder path strings (the SAME
+ * shape `GET /api/config`'s `folders` field already returns). `onMove(
+ * targetFolder, { teardown, statusEl })` fires once, only when a folder is
+ * selected and Move is clicked -- the callback owns the actual request +
+ * teardown timing (mirrors `buildOneOffModal`'s `handlers.onDownload`
+ * convention: this function never itself calls `fetch`). `doc` defaults to
+ * `document` (mirrors `showHardDeleteModal`'s injectable-`doc` pattern for
+ * direct node:test coverage against a fake DOM).
+ */
+function showMoveModal(item, folders, onMove, doc) {
+  const d = doc || document;
+  const it = item || {};
+  const list = Array.isArray(folders) ? folders.filter((f) => typeof f === 'string' && f !== '') : [];
+
+  const backdrop = d.createElement('div');
+  backdrop.className = 'modal-backdrop';
+  backdrop.addEventListener('click', (e) => {
+    if (e && e.target === backdrop) teardown();
+  });
+
+  const modal = d.createElement('div');
+  modal.className = 'modal-content';
+  backdrop.appendChild(modal);
+
+  const title = d.createElement('div');
+  title.className = 'modal-title';
+  title.textContent = 'Move to...';
+  modal.appendChild(title);
+
+  const body = d.createElement('div');
+  body.className = 'modal-body';
+  modal.appendChild(body);
+
+  const label = d.createElement('div');
+  const displayName = typeof it.title === 'string' && it.title !== '' ? it.title : 'this file';
+  label.textContent = `Move "${displayName}" to:`;
+  body.appendChild(label);
+
+  const select = d.createElement('select');
+  if (list.length === 0) {
+    const emptyOpt = d.createElement('option');
+    emptyOpt.value = '';
+    emptyOpt.textContent = 'No folders configured';
+    select.appendChild(emptyOpt);
+  } else {
+    list.forEach((folder) => {
+      const opt = d.createElement('option');
+      opt.value = folder;
+      opt.textContent = folder;
+      select.appendChild(opt);
+    });
+  }
+  body.appendChild(select);
+
+  const statusEl = d.createElement('div');
+  statusEl.className = 'modal-body';
+  modal.appendChild(statusEl);
+
+  const actionsRow = d.createElement('div');
+  actionsRow.className = 'modal-actions';
+
+  const cancelBtn = d.createElement('button');
+  cancelBtn.type = 'button';
+  cancelBtn.className = 'btn';
+  cancelBtn.textContent = 'Cancel';
+  cancelBtn.addEventListener('click', () => teardown());
+  actionsRow.appendChild(cancelBtn);
+
+  // Starts disabled when there is nothing to move into (no configured
+  // folders) -- mirrors showHardDeleteModal's "starts disabled until a real
+  // choice exists" posture, just gated on data availability instead of a
+  // checkbox.
+  const moveBtn = d.createElement('button');
+  moveBtn.type = 'button';
+  moveBtn.className = 'btn btn-primary';
+  moveBtn.textContent = 'Move';
+  moveBtn.disabled = list.length === 0;
+  moveBtn.addEventListener('click', () => {
+    if (moveBtn.disabled) return; // belt-and-suspenders -- mirrors showHardDeleteModal
+    const target = select.value;
+    if (!target) {
+      statusEl.textContent = 'Choose a folder first.';
+      return;
+    }
+    if (typeof onMove === 'function') onMove(target, { teardown, statusEl });
+  });
+  actionsRow.appendChild(moveBtn);
+
+  modal.appendChild(actionsRow);
+
+  function teardown() {
+    backdrop.remove();
+  }
+
+  d.body.appendChild(backdrop);
+
+  return { backdrop, modal, title, body, label, select, statusEl, cancelBtn, moveBtn, teardown };
+}
+
+/**
+ * Calls `POST /api/videos/:id/move` with `{ targetFolder }`. `fetchImpl` is
+ * injectable (mirrors `triggerLibraryRescanAndRefresh`'s pattern) so this is
+ * directly node:test-covered without a real network call. Resolves with the
+ * parsed JSON body on a 2xx response; rejects with an `Error` (whose message
+ * is the server's own `error` field when present) on any non-2xx or network
+ * failure -- callers decide how to surface that (a status line via
+ * `showMoveModal`'s `statusEl`, a toast, etc.); this helper never touches the
+ * DOM itself.
+ */
+function requestMoveItem(id, targetFolder, fetchImpl) {
+  const doFetch = fetchImpl || (typeof fetch !== 'undefined' ? fetch : null);
+  if (!doFetch) return Promise.reject(new Error('fetch is not available'));
+  return doFetch(`/api/videos/${encodeURIComponent(id)}/move`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ targetFolder }),
+  }).then((res) => {
+    return res.json().catch(() => ({})).then((data) => {
+      if (!res.ok) {
+        throw new Error((data && data.error) || `Move failed (${res.status})`);
+      }
+      return data;
+    });
+  });
+}
+
 // v1.17.0 FR-3(a): a brief, non-blocking, auto-dismissing notification --
 // replaces the blocking `alert('File deleted successfully.')` friction the
 // watch page's post-delete success branch used to have (T2). Appends a real
@@ -3733,6 +3892,8 @@ if (typeof module !== 'undefined' && module.exports) {
     buildSubscribeRequestBody, buildSubscribeModal,
     derivePinnedPlaylistEntries, renderPinnedSidebar, renderPinnedPlaylists,
     isYtdlpManagedItem, deleteFlowFor, showHardDeleteModal,
+    // v1.24.0 (T9): C1 move-files client picker.
+    showMoveModal, requestMoveItem,
     nextDownloadChipPollDelay, buildOneShotRetryBody, chipItemLifecycle,
     buildDownloadChipItem, reduceDownloadChipState, formatDownloadChipSummary,
     shouldShowDownloadChipOnPath, injectDownloadStatusChip,

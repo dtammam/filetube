@@ -136,13 +136,16 @@ test('DEFAULT_DOWNLOAD_TIMEOUT_MS is 180 minutes (raised from the previous 60-mi
 // injection-proofing an embedded newline in a free-text field now gets from
 // JSON-escaping.
 
-test('parseChannelMetaLine: parses a well-formed FTCHMETA JSON line into its 5 fields', () => {
+test('parseChannelMetaLine: parses a well-formed FTCHMETA JSON line into its 8 fields', () => {
   const line = `FTCHMETA ${JSON.stringify({
     id: 'dQw4w9WgXcQ',
     channel_url: 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw',
     channel_id: 'UCuAXFkgsw1L7xaCfnd5JJOw',
     uploader_url: 'https://www.youtube.com/@RickAstley',
     channel: 'Rick Astley',
+    upload_date: '20091025',
+    release_date: '20091026',
+    channel_thumbnail: 'https://yt3.ggpht.com/avatar.jpg',
   })}`;
   const result = parseChannelMetaLine(line);
   assert.deepEqual(result, {
@@ -151,16 +154,22 @@ test('parseChannelMetaLine: parses a well-formed FTCHMETA JSON line into its 5 f
     channelId: 'UCuAXFkgsw1L7xaCfnd5JJOw',
     uploaderUrl: 'https://www.youtube.com/@RickAstley',
     channelName: 'Rick Astley',
+    uploadDate: '20091025',
+    releaseDate: '20091026',
+    channelThumbnail: 'https://yt3.ggpht.com/avatar.jpg',
   });
 });
 
-test('parseChannelMetaLine: yt-dlp\'s JSON `null` (unavailable field) and an empty string both normalize to null (absent), never literal data', () => {
+test('parseChannelMetaLine: yt-dlp\'s JSON `null` (unavailable field), an empty string, and `NA` all normalize to null (absent), never literal data', () => {
   const line = `FTCHMETA ${JSON.stringify({
     id: 'vid123',
     channel_url: null,
     channel_id: '',
     uploader_url: null,
     channel: '',
+    upload_date: 'NA',
+    release_date: null,
+    channel_thumbnail: '',
   })}`;
   const result = parseChannelMetaLine(line);
   assert.deepEqual(result, {
@@ -169,7 +178,24 @@ test('parseChannelMetaLine: yt-dlp\'s JSON `null` (unavailable field) and an emp
     channelId: null,
     uploaderUrl: null,
     channelName: null,
+    uploadDate: null,
+    releaseDate: null,
+    channelThumbnail: null,
   });
+});
+
+test('parseChannelMetaLine: an FTCHMETA line with upload_date/release_date/channel_thumbnail absent entirely (older/undefined extractor fields) still returns null for those three', () => {
+  const line = `FTCHMETA ${JSON.stringify({
+    id: 'vid456',
+    channel_url: 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw',
+    channel_id: 'UCuAXFkgsw1L7xaCfnd5JJOw',
+    uploader_url: 'https://www.youtube.com/@x',
+    channel: 'X',
+  })}`;
+  const result = parseChannelMetaLine(line);
+  assert.equal(result.uploadDate, null);
+  assert.equal(result.releaseDate, null);
+  assert.equal(result.channelThumbnail, null);
 });
 
 test('parseChannelMetaLine: a channel name containing literal tab/newline characters still round-trips intact (JSON-escaped, never truncated/misaligned)', () => {

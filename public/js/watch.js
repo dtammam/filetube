@@ -520,7 +520,19 @@ if (typeof module !== 'undefined' && module.exports) {
     }
 
     let mediaData = null;
+    // C2 (v1.24 UX Round, Wave 3, T10 follow-up): one-shot guard so
+    // pingView() below fires AT MOST ONCE per view instance -- fresh
+    // (`false`) on every init(), like `currentSubState`/`moveBtn` above.
+    let viewPinged = false;
     let folderSettings = {};   // { "<path>": { name, hidden } } — for channel display name
+    // C1 follow-up (v1.24 UX Round, Wave 3): the FULL folders array from the
+    // SAME `GET /api/config` fetch initWatch() already makes for the sidebar
+    // (step 1 below) -- no new network call. Feeds `showMoveModal`'s
+    // `folders` argument for this page's "Move to..." trigger (setupMoveButton
+    // below). `moveBtn` is the runtime-created control itself -- fresh per
+    // view instance, like `pinBtn` below.
+    let currentFolders = [];
+    let moveBtn = null;
     // FIX C (two-reviewer-gate follow-up): the FR-2-derived display name,
     // computed once in initWatch() via the SAME resolveChannelName() call
     // that drives the on-page uploader display, cached here so the Subscribe
@@ -550,6 +562,32 @@ if (typeof module !== 'undefined' && module.exports) {
       if (!mountedEarly) showFatalViewError(root);
     }
 
+    // C2 (v1.24 UX Round, Wave 3, T10 follow-up): fires the view-count ping
+    // (`POST /api/videos/:id/view`, added by T10 -- increments
+    // `db.metadata[id].viewCount` by exactly 1) exactly ONCE per watch-page
+    // open. `viewPinged` (declared above, alongside `mediaData`) is a
+    // one-shot flag scoped to THIS view instance, fresh on every init() --
+    // mirrors how setupPinButton/setupMoveButton etc. guard their own
+    // once-per-open setup work, so a stray second call (there isn't one
+    // today -- initWatch() only reaches this once per open -- but this keeps
+    // it true even if that ever changes) can never double-count a single
+    // watch. Deliberately NOT called from the progress-saving path
+    // (`POST /api/progress`, player.js) or the `/video/:id` Range-serve path
+    // -- both fire many times per single playback (periodic timestamp saves;
+    // one call per byte-range chunk a browser requests) and would wildly
+    // over-count a view, which is exactly why T10's route comment calls
+    // those out as the two routes this must stay independent of. Best-effort
+    // and fire-and-forget: a missing view count is purely cosmetic (see
+    // server.js), so this is never `await`ed by initWatch() and a
+    // failed/rejected fetch (including this view's own AbortController
+    // firing mid-flight, on navigate-away) is silently swallowed -- it must
+    // never throw, block, or delay player start.
+    function pingView(id) {
+      if (viewPinged) return;
+      viewPinged = true;
+      fetch('/api/videos/' + encodeURIComponent(id) + '/view', { method: 'POST', signal }).catch(() => {});
+    }
+
     // Initialize page
     async function initWatch() {
       try {
@@ -557,6 +595,7 @@ if (typeof module !== 'undefined' && module.exports) {
         const configRes = await fetch('/api/config');
         const configData = await configRes.json();
         folderSettings = configData.folderSettings || {};
+        currentFolders = configData.folders || [];
         renderSidebarFolders(configData.folders || [], folderSettings);
 
         // 2. Fetch media details
@@ -566,6 +605,12 @@ if (typeof module !== 'undefined' && module.exports) {
         }
         mediaData = await mediaRes.json();
 
+        // 2b. C2 (v1.24 UX Round, Wave 3, T10 follow-up): now that mediaData
+        // (a REAL, resolved media item) is in hand, fire the once-per-open
+        // view-count ping -- see pingView()'s own comment above for why this
+        // exact spot, and why it's fire-and-forget.
+        pingView(mediaData.id);
+
         // Channel name resolution is shared with the list cards (see common.js)
         // so the author shown here, on the home grid, AND on the persistent
         // player's Media Session metadata all agree.
@@ -574,6 +619,11 @@ if (typeof module !== 'undefined' && module.exports) {
 
         // 3. Populate metadata details
         populateMetadata(channelName);
+
+        // 3b. C1 follow-up (v1.24 UX Round, Wave 3): mount/refresh the
+        // "Move to..." trigger now that both `mediaData` and `currentFolders`
+        // are resolved.
+        setupMoveButton();
 
         // 4. Mount/play this media in the persistent player controller. This
         // is idempotent -- if the controller already has this exact id loaded
@@ -1385,6 +1435,64 @@ if (typeof module !== 'undefined' && module.exports) {
       const count = getCommentCount(mediaId, MOCK_COMMENT_BANK.length);
       const videoTitle = mediaData && typeof mediaData.title === 'string' ? mediaData.title : '';
       return buildMockComments(mediaId, MOCK_COMMENT_BANK, count, videoTitle);
+    }
+
+    // C1 follow-up (v1.24 UX Round, Wave 3): "Move to..." trigger. Mirrors
+    // `setupPinButton`'s runtime-creation pattern above (created once per
+    // view instance, mounted into existing shell markup this file doesn't
+    // own) since `watch.html`'s static markup carries no placeholder for
+    // this control and this task edits ONLY `main.js`/`watch.js`. Mounted as
+    // a sibling of Download/Delete in the SAME `.watch-actions` row those two
+    // already live in, reusing the EXACT `.btn` class those buttons use --
+    // no new CSS. Idempotent (guarded on `moveBtn` already existing) so a
+    // second media load within the same cached view instance never
+    // duplicates the control.
+    function setupMoveButton() {
+      const watchActions = root.querySelector('.watch-actions');
+      if (!watchActions || !mediaData) return;
+      if (!moveBtn) {
+        moveBtn = document.createElement('button');
+        moveBtn.type = 'button';
+        moveBtn.id = 'move-media-btn';
+        moveBtn.className = 'btn';
+        moveBtn.textContent = 'Move to...';
+        watchActions.appendChild(moveBtn);
+        moveBtn.addEventListener('click', handleMoveClick, { signal });
+      }
+    }
+
+    // Opens the shared `showMoveModal` (common.js) with the CURRENT item +
+    // `currentFolders` (the SAME `GET /api/config` folders array initWatch()
+    // already fetched for the sidebar -- no new network call); confirming a
+    // folder calls `requestMoveItem`. A successful move RE-KEYS this item
+    // under a new id (server.js's C1 re-key -- see common.js's
+    // `showMoveModal`/`requestMoveItem` comment), so THIS watch page's own
+    // `mediaId` is stale the instant the move succeeds -- mirroring
+    // `performMediaDelete`'s exact post-success navigate, the sensible
+    // refresh here is the same "leave this page, back to the library" rather
+    // than trying to reload this same, now-relocated id in place.
+    function handleMoveClick() {
+      if (!mediaData) return;
+      showMoveModal(mediaData, currentFolders, (targetFolder, { teardown, statusEl }) => {
+        statusEl.textContent = 'Moving...';
+        requestMoveItem(mediaData.id, targetFolder)
+          .then(() => {
+            teardown();
+            showToast('File moved.');
+            // Mirrors `performMediaDelete`'s exact pre-navigate step: a
+            // successful move re-keys this item under a brand-new id (the
+            // C1 re-key), so the persistent player -- which is still holding
+            // the OLD id -- would otherwise keep Range-requesting a media
+            // resource that no longer exists under that id and 404 mid-
+            // playback. Stop it BEFORE navigating away.
+            if (window.FileTube && window.FileTube.player) window.FileTube.player.close();
+            if (window.FileTube && typeof window.FileTube.navigate === 'function') window.FileTube.navigate('/');
+            else window.location.href = '/';
+          })
+          .catch((err) => {
+            statusEl.textContent = (err && err.message) || 'Move failed.';
+          });
+      });
     }
 
     // Deletion logic. FR-7 (v1.21.0, T6): a yt-dlp-managed file is

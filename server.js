@@ -21,6 +21,11 @@ const ytdlp = require('./lib/ytdlp');
 // needs the exact same predicate, and a leaf module lets both sides
 // `require()` it directly without any circular dependency.
 const { isYtdlpIntermediate } = require('./lib/ytdlpIntermediates');
+// C4 "fun stats" page (v1.24 UX Round, Wave 3): pure aggregation helpers over
+// `db.metadata`, unit-tested on their own against a synthetic fixture. See
+// lib/stats.js's header comment and `GET /api/stats` below for the full
+// live-compute rationale.
+const stats = require('./lib/stats');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -1720,17 +1725,21 @@ async function runScanDirectories() {
             if (consumed.channelHandleUrl) item.channelHandleUrl = consumed.channelHandleUrl;
             if (consumed.channelId) item.channelId = consumed.channelId;
             if (consumed.channelName) item.channelName = consumed.channelName;
-            // C5-local/C5-ytdlp (T5 write path, reused by T11 in Wave 3): a
-            // yt-dlp-captured `upload_date`/`release_date` is authoritative
-            // and supersedes the local-scan fallback (embedded probe date /
-            // mtime) already set on `item.releaseDate` above -- yt-dlp's own
-            // metadata is more precise than a filesystem timestamp.
-            // `consumed.releaseDate` is always `undefined` today (T5, Wave
-            // 1) -- `consumeDownloadChannelMeta` doesn't populate it yet, so
-            // this is a no-op until T11 wires the bridge, at which point no
-            // FURTHER server.js edit is needed.
+            // C5-local/C5-ytdlp (T5 write path, wired end-to-end by T11 in
+            // Wave 3): a yt-dlp-captured `upload_date`/`release_date` is
+            // authoritative and supersedes the local-scan fallback (embedded
+            // probe date / mtime) already set on `item.releaseDate` above --
+            // yt-dlp's own metadata is more precise than a filesystem
+            // timestamp.
             if (typeof consumed.releaseDate === 'number' && Number.isFinite(consumed.releaseDate)) {
               item.releaseDate = consumed.releaseDate;
+            }
+            // C6 (T11, Wave 3): `consumeDownloadChannelMeta` re-validates the
+            // captured avatar via `sanitizeChannelAvatarUrl` before returning
+            // it -- carry it onto the item exactly like the identity fields
+            // above.
+            if (typeof consumed.channelAvatarUrl === 'string' && consumed.channelAvatarUrl !== '') {
+              item.channelAvatarUrl = consumed.channelAvatarUrl;
             }
             dbChanged = true;
           }
@@ -1766,6 +1775,10 @@ async function runScanDirectories() {
           // ranks a captured item.channelName first; no client change needed.
           if (backfilled.channelName) item.channelName = backfilled.channelName;
           if (backfilled.channelId) item.channelId = backfilled.channelId;
+          // C6 (T11, Wave 3): heals a matched subscription's avatar onto an
+          // identity-less old item too -- `backfillChannelIdentityFromFolder`
+          // already re-validated it via `sanitizeChannelAvatarUrl`.
+          if (backfilled.channelAvatarUrl) item.channelAvatarUrl = backfilled.channelAvatarUrl;
           dbChanged = true;
         }
       }
@@ -2555,6 +2568,372 @@ app.delete('/api/videos/:id', async (req, res) => {
   res.json({ success: true, message: 'File deleted successfully' });
 });
 
+// ---- C1 (v1.24 UX Round, Wave 3): move files between folders + id re-key --
+//
+// LOAD-BEARING GROUNDING FACT (docs/exec-plans/active/2026-07-09-v1.24-ux-round.md
+// Design section): `getMediaId(filePath)` is `md5(filePath)` -- the media id
+// is a hash of the PATH, not of content. Watch progress (`db.progress[id]`),
+// thumbnails (`THUMBNAIL_DIR/<id>.jpg`) and transcode sidecars
+// (`transcodedPath(id)`) are all keyed by that id. A naive `fs.rename`-then-
+// rescan would therefore make a moved file look like a delete (old id
+// pruned, progress lost) + a brand-new add (new id, no history). The two
+// functions below exist specifically to prevent that: `computeMoveTarget`
+// resolves + CONFINES the destination (pure, zero filesystem access) before
+// any FS op ever runs; `moveItemToFolder` does the FS move, then re-keys
+// `db.metadata`/`db.progress` and renames the thumbnail/transcode/subtitle
+// sidecars from the OLD path-derived id to the NEW one, all inside ONE
+// `updateDatabase` mutator -- so the next scan finds the file already
+// indexed under its new-path id and takes the reuse fast-path, history
+// intact, not a delete+new-add.
+
+/**
+ * Which folders is a move allowed to land in? Mirrors `runScanDirectories`'s
+ * own `currentFolders` construction (server.js, scan path): the operator's
+ * configured `db.folders` PLUS the yt-dlp module's own download root(s)
+ * (`ytdlp.extraScanRoots`, a no-op empty array when the module is disabled --
+ * this never opens a route/surface the disabled-module no-op guarantee
+ * forbids). Deliberately the RAW, un-realpath'd spellings (never
+ * `fs.realpathSync`'d) -- see FIX-1's comment above `runScanDirectories` for
+ * why resolving a scan root's spelling would silently change every
+ * `getMediaId` hash under it. Dedup doesn't matter here (this is a pure
+ * membership check, not something walked), so no `normalizeScanRoot` dedup
+ * pass is needed.
+ */
+function configuredLibraryRoots(db) {
+  const ytdlpConfig = ytdlp.parseYtdlpConfig();
+  return [...((db && db.folders) || []), ...ytdlp.extraScanRoots(ytdlpConfig)];
+}
+
+/**
+ * Pure: resolve and CONFINE a move's destination. `filePath` is the item's
+ * CURRENT on-disk path (trusted -- it is already indexed in `db.metadata`);
+ * `targetFolder` is UNTRUSTED client input; `allowedRoots` is the server's
+ * own configured library roots (`configuredLibraryRoots`, above). No
+ * filesystem access happens in this function at all -- callers can reject an
+ * escaping target before any FS op ever runs.
+ *
+ * Confinement discipline mirrors `lib/ytdlp/args.js`'s `isPathUnder`/
+ * `resolveChannelDir`: resolve BOTH sides with `path.resolve`, then require
+ * exact equality OR `startsWith(root + path.sep)` -- never a bare
+ * `startsWith(root)` string check, which a sibling directory sharing a
+ * prefix (e.g. target `/media/lib2` against allowed root `/media/lib`) would
+ * wrongly pass.
+ *
+ * TRUST BOUNDARY (mirrors `normalizeScanRoot`'s own scan-root posture
+ * comment, above `runScanDirectories`): this confinement is a LEXICAL
+ * `path.resolve` boundary and deliberately does NOT `fs.realpathSync`/
+ * dereference symlinks -- doing so here would have the exact same
+ * `getMediaId`-hash-stability hazard FIX-1 documents for scan roots (a
+ * resolved spelling changes the absolute path, which changes the path-hashed
+ * id). `allowedRoots` (`configuredLibraryRoots`, below) is therefore an
+ * OPERATOR-TRUSTED, absolute/canonical surface, not something re-verified
+ * against the real filesystem tree at move time: a symlink an operator
+ * chooses to plant inside a configured root is out of the external threat
+ * model on this single-user LAN box, same as everywhere else this codebase
+ * makes that call.
+ *
+ * Returns `{ ok:true, newPath }` on success, `{ ok:false, error }` otherwise.
+ */
+function computeMoveTarget(filePath, targetFolder, allowedRoots) {
+  if (typeof filePath !== 'string' || filePath === '') {
+    return { ok: false, error: 'invalid source file path' };
+  }
+  if (typeof targetFolder !== 'string' || targetFolder.trim() === '') {
+    return { ok: false, error: 'targetFolder is required' };
+  }
+  const roots = Array.isArray(allowedRoots) ? allowedRoots : [];
+  const resolvedTarget = path.resolve(targetFolder);
+  const confined = roots.some((root) => {
+    if (typeof root !== 'string' || root === '') return false;
+    const resolvedRoot = path.resolve(root);
+    return resolvedTarget === resolvedRoot || resolvedTarget.startsWith(resolvedRoot + path.sep);
+  });
+  if (!confined) {
+    return { ok: false, error: 'targetFolder is outside every configured/allowed library folder' };
+  }
+
+  const baseName = path.basename(filePath);
+  if (!baseName || baseName === '.' || baseName === '..') {
+    return { ok: false, error: 'invalid source file path' };
+  }
+  const newPath = path.join(resolvedTarget, baseName);
+  // Defense-in-depth re-check on the FINAL joined path -- mirrors
+  // `resolveChannelDir`'s own post-join re-check. `path.basename` can never
+  // itself reintroduce a path separator, but this keeps the same "verify what
+  // was actually built, never assume" discipline used elsewhere (SF4).
+  if (newPath !== resolvedTarget && !newPath.startsWith(resolvedTarget + path.sep)) {
+    return { ok: false, error: 'resolved destination escapes the target folder' };
+  }
+
+  if (path.resolve(filePath) === newPath) {
+    return { ok: false, error: 'source and destination are the same file' };
+  }
+
+  return { ok: true, newPath };
+}
+
+/**
+ * Move a library item to another configured folder, re-keying its id and
+ * every id-keyed sidecar. `deps` ({ loadDatabase, updateDatabase, getMediaId,
+ * fs? }) is accepted (rather than closing over this module's own state
+ * directly) so a DIFFERENT module can call this the same way `registerRoutes`/
+ * `startBackground` receive their own deps bundle from server.js -- T19
+ * (Wave 7, B2 Phase 2) reuses this exact function for its physical-reconcile
+ * move, without re-touching server.js. `deps.fs` is an optional filesystem
+ * override (defaults to the real `fs` module) purely for deterministic
+ * EXDEV-fallback test coverage; every real caller omits it.
+ *
+ * Returns `{ ok:true, oldId, newId, newPath }` on success, or
+ * `{ ok:false, status, error }` on any failure -- never throws for an
+ * anticipated failure (missing item, confinement reject, FS error,
+ * concurrent delete); a genuinely unexpected error still propagates so the
+ * caller's own try/catch (mirroring every other route in this file) can log
+ * and 500.
+ *
+ * @param {{loadDatabase: Function, updateDatabase: Function, getMediaId: Function, fs?: object}} deps
+ * @param {string} id current media id
+ * @param {string} targetFolder untrusted client-supplied destination folder
+ */
+async function moveItemToFolder(deps, id, targetFolder) {
+  const d = deps || {};
+  const loadDb = d.loadDatabase;
+  const updateDb = d.updateDatabase;
+  const computeId = d.getMediaId;
+  const fsImpl = d.fs || fs;
+  if (typeof loadDb !== 'function' || typeof updateDb !== 'function' || typeof computeId !== 'function') {
+    return { ok: false, status: 500, error: 'moveItemToFolder: missing required deps (loadDatabase/updateDatabase/getMediaId)' };
+  }
+
+  const db = loadDb();
+  const item = db.metadata[id];
+  if (!item) {
+    return { ok: false, status: 404, error: 'Media file not found' };
+  }
+
+  const allowedRoots = configuredLibraryRoots(db);
+  const target = computeMoveTarget(item.filePath, targetFolder, allowedRoots);
+  if (!target.ok) {
+    return { ok: false, status: 400, error: target.error };
+  }
+  const { newPath } = target;
+  const oldPath = item.filePath;
+
+  // Destination collision FAST-PATH -- a friendly early 409 for the common
+  // case (no FS write attempted at all). This check alone does NOT prevent a
+  // clobber: two concurrent moves of same-basename files into this folder
+  // can both observe `existsSync(newPath) === false` here and both proceed
+  // (a classic TOCTOU race). Correctness rests on the WRITE below being
+  // atomically exclusive, not on this pre-check -- see the comment there.
+  if (fsImpl.existsSync(newPath)) {
+    return { ok: false, status: 409, error: 'A file already exists at the destination' };
+  }
+
+  try {
+    fsImpl.mkdirSync(path.dirname(newPath), { recursive: true });
+  } catch (err) {
+    return { ok: false, status: 500, error: `Could not prepare the destination folder: ${err.message}` };
+  }
+
+  // Atomically-EXCLUSIVE write -- this, not the `existsSync` fast-path above,
+  // is what actually closes the TOCTOU race: `linkSync` (same device) and
+  // `copyFileSync(..., COPYFILE_EXCL)` (cross device) both fail with EEXIST
+  // if the destination is created between our fast-path check and here (e.g.
+  // by a second, concurrent move of a same-basename file into this same
+  // folder) -- neither primitive ever clobbers an existing destination.
+  // Exactly one racer wins the exclusive create; the loser gets EEXIST and
+  // reports the SAME 409 shape a pre-existing destination would.
+  try {
+    fsImpl.linkSync(oldPath, newPath);
+  } catch (err) {
+    if (err && err.code === 'EEXIST') {
+      return { ok: false, status: 409, error: 'A file already exists at the destination' };
+    }
+    if (err && err.code === 'ENOENT') {
+      return { ok: false, status: 404, error: 'The source file no longer exists on disk' };
+    }
+    if (err && err.code === 'EXDEV') {
+      // Cross-device: a hard link can't span filesystems -- fall back to an
+      // EXCLUSIVE copy. `COPYFILE_EXCL` gives the identical atomic-exclusive
+      // guarantee as `linkSync` above (fails with EEXIST rather than
+      // clobbering a concurrently-created destination).
+      try {
+        fsImpl.copyFileSync(oldPath, newPath, fs.constants.COPYFILE_EXCL);
+      } catch (copyErr) {
+        if (copyErr && copyErr.code === 'EEXIST') {
+          return { ok: false, status: 409, error: 'A file already exists at the destination' };
+        }
+        return { ok: false, status: 500, error: `Could not move the file across devices: ${copyErr.message}` };
+      }
+    } else {
+      return { ok: false, status: 500, error: `Could not move the file: ${err.message}` };
+    }
+  }
+
+  // The exclusive link/copy above succeeded: the file's bytes now exist at
+  // BOTH oldPath and newPath (same inode via hard link, or an independent
+  // copy cross-device). Remove the source. If THIS fails, degrade
+  // gracefully rather than discarding a move that already succeeded: log and
+  // continue -- the file is correctly readable at `newPath` either way. A
+  // crash between the link/copy above and this unlink leaves a self-healing
+  // dual hardlink (same inode, same content -- NOT data loss, and strictly
+  // safer than the previous silent-clobber this replaces); the next scan
+  // simply sees the file twice until the stale directory entry is cleaned up.
+  try {
+    fsImpl.unlinkSync(oldPath);
+  } catch (err) {
+    console.error(`Move: file linked/copied to ${newPath} but the old path ${oldPath} could not be removed:`, err.message);
+  }
+
+  // Single updateDatabase mutator, AFTER the FS move above succeeded:
+  // re-key db.metadata/db.progress and rename every id-keyed sidecar. Every
+  // sidecar rename is best-effort/idempotent (own try/catch) -- a thumbnail/
+  // transcode/subtitle rename failure never blocks the re-key itself; the
+  // file is already physically moved, so degrading gracefully here (log +
+  // continue) beats leaving the db half-migrated.
+  const oldId = id;
+  let mutatorResult;
+  try {
+    mutatorResult = await updateDb((freshDb) => {
+      const freshItem = freshDb.metadata[oldId];
+      if (!freshItem) return false; // concurrently deleted -- nothing left to re-key
+
+      const newId = computeId(newPath);
+
+      freshItem.filePath = newPath;
+      freshItem.id = newId;
+      // Mirrors scanDirRecursive's own folderName derivation (immediate
+      // parent dir basename) so the moved item's folder label doesn't go
+      // stale until the next scan recomputes it anyway.
+      freshItem.folderName = path.basename(path.dirname(newPath)) || freshItem.folderName;
+
+      delete freshDb.metadata[oldId];
+      freshDb.metadata[newId] = freshItem;
+
+      if (Object.prototype.hasOwnProperty.call(freshDb.progress, oldId)) {
+        freshDb.progress[newId] = freshDb.progress[oldId];
+        delete freshDb.progress[oldId];
+      }
+
+      try {
+        const oldThumb = path.join(THUMBNAIL_DIR, `${oldId}.jpg`);
+        const newThumb = path.join(THUMBNAIL_DIR, `${newId}.jpg`);
+        if (fsImpl.existsSync(oldThumb)) fsImpl.renameSync(oldThumb, newThumb);
+      } catch (thumbErr) {
+        console.error(`Move: failed to re-key thumbnail for ${oldId} -> ${newId}:`, thumbErr.message);
+      }
+
+      try {
+        const oldTranscode = transcodedPath(oldId);
+        const newTranscode = transcodedPath(newId);
+        if (fsImpl.existsSync(oldTranscode)) fsImpl.renameSync(oldTranscode, newTranscode);
+      } catch (transcodeErr) {
+        console.error(`Move: failed to re-key transcode sidecar for ${oldId} -> ${newId}:`, transcodeErr.message);
+      }
+
+      // Subtitle sidecar (A6 ships in Wave 5 -- not built yet; this is
+      // forward-compatible best-effort, a no-op today since no such file can
+      // exist): same basename as the media file, .vtt/.srt extension,
+      // alongside it in whichever directory the media file is currently in.
+      try {
+        const oldDir = path.dirname(oldPath);
+        const newDir = path.dirname(newPath);
+        const oldBase = path.basename(oldPath, path.extname(oldPath));
+        const newBase = path.basename(newPath, path.extname(newPath));
+        for (const subExt of ['.vtt', '.srt']) {
+          const oldSub = path.join(oldDir, oldBase + subExt);
+          const newSub = path.join(newDir, newBase + subExt);
+          if (fsImpl.existsSync(oldSub)) fsImpl.renameSync(oldSub, newSub);
+        }
+      } catch (subErr) {
+        console.error(`Move: failed to re-key subtitle sidecar for ${oldId} -> ${newId}:`, subErr.message);
+      }
+
+      return newId;
+    });
+  } catch (err) {
+    return {
+      ok: false, status: 500,
+      error: `File moved on disk but the database update failed: ${err.message}`,
+      newPath,
+    };
+  }
+
+  if (mutatorResult === false) {
+    return { ok: false, status: 404, error: 'Media file was removed before the move could be recorded' };
+  }
+
+  return { ok: true, oldId, newId: mutatorResult, newPath };
+}
+
+// API: Move a video/audio file into another configured library folder (C1).
+// Body: `{ targetFolder }`. See `moveItemToFolder`'s own comment for the full
+// confinement + id re-key design -- this route is a thin HTTP wrapper around
+// it. T19 (Wave 7, B2 Phase 2) calls `moveItemToFolder` directly for its own
+// physical-reconcile move, without going through this route.
+app.post('/api/videos/:id/move', async (req, res) => {
+  const targetFolder = req.body && req.body.targetFolder;
+  let result;
+  try {
+    result = await moveItemToFolder({ loadDatabase, updateDatabase, getMediaId }, req.params.id, targetFolder);
+  } catch (err) {
+    console.error(`Error moving file ${req.params.id}:`, err);
+    return res.status(500).json({ error: `Could not move file: ${err.message}` });
+  }
+  if (!result.ok) {
+    return res.status(result.status || 500).json({ error: result.error });
+  }
+  res.json({ success: true, id: result.newId, filePath: result.newPath });
+});
+
+// API: Library-wide "fun stats" dashboard (C4, v1.24 UX Round Wave 3).
+// Computed LIVE from `db.metadata` on every request via the pure helpers in
+// `lib/stats.js` -- deliberately no cached aggregate (see that module's
+// header comment): at home-server scale an O(n) pass per request is trivial
+// and always fresh, and a cache would need its own invalidation story for no
+// real benefit.
+app.get('/api/stats', (req, res) => {
+  const db = loadDatabase();
+  res.json(stats.computeLibraryStats(db.metadata));
+});
+
+// API: Record a watch-page open, for C4 "most-watched" (v1.24 UX Round,
+// Wave 3). A dedicated, separate route -- deliberately NOT folded into
+// `POST /api/progress` (fires repeatedly throughout playback via periodic
+// timestamp saves, which would over-count a single watch many times over)
+// and NOT hung off `GET /video/:id` (the Range-serve route, which fires many
+// times per single playback -- once per byte-range chunk a browser
+// requests). Callers (the watch page) are expected to call this ONCE per
+// watch-page open. `viewCount` is an additive integer that defaults to 0
+// when absent on an existing record -- a pre-v1.24 record simply has no
+// `viewCount` field yet, treated as zero here rather than ever triggering a
+// re-processing/re-scan pass to "fill it in" (the thumbnail-backfill-
+// regression lesson: a field default is not a reason to reprocess).
+app.post('/api/videos/:id/view', async (req, res) => {
+  let notFound = false;
+  let viewCount = 0;
+  try {
+    await updateDatabase(db => {
+      const item = db.metadata[req.params.id];
+      if (!item) {
+        notFound = true;
+        return false;
+      }
+      const current = (typeof item.viewCount === 'number' && Number.isFinite(item.viewCount) && item.viewCount >= 0) ? item.viewCount : 0;
+      item.viewCount = current + 1;
+      viewCount = item.viewCount;
+      return true;
+    });
+  } catch (err) {
+    // Express 4 does not catch a rejected async-handler promise, so a
+    // rejection left unguarded here would hang the request instead of
+    // returning 500 (mirrors POST /api/progress's own pattern above).
+    console.error(`Error recording view for ${req.params.id}:`, err);
+    return res.status(500).json({ error: `Could not record view: ${err.message}` });
+  }
+  if (notFound) return res.status(404).json({ error: 'Media file not found' });
+  res.json({ success: true, viewCount });
+});
+
 // Serve extracted thumbnail or fallback placeholder
 app.get('/thumbnail/:id', (req, res) => {
   const db = loadDatabase();
@@ -2842,6 +3221,13 @@ module.exports = {
   needsTranscode,
   transcodedPath,
   matchRootFolder,
+  // C1 (v1.24 UX Round, Wave 3): move-files + id re-key -- re-exported so
+  // tests (and T19's Wave 7 physical-reconcile move) can call these directly.
+  // See the functions' own comments (above `POST /api/videos/:id/move`) for
+  // the full confinement + re-key design.
+  computeMoveTarget,
+  moveItemToFolder,
+  configuredLibraryRoots,
   getMediaId,
   cleanDisplayTitle,
   extractYtdlpVideoId,

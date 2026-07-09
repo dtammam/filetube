@@ -37,8 +37,10 @@ process.env.FILETUBE_YTDLP_DOWNLOAD_DIR = downloadDir;
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
 const express = require('express');
-const { app, loadDatabase, updateDatabase } = require('../../server');
+const { app, loadDatabase, updateDatabase, getMediaId } = require('../../server');
 const ytdlp = require('../../lib/ytdlp');
+const store = require('../../lib/ytdlp/store');
+const args = require('../../lib/ytdlp/args');
 
 let server;
 let base;
@@ -196,6 +198,72 @@ test('AC38 REGRESSION (mirrors the v1.20 FR-4 invariant test): POST /api/config 
   assert.deepEqual(persisted.folderSettings || {}, {}, 'the pin must never leak into db.folderSettings via a config save');
 
   await fetch(`${base}/api/subscriptions/pins/${created.id}`, { method: 'DELETE' });
+});
+
+// v1.24 C6 (render hop): GET /api/subscriptions/pins enriches each pin AT READ
+// TIME with the captured `channelAvatarUrl` from the matching SUBSCRIPTION
+// record (matched by resolved channelDir) -- a pin itself never stores an
+// avatar. This is the last hop that makes a captured channel avatar actually
+// show as the sidebar/playlists folder icon (C6's MANUAL AC).
+test('C6 render hop: a pin is enriched with its matching subscription\'s captured channelAvatarUrl', async () => {
+  const deps = { updateDatabase, getMediaId };
+  const name = 'Avatar Pin Channel';
+  const channelUrl = 'https://www.youtube.com/@avatarpinchannel';
+  await store.addSubscription(deps, { channelUrl, name });
+  await store.recordSubscriptionChannelAvatar(deps, channelUrl, 'https://yt3.ggpht.com/pin-avatar.jpg');
+
+  // Pin the SAME channelDir the subscription resolves to (the route matches on it).
+  const channelDir = args.resolveChannelDir({ downloadDir }, { name });
+  const addRes = await fetch(`${base}/api/subscriptions/pins`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ channelDir, label: name }),
+  });
+  assert.equal(addRes.status, 201);
+
+  const list = await (await fetch(`${base}/api/subscriptions/pins`)).json();
+  assert.equal(list.length, 1);
+  assert.equal(
+    list[0].channelAvatarUrl,
+    'https://yt3.ggpht.com/pin-avatar.jpg',
+    'C6: the pin must be enriched at read time with the matching subscription\'s captured avatar',
+  );
+});
+
+test('C6 render hop: a pin with NO matching subscription is returned unchanged (no channelAvatarUrl key)', async () => {
+  const channelDir = path.join(downloadDir, 'Unmatched Pin');
+  const created = await (await fetch(`${base}/api/subscriptions/pins`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ channelDir, label: 'Unmatched Pin' }),
+  })).json();
+
+  const list = await (await fetch(`${base}/api/subscriptions/pins`)).json();
+  assert.equal(list.length, 1);
+  assert.deepEqual(list[0], created, 'a pin with no matching subscription must be byte-identical -- no channelAvatarUrl key added');
+  assert.ok(!('channelAvatarUrl' in list[0]));
+});
+
+test('C6 render hop: a corrupted subscription avatar failing re-validation is NOT surfaced onto the pin', async () => {
+  const name = 'Hostile Pin Channel';
+  const channelUrl = 'https://www.youtube.com/@hostilepinchannel';
+  // Bypass recordSubscriptionChannelAvatar's own sanitizer to plant a hostile persisted value.
+  await updateDatabase((db) => {
+    const ns = store.ensureYtdlp(db);
+    ns.subscriptions.push({ id: 'hostile-pin-sub', channelUrl, name, channelAvatarUrl: 'javascript:alert(1)' });
+    return true;
+  });
+
+  const channelDir = args.resolveChannelDir({ downloadDir }, { name });
+  await fetch(`${base}/api/subscriptions/pins`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ channelDir, label: name }),
+  });
+
+  const list = await (await fetch(`${base}/api/subscriptions/pins`)).json();
+  assert.equal(list.length, 1);
+  assert.equal(list[0].channelAvatarUrl, undefined, 'a hostile persisted avatar must never be surfaced into the pins response (re-validated at read)');
 });
 
 test('disabled-module no-op preserved: all 3 pin routes 404 when the module is disabled', async () => {
