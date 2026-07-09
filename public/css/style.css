@@ -4236,3 +4236,21 @@ a.sub-row-channel-link:focus-visible {
   padding-top: 8px;
   border-top: 1px solid var(--border-color);
 }
+
+/* v1.24.3: drag-and-drop reorder for pinned-channel sidebar rows
+   (public/js/common.js's wirePinnedSidebarDragAndDrop). Every pinned row
+   already carries the SAME `.sidebar-item` class the folder sidebar's own
+   draggable rows do, so the drag visual feedback REUSES the existing
+   `.sidebar-item.dragging`/`.drag-over-before`/`.drag-over-after` rules
+   above (~L554-583) verbatim -- no new/duplicated class family needed here.
+   This block only adds the grab-cursor affordance, scoped to THIS section so
+   it never leaks onto the folder sidebar's own rows above it (those are
+   wired independently by main.js/watch.js/setup.js and keep their existing,
+   unstyled cursor). */
+#sidebar-pinned-section .sidebar-item[draggable='true'] {
+  cursor: grab;
+}
+
+#sidebar-pinned-section .sidebar-item.dragging {
+  cursor: grabbing;
+}

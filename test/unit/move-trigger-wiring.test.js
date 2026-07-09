@@ -2,26 +2,29 @@
 
 // [UNIT] v1.24 UX Round, Wave 3 (T9 follow-up) -- wires the "Move to..."
 // picker (`showMoveModal`/`requestMoveItem`, public/js/common.js, already
-// covered by test/unit/move-modal.test.js) into the UI: a per-item trigger
-// on the home/library card grid (public/js/main.js) and the equivalent
-// current-item trigger on the watch page (public/js/watch.js).
+// covered by test/unit/move-modal.test.js) into the UI.
 //
-// Neither file exposes a jsdom-free pure function for "click the trigger,
-// see what fires" (there is no jsdom/browser harness in this codebase, see
+// v1.24.2 originally wired a per-item trigger on BOTH the home/library card
+// grid (public/js/main.js) and the watch page (public/js/watch.js). v1.24.3
+// (on-device feedback) REMOVED the home/library card trigger -- move is now
+// available only from within the watch page, never from the home cards. This
+// file now locks ONLY the watch.js wiring, plus a regression guard that the
+// card-level trigger stays gone from main.js.
+//
+// main.js exposes no jsdom-free pure function for "click the trigger, see
+// what fires" (there is no jsdom/browser harness in this codebase, see
 // CONTRIBUTING.md) -- so, mirroring test/unit/card-download-btn.test.js's
 // established pattern for this exact class of problem (structural/wiring
-// regression locks against the raw source text), these tests assert:
+// regression locks against the raw source text), the watch.js tests below
+// assert:
 //   1. the trigger's markup exists in the right place, reusing the EXISTING
-//      `.btn` class (never a new styled class -- also locked against
-//      style.css directly);
+//      `.btn` class;
 //   2. the click-handling code calls `showMoveModal(...)` with the item +
 //      the folders list the file already had in memory (no new fetch);
 //   3. confirming a folder calls `requestMoveItem(...)` with the right
 //      id/folder;
-//   4. a successful move refreshes the affected view (main.js: drops the
-//      item from `currentItems` and re-renders; watch.js: navigates back to
-//      the library, since a move re-keys the item's id out from under this
-//      page).
+//   4. a successful move navigates back to the library, closing the player
+//      first (since a move re-keys the item's id out from under this page).
 
 const { test } = require('node:test');
 const assert = require('node:assert');
@@ -30,76 +33,27 @@ const path = require('node:path');
 
 const MAIN_JS_PATH = path.join(__dirname, '..', '..', 'public', 'js', 'main.js');
 const WATCH_JS_PATH = path.join(__dirname, '..', '..', 'public', 'js', 'watch.js');
-const STYLE_CSS_PATH = path.join(__dirname, '..', '..', 'public', 'css', 'style.css');
 
 const mainJs = fs.readFileSync(MAIN_JS_PATH, 'utf8');
 const watchJs = fs.readFileSync(WATCH_JS_PATH, 'utf8');
-const styleCss = fs.readFileSync(STYLE_CSS_PATH, 'utf8');
 
-// ---- both files: reachable as bare globals, no new CSS ---------------------
+// ---- main.js: the home/library card trigger stays REMOVED (v1.24.3) --------
 
-test('neither main.js nor watch.js window-qualifies showMoveModal/requestMoveItem -- reached the SAME bare-global way as showHardDeleteModal/nextArmState (common.js loads first as a classic script)', () => {
-  assert.ok(!/window\.showMoveModal/.test(mainJs));
-  assert.ok(!/window\.requestMoveItem/.test(mainJs));
-  assert.ok(!/window\.showMoveModal/.test(watchJs));
-  assert.ok(!/window\.requestMoveItem/.test(watchJs));
-  assert.ok(/showMoveModal\(/.test(mainJs), 'main.js should call showMoveModal');
-  assert.ok(/requestMoveItem\(/.test(mainJs), 'main.js should call requestMoveItem');
-  assert.ok(/showMoveModal\(/.test(watchJs), 'watch.js should call showMoveModal');
-  assert.ok(/requestMoveItem\(/.test(watchJs), 'watch.js should call requestMoveItem');
-});
-
-test('style.css carries no rule for .card-move-btn -- the trigger is styled ENTIRELY by the existing .btn class, no new styled class introduced', () => {
-  assert.ok(!/\.card-move-btn\s*\{/.test(styleCss));
-});
-
-// ---- main.js: home/library card trigger -------------------------------------
-
-test('card template: renders a "Move to..." trigger as a SIBLING inside .video-info, reusing the existing .btn class plus an unstyled .card-move-btn hook', () => {
-  const cardMatch = /<div class="video-card">([\s\S]*?)<\/div>\s*`;/.exec(mainJs);
-  assert.ok(cardMatch, 'expected to find the video-card template block in main.js');
-  const cardBody = cardMatch[1];
-
-  const moveBtnMatch = /<button[^>]*class="btn card-move-btn"[^>]*>/.exec(cardBody);
-  assert.ok(moveBtnMatch, 'expected a <button class="btn card-move-btn"> in the card template');
-  assert.match(moveBtnMatch[0], /data-id="\$\{escapeHtml\(item\.id\)\}"/);
-  assert.match(moveBtnMatch[0], /aria-label="Move to another folder"/);
-});
-
-test('card template: the move trigger is its own <button>, not nested inside the delete or download overlay', () => {
-  const cardMatch = /<div class="video-card">([\s\S]*?)<\/div>\s*`;/.exec(mainJs);
-  const cardBody = cardMatch[1];
-
-  const deleteBtnMatch = /<button[^>]*class="card-delete-btn"[\s\S]*?<\/button>/.exec(cardBody);
-  const downloadBtnMatch = /<a[^>]*class="card-download-btn"[\s\S]*?<\/a>/.exec(cardBody);
-  assert.ok(deleteBtnMatch);
-  assert.ok(downloadBtnMatch);
-  assert.ok(!deleteBtnMatch[0].includes('card-move-btn'));
-  assert.ok(!downloadBtnMatch[0].includes('card-move-btn'));
-});
-
-test('main.js: ONE delegated click listener targets .card-move-btn on #video-grid (mirrors the .card-delete-btn delegated-listener style, never per-card)', () => {
-  assert.match(mainJs, /videoGrid\.addEventListener\('click', \(e\) => \{\s*const btn = e\.target\.closest\('\.card-move-btn'\);/);
-});
-
-test('main.js: activating the trigger calls showMoveModal(item, allFolders, ...) -- the SAME in-memory folders list the sidebar already renders, no new fetch', () => {
-  assert.match(mainJs, /showMoveModal\(item, allFolders, \(targetFolder, \{ teardown, statusEl \}\) => \{/);
-});
-
-test('main.js: confirming a folder calls requestMoveItem(id, targetFolder)', () => {
-  assert.match(mainJs, /function moveCardById\(id, targetFolder, statusEl, teardown\) \{\s*requestMoveItem\(id, targetFolder\)/);
-});
-
-test('main.js: a successful move drops the item from currentItems and re-renders via renderSorted() -- mirrors deleteCardById\'s exact post-success refresh, never a full page reload', () => {
-  const moveFnMatch = /function moveCardById\([\s\S]*?\n {4}\}/.exec(mainJs);
-  assert.ok(moveFnMatch, 'expected to find moveCardById in main.js');
-  const body = moveFnMatch[0];
-  assert.match(body, /currentItems = currentItems\.filter\(\(item\) => item\.id !== id\)/);
-  assert.match(body, /renderSorted\(\)/);
-  assert.ok(!/window\.location\.reload/.test(body));
+test('main.js: no card-level "Move to..." trigger -- no .card-move-btn markup, no moveCardById helper, no showMoveModal/requestMoveItem reference', () => {
+  assert.ok(!/card-move-btn/.test(mainJs), 'expected no .card-move-btn markup/hook in main.js');
+  assert.ok(!/moveCardById/.test(mainJs), 'expected no moveCardById helper in main.js');
+  assert.ok(!/showMoveModal/.test(mainJs), 'expected main.js to no longer reference showMoveModal');
+  assert.ok(!/requestMoveItem/.test(mainJs), 'expected main.js to no longer reference requestMoveItem');
 });
 
 // ---- watch.js: current-item trigger -----------------------------------------
+
+test('watch.js window-qualifies neither showMoveModal nor requestMoveItem -- reached the SAME bare-global way as showHardDeleteModal/nextArmState (common.js loads first as a classic script)', () => {
+  assert.ok(!/window\.showMoveModal/.test(watchJs));
+  assert.ok(!/window\.requestMoveItem/.test(watchJs));
+  assert.ok(/showMoveModal\(/.test(watchJs), 'watch.js should call showMoveModal');
+  assert.ok(/requestMoveItem\(/.test(watchJs), 'watch.js should call requestMoveItem');
+});
 
 test('watch.js: builds a "Move to..." button reusing the existing .btn class (same family as #download-media-btn/#delete-media-btn) and mounts it into .watch-actions', () => {
   assert.match(watchJs, /moveBtn\.className = 'btn';/);

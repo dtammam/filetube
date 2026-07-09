@@ -51,12 +51,84 @@ class FakeNode {
     this.parentNode = null;
     this._textContent = '';
     this.style = {};
+    this._attrs = {};
+    this._listeners = {};
+    // v1.24.3: `dataset` reflects into `_attrs` the same way a real DOM
+    // element's `dataset` proxy mirrors `data-*` attributes -- so
+    // `link.dataset.pinId = 'x'` (renderPinnedSidebar) is discoverable via
+    // `querySelectorAll('[data-pin-id]')` (wirePinnedSidebarDragAndDrop)
+    // below, exactly like the real DOM.
+    const self = this;
+    this.dataset = new Proxy({}, {
+      set(target, prop, value) {
+        target[prop] = String(value);
+        const attrName = 'data-' + String(prop).replace(/[A-Z]/g, (m) => '-' + m.toLowerCase());
+        self._attrs[attrName] = String(value);
+        return true;
+      },
+      get(target, prop) {
+        return target[prop];
+      },
+    });
   }
 
   appendChild(child) {
     child.parentNode = this;
     this.children.push(child);
     return child;
+  }
+
+  setAttribute(name, value) { this._attrs[name] = String(value); }
+  getAttribute(name) { return Object.prototype.hasOwnProperty.call(this._attrs, name) ? this._attrs[name] : null; }
+
+  // v1.24.3: no-op-sufficient for wirePinnedSidebarDragAndDrop's own wiring --
+  // these tests never dispatch a drag event, so the handlers just need
+  // somewhere harmless to attach.
+  addEventListener(type, handler) { (this._listeners[type] = this._listeners[type] || []).push(handler); }
+
+  get classList() {
+    const self = this;
+    return {
+      add(name) {
+        const set = new Set(self.className.split(' ').filter(Boolean));
+        set.add(name);
+        self.className = Array.from(set).join(' ');
+      },
+      remove(name) {
+        self.className = self.className.split(' ').filter((c) => c && c !== name).join(' ');
+      },
+      toggle(name, force) {
+        const has = self.className.split(' ').filter(Boolean).includes(name);
+        const shouldHave = typeof force === 'boolean' ? force : !has;
+        if (shouldHave && !has) this.add(name);
+        if (!shouldHave && has) this.remove(name);
+      },
+      contains(name) { return self.className.split(' ').filter(Boolean).includes(name); },
+    };
+  }
+
+  // Minimal compound-selector support (a class + an optional `[data-*]`
+  // attribute-presence check) -- sufficient for
+  // wirePinnedSidebarDragAndDrop's own `.sidebar-item[data-pin-id]` lookup.
+  // Mirrors test/unit/library-toolbar.test.js's own single-class
+  // querySelectorAll fake, extended with the attribute-presence half.
+  querySelectorAll(selector) {
+    const classMatch = String(selector).match(/\.([a-zA-Z0-9_-]+)/);
+    const attrMatch = String(selector).match(/\[([a-zA-Z0-9_-]+)\]/);
+    const cls = classMatch ? classMatch[1] : null;
+    const attr = attrMatch ? attrMatch[1] : null;
+    const results = [];
+    const walk = (node) => {
+      if (!Array.isArray(node.children)) return; // a createTextNode leaf has no .children
+      node.children.forEach((child) => {
+        const classOk = !cls || (child.className && child.className.split(' ').filter(Boolean).includes(cls));
+        const attrOk = !attr || (child._attrs && Object.prototype.hasOwnProperty.call(child._attrs, attr));
+        if (classOk && attrOk) results.push(child);
+        walk(child);
+      });
+    };
+    walk(this);
+    return results;
   }
 
   removeChild(child) {
