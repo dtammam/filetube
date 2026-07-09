@@ -214,3 +214,63 @@ test('the four shells\' icon <link> blocks (SVG + PNG fallbacks + apple-touch-ic
     assert.equal(rest[i], first, `${pages[i + 1]} icon block should be byte-identical to ${pages[0]}`);
   }
 });
+
+// ---- E3 (v1.24 UX Round): real multi-res favicon.ico, still-missed by some
+// browsers/bookmark bars with only SVG + PNG rel="icon" fallbacks. ----
+
+const SHELL_PAGES = [
+  path.join(__dirname, '..', '..', 'public', 'index.html'),
+  path.join(__dirname, '..', '..', 'public', 'watch.html'),
+  path.join(__dirname, '..', '..', 'public', 'setup.html'),
+  path.join(__dirname, '..', '..', 'lib', 'ytdlp', 'views', 'subscriptions.html'),
+];
+
+test('every page ships a byte-identical <link rel="icon" href="/favicon.ico" sizes="any"> alongside the SVG/PNG fallbacks', () => {
+  for (const p of SHELL_PAGES) {
+    const html = fs.readFileSync(p, 'utf8');
+    assert.match(
+      html,
+      /<link rel="icon" href="\/favicon\.ico" sizes="any">/,
+      `${p} should link the multi-res favicon.ico`
+    );
+  }
+});
+
+test('the favicon.ico link sits between the PNG rel="icon" fallbacks and apple-touch-icon in every shell', () => {
+  const order = /<link rel="icon" type="image\/png" sizes="512x512" href="\/icons\/icon-512\.png">\s*\n\s*<link rel="icon" href="\/favicon\.ico" sizes="any">\s*\n\s*<link rel="apple-touch-icon" href="\/icons\/icon-192\.png">/;
+  for (const p of SHELL_PAGES) {
+    const html = fs.readFileSync(p, 'utf8');
+    assert.match(html, order, `${p} should place favicon.ico between the 512px PNG and apple-touch-icon`);
+  }
+});
+
+test('public/favicon.ico exists and is a structurally valid multi-resolution ICO (16, 32, and 48px)', () => {
+  const icoPath = path.join(__dirname, '..', '..', 'public', 'favicon.ico');
+  assert.ok(fs.existsSync(icoPath), `expected ${icoPath} to exist`);
+  const buf = fs.readFileSync(icoPath);
+
+  // ICONDIR header: reserved(2)=0, type(2)=1 (icon), count(2)
+  assert.equal(buf.readUInt16LE(0), 0, 'reserved field must be 0');
+  assert.equal(buf.readUInt16LE(2), 1, 'type field must be 1 (icon)');
+  const count = buf.readUInt16LE(4);
+  assert.ok(count >= 3, `expected at least 3 embedded resolutions, found ${count}`);
+
+  const sizes = [];
+  for (let i = 0; i < count; i += 1) {
+    const base = 6 + i * 16;
+    const width = buf.readUInt8(base) || 256;
+    const height = buf.readUInt8(base + 1) || 256;
+    const bitCount = buf.readUInt16LE(base + 6);
+    const bytesInRes = buf.readUInt32LE(base + 8);
+    const imageOffset = buf.readUInt32LE(base + 12);
+    assert.equal(width, height, `entry ${i} should be square, got ${width}x${height}`);
+    assert.equal(bitCount, 32, `entry ${i} should be 32bpp (RGBA)`);
+    assert.ok(imageOffset + bytesInRes <= buf.length, `entry ${i} image data must fit inside the file`);
+    // Each embedded resource starts with a BITMAPINFOHEADER whose biSize is 40.
+    assert.equal(buf.readUInt32LE(imageOffset), 40, `entry ${i} should start with a 40-byte BITMAPINFOHEADER`);
+    sizes.push(width);
+  }
+  for (const expected of [16, 32, 48]) {
+    assert.ok(sizes.includes(expected), `expected a ${expected}x${expected} resolution, got [${sizes.join(', ')}]`);
+  }
+});

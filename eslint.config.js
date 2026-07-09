@@ -151,6 +151,19 @@ module.exports = [
         // FR-5 (TC, v1.22.0): desktop-sidebar channel-pins renderer, called
         // from each of main.js/watch.js/setup.js's own init().
         renderPinnedSidebar: 'readonly',
+        // F1 (T3, v1.24.0): deterministic uploader/channel avatar fallback +
+        // the real-avatar-vs-generated precedence seam, consumed by
+        // watch.js's uploader/comment avatar render (T4, same wave).
+        deriveAvatar: 'readonly',
+        resolveAvatarSource: 'readonly',
+        // C2/C3 (T3-WIRE, v1.24.0): item-count badge + format-toggle
+        // (video/audio/both) library controls, consumed by main.js's
+        // home/folder/playlist/channel grid render.
+        renderItemCountBadge: 'readonly',
+        filterByMediaType: 'readonly',
+        getStoredFormatFilter: 'readonly',
+        setStoredFormatFilter: 'readonly',
+        renderFormatToggle: 'readonly',
       },
     },
   },

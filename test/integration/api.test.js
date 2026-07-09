@@ -43,6 +43,18 @@ test('GET /assets/icons/*.svg serves the bundled icons', async () => {
   assert.match(await res.text(), /<svg/i);
 });
 
+// E3 (v1.24 UX Round): public/favicon.ico is a plain static asset -- confirm
+// the express.static(public/) mount actually reaches it at the root path
+// every shell links to (/favicon.ico), not just that the file exists on disk.
+test('GET /favicon.ico serves the multi-res ICO asset', async () => {
+  const res = await fetch(`${base}/favicon.ico`);
+  assert.equal(res.status, 200);
+  const buf = Buffer.from(await res.arrayBuffer());
+  // ICO magic: reserved=0, type=1 (icon).
+  assert.equal(buf.readUInt16LE(0), 0);
+  assert.equal(buf.readUInt16LE(2), 1);
+});
+
 test('GET /api/config returns folders and folderSettings', async () => {
   const res = await fetch(`${base}/api/config`);
   assert.equal(res.status, 200);

@@ -123,6 +123,60 @@ test('sortItems: never mutates the input array regardless of sortKey', () => {
   assert.deepEqual(items, copy);
 });
 
+// ---- sortItems: release-date (v1.24.0 C5, T3, AVAILABLE-only -- not default) ----
+
+test('sortItems: release-date sorts by releaseDate descending when every item has one', () => {
+  const items = [
+    { title: 'A', addedAt: 1, releaseDate: 5000 },
+    { title: 'B', addedAt: 2, releaseDate: 9000 },
+    { title: 'C', addedAt: 3, releaseDate: 1000 },
+  ];
+  const result = sortItems(items, 'release-date');
+  assert.deepEqual(result.map((i) => i.title), ['B', 'A', 'C']);
+});
+
+test('sortItems: release-date falls back to addedAt for an item with no captured releaseDate', () => {
+  const items = [
+    { title: 'HasDate', addedAt: 1, releaseDate: 500 },
+    { title: 'NoDate', addedAt: 9000 }, // no releaseDate at all -- falls back to addedAt
+  ];
+  // NoDate's addedAt (9000) outranks HasDate's releaseDate (500) once NoDate
+  // falls back, so it sorts FIRST (newest-first, descending).
+  assert.deepEqual(sortItems(items, 'release-date').map((i) => i.title), ['NoDate', 'HasDate']);
+});
+
+test('sortItems: release-date treats a null/non-numeric releaseDate the same as missing (falls back to addedAt)', () => {
+  const items = [
+    { title: 'NullDate', addedAt: 300, releaseDate: null },
+    { title: 'NaNDate', addedAt: 100, releaseDate: NaN },
+    { title: 'HasDate', addedAt: 1, releaseDate: 200 },
+  ];
+  assert.deepEqual(sortItems(items, 'release-date').map((i) => i.title), ['NullDate', 'HasDate', 'NaNDate']);
+});
+
+test('sortItems: release-date with neither releaseDate nor addedAt falls back to 0 (never NaN/throws)', () => {
+  const items = [{ title: 'Bare' }];
+  assert.doesNotThrow(() => sortItems(items, 'release-date'));
+  assert.deepEqual(sortItems(items, 'release-date').map((i) => i.title), ['Bare']);
+});
+
+test('sortItems: release-date is NOT the default -- an unrecognized/missing sortKey still falls back to newest (REGRESSION LOCK, Dean decision 8)', () => {
+  assert.deepEqual(sortItems(sample, undefined).map((i) => i.addedAt), [300, 200, 100]);
+  assert.deepEqual(sortItems(sample, 'bogus').map((i) => i.addedAt), [300, 200, 100]);
+  assert.deepEqual(sortItems(sample, null).map((i) => i.addedAt), [300, 200, 100]);
+});
+
+test('sortItems: every pre-existing case (newest/oldest/title-asc/title-desc/size-desc/size-asc/random) is BYTE-IDENTICAL to before the release-date case was added (REGRESSION LOCK)', () => {
+  assert.deepEqual(sortItems(sample, 'newest').map((i) => i.addedAt), [300, 200, 100]);
+  assert.deepEqual(sortItems(sample, 'oldest').map((i) => i.addedAt), [100, 200, 300]);
+  assert.deepEqual(sortItems(sample, 'title-asc').map((i) => i.title), ['apple', 'Banana', 'Cherry']);
+  assert.deepEqual(sortItems(sample, 'title-desc').map((i) => i.title), ['Cherry', 'Banana', 'apple']);
+  assert.deepEqual(sortItems(sample, 'size-desc').map((i) => i.size), [500, 300, 100]);
+  assert.deepEqual(sortItems(sample, 'size-asc').map((i) => i.size), [100, 300, 500]);
+  const shuffled = sortItems(sample, 'random', seededRng(9));
+  assert.deepEqual(shuffled.map((i) => i.title).sort(), sample.map((i) => i.title).sort());
+});
+
 // ---- shouldShowShuffleButton -------------------------------------------------
 
 test('shouldShowShuffleButton: true only when the sort is random', () => {

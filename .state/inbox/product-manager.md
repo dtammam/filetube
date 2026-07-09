@@ -1,130 +1,132 @@
-# Product Manager — Discovery: v1.22.2 (three small FRs)
+# Product Manager — Discovery: v1.24 "UX Round" (PLAN-GATED, complex)
 
-You are the **product-manager** agent. This is the **Discovery** stage for
-`v1.22.2` — a TINY polish round after Dean's on-device iPhone pass of v1.22.1
-(everything working). Produce the exec plan with tight, verifiable acceptance
-criteria. You write requirements only — no code, no design mechanism, no git.
+You are the Product Manager for a LARGE, plan-gated UX round. Your job in this
+stage is **Discovery only**: produce a grounded requirements + execution list
+for Dean's approval **before any implementation**. Do NOT write application or
+test code. Do NOT touch git.
 
-## First, read (ground yourself in the LIVE code — do not take my word for it)
+Read first, in order:
+1. `.state/feature-state.json` (the full round framing — `fr_groups`,
+   `out_of_scope`, `hard_constraints`, `clarification_questions_for_dean`,
+   `review_tier_proposed`, `grounding_pointers`). This inbox summarizes it but
+   the state file is authoritative.
+2. `docs/CONTRIBUTING.md` and `docs/RELIABILITY.md` (standards + testing +
+   the "no automated E2E; on-device is the arbiter" posture).
+3. `ROADMAP.md` — the Planned sections are the source for the pulled-in items;
+   the Shipped section is essential context (many items reference prior rounds).
 
-- `.state/feature-state.json` — full grounded brief (`grounded_diagnosis`,
-  `hard_constraints`, `review_tier_proposed`, `dean_speed_directive`).
-- `docs/CONTRIBUTING.md`, `docs/RELIABILITY.md` — standards + the "Dean's
-  on-device pass is the arbiter" testing reality (no headless/E2E).
-- `docs/exec-plans/completed/2026-07-07-v1.22.1-mobile-player-fixes.md` — the
-  round that REMOVED the mobile-audio `#fs-btn` (its FR-2). Read its FR-2 to
-  understand exactly what was removed and why, so FR-1 here reconciles cleanly.
-- FR-1 live code:
-  - `public/js/player.js`: `enterFullscreen()` (~1500-1511), the `#fs-btn`
-    click handler (~1707-1721), `inNativeFullscreen()`, `#audio-bg-art` +
-    `.audio-mode` wiring (~1770-1824, ~1937-1985).
-  - `public/css/style.css`: `#audio-bg-art`/`.audio-mode` (~909-931), the
-    custom control bar `.player-controls` (z-index 8, ~2903-2912), the v1.22.1
-    mobile-audio `#fs-btn` HIDE (~3226-3233), the v1.21 THEATRE mode
-    (~3920-3965, on `.watch-container` — a page layout, separate from the
-    player-wrapper dock model).
-- FR-2 live code: the icon `<link>` tags (lines 7-9) in all FOUR shells —
-  `public/index.html`, `public/watch.html`, `public/setup.html`,
-  `lib/ytdlp/views/subscriptions.html` — plus `public/manifest.webmanifest`
-  and the icon assets in `public/` (`favicon.svg`, `icons/icon-192.png`,
-  `icons/icon-512.png`; note there is NO `.ico` and NO PNG `rel="icon"`).
-- FR-3 live code: `public/watch.html` (~166-172, the `.star-rating` /
-  `#rating-text` markup), `public/css/style.css` (~1348-1369, `.star-rating` +
-  `.rating-count`), `public/js/watch.js` (~779, sets `#rating-text` to
-  `${rating} / 5`), and `public/js/main.js` (~468, the home-card `.card-rating`
-  glyph variant — confirm it is NOT the wrapping element).
+## The round in one paragraph
 
-## Scope — THREE small FRs (one bug/feature each). Resist scope creep.
+v1.24 is a single branch (`feature/v1.24-ux-round`, off `main` at v1.23.10)
+bundling ~25 user-experience improvements: 9 coordinator-briefed FRs PLUS all
+remaining UX items from `ROADMAP.md`'s Planned sections. It is deliberately one
+branch and deliberately large. This is `/kickoff-complex`: you produce the full
+grounded EXECUTION LIST first, Dean approves it, THEN we build in collision-free
+waves. Nothing is implemented until Dean approves the plan.
 
-### FR-1 — Working AUDIO "fullscreen" (CSS-expanded now-playing view)
-- **Problem:** v1.22.1 removed the mobile-audio `#fs-btn` because the native
-  Fullscreen API is a no-op for an audio-only element on iPhone
-  (`webkitEnterFullscreen()` needs a `<video>` surface). Dean still wants a
-  fullscreen option for audio. His final word: *"if we add the fullscreen
-  button i just want it to work."*
-- **Approach (settled with Dean — write ACs around this, not the dead native
-  API):** a CSS full-viewport "expanded now-playing" view — `position:fixed`,
-  `inset:0`, high z-index, driven by a class toggle — that enlarges the audio
-  cover art (`#audio-bg-art`) + the custom control bar to fill the screen.
-  Works on iPhone, desktop, everywhere. This is NOT the browser Fullscreen API.
-- **Outcome ACs to cover:** the audio fullscreen affordance is present and
-  visible for audio playback; tapping it ENTERS the expanded view (art + custom
-  controls fill the viewport); an exit affordance (a close/exit control and/or
-  tap and/or the same toggle) cleanly EXITS and restores the prior layout;
-  scoped to audio-mode; must NOT regress VIDEO fullscreen (which stays on the
-  real Fullscreen API / `webkitEnterFullscreen`); no stuck-expanded state if
-  the player docks/closes/navigates while expanded; nothing persisted
-  server-side. Leave the fullscreen MECHANISM to the Principal Engineer — write
-  ACs about observable behavior, and surface (do not resolve) these design
-  questions for PE:
-  - Reuse the existing `#fs-btn` (re-show it for audio + branch its handler to
-    the CSS-expand path instead of `enterFullscreen()` when in `.audio-mode`)
-    vs a distinct new control? (Recommend reusing `#fs-btn` to avoid four-shell
-    markup churn — PE's call. A new control id would need four-shell parity.)
-  - Coexistence with the dock FULL/DOCKED/CLOSED model, `#audio-bg-art`,
-    Media Session, progress saving, loop, and THEATRE mode (confirm no conflict).
-  - Exit affordance discoverability + clean restore.
-  - FULL-only vs also DOCKED (likely FULL-only).
-- **Gate:** FOCUSED two-reviewer pass on the overlay/dock interaction +
-  video-fullscreen non-regression. **Dean's iPhone on-device pass is the
-  arbiter** that the button truly works — enter AND exit, cleanly restores.
+## What to produce (the Discovery exec plan)
 
-### FR-2 — Favicon displays consistently (tab vs bookmark / across browsers)
-- **Problem (Dean verbatim):** *"on certain browsers the favicon doesn't
-  display, can we make it display consistently? it does in a new tab section
-  but not if a bookmark?"* — the tab/new-tab favicon shows but the BOOKMARK
-  icon (and some browsers) fall back to a default.
-- **Grounded cause to confirm:** the only tab favicon is SVG-only
-  (`rel="icon" type="image/svg+xml" href="/favicon.svg"`) with no `.ico` /
-  PNG `rel="icon"` fallback; many browsers + bookmark bars don't consume an SVG
-  favicon.
-- **Outcome ACs to cover:** the favicon renders consistently across browsers
-  AND in bookmarks; any icon-link change is byte-identical across all FOUR
-  shells (four-shell parity); no new runtime dependency; existing SVG behavior
-  where it already works is not regressed. Leave the exact asset/link mechanism
-  (add a `favicon.ico` and/or PNG `rel="icon"` with explicit `sizes`/`type`,
-  derived from the existing 192/512 PNGs; verify static route + cache headers)
-  to PE. **Gate:** LIGHT single-QA + four-shell parity check + Dean's
-  cross-browser/bookmark on-device check.
+Write `docs/exec-plans/active/2026-07-09-v1.24-ux-round.md` containing:
 
-### FR-3 — Star-rating "N / 5" stays on one line
-- **Problem (Dean verbatim):** *"the x/5 star thing is now compressed so it
-  looks like 3/ and then on a line under, the 5."* — the `#rating-text`
-  (`.rating-count`) "N / 5" wraps under a width squeeze.
-- **Outcome ACs to cover:** the "N / 5" rating text renders on a single line
-  (no wrap) at the watch-page metadata row across viewport widths; the
-  home-card `.card-rating` glyph variant is unaffected; era tokens preserved.
-  Mechanism (trivial CSS: `white-space:nowrap` / `flex-shrink:0`) is PE/SDE's.
-  **Gate:** LIGHT single-QA + Dean's on-device check.
+- **Goal / Scope / Out-of-scope / Constraints** (pull constraints from the state
+  file's `hard_constraints`; pull out-of-scope from `out_of_scope`).
+- **FR clusters** — organize the ~25 items into coherent FR groups by DOMAIN
+  (the state file's `fr_groups` A–G is a starting cut: downloads/yt-dlp,
+  subscriptions, library/discovery, player-adjacent mobile UX, mobile polish,
+  visual polish, mock-comments). De-dup overlaps (e.g. FR-3 already folds in
+  ROADMAP "Clearer download progress" + "Make yt-dlp errors visible"; favicon
+  appears in both the briefed set and ROADMAP). Do NOT just list 25 loose items.
+- **Acceptance criteria per FR** — tight, outcome-focused, verifiable. Group by FR.
+- **A PROPOSED BUILD ORDER in collision-free waves** — quick wins first, then
+  heavier / security-sensitive, then data-architecture. Note file-overlap seams
+  so the EM can later split into parallel tasks that don't collide. Keep it ONE
+  branch.
+- **One-branch-health assessment** — plan for one branch by DEFAULT. If the total
+  is genuinely too big to be one healthy branch, SAY SO explicitly and propose a
+  phased split (by wave) for Dean to decide. Do not silently split.
+- **Open clarification questions for Dean** (see below) — surface these
+  prominently; the coordinator will get Dean's answers EARLY, before you
+  finalize. Where an answer changes the shape of an FR, note the fork.
+- **Conflict check** — verify nothing in scope conflicts with CONTRIBUTING.md
+  mandatory standards or the OUT-of-scope exclusions (especially: do NOT scope in
+  player CONTROLS or the in-player CC toggle if it touches the control bar).
+- **Decision log.**
 
-## Explicit NON-ASK (do NOT scope, do NOT write ACs for)
-- **Audio press-and-hold-2x.** Dean explicitly said he is OK with it not
-  working since the persistent `#speed-btn` covers speed. Do NOT touch it or add
-  any work for it. Leave it exactly as shipped in v1.22.1.
+Then update `.state/feature-state.json`: set `artifacts.requirements` and
+`artifacts.exec_plan` to the exec plan path, and append a Discovery history entry.
 
-## Constraints (see `hard_constraints` in state for the full list)
-- No Fullscreen API for audio (iPhone refuses it on non-video elements) — CSS
-  overlay only. Do NOT regress VIDEO fullscreen or any v1.16/v1.21/v1.22.x
-  player feature (persistent single `<video>`, one-time `wireHostListeners`,
-  dock FULL/DOCKED/CLOSED, Media Session, progress saving, loop, PiP, THEATRE,
-  the v1.22.1 custom-bar-everywhere + `#speed-btn` + desktop click-to-pause).
-- Four-shell byte-identical parity for any shell markup change (FR-1 new
-  control id, if any; FR-2 icon links).
-- Era-theme tokens for all new/changed CSS; ≥44px mobile touch targets. Reuse
-  the single shared `isMobileFormFactor()` signal for any JS gating. Vanilla
-  DOM, `node:test` for any new pure helper + a regression lock, lint 0 warnings,
-  no new runtime deps (`docs/CONTRIBUTING.md`).
+## Ground everything against live code before finalizing
 
-## Deliverable
-Write the exec plan to `docs/exec-plans/active/2026-07-07-v1.22.2-audio-fullscreen.md`:
-- The three FRs above, one section each, with tight verifiable ACs
-  (outcome-focused for FR-1; behavior-focused for FR-2/FR-3).
-- Per-FR review tiers as noted (FR-1 focused two-reviewer + Dean iOS arbiter;
-  FR-2/FR-3 light single-QA).
-- Surface the FR-1 design questions for PE without resolving them.
-- Check for overlap with any active exec plan and `docs/exec-plans/tech-debt-tracker.md`.
-- Update `.state/feature-state.json`: set `artifacts.requirements` and
-  `artifacts.exec_plan` to the exec plan path.
+The state file's `grounding_pointers` map each domain to real files. Verify each
+item against the live code — do not restate the brief. Key seams:
 
-Do NOT write application/test code. Do NOT touch git. When done, report a
-summary back to the EM/coordinator, who will run `/prep-pe-design`.
+- **Security core (Group A):** `lib/ytdlp/url.js` — `validateChannelUrl`
+  (`ALLOWED_HOSTS` allowlist, `FORBIDDEN_CHARS`, `CHANNEL_PATH_PATTERNS`,
+  `classifySingleVideo`, `isSafeVideoId`/`buildWatchUrl`). `lib/ytdlp/args.js` —
+  arg-array builders, the `--` separator, `SHORTS_MATCH_FILTER` (~L310),
+  `buildMatchFilterArg` (~L347). NO `shell:true` ever. Widening the allowlist
+  (FR-1) must NOT weaken injection safety — heaviest adversarial gate.
+- **Disabled-module no-op:** every yt-dlp FR must preserve the guarantee that
+  with `FILETUBE_YTDLP_ENABLED` off, no new route / UI / DOM is reachable.
+- **Subscriptions + pins (Group B):** `lib/ytdlp/store.js` (gated subs + pins),
+  `lib/ytdlp/client/subscriptions.js`, `lib/ytdlp/views/subscriptions.html`,
+  pins routes (`/api/subscriptions/pins`). NEVER write `db.folders`.
+- **FR-4 reconcile:** `lib/ytdlp/index.js`
+  `matchChannelDirToSubscription`/`backfillChannelIdentityFromFolder`, the
+  server.js Phase-2 scan mutator, `resolveChannelDir`; one-off downloads land in
+  the download root's synthetic folder. Cross-reference the completed v1.22
+  player-parity exec plan (FR-2 creator re-association) in
+  `docs/exec-plans/completed/`.
+- **Folder DnD to mirror (FR-8):** `common.js`
+  `moveArrayItem`/`computeDropIndex`/`rebuildFullFolderOrder`,
+  `test/unit/folder-dnd-reorder.test.js`.
+- **`.section-actions` row (FR-2):** `public/index.html` ~L108.
+- **Mock comments (FR-9) — SEAM CORRECTION:** the pool is the `commentBank`
+  array in `public/js/watch.js` `getMockInitialComments()` (~L864), NOT
+  `common.js`. `common.js` holds the adjacent `getMockViews`/`getMockSubCount`/
+  `getCommentCount`. Design the "Zak Goldin" weighting (87% polite / 10%
+  unhinged / 3% conspiracy-about-the-video) deterministically and tastefully.
+- **Favicon:** all four shells carry SVG + PNG `rel=icon` (PNG added v1.22.2) +
+  apple-touch-icon + manifest, but NO `favicon.ico`. Four-shell parity discipline
+  (public/index.html, public/watch.html, public/setup.html,
+  lib/ytdlp/views/subscriptions.html).
+
+## Clarification questions to surface EARLY (flag, don't assume)
+
+These are in `clarification_questions_for_dean` in the state file. Surface them
+prominently in the exec plan and note where each answer forks an FR:
+
+1. **FR-1 site-scope** — which sites, and explicit expanded allowlist vs
+   deferring to yt-dlp's extractor list? Multi-site for SUBSCRIPTIONS or ONLY
+   one-off downloads?
+2. **FR-2 button action** — what does the per-subscription action button DO
+   (re-pull this channel now / open its settings / unsubscribe / pin)?
+3. **FR-4 approach** — virtual grouping by `channelUrl` vs physical file move
+   (auto on subscribe), or both?
+4. **FR-7 failing example** — can Dean share one or two failing URLs / a log
+   snippet so root cause is pinned, not guessed?
+5. **Subtitles/CC fit** — GRAB side only (sidecar/embedded) and DEFER the
+   in-player CC toggle button (touches player controls = excluded), or defer the
+   whole subtitles item? Advise; do not assume.
+6. **"Playlists" label** — the bottom-nav Playlists button already shows a text
+   label; which control did Dean actually mean?
+7. **Release/upload date as DEFAULT sort** — making captured release date the
+   DEFAULT home order changes everyone's default feed; confirm default vs
+   just-an-option.
+8. **One-branch size** — confirm Dean is OK with one big branch, or wants a
+   phased split by wave.
+
+## Guardrails
+
+- Verify against live code; flag ALL ambiguities rather than assuming.
+- Respect the OUT-of-scope list: player controls (incl. the custom-vs-native
+  mobile control item), background-audio-for-video, ebooks+TTS,
+  multi-user/permission-gated deletion, testing/infra + tech-debt sections. The
+  in-player CC toggle leans OUT.
+- Every FR ships with tests as normal (CONTRIBUTING.md) — no deferred testing.
+- No new runtime dependencies; Node 22 LTS; vanilla DOM; four-shell parity for
+  shared-shell changes; reuse the single `resolveMobileFormFactor` signal.
+- Do NOT write application/test code. Do NOT touch git.
+
+When done, report back to the coordinator/engineering-manager; the coordinator
+will run `/prep-pe-design` after Dean's clarifications are in.

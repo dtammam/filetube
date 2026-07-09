@@ -24,6 +24,14 @@
 // does this file install a fake `global.document`, before invoking
 // `renderPinnedSidebar`. Each test file runs in its own process (node:test),
 // so this global shim never leaks into any other test file.
+//
+// v1.24.0 (T3, F1): the old generic `<i class="icon-star">` glyph is now the
+// avatar precedence (`resolveAvatarSource`) -- a real `<img>` when a pin
+// carries a `channelAvatarUrl` (C6, populated by T11 in a later wave), else a
+// generated `<span class="pinned-avatar-generated">` glyph. `FakeNode` below
+// gains a plain `style` object (mirrors a real element's CSSStyleDeclaration
+// closely enough for `element.style.backgroundColor = ...` to work) so the
+// generated-avatar branch can be exercised without a real DOM.
 
 const { test } = require('node:test');
 const assert = require('node:assert');
@@ -42,6 +50,7 @@ class FakeNode {
     this.children = [];
     this.parentNode = null;
     this._textContent = '';
+    this.style = {};
   }
 
   appendChild(child) {
@@ -123,7 +132,7 @@ test('renderPinnedSidebar: inserts the pinned section as a SIBLING immediately a
   assert.strictEqual(folderList.children.length, 0, '#sidebar-folders-list itself must stay untouched -- no child added to it');
 });
 
-test('renderPinnedSidebar: renders a pin entry with an icon-star and the label as inert text, never innerHTML (AC35)', () => {
+test('renderPinnedSidebar: renders a pin entry with a generated avatar glyph and the label as inert text, never innerHTML (AC35, F1)', () => {
   const { sidebarShell, folderList } = makeShellWithFolderList();
   global.document = makeFakeDoc({ 'sidebar-folders-list': folderList });
 
@@ -135,12 +144,30 @@ test('renderPinnedSidebar: renders a pin entry with an icon-star and the label a
   assert.strictEqual(link.tagName, 'A');
   assert.strictEqual(link.className, 'sidebar-item');
   assert.strictEqual(link.href, '/?root=' + encodeURIComponent(PIN.channelDir));
-  const icon = link.children.find((c) => c.tagName === 'I');
-  assert.ok(icon, 'expected an <i> icon child');
-  assert.strictEqual(icon.className, 'icon-star');
+  const avatar = link.children.find((c) => c.tagName === 'SPAN');
+  assert.ok(avatar, 'expected a generated avatar <span> child (no channelAvatarUrl on this pin)');
+  assert.strictEqual(avatar.className, 'pinned-avatar pinned-avatar-generated');
+  assert.ok(avatar.style.backgroundColor, 'expected a deterministic background color to be set');
+  const glyphNode = avatar.children.find((c) => c.nodeType === 3);
+  assert.strictEqual(glyphNode.textContent, 'R', 'glyph is the uppercased first letter of the label');
   const textNode = link.children.find((c) => c.nodeType === 3);
-  assert.ok(textNode, 'expected a createTextNode-built label, not a textContent assignment (which would also wipe the icon)');
+  assert.ok(textNode, 'expected a createTextNode-built label, not a textContent assignment (which would also wipe the avatar)');
   assert.match(textNode.textContent, /Real Creator/);
+});
+
+test('renderPinnedSidebar: a pin with a channelAvatarUrl renders an <img> instead of the generated glyph (F1 precedence)', () => {
+  const { sidebarShell, folderList } = makeShellWithFolderList();
+  global.document = makeFakeDoc({ 'sidebar-folders-list': folderList });
+
+  const withAvatar = { id: 'p3', channelDir: '/data/ytdlp-downloads/Icon Chan', label: 'Icon Chan', channelAvatarUrl: 'https://example.com/a.jpg' };
+  renderPinnedSidebar([withAvatar]);
+
+  const section = sidebarShell.children[1];
+  const link = section.children[1];
+  const img = link.children.find((c) => c.tagName === 'IMG');
+  assert.ok(img, 'expected an <img> child when channelAvatarUrl is present');
+  assert.strictEqual(img.className, 'pinned-avatar pinned-avatar-img');
+  assert.strictEqual(img.src, 'https://example.com/a.jpg');
 });
 
 test('renderPinnedSidebar: a hostile label is rendered as inert text, never assigned via innerHTML (XSS regression, AC35)', () => {

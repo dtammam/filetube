@@ -393,9 +393,10 @@ header {
   padding: 0 16px;
   cursor: pointer;
   font-size: 13px;
-  font-weight: bold;
+  font-weight: 600;
   flex-shrink: 0;      /* keep the "Search" label from being clipped */
   white-space: nowrap;
+  transition: background-color 0.15s ease;
 }
 
 .search-btn:hover {
@@ -408,19 +409,27 @@ header {
   gap: 12px;
 }
 
+/* v1.24 FR F2: elegance polish -- a touch more breathing room (12px->14px
+   horizontal padding), a hair subtler weight (700->600) and a fraction more
+   rounding (era `--radius` + 1px, so the 2005 era's deliberate sharp-corner
+   look stays essentially flat while 2009/2014/2021 read a little softer) plus
+   a smooth hover/press transition replace the old instant, flat color swap.
+   Era tokens only -- no hardcoded colors, no markup/class change. */
 .btn {
   background-color: var(--btn-bg);
   border: 1px solid var(--border-dark);
   color: var(--text-primary);
-  padding: 6px 12px;
-  border-radius: var(--radius);
-  font-weight: bold;
+  padding: 6px 14px;
+  border-radius: calc(var(--radius) + 1px);
+  font-weight: 600;
+  letter-spacing: 0.2px;
   cursor: pointer;
   font-size: 12px;
   display: inline-flex;
   align-items: center;
   gap: 6px;
   text-decoration: none; /* .btn is used on <a> too (e.g. #download-media-btn) -- keep it button-like, never underlined */
+  transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
 }
 
 /* The 2005 era-theme underlines all <a>; an <a class="btn"> is a button, not a link -- keep it clean. */
@@ -435,6 +444,13 @@ header {
 
 .btn:hover {
   background-color: var(--btn-hover);
+}
+
+/* Tactile press feedback (a nudge down, not a color swap) replaces the old
+   flat/instant hover-only affordance -- reads less like a static blocky
+   rectangle, more like a real pressable control. */
+.btn:active {
+  transform: translateY(1px);
 }
 
 .btn-primary {
@@ -541,6 +557,25 @@ header {
 
 .sidebar-item.drag-over-before {
   box-shadow: inset 0 2px 0 0 var(--yt-red);
+}
+
+/* v1.24.0 (C2/C3): library item-count badge + format toggle. The toggle
+   buttons already inherit .btn/.btn-sm; this adds the group layout, the
+   active-state highlight, and the muted count badge. Era tokens only. */
+.library-item-count {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-left: 8px;
+  font-weight: normal;
+}
+.format-toggle {
+  display: inline-flex;
+  gap: 4px;
+}
+.format-toggle-btn.active {
+  background-color: var(--btn-hover);
+  border-color: var(--yt-red);
+  font-weight: 600;
 }
 
 .sidebar-item.drag-over-after {
@@ -1251,22 +1286,31 @@ header {
   margin: 10px 0 4px;
 }
 
+/* v1.24 FR F2: same elegance polish as `.btn` above (subtler rounding,
+   lighter weight, smooth transition) -- kept as its own rule (not merged
+   into `.btn`) since watch.html markup is frozen for this task. */
 .watch-prevnext-btn {
   background-color: var(--btn-bg);
   border: 1px solid var(--border-dark);
   color: var(--text-primary);
   padding: 6px 14px;
-  border-radius: var(--radius);
-  font-weight: bold;
+  border-radius: calc(var(--radius) + 1px);
+  font-weight: 600;
+  letter-spacing: 0.2px;
   font-size: 12px;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
 }
 
 .watch-prevnext-btn:hover:not(:disabled) {
   background-color: var(--btn-hover);
+}
+
+.watch-prevnext-btn:active:not(:disabled) {
+  transform: translateY(1px);
 }
 
 .watch-prevnext-btn:disabled {
@@ -3838,12 +3882,13 @@ a.sub-row-channel-link:focus-visible {
   justify-content: center;
   padding: 8px 16px;
   border: 1px solid var(--yt-red);
-  border-radius: var(--radius);
+  border-radius: calc(var(--radius) + 1px);
   background-color: var(--yt-red);
   color: #ffffff;
   font-size: 13px;
-  font-weight: bold;
+  font-weight: 600;
   cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, opacity 0.15s ease;
 }
 
 .hard-delete-modal-confirm-btn:disabled {
@@ -4058,9 +4103,10 @@ a.sub-row-channel-link:focus-visible {
   padding: 4px 8px;
   font-family: inherit;
   font-size: 11px;
-  font-weight: bold;
-  border-radius: var(--radius);
+  font-weight: 600;
+  border-radius: calc(var(--radius) + 1px);
   cursor: pointer;
+  transition: background-color 0.15s ease;
 }
 
 .dl-status-chip-retry-btn {
