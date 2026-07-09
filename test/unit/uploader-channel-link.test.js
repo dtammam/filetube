@@ -16,7 +16,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { resolveUploaderLinkHref } = require('../../public/js/watch.js');
+const { resolveUploaderLinkHref, resolveChannelDirFromFilePath } = require('../../public/js/watch.js');
 
 // ---- resolveUploaderLinkHref -------------------------------------------------
 
@@ -96,4 +96,31 @@ test('uploader channel link: textContent sets the display name, href sets the li
   else bareLink.removeAttribute('href');
   assert.strictEqual(bareHref, null);
   assert.strictEqual(bareLink.href, '', 'a stale href must be cleared when there is no folder');
+});
+
+// ---- resolveChannelDirFromFilePath (v1.24.0, T6, B3) -------------------------
+// The RAW (non-URL-encoded) sibling of resolveUploaderLinkHref above, used as
+// a pin-from-watch fallback target when the file has no active subscription
+// to source a server-resolved channelDir from.
+
+test('resolveChannelDirFromFilePath: returns the raw parent folder (no /?root= wrapping, no encoding)', () => {
+  assert.strictEqual(
+    resolveChannelDirFromFilePath('/data/ytdlp-downloads/Some Channel/vid [id].mp4'),
+    '/data/ytdlp-downloads/Some Channel'
+  );
+});
+
+test('resolveChannelDirFromFilePath: handles Windows-style backslash separators', () => {
+  assert.strictEqual(
+    resolveChannelDirFromFilePath('C:\\Media\\Folder\\clip.mp4'),
+    'C:\\Media\\Folder'
+  );
+});
+
+test('resolveChannelDirFromFilePath: no usable folder (bare filename / empty / non-string) -> null', () => {
+  assert.strictEqual(resolveChannelDirFromFilePath('song.mp3'), null);
+  assert.strictEqual(resolveChannelDirFromFilePath(''), null);
+  assert.strictEqual(resolveChannelDirFromFilePath(undefined), null);
+  assert.strictEqual(resolveChannelDirFromFilePath(null), null);
+  assert.strictEqual(resolveChannelDirFromFilePath(42), null);
 });
