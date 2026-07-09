@@ -1937,6 +1937,35 @@ header {
   border-bottom: none;
 }
 
+/* v1.24.1 Wave 3 fast-follow: subscription-row drag-and-drop reordering.
+   wireSubRowDragAndDrop() (this file) toggles these classes on `.sub-row`
+   during drag, but shipped in v1.24.1 T6 with no CSS for them -- the
+   feature worked under the hood (reorder persisted) but had zero visual
+   feedback on desktop or mobile (the "client-file ownership trap": the JS
+   lives here in lib/ytdlp/client/, one directory away from the shared
+   public/css/style.css that styles it). Mirrors the working folder-list
+   DnD styling above (.folder-item-row.dragging/.drag-over-before/
+   .drag-over-after, v1.15.0) -- same dim-while-dragging + inset box-shadow
+   drop-indicator-line technique, era tokens only. Only rows the JS actually
+   marks `draggable="true"` (real subscriptions, not one-shot job rows) get
+   the grab affordance. */
+.sub-row[draggable='true'] {
+  cursor: grab;
+}
+
+.sub-row.sub-row-dragging {
+  opacity: 0.5;
+  cursor: grabbing;
+}
+
+.sub-row.sub-row-drag-over-before {
+  box-shadow: inset 0 2px 0 0 var(--yt-red);
+}
+
+.sub-row.sub-row-drag-over-after {
+  box-shadow: inset 0 -2px 0 0 var(--yt-red);
+}
+
 .sub-row-navigable {
   cursor: pointer;
 }

@@ -846,6 +846,228 @@ test('consumeDownloadChannelMeta: is safe to call from INSIDE a synchronous upda
   assert.equal(consumed.channelUrl, 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw');
 });
 
+// ---- v1.24.0 C5-ytdlp: parseCapturedReleaseDate (pure) ---------------------
+
+test('parseCapturedReleaseDate: a valid YYYYMMDD string parses to the correct UTC-midnight epoch ms', () => {
+  const ms = store.parseCapturedReleaseDate('20230615');
+  assert.equal(ms, Date.UTC(2023, 5, 15));
+});
+
+test('parseCapturedReleaseDate: malformed/wrong-length/non-digit input is dropped, never throws', () => {
+  assert.equal(store.parseCapturedReleaseDate('2023-06-15'), null);
+  assert.equal(store.parseCapturedReleaseDate('2023061'), null); // too short
+  assert.equal(store.parseCapturedReleaseDate('202306155'), null); // too long
+  assert.equal(store.parseCapturedReleaseDate('2023061x'), null); // non-digit
+  assert.equal(store.parseCapturedReleaseDate(''), null);
+  assert.equal(store.parseCapturedReleaseDate(null), null);
+  assert.equal(store.parseCapturedReleaseDate(undefined), null);
+  assert.equal(store.parseCapturedReleaseDate(20230615), null); // a number, not a string
+});
+
+test('parseCapturedReleaseDate: an out-of-range month/day is dropped outright, never silently rolled forward', () => {
+  assert.equal(store.parseCapturedReleaseDate('20231301'), null); // month 13
+  assert.equal(store.parseCapturedReleaseDate('20230001'), null); // month 0
+  assert.equal(store.parseCapturedReleaseDate('20230230'), null); // Feb 30 -- Date.UTC would silently overflow into March
+  assert.equal(store.parseCapturedReleaseDate('20230100'), null); // day 0
+  assert.equal(store.parseCapturedReleaseDate('20230132'), null); // day 32
+});
+
+test('parseCapturedReleaseDate: a plausible boundary (Feb 29 on a real leap year) is accepted', () => {
+  const ms = store.parseCapturedReleaseDate('20200229'); // 2020 is a leap year
+  assert.equal(ms, Date.UTC(2020, 1, 29));
+});
+
+test('parseCapturedReleaseDate: a HOSTILE oversized numeric string is dropped by the fixed 8-digit shape check', () => {
+  assert.equal(store.parseCapturedReleaseDate('9'.repeat(1000)), null);
+});
+
+test('parseCapturedReleaseDate: implausibly old or far-future dates are dropped (bounds check)', () => {
+  assert.equal(store.parseCapturedReleaseDate('19991231'), null); // before the plausible floor
+  const farFutureYear = new Date().getUTCFullYear() + 50;
+  assert.equal(store.parseCapturedReleaseDate(`${farFutureYear}0101`), null);
+});
+
+// ---- v1.24.0 C6: sanitizeChannelAvatarUrl (pure) ---------------------------
+
+test('sanitizeChannelAvatarUrl: a well-formed https URL is kept, normalized via the URL constructor', () => {
+  assert.equal(
+    store.sanitizeChannelAvatarUrl('https://yt3.ggpht.com/abc123=s176-c-k-c0x00ffffff-no-rj'),
+    'https://yt3.ggpht.com/abc123=s176-c-k-c0x00ffffff-no-rj',
+  );
+});
+
+test('sanitizeChannelAvatarUrl: non-https schemes are ALWAYS rejected (http, javascript, data, file)', () => {
+  assert.equal(store.sanitizeChannelAvatarUrl('http://yt3.ggpht.com/abc'), null);
+  assert.equal(store.sanitizeChannelAvatarUrl('javascript:alert(1)'), null);
+  assert.equal(store.sanitizeChannelAvatarUrl('data:text/html,<script>alert(1)</script>'), null);
+  assert.equal(store.sanitizeChannelAvatarUrl('file:///etc/passwd'), null);
+});
+
+test('sanitizeChannelAvatarUrl: malformed/relative/empty input is dropped, never throws', () => {
+  assert.equal(store.sanitizeChannelAvatarUrl(''), null);
+  assert.equal(store.sanitizeChannelAvatarUrl('   '), null);
+  assert.equal(store.sanitizeChannelAvatarUrl('not a url'), null);
+  assert.equal(store.sanitizeChannelAvatarUrl('/relative/path.jpg'), null);
+  assert.equal(store.sanitizeChannelAvatarUrl(null), null);
+  assert.equal(store.sanitizeChannelAvatarUrl(undefined), null);
+  assert.equal(store.sanitizeChannelAvatarUrl(42), null);
+});
+
+test('sanitizeChannelAvatarUrl: control characters embedded in the raw string are rejected outright', () => {
+  assert.equal(store.sanitizeChannelAvatarUrl('https://yt3.ggpht.com/abc\r\nSet-Cookie: evil=1'), null);
+  assert.equal(store.sanitizeChannelAvatarUrl('https://yt3.ggpht.com/abc\x00def'), null);
+});
+
+test('sanitizeChannelAvatarUrl: an oversized URL is dropped (MAX_CHANNEL_AVATAR_URL_LENGTH reject)', () => {
+  const overlong = `https://yt3.ggpht.com/${'a'.repeat(store.MAX_CHANNEL_AVATAR_URL_LENGTH)}`;
+  assert.equal(store.sanitizeChannelAvatarUrl(overlong), null);
+});
+
+// FIX 3 (v1.24 UX Round, Wave 3 two-reviewer gate) -- mirrors
+// `validateChannelUrl`'s SF6 posture: a URL carrying embedded `user:pass@`
+// credentials is rejected outright, never silently stripped.
+test('sanitizeChannelAvatarUrl: a URL carrying embedded userinfo (user:pass@) is rejected outright', () => {
+  assert.equal(store.sanitizeChannelAvatarUrl('https://user:pass@host/x.jpg'), null);
+});
+
+// ---- v1.24.0 C5-ytdlp/C6: sanitizeCapturedChannelMeta releaseDate/channelAvatarUrl
+
+test('sanitizeCapturedChannelMeta: a valid releaseDate/uploadDate + channelThumbnail are captured onto the sanitized result', () => {
+  const result = store.sanitizeCapturedChannelMeta(validMeta({
+    releaseDate: '20230615',
+    uploadDate: '20230610',
+    channelThumbnail: 'https://yt3.ggpht.com/avatar123',
+  }));
+  // release_date is preferred over upload_date when both are present.
+  assert.equal(result.releaseDate, Date.UTC(2023, 5, 15));
+  assert.equal(result.channelAvatarUrl, 'https://yt3.ggpht.com/avatar123');
+});
+
+test('sanitizeCapturedChannelMeta: falls back to uploadDate when releaseDate is absent/malformed', () => {
+  const result = store.sanitizeCapturedChannelMeta(validMeta({ releaseDate: null, uploadDate: '20230610' }));
+  assert.equal(result.releaseDate, Date.UTC(2023, 5, 10));
+  const malformed = store.sanitizeCapturedChannelMeta(validMeta({ releaseDate: 'not-a-date', uploadDate: '20230610' }));
+  assert.equal(malformed.releaseDate, Date.UTC(2023, 5, 10));
+});
+
+test('sanitizeCapturedChannelMeta: releaseDate is absent from the result when neither field survives parsing', () => {
+  const result = store.sanitizeCapturedChannelMeta(validMeta({ releaseDate: 'garbage', uploadDate: null }));
+  assert.equal(Object.prototype.hasOwnProperty.call(result, 'releaseDate'), false);
+});
+
+test('sanitizeCapturedChannelMeta: a HOSTILE channelThumbnail (javascript: scheme) is dropped, never persisted', () => {
+  const result = store.sanitizeCapturedChannelMeta(validMeta({ channelThumbnail: 'javascript:alert(document.cookie)' }));
+  assert.equal(Object.prototype.hasOwnProperty.call(result, 'channelAvatarUrl'), false);
+});
+
+test('sanitizeCapturedChannelMeta: an absent channelThumbnail/releaseDate/uploadDate leaves the result byte-identical to the pre-C5/C6 shape', () => {
+  const result = store.sanitizeCapturedChannelMeta(validMeta());
+  assert.equal(Object.prototype.hasOwnProperty.call(result, 'releaseDate'), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(result, 'channelAvatarUrl'), false);
+});
+
+// ---- v1.24.0 C5-ytdlp/C6: recordDownloadChannelMeta/consumeDownloadChannelMeta
+
+test('recordDownloadChannelMeta -> consumeDownloadChannelMeta: releaseDate and channelAvatarUrl round-trip through db.ytdlp.downloadMeta', async () => {
+  const deps = makeFakeDeps();
+  await store.recordDownloadChannelMeta(deps, validMeta({
+    releaseDate: '20230615',
+    channelThumbnail: 'https://yt3.ggpht.com/avatar123',
+  }));
+  const ns = store.ensureYtdlp(deps.loadDatabase());
+  assert.equal(ns.downloadMeta.dQw4w9WgXcQ.releaseDate, Date.UTC(2023, 5, 15));
+  assert.equal(ns.downloadMeta.dQw4w9WgXcQ.channelAvatarUrl, 'https://yt3.ggpht.com/avatar123');
+
+  const consumed = store.consumeDownloadChannelMeta(deps.loadDatabase(), 'dQw4w9WgXcQ');
+  assert.equal(consumed.releaseDate, Date.UTC(2023, 5, 15));
+  assert.equal(consumed.channelAvatarUrl, 'https://yt3.ggpht.com/avatar123');
+});
+
+test('consumeDownloadChannelMeta: re-validates a persisted channelAvatarUrl -- a somehow-corrupted entry with a hostile scheme is dropped from the result (still consumed)', () => {
+  const db = {};
+  store.ensureYtdlp(db).downloadMeta.dQw4w9WgXcQ = {
+    channelUrl: 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw',
+    channelAvatarUrl: 'javascript:alert(1)',
+    capturedAt: Date.now(),
+  };
+  const result = store.consumeDownloadChannelMeta(db, 'dQw4w9WgXcQ');
+  assert.equal(Object.prototype.hasOwnProperty.call(result, 'channelAvatarUrl'), false);
+  assert.equal(db.ytdlp.downloadMeta.dQw4w9WgXcQ, undefined, 'still consumed regardless of the re-validation outcome');
+});
+
+test('consumeDownloadChannelMeta: re-validates a persisted releaseDate -- an out-of-bounds/non-finite value is dropped from the result', () => {
+  const db = {};
+  store.ensureYtdlp(db).downloadMeta.dQw4w9WgXcQ = {
+    channelUrl: 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw',
+    releaseDate: Infinity,
+    capturedAt: Date.now(),
+  };
+  const result = store.consumeDownloadChannelMeta(db, 'dQw4w9WgXcQ');
+  assert.equal(Object.prototype.hasOwnProperty.call(result, 'releaseDate'), false);
+});
+
+test('consumeDownloadChannelMeta: an entry with no releaseDate/channelAvatarUrl at all round-trips exactly as before C5/C6 (no new keys added)', () => {
+  const db = {};
+  store.ensureYtdlp(db).downloadMeta.dQw4w9WgXcQ = {
+    channelUrl: 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw',
+    channelName: 'Rick Astley',
+    capturedAt: Date.now(),
+  };
+  const result = store.consumeDownloadChannelMeta(db, 'dQw4w9WgXcQ');
+  assert.deepEqual(result, {
+    channelUrl: 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw',
+    channelName: 'Rick Astley',
+  });
+});
+
+// ---- v1.24.0 C6: recordSubscriptionChannelAvatar ---------------------------
+
+test('recordSubscriptionChannelAvatar: sets channelAvatarUrl on the matching subscription by channelUrl', async () => {
+  const deps = makeFakeDeps();
+  const sub = await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@somechannel', format: 'video' });
+  const changed = await store.recordSubscriptionChannelAvatar(deps, 'https://www.youtube.com/@somechannel', 'https://yt3.ggpht.com/avatar123');
+  assert.equal(changed, true);
+  const [persisted] = store.listSubscriptions(deps);
+  assert.equal(persisted.id, sub.id);
+  assert.equal(persisted.channelAvatarUrl, 'https://yt3.ggpht.com/avatar123');
+});
+
+test('recordSubscriptionChannelAvatar: OVERWRITES a previously captured avatar with a newer one', async () => {
+  const deps = makeFakeDeps();
+  await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@somechannel', format: 'video' });
+  await store.recordSubscriptionChannelAvatar(deps, 'https://www.youtube.com/@somechannel', 'https://yt3.ggpht.com/old');
+  const changed = await store.recordSubscriptionChannelAvatar(deps, 'https://www.youtube.com/@somechannel', 'https://yt3.ggpht.com/new');
+  assert.equal(changed, true);
+  const [persisted] = store.listSubscriptions(deps);
+  assert.equal(persisted.channelAvatarUrl, 'https://yt3.ggpht.com/new');
+});
+
+test('recordSubscriptionChannelAvatar: a no-match channelUrl is a silent no-op, never throws', async () => {
+  const deps = makeFakeDeps();
+  await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@somechannel', format: 'video' });
+  const changed = await store.recordSubscriptionChannelAvatar(deps, 'https://www.youtube.com/@no-such-channel', 'https://yt3.ggpht.com/avatar123');
+  assert.equal(changed, false);
+  const [persisted] = store.listSubscriptions(deps);
+  assert.equal(persisted.channelAvatarUrl, undefined);
+});
+
+test('recordSubscriptionChannelAvatar: a HOSTILE avatarUrl (javascript: scheme) is rejected, resolves false, nothing written', async () => {
+  const deps = makeFakeDeps();
+  await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@somechannel', format: 'video' });
+  const changed = await store.recordSubscriptionChannelAvatar(deps, 'https://www.youtube.com/@somechannel', 'javascript:alert(1)');
+  assert.equal(changed, false);
+  const [persisted] = store.listSubscriptions(deps);
+  assert.equal(persisted.channelAvatarUrl, undefined);
+});
+
+test('recordSubscriptionChannelAvatar: setting the SAME already-current avatar again is a no-op (resolves false)', async () => {
+  const deps = makeFakeDeps();
+  await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@somechannel', format: 'video' });
+  await store.recordSubscriptionChannelAvatar(deps, 'https://www.youtube.com/@somechannel', 'https://yt3.ggpht.com/avatar123');
+  const changedAgain = await store.recordSubscriptionChannelAvatar(deps, 'https://www.youtube.com/@somechannel', 'https://yt3.ggpht.com/avatar123');
+  assert.equal(changedAgain, false);
+});
+
 // ---- v1.21.0 FR-5: channel pins (HEAVY, two-reviewer, data-safety gate) ---
 
 // ---- ensureYtdlp: pins backfill (non-destructive, mirrors subscriptions) --

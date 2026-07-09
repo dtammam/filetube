@@ -420,6 +420,29 @@ if (typeof module !== 'undefined' && module.exports) {
       }
     }
 
+    // C1 follow-up (v1.24 UX Round, Wave 3): moves a card's file via the
+    // shared `showMoveModal`/`requestMoveItem` (common.js), then mirrors
+    // `deleteCardById`'s exact post-success refresh -- drop the item from
+    // `currentItems` and re-render via the SAME `renderSorted()` path (no
+    // `window.location.reload()`). A successful move RE-KEYS the item under
+    // a new id (server.js's C1 re-key), so the old id can never legitimately
+    // reappear in this view's `currentItems` -- filtering it out here is
+    // correct even for a view that would otherwise still show the file
+    // (e.g. a search/root that also matches the destination folder); the
+    // next library load/rescan picks it up again under its new id.
+    function moveCardById(id, targetFolder, statusEl, teardown) {
+      requestMoveItem(id, targetFolder)
+        .then(() => {
+          teardown();
+          currentItems = currentItems.filter((item) => item.id !== id);
+          renderSorted();
+          showToast('File moved.');
+        })
+        .catch((err) => {
+          statusEl.textContent = (err && err.message) || 'Move failed.';
+        });
+    }
+
     // Render media items in the grid
     function renderMediaGrid(items) {
       // Any re-render replaces the grid's children -- an armed reference to
@@ -484,6 +507,7 @@ if (typeof module !== 'undefined' && module.exports) {
                 <span>${views}</span> &bull; <span>${relativeTime}</span>
               </div>
               <div class="card-rating" title="${rating} / 5 stars" aria-label="Rated ${rating} out of 5 stars"><span class="on">${'★'.repeat(rating)}</span><span class="off">${'☆'.repeat(5 - rating)}</span></div>
+              <button type="button" class="btn card-move-btn" data-id="${escapeHtml(item.id)}" aria-label="Move to another folder" title="Move to another folder">Move to...</button>
             </div>
           </div>
         `;
@@ -581,6 +605,27 @@ if (typeof module !== 'undefined' && module.exports) {
       } else {
         armCardDelete(btn);
       }
+    }, { signal });
+
+    // C1 follow-up (v1.24 UX Round, Wave 3): "Move to..." trigger. A SEPARATE
+    // delegated click listener on the SAME #video-grid (never per-card, for
+    // the identical reason as the trash-can listener above -- every
+    // `renderMediaGrid()` call fully replaces the grid's children). Opens the
+    // shared `showMoveModal` (common.js) with the item + the FULL known-
+    // folders list (`allFolders`, already tracked for the sidebar's own
+    // render/reorder above -- no new fetch); confirming a folder calls
+    // `moveCardById`, which does the actual `requestMoveItem` + refresh.
+    videoGrid.addEventListener('click', (e) => {
+      const btn = e.target.closest('.card-move-btn');
+      if (!btn) return;
+      e.preventDefault();
+      const id = btn.dataset.id;
+      const item = currentItems.find((it) => it.id === id);
+      if (!item) return;
+      showMoveModal(item, allFolders, (targetFolder, { teardown, statusEl }) => {
+        statusEl.textContent = 'Moving...';
+        moveCardById(id, targetFolder, statusEl, teardown);
+      });
     }, { signal });
 
     // Disarms the currently-armed card on any click elsewhere in the document

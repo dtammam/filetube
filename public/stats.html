@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <title>FileTube - Broadcast Yourself (Your Files)</title>
+  <title>Stats - FileTube</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
   <link rel="icon" type="image/png" sizes="512x512" href="/icons/icon-512.png">
@@ -16,8 +16,8 @@
   <link rel="stylesheet" href="/css/style.css">
   <script>
     /* FOUC guard: set era+mode+icons on <html> before first paint. Mirror of
-       resolveTheme()/resolveIconSet() in /js/common.js — keep all three in
-       sync (see the matching comment there). */
+       resolveTheme()/resolveIconSet() in /js/common.js -- keep all three in
+       sync (see the matching comment there and in setup.html). */
     (function () {
       var d = document.documentElement;
       try {
@@ -34,7 +34,7 @@
         d.setAttribute('data-mode', mode);
 
         /* Also resolve the icon set before paint. Inline mirror of
-           resolveIconSet() in /js/common.js — keep the two in sync. */
+           resolveIconSet() in /js/common.js -- keep the two in sync. */
         var iconSets = ['outlined', 'rounded', 'filled', 'emoji'];
         var iconAutoMap = { '2005': 'emoji', '2009': 'emoji', '2014': 'filled', '2021': 'rounded' };
         var storedIcons = localStorage.getItem('ft-icons');
@@ -56,7 +56,12 @@
       <button class="menu-toggle" id="menu-toggle" aria-label="Open menu"><i class="icon-menu"></i></button>
       <a href="/" class="logo">File<span class="tube">Tube</span></a>
     </div>
-    
+
+    <!-- Shell-owned header search box (C1 remediation, v1.16.0): identical
+         markup on every shell so the persistent-shell header is byte-uniform
+         no matter which page first loaded it -- see public/js/common.js's
+         DOMContentLoaded handler, which binds #search-input/#search-btn ONCE
+         at boot (not per-view). -->
     <div class="header-search">
       <div class="search-form">
         <input type="text" id="search-input" class="search-input" placeholder="Search your files..." />
@@ -65,7 +70,6 @@
     </div>
 
     <div class="header-right">
-      <a href="/setup.html" class="btn"><i class="icon-cog"></i> Settings</a>
       <button class="theme-toggle" id="theme-toggle-btn" aria-label="Toggle light or dark mode"><i class="icon-moon"></i></button>
     </div>
   </header>
@@ -73,19 +77,16 @@
   <div class="app-container">
     <aside class="sidebar" id="sidebar">
       <nav class="sidebar-section">
-        <a href="/" class="sidebar-item active" id="sidebar-home-link">
+        <a href="/" class="sidebar-item">
           <i class="icon-home"></i> Home
         </a>
         <a href="/setup.html" class="sidebar-item">
           <i class="icon-cog"></i> Library Settings
         </a>
-        <!-- C4 (v1.24 UX Round, Wave 3): "fun stats" dashboard nav link.
-             /stats.html is not one of common.js's four known SPA routes (see
-             public/js/stats.js's header comment), so this is a plain link --
-             a click on it falls through to a normal, full-page browser
-             navigation, the router's own documented behavior for any route
-             it doesn't recognize. -->
-        <a href="/stats.html" class="sidebar-item" id="sidebar-stats-link">
+        <!-- C4 (v1.24 UX Round, Wave 3): the "fun stats" dashboard's own nav
+             entry -- this page marks itself active. index.html carries the
+             matching (non-active) link; see that file's own comment. -->
+        <a href="/stats.html" class="sidebar-item active">
           <i class="icon-star"></i> Stats
         </a>
       </nav>
@@ -98,55 +99,71 @@
     </aside>
 
     <main class="main-content" id="main-content">
-      <!-- Per-view content boundary (FR-1, T1): the SPA-lite router in
-           common.js swaps ONLY this node's contents on in-app navigation; the
-           header/sidebar/bottom-nav above and below stay mounted. A fresh
-           full page load (or a direct deep link) needs no router involvement
-           at all -- this markup is already the complete, correct home view. -->
-      <div id="view-root" data-view="home">
-      <!-- Welcome message if no libraries are set up -->
-      <div id="welcome-message" class="setup-box" style="display: none; margin: 20px 0;">
-        <h2>Welcome to FileTube!</h2>
-        <p>It looks like you haven't configured any media folders yet. To start enjoying your local video and audio library, click below to configure folders.</p>
-        <a href="/setup.html" class="btn btn-primary" style="padding: 10px 20px;">Configure Media Folders</a>
+      <!-- This page is NOT one of common.js's four known SPA routes (see
+           public/js/stats.js's header comment) -- #view-root is kept here
+           only for shell-markup consistency with the other pages; the
+           router's own bootRouter() no-ops harmlessly on an unrecognized
+           route, and stats.js runs its own plain DOMContentLoaded boot. -->
+      <div id="view-root" data-view="stats">
+      <div class="setup-box">
+        <h2>Fun stats</h2>
+        <p>
+          A quick, always-fresh snapshot of your library -- computed live from
+          what's actually on disk right now.
+        </p>
+        <div class="theme-picker" id="stats-glance-grid">
+          <!-- Populated dynamically by /js/stats.js -->
+        </div>
       </div>
 
-      <div id="library-content">
-        <!-- Videos Section -->
-        <div class="section-title">
-          <span id="videos-section-header">Recently Added</span>
-          <div class="section-actions">
-            <select id="sort-select" class="sort-select" title="Sort library">
-              <option value="newest">Newest first</option>
-              <option value="oldest">Oldest first</option>
-              <option value="release-date">Release date</option>
-              <option value="title-asc">Title (A–Z)</option>
-              <option value="title-desc">Title (Z–A)</option>
-              <option value="size-desc">Largest first</option>
-              <option value="size-asc">Smallest first</option>
-              <option value="random">Feeling lucky</option>
-            </select>
-            <button class="btn btn-sm" id="shuffle-again-btn" style="font-size: 11px; padding: 4px 8px;" title="Shuffle again" aria-label="Shuffle again" hidden><i class="icon-shuffle"></i> <span class="btn-label">Shuffle</span></button>
-            <button class="btn btn-sm" id="rescan-library-btn" style="font-size: 11px; padding: 4px 8px;" title="Rescan Files" aria-label="Rescan Files"><i class="icon-refresh"></i> <span class="btn-label">Rescan</span></button>
-          </div>
+      <div class="setup-box">
+        <h2>By type</h2>
+        <div class="theme-picker" id="stats-by-type">
+          <!-- Populated dynamically by /js/stats.js -->
         </div>
+      </div>
 
-        <div class="video-grid" id="video-grid">
-          <!-- Video Cards will be inserted here -->
+      <div class="setup-box">
+        <h2>By folder</h2>
+        <div class="folder-list-builder" id="stats-folder-list">
+          <!-- Populated dynamically by /js/stats.js -->
+        </div>
+      </div>
+
+      <div class="setup-box">
+        <h2>By channel</h2>
+        <div class="folder-list-builder" id="stats-channel-list">
+          <!-- Populated dynamically by /js/stats.js -->
+        </div>
+      </div>
+
+      <div class="setup-box">
+        <h2>Records</h2>
+        <div class="theme-picker" id="stats-records-grid">
+          <!-- Populated dynamically by /js/stats.js -->
+        </div>
+      </div>
+
+      <div class="setup-box">
+        <h2>Most watched</h2>
+        <p>
+          Counted once per watch-page open -- not every progress save, so a
+          long rewatch of the same video doesn't inflate its count.
+        </p>
+        <div class="folder-list-builder" id="stats-most-watched-list">
+          <!-- Populated dynamically by /js/stats.js -->
         </div>
       </div>
       </div>
     </main>
   </div>
 
-  <!-- Persistent player dock + host template (FR-1, T1/T2). Both live
-       OUTSIDE #view-root so in-app navigation never tears them down. The
-       template is cloned ONCE, ever, by the persistent player controller
-       (public/js/player.js) into a single live #player-host, reparented
-       between the watch view's #player-slot (FULL) and #player-dock (DOCKED)
-       here. #player-dock stays [hidden] (zero visible chrome, no layout
-       shift) unless a video is actively loaded AND the user has navigated
-       away from its watch page -- see player.js's dock()/expand()/close(). -->
+  <!-- Persistent player dock + host template (FR-1, T1/T2) -- see
+       index.html's matching comment. The docked mini-player keeps playing
+       here too when the user browses to Stats with media loaded (an in-app
+       SPA swap only -- a hard navigation here, like any unrecognized route,
+       does not carry playback across, matching the router's own documented
+       fallback behavior). -->
   <div id="player-dock" hidden></div>
   <template id="player-host-template">
     <div class="player-container" id="player-wrapper">
@@ -232,27 +249,16 @@
     <div class="playlists-sheet-list" id="playlists-sheet-list"></div>
   </aside>
 
-  <!-- FR-1, T1: every shell loads ALL core view scripts (common.js's router
-       + registry, then each registered view module) regardless of which page
-       is the entry point, so any of the four views is already registered by
-       the time the router boots or an in-app swap targets it.
-       subscriptions.js stays lazy-loaded (fetched only on the first
-       /subscriptions navigation) -- see common.js's
-       ensureSubscriptionsScriptLoaded. -->
+  <!-- FR-1, T1: every shell loads all core view scripts -- see index.html's
+       matching comment. stats.js is this page's own script, loaded directly
+       here only (mirrors how subscriptions.js is loaded directly on its own
+       page) -- it is NOT a registered SPA view (see its own header comment),
+       so it is not added to the other four shells. -->
   <script src="/js/common.js"></script>
   <script src="/js/main.js"></script>
   <script src="/js/watch.js"></script>
   <script src="/js/setup.js"></script>
   <script src="/js/player.js"></script>
-  <!-- v1.24.1 fast-follow: the B1 "Re-pull this channel now" widget (v1.24.0
-       T6) used to live here as an inline <script>, which only ever ran when
-       the browser's INITIALLY loaded document was this page -- the SPA
-       router (common.js) never re-executes a target page's inline scripts on
-       an in-app swap, so a session entering on watch.html/setup.html/
-       subscriptions.html never saw it. It has been relocated into
-       common.js's router runtime (probeAndReconcileRepullButton, hooked into
-       swapToView/restoreHomeFromCache/bootRouter -- every navigation AND
-       every entry point), which every shell already loads above. See
-       common.js's own comment at that section for the full rationale. -->
+  <script src="/js/stats.js"></script>
 </body>
 </html>

@@ -1097,6 +1097,9 @@ test('runDownload: a captured FTCHMETA line is parsed onto result.channelMeta an
     channelId: 'UCuAXFkgsw1L7xaCfnd5JJOw',
     uploaderUrl: 'https://www.youtube.com/@x',
     channelName: 'Some Channel',
+    uploadDate: null,
+    releaseDate: null,
+    channelThumbnail: null,
   });
   // The FTCHMETA line must never be misinterpreted as a progress patch --
   // only the one real progress line above produced an onProgress call.
