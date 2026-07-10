@@ -131,25 +131,29 @@ test('handleBackgroundLifecycle(): the pause-verdict branch still saves progress
   const body = handleBackgroundLifecycleMatch[1];
   const pauseBranch = /if \(shouldPauseForLifecycleEvent\(eventType, ctx\)\) \{([\s\S]*?)\n {4}\}/.exec(body);
   assert.ok(pauseBranch, 'expected the existing shouldPauseForLifecycleEvent branch to still exist');
-  // v1.27.0 added a nested `if (attemptBackgroundAudioHandoff()) { ... }`
-  // branch (with its own, earlier releaseAudioSession() call) INSIDE this
-  // pause branch -- scope this check to the text AFTER that nested block's
-  // closing brace, i.e. the original, unchanged plain-pause fallback (the
-  // `mediaPlayer.pause(); saveProgressToServer(...); if (shouldRelease)
-  // releaseAudioSession();` sequence), so this remains a precise regression
-  // lock on THAT specific sequence rather than an ambiguous indexOf over
-  // text that now contains two releaseAudioSession() calls.
-  const fallbackSequence = /mediaPlayer\.pause\(\);\s*\n\s*(saveProgressToServer\(currentAbsTime\(\), \{ keepalive: true \}\);)[\s\S]*?(releaseAudioSession\(\);)/.exec(pauseBranch[1]);
+  // v1.27.0 added a nested `if (attemptBackgroundAudioHandoff('visibility'))
+  // { ... }` branch (with its own, earlier releaseAudioSession() call)
+  // INSIDE this pause branch -- scope this check to the text AFTER that
+  // nested block's closing brace, i.e. the original, unchanged plain-pause
+  // fallback (the `pauseSuppressingHandoff(mediaPlayer);
+  // saveProgressToServer(...); if (shouldRelease) releaseAudioSession();`
+  // sequence -- F-D, v1.27.1, routed the bare `mediaPlayer.pause()` through
+  // `pauseSuppressingHandoff` so this lifecycle-driven pause never
+  // re-triggers the second, pause-hidden handoff trigger), so this remains a
+  // precise regression lock on THAT specific sequence rather than an
+  // ambiguous indexOf over text that now contains two releaseAudioSession()
+  // calls.
+  const fallbackSequence = /pauseSuppressingHandoff\(mediaPlayer\);[^\n]*\n\s*(saveProgressToServer\(currentAbsTime\(\), \{ keepalive: true \}\);)[\s\S]*?(releaseAudioSession\(\);)/.exec(pauseBranch[1]);
   assert.ok(fallbackSequence, 'expected the plain-pause fallback sequence (pause -> save -> conditional release) to still exist, unchanged');
   assert.ok(fallbackSequence.index !== -1, 'expected the fallback sequence to be found');
 });
 
-test('handleBackgroundLifecycle(): v1.27.0 background-audio handoff is attempted FIRST, inside the pause branch, before the plain pause+save fallback', () => {
+test("handleBackgroundLifecycle(): v1.27.0 background-audio handoff is attempted FIRST (passing the 'visibility' trigger label), inside the pause branch, before the plain pause+save fallback", () => {
   const body = handleBackgroundLifecycleMatch[1];
   const pauseBranch = /if \(shouldPauseForLifecycleEvent\(eventType, ctx\)\) \{([\s\S]*?)\n {4}\}/.exec(body);
   assert.ok(pauseBranch, 'expected the existing shouldPauseForLifecycleEvent branch to still exist');
-  const handoffIdx = pauseBranch[1].indexOf('if (attemptBackgroundAudioHandoff()) {');
-  const fallbackPauseIdx = pauseBranch[1].indexOf('mediaPlayer.pause();');
+  const handoffIdx = pauseBranch[1].indexOf("if (attemptBackgroundAudioHandoff('visibility')) {");
+  const fallbackPauseIdx = pauseBranch[1].indexOf('pauseSuppressingHandoff(mediaPlayer);');
   assert.ok(handoffIdx !== -1, 'expected the handoff attempt to be wired inside the pause branch');
   assert.ok(fallbackPauseIdx !== -1, 'expected the plain pause fallback to still exist');
   assert.ok(handoffIdx < fallbackPauseIdx, 'the handoff attempt must run BEFORE the plain pause fallback (it returns early on success)');
@@ -182,7 +186,9 @@ test('releaseAudioSession() exists and performs the LIGHT release (pause + clear
   const match = /function releaseAudioSession\(\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);
   assert.ok(match, 'expected to find releaseAudioSession()\'s source body in player.js');
   const body = match[1];
-  assert.match(body, /mediaPlayer\.pause\(\);/);
+  // F-D (v1.27.1): routed through pauseSuppressingHandoff() rather than a
+  // bare mediaPlayer.pause() -- see that helper's own source-lock tests.
+  assert.match(body, /pauseSuppressingHandoff\(mediaPlayer\);/);
   assert.match(body, /navigator\.mediaSession\.metadata = null;/);
   assert.match(body, /setPlaybackState\('none'\);/);
 });
@@ -231,15 +237,89 @@ test('recordLifecycleEvent() is a no-op (returns immediately) unless the debug f
   assert.match(match[1].trim(), /^if \(!isDebugLifecycleEnabled\(\)\) return;/, 'expected the very first statement to bail out when the flag is off');
 });
 
-test('recordLifecycleEvent() caps the ring buffer at 20 entries', () => {
+test('recordLifecycleEvent() caps the ring buffer at 30 entries (bumped from 20 in v1.27.1 for the extra bgAudio:* diagnostic events)', () => {
   const match = /function recordLifecycleEvent\(type, extraCtx\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);
   assert.match(match[1], /LIFECYCLE_LOG_CAP/);
-  assert.match(PLAYER_JS, /var LIFECYCLE_LOG_CAP = 20;/);
+  assert.match(PLAYER_JS, /var LIFECYCLE_LOG_CAP = 30;/);
 });
 
 test('recordLifecycleEvent() wraps localStorage access in try/catch (never throws)', () => {
   const match = /function recordLifecycleEvent\(type, extraCtx\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);
   assert.match(match[1], /try \{[\s\S]*localStorage\.setItem\(LIFECYCLE_LOG_STORAGE_KEY[\s\S]*\} catch \(_\)/);
+});
+
+// ---- F2 (two-reviewer gate, v1.27.1 post-release): corrupt-log self-heal --
+// A corrupt (non-JSON) localStorage['ft-lifecycle-log'] value used to throw
+// INSIDE the single outer try in recordLifecycleEvent, skipping
+// localStorage.setItem entirely and leaving recording PERMANENTLY dead for
+// the rest of the session -- every future call hit the exact same throw on
+// the exact same corrupt value -- even though the overlay kept rendering
+// "(no lifecycle events recorded yet)" as if nothing were ever wrong.
+
+test('F2 source-lock: recordLifecycleEvent() wraps JSON.parse in its OWN inner try/catch (self-heals to an empty array), separate from the outer try/catch that wraps localStorage.setItem', () => {
+  const match = /function recordLifecycleEvent\(type, extraCtx\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);
+  assert.ok(match, 'expected to find recordLifecycleEvent()\'s source body');
+  const body = match[1];
+  assert.match(
+    body,
+    /try \{\s*\n\s*log = raw \? JSON\.parse\(raw\) : \[\];\s*\n\s*\} catch \(_\) \{\s*\n\s*log = \[\];\s*\n\s*\}/,
+    'expected a dedicated inner try/catch around JSON.parse that resets log to [] on failure'
+  );
+  // The inner catch must be textually BEFORE localStorage.setItem, so a
+  // corrupt value is healed on the SAME call that observed it, not merely
+  // on some later call.
+  const innerCatchIdx = body.search(/catch \(_\) \{\s*\n\s*log = \[\];\s*\n\s*\}/);
+  const setItemIdx = body.indexOf('localStorage.setItem(LIFECYCLE_LOG_STORAGE_KEY');
+  assert.ok(innerCatchIdx !== -1 && setItemIdx !== -1 && innerCatchIdx < setItemIdx, 'expected the parse self-heal to happen before the write, on the same call');
+});
+
+test('F2 (executable): a corrupt raw value self-heals on the VERY NEXT record call -- recording is never permanently bricked', () => {
+  // No jsdom/browser harness in this repo (see file banner) -- reproduces
+  // recordLifecycleEvent()'s exact fixed parse contract (inner try/catch
+  // around JSON.parse only, locked structurally by the source-lock test
+  // just above) against a minimal fake localStorage, demonstrating the
+  // actual self-heal behavior rather than merely asserting the shape of
+  // the fix -- mirrors the "executable proof" pattern used for FIX A in
+  // test/unit/player-hardening.test.js.
+  function fakeLocalStorage(initialRaw) {
+    var store = { 'ft-lifecycle-log': initialRaw };
+    return {
+      getItem: function (k) { return Object.prototype.hasOwnProperty.call(store, k) ? store[k] : null; },
+      setItem: function (k, v) { store[k] = v; },
+    };
+  }
+  // Exact reproduction of recordLifecycleEvent()'s fixed read-parse-append-write sequence.
+  function readAndAppend(localStorage, entry) {
+    var raw = localStorage.getItem('ft-lifecycle-log');
+    var log;
+    try {
+      log = raw ? JSON.parse(raw) : [];
+    } catch (_) {
+      log = [];
+    }
+    if (!Array.isArray(log)) log = [];
+    log.push(entry);
+    localStorage.setItem('ft-lifecycle-log', JSON.stringify(log));
+    return log;
+  }
+
+  const ls = fakeLocalStorage('{not valid json!!'); // simulates a corrupt prior write
+  assert.doesNotThrow(
+    () => readAndAppend(ls, { type: 'first-after-corruption' }),
+    'a corrupt stored value must never throw out of the record call'
+  );
+  const afterFirst = JSON.parse(ls.getItem('ft-lifecycle-log'));
+  assert.deepStrictEqual(
+    afterFirst,
+    [{ type: 'first-after-corruption' }],
+    'the corrupt value must be overwritten with a fresh, valid log on the very call that observed it'
+  );
+
+  // A second call now reads back genuinely valid JSON -- proves the heal
+  // was a real, persisted fix, not a one-off fluke tied to the corrupt-value branch.
+  readAndAppend(ls, { type: 'second-after-heal' });
+  const afterSecond = JSON.parse(ls.getItem('ft-lifecycle-log'));
+  assert.deepStrictEqual(afterSecond, [{ type: 'first-after-corruption' }, { type: 'second-after-heal' }]);
 });
 
 test('renderLifecycleOverlay() is a no-op unless the debug flag is on, and never creates the overlay element otherwise', () => {
@@ -273,6 +353,43 @@ test('initDebugLifecycleFlag() sets the flag on ?debugLifecycle=1 and clears it 
   const body = match[1];
   assert.match(body, /localStorage\.setItem\(DEBUG_LIFECYCLE_STORAGE_KEY, '1'\)/);
   assert.match(body, /localStorage\.removeItem\(DEBUG_LIFECYCLE_STORAGE_KEY\)/);
+});
+
+// ---- v1.27.1: optional `detail` field on lifecycle-log entries ------------
+// Added so the background-audio diagnostics (test/unit/player-background-
+// audio.test.js) can attach a short, human-readable reason/summary string
+// to a recorded event, rendered on the overlay right after the type. Every
+// PRE-EXISTING caller omits `extraCtx.detail` entirely, so this must be a
+// strictly additive, backward-compatible field (recorded as `null` when
+// absent), never a required one.
+
+test('recordLifecycleEvent() records an optional `detail` string from extraCtx.detail, defaulting to null when absent (backward-compatible with every pre-existing caller)', () => {
+  const match = /function recordLifecycleEvent\(type, extraCtx\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);
+  assert.ok(match, 'expected to find recordLifecycleEvent()\'s source body');
+  const body = match[1];
+  assert.match(body, /detail: extraCtx && 'detail' in extraCtx \? extraCtx\.detail : null,/);
+});
+
+test('renderLifecycleOverlay() renders `detail` right after the type, truncated to 60 chars, and omits it entirely when absent', () => {
+  const match = /function renderLifecycleOverlay\(\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);
+  assert.ok(match, 'expected to find renderLifecycleOverlay()\'s source body');
+  const body = match[1];
+  assert.match(body, /var detailStr = entry && entry\.detail \? ' \(' \+ String\(entry\.detail\)\.slice\(0, 60\) \+ '\)' : '';/);
+  const lineTemplateIdx = body.indexOf("(entry.type || '?') + detailStr + ' · persisted='");
+  assert.ok(lineTemplateIdx !== -1, 'expected detailStr to be concatenated directly after the type');
+});
+
+test('the pre-existing non-bgAudio listeners (pagehide/freeze/visibilitychange/resume/pageshow) never pass a `detail` -- they still record `detail: null`, confirming the field is additive-only', () => {
+  assert.match(PLAYER_JS, /recordLifecycleEvent\('pagehide', extraCtx\);/);
+  assert.match(PLAYER_JS, /recordLifecycleEvent\('freeze', \{\}\);/);
+  assert.match(PLAYER_JS, /recordLifecycleEvent\('visibilitychange', \{\}\);/);
+  assert.match(PLAYER_JS, /recordLifecycleEvent\('resume', \{\}\);/);
+  assert.match(PLAYER_JS, /recordLifecycleEvent\('pageshow', \{\}\);/);
+});
+
+test('recordLifecycleEvent() is STILL a complete no-op (zero recording, zero DOM) unless the debug flag is on -- the v1.27.1 bgAudio:* additions did not weaken this gate', () => {
+  const match = /function recordLifecycleEvent\(type, extraCtx\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);
+  assert.match(match[1].trim(), /^if \(!isDebugLifecycleEnabled\(\)\) return;/, 'expected the very first statement to still bail out when the flag is off, even with the extra bgAudio call sites added elsewhere in the file');
 });
 
 test('pageshow and resume listeners only record -- they never call handleBackgroundLifecycle (no behavior change, PART B is pure observation)', () => {
