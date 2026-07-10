@@ -169,6 +169,21 @@ var LIFECYCLE_PAUSE_EVENTS = { pagehide: true, freeze: true, visibilitychangeHid
 function shouldPauseForLifecycleEvent(eventType, ctx) {
   if (!LIFECYCLE_PAUSE_EVENTS[eventType]) return false;
   if (!ctx || !ctx.isPlaying) return false; // nothing playing -- no-op
+  // Native-controls lifecycle guard (mobile-native-controls round): a VIDEO
+  // actually presenting in the OS's native fullscreen/PiP surface (iOS
+  // `webkitDisplayingFullscreen`/`webkitPresentationMode ===
+  // 'picture-in-picture'`, or the standard Fullscreen/Picture-in-Picture
+  // APIs -- see `inNativeFullscreen()`) is the one reachable path to real
+  // iOS background-audio-for-video: never auto-pause it here. This is
+  // deliberately checked BEFORE the `isAudio`/`isMobile` verdict below, so it
+  // applies uniformly regardless of media type -- in practice `ctx.
+  // inNativePresentation` is only ever true for video (audio has no native
+  // fullscreen/PiP surface), so this is a no-op widening for audio, not a
+  // behavior change. Inline (non-fullscreen) playback is completely
+  // unaffected: `ctx.inNativePresentation` is false there, so mobile inline
+  // video still pauses+persists exactly as before, and audio still keeps
+  // playing via the `isAudio` check below either way.
+  if (ctx.inNativePresentation) return false;
   if (ctx.isAudio) return false; // audio/background-music: keep playing in the background
   return !!ctx.isMobile; // video: pause + persist only on mobile/PWA form factors (desktop keeps playing across tabs)
 }
@@ -662,33 +677,88 @@ if (typeof module !== 'undefined' && module.exports) {
     });
   }
 
-  // FR-1 (T1, v1.22.0 -- RETIRED, v1.22.1): the impure applier. v1.22.0 used
-  // this to decide native-vs-custom control surface for the CURRENTLY loaded
-  // media; v1.22.1 retires the native `controls` path entirely (see the pure
-  // helper section above) -- iOS's inline `<video controls playsinline>`
+  // FR-1 (T1, v1.22.0 -- RETIRED, v1.22.1 -- PARTIALLY REINSTATED, mobile-
+  // native-controls round): the impure applier. v1.22.0 gave mobile video the
+  // iOS native `controls` strip; v1.22.1 retired that entirely (see the pure
+  // helper section above) because iOS's inline `<video controls playsinline>`
   // strip auto-hides during playback and does not reliably re-reveal under
-  // this file's own gesture layer, leaving mobile-video users with NO
-  // visible controls at all (v1.22.1 FR-1, the CRITICAL regression this
-  // fixes). Mobile video now routes through the SAME always-rendered custom
-  // `#player-controls` bar desktop video/audio and mobile audio already use,
-  // so there is no more per-media-type/per-form-factor branch here: this
-  // function ALWAYS removes the `controls` attribute, and its only remaining
-  // job is toggling `.ff-mobile` on `host` (`#player-wrapper`) from
-  // `isMobileFormFactor()` -- still needed by CSS for mobile touch-target
-  // sizing and volume-control hiding (T2's `style.css` changes). Called
-  // synchronously from `mountInSlot()`/`dock()` -- the existing
-  // reparent/state-transition points -- never from a `matchMedia`
-  // change-listener (AC7: capability is stable across orientation/resize, so
-  // re-deriving live is unnecessary).
+  // this file's own gesture layer, leaving mobile-video users with NO visible
+  // controls at all -- so every case became the custom `#player-controls` bar.
+  // That custom bar, however, has no reliable path to iOS's native
+  // fullscreen -> orientation-lock -> background-audio chain (only the
+  // BROWSER's own native `<video controls>` strip does), so this round
+  // reinstates native controls for mobile VIDEO, but ONLY while FULL (never
+  // DOCKED -- the ~160px docked miniplayer would be unusable with a native
+  // strip and could hijack `#player-dock`'s tap-to-expand, so docked mobile
+  // video keeps the trimmed custom bar) and gates the custom gesture layer
+  // off whenever native controls are showing (see `inNativeControlsMode()`
+  // and its `wireSkipHoldGestures()` call sites below) so the two surfaces
+  // never fight each other -- the exact failure mode v1.22.1 fixed. Desktop
+  // (any media type) and mobile AUDIO are completely unaffected: `isVideo`
+  // and `mobile` both gate the native branch, so neither ever sets `controls`
+  // or `.native-controls`. Still toggles `.ff-mobile` on `host`
+  // (`#player-wrapper`) from `isMobileFormFactor()` -- still needed by CSS for
+  // mobile touch-target sizing and volume-control hiding (T2's `style.css`
+  // changes), independent of the native/custom split. Called synchronously
+  // from `mountInSlot()`/`dock()` -- the existing reparent/state-transition
+  // points, AFTER `state`/`currentData` are assigned for this transition --
+  // never from a `matchMedia` change-listener (AC7: capability is stable
+  // across orientation/resize, so re-deriving live is unnecessary).
   function applyControlsMode() {
     if (!host || !mediaPlayer) return;
     var mobile = isMobileFormFactor();
     host.classList.toggle('ff-mobile', mobile);
-    mediaPlayer.removeAttribute('controls');
+    var isVideo = !!(currentData && currentData.type !== 'audio');
+    var native = mobile && isVideo && state === STATE_FULL;
+    if (native) {
+      mediaPlayer.setAttribute('controls', '');
+      host.classList.add('native-controls');
+    } else {
+      mediaPlayer.removeAttribute('controls');
+      host.classList.remove('native-controls');
+    }
   }
 
+  // Native-controls round: true while the native iOS/browser `controls` strip
+  // is the active surface (mobile video, FULL only -- see `applyControlsMode`
+  // above). Consulted by `wireSkipHoldGestures()`'s handlers below so the
+  // custom double-tap-skip/press-hold-2x gesture layer can't fight the native
+  // strip's own tap targets -- exactly the coexistence problem v1.22.1's
+  // retirement was working around, now solved by simply not running both
+  // layers over the same surface at once. Shared by `#media-player` AND
+  // `#audio-bg-art` (both call `wireSkipHoldGestures`), but audio never gets
+  // `.native-controls` (see `applyControlsMode`), so this is inert for audio.
+  function inNativeControlsMode() {
+    return !!(host && host.classList.contains('native-controls'));
+  }
+
+  // Native-controls round: also treats iOS Picture-in-Picture as a "native
+  // presentation" alongside standard/-webkit- fullscreen -- `mediaPlayer.
+  // webkitPresentationMode === 'picture-in-picture'` (iOS Safari's own PiP
+  // signal) and the standard `document.pictureInPictureElement ===
+  // mediaPlayer` (desktop/Android PiP). Shared by every existing caller
+  // (the hold-to-2x gesture guard above, the orientation-lock callers below)
+  // -- PiP counting as "fullscreen" there too is benign/desirable (e.g. the
+  // press-hold-2x gesture shouldn't engage while the video is in a detached
+  // PiP window), so this is a single, widened detector rather than a second
+  // divergent one.
+  //
+  // FIX A (player-hardening round): the first condition is an ELEMENT-
+  // IDENTITY check (`document.fullscreenElement === host || === mediaPlayer`),
+  // not a bare `!!document.fullscreenElement`. This function now also gates
+  // `handleBackgroundLifecycle()`'s background pause+save suppression (via
+  // `ctx.inNativePresentation`) -- a bare truthiness check would wrongly
+  // report "native presentation" (and suppress pause+save) whenever ANY
+  // other element on the page is fullscreen while a mobile video keeps
+  // playing inline in the background, e.g. an unrelated image/gallery
+  // lightbox using the Fullscreen API. Scoping to `host`/`mediaPlayer`
+  // specifically means only THIS player's own fullscreen surface (the
+  // `#player-wrapper` host or the `<video>` itself) counts.
   function inNativeFullscreen() {
-    return !!document.fullscreenElement || !!(mediaPlayer && mediaPlayer.webkitDisplayingFullscreen);
+    return !!(document.fullscreenElement === host || document.fullscreenElement === mediaPlayer) ||
+      !!(mediaPlayer && mediaPlayer.webkitDisplayingFullscreen) ||
+      !!(mediaPlayer && mediaPlayer.webkitPresentationMode === 'picture-in-picture') ||
+      !!(document.pictureInPictureElement && document.pictureInPictureElement === mediaPlayer);
   }
 
   // Absolute position in the source, accounting for live-stream restart offsets.
@@ -911,10 +981,29 @@ if (typeof module !== 'undefined' && module.exports) {
       isAudio: !!(currentData && currentData.type === 'audio'),
       isPlaying: !mediaPlayer.paused,
       isMobile: isMobileFormFactor(), // FR-8(a) (TG, v1.22.0): reuse FR-1's shared signal (AC78), not a second one
+      inNativePresentation: inNativeFullscreen(), // native-controls round: PiP/native-fullscreen video sustains background audio -- never auto-pause it (see shouldPauseForLifecycleEvent)
     };
-    if (!shouldPauseForLifecycleEvent(eventType, ctx)) return;
-    mediaPlayer.pause();
-    saveProgressToServer(currentAbsTime(), { keepalive: true });
+    if (shouldPauseForLifecycleEvent(eventType, ctx)) {
+      mediaPlayer.pause();
+      saveProgressToServer(currentAbsTime(), { keepalive: true });
+      return;
+    }
+    // FIX B (player-hardening round): decouple SAVE from PAUSE. A video kept
+    // playing here specifically because it's in native fullscreen/PiP
+    // (`ctx.inNativePresentation` -- see the guard `shouldPauseForLifecycleEvent`
+    // consults) still needs its position CHECKPOINTED on backgrounding, not
+    // left to the 4s progress-save interval alone -- that interval can be
+    // throttled/suspended once the app is actually backgrounded, so a
+    // hard-kill mid-background-play would otherwise lose the whole
+    // background span. This does NOT call `mediaPlayer.pause()` -- playback
+    // keeps going, exactly as intended -- only a checkpoint save. Every other
+    // path that reaches this `else if` unpaused is unaffected: audio never
+    // sets `inNativePresentation` (no native fullscreen/PiP surface for
+    // audio), so it adds no new save here; inline (non-fullscreen) video
+    // already took the pause+save branch above.
+    if (ctx.inNativePresentation && ctx.isPlaying) {
+      saveProgressToServer(currentAbsTime(), { keepalive: true });
+    }
   }
 
   window.addEventListener('pagehide', function () { handleBackgroundLifecycle('pagehide'); });
@@ -1064,7 +1153,13 @@ if (typeof module !== 'undefined' && module.exports) {
   function wireSkipHoldGestures(el, onSingleTap) {
     if (!el) return;
 
+    // Native-controls round: the gesture layer bails out entirely whenever
+    // native controls are the active surface (`inNativeControlsMode()`) --
+    // mobile video, FULL only -- so it can't fight the native strip's own
+    // tap targets (this surface is shared with `#audio-bg-art`, but audio
+    // never gets `.native-controls`, so this guard is inert for audio).
     el.addEventListener('dblclick', function (e) {
+      if (inNativeControlsMode()) return;
       e.preventDefault();
       var rect = el.getBoundingClientRect();
       var onLeft = (e.clientX - rect.left) < rect.width / 2;
@@ -1072,7 +1167,7 @@ if (typeof module !== 'undefined' && module.exports) {
     });
 
     el.addEventListener('touchstart', function (e) {
-      if (inNativeFullscreen() || e.touches.length > 1) {
+      if (inNativeFullscreen() || inNativeControlsMode() || e.touches.length > 1) {
         clearTimeout(holdTimer);
         releaseHold();
         return;
@@ -1097,6 +1192,7 @@ if (typeof module !== 'undefined' && module.exports) {
     }, { passive: true });
 
     el.addEventListener('touchend', function (e) {
+      if (inNativeControlsMode()) return;
       clearTimeout(holdTimer);
       if (holdActive) {
         e.preventDefault();
@@ -2303,8 +2399,11 @@ if (typeof module !== 'undefined' && module.exports) {
     // few lines below, in `load()`) re-derives the real controls-mode for
     // the NEW media via `applyControlsMode()` microseconds later, but
     // clearing it here too means no native strip can flash on a mobile-
-    // video -> mobile-audio load in between.
+    // video -> mobile-audio load in between (native-controls round: also
+    // clears the `.native-controls` marker class itself, not just the
+    // attribute, for the same reason).
     if (mediaPlayer) mediaPlayer.removeAttribute('controls');
+    if (host) host.classList.remove('native-controls');
     if (audioBgArt) { audioBgArt.style.display = 'none'; audioBgArt.style.backgroundImage = ''; }
     if (audioVisualizer) audioVisualizer.style.display = 'none';
     if (skipControls) skipControls.style.display = 'none';
@@ -2408,7 +2507,7 @@ if (typeof module !== 'undefined' && module.exports) {
       slotEl.appendChild(host);
     }
     state = STATE_FULL;
-    applyControlsMode(); // re-toggles .ff-mobile for this FULL transition and clears the native `controls` attribute (always removed, never set -- v1.22.1 FR-1)
+    applyControlsMode(); // re-toggles .ff-mobile AND re-derives native-vs-custom controls for this FULL transition (mobile video -> native; everything else -> custom -- native-controls round)
     hideDock();
     if (wasPlaying && mediaPlayer.paused) mediaPlayer.play().catch(function () {});
   }
@@ -2467,7 +2566,7 @@ if (typeof module !== 'undefined' && module.exports) {
     if (host.parentNode !== dockEl) dockEl.appendChild(host);
     dockEl.hidden = false;
     state = STATE_DOCKED;
-    applyControlsMode(); // re-toggles .ff-mobile for this DOCKED transition and clears the native `controls` attribute (always removed, never set -- v1.22.1 FR-1)
+    applyControlsMode(); // re-toggles .ff-mobile for this DOCKED transition and reverts to the custom bar (native controls are FULL-only -- native-controls round)
     if (wasPlaying && mediaPlayer.paused) mediaPlayer.play().catch(function () {});
   }
 
@@ -2488,6 +2587,13 @@ if (typeof module !== 'undefined' && module.exports) {
     // detached) persistent element after close().
     cancelPendingArtTap();
     exitAudioExpand(); // FR-1 (T1, v1.22.2, AC5): never leave a closed player's host expanded for a future re-open
+    // FIX D (player-hardening round, hygiene): clear the native-controls
+    // marker + attribute here too, mirroring teardownMediaState()'s identical
+    // clear above -- benign today (the next load()'s teardownMediaState()
+    // already clears both before re-mount, and dock() early-returns from
+    // CLOSED) but leaves nothing stale on the detached host.
+    if (mediaPlayer) mediaPlayer.removeAttribute('controls');
+    if (host) host.classList.remove('native-controls');
     if (mediaPlayer) {
       try {
         mediaPlayer.pause();

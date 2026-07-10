@@ -58,3 +58,27 @@ test('shouldPauseForLifecycleEvent: a missing/undefined ctx is a no-op (never th
 test('shouldPauseForLifecycleEvent: an omitted isMobile field on an otherwise-playing video defaults to false (desktop-safe default, not a silent pause)', () => {
   assert.strictEqual(shouldPauseForLifecycleEvent('pagehide', { isAudio: false, isPlaying: true }), false);
 });
+
+// ---- inNativePresentation (native-controls round): PiP/native-fullscreen --
+// video is the one reachable path to real iOS background-audio-for-video --
+// never auto-pause it. Checked BEFORE the isAudio/isMobile verdict, so it
+// applies uniformly; inline (non-fullscreen) behavior for every existing row
+// above is completely unaffected (all of it was exercised with the field
+// omitted, i.e. falsy, which is the existing/inline case).
+for (const eventType of EVENT_TYPES) {
+  test(`shouldPauseForLifecycleEvent(${eventType}): a playing MOBILE video in native fullscreen/PiP is NEVER paused (background-audio path)`, () => {
+    assert.strictEqual(shouldPauseForLifecycleEvent(eventType, { isAudio: false, isPlaying: true, isMobile: true, inNativePresentation: true }), false);
+  });
+
+  test(`shouldPauseForLifecycleEvent(${eventType}): a playing DESKTOP video in native fullscreen/PiP is also never paused (same guard, desktop already keeps playing anyway)`, () => {
+    assert.strictEqual(shouldPauseForLifecycleEvent(eventType, { isAudio: false, isPlaying: true, isMobile: false, inNativePresentation: true }), false);
+  });
+
+  test(`shouldPauseForLifecycleEvent(${eventType}): inline (non-fullscreen) mobile video still pauses+persists exactly as before (inNativePresentation: false preserves the existing verdict)`, () => {
+    assert.strictEqual(shouldPauseForLifecycleEvent(eventType, { isAudio: false, isPlaying: true, isMobile: true, inNativePresentation: false }), true);
+  });
+
+  test(`shouldPauseForLifecycleEvent(${eventType}): audio keeps playing in native fullscreen/PiP too (no behavior change -- audio was already exempt)`, () => {
+    assert.strictEqual(shouldPauseForLifecycleEvent(eventType, { isAudio: true, isPlaying: true, isMobile: true, inNativePresentation: true }), false);
+  });
+}

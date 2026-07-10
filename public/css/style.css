@@ -3442,6 +3442,53 @@ a.sub-row-channel-link:focus-visible {
   bottom: 0;
 }
 
+/* === Native controls (mobile-native-controls round): mobile VIDEO, FULL only
+   Toggled by player.js's applyControlsMode() via the `.native-controls`
+   marker class it adds to `#player-wrapper` alongside the native `controls`
+   attribute it sets on `#media-player` -- ONLY for mobile video while FULL
+   (DOCKED mobile video, mobile audio, and desktop are never
+   `.native-controls`; see applyControlsMode()'s comment for the FULL-only
+   rationale). Hides the custom `#player-controls` bar and the skip/speed
+   gesture overlays (`#skip-controls`/`#speed-badge`) so nothing visually
+   fights the native iOS control strip, and reverts the v1.23.5 "bar-below"
+   reserved strip (below) the same way the existing native/desktop-fullscreen
+   rule already does above -- the native strip overlays the content directly
+   instead of sitting in a now-empty reserved gap. Audio's `#audio-bg-art`
+   rules are completely untouched (audio is never `.native-controls`). */
+#player-wrapper.native-controls .player-controls {
+  display: none;
+}
+/* FIX C (player-hardening round): `!important` on #skip-controls only --
+   setupForMedia() (player.js) sets an inline `skipControls.style.display =
+   'block'` on every load, which otherwise beats this external rule (no
+   `!important`), leaving it dead. Matches the existing `!important`
+   precedent at `#player-dock .skip-controls, .speed-badge` above.
+   #speed-badge has no such inline-style conflict (see player.js's
+   hold-to-2x handlers), so it is left as-is. */
+#player-wrapper.native-controls #skip-controls {
+  display: none !important;
+}
+#player-wrapper.native-controls #speed-badge {
+  display: none;
+}
+#player-wrapper:not(.audio-expanded).native-controls {
+  padding-bottom: 0;
+}
+#player-wrapper:not(.audio-expanded).native-controls #media-player {
+  aspect-ratio: auto;
+  height: 100%;
+}
+
+@media (max-width: 768px) {
+  #player-wrapper:not(.audio-expanded).native-controls {
+    padding-bottom: 0;
+  }
+  #player-wrapper:not(.audio-expanded).native-controls #media-player {
+    aspect-ratio: auto;
+    height: 100%;
+  }
+}
+
 /* v1.22.1 FR-2's mobile-AUDIO "#fs-btn is a dead tap there" hide rule
    (`#player-wrapper.ff-mobile.audio-mode #fs-btn { display: none; }`) is
    RETIRED in v1.22.2 FR-1: `#fs-btn`'s click handler now branches on

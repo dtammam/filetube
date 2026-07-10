@@ -1,24 +1,28 @@
 'use strict';
 
-// [UNIT] v1.22.0 FR-1 (T2) / v1.22.1 FR-1,FR-2,FR-4 (T2) -- the
-// responsive-controls CSS. Originally (v1.22.0): hiding the custom
-// #player-controls bar on mobile VIDEO (native controls took over) and
-// dropping the redundant volume controls on mobile AUDIO. v1.22.1 RETIRES
-// the mobile-video native-controls path entirely (player.js's
-// applyControlsMode() no longer ever sets the native `controls` attribute --
-// see test/unit/player-form-factor.test.js's regression lock) and routes
-// mobile video through this SAME custom bar, so the v1.22.0 "hide the bar
-// for mobile video" rule and its DOCKED re-assert are gone; volume is now
-// hidden on ALL mobile (video included, iOS ignores the `volume` property on
-// any media element); and mobile AUDIO additionally hides the (dead, no
-// fullscreen concept for audio) #fs-btn. Also covers the v1.22.1 FR-4
-// `#speed-btn` styling and the pre-existing press-hold-2x text-selection fix
-// and mute-slash centering nit. All of it reacts to the `.ff-mobile` marker
-// class player.js's applyControlsMode() sets (from the SAME
-// isMobileFormFactor() signal) plus the existing `.audio-mode` class --
-// `.ff-mobile` is the single source of truth in CSS, per the exec plan's
-// design. Visual feel is Dean's on-device iOS arbiter; this is the
-// mechanical CSS-presence guard.
+// [UNIT] v1.22.0 FR-1 (T2) / v1.22.1 FR-1,FR-2,FR-4 (T2) / mobile-native-
+// controls round -- the responsive-controls CSS. Originally (v1.22.0):
+// hiding the custom #player-controls bar on mobile VIDEO (native controls
+// took over) and dropping the redundant volume controls on mobile AUDIO.
+// v1.22.1 retired that mobile-video native-controls path entirely and routed
+// mobile video through this SAME custom bar instead (the "hide the bar for
+// mobile video" rule and its DOCKED re-assert are gone -- see below); volume
+// is hidden on ALL mobile (video included, iOS ignores the `volume` property
+// on any media element); mobile AUDIO additionally hides the (dead, no
+// fullscreen concept for audio) #fs-btn. The mobile-native-controls round
+// REINSTATES native controls for mobile VIDEO, but ONLY while FULL, scoped
+// to a NEW, distinct `.native-controls` marker class (player.js's
+// applyControlsMode()) rather than reviving the old `.ff-mobile:not(.audio-
+// mode)` rule below -- so the "retired" assertions for THAT specific old
+// selector still hold true (it really is gone), while a separate section
+// covers the new `.native-controls`-scoped hide + the v1.23.5 bar-below
+// strip revert. Also covers the v1.22.1 FR-4 `#speed-btn` styling and the
+// pre-existing press-hold-2x text-selection fix and mute-slash centering
+// nit. Most of it reacts to the `.ff-mobile` marker class player.js's
+// applyControlsMode() sets (from the SAME isMobileFormFactor() signal) plus
+// the existing `.audio-mode` class -- `.ff-mobile` is the single source of
+// truth in CSS, per the exec plan's design. Visual feel is Dean's on-device
+// iOS arbiter; this is the mechanical CSS-presence guard.
 const { test } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
@@ -98,6 +102,64 @@ test('v1.22.1 FR-2: #fs-btn stays visible for mobile VIDEO and desktop -- the hi
     !/#player-wrapper\.ff-mobile\s*#fs-btn\s*\{[^}]*display:\s*none/.test(css.replace(/#player-wrapper\.ff-mobile\.audio-mode\s*#fs-btn\s*\{[^}]*\}/, '')),
     '#fs-btn must not be hidden by an unscoped (non-audio-mode) .ff-mobile rule'
   );
+});
+
+// ---- Mobile-native-controls round: the new `.native-controls`-scoped hide -
+
+test('native-controls round: `.native-controls` hides the custom `#player-controls` bar', () => {
+  const rule = /#player-wrapper\.native-controls\s+\.player-controls\s*\{([^}]*)\}/.exec(css);
+  assert.ok(rule, 'expected a rule hiding .player-controls scoped to #player-wrapper.native-controls');
+  assert.match(rule[1], /display:\s*none;/);
+});
+
+test('native-controls round: `.native-controls` also hides the skip/speed gesture overlays (#skip-controls, #speed-badge) so they cannot visually fight the native strip', () => {
+  const skipRule = /#player-wrapper\.native-controls\s+#skip-controls\s*\{([^}]*)\}/.exec(css);
+  assert.ok(skipRule, 'expected a rule hiding #skip-controls scoped to #player-wrapper.native-controls');
+  assert.match(skipRule[1], /display:\s*none/);
+
+  const speedRule = /#player-wrapper\.native-controls\s+#speed-badge\s*\{([^}]*)\}/.exec(css);
+  assert.ok(speedRule, 'expected a rule hiding #speed-badge scoped to #player-wrapper.native-controls');
+  assert.match(speedRule[1], /display:\s*none;/);
+});
+
+// FIX C (player-hardening round): setupForMedia() (player.js) sets an inline
+// `skipControls.style.display = 'block'` on every video load, which beats an
+// external rule with no `!important` -- the un-`!important`-ed rule above was
+// dead in practice for #skip-controls. Locks that the suppression is actually
+// effective (matches the existing `#player-dock .skip-controls` precedent).
+test('FIX C: the #skip-controls native-hide rule carries `!important` so it beats setupForMedia()\'s inline `display: block`', () => {
+  const skipRule = /#player-wrapper\.native-controls\s+#skip-controls\s*\{([^}]*)\}/.exec(css);
+  assert.ok(skipRule, 'expected a rule hiding #skip-controls scoped to #player-wrapper.native-controls');
+  assert.match(skipRule[1], /display:\s*none\s*!important;/, 'expected #skip-controls\' native-hide rule to use !important to override the inline style.display setupForMedia() sets on every load');
+});
+
+test('native-controls round: the v1.23.5 "bar-below" reserved strip is reverted for `.native-controls` (padding-bottom: 0, #media-player fills the wrapper) -- both the base rule and the max-width:768px variant', () => {
+  const baseRule = /#player-wrapper:not\(\.audio-expanded\)\.native-controls\s*\{([^}]*)\}/.exec(css);
+  assert.ok(baseRule, 'expected a base #player-wrapper:not(.audio-expanded).native-controls rule');
+  assert.match(baseRule[1], /padding-bottom:\s*0;/);
+
+  const baseMediaPlayerRule = /#player-wrapper:not\(\.audio-expanded\)\.native-controls\s+#media-player\s*\{([^}]*)\}/.exec(css);
+  assert.ok(baseMediaPlayerRule, 'expected a base #player-wrapper:not(.audio-expanded).native-controls #media-player rule');
+  assert.match(baseMediaPlayerRule[1], /aspect-ratio:\s*auto;/);
+  assert.match(baseMediaPlayerRule[1], /height:\s*100%;/);
+
+  // Both instances of the selector must appear -- one at the top level, one
+  // inside a `@media (max-width: 768px)` block (belt-and-suspenders revert,
+  // matching the existing fullscreen-restore pattern above).
+  const allBaseRuleMatches = css.match(/#player-wrapper:not\(\.audio-expanded\)\.native-controls\s*\{/g) || [];
+  assert.strictEqual(allBaseRuleMatches.length, 2, 'expected the #player-wrapper:not(.audio-expanded).native-controls rule to appear twice (base + @media (max-width: 768px))');
+
+  const mediaBlockMatch = /@media \(max-width: 768px\)\s*\{([\s\S]*?)\n\}/g;
+  let found = false;
+  let m;
+  while ((m = mediaBlockMatch.exec(css))) {
+    if (/#player-wrapper:not\(\.audio-expanded\)\.native-controls\s*\{[^}]*padding-bottom:\s*0;/.test(m[1]) &&
+        /#player-wrapper:not\(\.audio-expanded\)\.native-controls\s+#media-player\s*\{[^}]*aspect-ratio:\s*auto;[^}]*height:\s*100%;/.test(m[1])) {
+      found = true;
+      break;
+    }
+  }
+  assert.ok(found, 'expected a @media (max-width: 768px) block containing the same .native-controls bar-below revert (padding-bottom: 0 + #media-player aspect-ratio:auto/height:100%)');
 });
 
 // ---- mobile touch-target sizing (v1.22.1 FR-1/FR-4): .pc-btn -> 44px ------
