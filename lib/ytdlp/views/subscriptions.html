@@ -189,6 +189,22 @@
             <button class="btn btn-primary btn-sm" id="sub-repull-all-btn" type="button">
               <i class="icon-refresh"></i> Check all subscriptions now
             </button>
+            <!-- v1.25 QoL follow-up, reheat: triggers a metadata+subtitle
+                 re-pull over EXISTING yt-dlp downloads (POST
+                 /api/ytdlp/repull-metadata), distinct from the Check-all
+                 button above (which polls for NEW videos). Progress/terminal
+                 state ride the SAME ~2.5s GET /api/subscriptions/status poll
+                 this page already runs -- see
+                 lib/ytdlp/client/subscriptions.js's applyReheatStateToControls.
+                 Only span/button elements added here (no new div), so this
+                 stays inside .sub-list-header-actions without changing the
+                 structural shape test/unit/ytdlp-t6-repull-and-subs-ui.test.js
+                 already locks for this row. -->
+            <span id="sub-reheat-status" class="sub-repull-status" aria-live="polite"></span>
+            <button class="btn btn-sm" id="sub-reheat-cancel-btn" type="button" hidden>Cancel</button>
+            <button class="btn btn-sm" id="sub-reheat-btn" type="button">
+              <i class="icon-refresh"></i> Reheat metadata
+            </button>
           </div>
         </div>
         <div id="sub-list-container" class="sub-list">

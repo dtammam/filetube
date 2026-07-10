@@ -18,6 +18,8 @@
 // regression guard than merely asserting equality on the output.
 const { test } = require('node:test');
 const assert = require('node:assert');
+const fs = require('node:fs');
+const path = require('node:path');
 const {
   FORMAT_OPTIONS,
   QUALITY_OPTIONS,
@@ -49,6 +51,13 @@ const {
   createSubscriptionsListElement,
   createOneShotRow,
   createOneShotsListElement,
+  // v1.25 QoL follow-up ("reheat"): metadata+subtitle re-pull UI.
+  REHEAT_ACTIVITY_ID,
+  formatReheatSummary,
+  formatReheatProgressText,
+  applyReheatStateToControls,
+  triggerReheat,
+  triggerReheatCancel,
 } = require('../../lib/ytdlp/client/subscriptions.js');
 
 // ---- Minimal fake DOM (test-only) ------------------------------------------
@@ -1423,4 +1432,339 @@ test('createOneShotsListElement: renders one row per job entry', () => {
   };
   const container = createOneShotsListElement(oneShots, fakeDoc, {});
   assert.strictEqual(container.children.length, 2);
+});
+
+// ---- v1.25 QoL follow-up ("reheat"): metadata+subtitle re-pull UI ---------
+//
+// Client-side wiring against the ALREADY-IMPLEMENTED
+// `POST /api/ytdlp/repull-metadata` / `POST /api/ytdlp/repull-metadata/cancel`
+// routes (see test/integration/ytdlp-repull-metadata-endpoint.test.js for
+// the server-side contract). `triggerReheat`/`triggerReheatCancel` are
+// plain, MODULE-SCOPE functions (not nested inside the page's live-wiring
+// closure) that accept an injectable `fetchImpl`, exactly so they can be
+// unit-tested directly here without a real network or a full DOM --
+// mirroring how public/js/common.js's `probeAndReconcileRepullButton` is
+// tested via a monkey-patched fetch.
+
+function flushMicrotasks() {
+  return new Promise((resolve) => setImmediate(resolve));
+}
+
+function fakeJsonResponse(ok, status, body) {
+  return { ok, status, json: () => Promise.resolve(body) };
+}
+
+test('REHEAT_ACTIVITY_ID: mirrors the server\'s fixed one-shot activity key', () => {
+  assert.strictEqual(REHEAT_ACTIVITY_ID, 'repull-metadata');
+});
+
+// ---- formatReheatSummary (the 202 response's blast-radius line) -----------
+
+test('formatReheatSummary: eligible items with no ineligible ones renders a plain count (plural)', () => {
+  assert.strictEqual(formatReheatSummary(5, 0), 'Re-pulling 5 items');
+});
+
+test('formatReheatSummary: exactly one eligible item uses the singular "item"', () => {
+  assert.strictEqual(formatReheatSummary(1, 0), 'Re-pulling 1 item');
+});
+
+test('formatReheatSummary: eligible AND ineligible both render, with the ineligible reason spelled out', () => {
+  assert.strictEqual(
+    formatReheatSummary(12, 40),
+    'Re-pulling 12 items · 40 not re-pullable (imported / no source id)'
+  );
+});
+
+test('formatReheatSummary: eligible === 0 renders the explicit "nothing to re-pull" message, never "Re-pulling 0 items"', () => {
+  const result = formatReheatSummary(0, 40);
+  assert.strictEqual(
+    result,
+    'No re-pullable items found — only videos FileTube downloaded itself can be re-pulled.'
+  );
+  assert.ok(!result.includes('Re-pulling 0'));
+});
+
+test('formatReheatSummary: eligible === 0 with ineligible === 0 too (an empty library) still renders the zero-eligible message', () => {
+  assert.strictEqual(
+    formatReheatSummary(0, 0),
+    'No re-pullable items found — only videos FileTube downloaded itself can be re-pulled.'
+  );
+});
+
+test('formatReheatSummary: non-finite/negative/missing counts are clamped to 0 rather than rendering "undefined"/"NaN"', () => {
+  for (const bad of [undefined, null, NaN, -3, 'five', {}]) {
+    const result = formatReheatSummary(bad, bad);
+    assert.ok(!result.includes('undefined'), `formatReheatSummary(${bad}) leaked "undefined": ${result}`);
+    assert.ok(!result.includes('NaN'), `formatReheatSummary(${bad}) leaked "NaN": ${result}`);
+  }
+});
+
+// ---- formatReheatProgressText (the live LiveEntry progress line) ----------
+
+test('formatReheatProgressText: "running" renders done/total, and omits skipped/failed/current when they are all zero/absent', () => {
+  assert.strictEqual(
+    formatReheatProgressText({ state: 'running', total: 10, done: 3, skipped: 0, failed: 0, current: null }),
+    'Reheating: 3 of 10 done'
+  );
+});
+
+test('formatReheatProgressText: "running" appends skipped/failed/current when present', () => {
+  const result = formatReheatProgressText({
+    state: 'running', total: 10, done: 3, skipped: 2, failed: 1, current: 'dQw4w9WgXcQ',
+  });
+  assert.strictEqual(result, 'Reheating: 3 of 10 done · 2 skipped · 1 failed · current: dQw4w9WgXcQ');
+});
+
+test('formatReheatProgressText: "done" renders a terminal summary, including skipped/failed when non-zero', () => {
+  assert.strictEqual(
+    formatReheatProgressText({ state: 'done', total: 10, done: 7, skipped: 2, failed: 1 }),
+    'Reheat done: 7 of 10 updated · 2 skipped · 1 failed'
+  );
+});
+
+test('formatReheatProgressText: "done" with no skipped/failed omits those segments entirely (no stray "· 0 skipped")', () => {
+  assert.strictEqual(
+    formatReheatProgressText({ state: 'done', total: 5, done: 5, skipped: 0, failed: 0 }),
+    'Reheat done: 5 of 5 updated'
+  );
+});
+
+test('formatReheatProgressText: "cancelled" renders a partial-progress summary', () => {
+  assert.strictEqual(
+    formatReheatProgressText({ state: 'cancelled', total: 10, done: 4 }),
+    'Reheat cancelled — 4 of 10 updated before stopping'
+  );
+});
+
+test('formatReheatProgressText: "error" renders a fixed, generic failure message', () => {
+  assert.strictEqual(formatReheatProgressText({ state: 'error' }), 'Reheat failed unexpectedly.');
+});
+
+test('formatReheatProgressText: a missing/malformed entry, or an idle/unrecognized state, renders "" (nothing to show)', () => {
+  assert.strictEqual(formatReheatProgressText(undefined), '');
+  assert.strictEqual(formatReheatProgressText(null), '');
+  assert.strictEqual(formatReheatProgressText({}), '');
+  assert.strictEqual(formatReheatProgressText({ state: 'idle' }), '');
+  assert.strictEqual(formatReheatProgressText({ state: 'queued' }), '');
+});
+
+test('formatReheatProgressText: never leaks "undefined"/"NaN" for missing total/done/skipped/failed/current fields', () => {
+  const result = formatReheatProgressText({ state: 'running' });
+  assert.ok(!result.includes('undefined'));
+  assert.ok(!result.includes('NaN'));
+  assert.strictEqual(result, 'Reheating: 0 of 0 done');
+});
+
+// ---- applyReheatStateToControls (DOM-level, no fetch) ----------------------
+
+test('applyReheatStateToControls: a "running" entry disables the button, un-hides Cancel, and renders progress text', () => {
+  const button = new FakeElement('button');
+  const status = new FakeElement('span');
+  const cancelButton = new FakeElement('button');
+  cancelButton.hidden = true;
+  const elements = { button, status, cancelButton };
+
+  applyReheatStateToControls(elements, { state: 'running', total: 10, done: 4, skipped: 0, failed: 0 });
+
+  assert.strictEqual(button.disabled, true);
+  assert.strictEqual(cancelButton.hidden, false);
+  assert.strictEqual(status.textContent, 'Reheating: 4 of 10 done');
+});
+
+test('applyReheatStateToControls: a terminal ("done") entry re-enables the button and re-hides Cancel', () => {
+  const button = new FakeElement('button');
+  button.disabled = true;
+  const status = new FakeElement('span');
+  const cancelButton = new FakeElement('button');
+  cancelButton.hidden = false;
+  const elements = { button, status, cancelButton };
+
+  applyReheatStateToControls(elements, { state: 'done', total: 10, done: 10, skipped: 0, failed: 0 });
+
+  assert.strictEqual(button.disabled, false);
+  assert.strictEqual(cancelButton.hidden, true);
+  assert.strictEqual(status.textContent, 'Reheat done: 10 of 10 updated');
+});
+
+test('applyReheatStateToControls: a missing/undefined entry (never polled, or the batch has since been pruned) re-enables the button, hides Cancel, and leaves any existing status text alone', () => {
+  const button = new FakeElement('button');
+  button.disabled = true;
+  const status = new FakeElement('span');
+  status.textContent = 'Re-pulling 5 items';
+  const cancelButton = new FakeElement('button');
+  cancelButton.hidden = false;
+  const elements = { button, status, cancelButton };
+
+  applyReheatStateToControls(elements, undefined);
+
+  assert.strictEqual(button.disabled, false, 'no live batch -- the button must not stay stuck disabled');
+  assert.strictEqual(cancelButton.hidden, true);
+  assert.strictEqual(status.textContent, 'Re-pulling 5 items', 'the prior 202 summary must not be blanked by an idle poll tick');
+});
+
+test('applyReheatStateToControls: a missing elements object (or missing sub-fields) is a safe no-op, never throws', () => {
+  assert.doesNotThrow(() => applyReheatStateToControls(null, { state: 'running' }));
+  assert.doesNotThrow(() => applyReheatStateToControls({}, { state: 'running' }));
+  assert.doesNotThrow(() => applyReheatStateToControls({ button: new FakeElement('button') }, { state: 'running' }));
+});
+
+// ---- triggerReheat (POST /api/ytdlp/repull-metadata, injectable fetch) ----
+
+test('triggerReheat: POSTs the correct endpoint/method, disables the button immediately, and renders the 202 eligible/ineligible summary', async () => {
+  const button = new FakeElement('button');
+  const status = new FakeElement('span');
+  const elements = { button, status, cancelButton: new FakeElement('button') };
+  const calls = [];
+  const fetchImpl = (url, opts) => {
+    calls.push([url, opts]);
+    return Promise.resolve(fakeJsonResponse(true, 202, { started: true, eligible: 5, ineligible: 2 }));
+  };
+
+  triggerReheat(elements, fetchImpl);
+  assert.strictEqual(button.disabled, true, 'must disable immediately, before the response even arrives');
+  await flushMicrotasks();
+
+  assert.strictEqual(calls.length, 1);
+  assert.strictEqual(calls[0][0], '/api/ytdlp/repull-metadata');
+  assert.strictEqual(calls[0][1].method, 'POST');
+  assert.strictEqual(status.textContent, formatReheatSummary(5, 2));
+  assert.strictEqual(button.disabled, true, 'stays disabled after a successful 202 -- the poll re-enables it once terminal');
+});
+
+test('triggerReheat: eligible === 0 surfaces the explicit "nothing re-pullable" message on a real 202 response', async () => {
+  const button = new FakeElement('button');
+  const status = new FakeElement('span');
+  const elements = { button, status, cancelButton: new FakeElement('button') };
+  const fetchImpl = () => Promise.resolve(fakeJsonResponse(true, 202, { started: true, eligible: 0, ineligible: 40 }));
+
+  triggerReheat(elements, fetchImpl);
+  await flushMicrotasks();
+
+  assert.strictEqual(
+    status.textContent,
+    'No re-pullable items found — only videos FileTube downloaded itself can be re-pulled.'
+  );
+});
+
+test('triggerReheat: a 409 alreadyRunning response is reflected as "already in progress", never treated as a failure or a second start', async () => {
+  const button = new FakeElement('button');
+  const status = new FakeElement('span');
+  const elements = { button, status, cancelButton: new FakeElement('button') };
+  let calls = 0;
+  const fetchImpl = () => {
+    calls += 1;
+    return Promise.resolve(fakeJsonResponse(false, 409, { started: false, alreadyRunning: true }));
+  };
+
+  triggerReheat(elements, fetchImpl);
+  await flushMicrotasks();
+
+  assert.strictEqual(calls, 1, 'exactly one POST -- this function itself never retries/duplicates on a 409');
+  assert.strictEqual(status.textContent, 'A metadata reheat is already in progress.');
+});
+
+test('triggerReheat: an unexpected non-OK response (not 409) renders a generic failure message and re-enables the button', async () => {
+  const button = new FakeElement('button');
+  const status = new FakeElement('span');
+  const elements = { button, status, cancelButton: new FakeElement('button') };
+  const fetchImpl = () => Promise.resolve(fakeJsonResponse(false, 500, {}));
+
+  triggerReheat(elements, fetchImpl);
+  await flushMicrotasks();
+
+  assert.strictEqual(status.textContent, 'Could not start metadata reheat.');
+  assert.strictEqual(button.disabled, false, 'a genuine failure must re-enable the button so the user can retry');
+});
+
+test('triggerReheat: a network failure (fetch rejects) renders a network-error message and re-enables the button', async () => {
+  const button = new FakeElement('button');
+  const status = new FakeElement('span');
+  const elements = { button, status, cancelButton: new FakeElement('button') };
+  const fetchImpl = () => Promise.reject(new Error('offline'));
+
+  triggerReheat(elements, fetchImpl);
+  await flushMicrotasks();
+
+  assert.strictEqual(status.textContent, 'Could not start metadata reheat (network error).');
+  assert.strictEqual(button.disabled, false);
+});
+
+test('triggerReheat: a missing elements object is a safe no-op (never throws, never calls fetch)', () => {
+  let calls = 0;
+  const fetchImpl = () => { calls += 1; return Promise.resolve(fakeJsonResponse(true, 202, {})); };
+  assert.doesNotThrow(() => triggerReheat(null, fetchImpl));
+  assert.doesNotThrow(() => triggerReheat(undefined, fetchImpl));
+  assert.strictEqual(calls, 0, 'no elements to update -- must never fire the request at all');
+});
+
+test('triggerReheat: an elements object missing the status/cancelButton sub-fields tolerates them being absent (never throws)', async () => {
+  const button = new FakeElement('button');
+  const fetchImpl = () => Promise.resolve(fakeJsonResponse(true, 202, { started: true, eligible: 3, ineligible: 0 }));
+  assert.doesNotThrow(() => triggerReheat({ button }, fetchImpl));
+  await flushMicrotasks();
+  assert.strictEqual(button.disabled, true);
+});
+
+// ---- triggerReheatCancel (POST /api/ytdlp/repull-metadata/cancel) ---------
+
+test('triggerReheatCancel: POSTs the correct endpoint/method and is only meaningful while the Cancel control is visible (not hidden)', async () => {
+  const status = new FakeElement('span');
+  const cancelButton = new FakeElement('button');
+  cancelButton.hidden = false; // the caller only ever shows this while running (applyReheatStateToControls)
+  const elements = { button: new FakeElement('button'), status, cancelButton };
+  const calls = [];
+  const fetchImpl = (url, opts) => {
+    calls.push([url, opts]);
+    return Promise.resolve(fakeJsonResponse(true, 200, { cancelled: true }));
+  };
+
+  triggerReheatCancel(elements, fetchImpl);
+  assert.strictEqual(cancelButton.disabled, true, 'disabled immediately to guard against a double-click');
+  await flushMicrotasks();
+
+  assert.strictEqual(calls.length, 1);
+  assert.strictEqual(calls[0][0], '/api/ytdlp/repull-metadata/cancel');
+  assert.strictEqual(calls[0][1].method, 'POST');
+  assert.strictEqual(status.textContent, 'Cancelling reheat…');
+  assert.strictEqual(cancelButton.disabled, false, 're-enabled once the request settles');
+});
+
+test('triggerReheatCancel: a network failure never throws and still re-enables the Cancel control', async () => {
+  const cancelButton = new FakeElement('button');
+  const elements = { button: new FakeElement('button'), status: new FakeElement('span'), cancelButton };
+  const fetchImpl = () => Promise.reject(new Error('offline'));
+
+  triggerReheatCancel(elements, fetchImpl);
+  await flushMicrotasks();
+
+  assert.strictEqual(cancelButton.disabled, false);
+});
+
+// ---- subscriptions.html markup: the button exists, glyph + short label ----
+
+const SUBS_HTML = fs.readFileSync(
+  path.join(__dirname, '..', '..', 'lib', 'ytdlp', 'views', 'subscriptions.html'),
+  'utf8'
+);
+
+test('subscriptions.html: #sub-reheat-btn exists exactly once, with an icon glyph and the "Reheat metadata" label', () => {
+  const matches = SUBS_HTML.match(/id="sub-reheat-btn"/g) || [];
+  assert.strictEqual(matches.length, 1, 'expected #sub-reheat-btn to appear exactly once');
+  const btnMatch = /<button[^>]*id="sub-reheat-btn"[^>]*>([\s\S]*?)<\/button>/.exec(SUBS_HTML);
+  assert.ok(btnMatch, 'expected a well-formed <button id="sub-reheat-btn"> element');
+  assert.match(btnMatch[1], /<i class="icon-[a-z-]+"><\/i>/, 'expected an icon glyph inside the button');
+  assert.match(btnMatch[1], /Reheat metadata/, 'expected the short "Reheat metadata" label');
+});
+
+test('subscriptions.html: #sub-reheat-cancel-btn exists exactly once and starts hidden', () => {
+  const matches = SUBS_HTML.match(/id="sub-reheat-cancel-btn"/g) || [];
+  assert.strictEqual(matches.length, 1);
+  const btnMatch = /<button[^>]*id="sub-reheat-cancel-btn"[^>]*>/.exec(SUBS_HTML);
+  assert.ok(btnMatch);
+  assert.match(btnMatch[0], /\bhidden\b/, 'the Cancel control must start hidden -- only shown while a reheat is running');
+});
+
+test('subscriptions.html: #sub-reheat-status exists exactly once', () => {
+  const matches = SUBS_HTML.match(/id="sub-reheat-status"/g) || [];
+  assert.strictEqual(matches.length, 1);
 });

@@ -20,6 +20,13 @@ const ytdlp = require('./lib/ytdlp');
 // resolve a captured channel's confined target folder the identical way
 // every other channel-dir consumer (subscriptions, one-shot downloads) does.
 const ytdlpArgs = require('./lib/ytdlp/args');
+// Metadata+subtitle re-pull backfill (v1.25 QoL follow-up): `buildWatchUrl` is
+// a pure, side-effect-free helper (lib/ytdlp/url.js's own module comment) that
+// `lib/ytdlp/index.js` already requires internally but does not re-export --
+// required directly here, the exact same posture as `ytdlpArgs` above, so
+// `enumerateRepullableItems` (below) can turn a recovered yt-dlp video id back
+// into a canonical watch URL for the re-pull job to fetch.
+const { buildWatchUrl } = require('./lib/ytdlp/url');
 // v1.15.1 hotfix: pure predicate for yt-dlp's own intermediate/partial-
 // download artifacts (merge temps, per-format fragments, `.part`/`.ytdl`
 // markers) left in its download dir mid-download or after a killed/failed
@@ -3118,6 +3125,188 @@ async function migrateOneOffsIntoChannelFolders(deps, config) {
   return summary;
 }
 
+// ---- Metadata+subtitle re-pull backfill (v1.25 QoL follow-up) -------------
+// A user-triggered "re-pull" job re-fetches yt-dlp metadata (release date,
+// channel avatar) and subtitles for an already-downloaded item, WITHOUT
+// touching the media file itself -- so, unlike `moveItemToFolder`/
+// `migrateOneOffsIntoChannelFolders` above, the item's id is completely
+// STABLE (`getMediaId` hashes the path, and the path never changes here).
+// The two halves below are deliberately split the same way the move
+// machinery is split into "compute eligibility" (pure) and "do the mutation"
+// (deps-injected, single serialized `updateDatabase` writer):
+//
+//   - `enumerateRepullableItems` (pure aggregation over a `db` snapshot +
+//     parsed config) answers "which items COULD be re-pulled, and how many
+//     can't be" -- the endpoint that owns the actual re-pull job (another
+//     task) uses this to build its work queue and report the blast radius
+//     before doing any network I/O.
+//   - `recordRepulledItemMeta` (deps-injected, mirrors `moveItemToFolder`'s
+//     `{loadDatabase, updateDatabase, getMediaId}`-shaped deps bundle, but
+//     simpler -- no file move, so no re-key) is the ONLY function that
+//     actually writes the result of a re-pull job back into `db.metadata`,
+//     through the single serialized `updateDatabase` mutator.
+//
+// WIRING CONTRACT for the caller that owns the actual re-pull job (currently
+// `lib/ytdlp/index.js`'s `registerRoutes`, another task): both functions are
+// bridged through the SAME `deps`-object mechanism `updateDatabase`/
+// `loadDatabase`/`scanDirectories`/`getMediaId` already use (see the
+// `ytdlp.registerRoutes(app, {...})` call, below in this file) -- NOT a
+// second `require('../../server')` from `lib/ytdlp/index.js`. That module is
+// itself `require()`d near the top of THIS file, before `module.exports` is
+// assigned, so a `require('../../server')` from inside it would only ever
+// observe an incomplete (still-`{}`) exports object -- the deps bridge is
+// what avoids that circular-require trap, exactly like every other
+// server.js-owned primitive this module already receives.
+//   - `enumerateRepullableItems` takes `(db, config)` directly (no db access
+//     of its own) -- the caller already has a fresh `db` (from `deps.loadDatabase()`)
+//     and its own parsed yt-dlp config in hand.
+//   - `recordRepulledItemMeta` takes `(deps, mediaId, meta, nowMs)` -- pass
+//     the SAME `deps` object `registerRoutes` itself received.
+
+/**
+ * Pure eligibility gate: classify every `db.metadata` item as re-pullable or
+ * not, without touching the filesystem or the database. An item is eligible
+ * iff (a) its filename carries the FileTube/yt-dlp `[<11-char id>]` suffix
+ * `extractYtdlpVideoId` recognizes (an imported/MeTube-style file without it
+ * is never eligible -- there is no video id to re-pull against), AND (b) it
+ * physically lives under the module's own yt-dlp download root
+ * (`ytdlp.extraScanRoots(config)`) -- mirroring the scan bridge's own double-
+ * scoping (see the `freshlyScannedIds`/`ytdlpDownloadRoots` bridge above,
+ * ~line 1754) so a coincidentally-bracketed non-yt-dlp library file is never
+ * fed a network re-pull.
+ *
+ * Each eligible item's own `metadataRepulledAt` (already set by a prior
+ * `recordRepulledItemMeta` call, or absent) is surfaced as `alreadyRepulled`
+ * so the caller can decide whether to skip it (a `force` re-run is the
+ * caller's own concern -- this helper only classifies, it never filters on
+ * that flag itself).
+ *
+ * @param {object} db a `loadDatabase()`-shaped db snapshot
+ * @param {object} config a parsed yt-dlp config (`ytdlp.parseYtdlpConfig()`)
+ * @returns {{items: Array<{mediaId: string, filePath: string, videoId: string, watchUrl: string, alreadyRepulled: boolean}>, eligible: number, ineligible: number}}
+ */
+function enumerateRepullableItems(db, config) {
+  const result = { items: [], eligible: 0, ineligible: 0 };
+  const metadata = (db && db.metadata) || {};
+  const downloadRoots = ytdlp.extraScanRoots(config);
+  if (downloadRoots.length === 0) {
+    result.ineligible = Object.keys(metadata).length;
+    return result;
+  }
+
+  for (const id of Object.keys(metadata)) {
+    const item = metadata[id];
+    if (!item || typeof item.filePath !== 'string' || item.filePath === '') {
+      result.ineligible++;
+      continue;
+    }
+    // Same double-scoping as the scan's own channel-identity bridge: rooted
+    // under the download dir AND filename-shaped like a yt-dlp download.
+    if (!matchRootFolder(item.filePath, downloadRoots)) {
+      result.ineligible++;
+      continue;
+    }
+    const baseName = path.basename(item.filePath, path.extname(item.filePath));
+    const videoId = extractYtdlpVideoId(baseName);
+    const watchUrl = videoId ? buildWatchUrl(videoId) : null;
+    if (!videoId || !watchUrl) {
+      result.ineligible++;
+      continue;
+    }
+
+    result.items.push({
+      mediaId: getMediaId(item.filePath),
+      filePath: item.filePath,
+      videoId,
+      watchUrl,
+      alreadyRepulled: !!item.metadataRepulledAt,
+    });
+    result.eligible++;
+  }
+
+  return result;
+}
+
+/**
+ * Write a single re-pull job's result back into `db.metadata[mediaId]`,
+ * through the single serialized `updateDatabase` mutator -- mirrors
+ * `moveItemToFolder`'s deps shape (`{loadDatabase, updateDatabase,
+ * getMediaId}`), but only `deps.updateDatabase` is actually needed here:
+ * there is no file move, so no id re-key, and no separate `loadDatabase()`
+ * call (`updateDatabase` already hands the mutator a fresh, lock-held `db`).
+ *
+ * - `meta.releaseDate`, when a finite number, SUPERSEDES whatever value
+ *   `item.releaseDate` already carries (the same "yt-dlp metadata is more
+ *   precise than a filesystem timestamp" precedence the scan's own
+ *   `consumeDownloadChannelMeta` bridge already applies, ~line 1769) -- a
+ *   re-pull is a deliberate refresh, not a gap-fill, so it must never lose to
+ *   a stale/mtime-derived value the way the scan's ADDITIVE
+ *   `hasOwnProperty`-guarded backfills (~1526/1563) do.
+ * - `meta.channelAvatarUrl`, when a non-empty string, is set the same way.
+ * - `item.hasSubtitles` is UNCONDITIONALLY recomputed from
+ *   `subtitles.findSubtitleSidecar(item.filePath)` -- re-checked against the
+ *   real filesystem so a subtitle sidecar the re-pull job just wrote lights
+ *   up the CC button immediately, without waiting for the next scan.
+ * - ALL of the above are persisted regardless of `meta.markComplete` -- a
+ *   re-pull's metadata pass (Pass A) and subtitle pass (Pass B) run and fail
+ *   INDEPENDENTLY (see `run.repullItemMetaAndSubs`'s own doc comment), so
+ *   whatever either pass actually produced is always worth keeping.
+ * - `item.metadataRepulledAt` is set to `nowMs` ONLY when `meta.markComplete
+ *   === true`. The caller (`runRepullMetadataBatch`, lib/ytdlp/index.js)
+ *   passes `true` iff the SUBTITLE pass actually completed
+ *   (`result.wroteSubs === true`) -- a TRANSIENT subtitle-spawn failure
+ *   (timeout/spawn error, `wroteSubs: false`) must never permanently mark
+ *   this item "done": `enumerateRepullableItems`'s `alreadyRepulled` flag is
+ *   this exact marker, and setting it unconditionally would make a
+ *   subs-spawn failure un-retryable on every later non-`force` reheat, even
+ *   though the metadata half genuinely succeeded. When `markComplete` is
+ *   `false`/absent, the marker is left exactly as it already was (never
+ *   cleared, never set) -- only the fields above are refreshed.
+ * - NO re-key: `mediaId` is the same before and after (no file move ever
+ *   happens here), so `db.progress[mediaId]` and every id-keyed sidecar
+ *   (thumbnail, transcode) stay bound to the exact same id, untouched.
+ * - A `mediaId` no longer present in `db.metadata` (the item was deleted
+ *   concurrently, mid-run) is a safe no-op: the mutator returns `false`
+ *   (skips the save) and this function resolves to `false`.
+ *
+ * @param {{loadDatabase?: Function, updateDatabase: Function, getMediaId?: Function}} deps
+ * @param {string} mediaId
+ * @param {{releaseDate?: number, channelAvatarUrl?: string, filePath: string, markComplete?: boolean}} meta
+ * @param {number} [nowMs] injectable clock, for deterministic tests (mirrors store.js's own `nowMs=Date.now()` pattern)
+ * @returns {Promise<boolean>} resolves `true` if the item was updated, `false` on a safe no-op
+ */
+async function recordRepulledItemMeta(deps, mediaId, meta, nowMs = Date.now()) {
+  const d = deps || {};
+  const updateDb = d.updateDatabase;
+  if (typeof updateDb !== 'function') return false;
+  const m = meta || {};
+
+  return updateDb((db) => {
+    const item = db.metadata[mediaId];
+    if (!item) return false; // vanished mid-run -- no-op, never resurrect
+
+    if (typeof m.releaseDate === 'number' && Number.isFinite(m.releaseDate)) {
+      item.releaseDate = m.releaseDate; // SUPERSEDE, not gap-fill
+    }
+    if (typeof m.channelAvatarUrl === 'string' && m.channelAvatarUrl !== '') {
+      item.channelAvatarUrl = m.channelAvatarUrl;
+    }
+    // Re-check the sidecar on disk NOW (after the subs pass), against the
+    // item's OWN filePath -- same resolver the scan's `hasSubtitles`
+    // detection and `GET /api/subtitles/:id` use, so this can never disagree
+    // with what those consider "this item's sidecar".
+    item.hasSubtitles = !!subtitles.findSubtitleSidecar(item.filePath);
+    // The idempotency marker is gated on the caller's own completion signal
+    // -- see this function's doc comment above for why an absent/`false`
+    // `markComplete` must leave it untouched rather than clearing it.
+    if (m.markComplete === true) {
+      item.metadataRepulledAt = nowMs;
+    }
+
+    return true;
+  });
+}
+
 // API: Library-wide "fun stats" dashboard (C4, v1.24 UX Round Wave 3).
 // Computed LIVE from `db.metadata` on every request via the pure helpers in
 // `lib/stats.js` -- deliberately no cached aggregate (see that module's
@@ -3444,8 +3633,21 @@ app.get('/video/:id', (req, res) => {
 // router, so every /api/subscriptions* request falls through to Express's
 // native 404 (see lib/ytdlp/index.js). `deps` are the existing primitives
 // the module's later tasks (persistence/poll) need; T1 doesn't call any of
-// them from the disabled path.
-ytdlp.registerRoutes(app, { updateDatabase, loadDatabase, scanDirectories, getMediaId });
+// them from the disabled path. `recordRepulledItemMeta`/`enumerateRepullableItems`
+// (v1.25 QoL follow-up, metadata+subtitle re-pull backfill) are bridged
+// through this SAME deps object -- see their own header comments (above
+// `migrateOneOffsIntoChannelFolders`'s `GET /api/stats` neighbor) for the
+// full wiring-contract rationale (a `require('../../server')` from inside
+// lib/ytdlp/index.js would hit a circular-require trap; this deps object is
+// what avoids it, exactly like every other primitive below).
+ytdlp.registerRoutes(app, {
+  updateDatabase,
+  loadDatabase,
+  scanDirectories,
+  getMediaId,
+  recordRepulledItemMeta,
+  enumerateRepullableItems,
+});
 
 // Start the server — but only when run directly (`node server.js`), not when
 // required by the test suite. This lets tests import `app` and the pure helpers
@@ -3549,6 +3751,13 @@ module.exports = {
   // re-exported so tests can call it directly (mirroring T9's own
   // moveItemToFolder export above) without booting a real server process.
   migrateOneOffsIntoChannelFolders,
+  // Metadata+subtitle re-pull backfill (v1.25 QoL follow-up): re-exported so
+  // tests can call these directly (mirroring `moveItemToFolder`'s own
+  // testing contract) without booting a real server process. See their
+  // header comments (above `migrateOneOffsIntoChannelFolders`) for the full
+  // deps-bridge wiring contract lib/ytdlp/index.js's `registerRoutes` uses.
+  recordRepulledItemMeta,
+  enumerateRepullableItems,
   cleanDisplayTitle,
   extractYtdlpVideoId,
   contentDispositionAttachment,
