@@ -8,8 +8,13 @@
 // `buildPinAvatarNode` helper the two render functions share.
 const { test } = require('node:test');
 const assert = require('node:assert');
+const fs = require('node:fs');
+const path = require('node:path');
 
 const { renderPinnedPlaylists } = require('../../public/js/common.js');
+
+const COMMON_JS_PATH = path.join(__dirname, '..', '..', 'public', 'js', 'common.js');
+const commonJsSrc = fs.readFileSync(COMMON_JS_PATH, 'utf8');
 
 class FakeNode {
   constructor(tag) {
@@ -66,6 +71,67 @@ test('renderPinnedPlaylists: renders nothing (no-op) for zero/malformed pins -- 
   delete global.document;
 });
 
+// v1.26.3 (Item 2): a "No playlists pinned yet." empty-state message is now
+// shown for zero pins -- but ONLY when the caller has confirmed (via
+// `moduleEnabled`) that this is a genuine enabled-but-unused case, never for
+// a disabled module's 404-resolved-to-`[]` (which must keep rendering
+// nothing at all -- the disabled-module no-op guarantee).
+
+test('renderPinnedPlaylists: moduleEnabled=false (the default, e.g. omitted) still renders NOTHING for zero pins -- preserves the disabled-module no-op guarantee', () => {
+  const list = new FakeNode('div');
+  list.id = 'playlists-sheet-list';
+  global.document = makeFakeDoc({ 'playlists-sheet-list': list });
+
+  renderPinnedPlaylists([], false);
+  assert.strictEqual(list.children.length, 0);
+  delete global.document;
+});
+
+test('renderPinnedPlaylists: moduleEnabled=true renders a "No playlists pinned yet." empty-state message for zero pins', () => {
+  const list = new FakeNode('div');
+  list.id = 'playlists-sheet-list';
+  global.document = makeFakeDoc({ 'playlists-sheet-list': list });
+
+  renderPinnedPlaylists([], true);
+  assert.strictEqual(list.children.length, 1);
+  const empty = list.children[0];
+  assert.strictEqual(empty.id, 'playlists-pinned-section');
+  assert.strictEqual(empty.className, 'empty-state empty-state-inline');
+  const message = empty.children[0];
+  assert.strictEqual(message.className, 'empty-state-message');
+  assert.strictEqual(message.textContent, 'No playlists pinned yet.');
+  delete global.document;
+});
+
+test('renderPinnedPlaylists: moduleEnabled=true with real pins renders the pins, not the empty message', () => {
+  const list = new FakeNode('div');
+  list.id = 'playlists-sheet-list';
+  global.document = makeFakeDoc({ 'playlists-sheet-list': list });
+
+  renderPinnedPlaylists([PIN], true);
+  assert.strictEqual(list.children.length, 1);
+  assert.notStrictEqual(list.children[0].className, 'empty-state empty-state-inline');
+  delete global.document;
+});
+
+test('renderPinnedPlaylists: idempotent across an empty-message -> populated -> empty-message cycle -- never duplicates the section', () => {
+  const list = new FakeNode('div');
+  const registry = { 'playlists-sheet-list': list };
+  global.document = makeFakeDoc(registry);
+
+  renderPinnedPlaylists([], true);
+  assert.strictEqual(list.children.length, 1);
+  registry['playlists-pinned-section'] = list.children[0];
+
+  renderPinnedPlaylists([PIN], true);
+  assert.strictEqual(list.children.length, 1, 'the empty-state message must be removed, not left alongside the populated section');
+  registry['playlists-pinned-section'] = list.children[0];
+
+  renderPinnedPlaylists([], true);
+  assert.strictEqual(list.children.length, 1, 'the populated section must be removed, not left alongside the empty-state message');
+  delete global.document;
+});
+
 test('renderPinnedPlaylists: renders a generated avatar glyph (no channelAvatarUrl) as inert text/nodes, never innerHTML', () => {
   const list = new FakeNode('div');
   list.id = 'playlists-sheet-list';
@@ -117,4 +183,17 @@ test('renderPinnedPlaylists: idempotent -- a second call replaces the prior sect
   assert.strictEqual(list.children.length, 1, 'still exactly one pinned section');
   assert.notStrictEqual(list.children[0], firstSection);
   delete global.document;
+});
+
+// ---- Static-source regression guard: openPlaylistsSheet derives
+// moduleEnabled from the response's OWN r.ok (a genuine 2xx), not from the
+// resolved body -- a disabled module's 404 must never be able to look like
+// a real "enabled but zero pins" response (v1.26.3, Item 2). ----------------
+
+test('openPlaylistsSheet derives moduleEnabled from r.ok and threads it into renderPinnedPlaylists', () => {
+  const re = /fetch\('\/api\/subscriptions\/pins'\)[\s\S]{0,300}?renderPinnedPlaylists\(pins, moduleEnabled\)/;
+  assert.match(commonJsSrc, re, 'expected openPlaylistsSheet to call renderPinnedPlaylists(pins, moduleEnabled)');
+  const openFn = /function openPlaylistsSheet\(\)[\s\S]*?\n\}/.exec(commonJsSrc);
+  assert.ok(openFn);
+  assert.match(openFn[0], /r\.ok/, 'moduleEnabled must be derived from the response\'s own r.ok');
 });

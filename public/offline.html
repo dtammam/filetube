@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>FileTube - Offline</title>
+  <!-- v1.26.3 (Item 4): the offline-shell service worker's (public/sw.js)
+       navigation fallback -- precached at SW `install` time, served ONLY
+       when a network-first navigation fails AND nothing else is already
+       cached for that exact URL (see sw.js's networkFirst). Deliberately
+       self-contained: no stylesheet link, no font, no EXTERNAL script/
+       request of any kind -- only inline `<style>`/`<script>`, so it
+       renders and behaves correctly even with the network fully
+       unreachable, which rules out anything this page doesn't carry
+       inline itself. -->
+  <style>
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      background-color: #0f0f0f;
+      color: #f1f1f1;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    }
+    body {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .offline-card {
+      max-width: 360px;
+      width: 100%;
+      text-align: center;
+      background-color: #1a1a1a;
+      border: 1px solid #2d2d2d;
+      border-radius: 12px;
+      padding: 32px 24px;
+    }
+    .offline-glyph {
+      font-size: 40px;
+      margin-bottom: 16px;
+      line-height: 1;
+    }
+    h1 {
+      font-size: 18px;
+      margin: 0 0 8px;
+    }
+    p {
+      font-size: 14px;
+      color: #aaaaaa;
+      margin: 0 0 20px;
+      line-height: 1.5;
+    }
+    button {
+      font: inherit;
+      font-weight: bold;
+      font-size: 13px;
+      padding: 10px 20px;
+      border: none;
+      border-radius: 4px;
+      background-color: #cc0000;
+      color: #ffffff;
+      cursor: pointer;
+    }
+    button:hover,
+    button:focus-visible {
+      background-color: #a30000;
+    }
+  </style>
+</head>
+<body>
+  <div class="offline-card">
+    <div class="offline-glyph" aria-hidden="true">&#128268;</div>
+    <h1>FileTube is offline</h1>
+    <p>Is the server reachable? Check your connection (or that the FileTube host is powered on and on the same network), then try again.</p>
+    <button type="button" id="offline-retry-btn">Try again</button>
+  </div>
+  <script>
+    // Inline (not /js/common.js -- this page must work with the network
+    // fully unreachable, so it can never depend on a separate script file
+    // load succeeding). A plain reload re-runs the SW's network-first
+    // navigation handler, which serves the real page again the moment the
+    // server is reachable.
+    document.getElementById('offline-retry-btn').addEventListener('click', function () {
+      window.location.reload();
+    });
+  </script>
+</body>
+</html>

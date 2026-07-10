@@ -848,6 +848,157 @@ header {
   color: var(--text-secondary);
 }
 
+/* v1.26.3 (Item 1): shared skeleton-loading placeholder shimmer. CSS-only
+   (a sliding gradient sweep via `::after`, no JS timer/rAF) so the
+   loading-state cost is a single pseudo-element + one animation per card,
+   and it stays era-theme-neutral -- `--bg-secondary` is the same flat,
+   accent-free neutral surface tone every era already defines, so a
+   skeleton never clashes with an era's accent palette while the real
+   content is still loading. Two call sites reuse this ONE class: the home/
+   library grid's `.skeleton-card` (buildSkeletonGrid, main.js) and the
+   subscriptions list's `.skeleton-row` (buildSkeletonRows, subscriptions.js)
+   -- see each builder's own comment for the "match the real element's box
+   model exactly, zero layout shift" contract this CSS exists to serve. */
+.skeleton-shimmer {
+  position: relative;
+  overflow: hidden;
+  background-color: var(--bg-secondary);
+}
+
+.skeleton-shimmer::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background-image: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.14),
+    transparent
+  );
+  animation: skeleton-sweep 1.6s ease-in-out infinite;
+}
+
+@keyframes skeleton-sweep {
+  100% { transform: translateX(100%); }
+}
+
+/* Home/library grid skeleton card -- mirrors `.video-card`'s box model
+   exactly (see main.js's buildSkeletonGrid): same flex column, the SAME
+   `.thumbnail-container` (aspect-ratio/radius/border unchanged, only the
+   shimmer fill + a transparent border replace the real thumbnail image/
+   overlays), and the SAME `.video-info` padding -- so swapping the skeleton
+   for real card markup produces zero layout shift. */
+.skeleton-card .thumbnail-container {
+  border-color: transparent; /* the shimmer fill already reads as a placeholder; a visible frame border would look like an empty photo slot instead */
+}
+
+.skeleton-line {
+  height: 11px;
+  border-radius: var(--radius);
+  margin-bottom: 6px;
+}
+
+.skeleton-line-title {
+  width: 85%;
+  height: 13px;
+}
+
+.skeleton-line-meta {
+  width: 50%;
+  margin-bottom: 0;
+}
+
+/* Subscriptions list skeleton row -- mirrors `.sub-row`'s box model (avatar
+   + info block, same gap/padding/border-bottom) exactly (see
+   subscriptions.js's buildSkeletonRows). */
+.skeleton-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.skeleton-row-avatar {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius);
+}
+
+.skeleton-row-info {
+  flex: 1 1 240px;
+  min-width: 240px;
+}
+
+/* Respect the user's OS-level reduced-motion preference: the shimmer sweep
+   is purely decorative motion -- turning it off leaves the flat
+   `--bg-secondary` placeholder fill in place (still a clear "loading"
+   signal), it just stops sliding. */
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-shimmer::after {
+    animation: none;
+  }
+}
+
+/* v1.26.3 (Item 2/3): shared "nothing here" / "something failed" cards --
+   replaces the old bare inline-styled text (home/library empty result,
+   library load error, "Failed to load subscriptions.") with ONE consistent,
+   era-token-only treatment. Any surface can reuse `.empty-state`/
+   `.error-state` rather than hand-rolling its own inline style block; see
+   `buildEmptyStateHtml`/`buildErrorStateHtml` in common.js. */
+.empty-state,
+.error-state {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--text-secondary);
+}
+
+.empty-state-icon,
+.error-state-icon {
+  font-size: 32px;
+  margin-bottom: 12px;
+  opacity: 0.6;
+}
+
+.empty-state-message,
+.error-state-message {
+  font-size: 14px;
+  margin: 0 0 4px;
+}
+
+.empty-state-hint {
+  font-size: 12px;
+  margin: 4px 0 0;
+}
+
+.error-state-message {
+  color: var(--yt-red);
+  font-weight: bold;
+}
+
+.error-state-retry {
+  margin-top: 12px;
+}
+
+.empty-state-action {
+  margin-top: 12px;
+}
+
+/* Compact variant for a smaller, non-grid surface (the mobile Playlists
+   sheet's pinned-channels list has no grid to span) -- drops the
+   grid-column span and tightens padding to match the sheet's existing row
+   density. */
+.empty-state-inline {
+  grid-column: initial;
+  padding: 16px 8px;
+}
+
 /* Watch Page Layout */
 .watch-container {
   display: flex;
