@@ -132,7 +132,117 @@ test('parseProgressLine: other "[youtube] <id>: Downloading ..." sub-stages (e.g
 test('parseProgressLine: a non-progress informational line returns null', () => {
   assert.equal(parseProgressLine('[youtube] Extracting URL: https://www.youtube.com/watch?v=dQw4w9WgXcQ'), null);
   assert.equal(parseProgressLine('[info] Writing video metadata as JSON to: /downloads/x/video.info.json'), null);
-  assert.equal(parseProgressLine('[Merger] Merging formats into "/downloads/x/video.mp4"'), null);
+});
+
+// ---- v1.26 "real progress" phase patches -----------------------------------
+// The ffmpeg-backed postprocess lines below print NO percent -- previously
+// they matched nothing at all (see the pre-fix assertion this test file used
+// to make, that a `[Merger]` line returns `null`), leaving the live entry's
+// `percent` stuck at whatever the last real transfer percent was for the
+// entire mux/convert step. They now emit a `{state:'downloading', phase}`
+// patch instead, so the client can render an honest "Merging…"/"Converting…"
+// label (and an indeterminate progress bar) rather than a stale/frozen
+// percent.
+
+test('parseProgressLine: a "[Merger] Merging formats into ..." line yields phase "merging"', () => {
+  const patch = parseProgressLine('[Merger] Merging formats into "/downloads/x/video.mp4"');
+  assert.ok(patch);
+  assert.equal(patch.state, 'downloading');
+  assert.equal(patch.phase, 'merging');
+});
+
+test('parseProgressLine: a "[Fixup*]" line (any Fixup sub-postprocessor) yields phase "merging"', () => {
+  assert.equal(parseProgressLine('[FixupM3u8] Fixing MPEG-TS in MP4 container').phase, 'merging');
+  assert.equal(parseProgressLine('[FixupM4a] Correcting container of "/downloads/x/audio.m4a"').phase, 'merging');
+  assert.equal(parseProgressLine('[FixupStretched] Fixing video aspect ratio').phase, 'merging');
+});
+
+test('parseProgressLine: an "[ExtractAudio]" line yields phase "converting"', () => {
+  const patch = parseProgressLine('[ExtractAudio] Destination: /downloads/x/audio.mp3');
+  assert.ok(patch);
+  assert.equal(patch.state, 'downloading');
+  assert.equal(patch.phase, 'converting');
+});
+
+test('parseProgressLine: "[VideoConvertor]"/"[VideoRemuxer]" lines yield phase "converting"', () => {
+  assert.equal(parseProgressLine('[VideoConvertor] Converting video from webm to mp4').phase, 'converting');
+  assert.equal(parseProgressLine('[VideoRemuxer] Remuxing video from webm to mp4; Destination: /downloads/x/video.mp4').phase, 'converting');
+});
+
+test('parseProgressLine: a Destination line resets percent to 0 and clears a stale phase (sticky-100 fix)', () => {
+  const patch = parseProgressLine('[download] Destination: /downloads/x/Some_Video [wSx0Or20MZE].f251.webm');
+  assert.ok(patch);
+  assert.equal(patch.percent, 0);
+  assert.equal(patch.phase, null);
+  assert.ok(Object.prototype.hasOwnProperty.call(patch, 'phase'), 'phase must be an explicit null key, not omitted -- mergeEntry only clears a sticky value for a key that is actually present on the patch');
+});
+
+test('parseProgressLine: a real percent line clears a stale phase (explicit null, not omitted)', () => {
+  const patch = parseProgressLine('[download]  12.0% of  50.00MiB at 1.00MiB/s ETA 00:40');
+  assert.ok(patch);
+  assert.equal(patch.phase, null);
+  assert.ok(Object.prototype.hasOwnProperty.call(patch, 'phase'));
+});
+
+// ---- v1.26 code-review fix (F3): every non-percent, non-Destination branch --
+// that reaches a natural "new item" boundary also clears a stale phase -----
+
+test('parseProgressLine: F3 -- a postprocess phase is cleared by a subsequent "already downloaded" line (multi-item spawn boundary)', () => {
+  const mergePatch = parseProgressLine('[Merger] Merging formats into "/downloads/x/video.mp4"');
+  assert.equal(mergePatch.phase, 'merging');
+
+  const nextItemPatch = parseProgressLine('[download] Other_Video_Title [dQw4w9WgXcQ].mp4 has already been downloaded');
+  assert.ok(nextItemPatch);
+  assert.equal(nextItemPatch.percent, 100);
+  assert.equal(nextItemPatch.phase, null, 'F3: item 2\'s "already downloaded" line must clear item 1\'s stale postprocess phase');
+  assert.ok(Object.prototype.hasOwnProperty.call(nextItemPatch, 'phase'), 'phase must be an explicit null key, not omitted');
+});
+
+test('parseProgressLine: F3 -- a postprocess phase is cleared by "Downloading item 2 of 2" (the natural new-item boundary)', () => {
+  const mergePatch = parseProgressLine('[ExtractAudio] Destination: /downloads/x/audio.mp3');
+  assert.equal(mergePatch.phase, 'converting');
+
+  const nextItemPatch = parseProgressLine('[download] Downloading item 2 of 2');
+  assert.ok(nextItemPatch);
+  assert.equal(nextItemPatch.index, 2);
+  assert.equal(nextItemPatch.total, 2);
+  assert.equal(nextItemPatch.phase, null, 'F3: the "Downloading item N of M" boundary must clear a prior item\'s stale postprocess phase');
+  assert.ok(Object.prototype.hasOwnProperty.call(nextItemPatch, 'phase'), 'phase must be an explicit null key, not omitted');
+});
+
+test('parseProgressLine: F3 -- a postprocess phase is cleared by a "[youtube] <id>: Downloading ..." line, for consistency', () => {
+  const mergePatch = parseProgressLine('[Merger] Merging formats into "/downloads/x/video.mp4"');
+  assert.equal(mergePatch.phase, 'merging');
+
+  const nextItemPatch = parseProgressLine('[youtube] dQw4w9WgXcQ: Downloading webpage');
+  assert.ok(nextItemPatch);
+  assert.equal(nextItemPatch.videoId, 'dQw4w9WgXcQ');
+  assert.equal(nextItemPatch.phase, null);
+  assert.ok(Object.prototype.hasOwnProperty.call(nextItemPatch, 'phase'));
+});
+
+// ---- v1.26 code-review fix (F6): DESTINATION_RE anchored to line start ----
+
+test('parseProgressLine: F6 -- a hostile title containing "[download] Destination:" mid-line no longer spuriously matches the Destination branch', () => {
+  // Pre-fix (unanchored DESTINATION_RE), this line's EMBEDDED
+  // "[download] Destination:" substring would have won the match, resetting
+  // percent to 0 with a garbage title -- even though the line is actually a
+  // real, whole-line "already downloaded" print. Anchoring to the start of
+  // the (already-trimmed) line closes this off: the line does not literally
+  // START with "[download] Destination:", so it now correctly falls through
+  // to the ALREADY_DOWNLOADED_RE branch instead.
+  const hostile = '[download] Weird [download] Destination: /tmp/x.mp4 has already been downloaded';
+  const patch = parseProgressLine(hostile);
+  assert.ok(patch);
+  assert.equal(patch.state, 'downloading');
+  assert.equal(patch.percent, 100, 'F6: must take the already-downloaded branch (percent 100), not the spurious Destination branch (percent 0)');
+});
+
+test('parseProgressLine: a real Destination line (starts the line, as yt-dlp always prints it) still matches normally', () => {
+  const patch = parseProgressLine('[download] Destination: /downloads/x/Real_Video [dQw4w9WgXcQ].mp4');
+  assert.ok(patch);
+  assert.equal(patch.percent, 0);
+  assert.equal(patch.title, 'Real Video');
 });
 
 test('parseProgressLine: an empty or whitespace-only line returns null', () => {

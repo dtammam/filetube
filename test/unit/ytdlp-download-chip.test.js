@@ -32,6 +32,14 @@ const {
   injectDownloadStatusChip,
   buildDownloadChipFailureLines,
   downloadChipItemShowsPercent,
+  DL_CHIP_POLL_FAST_MS,
+  snapshotHasActiveDownload,
+  // v1.26 code-review fix (F2): the panel diff-update helpers, exercised
+  // below against a purpose-built fake DOM (see that section's own header
+  // comment).
+  createDownloadChipItemRow,
+  updateDownloadChipItemRow,
+  updateDownloadChipPanel,
 } = require('../../public/js/common.js');
 
 // ---- buildOneShotRetryBody --------------------------------------------------
@@ -165,6 +173,38 @@ test('buildDownloadChipItem returns null for a missing id or a non-object entry'
   assert.equal(buildDownloadChipItem('oneshot', '', { state: 'error' }), null);
   assert.equal(buildDownloadChipItem('oneshot', 'job1', null), null);
   assert.equal(buildDownloadChipItem('oneshot', 'job1', 'not-an-object'), null);
+});
+
+// ---- v1.26 "real progress": phase + indeterminate --------------------------
+
+test('buildDownloadChipItem carries a recognized "merging"/"converting" phase through unchanged, and marks the item indeterminate', () => {
+  const merging = buildDownloadChipItem('oneshot', 'j1', { state: 'downloading', phase: 'merging', percent: 100 });
+  assert.equal(merging.phase, 'merging');
+  assert.equal(merging.indeterminate, true);
+
+  const converting = buildDownloadChipItem('oneshot', 'j2', { state: 'downloading', phase: 'converting', percent: 100 });
+  assert.equal(converting.phase, 'converting');
+  assert.equal(converting.indeterminate, true);
+});
+
+test('buildDownloadChipItem: an unrecognized phase value is normalized to null (never trusted verbatim)', () => {
+  const item = buildDownloadChipItem('oneshot', 'j', { state: 'downloading', phase: 'some-future-phase', percent: 10 });
+  assert.equal(item.phase, null);
+});
+
+test('buildDownloadChipItem: downloading with no phase and no real percent yet is indeterminate', () => {
+  assert.equal(buildDownloadChipItem('oneshot', 'j', { state: 'downloading' }).indeterminate, true);
+  assert.equal(buildDownloadChipItem('oneshot', 'j', { state: 'downloading', percent: 0 }).indeterminate, true);
+});
+
+test('buildDownloadChipItem: downloading with a real percent and no phase is NOT indeterminate', () => {
+  assert.equal(buildDownloadChipItem('oneshot', 'j', { state: 'downloading', percent: 40 }).indeterminate, false);
+});
+
+test('buildDownloadChipItem: a non-downloading state is never indeterminate (there is no bar motion to animate)', () => {
+  assert.equal(buildDownloadChipItem('oneshot', 'j', { state: 'queued' }).indeterminate, false);
+  assert.equal(buildDownloadChipItem('oneshot', 'j', { state: 'error' }).indeterminate, false);
+  assert.equal(buildDownloadChipItem('oneshot', 'j', { state: 'done' }).indeterminate, false);
 });
 
 // ---- downloadChipItemShowsPercent: no fake "0%" on a merely-queued row ----
@@ -455,6 +495,91 @@ test('nextDownloadChipPollDelay falls back to the base delay for an invalid prev
   assert.equal(nextDownloadChipPollDelay(-5, false), 10000);
 });
 
+// v1.26 "real progress": adaptive fast poll while a download is active.
+
+test('nextDownloadChipPollDelay: success + isActive resets to the fast ~700ms cadence', () => {
+  assert.equal(nextDownloadChipPollDelay(20000, true, true), 700);
+  assert.equal(DL_CHIP_POLL_FAST_MS, 700);
+});
+
+test('nextDownloadChipPollDelay: success + no isActive (or isActive omitted) keeps the pre-existing base-cadence behavior', () => {
+  assert.equal(nextDownloadChipPollDelay(20000, true, false), 5000);
+  assert.equal(nextDownloadChipPollDelay(20000, true), 5000, 'omitting isActive must behave exactly like the pre-v1.26 two-arg call');
+});
+
+test('nextDownloadChipPollDelay: a FAILURE still backs off exactly as before, regardless of isActive', () => {
+  assert.equal(nextDownloadChipPollDelay(5000, false, true), 10000);
+  assert.equal(nextDownloadChipPollDelay(30000, false, true), 30000);
+});
+
+// ---- v1.26 code-review fix (F5): backoff floors at the BASE cadence, ------
+// never the (possibly much faster) previous delay ---------------------------
+
+test('nextDownloadChipPollDelay: F5 -- a failure right after a fast (~700ms) success backs off from the BASE cadence, not from 700ms', () => {
+  // Pre-fix, this doubled the raw 700ms fast-cadence value to 1400ms -- a
+  // FASTER retry than the backoff's own original 10s first-retry ever was.
+  assert.equal(
+    nextDownloadChipPollDelay(DL_CHIP_POLL_FAST_MS, false),
+    10000,
+    'a failure must never retry faster than doubling the BASE cadence, even if the previous delay was the fast 700ms tick',
+  );
+});
+
+// ---- snapshotHasActiveDownload ----------------------------------------------
+
+test('snapshotHasActiveDownload: true when any subscription OR one-shot entry is genuinely and RECENTLY "downloading"', () => {
+  const nowMs = Date.UTC(2026, 6, 10, 12, 0, 0);
+  const fresh = new Date(nowMs - 1000).toISOString();
+  assert.equal(snapshotHasActiveDownload({
+    subscriptions: { sub1: { state: 'downloading', updatedAt: fresh } },
+    oneShots: {},
+  }, nowMs), true);
+  assert.equal(snapshotHasActiveDownload({
+    subscriptions: {},
+    oneShots: { job1: { state: 'downloading', updatedAt: fresh } },
+  }, nowMs), true);
+});
+
+test('snapshotHasActiveDownload: false when nothing is downloading (queued/listing/error/done churn only)', () => {
+  const nowMs = Date.UTC(2026, 6, 10, 12, 0, 0);
+  const fresh = new Date(nowMs - 1000).toISOString();
+  assert.equal(snapshotHasActiveDownload({
+    subscriptions: { sub1: { state: 'queued', updatedAt: fresh }, sub2: { state: 'listing', updatedAt: fresh } },
+    oneShots: { job1: { state: 'error', updatedAt: fresh }, job2: { state: 'done', updatedAt: fresh } },
+  }, nowMs), false);
+});
+
+// ---- v1.26 code-review fix (F4): staleness gate ----------------------------
+
+test('snapshotHasActiveDownload: F4 -- a "downloading" entry with a STALE updatedAt (a wedged/wedged-forever download) is NOT active', () => {
+  const nowMs = Date.UTC(2026, 6, 10, 12, 0, 0);
+  const stale = new Date(nowMs - 20000).toISOString(); // 20s old, well past the 10s cutoff
+  assert.equal(snapshotHasActiveDownload({
+    subscriptions: { sub1: { state: 'downloading', updatedAt: stale } },
+    oneShots: {},
+  }, nowMs), false);
+});
+
+test('snapshotHasActiveDownload: F4 -- a "downloading" entry with a MISSING/unparseable updatedAt is NOT active (fails closed, never throws)', () => {
+  const nowMs = Date.UTC(2026, 6, 10, 12, 0, 0);
+  assert.equal(snapshotHasActiveDownload({
+    subscriptions: { sub1: { state: 'downloading' } }, // no updatedAt at all
+    oneShots: {},
+  }, nowMs), false);
+  assert.equal(snapshotHasActiveDownload({
+    subscriptions: { sub1: { state: 'downloading', updatedAt: 'not-a-real-date' } },
+    oneShots: {},
+  }, nowMs), false);
+});
+
+test('snapshotHasActiveDownload: false and never throws for an empty/malformed/absent snapshot', () => {
+  assert.equal(snapshotHasActiveDownload({ subscriptions: {}, oneShots: {} }), false);
+  assert.doesNotThrow(() => snapshotHasActiveDownload(null));
+  assert.equal(snapshotHasActiveDownload(null), false);
+  assert.equal(snapshotHasActiveDownload(undefined), false);
+  assert.equal(snapshotHasActiveDownload({}), false);
+});
+
 // ---- v1.21 FIX 3: injectDownloadStatusChip's synchronous double-inject guard
 
 // The actual chip DOM node is only created inside the `fetch(...).then(...)`
@@ -527,5 +652,217 @@ test('injectDownloadStatusChip: a second synchronous call before the first fetch
     global.document = originalDocument;
     global.fetch = originalFetch;
   }
+});
+
+// ---- v1.26 code-review fix (F2): panel diff-update helpers -----------------
+//
+// A purpose-built, minimal fake DOM (mirrors the FakeElement patterns
+// already established in ytdlp-oneoff-modal.test.js/oneoff-modal-teardown.
+// test.js) sufficient to prove `updateDownloadChipPanel` reuses row DOM
+// nodes across ticks instead of rebuilding them -- the exact defect class
+// F2 fixes (the fill's width transition never firing, the barber-pole
+// animation restarting, Cancel/Retry/Dismiss buttons losing a bound tap).
+
+class FakeChipElement {
+  constructor(tagName) {
+    this.tagName = String(tagName).toUpperCase();
+    this.children = [];
+    this.parentElement = null;
+    this.className = '';
+    this._textContent = '';
+    this._listeners = {};
+    this.style = {};
+    this.hidden = false;
+    this._classes = new Set();
+    this.classList = {
+      add: (cls) => this._classes.add(cls),
+      remove: (cls) => this._classes.delete(cls),
+      contains: (cls) => this._classes.has(cls),
+      toggle: (cls, force) => {
+        const on = force !== undefined ? Boolean(force) : !this._classes.has(cls);
+        if (on) this._classes.add(cls); else this._classes.delete(cls);
+        return on;
+      },
+    };
+  }
+
+  appendChild(child) {
+    // Real-DOM semantics: appending an ALREADY-present child MOVES it (no
+    // duplicate, no new node) -- this is what lets `updateDownloadChipPanel`
+    // reorder rows via a plain `appendChild` without ever recreating them.
+    if (child.parentElement === this) {
+      const idx = this.children.indexOf(child);
+      if (idx >= 0) this.children.splice(idx, 1);
+    } else if (child.parentElement) {
+      child.parentElement.removeChild(child);
+    }
+    child.parentElement = this;
+    this.children.push(child);
+    return child;
+  }
+
+  removeChild(child) {
+    const idx = this.children.indexOf(child);
+    if (idx >= 0) this.children.splice(idx, 1);
+    child.parentElement = null;
+    return child;
+  }
+
+  get firstChild() {
+    return this.children.length > 0 ? this.children[0] : null;
+  }
+
+  setAttribute(name, value) {
+    this[name] = value;
+  }
+
+  addEventListener(type, handler) {
+    (this._listeners[type] = this._listeners[type] || []).push(handler);
+  }
+
+  fire(type, evt) {
+    const event = evt || { target: this };
+    (this._listeners[type] || []).forEach((fn) => fn(event));
+  }
+
+  click() {
+    this.fire('click', { target: this });
+  }
+
+  get textContent() {
+    return this._textContent;
+  }
+
+  set textContent(value) {
+    this._textContent = value;
+    this.children = [];
+  }
+}
+
+const fakeChipDoc = { createElement: (tag) => new FakeChipElement(tag) };
+
+function noopHandlers() {
+  return { onCancel: () => {}, onRetry: () => {}, onDismiss: () => {} };
+}
+
+test('createDownloadChipItemRow: builds a row with every optional section present but hidden by default', () => {
+  const row = createDownloadChipItemRow(fakeChipDoc, noopHandlers());
+  assert.equal(row.els.pctEl.hidden, true);
+  assert.equal(row.els.track.hidden, true);
+  assert.equal(row.els.cancelActions.hidden, true);
+  assert.equal(row.els.failuresWrap.hidden, true);
+  assert.equal(row.els.actions.hidden, true);
+});
+
+test('updateDownloadChipItemRow: populates name/status/percent/fill width on a freshly built row', () => {
+  const row = createDownloadChipItemRow(fakeChipDoc, noopHandlers());
+  const item = {
+    key: 'oneshot:job1', id: 'job1', kind: 'oneshot', name: 'My Video',
+    percent: 42, state: 'downloading', phase: null, indeterminate: false,
+    statusText: 'My Video — 42%',
+  };
+  updateDownloadChipItemRow(fakeChipDoc, row, item, {});
+  assert.equal(row.els.nameEl.textContent, 'My Video');
+  assert.equal(row.els.statusEl.textContent, 'My Video — 42%');
+  assert.equal(row.els.pctEl.hidden, false);
+  assert.equal(row.els.pctEl.textContent, '42%');
+  assert.equal(row.els.track.hidden, false);
+  assert.equal(row.els.fill.style.width, '42%');
+  assert.equal(row.els.fill.classList.contains('indeterminate'), false);
+});
+
+test('updateDownloadChipPanel: the SAME key across two renders reuses the SAME row DOM node (not a fresh one)', () => {
+  const panel = new FakeChipElement('div');
+  const rowsByKey = new Map();
+  const snapshot1 = { subscriptions: {}, oneShots: { job1: { state: 'downloading', percent: 10, title: 'Vid' } } };
+  const state1 = reduceDownloadChipState(snapshot1, new Set());
+  updateDownloadChipPanel(fakeChipDoc, panel, rowsByKey, state1, snapshot1, noopHandlers());
+  assert.equal(panel.children.length, 1);
+  const firstNode = panel.children[0];
+
+  const snapshot2 = { subscriptions: {}, oneShots: { job1: { state: 'downloading', percent: 55, title: 'Vid' } } };
+  const state2 = reduceDownloadChipState(snapshot2, new Set());
+  updateDownloadChipPanel(fakeChipDoc, panel, rowsByKey, state2, snapshot2, noopHandlers());
+
+  assert.equal(panel.children.length, 1, 'still exactly one row -- no stray duplicate/rebuilt node');
+  assert.strictEqual(panel.children[0], firstNode, 'F2: the SAME key must reuse the SAME row node across renders, not a freshly built one');
+});
+
+test('updateDownloadChipPanel: the reused node\'s fill width is updated in place on the second render', () => {
+  const panel = new FakeChipElement('div');
+  const rowsByKey = new Map();
+  const snapshot1 = { subscriptions: {}, oneShots: { job1: { state: 'downloading', percent: 10, title: 'Vid' } } };
+  updateDownloadChipPanel(fakeChipDoc, panel, rowsByKey, reduceDownloadChipState(snapshot1, new Set()), snapshot1, noopHandlers());
+  const row = panel.children[0];
+  assert.equal(row.els.fill.style.width, '10%');
+
+  const snapshot2 = { subscriptions: {}, oneShots: { job1: { state: 'downloading', percent: 55, title: 'Vid' } } };
+  updateDownloadChipPanel(fakeChipDoc, panel, rowsByKey, reduceDownloadChipState(snapshot2, new Set()), snapshot2, noopHandlers());
+
+  assert.strictEqual(panel.children[0], row, 'must still be the same node');
+  assert.equal(row.els.fill.style.width, '55%', 'F2: the fill width must be updated on the REUSED node, not lost by a rebuild');
+});
+
+test('updateDownloadChipPanel: an item that disappears between renders (dismissed/settled) has its row REMOVED', () => {
+  const panel = new FakeChipElement('div');
+  const rowsByKey = new Map();
+  const snapshot1 = {
+    subscriptions: {},
+    oneShots: {
+      job1: { state: 'downloading', percent: 10, title: 'Vid1' },
+      job2: { state: 'error', title: 'Vid2', error: 'boom' },
+    },
+  };
+  updateDownloadChipPanel(fakeChipDoc, panel, rowsByKey, reduceDownloadChipState(snapshot1, new Set()), snapshot1, noopHandlers());
+  assert.equal(panel.children.length, 2);
+  assert.equal(rowsByKey.size, 2);
+
+  // job2 dismissed (its key is now excluded from state.items, mirroring how
+  // reduceDownloadChipState drops a dismissed sticky item).
+  const dismissed = new Set(['oneshot:job2']);
+  const state2 = reduceDownloadChipState(snapshot1, dismissed);
+  updateDownloadChipPanel(fakeChipDoc, panel, rowsByKey, state2, snapshot1, noopHandlers());
+
+  assert.equal(panel.children.length, 1, 'F2: the dismissed item\'s row must be removed from the panel');
+  assert.equal(rowsByKey.size, 1, 'F2: the dismissed item\'s row must be dropped from the row cache too (no leak)');
+  assert.equal(rowsByKey.has('oneshot:job2'), false);
+  assert.equal(rowsByKey.has('oneshot:job1'), true);
+});
+
+test('updateDownloadChipPanel: Cancel/Retry/Dismiss buttons are the SAME node across renders (never re-created/re-bound)', () => {
+  const panel = new FakeChipElement('div');
+  const rowsByKey = new Map();
+  const snapshot1 = { subscriptions: {}, oneShots: { job1: { state: 'error', title: 'Vid', error: 'boom' } } };
+  updateDownloadChipPanel(fakeChipDoc, panel, rowsByKey, reduceDownloadChipState(snapshot1, new Set()), snapshot1, noopHandlers());
+  const row = panel.children[0];
+  const retryBtn = row.els.retryBtn;
+  const dismissBtn = row.els.dismissBtn;
+  assert.equal(retryBtn.hidden, false);
+  assert.equal(dismissBtn.hidden, false);
+
+  const snapshot2 = { subscriptions: {}, oneShots: { job1: { state: 'error', title: 'Vid', error: 'still broken' } } };
+  updateDownloadChipPanel(fakeChipDoc, panel, rowsByKey, reduceDownloadChipState(snapshot2, new Set()), snapshot2, noopHandlers());
+
+  assert.strictEqual(row.els.retryBtn, retryBtn, 'F2: Retry must be the SAME button node, never destroyed/recreated under a poll tick');
+  assert.strictEqual(row.els.dismissBtn, dismissBtn, 'F2: Dismiss must be the SAME button node, never destroyed/recreated under a poll tick');
+});
+
+test('updateDownloadChipPanel: clicking Retry invokes the SAME handler with the current item/rawEntry after a re-render (listener still bound)', () => {
+  const panel = new FakeChipElement('div');
+  const rowsByKey = new Map();
+  let retryCalls = 0;
+  let lastRawEntry = null;
+  const handlers = { onCancel: () => {}, onRetry: (item, rawEntry) => { retryCalls += 1; lastRawEntry = rawEntry; }, onDismiss: () => {} };
+
+  const snapshot1 = { subscriptions: {}, oneShots: { job1: { state: 'error', title: 'Vid', error: 'first error' } } };
+  updateDownloadChipPanel(fakeChipDoc, panel, rowsByKey, reduceDownloadChipState(snapshot1, new Set()), snapshot1, handlers);
+
+  const snapshot2 = { subscriptions: {}, oneShots: { job1: { state: 'error', title: 'Vid', error: 'second error' } } };
+  updateDownloadChipPanel(fakeChipDoc, panel, rowsByKey, reduceDownloadChipState(snapshot2, new Set()), snapshot2, handlers);
+
+  const row = panel.children[0];
+  row.els.retryBtn.click();
+  assert.equal(retryCalls, 1);
+  assert.equal(lastRawEntry.error, 'second error', 'the still-bound listener must act on the LATEST data, not a stale first-render snapshot');
 });
 

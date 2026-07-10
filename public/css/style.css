@@ -2419,6 +2419,20 @@ a.sub-row-channel-link:focus-visible {
   min-height: 16px;
 }
 
+/* v1.26 "real progress": the modal's live progress bar, reusing the corner
+   chip's own `.dl-status-chip-progress`/`-fill` track+fill classes (see
+   style.css's `.dl-status-chip-progress*` rules further below for the
+   shared track/fill/indeterminate styling, incl. that rule's own
+   `margin-top` -- kept in ONE place rather than duplicated). This class only
+   adds the BOTTOM spacing needed to sit clear of the Download button below
+   it. `[hidden]` (built hidden by default, toggled by `buildOneOffModal`'s
+   `setStatus`) needs no override here -- unlike `.oneoff-modal-backdrop`,
+   this track is never `display: flex`, so the native `[hidden] { display:
+   none }` UA rule already applies. */
+.oneoff-modal-progress {
+  margin-bottom: 10px;
+}
+
 /* v1.15.1 FIX 5: a clear, full-width primary call-to-action reads better in
    this narrow modal than the small inline-flex `.btn` default used
    everywhere else (header/setup buttons, which sit alongside other controls
@@ -4357,7 +4371,14 @@ a.sub-row-channel-link:focus-visible {
 
 /* Segmented/striped fill (docs/ui-research-2026-07.md §5's "segmented/
    striped progress bar") -- a repeating diagonal-stripe gradient over the
-   solid era-red fill, never a flat smooth bar alone. */
+   solid era-red fill, never a flat smooth bar alone.
+
+   v1.26 "real progress": `transition: width` is what turns a poll-tick's
+   discrete width JUMP (e.g. 40% -> 47%) into a short, visible SLIDE rather
+   than an instantaneous, easy-to-miss snap -- this is a big part of what
+   makes the now much-faster (~700ms while active, see
+   `nextDownloadChipPollDelay`/`computeOneOffPollDelayMs`) poll cadence
+   actually READ as continuous motion instead of a series of twitches. */
 .dl-status-chip-progress-fill {
   height: 100%;
   min-width: 2px;
@@ -4369,10 +4390,44 @@ a.sub-row-channel-link:focus-visible {
     transparent 4px,
     transparent 8px
   );
+  transition: width 300ms linear;
 }
 
 .dl-status-chip-progress-fill-error {
   background-color: var(--yt-red-dark);
+}
+
+/* v1.26 "real progress": the INDETERMINATE state -- an active download with
+   no genuine percent to show right now (still `Preparing…`/`queued`, or a
+   postprocess `phase` like `Merging…`/`Converting…`, see
+   `computeOneOffProgressBar`/`buildDownloadChipItem`'s `indeterminate`
+   flag). The fill is set to full width by the caller; this animates the
+   SAME striped `background-image` already declared above by sliding its
+   `background-position` along the stripe's own 45deg repeat, so the bar
+   visibly moves instead of sitting at a flat, frozen 100% -- an honest "work
+   is happening, there's just no percent to report" signal rather than a
+   dead bar. */
+.dl-status-chip-progress-fill.indeterminate {
+  animation: dl-progress-barberpole 1s linear infinite;
+}
+
+@keyframes dl-progress-barberpole {
+  from { background-position: 0 0; }
+  to { background-position: 32px 0; }
+}
+
+/* Respect the user's OS-level reduced-motion preference: the width slide and
+   the indeterminate barber-pole stripe are both purely decorative motion --
+   turning them off never hides or delays any information (the % text and
+   phase label update exactly the same either way). */
+@media (prefers-reduced-motion: reduce) {
+  .dl-status-chip-progress-fill {
+    transition: none;
+  }
+
+  .dl-status-chip-progress-fill.indeterminate {
+    animation: none;
+  }
 }
 
 .dl-status-chip-item-status {

@@ -1454,6 +1454,89 @@ const ONEOFF_DEFAULT_FILETYPE = { video: 'mp4', audio: 'mp3' };
 // STATUS_POLL_BASE_MS -- consistent cadence across both one-off surfaces.
 const ONEOFF_STATUS_POLL_MS = 2500;
 
+// v1.26 code-review fix (F5): failure backoff cap, mirroring
+// `DL_CHIP_POLL_MAX_MS`/`STATUS_POLL_MAX_MS` (subscriptions.js) exactly --
+// see `nextOneOffPollDelayMs` below.
+const ONEOFF_STATUS_POLL_MAX_MS = 30000;
+
+// v1.26 "real progress": the base ~2.5s cadence badly under-samples a short
+// video's actual byte-transfer window (often well under 2.5s), so the
+// percent ramp that genuinely exists server-side is never observed --
+// motion the user should see reads as "frozen" purely because of how
+// infrequently it's polled. While a job is ACTIVELY downloading, poll much
+// faster instead; every OTHER state (queued/listing/terminal/no job) keeps
+// the base cadence -- this is not a blanket faster poll, only a
+// short-lived burst while there's real motion worth showing.
+const ONEOFF_STATUS_POLL_FAST_MS = 700;
+
+// v1.26 code-review fix (F4): a wedged/stuck yt-dlp child can hold an
+// activity entry at `state: 'downloading'` for the ENTIRE
+// `downloadTimeoutMinutes` window (180 minutes by default) with no further
+// progress output at all -- polling every ~700ms for that whole time serves
+// no purpose (there is nothing new to show) and needlessly hammers the
+// server. An entry only counts as "genuinely active" (worth the fast
+// cadence) when it is BOTH `state: 'downloading'` AND its `updatedAt`
+// timestamp is recent; a missing/unparseable `updatedAt` is treated as NOT
+// fresh (falls back to the base cadence) rather than crashing or defaulting
+// to "active." Shared by `computeOneOffPollDelayMs` below and (duplicated,
+// same value, see that function's own comment) `snapshotHasActiveDownload`
+// further down this file.
+const ACTIVE_ENTRY_STALE_MS = 10000;
+
+/**
+ * Pure: is `entry` a genuinely, RECENTLY active `'downloading'` entry --
+ * never throws on a malformed/absent entry or `updatedAt`. `nowMs` is
+ * injectable (a raw ms number) for deterministic tests; omitted/non-finite
+ * falls back to the real clock, same posture as `activity.js`'s
+ * `resolveNowMs`. See `ACTIVE_ENTRY_STALE_MS`'s comment for the full
+ * staleness rationale (F4).
+ */
+function isFreshlyActiveEntry(entry, nowMs) {
+  if (!entry || typeof entry !== 'object' || entry.state !== 'downloading') return false;
+  if (typeof entry.updatedAt !== 'string') return false;
+  const updatedMs = Date.parse(entry.updatedAt);
+  if (!Number.isFinite(updatedMs)) return false;
+  const now = typeof nowMs === 'number' && Number.isFinite(nowMs) ? nowMs : Date.now();
+  return (now - updatedMs) < ACTIVE_ENTRY_STALE_MS;
+}
+
+/**
+ * Pure poll-delay reducer for the one-off modal's live-status poll:
+ * `~700ms` while `entry` is FRESHLY `'downloading'` (see
+ * `isFreshlyActiveEntry`/F4 above -- a real job in flight, where visible
+ * motion actually matters AND is still actually happening), the base
+ * `ONEOFF_STATUS_POLL_MS` cadence otherwise (no entry yet, merely
+ * `queued`/`listing`, a terminal state, or a `'downloading'` entry that has
+ * gone stale/wedged). No DOM/fetch involved -- directly unit-testable, same
+ * posture as `nextDownloadChipPollDelay`/`nextPollDelay` (subscriptions.js)
+ * elsewhere in this codebase, which this deliberately mirrors in spirit.
+ * `nowMs` is optional/injectable, forwarded straight to
+ * `isFreshlyActiveEntry`.
+ */
+function computeOneOffPollDelayMs(entry, nowMs) {
+  return isFreshlyActiveEntry(entry, nowMs) ? ONEOFF_STATUS_POLL_FAST_MS : ONEOFF_STATUS_POLL_MS;
+}
+
+/**
+ * v1.26 code-review fix (F5): the modal poller's full success/failure
+ * reducer -- `success` delegates to `computeOneOffPollDelayMs` (fast/base,
+ * staleness-aware); failure DOUBLES the delay (capped at
+ * `ONEOFF_STATUS_POLL_MAX_MS`), computed from at least the BASE cadence, not
+ * `prevDelayMs` verbatim -- otherwise a failure landing right after a fast
+ * (~700ms) success tick would retry at ~1400ms, faster than this backoff's
+ * own pre-v1.26 first retry ever was (`ONEOFF_STATUS_POLL_MS * 2`). Mirrors
+ * `nextDownloadChipPollDelay`/`nextPollDelay` (subscriptions.js) exactly,
+ * closing the gap the doc comment above `computeOneOffPollDelayMs` used to
+ * describe as "no failure-backoff of its own to preserve" -- the modal poller
+ * now backs off on repeated failures exactly like the other two pollers.
+ */
+function nextOneOffPollDelayMs(prevDelayMs, success, entry, nowMs) {
+  if (success) return computeOneOffPollDelayMs(entry, nowMs);
+  const prev = typeof prevDelayMs === 'number' && prevDelayMs > 0 ? prevDelayMs : ONEOFF_STATUS_POLL_MS;
+  const base = Math.max(prev, ONEOFF_STATUS_POLL_MS);
+  return Math.min(base * 2, ONEOFF_STATUS_POLL_MAX_MS);
+}
+
 // Pure decision, mirroring `shouldInjectSubscriptionsNav` exactly: inject iff
 // the health probe resolved with a genuine 2xx. `node:test`-covered directly
 // (see test/unit/ytdlp-oneoff-modal.test.js) -- the DOM-mutation half below
@@ -1505,7 +1588,9 @@ function buildOneOffDownloadBody(url, format, quality, filetype, folder) {
  * FR-E-style live-status formatter for the modal's status line -- mirrors
  * `lib/ytdlp/client/subscriptions.js`'s `formatLiveStatusText` exactly
  * (same `LiveEntry` shape from `GET /api/subscriptions/status`'s `oneShots`
- * namespace: `{state, title, index, total, percent, error}`). Pure string
+ * namespace: `{state, title, index, total, percent, phase, error}` -- `phase`
+ * is v1.26's addition, see lib/ytdlp/progress.js's MERGER_RE/
+ * EXTRACT_AUDIO_RE/VIDEO_CONVERT_RE/FIXUP_RE). Pure string
  * formatting only -- no DOM -- so it cannot itself introduce an XSS path;
  * callers still render the returned string via `textContent` only, never
  * `innerHTML` (see `buildOneOffModal` below). `entry.error`/`entry.title`
@@ -1525,6 +1610,19 @@ function formatOneOffStatusText(entry) {
     const total = typeof entry.total === 'number' && entry.total > 0 ? entry.total : null;
     const position = index !== null && total !== null ? (index + ' of ' + total) : '';
     const hasRealPercent = typeof entry.percent === 'number' && Number.isFinite(entry.percent) && entry.percent > 0;
+
+    // v1.26 "real progress": once yt-dlp's ffmpeg-backed postprocessors take
+    // over (muxing/extracting/converting -- see lib/ytdlp/progress.js's
+    // MERGER_RE/EXTRACT_AUDIO_RE/VIDEO_CONVERT_RE/FIXUP_RE), `entry.phase` is
+    // set and is AUTHORITATIVE over `percent` -- percent is necessarily
+    // stale/sticky during this window (there is no percent to report while
+    // ffmpeg runs), so rendering it here ("— 100%") would read as "done"
+    // when real work is still happening. Checked before the percent branch
+    // below so a phase always wins over a stale number.
+    if (entry.phase === 'merging' || entry.phase === 'converting') {
+      const label = entry.phase === 'merging' ? 'Merging…' : 'Converting…';
+      return [label, position].filter((part) => part !== '').join(' — ');
+    }
 
     // BUG 1 fix: yt-dlp's extraction/nsig/format-negotiation and its
     // ffmpeg-merge/postprocess phases emit NO percent line at all (see
@@ -1554,6 +1652,31 @@ function formatOneOffStatusText(entry) {
   // `lib/ytdlp/index.js`'s cancel route.
   if (state === 'cancelled') return 'Cancelled';
   return null; // 'idle' (or an unrecognized future state) -- no live override
+}
+
+/**
+ * v1.26 "real progress" -- pure reducer (no DOM) deciding the one-off modal's
+ * progress bar shape from a `LiveEntry`: `visible` (any in-flight job --
+ * `queued`/`listing`/`downloading` -- gets a bar; a terminal/idle/absent
+ * entry hides it), `indeterminate` (no genuine percent to show right now --
+ * either no real transfer percent has arrived yet, or a postprocess `phase`
+ * is set and therefore authoritative over a stale percent -- see
+ * `formatOneOffStatusText`'s own phase-first check above), and `percent`
+ * (the same 0-100 rounded/clamped value `formatOneOffStatusText` computes,
+ * `0` when indeterminate). Mirrors `downloadChipItemShowsPercent`'s "only a
+ * genuine in-flight state gets a bar" posture. Exported/`node:test`-covered
+ * directly, same posture as every other pure formatter in this file.
+ */
+function computeOneOffProgressBar(entry) {
+  if (!entry || typeof entry !== 'object') return { visible: false, indeterminate: false, percent: 0 };
+  const state = entry.state;
+  if (state !== 'queued' && state !== 'listing' && state !== 'downloading') {
+    return { visible: false, indeterminate: false, percent: 0 };
+  }
+  const hasPhase = entry.phase === 'merging' || entry.phase === 'converting';
+  const hasRealPercent = typeof entry.percent === 'number' && Number.isFinite(entry.percent) && entry.percent > 0;
+  if (hasPhase || !hasRealPercent) return { visible: true, indeterminate: true, percent: 0 };
+  return { visible: true, indeterminate: false, percent: Math.max(0, Math.min(100, Math.round(entry.percent))) };
 }
 
 // Builds a `<select>` populated from `options` (an array of `{value, label}`
@@ -1700,6 +1823,20 @@ function buildOneOffModal(doc, handlers) {
   statusEl.setAttribute('aria-live', 'polite');
   modal.appendChild(statusEl);
 
+  // v1.26 "real progress": a real, moving progress bar under the status
+  // text -- reuses the corner chip's own track/fill classes
+  // (`dl-status-chip-progress`/`-fill`, see style.css) rather than
+  // duplicating that styling, plus an `oneoff-modal-progress` class of its
+  // own for modal-specific spacing. Hidden by default (no job yet); driven
+  // by `setStatus` below via `computeOneOffProgressBar`.
+  const progressTrack = d.createElement('div');
+  progressTrack.className = 'dl-status-chip-progress oneoff-modal-progress';
+  progressTrack.hidden = true;
+  const progressFill = d.createElement('div');
+  progressFill.className = 'dl-status-chip-progress-fill';
+  progressTrack.appendChild(progressFill);
+  modal.appendChild(progressTrack);
+
   const downloadBtn = d.createElement('button');
   downloadBtn.type = 'button';
   downloadBtn.className = 'btn btn-primary';
@@ -1717,12 +1854,22 @@ function buildOneOffModal(doc, handlers) {
 
   // Renders a live-status entry (or clears the line when `null`/no entry) --
   // `textContent` only, never `innerHTML`, no matter what `entry.title`/
-  // `entry.error` contain.
+  // `entry.error` contain. The progress bar is driven by the SAME entry,
+  // via the pure `computeOneOffProgressBar` reducer above -- never visible
+  // for an idle/terminal/absent entry, and marked `.indeterminate` (barber-
+  // pole motion, see style.css) whenever there is no genuine percent to show
+  // right now rather than rendering a bar that visually never moves.
   function setStatus(entry) {
     statusEl.textContent = formatOneOffStatusText(entry) || '';
+    const bar = computeOneOffProgressBar(entry);
+    progressTrack.hidden = !bar.visible;
+    if (bar.visible) {
+      progressFill.style.width = (bar.indeterminate ? 100 : bar.percent) + '%';
+      progressFill.className = 'dl-status-chip-progress-fill' + (bar.indeterminate ? ' indeterminate' : '');
+    }
   }
 
-  return { backdrop, modal, urlInput, formatSelect, qualitySelect, filetypeSelect, folderInput, downloadBtn, closeBtn, statusEl, setStatus };
+  return { backdrop, modal, urlInput, formatSelect, qualitySelect, filetypeSelect, folderInput, downloadBtn, closeBtn, statusEl, progressTrack, progressFill, setStatus };
 }
 
 /**
@@ -1847,6 +1994,12 @@ function injectOneOffDownloadButtonIfEnabled() {
       let modalState = null;
       let pollTimer = null;
       let currentJobId = null;
+      // v1.26 code-review fix (F5): tracks the current adaptive delay across
+      // ticks (fast/base on success, doubling on failure) -- reset to the
+      // base cadence every time a NEW download starts (see the `onDownload`
+      // handler below), same lifecycle as the chip/subscriptions pollers'
+      // own `pollDelay`/`statusPollDelay` variables.
+      let oneOffPollDelay = ONEOFF_STATUS_POLL_MS;
 
       function stopPolling() {
         if (pollTimer) {
@@ -1857,6 +2010,16 @@ function injectOneOffDownloadButtonIfEnabled() {
 
       function pollStatusOnce() {
         if (!currentJobId || !modalState) return;
+        // v1.26 code-review fix (F4): same skip-while-hidden guard the chip
+        // (`pollOnce`) and the /subscriptions page (`pollStatusOnce` there)
+        // already have -- a backgrounded tab never spends network/CPU on a
+        // poll nobody can see, and still resumes at the SAME cadence the
+        // instant the tab becomes visible again (no fetch attempted at all,
+        // so neither success nor failure backoff is touched).
+        if (typeof document !== 'undefined' && document.hidden) {
+          pollTimer = setTimeout(pollStatusOnce, oneOffPollDelay);
+          return;
+        }
         fetch('/api/subscriptions/status')
           .then((r) => (r.ok ? r.json() : Promise.reject(new Error('status endpoint returned ' + r.status))))
           .then((snapshot) => {
@@ -1878,14 +2041,22 @@ function injectOneOffDownloadButtonIfEnabled() {
               applyOneOffTerminalAction(decideOneOffTerminalAction(entry), closeModal, triggerLibraryRescanAndRefresh);
               return;
             }
-            pollTimer = setTimeout(pollStatusOnce, ONEOFF_STATUS_POLL_MS);
+            // v1.26 "real progress": poll much faster while this job is
+            // FRESHLY, actively downloading (see `computeOneOffPollDelayMs`'s
+            // doc comment -- F4's staleness gate) -- every other non-terminal
+            // state (no entry yet, `queued`, `listing`, or a wedged/stale
+            // `'downloading'` entry) keeps the base cadence.
+            oneOffPollDelay = nextOneOffPollDelayMs(oneOffPollDelay, true, entry);
+            pollTimer = setTimeout(pollStatusOnce, oneOffPollDelay);
           })
           .catch(() => {
-            // Transient/network hiccup -- keep polling at the same cadence
-            // rather than giving up (mirrors subscriptions.js's backoff
-            // intent, kept simple here since the modal is a short-lived,
-            // actively-watched surface).
-            pollTimer = setTimeout(pollStatusOnce, ONEOFF_STATUS_POLL_MS);
+            // v1.26 code-review fix (F5): a transient/network hiccup now
+            // backs off exactly like the chip/subscriptions pollers
+            // (`nextOneOffPollDelayMs`'s failure branch -- doubling, capped at
+            // `ONEOFF_STATUS_POLL_MAX_MS`) rather than retrying forever at a
+            // flat cadence.
+            oneOffPollDelay = nextOneOffPollDelayMs(oneOffPollDelay, false);
+            pollTimer = setTimeout(pollStatusOnce, oneOffPollDelay);
           });
       }
 
@@ -1944,6 +2115,10 @@ function injectOneOffDownloadButtonIfEnabled() {
                   currentJobId = data.jobId;
                   modalState.statusEl.textContent = 'Queued…';
                   stopPolling();
+                  // v1.26 code-review fix (F5): a brand new job always starts
+                  // its poll loop at the base cadence, never carrying over a
+                  // backed-off delay from a PRIOR job's failure streak.
+                  oneOffPollDelay = ONEOFF_STATUS_POLL_MS;
                   pollStatusOnce();
                 })
                 .catch(() => {
@@ -3470,6 +3645,39 @@ function nextArmState(current, action) {
 const DL_CHIP_POLL_BASE_MS = 5000; // slower app-wide cadence than /subscriptions's own dedicated ~2.5s poll
 const DL_CHIP_POLL_MAX_MS = 30000;
 
+// v1.26 "real progress": same rationale as `ONEOFF_STATUS_POLL_FAST_MS`
+// above -- the chip's 5s base cadence (already the slowest of the three
+// pollers) under-samples an active transfer even more badly. Only used
+// while `snapshotHasActiveDownload` finds a genuinely `'downloading'` entry
+// anywhere in the latest snapshot; every other tick (idle, queued/listing
+// churn, terminal/sticky-only) keeps the base cadence and the existing
+// failure backoff untouched.
+const DL_CHIP_POLL_FAST_MS = 700;
+
+/**
+ * Pure: does this `{subscriptions, oneShots}` snapshot (the exact shape
+ * `GET /api/subscriptions/status` returns) have ANY entry -- subscription or
+ * one-shot -- genuinely and RECENTLY in the `'downloading'` state right now?
+ * Used to decide the chip's adaptive poll cadence (see
+ * `nextDownloadChipPollDelay` below) -- never throws on a malformed/absent
+ * snapshot.
+ *
+ * v1.26 code-review fix (F4): "active" now also requires a fresh `updatedAt`
+ * (`isFreshlyActiveEntry`, `ACTIVE_ENTRY_STALE_MS`) -- a wedged/stuck yt-dlp
+ * child can otherwise hold a `'downloading'` entry for the ENTIRE
+ * `downloadTimeoutMinutes` window (180 minutes by default) with no further
+ * progress output at all, which pre-fix kept this chip on the ~700ms fast
+ * cadence needlessly for hours. `nowMs` is optional/injectable (forwarded to
+ * `isFreshlyActiveEntry`) for deterministic tests.
+ */
+function snapshotHasActiveDownload(snapshot, nowMs) {
+  if (!snapshot || typeof snapshot !== 'object') return false;
+  const subs = snapshot.subscriptions && typeof snapshot.subscriptions === 'object' ? snapshot.subscriptions : {};
+  const oneShots = snapshot.oneShots && typeof snapshot.oneShots === 'object' ? snapshot.oneShots : {};
+  return Object.values(subs).some((entry) => isFreshlyActiveEntry(entry, nowMs))
+    || Object.values(oneShots).some((entry) => isFreshlyActiveEntry(entry, nowMs));
+}
+
 // v1.21 FIX 3 (post-gate hardening, adversarial -- FR-8): module-scoped,
 // SYNCHRONOUS in-flight/injected guard for `injectDownloadStatusChip`
 // below. The function's OLD guard (`document.getElementById('dl-status-chip')`)
@@ -3490,12 +3698,28 @@ let dlStatusChipInjectStarted = false;
  * Pure poll-delay reducer, same shape/intent as `lib/ytdlp/client/
  * subscriptions.js`'s `nextPollDelay` (duplicated rather than shared -- this
  * file is served to every page, that one only via the enabled-gated route):
- * `success` resets to the base ~5s cadence; failure doubles the previous
- * delay, capped at `DL_CHIP_POLL_MAX_MS`.
+ * `success` resets to the base ~5s cadence -- or, v1.26, the much faster
+ * `DL_CHIP_POLL_FAST_MS` when `isActive` (an actively-downloading entry was
+ * present in the snapshot this success came from -- see
+ * `snapshotHasActiveDownload`). `isActive` defaults to `false` so every
+ * pre-existing caller/test (`nextDownloadChipPollDelay(prev, success)`, two
+ * args) keeps its exact old behavior.
+ *
+ * v1.26 code-review fix (F5): on FAILURE, the doubling is now computed from
+ * AT LEAST the base cadence (`Math.max(prevDelayMs, DL_CHIP_POLL_BASE_MS)`),
+ * not `prevDelayMs` verbatim -- capped, as before, at `DL_CHIP_POLL_MAX_MS`.
+ * Pre-fix, a failure landing right after a fast (~700ms, `DL_CHIP_POLL_FAST_MS`)
+ * success tick would back off to only ~1400ms -- FASTER than this backoff's
+ * own original first retry ever was (`DL_CHIP_POLL_BASE_MS * 2` = 10s) --
+ * effectively defeating the backoff exactly when the server is flakiest
+ * (mid-download). The failure delay is still entirely UNCHANGED by
+ * `isActive` (a flaky/offline server backs off the same way regardless of
+ * what the last known-good snapshot showed).
  */
-function nextDownloadChipPollDelay(prevDelayMs, success) {
-  if (success) return DL_CHIP_POLL_BASE_MS;
-  const base = typeof prevDelayMs === 'number' && prevDelayMs > 0 ? prevDelayMs : DL_CHIP_POLL_BASE_MS;
+function nextDownloadChipPollDelay(prevDelayMs, success, isActive) {
+  if (success) return isActive ? DL_CHIP_POLL_FAST_MS : DL_CHIP_POLL_BASE_MS;
+  const prev = typeof prevDelayMs === 'number' && prevDelayMs > 0 ? prevDelayMs : DL_CHIP_POLL_BASE_MS;
+  const base = Math.max(prev, DL_CHIP_POLL_BASE_MS);
   return Math.min(base * 2, DL_CHIP_POLL_MAX_MS);
 }
 
@@ -3539,8 +3763,9 @@ function buildOneShotRetryBody(entry) {
  * see `lib/ytdlp/index.js`'s cancel route) is sticky like `'error'` rather
  * than auto-dismissed like `'done'`: a cancel is a deliberate user action,
  * so the chip keeps it visible (with a Dismiss control, no Retry -- see
- * `buildItemRow` below) until explicitly acknowledged, the same way a
- * failure stays visible rather than silently vanishing.
+ * `createDownloadChipItemRow`/`updateDownloadChipItemRow` below) until
+ * explicitly acknowledged, the same way a failure stays visible rather than
+ * silently vanishing.
  */
 function chipItemLifecycle(state) {
   if (state === 'done') return 'auto-dismiss';
@@ -3586,6 +3811,16 @@ function buildDownloadChipItem(kind, id, entry) {
   const name = kind === 'subscription'
     ? (subName || title || 'Subscription download')
     : (title || label || 'One-off download');
+  // v1.26 "real progress": a postprocess `phase` (see progress.js's
+  // MERGER_RE/EXTRACT_AUDIO_RE/VIDEO_CONVERT_RE/FIXUP_RE) means there is no
+  // genuine percent to show right now -- `percent` above is necessarily
+  // stale/sticky during that window. `indeterminate` is also true for the
+  // ordinary "downloading, but no real transfer percent has arrived yet"
+  // window (percent still at its initial 0) -- either way, the row's bar
+  // (see `updateDownloadChipItemRow` below) should animate rather than sit
+  // at a frozen width.
+  const phase = entry.phase === 'merging' || entry.phase === 'converting' ? entry.phase : null;
+  const indeterminate = state === 'downloading' && (phase !== null || percent <= 0);
   return {
     key: kind + ':' + id,
     id,
@@ -3593,6 +3828,8 @@ function buildDownloadChipItem(kind, id, entry) {
     name,
     percent,
     state,
+    phase,
+    indeterminate,
     statusText: formatOneOffStatusText(entry) || state,
     retryable: state === 'error',
   };
@@ -3729,7 +3966,8 @@ function reduceDownloadChipState(snapshot, dismissedKeys) {
  *   `buildDownloadChipItem` produces), this instead surfaces its channel/
  *   title + live progress inline, e.g. "Cool Channel — 3 of 12 — 47%",
  *   reusing the SAME `name`/`statusText` fields the expanded panel's row
- *   already renders (`buildItemRow`) -- no duplicate formatting logic.
+ *   already renders (`updateDownloadChipItemRow`) -- no duplicate formatting
+ *   logic.
  * - NOTHING is downloading, but a sticky `'error'`/`'cancelled'` item is
  *   present:
  *   - All `'error'` (no `'cancelled'` items at all) -- "N download(s)
@@ -3781,6 +4019,206 @@ function formatDownloadChipSummary(state) {
  */
 function shouldShowDownloadChipOnPath(pathname) {
   return typeof pathname === 'string' && pathname !== '/subscriptions';
+}
+
+/**
+ * v1.26 code-review fix (F2): builds ONE download-chip item row's DOM
+ * skeleton ONCE -- every possible sub-element (percent badge, progress bar,
+ * cancel action, failures list, retry/dismiss actions) is created up front
+ * and toggled via `.hidden` on later ticks (see `updateDownloadChipItemRow`
+ * below), instead of the panel clearing and rebuilding every row from
+ * scratch on every ~700ms-5s poll tick. That pre-fix full-rebuild had three
+ * proven consequences: the fill's `transition: width 300ms` (style.css)
+ * never fired (a fresh node every tick has no "previous width" to animate
+ * from), the barber-pole `.indeterminate` animation restarted every tick
+ * (jerky, never actually looping), and Cancel/Retry/Dismiss buttons were
+ * destroyed and recreated out from under the user's finger, silently
+ * dropping a tap landing in that narrow window.
+ *
+ * Every click handler is wired exactly ONCE, here, reading whatever the
+ * LATEST `item`/`rawEntry` is off `row.state` (a plain mutable holder
+ * `updateDownloadChipItemRow` refreshes on every subsequent call) -- this is
+ * what lets the buttons stay the SAME DOM node/listener across ticks while
+ * still acting on current data. `doc` is explicit (mirrors
+ * `buildOneOffModal(doc, ...)` elsewhere in this file) so this is directly
+ * `node:test`-callable against a fake document, no real browser needed.
+ * `handlers` is `{onCancel(jobId), onRetry(item, rawEntry), onDismiss(key)}`.
+ */
+function createDownloadChipItemRow(doc, handlers) {
+  const row = doc.createElement('div');
+  row.className = 'dl-status-chip-item';
+  // Mutable holder the static click handlers below always read fresh data
+  // from -- refreshed in place by `updateDownloadChipItemRow`, never
+  // recreated.
+  row.state = { item: null, rawEntry: null };
+
+  const nameRow = doc.createElement('div');
+  nameRow.className = 'dl-status-chip-item-row';
+  const nameEl = doc.createElement('span');
+  nameEl.className = 'dl-status-chip-item-name';
+  nameRow.appendChild(nameEl);
+  // v1.26 "real progress": once a postprocess `phase` is set, `percent` is
+  // stale (there's no percent to report while ffmpeg merges/converts) -- the
+  // numeric badge is hidden for that case specifically (the status line
+  // already says "Merging…"/"Converting…"); see `updateDownloadChipItemRow`.
+  const pctEl = doc.createElement('span');
+  pctEl.className = 'dl-status-chip-item-percent';
+  pctEl.hidden = true;
+  nameRow.appendChild(pctEl);
+  row.appendChild(nameRow);
+
+  const track = doc.createElement('div');
+  track.className = 'dl-status-chip-progress';
+  track.hidden = true;
+  const fill = doc.createElement('div');
+  fill.className = 'dl-status-chip-progress-fill';
+  track.appendChild(fill);
+  row.appendChild(track);
+
+  const statusEl = doc.createElement('div');
+  statusEl.className = 'dl-status-chip-item-status';
+  row.appendChild(statusEl);
+
+  // v1.24.0 A3 / FIX-4 (two-reviewer gate, post-release): a Cancel
+  // affordance for a one-shot job ONLY while it is actually cancellable --
+  // `state === 'downloading'`, never `'queued'` -- see the pre-F2 doc
+  // comment this replaced (git blame) for the full rationale; unchanged
+  // here, only the create/update split is new.
+  const cancelActions = doc.createElement('div');
+  cancelActions.className = 'dl-status-chip-item-actions';
+  cancelActions.hidden = true;
+  const cancelBtn = doc.createElement('button');
+  cancelBtn.type = 'button';
+  cancelBtn.className = 'dl-status-chip-dismiss-btn dl-status-chip-cancel-btn';
+  cancelBtn.textContent = 'Cancel';
+  cancelBtn.addEventListener('click', () => {
+    if (row.state.item) handlers.onCancel(row.state.item.id);
+  });
+  cancelActions.appendChild(cancelBtn);
+  row.appendChild(cancelActions);
+
+  // v1.24.0 A2 (T14): per-item failure detail lines for a partially-failed
+  // subscription download batch -- see `buildDownloadChipFailureLines`.
+  const failuresWrap = doc.createElement('div');
+  failuresWrap.className = 'dl-status-chip-item-failures';
+  failuresWrap.hidden = true;
+  row.appendChild(failuresWrap);
+
+  // v1.24.0 A3: 'cancelled' is sticky (see `chipItemLifecycle`) like
+  // 'error', but it is a user-initiated outcome, not a failure -- it gets a
+  // Dismiss control only, never Retry.
+  const actions = doc.createElement('div');
+  actions.className = 'dl-status-chip-item-actions';
+  actions.hidden = true;
+  const retryBtn = doc.createElement('button');
+  retryBtn.type = 'button';
+  retryBtn.className = 'dl-status-chip-retry-btn';
+  retryBtn.textContent = 'Retry';
+  retryBtn.hidden = true;
+  retryBtn.addEventListener('click', () => {
+    if (row.state.item) handlers.onRetry(row.state.item, row.state.rawEntry);
+  });
+  actions.appendChild(retryBtn);
+  const dismissBtn = doc.createElement('button');
+  dismissBtn.type = 'button';
+  dismissBtn.className = 'dl-status-chip-dismiss-btn';
+  dismissBtn.textContent = 'Dismiss';
+  dismissBtn.addEventListener('click', () => {
+    if (row.state.item) handlers.onDismiss(row.state.item.key);
+  });
+  actions.appendChild(dismissBtn);
+  row.appendChild(actions);
+
+  row.els = { nameEl, pctEl, track, fill, statusEl, cancelActions, cancelBtn, failuresWrap, actions, retryBtn, dismissBtn };
+  return row;
+}
+
+/**
+ * v1.26 code-review fix (F2): refreshes an EXISTING row (previously built by
+ * `createDownloadChipItemRow`) IN PLACE for the latest `item`/`rawEntry` --
+ * textContent, the fill's width/classes, the indeterminate barber-pole
+ * state, and which optional sections (percent badge/progress bar/cancel/
+ * failures/retry+dismiss) are visible. Never creates or destroys the row
+ * node itself, or any of its static button nodes -- only the (small,
+ * bounded) failures list is rebuilt each call, since its line COUNT can
+ * genuinely change between ticks.
+ */
+function updateDownloadChipItemRow(doc, row, item, rawEntry) {
+  row.state.item = item;
+  row.state.rawEntry = rawEntry;
+  const els = row.els;
+
+  els.nameEl.textContent = item.name;
+
+  const showPercent = downloadChipItemShowsPercent(item);
+  const showBadge = showPercent && !item.phase;
+  els.pctEl.hidden = !showBadge;
+  if (showBadge) els.pctEl.textContent = item.percent + '%';
+
+  els.track.hidden = !showPercent;
+  if (showPercent) {
+    els.fill.classList.toggle('dl-status-chip-progress-fill-error', item.state === 'error');
+    // v1.26 "real progress": no genuine percent to animate toward (early
+    // "just started"/postprocessing) -- go full-width with a moving
+    // barber-pole stripe (`.indeterminate`, style.css) instead of sitting at
+    // a flat, frozen-looking width. Reusing the SAME `fill` node across
+    // ticks (the whole point of F2) is what lets both this class toggle and
+    // the width transition below actually animate instead of restarting.
+    els.fill.classList.toggle('indeterminate', Boolean(item.indeterminate));
+    els.fill.style.width = (item.indeterminate ? 100 : item.percent) + '%';
+  }
+
+  els.statusEl.textContent = item.statusText;
+
+  els.cancelActions.hidden = !(item.kind === 'oneshot' && item.state === 'downloading');
+
+  const failureLines = item.state === 'error' ? buildDownloadChipFailureLines(item.state, rawEntry) : [];
+  while (els.failuresWrap.firstChild) els.failuresWrap.removeChild(els.failuresWrap.firstChild);
+  failureLines.forEach((line) => {
+    const lineEl = doc.createElement('div');
+    lineEl.className = 'dl-status-chip-item-failure';
+    lineEl.textContent = line;
+    els.failuresWrap.appendChild(lineEl);
+  });
+  els.failuresWrap.hidden = failureLines.length === 0;
+
+  els.actions.hidden = !(item.state === 'error' || item.state === 'cancelled');
+  els.retryBtn.hidden = item.state !== 'error';
+}
+
+/**
+ * v1.26 code-review fix (F2): the panel-level diff driving the two functions
+ * above -- adds a row for any NEW `item.key`, updates every row already
+ * present IN PLACE (via `updateDownloadChipItemRow`), and removes a row
+ * whose key is no longer present in `state.items` (a dismissed/settled/
+ * TTL-expired item). `rowsByKey` is the caller-owned `Map<key, RowNode>`
+ * this function reads and mutates -- a caller (or a test) can inspect row
+ * IDENTITY across two calls to prove reuse. `panel.appendChild(row)` on an
+ * ALREADY-present child is a cheap reorder (same node moved, never a new
+ * element) -- used here only to keep DOM order matching `state.items`'
+ * order; it is a no-op when a row is already correctly positioned.
+ */
+function updateDownloadChipPanel(doc, panel, rowsByKey, state, latestSnapshot, handlers) {
+  const seenKeys = new Set();
+  state.items.forEach((item) => {
+    seenKeys.add(item.key);
+    const rawEntry = item.kind === 'oneshot'
+      ? (latestSnapshot.oneShots || {})[item.id]
+      : (latestSnapshot.subscriptions || {})[item.id];
+    let row = rowsByKey.get(item.key);
+    if (!row) {
+      row = createDownloadChipItemRow(doc, handlers);
+      rowsByKey.set(item.key, row);
+    }
+    updateDownloadChipItemRow(doc, row, item, rawEntry);
+    panel.appendChild(row);
+  });
+  for (const [key, row] of rowsByKey) {
+    if (!seenKeys.has(key)) {
+      panel.removeChild(row);
+      rowsByKey.delete(key);
+    }
+  }
 }
 
 /**
@@ -3881,8 +4319,9 @@ function injectDownloadStatusChip() {
       // updates without waiting out the full poll cadence.
       //
       // FIX-4 (two-reviewer gate, post-release): the button that calls this
-      // is now gated to `state === 'downloading'` only (see `buildItemRow`
-      // above), but this function ALSO now checks `res.ok` itself rather
+      // is now gated to `state === 'downloading'` only (see
+      // `createDownloadChipItemRow`/`updateDownloadChipItemRow` above), but
+      // this function ALSO now checks `res.ok` itself rather
       // than only `.catch`ing a network-level failure -- a 404 (job no
       // longer cancellable, e.g. it settled on its own between the click and
       // this request landing) is a normal HTTP response, not a rejected
@@ -3900,133 +4339,13 @@ function injectDownloadStatusChip() {
           .then(() => pollOnce());
       }
 
-      function buildItemRow(item, rawEntry) {
-        const row = document.createElement('div');
-        row.className = 'dl-status-chip-item';
-
-        const nameRow = document.createElement('div');
-        nameRow.className = 'dl-status-chip-item-row';
-        const nameEl = document.createElement('span');
-        nameEl.className = 'dl-status-chip-item-name';
-        nameEl.textContent = item.name;
-        nameRow.appendChild(nameEl);
-        // v1.24.8: a merely-`queued` subscription has no real percent to
-        // show (downloads are serialized -- see `downloadChipItemShowsPercent`'s
-        // doc comment above); a one-shot row is UNCHANGED, always showing it.
-        const showPercent = downloadChipItemShowsPercent(item);
-        if (showPercent) {
-          const pctEl = document.createElement('span');
-          pctEl.className = 'dl-status-chip-item-percent';
-          pctEl.textContent = item.percent + '%';
-          nameRow.appendChild(pctEl);
-        }
-        row.appendChild(nameRow);
-
-        if (showPercent) {
-          const track = document.createElement('div');
-          track.className = 'dl-status-chip-progress';
-          const fill = document.createElement('div');
-          fill.className = 'dl-status-chip-progress-fill';
-          if (item.state === 'error') fill.classList.add('dl-status-chip-progress-fill-error');
-          fill.style.width = item.percent + '%';
-          track.appendChild(fill);
-          row.appendChild(track);
-        }
-
-        const statusEl = document.createElement('div');
-        statusEl.className = 'dl-status-chip-item-status';
-        statusEl.textContent = item.statusText;
-        row.appendChild(statusEl);
-
-        // v1.24.0 A3 / FIX-4 (two-reviewer gate, post-release): a Cancel
-        // affordance for a one-shot job ONLY while it is actually
-        // cancellable -- `state === 'downloading'`, never `'queued'`.
-        // `chipItemLifecycle(...) === 'active'` (the pre-fix condition)
-        // ALSO covers `'queued'`, but the live `ChildProcess` handle
-        // `lib/ytdlp/index.js`'s cancel route needs
-        // (`activeOneShotChildren`) is only registered once the job's
-        // `run.runDownload` call actually spawns (the `'downloading'`
-        // transition) -- a queued one-shot sitting behind a poll cycle on
-        // the shared `runExclusive` FIFO has no handle yet, so clicking
-        // Cancel while queued 404s (see `cancelOneShot`'s now-`res.ok`-
-        // checked handling below) with no visible download ever having
-        // stopped. Gating the button itself to the actually-cancellable
-        // window avoids offering an action that silently no-ops.
-        if (item.kind === 'oneshot' && item.state === 'downloading') {
-          const cancelActions = document.createElement('div');
-          cancelActions.className = 'dl-status-chip-item-actions';
-          const cancelBtn = document.createElement('button');
-          cancelBtn.type = 'button';
-          cancelBtn.className = 'dl-status-chip-dismiss-btn dl-status-chip-cancel-btn';
-          cancelBtn.textContent = 'Cancel';
-          cancelBtn.addEventListener('click', () => cancelOneShot(item.id));
-          cancelActions.appendChild(cancelBtn);
-          row.appendChild(cancelActions);
-        }
-
-        // v1.24.9 (the ACTIVE-DOWNLOADS reframe): NO Cancel/Stop affordance
-        // exists for a SUBSCRIPTION row -- the owner pauses a subscription
-        // from the `/subscriptions` page itself and explicitly does not want
-        // a queued cancel/dequeue action here. Only a one-shot's OWN active
-        // job (gated above) gets a Cancel button.
-
-        if (item.state === 'error') {
-          // v1.24.0 A2 (T14): per-item {channel row context (this row) +
-          // video + reason} detail for a partially-failed subscription
-          // download batch -- see `buildDownloadChipFailureLines`'s doc
-          // comment above. Absent entirely (no extra DOM) for a one-shot
-          // (which has no `failures` field, always a single target) or a
-          // subscription whose error had nothing per-item attributable.
-          const failureLines = buildDownloadChipFailureLines(item.state, rawEntry);
-          if (failureLines.length > 0) {
-            const failuresWrap = document.createElement('div');
-            failuresWrap.className = 'dl-status-chip-item-failures';
-            failureLines.forEach((line) => {
-              const lineEl = document.createElement('div');
-              lineEl.className = 'dl-status-chip-item-failure';
-              lineEl.textContent = line;
-              failuresWrap.appendChild(lineEl);
-            });
-            row.appendChild(failuresWrap);
-          }
-        }
-
-        // v1.24.0 A3: 'cancelled' is sticky (see `chipItemLifecycle`) like
-        // 'error', but it is a user-initiated outcome, not a failure -- it
-        // gets a Dismiss control only, never a Retry (mirrors
-        // `buildDownloadChipItem`'s `retryable: state === 'error'` contract,
-        // which deliberately does NOT include 'cancelled').
-        if (item.state === 'error' || item.state === 'cancelled') {
-          const actions = document.createElement('div');
-          actions.className = 'dl-status-chip-item-actions';
-
-          if (item.state === 'error') {
-            const retryBtn = document.createElement('button');
-            retryBtn.type = 'button';
-            retryBtn.className = 'dl-status-chip-retry-btn';
-            retryBtn.textContent = 'Retry';
-            retryBtn.addEventListener('click', () => {
-              if (item.kind === 'oneshot') retryOneShot(rawEntry, item.key);
-              else retrySubscription(item.id);
-            });
-            actions.appendChild(retryBtn);
-          }
-
-          const dismissBtn = document.createElement('button');
-          dismissBtn.type = 'button';
-          dismissBtn.className = 'dl-status-chip-dismiss-btn';
-          dismissBtn.textContent = 'Dismiss';
-          dismissBtn.addEventListener('click', () => {
-            dismissedKeys.add(item.key);
-            render();
-          });
-          actions.appendChild(dismissBtn);
-
-          row.appendChild(actions);
-        }
-
-        return row;
-      }
+      // v1.26 code-review fix (F2): rows are now built/updated by the
+      // module-scope `createDownloadChipItemRow`/`updateDownloadChipItemRow`/
+      // `updateDownloadChipPanel` helpers above (see their doc comments for
+      // the full defect this replaced) -- `rowsByKey` is this chip
+      // INSTANCE's own row cache, keyed by `item.key`, reused across every
+      // poll tick's `render()` call rather than rebuilt from scratch.
+      const rowsByKey = new Map();
 
       function render() {
         const state = reduceDownloadChipState(latestSnapshot, dismissedKeys);
@@ -4038,18 +4357,21 @@ function injectDownloadStatusChip() {
         summaryText.textContent = formatDownloadChipSummary(state);
         chip.classList.toggle('dl-status-chip-has-error', state.hasError);
 
-        while (panel.firstChild) panel.removeChild(panel.firstChild);
-
         // v1.24.9 (the ACTIVE-DOWNLOADS reframe): the "Stop all subscription
         // downloads" panel action is REMOVED -- the owner never wants a
         // stop/cancel affordance for subscription downloads on this chip
         // (see the header comment above).
 
-        state.items.forEach((item) => {
-          const rawEntry = item.kind === 'oneshot'
-            ? (latestSnapshot.oneShots || {})[item.id]
-            : (latestSnapshot.subscriptions || {})[item.id];
-          panel.appendChild(buildItemRow(item, rawEntry));
+        updateDownloadChipPanel(document, panel, rowsByKey, state, latestSnapshot, {
+          onCancel: (jobId) => cancelOneShot(jobId),
+          onRetry: (item, rawEntry) => {
+            if (item.kind === 'oneshot') retryOneShot(rawEntry, item.key);
+            else retrySubscription(item.id);
+          },
+          onDismiss: (key) => {
+            dismissedKeys.add(key);
+            render();
+          },
         });
       }
 
@@ -4069,7 +4391,10 @@ function injectDownloadStatusChip() {
             latestSnapshot = snapshot && typeof snapshot === 'object'
               ? { subscriptions: snapshot.subscriptions || {}, oneShots: snapshot.oneShots || {} }
               : { subscriptions: {}, oneShots: {} };
-            pollDelay = nextDownloadChipPollDelay(pollDelay, true);
+            // v1.26 "real progress": poll much faster while this snapshot
+            // shows an actively-downloading entry -- see
+            // `nextDownloadChipPollDelay`'s doc comment.
+            pollDelay = nextDownloadChipPollDelay(pollDelay, true, snapshotHasActiveDownload(latestSnapshot));
             render();
           })
           .catch(() => {
@@ -4405,6 +4730,12 @@ if (typeof module !== 'undefined' && module.exports) {
     formatOneOffStatusText, buildOneOffModal,
     ONEOFF_FORMAT_OPTIONS, ONEOFF_QUALITY_OPTIONS, ONEOFF_DEFAULT_QUALITY,
     ONEOFF_FILETYPE_OPTIONS, ONEOFF_DEFAULT_FILETYPE, ONEOFF_STATUS_POLL_MS,
+    // v1.26 "real progress": the modal's progress-bar reducer + adaptive
+    // fast-poll cadence/reducer.
+    ONEOFF_STATUS_POLL_FAST_MS, computeOneOffPollDelayMs, computeOneOffProgressBar,
+    // v1.26 code-review fix (F4/F5): staleness gate + failure-backoff cap +
+    // reducer for the modal's own poller.
+    ACTIVE_ENTRY_STALE_MS, isFreshlyActiveEntry, ONEOFF_STATUS_POLL_MAX_MS, nextOneOffPollDelayMs,
     decideOneOffTerminalAction, applyOneOffTerminalAction, triggerLibraryRescanAndRefresh,
     injectOneOffDownloadButtonIfEnabled,
     showToast, nextArmState,
@@ -4422,6 +4753,12 @@ if (typeof module !== 'undefined' && module.exports) {
     nextDownloadChipPollDelay, buildOneShotRetryBody, chipItemLifecycle,
     buildDownloadChipItem, reduceDownloadChipState, formatDownloadChipSummary,
     shouldShowDownloadChipOnPath, injectDownloadStatusChip,
+    // v1.26 code-review fix (F2): panel diff-update helpers (row identity
+    // reuse across poll ticks), exported for direct node:test coverage
+    // against a fake DOM.
+    createDownloadChipItemRow, updateDownloadChipItemRow, updateDownloadChipPanel,
+    // v1.26 "real progress": the chip's adaptive fast-poll snapshot check.
+    DL_CHIP_POLL_FAST_MS, snapshotHasActiveDownload,
     // v1.24.8: honest per-channel chip labels (channel `name` over the
     // generic literal) + a real-percent-only row gate.
     downloadChipItemShowsPercent,
