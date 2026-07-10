@@ -295,6 +295,23 @@ test('GET /api/subscriptions/status returns empty namespaces when nothing has ru
   }
 });
 
+// v1.24.8 (T2): the status snapshot carries each subscription's channel `name`
+// so the download status chip can label every row (incl. queued ones) by
+// channel instead of the generic "Subscription download". Additive/display-only.
+test('v1.24.8: GET /api/subscriptions/status includes the channel `name` on each subscription entry', async () => {
+  const deps = makeFakeDeps();
+  const sub = await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@namedchannel', format: 'video', name: 'Named Channel' });
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    const snap = await (await fetch(`${base}/api/subscriptions/status`)).json();
+    const entry = snap.subscriptions[sub.id];
+    assert.ok(entry, 'the subscription should appear in the status snapshot even with no live activity');
+    assert.equal(entry.name, 'Named Channel', 'the status entry must carry the channel name for the chip label');
+  } finally {
+    await close();
+  }
+});
+
 // ---- v1.24.0 A2 (T14): per-item download-failure attribution end-to-end ---
 // (runSubscriptionCycle -> activity.setSubscription -> GET /api/subscriptions/
 // status, returned verbatim, no route change) --------------------------------

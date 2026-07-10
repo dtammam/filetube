@@ -3306,7 +3306,11 @@ function nextArmState(current, action) {
 // new backend polling primitive -- AC59), independently of the dedicated
 // `/subscriptions` page's own ~2.5s poll and the one-off modal's per-job
 // poll above; all three are cheap, independent readers of the same
-// in-memory `activity` map. Collapsed = "N downloading · X%" (AC55); tap
+// in-memory `activity` map. Collapsed = an honest split, e.g. "1 downloading
+// (47%) · 191 queued" (AC55, HONESTIFIED v1.24.8 -- see
+// `formatDownloadChipSummary`'s own doc comment for the full rationale: only
+// ONE item is ever genuinely `downloading` at a time, so a queued item never
+// pads the "downloading" count or drags its average percent toward 0); tap
 // expands a per-item panel (name/%/state) with Retry + Dismiss on a sticky
 // errored item (AC56) -- a completed item is never even shown (auto-
 // dismiss). Retry covers BOTH failure kinds through their EXISTING,
@@ -3409,12 +3413,26 @@ function chipItemLifecycle(state) {
  * for an invalid id/entry. `kind` is `'subscription'` or `'oneshot'` (the
  * two `GET /api/subscriptions/status` namespaces); `key` (`kind + ':' + id`)
  * disambiguates a coincidentally-equal id across the two namespaces for the
- * dismissed-set/DOM keying below. `name` prefers the in-flight video
- * `title` (set by the shared progress parser for BOTH subscriptions and
- * one-shots once downloading starts), falling back to the one-shot's
- * `label` (folder name -- subscriptions have no equivalent field), then a
- * generic per-kind placeholder for an entry with neither yet (e.g. still
- * `queued`/`listing`).
+ * dismissed-set/DOM keying below.
+ *
+ * `name` (the chip row's LABEL) differs by kind:
+ * - `'subscription'`: v1.24.8 (T2's frozen contract) -- every subscription
+ *   entry now carries a `name` field (the channel/subscription name), which
+ *   this prefers ABOVE all else. That single field is what finally labels
+ *   the dozens of merely-`queued` rows (which have no `title` yet -- only
+ *   the ONE actively-downloading subscription does) by channel instead of
+ *   the generic "Subscription download" literal every row used to share.
+ *   Falls back to the in-flight video `title` (defensive -- an entry that
+ *   somehow has a title but no name yet), then the old generic literal for
+ *   an entry with neither (e.g. a stale/malformed snapshot row).
+ * - `'oneshot'`: UNCHANGED -- prefers the in-flight video `title` (set by
+ *   the shared progress parser once downloading starts), falling back to
+ *   the one-shot's `label` (folder name), then its own generic placeholder.
+ *
+ * Per-video progress (index/total) for the one ACTIVELY downloading
+ * subscription is surfaced via `statusText` below (`formatOneOffStatusText`
+ * already renders "title -- N of M -- X%" for any entry with those fields,
+ * subscription or one-shot alike) -- no separate field needed here.
  */
 function buildDownloadChipItem(kind, id, entry) {
   if (!id || !entry || typeof entry !== 'object') return null;
@@ -3424,7 +3442,10 @@ function buildDownloadChipItem(kind, id, entry) {
     : 0;
   const title = typeof entry.title === 'string' && entry.title.trim() !== '' ? entry.title.trim() : '';
   const label = typeof entry.label === 'string' && entry.label.trim() !== '' ? entry.label.trim() : '';
-  const name = title || label || (kind === 'oneshot' ? 'One-off download' : 'Subscription download');
+  const subName = typeof entry.name === 'string' && entry.name.trim() !== '' ? entry.name.trim() : '';
+  const name = kind === 'subscription'
+    ? (subName || title || 'Subscription download')
+    : (title || label || 'One-off download');
   return {
     key: kind + ':' + id,
     id,
@@ -3435,6 +3456,43 @@ function buildDownloadChipItem(kind, id, entry) {
     statusText: formatOneOffStatusText(entry) || state,
     retryable: state === 'error',
   };
+}
+
+/**
+ * Pure (v1.24.8): does this chip item's row get a real percent readout (the
+ * top-right `X%` label + the progress bar)? A one-shot's row is UNCHANGED --
+ * always shows it, even a `0%` still-`queued` job, exactly as before.
+ * A SUBSCRIPTION row only shows it while `state === 'downloading'` -- the
+ * ONE entry actually in flight (downloads are serialized -- see
+ * `formatDownloadChipSummary` below). Every other subscription state
+ * (`'queued'`, `'listing'`, `'error'`, `'cancelled'`, ...) has no genuine
+ * percent to show; rendering a `0%` bar next to a merely-queued channel is
+ * exactly the misleading "fake %" this fixes -- `statusText` already says
+ * "Queued..." on its own line, which is honest.
+ */
+function downloadChipItemShowsPercent(item) {
+  if (!item || typeof item !== 'object') return false;
+  if (item.kind !== 'subscription') return true;
+  return item.state === 'downloading';
+}
+
+/**
+ * Pure (FIX 2, two-reviewer gate): does this SUBSCRIPTION row's Cancel
+ * affordance actually do anything if clicked? Only `'queued'` and
+ * `'downloading'` -- deliberately EXCLUDES `'listing'`, mirroring the
+ * server's `isSubscriptionCancelTarget` (lib/ytdlp/index.js): there is no
+ * child process to kill during the listing phase, so offering Cancel there
+ * was a silent fake-success -- a 200 that looked like it worked while the
+ * download proceeded to completion unseen. Used for BOTH the per-row Cancel
+ * button gate and the "Stop all" visibility gate, so `'listing'` never shows
+ * an action that quietly no-ops. One-shot items are never subscription
+ * Cancel candidates (`kind !== 'subscription'` always returns `false` here;
+ * one-shot's own Cancel button is gated separately, unchanged).
+ */
+function subscriptionCancelButtonVisible(item) {
+  return Boolean(item) && typeof item === 'object'
+    && item.kind === 'subscription'
+    && (item.state === 'queued' || item.state === 'downloading');
 }
 
 /**
@@ -3514,24 +3572,64 @@ function reduceDownloadChipState(snapshot, dismissedKeys) {
 }
 
 /**
- * Pure (AC55's collapsed "N downloading · X%" text). When at least one item
- * is actively in-flight (queued/listing/downloading), `N` is the active
- * count and `X%` is the average percent across just those (an errored item
- * never drags the average down, and is never counted in `N` here -- it is
- * flagged separately via `.hasError`/the chip's error-dot CSS, not the
- * headline count). When NOTHING is active but at least one error is still
- * sticky, the summary instead reads "N download(s) failed" so an
- * all-errored chip is never mislabeled "0 downloading · 0%".
+ * Pure (AC55's collapsed summary text, HONESTIFIED v1.24.8). Downloads are
+ * SERIALIZED -- only ONE subscription (or one-shot) is ever genuinely
+ * `'downloading'` at a time; every other queued subscription is truly idle,
+ * waiting its turn. The pre-fix version lumped every active state together
+ * into one "N downloading · X%" headline (e.g. "192 downloading · 0%" when
+ * 191 of those 192 hadn't started at all), which is actively misleading --
+ * this version instead reports the real split:
+ *
+ * - Some items are actually `'downloading'`: "N downloading (X%)", where
+ *   `X%` is the average percent over ONLY those `'downloading'` items
+ *   (never `'queued'`/`'listing'`, which have no real percent to average
+ *   in -- see `downloadChipItemShowsPercent` above for the matching per-row
+ *   decision).
+ * - Some items are merely `'queued'`/`'listing'`: appended as "· N queued"
+ *   (both bucketed together under one honest "queued" label -- `'listing'`
+ *   is itself a pre-download step, not a percent-bearing one).
+ * - Both can be present at once: "1 downloading (47%) · 191 queued".
+ * - NOTHING is downloading or queued (every visible item is a sticky
+ *   `'error'`/`'cancelled'`):
+ *   - All `'error'` (no `'cancelled'` items at all) -- unchanged from
+ *     before: "N download(s) failed", so an all-errored chip is never
+ *     mislabeled "0 downloading · 0%".
+ *   - FIX 4 (two-reviewer gate, post-v1.24.8): all `'cancelled'` (no
+ *     `'error'` items at all) -- "N stopped", never "failed". A deliberate,
+ *     user-initiated Stop is not a failure; calling it one is actively
+ *     misleading.
+ *   - A MIX of `'error'` and `'cancelled'` -- both counted and named
+ *     separately: "N failed · M stopped", so a stopped channel is never
+ *     lumped into an unrelated failure count (or vice versa).
  */
 function formatDownloadChipSummary(state) {
   if (!state || !Array.isArray(state.items) || state.items.length === 0) return '';
-  const active = state.items.filter((item) => item.state !== 'error');
-  if (active.length > 0) {
-    const avg = Math.round(active.reduce((sum, item) => sum + item.percent, 0) / active.length);
-    return active.length + ' downloading · ' + avg + '%';
+  const downloading = state.items.filter((item) => item.state === 'downloading');
+  const queued = state.items.filter((item) => item.state === 'queued' || item.state === 'listing');
+  if (downloading.length === 0 && queued.length === 0) {
+    const cancelledCount = state.items.filter((item) => item.state === 'cancelled').length;
+    // Defensive: any item that's neither downloading/queued/listing NOR
+    // 'cancelled' is bucketed as a failure -- covers 'error' plus any
+    // unrecognized future terminal state, same fail-safe posture as the
+    // pre-fix single `terminalCount`.
+    const errorCount = state.items.length - cancelledCount;
+    if (cancelledCount === 0) {
+      return errorCount + (errorCount === 1 ? ' download failed' : ' downloads failed');
+    }
+    if (errorCount === 0) {
+      return cancelledCount + ' stopped';
+    }
+    return errorCount + ' failed · ' + cancelledCount + ' stopped';
   }
-  const errorCount = state.items.length;
-  return errorCount + (errorCount === 1 ? ' download failed' : ' downloads failed');
+  const parts = [];
+  if (downloading.length > 0) {
+    const avg = Math.round(downloading.reduce((sum, item) => sum + item.percent, 0) / downloading.length);
+    parts.push(downloading.length + ' downloading (' + avg + '%)');
+  }
+  if (queued.length > 0) {
+    parts.push(queued.length + ' queued');
+  }
+  return parts.join(' · ');
 }
 
 /**
@@ -3543,6 +3641,77 @@ function formatDownloadChipSummary(state) {
  */
 function shouldShowDownloadChipOnPath(pathname) {
   return typeof pathname === 'string' && pathname !== '/subscriptions';
+}
+
+/**
+ * Calls `POST /api/subscriptions/:id/cancel` -- cancels ONE subscription's
+ * current download-backlog entry, whether it's the actively-`downloading`
+ * one or merely `'queued'` (T2's frozen contract: both are cancellable).
+ * `fetchImpl` is injectable (mirrors `requestMoveItem`'s pattern above) so
+ * this is directly node:test-covered without a real network call. NEVER
+ * rejects -- resolves `true` on a 2xx response, `false` on any non-2xx
+ * (including a 404 when the yt-dlp module is disabled, or the subscription
+ * already settled between the click and this request landing) or
+ * network-level failure. The caller (the chip's Cancel button, mirroring
+ * `cancelOneShot`'s established shell posture) decides how to surface a
+ * `false` -- a toast -- and always re-polls afterward regardless.
+ *
+ * FIX 2 (two-reviewer gate, post-v1.24.8): a 2xx response ALONE is no longer
+ * treated as success -- the server's `{cancelled: false, id}` body (see
+ * `lib/ytdlp/index.js`'s cancel route) is a legitimate 200 for a request
+ * that turned out to be a no-op (e.g. the subscription's state flipped to
+ * `'listing'`/finished between the row rendering and the click landing).
+ * Pre-fix, this resolved `true` for that case too, so the client silently
+ * reported success for a download that was actually still running. An
+ * explicit `body.cancelled === false` now resolves `false` (surfaced by the
+ * caller exactly like any other failure); a missing/malformed body on an
+ * otherwise-2xx response is treated as success (fail-open, consistent with
+ * the pre-fix contract for a response shape this function cannot parse).
+ */
+function cancelSubscription(id, fetchImpl) {
+  const doFetch = fetchImpl || (typeof fetch !== 'undefined' ? fetch : null);
+  if (!doFetch) return Promise.resolve(false);
+  return doFetch('/api/subscriptions/' + encodeURIComponent(id) + '/cancel', { method: 'POST' })
+    .then((res) => {
+      if (!res || !res.ok) return false;
+      if (typeof res.json !== 'function') return true; // no body to inspect -- fail open
+      return res.json()
+        .then((body) => !(body && body.cancelled === false))
+        .catch(() => true); // malformed/unparseable body -- fail open
+    })
+    .catch(() => false);
+}
+
+/**
+ * Calls `POST /api/subscriptions/downloads/cancel` -- stops EVERY
+ * subscription currently in the download backlog (the active one AND every
+ * queued one), not just a single subscription. Same injectable-`fetchImpl`,
+ * never-rejects posture as `cancelSubscription` above. Resolves
+ * `{ ok: true, cancelled }` on a 2xx response, where `cancelled` is the
+ * server's own reported count (`GET /api/subscriptions/downloads/cancel`'s
+ * `{ cancelled: <count> }` body) when present and numeric, or `null` when
+ * the body is missing/malformed -- the caller treats `null` as "stopped,
+ * but the count is unknown" rather than fabricating a number. Resolves
+ * `{ ok: false, cancelled: null }` on any non-2xx (including a 404 when the
+ * module is disabled) or network-level failure.
+ *
+ * Note (surfaced via the caller's toast, kept terse): this only cancels the
+ * CURRENT backlog -- the periodic poll re-checks subscriptions again later,
+ * so a stopped channel can resurface on its own next cycle. It's a pause of
+ * this pass, not a permanent skip/unsubscribe.
+ */
+function stopAllSubscriptionDownloads(fetchImpl) {
+  const doFetch = fetchImpl || (typeof fetch !== 'undefined' ? fetch : null);
+  if (!doFetch) return Promise.resolve({ ok: false, cancelled: null });
+  return doFetch('/api/subscriptions/downloads/cancel', { method: 'POST' })
+    .then((res) => {
+      if (!res || !res.ok) return { ok: false, cancelled: null };
+      return res.json().catch(() => null).then((body) => ({
+        ok: true,
+        cancelled: body && typeof body.cancelled === 'number' ? body.cancelled : null,
+      }));
+    })
+    .catch(() => ({ ok: false, cancelled: null }));
 }
 
 /**
@@ -3672,20 +3841,28 @@ function injectDownloadStatusChip() {
         nameEl.className = 'dl-status-chip-item-name';
         nameEl.textContent = item.name;
         nameRow.appendChild(nameEl);
-        const pctEl = document.createElement('span');
-        pctEl.className = 'dl-status-chip-item-percent';
-        pctEl.textContent = item.percent + '%';
-        nameRow.appendChild(pctEl);
+        // v1.24.8: a merely-`queued` subscription has no real percent to
+        // show (downloads are serialized -- see `downloadChipItemShowsPercent`'s
+        // doc comment above); a one-shot row is UNCHANGED, always showing it.
+        const showPercent = downloadChipItemShowsPercent(item);
+        if (showPercent) {
+          const pctEl = document.createElement('span');
+          pctEl.className = 'dl-status-chip-item-percent';
+          pctEl.textContent = item.percent + '%';
+          nameRow.appendChild(pctEl);
+        }
         row.appendChild(nameRow);
 
-        const track = document.createElement('div');
-        track.className = 'dl-status-chip-progress';
-        const fill = document.createElement('div');
-        fill.className = 'dl-status-chip-progress-fill';
-        if (item.state === 'error') fill.classList.add('dl-status-chip-progress-fill-error');
-        fill.style.width = item.percent + '%';
-        track.appendChild(fill);
-        row.appendChild(track);
+        if (showPercent) {
+          const track = document.createElement('div');
+          track.className = 'dl-status-chip-progress';
+          const fill = document.createElement('div');
+          fill.className = 'dl-status-chip-progress-fill';
+          if (item.state === 'error') fill.classList.add('dl-status-chip-progress-fill-error');
+          fill.style.width = item.percent + '%';
+          track.appendChild(fill);
+          row.appendChild(track);
+        }
 
         const statusEl = document.createElement('div');
         statusEl.className = 'dl-status-chip-item-status';
@@ -3714,6 +3891,36 @@ function injectDownloadStatusChip() {
           cancelBtn.className = 'dl-status-chip-dismiss-btn dl-status-chip-cancel-btn';
           cancelBtn.textContent = 'Cancel';
           cancelBtn.addEventListener('click', () => cancelOneShot(item.id));
+          cancelActions.appendChild(cancelBtn);
+          row.appendChild(cancelActions);
+        }
+
+        // v1.24.8: a Cancel affordance for a SUBSCRIPTION row, for every
+        // state that's actually still in the backlog -- unlike a one-shot
+        // (gated above to `'downloading'` only, since its process handle
+        // only exists then), T2's frozen contract cancels a subscription
+        // whether it's the one actively `'downloading'` OR still merely
+        // `'queued'` (server-side FIFO removal, no live process handle
+        // required for the queued case).
+        //
+        // FIX 2 (two-reviewer gate, post-v1.24.8): `'listing'` deliberately
+        // excluded -- see `subscriptionCancelButtonVisible`'s doc comment.
+        // Offering Cancel there was a silent fake-success: the server had
+        // nothing to kill, returned a 200 the client read as success, and
+        // the download proceeded to completion while the user believed it
+        // had been stopped.
+        if (subscriptionCancelButtonVisible(item)) {
+          const cancelActions = document.createElement('div');
+          cancelActions.className = 'dl-status-chip-item-actions';
+          const cancelBtn = document.createElement('button');
+          cancelBtn.type = 'button';
+          cancelBtn.className = 'dl-status-chip-dismiss-btn dl-status-chip-cancel-btn';
+          cancelBtn.textContent = 'Cancel';
+          cancelBtn.addEventListener('click', () => {
+            cancelSubscription(item.id).then((ok) => {
+              if (!ok) showToast("Couldn't cancel — the download may have already finished");
+            }).then(() => pollOnce());
+          });
           cancelActions.appendChild(cancelBtn);
           row.appendChild(cancelActions);
         }
@@ -3787,6 +3994,47 @@ function injectDownloadStatusChip() {
         chip.classList.toggle('dl-status-chip-has-error', state.hasError);
 
         while (panel.firstChild) panel.removeChild(panel.firstChild);
+
+        // v1.24.8: "Stop all" -- cancels every subscription still in the
+        // backlog (active + queued) in one click, not just one at a time.
+        // Shown ONLY while there's at least one subscription actually
+        // active/queued (never for a panel that's all one-shots, all sticky
+        // error/cancelled subscription rows, or all merely-`'listing'`
+        // subscriptions -- FIX 2, two-reviewer gate: `'listing'` has no
+        // child to kill, so stopping it would be the same silent
+        // fake-success as the per-row button -- there'd be nothing left to
+        // stop). Reuses the same `.dl-status-chip-item-actions` /
+        // `.dl-status-chip-dismiss-btn.dl-status-chip-cancel-btn` hooks as
+        // every per-row Cancel button above -- no new styled class. Same
+        // `subscriptionCancelButtonVisible` gate as the per-row button
+        // above, so the two can never disagree about what's cancellable.
+        const hasActiveSubscriptionDownload = state.items.some(subscriptionCancelButtonVisible);
+        if (hasActiveSubscriptionDownload) {
+          const stopAllWrap = document.createElement('div');
+          stopAllWrap.className = 'dl-status-chip-item-actions';
+          const stopAllBtn = document.createElement('button');
+          stopAllBtn.type = 'button';
+          stopAllBtn.className = 'dl-status-chip-dismiss-btn dl-status-chip-cancel-btn';
+          stopAllBtn.textContent = 'Stop all subscription downloads';
+          stopAllBtn.addEventListener('click', () => {
+            stopAllSubscriptionDownloads().then((result) => {
+              if (!result || !result.ok) {
+                showToast("Couldn't stop downloads — try again in a moment");
+                return;
+              }
+              // Terse per FR note: this only clears the CURRENT backlog --
+              // the periodic poll re-checks subscriptions later, so a
+              // stopped channel can resurface on its own next cycle.
+              const n = result.cancelled;
+              showToast(typeof n === 'number'
+                ? ('Stopped ' + n + (n === 1 ? ' subscription download' : ' subscription downloads'))
+                : 'Stopped subscription downloads');
+            }).then(() => pollOnce());
+          });
+          stopAllWrap.appendChild(stopAllBtn);
+          panel.appendChild(stopAllWrap);
+        }
+
         state.items.forEach((item) => {
           const rawEntry = item.kind === 'oneshot'
             ? (latestSnapshot.oneShots || {})[item.id]
@@ -4162,6 +4410,12 @@ if (typeof module !== 'undefined' && module.exports) {
     nextDownloadChipPollDelay, buildOneShotRetryBody, chipItemLifecycle,
     buildDownloadChipItem, reduceDownloadChipState, formatDownloadChipSummary,
     shouldShowDownloadChipOnPath, injectDownloadStatusChip,
+    // v1.24.8: honest per-channel chip labels/summary + subscription stop
+    // controls.
+    downloadChipItemShowsPercent, cancelSubscription, stopAllSubscriptionDownloads,
+    // FIX 2 (two-reviewer gate, post-v1.24.8): shared per-row/stop-all Cancel
+    // visibility gate (excludes 'listing').
+    subscriptionCancelButtonVisible,
     // v1.24.0 A2 (T14): per-item download-failure attribution chip render.
     buildDownloadChipFailureLines,
     // v1.24.0 (T3): C2 item count, C3 format toggle, C5 release-date sort

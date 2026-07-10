@@ -22,6 +22,10 @@ const {
   shouldShowDownloadChipOnPath,
   injectDownloadStatusChip,
   buildDownloadChipFailureLines,
+  downloadChipItemShowsPercent,
+  cancelSubscription,
+  stopAllSubscriptionDownloads,
+  subscriptionCancelButtonVisible,
 } = require('../../public/js/common.js');
 
 // ---- buildOneShotRetryBody --------------------------------------------------
@@ -80,7 +84,7 @@ test('chipItemLifecycle classifies cancelled as sticky, same as error', () => {
 
 // ---- buildDownloadChipItem --------------------------------------------------
 
-test('buildDownloadChipItem prefers the in-flight title, then falls back to label, then a per-kind placeholder', () => {
+test('buildDownloadChipItem (oneshot): prefers the in-flight title, then falls back to label, then a per-kind placeholder', () => {
   const withTitle = buildDownloadChipItem('oneshot', 'job1', { state: 'downloading', title: 'Cool Video', label: 'Folder', percent: 40 });
   assert.equal(withTitle.name, 'Cool Video');
 
@@ -89,9 +93,45 @@ test('buildDownloadChipItem prefers the in-flight title, then falls back to labe
 
   const withNeither = buildDownloadChipItem('oneshot', 'job3', { state: 'queued' });
   assert.equal(withNeither.name, 'One-off download');
+});
 
-  const subWithNeither = buildDownloadChipItem('subscription', 'sub1', { state: 'listing' });
-  assert.equal(subWithNeither.name, 'Subscription download');
+// v1.24.8: every subscription row (including the 191 merely-`queued` ones
+// with no `title` yet) is now labelled by CHANNEL, not a shared generic
+// literal -- T2's frozen contract adds `name` to every subscription entry.
+test('buildDownloadChipItem (subscription): labels the row by channel `name` -- even while merely queued (no title yet)', () => {
+  const queued = buildDownloadChipItem('subscription', 'sub1', { state: 'queued', name: 'Cool Channel' });
+  assert.equal(queued.name, 'Cool Channel');
+
+  const listing = buildDownloadChipItem('subscription', 'sub2', { state: 'listing', name: 'Another Channel' });
+  assert.equal(listing.name, 'Another Channel');
+
+  const downloading = buildDownloadChipItem('subscription', 'sub3', { state: 'downloading', name: 'Active Channel', title: 'Ep 3', percent: 47 });
+  assert.equal(downloading.name, 'Active Channel', 'the row label stays the CHANNEL name, not the in-flight video title');
+});
+
+test('buildDownloadChipItem (subscription): falls back to the in-flight title, then the generic literal, when `name` is absent', () => {
+  const titleOnly = buildDownloadChipItem('subscription', 'sub1', { state: 'downloading', title: 'Some Video' });
+  assert.equal(titleOnly.name, 'Some Video');
+
+  const neither = buildDownloadChipItem('subscription', 'sub2', { state: 'listing' });
+  assert.equal(neither.name, 'Subscription download');
+});
+
+// v1.24.8: a queued/listing subscription row's `statusText` never fabricates
+// progress (no "N of M"/percent -- there is none yet); the actively
+// downloading row's `statusText` DOES surface index/total via the shared
+// `formatOneOffStatusText` formatter both namespaces already go through.
+test('buildDownloadChipItem (subscription): a queued row shows no fake index/total/percent; the active row surfaces index/total', () => {
+  const queued = buildDownloadChipItem('subscription', 'sub1', { state: 'queued', name: 'Channel A' });
+  assert.equal(queued.statusText, 'Queued…');
+  assert.doesNotMatch(queued.statusText, /\d+ of \d+/);
+  assert.doesNotMatch(queued.statusText, /%/);
+
+  const active = buildDownloadChipItem('subscription', 'sub2', {
+    state: 'downloading', name: 'Channel B', title: 'Episode 3', index: 3, total: 12, percent: 47,
+  });
+  assert.match(active.statusText, /3 of 12/);
+  assert.match(active.statusText, /47%/);
 });
 
 test('buildDownloadChipItem clamps percent to [0,100] and defaults a missing/invalid percent to 0', () => {
@@ -119,6 +159,62 @@ test('buildDownloadChipItem returns null for a missing id or a non-object entry'
   assert.equal(buildDownloadChipItem('oneshot', '', { state: 'error' }), null);
   assert.equal(buildDownloadChipItem('oneshot', 'job1', null), null);
   assert.equal(buildDownloadChipItem('oneshot', 'job1', 'not-an-object'), null);
+});
+
+// ---- downloadChipItemShowsPercent: no fake "0%" on a merely-queued row ----
+
+test('downloadChipItemShowsPercent: a one-shot row is UNCHANGED -- always shows a percent, even while queued', () => {
+  assert.equal(downloadChipItemShowsPercent({ kind: 'oneshot', state: 'queued' }), true);
+  assert.equal(downloadChipItemShowsPercent({ kind: 'oneshot', state: 'downloading' }), true);
+  assert.equal(downloadChipItemShowsPercent({ kind: 'oneshot', state: 'error' }), true);
+});
+
+test('downloadChipItemShowsPercent: a subscription row shows a percent ONLY while actually downloading', () => {
+  assert.equal(downloadChipItemShowsPercent({ kind: 'subscription', state: 'downloading' }), true);
+  assert.equal(downloadChipItemShowsPercent({ kind: 'subscription', state: 'queued' }), false);
+  assert.equal(downloadChipItemShowsPercent({ kind: 'subscription', state: 'listing' }), false);
+  assert.equal(downloadChipItemShowsPercent({ kind: 'subscription', state: 'error' }), false);
+  assert.equal(downloadChipItemShowsPercent({ kind: 'subscription', state: 'cancelled' }), false);
+});
+
+test('downloadChipItemShowsPercent: tolerates a missing/malformed item, never throws', () => {
+  assert.equal(downloadChipItemShowsPercent(null), false);
+  assert.equal(downloadChipItemShowsPercent(undefined), false);
+  assert.equal(downloadChipItemShowsPercent('not-an-object'), false);
+});
+
+// ---- FIX 2 (two-reviewer gate): subscriptionCancelButtonVisible ------------
+//
+// Excludes 'listing' -- a listing subscription has no live child process to
+// kill, so offering Cancel there was a silent fake-success (a 200 the client
+// read as success while the download proceeded to completion unseen). Used
+// for BOTH the per-row Cancel button gate and the "Stop all" visibility
+// gate, so the two can never disagree.
+
+test('subscriptionCancelButtonVisible: true for a subscription that is queued or downloading', () => {
+  assert.equal(subscriptionCancelButtonVisible({ kind: 'subscription', state: 'queued' }), true);
+  assert.equal(subscriptionCancelButtonVisible({ kind: 'subscription', state: 'downloading' }), true);
+});
+
+test('subscriptionCancelButtonVisible: false for a "listing" subscription -- there is nothing to kill, so no fake Cancel affordance', () => {
+  assert.equal(subscriptionCancelButtonVisible({ kind: 'subscription', state: 'listing' }), false);
+});
+
+test('subscriptionCancelButtonVisible: false for a subscription in a terminal/idle state', () => {
+  assert.equal(subscriptionCancelButtonVisible({ kind: 'subscription', state: 'done' }), false);
+  assert.equal(subscriptionCancelButtonVisible({ kind: 'subscription', state: 'error' }), false);
+  assert.equal(subscriptionCancelButtonVisible({ kind: 'subscription', state: 'cancelled' }), false);
+});
+
+test('subscriptionCancelButtonVisible: false for a one-shot item, regardless of state (one-shot Cancel is gated separately)', () => {
+  assert.equal(subscriptionCancelButtonVisible({ kind: 'oneshot', state: 'queued' }), false);
+  assert.equal(subscriptionCancelButtonVisible({ kind: 'oneshot', state: 'downloading' }), false);
+});
+
+test('subscriptionCancelButtonVisible: tolerates a missing/malformed item, never throws', () => {
+  assert.equal(subscriptionCancelButtonVisible(null), false);
+  assert.equal(subscriptionCancelButtonVisible(undefined), false);
+  assert.equal(subscriptionCancelButtonVisible('not-an-object'), false);
 });
 
 // ---- reduceDownloadChipState: the aggregate {count, hasError, items} -------
@@ -183,34 +279,91 @@ test('reduceDownloadChipState tolerates a malformed/empty snapshot without throw
   assert.deepEqual(reduceDownloadChipState(undefined, new Set()), { count: 0, hasError: false, items: [] });
 });
 
-// ---- formatDownloadChipSummary: the collapsed "N downloading · X%" text ---
+// ---- formatDownloadChipSummary: the HONEST collapsed summary (v1.24.8) ----
+//
+// Downloads are serialized -- only ONE item is ever genuinely `downloading`
+// at a time. The pre-fix summary lumped every active state together into
+// one misleading "N downloading · X%" (e.g. "192 downloading · 0%" when 191
+// of those hadn't started). These tests lock in the honest split.
 
-test('formatDownloadChipSummary reports the active count and the average percent across active items only', () => {
+test('formatDownloadChipSummary: the flagship case -- 1 actively downloading (47%) + 191 merely queued', () => {
+  const items = [{ state: 'downloading', percent: 47 }];
+  for (let i = 0; i < 191; i += 1) items.push({ state: 'queued', percent: 0 });
+  const state = { items };
+  assert.equal(formatDownloadChipSummary(state), '1 downloading (47%) · 191 queued');
+});
+
+test('formatDownloadChipSummary: averages percent across ONLY the "downloading" items, never "queued"/"listing"', () => {
   const state = {
     items: [
       { state: 'downloading', percent: 20 },
       { state: 'downloading', percent: 60 },
+      { state: 'queued', percent: 0 },
+      { state: 'listing', percent: 0 },
     ],
   };
-  assert.equal(formatDownloadChipSummary(state), '2 downloading · 40%');
+  assert.equal(formatDownloadChipSummary(state), '2 downloading (40%) · 2 queued');
 });
 
-test('formatDownloadChipSummary never lets an errored item drag the active percent average down', () => {
+test('formatDownloadChipSummary: no downloading item, only queued/listing -- "N queued" alone, no fake percent', () => {
+  const allQueued = { items: [{ state: 'queued', percent: 0 }, { state: 'queued', percent: 0 }, { state: 'listing', percent: 0 }] };
+  assert.equal(formatDownloadChipSummary(allQueued), '3 queued');
+});
+
+test('formatDownloadChipSummary: only downloading, nothing queued -- no trailing "· 0 queued"', () => {
+  const state = { items: [{ state: 'downloading', percent: 40 }, { state: 'downloading', percent: 60 }] };
+  assert.equal(formatDownloadChipSummary(state), '2 downloading (50%)');
+});
+
+test('formatDownloadChipSummary: never lets an errored item drag the downloading percent average down, or count as queued', () => {
   const state = {
     items: [
       { state: 'downloading', percent: 50 },
       { state: 'error', percent: 0 },
     ],
   };
-  assert.equal(formatDownloadChipSummary(state), '1 downloading · 50%');
+  assert.equal(formatDownloadChipSummary(state), '1 downloading (50%)');
 });
 
-test('formatDownloadChipSummary reports "N download(s) failed" when nothing is active, never "0 downloading · 0%"', () => {
+test('formatDownloadChipSummary: reports "N download(s) failed" when NOTHING is downloading/queued, never "0 downloading · 0%"', () => {
   const oneError = { items: [{ state: 'error', percent: 0 }] };
   assert.equal(formatDownloadChipSummary(oneError), '1 download failed');
 
   const twoErrors = { items: [{ state: 'error', percent: 0 }, { state: 'error', percent: 0 }] };
   assert.equal(formatDownloadChipSummary(twoErrors), '2 downloads failed');
+});
+
+// ---- FIX 4 (two-reviewer gate): a cancelled sub is "stopped", not "failed" -
+
+test('formatDownloadChipSummary: only-cancelled items read "N stopped", never "failed" -- a deliberate Stop is not a failure', () => {
+  const one = { items: [{ state: 'cancelled', percent: 0 }] };
+  assert.equal(formatDownloadChipSummary(one), '1 stopped');
+
+  const two = { items: [{ state: 'cancelled', percent: 0 }, { state: 'cancelled', percent: 0 }] };
+  assert.equal(formatDownloadChipSummary(two), '2 stopped');
+});
+
+test('formatDownloadChipSummary: a mix of error + cancelled distinguishes both, e.g. "1 failed · 2 stopped"', () => {
+  const state = {
+    items: [
+      { state: 'error', percent: 0 },
+      { state: 'cancelled', percent: 0 },
+      { state: 'cancelled', percent: 0 },
+    ],
+  };
+  assert.equal(formatDownloadChipSummary(state), '1 failed · 2 stopped');
+});
+
+test('formatDownloadChipSummary: the existing all-error case is unchanged by the FIX 4 wording split ("N download(s) failed", not "N failed")', () => {
+  const oneError = { items: [{ state: 'error', percent: 0 }] };
+  assert.equal(formatDownloadChipSummary(oneError), '1 download failed');
+
+  const twoErrors = { items: [{ state: 'error', percent: 0 }, { state: 'error', percent: 0 }] };
+  assert.equal(formatDownloadChipSummary(twoErrors), '2 downloads failed');
+});
+
+test('formatDownloadChipSummary: an all-"done" state never reaches here (auto-dismissed by reduceDownloadChipState upstream) -- empty items yields an empty string', () => {
+  assert.equal(formatDownloadChipSummary({ items: [] }), '');
 });
 
 test('formatDownloadChipSummary returns an empty string for an empty/malformed state', () => {
@@ -323,4 +476,106 @@ test('injectDownloadStatusChip: a second synchronous call before the first fetch
     global.document = originalDocument;
     global.fetch = originalFetch;
   }
+});
+
+// ---- v1.24.8: cancelSubscription / stopAllSubscriptionDownloads -----------
+//
+// Both use the SAME injectable-`fetchImpl` pattern as `requestMoveItem`
+// above (mirrors `cancelOneShot`'s res.ok-checked, never-throws posture,
+// made directly node:test-covered here without a real network call).
+
+test('cancelSubscription: POSTs /api/subscriptions/:id/cancel and resolves true on a 2xx response', async () => {
+  const calls = [];
+  const fetchImpl = (url, opts) => {
+    calls.push({ url, opts });
+    return Promise.resolve({ ok: true });
+  };
+  const result = await cancelSubscription('sub-123', fetchImpl);
+  assert.equal(result, true);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, '/api/subscriptions/sub-123/cancel');
+  assert.equal(calls[0].opts.method, 'POST');
+});
+
+test('cancelSubscription: URL-encodes the subscription id', async () => {
+  const calls = [];
+  const fetchImpl = (url) => { calls.push(url); return Promise.resolve({ ok: true }); };
+  await cancelSubscription('sub/weird id', fetchImpl);
+  assert.equal(calls[0], '/api/subscriptions/' + encodeURIComponent('sub/weird id') + '/cancel');
+});
+
+test('cancelSubscription: resolves false (never throws/rejects) on a non-2xx response, e.g. a 404 when the module is disabled', async () => {
+  const fetchImpl = () => Promise.resolve({ ok: false, status: 404 });
+  const result = await cancelSubscription('sub-123', fetchImpl);
+  assert.equal(result, false);
+});
+
+test('cancelSubscription: resolves false (never throws/rejects) on a network-level failure', async () => {
+  const fetchImpl = () => Promise.reject(new Error('network down'));
+  await assert.doesNotReject(() => cancelSubscription('sub-123', fetchImpl));
+  const result = await cancelSubscription('sub-123', fetchImpl);
+  assert.equal(result, false);
+});
+
+// ---- FIX 2 (two-reviewer gate): a {cancelled:false} body is NOT success ----
+//
+// A 2xx response ALONE is no longer sufficient -- the server's idempotent
+// no-op branch (e.g. the row's state flipped to 'listing'/finished between
+// render and click) also returns HTTP 200, but with `{cancelled: false}` in
+// the body. Pre-fix, `cancelSubscription` only checked `res.ok`, so this
+// case silently resolved `true` -- a fake success the client had no way to
+// distinguish from a real cancel.
+
+test('cancelSubscription: resolves false for a 2xx response whose body reports {cancelled: false} -- a no-op is not a success', async () => {
+  const fetchImpl = () => Promise.resolve({ ok: true, json: () => Promise.resolve({ cancelled: false, id: 'sub-123' }) });
+  const result = await cancelSubscription('sub-123', fetchImpl);
+  assert.equal(result, false);
+});
+
+test('cancelSubscription: resolves true for a 2xx response whose body reports {cancelled: true}', async () => {
+  const fetchImpl = () => Promise.resolve({ ok: true, json: () => Promise.resolve({ cancelled: true, id: 'sub-123' }) });
+  const result = await cancelSubscription('sub-123', fetchImpl);
+  assert.equal(result, true);
+});
+
+test('cancelSubscription: a malformed/unparseable JSON body on an otherwise-2xx response still resolves true (fails open)', async () => {
+  const fetchImpl = () => Promise.resolve({ ok: true, json: () => Promise.reject(new Error('bad json')) });
+  const result = await cancelSubscription('sub-123', fetchImpl);
+  assert.equal(result, true);
+});
+
+test('stopAllSubscriptionDownloads: POSTs /api/subscriptions/downloads/cancel and resolves {ok:true, cancelled} from the JSON body', async () => {
+  const calls = [];
+  const fetchImpl = (url, opts) => {
+    calls.push({ url, opts });
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({ cancelled: 192 }) });
+  };
+  const result = await stopAllSubscriptionDownloads(fetchImpl);
+  assert.deepEqual(result, { ok: true, cancelled: 192 });
+  assert.equal(calls[0].url, '/api/subscriptions/downloads/cancel');
+  assert.equal(calls[0].opts.method, 'POST');
+});
+
+test('stopAllSubscriptionDownloads: a missing/malformed JSON body still resolves {ok:true, cancelled:null} rather than fabricating a count', async () => {
+  const malformedBody = (url, opts) => {
+    void url; void opts;
+    return Promise.resolve({ ok: true, json: () => Promise.reject(new Error('bad json')) });
+  };
+  assert.deepEqual(await stopAllSubscriptionDownloads(malformedBody), { ok: true, cancelled: null });
+
+  const noCountField = () => Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+  assert.deepEqual(await stopAllSubscriptionDownloads(noCountField), { ok: true, cancelled: null });
+});
+
+test('stopAllSubscriptionDownloads: resolves {ok:false, cancelled:null} (never throws/rejects) on a non-2xx response, e.g. a 404 when the module is disabled', async () => {
+  const fetchImpl = () => Promise.resolve({ ok: false, status: 404 });
+  const result = await stopAllSubscriptionDownloads(fetchImpl);
+  assert.deepEqual(result, { ok: false, cancelled: null });
+});
+
+test('stopAllSubscriptionDownloads: resolves {ok:false, cancelled:null} (never throws/rejects) on a network-level failure', async () => {
+  const fetchImpl = () => Promise.reject(new Error('network down'));
+  await assert.doesNotReject(() => stopAllSubscriptionDownloads(fetchImpl));
+  const result = await stopAllSubscriptionDownloads(fetchImpl);
+  assert.deepEqual(result, { ok: false, cancelled: null });
 });
