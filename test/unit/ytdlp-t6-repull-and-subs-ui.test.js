@@ -50,6 +50,14 @@ test('A5/B1: every slash-prefixed "/repull" string literal across the T6-owned f
     // the regex below can't distinguish comment prose from code, so this
     // exact known-safe span is allowlisted rather than the regex weakened.
     '`POST /api/subscriptions/:id/repull`',
+    // v1.25 QoL follow-up ("reheat"): two ALREADY-IMPLEMENTED, pre-existing
+    // backend routes (see test/integration/ytdlp-repull-metadata-endpoint.test.js)
+    // this task's client-only UI wiring calls -- both the real code-string
+    // literals (`lib/ytdlp/client/subscriptions.js`'s two `fetch(...)`
+    // calls) and their markdown-code-span mentions in that same file's doc
+    // comments.
+    "'/api/ytdlp/repull-metadata'", "'/api/ytdlp/repull-metadata/cancel'",
+    '`POST /api/ytdlp/repull-metadata`', '`/api/ytdlp/repull-metadata`', '`/api/ytdlp/repull-metadata/cancel`',
   ]);
   const pattern = /(['"`])[^'"`]*\/repull[^'"`]*\1/g;
   const found = [];
