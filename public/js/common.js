@@ -1005,6 +1005,61 @@ function shouldShowShuffleButton(sortKey) {
   return sortKey === 'random';
 }
 
+// ---- Item 2/3 (v1.26.3): shared empty-state / error-state cards -----------
+//
+// Both replace old per-surface bare inline-styled text (home/library "No
+// video or audio files found." + "Error loading library data from server.")
+// with ONE consistent, era-token-only `.empty-state`/`.error-state` card
+// (see style.css). Pure string builders (mirrors `buildSkeletonGrid` in
+// main.js / `buildSkeletonRows` in subscriptions.js) -- `icon`/`message`/
+// `hint`/`actionHtml` are always STATIC, developer-authored copy (never
+// user- or creator-controlled text), the same posture the rest of this
+// file's other static-copy templates already take (e.g.
+// `renderPlaylistsSheet`'s "No folders configured." string above); a caller
+// that ever needs to interpolate untrusted data into one of these fields
+// must escape it itself first. Exported for node:test.
+
+// Pure: home/library empty-result card (no items match the current filter/
+// search/folder). `icon` is one of the existing `.icon-*` glyph classes (the
+// icon-set system already themes it across every era/mode/icon-set
+// combination via `currentColor` -- see style.css's "Chrome icons" block);
+// defaults to `icon-search` ("nothing found"), matching the "no results"
+// semantics of every call site so far. `actionHtml`, when given, is
+// appended as-is (a caller-built, already-safe HTML fragment, e.g. a "View
+// All Media" link) -- kept separate from `hint` (a caller-supplied plain
+// hint string) so callers with only one or the other never render an empty
+// wrapper element.
+function buildEmptyStateHtml(opts) {
+  const o = opts || {};
+  const icon = typeof o.icon === 'string' && o.icon ? o.icon : 'icon-search';
+  const message = typeof o.message === 'string' && o.message ? o.message : 'Nothing here yet.';
+  const hint = typeof o.hint === 'string' && o.hint ? `<p class="empty-state-hint">${o.hint}</p>` : '';
+  const actionHtml = typeof o.actionHtml === 'string' ? o.actionHtml : '';
+  return `<div class="empty-state${o.compact ? ' empty-state-inline' : ''}">` +
+    `<i class="${icon} empty-state-icon" aria-hidden="true"></i>` +
+    `<p class="empty-state-message">${message}</p>` +
+    hint + actionHtml +
+    `</div>`;
+}
+
+// Pure: a failed-load card with a Retry affordance. The Retry `<button>`
+// carries a stable `data-error-retry` hook (no id, so multiple error cards
+// can safely coexist) -- callers own actually wiring a click listener to it
+// AFTER inserting this markup (e.g. `container.querySelector('[data-error-
+// retry]').addEventListener('click', reloadFn, { signal })`, mirroring
+// every other per-view AbortController-bound listener in this codebase);
+// this function never binds anything itself, keeping it a pure string
+// builder like `buildEmptyStateHtml` above.
+function buildErrorStateHtml(opts) {
+  const o = opts || {};
+  const message = typeof o.message === 'string' && o.message ? o.message : 'Something went wrong.';
+  return `<div class="error-state">` +
+    `<i class="icon-refresh error-state-icon" aria-hidden="true"></i>` +
+    `<p class="error-state-message">${message}</p>` +
+    `<button type="button" class="btn error-state-retry" data-error-retry>Retry</button>` +
+    `</div>`;
+}
+
 // ---- C2/C3: item count + format-toggle library controls (v1.24.0, T3) -----
 //
 // Both are client-side only (no server change) and injected via
@@ -2909,11 +2964,20 @@ function buildPinAvatarNode(label, channelAvatarUrl) {
 // from (never merged into), the db.folders-driven list `renderPlaylistsSheet`
 // builds above, per the design's explicit "alongside, never merged into"
 // invariant. Idempotent: any previously-rendered pinned section is removed
-// first, so repeated opens never accumulate duplicates. Renders NOTHING
-// (no section at all, no empty-state message) when there are zero pins --
-// this is what makes a disabled module (openPlaylistsSheet below resolves a
-// 404 to `[]`) and an enabled-but-unused module look identical here, both
-// preserving the disabled-module no-op guarantee.
+// first, so repeated opens never accumulate duplicates.
+//
+// v1.26.3 (Item 2): `moduleEnabled` (optional, default falsy) gates a "No
+// playlists pinned yet." empty-state message for the zero-pins case --
+// deliberately NOT unconditional. A disabled module's 404 resolves to the
+// exact same empty `pins` array an ENABLED-but-unused module would send
+// (see openPlaylistsSheet's fetch below), so this function alone cannot
+// tell those two cases apart; rendering the message unconditionally would
+// leak new UI into an installation with the module OFF, breaking the
+// disabled-module no-op guarantee (ARCHITECTURE.md). The caller passes
+// `moduleEnabled: true` ONLY after observing a genuine 2xx response from
+// `GET /api/subscriptions/pins` (proof the module is actually active) --
+// every other caller/omission renders NOTHING for zero pins, preserving the
+// prior "disabled and enabled-but-unused look identical" behavior exactly.
 //
 // SECURITY: unlike renderPlaylistsSheet above (which HTML-escapes
 // operator-owned folder labels into an innerHTML template string), this
@@ -2922,15 +2986,29 @@ function buildPinAvatarNode(label, channelAvatarUrl) {
 // yt-dlp-derived metadata, the SAME untrusted, creator-controlled trust
 // level lib/ytdlp/client/subscriptions.js treats a subscription's own
 // `name` at (textContent-only, never innerHTML) -- this function holds
-// itself to that same, stricter discipline for that reason.
-function renderPinnedPlaylists(pins) {
+// itself to that same, stricter discipline for that reason. The new empty-
+// state message is 100% static, developer-authored copy, but is still built
+// via createElement/textContent to match this function's own discipline.
+function renderPinnedPlaylists(pins, moduleEnabled) {
   const list = document.getElementById('playlists-sheet-list');
   if (!list) return;
   const existing = document.getElementById('playlists-pinned-section');
   if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
 
   const entries = derivePinnedPlaylistEntries(pins);
-  if (entries.length === 0) return;
+  if (entries.length === 0) {
+    if (moduleEnabled) {
+      const empty = document.createElement('div');
+      empty.id = 'playlists-pinned-section';
+      empty.className = 'empty-state empty-state-inline';
+      const message = document.createElement('p');
+      message.className = 'empty-state-message';
+      message.textContent = 'No playlists pinned yet.';
+      empty.appendChild(message);
+      list.appendChild(empty);
+    }
+    return;
+  }
 
   const section = document.createElement('div');
   section.id = 'playlists-pinned-section';
@@ -3342,11 +3420,21 @@ function openPlaylistsSheet() {
   // happened to resolve first. A 404 (module disabled) resolves to `[]`
   // (treated as "no pins"), preserving the disabled-module no-op guarantee --
   // this never logs/throws on a 404.
+  //
+  // v1.26.3 (Item 2): `moduleEnabled` is captured from the response's OWN
+  // `r.ok` (true only for a genuine 2xx) BEFORE the body is read, and
+  // threaded through to `renderPinnedPlaylists` -- see that function's own
+  // comment for why this is what lets it show a "No playlists pinned yet."
+  // message for a real zero-pins case without also showing it when the
+  // module is simply disabled (both cases otherwise resolve to the same
+  // empty `[]`). A thrown/network-level failure (the `.catch` below) leaves
+  // `moduleEnabled` at its default (`false`), the same conservative "render
+  // nothing" behavior as before this change.
   foldersRendered.then(() => {
     fetch('/api/subscriptions/pins')
-      .then((r) => (r.ok ? r.json() : []))
-      .catch(() => [])
-      .then((pins) => renderPinnedPlaylists(pins));
+      .then((r) => Promise.all([r.ok, r.ok ? r.json() : []]))
+      .catch(() => [false, []])
+      .then(([moduleEnabled, pins]) => renderPinnedPlaylists(pins, moduleEnabled));
   });
 }
 
@@ -4828,12 +4916,58 @@ function probeAndReconcileRepullButton() {
   reconcileRepullButton();
 }
 
+// registerServiceWorker (Item 4, v1.26.3): registers the minimal offline-
+// shell service worker (public/sw.js) at the default '/' scope -- see that
+// file's own header comment for the full network-first strategy/rationale.
+// Feature-detected on `navigator.serviceWorker` (absent on browsers without
+// SW support, and on any non-secure-context origin other than localhost --
+// iOS Safari requires HTTPS or localhost for SW registration) so an
+// unsupported browser is completely unaffected; a rejected registration
+// (e.g. a transient fetch failure for sw.js itself) is logged and otherwise
+// swallowed -- it must never block or throw into the rest of page boot.
+// Called from every shell (all five load common.js) since none of them
+// carry `<script>`-level SW registration of their own.
+function registerServiceWorker() {
+  if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
+  navigator.serviceWorker.register('/sw.js', { scope: '/' })
+    .catch((err) => console.error('Service worker registration failed:', err));
+}
+
 // Sidebar toggle responsive menu helper. Guarded so requiring this file in Node
 // (for unit tests) never touches `document`.
 if (typeof document !== 'undefined') {
 document.addEventListener('DOMContentLoaded', () => {
   initTheme();
   initIconSet();   // reads ft-icons + the just-applied data-theme
+
+  // Item 4 (v1.26.3): deferred to the window 'load' event (fires after
+  // every critical page resource -- HTML/CSS/JS/images -- has already
+  // finished loading) so the SW registration fetch never competes with
+  // those for bandwidth/CPU during first paint; a fresh install's SW only
+  // matters for the NEXT navigation/offline case, never this one, so there
+  // is no cost to waiting. `window.addEventListener('load', ...)` fires
+  // immediately (next tick) if `load` has already happened by the time this
+  // runs (per spec, a listener added after an event already fired on this
+  // target simply never sees it) -- guarded by checking `document.readyState`
+  // first so a slow-to-attach script (unlikely here, but defensive) never
+  // silently skips registration entirely.
+  if (typeof window !== 'undefined') {
+    // v1.26.4 wave-2 review fix (F7): the readyState==='complete' branch
+    // calls registerServiceWorker() SYNCHRONOUSLY, inline in this same
+    // DOMContentLoaded handler -- unlike the 'load' listener branch below, a
+    // SYNCHRONOUS throw here (not a rejection -- registerServiceWorker's own
+    // .catch() already handles a rejected register() promise) would
+    // propagate straight out of this call and abort every remaining line of
+    // this handler (menu-toggle wiring, search box, bootRouter(), etc.) --
+    // the same failure class as this release's public/js/setup.js
+    // renderIconPicker() guard fix. Wrapped in try/catch and swallowed,
+    // mirroring registerServiceWorker's own rejection .catch().
+    if (document.readyState === 'complete') {
+      try { registerServiceWorker(); } catch (err) { console.error('Service worker registration failed:', err); }
+    } else {
+      window.addEventListener('load', registerServiceWorker, { once: true });
+    }
+  }
 
   const menuToggle = document.getElementById('menu-toggle');
   const sidebar = document.getElementById('sidebar');
@@ -5021,5 +5155,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // of the settled-guard double-click fix (showMoveModal was already
     // exported above).
     showConfirmModal,
+    // v1.26.3 (Item 2/3): shared empty-state / error-state card builders.
+    buildEmptyStateHtml, buildErrorStateHtml,
   };
 }

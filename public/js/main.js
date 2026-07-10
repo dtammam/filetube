@@ -59,10 +59,47 @@ function buildCardDownloadFilename(title, ext) {
   return `${title || 'download'}${ext || ''}`;
 }
 
+// buildSkeletonGrid (Item 1, v1.26.3): `n` lightweight `.video-card`-shaped
+// loading placeholders, rendered into `#video-grid` BEFORE the
+// `/api/config`+`/api/videos` fetch chain in `loadLibrary()` settles --
+// replaces the old "ships empty, pops the whole grid in at once" blank
+// window. Each skeleton card matches the REAL card's box model exactly
+// (`.thumbnail-container`'s 16/9 aspect-ratio + border-radius, `.video-info`'s
+// padding, two text-line placeholders roughly matching the title/meta line
+// heights) so swapping skeleton markup for real card markup produces zero
+// layout shift. `aria-hidden="true"` on every skeleton card since it carries
+// no real content for assistive tech to announce. Pure (string-building
+// only, no DOM/timer) -- the shimmer motion itself is CSS-only
+// (`.skeleton-shimmer`, prefers-reduced-motion honored -- see style.css).
+// Exported for node:test.
+function buildSkeletonGrid(n) {
+  const count = Number.isInteger(n) && n > 0 ? n : 0;
+  let html = '';
+  for (let i = 0; i < count; i++) {
+    html += `
+      <div class="video-card skeleton-card" aria-hidden="true">
+        <div class="thumbnail-container skeleton-shimmer"></div>
+        <div class="video-info">
+          <div class="skeleton-line skeleton-line-title skeleton-shimmer"></div>
+          <div class="skeleton-line skeleton-line-meta skeleton-shimmer"></div>
+        </div>
+      </div>
+    `;
+  }
+  return html;
+}
+
+// The number of skeleton cards shown while the initial library fetch is in
+// flight -- enough to plausibly fill a typical grid row or two on both
+// mobile (single column) and desktop (`auto-fill, minmax(210px, 1fr)`)
+// without over-committing to a specific viewport width.
+const SKELETON_CARD_COUNT = 8;
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     buildCardDownloadHref,
     buildCardDownloadFilename,
+    buildSkeletonGrid,
   };
 }
 
@@ -164,6 +201,15 @@ if (typeof module !== 'undefined' && module.exports) {
 
     // Load configuration and files
     async function loadLibrary() {
+      // Item 1 (v1.26.3): show skeleton placeholders immediately, before
+      // either fetch below even starts -- kills the old "grid ships empty,
+      // then pops in all at once" window. Harmless when `#library-content`
+      // ends up hidden a moment later (the zero-folders `welcomeMessage`
+      // branch below): the skeleton just never becomes visible. Also covers
+      // the Retry button's re-invocation of this same function (see the
+      // catch block below) -- a retry gets its own fresh skeleton, not a
+      // stale error card sitting there while the retried fetch is in flight.
+      videoGrid.innerHTML = buildSkeletonGrid(SKELETON_CARD_COUNT);
       try {
         // 1. Check configs
         const configRes = await fetch('/api/config');
@@ -226,7 +272,16 @@ if (typeof module !== 'undefined' && module.exports) {
 
       } catch (err) {
         console.error('Failed to load library data:', err);
-        videoGrid.innerHTML = `<div style="padding: 20px; color: var(--yt-red); font-weight: bold;">Error loading library data from server.</div>`;
+        // Item 3 (v1.26.3): the shared, styled `.error-state` card (replaces
+        // the old bare inline-styled red text) with a real Retry affordance
+        // that re-invokes THIS SAME `loadLibrary()` -- the exact function
+        // that just failed -- rather than a full page reload. Bound via this
+        // view's per-instance `signal` (same AbortController every other
+        // listener in this file uses), so a retry click can never fire
+        // against an already-torn-down (navigated-away-from) instance.
+        videoGrid.innerHTML = buildErrorStateHtml({ message: 'Error loading library data from server.' });
+        const retryBtn = videoGrid.querySelector('[data-error-retry]');
+        if (retryBtn) retryBtn.addEventListener('click', () => loadLibrary(), { signal });
       }
     }
 
@@ -428,12 +483,18 @@ if (typeof module !== 'undefined' && module.exports) {
       disarmCardDelete();
 
       if (items.length === 0) {
-        videoGrid.innerHTML = `
-          <div style="grid-column: 1 / -1; text-align: center; padding: 40px; color: var(--text-secondary); font-size: 14px;">
-            No video or audio files found.
-            ${searchQuery || folderFilter ? '<br><a href="/" style="display: inline-block; margin-top: 12px;" class="btn">View All Media</a>' : ''}
-          </div>
-        `;
+        // Item 2 (v1.26.3): the shared, styled `.empty-state` card (replaces
+        // the old bare inline-styled text) -- same "View All Media" escape
+        // hatch as before (only shown for a search/folder view, never on an
+        // already-unfiltered empty library, where there is nothing broader
+        // to return to), now rendered as a real `.btn` via `actionHtml`.
+        const actionHtml = (searchQuery || folderFilter)
+          ? '<a href="/" class="btn empty-state-action">View All Media</a>'
+          : '';
+        videoGrid.innerHTML = buildEmptyStateHtml({
+          message: 'No video or audio files found.',
+          actionHtml,
+        });
         return;
       }
 

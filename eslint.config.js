@@ -169,6 +169,10 @@ module.exports = [
         // trigger and watch.js's current-item trigger (T9 follow-up wiring).
         showMoveModal: 'readonly',
         requestMoveItem: 'readonly',
+        // Item 2/3 (v1.26.3): shared empty-state/error-state card builders,
+        // consumed by main.js's home/library grid render + load-error path.
+        buildEmptyStateHtml: 'readonly',
+        buildErrorStateHtml: 'readonly',
       },
     },
   },
@@ -203,6 +207,23 @@ module.exports = [
         openOverlay: 'readonly',
         closeOverlayThen: 'readonly',
       },
+    },
+  },
+
+  // v1.26.3 (Item 4): the minimal offline-shell service worker runs in its
+  // own global scope (`self`/`caches`/`clients`/`skipWaiting`/`fetch`
+  // event's `respondWith`, etc.) -- none of which are DOM/`window` globals,
+  // so it gets its own dedicated block rather than joining the
+  // `public/**/*.js` vanilla-browser block above.
+  {
+    files: ['public/sw.js'],
+    languageOptions: {
+      ecmaVersion: 2023,
+      sourceType: 'script',
+      globals: { ...globals.serviceworker },
+    },
+    rules: {
+      ...commonRules,
     },
   },
 ];

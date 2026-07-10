@@ -729,6 +729,17 @@ if (typeof module !== 'undefined' && module.exports) {
   var ccOverlayEl, ccOverlayTextEl;
   var audioCaptionsOn = false;
 
+  // v1.26.4 (frozen audio-CC overlay, on-device iOS bug): the last text this
+  // controller actually PAINTED into `ccOverlayTextEl` (or `null` when
+  // hidden) -- lets `renderActiveCueOverlay` become idempotent (a no-op
+  // repaint when nothing changed) so it's safe to call from MULTIPLE data
+  // paths (click handler, dual cuechange binding, AND a `timeupdate`
+  // fallback -- see wireHostListeners below) without fighting itself or
+  // doing needless DOM writes ~4x/sec. Reset to `null` in
+  // `hideCaptionOverlay()` so a subsequent re-toggle-on always repaints even
+  // if the very first cue happens to match whatever was on screen before.
+  var lastCcOverlayText = null;
+
   var dockCloseBtn = null;
   var dockChromeReady = false;
 
@@ -1011,6 +1022,14 @@ if (typeof module !== 'undefined' && module.exports) {
       }
     }
     var text = buildCaptionOverlayText(rawTexts);
+    // v1.26.4 (frozen audio-CC overlay): idempotent-render guard. This
+    // function is now called from THREE data paths (the #cc-btn click
+    // handler, the dual cuechange binding, and the timeupdate fallback --
+    // see wireHostListeners below), so it must be safe/cheap to call
+    // repeatedly with an unchanged result -- skip the DOM write entirely
+    // when the text hasn't moved since the last successful paint.
+    if (text === lastCcOverlayText) return;
+    lastCcOverlayText = text;
     if (text) {
       ccOverlayTextEl.textContent = text;
       ccOverlayEl.hidden = false;
@@ -1022,10 +1041,14 @@ if (typeof module !== 'undefined' && module.exports) {
 
   // Force-hides the overlay + clears its text -- called whenever captions
   // are toggled OFF and on every teardown, so a previous item's (or a
-  // just-disabled) caption text never lingers visible.
+  // just-disabled) caption text never lingers visible. Also resets
+  // `lastCcOverlayText` (v1.26.4) so a later re-toggle-ON always repaints,
+  // even if the first cue shown after re-enabling happens to match
+  // whatever text was on screen before the toggle-off.
   function hideCaptionOverlay() {
     if (ccOverlayTextEl) ccOverlayTextEl.textContent = '';
     if (ccOverlayEl) ccOverlayEl.hidden = true;
+    lastCcOverlayText = null;
   }
 
   // ---- Media Session ("Now Playing" control surface) -------------------------
@@ -2577,22 +2600,64 @@ if (typeof module !== 'undefined' && module.exports) {
       });
     }
 
-    // Feature B (v1.26.1): the overlay's data source -- wired ONCE, directly
-    // on the persistent `<track>` element's TextTrack object (`ccTrack`
-    // itself is never re-created; only its `src` changes per load, see
-    // setupForMedia() below), exactly like every other one-time listener in
-    // this function. `cuechange` fires for BOTH 'hidden' and 'showing'
-    // track modes (per the WebVTT spec), so VIDEO's own 'hidden' <->
-    // 'showing' toggle above would ALSO reach this handler -- the
-    // `currentData.type === 'audio'` guard is what keeps VIDEO mode
-    // completely untouched (native rendering only, exactly as before this
-    // feature).
-    if (ccTrack && ccTrack.track) {
-      ccTrack.track.addEventListener('cuechange', function () {
-        if (!currentData || currentData.type !== 'audio') return;
-        renderActiveCueOverlay(ccTrack.track);
-      });
+    // Feature B (v1.26.1) / v1.26.4 fix (frozen audio-CC overlay, on-device
+    // iOS bug): the overlay's `cuechange` data source. `cuechange` fires for
+    // BOTH 'hidden' and 'showing' track modes (per the WebVTT spec), so
+    // VIDEO's own 'hidden' <-> 'showing' toggle above would ALSO reach this
+    // handler -- the `currentData.type === 'audio'` guard is what keeps
+    // VIDEO mode completely untouched (native rendering only, exactly as
+    // before this feature).
+    //
+    // ROOT CAUSE (v1.26.4, high confidence, Dean's iPhone): iOS WebKit does
+    // not reliably fire `cuechange` on a TextTrack whose `mode` is 'hidden'
+    // during ACTIVE playback (documented: Apple Developer Forums thread
+    // 704536; video.js issue #7417) -- exactly the mode this overlay uses
+    // for audio (see the click handler's own comment above). The original
+    // fix bound `cuechange` ONLY on `ccTrack.track` (the TextTrack object),
+    // which is what silently froze the overlay after its first paint: no
+    // event, no repaint, forever. Two changes here:
+    //
+    //  1. DUAL binding: the WebVTT spec fires `cuechange` at BOTH the
+    //     `<track>` ELEMENT and its `.track` TextTrack object -- bind the
+    //     shared handler on both. The element-level listener also survives
+    //     a `.track` object being replaced/recreated by the browser (the
+    //     click handler's own comment above already distrusts cached
+    //     `.track` references after `mediaPlayer.load()`); binding on
+    //     `ccTrack` itself is immune to that. Reading `ccTrack.track`
+    //     FRESH inside the handler (never captured) keeps this correct even
+    //     if the TextTrack instance underneath has changed. Double delivery
+    //     when both fire is harmless: `renderActiveCueOverlay`'s own
+    //     idempotent guard (see its own comment) makes the second call a
+    //     no-op.
+    //  2. This dual binding is still NOT the fix that actually solves the
+    //     freeze on iOS -- see the `timeupdate` fallback wired below, which
+    //     is the load-bearing path.
+    function handleCcCueChange() {
+      if (!currentData || currentData.type !== 'audio') return;
+      if (ccTrack && ccTrack.track) renderActiveCueOverlay(ccTrack.track);
     }
+    if (ccTrack) ccTrack.addEventListener('cuechange', handleCcCueChange);
+    if (ccTrack && ccTrack.track) ccTrack.track.addEventListener('cuechange', handleCcCueChange);
+
+    // v1.26.4 fix (frozen audio-CC overlay, THE load-bearing fix): a
+    // `timeupdate`-driven fallback that repaints the overlay from
+    // `track.activeCues` on every native `timeupdate` tick (~4x/sec),
+    // completely independent of whether `cuechange` fires at all. This is
+    // what actually keeps captions advancing on iOS, where 'hidden'-mode
+    // `cuechange` is unreliable during playback (see the root-cause comment
+    // above) -- `timeupdate` has no such history of flakiness and is
+    // already relied on elsewhere in this file (see updatePositionState's
+    // own 'timeupdate' listener above). Tightly gated so it's a total no-op
+    // whenever captions aren't actually in play: CC must be toggled ON, the
+    // current item must be audio, and a track must exist -- video playback,
+    // CC-off audio, and items with no captions never pay for this at all.
+    // `renderActiveCueOverlay`'s idempotent guard means the ~4x/sec calls
+    // only ever touch the DOM on an actual cue change, exactly like the
+    // cuechange-driven paths above.
+    mediaPlayer.addEventListener('timeupdate', function () {
+      if (!audioCaptionsOn || !currentData || currentData.type !== 'audio') return;
+      if (ccTrack && ccTrack.track) renderActiveCueOverlay(ccTrack.track);
+    });
 
     // Click/tap-the-cover-art-to-play/pause (AC9): acts ONLY while FULL --
     // stopPropagation there so the toggle never also reaches anything behind
