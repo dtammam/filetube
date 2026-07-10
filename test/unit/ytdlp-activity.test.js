@@ -33,6 +33,15 @@ test('setSubscription shallow-merges a subsequent patch, preserving untouched fi
   assert.equal(merged.updatedAt, new Date(t1).toISOString());
 });
 
+test('v1.26: an explicit `null` value in a patch OVERWRITES a prior sticky value (mergeEntry is a plain object spread, not a merge that skips null) -- this is the exact mechanism progress.js relies on to clear a stale `phase`', () => {
+  const t0 = Date.UTC(2026, 0, 1, 0, 0, 0);
+  const t1 = t0 + 1000;
+  activity.setOneShot('job1', { state: 'downloading', phase: 'merging', percent: 100 }, t0);
+  const merged = activity.setOneShot('job1', { state: 'downloading', percent: 12.5, phase: null }, t1);
+  assert.equal(merged.percent, 12.5);
+  assert.strictEqual(merged.phase, null, 'an explicit `phase: null` key on the patch must clear the prior sticky "merging" value');
+});
+
 test('setOneShot creates and merges independently of the subscriptions namespace', () => {
   const t0 = Date.UTC(2026, 0, 1, 0, 0, 0);
   activity.setOneShot('job1', { state: 'downloading', total: 1, index: 1, label: 'One-Off' }, t0);

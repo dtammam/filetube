@@ -35,6 +35,13 @@ const {
   ONEOFF_FILETYPE_OPTIONS,
   ONEOFF_DEFAULT_FILETYPE,
   ONEOFF_STATUS_POLL_MS,
+  ONEOFF_STATUS_POLL_FAST_MS,
+  ONEOFF_STATUS_POLL_MAX_MS,
+  ACTIVE_ENTRY_STALE_MS,
+  isFreshlyActiveEntry,
+  computeOneOffPollDelayMs,
+  nextOneOffPollDelayMs,
+  computeOneOffProgressBar,
   decideOneOffTerminalAction,
   applyOneOffTerminalAction,
   triggerLibraryRescanAndRefresh,
@@ -313,6 +320,27 @@ test('formatOneOffStatusText: "done" still renders the short fixed "Done" messag
   assert.strictEqual(formatOneOffStatusText({ state: 'done' }), 'Done');
 });
 
+// ---- v1.26 "real progress": phase-aware rendering --------------------------
+
+test('formatOneOffStatusText: a "merging" phase renders "Merging…", even with a stale 100% percent', () => {
+  const result = formatOneOffStatusText({ state: 'downloading', phase: 'merging', percent: 100, title: 'Some Title' });
+  assert.strictEqual(result, 'Merging…');
+});
+
+test('formatOneOffStatusText: a "converting" phase renders "Converting…"', () => {
+  const result = formatOneOffStatusText({ state: 'downloading', phase: 'converting', percent: 100 });
+  assert.strictEqual(result, 'Converting…');
+});
+
+test('formatOneOffStatusText: a phase label keeps N of M indexing when present', () => {
+  const result = formatOneOffStatusText({ state: 'downloading', phase: 'merging', index: 3, total: 12, percent: 100 });
+  assert.strictEqual(result, 'Merging… — 3 of 12');
+});
+
+test('formatOneOffStatusText: an unrecognized phase value is ignored, falling through to the normal percent/label logic', () => {
+  assert.strictEqual(formatOneOffStatusText({ state: 'downloading', phase: 'some-future-phase', percent: 47 }), 'Downloading — 47%');
+});
+
 test('formatOneOffStatusText: never renders "undefined" or "NaN" for any downloading shape, real or malformed', () => {
   const shapes = [
     { state: 'downloading' },
@@ -535,6 +563,171 @@ test('applyOneOffTerminalAction: close is scheduled through the injected schedul
 test('applyOneOffTerminalAction: a null/undefined action is a safe no-op', () => {
   assert.doesNotThrow(() => applyOneOffTerminalAction(null, () => { throw new Error('must not run'); }));
   assert.doesNotThrow(() => applyOneOffTerminalAction(undefined, () => { throw new Error('must not run'); }));
+});
+
+// ---- v1.26 "real progress": adaptive poll cadence --------------------------
+
+test('computeOneOffPollDelayMs: ~700ms while a job is genuinely and RECENTLY "downloading"', () => {
+  const nowMs = Date.UTC(2026, 6, 10, 12, 0, 0);
+  const fresh = new Date(nowMs - 1000).toISOString();
+  assert.strictEqual(computeOneOffPollDelayMs({ state: 'downloading', updatedAt: fresh }, nowMs), ONEOFF_STATUS_POLL_FAST_MS);
+  assert.strictEqual(ONEOFF_STATUS_POLL_FAST_MS, 700);
+});
+
+test('computeOneOffPollDelayMs: the base ~2.5s cadence for every other state, and for no entry at all', () => {
+  const nowMs = Date.UTC(2026, 6, 10, 12, 0, 0);
+  const fresh = new Date(nowMs - 1000).toISOString();
+  assert.strictEqual(computeOneOffPollDelayMs({ state: 'queued', updatedAt: fresh }, nowMs), ONEOFF_STATUS_POLL_MS);
+  assert.strictEqual(computeOneOffPollDelayMs({ state: 'listing', updatedAt: fresh }, nowMs), ONEOFF_STATUS_POLL_MS);
+  assert.strictEqual(computeOneOffPollDelayMs({ state: 'done', updatedAt: fresh }, nowMs), ONEOFF_STATUS_POLL_MS);
+  assert.strictEqual(computeOneOffPollDelayMs(null, nowMs), ONEOFF_STATUS_POLL_MS);
+  assert.strictEqual(computeOneOffPollDelayMs(undefined, nowMs), ONEOFF_STATUS_POLL_MS);
+});
+
+// ---- v1.26 code-review fix (F4): staleness gate ----------------------------
+
+test('isFreshlyActiveEntry: true only for a "downloading" entry whose updatedAt is within ACTIVE_ENTRY_STALE_MS', () => {
+  const nowMs = Date.UTC(2026, 6, 10, 12, 0, 0);
+  assert.strictEqual(ACTIVE_ENTRY_STALE_MS, 10000);
+  assert.strictEqual(isFreshlyActiveEntry({ state: 'downloading', updatedAt: new Date(nowMs - 1).toISOString() }, nowMs), true);
+  assert.strictEqual(isFreshlyActiveEntry({ state: 'downloading', updatedAt: new Date(nowMs - 9999).toISOString() }, nowMs), true);
+});
+
+test('isFreshlyActiveEntry: F4 -- a "downloading" entry with a STALE updatedAt (a wedged download) is not active', () => {
+  const nowMs = Date.UTC(2026, 6, 10, 12, 0, 0);
+  assert.strictEqual(isFreshlyActiveEntry({ state: 'downloading', updatedAt: new Date(nowMs - 10000).toISOString() }, nowMs), false);
+  assert.strictEqual(isFreshlyActiveEntry({ state: 'downloading', updatedAt: new Date(nowMs - 3600000).toISOString() }, nowMs), false, 'a download wedged for an hour must never be treated as active');
+});
+
+test('isFreshlyActiveEntry: F4 -- a missing/unparseable updatedAt is treated as NOT fresh, never throws', () => {
+  const nowMs = Date.UTC(2026, 6, 10, 12, 0, 0);
+  assert.strictEqual(isFreshlyActiveEntry({ state: 'downloading' }, nowMs), false);
+  assert.strictEqual(isFreshlyActiveEntry({ state: 'downloading', updatedAt: 'garbage' }, nowMs), false);
+  assert.strictEqual(isFreshlyActiveEntry({ state: 'downloading', updatedAt: null }, nowMs), false);
+  assert.doesNotThrow(() => isFreshlyActiveEntry(null, nowMs));
+  assert.doesNotThrow(() => isFreshlyActiveEntry(undefined, nowMs));
+  assert.strictEqual(isFreshlyActiveEntry(null, nowMs), false);
+});
+
+test('isFreshlyActiveEntry: false for a non-"downloading" state regardless of updatedAt freshness', () => {
+  const nowMs = Date.UTC(2026, 6, 10, 12, 0, 0);
+  const fresh = new Date(nowMs - 1).toISOString();
+  assert.strictEqual(isFreshlyActiveEntry({ state: 'queued', updatedAt: fresh }, nowMs), false);
+  assert.strictEqual(isFreshlyActiveEntry({ state: 'done', updatedAt: fresh }, nowMs), false);
+});
+
+// ---- v1.26 code-review fix (F5): failure backoff, floored at the base ------
+// cadence ---------------------------------------------------------------------
+
+test('nextOneOffPollDelayMs: success delegates straight to computeOneOffPollDelayMs (fast/base, staleness-aware)', () => {
+  const nowMs = Date.UTC(2026, 6, 10, 12, 0, 0);
+  const fresh = new Date(nowMs - 1).toISOString();
+  assert.strictEqual(nextOneOffPollDelayMs(ONEOFF_STATUS_POLL_MS, true, { state: 'downloading', updatedAt: fresh }, nowMs), ONEOFF_STATUS_POLL_FAST_MS);
+  assert.strictEqual(nextOneOffPollDelayMs(ONEOFF_STATUS_POLL_MS, true, { state: 'queued' }, nowMs), ONEOFF_STATUS_POLL_MS);
+});
+
+test('nextOneOffPollDelayMs: failure doubles the previous delay, capped at ONEOFF_STATUS_POLL_MAX_MS', () => {
+  assert.strictEqual(ONEOFF_STATUS_POLL_MAX_MS, 30000);
+  assert.strictEqual(nextOneOffPollDelayMs(ONEOFF_STATUS_POLL_MS, false), ONEOFF_STATUS_POLL_MS * 2);
+  assert.strictEqual(nextOneOffPollDelayMs(25000, false), 30000);
+  assert.strictEqual(nextOneOffPollDelayMs(30000, false), 30000);
+});
+
+test('nextOneOffPollDelayMs: F5 -- a failure right after a fast (~700ms) success backs off from the BASE cadence, not from 700ms', () => {
+  // Pre-fix, this would have doubled the raw 700ms fast-cadence value to
+  // 1400ms -- a FASTER retry than this backoff's own original first retry
+  // ever was (ONEOFF_STATUS_POLL_MS * 2 = 5000ms).
+  assert.strictEqual(
+    nextOneOffPollDelayMs(ONEOFF_STATUS_POLL_FAST_MS, false),
+    ONEOFF_STATUS_POLL_MS * 2,
+    'a failure must never retry faster than doubling the BASE cadence, even if the previous delay was the fast 700ms tick',
+  );
+});
+
+test('nextOneOffPollDelayMs: falls back to the base delay for an invalid previous value on failure', () => {
+  assert.strictEqual(nextOneOffPollDelayMs(undefined, false), ONEOFF_STATUS_POLL_MS * 2);
+  assert.strictEqual(nextOneOffPollDelayMs(-5, false), ONEOFF_STATUS_POLL_MS * 2);
+});
+
+// ---- v1.26 "real progress": computeOneOffProgressBar reducer ---------------
+
+test('computeOneOffProgressBar: hidden for no entry, an idle/unrecognized state, or a terminal state', () => {
+  assert.deepStrictEqual(computeOneOffProgressBar(null), { visible: false, indeterminate: false, percent: 0 });
+  assert.deepStrictEqual(computeOneOffProgressBar(undefined), { visible: false, indeterminate: false, percent: 0 });
+  assert.strictEqual(computeOneOffProgressBar({ state: 'idle' }).visible, false);
+  assert.strictEqual(computeOneOffProgressBar({ state: 'done' }).visible, false);
+  assert.strictEqual(computeOneOffProgressBar({ state: 'error' }).visible, false);
+  assert.strictEqual(computeOneOffProgressBar({ state: 'cancelled' }).visible, false);
+});
+
+test('computeOneOffProgressBar: visible + indeterminate for queued/listing (no percent exists yet)', () => {
+  assert.deepStrictEqual(computeOneOffProgressBar({ state: 'queued' }), { visible: true, indeterminate: true, percent: 0 });
+  assert.deepStrictEqual(computeOneOffProgressBar({ state: 'listing' }), { visible: true, indeterminate: true, percent: 0 });
+});
+
+test('computeOneOffProgressBar: visible + indeterminate while downloading with no real percent yet', () => {
+  assert.deepStrictEqual(computeOneOffProgressBar({ state: 'downloading' }), { visible: true, indeterminate: true, percent: 0 });
+  assert.deepStrictEqual(computeOneOffProgressBar({ state: 'downloading', percent: 0 }), { visible: true, indeterminate: true, percent: 0 });
+});
+
+test('computeOneOffProgressBar: visible + determinate with the real, rounded/clamped percent once real transfer progress exists', () => {
+  assert.deepStrictEqual(computeOneOffProgressBar({ state: 'downloading', percent: 47.6 }), { visible: true, indeterminate: false, percent: 48 });
+  assert.deepStrictEqual(computeOneOffProgressBar({ state: 'downloading', percent: 150 }), { visible: true, indeterminate: false, percent: 100 });
+});
+
+test('computeOneOffProgressBar: a "merging"/"converting" phase is indeterminate even with a stale 100% percent (phase wins)', () => {
+  assert.deepStrictEqual(
+    computeOneOffProgressBar({ state: 'downloading', phase: 'merging', percent: 100 }),
+    { visible: true, indeterminate: true, percent: 0 }
+  );
+  assert.deepStrictEqual(
+    computeOneOffProgressBar({ state: 'downloading', phase: 'converting', percent: 100 }),
+    { visible: true, indeterminate: true, percent: 0 }
+  );
+});
+
+// ---- buildOneOffModal: the live progress bar -------------------------------
+
+test('buildOneOffModal: the progress bar track starts hidden', () => {
+  const modal = buildOneOffModal(fakeDoc, {});
+  assert.strictEqual(modal.progressTrack.hidden, true);
+});
+
+test('buildOneOffModal: setStatus shows the bar at the real percent width once transfer progress is real', () => {
+  const modal = buildOneOffModal(fakeDoc, {});
+  modal.setStatus({ state: 'downloading', percent: 47 });
+  assert.strictEqual(modal.progressTrack.hidden, false);
+  assert.strictEqual(modal.progressFill.style.width, '47%');
+  assert.strictEqual(modal.progressFill.className, 'dl-status-chip-progress-fill');
+});
+
+test('buildOneOffModal: setStatus marks the bar indeterminate (full-width, .indeterminate class) while queued/no real percent/postprocessing', () => {
+  const modal = buildOneOffModal(fakeDoc, {});
+
+  modal.setStatus({ state: 'queued' });
+  assert.strictEqual(modal.progressTrack.hidden, false);
+  assert.strictEqual(modal.progressFill.style.width, '100%');
+  assert.match(modal.progressFill.className, /\bindeterminate\b/);
+
+  modal.setStatus({ state: 'downloading', phase: 'merging', percent: 100 });
+  assert.strictEqual(modal.progressTrack.hidden, false);
+  assert.strictEqual(modal.progressFill.style.width, '100%');
+  assert.match(modal.progressFill.className, /\bindeterminate\b/);
+});
+
+test('buildOneOffModal: setStatus hides the bar again once the job reaches a terminal state', () => {
+  const modal = buildOneOffModal(fakeDoc, {});
+  modal.setStatus({ state: 'downloading', percent: 47 });
+  assert.strictEqual(modal.progressTrack.hidden, false);
+  modal.setStatus({ state: 'done' });
+  assert.strictEqual(modal.progressTrack.hidden, true);
+});
+
+test('buildOneOffModal: setStatus(null) (no job) hides the bar', () => {
+  const modal = buildOneOffModal(fakeDoc, {});
+  modal.setStatus({ state: 'downloading', percent: 47 });
+  modal.setStatus(null);
+  assert.strictEqual(modal.progressTrack.hidden, true);
 });
 
 // ---- Static-source regression guard: no innerHTML in the new builder -------

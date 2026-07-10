@@ -28,6 +28,10 @@ const {
   DEFAULT_FILETYPE_OPTION,
   STATUS_POLL_BASE_MS,
   STATUS_POLL_MAX_MS,
+  STATUS_POLL_FAST_MS,
+  ACTIVE_ENTRY_STALE_MS,
+  isFreshlyActiveEntry,
+  snapshotHasActiveDownload,
   nextPollDelay,
   formatSubMeta,
   formatSubStatus,
@@ -51,6 +55,10 @@ const {
   createSubscriptionsListElement,
   createOneShotRow,
   createOneShotsListElement,
+  // v1.26 code-review fix (F7): the one-shot list's cheap render-skip
+  // signature + the container update it gates.
+  computeOneShotsSignature,
+  updateOneShotsContainer,
   // v1.25 QoL follow-up ("reheat"): metadata+subtitle re-pull UI.
   REHEAT_ACTIVITY_ID,
   formatReheatSummary,
@@ -91,6 +99,20 @@ class FakeElement {
   appendChild(child) {
     this.children.push(child);
     if (child instanceof FakeElement) child.parentNode = this;
+    return child;
+  }
+
+  // v1.26 code-review fix (F7) test support: `clearChildren`'s
+  // `while (el.firstChild) el.removeChild(el.firstChild)` loop needs both of
+  // these -- mirrors the equivalent primitives already added to this file's
+  // sibling fake-DOM harnesses (ytdlp-oneoff-modal.test.js).
+  get firstChild() {
+    return this.children.length > 0 ? this.children[0] : null;
+  }
+
+  removeChild(child) {
+    const idx = this.children.indexOf(child);
+    if (idx >= 0) this.children.splice(idx, 1);
     return child;
   }
 
@@ -440,6 +462,23 @@ test('formatLiveStatusText: "done" renders a short done message', () => {
   assert.strictEqual(formatLiveStatusText({ state: 'done', percent: 100 }), 'Done');
 });
 
+// ---- v1.26 "real progress": phase-aware rendering --------------------------
+
+test('formatLiveStatusText: a "merging" phase renders "Merging…", even with a stale 100% percent', () => {
+  const result = formatLiveStatusText({ state: 'downloading', phase: 'merging', percent: 100, title: 'Some Title' });
+  assert.strictEqual(result, 'Merging…');
+});
+
+test('formatLiveStatusText: a "converting" phase renders "Converting…" and keeps N of M indexing when present', () => {
+  const result = formatLiveStatusText({ state: 'downloading', phase: 'converting', percent: 100, index: 3, total: 12 });
+  assert.strictEqual(result, 'Converting… — 3 of 12');
+});
+
+test('formatLiveStatusText: an unrecognized phase value is ignored, falling through to the normal title/percent logic', () => {
+  const result = formatLiveStatusText({ state: 'downloading', phase: 'some-future-phase', percent: 47 });
+  assert.strictEqual(result, 'Downloading — 47%');
+});
+
 test('formatLiveStatusText: "error" renders the redacted error string verbatim', () => {
   assert.strictEqual(
     formatLiveStatusText({ state: 'error', error: 'error: yt-dlp exited with code 1' }),
@@ -574,6 +613,70 @@ test('nextPollDelay: failure never exceeds the max cap, even after many consecut
   let delay = STATUS_POLL_BASE_MS;
   for (let i = 0; i < 20; i += 1) delay = nextPollDelay(delay, false);
   assert.strictEqual(delay, STATUS_POLL_MAX_MS);
+});
+
+// v1.26 "real progress": adaptive fast poll while a download is active.
+
+test('nextPollDelay: success + isActive resets to the fast ~700ms cadence', () => {
+  assert.strictEqual(nextPollDelay(20000, true, true), STATUS_POLL_FAST_MS);
+  assert.strictEqual(STATUS_POLL_FAST_MS, 700);
+});
+
+test('nextPollDelay: success + no isActive (or isActive omitted) keeps the pre-existing base-cadence behavior', () => {
+  assert.strictEqual(nextPollDelay(20000, true, false), STATUS_POLL_BASE_MS);
+  assert.strictEqual(nextPollDelay(20000, true), STATUS_POLL_BASE_MS, 'omitting isActive must behave exactly like the pre-v1.26 two-arg call');
+});
+
+test('nextPollDelay: a FAILURE still backs off exactly as before, regardless of isActive', () => {
+  assert.strictEqual(nextPollDelay(STATUS_POLL_BASE_MS, false, true), STATUS_POLL_BASE_MS * 2);
+});
+
+test('snapshotHasActiveDownload: true when any subscription OR one-shot entry is genuinely and RECENTLY "downloading"', () => {
+  const nowMs = Date.UTC(2026, 6, 10, 12, 0, 0);
+  const fresh = new Date(nowMs - 1000).toISOString();
+  assert.strictEqual(snapshotHasActiveDownload({ subscriptions: { s1: { state: 'downloading', updatedAt: fresh } }, oneShots: {} }, nowMs), true);
+  assert.strictEqual(snapshotHasActiveDownload({ subscriptions: {}, oneShots: { j1: { state: 'downloading', updatedAt: fresh } } }, nowMs), true);
+});
+
+test('snapshotHasActiveDownload: false when nothing is downloading, and never throws for an empty/malformed/absent snapshot', () => {
+  const nowMs = Date.UTC(2026, 6, 10, 12, 0, 0);
+  const fresh = new Date(nowMs - 1000).toISOString();
+  assert.strictEqual(snapshotHasActiveDownload({ subscriptions: { s1: { state: 'queued', updatedAt: fresh } }, oneShots: { j1: { state: 'done', updatedAt: fresh } } }, nowMs), false);
+  assert.strictEqual(snapshotHasActiveDownload({ subscriptions: {}, oneShots: {} }, nowMs), false);
+  assert.doesNotThrow(() => snapshotHasActiveDownload(null));
+  assert.strictEqual(snapshotHasActiveDownload(null), false);
+  assert.strictEqual(snapshotHasActiveDownload(undefined), false);
+});
+
+// ---- v1.26 code-review fix (F4): staleness gate ----------------------------
+
+test('snapshotHasActiveDownload: F4 -- a "downloading" entry with a STALE updatedAt (a wedged download) is not active', () => {
+  const nowMs = Date.UTC(2026, 6, 10, 12, 0, 0);
+  const stale = new Date(nowMs - 20000).toISOString();
+  assert.strictEqual(snapshotHasActiveDownload({ subscriptions: { s1: { state: 'downloading', updatedAt: stale } }, oneShots: {} }, nowMs), false);
+});
+
+test('isFreshlyActiveEntry: fresh -> true, stale -> false, missing updatedAt -> false (never throws)', () => {
+  const nowMs = Date.UTC(2026, 6, 10, 12, 0, 0);
+  assert.strictEqual(ACTIVE_ENTRY_STALE_MS, 10000);
+  assert.strictEqual(isFreshlyActiveEntry({ state: 'downloading', updatedAt: new Date(nowMs - 1).toISOString() }, nowMs), true);
+  assert.strictEqual(isFreshlyActiveEntry({ state: 'downloading', updatedAt: new Date(nowMs - 15000).toISOString() }, nowMs), false);
+  assert.strictEqual(isFreshlyActiveEntry({ state: 'downloading' }, nowMs), false);
+  assert.strictEqual(isFreshlyActiveEntry({ state: 'downloading', updatedAt: 'not-a-date' }, nowMs), false);
+  assert.doesNotThrow(() => isFreshlyActiveEntry(undefined, nowMs));
+});
+
+// ---- v1.26 code-review fix (F5): failure backoff floors at BASE cadence ---
+
+test('nextPollDelay: F5 -- a failure right after a fast (~700ms) success backs off from the BASE cadence, not from 700ms', () => {
+  // Pre-fix, this would have doubled the raw 700ms fast-cadence value to
+  // 1400ms -- a FASTER retry than the backoff's own original first retry
+  // ever was (STATUS_POLL_BASE_MS * 2 = 5000ms).
+  assert.strictEqual(
+    nextPollDelay(STATUS_POLL_FAST_MS, false),
+    STATUS_POLL_BASE_MS * 2,
+    'a failure must never retry faster than doubling the BASE cadence, even if the previous delay was the fast 700ms tick',
+  );
 });
 
 // ---- v1.21.0 FR-3 (T3): DOM construction -- new row anatomy ----------------
@@ -1513,6 +1616,111 @@ test('createOneShotsListElement: renders one row per job entry', () => {
   };
   const container = createOneShotsListElement(oneShots, fakeDoc, {});
   assert.strictEqual(container.children.length, 2);
+});
+
+// ---- v1.26 code-review fix (F7): computeOneShotsSignature -----------------
+
+test('computeOneShotsSignature: identical rendered fields produce the identical signature', () => {
+  const oneShots = {
+    job1: { state: 'downloading', label: 'One-Off', url: 'https://www.youtube.com/watch?v=aaaaaaaaaaa', percent: 40 },
+  };
+  const sig1 = computeOneShotsSignature(oneShots);
+  const sig2 = computeOneShotsSignature({
+    job1: { state: 'downloading', label: 'One-Off', url: 'https://www.youtube.com/watch?v=aaaaaaaaaaa', percent: 40 },
+  });
+  assert.strictEqual(sig1, sig2);
+});
+
+test('computeOneShotsSignature: a change to a RENDERED field (status/percent) changes the signature', () => {
+  const before = computeOneShotsSignature({ job1: { state: 'downloading', label: 'One-Off', url: 'https://x', percent: 10 } });
+  const after = computeOneShotsSignature({ job1: { state: 'downloading', label: 'One-Off', url: 'https://x', percent: 55 } });
+  assert.notStrictEqual(before, after, 'a percent change must change the signature (it changes the rendered status text)');
+});
+
+test('computeOneShotsSignature: a change to a field that is NEVER rendered (format/quality/filetype) does NOT change the signature', () => {
+  const before = computeOneShotsSignature({ job1: { state: 'downloading', label: 'One-Off', url: 'https://x', percent: 10, format: 'video', quality: 'best', filetype: 'mp4' } });
+  const after = computeOneShotsSignature({ job1: { state: 'downloading', label: 'One-Off', url: 'https://x', percent: 10, format: 'audio', quality: '720p', filetype: 'mp3' } });
+  assert.strictEqual(before, after, 'a field that createOneShotRow never renders must not affect the signature');
+});
+
+test('computeOneShotsSignature: order-independent -- the same jobs in a different key order produce the same signature', () => {
+  const a = computeOneShotsSignature({
+    job1: { state: 'downloading', label: 'A', url: 'https://a' },
+    job2: { state: 'done', label: 'B', url: 'https://b' },
+  });
+  const b = computeOneShotsSignature({
+    job2: { state: 'done', label: 'B', url: 'https://b' },
+    job1: { state: 'downloading', label: 'A', url: 'https://a' },
+  });
+  assert.strictEqual(a, b);
+});
+
+test('computeOneShotsSignature: a removed/added job changes the signature', () => {
+  const before = computeOneShotsSignature({ job1: { state: 'downloading', label: 'A', url: 'https://a' } });
+  const after = computeOneShotsSignature({});
+  assert.notStrictEqual(before, after);
+});
+
+test('computeOneShotsSignature: an empty/malformed input never throws and returns a stable empty-ish value', () => {
+  assert.strictEqual(computeOneShotsSignature({}), '');
+  assert.strictEqual(computeOneShotsSignature(null), '');
+  assert.strictEqual(computeOneShotsSignature(undefined), '');
+  assert.doesNotThrow(() => computeOneShotsSignature('not-an-object'));
+});
+
+// ---- v1.26 code-review fix (F7): updateOneShotsContainer render-skip ------
+
+test('updateOneShotsContainer: an UNCHANGED snapshot on the second call causes NO DOM churn (same child node)', () => {
+  const container = new FakeElement('div');
+  const oneShots = { job1: { state: 'downloading', label: 'One-Off', url: 'https://www.youtube.com/watch?v=aaaaaaaaaaa', percent: 40 } };
+
+  const sig1 = updateOneShotsContainer(container, oneShots, fakeDoc, {}, null);
+  assert.strictEqual(container.children.length, 1);
+  const firstChild = container.children[0];
+
+  const sig2 = updateOneShotsContainer(container, oneShots, fakeDoc, {}, sig1);
+
+  assert.strictEqual(sig2, sig1, 'the signature must be unchanged for an unchanged snapshot');
+  assert.strictEqual(container.children.length, 1, 'still exactly one child -- no stray duplicate');
+  assert.strictEqual(container.children[0], firstChild, 'F7: an unchanged snapshot must leave the EXISTING child node in place, never tear down and rebuild it');
+});
+
+test('updateOneShotsContainer: a CHANGED snapshot (new percent/status) DOES rebuild, and the signature advances', () => {
+  const container = new FakeElement('div');
+  const oneShots1 = { job1: { state: 'downloading', label: 'One-Off', url: 'https://x', percent: 10 } };
+  const sig1 = updateOneShotsContainer(container, oneShots1, fakeDoc, {}, null);
+  const firstChild = container.children[0];
+
+  const oneShots2 = { job1: { state: 'downloading', label: 'One-Off', url: 'https://x', percent: 90 } };
+  const sig2 = updateOneShotsContainer(container, oneShots2, fakeDoc, {}, sig1);
+
+  assert.notStrictEqual(sig2, sig1, 'a real content change must advance the signature');
+  assert.strictEqual(container.children.length, 1);
+  assert.notStrictEqual(container.children[0], firstChild, 'a genuinely changed snapshot must rebuild the container content');
+});
+
+test('updateOneShotsContainer: a null/undefined prevSignature (first-ever render) always builds', () => {
+  const container = new FakeElement('div');
+  const oneShots = { job1: { state: 'queued', label: 'One-Off', url: 'https://x' } };
+  updateOneShotsContainer(container, oneShots, fakeDoc, {}, null);
+  assert.strictEqual(container.children.length, 1, 'the very first render must always populate the container');
+});
+
+test('updateOneShotsContainer: a dismiss (item removed from the snapshot) changes the signature and rebuilds', () => {
+  const container = new FakeElement('div');
+  const oneShots1 = {
+    job1: { state: 'downloading', label: 'A', url: 'https://a' },
+    job2: { state: 'error', label: 'B', url: 'https://b', error: 'boom' },
+  };
+  const sig1 = updateOneShotsContainer(container, oneShots1, fakeDoc, {}, null);
+
+  // job2 dismissed -- caller (renderOneShots) excludes it from the snapshot
+  // passed in on the next tick.
+  const oneShots2 = { job1: { state: 'downloading', label: 'A', url: 'https://a' } };
+  const sig2 = updateOneShotsContainer(container, oneShots2, fakeDoc, {}, sig1);
+
+  assert.notStrictEqual(sig2, sig1);
+  assert.strictEqual(container.children.length, 1, 'the rebuilt container must reflect the dismissal (one row remains)');
 });
 
 // ---- v1.25 QoL follow-up ("reheat"): metadata+subtitle re-pull UI ---------

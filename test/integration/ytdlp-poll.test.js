@@ -21,6 +21,7 @@ const ytdlp = require('../../lib/ytdlp');
 const run = require('../../lib/ytdlp/run');
 const store = require('../../lib/ytdlp/store');
 const args = require('../../lib/ytdlp/args');
+const activity = require('../../lib/ytdlp/activity');
 
 const originalRunList = run.runList;
 const originalRunDownload = run.runDownload;
@@ -29,11 +30,13 @@ let tmpDir;
 
 beforeEach(() => {
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-ytdlp-poll-'));
+  activity.resetForTests();
 });
 
 afterEach(() => {
   run.runList = originalRunList;
   run.runDownload = originalRunDownload;
+  activity.resetForTests();
   // F3 (T4 cleanup pass): `pollRerunTimer`/`pollRerunTarget` are module-level
   // singleton state shared by every test in this file (all requiring the
   // SAME `lib/ytdlp` instance). The E4 follow-up timer is an unref'd
@@ -1273,4 +1276,88 @@ test('FIX 1 end-to-end narrowing: an old cutoff pulls history on the first poll,
 
   [persisted] = store.listSubscriptions(deps).filter((s) => s.id === sub.id);
   assert.equal(persisted.cutoffDate, '20260711', 'the second clean poll narrows the window forward again, to its own "today"');
+});
+
+// ---- F1 (v1.26 code-review fix): a `phase` left dangling by a prior cycle --
+// must never leak into the NEXT cycle's fresh downloading window. A
+// subscription's activity entry is keyed by the stable `sub.id` and reused
+// (never recreated) across polling cycles, so `mergeEntry`'s shallow merge
+// would otherwise let a stale `phase: 'merging'`/`'converting'` survive
+// straight through an errored cycle's terminal write (which never itself
+// touches `phase`) and render under a brand new cycle's fresh
+// "Downloading…"/extraction window as a stale "Merging…" label.
+
+test('F1: a "merging" phase left by a cycle that ends in ERROR is cleared before the next cycle\'s own cycle-start write', async () => {
+  const deps = makeFakeDeps();
+  const sub = await addSub(deps);
+
+  // Cycle 1: a postprocess "merging" phase arrives mid-download, then the
+  // download itself settles as a FAILURE -- the terminal 'error' write
+  // (lib/ytdlp/index.js) never includes `percent`, so it was never in F1's
+  // "seeds percent but not phase" scope and leaves `phase` dangling on
+  // purpose for this test to prove the NEXT cycle-start write cleans it up.
+  run.runList = async () => ({ ok: true, stdout: ndjson([{ id: 'v1', availability: 'public' }]), stderr: '' });
+  run.runDownload = async (_sub, _config, _targetIds, opts) => {
+    opts.onProgress({ state: 'downloading', phase: 'merging' });
+    return { ok: false, code: 1, stdout: '', stderr: '', error: 'ffmpeg merge failed' };
+  };
+
+  await ytdlp.runPoll(deps, baseConfig());
+  const afterCycle1 = activity.getSnapshot().subscriptions[sub.id];
+  assert.equal(afterCycle1.state, 'error');
+  assert.equal(afterCycle1.phase, 'merging', 'sanity check: cycle 1 really did leave a dangling "merging" phase behind');
+
+  // Cycle 2: a fresh cycle for the SAME subscription id. Assert the phase
+  // seen at the very moment `runDownload` is invoked (i.e. right after the
+  // cycle-start 'downloading' write, before any new progress patch has had a
+  // chance to arrive) is already `null`, not the stale 'merging' value.
+  let phaseAtCycleStart = 'unchecked';
+  run.runDownload = async () => {
+    phaseAtCycleStart = activity.getSnapshot().subscriptions[sub.id].phase;
+    return { ok: true, code: 0, stdout: '', stderr: '' };
+  };
+  await ytdlp.runPoll(deps, baseConfig());
+
+  assert.equal(phaseAtCycleStart, null, 'F1: the cycle-start "downloading" write must clear a phase left over from a prior cycle');
+});
+
+test('F1: a "converting" phase left dangling is cleared by the "no new videos" terminal write', async () => {
+  const deps = makeFakeDeps();
+  const sub = await addSub(deps);
+
+  // Manually seed a dangling phase on this subscription's activity entry, as
+  // if a prior cycle's postprocess window had left it there.
+  activity.setSubscription(sub.id, { state: 'downloading', phase: 'converting' });
+  assert.equal(activity.getSnapshot().subscriptions[sub.id].phase, 'converting');
+
+  // A cycle with zero survivors takes the early "no new videos" terminal
+  // branch (percent: 100, state: 'done') -- this must also clear `phase`.
+  run.runList = async () => ({ ok: true, stdout: '', stderr: '' });
+  run.runDownload = async () => {
+    throw new Error('must never be called -- there are no survivors to download');
+  };
+
+  await ytdlp.runPoll(deps, baseConfig());
+
+  const snap = activity.getSnapshot().subscriptions[sub.id];
+  assert.equal(snap.state, 'done');
+  assert.equal(snap.phase, null, 'F1: the "no new videos" terminal write must clear a leftover phase');
+});
+
+test('F1: a "merging" phase left dangling is cleared by the successful-completion terminal write', async () => {
+  const deps = makeFakeDeps();
+  const sub = await addSub(deps);
+
+  run.runList = async () => ({ ok: true, stdout: ndjson([{ id: 'v1', availability: 'public' }]), stderr: '' });
+  run.runDownload = async (_sub, _config, _targetIds, opts) => {
+    // Simulate a postprocess merge phase mid-download, then a clean success.
+    opts.onProgress({ state: 'downloading', phase: 'merging' });
+    return { ok: true, code: 0, stdout: '', stderr: '' };
+  };
+
+  await ytdlp.runPoll(deps, baseConfig());
+
+  const snap = activity.getSnapshot().subscriptions[sub.id];
+  assert.equal(snap.state, 'done');
+  assert.equal(snap.phase, null, 'F1: the successful-completion terminal write must clear a leftover phase');
 });
