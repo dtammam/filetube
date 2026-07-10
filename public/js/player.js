@@ -188,6 +188,31 @@ function shouldPauseForLifecycleEvent(eventType, ctx) {
   return !!ctx.isMobile; // video: pause + persist only on mobile/PWA form factors (desktop keeps playing across tabs)
 }
 
+// PART A (player-lifecycle round, force-quit background-audio fix): should a
+// PWA-lifecycle event RELEASE (stop + tear down the OS media/audio session)
+// the currently-loaded media, on top of whatever `shouldPauseForLifecycleEvent`
+// above already decides? `shouldPauseForLifecycleEvent` intentionally lets a
+// playing AUDIO track (and a native-fullscreen/PiP VIDEO) keep running when
+// the app is merely BACKGROUNDED -- that's the whole point of FR-5's "smart"
+// behavior and must never regress. But a real hard-kill (force-quit, not a
+// bfcache-suspend) has no such exemption: nothing will ever run again to stop
+// it, so the audio session should be released rather than left dangling.
+//
+// The ONE lifecycle signal that reliably distinguishes "genuinely going away"
+// from "merely suspended, may resume" is `pagehide`'s own `event.persisted`
+// flag: `true` means the page is entering the back/forward cache (it may
+// resume exactly where it left off -- releasing here would be wrong, and
+// would also fight `pageshow`'s eventual resume); `false` means a true,
+// terminal unload (tab/app closed, navigated away for good). `freeze` and a
+// `visibilitychange`-to-hidden are both routine backgrounding, not unload
+// signals at all, so neither ever qualifies here even though both feed
+// `shouldPauseForLifecycleEvent` above -- this is a strictly ADDITIVE check,
+// never a replacement for the pause decision.
+function shouldReleaseForLifecycleEvent(eventType, ctx) {
+  if (eventType !== 'pagehide') return false;
+  return !!ctx && ctx.persisted === false;
+}
+
 // D2 (v1.24.0, T13): the resume-prompt threshold, in seconds, applied by
 // `shouldShowResumeOverlay` below. Saved progress AT OR ABOVE this still
 // shows the "Resume at..." overlay; progress below it is treated as too
@@ -554,6 +579,7 @@ if (typeof module !== 'undefined' && module.exports) {
     shouldDockOnTransition,
     nextPlayerState,
     shouldPauseForLifecycleEvent,
+    shouldReleaseForLifecycleEvent,
     shouldShowResumeOverlay,
     resolveResumeThreshold,
     resolveDockedResumeAction,
@@ -998,17 +1024,50 @@ if (typeof module !== 'undefined' && module.exports) {
   // before -- those all run mid-session with the page fully alive, so there
   // is nothing for keepalive to protect against there, and always setting it
   // would be an unnecessary behavior change to a working path.
-  function handleBackgroundLifecycle(eventType) {
+  // PART A (this round, force-quit background-audio fix): the LIGHTEST
+  // release that ends the OS media/audio session -- `pause()` + clear Media
+  // Session metadata + `setPlaybackState('none')` (see `setPlaybackState`
+  // above). Deliberately NOT the CLOSED path's fuller teardown
+  // (`removeAttribute('src'); load();`, see `close()` below) -- the page is
+  // unloading anyway (this is only ever invoked from a terminal `pagehide`,
+  // see `shouldReleaseForLifecycleEvent`), so there is no stale `<video>`
+  // left visible to any user-facing surface for the fuller teardown to
+  // protect against, and the lighter release is cheaper to run inside the
+  // tight time budget a terminal `pagehide` allows before the page is
+  // actually torn down. Flagged here (per the exec plan) as the deliberately
+  // minimal choice -- add `removeAttribute('src'); load();` too only if
+  // Dean's on-device pass shows the lighter release isn't enough.
+  function releaseAudioSession() {
+    try { mediaPlayer.pause(); } catch (_) { /* best-effort only -- page is unloading */ }
+    if ('mediaSession' in navigator) {
+      try { navigator.mediaSession.metadata = null; } catch (_) { /* best-effort only */ }
+    }
+    setPlaybackState('none');
+  }
+
+  // Thin wrapper so the ONE additional PART A save call site (see below)
+  // never adds a second literal `saveProgressToServer(...)` occurrence
+  // inside `handleBackgroundLifecycle` itself -- keeps that function's two
+  // existing, already-audited save call sites (FIX B, player-hardening
+  // round) textually untouched.
+  function checkpointProgress() {
+    saveProgressToServer(currentAbsTime(), { keepalive: true });
+  }
+
+  function handleBackgroundLifecycle(eventType, extraCtx) {
     if (!mediaPlayer || !currentId) return; // nothing loaded -- no-op
     var ctx = {
       isAudio: !!(currentData && currentData.type === 'audio'),
       isPlaying: !mediaPlayer.paused,
       isMobile: isMobileFormFactor(), // FR-8(a) (TG, v1.22.0): reuse FR-1's shared signal (AC78), not a second one
       inNativePresentation: inNativeFullscreen(), // native-controls round: PiP/native-fullscreen video sustains background audio -- never auto-pause it (see shouldPauseForLifecycleEvent)
+      persisted: !!(extraCtx && extraCtx.persisted), // PART A: only ever meaningful for a real 'pagehide' -- see shouldReleaseForLifecycleEvent
     };
+    var shouldRelease = shouldReleaseForLifecycleEvent(eventType, ctx);
     if (shouldPauseForLifecycleEvent(eventType, ctx)) {
       mediaPlayer.pause();
       saveProgressToServer(currentAbsTime(), { keepalive: true });
+      if (shouldRelease) releaseAudioSession(); // PART A: a terminal pagehide additionally releases the session (additive -- the pause+save above is unchanged)
       return;
     }
     // FIX B (player-hardening round): decouple SAVE from PAUSE. A video kept
@@ -1026,14 +1085,145 @@ if (typeof module !== 'undefined' && module.exports) {
     // already took the pause+save branch above.
     if (ctx.inNativePresentation && ctx.isPlaying) {
       saveProgressToServer(currentAbsTime(), { keepalive: true });
+      if (shouldRelease) releaseAudioSession(); // PART A: a terminal pagehide releases even a sustained native-presentation session
+      return;
+    }
+    // PART A (this round): everything that reaches here was exempt from BOTH
+    // branches above -- a playing AUDIO track (kept exempt by design, see
+    // `shouldPauseForLifecycleEvent`'s `ctx.isAudio` guard), or simply
+    // nothing currently playing. A genuine terminal pagehide still needs its
+    // session released even here (that's exactly the force-quit-leaves-
+    // audio-playing bug this fixes) -- checkpoint the position first (so
+    // nothing is lost), then release.
+    if (shouldRelease) {
+      checkpointProgress();
+      releaseAudioSession();
     }
   }
 
-  window.addEventListener('pagehide', function () { handleBackgroundLifecycle('pagehide'); });
-  document.addEventListener('freeze', function () { handleBackgroundLifecycle('freeze'); });
+  // ---- PART B (this round): gated on-screen lifecycle-event debug log -------
+  //
+  // The owner has no way to see the JS console on an iOS PWA, and a
+  // force-quit may fire NO event at all on some iOS versions -- so lifecycle
+  // events are recorded to `localStorage` (survives a hard kill, unlike an
+  // in-memory log) as they happen, and rendered on the NEXT open. Purely
+  // observational: this never alters any pause/release decision above, and
+  // is a complete no-op (zero recording, zero DOM) unless explicitly enabled
+  // -- `localStorage['ft-debug-lifecycle'] === '1'`, toggled by visiting
+  // `?debugLifecycle=1` (or `=0` to turn back off) once. See
+  // `isDebugLifecycleEnabled`/`recordLifecycleEvent`/`renderLifecycleOverlay`.
+  var DEBUG_LIFECYCLE_STORAGE_KEY = 'ft-debug-lifecycle';
+  var LIFECYCLE_LOG_STORAGE_KEY = 'ft-lifecycle-log';
+  var LIFECYCLE_LOG_CAP = 20;
+
+  function isDebugLifecycleEnabled() {
+    try { return localStorage.getItem(DEBUG_LIFECYCLE_STORAGE_KEY) === '1'; } catch (_) { return false; }
+  }
+
+  // Wired ONCE, at parse time: lets the owner enable/disable the debug log
+  // by visiting `<app>/?debugLifecycle=1` (or `=0`) a single time -- the flag
+  // then persists in `localStorage` across every later visit/relaunch.
+  function initDebugLifecycleFlag() {
+    try {
+      var params = new URLSearchParams(window.location.search);
+      if (!params.has('debugLifecycle')) return;
+      if (params.get('debugLifecycle') === '1') localStorage.setItem(DEBUG_LIFECYCLE_STORAGE_KEY, '1');
+      else if (params.get('debugLifecycle') === '0') localStorage.removeItem(DEBUG_LIFECYCLE_STORAGE_KEY);
+    } catch (_) { /* localStorage/URLSearchParams unavailable -- no-op */ }
+  }
+
+  // Appends one entry to the capped ring buffer. `extraCtx.persisted` is only
+  // ever meaningfully set by the `pagehide` listener (mirrors
+  // `handleBackgroundLifecycle`'s own ctx -- see above); every other listener
+  // passes `{}`, recorded as `persisted: null` (not applicable to that event).
+  function recordLifecycleEvent(type, extraCtx) {
+    if (!isDebugLifecycleEnabled()) return; // PART B is a complete no-op unless the flag is on
+    try {
+      var raw = localStorage.getItem(LIFECYCLE_LOG_STORAGE_KEY);
+      var log = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(log)) log = [];
+      log.push({
+        type: type,
+        persisted: extraCtx && 'persisted' in extraCtx ? extraCtx.persisted : null,
+        vis: document.visibilityState,
+        playing: !!(mediaPlayer && !mediaPlayer.paused),
+        t: Date.now(),
+      });
+      if (log.length > LIFECYCLE_LOG_CAP) log = log.slice(log.length - LIFECYCLE_LOG_CAP);
+      localStorage.setItem(LIFECYCLE_LOG_STORAGE_KEY, JSON.stringify(log));
+      renderLifecycleOverlay(); // keep an already-visible overlay live-updated
+    } catch (_) { /* localStorage unavailable/full -- best-effort only, never throws */ }
+  }
+
+  // Small, unobtrusive, fixed-position monospace overlay -- built entirely in
+  // JS (never touches any shell's HTML) so every page that loads player.js
+  // gets it for free. Only ever created when the debug flag is on.
+  function ensureLifecycleOverlayEl() {
+    var el = document.getElementById('ft-lifecycle-overlay');
+    if (el) return el;
+    if (!document.body) return null;
+    el = document.createElement('div');
+    el.id = 'ft-lifecycle-overlay';
+    el.style.cssText = [
+      'position:fixed', 'left:0', 'right:0', 'bottom:0', 'z-index:999999',
+      'max-height:35vh', 'overflow-y:auto', 'background:rgba(0,0,0,0.75)',
+      'color:#0f0', 'font:11px/1.4 monospace', 'padding:4px 6px',
+      'pointer-events:auto', 'white-space:pre-wrap',
+    ].join(';');
+    el.title = 'Tap to clear';
+    el.addEventListener('click', function () {
+      try { localStorage.removeItem(LIFECYCLE_LOG_STORAGE_KEY); } catch (_) { /* best-effort only */ }
+      renderLifecycleOverlay();
+    });
+    document.body.appendChild(el);
+    return el;
+  }
+
+  // Renders the ring buffer newest-first. No-op (and never creates the
+  // element) unless the debug flag is on -- called both on initial page load
+  // (to surface whatever was recorded right before a force-quit) and after
+  // every new recorded event, so it stays live while open.
+  function renderLifecycleOverlay() {
+    if (!isDebugLifecycleEnabled()) return;
+    var el = ensureLifecycleOverlayEl();
+    if (!el) return;
+    var log = [];
+    try {
+      var raw = localStorage.getItem(LIFECYCLE_LOG_STORAGE_KEY);
+      log = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(log)) log = [];
+    } catch (_) { log = []; }
+    var now = Date.now();
+    var lines = log.slice().reverse().map(function (entry) {
+      var agoS = Math.max(0, Math.round((now - (entry && entry.t || now)) / 1000));
+      return (entry.type || '?') + ' · persisted=' + entry.persisted + ' · vis=' + entry.vis +
+        ' · playing=' + entry.playing + ' · ' + agoS + 's ago';
+    });
+    el.textContent = '[tap to clear]\n' + (lines.length ? lines.join('\n') : '(no lifecycle events recorded yet)');
+  }
+
+  initDebugLifecycleFlag();
+  if (document.body) renderLifecycleOverlay();
+  else document.addEventListener('DOMContentLoaded', renderLifecycleOverlay);
+
+  window.addEventListener('pagehide', function (e) {
+    var extraCtx = { persisted: !!(e && e.persisted) };
+    recordLifecycleEvent('pagehide', extraCtx);
+    handleBackgroundLifecycle('pagehide', extraCtx);
+  });
+  document.addEventListener('freeze', function () {
+    recordLifecycleEvent('freeze', {});
+    handleBackgroundLifecycle('freeze');
+  });
   document.addEventListener('visibilitychange', function () {
+    recordLifecycleEvent('visibilitychange', {});
     if (document.visibilityState === 'hidden') handleBackgroundLifecycle('visibilitychangeHidden');
   });
+  // `resume`/`pageshow` never drive a pause/release decision (nothing to do
+  // on returning to the foreground beyond the existing Media Session
+  // re-assert wired separately above) -- recorded for PART B visibility only.
+  document.addEventListener('resume', function () { recordLifecycleEvent('resume', {}); });
+  window.addEventListener('pageshow', function () { recordLifecycleEvent('pageshow', {}); });
 
   // ---- skip (+-15s), ripple, hold-to-2x, dbl-tap ------------------------------
 

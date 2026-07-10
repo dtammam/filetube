@@ -2726,7 +2726,9 @@ a.sub-row-channel-link:focus-visible {
   }
   .search-input {
     padding: 7px 10px;
-    font-size: 13px;
+    /* v1.25.10: 16px so tapping the search box doesn't trigger iOS's
+       focus auto-zoom (same <16px rule fixed for the modal/form inputs in v1.25.4). */
+    font-size: 16px;
   }
   .search-btn {
     padding: 0 10px;

@@ -67,7 +67,12 @@ test('FIX A (behavioral): the tightened first-condition expression is false for 
 
 // ---- FIX B: checkpoint save on background even in native presentation -----
 
-const handleBackgroundLifecycleMatch = /function handleBackgroundLifecycle\(eventType\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);
+// Signature widened to `(eventType, extraCtx)` by the player-lifecycle round
+// (PART A, force-quit background-audio release) -- see
+// test/unit/player-lifecycle-release.test.js for that addition's own
+// coverage; every FIX B assertion below is unaffected (see that test file's
+// header comment for why).
+const handleBackgroundLifecycleMatch = /function handleBackgroundLifecycle\(eventType(?:, extraCtx)?\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);
 
 test('FIX B: handleBackgroundLifecycle() exists and is isolated for inspection', () => {
   assert.ok(handleBackgroundLifecycleMatch, 'expected to find handleBackgroundLifecycle()\'s source body in player.js');
