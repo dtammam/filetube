@@ -117,6 +117,10 @@ clients (iOS Safari) can play them.
   not up front on scan, to avoid converting the whole library (huge disk cost).
 - **Single-worker transcode queue:** jobs run one at a time (`transcodeBusy`
   gate) to avoid overloading a home server with parallel FFmpeg runs.
+  v1.27.0 added a second, independent single-worker queue for background-audio
+  extraction (`audioExtractBusy`), so up to 2 FFmpeg processes can run
+  concurrently — deliberate: a slow video transcode must never starve a
+  background-audio prewarm. Revisit if on-device CPU contention shows.
 - **Atomic MP4 finalize:** transcodes write to a `.tmp.mp4` and are renamed on
   success, so a half-written file is never served.
 - **JSON file database:** `db.json` instead of a real DB — simple, portable,

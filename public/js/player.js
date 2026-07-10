@@ -213,6 +213,98 @@ function shouldReleaseForLifecycleEvent(eventType, ctx) {
   return !!ctx && ctx.persisted === false;
 }
 
+// ---- Background audio for video (v1.27.0, EXPERIMENTAL, default OFF) ------
+// On iOS, an inline (non-fullscreen) mobile <video> is suspended the moment
+// the app backgrounds -- `shouldPauseForLifecycleEvent` above pauses it
+// cleanly (today's behavior, unchanged). When the `backgroundAudioForVideo`
+// setting is ON, that exact case instead hands off to a hidden <audio>
+// element playing an audio-only extraction of the same item, YouTube-
+// Premium-style, then swaps back on foreground. This is a small, explicit
+// state machine (mirrors `shouldPauseForLifecycleEvent`'s own "pure
+// decision, impure caller" split) so the transition table is directly
+// node:test-able with no DOM/browser harness -- see
+// `attemptBackgroundAudioHandoff`/`handleForegroundSwapBack` in the
+// browser-only runtime below for where it's actually driven.
+var BG_AUDIO_STATES = {
+  INLINE_VIDEO: 'inline_video',       // the normal, default state -- <video> is the active surface
+  HANDING_OFF: 'handing_off',         // a handoff has been triggered; audio.play() is in flight
+  BACKGROUND_AUDIO: 'background_audio', // the hidden <audio> element is the active, playing surface
+};
+
+// Pure: (state, event, ctx) -> next state. `event` is one of:
+//   'BACKGROUND'         -- a background-lifecycle event wants to hand off;
+//                            `ctx.eligible` (from `shouldHandOffToBackgroundAudio`,
+//                            below) decides whether this actually transitions.
+//   'HANDOFF_SUCCEEDED'  -- the hidden audio element's play() promise resolved.
+//   'HANDOFF_FAILED'     -- the hidden audio element's play() promise rejected
+//                            (e.g. the iOS gesture wall) -- the caller has
+//                            already fallen back to today's pause behavior by
+//                            this point; this only resets the state machine.
+//   'FOREGROUND'          -- the app returned to the foreground (SWAP_BACK).
+//   'TEARDOWN'            -- a genuine new load(), close(), or a force-close
+//                            release -- always resets to INLINE_VIDEO.
+// Any (state, event) pair not explicitly handled below returns `state`
+// unchanged (a deliberate no-op, never a thrown error) -- mirrors this
+// file's other pure helpers' "unrecognized input never crashes" discipline.
+function nextBackgroundAudioState(state, event, ctx) {
+  switch (event) {
+    case 'BACKGROUND':
+      return (state === BG_AUDIO_STATES.INLINE_VIDEO && ctx && ctx.eligible)
+        ? BG_AUDIO_STATES.HANDING_OFF : state;
+    case 'HANDOFF_SUCCEEDED':
+      return state === BG_AUDIO_STATES.HANDING_OFF ? BG_AUDIO_STATES.BACKGROUND_AUDIO : state;
+    case 'HANDOFF_FAILED':
+      return state === BG_AUDIO_STATES.HANDING_OFF ? BG_AUDIO_STATES.INLINE_VIDEO : state;
+    case 'FOREGROUND':
+      return (state === BG_AUDIO_STATES.BACKGROUND_AUDIO || state === BG_AUDIO_STATES.HANDING_OFF)
+        ? BG_AUDIO_STATES.INLINE_VIDEO : state;
+    case 'TEARDOWN':
+      return BG_AUDIO_STATES.INLINE_VIDEO;
+    default:
+      return state;
+  }
+}
+
+// Pure eligibility gate consulted from INSIDE `handleBackgroundLifecycle`'s
+// existing `shouldPauseForLifecycleEvent(...)` truthy branch -- the ONLY
+// place this is ever called from. By the time that branch is reached, every
+// OTHER precondition (mobile, video, playing, not already in native
+// fullscreen/PiP -- the two keep-playing mechanisms are mutually exclusive
+// BY CONSTRUCTION, since `shouldPauseForLifecycleEvent` itself already
+// returns false whenever `ctx.inNativePresentation` is true) is already
+// guaranteed. This only decides the background-audio-specific pieces: the
+// setting must be ON (cached once per load, NEVER fetched fresh mid-event --
+// there's no time for a network round-trip at the worst moment; see
+// setupForMedia), the audio-extract sidecar must already be known READY
+// (never kicked off HERE -- there's no time to extract during a real
+// background event either), and the state machine must not already be
+// mid-handoff/backgrounded.
+function shouldHandOffToBackgroundAudio(ctx) {
+  if (!ctx || !ctx.settingOn) return false;
+  if (ctx.audioStatus !== 'ready') return false;
+  return ctx.bgAudioState === BG_AUDIO_STATES.INLINE_VIDEO;
+}
+
+// F3b (two-reviewer follow-up, v1.27.0): a tiny (52-byte), LOCAL, silent
+// mono 8-bit/8kHz PCM WAV clip (8 samples of silence), inlined as a `data:`
+// URI so `primeBackgroundAudioElement` (below) can "bless" `bgAudioEl` for a
+// later gesture-less `.play()` WITHOUT ever touching the network -- no
+// request to `/audio/:id`, and therefore no chance of enqueuing a
+// server-side FFmpeg extraction, on every mobile video's first gesture. This
+// matters even when the `backgroundAudioForVideo` setting is OFF (the
+// default): `bgAudioEl` used to be pre-pointed at the REAL `/audio/:id` URL
+// unconditionally (see setupForMedia's OLD comment, removed) and priming
+// used to play THAT, so a disabled install still paid for real extraction
+// jobs + shared-LRU-cache churn on every mobile video watch. iOS's
+// autoplay-gesture unlock is scoped to the <audio> ELEMENT itself, not
+// whatever `src` it happened to be playing when unlocked -- so blessing the
+// element with this inert clip is exactly as effective for a LATER real
+// handoff (`attemptBackgroundAudioHandoff`, the ONLY other `bgAudioEl.src`
+// assignment site, which swaps in the real `/audio/:id` URL at THAT point,
+// already gated on the setting being on) as priming with the real audio
+// ever was.
+var SILENT_PRIME_SRC = 'data:audio/wav;base64,UklGRiwAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQgAAACAgICAgICAgA==';
+
 // D2 (v1.24.0, T13): the resume-prompt threshold, in seconds, applied by
 // `shouldShowResumeOverlay` below. Saved progress AT OR ABOVE this still
 // shows the "Resume at..." overlay; progress below it is treated as too
@@ -657,6 +749,9 @@ if (typeof module !== 'undefined' && module.exports) {
     nextPlayerState,
     shouldPauseForLifecycleEvent,
     shouldReleaseForLifecycleEvent,
+    BG_AUDIO_STATES,
+    nextBackgroundAudioState,
+    shouldHandOffToBackgroundAudio,
     shouldShowResumeOverlay,
     resolveResumeThreshold,
     resolveDockedResumeAction,
@@ -739,6 +834,28 @@ if (typeof module !== 'undefined' && module.exports) {
   // `hideCaptionOverlay()` so a subsequent re-toggle-on always repaints even
   // if the very first cue happens to match whatever was on screen before.
   var lastCcOverlayText = null;
+
+  // v1.27.0 (background-audio-for-video, EXPERIMENTAL): the hidden <audio>
+  // element (created once in ensureHost(), see below) + the small state
+  // machine driving the handoff. `bgAudioSettingCached`/`bgAudioStatusKnown`
+  // are per-LOAD snapshots (reset in teardownMediaState/close, populated by
+  // setupForMedia) -- the whole point of caching is that
+  // `attemptBackgroundAudioHandoff` (below) never needs a network round-trip
+  // at the worst possible moment (a real background event). `bgAudioGesturePrimed`
+  // is also per-load: guards the one-shot muted play()+pause() prime so it
+  // only ever runs once per item (see `primeBackgroundAudioElement`).
+  var bgAudioEl = null;
+  var bgAudioState = BG_AUDIO_STATES.INLINE_VIDEO;
+  var bgAudioSettingCached = false;
+  var bgAudioStatusKnown = null;
+  var bgAudioGesturePrimed = false;
+  // v1.27.0 (F2, two-reviewer gate): a one-shot flag set by
+  // `runEndedCompletionCascade` when a video finishes WHILE backgrounded and
+  // autoplay-advance would otherwise fire -- deferred rather than attempted
+  // mid-background (see that function's own comment for why) and consumed
+  // by the very next `handleForegroundSwapBack()`. Per-load, reset alongside
+  // every other background-audio flag in teardownMediaState/close.
+  var pendingAutoplayNextOnForeground = false;
 
   var dockCloseBtn = null;
   var dockChromeReady = false;
@@ -913,10 +1030,26 @@ if (typeof module !== 'undefined' && module.exports) {
       !!(document.pictureInPictureElement && document.pictureInPictureElement === mediaPlayer);
   }
 
+  // v1.27.0: the element actually driving playback RIGHT NOW -- `mediaPlayer`
+  // for the default INLINE_VIDEO state (and while a handoff is still
+  // resolving -- see `nextBackgroundAudioState`'s HANDING_OFF), the hidden
+  // `bgAudioEl` once a handoff has actually succeeded (BACKGROUND_AUDIO).
+  // Consulted by every position/Media-Session/progress-save call site below
+  // so they all keep working through the swap without their own
+  // state-machine-aware branching -- `liveMode` (desktop-only) and
+  // background-audio (mobile-only) are mutually exclusive by construction,
+  // so this is a safe, behavior-preserving generalization for the
+  // (overwhelmingly common) INLINE_VIDEO case.
+  function activeMediaElement() {
+    return (bgAudioState === BG_AUDIO_STATES.HANDING_OFF || bgAudioState === BG_AUDIO_STATES.BACKGROUND_AUDIO)
+      ? bgAudioEl : mediaPlayer;
+  }
+
   // Absolute position in the source, accounting for live-stream restart offsets.
   function currentAbsTime() {
-    if (!mediaPlayer) return 0;
-    return liveMode ? liveOffset + (mediaPlayer.currentTime || 0) : mediaPlayer.currentTime;
+    var el = activeMediaElement();
+    if (!el) return 0;
+    return liveMode ? liveOffset + (el.currentTime || 0) : el.currentTime;
   }
 
   // ---- one-time host creation + listener wiring ------------------------------
@@ -979,6 +1112,21 @@ if (typeof module !== 'undefined' && module.exports) {
     ccOverlayTextEl.className = 'cc-overlay-text';
     ccOverlayEl.appendChild(ccOverlayTextEl);
     host.appendChild(ccOverlayEl);
+    // v1.27.0 (background-audio-for-video, EXPERIMENTAL): the hidden <audio>
+    // sidecar -- built in JS (never touches the shared player-host-template
+    // markup, so all 5 shells stay byte-identical, same posture as
+    // `ccOverlayEl` above) and appended once, directly inside `host`, so it
+    // rides the reparented host across FULL/DOCKED/CLOSED automatically,
+    // exactly like every other in-host element. `preload='none'` -- it never
+    // starts fetching anything until a real handoff (or the gesture-prime)
+    // calls `.play()` on it. Never shown (`hidden` + `display:none` --
+    // belt-and-suspenders; nothing in this file ever unhides it).
+    bgAudioEl = document.createElement('audio');
+    bgAudioEl.id = 'bg-audio-sidecar';
+    bgAudioEl.preload = 'none';
+    bgAudioEl.hidden = true;
+    bgAudioEl.style.display = 'none';
+    host.appendChild(bgAudioEl);
     wireHostListeners();
     return host;
   }
@@ -1067,7 +1215,9 @@ if (typeof module !== 'undefined' && module.exports) {
     if (!('mediaSession' in navigator) || !('setPositionState' in navigator.mediaSession)) return;
     var now = Date.now();
     if (!force && now - lastPositionSync < POSITION_SYNC_MS) return;
-    var posState = clampPositionState(mediaPlayer.duration, mediaPlayer.currentTime, mediaPlayer.playbackRate);
+    var el = activeMediaElement(); // v1.27.0: the audio element while BACKGROUND_AUDIO, mediaPlayer otherwise
+    if (!el) return;
+    var posState = clampPositionState(el.duration, el.currentTime, el.playbackRate);
     if (!posState) return;
     lastPositionSync = now;
     try { navigator.mediaSession.setPositionState(posState); } catch (_) {}
@@ -1086,17 +1236,65 @@ if (typeof module !== 'undefined' && module.exports) {
           { src: '/thumbnail/' + id, sizes: '512x512', type: 'image/jpeg' },
         ],
       });
-      setPlaybackState(mediaPlayer.paused ? 'paused' : 'playing');
+      var el = activeMediaElement(); // v1.27.0
+      setPlaybackState(el && el.paused ? 'paused' : 'playing');
       updatePositionState(true);
     } catch (_) { /* MediaMetadata construction unsupported */ }
+  }
+
+  // v1.27.0: SWAP_BACK -- runs BEFORE the Media Session re-assert just below,
+  // so that re-assert (and every other activeMediaElement() consumer) sees
+  // the ALREADY-swapped-back state (mediaPlayer active again). A no-op
+  // whenever the state machine isn't mid-handoff/backgrounded (the
+  // overwhelmingly common case -- the setting defaults OFF and this is
+  // mobile-only), so returning to the foreground with a normal inline video
+  // is completely unaffected.
+  function handleForegroundSwapBack() {
+    if (bgAudioState !== BG_AUDIO_STATES.BACKGROUND_AUDIO && bgAudioState !== BG_AUDIO_STATES.HANDING_OFF) return;
+    var resumeTime = bgAudioEl ? (bgAudioEl.currentTime || 0) : 0;
+    bgAudioState = nextBackgroundAudioState(bgAudioState, 'FOREGROUND', {});
+    if (mediaPlayer) {
+      mediaPlayer.currentTime = resumeTime;
+      // Best-effort: if iOS refuses this (rare -- the app is IN THE
+      // FOREGROUND at this point, which is normally enough gesture context),
+      // leave it paused -- the position is already correct either way, so
+      // the user just needs one more tap, never a lost/wrong position.
+      mediaPlayer.play().catch(function () {});
+    }
+    releaseBackgroundAudioElement();
+    // F2 (two-reviewer gate): consume a deferred autoplay-advance (see
+    // `runEndedCompletionCascade`'s own comment) the moment the app is back
+    // in the foreground -- from here on this is an entirely ordinary
+    // `handleAutoplayNext()` call, no different from any other 'ended'
+    // advance.
+    if (pendingAutoplayNextOnForeground) {
+      pendingAutoplayNextOnForeground = false;
+      handleAutoplayNext();
+    }
+  }
+
+  // Stops + detaches the hidden audio element -- shared by SWAP_BACK
+  // (above) and the force-close teardown (releaseAudioSession, below).
+  // Clears `src` (not just pause()) to release the decoder/network resource
+  // the backgrounded element was holding, mirroring this file's other
+  // "nothing left running" release contracts (e.g. close()'s own
+  // removeAttribute('src'); load()) -- a later handoff simply re-points
+  // `src` fresh (see attemptBackgroundAudioHandoff), so this is never a
+  // one-way trip.
+  function releaseBackgroundAudioElement() {
+    if (!bgAudioEl) return;
+    try { bgAudioEl.pause(); } catch (_) {}
+    try { bgAudioEl.removeAttribute('src'); bgAudioEl.load(); } catch (_) {}
   }
 
   // Re-assert Media Session when the PWA returns to the foreground -- wired
   // ONCE, guarded on `currentData` so it's a no-op whenever nothing is loaded.
   document.addEventListener('visibilitychange', function () {
     if (document.visibilityState !== 'visible' || !currentData || !mediaPlayer) return;
+    handleForegroundSwapBack(); // v1.27.0: SWAP_BACK before the re-assert below reads activeMediaElement()
     setupMediaSession(currentId, currentChannelName, currentData.title);
-    setPlaybackState(mediaPlayer.paused ? 'paused' : 'playing');
+    var el = activeMediaElement();
+    setPlaybackState(el && el.paused ? 'paused' : 'playing');
     updatePositionState(true);
   });
 
@@ -1129,28 +1327,38 @@ if (typeof module !== 'undefined' && module.exports) {
     try { navigator.mediaSession.setActionHandler(action, handler); } catch (_) { /* action unsupported by this browser */ }
   }
 
+  // v1.27.0: every handler below is retargeted from a hardcoded `mediaPlayer`
+  // to `activeMediaElement()` -- INLINE_VIDEO's `mediaPlayer` in the
+  // overwhelmingly common (feature-OFF or desktop/audio) case, the hidden
+  // `bgAudioEl` once a handoff has succeeded, so a lock-screen/Control-Center
+  // Play/Pause/seek while backgrounded acts on whichever element is actually
+  // playing right now.
   setMediaSessionAction('play', function () {
-    if (!mediaPlayer) return;
+    var el = activeMediaElement();
+    if (!el) return;
     // The lock-screen tap IS the user gesture iOS needs to resume audio
     // output for a previously-paused/backgrounded element.
-    mediaPlayer.play().catch(function () {});
+    el.play().catch(function () {});
     setPlaybackState('playing');
   });
   setMediaSessionAction('pause', function () {
-    if (!mediaPlayer) return;
-    mediaPlayer.pause();
+    var el = activeMediaElement();
+    if (!el) return;
+    el.pause();
     setPlaybackState('paused');
   });
   setMediaSessionAction('seekto', function (details) {
-    if (!mediaPlayer || details == null || details.seekTime == null) return;
-    if (details.fastSeek && 'fastSeek' in mediaPlayer) {
-      mediaPlayer.fastSeek(details.seekTime);
+    var el = activeMediaElement();
+    if (!el || details == null || details.seekTime == null) return;
+    if (details.fastSeek && 'fastSeek' in el) {
+      el.fastSeek(details.seekTime);
     } else {
-      mediaPlayer.currentTime = details.seekTime;
+      el.currentTime = details.seekTime;
     }
   });
   // Reuse the EXISTING skip() (below) rather than duplicating its
-  // liveMode/clamping/progress-save behavior here.
+  // liveMode/clamping/progress-save behavior here. skip() itself is
+  // activeMediaElement()-aware (v1.27.0), so this needs no extra guard.
   setMediaSessionAction('seekbackward', function (details) {
     if (!mediaPlayer) return;
     skip(-((details && details.seekOffset) || SKIP_SECONDS));
@@ -1224,12 +1432,22 @@ if (typeof module !== 'undefined' && module.exports) {
   // actually torn down. Flagged here (per the exec plan) as the deliberately
   // minimal choice -- add `removeAttribute('src'); load();` too only if
   // Dean's on-device pass shows the lighter release isn't enough.
+  // v1.27.0: force-close teardown now stops+releases BOTH elements -- the
+  // backgrounded `bgAudioEl` is exactly the kind of leak the v1.25.10
+  // force-close-stops-audio fix this function originally shipped for exists
+  // to kill, so a terminal pagehide mid-BACKGROUND_AUDIO must never leave it
+  // playing. Also resets the state machine to INLINE_VIDEO -- moot for THIS
+  // (unloading) page, but keeps the in-memory state consistent defensively.
   function releaseAudioSession() {
     try { mediaPlayer.pause(); } catch (_) { /* best-effort only -- page is unloading */ }
+    if (bgAudioEl) {
+      try { bgAudioEl.pause(); } catch (_) { /* best-effort only -- page is unloading */ }
+    }
     if ('mediaSession' in navigator) {
       try { navigator.mediaSession.metadata = null; } catch (_) { /* best-effort only */ }
     }
     setPlaybackState('none');
+    bgAudioState = nextBackgroundAudioState(bgAudioState, 'TEARDOWN', {});
   }
 
   // Thin wrapper so the ONE additional PART A save call site (see below)
@@ -1239,6 +1457,152 @@ if (typeof module !== 'undefined' && module.exports) {
   // round) textually untouched.
   function checkpointProgress() {
     saveProgressToServer(currentAbsTime(), { keepalive: true });
+  }
+
+  // v1.27.0 (EXPERIMENTAL): attempts the inline-video -> background-audio
+  // handoff. Called ONLY from `handleBackgroundLifecycle`'s existing
+  // `shouldPauseForLifecycleEvent(...)` truthy branch (below) -- by
+  // construction, every OTHER precondition (mobile, video, playing, not
+  // already in native fullscreen/PiP) already holds by the time this runs;
+  // this only decides/acts on the background-audio-specific pieces via
+  // `shouldHandOffToBackgroundAudio` (pure, above). Returns `true` if a
+  // handoff was ATTEMPTED (whether or not it ultimately succeeds -- the
+  // caller's own pause+save fallback is skipped either way, since this
+  // function performs an equivalent pause+save itself as part of the
+  // attempt) or `false` if it wasn't eligible at all (caller falls through
+  // to today's plain pause+save, completely unchanged).
+  function attemptBackgroundAudioHandoff() {
+    if (!bgAudioEl) return false;
+    var eligible = shouldHandOffToBackgroundAudio({
+      settingOn: bgAudioSettingCached,
+      audioStatus: bgAudioStatusKnown,
+      bgAudioState: bgAudioState,
+    });
+    if (!eligible) return false;
+
+    var resumeTime = currentAbsTime();
+    bgAudioState = nextBackgroundAudioState(bgAudioState, 'BACKGROUND', { eligible: true });
+    var audioUrl = '/audio/' + currentId;
+    if (bgAudioEl.getAttribute('src') !== audioUrl) bgAudioEl.src = audioUrl;
+    bgAudioEl.currentTime = resumeTime;
+
+    var handoffId = currentId; // guards the async .then/.catch below against a load() racing in before play() settles
+    var playAttempt;
+    try {
+      playAttempt = bgAudioEl.play();
+    } catch (e) {
+      playAttempt = Promise.reject(e);
+    }
+    // Pause the video + checkpoint the position NOW, regardless of the
+    // eventual play() outcome -- worst case (play() rejects, e.g. the iOS
+    // gesture wall) this IS today's pause+save behavior, just reached via
+    // this branch instead of the caller's own; best case the hidden audio
+    // element picks up seamlessly while the video sits paused underneath,
+    // ready for SWAP_BACK.
+    mediaPlayer.pause();
+    saveProgressToServer(resumeTime, { keepalive: true });
+    Promise.resolve(playAttempt).then(function () {
+      if (currentId !== handoffId || bgAudioState !== BG_AUDIO_STATES.HANDING_OFF) return; // superseded by a newer load/foreground/teardown
+      bgAudioState = nextBackgroundAudioState(bgAudioState, 'HANDOFF_SUCCEEDED', {});
+      setupMediaSession(currentId, currentChannelName, currentData && currentData.title);
+      setPlaybackState('playing');
+      updatePositionState(true);
+    }, function () {
+      if (currentId !== handoffId || bgAudioState !== BG_AUDIO_STATES.HANDING_OFF) return;
+      bgAudioState = nextBackgroundAudioState(bgAudioState, 'HANDOFF_FAILED', {});
+      // Video is already paused+saved above -- today's degrade-gracefully
+      // behavior. Nothing further to do; the NEXT background event (if the
+      // user foregrounds and re-backgrounds) gets a fresh attempt.
+    });
+    return true;
+  }
+
+  // v1.27.0 (EXPERIMENTAL): gesture pre-warm. iOS may refuse `bgAudioEl.
+  // play()` during a real background handoff unless that ELEMENT has
+  // previously been played from inside a genuine, synchronous user gesture
+  // (autoplay-unlock is scoped per-element, not per-page) -- and a real
+  // background event obviously isn't one. So on the first real gesture that
+  // starts THIS video playing (see the `touchstart`/`ppBtn` wiring in
+  // wireHostListeners, below), this does a MUTED play()+pause() on
+  // `bgAudioEl` synchronously inside that same gesture's call stack --
+  // "blessing" the element for a later, gesture-less `.play()` call during
+  // an actual handoff. One-shot per load (`bgAudioGesturePrimed`, reset in
+  // teardownMediaState/close). Best-effort only: if priming never runs (or
+  // fails), `attemptBackgroundAudioHandoff`'s own `.catch` already degrades
+  // to today's plain-pause behavior -- this is an optimization, not a
+  // correctness dependency.
+  //
+  // F3 (two-reviewer gate): deliberately does NOT gate on `bgAudioSettingCached`.
+  // `setupForMedia`'s `/api/settings` fetch may not have resolved yet by the
+  // time the user's FIRST -- and possibly ONLY -- gesture fires (e.g. tap
+  // Play, then immediately background the app): `bgAudioGesturePrimed` is a
+  // one-shot flag with no second chance, so gating on the cached setting
+  // risked skipping priming for the ENTIRE session whenever that race lost.
+  // A muted play()+pause() on a hidden, `preload="none"` element is cheap
+  // and completely harmless on a load where the setting later resolves OFF
+  // (or the video never backgrounds at all) -- see F3b immediately below for
+  // why "harmless" is actually true (it wasn't, originally).
+  //
+  // F3b (two-reviewer follow-up): primes with the LOCAL `SILENT_PRIME_SRC`
+  // data URI (see its own comment above), NEVER the real `/audio/:id` URL --
+  // the ORIGINAL version of this fix primed by playing the real network
+  // URL, which meant every mobile video's first gesture fired a real
+  // request (and could enqueue a real server-side FFmpeg extraction, riding
+  // the shared transcode-cache LRU) EVEN ON A DISABLED (default OFF)
+  // install. iOS's gesture-unlock is scoped to the ELEMENT, not the src it
+  // happened to be playing when unlocked, so priming with an inert clip is
+  // exactly as effective for a LATER real handoff. The real `/audio/:id`
+  // src is now assigned in exactly ONE place: `attemptBackgroundAudioHandoff`
+  // (already gated on the setting being on) -- grep `bgAudioEl.src` to
+  // confirm there is no other assignment site.
+  function primeBackgroundAudioElement() {
+    if (bgAudioGesturePrimed || !bgAudioEl) return;
+    if (!currentData || currentData.type === 'audio') return; // video-only feature
+    if (!isMobileFormFactor()) return; // desktop is never affected
+    // F3b: never prime while a real handoff is already in flight/active
+    // (bgAudioState !== INLINE_VIDEO) -- there's nothing useful to bless
+    // (the element is already playing/attempting the REAL audio) and
+    // swapping in the silent clip here would clobber it. Deliberately does
+    // NOT set `bgAudioGesturePrimed` on this early return, so a LATER
+    // gesture (after SWAP_BACK returns to INLINE_VIDEO) still gets a real
+    // chance to prime.
+    if (bgAudioState !== BG_AUDIO_STATES.INLINE_VIDEO) return;
+    bgAudioGesturePrimed = true;
+    try {
+      // Only ever assigns the SILENT clip -- the real handoff src lives
+      // exclusively in attemptBackgroundAudioHandoff, which reassigns `src`
+      // itself when it actually runs, so overwriting it here first is safe
+      // (and, per the guard just above, this line is unreachable once a
+      // real handoff is already active).
+      bgAudioEl.src = SILENT_PRIME_SRC;
+      var wasMuted = bgAudioEl.muted;
+      bgAudioEl.muted = true;
+      var p = bgAudioEl.play();
+      if (p && typeof p.then === 'function') {
+        p.then(function () {
+          // F3 (two-reviewer gate): a real background handoff can win the
+          // race between THIS prime's play() and its own .then() resolving
+          // -- `attemptBackgroundAudioHandoff` may already have moved
+          // `bgAudioState` past INLINE_VIDEO (HANDING_OFF/BACKGROUND_AUDIO)
+          // by the time this continuation runs. The mute-state MUST still be
+          // restored unconditionally (a real handoff never touches `.muted`
+          // itself, so leaving it muted would silently play the real
+          // background audio inaudibly) -- but `pause()` must NEVER run
+          // once a real handoff has taken over; this continuation may only
+          // ever clean up ITS OWN priming play(), never a later real one.
+          bgAudioEl.muted = wasMuted;
+          if (bgAudioState !== BG_AUDIO_STATES.INLINE_VIDEO) return;
+          bgAudioEl.pause();
+        }, function () {
+          bgAudioEl.muted = wasMuted;
+          // Priming failed -- no-op. The real handoff's own .catch (see
+          // attemptBackgroundAudioHandoff) is the actual safety net.
+        });
+      } else {
+        bgAudioEl.pause();
+        bgAudioEl.muted = wasMuted;
+      }
+    } catch (_) { /* best-effort only */ }
   }
 
   function handleBackgroundLifecycle(eventType, extraCtx) {
@@ -1252,6 +1616,16 @@ if (typeof module !== 'undefined' && module.exports) {
     };
     var shouldRelease = shouldReleaseForLifecycleEvent(eventType, ctx);
     if (shouldPauseForLifecycleEvent(eventType, ctx)) {
+      // v1.27.0 (EXPERIMENTAL): this is the ONE place a background-audio
+      // handoff can ever be triggered -- every precondition
+      // `shouldPauseForLifecycleEvent` already checked (mobile, video,
+      // playing, not native-fullscreen/PiP) holds here by construction, so
+      // the two keep-playing mechanisms (native presentation vs.
+      // background-audio) are mutually exclusive without any extra guard.
+      if (attemptBackgroundAudioHandoff()) {
+        if (shouldRelease) releaseAudioSession(); // a terminal pagehide still releases even mid-handoff (stops BOTH elements -- see releaseAudioSession)
+        return;
+      }
       mediaPlayer.pause();
       saveProgressToServer(currentAbsTime(), { keepalive: true });
       if (shouldRelease) releaseAudioSession(); // PART A: a terminal pagehide additionally releases the session (additive -- the pause+save above is unchanged)
@@ -1329,11 +1703,20 @@ if (typeof module !== 'undefined' && module.exports) {
       var raw = localStorage.getItem(LIFECYCLE_LOG_STORAGE_KEY);
       var log = raw ? JSON.parse(raw) : [];
       if (!Array.isArray(log)) log = [];
+      // F6 (two-reviewer gate, v1.27.0): reads `activeMediaElement()` (the
+      // hidden `bgAudioEl` while BACKGROUND_AUDIO, `mediaPlayer` otherwise)
+      // rather than a hardcoded `mediaPlayer` -- `mediaPlayer` itself is
+      // DELIBERATELY paused during a background-audio handoff (see
+      // `attemptBackgroundAudioHandoff`), so a hardcoded read here would
+      // always report `playing: false` during BACKGROUND_AUDIO even while
+      // audio is genuinely still playing, making the `?debugLifecycle=1`
+      // overlay lie during exactly the scenario it exists to verify.
+      var activeEl = activeMediaElement();
       log.push({
         type: type,
         persisted: extraCtx && 'persisted' in extraCtx ? extraCtx.persisted : null,
         vis: document.visibilityState,
-        playing: !!(mediaPlayer && !mediaPlayer.paused),
+        playing: !!(activeEl && !activeEl.paused),
         t: Date.now(),
       });
       if (log.length > LIFECYCLE_LOG_CAP) log = log.slice(log.length - LIFECYCLE_LOG_CAP);
@@ -1423,10 +1806,16 @@ if (typeof module !== 'undefined' && module.exports) {
       saveProgressToServer(target);
       return;
     }
-    var dur = mediaPlayer.duration;
+    // v1.27.0: retargeted to activeMediaElement() -- identical to `mediaPlayer`
+    // in the INLINE_VIDEO case (every desktop/audio/default-OFF path, i.e.
+    // byte-identical behavior), but seeks the hidden audio element instead
+    // while BACKGROUND_AUDIO (e.g. a lock-screen seekbackward/seekforward
+    // action -- see setMediaSessionAction above).
+    var el = activeMediaElement();
+    var dur = el.duration;
     if (!isFinite(dur) || dur <= 0) return;
-    mediaPlayer.currentTime = Math.max(0, Math.min(dur, mediaPlayer.currentTime + delta));
-    saveProgressToServer(mediaPlayer.currentTime);
+    el.currentTime = Math.max(0, Math.min(dur, el.currentTime + delta));
+    saveProgressToServer(currentAbsTime());
   }
 
   function flashRipple(el) {
@@ -1778,7 +2167,14 @@ if (typeof module !== 'undefined' && module.exports) {
   function startProgressSaver() {
     if (progressInterval) clearInterval(progressInterval);
     progressInterval = setInterval(function () {
-      if (!mediaPlayer.paused && currentAbsTime() > 0) {
+      // v1.27.0: checks activeMediaElement() (not a hardcoded mediaPlayer)
+      // so progress saves continue against the audio clock while
+      // BACKGROUND_AUDIO -- mediaPlayer itself is deliberately paused
+      // during a handoff (see attemptBackgroundAudioHandoff), so the old
+      // `!mediaPlayer.paused` check would otherwise have stopped saving the
+      // instant a handoff succeeded.
+      var el = activeMediaElement();
+      if (el && !el.paused && currentAbsTime() > 0) {
         saveProgressToServer(currentAbsTime());
       }
     }, 4000);
@@ -1930,6 +2326,80 @@ if (typeof module !== 'undefined' && module.exports) {
       .catch(function (e) {
         console.error('Autoplay-next check failed:', e);
       });
+  }
+
+  // v1.27.0 (F2, two-reviewer gate): the shared 'ended' completion cascade.
+  // Before this, mediaPlayer's completion behavior on 'ended' -- reset-to-0 +
+  // one-shot progress-0 save (C2 remediation), `setPlaybackState('none')`,
+  // loop-replay (FR-7), and autoplay-next (FR-3) -- was FOUR separate
+  // `mediaPlayer`-only listeners with no counterpart on `bgAudioEl`. A video
+  // that finished playing WHILE backgrounded (the hidden `<audio>` element is
+  // the one actually running to completion, `mediaPlayer` itself sits paused
+  // underneath -- see `attemptBackgroundAudioHandoff`) never fired 'ended' on
+  // `mediaPlayer` at all, so none of the four behaviors ever ran: progress
+  // stayed at ~100% forever (never reset to 0), the Media Session
+  // `playbackState` stayed stuck on 'playing', loop silently never replayed,
+  // and autoplay-next never advanced.
+  //
+  // Extracted into ONE function so `mediaPlayer`'s own 'ended' listener
+  // (registered in `wireHostListeners`, replacing the four separate ones)
+  // and the NEW `bgAudioEl` 'ended' listener (also in `wireHostListeners`,
+  // gated on `bgAudioState === BACKGROUND_AUDIO`) share identical semantics
+  // instead of two copies drifting apart. `el` is whichever element actually
+  // fired 'ended' -- `mediaPlayer` in the ordinary (foreground) case,
+  // `bgAudioEl` while backgrounded -- so loop-replay always replays via the
+  // element that was ACTUALLY playing (never attempts to foreground the
+  // video just to loop it while backgrounded).
+  //
+  // Registered at the exact same relative position mediaPlayer's four
+  // listeners used to occupy (immediately before the still-separate
+  // `loadedmetadata`/`updatePlayPauseUI`/`stopFillLoop` 'ended' listeners
+  // below), so mediaPlayer's own observable 'ended' behavior -- including
+  // its ordering relative to those other listeners -- is byte-for-byte
+  // unchanged from before this extraction.
+  //
+  // Autoplay-next-while-backgrounded (F2 decision): `handleAutoplayNext`
+  // itself performs a settings fetch -> a videos fetch -> a full
+  // `window.FileTube.navigate()` SPA content swap for the next item -- a
+  // multi-step, timer/fetch-dependent sequence that's exactly the kind of
+  // work a backgrounded iOS tab is most likely to suspend PARTWAY through
+  // (see WebKit's background-tab throttling of timers/fetches), which could
+  // leave the SPA half-navigated with no foreground UI visible to notice or
+  // recover it. The persistent-host machinery `navigate()` relies on is real
+  // and shared with every other prev/next/autoplay path, but "safe when
+  // foregrounded" is not the same guarantee as "safe mid-background" -- so
+  // rather than risk a broken navigation nobody is looking at, this DEFERS
+  // autoplay-advance to the next foreground swap-back via
+  // `pendingAutoplayNextOnForeground` (consumed by
+  // `handleForegroundSwapBack`, below) whenever `el` is `bgAudioEl`. By the
+  // time that flag is consumed the app is back in the foreground and this is
+  // an entirely ordinary `handleAutoplayNext()` call, no different from any
+  // other 'ended' advance.
+  function runEndedCompletionCascade(el, opts) {
+    var backgrounded = !!(opts && opts.backgrounded);
+    // C2 remediation (v1.16.0): reset to 0 on 'ended', and do NOT re-save the
+    // end position afterward -- clearProgressInterval() (unlike
+    // stopProgressSaver()) only stops the ticking saver, so the just-written
+    // 0 is the FINAL persisted value.
+    saveProgressToServer(0);
+    clearProgressInterval();
+    if (!liveMode && el) el.currentTime = 0;
+    setPlaybackState('none');
+    // FR-7 (TF, v1.22.0, AC49): loop takes precedence over autoplay-advance.
+    if (isLoopEnabled()) {
+      if (liveMode) {
+        startLiveStream(0, true);
+      } else if (el) {
+        el.currentTime = 0;
+        el.play().catch(function () {});
+      }
+      return; // loop wins -- never autoplay-advance (immediately or deferred) while looping
+    }
+    if (backgrounded) {
+      pendingAutoplayNextOnForeground = true;
+      return;
+    }
+    handleAutoplayNext();
   }
 
   // ---- FR-2 (T2, v1.21.0): custom blocky control bar -------------------------
@@ -2311,54 +2781,62 @@ if (typeof module !== 'undefined' && module.exports) {
 
     mediaPlayer.addEventListener('play', startProgressSaver);
     mediaPlayer.addEventListener('pause', stopProgressSaver);
-    // C2 remediation (v1.16.0): reset to 0 on 'ended', and do NOT re-save the
-    // end position afterward -- `clearProgressInterval()` (unlike
-    // `stopProgressSaver()`) only stops the ticking saver, so the
-    // just-written 0 is the FINAL persisted value (watched-to-completion
-    // starts fresh next time, matching the pre-existing intent of this
-    // listener). Using `stopProgressSaver()` here would immediately
-    // overwrite the 0 with `currentAbsTime()` (~duration at 'ended'),
-    // wrongly popping the "Resume at…" overlay right at the very end and
-    // showing ~100% watched on the home card.
+    // v1.27.0 (background-audio-for-video, EXPERIMENTAL): the SAME
+    // progress-saver + Media-Session play/pause-state wiring, on the hidden
+    // audio element. `attemptBackgroundAudioHandoff` pauses `mediaPlayer`
+    // (firing its own 'pause' above, which stops the saver) as part of every
+    // handoff attempt; once `bgAudioEl.play()` actually resolves, ITS 'play'
+    // event is what restarts the saver (now reading `activeMediaElement()`,
+    // so it correctly follows whichever element is active) -- without this,
+    // progress would silently stop saving for the entire background-audio
+    // span. `releaseBackgroundAudioElement`'s own `pause()` (SWAP_BACK) then
+    // stops it again, and `mediaPlayer.play()` (also part of SWAP_BACK)
+    // restarts it via the listener above -- the saver always follows
+    // whichever element is actually playing, with no state-machine-aware
+    // branching needed here.
+    bgAudioEl.addEventListener('play', startProgressSaver);
+    bgAudioEl.addEventListener('pause', stopProgressSaver);
+    bgAudioEl.addEventListener('play', function () { setPlaybackState('playing'); updatePositionState(true); });
+    bgAudioEl.addEventListener('pause', function () { setPlaybackState('paused'); updatePositionState(true); });
+    // v1.27.0 (F2, two-reviewer gate): bgAudioEl's own 'ended' counterpart to
+    // mediaPlayer's completion cascade below -- ONLY acts when this element
+    // is the one actually BACKGROUND_AUDIO-playing for the current item
+    // (mediaPlayer's own 'ended' never fires while it's the hidden element
+    // running to completion, so without this the whole completion cascade
+    // -- progress reset, Media Session state, loop, autoplay-next -- was
+    // simply unreachable for a video that finished while backgrounded). See
+    // `runEndedCompletionCascade`'s own comment (above `handleAutoplayNext`)
+    // for the shared semantics and the autoplay-next-while-backgrounded
+    // decision.
+    bgAudioEl.addEventListener('ended', function () {
+      if (bgAudioState !== BG_AUDIO_STATES.BACKGROUND_AUDIO) return;
+      runEndedCompletionCascade(bgAudioEl, { backgrounded: true });
+    });
+    // v1.27.0: gesture-prime coverage for mobile video's NATIVE `controls`
+    // strip (FULL, native-controls round) -- that strip's own internal tap
+    // handling isn't interceptable from this file, but `touchstart` on the
+    // `<video>` itself fires BEFORE it, in the capture phase, so priming from
+    // there runs inside the SAME synchronous gesture as whatever the native
+    // strip goes on to do (including a native Play tap). Passive + never
+    // calls preventDefault/stopPropagation, so it can never interfere with
+    // the native strip's own handling -- purely additive.
+    mediaPlayer.addEventListener('touchstart', primeBackgroundAudioElement, { passive: true, capture: true });
+    // C2 remediation (v1.16.0) / FR-3 (T3) / FR-7 (TF, v1.22.0, AC48/AC51/
+    // AC53): reset-to-0 + progress-0 save, `setPlaybackState('none')`,
+    // autoplay-next, and loop-replay used to be FOUR separate listeners
+    // here. v1.27.0 (F2, two-reviewer gate) consolidated them into the
+    // shared `runEndedCompletionCascade` (above `handleAutoplayNext`) so
+    // `bgAudioEl`'s own 'ended' counterpart (wired above) can run the exact
+    // same semantics instead of a second, drifting copy -- see that
+    // function's own comment for the full rationale (including the
+    // autoplay-next-while-backgrounded decision). This single listener,
+    // registered in the SAME relative position the first of the four used to
+    // occupy, reproduces their combined observable behavior byte-for-byte.
     mediaPlayer.addEventListener('ended', function () {
-      saveProgressToServer(0);
-      clearProgressInterval();
-      // FR-4c (T3): also reset the LIVE element position (not just the
-      // just-persisted server value above) so replaying is a single tap with
-      // a clean poster frame at 0 -- applies to EVERY completed video,
-      // independent of the autoplay setting (whether or not the separate
-      // handleAutoplayNext listener below goes on to navigate to a next
-      // video makes no difference here: a genuine autoplay-advance replaces
-      // `mediaPlayer.src` via setupForMedia() moments later anyway, so
-      // resetting this element's position first is harmless). Guarded off
-      // `liveMode`: a live desktop-transcode source is re-`src`'d (via
-      // startLiveStream), never seeked, so touching currentTime here would
-      // be meaningless/unsafe.
-      if (!liveMode && mediaPlayer) mediaPlayer.currentTime = 0;
+      runEndedCompletionCascade(mediaPlayer);
     });
     mediaPlayer.addEventListener('play', function () { setPlaybackState('playing'); updatePositionState(true); });
     mediaPlayer.addEventListener('pause', function () { setPlaybackState('paused'); updatePositionState(true); });
-    mediaPlayer.addEventListener('ended', function () { setPlaybackState('none'); });
-    mediaPlayer.addEventListener('ended', handleAutoplayNext); // FR-3, T3 -- a THIRD, separate 'ended' listener; the two above are untouched
-    // FR-7 (TF, v1.22.0, AC48/AC51/AC53): loop/repeat -- a FOURTH, separate
-    // 'ended' listener, reconciling with the three above rather than
-    // replacing any of them (the reset-to-0 listener above already put this
-    // element at 0; `handleAutoplayNext`'s own early-return, above, is what
-    // actually enforces "loop wins over autoplay" -- this listener is just
-    // the replay action itself). Mirrors `resumeNoBtn`'s own restart logic
-    // exactly: a live-transcode source is re-`src`'d via `startLiveStream`,
-    // never seeked. State-independent of FULL/DOCKED -- only reads `liveMode`
-    // /`mediaPlayer` (this controller's own state), same as
-    // `handleAutoplayNext` above.
-    mediaPlayer.addEventListener('ended', function () {
-      if (!isLoopEnabled()) return;
-      if (liveMode) {
-        startLiveStream(0, true);
-      } else {
-        mediaPlayer.currentTime = 0;
-        mediaPlayer.play().catch(function () {});
-      }
-    });
     // Feature A (v1.26.1, Shorts player-size jump)'s no-data fallback + lazy
     // per-item dimensions backfill, and F2's same-session orientation
     // self-heal, used to be wired ONCE here, reading `currentData`/
@@ -2432,7 +2910,12 @@ if (typeof module !== 'undefined' && module.exports) {
       playerControls.addEventListener('click', function (e) { e.stopPropagation(); });
     }
 
-    if (ppBtn) ppBtn.addEventListener('click', togglePlayPause);
+    if (ppBtn) {
+      ppBtn.addEventListener('click', function () {
+        primeBackgroundAudioElement(); // v1.27.0: synchronous gesture-prime BEFORE the play() below (DOCKED + non-native-controls FULL path)
+        togglePlayPause();
+      });
+    }
 
     if (seekBar) {
       // Visual scrub only (AC15): updates the fill/current-time display but
@@ -2866,6 +3349,23 @@ if (typeof module !== 'undefined' && module.exports) {
     liveMode = false;
     liveOffset = 0;
     savedProgress = 0;
+    // v1.27.0 (background-audio-for-video, EXPERIMENTAL): reset the state
+    // machine to INLINE_VIDEO and stop+detach the hidden audio element for
+    // the OUTGOING media -- covers BOTH a genuinely new load (prev/next/a
+    // related-card click) arriving mid-BACKGROUND_AUDIO (this is what makes
+    // that case "bail safely, no double-audio": teardownMediaState() always
+    // runs at the START of every real load(), before setupForMedia ever
+    // assigns a new src to either element) and simple hygiene (per-load
+    // flags reset so the next item gets a fresh gesture-prime/settings-cache
+    // opportunity).
+    bgAudioState = nextBackgroundAudioState(bgAudioState, 'TEARDOWN', {});
+    bgAudioGesturePrimed = false;
+    bgAudioSettingCached = false;
+    bgAudioStatusKnown = null;
+    pendingAutoplayNextOnForeground = false; // F2: never let a deferred advance survive into a genuinely new load
+    if (bgAudioEl) {
+      try { bgAudioEl.pause(); bgAudioEl.removeAttribute('src'); bgAudioEl.load(); } catch (_) { /* best-effort only */ }
+    }
     // FR-2 (T2, v1.21.0): stop the rAF fill loop (docs/RELIABILITY.md: must
     // be cancelled on pause/close -- `mediaPlayer.pause()` below already
     // triggers this via the 'pause' listener, this is defense-in-depth) and
@@ -2948,6 +3448,76 @@ if (typeof module !== 'undefined' && module.exports) {
   function setupForMedia(id, data) {
     var gen = loadGeneration;
     var streamUrl = '/video/' + id;
+
+    // v1.27.0 (background-audio-for-video, EXPERIMENTAL): reset THIS load's
+    // cached setting/status, then (video + mobile only) fetch+cache the
+    // setting ONCE and pre-warm the audio-extract sidecar -- so
+    // `attemptBackgroundAudioHandoff` never needs a network round-trip at
+    // the worst possible moment (a real background event). `data.audioStatus`
+    // (already on the GET /api/videos/:id payload -- see server.js) seeds the
+    // load-time snapshot for the common case where a PRIOR watch of this
+    // item already extracted it, but is NEVER trusted on its own past this
+    // point (see F1 below) -- it's just what `attemptBackgroundAudioHandoff`
+    // falls back on if the prepare-audio round trip below never resolves in
+    // time. Desktop and audio-type items never even reach this fetch --
+    // completely unaffected, matching the feature's video+mobile-only scope.
+    bgAudioSettingCached = false;
+    bgAudioStatusKnown = (data && data.audioStatus) || null;
+    if (data.type !== 'audio' && isMobileFormFactor() && bgAudioEl) {
+      // F3b (two-reviewer follow-up): does NOT pre-set the real `/audio/:id`
+      // src here anymore -- that used to mean EVERY mobile video load
+      // pointed `bgAudioEl` at the real network URL regardless of the
+      // setting, and `primeBackgroundAudioElement`'s gesture-prime played
+      // THAT (a real request, possibly enqueuing a real FFmpeg extraction)
+      // even on a disabled install. The real src is now assigned in exactly
+      // ONE place -- `attemptBackgroundAudioHandoff` -- which is already
+      // gated on the setting being on; priming instead uses a LOCAL silent
+      // clip (`SILENT_PRIME_SRC`, see `primeBackgroundAudioElement`'s own
+      // comment) with zero network cost.
+      // F7 (comment-only, two-reviewer gate): a deliberate tradeoff -- this
+      // fires a fresh GET /api/settings on EVERY mobile video load rather
+      // than riding the existing GET /api/videos payload (which already
+      // carries per-item fields like `audioStatus`). Simplest-correct for an
+      // EXPERIMENTAL, off-by-default feature: it fails SAFE (a slow/failed
+      // fetch just leaves `bgAudioSettingCached` false, so the feature stays
+      // off for that load -- see the `.catch` below), and keeps this whole
+      // feature's settings-read isolated from `/api/videos`'s response
+      // shape rather than growing it. Revisit (fold `backgroundAudioForVideo`
+      // into the `/api/videos` payload instead, saving a round trip per
+      // load) if this extra fetch ever shows up as a real cost once the
+      // feature graduates out of EXPERIMENTAL.
+      fetch('/api/settings')
+        .then(function (res) { return res.ok ? res.json() : null; })
+        .then(function (settings) {
+          if (gen !== loadGeneration) return; // a newer load has since started
+          bgAudioSettingCached = !!(settings && settings.backgroundAudioForVideo);
+          if (!bgAudioSettingCached) return;
+          // F1 (two-reviewer gate): NO LONGER short-circuits when
+          // bgAudioStatusKnown's cached value already looks "ready". That
+          // cached value can be STALE
+          // -- the sidecar it describes may since have been evicted/aged out
+          // of the transcode cache (server.js's evictTranscodeCache/
+          // sweepAgedTranscodes delete the `.m4a` file independently of
+          // whatever this in-memory snapshot still believes) -- and trusting
+          // it here meant the FIRST real background handoff after eviction
+          // would 503 with nothing to hand off to, silently pausing instead.
+          // prepare-audio is an idempotent, cheap disk-existence check (a
+          // no-op 200 `{ audioStatus: 'ready' }` when truly still ready --
+          // see that route's own comment) that ALSO self-heals the server's
+          // persisted status when it finds the sidecar missing -- so it is
+          // always fired now, and its FRESH response is the only thing this
+          // controller ever trusts as `bgAudioStatusKnown` from this point
+          // on (never left at the load-time snapshot on a successful
+          // response, even if the response omits the field).
+          return fetch('/api/videos/' + encodeURIComponent(id) + '/prepare-audio', { method: 'POST' })
+            .then(function (res) { return res.ok ? res.json() : null; })
+            .then(function (body) {
+              if (gen !== loadGeneration) return;
+              if (body) bgAudioStatusKnown = body.audioStatus || null;
+            });
+        })
+        .catch(function () { /* best-effort pre-warm only -- a real background event just falls through to today's pause behavior if this never resolves */ });
+    }
 
     // A6 (T16, v1.24 UX Round, Wave 5): CC button + <track> setup. AVAILABILITY
     // (`data.hasSubtitles`, from db.metadata[id] via GET /api/videos/:id) is
@@ -3188,6 +3758,18 @@ if (typeof module !== 'undefined' && module.exports) {
         mediaPlayer.removeAttribute('src');
         mediaPlayer.load();
       } catch (_) { /* best-effort only */ }
+    }
+    // v1.27.0 (background-audio-for-video, EXPERIMENTAL): mirrors
+    // teardownMediaState()'s identical reset -- reset the state machine and
+    // stop+detach the hidden audio element here too, so a CLOSE (the dock's
+    // [x]) can never leave it playing.
+    bgAudioState = nextBackgroundAudioState(bgAudioState, 'TEARDOWN', {});
+    bgAudioGesturePrimed = false;
+    bgAudioSettingCached = false;
+    bgAudioStatusKnown = null;
+    pendingAutoplayNextOnForeground = false; // F2: never let a deferred advance survive a CLOSE either
+    if (bgAudioEl) {
+      try { bgAudioEl.pause(); bgAudioEl.removeAttribute('src'); bgAudioEl.load(); } catch (_) { /* best-effort only */ }
     }
     setPlaybackState('none');
     hideDock();

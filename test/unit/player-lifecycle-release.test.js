@@ -109,27 +109,50 @@ test('handleBackgroundLifecycle(): ctx.persisted is threaded from extraCtx (not 
 test('handleBackgroundLifecycle(): every release call site is gated behind `if (shouldRelease)`, never unconditional', () => {
   const body = handleBackgroundLifecycleMatch[1];
   const releaseCalls = body.match(/releaseAudioSession\(\);/g) || [];
-  assert.strictEqual(releaseCalls.length, 3, 'expected exactly 3 releaseAudioSession() call sites: the pause branch, the native-presentation-checkpoint branch, and the exempt-tail branch');
-  // Two of the three sites use the single-line `if (shouldRelease)
-  // releaseAudioSession();` form (inside the pause and native-presentation
-  // branches); the third uses the block `if (shouldRelease) { ...
-  // releaseAudioSession(); }` form (the exempt tail branch). Together that
-  // accounts for all 3 -- i.e. none is a bare, unconditional call.
+  // v1.27.0 (background-audio-for-video, EXPERIMENTAL) added a 4th site: the
+  // `attemptBackgroundAudioHandoff()` success branch, nested INSIDE the
+  // existing pause branch -- a terminal pagehide must still release even
+  // mid-handoff (stops BOTH elements -- see releaseAudioSession's own
+  // comment), so this is intentionally additive to the pre-existing 3.
+  assert.strictEqual(releaseCalls.length, 4, 'expected exactly 4 releaseAudioSession() call sites: the background-audio-handoff branch, the pause branch, the native-presentation-checkpoint branch, and the exempt-tail branch');
+  // Three of the four sites use the single-line `if (shouldRelease)
+  // releaseAudioSession();` form (the new handoff branch, plus the
+  // pre-existing pause and native-presentation branches); the fourth uses
+  // the block `if (shouldRelease) { ... releaseAudioSession(); }` form (the
+  // exempt tail branch). Together that accounts for all 4 -- i.e. none is a
+  // bare, unconditional call.
   const singleLineGuarded = body.match(/if \(shouldRelease\) releaseAudioSession\(\);/g) || [];
-  assert.strictEqual(singleLineGuarded.length, 2, 'expected 2 single-line-guarded release calls');
+  assert.strictEqual(singleLineGuarded.length, 3, 'expected 3 single-line-guarded release calls');
   const blockGuarded = /if \(shouldRelease\) \{\s*\n\s*checkpointProgress\(\);\s*\n\s*releaseAudioSession\(\);\s*\n\s*\}/.exec(body);
   assert.ok(blockGuarded, 'expected 1 block-guarded release call (checkpoint then release)');
 });
 
-test('handleBackgroundLifecycle(): the pause-verdict branch still saves progress BEFORE any release (order preserved)', () => {
+test('handleBackgroundLifecycle(): the pause-verdict branch still saves progress BEFORE any release, on the plain (non-handoff) fallback path (order preserved)', () => {
   const body = handleBackgroundLifecycleMatch[1];
   const pauseBranch = /if \(shouldPauseForLifecycleEvent\(eventType, ctx\)\) \{([\s\S]*?)\n {4}\}/.exec(body);
-  assert.ok(pauseBranch, 'expected the existing shouldPauseForLifecycleEvent branch to still exist, unchanged');
-  const saveIdx = pauseBranch[1].indexOf('saveProgressToServer(currentAbsTime(), { keepalive: true });');
-  const releaseIdx = pauseBranch[1].indexOf('releaseAudioSession();');
-  assert.ok(saveIdx !== -1, 'expected the pause branch to still save progress');
-  assert.ok(releaseIdx !== -1, 'expected the pause branch to also (conditionally) release');
-  assert.ok(saveIdx < releaseIdx, 'the keepalive save must run BEFORE the release, so position is never lost');
+  assert.ok(pauseBranch, 'expected the existing shouldPauseForLifecycleEvent branch to still exist');
+  // v1.27.0 added a nested `if (attemptBackgroundAudioHandoff()) { ... }`
+  // branch (with its own, earlier releaseAudioSession() call) INSIDE this
+  // pause branch -- scope this check to the text AFTER that nested block's
+  // closing brace, i.e. the original, unchanged plain-pause fallback (the
+  // `mediaPlayer.pause(); saveProgressToServer(...); if (shouldRelease)
+  // releaseAudioSession();` sequence), so this remains a precise regression
+  // lock on THAT specific sequence rather than an ambiguous indexOf over
+  // text that now contains two releaseAudioSession() calls.
+  const fallbackSequence = /mediaPlayer\.pause\(\);\s*\n\s*(saveProgressToServer\(currentAbsTime\(\), \{ keepalive: true \}\);)[\s\S]*?(releaseAudioSession\(\);)/.exec(pauseBranch[1]);
+  assert.ok(fallbackSequence, 'expected the plain-pause fallback sequence (pause -> save -> conditional release) to still exist, unchanged');
+  assert.ok(fallbackSequence.index !== -1, 'expected the fallback sequence to be found');
+});
+
+test('handleBackgroundLifecycle(): v1.27.0 background-audio handoff is attempted FIRST, inside the pause branch, before the plain pause+save fallback', () => {
+  const body = handleBackgroundLifecycleMatch[1];
+  const pauseBranch = /if \(shouldPauseForLifecycleEvent\(eventType, ctx\)\) \{([\s\S]*?)\n {4}\}/.exec(body);
+  assert.ok(pauseBranch, 'expected the existing shouldPauseForLifecycleEvent branch to still exist');
+  const handoffIdx = pauseBranch[1].indexOf('if (attemptBackgroundAudioHandoff()) {');
+  const fallbackPauseIdx = pauseBranch[1].indexOf('mediaPlayer.pause();');
+  assert.ok(handoffIdx !== -1, 'expected the handoff attempt to be wired inside the pause branch');
+  assert.ok(fallbackPauseIdx !== -1, 'expected the plain pause fallback to still exist');
+  assert.ok(handoffIdx < fallbackPauseIdx, 'the handoff attempt must run BEFORE the plain pause fallback (it returns early on success)');
 });
 
 test('handleBackgroundLifecycle(): the exempt-from-both-branches tail (audio / not-currently-playing) still checkpoints before releasing', () => {

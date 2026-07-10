@@ -24,6 +24,7 @@ const DEFAULT_SETTINGS = {
   cacheMaxAgeDays: 30,
   defaultView: '', // v1.14.0 item 4: '' is the "Most Recent" sentinel
   autoplayNext: false, // v1.16.0 FR-3 (T3): OFF by default
+  backgroundAudioForVideo: false, // v1.27.0 (EXPERIMENTAL): OFF by default
 };
 
 function baseSettings(overrides) {
@@ -76,7 +77,7 @@ beforeEach(() => {
 
 // ---- GET /api/settings -----------------------------------------------------
 
-test('GET /api/settings returns the 7-field shape with backfilled defaults on a fresh DB', async () => {
+test('GET /api/settings returns the 8-field shape with backfilled defaults on a fresh DB', async () => {
   const res = await fetch(`${base}/api/settings`);
   assert.equal(res.status, 200);
   const json = await res.json();
@@ -87,6 +88,7 @@ test('GET /api/settings returns the 7-field shape with backfilled defaults on a 
     cacheMaxAgeDays: 30,
     defaultView: '', // v1.14.0 item 4: '' is the "Most Recent" sentinel
     autoplayNext: false, // v1.16.0 FR-3 (T3): OFF by default
+    backgroundAudioForVideo: false, // v1.27.0 (EXPERIMENTAL): OFF by default
     effectiveCacheMaxBytes: 5 * 1024 ** 3, // env unset -> 5 GB default
   });
 });
@@ -355,6 +357,32 @@ test('POST /api/cache/clear on an empty cache is a safe no-op', async () => {
   const res = await fetch(`${base}/api/cache/clear`, { method: 'POST' });
   assert.equal(res.status, 200);
   assert.deepEqual(await res.json(), { success: true, removed: 0, freedBytes: 0 });
+});
+
+// F1 (two-reviewer gate, v1.27.0): a manual "Clear cache now" removing a
+// background-audio `.m4a` sidecar must also clear that item's stale
+// `audioStatus: 'ready'` -- same as automatic eviction/aging (see
+// test/unit/audio-cache-lifecycle.test.js's own evictTranscodeCache/
+// sweepAgedTranscodes coverage).
+test('POST /api/cache/clear clears audioStatus for a cleared .m4a sidecar', async () => {
+  const id = 'vid-cache-clear-audio-status';
+  writeDb({
+    folders: [], folderSettings: {}, progress: {},
+    metadata: { [id]: { id, type: 'video', audioStatus: 'ready', filePath: '/src/whatever.mp4', size: 100, title: 'x', name: 'x.mp4', ext: '.mp4', addedAt: Date.now() } },
+    settings: baseSettings(),
+  });
+  writeTranscodeFile(`${id}.m4a`, 50);
+
+  const res = await fetch(`${base}/api/cache/clear`, { method: 'POST' });
+  const json = await res.json();
+  assert.equal(json.removed, 1);
+
+  // clearAudioStatus is fire-and-forget (updateDatabase's own async-mutex
+  // chain, not awaited by the route) -- give it a tick to land, mirroring
+  // this same suite's own lastServedAt-landing pattern above.
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  const db = readDb();
+  assert.equal(db.metadata[id].audioStatus, undefined, 'the cleared .m4a\'s stale audioStatus must be removed');
 });
 
 // ---- Existing routes unaffected --------------------------------------------
