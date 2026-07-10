@@ -12,7 +12,30 @@
   <link rel="manifest" href="/manifest.webmanifest">
   <meta name="theme-color" content="#cc0000">
   <meta name="apple-mobile-web-app-capable" content="yes">
+  <!-- v1.26.2 polish (Dean punchlist -- PWA chrome): `black-translucent`
+       (status bar overlaps the page, forced WHITE status-bar text/icons)
+       was considered and rejected -- `--header-bg` varies by era theme and
+       is WHITE/light in several of them (see style.css's `:root`/theme
+       blocks), so forced-white status bar text would be illegible against
+       those. `default` (opaque bar, black text, content starts BELOW it)
+       stays legible across every era/mode combination without needing a
+       per-theme status-bar-style swap, which a static meta tag can't do
+       anyway. The fixed `header` already correctly reserves
+       `env(safe-area-inset-top)` (see `--mobile-header-h`/its own mobile
+       padding in style.css), so switching to `black-translucent` later
+       would be a pure CSS/meta change if the contrast concern is ever
+       addressed (e.g. a fixed dark status-bar strip). -->
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="FileTube">
+  <!-- v1.26.2 polish (Dean punchlist -- PWA chrome): preloads the
+       @font-face src (style.css:33-39) so the browser fetches it
+       immediately instead of only discovering it once style.css itself
+       parses -- `font-display: swap` (unchanged) still governs the actual
+       swap-in, this just shrinks the window where the fallback font is
+       visible before Roboto takes over. `type`/`crossorigin` are required
+       for the browser to actually treat this as the SAME request the
+       @font-face rule will make (a mismatched preload is wasted). -->
+  <link rel="preload" href="/fonts/roboto.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/css/style.css">
   <style>
     /* v1.24.0 T6 (A5): prominent "check all subscriptions now" header row --
@@ -40,9 +63,37 @@
       gap: 10px;
       flex-wrap: wrap;
     }
+    /* v1.26.2 polish fix (Dean punchlist #5): dedicated full-width row for
+       the three status spans (see the markup comment above this row) --
+       `flex-basis: 100%` inside the `.sub-list-header` flex container
+       forces it onto its own line below `.sub-list-header-actions` rather
+       than sharing a row with the buttons, and `min-height` reserves that
+       line's height up front so text appearing/clearing never shifts the
+       buttons above it.
+
+       v1.26.2 code-review fix (F3, MINOR): `min-height` must match the
+       actual rendered line-box height of the `.sub-repull-status` spans
+       inside it, or the reservation itself causes a (smaller, but still
+       real) shift the first time a status populates. This row's spans are
+       12px font-size (`.sub-repull-status` below); left at the inherited
+       `line-height: 1.4` from `body` (style.css), the rendered line box is
+       12 * 1.4 = 16.8px -- taller than the previous 15px reservation. Fixed
+       by declaring `line-height` explicitly HERE (12 * 1.25 = 15, an exact
+       match to `min-height`) rather than relying on `body`'s inherited
+       value, so this arithmetic holds even if `body`'s line-height ever
+       changes. */
+    .sub-list-header-status {
+      flex-basis: 100%;
+      line-height: 1.25;
+      min-height: 15px;
+    }
     .sub-repull-status {
       font-size: 12px;
       color: var(--text-secondary);
+      margin-right: 10px;
+    }
+    .sub-repull-status:empty {
+      margin-right: 0;
     }
 
     /* v1.24.0 T6 (B4): drag-and-drop reorder on the subscriptions management
@@ -185,7 +236,6 @@
                Calls the EXISTING POST /api/subscriptions/repull unchanged --
                no new backend route. -->
           <div class="sub-list-header-actions">
-            <span id="sub-repull-status" class="sub-repull-status" aria-live="polite"></span>
             <button class="btn btn-primary btn-sm" id="sub-repull-all-btn" type="button">
               <i class="icon-refresh"></i> Check all subscriptions now
             </button>
@@ -195,12 +245,7 @@
                  button above (which polls for NEW videos). Progress/terminal
                  state ride the SAME ~2.5s GET /api/subscriptions/status poll
                  this page already runs -- see
-                 lib/ytdlp/client/subscriptions.js's applyReheatStateToControls.
-                 Only span/button elements added here (no new div), so this
-                 stays inside .sub-list-header-actions without changing the
-                 structural shape test/unit/ytdlp-t6-repull-and-subs-ui.test.js
-                 already locks for this row. -->
-            <span id="sub-reheat-status" class="sub-repull-status" aria-live="polite"></span>
+                 lib/ytdlp/client/subscriptions.js's applyReheatStateToControls. -->
             <button class="btn btn-sm" id="sub-reheat-cancel-btn" type="button" hidden>Cancel</button>
             <button class="btn btn-sm" id="sub-reheat-btn" type="button">
               <i class="icon-refresh"></i> Reheat metadata
@@ -214,14 +259,28 @@
                  ~2.5s GET /api/subscriptions/status poll this page already
                  runs -- see
                  lib/ytdlp/client/subscriptions.js's
-                 applyRefreshAvatarsStateToControls. Only span/button
-                 elements added here (no new div), same posture as the
-                 reheat controls immediately above. -->
-            <span id="sub-refresh-avatars-status" class="sub-repull-status" aria-live="polite"></span>
+                 applyRefreshAvatarsStateToControls. -->
             <button class="btn btn-sm" id="sub-refresh-avatars-cancel-btn" type="button" hidden>Cancel</button>
             <button class="btn btn-sm" id="sub-refresh-avatars-btn" type="button">
               <i class="icon-refresh"></i> Refresh avatars
             </button>
+          </div>
+          <!-- v1.26.2 polish fix (Dean punchlist #5): the three status spans
+               below used to live INSIDE .sub-list-header-actions (the
+               buttons' own flex row) and start out EMPTY. When
+               applyReheatStateToControls/applyRefreshAvatarsStateToControls
+               (subscriptions.js) or the plain repull-status poll populate
+               one with text, the growing span re-wrapped the button row --
+               a line of text appearing to shove itself "between" the
+               buttons, then vanishing again on clear. Moving them into
+               their OWN always-present row below the buttons (with a
+               reserved min-height via .sub-list-header-status in the
+               <style> block below) means populate/clear only ever changes
+               this row's text, never the buttons' layout. -->
+          <div class="sub-list-header-status">
+            <span id="sub-repull-status" class="sub-repull-status" aria-live="polite"></span>
+            <span id="sub-reheat-status" class="sub-repull-status" aria-live="polite"></span>
+            <span id="sub-refresh-avatars-status" class="sub-repull-status" aria-live="polite"></span>
           </div>
         </div>
         <div id="sub-list-container" class="sub-list">

@@ -3163,14 +3163,168 @@ function persistPinReorder(orderedIds) {
     });
 }
 
+// v1.26.2 polish (Dean punchlist -- sheet/modal transitions): every bottom
+// sheet / modal in this app used to be toggled purely via
+// [hidden]/create-and-remove, an instant teleport in AND out -- a CSS
+// transition can never start FROM `display: none`, and `.remove()`/
+// `removeChild()` erases the node before any closing transition could ever
+// render a single frame. These two small, dependency-free helpers fix that
+// uniformly for every open/close call site (Playlists sheet, the
+// subscription settings sheet, and the generic confirm/move modals) instead
+// of each surface reinventing its own dance. No animation library --
+// plain CSS transitions (see style.css's `.sheet-open`/`.modal-open`
+// classes) driven by these two functions.
+//
+// `openOverlay`: the two-step reveal technique -- unhide (only if the
+// element actually uses the `hidden` attribute; the confirm/move modals
+// don't, they're freshly created and appended instead), force a synchronous
+// reflow (`void el.offsetHeight`) so the browser commits the CLOSED starting
+// state BEFORE the very next line flips it to OPEN (otherwise both style
+// changes can get batched into a single paint and the transition never
+// visibly plays), then add `openClass` to trigger the CSS transition in.
+//
+// `closeOverlayThen`: removes `openClass` (triggering the CSS transition
+// back out) and calls `afterClose` once that transition actually finishes
+// (`transitionend`, with a short timeout fallback in case nothing was
+// actually transitioning) -- never leaving the caller's real teardown (the
+// `[hidden] = true` / `.remove()`) stuck half-animated.
+//
+// Both feature-detect `classList` before doing anything CSS-class-related:
+// the node:test fake-DOM harnesses used by showMoveModal's/showConfirmModal's
+// own unit tests (and any other non-browser environment) have no
+// `classList`, so on those both helpers degrade to their pre-v1.26.2
+// behavior -- an instant, synchronous show/hide -- so existing synchronous
+// test assertions (e.g. "teardown() fully detaches the backdrop") keep
+// holding exactly as before. `prefers-reduced-motion: reduce` gets the same
+// instant treatment by deliberate choice (AC: honor the OS preference).
+function prefersReducedMotion() {
+  return typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+    && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+function overlayCanAnimate(el) {
+  return !!(el && el.classList && typeof el.classList.add === 'function' && typeof el.classList.remove === 'function');
+}
+
+// v1.26.2 code-review fix (F1, BLOCKER): a per-element WeakMap tracks each
+// overlay's own in-flight close -- a monotonically increasing `gen`eration
+// counter plus a `cancel` closure that tears down that close's
+// transitionend/transitioncancel listeners and fallback timer. Without this,
+// a close-then-reopen-within-~300ms sequence on a REUSED node (e.g. the
+// Playlists sheet's persistent #playlists-sheet/#playlists-backdrop --
+// unlike the confirm/move modals or the subs settings sheet, which build a
+// brand-new node on every open) left the abandoned close's
+// `setTimeout(finish, 300)` fallback armed; when it fired, `afterClose`
+// (which sets `hidden = true`) hid the sheet the user had just reopened. A
+// reopen interrupts the CSS transition mid-flight, which fires
+// `transitioncancel`, NOT `transitionend` -- so before this fix the stale
+// fallback timer was actually the LIVE path here, not a rare edge case.
+//
+// `cancelPendingClose(el)` is called at the TOP of both `openOverlay` and
+// `closeOverlayThen` -- it bumps `gen` (invalidating anything still in
+// flight for `el`) and, if a close was actually pending, cancels its
+// listeners/timer outright so the stale close can never reach `finish()` at
+// all. This is what makes rapid open/close/open/close sequences on the SAME
+// element always converge on the LAST call's intent: each call supersedes
+// whatever `el` was mid-animation on before it. `finish()` additionally
+// re-checks the generation counter AND (belt-and-braces, per F1's review) whether
+// `el` still carries `openClass` -- if either says "this element moved on
+// since this particular close was armed", `afterClose` is skipped even if
+// cancellation had somehow not already caught it.
+const overlayCloseState = new WeakMap();
+
+function cancelPendingClose(el) {
+  const state = overlayCloseState.get(el);
+  if (!state) return;
+  state.gen += 1; // invalidate any close armed before this point, even if nothing is actively pending
+  if (typeof state.cancel === 'function') {
+    const cancel = state.cancel;
+    state.cancel = null;
+    cancel();
+  }
+}
+
+function openOverlay(el, openClass) {
+  if (!el) return;
+  cancelPendingClose(el); // F1: a reopen always wins over an abandoned close's listeners/fallback timer
+  if ('hidden' in el) el.hidden = false;
+  if (!overlayCanAnimate(el) || prefersReducedMotion()) return;
+  void el.offsetHeight; // force reflow -- see doc comment above
+  el.classList.add(openClass);
+}
+
+function closeOverlayThen(el, openClass, afterClose) {
+  const done = typeof afterClose === 'function' ? afterClose : () => {};
+  cancelPendingClose(el); // F1: this close supersedes any earlier still-pending close on the same element
+  if (!overlayCanAnimate(el)) {
+    done();
+    return;
+  }
+  if (prefersReducedMotion()) {
+    // Still clear the open class (keeps DOM state consistent for anything
+    // that inspects it later), but skip straight to `done()` -- there is no
+    // transition to wait for.
+    el.classList.remove(openClass);
+    done();
+    return;
+  }
+  let state = overlayCloseState.get(el);
+  if (!state) {
+    state = { gen: 0, cancel: null };
+    overlayCloseState.set(el, state);
+  }
+  const myGen = state.gen;
+  let finished = false;
+  let fallbackTimer = null;
+  function finish() {
+    if (finished) return;
+    finished = true;
+    el.removeEventListener('transitionend', onTransitionEnd);
+    el.removeEventListener('transitioncancel', onTransitionEnd);
+    clearTimeout(fallbackTimer);
+    if (state.cancel === cancelThis) state.cancel = null;
+    // Belt-and-braces (should be unreachable given cancelPendingClose above,
+    // but never trust a single mechanism alone for a visible/destructive
+    // state flip): if a newer open/close has superseded this one, or `el`
+    // still carries `openClass` (it was reopened since this close was
+    // armed), skip `afterClose` outright.
+    if (state.gen !== myGen) return;
+    if (el.classList && el.classList.contains(openClass)) return;
+    done();
+  }
+  function onTransitionEnd(e) {
+    if (e.target === el) finish();
+  }
+  function cancelThis() {
+    if (finished) return;
+    finished = true;
+    el.removeEventListener('transitionend', onTransitionEnd);
+    el.removeEventListener('transitioncancel', onTransitionEnd);
+    clearTimeout(fallbackTimer);
+  }
+  el.addEventListener('transitionend', onTransitionEnd);
+  // `transitioncancel` fires (instead of `transitionend`) when the closing
+  // transition this call just started gets interrupted mid-flight -- e.g. a
+  // reopen flips `openClass` back on before the close-out transition ever
+  // finished. Handled identically to `transitionend`: either way this
+  // PARTICULAR close attempt is over and `finish()` should run (with its
+  // gen/class guard deciding whether `afterClose` actually fires).
+  el.addEventListener('transitioncancel', onTransitionEnd);
+  // Fallback in case neither event ever fires (e.g. the class removal didn't
+  // actually change any transitioning property) -- never hang.
+  fallbackTimer = setTimeout(finish, 300);
+  state.cancel = cancelThis;
+  el.classList.remove(openClass);
+}
+
 // Lazily fetches /api/config on first open, populates the sheet, then reveals
 // it. Feature-detects its own elements so it's safe to call on any page.
 function openPlaylistsSheet() {
   const backdrop = document.getElementById('playlists-backdrop');
   const sheet = document.getElementById('playlists-sheet');
   if (!backdrop || !sheet) return;
-  backdrop.hidden = false;
-  sheet.hidden = false;
+  openOverlay(backdrop, 'sheet-open');
+  openOverlay(sheet, 'sheet-open');
   // Fetch fresh on every open — /api/config is tiny, and this avoids showing a
   // stale folder list if the library changed during the session.
   const foldersRendered = fetch('/api/config')
@@ -3199,8 +3353,8 @@ function openPlaylistsSheet() {
 function closePlaylistsSheet() {
   const backdrop = document.getElementById('playlists-backdrop');
   const sheet = document.getElementById('playlists-sheet');
-  if (backdrop) backdrop.hidden = true;
-  if (sheet) sheet.hidden = true;
+  if (sheet) closeOverlayThen(sheet, 'sheet-open', () => { sheet.hidden = true; });
+  if (backdrop) closeOverlayThen(backdrop, 'sheet-open', () => { backdrop.hidden = true; });
 }
 
 // Mirrors the bottom nav's Dark/Light item icon/label to the current data-mode.
@@ -3217,10 +3371,37 @@ function updateNavThemeItem() {
 }
 
 // Global modal dialog helpers
+//
+// v1.26.2 code-review fix (F2, MAJOR): pre-wave, `teardown()` removed the
+// node SYNCHRONOUSLY, so the buttons were physically gone the instant either
+// one was clicked -- a second click had nothing left to hit. Now the close
+// fade takes ~200-300ms (closeOverlayThen), during which the buttons are
+// still live DOM nodes sitting right where the user's finger already is --
+// a double-tap on Confirm (a real path: watch.js's delete flow) fired
+// `onConfirm()` TWICE, i.e. a duplicate destructive `DELETE` request. Fixed
+// with three independent, stacked guards (each alone would suffice; all
+// three stay cheap so there is no reason not to layer them):
+//   1. `settled` -- a plain closure flag flipped on the FIRST Confirm/Cancel
+//      click; every handler bails out immediately if it's already true, so
+//      `onConfirm`/`teardown` can only ever run once no matter how many
+//      clicks land.
+//   2. Both buttons get `disabled = true` the instant `settled` flips --
+//      belt-and-suspenders against a real click actually reaching the
+//      handler again (some environments still dispatch `click` on a
+//      just-disabled button for the SAME event loop turn).
+//   3. `.modal-closing` is added to the backdrop at the same moment,
+//      matched by `.modal-backdrop.modal-closing { pointer-events: none; }`
+//      (style.css) -- blocks any further pointer interaction with the
+//      fading-out dialog for its remaining ~200-300ms on screen. Deliberately
+//      NOT `.modal-backdrop:not(.modal-open)`: `.modal-open` is only added
+//      AFTER the two-step reveal's first frame (openOverlay), and is never
+//      added at all under `prefers-reduced-motion: reduce` -- either would
+//      make `:not(.modal-open)` match (and so block clicks on) the dialog
+//      while it's still legitimately open, not just while it's closing.
 function showConfirmModal(title, bodyText, onConfirm) {
   const modalBackdrop = document.createElement('div');
   modalBackdrop.className = 'modal-backdrop';
-  
+
   modalBackdrop.innerHTML = `
     <div class="modal-content">
       <div class="modal-title">${title}</div>
@@ -3231,15 +3412,37 @@ function showConfirmModal(title, bodyText, onConfirm) {
       </div>
     </div>
   `;
-  
+
   document.body.appendChild(modalBackdrop);
-  
-  document.getElementById('modal-cancel-btn').addEventListener('click', () => {
-    document.body.removeChild(modalBackdrop);
+  openOverlay(modalBackdrop, 'modal-open');
+
+  const cancelBtn = document.getElementById('modal-cancel-btn');
+  const confirmBtn = document.getElementById('modal-confirm-btn');
+
+  // F2: flips exactly once -- see the doc comment above this function.
+  let settled = false;
+
+  function teardown() {
+    if (modalBackdrop.classList) modalBackdrop.classList.add('modal-closing');
+    closeOverlayThen(modalBackdrop, 'modal-open', () => {
+      if (modalBackdrop.parentNode) document.body.removeChild(modalBackdrop);
+    });
+  }
+
+  cancelBtn.addEventListener('click', () => {
+    if (settled) return;
+    settled = true;
+    cancelBtn.disabled = true;
+    confirmBtn.disabled = true;
+    teardown();
   });
-  
-  document.getElementById('modal-confirm-btn').addEventListener('click', () => {
-    document.body.removeChild(modalBackdrop);
+
+  confirmBtn.addEventListener('click', () => {
+    if (settled) return;
+    settled = true;
+    cancelBtn.disabled = true;
+    confirmBtn.disabled = true;
+    teardown();
     onConfirm();
   });
 }
@@ -3437,6 +3640,26 @@ function showHardDeleteModal(item, onConfirm, doc) {
  * `document` (mirrors `showHardDeleteModal`'s injectable-`doc` pattern for
  * direct node:test coverage against a fake DOM).
  */
+// v1.26.2 code-review fix (F2, MAJOR): same double-fire exposure as
+// `showConfirmModal` above (see its doc comment) -- Move calls the caller's
+// async `onMove`, which does NOT auto-teardown on success (deliberate, see
+// this function's own top-of-file design note) NOR on failure (the caller
+// shows the error in `statusEl` and leaves the modal open so the user can
+// pick a different folder and retry). A double-tap on Move before the first
+// request resolves would otherwise fire `onMove` -- and so the real
+// `POST /api/videos/:id/move` -- twice, concurrently, for the same item.
+//
+// `busy` mirrors `showConfirmModal`'s `settled` flag, but is NOT permanent:
+// it flips back to `false` via the `reenable` callback handed to `onMove`
+// alongside the existing `teardown`/`statusEl`, so a caller whose request
+// fails can hand control back to the user exactly where they left off --
+// unlike Confirm/Cancel above (which always end in `teardown()`, so
+// `settled` there never needs to un-flip). Cancel and the backdrop-dismiss
+// are guarded the same way so a stray click during an in-flight Move can't
+// also start tearing the dialog down out from under it. `teardown()` itself
+// adds `.modal-closing` (style.css's `pointer-events: none` -- see
+// `showConfirmModal`'s comment for why NOT `:not(.modal-open)`) so the
+// buttons can't be hit again during the ~200-300ms close fade either.
 function showMoveModal(item, folders, onMove, doc) {
   const d = doc || document;
   const it = item || {};
@@ -3445,7 +3668,7 @@ function showMoveModal(item, folders, onMove, doc) {
   const backdrop = d.createElement('div');
   backdrop.className = 'modal-backdrop';
   backdrop.addEventListener('click', (e) => {
-    if (e && e.target === backdrop) teardown();
+    if (e && e.target === backdrop && !busy) teardown();
   });
 
   const modal = d.createElement('div');
@@ -3493,7 +3716,10 @@ function showMoveModal(item, folders, onMove, doc) {
   cancelBtn.type = 'button';
   cancelBtn.className = 'btn';
   cancelBtn.textContent = 'Cancel';
-  cancelBtn.addEventListener('click', () => teardown());
+  cancelBtn.addEventListener('click', () => {
+    if (busy) return;
+    teardown();
+  });
   actionsRow.appendChild(cancelBtn);
 
   // Starts disabled when there is nothing to move into (no configured
@@ -3506,23 +3732,37 @@ function showMoveModal(item, folders, onMove, doc) {
   moveBtn.textContent = 'Move';
   moveBtn.disabled = list.length === 0;
   moveBtn.addEventListener('click', () => {
-    if (moveBtn.disabled) return; // belt-and-suspenders -- mirrors showHardDeleteModal
+    if (busy || moveBtn.disabled) return; // belt-and-suspenders -- mirrors showHardDeleteModal
     const target = select.value;
     if (!target) {
       statusEl.textContent = 'Choose a folder first.';
       return;
     }
-    if (typeof onMove === 'function') onMove(target, { teardown, statusEl });
+    // F2: arm the busy guard BEFORE calling out -- onMove's request is
+    // async, so without this a second tap before it resolves would fire a
+    // second, concurrent move request for the same item.
+    setBusy(true);
+    if (typeof onMove === 'function') onMove(target, { teardown, statusEl, reenable: () => setBusy(false) });
   });
   actionsRow.appendChild(moveBtn);
 
   modal.appendChild(actionsRow);
 
+  // F2: see this function's top-of-file doc comment.
+  let busy = false;
+  function setBusy(nextBusy) {
+    busy = nextBusy;
+    moveBtn.disabled = nextBusy || list.length === 0;
+    cancelBtn.disabled = nextBusy;
+  }
+
   function teardown() {
-    backdrop.remove();
+    if (backdrop.classList) backdrop.classList.add('modal-closing');
+    closeOverlayThen(backdrop, 'modal-open', () => backdrop.remove());
   }
 
   d.body.appendChild(backdrop);
+  openOverlay(backdrop, 'modal-open');
 
   return { backdrop, modal, title, body, label, select, statusEl, cancelBtn, moveBtn, teardown };
 }
@@ -4773,6 +5013,13 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.24.1 (B1 fast-follow): relocated "Re-pull this channel now" widget.
     REPULL_BTN_ID, findRepullSubscriptionForRoot, shouldShowRepullButton,
     ensureRepullButton, removeRepullButton, reconcileRepullButton,
-    fetchSubscriptionsForRepull, probeAndReconcileRepullButton
+    fetchSubscriptionsForRepull, probeAndReconcileRepullButton,
+    // v1.26.2 polish (sheet/modal transitions): shared open/close animation
+    // helpers, exported for direct node:test coverage against a fake DOM.
+    prefersReducedMotion, overlayCanAnimate, openOverlay, closeOverlayThen,
+    // v1.26.2 code-review fix (F2): exported for direct node:test coverage
+    // of the settled-guard double-click fix (showMoveModal was already
+    // exported above).
+    showConfirmModal,
   };
 }

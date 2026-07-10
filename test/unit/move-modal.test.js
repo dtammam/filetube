@@ -208,6 +208,84 @@ test('showMoveModal: falls back to a generic label when the item has no title', 
   assert.doesNotThrow(() => showMoveModal({ id: 'noTitle' }, FOLDERS, () => {}, doc));
 });
 
+// ---- v1.26.2 code-review fix (F2, MAJOR): double-fire guard ----------------
+// (see common.js's doc comment above showMoveModal for the full design --
+// same class of bug as showConfirmModal's settled guard, but "un-settles"
+// via `reenable` on failure since Move (unlike Confirm/Cancel) can be
+// retried in place after a failed request).
+
+test('showMoveModal: double-clicking Move before the caller tears down/reenables calls onMove exactly once', () => {
+  const { doc } = makeFakeDoc();
+  let calls = 0;
+  const modal = showMoveModal(ITEM, FOLDERS, () => { calls++; }, doc);
+  modal.select.value = '/media/other';
+  modal.moveBtn.click();
+  modal.moveBtn.click(); // double-tap before the in-flight request (caller-owned) resolves
+  modal.moveBtn.click();
+  assert.strictEqual(calls, 1, 'onMove must fire exactly once no matter how many clicks land while busy');
+});
+
+test('showMoveModal: Move disables BOTH Move and Cancel while a request is in flight (busy guard)', () => {
+  const { doc } = makeFakeDoc();
+  const modal = showMoveModal(ITEM, FOLDERS, () => {}, doc);
+  modal.select.value = '/media/other';
+  assert.strictEqual(modal.moveBtn.disabled, false);
+  assert.strictEqual(modal.cancelBtn.disabled, false);
+  modal.moveBtn.click();
+  assert.strictEqual(modal.moveBtn.disabled, true, 'Move is disabled once a request is in flight');
+  assert.strictEqual(modal.cancelBtn.disabled, true, 'Cancel is also disabled -- can\'t dismiss out from under an in-flight request');
+});
+
+test('showMoveModal: Cancel is a no-op while Move is in flight (busy) -- does not tear the modal down mid-request', () => {
+  const { doc, body } = makeFakeDoc();
+  const modal = showMoveModal(ITEM, FOLDERS, () => {}, doc);
+  modal.select.value = '/media/other';
+  modal.moveBtn.click();
+  modal.cancelBtn.click();
+  assert.strictEqual(body.children.length, 1, 'the modal must still be open -- Cancel must not fire while busy');
+});
+
+test('showMoveModal: the backdrop-dismiss is also a no-op while Move is in flight (busy)', () => {
+  const { doc, body } = makeFakeDoc();
+  const modal = showMoveModal(ITEM, FOLDERS, () => {}, doc);
+  modal.select.value = '/media/other';
+  modal.moveBtn.click();
+  modal.backdrop.fire('click', { target: modal.backdrop });
+  assert.strictEqual(body.children.length, 1, 'the modal must still be open -- the backdrop-dismiss must not fire while busy');
+});
+
+test('showMoveModal: onMove\'s `reenable` callback (3rd ctx field) re-enables both buttons after a failed request, so the user can retry', () => {
+  const { doc } = makeFakeDoc();
+  let reenableFn = null;
+  const modal = showMoveModal(ITEM, FOLDERS, (target, ctx) => {
+    assert.strictEqual(typeof ctx.reenable, 'function', 'onMove must receive a reenable callback alongside teardown/statusEl');
+    reenableFn = ctx.reenable;
+  }, doc);
+  modal.select.value = '/media/other';
+  modal.moveBtn.click();
+  assert.strictEqual(modal.moveBtn.disabled, true);
+  // Simulates the caller's failure branch (e.g. requestMoveItem's rejection)
+  // calling reenable() instead of teardown().
+  reenableFn();
+  assert.strictEqual(modal.moveBtn.disabled, false, 'Move must be re-enabled after reenable()');
+  assert.strictEqual(modal.cancelBtn.disabled, false, 'Cancel must be re-enabled after reenable()');
+});
+
+test('showMoveModal: after reenable(), a retry click calls onMove again (busy guard is not permanent, unlike showConfirmModal\'s settled flag)', () => {
+  const { doc } = makeFakeDoc();
+  let calls = 0;
+  let reenableFn = null;
+  const modal = showMoveModal(ITEM, FOLDERS, (target, ctx) => {
+    calls++;
+    reenableFn = ctx.reenable;
+  }, doc);
+  modal.select.value = '/media/other';
+  modal.moveBtn.click();
+  reenableFn();
+  modal.moveBtn.click();
+  assert.strictEqual(calls, 2, 'a fresh click after reenable() must be allowed to call onMove again');
+});
+
 // ---- requestMoveItem: the POST /api/videos/:id/move caller -----------------
 
 function fakeFetchErr(status, body) {
