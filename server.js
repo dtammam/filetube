@@ -2444,8 +2444,25 @@ app.get('/api/videos/:id', (req, res) => {
   }
 
   const progress = db.progress[item.id] || { timestamp: 0 };
+  // v1.25 QoL bugfix: serve-time fallback for the watch page's uploader
+  // avatar. `item.channelAvatarUrl` (a persisted, item-level capture) stays
+  // authoritative when present; only when it is EMPTY does this look up the
+  // yt-dlp subscription whose channelUrl/channelId matches this item's own
+  // captured identity and use THAT subscription's already-validated avatar
+  // (`ytdlp.resolveItemChannelAvatarUrl`, lib/ytdlp/store.js -- read-only,
+  // re-validates before returning, never persisted here). This covers any
+  // subscribed channel's item, including a MeTube-imported video the scan
+  // never routed through the yt-dlp download tree at all. A no-match (or the
+  // module disabled -- `db.ytdlp.subscriptions` is simply absent/empty then)
+  // leaves `channelAvatarUrl` empty, and the client's own resolveAvatarSource
+  // (public/js/common.js) already falls back to a first-letter avatar.
+  let channelAvatarUrl = item.channelAvatarUrl;
+  if ((typeof channelAvatarUrl !== 'string' || channelAvatarUrl === '') && ytdlp.isEnabled(ytdlp.parseYtdlpConfig())) {
+    channelAvatarUrl = ytdlp.resolveItemChannelAvatarUrl(db, item);
+  }
   res.json({
     ...item,
+    ...(channelAvatarUrl ? { channelAvatarUrl } : {}),
     progress: progress.timestamp,
     transcodeProgress: transcodeProgress[item.id] || 0
   });

@@ -856,6 +856,227 @@ test('probeChannel includes --cookies (SAME discipline as runList) when a cookie
   assert.equal(argv[idx + 1], cookiesFile);
 });
 
+// ---- v1.25 QoL bugfix: probeChannelAvatar -- the REAL channel-avatar probe.
+// SAME arg-array/`--`/no-shell:true/cookies/timeout discipline as probeChannel
+// above; NEVER throws/rejects regardless of spawn/parse failure. The fixture
+// below is the ACTUAL `thumbnails[]` array a live yt-dlp (2026.07.04)
+// `--dump-single-json --playlist-items 0` returned for a real channel
+// (`/channel/<id>` form) -- a mix of wide banner crops (ids "0"-"5"/
+// "banner_uncropped") and the real avatar (a sized 900x900 square, id "7",
+// plus the full-res "avatar_uncropped" fallback) -- never a hand-invented
+// shape.
+const REAL_CHANNEL_THUMBNAILS = [
+  { url: 'https://yt3.googleusercontent.com/HHgKRdNH6SWlCqxQ2aT6io-yd1f4ambPHm3Ox39UC5sUjOeIanNWsSfNIzNBGBY6bZYqKo_Fag=w1060-fcrop64=1,00005a57ffffa5a8-k-c0xffffffff-no-nd-rj', height: 175, width: 1060, preference: -10, id: '0', resolution: '1060x175' },
+  { url: 'https://yt3.googleusercontent.com/HHgKRdNH6SWlCqxQ2aT6io-yd1f4ambPHm3Ox39UC5sUjOeIanNWsSfNIzNBGBY6bZYqKo_Fag=w1138-fcrop64=1,00005a57ffffa5a8-k-c0xffffffff-no-nd-rj', height: 188, width: 1138, preference: -10, id: '1', resolution: '1138x188' },
+  { url: 'https://yt3.googleusercontent.com/HHgKRdNH6SWlCqxQ2aT6io-yd1f4ambPHm3Ox39UC5sUjOeIanNWsSfNIzNBGBY6bZYqKo_Fag=w1707-fcrop64=1,00005a57ffffa5a8-k-c0xffffffff-no-nd-rj', height: 283, width: 1707, preference: -10, id: '2', resolution: '1707x283' },
+  { url: 'https://yt3.googleusercontent.com/HHgKRdNH6SWlCqxQ2aT6io-yd1f4ambPHm3Ox39UC5sUjOeIanNWsSfNIzNBGBY6bZYqKo_Fag=w2120-fcrop64=1,00005a57ffffa5a8-k-c0xffffffff-no-nd-rj', height: 351, width: 2120, preference: -10, id: '3', resolution: '2120x351' },
+  { url: 'https://yt3.googleusercontent.com/HHgKRdNH6SWlCqxQ2aT6io-yd1f4ambPHm3Ox39UC5sUjOeIanNWsSfNIzNBGBY6bZYqKo_Fag=w2276-fcrop64=1,00005a57ffffa5a8-k-c0xffffffff-no-nd-rj', height: 377, width: 2276, preference: -10, id: '4', resolution: '2276x377' },
+  { url: 'https://yt3.googleusercontent.com/HHgKRdNH6SWlCqxQ2aT6io-yd1f4ambPHm3Ox39UC5sUjOeIanNWsSfNIzNBGBY6bZYqKo_Fag=w2560-fcrop64=1,00005a57ffffa5a8-k-c0xffffffff-no-nd-rj', height: 424, width: 2560, preference: -10, id: '5', resolution: '2560x424' },
+  { url: 'https://yt3.googleusercontent.com/HHgKRdNH6SWlCqxQ2aT6io-yd1f4ambPHm3Ox39UC5sUjOeIanNWsSfNIzNBGBY6bZYqKo_Fag=s0', id: 'banner_uncropped', preference: -5 },
+  { url: 'https://yt3.googleusercontent.com/ytc/AIdro_mtE0wtRYXirpEWGKtJ_mK85JBizT2WktAw6QBpDsz-OA=s900-c-k-c0x00ffffff-no-rj', height: 900, width: 900, id: '7', resolution: '900x900' },
+  { url: 'https://yt3.googleusercontent.com/ytc/AIdro_mtE0wtRYXirpEWGKtJ_mK85JBizT2WktAw6QBpDsz-OA=s0', id: 'avatar_uncropped', preference: 1 },
+];
+const REAL_CHANNEL_AVATAR_URL = 'https://yt3.googleusercontent.com/ytc/AIdro_mtE0wtRYXirpEWGKtJ_mK85JBizT2WktAw6QBpDsz-OA=s900-c-k-c0x00ffffff-no-rj';
+
+test('probeChannelAvatar builds argv (--dump-single-json --playlist-items 0 --no-warnings -- <url>), arg-array, never shell:true, and resolves the sanitized avatar from a REAL channel thumbnails[] fixture', async () => {
+  const spawnChild = stubSpawn();
+  const channelUrl = 'https://www.youtube.com/channel/UCvQ4C0f9_OWRf1uyobwqOwA';
+  const config = { downloadDir: '/tmp/irrelevant-for-this-test', cookiesFile: null };
+  const resultPromise = run.probeChannelAvatar(channelUrl, config);
+  const child = spawnChild();
+  child.stdout.emit('data', Buffer.from(JSON.stringify({ thumbnails: REAL_CHANNEL_THUMBNAILS })));
+  child.emit('close', 0, null);
+  const avatarUrl = await resultPromise;
+
+  assert.equal(avatarUrl, REAL_CHANNEL_AVATAR_URL, 'must pick the largest SQUARE thumbnail, never a wide banner crop');
+  assert.equal(capturedSpawnCalls.length, 1);
+  const { cmd, argv, opts } = capturedSpawnCalls[0];
+  assert.equal(cmd, 'yt-dlp');
+  assert.ok(Array.isArray(argv), 'argv must be a flat array, never a shell string');
+  assert.notEqual(opts && opts.shell, true, 'shell:true must never be set');
+  assert.ok(argv.includes('--dump-single-json'));
+  const piIdx = argv.indexOf('--playlist-items');
+  assert.ok(piIdx >= 0, '--playlist-items must be present (never enumerates a single video)');
+  assert.equal(argv[piIdx + 1], '0');
+  assert.ok(argv.includes('--no-warnings'));
+  const sepIdx = argv.indexOf('--');
+  assert.ok(sepIdx >= 0, 'a bare "--" separator must be present');
+  assert.equal(argv[sepIdx + 1], channelUrl);
+  assert.equal(argv[argv.length - 1], channelUrl, 'the URL must be the LAST argv element (one opaque token, never parsed/split)');
+});
+
+test('probeChannelAvatar: an @handle channel URL fixture also resolves to its largest square avatar (verified against a real @handle channel too)', async () => {
+  const spawnChild = stubSpawn();
+  const channelUrl = 'https://www.youtube.com/@mentaloutlaw';
+  const config = { downloadDir: '/tmp/irrelevant-for-this-test', cookiesFile: null };
+  const resultPromise = run.probeChannelAvatar(channelUrl, config);
+  const child = spawnChild();
+  child.stdout.emit('data', Buffer.from(JSON.stringify({
+    thumbnails: [
+      { url: 'https://yt3.googleusercontent.com/banner=w1060-fcrop64', height: 175, width: 1060, id: '0' },
+      { url: 'https://yt3.googleusercontent.com/oNt0NdpBp_fCt58T2r2cpwhzRERNoCFRLKJUmNAB4r1kpPWJd4WX_GjHIj4mKn-rtISHTwkve4k=s0', id: 'banner_uncropped', preference: -5 },
+      { url: 'https://yt3.googleusercontent.com/ytc/AIdro_n6dUcc6YbkWa540dbaWzbLi44bq0h-hGNEop2BhOQ6uHY=s900-c-k-c0x00ffffff-no-rj', height: 900, width: 900, id: '7', resolution: '900x900' },
+      { url: 'https://yt3.googleusercontent.com/ytc/AIdro_n6dUcc6YbkWa540dbaWzbLi44bq0h-hGNEop2BhOQ6uHY=s0', id: 'avatar_uncropped', preference: 1 },
+    ],
+  })));
+  child.emit('close', 0, null);
+  const avatarUrl = await resultPromise;
+  assert.equal(avatarUrl, 'https://yt3.googleusercontent.com/ytc/AIdro_n6dUcc6YbkWa540dbaWzbLi44bq0h-hGNEop2BhOQ6uHY=s900-c-k-c0x00ffffff-no-rj');
+});
+
+test('probeChannelAvatar falls back to the avatar_uncropped entry when no sized square thumbnail is present', async () => {
+  const spawnChild = stubSpawn();
+  const config = { downloadDir: '/tmp/irrelevant-for-this-test', cookiesFile: null };
+  const resultPromise = run.probeChannelAvatar('https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv', config);
+  const child = spawnChild();
+  child.stdout.emit('data', Buffer.from(JSON.stringify({
+    thumbnails: [
+      { url: 'https://yt3.googleusercontent.com/wide-banner', height: 175, width: 1060, id: '0' },
+      { url: 'https://yt3.googleusercontent.com/uncropped-fallback=s0', id: 'avatar_uncropped', preference: 1 },
+    ],
+  })));
+  child.emit('close', 0, null);
+  assert.equal(await resultPromise, 'https://yt3.googleusercontent.com/uncropped-fallback=s0');
+});
+
+test('probeChannelAvatar resolves null (never throws) when thumbnails carries only banner crops (no square, no avatar_uncropped)', async () => {
+  const spawnChild = stubSpawn();
+  const config = { downloadDir: '/tmp/irrelevant-for-this-test', cookiesFile: null };
+  const resultPromise = run.probeChannelAvatar('https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv', config);
+  const child = spawnChild();
+  child.stdout.emit('data', Buffer.from(JSON.stringify({
+    thumbnails: REAL_CHANNEL_THUMBNAILS.filter((t) => t.id !== '7' && t.id !== 'avatar_uncropped'),
+  })));
+  child.emit('close', 0, null);
+  assert.equal(await resultPromise, null);
+});
+
+test('probeChannelAvatar resolves null (never throws) when thumbnails is absent/malformed/empty', async () => {
+  const config = { downloadDir: '/tmp/irrelevant-for-this-test', cookiesFile: null };
+
+  let spawnChild = stubSpawn();
+  let resultPromise = run.probeChannelAvatar('https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv', config);
+  let child = spawnChild();
+  child.stdout.emit('data', Buffer.from(JSON.stringify({ id: 'no-thumbnails-key' })));
+  child.emit('close', 0, null);
+  assert.equal(await resultPromise, null);
+
+  spawnChild = stubSpawn();
+  resultPromise = run.probeChannelAvatar('https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv', config);
+  child = spawnChild();
+  child.stdout.emit('data', Buffer.from(JSON.stringify({ thumbnails: [] })));
+  child.emit('close', 0, null);
+  assert.equal(await resultPromise, null);
+
+  spawnChild = stubSpawn();
+  resultPromise = run.probeChannelAvatar('https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv', config);
+  child = spawnChild();
+  child.stdout.emit('data', Buffer.from(JSON.stringify({ thumbnails: 'not-an-array' })));
+  child.emit('close', 0, null);
+  assert.equal(await resultPromise, null);
+});
+
+test('probeChannelAvatar rejects a hostile/non-https avatar url via sanitizeChannelAvatarUrl (defense-in-depth)', async () => {
+  const spawnChild = stubSpawn();
+  const config = { downloadDir: '/tmp/irrelevant-for-this-test', cookiesFile: null };
+  const resultPromise = run.probeChannelAvatar('https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv', config);
+  const child = spawnChild();
+  child.stdout.emit('data', Buffer.from(JSON.stringify({
+    thumbnails: [{ url: 'javascript:alert(document.cookie)', height: 900, width: 900, id: '7' }],
+  })));
+  child.emit('close', 0, null);
+  assert.equal(await resultPromise, null, 'a non-https/hostile scheme must never survive sanitizeChannelAvatarUrl');
+});
+
+test('probeChannelAvatar resolves null (never throws) when stdout is not valid JSON', async () => {
+  const spawnChild = stubSpawn();
+  const config = { downloadDir: '/tmp/irrelevant-for-this-test', cookiesFile: null };
+  const resultPromise = run.probeChannelAvatar('https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv', config);
+  const child = spawnChild();
+  child.stdout.emit('data', Buffer.from('this is not json'));
+  child.emit('close', 0, null);
+  assert.equal(await resultPromise, null);
+});
+
+test('probeChannelAvatar resolves null (never throws) on a spawn failure (ENOENT / binary missing)', async () => {
+  const spawnChild = stubSpawn();
+  const config = { downloadDir: '/tmp/irrelevant-for-this-test', cookiesFile: null };
+  const resultPromise = run.probeChannelAvatar('https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv', config);
+  const child = spawnChild();
+  child.emit('error', Object.assign(new Error('spawn yt-dlp ENOENT'), { code: 'ENOENT' }));
+  assert.equal(await resultPromise, null);
+});
+
+test('probeChannelAvatar resolves null (never throws) on a non-zero exit code', async () => {
+  const spawnChild = stubSpawn();
+  const config = { downloadDir: '/tmp/irrelevant-for-this-test', cookiesFile: null };
+  const resultPromise = run.probeChannelAvatar('https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv', config);
+  const child = spawnChild();
+  child.emit('close', 1, null);
+  assert.equal(await resultPromise, null);
+});
+
+test('probeChannelAvatar never throws even if spawn itself throws synchronously', async () => {
+  cp.spawn = () => { throw new Error('boom'); };
+  const config = { downloadDir: '/tmp/irrelevant-for-this-test', cookiesFile: null };
+  const result = await run.probeChannelAvatar('https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv', config);
+  assert.equal(result, null);
+});
+
+test('probeChannelAvatar resolves null immediately, without spawning, when channelUrl is missing/not a string', async () => {
+  const spawnChild = stubSpawn();
+  const config = { downloadDir: '/tmp/irrelevant-for-this-test', cookiesFile: null };
+  assert.equal(await run.probeChannelAvatar(undefined, config), null);
+  assert.equal(await run.probeChannelAvatar(null, config), null);
+  assert.equal(await run.probeChannelAvatar('', config), null);
+  assert.equal(capturedSpawnCalls.length, 0, 'an invalid channelUrl must never reach the spawn boundary');
+  void spawnChild;
+});
+
+test('probeChannelAvatar uses the dedicated PROBE_TIMEOUT_MS (not DEFAULT_LIST_TIMEOUT_MS)', async () => {
+  const spawnChild = stubSpawn();
+  const originalSetTimeout = global.setTimeout;
+  const capturedDelays = [];
+  global.setTimeout = (fn, delay, ...rest) => {
+    capturedDelays.push(delay);
+    return originalSetTimeout(fn, delay, ...rest);
+  };
+  let result;
+  try {
+    const config = { downloadDir: '/tmp/irrelevant-for-this-test', cookiesFile: null };
+    const resultPromise = run.probeChannelAvatar('https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv', config);
+    const child = spawnChild();
+    child.stdout.emit('data', Buffer.from(JSON.stringify({ thumbnails: REAL_CHANNEL_THUMBNAILS })));
+    child.emit('close', 0, null);
+    result = await resultPromise;
+  } finally {
+    global.setTimeout = originalSetTimeout;
+  }
+  assert.equal(result, REAL_CHANNEL_AVATAR_URL);
+  assert.ok(capturedDelays.length >= 1, 'probeChannelAvatar must arm a timer');
+  assert.equal(capturedDelays[0], run.PROBE_TIMEOUT_MS, 'the armed delay must be the dedicated probe timeout');
+  assert.notEqual(capturedDelays[0], run.DEFAULT_LIST_TIMEOUT_MS, 'a channel-endpoint probe must never use the 5-minute whole-channel list timeout');
+});
+
+test('probeChannelAvatar includes --cookies (SAME discipline as probeChannel/runList) when a cookies file is configured and present on disk', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-ytdlp-avatar-cookies-'));
+  const cookiesFile = path.join(dir, 'cookies.txt');
+  fs.writeFileSync(cookiesFile, 'session=abc123');
+  const config = { downloadDir: '/tmp/irrelevant-for-this-test', cookiesFile };
+
+  const spawnChild = stubSpawn();
+  const resultPromise = run.probeChannelAvatar('https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv', config);
+  const child = spawnChild();
+  child.stdout.emit('data', Buffer.from(JSON.stringify({ thumbnails: REAL_CHANNEL_THUMBNAILS })));
+  child.emit('close', 0, null);
+  await resultPromise;
+
+  const { argv } = capturedSpawnCalls[0];
+  const idx = argv.indexOf('--cookies');
+  assert.ok(idx >= 0, '--cookies must be present when a usable cookies file is configured');
+  assert.equal(argv[idx + 1], cookiesFile);
+});
+
 // ---- T2/FR-E: onProgress threaded through the DOWNLOAD path ----------------
 //
 // yt-dlp writes `--newline` progress to STDOUT during a download (the
@@ -1270,7 +1491,6 @@ test('runDownload: a captured FTCHMETA line is parsed onto result.channelMeta an
     channelName: 'Some Channel',
     uploadDate: null,
     releaseDate: null,
-    channelThumbnail: null,
   });
   // The FTCHMETA line must never be misinterpreted as a progress patch --
   // only the one real progress line above produced an onProgress call.

@@ -2470,7 +2470,8 @@ a.sub-row-channel-link:focus-visible {
 .icon-refresh,
 .icon-arrow-up,
 .icon-arrow-down,
-.icon-download {
+.icon-download,
+.icon-shuffle {
   display: inline-block;
   width: 1em;
   height: 1em;
@@ -2499,6 +2500,15 @@ a.sub-row-channel-link:focus-visible {
    chrome icon above -- replaces the old fixed "\2B07" unicode glyph (removed
    below the @supports guard). */
 .icon-download { -webkit-mask-image: url(/assets/icons/download.svg); mask-image: url(/assets/icons/download.svg); }
+/* "Shuffle again" (v1.15.1) originally shipped as a fixed ::before unicode
+   glyph outside the icon-set system, which meant it rendered as a raw emoji
+   (U+1F500) even in non-emoji/modern themes -- unlike every other .icon-*
+   glyph, which is a real SVG mask painted in currentColor. Fixed: real
+   shuffle.svg masks added to all three vector sets (outlined/rounded/filled),
+   same treatment as .icon-download above. The emoji-set ::before entry below
+   still renders U+1F500 there, same as before -- only non-emoji themes
+   changed. */
+.icon-shuffle { -webkit-mask-image: url(/assets/icons/shuffle.svg); mask-image: url(/assets/icons/shuffle.svg); }
 
 /* Paint the icon fill only where CSS masks are supported, so a browser without
    mask support (or a failed/404 mask) renders nothing instead of a solid
@@ -2506,22 +2516,13 @@ a.sub-row-channel-link:focus-visible {
 @supports (mask-image: url("#")) or (-webkit-mask-image: url("#")) {
   .icon-home, .icon-folder, .icon-cog, .icon-delete, .icon-moon, .icon-sun,
   .icon-menu, .icon-search, .icon-play, .icon-refresh, .icon-arrow-up, .icon-arrow-down,
-  .icon-download {
+  .icon-download, .icon-shuffle {
     background-color: currentColor;
   }
 }
 
 /* Out of scope: gold rating star — NOT a mask/currentColor icon. Leave as-is. */
 .icon-star::before { content: "★"; }
-
-/* v1.15.1 hotfix: "Shuffle again" needs its OWN icon, distinct from
-   "Rescan Files" (both previously used .icon-refresh, indistinguishable on
-   mobile where the buttons collapse to icon-only). Fixed unicode glyph,
-   independent of the icon-set system (mirrors .icon-star above -- unlike
-   .icon-download, which moved to a real SVG mask in v1.17.0 FR-7, see
-   below) -- no new SVG asset needed across the 4 icon sets for this single
-   button. U+1F500 TWISTED RIGHTWARDS ARROWS (shuffle glyph). */
-.icon-shuffle::before { content: "\1F500"; }
 
 /* ---- Icon-set axis (data-icons) -------------------------------------------
    Third, orthogonal appearance axis (theme x mode x icon-set). The base rule,
@@ -2547,6 +2548,7 @@ a.sub-row-channel-link:focus-visible {
 [data-icons="rounded"] .icon-arrow-up { -webkit-mask-image: url(/assets/icons/rounded/keyboard_arrow_up.svg); mask-image: url(/assets/icons/rounded/keyboard_arrow_up.svg); }
 [data-icons="rounded"] .icon-arrow-down { -webkit-mask-image: url(/assets/icons/rounded/keyboard_arrow_down.svg); mask-image: url(/assets/icons/rounded/keyboard_arrow_down.svg); }
 [data-icons="rounded"] .icon-download { -webkit-mask-image: url(/assets/icons/rounded/download.svg); mask-image: url(/assets/icons/rounded/download.svg); }
+[data-icons="rounded"] .icon-shuffle { -webkit-mask-image: url(/assets/icons/rounded/shuffle.svg); mask-image: url(/assets/icons/rounded/shuffle.svg); }
 
 /* Filled set: Material Icons Classic (2014). Note the two substitute
    filenames (wb_sunny/brightness_2) — see public/assets/icons/README.md. */
@@ -2563,6 +2565,7 @@ a.sub-row-channel-link:focus-visible {
 [data-icons="filled"] .icon-sun  { -webkit-mask-image: url(/assets/icons/filled/wb_sunny.svg);     mask-image: url(/assets/icons/filled/wb_sunny.svg); }
 [data-icons="filled"] .icon-moon { -webkit-mask-image: url(/assets/icons/filled/brightness_2.svg); mask-image: url(/assets/icons/filled/brightness_2.svg); }
 [data-icons="filled"] .icon-download { -webkit-mask-image: url(/assets/icons/filled/download.svg); mask-image: url(/assets/icons/filled/download.svg); }
+[data-icons="filled"] .icon-shuffle { -webkit-mask-image: url(/assets/icons/filled/shuffle.svg); mask-image: url(/assets/icons/filled/shuffle.svg); }
 
 /* Emoji set: restores the pre-v1.6.0 ::before emoji per icon. No-square fix
    (AC7): this grouped rule neutralizes BOTH the mask (mask-image: none) AND
@@ -2582,7 +2585,8 @@ a.sub-row-channel-link:focus-visible {
 [data-icons="emoji"] .icon-refresh,
 [data-icons="emoji"] .icon-arrow-up,
 [data-icons="emoji"] .icon-arrow-down,
-[data-icons="emoji"] .icon-download {
+[data-icons="emoji"] .icon-download,
+[data-icons="emoji"] .icon-shuffle {
   -webkit-mask-image: none;
   mask-image: none;
   background-color: transparent;  /* CRITICAL: overrides the @supports currentColor fill -> no solid box */
@@ -2609,6 +2613,7 @@ a.sub-row-channel-link:focus-visible {
 [data-icons="emoji"] .icon-refresh::before   { content: "\1F504"; } /* 🔄 */
 [data-icons="emoji"] .icon-arrow-up::before  { content: "\25B2";  } /* ▲ */
 [data-icons="emoji"] .icon-arrow-down::before{ content: "\25BC";  } /* ▼ */
+[data-icons="emoji"] .icon-shuffle::before   { content: "\1F500"; } /* 🔀 */
 
 /* .icon-star is deliberately absent from every block above: the gold ★
    rating renders identically regardless of icon-set selection (AC8). */
@@ -2840,6 +2845,27 @@ a.sub-row-channel-link:focus-visible {
     align-items: flex-start;
   }
 
+  /* v1.25.4 polish: the watch-page action-button row (Download/Delete/Move,
+     glyph + short label since v1.25.0) wraps at phone widths -- Move (last
+     in DOM order, appended by watch.js's setupMoveButton) drops onto its own
+     orphaned line even though the row has room for all three at a slightly
+     tighter size. Scoped to `.watch-actions .btn` (not `.btn` globally) so
+     no other button elsewhere in the app is affected -- same `.btn`/
+     `.icon-*` family, no `btn-sm` class and no inline style reintroduced
+     (both were removed from this row in v1.25.0). `flex-wrap` on
+     `.watch-actions` stays `wrap` (see base rule above) as a graceful
+     fallback at extreme narrowness/large zoom -- the tightened padding/gap/
+     font-size below fits all three buttons on one row across the standard
+     320-768px phone range, so wrap is not normally triggered. */
+  .watch-actions {
+    gap: 8px;
+  }
+  .watch-actions .btn {
+    padding: 6px 10px;
+    gap: 4px;
+    font-size: 11px;
+  }
+
   /* ---- v1.13.0 item 6: mobile-portrait polish for the Setup (Library ------
      Settings) page and the /subscriptions page. Comfortable spacing/
      wrapping for rows and controls, and larger tap targets, without
@@ -2862,6 +2888,22 @@ a.sub-row-channel-link:focus-visible {
   .setup-box input[type="text"],
   .setup-box input[type="number"] {
     min-height: 44px;
+  }
+
+  /* v1.25.4 polish (on-device iOS PWA): same 16px-floor fix as the one-off/
+     subscribe modal above -- these were 13px (`.setup-select`, `.form-group
+     input[type="text"|"number"]`), so focusing any of them auto-zoomed the
+     page on iOS Safari. `.setup-box .setup-select` also reaches the
+     Subscriptions page's format/quality/filetype selects (the "Add a
+     subscription"/one-shot rows there use `class="setup-box sub-collapsible"`
+     and share this same `.setup-select` class -- see
+     lib/ytdlp/views/subscriptions.html) even though this stylesheet edit
+     doesn't touch that file. Excludes `.setup-box .btn` (buttons never
+     trigger iOS's zoom-on-focus, only text-entry controls do). */
+  .setup-box .setup-select,
+  .setup-box input[type="text"],
+  .setup-box input[type="number"] {
+    font-size: 16px;
   }
 
   /* The add-subscription/one-shot rows (URL + several selects + a button)
@@ -3004,6 +3046,22 @@ a.sub-row-channel-link:focus-visible {
   .oneoff-modal-row select,
   .oneoff-modal .btn-primary {
     min-height: 44px;
+  }
+
+  /* v1.25.4 polish (on-device iOS PWA): focusing a form control whose
+     computed font-size is under 16px makes iOS Safari auto-zoom the page in
+     -- well-known iOS behavior, not something the viewport meta tag controls
+     (and `user-scalable=no`/`maximum-scale=1` is an accessibility
+     anti-pattern, not used here). `.oneoff-modal-field` (the one-off modal's
+     URL/folder text inputs AND the Subscribe modal's cutoff-date input,
+     which reuses this same class -- see common.js's buildOneOffModal/
+     buildSubscribeModal) and `.oneoff-modal-row select` (both modals'
+     format/quality/filetype selects) were 13px -- bumped to 16px here,
+     scoped to mobile only so the compact 13px desktop sizing (mouse input,
+     no zoom-on-focus behavior to guard against) is unchanged. */
+  .oneoff-modal-field,
+  .oneoff-modal-row select {
+    font-size: 16px;
   }
 
   /* v1.20.0 FR-1 (T3): same comfortable tap-target floor for the subscribe
@@ -3802,6 +3860,20 @@ a.sub-row-channel-link:focus-visible {
 
 .sub-sheet-delete {
   color: var(--yt-red);
+}
+
+/* v1.25.4 polish (on-device iOS PWA): same 16px-floor fix as the one-off/
+   subscribe modal and settings-form rules above -- the per-subscription
+   settings sheet's cutoff-date/max-duration inputs and Type/Quality/Filetype
+   selects (`.sub-sheet-field input`/`.setup-select`, built by
+   lib/ytdlp/client/subscriptions.js's buildSettingsSheet, no inline
+   font-size of their own) were 13px, auto-zooming the page on focus in iOS
+   Safari. Mobile-only, matching every other zoom-on-focus fix in this file. */
+@media (max-width: 768px) {
+  .sub-sheet-field .setup-select,
+  .sub-sheet-field input {
+    font-size: 16px;
+  }
 }
 
 /* === v1.21 FR-6: mobile grid density ========================================

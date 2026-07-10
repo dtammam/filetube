@@ -278,11 +278,22 @@ test('FIX 5 (mobile): the modal itself is near-full-width with tighter padding, 
 
 // ---- FIX 6: on 'done' auto-close + rescan; on 'error' stay open ------------
 
-test('decideOneOffTerminalAction: "done" closes (after a brief pause) and triggers a rescan', () => {
+// BUG 2 fix (regression, post-v1.24.1): 'done' used to ALSO request a
+// rescan, which triggered `triggerLibraryRescanAndRefresh()` --
+// `POST /api/scan` followed by `window.location.reload()`. Under load
+// (many queued subscription downloads), `POST /api/scan` resolves near-
+// instantly with a 409 (a scan is already running), so the reload fired
+// immediately -- and a `window.location.reload()` against an already-
+// saturated server could hang mid-navigation, freezing the whole page: the
+// "Done" modal stayed painted, its own already-scheduled auto-close timer
+// never fired, and even the [x] button went inert. The server already
+// rescans after `runOneShot` completes, so the client-side rescan+reload
+// was always redundant -- 'done' no longer requests one at all.
+test('decideOneOffTerminalAction: "done" closes (after a brief pause) and no longer requests a rescan/reload (BUG 2 fix)', () => {
   const action = decideOneOffTerminalAction({ state: 'done' });
   assert.strictEqual(action.close, true);
   assert.ok(action.closeDelayMs > 0, 'the user should see the "Done" status before the modal disappears');
-  assert.strictEqual(action.rescan, true);
+  assert.strictEqual(action.rescan, false, 'a rescan/reload must never be requested on "done" -- see BUG 2 fix');
 });
 
 test('decideOneOffTerminalAction: "error" stays open (the message remains visible) and never rescans', () => {

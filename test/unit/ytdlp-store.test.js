@@ -1784,3 +1784,146 @@ test('ensureYtdlp: an already-set, valid cutoffDate is never overwritten (idempo
   const ns = store.ensureYtdlp(db);
   assert.equal(ns.subscriptions[0].cutoffDate, '20200101');
 });
+
+// ---- v1.25 QoL bugfix: selectChannelAvatarUrl -----------------------------
+//
+// The REAL `thumbnails[]` array a live yt-dlp (2026.07.04) `--dump-single-json
+// --playlist-items 0` returned for an actual channel (BlueJay,
+// /channel/<id> form) -- a mix of wide banner crops (ids "0"-"5"/
+// "banner_uncropped") and the real avatar (a sized 900x900 square, id "7",
+// plus the full-res "avatar_uncropped" fallback).
+const REAL_CHANNEL_THUMBNAILS_BLUEJAY = [
+  { url: 'https://yt3.googleusercontent.com/HHgKRdNH6SWlCqxQ2aT6io-yd1f4ambPHm3Ox39UC5sUjOeIanNWsSfNIzNBGBY6bZYqKo_Fag=w1060-fcrop64=1,00005a57ffffa5a8-k-c0xffffffff-no-nd-rj', height: 175, width: 1060, preference: -10, id: '0', resolution: '1060x175' },
+  { url: 'https://yt3.googleusercontent.com/HHgKRdNH6SWlCqxQ2aT6io-yd1f4ambPHm3Ox39UC5sUjOeIanNWsSfNIzNBGBY6bZYqKo_Fag=w1138-fcrop64=1,00005a57ffffa5a8-k-c0xffffffff-no-nd-rj', height: 188, width: 1138, preference: -10, id: '1', resolution: '1138x188' },
+  { url: 'https://yt3.googleusercontent.com/HHgKRdNH6SWlCqxQ2aT6io-yd1f4ambPHm3Ox39UC5sUjOeIanNWsSfNIzNBGBY6bZYqKo_Fag=w1707-fcrop64=1,00005a57ffffa5a8-k-c0xffffffff-no-nd-rj', height: 283, width: 1707, preference: -10, id: '2', resolution: '1707x283' },
+  { url: 'https://yt3.googleusercontent.com/HHgKRdNH6SWlCqxQ2aT6io-yd1f4ambPHm3Ox39UC5sUjOeIanNWsSfNIzNBGBY6bZYqKo_Fag=w2120-fcrop64=1,00005a57ffffa5a8-k-c0xffffffff-no-nd-rj', height: 351, width: 2120, preference: -10, id: '3', resolution: '2120x351' },
+  { url: 'https://yt3.googleusercontent.com/HHgKRdNH6SWlCqxQ2aT6io-yd1f4ambPHm3Ox39UC5sUjOeIanNWsSfNIzNBGBY6bZYqKo_Fag=w2276-fcrop64=1,00005a57ffffa5a8-k-c0xffffffff-no-nd-rj', height: 377, width: 2276, preference: -10, id: '4', resolution: '2276x377' },
+  { url: 'https://yt3.googleusercontent.com/HHgKRdNH6SWlCqxQ2aT6io-yd1f4ambPHm3Ox39UC5sUjOeIanNWsSfNIzNBGBY6bZYqKo_Fag=w2560-fcrop64=1,00005a57ffffa5a8-k-c0xffffffff-no-nd-rj', height: 424, width: 2560, preference: -10, id: '5', resolution: '2560x424' },
+  { url: 'https://yt3.googleusercontent.com/HHgKRdNH6SWlCqxQ2aT6io-yd1f4ambPHm3Ox39UC5sUjOeIanNWsSfNIzNBGBY6bZYqKo_Fag=s0', id: 'banner_uncropped', preference: -5 },
+  { url: 'https://yt3.googleusercontent.com/ytc/AIdro_mtE0wtRYXirpEWGKtJ_mK85JBizT2WktAw6QBpDsz-OA=s900-c-k-c0x00ffffff-no-rj', height: 900, width: 900, id: '7', resolution: '900x900' },
+  { url: 'https://yt3.googleusercontent.com/ytc/AIdro_mtE0wtRYXirpEWGKtJ_mK85JBizT2WktAw6QBpDsz-OA=s0', id: 'avatar_uncropped', preference: 1 },
+];
+const REAL_CHANNEL_AVATAR_URL_BLUEJAY = 'https://yt3.googleusercontent.com/ytc/AIdro_mtE0wtRYXirpEWGKtJ_mK85JBizT2WktAw6QBpDsz-OA=s900-c-k-c0x00ffffff-no-rj';
+
+// Same shape, from a REAL @handle channel (Mental Outlaw) -- proves the
+// heuristic is not tied to the /channel/<id> URL form.
+const REAL_CHANNEL_THUMBNAILS_HANDLE = [
+  { url: 'https://yt3.googleusercontent.com/oNt0NdpBp_fCt58T2r2cpwhzRERNoCFRLKJUmNAB4r1kpPWJd4WX_GjHIj4mKn-rtISHTwkve4k=w1060-fcrop64=1,00005a57ffffa5a8-k-c0xffffffff-no-nd-rj', height: 175, width: 1060, preference: -10, id: '0', resolution: '1060x175' },
+  { url: 'https://yt3.googleusercontent.com/oNt0NdpBp_fCt58T2r2cpwhzRERNoCFRLKJUmNAB4r1kpPWJd4WX_GjHIj4mKn-rtISHTwkve4k=s0', id: 'banner_uncropped', preference: -5 },
+  { url: 'https://yt3.googleusercontent.com/ytc/AIdro_n6dUcc6YbkWa540dbaWzbLi44bq0h-hGNEop2BhOQ6uHY=s900-c-k-c0x00ffffff-no-rj', height: 900, width: 900, id: '7', resolution: '900x900' },
+  { url: 'https://yt3.googleusercontent.com/ytc/AIdro_n6dUcc6YbkWa540dbaWzbLi44bq0h-hGNEop2BhOQ6uHY=s0', id: 'avatar_uncropped', preference: 1 },
+];
+const REAL_CHANNEL_AVATAR_URL_HANDLE = 'https://yt3.googleusercontent.com/ytc/AIdro_n6dUcc6YbkWa540dbaWzbLi44bq0h-hGNEop2BhOQ6uHY=s900-c-k-c0x00ffffff-no-rj';
+
+// The REAL `thumbnails[]` array from a per-VIDEO `--dump-json` (never
+// square -- every entry is a 4:3/16:9 video-frame crop) -- proves the
+// heuristic never mistakes a video's own thumbnails for a channel avatar.
+const REAL_VIDEO_THUMBNAILS = [
+  { url: 'https://i.ytimg.com/vi/6ZXsyDEfC64/default.jpg', height: 90, width: 120, preference: -13, id: '24', resolution: '120x90' },
+  { url: 'https://i.ytimg.com/vi/6ZXsyDEfC64/mqdefault.jpg', height: 180, width: 320, preference: -11, id: '26', resolution: '320x180' },
+  { url: 'https://i.ytimg.com/vi/6ZXsyDEfC64/hqdefault.jpg', height: 360, width: 480, preference: -7, id: '34', resolution: '480x360' },
+  { url: 'https://i.ytimg.com/vi/6ZXsyDEfC64/sddefault.jpg', height: 480, width: 640, preference: -5, id: '36', resolution: '640x480' },
+  { url: 'https://i.ytimg.com/vi/6ZXsyDEfC64/maxresdefault.jpg', height: 1080, width: 1920, preference: -1, id: '40', resolution: '1920x1080' },
+];
+
+test('selectChannelAvatarUrl: picks the largest SQUARE thumbnail (900x900), never a wide banner crop -- real BlueJay channel fixture', () => {
+  assert.equal(store.selectChannelAvatarUrl(REAL_CHANNEL_THUMBNAILS_BLUEJAY), REAL_CHANNEL_AVATAR_URL_BLUEJAY);
+});
+
+test('selectChannelAvatarUrl: works identically for a REAL @handle channel fixture (Mental Outlaw)', () => {
+  assert.equal(store.selectChannelAvatarUrl(REAL_CHANNEL_THUMBNAILS_HANDLE), REAL_CHANNEL_AVATAR_URL_HANDLE);
+});
+
+test('selectChannelAvatarUrl: a real per-VIDEO thumbnails array (no square entries, no avatar_uncropped) never yields a false-positive avatar', () => {
+  assert.equal(store.selectChannelAvatarUrl(REAL_VIDEO_THUMBNAILS), null);
+});
+
+test('selectChannelAvatarUrl: falls back to avatar_uncropped when no sized square thumbnail survives', () => {
+  const thumbnails = [
+    { url: 'https://yt3.googleusercontent.com/wide-banner', height: 175, width: 1060, id: '0' },
+    { url: 'https://yt3.googleusercontent.com/uncropped-fallback=s0', id: 'avatar_uncropped', preference: 1 },
+  ];
+  assert.equal(store.selectChannelAvatarUrl(thumbnails), 'https://yt3.googleusercontent.com/uncropped-fallback=s0');
+});
+
+test('selectChannelAvatarUrl: prefers the LARGEST square when more than one sized square variant is present', () => {
+  const thumbnails = [
+    { url: 'https://yt3.googleusercontent.com/small-square', height: 100, width: 100, id: 'a' },
+    { url: 'https://yt3.googleusercontent.com/big-square', height: 900, width: 900, id: 'b' },
+    { url: 'https://yt3.googleusercontent.com/mid-square', height: 512, width: 512, id: 'c' },
+  ];
+  assert.equal(store.selectChannelAvatarUrl(thumbnails), 'https://yt3.googleusercontent.com/big-square');
+});
+
+test('selectChannelAvatarUrl: returns null for empty/no-thumbnails/malformed input, never throws', () => {
+  assert.equal(store.selectChannelAvatarUrl([]), null);
+  assert.equal(store.selectChannelAvatarUrl(undefined), null);
+  assert.equal(store.selectChannelAvatarUrl(null), null);
+  assert.equal(store.selectChannelAvatarUrl('not-an-array'), null);
+  assert.equal(store.selectChannelAvatarUrl([null, undefined, 42, { id: '0' }, { url: 123, width: 900, height: 900 }]), null);
+});
+
+test('selectChannelAvatarUrl: a malformed width/height pair (zero, negative, or mismatched types) is never mistaken for a square', () => {
+  const thumbnails = [
+    { url: 'https://yt3.googleusercontent.com/zero-square', height: 0, width: 0, id: 'z' },
+    { url: 'https://yt3.googleusercontent.com/string-dims', height: '900', width: '900', id: 's' },
+  ];
+  assert.equal(store.selectChannelAvatarUrl(thumbnails), null);
+});
+
+// ---- v1.25 QoL bugfix: resolveItemChannelAvatarUrl (serve-time item join) --
+
+test('resolveItemChannelAvatarUrl: an item whose channelUrl matches a subscription resolves that subscription\'s sanitized avatar', () => {
+  const db = {
+    ytdlp: {
+      subscriptions: [
+        { id: 'sub1', channelUrl: 'https://www.youtube.com/channel/UCabc', channelId: 'UCabc', channelAvatarUrl: 'https://yt3.ggpht.com/avatar1.jpg' },
+      ],
+    },
+  };
+  const item = { channelUrl: 'https://www.youtube.com/channel/UCabc' };
+  assert.equal(store.resolveItemChannelAvatarUrl(db, item), 'https://yt3.ggpht.com/avatar1.jpg');
+});
+
+test('resolveItemChannelAvatarUrl: an item whose channelId matches (channelUrl differs/absent) still resolves via the id match', () => {
+  const db = {
+    ytdlp: {
+      subscriptions: [
+        { id: 'sub1', channelUrl: 'https://www.youtube.com/@somehandle', channelId: 'UCabc', channelAvatarUrl: 'https://yt3.ggpht.com/avatar1.jpg' },
+      ],
+    },
+  };
+  const item = { channelId: 'UCabc' };
+  assert.equal(store.resolveItemChannelAvatarUrl(db, item), 'https://yt3.ggpht.com/avatar1.jpg');
+});
+
+test('resolveItemChannelAvatarUrl: no matching subscription resolves null (empty fallback, never throws)', () => {
+  const db = { ytdlp: { subscriptions: [{ id: 'sub1', channelUrl: 'https://www.youtube.com/channel/UCother', channelAvatarUrl: 'https://yt3.ggpht.com/avatar1.jpg' }] } };
+  assert.equal(store.resolveItemChannelAvatarUrl(db, { channelUrl: 'https://www.youtube.com/channel/UCnomatch' }), null);
+});
+
+test('resolveItemChannelAvatarUrl: an item with no channelUrl/channelId at all resolves null without scanning subscriptions', () => {
+  const db = { ytdlp: { subscriptions: [{ id: 'sub1', channelUrl: 'https://www.youtube.com/channel/UCabc', channelAvatarUrl: 'https://yt3.ggpht.com/avatar1.jpg' }] } };
+  assert.equal(store.resolveItemChannelAvatarUrl(db, {}), null);
+  assert.equal(store.resolveItemChannelAvatarUrl(db, null), null);
+});
+
+test('resolveItemChannelAvatarUrl: no db.ytdlp namespace at all (module never enabled) resolves null, never throws', () => {
+  const db = {};
+  assert.equal(store.resolveItemChannelAvatarUrl(db, { channelUrl: 'https://www.youtube.com/channel/UCabc' }), null);
+});
+
+test('resolveItemChannelAvatarUrl: a null/undefined db resolves null, never throws (defense-in-depth -- the "never throws" contract holds literally)', () => {
+  assert.equal(store.resolveItemChannelAvatarUrl(null, { channelUrl: 'https://www.youtube.com/channel/UCabc' }), null);
+  assert.equal(store.resolveItemChannelAvatarUrl(undefined, { channelUrl: 'https://www.youtube.com/channel/UCabc' }), null);
+});
+
+test('resolveItemChannelAvatarUrl: a matched subscription\'s HOSTILE/corrupted channelAvatarUrl (fails re-validation) is never returned', () => {
+  const db = { ytdlp: { subscriptions: [{ id: 'sub1', channelUrl: 'https://www.youtube.com/channel/UCabc', channelAvatarUrl: 'javascript:alert(1)' }] } };
+  assert.equal(store.resolveItemChannelAvatarUrl(db, { channelUrl: 'https://www.youtube.com/channel/UCabc' }), null);
+});
+
+test('resolveItemChannelAvatarUrl: a matched subscription with no channelAvatarUrl of its own resolves null', () => {
+  const db = { ytdlp: { subscriptions: [{ id: 'sub1', channelUrl: 'https://www.youtube.com/channel/UCabc' }] } };
+  assert.equal(store.resolveItemChannelAvatarUrl(db, { channelUrl: 'https://www.youtube.com/channel/UCabc' }), null);
+});

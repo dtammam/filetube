@@ -136,7 +136,7 @@ test('DEFAULT_DOWNLOAD_TIMEOUT_MS is 180 minutes (raised from the previous 60-mi
 // injection-proofing an embedded newline in a free-text field now gets from
 // JSON-escaping.
 
-test('parseChannelMetaLine: parses a well-formed FTCHMETA JSON line into its 8 fields', () => {
+test('parseChannelMetaLine: parses a well-formed FTCHMETA JSON line into its 7 fields', () => {
   const line = `FTCHMETA ${JSON.stringify({
     id: 'dQw4w9WgXcQ',
     channel_url: 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw',
@@ -145,7 +145,6 @@ test('parseChannelMetaLine: parses a well-formed FTCHMETA JSON line into its 8 f
     channel: 'Rick Astley',
     upload_date: '20091025',
     release_date: '20091026',
-    channel_thumbnail: 'https://yt3.ggpht.com/avatar.jpg',
   })}`;
   const result = parseChannelMetaLine(line);
   assert.deepEqual(result, {
@@ -156,8 +155,24 @@ test('parseChannelMetaLine: parses a well-formed FTCHMETA JSON line into its 8 f
     channelName: 'Rick Astley',
     uploadDate: '20091025',
     releaseDate: '20091026',
-    channelThumbnail: 'https://yt3.ggpht.com/avatar.jpg',
   });
+});
+
+// v1.25 QoL bugfix regression lock: a real per-video info dict never carries
+// a `channel_thumbnail` field (verified live against yt-dlp 2026.07.04) --
+// even when a video's FTCHMETA payload includes one anyway (e.g. a stale
+// caller, or a future extractor quirk), the parser must never surface it.
+test('parseChannelMetaLine: a channel_thumbnail key present on the payload is ignored -- never surfaced as channelThumbnail (the dead field is fully removed)', () => {
+  const line = `FTCHMETA ${JSON.stringify({
+    id: 'dQw4w9WgXcQ',
+    channel_url: 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw',
+    channel_id: 'UCuAXFkgsw1L7xaCfnd5JJOw',
+    uploader_url: 'https://www.youtube.com/@RickAstley',
+    channel: 'Rick Astley',
+    channel_thumbnail: 'https://yt3.ggpht.com/avatar.jpg',
+  })}`;
+  const result = parseChannelMetaLine(line);
+  assert.equal(Object.prototype.hasOwnProperty.call(result, 'channelThumbnail'), false, 'channelThumbnail must not exist on the returned object at all');
 });
 
 test('parseChannelMetaLine: yt-dlp\'s JSON `null` (unavailable field), an empty string, and `NA` all normalize to null (absent), never literal data', () => {
@@ -169,7 +184,6 @@ test('parseChannelMetaLine: yt-dlp\'s JSON `null` (unavailable field), an empty 
     channel: '',
     upload_date: 'NA',
     release_date: null,
-    channel_thumbnail: '',
   })}`;
   const result = parseChannelMetaLine(line);
   assert.deepEqual(result, {
@@ -180,11 +194,10 @@ test('parseChannelMetaLine: yt-dlp\'s JSON `null` (unavailable field), an empty 
     channelName: null,
     uploadDate: null,
     releaseDate: null,
-    channelThumbnail: null,
   });
 });
 
-test('parseChannelMetaLine: an FTCHMETA line with upload_date/release_date/channel_thumbnail absent entirely (older/undefined extractor fields) still returns null for those three', () => {
+test('parseChannelMetaLine: an FTCHMETA line with upload_date/release_date absent entirely (older/undefined extractor fields) still returns null for those two', () => {
   const line = `FTCHMETA ${JSON.stringify({
     id: 'vid456',
     channel_url: 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw',
@@ -195,7 +208,6 @@ test('parseChannelMetaLine: an FTCHMETA line with upload_date/release_date/chann
   const result = parseChannelMetaLine(line);
   assert.equal(result.uploadDate, null);
   assert.equal(result.releaseDate, null);
-  assert.equal(result.channelThumbnail, null);
 });
 
 test('parseChannelMetaLine: a channel name containing literal tab/newline characters still round-trips intact (JSON-escaped, never truncated/misaligned)', () => {
