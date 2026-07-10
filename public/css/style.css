@@ -901,6 +901,19 @@ header {
   display: none !important;
 }
 
+/* Belt-and-braces: the resume prompt and the transcode ("Preparing video")
+   overlay are both FULL-player affordances sized for the large player, not
+   the 160/280px mini-dock. dock() (player.js) proactively dismisses an
+   already-showing resume prompt, but this CSS guard ensures neither overlay
+   can EVER render at full size inside the dock, regardless of code path.
+   NOTE: #transcode-overlay shares the .resume-overlay CLASS (see watch.html)
+   rather than having its own "transcode-overlay" class, so the ID selector
+   is used here for it directly. */
+#player-dock .resume-overlay,
+#player-dock #transcode-overlay {
+  display: none !important;
+}
+
 .player-dock-close {
   position: absolute;
   top: 4px;
@@ -1414,6 +1427,8 @@ header {
   display: flex;
   align-items: center;
   gap: 12px;
+  flex-wrap: wrap;
+  min-width: 0;
 }
 
 /* Star Rating (read-only display) */
@@ -1470,12 +1485,15 @@ header {
   border-radius: var(--radius);
   padding: 12px 16px;
   margin-bottom: 16px;
+  flex-wrap: wrap;
+  gap: 12px;
 }
 
 .uploader-profile {
   display: flex;
   align-items: center;
   gap: 12px;
+  min-width: 0;
 }
 
 .uploader-avatar {
@@ -3162,6 +3180,7 @@ a.sub-row-channel-link:focus-visible {
   -moz-appearance: none;
   appearance: none;
   flex: 1 1 auto;
+  min-width: 0;
   height: 16px;
   margin: 0;
   background: transparent;

@@ -275,6 +275,22 @@ function resolveDockedResumeAction(ctx) {
   return opts.dockState === 'docked' ? 'auto-resume' : 'prompt';
 }
 
+// v1.24.5 (fast-follow): companion to `resolveDockedResumeAction` above for
+// the OPPOSITE ordering. `resolveDockedResumeAction` only covers a resume
+// decision made WHILE already docked; it does nothing for a decision made
+// while FULL (the overlay is legitimately shown there) that the user then
+// docks AWAY from mid-prompt. Without this, `dock()` (the DOM call site)
+// would strand the full-size "Resume at..." prompt rendering inside the
+// tiny 160/280px `#player-dock` mini-player. `dock()` calls this on every
+// dock transition; a still-showing overlay is converted to D3's own
+// auto-resume intent (dismiss + resume directly) so the outcome matches
+// exactly what would have happened had the decision been made AFTER
+// docking instead of before.
+function resolveDockTransitionResumeAction(ctx) {
+  var opts = ctx || {};
+  return opts.resumeOverlayVisible ? 'dismiss-and-auto-resume' : 'none';
+}
+
 // Bug-fix (v1.17.0 two-reviewer gate, FR-4b leak): pure helper for the
 // "capture-then-reset" step every NEW (non-adopt) load must perform on the
 // one-shot `autoplayAdvancePending` flag, at load START -- not deferred to
@@ -504,6 +520,7 @@ if (typeof module !== 'undefined' && module.exports) {
     shouldShowResumeOverlay,
     resolveResumeThreshold,
     resolveDockedResumeAction,
+    resolveDockTransitionResumeAction,
     captureAutoplayAdvanceForLoad,
     clampVolume,
     seekCommitTarget,
@@ -2313,6 +2330,18 @@ if (typeof module !== 'undefined' && module.exports) {
     ensureDockChrome(dockEl);
     var wasPlaying = !mediaPlayer.paused;
     resetTransientPlaybackUi();
+    // v1.24.5 FIX C: D3 (v1.24.0, T13) only suppresses the resume prompt in
+    // favor of auto-resume when the dock state is ALREADY docked at the
+    // moment handleResumePlayback's fetch resolves. If the prompt is already
+    // showing (state was FULL then) and the user docks from there, it would
+    // otherwise keep rendering the full-size prompt inside the tiny
+    // 160/280px dock. Bring that case in line with D3's intent: dismiss the
+    // showing prompt and resume directly, exactly as if D3 had fired.
+    var resumeOverlayVisible = !!(resumeOverlay && resumeOverlay.style.display !== 'none');
+    if (resolveDockTransitionResumeAction({ resumeOverlayVisible: resumeOverlayVisible }) === 'dismiss-and-auto-resume') {
+      resumeOverlay.style.display = 'none';
+      resumeDirectly(savedProgress);
+    }
     exitAudioExpand(); // FR-1 (T1, v1.22.2, AC5): never dock a fixed-overlay expanded wrapper
     if (host.parentNode !== dockEl) dockEl.appendChild(host);
     dockEl.hidden = false;
