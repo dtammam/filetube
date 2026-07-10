@@ -1087,9 +1087,9 @@ if (typeof module !== 'undefined' && module.exports) {
     }
 
     // FR-1/FR-3 (v1.20.0, T3): the watch-page Subscribe toggle. Lives entirely
-    // in this closure -- `currentSubState`/`defaultMaxVideosForModal`/
-    // `subscribeModalState` are mutable, private to this view instance, and
-    // torn down implicitly on the next init() (a fresh view, fresh closure).
+    // in this closure -- `currentSubState`/`subscribeModalState` are mutable,
+    // private to this view instance, and torn down implicitly on the next
+    // init() (a fresh view, fresh closure).
     //
     // SECURITY: every subscription create still goes through the UNMODIFIED
     // server-side `POST /api/subscriptions` -> `store.validateSubscriptionInput`
@@ -1101,7 +1101,6 @@ if (typeof module !== 'undefined' && module.exports) {
     // matched against THIS file's channel identity (via `channelIdentityMatches`,
     // common.js) -- never an arbitrary client-supplied id.
     let currentSubState = { visible: false, subscribed: false, subId: null, identity: null };
-    let defaultMaxVideosForModal = 2;
     let subscribeModalState = null;
     // B3 (v1.24.0, T6): pin-from-watch state + the button itself -- created
     // (at most once) per view instance by setupPinButton below, fresh for
@@ -1133,7 +1132,6 @@ if (typeof module !== 'undefined' && module.exports) {
           channelName: currentChannelName,
           channelUrl: currentSubState.identity.channelUrl,
           format: mediaData && mediaData.type === 'audio' ? 'audio' : 'video',
-          defaultMaxVideos: defaultMaxVideosForModal,
         },
         {
           onClose: closeSubscribeModal,
@@ -1309,10 +1307,6 @@ if (typeof module !== 'undefined' && module.exports) {
         const healthRes = await fetch('/api/subscriptions/health');
         moduleEnabled = healthRes.ok;
         if (moduleEnabled) {
-          const healthData = await healthRes.json().catch(() => ({}));
-          if (Number.isInteger(healthData.defaultMaxVideos) && healthData.defaultMaxVideos >= 0) {
-            defaultMaxVideosForModal = healthData.defaultMaxVideos;
-          }
           const subsRes = await fetch('/api/subscriptions');
           subs = subsRes.ok ? await subsRes.json().catch(() => []) : [];
         }

@@ -31,6 +31,14 @@ const run = require('../../lib/ytdlp/run');
 const originalRunList = run.runList;
 const originalRunDownload = run.runDownload;
 
+// v1.25 QoL (T3): the one-shot form below posts WITHOUT `folder`, which now
+// means `runOneShot` probes for a channel before its download starts --
+// stubbed ONCE, deterministically, for this whole file (never restored --
+// nothing here exercises the real probe, and each test file already runs in
+// its own isolated process per CONTRIBUTING.md) so this file never depends
+// on a real yt-dlp binary/network being reachable from the test runner.
+run.probeChannel = async () => null;
+
 afterEach(() => {
   run.runList = originalRunList;
   run.runDownload = originalRunDownload;
@@ -208,8 +216,11 @@ test('AC32: GET /subscriptions serves the page HTML when enabled, referencing th
       assert.match(body, new RegExp(`<option value="${quality}"`), `sub-add-quality must offer ${quality}`);
     }
 
-    // T5/FR-C: per-channel maxVideos input.
-    assert.match(body, /sub-add-maxvideos/, 'page must contain the per-channel maxVideos input (FR-C)');
+    // v1.25 QoL (T5): the "download last N videos" count input is retired,
+    // replaced by a cutoff-DATE input (everything published on/after it
+    // downloads, no count cap).
+    assert.match(body, /<input type="date" id="sub-add-cutoffdate"/, 'page must contain the cutoff-date input, replacing the retired per-channel maxVideos count field');
+    assert.doesNotMatch(body, /sub-add-maxvideos/, 'the retired maxVideos count field must no longer exist in the add form');
 
     // T5/FR-A: the one-shot form (paste-URL + format/quality dropdowns).
     assert.match(body, /oneshot-url/, 'page must contain the one-shot URL field (AC13/15)');

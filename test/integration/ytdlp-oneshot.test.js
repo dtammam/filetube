@@ -23,16 +23,25 @@ const args = require('../../lib/ytdlp/args');
 
 const originalRunList = run.runList;
 const originalRunDownload = run.runDownload;
+const originalProbeChannel = run.probeChannel;
 
 let tmpDir;
 
 beforeEach(() => {
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-ytdlp-oneshot-'));
+  // v1.25 QoL (T3): every test in this file gets a DETERMINISTIC probe by
+  // default (resolves "no channel found") so pre-existing tests that don't
+  // care about channel routing aren't at the mercy of whether a real yt-dlp
+  // binary happens to be on the test-runner's PATH. Tests that DO care about
+  // probe/routing behavior override this per-test, exactly like `run.runList`/
+  // `run.runDownload` are already overridden per-test below.
+  run.probeChannel = async () => null;
 });
 
 afterEach(() => {
   run.runList = originalRunList;
   run.runDownload = originalRunDownload;
+  run.probeChannel = originalProbeChannel;
   ytdlp.resetPollRerunStateForTests();
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });
@@ -293,12 +302,15 @@ test('POST /api/ytdlp/download with a folder value that resolveChannelDir would 
   }
 });
 
-// ---- AC11: lands under the confined root, in "One-Off" by default, and ----
-// triggers a scan (indexed) --------------------------------------------------
+// ---- AC11 (v1.25 QoL T3 revision): lands under the confined root, in a  ----
+// PER-CHANNEL folder derived from a pre-download probe (or the fixed
+// 'Uncategorized' fallback when the probe finds nothing), and triggers a
+// scan (indexed) -- replaces the old flat "One-Off" default.
 
-test('a successful one-shot download lands in the confined "One-Off" subfolder by default and triggers a scan (AC11)', async () => {
+test('a successful one-shot download with a probed channel routes into that channel\'s own confined folder and triggers a scan (AC11)', async () => {
   const deps = makeFakeDeps();
   const config = enabledConfig();
+  run.probeChannel = async () => 'Some Creator';
 
   let capturedSub = null;
   run.runDownload = async (sub, cfg, targetIds) => {
@@ -318,10 +330,46 @@ test('a successful one-shot download lands in the confined "One-Off" subfolder b
 
     await new Promise((resolve) => setTimeout(resolve, 30));
 
-    assert.equal(capturedSub.name, 'One-Off');
-    const oneOffDir = path.join(tmpDir, 'One-Off');
-    assert.equal(fs.existsSync(oneOffDir), true, 'the file must have landed under the confined One-Off subfolder');
+    assert.equal(capturedSub.name, 'Some Creator');
+    const channelDir = path.join(tmpDir, 'Some Creator');
+    assert.equal(fs.existsSync(channelDir), true, 'the file must have landed under the confined per-channel subfolder');
     assert.equal(deps.scanCalls.length, 1, 'a successful one-shot must trigger a scan so the file is indexed (AC11)');
+
+    const statusRes = await fetch(`${base}/api/subscriptions/status`);
+    const snap = await statusRes.json();
+    assert.equal(snap.oneShots[jobId].state, 'done');
+    assert.equal(snap.oneShots[jobId].label, 'Some Creator', 'the resolved (probed) folder must be reflected back as the job label');
+  } finally {
+    await close();
+  }
+});
+
+test('a successful one-shot download whose probe finds NO channel falls back to the confined "Uncategorized" folder (never the old flat "One-Off") and triggers a scan', async () => {
+  const deps = makeFakeDeps();
+  const config = enabledConfig();
+  run.probeChannel = async () => null; // explicit -- mirrors the beforeEach default, spelled out for clarity here
+
+  let capturedSub = null;
+  run.runDownload = async (sub, cfg, targetIds) => {
+    capturedSub = sub;
+    const channelDir = args.resolveChannelDir(cfg, sub);
+    fs.mkdirSync(channelDir, { recursive: true });
+    fs.writeFileSync(path.join(channelDir, `video [${targetIds[0]}].mp4`), 'fake video bytes');
+    return { ok: true, code: 0, stdout: '', stderr: '' };
+  };
+
+  const { base, close } = await startTestApp(deps, config);
+  try {
+    const res = await postJson(base, '/api/ytdlp/download', { url: SINGLE_VIDEO_URL });
+    assert.equal(res.status, 202);
+    const { jobId } = await res.json();
+
+    await new Promise((resolve) => setTimeout(resolve, 30));
+
+    assert.equal(capturedSub.name, 'Uncategorized');
+    const fallbackDir = path.join(tmpDir, 'Uncategorized');
+    assert.equal(fs.existsSync(fallbackDir), true, 'the file must have landed under the confined Uncategorized fallback subfolder');
+    assert.equal(deps.scanCalls.length, 1);
 
     const statusRes = await fetch(`${base}/api/subscriptions/status`);
     const snap = await statusRes.json();
@@ -331,7 +379,63 @@ test('a successful one-shot download lands in the confined "One-Off" subfolder b
   }
 });
 
-test('a custom folder value is honored (confined) instead of the "One-Off" default', async () => {
+test('a one-off channel probe that REJECTS (throws) never crashes the job -- it still falls back to "Uncategorized"', async () => {
+  const deps = makeFakeDeps();
+  const config = enabledConfig();
+  run.probeChannel = async () => {
+    throw new Error('a defensive-in-depth regression: probeChannel is documented to never reject, but this proves runOneShot survives it anyway');
+  };
+  run.runDownload = async (sub) => ({ ok: true, code: 0, stdout: '', stderr: '' });
+
+  const { base, close } = await startTestApp(deps, config);
+  try {
+    const res = await postJson(base, '/api/ytdlp/download', { url: SINGLE_VIDEO_URL });
+    assert.equal(res.status, 202);
+    const { jobId } = await res.json();
+    await new Promise((resolve) => setTimeout(resolve, 30));
+
+    const statusRes = await fetch(`${base}/api/subscriptions/status`);
+    const snap = await statusRes.json();
+    assert.equal(snap.oneShots[jobId].state, 'done', 'a throwing probe must never surface as a job failure');
+    assert.equal(snap.oneShots[jobId].label, 'Uncategorized');
+  } finally {
+    await close();
+  }
+});
+
+test('an explicit body.folder override always wins -- the channel probe is never even invoked', async () => {
+  const deps = makeFakeDeps();
+  const config = enabledConfig();
+  let probeCalls = 0;
+  run.probeChannel = async () => {
+    probeCalls += 1;
+    return 'Should Never Be Used';
+  };
+  let capturedSub = null;
+  run.runDownload = async (sub) => {
+    capturedSub = sub;
+    return { ok: true, code: 0, stdout: '', stderr: '' };
+  };
+
+  const { base, close } = await startTestApp(deps, config);
+  try {
+    const res = await postJson(base, '/api/ytdlp/download', { url: SINGLE_VIDEO_URL, folder: 'My Custom Folder' });
+    assert.equal(res.status, 202);
+    const { jobId } = await res.json();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    assert.equal(capturedSub.name, 'My Custom Folder');
+    assert.equal(probeCalls, 0, 'an explicit folder override must skip the probe entirely');
+
+    const statusRes = await fetch(`${base}/api/subscriptions/status`);
+    const snap = await statusRes.json();
+    assert.equal(snap.oneShots[jobId].label, 'My Custom Folder', 'the label must already reflect the override even at "queued" time (no probe round-trip needed)');
+  } finally {
+    await close();
+  }
+});
+
+test('a custom folder value is honored (confined) instead of the probed/fallback default', async () => {
   const deps = makeFakeDeps();
   const config = enabledConfig();
   let capturedSub = null;
@@ -473,7 +577,9 @@ test('a one-shot background failure (ok:false result) sets the activity error st
 test('a FAILED one-shot download cleans up yt-dlp intermediate artifacts in its target folder, but leaves a completed final file untouched', async () => {
   const deps = makeFakeDeps();
   const config = enabledConfig();
-  const channelDir = args.resolveChannelDir(config, { name: 'One-Off' });
+  // beforeEach's default `run.probeChannel` stub resolves null -> the
+  // one-off falls back to the fixed 'Uncategorized' folder.
+  const channelDir = args.resolveChannelDir(config, { name: 'Uncategorized' });
   fs.mkdirSync(channelDir, { recursive: true });
   const finalPath = path.join(channelDir, 'Already Downloaded [dQw4w9WgXcQ].mp4');
   const fragmentPath = path.join(channelDir, 'Killed Video [wSx0Or20MZE].f399.mp4');
@@ -558,6 +664,97 @@ test('a one-shot failure whose error embeds the cookies path never leaks it into
     assert.equal(snap.oneShots[jobId].state, 'error');
   } finally {
     fs.rmSync(cookiesDir, { recursive: true, force: true });
+    await close();
+  }
+});
+
+// ---- FIX 2 (two-reviewer gate, post-v1.25.0): the pre-download channel -----
+// probe (`run.probeChannel`, via `resolveOneOffFolder`) now runs OUTSIDE the
+// shared `runExclusive` FIFO gate -- a slow/hung probe must never hold that
+// gate hostage (pre-fix, the WHOLE of `runOneShot`, probe included, ran
+// inside `runExclusive`, so a hung probe blocked every other queued one-shot
+// AND subscription poll behind it for up to the old 5-minute list timeout).
+
+test('FIX 2: a hung channel probe for one job does NOT block a concurrently-requested download (with no probe of its own) from proceeding', async () => {
+  const deps = makeFakeDeps();
+  const config = enabledConfig();
+
+  // Job A's probe hangs forever (never resolves) -- captured so the test can
+  // resolve it later to prove the hang was only transient, not permanent.
+  let hungResolve;
+  run.probeChannel = () => new Promise((resolve) => {
+    hungResolve = resolve;
+  });
+
+  const downloadCalls = [];
+  run.runDownload = async (sub) => {
+    downloadCalls.push(sub.name);
+    return { ok: true, code: 0, stdout: '', stderr: '' };
+  };
+
+  const { base, close } = await startTestApp(deps, config);
+  try {
+    // Job A: no explicit folder -> requires the (hung) probe.
+    const resA = await postJson(base, '/api/ytdlp/download', { url: SINGLE_VIDEO_URL });
+    assert.equal(resA.status, 202);
+
+    // Give job A's resolveOneOffFolder a moment to actually call probeChannel
+    // (and hang there).
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(typeof hungResolve, 'function', 'sanity: job A must have already invoked the (now-hung) probe');
+
+    // Job B: an EXPLICIT folder -> skips the probe entirely and can join the
+    // exclusive download FIFO immediately.
+    const resB = await postJson(base, '/api/ytdlp/download', { url: WATCH_VIDEO_URL, folder: 'Explicit Folder' });
+    assert.equal(resB.status, 202);
+
+    await new Promise((resolve) => setTimeout(resolve, 30));
+
+    // Job B's download must have proceeded even though job A's probe NEVER
+    // resolved during this whole window -- proving the hung probe never held
+    // the shared runExclusive gate hostage (pre-fix, job B would still be
+    // stuck waiting behind job A's in-flight-forever probe+download job).
+    assert.deepEqual(downloadCalls, ['Explicit Folder'], 'job B must download without waiting for job A\'s hung probe');
+
+    // Resolving job A's probe now lets its own download finally join the
+    // FIFO and complete too -- the hang was only in the (now unlocked) probe
+    // stage, never a permanent block.
+    hungResolve('Probed Channel');
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    assert.deepEqual(downloadCalls, ['Explicit Folder', 'Probed Channel'], 'job A must still eventually download once its probe resolves');
+  } finally {
+    await close();
+  }
+});
+
+test('FIX 2: a hung channel probe for a one-shot does NOT block a concurrently-triggered subscription poll from spawning', async () => {
+  const deps = makeFakeDeps();
+  const config = enabledConfig();
+  await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@chanA', format: 'video' });
+
+  run.probeChannel = () => new Promise(() => {}); // hangs for the entire test
+  run.runDownload = async () => ({ ok: true, code: 0, stdout: '', stderr: '' });
+
+  let listStarted = false;
+  run.runList = async () => {
+    listStarted = true;
+    return { ok: true, stdout: '', stderr: '' };
+  };
+
+  const { base, close } = await startTestApp(deps, config);
+  try {
+    const oneShotRes = await postJson(base, '/api/ytdlp/download', { url: SINGLE_VIDEO_URL });
+    assert.equal(oneShotRes.status, 202);
+    await new Promise((resolve) => setImmediate(resolve));
+
+    // A poll trigger arrives while the one-shot's probe is still hung --
+    // pre-fix, this would have queued behind the WHOLE one-shot job
+    // (probe included) and never started its own spawn until that hung probe
+    // (bounded only by the old 5-minute list timeout) finally settled.
+    const pollResult = await ytdlp.runPoll(deps, config);
+    assert.equal(pollResult.started, true);
+    assert.equal(listStarted, true, 'the poll\'s own runList spawn must have run without waiting for the one-shot\'s hung probe');
+  } finally {
     await close();
   }
 });

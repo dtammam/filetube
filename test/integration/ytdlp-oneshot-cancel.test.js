@@ -23,15 +23,24 @@ const ytdlp = require('../../lib/ytdlp');
 const run = require('../../lib/ytdlp/run');
 
 const originalRunDownload = run.runDownload;
+const originalProbeChannel = run.probeChannel;
 
 let tmpDir;
 
 beforeEach(() => {
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-ytdlp-cancel-'));
+  // v1.25 QoL (T3): every one-shot posted in this file omits `folder`, which
+  // now means `runOneShot` probes for a channel BEFORE calling
+  // `run.runDownload` -- stub it deterministically (resolves "no channel
+  // found" instantly) so this file's cancel-timing assertions never depend
+  // on whether a real yt-dlp binary/network happens to be reachable from the
+  // test runner.
+  run.probeChannel = async () => null;
 });
 
 afterEach(() => {
   run.runDownload = originalRunDownload;
+  run.probeChannel = originalProbeChannel;
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });
 

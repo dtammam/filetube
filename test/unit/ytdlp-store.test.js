@@ -190,6 +190,61 @@ test('setSubscriptionStatus updates lastCheckedAt/lastStatus for a known id, fal
   assert.equal(missing, false);
 });
 
+// ---- FIX 1 (two-reviewer gate, post-v1.25.0): setSubscriptionStatus's own --
+// forward-only cutoffDate guard (defense-in-depth on top of the CALLER's --
+// own "did this cycle qualify to advance" decision, lib/ytdlp/index.js's
+// processSubscription) ----
+
+test('setSubscriptionStatus: an omitted cutoffDate leaves the existing value completely untouched', async () => {
+  const deps = makeFakeDeps();
+  const record = await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@cutoffomit', format: 'video', cutoffDate: '20250601' });
+  await store.setSubscriptionStatus(deps, record.id, { lastCheckedAt: '2026-07-05T00:00:00.000Z', lastStatus: 'ok: no new videos' });
+  const [sub] = store.listSubscriptions(deps).filter((s) => s.id === record.id);
+  assert.equal(sub.cutoffDate, '20250601');
+});
+
+test('setSubscriptionStatus: a strictly-later cutoffDate is applied', async () => {
+  const deps = makeFakeDeps();
+  const record = await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@cutoffadvance', format: 'video', cutoffDate: '20250601' });
+  await store.setSubscriptionStatus(deps, record.id, { lastStatus: 'ok: no new videos', cutoffDate: '20250701' });
+  const [sub] = store.listSubscriptions(deps).filter((s) => s.id === record.id);
+  assert.equal(sub.cutoffDate, '20250701');
+});
+
+test('setSubscriptionStatus: a cutoffDate that is NOT strictly later than the current value is silently ignored (never regresses, and never no-ops the whole call)', async () => {
+  const deps = makeFakeDeps();
+  const record = await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@cutoffguard2', format: 'video', cutoffDate: '20250701' });
+
+  // Equal to the current value: a no-op, not an error.
+  const updatedEqual = await store.setSubscriptionStatus(deps, record.id, { lastStatus: 'ok', cutoffDate: '20250701' });
+  assert.equal(updatedEqual, true, 'the call itself must still succeed even when the cutoffDate sub-write is a no-op');
+  let [sub] = store.listSubscriptions(deps).filter((s) => s.id === record.id);
+  assert.equal(sub.cutoffDate, '20250701');
+
+  // Strictly EARLIER than the current value: must never regress it.
+  await store.setSubscriptionStatus(deps, record.id, { lastStatus: 'ok', cutoffDate: '20250101' });
+  [sub] = store.listSubscriptions(deps).filter((s) => s.id === record.id);
+  assert.equal(sub.cutoffDate, '20250701', 'cutoffDate must only ever advance forward, never regress');
+});
+
+test('setSubscriptionStatus: a malformed/implausible cutoffDate is silently ignored, never corrupts the stored value', async () => {
+  const deps = makeFakeDeps();
+  const record = await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@cutoffmalformed', format: 'video', cutoffDate: '20250601' });
+  await store.setSubscriptionStatus(deps, record.id, { lastStatus: 'ok', cutoffDate: '20230230' }); // Feb 30 -- impossible calendar date
+  const [sub] = store.listSubscriptions(deps).filter((s) => s.id === record.id);
+  assert.equal(sub.cutoffDate, '20250601', 'a malformed cutoffDate must never overwrite the existing valid value');
+});
+
+test('setSubscriptionStatus: lastCheckedAt/lastStatus are still updated even when the accompanying cutoffDate write is rejected', async () => {
+  const deps = makeFakeDeps();
+  const record = await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@cutoffindependent', format: 'video', cutoffDate: '20250701' });
+  await store.setSubscriptionStatus(deps, record.id, { lastCheckedAt: '2026-07-05T00:00:00.000Z', lastStatus: 'ok: no new videos', cutoffDate: '20250101' });
+  const [sub] = store.listSubscriptions(deps).filter((s) => s.id === record.id);
+  assert.equal(sub.lastCheckedAt, '2026-07-05T00:00:00.000Z');
+  assert.equal(sub.lastStatus, 'ok: no new videos');
+  assert.equal(sub.cutoffDate, '20250701', 'the rejected cutoffDate write must not affect the other, independent fields');
+});
+
 // ---- FR-C/FR-D: validateMaxVideos / validatePaused (AC20) ----
 
 test('validateMaxVideos: accepts undefined (unset -> global default at build time)', () => {

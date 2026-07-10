@@ -28,9 +28,10 @@ const {
   STATUS_POLL_MAX_MS,
   nextPollDelay,
   formatSubMeta,
-  formatMaxVideos,
   formatSubStatus,
   formatSubscribedDate,
+  cutoffDateToInputValue,
+  inputValueToCutoffDate,
   formatLiveStatusText,
   formatNextCheckText,
   formatRowStatusLine,
@@ -152,28 +153,27 @@ const fakeDoc = {
 
 // ---- Pure formatting helpers ------------------------------------------------
 
-test('formatSubMeta: defaults to Video / best / default maxVideos when all are absent', () => {
-  assert.strictEqual(formatSubMeta({}), 'Video · quality: best · max videos: default');
+test('formatSubMeta: defaults to Video / best, omits the cutoff-date segment when cutoffDate is absent', () => {
+  assert.strictEqual(formatSubMeta({}), 'Video · quality: best');
 });
 
-test('formatSubMeta: reflects audio format, a custom quality, and a set maxVideos', () => {
+test('formatSubMeta: reflects audio format, a custom quality, and the cutoff date', () => {
   assert.strictEqual(
-    formatSubMeta({ format: 'audio', quality: '720p', maxVideos: 10 }),
-    'Audio · quality: 720p · max videos: 10'
+    formatSubMeta({ format: 'audio', quality: '720p', cutoffDate: '20260102' }),
+    'Audio · quality: 720p · Downloads since 2026-01-02'
   );
 });
 
-test('formatMaxVideos: unset (undefined/null) renders "default"', () => {
-  assert.strictEqual(formatMaxVideos({}), 'default');
-  assert.strictEqual(formatMaxVideos({ maxVideos: null }), 'default');
+test('formatSubMeta: a blank cutoffDate renders gracefully -- no "undefined"/"NaN" in the output', () => {
+  const result = formatSubMeta({ cutoffDate: '' });
+  assert.strictEqual(result, 'Video · quality: best');
+  assert.ok(!result.includes('undefined'));
+  assert.ok(!result.includes('NaN'));
 });
 
-test('formatMaxVideos: 0 renders "unlimited" (the per-sub unlimited sentinel)', () => {
-  assert.strictEqual(formatMaxVideos({ maxVideos: 0 }), 'unlimited');
-});
-
-test('formatMaxVideos: a positive integer renders as-is', () => {
-  assert.strictEqual(formatMaxVideos({ maxVideos: 42 }), '42');
+test('formatSubMeta: a malformed cutoffDate is dropped, not rendered as garbage', () => {
+  const result = formatSubMeta({ cutoffDate: 'not-a-date' });
+  assert.strictEqual(result, 'Video · quality: best');
 });
 
 test('formatSubStatus: "never checked" / "pending" when the subscription has not been polled yet', () => {
@@ -214,6 +214,48 @@ test('formatSubscribedDate: a non-string input (wrong type entirely) degrades to
   assert.strictEqual(formatSubscribedDate(12345), 'date unknown');
   assert.strictEqual(formatSubscribedDate({}), 'date unknown');
   assert.strictEqual(formatSubscribedDate([]), 'date unknown');
+});
+
+// ---- v1.25 QoL (T5): cutoffDate <-> <input type="date"> conversions -------
+
+test('cutoffDateToInputValue: converts a well-formed YYYYMMDD to YYYY-MM-DD', () => {
+  assert.strictEqual(cutoffDateToInputValue('20260709'), '2026-07-09');
+});
+
+test('cutoffDateToInputValue: empty/malformed/non-string input converts to \'\' (never throws)', () => {
+  assert.strictEqual(cutoffDateToInputValue(''), '');
+  assert.strictEqual(cutoffDateToInputValue(undefined), '');
+  assert.strictEqual(cutoffDateToInputValue(null), '');
+  assert.strictEqual(cutoffDateToInputValue('2026-07-09'), ''); // already the OTHER shape
+  assert.strictEqual(cutoffDateToInputValue('not-a-date'), '');
+  assert.strictEqual(cutoffDateToInputValue(20260709), ''); // wrong type (number, not string)
+});
+
+test('cutoffDateToInputValue: an implausible month/day (e.g. month 13) converts to \'\' rather than a garbage date', () => {
+  assert.strictEqual(cutoffDateToInputValue('20261301'), '');
+  assert.strictEqual(cutoffDateToInputValue('20260732'), '');
+});
+
+test('inputValueToCutoffDate: converts a well-formed YYYY-MM-DD to YYYYMMDD', () => {
+  assert.strictEqual(inputValueToCutoffDate('2026-07-09'), '20260709');
+});
+
+test('inputValueToCutoffDate: empty/malformed/non-string input converts to undefined (never a garbage string)', () => {
+  assert.strictEqual(inputValueToCutoffDate(''), undefined);
+  assert.strictEqual(inputValueToCutoffDate('   '), undefined);
+  assert.strictEqual(inputValueToCutoffDate(undefined), undefined);
+  assert.strictEqual(inputValueToCutoffDate(null), undefined);
+  assert.strictEqual(inputValueToCutoffDate('20260709'), undefined); // already the OTHER shape
+});
+
+test('inputValueToCutoffDate: an implausible month/day converts to undefined', () => {
+  assert.strictEqual(inputValueToCutoffDate('2026-13-01'), undefined);
+  assert.strictEqual(inputValueToCutoffDate('2026-07-32'), undefined);
+});
+
+test('cutoffDateToInputValue/inputValueToCutoffDate: round-trip every valid date unchanged', () => {
+  assert.strictEqual(inputValueToCutoffDate(cutoffDateToInputValue('20250101')), '20250101');
+  assert.strictEqual(cutoffDateToInputValue(inputValueToCutoffDate('2025-12-31')), '2025-12-31');
 });
 
 // ---- v1.21 FIX 4: pinLabelFallback / resolvePinLabel -------------------------
@@ -564,7 +606,7 @@ test('createSubscriptionRow: the metadata line combines formatSubMeta with the F
     channelUrl: 'https://www.youtube.com/@meta',
     format: 'audio',
     quality: '720p',
-    maxVideos: 10,
+    cutoffDate: '20260102',
     addedAt: '2026-01-02T00:00:00.000Z',
   };
   const row = createSubscriptionRow(sub, fakeDoc, {});
@@ -573,6 +615,31 @@ test('createSubscriptionRow: the metadata line combines formatSubMeta with the F
   assert.ok(metaEl, 'a .sub-row-meta element must exist');
   assert.ok(metaEl.textContent.includes(formatSubMeta(sub)));
   assert.ok(metaEl.textContent.includes(formatSubscribedDate(sub.addedAt)));
+});
+
+test('createSubscriptionRow: the metadata line shows the cutoff date, not the retired max-videos cap', () => {
+  const sub = {
+    id: 'm2',
+    name: 'Cutoff',
+    format: 'video',
+    quality: 'best',
+    cutoffDate: '20260615',
+  };
+  const row = createSubscriptionRow(sub, fakeDoc, {});
+  const info = row.children[1];
+  const metaEl = info.children.find((el) => el.className === 'sub-row-meta');
+  assert.ok(metaEl.textContent.includes('Downloads since 2026-06-15'));
+  assert.ok(!metaEl.textContent.includes('max videos'));
+});
+
+test('createSubscriptionRow: a blank/missing cutoffDate renders the meta line without a cutoff segment (never "undefined"/"NaN")', () => {
+  const sub = { id: 'm3', name: 'NoCutoff', format: 'video', quality: 'best' };
+  const row = createSubscriptionRow(sub, fakeDoc, {});
+  const info = row.children[1];
+  const metaEl = info.children.find((el) => el.className === 'sub-row-meta');
+  assert.ok(!metaEl.textContent.includes('undefined'));
+  assert.ok(!metaEl.textContent.includes('NaN'));
+  assert.ok(!metaEl.textContent.includes('Downloads since'));
 });
 
 test('createSubscriptionRow: a live downloading status overrides the persisted lastStatus line in .sub-row-status (a separate element from .sub-row-meta)', () => {
@@ -992,7 +1059,7 @@ test('buildSettingsSheet: renders the channel name READ-ONLY (plain text, no inp
     format: 'video',
     quality: '720p',
     filetype: 'mkv',
-    maxVideos: 5,
+    cutoffDate: '20260201',
     skipShorts: true,
     addedAt: '2026-02-01T00:00:00.000Z',
     paused: false,
@@ -1020,16 +1087,26 @@ test('buildSettingsSheet: renders the channel name READ-ONLY (plain text, no inp
   assert.strictEqual(selects[1].value, '720p');
   assert.strictEqual(selects[2].value, 'mkv');
 
-  const maxVideosInput = allNodes.find((el) => el.tagName === 'INPUT' && el.type === 'number');
-  assert.ok(maxVideosInput);
-  assert.strictEqual(maxVideosInput.value, '5');
+  // v1.25 QoL (T5): retires the "download last N videos" number input --
+  // replaced by a cutoff-DATE input, pre-filled from the sub's OWN current
+  // cutoffDate (converted YYYYMMDD -> YYYY-MM-DD).
+  const cutoffDateInput = allNodes.find((el) => el.tagName === 'INPUT' && el.type === 'date');
+  assert.ok(cutoffDateInput);
+  assert.strictEqual(cutoffDateInput.value, '2026-02-01');
 
   const skipShortsCheck = allNodes.find((el) => el.tagName === 'INPUT' && el.type === 'checkbox');
   assert.ok(skipShortsCheck);
   assert.strictEqual(skipShortsCheck.checked, true);
 });
 
-test('buildSettingsSheet: Save collects format/quality/filetype/maxVideos/skipShorts into a patch and calls onSave(id, patch)', () => {
+test('buildSettingsSheet: a subscription with no cutoffDate yet renders the date input blank', () => {
+  const sub = { id: 's1b', name: 'C', channelUrl: 'https://www.youtube.com/@c' };
+  const sheetBackdrop = buildSettingsSheet(sub, fakeDoc, {});
+  const cutoffDateInput = [...sheetBackdrop.walk()].find((el) => el.tagName === 'INPUT' && el.type === 'date');
+  assert.strictEqual(cutoffDateInput.value, '');
+});
+
+test('buildSettingsSheet: Save collects format/quality/filetype/cutoffDate/skipShorts into a patch and calls onSave(id, patch)', () => {
   const sub = { id: 'e1', name: 'C', channelUrl: 'https://www.youtube.com/@c', format: 'video', quality: 'best' };
   const saveCalls = [];
   const sheetBackdrop = buildSettingsSheet(sub, fakeDoc, { onSave: (id, patch) => saveCalls.push([id, patch]) });
@@ -1044,37 +1121,36 @@ test('buildSettingsSheet: Save collects format/quality/filetype/maxVideos/skipSh
   assert.strictEqual(typeof patch.skipShorts, 'boolean');
 });
 
-test('buildSettingsSheet: Save omits maxVideos entirely when the field is left blank (blank = unchanged)', () => {
+test('buildSettingsSheet: Save omits cutoffDate entirely when the date field is left blank (blank = unchanged)', () => {
   const sub = { id: 'e2', name: 'C', channelUrl: 'https://www.youtube.com/@c' };
   const saveCalls = [];
   const sheetBackdrop = buildSettingsSheet(sub, fakeDoc, { onSave: (id, patch) => saveCalls.push([id, patch]) });
   const saveBtn = [...sheetBackdrop.walk()].find((el) => el.tagName === 'BUTTON' && el.textContent === 'Save');
   saveBtn.click();
-  assert.strictEqual('maxVideos' in saveCalls[0][1], false);
+  assert.strictEqual('cutoffDate' in saveCalls[0][1], false);
 });
 
-test('buildSettingsSheet: Save sends maxVideos: 0 (unlimited sentinel) when the field is explicitly set to 0', () => {
+test('buildSettingsSheet: Save sends the edited cutoffDate (converted YYYY-MM-DD -> YYYYMMDD) when the date field is set', () => {
   const sub = { id: 'e3', name: 'C', channelUrl: 'https://www.youtube.com/@c' };
   const saveCalls = [];
   const sheetBackdrop = buildSettingsSheet(sub, fakeDoc, { onSave: (id, patch) => saveCalls.push([id, patch]) });
-  const maxVideosInput = [...sheetBackdrop.walk()].find((el) => el.tagName === 'INPUT' && el.type === 'number');
-  maxVideosInput.value = '0';
+  const cutoffDateInput = [...sheetBackdrop.walk()].find((el) => el.tagName === 'INPUT' && el.type === 'date');
+  cutoffDateInput.value = '2026-03-15';
   const saveBtn = [...sheetBackdrop.walk()].find((el) => el.tagName === 'BUTTON' && el.textContent === 'Save');
   saveBtn.click();
-  assert.strictEqual(saveCalls[0][1].maxVideos, 0);
+  assert.strictEqual(saveCalls[0][1].cutoffDate, '20260315');
 });
 
 // ---- v1.22.0 FR-6: max-duration download gate, settings-sheet field --------
 
-test('buildSettingsSheet: renders a second number input pre-filled with the persisted maxDurationSeconds', () => {
+test('buildSettingsSheet: renders a number input pre-filled with the persisted maxDurationSeconds', () => {
   const sub = {
-    id: 's2', name: 'C', channelUrl: 'https://www.youtube.com/@c', maxVideos: 5, maxDurationSeconds: 3600,
+    id: 's2', name: 'C', channelUrl: 'https://www.youtube.com/@c', cutoffDate: '20260201', maxDurationSeconds: 3600,
   };
   const sheetBackdrop = buildSettingsSheet(sub, fakeDoc, {});
   const numberInputs = [...sheetBackdrop.walk()].filter((el) => el.tagName === 'INPUT' && el.type === 'number');
-  assert.strictEqual(numberInputs.length, 2, 'expected maxVideos + maxDurationSeconds number inputs');
-  assert.strictEqual(numberInputs[0].value, '5');
-  assert.strictEqual(numberInputs[1].value, '3600');
+  assert.strictEqual(numberInputs.length, 1, 'expected exactly the maxDurationSeconds number input (the count field is retired)');
+  assert.strictEqual(numberInputs[0].value, '3600');
 });
 
 test('buildSettingsSheet: Save omits maxDurationSeconds entirely when the field is left blank (blank = unchanged)', () => {
@@ -1091,7 +1167,7 @@ test('buildSettingsSheet: Save sends maxDurationSeconds: 0 (unlimited sentinel) 
   const saveCalls = [];
   const sheetBackdrop = buildSettingsSheet(sub, fakeDoc, { onSave: (id, patch) => saveCalls.push([id, patch]) });
   const numberInputs = [...sheetBackdrop.walk()].filter((el) => el.tagName === 'INPUT' && el.type === 'number');
-  numberInputs[1].value = '0';
+  numberInputs[0].value = '0';
   const saveBtn = [...sheetBackdrop.walk()].find((el) => el.tagName === 'BUTTON' && el.textContent === 'Save');
   saveBtn.click();
   assert.strictEqual(saveCalls[0][1].maxDurationSeconds, 0);
@@ -1102,7 +1178,7 @@ test('buildSettingsSheet: Save sends a positive maxDurationSeconds override ente
   const saveCalls = [];
   const sheetBackdrop = buildSettingsSheet(sub, fakeDoc, { onSave: (id, patch) => saveCalls.push([id, patch]) });
   const numberInputs = [...sheetBackdrop.walk()].filter((el) => el.tagName === 'INPUT' && el.type === 'number');
-  numberInputs[1].value = '3600';
+  numberInputs[0].value = '3600';
   const saveBtn = [...sheetBackdrop.walk()].find((el) => el.tagName === 'BUTTON' && el.textContent === 'Save');
   saveBtn.click();
   assert.strictEqual(saveCalls[0][1].maxDurationSeconds, 3600);
@@ -1249,15 +1325,16 @@ test('applyStatusUpdatesInPlace: an id with no row reference, or an empty/missin
 test('applyStatusUpdatesInPlace: NEVER touches an independently-open settings sheet -- the FR-1 poll-clobber bug class cannot recur because the sheet is not part of the row map (AC1/AC4/AC22)', () => {
   // This is the direct regression proof for T3's FR-1 fold-in: the ~2.5s
   // live-status poll must not drop an in-progress, unsaved settings-sheet
-  // edit (e.g. a "download last N" count change from 3 -> 2).
-  const sub = { id: 'e1', name: 'Editable', channelUrl: 'https://www.youtube.com/@editable', maxVideos: 3 };
+  // edit (e.g. a cutoff-date change, v1.25 QoL retired the old "download
+  // last N videos" count field this test used to exercise here).
+  const sub = { id: 'e1', name: 'Editable', channelUrl: 'https://www.youtube.com/@editable', cutoffDate: '20260301' };
   const sheetSaveCalls = [];
   const sheetBackdrop = buildSettingsSheet(sub, fakeDoc, { onSave: (id, patch) => sheetSaveCalls.push([id, patch]) });
-  const maxVideosInput = [...sheetBackdrop.walk()].find((el) => el.tagName === 'INPUT' && el.type === 'number');
+  const cutoffDateInput = [...sheetBackdrop.walk()].find((el) => el.tagName === 'INPUT' && el.type === 'date');
 
-  // The user opens the sheet and edits the count (3 -> 2) but has NOT saved
+  // The user opens the sheet and edits the cutoff date but has NOT saved
   // yet.
-  maxVideosInput.value = '2';
+  cutoffDateInput.value = '2026-03-02';
 
   // A row for the SAME subscription exists in the list (as it would in the
   // real page) -- it is what the poll actually has a reference to via
@@ -1272,7 +1349,7 @@ test('applyStatusUpdatesInPlace: NEVER touches an independently-open settings sh
   });
 
   // The unsaved input value must survive completely untouched.
-  assert.strictEqual(maxVideosInput.value, '2', 'a live poll tick must never clobber the open sheet\'s unsaved edit');
+  assert.strictEqual(cutoffDateInput.value, '2026-03-02', 'a live poll tick must never clobber the open sheet\'s unsaved edit');
 
   // The row's OWN status line was still updated in place, proving the poll
   // did run -- it just had no way to reach the sheet.
@@ -1284,7 +1361,7 @@ test('applyStatusUpdatesInPlace: NEVER touches an independently-open settings sh
   saveBtn.click();
   assert.strictEqual(sheetSaveCalls.length, 1);
   assert.strictEqual(sheetSaveCalls[0][0], 'e1');
-  assert.strictEqual(sheetSaveCalls[0][1].maxVideos, 2, 'Save must persist the edited count, not the original 3');
+  assert.strictEqual(sheetSaveCalls[0][1].cutoffDate, '20260302', 'Save must persist the edited date, not the original 20260301');
 });
 
 // ---- FR-A/FR-E: one-shot job rows (unchanged by T3) -------------------------

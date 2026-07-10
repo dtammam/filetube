@@ -55,84 +55,100 @@ test('buildYtdlpListArgs never embeds the URL into an option (it is its own arra
   }
 });
 
-// ---- buildYtdlpListArgs: --playlist-end bounding (v1.11.1 hotfix) ---------
+// ---- buildYtdlpListArgs: --dateafter date-based model (v1.25 QoL T2) -----
 //
-// Regression coverage for the production bug: subscribing to a real, large
-// channel used to enumerate its ENTIRE back-catalog with no scope limit at
-// all. `config.maxVideos` (parsed by lib/ytdlp/config.js, default 25) now
-// bounds the LIST pass via `--playlist-end`.
+// REPLACES the old v1.11.1 "download last N videos" cap: the LIST pass is no
+// longer bounded by `--playlist-end` at all (regardless of `config.maxVideos`
+// / `sub.maxVideos`, which are now dormant plumbing only) -- it is instead
+// bounded by `--dateafter <sub.cutoffDate>` (T1's validated `YYYYMMDD`
+// 8-digit string). `--download-archive` dedup is what actually prevents
+// re-downloads, so there is deliberately no count cap and no break-early
+// logic.
 
-test('buildYtdlpListArgs includes "--playlist-end 25" for the documented default maxVideos', () => {
-  const config = makeConfig({ maxVideos: 25 });
-  const result = args.buildYtdlpListArgs(baseSub(), config);
-  const idx = result.indexOf('--playlist-end');
-  assert.ok(idx >= 0, '--playlist-end should be present by default');
-  assert.equal(result[idx + 1], '25');
+test('buildYtdlpListArgs includes "--dateafter <cutoffDate>" when sub.cutoffDate is a valid 8-digit YYYYMMDD string', () => {
+  const config = makeConfig();
+  const result = args.buildYtdlpListArgs(baseSub({ cutoffDate: '20260709' }), config);
+  const idx = result.indexOf('--dateafter');
+  assert.ok(idx >= 0, '--dateafter should be present for a valid cutoffDate');
+  assert.equal(result[idx + 1], '20260709');
   // Must come before the `--` separator (never after it, where it could be
   // mistaken for a positional argument).
-  assert.ok(idx < result.indexOf('--'), '--playlist-end must precede the "--" separator');
+  assert.ok(idx < result.indexOf('--'), '--dateafter must precede the "--" separator');
 });
 
-test('buildYtdlpListArgs includes "--playlist-end <N>" for a configured, non-default maxVideos', () => {
-  const config = makeConfig({ maxVideos: 100 });
-  const result = args.buildYtdlpListArgs(baseSub(), config);
-  const idx = result.indexOf('--playlist-end');
+test('buildYtdlpListArgs: --dateafter is present as its own distinct argv-array element, not concatenated/interpolated into another arg', () => {
+  const config = makeConfig();
+  const result = args.buildYtdlpListArgs(baseSub({ cutoffDate: '20260101' }), config);
+  const idx = result.indexOf('--dateafter');
   assert.ok(idx >= 0);
-  assert.equal(result[idx + 1], '100');
-});
-
-test('buildYtdlpListArgs OMITS --playlist-end entirely when maxVideos is 0 (unlimited)', () => {
-  const config = makeConfig({ maxVideos: 0 });
-  const result = args.buildYtdlpListArgs(baseSub(), config);
-  assert.ok(!result.includes('--playlist-end'), 'maxVideos: 0 must mean no bound at all');
-});
-
-test('buildYtdlpListArgs OMITS --playlist-end when maxVideos is missing/malformed (fails safe to no limit)', () => {
-  for (const bad of [undefined, null, -1, 1.5, 'abc', NaN]) {
-    const config = makeConfig({ maxVideos: bad });
-    const result = args.buildYtdlpListArgs(baseSub(), config);
-    assert.ok(!result.includes('--playlist-end'), `maxVideos=${JSON.stringify(bad)} should omit --playlist-end`);
+  // Exactly two elements: the flag, then the bare date value -- nothing else
+  // in the array contains the date as a substring.
+  assert.equal(result[idx], '--dateafter');
+  assert.equal(result[idx + 1], '20260101');
+  for (let i = 0; i < result.length; i++) {
+    if (i === idx + 1) continue;
+    assert.ok(!result[i].includes('20260101'), `unexpected embedded cutoffDate in arg[${i}]: ${result[i]}`);
   }
 });
 
-// ---- FR-C: per-subscription maxVideos override (precedence over global) --
-
-test('buildYtdlpListArgs: a per-sub maxVideos overrides the global config default', () => {
-  const config = makeConfig({ maxVideos: 25 });
-  const result = args.buildYtdlpListArgs(baseSub({ maxVideos: 10 }), config);
-  const idx = result.indexOf('--playlist-end');
-  assert.ok(idx >= 0);
-  assert.equal(result[idx + 1], '10', 'the per-sub override (10) must win over the global default (25)');
+test('buildYtdlpListArgs OMITS --dateafter when sub.cutoffDate is missing/undefined (graceful, no date bound)', () => {
+  const config = makeConfig();
+  const result = args.buildYtdlpListArgs(baseSub(), config); // no cutoffDate
+  assert.ok(!result.includes('--dateafter'), 'a missing cutoffDate must omit --dateafter entirely');
 });
 
-test('buildYtdlpListArgs: an UNSET per-sub maxVideos falls back to the global default UNCHANGED (AC19)', () => {
-  const config = makeConfig({ maxVideos: 25 });
-  const result = args.buildYtdlpListArgs(baseSub(), config); // no sub.maxVideos
-  const idx = result.indexOf('--playlist-end');
-  assert.ok(idx >= 0);
-  assert.equal(result[idx + 1], '25');
+test('buildYtdlpListArgs OMITS --dateafter when sub.cutoffDate is malformed/invalid (fails safe, never a hostile value)', () => {
+  const config = makeConfig();
+  for (const bad of [null, '', '2026070', '202607099', 'abcd0709', '2026-07-09', 20260709, {}, ['20260709']]) {
+    const result = args.buildYtdlpListArgs(baseSub({ cutoffDate: bad }), config);
+    assert.ok(!result.includes('--dateafter'), `cutoffDate=${JSON.stringify(bad)} should omit --dateafter`);
+  }
 });
 
-test('buildYtdlpListArgs: a per-sub maxVideos of 0 means unlimited (omits --playlist-end) even when the global has a bound', () => {
-  const config = makeConfig({ maxVideos: 25 });
-  const result = args.buildYtdlpListArgs(baseSub({ maxVideos: 0 }), config);
-  assert.ok(!result.includes('--playlist-end'), 'sub.maxVideos: 0 must override the global bound with "unlimited"');
+test('buildYtdlpListArgs NEVER emits --playlist-end anymore, regardless of config.maxVideos/sub.maxVideos (count cap removed)', () => {
+  for (const maxVideos of [undefined, 0, 25, 100]) {
+    const config = makeConfig({ maxVideos });
+    const result = args.buildYtdlpListArgs(baseSub({ cutoffDate: '20260709', maxVideos }), config);
+    assert.ok(!result.includes('--playlist-end'), `maxVideos=${JSON.stringify(maxVideos)} must not produce --playlist-end anymore`);
+  }
 });
 
-test('buildYtdlpListArgs: a null per-sub maxVideos (nullish) also falls back to the global default', () => {
-  const config = makeConfig({ maxVideos: 25 });
-  const result = args.buildYtdlpListArgs(baseSub({ maxVideos: null }), config);
-  const idx = result.indexOf('--playlist-end');
-  assert.ok(idx >= 0);
-  assert.equal(result[idx + 1], '25');
+// ---- playlistEndArgs: dormant, still exported/functional standalone ------
+//
+// The function itself is untouched (avoids churn in config.js/store.js and
+// their own tests, which still reference maxVideos) -- it simply is no
+// longer called from buildYtdlpListArgs. These are the SAME assertions the
+// old buildYtdlpListArgs-level tests made, now exercised directly against
+// the standalone function to prove it still behaves correctly even though
+// nothing wires it up anymore.
+
+test('playlistEndArgs: still returns "--playlist-end <N>" for a positive integer maxVideos (dormant, standalone)', () => {
+  assert.deepEqual(args.playlistEndArgs({ maxVideos: 25 }), ['--playlist-end', '25']);
+  assert.deepEqual(args.playlistEndArgs({ maxVideos: 100 }), ['--playlist-end', '100']);
 });
 
-test('buildYtdlpListArgs: an invalid per-sub maxVideos (non-integer) is not treated as a bound (playlistEndArgs fails safe to omit)', () => {
-  const config = makeConfig({ maxVideos: 25 });
-  const result = args.buildYtdlpListArgs(baseSub({ maxVideos: 1.5 }), config);
-  // playlistEndArgs only emits the flag for a positive integer -- a
-  // malformed per-sub override is NOT silently coerced into a bound.
-  assert.ok(!result.includes('--playlist-end'), 'a non-integer maxVideos must not produce a --playlist-end bound');
+test('playlistEndArgs: still returns [] for 0/missing/malformed maxVideos (dormant, standalone)', () => {
+  for (const bad of [undefined, null, 0, -1, 1.5, 'abc', NaN]) {
+    assert.deepEqual(args.playlistEndArgs({ maxVideos: bad }), []);
+  }
+});
+
+// ---- dateAfterArgs: standalone unit coverage ------------------------------
+
+test('dateAfterArgs: returns ["--dateafter", cutoffDate] for a valid 8-digit YYYYMMDD string', () => {
+  assert.deepEqual(args.dateAfterArgs({ cutoffDate: '20260709' }), ['--dateafter', '20260709']);
+});
+
+test('dateAfterArgs: returns [] for a missing/malformed cutoffDate', () => {
+  for (const bad of [undefined, null, '', '2026070', '202607099', 'abcd0709', '2026-07-09', 20260709, {}, ['20260709']]) {
+    assert.deepEqual(args.dateAfterArgs({ cutoffDate: bad }), [], `cutoffDate=${JSON.stringify(bad)} should yield []`);
+  }
+});
+
+test('dateAfterArgs: returns [] when sub itself is missing/undefined', () => {
+  assert.deepEqual(args.dateAfterArgs(undefined), []);
+  assert.deepEqual(args.dateAfterArgs(null), []);
+  assert.deepEqual(args.dateAfterArgs({}), []);
 });
 
 // ---- buildYtdlpDownloadArgs: audio vs video, quality default -------------

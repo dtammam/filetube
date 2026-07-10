@@ -156,7 +156,12 @@ test('the one-off download endpoint the modal calls is 404 when disabled, and wo
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-ytdlp-oneoff-'));
   const run = require('../../lib/ytdlp/run');
   const originalRunDownload = run.runDownload;
+  const originalProbeChannel = run.probeChannel;
   run.runDownload = async () => ({ ok: true, code: 0, stdout: '', stderr: '' });
+  // v1.25 QoL (T3): the body below omits `folder`, so `runOneShot` now probes
+  // for a channel before its download starts -- stubbed deterministically so
+  // this test never depends on a real yt-dlp binary/network.
+  run.probeChannel = async () => null;
   const enabled = await bootApp({ config: enabledConfig(tmpDir) });
   try {
     // Exactly the body shape buildOneOffDownloadBody composes.
@@ -176,6 +181,7 @@ test('the one-off download endpoint the modal calls is 404 when disabled, and wo
     assert.ok(snapshot.oneShots[data.jobId]);
   } finally {
     run.runDownload = originalRunDownload;
+    run.probeChannel = originalProbeChannel;
     await enabled.close();
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }

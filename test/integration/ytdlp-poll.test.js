@@ -1152,3 +1152,125 @@ test('runPoll: multiple survivors each get their OWN captured identity (no cross
   assert.ok(ns.downloadMeta.multi1);
   assert.ok(ns.downloadMeta.multi2);
 });
+
+// ---- FIX 1 (two-reviewer gate, post-v1.25.0, BLOCKER): a fully-successful --
+// poll cycle (clean listing, zero download failures) advances the polled ----
+// subscription's `cutoffDate` forward to "today" -- closing the unbounded-  --
+// re-listing blocker where a fixed cutoffDate made EVERY future poll re-    --
+// LIST (`--dump-json`) every video published since the ORIGINAL cutoff,     --
+// forever, rather than just since the last successful poll. `nowMs` is      --
+// threaded through `ytdlp.runPoll(deps, config, subId, nowMs)` for a        --
+// deterministic "today."
+
+test('FIX 1: a clean successful poll (no new videos) advances cutoffDate to today', async () => {
+  const deps = makeFakeDeps();
+  const sub = await addSub(deps, { cutoffDate: '20200101' });
+  run.runList = async () => ({ ok: true, stdout: '', stderr: '' });
+  run.runDownload = async () => {
+    throw new Error('must never be called -- there are no survivors to download');
+  };
+
+  const nowMs = Date.UTC(2026, 6, 10); // 2026-07-10T00:00:00Z
+  await ytdlp.runPoll(deps, baseConfig(), undefined, nowMs);
+
+  const [persisted] = store.listSubscriptions(deps).filter((s) => s.id === sub.id);
+  assert.equal(persisted.lastStatus, 'ok: no new videos');
+  assert.equal(persisted.cutoffDate, '20260710', 'a clean successful cycle must advance cutoffDate to "today" (nowMs)');
+});
+
+test('FIX 1: a successful poll that downloads new survivors also advances cutoffDate to today', async () => {
+  const deps = makeFakeDeps();
+  const sub = await addSub(deps, { cutoffDate: '20200101' });
+  run.runList = async () => ({ ok: true, stdout: ndjson([{ id: 'survivor1', availability: 'public' }]), stderr: '' });
+  run.runDownload = async () => ({ ok: true, code: 0, stdout: '', stderr: '' });
+
+  const nowMs = Date.UTC(2026, 6, 10);
+  await ytdlp.runPoll(deps, baseConfig(), undefined, nowMs);
+
+  const [persisted] = store.listSubscriptions(deps).filter((s) => s.id === sub.id);
+  assert.equal(persisted.lastStatus, 'ok: downloaded 1 new video(s)');
+  assert.equal(persisted.cutoffDate, '20260710');
+});
+
+test('FIX 1: an errored poll (listing failure) leaves cutoffDate unchanged', async () => {
+  const deps = makeFakeDeps();
+  const sub = await addSub(deps, { cutoffDate: '20200101' });
+  run.runList = async () => ({ ok: false, stdout: '', stderr: '', error: 'network unreachable' });
+  run.runDownload = async () => {
+    throw new Error('must never be called -- listing already failed');
+  };
+
+  const nowMs = Date.UTC(2026, 6, 10);
+  await ytdlp.runPoll(deps, baseConfig(), undefined, nowMs);
+
+  const [persisted] = store.listSubscriptions(deps).filter((s) => s.id === sub.id);
+  assert.ok(persisted.lastStatus.startsWith('error'), `expected an error status, got: ${persisted.lastStatus}`);
+  assert.equal(persisted.cutoffDate, '20200101', 'a listing failure must never advance cutoffDate -- the window must stay wide for the next retry');
+});
+
+test('FIX 1: a poll where the download itself fails leaves cutoffDate unchanged (a genuine download error must stay in the window for retry)', async () => {
+  const deps = makeFakeDeps();
+  const sub = await addSub(deps, { cutoffDate: '20200101' });
+  run.runList = async () => ({ ok: true, stdout: ndjson([{ id: 'survivor1', availability: 'public' }]), stderr: '' });
+  run.runDownload = async () => ({ ok: false, code: 1, stdout: '', stderr: '', error: 'yt-dlp exited with code 1' });
+
+  const nowMs = Date.UTC(2026, 6, 10);
+  await ytdlp.runPoll(deps, baseConfig(), undefined, nowMs);
+
+  const [persisted] = store.listSubscriptions(deps).filter((s) => s.id === sub.id);
+  assert.ok(persisted.lastStatus.startsWith('error'), `expected an error status, got: ${persisted.lastStatus}`);
+  assert.equal(persisted.cutoffDate, '20200101', 'a failed download must never advance cutoffDate -- the un-archived video must stay in the window for retry');
+});
+
+test('FIX 1: cutoffDate never advances BACKWARD, even if nowMs is somehow earlier than the sub\'s existing cutoffDate', async () => {
+  const deps = makeFakeDeps();
+  // A cutoffDate deliberately set in the FUTURE relative to `nowMs` below
+  // (e.g. a user-entered future date) -- a clean successful poll must never
+  // regress it back to "today."
+  const sub = await addSub(deps, { cutoffDate: '20270101' });
+  run.runList = async () => ({ ok: true, stdout: '', stderr: '' });
+  run.runDownload = async () => {
+    throw new Error('must never be called');
+  };
+
+  const nowMs = Date.UTC(2026, 6, 10); // "today" is BEFORE the sub's existing cutoffDate
+  await ytdlp.runPoll(deps, baseConfig(), undefined, nowMs);
+
+  const [persisted] = store.listSubscriptions(deps).filter((s) => s.id === sub.id);
+  assert.equal(persisted.lastStatus, 'ok: no new videos');
+  assert.equal(persisted.cutoffDate, '20270101', 'cutoffDate must only ever advance FORWARD, never regress');
+});
+
+test('FIX 1 end-to-end narrowing: an old cutoff pulls history on the first poll, then narrows to "since today" so the second poll lists a tight window', async () => {
+  const deps = makeFakeDeps();
+  const sub = await addSub(deps, { cutoffDate: '20200101' });
+  const config = baseConfig();
+
+  const capturedSubsByCall = [];
+  run.runList = async (subArg) => {
+    capturedSubsByCall.push({ cutoffDate: subArg.cutoffDate });
+    return { ok: true, stdout: '', stderr: '' };
+  };
+  run.runDownload = async () => {
+    throw new Error('must never be called -- no survivors in either cycle');
+  };
+
+  // First poll: the wide, user-set history window is what actually reaches
+  // the LIST pass.
+  const firstPollNowMs = Date.UTC(2026, 6, 10);
+  await ytdlp.runPoll(deps, config, undefined, firstPollNowMs);
+  assert.equal(capturedSubsByCall[0].cutoffDate, '20200101', 'the FIRST poll must still list using the original, wide cutoff (the one-time history pull)');
+
+  let [persisted] = store.listSubscriptions(deps).filter((s) => s.id === sub.id);
+  assert.equal(persisted.cutoffDate, '20260710', 'the first clean poll narrows the window to today');
+
+  // Second poll, a day later: the LIST pass now uses the NARROWED cutoff --
+  // proving the window is bounded/incremental from here on, never re-
+  // re-listing the whole back catalog again.
+  const secondPollNowMs = Date.UTC(2026, 6, 11);
+  await ytdlp.runPoll(deps, config, undefined, secondPollNowMs);
+  assert.equal(capturedSubsByCall[1].cutoffDate, '20260710', 'the SECOND poll must list using the narrowed "since the first poll" cutoff, not the original wide one');
+
+  [persisted] = store.listSubscriptions(deps).filter((s) => s.id === sub.id);
+  assert.equal(persisted.cutoffDate, '20260711', 'the second clean poll narrows the window forward again, to its own "today"');
+});
