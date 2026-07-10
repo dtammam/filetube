@@ -536,13 +536,18 @@ if (typeof module !== 'undefined' && module.exports) {
           window.location.reload();
         } else {
           alert('Failed to rescan: ' + data.error);
-          rescanBtn.innerHTML = '<i class="icon-refresh"></i> <span class="btn-label">Rescan Files</span>';
+          // Visual-consistency polish: reset to the SAME short "Rescan"
+          // label the static markup starts with (was "Rescan Files" here,
+          // a casing/length mismatch against the button's own resting
+          // label -- the fuller "Rescan Files" name still lives in
+          // title/aria-label).
+          rescanBtn.innerHTML = '<i class="icon-refresh"></i> <span class="btn-label">Rescan</span>';
           rescanBtn.disabled = false;
         }
       } catch (err) {
         console.error(err);
         alert('Network error trigger scanner.');
-        rescanBtn.innerHTML = '<i class="icon-refresh"></i> <span class="btn-label">Rescan Files</span>';
+        rescanBtn.innerHTML = '<i class="icon-refresh"></i> <span class="btn-label">Rescan</span>';
         rescanBtn.disabled = false;
       }
     }, { signal });

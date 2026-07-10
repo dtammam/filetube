@@ -1512,6 +1512,18 @@ if (typeof module !== 'undefined' && module.exports) {
     // no new CSS. Idempotent (guarded on `moveBtn` already existing) so a
     // second media load within the same cached view instance never
     // duplicates the control.
+    //
+    // Visual-consistency follow-up (button glyph polish): Download/Delete
+    // already carry a leading <i class="icon-*"> glyph -- Move was the odd
+    // one out (text-only), which also made it the widest/least predictable
+    // width in the row and the one most likely to wrap onto its own line on
+    // a narrow phone. Gives it `.icon-folder` (the closest existing glyph to
+    // "move to a folder" in the icon-set -- see style.css's icon-set-axis
+    // section; there is no dedicated move/arrow-into-folder asset and this
+    // task does not add new icon assets), built via createElement/
+    // createTextNode (not innerHTML) to match the rest of this file's DOM
+    // conventions. `aria-label`/`title` stay fully descriptive even though
+    // the visible label is the same short "Move" as before.
     function setupMoveButton() {
       const watchActions = root.querySelector('.watch-actions');
       if (!watchActions || !mediaData) return;
@@ -1520,7 +1532,12 @@ if (typeof module !== 'undefined' && module.exports) {
         moveBtn.type = 'button';
         moveBtn.id = 'move-media-btn';
         moveBtn.className = 'btn';
-        moveBtn.textContent = 'Move';
+        moveBtn.title = 'Move to another folder';
+        moveBtn.setAttribute('aria-label', 'Move to another folder');
+        const moveIcon = document.createElement('i');
+        moveIcon.className = 'icon-folder';
+        moveBtn.appendChild(moveIcon);
+        moveBtn.appendChild(document.createTextNode(' Move'));
         watchActions.appendChild(moveBtn);
         moveBtn.addEventListener('click', handleMoveClick, { signal });
       }

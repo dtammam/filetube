@@ -1612,3 +1612,120 @@ test('reorderPins: never writes into db.folders/db.folderSettings (structural re
   assert.deepEqual(db.folders, ['/movies'], 'db.folders must be byte-identical -- pin reorder never touches it');
   assert.deepEqual(db.folderSettings, { '/movies': { name: 'Movies' } }, 'db.folderSettings must be byte-identical -- pin reorder never touches it');
 });
+
+// ---- v1.25 QoL (T1): per-subscription download `cutoffDate` (schema only) --
+//
+// Replaces the old "download last N videos" model with a per-subscription
+// cutoff DATE (`--dateafter`, wired in a later task, T2); this file only adds
+// the schema + validators + migration. Test posture mirrors `maxVideos`/
+// `maxDurationSeconds` above throughout.
+
+test('validateCutoffDate: accepts undefined (unset)', () => {
+  assert.deepEqual(store.validateCutoffDate(undefined), { ok: true, value: undefined });
+});
+
+test('validateCutoffDate: accepts a valid YYYYMMDD string, unchanged', () => {
+  assert.deepEqual(store.validateCutoffDate('20260101'), { ok: true, value: '20260101' });
+});
+
+test('validateCutoffDate: rejects a malformed/non-8-digit string', () => {
+  assert.equal(store.validateCutoffDate('2026-01-01').ok, false);
+  assert.equal(store.validateCutoffDate('2026101').ok, false); // 7 digits
+  assert.equal(store.validateCutoffDate('202601011').ok, false); // 9 digits
+  assert.equal(store.validateCutoffDate('').ok, false);
+});
+
+test('validateCutoffDate: rejects an impossible calendar date and an implausible year', () => {
+  assert.equal(store.validateCutoffDate('20230230').ok, false, 'Feb 30 does not exist');
+  assert.equal(store.validateCutoffDate('19990101').ok, false, 'before the ~2000 floor');
+  assert.equal(store.validateCutoffDate('29990101').ok, false, 'implausibly far in the future');
+});
+
+test('validateCutoffDate: rejects a non-string value', () => {
+  assert.equal(store.validateCutoffDate(20260101).ok, false);
+  assert.equal(store.validateCutoffDate(null).ok, false);
+  assert.equal(store.validateCutoffDate({}).ok, false);
+});
+
+test('validateSubscriptionInput: accepts a valid cutoffDate and passes it through unchanged', () => {
+  const result = store.validateSubscriptionInput({ channelUrl: 'https://www.youtube.com/@cutoffpass', cutoffDate: '20250601' });
+  assert.equal(result.ok, true);
+  assert.equal(result.value.cutoffDate, '20250601');
+});
+
+test('validateSubscriptionInput: accepts unset cutoffDate (stays undefined)', () => {
+  const result = store.validateSubscriptionInput({ channelUrl: 'https://www.youtube.com/@cutoffunset' });
+  assert.equal(result.ok, true);
+  assert.equal(result.value.cutoffDate, undefined);
+});
+
+test('validateSubscriptionInput: rejects an invalid cutoffDate', () => {
+  const result = store.validateSubscriptionInput({ channelUrl: 'https://www.youtube.com/@cutoffreject', cutoffDate: '20230230' });
+  assert.equal(result.ok, false);
+});
+
+test('addSubscription: no cutoffDate supplied defaults to YESTERDAY, deterministic via an injected nowMs', async () => {
+  const deps = makeFakeDeps();
+  const nowMs = Date.UTC(2026, 6, 10); // 2026-07-10T00:00:00Z
+  const record = await store.addSubscription(
+    deps,
+    { channelUrl: 'https://www.youtube.com/@cutoffdefault', format: 'video' },
+    nowMs
+  );
+  assert.equal(record.cutoffDate, '20260709');
+});
+
+test('addSubscription: an explicit valid cutoffDate is stored as-is, not overridden by the yesterday default', async () => {
+  const deps = makeFakeDeps();
+  const nowMs = Date.UTC(2026, 6, 10);
+  const record = await store.addSubscription(
+    deps,
+    { channelUrl: 'https://www.youtube.com/@cutoffset', format: 'video', cutoffDate: '20250601' },
+    nowMs
+  );
+  assert.equal(record.cutoffDate, '20250601');
+});
+
+test('updateSubscription: can patch cutoffDate independent of other fields', async () => {
+  const deps = makeFakeDeps();
+  const added = await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@cutoffpatch', format: 'video', cutoffDate: '20250601' });
+  const updated = await store.updateSubscription(deps, added.id, { cutoffDate: '20250701' });
+  assert.equal(updated.cutoffDate, '20250701');
+  assert.equal(updated.format, 'video');
+});
+
+test('updateSubscription: an invalid cutoffDate within the patch is defensively ignored rather than corrupting the record', async () => {
+  const deps = makeFakeDeps();
+  const added = await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@cutoffguard', format: 'video', cutoffDate: '20250601' });
+  const result = await store.updateSubscription(deps, added.id, { cutoffDate: '20230230' });
+  assert.equal(result.cutoffDate, '20250601', 'an invalid cutoffDate in the patch must not overwrite the existing value');
+});
+
+test('ensureYtdlp: backfills cutoffDate to the DATE portion of lastCheckedAt when present', () => {
+  const legacySub = { id: 'legacy-cutoff-checked', channelUrl: 'https://www.youtube.com/@legacychecked', name: 'Legacy', format: 'video', quality: 'best', addedAt: '2020-01-01T00:00:00.000Z', lastCheckedAt: '2026-03-15T08:00:00.000Z', lastStatus: 'ok' };
+  const db = { ytdlp: { allowMembersOnly: false, subscriptions: [legacySub] } };
+  const ns = store.ensureYtdlp(db);
+  assert.equal(ns.subscriptions[0].cutoffDate, '20260315');
+});
+
+test('ensureYtdlp: backfills cutoffDate to the DATE portion of addedAt when lastCheckedAt is absent', () => {
+  const legacySub = { id: 'legacy-cutoff-added', channelUrl: 'https://www.youtube.com/@legacyadded', name: 'Legacy', format: 'video', quality: 'best', addedAt: '2021-06-20T00:00:00.000Z', lastCheckedAt: null, lastStatus: null };
+  const db = { ytdlp: { allowMembersOnly: false, subscriptions: [legacySub] } };
+  const ns = store.ensureYtdlp(db);
+  assert.equal(ns.subscriptions[0].cutoffDate, '20210620');
+});
+
+test('ensureYtdlp: backfills cutoffDate to YESTERDAY when neither lastCheckedAt nor addedAt is a usable date', () => {
+  const corruptSub = { id: 'legacy-cutoff-neither', channelUrl: 'https://www.youtube.com/@legacyneither', name: 'Legacy', format: 'video', quality: 'best', addedAt: 'not-a-date', lastCheckedAt: null, lastStatus: null };
+  const db = { ytdlp: { allowMembersOnly: false, subscriptions: [corruptSub] } };
+  const nowMs = Date.UTC(2026, 6, 10); // 2026-07-10T00:00:00Z
+  const ns = store.ensureYtdlp(db, nowMs);
+  assert.equal(ns.subscriptions[0].cutoffDate, '20260709');
+});
+
+test('ensureYtdlp: an already-set, valid cutoffDate is never overwritten (idempotent, mirrors paused/skipShorts/order)', () => {
+  const modernSub = { id: 'modern-cutoff', channelUrl: 'https://www.youtube.com/@moderncutoff', name: 'Modern', format: 'video', quality: 'best', addedAt: '2026-01-01T00:00:00.000Z', lastCheckedAt: '2026-06-01T00:00:00.000Z', lastStatus: null, cutoffDate: '20200101' };
+  const db = { ytdlp: { allowMembersOnly: false, subscriptions: [modernSub] } };
+  const ns = store.ensureYtdlp(db);
+  assert.equal(ns.subscriptions[0].cutoffDate, '20200101');
+});
