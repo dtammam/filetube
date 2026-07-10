@@ -4952,8 +4952,21 @@ document.addEventListener('DOMContentLoaded', () => {
   // first so a slow-to-attach script (unlikely here, but defensive) never
   // silently skips registration entirely.
   if (typeof window !== 'undefined') {
-    if (document.readyState === 'complete') registerServiceWorker();
-    else window.addEventListener('load', registerServiceWorker, { once: true });
+    // v1.26.4 wave-2 review fix (F7): the readyState==='complete' branch
+    // calls registerServiceWorker() SYNCHRONOUSLY, inline in this same
+    // DOMContentLoaded handler -- unlike the 'load' listener branch below, a
+    // SYNCHRONOUS throw here (not a rejection -- registerServiceWorker's own
+    // .catch() already handles a rejected register() promise) would
+    // propagate straight out of this call and abort every remaining line of
+    // this handler (menu-toggle wiring, search box, bootRouter(), etc.) --
+    // the same failure class as this release's public/js/setup.js
+    // renderIconPicker() guard fix. Wrapped in try/catch and swallowed,
+    // mirroring registerServiceWorker's own rejection .catch().
+    if (document.readyState === 'complete') {
+      try { registerServiceWorker(); } catch (err) { console.error('Service worker registration failed:', err); }
+    } else {
+      window.addEventListener('load', registerServiceWorker, { once: true });
+    }
   }
 
   const menuToggle = document.getElementById('menu-toggle');

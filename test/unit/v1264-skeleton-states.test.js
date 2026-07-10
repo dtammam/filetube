@@ -1,6 +1,6 @@
 'use strict';
 
-// [UNIT] v1.26.3 Item 1 (loading skeletons): `buildSkeletonGrid`
+// [UNIT] v1.26.4 Item 1 (loading skeletons): `buildSkeletonGrid`
 // (public/js/main.js, a pure string builder) and `buildSkeletonRows`
 // (lib/ytdlp/client/subscriptions.js, a createElement-only DOM builder --
 // this file carries a hard, file-wide "never .innerHTML" bar, see its own

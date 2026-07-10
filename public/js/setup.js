@@ -414,7 +414,26 @@ function renderThemePicker() {
 // 'auto'), defaulting to 'outlined' when unset.
 function renderIconPicker() {
   const container = document.getElementById('icon-picker');
-  if (!container) return;
+  // v1.26.4 (found while writing the jsdom shell smoke-test, test/
+  // integration/shell-smoke.test.js): `container` can exist WITHOUT this
+  // module's own `controller` yet being set. common.js's `applyIconSet()`
+  // calls this function (feature-detected, `typeof renderIconPicker ===
+  // 'function'`) from its OWN `initIconSet()`, which runs EARLY in
+  // common.js's single `DOMContentLoaded` handler -- BEFORE `bootRouter()`
+  // (called later in that same handler) ever invokes THIS module's own
+  // `init()`, which is what actually sets `controller`. On a fresh direct
+  // load of /setup.html, `#icon-picker` is already present in the
+  // server-rendered markup, so that early call used to reach
+  // `controller.signal` while `controller` was still `null`, throwing and
+  // aborting the REST of common.js's DOMContentLoaded handler entirely
+  // (menu-toggle wiring, click interception, bootRouter() itself, etc. --
+  // everything queued after the throw point never ran). Bailing here is
+  // safe and lossless: this module's own `init()` (a few lines later, same
+  // tick) unconditionally calls `renderIconPicker()` again once `controller`
+  // is set, which fully (re)builds the picker and wires its click handlers
+  // -- so the picker still ends up correct; only the earlier, premature
+  // attempt is now skipped instead of crashing.
+  if (!container || !controller) return;
   let pref = null;
   try { pref = localStorage.getItem('ft-icons'); } catch (_) { /* fall through to default */ }
   const active = (pref === 'auto' || ICON_SETS.includes(pref)) ? pref : 'outlined';

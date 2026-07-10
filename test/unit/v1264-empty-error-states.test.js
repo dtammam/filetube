@@ -1,6 +1,6 @@
 'use strict';
 
-// [UNIT] v1.26.3 Items 2/3 (unified empty/error states): `buildEmptyStateHtml`
+// [UNIT] v1.26.4 Items 2/3 (unified empty/error states): `buildEmptyStateHtml`
 // / `buildErrorStateHtml` (public/js/common.js) -- pure string builders
 // shared by the home/library grid (public/js/main.js) and the subscriptions
 // list (lib/ytdlp/client/subscriptions.js). Also locks that `.empty-state`/
@@ -89,7 +89,7 @@ test('subscriptions.js client no longer inline-styles its load-error text -- use
   // NOT common.js's string-based buildErrorStateHtml -- this file carries a
   // hard, file-wide "never .innerHTML" bar (see its own SECURITY comment),
   // so it has its own DOM-node twin, buildErrorStateNode (see
-  // test/unit/v1263-skeleton-states.test.js's sibling coverage of
+  // test/unit/v1264-skeleton-states.test.js's sibling coverage of
   // buildSkeletonRows for the same reasoning).
   assert.match(subsClientJs, /buildErrorStateNode\(/);
   // Mirrors test/integration/ytdlp-ui-routes.test.js's AC32 regression guard
