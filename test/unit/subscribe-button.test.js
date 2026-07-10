@@ -19,6 +19,8 @@ const {
   decideSubscribeButtonState,
   buildSubscribeRequestBody,
   buildSubscribeModal,
+  cutoffDateToDateInput,
+  dateInputToCutoffDate,
 } = require('../../public/js/common.js');
 
 // ---- shouldShowSubscribeButton ---------------------------------------------
@@ -93,6 +95,49 @@ test('decideSubscribeButtonState: malformed/missing input never throws', () => {
   assert.strictEqual(state.visible, false);
 });
 
+// ---- cutoffDateToDateInput / dateInputToCutoffDate: pure conversions ------
+
+test('cutoffDateToDateInput: converts a well-formed YYYYMMDD to YYYY-MM-DD', () => {
+  assert.strictEqual(cutoffDateToDateInput('20260709'), '2026-07-09');
+});
+
+test('cutoffDateToDateInput: empty/malformed/non-string input converts to \'\' (never throws)', () => {
+  assert.strictEqual(cutoffDateToDateInput(''), '');
+  assert.strictEqual(cutoffDateToDateInput(undefined), '');
+  assert.strictEqual(cutoffDateToDateInput(null), '');
+  assert.strictEqual(cutoffDateToDateInput('2026-07-09'), ''); // already the OTHER shape
+  assert.strictEqual(cutoffDateToDateInput('not-a-date'), '');
+  assert.strictEqual(cutoffDateToDateInput('2026070'), ''); // 7 digits
+});
+
+test('cutoffDateToDateInput: an implausible month/day (e.g. month 13) converts to \'\' rather than a garbage date', () => {
+  assert.strictEqual(cutoffDateToDateInput('20261301'), '');
+  assert.strictEqual(cutoffDateToDateInput('20260732'), '');
+});
+
+test('dateInputToCutoffDate: converts a well-formed YYYY-MM-DD to YYYYMMDD', () => {
+  assert.strictEqual(dateInputToCutoffDate('2026-07-09'), '20260709');
+});
+
+test('dateInputToCutoffDate: empty/malformed/non-string input converts to undefined (never a garbage string)', () => {
+  assert.strictEqual(dateInputToCutoffDate(''), undefined);
+  assert.strictEqual(dateInputToCutoffDate('   '), undefined);
+  assert.strictEqual(dateInputToCutoffDate(undefined), undefined);
+  assert.strictEqual(dateInputToCutoffDate(null), undefined);
+  assert.strictEqual(dateInputToCutoffDate('20260709'), undefined); // already the OTHER shape
+  assert.strictEqual(dateInputToCutoffDate('not-a-date'), undefined);
+});
+
+test('dateInputToCutoffDate: an implausible month/day converts to undefined', () => {
+  assert.strictEqual(dateInputToCutoffDate('2026-13-01'), undefined);
+  assert.strictEqual(dateInputToCutoffDate('2026-07-32'), undefined);
+});
+
+test('cutoffDateToDateInput/dateInputToCutoffDate: round-trip every valid date unchanged', () => {
+  assert.strictEqual(dateInputToCutoffDate(cutoffDateToDateInput('20250101')), '20250101');
+  assert.strictEqual(cutoffDateToDateInput(dateInputToCutoffDate('2025-12-31')), '2025-12-31');
+});
+
 // ---- buildSubscribeRequestBody: the exact POST body shape ------------------
 
 test('buildSubscribeRequestBody: builds the field names store.validateSubscriptionInput expects', () => {
@@ -101,7 +146,7 @@ test('buildSubscribeRequestBody: builds the field names store.validateSubscripti
     'Real Creator',
     'video',
     'best',
-    '2',
+    '2026-07-01',
     false,
     'mp4'
   );
@@ -112,27 +157,27 @@ test('buildSubscribeRequestBody: builds the field names store.validateSubscripti
     skipShorts: false,
     name: 'Real Creator',
     filetype: 'mp4',
-    maxVideos: 2,
+    cutoffDate: '20260701',
   });
 });
 
 test('buildSubscribeRequestBody: blank/whitespace name is omitted (never sent as an empty string)', () => {
-  const body = buildSubscribeRequestBody('https://www.youtube.com/@x', '   ', 'audio', 'best', '2', true, undefined);
+  const body = buildSubscribeRequestBody('https://www.youtube.com/@x', '   ', 'audio', 'best', '2026-07-01', true, undefined);
   assert.strictEqual('name' in body, false);
   assert.strictEqual('filetype' in body, false);
 });
 
-test('buildSubscribeRequestBody: an invalid/blank maxVideos is omitted, not coerced to 0/NaN', () => {
+test('buildSubscribeRequestBody: an invalid/blank cutoff date is omitted, not coerced to a garbage string', () => {
   const body = buildSubscribeRequestBody('https://www.youtube.com/@x', 'X', 'video', 'best', '', false, 'mp4');
-  assert.strictEqual('maxVideos' in body, false);
+  assert.strictEqual('cutoffDate' in body, false);
 
-  const body2 = buildSubscribeRequestBody('https://www.youtube.com/@x', 'X', 'video', 'best', 'not-a-number', false, 'mp4');
-  assert.strictEqual('maxVideos' in body2, false);
+  const body2 = buildSubscribeRequestBody('https://www.youtube.com/@x', 'X', 'video', 'best', 'not-a-date', false, 'mp4');
+  assert.strictEqual('cutoffDate' in body2, false);
 });
 
 test('buildSubscribeRequestBody: skipShorts is always an explicit boolean, coerced from any truthy/falsy input', () => {
-  assert.strictEqual(buildSubscribeRequestBody('u', 'n', 'video', 'best', '1', 1, undefined).skipShorts, true);
-  assert.strictEqual(buildSubscribeRequestBody('u', 'n', 'video', 'best', '1', 0, undefined).skipShorts, false);
+  assert.strictEqual(buildSubscribeRequestBody('u', 'n', 'video', 'best', '2026-07-01', 1, undefined).skipShorts, true);
+  assert.strictEqual(buildSubscribeRequestBody('u', 'n', 'video', 'best', '2026-07-01', 0, undefined).skipShorts, false);
 });
 
 // ---- buildSubscribeModal: DOM construction ---------------------------------
@@ -223,12 +268,11 @@ const fakeDoc = {
   createTextNode: (text) => ({ nodeType: 3, textContent: text }),
 };
 
-test('buildSubscribeModal: starts hidden, renders the read-only identity via textContent, pre-fills format/quality/filetype/maxVideos', () => {
+test('buildSubscribeModal: starts hidden, renders the read-only identity via textContent, pre-fills format/quality/filetype, cutoff-date input starts blank', () => {
   const modal = buildSubscribeModal(fakeDoc, {
     channelName: 'Real Creator Name',
     channelUrl: 'https://www.youtube.com/channel/UC12345',
     format: 'audio',
-    defaultMaxVideos: 2,
   }, {});
 
   assert.strictEqual(modal.backdrop.hidden, true, 'modal must start hidden');
@@ -243,7 +287,14 @@ test('buildSubscribeModal: starts hidden, renders the read-only identity via tex
   assert.strictEqual(modal.formatSelect.value, 'audio', 'format pre-filled from the file\'s own media type');
   assert.strictEqual(modal.qualitySelect.value, 'best');
   assert.strictEqual(modal.filetypeSelect.value, 'mp3', 'filetype defaults to the audio allowlist\'s recommended value');
-  assert.strictEqual(modal.maxVideosInput.value, '2', 'maxVideos pre-filled from defaultMaxVideos (AC26)');
+  // v1.25 QoL (T5): retires "download last N videos" -- a cutoff-DATE input,
+  // left BLANK by default (never pre-filled with a computed "yesterday"),
+  // with an accessible name since this compact modal has no visible <label>
+  // elements for its controls.
+  assert.strictEqual(modal.cutoffDateInput.tagName, 'INPUT');
+  assert.strictEqual(modal.cutoffDateInput.type, 'date');
+  assert.ok(!modal.cutoffDateInput.value, 'cutoff-date input must start blank, not a pre-computed date');
+  assert.strictEqual(modal.cutoffDateInput.attributes['aria-label'], 'Download videos published on or after');
   assert.strictEqual(modal.skipShortsCheck.checked, false, 'skip-Shorts defaults to OFF');
 
   // Only the known, fixed set of tags may exist anywhere in the built modal.
@@ -251,14 +302,6 @@ test('buildSubscribeModal: starts hidden, renders the read-only identity via tex
   for (const tag of tagNames) {
     assert.ok(['DIV', 'SPAN', 'BUTTON', 'SELECT', 'OPTION', 'INPUT', 'LABEL'].includes(tag), `unexpected element tag: ${tag}`);
   }
-});
-
-test('buildSubscribeModal: an omitted/invalid defaultMaxVideos falls back to 2 (never blank/NaN)', () => {
-  const modal = buildSubscribeModal(fakeDoc, { channelUrl: 'https://www.youtube.com/@x' }, {});
-  assert.strictEqual(modal.maxVideosInput.value, '2');
-
-  const modal2 = buildSubscribeModal(fakeDoc, { channelUrl: 'https://www.youtube.com/@x', defaultMaxVideos: -1 }, {});
-  assert.strictEqual(modal2.maxVideosInput.value, '2');
 });
 
 test('buildSubscribeModal: missing channelName falls back to a neutral placeholder, never blank/undefined text', () => {
@@ -280,11 +323,10 @@ test('buildSubscribeModal: confirm calls onConfirm with the exact body built fro
     channelName: 'Real Creator',
     channelUrl: 'https://www.youtube.com/channel/UC12345',
     format: 'video',
-    defaultMaxVideos: 2,
   }, { onConfirm: (body) => calls.push(body) });
 
   modal.qualitySelect.value = '720p';
-  modal.maxVideosInput.value = '5';
+  modal.cutoffDateInput.value = '2026-05-05';
   modal.skipShortsCheck.checked = true;
   modal.confirmBtn.click();
 
@@ -294,10 +336,20 @@ test('buildSubscribeModal: confirm calls onConfirm with the exact body built fro
     name: 'Real Creator',
     format: 'video',
     quality: '720p',
-    maxVideos: 5,
+    cutoffDate: '20260505',
     skipShorts: true,
     filetype: 'mp4',
   });
+});
+
+test('buildSubscribeModal: confirm with a blank cutoff-date input omits cutoffDate entirely, letting the server apply its own default', () => {
+  const calls = [];
+  const modal = buildSubscribeModal(fakeDoc, { channelUrl: 'https://www.youtube.com/@x' }, {
+    onConfirm: (body) => calls.push(body),
+  });
+  modal.confirmBtn.click();
+  assert.strictEqual(calls.length, 1);
+  assert.strictEqual('cutoffDate' in calls[0], false);
 });
 
 test('buildSubscribeModal: Cancel calls onClose and does NOT call onConfirm', () => {

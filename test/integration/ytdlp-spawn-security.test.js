@@ -685,6 +685,177 @@ test('runList builds list args and calls the spawn boundary', async () => {
   assert.notEqual(opts && opts.shell, true);
 });
 
+// ---- v1.25 QoL (T3): probeChannel -- the one-off pre-download channel ------
+// probe. SAME arg-array/`--`/no-shell:true discipline as runList/spawnYtdlp
+// above; NEVER throws/rejects regardless of spawn/parse failure.
+
+test('probeChannel builds argv (--dump-json --no-download --no-warnings --no-playlist -- <url>), calls the spawn boundary as an arg-array, never shell:true, and resolves the parsed .channel', async () => {
+  const spawnChild = stubSpawn();
+  const watchUrl = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ';
+  const config = { downloadDir: '/tmp/irrelevant-for-this-test', cookiesFile: null };
+  const resultPromise = run.probeChannel(watchUrl, config);
+  const child = spawnChild();
+  child.stdout.emit('data', Buffer.from(JSON.stringify({ channel: 'Some Channel' })));
+  child.emit('close', 0, null);
+  const channel = await resultPromise;
+
+  assert.equal(channel, 'Some Channel');
+  assert.equal(capturedSpawnCalls.length, 1);
+  const { cmd, argv, opts } = capturedSpawnCalls[0];
+  assert.equal(cmd, 'yt-dlp');
+  assert.ok(Array.isArray(argv), 'argv must be a flat array, never a shell string');
+  assert.notEqual(opts && opts.shell, true, 'shell:true must never be set');
+  assert.ok(argv.includes('--dump-json'));
+  assert.ok(argv.includes('--no-download'));
+  assert.ok(argv.includes('--no-warnings'));
+  assert.ok(argv.includes('--no-playlist'));
+  // `--` must immediately precede the single positional URL -- the same
+  // option-injection guard every other builder in this codebase uses.
+  const sepIdx = argv.indexOf('--');
+  assert.ok(sepIdx >= 0, 'a bare "--" separator must be present');
+  assert.equal(argv[sepIdx + 1], watchUrl);
+  assert.equal(argv[argv.length - 1], watchUrl, 'the URL must be the LAST argv element (one opaque token, never parsed/split)');
+});
+
+// ---- FIX 2 (two-reviewer gate, post-v1.25.0): probeChannel gets its own,  --
+// much shorter, DEDICATED timeout (PROBE_TIMEOUT_MS, 30s) -- NOT the 5-     --
+// minute DEFAULT_LIST_TIMEOUT_MS a whole-channel listing pass uses. Asserted --
+// the SAME way runList's/runDownload's own timeout-threading tests above    --
+// prove theirs: capture the actual delay `setTimeout` is armed with.        --
+
+test('probeChannel arms the dedicated PROBE_TIMEOUT_MS, never the 5-minute DEFAULT_LIST_TIMEOUT_MS', async () => {
+  const spawnChild = stubSpawn();
+  const originalSetTimeout = global.setTimeout;
+  const capturedDelays = [];
+  global.setTimeout = (fn, delay, ...rest) => {
+    capturedDelays.push(delay);
+    return originalSetTimeout(fn, delay, ...rest);
+  };
+  let result;
+  try {
+    const config = { downloadDir: '/tmp/irrelevant-for-this-test', cookiesFile: null };
+    const resultPromise = run.probeChannel('https://www.youtube.com/watch?v=dQw4w9WgXcQ', config);
+    const child = spawnChild();
+    child.stdout.emit('data', Buffer.from(JSON.stringify({ channel: 'Some Channel' })));
+    child.emit('close', 0, null);
+    result = await resultPromise;
+  } finally {
+    global.setTimeout = originalSetTimeout;
+  }
+  assert.equal(result, 'Some Channel');
+  assert.ok(capturedDelays.length >= 1, 'probeChannel must arm a timer');
+  assert.equal(capturedDelays[0], run.PROBE_TIMEOUT_MS, 'the armed delay must be the dedicated probe timeout');
+  assert.equal(run.PROBE_TIMEOUT_MS, 30 * 1000, 'sanity: the dedicated probe timeout is 30 seconds');
+  assert.notEqual(capturedDelays[0], run.DEFAULT_LIST_TIMEOUT_MS, 'a single-video probe must never use the 5-minute whole-channel list timeout');
+});
+
+test('probeChannel: a hung probe (never resolving) is actually killed by its OWN dedicated timeout, not left to run for the full 5-minute list timeout', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const spawnChild = stubSpawn();
+  const config = { downloadDir: '/tmp/irrelevant-for-this-test', cookiesFile: null };
+  const resultPromise = run.probeChannel('https://www.youtube.com/watch?v=dQw4w9WgXcQ', config);
+  const child = spawnChild();
+  // Advance exactly to PROBE_TIMEOUT_MS (30s) -- well short of the 5-minute
+  // DEFAULT_LIST_TIMEOUT_MS -- and prove the child is killed and the probe
+  // settles (to null, its documented "never throws" contract) right there.
+  t.mock.timers.tick(run.PROBE_TIMEOUT_MS);
+  const result = await resultPromise;
+  assert.equal(result, null, 'a timed-out probe resolves null, never throws/rejects');
+  assert.deepEqual(child.killCalls, ['SIGKILL'], 'the dedicated probe timeout must actually kill the hung child');
+});
+
+test('probeChannel falls back to .uploader when .channel is absent, then to .channel_id when both are absent', async () => {
+  const config = { downloadDir: '/tmp/irrelevant-for-this-test', cookiesFile: null };
+
+  let spawnChild = stubSpawn();
+  let resultPromise = run.probeChannel('https://www.youtube.com/watch?v=aaaaaaaaaaa', config);
+  let child = spawnChild();
+  child.stdout.emit('data', Buffer.from(JSON.stringify({ channel: null, uploader: 'Some Uploader' })));
+  child.emit('close', 0, null);
+  assert.equal(await resultPromise, 'Some Uploader');
+
+  spawnChild = stubSpawn();
+  resultPromise = run.probeChannel('https://www.youtube.com/watch?v=bbbbbbbbbbb', config);
+  child = spawnChild();
+  child.stdout.emit('data', Buffer.from(JSON.stringify({ channel: '', uploader: null, channel_id: 'UCabc123' })));
+  child.emit('close', 0, null);
+  assert.equal(await resultPromise, 'UCabc123');
+});
+
+test('probeChannel resolves null (never throws) when the JSON carries none of channel/uploader/channel_id', async () => {
+  const spawnChild = stubSpawn();
+  const config = { downloadDir: '/tmp/irrelevant-for-this-test', cookiesFile: null };
+  const resultPromise = run.probeChannel('https://www.youtube.com/watch?v=ccccccccccc', config);
+  const child = spawnChild();
+  child.stdout.emit('data', Buffer.from(JSON.stringify({ id: 'ccccccccccc', title: 'Some title' })));
+  child.emit('close', 0, null);
+  assert.equal(await resultPromise, null);
+});
+
+test('probeChannel resolves null (never throws) when stdout is not valid JSON', async () => {
+  const spawnChild = stubSpawn();
+  const config = { downloadDir: '/tmp/irrelevant-for-this-test', cookiesFile: null };
+  const resultPromise = run.probeChannel('https://www.youtube.com/watch?v=ddddddddddd', config);
+  const child = spawnChild();
+  child.stdout.emit('data', Buffer.from('this is not json'));
+  child.emit('close', 0, null);
+  assert.equal(await resultPromise, null);
+});
+
+test('probeChannel resolves null (never throws) on a spawn failure (ENOENT / binary missing)', async () => {
+  const spawnChild = stubSpawn();
+  const config = { downloadDir: '/tmp/irrelevant-for-this-test', cookiesFile: null };
+  const resultPromise = run.probeChannel('https://www.youtube.com/watch?v=eeeeeeeeeee', config);
+  const child = spawnChild();
+  child.emit('error', Object.assign(new Error('spawn yt-dlp ENOENT'), { code: 'ENOENT' }));
+  assert.equal(await resultPromise, null);
+});
+
+test('probeChannel resolves null (never throws) on a non-zero exit code', async () => {
+  const spawnChild = stubSpawn();
+  const config = { downloadDir: '/tmp/irrelevant-for-this-test', cookiesFile: null };
+  const resultPromise = run.probeChannel('https://www.youtube.com/watch?v=fffffffffff', config);
+  const child = spawnChild();
+  child.emit('close', 1, null);
+  assert.equal(await resultPromise, null);
+});
+
+test('probeChannel never throws even if spawn itself throws synchronously', async () => {
+  cp.spawn = () => { throw new Error('boom'); };
+  const config = { downloadDir: '/tmp/irrelevant-for-this-test', cookiesFile: null };
+  const result = await run.probeChannel('https://www.youtube.com/watch?v=ggggggggggg', config);
+  assert.equal(result, null);
+});
+
+test('probeChannel resolves null immediately, without spawning, when watchUrl is missing/not a string', async () => {
+  const spawnChild = stubSpawn();
+  const config = { downloadDir: '/tmp/irrelevant-for-this-test', cookiesFile: null };
+  assert.equal(await run.probeChannel(undefined, config), null);
+  assert.equal(await run.probeChannel(null, config), null);
+  assert.equal(await run.probeChannel('', config), null);
+  assert.equal(capturedSpawnCalls.length, 0, 'an invalid watchUrl must never reach the spawn boundary');
+  void spawnChild;
+});
+
+test('probeChannel includes --cookies (SAME discipline as runList) when a cookies file is configured and present on disk', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-ytdlp-cookies-'));
+  const cookiesFile = path.join(dir, 'cookies.txt');
+  fs.writeFileSync(cookiesFile, 'session=abc123');
+  const config = { downloadDir: '/tmp/irrelevant-for-this-test', cookiesFile };
+
+  const spawnChild = stubSpawn();
+  const resultPromise = run.probeChannel('https://www.youtube.com/watch?v=hhhhhhhhhhh', config);
+  const child = spawnChild();
+  child.stdout.emit('data', Buffer.from(JSON.stringify({ channel: 'Cookie Channel' })));
+  child.emit('close', 0, null);
+  await resultPromise;
+
+  const { argv } = capturedSpawnCalls[0];
+  const idx = argv.indexOf('--cookies');
+  assert.ok(idx >= 0, '--cookies must be present when a usable cookies file is configured');
+  assert.equal(argv[idx + 1], cookiesFile);
+});
+
 // ---- T2/FR-E: onProgress threaded through the DOWNLOAD path ----------------
 //
 // yt-dlp writes `--newline` progress to STDOUT during a download (the

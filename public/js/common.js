@@ -442,12 +442,41 @@ function resolveFileChannelIdentity(item) {
 // full-teardown + v1.19.0 select-sizing fixes "for free" and takes on NO
 // dependency on the gated, lazy-loaded `/js/subscriptions.js`.
 
-// Fallback only -- the real source of truth is the server's
-// `GET /api/subscriptions/health` `defaultMaxVideos` field
-// (`lib/ytdlp/config.js`'s `DEFAULT_MAX_VIDEOS`, AC26). This is used ONLY if
-// that response is somehow missing the field (an old/unexpected server
-// response shape), so the modal never renders a blank/NaN "download last N".
-const SUBSCRIBE_MODAL_FALLBACK_MAX_VIDEOS = 2;
+// v1.25 QoL (T5): pure converters between a subscription's `cutoffDate`
+// (the API/yt-dlp `YYYYMMDD` convention -- retires the old "download last N
+// videos" `maxVideos` count field, see `lib/ytdlp/store.js`'s
+// `validateCutoffDate`) and the value a native `<input type="date">` expects
+// (`YYYY-MM-DD`). Duplicated (not shared) in
+// `lib/ytdlp/client/subscriptions.js` as `cutoffDateToInputValue`/
+// `inputValueToCutoffDate` -- that file is only ever served via the
+// enabled-gated route, while this one loads on every page (same posture as
+// `reduceOneOffFiletypeOptions`'s duplication of `reduceFiletypeOptions`);
+// giving the two copies distinct names also avoids a global-scope function
+// redeclaration on the one page (`/subscriptions`) that loads both files as
+// plain (non-module) scripts. Both directions are defensive/never throw.
+function cutoffDateToDateInput(raw) {
+  if (typeof raw !== 'string' || !/^\d{8}$/.test(raw)) return '';
+  const year = raw.slice(0, 4);
+  const month = raw.slice(4, 6);
+  const day = raw.slice(6, 8);
+  if (month < '01' || month > '12' || day < '01' || day > '31') return '';
+  return `${year}-${month}-${day}`;
+}
+
+// The inverse of `cutoffDateToDateInput` above. Returns `undefined` (never a
+// malformed string) for anything that is not a well-formed `YYYY-MM-DD`
+// value, so callers can treat `undefined` as "nothing entered, omit the
+// field" and let the server apply its own default -- a brand-new
+// subscription resolves to yesterday (`store.addSubscription`), the same
+// blank-means-omit posture the retired `maxVideos` field used to have.
+function dateInputToCutoffDate(raw) {
+  if (typeof raw !== 'string') return undefined;
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw.trim());
+  if (!match) return undefined;
+  const [, year, month, day] = match;
+  if (month < '01' || month > '12' || day < '01' || day > '31') return undefined;
+  return `${year}${month}${day}`;
+}
 
 // Pure (AC15): the Subscribe button is shown iff the yt-dlp module is
 // enabled (the existing `/api/subscriptions/health` capability probe) AND the
@@ -492,33 +521,27 @@ function decideSubscribeButtonState(item, subs, moduleEnabled) {
 /**
  * Pure: builds the exact JSON body `POST /api/subscriptions` expects
  * (matching `store.validateSubscriptionInput`'s field names EXACTLY --
- * `channelUrl`/`format`/`quality`/`name`/`maxVideos`/`skipShorts`/`filetype`,
- * see lib/ytdlp/store.js) from the compact modal's read-only-derived identity
- * plus its editable controls. The `channelUrl`/`name` are the FR-2-derived,
- * already-validated-once values (never a free-text field the user can edit,
- * AC3) -- this function does not (and cannot) weaken or bypass the server's
- * OWN re-validation (`validateSubscriptionInput` -> `validateChannelUrl`),
- * it only shapes the request the same way the existing `/subscriptions` add
- * form already does (mirrors its own body-building, AC7). `rawMaxVideos` is
- * the number input's raw string value -- parsed the SAME way the add form
- * parses its own maxVideos field (a non-negative integer, else omitted, so
- * the server falls back to its own default rather than receiving a bogus
- * value).
+ * `channelUrl`/`format`/`quality`/`name`/`cutoffDate`/`skipShorts`/
+ * `filetype`, see lib/ytdlp/store.js) from the compact modal's
+ * read-only-derived identity plus its editable controls. The
+ * `channelUrl`/`name` are the FR-2-derived, already-validated-once values
+ * (never a free-text field the user can edit, AC3) -- this function does not
+ * (and cannot) weaken or bypass the server's OWN re-validation
+ * (`validateSubscriptionInput` -> `validateChannelUrl`), it only shapes the
+ * request the same way the existing `/subscriptions` add form already does
+ * (mirrors its own body-building, AC7). `rawCutoffDate` is the native
+ * `<input type="date">`'s raw string value (`YYYY-MM-DD`, or `''` when
+ * empty) -- converted via `dateInputToCutoffDate` the SAME way the add form
+ * converts its own cutoff-date field (v1.25 QoL, T5), omitted entirely when
+ * blank/invalid so the server falls back to its own default (yesterday)
+ * rather than receiving a bogus value.
  */
-function buildSubscribeRequestBody(channelUrl, name, format, quality, rawMaxVideos, skipShorts, filetype) {
+function buildSubscribeRequestBody(channelUrl, name, format, quality, rawCutoffDate, skipShorts, filetype) {
   const body = { channelUrl, format, quality, skipShorts: Boolean(skipShorts) };
   if (typeof name === 'string' && name.trim() !== '') body.name = name.trim();
   if (filetype !== undefined) body.filetype = filetype;
-  // Mirrors the existing add-subscription form's own parse EXACTLY (see
-  // lib/ytdlp/client/subscriptions.js's addBtn click handler): the `!== ''`
-  // guard matters -- `Number('')` is `0`, a spuriously "valid" non-negative
-  // integer that would otherwise silently coerce a blank field to
-  // `maxVideos: 0` (unlimited) instead of omitting it.
-  const trimmed = typeof rawMaxVideos === 'string' ? rawMaxVideos.trim() : rawMaxVideos;
-  if (trimmed !== '' && trimmed !== undefined && trimmed !== null) {
-    const parsed = Number(trimmed);
-    if (Number.isInteger(parsed) && parsed >= 0) body.maxVideos = parsed;
-  }
+  const cutoffDate = dateInputToCutoffDate(rawCutoffDate);
+  if (cutoffDate !== undefined) body.cutoffDate = cutoffDate;
   return body;
 }
 
@@ -532,12 +555,17 @@ function buildSubscribeRequestBody(channelUrl, name, format, quality, rawMaxVide
  * fixes "for free" and never drifts from the one-off modal's own
  * format<->filetype coupling (AC7).
  *
- * `opts` = `{ channelName, channelUrl, format, defaultMaxVideos }` --
+ * `opts` = `{ channelName, channelUrl, format }` --
  * `channelName`/`channelUrl` are the FR-2-derived, READ-ONLY channel identity
  * (rendered via `textContent` ONLY, AC3/AC30 -- never an editable field);
  * `format` pre-fills the type select from the file's own media type
- * (`'audio'`/`'video'`); `defaultMaxVideos` pre-fills "download last N" (falls
- * back to `SUBSCRIBE_MODAL_FALLBACK_MAX_VIDEOS` when omitted/invalid, AC26).
+ * (`'audio'`/`'video'`). The cutoff-date field (v1.25 QoL, T5 -- retires the
+ * old "download last N videos" `defaultMaxVideos`/AC26 pre-fill) is always
+ * left BLANK on open, never pre-filled with a computed "yesterday" -- an
+ * empty field omits `cutoffDate` from the request entirely, letting the
+ * server apply its own default at submit time (`store.addSubscription`),
+ * which stays correct even if the user takes a while filling out the rest
+ * of the form.
  *
  * `handlers` = `{ onConfirm(body), onClose() }` -- decouples DOM construction
  * from the network call, mirroring `buildOneOffModal`'s own
@@ -625,18 +653,26 @@ function buildSubscribeModal(doc, opts, handlers) {
 
   modal.appendChild(row);
 
-  // "Download last N" -- pre-filled from the SAME server-side
-  // DEFAULT_MAX_VIDEOS constant surfaced via /api/subscriptions/health
-  // (AC26), never a second, independently hardcoded literal.
-  const maxVideosInput = d.createElement('input');
-  maxVideosInput.type = 'number';
-  maxVideosInput.min = '0';
-  maxVideosInput.className = 'oneoff-modal-field';
-  const initialMaxVideos = Number.isInteger(o.defaultMaxVideos) && o.defaultMaxVideos >= 0
-    ? o.defaultMaxVideos
-    : SUBSCRIBE_MODAL_FALLBACK_MAX_VIDEOS;
-  maxVideosInput.value = String(initialMaxVideos);
-  modal.appendChild(maxVideosInput);
+  // v1.25 QoL (T5): cutoff-DATE input, replacing the old "download last N
+  // videos" count field -- everything published on/after this date
+  // downloads, no count cap (matches the add-subscription form's own field,
+  // T1's `cutoffDate` schema). Left BLANK by default (see this function's
+  // doc comment above) -- `aria-label` gives it an accessible name since
+  // this compact modal has no visible `<label>` elements for any of its
+  // controls (placeholder text alone is not a substitute for assistive
+  // tech, and a date input has no meaningful placeholder anyway).
+  const cutoffDateInput = d.createElement('input');
+  cutoffDateInput.type = 'date';
+  cutoffDateInput.className = 'oneoff-modal-field';
+  cutoffDateInput.setAttribute('aria-label', 'Download videos published on or after');
+  modal.appendChild(cutoffDateInput);
+
+  const cutoffDateHint = d.createElement('div');
+  cutoffDateHint.style.fontSize = '12px';
+  cutoffDateHint.style.color = 'var(--text-secondary)';
+  cutoffDateHint.style.margin = '-6px 0 10px';
+  cutoffDateHint.textContent = 'Default: yesterday — only new videos going forward. Set an earlier date to pull history.';
+  modal.appendChild(cutoffDateHint);
 
   // Skip-Shorts toggle, default OFF (mirrors the existing add-subscription
   // form's own default -- download everything unless the user opts out).
@@ -676,7 +712,7 @@ function buildSubscribeModal(doc, opts, handlers) {
       o.channelName,
       formatSelect.value,
       qualitySelect.value,
-      maxVideosInput.value,
+      cutoffDateInput.value,
       skipShortsCheck.checked,
       filetypeSelect.value
     );
@@ -694,7 +730,7 @@ function buildSubscribeModal(doc, opts, handlers) {
 
   return {
     backdrop, modal, closeBtn, identityName, identityUrl,
-    formatSelect, qualitySelect, filetypeSelect, maxVideosInput, skipShortsCheck,
+    formatSelect, qualitySelect, filetypeSelect, cutoffDateInput, skipShortsCheck,
     confirmBtn, cancelBtn, statusEl, setError,
   };
 }
@@ -1447,12 +1483,21 @@ function reduceOneOffFiletypeOptions(format, prevFiletype) {
 /**
  * Pure: builds the exact JSON body the modal's Download button POSTs to
  * `POST /api/ytdlp/download` -- `{ url, format, quality }` plus `filetype`
- * when it is defined. No DOM/fetch involved, so it is directly unit-testable
- * against the four field values a real click would read off the form.
+ * when it is defined, plus `folder` (v1.25 QoL, T3/T5) when the user typed a
+ * non-blank override. No DOM/fetch involved, so it is directly
+ * unit-testable against the field values a real click would read off the
+ * form. `folder` is OPTIONAL -- the server now auto-routes a one-off
+ * download into a per-channel folder by default (T3), so this only ever
+ * needs to be sent when the caller wants to override that default; a blank
+ * (or whitespace-only) value is omitted entirely rather than sent as `''`,
+ * the same posture `oneshot-folder`'s existing add-form wiring already has
+ * (`lib/ytdlp/client/subscriptions.js`).
  */
-function buildOneOffDownloadBody(url, format, quality, filetype) {
+function buildOneOffDownloadBody(url, format, quality, filetype, folder) {
   const body = { url, format, quality };
   if (filetype !== undefined) body.filetype = filetype;
+  const trimmedFolder = typeof folder === 'string' ? folder.trim() : '';
+  if (trimmedFolder !== '') body.folder = trimmedFolder;
   return body;
 }
 
@@ -1616,6 +1661,20 @@ function buildOneOffModal(doc, handlers) {
 
   modal.appendChild(row);
 
+  // v1.25 QoL (T3/T5): the manual folder is an OPTIONAL override -- the
+  // server now auto-routes a one-off download into a per-channel folder by
+  // default, so this field is left BLANK by default and only ever read when
+  // the user actually types something (see `buildOneOffDownloadBody`'s own
+  // blank-means-omit posture below). `aria-label` gives it an accessible
+  // name (this compact modal has no visible `<label>` elements for any of
+  // its controls, matching `urlInput`'s own placeholder-only precedent).
+  const folderInput = d.createElement('input');
+  folderInput.type = 'text';
+  folderInput.className = 'oneoff-modal-field';
+  folderInput.setAttribute('placeholder', 'Folder (optional — defaults to the channel)');
+  folderInput.setAttribute('aria-label', 'Folder (optional — defaults to the channel)');
+  modal.appendChild(folderInput);
+
   const statusEl = d.createElement('div');
   statusEl.className = 'oneoff-modal-status';
   statusEl.setAttribute('aria-live', 'polite');
@@ -1631,7 +1690,7 @@ function buildOneOffModal(doc, handlers) {
       statusEl.textContent = 'Enter a video URL.';
       return;
     }
-    const body = buildOneOffDownloadBody(url, formatSelect.value, qualitySelect.value, filetypeSelect.value);
+    const body = buildOneOffDownloadBody(url, formatSelect.value, qualitySelect.value, filetypeSelect.value, folderInput.value);
     if (typeof h.onDownload === 'function') h.onDownload(body);
   });
   modal.appendChild(downloadBtn);
@@ -1643,7 +1702,7 @@ function buildOneOffModal(doc, handlers) {
     statusEl.textContent = formatOneOffStatusText(entry) || '';
   }
 
-  return { backdrop, modal, urlInput, formatSelect, qualitySelect, filetypeSelect, downloadBtn, closeBtn, statusEl, setStatus };
+  return { backdrop, modal, urlInput, formatSelect, qualitySelect, filetypeSelect, folderInput, downloadBtn, closeBtn, statusEl, setStatus };
 }
 
 /**
@@ -4403,6 +4462,8 @@ if (typeof module !== 'undefined' && module.exports) {
     canonicalizeChannelUrl, channelIdentityMatches, resolveFileChannelIdentity,
     shouldShowSubscribeButton, decideSubscribeButtonState,
     buildSubscribeRequestBody, buildSubscribeModal,
+    // v1.25 QoL (T5): cutoffDate <-> <input type="date"> converters.
+    cutoffDateToDateInput, dateInputToCutoffDate,
     derivePinnedPlaylistEntries, renderPinnedSidebar, renderPinnedPlaylists,
     isYtdlpManagedItem, deleteFlowFor, showHardDeleteModal,
     // v1.24.0 (T9): C1 move-files client picker.

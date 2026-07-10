@@ -232,13 +232,24 @@
               <option value="webm">WebM</option>
               <option value="default">Default (yt-dlp)</option>
             </select>
-            <input type="number" id="sub-add-maxvideos" min="0" placeholder="Max videos (blank=default 3, 0=unlimited)" style="max-width:220px; padding:10px; border:1px solid var(--border-dark); border-radius:var(--radius); font-size:13px; background-color:var(--bg-color); color:var(--text-primary);" />
+            <!-- v1.25 QoL (T5): retires the old "download last N videos"
+                 count field -- a cutoff-DATE input instead (everything
+                 published on/after it downloads, no count cap; see
+                 lib/ytdlp/store.js's `cutoffDate` schema, T1). Left BLANK by
+                 default -- an empty value omits `cutoffDate` from the
+                 request body entirely, letting the server apply its own
+                 default (yesterday), see the helper text below. -->
+            <input type="date" id="sub-add-cutoffdate" aria-label="Download videos published on or after" style="max-width:200px; padding:10px; border:1px solid var(--border-dark); border-radius:var(--radius); font-size:13px; background-color:var(--bg-color); color:var(--text-primary);" />
             <!-- v1.22.0 FR-6: max-duration download gate override -- stored/sent
                  in SECONDS (matching sub.maxDurationSeconds server-side), blank =
                  inherit the global 2h default, 0 = unlimited. -->
             <input type="number" id="sub-add-maxduration" min="0" placeholder="Max length in seconds (blank=2h default, 0=unlimited)" style="max-width:260px; padding:10px; border:1px solid var(--border-dark); border-radius:var(--radius); font-size:13px; background-color:var(--bg-color); color:var(--text-primary);" />
             <button class="btn btn-primary" id="sub-add-btn" type="button">Add subscription</button>
           </div>
+          <small style="color: var(--text-secondary); margin-top:4px; display:block;">
+            Download videos published on or after this date. Default: yesterday
+            -- only new videos going forward. Set an earlier date to pull history.
+          </small>
           <small id="sub-add-error" class="field-error"></small>
         </div>
 
@@ -270,7 +281,7 @@
         <summary>One-off download</summary>
         <p>
           Download a single YouTube video once -- no subscription is created.
-          Lands in a "One-Off" folder by default.
+          Lands in a per-channel folder by default (v1.25 QoL, T3).
         </p>
         <div class="form-group">
           <label for="oneshot-url">Video URL</label>
@@ -298,7 +309,11 @@
               <option value="webm">WebM</option>
               <option value="default">Default (yt-dlp)</option>
             </select>
-            <input type="text" id="oneshot-folder" placeholder="Folder (default: One-Off)" style="max-width:180px; padding:10px; border:1px solid var(--border-dark); border-radius:var(--radius); font-size:13px; background-color:var(--bg-color); color:var(--text-primary);" />
+            <!-- v1.25 QoL (T3/T5): the manual folder is now an OPTIONAL
+                 override -- left blank, the download auto-routes into a
+                 per-channel folder server-side (see the disclosure's own
+                 intro paragraph above). -->
+            <input type="text" id="oneshot-folder" placeholder="Folder (optional -- defaults to the channel)" aria-label="Folder (optional -- defaults to the channel)" style="max-width:220px; padding:10px; border:1px solid var(--border-dark); border-radius:var(--radius); font-size:13px; background-color:var(--bg-color); color:var(--text-primary);" />
             <button class="btn btn-primary" id="oneshot-download-btn" type="button">Download</button>
           </div>
           <small id="oneshot-error" class="field-error"></small>

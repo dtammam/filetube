@@ -12,6 +12,14 @@ require('dotenv').config();
 // `isEnabled(config)` inside the functions themselves. See
 // lib/ytdlp/index.js for the dormant-wiring mechanism.
 const ytdlp = require('./lib/ytdlp');
+// T4 (v1.25 QoL): `resolveChannelDir` is a pure, side-effect-free path helper
+// (see lib/ytdlp/args.js's own header comment) that `lib/ytdlp/index.js`
+// itself already requires internally but does not re-export -- required
+// directly here, exactly the same "no side effects at require time" posture
+// as the `ytdlp` require above, so the one-time migration pass (below) can
+// resolve a captured channel's confined target folder the identical way
+// every other channel-dir consumer (subscriptions, one-shot downloads) does.
+const ytdlpArgs = require('./lib/ytdlp/args');
 // v1.15.1 hotfix: pure predicate for yt-dlp's own intermediate/partial-
 // download artifacts (merge temps, per-format fragments, `.part`/`.ytdl`
 // markers) left in its download dir mid-download or after a killed/failed
@@ -2922,6 +2930,194 @@ app.post('/api/videos/:id/move', async (req, res) => {
   res.json({ success: true, id: result.newId, filePath: result.newPath });
 });
 
+// ---- T4 (v1.25 QoL): one-time migration of pre-existing flat one-off
+// downloads into their captured channel's folder -----------------------------
+//
+// Context: before this round's earlier task (T3) fixed it going forward,
+// every one-shot download landed in a single flat 'One-Off' bucket even when
+// the video's channel identity WAS captured -- T3 made every NEW one-shot
+// resolve straight into `resolveChannelDir`/`ONE_OFF_FALLBACK_FOLDER`
+// (lib/ytdlp/index.js), but did nothing for what was already on disk. This
+// function is the one-time RETROACTIVE reconciliation pass for everything
+// downloaded before that fix: it walks `db.metadata`, and for every
+// yt-dlp-downloaded item that (a) carries a captured channel identity and (b)
+// is not ALREADY sitting in that channel's resolved folder, it physically
+// relocates the file via T9's `moveItemToFolder` (above) -- the SAME atomic
+// link/unlink + id re-key machinery `POST /api/videos/:id/move` uses, so
+// watch progress and every id-keyed sidecar (thumbnail/transcode/subtitle)
+// survive the move exactly like any other library move (see that function's
+// own header comment for the full `getMediaId`-hash-stability hazard and how
+// it's mitigated).
+//
+// SCOPE (v1.25.x two-reviewer-gate fix -- narrowed from the original
+// predicate below): eligibility is now the FLAT one-off pile ONLY -- an
+// item's current parent directory must be the download root ITSELF, or the
+// legacy pre-T3 flat 'One-Off' folder (what every one-shot download landed
+// in before T3 started routing new downloads straight into a per-channel
+// folder via `args.resolveChannelDir(config, { name: 'One-Off' })`; see
+// `git log -p -S"'One-Off'"` for that literal's history). An item already
+// sitting in ANY OTHER per-channel subfolder is deliberately EXCLUDED here,
+// even if its captured identity's resolved folder differs from its current
+// one.
+//
+// Why: the original predicate generalized to "any yt-dlp download whose
+// current parent folder doesn't match its own captured channel identity's
+// resolved folder." That is NOT limited to the flat pile -- a subscription
+// download lives in a folder derived from `sub.name` (typically the
+// subscribed `@handle`; no channel-name probe happens at subscribe time),
+// while `item.channelName` (bridged from the scan) is yt-dlp's REAL channel
+// display name. Those two routinely sanitize to DIFFERENT folder names. An
+// adversarial probe confirmed the broad predicate relocates EVERY such
+// subscription video on the first post-upgrade boot -- while the
+// subscription keeps downloading NEW videos into its `sub.name` folder --
+// permanently splitting each affected channel's library across two folders.
+// Not data loss (the move itself is atomic/confined/history-preserving, see
+// `moveItemToFolder`), but an unintended, unbounded library-wide
+// reorganization the download path itself disagrees with. Narrowing
+// eligibility to the two known flat locations is what stops that: a
+// subscription-foldered (or already-migrated) item never has the download
+// root or the legacy 'One-Off' folder as its immediate parent, so it can
+// never match.
+//
+// Idempotent by construction: an item already living in its own
+// `resolveChannelDir` folder fails the "current dir !== target dir" check and
+// is skipped -- re-running this on every server start (its actual call site,
+// see the `require.main === module` block below) is a harmless no-op once the
+// pile has been reconciled once. Every item is processed independently inside
+// its own try/catch so one failure (a confinement reject, a destination
+// collision, an unexpected FS error) is logged and skipped, never aborting
+// the rest of the pass.
+//
+// Confinement: the destination is computed via `resolveChannelDir` (which
+// throws if it can't confine the candidate under `config.downloadDir`) AND
+// independently re-checked by `moveItemToFolder`'s own `computeMoveTarget`
+// against `configuredLibraryRoots` (which includes the download root via
+// `ytdlp.extraScanRoots`) -- the same two-layer discipline every other move
+// path in this file gets; nothing here bypasses it.
+//
+// Never touches the yt-dlp `--download-archive` (a separate dotfile keyed by
+// extractor+video id, not by path -- see `lib/ytdlp/args.js`'s
+// `resolveArchivePath`), so a migrated item can never look like a "new" video
+// to a later poll and trigger a re-download.
+//
+// Two passes: pass 1 (sync, no FS/db writes) determines exactly which items
+// need to move, so an up-front log line can report an accurate count of real
+// work BEFORE pass 2's slow, serial per-item `moveItemToFolder` calls (each a
+// full db write) run -- making the one-time first-boot latency observable
+// instead of looking like a silent hang.
+//
+// @param {{loadDatabase: Function, updateDatabase: Function, getMediaId: Function, fs?: object}} deps same shape `moveItemToFolder` takes
+// @param {object} config a parsed yt-dlp config (`ytdlp.parseYtdlpConfig()`)
+// @returns {Promise<{moved: number, skipped: number, errors: number, collisions: number}>}
+async function migrateOneOffsIntoChannelFolders(deps, config) {
+  const summary = { moved: 0, skipped: 0, errors: 0, collisions: 0 };
+
+  // Disabled-module no-op (mirrors every other yt-dlp entry point's own
+  // gate): never reads db.metadata, never resolves a channel dir, never
+  // touches the filesystem when the module is off.
+  if (!ytdlp.isEnabled(config)) return summary;
+
+  const d = deps || {};
+  const loadDb = d.loadDatabase;
+  if (typeof loadDb !== 'function') return summary;
+
+  const downloadRoots = ytdlp.extraScanRoots(config);
+  if (downloadRoots.length === 0) return summary;
+
+  const db = loadDb();
+  const metadata = (db && db.metadata) || {};
+  const ids = Object.keys(metadata);
+
+  // ---- Pass 1: determine the work -- no filesystem/db writes ---------------
+  const toMove = [];
+  for (const id of ids) {
+    try {
+      const item = metadata[id];
+      if (!item || typeof item.filePath !== 'string' || item.filePath === '') continue;
+
+      // Only items physically living under the yt-dlp download root are ever
+      // eligible -- a regular (non-yt-dlp) library file is never touched, no
+      // matter what channel-shaped fields it happens to carry.
+      const matchedRoot = matchRootFolder(item.filePath, downloadRoots);
+      if (!matchedRoot) continue;
+
+      // FLAT-PILE-ONLY scope (see the module comment above): the item's
+      // current parent must be the download root itself, or the legacy
+      // pre-T3 flat 'One-Off' folder. Anything else -- a subscription's
+      // `sub.name` subfolder, an already-migrated one-off's channel folder,
+      // any other per-channel subfolder -- is left alone.
+      const currentDir = path.resolve(path.dirname(item.filePath));
+      const legacyFlatDir = path.resolve(matchedRoot, 'One-Off');
+      const isFlat = currentDir === path.resolve(matchedRoot) || currentDir === legacyFlatDir;
+      if (!isFlat) {
+        summary.skipped++;
+        continue; // already channel-foldered (subscription or prior migration) -- never touched
+      }
+
+      const channelName = typeof item.channelName === 'string' ? item.channelName.trim() : '';
+      const channelUrl = typeof item.channelUrl === 'string' ? item.channelUrl.trim() : '';
+      if (channelName === '' && channelUrl === '') {
+        summary.skipped++;
+        continue; // no captured identity -- leave it exactly where it is
+      }
+
+      // `resolveChannelDir` itself falls back from `name` to `channelUrl`
+      // when `name` is falsy (lib/ytdlp/args.js) -- passing both lets a
+      // channelName-less-but-channelUrl-tagged item still resolve a stable,
+      // deterministic target folder without this function reimplementing
+      // that fallback itself.
+      const targetDir = ytdlpArgs.resolveChannelDir(config, { name: channelName, channelUrl });
+      if (currentDir === targetDir) {
+        summary.skipped++;
+        continue; // already correctly foldered -- idempotent no-op
+      }
+
+      toMove.push({ id, filePath: item.filePath, targetDir });
+    } catch (err) {
+      summary.errors++;
+      console.error(`yt-dlp one-off migration: unexpected error evaluating item ${id}:`, err && err.message);
+    }
+  }
+
+  if (toMove.length === 0) return summary;
+
+  // Visible up-front, before the slow part (pass 2 below) starts.
+  console.log(`[migrate-oneoffs] relocating ${toMove.length} flat one-off item(s) into channel folders`);
+
+  // ---- Pass 2: do the work ---------------------------------------------
+  for (const { id, filePath, targetDir } of toMove) {
+    try {
+      const result = await moveItemToFolder(deps, id, targetDir);
+      if (result.ok) {
+        summary.moved++;
+        console.log(`yt-dlp one-off migration: moved ${filePath} -> ${result.newPath}`);
+      } else if (result.status === 409) {
+        // A same-basename collision: the destination is permanently occupied
+        // by a DIFFERENT flat item that already won the race to move there
+        // (`moveItemToFolder`'s own no-clobber guarantee -- see its header
+        // comment). This "loser" can never move as long as the winner stays
+        // put, and this predicate is idempotent, so it hits this exact
+        // branch again on EVERY future boot. Counted separately from
+        // `errors` (it is not a failure this migration can recover from, and
+        // the no-clobber behavior itself is correct) and logged at `warn`
+        // rather than `error`, so a healthy, unchanging install doesn't
+        // accumulate an error-level log line forever.
+        summary.collisions++;
+        console.warn(`yt-dlp one-off migration: skipped ${filePath} (destination already occupied by another item): ${result.error}`);
+      } else {
+        summary.errors++;
+        console.error(`yt-dlp one-off migration: could not move ${filePath} to ${targetDir}: ${result.error}`);
+      }
+    } catch (err) {
+      summary.errors++;
+      console.error(`yt-dlp one-off migration: unexpected error processing item ${id}:`, err && err.message);
+    }
+  }
+
+  console.log(`yt-dlp one-off migration: complete (${summary.moved} moved, ${summary.skipped} skipped, ${summary.collisions} collision(s) skipped, ${summary.errors} error(s))`);
+  return summary;
+}
+
 // API: Library-wide "fun stats" dashboard (C4, v1.24 UX Round Wave 3).
 // Computed LIVE from `db.metadata` on every request via the pure helpers in
 // `lib/stats.js` -- deliberately no cached aggregate (see that module's
@@ -3281,24 +3477,57 @@ if (require.main === module) {
   sweepAgedTranscodes(Date.now());
   evictTranscodeCache(effectiveCacheCap(loadDatabase().settings));
 
-  // Scan on startup and then periodically per the persisted scanIntervalMinutes
-  // preference (default 30 minutes; armScanTimer arms no timer at all when the
-  // preference is Off). These live here, not at module top-level, so importing
-  // the module for tests neither scans nor keeps the event loop alive.
-  scanDirectories().catch(console.error);
-  armScanTimer();
+  // T4 (v1.25 QoL) + the scan/timer sequence below are wrapped in a single
+  // async IIFE (this file is CommonJS -- no top-level `await`) so the
+  // one-time migration can be `await`ed to full completion BEFORE
+  // `scanDirectories()` ever runs for the first time in this process and
+  // BEFORE either timer that could later trigger a scan (`armScanTimer`'s
+  // periodic re-scan, `ytdlp.startBackground`'s poll timer -- a completed
+  // subscription download also triggers `scanDirectories()`, see
+  // lib/ytdlp/index.js) is armed. This is what "serialized against
+  // scanDirectories" actually means here: nothing in this function has
+  // called `scanDirectories()` yet, and the HTTP server has not started
+  // `app.listen()`-ing yet either, so there is no route (e.g. `POST
+  // /api/config`, `POST /api/scan`) that could kick off a concurrent scan
+  // while the migration's `updateDatabase` re-key mutators are in flight --
+  // a concurrent scan mid-migration could otherwise re-hash a mid-move old
+  // path as a delete before the re-key mutator commits, losing watch
+  // history. When the yt-dlp module is disabled, `migrateOneOffsIntoChannelFolders`
+  // returns its zeroed summary synchronously (no `await` is ever actually
+  // suspended), so this IIFE falls through to `scanDirectories()`/
+  // `armScanTimer()`/`ytdlp.startBackground()`/`app.listen()` in the exact
+  // same synchronous tick as before this change -- the disabled-module
+  // startup-timing no-op guarantee holds.
+  (async () => {
+    const ytdlpStartupConfig = ytdlp.parseYtdlpConfig();
+    try {
+      await migrateOneOffsIntoChannelFolders({ loadDatabase, updateDatabase, getMediaId }, ytdlpStartupConfig);
+    } catch (err) {
+      // Never let a migration bug block startup -- log and continue exactly
+      // like every other best-effort startup step above (cleanupOrphanTmp/
+      // cleanupOrphanDbTmp/sweepAgedTranscodes never abort startup either).
+      console.error('yt-dlp one-off migration failed unexpectedly (continuing startup):', err && err.message);
+    }
 
-  // Same no-op guarantee as registerRoutes above: startBackground early-
-  // returns (and arms no timer) when the yt-dlp module is disabled. Placed
-  // inside this guard (not at module top-level) so importing server.js for
-  // tests never arms the yt-dlp poll timer either.
-  ytdlp.startBackground({ updateDatabase, loadDatabase, scanDirectories, getMediaId });
+    // Scan on startup and then periodically per the persisted scanIntervalMinutes
+    // preference (default 30 minutes; armScanTimer arms no timer at all when the
+    // preference is Off). These live here, not at module top-level, so importing
+    // the module for tests neither scans nor keeps the event loop alive.
+    scanDirectories().catch(console.error);
+    armScanTimer();
 
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`==================================================`);
-    console.log(`  FileTube server running at http://localhost:${PORT}`);
-    console.log(`==================================================`);
-  });
+    // Same no-op guarantee as registerRoutes above: startBackground early-
+    // returns (and arms no timer) when the yt-dlp module is disabled. Placed
+    // inside this guard (not at module top-level) so importing server.js for
+    // tests never arms the yt-dlp poll timer either.
+    ytdlp.startBackground({ updateDatabase, loadDatabase, scanDirectories, getMediaId });
+
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`==================================================`);
+      console.log(`  FileTube server running at http://localhost:${PORT}`);
+      console.log(`==================================================`);
+    });
+  })();
 }
 
 // Exported for testing (see test/). Importing this module has no side effects
@@ -3316,6 +3545,10 @@ module.exports = {
   moveItemToFolder,
   configuredLibraryRoots,
   getMediaId,
+  // T4 (v1.25 QoL): the one-time flat-one-off-into-channel-folder migration --
+  // re-exported so tests can call it directly (mirroring T9's own
+  // moveItemToFolder export above) without booting a real server process.
+  migrateOneOffsIntoChannelFolders,
   cleanDisplayTitle,
   extractYtdlpVideoId,
   contentDispositionAttachment,

@@ -212,6 +212,20 @@ test('buildOneOffDownloadBody: omits filetype when undefined', () => {
   assert.strictEqual('filetype' in body, false);
 });
 
+// v1.25 QoL (T3/T5): the folder is an OPTIONAL override -- the server now
+// auto-routes a one-off download into a per-channel folder by default, so
+// `folder` must only ever be sent when the user actually typed one.
+test('buildOneOffDownloadBody: includes a trimmed folder override when the user typed one', () => {
+  const body = buildOneOffDownloadBody('https://youtu.be/dQw4w9WgXcQ', 'video', 'best', 'mp4', '  My Folder  ');
+  assert.strictEqual(body.folder, 'My Folder');
+});
+
+test('buildOneOffDownloadBody: omits folder entirely when blank/whitespace-only/absent (channel-derived default applies)', () => {
+  assert.strictEqual('folder' in buildOneOffDownloadBody('https://youtu.be/dQw4w9WgXcQ', 'video', 'best', 'mp4', ''), false);
+  assert.strictEqual('folder' in buildOneOffDownloadBody('https://youtu.be/dQw4w9WgXcQ', 'video', 'best', 'mp4', '   '), false);
+  assert.strictEqual('folder' in buildOneOffDownloadBody('https://youtu.be/dQw4w9WgXcQ', 'video', 'best', 'mp4', undefined), false);
+});
+
 // ---- formatOneOffStatusText: live status formatting + XSS inertness --------
 
 test('formatOneOffStatusText: null/undefined/idle yield null (no live override)', () => {
@@ -266,6 +280,13 @@ test('buildOneOffModal: builds the expected structure, starts hidden, with corre
   assert.strictEqual(modal.downloadBtn.textContent, 'Download');
   assert.strictEqual(modal.closeBtn.textContent, '×');
 
+  // v1.25 QoL (T3/T5): the folder field is an OPTIONAL channel-override --
+  // an INPUT with an accessible name, left blank by default (no forced
+  // value, unlike the format/quality/filetype selects above).
+  assert.strictEqual(modal.folderInput.tagName, 'INPUT');
+  assert.ok(!modal.folderInput.value, 'folder input must start blank -- the channel-derived default applies otherwise');
+  assert.strictEqual(modal.folderInput.attributes['aria-label'], 'Folder (optional — defaults to the channel)');
+
   // Only the known, fixed set of tags may exist anywhere in the built modal.
   const tagNames = new Set([...modal.backdrop.walk()].map((el) => el.tagName));
   for (const tag of tagNames) {
@@ -282,7 +303,7 @@ test('buildOneOffModal: Download with a blank URL does NOT call onDownload, and 
   assert.strictEqual(modal.statusEl.textContent, 'Enter a video URL.');
 });
 
-test('buildOneOffModal: Download with a filled form posts the exact {url, format, quality, filetype} body', () => {
+test('buildOneOffModal: Download with a filled form (no folder typed) posts {url, format, quality, filetype} -- folder omitted (channel-derived default)', () => {
   const calls = [];
   const modal = buildOneOffModal(fakeDoc, { onDownload: (body) => calls.push(body) });
   modal.urlInput.value = '  https://youtu.be/dQw4w9WgXcQ  ';
@@ -295,6 +316,16 @@ test('buildOneOffModal: Download with a filled form posts the exact {url, format
     quality: '720p',
     filetype: 'mp4',
   });
+});
+
+test('buildOneOffModal: Download with a typed folder override includes the trimmed folder in the body', () => {
+  const calls = [];
+  const modal = buildOneOffModal(fakeDoc, { onDownload: (body) => calls.push(body) });
+  modal.urlInput.value = 'https://youtu.be/dQw4w9WgXcQ';
+  modal.folderInput.value = '  Custom Folder  ';
+  modal.downloadBtn.click();
+  assert.strictEqual(calls.length, 1);
+  assert.strictEqual(calls[0].folder, 'Custom Folder');
 });
 
 test('buildOneOffModal: switching the format select to audio repopulates the filetype select (reduceOneOffFiletypeOptions wiring)', () => {

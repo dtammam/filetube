@@ -28,16 +28,23 @@ const { buildOneShotRetryBody } = require('../../public/js/common.js');
 
 const originalRunList = run.runList;
 const originalRunDownload = run.runDownload;
+const originalProbeChannel = run.probeChannel;
 
 let tmpDir;
 
 beforeEach(() => {
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-ytdlp-oneshot-retry-'));
+  // v1.25 QoL (T3): a one-shot posted WITHOUT `folder` (several tests below)
+  // now probes for a channel before its download starts -- stub it
+  // deterministically so these tests never depend on a real yt-dlp
+  // binary/network being reachable from the test runner.
+  run.probeChannel = async () => null;
 });
 
 afterEach(() => {
   run.runList = originalRunList;
   run.runDownload = originalRunDownload;
+  run.probeChannel = originalProbeChannel;
   ytdlp.resetPollRerunStateForTests();
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });
