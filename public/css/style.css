@@ -285,6 +285,21 @@ summary,
   padding: 0;
 }
 
+/* v1.24.6: shell-level horizontal-overflow guard. iOS Safari shrinks the
+   WHOLE page (fit-to-width) whenever ANY element exceeds the viewport, and
+   different pages/load-states overflowed by different amounts -> inconsistent
+   per-page zoom (the fixed bottom-nav icons rendered at different sizes on
+   home vs watch vs subs) and a visible zoom-"jerk" on navigation. The real
+   offenders are fixed at source (see the subs `.mobile-logo` removal, the
+   `.sub-row-info`/`.watch-prevnext`/`.comment-input-box` rules), so this is
+   PURE INSURANCE that pins every page to 1.0 zoom and never actually clips.
+   `clip` (not `hidden`) so it does NOT create a scroll container or a
+   containing block for the `position:fixed` header/bottom-nav/#player-dock,
+   leaving overflow-y and iOS safe-area/visual-viewport behavior untouched. */
+html {
+  overflow-x: clip;
+}
+
 body {
   font-family: var(--font-family);
   -webkit-font-smoothing: antialiased;
@@ -1297,6 +1312,7 @@ header {
   justify-content: space-between;
   gap: 8px;
   margin: 10px 0 4px;
+  flex-wrap: wrap; /* v1.24.6: Prev/Autoplay/Loop/Next row must wrap on a narrow phone rather than overflow the viewport (fit-to-width zoom). */
 }
 
 /* v1.24 FR F2: same elegance polish as `.btn` above (subtler rounding,
@@ -1603,6 +1619,7 @@ header {
 
 .comment-input-box {
   flex: 1;
+  min-width: 0; /* v1.24.6: a flex textarea child must be allowed to shrink below its intrinsic column width, never widen the row past the viewport. */
   border: 1px solid var(--border-dark);
   padding: 8px;
   font-size: 13px;
@@ -2615,6 +2632,14 @@ a.sub-row-channel-link:focus-visible {
 }
 
 @media (max-width: 768px) {
+  /* v1.24.6: drop the 240px desktop anti-collapse min-width on `.sub-row-info`
+     for narrow phones -- it forced each `.sub-row` to a ~406px min-content that
+     exceeded the viewport (contributing to the subscriptions-page fit-to-width
+     zoom + clipped the trailing kebab). The row's text still wraps via the
+     existing `.sub-row-name`/`.sub-row-url`/`.sub-row-meta` overflow-wrap/
+     word-break rules, so the guard is safe to drop here. */
+  .sub-row-info { min-width: 0; }
+
   /* v1.17.0 FR-2 (Decision log): a single source of truth for the mobile
      shell's fixed-header/bottom-nav offsets, computed ONCE and consumed by
      every rule that needs to reserve space for them. Before this fix, the

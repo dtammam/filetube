@@ -12,18 +12,26 @@ const path = require('node:path');
 const PUB = path.join(__dirname, '..', '..', 'public');
 const PAGES = ['index.html', 'setup.html', 'watch.html'];
 const WORDMARK = '<a href="/" class="logo">File<span class="tube">Tube</span></a>';
+// The ytdlp subscriptions shell lives outside public/ but is the FOURTH shell
+// and must obey the same four-shell parity. It was previously NOT covered here,
+// which let a stale `.mobile-logo` favicon <img> survive on it (an unstyled,
+// uncapped SVG that blew the mobile header past the viewport -> iOS fit-to-width
+// zoom, the "subs page is always more zoomed out" bug). v1.24.6 removed it and
+// added this shell to every check below so it can never regress.
+const SUBS_SHELL = path.join(__dirname, '..', '..', 'lib', 'ytdlp', 'views', 'subscriptions.html');
+const ALL_SHELLS = [...PAGES.map((p) => path.join(PUB, p)), SUBS_SHELL];
 
-test('mobile wordmark: index.html, setup.html, and watch.html all render the desktop FileTube wordmark markup', () => {
-  for (const page of PAGES) {
-    const html = fs.readFileSync(path.join(PUB, page), 'utf8');
-    assert.ok(html.includes(WORDMARK), `${page} is missing the FileTube wordmark markup`);
+test('mobile wordmark: all four shells (index/setup/watch + ytdlp subscriptions) render the desktop FileTube wordmark markup', () => {
+  for (const shell of ALL_SHELLS) {
+    const html = fs.readFileSync(shell, 'utf8');
+    assert.ok(html.includes(WORDMARK), `${path.basename(shell)} is missing the FileTube wordmark markup`);
   }
 });
 
-test('mobile wordmark: no page carries a separate .mobile-logo brand element (favicon-icon swap removed)', () => {
-  for (const page of PAGES) {
-    const html = fs.readFileSync(path.join(PUB, page), 'utf8');
-    assert.ok(!html.includes('mobile-logo'), `${page} still references a separate mobile-logo element`);
+test('mobile wordmark: no shell carries a separate .mobile-logo brand element (favicon-icon swap removed -- all four shells, incl. ytdlp subscriptions)', () => {
+  for (const shell of ALL_SHELLS) {
+    const html = fs.readFileSync(shell, 'utf8');
+    assert.ok(!html.includes('mobile-logo'), `${path.basename(shell)} still references a separate mobile-logo element`);
   }
 });
 
