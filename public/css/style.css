@@ -2033,6 +2033,20 @@ header {
   border-radius: var(--radius);
 }
 
+/* v1.25.5: contract for a real channel-avatar `<img>` placed INSIDE the
+   fixed-size `.sub-row-avatar` box above (wired up separately) -- same
+   object-fit: cover treatment as `.pinned-avatar-img` below, so a real
+   avatar of any natural size crops to fill the container instead of
+   overflowing it. `border-radius: inherit` follows the container's own
+   `var(--radius)` corner rather than duplicating/hardcoding it. */
+.sub-row-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
+  display: block;
+}
+
 .sub-row-info {
   flex: 1 1 240px;
   min-width: 240px;
@@ -2852,13 +2866,20 @@ a.sub-row-channel-link:focus-visible {
      tighter size. Scoped to `.watch-actions .btn` (not `.btn` globally) so
      no other button elsewhere in the app is affected -- same `.btn`/
      `.icon-*` family, no `btn-sm` class and no inline style reintroduced
-     (both were removed from this row in v1.25.0). `flex-wrap` on
-     `.watch-actions` stays `wrap` (see base rule above) as a graceful
-     fallback at extreme narrowness/large zoom -- the tightened padding/gap/
-     font-size below fits all three buttons on one row across the standard
-     320-768px phone range, so wrap is not normally triggered. */
+     (both were removed from this row in v1.25.0).
+     v1.25.5: on-device, the v1.25.4 tightening alone wasn't enough -- the
+     `flex-wrap: wrap` "graceful fallback" (inherited from the base rule
+     above) was still actually triggering at real phone widths, so Move kept
+     landing on its own orphaned row 2. The three short glyph+label buttons
+     at this tightened 11px/6px-10px sizing comfortably fit one row well
+     within a ~320px+ container, so single-row is now a GUARANTEE here:
+     `flex-wrap: nowrap` overrides the base rule's `wrap`, scoped to this
+     mobile block only -- desktop (the base rule) is untouched and keeps
+     `wrap`. `min-width: 0` (already on the base rule, inherited here) is
+     kept so the row can still shrink instead of forcing the page wider. */
   .watch-actions {
     gap: 8px;
+    flex-wrap: nowrap;
   }
   .watch-actions .btn {
     padding: 6px 10px;
@@ -3775,6 +3796,17 @@ a.sub-row-channel-link:focus-visible {
   border-radius: var(--radius);
 }
 
+/* v1.25.5: same `<img>`-fills-fixed-container contract as
+   `.sub-row-avatar img` above, for the per-sub settings sheet header's
+   avatar. */
+.sub-sheet-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
+  display: block;
+}
+
 .sub-sheet-titlewrap {
   flex: 1 1 auto;
   min-width: 0;
@@ -3964,6 +3996,46 @@ a.sub-row-channel-link:focus-visible {
   margin-top: 8px;
   padding-top: 8px;
   border-top: 1px solid var(--border-color);
+}
+
+/* v1.25.5: fix real channel avatars (v1.25.4) rendering UNBOUNDED in the
+   pinned lists -- buildPinAvatarNode (public/js/common.js) builds an
+   `<img class="pinned-avatar pinned-avatar-img">` for a real captured avatar,
+   or a `<span class="pinned-avatar pinned-avatar-generated">` letter
+   fallback, for BOTH the Playlists-sheet pinned rows above and the sidebar
+   pinned rows (#sidebar-pinned-section below) -- but until now no CSS
+   constrained either variant's size at all, so a real avatar rendered at
+   its natural (often huge) pixel dimensions and filled the row's full
+   width. Sized to 18x18 to match `.sidebar-item i`'s icon box (line ~556
+   above) -- both pinned lists reuse the plain `.sidebar-item` row class, so
+   this keeps the avatar visually uniform with that row's other leading
+   glyphs and keeps the row's existing height (driven by that same 18px
+   icon box previously) unchanged. Fixed width+height (not max-width) is
+   deliberate: an unconstrained/percentage size would still let a large
+   natural image blow out the circle before object-fit could crop it. */
+.pinned-avatar {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.pinned-avatar-img {
+  display: block;
+  object-fit: cover;
+}
+
+.pinned-avatar-generated {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: bold;
+  color: #fff;
+  line-height: 1;
+  text-transform: uppercase;
+  /* background-color is set inline by buildPinAvatarNode per-entry -- not
+     duplicated here. */
 }
 
 /* === v1.21 FR-7: hard-delete confirm ========================================

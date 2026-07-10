@@ -205,6 +205,23 @@
             <button class="btn btn-sm" id="sub-reheat-btn" type="button">
               <i class="icon-refresh"></i> Reheat metadata
             </button>
+            <!-- v1.25.5 QoL follow-up (channel avatars, round 2): triggers a
+                 bulk re-probe of EVERY subscription's channel avatar (POST
+                 /api/ytdlp/refresh-avatars), distinct from the Reheat button
+                 above (which re-pulls metadata+subtitles for existing
+                 downloaded items) and from the Check-all button (which polls
+                 for new videos). Progress/terminal state ride the SAME
+                 ~2.5s GET /api/subscriptions/status poll this page already
+                 runs -- see
+                 lib/ytdlp/client/subscriptions.js's
+                 applyRefreshAvatarsStateToControls. Only span/button
+                 elements added here (no new div), same posture as the
+                 reheat controls immediately above. -->
+            <span id="sub-refresh-avatars-status" class="sub-repull-status" aria-live="polite"></span>
+            <button class="btn btn-sm" id="sub-refresh-avatars-cancel-btn" type="button" hidden>Cancel</button>
+            <button class="btn btn-sm" id="sub-refresh-avatars-btn" type="button">
+              <i class="icon-refresh"></i> Refresh avatars
+            </button>
           </div>
         </div>
         <div id="sub-list-container" class="sub-list">

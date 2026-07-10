@@ -17,7 +17,8 @@ process.env.FILETUBE_YTDLP_POLL_MINUTES = '0'; // manual-only: no real timer dur
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-const { app, currentYtdlpPollTimer } = require('../../server');
+const { app, currentYtdlpPollTimer, loadDatabase, updateDatabase } = require('../../server');
+const store = require('../../lib/ytdlp/store');
 
 let server;
 let base;
@@ -83,6 +84,56 @@ test('POST /api/subscriptions add -> GET list shows it -> DELETE removes it (rou
 
   const afterList = await (await fetch(`${base}/api/subscriptions`)).json();
   assert.deepEqual(afterList, []);
+});
+
+// ---- v1.25.5 QoL follow-up (channel avatars, round 2): the list serializer -
+// includes channelAvatarUrl when the subscription record carries one --------
+
+test('GET /api/subscriptions includes channelAvatarUrl in each row when the subscription record carries one', async () => {
+  const addRes = await fetch(`${base}/api/subscriptions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ channelUrl: 'https://www.youtube.com/@avatarserializer', format: 'video' }),
+  });
+  assert.equal(addRes.status, 201);
+  const created = await addRes.json();
+
+  // Write the avatar directly through the same store mutator the real avatar
+  // pipeline (poll self-heal / the one-shot subscribe probe / the "Refresh
+  // avatars" batch) already uses -- deterministic, no real yt-dlp spawn.
+  await store.recordSubscriptionChannelAvatar(
+    { loadDatabase, updateDatabase },
+    'https://www.youtube.com/@avatarserializer',
+    'https://example.com/avatar.jpg'
+  );
+
+  const listRes = await fetch(`${base}/api/subscriptions`);
+  const list = await listRes.json();
+  const row = list.find((s) => s.id === created.id);
+  assert.ok(row, 'the subscription must still be present in the list');
+  assert.equal(row.channelAvatarUrl, 'https://example.com/avatar.jpg', 'the list serializer must include channelAvatarUrl when the record carries one');
+
+  const delRes = await fetch(`${base}/api/subscriptions/${created.id}`, { method: 'DELETE' });
+  assert.equal(delRes.status, 200);
+});
+
+test('GET /api/subscriptions omits channelAvatarUrl for a subscription with no captured avatar', async () => {
+  const addRes = await fetch(`${base}/api/subscriptions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ channelUrl: 'https://www.youtube.com/@noavatarserializer', format: 'video' }),
+  });
+  assert.equal(addRes.status, 201);
+  const created = await addRes.json();
+
+  const listRes = await fetch(`${base}/api/subscriptions`);
+  const list = await listRes.json();
+  const row = list.find((s) => s.id === created.id);
+  assert.ok(row);
+  assert.equal(row.channelAvatarUrl, undefined);
+
+  const delRes = await fetch(`${base}/api/subscriptions/${created.id}`, { method: 'DELETE' });
+  assert.equal(delRes.status, 200);
 });
 
 test('POST /api/subscriptions with a bad body returns 400', async () => {

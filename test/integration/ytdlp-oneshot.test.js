@@ -24,6 +24,7 @@ const args = require('../../lib/ytdlp/args');
 const originalRunList = run.runList;
 const originalRunDownload = run.runDownload;
 const originalProbeChannel = run.probeChannel;
+const originalProbeChannelAvatar = run.probeChannelAvatar;
 
 let tmpDir;
 
@@ -36,12 +37,20 @@ beforeEach(() => {
   // probe/routing behavior override this per-test, exactly like `run.runList`/
   // `run.runDownload` are already overridden per-test below.
   run.probeChannel = async () => null;
+  // v1.25.5 QoL follow-up (channel avatars, round 2): same DETERMINISTIC-
+  // default posture as `run.probeChannel` immediately above, for the SAME
+  // reason -- a pre-existing test that supplies `channelMeta` with a valid
+  // `channelUrl` (and no explicit `folder`) would otherwise trigger a REAL
+  // `run.probeChannelAvatar` spawn attempt. Tests that DO care about
+  // avatar-probe behavior override this per-test below.
+  run.probeChannelAvatar = async () => null;
 });
 
 afterEach(() => {
   run.runList = originalRunList;
   run.runDownload = originalRunDownload;
   run.probeChannel = originalProbeChannel;
+  run.probeChannelAvatar = originalProbeChannelAvatar;
   ytdlp.resetPollRerunStateForTests();
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });
@@ -1197,6 +1206,223 @@ test('a one-shot download FAILURE never persists a channel-identity capture (onl
     const ns = store.ensureYtdlp(deps.loadDatabase());
     assert.equal(ns.downloadMeta.dQw4w9WgXcQ, undefined, 'a FAILED download must never persist a channel-identity capture');
   } finally {
+    await close();
+  }
+});
+
+// ---- v1.25.5 QoL follow-up (channel avatars, round 2): item-level avatar --
+// for a one-off download of a NON-subscribed channel -----------------------
+
+test('a successful one-off download with a resolved channel probes the channel avatar and folds it into the persisted downloadMeta entry', async () => {
+  const deps = makeFakeDeps();
+  const config = enabledConfig();
+  run.runDownload = async () => ({
+    ok: true,
+    code: 0,
+    stdout: '',
+    stderr: '',
+    channelMeta: [{
+      videoId: 'dQw4w9WgXcQ',
+      channelUrl: 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw',
+      channelId: 'UCuAXFkgsw1L7xaCfnd5JJOw',
+      uploaderUrl: 'https://www.youtube.com/@RickAstley',
+      channelName: 'Rick Astley',
+    }],
+  });
+
+  let probeCalls = [];
+  run.probeChannelAvatar = async (channelUrl) => {
+    probeCalls.push(channelUrl);
+    return 'https://example.com/avatar.jpg';
+  };
+
+  const { base, close } = await startTestApp(deps, config);
+  try {
+    const res = await postJson(base, '/api/ytdlp/download', { url: SINGLE_VIDEO_URL });
+    assert.equal(res.status, 202);
+    await new Promise((resolve) => setTimeout(resolve, 30));
+
+    assert.deepEqual(probeCalls, ['https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw'], 'the avatar probe must be called with the download\'s own captured channelUrl');
+
+    const ns = store.ensureYtdlp(deps.loadDatabase());
+    assert.equal(ns.downloadMeta.dQw4w9WgXcQ.channelAvatarUrl, 'https://example.com/avatar.jpg', 'the probed avatar must be folded into the persisted downloadMeta entry, ready for the next scan\'s consumeDownloadChannelMeta bridge');
+  } finally {
+    await close();
+  }
+});
+
+test('a one-off download with an EXPLICIT manual folder override skips the avatar probe entirely (no channel identity to key it off of)', async () => {
+  const deps = makeFakeDeps();
+  const config = enabledConfig();
+  run.runDownload = async () => ({
+    ok: true,
+    code: 0,
+    stdout: '',
+    stderr: '',
+    channelMeta: [{
+      videoId: 'dQw4w9WgXcQ',
+      channelUrl: 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw',
+      channelId: 'UCuAXFkgsw1L7xaCfnd5JJOw',
+      uploaderUrl: null,
+      channelName: 'Rick Astley',
+    }],
+  });
+
+  let probeCalls = 0;
+  run.probeChannelAvatar = async () => {
+    probeCalls += 1;
+    return 'https://example.com/avatar.jpg';
+  };
+
+  const { base, close } = await startTestApp(deps, config);
+  try {
+    const res = await postJson(base, '/api/ytdlp/download', { url: SINGLE_VIDEO_URL, folder: 'My Custom Folder' });
+    assert.equal(res.status, 202);
+    await new Promise((resolve) => setTimeout(resolve, 30));
+
+    assert.equal(probeCalls, 0, 'an explicit manual folder override must skip the avatar probe entirely');
+
+    const ns = store.ensureYtdlp(deps.loadDatabase());
+    assert.equal(ns.downloadMeta.dQw4w9WgXcQ.channelAvatarUrl, undefined, 'no avatar must be persisted when the probe was skipped');
+    // The identity capture itself (channel name etc, unrelated to the
+    // avatar) is still recorded exactly as before this feature.
+    assert.equal(ns.downloadMeta.dQw4w9WgXcQ.channelName, 'Rick Astley');
+  } finally {
+    await close();
+  }
+});
+
+test('a channel-avatar probe failure (throw) never breaks the download -- no avatar is persisted, the job still succeeds', async () => {
+  const deps = makeFakeDeps();
+  const config = enabledConfig();
+  run.runDownload = async () => ({
+    ok: true,
+    code: 0,
+    stdout: '',
+    stderr: '',
+    channelMeta: [{
+      videoId: 'dQw4w9WgXcQ',
+      channelUrl: 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw',
+      channelId: null,
+      uploaderUrl: null,
+      channelName: 'Rick Astley',
+    }],
+  });
+  run.probeChannelAvatar = async () => {
+    throw new Error('a defensive-in-depth regression: probeChannelAvatar is documented to never reject, but this proves runOneShot survives it anyway');
+  };
+
+  const { base, close } = await startTestApp(deps, config);
+  try {
+    const res = await postJson(base, '/api/ytdlp/download', { url: SINGLE_VIDEO_URL });
+    assert.equal(res.status, 202);
+    const { jobId } = await res.json();
+    await new Promise((resolve) => setTimeout(resolve, 30));
+
+    const statusRes = await fetch(`${base}/api/subscriptions/status`);
+    const snap = await statusRes.json();
+    assert.equal(snap.oneShots[jobId].state, 'done', 'a throwing avatar probe must never surface as a job failure');
+
+    const ns = store.ensureYtdlp(deps.loadDatabase());
+    assert.equal(ns.downloadMeta.dQw4w9WgXcQ.channelAvatarUrl, undefined, 'a failed probe must never persist an avatar');
+    assert.equal(ns.downloadMeta.dQw4w9WgXcQ.channelName, 'Rick Astley', 'the rest of the captured identity must still be persisted despite the avatar probe throwing');
+  } finally {
+    await close();
+  }
+});
+
+test('a null probe result (no avatar found for this channel) persists no avatar, without error', async () => {
+  const deps = makeFakeDeps();
+  const config = enabledConfig();
+  run.runDownload = async () => ({
+    ok: true,
+    code: 0,
+    stdout: '',
+    stderr: '',
+    channelMeta: [{
+      videoId: 'dQw4w9WgXcQ',
+      channelUrl: 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw',
+      channelId: null,
+      uploaderUrl: null,
+      channelName: 'Rick Astley',
+    }],
+  });
+  run.probeChannelAvatar = async () => null;
+
+  const { base, close } = await startTestApp(deps, config);
+  try {
+    const res = await postJson(base, '/api/ytdlp/download', { url: SINGLE_VIDEO_URL });
+    assert.equal(res.status, 202);
+    await new Promise((resolve) => setTimeout(resolve, 30));
+
+    const ns = store.ensureYtdlp(deps.loadDatabase());
+    assert.equal(ns.downloadMeta.dQw4w9WgXcQ.channelAvatarUrl, undefined);
+  } finally {
+    await close();
+  }
+});
+
+test('a capture MISS (no channelMeta at all) never attempts an avatar probe -- there is no channelUrl to key it off of', async () => {
+  const deps = makeFakeDeps();
+  const config = enabledConfig();
+  run.runDownload = async () => ({ ok: true, code: 0, stdout: '', stderr: '', channelMeta: [] });
+
+  let probeCalls = 0;
+  run.probeChannelAvatar = async () => {
+    probeCalls += 1;
+    return 'https://example.com/avatar.jpg';
+  };
+
+  const { base, close } = await startTestApp(deps, config);
+  try {
+    const res = await postJson(base, '/api/ytdlp/download', { url: SINGLE_VIDEO_URL });
+    assert.equal(res.status, 202);
+    await new Promise((resolve) => setTimeout(resolve, 30));
+
+    assert.equal(probeCalls, 0, 'no captured channelUrl means nothing to probe');
+  } finally {
+    await close();
+  }
+});
+
+test('the avatar probe is non-blocking: the 202 response is never delayed by it', async () => {
+  const deps = makeFakeDeps();
+  const config = enabledConfig();
+  run.runDownload = async () => ({
+    ok: true,
+    code: 0,
+    stdout: '',
+    stderr: '',
+    channelMeta: [{
+      videoId: 'dQw4w9WgXcQ',
+      channelUrl: 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw',
+      channelId: null,
+      uploaderUrl: null,
+      channelName: 'Rick Astley',
+    }],
+  });
+  // A probe that stays pending for the DURATION OF THIS TEST's own
+  // assertions -- if the 202 response were somehow gated on it, this test
+  // would time out. Deliberately NOT a promise that never resolves at all
+  // (unlike FIX-10's own `run.runDownload` stub immediately below): this
+  // file's module-level `ytdlpQueueLength` counter is shared across every
+  // test in this process (see FIX-10's own comment), so a job left
+  // permanently pending here would leak into -- and corrupt -- that later
+  // test's exact-count assertions. `releaseProbe()` in `finally` lets this
+  // job settle before the test ends.
+  let releaseProbe;
+  const probeGate = new Promise((resolve) => { releaseProbe = resolve; });
+  run.probeChannelAvatar = () => probeGate.then(() => 'https://example.com/avatar.jpg');
+
+  const { base, close } = await startTestApp(deps, config);
+  try {
+    const start = Date.now();
+    const res = await postJson(base, '/api/ytdlp/download', { url: SINGLE_VIDEO_URL });
+    assert.equal(res.status, 202);
+    assert.ok(Date.now() - start < 500, 'the 202 response must arrive immediately, never waiting on the (hung) avatar probe');
+  } finally {
+    releaseProbe();
+    await new Promise((resolve) => setTimeout(resolve, 20));
     await close();
   }
 });

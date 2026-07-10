@@ -89,8 +89,18 @@ test('watch.html: the three action buttons keep their aria-labels unchanged', ()
   assert.match(watchJs, /moveBtn\.setAttribute\('aria-label',\s*'Move to another folder'\);/);
 });
 
-test('style.css: .watch-actions keeps flex-wrap: wrap as a graceful fallback at extreme narrowness (never flex-wrap: nowrap, which would clip)', () => {
+test('style.css: the base (desktop) .watch-actions rule keeps flex-wrap: wrap unchanged', () => {
   const rule = /\.watch-actions\s*\{([^}]*)\}/.exec(css);
   assert.ok(rule, 'expected the base .watch-actions rule');
   assert.match(rule[1], /flex-wrap:\s*wrap;/);
+});
+
+// v1.25.5: on-device, the v1.25.4 tightening alone still let Move drop onto
+// its own row at real phone widths -- the mobile .watch-actions rule now
+// forces `flex-wrap: nowrap` to GUARANTEE Download/Delete/Move stay on one
+// row, overriding the base rule's `wrap` inside this mobile block only.
+test('style.css: the mobile .watch-actions rule (inside the watch-action-bar 768px block) forces flex-wrap: nowrap to guarantee a single row', () => {
+  const rule = /\.watch-actions\s*\{([^}]*)\}/.exec(mobileBlock);
+  assert.ok(rule, 'expected a mobile-scoped .watch-actions rule');
+  assert.match(rule[1], /flex-wrap:\s*nowrap;/);
 });
