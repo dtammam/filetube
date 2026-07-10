@@ -1233,7 +1233,7 @@ test('a successful one-off download with a resolved channel probes the channel a
   let probeCalls = [];
   run.probeChannelAvatar = async (channelUrl) => {
     probeCalls.push(channelUrl);
-    return 'https://example.com/avatar.jpg';
+    return { avatarUrl: 'https://example.com/avatar.jpg', channelId: 'UCuAXFkgsw1L7xaCfnd5JJOw', channelUrl };
   };
 
   const { base, close } = await startTestApp(deps, config);
@@ -1246,6 +1246,7 @@ test('a successful one-off download with a resolved channel probes the channel a
 
     const ns = store.ensureYtdlp(deps.loadDatabase());
     assert.equal(ns.downloadMeta.dQw4w9WgXcQ.channelAvatarUrl, 'https://example.com/avatar.jpg', 'the probed avatar must be folded into the persisted downloadMeta entry, ready for the next scan\'s consumeDownloadChannelMeta bridge');
+    assert.equal(ns.channelAvatars.UCuAXFkgsw1L7xaCfnd5JJOw.avatarUrl, 'https://example.com/avatar.jpg', 'a one-off (non-subscribed) channel\'s avatar must ALSO be registered into the canonical registry, keyed by channelId');
   } finally {
     await close();
   }

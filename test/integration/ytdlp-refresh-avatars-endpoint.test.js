@@ -139,7 +139,7 @@ test('enabled: responds 202 with {started:true, total}; the background batch pro
   const probeCalls = [];
   run.probeChannelAvatar = async (channelUrl) => {
     probeCalls.push(channelUrl);
-    return `https://example.com/avatar-${probeCalls.length}.jpg`;
+    return { avatarUrl: `https://example.com/avatar-${probeCalls.length}.jpg`, channelId: null, channelUrl: null };
   };
 
   const { base, close } = await startTestApp(deps, config);
@@ -179,7 +179,7 @@ test('a subscription with no channelUrl is skipped (counted skipped), never prob
   const probeCalls = [];
   run.probeChannelAvatar = async (channelUrl) => {
     probeCalls.push(channelUrl);
-    return 'https://example.com/avatar.jpg';
+    return { avatarUrl: 'https://example.com/avatar.jpg', channelId: null, channelUrl: null };
   };
 
   const { base, close } = await startTestApp(deps, config);
@@ -200,6 +200,135 @@ test('a subscription with no channelUrl is skipped (counted skipped), never prob
   }
 });
 
+// ---- v1.25.x QoL bugfix: distinct-channel targets drawn from BOTH ----------
+// subscriptions AND db.metadata items (the channelId-keyed avatar registry)
+
+test('the refresh batch also probes a distinct channel from db.metadata that has NO matching subscription, and registers it into the canonical registry', async () => {
+  const deps = makeFakeDeps();
+  const config = enabledConfig();
+  const subA = await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@chanA', format: 'video' });
+
+  // A one-off (non-subscribed) item's channel -- distinct channelId, its OWN
+  // channelUrl (never a subscription's).
+  const db = deps.loadDatabase();
+  db.metadata = {
+    oneOffVideo: {
+      id: 'oneOffVideo',
+      channelId: 'UConeoffchannelidxxxxxxx',
+      channelUrl: 'https://www.youtube.com/channel/UConeoffchannelidxxxxxxx',
+    },
+  };
+
+  const probeCalls = [];
+  run.probeChannelAvatar = async (channelUrl) => {
+    probeCalls.push(channelUrl);
+    if (channelUrl === subA.channelUrl) {
+      return { avatarUrl: 'https://example.com/chanA.jpg', channelId: 'UCchanAAAAAAAAAAAAxxxxxx', channelUrl };
+    }
+    return { avatarUrl: 'https://example.com/oneoff.jpg', channelId: 'UConeoffchannelidxxxxxxx', channelUrl };
+  };
+
+  const { base, close } = await startTestApp(deps, config);
+  try {
+    const res = await fetch(`${base}/api/ytdlp/refresh-avatars`, { method: 'POST' });
+    assert.equal(res.status, 202);
+    assert.deepEqual(await res.json(), { started: true, total: 2 }, 'total must count the DISTINCT channel from db.metadata too, not just subscriptions');
+
+    await flush(30);
+    assert.deepEqual(
+      new Set(probeCalls),
+      new Set([subA.channelUrl, 'https://www.youtube.com/channel/UConeoffchannelidxxxxxxx']),
+      'both the subscription AND the non-subscribed item\'s channel must be probed',
+    );
+
+    const entry = getRefreshAvatarsEntry();
+    assert.equal(entry.state, 'done');
+    assert.equal(entry.done, 2);
+
+    const freshDb = deps.loadDatabase();
+    const ns = store.ensureYtdlp(freshDb);
+    assert.equal(ns.channelAvatars.UConeoffchannelidxxxxxxx.avatarUrl, 'https://example.com/oneoff.jpg', 'the non-subscribed channel must be registered into the canonical registry');
+    assert.equal(ns.channelAvatars.UCchanAAAAAAAAAAAAxxxxxx.avatarUrl, 'https://example.com/chanA.jpg', 'the subscribed channel must ALSO be registered into the canonical registry');
+  } finally {
+    await close();
+  }
+});
+
+test('a db.metadata item whose channelId is ALREADY covered by a subscription is never probed a second time (dedup by channelId)', async () => {
+  const deps = makeFakeDeps();
+  const config = enabledConfig();
+  const subA = await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@chanA', format: 'video' });
+  await store.recordSubscriptionChannelId(deps, subA.channelUrl, 'UCsharedchannelidxxxxxxx');
+
+  const db = deps.loadDatabase();
+  db.metadata = {
+    sameChannelVideo: {
+      id: 'sameChannelVideo',
+      channelId: 'UCsharedchannelidxxxxxxx',
+      channelUrl: 'https://www.youtube.com/channel/UCsharedchannelidxxxxxxx',
+    },
+  };
+
+  const probeCalls = [];
+  run.probeChannelAvatar = async (channelUrl) => {
+    probeCalls.push(channelUrl);
+    return { avatarUrl: 'https://example.com/avatar.jpg', channelId: 'UCsharedchannelidxxxxxxx', channelUrl };
+  };
+
+  const { base, close } = await startTestApp(deps, config);
+  try {
+    const res = await fetch(`${base}/api/ytdlp/refresh-avatars`, { method: 'POST' });
+    assert.deepEqual(await res.json(), { started: true, total: 1 }, 'the item shares subA\'s already-known channelId -- must dedup to ONE target');
+
+    await flush(30);
+    assert.equal(probeCalls.length, 1, 'a channelId already covered by a subscription must never be probed a second time');
+  } finally {
+    await close();
+  }
+});
+
+// v1.25.x QoL bugfix (two-reviewer gate follow-up): a channelId-less
+// db.metadata item followed by an id-bearing item for the SAME channelUrl
+// (the SAME real channel, discovered twice -- once before its channelId was
+// known, once after) previously produced TWO refresh targets, so the batch
+// probed the same channel twice in one refresh. The dedup reconcile must
+// collapse them into a single target/probe.
+test('a channelId-less db.metadata item followed by an id-bearing item for the SAME channelUrl is probed exactly ONCE (dedup reconcile)', async () => {
+  const deps = makeFakeDeps();
+  const config = enabledConfig();
+
+  const sharedUrl = 'https://www.youtube.com/@dedupreconcile';
+  const db = deps.loadDatabase();
+  db.metadata = {
+    // Insertion order matters: the id-less item is walked FIRST.
+    idlessVideo: { id: 'idlessVideo', channelUrl: sharedUrl },
+    idBearingVideo: { id: 'idBearingVideo', channelId: 'UCdedupreconcilexxxxxxxx', channelUrl: sharedUrl },
+  };
+
+  const probeCalls = [];
+  run.probeChannelAvatar = async (channelUrl) => {
+    probeCalls.push(channelUrl);
+    return { avatarUrl: 'https://example.com/dedup-reconcile.jpg', channelId: 'UCdedupreconcilexxxxxxxx', channelUrl };
+  };
+
+  const { base, close } = await startTestApp(deps, config);
+  try {
+    const res = await fetch(`${base}/api/ytdlp/refresh-avatars`, { method: 'POST' });
+    assert.equal(res.status, 202);
+    assert.deepEqual(await res.json(), { started: true, total: 1 }, 'the id-less item and its later id-bearing counterpart must collapse into ONE target');
+
+    await flush(30);
+    assert.equal(probeCalls.length, 1, 'the same real channel must be probed exactly once, never twice');
+    assert.deepEqual(probeCalls, [sharedUrl]);
+
+    const freshDb = deps.loadDatabase();
+    const ns = store.ensureYtdlp(freshDb);
+    assert.equal(ns.channelAvatars.UCdedupreconcilexxxxxxxx.avatarUrl, 'https://example.com/dedup-reconcile.jpg');
+  } finally {
+    await close();
+  }
+});
+
 // ---- One bad item never wedges the batch -----------------------------------
 
 test('a null probe result (no avatar found) is counted failed; the batch continues to the next subscription', async () => {
@@ -208,7 +337,7 @@ test('a null probe result (no avatar found) is counted failed; the batch continu
   const subA = await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@chanA', format: 'video' });
   const subB = await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@chanB', format: 'video' });
 
-  run.probeChannelAvatar = async (channelUrl) => (channelUrl === subA.channelUrl ? null : 'https://example.com/avatar.jpg');
+  run.probeChannelAvatar = async (channelUrl) => (channelUrl === subA.channelUrl ? null : { avatarUrl: 'https://example.com/avatar.jpg', channelId: null, channelUrl: null });
 
   const { base, close } = await startTestApp(deps, config);
   try {
@@ -236,7 +365,7 @@ test('a throw from probeChannelAvatar for one subscription is counted failed and
 
   run.probeChannelAvatar = async (channelUrl) => {
     if (channelUrl === subA.channelUrl) throw new Error('boom -- simulated probe failure');
-    return 'https://example.com/avatar.jpg';
+    return { avatarUrl: 'https://example.com/avatar.jpg', channelId: null, channelUrl: null };
   };
 
   const { base, close } = await startTestApp(deps, config);
@@ -430,7 +559,7 @@ test('activity progress entry is created, advances as subscriptions complete, an
   const gateA = new Promise((resolve) => { releaseA = resolve; });
   run.probeChannelAvatar = async (channelUrl) => {
     if (channelUrl === subA.channelUrl) await gateA;
-    return 'https://example.com/avatar.jpg';
+    return { avatarUrl: 'https://example.com/avatar.jpg', channelId: null, channelUrl: null };
   };
 
   const { base, close } = await startTestApp(deps, config);
@@ -443,7 +572,11 @@ test('activity progress entry is created, advances as subscriptions complete, an
     assert.equal(midEntry.kind, 'refresh-avatars');
     assert.equal(midEntry.total, 2);
     assert.equal(midEntry.done, 0);
-    assert.equal(midEntry.current, subA.id);
+    // v1.25.x QoL bugfix: the batch's unit of work is now a distinct CHANNEL
+    // target, not a bare subscription id -- `current` is a label built from
+    // `channelId || channelUrl || subId` (see `runRefreshAvatarsBatch`'s own
+    // doc comment); subA has no channelId yet, so its channelUrl is the label.
+    assert.equal(midEntry.current, subA.channelUrl);
     assert.notEqual(midEntry.state, 'done');
 
     releaseA();

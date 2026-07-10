@@ -182,3 +182,79 @@ test('GET /api/videos/:id: with the module DISABLED, the join is skipped entirel
     process.env.FILETUBE_YTDLP_ENABLED = original;
   }
 });
+
+// ---- v1.25.x QoL bugfix: THE channelId-keyed avatar REGISTRY fix ----------
+//
+// The confirmed root cause: the OLD join above keys on an EXACT
+// `item.channelUrl === sub.channelUrl` string match, and its `channelId`
+// branch was structurally DEAD (`addSubscription` never wrote
+// `sub.channelId`) -- so an item captured as `/channel/UC…` never matched a
+// subscription added as `@handle`. These tests are the HEADLINE regression
+// lock: the registry resolves the avatar EVEN WHEN the URL forms differ.
+
+test('HEADLINE: an item captured as /channel/UC… resolves its avatar via the REGISTRY even when the matching subscription was added as @handle (different channelUrl string)', async () => {
+  // The subscription is added via a DIFFERENT URL FORM (@handle) than the
+  // item's own captured /channel/UC… identity -- the OLD sub-join would have
+  // missed this entirely (sub.channelUrl !== item.channelUrl, and
+  // sub.channelId was always dead/undefined).
+  await store.addSubscription(ytdlpDeps(), {
+    channelUrl: 'https://www.youtube.com/@headlinehandle',
+    name: 'Headline Handle Channel',
+  });
+
+  await updateDatabase((db) => {
+    const ns = store.ensureYtdlp(db);
+    ns.channelAvatars.UCheadlineregistryidxxxx = {
+      avatarUrl: 'https://yt3.ggpht.com/registry-headline.jpg',
+      fetchedAt: Date.now(),
+      channelUrl: 'https://www.youtube.com/channel/UCheadlineregistryidxxxx',
+    };
+    return true;
+  });
+
+  await updateDatabase((db) => {
+    db.metadata.headlineItem = {
+      id: 'headlineItem',
+      filePath: '/fake/headline.mp4',
+      title: 'Headline Fixture',
+      // Captured as the canonical /channel/UC… form -- distinct from the
+      // subscription's own @handle channelUrl above.
+      channelUrl: 'https://www.youtube.com/channel/UCheadlineregistryidxxxx',
+      channelId: 'UCheadlineregistryidxxxx',
+    };
+    return true;
+  });
+
+  const res = await fetch(`${base}/api/videos/headlineItem`);
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(body.channelAvatarUrl, 'https://yt3.ggpht.com/registry-headline.jpg', 'the registry join must resolve the avatar by channelId, independent of the subscription\'s own (different) URL form');
+});
+
+test('a NON-subscribed one-off channel, once registered, resolves for its items -- no matching subscription needed at all', async () => {
+  await updateDatabase((db) => {
+    const ns = store.ensureYtdlp(db);
+    ns.channelAvatars.UConeoffregistryidxxxxxx = {
+      avatarUrl: 'https://yt3.ggpht.com/registry-oneoff.jpg',
+      fetchedAt: Date.now(),
+      channelUrl: 'https://www.youtube.com/channel/UConeoffregistryidxxxxxx',
+    };
+    return true;
+  });
+
+  await updateDatabase((db) => {
+    db.metadata.oneOffRegistryItem = {
+      id: 'oneOffRegistryItem',
+      filePath: '/fake/one-off-registry.mp4',
+      title: 'One-Off Registry Fixture',
+      channelUrl: 'https://www.youtube.com/channel/UConeoffregistryidxxxxxx',
+      channelId: 'UConeoffregistryidxxxxxx',
+    };
+    return true;
+  });
+
+  const res = await fetch(`${base}/api/videos/oneOffRegistryItem`);
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(body.channelAvatarUrl, 'https://yt3.ggpht.com/registry-oneoff.jpg', 'a channel with NO subscription at all still resolves once registered');
+});

@@ -36,11 +36,11 @@ function makeFakeDeps(initialDb = {}) {
 test('ensureYtdlp: an old db with no ytdlp key gains the default namespace, no data loss', () => {
   const db = { folders: ['/movies'], settings: { scanIntervalMinutes: 15 } };
   const ns = store.ensureYtdlp(db);
-  assert.deepEqual(ns, { allowMembersOnly: false, subscriptions: [], downloadMeta: {}, pins: [] });
+  assert.deepEqual(ns, { allowMembersOnly: false, subscriptions: [], downloadMeta: {}, pins: [], channelAvatars: {} });
   // Existing keys untouched.
   assert.deepEqual(db.folders, ['/movies']);
   assert.deepEqual(db.settings, { scanIntervalMinutes: 15 });
-  assert.deepEqual(db.ytdlp, { allowMembersOnly: false, subscriptions: [], downloadMeta: {}, pins: [] });
+  assert.deepEqual(db.ytdlp, { allowMembersOnly: false, subscriptions: [], downloadMeta: {}, pins: [], channelAvatars: {} });
 });
 
 test('ensureYtdlp: a partial ytdlp namespace is completed without clobbering present fields', () => {
@@ -1123,6 +1123,38 @@ test('recordSubscriptionChannelAvatar: setting the SAME already-current avatar a
   assert.equal(changedAgain, false);
 });
 
+// ---- v1.25.x QoL bugfix: recordSubscriptionChannelId (finally giving subs --
+// a stable id -- the root-cause fix for the dead sub.channelId field) -------
+
+test('recordSubscriptionChannelId: sets channelId on the matching subscription by channelUrl (previously permanently dead)', async () => {
+  const deps = makeFakeDeps();
+  const sub = await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@somechannel', format: 'video' });
+  assert.equal(sub.channelId, undefined, 'sanity: addSubscription never writes channelId -- this is the confirmed root cause');
+  const changed = await store.recordSubscriptionChannelId(deps, 'https://www.youtube.com/@somechannel', mkChannelId('recordid'));
+  assert.equal(changed, true);
+  const [persisted] = store.listSubscriptions(deps);
+  assert.equal(persisted.channelId, mkChannelId('recordid'));
+});
+
+test('recordSubscriptionChannelId: write-once -- never overwrites an already-set channelId (unlike recordSubscriptionChannelAvatar)', async () => {
+  const deps = makeFakeDeps();
+  await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@somechannel', format: 'video' });
+  await store.recordSubscriptionChannelId(deps, 'https://www.youtube.com/@somechannel', mkChannelId('first'));
+  const changedAgain = await store.recordSubscriptionChannelId(deps, 'https://www.youtube.com/@somechannel', mkChannelId('second'));
+  assert.equal(changedAgain, false);
+  const [persisted] = store.listSubscriptions(deps);
+  assert.equal(persisted.channelId, mkChannelId('first'), 'the FIRST recorded channelId must never be reassigned');
+});
+
+test('recordSubscriptionChannelId: rejects an invalid channelId (wrong shape), a no-match channelUrl -- silent no-op, never throws', async () => {
+  const deps = makeFakeDeps();
+  await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@somechannel', format: 'video' });
+  assert.equal(await store.recordSubscriptionChannelId(deps, 'https://www.youtube.com/@somechannel', 'not-a-real-id'), false);
+  assert.equal(await store.recordSubscriptionChannelId(deps, 'https://www.youtube.com/@no-such-channel', mkChannelId('nomatch')), false);
+  const [persisted] = store.listSubscriptions(deps);
+  assert.equal(persisted.channelId, undefined);
+});
+
 // ---- v1.21.0 FR-5: channel pins (HEAVY, two-reviewer, data-safety gate) ---
 
 // ---- ensureYtdlp: pins backfill (non-destructive, mirrors subscriptions) --
@@ -1926,4 +1958,189 @@ test('resolveItemChannelAvatarUrl: a matched subscription\'s HOSTILE/corrupted c
 test('resolveItemChannelAvatarUrl: a matched subscription with no channelAvatarUrl of its own resolves null', () => {
   const db = { ytdlp: { subscriptions: [{ id: 'sub1', channelUrl: 'https://www.youtube.com/channel/UCabc' }] } };
   assert.equal(store.resolveItemChannelAvatarUrl(db, { channelUrl: 'https://www.youtube.com/channel/UCabc' }), null);
+});
+
+// ---- v1.25.x QoL bugfix: the channelId-keyed avatar REGISTRY --------------
+//
+// `mkChannelId` deterministically pads a short seed out to a real
+// `CHANNEL_ID_PATTERN`-shaped id (`UC` + exactly 22 charset chars) -- the
+// registry's boundary validators (`registerChannelAvatar`/`getChannelAvatar`/
+// `hasFreshChannelAvatar`) reject anything shorter, so every fixture below
+// needs a REAL-shaped id, not a shorthand literal like the older
+// `resolveItemChannelAvatarUrl` tests above use (those go through the
+// UNVALIDATED sub-join, which never shape-checks `sub.channelId`).
+function mkChannelId(seed) {
+  // A right-padded literal (e.g. `${seed}` + trailing zeros) can COLLIDE for
+  // distinct seeds whose only difference is a trailing zero digit (e.g.
+  // "fifo1" and "fifo10" pad to the identical 22-char string) -- hash the
+  // seed instead so every distinct seed deterministically maps to a distinct,
+  // real-shaped `UC` + 22 hex-char id.
+  const hash = crypto.createHash('md5').update(String(seed)).digest('hex');
+  return `UC${hash.slice(0, 22)}`;
+}
+
+test('registerChannelAvatar: upserts a valid entry, readable via getChannelAvatar', async () => {
+  const deps = makeFakeDeps();
+  const channelId = mkChannelId('register1');
+  const recorded = await store.registerChannelAvatar(deps, {
+    channelId,
+    avatarUrl: 'https://yt3.ggpht.com/registered.jpg',
+    channelUrl: 'https://www.youtube.com/channel/' + channelId,
+    name: 'Registered Channel',
+  });
+  assert.equal(recorded, true);
+  const db = deps.loadDatabase();
+  assert.equal(store.getChannelAvatar(db, channelId), 'https://yt3.ggpht.com/registered.jpg');
+  assert.equal(store.ensureYtdlp(db).channelAvatars[channelId].name, 'Registered Channel');
+});
+
+test('registerChannelAvatar: rejects an invalid channelId (wrong shape) -- silent no-op, never throws', async () => {
+  const deps = makeFakeDeps();
+  assert.equal(await store.registerChannelAvatar(deps, { channelId: 'not-a-real-id', avatarUrl: 'https://yt3.ggpht.com/x.jpg' }), false);
+  assert.equal(await store.registerChannelAvatar(deps, { channelId: '', avatarUrl: 'https://yt3.ggpht.com/x.jpg' }), false);
+  assert.equal(await store.registerChannelAvatar(deps, { avatarUrl: 'https://yt3.ggpht.com/x.jpg' }), false);
+  assert.deepEqual(store.ensureYtdlp(deps.loadDatabase()).channelAvatars, {});
+});
+
+test('registerChannelAvatar: rejects a non-https/hostile avatarUrl (via sanitizeChannelAvatarUrl) -- silent no-op', async () => {
+  const deps = makeFakeDeps();
+  const channelId = mkChannelId('rejectavatar');
+  assert.equal(await store.registerChannelAvatar(deps, { channelId, avatarUrl: 'javascript:alert(1)' }), false);
+  assert.equal(await store.registerChannelAvatar(deps, { channelId, avatarUrl: 'http://insecure.example.com/x.jpg' }), false);
+  assert.equal(store.getChannelAvatar(deps.loadDatabase(), channelId), null);
+});
+
+test('registerChannelAvatar: overwrites a previously-registered avatar for the SAME channelId (unlike a write-once identity field)', async () => {
+  const deps = makeFakeDeps();
+  const channelId = mkChannelId('overwrite');
+  await store.registerChannelAvatar(deps, { channelId, avatarUrl: 'https://yt3.ggpht.com/first.jpg' });
+  await store.registerChannelAvatar(deps, { channelId, avatarUrl: 'https://yt3.ggpht.com/second.jpg' });
+  assert.equal(store.getChannelAvatar(deps.loadDatabase(), channelId), 'https://yt3.ggpht.com/second.jpg');
+});
+
+test('registerChannelAvatar: FIFO cap evicts the OLDEST entry once MAX_CHANNEL_AVATARS is exceeded', async () => {
+  const deps = makeFakeDeps();
+  const db = deps.loadDatabase();
+  const ns = store.ensureYtdlp(db);
+  const oldestId = mkChannelId('oldest');
+  // Pre-populate right up to the cap directly (bypassing the mutator -- pure
+  // setup, not exercising registerChannelAvatar's own write path) so the test
+  // doesn't need MAX_CHANNEL_AVATARS real async writes to prove eviction.
+  ns.channelAvatars[oldestId] = { avatarUrl: 'https://yt3.ggpht.com/oldest.jpg', fetchedAt: 1 };
+  for (let i = 0; i < store.MAX_CHANNEL_AVATARS - 1; i += 1) {
+    const id = mkChannelId(`fifo${i}`);
+    ns.channelAvatars[id] = { avatarUrl: `https://yt3.ggpht.com/${i}.jpg`, fetchedAt: 1000 + i };
+  }
+  assert.equal(Object.keys(ns.channelAvatars).length, store.MAX_CHANNEL_AVATARS, 'sanity: exactly at the cap before the triggering write');
+
+  const newestId = mkChannelId('newest');
+  await store.registerChannelAvatar(deps, { channelId: newestId, avatarUrl: 'https://yt3.ggpht.com/newest.jpg' }, 999999);
+
+  const finalNs = store.ensureYtdlp(deps.loadDatabase());
+  assert.equal(Object.keys(finalNs.channelAvatars).length, store.MAX_CHANNEL_AVATARS, 'the map must never exceed the cap');
+  assert.equal(finalNs.channelAvatars[oldestId], undefined, 'the OLDEST entry (by fetchedAt) must be evicted first');
+  assert.ok(finalNs.channelAvatars[newestId], 'the just-written entry must survive');
+});
+
+test('getChannelAvatar: returns null for a missing channelId, an invalid channelId, or a null/undefined db', () => {
+  const db = { ytdlp: { channelAvatars: { [mkChannelId('present')]: { avatarUrl: 'https://yt3.ggpht.com/x.jpg', fetchedAt: 1 } } } };
+  assert.equal(store.getChannelAvatar(db, mkChannelId('absent')), null);
+  assert.equal(store.getChannelAvatar(db, 'not-a-real-id'), null);
+  assert.equal(store.getChannelAvatar(db, null), null);
+  assert.equal(store.getChannelAvatar(null, mkChannelId('present')), null);
+  assert.equal(store.getChannelAvatar(db, mkChannelId('present')), 'https://yt3.ggpht.com/x.jpg');
+});
+
+test('getChannelAvatar: re-validates a hostile/corrupted stored avatarUrl (defense-in-depth) -- never returned', () => {
+  const channelId = mkChannelId('hostile');
+  const db = { ytdlp: { channelAvatars: { [channelId]: { avatarUrl: 'javascript:alert(1)', fetchedAt: 1 } } } };
+  assert.equal(store.getChannelAvatar(db, channelId), null);
+});
+
+test('hasFreshChannelAvatar: no maxAgeMs (or 0) means "have ANY entry at all" -- never re-pulls once ever recorded', () => {
+  const channelId = mkChannelId('anyentry');
+  const db = { ytdlp: { channelAvatars: { [channelId]: { avatarUrl: 'https://yt3.ggpht.com/x.jpg', fetchedAt: 1 } } } };
+  assert.equal(store.hasFreshChannelAvatar(db, channelId), true);
+  assert.equal(store.hasFreshChannelAvatar(db, channelId, 0), true);
+});
+
+test('hasFreshChannelAvatar: true within the freshness window, false once past it', () => {
+  const channelId = mkChannelId('freshness');
+  const now = Date.now();
+  const db = { ytdlp: { channelAvatars: { [channelId]: { avatarUrl: 'https://yt3.ggpht.com/x.jpg', fetchedAt: now - 1000 } } } };
+  assert.equal(store.hasFreshChannelAvatar(db, channelId, 5000), true, 'fetched 1s ago, 5s window -- still fresh');
+  assert.equal(store.hasFreshChannelAvatar(db, channelId, 500), false, 'fetched 1s ago, 0.5s window -- stale');
+});
+
+test('hasFreshChannelAvatar: false for a channelId with no entry at all, or an invalid channelId', () => {
+  const db = { ytdlp: { channelAvatars: {} } };
+  assert.equal(store.hasFreshChannelAvatar(db, mkChannelId('nothing'), store.AVATAR_TTL_MS), false);
+  assert.equal(store.hasFreshChannelAvatar(db, 'not-a-real-id', store.AVATAR_TTL_MS), false);
+  assert.equal(store.hasFreshChannelAvatar(null, mkChannelId('nothing'), store.AVATAR_TTL_MS), false);
+});
+
+// ---- resolveItemChannelAvatarUrl: the new registry precedence order -------
+
+test('resolveItemChannelAvatarUrl precedence: item-baked channelAvatarUrl wins over everything else', () => {
+  const channelId = mkChannelId('precedence1');
+  const db = {
+    ytdlp: {
+      channelAvatars: { [channelId]: { avatarUrl: 'https://yt3.ggpht.com/registry.jpg', fetchedAt: 1 } },
+      subscriptions: [{ id: 'sub1', channelUrl: 'https://www.youtube.com/@x', channelId, channelAvatarUrl: 'https://yt3.ggpht.com/sub.jpg' }],
+    },
+  };
+  const item = { channelId, channelAvatarUrl: 'https://yt3.ggpht.com/own.jpg' };
+  assert.equal(store.resolveItemChannelAvatarUrl(db, item), 'https://yt3.ggpht.com/own.jpg');
+});
+
+test('resolveItemChannelAvatarUrl precedence: the channelId registry wins over BOTH a registry url-match AND the sub-join', () => {
+  const channelId = mkChannelId('precedence2');
+  const channelUrl = 'https://www.youtube.com/channel/' + channelId;
+  const db = {
+    ytdlp: {
+      channelAvatars: {
+        [channelId]: { avatarUrl: 'https://yt3.ggpht.com/by-id.jpg', fetchedAt: 1, channelUrl: 'https://www.youtube.com/@irrelevant' },
+        [mkChannelId('other')]: { avatarUrl: 'https://yt3.ggpht.com/by-url.jpg', fetchedAt: 1, channelUrl },
+      },
+      subscriptions: [{ id: 'sub1', channelUrl, channelId, channelAvatarUrl: 'https://yt3.ggpht.com/sub.jpg' }],
+    },
+  };
+  const item = { channelId, channelUrl };
+  assert.equal(store.resolveItemChannelAvatarUrl(db, item), 'https://yt3.ggpht.com/by-id.jpg');
+});
+
+test('resolveItemChannelAvatarUrl precedence: registry url-match (channelUrl or channelHandleUrl) wins over the sub-join when no channelId is present', () => {
+  const registeredChannelId = mkChannelId('urlmatch');
+  const channelUrl = 'https://www.youtube.com/channel/' + registeredChannelId;
+  const db = {
+    ytdlp: {
+      channelAvatars: { [registeredChannelId]: { avatarUrl: 'https://yt3.ggpht.com/by-url.jpg', fetchedAt: 1, channelUrl } },
+      subscriptions: [{ id: 'sub1', channelUrl, channelAvatarUrl: 'https://yt3.ggpht.com/sub.jpg' }],
+    },
+  };
+  // The item itself carries no channelId at all -- only a channelUrl.
+  assert.equal(store.resolveItemChannelAvatarUrl(db, { channelUrl }), 'https://yt3.ggpht.com/by-url.jpg');
+
+  // Also matches via channelHandleUrl (an item captured with a handle form).
+  const dbHandle = {
+    ytdlp: {
+      channelAvatars: { [registeredChannelId]: { avatarUrl: 'https://yt3.ggpht.com/by-handle.jpg', fetchedAt: 1, channelUrl: 'https://www.youtube.com/@handleform' } },
+      subscriptions: [],
+    },
+  };
+  assert.equal(
+    store.resolveItemChannelAvatarUrl(dbHandle, { channelUrl: 'https://www.youtube.com/channel/UCsomethingelse00000000', channelHandleUrl: 'https://www.youtube.com/@handleform' }),
+    'https://yt3.ggpht.com/by-handle.jpg',
+  );
+});
+
+test('resolveItemChannelAvatarUrl precedence: falls back to the EXISTING sub-join when no registry entry matches at all', () => {
+  const channelId = mkChannelId('subjoinfallback');
+  const db = {
+    ytdlp: {
+      channelAvatars: {},
+      subscriptions: [{ id: 'sub1', channelUrl: 'https://www.youtube.com/@fallback', channelId, channelAvatarUrl: 'https://yt3.ggpht.com/sub-only.jpg' }],
+    },
+  };
+  assert.equal(store.resolveItemChannelAvatarUrl(db, { channelId }), 'https://yt3.ggpht.com/sub-only.jpg');
 });

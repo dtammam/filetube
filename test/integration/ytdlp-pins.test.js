@@ -266,6 +266,39 @@ test('C6 render hop: a corrupted subscription avatar failing re-validation is NO
   assert.equal(list[0].channelAvatarUrl, undefined, 'a hostile persisted avatar must never be surfaced into the pins response (re-validated at read)');
 });
 
+// v1.25.x QoL bugfix: when the matched subscription's OWN channelAvatarUrl
+// is empty, the pin enrichment now falls back to the channelId-keyed
+// REGISTRY before giving up -- so a channel whose avatar was only ever
+// captured under a DIFFERENT identity (e.g. an item downloaded before this
+// subscription existed) still renders as the pin's icon.
+test('C6 render hop (registry fallback): a matched subscription with NO avatar of its own still gets one via the channelId registry', async () => {
+  const deps = { updateDatabase, getMediaId };
+  const name = 'Registry Fallback Pin Channel';
+  const channelUrl = 'https://www.youtube.com/@registryfallbackpin';
+  await store.addSubscription(deps, { channelUrl, name });
+
+  const channelId = 'UCregistryfallbackpinxxx';
+  await updateDatabase((db) => {
+    const ns = store.ensureYtdlp(db);
+    const sub = ns.subscriptions.find((s) => s.channelUrl === channelUrl);
+    sub.channelId = channelId; // the sub knows its own channelId but has no channelAvatarUrl of its own
+    ns.channelAvatars[channelId] = { avatarUrl: 'https://yt3.ggpht.com/registry-only.jpg', fetchedAt: Date.now() };
+    return true;
+  });
+
+  const channelDir = args.resolveChannelDir({ downloadDir }, { name });
+  const addRes = await fetch(`${base}/api/subscriptions/pins`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ channelDir, label: name }),
+  });
+  assert.equal(addRes.status, 201);
+
+  const list = await (await fetch(`${base}/api/subscriptions/pins`)).json();
+  assert.equal(list.length, 1);
+  assert.equal(list[0].channelAvatarUrl, 'https://yt3.ggpht.com/registry-only.jpg', 'the registry must be read through when the sub itself has no channelAvatarUrl');
+});
+
 test('disabled-module no-op preserved: all 3 pin routes 404 when the module is disabled', async () => {
   delete process.env.FILETUBE_YTDLP_ENABLED;
   try {

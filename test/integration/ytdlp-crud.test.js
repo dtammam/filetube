@@ -136,6 +136,39 @@ test('GET /api/subscriptions omits channelAvatarUrl for a subscription with no c
   assert.equal(delRes.status, 200);
 });
 
+// v1.25.x QoL bugfix: when the subscription's OWN channelAvatarUrl is empty,
+// the list serializer now falls back to the channelId-keyed REGISTRY before
+// leaving it absent -- covers a subscription whose avatar was only ever
+// captured under a different identity (e.g. registered via a downloaded item
+// before this subscription even existed).
+test('GET /api/subscriptions falls back to the channelId registry when the subscription itself has no channelAvatarUrl of its own', async () => {
+  const addRes = await fetch(`${base}/api/subscriptions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ channelUrl: 'https://www.youtube.com/@registryfallbackserializer', format: 'video' }),
+  });
+  assert.equal(addRes.status, 201);
+  const created = await addRes.json();
+
+  const channelId = 'UCregistryfallbackserial';
+  await updateDatabase((db) => {
+    const ns = store.ensureYtdlp(db);
+    const sub = ns.subscriptions.find((s) => s.id === created.id);
+    sub.channelId = channelId;
+    ns.channelAvatars[channelId] = { avatarUrl: 'https://example.com/registry-serializer.jpg', fetchedAt: Date.now() };
+    return true;
+  });
+
+  const listRes = await fetch(`${base}/api/subscriptions`);
+  const list = await listRes.json();
+  const row = list.find((s) => s.id === created.id);
+  assert.ok(row);
+  assert.equal(row.channelAvatarUrl, 'https://example.com/registry-serializer.jpg', 'the registry must be read through when the sub itself carries no avatar');
+
+  const delRes = await fetch(`${base}/api/subscriptions/${created.id}`, { method: 'DELETE' });
+  assert.equal(delRes.status, 200);
+});
+
 test('POST /api/subscriptions with a bad body returns 400', async () => {
   const missingUrl = await fetch(`${base}/api/subscriptions`, {
     method: 'POST',

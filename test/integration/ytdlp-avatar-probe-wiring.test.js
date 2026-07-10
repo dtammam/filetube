@@ -109,6 +109,14 @@ function ndjson(videos) {
   return videos.map((v) => JSON.stringify(v)).join('\n');
 }
 
+// Deterministic, `CHANNEL_ID_PATTERN`-shaped (`UC` + 22 chars) fake channelId
+// generator -- same approach as test/unit/ytdlp-channel-avatar-registry.test.js's
+// own `mkChannelId`, so registry writes below actually validate/persist.
+function mkChannelId(seed) {
+  const hash = crypto.createHash('md5').update(String(seed)).digest('hex');
+  return `UC${hash.slice(0, 22)}`;
+}
+
 // ---- 1. POST /api/subscriptions: post-response, fire-and-forget probe -----
 
 test('POST /api/subscriptions: a new subscription is probed for its avatar AFTER the response is already sent, and the avatar is persisted', async () => {
@@ -116,7 +124,7 @@ test('POST /api/subscriptions: a new subscription is probed for its avatar AFTER
   let probeCalledWith = null;
   run.probeChannelAvatar = async (channelUrl) => {
     probeCalledWith = channelUrl;
-    return 'https://yt3.googleusercontent.com/probed-avatar.jpg';
+    return { avatarUrl: 'https://yt3.googleusercontent.com/probed-avatar.jpg', channelId: null, channelUrl: null };
   };
 
   const { base, close } = await startTestApp(deps, baseConfig());
@@ -133,6 +141,29 @@ test('POST /api/subscriptions: a new subscription is probed for its avatar AFTER
     assert.equal(probeCalledWith, 'https://www.youtube.com/@newsub');
     const [persisted] = store.listSubscriptions(deps);
     assert.equal(persisted.channelAvatarUrl, 'https://yt3.googleusercontent.com/probed-avatar.jpg');
+  } finally {
+    await close();
+  }
+});
+
+// v1.25.x QoL bugfix: the SAME post-subscribe probe ALSO backfills the
+// subscription's own (previously permanently dead) channelId, and registers
+// the result into the canonical channelId-keyed registry -- not just the
+// subscription's own cached channelAvatarUrl.
+test('POST /api/subscriptions: the post-subscribe probe ALSO backfills channelId and registers into the canonical registry', async () => {
+  const deps = makeFakeDeps();
+  const channelId = 'UCsubscriberegisteredxxx';
+  run.probeChannelAvatar = async (channelUrl) => ({ avatarUrl: 'https://yt3.googleusercontent.com/registered-on-subscribe.jpg', channelId, channelUrl });
+
+  const { base, close } = await startTestApp(deps, baseConfig());
+  try {
+    const res = await postJson(base, '/api/subscriptions', { channelUrl: 'https://www.youtube.com/@registeronsubscribe', format: 'video' });
+    assert.equal(res.status, 201);
+    await flush();
+
+    const [persisted] = store.listSubscriptions(deps);
+    assert.equal(persisted.channelId, channelId, 'the previously-dead sub.channelId field must now be populated from the subscribe-time probe');
+    assert.equal(store.getChannelAvatar(deps.loadDatabase(), channelId), 'https://yt3.googleusercontent.com/registered-on-subscribe.jpg', 'the probe result must ALSO be registered into the canonical registry, not just cached on the subscription');
   } finally {
     await close();
   }
@@ -177,7 +208,7 @@ test('POST /api/subscriptions: a no-op re-add of an already-known channel (with 
   let probeCalls = 0;
   run.probeChannelAvatar = async () => {
     probeCalls += 1;
-    return 'https://yt3.googleusercontent.com/first-probe.jpg';
+    return { avatarUrl: 'https://yt3.googleusercontent.com/first-probe.jpg', channelId: null, channelUrl: null };
   };
 
   const { base, close } = await startTestApp(deps, baseConfig());
@@ -215,7 +246,7 @@ test('runPoll: a subscription with a MISSING channelAvatarUrl is self-healed (pr
   run.probeChannelAvatar = async (channelUrl) => {
     probeCalls += 1;
     assert.equal(channelUrl, 'https://www.youtube.com/@healme');
-    return 'https://yt3.googleusercontent.com/self-healed.jpg';
+    return { avatarUrl: 'https://yt3.googleusercontent.com/self-healed.jpg', channelId: null, channelUrl: null };
   };
   run.runList = async () => ({ ok: true, stdout: ndjson([]), stderr: '' });
   run.runDownload = async () => ({ ok: true, code: 0, stdout: '', stderr: '', channelMeta: [] });
@@ -250,6 +281,89 @@ test('runPoll: a subscription that ALREADY has a channelAvatarUrl is never re-pr
   assert.equal(probeCalls, 0, 'a subscription that already has an avatar must never be re-probed');
   const [persisted] = store.listSubscriptions(deps);
   assert.equal(persisted.channelAvatarUrl, 'https://yt3.googleusercontent.com/existing.jpg', 'unchanged');
+});
+
+// v1.25.x QoL bugfix (two-reviewer gate follow-up): the poll's self-heal now
+// ALSO folds a successful probe into the canonical, channelId-keyed registry
+// -- previously this only backfilled the subscription's own cached fields,
+// so a channel discovered ONLY via self-heal was invisible to
+// `db.ytdlp.channelAvatars` until some OTHER populate point ran for it.
+test('runPoll: a self-healed channel (probe returns a channelId) is registered into the canonical registry, AND its subscription fields are still written', async () => {
+  const deps = makeFakeDeps();
+  await store.addSubscription(deps, {
+    channelUrl: 'https://www.youtube.com/@registerviaselfheal',
+    format: 'video',
+    quality: 'best',
+  });
+
+  const channelId = mkChannelId('registered-via-selfheal');
+  run.probeChannelAvatar = async (channelUrl) => ({
+    avatarUrl: 'https://yt3.googleusercontent.com/registered-via-selfheal.jpg',
+    channelId,
+    channelUrl,
+  });
+  run.runList = async () => ({ ok: true, stdout: ndjson([]), stderr: '' });
+  run.runDownload = async () => ({ ok: true, code: 0, stdout: '', stderr: '', channelMeta: [] });
+
+  await ytdlp.runPoll(deps, baseConfig());
+
+  const [persisted] = store.listSubscriptions(deps);
+  assert.equal(persisted.channelAvatarUrl, 'https://yt3.googleusercontent.com/registered-via-selfheal.jpg', 'the subscription\'s own cached field must still be written');
+  assert.equal(persisted.channelId, channelId, 'the subscription\'s own channelId must still be backfilled');
+  assert.equal(
+    store.getChannelAvatar(deps.loadDatabase(), channelId),
+    'https://yt3.googleusercontent.com/registered-via-selfheal.jpg',
+    'a self-healed channel must ALSO be folded into the canonical, channelId-keyed registry, not just cached on the subscription',
+  );
+});
+
+test('runPoll: a self-heal probe with NO channelId never writes into the canonical registry (nothing to key it by), but still backfills the subscription\'s own avatar', async () => {
+  const deps = makeFakeDeps();
+  await store.addSubscription(deps, {
+    channelUrl: 'https://www.youtube.com/@selfhealnoidatall',
+    format: 'video',
+    quality: 'best',
+  });
+
+  run.probeChannelAvatar = async (channelUrl) => ({ avatarUrl: 'https://yt3.googleusercontent.com/no-id-selfheal.jpg', channelId: null, channelUrl });
+  run.runList = async () => ({ ok: true, stdout: ndjson([]), stderr: '' });
+  run.runDownload = async () => ({ ok: true, code: 0, stdout: '', stderr: '', channelMeta: [] });
+
+  await ytdlp.runPoll(deps, baseConfig());
+
+  const [persisted] = store.listSubscriptions(deps);
+  assert.equal(persisted.channelAvatarUrl, 'https://yt3.googleusercontent.com/no-id-selfheal.jpg', 'the subscription\'s own cached field must still be written even with no channelId');
+  assert.deepEqual(store.ensureYtdlp(deps.loadDatabase()).channelAvatars, {}, 'no channelId to key the registry write by -- the registry must stay untouched');
+});
+
+test('runPoll: a MASS avatar-less backlog self-heal registry writes still respect the AVATAR_SELFHEAL_PER_POLL throttle -- at most 8 registry entries in one poll', async () => {
+  const deps = makeFakeDeps();
+  const total = ytdlp.AVATAR_SELFHEAL_PER_POLL + 5;
+  for (let i = 0; i < total; i += 1) {
+    await store.addSubscription(deps, {
+      channelUrl: `https://www.youtube.com/@registerbacklog${i}`,
+      format: 'video',
+      quality: 'best',
+    });
+  }
+
+  let probeCalls = 0;
+  run.probeChannelAvatar = async (channelUrl) => {
+    probeCalls += 1;
+    return {
+      avatarUrl: 'https://yt3.googleusercontent.com/registered-backlog.jpg',
+      channelId: mkChannelId(`registered-backlog-${probeCalls}`),
+      channelUrl,
+    };
+  };
+  run.runList = async () => ({ ok: true, stdout: ndjson([]), stderr: '' });
+  run.runDownload = async () => ({ ok: true, code: 0, stdout: '', stderr: '', channelMeta: [] });
+
+  await ytdlp.runPoll(deps, baseConfig());
+
+  assert.equal(probeCalls, ytdlp.AVATAR_SELFHEAL_PER_POLL, 'sanity: the throttle still caps probes at AVATAR_SELFHEAL_PER_POLL');
+  const registeredCount = Object.keys(store.ensureYtdlp(deps.loadDatabase()).channelAvatars).length;
+  assert.equal(registeredCount, ytdlp.AVATAR_SELFHEAL_PER_POLL, 'the registry write must be throttled exactly like the probe itself -- never more than AVATAR_SELFHEAL_PER_POLL entries in one poll');
 });
 
 test('runPoll: a self-heal probe failure never breaks the poll -- status is still recorded and the scan is still triggered', async () => {
@@ -287,7 +401,7 @@ test('runPoll: self-heal runs regardless of whether the subscription\'s own cycl
   let probeCalls = 0;
   run.probeChannelAvatar = async () => {
     probeCalls += 1;
-    return 'https://yt3.googleusercontent.com/healed-despite-error.jpg';
+    return { avatarUrl: 'https://yt3.googleusercontent.com/healed-despite-error.jpg', channelId: null, channelUrl: null };
   };
   // Force the listing pass itself to fail -- runSubscriptionCycle returns a
   // non-'ok' status, but the self-heal must still run.
@@ -322,7 +436,7 @@ test('runPoll: a MASS avatar-less backlog (more subs than AVATAR_SELFHEAL_PER_PO
   let probeCalls = 0;
   run.probeChannelAvatar = async () => {
     probeCalls += 1;
-    return 'https://yt3.googleusercontent.com/backlog-avatar.jpg';
+    return { avatarUrl: 'https://yt3.googleusercontent.com/backlog-avatar.jpg', channelId: null, channelUrl: null };
   };
   run.runList = async () => ({ ok: true, stdout: ndjson([]), stderr: '' });
   run.runDownload = async () => ({ ok: true, code: 0, stdout: '', stderr: '', channelMeta: [] });
@@ -355,7 +469,7 @@ test('runPoll: a subsequent poll picks up the NEXT batch of avatar-less subscrip
   run.probeChannelAvatar = async (channelUrl) => {
     probeCalls += 1;
     probedUrls.add(channelUrl);
-    return 'https://yt3.googleusercontent.com/batch-avatar.jpg';
+    return { avatarUrl: 'https://yt3.googleusercontent.com/batch-avatar.jpg', channelId: null, channelUrl: null };
   };
   run.runList = async () => ({ ok: true, stdout: ndjson([]), stderr: '' });
   run.runDownload = async () => ({ ok: true, code: 0, stdout: '', stderr: '', channelMeta: [] });
@@ -395,7 +509,7 @@ test('runPoll: subscriptions that ALREADY have an avatar are never probed, even 
   const probedChannelUrls = [];
   run.probeChannelAvatar = async (channelUrl) => {
     probedChannelUrls.push(channelUrl);
-    return 'https://yt3.googleusercontent.com/needs-avatar.jpg';
+    return { avatarUrl: 'https://yt3.googleusercontent.com/needs-avatar.jpg', channelId: null, channelUrl: null };
   };
   run.runList = async () => ({ ok: true, stdout: ndjson([]), stderr: '' });
   run.runDownload = async () => ({ ok: true, code: 0, stdout: '', stderr: '', channelMeta: [] });
@@ -412,7 +526,7 @@ test('POST /api/subscriptions: the subscribe-time probe is UNTHROTTLED -- back-t
   let probeCalls = 0;
   run.probeChannelAvatar = async () => {
     probeCalls += 1;
-    return 'https://yt3.googleusercontent.com/unthrottled.jpg';
+    return { avatarUrl: 'https://yt3.googleusercontent.com/unthrottled.jpg', channelId: null, channelUrl: null };
   };
 
   const total = ytdlp.AVATAR_SELFHEAL_PER_POLL + 4;
