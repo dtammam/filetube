@@ -173,23 +173,106 @@ function shouldPauseForLifecycleEvent(eventType, ctx) {
   return !!ctx.isMobile; // video: pause + persist only on mobile/PWA form factors (desktop keeps playing across tabs)
 }
 
-// Should the resume overlay show for this load (FR-4b, T3)? True whenever
-// there's meaningful saved progress (>5s) -- UNLESS this specific load was
-// reached by autoplay advancing to the next video (see `handleAutoplayNext`,
-// which sets the one-shot `autoplayAdvancePending` flag immediately before
-// navigating; `load()` then captures it into a per-load snapshot at load
-// START -- see `captureAutoplayAdvanceForLoad` -- which `handleResumePlayback`
-// reads). An autoplay-advanced load skips the "Resume at..." prompt entirely and just
+// D2 (v1.24.0, T13): the resume-prompt threshold, in seconds, applied by
+// `shouldShowResumeOverlay` below. Saved progress AT OR ABOVE this still
+// shows the "Resume at..." overlay; progress below it is treated as too
+// short to bother asking about (the caller's existing `savedProgress > 5`
+// direct-resume fallback in `handleResumePlayback` still resumes it
+// silently -- this only suppresses the INTERRUPTING prompt, not the resume
+// itself). Configurable via the Setup page's "Playback" section
+// (`RESUME_THRESHOLD_STORAGE_KEY` below); this is just the fallback default.
+var DEFAULT_RESUME_THRESHOLD_SECONDS = 60;
+
+// D2 (v1.24.0, T13): pure validator for a RAW (string/number/null/undefined)
+// resume-threshold value -- either a `localStorage`-read raw string (see
+// `getStoredResumeThreshold` below) or a caller-supplied `ctx.threshold` that
+// hasn't been pre-validated. Mirrors `clampVolume`'s "garbage/missing ->
+// documented fallback, never a silent NaN/negative" contract: anything that
+// doesn't parse to a finite, non-negative number (missing, `localStorage`
+// disabled, a corrupt/tampered value, a stray negative) falls back to
+// `DEFAULT_RESUME_THRESHOLD_SECONDS`; a genuine `0` (a user opting into
+// "always prompt, even for 1s of progress") is valid and passed through.
+// This is the SINGLE source of truth both `shouldShowResumeOverlay` (when no
+// -- or an invalid -- `ctx.threshold` is supplied) and the live
+// `localStorage` reader below fall back through, so the two can never
+// disagree on what "missing/garbage" resolves to.
+function resolveResumeThreshold(raw) {
+  var n = typeof raw === 'number' ? raw : parseFloat(raw);
+  if (!isFinite(n) || n < 0) return DEFAULT_RESUME_THRESHOLD_SECONDS;
+  return n;
+}
+
+// Should the resume overlay show for this load (FR-4b, T3; threshold made
+// configurable in D2, v1.24.0, T13)? True whenever there's saved progress AT
+// OR ABOVE the configurable threshold (`ctx.threshold`, default ~60s, see
+// `DEFAULT_RESUME_THRESHOLD_SECONDS`/`resolveResumeThreshold` above) --
+// UNLESS this specific load was reached by autoplay advancing to the next
+// video (see `handleAutoplayNext`, which sets the one-shot
+// `autoplayAdvancePending` flag immediately before navigating; `load()` then
+// captures it into a per-load snapshot at load START -- see
+// `captureAutoplayAdvanceForLoad` -- which `handleResumePlayback` reads). An
+// autoplay-advanced load skips the "Resume at..." prompt entirely and just
 // plays on, so the autoplay flow is never interrupted by a manual decision.
 // A normal navigation (autoplayAdvance falsy) to a video with saved progress
-// is unaffected -- still shows the overlay exactly as before. Deliberately
-// NOT keyed off the `autoplayNext` SETTING itself: a manual navigation while
-// the setting happens to be ON must still show the overlay (see the exec
-// plan's "Alternatives considered").
+// is unaffected -- still shows the overlay exactly as before, just against
+// the (now-configurable) threshold instead of a fixed 5s. Deliberately NOT
+// keyed off the `autoplayNext` SETTING itself: a manual navigation while the
+// setting happens to be ON must still show the overlay (see the exec plan's
+// "Alternatives considered"). `ctx.threshold` is expected to be READ LIVE
+// from `localStorage` by the caller at decision time (see
+// `getStoredResumeThreshold` below, called fresh from `handleResumePlayback`
+// on every load) -- NEVER cached at module load -- so a change on the Setup
+// page takes effect on the very next video open, no page reload required.
 function shouldShowResumeOverlay(ctx) {
   var savedProgress = (ctx && ctx.savedProgress) || 0;
   var autoplayAdvance = !!(ctx && ctx.autoplayAdvance);
-  return savedProgress > 5 && !autoplayAdvance;
+  var threshold = resolveResumeThreshold(ctx && ctx.threshold);
+  // A resume prompt only makes sense against GENUINE saved progress: a
+  // never-watched video (savedProgress 0) must never prompt, even when the
+  // user has opted the threshold down to 0 ("always prompt") -- without this
+  // `> 0` guard, `0 >= 0` would surface a pointless "Resume at 0:00" overlay
+  // on every fresh video for anyone who set the threshold to 0 (v1.24.4 gate).
+  return savedProgress > 0 && savedProgress >= threshold && !autoplayAdvance;
+}
+
+// D3 (v1.24.0, T13): pure decision for what to do with a genuine resume
+// decision (one `shouldShowResumeOverlay` above has already said "yes, ask")
+// given where the persistent player host currently is. Problem: the docked
+// mini-player (`#player-dock`, 280px desktop / 160px mobile -- see
+// style.css) is too small to legibly read/tap a "Resume at.../Start over"
+// choice. Recommended (Dean's design pick, per the exec plan's D3 -- the
+// ONE behavior implemented here, not the rejected "expand-to-FULL"
+// alternative): DOCKED suppresses the overlay entirely and resumes silently
+// instead, exactly like `handleResumePlayback`'s existing autoplay-advance
+// direct-resume fallback already does for a below-threshold-but-real save --
+// resuming is overwhelmingly the correct default, and the user can always
+// tap the dock to expand + seek elsewhere if it wasn't. FULL shows the
+// overlay exactly as before D3 (plenty of room there). CLOSED never actually
+// reaches this in practice (`handleResumePlayback`'s `gen !== loadGeneration`
+// guard bails out before this runs -- `close()` bumps `loadGeneration`) but
+// degrades to `'prompt'` defensively rather than silently dropping a pending
+// decision. Returns `'none'` when no resume decision is pending at all (the
+// call site only invokes this from inside the `shouldShowResumeOverlay`
+// branch, so in practice `resumeDecisionPending` is always `true` there --
+// this input/branch exists so the helper is a complete, self-contained
+// decision table rather than relying on the caller to only ever call it
+// correctly).
+//
+// NOTE on form factor: the exec plan's stated inputs for this helper include
+// a mobile/desktop form-factor signal (reusing `resolveMobileFormFactor`/
+// `isMobileFormFactor`, never a second mobile check). The chosen (recommended)
+// behavior above does not need to branch on it -- `#player-dock` is small on
+// EVERY form factor (280px desktop / 160px mobile, both well under a legible
+// two-button dialog's comfortable width), so suppression applies uniformly
+// whether DOCKED on a phone or a desktop browser. Only the REJECTED
+// alternative (expand-to-FULL) would have needed it, and implementing both
+// behaviors is explicitly out of scope (pick ONE, deterministic). Not
+// accepted as a parameter for that reason -- see the T13 report for this
+// call.
+function resolveDockedResumeAction(ctx) {
+  var opts = ctx || {};
+  if (!opts.resumeDecisionPending) return 'none';
+  return opts.dockState === 'docked' ? 'auto-resume' : 'prompt';
 }
 
 // Bug-fix (v1.17.0 two-reviewer gate, FR-4b leak): pure helper for the
@@ -419,6 +502,8 @@ if (typeof module !== 'undefined' && module.exports) {
     nextPlayerState,
     shouldPauseForLifecycleEvent,
     shouldShowResumeOverlay,
+    resolveResumeThreshold,
+    resolveDockedResumeAction,
     captureAutoplayAdvanceForLoad,
     clampVolume,
     seekCommitTarget,
@@ -486,6 +571,7 @@ if (typeof module !== 'undefined' && module.exports) {
   var MUTED_STORAGE_KEY = 'ft-muted';
   var LOOP_STORAGE_KEY = 'ft-loop'; // FR-7 (TF, v1.22.0) -- watch-page-local preference, NOT a server db.settings setting (mirrors the v1.21 FR-9 ft-theater pattern)
   var RATE_STORAGE_KEY = 'ft-rate'; // FR-4 (T1, v1.22.1) -- watch-page-local preference, same pattern as VOLUME/LOOP above
+  var RESUME_THRESHOLD_STORAGE_KEY = 'filetube_resume_threshold'; // D2 (v1.24.0, T13) -- set from the Setup page's "Playback" section (public/js/setup.js); read LIVE (never cached) at every resume decision, see getStoredResumeThreshold below. Named `filetube_*` (not `ft-*`) to match the existing cross-page-list-pref convention (`filetube_sort`/`filetube_format` in main.js/watch.js/common.js), since this is surfaced/settable from a page OTHER than the watch page, unlike VOLUME/MUTED/LOOP/RATE above.
 
   // One-shot flag (FR-4b, T3): set true in handleAutoplayNext immediately
   // before navigate(). Bug-fix (v1.17.0 two-reviewer gate): this global is
@@ -1024,6 +1110,22 @@ if (typeof module !== 'undefined' && module.exports) {
 
   // ---- resume overlay + progress saving ---------------------------------------
 
+  // Resume playback at `progress` seconds WITHOUT showing the "Resume at..."
+  // overlay -- shared by two call sites in `handleResumePlayback` below: the
+  // pre-existing autoplay-advance/below-threshold direct-resume fallback,
+  // and D3's (v1.24.0, T13) docked-suppression auto-resume. Handles the
+  // desktop live-transcode case exactly like the overlay's own resumeYesBtn
+  // handler does (a live-transcode source must be RESTARTED at the target
+  // offset, not merely seeked).
+  function resumeDirectly(progress) {
+    if (liveMode) {
+      startLiveStream(progress, true);
+    } else {
+      mediaPlayer.currentTime = progress;
+      mediaPlayer.play().catch(function () {});
+    }
+  }
+
   function handleResumePlayback(gen, id) {
     if (gen !== loadGeneration || awaitingTranscode) return;
     // Bug-fix (v1.17.0 two-reviewer gate, FR-4b leak): read the PER-LOAD
@@ -1042,21 +1144,31 @@ if (typeof module !== 'undefined' && module.exports) {
       .then(function (data) {
         if (gen !== loadGeneration) return;
         savedProgress = data.timestamp || 0;
-        if (shouldShowResumeOverlay({ savedProgress: savedProgress, autoplayAdvance: autoplayAdvance })) {
-          if (resumeTimeStr) resumeTimeStr.textContent = formatDuration(savedProgress);
-          if (resumeOverlay) resumeOverlay.style.display = 'flex';
-          mediaPlayer.autoplay = false;
-        } else if (savedProgress > 5) {
-          // Overlay suppressed (autoplay just advanced here) WITH real saved
-          // progress: resume directly instead of prompting, matching the
-          // resumeYesBtn handler below -- autoplay-to-next never interrupts
-          // with a "resume?" dialog.
-          if (liveMode) {
-            startLiveStream(savedProgress, true);
+        // D2 (v1.24.0, T13): read the configurable threshold LIVE, right at
+        // this decision point -- see getStoredResumeThreshold's comment.
+        var threshold = getStoredResumeThreshold();
+        if (shouldShowResumeOverlay({ savedProgress: savedProgress, autoplayAdvance: autoplayAdvance, threshold: threshold })) {
+          // D3 (v1.24.0, T13): a genuine resume decision is pending -- decide
+          // whether the current dock state can actually surface it legibly.
+          var dockedAction = resolveDockedResumeAction({ dockState: state, resumeDecisionPending: true });
+          if (dockedAction === 'auto-resume') {
+            // DOCKED: the mini-player is too small to read/tap the prompt --
+            // suppress it and resume directly instead, same mechanics as the
+            // autoplay-advance direct-resume branch just below.
+            resumeDirectly(savedProgress);
           } else {
-            mediaPlayer.currentTime = savedProgress;
-            mediaPlayer.play().catch(function () {});
+            if (resumeTimeStr) resumeTimeStr.textContent = formatDuration(savedProgress);
+            if (resumeOverlay) resumeOverlay.style.display = 'flex';
+            mediaPlayer.autoplay = false;
           }
+        } else if (savedProgress > 5) {
+          // Overlay suppressed (autoplay just advanced here, or savedProgress
+          // is real but below the D2 threshold) WITH real saved progress:
+          // resume directly instead of prompting, matching the resumeYesBtn
+          // handler below -- autoplay-to-next never interrupts with a
+          // "resume?" dialog, and short-of-threshold progress is restored
+          // quietly rather than discarded.
+          resumeDirectly(savedProgress);
         } else if (liveMode) {
           startLiveStream(0, true);
         } else {
@@ -1492,6 +1604,21 @@ if (typeof module !== 'undefined' && module.exports) {
 
   function persistPlaybackRate(rate) {
     try { localStorage.setItem(RATE_STORAGE_KEY, String(rate)); } catch (_) { /* storage disabled/full -- best-effort only */ }
+  }
+
+  // ---- resume-prompt threshold (D2, v1.24.0, T13) ---------------------------
+  // Read LIVE from `localStorage['filetube_resume_threshold']` on every call
+  // (never cached at module load) -- called fresh from `handleResumePlayback`
+  // below on every single resume decision, so a change made on the Setup
+  // page's "Playback" section takes effect on the very next video open, no
+  // page reload required. Same guarded try/catch idiom as
+  // `loadStoredPlaybackRate`/`loadStoredVolume` above (storage disabled/full/
+  // garbage all degrade to `DEFAULT_RESUME_THRESHOLD_SECONDS`, never throw);
+  // `resolveResumeThreshold` (the pure top-of-file validator) is the single
+  // source of truth for what counts as "garbage," reused here rather than
+  // duplicated.
+  function getStoredResumeThreshold() {
+    try { return resolveResumeThreshold(localStorage.getItem(RESUME_THRESHOLD_STORAGE_KEY)); } catch (_) { return DEFAULT_RESUME_THRESHOLD_SECONDS; }
   }
 
   function updateSpeedBtnUI(rate) {
