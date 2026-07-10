@@ -121,6 +121,14 @@ test('per-subscription settings sheet: .sub-sheet-field input / .setup-select ar
   assert.ok(openBraceCount > closeBraceCount, 'expected the mobile .sub-sheet-field rule to still be inside the @media block (unbalanced braces = still open)');
 });
 
+test('header search: .search-input is >=16px on mobile (v1.25.10 -- tapping search no longer auto-zooms on iOS)', () => {
+  assertMobileFontSizeAtLeast16(
+    '.search-input',
+    '.search-input',
+    /\.search-input\s*\{([^}]*)\}/
+  );
+});
+
 test('desktop sizing is unchanged: the base (unscoped) .oneoff-modal-field/.oneoff-modal-row select/.setup-select/.sub-sheet-field rules still read 13px', () => {
   const oneOffField = /(?:^|\n)\.oneoff-modal-field\s*\{([^}]*)\}/.exec(css);
   assert.ok(oneOffField);
