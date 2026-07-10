@@ -188,4 +188,21 @@ module.exports = [
       },
     },
   },
+
+  // v1.26.2 polish (sheet/modal transitions): `openOverlay`/`closeOverlayThen`
+  // are DEFINED in public/js/common.js and consumed here (the subscription
+  // settings sheet's open/close), same "declare only where consumed" posture
+  // as the public/js/main.js|watch.js|setup.js|player.js block above --
+  // common.js loads first as a classic script (see `/js/subscriptions.js`'s
+  // route in lib/ytdlp/index.js), so this is the SAME bare-global pattern
+  // `showHardDeleteModal`/`showMoveModal`/etc. already use.
+  {
+    files: ['lib/ytdlp/client/subscriptions.js'],
+    languageOptions: {
+      globals: {
+        openOverlay: 'readonly',
+        closeOverlayThen: 'readonly',
+      },
+    },
+  },
 ];

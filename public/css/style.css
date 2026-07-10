@@ -657,6 +657,18 @@ header {
   min-width: 0;
 }
 
+/* v1.26.2 polish fix (Dean punchlist #5): #rescan-library-btn's label swaps
+   between "Rescan" and the wider "Scanning..." (public/js/main.js's click
+   handler) while it sits in the same flex row as #shuffle-again-btn/
+   .sort-select -- without a floor, that swap changes the button's own
+   content width and reflows/shifts its neighbors in the row. `min-width`
+   reserves enough room for the widest label ("Scanning...") plus its icon,
+   so the swap only ever repaints text in place. */
+#rescan-library-btn {
+  min-width: 132px;
+  justify-content: center;
+}
+
 .video-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
@@ -1924,6 +1936,17 @@ header {
   overflow-wrap: anywhere; /* long underscored paths (no spaces) must break, not overflow */
 }
 
+/* v1.26.2 polish fix (Dean punchlist #6, systemic iOS-zoom fix): this input
+   used to carry an INLINE `style="...font-size:12px;"` (public/js/setup.js's
+   renderFolders) -- an inline style always beats any stylesheet rule
+   (including the mobile-only global `input`/`select`/`textarea` 16px floor
+   added below), so it stayed 12px on mobile and auto-zoomed iOS Safari on
+   focus no matter what CSS said. Moved here as a real class rule so the
+   mobile override in the `max-width: 768px` block can actually reach it. */
+.folder-name-input {
+  font-size: 12px;
+}
+
 .remove-folder-btn {
   background: none;
   border: none;
@@ -2073,7 +2096,7 @@ header {
 }
 
 .sub-row-name {
-  font-family: var(--mono-font);
+  font-family: var(--font-family);
   font-size: 13px;
   font-weight: bold;
   overflow-wrap: break-word;
@@ -2232,6 +2255,33 @@ a.sub-row-channel-link:focus-visible {
   justify-content: center;
   align-items: center;
   z-index: 2000;
+  /* v1.26.2 polish (Dean punchlist -- sheet/modal transitions): this backdrop
+     used to teleport in/out (public/js/common.js's showConfirmModal/
+     showMoveModal create-and-append / remove() it directly, no prior
+     [hidden] state). `openOverlay`/`closeOverlayThen` (common.js) add/remove
+     `.modal-open` right after mount / right before teardown, so the fade
+     below actually gets a "from" and "to" state to transition between. */
+  opacity: 0;
+  transition: opacity 0.2s ease-out;
+}
+
+.modal-backdrop.modal-open {
+  opacity: 1;
+}
+
+/* v1.26.2 code-review fix (F2, MAJOR): `showConfirmModal`/`showMoveModal`
+   (common.js) add this class to the backdrop the instant a Confirm/Cancel/
+   Move click starts the close fade (~200-300ms) -- blocks any further
+   pointer interaction with the fading-out dialog for the rest of that
+   window, on top of their own `settled`/`busy` JS guards + disabled buttons.
+   Deliberately its OWN class, NOT `.modal-backdrop:not(.modal-open)`:
+   `.modal-open` is only added AFTER the two-step reveal's first frame
+   (openOverlay's forced-reflow trick) and is never added at all under
+   `prefers-reduced-motion: reduce` -- either would make `:not(.modal-open)`
+   match (and so block clicks on) a dialog that is still legitimately open,
+   not just one that is closing. */
+.modal-backdrop.modal-closing {
+  pointer-events: none;
 }
 
 .modal-content {
@@ -2242,6 +2292,14 @@ a.sub-row-channel-link:focus-visible {
   width: 90%;
   padding: 20px;
   box-shadow: var(--shadow-lg);
+  /* Subtle scale-in alongside the backdrop's fade above -- same `.modal-open`
+     toggle (added to the BACKDROP, so this rule descends from it). */
+  transform: scale(0.97);
+  transition: transform 0.2s ease-out;
+}
+
+.modal-backdrop.modal-open .modal-content {
+  transform: scale(1);
 }
 
 .modal-title {
@@ -2273,7 +2331,13 @@ a.sub-row-channel-link:focus-visible {
 .toast {
   position: fixed;
   left: 50%;
-  bottom: 24px;
+  /* v1.26.2 polish (Dean punchlist -- PWA chrome): on an installed iOS PWA
+     with a home-indicator (env(safe-area-inset-bottom) > 0), a bare 24px
+     could sit uncomfortably close to (or under) the indicator -- add the
+     inset on top of the existing 24px breathing room. The `0px` fallback
+     keeps this byte-for-byte the same 24px everywhere env() isn't supported
+     (older browsers) or the inset is genuinely 0 (no home indicator). */
+  bottom: calc(24px + env(safe-area-inset-bottom, 0px));
   transform: translateX(-50%) translateY(8px);
   z-index: 2200; /* above the one-off download modal backdrop (2100) */
   max-width: calc(100vw - 32px);
@@ -2715,6 +2779,40 @@ a.sub-row-channel-link:focus-visible {
     --mobile-header-h: calc(96px + env(safe-area-inset-top));
     --mobile-bottom-nav-h: calc(72px + env(safe-area-inset-bottom));
   }
+
+  /* v1.26.2 polish fix (Dean punchlist, systemic version): every prior
+     iOS-input-zoom fix (search box, one-off/subscribe modal fields, setup
+     selects, per-subscription sheet fields, etc. -- see their own comments
+     elsewhere in this file) was applied per-surface, one at a time, as each
+     was individually reported. There was no GLOBAL floor, so any input/
+     select/textarea introduced (or missed) without its own explicit 16px
+     rule stays vulnerable to iOS Safari's auto-zoom-on-focus, which kicks in
+     for any focused form control computing under 16px. This is the single
+     systemic rule: EVERY text-entry control on mobile is at least 16px (the
+     iOS no-zoom threshold), full stop. The existing per-surface 16px rules
+     below are now redundant but kept (harmless, belt-and-braces, and some
+     carry their own historical context worth preserving). Desktop (outside
+     this max-width: 768px block) is completely unaffected. */
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+
+  /* v1.26.2: the bare-element global floor above can't reach a surface
+     already targeted by an unconditional (all-viewport) CLASS selector with
+     a smaller font-size -- a class selector always outranks a bare element
+     selector by CSS specificity, regardless of source order or media-query
+     nesting. `.comment-input-box` (13px), `.sort-select` (12px), and
+     `.folder-name-input` (12px, formerly an inline style -- see its own
+     comment above) are exactly that case; explicit mobile-only overrides
+     here restore the 16px no-zoom floor for them specifically. */
+  .comment-input-box,
+  .sort-select,
+  .folder-name-input {
+    font-size: 16px;
+  }
+
   .sidebar {
     transform: translateX(-230px);
   }
@@ -2840,14 +2938,31 @@ a.sub-row-channel-link:focus-visible {
   }
 
   /* ---- Mobile app shell: Playlists sheet -------------------------------- */
+  /* v1.26.2 polish (Dean punchlist -- sheet/modal transitions): pre-fix,
+     `[hidden]` was the ONLY state change -- an instant display:none <-> block
+     teleport. A CSS transition can't start FROM display:none, so
+     `openPlaylistsSheet`/`closePlaylistsSheet` (common.js) now do the
+     two-step reveal (unhide, force reflow, add `.sheet-open`) via the shared
+     `openOverlay`/`closeOverlayThen` helpers -- this rule just needs a real
+     "from" state (`opacity: 0`) and a transition to animate between it and
+     `.sheet-open`'s `opacity: 1`. */
   .playlists-sheet-backdrop:not([hidden]) {
     display: block;
     position: fixed;
     inset: 0;
     z-index: 1500;
     background: rgba(0, 0, 0, 0.5);
+    opacity: 0;
+    transition: opacity 0.2s ease-out;
   }
 
+  .playlists-sheet-backdrop:not([hidden]).sheet-open {
+    opacity: 1;
+  }
+
+  /* Same two-step-reveal posture as the backdrop above, but a slide (not a
+     fade) -- `translateY(100%)` (fully off-screen, below the viewport) to
+     `translateY(0)` on `.sheet-open`. */
   .playlists-sheet:not([hidden]) {
     display: block;
     position: fixed;
@@ -2864,6 +2979,12 @@ a.sub-row-channel-link:focus-visible {
     box-shadow: var(--shadow-lg);
     padding-bottom: env(safe-area-inset-bottom);
     font-family: var(--font-family);
+    transform: translateY(100%);
+    transition: transform 0.2s ease-out;
+  }
+
+  .playlists-sheet:not([hidden]).sheet-open {
+    transform: translateY(0);
   }
 
   .playlists-sheet-header {
@@ -3917,6 +4038,18 @@ a.sub-row-channel-link:focus-visible {
   display: flex;
   align-items: flex-end;
   justify-content: center;
+  /* v1.26.2 polish (Dean punchlist -- sheet/modal transitions): this
+     backdrop is freshly created + appended on every open and removed
+     entirely on close (lib/ytdlp/client/subscriptions.js's
+     openSettingsSheet/closeSettingsSheet, via the shared common.js
+     `openOverlay`/`closeOverlayThen` helpers) -- no prior [hidden] state,
+     same posture as the generic `.modal-backdrop` above. */
+  opacity: 0;
+  transition: opacity 0.2s ease-out;
+}
+
+.sub-sheet-backdrop.sheet-open {
+  opacity: 1;
 }
 
 .sub-sheet {
@@ -3932,6 +4065,14 @@ a.sub-row-channel-link:focus-visible {
   box-shadow: var(--shadow-lg);
   padding-bottom: env(safe-area-inset-bottom);
   font-family: var(--font-family);
+  /* Slide-up on open / slide-down on close -- mirrors `.playlists-sheet`'s
+     own translateY(100%) -> .sheet-open's translateY(0) treatment. */
+  transform: translateY(100%);
+  transition: transform 0.2s ease-out;
+}
+
+.sub-sheet.sheet-open {
+  transform: translateY(0);
 }
 
 .sub-sheet-header {
@@ -3977,7 +4118,7 @@ a.sub-row-channel-link:focus-visible {
    control backs this field anywhere in the sheet -- see
    buildSettingsSheet's doc comment in subscriptions.js. */
 .sub-sheet-name {
-  font-family: var(--mono-font);
+  font-family: var(--font-family);
   font-size: 15px;
   font-weight: bold;
   overflow-wrap: break-word;
@@ -4546,6 +4687,32 @@ a.sub-row-channel-link:focus-visible {
 
   .dl-status-chip-progress-fill.indeterminate {
     animation: none;
+  }
+}
+
+/* v1.26.2 polish (Dean punchlist -- sheet/modal transitions): the JS side
+   (common.js's `openOverlay`/`closeOverlayThen`, used by the Playlists
+   sheet, the subscription settings sheet, and the generic confirm/move
+   modals) already skips adding/removing the `.sheet-open`/`.modal-open`
+   class entirely when `prefers-reduced-motion: reduce` is set, so it never
+   even STARTS a transition -- but that alone would leave these elements
+   stuck in their "closed" visual state (`opacity: 0` / `translateY(100%)` /
+   `scale(0.97)`) forever, since nothing ever applies the "open" class to
+   counteract it. This override collapses the closed and open states to be
+   IDENTICAL (and drops the transition itself) so the element is simply
+   fully visible/in-place the instant it's unhidden/appended, regardless of
+   whether the open class ever gets added -- true instant show/hide, per the
+   OS-level preference. */
+@media (prefers-reduced-motion: reduce) {
+  .modal-backdrop,
+  .modal-content,
+  .playlists-sheet-backdrop:not([hidden]),
+  .playlists-sheet:not([hidden]),
+  .sub-sheet-backdrop,
+  .sub-sheet {
+    transition: none;
+    opacity: 1;
+    transform: none;
   }
 }
 

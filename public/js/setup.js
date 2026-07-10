@@ -82,7 +82,7 @@ function renderFolders() {
         <div class="folder-path-text" title="${escapeHtml(folder)}">${escapeHtml(folder)}</div>
         <div style="display:flex; gap:10px; align-items:center; margin-top:8px; flex-wrap:wrap;">
           <input type="text" class="folder-name-input" data-index="${index}" placeholder="Display name (optional)"
-                 value="${escapeHtml(s.name || '')}" style="flex:1; min-width:120px; padding:8px 10px; font-size:12px;" />
+                 value="${escapeHtml(s.name || '')}" style="flex:1; min-width:120px; padding:8px 10px;" />
           <label style="display:flex; align-items:center; gap:6px; font-size:12px; color:var(--text-secondary); white-space:nowrap;">
             <input type="checkbox" class="folder-hidden-check" data-index="${index}" ${s.hidden ? 'checked' : ''} /> Hide from home
           </label>

@@ -90,7 +90,11 @@ test('watch.js: the folders list is READ from the SAME GET /api/config fetch ini
 });
 
 test('watch.js: activating the trigger calls showMoveModal(mediaData, currentFolders, ...)', () => {
-  assert.match(watchJs, /showMoveModal\(mediaData, currentFolders, \(targetFolder, \{ teardown, statusEl \}\) => \{/);
+  // v1.26.2 code-review fix (F2): the callback now also destructures
+  // `reenable` (showMoveModal's busy-guard un-flip, called on a failed
+  // move so the user can retry) alongside the pre-existing
+  // `teardown`/`statusEl`.
+  assert.match(watchJs, /showMoveModal\(mediaData, currentFolders, \(targetFolder, \{ teardown, statusEl, reenable \}\) => \{/);
 });
 
 test('watch.js: confirming a folder calls requestMoveItem(mediaData.id, targetFolder)', () => {

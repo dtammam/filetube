@@ -12,7 +12,30 @@
   <link rel="manifest" href="/manifest.webmanifest">
   <meta name="theme-color" content="#cc0000">
   <meta name="apple-mobile-web-app-capable" content="yes">
+  <!-- v1.26.2 polish (Dean punchlist -- PWA chrome): `black-translucent`
+       (status bar overlaps the page, forced WHITE status-bar text/icons)
+       was considered and rejected -- `--header-bg` varies by era theme and
+       is WHITE/light in several of them (see style.css's `:root`/theme
+       blocks), so forced-white status bar text would be illegible against
+       those. `default` (opaque bar, black text, content starts BELOW it)
+       stays legible across every era/mode combination without needing a
+       per-theme status-bar-style swap, which a static meta tag can't do
+       anyway. The fixed `header` already correctly reserves
+       `env(safe-area-inset-top)` (see `--mobile-header-h`/its own mobile
+       padding in style.css), so switching to `black-translucent` later
+       would be a pure CSS/meta change if the contrast concern is ever
+       addressed (e.g. a fixed dark status-bar strip). -->
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="FileTube">
+  <!-- v1.26.2 polish (Dean punchlist -- PWA chrome): preloads the
+       @font-face src (style.css:33-39) so the browser fetches it
+       immediately instead of only discovering it once style.css itself
+       parses -- `font-display: swap` (unchanged) still governs the actual
+       swap-in, this just shrinks the window where the fallback font is
+       visible before Roboto takes over. `type`/`crossorigin` are required
+       for the browser to actually treat this as the SAME request the
+       @font-face rule will make (a mismatched preload is wasted). -->
+  <link rel="preload" href="/fonts/roboto.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/css/style.css">
   <script>
     /* FOUC guard: set era+mode+icons on <html> before first paint. Mirror of

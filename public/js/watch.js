@@ -1554,7 +1554,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // than trying to reload this same, now-relocated id in place.
     function handleMoveClick() {
       if (!mediaData) return;
-      showMoveModal(mediaData, currentFolders, (targetFolder, { teardown, statusEl }) => {
+      showMoveModal(mediaData, currentFolders, (targetFolder, { teardown, statusEl, reenable }) => {
         statusEl.textContent = 'Moving...';
         requestMoveItem(mediaData.id, targetFolder)
           .then(() => {
@@ -1572,6 +1572,12 @@ if (typeof module !== 'undefined' && module.exports) {
           })
           .catch((err) => {
             statusEl.textContent = (err && err.message) || 'Move failed.';
+            // v1.26.2 code-review fix (F2): showMoveModal's Move/Cancel
+            // buttons are disabled for the duration of this request (its own
+            // busy guard, common.js) -- on failure the modal stays open (no
+            // teardown() call above) so the user can pick a different folder
+            // and retry, which requires explicitly handing control back.
+            if (typeof reenable === 'function') reenable();
           });
       });
     }
