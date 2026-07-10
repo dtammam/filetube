@@ -82,7 +82,13 @@ test('FIX B: the normal pause verdict still calls both pause() and saveProgressT
   const body = handleBackgroundLifecycleMatch[1];
   const pauseBranch = /if \(shouldPauseForLifecycleEvent\(eventType, ctx\)\) \{([\s\S]*?)\n {4}\}/.exec(body);
   assert.ok(pauseBranch, 'expected an if (shouldPauseForLifecycleEvent(...)) branch');
-  assert.match(pauseBranch[1], /mediaPlayer\.pause\(\);/, 'expected the pause branch to still call mediaPlayer.pause()');
+  // F-D (v1.27.1): the bare `mediaPlayer.pause()` this test originally
+  // pinned is now routed through `pauseSuppressingHandoff(mediaPlayer)` --
+  // still pauses mediaPlayer, just via a wrapper that also guards the new
+  // iOS-pre-pause-ordering handoff trigger against re-entering on our own
+  // lifecycle-driven pause (see test/unit/player-background-audio.test.js's
+  // own F-D source-locks for that wrapper's full contract).
+  assert.match(pauseBranch[1], /pauseSuppressingHandoff\(mediaPlayer\);/, 'expected the pause branch to still pause mediaPlayer (via pauseSuppressingHandoff)');
   assert.match(pauseBranch[1], /saveProgressToServer\(currentAbsTime\(\), \{ keepalive: true \}\);/, 'expected the pause branch to still save progress');
 });
 

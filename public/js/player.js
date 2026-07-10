@@ -265,20 +265,25 @@ function nextBackgroundAudioState(state, event, ctx) {
   }
 }
 
-// Pure eligibility gate consulted from INSIDE `handleBackgroundLifecycle`'s
-// existing `shouldPauseForLifecycleEvent(...)` truthy branch -- the ONLY
-// place this is ever called from. By the time that branch is reached, every
-// OTHER precondition (mobile, video, playing, not already in native
-// fullscreen/PiP -- the two keep-playing mechanisms are mutually exclusive
-// BY CONSTRUCTION, since `shouldPauseForLifecycleEvent` itself already
-// returns false whenever `ctx.inNativePresentation` is true) is already
-// guaranteed. This only decides the background-audio-specific pieces: the
-// setting must be ON (cached once per load, NEVER fetched fresh mid-event --
-// there's no time for a network round-trip at the worst moment; see
-// setupForMedia), the audio-extract sidecar must already be known READY
-// (never kicked off HERE -- there's no time to extract during a real
-// background event either), and the state machine must not already be
-// mid-handoff/backgrounded.
+// Pure eligibility gate, DELIBERATELY excluding `isPlaying`/mobile/video/
+// native-presentation -- those are each trigger's OWN responsibility to
+// check before ever consulting this shared gate (see the two call sites
+// below). Originally consulted from EXACTLY one place -- INSIDE
+// `handleBackgroundLifecycle`'s `shouldPauseForLifecycleEvent(...)` truthy
+// branch, where every one of those preconditions already held by
+// construction. F-D (v1.27.1) added a SECOND call site,
+// `handlePossibleIOSPrePauseHandoff` (wired on `mediaPlayer`'s own 'pause'
+// event, below): investigation found iOS can system-pause an inline video
+// BEFORE `visibilitychangeHidden` ever fires, so `ctx.isPlaying` is already
+// false by the time `handleBackgroundLifecycle` runs its own gate -- the
+// handoff was never even attempted for that specific interleaving. Both call
+// sites re-derive their OWN preconditions independently (video-only, mobile
+// form factor -- F4, two-reviewer gate, v1.27.1 post-release: explicit in
+// BOTH triggers now, never left as an implicit coupling in either -- not
+// already native-presenting, not already mid-handoff) and only THEN consult
+// this shared setting/status/state-machine gate, so it stays the single
+// source of truth for "is background audio itself eligible right now" no
+// matter which trigger fired.
 function shouldHandOffToBackgroundAudio(ctx) {
   if (!ctx || !ctx.settingOn) return false;
   if (ctx.audioStatus !== 'ready') return false;
@@ -849,6 +854,19 @@ if (typeof module !== 'undefined' && module.exports) {
   var bgAudioSettingCached = false;
   var bgAudioStatusKnown = null;
   var bgAudioGesturePrimed = false;
+  // F-D (v1.27.1): set (synchronously) around every one of THIS file's own
+  // internal `mediaPlayer.pause()` calls that are part of a lifecycle-driven
+  // pause/release (never around a real user pause -- see the call sites:
+  // `attemptBackgroundAudioHandoff`, `handleBackgroundLifecycle`'s plain-pause
+  // fallback, `releaseAudioSession`). Consulted by the SECOND handoff trigger,
+  // `handlePossibleIOSPrePauseHandoff` (wired on mediaPlayer's own 'pause'
+  // event, below) so it can tell "our own programmatic pause, already being
+  // handled by the lifecycle path" apart from a genuine iOS system-pause that
+  // preceded `visibilitychangeHidden`. NOT per-load state (deliberately never
+  // reset in teardownMediaState/close) -- it is only ever true for the
+  // synchronous duration of one of the pause() calls above, so there is
+  // nothing to leak across loads.
+  var suppressPauseHandoff = false;
   // v1.27.0 (F2, two-reviewer gate): a one-shot flag set by
   // `runEndedCompletionCascade` when a video finishes WHILE backgrounded and
   // autoplay-advance would otherwise fire -- deferred rather than attempted
@@ -865,6 +883,15 @@ if (typeof module !== 'undefined' && module.exports) {
   var progressInterval = null;
   var skipRevealTimer = null;
   var transcodePollTimer = null;
+  // F7 (two-reviewer NIT, v1.27.1 post-release): scheduleAudioStatusRepoll's
+  // own setTimeout handle -- captured here for the same reason as the other
+  // three timers above (structural consistency), even though its callback is
+  // already generation-guarded (see scheduleAudioStatusRepoll's own comment)
+  // and therefore safe to let fire as a no-op. Cleared alongside the others
+  // in teardownMediaState/close so a still-pending repoll is cancelled
+  // outright on a genuinely new load/close, rather than merely left to
+  // no-op once it eventually fires.
+  var audioStatusRepollTimer = null;
 
   var awaitingTranscode = false;
   var liveMode = false;   // desktop AVI: live transcode (seek = restart stream)
@@ -1261,6 +1288,7 @@ if (typeof module !== 'undefined' && module.exports) {
       // the user just needs one more tap, never a lost/wrong position.
       mediaPlayer.play().catch(function () {});
     }
+    recordLifecycleEvent('bgAudio:swapback', { detail: 'audio=' + resumeTime.toFixed(1) + 's->video=' + (mediaPlayer ? mediaPlayer.currentTime.toFixed(1) : '?') + 's' });
     releaseBackgroundAudioElement();
     // F2 (two-reviewer gate): consume a deferred autoplay-advance (see
     // `runEndedCompletionCascade`'s own comment) the moment the app is back
@@ -1344,7 +1372,25 @@ if (typeof module !== 'undefined' && module.exports) {
   setMediaSessionAction('pause', function () {
     var el = activeMediaElement();
     if (!el) return;
-    el.pause();
+    // F1 (two-reviewer gate, v1.27.1 post-release): a lock-screen/Control-
+    // Center Pause tap is an EXPLICIT, real user pause -- but it necessarily
+    // arrives while `document.visibilityState === 'hidden'` (that's the
+    // only time the OS surfaces this control at all), which is exactly the
+    // signal `handlePossibleIOSPrePauseHandoff` (the SECOND handoff
+    // trigger, wired on `mediaPlayer`'s own 'pause' event, below) uses to
+    // decide "this might be iOS's pre-pause-before-backgrounding ordering,
+    // try a handoff". A bare `el.pause()` here would let that trigger
+    // misread a real lock-screen Pause as the iOS-ordering case and start
+    // background audio against the user's own explicit intent (full repro:
+    // failed first handoff -> lock-screen Play -> lock-screen Pause ->
+    // unwanted un-pause). Routing `mediaPlayer`'s pause through
+    // `pauseSuppressingHandoff` sets `suppressPauseHandoff` for the
+    // synchronous extent of this call, so that trigger correctly no-ops for
+    // this genuine user pause. `bgAudioEl` is never observed by that
+    // trigger (wired only on `mediaPlayer`'s own 'pause' event), so its
+    // pause stays bare -- no suppression needed or wanted there.
+    if (el === mediaPlayer) pauseSuppressingHandoff(mediaPlayer);
+    else el.pause();
     setPlaybackState('paused');
   });
   setMediaSessionAction('seekto', function (details) {
@@ -1438,8 +1484,42 @@ if (typeof module !== 'undefined' && module.exports) {
   // to kill, so a terminal pagehide mid-BACKGROUND_AUDIO must never leave it
   // playing. Also resets the state machine to INLINE_VIDEO -- moot for THIS
   // (unloading) page, but keeps the in-memory state consistent defensively.
+  // F-D (v1.27.1): wraps a LIFECYCLE-DRIVEN `mediaPlayer.pause()` call so the
+  // SECOND handoff trigger (`handlePossibleIOSPrePauseHandoff`, wired on
+  // `mediaPlayer`'s own 'pause' event, below) can tell it apart from a
+  // genuine user/iOS-initiated pause. HTMLMediaElement's own 'pause' event is
+  // dispatched via a QUEUED media-element task, never synchronously inside
+  // this call -- so the reset below is deliberately DEFERRED (`setTimeout`,
+  // not an immediate try/finally): resetting synchronously would clear the
+  // flag before that queued event ever actually fires, making the guard a
+  // no-op. F3 (two-reviewer gate hardening, v1.27.1 post-release): this
+  // `setTimeout(fn, 0)` reset and the media element's queued 'pause' task run
+  // on DIFFERENT task sources (timer vs. DOM manipulation) -- the HTML spec
+  // does NOT guarantee which a user agent services first when both are
+  // runnable, so nothing here may assume this reset always loses the race
+  // against that queued event. `handlePossibleIOSPrePauseHandoff` (below)
+  // does not rely on that assumption: it CONSUMES (reads then immediately
+  // clears) `suppressPauseHandoff` itself the moment it runs, so this timer
+  // is only ever a BACKSTOP -- it exists purely for a `pause()` call that
+  // never dispatches a 'pause' event at all (e.g. calling `pause()` on an
+  // already-paused element, a spec'd no-op), which would otherwise leave
+  // `suppressPauseHandoff` stuck `true` forever. Used by every one of this
+  // file's own lifecycle-driven pauses (`releaseAudioSession`,
+  // `attemptBackgroundAudioHandoff`, `handleBackgroundLifecycle`'s
+  // plain-pause fallback, `teardownMediaState`, `close()`, and the
+  // MediaSession 'pause' action handler's mediaPlayer branch -- F1/F5,
+  // two-reviewer gate, v1.27.1 post-release) -- NEVER by a real
+  // user-initiated pause (`togglePlayPause`, the spacebar shortcut, etc.),
+  // which must keep firing `handlePossibleIOSPrePauseHandoff` normally.
+  function pauseSuppressingHandoff(el) {
+    if (!el) return;
+    suppressPauseHandoff = true;
+    try { el.pause(); } catch (_) { /* best-effort only */ }
+    setTimeout(function () { suppressPauseHandoff = false; }, 0);
+  }
+
   function releaseAudioSession() {
-    try { mediaPlayer.pause(); } catch (_) { /* best-effort only -- page is unloading */ }
+    pauseSuppressingHandoff(mediaPlayer);
     if (bgAudioEl) {
       try { bgAudioEl.pause(); } catch (_) { /* best-effort only -- page is unloading */ }
     }
@@ -1460,31 +1540,50 @@ if (typeof module !== 'undefined' && module.exports) {
   }
 
   // v1.27.0 (EXPERIMENTAL): attempts the inline-video -> background-audio
-  // handoff. Called ONLY from `handleBackgroundLifecycle`'s existing
+  // handoff. Originally called ONLY from `handleBackgroundLifecycle`'s
   // `shouldPauseForLifecycleEvent(...)` truthy branch (below) -- by
   // construction, every OTHER precondition (mobile, video, playing, not
-  // already in native fullscreen/PiP) already holds by the time this runs;
-  // this only decides/acts on the background-audio-specific pieces via
+  // already in native fullscreen/PiP) already held by the time it ran there.
+  // F-D (v1.27.1) added a SECOND call site, `handlePossibleIOSPrePauseHandoff`
+  // (below), which re-derives those same preconditions independently (see its
+  // own comment) before ever calling this -- `trigger` (optional, defaults to
+  // `'visibility'`) is ONLY used for the `bgAudio:handoff` diagnostic's
+  // detail string, so the overlay can tell which of the two paths actually
+  // fired. This only decides/acts on the background-audio-specific pieces via
   // `shouldHandOffToBackgroundAudio` (pure, above). Returns `true` if a
   // handoff was ATTEMPTED (whether or not it ultimately succeeds -- the
   // caller's own pause+save fallback is skipped either way, since this
   // function performs an equivalent pause+save itself as part of the
   // attempt) or `false` if it wasn't eligible at all (caller falls through
   // to today's plain pause+save, completely unchanged).
-  function attemptBackgroundAudioHandoff() {
+  function attemptBackgroundAudioHandoff(trigger) {
     if (!bgAudioEl) return false;
     var eligible = shouldHandOffToBackgroundAudio({
       settingOn: bgAudioSettingCached,
       audioStatus: bgAudioStatusKnown,
       bgAudioState: bgAudioState,
     });
-    if (!eligible) return false;
+    if (!eligible) {
+      // v1.27.1 (diagnostics): mirrors shouldHandOffToBackgroundAudio's own
+      // precedence (settingOn, then audioStatus, then bgAudioState) so the
+      // recorded reason always names the FIRST gate that actually failed --
+      // together with handleBackgroundLifecycle's 'not-video'/
+      // 'native-presentation' skips (recorded before this function is even
+      // called), every early-out on the background-audio path is now
+      // attributable from the ?debugLifecycle=1 overlay.
+      recordLifecycleEvent('bgAudio:skip', { detail: bgAudioSkipReason() });
+      return false;
+    }
 
     var resumeTime = currentAbsTime();
     bgAudioState = nextBackgroundAudioState(bgAudioState, 'BACKGROUND', { eligible: true });
     var audioUrl = '/audio/' + currentId;
     if (bgAudioEl.getAttribute('src') !== audioUrl) bgAudioEl.src = audioUrl;
     bgAudioEl.currentTime = resumeTime;
+    // F-D (v1.27.1): `trigger` documents WHICH path fired -- 'visibility'
+    // (the original, from handleBackgroundLifecycle) or 'pause-hidden' (the
+    // new iOS-pre-pause-ordering trigger, from handlePossibleIOSPrePauseHandoff).
+    recordLifecycleEvent('bgAudio:handoff', { detail: 'pos=' + resumeTime.toFixed(1) + 's primed=' + bgAudioGesturePrimed + ' trigger:' + (trigger || 'visibility') });
 
     var handoffId = currentId; // guards the async .then/.catch below against a load() racing in before play() settles
     var playAttempt;
@@ -1499,22 +1598,122 @@ if (typeof module !== 'undefined' && module.exports) {
     // this branch instead of the caller's own; best case the hidden audio
     // element picks up seamlessly while the video sits paused underneath,
     // ready for SWAP_BACK.
-    mediaPlayer.pause();
+    // F-D: pauseSuppressingHandoff() (not a bare mediaPlayer.pause()) -- this
+    // is OUR OWN programmatic pause, part of THIS very handoff; the SECOND
+    // trigger (handlePossibleIOSPrePauseHandoff, below) must never react to
+    // it (also structurally moot here, since `bgAudioState` was already
+    // moved off INLINE_VIDEO just above -- but explicit/consistent with the
+    // other two lifecycle-driven pause sites).
+    pauseSuppressingHandoff(mediaPlayer);
     saveProgressToServer(resumeTime, { keepalive: true });
     Promise.resolve(playAttempt).then(function () {
       if (currentId !== handoffId || bgAudioState !== BG_AUDIO_STATES.HANDING_OFF) return; // superseded by a newer load/foreground/teardown
       bgAudioState = nextBackgroundAudioState(bgAudioState, 'HANDOFF_SUCCEEDED', {});
+      recordLifecycleEvent('bgAudio:ok', { detail: 't=' + (bgAudioEl.currentTime || 0).toFixed(1) + 's' });
       setupMediaSession(currentId, currentChannelName, currentData && currentData.title);
       setPlaybackState('playing');
       updatePositionState(true);
-    }, function () {
+    }, function (err) {
       if (currentId !== handoffId || bgAudioState !== BG_AUDIO_STATES.HANDING_OFF) return;
       bgAudioState = nextBackgroundAudioState(bgAudioState, 'HANDOFF_FAILED', {});
       // Video is already paused+saved above -- today's degrade-gracefully
       // behavior. Nothing further to do; the NEXT background event (if the
       // user foregrounds and re-backgrounds) gets a fresh attempt.
+      // NotAllowedError here is the expected shape of the iOS gesture wall
+      // rejecting an unprompted play() from the hidden/backgrounded page --
+      // the #1 suspect for "it just paused" reports; any OTHER err.name
+      // points elsewhere (e.g. a network/decode failure on the sidecar).
+      recordLifecycleEvent('bgAudio:fail', { detail: (err && err.name || 'Error') + ':' + String((err && err.message) || '').slice(0, 40) });
     });
     return true;
+  }
+
+  // v1.27.1 (diagnostics): pure-ish helper naming WHY attemptBackgroundAudioHandoff's
+  // own eligibility gate just failed -- reads the same three signals
+  // shouldHandOffToBackgroundAudio does, in the SAME order, so the reason
+  // always names the first (and only, by that function's own short-circuit
+  // order) gate that actually blocked the handoff.
+  function bgAudioSkipReason() {
+    if (!bgAudioSettingCached) return 'setting-off';
+    if (bgAudioStatusKnown !== 'ready') return 'status-' + (bgAudioStatusKnown || 'none');
+    return 'state-' + bgAudioState;
+  }
+
+  // F-D (v1.27.1): the SECOND background-audio handoff trigger, wired on
+  // `mediaPlayer`'s own 'pause' event (see `wireHostListeners`, below).
+  // On-device investigation found iOS can system-pause an inline video
+  // BEFORE `visibilitychangeHidden` ever fires -- so by the time
+  // `handleBackgroundLifecycle` runs, `ctx.isPlaying` is already `false` and
+  // `shouldPauseForLifecycleEvent` never even reaches the branch that
+  // attempts a handoff. This is a precise, narrowly-scoped second attempt for
+  // exactly that interleaving.
+  //
+  // Safe by construction, layered defense:
+  //   1. `suppressPauseHandoff` -- true for the synchronous extent of every
+  //      one of THIS file's own lifecycle-driven pauses (see
+  //      `pauseSuppressingHandoff`), so our OWN pause() calls never
+  //      re-enter here. F3 (two-reviewer gate hardening, v1.27.1
+  //      post-release): CONSUMED (read then immediately cleared) here
+  //      rather than merely read -- see this function's own body below for
+  //      why.
+  //   2. `document.visibilityState === 'hidden'` -- almost every genuine
+  //      USER pause (the play/pause button, spacebar, tapping the video)
+  //      happens while the app is VISIBLE, so an ordinary pause tap can't
+  //      match this. EXCEPTION (F1, two-reviewer gate, v1.27.1
+  //      post-release): the lock-screen/Control-Center MediaSession 'pause'
+  //      action handler (above) is also a genuine user pause, yet by
+  //      definition only ever fires while `hidden` -- it is excluded from
+  //      matching here NOT by this visibility check but because it is
+  //      itself routed through `pauseSuppressingHandoff`, so guard #1 above
+  //      already catches it. This check alone is therefore NOT sufficient
+  //      to distinguish every real user pause from a lifecycle-driven one;
+  //      it is defense in depth on top of #1, not a standalone guarantee.
+  //   3. Every other precondition `shouldPauseForLifecycleEvent` would have
+  //      checked (video-only, not native-presenting, not already
+  //      mid-handoff) is re-derived independently here, then
+  //      `shouldHandOffToBackgroundAudio` (the SAME shared gate the primary
+  //      'visibility' trigger uses) makes the final call. F4 (two-reviewer
+  //      gate, v1.27.1 post-release): this now ALSO re-derives the mobile
+  //      check the shared-gate contract comment (see
+  //      `shouldHandOffToBackgroundAudio`'s own comment, above) assigns to
+  //      each trigger -- previously omitted here and safe only via the
+  //      implicit coupling that `bgAudioSettingCached` is only ever set
+  //      truthy on mobile (see `setupForMedia`); now explicit, matching the
+  //      primary 'visibility' trigger's own (`handleBackgroundLifecycle`'s
+  //      `ctx.isMobile`) check.
+  // A failed/ineligible attempt here is a pure no-op -- the video simply
+  // stays paused, exactly as it does today.
+  function handlePossibleIOSPrePauseHandoff() {
+    // F3 (two-reviewer gate hardening, v1.27.1 post-release): consume-once
+    // semantics -- read the flag, then clear it immediately, rather than
+    // relying solely on `pauseSuppressingHandoff`'s own DEFERRED
+    // `setTimeout(fn, 0)` reset. That deferred reset and the media
+    // element's queued 'pause' task (which is what invokes this handler)
+    // come from different task sources (timer vs. DOM manipulation); the
+    // HTML spec does not guarantee which one a user agent runs first when
+    // both are runnable, so this function must never assume the flag is
+    // still `true` by the time it observes it. Consuming here makes THIS
+    // read authoritative regardless of that ordering. The `setTimeout`
+    // reset in `pauseSuppressingHandoff` remains as a backstop ONLY for a
+    // pause that never actually dispatches a 'pause' event at all (e.g.
+    // calling `pause()` on an already-paused element is a spec'd no-op that
+    // fires no event) -- without it, `suppressPauseHandoff` would stay
+    // stuck `true` forever after such a call.
+    var suppressed = suppressPauseHandoff;
+    suppressPauseHandoff = false;
+    if (suppressed) return; // our own lifecycle-driven pause -- not a real signal
+    if (document.visibilityState !== 'hidden') return; // almost every real user pause happens while visible (see guard #2's own comment above for the lock-screen exception)
+    if (!currentData || currentData.type === 'audio') return; // video-only feature
+    if (inNativeFullscreen()) return; // native presentation sustains its own background audio -- never double-trigger
+    if (!isMobileFormFactor()) return; // F4 (two-reviewer gate): re-derive the shared-gate contract's mobile precondition explicitly, matching the primary 'visibility' trigger
+    if (bgAudioState !== BG_AUDIO_STATES.INLINE_VIDEO) return; // already mid-handoff/backgrounded
+    var eligible = shouldHandOffToBackgroundAudio({
+      settingOn: bgAudioSettingCached,
+      audioStatus: bgAudioStatusKnown,
+      bgAudioState: bgAudioState,
+    });
+    if (!eligible) return; // the 'visibility' trigger's own bgAudio:skip diagnostics already cover WHY, if/when it fires next
+    attemptBackgroundAudioHandoff('pause-hidden');
   }
 
   // v1.27.0 (EXPERIMENTAL): gesture pre-warm. iOS may refuse `bgAudioEl.
@@ -1532,7 +1731,8 @@ if (typeof module !== 'undefined' && module.exports) {
   // to today's plain-pause behavior -- this is an optimization, not a
   // correctness dependency.
   //
-  // F3 (two-reviewer gate): deliberately does NOT gate on `bgAudioSettingCached`.
+  // F3 (two-reviewer gate, v1.27.0; REVERSED by F-B below, v1.27.1):
+  // originally deliberately did NOT gate on `bgAudioSettingCached`.
   // `setupForMedia`'s `/api/settings` fetch may not have resolved yet by the
   // time the user's FIRST -- and possibly ONLY -- gesture fires (e.g. tap
   // Play, then immediately background the app): `bgAudioGesturePrimed` is a
@@ -1542,6 +1742,28 @@ if (typeof module !== 'undefined' && module.exports) {
   // and completely harmless on a load where the setting later resolves OFF
   // (or the video never backgrounds at all) -- see F3b immediately below for
   // why "harmless" is actually true (it wasn't, originally).
+  //
+  // F-B (v1.27.1 REGRESSION FIX): "harmless" turned out to still be false --
+  // see F-A above (`wireHostListeners`'s bgAudioEl play/pause guards). Even
+  // with `bgAudioEl.src` never pointed at a real network URL, priming's own
+  // MUTED play()+pause() cycle on `bgAudioEl` fired the SAME 'play'/'pause'
+  // listeners a real handoff relies on, and raced `setPlaybackState(...)`
+  // against the real video's own listeners on EVERY DEFAULT (setting-OFF)
+  // install -- the v1.25.2 regression Dean actually hit on-device. F-A closes
+  // that hole structurally (every bgAudioEl listener now checks
+  // `activeMediaElement() === bgAudioEl`), but priming a hidden element that
+  // will NEVER be used this session is still pure waste with zero upside --
+  // so this now gates on `bgAudioSettingCached === true`, reinstating the F3
+  // race in exchange: a feature-ON user whose FIRST gesture beats the
+  // settings fetch back loses ONE priming opportunity (their real handoff
+  // attempt still runs `attemptBackgroundAudioHandoff`'s own `.catch`
+  // fallback -- degrades to today's plain pause, nothing crashes). That race
+  // is strictly cheaper than paying a second media element's play/pause
+  // cycle in EVERY session on the overwhelmingly common default-OFF install.
+  // Deliberately checked BEFORE `bgAudioGesturePrimed` is ever set (mirrors
+  // the `bgAudioState !== INLINE_VIDEO` early-return just below), so a LATER
+  // gesture in the same session -- once the settings fetch has resolved --
+  // still gets a real, un-consumed chance to prime.
   //
   // F3b (two-reviewer follow-up): primes with the LOCAL `SILENT_PRIME_SRC`
   // data URI (see its own comment above), NEVER the real `/audio/:id` URL --
@@ -1559,6 +1781,12 @@ if (typeof module !== 'undefined' && module.exports) {
     if (bgAudioGesturePrimed || !bgAudioEl) return;
     if (!currentData || currentData.type === 'audio') return; // video-only feature
     if (!isMobileFormFactor()) return; // desktop is never affected
+    // F-B (v1.27.1 REGRESSION FIX, see the long comment above): never prime
+    // unless the setting has been FRESHLY confirmed ON. Checked before
+    // `bgAudioGesturePrimed` is set, so a later gesture this same session
+    // (once `setupForMedia`'s /api/settings fetch resolves) still gets a
+    // real, un-consumed chance.
+    if (bgAudioSettingCached !== true) return;
     // F3b: never prime while a real handoff is already in flight/active
     // (bgAudioState !== INLINE_VIDEO) -- there's nothing useful to bless
     // (the element is already playing/attempting the REAL audio) and
@@ -1591,12 +1819,18 @@ if (typeof module !== 'undefined' && module.exports) {
           // once a real handoff has taken over; this continuation may only
           // ever clean up ITS OWN priming play(), never a later real one.
           bgAudioEl.muted = wasMuted;
+          // v1.27.1 (diagnostics): recorded regardless of the race above --
+          // whether priming itself succeeded is useful to know even when a
+          // real handoff has already taken over (the `return` just below
+          // only skips the redundant pause(), never this record).
+          recordLifecycleEvent('bgAudio:prime', { detail: 'ok' });
           if (bgAudioState !== BG_AUDIO_STATES.INLINE_VIDEO) return;
           bgAudioEl.pause();
-        }, function () {
+        }, function (err) {
           bgAudioEl.muted = wasMuted;
           // Priming failed -- no-op. The real handoff's own .catch (see
           // attemptBackgroundAudioHandoff) is the actual safety net.
+          recordLifecycleEvent('bgAudio:prime', { detail: 'fail:' + (err && err.name || 'Error') });
         });
       } else {
         bgAudioEl.pause();
@@ -1614,6 +1848,23 @@ if (typeof module !== 'undefined' && module.exports) {
       inNativePresentation: inNativeFullscreen(), // native-controls round: PiP/native-fullscreen video sustains background audio -- never auto-pause it (see shouldPauseForLifecycleEvent)
       persisted: !!(extraCtx && extraCtx.persisted), // PART A: only ever meaningful for a real 'pagehide' -- see shouldReleaseForLifecycleEvent
     };
+    // v1.27.1 (diagnostics): record WHY a background-audio handoff never
+    // even got a chance to run, for the two guards `shouldPauseForLifecycleEvent`
+    // itself short-circuits on BEFORE its truthy branch is ever reached (and
+    // therefore before `attemptBackgroundAudioHandoff` is ever called) --
+    // mirrors that function's own precedence (native presentation checked
+    // before isAudio). Scoped to actual pause-worthy events on currently-
+    // playing media only, so a paused item or an untracked event type never
+    // adds noise. `attemptBackgroundAudioHandoff`'s own gate failures
+    // ('setting-off' / 'status-*' / 'state-*') are recorded separately,
+    // inside that function -- together the two cover EVERY early-out.
+    if (LIFECYCLE_PAUSE_EVENTS[eventType] && ctx.isPlaying) {
+      if (ctx.inNativePresentation) {
+        recordLifecycleEvent('bgAudio:skip', { detail: 'native-presentation' });
+      } else if (ctx.isAudio) {
+        recordLifecycleEvent('bgAudio:skip', { detail: 'not-video' });
+      }
+    }
     var shouldRelease = shouldReleaseForLifecycleEvent(eventType, ctx);
     if (shouldPauseForLifecycleEvent(eventType, ctx)) {
       // v1.27.0 (EXPERIMENTAL): this is the ONE place a background-audio
@@ -1622,11 +1873,11 @@ if (typeof module !== 'undefined' && module.exports) {
       // playing, not native-fullscreen/PiP) holds here by construction, so
       // the two keep-playing mechanisms (native presentation vs.
       // background-audio) are mutually exclusive without any extra guard.
-      if (attemptBackgroundAudioHandoff()) {
+      if (attemptBackgroundAudioHandoff('visibility')) {
         if (shouldRelease) releaseAudioSession(); // a terminal pagehide still releases even mid-handoff (stops BOTH elements -- see releaseAudioSession)
         return;
       }
-      mediaPlayer.pause();
+      pauseSuppressingHandoff(mediaPlayer); // F-D: lifecycle-driven -- never re-trigger the SECOND (pause-hidden) handoff trigger below
       saveProgressToServer(currentAbsTime(), { keepalive: true });
       if (shouldRelease) releaseAudioSession(); // PART A: a terminal pagehide additionally releases the session (additive -- the pause+save above is unchanged)
       return;
@@ -1675,7 +1926,14 @@ if (typeof module !== 'undefined' && module.exports) {
   // `isDebugLifecycleEnabled`/`recordLifecycleEvent`/`renderLifecycleOverlay`.
   var DEBUG_LIFECYCLE_STORAGE_KEY = 'ft-debug-lifecycle';
   var LIFECYCLE_LOG_STORAGE_KEY = 'ft-lifecycle-log';
-  var LIFECYCLE_LOG_CAP = 20;
+  // v1.27.1 (background-audio diagnostics): bumped 20 -> 30. The new
+  // 'bgAudio:*' events (skip/handoff/ok/fail/prime/arm/swapback) can add
+  // several entries per single background/foreground cycle on top of the
+  // pre-existing lifecycle events -- 30 keeps a full handoff attempt (arm ..
+  // skip-or-handoff .. ok-or-fail .. swapback) visible alongside a little
+  // surrounding context without the overlay scrolling out of what fits in
+  // its own 35vh max-height (see ensureLifecycleOverlayEl).
+  var LIFECYCLE_LOG_CAP = 30;
 
   function isDebugLifecycleEnabled() {
     try { return localStorage.getItem(DEBUG_LIFECYCLE_STORAGE_KEY) === '1'; } catch (_) { return false; }
@@ -1697,11 +1955,33 @@ if (typeof module !== 'undefined' && module.exports) {
   // ever meaningfully set by the `pagehide` listener (mirrors
   // `handleBackgroundLifecycle`'s own ctx -- see above); every other listener
   // passes `{}`, recorded as `persisted: null` (not applicable to that event).
+  // `extraCtx.detail` (v1.27.1, background-audio diagnostics) is an OPTIONAL
+  // short human-readable string -- e.g. a skip reason or a position/error
+  // summary -- attached by the 'bgAudio:*' call sites below; every
+  // pre-existing caller omits it, recorded as `detail: null`.
   function recordLifecycleEvent(type, extraCtx) {
     if (!isDebugLifecycleEnabled()) return; // PART B is a complete no-op unless the flag is on
     try {
       var raw = localStorage.getItem(LIFECYCLE_LOG_STORAGE_KEY);
-      var log = raw ? JSON.parse(raw) : [];
+      var log;
+      // Corrupt-log self-heal (two-reviewer gate finding F2, v1.27.1
+      // post-release): the PARSE alone is wrapped in its OWN try/catch,
+      // mirroring `renderLifecycleOverlay`'s own identical guard below --
+      // previously a corrupt/non-JSON `raw` value (hand-edited devtools,
+      // a partial write from a prior crash, etc.) threw INSIDE the single
+      // outer try, which skipped `localStorage.setItem` below entirely and
+      // left recording PERMANENTLY dead for the rest of the session (every
+      // future call hit the exact same throw on the exact same corrupt
+      // value), even though the overlay kept rendering "(no lifecycle
+      // events recorded yet)" as if nothing were wrong. Catching JUST the
+      // parse and resetting to an empty array lets THIS call's own
+      // `localStorage.setItem` (below) overwrite the corruption immediately
+      // -- a single self-heal, not a recurring failure.
+      try {
+        log = raw ? JSON.parse(raw) : [];
+      } catch (_) {
+        log = [];
+      }
       if (!Array.isArray(log)) log = [];
       // F6 (two-reviewer gate, v1.27.0): reads `activeMediaElement()` (the
       // hidden `bgAudioEl` while BACKGROUND_AUDIO, `mediaPlayer` otherwise)
@@ -1714,6 +1994,7 @@ if (typeof module !== 'undefined' && module.exports) {
       var activeEl = activeMediaElement();
       log.push({
         type: type,
+        detail: extraCtx && 'detail' in extraCtx ? extraCtx.detail : null,
         persisted: extraCtx && 'persisted' in extraCtx ? extraCtx.persisted : null,
         vis: document.visibilityState,
         playing: !!(activeEl && !activeEl.paused),
@@ -1766,7 +2047,12 @@ if (typeof module !== 'undefined' && module.exports) {
     var now = Date.now();
     var lines = log.slice().reverse().map(function (entry) {
       var agoS = Math.max(0, Math.round((now - (entry && entry.t || now)) / 1000));
-      return (entry.type || '?') + ' · persisted=' + entry.persisted + ' · vis=' + entry.vis +
+      // v1.27.1: an optional `detail` string (background-audio diagnostics --
+      // e.g. a skip reason, or a position/error summary) rendered right after
+      // the type, truncated so one noisy entry (e.g. a long err.message)
+      // never blows out the overlay's fixed-height, tap-to-clear layout.
+      var detailStr = entry && entry.detail ? ' (' + String(entry.detail).slice(0, 60) + ')' : '';
+      return (entry.type || '?') + detailStr + ' · persisted=' + entry.persisted + ' · vis=' + entry.vis +
         ' · playing=' + entry.playing + ' · ' + agoS + 's ago';
     });
     el.textContent = '[tap to clear]\n' + (lines.length ? lines.join('\n') : '(no lifecycle events recorded yet)');
@@ -2781,6 +3067,11 @@ if (typeof module !== 'undefined' && module.exports) {
 
     mediaPlayer.addEventListener('play', startProgressSaver);
     mediaPlayer.addEventListener('pause', stopProgressSaver);
+    // F-D (v1.27.1): the SECOND background-audio handoff trigger -- see
+    // `handlePossibleIOSPrePauseHandoff`'s own comment for the full
+    // rationale (iOS can system-pause an inline video BEFORE
+    // `visibilitychangeHidden` fires) and its layered safety guards.
+    mediaPlayer.addEventListener('pause', handlePossibleIOSPrePauseHandoff);
     // v1.27.0 (background-audio-for-video, EXPERIMENTAL): the SAME
     // progress-saver + Media-Session play/pause-state wiring, on the hidden
     // audio element. `attemptBackgroundAudioHandoff` pauses `mediaPlayer`
@@ -2794,10 +3085,29 @@ if (typeof module !== 'undefined' && module.exports) {
     // restarts it via the listener above -- the saver always follows
     // whichever element is actually playing, with no state-machine-aware
     // branching needed here.
-    bgAudioEl.addEventListener('play', startProgressSaver);
-    bgAudioEl.addEventListener('pause', stopProgressSaver);
-    bgAudioEl.addEventListener('play', function () { setPlaybackState('playing'); updatePositionState(true); });
-    bgAudioEl.addEventListener('pause', function () { setPlaybackState('paused'); updatePositionState(true); });
+    // F-A (v1.27.1 REGRESSION FIX): every one of these four is gated on
+    // `activeMediaElement() === bgAudioEl` -- i.e. a REAL handoff is actually
+    // active (bgAudioState is HANDING_OFF/BACKGROUND_AUDIO). Without this
+    // guard, `primeBackgroundAudioElement`'s own MUTED play()->pause()
+    // "bless" cycle on `bgAudioEl` ALSO fired these listeners: (a) it
+    // stopped+restarted the progress saver mid-real-playback for no reason,
+    // and worse, (b) it raced `setPlaybackState('playing'/'paused')` against
+    // `mediaPlayer`'s OWN listeners just above -- the prime's play() resolves
+    // (setting 'playing') then its pause() resolves (setting 'paused')
+    // AFTER the real video's own 'play' already asserted 'playing', so the
+    // prime's cleanup silently overwrote MediaSession's playbackState back to
+    // 'paused' right under a still-playing video. iOS consults exactly that
+    // state to decide whether to keep a native-fullscreen video's audio alive
+    // in the background -- this was the v1.25.2 regression Dean hit, present
+    // even with `backgroundAudioForVideo` OFF (priming always ran
+    // unconditionally, per F3). Scoping all four to "only when bgAudioEl is
+    // ACTUALLY the active surface" makes the prime's play/pause cycle a
+    // complete no-op for every one of them; a real handoff (which flips
+    // `bgAudioState`, and therefore `activeMediaElement()`) is unaffected.
+    bgAudioEl.addEventListener('play', function () { if (activeMediaElement() !== bgAudioEl) return; startProgressSaver(); });
+    bgAudioEl.addEventListener('pause', function () { if (activeMediaElement() !== bgAudioEl) return; stopProgressSaver(); });
+    bgAudioEl.addEventListener('play', function () { if (activeMediaElement() !== bgAudioEl) return; setPlaybackState('playing'); updatePositionState(true); });
+    bgAudioEl.addEventListener('pause', function () { if (activeMediaElement() !== bgAudioEl) return; setPlaybackState('paused'); updatePositionState(true); });
     // v1.27.0 (F2, two-reviewer gate): bgAudioEl's own 'ended' counterpart to
     // mediaPlayer's completion cascade below -- ONLY acts when this element
     // is the one actually BACKGROUND_AUDIO-playing for the current item
@@ -3344,6 +3654,8 @@ if (typeof module !== 'undefined' && module.exports) {
     loadGeneration++; // invalidate any in-flight poll/resume-check tied to the previous media
     if (progressInterval) { clearInterval(progressInterval); progressInterval = null; }
     if (transcodePollTimer) { clearTimeout(transcodePollTimer); transcodePollTimer = null; }
+    // F7 (two-reviewer NIT): cancel a still-pending audio-status repoll too, mirroring the two timers just above
+    if (audioStatusRepollTimer) { clearTimeout(audioStatusRepollTimer); audioStatusRepollTimer = null; }
     resetTransientPlaybackUi();
     awaitingTranscode = false;
     liveMode = false;
@@ -3422,7 +3734,17 @@ if (typeof module !== 'undefined' && module.exports) {
     if (audioVisualizer) audioVisualizer.style.display = 'none';
     if (skipControls) skipControls.style.display = 'none';
     if (mediaPlayer) {
-      mediaPlayer.pause();
+      // F5 (two-reviewer gate, structural consistency, v1.27.1
+      // post-release): routed through `pauseSuppressingHandoff` (not a bare
+      // `mediaPlayer.pause()`) like this file's other lifecycle-driven
+      // pauses -- a genuinely new load's teardown is exactly the kind of
+      // app-driven pause `handlePossibleIOSPrePauseHandoff` (the SECOND
+      // handoff trigger) must never mistake for a real user pause, even
+      // though today's execution-order reasoning (this only ever runs while
+      // `document.visibilityState === 'visible'`, since a new load is
+      // itself always user/foreground-initiated) happens to make it safe
+      // either way.
+      pauseSuppressingHandoff(mediaPlayer);
       // FR-2 (v1.18.0): reset the visible poster/last-decoded frame to
       // neutral BEFORE setupForMedia assigns the new source, so the
       // OUTGOING item's image never lingers/flashes during the transition
@@ -3443,6 +3765,60 @@ if (typeof module !== 'undefined' && module.exports) {
       mediaPlayer.removeAttribute('src');
       mediaPlayer.load();
     }
+  }
+
+  // F-C (v1.27.1, first-watch handoff fix): bounded re-poll of POST
+  // /api/videos/:id/prepare-audio, called ONLY from `setupForMedia` (below)
+  // when the setting is ON but the FIRST prepare-audio response came back
+  // non-terminal (pending/processing) -- i.e. the sidecar wasn't already
+  // extracted before this watch session started. Without this, `setupForMedia`
+  // fired prepare-audio exactly ONCE per load, so `bgAudioStatusKnown` simply
+  // stayed non-'ready' for the rest of the session even once the extraction
+  // that same request enqueued (see `queueAudioExtract`, server.js) actually
+  // finished a few seconds later -- making a background-audio handoff on a
+  // video's FIRST watch structurally impossible, regardless of how long the
+  // user kept watching before backgrounding.
+  //
+  // 5s between attempts, capped at `BG_AUDIO_STATUS_REPOLL_MAX_ATTEMPTS` (12,
+  // i.e. up to ~60s total -- generous for a single audio-only extraction,
+  // which is normally much faster) so a stuck/never-extracting item (no
+  // ffmpeg, huge file, etc.) doesn't poll forever. Stops as soon as the
+  // status resolves to a TERMINAL 'ready'/'failed', or a NEWER load has
+  // superseded this one (`loadGeneration` guard -- same pattern used
+  // throughout this file). Idempotent + cheap on the server (prepare-audio's
+  // own de-dupe guard never re-enqueues a job already queued/in-flight), so
+  // repeated polling costs nothing beyond the network round-trip itself.
+  var BG_AUDIO_STATUS_REPOLL_MAX_ATTEMPTS = 12;
+  var BG_AUDIO_STATUS_REPOLL_INTERVAL_MS = 5000;
+  function scheduleAudioStatusRepoll(id, gen, attemptsLeft) {
+    if (attemptsLeft <= 0) return;
+    // F7 (two-reviewer NIT, structural consistency, v1.27.1 post-release):
+    // capture the handle in the shared `audioStatusRepollTimer` (like this
+    // file's other player-scoped timers -- see their shared declaration
+    // above) so teardownMediaState/close can cancel a still-pending repoll
+    // outright, rather than leaving it to fire and self-no-op via the `gen`
+    // check below.
+    audioStatusRepollTimer = setTimeout(function () {
+      audioStatusRepollTimer = null;
+      if (gen !== loadGeneration) return; // a newer load has since started -- stop silently
+      fetch('/api/videos/' + encodeURIComponent(id) + '/prepare-audio', { method: 'POST' })
+        .then(function (res) { return res.ok ? res.json() : null; })
+        .then(function (body) {
+          if (gen !== loadGeneration || !body) return;
+          var newStatus = body.audioStatus || null;
+          var justBecameReady = newStatus === 'ready' && bgAudioStatusKnown !== 'ready';
+          bgAudioStatusKnown = newStatus;
+          // Recorded only on the transition INTO 'ready' -- avoids spamming
+          // the overlay with an identical 'still pending' entry every 5s.
+          if (justBecameReady) {
+            recordLifecycleEvent('bgAudio:arm', { detail: 'status=ready (repoll)' });
+          }
+          if (newStatus !== 'ready' && newStatus !== 'failed') {
+            scheduleAudioStatusRepoll(id, gen, attemptsLeft - 1);
+          }
+        })
+        .catch(function () { /* best-effort only -- this attempt's failure simply ends the repoll chain, matching the initial prepare-audio fetch's own degrade-gracefully contract */ });
+    }, BG_AUDIO_STATUS_REPOLL_INTERVAL_MS);
   }
 
   function setupForMedia(id, data) {
@@ -3513,10 +3889,50 @@ if (typeof module !== 'undefined' && module.exports) {
             .then(function (res) { return res.ok ? res.json() : null; })
             .then(function (body) {
               if (gen !== loadGeneration) return;
-              if (body) bgAudioStatusKnown = body.audioStatus || null;
+              // F6 (two-reviewer gate, v1.27.1 post-release): a non-ok
+              // response (`body === null`) must NOT leave `bgAudioStatusKnown`
+              // standing at the load-time snapshot (`data.audioStatus`,
+              // possibly stale -- see F1 above) -- that snapshot can describe
+              // a sidecar that's since been evicted, so silently trusting it
+              // here would let `shouldHandOffToBackgroundAudio` treat a
+              // now-nonexistent 'ready' as still eligible. Explicitly reset
+              // to UNKNOWN (`null`) instead, so the shared gate's
+              // `audioStatus !== 'ready'` check fails safe. The repoll just
+              // below still gets a fresh chance to resolve it on the NEXT
+              // poll -- and if THAT fetch also comes back non-ok,
+              // `scheduleAudioStatusRepoll`'s own `!body` guard already ends
+              // the chain there, so nothing further is needed here.
+              bgAudioStatusKnown = body ? (body.audioStatus || null) : null;
+              // v1.27.1 (diagnostics): recorded once per load, only when the
+              // setting actually resolved ON -- shows on the overlay whether
+              // the feature was even ARMED for this item, and what the
+              // sidecar's fresh status was at load time (the value
+              // `attemptBackgroundAudioHandoff` will actually gate on later).
+              recordLifecycleEvent('bgAudio:arm', { detail: 'status=' + (bgAudioStatusKnown || 'none') });
+              // F-C (v1.27.1, first-watch handoff fix): a single prepare-audio
+              // POST at load time made a NOT-YET-extracted sidecar
+              // structurally unable to ever become usable THIS session --
+              // nothing ever looked again, even though the extraction this
+              // very request just enqueued (see queueAudioExtract, server.js)
+              // typically finishes within a few seconds. Kick off a bounded
+              // re-poll of the SAME idempotent endpoint so a first-watch
+              // handoff isn't permanently impossible.
+              if (bgAudioStatusKnown !== 'ready' && bgAudioStatusKnown !== 'failed') {
+                scheduleAudioStatusRepoll(id, gen, BG_AUDIO_STATUS_REPOLL_MAX_ATTEMPTS);
+              }
             });
         })
-        .catch(function () { /* best-effort pre-warm only -- a real background event just falls through to today's pause behavior if this never resolves */ });
+        .catch(function () {
+          // F6 (two-reviewer gate, v1.27.1 post-release): a fetch-level
+          // failure (network error, not merely a non-ok status -- that path
+          // is handled above) of the settings or prepare-audio request must
+          // not leave a stale bgAudioStatusKnown behind either, for the same
+          // "unknown -> fail safe" reasoning as the non-ok branch above.
+          // Guarded on `gen` so a failure surfacing after this load has
+          // already been superseded can never stomp the CURRENT item's own
+          // (possibly already-fresh) status.
+          if (gen === loadGeneration) bgAudioStatusKnown = null;
+        });
     }
 
     // A6 (T16, v1.24 UX Round, Wave 5): CC button + <track> setup. AVAILABILITY
@@ -3724,6 +4140,8 @@ if (typeof module !== 'undefined' && module.exports) {
     loadGeneration++; // invalidate any in-flight poll/resume-check
     if (progressInterval) { clearInterval(progressInterval); progressInterval = null; }
     if (transcodePollTimer) { clearTimeout(transcodePollTimer); transcodePollTimer = null; }
+    // F7 (two-reviewer NIT): cancel a still-pending audio-status repoll too, mirroring the two timers just above
+    if (audioStatusRepollTimer) { clearTimeout(audioStatusRepollTimer); audioStatusRepollTimer = null; }
     resetTransientPlaybackUi();
     // FR-2 (T2, v1.21.0): explicitly cancel the rAF fill loop + art-glyph
     // timer here too (docs/RELIABILITY.md) -- defense-in-depth alongside the
@@ -3754,7 +4172,11 @@ if (typeof module !== 'undefined' && module.exports) {
     hideCaptionOverlay();
     if (mediaPlayer) {
       try {
-        mediaPlayer.pause();
+        // F5 (two-reviewer gate, structural consistency, v1.27.1
+        // post-release): routed through `pauseSuppressingHandoff` (not a
+        // bare `mediaPlayer.pause()`) -- see `teardownMediaState`'s
+        // identical comment above for why.
+        pauseSuppressingHandoff(mediaPlayer);
         mediaPlayer.removeAttribute('src');
         mediaPlayer.load();
       } catch (_) { /* best-effort only */ }

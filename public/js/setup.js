@@ -530,6 +530,28 @@ function loadResumeThresholdControl() {
   input.value = String(Number.isFinite(n) && n >= 0 ? n : RESUME_THRESHOLD_DEFAULT);
 }
 
+// v1.27.1: the on-screen `?debugLifecycle=1` player-lifecycle debug overlay
+// (public/js/player.js) toggled from Setup, for owners on an installed PWA
+// with no address bar to type the URL param into. A CLIENT-side (localStorage)
+// flag, same as the resume-threshold control above -- NOT a server
+// db.settings value, so it is deliberately absent from DEFAULT_SETTINGS/
+// KNOWN_KEYS/the settings API (see server.js) and never round-trips through
+// saveAutomationSetting. The key MUST match `DEBUG_LIFECYCLE_STORAGE_KEY` in
+// player.js exactly (same cross-file string-literal convention as
+// RESUME_THRESHOLD_KEY above -- grep it there for the precedent).
+const DEBUG_LIFECYCLE_STORAGE_KEY = 'ft-debug-lifecycle';
+
+// Prefills the checkbox from whatever's currently stored -- mirrors
+// `isDebugLifecycleEnabled()`'s own `=== '1'` check in player.js exactly, so
+// the two never disagree about what counts as "on".
+function loadDebugLifecycleControl() {
+  const check = document.getElementById('debug-lifecycle-check');
+  if (!check) return;
+  let raw = null;
+  try { raw = localStorage.getItem(DEBUG_LIFECYCLE_STORAGE_KEY); } catch (_) { /* storage disabled -- treat as off */ }
+  check.checked = raw === '1';
+}
+
 // GET /api/settings on load: populate all four controls, plus the
 // size-cap placeholder from effectiveCacheMaxBytes (the env-var/5GB
 // default that applies whenever no UI override is persisted).
@@ -765,6 +787,25 @@ function wireStaticControls(signal) {
     }, { signal });
   }
 
+  // v1.27.1: lifecycle debug overlay toggle -- same immediate-apply
+  // localStorage pattern as the resume-threshold control just above, writing
+  // the exact key/value shape `initDebugLifecycleFlag()` (player.js) already
+  // writes for the `?debugLifecycle=1`/`=0` URL-param mechanism, so both
+  // paths stay interchangeable. player.js does not currently expose a hook to
+  // re-render its already-initialized overlay from another page's script, so
+  // a reload is the simplest correct way to pick up a change made here (see
+  // the hint text in setup.html) -- deliberately not adding a new cross-file
+  // API surface just for this.
+  const debugLifecycleCheck = document.getElementById('debug-lifecycle-check');
+  if (debugLifecycleCheck) {
+    debugLifecycleCheck.addEventListener('change', (e) => {
+      try {
+        if (e.target.checked) localStorage.setItem(DEBUG_LIFECYCLE_STORAGE_KEY, '1');
+        else localStorage.removeItem(DEBUG_LIFECYCLE_STORAGE_KEY);
+      } catch (_) { /* storage disabled/full -- best-effort only */ }
+    }, { signal });
+  }
+
   // Size-cap input: 'change' (fires on blur/Enter, not per keystroke) is a
   // natural debounce for a free-typed number field. Blank -> null ("use the
   // default"); a non-empty value that isn't a valid positive number is
@@ -858,6 +899,7 @@ function init(root) {
   renderThemePicker();
   renderIconPicker();
   loadResumeThresholdControl();
+  loadDebugLifecycleControl();
 
   loadAutomationSettings();
   loadCacheSize();
