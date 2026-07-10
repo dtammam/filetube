@@ -878,17 +878,23 @@ const REAL_CHANNEL_THUMBNAILS = [
 ];
 const REAL_CHANNEL_AVATAR_URL = 'https://yt3.googleusercontent.com/ytc/AIdro_mtE0wtRYXirpEWGKtJ_mK85JBizT2WktAw6QBpDsz-OA=s900-c-k-c0x00ffffff-no-rj';
 
-test('probeChannelAvatar builds argv (--dump-single-json --playlist-items 0 --no-warnings -- <url>), arg-array, never shell:true, and resolves the sanitized avatar from a REAL channel thumbnails[] fixture', async () => {
+test('probeChannelAvatar builds argv (--dump-single-json --playlist-items 0 --no-warnings -- <url>), arg-array, never shell:true, and resolves {avatarUrl, channelId, channelUrl} from a REAL channel fixture', async () => {
   const spawnChild = stubSpawn();
   const channelUrl = 'https://www.youtube.com/channel/UCvQ4C0f9_OWRf1uyobwqOwA';
   const config = { downloadDir: '/tmp/irrelevant-for-this-test', cookiesFile: null };
   const resultPromise = run.probeChannelAvatar(channelUrl, config);
   const child = spawnChild();
-  child.stdout.emit('data', Buffer.from(JSON.stringify({ thumbnails: REAL_CHANNEL_THUMBNAILS })));
+  child.stdout.emit('data', Buffer.from(JSON.stringify({
+    thumbnails: REAL_CHANNEL_THUMBNAILS,
+    channel_id: 'UCvQ4C0f9_OWRf1uyobwqOwA',
+    channel_url: channelUrl,
+  })));
   child.emit('close', 0, null);
-  const avatarUrl = await resultPromise;
+  const result = await resultPromise;
 
-  assert.equal(avatarUrl, REAL_CHANNEL_AVATAR_URL, 'must pick the largest SQUARE thumbnail, never a wide banner crop');
+  assert.equal(result.avatarUrl, REAL_CHANNEL_AVATAR_URL, 'must pick the largest SQUARE thumbnail, never a wide banner crop');
+  assert.equal(result.channelId, 'UCvQ4C0f9_OWRf1uyobwqOwA', 'must extract+validate the channel_id from the same dump-single-json payload');
+  assert.equal(result.channelUrl, channelUrl, 'must extract+re-validate/normalize channel_url via url.validateChannelUrl');
   assert.equal(capturedSpawnCalls.length, 1);
   const { cmd, argv, opts } = capturedSpawnCalls[0];
   assert.equal(cmd, 'yt-dlp');
@@ -920,8 +926,9 @@ test('probeChannelAvatar: an @handle channel URL fixture also resolves to its la
     ],
   })));
   child.emit('close', 0, null);
-  const avatarUrl = await resultPromise;
-  assert.equal(avatarUrl, 'https://yt3.googleusercontent.com/ytc/AIdro_n6dUcc6YbkWa540dbaWzbLi44bq0h-hGNEop2BhOQ6uHY=s900-c-k-c0x00ffffff-no-rj');
+  const result = await resultPromise;
+  assert.equal(result.avatarUrl, 'https://yt3.googleusercontent.com/ytc/AIdro_n6dUcc6YbkWa540dbaWzbLi44bq0h-hGNEop2BhOQ6uHY=s900-c-k-c0x00ffffff-no-rj');
+  assert.equal(result.channelId, null, 'no channel_id in this fixture -- must be null, never throw/omit the field');
 });
 
 test('probeChannelAvatar falls back to the avatar_uncropped entry when no sized square thumbnail is present', async () => {
@@ -936,7 +943,8 @@ test('probeChannelAvatar falls back to the avatar_uncropped entry when no sized 
     ],
   })));
   child.emit('close', 0, null);
-  assert.equal(await resultPromise, 'https://yt3.googleusercontent.com/uncropped-fallback=s0');
+  const result = await resultPromise;
+  assert.equal(result.avatarUrl, 'https://yt3.googleusercontent.com/uncropped-fallback=s0');
 });
 
 test('probeChannelAvatar resolves null (never throws) when thumbnails carries only banner crops (no square, no avatar_uncropped)', async () => {
@@ -1052,7 +1060,7 @@ test('probeChannelAvatar uses the dedicated PROBE_TIMEOUT_MS (not DEFAULT_LIST_T
   } finally {
     global.setTimeout = originalSetTimeout;
   }
-  assert.equal(result, REAL_CHANNEL_AVATAR_URL);
+  assert.equal(result.avatarUrl, REAL_CHANNEL_AVATAR_URL);
   assert.ok(capturedDelays.length >= 1, 'probeChannelAvatar must arm a timer');
   assert.equal(capturedDelays[0], run.PROBE_TIMEOUT_MS, 'the armed delay must be the dedicated probe timeout');
   assert.notEqual(capturedDelays[0], run.DEFAULT_LIST_TIMEOUT_MS, 'a channel-endpoint probe must never use the 5-minute whole-channel list timeout');
