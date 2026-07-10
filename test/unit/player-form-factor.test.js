@@ -16,20 +16,28 @@
 // v1.22.1 FR-1 (mobile-player-fixes): `resolveControlsMode(mediaType,
 // isMobile)` -- the sibling helper that used to live alongside
 // `resolveMobileFormFactor` and decide `'native'` (the iOS `controls`
-// attribute) vs. `'custom'` (this file's own control bar) -- is REMOVED.
+// attribute) vs. `'custom'` (this file's own control bar) -- was REMOVED.
 // v1.22.0's `'native'` case (mobile video) was itself the CRITICAL
-// regression this round fixes (iOS's inline `<video controls playsinline>`
+// regression that round fixed (iOS's inline `<video controls playsinline>`
 // strip auto-hides during playback and does not reliably re-reveal under
 // this file's own gesture layer, leaving mobile-video users with no visible
-// controls at all). The fix retires the native-controls path entirely --
-// EVERY case (desktop video, desktop audio, mobile audio, mobile video) is
-// now `'custom'`, so a mediaType/isMobile lookup table is vestigial. The
-// section below locks the NEW, stronger contract directly against the
-// `applyControlsMode()` source (no DOM harness needed for this): it never
-// sets the `controls` attribute, unconditionally removes it, and still
-// toggles `.ff-mobile` from the SAME shared mobile signal -- an equivalent,
-// stronger regression lock than the old four-way table (see the exec plan's
-// "Risks and mitigations").
+// controls at all). v1.22.1 retired the native-controls path entirely and
+// routed every case through the custom bar; `resolveControlsMode` itself
+// stays removed (no reintroduced mediaType/isMobile lookup table below).
+//
+// Mobile-native-controls round: mobile VIDEO gets native `controls` back,
+// but ONLY while FULL (never DOCKED -- the docked miniplayer keeps the
+// custom bar), and the coexistence failure v1.22.1 fixed is addressed
+// directly this time: `wireSkipHoldGestures()`'s gesture handlers now bail
+// out whenever native controls are the active surface (see
+// `inNativeControlsMode()`, tested via the source-contract suite in
+// test/unit/player-gesture-native-guard.test.js), so the custom gesture
+// layer and the native strip never fight over the same surface. Desktop
+// (any media type), mobile AUDIO, and DOCKED mobile video are unaffected --
+// they never set `controls`/`.native-controls`. The section below locks the
+// NEW contract directly against the `applyControlsMode()` source (no DOM
+// harness needed for this): native ONLY for mobile+video+FULL; `.ff-mobile`
+// toggling from the SAME shared mobile signal is unchanged.
 const { test } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
@@ -87,14 +95,28 @@ test('applyControlsMode: the function exists and is isolated for inspection', ()
   assert.ok(applyControlsModeMatch, 'expected to find applyControlsMode()\'s source body in player.js');
 });
 
-test('applyControlsMode: NEVER sets the `controls` attribute -- the native-controls path is fully retired', () => {
+test('applyControlsMode: derives `isVideo` from `currentData.type` and gates native controls on mobile + video + FULL only', () => {
   const body = applyControlsModeMatch[1];
-  assert.ok(!/setAttribute\(\s*['"]controls['"]/.test(body), 'applyControlsMode must never setAttribute(\'controls\', ...) -- the native mobile-video control strip is retired (v1.22.1 FR-1)');
+  assert.match(body, /var isVideo = !!\(currentData && currentData\.type !== 'audio'\);/, 'expected isVideo to be derived from currentData.type !== \'audio\'');
+  assert.match(body, /var native = mobile && isVideo && state === STATE_FULL;/, 'expected native to require ALL THREE of mobile, isVideo, and state === STATE_FULL');
 });
 
-test('applyControlsMode: unconditionally removes the `controls` attribute (no state/mediaType branch gating it)', () => {
+test('applyControlsMode: mobile+video+FULL sets the native `controls` attribute AND adds `.native-controls` on host', () => {
   const body = applyControlsModeMatch[1];
-  assert.match(body, /mediaPlayer\.removeAttribute\(\s*['"]controls['"]\s*\)\s*;/, 'expected an unconditional mediaPlayer.removeAttribute(\'controls\') call');
+  const ifBlockMatch = /if \(native\) \{([\s\S]*?)\} else \{/.exec(body);
+  assert.ok(ifBlockMatch, 'expected an `if (native) { ... } else { ... }` branch in applyControlsMode');
+  const ifBlock = ifBlockMatch[1];
+  assert.match(ifBlock, /mediaPlayer\.setAttribute\(\s*['"]controls['"]\s*,\s*['"]['"]\s*\)\s*;/, 'expected mediaPlayer.setAttribute(\'controls\', \'\') in the native branch');
+  assert.match(ifBlock, /host\.classList\.add\(\s*['"]native-controls['"]\s*\)\s*;/, 'expected host.classList.add(\'native-controls\') in the native branch');
+});
+
+test('applyControlsMode: audio, desktop, and DOCKED (any non-native case) remove the `controls` attribute AND `.native-controls`', () => {
+  const body = applyControlsModeMatch[1];
+  const elseBlockMatch = /\} else \{([\s\S]*)/.exec(body);
+  assert.ok(elseBlockMatch, 'expected an `else { ... }` branch in applyControlsMode');
+  const elseBlock = elseBlockMatch[1];
+  assert.match(elseBlock, /mediaPlayer\.removeAttribute\(\s*['"]controls['"]\s*\)\s*;/, 'expected mediaPlayer.removeAttribute(\'controls\') in the non-native (else) branch');
+  assert.match(elseBlock, /host\.classList\.remove\(\s*['"]native-controls['"]\s*\)\s*;/, 'expected host.classList.remove(\'native-controls\') in the non-native (else) branch');
 });
 
 test('applyControlsMode: still toggles `.ff-mobile` on `host` from the shared mobile-form-factor signal', () => {
@@ -103,11 +125,20 @@ test('applyControlsMode: still toggles `.ff-mobile` on `host` from the shared mo
   assert.match(body, /host\.classList\.toggle\(\s*['"]ff-mobile['"]\s*,\s*mobile\s*\)/, 'expected host.classList.toggle(\'ff-mobile\', mobile) to remain');
 });
 
-test('resolveControlsMode: fully removed from player.js -- no lingering definition or export (superseded by the applyControlsMode contract above)', () => {
+test('resolveControlsMode: still fully removed from player.js -- no reintroduced lookup-table helper (native/custom decided inline in applyControlsMode instead)', () => {
   // Prose comments are allowed to reference the retired helper by name (see
   // this file's own module comment, and player.js's own retirement notes) --
   // only an actual FUNCTION DEFINITION or CALL SITE would be a regression.
   assert.ok(!/function resolveControlsMode\(/.test(PLAYER_JS), 'resolveControlsMode must have no remaining function definition in player.js');
   assert.ok(!/resolveControlsMode\(/.test(applyControlsModeMatch[1]), 'applyControlsMode must not call resolveControlsMode anymore');
   assert.strictEqual(require('../../public/js/player.js').resolveControlsMode, undefined);
+});
+
+// ---- inNativeControlsMode() (mobile-native-controls round) -----------------
+
+const inNativeControlsModeMatch = /function inNativeControlsMode\(\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);
+
+test('inNativeControlsMode: the function exists and reads the `.native-controls` marker class off `host`', () => {
+  assert.ok(inNativeControlsModeMatch, 'expected to find inNativeControlsMode()\'s source body in player.js');
+  assert.match(inNativeControlsModeMatch[1], /host\.classList\.contains\(\s*['"]native-controls['"]\s*\)/, 'expected inNativeControlsMode to check host.classList.contains(\'native-controls\')');
 });
