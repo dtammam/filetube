@@ -32,6 +32,7 @@ const DEFAULT_SETTINGS = {
   cacheMaxAgeDays: 30,
   defaultView: '', // v1.14.0 item 4: '' is the "Most Recent" sentinel
   autoplayNext: false, // v1.16.0 FR-3 (T3): OFF by default
+  backgroundAudioForVideo: false, // v1.27.0 (EXPERIMENTAL): OFF by default
 };
 
 test('loadDatabase: creates a default db when none exists', () => {
@@ -75,7 +76,7 @@ test('saveDatabase + loadDatabase: round-trips data faithfully', () => {
   assert.deepEqual(loadDatabase(), original);
 });
 
-test('loadDatabase: old db.json with no settings key gets all six defaults, no data loss', () => {
+test('loadDatabase: old db.json with no settings key gets all seven defaults, no data loss', () => {
   const legacy = {
     folders: ['/media/movies'],
     folderSettings: { '/media/movies': { name: 'Movies', hidden: false } },
@@ -84,7 +85,7 @@ test('loadDatabase: old db.json with no settings key gets all six defaults, no d
   };
   fs.writeFileSync(DB_FILE, JSON.stringify(legacy));
   const db = loadDatabase();
-  assert.deepEqual(db.settings, DEFAULT_SETTINGS, 'all six settings defaulted');
+  assert.deepEqual(db.settings, DEFAULT_SETTINGS, 'all seven settings defaulted');
   assert.deepEqual(db.folders, legacy.folders, 'folders preserved');
   assert.deepEqual(db.folderSettings, legacy.folderSettings, 'folderSettings preserved');
   assert.deepEqual(db.progress, legacy.progress, 'progress preserved');

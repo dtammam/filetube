@@ -544,6 +544,10 @@ async function loadAutomationSettings() {
     // v1.16.0 FR-3 (T3): autoplay-next toggle, OFF by default.
     const autoplayNextCheck = document.getElementById('autoplay-next-check');
     if (autoplayNextCheck) autoplayNextCheck.checked = !!s.autoplayNext;
+    // v1.27.0 (EXPERIMENTAL): background-audio-for-video toggle, OFF by
+    // default -- mirrors autoplayNext's own prefill exactly.
+    const backgroundAudioCheck = document.getElementById('background-audio-check');
+    if (backgroundAudioCheck) backgroundAudioCheck.checked = !!s.backgroundAudioForVideo;
     const cacheAgeSelect = document.getElementById('cache-age-select');
     if (cacheAgeSelect) cacheAgeSelect.value = String(s.cacheMaxAgeDays);
     const capInput = document.getElementById('cache-cap-input');
@@ -724,6 +728,16 @@ function wireStaticControls(signal) {
     autoplayNextCheck.addEventListener('change', (e) => {
       saveAutomationSetting('autoplayNext', e.target.checked,
         document.getElementById('autoplay-next-error'));
+    }, { signal });
+  }
+
+  // v1.27.0 (EXPERIMENTAL): background-audio-for-video -- saves immediately
+  // on toggle, mirroring autoplayNext's own boolean-checkbox pattern exactly.
+  const backgroundAudioCheck = document.getElementById('background-audio-check');
+  if (backgroundAudioCheck) {
+    backgroundAudioCheck.addEventListener('change', (e) => {
+      saveAutomationSetting('backgroundAudioForVideo', e.target.checked,
+        document.getElementById('background-audio-error'));
     }, { signal });
   }
 
