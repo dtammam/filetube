@@ -1017,13 +1017,52 @@ function deriveReleaseDate(embeddedMs, mtimeMs) {
 const PLAYABLE_VIDEO_CODECS = new Set(['h264', 'avc1']);
 const PLAYABLE_AUDIO_CODECS = new Set(['aac']);
 
-// Pure: pull the first video/audio stream's codec_name out of ffprobe's
-// -show_entries stream=codec_name,codec_type:stream_disposition=attached_pic
+// Feature A (v1.26.1, Shorts player-size jump): sane upper bound for a
+// probed OR client-reported video width/height -- shared by
+// `parseFfprobeStreams` (below) and the `POST /api/videos/:id/dimensions`
+// lazy-backfill endpoint's own validation, so both paths agree on what
+// counts as a plausible dimension. 8192 comfortably covers 8K video (the
+// largest anything in this library is realistically going to be) while
+// still rejecting garbage (a corrupt probe, or a malicious/buggy client
+// POST body).
+const MAX_MEDIA_DIMENSION = 8192;
+
+// Pure: true only for a finite, positive, integer dimension within
+// MAX_MEDIA_DIMENSION -- the single validity gate both the ffprobe stream
+// parse and the dimensions-backfill endpoint use.
+function isValidMediaDimension(n) {
+  return Number.isInteger(n) && n > 0 && n <= MAX_MEDIA_DIMENSION;
+}
+
+// F3 (v1.26.1 two-reviewer follow-up, NIT): the ONLY input shapes the
+// `POST /api/videos/:id/dimensions` body is allowed to carry a
+// width/height as, BEFORE it's handed to `Number(...)`. `Number()` alone
+// happily coerces plenty of non-numeric-looking JSON values that are not
+// remotely "a number the client measured" -- `Number([1920])` -> `1920`
+// (single-element array unwrap), `Number(true)` -> `1`, `Number('0x10')` ->
+// `16` (hex-string parse) -- all of which would otherwise sail through
+// `isValidMediaDimension` as a plausible-looking positive integer. A plain
+// `number` (the normal shape: `JSON.stringify({ width: videoWidth, ... })`
+// from player.js always sends a real JS number) or a base-10 digit-only
+// string (defensive: some other JSON client) are the only two shapes
+// accepted; anything else (array, boolean, object, hex/exponential/
+// whitespace-padded string, `null`/`undefined`) is rejected here, before
+// `Number()` ever runs.
+function isPrimitiveNumericInput(v) {
+  if (typeof v === 'number') return true;
+  return typeof v === 'string' && /^\d+$/.test(v);
+}
+
+// Pure: pull the first video/audio stream's codec_name (+ the video
+// stream's width/height, Feature A v1.26.1) out of ffprobe's -show_entries
+// stream=codec_name,codec_type,width,height:stream_disposition=attached_pic
 // output (accepts the parsed object OR the raw stdout string — same
 // robustness contract as parseFfprobeTags: JSON.parse in a try/catch, never
 // throws, returns {} on anything malformed). Returns { videoCodec,
-// audioCodec }, lowercased; either key is simply absent (undefined) when
-// that stream type isn't present in the probe output.
+// audioCodec, width, height }; each key is simply absent (undefined) when
+// that stream type isn't present in the probe output, or (width/height
+// only) when the reported value isn't a sane positive integer
+// (isValidMediaDimension).
 //
 // Cover-art / attached_pic trap: many VIDEO-container files (.mp4/.mkv/
 // .mov/.webm/.m4v) carry an embedded COVER-ART image as its own
@@ -1041,6 +1080,30 @@ const PLAYABLE_AUDIO_CODECS = new Set(['aac']);
 // file is attached_pic (no real video track — effectively an audio file in
 // a video container), `videoCodec` is left absent/undefined (never
 // flagged).
+// Pure: the video stream's rotation in DEGREES, from ffprobe's
+// `side_data_list` (requested via `stream_side_data=rotation`, see
+// `buildFfprobeArgs`). Modern ffmpeg reports a container/track-level
+// rotation (e.g. a phone-shot portrait video stored with CODED landscape
+// dims) as a "Display Matrix" `side_data_list` entry carrying a signed
+// `rotation` field (90/-90/180/270/-270/etc, degrees) -- NOT the legacy
+// `rotate` stream TAG this codebase doesn't request. Returns `0` (no
+// rotation / not present / unparseable) on anything else, so a caller can
+// always safely test `Math.abs(rotation) % 180 === 90` without a separate
+// presence check. Only the FIRST `side_data_list` entry that actually
+// carries a `rotation` key is used -- a stream can carry other, unrelated
+// side_data entries (e.g. "Content Light Level") the field is simply absent
+// from.
+function firstStreamRotation(stream) {
+  const list = Array.isArray(stream.side_data_list) ? stream.side_data_list : [];
+  for (const sd of list) {
+    if (sd && Object.prototype.hasOwnProperty.call(sd, 'rotation')) {
+      const r = Number(sd.rotation);
+      if (Number.isFinite(r)) return r;
+    }
+  }
+  return 0;
+}
+
 function parseFfprobeStreams(input) {
   let j = input;
   if (typeof input === 'string') {
@@ -1051,7 +1114,44 @@ function parseFfprobeStreams(input) {
   const out = {};
   const isAttachedPic = (s) => !!(s.disposition && s.disposition.attached_pic === 1);
   const videoStream = streams.find(s => s && s.codec_type === 'video' && s.codec_name && !isAttachedPic(s));
-  if (videoStream) out.videoCodec = String(videoStream.codec_name).toLowerCase();
+  if (videoStream) {
+    out.videoCodec = String(videoStream.codec_name).toLowerCase();
+    // Feature A (v1.26.1): same non-attached_pic video stream the codec was
+    // just pulled from -- so an audio file's embedded cover-art stream (a
+    // `codec_type: 'video'` entry too) never contributes a bogus width/
+    // height. `Number(...)` first so a string-typed ffprobe field ("1920")
+    // is still accepted; anything non-integer/non-positive/oversized is
+    // left absent rather than persisted.
+    const w = Number(videoStream.width);
+    const h = Number(videoStream.height);
+    if (isValidMediaDimension(w)) out.width = w;
+    if (isValidMediaDimension(h)) out.height = h;
+    // F2 (v1.26.1 two-reviewer follow-up): ffprobe's width/height are the
+    // stream's CODED dims, not its DISPLAY dims -- a phone-shot portrait
+    // video is frequently stored with landscape coded dims (e.g.
+    // 1920x1080) plus a 90-degree rotation flag telling every player to
+    // rotate it before display; a browser's own `videoWidth`/`videoHeight`
+    // (player.js's `loadedmetadata`) already reflect that correction, but
+    // ffprobe's raw `width`/`height` do not. Left uncorrected, this item's
+    // stored dims (and the reserved-aspect box they drive, Feature A above)
+    // would be landscape-shaped for a video that actually displays
+    // portrait. `Math.abs(rotation) % 180 === 90` catches a 90-or-270-degree
+    // turn (`firstStreamRotation` may return a NEGATIVE value, e.g. -90 --
+    // `Math.abs` normalizes the sign since only the axis swap, not the
+    // spin direction, matters here); a 0/180-degree rotation (or no side
+    // data at all, `firstStreamRotation`'s `0` default) leaves the coded
+    // orientation as-is. Only swaps when BOTH dims were actually accepted
+    // above -- an invalid/missing dim is left absent, not swapped into the
+    // other key.
+    if (isValidMediaDimension(out.width) && isValidMediaDimension(out.height)) {
+      const rotation = firstStreamRotation(videoStream);
+      if (Math.abs(rotation) % 180 === 90) {
+        const swapped = out.width;
+        out.width = out.height;
+        out.height = swapped;
+      }
+    }
+  }
   const audioStream = streams.find(s => s && s.codec_type === 'audio' && s.codec_name);
   if (audioStream) out.audioCodec = String(audioStream.codec_name).toLowerCase();
   return out;
@@ -1074,10 +1174,20 @@ function codecNeedsTranscode(videoCodec, audioCodec) {
 // its own arg-array element rather than interpolated into a shell command
 // string -- this narrows the pre-existing injection surface on this line
 // without widening anything.
+// Feature A (v1.26.1): `width,height` added to the stream fields -- purely
+// additive to the SAME probe (no second spawn); `parseFfprobeStreams` is
+// what actually reads them back out (see its own comment for the
+// attached_pic/cover-art guard).
+// F2 (v1.26.1 two-reviewer follow-up): `stream_side_data=rotation` added,
+// same "purely additive to the same probe" reasoning -- surfaces each
+// stream's `side_data_list` (a "Display Matrix" entry's `rotation` field, on
+// a rotation-flagged phone-shot video) in the JSON output, which
+// `firstStreamRotation`/`parseFfprobeStreams` read back out to correct
+// coded-vs-display width/height (see their own comments).
 function buildFfprobeArgs(filePath) {
   return [
     '-v', 'error',
-    '-show_entries', 'format=duration:format_tags:stream=codec_name,codec_type:stream_disposition=attached_pic',
+    '-show_entries', 'format=duration:format_tags:stream=codec_name,codec_type,width,height:stream_disposition=attached_pic:stream_side_data=rotation',
     '-of', 'json',
     filePath,
   ];
@@ -1130,7 +1240,7 @@ function extractMetadataAndThumbnail(filePath, mediaId, isAudio) {
       // ~line 1241) sees the codec keys as present (probed once, no usable
       // codec) instead of re-extracting (ffprobe attempt + ffmpeg thumbnail
       // attempt) every video item on every single scan forever.
-      return resolve({ duration: 0, hasThumbnail: false, artist: '', tags: {}, videoCodec: null, audioCodec: null, embeddedReleaseDateMs: null });
+      return resolve({ duration: 0, hasThumbnail: false, artist: '', tags: {}, videoCodec: null, audioCodec: null, embeddedReleaseDateMs: null, width: null, height: null });
     }
 
     // Get duration + all format tags (artist -> channel name; the rest -> the
@@ -1168,6 +1278,17 @@ function extractMetadataAndThumbnail(filePath, mediaId, isAudio) {
       // (probe failed/errored, or the file genuinely carries none), which
       // the caller (`deriveReleaseDate`) treats as "fall through to mtime".
       let embeddedReleaseDateMs = null;
+      // Feature A (v1.26.1): VIDEO-only intrinsic dimensions, from the SAME
+      // probe -- `null` by default (audio items, a failed/errored probe, or
+      // a video whose real stream dims weren't usable) exactly like
+      // `videoCodec`/`audioCodec` above; deliberately left `null` (never
+      // set) for `isAudio` even if the probe happened to report a width/
+      // height off an embedded cover-art stream -- `parseFfprobeStreams`
+      // already excludes attached_pic streams from its video-stream pick,
+      // but this is a second, explicit guard at the call site per the
+      // "audio items get none" contract.
+      let width = null;
+      let height = null;
       if (!err && stdout) {
         try {
           const j = JSON.parse(stdout);
@@ -1180,6 +1301,10 @@ function extractMetadataAndThumbnail(filePath, mediaId, isAudio) {
             const streams = parseFfprobeStreams(j);
             videoCodec = streams.videoCodec !== undefined ? streams.videoCodec : null;
             audioCodec = streams.audioCodec !== undefined ? streams.audioCodec : null;
+            if (!isAudio) {
+              width = Number.isInteger(streams.width) ? streams.width : null;
+              height = Number.isInteger(streams.height) ? streams.height : null;
+            }
           } catch (_) { videoCodec = null; audioCodec = null; }
           try { embeddedReleaseDateMs = parseEmbeddedReleaseDateMs(j); } catch (_) { embeddedReleaseDateMs = null; }
         } catch (_) {}
@@ -1192,7 +1317,7 @@ function extractMetadataAndThumbnail(filePath, mediaId, isAudio) {
         // metacharacters could otherwise be a command-injection vector
         // (matches the ffprobe `execFile` hardening above).
         execFile('ffmpeg', ['-i', filePath, '-an', '-vcodec', 'copy', '-y', thumbPath], (artErr) => {
-          resolve({ duration, artist, tags, videoCodec, audioCodec, embeddedReleaseDateMs, hasThumbnail: !artErr && fs.existsSync(thumbPath) });
+          resolve({ duration, artist, tags, videoCodec, audioCodec, embeddedReleaseDateMs, width, height, hasThumbnail: !artErr && fs.existsSync(thumbPath) });
         });
       } else {
         // Extract video frame (at 2 seconds or 10% of duration, whichever is
@@ -1200,7 +1325,7 @@ function extractMetadataAndThumbnail(filePath, mediaId, isAudio) {
         // reason as the audio-art branch above.
         const timestamp = duration > 5 ? 2 : Math.max(0, duration / 2);
         execFile('ffmpeg', ['-ss', String(timestamp), '-i', filePath, '-vframes', '1', '-q:v', '2', '-y', thumbPath], (frameErr) => {
-          resolve({ duration, artist, tags, videoCodec, audioCodec, embeddedReleaseDateMs, hasThumbnail: !frameErr && fs.existsSync(thumbPath) });
+          resolve({ duration, artist, tags, videoCodec, audioCodec, embeddedReleaseDateMs, width, height, hasThumbnail: !frameErr && fs.existsSync(thumbPath) });
         });
       }
     });
@@ -1637,6 +1762,22 @@ async function runScanDirectories() {
         // below, which relies on the keys being present).
         newMetadata[id].videoCodec = meta.videoCodec;
         newMetadata[id].audioCodec = meta.audioCodec;
+        // Feature A (v1.26.1, Shorts player-size jump): VIDEO-only intrinsic
+        // width/height, from this SAME probe -- additive/schema-only, and
+        // ONLY ever set here on a genuinely new/updated file's initial scan
+        // (this whole branch). NEVER a library-wide re-probe sweep for
+        // already-indexed items -- an item that predates this field simply
+        // has no `width`/`height` key (unlike `videoCodec`/`audioCodec`,
+        // there is no reuse-guard keyed off these, so leaving them absent is
+        // safe) until it is re-scanned as changed OR the player's own lazy
+        // per-item `POST /api/videos/:id/dimensions` backfill (server route
+        // below) fills it in from the browser's own `videoWidth`/
+        // `videoHeight` on next play. Left unset entirely for audio, or when
+        // the probe didn't yield usable dims.
+        if (!isAudio && meta.width && meta.height) {
+          newMetadata[id].width = meta.width;
+          newMetadata[id].height = meta.height;
+        }
         // C5-local (v1.24): embedded date (from this SAME probe) -> mtime
         // fallback. `meta.embeddedReleaseDateMs` is `null` on ffmpeg-
         // unavailable/probe-failure/no-usable-tag; `deriveReleaseDate`
@@ -1743,6 +1884,30 @@ async function runScanDirectories() {
       if (priorStatus === undefined) delete item.transcodeStatus;
       else item.transcodeStatus = priorStatus;
       if (reconcileTranscode(item)) dbChanged = true;
+
+      // F1 (v1.26.1 two-reviewer follow-up): same FR3.3 stale-snapshot guard,
+      // applied to `width`/`height`. The reusable/legacyVideoCodecBackfillOnly
+      // fast paths above (~line 1589/1627) set `newMetadata[id] = existing`,
+      // where `existing` is a reference into the scan's Phase-1 `db` snapshot
+      // taken at scan START -- never re-read mid-scan. A concurrent
+      // `POST /api/videos/:id/dimensions` lazy backfill (the player's
+      // `loadedmetadata` fallback, server route below) can land on the FRESH
+      // on-disk db while this scan is still running; without this guard, the
+      // unconditional `fresh.metadata = mergeScannedMetadata(fresh.metadata,
+      // newMetadata)` below wholesale-replaces that fresh, now-dims-bearing
+      // entry with the scan's stale, dims-less snapshot -- silently
+      // reverting the backfill. Only carries the fresh values forward when
+      // the SCAN's own item is missing EITHER dimension and the fresh
+      // on-disk entry has BOTH -- an item the scan genuinely (re-)probed this
+      // pass (the "new or updated file" branch, ~line 1703) already carries
+      // its own freshly-probed width/height and is left untouched.
+      if (!(item.width && item.height)) {
+        const freshItem = fresh.metadata[item.id];
+        if (freshItem && freshItem.width && freshItem.height) {
+          item.width = freshItem.width;
+          item.height = freshItem.height;
+        }
+      }
 
       // v1.20.0 FR-2: bridge each freshly-scanned yt-dlp download's captured
       // channel identity onto its db.metadata item, inside the SAME
@@ -3373,6 +3538,75 @@ app.post('/api/videos/:id/view', async (req, res) => {
   res.json({ success: true, viewCount });
 });
 
+// API: lazy per-item dimensions backfill (Feature A, v1.26.1, Shorts
+// player-size jump). The scan only ever captures `width`/`height` on a
+// video's initial (new/updated-file) probe -- see the comment above
+// `newMetadata[id].width = meta.width` -- so any item indexed before this
+// release, or whose original probe failed to yield usable dims, has none.
+// Rather than a library-wide re-probe sweep on upgrade (the exact class of
+// regression the thumbnail-backfill lesson warns against), the PLAYER
+// itself calls this once it has genuinely observed the real dimensions
+// (`<video>`'s own `videoWidth`/`videoHeight` at `loadedmetadata`,
+// player.js) -- so the FIRST play of a legacy item settles late (same as
+// today) but the SECOND play is jump-free. Fire-and-forget from the client:
+// this endpoint's own success/failure never affects playback.
+//
+// Validates: a positive-integer, sane-bounded (`isValidMediaDimension`,
+// shared with the ffprobe-side parse above) width/height; the item exists;
+// the item is a VIDEO (never audio -- mirrors the scan's own `!isAudio`
+// guard). No-clobber: an item that already carries BOTH `width` and
+// `height` is left completely untouched -- this endpoint only ever fills a
+// gap, exactly like the release-date/hasSubtitles backfills elsewhere in
+// this file. A malformed/late-arriving/duplicate POST (e.g. a stray second
+// `loadedmetadata` firing for the same load) is therefore always safe to
+// retry: it either fills the gap once or silently no-ops.
+app.post('/api/videos/:id/dimensions', async (req, res) => {
+  const body = req.body || {};
+  // F3: reject a non-primitive-numeric body BEFORE Number() ever runs -- see
+  // isPrimitiveNumericInput's own comment for exactly which shapes this
+  // guards against ([1920], true, '0x10', etc.).
+  if (!isPrimitiveNumericInput(body.width) || !isPrimitiveNumericInput(body.height)) {
+    return res.status(400).json({ error: `width and height must be positive integers <= ${MAX_MEDIA_DIMENSION}` });
+  }
+  const width = Number(body.width);
+  const height = Number(body.height);
+  if (!isValidMediaDimension(width) || !isValidMediaDimension(height)) {
+    return res.status(400).json({ error: `width and height must be positive integers <= ${MAX_MEDIA_DIMENSION}` });
+  }
+  let notFound = false;
+  let wrongType = false;
+  let applied = false;
+  try {
+    await updateDatabase(db => {
+      const item = db.metadata[req.params.id];
+      if (!item) {
+        notFound = true;
+        return false;
+      }
+      if (item.type !== 'video') {
+        wrongType = true;
+        return false;
+      }
+      if (item.width && item.height) {
+        return false; // no-clobber: dims already known -- nothing to do
+      }
+      item.width = width;
+      item.height = height;
+      applied = true;
+      return true;
+    });
+  } catch (err) {
+    // Express 4 does not catch a rejected async-handler promise, so a
+    // rejection left unguarded here would hang the request instead of
+    // returning 500 (mirrors POST /api/videos/:id/view's own pattern above).
+    console.error(`Error recording dimensions for ${req.params.id}:`, err);
+    return res.status(500).json({ error: `Could not record dimensions: ${err.message}` });
+  }
+  if (notFound) return res.status(404).json({ error: 'Media file not found' });
+  if (wrongType) return res.status(400).json({ error: 'Dimensions only apply to video items' });
+  res.json({ success: true, applied });
+});
+
 // API: Serve a subtitle track for a media item (A6, v1.24 UX Round, Wave 5).
 // Deliberately lives HERE, not in the yt-dlp module -- subtitle GRAB is
 // yt-dlp-module-adjacent (lib/ytdlp/args.js's buildYtdlpDownloadArgs), but
@@ -3787,6 +4021,14 @@ module.exports = {
   parseFfprobeStreams,
   codecNeedsTranscode,
   probeCodecsOnly,
+  // Feature A (v1.26.1, Shorts player-size jump): shared by the ffprobe
+  // stream parse and the dimensions-backfill route's own validation -- see
+  // their comments above.
+  isValidMediaDimension,
+  MAX_MEDIA_DIMENSION,
+  // F3 (v1.26.1 two-reviewer follow-up): re-exported so tests can exercise
+  // the primitive-shape guard directly (see its own comment above).
+  isPrimitiveNumericInput,
   // C5-local (v1.24): the release-date precedence helpers -- re-exported so
   // tests can exercise the embedded-date parsing / embedded->mtime
   // precedence directly, without a real ffprobe binary (mirrors

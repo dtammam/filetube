@@ -133,15 +133,10 @@ test('FIX C: the #skip-controls native-hide rule carries `!important` so it beat
   assert.match(skipRule[1], /display:\s*none\s*!important;/, 'expected #skip-controls\' native-hide rule to use !important to override the inline style.display setupForMedia() sets on every load');
 });
 
-test('native-controls round: the v1.23.5 "bar-below" reserved strip is reverted for `.native-controls` (padding-bottom: 0, #media-player fills the wrapper) -- both the base rule and the max-width:768px variant', () => {
+test('native-controls round: the v1.23.5 "bar-below" reserved strip is still reverted for `.native-controls` (padding-bottom: 0) -- both the base rule and the max-width:768px variant', () => {
   const baseRule = /#player-wrapper:not\(\.audio-expanded\)\.native-controls\s*\{([^}]*)\}/.exec(css);
   assert.ok(baseRule, 'expected a base #player-wrapper:not(.audio-expanded).native-controls rule');
   assert.match(baseRule[1], /padding-bottom:\s*0;/);
-
-  const baseMediaPlayerRule = /#player-wrapper:not\(\.audio-expanded\)\.native-controls\s+#media-player\s*\{([^}]*)\}/.exec(css);
-  assert.ok(baseMediaPlayerRule, 'expected a base #player-wrapper:not(.audio-expanded).native-controls #media-player rule');
-  assert.match(baseMediaPlayerRule[1], /aspect-ratio:\s*auto;/);
-  assert.match(baseMediaPlayerRule[1], /height:\s*100%;/);
 
   // Both instances of the selector must appear -- one at the top level, one
   // inside a `@media (max-width: 768px)` block (belt-and-suspenders revert,
@@ -153,13 +148,35 @@ test('native-controls round: the v1.23.5 "bar-below" reserved strip is reverted 
   let found = false;
   let m;
   while ((m = mediaBlockMatch.exec(css))) {
-    if (/#player-wrapper:not\(\.audio-expanded\)\.native-controls\s*\{[^}]*padding-bottom:\s*0;/.test(m[1]) &&
-        /#player-wrapper:not\(\.audio-expanded\)\.native-controls\s+#media-player\s*\{[^}]*aspect-ratio:\s*auto;[^}]*height:\s*100%;/.test(m[1])) {
+    if (/#player-wrapper:not\(\.audio-expanded\)\.native-controls\s*\{[^}]*padding-bottom:\s*0;/.test(m[1])) {
       found = true;
       break;
     }
   }
-  assert.ok(found, 'expected a @media (max-width: 768px) block containing the same .native-controls bar-below revert (padding-bottom: 0 + #media-player aspect-ratio:auto/height:100%)');
+  assert.ok(found, 'expected a @media (max-width: 768px) block containing the same .native-controls bar-below revert (padding-bottom: 0)');
+});
+
+// Feature A (v1.26.1, Shorts player-size jump) FIX: the `.native-controls`
+// #media-player override used to ALSO force `aspect-ratio: auto; height:
+// 100%;` -- collapsing the box to the video's own INTRINSIC size, which is
+// unknown until `loadedmetadata` fires. Since `.native-controls` is applied
+// synchronously at mount (well before metadata loads), this produced a
+// visible late box-size jump the instant native controls engaged on mobile
+// video -- exactly the regression this release fixes. That override is now
+// REMOVED entirely: with only `padding-bottom: 0` left, `#media-player`
+// falls through to the SAME `--media-aspect`-driven `aspect-ratio: var(
+// --media-aspect, 16 / 9); height: auto;` rule every other (non-native-
+// controls) case already uses -- sized correctly from the very first paint.
+test('Feature A (v1.26.1): `.native-controls` no longer overrides #media-player\'s aspect-ratio/height to the video\'s own intrinsic size -- it falls through to the shared --media-aspect rule instead, so there is no late box-size jump when native controls engage', () => {
+  assert.ok(
+    !/#player-wrapper:not\(\.audio-expanded\)\.native-controls\s+#media-player\s*\{/.test(css),
+    'expected the .native-controls #media-player override to be removed -- #media-player should fall through to the base --media-aspect-driven rule'
+  );
+
+  const sharedRule = /#player-wrapper:not\(\.audio-expanded\)\s+#media-player\s*\{([^}]*)\}/.exec(css);
+  assert.ok(sharedRule, 'expected the shared #player-wrapper:not(.audio-expanded) #media-player rule (Feature A) to still exist');
+  assert.match(sharedRule[1], /aspect-ratio:\s*var\(--media-aspect,\s*16\s*\/\s*9\);/);
+  assert.match(sharedRule[1], /height:\s*auto;/);
 });
 
 // ---- mobile touch-target sizing (v1.22.1 FR-1/FR-4): .pc-btn -> 44px ------
