@@ -1520,7 +1520,7 @@ if (typeof module !== 'undefined' && module.exports) {
         moveBtn.type = 'button';
         moveBtn.id = 'move-media-btn';
         moveBtn.className = 'btn';
-        moveBtn.textContent = 'Move to...';
+        moveBtn.textContent = 'Move';
         watchActions.appendChild(moveBtn);
         moveBtn.addEventListener('click', handleMoveClick, { signal });
       }

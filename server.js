@@ -26,6 +26,10 @@ const { isYtdlpIntermediate } = require('./lib/ytdlpIntermediates');
 // lib/stats.js's header comment and `GET /api/stats` below for the full
 // live-compute rationale.
 const stats = require('./lib/stats');
+// A6 subtitles (v1.24 UX Round, Wave 5): pure srtToVtt + findSubtitleSidecar,
+// shared by the scan's additive `hasSubtitles` detection below and
+// `GET /api/subtitles/:id` -- see lib/subtitles.js's header comment.
+const subtitles = require('./lib/subtitles');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -1221,6 +1225,23 @@ async function restoreMissingThumbnail(existing, id, filePath) {
   return true;
 }
 
+// A6 (v1.24 UX Round, Wave 5): additive `hasSubtitles` detection, shared by
+// every scan branch below that reuses an `existing` entry. SCHEMA-ONLY --
+// `findSubtitleSidecar` only stats/reads the containing directory (no
+// ffmpeg, no thumbnail/transcode work), so calling this can never trigger
+// the thumbnail-backfill-regression class of bug. Deliberately recomputed on
+// EVERY scan (unlike the one-time `releaseDate` backfill above, which only
+// fills a missing field once) -- a subtitle sidecar a user drops in, or
+// removes, later is picked up (or cleared) on the very next scan, not just
+// once. Mutates `existing.hasSubtitles` in place and returns `true` iff the
+// value actually changed (so callers know whether to set `dbChanged`).
+function applyHasSubtitlesDetection(existing, filePath) {
+  const hasSubtitles = !!subtitles.findSubtitleSidecar(filePath);
+  if (existing.hasSubtitles === hasSubtitles) return false;
+  existing.hasSubtitles = hasSubtitles;
+  return true;
+}
+
 // Live scan state, surfaced via /api/scan-status for the setup/home UI.
 // `rescanRequested` is an internal bookkeeping flag (never serialized by
 // /api/scan-status) for the coalesced-follow-up mechanism in
@@ -1498,6 +1519,7 @@ async function runScanDirectories() {
         existing.releaseDate = deriveReleaseDate(null, info.mtimeMs);
         dbChanged = true;
       }
+      if (applyHasSubtitlesDetection(existing, filePath)) dbChanged = true;
       newMetadata[id] = existing;
     } else if (legacyVideoCodecBackfillOnly) {
       // v1.18.1 hotfix: reuse the existing entry AS-IS (title, duration,
@@ -1534,6 +1556,7 @@ async function runScanDirectories() {
         existing.releaseDate = deriveReleaseDate(null, info.mtimeMs);
         dbChanged = true;
       }
+      applyHasSubtitlesDetection(existing, filePath);
 
       newMetadata[id] = existing;
       dbChanged = true;
@@ -1574,7 +1597,11 @@ async function runScanDirectories() {
         duration: 0,
         hasThumbnail: false,
         artist: '',
-        needsTranscode: !isAudio && needsTranscode(info.ext)
+        needsTranscode: !isAudio && needsTranscode(info.ext),
+        // A6 (v1.24 UX Round, Wave 5): additive, schema-only -- see
+        // applyHasSubtitlesDetection's comment above for why this cheap
+        // directory check never counts as "re-processing".
+        hasSubtitles: !!subtitles.findSubtitleSidecar(filePath)
       };
 
       try {
@@ -2830,19 +2857,29 @@ async function moveItemToFolder(deps, id, targetFolder) {
         console.error(`Move: failed to re-key transcode sidecar for ${oldId} -> ${newId}:`, transcodeErr.message);
       }
 
-      // Subtitle sidecar (A6 ships in Wave 5 -- not built yet; this is
-      // forward-compatible best-effort, a no-op today since no such file can
-      // exist): same basename as the media file, .vtt/.srt extension,
-      // alongside it in whichever directory the media file is currently in.
+      // Subtitle sidecar (A6, T16 shipped in Wave 5; this rename is a T16
+      // completion follow-up). Reuses `lib/subtitles.js`'s own
+      // `findSubtitleSidecar` -- the SAME resolver the scan's `hasSubtitles`
+      // detection and the `GET /api/subtitles/:id` serve route use -- so this
+      // rename can never disagree with what those two consider "this item's
+      // sidecar." That resolver's real priority order is (1) an
+      // explicit-language VTT, `<base>.<lang>.vtt` (the shape yt-dlp's own
+      // downloads actually land in per `OUTPUT_TEMPLATE`, e.g.
+      // "Title [id].en.vtt"), (2) a bare `<base>.vtt`, (3) a bare `<base>.srt`
+      // -- NOT just the bare-name shapes a naive `.vtt`/`.srt` loop would
+      // catch. Whatever suffix follows the OLD basename (".en.vtt", ".vtt",
+      // or ".srt") is preserved verbatim on the NEW basename, so a
+      // language-tagged sidecar keeps its language tag across the move.
       try {
-        const oldDir = path.dirname(oldPath);
         const newDir = path.dirname(newPath);
         const oldBase = path.basename(oldPath, path.extname(oldPath));
         const newBase = path.basename(newPath, path.extname(newPath));
-        for (const subExt of ['.vtt', '.srt']) {
-          const oldSub = path.join(oldDir, oldBase + subExt);
-          const newSub = path.join(newDir, newBase + subExt);
-          if (fsImpl.existsSync(oldSub)) fsImpl.renameSync(oldSub, newSub);
+        const sidecar = subtitles.findSubtitleSidecar(oldPath, fsImpl);
+        if (sidecar) {
+          const oldSubName = path.basename(sidecar.path);
+          const suffix = oldSubName.slice(oldBase.length); // e.g. ".en.vtt", ".vtt", ".srt"
+          const newSub = path.join(newDir, newBase + suffix);
+          if (fsImpl.existsSync(sidecar.path)) fsImpl.renameSync(sidecar.path, newSub);
         }
       } catch (subErr) {
         console.error(`Move: failed to re-key subtitle sidecar for ${oldId} -> ${newId}:`, subErr.message);
@@ -2932,6 +2969,56 @@ app.post('/api/videos/:id/view', async (req, res) => {
   }
   if (notFound) return res.status(404).json({ error: 'Media file not found' });
   res.json({ success: true, viewCount });
+});
+
+// API: Serve a subtitle track for a media item (A6, v1.24 UX Round, Wave 5).
+// Deliberately lives HERE, not in the yt-dlp module -- subtitle GRAB is
+// yt-dlp-module-adjacent (lib/ytdlp/args.js's buildYtdlpDownloadArgs), but
+// subtitle SERVE is a general library feature, exactly like /video/:id and
+// /thumbnail/:id above, and must work for LOCAL files with the yt-dlp module
+// completely disabled (FILETUBE_YTDLP_ENABLED unset). This route touches
+// nothing in lib/ytdlp -- only db.metadata/fs/lib/subtitles -- so it is
+// reachable regardless of module enablement, same as those two routes.
+//
+// Trust boundary: `item.filePath` is an already-trusted, already-indexed
+// path (the scan only ever writes db.metadata entries for files it walked
+// under a configured library root) -- `findSubtitleSidecar` only ever reads
+// the SAME directory that trusted path already lives in (see its own
+// comment, lib/subtitles.js), so there is no separate confinement check to
+// perform here: the confinement already happened once, at scan time,
+// mirroring GET /video/:id's own trust posture. The only untrusted input is
+// `:id` itself, and a hostile/unknown id simply misses the db.metadata
+// lookup and 404s, same as every other /api/*/:id route in this file.
+//
+// A `.srt` sidecar is converted to VTT ON THE FLY via srtToVtt (no cached
+// copy ever written to disk -- cheap, pure, string-only work); a `.vtt`
+// sidecar is served as-is. 404s when the id is unknown, the sidecar read
+// fails, or no sidecar exists at all.
+app.get('/api/subtitles/:id', (req, res) => {
+  const db = loadDatabase();
+  const item = db.metadata[req.params.id];
+  if (!item) {
+    return res.status(404).json({ error: 'Media file not found' });
+  }
+  const sidecar = subtitles.findSubtitleSidecar(item.filePath);
+  if (!sidecar) {
+    return res.status(404).json({ error: 'No subtitle track available for this item' });
+  }
+  let vttText;
+  try {
+    const raw = fs.readFileSync(sidecar.path, 'utf8');
+    vttText = sidecar.format === 'srt' ? subtitles.srtToVtt(raw) : raw;
+  } catch (err) {
+    console.error(`Error reading subtitle sidecar for ${req.params.id}:`, err);
+    return res.status(404).json({ error: 'Subtitle file could not be read' });
+  }
+  res.setHeader('Content-Type', 'text/vtt');
+  // FIX-7 (two-reviewer gate, cheap hardening): defense-in-depth alongside
+  // the explicit `text/vtt` Content-Type above -- a browser that ignores (or
+  // sniffs past) that header for any reason can never reinterpret this
+  // response as something else (e.g. HTML) purely from its bytes.
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.send(vttText);
 });
 
 // Serve extracted thumbnail or fallback placeholder

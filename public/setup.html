@@ -269,6 +269,7 @@
         <p id="transcode-message">FileTube is converting this file to a browser-friendly format. This only happens once &mdash; it'll start playing automatically when it's ready.</p>
       </div>
       <video id="media-player" preload="metadata" playsinline webkit-playsinline x5-playsinline style="display: none;">
+        <track id="cc-track" kind="captions" srclang="en" label="English">
         Your browser does not support HTML5 video player.
       </video>
       <div id="speed-badge" class="speed-badge" style="display: none;">2× ▶▶</div>
@@ -303,6 +304,7 @@
         <button type="button" id="speed-btn" class="pc-btn speed-btn" aria-label="Playback speed">1×</button>
         <button type="button" id="fs-btn" class="pc-btn fs-btn" aria-label="Fullscreen">⛶</button>
         <button type="button" id="pip-btn" class="pc-btn pip-btn" aria-label="Picture in picture">⧉</button>
+        <button type="button" id="cc-btn" class="pc-btn cc-btn" aria-label="Toggle captions" aria-pressed="false" style="display: none;">CC</button>
       </div>
     </div>
   </template>

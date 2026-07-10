@@ -131,6 +131,14 @@ test('T3 one-shot download / edit-pause / status routes 404 when the module is d
   assert.equal(status.status, 404, 'GET /api/subscriptions/status must 404 when disabled (AC32)');
 });
 
+// v1.24.0 A3: the new one-shot cancel route is registered inside the SAME
+// `isEnabled` gate as every route above -- it must be equally absent when
+// disabled, regardless of what jobId is targeted.
+test('T15 A3: POST /api/ytdlp/download/:jobId/cancel 404s when the module is disabled', async () => {
+  const res = await fetch(`${base}/api/ytdlp/download/some-job-id/cancel`, { method: 'POST' });
+  assert.equal(res.status, 404, 'POST /api/ytdlp/download/:jobId/cancel must 404 when disabled');
+});
+
 // v1.21.0 FR-5 (AC69): the 3 channel-pin routes are registered inside the
 // SAME `isEnabled` gate as everything else, so they must be equally absent
 // (native Express 404, no separate no-op guard) when disabled.

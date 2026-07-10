@@ -111,10 +111,16 @@ test('mobile .pc-btn is 44px square (bumped from the v1.21/v1.22.0 36px) -- comf
 
 // ---- FIX 2 (v1.22.1 gate round): #speed-btn trimmed from the docked bar ---
 
-test('FIX 2: #player-dock hides #speed-btn alongside the other secondary controls (time/mute/vol/fullscreen/PiP) -- impractical at 160-280px mini-dock width', () => {
-  const rule = /#player-dock\s*\.pc-time,\s*\n#player-dock\s*\.mute-btn,\s*\n#player-dock\s*\.pc-vol,\s*\n#player-dock\s*\.fs-btn,\s*\n#player-dock\s*\.pip-btn,\s*\n#player-dock\s*\.speed-btn\s*\{([^}]*)\}/.exec(css);
-  assert.ok(rule, 'expected #player-dock .speed-btn to be part of the same hidden-controls group as .pc-time/.mute-btn/.pc-vol/.fs-btn/.pip-btn');
+test('FIX 2: #player-dock hides #speed-btn alongside the other secondary controls (time/mute/vol/fullscreen/PiP/CC) -- impractical at 160-280px mini-dock width', () => {
+  const rule = /#player-dock\s*\.pc-time,\s*\n#player-dock\s*\.mute-btn,\s*\n#player-dock\s*\.pc-vol,\s*\n#player-dock\s*\.fs-btn,\s*\n#player-dock\s*\.pip-btn,\s*\n#player-dock\s*\.speed-btn,\s*\n#player-dock\s*\.cc-btn\s*\{([^}]*)\}/.exec(css);
+  assert.ok(rule, 'expected #player-dock .speed-btn AND #player-dock .cc-btn to be part of the same hidden-controls group as .pc-time/.mute-btn/.pc-vol/.fs-btn/.pip-btn');
   assert.match(rule[1], /display:\s*none;/);
+});
+
+// ---- T16 completion follow-up (v1.24 UX Round): #cc-btn trimmed too -------
+
+test('T16 follow-up FIX 2: #player-dock hides #cc-btn (the CC toggle added by T16) -- cramped/impractical at the ~26px docked control bar height', () => {
+  assert.match(css, /#player-dock\s*\.cc-btn\s*\{[^}]*display:\s*none;/, 'expected #player-dock .cc-btn to be hidden in the docked mini-player');
 });
 
 // ---- v1.22.1 FR-4: #speed-btn styling --------------------------------------

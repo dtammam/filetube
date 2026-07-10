@@ -1485,6 +1485,9 @@ function formatOneOffStatusText(entry) {
   }
   if (state === 'done') return 'Done';
   if (state === 'error') return typeof entry.error === 'string' && entry.error.trim() !== '' ? entry.error : 'error';
+  // v1.24.0 A3: a NEW terminal state distinct from 'error' -- see
+  // `lib/ytdlp/index.js`'s cancel route.
+  if (state === 'cancelled') return 'Cancelled';
   return null; // 'idle' (or an unrecognized future state) -- no live override
 }
 
@@ -3383,14 +3386,21 @@ function buildOneShotRetryBody(entry) {
  * Pure (AC56's auto-dismiss-vs-sticky decision): classifies a LiveEntry's
  * `state` into the chip's lifecycle bucket -- `'auto-dismiss'` (a completed
  * download never even enters the chip's visible item list -- transient,
- * nothing to acknowledge), `'sticky'` (an errored download stays visible
- * until the user explicitly Dismisses it), or `'active'` (queued/listing/
- * downloading, or any unrecognized future state, defensively treated as
- * still in-flight rather than silently dropped).
+ * nothing to acknowledge), `'sticky'` (an errored OR user-cancelled download
+ * stays visible until the user explicitly Dismisses it), or `'active'`
+ * (queued/listing/downloading, or any unrecognized future state, defensively
+ * treated as still in-flight rather than silently dropped).
+ *
+ * v1.24.0 A3: `'cancelled'` (a NEW terminal state distinct from `'error'` --
+ * see `lib/ytdlp/index.js`'s cancel route) is sticky like `'error'` rather
+ * than auto-dismissed like `'done'`: a cancel is a deliberate user action,
+ * so the chip keeps it visible (with a Dismiss control, no Retry -- see
+ * `buildItemRow` below) until explicitly acknowledged, the same way a
+ * failure stays visible rather than silently vanishing.
  */
 function chipItemLifecycle(state) {
   if (state === 'done') return 'auto-dismiss';
-  if (state === 'error') return 'sticky';
+  if (state === 'error' || state === 'cancelled') return 'sticky';
   return 'active';
 }
 
@@ -3425,6 +3435,43 @@ function buildDownloadChipItem(kind, id, entry) {
     statusText: formatOneOffStatusText(entry) || state,
     retryable: state === 'error',
   };
+}
+
+/**
+ * Pure (v1.24.0 A2, T14): builds the per-item failure line list for a
+ * subscription's sticky error row -- `rawEntry.failures` (an array of
+ * `{videoId, title?, reason}`, additively set by
+ * `lib/ytdlp/index.js`'s `mapItemFailuresForActivity`) is additive and
+ * stale-tolerant: this only ever reads it when `state === 'error'` (the SAME
+ * lifecycle gate `chipItemLifecycle` uses elsewhere in this file), so a
+ * `failures` array left over from a PRIOR failed cycle can never render once
+ * the subscription's live state has moved past `'error'` --
+ * `lib/ytdlp/activity.js`'s `mergeEntry` is a shallow merge that never clears
+ * an old field on its own, so this state-gate is the mechanism that keeps
+ * stale per-item failure data from ever being shown, mirroring how this
+ * file already treats a stale `entry.error` string the same way (only ever
+ * surfaced while `state === 'error'`). Each line prefers `title`
+ * (already control-char-stripped/length-capped server-side), falls back to
+ * `videoId`, and finally a fixed "Unknown video" literal for the
+ * never-misattributed case (`videoId: null` -- see
+ * lib/ytdlp/failures.js's "never misattribute" doc comment: an id this
+ * confident's server-side parser couldn't attribute is still surfaced here,
+ * never silently dropped). `reason` is already redacted (SF1)/sanitized
+ * server-side; this function does no further escaping of its own -- the
+ * caller renders every returned string via `textContent`, never `innerHTML`,
+ * treating it as untrusted regardless.
+ */
+function buildDownloadChipFailureLines(state, rawEntry) {
+  if (state !== 'error' || !rawEntry || !Array.isArray(rawEntry.failures)) return [];
+  return rawEntry.failures
+    .filter((f) => f && typeof f === 'object')
+    .map((f) => {
+      const title = typeof f.title === 'string' && f.title.trim() !== '' ? f.title.trim() : '';
+      const videoId = typeof f.videoId === 'string' && f.videoId !== '' ? f.videoId : '';
+      const label = title || videoId || 'Unknown video';
+      const reason = typeof f.reason === 'string' && f.reason.trim() !== '' ? f.reason.trim() : 'Unknown reason';
+      return label + ': ' + reason;
+    });
 }
 
 /**
@@ -3587,6 +3634,34 @@ function injectDownloadStatusChip() {
           .catch(() => { /* best-effort -- the next poll reflects whatever actually happened */ });
       }
 
+      // v1.24.0 A3: cancel an in-progress ONE-SHOT job (never a subscription
+      // -- see `lib/ytdlp/index.js`'s cancel route for the scope rationale).
+      // No explicit dismiss/re-render needed on SUCCESS: the server writes
+      // the 'cancelled' terminal state synchronously (before its response
+      // even returns), so the very next poll tick already reflects it;
+      // `pollOnce` is called immediately too, best-effort, so the chip
+      // updates without waiting out the full poll cadence.
+      //
+      // FIX-4 (two-reviewer gate, post-release): the button that calls this
+      // is now gated to `state === 'downloading'` only (see `buildItemRow`
+      // above), but this function ALSO now checks `res.ok` itself rather
+      // than only `.catch`ing a network-level failure -- a 404 (job no
+      // longer cancellable, e.g. it settled on its own between the click and
+      // this request landing) is a normal HTTP response, not a rejected
+      // fetch, and the pre-fix `.catch`-only handling silently swallowed it
+      // with zero feedback. A non-OK response now surfaces a brief,
+      // non-blocking toast (`showToast`, `textContent`-only) instead of a
+      // silent no-op; `pollOnce` still runs either way so the chip reflects
+      // whatever the job's actual state turns out to be.
+      function cancelOneShot(jobId) {
+        fetch('/api/ytdlp/download/' + encodeURIComponent(jobId) + '/cancel', { method: 'POST' })
+          .then((res) => {
+            if (!res.ok) showToast("Couldn't cancel — the download may have already finished");
+          })
+          .catch(() => { /* network-level failure -- the item stays visible; the next poll reconciles reality either way */ })
+          .then(() => pollOnce());
+      }
+
       function buildItemRow(item, rawEntry) {
         const row = document.createElement('div');
         row.className = 'dl-status-chip-item';
@@ -3617,19 +3692,73 @@ function injectDownloadStatusChip() {
         statusEl.textContent = item.statusText;
         row.appendChild(statusEl);
 
+        // v1.24.0 A3 / FIX-4 (two-reviewer gate, post-release): a Cancel
+        // affordance for a one-shot job ONLY while it is actually
+        // cancellable -- `state === 'downloading'`, never `'queued'`.
+        // `chipItemLifecycle(...) === 'active'` (the pre-fix condition)
+        // ALSO covers `'queued'`, but the live `ChildProcess` handle
+        // `lib/ytdlp/index.js`'s cancel route needs
+        // (`activeOneShotChildren`) is only registered once the job's
+        // `run.runDownload` call actually spawns (the `'downloading'`
+        // transition) -- a queued one-shot sitting behind a poll cycle on
+        // the shared `runExclusive` FIFO has no handle yet, so clicking
+        // Cancel while queued 404s (see `cancelOneShot`'s now-`res.ok`-
+        // checked handling below) with no visible download ever having
+        // stopped. Gating the button itself to the actually-cancellable
+        // window avoids offering an action that silently no-ops.
+        if (item.kind === 'oneshot' && item.state === 'downloading') {
+          const cancelActions = document.createElement('div');
+          cancelActions.className = 'dl-status-chip-item-actions';
+          const cancelBtn = document.createElement('button');
+          cancelBtn.type = 'button';
+          cancelBtn.className = 'dl-status-chip-dismiss-btn dl-status-chip-cancel-btn';
+          cancelBtn.textContent = 'Cancel';
+          cancelBtn.addEventListener('click', () => cancelOneShot(item.id));
+          cancelActions.appendChild(cancelBtn);
+          row.appendChild(cancelActions);
+        }
+
         if (item.state === 'error') {
+          // v1.24.0 A2 (T14): per-item {channel row context (this row) +
+          // video + reason} detail for a partially-failed subscription
+          // download batch -- see `buildDownloadChipFailureLines`'s doc
+          // comment above. Absent entirely (no extra DOM) for a one-shot
+          // (which has no `failures` field, always a single target) or a
+          // subscription whose error had nothing per-item attributable.
+          const failureLines = buildDownloadChipFailureLines(item.state, rawEntry);
+          if (failureLines.length > 0) {
+            const failuresWrap = document.createElement('div');
+            failuresWrap.className = 'dl-status-chip-item-failures';
+            failureLines.forEach((line) => {
+              const lineEl = document.createElement('div');
+              lineEl.className = 'dl-status-chip-item-failure';
+              lineEl.textContent = line;
+              failuresWrap.appendChild(lineEl);
+            });
+            row.appendChild(failuresWrap);
+          }
+        }
+
+        // v1.24.0 A3: 'cancelled' is sticky (see `chipItemLifecycle`) like
+        // 'error', but it is a user-initiated outcome, not a failure -- it
+        // gets a Dismiss control only, never a Retry (mirrors
+        // `buildDownloadChipItem`'s `retryable: state === 'error'` contract,
+        // which deliberately does NOT include 'cancelled').
+        if (item.state === 'error' || item.state === 'cancelled') {
           const actions = document.createElement('div');
           actions.className = 'dl-status-chip-item-actions';
 
-          const retryBtn = document.createElement('button');
-          retryBtn.type = 'button';
-          retryBtn.className = 'dl-status-chip-retry-btn';
-          retryBtn.textContent = 'Retry';
-          retryBtn.addEventListener('click', () => {
-            if (item.kind === 'oneshot') retryOneShot(rawEntry, item.key);
-            else retrySubscription(item.id);
-          });
-          actions.appendChild(retryBtn);
+          if (item.state === 'error') {
+            const retryBtn = document.createElement('button');
+            retryBtn.type = 'button';
+            retryBtn.className = 'dl-status-chip-retry-btn';
+            retryBtn.textContent = 'Retry';
+            retryBtn.addEventListener('click', () => {
+              if (item.kind === 'oneshot') retryOneShot(rawEntry, item.key);
+              else retrySubscription(item.id);
+            });
+            actions.appendChild(retryBtn);
+          }
 
           const dismissBtn = document.createElement('button');
           dismissBtn.type = 'button';
@@ -4033,6 +4162,8 @@ if (typeof module !== 'undefined' && module.exports) {
     nextDownloadChipPollDelay, buildOneShotRetryBody, chipItemLifecycle,
     buildDownloadChipItem, reduceDownloadChipState, formatDownloadChipSummary,
     shouldShowDownloadChipOnPath, injectDownloadStatusChip,
+    // v1.24.0 A2 (T14): per-item download-failure attribution chip render.
+    buildDownloadChipFailureLines,
     // v1.24.0 (T3): C2 item count, C3 format toggle, C5 release-date sort
     // case (folded into sortItems above), F1 avatar fallback.
     countItems, formatItemCountLabel, renderItemCountBadge,

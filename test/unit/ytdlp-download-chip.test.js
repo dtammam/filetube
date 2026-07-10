@@ -21,6 +21,7 @@ const {
   formatDownloadChipSummary,
   shouldShowDownloadChipOnPath,
   injectDownloadStatusChip,
+  buildDownloadChipFailureLines,
 } = require('../../public/js/common.js');
 
 // ---- buildOneShotRetryBody --------------------------------------------------
@@ -70,6 +71,13 @@ test('chipItemLifecycle classifies done as auto-dismiss, error as sticky, everyt
   assert.equal(chipItemLifecycle('some-future-unrecognized-state'), 'active');
 });
 
+// v1.24.0 A3: 'cancelled' is a NEW terminal state, distinct from 'error' --
+// it is sticky (visible until dismissed) like an error, never auto-dismissed
+// like 'done'.
+test('chipItemLifecycle classifies cancelled as sticky, same as error', () => {
+  assert.equal(chipItemLifecycle('cancelled'), 'sticky');
+});
+
 // ---- buildDownloadChipItem --------------------------------------------------
 
 test('buildDownloadChipItem prefers the in-flight title, then falls back to label, then a per-kind placeholder', () => {
@@ -102,6 +110,9 @@ test('buildDownloadChipItem keys items by kind+id so a coincidentally-equal id a
 test('buildDownloadChipItem marks retryable true only for an error state', () => {
   assert.equal(buildDownloadChipItem('oneshot', 'j', { state: 'error' }).retryable, true);
   assert.equal(buildDownloadChipItem('oneshot', 'j', { state: 'downloading' }).retryable, false);
+  // v1.24.0 A3: 'cancelled' is a distinct terminal state -- a user-initiated
+  // cancel is deliberately NOT auto-retryable via this flag.
+  assert.equal(buildDownloadChipItem('oneshot', 'j', { state: 'cancelled' }).retryable, false);
 });
 
 test('buildDownloadChipItem returns null for a missing id or a non-object entry', () => {
@@ -145,6 +156,19 @@ test('reduceDownloadChipState keeps an "error" item STICKY (visible) until its k
   const dismissed = reduceDownloadChipState(snapshot, new Set(['oneshot:job1']));
   assert.equal(dismissed.count, 0);
   assert.equal(dismissed.hasError, false);
+});
+
+// v1.24.0 A3: a 'cancelled' one-shot stays STICKY (visible, never
+// auto-dismissed) until its key is dismissed, and never counts toward
+// hasError (it is not a failure).
+test('reduceDownloadChipState keeps a "cancelled" one-shot STICKY (visible) until dismissed, and never counts as an error', () => {
+  const snapshot = { subscriptions: {}, oneShots: { job1: { state: 'cancelled' } } };
+  const notDismissed = reduceDownloadChipState(snapshot, new Set());
+  assert.equal(notDismissed.count, 1);
+  assert.equal(notDismissed.hasError, false);
+
+  const dismissed = reduceDownloadChipState(snapshot, new Set(['oneshot:job1']));
+  assert.equal(dismissed.count, 0);
 });
 
 test('reduceDownloadChipState accepts a plain array for dismissedKeys, not only a Set', () => {
@@ -238,6 +262,50 @@ test('nextDownloadChipPollDelay falls back to the base delay for an invalid prev
 // resolve), only ever issues ONE network request -- the module-scoped
 // `dlStatusChipInjectStarted` flag (set before the fetch, not after)
 // short-circuits the second call.
+// ---- v1.24.0 A2 (T14): buildDownloadChipFailureLines ------------------------
+
+test('buildDownloadChipFailureLines: an attributed failure with a title renders "title: reason"', () => {
+  const rawEntry = { state: 'error', failures: [{ videoId: 'vid1', title: 'My Video', reason: 'Video unavailable' }] };
+  assert.deepEqual(buildDownloadChipFailureLines('error', rawEntry), ['My Video: Video unavailable']);
+});
+
+test('buildDownloadChipFailureLines: an attributed failure with NO title falls back to the raw videoId', () => {
+  const rawEntry = { state: 'error', failures: [{ videoId: 'vid1', reason: 'Video unavailable' }] };
+  assert.deepEqual(buildDownloadChipFailureLines('error', rawEntry), ['vid1: Video unavailable']);
+});
+
+test('buildDownloadChipFailureLines: an UNATTRIBUTED failure (videoId: null, no title) renders "Unknown video: reason" -- surfaced, never dropped', () => {
+  const rawEntry = { state: 'error', failures: [{ videoId: null, reason: 'Some unattributable error' }] };
+  assert.deepEqual(buildDownloadChipFailureLines('error', rawEntry), ['Unknown video: Some unattributable error']);
+});
+
+test('buildDownloadChipFailureLines: multiple failures render one line each, in order', () => {
+  const rawEntry = {
+    state: 'error',
+    failures: [
+      { videoId: 'vid1', title: 'First', reason: 'reason A' },
+      { videoId: 'vid2', reason: 'reason B' },
+    ],
+  };
+  assert.deepEqual(buildDownloadChipFailureLines('error', rawEntry), [
+    'First: reason A',
+    'vid2: reason B',
+  ]);
+});
+
+test('buildDownloadChipFailureLines: returns [] when state is not "error", even if a stale failures array is still present on the entry', () => {
+  const rawEntry = { state: 'done', failures: [{ videoId: 'vid1', reason: 'stale reason from a prior cycle' }] };
+  assert.deepEqual(buildDownloadChipFailureLines('done', rawEntry), []);
+  assert.deepEqual(buildDownloadChipFailureLines('downloading', rawEntry), []);
+});
+
+test('buildDownloadChipFailureLines: returns [] for a missing/malformed failures array, or a missing rawEntry -- never throws', () => {
+  assert.deepEqual(buildDownloadChipFailureLines('error', { state: 'error' }), []);
+  assert.deepEqual(buildDownloadChipFailureLines('error', { state: 'error', failures: 'not-an-array' }), []);
+  assert.deepEqual(buildDownloadChipFailureLines('error', null), []);
+  assert.deepEqual(buildDownloadChipFailureLines('error', undefined), []);
+});
+
 test('injectDownloadStatusChip: a second synchronous call before the first fetch resolves is a no-op (only one fetch fires)', () => {
   const originalDocument = global.document;
   const originalFetch = global.fetch;

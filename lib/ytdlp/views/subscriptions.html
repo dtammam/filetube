@@ -63,6 +63,19 @@
     .sub-row-drag-over-after {
       box-shadow: inset 0 -2px 0 0 var(--yt-red);
     }
+
+    /* v1.24.0 A2 (T14): the per-item {video: reason} detail line under a
+       subscription row's status line, shown only while that subscription's
+       live status is a partially-failed download batch (see
+       lib/ytdlp/client/subscriptions.js's `formatFailuresLine`) -- era
+       tokens only, no hardcoded colors. Hidden (via the element's own
+       `hidden` attribute, set in JS) when there is nothing to show, rather
+       than left visibly empty. */
+    .sub-row-failures {
+      font-size: 12px;
+      color: var(--text-secondary);
+      margin-top: 2px;
+    }
   </style>
   <script>
     /* FOUC guard: set era+mode+icons on <html> before first paint. Mirror of
@@ -321,6 +334,7 @@
         <p id="transcode-message">FileTube is converting this file to a browser-friendly format. This only happens once &mdash; it'll start playing automatically when it's ready.</p>
       </div>
       <video id="media-player" preload="metadata" playsinline webkit-playsinline x5-playsinline style="display: none;">
+        <track id="cc-track" kind="captions" srclang="en" label="English">
         Your browser does not support HTML5 video player.
       </video>
       <div id="speed-badge" class="speed-badge" style="display: none;">2× ▶▶</div>
@@ -355,6 +369,7 @@
         <button type="button" id="speed-btn" class="pc-btn speed-btn" aria-label="Playback speed">1×</button>
         <button type="button" id="fs-btn" class="pc-btn fs-btn" aria-label="Fullscreen">⛶</button>
         <button type="button" id="pip-btn" class="pc-btn pip-btn" aria-label="Picture in picture">⧉</button>
+        <button type="button" id="cc-btn" class="pc-btn cc-btn" aria-label="Toggle captions" aria-pressed="false" style="display: none;">CC</button>
       </div>
     </div>
   </template>
