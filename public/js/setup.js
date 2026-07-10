@@ -482,6 +482,35 @@ async function saveAutomationSetting(key, value, errorEl) {
   }
 }
 
+// ---- Resume-prompt threshold (D2, v1.24.0, T13) --------------------------
+// A CLIENT-side (localStorage) preference, NOT a server db.settings value --
+// mirrors player.js's own `ft-volume`/`ft-loop`/`ft-rate` prefs (immediate-
+// apply on 'change', best-effort try/catch, no Save button), rather than the
+// server-persisted controls above/below this section. Read LIVE by
+// `shouldShowResumeOverlay`'s call site (`getStoredResumeThreshold`, public/
+// js/player.js) at the moment a new video is opened -- so this control's
+// 'change' handler takes effect on the very next video open, no page reload
+// needed. The key MUST match `RESUME_THRESHOLD_STORAGE_KEY` in player.js
+// exactly (duplicated string literal -- same cross-file convention already
+// used for 'ft-icons'/'ft-era' between common.js and this page's own inline
+// FOUC-guard script; no shared-constant module exists in this codebase for
+// cross-file storage keys).
+const RESUME_THRESHOLD_KEY = 'filetube_resume_threshold';
+const RESUME_THRESHOLD_DEFAULT = 60;
+
+// Populates the control from whatever's currently stored (or the default,
+// on first visit / a garbage value / storage disabled) -- mirrors
+// resolveResumeThreshold's own "garbage/missing -> 60" fallback in
+// player.js so the two never disagree about what counts as valid.
+function loadResumeThresholdControl() {
+  const input = document.getElementById('resume-threshold-input');
+  if (!input) return;
+  let raw = null;
+  try { raw = localStorage.getItem(RESUME_THRESHOLD_KEY); } catch (_) { /* storage disabled -- fall back to the default */ }
+  const n = parseFloat(raw);
+  input.value = String(Number.isFinite(n) && n >= 0 ? n : RESUME_THRESHOLD_DEFAULT);
+}
+
 // GET /api/settings on load: populate all four controls, plus the
 // size-cap placeholder from effectiveCacheMaxBytes (the env-var/5GB
 // default that applies whenever no UI override is persisted).
@@ -687,6 +716,22 @@ function wireStaticControls(signal) {
     }, { signal });
   }
 
+  // Resume-prompt threshold (D2, v1.24.0, T13): immediate-apply localStorage
+  // write, same pattern as the theme/icon pickers (no Save button, no server
+  // round-trip -- see the section comment above loadResumeThresholdControl).
+  // Blank/garbage/negative input snaps back to the 60s default rather than
+  // persisting an invalid value.
+  const resumeThresholdInput = document.getElementById('resume-threshold-input');
+  if (resumeThresholdInput) {
+    resumeThresholdInput.addEventListener('change', (e) => {
+      const raw = e.target.value.trim();
+      const n = parseFloat(raw);
+      const value = raw !== '' && Number.isFinite(n) && n >= 0 ? n : RESUME_THRESHOLD_DEFAULT;
+      e.target.value = String(value);
+      try { localStorage.setItem(RESUME_THRESHOLD_KEY, String(value)); } catch (_) { /* storage disabled/full -- best-effort only */ }
+    }, { signal });
+  }
+
   // Size-cap input: 'change' (fires on blur/Enter, not per keystroke) is a
   // natural debounce for a free-typed number field. Blank -> null ("use the
   // default"); a non-empty value that isn't a valid positive number is
@@ -779,6 +824,7 @@ function init(root) {
   wireStaticControls(controller.signal);
   renderThemePicker();
   renderIconPicker();
+  loadResumeThresholdControl();
 
   loadAutomationSettings();
   loadCacheSize();

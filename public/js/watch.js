@@ -92,6 +92,52 @@ function resolveChannelDirFromFilePath(filePath) {
   return folder;
 }
 
+// resolveWatchEntryReparentAction (D1, v1.24 UX Round, T12): watch.js's own
+// SYNCHRONOUS-entry decision -- what init() should do with the persistent
+// player host, right here, before ANY of initWatch()'s awaited fetches even
+// start, given the controller's CURRENT (currentId, state) and the NEWLY
+// requested media id for this watch-page open.
+//
+// Root cause this exists to fix (the ~1/4s blank/flash on Prev/Next, D1):
+// the SPA router (common.js's swapToView) detaches the OUTGOING #view-root
+// -- and the persistent `<video>` host, still nested inside its OLD
+// #player-slot at that instant -- SYNCHRONOUSLY, well before this view's own
+// init() runs. Previously the ONLY reparent into the NEW #player-slot
+// happened deep inside initWatch() (an async function), AFTER it had
+// awaited BOTH /api/config and /api/videos/:id -- so on a genuine
+// watch -> watch navigation (Prev/Next, a related-card click into a
+// DIFFERENT video), the host sat fully detached from the live document for
+// the duration of those two network round-trips. Calling `player.expand()`
+// synchronously here instead -- in the SAME synchronous task as the
+// router's `oldRoot.replaceWith(root)` swap, with no `await`/paint in
+// between -- means the host is never actually absent from the live
+// document at all.
+//
+// Returns one of:
+//   'adopt'    -- requestedId already matches what's loaded (not CLOSED): a
+//                 pure reparent, no restart (mirrors `isAdoptLoad` in
+//                 player.js -- the identical "same id" contract).
+//   'reparent' -- a DIFFERENT id, but the host is currently mounted FULL
+//                 (the outgoing watch page had something actually playing/
+//                 shown): eagerly move that SAME host into the NEW
+//                 #player-slot right now, before any fetch. `player.load()`
+//                 (called later, once real data resolves) still performs
+//                 the actual teardown + new-media load exactly as before --
+//                 this is ONLY an earlier reparent of the same host, never
+//                 a new/second load path.
+//   'defer'    -- nothing FULL to carry over: DOCKED (a different video
+//                 playing mini while landing fresh on this watch page from
+//                 elsewhere -- forcing it to FULL before the real data
+//                 resolves would briefly show the WRONG video in the FULL
+//                 slot) or CLOSED/nothing loaded. The existing async
+//                 load() path, once the fetches resolve, is unchanged and
+//                 sufficient -- matches pre-D1 behavior exactly.
+function resolveWatchEntryReparentAction(currentId, requestedId, state) {
+  if (currentId != null && currentId === requestedId && state !== 'closed') return 'adopt';
+  if (currentId != null && state === 'full') return 'reparent';
+  return 'defer';
+}
+
 // ---- G1: Zak Goldin weighted mock-commenter + comment-bank selection ------
 // (v1.24.0, T4). Pure/DOM-free, hoisted to module scope (like the pure
 // helpers above) so node:test can exercise both the flat commentBank
@@ -369,6 +415,7 @@ if (typeof module !== 'undefined' && module.exports) {
     theaterModeStorageValue,
     resolveUploaderLinkHref,
     resolveChannelDirFromFilePath,
+    resolveWatchEntryReparentAction,
     MOCK_COMMENT_BANK,
     selectDeterministicComments,
     hashZakGoldinSeed,
@@ -557,9 +604,27 @@ if (typeof module !== 'undefined' && module.exports) {
     // idempotent on the adopt path (see `load()`), and the ONLY path taken at
     // all for a genuine new load (a fresh watch entry, a different video),
     // which still correctly awaits its metadata first.
-    if (window.FileTube.player.currentId === mediaId) {
+    // D1 (v1.24 UX Round, Wave 4, T12): the SAME synchronous-entry decision
+    // above now ALSO covers the watch -> watch, different-video case (Prev/
+    // Next, a related-card click) via `resolveWatchEntryReparentAction` --
+    // see that function's own comment for the full root-cause writeup.
+    const entryReparentAction = resolveWatchEntryReparentAction(
+      window.FileTube.player.currentId,
+      mediaId,
+      window.FileTube.player.getState()
+    );
+    if (entryReparentAction === 'adopt') {
       const mountedEarly = window.FileTube.player.load(mediaId, {}, { slot: playerSlot });
       if (!mountedEarly) showFatalViewError(root);
+    } else if (entryReparentAction === 'reparent') {
+      // Eagerly reparent the STILL-loaded previous video's host into THIS
+      // view's #player-slot right now -- a pure reparent (`expand` ==
+      // `mountInSlot`), never touching src/currentTime -- so it never goes
+      // dark/detached while initWatch() below awaits its two fetches.
+      // `player.load(mediaId, mediaData, ...)` further down in initWatch()
+      // still performs the real teardown + new-media load once mediaData
+      // resolves, completely unchanged.
+      window.FileTube.player.expand(playerSlot);
     }
 
     // C2 (v1.24 UX Round, Wave 3, T10 follow-up): fires the view-count ping
