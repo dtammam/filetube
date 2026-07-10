@@ -523,6 +523,28 @@ function resolveFsButtonAction(ctx) {
   return opts.audioMode ? 'audio-expand' : 'native-fullscreen';
 }
 
+// On-device bug fix (2026-07-10): rotating a playing video from LANDSCAPE
+// back to PORTRAIT paused it instead of continuing to play. Root cause: the
+// rotate-to-fullscreen handler (`onOrientationChange` below) exits native
+// fullscreen on the landscape->portrait transition via
+// `mediaPlayer.webkitExitFullscreen()`/`document.exitFullscreen()` -- and
+// iOS pauses the video as a SIDE EFFECT of exiting native fullscreen (there
+// is no explicit `.pause()` call anywhere in that handler). This pure
+// decision -- given whether the media WAS playing right before the
+// orientation-driven fullscreen exit was requested -- says whether the
+// pending re-assert-play flag (`resumeAfterFsExit`, set at the exit call
+// site and consumed by `onFsChange` once iOS finishes the exit transition)
+// should be armed. Mirrors the existing "wasPlaying && paused -> play()"
+// re-assert pattern already used by `mountInSlot()`/`dock()` below, just
+// deferred to the fullscreen-exit event instead of applied synchronously
+// (`webkitExitFullscreen()` returns no promise to await). Critically: if the
+// user THEMSELVES paused before rotating, `wasPlaying` is already false here
+// and this never arms the flag -- rotating a paused video back to portrait
+// stays paused, exactly as before.
+function shouldResumeAfterOrientationFsExit(wasPlaying) {
+  return !!wasPlaying;
+}
+
 // Guarded so requiring this file in Node (for unit tests) never touches
 // `window`/`document` -- mirrors common.js's own `if (typeof window ...)`
 // runtime guard immediately below.
@@ -546,6 +568,7 @@ if (typeof module !== 'undefined' && module.exports) {
     nextPlaybackRate,
     shouldDesktopVideoTapToggle,
     resolveFsButtonAction,
+    shouldResumeAfterOrientationFsExit,
   };
 }
 
@@ -2252,7 +2275,27 @@ if (typeof module !== 'undefined' && module.exports) {
     // comment: guarded by `state !== STATE_FULL` so rotating a phone while
     // browsing home/setup with a DOCKED mini-player never yanks it fullscreen).
     var autoFullscreen = false;
-    function onFsChange() { if (!inNativeFullscreen()) autoFullscreen = false; }
+    // On-device bug fix (2026-07-10, see `shouldResumeAfterOrientationFsExit`
+    // above for the full root-cause writeup): iOS pauses the video as a side
+    // effect of `webkitExitFullscreen()`, which the landscape->portrait
+    // branch below calls. `webkitExitFullscreen()` returns no promise to
+    // await, so the re-assert-play can't happen synchronously after calling
+    // it -- instead this pending flag is armed there (only when the media
+    // was actually playing beforehand) and consumed here in `onFsChange`
+    // once iOS's `webkitendfullscreen`/`fullscreenchange` signal confirms the
+    // exit actually completed. Scoped strictly to the ROTATE-driven exit: a
+    // normal user-initiated fullscreen exit (e.g. tapping "Done" in native
+    // fullscreen without rotating) never sets this flag, so it is never
+    // force-resumed here.
+    var resumeAfterFsExit = false;
+    function onFsChange() {
+      if (inNativeFullscreen()) return;
+      autoFullscreen = false;
+      if (resumeAfterFsExit) {
+        resumeAfterFsExit = false;
+        if (mediaPlayer.paused) mediaPlayer.play().catch(function () {});
+      }
+    }
     document.addEventListener('fullscreenchange', onFsChange);
     mediaPlayer.addEventListener('webkitendfullscreen', onFsChange);
 
@@ -2272,6 +2315,11 @@ if (typeof module !== 'undefined' && module.exports) {
           if (p && p.catch) p.catch(function () { autoFullscreen = false; });
         } else if (!landscape && autoFullscreen && inNativeFullscreen()) {
           autoFullscreen = false;
+          // Capture BEFORE requesting the exit -- `resumeAfterFsExit` only
+          // arms when the media was actually playing pre-rotate (see
+          // `shouldResumeAfterOrientationFsExit`), so a video the user
+          // themselves paused before rotating stays paused after.
+          resumeAfterFsExit = shouldResumeAfterOrientationFsExit(!mediaPlayer.paused);
           if (mediaPlayer.webkitExitFullscreen) {
             mediaPlayer.webkitExitFullscreen();
           } else if (document.exitFullscreen) {
