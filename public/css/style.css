@@ -1447,6 +1447,25 @@ header {
   min-width: 0;
 }
 
+/* v1.25.6 hotfix: `.watch-actions` has TWO children -- the read-only
+   `.star-rating` (five 20px, non-shrinking `★` glyphs + "N / 5") and this
+   button sub-group (Download, Delete, and the JS-appended Move -- see
+   watch.js's setupMoveButton). Both live in the outer `.watch-actions` flex
+   row, which is free to WRAP as a whole (base rule above) if the star
+   rating and the button group together don't fit one line -- that's what
+   keeps the row's min-content width from ever exceeding the viewport (the
+   actual cause of the v1.25.5 iOS shrink-to-fit/zoom regression: forcing
+   `.watch-actions` itself to `nowrap` ignored the star-rating sibling and
+   pushed the row's min-content past phone widths). This inner group keeps
+   the three ACTION BUTTONS themselves nowrap -- they must never split
+   across two rows -- independent of viewport width, which also preserves
+   the v1.25.4 fix for Move landing on an orphaned row. */
+.watch-action-btns {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 8px;
+}
+
 /* Star Rating (read-only display) */
 .star-rating {
   display: flex;
@@ -2867,19 +2886,26 @@ a.sub-row-channel-link:focus-visible {
      no other button elsewhere in the app is affected -- same `.btn`/
      `.icon-*` family, no `btn-sm` class and no inline style reintroduced
      (both were removed from this row in v1.25.0).
-     v1.25.5: on-device, the v1.25.4 tightening alone wasn't enough -- the
-     `flex-wrap: wrap` "graceful fallback" (inherited from the base rule
-     above) was still actually triggering at real phone widths, so Move kept
-     landing on its own orphaned row 2. The three short glyph+label buttons
-     at this tightened 11px/6px-10px sizing comfortably fit one row well
-     within a ~320px+ container, so single-row is now a GUARANTEE here:
-     `flex-wrap: nowrap` overrides the base rule's `wrap`, scoped to this
-     mobile block only -- desktop (the base rule) is untouched and keeps
-     `wrap`. `min-width: 0` (already on the base rule, inherited here) is
-     kept so the row can still shrink instead of forcing the page wider. */
+     v1.25.5 (REVERTED in v1.25.6, see below): tried to force single-row by
+     making `.watch-actions` itself `flex-wrap: nowrap` at this breakpoint.
+     That missed that `.watch-actions` has a SECOND child besides the button
+     group -- the read-only `.star-rating` (five 20px `★` glyphs + "N / 5",
+     no mobile shrink) -- so the row's min-content width (stars + Download +
+     Delete + Move + gaps, ~380px) could exceed a phone's viewport width.
+     `overflow-x: clip` on `html` (see below) does NOT stop this: iOS
+     Safari's shrink-to-fit zoom is computed from the page's preferred
+     (min-content) width BEFORE any clipping is applied, so the whole page
+     rendered zoomed out instead of overflowing visibly.
+     v1.25.6 hotfix: `.watch-actions` is reverted to `wrap` (base rule,
+     unchanged) so it can wrap the star-rating and the button group onto
+     separate lines when needed -- the row's min-content can never exceed
+     the viewport, so no more iOS shrink-to-fit. The three action BUTTONS
+     still guarantee a single row (the actual v1.25.4 goal), but that now
+     lives on the `.watch-action-btns` sub-group (see base rules above),
+     which is viewport-width independent -- not on this outer row. */
   .watch-actions {
     gap: 8px;
-    flex-wrap: nowrap;
+    flex-wrap: wrap;
   }
   .watch-actions .btn {
     padding: 6px 10px;

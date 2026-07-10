@@ -175,22 +175,32 @@
                 <span class="rating-count" id="rating-text"></span>
               </div>
               
-              <!-- Download option (FR-3, v1.19.0): saves the ORIGINAL source
-                   file to the device, via GET /video/:id?download=1 (server
-                   sets Content-Disposition: attachment). href/download are
-                   set per media load by watch.js's populateMetadata() --
-                   inert until then. iOS Safari note: Content-Disposition:
-                   attachment is the authoritative same-origin download path
-                   on iOS Safari 13+; the anchor `download` attribute here is
-                   a belt-and-suspenders hint for desktop browsers. -->
-              <a class="btn" id="download-media-btn" title="Download video" aria-label="Download video">
-                <i class="icon-download"></i> Download
-              </a>
+              <!-- v1.25.6 hotfix: Download/Delete (and the JS-appended Move
+                   button -- see watch.js's setupMoveButton) live in their own
+                   nowrap sub-group, `.watch-action-btns`, so they never split
+                   across two rows while `.watch-actions` itself (this
+                   element's parent) is free to wrap as a whole against its
+                   OTHER sibling, `.star-rating` above. See style.css's
+                   `.watch-actions`/`.watch-action-btns` rules for the full
+                   iOS shrink-to-fit regression story. -->
+              <div class="watch-action-btns">
+                <!-- Download option (FR-3, v1.19.0): saves the ORIGINAL source
+                     file to the device, via GET /video/:id?download=1 (server
+                     sets Content-Disposition: attachment). href/download are
+                     set per media load by watch.js's populateMetadata() --
+                     inert until then. iOS Safari note: Content-Disposition:
+                     attachment is the authoritative same-origin download path
+                     on iOS Safari 13+; the anchor `download` attribute here is
+                     a belt-and-suspenders hint for desktop browsers. -->
+                <a class="btn" id="download-media-btn" title="Download video" aria-label="Download video">
+                  <i class="icon-download"></i> Download
+                </a>
 
-              <!-- Delete option -->
-              <button class="btn" id="delete-media-btn" style="color: var(--yt-red); border-color: var(--yt-red);" title="Delete video" aria-label="Delete video">
-                <i class="icon-delete"></i> Delete
-              </button>
+                <!-- Delete option -->
+                <button class="btn" id="delete-media-btn" style="color: var(--yt-red); border-color: var(--yt-red);" title="Delete video" aria-label="Delete video">
+                  <i class="icon-delete"></i> Delete
+                </button>
+              </div>
             </div>
           </div>
 

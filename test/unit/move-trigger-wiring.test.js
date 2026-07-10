@@ -55,10 +55,16 @@ test('watch.js window-qualifies neither showMoveModal nor requestMoveItem -- rea
   assert.ok(/requestMoveItem\(/.test(watchJs), 'watch.js should call requestMoveItem');
 });
 
-test('watch.js: builds a "Move" button reusing the existing .btn class (same family as #download-media-btn/#delete-media-btn) and mounts it into .watch-actions', () => {
+// v1.25.6 hotfix: Move now mounts into the `.watch-action-btns` nowrap
+// sub-group of `.watch-actions` (falling back to `.watch-actions` itself if
+// that sub-group is ever absent) instead of `.watch-actions` directly -- see
+// test/unit/watch-action-bar-nowrap.test.js for the full iOS shrink-to-fit
+// regression story this was part of.
+test('watch.js: builds a "Move" button reusing the existing .btn class (same family as #download-media-btn/#delete-media-btn) and mounts it into .watch-action-btns', () => {
   assert.match(watchJs, /moveBtn\.className = 'btn';/);
   assert.match(watchJs, /root\.querySelector\('\.watch-actions'\)/);
-  assert.match(watchJs, /watchActions\.appendChild\(moveBtn\)/);
+  assert.match(watchJs, /watchActions\.querySelector\('\.watch-action-btns'\)/);
+  assert.match(watchJs, /\(btnGroup \|\| watchActions\)\.appendChild\(moveBtn\)/);
 });
 
 // Visual-consistency polish: Move previously had no leading glyph (the only

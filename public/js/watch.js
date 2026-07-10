@@ -1501,11 +1501,15 @@ if (typeof module !== 'undefined' && module.exports) {
     // view instance, mounted into existing shell markup this file doesn't
     // own) since `watch.html`'s static markup carries no placeholder for
     // this control and this task edits ONLY `main.js`/`watch.js`. Mounted as
-    // a sibling of Download/Delete in the SAME `.watch-actions` row those two
-    // already live in, reusing the EXACT `.btn` class those buttons use --
-    // no new CSS. Idempotent (guarded on `moveBtn` already existing) so a
-    // second media load within the same cached view instance never
-    // duplicates the control.
+    // a sibling of Download/Delete inside `.watch-action-btns`, the nowrap
+    // button sub-group of `.watch-actions` those two already live in (see
+    // the v1.25.6 hotfix comment on `.watch-action-btns` in watch.html/
+    // style.css), reusing the EXACT `.btn` class those buttons use -- no new
+    // CSS. Idempotent (guarded on `moveBtn` already existing) so a second
+    // media load within the same cached view instance never duplicates the
+    // control. Falls back to `.watch-actions` itself if the sub-group is
+    // ever absent (e.g. stale cached markup) so Move still mounts somewhere
+    // rather than silently vanishing.
     //
     // Visual-consistency follow-up (button glyph polish): Download/Delete
     // already carry a leading <i class="icon-*"> glyph -- Move was the odd
@@ -1532,7 +1536,8 @@ if (typeof module !== 'undefined' && module.exports) {
         moveIcon.className = 'icon-folder';
         moveBtn.appendChild(moveIcon);
         moveBtn.appendChild(document.createTextNode(' Move'));
-        watchActions.appendChild(moveBtn);
+        const btnGroup = watchActions.querySelector('.watch-action-btns');
+        (btnGroup || watchActions).appendChild(moveBtn);
         moveBtn.addEventListener('click', handleMoveClick, { signal });
       }
     }

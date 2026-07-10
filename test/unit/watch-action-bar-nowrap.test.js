@@ -8,6 +8,24 @@
 // padding/font-size inside the existing `@media (max-width: 768px)` block so
 // all three buttons fit on one row, without reintroducing the vestigial
 // `btn-sm` class or an inline style (both removed from this row in v1.25.0).
+//
+// v1.25.5 then forced the OUTER `.watch-actions` row itself to
+// `flex-wrap: nowrap` at this breakpoint to guarantee the single row -- but
+// `.watch-actions` has a SECOND child besides the button group: the
+// read-only `.star-rating` (five non-shrinking 20px `★` glyphs + "N / 5").
+// With the whole row forced nowrap, its min-content width (stars + all
+// three buttons + gaps) could exceed a phone's viewport, which iOS Safari
+// resolves by shrinking the ENTIRE page to fit (shrink-to-fit zoom) rather
+// than by showing a scrollbar -- a live regression on both the audio and
+// video watch pages.
+//
+// v1.25.6 hotfix: revert the outer `.watch-actions` row to `flex-wrap: wrap`
+// (so it can wrap the star-rating and the button group onto separate lines,
+// keeping its min-content within any viewport) and move the "never split"
+// guarantee onto a new inner sub-group, `.watch-action-btns`, that wraps
+// ONLY Download/Delete/Move and is itself always `flex-wrap: nowrap` --
+// viewport-width independent, so it can't reintroduce the iOS zoom bug no
+// matter how narrow the screen gets.
 const { test } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
@@ -95,12 +113,49 @@ test('style.css: the base (desktop) .watch-actions rule keeps flex-wrap: wrap un
   assert.match(rule[1], /flex-wrap:\s*wrap;/);
 });
 
-// v1.25.5: on-device, the v1.25.4 tightening alone still let Move drop onto
-// its own row at real phone widths -- the mobile .watch-actions rule now
-// forces `flex-wrap: nowrap` to GUARANTEE Download/Delete/Move stay on one
-// row, overriding the base rule's `wrap` inside this mobile block only.
-test('style.css: the mobile .watch-actions rule (inside the watch-action-bar 768px block) forces flex-wrap: nowrap to guarantee a single row', () => {
+// v1.25.6 hotfix: the v1.25.5 mobile `.watch-actions { flex-wrap: nowrap }`
+// ignored the `.star-rating` sibling and could push the row's min-content
+// past a phone's viewport width, triggering iOS Safari's shrink-to-fit zoom
+// on the whole page. The outer row must be able to WRAP again -- this test
+// would FAIL against the v1.25.5 `nowrap` rule.
+test('style.css: the mobile .watch-actions rule (inside the watch-action-bar 768px block) is NOT flex-wrap: nowrap -- the outer row must stay able to wrap so it can never force horizontal/shrink-to-fit overflow', () => {
   const rule = /\.watch-actions\s*\{([^}]*)\}/.exec(mobileBlock);
   assert.ok(rule, 'expected a mobile-scoped .watch-actions rule');
-  assert.match(rule[1], /flex-wrap:\s*nowrap;/);
+  assert.doesNotMatch(rule[1], /flex-wrap:\s*nowrap;/, 'the outer .watch-actions row must not be forced nowrap at this breakpoint -- that ignores the .star-rating sibling and can overflow the viewport');
+});
+
+test('style.css: a .watch-action-btns nowrap flex sub-group exists (base rule, viewport-independent) so Download/Delete/Move never split across rows', () => {
+  const rule = /\.watch-action-btns\s*\{([^}]*)\}/.exec(css);
+  assert.ok(rule, 'expected a .watch-action-btns rule in style.css');
+  assert.match(rule[1], /display:\s*flex;/);
+  assert.match(rule[1], /flex-wrap:\s*nowrap;/, 'the button sub-group itself must stay nowrap so the three buttons are never split across two rows');
+});
+
+test('watch.html: Download and Delete buttons are wrapped in a .watch-action-btns sub-group inside .watch-actions', () => {
+  const wrapperMatch = /<div class="watch-action-btns">([\s\S]*?)<\/div>\s*<\/div>/.exec(html);
+  assert.ok(wrapperMatch, 'expected a <div class="watch-action-btns"> wrapper in watch.html');
+  assert.match(wrapperMatch[1], /id="download-media-btn"/, 'expected the Download button inside .watch-action-btns');
+  assert.match(wrapperMatch[1], /id="delete-media-btn"/, 'expected the Delete button inside .watch-action-btns');
+});
+
+test('watch.js: setupMoveButton appends the Move button into .watch-action-btns (falling back to .watch-actions if the sub-group is absent)', () => {
+  assert.match(watchJs, /watchActions\.querySelector\('\.watch-action-btns'\)/, 'expected setupMoveButton to look up the .watch-action-btns sub-group');
+  assert.match(watchJs, /\(btnGroup \|\| watchActions\)\.appendChild\(moveBtn\)/, 'expected Move to be appended into the sub-group, falling back to .watch-actions');
+});
+
+// Doc-style assertion (encodes the omitted-sibling root cause of the
+// v1.25.5 regression, so a future "just re-nowrap .watch-actions" change is
+// caught by the two tests above): `.star-rating` must remain a SIBLING of
+// the button sub-group inside `.watch-actions`, not a descendant of it --
+// that's what lets the outer row wrap the two of them independently.
+test('watch.html: .star-rating is a sibling of .watch-action-btns inside .watch-actions, not nested inside it', () => {
+  const watchActionsIdx = html.indexOf('class="watch-actions"');
+  assert.ok(watchActionsIdx !== -1, 'expected a .watch-actions element in watch.html');
+  const starIdx = html.indexOf('id="star-rating-control"', watchActionsIdx);
+  const btnGroupIdx = html.indexOf('class="watch-action-btns"', watchActionsIdx);
+  assert.ok(starIdx !== -1 && btnGroupIdx !== -1, 'expected both .star-rating and .watch-action-btns inside .watch-actions');
+  assert.ok(starIdx < btnGroupIdx, '.star-rating must appear (as a sibling) before .watch-action-btns inside .watch-actions');
+
+  const btnGroupOpenTag = html.indexOf('<div class="watch-action-btns">', watchActionsIdx);
+  assert.ok(btnGroupOpenTag !== -1 && btnGroupOpenTag > starIdx, '.watch-action-btns must open after .star-rating, confirming sibling order, not nesting');
 });
