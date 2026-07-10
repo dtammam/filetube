@@ -236,6 +236,13 @@ test('formatOneOffStatusText: error renders the (already-redacted) error string 
   assert.strictEqual(formatOneOffStatusText({ state: 'error' }), 'error');
 });
 
+// v1.24.0 A3: a NEW terminal state distinct from 'error' (see
+// lib/ytdlp/index.js's cancel route) -- gets its own short fixed message,
+// mirroring 'done'/'queued'/'listing' above.
+test('formatOneOffStatusText: cancelled renders a short fixed "Cancelled" message', () => {
+  assert.strictEqual(formatOneOffStatusText({ state: 'cancelled' }), 'Cancelled');
+});
+
 test('formatOneOffStatusText: a hostile error/title string is returned VERBATIM as plain text (XSS-inert -- this function does no DOM work at all)', () => {
   const hostileError = '<img src=x onerror=alert(1)>';
   assert.strictEqual(formatOneOffStatusText({ state: 'error', error: hostileError }), hostileError);

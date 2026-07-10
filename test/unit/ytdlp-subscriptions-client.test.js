@@ -34,6 +34,8 @@ const {
   formatLiveStatusText,
   formatNextCheckText,
   formatRowStatusLine,
+  buildFailureLines,
+  formatFailuresLine,
   pinLabelFallback,
   resolvePinLabel,
   buildFormatSelect,
@@ -450,6 +452,56 @@ test('formatRowStatusLine: manual-only polling (nextPollDue null) omits the suff
   assert.ok(!text.includes('Next check'));
 });
 
+// ---- v1.24.0 A2 (T14): buildFailureLines / formatFailuresLine --------------
+
+test('buildFailureLines: an attributed failure with a title renders "title: reason"', () => {
+  const entry = { state: 'error', failures: [{ videoId: 'vid1', title: 'My Video', reason: 'Video unavailable' }] };
+  assert.deepEqual(buildFailureLines(entry), ['My Video: Video unavailable']);
+});
+
+test('buildFailureLines: an attributed failure with no title falls back to videoId; an unattributed failure falls back to "Unknown video"', () => {
+  const entry = {
+    state: 'error',
+    failures: [
+      { videoId: 'vid1', reason: 'Video unavailable' },
+      { videoId: null, reason: 'Some unattributable error' },
+    ],
+  };
+  assert.deepEqual(buildFailureLines(entry), [
+    'vid1: Video unavailable',
+    'Unknown video: Some unattributable error',
+  ]);
+});
+
+test('buildFailureLines: stale failures on a NON-error state (e.g. a subsequent successful cycle) never render -- the state gate, not a cleared field, is what hides them', () => {
+  const entry = { state: 'done', failures: [{ videoId: 'vid1', reason: 'a stale reason from a prior failed cycle' }] };
+  assert.deepEqual(buildFailureLines(entry), []);
+  assert.deepEqual(buildFailureLines({ state: 'downloading', failures: entry.failures }), []);
+});
+
+test('buildFailureLines: a missing/malformed entry or failures array degrades to [] -- never throws', () => {
+  assert.deepEqual(buildFailureLines(null), []);
+  assert.deepEqual(buildFailureLines(undefined), []);
+  assert.deepEqual(buildFailureLines({ state: 'error' }), []);
+  assert.deepEqual(buildFailureLines({ state: 'error', failures: 'not-an-array' }), []);
+});
+
+test('formatFailuresLine: joins multiple failure lines with " | "', () => {
+  const entry = {
+    state: 'error',
+    failures: [
+      { videoId: 'vid1', title: 'First', reason: 'reason A' },
+      { videoId: 'vid2', title: 'Second', reason: 'reason B' },
+    ],
+  };
+  assert.strictEqual(formatFailuresLine(entry), 'First: reason A | Second: reason B');
+});
+
+test('formatFailuresLine: returns "" (empty string) when there is nothing to show', () => {
+  assert.strictEqual(formatFailuresLine(undefined), '');
+  assert.strictEqual(formatFailuresLine({ state: 'downloading' }), '');
+});
+
 test('nextPollDelay: success resets to the base ~2.5s cadence', () => {
   assert.strictEqual(nextPollDelay(20000, true), STATUS_POLL_BASE_MS);
 });
@@ -831,6 +883,57 @@ test('createSubscriptionRow: a hostile lastStatus (composed error text) is also 
   assert.ok(!tagNames.has('IMG'), 'no <img> element must ever be created from a status string');
 });
 
+// ---- v1.24.0 A2 (T14): per-item failure list in .sub-row-failures ---------
+
+test('createSubscriptionRow: renders .sub-row-failures with one "video: reason" line per failure and un-hides it when a live error entry has failures', () => {
+  const sub = { id: 'a2-1', name: 'Chan', channelUrl: 'https://www.youtube.com/@a2-1', lastCheckedAt: null, lastStatus: null };
+  const liveEntry = {
+    state: 'error',
+    error: 'error: yt-dlp exited with code 1',
+    failures: [
+      { videoId: 'vid1', title: 'Cool Video', reason: 'Video unavailable' },
+      { videoId: null, reason: 'unattributed reason' },
+    ],
+  };
+  const row = createSubscriptionRow(sub, fakeDoc, {}, liveEntry);
+  const info = row.children.find((el) => el.className === 'sub-row-info');
+  const failuresEl = info.children.find((el) => el.className === 'sub-row-failures');
+  assert.ok(failuresEl, '.sub-row-failures must exist on every row (hidden when empty)');
+  assert.strictEqual(failuresEl.hidden, false);
+  assert.strictEqual(failuresEl.textContent, 'Cool Video: Video unavailable | Unknown video: unattributed reason');
+});
+
+test('createSubscriptionRow: .sub-row-failures is present but HIDDEN (empty textContent) when there is no live error entry', () => {
+  const sub = { id: 'a2-2', name: 'Chan', channelUrl: 'https://www.youtube.com/@a2-2', lastCheckedAt: null, lastStatus: null };
+  const row = createSubscriptionRow(sub, fakeDoc, {});
+  const info = row.children.find((el) => el.className === 'sub-row-info');
+  const failuresEl = info.children.find((el) => el.className === 'sub-row-failures');
+  assert.ok(failuresEl);
+  assert.strictEqual(failuresEl.hidden, true);
+  assert.strictEqual(failuresEl.textContent, '');
+});
+
+test('createSubscriptionRow: .sub-row-failures stays hidden when the live entry is a downloading state carrying a STALE failures array from a prior cycle', () => {
+  const sub = { id: 'a2-3', name: 'Chan', channelUrl: 'https://www.youtube.com/@a2-3', lastCheckedAt: null, lastStatus: null };
+  const liveEntry = { state: 'downloading', percent: 10, failures: [{ videoId: 'vid1', reason: 'stale from a prior failed cycle' }] };
+  const row = createSubscriptionRow(sub, fakeDoc, {}, liveEntry);
+  const info = row.children.find((el) => el.className === 'sub-row-info');
+  const failuresEl = info.children.find((el) => el.className === 'sub-row-failures');
+  assert.strictEqual(failuresEl.hidden, true, 'a stale failures array on a non-error state must never render');
+});
+
+test('createSubscriptionRow: a hostile reason/title inside a failure entry is rendered as inert textContent, never innerHTML', () => {
+  const hostileReason = '<img src=x onerror=alert(1)>';
+  const sub = { id: 'a2-4', name: 'Chan', channelUrl: 'https://www.youtube.com/@a2-4', lastCheckedAt: null, lastStatus: null };
+  const liveEntry = { state: 'error', failures: [{ videoId: 'vid1', reason: hostileReason }] };
+  const row = createSubscriptionRow(sub, fakeDoc, {}, liveEntry);
+  const info = row.children.find((el) => el.className === 'sub-row-info');
+  const failuresEl = info.children.find((el) => el.className === 'sub-row-failures');
+  assert.ok(failuresEl.textContent.includes(hostileReason));
+  const tagNames = new Set([...row.walk()].map((el) => el.tagName));
+  assert.ok(!tagNames.has('IMG'), 'no <img> element must ever be created from a failure reason');
+});
+
 test('createSubscriptionRow: a hostile channelUrl never becomes an XSS vector -- it is only ever assigned via .href, and its label is plain textContent', () => {
   // `javascript:`-scheme URLs cannot reach this code path in practice
   // (validateChannelUrl confines add-time input to http(s) youtube URLs
@@ -1080,6 +1183,52 @@ test('applyStatusUpdatesInPlace: updates ONLY each row\'s .sub-row-status text, 
   const statusEl = rowA.children[1].children.find((el) => el.className === 'sub-row-status');
   assert.ok(statusEl.textContent.includes('Ep'));
   assert.ok(statusEl.textContent.includes('50%'));
+});
+
+test('applyStatusUpdatesInPlace: A2 (T14) -- updates .sub-row-failures in place (textContent only, never createElement), un-hiding it once a poll tick reports per-item failures', () => {
+  const sub = { id: 'a2-poll', name: 'Chan', channelUrl: 'https://www.youtube.com/@a2-poll', lastCheckedAt: null, lastStatus: null };
+  const row = createSubscriptionRow(sub, fakeDoc, {});
+  const rowElementsById = { 'a2-poll': row };
+  const info = row.children.find((el) => el.className === 'sub-row-info');
+  const failuresElBefore = info.children.find((el) => el.className === 'sub-row-failures');
+  assert.strictEqual(failuresElBefore.hidden, true, 'sanity: nothing to show yet');
+
+  applyStatusUpdatesInPlace(rowElementsById, [sub], {
+    subscriptions: {
+      'a2-poll': {
+        state: 'error',
+        error: 'error: yt-dlp exited with code 1',
+        failures: [{ videoId: 'vid1', title: 'A Video', reason: 'Video unavailable' }],
+      },
+    },
+  });
+
+  // Same row/element references -- never rebuilt.
+  assert.strictEqual(rowElementsById['a2-poll'], row);
+  const failuresElAfter = info.children.find((el) => el.className === 'sub-row-failures');
+  assert.strictEqual(failuresElAfter, failuresElBefore, 'the SAME element must be updated in place, never replaced');
+  assert.strictEqual(failuresElAfter.hidden, false);
+  assert.strictEqual(failuresElAfter.textContent, 'A Video: Video unavailable');
+});
+
+test('applyStatusUpdatesInPlace: A2 (T14) -- re-hides .sub-row-failures once the subscription recovers on a later poll tick', () => {
+  const sub = { id: 'a2-recover', name: 'Chan', channelUrl: 'https://www.youtube.com/@a2-recover', lastCheckedAt: null, lastStatus: null };
+  const liveEntry = { state: 'error', failures: [{ videoId: 'vid1', reason: 'Video unavailable' }] };
+  const row = createSubscriptionRow(sub, fakeDoc, {}, liveEntry);
+  const rowElementsById = { 'a2-recover': row };
+
+  // A later poll tick reports a clean 'done' -- even though `activity.js`'s
+  // shallow merge could in principle leave a stale `failures` array on the
+  // RAW entry, the state gate inside `formatFailuresLine` is what actually
+  // determines rendering, so this proves the UI-visible behavior directly.
+  applyStatusUpdatesInPlace(rowElementsById, [sub], {
+    subscriptions: { 'a2-recover': { state: 'done', percent: 100 } },
+  });
+
+  const info = row.children.find((el) => el.className === 'sub-row-info');
+  const failuresEl = info.children.find((el) => el.className === 'sub-row-failures');
+  assert.strictEqual(failuresEl.hidden, true);
+  assert.strictEqual(failuresEl.textContent, '');
 });
 
 test('applyStatusUpdatesInPlace: falls back to the persisted formatSubStatus line when there is no live entry for a sub', () => {

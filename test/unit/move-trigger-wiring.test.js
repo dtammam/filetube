@@ -55,9 +55,9 @@ test('watch.js window-qualifies neither showMoveModal nor requestMoveItem -- rea
   assert.ok(/requestMoveItem\(/.test(watchJs), 'watch.js should call requestMoveItem');
 });
 
-test('watch.js: builds a "Move to..." button reusing the existing .btn class (same family as #download-media-btn/#delete-media-btn) and mounts it into .watch-actions', () => {
+test('watch.js: builds a "Move" button reusing the existing .btn class (same family as #download-media-btn/#delete-media-btn) and mounts it into .watch-actions', () => {
   assert.match(watchJs, /moveBtn\.className = 'btn';/);
-  assert.match(watchJs, /moveBtn\.textContent = 'Move to\.\.\.';/);
+  assert.match(watchJs, /moveBtn\.textContent = 'Move';/);
   assert.match(watchJs, /root\.querySelector\('\.watch-actions'\)/);
   assert.match(watchJs, /watchActions\.appendChild\(moveBtn\)/);
 });

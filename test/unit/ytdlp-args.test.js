@@ -219,6 +219,52 @@ test('buildYtdlpDownloadArgs: an invalid format throws rather than silently prod
   assert.throws(() => args.buildYtdlpDownloadArgs(baseSub({ format: 'gif' }), config, ['vid1']));
 });
 
+// ---- A6 (T16, v1.24 UX Round, Wave 5): fixed-literal subtitle grab -------
+
+test('buildYtdlpDownloadArgs (video): includes the fixed-literal subtitle grab flags', () => {
+  const config = makeConfig();
+  const result = args.buildYtdlpDownloadArgs(baseSub({ format: 'video' }), config, ['vid1']);
+  assert.ok(result.includes('--write-subs'), 'must request manually-authored subs');
+  assert.ok(result.includes('--write-auto-subs'), 'must request auto-generated subs');
+  const langIdx = result.indexOf('--sub-langs');
+  assert.notEqual(langIdx, -1);
+  assert.equal(result[langIdx + 1], 'en.*');
+  const formatIdx = result.indexOf('--sub-format');
+  assert.notEqual(formatIdx, -1);
+  assert.equal(result[formatIdx + 1], 'vtt');
+  const convertIdx = result.indexOf('--convert-subs');
+  assert.notEqual(convertIdx, -1);
+  assert.equal(result[convertIdx + 1], 'vtt');
+});
+
+test('buildYtdlpDownloadArgs (audio): includes the same fixed-literal subtitle grab flags (applied unconditionally, both formats)', () => {
+  const config = makeConfig();
+  const result = args.buildYtdlpDownloadArgs(baseSub({ format: 'audio' }), config, ['vid1']);
+  assert.ok(result.includes('--write-subs'));
+  assert.ok(result.includes('--write-auto-subs'));
+  assert.ok(result.includes('--sub-langs'));
+  assert.ok(result.includes('--sub-format'));
+  assert.ok(result.includes('--convert-subs'));
+});
+
+test('buildYtdlpDownloadArgs: the subtitle grab flags are fixed literals, never interpolated with any per-sub/per-video data', () => {
+  const config = makeConfig();
+  // Deliberately hostile per-video/per-sub values, mirroring this file's
+  // other injection-posture tests (e.g. the quality '--exec=whoami' probe
+  // below): none of these can reach the subtitle flags because those flags
+  // never read `sub`/`config`/`targetIds` at all -- they are pushed as bare
+  // string literals, unconditionally.
+  const hostileSub = baseSub({ format: 'video', name: '--sub-langs', channelUrl: 'https://www.youtube.com/@x' });
+  const result = args.buildYtdlpDownloadArgs(hostileSub, config, ['vid1']);
+  // Exactly one '--sub-langs' element, immediately followed by the fixed
+  // 'en.*' value -- never a hostile sub.name/channelUrl leaking in as a
+  // second/duplicate/mutated occurrence of the flag or its value.
+  const subLangsOccurrences = result.filter((el) => el === '--sub-langs').length;
+  assert.equal(subLangsOccurrences, 1, 'exactly one --sub-langs flag, never duplicated/influenced by hostile sub fields');
+  assert.equal(result[result.indexOf('--sub-langs') + 1], 'en.*');
+  assert.equal(args.SHORTS_MATCH_FILTER, 'webpage_url!*=/shorts/', 'sanity: this file\'s established fixed-literal posture is unchanged');
+});
+
 // ---- C1: per-survivor watch-URL targeting (structural download scoping) --
 
 test('buildYtdlpDownloadArgs: maps multiple targetIds to their own watch?v= URLs, ONE spawn, N positional URLs', () => {

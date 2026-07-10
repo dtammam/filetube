@@ -189,7 +189,7 @@
 
               <!-- Delete option -->
               <button class="btn" id="delete-media-btn" style="color: var(--yt-red); border-color: var(--yt-red);">
-                <i class="icon-delete"></i> Delete File
+                <i class="icon-delete"></i> Delete
               </button>
             </div>
           </div>
@@ -309,6 +309,7 @@
            rounded/derpy look); #player-controls below is the app-owned
            replacement, themed off the era CSS vars. -->
       <video id="media-player" preload="metadata" playsinline webkit-playsinline x5-playsinline style="display: none;">
+        <track id="cc-track" kind="captions" srclang="en" label="English">
         Your browser does not support HTML5 video player.
       </video>
 
@@ -360,6 +361,7 @@
         <button type="button" id="speed-btn" class="pc-btn speed-btn" aria-label="Playback speed">1×</button>
         <button type="button" id="fs-btn" class="pc-btn fs-btn" aria-label="Fullscreen">⛶</button>
         <button type="button" id="pip-btn" class="pc-btn pip-btn" aria-label="Picture in picture">⧉</button>
+        <button type="button" id="cc-btn" class="pc-btn cc-btn" aria-label="Toggle captions" aria-pressed="false" style="display: none;">CC</button>
       </div>
     </div>
   </template>

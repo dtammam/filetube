@@ -294,3 +294,171 @@ test('GET /api/subscriptions/status returns empty namespaces when nothing has ru
     await close();
   }
 });
+
+// ---- v1.24.0 A2 (T14): per-item download-failure attribution end-to-end ---
+// (runSubscriptionCycle -> activity.setSubscription -> GET /api/subscriptions/
+// status, returned verbatim, no route change) --------------------------------
+
+test('A2: a per-item attributed failure is surfaced in the status snapshot as {videoId, title, reason}, enriched with the video title from the SAME list pass', async () => {
+  const deps = makeFakeDeps();
+  const sub = await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@a2attrib', format: 'video' });
+
+  run.runList = async () => ({
+    ok: true,
+    stdout: JSON.stringify({ id: 'survivor1', extractor_key: 'Youtube', availability: 'public', title: 'A Cool Video Title' }),
+    stderr: '',
+  });
+  run.runDownload = async () => ({
+    ok: false,
+    code: 1,
+    stdout: '',
+    stderr: '',
+    error: 'yt-dlp exited with code 1',
+    itemFailures: [{ videoId: 'survivor1', reason: 'Video unavailable' }],
+  });
+
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    await ytdlp.runPoll(deps, enabledConfig());
+    const snap = await (await fetch(`${base}/api/subscriptions/status`)).json();
+    const entry = snap.subscriptions[sub.id];
+    assert.equal(entry.state, 'error');
+    assert.deepEqual(entry.failures, [
+      { videoId: 'survivor1', title: 'A Cool Video Title', reason: 'Video unavailable' },
+    ]);
+  } finally {
+    await close();
+  }
+});
+
+test('A2: an unattributed failure (videoId: null) is still surfaced in the status snapshot -- never silently dropped', async () => {
+  const deps = makeFakeDeps();
+  const sub = await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@a2unattrib', format: 'video' });
+
+  run.runList = async () => ({
+    ok: true,
+    stdout: JSON.stringify({ id: 'survivor1', extractor_key: 'Youtube', availability: 'public', title: 'Survivor Title' }),
+    stderr: '',
+  });
+  run.runDownload = async () => ({
+    ok: false,
+    code: 1,
+    stdout: '',
+    stderr: '',
+    error: 'yt-dlp exited with code 1',
+    itemFailures: [{ videoId: null, reason: 'An unattributable error line' }],
+  });
+
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    await ytdlp.runPoll(deps, enabledConfig());
+    const snap = await (await fetch(`${base}/api/subscriptions/status`)).json();
+    const entry = snap.subscriptions[sub.id];
+    assert.deepEqual(entry.failures, [{ videoId: null, reason: 'An unattributable error line' }]);
+  } finally {
+    await close();
+  }
+});
+
+test('A2: a successful download cycle never carries a `failures` field at all -- backward-compatible with pre-A2 consumers', async () => {
+  const deps = makeFakeDeps();
+  const sub = await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@a2success', format: 'video' });
+
+  run.runList = async () => ({
+    ok: true,
+    stdout: JSON.stringify({ id: 'survivor1', extractor_key: 'Youtube', availability: 'public', title: 'Fine Video' }),
+    stderr: '',
+  });
+  run.runDownload = async () => ({ ok: true, code: 0, stdout: '', stderr: '', channelMeta: [], itemFailures: [] });
+
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    await ytdlp.runPoll(deps, enabledConfig());
+    const snap = await (await fetch(`${base}/api/subscriptions/status`)).json();
+    const entry = snap.subscriptions[sub.id];
+    assert.equal(entry.state, 'done');
+    assert.equal('failures' in entry, false, 'a successful cycle must never introduce a failures field at all');
+  } finally {
+    await close();
+  }
+});
+
+// FIX-3 (two-reviewer gate, post-release, REVISES this test's original A2
+// expectation): the `failures` field is now ALWAYS present on an error
+// settle (an empty array when nothing was attributable), never omitted --
+// see the FIX-3 regression test below for exactly why (a stale failures[]
+// from a PRIOR error cycle must be clearable by a later, unattributed one).
+test('A2/FIX-3: a download failure with no per-item itemFailures at all (e.g. a pre-A2-shaped mocked result) still produces the SAME aggregate error, with an EMPTY failures field, no crash', async () => {
+  const deps = makeFakeDeps();
+  const sub = await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@a2legacy', format: 'video' });
+
+  run.runList = async () => ({
+    ok: true,
+    stdout: JSON.stringify({ id: 'survivor1', extractor_key: 'Youtube', availability: 'public' }),
+    stderr: '',
+  });
+  // No `itemFailures` key at all -- mirrors a caller/mock that predates A2.
+  run.runDownload = async () => ({ ok: false, code: 1, stdout: '', stderr: '', error: 'yt-dlp exited with code 1' });
+
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    await ytdlp.runPoll(deps, enabledConfig());
+    const snap = await (await fetch(`${base}/api/subscriptions/status`)).json();
+    const entry = snap.subscriptions[sub.id];
+    assert.equal(entry.state, 'error');
+    assert.deepEqual(entry.failures, [], 'failures must be present as an empty array, not omitted, on an error settle');
+  } finally {
+    await close();
+  }
+});
+
+// ---- FIX-3 (two-reviewer gate, post-release): stale per-item failures ------
+// across error -> error cycles -------------------------------------------------
+//
+// `runSubscriptionCycle`'s download-error branch used to spread `failures`
+// in ONLY when non-empty, and `activity.mergeEntry` shallow-merges (never
+// clears a field on its own) -- so a SECOND error cycle with no per-item
+// attribution (e.g. a listing/network failure) would leave the FIRST cycle's
+// `failures[]` surviving in the snapshot, still rendered under the second
+// cycle's own, unrelated error. This test reproduces that exact two-cycle
+// sequence and asserts the stale entry is gone after cycle 2.
+test('FIX-3: a stale failures[] from an earlier error cycle is cleared by a later error cycle with no attribution', async () => {
+  const deps = makeFakeDeps();
+  const sub = await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@fix3stale', format: 'video' });
+
+  // Cycle 1: a download error WITH an attributed per-item failure for VID_OLD.
+  run.runList = async () => ({
+    ok: true,
+    stdout: JSON.stringify({ id: 'VID_OLD', extractor_key: 'Youtube', availability: 'public', title: 'Old Video' }),
+    stderr: '',
+  });
+  run.runDownload = async () => ({
+    ok: false,
+    code: 1,
+    stdout: '',
+    stderr: '',
+    error: 'yt-dlp exited with code 1',
+    itemFailures: [{ videoId: 'VID_OLD', reason: 'Video unavailable' }],
+  });
+
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    await ytdlp.runPoll(deps, enabledConfig());
+    const midSnap = await (await fetch(`${base}/api/subscriptions/status`)).json();
+    assert.deepEqual(midSnap.subscriptions[sub.id].failures, [
+      { videoId: 'VID_OLD', title: 'Old Video', reason: 'Video unavailable' },
+    ], 'sanity: cycle 1 recorded the attributed failure');
+
+    // Cycle 2: a LISTING failure -- no per-item attribution is even possible
+    // on this path (it never reaches the download step at all).
+    run.runList = async () => ({ ok: false, code: 1, stdout: '', stderr: '', error: 'network error listing the channel' });
+
+    await ytdlp.runPoll(deps, enabledConfig());
+    const finalSnap = await (await fetch(`${base}/api/subscriptions/status`)).json();
+    const entry = finalSnap.subscriptions[sub.id];
+    assert.equal(entry.state, 'error');
+    assert.deepEqual(entry.failures, [], "cycle 2's unattributed error must clear cycle 1's stale VID_OLD entry, not let it survive");
+  } finally {
+    await close();
+  }
+});

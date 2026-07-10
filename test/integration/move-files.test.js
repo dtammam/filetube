@@ -99,6 +99,69 @@ test('POST /api/videos/:id/move: happy path re-keys metadata/progress and rename
   assert.ok(fs.existsSync(path.join(THUMBNAIL_DIR, `${newId}.jpg`)), 'the thumbnail must be re-keyed to the new id');
 });
 
+// ---- T16 completion follow-up (v1.24 UX Round): the REAL yt-dlp subtitle
+// sidecar shape (`<base>.<lang>.vtt`, e.g. "Title [id].en.vtt" per
+// OUTPUT_TEMPLATE) must migrate alongside the media file, not just the
+// bare `<base>.vtt`/`<base>.srt` shapes. Uses `findSubtitleSidecar`'s own
+// priority order (lib/subtitles.js) via the HTTP route, mirroring the
+// happy-path thumbnail test above.
+test('POST /api/videos/:id/move: a yt-dlp-shaped `.en.vtt` subtitle sidecar is renamed alongside the media file, preserving its language suffix', async () => {
+  const srcDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-move-sub-src-'));
+  const dstDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-move-sub-dst-'));
+  const filePath = path.join(srcDir, 'Title [abc123].mp4');
+  fs.writeFileSync(filePath, 'clip-bytes');
+  const oldId = getMediaId(filePath);
+  const newPath = path.join(dstDir, 'Title [abc123].mp4');
+  const newId = getMediaId(newPath);
+
+  const subPath = path.join(srcDir, 'Title [abc123].en.vtt');
+  fs.writeFileSync(subPath, 'WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nHello\n');
+
+  seedItem({ id: oldId, filePath, folders: [srcDir, dstDir] });
+
+  const res = await fetch(`${base}/api/videos/${oldId}/move`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ targetFolder: dstDir }),
+  });
+  assert.equal(res.status, 200);
+  const json = await res.json();
+  assert.equal(json.id, newId);
+
+  const newSubPath = path.join(dstDir, 'Title [abc123].en.vtt');
+  assert.ok(!fs.existsSync(subPath), 'the old-path subtitle sidecar must be gone, not orphaned');
+  assert.ok(fs.existsSync(newSubPath), 'the subtitle sidecar must exist at the new path, language suffix intact');
+  assert.equal(fs.readFileSync(newSubPath, 'utf8'), 'WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nHello\n', 'the sidecar content must survive the move unchanged');
+});
+
+test('POST /api/videos/:id/move: a bare `.srt` subtitle sidecar (no yt-dlp language tag) is also renamed alongside the media file', async () => {
+  const srcDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-move-sub2-src-'));
+  const dstDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-move-sub2-dst-'));
+  const filePath = path.join(srcDir, 'clip.mp4');
+  fs.writeFileSync(filePath, 'clip-bytes');
+  const oldId = getMediaId(filePath);
+  const newPath = path.join(dstDir, 'clip.mp4');
+  const newId = getMediaId(newPath);
+
+  const subPath = path.join(srcDir, 'clip.srt');
+  fs.writeFileSync(subPath, '1\n00:00:00,000 --> 00:00:01,000\nHi\n');
+
+  seedItem({ id: oldId, filePath, folders: [srcDir, dstDir] });
+
+  const res = await fetch(`${base}/api/videos/${oldId}/move`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ targetFolder: dstDir }),
+  });
+  assert.equal(res.status, 200);
+  const json = await res.json();
+  assert.equal(json.id, newId);
+
+  const newSubPath = path.join(dstDir, 'clip.srt');
+  assert.ok(!fs.existsSync(subPath), 'the old-path .srt sidecar must be gone');
+  assert.ok(fs.existsSync(newSubPath), 'the .srt sidecar must exist at the new path');
+});
+
 test('POST /api/videos/:id/move: a target outside every configured folder is rejected (400) BEFORE any filesystem change', async () => {
   const srcDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-move-src2-'));
   const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-move-outside-'));

@@ -115,6 +115,15 @@ test('getSnapshot prunes a terminal (error) one-shot entry the same way as done'
   assert.equal(pastTtl.oneShots['job-err'], undefined);
 });
 
+test('getSnapshot prunes a terminal (cancelled) one-shot entry the same way as done/error (v1.24 T15/A3)', () => {
+  const t0 = 0;
+  activity.setOneShot('job-cancel', { state: 'cancelled' }, t0);
+  const justUnderTtl = activity.getSnapshot(t0 + activity.ONESHOT_TTL_MS - 1);
+  assert.ok(justUnderTtl.oneShots['job-cancel'], 'a cancelled job must still be present just under the TTL');
+  const pastTtl = activity.getSnapshot(t0 + activity.ONESHOT_TTL_MS + 1);
+  assert.equal(pastTtl.oneShots['job-cancel'], undefined, 'a cancelled job must TTL-prune, not linger forever');
+});
+
 test('getSnapshot NEVER prunes a still-active (non-terminal) one-shot entry, no matter how old', () => {
   const t0 = 0;
   activity.setOneShot('job-active', { state: 'downloading', percent: 40 }, t0);

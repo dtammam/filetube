@@ -565,6 +565,14 @@ if (typeof module !== 'undefined' && module.exports) {
   // wired once alongside the rest of the custom bar above.
   var speedBtn;
 
+  // A6 (T16, v1.24 UX Round, Wave 5): the ONE approved player-controls
+  // exception -- the CC (captions) toggle button + the <track> element it
+  // controls. Both live INSIDE the persistent host (ccTrack is a child of
+  // #media-player itself), queried/wired once alongside the rest of the
+  // custom bar above, so they ride the reparented host across FULL/DOCKED/
+  // CLOSED exactly like #pip-btn/#speed-btn.
+  var ccBtn, ccTrack;
+
   var dockCloseBtn = null;
   var dockChromeReady = false;
 
@@ -730,6 +738,8 @@ if (typeof module !== 'undefined' && module.exports) {
     fsBtn = host.querySelector('#fs-btn');
     pipBtn = host.querySelector('#pip-btn');
     speedBtn = host.querySelector('#speed-btn');
+    ccBtn = host.querySelector('#cc-btn');
+    ccTrack = host.querySelector('#cc-track');
     artPlayGlyph = host.querySelector('#art-play-glyph');
     wireHostListeners();
     return host;
@@ -1975,6 +1985,30 @@ if (typeof module !== 'undefined' && module.exports) {
       }
     }
 
+    // A6 (T16, v1.24 UX Round, Wave 5): CC (captions) toggle -- the ONE
+    // approved exception to this round's "no player-control changes"
+    // exclusion. Wired ONCE here, alongside the rest of the custom bar, so
+    // it rides the persistent host across FULL/DOCKED/CLOSED exactly like
+    // every other control-bar listener above. Visibility is driven entirely
+    // by `setupForMedia()` per-load (gated on `data.hasSubtitles` -- track
+    // AVAILABILITY is the only gate, never a second mobile-detection signal,
+    // see that function below); this listener only toggles the <track>'s
+    // `mode` (and the button's own pressed state) once the button is
+    // actually visible/clickable. `textTracks[0]` is `ccTrack`'s live
+    // TextTrack object -- read fresh on every click (rather than cached
+    // once) since `mediaPlayer.load()` (called by `teardownMediaState()` on
+    // every genuine new load) can invalidate a previously-held reference.
+    if (ccBtn) {
+      ccBtn.addEventListener('click', function () {
+        if (!mediaPlayer || !mediaPlayer.textTracks || !mediaPlayer.textTracks[0]) return;
+        var track = mediaPlayer.textTracks[0];
+        var showing = track.mode === 'showing';
+        track.mode = showing ? 'hidden' : 'showing';
+        ccBtn.classList.toggle('active', !showing);
+        ccBtn.setAttribute('aria-pressed', showing ? 'false' : 'true');
+      });
+    }
+
     // Click/tap-the-cover-art-to-play/pause (AC9): acts ONLY while FULL --
     // stopPropagation there so the toggle never also reaches anything behind
     // the art layer. While DOCKED the click is deliberately left un-stopped
@@ -2190,6 +2224,15 @@ if (typeof module !== 'undefined' && module.exports) {
     if (resumeOverlay) resumeOverlay.style.display = 'none';
     if (transcodeOverlay) transcodeOverlay.style.display = 'none';
     if (transcodeSpinner) transcodeSpinner.classList.remove('failed');
+    // A6 (T16, v1.24 UX Round, Wave 5): reset the CC button/track for the
+    // OUTGOING media -- hidden by default until setupForMedia() below
+    // re-derives visibility from the NEW media's own `hasSubtitles`, and the
+    // track's `mode` is reset to 'disabled' so a previous item's captions
+    // never keep rendering over the next item before its own track (if any)
+    // loads. `ccTrack.src` is intentionally left for setupForMedia() to set
+    // fresh, mirroring how `mediaPlayer.src` itself is handled just below.
+    if (ccBtn) { ccBtn.style.display = 'none'; ccBtn.classList.remove('active'); ccBtn.setAttribute('aria-pressed', 'false'); }
+    if (ccTrack && ccTrack.track) ccTrack.track.mode = 'disabled';
     if (host) host.classList.remove('audio-mode');
     exitAudioExpand(); // FR-1 (T1, v1.22.2, AC5): every genuine new load force-clears any expanded state left over from the previous media
     // FR-1 (T1, v1.22.0): belt-and-suspenders -- `mountInSlot()` (called a
@@ -2228,6 +2271,20 @@ if (typeof module !== 'undefined' && module.exports) {
   function setupForMedia(id, data) {
     var gen = loadGeneration;
     var streamUrl = '/video/' + id;
+
+    // A6 (T16, v1.24 UX Round, Wave 5): CC button + <track> setup. AVAILABILITY
+    // (`data.hasSubtitles`, from db.metadata[id] via GET /api/videos/:id) is
+    // the ONLY gate -- never a second/divergent mobile-detection signal, per
+    // the exec plan's A6 design. `ccTrack.src` is set fresh for every load
+    // (never left stale from the previous item, even when hasSubtitles is
+    // false -- an inert/never-fetched <track> costs nothing) so a load that
+    // starts without a track element listed can still resolve one if the
+    // markup itself is present; the actual captions request only ever fires
+    // if/when the browser decides to load the track (Cue text is not
+    // fetched merely because `src` is set unless the track is in a mode
+    // other than 'disabled' or the user later shows it via #cc-btn).
+    if (ccTrack) ccTrack.src = '/api/subtitles/' + id;
+    if (ccBtn) ccBtn.style.display = data && data.hasSubtitles ? '' : 'none';
 
     if (data.type === 'audio') {
       mediaPlayer.style.display = 'block';

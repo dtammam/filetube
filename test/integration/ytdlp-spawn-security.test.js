@@ -1240,3 +1240,247 @@ test('SECURITY: a forged-newline channel NAME (JSON-escaped, as real yt-dlp outp
   assert.equal(result.channelMeta[0].channelUrl, 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw');
   assert.equal(result.channelMeta[0].channelName, forgedName, 'the forged text survives only as an inert display-name string');
 });
+
+// ---- v1.24.0 A2 (T14): per-item failure attribution on the spawn boundary --
+// (spawnYtdlpDownload's opts.knownIds -> bounded itemFailures[], SF1/SF3) ----
+
+test('spawnYtdlpDownload: a per-video ERROR line on stderr matching opts.knownIds is captured onto result.itemFailures', async () => {
+  const spawnChild = stubSpawn();
+  const resultPromise = run.spawnYtdlpDownload(['--', 'https://www.youtube.com/watch?v=vid1'], {
+    knownIds: new Set(['vid1']),
+  });
+  const child = spawnChild();
+  child.stderr.emit('data', Buffer.from('ERROR: [youtube] vid1: Video unavailable\n'));
+  child.emit('close', 1, null);
+  const result = await resultPromise;
+  assert.equal(result.ok, false);
+  assert.deepEqual(result.itemFailures, [{ videoId: 'vid1', reason: 'Video unavailable' }]);
+});
+
+test('spawnYtdlpDownload: opts.knownIds also accepts a plain array (not just a Set)', async () => {
+  const spawnChild = stubSpawn();
+  const resultPromise = run.spawnYtdlpDownload(['--', 'https://www.youtube.com/watch?v=vid1'], {
+    knownIds: ['vid1'],
+  });
+  const child = spawnChild();
+  child.stderr.emit('data', Buffer.from('ERROR: [youtube] vid1: Video unavailable\n'));
+  child.emit('close', 1, null);
+  const result = await resultPromise;
+  assert.deepEqual(result.itemFailures, [{ videoId: 'vid1', reason: 'Video unavailable' }]);
+});
+
+test('spawnYtdlpDownload: an ERROR line whose id is NOT in opts.knownIds is still captured, but as unattributed (videoId: null) -- never dropped, never misattributed', async () => {
+  const spawnChild = stubSpawn();
+  const resultPromise = run.spawnYtdlpDownload(['--', 'https://www.youtube.com/watch?v=vid1'], {
+    knownIds: new Set(['vid1']),
+  });
+  const child = spawnChild();
+  child.stderr.emit('data', Buffer.from('ERROR: [youtube] someUnknownId: Sign in to confirm your age\n'));
+  child.emit('close', 1, null);
+  const result = await resultPromise;
+  assert.deepEqual(result.itemFailures, [{ videoId: null, reason: 'Sign in to confirm your age' }]);
+});
+
+test('spawnYtdlpDownload: omitting opts.knownIds entirely is backward-compatible -- itemFailures is always present (an empty array) when nothing failed', async () => {
+  const spawnChild = stubSpawn();
+  const resultPromise = run.spawnYtdlpDownload(['--', 'https://www.youtube.com/watch?v=vid1']);
+  const child = spawnChild();
+  child.emit('close', 0, null);
+  const result = await resultPromise;
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.itemFailures, []);
+});
+
+test('SF1: a cookies path embedded in a captured item-failure reason is redacted, exactly like every other returned string on this path', async () => {
+  const spawnChild = stubSpawn();
+  const cookiesPath = '/secret/path/to/cookies.txt';
+  const resultPromise = run.spawnYtdlpDownload(['--', 'https://www.youtube.com/watch?v=vid1'], {
+    knownIds: new Set(['vid1']),
+    cookiesPath,
+  });
+  const child = spawnChild();
+  child.stderr.emit('data', Buffer.from(`ERROR: [youtube] vid1: could not read cookies file ${cookiesPath}\n`));
+  child.emit('close', 1, null);
+  const result = await resultPromise;
+  assert.equal(result.itemFailures.length, 1);
+  assert.ok(!result.itemFailures[0].reason.includes(cookiesPath), `cookies path survived redaction in itemFailures: ${result.itemFailures[0].reason}`);
+  assert.ok(result.itemFailures[0].reason.includes('<redacted>'));
+});
+
+// FIX-6 (two-reviewer gate, post-release, SF1 hardening): pre-fix,
+// `parseItemFailureLine`'s own `sanitizeReason` capped the reason at
+// MAX_REASON_LENGTH (500 chars) BEFORE `redactString` ever ran on it (the
+// redaction happened afterward, in run.js, on the ALREADY-capped string). A
+// cookies path straddling that 500-char boundary would therefore survive
+// PARTIALLY: the cap truncated the reason mid-path, and `redactString`'s
+// exact-substring `.split(cookiesPath).join(...)` can never match a
+// TRUNCATED occurrence of `cookiesPath`, so the truncated fragment -- a real
+// chunk of the actual filesystem path -- was returned as-is. This test
+// constructs exactly that straddling scenario and asserts NO fragment of the
+// cookies path (of any length) survives, proving redaction now runs on the
+// full line before the cap.
+test('FIX-6: redaction runs on the FULL stderr line BEFORE the reason length cap -- a cookies path straddling the cap boundary is never left partially un-redacted', async () => {
+  const spawnChild = stubSpawn();
+  const cookiesPath = '/secret/path/to/cookies-file-for-testing.txt';
+  // Pad the reason so `cookiesPath` starts well before char 500 and ends
+  // well after it -- a cap-then-redact ordering would slice straight through
+  // the middle of the path.
+  const prefix = 'x'.repeat(480);
+  const reasonText = `${prefix} ${cookiesPath}`;
+  const resultPromise = run.spawnYtdlpDownload(['--', 'https://www.youtube.com/watch?v=vid1'], {
+    knownIds: new Set(['vid1']),
+    cookiesPath,
+  });
+  const child = spawnChild();
+  child.stderr.emit('data', Buffer.from(`ERROR: [youtube] vid1: ${reasonText}\n`));
+  child.emit('close', 1, null);
+  const result = await resultPromise;
+  assert.equal(result.itemFailures.length, 1);
+  const reason = result.itemFailures[0].reason;
+  assert.ok(!reason.includes(cookiesPath), `the full cookies path survived: ${reason}`);
+  // No partial fragment (of any length >= 10 chars) of the real path leaked
+  // either -- this is the specific gap a cap-BEFORE-redact ordering opened.
+  for (let len = 10; len <= cookiesPath.length; len++) {
+    assert.ok(!reason.includes(cookiesPath.slice(0, len)), `a ${len}-char prefix of the cookies path leaked into the reason: ${reason}`);
+  }
+  assert.ok(reason.includes('<redacted>'), 'the redaction marker must still be present');
+});
+
+test('SF3: itemFailures is bounded at MAX_CAPTURED_META, the SAME cap constant channelMeta already uses -- never an unbounded buffer', async () => {
+  const spawnChild = stubSpawn();
+  const overflowCount = run.MAX_CAPTURED_META + 50;
+  const knownIds = new Set(Array.from({ length: overflowCount }, (_, i) => `vid${i}`));
+  const resultPromise = run.spawnYtdlpDownload(['--', 'https://www.youtube.com/@x'], { knownIds });
+  const child = spawnChild();
+  for (let i = 0; i < overflowCount; i++) {
+    child.stderr.emit('data', Buffer.from(`ERROR: [youtube] vid${i}: unavailable\n`));
+  }
+  child.emit('close', 1, null);
+  const result = await resultPromise;
+  assert.equal(result.itemFailures.length, run.MAX_CAPTURED_META, 'itemFailures must never grow past MAX_CAPTURED_META, no matter how many ERROR lines arrive');
+});
+
+test('spawnYtdlpDownload: a final ERROR line with no trailing newline before close() is still captured via the close-time flush', async () => {
+  const spawnChild = stubSpawn();
+  const resultPromise = run.spawnYtdlpDownload(['--', 'https://www.youtube.com/watch?v=vid1'], {
+    knownIds: new Set(['vid1']),
+  });
+  const child = spawnChild();
+  // No trailing '\n' -- yt-dlp's very last stderr write commonly has none
+  // before the process exits.
+  child.stderr.emit('data', Buffer.from('ERROR: [youtube] vid1: Video unavailable'));
+  child.emit('close', 1, null);
+  const result = await resultPromise;
+  assert.deepEqual(result.itemFailures, [{ videoId: 'vid1', reason: 'Video unavailable' }]);
+});
+
+test('runDownload: knownIds is derived automatically from targetIds -- no separate opts.knownIds needed by callers', async () => {
+  const spawnChild = stubSpawn();
+  const downloadDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-ytdlp-dl-'));
+  const config = { downloadDir, cookiesFile: null };
+  const sub = { channelUrl: 'https://www.youtube.com/@x', name: 'x', format: 'video', quality: 'best' };
+  const resultPromise = run.runDownload(sub, config, ['survivor1', 'survivor2']);
+  const child = spawnChild();
+  child.stderr.emit('data', Buffer.from('ERROR: [youtube] survivor2: Video unavailable\n'));
+  child.emit('close', 1, null);
+  const result = await resultPromise;
+  assert.deepEqual(result.itemFailures, [{ videoId: 'survivor2', reason: 'Video unavailable' }]);
+});
+
+test('spawnYtdlpDownload: a captured item failure is NEVER forwarded to onProgress, and vice versa a real progress line is never captured as a failure', async () => {
+  const spawnChild = stubSpawn();
+  const patches = [];
+  const resultPromise = run.spawnYtdlpDownload(['--', 'https://www.youtube.com/watch?v=vid1'], {
+    knownIds: new Set(['vid1']),
+    onProgress: (p) => patches.push(p),
+  });
+  const child = spawnChild();
+  child.stdout.emit('data', Buffer.from('[download]  50.0% of  10.0MiB at 1.00MiB/s ETA 00:05\n'));
+  child.stderr.emit('data', Buffer.from('ERROR: [youtube] vid1: Video unavailable\n'));
+  child.emit('close', 1, null);
+  const result = await resultPromise;
+  assert.equal(result.itemFailures.length, 1);
+  assert.equal(patches.length, 1, 'only the genuine progress line should have produced an onProgress patch');
+  assert.equal(patches[0].percent, 50);
+});
+
+// ---- v1.24.0 A3: opts.onChild -- the opt-in child-handle registration hook -
+// (lib/ytdlp/index.js's cancel route needs a live handle to kill; this is
+// the ONLY place that hook is ever invoked). --------------------------------
+
+test('spawnYtdlpDownload: opts.onChild is invoked SYNCHRONOUSLY, exactly once, with the live child, right after a successful spawn', async () => {
+  const spawnChild = stubSpawn();
+  const onChildCalls = [];
+  const resultPromise = run.spawnYtdlpDownload(['--', 'https://www.youtube.com/watch?v=vid1'], {
+    onChild: (child) => onChildCalls.push(child),
+  });
+  const child = spawnChild();
+  // Registration must have already happened by the time spawn() returns --
+  // no need to wait a tick.
+  assert.equal(onChildCalls.length, 1, 'onChild must be called exactly once, synchronously');
+  assert.equal(onChildCalls[0], child, 'onChild must receive the actual spawned child, not a copy/wrapper');
+  child.emit('close', 0, null);
+  await resultPromise;
+});
+
+test('spawnYtdlpDownload: the child registered via opts.onChild can actually be killed, and the resulting SIGKILL settles the download as a normal failure', async () => {
+  const spawnChild = stubSpawn();
+  let registeredChild = null;
+  const resultPromise = run.spawnYtdlpDownload(['--', 'https://www.youtube.com/watch?v=vid1'], {
+    onChild: (child) => { registeredChild = child; },
+  });
+  spawnChild(); // let the spawn (and therefore onChild) actually happen
+  assert.ok(registeredChild, 'onChild must have registered the live child');
+
+  // Simulate the cancel route: kill the registered handle directly (the
+  // fake child's kill() -- see makeFakeChild above -- asynchronously emits
+  // 'close' with the given signal, mirroring real OS behavior).
+  registeredChild.kill('SIGKILL');
+  const result = await resultPromise;
+  assert.equal(result.ok, false, 'a killed child must never resolve as a success');
+  assert.deepEqual(registeredChild.killCalls, ['SIGKILL']);
+});
+
+test('spawnYtdlpDownload: omitting opts.onChild entirely is backward-compatible -- no throw, resolves normally', async () => {
+  const spawnChild = stubSpawn();
+  const resultPromise = run.spawnYtdlpDownload(['--', 'https://www.youtube.com/watch?v=vid1']);
+  const child = spawnChild();
+  child.emit('close', 0, null);
+  const result = await resultPromise;
+  assert.equal(result.ok, true);
+});
+
+test('spawnYtdlpDownload: a THROWING opts.onChild callback never breaks the download -- it is caught/logged, and the promise still resolves cleanly', async () => {
+  const spawnChild = stubSpawn();
+  const resultPromise = run.spawnYtdlpDownload(['--', 'https://www.youtube.com/watch?v=vid1'], {
+    onChild: () => { throw new Error('boom from a hostile/buggy onChild'); },
+  });
+  const child = spawnChild();
+  child.emit('close', 0, null);
+  const result = await resultPromise;
+  assert.equal(result.ok, true, 'a throwing onChild must never prevent the download from completing normally');
+  assert.ok(capturedLogs.some((line) => line.includes('onChild callback threw')), 'the throw must be logged, not silently swallowed');
+});
+
+test('spawnYtdlpDownload: opts.onChild is never invoked when spawn itself throws synchronously (no live child to register)', async () => {
+  cp.spawn = () => { throw new Error('boom'); };
+  const onChildCalls = [];
+  const result = await run.spawnYtdlpDownload(['--', 'https://www.youtube.com/watch?v=vid1'], {
+    onChild: (child) => onChildCalls.push(child),
+  });
+  assert.equal(result.ok, false);
+  assert.deepEqual(onChildCalls, [], 'onChild must never fire for a spawn that never actually started');
+});
+
+test('runDownload: opts.onChild is forwarded straight through to spawnYtdlpDownload unchanged', async () => {
+  const spawnChild = stubSpawn();
+  const downloadDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-ytdlp-dl-'));
+  const config = { downloadDir, cookiesFile: null };
+  const sub = { channelUrl: 'https://www.youtube.com/@x', name: 'x', format: 'video', quality: 'best' };
+  let registeredChild = null;
+  const resultPromise = run.runDownload(sub, config, ['vid1'], { onChild: (child) => { registeredChild = child; } });
+  const child = spawnChild();
+  assert.equal(registeredChild, child, 'runDownload must forward opts.onChild to spawnYtdlpDownload verbatim');
+  child.emit('close', 0, null);
+  await resultPromise;
+});

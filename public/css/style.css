@@ -3295,7 +3295,8 @@ a.sub-row-channel-link:focus-visible {
 #player-dock .pc-vol,
 #player-dock .fs-btn,
 #player-dock .pip-btn,
-#player-dock .speed-btn {
+#player-dock .speed-btn,
+#player-dock .cc-btn {
   display: none;
 }
 #player-dock .pc-btn {
@@ -4162,6 +4163,28 @@ a.sub-row-channel-link:focus-visible {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* FIX-5 (two-reviewer gate, post-release): v1.24.0 A2 (T14)'s per-item
+   {video: reason} failure lines on the compact retro chip -- mirrors
+   `.dl-status-chip-item-status` above (same font-size/color) plus a small
+   top margin to visually separate the list from the status line, matching
+   the sibling `.sub-row-failures` rule's era-token-only intent
+   (lib/ytdlp/views/subscriptions.html). Wraps rather than clipping (unlike
+   the single-line status above) since a batch can carry several failure
+   lines, each of which should stay fully readable. */
+.dl-status-chip-item-failures {
+  margin-top: 6px;
+}
+
+.dl-status-chip-item-failure {
+  font-size: 11px;
+  color: var(--text-secondary);
+  overflow-wrap: break-word;
+}
+
+.dl-status-chip-item-failure + .dl-status-chip-item-failure {
+  margin-top: 2px;
 }
 
 .dl-status-chip-item-actions {
