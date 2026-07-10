@@ -3157,6 +3157,29 @@ a.sub-row-channel-link:focus-visible {
   .player-container {
     max-height: 45vh;
   }
+
+  /* Feature A (v1.26.1, Shorts player-size jump): a genuinely PORTRAIT item
+     -- `.portrait-media`, toggled by player.js's applyMediaAspect() only
+     when the real (server-known or intrinsic) width/height are taller than
+     wide -- gets a taller ceiling than the 16:9-tuned 45vh above. Without
+     this, a 9:16 box (now correctly reserving its REAL aspect via
+     `--media-aspect` instead of the old hardcoded 16/9) would need far more
+     height than 45vh to avoid being cropped by `.player-container`'s
+     `overflow: hidden` -- 45vh was tuned for LANDSCAPE content, which never
+     comes close to it at realistic mobile widths, so this override never
+     fires for 16:9/4:3/no-dims content (not `.portrait-media`) and that
+     case is completely unaffected. `min(78vh, ...)` leaves the fixed mobile
+     header/bottom-nav (`--mobile-header-h`/`--mobile-bottom-nav-h`, set
+     above) clear while still letting a Shorts-style video fill most of the
+     screen instead of being needlessly shrunk. Even at this taller ceiling
+     an EXTREME portrait ratio (e.g. 9:21) can still lose a sliver off the
+     bottom of the picture -- the control strip itself always stays visible
+     regardless (it's absolutely positioned to the wrapper's own capped
+     bottom edge, not pushed by the overflowing content), just an accepted
+     edge-case tradeoff rather than a full width-shrink-to-fit relayout. */
+  #player-wrapper.portrait-media {
+    max-height: min(78vh, calc(100vh - var(--mobile-header-h) - var(--mobile-bottom-nav-h)));
+  }
 }
 
 /* === v1.21 FR-2: player controls / audio-mode ===============================
@@ -3513,15 +3536,22 @@ a.sub-row-channel-link:focus-visible {
      - the DOCKED mini-player (stays overlay -- a strip would swamp it)
      - desktop/native FULLSCREEN (the bar overlays there by design, AC14). */
 #player-wrapper:not(.audio-expanded) {
-  aspect-ratio: auto;      /* height becomes 16/9 content + the bar strip */
+  aspect-ratio: auto;      /* height becomes the real content aspect + the bar strip */
   padding-bottom: 40px;
 }
 #player-wrapper:not(.audio-expanded) #media-player {
-  aspect-ratio: 16 / 9;    /* content keeps 16/9; height derives from the width */
+  /* Feature A (v1.26.1, Shorts player-size jump): the REAL aspect when
+     known -- `--media-aspect` is set by player.js's applyMediaAspect()
+     from server-known width/height BEFORE `src` is assigned (or, for a
+     legacy item with none yet, from the video's own intrinsic dims at
+     `loadedmetadata`, as a one-time early settle instead of a late jump).
+     16/9 is the fallback for audio (never set) and any not-yet-known item,
+     exactly matching this rule's pre-v1.26.1 behavior. */
+  aspect-ratio: var(--media-aspect, 16 / 9);
   height: auto;            /* override the base overlay `height: 100%` */
 }
 #player-wrapper.audio-mode:not(.audio-expanded) #audio-bg-art {
-  bottom: 40px;            /* cover art fills the 16/9 area, above the bar strip */
+  bottom: 40px;            /* cover art fills the content area, above the bar strip */
 }
 
 @media (max-width: 768px) {
@@ -3536,14 +3566,87 @@ a.sub-row-channel-link:focus-visible {
 /* DOCKED mini-player (v1.23.6, Dean): same bar-below layout, just using the
    trimmed mini-player bar height (26px, see `#player-dock .player-controls`)
    instead of the full 40/44px. The universal `aspect-ratio:auto` +
-   `#media-player { aspect-ratio:16/9 }` rules above already apply here -- only
-   the reserved strip height differs, so the tiny bar sits below the mini
-   picture/art rather than covering it. */
+   `#media-player { aspect-ratio: var(--media-aspect, 16/9) }` rules above
+   already apply here -- only the reserved strip height differs, so the tiny
+   bar sits below the mini picture/art rather than covering it.
+   Feature A (v1.26.1) ADDS one override below this block: the DOCKED
+   mini-player always stays a compact 16:9 regardless of `--media-aspect` --
+   see that rule's own comment for why. */
 #player-dock #player-wrapper {
   padding-bottom: 26px;
 }
 #player-dock #player-wrapper.audio-mode #audio-bg-art {
   bottom: 26px;
+}
+
+/* Feature A (v1.26.1, Shorts player-size jump): the DOCKED mini-player
+   always stays a compact 16:9, regardless of `--media-aspect` -- a
+   portrait (e.g. 9:16) item's REAL aspect is only ever reserved for the
+   FULL in-slot box (mountInSlot()/setupForMedia(), player.js). Left
+   unclamped here, a portrait video would balloon the small fixed-width
+   dock (280px desktop / 160px mobile, see `#player-dock` above) into an
+   oversized vertical strip -- exactly the "mini" player is meant to avoid.
+   3 ID selectors beats the base `#player-wrapper:not(.audio-expanded)
+   #media-player` rule's 2, so this always wins while docked. */
+#player-dock #player-wrapper:not(.audio-expanded) #media-player {
+  aspect-ratio: 16 / 9;
+  height: auto;
+}
+
+/* === Feature B (v1.26.1): AUDIO-mode custom caption overlay ================
+   iOS can't paint native <track> cues over the cover-art layer in audio
+   mode (the <video> itself is transparent/pointer-events:none there, see
+   `#player-wrapper.audio-mode #media-player` above) -- player.js renders
+   captions into THIS overlay instead, from `cuechange`, textContent-only.
+   Built entirely in JS (ensureHost()) so it never touches the shared
+   player-host-template markup across all 5 shells; VIDEO mode never shows
+   it (player.js only ever calls renderActiveCueOverlay for audio -- see its
+   own comment). Positioned as a centered pill directly ABOVE the control
+   strip, mirroring `#audio-bg-art`'s own per-view bottom offsets just above
+   (in-slot 40/44px, docked 26px) -- the compound selectors below add the
+   SAME offsets for this overlay; the audio-expanded full-viewport view gets
+   its own safe-area-aware offset further below, alongside
+   `.audio-mode.audio-expanded .player-controls`. `z-index: 9` sits above
+   `.player-controls` (8) and the audio visual/art layers (0-6), below
+   `.resume-overlay`/`#transcode-overlay` (10) -- consistent with the
+   existing z-index ladder in this file. `[hidden]` (native attribute,
+   player.js toggles it) is the single show/hide mechanism -- no separate
+   `:empty` CSS reliance. */
+.cc-overlay {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 40px;      /* in-slot, desktop: directly above the 40px control strip */
+  z-index: 9;
+  display: flex;
+  justify-content: center;
+  padding: 0 12px;
+  pointer-events: none;
+}
+.cc-overlay[hidden] {
+  display: none;
+}
+.cc-overlay-text {
+  max-width: 92%;
+  background: rgba(0, 0, 0, 0.72);
+  color: #fff;
+  font-family: var(--font-family);
+  font-size: 14px;
+  line-height: 1.35;
+  padding: 4px 10px;
+  border-radius: 4px;
+  text-align: center;
+  white-space: pre-line; /* player.js newline-joins multi-line/simultaneous cues -- preserve them */
+}
+
+@media (max-width: 768px) {
+  .cc-overlay {
+    bottom: 44px;    /* matches the 44px mobile control strip */
+  }
+}
+
+#player-dock .cc-overlay {
+  bottom: 26px;      /* matches the trimmed mini-player bar height */
 }
 
 /* FULLSCREEN restore: desktop fullscreen targets the container and keeps the
@@ -3575,7 +3678,17 @@ a.sub-row-channel-link:focus-visible {
    reserved strip (below) the same way the existing native/desktop-fullscreen
    rule already does above -- the native strip overlays the content directly
    instead of sitting in a now-empty reserved gap. Audio's `#audio-bg-art`
-   rules are completely untouched (audio is never `.native-controls`). */
+   rules are completely untouched (audio is never `.native-controls`).
+   Feature A (v1.26.1, Shorts player-size jump) FIX: this block used to ALSO
+   override `#media-player { aspect-ratio: auto; height: 100%; }` here --
+   collapsing the box to the video's own INTRINSIC size, which is unknown
+   until `loadedmetadata` fires, producing a visible late jump the instant
+   native controls engaged (this class is applied synchronously at mount,
+   well before metadata loads). That override is REMOVED: with
+   `padding-bottom: 0` still applied below, the box now simply falls through
+   to the SAME `--media-aspect`-driven `aspect-ratio`/`height: auto` rule
+   used everywhere else (above) -- sized correctly from the very first
+   paint, no intrinsic-size dependency, no jump. */
 #player-wrapper.native-controls .player-controls {
   display: none;
 }
@@ -3595,18 +3708,10 @@ a.sub-row-channel-link:focus-visible {
 #player-wrapper:not(.audio-expanded).native-controls {
   padding-bottom: 0;
 }
-#player-wrapper:not(.audio-expanded).native-controls #media-player {
-  aspect-ratio: auto;
-  height: 100%;
-}
 
 @media (max-width: 768px) {
   #player-wrapper:not(.audio-expanded).native-controls {
     padding-bottom: 0;
-  }
-  #player-wrapper:not(.audio-expanded).native-controls #media-player {
-    aspect-ratio: auto;
-    height: 100%;
   }
 }
 
@@ -3696,6 +3801,20 @@ a.sub-row-channel-link:focus-visible {
    affected -- the normal in-slot and docked bars are untouched. */
 #player-wrapper.audio-mode.audio-expanded .player-controls {
   bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Feature B (v1.26.1): same safe-area lift as the control bar directly
+   above, plus that bar's own height (40px desktop / 44px mobile below) --
+   so the caption overlay sits directly above the (already safe-area-lifted)
+   bar in the expanded full-viewport view, instead of behind/under it. */
+#player-wrapper.audio-mode.audio-expanded .cc-overlay {
+  bottom: calc(40px + env(safe-area-inset-bottom, 0px));
+}
+
+@media (max-width: 768px) {
+  #player-wrapper.audio-mode.audio-expanded .cc-overlay {
+    bottom: calc(44px + env(safe-area-inset-bottom, 0px));
+  }
 }
 
 /* === v1.22 FR-8: native Picture-in-Picture button ============================

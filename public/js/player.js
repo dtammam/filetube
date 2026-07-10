@@ -548,6 +548,105 @@ function resolveFsButtonAction(ctx) {
   return opts.audioMode ? 'audio-expand' : 'native-fullscreen';
 }
 
+// ---- Feature A (v1.26.1): reserved-aspect pure helpers ---------------------
+// Kills the vertical-video (Shorts) player-box jump: given a known/probed
+// width+height, returns a valid CSS `aspect-ratio` value string ("W / H")
+// -- or `null` on anything not usable (missing/non-finite/non-positive), so
+// callers can safely fall back to style.css's own `var(--media-aspect, 16 /
+// 9)` default rather than ever writing an invalid custom-property value.
+// Pure/DOM-free so it's directly `node:test`-able; the live caller
+// (`applyMediaAspect`, below) is a thin DOM wrapper around this.
+function computeMediaAspectRatio(width, height) {
+  var w = Number(width);
+  var h = Number(height);
+  if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return null;
+  return w + ' / ' + h;
+}
+
+// True only for genuinely PORTRAIT (taller-than-wide) dimensions -- drives
+// the `.portrait-media` marker class (style.css) that grants a taller
+// mobile-portrait height ceiling than the default 16:9-tuned one, so a
+// vertical (Shorts-style) item isn't needlessly cropped down to a
+// landscape-shaped box. Landscape/square/missing-or-invalid input is
+// `false` -- the existing, tighter clamp stays the default everywhere else
+// (16:9, 4:3, and any item with no known dims yet).
+function isPortraitMediaAspect(width, height) {
+  var w = Number(width);
+  var h = Number(height);
+  return Number.isFinite(w) && Number.isFinite(h) && w > 0 && h > 0 && h > w;
+}
+
+// F2 (v1.26.1 two-reviewer follow-up): true only when BOTH the stored
+// (server-known) and the browser-reported dims are individually valid AND
+// their PORTRAIT-vs-LANDSCAPE orientation disagrees. This is the "chose the
+// simpler option" self-heal from the two-reviewer gate: a rotation-flagged
+// phone video probed BEFORE the server-side rotation fix
+// (parseFfprobeStreams, server.js) can have stored dims that are the CODED
+// (pre-rotation) dims -- landscape-shaped when the video actually displays
+// portrait, or vice versa. The `POST /api/videos/:id/dimensions` endpoint's
+// no-clobber stays strict (an item that already carries both `width` and
+// `height` is never overwritten by a later POST, no exception here) -- this
+// helper instead drives a client-side-ONLY visual correction
+// (`applyMediaAspect` re-run from the browser's own, already
+// rotation-corrected `videoWidth`/`videoHeight`) so at least the CURRENT
+// session's box is right, while new scans get it right from the start via
+// `parseFfprobeStreams`' own rotation handling. A merely-equal orientation
+// (both landscape, both portrait, or either side missing/invalid) is never
+// a "mismatch" -- `computeMediaAspectRatio`'s own validity gate is reused so
+// invalid input on either side can never trigger a spurious heal.
+function mediaAspectOrientationMismatch(storedWidth, storedHeight, browserWidth, browserHeight) {
+  if (!computeMediaAspectRatio(storedWidth, storedHeight)) return false;
+  if (!computeMediaAspectRatio(browserWidth, browserHeight)) return false;
+  return isPortraitMediaAspect(storedWidth, storedHeight) !== isPortraitMediaAspect(browserWidth, browserHeight);
+}
+
+// ---- Feature B (v1.26.1): AUDIO-mode caption overlay pure helpers ---------
+// iOS can't paint native <track> cues over the cover-art layer in audio
+// mode (see #audio-bg-art, style.css), so that mode renders captions via a
+// custom overlay built from `cuechange` instead. Strips simple VTT markup
+// (`<v Name>`, `<i>`/`</i>`, `<b>`/`</b>`, `<c.class>`, timestamp tags, etc.
+// -- any `<...>` span) out of a single cue's raw `.text`: WebVTT allows that
+// markup to style NATIVE rendering, but this overlay renders via
+// `textContent` only (never innerHTML, matching this codebase's XSS-
+// hardening convention elsewhere), so the tags must be stripped rather than
+// interpreted. A plain, conservative `<[^>]*>` strip; anything that doesn't
+// look like a tag is left completely alone.
+//
+// KNOWN LIMITATION (QA, v1.26.1 two-reviewer gate): this regex has no way to
+// distinguish real VTT markup from a literal `<...>`-shaped span that
+// happens to appear in a caption's actual spoken/subtitled text (e.g. a cue
+// reading `The result was <3 seconds` or `Use the <Enter> key`) -- both are
+// stripped identically, over-stripping the latter. Accepted trade-off: VTT
+// markup stripping is the common case this overlay exists for, and a false
+// positive here only ever affects the AUDIO-mode custom overlay's display
+// text (never the underlying TextTrack cue data, never native `<track>`
+// rendering for video, which is unaffected by this function entirely). Not
+// fixed -- a real fix needs a proper (or at least tag-name-allowlisted) VTT
+// cue-text parser, which is out of scope for this overlay.
+function stripVttCueTags(text) {
+  if (typeof text !== 'string') return '';
+  return text.replace(/<[^>]*>/g, '');
+}
+
+// Joins the SIMULTANEOUSLY active cues' (raw, un-stripped) text into the
+// overlay's displayed string, one cue per line -- WebVTT allows more than
+// one cue to be active at once (e.g. overlapping speaker lines). Each cue's
+// own text is tag-stripped and trimmed first; empty/whitespace-only entries
+// are dropped so a stray empty active cue never renders a blank pill.
+// Returns `''` (never `null`/`undefined`) when nothing is left to show --
+// callers treat `''` as "hide the overlay". Pure/DOM-free: takes an array of
+// raw strings (already pulled off `TextTrack.activeCues[i].text` by the
+// live caller) rather than real `VTTCue`/`TextTrackCueList` objects, so it's
+// directly `node:test`-able with no browser cue objects required.
+function buildCaptionOverlayText(rawCueTexts) {
+  var list = Array.isArray(rawCueTexts) ? rawCueTexts : [];
+  var lines = list
+    .map(stripVttCueTags)
+    .map(function (s) { return s.trim(); })
+    .filter(function (s) { return s.length > 0; });
+  return lines.join('\n');
+}
+
 // Guarded so requiring this file in Node (for unit tests) never touches
 // `window`/`document` -- mirrors common.js's own `if (typeof window ...)`
 // runtime guard immediately below.
@@ -572,6 +671,11 @@ if (typeof module !== 'undefined' && module.exports) {
     nextPlaybackRate,
     shouldDesktopVideoTapToggle,
     resolveFsButtonAction,
+    computeMediaAspectRatio,
+    isPortraitMediaAspect,
+    mediaAspectOrientationMismatch,
+    stripVttCueTags,
+    buildCaptionOverlayText,
   };
 }
 
@@ -613,6 +717,17 @@ if (typeof module !== 'undefined' && module.exports) {
   // custom bar above, so they ride the reparented host across FULL/DOCKED/
   // CLOSED exactly like #pip-btn/#speed-btn.
   var ccBtn, ccTrack;
+
+  // Feature B (v1.26.1): the AUDIO-mode custom caption overlay -- created
+  // once in ensureHost() (never touches the shared player-host-template
+  // markup, so all 5 shells stay untouched) and appended inside `host`
+  // alongside the elements above, so it rides the reparented host exactly
+  // like everything else. `audioCaptionsOn` is this controller's own
+  // "is the user's CC toggle currently ON, for the CURRENT audio item"
+  // flag -- reset on every teardown (see teardownMediaState) and whenever
+  // the button itself is clicked off.
+  var ccOverlayEl, ccOverlayTextEl;
+  var audioCaptionsOn = false;
 
   var dockCloseBtn = null;
   var dockChromeReady = false;
@@ -837,8 +952,80 @@ if (typeof module !== 'undefined' && module.exports) {
     ccBtn = host.querySelector('#cc-btn');
     ccTrack = host.querySelector('#cc-track');
     artPlayGlyph = host.querySelector('#art-play-glyph');
+    // Feature B (v1.26.1): built in JS (never touches the shared
+    // player-host-template markup, so all 5 shells stay byte-identical) --
+    // appended once, directly inside `host`, so its CSS (`.cc-overlay`,
+    // style.css) can position it purely off the SAME `#player-wrapper`
+    // ancestor every other in-host overlay/layer already uses. Starts
+    // `hidden` (native attribute -- matches `renderActiveCueOverlay`'s own
+    // hide path) with an empty inner text node; VIDEO mode never shows this
+    // (see the `#cc-btn` click handler and the `cuechange` listener below,
+    // both gated on `currentData.type === 'audio'`).
+    ccOverlayEl = document.createElement('div');
+    ccOverlayEl.className = 'cc-overlay';
+    ccOverlayEl.hidden = true;
+    ccOverlayTextEl = document.createElement('div');
+    ccOverlayTextEl.className = 'cc-overlay-text';
+    ccOverlayEl.appendChild(ccOverlayTextEl);
+    host.appendChild(ccOverlayEl);
     wireHostListeners();
     return host;
+  }
+
+  // ---- Feature A (v1.26.1): reserved-aspect DOM wrapper ----------------------
+  // Sets (or clears) the `--media-aspect` custom property + the
+  // `.portrait-media` marker class on `host` -- style.css's
+  // `#player-wrapper:not(.audio-expanded) #media-player { aspect-ratio:
+  // var(--media-aspect, 16 / 9); }` (and the mobile-portrait height clamp)
+  // consume it. Called from TWO places: `setupForMedia()` BEFORE `src` is
+  // assigned (server-known dims -- the box reserves the right space from the
+  // very first paint, no jump at all) and the `loadedmetadata` no-data
+  // fallback below (a legacy item with no stored dims yet -- one early
+  // settle instead of a late jump). `width`/`height` of `null`/`undefined`
+  // (or any invalid value -- `computeMediaAspectRatio` degrades safely)
+  // clears back to the CSS default, which is exactly what teardown wants.
+  function applyMediaAspect(width, height) {
+    if (!host) return;
+    var ratio = computeMediaAspectRatio(width, height);
+    if (ratio) {
+      host.style.setProperty('--media-aspect', ratio);
+      host.classList.toggle('portrait-media', isPortraitMediaAspect(width, height));
+    } else {
+      host.style.removeProperty('--media-aspect');
+      host.classList.remove('portrait-media');
+    }
+  }
+
+  // ---- Feature B (v1.26.1): AUDIO-mode caption overlay DOM wrappers ----------
+  // Renders (or hides) the overlay from a TextTrack's CURRENTLY active cues.
+  // `track` is `ccTrack.track` (the live TextTrack) -- reads
+  // `track.activeCues` fresh on every call (never cached), same discipline
+  // as the existing `#cc-btn` click handler's own live `textTracks[0]` read.
+  function renderActiveCueOverlay(track) {
+    if (!ccOverlayEl || !ccOverlayTextEl) return;
+    var rawTexts = [];
+    var cues = track && track.activeCues;
+    if (cues) {
+      for (var i = 0; i < cues.length; i++) {
+        if (cues[i] && typeof cues[i].text === 'string') rawTexts.push(cues[i].text);
+      }
+    }
+    var text = buildCaptionOverlayText(rawTexts);
+    if (text) {
+      ccOverlayTextEl.textContent = text;
+      ccOverlayEl.hidden = false;
+    } else {
+      ccOverlayTextEl.textContent = '';
+      ccOverlayEl.hidden = true;
+    }
+  }
+
+  // Force-hides the overlay + clears its text -- called whenever captions
+  // are toggled OFF and on every teardown, so a previous item's (or a
+  // just-disabled) caption text never lingers visible.
+  function hideCaptionOverlay() {
+    if (ccOverlayTextEl) ccOverlayTextEl.textContent = '';
+    if (ccOverlayEl) ccOverlayEl.hidden = true;
   }
 
   // ---- Media Session ("Now Playing" control surface) -------------------------
@@ -2149,6 +2336,15 @@ if (typeof module !== 'undefined' && module.exports) {
         mediaPlayer.play().catch(function () {});
       }
     });
+    // Feature A (v1.26.1, Shorts player-size jump)'s no-data fallback + lazy
+    // per-item dimensions backfill, and F2's same-session orientation
+    // self-heal, used to be wired ONCE here, reading `currentData`/
+    // `currentId` LIVE on every fire. Moved into `setupForMedia` (F4,
+    // two-reviewer follow-up) -- see that function's own comment for why:
+    // a fast prev/next could let a PREVIOUS item's late 'loadedmetadata'
+    // resolve after `currentData`/`currentId` had already moved on to the
+    // NEXT item, POSTing the previous item's dimensions under the next
+    // item's id.
     mediaPlayer.addEventListener('loadedmetadata', function () { updatePositionState(true); });
     mediaPlayer.addEventListener('durationchange', function () { updatePositionState(true); });
     mediaPlayer.addEventListener('seeked', function () { updatePositionState(true); });
@@ -2348,14 +2544,53 @@ if (typeof module !== 'undefined' && module.exports) {
     // TextTrack object -- read fresh on every click (rather than cached
     // once) since `mediaPlayer.load()` (called by `teardownMediaState()` on
     // every genuine new load) can invalidate a previously-held reference.
+    //
+    // Feature B (v1.26.1): AUDIO gets its OWN branch here -- the existing
+    // 'showing'/'hidden' toggle below is VIDEO-only and completely
+    // untouched. For audio, native cue rendering never shows on iOS (the
+    // <video> is transparent/pointer-events:none over #audio-bg-art in
+    // audio mode, see that class's own comment in style.css), so the track
+    // is NEVER set to 'showing' -- it toggles between 'disabled' (CC off;
+    // matches teardownMediaState()'s reset default, no cuechange events)
+    // and 'hidden' (CC on; cuechange fires, but only the CUSTOM overlay --
+    // wired once via the 'cuechange' listener just below -- ever renders
+    // it). `audioCaptionsOn` is this controller's own on/off flag for the
+    // overlay, independent of `track.mode` string.
     if (ccBtn) {
       ccBtn.addEventListener('click', function () {
         if (!mediaPlayer || !mediaPlayer.textTracks || !mediaPlayer.textTracks[0]) return;
         var track = mediaPlayer.textTracks[0];
-        var showing = track.mode === 'showing';
-        track.mode = showing ? 'hidden' : 'showing';
-        ccBtn.classList.toggle('active', !showing);
-        ccBtn.setAttribute('aria-pressed', showing ? 'false' : 'true');
+        var isAudio = !!(currentData && currentData.type === 'audio');
+        if (isAudio) {
+          audioCaptionsOn = !audioCaptionsOn;
+          track.mode = audioCaptionsOn ? 'hidden' : 'disabled';
+          ccBtn.classList.toggle('active', audioCaptionsOn);
+          ccBtn.setAttribute('aria-pressed', audioCaptionsOn ? 'true' : 'false');
+          if (audioCaptionsOn) renderActiveCueOverlay(track);
+          else hideCaptionOverlay();
+        } else {
+          var showing = track.mode === 'showing';
+          track.mode = showing ? 'hidden' : 'showing';
+          ccBtn.classList.toggle('active', !showing);
+          ccBtn.setAttribute('aria-pressed', showing ? 'false' : 'true');
+        }
+      });
+    }
+
+    // Feature B (v1.26.1): the overlay's data source -- wired ONCE, directly
+    // on the persistent `<track>` element's TextTrack object (`ccTrack`
+    // itself is never re-created; only its `src` changes per load, see
+    // setupForMedia() below), exactly like every other one-time listener in
+    // this function. `cuechange` fires for BOTH 'hidden' and 'showing'
+    // track modes (per the WebVTT spec), so VIDEO's own 'hidden' <->
+    // 'showing' toggle above would ALSO reach this handler -- the
+    // `currentData.type === 'audio'` guard is what keeps VIDEO mode
+    // completely untouched (native rendering only, exactly as before this
+    // feature).
+    if (ccTrack && ccTrack.track) {
+      ccTrack.track.addEventListener('cuechange', function () {
+        if (!currentData || currentData.type !== 'audio') return;
+        renderActiveCueOverlay(ccTrack.track);
       });
     }
 
@@ -2594,6 +2829,19 @@ if (typeof module !== 'undefined' && module.exports) {
     // fresh, mirroring how `mediaPlayer.src` itself is handled just below.
     if (ccBtn) { ccBtn.style.display = 'none'; ccBtn.classList.remove('active'); ccBtn.setAttribute('aria-pressed', 'false'); }
     if (ccTrack && ccTrack.track) ccTrack.track.mode = 'disabled';
+    // Feature B (v1.26.1): the outgoing media's caption overlay must never
+    // bleed into the next item -- reset the on/off flag and force-hide/clear
+    // the overlay itself (mirrors the CC button reset just above).
+    audioCaptionsOn = false;
+    hideCaptionOverlay();
+    // Feature A (v1.26.1, Shorts player-size jump): clear the reserved
+    // aspect + portrait marker for the OUTGOING media -- a previous
+    // portrait item's `--media-aspect`/`.portrait-media` must never leak
+    // into the next load before setupForMedia() (below) re-derives it (or,
+    // for a legacy no-data item, before the loadedmetadata fallback settles
+    // it). `applyMediaAspect(null, null)` clears back to the CSS default
+    // (16:9) via `computeMediaAspectRatio`'s degrade-safe `null` return.
+    applyMediaAspect(null, null);
     if (host) host.classList.remove('audio-mode');
     exitAudioExpand(); // FR-1 (T1, v1.22.2, AC5): every genuine new load force-clears any expanded state left over from the previous media
     // FR-1 (T1, v1.22.0): belt-and-suspenders -- `mountInSlot()` (called a
@@ -2649,6 +2897,72 @@ if (typeof module !== 'undefined' && module.exports) {
     // other than 'disabled' or the user later shows it via #cc-btn).
     if (ccTrack) ccTrack.src = '/api/subtitles/' + id;
     if (ccBtn) ccBtn.style.display = data && data.hasSubtitles ? '' : 'none';
+
+    // Feature A (v1.26.1, Shorts player-size jump): reserve the box's REAL
+    // aspect-ratio, from server-known `data.width`/`data.height` (GET
+    // /api/videos/:id), BEFORE `src` is assigned below -- so the box is
+    // sized correctly on the very first paint, rather than jumping ~1s
+    // later once the browser decodes the video's own intrinsic dimensions.
+    // Audio is deliberately untouched (teardownMediaState() already cleared
+    // `--media-aspect` back to the CSS 16:9 default for it, and stays
+    // cleared here). A legacy item with no stored dims yet simply clears
+    // right back to that same 16:9 default (`applyMediaAspect` degrades
+    // safely on missing/invalid input) -- the `loadedmetadata` fallback
+    // listener (below) settles it as soon as the real dims are known, and
+    // lazily backfills them server-side for next time.
+    if (data.type !== 'audio') applyMediaAspect(data.width, data.height);
+
+    // Feature A (v1.26.1)'s no-data fallback + lazy per-item dimensions
+    // backfill, PLUS F2's same-session orientation self-heal (both
+    // two-reviewer follow-ups). Wired FRESH on every real load (`{ once:
+    // true }`), closing over THIS load's own `id`/`data`/`gen` -- was
+    // previously wired ONCE in wireHostListeners, reading `currentData`/
+    // `currentId` LIVE on every fire. F4: that live read was a race -- a
+    // fast prev/next could let THIS item's late 'loadedmetadata' resolve
+    // AFTER a newer load() had already reassigned `currentId`/`currentData`
+    // to a different item, POSTing (and visually applying) THIS item's
+    // dimensions under the NEWER item's id. `gen` is captured here, at
+    // listener-arm time, and re-checked live inside the callback -- same
+    // loadGeneration pattern `pollTranscodeUntilReady` (above) already uses
+    // for its own poll chain: if a newer load has since bumped
+    // loadGeneration, this callback belongs to a now-superseded load and
+    // bails before touching anything (the POST, and -- just as importantly
+    // -- the `applyMediaAspect` call that would otherwise stomp the NEWER
+    // item's already-correct aspect box with this stale one's dims).
+    if (data.type !== 'audio') {
+      mediaPlayer.addEventListener('loadedmetadata', function () {
+        if (gen !== loadGeneration) return; // a newer load has since started -- this metadata belongs to a superseded item
+        var vw = mediaPlayer.videoWidth;
+        var vh = mediaPlayer.videoHeight;
+        if (!vw || !vh) return;
+        if (data.width && data.height) {
+          // F2 (two-reviewer follow-up, "simpler option" -- see
+          // mediaAspectOrientationMismatch's own comment for why): stored
+          // dims are already present, so the endpoint's strict no-clobber
+          // means POSTing here would always no-op -- skip the network call
+          // entirely. But a rotation-flagged legacy item (probed before the
+          // server-side rotation fix, server.js's parseFfprobeStreams) can
+          // have ORIENTATION-WRONG stored dims; when the browser's real,
+          // already rotation-corrected videoWidth/videoHeight disagree in
+          // portrait-vs-landscape with what's stored, re-apply from the
+          // browser's dims so at least THIS session's box is correct.
+          if (mediaAspectOrientationMismatch(data.width, data.height, vw, vh)) {
+            applyMediaAspect(vw, vh);
+          }
+          return;
+        }
+        applyMediaAspect(vw, vh); // one early settle instead of a late jump, for THIS play
+        // Fire-and-forget: the SECOND play of this legacy item is jump-free
+        // once this lands (setupForMedia will find data.width/height next
+        // time via GET /api/videos/:id). Never blocks/affects playback
+        // either way -- a failed/rejected POST is silently swallowed.
+        fetch('/api/videos/' + encodeURIComponent(id) + '/dimensions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ width: vw, height: vh }),
+        }).catch(function () {});
+      }, { once: true });
+    }
 
     if (data.type === 'audio') {
       mediaPlayer.style.display = 'block';
@@ -2795,6 +3109,14 @@ if (typeof module !== 'undefined' && module.exports) {
     // CLOSED) but leaves nothing stale on the detached host.
     if (mediaPlayer) mediaPlayer.removeAttribute('controls');
     if (host) host.classList.remove('native-controls');
+    // Feature A/B (v1.26.1) hygiene, mirroring FIX D just above: benign today
+    // (the next load()'s teardownMediaState() already clears both before
+    // re-mount, since close() always resets `currentId` to null, forcing a
+    // genuine non-adopt load next time) but leaves nothing stale on the
+    // detached host.
+    applyMediaAspect(null, null);
+    audioCaptionsOn = false;
+    hideCaptionOverlay();
     if (mediaPlayer) {
       try {
         mediaPlayer.pause();
