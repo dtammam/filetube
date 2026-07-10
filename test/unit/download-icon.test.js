@@ -49,7 +49,11 @@ test('style.css: [data-icons="filled"] wires .icon-download to filled/download.s
 });
 
 test('style.css: [data-icons="emoji"] neutralizes the .icon-download mask (no solid box) and supplies an emoji ::before', () => {
-  const neutralizeMatch = /\[data-icons="emoji"\] \.icon-home,[\s\S]*?\.icon-download\s*\{([\s\S]*?)\}/.exec(css);
+  // NOTE: v1.25.4 appended `.icon-shuffle` to this same selector group
+  // (see shuffle-rescan-icon.test.js) -- `.icon-download,` may now be
+  // followed by one more selector line before the opening `{`, so the
+  // pattern allows (but does not require) that.
+  const neutralizeMatch = /\[data-icons="emoji"\] \.icon-home,[\s\S]*?\.icon-download,?[\s\S]{0,80}?\{([\s\S]*?)\}/.exec(css);
   assert.ok(neutralizeMatch, 'expected .icon-download to be listed in the emoji neutralize group');
   assert.match(neutralizeMatch[1], /mask-image:\s*none/);
   assert.match(neutralizeMatch[1], /background-color:\s*transparent/);

@@ -44,6 +44,48 @@ test('main.js: rescanBtn re-renders keep .icon-refresh (never re-render the shuf
   }
 });
 
-test('style.css: .icon-shuffle is defined as a fixed unicode glyph, independent of the icon-set system (mirrors .icon-download/.icon-star)', () => {
-  assert.match(css, /\.icon-shuffle::before\s*\{\s*content:\s*"\\1F500";?\s*\}/);
+// v1.25.4 fix: .icon-shuffle previously rendered as a fixed ::before unicode
+// glyph (U+1F500 🔀) OUTSIDE the icon-set system -- unlike every other
+// .icon-* glyph (a real SVG mask painted in currentColor), which meant
+// Shuffle showed a raw colored emoji even in non-emoji/modern icon-set
+// themes (Rescan's .icon-refresh, right next to it, rendered correctly).
+// .icon-shuffle now joins the same mask-image/currentColor mechanism as
+// .icon-download (see style.css's chrome-icon block + icon-set-axis
+// section), so it themes across every era x mode x icon-set combo. The
+// emoji icon-set is UNCHANGED -- it still renders U+1F500 there on purpose.
+test('style.css: .icon-shuffle is a real SVG mask (currentColor), not a fixed unicode ::before glyph', () => {
+  assert.match(css, /\.icon-shuffle\s*\{[^}]*mask-image:\s*url\(\/assets\/icons\/shuffle\.svg\)/);
+  // The OLD unscoped ::before rule must be gone -- that was the actual bug
+  // (it fired in every icon-set, including non-emoji ones).
+  assert.doesNotMatch(css, /^\.icon-shuffle::before/m);
+});
+
+test('style.css: .icon-shuffle is included in the base chrome-icon group (sizing) and the @supports currentColor fill guard', () => {
+  const chromeGroupMatch = /\.icon-home,[\s\S]*?\.icon-download,\s*\.icon-shuffle\s*\{[\s\S]*?mask-repeat:\s*no-repeat;[\s\S]*?\}/.exec(css);
+  assert.ok(chromeGroupMatch, 'expected .icon-shuffle in the shared chrome-icon sizing/mask-repeat group');
+
+  const supportsMatch = /@supports[\s\S]*?\.icon-download,\s*\.icon-shuffle\s*\{\s*background-color:\s*currentColor;/.exec(css);
+  assert.ok(supportsMatch, 'expected .icon-shuffle in the @supports currentColor fill guard');
+});
+
+test('style.css: .icon-shuffle gets a themed mask in the rounded and filled icon sets too', () => {
+  assert.match(css, /\[data-icons="rounded"\]\s*\.icon-shuffle\s*\{[^}]*mask-image:\s*url\(\/assets\/icons\/rounded\/shuffle\.svg\)/);
+  assert.match(css, /\[data-icons="filled"\]\s*\.icon-shuffle\s*\{[^}]*mask-image:\s*url\(\/assets\/icons\/filled\/shuffle\.svg\)/);
+});
+
+test('style.css: the emoji icon-set is unchanged -- .icon-shuffle still renders U+1F500 ONLY under [data-icons="emoji"]', () => {
+  assert.match(css, /\[data-icons="emoji"\]\s*\.icon-shuffle::before\s*\{\s*content:\s*"\\1F500";?\s*\}/);
+  // And the emoji-set group neutralizes the mask (same treatment as every
+  // other icon-set glyph), so no solid currentColor box renders behind it.
+  const emojiNeutralizeMatch = /\[data-icons="emoji"\][\s\S]*?\.icon-shuffle\s*\{\s*-webkit-mask-image:\s*none;/.exec(css);
+  assert.ok(emojiNeutralizeMatch, 'expected .icon-shuffle in the emoji-set mask-neutralize group');
+});
+
+test('assets: shuffle.svg is bundled for all three vector icon sets (outlined/rounded/filled)', () => {
+  const outlined = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'assets', 'icons', 'shuffle.svg'), 'utf8');
+  const rounded = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'assets', 'icons', 'rounded', 'shuffle.svg'), 'utf8');
+  const filled = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'assets', 'icons', 'filled', 'shuffle.svg'), 'utf8');
+  for (const svg of [outlined, rounded, filled]) {
+    assert.ok(svg.includes('<svg'), 'expected a valid <svg> document');
+  }
 });

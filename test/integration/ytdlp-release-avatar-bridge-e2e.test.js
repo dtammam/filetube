@@ -1,16 +1,30 @@
 'use strict';
 
-// [INTEGRATION] v1.24.0 C5-ytdlp/C6 (T11 completion, Wave 3 gap-fix): proves
+// [INTEGRATION] v1.24.0 C5-ytdlp (T11 completion, Wave 3 gap-fix): proves
 // the FULL, REAL chain -- yt-dlp `--print` line -> `run.parseChannelMetaLine`
 // -> `store.sanitizeCapturedChannelMeta`/`recordDownloadChannelMeta` ->
 // (scan) `store.consumeDownloadChannelMeta` -> server.js's REAL Phase-2 scan
-// mutator -> `db.metadata[id].releaseDate`/`channelAvatarUrl` -- actually
-// produces a populated field. UNLIKE the earlier T11 integration test
+// mutator -> `db.metadata[id].releaseDate` -- actually produces a populated
+// field. UNLIKE the earlier T11 integration test
 // (test/integration/ytdlp-channel-avatar-release-capture.test.js), NOTHING
 // here is mocked: `run.parseChannelMetaLine` is called against a real
 // FTCHMETA JSON payload (the exact shape `args.CHANNEL_META_PRINT_TEMPLATE`
 // produces), and `scanDirectories()` is the real server.js scan, not a
 // re-implementation.
+//
+// v1.25 QoL bugfix: the original C6 half of this file's name/history --
+// `channel_thumbnail` per-video capture -- was REMOVED. Verified against a
+// live yt-dlp (2026.07.04) `--dump-json` for an actual video: that field
+// simply does not exist on a per-video info dict, so it was always a dead
+// no-op (rendered JSON `null` every time) and `channelAvatarUrl` was NEVER
+// actually captured through this per-video print line, for any video, ever.
+// The tests below now regression-lock that this path stays dead (even a
+// rogue/legacy `channel_thumbnail` key on the raw line is ignored) and prove
+// releaseDate alone still flows end-to-end. A REAL channel avatar now comes
+// from `run.probeChannelAvatar` (the channel endpoint) -- see
+// test/integration/ytdlp-spawn-security.test.js for its own tests, and
+// Path 2 below for how a subscription's own captured avatar (however it got
+// there) still heals onto an identity-less item at scan time.
 //
 // Also covers Path 2 (the retroactive, folder-based backfill) picking up a
 // matched subscription's OWN `channelAvatarUrl` onto an identity-less item.
@@ -54,12 +68,14 @@ function ytdlpDeps() {
   return { updateDatabase, getMediaId };
 }
 
-test('a REAL FTCHMETA line, parsed by the REAL parseChannelMetaLine, flows all the way to db.metadata[id].releaseDate + channelAvatarUrl via the real scan bridge (Path 1)', async () => {
+test('a REAL FTCHMETA line, parsed by the REAL parseChannelMetaLine, flows all the way to db.metadata[id].releaseDate via the real scan bridge (Path 1) -- no channel_thumbnail key at all, matching a real yt-dlp payload', async () => {
   process.env.FILETUBE_YTDLP_ENABLED = 'true';
   process.env.FILETUBE_YTDLP_DOWNLOAD_DIR = downloadDir;
   try {
     // The exact FTCHMETA line shape args.CHANNEL_META_PRINT_TEMPLATE's
-    // `--print` selector produces, straight off yt-dlp's own stdout.
+    // `--print` selector produces, straight off yt-dlp's own stdout -- no
+    // `channel_thumbnail` key, since that field was verified to never exist
+    // on a real per-video info dict and the template no longer selects it.
     const line = `FTCHMETA ${JSON.stringify({
       id: 'e2eVideoId1',
       channel_url: 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw',
@@ -68,14 +84,13 @@ test('a REAL FTCHMETA line, parsed by the REAL parseChannelMetaLine, flows all t
       channel: 'Real Channel',
       upload_date: '20230101',
       release_date: '20230615',
-      channel_thumbnail: 'https://yt3.ggpht.com/real-avatar.jpg',
     })}`;
 
     // Step 1: the REAL parser (not a hand-built object).
     const rawMeta = run.parseChannelMetaLine(line);
     assert.ok(rawMeta, 'sanity: the FTCHMETA line must parse');
     assert.equal(rawMeta.releaseDate, '20230615');
-    assert.equal(rawMeta.channelThumbnail, 'https://yt3.ggpht.com/real-avatar.jpg');
+    assert.equal(Object.prototype.hasOwnProperty.call(rawMeta, 'channelThumbnail'), false, 'channelThumbnail must not exist on the parsed object at all -- the dead field is fully removed');
 
     // Step 2: the REAL sanitize+persist path (what index.js's
     // persistCapturedChannelMeta calls per captured entry).
@@ -96,7 +111,7 @@ test('a REAL FTCHMETA line, parsed by the REAL parseChannelMetaLine, flows all t
     const item = db.metadata[id];
     assert.ok(item, 'sanity: the file must be indexed');
     assert.equal(item.releaseDate, Date.UTC(2023, 5, 15), 'C5-ytdlp: the captured release_date must land on db.metadata[id].releaseDate as epoch ms');
-    assert.equal(item.channelAvatarUrl, 'https://yt3.ggpht.com/real-avatar.jpg', 'C6: the captured channel_thumbnail must land on db.metadata[id].channelAvatarUrl');
+    assert.equal(item.channelAvatarUrl, undefined, 'v1.25 QoL bugfix: the per-video path never populates channelAvatarUrl -- a real avatar comes from probeChannelAvatar/the subscription-level bridge instead');
 
     // Consumed -- the map entry must no longer exist after the scan indexed it.
     const ns = store.ensureYtdlp(loadDatabase());
@@ -107,7 +122,7 @@ test('a REAL FTCHMETA line, parsed by the REAL parseChannelMetaLine, flows all t
   }
 });
 
-test('a REAL FTCHMETA line with a HOSTILE channel_thumbnail (javascript: scheme) never reaches db.metadata[id].channelAvatarUrl, though releaseDate still lands', async () => {
+test('regression lock: even a ROGUE channel_thumbnail key on a raw FTCHMETA line (a legacy/forged payload the real template no longer produces) is ignored by parseChannelMetaLine and never reaches db.metadata[id].channelAvatarUrl, though releaseDate still lands', async () => {
   process.env.FILETUBE_YTDLP_ENABLED = 'true';
   process.env.FILETUBE_YTDLP_DOWNLOAD_DIR = downloadDir;
   try {
@@ -122,6 +137,7 @@ test('a REAL FTCHMETA line with a HOSTILE channel_thumbnail (javascript: scheme)
     })}`;
 
     const rawMeta = run.parseChannelMetaLine(line);
+    assert.equal(Object.prototype.hasOwnProperty.call(rawMeta, 'channelThumbnail'), false, 'a rogue channel_thumbnail key must never be surfaced, hostile or not');
     const recorded = await store.recordDownloadChannelMeta(ytdlpDeps(), rawMeta);
     assert.equal(recorded, true);
 
@@ -134,8 +150,8 @@ test('a REAL FTCHMETA line with a HOSTILE channel_thumbnail (javascript: scheme)
     const db = loadDatabase();
     const item = db.metadata[id];
     assert.ok(item, 'sanity: the file must be indexed');
-    assert.equal(item.releaseDate, Date.UTC(2023, 5, 15), 'a hostile avatar must not block the (independently validated) releaseDate from landing');
-    assert.equal(item.channelAvatarUrl, undefined, 'a hostile channel_thumbnail must never reach db.metadata, even through the full real-parser chain');
+    assert.equal(item.releaseDate, Date.UTC(2023, 5, 15), 'releaseDate must still land, independent of the dropped avatar field');
+    assert.equal(item.channelAvatarUrl, undefined, 'a rogue channel_thumbnail must never reach db.metadata, even through the full real-parser chain');
   } finally {
     delete process.env.FILETUBE_YTDLP_ENABLED;
     delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;

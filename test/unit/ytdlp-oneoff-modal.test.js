@@ -35,6 +35,9 @@ const {
   ONEOFF_FILETYPE_OPTIONS,
   ONEOFF_DEFAULT_FILETYPE,
   ONEOFF_STATUS_POLL_MS,
+  decideOneOffTerminalAction,
+  applyOneOffTerminalAction,
+  triggerLibraryRescanAndRefresh,
 } = require('../../public/js/common.js');
 
 // ---- Minimal fake DOM (test-only, mirrors ytdlp-subscriptions-client.test.js) --
@@ -266,6 +269,70 @@ test('formatOneOffStatusText: a hostile error/title string is returned VERBATIM 
   assert.ok(result.startsWith(hostileTitle), 'the hostile title must survive verbatim, unescaped/unparsed, as plain text');
 });
 
+// ---- BUG 1 fix: honest phase label instead of a stalled "0%" ---------------
+// yt-dlp's extraction/nsig/format-negotiation and ffmpeg-merge/postprocess
+// phases emit NO percent line at all -- only the short byte-transfer phase
+// ever does -- so `entry.percent` sits at its initial `0` for almost the
+// whole job. Rendering "— 0%" that whole time reads as "stalled". This
+// section covers the phase-aware indeterminate label that replaces it.
+
+test('formatOneOffStatusText: downloading with percent 0 and nothing else yet renders "Preparing…", never "— 0%"', () => {
+  const result = formatOneOffStatusText({ state: 'downloading', percent: 0 });
+  assert.strictEqual(result, 'Preparing…');
+});
+
+test('formatOneOffStatusText: downloading with no percent field at all (absent, not just 0) also renders "Preparing…"', () => {
+  const result = formatOneOffStatusText({ state: 'downloading' });
+  assert.strictEqual(result, 'Preparing…');
+});
+
+test('formatOneOffStatusText: a videoId-only downloading entry (yt-dlp has picked the item, no title/percent yet) renders "Downloading…"', () => {
+  const result = formatOneOffStatusText({ state: 'downloading', videoId: 'dQw4w9WgXcQ', percent: 0 });
+  assert.strictEqual(result, 'Downloading…');
+});
+
+test('formatOneOffStatusText: a title-only downloading entry (Destination line arrived, still no real percent) renders "Downloading…"', () => {
+  const result = formatOneOffStatusText({ state: 'downloading', title: 'Some Title', percent: 0 });
+  assert.strictEqual(result, 'Downloading…');
+});
+
+test('formatOneOffStatusText: the indeterminate label keeps N of M indexing when present', () => {
+  const result = formatOneOffStatusText({ state: 'downloading', videoId: 'dQw4w9WgXcQ', index: 2, total: 5, percent: 0 });
+  assert.strictEqual(result, 'Downloading… — 2 of 5');
+});
+
+test('formatOneOffStatusText: a REAL transfer percent (> 0) still renders the numeric "— N%" form', () => {
+  assert.strictEqual(formatOneOffStatusText({ state: 'downloading', percent: 47 }), 'Downloading — 47%');
+  assert.strictEqual(
+    formatOneOffStatusText({ state: 'downloading', title: 'Some Title', index: 2, total: 5, percent: 47 }),
+    'Some Title — 2 of 5 — 47%'
+  );
+});
+
+test('formatOneOffStatusText: "done" still renders the short fixed "Done" message', () => {
+  assert.strictEqual(formatOneOffStatusText({ state: 'done' }), 'Done');
+});
+
+test('formatOneOffStatusText: never renders "undefined" or "NaN" for any downloading shape, real or malformed', () => {
+  const shapes = [
+    { state: 'downloading' },
+    { state: 'downloading', percent: 0 },
+    { state: 'downloading', percent: null },
+    { state: 'downloading', percent: NaN },
+    { state: 'downloading', percent: 'not a number' },
+    { state: 'downloading', videoId: 'dQw4w9WgXcQ' },
+    { state: 'downloading', title: '' },
+    { state: 'downloading', index: 2 }, // total missing -- no position
+    { state: 'downloading', percent: 47.6 },
+  ];
+  for (const entry of shapes) {
+    const result = formatOneOffStatusText(entry);
+    assert.strictEqual(typeof result, 'string', `expected a string for ${JSON.stringify(entry)}`);
+    assert.doesNotMatch(result, /undefined/, `no "undefined" in "${result}"`);
+    assert.doesNotMatch(result, /NaN/, `no "NaN" in "${result}"`);
+  }
+});
+
 // ---- buildOneOffModal: DOM construction -------------------------------------
 
 test('buildOneOffModal: builds the expected structure, starts hidden, with correct default select values', () => {
@@ -343,6 +410,24 @@ test('buildOneOffModal: the [x] close button calls onClose', () => {
   assert.strictEqual(closed, true);
 });
 
+// BUG 2 regression guard: the freeze this fixed left the modal showing
+// "Done" (or, in principle, a stuck "error") -- the X button must still
+// dismiss it either way, independent of whatever terminal status was last
+// rendered.
+test('buildOneOffModal: the [x] close button still dismisses after a "done" or "error" status was rendered (BUG 2 regression guard)', () => {
+  let closed = false;
+  const doneModal = buildOneOffModal(fakeDoc, { onClose: () => { closed = true; } });
+  doneModal.setStatus({ state: 'done' });
+  doneModal.closeBtn.click();
+  assert.strictEqual(closed, true, 'the X button must dismiss even after a terminal "done" status was rendered');
+
+  closed = false;
+  const errorModal = buildOneOffModal(fakeDoc, { onClose: () => { closed = true; } });
+  errorModal.setStatus({ state: 'error', error: 'boom' });
+  errorModal.closeBtn.click();
+  assert.strictEqual(closed, true, 'the X button must dismiss even after a terminal "error" status was rendered');
+});
+
 test('buildOneOffModal: clicking the backdrop itself calls onClose, but a click that bubbled from inside the modal does not', () => {
   let closeCalls = 0;
   const modal = buildOneOffModal(fakeDoc, { onClose: () => { closeCalls += 1; } });
@@ -383,6 +468,73 @@ test('buildOneOffModal: setStatus with no live entry clears the status line', ()
   assert.notStrictEqual(modal.statusEl.textContent, '');
   modal.setStatus(undefined);
   assert.strictEqual(modal.statusEl.textContent, '');
+});
+
+// ---- BUG 2 fix: 'done' no longer triggers a full-page reload ---------------
+// Root cause: `pollStatusOnce`'s terminal branch used to call
+// `triggerLibraryRescanAndRefresh()` (`POST /api/scan` -> a real
+// `window.location.reload()`) on 'done'. Under load, `POST /api/scan`
+// resolves near-instantly with a 409 (a scan is already running), so the
+// reload fired immediately -- and a `window.location.reload()` against an
+// already-saturated server could hang mid-navigation, freezing the whole
+// page (the "Done" modal stayed painted, its own already-scheduled
+// auto-close timer never fired, and even the [x] button went inert). The
+// server already rescans after `runOneShot` completes, so the client-side
+// rescan+reload was always redundant. `decideOneOffTerminalAction` no
+// longer requests a rescan on 'done' at all, and `applyOneOffTerminalAction`
+// (the small function `pollStatusOnce` now delegates to) runs the close
+// independently of any refresh work either way.
+
+test('decideOneOffTerminalAction: "done" no longer requests a rescan/reload (BUG 2 fix) -- still closes after a brief pause', () => {
+  const action = decideOneOffTerminalAction({ state: 'done' });
+  assert.strictEqual(action.close, true);
+  assert.ok(action.closeDelayMs > 0, 'the user should still see the "Done" status before the modal disappears');
+  assert.strictEqual(action.rescan, false, 'a rescan/reload must never be requested on "done" -- see BUG 2 fix');
+});
+
+test('decideOneOffTerminalAction: "error" still stays open and never rescans', () => {
+  const action = decideOneOffTerminalAction({ state: 'error', error: 'boom' });
+  assert.strictEqual(action.close, false);
+  assert.strictEqual(action.rescan, false);
+});
+
+test('applyOneOffTerminalAction: on a "done" action, the injected close runs but the injected refresh never does', () => {
+  const calls = [];
+  const action = decideOneOffTerminalAction({ state: 'done' });
+  applyOneOffTerminalAction(action, () => calls.push('close'), () => calls.push('refresh'), (fn) => fn());
+  assert.deepStrictEqual(calls, ['close'], 'refresh must never run on a "done" action -- only close');
+});
+
+test('applyOneOffTerminalAction: composed with triggerLibraryRescanAndRefresh as the refresh fn, the injected reloadFn is NEVER invoked on "done" (no full-page reload)', () => {
+  let reloaded = false;
+  const fakeFetch = () => Promise.resolve({ ok: true });
+  const action = decideOneOffTerminalAction({ state: 'done' });
+  applyOneOffTerminalAction(
+    action,
+    () => {},
+    () => triggerLibraryRescanAndRefresh(fakeFetch, () => { reloaded = true; }),
+    (fn) => fn()
+  );
+  assert.strictEqual(reloaded, false, 'a "done" action must never reach window.location.reload()');
+});
+
+test('applyOneOffTerminalAction: an "error" action (close: false) invokes neither close nor refresh', () => {
+  const calls = [];
+  const action = decideOneOffTerminalAction({ state: 'error', error: 'boom' });
+  applyOneOffTerminalAction(action, () => calls.push('close'), () => calls.push('refresh'), (fn) => fn());
+  assert.deepStrictEqual(calls, []);
+});
+
+test('applyOneOffTerminalAction: close is scheduled through the injected scheduleFn using action.closeDelayMs, not called eagerly', () => {
+  const scheduled = [];
+  const action = decideOneOffTerminalAction({ state: 'done' });
+  applyOneOffTerminalAction(action, () => {}, () => {}, (fn, delay) => scheduled.push(delay));
+  assert.deepStrictEqual(scheduled, [1200]);
+});
+
+test('applyOneOffTerminalAction: a null/undefined action is a safe no-op', () => {
+  assert.doesNotThrow(() => applyOneOffTerminalAction(null, () => { throw new Error('must not run'); }));
+  assert.doesNotThrow(() => applyOneOffTerminalAction(undefined, () => { throw new Error('must not run'); }));
 });
 
 // ---- Static-source regression guard: no innerHTML in the new builder -------

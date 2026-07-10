@@ -73,6 +73,11 @@ function flush() {
 }
 
 const WATCH_URL = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ';
+// v1.25 QoL bugfix regression lock: `channel_thumbnail` is included here
+// DELIBERATELY (a real per-video `--dump-json` never carries it, but a stray
+// caller/future extractor quirk might) to prove Pass A now ignores it
+// entirely -- see the "the dead channel_thumbnail field is now inert" tests
+// below.
 const VALID_META_JSON = {
   id: 'dQw4w9WgXcQ',
   channel_url: 'https://www.youtube.com/@SomeChannel',
@@ -332,7 +337,7 @@ test('repullItemMetaAndSubs: a mediaFilePath INSIDE the configured download root
 // `sanitizeCapturedChannelMeta` (which drops releaseDate too when no valid
 // channel URL survives -- unacceptable for a date-focused backfill). --------
 
-test('repullItemMetaAndSubs: a well-formed Pass A JSON produces releaseDate (epoch ms, release_date preferred over upload_date) and channelAvatarUrl', async () => {
+test('repullItemMetaAndSubs: a well-formed Pass A JSON produces releaseDate (epoch ms, release_date preferred over upload_date), and NEVER a channelAvatarUrl (the dead channel_thumbnail field is fully removed)', async () => {
   const root = makeDownloadRoot();
   const mediaFilePath = path.join(root, 'My Video [dQw4w9WgXcQ].mp4');
   fs.writeFileSync(mediaFilePath, 'not a real video');
@@ -349,7 +354,7 @@ test('repullItemMetaAndSubs: a well-formed Pass A JSON produces releaseDate (epo
   const result = await resultPromise;
 
   assert.equal(result.releaseDate, Date.UTC(2023, 0, 20), 'release_date must be preferred over upload_date');
-  assert.equal(result.channelAvatarUrl, 'https://yt3.googleusercontent.com/avatar.jpg');
+  assert.equal(Object.prototype.hasOwnProperty.call(result, 'channelAvatarUrl'), false, 'channelAvatarUrl must not exist on the result at all -- Pass A no longer derives it');
   assert.equal(result.wroteSubs, true);
 });
 
@@ -425,7 +430,7 @@ test('repullItemMetaAndSubs: release_date absent falls back to upload_date', asy
   assert.equal(result.releaseDate, Date.UTC(2022, 5, 5), 'upload_date must be used when release_date is absent');
 });
 
-test('repullItemMetaAndSubs: a valid channel_thumbnail produces channelAvatarUrl independent of the date fields', async () => {
+test('repullItemMetaAndSubs: a channel_thumbnail-only JSON (no date fields) is fully inert -- resolves null (nothing usable, Pass B also not run in this scenario)', async () => {
   const root = makeDownloadRoot();
   const mediaFilePath = path.join(root, 'My Video [dQw4w9WgXcQ].mp4');
   fs.writeFileSync(mediaFilePath, 'not a real video');
@@ -442,11 +447,10 @@ test('repullItemMetaAndSubs: a valid channel_thumbnail produces channelAvatarUrl
   passAChild.emit('close', 0, null);
   await flush();
   const passBChild = spawnChild(1);
-  passBChild.emit('close', 0, null);
+  passBChild.emit('close', 1, null); // Pass B also fails -- nothing usable from either pass
   const result = await resultPromise;
 
-  assert.equal(result.channelAvatarUrl, 'https://yt3.googleusercontent.com/avatar.jpg');
-  assert.equal(result.releaseDate, undefined, 'no date field was present -- releaseDate must be omitted');
+  assert.equal(result, null, 'channel_thumbnail must never produce a channelAvatarUrl -- with no date and a failed Pass B, nothing is usable');
 });
 
 test('repullItemMetaAndSubs: neither release_date nor upload_date present omits releaseDate (no throw)', async () => {
@@ -549,7 +553,7 @@ test('repullItemMetaAndSubs: Pass A ok + Pass B non-zero exit returns a partial 
 
   const result = await resultPromise;
   assert.equal(result.releaseDate, Date.UTC(2023, 0, 20));
-  assert.equal(result.channelAvatarUrl, 'https://yt3.googleusercontent.com/avatar.jpg');
+  assert.equal(Object.prototype.hasOwnProperty.call(result, 'channelAvatarUrl'), false, 'channelAvatarUrl must not exist on the result at all');
   assert.equal(result.wroteSubs, false);
 });
 

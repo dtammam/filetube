@@ -14,6 +14,8 @@ const EXPECTED = [
   'home', 'folder', 'settings', 'search', 'dark_mode', 'light_mode',
   'menu', 'play_arrow', 'delete', 'refresh', 'keyboard_arrow_up', 'keyboard_arrow_down',
   'download', // FR-7 (v1.17.0, T6): real download.svg mask, added across all 3 vector sets
+  'shuffle', // v1.25.4 fix: replaces the old fixed ::before emoji glyph with a
+             // real mask, added across all 3 vector sets (see README.md)
 ];
 
 // icon-sets extends the outlined set above with two more full 13-icon vector
@@ -26,6 +28,7 @@ const FILLED_EXPECTED = [
   'refresh', 'keyboard_arrow_up', 'keyboard_arrow_down',
   'wb_sunny', 'brightness_2', // substitutes for light_mode/dark_mode (see README.md)
   'download', // renamed from the source's file_download for cross-set filename parity (see README.md)
+  'shuffle', // v1.25.4 fix: real filled/shuffle.svg mask (see README.md)
 ];
 
 test('icon assets: all Material Symbol SVGs are bundled and valid', () => {
@@ -75,7 +78,7 @@ test('icon assets: no replaced chrome emoji remains in markup/JS', () => {
   // ::before content — see public/css/style.css's [data-icons="emoji"] block
   // and public/assets/icons/README.md. HTML/JS must still contain zero
   // literal emoji chars — only CSS may.
-  const CHROME = ['🌙', '☀️', '🔄', '▲', '▼', '☰', '🏠', '📁', '⚙', '🗑', '🔍'];
+  const CHROME = ['🌙', '☀️', '🔄', '▲', '▼', '☰', '🏠', '📁', '⚙', '🗑', '🔍', '🔀'];
   for (const f of ['index.html', 'setup.html', 'watch.html', 'js/common.js', 'js/main.js']) {
     const c = fs.readFileSync(path.join(PUB, f), 'utf8');
     for (const emoji of CHROME) {

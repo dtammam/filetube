@@ -1053,9 +1053,11 @@ test('buildYtdlpDownloadArgs: includes the fixed "--print after_move:FTCHMETA...
   assert.equal(result[idx + 1], args.CHANNEL_META_PRINT_TEMPLATE);
   assert.equal(
     result[idx + 1],
-    // v1.24.0 C5-ytdlp/C6 (T11): field-selector grew upload_date/release_date/
-    // channel_thumbnail -- still a fixed literal, still JSON-escaped/one-line-safe.
-    'after_move:FTCHMETA %(.{id,channel_url,channel_id,uploader_url,channel,upload_date,release_date,channel_thumbnail})j',
+    // v1.24.0 C5-ytdlp (T11): field-selector grew upload_date/release_date --
+    // still a fixed literal, still JSON-escaped/one-line-safe. v1.25 QoL
+    // bugfix: `channel_thumbnail` was REMOVED -- it never existed on a real
+    // per-video info dict (verified live), so it was always a dead no-op key.
+    'after_move:FTCHMETA %(.{id,channel_url,channel_id,uploader_url,channel,upload_date,release_date})j',
   );
 });
 
@@ -1117,28 +1119,32 @@ test('CHANNEL_META_PRINT_TEMPLATE / CHANNEL_META_SENTINEL are exported for reuse
   assert.ok(args.CHANNEL_META_PRINT_TEMPLATE.startsWith('after_move:'));
 });
 
-// ---- v1.24.0 C5-ytdlp/C6 (T11): upload_date/release_date/channel_thumbnail -
+// ---- v1.24.0 C5-ytdlp (T11): upload_date/release_date ----------------------
 //
-// The print-template field-selector grew three keys for release-date (C5)
-// and channel-avatar (C6) capture. These tests prove the addition stayed
-// inside the SAME fixed-literal, JSON-escaped `.{...}j` selector -- no new
-// `%(field)s`-style interpolation was introduced, and the ONLY `%(` in the
-// whole literal is the single, fixed field-selector construct itself.
+// The print-template field-selector grew two keys for release-date (C5)
+// capture. These tests prove the addition stayed inside the SAME
+// fixed-literal, JSON-escaped `.{...}j` selector -- no new `%(field)s`-style
+// interpolation was introduced, and the ONLY `%(` in the whole literal is
+// the single, fixed field-selector construct itself.
+//
+// v1.25 QoL bugfix regression lock: `channel_thumbnail` (the original C6
+// field, verified to never exist on a real per-video info dict) has been
+// REMOVED from the selector entirely -- these tests also prove it stays gone.
 
-test('CHANNEL_META_PRINT_TEMPLATE: the field-selector includes upload_date, release_date, and channel_thumbnail', () => {
+test('CHANNEL_META_PRINT_TEMPLATE: the field-selector includes upload_date and release_date, but NOT the dead channel_thumbnail field', () => {
   assert.ok(args.CHANNEL_META_PRINT_TEMPLATE.includes('upload_date'));
   assert.ok(args.CHANNEL_META_PRINT_TEMPLATE.includes('release_date'));
-  assert.ok(args.CHANNEL_META_PRINT_TEMPLATE.includes('channel_thumbnail'));
+  assert.ok(!args.CHANNEL_META_PRINT_TEMPLATE.includes('channel_thumbnail'), 'channel_thumbnail never existed on a real per-video info dict -- must not be selected');
 });
 
-test('CHANNEL_META_PRINT_TEMPLATE: the new fields live INSIDE the single .{...}j selector, not as separate %(field)s interpolations', () => {
+test('CHANNEL_META_PRINT_TEMPLATE: the fields live INSIDE the single .{...}j selector, not as separate %(field)s interpolations', () => {
   // Exactly one `%(` in the whole literal -- the fixed `.{...}j` selector --
   // proves no field was added as its own standalone %(field)s placeholder
   // (which would reopen the pre-fix tab-delimited-newline-forgery class of
   // bug this template's SECURITY comment documents above).
   const percentOpenCount = (args.CHANNEL_META_PRINT_TEMPLATE.match(/%\(/g) || []).length;
   assert.equal(percentOpenCount, 1, 'expected exactly one %( -- everything selected must ride the single JSON-escaped .{...}j conversion');
-  assert.ok(args.CHANNEL_META_PRINT_TEMPLATE.includes('.{id,channel_url,channel_id,uploader_url,channel,upload_date,release_date,channel_thumbnail})j'));
+  assert.ok(args.CHANNEL_META_PRINT_TEMPLATE.includes('.{id,channel_url,channel_id,uploader_url,channel,upload_date,release_date})j'));
 });
 
 test('CHANNEL_META_PRINT_TEMPLATE: still a fixed literal -- byte-identical regardless of sub/config content (new fields did not reopen per-sub interpolation)', () => {

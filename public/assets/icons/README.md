@@ -4,16 +4,19 @@ FileTube's chrome iconography ships as three self-hosted, offline vector
 icon sets — plus a colorful emoji set defined directly in `style.css` (no
 SVG files) — selectable via the `data-icons` axis (see
 `docs/exec-plans/active/icon-sets.md`). Each vector set covers the same
-13 `.icon-*` classes, is used as a CSS `mask-image`, and is painted with
+14 `.icon-*` classes, is used as a CSS `mask-image`, and is painted with
 `currentColor`, so a single unmodified asset renders correctly in every
 FileTube theme (era × light/dark).
 
 ## Material Symbols (Outlined) — `outlined` (default)
 
-Thirteen individual SVG icons from Google's Material Symbols set (Outlined
+Fourteen individual SVG icons from Google's Material Symbols set (Outlined
 style), living at the top level of this directory (`public/assets/icons/*.svg`)
 — twelve are the v1.6.0 baseline set (FileTube's default look); `download.svg`
-was added in v1.17.0 (FR-7).
+was added in v1.17.0 (FR-7); `shuffle.svg` was added later as a fix for the
+Shuffle button rendering a raw emoji instead of a themed glyph in non-emoji
+icon sets (it previously used a fixed `::before` unicode glyph, unlike every
+other `.icon-*`).
 
 - Icon set: **Material Symbols**, © Google
 - License: **Apache License 2.0** — https://www.apache.org/licenses/LICENSE-2.0
@@ -36,10 +39,11 @@ Apache-2.0 permits redistribution; these files are included unmodified.
 | `keyboard_arrow_up.svg` | `keyboard_arrow_up` | `.icon-arrow-up` |
 | `keyboard_arrow_down.svg` | `keyboard_arrow_down` | `.icon-arrow-down` |
 | `download.svg` | `download` | `.icon-download` |
+| `shuffle.svg` | `shuffle` | `.icon-shuffle` |
 
 ## Material Symbols (Rounded) — `rounded`
 
-Thirteen SVG icons from the same Material Symbols family, Rounded style — a
+Fourteen SVG icons from the same Material Symbols family, Rounded style — a
 softer, modern look. Bundled under `public/assets/icons/rounded/` using the
 **same filenames** as the outlined set (only the glyph outline differs).
 
@@ -65,10 +69,11 @@ Apache-2.0 permits redistribution; these files are included unmodified.
 | `rounded/keyboard_arrow_up.svg` | `keyboard_arrow_up` | `.icon-arrow-up` |
 | `rounded/keyboard_arrow_down.svg` | `keyboard_arrow_down` | `.icon-arrow-down` |
 | `rounded/download.svg` | `download` | `.icon-download` |
+| `rounded/shuffle.svg` | `shuffle` | `.icon-shuffle` |
 
 ## Material Icons Classic (2014) — `filled`
 
-Thirteen SVG icons from the original 2014 Material Icons launch set (the
+Fourteen SVG icons from the original 2014 Material Icons launch set (the
 "Classic"/filled style), bundled under `public/assets/icons/filled/` —
 authentic to Material Design's original June 2014 release. Filenames match
 the actual source glyph name (self-documenting), which is why three of them
@@ -97,6 +102,7 @@ Apache-2.0 permits redistribution; these files are included unmodified.
 | `filled/wb_sunny.svg` | `wb_sunny` (`image`) — **substitute** | `.icon-sun` |
 | `filled/brightness_2.svg` | `brightness_2` (`image`) — **substitute** | `.icon-moon` |
 | `filled/download.svg` | `file_download` (`file`) — **renamed** | `.icon-download` |
+| `filled/shuffle.svg` | `shuffle` (`av`) | `.icon-shuffle` |
 
 ### Substitute glyphs: `icon-sun` / `icon-moon` have no 2014 counterpart
 
@@ -150,3 +156,4 @@ intentionally colorful rather than `currentColor`-themed.
 | `.icon-arrow-up` | ▲ |
 | `.icon-arrow-down` | ▼ |
 | `.icon-download` | 📥 |
+| `.icon-shuffle` | 🔀 |

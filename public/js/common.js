@@ -1519,14 +1519,34 @@ function formatOneOffStatusText(entry) {
   if (state === 'queued') return 'Queued…';
   if (state === 'listing') return 'Checking for new videos…';
   if (state === 'downloading') {
-    const title = typeof entry.title === 'string' && entry.title.trim() !== '' ? entry.title.trim() : 'Downloading';
+    const title = typeof entry.title === 'string' && entry.title.trim() !== '' ? entry.title.trim() : null;
+    const videoId = typeof entry.videoId === 'string' && entry.videoId.trim() !== '' ? entry.videoId.trim() : null;
     const index = typeof entry.index === 'number' && entry.index > 0 ? entry.index : null;
     const total = typeof entry.total === 'number' && entry.total > 0 ? entry.total : null;
-    const percent = typeof entry.percent === 'number' && Number.isFinite(entry.percent)
-      ? Math.max(0, Math.min(100, Math.round(entry.percent)))
-      : 0;
     const position = index !== null && total !== null ? (index + ' of ' + total) : '';
-    return [title, position, percent + '%'].filter((part) => part !== '').join(' — ');
+    const hasRealPercent = typeof entry.percent === 'number' && Number.isFinite(entry.percent) && entry.percent > 0;
+
+    // BUG 1 fix: yt-dlp's extraction/nsig/format-negotiation and its
+    // ffmpeg-merge/postprocess phases emit NO percent line at all (see
+    // lib/ytdlp/progress.js's PERCENT_RE -- only the short byte-transfer
+    // phase ever matches it), so `entry.percent` sits at its initial `0` for
+    // almost the entire job. Rendering "— 0%" that whole time reads as
+    // "stalled", not "working". Once a REAL transfer percent (> 0) has
+    // arrived, render the numeric form exactly as before; until then, render
+    // an honest, phase-aware indeterminate label: "Preparing…" before yt-dlp
+    // has identified/started working on an item at all (a bare
+    // `{state:'downloading'}` patch, straight off the orchestrator's initial
+    // transition -- no title/videoId yet), or "Downloading…" once it has (a
+    // `videoId` and/or `title` has arrived -- see progress.js's
+    // YOUTUBE_ITEM_RE/DESTINATION_RE). `index`/`total` (N of M) are kept in
+    // either branch when present.
+    if (!hasRealPercent) {
+      const label = (title !== null || videoId !== null) ? 'Downloading…' : 'Preparing…';
+      return [label, position].filter((part) => part !== '').join(' — ');
+    }
+
+    const percent = Math.max(0, Math.min(100, Math.round(entry.percent)));
+    return [title !== null ? title : 'Downloading', position, percent + '%'].filter((part) => part !== '').join(' — ');
   }
   if (state === 'done') return 'Done';
   if (state === 'error') return typeof entry.error === 'string' && entry.error.trim() !== '' ? entry.error : 'error';
@@ -1709,32 +1729,83 @@ function buildOneOffModal(doc, handlers) {
  * v1.15.1 FIX 6 -- pure reducer for a TERMINAL live-status `entry` (the
  * `pollStatusOnce` loop below only calls this once `state` is `'done'` or
  * `'error'`): decides whether the modal should auto-close (and after how
- * long) and whether a library rescan+refresh should fire. `'done'` closes
- * the modal after a brief pause (so the user sees the "Done" status line)
- * and triggers a rescan so the new file shows up without a manual refresh;
- * `'error'` leaves the modal open (the error stays visible) and never
- * rescans. Any other input (including a non-terminal state, reached
- * defensively) takes no action. Exported/`node:test`-covered directly, same
- * posture as `shouldInjectOneOffButton`/`formatOneOffStatusText` above.
+ * long) and whether a library rescan+refresh should fire (see the BUG 2 fix
+ * note below -- as of this fix, never). `'done'` closes the modal after a
+ * brief pause (so the user sees the "Done" status line);
+ * `'error'` leaves the modal open (the error stays visible). Any other input
+ * (including a non-terminal state, reached defensively) takes no action.
+ * Exported/`node:test`-covered directly, same posture as
+ * `shouldInjectOneOffButton`/`formatOneOffStatusText` above.
+ *
+ * BUG 2 fix (regression): `'done'` no longer requests a `rescan` at all --
+ * this used to trigger `triggerLibraryRescanAndRefresh()` (`POST /api/scan`
+ * -> `window.location.reload()`), but the SERVER already rescans after
+ * `runOneShot` completes (see the comment on `triggerLibraryRescanAndRefresh`
+ * below), so that client-side rescan+reload was always redundant -- and,
+ * under load, actively harmful: with many queued subscription downloads,
+ * `POST /api/scan` returns a 409 (a scan is already running) near-instantly,
+ * so `.then(reload)` fired immediately, and `window.location.reload()`
+ * against an already-saturated server could hang mid-navigation. That froze
+ * the whole page -- the "Done" modal stayed painted, its already-scheduled
+ * auto-close timer never fired, and even the [x] button went inert -- with
+ * no way out but a force-quit. `rescan` is always `false` now; `'error'`
+ * never rescanned either. `close`/`closeDelayMs` are unchanged.
  */
 function decideOneOffTerminalAction(entry) {
   if (entry && typeof entry === 'object' && entry.state === 'done') {
-    return { close: true, closeDelayMs: 1200, rescan: true };
+    return { close: true, closeDelayMs: 1200, rescan: false };
   }
   return { close: false, closeDelayMs: 0, rescan: false };
 }
 
 /**
+ * BUG 2 fix -- applies a decided terminal `action` (see
+ * `decideOneOffTerminalAction` above): closes the modal (via `closeFn`,
+ * scheduled through `scheduleFn` after `action.closeDelayMs`) and, only if
+ * `action.rescan` is true, runs a best-effort refresh (via `refreshFn`).
+ * Extracted out of `pollStatusOnce`'s closure into its own small, injectable
+ * function (mirrors `buildOneOffModal`'s `handlers` / `triggerLibraryRescan
+ * AndRefresh`'s `fetchImpl`/`reloadFn` injection) so this ordering guarantee
+ * is directly `node:test`-covered without a real DOM/timers: `closeFn` is
+ * invoked independently of `refreshFn` -- never chained behind it -- so a
+ * slow or hanging refresh can never again starve the modal's close (the
+ * exact mechanism behind BUG 2, see `decideOneOffTerminalAction`'s comment).
+ * `scheduleFn` defaults to `setTimeout`; `closeFn`/`refreshFn` default to
+ * no-ops when omitted.
+ */
+function applyOneOffTerminalAction(action, closeFn, refreshFn, scheduleFn) {
+  const doClose = typeof closeFn === 'function' ? closeFn : () => {};
+  const doRefresh = typeof refreshFn === 'function' ? refreshFn : () => {};
+  const schedule = typeof scheduleFn === 'function'
+    ? scheduleFn
+    : (typeof setTimeout !== 'undefined' ? setTimeout : (fn) => fn());
+  if (!action) return;
+  if (action.close) schedule(doClose, action.closeDelayMs || 0);
+  if (action.rescan) doRefresh();
+}
+
+/**
  * v1.15.1 FIX 6 -- reuses the SAME `POST /api/scan` endpoint the home page's
- * "Rescan Files" button (`public/js/main.js`) calls, then refreshes the
- * current page so the newly-downloaded video appears without the user
- * manually reloading. Best-effort: the SERVER already rescans after a
- * one-off download completes (`runOneShot` -> `scanDirectories`), so even if
- * this client-triggered request never resolves (a transient network hiccup),
- * the library data is already fresh server-side for the user's next visit.
- * `fetchImpl`/`reloadFn` are injectable (mirrors `buildOneOffModal`'s
- * `doc`/`handlers` injection) so this is directly `node:test`-covered
- * without a real network call or a real page reload.
+ * "Rescan Files" button (`public/js/main.js`) calls, then refreshes via
+ * `reloadFn` (a real `window.location.reload()` by default). Best-effort:
+ * the SERVER already rescans after a one-off download completes
+ * (`runOneShot` -> `scanDirectories`), so even if this client-triggered
+ * request never resolves (a transient network hiccup), the library data is
+ * already fresh server-side for the user's next visit. `fetchImpl`/
+ * `reloadFn` are injectable (mirrors `buildOneOffModal`'s `doc`/`handlers`
+ * injection) so this is directly `node:test`-covered without a real network
+ * call or a real page reload.
+ *
+ * BUG 2 fix (regression): this is NO LONGER called from the modal's `'done'`
+ * terminal path (`decideOneOffTerminalAction` now always returns
+ * `rescan: false`) -- see that function's comment for the full root-cause
+ * writeup of why a client-triggered `window.location.reload()` here could
+ * freeze the whole page under load. The server-side rescan alone is
+ * sufficient (the redundant client-side rescan added nothing), so this
+ * function is kept only for its own regression coverage and as a utility
+ * available to any FUTURE caller that genuinely needs a full-page refresh
+ * outside the one-off modal's terminal flow -- it is not wired to anything
+ * today.
  */
 function triggerLibraryRescanAndRefresh(fetchImpl, reloadFn) {
   const doFetch = fetchImpl || (typeof fetch !== 'undefined' ? fetch : null);
@@ -1795,14 +1866,16 @@ function injectOneOffDownloadButtonIfEnabled() {
             if (entry && (entry.state === 'done' || entry.state === 'error')) {
               stopPolling(); // terminal -- stop polling this job
 
-              // v1.15.1 FIX 6: on 'done', auto-close the modal (after a brief
-              // pause so the user sees the "Done" status) and refresh the
-              // library so the new file shows up without a manual reload; on
+              // v1.15.1 FIX 6 / BUG 2 fix: on 'done', auto-close the modal
+              // (after a brief pause so the user sees the "Done" status); on
               // 'error' the reducer leaves the modal open so the message
-              // stays visible.
-              const action = decideOneOffTerminalAction(entry);
-              if (action.rescan) triggerLibraryRescanAndRefresh();
-              if (action.close) setTimeout(closeModal, action.closeDelayMs);
+              // stays visible. `applyOneOffTerminalAction` runs the close
+              // INDEPENDENTLY of any refresh work (there is none today --
+              // `action.rescan` is always false; see
+              // `decideOneOffTerminalAction`'s comment) so a future refresh
+              // can never again starve the close/[x] the way the old
+              // rescan-then-`window.location.reload()` path did.
+              applyOneOffTerminalAction(decideOneOffTerminalAction(entry), closeModal, triggerLibraryRescanAndRefresh);
               return;
             }
             pollTimer = setTimeout(pollStatusOnce, ONEOFF_STATUS_POLL_MS);
@@ -1819,7 +1892,7 @@ function injectOneOffDownloadButtonIfEnabled() {
       // v1.17.0 FR-6, T5 fix: hardened into a FULL teardown, shared by every
       // dismiss path (backdrop tap, [x], Esc, and the 'done' auto-close --
       // see openModal's onClose wiring, the Esc keydown handler below, and
-      // pollStatusOnce's action.close branch above -- none of them have
+      // pollStatusOnce's applyOneOffTerminalAction call above -- none of them have
       // their own divergent close logic, they all call this one function).
       // Root cause (style.css): `.oneoff-modal-backdrop` sets `display: flex`
       // with no `[hidden]` override, so the old `backdrop.hidden = true`
@@ -4454,7 +4527,7 @@ if (typeof module !== 'undefined' && module.exports) {
     formatOneOffStatusText, buildOneOffModal,
     ONEOFF_FORMAT_OPTIONS, ONEOFF_QUALITY_OPTIONS, ONEOFF_DEFAULT_QUALITY,
     ONEOFF_FILETYPE_OPTIONS, ONEOFF_DEFAULT_FILETYPE, ONEOFF_STATUS_POLL_MS,
-    decideOneOffTerminalAction, triggerLibraryRescanAndRefresh,
+    decideOneOffTerminalAction, applyOneOffTerminalAction, triggerLibraryRescanAndRefresh,
     injectOneOffDownloadButtonIfEnabled,
     showToast, nextArmState,
     deriveRouteView, shouldInterceptLinkClick, buildHistoryState, parseHistoryState,
