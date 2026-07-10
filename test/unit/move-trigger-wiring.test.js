@@ -57,9 +57,24 @@ test('watch.js window-qualifies neither showMoveModal nor requestMoveItem -- rea
 
 test('watch.js: builds a "Move" button reusing the existing .btn class (same family as #download-media-btn/#delete-media-btn) and mounts it into .watch-actions', () => {
   assert.match(watchJs, /moveBtn\.className = 'btn';/);
-  assert.match(watchJs, /moveBtn\.textContent = 'Move';/);
   assert.match(watchJs, /root\.querySelector\('\.watch-actions'\)/);
   assert.match(watchJs, /watchActions\.appendChild\(moveBtn\)/);
+});
+
+// Visual-consistency polish: Move previously had no leading glyph (the only
+// text-only button in the Download/Delete/Move row) -- it now gets
+// `.icon-folder` (closest existing icon to "move to a folder"; no new icon
+// asset added) built via createElement/createTextNode, mirroring how
+// Download/Delete already pair an `<i class="icon-*">` with a short label.
+test('watch.js: the Move button carries an .icon-folder glyph (built via DOM methods, not innerHTML) plus a descriptive aria-label/title', () => {
+  const setupMatch = /function setupMoveButton\(\) \{[\s\S]*?\n {4}\}/.exec(watchJs);
+  assert.ok(setupMatch, 'expected to find setupMoveButton in watch.js');
+  const body = setupMatch[0];
+  assert.match(body, /moveIcon\.className = 'icon-folder';/);
+  assert.match(body, /moveBtn\.appendChild\(moveIcon\)/);
+  assert.match(body, /moveBtn\.appendChild\(document\.createTextNode\(' Move'\)\)/);
+  assert.match(body, /moveBtn\.setAttribute\('aria-label', 'Move to another folder'\);/);
+  assert.doesNotMatch(body, /moveBtn\.innerHTML/, 'the Move button markup should be built via DOM methods, not innerHTML');
 });
 
 test('watch.js: the folders list is READ from the SAME GET /api/config fetch initWatch() already makes for the sidebar -- no second /api/config call', () => {

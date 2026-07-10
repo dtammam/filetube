@@ -794,6 +794,70 @@ if (typeof module !== 'undefined' && module.exports) {
     updatePositionState(true);
   });
 
+  // ---- Media Session ACTION HANDLERS (lock screen / Control Center) ---------
+  // Fixes flaky iOS lock-screen/Control-Center Play: with NO action handlers
+  // registered, iOS falls back to unreliable default targeting of "the
+  // element that last had audio focus", which is flaky for a <video> that
+  // gets programmatically paused + reparented across FULL<->DOCKED (exactly
+  // this app's model). Registering handlers gives iOS an explicit, reliable
+  // target regardless of reparenting.
+  //
+  // Wired ONCE, at parse time -- NOT inside setupMediaSession() (which reruns
+  // on every load()) and NOT inside wireHostListeners() (which only runs
+  // once `ensureHost()` has cloned the template). Both are unnecessary here:
+  // there is exactly ONE persistent `<video>` for the whole app lifetime
+  // (`ensureHost`, above), and `mediaPlayer` is only ever assigned once, by
+  // the time any handler below can actually fire (Media Session metadata --
+  // the only thing that makes the OS surface Play/Pause/seek controls at all
+  // -- is itself only ever set from `setupMediaSession()`, which requires
+  // `mediaPlayer` to already exist). So binding these closures over
+  // `mediaPlayer` up front is safe and avoids any re-binding churn.
+  //
+  // `setMediaSessionAction` wraps each registration in its own try/catch:
+  // per spec, `setActionHandler` throws for an action name the browser
+  // doesn't support, and browsers vary in which actions they implement -- a
+  // missing one (e.g. no `seekto` support) must never prevent the rest from
+  // registering.
+  function setMediaSessionAction(action, handler) {
+    if (!('mediaSession' in navigator) || typeof navigator.mediaSession.setActionHandler !== 'function') return;
+    try { navigator.mediaSession.setActionHandler(action, handler); } catch (_) { /* action unsupported by this browser */ }
+  }
+
+  setMediaSessionAction('play', function () {
+    if (!mediaPlayer) return;
+    // The lock-screen tap IS the user gesture iOS needs to resume audio
+    // output for a previously-paused/backgrounded element.
+    mediaPlayer.play().catch(function () {});
+    setPlaybackState('playing');
+  });
+  setMediaSessionAction('pause', function () {
+    if (!mediaPlayer) return;
+    mediaPlayer.pause();
+    setPlaybackState('paused');
+  });
+  setMediaSessionAction('seekto', function (details) {
+    if (!mediaPlayer || details == null || details.seekTime == null) return;
+    if (details.fastSeek && 'fastSeek' in mediaPlayer) {
+      mediaPlayer.fastSeek(details.seekTime);
+    } else {
+      mediaPlayer.currentTime = details.seekTime;
+    }
+  });
+  // Reuse the EXISTING skip() (below) rather than duplicating its
+  // liveMode/clamping/progress-save behavior here.
+  setMediaSessionAction('seekbackward', function (details) {
+    if (!mediaPlayer) return;
+    skip(-((details && details.seekOffset) || SKIP_SECONDS));
+  });
+  setMediaSessionAction('seekforward', function (details) {
+    if (!mediaPlayer) return;
+    skip((details && details.seekOffset) || SKIP_SECONDS);
+  });
+  // previoustrack/nexttrack deliberately NOT wired: the Prev/Next
+  // controls (and the ordered-neighbor lookup they use) live in
+  // watch.js as per-visit DOM, not in this persistent player controller --
+  // reaching into another file for them is out of scope for this fix.
+
   // ---- FR-5 (T4): background/force-close lifecycle pause+persist ------------
   //
   // Wired ONCE, alongside (not instead of) the foreground re-assert above,

@@ -126,8 +126,14 @@
               <option value="size-asc">Smallest first</option>
               <option value="random">Feeling lucky</option>
             </select>
-            <button class="btn btn-sm" id="shuffle-again-btn" style="font-size: 11px; padding: 4px 8px;" title="Shuffle again" aria-label="Shuffle again" hidden><i class="icon-shuffle"></i> <span class="btn-label">Shuffle</span></button>
-            <button class="btn btn-sm" id="rescan-library-btn" style="font-size: 11px; padding: 4px 8px;" title="Rescan Files" aria-label="Rescan Files"><i class="icon-refresh"></i> <span class="btn-label">Rescan</span></button>
+            <!-- Visual-consistency polish: dropped the vestigial `.btn-sm`
+                 class + inline font-size/padding override (`.btn-sm` itself
+                 carries no CSS rule -- see style.css -- so these were the
+                 ONLY thing making Shuffle/Rescan render smaller than the
+                 watch page's Download/Delete/Move family). Plain `.btn` now
+                 matches that same glyph+short-label size/padding. -->
+            <button class="btn" id="shuffle-again-btn" title="Shuffle again" aria-label="Shuffle again" hidden><i class="icon-shuffle"></i> <span class="btn-label">Shuffle</span></button>
+            <button class="btn" id="rescan-library-btn" title="Rescan Files" aria-label="Rescan Files"><i class="icon-refresh"></i> <span class="btn-label">Rescan</span></button>
           </div>
         </div>
 
