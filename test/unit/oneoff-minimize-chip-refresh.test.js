@@ -324,32 +324,37 @@ test('detectNewlyDoneOneShots: defensive against a missing/malformed snapshot or
 
 // ---- refreshLibraryInPlace: invoke-iff-function / safe no-op ---------------
 
-test('refreshLibraryInPlace: invokes window.__filetubeRefreshLibrary when it is a function', () => {
+test('refreshLibraryInPlace: invokes window.__filetubeRefreshLibrary when it is a function, and returns true (v1.30.0 T8, AC5.1/AC5.2)', () => {
   const original = global.window;
   let calls = 0;
   global.window = { __filetubeRefreshLibrary: () => { calls += 1; } };
   try {
-    refreshLibraryInPlace();
+    const result = refreshLibraryInPlace();
     assert.strictEqual(calls, 1);
+    assert.strictEqual(result, true, 'expected refreshLibraryInPlace() to return true when a live target was refreshed');
   } finally {
     global.window = original;
   }
 });
 
-test('refreshLibraryInPlace: is a safe no-op when the hook is absent, not a function, or window itself is undefined', () => {
+test('refreshLibraryInPlace: is a safe no-op when the hook is absent, not a function, or window itself is undefined, and returns false in every case (v1.30.0 T8, AC5.2)', () => {
   const original = global.window;
   try {
     global.window = {};
     assert.doesNotThrow(() => refreshLibraryInPlace());
+    assert.strictEqual(refreshLibraryInPlace(), false);
 
     global.window = { __filetubeRefreshLibrary: 'not-a-function' };
     assert.doesNotThrow(() => refreshLibraryInPlace());
+    assert.strictEqual(refreshLibraryInPlace(), false);
 
     global.window = { __filetubeRefreshLibrary: null };
     assert.doesNotThrow(() => refreshLibraryInPlace());
+    assert.strictEqual(refreshLibraryInPlace(), false);
 
     delete global.window;
     assert.doesNotThrow(() => refreshLibraryInPlace());
+    assert.strictEqual(refreshLibraryInPlace(), false);
   } finally {
     global.window = original;
   }

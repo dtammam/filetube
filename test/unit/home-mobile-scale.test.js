@@ -15,6 +15,37 @@ const HTML_PATH = path.join(__dirname, '..', '..', 'public', 'index.html');
 const css = fs.readFileSync(CSS_PATH, 'utf8');
 const html = fs.readFileSync(HTML_PATH, 'utf8');
 
+// v1.30 C1 (AC7.1): style.css's font-size declarations are now token-driven
+// (`var(--fs-*)`) rather than bare px literals -- resolve a declaration's
+// value back to a px number via the :root token block so size-comparison
+// assertions below keep working regardless of the token's source spelling.
+function parseRootFsTokens(source) {
+  const rootMatch = /:root\s*\{([\s\S]*?)\n\}/.exec(source);
+  assert.ok(rootMatch, 'expected a :root block in style.css');
+  const tokens = {};
+  const re = /(--fs-[a-z0-9-]+):\s*([0-9]+)px/g;
+  let m;
+  while ((m = re.exec(rootMatch[1]))) {
+    tokens[m[1]] = Number(m[2]);
+  }
+  return tokens;
+}
+
+const fsTokens = parseRootFsTokens(css);
+
+function resolveFontSizePx(value) {
+  const trimmed = value.trim();
+  const varMatch = /^var\((--fs-[a-z0-9-]+)\)$/.exec(trimmed);
+  if (varMatch) {
+    const px = fsTokens[varMatch[1]];
+    assert.ok(px !== undefined, `expected token ${varMatch[1]} to be defined in :root`);
+    return px;
+  }
+  const pxMatch = /^([0-9]+)px$/.exec(trimmed);
+  assert.ok(pxMatch, `expected a px literal or var(--fs-*) token, got "${value}"`);
+  return Number(pxMatch[1]);
+}
+
 // The main mobile breakpoint block runs from `@media (max-width: 768px) {`
 // up to the landscape-orientation query that immediately follows it (same
 // anchor used by test/unit/settings-mobile-polish.test.js).
@@ -86,9 +117,10 @@ test('mobile: .video-grid uses a tighter column minimum + gap than the desktop 2
 
 test('mobile: video-card text (.video-title/.video-uploader/.video-meta) shrinks alongside the tighter grid', () => {
   const body = mobileBlock();
-  assert.match(body, /\.video-title\s*\{[^}]*font-size:\s*\d+px/);
+  assert.match(body, /\.video-title\s*\{[^}]*font-size:\s*var\(--fs-[a-z0-9-]+\)/);
   const titleRule = /\.video-title\s*\{([^}]*)\}/.exec(body);
-  assert.ok(Number(/font-size:\s*(\d+)px/.exec(titleRule[1])[1]) < 13, 'mobile .video-title should be smaller than the desktop 13px');
+  const titleFontSize = resolveFontSizePx(/font-size:\s*([^;]+);/.exec(titleRule[1])[1]);
+  assert.ok(titleFontSize < 13, `mobile .video-title should be smaller than the desktop 13px (got ${titleFontSize}px)`);
 
   const uploaderRule = /\.video-uploader\s*\{([^}]*)\}/.exec(body);
   assert.ok(uploaderRule, 'expected a mobile .video-uploader rule');

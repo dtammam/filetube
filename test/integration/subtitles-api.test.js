@@ -11,12 +11,11 @@ const os = require('node:os');
 const fs = require('node:fs');
 const path = require('node:path');
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-subtitles-api-'));
-const DB_FILE = path.join(process.env.DATA_DIR, 'db.json');
 delete process.env.FILETUBE_YTDLP_ENABLED; // explicit: this route must work with the module OFF
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-const { app } = require('../../server');
+const { app, saveDatabase } = require('../../server');
 
 let server;
 let base;
@@ -33,8 +32,11 @@ after(async () => {
   await new Promise((resolve) => server.close(resolve));
 });
 
+// v1.30 A3 (in-memory DB read cache): seed via the exported `saveDatabase()`
+// (an established test primitive, see CONTRIBUTING.md) rather than a raw
+// `fs.writeFileSync`, so the in-process db cache stays coherent.
 function writeDb(db) {
-  fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2), 'utf8');
+  saveDatabase(db);
 }
 
 function baseDb(metadata) {

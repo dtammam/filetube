@@ -107,12 +107,13 @@ test('AC20: a root=<channelDir> filter on GET /api/videos surfaces only that cha
   try {
     await scanDirectories();
 
-    const rootAResults = await (await fetch(`${base}/api/videos?root=${encodeURIComponent(dirA)}`)).json();
+    // v1.30 A5 (T6): `/api/videos` returns `{ items, total, offset, limit }`.
+    const { items: rootAResults } = await (await fetch(`${base}/api/videos?root=${encodeURIComponent(dirA)}`)).json();
     assert.ok(rootAResults.length >= 1, 'channel A\'s own subfolder must surface at least its own video');
     assert.ok(rootAResults.every((v) => v.filePath.startsWith(dirA)), 'every result under root=dirA must actually live under dirA');
     assert.ok(!rootAResults.some((v) => v.filePath.startsWith(dirB)), 'channel A\'s playlist must never include channel B\'s videos');
 
-    const rootBResults = await (await fetch(`${base}/api/videos?root=${encodeURIComponent(dirB)}`)).json();
+    const { items: rootBResults } = await (await fetch(`${base}/api/videos?root=${encodeURIComponent(dirB)}`)).json();
     assert.ok(rootBResults.every((v) => v.filePath.startsWith(dirB)));
     assert.ok(!rootBResults.some((v) => v.filePath.startsWith(dirA)), 'channel B\'s playlist must never include channel A\'s videos');
   } finally {

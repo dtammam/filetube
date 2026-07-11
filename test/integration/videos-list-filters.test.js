@@ -16,7 +16,7 @@ const DB_FILE = path.join(process.env.DATA_DIR, 'db.json');
 
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
-const { app } = require('../../server');
+const { app, saveDatabase } = require('../../server');
 
 let server;
 let base;
@@ -37,13 +37,21 @@ beforeEach(() => {
   if (fs.existsSync(DB_FILE)) fs.rmSync(DB_FILE);
 });
 
+// v1.30 A3 (in-memory DB read cache): seed via the exported `saveDatabase()`
+// (an established test primitive, see CONTRIBUTING.md) rather than a raw
+// `fs.writeFileSync`, so the in-process db cache stays coherent.
 function writeDb(db) {
-  fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2), 'utf8');
+  saveDatabase(db);
 }
 
+// v1.30 A5 (T6): `/api/videos` returns `{ items, total, offset, limit }`, not
+// a bare array. Returns the parsed `items` array under `body` so every
+// pre-existing `body.map(...)`/`body.find(...)` call site below stays
+// unchanged -- only this helper needed to know about the new envelope.
 async function getVideos(qs) {
   const res = await fetch(`${base}/api/videos${qs ? `?${qs}` : ''}`);
-  return { status: res.status, body: await res.json() };
+  const json = await res.json();
+  return { status: res.status, body: json.items, total: json.total };
 }
 
 function seedItem(id, overrides) {

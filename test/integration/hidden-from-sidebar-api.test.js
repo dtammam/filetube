@@ -100,5 +100,6 @@ test('a folder hidden from the sidebar remains fully reachable via GET /api/vide
 
   const res = await fetch(`${base}/api/videos?root=${encodeURIComponent(folderA)}`);
   assert.equal(res.status, 200, 'hiddenFromSidebar must not affect the /api/videos?root= route');
-  assert.ok(Array.isArray(await res.json()));
+  // v1.30 A5 (T6): { items, total, offset, limit }, not a bare array.
+  assert.ok(Array.isArray((await res.json()).items));
 });

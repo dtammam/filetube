@@ -10,7 +10,7 @@ const DB_FILE = path.join(process.env.DATA_DIR, 'db.json');
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-const { app, transcodedPath } = require('../../server');
+const { app, transcodedPath, saveDatabase, flushPendingProgress, loadDatabase } = require('../../server');
 const THUMBNAIL_DIR = path.join(process.env.DATA_DIR, '.thumbnails');
 
 let server;
@@ -72,17 +72,27 @@ test('GET /api/scan-status reports scan/library counts', async () => {
   }
 });
 
-test('GET /api/videos returns an array', async () => {
+// v1.30 A5 (T6): `/api/videos` returns `{ items, total, offset, limit }`,
+// not a bare array (API CHANGE -- see docs/exec-plans/active/
+// 2026-07-11-v1.30-scale-perf-and-polish.md "### A5").
+test('GET /api/videos returns a paginated { items, total, offset, limit } shape', async () => {
   const res = await fetch(`${base}/api/videos`);
   assert.equal(res.status, 200);
-  assert.ok(Array.isArray(await res.json()));
+  const body = await res.json();
+  assert.ok(Array.isArray(body.items), 'items must be an array');
+  assert.equal(typeof body.total, 'number');
+  assert.equal(typeof body.offset, 'number');
+  assert.equal(typeof body.limit, 'number');
 });
 
 test('GET /api/videos preserves the fields the author resolver needs', async () => {
   // The list cards resolve the "author" from rootFolder (+ folderSettings),
   // artist, then folderName (see common.js resolveChannelName). Lock the API
   // contract so those fields keep flowing to the client.
-  fs.writeFileSync(DB_FILE, JSON.stringify({
+  // v1.30 A3 (in-memory DB read cache): seed via the exported `saveDatabase()`
+  // (an established test primitive, see CONTRIBUTING.md) rather than a raw
+  // `fs.writeFileSync`, so the in-process db cache stays coherent.
+  saveDatabase({
     folders: ['/media/Movies'],
     folderSettings: { '/media/Movies': { name: 'My Movies', hidden: false } },
     progress: {},
@@ -93,11 +103,11 @@ test('GET /api/videos preserves the fields the author resolver needs', async () 
         size: 1000, addedAt: 1700000000000,
       },
     },
-  }));
+  });
 
   const res = await fetch(`${base}/api/videos`);
   assert.equal(res.status, 200);
-  const list = await res.json();
+  const { items: list } = await res.json();
   const item = list.find((i) => i.id === 'm1');
   assert.ok(item, 'seeded item is returned');
   assert.equal(item.rootFolder, '/media/Movies');
@@ -163,11 +173,17 @@ test('POST /api/progress returns 404 for unknown media', async () => {
   assert.equal(res.status, 404);
 });
 
-test('POST /api/progress returns 500 JSON (not a hang) when persisting the write fails', async () => {
-  fs.writeFileSync(DB_FILE, JSON.stringify({
+// v1.30 A4: POST /api/progress no longer performs a synchronous write at
+// all -- it just stages the ping in the coalescer and responds immediately
+// (see server.js's own comment above the route) -- so a disk failure can
+// only ever surface later, on a FLUSH, never on the POST response itself.
+// This supersedes the pre-A4 "POST returns 500 on a persist failure" test:
+// that contract is inherently incompatible with a deferred/batched write.
+test('POST /api/progress returns 200 immediately even when the underlying disk write would fail (the write is deferred, not synchronous)', async () => {
+  saveDatabase({
     folders: [], folderSettings: {}, progress: {},
     metadata: { vidFail: { id: 'vidFail', title: 'Clip', duration: 10 } },
-  }));
+  });
 
   const realWriteFileSync = fs.writeFileSync;
   fs.writeFileSync = () => { throw new Error('simulated disk failure'); };
@@ -177,22 +193,59 @@ test('POST /api/progress returns 500 JSON (not a hang) when persisting the write
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id: 'vidFail', timestamp: 5 }),
     });
-    assert.equal(res.status, 500);
-    const json = await res.json();
-    assert.equal(typeof json.error, 'string');
+    assert.equal(res.status, 200, 'the ping is only staged in-memory -- no disk I/O happens on this request');
+    assert.equal((await res.json()).success, true);
   } finally {
     fs.writeFileSync = realWriteFileSync;
   }
+});
+
+test('flushPendingProgress: a failed flush is caught and logged, never throws, and never wedges the NEXT flush', async () => {
+  saveDatabase({
+    folders: [], folderSettings: {}, progress: {},
+    metadata: { vidFlushFail: { id: 'vidFlushFail', title: 'Clip', duration: 10 } },
+  });
+
+  await fetch(`${base}/api/progress`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id: 'vidFlushFail', timestamp: 7 }),
+  });
+
+  const realWriteFileSync = fs.writeFileSync;
+  fs.writeFileSync = () => { throw new Error('simulated disk failure'); };
+  try {
+    await assert.doesNotReject(
+      flushPendingProgress(),
+      'a flush write failure must be caught internally, never left as an unhandled rejection'
+    );
+  } finally {
+    fs.writeFileSync = realWriteFileSync;
+  }
+  // The failed ping is gone (already cleared before the failed write) -- the
+  // same bounded "lose at most one window" outcome AC4.3 already accepts.
+  assert.equal(loadDatabase().progress.vidFlushFail, undefined, 'the failed flush never persisted');
+
+  // The chain must not be wedged: the NEXT ping + flush still commits normally.
+  await fetch(`${base}/api/progress`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id: 'vidFlushFail', timestamp: 9 }),
+  });
+  await flushPendingProgress();
+  assert.equal(loadDatabase().progress.vidFlushFail.timestamp, 9, 'a subsequent flush still commits after a prior one failed');
 });
 
 test('DELETE /api/videos/:id returns 500 JSON (not a hang) when the db-metadata cleanup fails to persist', async () => {
   // filePath deliberately points at a nonexistent file so the FS-unlink step
   // (already try/catch-guarded, unrelated to this fix) is a no-op and the
   // route proceeds to the db.metadata/progress cleanup this test targets.
-  fs.writeFileSync(DB_FILE, JSON.stringify({
+  // v1.30 A3: seed via `saveDatabase()` (an established test primitive, see
+  // CONTRIBUTING.md) so the in-process db cache stays coherent.
+  saveDatabase({
     folders: [], folderSettings: {}, progress: {},
     metadata: { vidDelFail: { id: 'vidDelFail', title: 'Clip', filePath: '/nonexistent/clip.mp4' } },
-  }));
+  });
 
   const realWriteFileSync = fs.writeFileSync;
   fs.writeFileSync = () => { throw new Error('simulated disk failure'); };
@@ -211,11 +264,14 @@ test('DELETE /api/videos/:id returns 500 JSON (not a hang) when the db-metadata 
 
 function seedDeleteTarget(id, filePath) {
   fs.writeFileSync(filePath, 'video-bytes');
-  fs.writeFileSync(DB_FILE, JSON.stringify({
+  // v1.30 A3 (in-memory DB read cache): seed via the exported `saveDatabase()`
+  // (an established test primitive, see CONTRIBUTING.md) rather than a raw
+  // `fs.writeFileSync`, so the in-process db cache stays coherent.
+  saveDatabase({
     folders: [], folderSettings: {},
     progress: { [id]: { timestamp: 5, duration: 10 } },
     metadata: { [id]: { id, title: 'Clip', filePath } },
-  }));
+  });
 }
 
 test('DELETE /api/videos/:id returns a clear 409 (not a generic 500) on an EROFS unlink failure, and leaves the db untouched', async () => {
@@ -378,13 +434,15 @@ test('DELETE /api/videos/:id happy path (unlink succeeds) still fully cleans up 
 });
 
 test('watch progress round-trips through save and read', async () => {
-  // Seed one known media item directly into the isolated db.
-  fs.writeFileSync(DB_FILE, JSON.stringify({
+  // Seed one known media item -- via the exported `saveDatabase()` (v1.30 A3,
+  // an established test primitive, see CONTRIBUTING.md) rather than a raw
+  // `fs.writeFileSync`, so the in-process db cache stays coherent.
+  saveDatabase({
     folders: [],
     folderSettings: {},
     progress: {},
     metadata: { vid1: { id: 'vid1', title: 'Clip', duration: 120 } },
-  }));
+  });
 
   const save = await fetch(`${base}/api/progress`, {
     method: 'POST',

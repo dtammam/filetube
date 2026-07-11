@@ -51,7 +51,7 @@ delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
 
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
-const { app, scanDirectories, loadDatabase, updateDatabase, getMediaId } = require('../../server');
+const { app, scanState, scanDirectories, loadDatabase, updateDatabase, getMediaId } = require('../../server');
 const ytdlp = require('../../lib/ytdlp');
 
 let server;
@@ -69,12 +69,37 @@ before(async () => {
 after(async () => {
   delete process.env.FILETUBE_YTDLP_ENABLED;
   delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
+  // v1.30 A2: let the last test's own leftover background scan (if any)
+  // settle before removing `downloadDir` out from under it.
+  await waitForScanIdle();
   server.closeAllConnections?.();
   await new Promise((resolve) => server.close(resolve));
   fs.rmSync(downloadDir, { recursive: true, force: true });
 });
 
+// v1.30 A2: several tests below `POST /api/config`, which itself fires a
+// fire-and-forget background `scanDirectories()` after responding (this
+// pre-existing pattern is unrelated to A2). Pre-A2, that background scan was
+// effectively synchronous (settling within a single microtask hop) by the
+// time a LATER test's own fixture setup/teardown ran, so it never actually
+// raced anything. Now that the walk is cooperative (genuine `fs.promises`
+// I/O spread across real event-loop turns, v1.30 A2), a prior test's
+// leftover background scan can still be in flight when the NEXT test starts
+// -- e.g. still walking a real fixture directory a prior test is about to
+// (or already did) `fs.rmSync` in its own cleanup, or still holding the
+// `scanState.scanning` overlap guard so a later test's own `scanDirectories()`
+// call silently no-ops (just flags `rescanRequested`) instead of running a
+// fresh pass. Waiting for any leftover scan to settle before each test
+// starts restores full test isolation without changing any production code.
+async function waitForScanIdle(maxWaitMs = 10000) {
+  const start = Date.now();
+  while (scanState.scanning && (Date.now() - start) < maxWaitMs) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+}
+
 beforeEach(async () => {
+  await waitForScanIdle();
   await updateDatabase((db) => { db.folders = []; db.folderSettings = {}; return true; });
 });
 

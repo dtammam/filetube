@@ -21,6 +21,7 @@ const {
   recordServed,
   clearPersistedServedAt,
   evictTranscodeCache,
+  saveDatabase,
 } = require('../../server');
 
 // Mirrors server.js's RECENT_STREAM_MS (10 minutes) -- not exported since it's
@@ -38,8 +39,11 @@ function baseSettings(overrides) {
   };
 }
 
+// v1.30 A3 (in-memory DB read cache): seed via the exported `saveDatabase()`
+// (an established test primitive, see CONTRIBUTING.md) rather than a raw
+// `fs.writeFileSync`, so the in-process db cache stays coherent.
 function writeDb(db) {
-  fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2), 'utf8');
+  saveDatabase(db);
 }
 
 function readDb() {

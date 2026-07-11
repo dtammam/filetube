@@ -428,6 +428,19 @@ if (typeof module !== 'undefined' && module.exports) {
 (function () {
   let controller = null;
 
+  // v1.30.0 T7 (A5): `GET /api/videos` is now PAGINATED (server-authoritative,
+  // default page size 60 -- see server.js's T6). `loadRelatedFiles()` and
+  // `setupPrevNext()` (below) both need the FULL matching set to rank/order
+  // correctly -- a truncated page would silently break related-video ranking
+  // and prev/next for any library/folder over the page size (the current
+  // item's own neighbor could sit past position 60). Both pass this
+  // explicit, generous `limit` so the server always returns everything in
+  // one response; the server itself still clamps to its own hard ceiling
+  // (`MAX_LIMIT`, `lib/videoQuery.js`, comfortably above any real self-hosted
+  // library), so this value is intentionally larger than that ceiling rather
+  // than trying to mirror it exactly.
+  const FULL_LIST_QUERY_LIMIT = 1000000;
+
   // Builds a view-area error message WITHOUT touching the player host's own
   // markup (never `playerWrapper.innerHTML = ...`) -- a fatal load error
   // must never nuke the player element itself, only inform the user next to
@@ -580,6 +593,16 @@ if (typeof module !== 'undefined' && module.exports) {
     // view instance, like `pinBtn` below.
     let currentFolders = [];
     let moveBtn = null;
+    // v1.30 C2 (Visual polish cluster): watch-page "Like" toggle -- the
+    // runtime-created control itself (fresh per view instance, like
+    // `moveBtn`/`pinBtn` above) plus its local mirror of server membership.
+    // Like state IS `db.liked` membership (server.js) -- `currentLikeState`
+    // here is purely a UI-local cache of that membership for THIS view
+    // instance, never an independent source of truth; every toggle round-
+    // trips through `POST`/`DELETE /api/liked/:id` before this local mirror
+    // is updated.
+    let likeBtn = null;
+    let currentLikeState = { liked: false };
     // FIX C (two-reviewer-gate follow-up): the FR-2-derived display name,
     // computed once in initWatch() via the SAME resolveChannelName() call
     // that drives the on-page uploader display, cached here so the Subscribe
@@ -689,6 +712,11 @@ if (typeof module !== 'undefined' && module.exports) {
         // "Move to..." trigger now that both `mediaData` and `currentFolders`
         // are resolved.
         setupMoveButton();
+
+        // 3c. v1.30 C2 (Visual polish cluster, T11): mount/refresh the
+        // "Like" toggle now that `mediaData` (carrying the server-derived
+        // `liked` field) is resolved.
+        setupLikeButton();
 
         // 4. Mount/play this media in the persistent player controller. This
         // is idempotent -- if the controller already has this exact id loaded
@@ -873,8 +901,15 @@ if (typeof module !== 'undefined' && module.exports) {
     // Load related files
     async function loadRelatedFiles() {
       try {
-        const res = await fetch('/api/videos');
-        const allFiles = await res.json();
+        // v1.30.0 T7: `GET /api/videos` now returns `{ items, total, offset,
+        // limit }` (paginated, default page size 60) rather than a bare
+        // array -- rankRelated needs the FULL library to find the current
+        // item's genuine best matches (not just whatever happened to land on
+        // page 1), so this explicitly requests everything via
+        // `FULL_LIST_QUERY_LIMIT` (see its own comment, above).
+        const res = await fetch(`/api/videos?limit=${FULL_LIST_QUERY_LIMIT}`);
+        const data = await res.json();
+        const allFiles = Array.isArray(data.items) ? data.items : [];
 
         // Fuzzy-similar ranking (title/filename token overlap, shared folder,
         // shared channel/artist), falling back to most-recent when thin. See
@@ -936,12 +971,20 @@ if (typeof module !== 'undefined' && module.exports) {
         // being greyed out for items in "Hide from home" folders -- the unscoped
         // /api/videos list excludes those, so the current item wasn't found and
         // computeNeighbors returned nothing. A folder query always includes it.
+        // v1.30.0 T7: same paginated `{ items, ... }` shape + FULL-set
+        // requirement as loadRelatedFiles() above -- deriveOrderedIds needs
+        // the current item's folder-mates in full, or its neighbor could sit
+        // past a truncated page-1 boundary and prev/next would wrongly grey
+        // out.
         const folder = parentFolder(mediaData && mediaData.filePath);
-        const res = await fetch(folder ? '/api/videos?root=' + encodeURIComponent(folder) : '/api/videos');
-        const allFiles = await res.json();
+        const baseUrl = folder ? '/api/videos?root=' + encodeURIComponent(folder) : '/api/videos';
+        const separator = baseUrl.includes('?') ? '&' : '?';
+        const res = await fetch(`${baseUrl}${separator}limit=${FULL_LIST_QUERY_LIMIT}`);
+        const data = await res.json();
+        const allFiles = Array.isArray(data.items) ? data.items : [];
         let sortKey = 'newest';
         try { sortKey = localStorage.getItem('filetube_sort') || 'newest'; } catch (_) { /* storage disabled -- fall back to newest */ }
-        const orderedIds = deriveOrderedIds(Array.isArray(allFiles) ? allFiles : [], sortKey);
+        const orderedIds = deriveOrderedIds(allFiles, sortKey);
         const { prevId, nextId } = computeNeighbors(orderedIds, mediaId);
 
         prevBtn.disabled = !prevId;
@@ -1540,6 +1583,75 @@ if (typeof module !== 'undefined' && module.exports) {
         (btnGroup || watchActions).appendChild(moveBtn);
         moveBtn.addEventListener('click', handleMoveClick, { signal });
       }
+    }
+
+    // v1.30 C2 (Visual polish cluster, T11): "Like" toggle. Mirrors
+    // `applyPinButtonLabel`'s exact primary-when-actionable /
+    // neutral-when-already-done convention (B3, above) -- reuses the SAME
+    // era-themed `.btn`/`.btn-primary` tokens, no new CSS/icon assets (same
+    // "no new icon assets" call `setupMoveButton` already made above --
+    // there is no dedicated heart/like glyph in the icon-set either, so this
+    // uses a plain unicode heart in the text label, exactly like `pinBtn`'s
+    // own "Pinned ★" uses a plain unicode star).
+    function applyLikeButtonLabel(liked) {
+      if (!likeBtn) return;
+      likeBtn.textContent = liked ? 'Liked ♥' : 'Like';
+      likeBtn.setAttribute('aria-pressed', liked ? 'true' : 'false');
+      likeBtn.classList.toggle('btn-primary', !liked);
+    }
+
+    // One-tap like/unlike -- `POST`/`DELETE /api/liked/:id` (the server-side
+    // `db.liked` membership store, server.js). Membership on the server is
+    // the single source of truth; `currentLikeState` here only mirrors it
+    // for this view instance's own render, updated ONLY after the request
+    // resolves successfully (never optimistically), mirroring
+    // `handleTogglePin`'s exact disable-during-request / resolve-then-render
+    // shape above.
+    function handleToggleLike() {
+      if (!mediaData || !likeBtn) return;
+      const wasLiked = currentLikeState.liked;
+      likeBtn.disabled = true;
+      const request = fetch(`/api/liked/${encodeURIComponent(mediaData.id)}`, { method: wasLiked ? 'DELETE' : 'POST' });
+      request
+        .then((res) => {
+          if (!res || !res.ok) {
+            console.error('Like toggle failed:', res && res.status);
+            return;
+          }
+          currentLikeState = { liked: !wasLiked };
+        })
+        .catch((err) => console.error('Like toggle failed (network error):', err))
+        .finally(() => {
+          likeBtn.disabled = false;
+          applyLikeButtonLabel(currentLikeState.liked);
+        });
+    }
+
+    // Creates (once per view instance) and mounts the Like button as a
+    // sibling of Download/Delete/Move inside `.watch-action-btns` -- the SAME
+    // nowrap sub-group `setupMoveButton` mounts into just above -- reading
+    // the INITIAL liked state off `mediaData.liked` (a field GET
+    // /api/videos/:id derives from `db.liked` membership at request time;
+    // see that route's own comment, server.js). Unlike `setupPinButton`, the
+    // Like control is never conditionally hidden/removed -- liking is a
+    // per-item action independent of any resolved channel/subscribe
+    // identity, so it's always shown for a valid media item.
+    function setupLikeButton() {
+      const watchActions = root.querySelector('.watch-actions');
+      if (!watchActions || !mediaData) return;
+      currentLikeState = { liked: !!mediaData.liked };
+      if (!likeBtn) {
+        likeBtn = document.createElement('button');
+        likeBtn.type = 'button';
+        likeBtn.id = 'like-media-btn';
+        likeBtn.className = 'btn';
+        likeBtn.title = 'Like this video';
+        likeBtn.setAttribute('aria-label', 'Like this video');
+        const btnGroup = watchActions.querySelector('.watch-action-btns');
+        (btnGroup || watchActions).appendChild(likeBtn);
+        likeBtn.addEventListener('click', handleToggleLike, { signal });
+      }
+      applyLikeButtonLabel(currentLikeState.liked);
     }
 
     // Opens the shared `showMoveModal` (common.js) with the CURRENT item +

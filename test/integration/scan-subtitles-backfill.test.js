@@ -48,7 +48,7 @@ cp.execFile = function mockExecFile(bin, args, opts, cb) {
 
 const { test, beforeEach } = require('node:test');
 const assert = require('node:assert');
-const { scanDirectories, getMediaId } = require('../../server');
+const { scanDirectories, getMediaId, saveDatabase } = require('../../server');
 
 function baseSettings(overrides) {
   return {
@@ -60,8 +60,11 @@ function baseSettings(overrides) {
   };
 }
 
+// v1.30 A3 (in-memory DB read cache): seed via the exported `saveDatabase()`
+// (an established test primitive, see CONTRIBUTING.md) rather than a raw
+// `fs.writeFileSync`, so the in-process db cache stays coherent.
 function writeDb(db) {
-  fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2), 'utf8');
+  saveDatabase(db);
 }
 
 function readDb() {
@@ -176,4 +179,128 @@ test('a brand-new video with NO sidecar is indexed with hasSubtitles=false', asy
   const id = getMediaId(filePath);
   const db = readDb();
   assert.equal(db.metadata[id].hasSubtitles, false);
+});
+
+// v1.30, A1 (per-scan readdir cache, AC1.3/AC1.6/AC1.7): these three files
+// deliberately share ONE directory so the scan's per-scan sidecar dirCache is
+// actually exercised across multiple files from the same dir in a single
+// pass -- not just the single-file cases above.
+test('AC1.6/AC1.7: unchanged files sharing a directory reuse existing data with ZERO spawns, while a genuinely changed sibling in the SAME directory still gets (re-)extracted', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-subs-shared-dir-'));
+  const unchanged1Path = path.join(root, 'unchanged1.mp4');
+  const unchanged2Path = path.join(root, 'unchanged2.mp4');
+  const changedPath = path.join(root, 'changed.mp4');
+  const unchanged1Bytes = 'unchanged-1-bytes';
+  const unchanged2Bytes = 'unchanged-2-bytes';
+  const changedBytesOnDisk = 'the-file-has-grown-since-last-scan';
+  fs.writeFileSync(unchanged1Path, unchanged1Bytes);
+  fs.writeFileSync(unchanged2Path, unchanged2Bytes);
+  fs.writeFileSync(changedPath, changedBytesOnDisk);
+  // unchanged2 grows a fresh local sidecar THIS scan -- must still be picked
+  // up (AC1.6 does not mean "sidecar detection stops running").
+  fs.writeFileSync(path.join(root, 'unchanged2.srt'), '1\n00:00:01,000 --> 00:00:02,000\nHi\n');
+
+  const unchanged1Id = getMediaId(unchanged1Path);
+  const unchanged2Id = getMediaId(unchanged2Path);
+  const changedId = getMediaId(changedPath);
+  fs.mkdirSync(THUMBNAIL_DIR, { recursive: true });
+  const unchanged1Thumb = path.join(THUMBNAIL_DIR, `${unchanged1Id}.jpg`);
+  const unchanged2Thumb = path.join(THUMBNAIL_DIR, `${unchanged2Id}.jpg`);
+  fs.writeFileSync(unchanged1Thumb, 'THUMB-1-ORIGINAL');
+  fs.writeFileSync(unchanged2Thumb, 'THUMB-2-ORIGINAL');
+
+  writeDb({
+    folders: [root],
+    folderSettings: {},
+    progress: {},
+    metadata: {
+      [unchanged1Id]: {
+        id: unchanged1Id, name: 'unchanged1.mp4', title: 'Unchanged 1', filePath: unchanged1Path,
+        folderName: path.basename(root), size: Buffer.byteLength(unchanged1Bytes), ext: '.mp4',
+        type: 'video', addedAt: 1700000000000, duration: 111, hasThumbnail: true,
+        artist: 'KEEP-1', needsTranscode: false, videoCodec: 'h264', audioCodec: 'aac',
+        releaseDate: 1700000000000, hasSubtitles: false,
+      },
+      [unchanged2Id]: {
+        id: unchanged2Id, name: 'unchanged2.mp4', title: 'Unchanged 2', filePath: unchanged2Path,
+        folderName: path.basename(root), size: Buffer.byteLength(unchanged2Bytes), ext: '.mp4',
+        type: 'video', addedAt: 1700000000000, duration: 222, hasThumbnail: true,
+        artist: 'KEEP-2', needsTranscode: false, videoCodec: 'h264', audioCodec: 'aac',
+        releaseDate: 1700000000000, hasSubtitles: false,
+      },
+      // Indexed with a SMALLER size than what's actually on disk now -- the
+      // scan's `unchanged = filePath === filePath && size === info.size`
+      // decision must still catch this as changed (AC1.7), regardless of the
+      // sidecar dirCache introduced by this task.
+      [changedId]: {
+        id: changedId, name: 'changed.mp4', title: 'Changed', filePath: changedPath,
+        folderName: path.basename(root), size: 3, ext: '.mp4',
+        type: 'video', addedAt: 1700000000000, duration: 999, hasThumbnail: true,
+        artist: 'STALE', needsTranscode: false, videoCodec: 'h264', audioCodec: 'aac',
+        releaseDate: 1700000000000, hasSubtitles: false,
+      },
+    },
+    settings: baseSettings(),
+  });
+
+  await scanDirectories();
+
+  const db = readDb();
+
+  // AC1.6 (positive): unchanged files reuse all existing data verbatim --
+  // no re-extraction, no ffmpeg/ffprobe spawn attributable to them.
+  assert.equal(db.metadata[unchanged1Id].duration, 111, 'unchanged1 duration must be reused, not re-extracted');
+  assert.equal(db.metadata[unchanged1Id].artist, 'KEEP-1');
+  assert.equal(fs.readFileSync(unchanged1Thumb, 'utf8'), 'THUMB-1-ORIGINAL', 'unchanged1 thumbnail must be untouched');
+  assert.equal(db.metadata[unchanged1Id].hasSubtitles, false, 'unchanged1 still has no sidecar');
+
+  assert.equal(db.metadata[unchanged2Id].duration, 222, 'unchanged2 duration must be reused, not re-extracted');
+  assert.equal(db.metadata[unchanged2Id].artist, 'KEEP-2');
+  assert.equal(fs.readFileSync(unchanged2Thumb, 'utf8'), 'THUMB-2-ORIGINAL', 'unchanged2 thumbnail must be untouched');
+  assert.equal(db.metadata[unchanged2Id].hasSubtitles, true, 'unchanged2 must still pick up its freshly-dropped sidecar despite being on the reuse fast path');
+
+  // AC1.7 (converse): the changed sibling, in the SAME directory as the two
+  // unchanged files above (so it shares the per-scan sidecar dirCache), must
+  // still be detected as changed and (re-)extracted -- the sidecar cache
+  // must not mask a real size change.
+  assert.equal(db.metadata[changedId].size, Buffer.byteLength(changedBytesOnDisk), 'changed file size must be updated to the on-disk size');
+  assert.equal(db.metadata[changedId].duration, 42, 'changed file must be re-extracted (mock ffprobe duration), not left at its stale value');
+  assert.equal(execFileCalls.length, 1, 'exactly one ffprobe spawn -- only for the genuinely changed file, never for the two unchanged siblings');
+});
+
+// v1.30, A1: the per-scan cache must be discarded between scans -- a sidecar
+// dropped after one scan completes must still be picked up on the very next
+// scan (the pre-existing "recomputed every scan" contract must survive this
+// task's caching change).
+test('the sidecar dirCache does not persist ACROSS scans: a sidecar added between two scans is still detected on the second scan', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-subs-cross-scan-'));
+  const filePath = path.join(root, 'grows-a-sidecar-later.mp4');
+  const bytes = 'cross-scan-video-bytes';
+  fs.writeFileSync(filePath, bytes);
+  const id = getMediaId(filePath);
+  fs.mkdirSync(THUMBNAIL_DIR, { recursive: true });
+  fs.writeFileSync(path.join(THUMBNAIL_DIR, `${id}.jpg`), 'THUMB');
+
+  writeDb({
+    folders: [root],
+    folderSettings: {},
+    progress: {},
+    metadata: {
+      [id]: {
+        id, name: 'grows-a-sidecar-later.mp4', title: 'Later Sidecar', filePath,
+        folderName: path.basename(root), size: Buffer.byteLength(bytes), ext: '.mp4',
+        type: 'video', addedAt: 1700000000000, duration: 55, hasThumbnail: true,
+        artist: '', needsTranscode: false, videoCodec: 'h264', audioCodec: 'aac',
+        releaseDate: 1700000000000, hasSubtitles: false,
+      },
+    },
+    settings: baseSettings(),
+  });
+
+  await scanDirectories();
+  assert.equal(readDb().metadata[id].hasSubtitles, false, 'no sidecar present yet on the first scan');
+
+  fs.writeFileSync(path.join(root, 'grows-a-sidecar-later.srt'), '1\n00:00:01,000 --> 00:00:02,000\nHi\n');
+  await scanDirectories();
+  assert.equal(readDb().metadata[id].hasSubtitles, true, 'a sidecar dropped after the first scan must be detected on the very next scan -- the per-scan cache must not persist across scans');
 });

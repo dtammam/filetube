@@ -805,6 +805,17 @@ if (typeof module !== 'undefined' && module.exports) {
   var STATE_FULL = 'full';
   var STATE_DOCKED = 'docked';
 
+  // v1.30.0 T7 (A5): `GET /api/videos` is now PAGINATED (server-authoritative,
+  // default page size 60 -- see server.js's T6, `{ items, total, offset,
+  // limit }`). `handleAutoplayNext`'s deriveOrderedIds computation (below)
+  // needs the FULL folder set -- the just-ended item's next-in-order
+  // neighbor could otherwise sit past a truncated page-1 boundary and
+  // autoplay would silently stop advancing. Mirrors watch.js's own
+  // FULL_LIST_QUERY_LIMIT constant/rationale exactly (kept as a separate
+  // per-file constant -- both files load as classic, same-global-scope
+  // `<script>` tags, so a shared top-level identifier name would collide).
+  var AUTOPLAY_ADVANCE_FULL_LIST_LIMIT = 1000000;
+
   var state = STATE_CLOSED;
   var currentId = null;
   var currentData = null;
@@ -2730,13 +2741,22 @@ if (typeof module !== 'undefined' && module.exports) {
         // "next" means the same thing whether you tap Next or a video ends
         // (Dean: walk the item's folder, not the whole library).
         var advanceFolder = parentFolder(currentData && currentData.filePath);
-        return fetch(advanceFolder ? '/api/videos?root=' + encodeURIComponent(advanceFolder) : '/api/videos')
+        // v1.30.0 T7: same paginated `{ items, ... }` shape + FULL-set
+        // requirement as watch.js's Prev/Next (see
+        // AUTOPLAY_ADVANCE_FULL_LIST_LIMIT, above) -- deriveOrderedIds needs
+        // the ended item's folder-mates in full, or its next-in-order
+        // neighbor could sit past a truncated page-1 boundary and autoplay
+        // would silently stop advancing.
+        var advanceBaseUrl = advanceFolder ? '/api/videos?root=' + encodeURIComponent(advanceFolder) : '/api/videos';
+        var advanceSeparator = advanceBaseUrl.indexOf('?') !== -1 ? '&' : '?';
+        return fetch(advanceBaseUrl + advanceSeparator + 'limit=' + AUTOPLAY_ADVANCE_FULL_LIST_LIMIT)
           .then(function (res) { return res.json(); })
-          .then(function (videos) {
+          .then(function (data) {
             if (currentId !== endedId) return; // controller has moved on -- stale, no-op
+            var videos = Array.isArray(data && data.items) ? data.items : [];
             var sortKey = 'newest';
             try { sortKey = localStorage.getItem('filetube_sort') || 'newest'; } catch (_) { /* storage disabled -- fall back to newest */ }
-            var orderedIds = deriveOrderedIds(Array.isArray(videos) ? videos : [], sortKey);
+            var orderedIds = deriveOrderedIds(videos, sortKey);
             var neighbors = computeNeighbors(orderedIds, endedId);
             if (!neighbors.nextId) return; // end of the order -- no wrap, no-op
             if (window.FileTube && typeof window.FileTube.navigate === 'function') {

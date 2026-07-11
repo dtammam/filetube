@@ -65,6 +65,33 @@ summary,
   --card-bg: #ffffff;
   --star-gold: #ffcc00;
   --star-gray: #e0e0e0;
+
+  /* v1.30 C1: type-scale tokens (AC7.1). One token per distinct font-size
+     literal that existed in this file pre-sweep, so tokenizing is a pure
+     rename -- no value was invented or approximated, so no declaration's
+     rendered size changes. Named ascending t-shirt-size steps (Tailwind-style)
+     rather than the smaller 7-step sketch in the exec plan, because the real
+     declarations spanned 11 distinct sizes (10-32px); collapsing genuinely
+     distinct, frequently-used sizes (e.g. 13px x31, 20px x5) onto a
+     neighboring token would have been a restyle, which this task explicitly
+     forbids. Still a small, closed scale relative to the ~127 raw
+     declarations it replaces. */
+  --fs-2xs: 10px;
+  --fs-xs: 11px;
+  --fs-sm: 12px;
+  --fs-base: 13px;  /* the single most common size in the stylesheet */
+  --fs-md: 14px;
+  --fs-lg: 15px;
+  --fs-xl: 16px;     /* general-purpose 16px text/icon sizing (non-input) */
+  --fs-input-min: 16px; /* the v1.26.2 iOS-zoom-on-focus floor (AC7.2) --
+     every text-entry control (input[type=text|search], textarea, select,
+     etc.) must resolve to >=16px via this token. Same value as --fs-xl today,
+     but kept as a separate, purpose-named token so the regression guard is
+     never accidentally weakened by a future edit to the general scale. */
+  --fs-2xl: 18px;
+  --fs-3xl: 20px;
+  --fs-4xl: 22px;
+  --fs-5xl: 32px;
 }
 
 /* ---- 2021 Modern: today's shipped look, verbatim (structural + light palette) ---- */
@@ -306,7 +333,7 @@ body {
   -moz-osx-font-smoothing: grayscale;
   background-color: var(--bg-color);
   color: var(--text-primary);
-  font-size: 13px;
+  font-size: var(--fs-base);
   line-height: 1.4;
   transition: background-color 0.2s, color 0.2s;
 }
@@ -346,7 +373,7 @@ header {
   background: none;
   border: none;
   color: var(--text-primary);
-  font-size: 20px;
+  font-size: var(--fs-3xl);
   cursor: pointer;
   padding: 4px;
 }
@@ -354,7 +381,7 @@ header {
 .logo {
   display: flex;
   align-items: center;
-  font-size: 22px;
+  font-size: var(--fs-4xl);
   font-weight: bold;
   letter-spacing: -1px;
   font-family: var(--logo-font);
@@ -394,7 +421,7 @@ header {
   min-width: 0; /* critical: lets the input shrink below its default intrinsic width */
   border: none;
   padding: 8px 12px;
-  font-size: 14px;
+  font-size: var(--fs-md);
   background-color: var(--bg-color);
   color: var(--text-primary);
   outline: none;
@@ -407,7 +434,7 @@ header {
   color: var(--text-primary);
   padding: 0 16px;
   cursor: pointer;
-  font-size: 13px;
+  font-size: var(--fs-base);
   font-weight: 600;
   flex-shrink: 0;      /* keep the "Search" label from being clipped */
   white-space: nowrap;
@@ -429,22 +456,42 @@ header {
    rounding (era `--radius` + 1px, so the 2005 era's deliberate sharp-corner
    look stays essentially flat while 2009/2014/2021 read a little softer) plus
    a smooth hover/press transition replace the old instant, flat color swap.
-   Era tokens only -- no hardcoded colors, no markup/class change. */
+   Era tokens only -- no hardcoded colors, no markup/class change.
+
+   v1.30 C4 (AC7.6, conservative polish -- Dean on-device is the arbiter, see
+   AC7.6): three small, reversible, token-only refinements on top of the
+   above, no structural change:
+    - `border-radius` drops the hand-tuned `+ 1px` bump and reads the era
+      `--radius` token directly -- subtler/tighter rounding that lines up
+      with every other `--radius`-driven control (search box, cards, chips),
+      and for 2005 specifically resolves to an exact 0 (flush with that
+      era's documented "sharp 0px" character) instead of a 1px near-square.
+    - horizontal padding tightens 14px->12px (a touch less bulky, hit target
+      unaffected -- height is unchanged and every scoped override, e.g.
+      `.watch-actions .btn`/`.setup-box .btn`'s mobile min-height, still sets
+      its own padding/min-height explicitly).
+    - `box-shadow: var(--shadow)` adds a subtle era-aware bevel -- resolves
+      to a soft ambient shadow for 2021/2009 (complementing, not flattening,
+      2009's glossy gradient) and to `none` for the deliberately flat 2005/
+      2014 eras, so no era gains a look it didn't already have elsewhere.
+      `:active` drops the shadow (paired with the existing press-down
+      `translateY`) for a believable "pushed in" release. */
 .btn {
   background-color: var(--btn-bg);
   border: 1px solid var(--border-dark);
   color: var(--text-primary);
-  padding: 6px 14px;
-  border-radius: calc(var(--radius) + 1px);
+  padding: 6px 12px;
+  border-radius: var(--radius);
   font-weight: 600;
   letter-spacing: 0.2px;
   cursor: pointer;
-  font-size: 12px;
+  font-size: var(--fs-sm);
   display: inline-flex;
   align-items: center;
   gap: 6px;
   text-decoration: none; /* .btn is used on <a> too (e.g. #download-media-btn) -- keep it button-like, never underlined */
-  transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+  box-shadow: var(--shadow);
+  transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
 }
 
 /* The 2005 era-theme underlines all <a>; an <a class="btn"> is a button, not a link -- keep it clean. */
@@ -463,9 +510,12 @@ header {
 
 /* Tactile press feedback (a nudge down, not a color swap) replaces the old
    flat/instant hover-only affordance -- reads less like a static blocky
-   rectangle, more like a real pressable control. */
+   rectangle, more like a real pressable control. v1.30 C4: the rest-state
+   bevel (`box-shadow: var(--shadow)` above) drops to none on press,
+   pairing with the nudge for a believable "pushed in" release. */
 .btn:active {
   transform: translateY(1px);
+  box-shadow: none;
 }
 
 .btn-primary {
@@ -482,7 +532,7 @@ header {
   background: none;
   border: none;
   color: var(--text-primary);
-  font-size: 18px;
+  font-size: var(--fs-2xl);
   cursor: pointer;
   padding: 6px;
   border-radius: 50%;
@@ -529,7 +579,7 @@ header {
 
 .sidebar-section-title {
   padding: 6px 24px;
-  font-size: 11px;
+  font-size: var(--fs-xs);
   font-weight: bold;
   color: var(--text-secondary);
   text-transform: uppercase;
@@ -544,7 +594,7 @@ header {
   color: var(--text-primary);
   text-decoration: none;
   cursor: pointer;
-  font-size: 13px;
+  font-size: var(--fs-base);
 }
 
 .sidebar-item:hover, .sidebar-item.active {
@@ -557,7 +607,7 @@ header {
   width: 18px;
   height: 18px;
   text-align: center;
-  font-size: 16px;
+  font-size: var(--fs-xl);
   color: var(--text-secondary);
 }
 
@@ -578,7 +628,7 @@ header {
    buttons already inherit .btn/.btn-sm; this adds the group layout, the
    active-state highlight, and the muted count badge. Era tokens only. */
 .library-item-count {
-  font-size: 12px;
+  font-size: var(--fs-sm);
   color: var(--text-secondary);
   margin-left: 8px;
   font-weight: normal;
@@ -612,7 +662,7 @@ header {
 
 /* Home Page Specifics */
 .section-title {
-  font-size: 18px;
+  font-size: var(--fs-2xl);
   font-weight: bold;
   margin-bottom: 16px;
   border-bottom: 1px solid var(--border-color);
@@ -650,7 +700,7 @@ header {
   border: 1px solid var(--border-dark);
   border-radius: var(--radius);
   padding: 4px 8px;
-  font-size: 12px;
+  font-size: var(--fs-sm);
   font-weight: normal;
   cursor: pointer;
   max-width: 100%;
@@ -709,7 +759,7 @@ header {
   background-color: rgba(0,0,0,0.85);
   color: white;
   padding: 2px 4px;
-  font-size: 11px;
+  font-size: var(--fs-xs);
   font-weight: bold;
   border-radius: var(--radius);
 }
@@ -752,7 +802,7 @@ header {
   background-color: rgba(0, 0, 0, 0.6);
   color: #fff;
   cursor: pointer;
-  font-size: 11px;
+  font-size: var(--fs-xs);
   font-weight: bold;
   line-height: 1;
   opacity: 0.85;
@@ -826,7 +876,7 @@ header {
 }
 
 .video-title {
-  font-size: 13px;
+  font-size: var(--fs-base);
   font-weight: bold;
   line-height: 1.3;
   margin-bottom: 4px;
@@ -838,13 +888,13 @@ header {
 }
 
 .video-uploader {
-  font-size: 12px;
+  font-size: var(--fs-sm);
   color: var(--text-secondary);
   margin-bottom: 2px;
 }
 
 .video-meta {
-  font-size: 11px;
+  font-size: var(--fs-xs);
   color: var(--text-secondary);
 }
 
@@ -961,19 +1011,19 @@ header {
 
 .empty-state-icon,
 .error-state-icon {
-  font-size: 32px;
+  font-size: var(--fs-5xl);
   margin-bottom: 12px;
   opacity: 0.6;
 }
 
 .empty-state-message,
 .error-state-message {
-  font-size: 14px;
+  font-size: var(--fs-md);
   margin: 0 0 4px;
 }
 
 .empty-state-hint {
-  font-size: 12px;
+  font-size: var(--fs-sm);
   margin: 4px 0 0;
 }
 
@@ -1105,7 +1155,7 @@ header {
   border-radius: 50%;
   background: rgba(0, 0, 0, 0.6);
   color: #fff;
-  font-size: 16px;
+  font-size: var(--fs-xl);
   cursor: pointer;
 }
 
@@ -1293,7 +1343,7 @@ header {
 }
 
 .audio-title {
-  font-size: 16px;
+  font-size: var(--fs-xl);
   font-weight: bold;
   margin-bottom: 4px;
   max-width: 80%;
@@ -1303,7 +1353,7 @@ header {
 }
 
 .audio-subtitle {
-  font-size: 13px;
+  font-size: var(--fs-base);
   color: #aaaaaa;
 }
 
@@ -1327,7 +1377,7 @@ header {
 
 .resume-overlay h3 {
   margin-bottom: 8px;
-  font-size: 18px;
+  font-size: var(--fs-2xl);
 }
 
 .resume-overlay p {
@@ -1374,7 +1424,7 @@ header {
   color: #fff;
   padding: 4px 12px;
   border-radius: 14px;
-  font-size: 13px;
+  font-size: var(--fs-base);
   font-weight: 600;
   letter-spacing: 0.5px;
   z-index: 20;
@@ -1386,14 +1436,14 @@ header {
   margin-top: 12px;
   padding-top: 10px;
   border-top: 1px solid var(--border-color);
-  font-size: 13px;
+  font-size: var(--fs-base);
 }
 .embedded-tags-title {
   font-weight: 600;
   margin-bottom: 4px;
   color: var(--text-secondary);
   text-transform: uppercase;
-  font-size: 11px;
+  font-size: var(--fs-xs);
   letter-spacing: 0.5px;
 }
 /* overflow-wrap:anywhere so a long unbroken embedded value (a URL, id, or an
@@ -1429,8 +1479,8 @@ header {
 
 .skip-back { left: 12%; }
 .skip-forward { right: 12%; }
-.skip-arrow { font-size: 22px; line-height: 1; }
-.skip-num { font-size: 13px; }
+.skip-arrow { font-size: var(--fs-4xl); line-height: 1; }
+.skip-num { font-size: var(--fs-base); }
 
 /* Shown only while active (JS adds .skip-visible on pointer move / tap), then fade out */
 .skip-controls.skip-visible .skip-btn {
@@ -1450,7 +1500,7 @@ header {
   align-items: center;
   justify-content: center;
   color: #fff;
-  font-size: 18px;
+  font-size: var(--fs-2xl);
   font-weight: 700;
   background: rgba(255, 255, 255, 0.14);
   opacity: 0;
@@ -1489,7 +1539,7 @@ header {
   border-radius: calc(var(--radius) + 1px);
   font-weight: 600;
   letter-spacing: 0.2px;
-  font-size: 12px;
+  font-size: var(--fs-sm);
   cursor: pointer;
   display: inline-flex;
   align-items: center;
@@ -1519,7 +1569,7 @@ header {
   align-items: center;
   gap: 6px;
   font-weight: bold;
-  font-size: 12px;
+  font-size: var(--fs-sm);
   color: var(--text-primary);
   cursor: pointer;
   user-select: none;
@@ -1579,7 +1629,7 @@ header {
 
 /* Video Information Layout */
 .watch-title {
-  font-size: 18px;
+  font-size: var(--fs-2xl);
   font-weight: bold;
   margin-bottom: 12px;
   word-break: break-word;
@@ -1597,7 +1647,7 @@ header {
 }
 
 .views-count {
-  font-size: 16px;
+  font-size: var(--fs-xl);
   font-weight: bold;
   color: var(--text-primary);
 }
@@ -1637,7 +1687,7 @@ header {
 }
 
 .star {
-  font-size: 20px;
+  font-size: var(--fs-3xl);
   color: var(--star-gray);
   transition: color 0.1s;
 }
@@ -1647,7 +1697,7 @@ header {
 }
 
 .rating-count {
-  font-size: 11px;
+  font-size: var(--fs-xs);
   color: var(--text-secondary);
   margin-left: 6px;
   /* v1.22.2 FR-3: without wrap protection, "N / 5" (watch.js's
@@ -1665,7 +1715,7 @@ header {
 /* Deterministic 3–5 star rating shown on each media card in the grid/list.
    .on = gold filled stars, .off = gray remainder (out of 5). */
 .card-rating {
-  font-size: 13px;
+  font-size: var(--fs-base);
   letter-spacing: 2px;
   line-height: 1;
   margin-top: 4px;
@@ -1703,13 +1753,13 @@ header {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 20px;
+  font-size: var(--fs-3xl);
   font-weight: bold;
   text-transform: uppercase;
 }
 
 .uploader-name {
-  font-size: 14px;
+  font-size: var(--fs-md);
   font-weight: bold;
   color: var(--text-primary);
 }
@@ -1719,7 +1769,7 @@ header {
    default browser link styling so it doesn't read as a hyperlink; a
    discreet hover underline keeps it discoverable as clickable. */
 .uploader-channel-link {
-  font-size: 14px;
+  font-size: var(--fs-md);
   font-weight: bold;
   color: var(--text-primary);
   text-decoration: none;
@@ -1731,7 +1781,7 @@ header {
 }
 
 .uploader-subs {
-  font-size: 11px;
+  font-size: var(--fs-xs);
   color: var(--text-secondary);
   margin-top: 2px;
 }
@@ -1748,13 +1798,13 @@ header {
 .description-meta {
   font-weight: bold;
   margin-bottom: 8px;
-  font-size: 12px;
+  font-size: var(--fs-sm);
 }
 
 .description-text {
   white-space: normal;
   word-break: break-word;
-  font-size: 13px;
+  font-size: var(--fs-base);
   display: -webkit-box;
   -webkit-line-clamp: 5;
   -webkit-box-orient: vertical;
@@ -1772,7 +1822,7 @@ header {
   background: none;
   border: none;
   color: var(--text-link);
-  font-size: 12px;
+  font-size: var(--fs-sm);
   font-weight: bold;
   cursor: pointer;
   margin-top: 8px;
@@ -1788,7 +1838,7 @@ header {
 }
 
 .comments-header {
-  font-size: 15px;
+  font-size: var(--fs-lg);
   font-weight: bold;
   margin-bottom: 16px;
 }
@@ -1804,7 +1854,7 @@ header {
   min-width: 0; /* v1.24.6: a flex textarea child must be allowed to shrink below its intrinsic column width, never widen the row past the viewport. */
   border: 1px solid var(--border-dark);
   padding: 8px;
-  font-size: 13px;
+  font-size: var(--fs-base);
   background-color: var(--bg-color);
   color: var(--text-primary);
   border-radius: var(--radius);
@@ -1834,7 +1884,7 @@ header {
   align-items: center;
   justify-content: center;
   font-weight: bold;
-  font-size: 16px;
+  font-size: var(--fs-xl);
   color: var(--text-secondary);
 }
 
@@ -1848,22 +1898,22 @@ header {
 
 .comment-author-name {
   font-weight: bold;
-  font-size: 12px;
+  font-size: var(--fs-sm);
   margin-right: 8px;
 }
 
 .comment-time {
-  font-size: 11px;
+  font-size: var(--fs-xs);
   color: var(--text-secondary);
 }
 
 .comment-content {
-  font-size: 13px;
+  font-size: var(--fs-base);
 }
 
 /* Sidebar Playlist Items (Watch page) */
 .related-header {
-  font-size: 14px;
+  font-size: var(--fs-md);
   font-weight: bold;
   margin-bottom: 12px;
 }
@@ -1901,7 +1951,7 @@ header {
 }
 
 .related-title {
-  font-size: 12px;
+  font-size: var(--fs-sm);
   font-weight: bold;
   color: var(--text-primary);
   line-height: 1.3;
@@ -1914,7 +1964,7 @@ header {
 }
 
 .related-uploader {
-  font-size: 11px;
+  font-size: var(--fs-xs);
   color: var(--text-secondary);
   margin-bottom: 1px;
   text-overflow: ellipsis;
@@ -1923,7 +1973,7 @@ header {
 }
 
 .related-meta {
-  font-size: 10px;
+  font-size: var(--fs-2xs);
   color: var(--text-secondary);
 }
 
@@ -1945,7 +1995,7 @@ header {
 }
 
 .setup-box h2 {
-  font-size: 22px;
+  font-size: var(--fs-4xl);
   font-weight: bold;
   margin-bottom: 16px;
   border-bottom: 1px solid var(--border-color);
@@ -1954,7 +2004,7 @@ header {
 }
 
 .setup-box p {
-  font-size: 14px;
+  font-size: var(--fs-md);
   margin-bottom: 20px;
   color: var(--text-primary);
   line-height: 1.5;
@@ -1968,7 +2018,7 @@ header {
   display: block;
   font-weight: bold;
   margin-bottom: 10px;
-  font-size: 13px;
+  font-size: var(--fs-base);
 }
 
 .form-group input[type="text"],
@@ -1977,7 +2027,7 @@ header {
   padding: 10px 12px;
   border: 1px solid var(--border-dark);
   border-radius: var(--radius);
-  font-size: 13px;
+  font-size: var(--fs-base);
   background-color: var(--bg-color);
   color: var(--text-primary);
   outline: none;
@@ -1989,7 +2039,7 @@ header {
   padding: 10px 12px;
   border: 1px solid var(--border-dark);
   border-radius: var(--radius);
-  font-size: 13px;
+  font-size: var(--fs-base);
   background-color: var(--bg-color);
   color: var(--text-primary);
   cursor: pointer;
@@ -1997,7 +2047,7 @@ header {
 
 .field-error {
   color: var(--yt-red);
-  font-size: 12px;
+  font-size: var(--fs-sm);
   margin-top: 4px;
   display: none;
 }
@@ -2051,7 +2101,7 @@ header {
   flex-shrink: 0;
   width: 16px;
   color: var(--text-secondary);
-  font-size: 14px;
+  font-size: var(--fs-md);
   line-height: 1;
   letter-spacing: -2px;
   cursor: grab;
@@ -2076,7 +2126,7 @@ header {
 
 .folder-path-text {
   font-family: var(--mono-font);
-  font-size: 12px;
+  font-size: var(--fs-sm);
   word-break: break-all;
   flex: 1;
   margin-right: 12px;
@@ -2088,14 +2138,14 @@ header {
 }
 
 /* v1.26.2 polish fix (Dean punchlist #6, systemic iOS-zoom fix): this input
-   used to carry an INLINE `style="...font-size:12px;"` (public/js/setup.js's
+   used to carry an INLINE `style="...font-size:var(--fs-sm);"` (public/js/setup.js's
    renderFolders) -- an inline style always beats any stylesheet rule
    (including the mobile-only global `input`/`select`/`textarea` 16px floor
    added below), so it stayed 12px on mobile and auto-zoomed iOS Safari on
    focus no matter what CSS said. Moved here as a real class rule so the
    mobile override in the `max-width: 768px` block can actually reach it. */
 .folder-name-input {
-  font-size: 12px;
+  font-size: var(--fs-sm);
 }
 
 .remove-folder-btn {
@@ -2104,7 +2154,7 @@ header {
   color: var(--yt-red);
   cursor: pointer;
   font-weight: bold;
-  font-size: 16px;
+  font-size: var(--fs-xl);
 }
 
 .remove-folder-btn:hover {
@@ -2216,7 +2266,7 @@ header {
   align-items: center;
   justify-content: center;
   font-weight: bold;
-  font-size: 15px;
+  font-size: var(--fs-lg);
   color: var(--text-primary);
   background-color: var(--bg-color);
   border-top: 1px solid var(--border-dark);
@@ -2248,7 +2298,7 @@ header {
 
 .sub-row-name {
   font-family: var(--font-family);
-  font-size: 13px;
+  font-size: var(--fs-base);
   font-weight: bold;
   overflow-wrap: break-word;
   word-break: break-word;
@@ -2260,7 +2310,7 @@ header {
    not apply to them). Preserves the original v1.13.0 word-wrap fix
    unchanged. */
 .sub-row-url {
-  font-size: 11px;
+  font-size: var(--fs-xs);
   color: var(--text-secondary);
   margin-top: 4px;
   overflow-wrap: break-word;
@@ -2278,7 +2328,7 @@ header {
 .sub-row-meta,
 .sub-row-status {
   display: inline;
-  font-size: 11px;
+  font-size: var(--fs-xs);
   color: var(--text-secondary);
 }
 
@@ -2296,7 +2346,7 @@ header {
    anchor in JS (never a template string); this rule is purely cosmetic. */
 .sub-row-channel-link {
   display: block;
-  font-size: 11px;
+  font-size: var(--fs-xs);
   color: var(--text-secondary);
   margin-top: 4px;
   overflow-wrap: break-word;
@@ -2330,7 +2380,7 @@ a.sub-row-channel-link:focus-visible {
 .sub-row-playlist-link {
   display: inline-block;
   margin-top: 6px;
-  font-size: 11px;
+  font-size: var(--fs-xs);
   color: var(--yt-red);
   text-decoration: none;
 }
@@ -2351,7 +2401,7 @@ a.sub-row-channel-link:focus-visible {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 18px;
+  font-size: var(--fs-2xl);
   line-height: 1;
   font-family: inherit;
   color: var(--text-secondary);
@@ -2390,9 +2440,9 @@ a.sub-row-channel-link:focus-visible {
 .theme-card.active { border-color: var(--yt-red); border-width: 2px; }
 .theme-swatch { display: flex; height: 20px; border-radius: var(--radius); overflow: hidden; }
 .theme-swatch span { flex: 1; }
-.theme-card-name { font-weight: bold; font-size: 13px; }
+.theme-card-name { font-weight: bold; font-size: var(--fs-base); }
 .theme-card-year { color: var(--text-secondary); font-weight: normal; }
-.theme-card-blurb { font-size: 11px; color: var(--text-secondary); }
+.theme-card-blurb { font-size: var(--fs-xs); color: var(--text-secondary); }
 
 /* Modal dialog custom styling */
 .modal-backdrop {
@@ -2454,14 +2504,14 @@ a.sub-row-channel-link:focus-visible {
 }
 
 .modal-title {
-  font-size: 16px;
+  font-size: var(--fs-xl);
   font-weight: bold;
   margin-bottom: 12px;
   color: var(--text-primary);
 }
 
 .modal-body {
-  font-size: 13px;
+  font-size: var(--fs-base);
   margin-bottom: 20px;
   color: var(--text-primary);
 }
@@ -2497,7 +2547,7 @@ a.sub-row-channel-link:focus-visible {
   padding: 10px 18px;
   border-radius: var(--radius);
   box-shadow: var(--shadow-lg);
-  font-size: 13px;
+  font-size: var(--fs-base);
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.25s ease, transform 0.25s ease;
@@ -2566,7 +2616,7 @@ a.sub-row-channel-link:focus-visible {
 }
 
 .oneoff-modal-title {
-  font-size: 16px;
+  font-size: var(--fs-xl);
   font-weight: bold;
   color: var(--text-primary);
 }
@@ -2574,7 +2624,7 @@ a.sub-row-channel-link:focus-visible {
 .oneoff-modal-close {
   background: none;
   border: none;
-  font-size: 20px;
+  font-size: var(--fs-3xl);
   line-height: 1;
   cursor: pointer;
   color: var(--text-secondary);
@@ -2595,7 +2645,7 @@ a.sub-row-channel-link:focus-visible {
   border-radius: var(--radius);
   background-color: var(--bg-color);
   color: var(--text-primary);
-  font-size: 13px;
+  font-size: var(--fs-base);
 }
 
 .oneoff-modal-row {
@@ -2624,11 +2674,11 @@ a.sub-row-channel-link:focus-visible {
   border-radius: var(--radius);
   background-color: var(--bg-color);
   color: var(--text-primary);
-  font-size: 13px;
+  font-size: var(--fs-base);
 }
 
 .oneoff-modal-status {
-  font-size: 12px;
+  font-size: var(--fs-sm);
   color: var(--text-secondary);
   margin: 4px 0 12px;
   min-height: 16px;
@@ -2675,12 +2725,12 @@ a.sub-row-channel-link:focus-visible {
 .subscribe-modal-identity-name {
   font-weight: bold;
   color: var(--text-primary);
-  font-size: 13px;
+  font-size: var(--fs-base);
 }
 
 .subscribe-modal-identity-url {
   color: var(--text-secondary);
-  font-size: 11px;
+  font-size: var(--fs-xs);
   word-break: break-all;
   margin-top: 2px;
 }
@@ -2693,7 +2743,7 @@ a.sub-row-channel-link:focus-visible {
   align-items: center;
   gap: 6px;
   margin-bottom: 10px;
-  font-size: 13px;
+  font-size: var(--fs-base);
   color: var(--text-primary);
   cursor: pointer;
 }
@@ -2947,7 +2997,7 @@ a.sub-row-channel-link:focus-visible {
   input,
   select,
   textarea {
-    font-size: 16px;
+    font-size: var(--fs-input-min);
   }
 
   /* v1.26.2: the bare-element global floor above can't reach a surface
@@ -2961,7 +3011,7 @@ a.sub-row-channel-link:focus-visible {
   .comment-input-box,
   .sort-select,
   .folder-name-input {
-    font-size: 16px;
+    font-size: var(--fs-input-min);
   }
 
   .sidebar {
@@ -2982,7 +3032,7 @@ a.sub-row-channel-link:focus-visible {
     gap: 8px;
   }
   .logo {
-    font-size: 18px;
+    font-size: var(--fs-2xl);
   }
   .header-search {
     margin: 0 6px;
@@ -2991,7 +3041,7 @@ a.sub-row-channel-link:focus-visible {
     padding: 7px 10px;
     /* v1.25.10: 16px so tapping the search box doesn't trigger iOS's
        focus auto-zoom (same <16px rule fixed for the modal/form inputs in v1.25.4). */
-    font-size: 16px;
+    font-size: var(--fs-input-min);
   }
   .search-btn {
     padding: 0 10px;
@@ -3035,11 +3085,11 @@ a.sub-row-channel-link:focus-visible {
     text-decoration: none;
     color: var(--text-secondary);
     font-family: inherit;
-    font-size: 11px;
+    font-size: var(--fs-xs);
   }
 
   .bottom-nav-item i {
-    font-size: 20px;
+    font-size: var(--fs-3xl);
     line-height: 1;
     color: inherit;
   }
@@ -3151,7 +3201,7 @@ a.sub-row-channel-link:focus-visible {
   .playlists-sheet-close {
     background: none;
     border: none;
-    font-size: 22px;
+    font-size: var(--fs-4xl);
     line-height: 1;
     color: var(--text-secondary);
     cursor: pointer;
@@ -3198,7 +3248,7 @@ a.sub-row-channel-link:focus-visible {
   .watch-actions .btn {
     padding: 6px 10px;
     gap: 4px;
-    font-size: 11px;
+    font-size: var(--fs-xs);
   }
 
   /* ---- v1.13.0 item 6: mobile-portrait polish for the Setup (Library ------
@@ -3238,7 +3288,7 @@ a.sub-row-channel-link:focus-visible {
   .setup-box .setup-select,
   .setup-box input[type="text"],
   .setup-box input[type="number"] {
-    font-size: 16px;
+    font-size: var(--fs-input-min);
   }
 
   /* The add-subscription/one-shot rows (URL + several selects + a button)
@@ -3332,16 +3382,16 @@ a.sub-row-channel-link:focus-visible {
   }
 
   .video-title {
-    font-size: 12px;
+    font-size: var(--fs-sm);
     max-height: 31px;
   }
 
   .video-uploader {
-    font-size: 11px;
+    font-size: var(--fs-xs);
   }
 
   .video-meta {
-    font-size: 10px;
+    font-size: var(--fs-2xs);
   }
 
   /* ---- v1.15.1 FIX 5: one-off modal comfortable on a phone -------------
@@ -3396,7 +3446,7 @@ a.sub-row-channel-link:focus-visible {
      no zoom-on-focus behavior to guard against) is unchanged. */
   .oneoff-modal-field,
   .oneoff-modal-row select {
-    font-size: 16px;
+    font-size: var(--fs-input-min);
   }
 
   /* v1.20.0 FR-1 (T3): same comfortable tap-target floor for the subscribe
@@ -3490,7 +3540,7 @@ a.sub-row-channel-link:focus-visible {
 
 .pc-time {
   font-family: var(--mono-font);
-  font-size: 11px;
+  font-size: var(--fs-xs);
   color: var(--text-secondary);
   min-width: 36px;
   text-align: center;
@@ -3512,7 +3562,7 @@ a.sub-row-channel-link:focus-visible {
   border-radius: 0;
   background-color: var(--btn-bg);
   color: var(--text-primary);
-  font-size: 15px;
+  font-size: var(--fs-lg);
   line-height: 1;
   cursor: pointer;
   /* Outset bevel: light top-left, dark bottom-right -- inverts to an inset
@@ -3611,7 +3661,7 @@ a.sub-row-channel-link:focus-visible {
    same "text glyph, not an icon-font asset" idiom the existing dock close
    button (`×`) and skip buttons (`«`/`»`) already use in this codebase. */
 .fs-btn {
-  font-size: 14px;
+  font-size: var(--fs-md);
 }
 
 /* ---- seek / volume range inputs ------------------------------------------ */
@@ -3903,7 +3953,7 @@ a.sub-row-channel-link:focus-visible {
   background: rgba(0, 0, 0, 0.72);
   color: #fff;
   font-family: var(--font-family);
-  font-size: 14px;
+  font-size: var(--fs-md);
   line-height: 1.35;
   padding: 4px 10px;
   border-radius: 4px;
@@ -4099,7 +4149,7 @@ a.sub-row-channel-link:focus-visible {
    (custom bar always active there) and mobile audio (custom bar kept, AC3)
    alike, wherever the custom bar itself is the active control surface. */
 .pip-btn {
-  font-size: 13px;
+  font-size: var(--fs-base);
 }
 #player-wrapper.audio-mode .pip-btn {
   display: none;
@@ -4120,7 +4170,7 @@ a.sub-row-channel-link:focus-visible {
   width: auto;
   min-width: 30px;
   padding: 0 6px;
-  font-size: 12px;
+  font-size: var(--fs-sm);
 }
 
 /* === v1.21 FR-3: subscriptions list / settings sheet ======================
@@ -4153,7 +4203,7 @@ a.sub-row-channel-link:focus-visible {
    `<h2>` as the clickable "heading" -- the native disclosure triangle is
    the sole open/close affordance. */
 .sub-collapsible > summary {
-  font-size: 22px;
+  font-size: var(--fs-4xl);
   font-weight: bold;
   color: var(--yt-red);
   cursor: pointer;
@@ -4242,7 +4292,7 @@ a.sub-row-channel-link:focus-visible {
   align-items: center;
   justify-content: center;
   font-weight: bold;
-  font-size: 16px;
+  font-size: var(--fs-xl);
   color: var(--text-primary);
   background-color: var(--bg-color);
   border: 1px solid var(--border-dark);
@@ -4270,14 +4320,14 @@ a.sub-row-channel-link:focus-visible {
    buildSettingsSheet's doc comment in subscriptions.js. */
 .sub-sheet-name {
   font-family: var(--font-family);
-  font-size: 15px;
+  font-size: var(--fs-lg);
   font-weight: bold;
   overflow-wrap: break-word;
   word-break: break-word;
 }
 
 .sub-sheet-subtext {
-  font-size: 12px;
+  font-size: var(--fs-sm);
   color: var(--text-secondary);
   margin-top: 2px;
 }
@@ -4286,7 +4336,7 @@ a.sub-row-channel-link:focus-visible {
   flex-shrink: 0;
   background: none;
   border: none;
-  font-size: 22px;
+  font-size: var(--fs-4xl);
   line-height: 1;
   color: var(--text-secondary);
   cursor: pointer;
@@ -4308,7 +4358,7 @@ a.sub-row-channel-link:focus-visible {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  font-size: 12px;
+  font-size: var(--fs-sm);
   color: var(--text-secondary);
 }
 
@@ -4317,7 +4367,7 @@ a.sub-row-channel-link:focus-visible {
   padding: 10px;
   border: 1px solid var(--border-dark);
   border-radius: var(--radius);
-  font-size: 13px;
+  font-size: var(--fs-base);
   background-color: var(--bg-color);
   color: var(--text-primary);
 }
@@ -4326,7 +4376,7 @@ a.sub-row-channel-link:focus-visible {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 13px;
+  font-size: var(--fs-base);
   font-weight: normal;
   color: var(--text-primary);
 }
@@ -4357,7 +4407,7 @@ a.sub-row-channel-link:focus-visible {
 @media (max-width: 768px) {
   .sub-sheet-field .setup-select,
   .sub-sheet-field input {
-    font-size: 16px;
+    font-size: var(--fs-input-min);
   }
 }
 
@@ -4415,7 +4465,7 @@ a.sub-row-channel-link:focus-visible {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 16px;
+  font-size: var(--fs-xl);
   line-height: 1;
   font-family: inherit;
   color: var(--text-secondary);
@@ -4482,7 +4532,7 @@ a.sub-row-channel-link:focus-visible {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
+  font-size: var(--fs-xs);
   font-weight: bold;
   color: #fff;
   line-height: 1;
@@ -4534,14 +4584,14 @@ a.sub-row-channel-link:focus-visible {
 }
 
 .hard-delete-modal-title {
-  font-size: 16px;
+  font-size: var(--fs-xl);
   font-weight: bold;
   color: var(--yt-red);
   margin-bottom: 10px;
 }
 
 .hard-delete-modal-warning {
-  font-size: 13px;
+  font-size: var(--fs-base);
   font-weight: bold;
   color: var(--yt-red);
   background-color: var(--btn-bg);
@@ -4552,7 +4602,7 @@ a.sub-row-channel-link:focus-visible {
 }
 
 .hard-delete-modal-filename {
-  font-size: 13px;
+  font-size: var(--fs-base);
   font-weight: bold;
   color: var(--text-primary);
   word-break: break-word;
@@ -4560,7 +4610,7 @@ a.sub-row-channel-link:focus-visible {
 }
 
 .hard-delete-modal-path {
-  font-size: 11px;
+  font-size: var(--fs-xs);
   color: var(--text-secondary);
   word-break: break-all;
   margin-bottom: 14px;
@@ -4571,7 +4621,7 @@ a.sub-row-channel-link:focus-visible {
   align-items: center;
   gap: 8px;
   margin-bottom: 16px;
-  font-size: 13px;
+  font-size: var(--fs-base);
   font-weight: bold;
   color: var(--text-primary);
   cursor: pointer;
@@ -4603,7 +4653,7 @@ a.sub-row-channel-link:focus-visible {
   border-radius: calc(var(--radius) + 1px);
   background-color: var(--yt-red);
   color: #ffffff;
-  font-size: 13px;
+  font-size: var(--fs-base);
   font-weight: 600;
   cursor: pointer;
   transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, opacity 0.15s ease;
@@ -4679,7 +4729,7 @@ a.sub-row-channel-link:focus-visible {
   border-radius: var(--radius);
   box-shadow: var(--shadow-lg);
   font-family: inherit;
-  font-size: 13px;
+  font-size: var(--fs-base);
   font-weight: bold;
   cursor: pointer;
   max-width: 100%;
@@ -4750,7 +4800,7 @@ a.sub-row-channel-link:focus-visible {
   align-items: baseline;
   justify-content: space-between;
   gap: 8px;
-  font-size: 12px;
+  font-size: var(--fs-sm);
   font-weight: bold;
   color: var(--text-primary);
 }
@@ -4869,7 +4919,7 @@ a.sub-row-channel-link:focus-visible {
 
 .dl-status-chip-item-status {
   margin-top: 4px;
-  font-size: 11px;
+  font-size: var(--fs-xs);
   color: var(--text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -4889,7 +4939,7 @@ a.sub-row-channel-link:focus-visible {
 }
 
 .dl-status-chip-item-failure {
-  font-size: 11px;
+  font-size: var(--fs-xs);
   color: var(--text-secondary);
   overflow-wrap: break-word;
 }
@@ -4909,7 +4959,7 @@ a.sub-row-channel-link:focus-visible {
   flex: 1;
   padding: 4px 8px;
   font-family: inherit;
-  font-size: 11px;
+  font-size: var(--fs-xs);
   font-weight: 600;
   border-radius: calc(var(--radius) + 1px);
   cursor: pointer;

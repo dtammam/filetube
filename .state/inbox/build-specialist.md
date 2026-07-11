@@ -1,64 +1,63 @@
-# Build verification — v1.29 Downloads Reliability Wave, GF2 (F1 re-fix)
+# Verification — T13 (v1.30 Scale Perf + Polish Wave) — elegant-button polish (FINAL task)
 
-You are the build-specialist. The gate-fix round **GF2** (the F1 re-fix in
-`failures.js` after the delta re-gate's CRITICAL) has been implemented and self-
-reported green by the software-developer. Your job is INDEPENDENT verification:
-run the project's test/lint commands yourself and report pass/fail, with full
-output for any failure. You do NOT fix code and you do NOT commit — you verify and
-report.
+You are the **build-specialist**. Independently verify the T13 implementation by
+running the project's build/test/lint commands and reporting pass/fail with full
+output for any failure. You do NOT write code or fix failures — you report. This is
+the LAST implementation task; your PASS puts all 13 tasks through the build gate.
 
-## CRITICAL — toolchain / PATH (read before running anything)
+## Environment (do this FIRST — v1.29 process learning)
 
-node/npm are installed via **fnm** and are **NOT on PATH** by default. Before ANY
-`npm`/`node` command, export the fnm node bin dir:
-
-```
-export PATH="/home/coder/.local/share/fnm/node-versions/v24.14.0/installation/bin:$PATH"
+```bash
+export PATH="$HOME/.local/share/fnm/node-versions/v22.23.1/installation/bin:$PATH"
+node --version   # expect v22.23.1 (CI parity)
 ```
 
-- Symptom if you skip this: `npm: command not found` or a spurious lint/test
-  failure. Confirm with `node -v && npm -v` first.
-- If that path is missing (the version dir can change), find the current one:
-  `ls /home/coder/.local/share/fnm/node-versions/` and use its
-  `.../installation/bin`.
-- **Node-version CI-parity caveat:** repo targets **Node 22 LTS**; box has only
-  **Node 24.14.0**. Run on 24; reiterate the standing whole-wave Node 22 pre-
-  release re-run flag. State which Node you ran on.
+## What T13 changed (context for your review)
 
-## What GF2 changed (context, not a to-do)
+Task **T13** (C4) is a **conservative, CSS-only** button polish — `public/css/style.css`,
+the base `.btn` rule only:
+- `border-radius` reads `var(--radius)` directly (drops the old `+1px` bump; 2005
+  becomes exact-0 sharp per its documented character).
+- Horizontal padding 14px → 12px (vertical padding / tap-targets untouched; all
+  44px-floor scoped overrides self-declare).
+- `box-shadow: var(--shadow)` at rest (era-resolving: ambient for 2021/2009, none
+  for flat 2005/2014) with `:active` clearing it to pair with the existing
+  `translateY` press nudge.
+- **No new tokens, no `font-size`, no markup, no new tests.** The SDE audited all
+  `.btn`-referencing lock tests and none lock the base rule, so zero test updates.
 
-- `lib/ytdlp/failures.js` ONLY — `computeDownloadOutcome` reworked: reason-dedup
-  REMOVED; raw unattributed count; a zero-attributed override (→ `error`,
-  `succeeded:0`, `failed:target`) checked BEFORE the reserve bound; reserve-at-
-  least-one only when `attributed.size >= 1`; a new `remainingAfterAttributed > 0`
-  guard prevents `failed > target`; three-arm disjointness re-derived in the doc
-  comment.
-- Tests updated: `test/unit/ytdlp-download-outcome.test.js` (5-same-429 →
-  error/0/5; all-unattributed → error unconditionally; 1-attributed+3-same-reason-
-  unattributed → partial 6/4; original 2-unattributed repro now error; 9/10
-  attributed partial unaffected) and `test/integration/ytdlp-outcome-threading.test.js`
-  (zero-attributed → error, NO downloadMeta for either id, cutoffDate frozen).
-- SDE self-report: `npm test` 3417/3417, `npm run lint` 0 errors / 7 baseline.
-  Scope = `failures.js` + 2 test files only. Nothing committed.
+**AC7.6 (subjective "elegant buttons" quality) is Dean-on-device-post-release — NOT
+a machine PASS.** Do not attempt to judge the aesthetics; only confirm the suite is
+green and the guards hold.
 
-## Commands (from repo root, after the PATH export)
+## Commands to run (report each pass/fail; full output on failure)
 
-1. **Install only if needed:** `npm ci` — skip if `node_modules` present/intact;
-   note whether you ran it.
-2. **Lint:** `npm run lint` — PASS = 0 errors + no NEW warnings beyond the ~7-8
-   baseline. Report exact counts.
-3. **Full test suite:** `npm test` — report the tally + exit code. Expect **3417**
-   passing. **Explicitly confirm the GF2 CRITICAL-repro test (5 videos, same 429
-   text → `error`/`succeeded:0`, NOT phantom successes) and the zero-attributed →
-   error override test are present and green** — they are the crux of this fix.
+1. `npm ci` (install; the "build")
+2. `npm test`
+3. `npm run lint`
 
-## Report back to the orchestrator (EM)
-- Command lines + resolved `node -v`/`npm -v`; whether you ran `npm ci`; Node
-  version.
-- Lint pass/fail + counts; test pass/fail + tally + exit code (full output for any
-  failure). Confirm the 5-same-429 CRITICAL-repro + zero-attributed-override tests
-  are present and green.
-- One-line verdict: **PASS** or **FAIL** (with the failing command + output).
+## Expected results (from the SDE's self-report — confirm independently)
 
-Do NOT edit code, commit, or start other work. (Separately, the adversarial
-reviewer runs a focused re-gate on the failures.js delta — not your concern here.)
+- **`npm test`: 3593/3593 passing** on Node 22.23.1 — **same count as after T12**
+  (T13 is a CSS-only polish that added NO new tests). Any failing/errored test, or a
+  count other than 3593, is a FAIL — report the full output.
+- **`npm run lint`: 0 errors, 7 baseline warnings.** More than 0 errors is a FAIL.
+
+## Specifically confirm (T13 acceptance evidence — call these out BY NAME)
+
+- **AC7.1** static-scan (font-size still all `var(--fs-*)` except allowlist) — the
+  button polish must NOT have reintroduced a literal `font-size`. Still green.
+- **AC7.2** 16px input-floor tests — still green (both floor test files).
+- The **existing CSS-lock tests** (any `.btn`/border-radius/box-shadow locks) still
+  pass — i.e. the base-rule polish didn't break a lock the SDE said it wouldn't.
+
+## Report back (concise)
+
+For each command: PASS/FAIL, and for `npm test` the exact passing/total count and
+Node version. Explicitly state whether AC7.1, AC7.2, and the CSS-lock tests are
+still green. Full output for any failure. Do NOT commit, push, or edit code.
+
+When done, return to the EM session and run:
+- **all PASS →** all 13 tasks are through the build gate; run `/prep-qa-review` to
+  open the two-reviewer gate (both reviewer inboxes are already written).
+- **any FAIL →** report; EM re-routes to the software-developer with the output.

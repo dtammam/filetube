@@ -14,7 +14,7 @@ const TRANSCODE_DIR = path.join(DATA_DIR, 'transcoded');
 
 const { test, beforeEach } = require('node:test');
 const assert = require('node:assert');
-const { scanDirectories, getMediaId, recordServed } = require('../../server');
+const { scanDirectories, getMediaId, recordServed, saveDatabase } = require('../../server');
 
 function baseSettings(overrides) {
   return {
@@ -26,8 +26,11 @@ function baseSettings(overrides) {
   };
 }
 
+// v1.30 A3 (in-memory DB read cache): seed via the exported `saveDatabase()`
+// (an established test primitive, see CONTRIBUTING.md) rather than a raw
+// `fs.writeFileSync`, so the in-process db cache stays coherent.
 function writeDb(db) {
-  fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2), 'utf8');
+  saveDatabase(db);
 }
 
 function readDb() {
@@ -286,21 +289,28 @@ test('(g) FR3.1: a present file whose statSync throws mid-scan is retained, whil
 
   // Simulate a transient per-file stat error for exactly the flaky file, even
   // though its directory's own readdir succeeds -- the scenario FR3.1 closes.
-  // Every other statSync call passes through untouched.
-  const originalStatSync = fs.statSync;
-  fs.statSync = (p, ...rest) => {
+  // Every other stat call passes through untouched.
+  // v1.30 A2: `scanDirRecursive` now stats each file via `fs.promises.stat`
+  // (not `fs.statSync`) -- `fs.promises.stat` is a SEPARATE implementation
+  // (not a thin wrapper around the sync version), so patching `fs.statSync`
+  // alone would silently no-op here and this test would stop exercising the
+  // FR3.1 guard at all (the flaky file would just stat successfully and take
+  // the normal reuse path) while still happening to pass on unrelated
+  // grounds. Patch `fs.promises.stat` instead.
+  const originalPromisesStat = fs.promises.stat;
+  fs.promises.stat = (p, ...rest) => {
     if (p === flakyPath) {
       const err = new Error(`EACCES: permission denied, stat '${p}'`);
       err.code = 'EACCES';
-      throw err;
+      return Promise.reject(err);
     }
-    return originalStatSync.call(fs, p, ...rest);
+    return originalPromisesStat.call(fs.promises, p, ...rest);
   };
 
   try {
     await scanDirectories();
   } finally {
-    fs.statSync = originalStatSync;
+    fs.promises.stat = originalPromisesStat;
   }
 
   const db = readDb();
