@@ -154,7 +154,7 @@ test('manifest.webmanifest declares both PNG icon sizes alongside the existing S
   assert.equal(png192.type, 'image/png');
 });
 
-test('every page that ships a manifest link also points apple-touch-icon at the 192px PNG', () => {
+test('every page that ships a manifest link also points apple-touch-icon at the dedicated OPAQUE PNG (v1.28.1: iOS composites transparency onto black, so the home-screen icon keeps its own white-backed file while the tab icons went transparent)', () => {
   const pages = [
     path.join(__dirname, '..', '..', 'public', 'index.html'),
     path.join(__dirname, '..', '..', 'public', 'watch.html'),
@@ -163,7 +163,7 @@ test('every page that ships a manifest link also points apple-touch-icon at the 
   ];
   for (const p of pages) {
     const html = fs.readFileSync(p, 'utf8');
-    assert.match(html, /<link rel="apple-touch-icon" href="\/icons\/icon-192\.png">/, `${p} should use the PNG apple-touch-icon`);
+    assert.match(html, /<link rel="apple-touch-icon" href="\/icons\/apple-touch-icon\.png">/, `${p} should use the dedicated opaque apple-touch-icon`);
   }
 });
 
@@ -237,7 +237,7 @@ test('every page ships a byte-identical <link rel="icon" href="/favicon.ico" siz
 });
 
 test('the favicon.ico link sits between the PNG rel="icon" fallbacks and apple-touch-icon in every shell', () => {
-  const order = /<link rel="icon" type="image\/png" sizes="512x512" href="\/icons\/icon-512\.png">\s*\n\s*<link rel="icon" href="\/favicon\.ico" sizes="any">\s*\n\s*<link rel="apple-touch-icon" href="\/icons\/icon-192\.png">/;
+  const order = /<link rel="icon" type="image\/png" sizes="512x512" href="\/icons\/icon-512\.png">\s*\n\s*<link rel="icon" href="\/favicon\.ico" sizes="any">\s*\n\s*<link rel="apple-touch-icon" href="\/icons\/apple-touch-icon\.png">/;
   for (const p of SHELL_PAGES) {
     const html = fs.readFileSync(p, 'utf8');
     assert.match(html, order, `${p} should place favicon.ico between the 512px PNG and apple-touch-icon`);
@@ -273,4 +273,63 @@ test('public/favicon.ico exists and is a structurally valid multi-resolution ICO
   for (const expected of [16, 32, 48]) {
     assert.ok(sizes.includes(expected), `expected a ${expected}x${expected} resolution, got [${sizes.join(', ')}]`);
   }
+});
+
+// ---- v1.28.1: transparent icon backgrounds (Dean: the white box showed in
+// browser tabs / dark UIs). All tab-facing icons now carry real alpha; ONLY
+// the apple-touch-icon keeps an opaque white field on purpose (iOS
+// composites transparency onto black for home-screen icons). Locked via the
+// same decoder the regeneration script uses.
+
+const { decodePng } = require('../../scripts/strip-icon-background');
+
+function cornerAndCenter(buf) {
+  const { width, height, rgba } = decodePng(buf);
+  const px = (x, y) => {
+    const i = (y * width + x) * 4;
+    return [rgba[i], rgba[i + 1], rgba[i + 2], rgba[i + 3]];
+  };
+  return { width, height, corner: px(0, 0), center: px(width >> 1, height >> 1) };
+}
+
+test('icon-192.png and icon-512.png have TRANSPARENT corners and keep the opaque white page glyph at center', () => {
+  for (const size of [192, 512]) {
+    const { corner, center } = cornerAndCenter(fs.readFileSync(path.join(ICONS_DIR, `icon-${size}.png`)));
+    assert.equal(corner[3], 0, `icon-${size} corner must be fully transparent`);
+    assert.deepEqual(center, [255, 255, 255, 255], `icon-${size} center (the page glyph) must stay opaque white`);
+  }
+});
+
+test('favicon.svg embeds a TRANSPARENT 512px PNG (the svg is a raster wrapper -- the embedded art is what tabs render)', () => {
+  const svg = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'favicon.svg'), 'utf8');
+  const m = /href="data:image\/png;base64,([^"]+)"/.exec(svg);
+  assert.ok(m, 'favicon.svg must keep its embedded PNG');
+  const { width, corner, center } = cornerAndCenter(Buffer.from(m[1], 'base64'));
+  assert.equal(width, 512);
+  assert.equal(corner[3], 0, 'embedded PNG corner must be fully transparent');
+  assert.deepEqual(center, [255, 255, 255, 255]);
+});
+
+test('favicon.ico entries carry real alpha: every BMP entry\'s top-left pixel is fully transparent', () => {
+  const ico = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'favicon.ico'));
+  const count = ico.readUInt16LE(4);
+  assert.ok(count >= 3);
+  for (let k = 0; k < count; k += 1) {
+    const base = 6 + k * 16;
+    const size = ico.readUInt8(base) || 256;
+    const offset = ico.readUInt32LE(base + 12);
+    // 32bpp BMP entry: 40-byte header, then bottom-up BGRA -- the visual
+    // top-left pixel is the FIRST pixel of the LAST stored row.
+    const tl = offset + 40 + (size - 1) * size * 4;
+    assert.equal(ico[tl + 3], 0, `ico ${size}px entry top-left alpha must be 0 (transparent)`);
+  }
+});
+
+test('apple-touch-icon.png exists, is 192px, and is deliberately OPAQUE (white corners -- iOS renders transparency as black)', () => {
+  const p = path.join(ICONS_DIR, 'apple-touch-icon.png');
+  assert.ok(fs.existsSync(p), 'the dedicated opaque apple-touch-icon must exist');
+  const { width, height, corner } = cornerAndCenter(fs.readFileSync(p));
+  assert.equal(width, 192);
+  assert.equal(height, 192);
+  assert.deepEqual(corner, [255, 255, 255, 255], 'apple-touch-icon corners must stay opaque white ON PURPOSE');
 });
