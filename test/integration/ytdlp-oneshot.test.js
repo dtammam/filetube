@@ -612,7 +612,7 @@ test('a FAILED one-shot download cleans up yt-dlp intermediate artifacts in its 
   fs.writeFileSync(fragmentPath, 'yt-dlp leftover bytes');
   fs.writeFileSync(mergeTempPath, 'yt-dlp leftover bytes');
 
-  run.runDownload = async () => ({ ok: false, code: 'ETIMEDOUT', stdout: '', stderr: '', error: 'yt-dlp timed out and was killed' });
+  run.runDownload = async () => ({ ok: false, code: 'ETIMEDOUT', stdout: '', stderr: '', error: 'yt-dlp download timed out after 180m (absolute ceiling) and was killed' });
 
   const { base, close } = await startTestApp(deps, config);
   try {

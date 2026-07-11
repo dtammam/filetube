@@ -289,7 +289,10 @@ test('GET /api/subscriptions/status returns empty namespaces when nothing has ru
   try {
     const res = await fetch(`${base}/api/subscriptions/status`);
     assert.equal(res.status, 200);
-    assert.deepEqual(await res.json(), { subscriptions: {}, oneShots: {} });
+    // v1.31 P2/P6: `breaker` (null when never tripped) and `ytdlpVersion`
+    // (null until the cache's first probe resolves) are additive fields
+    // present on every snapshot.
+    assert.deepEqual(await res.json(), { subscriptions: {}, oneShots: {}, breaker: null, ytdlpVersion: null });
   } finally {
     await close();
   }

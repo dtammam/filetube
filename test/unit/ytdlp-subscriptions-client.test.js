@@ -3068,3 +3068,63 @@ test('subscriptions.html: #sub-refresh-avatars-status exists exactly once', () =
   const matches = SUBS_HTML.match(/id="sub-refresh-avatars-status"/g) || [];
   assert.strictEqual(matches.length, 1);
 });
+
+// ---- v1.31 P2/P5/P6: queued-ahead text, breaker banner, version footer -----
+
+const t31assert = require('node:assert');
+const subsClient = require('../../lib/ytdlp/client/subscriptions.js');
+const { test: t31test } = require('node:test');
+
+t31test('v1.31 P5: formatLiveStatusText renders "Queued — N ahead" from queuedAhead, plain "Queued…" otherwise', () => {
+  t31assert.equal(subsClient.formatLiveStatusText({ state: 'queued', queuedAhead: 3 }), 'Queued — 3 ahead');
+  t31assert.equal(subsClient.formatLiveStatusText({ state: 'queued', queuedAhead: 1 }), 'Queued — 1 ahead');
+  // 0 ahead = running next / already at the head -- the plain literal.
+  t31assert.equal(subsClient.formatLiveStatusText({ state: 'queued', queuedAhead: 0 }), 'Queued…');
+  t31assert.equal(subsClient.formatLiveStatusText({ state: 'queued' }), 'Queued…');
+  // Defensive: a malformed field never breaks the render.
+  t31assert.equal(subsClient.formatLiveStatusText({ state: 'queued', queuedAhead: 'lots' }), 'Queued…');
+});
+
+t31test('v1.31 P2: formatBreakerBannerText composes the honest paused/deferred/retrying line and returns "" when not tripped', () => {
+  t31assert.equal(subsClient.formatBreakerBannerText(null), '');
+  t31assert.equal(subsClient.formatBreakerBannerText(undefined), '');
+  t31assert.equal(subsClient.formatBreakerBannerText({}), '');
+  const text = subsClient.formatBreakerBannerText({
+    trippedAt: '2026-07-12T10:00:00.000Z',
+    consecutiveFailures: 4,
+    skipped: 16,
+    resumeAt: '2026-07-12T10:30:00.000Z',
+  });
+  t31assert.match(text, /^Downloads paused after 4 consecutive failures — 16 channels deferred; retrying at /);
+  const single = subsClient.formatBreakerBannerText({ consecutiveFailures: 1, skipped: 1, resumeAt: 'not-a-date' });
+  t31assert.match(single, /^Downloads paused after 1 consecutive failure — 1 channel deferred; retrying at not-a-date$/);
+});
+
+t31test('v1.31 P6: formatYtdlpVersionText renders the version line and "" when unknown', () => {
+  t31assert.equal(subsClient.formatYtdlpVersionText('2026.07.04'), 'yt-dlp 2026.07.04');
+  t31assert.equal(subsClient.formatYtdlpVersionText(null), '');
+  t31assert.equal(subsClient.formatYtdlpVersionText(''), '');
+  t31assert.equal(subsClient.formatYtdlpVersionText(42), '');
+});
+
+t31test('v1.31 gate fix (FR6.2): formatYtdlpVersionText appends the staleness note past 90 days and omits it for a fresh version (injectable now)', () => {
+  const fresh = subsClient.formatYtdlpVersionText('2026.07.04', Date.UTC(2026, 6, 12));
+  t31assert.equal(fresh, 'yt-dlp 2026.07.04');
+  const stale = subsClient.formatYtdlpVersionText('2026.01.01', Date.UTC(2026, 6, 12));
+  t31assert.match(stale, /^yt-dlp 2026\.01\.01 — over 90 days old; YouTube changes frequently/);
+  t31assert.match(stale, /bump the Dockerfile ARG and rebuild/);
+  // Non-CalVer strings (already charset-gated server-side) never get an age note.
+  t31assert.equal(subsClient.formatYtdlpVersionText('unknown', Date.UTC(2026, 6, 12)), 'yt-dlp unknown');
+});
+
+t31test('v1.31 gate fix: history labels + reason lines for the tripped/requeued/dropped runlog kinds (never "Unknown")', () => {
+  t31assert.equal(subsClient.formatHistoryOutcomeLine({ outcome: 'tripped' }), 'Run paused (circuit breaker)');
+  t31assert.equal(subsClient.formatHistoryOutcomeLine({ outcome: 'requeued' }), 'Requeued after restart');
+  t31assert.equal(subsClient.formatHistoryOutcomeLine({ outcome: 'dropped' }), 'Dropped');
+  const reason = 'run paused after 4 consecutive failures; 3 channel(s) deferred; retrying at 2026-07-12T10:30:00.000Z';
+  t31assert.equal(subsClient.formatHistoryFailuresLine({ outcome: 'tripped', reason }), reason);
+  t31assert.equal(subsClient.formatHistoryFailuresLine({ outcome: 'requeued', reason: 'requeued after server restart' }), 'requeued after server restart');
+  t31assert.equal(subsClient.formatHistoryFailuresLine({ outcome: 'dropped' }), '');
+  // Pre-existing kinds keep their per-item failure semantics untouched.
+  t31assert.equal(subsClient.formatHistoryFailuresLine({ outcome: 'success', reason: 'x' }), '');
+});

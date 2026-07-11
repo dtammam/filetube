@@ -447,3 +447,17 @@ test('main.js: destroy() clears window.__filetubeRefreshLibrary (GF1 QA suggesti
     'expected destroy() to clear window.__filetubeRefreshLibrary',
   );
 });
+
+// ---- v1.31 gate fix (FR5): repull-ack formatter ----------------------------
+const { test: t31r } = require('node:test');
+const a31r = require('node:assert');
+const commonForRepull = require('../../public/js/common.js');
+
+t31r('v1.31 FR5: formatRepullAckText surfaces busy/not-found and stays silent for started/unknown bodies', () => {
+  a31r.equal(commonForRepull.formatRepullAckText({ accepted: true, started: false, reason: 'busy' }), 'Queued behind current run');
+  a31r.equal(commonForRepull.formatRepullAckText({ started: false, reason: 'not-found' }), 'Channel not found');
+  a31r.equal(commonForRepull.formatRepullAckText({ accepted: true, started: true }), '');
+  a31r.equal(commonForRepull.formatRepullAckText(null), '');
+  a31r.equal(commonForRepull.formatRepullAckText(undefined), '');
+  a31r.equal(commonForRepull.formatRepullAckText('busy'), '');
+});

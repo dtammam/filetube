@@ -1169,7 +1169,9 @@ test('buildYtdlpDownloadArgs: default config emits the four pacing flags, in ord
   const result = args.buildYtdlpDownloadArgs(baseSub(), config, ['vid1']);
   const noWarningsIdx = result.indexOf('--no-warnings');
   assert.ok(noWarningsIdx >= 0);
-  assert.deepEqual(result.slice(noWarningsIdx + 1, noWarningsIdx + 9), [
+  assert.deepEqual(result.slice(noWarningsIdx + 1, noWarningsIdx + 11), [
+    // v1.31 P0: --socket-timeout now leads the pacing block on every pass.
+    '--socket-timeout', '15',
     '--sleep-requests', '1',
     '--sleep-interval', '2',
     '--max-sleep-interval', '5',
@@ -1177,7 +1179,7 @@ test('buildYtdlpDownloadArgs: default config emits the four pacing flags, in ord
   ]);
   assert.ok(!result.includes('--extractor-args'), 'player_client is unset by default -- flag must be absent');
   const sepIdx = result.indexOf('--');
-  assert.ok(noWarningsIdx + 9 <= sepIdx, 'pacing flags must land well before the "--" separator');
+  assert.ok(noWarningsIdx + 11 <= sepIdx, 'pacing flags must land well before the "--" separator');
 });
 
 test('buildYtdlpDownloadArgs: FILETUBE_YTDLP_* overrides (already parsed onto config by config.js) change the emitted pacing/retry values (AC6.2)', () => {
@@ -1261,7 +1263,9 @@ test('buildYtdlpListArgs: emits ONLY the list-relevant pacing flags (--sleep-req
   const result = args.buildYtdlpListArgs(baseSub(), config);
   const noWarningsIdx = result.indexOf('--no-warnings');
   assert.ok(noWarningsIdx >= 0);
-  assert.deepEqual(result.slice(noWarningsIdx + 1, noWarningsIdx + 5), [
+  assert.deepEqual(result.slice(noWarningsIdx + 1, noWarningsIdx + 7), [
+    // v1.31 P0: --socket-timeout now leads the pacing block on every pass.
+    '--socket-timeout', '15',
     '--sleep-requests', '1',
     '--retries', '5',
   ]);
@@ -1292,10 +1296,12 @@ test('AC6.3: buildYtdlpDownloadArgs argv is byte-identical to the pre-T3(b) shap
     '--write-subs', '--write-auto-subs', '--sub-langs', 'en.*', '--sub-format', 'vtt', '--convert-subs', 'vtt',
     '--download-archive', archivePath,
     '--no-warnings',
-    // v1.29 T3(b): the ONLY new content vs. the pre-change shape -- four
-    // fixed-literal-named flags with bounds-checked, non-injectable numeric
-    // values (player_client omitted -- unset by default, see the dedicated
-    // test above).
+    // v1.29 T3(b) + v1.31 P0: the ONLY new content vs. the pre-change shape
+    // -- fixed-literal-named flags with bounds-checked, non-injectable
+    // numeric values (player_client omitted -- unset by default, see the
+    // dedicated test above). v1.31 adds --socket-timeout at the head of the
+    // block (same posture, same documented-additive-evolution path).
+    '--socket-timeout', '15',
     '--sleep-requests', '1',
     '--sleep-interval', '2',
     '--max-sleep-interval', '5',
@@ -1317,7 +1323,8 @@ test('AC6.3: buildYtdlpListArgs argv is byte-identical to the pre-T3(b) shape ex
     '--dump-json',
     '--no-download',
     '--no-warnings',
-    // v1.29 T3(b): the ONLY new content vs. the pre-change shape.
+    // v1.29 T3(b) + v1.31 P0: the ONLY new content vs. the pre-change shape.
+    '--socket-timeout', '15',
     '--sleep-requests', '1',
     '--retries', '5',
     '--download-archive', archivePath,
@@ -1342,7 +1349,7 @@ test('AC6.3: the host allowlist / "--" separator / FORBIDDEN_CHARS-style hostile
   assert.ok(result[oIndex + 1].startsWith(path.resolve(config.downloadDir) + path.sep));
   // The new pacing flags never leak past the "--" separator into positional
   // territory.
-  for (const token of ['--sleep-requests', '--sleep-interval', '--max-sleep-interval', '--retries']) {
+  for (const token of ['--socket-timeout', '--sleep-requests', '--sleep-interval', '--max-sleep-interval', '--retries']) {
     assert.ok(!result.slice(sepIndex + 1).includes(token), `${token} must never appear after "--"`);
   }
 });
@@ -1352,17 +1359,18 @@ test('resiliencePacingArgs: pure -- never throws for a missing/malformed config,
     assert.doesNotThrow(() => args.resiliencePacingArgs(bad));
     const result = args.resiliencePacingArgs(bad);
     assert.deepEqual(result, [
+      '--socket-timeout', '15',
       '--sleep-requests', '1',
       '--sleep-interval', '2',
       '--max-sleep-interval', '5',
       '--retries', '5',
     ]);
     assert.doesNotThrow(() => args.resiliencePacingArgs(bad, { listOnly: true }));
-    assert.deepEqual(args.resiliencePacingArgs(bad, { listOnly: true }), ['--sleep-requests', '1', '--retries', '5']);
+    assert.deepEqual(args.resiliencePacingArgs(bad, { listOnly: true }), ['--socket-timeout', '15', '--sleep-requests', '1', '--retries', '5']);
   }
 });
 
 test('resiliencePacingArgs: listOnly:true omits sleep-interval/max-sleep-interval/player_client even when configured', () => {
   const result = args.resiliencePacingArgs({ sleepInterval: 9, maxSleepInterval: 20, playerClient: 'web' }, { listOnly: true });
-  assert.deepEqual(result, ['--sleep-requests', '1', '--retries', '5']);
+  assert.deepEqual(result, ['--socket-timeout', '15', '--sleep-requests', '1', '--retries', '5']);
 });

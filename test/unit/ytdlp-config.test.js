@@ -341,3 +341,55 @@ test('isEnabled: true only for a config with enabled === true', () => {
   assert.equal(isEnabled(null), false);
   assert.equal(isEnabled(undefined), false);
 });
+
+// ---- v1.31 P0/P3: list-timeout, socket-timeout, stall-minutes knobs --------
+
+const { test: t31 } = require('node:test');
+const config = require('../../lib/ytdlp/config');
+
+t31('v1.31: parseListTimeoutMinutes -- default 5, bounds [1,60], invalid falls back (AC-CFG)', () => {
+  assert.equal(config.parseListTimeoutMinutes(undefined), 5);
+  assert.equal(config.parseListTimeoutMinutes(''), 5);
+  assert.equal(config.parseListTimeoutMinutes('10'), 10);
+  assert.equal(config.parseListTimeoutMinutes(1), 1);
+  assert.equal(config.parseListTimeoutMinutes(60), 60);
+  for (const bad of [0, -1, 61, 1.5, 'ten', NaN, {}]) {
+    assert.equal(config.parseListTimeoutMinutes(bad), 5, `bad=${String(bad)}`);
+  }
+});
+
+t31('v1.31: parseSocketTimeoutSeconds -- default 15, bounds [5,120], 0 is NOT valid (unbounded sockets are the hazard) (AC-CFG)', () => {
+  assert.equal(config.parseSocketTimeoutSeconds(undefined), 15);
+  assert.equal(config.parseSocketTimeoutSeconds('30'), 30);
+  assert.equal(config.parseSocketTimeoutSeconds(5), 5);
+  assert.equal(config.parseSocketTimeoutSeconds(120), 120);
+  for (const bad of [0, 4, 121, -5, 2.5, 'x', NaN]) {
+    assert.equal(config.parseSocketTimeoutSeconds(bad), 15, `bad=${String(bad)}`);
+  }
+});
+
+t31('v1.31: parseStallMinutes -- default 10, bounds [0,120], 0 IS valid ("watchdog off") (AC-CFG)', () => {
+  assert.equal(config.parseStallMinutes(undefined), 10);
+  assert.equal(config.parseStallMinutes('0'), 0);
+  assert.equal(config.parseStallMinutes(0), 0);
+  assert.equal(config.parseStallMinutes(120), 120);
+  for (const bad of [-1, 121, 1.5, 'x', NaN]) {
+    assert.equal(config.parseStallMinutes(bad), 10, `bad=${String(bad)}`);
+  }
+});
+
+t31('v1.31: parseYtdlpConfig threads the three new env knobs (and defaults them when unset)', () => {
+  const parsed = config.parseYtdlpConfig({
+    FILETUBE_YTDLP_LIST_TIMEOUT_MINUTES: '12',
+    FILETUBE_YTDLP_SOCKET_TIMEOUT_SECONDS: '45',
+    FILETUBE_YTDLP_STALL_MINUTES: '20',
+  });
+  assert.equal(parsed.listTimeoutMinutes, 12);
+  assert.equal(parsed.socketTimeoutSeconds, 45);
+  assert.equal(parsed.stallMinutes, 20);
+
+  const defaults = config.parseYtdlpConfig({});
+  assert.equal(defaults.listTimeoutMinutes, 5);
+  assert.equal(defaults.socketTimeoutSeconds, 15);
+  assert.equal(defaults.stallMinutes, 10);
+});

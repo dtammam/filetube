@@ -1,39 +1,75 @@
 {
-  "feature_id": null,
-  "feature_name": null,
-  "stage": "idle",
-  "created_at": null,
+  "feature_id": "v1.31-ytdlp-hardening",
+  "feature_name": "v1.31 yt-dlp Download Hardening",
+  "stage": "discovery",
+  "created_at": "2026-07-12",
   "updated_at": "2026-07-12",
-  "note": "No active feature. Reset to idle after v1.30 Scale Performance + Polish Wave shipped (DONE 2026-07-12, released_as v1.30.0 -- git close-out handled by the main session). Describe a new feature/bug/refactor to bootstrap the next lifecycle. NOTE for the next EM: v1.30 carries an OPEN Dean-on-device ledger (AC7.6 elegant buttons/typography feel; GD-1 avatar glyph adopted-per-reviewer-consensus and Dean may re-open; carried-over v1.29 AC4.5 navigate-during-download feel) -- these SHIPPED but await Dean's iPhone pass; see last_completed_feature.dean_on_device_ledger.",
+  "note": "Intake complete. Fresh branch release/v1.31.0 off main (v1.30.0 merge). Full autonomous pipeline authorized through release v1.31.0 (main session handles git); Dean present but hands-off. His real ~40-subscription on-device pass is the post-release arbiter. Discovery inbox written for the product-manager. Export the fnm Node PATH (Node 22.23.1 at ~/.local/share/fnm) before any npm/node/git-hook command; Node 22 + 24 dual-verify at release.",
+  "prime_hypothesis": {
+    "id": "H0",
+    "statement": "v1.29's --sleep-requests 1 was added to the LIST pass whose 5-minute ABSOLUTE timeout was NOT adjusted. A 25-video listing (multiple HTTP requests/video, +1s each, worse under throttling) can exceed 5 min -> every channel's list pass times out uniformly -> the exact production signature (identical 'yt-dlp timed out and was killed' across ~20 channels).",
+    "evidence": "Dean's production screenshots: ~20 subscription failures in one run, ALL identically 'error: yt-dlp timed out and was killed'. Read-only concurrency/timeout sweep 2026-07-12 with file:line map.",
+    "must_verify_first": "T0/P0 must verify H0's arithmetic (request budget per list pass vs the 5-min timeout at run.js:105) against the code BEFORE any fix lands. If confirmed, fix the list-pass budget mismatch (reduce/remove list-pass sleeps, raise/scale the list timeout with maxVideos, or both -- Design decides)."
+  },
+  "pillars": {
+    "P0": "Timeout/pacing reconciliation + diagnosable reasons. Verify H0; fix list-pass budget mismatch. Every timeout reason names phase + duration; bare 'timed out and was killed' eliminated from the codebase.",
+    "P1": "Per-channel queue jobs + priority (one-shot > repull > scheduled poll). Decompose the monolithic poll gate job into one job per channel. One-shot waits <=1 channel; a hung channel blocks only itself. LOAD-BEARING invariants preserved: gate never-wedge tail property + --download-archive single-writer + strict serial spawns.",
+    "P2": "Circuit breaker + inter-channel backoff. Configurable inter-channel sleep; after N consecutive channel failures (config, default ~3-5) abort remainder with honest persisted status ('run paused after N consecutive failures; retrying at <time>') + schedule backoff retry. Successes reset counter. Aborted-not-run channels keep their cutoff.",
+    "P3": "Stall watchdog. Progress-aware idle timer alongside absolute ceiling: no stdout progress for N min (config, default ~10) -> SIGKILL + specific reason + retry per policy. Download pass only; list pass gets the P0-fixed budget.",
+    "P4": "Durable queue. Persist accepted-but-not-started jobs (one-shots at minimum) so restart requeues instead of silently losing; every accepted job eventually produces a runlog/history line (downloaded/failed/requeued/dropped-with-reason).",
+    "P5": "Queue visibility. Status/chip/history show queue position + what's ahead ('queued -- 3 ahead'); repull busy-coalescing surfaced (v1.29 body fields exist -> render everywhere relevant); one-shot activity entries reflect queued->running transitions with the wait visible.",
+    "P6": "yt-dlp version surface (small). Expose the probed binary version in the UI with a staleness note; document the pin-bump update path. NO runtime auto-update (locked decision D5)."
+  },
+  "out_of_scope": [
+    "Parallel yt-dlp processes (stays strictly serial -- archive-file invariant + YouTube-friendliness both demand it).",
+    "Runtime auto-update of yt-dlp (D5 stands).",
+    "Cookie acquisition automation (mounting cookies is Dean's env-side lever; existing configured-but-missing warning stays).",
+    "Any UI redesign beyond the P5 visibility additions."
+  ],
+  "constraints": {
+    "v1.29_regression_surface": "Outcome classification (success/partial/error/cancelled), zero-attributed=>error, cancel-latch ordering, runlog schema (ADDITIVE evolution only), retry affordances, AC6.3 argv byte-identity posture (new flags/args additive with the same injection-guard discipline: literals or validated values only, far from '--').",
+    "v1.30_regression_surface": "Chip conformance ACs, one-shot three-surface visibility, BUG-2 reload-never.",
+    "spawn_discipline": "shell:false arg-array spawning; SIGKILL discipline (tech-debt #24 -- process GROUP kill remains out of scope unless P3 makes it trivially safe).",
+    "queue_persistence": "Follow crash-safety posture (atomic writes; bounded file). No new runtime deps.",
+    "config": "All new knobs FILETUBE_YTDLP_* env vars, bounds-checked in config.js per the established parse* pattern.",
+    "verification": "node:test; ESLint clean; Node 22 + Node 24 both green at release. Two-reviewer gate before acceptance; honest scoring; Dean's on-device pass (real ~40-subscription instance) is final arbiter.",
+    "reliability_budget": "Per docs/RELIABILITY.md: never let one bad file/channel take down a run; explicit status codes + JSON error bodies; child processes handle both error+close; graceful degrade over crash; tech-debt items filed to the tracker."
+  },
+  "gate_weight_map": {
+    "P1_invariants": "HEAVIEST. runExclusive never-wedge tail property AND --download-archive single-writer invariant AND strict serialization of spawns -- all must be proven to survive the queue decomposition in BOTH directions (property holds AND its violation is caught).",
+    "P0_H0_arithmetic": "HIGH. The diagnosis must be verified against code before the fix; the phase-named reasons need exact-string criteria.",
+    "P2_P3_P4_stateful_policy": "HIGH. Breaker/watchdog/durable-queue add stateful failure policy to a crash-safety-sensitive orchestrator; require deterministic fixture-driven (no live network) criteria.",
+    "v1.29_v1.30_regressions": "HIGH. AC-FM both-directions style; additive-only schema; chip/three-surface/reload-never intact."
+  },
+  "key_files_from_sweep": {
+    "runExclusive_tail": "lib/ytdlp/index.js:2044-2070 (global promise-chain FIFO / ytdlpTail)",
+    "monolithic_poll_gate_job": "lib/ytdlp/index.js:1943-1963 (entire poll run = single gate job)",
+    "poll_loop_no_pacing": "lib/ytdlp/index.js:1944-1962 (no inter-channel pacing/breaker)",
+    "oneshot_202_before_gate_join": "server.js:3368 (202 accepted) vs :3383 (gate join)",
+    "absolute_timeouts": "lib/ytdlp/run.js:902-906 (never reset by progress)",
+    "list_pass_timeout_5min": "lib/ytdlp/run.js:105",
+    "v1.29_pacing_flags": "lib/ytdlp/args.js:581-620 (--sleep-requests etc; act only INSIDE one channel invocation)"
+  },
   "tasks": [],
   "completed_tasks": [],
-  "artifacts": { "requirements": null, "design": null, "exec_plan": null },
+  "artifacts": {
+    "requirements": "docs/exec-plans/active/2026-07-12-v1.31-ytdlp-hardening.md",
+    "design": null,
+    "exec_plan": "docs/exec-plans/active/2026-07-12-v1.31-ytdlp-hardening.md"
+  },
   "last_completed_feature": {
     "feature_id": "v1.30-scale-perf-and-polish",
     "feature_name": "v1.30 Scale Performance + Polish Wave",
     "released_as": "v1.30.0",
     "completed_at": "2026-07-12",
-    "exec_plan": "docs/exec-plans/completed/2026-07-11-v1.30-scale-perf-and-polish.md (MOVE PENDING: main session to git mv from docs/exec-plans/active/ during the git close-out)",
-    "summary": "13 tasks (T1-T13) across 3 lanes, each independently build-verified, plus one gate-fix micro-round (GF1). LANE A perf-at-scale: T1 per-scan readdir cache kills the O(N^2) sidecar re-detection (AC1.3/1.6/1.7); T2 cooperative non-blocking scan -- 202 ack, async batch-yielding walk (heartbeat proxy <=50ms/stretch @1300), boot-after-listen, mount-loss/prune + overlap-coalescing + incremental-reuse guards preserved (AC1.1/1.2/1.4/1.5, AC2.1/2.2/2.4/2.5); T3 scan-completion client polls /api/scan-status + in-place refresh, window.location.reload removed (AC2.3, BUG-2 generalized); T4 in-memory getCachedDatabase read cache + invalidate-on-save inside saveDatabase, coherent w/ the updateDatabase mutex, O(1) loads (AC3.3; fixed 2 in-place-mutation traps); T5 progress coalescer (<=5s window, >=5:1 batching, shutdown flush, read-your-writes overlay) w/ real-mutations-stay-1:1-atomic vs progress-loss-<=5s both directions (AC4.1/4.2/4.3); T6 paginated /api/videos {items,total,offset,limit} + new pure lib/videoQuery.js (11 require-both-files parity tests) (AC3.1/3.2); T7 client first-page render + IntersectionObserver sentinel + swept all /api/videos callers incl watch.js/player.js full-list (limit clamps to MAX_LIMIT=10000 -> tech-debt #29) (AC3.4). LANE B download-UX: T8 one-shot visibility across on-home/off-home-return/backgrounded-resume via boolean refreshLibraryInPlace + persistent dirty-flag/pendingOneShotJobIds + visibility/pageshow catch-up, loadFreshHomeView dirty-reconcile fixing a real double-bind/listener-leak, reload-never, BUG-2 intact (AC5.1/5.2/5.3/5.4); T10 active-downloads chip conformance (all 4 ACs already held in the v1.24.9 reframe -> 12 lock tests, zero source change) (AC6.1-6.4). LANE C visual-polish: T9 12-token --fs-* type scale tokenizing all 127 font-size decls, 16px input floor preserved (AC7.1/7.2; 3 documented deviations); T11 like->Liked server-side db.liked membership, 1:1-atomic routes, derived-never-persisted liked flag, watch-page button (AC7.3/AC4.2); T12 deterministic avatars (color+glyph) + subscriptions/settings-header routed through the shared resolveAvatarSource, deleting the bespoke first-letter impl (AC7.4/7.5); T13 conservative button polish, style.css only (AC7.6 Dean-on-device). SQLite (A6) DEFERRED with evidence + measurable triggers (tech-debt #28).",
-    "final_verification": "Full suite green on Node 22.23.1 (3593/3593) AND Node 24.14.0 (3593/3593, run by the main session against final post-GF1 code); lint 0 errors / 7 baseline warnings. AC8.1/8.2/8.3 satisfied.",
-    "gate": "Two-reviewer gate PASSED: QA APPROVE (0 CRITICAL/WARNING, 2 SUGGESTIONs -> tech-debt #30 matchesSearch null-guard note) + adversarial APPROVE (0 CRITICAL, 1 WARNING -> tech-debt #29 MAX_LIMIT truncation). Both INDEPENDENTLY verified AC8.4 exercised-not-present across every both-directions guard (AC1.4/1.5, AC1.6/1.7, AC2.5, AC4.2/4.3, AC5.2). GD-1 adopted: T12 hash-letter avatar glyph reverted to first-letter (deterministic color + C5 wiring kept) per unanimous reviewer recommendation, applied as GF1 (one-line source + tests) + adversarial delta-confirm APPROVE. PM acceptance ACCEPT: 37/39 documented ACs PASS w/ cited evidence, AC7.6 DEFERRED (Dean-on-device), AC8.5 PENDING (the release itself).",
-    "ac_count_note": "The state file's Discovery-stage metadata said '48 ACs'; the authoritative exec-plan ## Acceptance Criteria enumerates 39 documented ACs (AC1.1-AC8.5). The PM validated against the authoritative DOCUMENT (correct call). Recorded count: 39.",
     "dean_on_device_ledger": [
-      "AC7.6 -- elegant buttons + overall 'typography reads consistent' feel (C4/C1). Machine guards (AC7.1 tokens, AC7.2 16px floor) PASS; subjective quality awaits Dean's iPhone pass.",
-      "GD-1 -- avatar glyph is first-letter + deterministic color (hash-letter reverted per unanimous two-reviewer consensus). Adopted-per-reviewer-consensus; Dean may re-open on-device (one-line either way).",
-      "AC4.5 (carried over from v1.29) -- navigate-during-download FEEL of the non-blocking one-shot; code-complete + test-verified, not regressed by v1.30 (T8 BUG-2 intact); still awaits Dean's on-device confirmation."
+      "AC7.6 -- elegant buttons + overall 'typography reads consistent' feel (machine guards AC7.1/AC7.2 PASS; subjective quality awaits Dean's iPhone pass).",
+      "GD-1 -- avatar glyph first-letter + deterministic color (hash-letter reverted per unanimous two-reviewer consensus; Dean may re-open on-device).",
+      "AC4.5 (carried from v1.29) -- navigate-during-download FEEL of the non-blocking one-shot; code-complete + test-verified, awaits Dean's on-device confirmation."
     ],
-    "tech_debt": "Filed this wave: #28 (SQLite deferred at Design, measurable revisit triggers), #29 (MAX_LIMIT=10000 full-list truncation for related/prev-next/autoplay, revisit ~10k items), #30 (matchesSearch null-guard note, byte-identical-preserved, note-only). No tech-debt closed this wave.",
-    "pending_close_out_git_actions": [
-      "git mv docs/exec-plans/active/2026-07-11-v1.30-scale-perf-and-polish.md -> docs/exec-plans/completed/ (preserves history; left to git rather than a Write-copy).",
-      "Commit the wave on release/v1.30.0 (all T1-T13 code + tests + GF1, package.json 1.30.0, ROADMAP v1.30.0 Shipped entry, tech-debt #28/#29/#30, exec-plan move); merge release/v1.30.0 -> main, tag v1.30.0, push main + tag; Docker publish per Dean's standing deploy go-ahead. Export the fnm Node PATH before any npm/git-hook command.",
-      "NOTE: session-start git snapshot showed some v1.28-era working-tree files -- STALE data, already resolved in the v1.29 session; the current tree contains only v1.30 wave files. No reconciliation needed (confirmed at acceptance)."
-    ]
+    "note": "v1.30 SHIPPED (released_as v1.30.0). Retained here only for the OPEN Dean-on-device ledger carried into v1.31's on-device pass. Full v1.30 record archived in git history of feature-state.json / the completed exec-plan."
   },
   "history": [
-    { "timestamp": "2026-07-11", "stage": "discovery->design->tasks", "note": "v1.30 initiated from the APPROVED exec plan. PM Discovery: FR1-FR8 + 39 ACs (AC1.1-AC8.5) + SQLite conditional. PE Design: 9 decisions resolved, ARCHITECTURE.md updated, SQLite DEFERRED (tech-debt #28), new lib/videoQuery.js. EM Tasks: 13 tasks T1-T13 with hot-file serialization + gate weights (HIGHEST on T2/T4/T5/T8)." },
-    { "timestamp": "2026-07-11..12", "stage": "implementation", "note": "T1-T13 implemented one-per-invocation, each build-verified independently on Node 22.23.1: T1 3427, T2 3432, T3 3436, T4 3443, T5 3464, T6 3515, T7 3527, T8 3555, T9 3559, T10 3571, T11 3589, T12 3593, T13 3593. SDEs surfaced + fixed real issues beyond the letter (T2 merge-loop starvation yield; T4 two in-place-mutation traps + 24 seed-migrations; T8 double-bind/listener-leak; T9 3 documented deviations; T12 hash-letter glyph flagged as GD-1). Lane A complete + verified (A1-A5), Lane B core (B1-B2), Lane C (C1-C5)." },
-    { "timestamp": "2026-07-12", "stage": "review", "note": "Two-reviewer gate PASSED (QA APPROVE + adversarial APPROVE; AC8.4 exercised-not-present verified across every guard). GD-1 resolved -> GF1 revert of the avatar glyph to first-letter; main-session direct build-verify (3593/3593) + adversarial delta-confirm APPROVE. EM filed tech-debt #29/#30." },
-    { "timestamp": "2026-07-12", "stage": "acceptance->done", "note": "PM acceptance ACCEPT (37/39 documented ACs PASS; AC7.6 Dean-on-device; AC8.5 pending the release). Node-24 run appended (24.14.0, 3593/3593). AC-count metadata reconciled (39 authoritative). EM Done close-out: package.json 1.29.0->1.30.0; ROADMAP v1.30.0 Shipped entry (3-lane story + SQLite-deferred #28 + gate story incl GF1/GD-1 revert-per-consensus + Dean-on-device ledger); tech-debt #28/#29/#30 confirmed filed; exec-plan git mv flagged for the main session; CLAUDE.md has no active-work section. Stage -> done; full record archived to last_completed_feature (released_as v1.30.0); state reset to idle preserving the Dean-on-device ledger. Main session handles git (commit on release/v1.30.0, merge to main, tag v1.30.0, push, Docker)." }
+    { "timestamp": "2026-07-12", "stage": "bootstrap->discovery", "note": "v1.31 yt-dlp Download Hardening initiated from the APPROVED exec plan (docs/exec-plans/active/2026-07-12-v1.31-ytdlp-hardening.md; Dean-approved 2026-07-12 with full autonomous run to release). Fresh branch release/v1.31.0 off main (v1.30.0 merge). State initialized carrying H0 prime hypothesis, pillars P0-P6, constraints (v1.29+v1.30 regression surfaces, spawn/persistence/config/verification), and the gate-weight map (HEAVIEST on P1 invariants: never-wedge tail + archive single-writer + strict serial spawns). Discovery inbox written for the product-manager: requirements + observable ACs for the 7 deliverables with deterministic fixture-driven (no live network) criteria for breaker/watchdog/queue, exact-string criteria for phase-named timeout reasons, and both-directions criteria for the P1 invariants in the v1.29 AC-FM style. Next: user invokes product-manager, then runs /prep-pe-design." }
   ]
 }

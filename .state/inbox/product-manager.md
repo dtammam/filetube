@@ -1,105 +1,141 @@
-# Acceptance — v1.30 Scale Performance + Polish Wave
+# Discovery Inbox — Product Manager
 
-You are the **product-manager**, running the **Acceptance** stage. Validate every
-acceptance criterion against the FINAL post-GF1 code and report an explicit
-**PASS / FAIL / DEFERRED** for EACH — "looks good" is not acceptance. You do NOT
-implement fixes; you report only.
+**Feature:** v1.31 yt-dlp Download Hardening
+**Stage:** Discovery
+**Target release:** v1.31.0
 
-## Environment (for any CI-parity check)
+You are the Product Manager for a plan-gated feature that is already APPROVED at
+the strategy level. Your job is NOT to re-decide scope — it is to convert the
+approved execution plan into **requirements + observable, testable acceptance
+criteria (ACs)** that specialists downstream can implement and verify against.
 
-```bash
-export PATH="$HOME/.local/share/fnm/node-versions/v22.23.1/installation/bin:$PATH"
-node --version   # expect v22.23.1
-```
+## Read first (authoritative, in this order)
 
-## State of the wave (all through the gate)
+1. `docs/exec-plans/active/2026-07-12-v1.31-ytdlp-hardening.md` — the Dean-approved
+   plan. Goal, verified current reality (with file:line map), the H0 prime
+   hypothesis, scope P0–P6, out-of-scope, constraints, and the 7 deliverables.
+   **This is the source of truth. Do not contradict it.**
+2. `.state/feature-state.json` — carries H0, the P0–P6 pillars, constraints, the
+   regression surfaces, the gate-weight map, and the file:line sweep anchors.
+3. `docs/CONTRIBUTING.md` — coding/testing standards all agents follow.
+4. `docs/RELIABILITY.md` — error-handling, logging, and testing-strategy budget
+   (graceful degrade over crash; one bad channel must never take down a run;
+   explicit status codes + JSON error bodies; every new change ships with tests;
+   FFmpeg/live-network stay OUT of the automated suite).
 
-- **All 13 tasks (T1–T13) VERIFIED** through the build gate; see
-  `.state/feature-state.json` `tasks[]` — each has a `sde_report` +
-  `build_verification`.
-- **Two-reviewer gate PASSED** — QA APPROVE + adversarial APPROVE; AC8.4
-  exercised-not-present independently verified across every guard. See
-  `two_reviewer_gate_plan.outcome`.
-- **GD-1 resolved** (`resolved_gate_decision`): the avatar glyph was reverted to
-  first-letter (deterministic color + C5 wiring kept) via GF1; adversarial
-  re-confirmed the delta (APPROVE). Latest suite: **3593/3593, lint 0 errors / 7
-  baseline, Node 22.23.1**.
-- Tech-debt filed this wave: **#28** (SQLite deferred), **#29** (MAX_LIMIT=10000
-  full-list truncation), **#30** (matchesSearch null-guard note).
+## What to produce
 
-## Read first
+Add a `## Requirements` section and a `## Acceptance Criteria` section to the
+exec plan **in place** (append; do not rewrite the existing sections). Then set
+`artifacts.requirements` in `.state/feature-state.json` to the exec-plan path and
+leave `stage` as `discovery` (the EM advances stages, not you).
 
-1. `docs/exec-plans/active/2026-07-11-v1.30-scale-perf-and-polish.md` — the
-   authoritative `## Acceptance Criteria` (**AC1.1–AC8.5, 48 ACs**) + `## Requirements`
-   (FR1–FR8). These are your checklist.
-2. `.state/feature-state.json` — the per-task reports/verifications, the gate
-   outcome, `resolved_gate_decision` (GD-1), `gf_rounds` (GF1).
+Structure the requirements as functional requirements (FR1…) mapped to the seven
+deliverables, and give each an explicit AC block (AC1.x…) with **observable pass
+conditions and cited evidence sources**. "Looks good" / "works" is never an AC —
+every AC must be checkable by a test, a code-grep, or an inspectable artifact.
 
-## What to validate
+## The 7 deliverables (from the plan) — cover every one
 
-Go through **all 48 ACs (AC1.1 → AC8.5)** and mark each **PASS / FAIL / DEFERRED**
-with a one-line justification tied to concrete evidence (a test name, a route
-behavior, a build/gate record). Group by deliverable. In particular:
+1. A full poll run against many channels under throttling either **completes or
+   aborts EARLY** with an honest breaker status — never a uniform 20-channel
+   timeout cascade.
+2. Timeout/stall reasons **name the phase and duration**; bare "timed out and was
+   killed" no longer exists in the codebase.
+3. A Shortcut one-shot submitted mid-run **starts within ≤1 channel's work**, its
+   queued state (and position) is visible in status/chip/history, and it
+   **survives a server restart** (requeued, never silently lost).
+4. A stalled download is reclaimed within the **idle window (default ~10 min)**,
+   not 180 minutes, and retries per policy.
+5. Repull responses' busy/started state is visible **wherever repull can be
+   triggered**.
+6. yt-dlp version visible in the UI with a staleness note.
+7. `npm test` + lint green on Node 22 + 24; two-reviewer gate passed; v1.31.0
+   released per repo convention.
 
-- **Deliverables 1–4 (responsiveness, AC1.x/AC2.x/AC3.x/AC4.x):** these are the
-  observable/mechanism-locked criteria — validate against the actual tests
-  (heartbeat stall bound, scan-while-serving latency, 202-ack-before-completion,
-  scan-status progress, thumbnail-route O(1) loads, ≥5:1 progress batching,
-  pagination cross-window correctness). Confirm the mechanism named in each AC is
-  the thing tested (not "feels fast").
-- **Both-directions guard ACs (AC1.4/1.5, AC1.6/1.7, AC2.5, AC4.2/4.3, AC5.2):**
-  confirm BOTH directions are exercised (the gate already verified AC8.4
-  exercised-not-present — you may cite that, but confirm the criterion holds).
-- **Deliverable 5 (one-shot visibility, AC5.1–5.4):** all three surfaces + reload-never.
-- **Deliverable 6 (chip, AC6.1–6.4):** idle-hidden / active-shown / queued≠active /
-  no-dequeue-on-queued.
-- **Deliverable 7 (visual, AC7.1–7.5):** token static-scan, 16px floor, like→Liked
-  membership round-trip, deterministic avatar both-directions (now first-letter +
-  deterministic color, post-GF1), subs/settings-header via the shared resolver.
+## Special care — non-negotiable AC quality bars
 
-## Dean-on-device items — record, do NOT fake-pass (this is mandatory)
+These are where the gate weight sits. Write ACs to this standard:
 
-These SHIP but are **Dean's on-device (post-release) arbiter items** — mark them
-**DEFERRED (Dean-on-device)**, NOT PASS, with a note that the machine-checkable
-sub-parts (where any) did pass:
+### A. Deterministic, fixture-driven — NO live network
+The breaker (P2), stall watchdog (P3), and durable queue (P4) behaviors MUST have
+ACs verifiable with **fixtures / fakes / injected clocks / stubbed spawn**, never
+by hitting YouTube. Examples of the shape required (make them concrete, not these
+literal words):
+- Breaker: "given a stubbed channel runner that fails N consecutive times, the run
+  aborts after exactly the configured threshold, persists status
+  `run paused after N consecutive failures; retrying at <time>`, and does NOT
+  invoke the runner for the remaining channels" — plus the reset direction: "a
+  success before the threshold resets the counter to 0."
+- Watchdog: "given a fake child emitting no stdout progress for the configured
+  idle window (via injected timer), the process receives SIGKILL and the failure
+  reason is the exact stall string" — plus the negative: "a child that emits
+  progress within the window is NOT killed."
+- Durable queue: "an accepted-but-not-started job written to the persisted queue is
+  requeued on a simulated restart and eventually yields a runlog/history line;
+  the persistence write is atomic and the file is bounded."
 
-- **AC7.6** — elegant buttons + overall "typography reads consistent" feel. Its
-  machine guards (AC7.1 tokens, AC7.2 floor still green after the C4 polish) PASS;
-  the subjective quality is Dean's iPhone pass.
-- **GD-1** — avatar glyph is first-letter + deterministic color, adopted per
-  unanimous two-reviewer consensus; Dean may re-open on-device. Note it as a
-  resolved-but-Dean-may-revisit ledger item.
-- **Carried-over v1.29 AC4.5** — navigate-during-download *feel* (the non-blocking
-  one-shot). Code-complete + test-verified in v1.29 and not regressed here (T8
-  BUG-2 intact); still awaits Dean's on-device confirmation. Carry it forward on
-  the ledger.
+### B. Phase-named timeout reasons — EXACT-STRING criteria
+Deliverable 2 needs ACs that pin the **exact reason strings** (or an exact,
+enumerated format) for each phase/duration, e.g. "list pass timed out after 5m",
+"download stalled — killed after 10m idle", "download hit the 180m ceiling".
+Include a codebase-grep AC asserting the bare legacy string
+"timed out and was killed" is **absent** from source (exercised-not-present style).
+Reasons must interpolate the *actual* configured duration, not a hardcoded literal
+that can drift from config.
 
-Do not report these as automated PASS — the pipeline does not wait on Dean's
-device (release proceeds while he is away; his pass is the post-release arbiter).
+### C. P1 invariants — BOTH-DIRECTIONS ACs in the v1.29 AC-FM style
+For the queue decomposition, write paired ACs (property-holds AND
+violation-is-caught) for each load-bearing invariant:
+- **--download-archive single-writer:** at most one yt-dlp process writes the
+  archive at any instant across the decomposed per-channel jobs (strict serial
+  spawn). Positive: serialization holds under concurrent job submission. Negative:
+  a test that would observe two overlapping archive writers fails/is caught.
+- **runExclusive never-wedge tail:** the promise-chain FIFO never permanently
+  wedges — a job that throws/rejects/times out still releases the tail so the next
+  job runs. Positive: after a failing job the next job proceeds. Negative: a
+  regression that swallows the release is detectable.
+- **Priority ordering:** one-shot > repull > scheduled poll; a one-shot enqueued
+  mid-run runs after at most one in-flight channel completes (≤1 channel wait),
+  provably via a fixture with a controllable in-flight job.
 
-## AC8.x process criteria (satisfiable from records — cite them)
+### D. Regression-surface ACs (v1.29 + v1.30) — additive only
+Pin ACs that the following are PRESERVED (not regressed) by this wave:
+- v1.29: outcome classification (success/partial/error/cancelled),
+  zero-attributed⇒error, cancel-latch ordering, runlog schema **additive-only**
+  (new fields may be added; existing field names/semantics unchanged), retry
+  affordances, AC6.3 argv byte-identity posture (new flags/args added with the
+  same injection-guard discipline — literals or validated values only, never near
+  `--`).
+- v1.30: chip conformance, one-shot three-surface visibility, BUG-2 reload-never.
 
-- **AC8.1 / AC8.2** — `npm test` green on Node 22 AND Node 24. Node 22.23.1 is
-  recorded green (3593/3593). For **Node 24 (AC8.2)**: check whether a Node-24 run
-  is recorded anywhere; if it is NOT independently evidenced, mark AC8.2 **FAIL or
-  DEFERRED-pending-Node24-run** and flag it as a release-gate item to resolve
-  BEFORE `/prep-em-done` (it is deliverable 8's explicit extra check). Do not assume
-  it; require evidence.
-- **AC8.3** — `npm run lint` zero errors (recorded: 0 errors / 7 baseline). PASS.
-- **AC8.4** — two-reviewer gate completed + recorded, incl. the exercised-not-present
-  verification of the both-directions guards. PASS (cite the gate outcome).
-- **AC8.5** — v1.30.0 released (merge/tag/push). This is NOT done yet (release is
-  the Done stage, after your acceptance) — mark **PENDING (post-acceptance)**.
+### E. Config ACs
+Every new knob is a `FILETUBE_YTDLP_*` env var, bounds-checked in `config.js` via
+the established `parse*` pattern, with a documented default and clamped bounds.
+Write an AC per new knob (breaker threshold, inter-channel sleep, idle window,
+list-pass budget/timeout, any queue-persistence bound).
 
-## Deliverable from you
+### F. H0 gating AC
+Add an AC that T0 must **verify H0's arithmetic against the code** (request budget
+per list pass vs the 5-min timeout at `run.js:105`) and record the finding BEFORE
+the P0 fix lands. The fix's AC is conditional on that verification (confirm or
+falsify + adjust).
 
-A per-AC PASS/FAIL/DEFERRED table (all 48), the Dean-on-device ledger (AC7.6 / GD-1
-/ AC4.5) explicitly marked DEFERRED-Dean-on-device, an explicit call on **AC8.2
-(Node 24)** with evidence or a flag, and an overall verdict: **ACCEPT** (ready for
-release close-out) or **ACCEPT-WITH-CONDITIONS** (name them, e.g. run Node 24
-first) or **REJECT** (name the failing ACs). Report only — do NOT implement.
+## Boundaries
 
-When done, return to the EM session:
-- **ACCEPT →** run `/prep-em-done` (v1.30.0 close-out + release).
-- **ACCEPT-WITH-CONDITIONS / REJECT →** report so the EM routes a fix (e.g. a
-  Node-24 verification run, or a gate-fix round) before Done.
+- Do NOT design the solution (that is the Principal Engineer's next stage). Stay at
+  the "what/observable" level; you may reference file:line anchors from the plan as
+  evidence pointers, but do not prescribe the implementation.
+- Do NOT expand scope beyond P0–P6. Cross-check the out-of-scope list — nothing you
+  write may require parallel yt-dlp, runtime auto-update, cookie automation, or a UI
+  redesign. Nothing may conflict with CONTRIBUTING.md mandatory standards.
+- Do NOT write application code or tests.
+
+## When done
+
+- Exec plan has `## Requirements` (FR1…) + `## Acceptance Criteria` (AC1.x…)
+  covering all 7 deliverables, meeting bars A–F above.
+- `.state/feature-state.json` `artifacts.requirements` points at the exec-plan path.
+- Report back a concise summary: FR count, AC count, and which ACs carry the
+  heaviest gate weight (P1 invariants, phase-string exactness, breaker/watchdog/
+  queue determinism). Then the user returns to the EM and runs `/prep-pe-design`.
