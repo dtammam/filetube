@@ -20,6 +20,7 @@ const ytdlp = require('../../lib/ytdlp');
 const run = require('../../lib/ytdlp/run');
 const store = require('../../lib/ytdlp/store');
 const args = require('../../lib/ytdlp/args');
+const { formatBodyParserError } = require('../../lib/bodyParserErrors');
 
 const originalRunList = run.runList;
 const originalRunDownload = run.runDownload;
@@ -81,6 +82,20 @@ function enabledConfig(overrides = {}) {
 async function startTestApp(deps, config) {
   const app = express();
   app.use(express.json());
+  // v1.28.0: mirrors server.js's own JSON-parse/body-parser-error middleware
+  // (registered right after `express.json()` there too, using the SAME
+  // shared `formatBodyParserError` mapping -- see lib/bodyParserErrors.js)
+  // so the malformed/oversized-JSON tests below exercise the SAME behavior
+  // this bare test app's real counterpart ships -- a bad JSON body 400s/413s
+  // as JSON, never Express's default HTML stack page. Every other error
+  // still passes through untouched via `next(err)`.
+  app.use((err, req, res, next) => {
+    const mapped = formatBodyParserError(err);
+    if (mapped) {
+      return res.status(mapped.status).json(mapped.body);
+    }
+    return next(err);
+  });
   ytdlp.registerRoutes(app, deps, config);
   const server = await new Promise((resolve) => {
     const s = app.listen(0, '127.0.0.1', () => resolve(s));
@@ -1424,6 +1439,238 @@ test('the avatar probe is non-blocking: the 202 response is never delayed by it'
   } finally {
     releaseProbe();
     await new Promise((resolve) => setTimeout(resolve, 20));
+    await close();
+  }
+});
+
+// ---- v1.28.0: iOS Shortcuts / share-sheet robustness (endpoint-level) ------
+//
+// `lib/ytdlp/url.js`'s own unit suite (test/unit/ytdlp-url.test.js) already
+// covers the normalization/canonicalization logic exhaustively -- these
+// tests instead prove the END-TO-END wiring: the mocked spawn layer
+// (`run.runDownload`) receives the CANONICAL watch URL (never the raw
+// input), a `text/plain` body works, and malformed JSON 400s as JSON.
+// Deliberately placed BEFORE the FIX-10 queue-cap test above (which is
+// documented to stay LAST in this file, since it permanently inflates the
+// shared `ytdlpQueueLength` singleton for the rest of the process).
+
+test('v1.28.0: POST /api/ytdlp/download with a /shorts/<id> URL is accepted -- the spawn-bound TARGET is the CANONICAL video id, never the raw /shorts/ path', async () => {
+  const deps = makeFakeDeps();
+  let capturedTargetIds = null;
+  run.runDownload = async (sub, cfg, targetIds) => {
+    capturedTargetIds = targetIds;
+    return { ok: true, code: 0, stdout: '', stderr: '' };
+  };
+
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    const res = await postJson(base, '/api/ytdlp/download', { url: 'https://www.youtube.com/shorts/dQw4w9WgXcQ' });
+    assert.equal(res.status, 202);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    assert.deepEqual(capturedTargetIds, ['dQw4w9WgXcQ'], 'run.runDownload must receive the canonical video id (args.js rebuilds it into the canonical watch URL via buildWatchUrl)');
+  } finally {
+    await close();
+  }
+});
+
+// F7 (explicit, mirrors ytdlp-crud.test.js's SUBSCRIPTION-side rejection of
+// the SAME URL): the one-off download classifier is the ONLY caller that
+// opts into recognizing /shorts//live//embed -- accepted HERE, rejected on
+// the subscription-add path, never the other way around.
+test('F7: POST /api/ytdlp/download with a /shorts/<id> URL responds 202 with the canonical watch id (only the one-off path opts into this shape)', async () => {
+  const deps = makeFakeDeps();
+  run.runDownload = async () => ({ ok: true, code: 0, stdout: '', stderr: '' });
+
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    const res = await postJson(base, '/api/ytdlp/download', { url: 'https://www.youtube.com/shorts/dQw4w9WgXcQ' });
+    assert.equal(res.status, 202);
+    const body = await res.json();
+    assert.equal(body.accepted, true);
+  } finally {
+    await close();
+  }
+});
+
+test('v1.28.0: POST /api/ytdlp/download with an "&"-param URL (youtu.be/<id>?si=<x>&t=5) is accepted and canonicalizes before spawning', async () => {
+  const deps = makeFakeDeps();
+  let capturedTargetIds = null;
+  run.runDownload = async (sub, cfg, targetIds) => {
+    capturedTargetIds = targetIds;
+    return { ok: true, code: 0, stdout: '', stderr: '' };
+  };
+
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    const res = await postJson(base, '/api/ytdlp/download', { url: 'https://youtu.be/dQw4w9WgXcQ?si=abc123&t=5' });
+    assert.equal(res.status, 202);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    assert.deepEqual(capturedTargetIds, ['dQw4w9WgXcQ'], 'the "&"-joined query must never survive into the spawn-bound target');
+  } finally {
+    await close();
+  }
+});
+
+test('v1.28.0: POST /api/ytdlp/download with a quote-wrapped URL body is accepted (a Shortcut\'s own literal typed quote characters)', async () => {
+  const deps = makeFakeDeps();
+  let downloadCalls = 0;
+  run.runDownload = async () => {
+    downloadCalls += 1;
+    return { ok: true, code: 0, stdout: '', stderr: '' };
+  };
+
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    const res = await postJson(base, '/api/ytdlp/download', { url: `"${SINGLE_VIDEO_URL}"` });
+    assert.equal(res.status, 202);
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(downloadCalls, 1);
+  } finally {
+    await close();
+  }
+});
+
+test('v1.28.0: POST /api/ytdlp/download accepts a text/plain body, mapping the bare string to {url: body}', async () => {
+  const deps = makeFakeDeps();
+  let capturedTargetIds = null;
+  run.runDownload = async (sub, cfg, targetIds) => {
+    capturedTargetIds = targetIds;
+    return { ok: true, code: 0, stdout: '', stderr: '' };
+  };
+
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    const res = await fetch(`${base}/api/ytdlp/download`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: SINGLE_VIDEO_URL,
+    });
+    assert.equal(res.status, 202);
+    const body = await res.json();
+    assert.equal(body.accepted, true);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    assert.deepEqual(capturedTargetIds, ['dQw4w9WgXcQ'], 'the download must have been kicked off from a text/plain body, with the correct video id');
+  } finally {
+    await close();
+  }
+});
+
+test('v1.28.0: POST /api/ytdlp/download with an unparseable JSON body responds 400 with a JSON error, never the default Express HTML stack page', async () => {
+  const deps = makeFakeDeps();
+  let downloadCalls = 0;
+  run.runDownload = async () => {
+    downloadCalls += 1;
+    return { ok: true, code: 0, stdout: '', stderr: '' };
+  };
+
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    const res = await fetch(`${base}/api/ytdlp/download`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{ this is not valid JSON',
+    });
+    assert.equal(res.status, 400);
+    assert.equal(res.headers.get('content-type').includes('application/json'), true, 'the error body must be JSON, not an HTML stack page');
+    const body = await res.json();
+    assert.equal(typeof body.error, 'string');
+    assert.match(body.error, /request body is not valid JSON/);
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(downloadCalls, 0, 'a malformed-JSON request must never reach a spawn');
+  } finally {
+    await close();
+  }
+});
+
+// ---- two-reviewer gate follow-up (F1): oversized bodies never render HTML --
+//
+// `express.text()` on this route is now explicitly capped at 256kb (well
+// below the default), and BOTH parsers' oversized-body errors flow through
+// the SAME `formatBodyParserError` mapping (lib/bodyParserErrors.js) -- see
+// that route's own comment for why a route-scoped 4-arg middleware, not
+// server.js's earlier-registered global one, is what actually catches this.
+
+test('v1.28.0 (F1): POST /api/ytdlp/download with an oversized text/plain body responds 413 with a JSON error, never the default Express HTML stack page', async () => {
+  const deps = makeFakeDeps();
+  let downloadCalls = 0;
+  run.runDownload = async () => {
+    downloadCalls += 1;
+    return { ok: true, code: 0, stdout: '', stderr: '' };
+  };
+
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    const res = await fetch(`${base}/api/ytdlp/download`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: 'x'.repeat(300 * 1024), // past this route's explicit 256kb cap
+    });
+    assert.equal(res.status, 413);
+    assert.equal(res.headers.get('content-type').includes('application/json'), true, 'the error body must be JSON, not an HTML stack page');
+    const body = await res.json();
+    assert.equal(typeof body.error, 'string');
+    assert.match(body.error, /too large/);
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(downloadCalls, 0, 'an oversized-body request must never reach a spawn');
+  } finally {
+    await close();
+  }
+});
+
+test('v1.28.0 (F1): POST /api/ytdlp/download with an oversized JSON body responds 413 with a JSON error, never the default Express HTML stack page', async () => {
+  const deps = makeFakeDeps();
+  let downloadCalls = 0;
+  run.runDownload = async () => {
+    downloadCalls += 1;
+    return { ok: true, code: 0, stdout: '', stderr: '' };
+  };
+
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    const res = await fetch(`${base}/api/ytdlp/download`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      // past express.json()'s own default 100kb cap (unchanged, global).
+      body: JSON.stringify({ url: SINGLE_VIDEO_URL, padding: 'x'.repeat(150 * 1024) }),
+    });
+    assert.equal(res.status, 413);
+    assert.equal(res.headers.get('content-type').includes('application/json'), true, 'the error body must be JSON, not an HTML stack page');
+    const body = await res.json();
+    assert.equal(typeof body.error, 'string');
+    assert.match(body.error, /too large/);
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(downloadCalls, 0, 'an oversized-body request must never reach a spawn');
+  } finally {
+    await close();
+  }
+});
+
+test('v1.28.0: the pre-spawn re-validation in args.js still passes for a canonicalized one-shot URL (never re-rejects its own canonical output)', async () => {
+  const deps = makeFakeDeps();
+  const config = enabledConfig();
+  let capturedArgs = null;
+  const originalRunDownload = run.runDownload;
+  run.runDownload = async (sub, cfg, targetIds) => {
+    // Mirrors the existing "threads it through to buildYtdlpDownloadArgs"
+    // test pattern above -- this is exactly the args.js re-validation path
+    // (`requireValidUrl`, defense-in-depth) that runs immediately before a
+    // real spawn.
+    capturedArgs = args.buildYtdlpDownloadArgs(sub, cfg, targetIds);
+    return { ok: true, code: 0, stdout: '', stderr: '' };
+  };
+
+  const { base, close } = await startTestApp(deps, config);
+  try {
+    const res = await postJson(base, '/api/ytdlp/download', { url: 'https://www.youtube.com/shorts/dQw4w9WgXcQ?si=xyz' });
+    assert.equal(res.status, 202);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.ok(capturedArgs, 'buildYtdlpDownloadArgs must have run (i.e. args.js\'s own re-validation did not throw/reject the canonical URL)');
+    assert.ok(capturedArgs.includes(WATCH_VIDEO_URL), 'the built argv must carry the canonical watch URL');
+  } finally {
+    run.runDownload = originalRunDownload;
     await close();
   }
 });

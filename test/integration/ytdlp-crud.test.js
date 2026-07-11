@@ -193,6 +193,25 @@ test('POST /api/subscriptions with a bad body returns 400', async () => {
   assert.equal(badFormat.status, 400);
 });
 
+// ---- two-reviewer gate follow-up (F7): /shorts//live//embed rejected on ---
+// ---- the SUBSCRIPTION-add path -- they are single-video shapes, only the --
+// ---- one-off download route (POST /api/ytdlp/download) opts into them. ---
+
+for (const kind of ['shorts', 'live', 'embed']) {
+  test(`F7: POST /api/subscriptions with a /${kind}/<id> URL is rejected -- a single video is never a valid subscription target`, async () => {
+    const res = await fetch(`${base}/api/subscriptions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ channelUrl: `https://www.youtube.com/${kind}/dQw4w9WgXcQ`, format: 'video' }),
+    });
+    assert.equal(res.status, 400, `expected /${kind}/<id> to be rejected as a subscription target`);
+    assert.ok((await res.json()).error);
+
+    const list = await (await fetch(`${base}/api/subscriptions`)).json();
+    assert.ok(!list.some((s) => s.channelUrl.includes(`/${kind}/`)), 'a rejected single-video URL must never persist as a subscription');
+  });
+}
+
 // ---- v1.13.0 item 4: filetype accepted + validated at the POST boundary ---
 
 test('POST /api/subscriptions accepts a valid filetype and persists it', async () => {
