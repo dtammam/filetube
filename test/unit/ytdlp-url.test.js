@@ -443,26 +443,18 @@ test('FR-5: ACCEPT -- a trimmed share-sheet URL (surrounding whitespace only) va
   assert.equal(result.ok, true);
 });
 
-// KNOWN DESIGN-DOC DISCREPANCY (flagged, not silently "fixed" -- see the SDE
-// completion report): the exec plan's mandated test #6 reads `ACCEPT:
-// "Title\nhttps://www.youtube.com/watch?v=<id>&si=<x>" extracts -> valid
-// video`, and its FR-5 design narrative claims "?si=/&feature=/&pp= pass as
-// before". That is NOT actually true today, independent of this task's
-// whitespace/extraction change: `FORBIDDEN_CHARS` has *always* included the
-// bare `&` character (it is explicitly in the file's own documented
-// reject-list, `lib/ytdlp/url.js` FORBIDDEN_CHARS comment), so ANY
-// `youtube.com/watch?v=...&si=...`-shaped URL -- even a clean, no-whitespace
-// one, entirely independent of extraction -- was rejected before this task
-// and is STILL rejected after it (verified against the pre-task code). This
-// task's brief is explicit that FORBIDDEN_CHARS must NOT be weakened, so
-// this test documents the actual (guard-preserving) behavior rather than the
-// plan's literal (unattainable-without-weakening-a-guard) wording. A
-// `youtu.be/<id>?si=<x>` share link (a single query param, no `&`) DOES pass
-// -- see the "ACCEPT" tests above -- which is the realistic form this
-// normalization pre-step was built to accept.
-test('FR-5 (documented discrepancy): a watch-URL share payload using "&si=" is STILL rejected -- "&" is, and remains, in FORBIDDEN_CHARS regardless of extraction', () => {
+// SUPERSEDED by v1.28.0 (iOS Shortcuts robustness): the note above documented
+// a real, then-current limitation -- a multi-param `&`-joined share URL was
+// rejected outright because FORBIDDEN_CHARS (unweakened, unchanged) rejects
+// a bare `&`. v1.28.0 fixes this WITHOUT touching FORBIDDEN_CHARS: the query
+// is now rebuilt ALLOWLIST-style (keep only `v`/`list`, drop everything else)
+// BEFORE FORBIDDEN_CHARS ever runs, so a legitimate `&`-joined share URL no
+// longer carries an `&` into that check at all. See
+// `rebuildQueryAllowlist`'s doc comment in lib/ytdlp/url.js.
+test('v1.28.0: a watch-URL share payload using "&si=" now ACCEPTS -- the query is rebuilt allowlist-style before FORBIDDEN_CHARS ever sees the "&"', () => {
   const result = validateChannelUrl('Title\nhttps://www.youtube.com/watch?v=dQw4w9WgXcQ&si=xyz');
-  assert.equal(result.ok, false, 'FORBIDDEN_CHARS already rejects a bare (whitespace-free) "&"-joined URL, independent of this task\'s change -- not a regression, but a real limitation to flag for EM/PE');
+  assert.equal(result.ok, true);
+  assert.equal(result.url, 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', 'the "&si=xyz" param must be dropped, never merely tolerated');
 });
 
 test('FR-5: classifySingleVideo on a share-sheet payload returns kind "video", the correct videoId, and a clean canonical watchUrl (no ?si)', () => {
@@ -474,15 +466,321 @@ test('FR-5: classifySingleVideo on a share-sheet payload returns kind "video", t
   assert.ok(!result.watchUrl.includes('si='), 'buildWatchUrl must rebuild a clean canonical URL, dropping ?si=');
 });
 
-// See the "documented discrepancy" test above -- a `&`-joined query string
-// (as on a shared youtube.com/watch link) is rejected by the pre-existing,
-// unweakened FORBIDDEN_CHARS guard, so classifySingleVideo (which runs
-// validateChannelUrl first) correctly rejects it too, via classifySingleVideo's
-// OWN 'invalid' kind (validateChannelUrl itself failed, before classification
-// logic ever inspects the path/host) rather than a video/channel/playlist
-// classification.
-test('FR-5: classifySingleVideo on a youtube.com/watch share-sheet payload with "&si=" is rejected (kind invalid) -- same pre-existing FORBIDDEN_CHARS limitation as validateChannelUrl', () => {
+// SUPERSEDED by v1.28.0 -- see the matching validateChannelUrl test above.
+// classifySingleVideo runs validateChannelUrl first, so the same "&"-param
+// fix applies here too: a `&`-joined watch-URL share payload now classifies
+// as a valid single video with a clean canonical watchUrl.
+test('v1.28.0: classifySingleVideo on a youtube.com/watch share-sheet payload with "&si=" now classifies as a valid video with a clean canonical watchUrl', () => {
   const result = classifySingleVideo('Title\nhttps://www.youtube.com/watch?v=dQw4w9WgXcQ&si=xyz123');
+  assert.equal(result.ok, true);
+  assert.equal(result.kind, 'video');
+  assert.equal(result.videoId, 'dQw4w9WgXcQ');
+  assert.equal(result.watchUrl, 'https://www.youtube.com/watch?v=dQw4w9WgXcQ');
+});
+
+// ---- v1.28.0: iOS Shortcuts / share-sheet robustness -----------------------
+//
+// FR: POST /api/ytdlp/download must robustly accept what iOS Shortcuts/share
+// sheets actually send (quote-wrapped bodies, "&"-joined query strings,
+// /shorts/<id> links) WITHOUT weakening the yt-dlp injection guard
+// (FORBIDDEN_CHARS stays byte-identical -- see the source-lock test at the
+// bottom of this section).
+
+test("Dean's verbatim reported URL passes", () => {
+  const result = validateChannelUrl('https://youtu.be/86iSEaS6Mvk?is=gpYMZDxYGIFGBBVP');
+  assert.equal(result.ok, true);
+  assert.equal(result.url, 'https://youtu.be/86iSEaS6Mvk', 'the unrecognized "is=" query param must be dropped (not a "v"/"list" key)');
+});
+
+test('v1.28.0: a fully ASCII-quote-wrapped URL (a Shortcut\'s own literal typed quote characters) validates', () => {
+  const result = validateChannelUrl('"https://youtu.be/86iSEaS6Mvk"');
+  assert.equal(result.ok, true);
+  assert.equal(result.url, 'https://youtu.be/86iSEaS6Mvk');
+});
+
+test('v1.28.0: a curly-quote-wrapped URL (rich-text paste) validates', () => {
+  const result = validateChannelUrl('“https://youtu.be/86iSEaS6Mvk”');
+  assert.equal(result.ok, true);
+  assert.equal(result.url, 'https://youtu.be/86iSEaS6Mvk');
+});
+
+test('v1.28.0: a parens-wrapped URL validates', () => {
+  const result = validateChannelUrl('(https://youtu.be/86iSEaS6Mvk)');
+  assert.equal(result.ok, true);
+  assert.equal(result.url, 'https://youtu.be/86iSEaS6Mvk');
+});
+
+test('v1.28.0: an angle-bracket-wrapped URL validates', () => {
+  const result = validateChannelUrl('<https://youtu.be/86iSEaS6Mvk>');
+  assert.equal(result.ok, true);
+  assert.equal(result.url, 'https://youtu.be/86iSEaS6Mvk');
+});
+
+test('v1.28.0: a markdown-link-wrapped URL embedded in prose validates -- the glued trailing ")" tail is stripped', () => {
+  const result = validateChannelUrl('Check this out: [Video](https://youtu.be/86iSEaS6Mvk)');
+  assert.equal(result.ok, true);
+  assert.equal(result.url, 'https://youtu.be/86iSEaS6Mvk');
+});
+
+test('v1.28.0: a sentence-ending period glued directly onto a share-sheet URL is stripped', () => {
+  const result = validateChannelUrl('Watch this: https://youtu.be/86iSEaS6Mvk.');
+  assert.equal(result.ok, true);
+  assert.equal(result.url, 'https://youtu.be/86iSEaS6Mvk');
+});
+
+// ---- two-reviewer gate follow-up (F6, optional): SPACELESS markdown link ---
+
+test('F6: a SPACELESS markdown link "[title](url)" (no whitespace anywhere) validates -- previously rejected (the inner "(" tripped FORBIDDEN_CHARS with no whitespace to trigger extraction)', () => {
+  const result = validateChannelUrl('[Video](https://youtu.be/dQw4w9WgXcQ)');
+  assert.equal(result.ok, true);
+  assert.equal(result.url, 'https://youtu.be/dQw4w9WgXcQ');
+});
+
+test('F6: a spaceless markdown link followed immediately by trailing prose punctuation still validates', () => {
+  const result = validateChannelUrl('[Video](https://youtu.be/dQw4w9WgXcQ).');
+  assert.equal(result.ok, true);
+  assert.equal(result.url, 'https://youtu.be/dQw4w9WgXcQ');
+});
+
+test('F6: a spaceless hostile prefix glued before a legitimate URL still extracts-and-accepts, matching the PRE-EXISTING whitespace-triggered precedent (the hostile prefix is discarded, never reaches a spawn either way)', () => {
+  const result = validateChannelUrl('$(rm)https://www.youtube.com/@channel');
+  assert.equal(result.ok, true);
+  assert.equal(result.url, 'https://www.youtube.com/@channel');
+});
+
+test('F6: a spaceless string with NO extractable http(s) substring is still rejected, unchanged', () => {
+  assert.equal(validateChannelUrl('[novalidurlhere]').ok, false);
+});
+
+// ---- &-param canonicalization (exact output asserted) ----------------------
+
+test('v1.28.0: youtu.be/<id>?si=<x>&t=<n> canonicalizes to the bare youtu.be/<id> (exact output)', () => {
+  const result = validateChannelUrl('https://youtu.be/dQw4w9WgXcQ?si=abc123&t=1');
+  assert.equal(result.ok, true);
+  assert.equal(result.url, 'https://youtu.be/dQw4w9WgXcQ');
+});
+
+test('v1.28.0: watch?v=<id>&feature=share canonicalizes to watch?v=<id> only (exact output)', () => {
+  const result = validateChannelUrl('https://www.youtube.com/watch?v=dQw4w9WgXcQ&feature=share');
+  assert.equal(result.ok, true);
+  assert.equal(result.url, 'https://www.youtube.com/watch?v=dQw4w9WgXcQ');
+});
+
+test('v1.28.0: a playlist URL with extra "&"-joined params keeps only "list" (exact output)', () => {
+  const result = validateChannelUrl('https://www.youtube.com/playlist?list=PLabc123XYZ&index=5&foo=bar');
+  assert.equal(result.ok, true);
+  assert.equal(result.url, 'https://www.youtube.com/playlist?list=PLabc123XYZ');
+});
+
+// ---- two-reviewer gate follow-up (F4): trailing fragment stripped ----------
+
+test('F4: watch?v=ID#junk canonicalizes cleanly, with no trailing "#" in the accepted output', () => {
+  const result = validateChannelUrl('https://www.youtube.com/watch?v=dQw4w9WgXcQ#junk');
+  assert.equal(result.ok, true);
+  assert.equal(result.url, 'https://www.youtube.com/watch?v=dQw4w9WgXcQ');
+  assert.ok(!result.url.includes('#'), 'the accepted, persisted URL must never carry a stray "#"');
+});
+
+test('F4: a hostile payload glued onto a fragment ("#&$(evil)") is discarded wholesale, not just left inert', () => {
+  const result = validateChannelUrl('https://www.youtube.com/watch?v=dQw4w9WgXcQ#&$(evil)');
+  assert.equal(result.ok, true);
+  assert.equal(result.url, 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', 'the fragment (and everything glued to it) must be fully gone, not merely appended harmlessly');
+});
+
+test('F4: a fragment on a youtu.be short link is also stripped', () => {
+  const result = validateChannelUrl('https://youtu.be/dQw4w9WgXcQ#t=30s');
+  assert.equal(result.ok, true);
+  assert.equal(result.url, 'https://youtu.be/dQw4w9WgXcQ');
+});
+
+// ---- two-reviewer gate follow-up (F5): lock two intentional side effects --
+
+test('F5(a): a channel URL with an extra query param (?sub_confirmation=1) canonicalizes by DROPPING the param -- intentional, locked behavior', () => {
+  const result = validateChannelUrl('https://www.youtube.com/@Chan?sub_confirmation=1');
+  assert.equal(result.ok, true);
+  assert.equal(result.url, 'https://www.youtube.com/@Chan', 'a channel URL never keeps ANY query param -- only /watch (?v=) and /playlist (?list=) keep one');
+});
+
+test('F5(b): a second, un-"&"-joined "?" (watch?v=X?evil=1) fails safe -- rejected, never silently truncated to a valid-looking URL', () => {
+  const result = validateChannelUrl('https://www.youtube.com/watch?v=dQw4w9WgXcQ?evil=1');
+  assert.equal(result.ok, false, 'a malformed multi-"?" query must never be coerced into an accepted URL');
+});
+
+test('F5(b): the same multi-"?" shape rejects identically through classifySingleVideo (the shared validator, not a forked path)', () => {
+  const result = classifySingleVideo('https://www.youtube.com/watch?v=dQw4w9WgXcQ?evil=1');
   assert.equal(result.ok, false);
-  assert.equal(result.kind, 'invalid');
+});
+
+test('F5(b): a hostile fragment on the shared-validator path never survives into the canonicalized output', () => {
+  const result = validateChannelUrl('https://www.youtube.com/@chan#$(rm -rf /)');
+  assert.equal(result.ok, true);
+  assert.equal(result.url, 'https://www.youtube.com/@chan');
+  assert.ok(!result.url.includes('$') && !result.url.includes('('), 'the fragment payload must never survive into the accepted, persisted output');
+});
+
+// ---- /shorts/, /live/, /embed/ single-video shapes --------------------------
+
+for (const kind of ['shorts', 'live', 'embed']) {
+  test(`v1.28.0: classifySingleVideo recognizes /${kind}/<id> as a single video, canonicalized to the ordinary watch URL`, () => {
+    const result = classifySingleVideo(`https://www.youtube.com/${kind}/dQw4w9WgXcQ`);
+    assert.equal(result.ok, true, `expected /${kind}/<id> to classify as a single video`);
+    assert.equal(result.kind, 'video');
+    assert.equal(result.videoId, 'dQw4w9WgXcQ');
+    assert.equal(result.watchUrl, 'https://www.youtube.com/watch?v=dQw4w9WgXcQ');
+  });
+
+  test(`v1.28.0: classifySingleVideo recognizes /${kind}/<id>?si=<x> (with an extraneous query param, dropped) as a single video`, () => {
+    const result = classifySingleVideo(`https://www.youtube.com/${kind}/dQw4w9WgXcQ?si=abc123`);
+    assert.equal(result.ok, true, `expected /${kind}/<id>?si= to classify as a single video`);
+    assert.equal(result.kind, 'video');
+    assert.equal(result.videoId, 'dQw4w9WgXcQ');
+    assert.equal(result.watchUrl, 'https://www.youtube.com/watch?v=dQw4w9WgXcQ');
+  });
+}
+
+// ---- two-reviewer gate follow-up (F2): /embed/videoseries is a PLAYLIST ----
+
+test('F2: classifySingleVideo rejects /embed/videoseries?list=... -- it is the canonical WHOLE-PLAYLIST embed, not a single video', () => {
+  const result = classifySingleVideo('https://www.youtube.com/embed/videoseries?list=PLabc123XYZ');
+  assert.equal(result.ok, false);
+  assert.notEqual(result.videoId, 'videoseries', 'must never accept the literal token "videoseries" as a video id');
+});
+
+test('F2: classifySingleVideo rejects bare /embed/videoseries (no query) the same way', () => {
+  const result = classifySingleVideo('https://www.youtube.com/embed/videoseries');
+  assert.equal(result.ok, false);
+});
+
+test('F2: an id that merely STARTS WITH "videoseries" (not the exact token) is unaffected -- still classifies as a video', () => {
+  const result = classifySingleVideo('https://www.youtube.com/embed/videoseriesX');
+  assert.equal(result.ok, true);
+  assert.equal(result.videoId, 'videoseriesX');
+});
+
+// ---- two-reviewer gate follow-up (F3): shorts/live/embed id length cap -----
+
+test('F3: validateChannelUrl({ allowSingleVideoShapes: true }) rejects a 2000-char /shorts/<id> (oversized, past the shared 64-char id cap)', () => {
+  const huge = 'a'.repeat(2000);
+  const result = validateChannelUrl(`https://www.youtube.com/shorts/${huge}`, { allowSingleVideoShapes: true });
+  assert.equal(result.ok, false);
+});
+
+test('F3: classifySingleVideo rejects a 2000-char /shorts/<id> the same way', () => {
+  const huge = 'a'.repeat(2000);
+  const result = classifySingleVideo(`https://www.youtube.com/shorts/${huge}`);
+  assert.equal(result.ok, false);
+});
+
+test('F3: validateChannelUrl({ allowSingleVideoShapes: true }) and classifySingleVideo AGREE on a 65-char (one past the 64-char cap) /shorts/<id>', () => {
+  const tooLong = 'a'.repeat(65);
+  const direct = validateChannelUrl(`https://www.youtube.com/shorts/${tooLong}`, { allowSingleVideoShapes: true });
+  const classified = classifySingleVideo(`https://www.youtube.com/shorts/${tooLong}`);
+  assert.equal(direct.ok, false);
+  assert.equal(classified.ok, false);
+});
+
+// ---- two-reviewer gate follow-up (F7): shorts/live/embed gated OFF the -----
+// ---- subscription-add path (the DEFAULT, opts-less validateChannelUrl) ----
+
+for (const kind of ['shorts', 'live', 'embed']) {
+  test(`F7: bare validateChannelUrl (no opts -- the subscription-add path's own call shape) rejects /${kind}/<id>`, () => {
+    const result = validateChannelUrl(`https://www.youtube.com/${kind}/dQw4w9WgXcQ`);
+    assert.equal(result.ok, false, `expected the subscription-safe default to reject /${kind}/<id>`);
+  });
+
+  test(`F7: validateChannelUrl({ allowSingleVideoShapes: false }) explicitly rejects /${kind}/<id>, same as the default`, () => {
+    const result = validateChannelUrl(`https://www.youtube.com/${kind}/dQw4w9WgXcQ`, { allowSingleVideoShapes: false });
+    assert.equal(result.ok, false);
+  });
+}
+
+test('F7: the PRE-EXISTING /watch and youtu.be subscription shapes are UNCHANGED -- still accepted with no opts', () => {
+  assert.equal(validateChannelUrl('https://www.youtube.com/watch?v=dQw4w9WgXcQ').ok, true);
+  assert.equal(validateChannelUrl('https://youtu.be/dQw4w9WgXcQ').ok, true);
+});
+
+test('F7: classifySingleVideo (the one-off download path) still accepts /shorts/<id> -- only IT opts in', () => {
+  const result = classifySingleVideo('https://www.youtube.com/shorts/dQw4w9WgXcQ');
+  assert.equal(result.ok, true);
+  assert.equal(result.videoId, 'dQw4w9WgXcQ');
+});
+
+// ---- HOSTILE inputs still rejected, even wrapped/query-laden ---------------
+
+test('v1.28.0: an embedded evil.com host is STILL rejected, even quote-wrapped', () => {
+  assert.equal(validateChannelUrl('"https://evil.com/@x"').ok, false);
+});
+
+test('v1.28.0: a %3B%20-encoded metachar ?v= value is STILL rejected, even quote-wrapped', () => {
+  const result = validateChannelUrl('"https://www.youtube.com/watch?v=%3B%20rm%20-rf%20%2F"');
+  assert.equal(result.ok, false);
+});
+
+test('v1.28.0: a leading "-" flag-injection attempt is STILL rejected, even quote-wrapped', () => {
+  assert.equal(validateChannelUrl('"-exec=rm -rf /"').ok, false);
+});
+
+test('v1.28.0: an oversized quote-wrapped URL is STILL rejected (the RAW length cap runs before any normalization)', () => {
+  const huge = '"https://www.youtube.com/@' + 'a'.repeat(3000) + '"';
+  assert.equal(validateChannelUrl(huge).ok, false);
+});
+
+test('v1.28.0: "; rm -rf /" glued to a URL (with a space before the payload) is STILL rejected -- the semicolon is never stripped', () => {
+  assert.equal(validateChannelUrl('https://www.youtube.com/@a; rm -rf /').ok, false);
+  assert.equal(validateChannelUrl('"https://www.youtube.com/@a; rm -rf /"').ok, false);
+});
+
+test('v1.28.0: "$(cmd)" command substitution is STILL rejected, even though a lone trailing ")" is normally stripped', () => {
+  assert.equal(validateChannelUrl('https://www.youtube.com/@a$(whoami)').ok, false);
+  assert.equal(validateChannelUrl('$(whoami)').ok, false);
+});
+
+test('v1.28.0: a backtick command-substitution attempt is STILL rejected', () => {
+  assert.equal(validateChannelUrl('https://www.youtube.com/@a`whoami`').ok, false);
+});
+
+test('v1.28.0: embedded userinfo (user:pass@) is STILL rejected, even quote-wrapped', () => {
+  assert.equal(validateChannelUrl('"https://user:pass@www.youtube.com/@x"').ok, false);
+});
+
+test('v1.28.0: a javascript: scheme is STILL rejected, even quote-wrapped', () => {
+  assert.equal(validateChannelUrl('"javascript:alert(1)"').ok, false);
+});
+
+// ---- self-diagnosing rejection message --------------------------------------
+
+test('v1.28.0: the FORBIDDEN_CHARS rejection message names the first offending PRINTABLE character, quoted', () => {
+  const result = validateChannelUrl('https://www.youtube.com/@a;rm');
+  assert.equal(result.ok, false);
+  assert.match(result.error, /disallowed character \(';'\)/);
+});
+
+test('v1.28.0: the FORBIDDEN_CHARS rejection message names a control/whitespace character as its Unicode code point', () => {
+  const result = validateChannelUrl('https://www.youtube.com/@a\x01b');
+  assert.equal(result.ok, false);
+  assert.match(result.error, /disallowed character \(U\+0001\)/);
+});
+
+test('v1.28.0: the rejection message is a single stable string shape across different offending characters', () => {
+  const semicolon = validateChannelUrl('https://www.youtube.com/@a;rm');
+  const pipe = validateChannelUrl('https://www.youtube.com/@a|cat');
+  assert.match(semicolon.error, /^channelUrl contains a disallowed character \(.+\) -- send the bare video URL without surrounding quotes or extra query parameters$/);
+  assert.match(pipe.error, /^channelUrl contains a disallowed character \(.+\) -- send the bare video URL without surrounding quotes or extra query parameters$/);
+});
+
+// ---- spawn-guard regression locks -------------------------------------------
+
+test('SOURCE LOCK: FORBIDDEN_CHARS is byte-identical to its pre-v1.28.0 definition', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const source = fs.readFileSync(path.join(__dirname, '..', '..', 'lib', 'ytdlp', 'url.js'), 'utf8');
+  assert.match(
+    source,
+    /const FORBIDDEN_CHARS = \/\[\\s\\x00-\\x1f\\x7f;&\|`\$<>'"\(\)\{\}\\\\\]\/;/,
+    'FORBIDDEN_CHARS must remain byte-identical -- only what reaches it (candidate normalization) may change',
+  );
+});
+
+test('SOURCE LOCK: buildWatchUrl remains the only spawn-bound URL constructor a Short/live/embed canonicalizes through', () => {
+  assert.equal(classifySingleVideo('https://www.youtube.com/shorts/dQw4w9WgXcQ').watchUrl, buildWatchUrl('dQw4w9WgXcQ'));
 });

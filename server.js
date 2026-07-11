@@ -12,6 +12,12 @@ require('dotenv').config();
 // `isEnabled(config)` inside the functions themselves. See
 // lib/ytdlp/index.js for the dormant-wiring mechanism.
 const ytdlp = require('./lib/ytdlp');
+// v1.28.0 (two-reviewer gate follow-up, F1): shared body-parser-error ->
+// JSON-response mapping, also required directly by lib/ytdlp/index.js for
+// its own route-scoped `express.text()` error middleware -- see that
+// module's own doc comment for why this is a shared FUNCTION rather than a
+// shared middleware instance.
+const { formatBodyParserError } = require('./lib/bodyParserErrors');
 // T4 (v1.25 QoL): `resolveChannelDir` is a pure, side-effect-free path helper
 // (see lib/ytdlp/args.js's own header comment) that `lib/ytdlp/index.js`
 // itself already requires internally but does not re-export -- required
@@ -2354,6 +2360,39 @@ function scanDirRecursive(rootFolder, dirPath, results, unreadable) {
 
 // Middleware
 app.use(express.json());
+// v1.28.0 (iOS Shortcuts robustness): without this, a malformed JSON body
+// (e.g. a Shortcut that mis-serializes its own payload) makes `express.json()`
+// throw, and Express's DEFAULT error handler renders that as an HTML stack
+// page -- useless to any JSON API caller (a Shortcut, curl, the browser
+// fetch()s in public/js/*). A 4-arg (error-handling) middleware placed
+// immediately AFTER `express.json()` intercepts a body-parser failure and
+// turns it into a clean JSON error response. Every OTHER error is passed
+// through UNTOUCHED via `next(err)` -- this never changes how any route's
+// successful body parsing behaves, and never swallows an unrelated error (a
+// thrown route-handler error, etc.) that some other part of the app may
+// still want to handle its own way.
+//
+// v1.28.0 (two-reviewer gate follow-up, F1): originally only matched
+// `err.type === 'entity.parse.failed'` (a malformed-JSON body); broadened to
+// use the shared `formatBodyParserError` mapping (lib/bodyParserErrors.js)
+// so an OVERSIZED JSON body (`entity.too.large`, body-parser's default
+// 100kb cap -- previously fell through to the same HTML stack page this
+// middleware exists to prevent) and an unsupported encoding/charset also get
+// a clean JSON response. The identical mapping function is reused, via a
+// SEPARATE middleware registration, by lib/ytdlp/index.js's `express.text()`
+// route (see that file's own comment, and `formatBodyParserError`'s own doc
+// comment, for why a single shared middleware INSTANCE can't cover both --
+// Express's error-handling stack only ever walks forward from where the
+// error was raised, so a middleware registered here, before
+// `ytdlp.registerRoutes` runs below, can never see an error from a route
+// that call registers).
+app.use((err, req, res, next) => {
+  const mapped = formatBodyParserError(err);
+  if (mapped) {
+    return res.status(mapped.status).json(mapped.body);
+  }
+  return next(err);
+});
 // Serve the app assets with revalidation (no-cache) so updated HTML/JS/CSS show up
 // immediately behind caches (browsers, nginx) instead of serving stale files.
 // ETag/Last-Modified still allow cheap 304s when nothing changed.
