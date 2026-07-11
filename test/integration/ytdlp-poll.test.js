@@ -1119,7 +1119,7 @@ test('a FAILED download cleans up yt-dlp intermediate artifacts in the channel d
     fs.writeFileSync(p, 'yt-dlp leftover bytes');
   }
 
-  run.runDownload = async () => ({ ok: false, code: 'ETIMEDOUT', stdout: '', stderr: '', error: 'yt-dlp timed out and was killed' });
+  run.runDownload = async () => ({ ok: false, code: 'ETIMEDOUT', stdout: '', stderr: '', error: 'yt-dlp download timed out after 180m (absolute ceiling) and was killed' });
 
   await ytdlp.runPoll(deps, config);
 

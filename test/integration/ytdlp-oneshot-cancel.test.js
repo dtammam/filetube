@@ -163,7 +163,7 @@ test('POST /api/ytdlp/download/:jobId/cancel: kills the tracked child (SIGKILL) 
     // stay permanently blocked on it, wedging every LATER test in this file
     // (see ytdlp-oneshot.test.js's FIX-10 test for the same lesson).
     if (settleDownload) {
-      settleDownload({ ok: false, code: null, signal: 'SIGKILL', stdout: '', stderr: '', error: 'yt-dlp timed out and was killed' });
+      settleDownload({ ok: false, code: null, signal: 'SIGKILL', stdout: '', stderr: '', error: 'yt-dlp download timed out after 180m (absolute ceiling) and was killed' });
       await new Promise((resolve) => setTimeout(resolve, 10));
     }
     await close();
@@ -193,7 +193,7 @@ test('POST /api/ytdlp/download/:jobId/cancel: the cancelled state is never clobb
     // promise settles as an ordinary failure (exactly what a real SIGKILL
     // produces) -- runOneShot's own terminal-state write must not stomp the
     // 'cancelled' state that was already written.
-    settleDownload({ ok: false, code: null, signal: 'SIGKILL', stdout: '', stderr: '', error: 'yt-dlp timed out and was killed' });
+    settleDownload({ ok: false, code: null, signal: 'SIGKILL', stdout: '', stderr: '', error: 'yt-dlp download timed out after 180m (absolute ceiling) and was killed' });
     await new Promise((resolve) => setTimeout(resolve, 30));
 
     const finalSnap = await (await fetch(`${base}/api/subscriptions/status`)).json();
@@ -249,7 +249,7 @@ test('POST /api/ytdlp/download/:jobId/cancel: a late progress line arriving AFTE
     // Now let the download's own promise actually settle (the killed
     // child's real, eventual close) -- the final state must still be
     // 'cancelled', never 'error'.
-    settleDownload({ ok: false, code: null, signal: 'SIGKILL', stdout: '', stderr: '', error: 'yt-dlp timed out and was killed' });
+    settleDownload({ ok: false, code: null, signal: 'SIGKILL', stdout: '', stderr: '', error: 'yt-dlp download timed out after 180m (absolute ceiling) and was killed' });
     await new Promise((resolve) => setTimeout(resolve, 30));
 
     const finalSnap = await (await fetch(`${base}/api/subscriptions/status`)).json();

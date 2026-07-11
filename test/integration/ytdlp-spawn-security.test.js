@@ -299,7 +299,17 @@ test('runList arms the (non-zero) list timeout (DEFAULT_LIST_TIMEOUT_MS) by defa
   assert.equal(result.ok, true);
   assert.ok(capturedDelays.length >= 1, 'runList must arm a timer');
   assert.ok(capturedDelays[0] > 0, 'the list timeout must be non-zero (0 is unbounded)');
-  assert.equal(capturedDelays[0], run.DEFAULT_LIST_TIMEOUT_MS);
+  // v1.31 P0 (H0 fix): the list budget is now pacing-aware --
+  // resolveListTimeoutMs(sub, config), not the blind constant. With this
+  // bare config (no maxVideos/sleepRequests set) it resolves to the default
+  // base (5m) + DEFAULT_MAX_VIDEOS entries' worth of paced-request headroom,
+  // and must always be >= the old constant (a listing can only ever get MORE
+  // budget than pre-v1.31, never less).
+  assert.equal(capturedDelays[0], run.resolveListTimeoutMs(
+    { channelUrl: 'https://www.youtube.com/@x', name: 'x', format: 'video', quality: 'best' },
+    { downloadDir: '/tmp', cookiesFile: null },
+  ));
+  assert.ok(capturedDelays[0] >= run.DEFAULT_LIST_TIMEOUT_MS, 'the pacing-aware budget never shrinks below the old constant');
 });
 
 test('runDownload arms a NON-ZERO download timeout (DEFAULT_DOWNLOAD_TIMEOUT_MS) by default', async () => {
@@ -1982,4 +1992,149 @@ test('runDownload: opts.onChild is forwarded straight through to spawnYtdlpDownl
   assert.equal(registeredChild, child, 'runDownload must forward opts.onChild to spawnYtdlpDownload verbatim');
   child.emit('close', 0, null);
   await resultPromise;
+});
+
+// ---- v1.31 P0/P3: phase-named timeout reasons, list-budget scaling, stall --
+// ---- watchdog (see docs/exec-plans .../2026-07-12-v1.31-ytdlp-hardening.md) -
+
+test('v1.31 P0: a list-pass timeout reason names the phase and the ACTUAL budget applied (AC2.x)', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const spawnChild = stubSpawn();
+  const resultPromise = run.spawnYtdlp(['--dump-json'], { timeoutMs: 90 * 1000, phaseLabel: 'list pass' });
+  spawnChild();
+  t.mock.timers.tick(90 * 1000);
+  const result = await resultPromise;
+  assert.equal(result.code, 'ETIMEDOUT');
+  assert.equal(result.error, 'yt-dlp list pass timed out after 1.5m and was killed');
+});
+
+test('v1.31 P0: a caller that passes no phaseLabel still gets a phase-named (list pass) reason -- the bare "timed out and was killed" string no longer exists (AC2.x)', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const spawnChild = stubSpawn();
+  const resultPromise = run.spawnYtdlp(['--dump-json'], { timeoutMs: 60 * 1000 });
+  spawnChild();
+  t.mock.timers.tick(60 * 1000);
+  const result = await resultPromise;
+  assert.notEqual(result.error, 'yt-dlp timed out and was killed');
+  assert.equal(result.error, 'yt-dlp list pass timed out after 1m and was killed');
+});
+
+test('v1.31 P0: a download ceiling kill names the phase, the budget, and that it was the ABSOLUTE ceiling (AC2.x)', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const spawnChild = stubSpawn();
+  const resultPromise = run.spawnYtdlpDownload(['-f', 'best'], { timeoutMs: 30 * 60 * 1000 });
+  spawnChild();
+  t.mock.timers.tick(30 * 60 * 1000);
+  const result = await resultPromise;
+  assert.equal(result.code, 'ETIMEDOUT');
+  assert.equal(result.error, 'yt-dlp download timed out after 30m (absolute ceiling) and was killed');
+});
+
+test('v1.31 P0 (H0): resolveListTimeoutMs scales the list budget with maxVideos x sleepRequests and never shrinks below the configured base', () => {
+  // Defaults: base 5m + DEFAULT_MAX_VIDEOS(2) * 3 req/entry * 1s = 5m + 6s.
+  const sub = { channelUrl: 'https://www.youtube.com/@x' };
+  assert.equal(run.resolveListTimeoutMs(sub, {}), 5 * 60 * 1000 + 2 * 3 * 1000);
+  // A subscription's own maxVideos drives the scaling (25 entries, 2s sleeps).
+  assert.equal(
+    run.resolveListTimeoutMs({ ...sub, maxVideos: 25 }, { sleepRequests: 2 }),
+    5 * 60 * 1000 + 25 * 3 * 2 * 1000,
+  );
+  // maxVideos: 0 ("unlimited") scales as the documented stand-in (100).
+  assert.equal(
+    run.resolveListTimeoutMs({ ...sub, maxVideos: 0 }, { sleepRequests: 1 }),
+    5 * 60 * 1000 + 100 * 3 * 1000,
+  );
+  // The whole budget is capped at 60 minutes no matter how hostile the config.
+  assert.equal(
+    run.resolveListTimeoutMs({ ...sub, maxVideos: 10000 }, { sleepRequests: 60, listTimeoutMinutes: 60 }),
+    60 * 60 * 1000,
+  );
+  // A bare/garbage config falls back to defaults, never throws.
+  assert.doesNotThrow(() => run.resolveListTimeoutMs(null, null));
+  assert.ok(run.resolveListTimeoutMs(null, null) >= 5 * 60 * 1000);
+});
+
+test('v1.31 P3: the stall watchdog kills a download that produces NO output for the idle window, with a specific phase-named reason (AC4.x)', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const spawnChild = stubSpawn();
+  const resultPromise = run.spawnYtdlpDownload(['-f', 'best'], {
+    timeoutMs: 180 * 60 * 1000, // the ceiling is far away -- the stall must fire first
+    stallMs: 10 * 60 * 1000,
+  });
+  const child = spawnChild();
+  t.mock.timers.tick(10 * 60 * 1000);
+  const result = await resultPromise;
+  assert.equal(result.ok, false);
+  assert.equal(result.code, 'ESTALLED');
+  assert.equal(result.error, 'yt-dlp download stalled -- no output for 10m and was killed');
+  assert.deepEqual(child.killCalls, ['SIGKILL']);
+});
+
+test('v1.31 P3: output on EITHER stream re-arms the stall window -- a slow-but-alive download is never stall-killed (AC4.x converse)', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const spawnChild = stubSpawn();
+  const resultPromise = run.spawnYtdlpDownload(['-f', 'best'], {
+    timeoutMs: 0, // no ceiling in this test -- isolate the stall behavior
+    stallMs: 10 * 60 * 1000,
+  });
+  const child = spawnChild();
+  // Three re-arms at 9-minute intervals: each within the 10m window, so the
+  // watchdog must never fire even though total elapsed (27m) is far past it.
+  for (let i = 0; i < 3; i++) {
+    t.mock.timers.tick(9 * 60 * 1000);
+    const stream = i % 2 === 0 ? child.stdout : child.stderr; // both streams prove liveness
+    stream.emit('data', Buffer.from('[download]   1.0% of ~100MiB\n'));
+  }
+  t.mock.timers.tick(9 * 60 * 1000);
+  child.emit('close', 0, null);
+  const result = await resultPromise;
+  assert.equal(result.ok, true, `a live download must never be stall-killed (got: ${result.error})`);
+  assert.deepEqual(child.killCalls, []);
+});
+
+test('v1.31 P3: stallMs 0/absent disables the watchdog entirely (pre-v1.31 ceiling-only behavior)', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const spawnChild = stubSpawn();
+  const resultPromise = run.spawnYtdlpDownload(['-f', 'best'], { timeoutMs: 0, stallMs: 0 });
+  const child = spawnChild();
+  // A full hour of silence: with the watchdog off, nothing may kill it.
+  t.mock.timers.tick(60 * 60 * 1000);
+  child.emit('close', 0, null);
+  const result = await resultPromise;
+  assert.equal(result.ok, true);
+  assert.deepEqual(child.killCalls, []);
+});
+
+test('v1.31 P3: runDownload threads config.stallMinutes into the spawn as stallMs (config boundary)', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const spawnChild = stubSpawn();
+  const downloadDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-ytdlp-dl-'));
+  const config = { downloadDir, cookiesFile: null, stallMinutes: 1, downloadTimeoutMinutes: 180 };
+  const sub = { channelUrl: 'https://www.youtube.com/@x', name: 'x', format: 'video', quality: 'best' };
+  const resultPromise = run.runDownload(sub, config, ['vid1']);
+  spawnChild();
+  t.mock.timers.tick(60 * 1000); // one configured stall-minute of silence
+  const result = await resultPromise;
+  assert.equal(result.code, 'ESTALLED');
+  assert.equal(result.error, 'yt-dlp download stalled -- no output for 1m and was killed');
+});
+
+test('v1.31 P6: getYtdlpVersion returns the trimmed CalVer string on success, null on failure/garbage', async () => {
+  const spawnChild = stubSpawn();
+  const p1 = run.getYtdlpVersion();
+  const c1 = spawnChild();
+  c1.stdout.emit('data', Buffer.from('2026.07.04\n'));
+  c1.emit('close', 0, null);
+  assert.equal(await p1, '2026.07.04');
+
+  const p2 = run.getYtdlpVersion();
+  const c2 = spawnChild();
+  c2.emit('error', Object.assign(new Error('spawn yt-dlp ENOENT'), { code: 'ENOENT' }));
+  assert.equal(await p2, null);
+
+  const p3 = run.getYtdlpVersion();
+  const c3 = spawnChild();
+  c3.stdout.emit('data', Buffer.from('<html>not a version</html>'));
+  c3.emit('close', 0, null);
+  assert.equal(await p3, null, 'version-unlike output must never pass through to the UI');
 });
