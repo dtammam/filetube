@@ -210,20 +210,7 @@ module.exports = [
     },
   },
 
-  // v1.26.3 (Item 4): the minimal offline-shell service worker runs in its
-  // own global scope (`self`/`caches`/`clients`/`skipWaiting`/`fetch`
-  // event's `respondWith`, etc.) -- none of which are DOM/`window` globals,
-  // so it gets its own dedicated block rather than joining the
-  // `public/**/*.js` vanilla-browser block above.
-  {
-    files: ['public/sw.js'],
-    languageOptions: {
-      ecmaVersion: 2023,
-      sourceType: 'script',
-      globals: { ...globals.serviceworker },
-    },
-    rules: {
-      ...commonRules,
-    },
-  },
+  // (v1.27.2: the public/sw.js service-worker block that lived here was
+  // removed along with the service worker itself -- see
+  // unregisterStaleServiceWorkers in public/js/common.js for why.)
 ];

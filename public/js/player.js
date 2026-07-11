@@ -290,6 +290,22 @@ function shouldHandOffToBackgroundAudio(ctx) {
   return ctx.bgAudioState === BG_AUDIO_STATES.INLINE_VIDEO;
 }
 
+// Pure (v1.27.2, pre-pause candidate bridge): is a previously-armed
+// pre-pause candidate still fresh enough for the arriving
+// `visibilitychangeHidden` to consume it as "iOS system-paused us on the
+// way to background"? `candidateAt` is the arming timestamp (0/absent =
+// never armed); `windowMs` defaults to PRE_PAUSE_CANDIDATE_WINDOW_MS at the
+// impure call site -- injectable here for deterministic tests. Malformed
+// input never throws: non-finite/nonpositive values simply read as "not
+// fresh" (fail safe -- no handoff, today's plain pause).
+function isFreshPrePauseCandidate(candidateAt, nowMs, windowMs) {
+  if (typeof candidateAt !== 'number' || !isFinite(candidateAt) || candidateAt <= 0) return false;
+  if (typeof nowMs !== 'number' || !isFinite(nowMs)) return false;
+  if (typeof windowMs !== 'number' || !isFinite(windowMs) || windowMs <= 0) return false;
+  var age = nowMs - candidateAt;
+  return age >= 0 && age <= windowMs;
+}
+
 // F3b (two-reviewer follow-up, v1.27.0): a tiny (52-byte), LOCAL, silent
 // mono 8-bit/8kHz PCM WAV clip (8 samples of silence), inlined as a `data:`
 // URI so `primeBackgroundAudioElement` (below) can "bless" `bgAudioEl` for a
@@ -757,6 +773,9 @@ if (typeof module !== 'undefined' && module.exports) {
     BG_AUDIO_STATES,
     nextBackgroundAudioState,
     shouldHandOffToBackgroundAudio,
+    // v1.27.2 (pre-pause candidate bridge): pure freshness check for the
+    // pause->visibilitychange bridge -- see its own comment.
+    isFreshPrePauseCandidate,
     shouldShowResumeOverlay,
     resolveResumeThreshold,
     resolveDockedResumeAction,
@@ -867,6 +886,46 @@ if (typeof module !== 'undefined' && module.exports) {
   // synchronous duration of one of the pause() calls above, so there is
   // nothing to leak across loads.
   var suppressPauseHandoff = false;
+  // v1.27.2 (pre-pause candidate bridge): timestamp of the most recent
+  // UNSUPPRESSED, otherwise-eligible `mediaPlayer` 'pause' event that could
+  // not be classified at pause time. Dean's on-device overlay proved the
+  // real iOS lock sequence is: system-pause FIRST (dispatched while
+  // `document.visibilityState` is still 'visible'), THEN
+  // `visibilitychangeHidden` with `playing=false` -- so NEITHER v1.27.1
+  // trigger could ever fire (the 'visibility' trigger saw a paused video;
+  // the 'pause-hidden' trigger saw a visible page). This candidate bridges
+  // the two signals: the ambiguous pause ARMS it, and a
+  // `visibilitychangeHidden` arriving within the window below CONSUMES it
+  // as "iOS system-paused us on the way to background" and attempts the
+  // handoff then. A deliberate user pause followed by a lock outside the
+  // window stays a plain pause. Cleared on consume, on a 'play' event, and
+  // in teardownMediaState/close.
+  var prePauseCandidateAt = 0;
+  // 1500ms: iOS's pause -> visibilitychange gap is typically well under
+  // 300ms; this tolerates slow devices. NOTE (two-reviewer gate, v1.27.2):
+  // the window alone is NOT the user-intent guard -- a deliberate
+  // pause-then-immediate-lock lands inside it. The actual guard is the
+  // USER-GESTURE stamp below: an iOS SYSTEM pause has no preceding in-page
+  // gesture, while every user pause does (a tap/click/keypress reaches the
+  // page even under native iOS controls) -- so a pause following a recent
+  // gesture never arms a candidate at all. See
+  // handlePossibleIOSPrePauseHandoff.
+  var PRE_PAUSE_CANDIDATE_WINDOW_MS = 1500;
+  // v1.27.2 (two-reviewer gate fix): timestamp of the most recent in-page
+  // user gesture on the player surface (host-level capture-phase
+  // touchstart/mousedown/click in wireHostListeners, plus explicit stamps in
+  // togglePlayPause for the keyboard path). Consulted ONLY to veto candidate
+  // arming: a 'pause' within GESTURE_PAUSE_GRACE_MS of a gesture is a USER
+  // pause (custom bar, native-controls tap, art tap, dock, spacebar) and
+  // must never arm -- the false positive it prevents (pause -> lock within
+  // the window -> audio resumes against an explicit pause) is the exact
+  // intent-violation class the v1.27.1 F1 fix closed for the lock screen.
+  // Trade-off is deliberately conservative: a REAL system pause that
+  // happens to follow a user touch within the grace (tap screen, then lock
+  // instantly) is a missed handoff (falls back to today's plain pause) --
+  // false negatives cost a feature moment, false positives violate intent.
+  var lastUserGestureAt = 0;
+  var GESTURE_PAUSE_GRACE_MS = 800;
   // v1.27.0 (F2, two-reviewer gate): a one-shot flag set by
   // `runEndedCompletionCascade` when a video finishes WHILE backgrounded and
   // autoplay-advance would otherwise fire -- deferred rather than attempted
@@ -1702,11 +1761,51 @@ if (typeof module !== 'undefined' && module.exports) {
     var suppressed = suppressPauseHandoff;
     suppressPauseHandoff = false;
     if (suppressed) return; // our own lifecycle-driven pause -- not a real signal
-    if (document.visibilityState !== 'hidden') return; // almost every real user pause happens while visible (see guard #2's own comment above for the lock-screen exception)
     if (!currentData || currentData.type === 'audio') return; // video-only feature
     if (inNativeFullscreen()) return; // native presentation sustains its own background audio -- never double-trigger
     if (!isMobileFormFactor()) return; // F4 (two-reviewer gate): re-derive the shared-gate contract's mobile precondition explicitly, matching the primary 'visibility' trigger
     if (bgAudioState !== BG_AUDIO_STATES.INLINE_VIDEO) return; // already mid-handoff/backgrounded
+    // v1.27.2 (pre-pause candidate bridge): Dean's on-device overlay proved
+    // the REAL iOS lock ordering defeats the original hidden-at-pause-time
+    // check below -- iOS dispatches the system pause while
+    // `document.visibilityState` is STILL 'visible', and only then flips
+    // visibility. So a pause arriving while 'visible' is no longer a dead
+    // end: it ARMS a short-lived candidate that `handleBackgroundLifecycle`
+    // (the 'visibility' side of the bridge) consumes if
+    // `visibilitychangeHidden` follows within PRE_PAUSE_CANDIDATE_WINDOW_MS.
+    // A genuine user pause with the app staying visible arms a candidate
+    // that simply expires unconsumed (or is cleared by the next 'play') --
+    // a deliberate pause-then-lock outside the window stays a plain pause.
+    if (document.visibilityState !== 'hidden') {
+      // v1.27.2 gate fixes (both reviewers): two vetoes before arming --
+      // (1) an ENDED video's natural end fires 'pause' first (HTML spec);
+      //     an ended item has nothing to hand off, and arming here would
+      //     let a lock-right-as-it-finishes restart the audio from 0:00.
+      //     (runEndedCompletionCascade also clears the candidate -- this
+      //     veto closes the dispatch-order gap between the two events.)
+      if (mediaPlayer && mediaPlayer.ended) return;
+      // (2) a pause following a recent in-page USER GESTURE is a user pause
+      //     (custom bar / native-controls tap / art tap / spacebar / dock)
+      //     -- never arm for it, or pause-then-quick-lock resumes audio
+      //     against an explicit pause (see lastUserGestureAt's comment).
+      //     isFreshPrePauseCandidate doubles as the generic timestamp-
+      //     freshness predicate here (same contract, injectable for tests).
+      if (isFreshPrePauseCandidate(lastUserGestureAt, Date.now(), GESTURE_PAUSE_GRACE_MS)) {
+        recordLifecycleEvent('bgAudio:candidate', { detail: 'vetoed-user-gesture' });
+        return;
+      }
+      prePauseCandidateAt = Date.now();
+      recordLifecycleEvent('bgAudio:candidate', {
+        detail: 'gates=' + (shouldHandOffToBackgroundAudio({
+          settingOn: bgAudioSettingCached,
+          audioStatus: bgAudioStatusKnown,
+          bgAudioState: bgAudioState,
+        }) ? 'pass' : bgAudioSkipReason()),
+      });
+      return;
+    }
+    // Already hidden at pause time (the ordering the original F-D trigger
+    // was built for -- kept: it may be right on other iOS versions).
     var eligible = shouldHandOffToBackgroundAudio({
       settingOn: bgAudioSettingCached,
       audioStatus: bgAudioStatusKnown,
@@ -1881,6 +1980,47 @@ if (typeof module !== 'undefined' && module.exports) {
       saveProgressToServer(currentAbsTime(), { keepalive: true });
       if (shouldRelease) releaseAudioSession(); // PART A: a terminal pagehide additionally releases the session (additive -- the pause+save above is unchanged)
       return;
+    }
+    // v1.27.2 (pre-pause candidate bridge, the consuming side): the branch
+    // above never runs when iOS already system-paused the video BEFORE this
+    // event (ctx.isPlaying === false -- the ordering Dean's overlay proved).
+    // If `handlePossibleIOSPrePauseHandoff` armed a candidate for that pause
+    // moments ago, THIS is the completing signal: consume it and attempt the
+    // handoff from the already-paused video (attemptBackgroundAudioHandoff
+    // works from a paused element -- its own pause() is then a spec'd
+    // no-op). Everything else about this block is diagnostics: exactly ONE
+    // 'bgAudio:' line per pause-worthy background event on a video load, so
+    // the ?debugLifecycle=1 overlay always names what happened -- or the
+    // precise reason nothing did. Gated on !shouldRelease: a terminal
+    // pagehide is a dying page -- releasing (below) is the only correct
+    // move, never a fresh handoff.
+    if (LIFECYCLE_PAUSE_EVENTS[eventType] && !ctx.isPlaying && !shouldRelease && currentData && !ctx.isAudio) {
+      if (!ctx.isMobile) {
+        recordLifecycleEvent('bgAudio:skip', { detail: 'not-mobile' });
+      } else if (ctx.inNativePresentation) {
+        recordLifecycleEvent('bgAudio:skip', { detail: 'native-presentation' });
+      } else if (bgAudioState !== BG_AUDIO_STATES.INLINE_VIDEO) {
+        recordLifecycleEvent('bgAudio:skip', { detail: 'state-' + bgAudioState });
+      } else {
+        // v1.27.2 gate fix (adversarial finding): only visibilitychangeHidden
+        // may CONSUME a candidate into a real attempt -- it is the one
+        // ordering proven on-device, and a bfcache-bound pagehide
+        // (persisted=true, so !shouldRelease) or a 'freeze' must never start
+        // audio on a page that is being put away by NAVIGATION rather than
+        // by lock/app-switch. The candidate is still zeroed on any of these
+        // events (consume-once, fresh or not) so a stale one can't linger.
+        var candidateFresh = eventType === 'visibilitychangeHidden'
+          && isFreshPrePauseCandidate(prePauseCandidateAt, Date.now(), PRE_PAUSE_CANDIDATE_WINDOW_MS);
+        prePauseCandidateAt = 0; // consume-once, fresh or not
+        if (candidateFresh) {
+          // attemptBackgroundAudioHandoff records its own 'bgAudio:handoff'
+          // or 'bgAudio:skip' (setting/status/state reason) line -- the
+          // one-line-per-event invariant holds on both outcomes.
+          attemptBackgroundAudioHandoff('candidate');
+        } else {
+          recordLifecycleEvent('bgAudio:skip', { detail: 'not-playing-no-candidate' });
+        }
+      }
     }
     // FIX B (player-hardening round): decouple SAVE from PAUSE. A video kept
     // playing here specifically because it's in native fullscreen/PiP
@@ -2663,6 +2803,14 @@ if (typeof module !== 'undefined' && module.exports) {
   // other 'ended' advance.
   function runEndedCompletionCascade(el, opts) {
     var backgrounded = !!(opts && opts.backgrounded);
+    // v1.27.2 gate fix: a natural end fires 'pause' BEFORE 'ended' (HTML
+    // spec), and that pause is unsuppressed + visible + INLINE_VIDEO -- so
+    // it just ARMED a pre-pause candidate. Left standing, a lock within the
+    // candidate window of a video finishing (extremely natural timing)
+    // would consume it and hand off from position 0 -- restarting the whole
+    // item's audio on the lock screen against clear intent. An ended item
+    // has nothing to hand off; kill the candidate here.
+    prePauseCandidateAt = 0;
     // C2 remediation (v1.16.0): reset to 0 on 'ended', and do NOT re-save the
     // end position afterward -- clearProgressInterval() (unlike
     // stopProgressSaver()) only stops the ticking saver, so the just-written
@@ -2710,6 +2858,11 @@ if (typeof module !== 'undefined' && module.exports) {
 
   function togglePlayPause() {
     if (!mediaPlayer) return;
+    // v1.27.2 gate fix (belt-and-braces with the host-level gesture capture
+    // in wireHostListeners): an explicit in-app toggle is a user gesture --
+    // stamp it so handlePossibleIOSPrePauseHandoff never arms a pre-pause
+    // candidate for the pause it causes.
+    lastUserGestureAt = Date.now();
     if (mediaPlayer.paused) mediaPlayer.play().catch(function () {});
     else mediaPlayer.pause();
   }
@@ -3072,6 +3225,23 @@ if (typeof module !== 'undefined' && module.exports) {
     // rationale (iOS can system-pause an inline video BEFORE
     // `visibilitychangeHidden` fires) and its layered safety guards.
     mediaPlayer.addEventListener('pause', handlePossibleIOSPrePauseHandoff);
+    // v1.27.2 (pre-pause candidate bridge): any resumed playback invalidates
+    // a pending candidate -- the pause it described is no longer "the last
+    // thing that happened" (e.g. user paused, changed their mind, hit play,
+    // THEN locked: the lock must consult live state, not the stale pause).
+    mediaPlayer.addEventListener('play', function () { prePauseCandidateAt = 0; });
+    // v1.27.2 (two-reviewer gate fix): host-level, capture-phase,
+    // passive gesture stamps -- the veto signal that distinguishes a USER
+    // pause (always preceded by an in-page gesture: a tap on the native
+    // iOS controls, the custom bar, the art, the dock) from an iOS SYSTEM
+    // pause (never preceded by one). Capture-phase so native-controls taps
+    // that never bubble a dedicated JS event of their own are still seen as
+    // raw touch/mouse activity on the host; passive so scrolling/gesture
+    // layers are unaffected. See lastUserGestureAt's own comment for the
+    // full rationale + trade-off.
+    ['touchstart', 'mousedown', 'click'].forEach(function (evt) {
+      host.addEventListener(evt, function () { lastUserGestureAt = Date.now(); }, { passive: true, capture: true });
+    });
     // v1.27.0 (background-audio-for-video, EXPERIMENTAL): the SAME
     // progress-saver + Media-Session play/pause-state wiring, on the hidden
     // audio element. `attemptBackgroundAudioHandoff` pauses `mediaPlayer`
@@ -3594,7 +3764,10 @@ if (typeof module !== 'undefined' && module.exports) {
         case ' ':
         case 'Spacebar':
           e.preventDefault();
-          if (mediaPlayer.paused) mediaPlayer.play().catch(function () {}); else mediaPlayer.pause();
+          // v1.27.2 gate fix: route through togglePlayPause() (was a
+          // duplicated inline toggle) so the user-gesture stamp inside it
+          // covers the keyboard pause path too -- see lastUserGestureAt.
+          togglePlayPause();
           break;
         case 'f':
         case 'F': {
@@ -3674,6 +3847,7 @@ if (typeof module !== 'undefined' && module.exports) {
     bgAudioGesturePrimed = false;
     bgAudioSettingCached = false;
     bgAudioStatusKnown = null;
+    prePauseCandidateAt = 0; // v1.27.2: a candidate never survives into a new load
     pendingAutoplayNextOnForeground = false; // F2: never let a deferred advance survive into a genuinely new load
     if (bgAudioEl) {
       try { bgAudioEl.pause(); bgAudioEl.removeAttribute('src'); bgAudioEl.load(); } catch (_) { /* best-effort only */ }
@@ -3867,7 +4041,15 @@ if (typeof module !== 'undefined' && module.exports) {
         .then(function (settings) {
           if (gen !== loadGeneration) return; // a newer load has since started
           bgAudioSettingCached = !!(settings && settings.backgroundAudioForVideo);
-          if (!bgAudioSettingCached) return;
+          if (!bgAudioSettingCached) {
+            // v1.27.2 (diagnostics): the arm line now records on EVERY
+            // mobile video load, both ways -- Dean's first overlay reading
+            // had NO arm line at all, and we couldn't tell "setting resolved
+            // off" from "the debug flag was enabled after this load" from
+            // "the fetch never resolved". One unambiguous line settles it.
+            recordLifecycleEvent('bgAudio:arm', { detail: 'setting-off' });
+            return;
+          }
           // F1 (two-reviewer gate): NO LONGER short-circuits when
           // bgAudioStatusKnown's cached value already looks "ready". That
           // cached value can be STALE
@@ -3931,7 +4113,12 @@ if (typeof module !== 'undefined' && module.exports) {
           // Guarded on `gen` so a failure surfacing after this load has
           // already been superseded can never stomp the CURRENT item's own
           // (possibly already-fresh) status.
-          if (gen === loadGeneration) bgAudioStatusKnown = null;
+          if (gen === loadGeneration) {
+            bgAudioStatusKnown = null;
+            // v1.27.2 (diagnostics): even an outright fetch failure leaves
+            // an arm line, completing the "one line per load, always" rule.
+            recordLifecycleEvent('bgAudio:arm', { detail: 'setting-unknown-fetch-failed' });
+          }
         });
     }
 
@@ -4189,6 +4376,7 @@ if (typeof module !== 'undefined' && module.exports) {
     bgAudioGesturePrimed = false;
     bgAudioSettingCached = false;
     bgAudioStatusKnown = null;
+    prePauseCandidateAt = 0; // v1.27.2: mirrors teardownMediaState -- no candidate survives a CLOSE
     pendingAutoplayNextOnForeground = false; // F2: never let a deferred advance survive a CLOSE either
     if (bgAudioEl) {
       try { bgAudioEl.pause(); bgAudioEl.removeAttribute('src'); bgAudioEl.load(); } catch (_) { /* best-effort only */ }

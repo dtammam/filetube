@@ -4916,21 +4916,36 @@ function probeAndReconcileRepullButton() {
   reconcileRepullButton();
 }
 
-// registerServiceWorker (Item 4, v1.26.3): registers the minimal offline-
-// shell service worker (public/sw.js) at the default '/' scope -- see that
-// file's own header comment for the full network-first strategy/rationale.
-// Feature-detected on `navigator.serviceWorker` (absent on browsers without
-// SW support, and on any non-secure-context origin other than localhost --
-// iOS Safari requires HTTPS or localhost for SW registration) so an
-// unsupported browser is completely unaffected; a rejected registration
-// (e.g. a transient fetch failure for sw.js itself) is logged and otherwise
-// swallowed -- it must never block or throw into the rest of page boot.
-// Called from every shell (all five load common.js) since none of them
-// carry `<script>`-level SW registration of their own.
-function registerServiceWorker() {
+// unregisterStaleServiceWorkers (v1.27.2): FileTube's offline-shell service
+// worker (shipped v1.26.4, removed v1.27.2) is GONE -- and this cleanup is
+// what actively sheds it from installs that already registered it.
+//
+// WHY REMOVED (owner decision + documented WebKit behavior): a registered
+// SW's fetch handler receives EVERY same-origin subresource request --
+// including <video>/<audio> byte-range requests -- even when the handler
+// never calls respondWith() for them ("pass-through" still dispatches the
+// event; see WebKit bug 184447, where exactly such a pass-through SW broke
+// mp4 playback outright). iOS additionally suspends SW processes when the
+// page is backgrounded/locked, so a locked page's next media range request
+// must first wake a suspended worker -- a credible mechanism for background
+// playback dying on iPhone, which is FileTube's primary device. The offline
+// fallback card the SW provided was a nice-to-have; reliable background
+// media is the product. If offline support ever returns, it must be built
+// WITHOUT a fetch handler touching media (and re-reviewed against this
+// comment).
+//
+// Unregistering (not just no-longer-registering) matters: existing installs
+// (HTTPS deployments) still carry a live, controlling SW that would
+// otherwise keep intercepting until manually cleared. This runs on every
+// page boot; once no registrations remain it is a cheap no-op. Failures are
+// swallowed -- cleanup must never block or throw into page boot.
+function unregisterStaleServiceWorkers() {
   if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
-  navigator.serviceWorker.register('/sw.js', { scope: '/' })
-    .catch((err) => console.error('Service worker registration failed:', err));
+  try {
+    navigator.serviceWorker.getRegistrations()
+      .then((regs) => { regs.forEach((r) => { r.unregister().catch(() => {}); }); })
+      .catch(() => { /* best-effort cleanup only */ });
+  } catch (_) { /* best-effort cleanup only */ }
 }
 
 // Sidebar toggle responsive menu helper. Guarded so requiring this file in Node
@@ -4940,32 +4955,17 @@ document.addEventListener('DOMContentLoaded', () => {
   initTheme();
   initIconSet();   // reads ft-icons + the just-applied data-theme
 
-  // Item 4 (v1.26.3): deferred to the window 'load' event (fires after
-  // every critical page resource -- HTML/CSS/JS/images -- has already
-  // finished loading) so the SW registration fetch never competes with
-  // those for bandwidth/CPU during first paint; a fresh install's SW only
-  // matters for the NEXT navigation/offline case, never this one, so there
-  // is no cost to waiting. `window.addEventListener('load', ...)` fires
-  // immediately (next tick) if `load` has already happened by the time this
-  // runs (per spec, a listener added after an event already fired on this
-  // target simply never sees it) -- guarded by checking `document.readyState`
-  // first so a slow-to-attach script (unlikely here, but defensive) never
-  // silently skips registration entirely.
+  // v1.27.2 (SW removal): actively unregister any service worker a previous
+  // FileTube version installed -- see unregisterStaleServiceWorkers' own
+  // comment for the full rationale. Deferred to 'load' (same scheduling the
+  // old registration used) so cleanup never competes with first paint;
+  // internally fully try/catch-wrapped, so neither branch can abort the
+  // rest of this boot handler.
   if (typeof window !== 'undefined') {
-    // v1.26.4 wave-2 review fix (F7): the readyState==='complete' branch
-    // calls registerServiceWorker() SYNCHRONOUSLY, inline in this same
-    // DOMContentLoaded handler -- unlike the 'load' listener branch below, a
-    // SYNCHRONOUS throw here (not a rejection -- registerServiceWorker's own
-    // .catch() already handles a rejected register() promise) would
-    // propagate straight out of this call and abort every remaining line of
-    // this handler (menu-toggle wiring, search box, bootRouter(), etc.) --
-    // the same failure class as this release's public/js/setup.js
-    // renderIconPicker() guard fix. Wrapped in try/catch and swallowed,
-    // mirroring registerServiceWorker's own rejection .catch().
     if (document.readyState === 'complete') {
-      try { registerServiceWorker(); } catch (err) { console.error('Service worker registration failed:', err); }
+      unregisterStaleServiceWorkers();
     } else {
-      window.addEventListener('load', registerServiceWorker, { once: true });
+      window.addEventListener('load', unregisterStaleServiceWorkers, { once: true });
     }
   }
 
