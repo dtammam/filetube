@@ -679,6 +679,16 @@ if (typeof module !== 'undefined' && module.exports) {
       .catch(() => [])
       .then((pins) => renderPinnedSidebar(pins));
 
+    // v1.29.0 T8 (R2.3/R2.4, AC4.3/AC4.4): expose THIS instance's own
+    // loadLibrary() as the corner chip's in-place library-refresh hook (see
+    // public/js/common.js's injectDownloadStatusChip -- fires exactly once
+    // per one-shot job as it transitions into 'done', never a page reload).
+    // Home page ONLY: loadLibrary is a page-local closure that exists only
+    // inside this view's init(), so no other view ever sets this global --
+    // the chip's own call site is typeof-guarded and is a safe no-op on any
+    // other page/tab.
+    window.__filetubeRefreshLibrary = loadLibrary;
+
     // Start initialization
     loadLibrary();
   }
@@ -691,6 +701,18 @@ if (typeof module !== 'undefined' && module.exports) {
     if (typeof disarmCardDeleteFn === 'function') disarmCardDeleteFn();
     disarmCardDeleteFn = null;
     restoreSidebarFn = null;
+    // GF1 (post-gate QA suggestion, folded in as trivial): init() exposes
+    // window.__filetubeRefreshLibrary = loadLibrary (see init(), above) but
+    // nothing previously cleared it on teardown -- a stale reference to a
+    // torn-down instance's closure would otherwise linger indefinitely.
+    // Harmless today (only home ever sets it, and common.js's call site is
+    // typeof-guarded), but a real leak worth closing while touching this
+    // file. `loadLibrary` is scoped inside init(), not reachable here, so
+    // this clears unconditionally rather than by identity -- there is only
+    // ever one live home instance at a time.
+    if (typeof window !== 'undefined') {
+      window.__filetubeRefreshLibrary = null;
+    }
   }
 
   // C3 remediation (v1.16.0): called by common.js's `restoreHomeFromCache`

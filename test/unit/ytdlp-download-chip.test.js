@@ -866,3 +866,44 @@ test('updateDownloadChipPanel: clicking Retry invokes the SAME handler with the 
   assert.equal(lastRawEntry.error, 'second error', 'the still-bound listener must act on the LATEST data, not a stale first-render snapshot');
 });
 
+// ---- v1.29.0 T6 (R1.3): CONFIRMATION -- the chip's one-shot Retry is -------
+// already reachable in the error state (no new UI needed on this surface;
+// see `els.retryBtn.hidden = item.state !== 'error'` in
+// `updateDownloadChipItemRow` above, and `injectDownloadStatusChip`'s own
+// `onRetry` dispatch which calls `retryOneShot(rawEntry, item.key)` for a
+// `kind === 'oneshot'` item). This is a REGRESSION lock, not new coverage of
+// new behavior -- it fails loudly if a future change ever re-narrows the
+// gate away from a one-shot's error state.
+
+test('T6 R1.3 confirmation: a ONE-SHOT chip item in error state has its Retry button reachable (not hidden), and Retry is hidden for every non-error one-shot state', () => {
+  const errorItem = buildDownloadChipItem('oneshot', 'job1', { state: 'error', title: 'Vid', error: 'boom' });
+  assert.equal(errorItem.retryable, true);
+
+  const errorRow = createDownloadChipItemRow(fakeChipDoc, noopHandlers());
+  updateDownloadChipItemRow(fakeChipDoc, errorRow, errorItem, { state: 'error', title: 'Vid', error: 'boom' });
+  assert.equal(errorRow.els.retryBtn.hidden, false, 'Retry must be reachable for a one-shot job in the error state');
+  assert.equal(errorRow.els.actions.hidden, false, 'the actions row containing Retry must itself be visible too');
+
+  for (const state of ['queued', 'downloading', 'done', 'cancelled']) {
+    const item = buildDownloadChipItem('oneshot', 'job2', { state, title: 'Vid' });
+    const row = createDownloadChipItemRow(fakeChipDoc, noopHandlers());
+    updateDownloadChipItemRow(fakeChipDoc, row, item, { state, title: 'Vid' });
+    assert.equal(row.els.retryBtn.hidden, true, `Retry must stay hidden for a one-shot in state "${state}"`);
+  }
+});
+
+test('T6 R1.3 confirmation: clicking Retry on a one-shot error row invokes onRetry(item, rawEntry) with kind "oneshot" -- the live wiring dispatches this to retryOneShot', () => {
+  const calls = [];
+  const handlers = { onCancel: () => {}, onRetry: (item, rawEntry) => calls.push({ item, rawEntry }), onDismiss: () => {} };
+  const panel = new FakeChipElement('div');
+  const rowsByKey = new Map();
+  const snapshot = { subscriptions: {}, oneShots: { job1: { state: 'error', title: 'Vid', error: 'boom', url: 'https://youtu.be/x' } } };
+  updateDownloadChipPanel(fakeChipDoc, panel, rowsByKey, reduceDownloadChipState(snapshot, new Set()), snapshot, handlers);
+
+  panel.children[0].els.retryBtn.click();
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].item.kind, 'oneshot');
+  assert.equal(calls[0].rawEntry.url, 'https://youtu.be/x', 'the raw entry (the SAME shape buildOneShotRetryBody consumes) must be handed to onRetry');
+});
+

@@ -4366,6 +4366,13 @@ ytdlp.registerRoutes(app, {
   getMediaId,
   recordRepulledItemMeta,
   enumerateRepullableItems,
+  // v1.29.0 T3: the app's own DATA_DIR (resolved above, the SAME directory
+  // db.json lives in) -- threaded through so lib/ytdlp/index.js's run-log
+  // emit sites (`processSubscription`/`runOneShot`, via `deps.dataDir`) know
+  // where to write `ytdlp-runs.jsonl`, without lib/ytdlp/index.js ever
+  // resolving DATA_DIR/config.downloadDir itself (see lib/ytdlp/runlog.js's
+  // own module comment).
+  dataDir: DATA_DIR,
 });
 
 // Start the server — but only when run directly (`node server.js`), not when
@@ -4441,7 +4448,12 @@ if (require.main === module) {
     // returns (and arms no timer) when the yt-dlp module is disabled. Placed
     // inside this guard (not at module top-level) so importing server.js for
     // tests never arms the yt-dlp poll timer either.
-    ytdlp.startBackground({ updateDatabase, loadDatabase, scanDirectories, getMediaId });
+    // v1.29.0 T3: same `dataDir: DATA_DIR` threading as the `registerRoutes`
+    // deps bundle above -- this is a SEPARATE deps object (`startBackground`
+    // -> `armYtdlpTimer` -> the scheduled `runPoll` closure), so it needs its
+    // own copy for the scheduled-poll run-log emit path to work, not just the
+    // route-triggered one.
+    ytdlp.startBackground({ updateDatabase, loadDatabase, scanDirectories, getMediaId, dataDir: DATA_DIR });
 
     app.listen(PORT, '0.0.0.0', () => {
       console.log(`==================================================`);

@@ -498,6 +498,56 @@ test('buildOneOffModal: setStatus with no live entry clears the status line', ()
   assert.strictEqual(modal.statusEl.textContent, '');
 });
 
+// ---- v1.29.0 T6 (R1.4/AC3.4): modal error-state Retry control -------------
+// `decideOneOffTerminalAction` leaves the modal OPEN on a non-'done' (error)
+// entry -- until this task there was no Retry control in that error UI at
+// all. `buildOneShotRetryBody` (public/js/common.js) is the SAME body
+// builder the chip's own `retryOneShot` already uses; the live wiring
+// (`injectOneOffDownloadButtonIfEnabled`) re-POSTs `/api/ytdlp/download`
+// through it -- that deep fetch wiring is untested-by-necessity (this file's
+// header comment), same posture as `onDownload`'s own fetch chain, so these
+// tests exercise the DOM-level contract `buildOneOffModal` itself owns: the
+// button's visibility gate and that it hands the LAST entry `setStatus`
+// rendered to the injected `onRetry` handler.
+
+test('buildOneOffModal: the Retry button is hidden by default and after a non-error status', () => {
+  const modal = buildOneOffModal(fakeDoc, {});
+  assert.strictEqual(modal.retryBtn.hidden, true, 'hidden before any status is ever rendered');
+  modal.setStatus({ state: 'queued' });
+  assert.strictEqual(modal.retryBtn.hidden, true);
+  modal.setStatus({ state: 'downloading', percent: 10 });
+  assert.strictEqual(modal.retryBtn.hidden, true);
+  modal.setStatus({ state: 'done' });
+  assert.strictEqual(modal.retryBtn.hidden, true);
+});
+
+test('buildOneOffModal: the Retry button becomes visible ONLY while the entry is in its error state', () => {
+  const modal = buildOneOffModal(fakeDoc, {});
+  modal.setStatus({ state: 'error', error: 'boom' });
+  assert.strictEqual(modal.retryBtn.hidden, false);
+  assert.strictEqual(modal.retryBtn.textContent, 'Retry');
+  // A fresh job reusing this SAME modal instance (Retry/Download both start
+  // a new job through it) must hide it again once state moves on.
+  modal.setStatus({ state: 'queued' });
+  assert.strictEqual(modal.retryBtn.hidden, true);
+});
+
+test('buildOneOffModal: clicking Retry calls h.onRetry with the LAST entry setStatus rendered', () => {
+  const calls = [];
+  const modal = buildOneOffModal(fakeDoc, { onRetry: (entry) => calls.push(entry) });
+  const errorEntry = { state: 'error', error: 'boom', url: 'https://youtu.be/dQw4w9WgXcQ', format: 'video', quality: '720p' };
+  modal.setStatus(errorEntry);
+  modal.retryBtn.click();
+  assert.strictEqual(calls.length, 1);
+  assert.deepStrictEqual(calls[0], errorEntry);
+});
+
+test('buildOneOffModal: clicking Retry with no h.onRetry handler is a safe no-op (never throws)', () => {
+  const modal = buildOneOffModal(fakeDoc, {});
+  modal.setStatus({ state: 'error', error: 'boom' });
+  assert.doesNotThrow(() => modal.retryBtn.click());
+});
+
 // ---- BUG 2 fix: 'done' no longer triggers a full-page reload ---------------
 // Root cause: `pollStatusOnce`'s terminal branch used to call
 // `triggerLibraryRescanAndRefresh()` (`POST /api/scan` -> a real
