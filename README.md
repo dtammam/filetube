@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="assets/images/filetube_icon.svg" alt="FileTube app icon" width="120">
+<img src="assets/images/filetube_logo.png" alt="FileTube" width="140">
 
 # FileTube
 

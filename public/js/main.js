@@ -231,10 +231,18 @@ if (typeof module !== 'undefined' && module.exports) {
     // (see loadLibrary()); any explicit query param always wins and this stays
     // as-parsed.
     let rootFilter = urlParams.get('root') || '';
+    // v1.32 (Dean): the built-in Liked playlist view -- `?liked=1` scopes the
+    // grid to GET /api/liked (the v1.30 collection endpoint, same
+    // {items,total,offset,limit} shape as /api/videos; this is its first
+    // consumer). Mutually exclusive with the other scope filters by
+    // construction (a liked view ignores folder/root/search server-side).
+    const likedFilter = urlParams.get('liked') === '1';
 
     if (searchQuery) {
       if (searchInput) searchInput.value = searchQuery;
       videosHeader.textContent = `Search Results for "${searchQuery}"`;
+    } else if (likedFilter) {
+      videosHeader.textContent = 'Playlist: Liked';
     } else if (folderFilter) {
       videosHeader.textContent = `Playlist: ${folderFilter}`;
     }
@@ -274,7 +282,10 @@ if (typeof module !== 'undefined' && module.exports) {
         // that no longer exists falls back to Most Recent. Only fetched on a
         // bare load -- a deep-link visit never pays for this extra request.
         // A network/parse failure here must never block the rest of the page.
-        if (!searchQuery && !folderFilter && !rootFilter) {
+        if (!searchQuery && !folderFilter && !rootFilter && !likedFilter) {
+          // v1.32: ?liked=1 is an explicit scope param exactly like the
+          // other three -- the configured default view must never clobber
+          // a deep link to the Liked playlist.
           try {
             const settingsRes = await fetch('/api/settings');
             const settingsData = await settingsRes.json();
@@ -344,7 +355,11 @@ if (typeof module !== 'undefined' && module.exports) {
       queryParams.push(`limit=${HOME_PAGE_LIMIT}`);
       queryParams.push(`offset=${offset}`);
       queryParams.push(`seed=${currentSeed}`);
-      return `/api/videos?${queryParams.join('&')}`;
+      // v1.32: the Liked view swaps the ENDPOINT, not the shape --
+      // GET /api/liked returns the identical {items,total,offset,limit}
+      // contract (v1.30), so pagination/sort/format/seed all just work.
+      const endpoint = likedFilter ? '/api/liked' : '/api/videos';
+      return `${endpoint}?${queryParams.join('&')}`;
     }
 
     // v1.30.0 T7 (AC3.4): fetches + renders PAGE 0 ONLY of the media list --
@@ -566,12 +581,22 @@ if (typeof module !== 'undefined' && module.exports) {
     function renderSidebarFolders(folders, settings = {}) {
       allFolders = Array.isArray(folders) ? folders : [];
       const visibleFolders = visibleSidebarFolders(folders, settings);
+      // v1.32 (Dean): the built-in Liked playlist entry -- fixed, first,
+      // never draggable/reorderable (it isn't a db.folders row), active when
+      // the ?liked=1 view is open. Static markup, no user-controlled text.
+      // Rendered even when no folders are configured (likes don't depend on
+      // folder mapping).
+      const likedEntry = `
+          <a href="/?liked=1" class="sidebar-item sidebar-item-liked ${likedFilter ? 'active' : ''}" title="Liked">
+            <i class="icon-star"></i> Liked
+          </a>
+        `;
       if (visibleFolders.length === 0) {
-        sidebarFoldersList.innerHTML = '<div style="padding: 6px 24px; font-style: italic; color: var(--text-secondary);">None</div>';
+        sidebarFoldersList.innerHTML = likedEntry
+          + '<div style="padding: 6px 24px; font-style: italic; color: var(--text-secondary);">None</div>';
         return;
       }
-
-      sidebarFoldersList.innerHTML = visibleFolders.map((f, index) => {
+      sidebarFoldersList.innerHTML = likedEntry + visibleFolders.map((f, index) => {
         const folderName = f.split(/[\\/]/).pop() || f;
         const label = (settings[f] && settings[f].name) || folderName;
         const isActive = rootFilter === f ? 'active' : '';

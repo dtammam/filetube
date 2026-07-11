@@ -584,9 +584,83 @@ async function loadAutomationSettings() {
     // populateDefaultViewSelect() above).
     loadedDefaultView = typeof s.defaultView === 'string' ? s.defaultView : '';
     populateDefaultViewSelect();
+    // v1.32 (custom logo): reflect whether one is currently set.
+    updateLogoControls(!!s.customLogo);
   } catch (err) {
     console.error('Failed to load automation settings:', err);
   }
+}
+
+// ---- v1.32 (Dean, "white-label"): custom header logo -----------------------
+// Upload posts the RAW image bytes (route-scoped express.raw server-side --
+// no multipart machinery in this app) with the file's own Content-Type;
+// the server validates the type allowlist + magic bytes + 1 MB cap.
+const LOGO_ALLOWED_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
+
+function updateLogoControls(hasCustomLogo) {
+  const resetBtn = document.getElementById('logo-reset-btn');
+  const statusEl = document.getElementById('logo-status');
+  if (resetBtn) resetBtn.hidden = !hasCustomLogo;
+  if (statusEl) statusEl.textContent = hasCustomLogo ? 'Custom logo active.' : 'Using the default FileTube logo.';
+}
+
+function wireLogoControls() {
+  const fileInput = document.getElementById('logo-file-input');
+  const uploadBtn = document.getElementById('logo-upload-btn');
+  const resetBtn = document.getElementById('logo-reset-btn');
+  const statusEl = document.getElementById('logo-status');
+  if (!fileInput || !uploadBtn || !resetBtn) return;
+
+  uploadBtn.addEventListener('click', () => fileInput.click());
+
+  fileInput.addEventListener('change', async () => {
+    const file = fileInput.files && fileInput.files[0];
+    fileInput.value = ''; // allow re-selecting the same file later
+    if (!file) return;
+    if (!LOGO_ALLOWED_TYPES.includes(file.type)) {
+      if (statusEl) statusEl.textContent = 'Logo must be a PNG, JPEG, or WebP image.';
+      return;
+    }
+    if (file.size > 1024 * 1024) {
+      if (statusEl) statusEl.textContent = 'Logo is too large (max 1 MB).';
+      return;
+    }
+    if (statusEl) statusEl.textContent = 'Uploading…';
+    try {
+      const r = await fetch('/api/settings/logo', {
+        method: 'POST',
+        headers: { 'Content-Type': file.type },
+        body: file,
+      });
+      const body = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        if (statusEl) statusEl.textContent = body.error || 'Upload failed.';
+        return;
+      }
+      updateLogoControls(true);
+      // Swap the live header immediately so the change is visible without a
+      // reload (same helper every page's boot uses).
+      if (typeof applyCustomLogoIfSet === 'function') applyCustomLogoIfSet();
+    } catch (err) {
+      if (statusEl) statusEl.textContent = 'Upload failed (network error).';
+    }
+  });
+
+  resetBtn.addEventListener('click', async () => {
+    try {
+      const r = await fetch('/api/settings/logo', { method: 'DELETE' });
+      if (!r.ok) {
+        if (statusEl) statusEl.textContent = 'Could not reset the logo.';
+        return;
+      }
+      updateLogoControls(false);
+      // The header swap only ever goes text->img in-page; going back to the
+      // text logo cleanly is a reload's job.
+      window.location.reload();
+    } catch (err) {
+      if (statusEl) statusEl.textContent = 'Could not reset the logo (network error).';
+    }
+  });
 }
 
 // GET /api/cache/size -> "Current size: X" via the shared formatFileSize.
@@ -904,6 +978,8 @@ function init(root) {
   loadAutomationSettings();
   loadCacheSize();
   loadScanStatusLine();
+  // v1.32 (custom logo): wire the Appearance-box upload/reset controls.
+  wireLogoControls();
 
   // v1.22.0 FR-5 (AC32-AC38): desktop-sidebar channel pins -- a SEPARATE
   // fetch against the module's own gated pin store, independent of

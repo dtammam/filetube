@@ -160,6 +160,14 @@
         <p>Pick the icon style for FileTube's chrome. <strong>Auto</strong>
            matches it to the era above.</p>
         <div class="theme-picker" id="icon-picker"><!-- rendered by JS --></div>
+        <!-- v1.32 (Dean, "white-label"): replaceable header logo. -->
+        <h3 style="margin-top:20px;">Logo</h3>
+        <p>Replace the "FileTube" header text with your own image
+           (PNG/JPEG/WebP, max 1&nbsp;MB — it is scaled to fit the header).</p>
+        <input type="file" id="logo-file-input" accept="image/png,image/jpeg,image/webp" style="display:none;">
+        <button type="button" class="btn btn-sm" id="logo-upload-btn">Upload logo…</button>
+        <button type="button" class="btn btn-sm" id="logo-reset-btn" hidden>Use default logo</button>
+        <div id="logo-status" class="sub-row-meta" style="margin-top:6px;"></div>
       </div>
 
       <div class="setup-box">

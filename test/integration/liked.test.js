@@ -304,3 +304,17 @@ test('backfill: a corrupt db.json resets to a settings-bearing DB that also carr
   assert.deepEqual(db.liked, [], 'the corrupt-JSON reset fallback must also carry liked: []');
   assert.ok(db.settings, 'the corrupt-JSON reset fallback must still be settings-bearing');
 });
+
+// ---- v1.32: the Liked playlist view (first consumer of GET /api/liked) ------
+const { test: t32l } = require('node:test');
+const a32l = require('node:assert');
+const fs32 = require('node:fs');
+
+t32l('v1.32: main.js routes ?liked=1 to GET /api/liked and renders the built-in sidebar/sheet entries (static-scan locks)', () => {
+  const mainSrc = fs32.readFileSync(require('node:path').join(__dirname, '../../public/js/main.js'), 'utf8');
+  a32l.ok(mainSrc.includes("urlParams.get('liked') === '1'"), 'main.js must parse the ?liked=1 scope param');
+  a32l.ok(mainSrc.includes("likedFilter ? '/api/liked' : '/api/videos'"), 'buildVideosApiUrl must swap the endpoint for the liked view');
+  a32l.ok(mainSrc.includes('sidebar-item-liked'), 'the sidebar must render the built-in Liked entry');
+  const commonSrc = fs32.readFileSync(require('node:path').join(__dirname, '../../public/js/common.js'), 'utf8');
+  a32l.ok(commonSrc.includes('sidebar-item-liked'), 'the mobile Playlists sheet must render the built-in Liked entry');
+});

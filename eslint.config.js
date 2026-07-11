@@ -156,6 +156,10 @@ module.exports = [
         // watch.js's uploader/comment avatar render (T4, same wave).
         deriveAvatar: 'readonly',
         resolveAvatarSource: 'readonly',
+        // v1.32 (custom logo): common.js's header-logo swap, re-invoked by
+        // setup.js right after a successful upload so the change is visible
+        // without a reload.
+        applyCustomLogoIfSet: 'readonly',
         // C2/C3 (T3-WIRE, v1.24.0): item-count badge + format-toggle
         // (video/audio/both) library controls, consumed by main.js's
         // home/folder/playlist/channel grid render.
