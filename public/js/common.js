@@ -102,19 +102,19 @@ function setTheme(era) {
   applyIconSet(pref);
 }
 
-// ---- F1: deterministic avatar fallback (v1.24.0, T3) -----------------------
+// ---- F1: deterministic avatar fallback (v1.24.0, T3; identicon glyph C3/T12) -
 //
 // Replaces the old "first letter on a fixed color" uploader/channel avatar
 // (e.g. watch.html's `.uploader-avatar` today always renders `var(--yt-red)`
 // -- the LETTER was the only thing that ever varied) with a genuinely
 // deterministic per-name avatar: same input name -> same {glyph, color}
-// EVERY time, and different names are visually distinguishable by color, not
-// just by letter. `AVATAR_PALETTE` is deliberately literal hex values lifted
-// from this file's own THEME_REGISTRY swatch tokens (+ their CSS "-dark"
-// companions from style.css's :root blocks) rather than a brand-new,
-// unrelated color set, so a generated avatar always harmonizes with the
-// retro era-theme system already on screen. Pure/DOM-free -- unit-tested
-// directly, no browser needed.
+// EVERY time, and different names are visually distinguishable by BOTH color
+// and glyph, not just by letter. `AVATAR_PALETTE` is deliberately literal hex
+// values lifted from this file's own THEME_REGISTRY swatch tokens (+ their
+// CSS "-dark" companions from style.css's :root blocks) rather than a
+// brand-new, unrelated color set, so a generated avatar always harmonizes
+// with the retro era-theme system already on screen. Pure/DOM-free --
+// unit-tested directly, no browser needed.
 const AVATAR_PALETTE = [
   '#0000cc', // 2005 era accent (link blue)
   '#cc0000', // 2009/2021 era accent (--yt-red)
@@ -138,16 +138,34 @@ function hashAvatarSeed(str) {
   return Math.abs(hash);
 }
 
-// Pure: `name` -> a deterministic `{ glyph, color }` pair. A blank/missing
+// Pure: `name` -> a deterministic `{ glyph, color }` pair. The glyph is the
+// channel/uploader name's own first letter, uppercased -- a recognizable
+// mnemonic ("Alice" -> "A") -- paired with a hash-generated, deterministic
+// palette color so two names sharing a first letter still look visually
+// distinguishable by color even though the glyph matches. A blank/missing
 // name falls back to a literal '?' glyph (still deterministic -- always maps
-// to the same palette color) rather than throwing or rendering empty.
-// Exported for node:test; this is the FROZEN contract `watch.js` (T4, same
-// wave) imports as a global (see eslint.config.js's consumer-globals block).
+// to the same palette color) rather than throwing or rendering empty; note
+// `'?'.charAt(0).toUpperCase() === '?'`, so no special-case branch is needed
+// for it. Exported for node:test; this is the FROZEN contract `watch.js`
+// (T4, same wave) imports as a global (see eslint.config.js's
+// consumer-globals block).
+//
+// GD-1 (v1.30.0, gate resolution): C3/T12 briefly changed the glyph to a
+// hash-selected letter from a fixed alphabet (independent of the name's own
+// first letter), flagged at the time as a conservative-but-debatable call.
+// Both two-reviewer-gate reviewers (QA + adversarial) independently judged
+// that this lost the recognizable first-letter mnemonic without serving
+// Dean's "recognizable/deterministic avatar" intent as well as first-letter
+// + deterministic color, so it was reverted here per unanimous reviewer
+// consensus (recorded on the Dean-on-device ledger; Dean may re-open on his
+// on-device pass). The deterministic hash-based COLOR from that same change
+// is kept.
 function deriveAvatar(name) {
   const label = typeof name === 'string' ? name.trim() : '';
   const safeLabel = label !== '' ? label : '?';
+  const seed = hashAvatarSeed(safeLabel);
   const glyph = safeLabel.charAt(0).toUpperCase();
-  const color = AVATAR_PALETTE[hashAvatarSeed(safeLabel) % AVATAR_PALETTE.length];
+  const color = AVATAR_PALETTE[seed % AVATAR_PALETTE.length];
   return { glyph, color };
 }
 
@@ -2625,6 +2643,35 @@ if (typeof window !== 'undefined') {
     probeAndReconcileRepullButton();
   }
 
+  // v1.30.0 T8 (B1, AC5.2b): the SAME fetch -> extract `#view-root` -> swap
+  // sequence `navigate()`/`handlePopState()`'s own cache-MISS branch already
+  // uses for a normal home load (see those functions below) -- reused here
+  // so `restoreHomeFromCache`'s dirty-flag reconcile is a genuinely fresh
+  // render, not a second, divergent implementation of "load home". Never
+  // falls back to `window.location.reload`/`.assign` on failure (AC5.4): a
+  // failed reconcile just logs and leaves whatever is currently on screen,
+  // the same as leaving the (still-cleared) dirty flag for the next natural
+  // reconcile opportunity would.
+  function loadFreshHomeView(url, scrollY) {
+    const gen = ++navGeneration;
+    return ensureViewScriptLoaded('home')
+      .then(() => fetch(url, { credentials: 'same-origin' }))
+      .then((res) => {
+        if (!res.ok) throw new Error('home dirty-reconcile: fetch failed with status ' + res.status);
+        return res.text();
+      })
+      .then((html) => {
+        if (isStaleNavGeneration(gen, navGeneration)) return; // a newer navigation has since started -- discard this stale response
+        const fragment = extractViewFragment(html);
+        if (!fragment) throw new Error('home dirty-reconcile: response had no #view-root');
+        swapToView('home', fragment.root, fragment.title, scrollY, url);
+      })
+      .catch((err) => {
+        if (isStaleNavGeneration(gen, navGeneration)) return;
+        console.error('Home grid dirty-reconcile (fresh load) failed:', err);
+      });
+  }
+
   // FR-4 (T4): reattaches a cached home node with NO fetch and NO
   // destroy()/init() cycle for home itself -- the entire point of the
   // cache. `cached` is the popped `homeViewCache` entry (the caller already
@@ -2632,6 +2679,41 @@ if (typeof window !== 'undefined') {
   // rather than re-read off the (already-nulled) module cache.
   function restoreHomeFromCache(cached, url, scrollY) {
     homeViewCache = null; // consumed -- live again; the NEXT leave-home re-caches it fresh
+
+    // v1.30.0 T8 (B1, AC5.2b): a one-shot may have completed while the user
+    // was OFF home with no live refresh target (`refreshLibraryInPlace()`
+    // returned `false`) -- `pollOnce`/the visibility resume handler marked
+    // the grid dirty via a persistent flag instead of silently dropping the
+    // done-edge (see `markHomeGridDirty` above `refreshLibraryInPlace`).
+    // Reattaching `cached.node` below is deliberately a NO-render operation
+    // (the entire point of the cache, see the comment above) -- it would
+    // show the grid exactly as the user left it, WITHOUT the newly-completed
+    // item. When dirty, bypass the reattach entirely and route through
+    // `loadFreshHomeView` instead, so the completed item actually appears.
+    // This is a FRESH render (a brand-new node, a brand-new `init()`), never
+    // a second `init()` on the SAME cached node -- the double-bind hazard
+    // the "deliberately NOT calling init()" comment below exists to avoid
+    // only applies to reusing the SAME node, which this path never does.
+    if (isHomeGridDirty()) {
+      clearHomeGridDirty();
+      // `homeViewCache` is already nulled (above), so `swapToView`'s OWN
+      // stale-cache-orphan branch (its `if (view === 'home' && homeViewCache)`
+      // check, below) will never see this cache to destroy it -- do it here
+      // instead, synchronously, BEFORE `loadFreshHomeView`'s eventual
+      // `init()` overwrites this view module's shared closure state (e.g.
+      // main.js's `controller`). Skipping this would leave the STALE
+      // instance's listeners (AbortController never aborted) live
+      // indefinitely alongside the fresh instance's -- the exact double-bind
+      // hazard `swapToView`'s own comment (below) documents, just reached
+      // from a different branch.
+      const staleHome = viewRegistry.home;
+      if (staleHome && typeof staleHome.destroy === 'function') {
+        try { staleHome.destroy(); } catch (err) { console.error('Stale (dirty-flagged) home-cache destroy() failed', err); }
+      }
+      loadFreshHomeView(url, scrollY);
+      return;
+    }
+
     applyPlayerTransition(currentViewName, 'home');
     if (currentViewName !== 'home') {
       const outgoing = currentViewName && viewRegistry[currentViewName];
@@ -4406,11 +4488,107 @@ function detectNewlyDoneOneShots(snapshot, seenDoneJobIds) {
  * writeup); the server already rescanned after `runOneShot` completed, so
  * this client call is purely a client-side re-fetch of already-fresh
  * server-side data.
+ *
+ * v1.30.0 T8 (B1, AC5.1/AC5.2): now RETURNS a boolean -- `true` iff the hook
+ * was a function AND was actually invoked (a live home refresh target
+ * existed), `false` otherwise. Callers (`pollOnce`'s done-edge, the
+ * visibility/pageshow catch-up) use this to distinguish "refreshed" from "no
+ * live target -- mark the grid dirty instead of silently dropping the edge"
+ * (see `markHomeGridDirty` below).
  */
 function refreshLibraryInPlace() {
   if (typeof window !== 'undefined' && typeof window.__filetubeRefreshLibrary === 'function') {
     window.__filetubeRefreshLibrary();
+    return true;
   }
+  return false;
+}
+
+// v1.30.0 T8 (B1, AC5.2b) -- a persistent (localStorage) flag standing in for
+// "the home grid's rendered content is stale relative to the server" when a
+// one-shot's done-edge fires with NO live refresh target
+// (`refreshLibraryInPlace()` returned `false`): the edge is never silently
+// dropped -- it is deferred here instead, and `restoreHomeFromCache` (below,
+// in the SPA router) reconciles it the next time the user actually returns to
+// home, by routing to a fresh render instead of reattaching the stale cached
+// node. Persistent (not an in-memory flag) so it survives the tab being
+// backgrounded/closed and reopened, exactly like `pendingOneShotJobIds`
+// below. Best-effort (try/catch) -- a private-mode/sandboxed browser (or a
+// bare Node `require()` with no `localStorage` global at all) must never
+// throw; a failed write just means the flag doesn't persist, not a crash.
+const HOME_GRID_DIRTY_STORAGE_KEY = 'filetube_home_dirty';
+
+function markHomeGridDirty() {
+  try { localStorage.setItem(HOME_GRID_DIRTY_STORAGE_KEY, '1'); } catch (_) { /* storage disabled -- best effort */ }
+}
+
+function isHomeGridDirty() {
+  try { return localStorage.getItem(HOME_GRID_DIRTY_STORAGE_KEY) === '1'; } catch (_) { return false; }
+}
+
+function clearHomeGridDirty() {
+  try { localStorage.removeItem(HOME_GRID_DIRTY_STORAGE_KEY); } catch (_) { /* storage disabled -- best effort */ }
+}
+
+// v1.30.0 T8 (B1, AC5.3) -- a persistent (localStorage) record of which
+// one-shot jobIds were `queued`/`downloading` as of the last-seen snapshot.
+// Refreshed on every active chip poll tick AND right before the document
+// goes hidden (see `injectDownloadStatusChip`'s `pollOnce`/visibility-
+// listener below), so a `visibilitychange`/`pageshow` resume can still tell
+// "a job I remember being in-flight is now gone from the server's snapshot"
+// apart from "nothing was ever running" -- the whole point being to surface a
+// job that completed AND was dropped from the snapshot while the tab was
+// hidden (see `detectCompletedPendingOneShots` below). Persistent (not
+// in-memory) because a backgrounded PWA tab, or the OS reclaiming/discarding
+// it, must not lose this the way an in-memory `Set` would.
+const PENDING_ONESHOT_STORAGE_KEY = 'filetube_pending_oneshots';
+
+function getPendingOneShotJobIds() {
+  try {
+    const raw = localStorage.getItem(PENDING_ONESHOT_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((id) => typeof id === 'string') : [];
+  } catch (_) {
+    return []; // disabled storage, or corrupt/non-JSON contents -- fail safe to "nothing pending"
+  }
+}
+
+function setPendingOneShotJobIds(jobIds) {
+  const normalized = Array.isArray(jobIds) ? jobIds.filter((id) => typeof id === 'string') : [];
+  try { localStorage.setItem(PENDING_ONESHOT_STORAGE_KEY, JSON.stringify(normalized)); } catch (_) { /* storage disabled -- best effort */ }
+}
+
+// Pure (AC5.3): the jobIds in `snapshot.oneShots` that are currently
+// `queued`/`downloading` -- what gets persisted as "in flight" on every
+// active poll tick / right before backgrounding. Mirrors
+// `detectNewlyDoneOneShots`'s defensive-parsing posture exactly (never
+// throws on a missing/malformed snapshot). Exported for direct node:test
+// coverage.
+function computeActiveOneShotJobIds(snapshot) {
+  const oneShots = (snapshot && snapshot.oneShots && typeof snapshot.oneShots === 'object') ? snapshot.oneShots : {};
+  return Object.keys(oneShots).filter((jobId) => {
+    const entry = oneShots[jobId];
+    return entry && typeof entry === 'object' && (entry.state === 'queued' || entry.state === 'downloading');
+  });
+}
+
+// Pure (AC5.3): of `pendingJobIds` (a previously-recorded "in flight" list),
+// which are now "absent-or-done" in `snapshot` -- i.e. actually completed,
+// whether or not the server snapshot still carries a 'done' entry for them
+// (a job can be fully dropped from the snapshot by the time a backgrounded
+// tab resumes -- see `PENDING_ONESHOT_STORAGE_KEY`'s comment above). A job
+// still `queued`/`downloading`/`error`/`cancelled` in the fresh snapshot is
+// NOT considered completed here on purpose -- only "gone" or "done" counts,
+// mirroring `detectNewlyDoneOneShots`'s own terminal-state-only posture.
+// Exported for direct node:test coverage; never mutates its inputs.
+function detectCompletedPendingOneShots(pendingJobIds, snapshot) {
+  const oneShots = (snapshot && snapshot.oneShots && typeof snapshot.oneShots === 'object') ? snapshot.oneShots : {};
+  const ids = Array.isArray(pendingJobIds) ? pendingJobIds : [];
+  return ids.filter((jobId) => {
+    const entry = oneShots[jobId];
+    return !entry || (typeof entry === 'object' && entry.state === 'done');
+  });
 }
 
 /**
@@ -4778,17 +4956,33 @@ function injectDownloadStatusChip() {
         pollTimer = setTimeout(pollOnce, delay);
       }
 
-      function pollOnce() {
-        if (typeof document !== 'undefined' && document.hidden) {
+      // v1.30.0 T8 (B1, AC5.3): `force` overrides the `document.hidden`
+      // early-return below for exactly ONE call -- used by the visibility/
+      // pageshow catch-up (see `handleVisibilityResume` below) to poll
+      // immediately on resume, even though `document.hidden` can still read
+      // stale/true for a tick around when the event fires in some browsers.
+      // Every normal caller (the `setTimeout(pollOnce, delay)` timer,
+      // `cancelOneShot`'s best-effort re-poll) calls it with no argument, so
+      // `force` is `undefined`/falsy and today's early-return behavior is
+      // unchanged. Now RETURNS the underlying fetch promise (previously
+      // fire-and-forget) so the resume handler can sequence its own
+      // reconcile step after a genuinely fresh snapshot has landed.
+      function pollOnce(force) {
+        if (!force && typeof document !== 'undefined' && document.hidden) {
           scheduleNextPoll(DL_CHIP_POLL_BASE_MS);
-          return;
+          return Promise.resolve();
         }
-        fetch('/api/subscriptions/status')
+        return fetch('/api/subscriptions/status')
           .then((r) => (r.ok ? r.json() : Promise.reject(new Error('status endpoint returned ' + r.status))))
           .then((snapshot) => {
             latestSnapshot = snapshot && typeof snapshot === 'object'
               ? { subscriptions: snapshot.subscriptions || {}, oneShots: snapshot.oneShots || {} }
               : { subscriptions: {}, oneShots: {} };
+            // v1.30.0 T8 (B1, AC5.3): persist which jobs are currently in
+            // flight on every ACTIVE tick (a hidden-tab early-return above
+            // never reaches here) -- the last value written here is what a
+            // later visibility/pageshow resume reconciles against.
+            setPendingOneShotJobIds(computeActiveOneShotJobIds(latestSnapshot));
             // v1.29.0 T8 (R2.3/R2.4, AC4.3/AC4.4): edge-triggered in-place
             // library refresh -- fires exactly once per one-shot job as it
             // transitions into 'done' (never on every tick it stays 'done',
@@ -4798,7 +4992,16 @@ function injectDownloadStatusChip() {
             // `detectNewlyDoneOneShots` itself is a pure read.
             const newlyDoneJobIds = detectNewlyDoneOneShots(latestSnapshot, seenDoneOneShotJobIds);
             newlyDoneJobIds.forEach((jobId) => seenDoneOneShotJobIds.add(jobId));
-            if (newlyDoneJobIds.length > 0) refreshLibraryInPlace();
+            // v1.30.0 T8 (B1, AC5.1/AC5.2): a live home target consumes the
+            // edge via the seen-set add above, same as before (AC5.2a). When
+            // there is NO live target (off-home), the edge is still never
+            // silently dropped -- `markHomeGridDirty()` persists a reconcile
+            // signal `restoreHomeFromCache` picks up the next time the user
+            // actually returns to home (AC5.2b).
+            if (newlyDoneJobIds.length > 0) {
+              const refreshed = refreshLibraryInPlace();
+              if (!refreshed) markHomeGridDirty();
+            }
             // v1.26 "real progress": poll much faster while this snapshot
             // shows an actively-downloading entry -- see
             // `nextDownloadChipPollDelay`'s doc comment.
@@ -4811,12 +5014,51 @@ function injectDownloadStatusChip() {
           .finally(() => scheduleNextPoll(pollDelay));
       }
 
+      // v1.30.0 T8 (B1, AC5.3): the `visibilitychange`/`pageshow` resume
+      // reconcile. Going hidden just snapshots which jobs are currently in
+      // flight (belt-and-suspenders alongside `pollOnce`'s own per-tick
+      // write -- the tab could go hidden between two poll ticks). Becoming
+      // visible runs one forced catch-up poll (overriding the
+      // `document.hidden` early-return for this one call), THEN -- once that
+      // fresh snapshot has actually landed -- checks whether any job
+      // recorded as pending BEFORE the catch-up is now absent-or-`done`
+      // (`detectCompletedPendingOneShots`): a job that finished and was
+      // already dropped from the server's snapshot while the tab was hidden
+      // would otherwise never trigger `detectNewlyDoneOneShots`'s own
+      // "transitioned into 'done'" edge (it may never have been observed AT
+      // 'done' by this tab at all). Reconciled exactly like the normal
+      // done-edge: a live target refreshes in place, no live target defers
+      // via the dirty flag -- never `window.location.reload()` (AC5.4).
+      function handleVisibilityResume() {
+        if (typeof document === 'undefined') return;
+        if (document.hidden) {
+          setPendingOneShotJobIds(computeActiveOneShotJobIds(latestSnapshot));
+          return;
+        }
+        const pendingBeforeCatchUp = getPendingOneShotJobIds();
+        pollOnce(true).then(() => {
+          if (pendingBeforeCatchUp.length === 0) return;
+          const completed = detectCompletedPendingOneShots(pendingBeforeCatchUp, latestSnapshot);
+          if (completed.length === 0) return;
+          const refreshed = refreshLibraryInPlace();
+          if (!refreshed) markHomeGridDirty();
+          const stillPending = getPendingOneShotJobIds().filter((id) => !completed.includes(id));
+          setPendingOneShotJobIds(stillPending);
+        });
+      }
+
       // Route changes via the SPA router's pushState-based `navigate()`
       // don't fire `popstate` -- `render()`'s own path check (re-evaluated
       // on every poll tick, at worst one ~5s cadence later) is what
       // eventually reconciles that case too; this listener just makes the
       // common back/forward-navigation case instant.
       window.addEventListener('popstate', render);
+      // v1.30.0 T8 (B1, AC5.3): `pageshow` fires on every visible (re)show,
+      // including a bfcache restore that `visibilitychange` alone would
+      // miss; `handleVisibilityResume` itself re-checks `document.hidden`,
+      // so both listeners safely funnel into the same reconcile logic.
+      document.addEventListener('visibilitychange', handleVisibilityResume);
+      window.addEventListener('pageshow', handleVisibilityResume);
 
       document.body.appendChild(chip);
       pollOnce();
@@ -5210,6 +5452,12 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.29.0 T8: the pure done-edge detector + the in-place library-refresh
     // hook invoker, exported for direct node:test coverage (no DOM/timers).
     detectNewlyDoneOneShots, refreshLibraryInPlace,
+    // v1.30.0 T8 (B1, AC5.1-AC5.4): the persistent dirty-flag + pending-
+    // jobId helpers backing "never silently drop a one-shot done-edge",
+    // exported for direct node:test coverage.
+    markHomeGridDirty, isHomeGridDirty, clearHomeGridDirty,
+    getPendingOneShotJobIds, setPendingOneShotJobIds,
+    computeActiveOneShotJobIds, detectCompletedPendingOneShots,
     // v1.26 code-review fix (F2): panel diff-update helpers (row identity
     // reuse across poll ticks), exported for direct node:test coverage
     // against a fake DOM.

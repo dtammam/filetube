@@ -1,108 +1,107 @@
-# Two-reviewer gate (Reviewer 1 of 2 — QA) — v1.29 Downloads Reliability Wave
+# Two-reviewer gate (Reviewer 1 of 2 — QA) — v1.30 Scale Performance + Polish Wave
 
-You are the **quality-assurance** reviewer, the FIRST of TWO independent
-reviewers gating the v1.29 Downloads Reliability Wave before acceptance. A second
-adversarial reviewer runs separately. **BOTH reviewers must independently APPROVE
-for the gate to pass** — your verdict is not overridden by the other's and does
-not override it.
+You are the **quality-assurance** reviewer, reviewer 1 of the mandatory
+two-reviewer gate (you + an adversarial reviewer, separate inbox). Review the
+WHOLE wave's diff for correctness, security, performance, and standards
+compliance. Report findings as CRITICAL / WARNING / SUGGESTION with `file:line`
+references, and a final verdict: **APPROVE / REQUEST CHANGES / NEEDS DISCUSSION**.
+You do NOT fix — you review and report.
 
-Do NOT modify code, tests, or state. Do NOT commit. Produce a review report:
-findings tagged **CRITICAL / WARNING / SUGGESTION** with `file:line` references,
-and an overall verdict **APPROVE / REQUEST CHANGES / NEEDS DISCUSSION**.
+> Activate only once T13's build-specialist PASS is confirmed (all 13 tasks
+> through the build gate). If it isn't yet, stop and tell the user.
 
-## What shipped (the whole wave)
+## Environment (for any CI-parity run)
 
-v1.29 makes downloads trustworthy: real failure reasons surfaced + persisted; a
-durable capped JSONL run log; retry that actually retries with visible busy-
-coalescing; non-blocking one-shot (modal → corner chip → in-place refresh);
-honest partial-success accounting; yt-dlp pacing/retry flags; a download history
-view. 9 tasks, all implemented + independently build-verified (final suite
-3399/3399, lint 0 errors / 7 baseline warnings).
+```bash
+export PATH="$HOME/.local/share/fnm/node-versions/v22.23.1/installation/bin:$PATH"
+node --version   # expect v22.23.1
+```
+Use Node 22.23.1 for CI parity. The wave's final self-reported state:
+`npm test` 3593/3593, `npm run lint` 0 errors / 7 baseline warnings.
 
-## Read first (authoritative context)
+## Read first
 
-1. `.state/feature-state.json` — the `tasks` array (T1–T9, each with `sde_report`
-   + `done_when`), `constraints`, `key_anchors`, `em_ratifications`,
-   `tech_debt_in_reach`, `gate_watch_items`, and `pre_release_gates`.
-2. `docs/exec-plans/active/2026-07-11-v1.29-downloads-reliability.md` — the full
-   `## Requirements` (R0–R4), `## Acceptance criteria` (AC1–AC7 + AC-FM-A/B/C/D),
-   and `## Design`. Review the code AGAINST these — every AC should be satisfied
-   and honestly testable.
-3. `docs/CONTRIBUTING.md` + `docs/RELIABILITY.md` (standards: CommonJS, node:test,
-   textContent, no new deps, degrade-not-crash, disabled-module no-op).
+1. `.state/feature-state.json` — the `tasks[]` (T1–T13, each with `sde_report` +
+   `build_verification`), `open_gate_decision` (**GD-1**), `tasks[].T9
+   .gate_reviewer_notes`, and `two_reviewer_gate_plan`.
+2. `docs/exec-plans/active/2026-07-11-v1.30-scale-perf-and-polish.md` — the
+   `## Requirements` (FR1–FR8), the 48 `## Acceptance Criteria` (AC1.1–AC8.5), the
+   `## Design`, and the `## Constraints`.
+3. `docs/CONTRIBUTING.md`, `docs/RELIABILITY.md`, `docs/ARCHITECTURE.md`.
 
-## The wave's changed files (scope your review to these)
+## Diff scope (review every changed file)
 
-- `lib/ytdlp/runlog.js` (new), `lib/ytdlp/run.js` (T1), `lib/ytdlp/failures.js`
-  (T2), `lib/ytdlp/index.js` (T3/T5/T9), `lib/ytdlp/config.js` + `lib/ytdlp/args.js`
-  (T7), `lib/ytdlp/client/subscriptions.js` (T4/T6/T9), `public/js/common.js` (T6/T8),
-  `public/js/main.js` (T8), `README.md` (T7), plus the new/changed tests under
-  `test/`. `server.js` got only `dataDir: DATA_DIR` added to two deps bundles (T3).
+`git diff main` — the wave spans: `server.js` (scan A1/A2, cache A3, progress A4,
+pagination A5, liked C2), `public/js/main.js` (scan poll, pagination client),
+`public/js/common.js` (one-shot visibility B1, chip B2, avatars C3), `lib/subtitles.js`
+(A1 dirCache), `lib/videoQuery.js` (new, A5), `lib/ytdlp/client/subscriptions.js`
+(C5 avatar wiring), `public/css/style.css` (C1 tokens, C4 buttons), `public/js/watch.js`
++ `public/js/player.js` (full-list pagination callers, C2 like button), `eslint.config.js`
+(consumer-globals), and all new/updated tests.
 
-## CRITICAL — diff-scoping (gate_watch_items)
+## Scrutinize hardest — the HIGHEST-gate surfaces + their BOTH-DIRECTIONS ACs
 
-The git index/worktree holds **PRE-v1.28.1 content** for files the v1.28.1 icon
-release touched (5 HTML shells incl. `lib/ytdlp/views/subscriptions.html`,
-favicons, icons, `pwa-icons.test.js`, `package.json@1.28.0`, ROADMAP) — a merge
-artifact, NOT wave work. A targeted `git restore` of those paths is prepared and
-awaiting Dean (release-blocking, tracked). **Scope your diff review to the wave's
-files only** (diff each wave file vs HEAD). **IGNORE the staged pre-v1.28.1
-content in the icon/shell/package files** — it is not part of this wave and must
-not be reviewed as such. If you see `subscriptions.html` as "changed", that is the
-anomaly, not a T-task edit (T9 explicitly did NOT touch it — verify that).
+- **T2 cooperative scan:** mount-loss/prune guard preserved (AC1.4 prunes a removed
+  file / AC1.5 does NOT prune under a missing-unreadable root); overlap coalescing
+  still at-most-one-scan + fresh-trigger-starts (AC2.5); incremental ffprobe reuse
+  intact (AC1.6/1.7); the 202-ack + boot-after-listen didn't break the guards.
+- **T4 in-memory cache:** the cache-vs-`updateDatabase`-mutex coherency argument
+  holds — no torn/stale reads; cache-set inside the same synchronous critical
+  section as the save (no `await` between); replace-by-reference not
+  mutate-in-place; every write still goes through `updateDatabase` (no
+  load→mutate→save-outside-the-lock). Verify the two in-place-mutation fixes
+  (`healStaleAudioReady`, `/api/videos/:id` avatar `structuredClone`) are correct.
+- **T5 progress carve-out:** AC4.2 real mutations (delete/config/settings/
+  scan-merge/liked) stay **1:1 atomic** (never batched) vs AC4.3 progress-only loss
+  **≤5s bounded**, file always parses, nothing but watch position at risk.
+- **T8 one-shot visibility:** AC5.2 BOTH directions (live-target consume vs
+  no-target defer-via-dirty-flag + cache-restore reconcile), AC5.4 reload-never,
+  the `loadFreshHomeView` double-bind/listener-leak fix is sound, and the v1.29
+  **BUG-2** contract is not regressed.
 
-## Focus areas (verify correctness, security, performance, standards)
+## AC8.4 — EXERCISED, not just present
 
-- **Failure-masking, BOTH directions (the headline hazard, `failures.js`
-  `computeDownloadOutcome` + `index.js` threading):** a total/channel-level
-  failure must still surface as an error with the real reason (AC-FM-A); a
-  some-succeed-some-fail run must be `partial` with failures attributed, never a
-  false success or a whole-channel "failed" (AC-FM-B); unattributed failures never
-  inflate `succeeded` (AC-FM-D). Confirm the three arms are exhaustive/disjoint.
-- **Injection guard byte-identity (`args.js`, AC6.3):** the pacing/retry flags are
-  additive; host allowlist / `--` separator / FORBIDDEN_CHARS / SF4 / decoded-id
-  charset / `shell:false` untouched; `player_client` value charset-validated.
-  Confirm the two byte-identical argv deepEqual locks actually pin this.
-- **BUG-2 reload contract (`common.js`/`main.js`, T8):** `window.location.reload`
-  is never called on the one-shot done path; refresh is in-place via
-  `loadLibrary`; `decideOneOffTerminalAction` still `rescan:false`. Confirm the
-  spy test genuinely proves it.
-- **Real-reason surfacing + persistence + restart (`run.js`/`index.js`/`runlog.js`,
-  AC1/AC2):** bounded/sanitized (no unbounded/control-char/`innerHTML` paths);
-  `lastStatus` survives restart; run-log capped/rotated at 500 with atomic writes;
-  disabled-module no-op (no file, no route).
-- **Cancellation ordering (R0.8):** a cancelled run persists `lastStatus:'cancelled'`
-  + run-log `outcome:'cancelled'`, never a synthesized error — even with non-empty
-  stderr; the cancel-latch hoist (T3) is correct.
-- **Repull discriminator (`index.js` T5):** `onDecision` fires synchronously before
-  the first await; routes keep 202; body `{started,reason}` correct; no double-send;
-  backward-compatible.
-- **Standards:** textContent-only for server/user strings; no new deps; degrade-not-
-  crash; disabled no-op holds across every new surface.
+For every both-directions guard AC (AC1.4/1.5, AC1.6/1.7, AC2.5, AC4.2/4.3,
+AC5.2), OPEN the test and confirm the converse direction is genuinely exercised —
+i.e. the test would FAIL if the guard were removed (several SDEs mutation-tested;
+confirm it). A guard asserted only in the happy direction is a WARNING at least.
 
-## SDE-flagged deviation to scrutinize (T9)
+## Specific decision points you MUST address
 
-`detectNewlyTerminalRuns` in `subscriptions.js` uses **state-comparison between
-poll ticks** (prev snapshot states vs new) rather than T8's id-seen-set. SDE
-rationale: subscription ids are permanent, so a seen-set would fire once ever.
-**Verify the transition semantics:** it must fire the history re-fetch exactly on
-a run's entry into a terminal state (done/error/cancelled), not on steady-state,
-and must not miss or duplicate re-fetches across ticks. Judge whether the
-deviation is sound.
+- **GD-1 (avatar glyph):** `deriveAvatar` now returns a hash-letter glyph
+  (`AVATAR_GLYPH_ALPHABET[hashSeed % 26]`) instead of the first letter — it LOSES
+  the first-letter mnemonic ('Alice' → 'Q'). Evaluate whether this serves Dean's
+  "recognizable/deterministic avatar" intent better than first-letter +
+  deterministic color. Give a keep-or-revert recommendation (it's a one-line,
+  reversible change; the C5 shared-resolver wiring is correct either way).
+- **T9 deviations:** confirm the 127→12 exact-value token mapping introduced ZERO
+  rendered-size changes, and that the true 16px-floor selector set (the 6 mobile
+  text-entry rules, not the 560/1108 icon glyphs) is correctly identified.
+- **Performance/regression honesty:** apply the thumbnail-backfill-regression
+  lesson — if any change causes re-extraction/rework on upgrade, or a scan/cache
+  regression, score it as a real regression, not a "one-time cost."
 
-## Honest-scoring guidance (thumbnail-backfill lesson)
+## Dean-on-device ledger (do not fake-pass — record, don't PASS)
 
-Score findings HONESTLY. A real regression (e.g. a scan/backfill that re-does
-work on upgrade, a masked failure, a broken invariant) is CRITICAL/WARNING on its
-merits — do NOT rationalize it away as "one-time" or "acceptable" to keep the gate
-green. Equally, do not inflate style nits into blockers. If something needs Dean's
-judgment, use NEEDS DISCUSSION.
+Note explicitly which items ship but await Dean's iPhone pass: **AC7.6** (elegant
+buttons + overall typography feel), **GD-1** (avatar glyph), and the carried-over
+v1.29 **AC4.5** (navigate-during-download feel). These are veto points, not
+automated PASSes.
 
-## Deliverable
-Report: findings (CRITICAL/WARNING/SUGGESTION with file:line), an explicit
-per-headline-hazard assessment (failure-masking both directions, injection-guard,
-BUG-2, cancellation, run-log, restart, the T9 deviation), and the verdict
-(APPROVE / REQUEST CHANGES / NEEDS DISCUSSION). Note the standing **Node 22
-pre-release re-run** as a release-gate reminder (all per-task verifies ran on Node
-24). Do NOT modify code or commit. The orchestrator collects BOTH reviewers'
-verdicts; both must APPROVE to pass.
+## Standards / security
+
+- No new runtime deps beyond what Design sanctioned (SQLite was DEFERRED —
+  confirm tech-debt #28 exists with trigger criteria; confirm no
+  `better-sqlite3`-class dep sneaked in). Node 22 + 24 both required green (AC8.1/8.2).
+- Untrusted creator-controlled text (channel names, titles) stays
+  textContent/createElement, never innerHTML (esp. the C5 subs avatar + C2 like
+  button paths). No service-worker reintroduction. 16px input floor intact.
+
+## Deliverable from you
+
+Findings (CRITICAL/WARNING/SUGGESTION with `file:line`), explicit GD-1
+recommendation, explicit AC8.4 exercised-not-present confirmation per guard, the
+Dean-on-device ledger, and a verdict: **APPROVE / REQUEST CHANGES / NEEDS
+DISCUSSION**. Do not edit code.
+
+When done, return to the EM session and report your verdict.

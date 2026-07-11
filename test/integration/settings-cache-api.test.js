@@ -15,7 +15,7 @@ const TRANSCODE_DIR = path.join(DATA_DIR, 'transcoded');
 
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
-const { app, armScanTimer, currentScanTimer } = require('../../server');
+const { app, armScanTimer, currentScanTimer, saveDatabase } = require('../../server');
 
 const DEFAULT_SETTINGS = {
   scanIntervalMinutes: 30,
@@ -31,8 +31,11 @@ function baseSettings(overrides) {
   return { ...DEFAULT_SETTINGS, ...overrides };
 }
 
+// v1.30 A3 (in-memory DB read cache): seed via the exported `saveDatabase()`
+// (an established test primitive, see CONTRIBUTING.md) rather than a raw
+// `fs.writeFileSync`, so the in-process db cache stays coherent.
 function writeDb(db) {
-  fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2), 'utf8');
+  saveDatabase(db);
 }
 
 function readDb() {
@@ -387,14 +390,18 @@ test('POST /api/cache/clear clears audioStatus for a cleared .m4a sidecar', asyn
 
 // ---- Existing routes unaffected --------------------------------------------
 
-test('existing GET /api/scan-status response shape is unaffected by Task 6 (plus v1.18 FR-3 additive fields)', async () => {
+// v1.30 A2 (AC2.2): processed/total/phase added for cooperative-scan progress.
+test('existing GET /api/scan-status response shape is unaffected by Task 6 (plus v1.18 FR-3 + v1.30 A2 additive fields)', async () => {
   writeDb({ folders: [], folderSettings: {}, progress: {}, metadata: {}, settings: baseSettings() });
   const res = await fetch(`${base}/api/scan-status`);
   assert.equal(res.status, 200);
   const json = await res.json();
   assert.deepEqual(
     Object.keys(json).sort(),
-    ['fileCount', 'folderCount', 'lastScan', 'scanning', 'transcodeNames', 'transcodeOverflow', 'transcoding'].sort()
+    [
+      'fileCount', 'folderCount', 'lastScan', 'phase', 'processed', 'scanning',
+      'total', 'transcodeNames', 'transcodeOverflow', 'transcoding',
+    ].sort()
   );
 });
 

@@ -1,79 +1,103 @@
-# Software Developer — GATE FIX MICRO-ROUND 3 (GF3): doc-vs-code fix (W1) + subset filter (S1)
+# Gate-Fix micro-round GF1 — revert deriveAvatar glyph to first-letter (GD-1)
 
-You are the Software Developer for the **v1.29 Downloads Reliability Wave**.
-GF2's focused adversarial re-gate confirmed the CRITICAL is CLOSED and the
-classifier sound, but returned **NEEDS DISCUSSION** with two small findings.
-Dean resolved both. GF3 is a MICRO-round: a doc-comment correction, a subset-
-filter hardening, and two lock tests. Touch **`lib/ytdlp/failures.js` +
-`test/unit/ytdlp-download-outcome.test.js` ONLY**. Run lint + tests, fix any
-failures, report back. Do NOT commit. Do NOT change the classifier's behavior
-except the S1 defensive filter.
+You are the **software-developer**. This is a **single-item gate-fix micro-round**
+after the v1.30 two-reviewer gate PASSED. Both reviewers independently recommended
+reverting T12's hash-letter avatar glyph back to the name's first letter (GD-1).
+Implement **ONLY this one change** + its affected tests. Ship code + tests, run
+lint + tests green, then report.
 
-## Read first
-`.state/feature-state.json` → `gate_results.gf2_regate` (W1/S1 verbatim) and
-`gate_results.gf3_deans_resolution`; the exec plan's AC-FM-A/B/D.
+## Environment (do this FIRST — v1.29 process learning)
 
-## W1 — doc-vs-code contradiction at `remainingAfterAttributed === 1` (`failures.js`)
+```bash
+export PATH="$HOME/.local/share/fnm/node-versions/v22.23.1/installation/bin:$PATH"
+node --version   # expect v22.23.1 (CI parity)
+```
+Required before any `npm`/`node`/`git` command (git hooks run lint + unit tests).
 
-At `remainingAfterAttributed === 1` with `rawUnattributedCount >= 1`, the bound
-`Math.max(1, Math.min(raw, remaining - 1))` = `Math.max(1, Math.min(raw, 0))` =
-**1**, which consumes the sole remaining slot → `error` / `succeeded:0`. The doc
-comment claims "reserve-at-least-one" behavior — a **code-vs-contract
-contradiction**.
+## Context (why this change)
 
-**Dean's resolution: KEEP the conservative behavior (do NOT change the code's
-result here)** — the unattributed line consuming the last slot is Direction-A-safe
-(the consequence is one extra retry cycle with `cutoffDate` frozen, never a lost
-window). **FIX the doc comment** so it states this DELIBERATELY: at
-`remainingAfterAttributed === 1`, **AC-FM-D (an unattributed failure always
-counts) intentionally wins over reserve-at-least-one, by design** — the function
-prefers to under-credit a possible success (→ error, safe retry) rather than
-credit a phantom one. Make the comment match the code exactly; no more overclaim.
+The gate PASSED (QA APPROVE + adversarial APPROVE). The one adopted item is **GD-1**:
+T12 changed `deriveAvatar`'s fallback glyph from the name's first letter to a
+hash-selected letter (`AVATAR_GLYPH_ALPHABET[seed % 26]`). Both reviewers judged
+this LOSES the recognizable first-letter mnemonic ('Alice' → 'Q') and does not
+serve Dean's "recognizable/deterministic avatar" intent as well as **first-letter +
+deterministic color**. Revert the glyph; keep everything else T12 landed (the
+deterministic hash-based COLOR, the C5 shared-resolver wiring in
+`subscriptions.js`, the `'?'` blank-name case). Recorded on the Dean-on-device
+ledger as adopted-per-reviewer-consensus (Dean can re-open on his on-device pass).
 
-**ADD a boundary-lock test:** 9 attributed failures + 1 unattributed failure /
-10 targets → `error` / `succeeded:0` / `failed:10`. This pins the deliberate
-remaining===1 behavior so a future refactor can't silently flip it.
+## The exact change (public/js/common.js)
 
-## S1 — subset-filter hardening (`failures.js`)
+`deriveAvatar` is at **common.js:172**. Current body (~172–179):
 
-`attributed` is currently never validated as a subset of `targetIds` inside the
-pure function, so a mismatched-id / `target:0` input could produce
-`failed > target` (unreachable via real callers — `knownIds` is single-sourced
-from the cycle's own targets — but cheap defense-in-depth).
+```js
+function deriveAvatar(name) {
+  const label = typeof name === 'string' ? name.trim() : '';
+  const safeLabel = label !== '' ? label : '?';
+  const seed = hashAvatarSeed(safeLabel);
+  const glyph = safeLabel === '?' ? '?' : AVATAR_GLYPH_ALPHABET[seed % AVATAR_GLYPH_ALPHABET.length];
+  const color = AVATAR_PALETTE[seed % AVATAR_PALETTE.length];
+  return { glyph, color };
+}
+```
 
-**Fix:** inside `computeDownloadOutcome`, filter `attributed` to **targetId-set
-membership** — build a Set of `targetIds` and count only attributed videoIds that
-are members. This guarantees `attributed.size <= target` and keeps the whole
-function's invariant `failed <= target` under any input. Keep it pure/defensive
-(no throw on odd inputs).
+Revert the **glyph line** to the first-letter form, keeping the hash-based color:
 
-**ADD a test locking `failed <= target`** for the mismatched-id shape (e.g.
-attributed videoIds NOT in `targetIds`, and/or `targetIds: []` / `target:0` with
-failures present) — assert the result never reports `failed > target` and lands in
-a valid arm.
+```js
+  const glyph = safeLabel.charAt(0).toUpperCase();
+```
 
-## Constraints / scope
-- Touch ONLY `lib/ytdlp/failures.js` and `test/unit/ytdlp-download-outcome.test.js`.
-  Do NOT touch `ytdlp-outcome-threading.test.js` (GF2's integration expectations
-  stand), `args.js`/`subscriptions.js`/`main.js`/`index.js`, or anything else.
-- Do NOT change any classifier result EXCEPT what the S1 subset filter defensively
-  corrects for out-of-domain inputs; every existing outcome test + the disjointness
-  sweep must stay green (the 5-same-429 CRITICAL repro, all-unattributed→error,
-  9/10 partial, etc. are all unchanged).
-- Re-confirm the exhaustive/disjoint three-arm proof still holds after the subset
-  filter (it should only tighten `attributed.size`).
-- Node 22 / node:test; lint 0 errors, no new warnings. Run `npm test` +
-  `npm run lint` and fix failures.
-- **Toolchain PATH:** export fnm first —
-  `export PATH="/home/coder/.local/share/fnm/node-versions/v24.14.0/installation/bin:$PATH"`
-  (fallback: current dir under `/home/coder/.local/share/fnm/node-versions/`).
+Note `('?').charAt(0).toUpperCase() === '?'`, so the blank-name `'?'` case is
+preserved without the special-case ternary. Keep `seed` (still used for `color`).
 
-## Wrap-up
-Report back to the orchestrator (EM): the corrected doc comment (confirming it now
-matches the remaining===1 behavior), the S1 subset-filter change, the two new lock
-tests, confirmation that all prior GF2 outcome tests + disjointness stay green,
-and `npm test` + `npm run lint` results. Do NOT commit.
+- **Remove `AVATAR_GLYPH_ALPHABET`** if it becomes unused after this revert (lint
+  will flag `no-unused-vars` otherwise) — grep for any other consumer first; if
+  nothing else uses it, delete its declaration.
+- **Update the doc comment** on `deriveAvatar` (common.js ~149–171): it currently
+  describes the C3 hash-letter glyph upgrade and flags the mnemonic tradeoff for the
+  gate. Rewrite it to describe the shipped behavior: deterministic hash-based COLOR
+  + the channel name's first-letter-uppercase glyph, and note the GD-1 gate
+  resolution (hash-letter reverted per unanimous two-reviewer recommendation;
+  Dean-on-device may re-open). Do NOT leave a stale comment describing a glyph the
+  code no longer produces.
+- Do NOT touch `resolveAvatarSource`, `hashAvatarSeed`, `AVATAR_PALETTE`, the C5
+  `subscriptions.js` wiring, or `watch.js` — those stay exactly as T12 landed.
 
-The orchestrator will route the delta to the build-specialist, then the SAME
-adversarial reviewer session (which has full context) confirms the delta — not a
-fresh full re-gate — then Acceptance.
+## Tests to update
+
+- **`test/unit/derive-avatar.test.js`** — the T12 hash-letter contract assertions
+  must be reverted to the **first-letter** contract: same name → same
+  `{glyph,color}`; glyph === the name's first letter uppercased; different names
+  still get deterministic colors; the `'?'` blank-name case still holds; a captured
+  URL still wins via `resolveAvatarSource`. **Keep the AC7.4 both-directions purity
+  assertions** (pure function of name + real-avatar-wins) — only the glyph-VALUE
+  expectation changes from hash-letter back to first-letter.
+- **Any subscriptions-client assertion** (e.g. in
+  `test/unit/ytdlp-subscriptions-client.test.js`) that derived from the hash-letter
+  glyph value — update to the first-letter expectation. The C5 wiring itself
+  (row + settings header route through the shared resolver) is unchanged and its
+  cross-site-consistency assertion stays valid.
+
+## SCOPE FENCE
+
+- ONLY the `deriveAvatar` glyph revert + comment + the affected test expectations.
+  No other source changes. Do not touch the tech-debt tracker (the EM filed the
+  MAX_LIMIT and matchesSearch items). No other tasks.
+
+## Definition of done
+
+`deriveAvatar` glyph is the name's first-letter-uppercase again (deterministic color
+kept, `'?'` case kept); dead `AVATAR_GLYPH_ALPHABET` removed if unused; doc comment
+updated; `derive-avatar.test.js` + any subs-client assertions reflect first-letter;
+AC7.4 both-directions purity still asserted. `npm run lint` and `npm test` green
+under Node 22.23.1 (run them yourself and fix failures before reporting). Do NOT
+commit or push.
+
+## Report back (concise)
+
+The one-line glyph change, whether `AVATAR_GLYPH_ALPHABET` was removed, which tests
+you updated (and confirmation AC7.4 purity + C5 wiring assertions still pass), and
+the `npm test` + `npm run lint` result (note the new test count vs 3593 — it should
+be roughly flat; the hash-letter assertions convert to first-letter, no net add).
+
+When done, return to the EM session and run `/prep-build-verify`.

@@ -907,3 +907,171 @@ test('T6 R1.3 confirmation: clicking Retry on a one-shot error row invokes onRet
   assert.equal(calls[0].rawEntry.url, 'https://youtu.be/x', 'the raw entry (the SAME shape buildOneShotRetryBody consumes) must be handed to onRetry');
 });
 
+// ---- v1.30.0 T10 (B2): active-downloads chip CONFORMANCE lock (AC6.1-AC6.4)
+//
+// The active-downloads reframe (v1.24.9) already implements every behavior
+// below -- this section is a CONFORMANCE pass, not new behavior: it locks the
+// exact pure gates `injectDownloadStatusChip`'s `render()` (common.js) reads
+// from, and the row-level DOM `updateDownloadChipItemRow`/
+// `updateDownloadChipPanel` actually produce, against each AC in the design
+// (docs/exec-plans/active/2026-07-11-v1.30-scale-perf-and-polish.md, "### B2
+// -- active-downloads chip reframe"). `render()` itself is a closure-private
+// function (not exported -- same posture as `pollOnce`/`scheduleNextPoll`),
+// so these tests exercise it via its own documented, byte-identical gate:
+// `render()` sets `chip.hidden = true` iff `reduceDownloadChipState(...)
+// .count === 0` (or the /subscriptions mount-suppression, covered
+// separately above) -- see that function's own header comment for the exact
+// line. Attribution polish: `buildDownloadChipItem` was audited for a
+// "missing name/attribution" shape and none exists -- `name` always falls
+// back to a non-blank per-kind literal ('One-off download'/'Subscription
+// download') and `statusText` always falls back to the raw `state` string
+// (worst case, via `formatOneOffStatusText`'s own 'Preparing…' branch) -- so
+// no row can ever render blank attribution; no JS/CSS change was needed
+// beyond this lock. The chip's `font-size` declarations (style.css) already
+// reference the C1 `--fs-*` tokens (T9 swept every declaration in the file,
+// chip included) -- confirmed via a static grep, no stray literal remains.
+
+// ---- AC6.1 (idle = empty) ---------------------------------------------------
+
+test('AC6.1: an EMPTY snapshot (no subscriptions, no one-shots) yields count 0 -- render()\'s exact gate for chip.hidden = true', () => {
+  const state = reduceDownloadChipState({ subscriptions: {}, oneShots: {} }, new Set());
+  assert.equal(state.count, 0, 'render() hides the chip whenever state.count === 0');
+});
+
+test('AC6.1: an ALL-QUEUED/LISTING-SUBSCRIPTION snapshot (a big subscription poll\'s churn, zero one-shots, nothing actually downloading) yields count 0 -- chip stays hidden through the churn', () => {
+  const snapshot = {
+    subscriptions: {
+      chA: { state: 'queued', name: 'Channel A' },
+      chB: { state: 'listing', name: 'Channel B' },
+      chC: { state: 'queued', name: 'Channel C' },
+    },
+    oneShots: {},
+  };
+  const state = reduceDownloadChipState(snapshot, new Set());
+  assert.equal(state.count, 0, 'a subscription poll\'s queued/listing churn alone must never surface the chip');
+  assert.deepEqual(state.items, []);
+});
+
+// ---- AC6.2 (active = shown with detail, incl. attribution) -----------------
+
+test('AC6.2: a genuinely downloading ONE-SHOT is shown -- summary carries channel/title+progress, and its expanded detail row carries the SAME attribution (name + status)', () => {
+  const snapshot = {
+    subscriptions: {},
+    oneShots: { job1: { state: 'downloading', title: 'Cool Video', index: 3, total: 12, percent: 47 } },
+  };
+  const state = reduceDownloadChipState(snapshot, new Set());
+  assert.equal(state.count, 1);
+
+  const summary = formatDownloadChipSummary(state);
+  assert.match(summary, /Cool Video/, 'the collapsed summary must surface the item\'s attribution (title/channel)');
+  assert.match(summary, /47%/, 'the collapsed summary must surface live progress');
+
+  const panel = new FakeChipElement('div');
+  const rowsByKey = new Map();
+  updateDownloadChipPanel(fakeChipDoc, panel, rowsByKey, state, snapshot, noopHandlers());
+  assert.equal(panel.children.length, 1, 'the active job expands to exactly one detail row');
+  const row = panel.children[0];
+  assert.equal(row.els.nameEl.textContent, 'Cool Video', 'the detail row must carry the same attribution as the summary');
+  assert.match(row.els.statusEl.textContent, /3 of 12/, 'the detail row status line carries progress attribution too');
+  assert.match(row.els.statusEl.textContent, /47%/);
+});
+
+test('AC6.2: a genuinely downloading SUBSCRIPTION is shown -- summary + detail row carry the CHANNEL name, not a generic literal', () => {
+  const snapshot = {
+    subscriptions: { sub1: { state: 'downloading', name: 'Cool Channel', title: 'Ep 4', index: 4, total: 10, percent: 61 } },
+    oneShots: {},
+  };
+  const state = reduceDownloadChipState(snapshot, new Set());
+  assert.equal(state.count, 1);
+  assert.match(formatDownloadChipSummary(state), /Cool Channel/);
+
+  const panel = new FakeChipElement('div');
+  const rowsByKey = new Map();
+  updateDownloadChipPanel(fakeChipDoc, panel, rowsByKey, state, snapshot, noopHandlers());
+  const row = panel.children[0];
+  assert.equal(row.els.nameEl.textContent, 'Cool Channel', 'the row must be attributed by CHANNEL, never a placeholder, while genuinely downloading');
+});
+
+test('AC6.2: attribution polish audit -- even a bare downloading entry with NO title/videoId/label ever renders a BLANK name or status (buildDownloadChipItem\'s fallbacks already cover every shape)', () => {
+  const bareOneShot = buildDownloadChipItem('oneshot', 'job1', { state: 'downloading' });
+  assert.equal(bareOneShot.name, 'One-off download');
+  assert.equal(bareOneShot.statusText, 'Preparing…');
+
+  const bareSub = buildDownloadChipItem('subscription', 'sub1', { state: 'downloading' });
+  assert.equal(bareSub.name, 'Subscription download');
+  assert.notEqual(bareSub.statusText, '');
+
+  const row = createDownloadChipItemRow(fakeChipDoc, noopHandlers());
+  updateDownloadChipItemRow(fakeChipDoc, row, bareOneShot, {});
+  assert.notEqual(row.els.nameEl.textContent, '', 'the row must never render a blank name');
+  assert.notEqual(row.els.statusEl.textContent, '', 'the row must never render a blank status line');
+});
+
+// ---- AC6.3 (queued-only != active) ------------------------------------------
+
+test('AC6.3: a queued-only SUBSCRIPTION (no one-shots, nothing downloading) never counts -- hidden per AC6.1, not merely unlabeled', () => {
+  const snapshot = { subscriptions: { sub1: { state: 'queued', name: 'Channel A' } }, oneShots: {} };
+  const state = reduceDownloadChipState(snapshot, new Set());
+  assert.equal(state.count, 0);
+  assert.equal(formatDownloadChipSummary(state), '');
+});
+
+test('AC6.3: a queued-only ONE-SHOT stays visible (count > 0, per Dean\'s "just started" intent) but is NEVER described as "downloading" or "queued" in the summary', () => {
+  const snapshot = { subscriptions: {}, oneShots: { job1: { state: 'queued', label: 'My Folder' } } };
+  const state = reduceDownloadChipState(snapshot, new Set());
+  assert.equal(state.count, 1, 'a user-launched one-shot stays visible even before it starts transferring bytes');
+
+  const summary = formatDownloadChipSummary(state);
+  assert.equal(summary, '', 'a merely-queued one-shot contributes no headline text of its own yet');
+  assert.doesNotMatch(summary, /queued/i);
+  assert.doesNotMatch(summary, /downloading/i);
+});
+
+test('AC6.3: its OWN row still says "Queued…" (per Dean\'s shipped intent) even though the collapsed summary never does', () => {
+  const item = buildDownloadChipItem('oneshot', 'job1', { state: 'queued', label: 'My Folder' });
+  assert.equal(item.statusText, 'Queued…');
+});
+
+// ---- AC6.4 (no stop/dequeue on queued) --------------------------------------
+
+test('AC6.4: a queued-state ONE-SHOT detail row exposes NO cancel/stop/dequeue control', () => {
+  const item = buildDownloadChipItem('oneshot', 'job1', { state: 'queued', label: 'My Folder' });
+  const row = createDownloadChipItemRow(fakeChipDoc, noopHandlers());
+  updateDownloadChipItemRow(fakeChipDoc, row, item, { state: 'queued', label: 'My Folder' });
+  assert.equal(row.els.cancelActions.hidden, true, 'a queued one-shot must expose no cancel affordance');
+});
+
+test('AC6.4: F2 row-reuse regression lock -- a row that WAS cancellable (downloading) correctly HIDES the control again once updated for a queued item (never leaks a stale "true" cancellable state)', () => {
+  const downloading = buildDownloadChipItem('oneshot', 'job1', { state: 'downloading', title: 'Vid', percent: 20 });
+  const row = createDownloadChipItemRow(fakeChipDoc, noopHandlers());
+  updateDownloadChipItemRow(fakeChipDoc, row, downloading, {});
+  assert.equal(row.els.cancelActions.hidden, false, 'sanity: a downloading one-shot IS cancellable');
+
+  const queued = buildDownloadChipItem('oneshot', 'job1', { state: 'queued', label: 'My Folder' });
+  updateDownloadChipItemRow(fakeChipDoc, row, queued, {});
+  assert.equal(row.els.cancelActions.hidden, true, 'the SAME reused row node must hide the control again once the item is no longer downloading');
+});
+
+test('AC6.4: a queued-state SUBSCRIPTION row also exposes no cancel control (cancel is gated to kind === "oneshot" regardless of state)', () => {
+  const item = buildDownloadChipItem('subscription', 'sub1', { state: 'queued', name: 'Channel A' });
+  const row = createDownloadChipItemRow(fakeChipDoc, noopHandlers());
+  updateDownloadChipItemRow(fakeChipDoc, row, item, { state: 'queued', name: 'Channel A' });
+  assert.equal(row.els.cancelActions.hidden, true);
+});
+
+// ---- CSS: chip references the C1 --fs-* type-scale tokens (T9) -------------
+
+test('CSS conformance: the chip\'s font-size declarations in style.css already reference C1 --fs-* tokens (T9 swept the whole file) -- no stray literal px/em remains in the chip block', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
+  const chipBlockMatch = css.match(/#dl-status-chip\s*{[\s\S]*?\.dl-status-chip-dismiss-btn:hover[\s\S]*?}\n/);
+  assert.ok(chipBlockMatch, 'expected to locate the #dl-status-chip CSS block');
+  const chipBlock = chipBlockMatch[0];
+  const fontSizeLines = chipBlock.match(/font-size\s*:[^;]+;/g) || [];
+  assert.ok(fontSizeLines.length > 0, 'expected at least one font-size declaration in the chip block');
+  fontSizeLines.forEach((line) => {
+    assert.match(line, /var\(--fs-/, `expected every chip font-size to reference a --fs-* token, found: ${line}`);
+  });
+});
+

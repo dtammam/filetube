@@ -187,6 +187,58 @@ clients (iOS Safari) can play them.
   extraction loop runs entirely OUTSIDE the lock, so writes stay unblocked
   for the whole scan — only the final synchronous merge+save is serialized.
 
+- **In-memory DB read cache (v1.30, A3):** hot GET routes
+  (`/thumbnail/:id`, `/video/:id`, `/audio/:id`, `/api/videos`,
+  `/api/videos/:id`, `/api/progress/:id`, `/api/config`, `/api/settings`,
+  `/api/scan-status`, subtitles) read through `getCachedDatabase()` instead of a
+  per-request `loadDatabase()` (readFileSync + `JSON.parse` of the whole db).
+  The cache is a read-through of the *last committed write*: `updateDatabase`
+  still loads a FRESH copy from disk inside the lock, applies the mutator, and
+  `saveDatabase`s atomically — the re-read-merge-on-save invariant above is
+  UNCHANGED — and, on a successful save, sets the cache to the just-saved object
+  inside the same synchronous critical section (no `await` between save and
+  cache-set). Coherency rests on: one serialized writer chain; Node's
+  single-threaded synchronous readers (a reader runs entirely before or after a
+  write's tick, never interleaved); this process being the ONLY writer of
+  `db.json`; and the cached object being replaced by reference, never mutated in
+  place. This is why deferring SQLite is safe at this scale (the whole db is
+  ~1 MB and lives in memory); see the v1.30 Design's A6 verdict and tech-debt
+  tracker #28 for the revisit triggers.
+- **Batched progress writes (v1.30, A4):** `POST /api/progress` no longer does a
+  whole-file write+fsync per 4 s ping. Latest-position-wins entries accumulate in
+  an in-memory `pendingProgress` map and flush as ONE atomic `updateDatabase`
+  write per ≤5 s window (and once more on `SIGTERM`/`SIGINT`/`beforeExit`).
+  Reads overlay `pendingProgress` over the cache for read-your-writes. This is a
+  DELIBERATE, BOUNDED durability relaxation for WATCH POSITION ONLY: a hard
+  `SIGKILL` can lose ≤5 s of watch position, never corruption, never anything
+  else. Every OTHER mutation (delete, config, settings, scan final-merge, the
+  `db.liked` routes) keeps the 1:1 atomic-write+fsync guarantee unchanged.
+- **Paginated `/api/videos` (v1.30, A5):** the endpoint now takes
+  `limit`/`offset` (default 60/0) plus server-authoritative `sort`, `format`,
+  and `seed` (for stable `random` across pages), in addition to the existing
+  `search`/`folder`/`root`. It applies filter+sort across the FULL library
+  before slicing, and returns `{ items, total, offset, limit }` (was a bare
+  array). The client renders the first page and appends one page per
+  IntersectionObserver sentinel trigger. Sort/filter/search semantics therefore
+  apply across the whole library, not just the first window. The comparators/
+  predicates live in the pure `lib/videoQuery.js` module (shared contract with
+  the client's `sortItems`/`filterByMediaType`).
+- **Cooperative, non-blocking scan (v1.30, A2):** `POST /api/scan` returns `202`
+  immediately (fire-and-forget, like `POST /api/config`) and the walk runs
+  cooperatively (async `fs.promises` + batch-yielding every N entries) so it
+  never blocks the event loop for more than a bounded stretch; the boot scan is
+  kicked off AFTER `app.listen` so route serving is never gated behind it. The
+  client polls `/api/scan-status` (now carrying `processed`/`total`/`phase`) and
+  refreshes the grid in place on completion — never `window.location.reload`.
+  The overlap-coalescing guard, mount-loss/prune protections, and incremental
+  ffprobe/thumbnail reuse are all preserved (the walk is made cooperative INSIDE
+  the existing guard, not around it).
+- **`db.liked` (v1.30, C2):** a top-level array of media ids; "like" state IS
+  membership in this Liked collection (no separate boolean flag). Managed via
+  `POST`/`DELETE`/`GET /api/liked`, each a real mutation through
+  `updateDatabase` (atomic, backfilled to `[]` by `loadDatabase` like the other
+  top-level keys).
+
 ## Constraints
 
 - Single-node, single-process; state lives on local disk (no external services).

@@ -20,6 +20,41 @@ const SETUP_JS_PATH = path.join(ROOT, 'public', 'js', 'setup.js');
 const css = fs.readFileSync(CSS_PATH, 'utf8');
 const setupJs = fs.readFileSync(SETUP_JS_PATH, 'utf8');
 
+// v1.30 C1 (AC7.1/AC7.2): style.css's font-size declarations are now
+// token-driven (`var(--fs-*)`) rather than bare px literals -- see the
+// `:root` block. Parse the token definitions once so these tests can resolve
+// `var(--fs-*)` back to a px number and keep asserting the FLOOR VALUE
+// (>=16px), not a specific source-text spelling.
+function parseRootFsTokens(source) {
+  const rootMatch = /:root\s*\{([\s\S]*?)\n\}/.exec(source);
+  assert.ok(rootMatch, 'expected a :root block in style.css');
+  const tokens = {};
+  const re = /(--fs-[a-z0-9-]+):\s*([0-9]+)px/g;
+  let m;
+  while ((m = re.exec(rootMatch[1]))) {
+    tokens[m[1]] = Number(m[2]);
+  }
+  return tokens;
+}
+
+const fsTokens = parseRootFsTokens(css);
+
+// Resolves a font-size declaration's VALUE (e.g. "16px" or
+// "var(--fs-input-min)") to a numeric px, following the token indirection
+// through the parsed :root block.
+function resolveFontSizePx(value) {
+  const trimmed = value.trim();
+  const varMatch = /^var\((--fs-[a-z0-9-]+)\)$/.exec(trimmed);
+  if (varMatch) {
+    const px = fsTokens[varMatch[1]];
+    assert.ok(px !== undefined, `expected token ${varMatch[1]} to be defined in :root`);
+    return px;
+  }
+  const pxMatch = /^([0-9]+)px$/.exec(trimmed);
+  assert.ok(pxMatch, `expected a px literal or var(--fs-*) token, got "${value}"`);
+  return Number(pxMatch[1]);
+}
+
 function mobileBlocks(source) {
   const blocks = [];
   const re = /@media \(max-width: 768px\)\s*\{/g;
@@ -39,21 +74,34 @@ function mobileBlocks(source) {
   return blocks;
 }
 
-test('a global mobile rule floors every <input>/<select>/<textarea> to 16px (the iOS no-zoom threshold)', () => {
+test('a global mobile rule floors every <input>/<select>/<textarea> to >=16px via --fs-input-min (the iOS no-zoom threshold)', () => {
   const blocks = mobileBlocks(css);
-  const hasGlobalRule = blocks.some((block) =>
-    /input,\s*\n\s*select,\s*\n\s*textarea\s*\{\s*\n\s*font-size:\s*16px;/.test(block)
-  );
-  assert.ok(hasGlobalRule, 'expected a bare `input, select, textarea { font-size: 16px; }` rule inside a max-width: 768px block');
+  let matchedValue = null;
+  const hasGlobalRule = blocks.some((block) => {
+    const rule = /input,\s*\n\s*select,\s*\n\s*textarea\s*\{\s*\n\s*font-size:\s*([^;]+);/.exec(block);
+    if (!rule) return false;
+    matchedValue = rule[1];
+    return true;
+  });
+  assert.ok(hasGlobalRule, 'expected a bare `input, select, textarea { font-size: ...; }` rule inside a max-width: 768px block');
+  assert.strictEqual(matchedValue.trim(), 'var(--fs-input-min)', 'expected the global mobile floor to be tokenized via --fs-input-min (AC7.2)');
+  assert.ok(resolveFontSizePx(matchedValue) >= 16, `expected --fs-input-min to resolve to >=16px, got ${resolveFontSizePx(matchedValue)}px`);
 });
 
-test('class-selector surfaces the global element-selector rule cannot outrank (higher CSS specificity) get explicit mobile overrides', () => {
+test('class-selector surfaces the global element-selector rule cannot outrank (higher CSS specificity) get explicit mobile overrides, still >=16px via --fs-input-min', () => {
   const blocks = mobileBlocks(css);
+  let matchedValue = null;
   const hasOverride = blocks.some((block) => {
     const rule = /\.comment-input-box,\s*\n\s*\.sort-select,\s*\n\s*\.folder-name-input\s*\{([^}]*)\}/.exec(block);
-    return rule && /font-size:\s*16px;/.test(rule[1]);
+    if (!rule) return false;
+    const fontSize = /font-size:\s*([^;]+);/.exec(rule[1]);
+    if (!fontSize) return false;
+    matchedValue = fontSize[1];
+    return true;
   });
-  assert.ok(hasOverride, 'expected an explicit mobile 16px override for .comment-input-box/.sort-select/.folder-name-input');
+  assert.ok(hasOverride, 'expected an explicit mobile floor override for .comment-input-box/.sort-select/.folder-name-input');
+  assert.strictEqual(matchedValue.trim(), 'var(--fs-input-min)', 'expected the override to be tokenized via --fs-input-min (AC7.2)');
+  assert.ok(resolveFontSizePx(matchedValue) >= 16, `expected --fs-input-min to resolve to >=16px, got ${resolveFontSizePx(matchedValue)}px`);
 });
 
 test('.folder-name-input (public/js/setup.js) no longer carries an inline font-size -- inline styles beat every stylesheet rule, including the global mobile floor', () => {
@@ -62,21 +110,27 @@ test('.folder-name-input (public/js/setup.js) no longer carries an inline font-s
   assert.ok(!/font-size/.test(inputLine[0]), '.folder-name-input must not carry an inline font-size (moved to a real CSS class rule)');
 });
 
-test('.folder-name-input has a real desktop-sized (12px) base CSS rule outside any media query, so the mobile override above has something to override', () => {
+test('.folder-name-input has a real desktop-sized (12px, tokenized) base CSS rule outside any media query, so the mobile override above has something to override', () => {
   // Anchored to line-start (unindented): rules nested inside an @media block
   // are indented in this file's style, so `^\.selector` only matches the
   // top-level (non-media-query) rule.
   const rule = /^\.folder-name-input\s*\{([^}]*)\}/m.exec(css);
   assert.ok(rule, 'expected a base (non-media-query) .folder-name-input rule');
-  assert.match(rule[1], /font-size:\s*12px;/);
+  const fontSize = /font-size:\s*([^;]+);/.exec(rule[1]);
+  assert.ok(fontSize, 'expected a font-size declaration on the base .folder-name-input rule');
+  assert.strictEqual(resolveFontSizePx(fontSize[1]), 12, 'expected .folder-name-input desktop base to stay 12px (via its token)');
 });
 
-test('desktop sizing for the systemic-fix surfaces is unchanged outside the mobile breakpoint (12px/13px bases still present)', () => {
+test('desktop sizing for the systemic-fix surfaces is unchanged outside the mobile breakpoint (12px/13px bases still present, now tokenized)', () => {
   const sortSelectRule = /^\.sort-select\s*\{([^}]*)\}/m.exec(css);
   assert.ok(sortSelectRule, 'expected a base (non-media-query) .sort-select rule');
-  assert.match(sortSelectRule[1], /font-size:\s*12px;/, 'expected .sort-select base to stay 12px on desktop');
+  const sortSelectFontSize = /font-size:\s*([^;]+);/.exec(sortSelectRule[1]);
+  assert.ok(sortSelectFontSize, 'expected a font-size declaration on the base .sort-select rule');
+  assert.strictEqual(resolveFontSizePx(sortSelectFontSize[1]), 12, 'expected .sort-select base to stay 12px on desktop');
 
   const commentBoxRule = /^\.comment-input-box\s*\{([^}]*)\}/m.exec(css);
   assert.ok(commentBoxRule, 'expected a base (non-media-query) .comment-input-box rule');
-  assert.match(commentBoxRule[1], /font-size:\s*13px;/, 'expected .comment-input-box base to stay 13px on desktop');
+  const commentBoxFontSize = /font-size:\s*([^;]+);/.exec(commentBoxRule[1]);
+  assert.ok(commentBoxFontSize, 'expected a font-size declaration on the base .comment-input-box rule');
+  assert.strictEqual(resolveFontSizePx(commentBoxFontSize[1]), 13, 'expected .comment-input-box base to stay 13px on desktop');
 });

@@ -18,7 +18,7 @@ const DB_FILE = path.join(DATA_DIR, 'db.json');
 
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
-const { app, MAX_MEDIA_DIMENSION } = require('../../server');
+const { app, MAX_MEDIA_DIMENSION, saveDatabase } = require('../../server');
 
 let server;
 let base;
@@ -39,8 +39,11 @@ beforeEach(() => {
   if (fs.existsSync(DB_FILE)) fs.rmSync(DB_FILE);
 });
 
+// v1.30 A3 (in-memory DB read cache): seed via the exported `saveDatabase()`
+// (an established test primitive, see CONTRIBUTING.md) rather than a raw
+// `fs.writeFileSync`, so the in-process db cache stays coherent.
 function writeDb(db) {
-  fs.writeFileSync(DB_FILE, JSON.stringify({ folders: [], folderSettings: {}, progress: {}, ...db }, null, 2), 'utf8');
+  saveDatabase({ folders: [], folderSettings: {}, progress: {}, ...db });
 }
 
 function seedItem(id, overrides) {

@@ -20,6 +20,18 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
+
+// C5 (v1.30.0, T12): subscriptions.js now consumes `resolveAvatarSource` as a
+// bare GLOBAL (the SAME load-order contract `watch.js` already relies on --
+// see subscriptions.js's `applySubAvatar` doc comment and eslint.config.js's
+// consumer-globals block). There is no `<script>` load order in `node:test`,
+// so this installs the REAL function from `public/js/common.js` as a global
+// before `require`-ing subscriptions.js below, mirroring exactly what the
+// browser's script-tag order provides in production -- tests exercise the
+// actual shared seam, not a stand-in/mock.
+const { resolveAvatarSource, deriveAvatar } = require('../../public/js/common.js');
+global.resolveAvatarSource = resolveAvatarSource;
+
 const {
   FORMAT_OPTIONS,
   QUALITY_OPTIONS,
@@ -73,15 +85,15 @@ const {
   applyReheatStateToControls,
   triggerReheat,
   triggerReheatCancel,
-  // v1.25.5 QoL follow-up (channel avatars, round 2): "Refresh avatars" UI +
-  // the real-avatar-vs-letter precedence helper.
+  // v1.25.5 QoL follow-up (channel avatars, round 2): "Refresh avatars" UI.
   REFRESH_AVATARS_ACTIVITY_ID,
   formatRefreshAvatarsSummary,
   formatRefreshAvatarsProgressText,
   applyRefreshAvatarsStateToControls,
   triggerRefreshAvatars,
   triggerRefreshAvatarsCancel,
-  hasRealChannelAvatar,
+  // C5 (v1.30.0, T12): the shared avatar-precedence render helper.
+  applySubAvatar,
   // v1.29.0 T9 (R4.1-R4.4): durable download-history section -- pure
   // formatters, createElement-only DOM builders, the terminal-transition
   // detector, and the DOM-free fetch-once/re-fetch orchestrator.
@@ -832,7 +844,10 @@ test('createSubscriptionRow: builds the new anatomy -- avatar + name + one muted
   assert.deepStrictEqual(row.children.map((el) => el.className), ['sub-row-avatar', 'sub-row-info', 'sub-row-kebab']);
 
   const avatar = row.children[0];
-  assert.strictEqual(avatar.textContent, 'M', 'the avatar shows the first letter of the name, uppercased');
+  // C5 (v1.30.0, T12): the row's avatar letter routes through the shared
+  // `deriveAvatar` seam -- assert against the real function's output rather
+  // than a hardcoded letter (AC7.5).
+  assert.strictEqual(avatar.textContent, deriveAvatar('My Channel').glyph, 'the avatar glyph matches the shared deriveAvatar contract');
 
   const texts = [...row.walk()].map((el) => el.textContent).filter(Boolean);
   assert.ok(texts.includes('My Channel'));
@@ -854,16 +869,32 @@ test('createSubscriptionRow: avatar falls back to "?" for a missing/blank channe
   assert.strictEqual(row.children[0].textContent, '?');
 });
 
-// ---- v1.25.5 QoL follow-up (channel avatars, round 2): real-avatar render -
+// ---- C5 (v1.30.0, T12): avatar render routed through the shared ----------
+// `resolveAvatarSource` seam (AC7.5) -- REPLACES the old locally-
+// reimplemented `hasRealChannelAvatar` presence check + inline
+// `name[0].toUpperCase()` fallback tested here previously.
 
-test('hasRealChannelAvatar: true for a non-blank string, false for missing/blank/non-string', () => {
-  assert.strictEqual(hasRealChannelAvatar('https://example.com/avatar.jpg'), true);
-  assert.strictEqual(hasRealChannelAvatar('  https://example.com/avatar.jpg  '), true);
-  assert.strictEqual(hasRealChannelAvatar(''), false);
-  assert.strictEqual(hasRealChannelAvatar('   '), false);
-  assert.strictEqual(hasRealChannelAvatar(undefined), false);
-  assert.strictEqual(hasRealChannelAvatar(null), false);
-  assert.strictEqual(hasRealChannelAvatar(42), false);
+test('applySubAvatar: a present, non-blank channelAvatarUrl renders an <img> (DOM-only, alt="") via the SAME resolveAvatarSource precedence pins/watch use', () => {
+  const el = new FakeElement('div');
+  applySubAvatar(fakeDoc, el, 'Some Channel', 'https://example.com/avatar.jpg');
+  assert.strictEqual(el.children.length, 1);
+  const img = el.children[0];
+  assert.strictEqual(img.tagName, 'IMG');
+  assert.strictEqual(img.alt, '');
+  assert.strictEqual(img.src, 'https://example.com/avatar.jpg');
+});
+
+test('applySubAvatar: an absent/blank channelAvatarUrl falls back to the SAME generated {glyph,color} deriveAvatar produces (not a divergent local impl)', () => {
+  const el = new FakeElement('div');
+  applySubAvatar(fakeDoc, el, 'Some Channel', '');
+  const expected = deriveAvatar('Some Channel');
+  assert.strictEqual(el.textContent, expected.glyph);
+  assert.strictEqual(el.style.backgroundColor, expected.color);
+  assert.strictEqual(el.children.length, 0, 'no <img> child when there is no real avatar');
+});
+
+test('applySubAvatar: a missing/undefined el is a safe no-op, never throws', () => {
+  assert.doesNotThrow(() => applySubAvatar(fakeDoc, null, 'Some Channel', null));
 });
 
 test('createSubscriptionRow: renders a real <img> avatar (DOM-only, alt="") inside .sub-row-avatar when channelAvatarUrl is present', () => {
@@ -884,13 +915,13 @@ test('createSubscriptionRow: renders a real <img> avatar (DOM-only, alt="") insi
   assert.strictEqual(img.src, 'https://example.com/avatar.jpg');
 });
 
-test('createSubscriptionRow: falls back to the letter avatar when channelAvatarUrl is absent/blank', () => {
+test('createSubscriptionRow: falls back to the SAME deterministic generated avatar deriveAvatar produces when channelAvatarUrl is absent/blank (AC7.5)', () => {
   const withoutField = createSubscriptionRow({ id: 'av4', name: 'No Avatar', channelUrl: 'https://www.youtube.com/@x' }, fakeDoc, {});
-  assert.strictEqual(withoutField.children[0].textContent, 'N');
+  assert.strictEqual(withoutField.children[0].textContent, deriveAvatar('No Avatar').glyph);
   assert.strictEqual(withoutField.children[0].children.length, 0, 'no <img> child when there is no real avatar');
 
   const blankField = createSubscriptionRow({ id: 'av5', name: 'Blank', channelUrl: 'https://www.youtube.com/@y', channelAvatarUrl: '   ' }, fakeDoc, {});
-  assert.strictEqual(blankField.children[0].textContent, 'B');
+  assert.strictEqual(blankField.children[0].textContent, deriveAvatar('Blank').glyph);
 });
 
 test('createSubscriptionRow: a channelAvatarUrl with surrounding whitespace is trimmed before being assigned to img.src', () => {
@@ -917,13 +948,26 @@ test('buildSettingsSheet: renders a real <img> avatar inside .sub-sheet-avatar w
   assert.strictEqual(img.src, 'https://example.com/sheet-avatar.jpg');
 });
 
-test('buildSettingsSheet: falls back to the letter avatar in .sub-sheet-avatar when channelAvatarUrl is absent', () => {
+test('buildSettingsSheet: falls back to the SAME deterministic generated avatar deriveAvatar produces in .sub-sheet-avatar when channelAvatarUrl is absent (AC7.5)', () => {
   const backdrop = buildSettingsSheet({ id: 'sheet-av2', name: 'Letter Sheet' }, fakeDoc, {});
   const sheet = backdrop.children[0];
   const header = sheet.children[0];
   const avatar = header.children[0];
-  assert.strictEqual(avatar.textContent, 'L');
+  assert.strictEqual(avatar.textContent, deriveAvatar('Letter Sheet').glyph);
   assert.strictEqual(avatar.children.length, 0);
+});
+
+test('createSubscriptionRow and buildSettingsSheet: the SAME subscription name/avatar renders IDENTICALLY in both (never a divergent implementation, AC7.5)', () => {
+  const named = { id: 'consistency-1', name: 'Consistent Creator', channelUrl: 'https://www.youtube.com/@consistent' };
+  const rowAvatar = createSubscriptionRow(named, fakeDoc, {}).children[0];
+  const sheetAvatar = buildSettingsSheet(named, fakeDoc, {}).children[0].children[0].children[0];
+  assert.strictEqual(rowAvatar.textContent, sheetAvatar.textContent);
+  assert.strictEqual(rowAvatar.style.backgroundColor, sheetAvatar.style.backgroundColor);
+
+  const withAvatar = { id: 'consistency-2', name: 'Consistent Creator', channelUrl: 'https://www.youtube.com/@consistent', channelAvatarUrl: 'https://example.com/c.jpg' };
+  const rowImg = createSubscriptionRow(withAvatar, fakeDoc, {}).children[0].children[0];
+  const sheetImg = buildSettingsSheet(withAvatar, fakeDoc, {}).children[0].children[0].children[0].children[0];
+  assert.strictEqual(rowImg.src, sheetImg.src);
 });
 
 test('createSubscriptionRow: the metadata line combines formatSubMeta with the FR-4 subscribed date', () => {

@@ -11,7 +11,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const { renderPinnedPlaylists } = require('../../public/js/common.js');
+const { renderPinnedPlaylists, deriveAvatar } = require('../../public/js/common.js');
 
 const COMMON_JS_PATH = path.join(__dirname, '..', '..', 'public', 'js', 'common.js');
 const commonJsSrc = fs.readFileSync(COMMON_JS_PATH, 'utf8');
@@ -146,7 +146,10 @@ test('renderPinnedPlaylists: renders a generated avatar glyph (no channelAvatarU
   const avatar = link.children.find((c) => c.tagName === 'SPAN');
   assert.ok(avatar, 'expected a generated avatar span');
   assert.strictEqual(avatar.className, 'pinned-avatar pinned-avatar-generated');
-  assert.strictEqual(avatar.children.find((c) => c.nodeType === 3).textContent, 'R');
+  // The glyph is the label's own first letter, uppercased -- assert against
+  // `deriveAvatar` itself (the shared source of truth) rather than a
+  // hardcoded letter.
+  assert.strictEqual(avatar.children.find((c) => c.nodeType === 3).textContent, deriveAvatar(PIN.label).glyph);
   const textNode = link.children.find((c) => c.nodeType === 3);
   assert.match(textNode.textContent, /Real Creator/);
   delete global.document;

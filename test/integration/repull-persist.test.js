@@ -22,7 +22,7 @@ const DB_FILE = path.join(DATA_DIR, 'db.json');
 const { test, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert');
 const {
-  getMediaId, loadDatabase, updateDatabase, recordRepulledItemMeta, enumerateRepullableItems,
+  getMediaId, loadDatabase, saveDatabase, updateDatabase, recordRepulledItemMeta, enumerateRepullableItems,
 } = require('../../server');
 const ytdlp = require('../../lib/ytdlp');
 
@@ -30,8 +30,11 @@ function baseSettings() {
   return { scanIntervalMinutes: 0, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 0, defaultView: '', autoplayNext: false };
 }
 
+// v1.30 A3 (in-memory DB read cache): seed via the exported `saveDatabase()`
+// (an established test primitive, see CONTRIBUTING.md) rather than a raw
+// `fs.writeFileSync`, so the in-process db cache stays coherent.
 function writeDb(db) {
-  fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2), 'utf8');
+  saveDatabase(db);
 }
 
 let downloadDir;

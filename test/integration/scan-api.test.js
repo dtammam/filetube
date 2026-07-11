@@ -26,6 +26,24 @@ const {
 let server;
 let base;
 
+// v1.30 A2: the scan is now cooperative (real `fs.promises` I/O + explicit
+// `setImmediate` batch-yields, see server.js) rather than the old
+// fully-synchronous walk. A tight `await new Promise(setImmediate)` spin
+// loop can burn through hundreds of iterations in single-digit milliseconds
+// when nothing is actually ready in the poll phase yet, so a fixed ITERATION
+// count is not a reliable proxy for "gave the scan enough real time to
+// finish" once the scan's own progress depends on genuine (and, under
+// full-suite CI/threadpool contention, variable-latency) disk I/O -- bound
+// by WALL-CLOCK time instead. Cheap when the scan finishes quickly (the loop
+// exits the moment `scanState.scanning` flips false); only matters as a
+// dead-man's-switch ceiling otherwise.
+async function waitForScanIdle(maxWaitMs = 5000) {
+  const start = Date.now();
+  while (scanState.scanning && (Date.now() - start) < maxWaitMs) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+}
+
 before(async () => {
   await new Promise((resolve) => {
     server = app.listen(0, '127.0.0.1', resolve);
@@ -57,33 +75,40 @@ beforeEach(async () => {
   const leftoverTimer = currentDeferredRescanTimer();
   if (leftoverTimer) {
     leftoverTimer._onTimeout();
-    let waited = 0;
-    while (scanState.scanning && waited < 200) {
-      waited++;
-      await new Promise((resolve) => setImmediate(resolve));
-    }
+    await waitForScanIdle();
   }
 });
 
-test('POST /api/scan returns 200 {success:true} when idle', async () => {
+// v1.30 A2 (AC2.1, CONTRACT CHANGE): POST /api/scan no longer awaits the scan
+// (it can no longer meaningfully return 200-after-completion once the scan
+// is cooperative/long-running) -- it fires the scan in the background and
+// acks immediately with 202. Both the idle and already-in-progress cases now
+// share the same 202 status; only `alreadyInProgress` distinguishes them
+// (the old 409-when-busy branch is gone).
+test('POST /api/scan returns 202 {scanning:true, alreadyInProgress:false} when idle, and does not wait for the scan to finish', async () => {
   assert.equal(scanState.scanning, false, 'precondition: idle');
   const res = await fetch(`${base}/api/scan`, { method: 'POST' });
-  assert.equal(res.status, 200);
-  assert.deepEqual(await res.json(), { success: true });
+  assert.equal(res.status, 202);
+  assert.deepEqual(await res.json(), { scanning: true, alreadyInProgress: false });
+  // AC2.1: the ack must have arrived while the fire-and-forget scan it just
+  // kicked off is still (or already) running -- proven here by the fact the
+  // request resolved at all without this test itself awaiting scanDirectories.
+  // Let the background scan actually settle before the next test/teardown.
+  await waitForScanIdle();
 });
 
-test('POST /api/scan returns 409 while a scan is already in progress, and flags a coalesced follow-up', async () => {
+test('POST /api/scan returns 202 {scanning:true, alreadyInProgress:true} while a scan is already in progress, and flags a coalesced follow-up', async () => {
   // Force the concurrent state directly on the shared scanState object
   // (same module instance the running app uses) rather than racing a real
   // scan, per the integration-test pattern for exercising route state.
   scanState.scanning = true;
   try {
     const res = await fetch(`${base}/api/scan`, { method: 'POST' });
-    assert.equal(res.status, 409);
-    assert.deepEqual(await res.json(), { error: 'scan already in progress' });
+    assert.equal(res.status, 202);
+    assert.deepEqual(await res.json(), { scanning: true, alreadyInProgress: true });
     // C: a manual "Scan now" fired while a scan is in progress must not be
     // silently dropped -- it flags a coalesced follow-up pass instead.
-    assert.equal(scanState.rescanRequested, true, 'the 409 branch must flag a follow-up rescan');
+    assert.equal(scanState.rescanRequested, true, 'the alreadyInProgress branch must flag a follow-up rescan');
   } finally {
     scanState.scanning = false;
     scanState.rescanRequested = false;
@@ -178,23 +203,40 @@ test('FR3.4: sustained scan requests during an in-flight scan do not chain unbou
 
   const scanPromise = scanDirectories();
 
-  const DEMAND_BUDGET = 20; // generous; a livelocked drain would consume every one of these
+  // v1.30 A2: the walk is now cooperative (real `fs.promises` I/O queued on
+  // libuv's threadpool) rather than the old fully-synchronous walk, so the
+  // background scan's own progress is now paced by genuine (and, under
+  // full-suite CI/CPU/threadpool contention, VARIABLE-latency) disk I/O --
+  // whereas this demand loop's own `setImmediate` yields are purely
+  // in-process and fire at a roughly constant rate regardless of threadpool
+  // load. A fixed ITERATION-count budget can't reliably bound that race
+  // (under heavy contention the demand loop can burn through hundreds of
+  // fast in-process turns before the scan's threadpool-bound callback ever
+  // fires), so this asserts a generous WALL-CLOCK window instead -- still
+  // reliably catches a genuine livelock (which would never let
+  // `scanState.scanning` go false no matter how much real time passes), but
+  // isn't sensitive to the relative throughput of two different clocks.
+  const DEMAND_WINDOW_MS = 5000; // generous; a livelocked drain would consume every one of these
+  const demandStart = Date.now();
   let attempts = 0;
-  while (scanState.scanning && attempts < DEMAND_BUDGET) {
+  while (scanState.scanning && (Date.now() - demandStart) < DEMAND_WINDOW_MS) {
     attempts++;
     fs.writeFileSync(path.join(dir, `demand${attempts}.mp4`), String(attempts));
     // Simulates another /api/scan (or /api/config-triggered) request landing
-    // while the original scan is still in flight.
+    // while the original scan is still in flight. `setImmediate` mirrors a
+    // real concurrent request's own natural yield back to the event loop.
     await scanDirectories();
+    await new Promise(setImmediate);
   }
+  const demandElapsedMs = Date.now() - demandStart;
 
   await scanPromise;
 
   assert.equal(scanState.scanning, false, 'the drain must settle back to idle');
-  assert.ok(attempts < DEMAND_BUDGET,
-    `the in-flight drain must settle well before a ${DEMAND_BUDGET}-request continuous-demand budget runs out ` +
-    `(only consumed ${attempts}) -- an unbounded drain would keep chaining for as long as demand keeps arriving ` +
-    'and would exhaust the whole budget without ever letting scanState.scanning go false');
+  assert.ok(demandElapsedMs < DEMAND_WINDOW_MS,
+    `the in-flight drain must settle well before a ${DEMAND_WINDOW_MS}ms continuous-demand window runs out ` +
+    `(consumed ${demandElapsedMs}ms across ${attempts} attempts) -- an unbounded drain would keep chaining for ` +
+    'as long as demand keeps arriving and would exhaust the whole window without ever letting scanState.scanning go false');
 });
 
 // ---- tech-debt #3: deferred-rescan tail for a budget-exhausted drain ------
@@ -221,17 +263,29 @@ async function exhaustDrainWithPendingRescan(folder, triggerFolder) {
   await scanDirectories(); // sets rescanRequested = true (pass 1 still in flight)
   assert.equal(scanState.rescanRequested, true, 'pass 1 in flight must flag the one allowed follow-up');
 
-  const DEMAND_BUDGET = 60; // generous; the two-pass drain settles well before this
+  // v1.30 A2: see the FR3.4 test's own comment above for why this uses a
+  // generous WALL-CLOCK window rather than a fixed iteration count -- the
+  // two-pass drain's own progress is now paced by genuine (variable-latency
+  // under CI/threadpool contention) `fs.promises` I/O, which a same-process
+  // iteration budget can't reliably race against.
+  const DEMAND_WINDOW_MS = 8000; // generous; the two-pass drain settles well before this
+  const demandStart = Date.now();
   let attempts = 0;
-  while (scanState.scanning && attempts < DEMAND_BUDGET) {
+  while (scanState.scanning && (Date.now() - demandStart) < DEMAND_WINDOW_MS) {
     attempts++;
+    // See the FR3.4 test above for why a genuine macrotask yield
+    // (`setImmediate`) is required here post-v1.30 A2, not just the
+    // microtask-only no-op resolution of `scanDirectories()` itself.
     await scanDirectories();
+    await new Promise(setImmediate);
   }
+  const demandElapsedMs = Date.now() - demandStart;
   await scanPromise;
 
   assert.equal(scanState.scanning, false, 'the drain must settle back to idle');
-  assert.ok(attempts < DEMAND_BUDGET,
-    `the drain must settle well before the ${DEMAND_BUDGET}-attempt demand budget runs out (only consumed ${attempts})`);
+  assert.ok(demandElapsedMs < DEMAND_WINDOW_MS,
+    `the drain must settle well before the ${DEMAND_WINDOW_MS}ms demand window runs out ` +
+    `(consumed ${demandElapsedMs}ms across ${attempts} attempts)`);
   assert.equal(scanState.rescanRequested, true,
     'the budget-exhausted drain must leave the pending rescan flagged, not silently clear it');
 }
@@ -291,11 +345,7 @@ test('deferred rescan (tech-debt #3): a budget-exhausted drain schedules exactly
     // The fired callback's scanDirectories() call runs asynchronously (fire-
     // and-forget, mirroring armScanTimer's periodic callback) -- poll for it
     // to settle without a fixed real-time sleep.
-    let waited = 0;
-    while (scanState.scanning && waited < 200) {
-      waited++;
-      await new Promise((resolve) => setImmediate(resolve));
-    }
+    await waitForScanIdle();
     assert.equal(scanState.scanning, false, 'the deferred follow-up scan must complete');
 
     const finalDb = loadDatabase();
@@ -324,24 +374,31 @@ test('armScanTimer arms a 30-minute interval by default (old/fresh db.json with 
 });
 
 test('armScanTimer arms no timer when scanIntervalMinutes is Off (0)', () => {
-  fs.writeFileSync(DB_FILE, JSON.stringify({
+  // v1.30 A3 (in-memory DB read cache): seed via `saveDatabase()` (an
+  // established test primitive, see CONTRIBUTING.md) rather than a raw
+  // `fs.writeFileSync`, so the in-process db cache stays coherent.
+  saveDatabase({
     folders: [],
     folderSettings: {},
     progress: {},
     metadata: {},
     settings: { scanIntervalMinutes: 0, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30 },
-  }));
+  });
   const timer = armScanTimer();
   assert.strictEqual(timer, null, 'Off should arm no timer at all');
 });
 
-test('GET /api/scan-status response shape (FR-3: transcodeNames/transcodeOverflow added)', async () => {
+// v1.30 A2 (AC2.2): processed/total/phase added for cooperative-scan progress.
+test('GET /api/scan-status response shape (FR-3: transcodeNames/transcodeOverflow added; A2: processed/total/phase added)', async () => {
   const res = await fetch(`${base}/api/scan-status`);
   assert.equal(res.status, 200);
   const json = await res.json();
   assert.deepEqual(
     Object.keys(json).sort(),
-    ['fileCount', 'folderCount', 'lastScan', 'scanning', 'transcodeNames', 'transcodeOverflow', 'transcoding'].sort()
+    [
+      'fileCount', 'folderCount', 'lastScan', 'phase', 'processed', 'scanning',
+      'total', 'transcodeNames', 'transcodeOverflow', 'transcoding',
+    ].sort()
   );
 });
 

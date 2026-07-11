@@ -20,7 +20,7 @@ const DB_FILE = path.join(process.env.DATA_DIR, 'db.json');
 
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
-const { app, audioPath, TRANSCODE_DIR } = require('../../server');
+const { app, audioPath, TRANSCODE_DIR, saveDatabase } = require('../../server');
 
 let server;
 let base;
@@ -41,8 +41,11 @@ after(async () => {
   fs.rmSync(originalDir, { recursive: true, force: true });
 });
 
+// v1.30 A3 (in-memory DB read cache): seed via the exported `saveDatabase()`
+// (an established test primitive, see CONTRIBUTING.md) rather than a raw
+// `fs.writeFileSync`, so the in-process db cache stays coherent.
 function writeDb(db) {
-  fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2), 'utf8');
+  saveDatabase(db);
 }
 
 function readDb() {

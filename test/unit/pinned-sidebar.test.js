@@ -36,7 +36,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
 
-const { renderPinnedSidebar, derivePinnedPlaylistEntries } = require('../../public/js/common.js');
+const { renderPinnedSidebar, derivePinnedPlaylistEntries, deriveAvatar } = require('../../public/js/common.js');
 
 // ---- Minimal fake DOM (mirrors the FakeElement/innerHTML-throws pattern
 // established by test/unit/subscribe-button.test.js and
@@ -221,7 +221,10 @@ test('renderPinnedSidebar: renders a pin entry with a generated avatar glyph and
   assert.strictEqual(avatar.className, 'pinned-avatar pinned-avatar-generated');
   assert.ok(avatar.style.backgroundColor, 'expected a deterministic background color to be set');
   const glyphNode = avatar.children.find((c) => c.nodeType === 3);
-  assert.strictEqual(glyphNode.textContent, 'R', 'glyph is the uppercased first letter of the label');
+  // The glyph is the label's own first letter, uppercased -- assert against
+  // `deriveAvatar` itself (the shared source of truth) rather than a
+  // hardcoded letter.
+  assert.strictEqual(glyphNode.textContent, deriveAvatar(PIN.label).glyph, 'glyph matches the shared deriveAvatar contract');
   const textNode = link.children.find((c) => c.nodeType === 3);
   assert.ok(textNode, 'expected a createTextNode-built label, not a textContent assignment (which would also wipe the avatar)');
   assert.match(textNode.textContent, /Real Creator/);

@@ -51,6 +51,11 @@ const stats = require('./lib/stats');
 // shared by the scan's additive `hasSubtitles` detection below and
 // `GET /api/subtitles/:id` -- see lib/subtitles.js's header comment.
 const subtitles = require('./lib/subtitles');
+// v1.30 A5 (T6): pure sort comparators + format/search predicates +
+// pagination-parameter normalizers shared with the client's own
+// sortItems/filterByMediaType -- see lib/videoQuery.js's header comment and
+// `GET /api/videos` below for the paginated, server-authoritative pipeline.
+const videoQuery = require('./lib/videoQuery');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -129,14 +134,27 @@ function withDefaultSettings(settings) {
   return { ...DEFAULT_SETTINGS, ...(settings || {}) };
 }
 
+// Module-level `loadDatabase` call counter (v1.30 A3, AC3.3 instrumentation):
+// every `loadDatabase()` call anywhere in this file increments it, including
+// the one-time populate inside `getCachedDatabase()` (below the DB layer) and
+// the fresh-read-inside-the-lock in `updateDatabase`. See
+// `__getLoadDatabaseCallCount()` (test accessor, mirrors `currentScanTimer`'s
+// own test-observability style, exported near the bottom of this file) for
+// how tests read it back out.
+let loadDatabaseCallCount = 0;
+
 // Ensure database file exists
 function loadDatabase() {
+  loadDatabaseCallCount++;
   if (!fs.existsSync(DB_FILE)) {
     const initialDb = {
       folders: [],
       folderSettings: {},
       progress: {},
       metadata: {},
+      // v1.30 C2: liked-item membership (array of media ids) -- the SINGLE
+      // source of truth for "liked" state (no separate boolean flag anywhere).
+      liked: [],
       settings: withDefaultSettings()
     };
     try {
@@ -161,18 +179,34 @@ function loadDatabase() {
     if (!db.folderSettings || typeof db.folderSettings !== 'object') db.folderSettings = {}; // backfill for older databases
     if (!db.progress || typeof db.progress !== 'object') db.progress = {};
     if (!db.metadata || typeof db.metadata !== 'object') db.metadata = {};
+    // v1.30 C2: backfill `liked` (array of media ids) for a legacy/partial
+    // db.json the same way every other top-level key above is backfilled.
+    if (!Array.isArray(db.liked)) db.liked = [];
     db.settings = withDefaultSettings(db.settings); // backfill for older databases
     return db;
   } catch (err) {
     console.error('Error reading db.json, resetting database:', err);
     // Every code path out of loadDatabase must hand back a settings-bearing DB.
-    return { folders: [], folderSettings: {}, progress: {}, metadata: {}, settings: withDefaultSettings() };
+    return { folders: [], folderSettings: {}, progress: {}, metadata: {}, liked: [], settings: withDefaultSettings() };
   }
 }
 
 // Monotonic counter (per-process) that, combined with the pid, guarantees a
 // unique same-directory temp filename per save -- see saveDatabase below.
 let dbTmpSeq = 0;
+
+// Module-level `saveDatabase` call counter (v1.30 A4, AC4.1/AC4.2
+// instrumentation): every `saveDatabase()` call anywhere in this file
+// increments it (mirrors `loadDatabaseCallCount`'s own placement/pattern,
+// above `loadDatabase`), regardless of whether the write itself ultimately
+// succeeds or throws -- this is a CALL count (attempts), not a success
+// count, exactly like its `loadDatabase` counterpart. AC4.1 asserts this
+// grows far slower than the progress-ping count during a batched burst;
+// AC4.2 asserts it grows exactly 1:1 with each real-mutation invocation
+// (DELETE /api/videos/:id, POST /api/config, POST /api/settings, the scan's
+// final merge -- every one of which still calls `updateDatabase` directly,
+// unbatched). See `__getSaveDatabaseCallCount()` below.
+let saveDatabaseCallCount = 0;
 
 // Atomic on-disk save: write-temp-then-rename, mirroring the existing
 // ".tmp.mp4" atomic-finalize pattern already used for transcodes. The temp
@@ -199,7 +233,21 @@ let dbTmpSeq = 0;
 // transcodes) reclaims those on the next boot. Stays SYNCHRONOUS on purpose:
 // the mutate-then-save critical section inside updateDatabase (below) must
 // complete in a single tick.
+//
+// v1.30 A3 (in-memory DB read cache): on a SUCCESSFUL save, `db` (the
+// just-written object) BECOMES the read cache -- set here, immediately after
+// the atomic rename, with no `await` in between (this whole function is
+// synchronous). `saveDatabase` is the SOLE writer of `dbCache`; every real
+// caller today reaches it exclusively through `updateDatabase`'s
+// fresh-read-inside-the-lock (see that function's own comment), so this is
+// still "one write's critical section, one cache-set" -- just located here
+// instead of duplicated at every call site. See the coherency argument above
+// `dbCache`'s own declaration for why this can never produce a torn/stale
+// read. On a FAILED save (the catch branch below, which rethrows) the cache
+// is deliberately left untouched -- an unpersisted `db` must never become
+// the cache.
 function saveDatabase(db) {
+  saveDatabaseCallCount++;
   const tmp = `${DB_FILE}.${process.pid}.${dbTmpSeq++}.tmp`;
   try {
     const json = JSON.stringify(db, null, 2);
@@ -211,6 +259,8 @@ function saveDatabase(db) {
       fs.closeSync(fd);
     }
     fs.renameSync(tmp, DB_FILE); // atomic within DATA_DIR's filesystem
+    dbCache = db;
+    dbCacheValid = true;
   } catch (err) {
     console.error('Error saving db.json:', err);
     try {
@@ -221,6 +271,13 @@ function saveDatabase(db) {
     throw err; // PROPAGATE: caller (updateDatabase) must reject, never a false success
   }
 }
+
+// v1.30 A3: the in-memory DB read cache's own state -- declared here (right
+// before its first writer, `saveDatabase`, above) rather than down by
+// `getCachedDatabase()` itself; see that function (below `updateDatabase`)
+// for the full coherency argument these two variables underpin.
+let dbCache = null;
+let dbCacheValid = false;
 
 // ---- Serialized read-modify-write persistence ----------------------------
 // Every db.json writer routes through this single in-process async-mutex
@@ -249,11 +306,176 @@ function updateDatabase(mutatorFn) {
   const run = dbWriteChain.then(() => {
     const db = loadDatabase();             // fresh read INSIDE the lock
     const result = mutatorFn(db);          // synchronous mutate
-    if (result !== false) saveDatabase(db); // atomic write-temp-then-rename
+    // A skipped save (result === false, e.g. a no-op/guard branch) leaves
+    // the existing cache untouched: `saveDatabase` (and its cache-set, see
+    // its own comment above) is simply never called on this branch.
+    if (result !== false) saveDatabase(db); // atomic write-temp-then-rename + cache-set
     return result;
   });
   dbWriteChain = run.catch(() => {}); // keep the chain alive past a failure
   return run;
+}
+
+// ---- In-memory DB read cache (v1.30 A3, AC3.3) ----------------------------
+// A read-through cache in front of `updateDatabase`'s mutex, so hot GET
+// readers stop paying a `readFileSync` + `JSON.parse` of the whole db.json
+// per request. `saveDatabase` (above) is the ONLY writer of `dbCache`;
+// readers never mutate it.
+//
+// Coherency argument (why this can never serve a torn/stale read):
+//   1. Every writer is serialized through the single `updateDatabase` promise
+//      chain (`dbWriteChain`) -- each write's load-mutate-save-cache-set runs
+//      as one synchronous tick, never interleaved with another writer's tick.
+//   2. Node is single-threaded: a synchronous reader (every route below runs
+//      its handler synchronously up to `res.json`/`res.send`) always
+//      completes entirely BEFORE or entirely AFTER any given write's tick --
+//      it can never observe a write mid-flight.
+//   3. This process is the ONLY writer of `db.json` (single-node,
+//      single-process -- see ARCHITECTURE.md), so nothing outside this
+//      process can make the cache silently drift from disk between writes.
+//      (Test suites that seed `db.json` directly should go through the
+//      exported `saveDatabase()` -- already an established test primitive,
+//      see `CONTRIBUTING.md` -- rather than a raw `fs.writeFileSync`, so
+//      this invariant holds in-process during tests too.)
+//   4. The cached object is REPLACED BY REFERENCE on every successful write,
+//      never mutated in place by a reader or by a mutator (mutators operate
+//      on the freshly-loaded disk copy from step 1 above, which THEN becomes
+//      the cache) -- so a reader holding a reference to a prior snapshot
+//      stays internally consistent for the lifetime of its own request, even
+//      if a write commits and replaces `dbCache` with a new object the
+//      instant after the reader captured its local reference.
+// Together, these mean every read via `getCachedDatabase()` is either the
+// current on-disk state or a state that WAS the current on-disk state an
+// instant ago -- exactly what `loadDatabase()` itself would have returned had
+// it been called at that same point in the event loop, just without paying
+// the disk I/O + JSON.parse cost on every request.
+
+// Test-observability accessor (mirrors `currentScanTimer`'s own pattern):
+// exposes the current `loadDatabase` call count without reaching into module
+// internals, so AC3.3's "N sequential requests -> O(1) loads, not N" claim is
+// directly assertable rather than inferred from timing/behavior alone.
+function __getLoadDatabaseCallCount() {
+  return loadDatabaseCallCount;
+}
+
+// Test-observability accessor for the `saveDatabase` write-count instrumentation
+// declared above `dbTmpSeq` -- mirrors `__getLoadDatabaseCallCount()` immediately
+// above. See its own comment for what it counts and why (AC4.1/AC4.2).
+function __getSaveDatabaseCallCount() {
+  return saveDatabaseCallCount;
+}
+
+// If the cache is valid, hand back the cached parsed object (no disk I/O);
+// otherwise populate it via ONE `loadDatabase()` call, mark it valid, and
+// return it. Every hot GET reader below calls this instead of `loadDatabase()`
+// directly -- see the coherency argument above `dbCache` for why this is
+// always safe.
+function getCachedDatabase() {
+  if (!dbCacheValid) {
+    dbCache = loadDatabase();
+    dbCacheValid = true;
+  }
+  return dbCache;
+}
+
+// ---- Progress-write coalescer (v1.30 A4, AC4.1-AC4.3) ----------------------
+// `POST /api/progress` pings arrive far more often (roughly every 4s while a
+// video plays) than any other mutation, and a lost/stale WATCH POSITION is a
+// much cheaper thing to risk than a lost/stale metadata/folder/settings
+// write -- so this is the ONLY write path allowed to relax the
+// "atomic write+fsync every call" contract every other mutator keeps by
+// calling `updateDatabase` directly. `pendingProgress` is a staging area: a
+// ping is recorded here and the request returns immediately; a single
+// debounce timer covers the whole batch window, so N pings (against the
+// same or different ids) inside one window collapse into ONE whole-file
+// atomic write (AC4.1). Nothing else ever routes through this Map --
+// `DELETE /api/videos/:id`, `POST /api/config`, `POST /api/settings`, and
+// the scan's final merge all still call `updateDatabase` directly, exactly
+// once per invocation (AC4.2); see each of their own call sites, unchanged
+// by this section.
+const pendingProgress = new Map();
+
+// Batch window in ms -- the production default (5000) matches the design's
+// tunable bound (a realistic ~4s ping cadence needs a >=5s window for a
+// >=5:1 write reduction). Overridable via `PROGRESS_FLUSH_MS` (mirrors
+// `TRANSCODE_CACHE_MAX_BYTES`/`TRANSCODE_CRF`'s own env-tunable pattern
+// above) purely so tests can shrink the window and exercise the REAL timer
+// on a fast, deterministic cadence instead of sleeping for the production
+// default.
+function parseProgressFlushMs(raw) {
+  if (raw === undefined || raw === null || raw === '') return 5000;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n <= 0) return 5000;
+  return n;
+}
+const PROGRESS_FLUSH_MS = parseProgressFlushMs(process.env.PROGRESS_FLUSH_MS);
+
+// The single in-flight debounce timer (or null when nothing is armed).
+// `.unref()`'d exactly like `scanTimer`/`deferredRescanTimer` elsewhere in
+// this file, so an armed timer never keeps the process -- or a test runner
+// that never triggers a flush -- alive.
+let progressFlushTimer = null;
+
+// Test-observability accessor -- mirrors `currentScanTimer()`'s own pattern,
+// so a test can assert a timer was (or wasn't) armed by a given ping.
+function currentProgressFlushTimer() {
+  return progressFlushTimer;
+}
+
+// Snapshot-and-clear every queued ping, then persist the whole batch as ONE
+// atomic `updateDatabase` write -- covers the full window in a single
+// write+fsync no matter how many ids/pings it holds. The
+// `if (db.metadata[id])` guard drops an id that was deleted (via
+// `DELETE /api/videos/:id`) between its ping and this flush, so a flush can
+// never resurrect a metadata entry the operator already removed. A no-op
+// (nothing pending -- e.g. the shutdown handler firing with an empty batch)
+// skips `updateDatabase` entirely, never an empty write. Shared by the
+// debounce timer (`armProgressFlushTimerIfNeeded`, below) AND the shutdown
+// handlers (registered under `require.main === module`, near
+// `app.listen`), and directly exported so tests can trigger a flush
+// deterministically instead of waiting out `PROGRESS_FLUSH_MS`.
+function flushPendingProgress() {
+  if (progressFlushTimer) {
+    clearTimeout(progressFlushTimer);
+    progressFlushTimer = null;
+  }
+  if (pendingProgress.size === 0) return Promise.resolve(false);
+  const snapshot = new Map(pendingProgress);
+  pendingProgress.clear();
+  return updateDatabase(db => {
+    for (const [id, value] of snapshot) {
+      if (db.metadata[id]) db.progress[id] = value;
+    }
+    return true;
+  }).catch(err => {
+    // A failed flush must never crash the process or wedge a future flush --
+    // `updateDatabase`'s own chain already survives a rejected mutator/save
+    // (see its comment above); this just logs so the failure stays visible.
+    // The lost pings are already cleared from `pendingProgress` above, which
+    // is the same bounded "at most one window" loss AC4.3 already accepts
+    // for a hard crash -- a persistence failure here is not a WORSE outcome.
+    console.error('Error flushing batched watch progress:', err);
+  });
+}
+
+// Arms the single debounce timer if one isn't already running -- a second
+// (or third, ...) ping inside the same window is just another `Map.set`
+// against the already-armed timer, never a second timer.
+function armProgressFlushTimerIfNeeded() {
+  if (progressFlushTimer) return;
+  progressFlushTimer = setTimeout(flushPendingProgress, PROGRESS_FLUSH_MS);
+  progressFlushTimer.unref();
+}
+
+// Read-your-writes overlay (keeps A3's "cache is never mutated in place"
+// invariant intact): a just-posted, not-yet-flushed position lives ONLY in
+// `pendingProgress` until the next flush commits it into `db.progress` -- so
+// every progress READER checks the overlay first, making a client's own
+// just-saved position visible immediately without ever writing into the
+// shared `getCachedDatabase()` object. Falls through to the cache's
+// (as-of-last-flush) value when nothing is pending for `id`.
+function effectiveProgress(id) {
+  return pendingProgress.get(id) ?? getCachedDatabase().progress[id];
 }
 
 // Media extensions
@@ -527,6 +749,12 @@ function selectAgedOut(files, maxAgeMs, now, protectedPaths) {
 // test/unit/transcode-cache.test.js (which never invokes the age sweep)
 // keeps passing unmodified. Returns the count removed.
 function sweepAgedTranscodes(now) {
+  // v1.30 A3: intentionally left on `loadDatabase()`, not switched to the
+  // cache -- this is a transcode/audio-extract job-completion (or startup)
+  // callback, not a request/serve-path read, and it iterates ALL of
+  // `db.metadata` rather than a single lookup, so it doesn't fit either of
+  // T4's explicit "beyond the 10 routes" examples (transcode-cache-cap reads,
+  // srcMeta lookups). Coherency-safe either way; kept as-is (minimal diff).
   const db = loadDatabase();
   const cacheMaxAgeDays = db.settings && db.settings.cacheMaxAgeDays;
   const maxAgeMs = cacheMaxAgeDays ? cacheMaxAgeDays * 24 * 60 * 60 * 1000 : 0;
@@ -851,7 +1079,8 @@ function processTranscodeQueue() {
   setTranscodeStatus(id, 'processing');
   transcodeProgress[id] = 0;
   // Total duration (from the scan's ffprobe) lets us turn FFmpeg's time= into a percentage.
-  const srcMeta = loadDatabase().metadata[id];
+  // v1.30 A3: read-only lookup on the transcode hot path -- safe on the cache.
+  const srcMeta = getCachedDatabase().metadata[id];
   const totalDuration = (srcMeta && srcMeta.duration) || 0;
   console.log(`Transcoding to MP4: ${srcPath}`);
 
@@ -917,7 +1146,8 @@ function processTranscodeQueue() {
         // folded into evictTranscodeCache — see its comment above).
         try {
           sweepAgedTranscodes(Date.now());
-          evictTranscodeCache(effectiveCacheCap(loadDatabase().settings), outPath);
+          // v1.30 A3: transcode-cache-cap read -- safe on the cache.
+          evictTranscodeCache(effectiveCacheCap(getCachedDatabase().settings), outPath);
         } catch (e) { console.error('Transcode cache eviction failed:', e.message); }
       } catch (e) {
         console.error(`Failed to finalize transcode for ${srcPath}:`, e.message);
@@ -1031,7 +1261,8 @@ function processAudioExtractQueue() {
   const tmpPath = outPath + '.tmp.m4a';
   setAudioStatus(id, 'processing');
   audioExtractProgress[id] = 0;
-  const srcMeta = loadDatabase().metadata[id];
+  // v1.30 A3: read-only lookup on the transcode/audio-extract hot path -- safe on the cache.
+  const srcMeta = getCachedDatabase().metadata[id];
   const totalDuration = (srcMeta && srcMeta.duration) || 0;
   console.log(`Extracting background-audio sidecar: ${srcPath}`);
 
@@ -1083,7 +1314,8 @@ function processAudioExtractQueue() {
         recordServed(id);
         try {
           sweepAgedTranscodes(Date.now());
-          evictTranscodeCache(effectiveCacheCap(loadDatabase().settings), outPath);
+          // v1.30 A3: transcode-cache-cap read -- safe on the cache.
+          evictTranscodeCache(effectiveCacheCap(getCachedDatabase().settings), outPath);
         } catch (e) { console.error('Transcode cache eviction failed:', e.message); }
       } catch (e) {
         console.error(`Failed to finalize audio extract for ${srcPath}:`, e.message);
@@ -1609,8 +1841,17 @@ async function restoreMissingThumbnail(existing, id, filePath) {
 // removes, later is picked up (or cleared) on the very next scan, not just
 // once. Mutates `existing.hasSubtitles` in place and returns `true` iff the
 // value actually changed (so callers know whether to set `dbChanged`).
-function applyHasSubtitlesDetection(existing, filePath) {
-  const hasSubtitles = !!subtitles.findSubtitleSidecar(filePath);
+// `dirCache` (v1.30, A1 / AC1.3): an OPTIONAL per-scan `Map<dir, string[]>`
+// (see `runScanDirectories`) forwarded straight into `findSubtitleSidecar`
+// -- memoizes each directory's listing across every file scanned from it
+// THIS PASS, closing the O(N^2) `readdirSync` storm at Dean's ~1300-item
+// scale. It is discarded at the end of the scan pass (see call site), so a
+// sidecar dropped/removed between scans is still picked up on the very next
+// one -- this does NOT change the "recomputed every scan" contract
+// described above, only how many times the directory is actually listed on
+// disk within a single pass.
+function applyHasSubtitlesDetection(existing, filePath, dirCache) {
+  const hasSubtitles = !!subtitles.findSubtitleSidecar(filePath, undefined, dirCache);
   if (existing.hasSubtitles === hasSubtitles) return false;
   existing.hasSubtitles = hasSubtitles;
   return true;
@@ -1620,7 +1861,41 @@ function applyHasSubtitlesDetection(existing, filePath) {
 // `rescanRequested` is an internal bookkeeping flag (never serialized by
 // /api/scan-status) for the coalesced-follow-up mechanism in
 // `scanDirectories`, below.
-let scanState = { scanning: false, lastScan: null, rescanRequested: false };
+// v1.30 A2 (AC2.2): `processed`/`total`/`phase` added for the cooperative
+// scan's progress reporting -- see `runScanDirectories` for how they're
+// driven. Guaranteed monotonic (non-regressing) WITHIN one pass; a fresh
+// pass (incl. a coalesced follow-up) legitimately resets them to 0 at its
+// own start, exactly like `lastScan` only reflects the most recently
+// COMPLETED pass. `phase` is one of 'idle' | 'walking' | 'syncing'.
+let scanState = { scanning: false, lastScan: null, rescanRequested: false, processed: 0, total: 0, phase: 'idle' };
+
+// v1.30 A2 (AC1.1): cooperative-scan batch size. Both the directory walk
+// (`scanDirRecursive`) and the metadata-merge loop (`runScanDirectories`)
+// share one `{ count }` counter object (see `maybeYieldScan`) and yield to
+// the event loop (`await new Promise(setImmediate)`) every
+// `SCAN_YIELD_BATCH` entries processed, so no single synchronous stretch of
+// a large scan (even one dominated by cheap, no-I/O reuse fast-paths for
+// thousands of UNCHANGED items) can block concurrent requests for longer
+// than the design's ~50ms heartbeat bound. `setImmediate` (a real macrotask)
+// is used deliberately over a plain `await Promise.resolve()` -- the latter
+// is a microtask and would never actually cede control to the event loop's
+// poll phase (where incoming HTTP connections/reads are serviced), even
+// across thousands of iterations (Node drains the whole microtask queue
+// before advancing).
+const SCAN_YIELD_BATCH = 64;
+
+// v1.30 A2 (AC1.1): shared cooperative-yield helper -- see `SCAN_YIELD_BATCH`
+// above. `yieldState` is a plain `{ count: number }` object threaded through
+// both the recursive walk and the metadata-merge loop for ONE scan pass so
+// the 64-entry budget is shared across the whole pass, not reset per
+// directory/phase (which could otherwise let many small directories each
+// stay under budget while the pass as a whole never yields).
+async function maybeYieldScan(yieldState) {
+  yieldState.count++;
+  if (yieldState.count % SCAN_YIELD_BATCH === 0) {
+    await new Promise(setImmediate);
+  }
+}
 
 // FR3.4: hard cap on coalesced follow-up passes per `scanDirectories()` call.
 // `runScanDirectories` yields at every awaited `extractMetadataAndThumbnail`
@@ -1699,6 +1974,11 @@ async function scanDirectories() {
     const stillPending = scanState.rescanRequested;
     scanState.scanning = false;
     scanState.lastScan = new Date().toISOString();
+    // v1.30 A2 (AC2.2): terminal state for this call -- `processed`/`total`
+    // are left at whatever the last pass reached (a normal completion has
+    // processed === total; an exception mid-pass leaves a lower snapshot,
+    // which is still an accurate "how far it got" rather than being reset).
+    scanState.phase = 'idle';
     if (stillPending) scheduleDeferredRescan();
   }
 }
@@ -1734,6 +2014,13 @@ function normalizeScanRoot(p) {
 
 // Scan directories and sync with database
 async function runScanDirectories() {
+  // v1.30 A3: intentionally left on `loadDatabase()`, not switched to the
+  // cache -- this is the scan's own Phase-1 snapshot (background job, not a
+  // request/serve-path read; runs once per scan pass, not per request). The
+  // scan's authoritative write-back already goes through `updateDatabase`'s
+  // own fresh-read-inside-the-lock (below), independent of this snapshot, so
+  // leaving this on a genuinely fresh disk read keeps the T1/T2 scan-cache
+  // interaction boundary unchanged from this task.
   const db = loadDatabase();
   // Merge in the yt-dlp module's own scan root (C3+C7 + D1 reframe + E1 fix,
   // T4 fix rounds #2/#3): `extraScanRoots(ytdlpConfig)` returns
@@ -1819,14 +2106,35 @@ async function runScanDirectories() {
   // any-depth guard below.
   const unreadablePaths = new Set();
 
+  // A1 (v1.30, AC1.3): ONE per-scan subtitle-sidecar directory-listing
+  // cache, shared across every file processed by THIS scan pass -- see
+  // `applyHasSubtitlesDetection`'s doc comment. Deliberately created fresh
+  // per call (never module-level/persistent) so a sidecar dropped or
+  // removed on disk between scans is still detected on the very next scan;
+  // it exists only to collapse repeated `readdirSync`s of the SAME
+  // directory within a single pass, not across passes.
+  const perScanReaddirCache = new Map();
+
+  // v1.30 A2 (AC1.1/AC1.2): one shared batch-yield counter for this whole
+  // pass -- see `maybeYieldScan`/`SCAN_YIELD_BATCH` above. `scanState.phase`
+  // tracks which cooperative stage this pass is in; `processed`/`total`
+  // reset here (start of a fresh pass) then only ever grow until the pass's
+  // own finally-block hand-off in `scanDirectories` (AC2.2).
+  const yieldState = { count: 0 };
+  scanState.phase = 'walking';
+  scanState.processed = 0;
+  scanState.total = 0;
+
   for (const folder of currentFolders) {
     if (!fs.existsSync(folder)) {
       console.warn(`Configured folder does not exist: ${folder}`);
       missingRoots.add(folder);
       continue;
     }
-    scanDirRecursive(folder, folder, scannedFiles, unreadablePaths);
+    await scanDirRecursive(folder, folder, scannedFiles, unreadablePaths, yieldState);
   }
+
+  scanState.phase = 'syncing';
 
   // Update db.metadata
   const newMetadata = {};
@@ -1893,7 +2201,7 @@ async function runScanDirectories() {
         existing.releaseDate = deriveReleaseDate(null, info.mtimeMs);
         dbChanged = true;
       }
-      if (applyHasSubtitlesDetection(existing, filePath)) dbChanged = true;
+      if (applyHasSubtitlesDetection(existing, filePath, perScanReaddirCache)) dbChanged = true;
       newMetadata[id] = existing;
     } else if (legacyVideoCodecBackfillOnly) {
       // v1.18.1 hotfix: reuse the existing entry AS-IS (title, duration,
@@ -1930,7 +2238,7 @@ async function runScanDirectories() {
         existing.releaseDate = deriveReleaseDate(null, info.mtimeMs);
         dbChanged = true;
       }
-      applyHasSubtitlesDetection(existing, filePath);
+      applyHasSubtitlesDetection(existing, filePath, perScanReaddirCache);
 
       newMetadata[id] = existing;
       dbChanged = true;
@@ -1974,8 +2282,11 @@ async function runScanDirectories() {
         needsTranscode: !isAudio && needsTranscode(info.ext),
         // A6 (v1.24 UX Round, Wave 5): additive, schema-only -- see
         // applyHasSubtitlesDetection's comment above for why this cheap
-        // directory check never counts as "re-processing".
-        hasSubtitles: !!subtitles.findSubtitleSidecar(filePath)
+        // directory check never counts as "re-processing". Threads the same
+        // per-scan `perScanReaddirCache` (v1.30, A1) as the reuse fast-paths
+        // above so a NEW file sharing a directory with already-indexed
+        // files doesn't trigger a redundant `readdirSync` either.
+        hasSubtitles: !!subtitles.findSubtitleSidecar(filePath, undefined, perScanReaddirCache)
       };
 
       try {
@@ -2026,6 +2337,15 @@ async function runScanDirectories() {
       }
       dbChanged = true;
     }
+
+    // v1.30 A2 (AC1.1/AC2.2): advance the shared batch-yield counter and the
+    // reported progress for every item reconciled this pass (all three
+    // branches above), regardless of which fast-path it took -- see
+    // `maybeYieldScan`. `total` was already fixed by the walk above (this
+    // loop's own item count === scannedFiles.size), so `processed` only ever
+    // grows toward it within this pass.
+    scanState.processed++;
+    await maybeYieldScan(yieldState);
   }
 
   // Mount-loss guard + toggleable prune (D2). A non-surviving old id is
@@ -2268,6 +2588,9 @@ function armScanTimer() {
     clearInterval(scanTimer);
     scanTimer = null;
   }
+  // v1.30 A3: intentionally left on `loadDatabase()`, not switched to the
+  // cache -- called only at boot and on a scanIntervalMinutes settings
+  // change (infrequent, not a request/serve-path read).
   const db = loadDatabase();
   const ms = scanIntervalMs(db.settings.scanIntervalMinutes);
   if (ms) {
@@ -2283,18 +2606,29 @@ function currentScanTimer() {
   return scanTimer;
 }
 
-// Recursive directory scanning helper
-function scanDirRecursive(rootFolder, dirPath, results, unreadable) {
+// Recursive directory scanning helper.
+// v1.30 A2 (AC1.1/AC1.2): converted to async/cooperative -- `fs.readdirSync`
+// -> `await fs.promises.readdir`, `fs.statSync` -> `await fs.promises.stat`,
+// the directory recursion itself is now `await`ed, and `yieldState` (shared
+// across the whole scan pass, see `maybeYieldScan`/`SCAN_YIELD_BATCH` above)
+// is advanced once per directory ENTRY (file or subdirectory) so a large,
+// flat directory can't itself exceed the yield budget between recursive
+// calls. Every OTHER byte of the filtering/guard logic below (the
+// `isYtdlpIntermediate` skip, the `ALL_EXTENSIONS` check, `folderName`
+// derivation, and -- most importantly -- the `unreadable.add(dirPath)`
+// mount-loss/per-file-stat-failure guard, AC1.4/AC1.5) is unchanged: only
+// the fs calls became async and a cooperative yield point was added.
+async function scanDirRecursive(rootFolder, dirPath, results, unreadable, yieldState) {
   let files;
   try {
-    files = fs.readdirSync(dirPath, { withFileTypes: true });
+    files = await fs.promises.readdir(dirPath, { withFileTypes: true });
   } catch (err) {
     console.error(`Error reading directory ${dirPath}:`, err);
     // First-class "could not enumerate this subtree" signal, at ANY depth --
     // a transiently-unreadable directory (EACCES/EIO/ESTALE, a dropped nested
     // mount) must never be mistaken for its contents having been deleted.
     // selectPrunableIds retains every entry under this path. A child dir that
-    // vanishes/becomes unreadable mid-recursion throws on its OWN readdirSync
+    // vanishes/becomes unreadable mid-recursion throws on its OWN readdir
     // call below and is recorded there, so nested depth is covered too.
     if (unreadable) unreadable.add(dirPath);
     return;
@@ -2303,7 +2637,7 @@ function scanDirRecursive(rootFolder, dirPath, results, unreadable) {
   for (const file of files) {
     const fullPath = path.join(dirPath, file.name);
     if (file.isDirectory()) {
-      scanDirRecursive(rootFolder, fullPath, results, unreadable);
+      await scanDirRecursive(rootFolder, fullPath, results, unreadable, yieldState);
     } else if (file.isFile()) {
       // v1.15.1 hotfix: a yt-dlp download that is killed (e.g. the download
       // timeout) or otherwise fails leaves intermediate/partial artifacts
@@ -2316,18 +2650,21 @@ function scanDirRecursive(rootFolder, dirPath, results, unreadable) {
       // This is intentionally distinct from FileTube's OWN `.tmp.mp4`
       // transcode-cache temp file (a different pattern, in a different
       // directory) -- that exclusion is unaffected.
-      if (isYtdlpIntermediate(file.name)) continue;
+      if (isYtdlpIntermediate(file.name)) {
+        await maybeYieldScan(yieldState);
+        continue;
+      }
       const ext = path.extname(file.name).toLowerCase();
       if (ALL_EXTENSIONS.includes(ext)) {
         try {
-          const stats = fs.statSync(fullPath);
+          const stats = await fs.promises.stat(fullPath);
           // Folder name serves as the "channel name"
           // We can use the immediate parent directory name, or relative folder name from root
           let folderName = path.basename(dirPath);
           if (dirPath === rootFolder) {
             folderName = path.basename(rootFolder) || 'Library';
           }
-          
+
           results.set(fullPath, {
             name: file.name,
             ext,
@@ -2339,6 +2676,10 @@ function scanDirRecursive(rootFolder, dirPath, results, unreadable) {
             mtimeMs: stats.mtimeMs,
             folderName
           });
+          // v1.30 A2 (AC2.2): `total` tracks files discovered so far this
+          // pass -- `results` (the caller's `scannedFiles` Map) only ever
+          // grows during the walk, so this is monotonic non-decreasing.
+          scanState.total = results.size;
         } catch (err) {
           console.error(`Error stating file ${fullPath}:`, err);
           // Mirror the readdir-failure guard above at file granularity: a
@@ -2354,6 +2695,7 @@ function scanDirRecursive(rootFolder, dirPath, results, unreadable) {
           if (unreadable) unreadable.add(dirPath);
         }
       }
+      await maybeYieldScan(yieldState);
     }
   }
 }
@@ -2421,7 +2763,7 @@ app.use(express.static(path.join(__dirname, 'public'), {
 // returns `[]` -> no synthetic entry, byte-identical to pre-FR-G behavior
 // (AC4/46).
 app.get('/api/config', (req, res) => {
-  const db = loadDatabase();
+  const db = getCachedDatabase(); // v1.30 A3: hot GET reader
   const folders = [...(db.folders || [])];
   const folderSettings = { ...(db.folderSettings || {}) };
   const ytdlpConfig = ytdlp.parseYtdlpConfig();
@@ -2621,25 +2963,26 @@ app.post('/api/config', async (req, res) => {
   scanDirectories().catch(console.error);
 });
 
-// API: Scan files on demand
-app.post('/api/scan', async (req, res) => {
-  // Explicit pre-check: scanDirectories() itself no-ops (beyond flagging a
-  // coalesced follow-up) while a scan is already running (overlap guard), so
-  // without this check the route would misleadingly return 200 for a request
-  // that triggered nothing new synchronously. Surface a 409 instead so
-  // callers (and the UI) know a scan is already in flight -- but also flag
-  // the follow-up so a manual "Scan now" fired during a scan isn't lost: the
-  // in-flight scan will run one more pass for it after it finishes.
-  if (scanState.scanning) {
+// API: Scan files on demand.
+// v1.30 A2 (AC2.1, CONTRACT CHANGE from the old synchronous 200/409): the
+// scan itself can now take a while even though it never blocks the event
+// loop (AC1.1), so this handler no longer `await`s it -- it fires
+// `scanDirectories()` fire-and-forget (mirroring `POST /api/config`'s own
+// background-scan trigger just above) and responds immediately. A scan
+// already in flight still flags the coalesced follow-up (unchanged
+// semantics, AC2.5) instead of starting a second concurrent scan; either way
+// the response is `202 { scanning: true, alreadyInProgress }` -- there is no
+// longer a 409/500 branch here: `scanDirectories()`'s own internal try/finally
+// (above) already logs and settles `scanState` on any error, and `.catch`
+// below guards the fire-and-forget call against an unhandled rejection.
+app.post('/api/scan', (req, res) => {
+  const alreadyInProgress = scanState.scanning;
+  if (alreadyInProgress) {
     scanState.rescanRequested = true;
-    return res.status(409).json({ error: 'scan already in progress' });
+  } else {
+    scanDirectories().catch(console.error);
   }
-  try {
-    await scanDirectories();
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  res.status(202).json({ scanning: true, alreadyInProgress });
 });
 
 // FR-3 (v1.18.0): bounds the `transcodeNames` list GET /api/scan-status
@@ -2650,7 +2993,7 @@ const TRANSCODE_LIST_CAP = 10;
 
 // API: Live scan/transcode status for progress feedback in the UI
 app.get('/api/scan-status', (req, res) => {
-  const db = loadDatabase();
+  const db = getCachedDatabase(); // v1.30 A3: hot GET reader (was the one T2 left on loadDatabase)
   const items = Object.values(db.metadata);
   // Same filter that has always produced the `transcoding` count -- this is
   // T2's generalized, codec-aware `needsTranscode`/`transcodeStatus` (a
@@ -2663,6 +3006,12 @@ app.get('/api/scan-status', (req, res) => {
   res.json({
     scanning: scanState.scanning,
     lastScan: scanState.lastScan,
+    // v1.30 A2 (AC2.2): cooperative-scan progress -- see `scanState`'s own
+    // doc comment for the monotonic-within-a-pass contract. The db read
+    // above now goes through `getCachedDatabase()` (v1.30 A3, T4).
+    processed: scanState.processed,
+    total: scanState.total,
+    phase: scanState.phase,
     fileCount: items.length,
     folderCount: (db.folders || []).length,
     transcoding: pending.length,
@@ -2694,7 +3043,7 @@ function settingsResponse(settings) {
 
 // API: Read the Automation & Storage settings for Settings-page prefill.
 app.get('/api/settings', (req, res) => {
-  const db = loadDatabase();
+  const db = getCachedDatabase(); // v1.30 A3: hot GET reader
   res.json(settingsResponse(db.settings));
 });
 
@@ -2780,7 +3129,7 @@ app.post('/api/settings', async (req, res) => {
 
 // API: Current transcode-cache size on disk, for the Settings-page display.
 app.get('/api/cache/size', (req, res) => {
-  const db = loadDatabase();
+  const db = getCachedDatabase(); // v1.30 A3: pure read on a request/serve path
   res.json({
     bytes: transcodeCacheSize(TRANSCODE_DIR),
     effectiveCacheMaxBytes: effectiveCacheCap(db.settings)
@@ -2828,11 +3177,26 @@ app.post('/api/cache/clear', (req, res) => {
 });
 
 // API: Get list of videos/audio
+//
+// v1.30 A5 (T6, API CHANGE): paginated + server-authoritative sort/filter.
+// Response shape changed from a bare array to `{ items, total, offset,
+// limit }` -- see docs/exec-plans/active/2026-07-11-v1.30-scale-perf-and-
+// polish.md ("### A5 -- pagination contract") and ARCHITECTURE.md. Pipeline:
+// getCachedDatabase() -> hidden-folder filter (home only, unchanged) ->
+// search -> root/folder filter -> format filter -> sort the FULL filtered
+// list (lib/videoQuery.js, seeded when `sort=random`) -> slice
+// [offset, offset+limit) -> overlay pending progress on the SLICED page only
+// -> respond with `total` = the full filtered length (before slicing).
 app.get('/api/videos', (req, res) => {
-  const db = loadDatabase();
+  const db = getCachedDatabase(); // v1.30 A3: hot GET reader
   const search = (req.query.search || '').toLowerCase().trim();
   const folderFilter = req.query.folder || '';
   const rootFilter = req.query.root || ''; // a configured folder path — matches everything under it (recursive)
+  const sort = typeof req.query.sort === 'string' ? req.query.sort : 'newest';
+  const format = req.query.format; // videoQuery.filterByFormat already treats anything but 'video'/'audio' as 'both'
+  const limit = videoQuery.normalizeLimit(req.query.limit);
+  const offset = videoQuery.normalizeOffset(req.query.offset);
+  const seed = videoQuery.normalizeSeed(req.query.seed);
 
   let list = Object.values(db.metadata);
 
@@ -2852,7 +3216,7 @@ app.get('/api/videos', (req, res) => {
 
   // Search filter
   if (search) {
-    list = list.filter(item => item.title.toLowerCase().includes(search) || item.folderName.toLowerCase().includes(search));
+    list = list.filter(item => videoQuery.matchesSearch(item, search));
   }
 
   // Mapped-folder filter: recursive — everything under the configured folder (incl. subfolders).
@@ -2865,9 +3229,30 @@ app.get('/api/videos', (req, res) => {
     list = list.filter(item => item.folderName === folderFilter);
   }
 
-  // Map progress to lists
-  const resultList = list.map(item => {
-    const progress = db.progress[item.id] || { timestamp: 0, duration: 0 };
+  // Media-type (format) filter — new in v1.30 A5; server-authoritative
+  // replacement for the client's local filterByMediaType.
+  list = videoQuery.filterByFormat(list, format);
+
+  // `total` is the full filtered length, BEFORE slicing to a page — this is
+  // what makes AC3.2's "page(sort,filter) == sort(filter(full)).slice(...)"
+  // property hold, and what lets the client know when it has reached the end.
+  const total = list.length;
+
+  // Sort the FULL filtered list, then slice — never sort only the current
+  // page (that would break cross-window ordering at page boundaries).
+  // `random` is seeded from the client's `seed` query param so sequential
+  // page fetches sharing a seed observe one stable shuffle; an absent/
+  // invalid seed falls back to one-shot (non-reproducible) randomness.
+  const rng = sort === 'random' && seed !== undefined ? videoQuery.createSeededRng(seed) : undefined;
+  const sorted = videoQuery.sortItems(list, sort, rng);
+  const page = sorted.slice(offset, offset + limit);
+
+  // Overlay progress only on the sliced page — v1.30 A4: `effectiveProgress`
+  // overlays any not-yet-flushed `pendingProgress` entry over the cache
+  // (read-your-writes). Doing this AFTER slicing (not over the full filtered
+  // list) keeps the per-request cost bounded to the page size.
+  const items = page.map(item => {
+    const progress = effectiveProgress(item.id) || { timestamp: 0, duration: 0 };
     return {
       ...item,
       progress: progress.timestamp,
@@ -2875,21 +3260,19 @@ app.get('/api/videos', (req, res) => {
     };
   });
 
-  // Sort by date added descending (newest first)
-  resultList.sort((a, b) => b.addedAt - a.addedAt);
-
-  res.json(resultList);
+  res.json({ items, total, offset, limit });
 });
 
 // API: Get details for single video/audio
 app.get('/api/videos/:id', (req, res) => {
-  const db = loadDatabase();
+  const db = getCachedDatabase(); // v1.30 A3: hot GET reader
   const item = db.metadata[req.params.id];
   if (!item) {
     return res.status(404).json({ error: 'Media file not found' });
   }
 
-  const progress = db.progress[item.id] || { timestamp: 0 };
+  // v1.30 A4: overlay any not-yet-flushed `pendingProgress` entry (read-your-writes).
+  const progress = effectiveProgress(item.id) || { timestamp: 0 };
   // v1.25 QoL bugfix: serve-time fallback for the watch page's uploader
   // avatar. `item.channelAvatarUrl` (a persisted, item-level capture) stays
   // authoritative when present; only when it is EMPTY does this look up the
@@ -2904,7 +3287,22 @@ app.get('/api/videos/:id', (req, res) => {
   // (public/js/common.js) already falls back to a first-letter avatar.
   let channelAvatarUrl = item.channelAvatarUrl;
   if ((typeof channelAvatarUrl !== 'string' || channelAvatarUrl === '') && ytdlp.isEnabled(ytdlp.parseYtdlpConfig())) {
-    channelAvatarUrl = ytdlp.resolveItemChannelAvatarUrl(db, item);
+    // v1.30 A3 cache-coherency note: `resolveItemChannelAvatarUrl` calls
+    // `ensureYtdlp(db)` internally, which BACKFILLS `db.ytdlp` (and its
+    // nested subscription/pin entries) IN PLACE on a legacy/partial shape.
+    // Before this route read through the cache, `db` was always a fresh,
+    // per-request `loadDatabase()` throwaway, so that in-place backfill was
+    // harmless. Now that `db` is the SHARED `getCachedDatabase()` object,
+    // handing it straight into a function that mutates nested fields in
+    // place would violate the "cache replaced by reference, never mutated
+    // in place" invariant the whole read-cache's coherency argument depends
+    // on -- so this lookup gets its own deep-cloned `ytdlp` namespace
+    // (structuredClone, only reached when the avatar is genuinely missing)
+    // instead of the live cache reference. Every other field of `db` is
+    // still shared/read-only here -- only `.ytdlp` is ever written by
+    // `ensureYtdlp`.
+    const dbForAvatarLookup = { ...db, ytdlp: db.ytdlp ? structuredClone(db.ytdlp) : undefined };
+    channelAvatarUrl = ytdlp.resolveItemChannelAvatarUrl(dbForAvatarLookup, item);
   }
   res.json({
     ...item,
@@ -2915,55 +3313,61 @@ app.get('/api/videos/:id', (req, res) => {
     // spread (db.metadata[id].audioStatus, set by setAudioStatus -- mirrors
     // transcodeStatus's own spread-through); only the live in-memory percent
     // needs adding explicitly, mirroring transcodeProgress just above.
-    audioProgress: audioExtractProgress[item.id] || 0
+    audioProgress: audioExtractProgress[item.id] || 0,
+    // v1.30 C2: `liked` is DERIVED from `db.liked` membership at request
+    // time -- never persisted on the item itself. Membership IS the like
+    // state (see POST/DELETE /api/liked/:id below); this is purely a
+    // read-time convenience so the watch page's initial paint doesn't need a
+    // second `GET /api/liked` round-trip just to know this one item's state.
+    liked: Array.isArray(db.liked) && db.liked.includes(item.id)
   });
 });
 
-// API: Get watch progress
+// API: Get watch progress -- v1.30 A4: overlay any not-yet-flushed
+// `pendingProgress` entry (read-your-writes); see `effectiveProgress` above.
 app.get('/api/progress/:id', (req, res) => {
-  const db = loadDatabase();
-  const progress = db.progress[req.params.id] || { timestamp: 0 };
+  const progress = effectiveProgress(req.params.id) || { timestamp: 0 };
   res.json(progress);
 });
 
 // API: Save watch progress
-app.post('/api/progress', async (req, res) => {
+// v1.30 A4 (AC4.1/AC4.2/AC4.3): rewritten from a per-ping `updateDatabase`
+// call (one atomic write+fsync every ~4s while a video plays) into the
+// progress-write coalescer -- validate, compute the value, stage it in
+// `pendingProgress`, arm the shared debounce timer if needed, and respond
+// immediately. No disk I/O happens on this request at all; the batched
+// write happens later, on `flushPendingProgress` (the timer, or a shutdown
+// handler). The 400 (bad input) / 404 (unknown id) semantics and the stored
+// value's shape (`{timestamp, duration, updatedAt}`, same duration-fallback
+// precedence) are BYTE-IDENTICAL to the pre-A4 per-ping behavior -- only the
+// persistence timing changed. Synchronous now (no `await`): there is nothing
+// left in this handler that can reject.
+app.post('/api/progress', (req, res) => {
   const { id, timestamp, duration } = req.body;
   if (!id || typeof timestamp !== 'number') {
     return res.status(400).json({ error: 'id and numeric timestamp are required' });
   }
-
-  // The existence check moves INSIDE the mutator so it runs against the
-  // fresh-inside-the-lock db, not a separately-read (potentially stale)
-  // snapshot; `notFound` is captured via closure and handled after the await.
-  let notFound = false;
-  try {
-    await updateDatabase(db => {
-      if (!db.metadata[id]) {
-        notFound = true;
-        return false;
-      }
-      db.progress[id] = {
-        timestamp,
-        duration: duration || db.metadata[id].duration || 0,
-        updatedAt: new Date().toISOString()
-      };
-      return true;
-    });
-  } catch (err) {
-    // Express 4 does not catch a rejected async-handler promise, so a
-    // rejection left unguarded here would hang the request instead of
-    // returning 500 (mirrors POST /api/scan's pattern above).
-    console.error('Error saving watch progress:', err);
-    return res.status(500).json({ error: `Could not save watch progress: ${err.message}` });
+  const db = getCachedDatabase(); // v1.30 A3: hot GET reader (existence check only)
+  const item = db.metadata[id];
+  if (!item) {
+    return res.status(404).json({ error: 'Media not found' });
   }
-  if (notFound) return res.status(404).json({ error: 'Media not found' });
+  pendingProgress.set(id, {
+    timestamp,
+    duration: duration || item.duration || 0,
+    updatedAt: new Date().toISOString()
+  });
+  armProgressFlushTimerIfNeeded();
   res.json({ success: true });
 });
 
 // API: Delete video/audio file
 app.delete('/api/videos/:id', async (req, res) => {
-  const db = loadDatabase();
+  // v1.30 A3: a PURE read to look up `item` -- never mutated here, and the
+  // actual persisted mutation below goes through its own `updateDatabase`
+  // call (which loads a fresh copy inside the lock), so this is safe on the
+  // cache: it is not a direct load->mutate->save site.
+  const db = getCachedDatabase();
   const item = db.metadata[req.params.id];
   if (!item) {
     return res.status(404).json({ error: 'Media file not found' });
@@ -3076,6 +3480,85 @@ app.delete('/api/videos/:id', async (req, res) => {
   }
 
   res.json({ success: true, message: 'File deleted successfully' });
+});
+
+// ---- v1.30 C2 (Visual polish cluster): Like -> "Liked" playlist --------
+//
+// Like state IS membership in `db.liked` (an array of media ids) -- there is
+// no separate boolean flag anywhere (not on `db.metadata[id]`, not in
+// settings) to ever drift out of sync with it. All three routes below are
+// REAL mutations through `updateDatabase`: unlike the progress coalescer
+// (v1.30 A4), every invocation here produces exactly ONE atomic write+fsync
+// -- the mutator always `return`s `true` (never skips the save), the same
+// "naturally idempotent, always-write" posture `DELETE /api/videos/:id`
+// already uses for its own db-cleanup step above (see that handler's own
+// comment) -- so AC4.2's "1:1 write-per-invocation, not batched" holds even
+// on a duplicate add / a remove-of-a-non-member.
+
+// API: Like an item (idempotent add). 404s exactly like the other single-id
+// routes above if the id isn't a real library item -- mirrors
+// `DELETE /api/videos/:id`'s own existence-check-then-mutate shape.
+app.post('/api/liked/:id', async (req, res) => {
+  const db = getCachedDatabase(); // v1.30 A3: hot GET reader (existence check only)
+  const item = db.metadata[req.params.id];
+  if (!item) {
+    return res.status(404).json({ error: 'Media file not found' });
+  }
+  await updateDatabase(freshDb => {
+    if (!Array.isArray(freshDb.liked)) freshDb.liked = [];
+    if (!freshDb.liked.includes(item.id)) freshDb.liked.push(item.id);
+    return true; // always exactly 1 atomic write per invocation (AC4.2), even on an idempotent re-add
+  });
+  res.json({ success: true, liked: true });
+});
+
+// API: Unlike an item (idempotent remove). No existence-in-metadata gate --
+// removing membership for an id that's already absent (or was since deleted
+// from the library entirely) is itself the desired end state, nothing to
+// 404 on.
+app.delete('/api/liked/:id', async (req, res) => {
+  const id = req.params.id;
+  await updateDatabase(freshDb => {
+    if (!Array.isArray(freshDb.liked)) freshDb.liked = [];
+    freshDb.liked = freshDb.liked.filter(likedId => likedId !== id);
+    return true; // always exactly 1 atomic write per invocation (AC4.2), even on a non-member remove
+  });
+  res.json({ success: true, liked: false });
+});
+
+// API: List liked items -- reuses the SAME `{items,total,offset,limit}`
+// shaping / sort+pagination pipeline `GET /api/videos` (T6, A5) established,
+// scoped down to the ids currently present in `db.liked`. Read-only; never
+// mutates membership.
+app.get('/api/liked', (req, res) => {
+  const db = getCachedDatabase(); // v1.30 A3: hot GET reader
+  const likedIds = new Set(Array.isArray(db.liked) ? db.liked : []);
+  const sort = typeof req.query.sort === 'string' ? req.query.sort : 'newest';
+  const limit = videoQuery.normalizeLimit(req.query.limit);
+  const offset = videoQuery.normalizeOffset(req.query.offset);
+  const seed = videoQuery.normalizeSeed(req.query.seed);
+
+  const list = Object.values(db.metadata).filter(item => likedIds.has(item.id));
+
+  // `total` is the full liked-set length, BEFORE slicing to a page -- same
+  // contract as GET /api/videos's own `total`.
+  const total = list.length;
+
+  const rng = sort === 'random' && seed !== undefined ? videoQuery.createSeededRng(seed) : undefined;
+  const sorted = videoQuery.sortItems(list, sort, rng);
+  const page = sorted.slice(offset, offset + limit);
+
+  const items = page.map(item => {
+    const progress = effectiveProgress(item.id) || { timestamp: 0, duration: 0 };
+    return {
+      ...item,
+      liked: true, // every item in this listing is, by construction, a liked member
+      progress: progress.timestamp,
+      progressPercent: progress.duration > 0 ? (progress.timestamp / progress.duration) * 100 : 0
+    };
+  });
+
+  res.json({ items, total, offset, limit });
 });
 
 // ---- C1 (v1.24 UX Round, Wave 3): move files between folders + id re-key --
@@ -3782,7 +4265,7 @@ async function recordRepulledItemMeta(deps, mediaId, meta, nowMs = Date.now()) {
 // and always fresh, and a cache would need its own invalidation story for no
 // real benefit.
 app.get('/api/stats', (req, res) => {
-  const db = loadDatabase();
+  const db = getCachedDatabase(); // v1.30 A3: pure read on a request/serve path
   res.json(stats.computeLibraryStats(db.metadata));
 });
 
@@ -3917,7 +4400,7 @@ app.post('/api/videos/:id/dimensions', async (req, res) => {
 // sidecar is served as-is. 404s when the id is unknown, the sidecar read
 // fails, or no sidecar exists at all.
 app.get('/api/subtitles/:id', (req, res) => {
-  const db = loadDatabase();
+  const db = getCachedDatabase(); // v1.30 A3: hot GET reader
   const item = db.metadata[req.params.id];
   if (!item) {
     return res.status(404).json({ error: 'Media file not found' });
@@ -3945,7 +4428,7 @@ app.get('/api/subtitles/:id', (req, res) => {
 
 // Serve extracted thumbnail or fallback placeholder
 app.get('/thumbnail/:id', (req, res) => {
-  const db = loadDatabase();
+  const db = getCachedDatabase(); // v1.30 A3 (AC3.3 headline route): hot GET reader
   const item = db.metadata[req.params.id];
   const thumbPath = path.join(THUMBNAIL_DIR, `${req.params.id}.jpg`);
 
@@ -4144,7 +4627,7 @@ function sendRangeable(req, res, filePath, contentType, onServe) {
 
 // Media streaming endpoint supporting Range requests (highly important for HTML5 seeking/skipping)
 app.get('/video/:id', (req, res) => {
-  const db = loadDatabase();
+  const db = getCachedDatabase(); // v1.30 A3: hot GET reader
   const item = db.metadata[req.params.id];
   if (!item) {
     return res.status(404).json({ error: 'Media file not found' });
@@ -4266,21 +4749,29 @@ app.get('/video/:id', (req, res) => {
 // PROVABLY stale -- this is the earliest point it can be corrected (there is
 // no scan-time reconciliation for audio the way `reconcileTranscode`
 // provides for `transcodeStatus`; extraction is entirely on-demand, never
-// scan-driven -- see queueAudioExtract's own comment). Mutates `item` in
-// place (each request's own freshly-`loadDatabase()`-read object, per
-// loadDatabase's no-cache contract) so the REST of the handler that called
-// this sees the healed value immediately, and persists it via
-// `setAudioStatus` (fire-and-forget, the same no-clobber contract every
-// other status write already uses).
+// scan-driven -- see queueAudioExtract's own comment).
+//
+// v1.30 A3 update (cache-coherency, HIGHEST gate): this used to mutate
+// `item.audioStatus` IN PLACE, relying on `item` always being each request's
+// own freshly-`loadDatabase()`-read, per-request-throwaway object. Now that
+// `GET /audio/:id` (below) reads through `getCachedDatabase()`, `item` can be
+// a reference into the SHARED cached db object -- mutating it in place here
+// would violate the cache's "replaced by reference, never mutated in place"
+// invariant (the persisted write still goes through `setAudioStatus` ->
+// `updateDatabase`, which is the one place allowed to replace the cache; see
+// its own comment above `dbCache`). So this now returns the healed status
+// instead of mutating `item`, and both call sites use the RETURN VALUE for
+// the rest of their own logic rather than re-reading `item.audioStatus`.
 function healStaleAudioReady(item) {
   if (item.audioStatus === 'ready') {
-    item.audioStatus = 'pending';
     setAudioStatus(item.id, 'pending');
+    return 'pending';
   }
+  return item.audioStatus;
 }
 
 app.get('/audio/:id', (req, res) => {
-  const db = loadDatabase();
+  const db = getCachedDatabase();
   const item = db.metadata[req.params.id];
   if (!item) {
     return res.status(404).json({ error: 'Media file not found' });
@@ -4295,14 +4786,17 @@ app.get('/audio/:id', (req, res) => {
       recordServed(item.id);
     });
   }
-  healStaleAudioReady(item); // F1: sidecar confirmed missing -- heal any stale 'ready' NOW
+  // F1: sidecar confirmed missing -- heal any stale 'ready' NOW. Use the
+  // returned (healed) status below, never `item.audioStatus` again -- see
+  // healStaleAudioReady's own comment for why `item` must not be mutated.
+  const healedAudioStatus = healStaleAudioReady(item);
   if (!ffmpegAvailable) {
     return res.status(503).json({ error: 'ffmpeg unavailable' });
   }
-  if (item.audioStatus !== 'failed') {
+  if (healedAudioStatus !== 'failed') {
     queueAudioExtract(item.id, item.filePath);
   }
-  return res.status(503).json({ error: 'extracting', status: item.audioStatus || 'pending' });
+  return res.status(503).json({ error: 'extracting', status: healedAudioStatus || 'pending' });
 });
 
 // POST /api/videos/:id/prepare-audio (v1.27.0, EXPERIMENTAL): the pre-warm
@@ -4324,6 +4818,10 @@ app.get('/audio/:id', (req, res) => {
 // queued/in-flight, and never re-enqueues once a sidecar already exists on
 // disk.
 app.post('/api/videos/:id/prepare-audio', (req, res) => {
+  // v1.30 A3: intentionally left on `loadDatabase()`, not switched to the
+  // cache -- outside T4's explicit hot-GET-reader scope (a POST pre-warm
+  // hook, not a GET route), and staying on a fresh per-request throwaway
+  // object here costs nothing meaningful (this route never streams bytes).
   const db = loadDatabase();
   const item = db.metadata[req.params.id];
   if (!item) {
@@ -4335,14 +4833,18 @@ app.post('/api/videos/:id/prepare-audio', (req, res) => {
   if (fs.existsSync(audioPath(item.id))) {
     return res.json({ audioStatus: 'ready' });
   }
-  healStaleAudioReady(item); // F1: sidecar confirmed missing -- heal any stale 'ready' NOW
+  // F1: sidecar confirmed missing -- heal any stale 'ready' NOW. Use the
+  // returned (healed) status below, never `item.audioStatus` again -- see
+  // healStaleAudioReady's own comment (above GET /audio/:id) for why `item`
+  // is never mutated in place.
+  const healedAudioStatus = healStaleAudioReady(item);
   if (!ffmpegAvailable) {
     return res.status(503).json({ error: 'ffmpeg unavailable' });
   }
-  if (item.audioStatus !== 'failed') {
+  if (healedAudioStatus !== 'failed') {
     queueAudioExtract(item.id, item.filePath);
   }
-  res.json({ audioStatus: item.audioStatus || 'pending' });
+  res.json({ audioStatus: healedAudioStatus || 'pending' });
 });
 
 // Optional yt-dlp subscription module (v1.11.0): registered AFTER every
@@ -4391,6 +4893,33 @@ if (require.main === module) {
     console.error('Uncaught exception:', err);
   });
 
+  // v1.30 A4 (AC4.3, shutdown flush): persist any queued-but-not-yet-flushed
+  // watch position before the process actually exits, on every graceful-exit
+  // path the design calls for. Reuses `flushPendingProgress` itself -- the
+  // SAME serialized `updateDatabase` write the periodic debounce timer uses
+  // (see its own comment above `pendingProgress`), so this can never race a
+  // concurrent in-flight real mutation with a second, direct-to-disk bypass.
+  // `process.exit(0)` after a SIGTERM/SIGINT flush restores the pre-A4
+  // immediate-exit-on-signal behavior (now WITH a flush first) -- registered
+  // only inside this `require.main === module` guard (mirrors every other
+  // startup/shutdown side effect in this block) so importing this module for
+  // tests never installs a listener that would swallow Ctrl-C or otherwise
+  // change process-signal behavior during a test run; `flushPendingProgress`
+  // itself stays independently exported/testable (see its own comment) for
+  // exercising the flush semantics directly. On a hard SIGKILL none of this
+  // runs at all -- the accepted, bounded carve-out is losing at most one
+  // `PROGRESS_FLUSH_MS` window of watch-position-only data; db.json itself
+  // is never left torn either way (saveDatabase's write-temp-then-rename is
+  // unaffected).
+  const flushProgressOnExit = (exitAfter) => () => {
+    flushPendingProgress().finally(() => {
+      if (exitAfter) process.exit(0);
+    });
+  };
+  process.on('SIGTERM', flushProgressOnExit(true));
+  process.on('SIGINT', flushProgressOnExit(true));
+  process.on('beforeExit', flushProgressOnExit(false));
+
   // Transcode-cache hygiene on startup: drop any orphaned *.tmp.mp4 left by a
   // killed transcode, then enforce the size cap.
   const orphans = cleanupOrphanTmp(TRANSCODE_DIR);
@@ -4403,7 +4932,11 @@ if (require.main === module) {
   // Age sweep runs as a separate step immediately before the size-cap
   // eviction (never folded into evictTranscodeCache itself).
   sweepAgedTranscodes(Date.now());
-  evictTranscodeCache(effectiveCacheCap(loadDatabase().settings));
+  // v1.30 A3: this is the process's first-ever db read, so `getCachedDatabase()`
+  // here is exactly one `loadDatabase()` call (same as before) and has the
+  // added benefit of pre-warming the cache before `app.listen` below, so the
+  // very first request already hits a warm cache.
+  evictTranscodeCache(effectiveCacheCap(getCachedDatabase().settings));
 
   // T4 (v1.25 QoL) + the scan/timer sequence below are wrapped in a single
   // async IIFE (this file is CommonJS -- no top-level `await`) so the
@@ -4414,17 +4947,16 @@ if (require.main === module) {
   // subscription download also triggers `scanDirectories()`, see
   // lib/ytdlp/index.js) is armed. This is what "serialized against
   // scanDirectories" actually means here: nothing in this function has
-  // called `scanDirectories()` yet, and the HTTP server has not started
-  // `app.listen()`-ing yet either, so there is no route (e.g. `POST
+  // called `scanDirectories()` yet, so there is no route (e.g. `POST
   // /api/config`, `POST /api/scan`) that could kick off a concurrent scan
   // while the migration's `updateDatabase` re-key mutators are in flight --
   // a concurrent scan mid-migration could otherwise re-hash a mid-move old
   // path as a delete before the re-key mutator commits, losing watch
   // history. When the yt-dlp module is disabled, `migrateOneOffsIntoChannelFolders`
   // returns its zeroed summary synchronously (no `await` is ever actually
-  // suspended), so this IIFE falls through to `scanDirectories()`/
-  // `armScanTimer()`/`ytdlp.startBackground()`/`app.listen()` in the exact
-  // same synchronous tick as before this change -- the disabled-module
+  // suspended), so this IIFE falls through to `armScanTimer()`/
+  // `ytdlp.startBackground()`/`app.listen()`/the deferred boot scan in the
+  // exact same synchronous tick as before this change -- the disabled-module
   // startup-timing no-op guarantee holds.
   (async () => {
     const ytdlpStartupConfig = ytdlp.parseYtdlpConfig();
@@ -4437,11 +4969,10 @@ if (require.main === module) {
       console.error('yt-dlp one-off migration failed unexpectedly (continuing startup):', err && err.message);
     }
 
-    // Scan on startup and then periodically per the persisted scanIntervalMinutes
-    // preference (default 30 minutes; armScanTimer arms no timer at all when the
-    // preference is Off). These live here, not at module top-level, so importing
-    // the module for tests neither scans nor keeps the event loop alive.
-    scanDirectories().catch(console.error);
+    // Arm the periodic re-scan timer per the persisted scanIntervalMinutes
+    // preference (default 30 minutes; armScanTimer arms no timer at all when
+    // the preference is Off). Lives here, not at module top-level, so
+    // importing the module for tests never keeps the event loop alive.
     armScanTimer();
 
     // Same no-op guarantee as registerRoutes above: startBackground early-
@@ -4459,6 +4990,20 @@ if (require.main === module) {
       console.log(`==================================================`);
       console.log(`  FileTube server running at http://localhost:${PORT}`);
       console.log(`==================================================`);
+
+      // v1.30 A2 (AC2.4): the initial boot scan now runs AFTER the server is
+      // already accepting connections, not before -- previously
+      // `scanDirectories()` was kicked off (and, pre-A2, fully `await`ed by
+      // any caller) BEFORE this `app.listen()` call, so route-serving was
+      // sequenced behind the scan's first synchronous stretch. `setImmediate`
+      // defers the boot scan by one full event-loop turn past this listen
+      // callback, so a request issued immediately after boot (e.g. `GET
+      // /api/config`) is never queued behind it -- the scan itself is also
+      // cooperative (AC1.1/AC1.2) so it doesn't re-introduce blocking once it
+      // does start.
+      setImmediate(() => {
+        scanDirectories().catch(console.error);
+      });
     });
   })();
 }
@@ -4496,6 +5041,23 @@ module.exports = {
   loadDatabase,
   saveDatabase,
   updateDatabase,
+  // v1.30 A3 (in-memory DB read cache): re-exported so tests can exercise the
+  // cache directly and assert AC3.3's O(1)-loads claim (mirrors every other
+  // DB-layer primitive's own testing contract above).
+  getCachedDatabase,
+  __getLoadDatabaseCallCount,
+  // v1.30 A4 (progress-write coalescer): re-exported so tests can exercise
+  // the batching/overlay/write-count claims directly, without booting a real
+  // server process or sleeping out `PROGRESS_FLUSH_MS` (mirrors A3's own
+  // testing-contract pattern immediately above). See each symbol's own
+  // comment (above `pendingProgress`, near `getCachedDatabase`) for what it
+  // does.
+  pendingProgress,
+  PROGRESS_FLUSH_MS,
+  effectiveProgress,
+  flushPendingProgress,
+  currentProgressFlushTimer,
+  __getSaveDatabaseCallCount,
   reconcileTranscode,
   parseFfprobeTags,
   parseFfprobeStreams,

@@ -24,10 +24,16 @@ const {
   // F1 (two-reviewer gate, v1.27.0): the stale-'ready' healing helpers.
   clearAudioStatus,
   healStaleAudioReady,
+  saveDatabase,
 } = require('../../server');
 
+// v1.30 A3 (in-memory DB read cache): seed via the exported `saveDatabase()`
+// (an established test primitive, see CONTRIBUTING.md) rather than a raw
+// `fs.writeFileSync`, so the in-process db cache stays coherent with what
+// this test just wrote (a raw fs write is invisible to the cache -- this
+// process is the only writer db.json is ever supposed to have).
 function writeDb(db) {
-  fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2), 'utf8');
+  saveDatabase(db);
 }
 
 function readDb() {
@@ -172,10 +178,17 @@ test('clearAudioStatus: a missing metadata entry is a safe no-op (never throws, 
 
 // ---- healStaleAudioReady (F1, two-reviewer gate) -------------------------
 
-test("healStaleAudioReady: resets a stale 'ready' status to 'pending' in place (mutates the passed object synchronously)", () => {
+test("healStaleAudioReady: resets a stale 'ready' status to 'pending', returned (never mutating the passed object)", () => {
+  // v1.30 A3: `item` can now be a reference into the SHARED in-memory db
+  // cache (server.js's `getCachedDatabase()`), so healStaleAudioReady no
+  // longer mutates it in place -- callers must use the RETURN VALUE instead
+  // (see the function's own comment in server.js). This is asserted
+  // explicitly here: the passed object is untouched, and the healed status
+  // comes back as the return value.
   const item = { id: 'vid-heal', audioStatus: 'ready' };
-  healStaleAudioReady(item);
-  assert.equal(item.audioStatus, 'pending', 'must mutate the caller\'s own object so the REST of the handler sees the healed value immediately');
+  const healed = healStaleAudioReady(item);
+  assert.equal(healed, 'pending', 'the healed status is returned');
+  assert.equal(item.audioStatus, 'ready', 'the passed object itself is never mutated in place');
 });
 
 test("healStaleAudioReady: persists the heal to the database (fire-and-forget, mirrors setAudioStatus's own contract)", async () => {
@@ -194,7 +207,8 @@ test("healStaleAudioReady: persists the heal to the database (fire-and-forget, m
 test('healStaleAudioReady: a no-op for every status OTHER than \'ready\' (never touches pending/processing/failed/undefined)', () => {
   for (const status of ['pending', 'processing', 'failed', undefined]) {
     const item = { id: 'vid-heal-noop', audioStatus: status };
-    healStaleAudioReady(item);
-    assert.equal(item.audioStatus, status, `audioStatus=${status} must be left completely untouched`);
+    const healed = healStaleAudioReady(item);
+    assert.equal(item.audioStatus, status, `audioStatus=${status} must be left completely untouched on the passed object`);
+    assert.equal(healed, status, `the returned status must equal the original audioStatus=${status} unchanged`);
   }
 });

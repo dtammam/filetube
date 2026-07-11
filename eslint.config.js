@@ -200,12 +200,18 @@ module.exports = [
   // common.js loads first as a classic script (see `/js/subscriptions.js`'s
   // route in lib/ytdlp/index.js), so this is the SAME bare-global pattern
   // `showHardDeleteModal`/`showMoveModal`/etc. already use.
+  //
+  // C5 (v1.30.0, T12): `resolveAvatarSource` joins this list -- the subs-row
+  // and settings-sheet-header avatars now route through the SAME shared
+  // precedence seam `watch.js` already consumes (see the block above), rather
+  // than a locally-reimplemented one.
   {
     files: ['lib/ytdlp/client/subscriptions.js'],
     languageOptions: {
       globals: {
         openOverlay: 'readonly',
         closeOverlayThen: 'readonly',
+        resolveAvatarSource: 'readonly',
       },
     },
   },

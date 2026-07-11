@@ -103,7 +103,7 @@ if (typeof module !== 'undefined' && module.exports) {
   };
 }
 
-// Wrapped in its own IIFE so its helpers (escapeHtml, renderSorted, etc.)
+// Wrapped in its own IIFE so its helpers (escapeHtml, renderMediaGridPage, etc.)
 // stay private to this file and never collide with the same-named helpers in
 // watch.js/setup.js, which all load on every page (FR-1, T1).
 (function () {
@@ -120,6 +120,13 @@ if (typeof module !== 'undefined' && module.exports) {
   // auto-disarm setTimeout (a plain timer, NOT AbortSignal-bound) rather
   // than leaving it to fire later against an already-torn-down instance.
   let disarmCardDeleteFn = null;
+  // v1.30.0 T7: set inside init() to that instance's own
+  // teardownGridSentinel() closure -- an IntersectionObserver is NOT
+  // AbortSignal-bound (there is no such integration on the platform), so
+  // destroy() must explicitly disconnect it (and detach the sentinel DOM
+  // node) rather than leaving it observing a torn-down/about-to-be-replaced
+  // view's grid indefinitely.
+  let disconnectGridSentinelFn = null;
 
   function init(root) {
     controller = new AbortController();
@@ -158,9 +165,11 @@ if (typeof module !== 'undefined' && module.exports) {
     // mirrors the reducer's `'idle'|'armed'` for that node. Only one card is
     // ever armed at a time -- arming a different card, a ~3s timeout, or any
     // document click/scroll outside the armed button all disarm. Reset (via
-    // disarmCardDelete()) at the top of every renderMediaGrid() call, since a
-    // re-render replaces the grid's children -- an armed reference to a
-    // about-to-be-detached node must never leak/double-fire across it.
+    // disarmCardDelete()) at the top of every renderMediaGridPage() FULL
+    // REPLACE (never on an append -- appending only ADDS cards, it never
+    // detaches an existing/armed one), since a replace re-render replaces
+    // the grid's children -- an armed reference to a about-to-be-detached
+    // node must never leak/double-fire across it.
     let armState = 'idle';
     let armedBtn = null;
     let armDisarmTimer = null;
@@ -170,6 +179,37 @@ if (typeof module !== 'undefined' && module.exports) {
     let currentItems = [];
     let folderSettings = {}; // { "<path>": { name, hidden, hiddenFromSidebar } } — for author display, shared with cards
     let currentSort = localStorage.getItem('filetube_sort') || 'newest';
+
+    // v1.30.0 T7 (A5): the home grid is now PAGINATED and SERVER-authoritative
+    // for sort/filter (see server.js's T6, `GET /api/videos` ->
+    // `{ items, total, offset, limit }`). `HOME_PAGE_LIMIT` is the page size
+    // this view requests explicitly (never relies on the server's own
+    // default, so behavior stays correct even if that default is retuned).
+    // `currentOffset`/`currentLimit`/`currentTotal` track the LAST response's
+    // pagination window; `currentSeed` is regenerated on every full reset
+    // (initial load, sort/format/search change, "shuffle again") and then
+    // reused unchanged across that reset's own subsequent page fetches, so a
+    // `random`-sorted scroll session observes ONE stable shuffle instead of
+    // re-shuffling (and re-showing duplicates) every time the sentinel fires.
+    // `loadingNextPage` guards against a double-fire (e.g. two intersection
+    // callbacks landing before the first fetch settles) ever requesting the
+    // same page twice.
+    const HOME_PAGE_LIMIT = 60;
+    let currentOffset = 0;
+    let currentLimit = HOME_PAGE_LIMIT;
+    let currentTotal = 0;
+    let currentSeed = null;
+    let loadingNextPage = false;
+    // The IntersectionObserver sentinel element (a zero-content sibling of
+    // #video-grid, never a grid item itself) + its observer -- both created
+    // ONCE per view instance (see ensureGridSentinel(), called from init()
+    // below) and torn down in destroy(). Guarded end-to-end for a browser (or
+    // test) environment without IntersectionObserver support: the grid still
+    // works, it just never auto-loads further pages (AC3.4 only requires the
+    // FIRST page to render eagerly; further pages are a progressive
+    // enhancement on top of that).
+    let gridSentinel = null;
+    let sentinelObserver = null;
     // Item 1 (v1.15.0): the FULL folders array (as last received from
     // GET/POST /api/config, including the synthetic Downloads folder when the
     // yt-dlp module contributes one) -- kept alongside folderSettings so the
@@ -254,21 +294,11 @@ if (typeof module !== 'undefined' && module.exports) {
           videosHeader.textContent = label;
         }
 
-        // 3. Fetch and render media files
-        let apiUrl = `/api/videos`;
-        const queryParams = [];
-        if (searchQuery) queryParams.push(`search=${encodeURIComponent(searchQuery)}`);
-        if (folderFilter) queryParams.push(`folder=${encodeURIComponent(folderFilter)}`);
-        if (rootFilter) queryParams.push(`root=${encodeURIComponent(rootFilter)}`);
-
-        if (queryParams.length > 0) {
-          apiUrl += `?${queryParams.join('&')}`;
-        }
-
-        const mediaRes = await fetch(apiUrl);
-        currentItems = await mediaRes.json();
-
-        renderSorted();
+        // 3. Fetch + render page 0 of the media list (server-authoritative
+        // sort/format/pagination -- see fetchLibraryPage0() below) and arm
+        // the infinite-scroll sentinel for any further pages.
+        await fetchLibraryPage0();
+        ensureGridSentinel();
 
       } catch (err) {
         console.error('Failed to load library data:', err);
@@ -282,6 +312,239 @@ if (typeof module !== 'undefined' && module.exports) {
         videoGrid.innerHTML = buildErrorStateHtml({ message: 'Error loading library data from server.' });
         const retryBtn = videoGrid.querySelector('[data-error-retry]');
         if (retryBtn) retryBtn.addEventListener('click', () => loadLibrary(), { signal });
+      }
+    }
+
+    // A fresh, non-reproducible integer for `GET /api/videos`'s `seed` param
+    // -- only actually consumed by the server when `sort === 'random'`, but
+    // sent unconditionally so the code path is the same either way. Sent
+    // ONCE per full reset (see fetchLibraryPage0()) and reused unchanged for
+    // every subsequent page fetched under that same reset (maybeLoadNextPage
+    // below), so a `random`-sorted scroll session observes one stable
+    // shuffle rather than re-shuffling (and duplicating/skipping items) on
+    // every page.
+    function generateSeed() {
+      return Math.floor(Math.random() * 2147483647);
+    }
+
+    // Builds the `GET /api/videos` URL for a given page `offset`, carrying
+    // every server-authoritative param this view's controls affect: the
+    // current search/folder/root scope (unchanged for the lifetime of this
+    // view instance -- a new scope is a new page navigation, not a
+    // reset-in-place), `sort`/`format` (the persisted preferences), an
+    // explicit `limit` (never relies on the server's own default), and the
+    // CURRENT reset's `seed`.
+    function buildVideosApiUrl(offset) {
+      const queryParams = [];
+      if (searchQuery) queryParams.push(`search=${encodeURIComponent(searchQuery)}`);
+      if (folderFilter) queryParams.push(`folder=${encodeURIComponent(folderFilter)}`);
+      if (rootFilter) queryParams.push(`root=${encodeURIComponent(rootFilter)}`);
+      queryParams.push(`sort=${encodeURIComponent(currentSort)}`);
+      queryParams.push(`format=${encodeURIComponent(getStoredFormatFilter())}`);
+      queryParams.push(`limit=${HOME_PAGE_LIMIT}`);
+      queryParams.push(`offset=${offset}`);
+      queryParams.push(`seed=${currentSeed}`);
+      return `/api/videos?${queryParams.join('&')}`;
+    }
+
+    // v1.30.0 T7 (AC3.4): fetches + renders PAGE 0 ONLY of the media list --
+    // never the full library. Called on initial load and on every "reset"
+    // (sort change, format-toggle change, "shuffle again") -- each of which
+    // mints a FRESH `currentSeed` so a re-roll of `random` actually
+    // re-randomizes, then replaces the grid (never appends). Pagination
+    // state (`currentOffset`/`currentLimit`/`currentTotal`) is refreshed from
+    // the response so the sentinel's "is there more?" guard is always correct
+    // for the NEW filter/sort/seed, not the previous reset's.
+    async function fetchLibraryPage0() {
+      currentSeed = generateSeed();
+      const res = await fetch(buildVideosApiUrl(0));
+      const data = await res.json();
+      currentItems = Array.isArray(data.items) ? data.items : [];
+      currentOffset = typeof data.offset === 'number' ? data.offset : 0;
+      currentLimit = typeof data.limit === 'number' && data.limit > 0 ? data.limit : HOME_PAGE_LIMIT;
+      currentTotal = typeof data.total === 'number' ? data.total : currentItems.length;
+      renderMediaGridPage(currentItems, { append: false });
+      updateItemCountBadge();
+      renderFormatToggle(sectionActions, getStoredFormatFilter(), () => resetAndReload());
+    }
+
+    // The shared "reset to a fresh page 0" path for every control that used
+    // to just locally re-sort/re-filter the already-fetched `currentItems`
+    // (sort <select>, the format toggle, "shuffle again") -- the SERVER is
+    // now authoritative for sort/filter (v1.30 A5), so these all become a
+    // real refetch instead of a synchronous local re-sort. Network/parse
+    // failures are logged, not thrown -- a failed reset leaves the
+    // PREVIOUSLY rendered page on screen rather than blanking the grid.
+    async function resetAndReload() {
+      try {
+        await fetchLibraryPage0();
+      } catch (err) {
+        console.error('Failed to refresh library:', err);
+      }
+    }
+
+    // v1.30.0 T7 (AC3.4): fetches exactly the NEXT page (guarded so it can
+    // never run twice concurrently, and never past the end of the current
+    // filtered/sorted set) and APPENDS it to the grid -- never a full
+    // library re-render. Invoked by the IntersectionObserver sentinel
+    // callback below.
+    async function maybeLoadNextPage() {
+      if (loadingNextPage) return;
+      if (currentOffset + currentLimit >= currentTotal) return; // reached the end -- nothing more to fetch
+      loadingNextPage = true;
+      try {
+        const nextOffset = currentOffset + currentLimit;
+        const res = await fetch(buildVideosApiUrl(nextOffset));
+        const data = await res.json();
+        const items = Array.isArray(data.items) ? data.items : [];
+        currentOffset = typeof data.offset === 'number' ? data.offset : nextOffset;
+        currentLimit = typeof data.limit === 'number' && data.limit > 0 ? data.limit : currentLimit;
+        currentTotal = typeof data.total === 'number' ? data.total : currentTotal;
+        currentItems = currentItems.concat(items);
+        renderMediaGridPage(items, { append: true });
+      } catch (err) {
+        console.error('Failed to load the next library page:', err);
+      } finally {
+        loadingNextPage = false;
+      }
+    }
+
+    // Creates (once per view instance) a zero-content sentinel element as a
+    // SIBLING of #video-grid (never a grid item itself -- it must never
+    // render as a stray/blank card cell) and an IntersectionObserver that
+    // fires maybeLoadNextPage() whenever it scrolls into view. Guarded for
+    // an environment without IntersectionObserver support (older browsers,
+    // and this repo's jsdom-based tests unless they supply their own stub --
+    // see shell-smoke.test.js's stubbing conventions): the grid still works
+    // fully, it just never auto-loads further pages, which is a strict
+    // subset of AC3.4's REQUIRED behavior (only the first page is required
+    // to render eagerly). Idempotent -- a second call is a no-op.
+    function ensureGridSentinel() {
+      if (gridSentinel) return;
+      if (typeof IntersectionObserver !== 'function') return;
+      gridSentinel = document.createElement('div');
+      gridSentinel.id = 'video-grid-sentinel';
+      gridSentinel.setAttribute('aria-hidden', 'true');
+      gridSentinel.style.height = '1px';
+      videoGrid.insertAdjacentElement('afterend', gridSentinel);
+      sentinelObserver = new IntersectionObserver((entries) => {
+        const last = entries[entries.length - 1];
+        if (last && last.isIntersecting) maybeLoadNextPage();
+      });
+      sentinelObserver.observe(gridSentinel);
+    }
+
+    // Disconnects the observer and detaches the sentinel node -- see
+    // `disconnectGridSentinelFn` (declared at the outer IIFE scope, above
+    // init()) for why destroy() needs an explicit hook for this rather than
+    // relying on the AbortController every other listener here uses.
+    function teardownGridSentinel() {
+      if (sentinelObserver) {
+        sentinelObserver.disconnect();
+        sentinelObserver = null;
+      }
+      if (gridSentinel && gridSentinel.parentNode) {
+        gridSentinel.parentNode.removeChild(gridSentinel);
+      }
+      gridSentinel = null;
+    }
+    disconnectGridSentinelFn = teardownGridSentinel;
+
+    // Pure(ish) card-markup builder -- extracted from the old renderMediaGrid
+    // so BOTH the page-0 replace path and the append-a-page path (below)
+    // build identical card markup from a single source of truth.
+    function buildCardHtml(item) {
+      const views = getMockViews(item.id, item.size);
+      const relativeTime = formatRelativeTime(item.addedAt);
+      // Author/channel resolved the same way as the watch page (see common.js).
+      const channelName = resolveChannelName(item, folderSettings);
+      // Deterministic 3–5 star rating — the same value shows on this item's watch page.
+      const rating = getStarRating(item.id);
+
+      // Calculate duration format
+      const durationStr = item.duration > 0 ? formatDuration(item.duration) : (item.type === 'audio' ? 'Audio' : '');
+      const durationBadge = durationStr ? `<div class="duration-badge">${durationStr}</div>` : '';
+
+      // Playback progress indicator
+      let progressBar = '';
+      if (item.progressPercent > 0.5) {
+        // Only show if watched more than 0.5%
+        progressBar = `
+          <div class="progress-bar-container">
+            <div class="progress-bar-fill" style="width: ${Math.min(100, item.progressPercent)}%"></div>
+          </div>
+        `;
+      }
+
+      return `
+        <div class="video-card">
+          <a href="/watch.html?v=${item.id}" class="thumbnail-container">
+            <img class="thumbnail-img" src="/thumbnail/${item.id}" alt="${escapeHtml(item.title)}" loading="lazy" />
+            ${durationBadge}
+            ${progressBar}
+          </a>
+          <button type="button" class="card-delete-btn" data-id="${escapeHtml(item.id)}" aria-label="Delete this video">
+            <i class="icon-delete"></i><span class="card-delete-confirm">Sure?</span>
+          </button>
+          <a class="card-download-btn" href="${buildCardDownloadHref(item.id)}" download="${escapeHtml(buildCardDownloadFilename(item.title, item.ext))}" aria-label="Save to device" title="Save to device">
+            <i class="icon-download"></i>
+          </a>
+          <div class="video-info">
+            <a href="/watch.html?v=${item.id}" class="video-title" title="${escapeHtml(item.title)}">
+              ${escapeHtml(item.title)}
+            </a>
+            <div class="video-uploader">
+              <a href="/?folder=${encodeURIComponent(item.folderName)}">${escapeHtml(channelName)}</a>
+            </div>
+            <div class="video-meta">
+              <span>${views}</span> &bull; <span>${relativeTime}</span>
+            </div>
+            <div class="card-rating" title="${rating} / 5 stars" aria-label="Rated ${rating} out of 5 stars"><span class="on">${'★'.repeat(rating)}</span><span class="off">${'☆'.repeat(5 - rating)}</span></div>
+          </div>
+        </div>
+      `;
+    }
+
+    // Appends `items` as NEW card elements at the tail of #video-grid --
+    // via createElement/append, NOT an innerHTML rebuild of the whole grid
+    // (the old full-library-in-one-join pattern this task removes). Builds
+    // the new items' markup into a detached wrapper, then moves just those
+    // resulting elements into the live grid -- the existing (already
+    // rendered) cards are never touched/re-parsed.
+    function appendCardsToGrid(items) {
+      if (!items || items.length === 0) return;
+      const wrapper = document.createElement('div');
+      wrapper.innerHTML = items.map(buildCardHtml).join('');
+      Array.from(wrapper.children).forEach((card) => videoGrid.append(card));
+    }
+
+    // renderItemCountBadge (common.js) only ever reads `.length` off
+    // whatever `list` it's given (via its own countItems helper) -- a
+    // sparse Array of the desired length is the simplest way to feed it the
+    // server's authoritative filtered `currentTotal` (the TRUE count under
+    // pagination -- `currentItems`/a rendered page is only ever a subset of
+    // it) without changing common.js's existing list-shaped contract.
+    function updateItemCountBadge() {
+      renderItemCountBadge(videosHeader, new Array(Math.max(0, currentTotal)));
+    }
+
+    // Removes exactly one already-rendered card (by id) from the live DOM,
+    // WITHOUT a server refetch/full re-render -- deleting an item is not one
+    // of the "reset to page 0" actions (sort/format/search/shuffle change);
+    // it just shrinks the currently-rendered set in place. Falls back to the
+    // shared empty-state render (mirrors the old renderMediaGrid([]) path)
+    // once the grid has no cards left.
+    function removeCardFromGrid(id) {
+      const buttons = videoGrid.querySelectorAll('.card-delete-btn');
+      for (let i = 0; i < buttons.length; i++) {
+        if (buttons[i].dataset.id === id) {
+          const card = buttons[i].closest('.video-card');
+          if (card) card.remove();
+          break;
+        }
+      }
+      if (!videoGrid.querySelector('.video-card')) {
+        renderMediaGridPage([], { append: false });
       }
     }
 
@@ -387,28 +650,6 @@ if (typeof module !== 'undefined' && module.exports) {
       }
     }
 
-    // Sort the current items by the selected option, then render. `random`
-    // (item 1, v1.14.0) shuffles a fresh order on EVERY call -- including the
-    // initial load and each "shuffle again" click -- since the shuffle order
-    // itself is ephemeral (only the `random` sort PREFERENCE persists).
-    //
-    // C3 (v1.24.0, T3-WIRE): the persisted format-filter preference is
-    // applied BEFORE sorting -- every home/folder/playlist/channel view funnels
-    // through this one function, so filtering here covers all of them.
-    // C2 (v1.24.0, T3-WIRE): the item-count badge reflects the SAME
-    // already-filtered `items` the grid actually renders, never a separately
-    // computed count. Both `renderItemCountBadge`/`renderFormatToggle` are
-    // idempotent (see common.js) -- safe to call on every render (initial
-    // load, sort change, shuffle-again, post-delete re-render) without ever
-    // accumulating duplicate badges/toggles.
-    function renderSorted() {
-      const filtered = filterByMediaType(currentItems, getStoredFormatFilter());
-      const items = sortItems(filtered, currentSort);
-      renderItemCountBadge(videosHeader, items);
-      renderFormatToggle(sectionActions, getStoredFormatFilter(), () => renderSorted());
-      renderMediaGrid(items);
-    }
-
     // Item 1 (v1.14.0): show/hide the "shuffle again" re-roll button to match
     // the current sort selection (visible only for `random`).
     function updateShuffleButtonVisibility() {
@@ -451,9 +692,11 @@ if (typeof module !== 'undefined' && module.exports) {
     // with `?removeAnyway=true` (that opt-in UI stays out of scope per the
     // design; only a path that has already seen a 409 may ever send it, and
     // this path never does). On success, the item is dropped from
-    // `currentItems` and re-rendered via the SAME `renderSorted()`/
-    // `renderMediaGrid()` path every other library refresh already uses --
-    // no `window.location.reload()`/full navigation.
+    // `currentItems`/`currentTotal` and its card is removed from the DOM IN
+    // PLACE (v1.30.0 T7: a delete is not a "reset to page 0" action -- see
+    // removeCardFromGrid() -- so it never refetches/re-renders the rest of
+    // the already-loaded pages) -- no `window.location.reload()`/full
+    // navigation either.
     async function deleteCardById(id) {
       try {
         const res = await fetch(`/api/videos/${id}`, { method: 'DELETE' });
@@ -464,7 +707,9 @@ if (typeof module !== 'undefined' && module.exports) {
         const data = await res.json().catch(() => ({}));
         if (data.success) {
           currentItems = currentItems.filter((item) => item.id !== id);
-          renderSorted();
+          currentTotal = Math.max(0, currentTotal - 1);
+          removeCardFromGrid(id);
+          updateItemCountBadge();
           showToast('File deleted.');
         } else {
           showToast('Error deleting file: ' + (data.error || 'unknown error'));
@@ -475,11 +720,25 @@ if (typeof module !== 'undefined' && module.exports) {
       }
     }
 
-    // Render media items in the grid
-    function renderMediaGrid(items) {
-      // Any re-render replaces the grid's children -- an armed reference to
-      // a node that's about to be detached must never leak/double-fire
-      // across it (hard constraint: reset arm state on re-render).
+    // Renders one PAGE of media items. `{ append: false }` (the default --
+    // page 0, a sort/format/search/shuffle reset, or the post-delete
+    // fallback to the empty state) fully REPLACES the grid's children,
+    // exactly like the old renderMediaGrid did. `{ append: true }` (every
+    // subsequent page, fetched by the IntersectionObserver sentinel) instead
+    // adds `items` as NEW cards at the tail via appendCardsToGrid -- it never
+    // touches/re-renders the cards already on screen.
+    function renderMediaGridPage(items, opts) {
+      const append = !!(opts && opts.append);
+
+      if (append) {
+        appendCardsToGrid(items);
+        return;
+      }
+
+      // Any full replace re-render replaces the grid's children -- an armed
+      // reference to a node that's about to be detached must never leak/
+      // double-fire across it (hard constraint: reset arm state on
+      // re-render).
       disarmCardDelete();
 
       if (items.length === 0) {
@@ -498,57 +757,7 @@ if (typeof module !== 'undefined' && module.exports) {
         return;
       }
 
-      videoGrid.innerHTML = items.map(item => {
-        const views = getMockViews(item.id, item.size);
-        const relativeTime = formatRelativeTime(item.addedAt);
-        // Author/channel resolved the same way as the watch page (see common.js).
-        const channelName = resolveChannelName(item, folderSettings);
-        // Deterministic 3–5 star rating — the same value shows on this item's watch page.
-        const rating = getStarRating(item.id);
-
-        // Calculate duration format
-        const durationStr = item.duration > 0 ? formatDuration(item.duration) : (item.type === 'audio' ? 'Audio' : '');
-        const durationBadge = durationStr ? `<div class="duration-badge">${durationStr}</div>` : '';
-
-        // Playback progress indicator
-        let progressBar = '';
-        if (item.progressPercent > 0.5) {
-          // Only show if watched more than 0.5%
-          progressBar = `
-            <div class="progress-bar-container">
-              <div class="progress-bar-fill" style="width: ${Math.min(100, item.progressPercent)}%"></div>
-            </div>
-          `;
-        }
-
-        return `
-          <div class="video-card">
-            <a href="/watch.html?v=${item.id}" class="thumbnail-container">
-              <img class="thumbnail-img" src="/thumbnail/${item.id}" alt="${escapeHtml(item.title)}" loading="lazy" />
-              ${durationBadge}
-              ${progressBar}
-            </a>
-            <button type="button" class="card-delete-btn" data-id="${escapeHtml(item.id)}" aria-label="Delete this video">
-              <i class="icon-delete"></i><span class="card-delete-confirm">Sure?</span>
-            </button>
-            <a class="card-download-btn" href="${buildCardDownloadHref(item.id)}" download="${escapeHtml(buildCardDownloadFilename(item.title, item.ext))}" aria-label="Save to device" title="Save to device">
-              <i class="icon-download"></i>
-            </a>
-            <div class="video-info">
-              <a href="/watch.html?v=${item.id}" class="video-title" title="${escapeHtml(item.title)}">
-                ${escapeHtml(item.title)}
-              </a>
-              <div class="video-uploader">
-                <a href="/?folder=${encodeURIComponent(item.folderName)}">${escapeHtml(channelName)}</a>
-              </div>
-              <div class="video-meta">
-                <span>${views}</span> &bull; <span>${relativeTime}</span>
-              </div>
-              <div class="card-rating" title="${rating} / 5 stars" aria-label="Rated ${rating} out of 5 stars"><span class="on">${'★'.repeat(rating)}</span><span class="off">${'☆'.repeat(5 - rating)}</span></div>
-            </div>
-          </div>
-        `;
-      }).join('');
+      videoGrid.innerHTML = items.map(buildCardHtml).join('');
     }
 
     // Local escape HTML helper
@@ -573,30 +782,42 @@ if (typeof module !== 'undefined' && module.exports) {
         currentSort = sortSelect.value;
         localStorage.setItem('filetube_sort', currentSort);
         updateShuffleButtonVisibility();
-        renderSorted();
+        resetAndReload();
       }, { signal });
     }
 
     // "Shuffle again" re-roll (item 1, v1.14.0): re-randomizes the visible
-    // order in place WITHOUT changing the selected sort or its persisted
-    // localStorage value -- renderSorted() re-shuffles on every call while
-    // currentSort === 'random'.
+    // order via a fresh server-side `seed` (v1.30.0 T7 -- random is now
+    // server-authoritative, see resetAndReload()/fetchLibraryPage0()),
+    // WITHOUT changing the selected sort or its persisted localStorage value.
     if (shuffleAgainBtn) {
       shuffleAgainBtn.addEventListener('click', () => {
-        renderSorted();
+        resetAndReload();
       }, { signal });
     }
 
+    // v1.30.0 T3 (AC2.3): `POST /api/scan` now acks with a 202
+    // `{scanning, alreadyInProgress}` BEFORE the scan itself completes (see
+    // server.js's T2, A2) -- there is no more `{success:true}` to branch on,
+    // and the old `window.location.reload()` on completion is GONE. Instead,
+    // any 202 (whether this click started a fresh scan OR simply joined one
+    // already running -- `alreadyInProgress: true`, e.g. the periodic/boot
+    // scan beat this click to it) goes straight into polling
+    // `GET /api/scan-status`, keeping the button in its "Scanning..." state,
+    // until `scanning` flips false -- then the grid refreshes IN PLACE via
+    // `window.__filetubeRefreshLibrary` (the `loadLibrary` hook set up
+    // below). This generalizes the v1.29 BUG-2 reload-never contract to scan
+    // completion: this path must NEVER call `window.location.reload()` or
+    // trigger any other full-page navigation.
     rescanBtn.addEventListener('click', async () => {
       rescanBtn.innerHTML = '<i class="icon-refresh"></i> <span class="btn-label">Scanning...</span>';
       rescanBtn.disabled = true;
       try {
         const res = await fetch('/api/scan', { method: 'POST' });
-        const data = await res.json();
-        if (data.success) {
-          window.location.reload();
-        } else {
-          alert('Failed to rescan: ' + data.error);
+        if (!res.ok) {
+          let data = {};
+          try { data = await res.json(); } catch (_e) { /* no/invalid JSON body -- fall back to a generic message below */ }
+          alert('Failed to rescan: ' + (data.error || 'unknown error'));
           // Visual-consistency polish: reset to the SAME short "Rescan"
           // label the static markup starts with (was "Rescan Files" here,
           // a casing/length mismatch against the button's own resting
@@ -604,7 +825,9 @@ if (typeof module !== 'undefined' && module.exports) {
           // title/aria-label).
           rescanBtn.innerHTML = '<i class="icon-refresh"></i> <span class="btn-label">Rescan</span>';
           rescanBtn.disabled = false;
+          return;
         }
+        pollRescanStatus();
       } catch (err) {
         console.error(err);
         alert('Network error trigger scanner.');
@@ -613,9 +836,46 @@ if (typeof module !== 'undefined' && module.exports) {
       }
     }, { signal });
 
+    // Non-redirecting `/api/scan-status` poller for the rescan button --
+    // mirrors setup.js's `pollAutomationScanStatus()` shape/cadence (fetch ->
+    // read `scanning` -> `setTimeout` re-poll at ~1s) rather than the OTHER
+    // existing poller, setup.js's `pollScanStatus()`, which navigates to `/`
+    // on completion and is exactly the full-reload behavior this task
+    // removes. Torn-down-view-safe: bails out (no further polling, no stray
+    // DOM writes) the moment `controller` is cleared/aborted by destroy(),
+    // same guard setup.js's poller uses.
+    function pollRescanStatus() {
+      if (!controller || controller.signal.aborted) return;
+      fetch('/api/scan-status')
+        .then((r) => r.json())
+        .then((s) => {
+          if (!controller || controller.signal.aborted) return;
+          if (s.scanning) {
+            setTimeout(pollRescanStatus, 1000);
+            return;
+          }
+          // Scan complete -- refresh the grid IN PLACE (never a reload).
+          // Guarded since the hook is nulled on teardown (see destroy()).
+          if (typeof window.__filetubeRefreshLibrary === 'function') {
+            window.__filetubeRefreshLibrary();
+          }
+          rescanBtn.innerHTML = '<i class="icon-refresh"></i> <span class="btn-label">Rescan</span>';
+          rescanBtn.disabled = false;
+        })
+        .catch(() => {
+          // Transient fetch failure while polling -- retry rather than
+          // leaving the button stuck in "Scanning..." forever (mirrors
+          // pollAutomationScanStatus's own retry-on-transient-failure
+          // posture).
+          if (!controller || controller.signal.aborted) return;
+          setTimeout(pollRescanStatus, 1500);
+        });
+    }
+
     // v1.17.0 FR-3(b), T2: ONE delegated click listener on #video-grid (never
-    // per-card -- the grid's children are fully replaced on every
-    // renderMediaGrid() call, so a per-card listener would leak/duplicate).
+    // per-card -- delegation means it covers BOTH a full renderMediaGridPage()
+    // replace and an appended page's new cards with zero extra wiring, so a
+    // per-card listener would leak/duplicate).
     // Drives the pure `nextArmState` reducer: a tap on an idle card's delete
     // button arms it (no delete yet); a tap on the SAME already-armed button
     // is the confirming second tap that actually deletes. A tap that lands on
@@ -700,6 +960,8 @@ if (typeof module !== 'undefined' && module.exports) {
     }
     if (typeof disarmCardDeleteFn === 'function') disarmCardDeleteFn();
     disarmCardDeleteFn = null;
+    if (typeof disconnectGridSentinelFn === 'function') disconnectGridSentinelFn();
+    disconnectGridSentinelFn = null;
     restoreSidebarFn = null;
     // GF1 (post-gate QA suggestion, folded in as trivial): init() exposes
     // window.__filetubeRefreshLibrary = loadLibrary (see init(), above) but

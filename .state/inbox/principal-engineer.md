@@ -1,167 +1,174 @@
-# Principal Engineer — Design: v1.29 Downloads Reliability Wave
+# Design — v1.30 Scale Performance + Polish Wave
 
-You are the Principal Engineer for the **v1.29 Downloads Reliability Wave**. This
-is a Design-stage task. You have NO shared context with the orchestrator —
-everything you need is referenced below. Do NOT write application code or tests.
-Your deliverable is a **`## Design` section appended to the exec plan** that a
-task-breakdown and then implementation can be built from directly.
+You are the **principal-engineer**. This is the **Design** stage. Produce a
+`## Design` section in the exec plan that resolves the open architectural
+decisions below and gives the software-developer an unambiguous blueprint per
+lane. You do NOT implement code or tests.
 
-## Authorization status
+## Read first (authoritative context)
 
-Dean APPROVED the plan (2026-07-11) and authorized a full autonomous run to
-release v1.29.0. Discovery is complete: the product-manager appended
-`## Requirements` (33 items, tagged `[UNIT]`/`[INTEGRATION]`/`[MANUAL]`, anchors
-re-verified against the tree) and `## Acceptance criteria` (27 AC + 4 AC-FM
-failure-masking items) to the exec plan. Scope is settled — your job is the
-technical HOW, not re-scoping.
+1. `.state/feature-state.json` — feature `v1.30-scale-perf-and-polish`; carries
+   binding parameters, lanes, hot-file serialization notes, regression surfaces,
+   verified bottleneck file:line evidence (B1-B7), the `acceptance_criteria`
+   summary (48 ACs + tunable bounds + PM flags), and the v1.29 process learnings.
+2. `docs/exec-plans/active/2026-07-11-v1.30-scale-perf-and-polish.md` — the
+   APPROVED plan. Read the whole thing, especially:
+   - "Dean's pre-answered parameters" + "Verified bottlenecks" (ground truth — do
+     NOT re-derive or relitigate),
+   - the PM's `## Requirements` (FR1-FR8 + **Conditional requirement — SQLite (A6)**
+     + the **tunable-bounds table** at ~line 266),
+   - the PM's `## Acceptance Criteria` (AC1.1-AC8.5 at ~line 283 — your design must
+     make every non-on-device AC implementable and testable).
+3. `docs/ARCHITECTURE.md` — system architecture; the re-read-merge-on-save
+   `updateDatabase` mutex and atomic-rename+fsync discipline are documented there.
+   **Update it** if your design introduces new components (in-memory cache layer,
+   SQLite store, pagination contract, scan-status/background-scan machinery).
+4. `docs/CONTRIBUTING.md` — coding standards (no new runtime deps without
+   design-stage justification; SQLite driver is the ONLY sanctioned exception, and
+   only if A6 lands). `docs/RELIABILITY.md` — crash-safety + testing invariants
+   (node:test; no FFmpeg in the automated suite; integration boots `app` on an
+   ephemeral port against an isolated temp `DATA_DIR`).
 
-## Read first (in this order)
+## The evidence is ground truth — do not re-derive
 
-1. **The exec plan (source of truth):**
-   `docs/exec-plans/active/2026-07-11-v1.29-downloads-reliability.md`
-   — read the whole thing: Goal, verified root causes, In/Out scope, Constraints,
-   the 7 "done" deliverables, `## Requirements` (line ~147), and
-   `## Acceptance criteria` (line ~337) incl. the AC-FM failure-masking items.
-2. `.state/feature-state.json` — owned vs off-limits paths, constraints,
-   `key_anchors` (verified file:line seams), `tech_debt_in_reach`,
-   `pm_flags_for_design`.
-3. `docs/ARCHITECTURE.md` — the `lib/ytdlp/` module section (spawn posture,
-   disabled-module inertness, `db.ytdlp` persistence, `--download-archive`
-   dedup, activity map). **Update this file** if your design introduces a new
-   durable component (the JSONL run log) or changes the module's contract.
-4. `docs/CONTRIBUTING.md` (Node 22, CommonJS, node:test, textContent, no new
-   runtime deps, 0-warning lint) and `docs/RELIABILITY.md` (error-handling /
-   logging invariants — relevant to the run log and status surfacing).
-5. `docs/ui-research-2026-07.md` §5 — the corner-chip / active-download status
-   brief that T2 (non-blocking one-shot) and T4 (history view) extend.
+The bottleneck file:line evidence (B1-B7) came from a read-only perf sweep at
+Dean's real ~1300-item scale and is pre-verified. Design decides HOW to fix, not
+WHETHER the bottlenecks are real. The PM deliberately left the mechanism SHAPE to
+you for several items while locking the observable — honor that split: you pick
+the mechanism, but it must satisfy the AC's named observable (call-count
+instrumentation, heartbeat proxy, write-count instrumentation, request-during-scan
+latency).
 
-Ground every design decision against the real code seams in `key_anchors`
-(`lib/ytdlp/index.js:1380`/`:1428`/`:2923`, `lib/ytdlp/run.js:901`/`:142`,
-`lib/ytdlp/args.js:614-737`/`:252-265`, `lib/ytdlp/failures.js`, `progress.js`,
-`public/js/common.js:4560`/`:4611`/`:4632`/`:1942`). Read the actual functions
-before designing on top of them.
+## Decisions you MUST resolve in the Design section
 
-## What I need back — a `## Design` section covering each task
+For each: state the chosen approach, the components/files it touches, the risk, and
+how it satisfies the specific AC(s) — cite AC numbers.
 
-Append `## Design` to the exec plan (after `## Acceptance criteria`; do not
-disturb existing sections). For EACH task, give the concrete approach, the exact
-components/functions/files to change, data-model/API impact, and the risks.
+1. **A6 — SQLite decision (the big one).** Dean AUTHORIZED SQLite but named the
+   incremental path (A3 in-memory cache + A4 batched writes + A2 cooperative scan)
+   as the FIRST candidate. Decide with the O(N²)/parse-storm evidence in hand:
+   does A3+A4+A2 clear the FR1/FR3/FR4 bounds at ~1300 (and headroom to ~2000+), or
+   is a better-sqlite3-class synchronous-API migration warranted?
+   - If you LAND SQLite: specify the driver, the schema, the one-way migration from
+     `db.json` WITH a retained backup + a rollback path (hard requirement per the
+     PM's conditional SQLite requirement — the app must be re-pointable at the JSON
+     store without data loss), and confirm every perf + guard AC applies to the new
+     store. Justify the new runtime dep.
+   - If you DEFER SQLite: that is acceptable, but **silent deferral is PROHIBITED** —
+     file an explicit `docs/exec-plans/tech-debt-tracker.md` entry with named,
+     measurable **trigger criteria** (e.g. "revisit if in-memory-cache + batched
+     writes still show >50ms event-loop stalls at N>=2000"). Give evidence-based
+     justification either way.
 
-### T0 — Diagnostics foundation (prerequisite; do first)
-- How `run.js`'s already-captured bounded/redacted `safeStderr` (discarded at
-  `run.js:901`) gets promoted into persisted `lastStatus` (R0.1) AND the live
-  activity entry (R0.3), staying bounded/sanitized (R0.2, reuse
-  `STDERR_TAIL_LIMIT` / `failures.js` `sanitizeReason`/`MAX_REASON_LENGTH`),
-  surviving restart in `db.json` (R0.4), without regressing the `cancelled`
-  persisted state at `index.js:1406-1408` (R0.8).
-- The **JSONL run log**: exact `data/`-relative filename, line schema (timestamp,
-  sub/one-shot id, outcome success/partial/failure/cancelled, succeeded/failed
-  counts, per-item reasons), the writer's module home, the **cap/rotation
-  strategy with a concrete testable number** (R0.5/R0.6), and the disabled-module
-  no-op guarantee (no file, no route when `FILETUBE_YTDLP_ENABLED` off — R0.7).
+2. **A1 — sidecar-detection cache shape (B1 / AC1.3).** The O(N²) is per-file
+   `readdirSync` of the file's own directory for subtitle-sidecar detection, run
+   unconditionally even for unchanged files. The AC fixes the observable
+   (sidecar-detection directory-listing calls must be O(1) per directory, NOT scale
+   with file count) and leaves the mechanism to you: per-scan readdir cache keyed by
+   directory, OR skip sidecar re-detection for unchanged files (consistent with the
+   incremental posture), OR both. Critically (AC1.7): your mechanism must NOT change
+   which files are considered changed (the `filePath`+`size` change-detection input
+   must be untouched).
 
-### T3(a) — Partial-success reporting (shared prerequisite; ordered before T1)
-- Per-video outcome threading using the existing `failures.js` /
-  `mapItemFailuresForActivity` (`index.js:1428`) plumbing so the orchestrator no
-  longer treats any non-zero exit as total failure (`index.js:1380`). Define the
-  explicit outcome states (success / partial / error) and the status-string
-  contract "downloaded N, M failed: [reasons]".
-- **CRITICAL — design both failure-masking directions explicitly (AC-FM):**
-  - Direction A: an all-items-failed run OR a channel-level failure before any
-    item starts (bot-check/429/age-gate/members-only) must resolve to
-    `error`/`failed` with the real reason — the partial-success accounting must
-    NOT swallow a total failure into a false success/empty result.
-  - Direction B: some-succeed-some-fail must resolve to `partial` with failures
-    attributed — never whole-channel `failed` (today's bug) and never a silent
-    "all good".
-  - State how the design makes these two mutually exclusive and testable from
-    stderr fixtures (no live network).
-- Tech-debt **#17** in reach: skip recording `downloadMeta` for failed ids —
-  confirm the natural seam.
+3. **A3 — in-memory DB cache + invalidation contract (B3 / AC3.3).** Design the
+   cache that lets hot routes (esp. `/thumbnail/:id`, `/video/:id`, `/audio/:id`,
+   `/api/videos`, progress, config) stop re-parsing the whole db.json per request.
+   The load-bearing question: **how the cache interacts with the existing
+   `updateDatabase` re-read-merge-on-save mutex** (documented in ARCHITECTURE.md).
+   Specify: when the cache is populated, when it is invalidated/updated on write,
+   how concurrency between the mutex's on-disk re-read-merge and the in-memory copy
+   is kept coherent (no torn/stale reads), and confirm `loadDatabase`/parse is
+   invoked O(1) not per-request (AC3.3's instrumentation hook).
 
-### T1 — Retry that retries
-- Port the working corner-chip retry logic (`retryOneShot` common.js:4611,
-  `retrySubscription` common.js:4632) to: errored `/subscriptions` rows, one-shot
-  rows, and the one-off modal error state. Currently the only Re-pull affordance
-  is buried at `client/subscriptions.js:1314`.
-- Make busy-coalescing VISIBLE ("queued behind current run") instead of the
-  silent `{started:false, reason:'busy'}` no-op.
-- **PM FLAG 2 — resolve this:** `POST /api/subscriptions/:id/repull`
-  (`lib/ytdlp/index.js:2923-2935`) responds **202 BEFORE `runPoll` resolves** and
-  never inspects the `{started:false, reason:'busy'}` return. R1.5/AC3.5 assume
-  T1 changes this route's response timing/shape. Decide and document the approach
-  (e.g. inspect the return and vary the response body/status, or keep 202 but
-  return a `queued`/`busy` discriminator the client renders) — and note whether
-  any existing caller assumes always-202.
-- Tech-debt **#8** in reach: busy-coalescing does a `loadDatabase` per trigger;
-  say whether caching the sub-id set for an in-flight poll is cheap here.
+4. **A4 — progress-durability relaxation bounds (B5 / AC4.1-AC4.3).** Design the
+   debounce/batch for `POST /api/progress` writes hitting the >=5:1 amplification
+   reduction within a <=5s window. Precisely delineate the crash-safety carve-out:
+   progress writes MAY relax durability (bounded loss <=5s of watch position, never
+   corruption, never loss of anything other than watch position), while EVERY real
+   mutation (delete, config, settings, scan final-merge) keeps atomic-write+fsync
+   1:1 (AC4.2). Specify what happens to a pending progress batch on
+   shutdown/crash and how the on-disk file stays valid JSON (AC4.3).
 
-### T2 — Non-blocking one-shot + auto-refresh
-- On submit, minimize the one-off modal into the existing corner chip
-  (`injectDownloadStatusChip` common.js:4560); progress continues there.
-- On `done`, refresh the library grid **IN PLACE via `loadLibrary()` — NEVER
-  `window.location.reload()`** (the deliberately-disconnected client auto-rescan
-  "BUG 2" fix at common.js:1942; reload-under-load hung). Server already
-  rescans after `runOneShot`; the client only re-fetches.
-- Preserve the v1.28.0 one-shot `text/plain` / URL-normalization behavior (iOS
-  Shortcut) — call out the non-regression seam.
+5. **A5 — pagination contract (B4 / AC3.1-AC3.4).** Choose limit/offset vs cursor
+   for `/api/videos`; return a bounded page + total count. Critically specify the
+   **interaction with search/sort/filter so those semantics apply across the FULL
+   library, not just the first window** (AC3.2: paged full-library sort/filter must
+   equal unpaged-then-sliced). Specify the client contract: first-page render only,
+   IntersectionObserver sentinel appends exactly one page per trigger (AC3.4),
+   preserving the existing renderer's search/sort/filter behavior.
 
-### T3(b) — Resilience argv flags — **PM FLAG 4: finalize the exact list**
-- Commit the flag set: `--sleep-requests`/`--sleep-interval`, `--retries` with
-  backoff, and DECIDE on `--extractor-args youtube:player_client` (plan says
-  "consider" — make the call and justify). Give each a safe default and a
-  `FILETUBE_YTDLP_*` override name consistent with `lib/ytdlp/config.js`.
-- **Preserve byte-identically:** shell:false arg-array spawning and the v1.28.0
-  injection-guard posture (host allowlist, `--` separator, FORBIDDEN_CHARS, SF4
-  path confinement, decoded-id charset). Show where in the `args.js:614-737`
-  builder the flags slot in without disturbing the guard.
-- List the new env vars for the README ENV table (T3b delivers deliverable 6).
+6. **A2 — cooperative/non-blocking scan (B2/B6 / AC2.1-AC2.5).** Design: `POST
+   /api/scan` acks <=100ms and returns before scan completes; the walk runs
+   cooperatively (async fs / yielding batches) so concurrent requests stay under the
+   200ms ceiling; boot scan does not gate first responses (AC2.4); the client polls
+   `/api/scan-status` and refreshes the grid **in place (never
+   `window.location.reload`** — AC2.3 generalizes the BUG-2 contract to
+   scan-completion). Preserve the load-bearing guards while making it cooperative:
+   overlap coalescing (AC2.5), mount-loss/prune protection (AC1.4/1.5), incremental
+   ffprobe reuse (AC1.6/1.7) must all still fire end-to-end.
 
-### T3(c) — Cookie-missing warning
-- Loud warning in status + run log when `FILETUBE_YTDLP_COOKIES_FILE` is
-  configured but the file is missing (today silently skipped at
-  `args.js:252-265`).
+7. **B1 — done-edge / dirty-flag design (B7 / AC5.1-AC5.4).** Design so a completed
+   one-shot surfaces with NO manual action across all three surfaces: on-home
+   (in-place refresh), off-home-return (done-edge NOT consumed unless a refresh
+   target succeeded, OR grid marked dirty and reconciled by
+   `restoreHomeFromCache`-equivalent), and backgrounded-resume
+   (`visibilitychange`/`pageshow` triggers reconcile; a locally-retained
+   pending/dirty marker survives the server snapshot dropping the done entry).
+   Never `window.location.reload` (AC5.4). Must not regress the v1.29 BUG-2 /
+   non-blocking-one-shot contract.
 
-### T4 — Download history view
-- Render the T0 JSONL run log (capped) on `/subscriptions`: states, timestamps,
-  per-item failures. Define the read path (a gated route reading the run log),
-  the render seam in the subscriptions view, and textContent-safe rendering.
+8. **B2 — active-downloads chip reframe (AC6.1-AC6.4).** Design the chip so it
+   surfaces only currently-DOWNLOADING jobs (absent when idle/queued-only), tappable
+   to a detail view with progress/attribution, and NO stop/dequeue affordance on
+   queued rows (explicitly unwanted per Dean). Specify how "actively downloading" is
+   distinguished from "queued" in the existing download/queue state.
 
-### Cross-cutting decisions I need from you
-- **PM FLAG 1:** confirm `index.js` shorthand = `lib/ytdlp/index.js`.
-- **PM FLAG 3 — release-notes artifact:** no `CHANGELOG.md` exists. AC7.4 needs a
-  concrete artifact. Recommend where v1.29.0 release notes land (create a
-  `CHANGELOG.md`? a section in ROADMAP? the exec plan? the git tag/release body?)
-  so the Tasks/close-out stages have a target.
-- **Risks & alternatives considered** subsection: at minimum the failure-masking
-  hazard (both directions), the repull-route timing change, run-log unbounded
-  growth, and any argv change interacting with the injection guard.
-- A short **components-to-change table** (file → what changes → which
-  requirements/AC it satisfies) to seed the EM's task breakdown.
+9. **C1 — type-scale token system (AC7.1/AC7.2).** Design the small token-driven
+   type scale (CSS custom properties) per era theme, the harmonization sweep
+   approach, and the allowlist for any permitted hardcoded `font-size`. Preserve the
+   16px input floor (v1.26.2) and era-theme character. Since C2-C5 build on C1,
+   define the tokens first. Also cover, at least in approach: C2 like->Liked
+   playlist membership model (membership IS like state — no separate flag; AC7.3),
+   C3 deterministic identicon avatar as a pure function of channel name with real
+   captured avatar winning (AC7.4), C4 button polish (conservative), C5
+   `resolveAvatarSource` wiring for subs rows + settings header (AC7.5).
 
-## Constraints (must hold in the design)
-- Node 22 / Express 4 / CommonJS / node:test; ESLint 0 warnings (8 pre-existing
-  common.js warnings baseline); **no new runtime deps** expected.
-- Disabled-module no-op: `FILETUBE_YTDLP_ENABLED` off → no new routes/UI/DOM/log
-  files reachable.
-- Serial one-worker `runExclusive` model is OUT of scope to change; progress.js
-  is NOT to be rebuilt; no one-spawn-per-video redesign.
-- yt-dlp argv changes keep shell:false arg-array spawning + byte-identical
-  v1.28.0 injection-guard posture. v1.28.0 one-shot text/plain + URL
-  normalization must not regress (iOS Shortcut).
-- **OFF-LIMITS:** CSS / typography / design tokens / like-button work — a
-  parallel agent session owns typography and is staying off `lib/ytdlp` +
-  subscriptions UI; this wave stays off CSS/type tokens. Keep the design inside
-  this wave's owned paths (new T4 history rendering should reuse existing
-  subscriptions-view/chip structure, not introduce a type/token redesign).
+## Constraints to honor in the design
 
-## Wrap-up
-- Append `## Design` to the exec plan; update `docs/ARCHITECTURE.md` if the run
-  log or any module contract changes.
-- Report back to the orchestrator (EM): a summary of the design decisions, your
-  answers to the 4 PM flags, the components-to-change table, and any residual
-  questions. Do NOT commit (main session owns git). Do NOT break work into tasks
-  (that is the EM's next stage) and do NOT start implementation.
+- Regression surfaces (see state file): v1.29 download semantics (outcome
+  classification, run log, retry, AC6.3 argv locks / byte-identical injection
+  guard, BUG-2 reload contract) must NOT regress; scan correctness guards must NOT
+  weaken; crash-safety atomic-write+fsync stays for real mutations; 16px input
+  floor preserved; no service-worker reintroduction; yt-dlp downloads stay serial.
+- Hot-file collisions to flag for Tasks-stage serialization: `server.js` + `main.js`
+  (Lane A), `common.js` (Lanes B+C), `style.css` (Lane C). Note in your design where
+  lanes touch the same file so the EM can serialize tasks.
+- No new runtime deps except the sanctioned SQLite driver (only if A6 lands).
+- Every non-on-device AC must be implementable AND testable under node:test with no
+  FFmpeg. Where an AC names an instrumentation hook (call-count spy, heartbeat
+  probe, write-count spy), specify where that hook lives so the developer builds it
+  testably.
 
-The orchestrator will set `artifacts.design`, then run the Tasks stage
-(`/prep-em-tasks`).
+## Process learnings to carry (from v1.29)
+
+- The fnm node PATH must be exported before any npm AND git-hook command
+  (Node v22.23.1 at `~/.local/share/fnm`); the developer/build stages will need it.
+- Node 22 is CI-parity; this wave also requires Node 24 green (AC8.2) — flag any
+  API you use that differs across 22/24.
+- Templated yt-dlp reason text is never an identity key (relevant if B1/B2 touch
+  download-state identity).
+
+## Deliverable from you
+
+- `## Design` section appended to the exec plan: per-decision approach + files
+  touched + risks + alternatives-considered + AC mapping; an explicit A6
+  SQLite verdict (with justification, and a tech-debt tracker entry if deferred);
+  and a lane/hot-file collision note for the Tasks stage.
+- `docs/ARCHITECTURE.md` updated if new components are introduced.
+- If A6 is deferred: the `docs/exec-plans/tech-debt-tracker.md` entry with trigger
+  criteria (silent deferral prohibited).
+- A short report back: the A6 verdict + rationale, any bound you retuned (with the
+  mechanism still locked), and any decision you want the EM to confirm before Tasks.
+- Do NOT write application code or tests.
+
+When done, return to the EM session and run `/prep-em-tasks`.

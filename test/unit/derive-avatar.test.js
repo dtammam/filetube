@@ -1,12 +1,18 @@
 'use strict';
 
 // [UNIT] v1.24.0 "UX Round" F1 (avatar fallback), T3, `public/js/common.js`.
+// GD-1 (v1.30.0 gate resolution): C3/T12 briefly changed the glyph to a
+// hash-generated identicon letter, but both two-reviewer-gate reviewers
+// independently recommended reverting to the name's own first letter (the
+// recognizable mnemonic), keeping the hash-based deterministic COLOR from
+// that same change -- see `deriveAvatar`'s own doc comment in common.js.
+//
 // `deriveAvatar(name)` -> deterministic `{glyph, color}` (same input -> same
-// output, always; distinct names should usually get distinct colors, not
-// just distinct letters -- the old first-letter-on-a-fixed-color avatar's
-// only variation was the letter). `resolveAvatarSource(name,
-// channelAvatarUrl)` is the precedence seam: a real captured
-// `channelAvatarUrl` (C6) wins when present, else falls back to
+// output, always; the glyph is `name`'s first letter uppercased, the color is
+// hash-derived from `name` so distinct names are still visually
+// distinguishable even when they share a first letter).
+// `resolveAvatarSource(name, channelAvatarUrl)` is the precedence seam: a
+// real captured `channelAvatarUrl` (C6) wins when present, else falls back to
 // `deriveAvatar`. Both are pure/DOM-free.
 const { test } = require('node:test');
 const assert = require('node:assert');
@@ -18,12 +24,31 @@ test('deriveAvatar: the SAME name always produces the SAME {glyph, color} (deter
   const a = deriveAvatar('My Favorite Channel');
   const b = deriveAvatar('My Favorite Channel');
   assert.deepStrictEqual(a, b);
+  // Calling it a third time (a fresh, independent invocation) still matches --
+  // no memoization/shared mutable state is doing the work.
+  const c = deriveAvatar('My Favorite Channel');
+  assert.deepStrictEqual(a, c);
 });
 
 test('deriveAvatar: the glyph is the uppercased first character of the name', () => {
   assert.strictEqual(deriveAvatar('alice').glyph, 'A');
   assert.strictEqual(deriveAvatar('Zebra Channel').glyph, 'Z');
   assert.strictEqual(deriveAvatar('123 Numbers').glyph, '1');
+});
+
+test('deriveAvatar: two different names independently derive their own glyph -- not forced to share a value just because they were computed back-to-back', () => {
+  const names = ['Alpha Channel', 'Beta Creator', 'Gamma Studio', 'Delta Media', 'Epsilon TV'];
+  const glyphs = names.map((n) => deriveAvatar(n).glyph);
+  // Every result is independently the name's own first letter, uppercased --
+  // not e.g. all collapsing to the same value from some shared counter/
+  // mutable state.
+  glyphs.forEach((g, i) => assert.strictEqual(g, names[i].charAt(0).toUpperCase()));
+  // Re-deriving each name individually (out of the batch, in reverse order)
+  // reproduces the exact same glyph -- proves there is no cross-call state
+  // leaking between derivations.
+  for (let i = names.length - 1; i >= 0; i--) {
+    assert.strictEqual(deriveAvatar(names[i]).glyph, glyphs[i]);
+  }
 });
 
 test('deriveAvatar: the color is always one of AVATAR_PALETTE\'s literal hex values', () => {
@@ -35,8 +60,8 @@ test('deriveAvatar: the color is always one of AVATAR_PALETTE\'s literal hex val
 test('deriveAvatar: different names are DISTINGUISHABLE by color, not just by letter -- two names sharing a first letter get different colors when their hashes differ', () => {
   const a = deriveAvatar('Alpha Channel');
   const b = deriveAvatar('Another Creator');
-  // Both start with 'A' -- the OLD first-letter-only avatar would render
-  // these identically. The generated avatar must differ on at least one of
+  // Both start with 'A' -- a first-letter-only avatar would render these
+  // identically. The generated avatar must differ on at least one of
   // glyph/color (here, both share glyph 'A', so the color MUST differ to be
   // a real improvement over "just the first letter").
   assert.strictEqual(a.glyph, 'A');
@@ -44,7 +69,7 @@ test('deriveAvatar: different names are DISTINGUISHABLE by color, not just by le
   assert.notStrictEqual(a.color, b.color, 'two distinct channel names sharing a first letter must still be visually distinguishable by color');
 });
 
-test('deriveAvatar: a blank/missing name falls back to a deterministic "?" glyph, never throws/blank', () => {
+test('deriveAvatar: a blank/missing name falls back to a literal deterministic "?" glyph, never throws/blank', () => {
   assert.strictEqual(deriveAvatar('').glyph, '?');
   assert.strictEqual(deriveAvatar('   ').glyph, '?');
   assert.strictEqual(deriveAvatar(undefined).glyph, '?');
