@@ -197,6 +197,143 @@ test('parseYtdlpConfig: maxDurationSeconds of 0 is valid and means unbounded (no
   assert.equal(parseYtdlpConfig({ FILETUBE_YTDLP_MAX_DURATION_SECONDS: '0' }).maxDurationSeconds, 0);
 });
 
+// ---- v1.29 T3(b): resilience pacing/retry flags (AC6.2) -------------------
+//
+// FILETUBE_YTDLP_SLEEP_REQUESTS/SLEEP_INTERVAL/MAX_SLEEP_INTERVAL: sleep
+// seconds in [0, 60]; `0` is a valid, distinct value ("no sleep" -- unlike
+// downloadTimeoutMinutes, an unbounded/zero sleep is not itself a safety
+// hazard). FILETUBE_YTDLP_RETRIES: attempt count in [0, 20], `0` also valid
+// ("no retries"). Any invalid/hostile input on any of the four falls back to
+// its own documented default -- never a NaN/negative/non-finite value
+// reaching yt-dlp.
+
+test('parseYtdlpConfig: sleepRequests/sleepInterval/maxSleepInterval/retries default to 1/2/5/5 when unset', () => {
+  const config = parseYtdlpConfig({});
+  assert.equal(config.sleepRequests, 1);
+  assert.equal(config.sleepInterval, 2);
+  assert.equal(config.maxSleepInterval, 5);
+  assert.equal(config.retries, 5);
+});
+
+test('parseYtdlpConfig: sleepRequests/sleepInterval/maxSleepInterval accept a valid override, including 0 ("no sleep")', () => {
+  assert.equal(parseYtdlpConfig({ FILETUBE_YTDLP_SLEEP_REQUESTS: '3' }).sleepRequests, 3);
+  assert.equal(parseYtdlpConfig({ FILETUBE_YTDLP_SLEEP_REQUESTS: '0' }).sleepRequests, 0);
+  assert.equal(parseYtdlpConfig({ FILETUBE_YTDLP_SLEEP_INTERVAL: '10' }).sleepInterval, 10);
+  assert.equal(parseYtdlpConfig({ FILETUBE_YTDLP_SLEEP_INTERVAL: '0' }).sleepInterval, 0);
+  assert.equal(parseYtdlpConfig({ FILETUBE_YTDLP_MAX_SLEEP_INTERVAL: '60' }).maxSleepInterval, 60);
+  // maxSleepInterval=0 alone would be clamped UP to the (unset, default-2)
+  // sleepInterval by the coherence invariant tested separately below -- to
+  // observe an unclamped 0 here, sleepInterval must ALSO be 0.
+  assert.equal(parseYtdlpConfig({ FILETUBE_YTDLP_SLEEP_INTERVAL: '0', FILETUBE_YTDLP_MAX_SLEEP_INTERVAL: '0' }).maxSleepInterval, 0);
+});
+
+test('parseYtdlpConfig: retries accepts a valid override, including 0 ("no retries")', () => {
+  assert.equal(parseYtdlpConfig({ FILETUBE_YTDLP_RETRIES: '12' }).retries, 12);
+  assert.equal(parseYtdlpConfig({ FILETUBE_YTDLP_RETRIES: '0' }).retries, 0);
+  assert.equal(parseYtdlpConfig({ FILETUBE_YTDLP_RETRIES: '20' }).retries, 20);
+});
+
+test('parseYtdlpConfig: sleepRequests/sleepInterval/maxSleepInterval fall back to their own default on invalid/out-of-range values (AC6.2)', () => {
+  for (const bad of [undefined, null, '', 'abc', '-1', '1.5', 'NaN', {}, 'garbage', '61', '-100']) {
+    const config = parseYtdlpConfig({
+      FILETUBE_YTDLP_SLEEP_REQUESTS: bad,
+      FILETUBE_YTDLP_SLEEP_INTERVAL: bad,
+      FILETUBE_YTDLP_MAX_SLEEP_INTERVAL: bad,
+    });
+    assert.equal(config.sleepRequests, 1, `sleepRequests: ${JSON.stringify(bad)} should fall back to 1`);
+    assert.equal(config.sleepInterval, 2, `sleepInterval: ${JSON.stringify(bad)} should fall back to 2`);
+    assert.equal(config.maxSleepInterval, 5, `maxSleepInterval: ${JSON.stringify(bad)} should fall back to 5`);
+  }
+});
+
+test('parseYtdlpConfig: retries falls back to 5 on invalid/out-of-range values (AC6.2), including a value above MAX_RETRIES', () => {
+  for (const bad of [undefined, null, '', 'abc', '-1', '1.5', 'NaN', {}, 'garbage', '21', '-100']) {
+    const config = parseYtdlpConfig({ FILETUBE_YTDLP_RETRIES: bad });
+    assert.equal(config.retries, 5, `${JSON.stringify(bad)} should fall back to the default`);
+  }
+});
+
+test('parseYtdlpConfig: never produces a negative/non-finite/NaN value for any of the four pacing/retry fields, regardless of input shape (AC6.2)', () => {
+  const config = parseYtdlpConfig({
+    FILETUBE_YTDLP_SLEEP_REQUESTS: {},
+    FILETUBE_YTDLP_SLEEP_INTERVAL: [],
+    FILETUBE_YTDLP_MAX_SLEEP_INTERVAL: NaN,
+    FILETUBE_YTDLP_RETRIES: -Infinity,
+  });
+  for (const field of ['sleepRequests', 'sleepInterval', 'maxSleepInterval', 'retries']) {
+    assert.ok(Number.isFinite(config[field]), `${field} must be finite`);
+    assert.ok(config[field] >= 0, `${field} must be non-negative`);
+  }
+});
+
+test('parseYtdlpConfig: maxSleepInterval is clamped UP to sleepInterval when a configured combination would otherwise invert them', () => {
+  const config = parseYtdlpConfig({
+    FILETUBE_YTDLP_SLEEP_INTERVAL: '30',
+    FILETUBE_YTDLP_MAX_SLEEP_INTERVAL: '5',
+  });
+  assert.equal(config.sleepInterval, 30);
+  assert.equal(config.maxSleepInterval, 30, 'maxSleepInterval must never be less than sleepInterval');
+});
+
+test('parseYtdlpConfig: maxSleepInterval is left unchanged when it is already >= sleepInterval', () => {
+  const config = parseYtdlpConfig({
+    FILETUBE_YTDLP_SLEEP_INTERVAL: '3',
+    FILETUBE_YTDLP_MAX_SLEEP_INTERVAL: '10',
+  });
+  assert.equal(config.sleepInterval, 3);
+  assert.equal(config.maxSleepInterval, 10);
+});
+
+// ---- v1.29 T3(b): FILETUBE_YTDLP_PLAYER_CLIENT -----------------------------
+//
+// Unset by default (null); when set, must match the strict charset
+// allowlist /^[a-z0-9_,-]+$/ and stay within the length bound -- a rejected
+// value is treated exactly like unset (null), never partially sanitized.
+
+test('parseYtdlpConfig: playerClient defaults to null when unset', () => {
+  assert.equal(parseYtdlpConfig({}).playerClient, null);
+});
+
+test('parseYtdlpConfig: playerClient accepts a valid charset value', () => {
+  assert.equal(parseYtdlpConfig({ FILETUBE_YTDLP_PLAYER_CLIENT: 'web' }).playerClient, 'web');
+  assert.equal(parseYtdlpConfig({ FILETUBE_YTDLP_PLAYER_CLIENT: 'android,web' }).playerClient, 'android,web');
+  assert.equal(parseYtdlpConfig({ FILETUBE_YTDLP_PLAYER_CLIENT: 'tv_embedded' }).playerClient, 'tv_embedded');
+  assert.equal(parseYtdlpConfig({ FILETUBE_YTDLP_PLAYER_CLIENT: 'ios-web_1,2' }).playerClient, 'ios-web_1,2');
+});
+
+test('parseYtdlpConfig: playerClient rejects (-> null) a value outside the charset allowlist', () => {
+  for (const bad of ['web client', 'web;rm -rf /', 'web&&id', 'WEB', 'we\nb', 'web/../etc', '../../etc/passwd', '"web"', 'web$(id)']) {
+    const config = parseYtdlpConfig({ FILETUBE_YTDLP_PLAYER_CLIENT: bad });
+    assert.equal(config.playerClient, null, `${JSON.stringify(bad)} should be rejected to null`);
+  }
+});
+
+test('parseYtdlpConfig: playerClient rejects (-> null) an over-length value', () => {
+  const tooLong = 'a'.repeat(129);
+  assert.equal(parseYtdlpConfig({ FILETUBE_YTDLP_PLAYER_CLIENT: tooLong }).playerClient, null);
+  const atLimit = 'a'.repeat(128);
+  assert.equal(parseYtdlpConfig({ FILETUBE_YTDLP_PLAYER_CLIENT: atLimit }).playerClient, atLimit);
+});
+
+test('parseYtdlpConfig: playerClient treats unset/empty/whitespace-only as null (not an error)', () => {
+  assert.equal(parseYtdlpConfig({}).playerClient, null);
+  assert.equal(parseYtdlpConfig({ FILETUBE_YTDLP_PLAYER_CLIENT: '' }).playerClient, null);
+  assert.equal(parseYtdlpConfig({ FILETUBE_YTDLP_PLAYER_CLIENT: '   ' }).playerClient, null);
+});
+
+test('parseYtdlpConfig: never throws for hostile FILETUBE_YTDLP_SLEEP_*/RETRIES/PLAYER_CLIENT input shapes', () => {
+  const inputs = [{
+    FILETUBE_YTDLP_SLEEP_REQUESTS: {},
+    FILETUBE_YTDLP_SLEEP_INTERVAL: [],
+    FILETUBE_YTDLP_MAX_SLEEP_INTERVAL: () => {},
+    FILETUBE_YTDLP_RETRIES: false,
+    FILETUBE_YTDLP_PLAYER_CLIENT: 12345,
+  }];
+  for (const input of inputs) {
+    assert.doesNotThrow(() => parseYtdlpConfig(input));
+  }
+});
+
 test('isEnabled: true only for a config with enabled === true', () => {
   assert.equal(isEnabled({ enabled: true }), true);
   assert.equal(isEnabled({ enabled: false }), false);

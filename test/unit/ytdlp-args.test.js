@@ -1154,3 +1154,215 @@ test('CHANNEL_META_PRINT_TEMPLATE: still a fixed literal -- byte-identical regar
   const idx = result.indexOf('--print');
   assert.equal(result[idx + 1], args.CHANNEL_META_PRINT_TEMPLATE);
 });
+
+// ---- v1.29 T3(b): resilience pacing/retry flags (AC6.1, AC6.2, AC6.3) ----
+//
+// R3b.1/AC6.1: default values, no env override. R3b.2/AC6.2: overrides
+// change the emitted value. R3b.4/AC6.3: the FULL argv shape is asserted
+// byte-identical to the pre-T3(b) shape except for the newly-appended
+// flags -- these are NOT presence-only checks, they lock the exact ordering
+// too, so any future accidental reordering/interleaving with the `--`/
+// positional section would fail loudly here.
+
+test('buildYtdlpDownloadArgs: default config emits the four pacing flags, in order, immediately after --no-warnings (AC6.1)', () => {
+  const config = makeConfig();
+  const result = args.buildYtdlpDownloadArgs(baseSub(), config, ['vid1']);
+  const noWarningsIdx = result.indexOf('--no-warnings');
+  assert.ok(noWarningsIdx >= 0);
+  assert.deepEqual(result.slice(noWarningsIdx + 1, noWarningsIdx + 9), [
+    '--sleep-requests', '1',
+    '--sleep-interval', '2',
+    '--max-sleep-interval', '5',
+    '--retries', '5',
+  ]);
+  assert.ok(!result.includes('--extractor-args'), 'player_client is unset by default -- flag must be absent');
+  const sepIdx = result.indexOf('--');
+  assert.ok(noWarningsIdx + 9 <= sepIdx, 'pacing flags must land well before the "--" separator');
+});
+
+test('buildYtdlpDownloadArgs: FILETUBE_YTDLP_* overrides (already parsed onto config by config.js) change the emitted pacing/retry values (AC6.2)', () => {
+  const config = makeConfig({ sleepRequests: 3, sleepInterval: 4, maxSleepInterval: 9, retries: 12 });
+  const result = args.buildYtdlpDownloadArgs(baseSub(), config, ['vid1']);
+  assert.equal(result[result.indexOf('--sleep-requests') + 1], '3');
+  assert.equal(result[result.indexOf('--retries') + 1], '12');
+  assert.equal(result[result.indexOf('--sleep-interval') + 1], '4');
+  assert.equal(result[result.indexOf('--max-sleep-interval') + 1], '9');
+});
+
+test('buildYtdlpDownloadArgs: an out-of-bounds/invalid pacing value on a bare/partial config falls back to the documented default rather than reaching argv as-is (AC6.2, defensive re-coercion)', () => {
+  const config = makeConfig({ sleepRequests: -5, retries: 999, sleepInterval: 1.5, maxSleepInterval: NaN });
+  const result = args.buildYtdlpDownloadArgs(baseSub(), config, ['vid1']);
+  assert.equal(result[result.indexOf('--sleep-requests') + 1], '1');
+  assert.equal(result[result.indexOf('--retries') + 1], '5');
+  assert.equal(result[result.indexOf('--sleep-interval') + 1], '2');
+  assert.equal(result[result.indexOf('--max-sleep-interval') + 1], '5');
+});
+
+test('buildYtdlpDownloadArgs: --extractor-args youtube:player_client=<value> is emitted as two argv elements ONLY when config.playerClient is a set string (R3b.3)', () => {
+  const withoutClient = args.buildYtdlpDownloadArgs(baseSub(), makeConfig(), ['vid1']);
+  assert.ok(!withoutClient.includes('--extractor-args'));
+
+  const withClient = args.buildYtdlpDownloadArgs(baseSub(), makeConfig({ playerClient: 'android,web' }), ['vid1']);
+  const idx = withClient.indexOf('--extractor-args');
+  assert.ok(idx >= 0);
+  assert.equal(withClient[idx + 1], 'youtube:player_client=android,web');
+  // Both are their own array elements -- never concatenated into one token.
+  assert.ok(!withClient.some((el) => el.includes('--extractor-argsyoutube')));
+});
+
+test('buildYtdlpDownloadArgs: player_client is omitted when config.playerClient is null/missing/non-string (fail-safe, never a stray flag)', () => {
+  for (const bad of [null, undefined, '', 42, {}]) {
+    const result = args.buildYtdlpDownloadArgs(baseSub(), makeConfig({ playerClient: bad }), ['vid1']);
+    assert.ok(!result.includes('--extractor-args'), `playerClient=${JSON.stringify(bad)} must omit the flag`);
+  }
+});
+
+// GF1 F2 (post-gate fix): `config.playerClient` is now RE-VALIDATED at the
+// args.js boundary via config.js's `parsePlayerClient` (mirrors
+// `resolveSleepSeconds`/`resolveRetries`'s revalidate-at-every-boundary
+// posture), rather than trusting `config.js`'s upstream parse-time
+// validation alone. These cases simulate a bypassed/forged `config` object
+// (e.g. a test fixture, or a future caller that never routed through
+// `parseYtdlpConfig`) carrying a playerClient string that would have FAILED
+// `config.js`'s own validation had it gone through that path -- pre-fix,
+// this string reached the argv element unchecked; post-fix it must be
+// rejected at THIS boundary too, same fail-safe as an unset value.
+test('GF1 F2: buildYtdlpDownloadArgs REJECTS an invalid playerClient reaching args.js directly (bypassed/forged config), omitting the flag entirely', () => {
+  const hostileValues = [
+    'android web', // embedded space
+    'android;web', // semicolon
+    'android&web', // ampersand
+    'Android', // uppercase (charset is lowercase-only)
+    'a'.repeat(129), // over MAX_PLAYER_CLIENT_LENGTH (128)
+    'android\nweb', // embedded newline
+  ];
+  for (const hostile of hostileValues) {
+    const result = args.buildYtdlpDownloadArgs(baseSub(), makeConfig({ playerClient: hostile }), ['vid1']);
+    assert.ok(
+      !result.includes('--extractor-args'),
+      `playerClient=${JSON.stringify(hostile)} must be rejected at the args.js boundary and omit the flag`,
+    );
+    assert.ok(
+      !result.some((el) => el.includes(hostile)),
+      `the rejected hostile value must never appear anywhere in argv: ${JSON.stringify(hostile)}`,
+    );
+  }
+});
+
+test('GF1 F2: a VALID playerClient still emits the two-element --extractor-args pair after the args.js-boundary revalidation', () => {
+  const result = args.buildYtdlpDownloadArgs(baseSub(), makeConfig({ playerClient: 'ios,web' }), ['vid1']);
+  const idx = result.indexOf('--extractor-args');
+  assert.ok(idx >= 0);
+  assert.equal(result[idx + 1], 'youtube:player_client=ios,web');
+});
+
+test('buildYtdlpListArgs: emits ONLY the list-relevant pacing flags (--sleep-requests/--retries) with defaults, omitting sleep-interval/max-sleep-interval/player_client (AC6.1)', () => {
+  const config = makeConfig();
+  const result = args.buildYtdlpListArgs(baseSub(), config);
+  const noWarningsIdx = result.indexOf('--no-warnings');
+  assert.ok(noWarningsIdx >= 0);
+  assert.deepEqual(result.slice(noWarningsIdx + 1, noWarningsIdx + 5), [
+    '--sleep-requests', '1',
+    '--retries', '5',
+  ]);
+  assert.ok(!result.includes('--sleep-interval'));
+  assert.ok(!result.includes('--max-sleep-interval'));
+  assert.ok(!result.includes('--extractor-args'));
+});
+
+test('buildYtdlpListArgs: FILETUBE_YTDLP_SLEEP_REQUESTS/RETRIES overrides change the emitted list-pass values (AC6.2)', () => {
+  const config = makeConfig({ sleepRequests: 7, retries: 1 });
+  const result = args.buildYtdlpListArgs(baseSub(), config);
+  assert.equal(result[result.indexOf('--sleep-requests') + 1], '7');
+  assert.equal(result[result.indexOf('--retries') + 1], '1');
+});
+
+test('AC6.3: buildYtdlpDownloadArgs argv is byte-identical to the pre-T3(b) shape except for the four pacing flags inserted after --no-warnings', () => {
+  const config = makeConfig();
+  const sub = baseSub({ format: 'video', quality: 'best' });
+  const result = args.buildYtdlpDownloadArgs(sub, config, ['vid1']);
+  const archivePath = args.resolveArchivePath(config);
+  const outputTemplate = path.join(args.resolveChannelDir(config, sub), args.OUTPUT_TEMPLATE);
+  const expected = [
+    '--windows-filenames',
+    '--newline',
+    '-f', 'bestvideo+bestaudio/best',
+    '-S', args.VIDEO_FORMAT_SORT,
+    '--embed-metadata', '--embed-thumbnail',
+    '--write-subs', '--write-auto-subs', '--sub-langs', 'en.*', '--sub-format', 'vtt', '--convert-subs', 'vtt',
+    '--download-archive', archivePath,
+    '--no-warnings',
+    // v1.29 T3(b): the ONLY new content vs. the pre-change shape -- four
+    // fixed-literal-named flags with bounds-checked, non-injectable numeric
+    // values (player_client omitted -- unset by default, see the dedicated
+    // test above).
+    '--sleep-requests', '1',
+    '--sleep-interval', '2',
+    '--max-sleep-interval', '5',
+    '--retries', '5',
+    // cookiesArgs(config) contributes nothing -- no cookiesFile configured.
+    '--print', args.CHANNEL_META_PRINT_TEMPLATE,
+    '-o', outputTemplate,
+    '--', 'https://www.youtube.com/watch?v=vid1',
+  ];
+  assert.deepEqual(result, expected);
+});
+
+test('AC6.3: buildYtdlpListArgs argv is byte-identical to the pre-T3(b) shape except for the two list-relevant pacing flags inserted after --no-warnings', () => {
+  const config = makeConfig();
+  const sub = baseSub();
+  const result = args.buildYtdlpListArgs(sub, config);
+  const archivePath = args.resolveArchivePath(config);
+  const expected = [
+    '--dump-json',
+    '--no-download',
+    '--no-warnings',
+    // v1.29 T3(b): the ONLY new content vs. the pre-change shape.
+    '--sleep-requests', '1',
+    '--retries', '5',
+    '--download-archive', archivePath,
+    '--',
+    sub.channelUrl,
+  ];
+  assert.deepEqual(result, expected);
+});
+
+test('AC6.3: the host allowlist / "--" separator / FORBIDDEN_CHARS-style hostile-id-drop / SF4 path confinement all still hold with the new pacing flags present', () => {
+  const config = makeConfig();
+  // Hostile/invalid target id dropped exactly as before T3(b) (mirrors the
+  // pre-existing "an id that fails isSafeVideoId is dropped" test above).
+  const result = args.buildYtdlpDownloadArgs(baseSub(), config, ['goodId', '../etc/passwd']);
+  const sepIndex = result.indexOf('--');
+  assert.ok(sepIndex >= 0);
+  assert.deepEqual(result.slice(sepIndex + 1), ['https://www.youtube.com/watch?v=goodId']);
+  // "--" is still exactly two positions from the end (one positional target).
+  assert.equal(sepIndex, result.length - 2);
+  // SF4: the -o output template is still confined under the download root.
+  const oIndex = result.indexOf('-o');
+  assert.ok(result[oIndex + 1].startsWith(path.resolve(config.downloadDir) + path.sep));
+  // The new pacing flags never leak past the "--" separator into positional
+  // territory.
+  for (const token of ['--sleep-requests', '--sleep-interval', '--max-sleep-interval', '--retries']) {
+    assert.ok(!result.slice(sepIndex + 1).includes(token), `${token} must never appear after "--"`);
+  }
+});
+
+test('resiliencePacingArgs: pure -- never throws for a missing/malformed config, always falls back to documented defaults', () => {
+  for (const bad of [undefined, null, {}, [], 'a string', 42]) {
+    assert.doesNotThrow(() => args.resiliencePacingArgs(bad));
+    const result = args.resiliencePacingArgs(bad);
+    assert.deepEqual(result, [
+      '--sleep-requests', '1',
+      '--sleep-interval', '2',
+      '--max-sleep-interval', '5',
+      '--retries', '5',
+    ]);
+    assert.doesNotThrow(() => args.resiliencePacingArgs(bad, { listOnly: true }));
+    assert.deepEqual(args.resiliencePacingArgs(bad, { listOnly: true }), ['--sleep-requests', '1', '--retries', '5']);
+  }
+});
+
+test('resiliencePacingArgs: listOnly:true omits sleep-interval/max-sleep-interval/player_client even when configured', () => {
+  const result = args.resiliencePacingArgs({ sleepInterval: 9, maxSleepInterval: 20, playerClient: 'web' }, { listOnly: true });
+  assert.deepEqual(result, ['--sleep-requests', '1', '--retries', '5']);
+});

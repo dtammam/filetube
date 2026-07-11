@@ -95,6 +95,28 @@ clients (iOS Safari) can play them.
   last-checked/status write re-enters it). Security-critical surface (command
   injection, path traversal, cookies handling); ships behind the full
   two-reviewer QA gate.
+- **`lib/ytdlp/runlog.js` — durable, capped per-run history (v1.29.0).** A
+  small module-owned writer/reader for a JSON Lines file, `ytdlp-runs.jsonl`,
+  living in the same directory as `db.json` (the app `DATA_DIR`, NOT
+  `FILETUBE_YTDLP_DOWNLOAD_DIR` — the log is app state, not media, and must
+  stay on stable local disk even when downloads target a network share). It is
+  **separate from `db.json`** deliberately: an append-mostly history must not
+  bloat the re-read-merge-on-save `db.json` snapshot or contend on the
+  `updateDatabase` mutex. Each **completed** run (subscription poll cycle or
+  one-shot) appends exactly ONE terminal line: `{ ts, kind, id, name, outcome
+  (success|partial|error|cancelled), succeeded, failed, reason, failures[] }`,
+  every string sanitized/bounded by the same `sanitizeReason`/
+  `MAX_REASON_LENGTH` (lib/ytdlp/failures.js) and `MAX_STATUS_LENGTH`
+  (lib/ytdlp/index.js) posture the live status already uses. The file is
+  **bounded**: each write reads, trims to the newest `YTDLP_RUNLOG_MAX_ENTRIES`
+  (500) lines, and atomically rewrites (temp file + `rename`, mirroring
+  `saveDatabase`), so it can never grow without bound. It obeys the same
+  disabled-module no-op guarantee as the rest of `lib/ytdlp`: the writer is
+  only ever called from enabled-only code paths and the read route
+  (`GET /api/subscriptions/history`) is registered only inside the
+  `isEnabled`-gated `registerRoutes`, so with `FILETUBE_YTDLP_ENABLED` off no
+  file is ever created and no route is reachable. `/subscriptions` renders this
+  log as a capped download-history list.
 
 ## Data flow
 

@@ -594,6 +594,106 @@ test('runDownload: a non-zero exit code resolves a structured, redacted failure 
   assert.equal(result.code, 1);
 });
 
+// ---- v1.29.0 T1 (R0.1/R0.2/R0.8): the composed `error` field on a
+// non-zero-exit close promotes the real stderr reason (via `pickStderrReason`)
+// instead of the generic "yt-dlp exited with code <n>" string, with the
+// generic string surviving ONLY as the fallback. -----------------------
+
+test('runDownload: a non-zero exit with a real ERROR: line on stderr composes `error` from that reason, not the generic exit-code string', async () => {
+  const spawnChild = stubSpawn();
+  const downloadDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-ytdlp-dl-'));
+  const config = { downloadDir, cookiesFile: null };
+  const sub = { channelUrl: 'https://www.youtube.com/@x', name: 'x', format: 'video', quality: 'best' };
+  const resultPromise = run.runDownload(sub, config, ['vid1']);
+  const child = spawnChild();
+  child.stderr.emit('data', Buffer.from('ERROR: [youtube] vid1: Video unavailable\n'));
+  child.emit('close', 1, null);
+  const result = await resultPromise;
+  assert.equal(result.ok, false);
+  assert.equal(result.error, 'ERROR: [youtube] vid1: Video unavailable');
+  assert.ok(!result.error.includes('yt-dlp exited with code'), 'the real reason must replace the generic string when one is available');
+});
+
+test('runDownload: a non-zero exit with EMPTY stderr falls back to the generic "yt-dlp exited with code <n>" string', async () => {
+  const spawnChild = stubSpawn();
+  const downloadDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-ytdlp-dl-'));
+  const config = { downloadDir, cookiesFile: null };
+  const sub = { channelUrl: 'https://www.youtube.com/@x', name: 'x', format: 'video', quality: 'best' };
+  const resultPromise = run.runDownload(sub, config, ['vid1']);
+  const child = spawnChild();
+  child.emit('close', 7, null);
+  const result = await resultPromise;
+  assert.equal(result.ok, false);
+  assert.equal(result.error, 'yt-dlp exited with code 7');
+});
+
+test('runDownload: a non-zero exit with stderr that has content but no ERROR: line falls back to the last non-empty stderr line', async () => {
+  const spawnChild = stubSpawn();
+  const downloadDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-ytdlp-dl-'));
+  const config = { downloadDir, cookiesFile: null };
+  const sub = { channelUrl: 'https://www.youtube.com/@x', name: 'x', format: 'video', quality: 'best' };
+  const resultPromise = run.runDownload(sub, config, ['vid1']);
+  const child = spawnChild();
+  child.stderr.emit('data', Buffer.from('WARNING: some non-fatal notice\nunexpected termination\n'));
+  child.emit('close', 1, null);
+  const result = await resultPromise;
+  assert.equal(result.ok, false);
+  assert.equal(result.error, 'unexpected termination');
+});
+
+test('runDownload: the composed real-reason `error` field is still cookies-redacted (SF1 unaffected)', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-ytdlp-cookies-'));
+  const cookiesFile = path.join(dir, 'secret-cookies.txt');
+  fs.writeFileSync(cookiesFile, 'session=abc123');
+  const spawnChild = stubSpawn();
+  const downloadDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-ytdlp-dl-'));
+  const config = { downloadDir, cookiesFile };
+  const sub = { channelUrl: 'https://www.youtube.com/@x', name: 'x', format: 'video', quality: 'best' };
+  const resultPromise = run.runDownload(sub, config, ['vid1']);
+  const child = spawnChild();
+  child.stderr.emit('data', Buffer.from(`ERROR: [youtube] vid1: Sign in. Cookies file: ${cookiesFile}\n`));
+  child.emit('close', 1, null);
+  const result = await resultPromise;
+  assert.equal(result.ok, false);
+  assert.ok(!result.error.includes(cookiesFile), `cookies path leaked into the composed real-reason error: ${result.error}`);
+});
+
+// ---- v1.29.0 T1 R0.8 (HARD INVARIANT, regression lock): run.js's resolved
+// object for a SIGKILL/non-zero exit with non-empty stderr carries ONLY the
+// promoted reason in `error` -- it never sets, implies, or has any opinion
+// on a `status`/`cancelled` field. `lib/ytdlp/index.js`'s
+// `cancelledSubscriptionIds`/`cancelledOneShotJobs` override
+// (index.js:1393-1408) computes `status` from this `error` string but then
+// OVERWRITES it to `'cancelled'` unconditionally whenever the subscription
+// id is in its own latch Set -- a check made independently of what `error`
+// says. This test locks that run.js's half of the contract (the resolved
+// shape) can never regress into carrying a competing status opinion, which
+// is what keeps that downstream override deterministic. (The downstream
+// override itself is exercised end-to-end, WITHOUT touching index.js, by
+// the existing test/integration/ytdlp-subscription-cancel.test.js and
+// test/integration/ytdlp-oneshot-cancel.test.js suites, which mock a
+// SIGKILL settle carrying a non-empty raw error string and assert the final
+// state is still 'cancelled', never an error status.) --------------------
+
+test('R0.8 lock: a SIGKILL exit with non-empty stderr resolves { ok:false, error:<real reason> } and NO status/cancelled field of its own', async () => {
+  const spawnChild = stubSpawn();
+  const downloadDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-ytdlp-dl-'));
+  const config = { downloadDir, cookiesFile: null };
+  const sub = { channelUrl: 'https://www.youtube.com/@x', name: 'x', format: 'video', quality: 'best' };
+  const resultPromise = run.runDownload(sub, config, ['vid1']);
+  const child = spawnChild();
+  child.stderr.emit('data', Buffer.from('ERROR: [youtube] vid1: killed mid-download\n'));
+  // A real SIGKILL close: code is null, signal carries the kill reason --
+  // exactly how `child.kill('SIGKILL')` settles in production (see
+  // spawnYtdlpDownload's own `resultCode` fallback to `signal`).
+  child.emit('close', null, 'SIGKILL');
+  const result = await resultPromise;
+  assert.equal(result.ok, false);
+  assert.equal(result.error, 'ERROR: [youtube] vid1: killed mid-download', 'the real reason must still be promoted on a SIGKILL exit');
+  assert.equal('status' in result, false, 'run.js must never itself decide/carry a status/cancelled opinion -- that is exclusively index.js\'s downstream latch-Set override');
+  assert.equal('cancelled' in result, false);
+});
+
 test('runDownload: a synchronous spawn ENOENT (binary missing) resolves cleanly, never throws', async () => {
   cp.spawn = () => {
     throw Object.assign(new Error('spawn yt-dlp ENOENT'), { code: 'ENOENT' });

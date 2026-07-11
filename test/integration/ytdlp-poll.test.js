@@ -494,6 +494,98 @@ test('D4: an unknown subId returns not-found even while a poll is busy, and arms
   assert.equal(listCalls, 1, 'the bogus-id request must never have armed a coalesced follow-up poll');
 });
 
+// ---- T5/R1.5: the optional 5th `onDecision` param fires SYNCHRONOUSLY, ----
+// ---- exactly once, before `runPoll`'s first `await` -- proving the ---------
+// ---- repull routes can read the busy-vs-started decision without ----------
+// ---- awaiting the whole (possibly long-running) poll. ----------------------
+
+test('T5: onDecision fires synchronously with {started:true} before the first await, on the started path', async () => {
+  const deps = makeFakeDeps();
+  await addSub(deps);
+
+  run.runList = async () => ({ ok: true, stdout: '', stderr: '' });
+  run.runDownload = async () => ({ ok: true, code: 0, stdout: '', stderr: '' });
+
+  const decisions = [];
+  const pollPromise = ytdlp.runPoll(deps, baseConfig(), undefined, undefined, (decision) => {
+    decisions.push(decision);
+  });
+
+  // No `await`/microtask yield has happened yet -- if `onDecision` fired
+  // synchronously (before the function's first `await`), it has already run
+  // by this line.
+  assert.deepEqual(decisions, [{ started: true }], 'onDecision must have fired synchronously, before this line, with {started:true}');
+
+  await pollPromise;
+  assert.equal(decisions.length, 1, 'onDecision must fire EXACTLY once');
+});
+
+test('T5: onDecision fires synchronously with {started:false,reason:"busy"} before the first await, on the busy-coalesce path', async () => {
+  const deps = makeFakeDeps();
+  await addSub(deps);
+
+  let listCalls = 0;
+  let resolveFirstList;
+  run.runList = () => {
+    listCalls += 1;
+    if (listCalls === 1) {
+      return new Promise((resolve) => {
+        resolveFirstList = () => resolve({ ok: true, stdout: '', stderr: '' });
+      });
+    }
+    return Promise.resolve({ ok: true, stdout: '', stderr: '' });
+  };
+  run.runDownload = async () => ({ ok: true, code: 0, stdout: '', stderr: '' });
+
+  const firstPollPromise = ytdlp.runPoll(deps, baseConfig());
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(ytdlp.isPollBusy(), true);
+
+  const decisions = [];
+  const secondPollPromise = ytdlp.runPoll(deps, baseConfig(), undefined, undefined, (decision) => {
+    decisions.push(decision);
+  });
+  // Again, no yield to the event loop has happened between the call above
+  // and this assertion -- the busy-coalesce return path is itself entirely
+  // synchronous (no `await` before it), so onDecision must already have run.
+  assert.deepEqual(decisions, [{ started: false, reason: 'busy' }]);
+
+  const secondResult = await secondPollPromise;
+  assert.deepEqual(secondResult, { started: false, reason: 'busy' }, "runPoll's own return value is unchanged by onDecision");
+  assert.equal(decisions.length, 1, 'onDecision must fire EXACTLY once');
+
+  resolveFirstList();
+  await firstPollPromise;
+  await new Promise((resolve) => setTimeout(resolve, 20));
+});
+
+test('T5: onDecision fires with {started:false,reason:"not-found"} for a bogus subId (defensive -- the route pre-checks existence)', async () => {
+  const deps = makeFakeDeps();
+  await addSub(deps);
+
+  const decisions = [];
+  const result = await ytdlp.runPoll(deps, baseConfig(), 'no-such-subscription-id', undefined, (decision) => {
+    decisions.push(decision);
+  });
+
+  assert.deepEqual(result, { started: false, reason: 'not-found' });
+  assert.deepEqual(decisions, [{ started: false, reason: 'not-found' }]);
+});
+
+test('T5: an omitted onDecision (every pre-T5 caller) is a no-op -- runPoll behaves exactly as before', async () => {
+  const deps = makeFakeDeps();
+  await addSub(deps);
+
+  run.runList = async () => ({ ok: true, stdout: '', stderr: '' });
+  run.runDownload = async () => ({ ok: true, code: 0, stdout: '', stderr: '' });
+
+  // Positional 4th-arg (`nowMs`) callers must still work unaffected by the
+  // new optional 5th param.
+  const nowMs = Date.parse('2026-01-01T00:00:00Z');
+  const result = await ytdlp.runPoll(deps, baseConfig(), undefined, nowMs);
+  assert.deepEqual(result, { started: true, count: 1 });
+});
+
 // ---- E4 (T4 fix round #3): the coalesced follow-up timer now DRAINS -------
 // ---- `pollRerunTarget` at fire time instead of a closure-captured value, --
 // ---- so a target can never be lost regardless of interleaving. -----------

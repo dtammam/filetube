@@ -1892,6 +1892,33 @@ function buildOneOffModal(doc, handlers) {
   progressTrack.appendChild(progressFill);
   modal.appendChild(progressTrack);
 
+  // v1.29.0 T6 (R1.4/AC3.4): the modal's error-state Retry -- unlike the
+  // corner chip's one-shot row (already reachable via `retryOneShot`, see
+  // `injectDownloadStatusChip` below), the one-off modal's own error
+  // rendering (`decideOneOffTerminalAction` returns `{close:false}` for a
+  // non-'done' entry, leaving the modal open with the error visible) had NO
+  // Retry control at all -- this closes that gap. Hidden by default; toggled
+  // by `setStatus` below (visible only while `entry.state === 'error'`).
+  // Reuses `h.onRetry(currentEntry)` -- an INJECTED handler, mirroring
+  // `downloadBtn`'s own `h.onDownload(body)` pattern, so this builder stays
+  // pure/DOM-only and directly `node:test`-covered with a fake `document`
+  // (no real fetch). `currentEntry` is the LAST `LiveEntry` this modal was
+  // handed via `setStatus` -- the SAME `rawEntry` shape the chip's
+  // `retryOneShot(rawEntry, key)` already consumes (both read `url`/`format`/
+  // `quality`/`filetype`/`label` off it via the SHARED `buildOneShotRetryBody`
+  // -- the live wiring below builds the SAME request the chip does, never a
+  // duplicated request shape).
+  let currentEntry = null;
+  const retryBtn = d.createElement('button');
+  retryBtn.type = 'button';
+  retryBtn.className = 'btn btn-sm oneoff-modal-retry';
+  retryBtn.textContent = 'Retry';
+  retryBtn.hidden = true;
+  retryBtn.addEventListener('click', () => {
+    if (typeof h.onRetry === 'function') h.onRetry(currentEntry);
+  });
+  modal.appendChild(retryBtn);
+
   const downloadBtn = d.createElement('button');
   downloadBtn.type = 'button';
   downloadBtn.className = 'btn btn-primary';
@@ -1915,6 +1942,7 @@ function buildOneOffModal(doc, handlers) {
   // pole motion, see style.css) whenever there is no genuine percent to show
   // right now rather than rendering a bar that visually never moves.
   function setStatus(entry) {
+    currentEntry = (entry && typeof entry === 'object') ? entry : null;
     statusEl.textContent = formatOneOffStatusText(entry) || '';
     const bar = computeOneOffProgressBar(entry);
     progressTrack.hidden = !bar.visible;
@@ -1922,22 +1950,38 @@ function buildOneOffModal(doc, handlers) {
       progressFill.style.width = (bar.indeterminate ? 100 : bar.percent) + '%';
       progressFill.className = 'dl-status-chip-progress-fill' + (bar.indeterminate ? ' indeterminate' : '');
     }
+    // v1.29.0 T6 (R1.4/AC3.4): visible ONLY while the entry is genuinely in
+    // its error terminal state -- mirrors `chipItemLifecycle`'s/the chip
+    // row's own `state === 'error'` gate (see `updateDownloadChipItemRow`),
+    // so a fresh 'queued'/'downloading' entry (this SAME modal instance is
+    // reused for a brand-new job after Retry/Download -- see
+    // `injectOneOffDownloadButtonIfEnabled`'s wiring) always hides it again.
+    retryBtn.hidden = !(entry && entry.state === 'error');
   }
 
-  return { backdrop, modal, urlInput, formatSelect, qualitySelect, filetypeSelect, folderInput, downloadBtn, closeBtn, statusEl, progressTrack, progressFill, setStatus };
+  return { backdrop, modal, urlInput, formatSelect, qualitySelect, filetypeSelect, folderInput, downloadBtn, retryBtn, closeBtn, statusEl, progressTrack, progressFill, setStatus };
 }
 
 /**
- * v1.15.1 FIX 6 -- pure reducer for a TERMINAL live-status `entry` (the
- * `pollStatusOnce` loop below only calls this once `state` is `'done'` or
- * `'error'`): decides whether the modal should auto-close (and after how
- * long) and whether a library rescan+refresh should fire (see the BUG 2 fix
- * note below -- as of this fix, never). `'done'` closes the modal after a
- * brief pause (so the user sees the "Done" status line);
- * `'error'` leaves the modal open (the error stays visible). Any other input
- * (including a non-terminal state, reached defensively) takes no action.
- * Exported/`node:test`-covered directly, same posture as
- * `shouldInjectOneOffButton`/`formatOneOffStatusText` above.
+ * v1.15.1 FIX 6 -- pure reducer for a TERMINAL live-status `entry`: decides
+ * whether the modal should auto-close (and after how long) and whether a
+ * library rescan+refresh should fire (see the BUG 2 fix note below -- as of
+ * this fix, never). `'done'` closes the modal after a brief pause (so the
+ * user sees the "Done" status line); `'error'` leaves the modal open (the
+ * error stays visible). Any other input (including a non-terminal state,
+ * reached defensively) takes no action. Exported/`node:test`-covered
+ * directly, same posture as `shouldInjectOneOffButton`/
+ * `formatOneOffStatusText` above.
+ *
+ * v1.29.0 T8: the modal itself no longer polls status at all -- a
+ * SUCCESSFUL submit now minimizes it into the corner chip immediately (see
+ * `submitOneOffDownload` below), and the chip owns all progress/terminal
+ * handling for that job from then on. This reducer (and
+ * `applyOneOffTerminalAction` below) are kept for their own regression
+ * coverage and as a utility for any FUTURE caller that still needs this
+ * exact close/rescan decision outside the minimized flow -- same posture as
+ * `triggerLibraryRescanAndRefresh` below, which was already in this
+ * "exported, not internally wired" state before T8.
  *
  * BUG 2 fix (regression): `'done'` no longer requests a `rescan` at all --
  * this used to trigger `triggerLibraryRescanAndRefresh()` (`POST /api/scan`
@@ -1965,11 +2009,11 @@ function decideOneOffTerminalAction(entry) {
  * `decideOneOffTerminalAction` above): closes the modal (via `closeFn`,
  * scheduled through `scheduleFn` after `action.closeDelayMs`) and, only if
  * `action.rescan` is true, runs a best-effort refresh (via `refreshFn`).
- * Extracted out of `pollStatusOnce`'s closure into its own small, injectable
- * function (mirrors `buildOneOffModal`'s `handlers` / `triggerLibraryRescan
- * AndRefresh`'s `fetchImpl`/`reloadFn` injection) so this ordering guarantee
- * is directly `node:test`-covered without a real DOM/timers: `closeFn` is
- * invoked independently of `refreshFn` -- never chained behind it -- so a
+ * Its own small, injectable function (mirrors `buildOneOffModal`'s
+ * `handlers` / `triggerLibraryRescanAndRefresh`'s `fetchImpl`/`reloadFn`
+ * injection), so this ordering guarantee is directly `node:test`-covered
+ * without a real DOM/timers: `closeFn` is invoked independently of
+ * `refreshFn` -- never chained behind it -- so a
  * slow or hanging refresh can never again starve the modal's close (the
  * exact mechanism behind BUG 2, see `decideOneOffTerminalAction`'s comment).
  * `scheduleFn` defaults to `setTimeout`; `closeFn`/`refreshFn` default to
@@ -2047,139 +2091,109 @@ function injectOneOffDownloadButtonIfEnabled() {
       if (!headerRight && !settingsNavItem) return; // page has neither surface -- nothing to attach to
 
       let modalState = null;
-      let pollTimer = null;
-      let currentJobId = null;
-      // v1.26 code-review fix (F5): tracks the current adaptive delay across
-      // ticks (fast/base on success, doubling on failure) -- reset to the
-      // base cadence every time a NEW download starts (see the `onDownload`
-      // handler below), same lifecycle as the chip/subscriptions pollers'
-      // own `pollDelay`/`statusPollDelay` variables.
-      let oneOffPollDelay = ONEOFF_STATUS_POLL_MS;
-
-      function stopPolling() {
-        if (pollTimer) {
-          clearTimeout(pollTimer);
-          pollTimer = null;
-        }
-      }
-
-      function pollStatusOnce() {
-        if (!currentJobId || !modalState) return;
-        // v1.26 code-review fix (F4): same skip-while-hidden guard the chip
-        // (`pollOnce`) and the /subscriptions page (`pollStatusOnce` there)
-        // already have -- a backgrounded tab never spends network/CPU on a
-        // poll nobody can see, and still resumes at the SAME cadence the
-        // instant the tab becomes visible again (no fetch attempted at all,
-        // so neither success nor failure backoff is touched).
-        if (typeof document !== 'undefined' && document.hidden) {
-          pollTimer = setTimeout(pollStatusOnce, oneOffPollDelay);
-          return;
-        }
-        fetch('/api/subscriptions/status')
-          .then((r) => (r.ok ? r.json() : Promise.reject(new Error('status endpoint returned ' + r.status))))
-          .then((snapshot) => {
-            if (!modalState) return; // modal was torn down mid-flight -- nothing to render into
-            const entry = snapshot && snapshot.oneShots ? snapshot.oneShots[currentJobId] : undefined;
-            modalState.setStatus(entry || { state: 'queued' });
-            if (entry && (entry.state === 'done' || entry.state === 'error')) {
-              stopPolling(); // terminal -- stop polling this job
-
-              // v1.15.1 FIX 6 / BUG 2 fix: on 'done', auto-close the modal
-              // (after a brief pause so the user sees the "Done" status); on
-              // 'error' the reducer leaves the modal open so the message
-              // stays visible. `applyOneOffTerminalAction` runs the close
-              // INDEPENDENTLY of any refresh work (there is none today --
-              // `action.rescan` is always false; see
-              // `decideOneOffTerminalAction`'s comment) so a future refresh
-              // can never again starve the close/[x] the way the old
-              // rescan-then-`window.location.reload()` path did.
-              applyOneOffTerminalAction(decideOneOffTerminalAction(entry), closeModal, triggerLibraryRescanAndRefresh);
-              return;
-            }
-            // v1.26 "real progress": poll much faster while this job is
-            // FRESHLY, actively downloading (see `computeOneOffPollDelayMs`'s
-            // doc comment -- F4's staleness gate) -- every other non-terminal
-            // state (no entry yet, `queued`, `listing`, or a wedged/stale
-            // `'downloading'` entry) keeps the base cadence.
-            oneOffPollDelay = nextOneOffPollDelayMs(oneOffPollDelay, true, entry);
-            pollTimer = setTimeout(pollStatusOnce, oneOffPollDelay);
-          })
-          .catch(() => {
-            // v1.26 code-review fix (F5): a transient/network hiccup now
-            // backs off exactly like the chip/subscriptions pollers
-            // (`nextOneOffPollDelayMs`'s failure branch -- doubling, capped at
-            // `ONEOFF_STATUS_POLL_MAX_MS`) rather than retrying forever at a
-            // flat cadence.
-            oneOffPollDelay = nextOneOffPollDelayMs(oneOffPollDelay, false);
-            pollTimer = setTimeout(pollStatusOnce, oneOffPollDelay);
-          });
-      }
 
       // v1.17.0 FR-6, T5 fix: hardened into a FULL teardown, shared by every
-      // dismiss path (backdrop tap, [x], Esc, and the 'done' auto-close --
-      // see openModal's onClose wiring, the Esc keydown handler below, and
-      // pollStatusOnce's applyOneOffTerminalAction call above -- none of them have
-      // their own divergent close logic, they all call this one function).
+      // dismiss path (backdrop tap, [x], Esc, and -- v1.29.0 T8 -- a
+      // SUCCESSFUL submit's minimize-into-the-chip, see
+      // `submitOneOffDownload` below); none of them have their own divergent
+      // close logic, they all call this one function.
       // Root cause (style.css): `.oneoff-modal-backdrop` sets `display: flex`
       // with no `[hidden]` override, so the old `backdrop.hidden = true`
       // alone never actually hid the full-viewport overlay -- it stayed
       // painted and ate every touch. Now the backdrop node is fully removed
       // from the DOM (`backdrop.remove()`, belt to the CSS fix's suspenders)
-      // and `currentJobId`/`modalState` are both nulled so `openModal`
-      // rebuilds a fresh modal next time (the once-bound `keydown` Esc
-      // handler below already guards on `modalState &&`, so nulling it makes
-      // that handler an inert no-op once closed).
+      // and `modalState` is nulled so `openModal` rebuilds a fresh modal
+      // next time (the once-bound `keydown` Esc handler below already
+      // guards on `modalState &&`, so nulling it makes that handler an
+      // inert no-op once closed).
+      //
+      // v1.29.0 T8: this modal no longer polls its own status at all (the
+      // old `pollStatusOnce` loop -- and the `currentJobId`/adaptive-delay
+      // state it alone needed -- is gone): a SUCCESSFUL submit now
+      // minimizes into the corner chip immediately, and the chip owns
+      // every job's progress/terminal handling from then on (it already
+      // polls `/api/subscriptions/status` on its own cadence). This
+      // function is therefore now ONLY ever reached synchronously, right
+      // after the last status line was rendered -- there is no longer any
+      // pending timer to cancel.
       function closeModal() {
         if (!modalState) return;
-        stopPolling();
-        currentJobId = null;
         modalState.backdrop.remove();
         modalState = null;
+      }
+
+      // v1.29.0 T6 (R1.4/AC3.4): the ONE place that ever POSTs
+      // `/api/ytdlp/download` for this modal -- extracted out of the
+      // `onDownload` handler below so the new error-state Retry control
+      // (`onRetry`, below) can start a fresh job through the EXACT SAME
+      // request/response handling, never a duplicated request shape (a retry
+      // is a brand-new one-shot job, same as the chip's own `retryOneShot`).
+      function submitOneOffDownload(body) {
+        modalState.setStatus({ state: 'queued' });
+        modalState.statusEl.textContent = 'Starting…';
+        fetch('/api/ytdlp/download', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        })
+          .then(async (r) => {
+            const data = await r.json().catch(() => ({}));
+            // v1.17.0 FR-6, T5 fix: closeModal now nulls `modalState` as
+            // part of its full teardown (see above) -- if the user
+            // dismisses the modal after submitting but before this
+            // response arrives, `modalState` is already null here. Guarded
+            // the same way the chip's own poll tick guards itself against a
+            // torn-down surface: the download itself still proceeds
+            // server-side either way, only the (now-gone) status line is
+            // skipped.
+            if (!modalState) return;
+            if (!r.ok) {
+              // SECURITY: the server's validation error string, rendered
+              // via the modal's own textContent-only setStatus/statusEl
+              // path -- never innerHTML.
+              modalState.statusEl.textContent = data.error || 'Could not start download.';
+              return;
+            }
+            // v1.29.0 T8 (R2.1/AC4.1, R2.2/AC4.2): a SUCCESSFUL submit no
+            // longer keeps the modal open/polling -- it minimizes into the
+            // existing corner chip instead, so the user can keep browsing
+            // immediately. `injectDownloadStatusChip()` is idempotent
+            // (guarded by `#dl-status-chip`/`dlStatusChipInjectStarted`), so
+            // this is safe to call unconditionally on every success, even
+            // when the chip already exists; the chip picks up this job on
+            // its own next poll tick (it already polls
+            // `/api/subscriptions/status` and renders `oneShots` -- no
+            // second poller). `closeModal()` runs AFTER, mirroring
+            // `applyOneOffTerminalAction`'s close-independent-of-refresh
+            // ordering guarantee (BUG 2) -- a slow/hanging chip injection can
+            // never starve the modal's teardown. The `!r.ok`/network-error
+            // branches above/below are UNCHANGED: the modal stays open with
+            // T6's error + Retry UI intact.
+            injectDownloadStatusChip();
+            closeModal();
+          })
+          .catch(() => {
+            if (!modalState) return;
+            modalState.statusEl.textContent = 'Could not start download (network error).';
+          });
       }
 
       function openModal() {
         if (!modalState) {
           modalState = buildOneOffModal(document, {
             onClose: closeModal,
-            onDownload: (body) => {
-              modalState.setStatus({ state: 'queued' });
-              modalState.statusEl.textContent = 'Starting…';
-              fetch('/api/ytdlp/download', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body),
-              })
-                .then(async (r) => {
-                  const data = await r.json().catch(() => ({}));
-                  // v1.17.0 FR-6, T5 fix: closeModal now nulls `modalState` as
-                  // part of its full teardown (see above) -- if the user
-                  // dismisses the modal after submitting but before this
-                  // response arrives, `modalState` is already null here.
-                  // Guarded the same way pollStatusOnce already guards itself
-                  // ("modal was torn down mid-flight -- nothing to render
-                  // into"): the download itself still proceeds server-side
-                  // either way, only the (now-gone) status line is skipped.
-                  if (!modalState) return;
-                  if (!r.ok) {
-                    // SECURITY: the server's validation error string, rendered
-                    // via the modal's own textContent-only setStatus/statusEl
-                    // path -- never innerHTML.
-                    modalState.statusEl.textContent = data.error || 'Could not start download.';
-                    return;
-                  }
-                  currentJobId = data.jobId;
-                  modalState.statusEl.textContent = 'Queued…';
-                  stopPolling();
-                  // v1.26 code-review fix (F5): a brand new job always starts
-                  // its poll loop at the base cadence, never carrying over a
-                  // backed-off delay from a PRIOR job's failure streak.
-                  oneOffPollDelay = ONEOFF_STATUS_POLL_MS;
-                  pollStatusOnce();
-                })
-                .catch(() => {
-                  if (!modalState) return;
-                  modalState.statusEl.textContent = 'Could not start download (network error).';
-                });
+            onDownload: (body) => submitOneOffDownload(body),
+            // v1.29.0 T6 (R1.4/AC3.4): the modal's error-state Retry --
+            // `entry` is the LAST LiveEntry `setStatus` rendered (only
+            // reachable while `entry.state === 'error'`, see
+            // `buildOneOffModal`'s own `retryBtn.hidden` gate), so this is
+            // the SAME failed job's original request params.
+            // `buildOneShotRetryBody` is the SHARED body-builder the chip's
+            // own `retryOneShot` already uses -- no duplicated request shape.
+            onRetry: (entry) => {
+              const body = buildOneShotRetryBody(entry);
+              if (!body) return; // no reconstructable url -- nothing to retry
+              submitOneOffDownload(body);
             },
           });
           document.body.appendChild(modalState.backdrop);
@@ -4350,6 +4364,56 @@ function shouldShowDownloadChipOnPath(pathname) {
 }
 
 /**
+ * v1.29.0 T8 (R2.3/R2.4, AC4.3/AC4.4) -- PURE edge-detector, no DOM/timers,
+ * same posture as `reduceDownloadChipState` above: given the raw `{oneShots}`
+ * snapshot `GET /api/subscriptions/status` returns and the SET of one-shot
+ * jobIds already known (from a PRIOR poll tick) to have reached `'done'`,
+ * returns the jobIds that are `'done'` in THIS snapshot but were NOT yet in
+ * `seenDoneJobIds` -- i.e. exactly the ones transitioning INTO `'done'` on
+ * this tick. Fires once per job: the caller is responsible for adding the
+ * returned ids to its own persisted `seenDoneJobIds` Set before the next
+ * poll (this function never mutates its input, so it stays a pure
+ * read -- `dismissedKeys`-in/`reduceDownloadChipState`-style). This is the
+ * ONLY piece of the in-place library-refresh trigger that inspects raw
+ * `oneShots` state directly; `reduceDownloadChipState` itself UNCONDITIONALLY
+ * excludes `'done'` entries from its own `items` (auto-dismiss, see that
+ * function's doc comment), so the edge can't be observed there.
+ */
+function detectNewlyDoneOneShots(snapshot, seenDoneJobIds) {
+  const seen = seenDoneJobIds instanceof Set
+    ? seenDoneJobIds
+    : new Set(Array.isArray(seenDoneJobIds) ? seenDoneJobIds : []);
+  const oneShots = (snapshot && snapshot.oneShots && typeof snapshot.oneShots === 'object') ? snapshot.oneShots : {};
+  const newlyDone = [];
+  Object.keys(oneShots).forEach((jobId) => {
+    const entry = oneShots[jobId];
+    if (entry && typeof entry === 'object' && entry.state === 'done' && !seen.has(jobId)) {
+      newlyDone.push(jobId);
+    }
+  });
+  return newlyDone;
+}
+
+/**
+ * v1.29.0 T8 (R2.3/R2.4, AC4.3/AC4.4) -- invokes `window.__filetubeRefreshLibrary`
+ * (the hook `public/js/main.js` exposes as its page-local `loadLibrary`, HOME
+ * PAGE ONLY -- `main.js:203`) iff it exists and is a function; a safe no-op
+ * everywhere else (any non-home page, or a page/tab that never set it -- e.g.
+ * this tick's one-shot finished while the user is on /watch or
+ * /subscriptions). This is a TARGETED re-fetch/re-render, never a page
+ * reload -- `window.location.reload()` is NEVER called on this path (BUG 2,
+ * see `decideOneOffTerminalAction`'s doc comment for the full incident
+ * writeup); the server already rescanned after `runOneShot` completed, so
+ * this client call is purely a client-side re-fetch of already-fresh
+ * server-side data.
+ */
+function refreshLibraryInPlace() {
+  if (typeof window !== 'undefined' && typeof window.__filetubeRefreshLibrary === 'function') {
+    window.__filetubeRefreshLibrary();
+  }
+}
+
+/**
  * v1.26 code-review fix (F2): builds ONE download-chip item row's DOM
  * skeleton ONCE -- every possible sub-element (percent badge, progress bar,
  * cancel action, failures list, retry/dismiss actions) is created up front
@@ -4573,6 +4637,12 @@ function injectDownloadStatusChip() {
       if (!(res && res.ok === true)) return; // disabled (404) -- inject nothing
 
       const dismissedKeys = new Set();
+      // v1.29.0 T8 (R2.3/R2.4, AC4.3/AC4.4): this chip INSTANCE's own record
+      // of one-shot jobIds already observed reaching 'done' -- fed to
+      // `detectNewlyDoneOneShots` every poll tick so the in-place library
+      // refresh fires exactly once per job, never on every tick a 'done' job
+      // happens to still be present in the snapshot.
+      const seenDoneOneShotJobIds = new Set();
       let latestSnapshot = { subscriptions: {}, oneShots: {} };
       let expanded = false;
       let pollTimer = null;
@@ -4719,6 +4789,16 @@ function injectDownloadStatusChip() {
             latestSnapshot = snapshot && typeof snapshot === 'object'
               ? { subscriptions: snapshot.subscriptions || {}, oneShots: snapshot.oneShots || {} }
               : { subscriptions: {}, oneShots: {} };
+            // v1.29.0 T8 (R2.3/R2.4, AC4.3/AC4.4): edge-triggered in-place
+            // library refresh -- fires exactly once per one-shot job as it
+            // transitions into 'done' (never on every tick it stays 'done',
+            // never `window.location.reload()` -- see
+            // `decideOneOffTerminalAction`'s BUG 2 fix). This is the ONLY
+            // call site that ever mutates `seenDoneOneShotJobIds`;
+            // `detectNewlyDoneOneShots` itself is a pure read.
+            const newlyDoneJobIds = detectNewlyDoneOneShots(latestSnapshot, seenDoneOneShotJobIds);
+            newlyDoneJobIds.forEach((jobId) => seenDoneOneShotJobIds.add(jobId));
+            if (newlyDoneJobIds.length > 0) refreshLibraryInPlace();
             // v1.26 "real progress": poll much faster while this snapshot
             // shows an actively-downloading entry -- see
             // `nextDownloadChipPollDelay`'s doc comment.
@@ -5127,6 +5207,9 @@ if (typeof module !== 'undefined' && module.exports) {
     nextDownloadChipPollDelay, buildOneShotRetryBody, chipItemLifecycle,
     buildDownloadChipItem, reduceDownloadChipState, formatDownloadChipSummary,
     shouldShowDownloadChipOnPath, injectDownloadStatusChip,
+    // v1.29.0 T8: the pure done-edge detector + the in-place library-refresh
+    // hook invoker, exported for direct node:test coverage (no DOM/timers).
+    detectNewlyDoneOneShots, refreshLibraryInPlace,
     // v1.26 code-review fix (F2): panel diff-update helpers (row identity
     // reuse across poll ticks), exported for direct node:test coverage
     // against a fake DOM.

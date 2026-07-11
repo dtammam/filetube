@@ -95,7 +95,12 @@ test('POST /api/subscriptions/repull accepts immediately (202) and polls every s
   try {
     const res = await fetch(`${base}/api/subscriptions/repull`, { method: 'POST' });
     assert.equal(res.status, 202);
-    assert.deepEqual(await res.json(), { accepted: true });
+    // T5/R1.5: the body now carries the started/busy discriminator -- an idle
+    // poll (the case here) responds `started: true` with no `reason` key.
+    const body = await res.json();
+    assert.equal(body.accepted, true);
+    assert.equal(body.started, true);
+    assert.equal(body.reason, undefined, 'a started poll must not carry a reason');
 
     // Give the fire-and-forget poll a moment to actually run against both subs.
     await new Promise((resolve) => setTimeout(resolve, 50));
@@ -121,6 +126,11 @@ test('POST /api/subscriptions/:id/repull polls only that one subscription (202),
   try {
     const okRes = await fetch(`${base}/api/subscriptions/${subA.id}/repull`, { method: 'POST' });
     assert.equal(okRes.status, 202);
+    // T5/R1.5: started path body discriminator.
+    const okBody = await okRes.json();
+    assert.equal(okBody.accepted, true);
+    assert.equal(okBody.started, true);
+    assert.equal(okBody.reason, undefined);
 
     await new Promise((resolve) => setTimeout(resolve, 50));
     assert.deepEqual(polled, [subA.id], 'only the targeted subscription should have been polled');
@@ -129,6 +139,95 @@ test('POST /api/subscriptions/:id/repull polls only that one subscription (202),
     assert.equal(notFoundRes.status, 404);
     assert.ok((await notFoundRes.json()).error);
   } finally {
+    await close();
+  }
+});
+
+// ---- T5/R1.5/AC3.5: the busy-coalesce path is propagated to the HTTP -----
+// ---- response body instead of always reporting `{ accepted: true }`. -----
+
+test('AC3.5: POST /api/subscriptions/repull responds 202 {accepted:true,started:false,reason:"busy"} when a poll is already in flight, and still coalesces one follow-up run', async () => {
+  const deps = makeFakeDeps();
+  await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@chanA', format: 'video' });
+
+  let listCalls = 0;
+  let resolveFirstList;
+  run.runList = () => {
+    listCalls += 1;
+    if (listCalls === 1) {
+      return new Promise((resolve) => {
+        resolveFirstList = () => resolve({ ok: true, stdout: '', stderr: '' });
+      });
+    }
+    return Promise.resolve({ ok: true, stdout: '', stderr: '' });
+  };
+  run.runDownload = async () => ({ ok: true, code: 0, stdout: '', stderr: '' });
+
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    // Kick off a poll directly (bypassing the route) so it is reliably busy
+    // by the time the route-driven request below lands -- mirrors the
+    // deterministic busy-forcing pattern used throughout ytdlp-poll.test.js.
+    const firstPollPromise = ytdlp.runPoll(deps, enabledConfig());
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(ytdlp.isPollBusy(), true, 'sanity: the poll must be in flight before the route request');
+
+    const busyRes = await fetch(`${base}/api/subscriptions/repull`, { method: 'POST' });
+    assert.equal(busyRes.status, 202, 'status stays 202 even when coalesced -- only the body gains fields');
+    const busyBody = await busyRes.json();
+    assert.equal(busyBody.accepted, true);
+    assert.equal(busyBody.started, false);
+    assert.equal(busyBody.reason, 'busy');
+
+    resolveFirstList();
+    await firstPollPromise;
+
+    // The coalesced trigger must still result in exactly one follow-up poll
+    // (the route's busy response must not have silently dropped it).
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.equal(listCalls, 2, 'the busy repull must still coalesce into one follow-up run');
+  } finally {
+    ytdlp.resetPollRerunStateForTests();
+    await close();
+  }
+});
+
+test('AC3.5: POST /api/subscriptions/:id/repull responds 202 {accepted:true,started:false,reason:"busy"} when a poll is already in flight for that subscription', async () => {
+  const deps = makeFakeDeps();
+  const subA = await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@chanA', format: 'video' });
+
+  let listCalls = 0;
+  let resolveFirstList;
+  run.runList = () => {
+    listCalls += 1;
+    if (listCalls === 1) {
+      return new Promise((resolve) => {
+        resolveFirstList = () => resolve({ ok: true, stdout: '', stderr: '' });
+      });
+    }
+    return Promise.resolve({ ok: true, stdout: '', stderr: '' });
+  };
+  run.runDownload = async () => ({ ok: true, code: 0, stdout: '', stderr: '' });
+
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    const firstPollPromise = ytdlp.runPoll(deps, enabledConfig(), subA.id);
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(ytdlp.isPollBusy(), true, 'sanity: the poll must be in flight before the route request');
+
+    const busyRes = await fetch(`${base}/api/subscriptions/${subA.id}/repull`, { method: 'POST' });
+    assert.equal(busyRes.status, 202);
+    const busyBody = await busyRes.json();
+    assert.equal(busyBody.accepted, true);
+    assert.equal(busyBody.started, false);
+    assert.equal(busyBody.reason, 'busy');
+
+    resolveFirstList();
+    await firstPollPromise;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.equal(listCalls, 2, 'the busy repull-one must still coalesce into one follow-up run');
+  } finally {
+    ytdlp.resetPollRerunStateForTests();
     await close();
   }
 });

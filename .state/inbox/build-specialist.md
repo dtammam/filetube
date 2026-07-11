@@ -1,33 +1,64 @@
-# Build verification — v1.24 UX Round, Wave 2 (Subscriptions, T6+T7+T8)
+# Build verification — v1.29 Downloads Reliability Wave, GF2 (F1 re-fix)
 
-You are the build-specialist. Wave 2 (Subscriptions) implementation is complete
-on the shared working tree: T6 (subscriptions client UI), T7 (`lib/ytdlp/store.js`
-order field + reorder reducer/mutator), T8 (`lib/ytdlp/index.js` poll-timing
-helper + reorder/pin gated routes). Verify the build is green before the
-review gate.
+You are the build-specialist. The gate-fix round **GF2** (the F1 re-fix in
+`failures.js` after the delta re-gate's CRITICAL) has been implemented and self-
+reported green by the software-developer. Your job is INDEPENDENT verification:
+run the project's test/lint commands yourself and report pass/fail, with full
+output for any failure. You do NOT fix code and you do NOT commit — you verify and
+report.
 
-## Toolchain (REQUIRED — prod + CI are Node 22)
-Prepend this to PATH before ANY npm/node command:
-`/tmp/claude-1000/-home-coder-projects-filetube/139c0e56-b545-4e8e-ba05-f892f6dd6d0d/scratchpad/node-v22.23.1-linux-x64/bin`
-Confirm `node --version` prints v22.x before proceeding.
+## CRITICAL — toolchain / PATH (read before running anything)
 
-## Commands to run (report pass/fail + full output for any failure)
-1. `npm ci` (or confirm deps already installed — no compile step, interpreted app)
-2. `npm test` — full unit + integration suite via `node:test`
-3. `npm run lint` — ESLint
+node/npm are installed via **fnm** and are **NOT on PATH** by default. Before ANY
+`npm`/`node` command, export the fnm node bin dir:
 
-## Baselines to check against
-- **Tests:** baseline was 1735 green at the start of the round. Wave 2 adds new
-  tests (T7 `reduceReorder` + order-backfill; T8 `computeNextPollDue` incl. the
-  `intervalMs===0 -> null` case; pin-route/reorder-route coverage). Expect the
-  count to be >= 1735 plus the new Wave 2 tests, ALL green. Report the exact
-  number and any regression from the Wave 1 (v1.24.0) baseline.
-- **Lint:** baseline is 0 errors + exactly 8 pre-existing `common.js`
-  no-unused-vars warnings. Wave 2 must add NO new errors and NO new warnings.
-  If the count changed, name the new finding and the file:line.
+```
+export PATH="/home/coder/.local/share/fnm/node-versions/v24.14.0/installation/bin:$PATH"
+```
 
-## Report back (to the coordinator via your final message)
-- node version confirmed
-- pass/fail for each command, with full output for any failure
-- exact test count vs baseline; exact lint error/warning count vs baseline
-- do NOT commit, tag, or push — the coordinator owns ALL git
+- Symptom if you skip this: `npm: command not found` or a spurious lint/test
+  failure. Confirm with `node -v && npm -v` first.
+- If that path is missing (the version dir can change), find the current one:
+  `ls /home/coder/.local/share/fnm/node-versions/` and use its
+  `.../installation/bin`.
+- **Node-version CI-parity caveat:** repo targets **Node 22 LTS**; box has only
+  **Node 24.14.0**. Run on 24; reiterate the standing whole-wave Node 22 pre-
+  release re-run flag. State which Node you ran on.
+
+## What GF2 changed (context, not a to-do)
+
+- `lib/ytdlp/failures.js` ONLY — `computeDownloadOutcome` reworked: reason-dedup
+  REMOVED; raw unattributed count; a zero-attributed override (→ `error`,
+  `succeeded:0`, `failed:target`) checked BEFORE the reserve bound; reserve-at-
+  least-one only when `attributed.size >= 1`; a new `remainingAfterAttributed > 0`
+  guard prevents `failed > target`; three-arm disjointness re-derived in the doc
+  comment.
+- Tests updated: `test/unit/ytdlp-download-outcome.test.js` (5-same-429 →
+  error/0/5; all-unattributed → error unconditionally; 1-attributed+3-same-reason-
+  unattributed → partial 6/4; original 2-unattributed repro now error; 9/10
+  attributed partial unaffected) and `test/integration/ytdlp-outcome-threading.test.js`
+  (zero-attributed → error, NO downloadMeta for either id, cutoffDate frozen).
+- SDE self-report: `npm test` 3417/3417, `npm run lint` 0 errors / 7 baseline.
+  Scope = `failures.js` + 2 test files only. Nothing committed.
+
+## Commands (from repo root, after the PATH export)
+
+1. **Install only if needed:** `npm ci` — skip if `node_modules` present/intact;
+   note whether you ran it.
+2. **Lint:** `npm run lint` — PASS = 0 errors + no NEW warnings beyond the ~7-8
+   baseline. Report exact counts.
+3. **Full test suite:** `npm test` — report the tally + exit code. Expect **3417**
+   passing. **Explicitly confirm the GF2 CRITICAL-repro test (5 videos, same 429
+   text → `error`/`succeeded:0`, NOT phantom successes) and the zero-attributed →
+   error override test are present and green** — they are the crux of this fix.
+
+## Report back to the orchestrator (EM)
+- Command lines + resolved `node -v`/`npm -v`; whether you ran `npm ci`; Node
+  version.
+- Lint pass/fail + counts; test pass/fail + tally + exit code (full output for any
+  failure). Confirm the 5-same-429 CRITICAL-repro + zero-attributed-override tests
+  are present and green.
+- One-line verdict: **PASS** or **FAIL** (with the failing command + output).
+
+Do NOT edit code, commit, or start other work. (Separately, the adversarial
+reviewer runs a focused re-gate on the failures.js delta — not your concern here.)

@@ -41,8 +41,15 @@ const {
   formatLiveStatusText,
   formatNextCheckText,
   formatRowStatusLine,
+  isPartialRowStatus,
   buildFailureLines,
   formatFailuresLine,
+  formatWarningLine,
+  // v1.29.0 T6 (R1.1/R1.2/R1.5): row-level Retry-affordance gating +
+  // busy-coalescing "queued behind current run" render.
+  isErrorRowStatus,
+  shouldShowRetryButton,
+  isQueuedRepullResponse,
   pinLabelFallback,
   resolvePinLabel,
   buildFormatSelect,
@@ -75,6 +82,18 @@ const {
   triggerRefreshAvatars,
   triggerRefreshAvatarsCancel,
   hasRealChannelAvatar,
+  // v1.29.0 T9 (R4.1-R4.4): durable download-history section -- pure
+  // formatters, createElement-only DOM builders, the terminal-transition
+  // detector, and the DOM-free fetch-once/re-fetch orchestrator.
+  formatHistoryOutcomeLine,
+  formatHistoryFailuresLine,
+  formatHistoryTimestamp,
+  createHistoryRow,
+  createHistoryListElement,
+  createHistorySectionElement,
+  detectNewlyTerminalRuns,
+  fetchHistoryEntries,
+  createHistoryRefreshController,
 } = require('../../lib/ytdlp/client/subscriptions.js');
 
 // ---- Minimal fake DOM (test-only) ------------------------------------------
@@ -89,10 +108,20 @@ class FakeElement {
     this._listeners = {};
     this.style = {};
     this.hidden = false;
+    // v1.29.0 T4 test support: a REAL (test-only) `Set`-backed classList --
+    // upgraded from the old always-no-op stub so a test can assert the
+    // `sub-row-status-partial` marker class was actually added/removed, not
+    // just that the (side-effect-free) call didn't throw.
+    this._classSet = new Set();
     this.classList = {
-      add: () => {},
-      remove: () => {},
-      contains: () => false,
+      add: (...names) => names.forEach((n) => this._classSet.add(n)),
+      remove: (...names) => names.forEach((n) => this._classSet.delete(n)),
+      contains: (name) => this._classSet.has(name),
+      toggle: (name, force) => {
+        const on = typeof force === 'boolean' ? force : !this._classSet.has(name);
+        if (on) this._classSet.add(name); else this._classSet.delete(name);
+        return on;
+      },
     };
   }
 
@@ -462,6 +491,22 @@ test('formatLiveStatusText: "done" renders a short done message', () => {
   assert.strictEqual(formatLiveStatusText({ state: 'done', percent: 100 }), 'Done');
 });
 
+// ---- v1.29.0 T4 (R3a.6): partial-outcome distinct rendering ----------------
+
+test('formatLiveStatusText: a "done" entry with outcome "partial" renders a DISTINCT label, never the bare "Done"', () => {
+  const result = formatLiveStatusText({ state: 'done', percent: 100, outcome: 'partial' });
+  assert.notStrictEqual(result, 'Done');
+  assert.ok(typeof result === 'string' && result.trim() !== '', 'expected a non-empty distinct label');
+});
+
+test('formatLiveStatusText: a "done" entry with NO outcome field (plain success) still renders bare "Done"', () => {
+  assert.strictEqual(formatLiveStatusText({ state: 'done', percent: 100 }), 'Done');
+});
+
+test('formatLiveStatusText: a "done" entry with outcome "success" (never actually set by the server, but defensively) still renders "Done"', () => {
+  assert.strictEqual(formatLiveStatusText({ state: 'done', percent: 100, outcome: 'success' }), 'Done');
+});
+
 // ---- v1.26 "real progress": phase-aware rendering --------------------------
 
 test('formatLiveStatusText: a "merging" phase renders "Merging…", even with a stale 100% percent', () => {
@@ -599,6 +644,95 @@ test('formatFailuresLine: joins multiple failure lines with " | "', () => {
 test('formatFailuresLine: returns "" (empty string) when there is nothing to show', () => {
   assert.strictEqual(formatFailuresLine(undefined), '');
   assert.strictEqual(formatFailuresLine({ state: 'downloading' }), '');
+});
+
+// ---- v1.29.0 T4 (R3a.6): buildFailureLines/formatFailuresLine ALSO render --
+// ---- for a partial ("done" + outcome "partial") entry ----------------------
+
+test('buildFailureLines: renders reasons for a partial entry (state "done", outcome "partial")', () => {
+  const entry = {
+    state: 'done',
+    outcome: 'partial',
+    failures: [{ videoId: 'vid1', title: 'My Video', reason: 'Video unavailable' }],
+  };
+  assert.deepEqual(buildFailureLines(entry), ['My Video: Video unavailable']);
+});
+
+test('formatFailuresLine: renders the joined reason line for a partial entry', () => {
+  const entry = {
+    state: 'done',
+    outcome: 'partial',
+    failures: [
+      { videoId: 'vid1', title: 'First', reason: 'reason A' },
+      { videoId: 'vid2', title: 'Second', reason: 'reason B' },
+    ],
+  };
+  assert.strictEqual(formatFailuresLine(entry), 'First: reason A | Second: reason B');
+});
+
+test('buildFailureLines: a plain "done" entry with NO partial outcome still renders no reasons (never masks a false positive)', () => {
+  const entry = { state: 'done', failures: [{ videoId: 'vid1', reason: 'stale from a prior error cycle' }] };
+  assert.deepEqual(buildFailureLines(entry), []);
+});
+
+test('buildFailureLines: a stale outcome "partial" left over on a NEW active cycle (state moved past "done") never renders -- the state gate still applies', () => {
+  const entry = {
+    state: 'downloading',
+    outcome: 'partial', // stale from the PRIOR completed cycle -- mergeEntry never clears it
+    failures: [{ videoId: 'vid1', reason: 'a stale reason from the prior partial cycle' }],
+  };
+  assert.deepEqual(buildFailureLines(entry), []);
+});
+
+test('buildFailureLines: an error entry still renders (the pre-existing contract is unchanged)', () => {
+  const entry = { state: 'error', failures: [{ videoId: 'vid1', reason: 'Video unavailable' }] };
+  assert.deepEqual(buildFailureLines(entry), ['vid1: Video unavailable']);
+});
+
+// ---- v1.29.0 T4 (R3a.6): isPartialRowStatus (the sub-row-status-partial ----
+// ---- marker-class predicate) ------------------------------------------------
+
+test('isPartialRowStatus: true when the live entry is "done" with outcome "partial"', () => {
+  assert.strictEqual(isPartialRowStatus({}, { state: 'done', outcome: 'partial' }), true);
+});
+
+test('isPartialRowStatus: false for a plain "done" live entry with no partial outcome', () => {
+  assert.strictEqual(isPartialRowStatus({}, { state: 'done' }), false);
+});
+
+test('isPartialRowStatus: false for an active live entry even if a stale outcome "partial" lingers on it', () => {
+  assert.strictEqual(isPartialRowStatus({}, { state: 'downloading', outcome: 'partial', percent: 10 }), false);
+  assert.strictEqual(isPartialRowStatus({}, { state: 'error', outcome: 'partial', error: 'x' }), false);
+});
+
+test('isPartialRowStatus: no live entry -- falls back to the persisted lastStatus string starting with "partial:"', () => {
+  assert.strictEqual(isPartialRowStatus({ lastStatus: 'partial: downloaded 9 new video(s), 1 failed: some reason' }, null), true);
+  assert.strictEqual(isPartialRowStatus({ lastStatus: 'ok: downloaded 3 new video(s)' }, undefined), false);
+  assert.strictEqual(isPartialRowStatus({ lastStatus: null }, { state: 'idle' }), false);
+});
+
+test('isPartialRowStatus: a missing/malformed sub or entry never throws', () => {
+  assert.strictEqual(isPartialRowStatus(null, null), false);
+  assert.strictEqual(isPartialRowStatus(undefined, undefined), false);
+});
+
+// ---- v1.29.0 T4 (R3c.1 client): formatWarningLine (cookie-missing) ---------
+
+test('formatWarningLine: returns the fixed cookie-warning literal when entry.warning is true', () => {
+  const result = formatWarningLine({ state: 'listing', warning: true });
+  assert.ok(typeof result === 'string' && result.trim() !== '');
+  assert.ok(result.toLowerCase().includes('cookie'));
+});
+
+test('formatWarningLine: returns "" when entry.warning is false, absent, or the entry is missing/malformed', () => {
+  assert.strictEqual(formatWarningLine({ state: 'done', warning: false }), '');
+  assert.strictEqual(formatWarningLine({ state: 'done' }), '');
+  assert.strictEqual(formatWarningLine(null), '');
+  assert.strictEqual(formatWarningLine(undefined), '');
+  // "truthy but not literally === true" never trips the fixed literal -- no
+  // implicit type coercion on a field this file otherwise treats strictly.
+  assert.strictEqual(formatWarningLine({ warning: 'true' }), '');
+  assert.strictEqual(formatWarningLine({ warning: 1 }), '');
 });
 
 test('nextPollDelay: success resets to the base ~2.5s cadence', () => {
@@ -1182,6 +1316,67 @@ test('createSubscriptionRow: .sub-row-failures stays hidden when the live entry 
   assert.strictEqual(failuresEl.hidden, true, 'a stale failures array on a non-error state must never render');
 });
 
+// ---- v1.29.0 T4 (R3a.6, R3c.1 client): partial marker class + failures + ---
+// ---- .sub-row-warning --------------------------------------------------------
+
+test('createSubscriptionRow: a partial live entry (state "done", outcome "partial") gets the sub-row-status-partial class, renders a distinct status, and shows its failure reasons', () => {
+  const sub = { id: 'partial-1', name: 'Chan', channelUrl: 'https://www.youtube.com/@partial-1', lastCheckedAt: null, lastStatus: null };
+  const liveEntry = {
+    state: 'done',
+    percent: 100,
+    outcome: 'partial',
+    failures: [{ videoId: 'vid1', title: 'Cool Video', reason: 'Video unavailable' }],
+  };
+  const row = createSubscriptionRow(sub, fakeDoc, {}, liveEntry);
+  const info = row.children.find((el) => el.className === 'sub-row-info');
+  const statusEl = info.children.find((el) => el.className === 'sub-row-status');
+  const failuresEl = info.children.find((el) => el.className === 'sub-row-failures');
+  assert.strictEqual(statusEl.classList.contains('sub-row-status-partial'), true);
+  assert.notStrictEqual(statusEl.textContent, 'Done');
+  assert.strictEqual(failuresEl.hidden, false);
+  assert.strictEqual(failuresEl.textContent, 'Cool Video: Video unavailable');
+});
+
+test('createSubscriptionRow: a plain success/error/no-entry row never gets the sub-row-status-partial class', () => {
+  const successEntry = { state: 'done', percent: 100 };
+  const errorEntry = { state: 'error', error: 'error: x' };
+  const successRow = createSubscriptionRow({ id: 's1', lastStatus: 'ok: downloaded 1 new video(s)' }, fakeDoc, {}, successEntry);
+  const errorRow = createSubscriptionRow({ id: 's2', lastStatus: 'error: x' }, fakeDoc, {}, errorEntry);
+  const noEntryRow = createSubscriptionRow({ id: 's3', lastStatus: 'ok: no new videos' }, fakeDoc, {});
+  for (const row of [successRow, errorRow, noEntryRow]) {
+    const info = row.children.find((el) => el.className === 'sub-row-info');
+    const statusEl = info.children.find((el) => el.className === 'sub-row-status');
+    assert.strictEqual(statusEl.classList.contains('sub-row-status-partial'), false);
+  }
+});
+
+test('createSubscriptionRow: a persisted "partial:" lastStatus with no live entry also gets the sub-row-status-partial class', () => {
+  const sub = { id: 'partial-2', lastStatus: 'partial: downloaded 9 new video(s), 1 failed: some reason' };
+  const row = createSubscriptionRow(sub, fakeDoc, {});
+  const info = row.children.find((el) => el.className === 'sub-row-info');
+  const statusEl = info.children.find((el) => el.className === 'sub-row-status');
+  assert.strictEqual(statusEl.classList.contains('sub-row-status-partial'), true);
+});
+
+test('createSubscriptionRow: builds .sub-row-warning, hidden when there is no cookie warning', () => {
+  const sub = { id: 'warn-1', lastStatus: 'ok: downloaded 1 new video(s)' };
+  const row = createSubscriptionRow(sub, fakeDoc, {}, { state: 'done', percent: 100 });
+  const info = row.children.find((el) => el.className === 'sub-row-info');
+  const warningEl = info.children.find((el) => el.className === 'sub-row-warning');
+  assert.ok(warningEl, '.sub-row-warning must exist on every row (hidden when empty)');
+  assert.strictEqual(warningEl.hidden, true);
+  assert.strictEqual(warningEl.textContent, '');
+});
+
+test('createSubscriptionRow: builds .sub-row-warning, visible with the fixed literal when the live entry carries warning:true', () => {
+  const sub = { id: 'warn-2', lastStatus: 'ok: downloaded 1 new video(s)' };
+  const row = createSubscriptionRow(sub, fakeDoc, {}, { state: 'listing', warning: true });
+  const info = row.children.find((el) => el.className === 'sub-row-info');
+  const warningEl = info.children.find((el) => el.className === 'sub-row-warning');
+  assert.strictEqual(warningEl.hidden, false);
+  assert.ok(warningEl.textContent.toLowerCase().includes('cookie'));
+});
+
 test('createSubscriptionRow: a hostile reason/title inside a failure entry is rendered as inert textContent, never innerHTML', () => {
   const hostileReason = '<img src=x onerror=alert(1)>';
   const sub = { id: 'a2-4', name: 'Chan', channelUrl: 'https://www.youtube.com/@a2-4', lastCheckedAt: null, lastStatus: null };
@@ -1221,6 +1416,442 @@ test('createSubscriptionRow: a hostile LIVE error status (FR-E) is also rendered
   assert.ok(statusNode, 'the hostile live error text must be present verbatim as textContent');
   const tagNames = new Set(allNodes.map((el) => el.tagName));
   assert.ok(!tagNames.has('IMG'), 'no <img> element must ever be created from a live error string');
+});
+
+// ---- v1.29.0 T6 (R1.1/R1.2/R1.5): Retry affordance + queued render --------
+
+test('isErrorRowStatus: true for a live "error" entry, false for every other live state', () => {
+  assert.strictEqual(isErrorRowStatus({}, { state: 'error', error: 'boom' }), true);
+  assert.strictEqual(isErrorRowStatus({}, { state: 'done', percent: 100 }), false);
+  assert.strictEqual(isErrorRowStatus({}, { state: 'downloading', percent: 10 }), false);
+  assert.strictEqual(isErrorRowStatus({}, { state: 'queued' }), false);
+});
+
+test('isErrorRowStatus: falls back to the persisted lastStatus "error:" prefix when there is no live override', () => {
+  assert.strictEqual(isErrorRowStatus({ lastStatus: 'error: yt-dlp exited with code 1' }, undefined), true);
+  assert.strictEqual(isErrorRowStatus({ lastStatus: 'ok: downloaded 1 new video(s)' }, undefined), false);
+  assert.strictEqual(isErrorRowStatus({ lastStatus: null }, undefined), false);
+  assert.strictEqual(isErrorRowStatus(undefined, undefined), false);
+});
+
+test('isErrorRowStatus: a live override WINS even when a stale "error:" lastStatus lingers -- never double-counts a prior cycle', () => {
+  assert.strictEqual(isErrorRowStatus({ lastStatus: 'error: old failure' }, { state: 'downloading', percent: 50 }), false);
+});
+
+test('shouldShowRetryButton: true for error OR partial, false for a plain success/idle row', () => {
+  assert.strictEqual(shouldShowRetryButton({ lastStatus: 'error: x' }, undefined), true);
+  assert.strictEqual(shouldShowRetryButton({ lastStatus: 'partial: 9 ok, 1 failed' }, undefined), true);
+  assert.strictEqual(shouldShowRetryButton({ lastStatus: 'ok: downloaded 1 new video(s)' }, undefined), false);
+  assert.strictEqual(shouldShowRetryButton({}, undefined), false);
+});
+
+test('isQueuedRepullResponse: true ONLY for {started:false, reason:"busy"}, false for started:true/404/null/malformed', () => {
+  assert.strictEqual(isQueuedRepullResponse({ accepted: true, started: false, reason: 'busy' }), true);
+  assert.strictEqual(isQueuedRepullResponse({ accepted: true, started: true }), false);
+  assert.strictEqual(isQueuedRepullResponse({ accepted: true, started: false, reason: 'not-found' }), false);
+  assert.strictEqual(isQueuedRepullResponse(null), false);
+  assert.strictEqual(isQueuedRepullResponse(undefined), false);
+  assert.strictEqual(isQueuedRepullResponse('busy'), false);
+  assert.strictEqual(isQueuedRepullResponse({}), false);
+});
+
+// ---- v1.29.0 T9 (R4.1-R4.4): download-history section ----------------------
+
+test('formatHistoryOutcomeLine: maps every known outcome to its label; an unknown/missing outcome falls back to "Unknown"', () => {
+  assert.strictEqual(formatHistoryOutcomeLine({ outcome: 'success' }), 'Success');
+  assert.strictEqual(formatHistoryOutcomeLine({ outcome: 'partial' }), 'Completed with some failures');
+  assert.strictEqual(formatHistoryOutcomeLine({ outcome: 'error' }), 'Failed');
+  assert.strictEqual(formatHistoryOutcomeLine({ outcome: 'cancelled' }), 'Cancelled');
+  assert.strictEqual(formatHistoryOutcomeLine({ outcome: 'something-new' }), 'Unknown');
+  assert.strictEqual(formatHistoryOutcomeLine({}), 'Unknown');
+  assert.strictEqual(formatHistoryOutcomeLine(null), 'Unknown');
+});
+
+test('formatHistoryFailuresLine: renders joined "label: reason" lines for a partial or error entry', () => {
+  const partial = {
+    outcome: 'partial',
+    failures: [
+      { videoId: 'vid1', title: 'First', reason: 'reason A' },
+      { videoId: 'vid2', reason: 'reason B' },
+    ],
+  };
+  assert.strictEqual(formatHistoryFailuresLine(partial), 'First: reason A | vid2: reason B');
+
+  const error = { outcome: 'error', failures: [{ videoId: null, reason: 'unattributed' }] };
+  assert.strictEqual(formatHistoryFailuresLine(error), 'Unknown video: unattributed');
+});
+
+test('formatHistoryFailuresLine: returns "" for success/cancelled entries, or when failures is missing/malformed', () => {
+  assert.strictEqual(formatHistoryFailuresLine({ outcome: 'success', failures: [{ videoId: 'x', reason: 'y' }] }), '');
+  assert.strictEqual(formatHistoryFailuresLine({ outcome: 'cancelled', failures: [{ videoId: 'x', reason: 'y' }] }), '');
+  assert.strictEqual(formatHistoryFailuresLine({ outcome: 'error' }), '');
+  assert.strictEqual(formatHistoryFailuresLine({ outcome: 'error', failures: 'not-an-array' }), '');
+  assert.strictEqual(formatHistoryFailuresLine(null), '');
+  assert.strictEqual(formatHistoryFailuresLine(undefined), '');
+});
+
+test('formatHistoryTimestamp: formats a valid ISO string; falls back to "unknown time" for anything else', () => {
+  const formatted = formatHistoryTimestamp('2026-01-02T03:04:05.000Z');
+  assert.strictEqual(formatted, new Date('2026-01-02T03:04:05.000Z').toLocaleString());
+  assert.strictEqual(formatHistoryTimestamp('not-a-date'), 'unknown time');
+  assert.strictEqual(formatHistoryTimestamp(''), 'unknown time');
+  assert.strictEqual(formatHistoryTimestamp(undefined), 'unknown time');
+  assert.strictEqual(formatHistoryTimestamp(null), 'unknown time');
+});
+
+test('createHistoryRow: a success entry renders name/timestamp/status via textContent only, no failures line, no partial class', () => {
+  const entry = {
+    ts: '2026-01-02T03:04:05.000Z', name: 'My Channel', outcome: 'success', succeeded: 3, failed: 0, failures: [],
+  };
+  const row = createHistoryRow(entry, fakeDoc);
+  assert.strictEqual(row.className, 'sub-row');
+  const info = row.children[0];
+  const nameEl = info.children.find((el) => el.className === 'sub-row-name');
+  const metaEl = info.children.find((el) => el.className === 'sub-row-meta');
+  const statusEl = info.children.find((el) => el.className === 'sub-row-status');
+  assert.strictEqual(nameEl.textContent, 'My Channel');
+  assert.strictEqual(metaEl.textContent, formatHistoryTimestamp(entry.ts));
+  assert.strictEqual(statusEl.textContent, 'Success');
+  assert.strictEqual(statusEl.classList.contains('sub-row-status-partial'), false);
+  assert.strictEqual(info.children.find((el) => el.className === 'sub-row-failures'), undefined);
+});
+
+test('createHistoryRow: a partial entry gets the sub-row-status-partial marker class AND a rendered failures line', () => {
+  const entry = {
+    ts: '2026-01-02T03:04:05.000Z',
+    name: 'Partial Channel',
+    outcome: 'partial',
+    succeeded: 9,
+    failed: 1,
+    failures: [{ videoId: 'vid1', title: 'Bad Video', reason: 'Video unavailable' }],
+  };
+  const row = createHistoryRow(entry, fakeDoc);
+  const info = row.children[0];
+  const statusEl = info.children.find((el) => el.className === 'sub-row-status');
+  const failuresEl = info.children.find((el) => el.className === 'sub-row-failures');
+  assert.strictEqual(statusEl.textContent, 'Completed with some failures');
+  assert.strictEqual(statusEl.classList.contains('sub-row-status-partial'), true);
+  assert.ok(failuresEl, 'expected a rendered .sub-row-failures line for a partial entry');
+  assert.strictEqual(failuresEl.textContent, 'Bad Video: Video unavailable');
+});
+
+test('createHistoryRow: an error entry renders its failure reasons but no partial marker class', () => {
+  const entry = {
+    ts: '2026-01-02T03:04:05.000Z',
+    name: 'Failed Channel',
+    outcome: 'error',
+    succeeded: 0,
+    failed: 1,
+    failures: [{ videoId: 'vid1', reason: 'Sign in to confirm your age' }],
+  };
+  const row = createHistoryRow(entry, fakeDoc);
+  const info = row.children[0];
+  const statusEl = info.children.find((el) => el.className === 'sub-row-status');
+  const failuresEl = info.children.find((el) => el.className === 'sub-row-failures');
+  assert.strictEqual(statusEl.textContent, 'Failed');
+  assert.strictEqual(statusEl.classList.contains('sub-row-status-partial'), false);
+  assert.strictEqual(failuresEl.textContent, 'vid1: Sign in to confirm your age');
+});
+
+test('createHistoryRow: a missing/blank name falls back to "Unknown", never renders "undefined"', () => {
+  const row = createHistoryRow({ ts: '2026-01-01T00:00:00.000Z', outcome: 'success', failures: [] }, fakeDoc);
+  const nameEl = row.children[0].children.find((el) => el.className === 'sub-row-name');
+  assert.strictEqual(nameEl.textContent, 'Unknown');
+  const blankRow = createHistoryRow({ name: '   ', outcome: 'success', failures: [] }, fakeDoc);
+  const blankNameEl = blankRow.children[0].children.find((el) => el.className === 'sub-row-name');
+  assert.strictEqual(blankNameEl.textContent, 'Unknown');
+});
+
+test('createHistoryListElement: renders rows in the exact order given (the route already reverses to newest-first)', () => {
+  const entries = [
+    { ts: '2026-01-03T00:00:00.000Z', name: 'Newest', outcome: 'success', failures: [] },
+    { ts: '2026-01-02T00:00:00.000Z', name: 'Middle', outcome: 'success', failures: [] },
+    { ts: '2026-01-01T00:00:00.000Z', name: 'Oldest', outcome: 'success', failures: [] },
+  ];
+  const container = createHistoryListElement(entries, fakeDoc);
+  assert.strictEqual(container.children.length, 3);
+  const names = container.children.map((row) => row.children[0].children.find((el) => el.className === 'sub-row-name').textContent);
+  assert.deepEqual(names, ['Newest', 'Middle', 'Oldest']);
+});
+
+test('createHistoryListElement: an empty/missing entries array renders a single "No download history yet." message, no rows', () => {
+  const empty = createHistoryListElement([], fakeDoc);
+  assert.strictEqual(empty.children.length, 1);
+  assert.strictEqual(empty.children[0].textContent, 'No download history yet.');
+
+  const malformed = createHistoryListElement(undefined, fakeDoc);
+  assert.strictEqual(malformed.children.length, 1);
+  assert.strictEqual(malformed.children[0].textContent, 'No download history yet.');
+});
+
+test('createHistorySectionElement: builds a heading + an empty .sub-list ready for rows, reusing existing classes only', () => {
+  const { section, list } = createHistorySectionElement(fakeDoc);
+  assert.strictEqual(section.className, 'setup-box');
+  const header = section.children.find((el) => el.className === 'sub-list-header');
+  assert.ok(header, 'expected a .sub-list-header child');
+  const heading = header.children.find((el) => el.tagName === 'H2');
+  assert.strictEqual(heading.textContent, 'Download history');
+  assert.strictEqual(list.className, 'sub-list');
+  assert.strictEqual(list.children.length, 0);
+  assert.ok(section.children.includes(list), 'the list node must already be mounted inside the section');
+});
+
+// ---- detectNewlyTerminalRuns: pure terminal-transition edge detector ------
+
+test('detectNewlyTerminalRuns: true when a subscription transitions from a non-terminal state into "done"', () => {
+  const prev = { subscriptions: { s1: { state: 'downloading' } }, oneShots: {} };
+  const next = { subscriptions: { s1: { state: 'done' } }, oneShots: {} };
+  assert.strictEqual(detectNewlyTerminalRuns(prev, next), true);
+});
+
+test('detectNewlyTerminalRuns: true when a one-shot transitions into "error" or "cancelled"', () => {
+  const prev = { subscriptions: {}, oneShots: { j1: { state: 'downloading' } } };
+  assert.strictEqual(detectNewlyTerminalRuns(prev, { subscriptions: {}, oneShots: { j1: { state: 'error' } } }), true);
+  assert.strictEqual(detectNewlyTerminalRuns(prev, { subscriptions: {}, oneShots: { j1: { state: 'cancelled' } } }), true);
+});
+
+test('detectNewlyTerminalRuns: false when a poll tick repeats an already-terminal state (no re-fire on subsequent identical polls)', () => {
+  const snapshot = { subscriptions: { s1: { state: 'done' } }, oneShots: {} };
+  assert.strictEqual(detectNewlyTerminalRuns(snapshot, snapshot), false);
+});
+
+test('detectNewlyTerminalRuns: false for a non-terminal-to-non-terminal transition, or an entry absent from both snapshots', () => {
+  const prev = { subscriptions: { s1: { state: 'listing' } }, oneShots: {} };
+  const next = { subscriptions: { s1: { state: 'downloading' } }, oneShots: {} };
+  assert.strictEqual(detectNewlyTerminalRuns(prev, next), false);
+  assert.strictEqual(detectNewlyTerminalRuns({ subscriptions: {}, oneShots: {} }, { subscriptions: {}, oneShots: {} }), false);
+});
+
+test('detectNewlyTerminalRuns: fires again for the SAME subscription id after it cycles back out of a terminal state and completes again (retry case)', () => {
+  const idle = { subscriptions: { s1: { state: 'done' } }, oneShots: {} };
+  const retrying = { subscriptions: { s1: { state: 'downloading' } }, oneShots: {} };
+  const doneAgain = { subscriptions: { s1: { state: 'done' } }, oneShots: {} };
+  assert.strictEqual(detectNewlyTerminalRuns(idle, retrying), false, 'leaving a terminal state is not itself a transition INTO one');
+  assert.strictEqual(detectNewlyTerminalRuns(retrying, doneAgain), true, 'completing again after a retry must fire again');
+});
+
+test('detectNewlyTerminalRuns: never throws on missing/malformed snapshots', () => {
+  assert.strictEqual(detectNewlyTerminalRuns(null, undefined), false);
+  assert.strictEqual(detectNewlyTerminalRuns({}, {}), false);
+  assert.strictEqual(detectNewlyTerminalRuns({ subscriptions: null }, { subscriptions: { s1: { state: 'done' } } }), true);
+});
+
+// ---- GF1 F3 (post-gate fix): within-one-tick terminal->terminal transition -
+
+test('detectNewlyTerminalRuns (GF1 F3): true when a run completes entirely within one poll tick -- prev terminal from a PRIOR run, next terminal from a NEW run, with an advanced updatedAt marker and no observed intermediate state', () => {
+  const prev = { subscriptions: { s1: { state: 'done', updatedAt: '2026-07-11T10:00:00.000Z' } }, oneShots: {} };
+  const next = { subscriptions: { s1: { state: 'done', updatedAt: '2026-07-11T10:00:03.000Z' } }, oneShots: {} };
+  assert.strictEqual(detectNewlyTerminalRuns(prev, next), true, 'a within-one-tick full cycle must still be detected via the advanced updatedAt marker');
+});
+
+test('detectNewlyTerminalRuns (GF1 F3): true for a one-shot job that completes within one poll tick too (error->error with an advanced marker)', () => {
+  const prev = { subscriptions: {}, oneShots: { j1: { state: 'error', updatedAt: '2026-07-11T10:00:00.000Z' } } };
+  const next = { subscriptions: {}, oneShots: { j1: { state: 'error', updatedAt: '2026-07-11T10:00:03.000Z' } } };
+  assert.strictEqual(detectNewlyTerminalRuns(prev, next), true);
+});
+
+test('detectNewlyTerminalRuns (GF1 F3): false for a steady-state terminal entry whose updatedAt is UNCHANGED between polls -- no refresh storm', () => {
+  const snapshot = { subscriptions: { s1: { state: 'done', updatedAt: '2026-07-11T10:00:00.000Z' } }, oneShots: {} };
+  // Same value, but deliberately NOT the same object reference, to prove
+  // this is a real value comparison, not an identity/reference check.
+  const snapshotCopy = { subscriptions: { s1: { state: 'done', updatedAt: '2026-07-11T10:00:00.000Z' } }, oneShots: {} };
+  assert.strictEqual(detectNewlyTerminalRuns(snapshot, snapshotCopy), false);
+});
+
+test('detectNewlyTerminalRuns (GF1 F3): false when both sides are terminal but updatedAt is missing/malformed on either side -- never a false positive from a malformed entry', () => {
+  const withMarker = { subscriptions: { s1: { state: 'done', updatedAt: '2026-07-11T10:00:00.000Z' } }, oneShots: {} };
+  const noMarker = { subscriptions: { s1: { state: 'done' } }, oneShots: {} };
+  const malformedMarker = { subscriptions: { s1: { state: 'done', updatedAt: 12345 } }, oneShots: {} };
+  assert.strictEqual(detectNewlyTerminalRuns(withMarker, noMarker), false);
+  assert.strictEqual(detectNewlyTerminalRuns(noMarker, withMarker), false);
+  assert.strictEqual(detectNewlyTerminalRuns(malformedMarker, withMarker), false);
+});
+
+test('detectNewlyTerminalRuns (GF1 F3): the pre-existing !terminal->terminal case still fires (regression lock)', () => {
+  const prev = { subscriptions: { s1: { state: 'downloading', updatedAt: '2026-07-11T10:00:00.000Z' } }, oneShots: {} };
+  const next = { subscriptions: { s1: { state: 'done', updatedAt: '2026-07-11T10:00:03.000Z' } }, oneShots: {} };
+  assert.strictEqual(detectNewlyTerminalRuns(prev, next), true);
+});
+
+test('detectNewlyTerminalRuns (GF1 F3): the retried terminal->active->terminal case (crossing two poll ticks) still fires (regression lock)', () => {
+  const idle = { subscriptions: { s1: { state: 'done', updatedAt: '2026-07-11T10:00:00.000Z' } }, oneShots: {} };
+  const retrying = { subscriptions: { s1: { state: 'downloading', updatedAt: '2026-07-11T10:00:01.000Z' } }, oneShots: {} };
+  const doneAgain = { subscriptions: { s1: { state: 'done', updatedAt: '2026-07-11T10:00:05.000Z' } }, oneShots: {} };
+  assert.strictEqual(detectNewlyTerminalRuns(idle, retrying), false, 'leaving a terminal state is not itself a transition INTO one');
+  assert.strictEqual(detectNewlyTerminalRuns(retrying, doneAgain), true, 'completing again after a retry must fire again');
+});
+
+// ---- fetchHistoryEntries / createHistoryRefreshController -----------------
+// (DOM-free: an injected fake `fetch`, no real network, no document.)
+
+test('fetchHistoryEntries: resolves to the entries array from a successful response', async () => {
+  const calls = [];
+  const fakeFetch = (url) => {
+    calls.push(url);
+    return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ entries: [{ id: 'a' }, { id: 'b' }] }) });
+  };
+  const entries = await fetchHistoryEntries(fakeFetch);
+  assert.deepEqual(entries, [{ id: 'a' }, { id: 'b' }]);
+  assert.deepEqual(calls, ['/api/subscriptions/history']);
+});
+
+test('fetchHistoryEntries: degrades to [] (never rejects) on a non-OK response, a malformed body, or a network error', async () => {
+  assert.deepEqual(await fetchHistoryEntries(() => Promise.resolve({ ok: false, status: 404 })), []);
+  assert.deepEqual(await fetchHistoryEntries(() => Promise.resolve({ ok: true, json: () => Promise.resolve({}) })), []);
+  assert.deepEqual(await fetchHistoryEntries(() => Promise.reject(new Error('network down'))), []);
+});
+
+test('fetchHistoryEntries: resolves to [] when no fetch implementation is available at all', async () => {
+  assert.deepEqual(await fetchHistoryEntries(undefined), []);
+});
+
+test('createHistoryRefreshController: loadInitial always fetches once; maybeRefetchOnPoll only re-fetches on a terminal transition, and not again on the next identical poll', async () => {
+  let fetchCount = 0;
+  const fakeFetch = () => {
+    fetchCount += 1;
+    return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ entries: [{ id: `call-${fetchCount}` }] }) });
+  };
+  const controller = createHistoryRefreshController(fakeFetch);
+
+  const initial = await controller.loadInitial();
+  assert.deepEqual(initial, [{ id: 'call-1' }]);
+  assert.strictEqual(fetchCount, 1);
+
+  // First poll tick: a subscription transitions into 'done' -> re-fetch.
+  const transitioned = await controller.maybeRefetchOnPoll({ subscriptions: { s1: { state: 'done' } }, oneShots: {} });
+  assert.deepEqual(transitioned, [{ id: 'call-2' }]);
+  assert.strictEqual(fetchCount, 2);
+
+  // Next poll tick: the SAME snapshot again (nothing newly terminal) -> no fetch.
+  const repeated = await controller.maybeRefetchOnPoll({ subscriptions: { s1: { state: 'done' } }, oneShots: {} });
+  assert.strictEqual(repeated, null);
+  assert.strictEqual(fetchCount, 2, 'must not re-fetch on a subsequent identical poll');
+
+  // A later, genuinely new completion (retry cycle) fires again.
+  await controller.maybeRefetchOnPoll({ subscriptions: { s1: { state: 'downloading' } }, oneShots: {} });
+  assert.strictEqual(fetchCount, 2, 'leaving the terminal state alone must not itself trigger a fetch');
+  const refetched = await controller.maybeRefetchOnPoll({ subscriptions: { s1: { state: 'done' } }, oneShots: {} });
+  assert.deepEqual(refetched, [{ id: 'call-3' }]);
+  assert.strictEqual(fetchCount, 3);
+});
+
+test('createHistoryRefreshController: two independent controller instances never share state', async () => {
+  const fakeFetch = () => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ entries: [] }) });
+  const controllerA = createHistoryRefreshController(fakeFetch);
+  const controllerB = createHistoryRefreshController(fakeFetch);
+
+  await controllerA.maybeRefetchOnPoll({ subscriptions: { s1: { state: 'done' } }, oneShots: {} });
+  // Controller B has never seen a poll yet -- its OWN first comparison
+  // (against ITS empty baseline) must still evaluate independently of A.
+  const bResult = await controllerB.maybeRefetchOnPoll({ subscriptions: { s1: { state: 'idle' } }, oneShots: {} });
+  assert.strictEqual(bResult, null, 'an idle (non-terminal) first tick must not fetch');
+});
+
+test('createSubscriptionRow: renders a Retry button for an error row', () => {
+  const sub = { id: 'retry-err', name: 'Chan', channelUrl: 'https://www.youtube.com/@retry-err', lastStatus: 'error: x' };
+  const row = createSubscriptionRow(sub, fakeDoc, {});
+  const retryBtn = row.children.find((el) => el.className === 'btn btn-sm sub-row-retry');
+  assert.ok(retryBtn, 'expected a Retry button on an error row');
+  assert.strictEqual(retryBtn.textContent, 'Retry');
+  assert.strictEqual(retryBtn.tagName, 'BUTTON');
+});
+
+test('createSubscriptionRow: renders a Retry button for a partial-with-failures row', () => {
+  const sub = { id: 'retry-partial', name: 'Chan', channelUrl: 'https://www.youtube.com/@retry-partial', lastStatus: null };
+  const liveEntry = { state: 'done', outcome: 'partial', failures: [{ videoId: 'v1', reason: 'unavailable' }] };
+  const row = createSubscriptionRow(sub, fakeDoc, {}, liveEntry);
+  const retryBtn = row.children.find((el) => el.className === 'btn btn-sm sub-row-retry');
+  assert.ok(retryBtn, 'expected a Retry button on a partial row');
+});
+
+test('createSubscriptionRow: NO Retry button on a clean success row', () => {
+  const sub = { id: 'retry-ok', name: 'Chan', channelUrl: 'https://www.youtube.com/@retry-ok', lastStatus: 'ok: downloaded 1 new video(s)' };
+  const row = createSubscriptionRow(sub, fakeDoc, {}, { state: 'done', percent: 100 });
+  const retryBtn = row.children.find((el) => el.className === 'btn btn-sm sub-row-retry');
+  assert.strictEqual(retryBtn, undefined, 'a clean success row must never show a Retry button');
+});
+
+test('createSubscriptionRow: NO Retry button when there is no error/partial signal at all (pending row)', () => {
+  const sub = { id: 'retry-pending', name: 'Chan', channelUrl: 'https://www.youtube.com/@retry-pending', lastStatus: null };
+  const row = createSubscriptionRow(sub, fakeDoc, {});
+  const retryBtn = row.children.find((el) => el.className === 'btn btn-sm sub-row-retry');
+  assert.strictEqual(retryBtn, undefined);
+});
+
+test('createSubscriptionRow: clicking Retry calls h.onRepull(sub.id) and stops propagation (never also fires row-tap navigation)', () => {
+  const sub = { id: 'retry-click', name: 'Chan', channelUrl: 'https://www.youtube.com/@retry-click', channelDir: '/data/retry-click', lastStatus: 'error: x' };
+  const repullCalls = [];
+  const tapCalls = [];
+  const row = createSubscriptionRow(sub, fakeDoc, {
+    onRowTap: (s) => tapCalls.push(s),
+    onRepull: (id) => { repullCalls.push(id); return Promise.resolve(null); },
+  });
+  const retryBtn = row.children.find((el) => el.className === 'btn btn-sm sub-row-retry');
+  retryBtn.click({ stopPropagation: () => {} });
+  assert.deepStrictEqual(repullCalls, ['retry-click']);
+  assert.deepStrictEqual(tapCalls, [], 'the Retry click must never also trigger row navigation');
+});
+
+test('createSubscriptionRow: Retry renders "queued behind current run" (sub-row-status-queued + textContent) when the repull response is {started:false, reason:"busy"}', async () => {
+  const sub = { id: 'retry-busy', name: 'Chan', channelUrl: 'https://www.youtube.com/@retry-busy', lastStatus: 'error: x' };
+  const row = createSubscriptionRow(sub, fakeDoc, {
+    onRepull: () => Promise.resolve({ accepted: true, started: false, reason: 'busy' }),
+  });
+  const info = row.children.find((el) => el.className === 'sub-row-info');
+  const statusEl = info.children.find((el) => el.className === 'sub-row-status');
+  const retryBtn = row.children.find((el) => el.className === 'btn btn-sm sub-row-retry');
+  retryBtn.click({ stopPropagation: () => {} });
+  await Promise.resolve(); // let the injected Promise settle
+  await Promise.resolve();
+  assert.strictEqual(statusEl.classList.contains('sub-row-status-queued'), true);
+  assert.strictEqual(statusEl.textContent, 'Queued behind current run');
+});
+
+test('createSubscriptionRow: Retry does NOT render the queued state when the repull response is {started:true}', async () => {
+  const sub = { id: 'retry-started', name: 'Chan', channelUrl: 'https://www.youtube.com/@retry-started', lastStatus: 'error: x' };
+  const row = createSubscriptionRow(sub, fakeDoc, {
+    onRepull: () => Promise.resolve({ accepted: true, started: true }),
+  });
+  const info = row.children.find((el) => el.className === 'sub-row-info');
+  const statusEl = info.children.find((el) => el.className === 'sub-row-status');
+  const originalText = statusEl.textContent;
+  const retryBtn = row.children.find((el) => el.className === 'btn btn-sm sub-row-retry');
+  retryBtn.click({ stopPropagation: () => {} });
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.strictEqual(statusEl.classList.contains('sub-row-status-queued'), false);
+  assert.strictEqual(statusEl.textContent, originalText, 'a started retry must never overwrite the status text -- the row transitions on the next poll instead');
+});
+
+test('createSubscriptionRow: Retry tolerates an onRepull that returns a non-Promise value (never throws)', () => {
+  const sub = { id: 'retry-sync', name: 'Chan', channelUrl: 'https://www.youtube.com/@retry-sync', lastStatus: 'error: x' };
+  const row = createSubscriptionRow(sub, fakeDoc, { onRepull: () => undefined });
+  const retryBtn = row.children.find((el) => el.className === 'btn btn-sm sub-row-retry');
+  assert.doesNotThrow(() => retryBtn.click({ stopPropagation: () => {} }));
+});
+
+test('applyStatusUpdatesInPlace: clears the sub-row-status-queued marker on the next poll tick (transient, click-triggered state naturally transitions)', () => {
+  const sub = { id: 'queued-clear-1', lastStatus: 'error: x' };
+  const row = createSubscriptionRow(sub, fakeDoc, {}, { state: 'error', error: 'error: x' });
+  const statusEl = row.children.find((el) => el.className === 'sub-row-info').children.find((el) => el.className === 'sub-row-status');
+  statusEl.classList.add('sub-row-status-queued'); // simulate the click-time render
+  statusEl.textContent = 'Queued behind current run';
+
+  applyStatusUpdatesInPlace({ 'queued-clear-1': row }, [sub], { subscriptions: { 'queued-clear-1': { state: 'error', error: 'error: x' } } });
+
+  assert.strictEqual(statusEl.classList.contains('sub-row-status-queued'), false);
+  assert.notStrictEqual(statusEl.textContent, 'Queued behind current run');
+});
+
+test('buildSettingsSheet: Re-pull keeps working unchanged -- ignores whatever onRepull returns (backward-compatible additive return value)', () => {
+  const repullCalls = [];
+  const sub = { id: 'sheet-repull', name: 'Chan' };
+  const sheetBackdrop = buildSettingsSheet(sub, fakeDoc, {
+    onRepull: (id) => { repullCalls.push(id); return Promise.resolve({ started: true }); },
+  });
+  const repullBtn = [...sheetBackdrop.walk()].find((el) => el.tagName === 'BUTTON' && el.textContent === 'Re-pull');
+  assert.doesNotThrow(() => repullBtn.click());
+  assert.deepStrictEqual(repullCalls, ['sheet-repull']);
 });
 
 // ---- createSubscriptionsListElement (empty state + ordering contract) -----
@@ -1498,6 +2129,80 @@ test('applyStatusUpdatesInPlace: A2 (T14) -- re-hides .sub-row-failures once the
   const failuresEl = info.children.find((el) => el.className === 'sub-row-failures');
   assert.strictEqual(failuresEl.hidden, true);
   assert.strictEqual(failuresEl.textContent, '');
+});
+
+// ---- v1.29.0 T4 (R3a.6, R3c.1 client): partial marker class + warning line -
+// ---- refreshed IN PLACE on a poll tick --------------------------------------
+
+test('applyStatusUpdatesInPlace: refreshes the sub-row-status-partial class + .sub-row-warning line in place on a poll tick', () => {
+  const sub = { id: 't4-poll', name: 'Chan', channelUrl: 'https://www.youtube.com/@t4-poll', lastCheckedAt: null, lastStatus: null };
+  const row = createSubscriptionRow(sub, fakeDoc, {});
+  const rowElementsById = { 't4-poll': row };
+  const info = row.children.find((el) => el.className === 'sub-row-info');
+  const statusEl = info.children.find((el) => el.className === 'sub-row-status');
+  const warningEl = info.children.find((el) => el.className === 'sub-row-warning');
+  assert.strictEqual(statusEl.classList.contains('sub-row-status-partial'), false, 'sanity: not partial yet');
+  assert.strictEqual(warningEl.hidden, true, 'sanity: no warning yet');
+
+  applyStatusUpdatesInPlace(rowElementsById, [sub], {
+    subscriptions: {
+      't4-poll': {
+        state: 'done',
+        percent: 100,
+        outcome: 'partial',
+        warning: true,
+        failures: [{ videoId: 'vid1', reason: 'Video unavailable' }],
+      },
+    },
+  });
+
+  // Same row/element references -- never rebuilt.
+  assert.strictEqual(rowElementsById['t4-poll'], row);
+  assert.strictEqual(info.children.find((el) => el.className === 'sub-row-status'), statusEl);
+  assert.strictEqual(info.children.find((el) => el.className === 'sub-row-warning'), warningEl);
+  assert.strictEqual(statusEl.classList.contains('sub-row-status-partial'), true);
+  assert.notStrictEqual(statusEl.textContent, 'Done');
+  assert.strictEqual(warningEl.hidden, false);
+  assert.ok(warningEl.textContent.toLowerCase().includes('cookie'));
+});
+
+test('applyStatusUpdatesInPlace: a LATER poll tick that recovers (no partial/warning) clears both the class and the warning line', () => {
+  const sub = { id: 't4-recover', name: 'Chan', channelUrl: 'https://www.youtube.com/@t4-recover', lastCheckedAt: null, lastStatus: null };
+  const liveEntry = { state: 'done', percent: 100, outcome: 'partial', warning: true, failures: [{ videoId: 'vid1', reason: 'x' }] };
+  const row = createSubscriptionRow(sub, fakeDoc, {}, liveEntry);
+  const rowElementsById = { 't4-recover': row };
+  const info = row.children.find((el) => el.className === 'sub-row-info');
+  const statusEl = info.children.find((el) => el.className === 'sub-row-status');
+  const warningEl = info.children.find((el) => el.className === 'sub-row-warning');
+  assert.strictEqual(statusEl.classList.contains('sub-row-status-partial'), true, 'sanity: partial before recovery');
+  assert.strictEqual(warningEl.hidden, false, 'sanity: warning before recovery');
+
+  applyStatusUpdatesInPlace(rowElementsById, [sub], {
+    subscriptions: { 't4-recover': { state: 'done', percent: 100 } },
+  });
+
+  assert.strictEqual(statusEl.classList.contains('sub-row-status-partial'), false);
+  assert.strictEqual(warningEl.hidden, true);
+  assert.strictEqual(warningEl.textContent, '');
+});
+
+test('applyStatusUpdatesInPlace: gracefully no-ops on an older row missing the .sub-row-warning element (never throws)', () => {
+  const sub = { id: 't4-old-row', name: 'Chan', lastCheckedAt: null, lastStatus: null };
+  // Simulate a pre-T4-built row: a bare row/info/status shell with NO
+  // .sub-row-warning child at all (findChildByClassName must return null).
+  const row = fakeDoc.createElement('div');
+  const info = fakeDoc.createElement('div');
+  info.className = 'sub-row-info';
+  const statusEl = fakeDoc.createElement('div');
+  statusEl.className = 'sub-row-status';
+  info.appendChild(statusEl);
+  row.appendChild(info);
+  const rowElementsById = { 't4-old-row': row };
+
+  assert.doesNotThrow(() => applyStatusUpdatesInPlace(rowElementsById, [sub], {
+    subscriptions: { 't4-old-row': { state: 'done', percent: 100, outcome: 'partial', warning: true, failures: [] } },
+  }));
+  assert.ok(statusEl.textContent.length > 0);
 });
 
 test('applyStatusUpdatesInPlace: falls back to the persisted formatSubStatus line when there is no live entry for a sub', () => {

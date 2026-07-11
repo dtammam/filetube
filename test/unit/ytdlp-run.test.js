@@ -14,6 +14,7 @@ const {
   DEFAULT_DOWNLOAD_TIMEOUT_MS,
   parseChannelMetaLine,
   MAX_CAPTURED_META,
+  pickStderrReason,
 } = require('../../lib/ytdlp/run');
 
 test('redactArgs replaces the value after --cookies with a redaction marker', () => {
@@ -285,4 +286,74 @@ test('parseChannelMetaLine: non-string input never throws, returns null', () => 
 
 test('MAX_CAPTURED_META is a sane positive bound', () => {
   assert.ok(Number.isInteger(MAX_CAPTURED_META) && MAX_CAPTURED_META > 0);
+});
+
+// ---- v1.29.0 T1 (R0.1/R0.2/R0.8): pickStderrReason -- selects the real
+// failure reason out of an already-bounded/redacted stderr tail instead of
+// the generic "yt-dlp exited with code <n>" string. Pure, synchronous, no
+// spawn involved -- the composed-`error`-field behavior at the actual close
+// handler is exercised end-to-end in
+// test/integration/ytdlp-spawn-security.test.js. -----------------------
+
+test('pickStderrReason: an ERROR: line wins over a later non-error line', () => {
+  const tail = [
+    'ERROR: [youtube] dQw4w9WgXcQ: Video unavailable',
+    '[download] Destination: some/file.mp4',
+  ].join('\n');
+  assert.equal(pickStderrReason(tail), 'ERROR: [youtube] dQw4w9WgXcQ: Video unavailable');
+});
+
+test('pickStderrReason: the LAST ERROR: line wins when there are several (e.g. a retry sequence)', () => {
+  const tail = [
+    'ERROR: [youtube] first: Video unavailable',
+    '[download] retrying...',
+    'ERROR: [youtube] second: Sign in to confirm your age',
+  ].join('\n');
+  assert.equal(pickStderrReason(tail), 'ERROR: [youtube] second: Sign in to confirm your age');
+});
+
+test('pickStderrReason: ERROR: matching is case-insensitive', () => {
+  const tail = 'error: [youtube] x: lowercase error prefix';
+  assert.equal(pickStderrReason(tail), 'error: [youtube] x: lowercase error prefix');
+});
+
+test('pickStderrReason: falls back to the last non-empty line when no ERROR: line is present', () => {
+  const tail = [
+    '',
+    '[download] Destination: some/file.mp4',
+    '[download]  12.3% of  50.0MiB at 1.20MiB/s ETA 00:40',
+    '',
+  ].join('\n');
+  assert.equal(pickStderrReason(tail), '[download]  12.3% of  50.0MiB at 1.20MiB/s ETA 00:40');
+});
+
+test('pickStderrReason: an empty or whitespace-only tail returns an empty string', () => {
+  assert.equal(pickStderrReason(''), '');
+  assert.equal(pickStderrReason('   \n  \n '), '');
+});
+
+test('pickStderrReason: non-string input returns an empty string, never throws', () => {
+  assert.doesNotThrow(() => pickStderrReason(null));
+  assert.equal(pickStderrReason(null), '');
+  assert.equal(pickStderrReason(undefined), '');
+  assert.equal(pickStderrReason(42), '');
+});
+
+test('pickStderrReason: a pathological long / control-char-laden ERROR line yields a bounded, control-char-free result', () => {
+  const longSuffix = 'x'.repeat(5000);
+  const controlLaden = `ERROR: [youtube] id: bad\x00\x01\x1b[31mreason\x7f${longSuffix}`;
+  const picked = pickStderrReason(controlLaden);
+  // No control chars (C0 range or DEL) survive.
+  // eslint-disable-next-line no-control-regex
+  assert.ok(!/[\x00-\x1f\x7f]/.test(picked), 'control characters must be stripped');
+  // Bounded by the caller's own STDERR_TAIL_LIMIT upstream (this function
+  // never grows the input) -- the picked line here is a substring of the
+  // 5000+-char input, confirming pickStderrReason introduces no NEW
+  // unbounded growth of its own.
+  assert.ok(picked.length <= controlLaden.length);
+  assert.ok(picked.startsWith('ERROR: [youtube] id: bad'));
+});
+
+test('pickStderrReason: trims surrounding whitespace off the selected line', () => {
+  assert.equal(pickStderrReason('   ERROR: [youtube] x: padded   \n'), 'ERROR: [youtube] x: padded');
 });
