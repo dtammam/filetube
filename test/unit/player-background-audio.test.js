@@ -179,15 +179,24 @@ test('mutual exclusion: shouldPauseForLifecycleEvent (the sole gate before a han
   );
 });
 
-test("mutual exclusion (source-lock): attemptBackgroundAudioHandoff('visibility') is called ONLY inside the shouldPauseForLifecycleEvent(...) truthy branch of handleBackgroundLifecycle (F-D added a SEPARATE second call site elsewhere in the file -- handlePossibleIOSPrePauseHandoff -- but never a second one INSIDE this function)", () => {
+test("mutual exclusion (source-lock): handleBackgroundLifecycle has exactly TWO attemptBackgroundAudioHandoff call sites -- 'visibility' inside the shouldPauseForLifecycleEvent truthy branch, and 'candidate' (v1.27.2 pre-pause bridge) inside the not-playing consuming block, which is gated on !shouldRelease + INLINE_VIDEO + mobile + video + !native-presentation", () => {
   const fnMatch = /function handleBackgroundLifecycle\(eventType, extraCtx\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);
   assert.ok(fnMatch, 'expected to find handleBackgroundLifecycle\'s source body');
   const body = fnMatch[1];
   const callSites = body.match(/attemptBackgroundAudioHandoff\(/g) || [];
-  assert.strictEqual(callSites.length, 1, "expected exactly one call site for attemptBackgroundAudioHandoff(...) inside handleBackgroundLifecycle itself");
+  assert.strictEqual(callSites.length, 2, "expected exactly two call sites for attemptBackgroundAudioHandoff(...) inside handleBackgroundLifecycle (the 'visibility' trigger + the v1.27.2 'candidate' consumer)");
   const pauseBranch = /if \(shouldPauseForLifecycleEvent\(eventType, ctx\)\) \{([\s\S]*?)\n {4}\}/.exec(body);
   assert.ok(pauseBranch, 'expected the shouldPauseForLifecycleEvent branch to exist');
-  assert.match(pauseBranch[1], /attemptBackgroundAudioHandoff\('visibility'\)/, "the ONE call site must be inside this branch (never in the inNativePresentation branch, which is reached separately/later), passing the 'visibility' trigger label");
+  assert.match(pauseBranch[1], /attemptBackgroundAudioHandoff\('visibility'\)/, "the primary call site must be inside this branch, passing the 'visibility' trigger label");
+  // The candidate consumer: only reachable when the pause branch did NOT run
+  // (ctx.isPlaying false), never on a terminal pagehide (a dying page must
+  // release, not hand off), and only from the INLINE_VIDEO state.
+  const candidateBlock = /if \(LIFECYCLE_PAUSE_EVENTS\[eventType\] && !ctx\.isPlaying && !shouldRelease && currentData && !ctx\.isAudio\) \{([\s\S]*?)\n {4}\}/.exec(body);
+  assert.ok(candidateBlock, 'expected the v1.27.2 candidate-consuming block, gated on !isPlaying + !shouldRelease + video');
+  assert.match(candidateBlock[1], /attemptBackgroundAudioHandoff\('candidate'\)/, "the second call site must pass the 'candidate' trigger label");
+  assert.match(candidateBlock[1], /isFreshPrePauseCandidate\(prePauseCandidateAt, Date\.now\(\), PRE_PAUSE_CANDIDATE_WINDOW_MS\)/, 'freshness must go through the exported pure helper');
+  assert.match(candidateBlock[1], /prePauseCandidateAt = 0; \/\/ consume-once, fresh or not/, 'the candidate must be consumed exactly once whether fresh or stale');
+  assert.match(candidateBlock[1], /if \(bgAudioState !== BG_AUDIO_STATES\.INLINE_VIDEO\)/, 'the state-machine guard must precede the candidate consumption');
 });
 
 // ---- Source-lock: force-close teardown releases BOTH elements ------------
@@ -304,11 +313,12 @@ test("F1 source-lock: the MediaSession 'play' action handler is UNCHANGED (still
   assert.ok(!/pauseSuppressingHandoff/.test(match[1]), 'the play handler must never reference the pause-suppression wrapper');
 });
 
-test('F1 comment-lock: the F-D trigger\'s own comment correctly documents the MediaSession pause exception rather than asserting a real user pause only ever happens while visible', () => {
+test('F1 comment-lock: the F-D trigger never asserts the old "a real user pause only ever happens while visible" premise, and (v1.27.2) documents the pre-pause candidate bridge for the visible-at-pause ordering', () => {
   const match = /function handlePossibleIOSPrePauseHandoff\(\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);
   const body = match[1];
   assert.ok(!/a real user pause only ever happens while visible/.test(body), 'the old, now-incorrect premise must be gone from the guard comment');
-  assert.match(body, /almost every real user pause happens while visible/, 'expected the corrected, hedged premise naming the MediaSession exception');
+  assert.match(body, /pre-pause candidate bridge/, 'expected the v1.27.2 bridge rationale documented in the trigger body');
+  assert.match(body, /visibility\s*is STILL 'visible'|STILL 'visible'/, 'expected the documented on-device ordering (pause dispatched while still visible)');
 });
 
 test('skip() is retargeted to activeMediaElement() for the non-live-mode path', () => {
@@ -383,8 +393,9 @@ test("F1 source-lock: setupForMedia() no longer short-circuits the prepare-audio
     'a stale cached "ready" must never skip the prepare-audio self-heal round trip'
   );
   // The ONLY remaining gate before firing prepare-audio is the freshly
-  // resolved setting itself.
-  assert.match(body, /if \(!bgAudioSettingCached\) return;/);
+  // resolved setting itself (v1.27.2: now a block that also records the
+  // 'setting-off' arm diagnostic before returning -- see the arm tests).
+  assert.match(body, /if \(!bgAudioSettingCached\) \{[\s\S]*?return;\s*\n\s*\}/);
 });
 
 test('F1 source-lock: the prepare-audio response is trusted UNCONDITIONALLY (never left at the stale load-time snapshot)', () => {
@@ -657,11 +668,12 @@ test("attemptBackgroundAudioHandoff(): records 'bgAudio:ok' (with the element's 
   assert.match(rejectBody, /nextBackgroundAudioState\(bgAudioState, 'HANDOFF_FAILED', \{\}\);/, 'the existing failure state transition must be unchanged');
 });
 
-test('mutual exclusion (source-lock) is unaffected: attemptBackgroundAudioHandoff still has exactly one call site inside handleBackgroundLifecycle, still inside the shouldPauseForLifecycleEvent(...) truthy branch (neither the diagnostics nor F-D moved it)', () => {
+test("mutual exclusion (source-lock): the 'visibility' call site never moved -- it is still inside the shouldPauseForLifecycleEvent(...) truthy branch (the v1.27.2 'candidate' consumer is a deliberate, separately-locked second site; see the two-call-sites test above)", () => {
   const fnMatch = /function handleBackgroundLifecycle\(eventType, extraCtx\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);
   const body = fnMatch[1];
-  const callSites = body.match(/attemptBackgroundAudioHandoff\(/g) || [];
-  assert.strictEqual(callSites.length, 1);
+  const pauseBranch = /if \(shouldPauseForLifecycleEvent\(eventType, ctx\)\) \{([\s\S]*?)\n {4}\}/.exec(body);
+  assert.ok(pauseBranch, 'expected the shouldPauseForLifecycleEvent branch to exist');
+  assert.match(pauseBranch[1], /attemptBackgroundAudioHandoff\('visibility'\)/);
 });
 
 test("handleBackgroundLifecycle(): records 'bgAudio:skip' with detail 'native-presentation' or 'not-video' for the two early-outs that bypass attemptBackgroundAudioHandoff entirely, gated on LIFECYCLE_PAUSE_EVENTS + ctx.isPlaying (never noise on a paused item or an unrelated event type)", () => {
@@ -712,18 +724,30 @@ test("setupForMedia(): records 'bgAudio:arm' once the setting resolves ON, using
   assert.match(body, /recordLifecycleEvent\('bgAudio:arm', \{ detail: 'status=' \+ \(bgAudioStatusKnown \|\| 'none'\) \}\);/);
   // F6 (two-reviewer gate, v1.27.1 post-release): the assignment widened
   // from `if (body) bgAudioStatusKnown = ...` to an unconditional ternary
-  // (see the F6 tests below) -- still refreshed BEFORE the arm record either way.
+  // (see the F6 tests below) -- still refreshed BEFORE the arm record either
+  // way. v1.27.2: search for the STATUS-carrying arm record specifically
+  // (the new 'setting-off' arm record legitimately appears earlier).
   const statusAssignIdx = body.indexOf("bgAudioStatusKnown = body ? (body.audioStatus || null) : null;");
-  const armRecordIdx = body.indexOf("recordLifecycleEvent('bgAudio:arm'");
+  const armRecordIdx = body.indexOf("recordLifecycleEvent('bgAudio:arm', { detail: 'status='");
   assert.ok(statusAssignIdx !== -1 && armRecordIdx !== -1 && statusAssignIdx < armRecordIdx, 'the arm record must read bgAudioStatusKnown AFTER it has been refreshed from the prepare-audio response');
 });
 
-test('setupForMedia(): never records bgAudio:arm when the setting resolves OFF (the early `if (!bgAudioSettingCached) return;` still short-circuits before the prepare-audio POST)', () => {
+test("setupForMedia() (v1.27.2 arm-both-ways): a setting-OFF load records 'bgAudio:arm' with detail 'setting-off' BEFORE returning -- one arm line per mobile video load, always -- and still never fires the prepare-audio POST", () => {
   const match = /function setupForMedia\(id, data\) \{([\s\S]*?)\n {4}setupMediaSession\(id, data\.channelName, data\.title\);/.exec(PLAYER_JS);
   const body = match[1];
-  const settingOffReturnIdx = body.indexOf('if (!bgAudioSettingCached) return;');
-  const armRecordIdx = body.indexOf("recordLifecycleEvent('bgAudio:arm'");
-  assert.ok(settingOffReturnIdx !== -1 && armRecordIdx !== -1 && settingOffReturnIdx < armRecordIdx, 'expected the setting-off early-return to remain textually before (and therefore still guard) the arm record');
+  const offBlock = /if \(!bgAudioSettingCached\) \{([\s\S]*?)\n {10}\}/.exec(body);
+  assert.ok(offBlock, 'expected the setting-off block');
+  assert.match(offBlock[1], /recordLifecycleEvent\('bgAudio:arm', \{ detail: 'setting-off' \}\);/);
+  assert.match(offBlock[1], /return;/, 'the block must still return before the prepare-audio POST');
+  const offBlockIdx = body.indexOf('if (!bgAudioSettingCached) {');
+  const prepareIdx = body.indexOf("/prepare-audio', { method: 'POST' }");
+  assert.ok(offBlockIdx !== -1 && prepareIdx !== -1 && offBlockIdx < prepareIdx, 'the setting-off return must still textually precede (and guard) the prepare-audio POST call itself');
+});
+
+test("setupForMedia() (v1.27.2 arm-both-ways): an outright fetch failure records 'bgAudio:arm' with 'setting-unknown-fetch-failed', generation-guarded", () => {
+  const match = /function setupForMedia\(id, data\) \{([\s\S]*?)\n {4}setupMediaSession\(id, data\.channelName, data\.title\);/.exec(PLAYER_JS);
+  const body = match[1];
+  assert.match(body, /recordLifecycleEvent\('bgAudio:arm', \{ detail: 'setting-unknown-fetch-failed' \}\);/);
 });
 
 // ---- F-C (v1.27.1, first-watch handoff fix): bounded prepare-audio re-poll
@@ -850,7 +874,9 @@ test('F6 source-lock: a fetch-level failure of the settings/prepare-audio chain 
   const body = match[1];
   const catchMatch = /\.catch\(function \(\) \{([\s\S]*?)\n\s*\}\);\s*\n\s*\}\s*\n\s*\n\s*\/\/ A6/.exec(body);
   assert.ok(catchMatch, 'expected to find the settings/prepare-audio chain\'s own .catch() block');
-  assert.match(catchMatch[1], /if \(gen === loadGeneration\) bgAudioStatusKnown = null;/);
+  // v1.27.2: widened from a one-liner to a block that also records the
+  // 'setting-unknown-fetch-failed' arm diagnostic -- same gen guard, same reset.
+  assert.match(catchMatch[1], /if \(gen === loadGeneration\) \{[\s\S]*?bgAudioStatusKnown = null;/);
 });
 
 // ---- F-A (v1.27.1 REGRESSION FIX): bgAudioEl's play/pause listeners are ---
@@ -991,37 +1017,43 @@ test('F-D source-lock: user-driven pauses (togglePlayPause, the spacebar shortcu
   assert.ok(!/pauseSuppressingHandoff/.test(toggleMatch[1]), 'a real user play/pause toggle must never be treated as a lifecycle-driven pause');
 });
 
-test('F-D source-lock: handlePossibleIOSPrePauseHandoff() consumes suppressPauseHandoff and checks document.visibilityState === \'hidden\' as its first two guards, in that order, before re-deriving video/mobile/native-presentation/state-machine preconditions independently', () => {
+test('F-D source-lock (v1.27.2 shape): handlePossibleIOSPrePauseHandoff() consumes suppressPauseHandoff first, re-derives video/native-presentation/mobile/state preconditions, then BRANCHES on visibility -- visible pauses ARM the candidate, hidden pauses keep the original immediate-attempt path', () => {
   const match = /function handlePossibleIOSPrePauseHandoff\(\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);
   assert.ok(match, 'expected to find handlePossibleIOSPrePauseHandoff()\'s source body');
   const body = match[1];
-  // F3 (two-reviewer gate hardening, v1.27.1 post-release): consume-once --
-  // read THEN immediately clear the flag, rather than merely reading it (see
-  // the dedicated F3 tests below for the full behavioral contract).
+  // F3 (v1.27.1): consume-once -- read THEN immediately clear the flag.
   assert.match(body, /var suppressed = suppressPauseHandoff;/);
   assert.match(body, /suppressPauseHandoff = false;/);
   assert.match(body, /if \(suppressed\) return;/);
-  assert.match(body, /if \(document\.visibilityState !== 'hidden'\) return;/);
   assert.match(body, /if \(!currentData \|\| currentData\.type === 'audio'\) return;/, 'video-only feature, re-derived independently of handleBackgroundLifecycle');
-  assert.match(body, /if \(inNativeFullscreen\(\)\) return;/, 'native presentation sustains its own background audio -- must never double-trigger');
-  // F4 (two-reviewer gate, v1.27.1 post-release): the mobile check the
-  // shared-gate contract assigns to each trigger, previously omitted here.
-  assert.match(body, /if \(!isMobileFormFactor\(\)\) return;/, 'must re-derive the shared-gate contract\'s mobile precondition explicitly, like the primary "visibility" trigger');
-  assert.match(body, /if \(bgAudioState !== BG_AUDIO_STATES\.INLINE_VIDEO\) return;/, 'already mid-handoff/backgrounded -- avoid a double-handoff');
+  assert.match(body, /if \(inNativeFullscreen\(\)\) return;/, 'native presentation sustains its own background audio -- must never double-trigger, and must never even ARM a candidate');
+  assert.match(body, /if \(!isMobileFormFactor\(\)\) return;/, 'must re-derive the shared-gate contract\'s mobile precondition explicitly (F4)');
+  assert.match(body, /if \(bgAudioState !== BG_AUDIO_STATES\.INLINE_VIDEO\) return;/, 'already mid-handoff/backgrounded -- avoid a double-handoff, and never arm a candidate mid-handoff');
+  // v1.27.2: the visibility check is no longer an early hard-return -- a
+  // pause arriving while still 'visible' (the on-device-proven iOS lock
+  // ordering) ARMS the candidate instead of dead-ending.
+  const visBranch = /if \(document\.visibilityState !== 'hidden'\) \{([\s\S]*?)\n {4}\}/.exec(body);
+  assert.ok(visBranch, 'expected the visible-at-pause branch to arm the candidate rather than hard-return');
+  assert.match(visBranch[1], /prePauseCandidateAt = Date\.now\(\);/);
+  assert.match(visBranch[1], /recordLifecycleEvent\('bgAudio:candidate'/, 'arming must be visible on the debug overlay');
+  assert.match(visBranch[1], /return;/, 'the visible branch must still return (no immediate attempt while visible)');
+  // The original hidden-at-pause immediate attempt is KEPT after the branch.
+  assert.match(body, /attemptBackgroundAudioHandoff\('pause-hidden'\);/);
 
   const readIdx = body.indexOf('var suppressed = suppressPauseHandoff;');
   const clearIdx = body.indexOf('suppressPauseHandoff = false;');
   const suppressedReturnIdx = body.indexOf('if (suppressed) return;');
-  const visIdx = body.indexOf("if (document.visibilityState !== 'hidden') return;");
+  const videoIdx = body.indexOf("if (!currentData || currentData.type === 'audio') return;");
   const mobileIdx = body.indexOf('if (!isMobileFormFactor()) return;');
   const stateIdx = body.indexOf('if (bgAudioState !== BG_AUDIO_STATES.INLINE_VIDEO) return;');
+  const visIdx = body.indexOf("if (document.visibilityState !== 'hidden') {");
   assert.ok(
-    readIdx !== -1 && clearIdx !== -1 && suppressedReturnIdx !== -1 && visIdx !== -1 && mobileIdx !== -1 && stateIdx !== -1,
+    readIdx !== -1 && clearIdx !== -1 && suppressedReturnIdx !== -1 && videoIdx !== -1 && mobileIdx !== -1 && stateIdx !== -1 && visIdx !== -1,
     'expected every guard to be present and locatable'
   );
   assert.ok(readIdx < clearIdx && clearIdx < suppressedReturnIdx, 'expected the flag to be read, THEN cleared, THEN acted on -- true consume-once semantics');
-  assert.ok(suppressedReturnIdx < visIdx, 'expected the (consumed) suppress check before visibilityState');
-  assert.ok(visIdx < mobileIdx && mobileIdx < stateIdx, 'expected the mobile check after visibility/video/native-presentation but before the state-machine check');
+  assert.ok(suppressedReturnIdx < videoIdx && videoIdx < mobileIdx && mobileIdx < stateIdx, 'expected the suppress check first, then the re-derived preconditions');
+  assert.ok(stateIdx < visIdx, 'every precondition (incl. the state machine) must pass BEFORE a candidate can ever be armed -- a suppressed/ineligible pause never arms');
 });
 
 // ---- F3 (two-reviewer gate hardening, v1.27.1 post-release): consume-once -
@@ -1086,4 +1118,134 @@ test('F-D: shouldHandOffToBackgroundAudio (the shared gate) is invocation-tested
     true,
     'no isPlaying field anywhere in ctx -- eligibility must not silently depend on one'
   );
+});
+
+// ---- v1.27.2: the pre-pause candidate bridge -------------------------------
+// Dean's on-device overlay proved the real iOS lock ordering: system-pause
+// dispatched while document.visibilityState is STILL 'visible', THEN
+// visibilitychangeHidden with playing=false -- defeating BOTH v1.27.1
+// triggers. The bridge: the ambiguous pause ARMS a short-lived candidate;
+// the visibility event CONSUMES it and attempts the handoff from the
+// already-paused video.
+
+const { isFreshPrePauseCandidate } = require('../../public/js/player.js');
+
+test('isFreshPrePauseCandidate (pure): fresh within the window, stale outside it, exact-boundary inclusive', () => {
+  assert.equal(isFreshPrePauseCandidate(1000, 1100, 1500), true, '100ms old, 1500ms window -> fresh');
+  assert.equal(isFreshPrePauseCandidate(1000, 2500, 1500), true, 'exactly at the window boundary -> still fresh (inclusive)');
+  assert.equal(isFreshPrePauseCandidate(1000, 2501, 1500), false, '1ms past the window -> stale');
+  assert.equal(isFreshPrePauseCandidate(1000, 999, 1500), false, 'clock went backwards (now < candidate) -> not fresh, fail safe');
+});
+
+test('isFreshPrePauseCandidate (pure): never-armed and malformed inputs all read as "not fresh" without throwing', () => {
+  assert.equal(isFreshPrePauseCandidate(0, 1000, 1500), false, '0 = never armed');
+  assert.equal(isFreshPrePauseCandidate(-5, 1000, 1500), false);
+  assert.equal(isFreshPrePauseCandidate(NaN, 1000, 1500), false);
+  assert.equal(isFreshPrePauseCandidate(undefined, 1000, 1500), false);
+  assert.equal(isFreshPrePauseCandidate('1000', 1100, 1500), false, 'string timestamps are rejected, not coerced');
+  assert.equal(isFreshPrePauseCandidate(1000, NaN, 1500), false);
+  assert.equal(isFreshPrePauseCandidate(1000, 1100, 0), false, 'a nonpositive window can never match');
+  assert.equal(isFreshPrePauseCandidate(1000, 1100, Infinity), false, 'a non-finite window is rejected (misconfiguration fails safe)');
+});
+
+test('candidate hygiene (source-lock): PRE_PAUSE_CANDIDATE_WINDOW_MS is 1500 and prePauseCandidateAt is cleared on play, teardown, and close', () => {
+  assert.match(PLAYER_JS, /var PRE_PAUSE_CANDIDATE_WINDOW_MS = 1500;/);
+  assert.match(
+    PLAYER_JS,
+    /mediaPlayer\.addEventListener\('play', function \(\) \{ prePauseCandidateAt = 0; \}\);/,
+    'resumed playback must invalidate a pending candidate (pause -> play -> lock must consult live state)'
+  );
+  for (const fnName of ['teardownMediaState', 'close']) {
+    const match = new RegExp(`function ${fnName}\\(\\) \\{([\\s\\S]*?)\\n {2}\\}`).exec(PLAYER_JS);
+    assert.ok(match, `expected to find ${fnName}()`);
+    assert.match(match[1], /prePauseCandidateAt = 0;/, `${fnName}() must clear the candidate`);
+  }
+});
+
+test("per-lock diagnostics (source-lock): the not-playing block records exactly one attributable line -- 'not-mobile' / 'native-presentation' / 'state-*' / 'not-playing-no-candidate' -- when no handoff is attempted", () => {
+  const fnMatch = /function handleBackgroundLifecycle\(eventType, extraCtx\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);
+  const body = fnMatch[1];
+  const block = /if \(LIFECYCLE_PAUSE_EVENTS\[eventType\] && !ctx\.isPlaying && !shouldRelease && currentData && !ctx\.isAudio\) \{([\s\S]*?)\n {4}\}/.exec(body);
+  assert.ok(block, 'expected the v1.27.2 not-playing diagnostics/consumer block');
+  const blockBody = block[1];
+  assert.match(blockBody, /recordLifecycleEvent\('bgAudio:skip', \{ detail: 'not-mobile' \}\);/);
+  assert.match(blockBody, /recordLifecycleEvent\('bgAudio:skip', \{ detail: 'native-presentation' \}\);/);
+  assert.match(blockBody, /recordLifecycleEvent\('bgAudio:skip', \{ detail: 'state-' \+ bgAudioState \}\);/);
+  assert.match(blockBody, /recordLifecycleEvent\('bgAudio:skip', \{ detail: 'not-playing-no-candidate' \}\);/);
+});
+
+// ---- v1.27.2 two-reviewer gate fixes: user-intent vetoes on arming ---------
+// BOTH reviewers converged on the same BLOCKER: an explicit user pause
+// followed by a lock within the candidate window resumed audio against
+// intent (the same class v1.27.1's F1 closed for the lock screen). And the
+// adversarial pass found the natural-end variant: 'pause' fires before
+// 'ended' (HTML spec), so a lock right as a video finishes restarted its
+// audio from 0:00. The fix is gesture-recency + ended vetoes BEFORE arming.
+
+test('gate fix (source-lock): the visible-at-pause branch vetoes ENDED and recent-user-gesture pauses BEFORE ever arming a candidate', () => {
+  const match = /function handlePossibleIOSPrePauseHandoff\(\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);
+  const body = match[1];
+  const visBranch = /if \(document\.visibilityState !== 'hidden'\) \{([\s\S]*?)\n {4}\}/.exec(body);
+  assert.ok(visBranch, 'expected the visible-at-pause branch');
+  const vb = visBranch[1];
+  assert.match(vb, /if \(mediaPlayer && mediaPlayer\.ended\) return;/, 'an ended item has nothing to hand off -- must never arm');
+  assert.match(vb, /isFreshPrePauseCandidate\(lastUserGestureAt, Date\.now\(\), GESTURE_PAUSE_GRACE_MS\)/, 'the gesture veto must reuse the exported freshness predicate');
+  assert.match(vb, /recordLifecycleEvent\('bgAudio:candidate', \{ detail: 'vetoed-user-gesture' \}\);/, 'a vetoed arm must still be visible on the debug overlay');
+  const endedIdx = vb.indexOf('mediaPlayer.ended');
+  const gestureIdx = vb.indexOf('lastUserGestureAt');
+  const armIdx = vb.indexOf('prePauseCandidateAt = Date.now();');
+  assert.ok(endedIdx !== -1 && gestureIdx !== -1 && armIdx !== -1);
+  assert.ok(endedIdx < armIdx && gestureIdx < armIdx, 'both vetoes must run BEFORE the arm');
+});
+
+test('gate fix (source-lock): every user-pause surface is stamped -- togglePlayPause stamps lastUserGestureAt, the spacebar routes through togglePlayPause, and the host carries capture-phase passive gesture listeners (covers native-controls taps)', () => {
+  const toggleMatch = /function togglePlayPause\(\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);
+  assert.ok(toggleMatch, 'expected togglePlayPause()');
+  assert.match(toggleMatch[1], /lastUserGestureAt = Date\.now\(\);/, 'an explicit in-app toggle is a user gesture');
+  // The spacebar no longer duplicates the toggle inline -- it routes through
+  // the stamped function (also removes the drift-prone duplication).
+  const spacebarBlock = /case ' ':\s*\n\s*case 'Spacebar':([\s\S]*?)break;/.exec(PLAYER_JS);
+  assert.ok(spacebarBlock, 'expected the spacebar handler');
+  assert.match(spacebarBlock[1], /togglePlayPause\(\);/);
+  assert.ok(!/mediaPlayer\.pause\(\)/.test(spacebarBlock[1]), 'the old inline duplicate toggle must be gone');
+  // Host-level capture stamps: the only signal that sees a NATIVE-iOS-
+  // controls pause coming (those taps never surface a dedicated JS event).
+  assert.match(
+    PLAYER_JS,
+    /\['touchstart', 'mousedown', 'click'\]\.forEach\(function \(evt\) \{\s*\n\s*host\.addEventListener\(evt, function \(\) \{ lastUserGestureAt = Date\.now\(\); \}, \{ passive: true, capture: true \}\);/,
+    'expected the host-level capture-phase gesture stamps'
+  );
+});
+
+test('gate fix (source-lock): GESTURE_PAUSE_GRACE_MS = 800 exists, and runEndedCompletionCascade clears any armed candidate', () => {
+  assert.match(PLAYER_JS, /var GESTURE_PAUSE_GRACE_MS = 800;/);
+  const cascade = /function runEndedCompletionCascade\(el, opts\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);
+  assert.ok(cascade, 'expected runEndedCompletionCascade()');
+  assert.match(cascade[1], /prePauseCandidateAt = 0;/, "the 'pause'-before-'ended' dispatch order means the end just armed a candidate -- the cascade must kill it");
+});
+
+test('gate fix (source-lock): only visibilitychangeHidden may consume a candidate into an attempt (bfcache pagehide/freeze zero it without attempting)', () => {
+  const fnMatch = /function handleBackgroundLifecycle\(eventType, extraCtx\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);
+  const body = fnMatch[1];
+  assert.match(
+    body,
+    /var candidateFresh = eventType === 'visibilitychangeHidden'\s*\n\s*&& isFreshPrePauseCandidate\(prePauseCandidateAt, Date\.now\(\), PRE_PAUSE_CANDIDATE_WINDOW_MS\);/,
+    'the attempt gate must name the one on-device-proven ordering'
+  );
+});
+
+test('gate fix (behavioral property): a user pause followed by an immediate lock must NOT hand off -- the gesture stamp within the grace window vetoes arming, so no candidate exists for the lock to consume', () => {
+  // The property, driven through the same pure predicate the impure wiring
+  // uses at both decision points (arm-veto and consume):
+  const tapAt = 10000;            // user taps pause (gesture stamp)
+  const pauseAt = tapAt + 40;     // the pause event dispatches ~40ms later
+  const lockAt = pauseAt + 900;   // user locks within the candidate window
+  // 1. At pause time, the gesture is fresh -> arming is vetoed:
+  assert.equal(isFreshPrePauseCandidate(tapAt, pauseAt, 800), true, 'gesture fresh at pause time -> veto fires');
+  // 2. Therefore prePauseCandidateAt stays 0, and at lock time nothing is consumable:
+  assert.equal(isFreshPrePauseCandidate(0, lockAt, 1500), false, 'no candidate -> the lock takes the plain-pause path');
+  // Contrast -- the true iOS system pause (no gesture within the grace):
+  const systemPauseAt = 20000;
+  assert.equal(isFreshPrePauseCandidate(tapAt, systemPauseAt, 800), false, 'no recent gesture -> arming proceeds');
+  assert.equal(isFreshPrePauseCandidate(systemPauseAt, systemPauseAt + 200, 1500), true, 'the visibility flip 200ms later consumes it -> handoff attempts');
 });
