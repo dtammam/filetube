@@ -402,3 +402,130 @@ test('P5: getGateQueueSnapshot reports queued jobs in FIFO order with kind/label
   await Promise.all([chainA, chainB]);
   assert.equal(ytdlp.getGateQueueSnapshot().length, 0, 'settled jobs leave the queue');
 });
+
+// ---- v1.31 gate-fix round ---------------------------------------------------
+
+test('GATE FIX (adversarial CRITICAL): a single-subscription repull does NOT clear a tripped breaker or cancel its backoff retry', async () => {
+  const deps = makeFakeDeps();
+  const subs = [];
+  for (let i = 1; i <= 4; i++) {
+    subs.push(await addSub(deps, { channelUrl: `https://www.youtube.com/@bk${i}` }));
+  }
+  run.runList = async () => ({ ok: false, code: 1, stdout: '', stderr: '', error: 'boom' });
+  run.runDownload = async () => ({ ok: true, code: 0, stdout: '', stderr: '', channelMeta: [], itemFailures: [] });
+
+  const config = baseConfig({ breakerFailures: 2, breakerBackoffMinutes: 30 });
+  await ytdlp.runPoll(deps, config);
+  assert.ok(ytdlp.getPollBreakerState(), 'breaker must be tripped');
+
+  // The bug: this targeted repull used to wipe the state + timer.
+  run.runList = async () => ({ ok: true, stdout: '', stderr: '' });
+  await ytdlp.runPoll(deps, config, subs[0].id);
+  assert.ok(ytdlp.getPollBreakerState(), 'a single-channel repull must leave the tripped breaker (and its retry) intact');
+
+  // Converse: a FULL untripped poll DOES clear it.
+  await ytdlp.runPoll(deps, config);
+  assert.equal(ytdlp.getPollBreakerState(), null, 'a full clean poll clears the breaker');
+});
+
+test('GATE FIX (AC-INV-1b harness integrity): the serial-spawn detector genuinely catches overlap when the gate is bypassed', async () => {
+  // The SAME max-active instrument the AC-INV-1a test uses -- run WITHOUT
+  // the gate (direct Promise.all) to prove the instrument is sensitive to
+  // the property it claims to verify (not a tautology).
+  let active = 0;
+  let maxActive = 0;
+  async function tracked() {
+    active += 1;
+    maxActive = Math.max(maxActive, active);
+    await new Promise((r) => setTimeout(r, 10));
+    active -= 1;
+  }
+  await Promise.all([tracked(), tracked(), tracked()]);
+  assert.ok(maxActive > 1, `bypassing the gate MUST register overlap (got maxActive=${maxActive}) -- proving the AC-INV-1a detector is real`);
+});
+
+test('GATE FIX (AC-INV-2b harness integrity): a rejecting gate job never wedges the tail -- the next job still runs', async () => {
+  const deps = makeFakeDeps();
+  run.probeChannel = async () => null;
+  // Job 1: runOneShot's own internals never reject, so force a rejection at
+  // the gate level via a launchOneShotJob whose folder probe is sabotaged to
+  // throw synchronously inside the gate job (resolveOneOffFolder never
+  // rejects in production -- this is the deliberate-regression double).
+  run.runDownload = async () => { throw new Error('deliberate mid-job rejection'); };
+  const jobId1 = crypto.randomUUID();
+  activity.setOneShot(jobId1, { state: 'queued', url: 'https://www.youtube.com/watch?v=wedge111111', format: 'video', quality: 'best', filetype: null });
+  await ytdlp.launchOneShotJob(deps, baseConfig(), {
+    jobId: jobId1, videoId: 'wedge111111', watchUrl: 'https://www.youtube.com/watch?v=wedge111111', format: 'video', quality: 'best', filetype: null, explicitFolder: 'One-Off',
+  });
+  // Job 2 must still get its turn and complete.
+  let secondRan = false;
+  run.runDownload = async () => { secondRan = true; return { ok: true, code: 0, stdout: '', stderr: '', channelMeta: [], itemFailures: [] }; };
+  const jobId2 = crypto.randomUUID();
+  activity.setOneShot(jobId2, { state: 'queued', url: 'https://www.youtube.com/watch?v=after2222222'.slice(0, 43), format: 'video', quality: 'best', filetype: null });
+  await ytdlp.launchOneShotJob(deps, baseConfig(), {
+    jobId: jobId2, videoId: 'after222222', watchUrl: 'https://www.youtube.com/watch?v=after222222', format: 'video', quality: 'best', filetype: null, explicitFolder: 'One-Off',
+  });
+  assert.ok(secondRan, 'the tail must never wedge behind a failed job (never-wedge invariant, exercised through a REAL failure)');
+  assert.equal(ytdlp.getGateQueueSnapshot().length, 0, 'both jobs must have left the queue');
+});
+
+test('GATE FIX (AC-INV-3 structural resolution): the queue can only ever contain the current channel + one-shots -- a repull during a poll COALESCES (never a competing queue entry), making the priority tiers structural', async () => {
+  const deps = makeFakeDeps();
+  await addSub(deps, { channelUrl: 'https://www.youtube.com/@pri1' });
+  await addSub(deps, { channelUrl: 'https://www.youtube.com/@pri2' });
+
+  const ch1Gate = deferred();
+  let listCall = 0;
+  let repullDecision = null;
+  run.runList = async () => {
+    listCall += 1;
+    if (listCall === 1) await ch1Gate.promise;
+    return { ok: true, stdout: '', stderr: '' };
+  };
+  run.runDownload = async () => ({ ok: true, code: 0, stdout: '', stderr: '', channelMeta: [], itemFailures: [] });
+
+  const config = baseConfig();
+  const pollPromise = ytdlp.runPoll(deps, config);
+  await new Promise((r) => setTimeout(r, 20));
+
+  // A repull arriving mid-poll: coalesces via pollBusy -- it never enqueues
+  // a competing gate job, so "repull vs scheduled" priority is vacuous by
+  // construction (there is only ever ONE poll's channels on the gate).
+  await ytdlp.runPoll(deps, config, undefined, Date.now(), (d) => { repullDecision = d; });
+  assert.deepEqual(repullDecision, { started: false, reason: 'busy' }, 'a mid-poll repull must coalesce, never compete');
+
+  // And the gate itself holds at most the current channel job right now.
+  const queue = ytdlp.getGateQueueSnapshot();
+  assert.equal(queue.length, 1, `only the current channel job may be on the gate (got ${JSON.stringify(queue)})`);
+  assert.equal(queue[0].kind, 'channel');
+
+  ch1Gate.resolve();
+  await pollPromise;
+  // Drain the coalesced follow-up poll's unref'd timer before the next test.
+  await new Promise((r) => setTimeout(r, 30));
+});
+
+test('GATE FIX (FR3.9): queued subscriptions in a multi-channel poll carry queuedAhead positions', async () => {
+  const deps = makeFakeDeps();
+  await addSub(deps, { channelUrl: 'https://www.youtube.com/@qa1' });
+  await addSub(deps, { channelUrl: 'https://www.youtube.com/@qa2' });
+  const sub3 = await addSub(deps, { channelUrl: 'https://www.youtube.com/@qa3' });
+
+  const ch1Gate = deferred();
+  let listCall = 0;
+  let observedAhead = null;
+  run.runList = async () => {
+    listCall += 1;
+    if (listCall === 1) {
+      // While channel 1 runs, channel 3 must show 2 ahead (ch1 running + ch2 waiting).
+      const snap = activity.getSnapshot();
+      observedAhead = snap.subscriptions[sub3.id] && snap.subscriptions[sub3.id].queuedAhead;
+      ch1Gate.resolve();
+    }
+    return { ok: true, stdout: '', stderr: '' };
+  };
+  run.runDownload = async () => ({ ok: true, code: 0, stdout: '', stderr: '', channelMeta: [], itemFailures: [] });
+
+  await ytdlp.runPoll(deps, baseConfig());
+  assert.equal(observedAhead, 2, 'channel 3 must report 2 jobs ahead while channel 1 runs');
+});

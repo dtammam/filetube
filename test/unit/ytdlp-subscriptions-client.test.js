@@ -3106,3 +3106,25 @@ t31test('v1.31 P6: formatYtdlpVersionText renders the version line and "" when u
   t31assert.equal(subsClient.formatYtdlpVersionText(''), '');
   t31assert.equal(subsClient.formatYtdlpVersionText(42), '');
 });
+
+t31test('v1.31 gate fix (FR6.2): formatYtdlpVersionText appends the staleness note past 90 days and omits it for a fresh version (injectable now)', () => {
+  const fresh = subsClient.formatYtdlpVersionText('2026.07.04', Date.UTC(2026, 6, 12));
+  t31assert.equal(fresh, 'yt-dlp 2026.07.04');
+  const stale = subsClient.formatYtdlpVersionText('2026.01.01', Date.UTC(2026, 6, 12));
+  t31assert.match(stale, /^yt-dlp 2026\.01\.01 — over 90 days old; YouTube changes frequently/);
+  t31assert.match(stale, /bump the Dockerfile ARG and rebuild/);
+  // Non-CalVer strings (already charset-gated server-side) never get an age note.
+  t31assert.equal(subsClient.formatYtdlpVersionText('unknown', Date.UTC(2026, 6, 12)), 'yt-dlp unknown');
+});
+
+t31test('v1.31 gate fix: history labels + reason lines for the tripped/requeued/dropped runlog kinds (never "Unknown")', () => {
+  t31assert.equal(subsClient.formatHistoryOutcomeLine({ outcome: 'tripped' }), 'Run paused (circuit breaker)');
+  t31assert.equal(subsClient.formatHistoryOutcomeLine({ outcome: 'requeued' }), 'Requeued after restart');
+  t31assert.equal(subsClient.formatHistoryOutcomeLine({ outcome: 'dropped' }), 'Dropped');
+  const reason = 'run paused after 4 consecutive failures; 3 channel(s) deferred; retrying at 2026-07-12T10:30:00.000Z';
+  t31assert.equal(subsClient.formatHistoryFailuresLine({ outcome: 'tripped', reason }), reason);
+  t31assert.equal(subsClient.formatHistoryFailuresLine({ outcome: 'requeued', reason: 'requeued after server restart' }), 'requeued after server restart');
+  t31assert.equal(subsClient.formatHistoryFailuresLine({ outcome: 'dropped' }), '');
+  // Pre-existing kinds keep their per-item failure semantics untouched.
+  t31assert.equal(subsClient.formatHistoryFailuresLine({ outcome: 'success', reason: 'x' }), '');
+});

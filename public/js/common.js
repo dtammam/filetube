@@ -3996,6 +3996,21 @@ function requestMoveItem(id, targetFolder, fetchImpl) {
 // both the watch-page delete flow (watch.js) and the home/library card
 // trash-can affordance (main.js). Guarded for Node (no-op there, matching
 // this file's other document-touching helpers).
+/**
+ * v1.31 P5 (FR5, pure): the human acknowledgement for a repull trigger's
+ * response body (v1.29's `{accepted, started, reason}` discriminator).
+ * Returns '' when there is nothing worth saying (a normally-started repull
+ * already shows up as the row's own 'queued' state on the next poll tick;
+ * only the OTHERWISE-INVISIBLE outcomes get a message). Callers render via
+ * toast/`textContent` only.
+ */
+function formatRepullAckText(body) {
+  if (!body || typeof body !== 'object') return '';
+  if (body.started === false && body.reason === 'busy') return 'Queued behind current run';
+  if (body.started === false && body.reason === 'not-found') return 'Channel not found';
+  return '';
+}
+
 function showToast(msg) {
   if (typeof document === 'undefined') return;
   const toast = document.createElement('div');
@@ -4890,7 +4905,17 @@ function injectDownloadStatusChip() {
         // own Re-pull button already calls (AC52/AC53); re-uses the SAME
         // subscription id, so the next poll naturally overwrites this same
         // entry's state -- no explicit dismiss needed here.
+        // v1.31 P5 (FR5): the response body's v1.29 discriminator
+        // ({started, reason}) is now READ instead of discarded -- a
+        // busy-coalesced repull surfaces as a toast so the click is never a
+        // silent no-op (the run it queued behind may take a while; the row
+        // itself won't change until then).
         fetch('/api/subscriptions/' + encodeURIComponent(id) + '/repull', { method: 'POST' })
+          .then((r) => (r && r.ok ? r.json() : null))
+          .then((body) => {
+            const ack = formatRepullAckText(body);
+            if (ack) showToast(ack);
+          })
           .catch(() => { /* best-effort -- the next poll reflects whatever actually happened */ });
       }
 
@@ -5198,7 +5223,17 @@ function ensureRepullButton(sub) {
       btn.disabled = true;
       const originalLabel = label.textContent;
       label.textContent = 'Checking…';
+      // v1.31 P5 (FR5): read the v1.29 {started, reason} body instead of
+      // discarding it -- a busy-coalesced repull shows 'Queued behind run'
+      // on the button itself for the reset window, so the click is never a
+      // silent no-op.
       fetch('/api/subscriptions/' + encodeURIComponent(btn.dataset.subId) + '/repull', { method: 'POST' })
+        .then((r) => (r && r.ok ? r.json() : null))
+        .then((body) => {
+          if (body && body.started === false && body.reason === 'busy') {
+            label.textContent = 'Queued behind run';
+          }
+        })
         .catch((err) => console.error('Re-pull-this-channel failed:', err))
         .finally(() => {
           setTimeout(() => {
@@ -5418,6 +5453,8 @@ document.addEventListener('DOMContentLoaded', () => {
 // `module` is undefined there).
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
+    // v1.31 P5 (FR5): repull-ack formatter.
+    formatRepullAckText,
     getStarRating, getCommentCount, resolveChannelName, clampPositionState,
     resolveTheme, THEME_REGISTRY, activeNavItem,
     resolveIconSet, ICON_SET_REGISTRY, ICON_SETS,
