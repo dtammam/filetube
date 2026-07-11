@@ -1674,7 +1674,15 @@ function buildOneOffDownloadBody(url, format, quality, filetype, folder) {
 function formatOneOffStatusText(entry) {
   if (!entry || typeof entry !== 'object') return null;
   const state = entry.state;
-  if (state === 'queued') return 'Queued…';
+  // v1.31 P5: the status snapshot carries `queuedAhead` (how many gate jobs
+  // -- channels or earlier one-shots -- sit ahead on the serial queue) for
+  // every still-queued one-shot, so an accepted job is never an
+  // indistinguishable, possibly-long 'Queued…'. Additive: an older/absent
+  // field falls back to the plain literal unchanged.
+  if (state === 'queued') {
+    const ahead = typeof entry.queuedAhead === 'number' && entry.queuedAhead > 0 ? entry.queuedAhead : null;
+    return ahead ? `Queued — ${ahead} ahead` : 'Queued…';
+  }
   if (state === 'listing') return 'Checking for new videos…';
   if (state === 'downloading') {
     const title = typeof entry.title === 'string' && entry.title.trim() !== '' ? entry.title.trim() : null;
