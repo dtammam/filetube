@@ -90,6 +90,48 @@ This is the priority list for the next working branch — a **polish + feedback*
 
 ## Shipped
 
+### v1.31.0 — yt-dlp download hardening (2026-07-12)
+
+The wave that ends the "downloads fail for no reason" era. Root cause of Dean's
+production 20-channel cascade (every channel dying with the identical bare
+"yt-dlp timed out and was killed"): v1.29's pacing flags slowed the LIST pass
+past its unchanged hardcoded 5-minute budget, and under YouTube tarpitting each
+hung socket burned the clock (H0, confirmed).
+
+- **P0 (H0 fix):** `--socket-timeout` (default 15s) on every pass — dead
+  sockets fail fast and retry; the list budget is configurable AND scales with
+  `maxVideos` × `sleep-requests`; every timeout kill now names its phase +
+  budget ("list pass timed out after 5.1m…") — the bare string is gone.
+- **P3 stall watchdog:** no output for 10m (config, 0=off) → killed with a
+  specific "stalled" reason instead of holding the queue up to 3h.
+- **P1 queue decomposition:** per-channel gate jobs — a one-shot submitted
+  mid-poll starts within ≤1 channel (was: invisibly behind the whole run);
+  strict-serial spawning + the archive single-writer invariant preserved.
+- **P2 circuit breaker:** N consecutive channel failures (default 4) abort the
+  run honestly ("paused… retrying at HH:MM" banner + runlog record) with an
+  automatic backoff retry — no more burning every channel against a throttled
+  session.
+- **P4 durable one-shots:** accepted jobs persist to disk; a restart requeues
+  them (re-validated, "requeued" history line) — never silently lost.
+- **P5 visibility:** "Queued — N ahead" on queued one-shots AND subscriptions;
+  repull busy/not-found surfaced as toasts/button labels; breaker banner.
+- **P6:** yt-dlp binary version in the footer with a >90-day staleness warning
+  + the documented Dockerfile pin-bump update path (D5: no auto-update).
+
+LEAN-MODE wave (Dean's call): direct implementation against the plan's 61 ACs,
+keeping the two-reviewer gate — which earned its keep again: QA + adversarial
+both returned REQUEST CHANGES (incl. a genuine CRITICAL: a single-channel
+repull silently disarmed a tripped breaker's backoff retry); every finding
+fixed + locked in the gate-fix round, both reviewers re-confirmed. One
+deliberate reversion recorded: reserve-at-submit for one-shot gate slots
+violated FIX 2's hung-probe lock and was rolled back with the bounded
+tradeoff documented. 3626 tests + lint clean on Node 22.23.1 and 24.14.0.
+
+**Dean's on-device ledger:** the real-world arbiter — repull a few channels,
+fire Shortcut one-shots mid-poll (watch them start within a channel), watch a
+throttled run trip the breaker honestly, and confirm the history page explains
+every failure in plain words.
+
 - [x] **Scale Performance + Polish Wave (v1.30.0)** — makes FileTube feel instant at 1,300+ items and lands the visual-polish cluster, in one combined release (13 tasks across 3 lanes, each through an independent build gate). **Lane A — performance at scale:** killed the O(N²) subtitle-sidecar re-detection with a per-scan `readdir` cache (A1); made the scan **cooperative + non-blocking** — `POST /api/scan` returns `202` immediately, an async batch-yielding walk keeps the event loop responsive (heartbeat-proxy tested ≤50 ms/stretch on a synthetic 1,300-item rescan), the boot scan no longer gates first responses, and the client polls `/api/scan-status` + refreshes the grid **in place** (never a reload) (A2/A3-client); an **in-memory DB read cache** (`getCachedDatabase`) so hot routes (thumbnail/video/audio/videos) stop re-parsing the whole `db.json` per request, coherent with the `updateDatabase` re-read-merge mutex (A3); a **progress-write coalescer** batching the 4 s watch-position pings (≥5:1 fewer whole-file writes, ≤5 s bounded loss) while every real mutation keeps its 1:1 atomic write+fsync (A4); and **paginated `/api/videos`** (`{items,total,offset,limit}`) with a new pure `lib/videoQuery.js` (server-authoritative sort/filter, seeded shuffle) + a client `IntersectionObserver` sentinel that renders the first page fast and appends on scroll (A5). **Lane B — download UX:** a completed **one-shot download now appears in the grid with no manual action** across all three surfaces (on-home, off-home-return via a dirty-flag reconcile, backgrounded-PWA-resume via a retained pending marker), never a reload, without regressing the v1.29 BUG-2 contract (B1); the corner **active-downloads chip** conformed + locked to show only what's actually downloading (B2). **Lane C — visual polish:** a token-driven **type scale** (`--fs-*`) tokenizing every `font-size` while preserving the 16 px input floor + era character (C1); **like → a server-side "Liked" playlist** (`db.liked` membership as the single source of truth, 1:1-atomic routes, watch-page button) (C2); **deterministic avatars everywhere** the letter-avatar was — first-letter glyph + hash-based color, real captured avatar wins, subscriptions/settings-header routed through the shared resolver (C3/C5); and conservative **button polish** (C4). **SQLite deferred (tech-debt #28):** authorized by Dean, but the evidence showed the bottlenecks were algorithmic/read-storm/write-amplification, all better solved by A1–A5; deferral is tracked with measurable revisit triggers (native-addon ABI risk to the Node-24 gate weighed against a single-user LAN box). **Gate story:** two-reviewer gate — QA APPROVE + adversarial APPROVE (both independently verified AC8.4 exercised-not-present across every both-directions guard); one adopted follow-up (GD-1: the T12 hash-letter avatar glyph was reverted to first-letter per unanimous reviewer consensus, restoring the "Alice→A" mnemonic while keeping deterministic color) applied as a one-item fix round (GF1) + adversarial delta-confirm. Full suite green on **Node 22.23.1 (3593/3593)** and **Node 24.14.0 (3593/3593)**, lint clean; PM acceptance ACCEPT (37/39 documented ACs PASS). See the completed exec plan in `docs/exec-plans/completed/`. **_Dean-on-device ledger (ship now, his iPhone pass is the arbiter):_** AC7.6 (elegant buttons + overall typography feel); GD-1 (avatar glyph — adopted per reviewer consensus, Dean may re-open); and the carried-over v1.29 AC4.5 (navigate-during-download feel — code-complete + test-verified, not regressed here).
 - [x] **Downloads Reliability Wave (v1.29.0)** — makes downloads trustworthy end-to-end. **Real failure reasons**: the actual yt-dlp stderr reason (bot-check/429/age-gate/members-only) is now surfaced live AND persisted in `lastStatus` across restart, instead of a generic "exit code 1" (T0). **Honest partial-success**: one failed video no longer marks the whole channel failed — a run reports "downloaded N, M failed: [reasons]" via a new pure `computeDownloadOutcome`, with both-directions failure-masking locked by tests (a total/all-unattributed failure still surfaces as an error; a genuine partial is never a false success) (T3a). **Durable history**: a capped (500-line, atomic) JSONL run log under `data/` (`runlog.js`, T0) rendered as a download-history view on `/subscriptions` (T4). **Retry that retries**: Retry buttons on errored/partial subscription rows + one-shot rows + the one-off modal error state, with visible "queued behind current run" busy-coalescing instead of a silent no-op (T1/T5/T6). **Non-blocking one-shot**: submit → the modal minimizes into the corner chip → the user keeps browsing → on done the library grid refreshes IN PLACE via `loadLibrary()` (never a page reload — the BUG-2 contract), so a new video appears without a manual rescan (T8). **Anti-bot pacing**: `--sleep-requests`/`--sleep-interval`/`--max-sleep-interval`/`--retries` argv flags with bounds-checked `FILETUBE_YTDLP_*` env overrides (README-documented) + an unset-by-default `FILETUBE_YTDLP_PLAYER_CLIENT` lever, all preserving the byte-identical injection-guard/`shell:false` posture (T7); plus a loud warning when a cookies file is configured but missing (T3c). Also closed tech-debt #17 (no stale `downloadMeta` for failed ids). **Gate story**: two-reviewer gate (QA APPROVE + adversarial) surfaced 3 findings then a CRITICAL on the first partial-success fix (byte-identical templated stderr like a shared 429 message collapsing distinct-video failures into phantom successes) — resolved across three focused fix rounds under Dean's Direction-A-safety preference (all-unattributed/zero-attributed → error; conservative `remaining===1` boundary), final adversarial APPROVE, PM acceptance 27/27 non-manual ACs. Full suite green on Node 22 (3420/3420). See the completed exec plan in `docs/exec-plans/completed/`. _(open item: AC4.5 navigate-during-download feel awaits Dean's on-device pass.)_
 - [x] **Optional yt-dlp integration module (v1.11.0–v1.12.0)** — native, toggleable, off-by-default yt-dlp module: subscribe to channels → poll → download into the media dir → the existing UI surfaces them; per-channel audio/video + quality dropdowns + "download last N"; dedupe via yt-dlp's download-archive; members-only skip toggle; poll-and-defer premieres; pause/edit subscriptions; a one-shot URL download endpoint (`POST /api/ytdlp/download`, single-video, for the iOS-Shortcut workflow); live download status via polling; clean display titles; duplicate-entry fix + display-only synthetic download folder; embedded metadata/thumbnails; pinned in-container yt-dlp. Two-reviewer gate on every risky task (it caught a data-loss blocker + a maxBuffer bug on large channels among many). See the completed exec plans in `docs/exec-plans/completed/`.
