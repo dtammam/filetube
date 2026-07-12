@@ -4402,7 +4402,7 @@ if (typeof module !== 'undefined' && module.exports) {
       // setting, and `primeBackgroundAudioElement`'s gesture-prime played
       // THAT (a real request, possibly enqueuing a real FFmpeg extraction)
       // even on a disabled install. The real src is now assigned in exactly
-      // ONE place -- `attemptBackgroundAudioHandoff` -- which is already
+      // ONE place -- `armBackgroundAudioSrc` (v1.35) -- which is itself
       // gated on the setting being on; priming instead uses a LOCAL silent
       // clip (`SILENT_PRIME_SRC`, see `primeBackgroundAudioElement`'s own
       // comment) with zero network cost.
