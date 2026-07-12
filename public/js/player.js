@@ -525,6 +525,16 @@ function seekCommitTarget(ctx) {
   return Math.max(0, Math.min(total, ratio * total));
 }
 
+// v1.34 T6 (Dean, drag scrubbing): pure pointer-position -> seek-ratio map
+// behind the seek bar's pointer-capture drag handlers (see the seekBar
+// wiring below). Clamped to [0,1]; `null` for a degenerate/zero-width rect
+// (mid-teardown, display:none) so the caller skips the frame instead of
+// dividing by zero.
+function scrubRatioFromPointer(clientX, rectLeft, rectWidth) {
+  if (!isFinite(clientX) || !isFinite(rectLeft) || !isFinite(rectWidth) || rectWidth <= 0) return null;
+  return Math.max(0, Math.min(1, (clientX - rectLeft) / rectWidth));
+}
+
 // v1.21 post-gate hardening (FIX 1): pure single-vs-double-tap decision
 // table behind the touchend handling in `wireSkipHoldGestures` below (see
 // that function -- attached to BOTH the video surface, `#media-player`, and
@@ -783,6 +793,7 @@ if (typeof module !== 'undefined' && module.exports) {
     captureAutoplayAdvanceForLoad,
     clampVolume,
     seekCommitTarget,
+    scrubRatioFromPointer,
     classifyTapGesture,
     shouldArtSingleTapAct,
     resolveMobileFormFactor,
@@ -847,6 +858,17 @@ if (typeof module !== 'undefined' && module.exports) {
   // custom bar above, so they ride the reparented host across FULL/DOCKED/
   // CLOSED exactly like #pip-btn/#speed-btn.
   var ccBtn, ccTrack;
+  // v1.34 T3 (chapters): the picker button + its popup menu (all five shell
+  // templates carry both, parity-locked). currentChapters mirrors the
+  // RESOLVED list GET /api/videos/:id served for the loaded item
+  // (manual > embedded > description -- resolved server-side).
+  var chaptersBtn, chaptersMenu;
+  var currentChapters = [];
+  var chaptersOutsideCloseWired = false;
+  // Assigned inside wireHostListeners' closure; no-op stubs until then so a
+  // teardown racing first wiring can never throw.
+  var applyChaptersForMedia = function () {};
+  var resetChaptersUi = function () {};
 
   // Feature B (v1.26.1): the AUDIO-mode custom caption overlay -- created
   // once in ensureHost() (never touches the shared player-host-template
@@ -882,6 +904,13 @@ if (typeof module !== 'undefined' && module.exports) {
   var bgAudioEl = null;
   var bgAudioState = BG_AUDIO_STATES.INLINE_VIDEO;
   var bgAudioSettingCached = false;
+  // v1.34 T4 (Dean): the "Use custom player controls on mobile" setting --
+  // when ON, mobile VIDEO in FULL keeps the CUSTOM control bar instead of
+  // flipping to the native iOS strip (applyControlsMode below). Cached per
+  // load off the SAME per-mobile-video-load GET /api/settings the
+  // background-audio feature already fires (one fetch, two flags); fails
+  // SAFE to false = native, today's default behavior.
+  var mobileCustomPlayerCached = false;
   var bgAudioStatusKnown = null;
   var bgAudioGesturePrimed = false;
   // F-D (v1.27.1): set (synchronously) around every one of THIS file's own
@@ -1075,7 +1104,13 @@ if (typeof module !== 'undefined' && module.exports) {
     var mobile = isMobileFormFactor();
     host.classList.toggle('ff-mobile', mobile);
     var isVideo = !!(currentData && currentData.type !== 'audio');
-    var native = mobile && isVideo && state === STATE_FULL;
+    // v1.34 T4 (Dean): the system-wide "custom player on mobile" setting
+    // vetoes the native strip -- default false keeps the v1.25.2 native
+    // behavior byte-identical. The cached flag resolves asynchronously just
+    // after load (see the settings fetch in setupForMedia), which re-invokes
+    // this function, so the surface settles within the first moments of
+    // playback and stays stable for the rest of the load.
+    var native = mobile && isVideo && state === STATE_FULL && !mobileCustomPlayerCached;
     if (native) {
       mediaPlayer.setAttribute('controls', '');
       host.classList.add('native-controls');
@@ -1192,6 +1227,8 @@ if (typeof module !== 'undefined' && module.exports) {
     speedBtn = host.querySelector('#speed-btn');
     ccBtn = host.querySelector('#cc-btn');
     ccTrack = host.querySelector('#cc-track');
+    chaptersBtn = host.querySelector('#chapters-btn');
+    chaptersMenu = host.querySelector('#chapters-menu');
     artPlayGlyph = host.querySelector('#art-play-glyph');
     // Feature B (v1.26.1): built in JS (never touches the shared
     // player-host-template markup, so all 5 shells stay byte-identical) --
@@ -2661,9 +2698,28 @@ if (typeof module !== 'undefined' && module.exports) {
     });
   }
 
+  // v1.34 T2 (Dean, desktop CC sync): keep the caption <track> aligned with
+  // the LIVE-transcode timeline. The ffmpeg pipe restarts its clock at 0 on
+  // every `?t=` reload while the sidecar's cue times are absolute -- so
+  // after any live seek, native cue matching would drift by exactly
+  // `liveOffset` seconds. The server shifts cues on demand (`?offset=`,
+  // lib/subtitles.js shiftVttCues); this re-points the track at the matching
+  // document and re-asserts the user's CC on/off choice across the src swap.
+  function syncCcTrackToLiveOffset() {
+    if (!ccTrack || !currentId) return;
+    if (!(currentData && currentData.hasSubtitles)) return;
+    var base = '/api/subtitles/' + currentId;
+    var url = liveOffset > 0 ? base + '?offset=' + liveOffset : base;
+    if (ccTrack.getAttribute('src') === url) return;
+    var prevMode = ccTrack.track ? ccTrack.track.mode : null;
+    ccTrack.src = url;
+    if (ccTrack.track && prevMode) ccTrack.track.mode = prevMode;
+  }
+
   // (Re)start a desktop live transcode at t seconds into the source.
   function startLiveStream(t, autoplay) {
     liveOffset = Math.max(0, Math.floor(t || 0));
+    syncCcTrackToLiveOffset(); // v1.34 T2: see above
     mediaPlayer.style.display = 'block';
     mediaPlayer.src = '/video/' + currentId + '?live=1&t=' + liveOffset;
     mediaPlayer.load();
@@ -3449,6 +3505,58 @@ if (typeof module !== 'undefined' && module.exports) {
         saveProgressToServer(target);
         if (!mediaPlayer.paused) startFillLoop();
       });
+
+      // v1.34 T6 (Dean, "proper video scrubbing -- right now it's tap only"):
+      // pointer-capture DRAG scrubbing over the same range input. A native
+      // <input type=range> drags fine with a mouse, but on iOS a touch-drag
+      // is routinely stolen by scroll handling and the native thumb tracking
+      // is unreliable -- so this takes over the pointer entirely
+      // (setPointerCapture + preventDefault) and drives the SAME
+      // input/change pipeline above: 'input' per move (visual fill + time
+      // preview, never a currentTime touch -- AC15 semantics preserved) and
+      // ONE 'change' on release (the sole commit point, so the
+      // live-transcode reload-seek path is byte-identical). Keyboard
+      // arrow-key seeking is untouched (native events still fire). The
+      // matching CSS half is `.pc-seek { touch-action: none; }` -- without
+      // it, iOS cancels the pointer stream mid-drag for page scrolling.
+      if (typeof seekBar.setPointerCapture === 'function' && typeof PointerEvent !== 'undefined') {
+        var seekDragging = false;
+        var seekRatioFromPointer = function (e) {
+          var rect = seekBar.getBoundingClientRect();
+          return scrubRatioFromPointer(e.clientX, rect.left, rect.width);
+        };
+        var applySeekDragRatio = function (ratio, evtName) {
+          if (ratio === null) return;
+          seekBar.value = String(ratio);
+          seekBar.dispatchEvent(new Event(evtName));
+        };
+        seekBar.addEventListener('pointerdown', function (e) {
+          if (e.pointerType === 'mouse' && e.button !== 0) return;
+          seekDragging = true;
+          try { seekBar.setPointerCapture(e.pointerId); } catch (_) { /* capture unsupported -- moves still arrive while over the bar */ }
+          applySeekDragRatio(seekRatioFromPointer(e), 'input');
+          e.preventDefault(); // we own this gesture: no native-range fallback, no scroll steal
+        });
+        seekBar.addEventListener('pointermove', function (e) {
+          if (!seekDragging) return;
+          applySeekDragRatio(seekRatioFromPointer(e), 'input');
+        });
+        seekBar.addEventListener('pointerup', function (e) {
+          if (!seekDragging) return;
+          seekDragging = false;
+          var ratio = seekRatioFromPointer(e);
+          if (ratio !== null) seekBar.value = String(ratio);
+          seekBar.dispatchEvent(new Event('change'));
+        });
+        seekBar.addEventListener('pointercancel', function () {
+          // The system stole the pointer (rare with touch-action:none, but
+          // possible) -- commit wherever the thumb currently sits rather
+          // than leaving isScrubbing latched true forever.
+          if (!seekDragging) return;
+          seekDragging = false;
+          seekBar.dispatchEvent(new Event('change'));
+        });
+      }
     }
 
     if (muteBtn) {
@@ -3621,6 +3729,95 @@ if (typeof module !== 'undefined' && module.exports) {
     }
     if (ccTrack) ccTrack.addEventListener('cuechange', handleCcCueChange);
     if (ccTrack && ccTrack.track) ccTrack.track.addEventListener('cuechange', handleCcCueChange);
+
+    // ---- v1.34 T3 (Dean): chapter picker ------------------------------------
+    // The button toggles a popup listing the loaded item's RESOLVED chapters
+    // (server-side precedence: manual > embedded > description); picking one
+    // seeks -- through startLiveStream for a live transcode (the reload-seek
+    // path, which also keeps captions aligned via syncCcTrackToLiveOffset),
+    // plain currentTime otherwise. The menu always ends with an
+    // "Edit chapters…" entry that opens common.js's textarea editor
+    // (showChaptersEditor), so chapters can be ADDED to an item that has
+    // none. All textContent, no innerHTML.
+    function closeChaptersMenu() {
+      if (chaptersMenu) chaptersMenu.hidden = true;
+      if (chaptersBtn) chaptersBtn.setAttribute('aria-expanded', 'false');
+    }
+    function seekToChapter(t) {
+      if (!mediaPlayer) return;
+      if (liveMode) {
+        startLiveStream(t, true);
+      } else {
+        mediaPlayer.currentTime = t;
+        if (mediaPlayer.paused) mediaPlayer.play().catch(function () {});
+      }
+      saveProgressToServer(t);
+      closeChaptersMenu();
+    }
+    function openChaptersEditorFromMenu() {
+      closeChaptersMenu();
+      if (typeof window.showChaptersEditor !== 'function' || !currentId) return;
+      var lines = currentChapters.map(function (ch) {
+        return formatDuration(ch.startTime) + ' ' + (ch.title || '');
+      }).join('\n');
+      window.showChaptersEditor(currentId, lines, function (resolved) {
+        currentChapters = Array.isArray(resolved && resolved.chapters) ? resolved.chapters : [];
+        if (currentData) currentData.chapters = currentChapters;
+        buildChaptersMenu();
+      });
+    }
+    function buildChaptersMenu() {
+      if (!chaptersMenu) return;
+      while (chaptersMenu.firstChild) chaptersMenu.removeChild(chaptersMenu.firstChild);
+      currentChapters.forEach(function (ch) {
+        var item = document.createElement('button');
+        item.type = 'button';
+        item.className = 'chapters-menu-item';
+        var time = document.createElement('span');
+        time.className = 'chapters-menu-time';
+        time.textContent = formatDuration(ch.startTime);
+        item.appendChild(time);
+        item.appendChild(document.createTextNode(' ' + (ch.title || 'Chapter')));
+        item.addEventListener('click', function () { seekToChapter(ch.startTime); });
+        chaptersMenu.appendChild(item);
+      });
+      var edit = document.createElement('button');
+      edit.type = 'button';
+      edit.className = 'chapters-menu-item chapters-menu-edit';
+      edit.textContent = currentChapters.length > 0 ? 'Edit chapters…' : 'Add chapters…';
+      edit.addEventListener('click', openChaptersEditorFromMenu);
+      chaptersMenu.appendChild(edit);
+    }
+    // Exposed to setupForMedia (which runs outside this wiring closure).
+    applyChaptersForMedia = function (data) {
+      currentChapters = data && Array.isArray(data.chapters) ? data.chapters : [];
+      buildChaptersMenu();
+      closeChaptersMenu();
+      if (chaptersBtn) chaptersBtn.style.display = '';
+    };
+    resetChaptersUi = function () {
+      currentChapters = [];
+      closeChaptersMenu();
+      if (chaptersMenu) while (chaptersMenu.firstChild) chaptersMenu.removeChild(chaptersMenu.firstChild);
+      if (chaptersBtn) chaptersBtn.style.display = 'none';
+    };
+    if (chaptersBtn) {
+      chaptersBtn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        if (!chaptersMenu) return;
+        var opening = chaptersMenu.hidden;
+        chaptersMenu.hidden = !opening;
+        chaptersBtn.setAttribute('aria-expanded', opening ? 'true' : 'false');
+      });
+    }
+    if (!chaptersOutsideCloseWired) {
+      chaptersOutsideCloseWired = true;
+      document.addEventListener('click', function (e) {
+        if (!chaptersMenu || chaptersMenu.hidden) return;
+        if (chaptersMenu.contains(e.target) || (chaptersBtn && chaptersBtn.contains(e.target))) return;
+        closeChaptersMenu();
+      });
+    }
 
     // v1.26.4 fix (frozen audio-CC overlay, THE load-bearing fix): a
     // `timeupdate`-driven fallback that repaints the overlay from
@@ -3900,6 +4097,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // fresh, mirroring how `mediaPlayer.src` itself is handled just below.
     if (ccBtn) { ccBtn.style.display = 'none'; ccBtn.classList.remove('active'); ccBtn.setAttribute('aria-pressed', 'false'); }
     if (ccTrack && ccTrack.track) ccTrack.track.mode = 'disabled';
+    resetChaptersUi(); // v1.34 T3: menu closed/emptied, button hidden until next load
     // Feature B (v1.26.1): the outgoing media's caption overlay must never
     // bleed into the next item -- reset the on/off flag and force-hide/clear
     // the overlay itself (mirrors the CC button reset just above).
@@ -4061,6 +4259,11 @@ if (typeof module !== 'undefined' && module.exports) {
         .then(function (settings) {
           if (gen !== loadGeneration) return; // a newer load has since started
           bgAudioSettingCached = !!(settings && settings.backgroundAudioForVideo);
+          // v1.34 T4: second flag off the same fetch -- then re-derive the
+          // controls surface now that the setting is known (applyControlsMode
+          // is idempotent and cheap; a no-change re-run is a no-op).
+          mobileCustomPlayerCached = !!(settings && settings.mobileCustomPlayer);
+          applyControlsMode();
           if (!bgAudioSettingCached) {
             // v1.27.2 (diagnostics): the arm line now records on EVERY
             // mobile video load, both ways -- Dean's first overlay reading
@@ -4154,6 +4357,9 @@ if (typeof module !== 'undefined' && module.exports) {
     // fetched merely because `src` is set unless the track is in a mode
     // other than 'disabled' or the user later shows it via #cc-btn).
     if (ccTrack) ccTrack.src = '/api/subtitles/' + id;
+    // v1.34 T3: the resolved chapter list rides GET /api/videos/:id; the
+    // picker rebuilds per load (and hides on teardown).
+    applyChaptersForMedia(data);
     if (ccBtn) ccBtn.style.display = data && data.hasSubtitles ? '' : 'none';
 
     // Feature A (v1.26.1, Shorts player-size jump): reserve the box's REAL

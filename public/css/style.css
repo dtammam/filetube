@@ -3683,7 +3683,13 @@ a.sub-row-channel-link:focus-visible {
 
 /* ---- seek / volume range inputs ------------------------------------------ */
 
+/* v1.34 T6 (Dean, drag scrubbing): without touch-action:none, iOS treats a
+   touch-drag over the range as page scrolling and cancels the pointer stream
+   mid-drag -- the exact "tap only" symptom. The pointer-capture drag
+   handlers in player.js own the gesture end to end. Applies to the volume
+   range too (same class), which only helps it. */
 .pc-range {
+  touch-action: none;
   -webkit-appearance: none;
   -moz-appearance: none;
   appearance: none;
@@ -3889,6 +3895,23 @@ a.sub-row-channel-link:focus-visible {
   aspect-ratio: var(--media-aspect, 16 / 9);
   height: auto;            /* override the base overlay `height: 100%` */
 }
+/* v1.34 T1 (Dean): a portrait/Shorts video occupies the SAME footprint as a
+   16:9 video EVERYWHERE (desktop + mobile) -- "make Shorts display with the
+   same size as normal videos". The element box is pinned to 16:9 and the
+   global `video { object-fit: contain }` pillarboxes the tall picture inside
+   it (bars left/right), exactly like the DOCKED override below has always
+   done for the mini-player. This deliberately supersedes the v1.26.1
+   real-aspect reservation for portrait items in the FULL player: the
+   anti-jump goal is preserved (the box is a CONSTANT 16:9 from first paint,
+   so there is nothing to jump), while the much-taller-than-16:9 box Dean
+   flagged is gone. Landscape/unknown items are untouched (they fall through
+   to the var() rule above). Same 2-ID+class specificity beats the base rule;
+   the 3-ID docked rule still wins while docked. */
+#player-wrapper.portrait-media:not(.audio-expanded) #media-player {
+  aspect-ratio: 16 / 9;
+  height: auto;
+}
+
 #player-wrapper.audio-mode:not(.audio-expanded) #audio-bg-art {
   bottom: 40px;            /* cover art fills the content area, above the bar strip */
 }
@@ -3930,6 +3953,66 @@ a.sub-row-channel-link:focus-visible {
 #player-dock #player-wrapper:not(.audio-expanded) #media-player {
   aspect-ratio: 16 / 9;
   height: auto;
+}
+
+/* v1.34 T3 (Dean): chapter picker popup. Anchored to the control bar
+   (#player-controls is the positioning context), opening UPWARD above the
+   bar; token-driven so every era/mode theme styles it for free. */
+.chapters-menu {
+  position: absolute;
+  right: 8px;
+  bottom: calc(100% + 6px);
+  min-width: 220px;
+  max-width: 80%;
+  max-height: 45vh;
+  overflow-y: auto;
+  background: var(--header-bg);
+  border: 1px solid var(--border-dark);
+  border-radius: var(--radius);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  padding: 4px 0;
+}
+.chapters-menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  font-family: var(--font-family);
+  font-size: var(--fs-base);
+  padding: 8px 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.chapters-menu-item:hover {
+  background: var(--hover-bg, rgba(128, 128, 128, 0.15));
+}
+.chapters-menu-time {
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  margin-right: 4px;
+}
+.chapters-menu-edit {
+  border-top: 1px solid var(--border-dark);
+  color: var(--text-secondary);
+}
+.chapters-editor-textarea {
+  width: 100%;
+  font-family: monospace;
+  font-size: var(--fs-base);
+  background: var(--input-bg, var(--header-bg));
+  color: var(--text-primary);
+  border: 1px solid var(--border-dark);
+  border-radius: var(--radius);
+  padding: 8px;
+  margin-top: 8px;
+  resize: vertical;
 }
 
 /* === Feature B (v1.26.1): AUDIO-mode custom caption overlay ================

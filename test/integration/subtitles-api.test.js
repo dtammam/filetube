@@ -132,3 +132,27 @@ test('GET /api/subtitles/:id sets X-Content-Type-Options: nosniff', async () => 
   assert.equal(res.status, 200);
   assert.equal(res.headers.get('x-content-type-options'), 'nosniff');
 });
+
+// ---- v1.34 T2 (Dean, desktop CC sync): the ?offset= shifted document --------
+test('GET /api/subtitles/:id?offset=N serves the cue-shifted document; garbage/absurd offsets serve it unshifted', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-subs-offset-'));
+  const filePath = path.join(root, 'offset-video.mp4');
+  fs.writeFileSync(filePath, 'video-bytes');
+  fs.writeFileSync(path.join(root, 'offset-video.vtt'), 'WEBVTT\n\n00:00:10.000 --> 00:00:20.000\nHello\n');
+  writeDb(baseDb({
+    idOff: { id: 'idOff', title: 'Offset Video', type: 'video', ext: '.mp4', filePath, folderName: path.basename(root), size: 1, addedAt: 1 },
+  }));
+
+  const shifted = await (await fetch(`${base}/api/subtitles/idOff?offset=8`)).text();
+  assert.ok(shifted.includes('00:00:02.000 --> 00:00:12.000'), 'cue shifted 8s earlier for the live-transcode timeline');
+
+  const past = await (await fetch(`${base}/api/subtitles/idOff?offset=25`)).text();
+  assert.ok(!past.includes('Hello'), 'a cue fully before the seek point is dropped');
+
+  for (const bad of ['garbage', '-5', '999999999']) {
+    const res = await fetch(`${base}/api/subtitles/idOff?offset=${bad}`);
+    assert.equal(res.status, 200);
+    const text = await res.text();
+    assert.ok(text.includes('00:00:10.000 --> 00:00:20.000'), `offset=${bad} must degrade to the unshifted document`);
+  }
+});

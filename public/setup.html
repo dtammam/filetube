@@ -204,6 +204,26 @@
           <small id="default-view-error" class="field-error"></small>
         </div>
 
+        <!-- v1.34 (Dean): the default home sort -- what the library uses in a
+             browser that has never touched the sort dropdown. -->
+        <div class="form-group">
+          <label for="default-sort-select">Default sort order</label>
+          <select id="default-sort-select" class="setup-select">
+            <option value="release-date">Release date</option>
+            <option value="newest">Newest first</option>
+            <option value="oldest">Oldest first</option>
+            <option value="title-asc">Title (A–Z)</option>
+            <option value="title-desc">Title (Z–A)</option>
+            <option value="size-desc">Largest first</option>
+            <option value="size-asc">Smallest first</option>
+            <option value="random">Feeling lucky</option>
+          </select>
+          <small style="color: var(--text-secondary); margin-top:4px; display:block;">
+            Applies wherever you haven't picked a sort from the library dropdown in that browser — an explicit dropdown pick always wins there.
+          </small>
+          <small id="default-sort-error" class="field-error"></small>
+        </div>
+
         <h3>Playback</h3>
         <div class="form-group">
           <label style="display:flex; align-items:center; gap:8px; font-weight:normal;">
@@ -225,6 +245,18 @@
             Keeps a video's audio playing when you switch apps or lock your screen -- mobile only. Off by default.
           </small>
           <small id="background-audio-error" class="field-error"></small>
+        </div>
+
+        <!-- v1.34 T4 (Dean): custom-vs-native mobile video controls. -->
+        <div class="form-group">
+          <label style="display:flex; align-items:center; gap:8px; font-weight:normal;">
+            <input type="checkbox" id="mobile-custom-player-check" />
+            Use custom player controls for mobile video
+          </label>
+          <small style="color: var(--text-secondary); margin-top:4px; display:block;">
+            Replaces the native iOS video controls with FileTube's own control bar on mobile — chapters, scrubbing and CC all in one place. Off by default (native controls).
+          </small>
+          <small id="mobile-custom-player-error" class="field-error"></small>
         </div>
 
         <div class="form-group">
@@ -375,6 +407,11 @@
         <button type="button" id="fs-btn" class="pc-btn fs-btn" aria-label="Fullscreen">⛶</button>
         <button type="button" id="pip-btn" class="pc-btn pip-btn" aria-label="Picture in picture">⧉</button>
         <button type="button" id="cc-btn" class="pc-btn cc-btn" aria-label="Toggle captions" aria-pressed="false" style="display: none;">CC</button>
+        <!-- v1.34 T3 (Dean): chapter picker -- hidden until a media item is
+             loaded (player.js applyChaptersForMedia). "Ch" text glyph, same
+             convention as CC (the chrome-emoji list is off-limits). -->
+        <button type="button" id="chapters-btn" class="pc-btn chapters-btn" aria-label="Chapters" aria-expanded="false" style="display: none;">Ch</button>
+        <div id="chapters-menu" class="chapters-menu" hidden></div>
       </div>
     </div>
   </template>

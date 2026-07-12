@@ -33,6 +33,8 @@ const DEFAULT_SETTINGS = {
   defaultView: '', // v1.14.0 item 4: '' is the "Most Recent" sentinel
   autoplayNext: false, // v1.16.0 FR-3 (T3): OFF by default
   backgroundAudioForVideo: false, // v1.27.0 (EXPERIMENTAL): OFF by default
+  defaultSort: 'release-date', // v1.34: the real-YouTube-feed flip
+  mobileCustomPlayer: false, // v1.34 T4: native mobile video controls by default
 };
 
 test('loadDatabase: creates a default db when none exists', () => {

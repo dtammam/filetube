@@ -98,7 +98,10 @@ test('applyControlsMode: the function exists and is isolated for inspection', ()
 test('applyControlsMode: derives `isVideo` from `currentData.type` and gates native controls on mobile + video + FULL only', () => {
   const body = applyControlsModeMatch[1];
   assert.match(body, /var isVideo = !!\(currentData && currentData\.type !== 'audio'\);/, 'expected isVideo to be derived from currentData.type !== \'audio\'');
-  assert.match(body, /var native = mobile && isVideo && state === STATE_FULL;/, 'expected native to require ALL THREE of mobile, isVideo, and state === STATE_FULL');
+  // v1.34 T4: the mobileCustomPlayer setting VETOES native -- the three
+  // positive conditions are unchanged, with the cached setting flag as the
+  // fourth (negated) term.
+  assert.match(body, /var native = mobile && isVideo && state === STATE_FULL && !mobileCustomPlayerCached;/, 'expected native to require mobile + isVideo + FULL and no custom-player override');
 });
 
 test('applyControlsMode: mobile+video+FULL sets the native `controls` attribute AND adds `.native-controls` on host', () => {

@@ -80,7 +80,7 @@ beforeEach(() => {
 
 // ---- GET /api/settings -----------------------------------------------------
 
-test('GET /api/settings returns the 10-field shape with backfilled defaults on a fresh DB', async () => {
+test('GET /api/settings returns the 12-field shape with backfilled defaults on a fresh DB', async () => {
   const res = await fetch(`${base}/api/settings`);
   assert.equal(res.status, 200);
   const json = await res.json();
@@ -95,6 +95,8 @@ test('GET /api/settings returns the 10-field shape with backfilled defaults on a
     effectiveCacheMaxBytes: 5 * 1024 ** 3, // env unset -> 5 GB default
     customLogo: false, // v1.32: read-only flag, managed by /api/settings/logo
     customLogoDark: false, // v1.33.1: the dark-mode variant's own flag
+    defaultSort: 'release-date', // v1.34: the real-YouTube-feed flip
+    mobileCustomPlayer: false, // v1.34 T4: native mobile video controls by default
   });
 });
 

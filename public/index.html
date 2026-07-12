@@ -231,6 +231,11 @@
         <button type="button" id="fs-btn" class="pc-btn fs-btn" aria-label="Fullscreen">⛶</button>
         <button type="button" id="pip-btn" class="pc-btn pip-btn" aria-label="Picture in picture">⧉</button>
         <button type="button" id="cc-btn" class="pc-btn cc-btn" aria-label="Toggle captions" aria-pressed="false" style="display: none;">CC</button>
+        <!-- v1.34 T3 (Dean): chapter picker -- hidden until a media item is
+             loaded (player.js applyChaptersForMedia). "Ch" text glyph, same
+             convention as CC (the chrome-emoji list is off-limits). -->
+        <button type="button" id="chapters-btn" class="pc-btn chapters-btn" aria-label="Chapters" aria-expanded="false" style="display: none;">Ch</button>
+        <div id="chapters-menu" class="chapters-menu" hidden></div>
       </div>
     </div>
   </template>

@@ -84,3 +84,22 @@ test('the audio-expanded view offsets .cc-overlay above the safe-area-lifted con
   }
   assert.ok(found, 'expected a mobile-scoped 44px + safe-area .cc-overlay offset in the audio-expanded view');
 });
+
+// ---- v1.34 T1 (Dean): Shorts same-footprint-as-16:9 lock --------------------
+// A portrait/Shorts item's FULL player box is pinned to 16:9 (the global
+// `.player-container video { object-fit: contain }` pillarboxes the tall
+// picture inside it) so it can never render taller than a normal video --
+// on desktop OR mobile. The docked override has always done this for the
+// mini-player; this locks the FULL-player twin.
+test('v1.34: .portrait-media pins the FULL player box to 16:9 (Shorts same footprint as normal videos)', () => {
+  assert.match(
+    css,
+    /#player-wrapper\.portrait-media:not\(\.audio-expanded\)\s+#media-player\s*\{\s*aspect-ratio:\s*16\s*\/\s*9;\s*height:\s*auto;/,
+    'expected the portrait-media 16:9 footprint override after the base var(--media-aspect) rule'
+  );
+  // Ordering matters at equal specificity tiers: the override must appear
+  // AFTER the base var() rule so portrait wins.
+  const baseIdx = css.indexOf('aspect-ratio: var(--media-aspect, 16 / 9);');
+  const overrideIdx = css.indexOf('#player-wrapper.portrait-media:not(.audio-expanded) #media-player');
+  assert.ok(baseIdx >= 0 && overrideIdx > baseIdx, 'the portrait override must come after the base aspect rule');
+});

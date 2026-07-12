@@ -163,7 +163,14 @@ function makeWatchFetchStub() {
         json: async () => ({ items: relatedPool, total, offset: 0, limit: total }),
       });
     }
-    return new Promise(() => {}); // everything else (comments/settings/subscriptions/view-ping/...) -- irrelevant here
+    if (url === '/api/settings' && method === 'GET') {
+      // v1.34: setupPrevNext consults defaultSort when this browser has no
+      // explicit filetube_sort pick -- answer like the real server always
+      // does (a hanging promise here would wedge prev/next derivation, which
+      // is a stub artifact, not a real-server behavior).
+      return Promise.resolve({ ok: true, status: 200, json: async () => ({ defaultSort: 'newest' }) });
+    }
+    return new Promise(() => {}); // everything else (comments/subscriptions/view-ping/...) -- irrelevant here
   };
   return { fetchImpl, calls };
 }
