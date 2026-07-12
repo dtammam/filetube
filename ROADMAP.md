@@ -80,6 +80,14 @@
 
 ## Shipped
 
+### v1.36.2 — four minors + gate hardenings (2026-07-13)
+
+- Liked is a real prev/next context: cards opened from the Liked view carry it into the player, the arrows walk the Liked list in grid order, and stepping stays inside it.
+- PWA fix: the native video controls layer is re-armed (attribute cycle) on every return to the app — no more dead controls after an app switch.
+- Transcripts are non-blocking everywhere: subtitle fetch/convert failures no longer fail or red-flag subscription downloads OR one-offs; success credit is corroborated by per-download evidence so a real failure can never masquerade as success.
+- Deletes unstick: busy/locked files (EBUSY/EPERM) get the actionable remove-anyway flow instead of a dead-end 500, and deleting a yt-dlp item records its id in the download archive itself — 'stays gone' no longer depends on the original download having archived it. Subtitle sidecars cleaned up. Residual (removeAnyway + rescan) filed as tech-debt #32.
+- Slim adversarial gate: APPROVE across three rounds (two hardenings applied same-day). 3831/3831 on Node 22 + 24.
+
 ### v1.36.1 — shorts exclusion made shape-aware (2026-07-13)
 
 - Dean's on-device report confirmed: skipShorts subs downloaded Shorts after v1.36 — the detector keyed only on a /shorts/ URL marker the UU uploads-feed listing does not reliably carry. rules.isShort now adds YouTube's own classification rule as a fallback (<= 3 minutes AND vertical-or-square), fail-open on missing fields; the yt-dlp-side defense filter (inert since v1.15 — it keyed on webpage_url, which yt-dlp always canonicalizes) now keys on original_url and genuinely works where the marker exists. skipShorts=false subs untouched. Slim adversarial gate: APPROVE (heuristic verified as YouTube's post-Oct-2024 auto-classification rule; original_url entry-URL semantics verified in yt-dlp source).

@@ -573,6 +573,12 @@ if (typeof module !== 'undefined' && module.exports) {
     // Parse media ID
     const urlParams = new URLSearchParams(window.location.search);
     const mediaId = urlParams.get('v');
+    // v1.36.2 (Dean): the LAUNCH-CONTEXT param -- which list the user was
+    // browsing when they opened this video. Only 'liked' is recognized
+    // today (an unknown/absent value degrades to the folder-scoped
+    // behavior, byte-identical to pre-v1.36.2); the shape generalizes to
+    // future virtual views (search, feeds) without another plumbing pass.
+    const listContext = urlParams.get('list') === 'liked' ? 'liked' : null;
 
     if (!mediaId) {
       window.location.href = '/';
@@ -990,8 +996,19 @@ if (typeof module !== 'undefined' && module.exports) {
         // the current item's folder-mates in full, or its neighbor could sit
         // past a truncated page-1 boundary and prev/next would wrongly grey
         // out.
+        // v1.36.2 (Dean): when the player was launched FROM the Liked view
+        // (`?list=liked`, set by the home grid's cards -- see main.js's
+        // buildCardHtml), prev/next walk the LIKED list instead of the
+        // item's folder: that is the list the user was actually browsing,
+        // and a cross-folder liked item frequently has no folder-mates at
+        // all (both buttons greyed -- the reported bug). GET /api/liked
+        // returns the identical {items,...} shape; ORDER parity with the
+        // grid comes from the client-side deriveOrderedIds re-sort below
+        // (the same resolved key the grid uses), exactly like the folder
+        // path -- the server's own default sort is immaterial here.
         const folder = parentFolder(mediaData && mediaData.filePath);
-        const baseUrl = folder ? '/api/videos?root=' + encodeURIComponent(folder) : '/api/videos';
+        const folderBase = folder ? '/api/videos?root=' + encodeURIComponent(folder) : '/api/videos';
+        const baseUrl = listContext === 'liked' ? '/api/liked' : folderBase;
         const separator = baseUrl.includes('?') ? '&' : '?';
         const res = await fetch(`${baseUrl}${separator}limit=${FULL_LIST_QUERY_LIMIT}`);
         const data = await res.json();
@@ -1419,7 +1436,10 @@ if (typeof module !== 'undefined' && module.exports) {
     // shouldDockOnTransition), so the player just loads the new source in
     // place. Falls back to a hard navigation if the router failed to boot.
     function navigateToWatch(id) {
-      const url = '/watch.html?v=' + encodeURIComponent(id);
+      // v1.36.2: PRESERVE the launch context across prev/next/autoplay
+      // hops -- stepping through the Liked list must stay in the Liked
+      // list, not silently fall back to folder order after the first hop.
+      const url = '/watch.html?v=' + encodeURIComponent(id) + (listContext ? '&list=' + encodeURIComponent(listContext) : '');
       if (window.FileTube && typeof window.FileTube.navigate === 'function') {
         window.FileTube.navigate(url);
       } else {

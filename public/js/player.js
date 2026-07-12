@@ -1132,6 +1132,28 @@ if (typeof module !== 'undefined' && module.exports) {
     }
   }
 
+  // v1.36.2 (Dean's PWA report): after an app-switch, iOS can leave a
+  // still-`controls`-attributed <video> with a DEAD native control layer --
+  // taps on the frame do nothing until the app is force-closed. WebKit only
+  // rebuilds the native control overlay's hit-testing when the `controls`
+  // attribute actually CYCLES, so a plain applyControlsMode() re-run (a
+  // no-op set on an already-set attribute) is not enough. This helper does
+  // the off->on cycle, then delegates to applyControlsMode() as the single
+  // controls authority (which also re-syncs the `native-controls` /
+  // css-fullscreen classes the tap-overlay guards key on). Scoped hard: only
+  // the native-mobile-video-FULL shape ever cycles -- the custom-player and
+  // desktop paths are byte-unchanged (their applyControlsMode() call is a
+  // pure re-sync).
+  function rearmNativeControls() {
+    if (!host || !mediaPlayer) return;
+    var isVideo = !!(currentData && currentData.type !== 'audio');
+    var native = isMobileFormFactor() && isVideo && state === STATE_FULL && !mobileCustomPlayerCached;
+    if (native && mediaPlayer.hasAttribute('controls')) {
+      mediaPlayer.removeAttribute('controls');
+    }
+    applyControlsMode();
+  }
+
   // v1.34.4: faux-fullscreen state setter -- host class (the fixed overlay
   // treatment) and body class (scroll freeze + header/nav hide) must always
   // move together.
@@ -1457,6 +1479,11 @@ if (typeof module !== 'undefined' && module.exports) {
   document.addEventListener('visibilitychange', function () {
     if (document.visibilityState !== 'visible' || !currentData || !mediaPlayer) return;
     handleForegroundSwapBack(); // v1.27.0: SWAP_BACK before the re-assert below reads activeMediaElement()
+    // v1.36.2 (Dean's PWA report): re-arm the native control layer on EVERY
+    // foreground return -- iOS can strand it unresponsive after an
+    // app-switch (see rearmNativeControls' doc comment). Runs after the
+    // swap-back so the mode is computed against the settled surface.
+    rearmNativeControls();
     setupMediaSession(currentId, currentChannelName, currentData.title);
     var el = activeMediaElement();
     setPlaybackState(el && el.paused ? 'paused' : 'playing');

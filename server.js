@@ -4156,6 +4156,16 @@ app.post('/api/progress', (req, res) => {
   res.json({ success: true });
 });
 
+// v1.36.2 (Dean: "sticky post-deletion" -- the "doesn't delete" half): the
+// errno classes the DELETE route treats as RECOVERABLE -- the actionable
+// 409 with the "remove from library anyway?" follow-up, instead of an
+// un-actionable 500 dead end. EROFS/EACCES are the original v1.13 pair
+// (read-only/permission mounts); EBUSY (the file is open -- being streamed
+// or transcoded -- or an overlay lock) and EPERM (NFS/SMB/overlay volume
+// drivers) joined in v1.36.2 after production deletes on Docker volumes
+// died at the generic 500 with no escape hatch. Exported for unit coverage.
+const RECOVERABLE_DELETE_CODES = new Set(['EROFS', 'EACCES', 'EBUSY', 'EPERM']);
+
 // API: Delete video/audio file
 app.delete('/api/videos/:id', async (req, res) => {
   // v1.30 A3: a PURE read to look up `item` -- never mutated here, and the
@@ -4195,8 +4205,30 @@ app.delete('/api/videos/:id', async (req, res) => {
     if (fs.existsSync(transcodeFile)) {
       fs.unlinkSync(transcodeFile);
     }
+
+    // v1.36.2 (Dean): clean up subtitle sidecars living NEXT TO the media
+    // file (`<basename>.<lang>.vtt`, written by the yt-dlp download's
+    // --write-subs). Best-effort: an orphaned .vtt can't resurrect a
+    // library item (not a media extension), but leaving it litters the
+    // channel folder forever. Never blocks the delete.
+    try {
+      const dir = path.dirname(filePath);
+      const base = path.basename(filePath, path.extname(filePath));
+      for (const name of fs.readdirSync(dir)) {
+        if (name.startsWith(`${base}.`) && name.endsWith('.vtt')) {
+          try { fs.unlinkSync(path.join(dir, name)); } catch (_) { /* best-effort */ }
+        }
+      }
+    } catch (_) { /* best-effort -- e.g. the dir itself is gone */ }
   } catch (err) {
-    const readOnly = err && (err.code === 'EROFS' || err.code === 'EACCES');
+    // v1.36.2 (Dean: "sticky post-deletion" -- the "doesn't delete" half):
+    // EBUSY (file open/streaming, an overlay lock) and EPERM (NFS/SMB/
+    // overlay volume drivers) previously fell to the generic 500 below --
+    // an un-actionable dead end with NO removeAnyway escape hatch, so the
+    // item just stayed. They are now classified with EROFS/EACCES as
+    // RECOVERABLE: the client gets the same actionable 409 + the same
+    // opt-in "remove from library anyway" follow-up.
+    const readOnly = err && RECOVERABLE_DELETE_CODES.has(err.code);
     const alreadyGone = err && err.code === 'ENOENT';
 
     if (alreadyGone) {
@@ -4232,7 +4264,7 @@ app.delete('/api/videos/:id', async (req, res) => {
       // ?removeAnyway=true) rather than silently losing the library entry.
       console.error(`Cannot delete file ${filePath} (${err.code}):`, err.message);
       return res.status(409).json({
-        error: `Could not delete the file: this location is read-only or permission-denied (${err.code}). The file was not removed.`,
+        error: `Could not delete the file: this location is read-only, permission-denied, or the file is busy (${err.code}). The file was not removed.`,
         code: err.code,
         readOnly: true,
       });
@@ -4243,6 +4275,32 @@ app.delete('/api/videos/:id', async (req, res) => {
       console.error(`Error deleting file ${filePath}:`, err);
       return res.status(500).json({ error: `Could not delete file: ${err.message}` });
     }
+  }
+
+  // v1.36.2 (Dean: "sticky post-deletion" -- the "comes back" half): make
+  // DELETION authoritative for staying gone. "Delete stays gone" previously
+  // relied entirely on the id already being in the shared download archive
+  // from the ORIGINAL download -- but one-offs download with
+  // --no-download-archive (their post-hoc append is best-effort and can
+  // fail), and an archive file lost to an ephemeral volume has no entry, so
+  // such a video was re-downloaded by the next subscription poll inside its
+  // window. Appending here (idempotent, never-throws --
+  // recordOneShotInArchive) closes that class for every yt-dlp-managed item
+  // regardless of how it was originally downloaded. Scoped exactly like the
+  // repull enumeration: rooted under a download dir AND carrying a
+  // recoverable youtube id (filename [id] bracket, else the persisted
+  // youtubeId re-checked through isSafeVideoId).
+  try {
+    const ytdlpConfig = ytdlp.parseYtdlpConfig();
+    if (ytdlp.isEnabled(ytdlpConfig) && matchRootFolder(filePath, ytdlp.extraScanRoots(ytdlpConfig))) {
+      const baseName = path.basename(filePath, path.extname(filePath));
+      const youtubeId = extractYtdlpVideoId(baseName) || (isSafeVideoId(item.youtubeId) ? item.youtubeId : null);
+      if (youtubeId) ytdlp.recordOneShotInArchive(ytdlpConfig, youtubeId);
+    }
+  } catch (err) {
+    // Best-effort by contract -- a failed archive append must never block
+    // the delete (the worst case is the pre-v1.36.2 behavior).
+    console.error(`Delete: failed to record ${item.id} in the yt-dlp archive (continuing):`, err && err.message);
   }
 
   // Clean up database entries -- either after the FS cleanup above succeeded,
@@ -5920,6 +5978,8 @@ module.exports = {
   app,
   needsTranscode,
   transcodedPath,
+  // v1.36.2: the recoverable-delete errno set -- exported for unit coverage.
+  RECOVERABLE_DELETE_CODES,
   matchRootFolder,
   // C1 (v1.24 UX Round, Wave 3): move-files + id re-key -- re-exported so
   // tests (and T19's Wave 7 physical-reconcile move) can call these directly.
