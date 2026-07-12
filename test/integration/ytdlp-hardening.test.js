@@ -591,6 +591,9 @@ test('v1.32: a LIST-pass failure is tagged failureKind:"check" and a DOWNLOAD-pa
   assert.equal(entry.state, 'error');
   assert.equal(entry.failureKind, 'check', 'list failure -> check kind');
 
+  // v1.36 F2: cycle 1's failure put this sub in check-failure backoff --
+  // clear it so cycle 2 (this test's actual subject) is eligible again.
+  await store.setSubscriptionStatus(deps, sub.id, { backoffUntil: null });
   run.runList = async () => ({ ok: true, stdout: ndjson([{ id: 'kindvid0001', availability: 'public' }]), stderr: '' });
   run.runDownload = async () => ({ ok: false, code: 1, stdout: '', stderr: '', error: 'boom', channelMeta: [], itemFailures: [] });
   await ytdlp.runPoll(deps, baseConfig({ breakerFailures: 0 }));
@@ -626,6 +629,9 @@ test('v1.32 gate fix: a stale failureKind:"check" from a prior cycle is CLEARED 
   run.runList = async () => ({ ok: false, code: 'ETIMEDOUT', stdout: '', stderr: '', error: 'yt-dlp list pass timed out after 5m and was killed' });
   await ytdlp.runPoll(deps, baseConfig({ breakerFailures: 0 }));
   assert.equal(activity.getSnapshot().subscriptions[sub.id].failureKind, 'check');
+  // v1.36 F2: cycle 1's failure put this sub in check-failure backoff --
+  // clear it so cycle 2 (this test's actual subject) is eligible again.
+  await store.setSubscriptionStatus(deps, sub.id, { backoffUntil: null });
   // Cycle 2: an unexpected THROW reaches processSubscription's catch-all.
   run.runList = async () => { throw new Error('unexpected builder explosion'); };
   await ytdlp.runPoll(deps, baseConfig({ breakerFailures: 0 }));

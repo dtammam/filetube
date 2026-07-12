@@ -784,3 +784,24 @@ test('SOURCE LOCK: FORBIDDEN_CHARS is byte-identical to its pre-v1.28.0 definiti
 test('SOURCE LOCK: buildWatchUrl remains the only spawn-bound URL constructor a Short/live/embed canonicalizes through', () => {
   assert.equal(classifySingleVideo('https://www.youtube.com/shorts/dQw4w9WgXcQ').watchUrl, buildWatchUrl('dQw4w9WgXcQ'));
 });
+
+// ---- v1.36 F1 fix round 2: isChannelRootUrl (the break-early-safety shape check)
+
+const { isChannelRootUrl } = require('../../lib/ytdlp/url');
+
+test('v1.36 isChannelRootUrl: true for exactly the bare channel shapes (@handle, /channel/, /c/, /user/) on allowed hosts', () => {
+  assert.equal(isChannelRootUrl('https://www.youtube.com/@somechannel'), true);
+  assert.equal(isChannelRootUrl('https://youtube.com/channel/UCabcdefghijklmnopqrstuv'), true);
+  assert.equal(isChannelRootUrl('https://www.youtube.com/c/SomeName'), true);
+  assert.equal(isChannelRootUrl('https://www.youtube.com/user/SomeUser'), true);
+});
+
+test('v1.36 isChannelRootUrl: false for playlist/watch/youtu.be shapes (valid subscriptions, but NOT single-feed-swappable) and for anything invalid', () => {
+  assert.equal(isChannelRootUrl('https://www.youtube.com/playlist?list=PLabcdefghijklm'), false, 'a playlist sub must never be treated as a channel root');
+  assert.equal(isChannelRootUrl('https://www.youtube.com/watch?v=dQw4w9WgXcQ'), false);
+  assert.equal(isChannelRootUrl('https://youtu.be/dQw4w9WgXcQ'), false);
+  assert.equal(isChannelRootUrl('https://evil.com/@somechannel'), false, 'host allowlist still binds');
+  assert.equal(isChannelRootUrl('not a url'), false);
+  assert.equal(isChannelRootUrl(null), false);
+  assert.equal(isChannelRootUrl(undefined), false);
+});

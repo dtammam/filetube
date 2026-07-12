@@ -469,6 +469,10 @@ test('FIX-3: a stale failures[] from an earlier error cycle is cleared by a late
       { videoId: 'VID_OLD', title: 'Old Video', reason: 'Video unavailable' },
     ], 'sanity: cycle 1 recorded the attributed failure');
 
+    // v1.36 F2: cycle 1's failure put this sub in check-failure backoff --
+    // clear it so cycle 2 (this test's actual subject) is eligible again.
+    await store.setSubscriptionStatus(deps, sub.id, { backoffUntil: null });
+
     // Cycle 2: a LISTING failure -- no per-item attribution is even possible
     // on this path (it never reaches the download step at all).
     run.runList = async () => ({ ok: false, code: 1, stdout: '', stderr: '', error: 'network error listing the channel' });

@@ -2031,23 +2031,36 @@ test('v1.31 P0: a download ceiling kill names the phase, the budget, and that it
   assert.equal(result.error, 'yt-dlp download timed out after 30m (absolute ceiling) and was killed');
 });
 
-test('v1.31 P0 (H0): resolveListTimeoutMs scales the list budget with maxVideos x sleepRequests and never shrinks below the configured base', () => {
-  // Defaults: base 5m + DEFAULT_MAX_VIDEOS(2) * 3 req/entry * 1s = 5m + 6s.
+// v1.36 F1 CONTRACT CHANGE (QA gate CRITICAL): the pacing term now scales
+// with `listScanCap` -- the entry count breakEarlyArgs's `--playlist-end`
+// backstop actually lets yt-dlp extract up to -- NOT the dormant `maxVideos`
+// download-count field (default 2), whose 6-second term reproduced the
+// production incident's exact 5.1-minute budget in the very tail case the
+// backstop exists for. The H0 principle unchanged: whatever bound the argv
+// lets yt-dlp walk to, the budget must pay for.
+test('v1.31 P0 / v1.36 F1: resolveListTimeoutMs scales the list budget with listScanCap x sleepRequests and never shrinks below the configured base', () => {
   const sub = { channelUrl: 'https://www.youtube.com/@x' };
-  assert.equal(run.resolveListTimeoutMs(sub, {}), 5 * 60 * 1000 + 2 * 3 * 1000);
-  // A subscription's own maxVideos drives the scaling (25 entries, 2s sleeps).
+  // Defaults: base 5m + DEFAULT_LIST_SCAN_CAP(200) * 3 req/entry * 1s = 15m.
+  assert.equal(run.resolveListTimeoutMs(sub, {}), 5 * 60 * 1000 + 200 * 3 * 1000);
+  // The configured cap drives the scaling (25 entries, 2s sleeps).
   assert.equal(
-    run.resolveListTimeoutMs({ ...sub, maxVideos: 25 }, { sleepRequests: 2 }),
+    run.resolveListTimeoutMs(sub, { listScanCap: 25, sleepRequests: 2 }),
     5 * 60 * 1000 + 25 * 3 * 2 * 1000,
   );
-  // maxVideos: 0 ("unlimited") scales as the documented stand-in (100).
+  // listScanCap: 0 ("cap off") scales as the documented stand-in (100).
   assert.equal(
-    run.resolveListTimeoutMs({ ...sub, maxVideos: 0 }, { sleepRequests: 1 }),
+    run.resolveListTimeoutMs(sub, { listScanCap: 0, sleepRequests: 1 }),
     5 * 60 * 1000 + 100 * 3 * 1000,
+  );
+  // maxVideos is a DOWNLOAD count -- it must no longer influence the list
+  // budget at all (the v1.36 correction).
+  assert.equal(
+    run.resolveListTimeoutMs({ ...sub, maxVideos: 2 }, { maxVideos: 2, listScanCap: 25, sleepRequests: 2 }),
+    5 * 60 * 1000 + 25 * 3 * 2 * 1000,
   );
   // The whole budget is capped at 60 minutes no matter how hostile the config.
   assert.equal(
-    run.resolveListTimeoutMs({ ...sub, maxVideos: 10000 }, { sleepRequests: 60, listTimeoutMinutes: 60 }),
+    run.resolveListTimeoutMs(sub, { listScanCap: 10000, sleepRequests: 60, listTimeoutMinutes: 60 }),
     60 * 60 * 1000,
   );
   // A bare/garbage config falls back to defaults, never throws.

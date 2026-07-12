@@ -1399,6 +1399,10 @@ test('F1: a "merging" phase left by a cycle that ends in ERROR is cleared before
   assert.equal(afterCycle1.state, 'error');
   assert.equal(afterCycle1.phase, 'merging', 'sanity check: cycle 1 really did leave a dangling "merging" phase behind');
 
+  // v1.36 F2: cycle 1's failure put this sub in check-failure backoff --
+  // clear it so cycle 2 (this test's actual subject) is eligible again.
+  await store.setSubscriptionStatus(deps, sub.id, { backoffUntil: null });
+
   // Cycle 2: a fresh cycle for the SAME subscription id. Assert the phase
   // seen at the very moment `runDownload` is invoked (i.e. right after the
   // cycle-start 'downloading' write, before any new progress patch has had a
