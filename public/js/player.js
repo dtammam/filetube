@@ -3627,7 +3627,12 @@ if (typeof module !== 'undefined' && module.exports) {
         // scrubbing, CC -- on top of a full-viewport picture. The same
         // button toggles back out. Native mode and desktop keep the real
         // Fullscreen API path below, byte-identical.
-        if (isMobileFormFactor() && mobileCustomPlayerCached && !inNativeControlsMode()) {
+        // v1.34.3: keyed off the ACTIVE surface (not the async cached
+        // settings flag, which introduced a click-time race): if the custom
+        // bar is what's on screen for a mobile VIDEO, faux fullscreen is the
+        // right behavior -- period.
+        if (isMobileFormFactor() && !inNativeControlsMode() &&
+            currentData && currentData.type !== 'audio' && state === STATE_FULL) {
           host.classList.toggle('css-fullscreen');
           return;
         }

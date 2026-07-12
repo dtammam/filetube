@@ -3828,15 +3828,22 @@ a.sub-row-channel-link:focus-visible {
   }
   #player-slot .player-controls .pc-time,
   #player-slot .player-controls .pc-seek {
+    order: -2;
+  }
+  /* v1.34.3 (Dean round 3): AIRTIGHT row split. The v1.34.2 min-width math
+     was a device-font-dependent razor edge (narrow time labels left just
+     enough room for the play button to share the scrub row). A full-width
+     zero-height flex item ordered BETWEEN the scrub elements (-2) and the
+     buttons (0) forces the line break structurally -- no arithmetic. */
+  #player-slot .player-controls::after {
+    content: '';
     order: -1;
+    flex-basis: 100%;
+    height: 0;
   }
   #player-slot .player-controls .pc-seek {
-    /* v1.34.2 (Dean round 2): the seek bar must OWN its row. flex-shrink
-       let the play/speed buttons squeeze onto the scrub row by collapsing
-       the bar; a hard min-width that leaves room only for the two time
-       labels (~75px each incl. gaps) forces every button onto row 2. */
     flex: 1 1 auto;
-    min-width: calc(100% - 170px);
+    min-width: 0;
   }
   /* Exactly two rows: scrub (~32px) + buttons (44px) + gap -- keep the bar
      from ever clipping a third row (the v1.34.1 screenshot showed CC/Ch
@@ -4016,6 +4023,13 @@ a.sub-row-channel-link:focus-visible {
   z-index: 200;
   background: #000;
   border-radius: 0;
+  /* v1.34.3: the mobile-portrait height clamps (45vh/78vh, further down)
+     would squash the fixed overlay into a band -- release every sizing
+     constraint while fullscreen. */
+  max-height: none !important;
+  height: auto !important;
+  aspect-ratio: auto !important;
+  width: auto !important;
 }
 #player-wrapper.css-fullscreen:not(.audio-expanded) #media-player {
   aspect-ratio: auto;
@@ -4041,6 +4055,14 @@ a.sub-row-channel-link:focus-visible {
 /* v1.34 T3 (Dean): chapter picker popup. Anchored to the control bar
    (#player-controls is the positioning context), opening UPWARD above the
    bar; token-driven so every era/mode theme styles it for free. */
+.chapters-menu[hidden] {
+  /* v1.34.3 (Dean round 3, ROOT CAUSE of the whole dismissal saga): the
+     class's own `display: flex` below silently overrode the `hidden`
+     attribute (author display beats the UA stylesheet's [hidden] rule) --
+     so every close path since v1.34.0 set hidden=true and the menu stayed
+     visible regardless. This rule restores hidden's meaning. */
+  display: none !important;
+}
 .chapters-menu {
   position: absolute;
   right: 8px;
