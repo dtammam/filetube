@@ -32,7 +32,12 @@ const ytdlpArgs = require('./lib/ytdlp/args');
 // required directly here, the exact same posture as `ytdlpArgs` above, so
 // `enumerateRepullableItems` (below) can turn a recovered yt-dlp video id back
 // into a canonical watch URL for the re-pull job to fetch.
-const { buildWatchUrl } = require('./lib/ytdlp/url');
+// v1.33 T1/T2: `classifySingleVideo` turns an embedded `purl`/`comment` tag's
+// URL into a validated {videoId, watchUrl} (the ONLY id source for a
+// bracket-less metube-era filename); `isSafeVideoId` guards the persisted
+// `youtubeId` field on both write paths -- same direct-require posture as
+// `buildWatchUrl` below.
+const { buildWatchUrl, classifySingleVideo, isSafeVideoId } = require('./lib/ytdlp/url');
 // v1.15.1 hotfix: pure predicate for yt-dlp's own intermediate/partial-
 // download artifacts (merge temps, per-format fragments, `.part`/`.ytdl`
 // markers) left in its download dir mid-download or after a killed/failed
@@ -835,6 +840,66 @@ function selectPrunableIds(oldMetadata, survivingIds, opts) {
   return prune;
 }
 
+// v1.33 T4 (tech-debt #10, Dean's Option C): the EMPTY-BUT-PRESENT
+// mountpoint detector. An unmounted network share often leaves its
+// mountpoint directory in place -- `fs.existsSync(root)` stays true, readdir
+// returns zero entries -- so the root never lands in `missingRoots` and,
+// before this guard, every id under it looked individually deleted and was
+// pruned (progress/thumbnail/transcode sidecars reaped). The signature this
+// detects: a configured root that PREVIOUSLY held indexed items contributed
+// ZERO files to this scan (not one survivor, not one new file) while the
+// directory itself still exists. That is an unmount/mount-wedge shape, not a
+// plausible organic library change -- so the root is treated exactly like a
+// missing root (protect, don't reap).
+//
+// Deliberate, accepted cost: genuinely emptying a configured folder's ENTIRE
+// content out-of-band (outside FileTube) now retains its stale entries
+// instead of pruning them, with a loud per-scan warning. The escape hatch is
+// removing the folder from Settings (an entry whose root is no longer a
+// configured folder but still carries `rootFolder` falls through to
+// selectPrunableIds' normal pruning) -- or deleting the items through
+// FileTube itself, which never routes through prune at all. Partial
+// deletions of any size are unaffected: one surviving OR new file under the
+// root defuses the signature entirely.
+//
+// Pure: no FS I/O (the "directory still exists" half is established by the
+// caller's own walk -- a root that failed existsSync is already in
+// `missingRoots` and is skipped here). Attribution matches
+// selectPrunableIds exactly (entry.rootFolder, matchRootFolder fallback for
+// legacy entries) so the two can never disagree about which root owns an id.
+// `newMetadata` at the call site is exactly this scan's found-on-disk items
+// (retention copy-back happens after), so "contributed zero files" is a
+// plain per-root count over it.
+// @returns {string[]} configured roots showing the vanished signature
+function detectVanishedRoots(oldMetadata, newMetadata, folders, missingRoots) {
+  const allFolders = folders || [];
+  const missing = missingRoots instanceof Set ? missingRoots : new Set(missingRoots || []);
+  const priorCounts = new Map();
+  for (const entry of Object.values(oldMetadata || {})) {
+    const filePath = entry && entry.filePath;
+    let root = entry && entry.rootFolder;
+    if (!root && filePath) root = matchRootFolder(filePath, allFolders);
+    if (!root) continue;
+    priorCounts.set(root, (priorCounts.get(root) || 0) + 1);
+  }
+  const currentCounts = new Map();
+  for (const entry of Object.values(newMetadata || {})) {
+    const filePath = entry && entry.filePath;
+    let root = entry && entry.rootFolder;
+    if (!root && filePath) root = matchRootFolder(filePath, allFolders);
+    if (!root) continue;
+    currentCounts.set(root, (currentCounts.get(root) || 0) + 1);
+  }
+  const vanished = [];
+  for (const folder of allFolders) {
+    if (missing.has(folder)) continue; // already protected (existsSync failed)
+    if ((priorCounts.get(folder) || 0) > 0 && (currentCounts.get(folder) || 0) === 0) {
+      vanished.push(folder);
+    }
+  }
+  return vanished;
+}
+
 // Pure: reconcile a scan's freshly-built metadata map with a FRESHLY re-read
 // on-disk metadata map (taken immediately before the final save, see the
 // `runScanDirectories` save block). `newMetadata` is authoritative for
@@ -943,6 +1008,33 @@ function cleanDisplayTitle(baseName) {
 function extractYtdlpVideoId(baseName) {
   const m = /^(.*?)[ _]\[([A-Za-z0-9_-]{11})\]$/.exec(baseName);
   return m ? m[2] : null;
+}
+
+// v1.33 T1: scan-time YouTube-id derivation, shared by the new/updated
+// branch's probe path and its probe-failure path. Two sources, in trust
+// order: (1) the filename's `[id]` bracket -- scoped to yt-dlp-rooted files
+// exactly like the bridge/cleanDisplayTitle (a coincidentally-bracketed
+// library file elsewhere is never fed through extractYtdlpVideoId); (2) the
+// embedded `purl`/`comment` source URL off the file's own probe -- an
+// EXPLICIT downloader-written provenance tag, trusted from any root, but
+// only after it survives the classifySingleVideo gate. Returns the id or
+// `null` -- callers persist the `null` too (probed-once convention).
+//
+// ACCEPTED trust boundary (v1.33 gate, conscious decision): the embedded tag
+// is only ever a claim about which YouTube video this file CAME FROM --
+// anyone with write access to the media files themselves (already full
+// control in this LAN-only, single-user app) could edit it to point the
+// Share link / reheat metadata at a different-but-legitimate YouTube video.
+// The gate guarantees it can only ever be a well-formed YouTube video URL
+// (never another host, a playlist, or a credentialed URL); content-vs-id
+// agreement is not (and cannot be) verified. Revisit if multi-user/untrusted
+// library roots ever land (see ROADMAP's accounts item).
+function deriveScanYoutubeId(filePath, info, ytdlpRoots, embeddedSourceUrl) {
+  if (matchRootFolder(filePath, ytdlpRoots)) {
+    const bracketId = extractYtdlpVideoId(path.basename(info.name, info.ext));
+    if (bracketId) return bracketId;
+  }
+  return youtubeIdFromUrlString(embeddedSourceUrl);
 }
 
 // Check if ffmpeg is available
@@ -1475,6 +1567,104 @@ function deriveReleaseDate(embeddedMs, mtimeMs) {
   return null;
 }
 
+// v1.33 T1: pull the ORIGINAL source URL out of ffprobe's format tags.
+// yt-dlp's `--embed-metadata` (and metube, which wraps yt-dlp) writes the
+// video's canonical webpage URL into the `purl` tag and (usually) `comment`
+// too. `purl` is checked first (it is EXACTLY this, by definition); `comment`
+// is the fallback (it can also carry free-form text, so the downstream
+// `classifySingleVideo` gate decides whether it is actually a YouTube video
+// URL). Same accepts-object-or-raw-stdout / never-throws contract as
+// `parseEmbeddedReleaseDateMs` above, and deliberately reads RAW `format.tags`
+// for the same reason that function does: `purl` is not (and should not
+// become) part of EMBEDDED_TAG_WHITELIST -- that list also drives the watch
+// page's "embedded info" block, and a raw URL line there was never asked for.
+// Returns the raw tag string (untrusted -- callers MUST validate through
+// classifySingleVideo), or `null`.
+function parseEmbeddedSourceUrl(input) {
+  let j = input;
+  if (typeof input === 'string') {
+    try { j = JSON.parse(input); } catch (_) { return null; }
+  }
+  if (!j || typeof j !== 'object') return null;
+  const raw = (j.format && j.format.tags) || {};
+  if (!raw || typeof raw !== 'object') return null;
+  const lower = {};
+  for (const k of Object.keys(raw)) {
+    const v = raw[k];
+    if (typeof v === 'string' && v.trim()) lower[k.toLowerCase()] = v.trim();
+  }
+  const candidates = [lower.purl, lower.comment];
+  for (const candidate of candidates) {
+    if (typeof candidate === 'string' && /^https?:\/\//i.test(candidate)) return candidate;
+  }
+  return null;
+}
+
+// v1.33 T1: validate an untrusted URL-ish string (an embedded `purl`/`comment`
+// tag, typically) down to a safe YouTube video id, through the SAME
+// `classifySingleVideo` gate every other untrusted URL in the yt-dlp module
+// crosses -- never a home-grown regex. Returns the 11-char id, or `null` for
+// anything that is not a well-formed single-video YouTube URL. Pure, never
+// throws (classifySingleVideo fails closed on garbage input).
+function youtubeIdFromUrlString(raw) {
+  if (typeof raw !== 'string' || raw === '') return null;
+  const classified = classifySingleVideo(raw);
+  return classified.ok ? classified.videoId : null;
+}
+
+// v1.33 T1: the reheat batch's LOCAL tags probe (deps-injected into
+// lib/ytdlp/index.js's runRepullMetadataBatch as `probeEmbeddedTags`) -- a
+// single, cheap, network-free ffprobe of the file's embedded format tags.
+// Returns `{ releaseDateMs, sourceUrl, title }` (each `null` when the probe
+// SUCCEEDED but the tag is absent/unparseable), or `null` -- the whole value,
+// not a field -- on ffmpeg-unavailable / spawn error / empty or malformed
+// probe output. Never rejects. The null-vs-object distinction is
+// LOAD-BEARING (gate fix, adversarial WARNING): the reheat batch treats an
+// all-null OBJECT as "this file genuinely carries nothing" (safe to mark the
+// item exhausted/complete) but a `null` RESULT as "the probe itself failed,
+// transiently" (the item must stay retryable) -- collapsing the two would
+// let a brief ffmpeg hiccup permanently foreclose an item's future
+// discovery. Reuses `buildFfprobeArgs` (the single source of truth for probe
+// args) and the SAME parse helpers the scan's own probe uses, so the two can
+// never disagree about what an embedded tag means. NEVER touches thumbnails
+// or runs ffmpeg -- probe-only, exactly like `probeCodecsOnly` above (the
+// thumbnail-backfill-regression lesson).
+// `title` is returned RAW off the tag (trimmed by the extraction below) --
+// the persist path (`recordRepulledItemMeta`) sanitizes it through
+// `ytdlp.sanitizeCapturedTitle` before anything is stored.
+function probeEmbeddedTags(filePath) {
+  return new Promise((resolve) => {
+    if (!ffmpegAvailable) { resolve(null); return; }
+    execFile('ffprobe', buildFfprobeArgs(filePath), { maxBuffer: 16 * 1024 * 1024 }, (err, stdout) => {
+      if (err || !stdout) { resolve(null); return; }
+      let j;
+      try {
+        j = JSON.parse(stdout);
+      } catch (_) {
+        // Malformed probe output = the probe FAILED (transient) -- null, per
+        // the contract above, never an all-null "genuinely nothing" object.
+        resolve(null);
+        return;
+      }
+      let releaseDateMs = null;
+      let sourceUrl = null;
+      let title = null;
+      try { releaseDateMs = parseEmbeddedReleaseDateMs(j); } catch (_) { releaseDateMs = null; }
+      try { sourceUrl = parseEmbeddedSourceUrl(j); } catch (_) { sourceUrl = null; }
+      const rawTags = (j && j.format && j.format.tags) || {};
+      if (rawTags && typeof rawTags === 'object') {
+        for (const k of Object.keys(rawTags)) {
+          if (k.toLowerCase() === 'title' && typeof rawTags[k] === 'string' && rawTags[k].trim() !== '') {
+            title = rawTags[k].trim();
+            break;
+          }
+        }
+      }
+      resolve({ releaseDateMs, sourceUrl, title });
+    });
+  });
+}
+
 // FR-1b (v1.18.0): the browser-compatible codec allowlist — deliberately
 // conservative (H.264/AVC video + AAC audio ONLY; HEVC/VP9/AV1/AC-3/DTS/
 // E-AC-3 etc. are NOT allowlisted despite partial device support), mirroring
@@ -1706,7 +1896,7 @@ function extractMetadataAndThumbnail(filePath, mediaId, isAudio) {
       // ~line 1241) sees the codec keys as present (probed once, no usable
       // codec) instead of re-extracting (ffprobe attempt + ffmpeg thumbnail
       // attempt) every video item on every single scan forever.
-      return resolve({ duration: 0, hasThumbnail: false, artist: '', tags: {}, videoCodec: null, audioCodec: null, embeddedReleaseDateMs: null, width: null, height: null });
+      return resolve({ duration: 0, hasThumbnail: false, artist: '', tags: {}, videoCodec: null, audioCodec: null, embeddedReleaseDateMs: null, embeddedSourceUrl: null, width: null, height: null });
     }
 
     // Get duration + all format tags (artist -> channel name; the rest -> the
@@ -1744,6 +1934,12 @@ function extractMetadataAndThumbnail(filePath, mediaId, isAudio) {
       // (probe failed/errored, or the file genuinely carries none), which
       // the caller (`deriveReleaseDate`) treats as "fall through to mtime".
       let embeddedReleaseDateMs = null;
+      // v1.33 T1: embedded ORIGINAL source URL (yt-dlp/metube `--embed-metadata`
+      // `purl`/`comment` tags), from this SAME probe -- `null` on probe
+      // failure or when the file genuinely carries none; the scan's
+      // new/updated branch turns it into a persisted `youtubeId` via the
+      // classifySingleVideo gate.
+      let embeddedSourceUrl = null;
       // Feature A (v1.26.1): VIDEO-only intrinsic dimensions, from the SAME
       // probe -- `null` by default (audio items, a failed/errored probe, or
       // a video whose real stream dims weren't usable) exactly like
@@ -1773,6 +1969,7 @@ function extractMetadataAndThumbnail(filePath, mediaId, isAudio) {
             }
           } catch (_) { videoCodec = null; audioCodec = null; }
           try { embeddedReleaseDateMs = parseEmbeddedReleaseDateMs(j); } catch (_) { embeddedReleaseDateMs = null; }
+          try { embeddedSourceUrl = parseEmbeddedSourceUrl(j); } catch (_) { embeddedSourceUrl = null; }
         } catch (_) {}
       }
 
@@ -1783,7 +1980,7 @@ function extractMetadataAndThumbnail(filePath, mediaId, isAudio) {
         // metacharacters could otherwise be a command-injection vector
         // (matches the ffprobe `execFile` hardening above).
         execFile('ffmpeg', ['-i', filePath, '-an', '-vcodec', 'copy', '-y', thumbPath], (artErr) => {
-          resolve({ duration, artist, tags, videoCodec, audioCodec, embeddedReleaseDateMs, width, height, hasThumbnail: !artErr && fs.existsSync(thumbPath) });
+          resolve({ duration, artist, tags, videoCodec, audioCodec, embeddedReleaseDateMs, embeddedSourceUrl, width, height, hasThumbnail: !artErr && fs.existsSync(thumbPath) });
         });
       } else {
         // Extract video frame (at 2 seconds or 10% of duration, whichever is
@@ -1791,7 +1988,7 @@ function extractMetadataAndThumbnail(filePath, mediaId, isAudio) {
         // reason as the audio-art branch above.
         const timestamp = duration > 5 ? 2 : Math.max(0, duration / 2);
         execFile('ffmpeg', ['-ss', String(timestamp), '-i', filePath, '-vframes', '1', '-q:v', '2', '-y', thumbPath], (frameErr) => {
-          resolve({ duration, artist, tags, videoCodec, audioCodec, embeddedReleaseDateMs, width, height, hasThumbnail: !frameErr && fs.existsSync(thumbPath) });
+          resolve({ duration, artist, tags, videoCodec, audioCodec, embeddedReleaseDateMs, embeddedSourceUrl, width, height, hasThumbnail: !frameErr && fs.existsSync(thumbPath) });
         });
       }
     });
@@ -2201,6 +2398,20 @@ async function runScanDirectories() {
         existing.releaseDate = deriveReleaseDate(null, info.mtimeMs);
         dbChanged = true;
       }
+      // v1.33 T1: SCHEMA-ONLY youtubeId backfill for an item that predates
+      // this field -- NO fresh probe (thumbnail-backfill lesson): the
+      // filename's `[id]` bracket (yt-dlp-rooted only), else the embedded
+      // `comment` tag ALREADY persisted by this item's original probe
+      // (EMBEDDED_TAG_WHITELIST includes `comment`; yt-dlp/metube's
+      // `--embed-metadata` writes the source URL there). Explicit `null`
+      // marks the attempt so this runs exactly once per item; the reheat's
+      // opt-in local ffprobe pass is what can still upgrade a `null` later
+      // (e.g. from a `purl` tag, which the whitelisted `tags` never stored).
+      if (!Object.prototype.hasOwnProperty.call(existing, 'youtubeId')) {
+        existing.youtubeId = deriveScanYoutubeId(filePath, info, ytdlpDownloadRoots,
+          existing.tags && typeof existing.tags.comment === 'string' ? existing.tags.comment : null);
+        dbChanged = true;
+      }
       if (applyHasSubtitlesDetection(existing, filePath, perScanReaddirCache)) dbChanged = true;
       newMetadata[id] = existing;
     } else if (legacyVideoCodecBackfillOnly) {
@@ -2236,6 +2447,14 @@ async function runScanDirectories() {
       // to and not reused for the date).
       if (!Object.prototype.hasOwnProperty.call(existing, 'releaseDate')) {
         existing.releaseDate = deriveReleaseDate(null, info.mtimeMs);
+        dbChanged = true;
+      }
+      // v1.33 T1: same schema-only youtubeId backfill as the plain reuse
+      // fast-path above -- filename bracket / persisted `comment` tag only,
+      // no fresh probe (the codec-only probe just above is unrelated).
+      if (!Object.prototype.hasOwnProperty.call(existing, 'youtubeId')) {
+        existing.youtubeId = deriveScanYoutubeId(filePath, info, ytdlpDownloadRoots,
+          existing.tags && typeof existing.tags.comment === 'string' ? existing.tags.comment : null);
         dbChanged = true;
       }
       applyHasSubtitlesDetection(existing, filePath, perScanReaddirCache);
@@ -2328,12 +2547,54 @@ async function runScanDirectories() {
         // unavailable/probe-failure/no-usable-tag; `deriveReleaseDate`
         // falls through to `info.mtimeMs` in every one of those cases.
         newMetadata[id].releaseDate = deriveReleaseDate(meta.embeddedReleaseDateMs, info.mtimeMs);
+        // v1.33 T1: persisted YouTube id -- filename `[id]` bracket
+        // (yt-dlp-rooted files only, same scoping as cleanDisplayTitle/the
+        // bridge below) first, else the embedded `purl`/`comment` source URL
+        // this SAME probe surfaced (the only id source for a bracket-less
+        // metube-era import), validated through classifySingleVideo. `null`
+        // (never absent) once derivation has been attempted, mirroring the
+        // codec fields' probed-once convention.
+        newMetadata[id].youtubeId = deriveScanYoutubeId(filePath, info, ytdlpDownloadRoots, meta.embeddedSourceUrl);
       } catch (err) {
         console.error(`Error extracting metadata for ${info.name}:`, err);
         // Metadata extraction itself failed (before `meta` resolved) -- the
         // item still gets a `releaseDate` via the mtime-only fallback
         // rather than the field being left entirely absent.
         newMetadata[id].releaseDate = deriveReleaseDate(null, info.mtimeMs);
+        // v1.33 T1: same probed-once convention on the failure path --
+        // filename-bracket only (there is no probe output to read a purl
+        // from), `null` when that yields nothing.
+        newMetadata[id].youtubeId = deriveScanYoutubeId(filePath, info, ytdlpDownloadRoots, null);
+      }
+      // v1.33 T3: a CHANGED file (same path, new size -- this whole re-init
+      // branch) must not lose a previously captured/reheated real title
+      // (`sourceTitle`, emoji intact) back to the filename-derived one: carry
+      // it forward and keep preferring it as the display title. A genuinely
+      // NEW file has no `existing`, so both stay filename-derived until the
+      // bridge below (fresh yt-dlp download) or a reheat backfills them.
+      if (existing && typeof existing.sourceTitle === 'string' && existing.sourceTitle !== '') {
+        newMetadata[id].sourceTitle = existing.sourceTitle;
+        newMetadata[id].title = existing.sourceTitle;
+      }
+      // v1.33 gate fix (adversarial CRITICAL): the SAME carry-forward for the
+      // identity fields, symmetric with `sourceTitle` above. A re-encoded/
+      // replaced file (same path, new size) whose replacement tool stripped
+      // the embedded purl/comment tags would otherwise silently revert a
+      // previously-established `youtubeId` (reheat-discovered or backfilled)
+      // to this pass's fresh `null` derivation -- killing the Share button
+      // and the item's reheat identity. A NON-null fresh derivation (bracket
+      // or a still-present embedded tag) stays authoritative -- for the same
+      // file path it can only ever be the same id. `metadataRepulledAt` rides
+      // along for the same reason: the re-init literal omits it, and losing
+      // it would silently flip the item back to reheat-eligible.
+      if (existing) {
+        if (newMetadata[id].youtubeId === null &&
+            typeof existing.youtubeId === 'string' && isSafeVideoId(existing.youtubeId)) {
+          newMetadata[id].youtubeId = existing.youtubeId;
+        }
+        if (typeof existing.metadataRepulledAt === 'number') {
+          newMetadata[id].metadataRepulledAt = existing.metadataRepulledAt;
+        }
       }
       dbChanged = true;
     }
@@ -2364,6 +2625,21 @@ async function runScanDirectories() {
   // this scan" (in phase1Ids, now absent from the fresh in-lock db -- drop,
   // don't resurrect) from "genuinely-new file" (absent from phase1Ids -- add).
   const phase1Ids = new Set(oldIds);
+  // v1.33 T4 (tech-debt #10, Option C): promote any configured root whose
+  // ENTIRE previously-indexed content vanished this pass (while the
+  // directory itself still exists -- the empty-but-present unmount
+  // signature) into `missingRoots`, so selectPrunableIds' existing
+  // mount-loss guard (#2) protects its ids exactly like an existsSync-failed
+  // root's. See detectVanishedRoots' own comment for the accepted
+  // genuinely-emptied-folder cost + escape hatch.
+  for (const vanishedRoot of detectVanishedRoots(db.metadata, newMetadata, currentFolders, missingRoots)) {
+    console.warn(
+      `Scan: every previously-indexed item under "${vanishedRoot}" is gone this pass while the folder itself is still present -- ` +
+      'treating it as an unmounted/empty mountpoint and pruning NOTHING under it (watch progress and thumbnails are preserved). ' +
+      'If you really did clear this folder\'s entire content on purpose, remove the folder from Settings to let its entries prune.'
+    );
+    missingRoots.add(vanishedRoot);
+  }
   const prunable = new Set(
     selectPrunableIds(db.metadata, survivingIds, {
       missingRoots,
@@ -2463,6 +2739,66 @@ async function runScanDirectories() {
         }
       }
 
+      // v1.33 gate fix (QA CRITICAL -- the stale-snapshot bug class's FOURTH
+      // strike): the SAME F1 guard, applied to the REHEAT-writable fields. A
+      // reheat batch (`recordRepulledItemMeta`, below) writes `sourceTitle`/
+      // `title`/`youtubeId`/`releaseDate`/`channelAvatarUrl`/`hasSubtitles`/
+      // `metadataRepulledAt` through its own `updateDatabase` calls with NO
+      // mutual exclusion against a running scan -- so a reheat landing after
+      // this scan's Phase-1 snapshot but before this final save would be
+      // silently reverted by the wholesale `newMetadata` replace below.
+      // Two rules, mirroring F1's "only fill what the scan's own pass didn't
+      // itself produce":
+      //  - A reheat that COMPLETED mid-scan (fresh `metadataRepulledAt` is
+      //    NEWER than the snapshot's) is authoritative for the whole field
+      //    group -- adopt it. The FR-2 bridge below still runs AFTER this and
+      //    may overwrite `sourceTitle`/`title` with a genuinely-fresh
+      //    download capture, which is the correct precedence (newest event).
+      //  - Independent of that, plain GAP-FILLS: a fresh `youtubeId`/
+      //    `sourceTitle`/`metadataRepulledAt` the scan's own item simply
+      //    LACKS is carried forward (a PARTIAL mid-scan reheat -- subs pass
+      //    failed, marker withheld -- at least keeps its discovered id/title
+      //    when the scan itself derived none).
+      // Bounded remainder (accepted): a partial mid-scan reheat that
+      // UPDATED an already-present releaseDate/sourceTitle can still lose
+      // that update to the snapshot -- the item stays retryable (marker
+      // unset), so the next reheat re-persists it with no scan running.
+      {
+        const freshItem = fresh.metadata[item.id];
+        if (freshItem) {
+          const freshReheatAt = typeof freshItem.metadataRepulledAt === 'number' ? freshItem.metadataRepulledAt : 0;
+          const snapshotReheatAt = typeof item.metadataRepulledAt === 'number' ? item.metadataRepulledAt : 0;
+          if (freshReheatAt > snapshotReheatAt) {
+            item.metadataRepulledAt = freshItem.metadataRepulledAt;
+            if (typeof freshItem.releaseDate === 'number' && Number.isFinite(freshItem.releaseDate)) {
+              item.releaseDate = freshItem.releaseDate;
+            }
+            if (typeof freshItem.sourceTitle === 'string' && freshItem.sourceTitle !== '') {
+              item.sourceTitle = freshItem.sourceTitle;
+              item.title = freshItem.sourceTitle;
+            }
+            if (typeof freshItem.channelAvatarUrl === 'string' && freshItem.channelAvatarUrl !== '') {
+              item.channelAvatarUrl = freshItem.channelAvatarUrl;
+            }
+            if (typeof freshItem.hasSubtitles === 'boolean') {
+              item.hasSubtitles = freshItem.hasSubtitles;
+            }
+          }
+          if ((item.youtubeId === null || item.youtubeId === undefined) &&
+              typeof freshItem.youtubeId === 'string' && isSafeVideoId(freshItem.youtubeId)) {
+            item.youtubeId = freshItem.youtubeId;
+          }
+          if ((typeof item.sourceTitle !== 'string' || item.sourceTitle === '') &&
+              typeof freshItem.sourceTitle === 'string' && freshItem.sourceTitle !== '') {
+            item.sourceTitle = freshItem.sourceTitle;
+            item.title = freshItem.sourceTitle;
+          }
+          if (item.metadataRepulledAt === undefined && typeof freshItem.metadataRepulledAt === 'number') {
+            item.metadataRepulledAt = freshItem.metadataRepulledAt;
+          }
+        }
+      }
+
       // v1.20.0 FR-2: bridge each freshly-scanned yt-dlp download's captured
       // channel identity onto its db.metadata item, inside the SAME
       // serialized mutator that already owns db.ytdlp -- ytdlp.consumeDownloadChannelMeta
@@ -2480,6 +2816,11 @@ async function runScanDirectories() {
       if (freshlyScannedIds.has(item.id) && matchRootFolder(item.filePath, ytdlpDownloadRoots)) {
         const videoId = extractYtdlpVideoId(path.basename(item.name, item.ext));
         if (videoId) {
+          // v1.33 T1: the bracket id IS this item's YouTube id -- persist it
+          // (the new/updated branch above already set it from the same
+          // bracket, but this also covers the AC20 race window where the
+          // item was indexed before this bridge pass).
+          item.youtubeId = videoId;
           const consumed = ytdlp.consumeDownloadChannelMeta(fresh, videoId);
           if (consumed) {
             item.channelUrl = consumed.channelUrl;
@@ -2494,6 +2835,16 @@ async function runScanDirectories() {
             // timestamp.
             if (typeof consumed.releaseDate === 'number' && Number.isFinite(consumed.releaseDate)) {
               item.releaseDate = consumed.releaseDate;
+            }
+            // v1.33 T3: the captured REAL title (emoji intact -- see
+            // CHANNEL_META_PRINT_TEMPLATE, lib/ytdlp/args.js) supersedes the
+            // filename-derived display title, which `--restrict-filenames`
+            // has already folded to underscores on disk. `sourceTitle` keeps
+            // the provenance so later rescans of a changed file re-prefer it
+            // (see the carry-forward in the new/updated branch above).
+            if (typeof consumed.sourceTitle === 'string' && consumed.sourceTitle !== '') {
+              item.sourceTitle = consumed.sourceTitle;
+              item.title = consumed.sourceTitle;
             }
             // C6 (T11, Wave 3): `consumeDownloadChannelMeta` re-validates the
             // captured avatar via `sanitizeChannelAvatarUrl` before returning
@@ -3426,9 +3777,16 @@ app.get('/api/videos/:id', (req, res) => {
     const dbForAvatarLookup = { ...db, ytdlp: db.ytdlp ? structuredClone(db.ytdlp) : undefined };
     channelAvatarUrl = ytdlp.resolveItemChannelAvatarUrl(dbForAvatarLookup, item);
   }
+  // v1.33 T2 (Share button): the ORIGINAL YouTube watch URL, derived at
+  // serve time from the persisted `youtubeId` through the same buildWatchUrl
+  // gate the re-pull path uses (it re-validates the id and returns null on
+  // anything unsafe -- the spread's own raw `youtubeId` is informational;
+  // THIS field is the one the client shares).
+  const watchUrl = typeof item.youtubeId === 'string' ? buildWatchUrl(item.youtubeId) : null;
   res.json({
     ...item,
     ...(channelAvatarUrl ? { channelAvatarUrl } : {}),
+    ...(watchUrl ? { watchUrl } : {}),
     progress: progress.timestamp,
     transcodeProgress: transcodeProgress[item.id] || 0,
     // v1.27.0 (EXPERIMENTAL): `audioStatus` itself already rides the `...item`
@@ -4245,14 +4603,18 @@ async function migrateOneOffsIntoChannelFolders(deps, config) {
 /**
  * Pure eligibility gate: classify every `db.metadata` item as re-pullable or
  * not, without touching the filesystem or the database. An item is eligible
- * iff (a) its filename carries the FileTube/yt-dlp `[<11-char id>]` suffix
- * `extractYtdlpVideoId` recognizes (an imported/MeTube-style file without it
- * is never eligible -- there is no video id to re-pull against), AND (b) it
- * physically lives under the module's own yt-dlp download root
- * (`ytdlp.extraScanRoots(config)`) -- mirroring the scan bridge's own double-
- * scoping (see the `freshlyScannedIds`/`ytdlpDownloadRoots` bridge above,
- * ~line 1754) so a coincidentally-bracketed non-yt-dlp library file is never
- * fed a network re-pull.
+ * iff it physically lives under the module's own yt-dlp download root
+ * (`ytdlp.extraScanRoots(config)`) -- mirroring the scan bridge's own
+ * scoping so a non-yt-dlp library file is never fed a re-pull job.
+ *
+ * v1.33 T1: a video id is NO LONGER required for eligibility. Each item
+ * carries the best id currently derivable -- the filename's `[<11-char id>]`
+ * bracket, else a previously-persisted `item.youtubeId` (re-checked through
+ * `isSafeVideoId`) -- as `videoId`/`watchUrl`, which are `null` when neither
+ * exists (a bracket-less metube-era import). The batch worker
+ * (`runRepullMetadataBatch`, lib/ytdlp/index.js) runs its LOCAL ffprobe tags
+ * pass on those regardless, and can derive a watch URL on the fly from an
+ * embedded `purl` tag; only the NETWORK pass is gated on a watch URL.
  *
  * Each eligible item's own `metadataRepulledAt` (already set by a prior
  * `recordRepulledItemMeta` call, or absent) is surfaced as `alreadyRepulled`
@@ -4262,7 +4624,7 @@ async function migrateOneOffsIntoChannelFolders(deps, config) {
  *
  * @param {object} db a `loadDatabase()`-shaped db snapshot
  * @param {object} config a parsed yt-dlp config (`ytdlp.parseYtdlpConfig()`)
- * @returns {{items: Array<{mediaId: string, filePath: string, videoId: string, watchUrl: string, alreadyRepulled: boolean}>, eligible: number, ineligible: number}}
+ * @returns {{items: Array<{mediaId: string, filePath: string, videoId: string|null, watchUrl: string|null, alreadyRepulled: boolean}>, eligible: number, ineligible: number}}
  */
 function enumerateRepullableItems(db, config) {
   const result = { items: [], eligible: 0, ineligible: 0 };
@@ -4286,12 +4648,18 @@ function enumerateRepullableItems(db, config) {
       continue;
     }
     const baseName = path.basename(item.filePath, path.extname(item.filePath));
-    const videoId = extractYtdlpVideoId(baseName);
+    // v1.33 T1: filename `[id]` bracket first; else a previously-persisted
+    // `youtubeId` (scan backfill / a prior reheat's own discovery),
+    // re-checked through isSafeVideoId (untrusted-until-proven, same as
+    // every other persisted-then-reread field). An item with NEITHER is no
+    // longer ineligible: it flows through with null videoId/watchUrl so the
+    // batch worker's LOCAL ffprobe pass (embedded date/purl/title -- the
+    // only shot a bracket-less metube-era import gets) still runs; the
+    // worker derives a watch URL from an embedded purl on the fly when one
+    // exists (see runRepullMetadataBatch, lib/ytdlp/index.js).
+    const bracketId = extractYtdlpVideoId(baseName);
+    const videoId = bracketId || (isSafeVideoId(item.youtubeId) ? item.youtubeId : null);
     const watchUrl = videoId ? buildWatchUrl(videoId) : null;
-    if (!videoId || !watchUrl) {
-      result.ineligible++;
-      continue;
-    }
 
     result.items.push({
       mediaId: getMediaId(item.filePath),
@@ -4369,6 +4737,26 @@ async function recordRepulledItemMeta(deps, mediaId, meta, nowMs = Date.now()) {
     }
     if (typeof m.channelAvatarUrl === 'string' && m.channelAvatarUrl !== '') {
       item.channelAvatarUrl = m.channelAvatarUrl;
+    }
+    // v1.33 T3: the re-pulled REAL title (network `--dump-json` or the local
+    // embedded `title` tag) -- sanitized through the SAME single gate the
+    // download-capture path uses (`ytdlp.sanitizeCapturedTitle`: control-char
+    // strip, trim, length cap; emoji survive). SUPERSEDES the display title,
+    // same "a re-pull is a deliberate refresh" precedence as releaseDate.
+    if (typeof m.sourceTitle === 'string') {
+      const cleanTitle = ytdlp.sanitizeCapturedTitle(m.sourceTitle);
+      if (cleanTitle !== null) {
+        item.sourceTitle = cleanTitle;
+        item.title = cleanTitle;
+      }
+    }
+    // v1.33 T1: a youtubeId discovered by the batch (filename bracket, a
+    // prior persisted value, or an embedded purl the LOCAL pass surfaced) --
+    // re-checked through isSafeVideoId before persisting, gap-fill-or-refresh
+    // (the id for a given file can only ever be one value, so supersede is
+    // safe and heals a stale/garbage value too).
+    if (typeof m.youtubeId === 'string' && isSafeVideoId(m.youtubeId)) {
+      item.youtubeId = m.youtubeId;
     }
     // Re-check the sidecar on disk NOW (after the subs pass), against the
     // item's OWN filePath -- same resolver the scan's `hasSubtitles`
@@ -4996,6 +5384,10 @@ ytdlp.registerRoutes(app, {
   getMediaId,
   recordRepulledItemMeta,
   enumerateRepullableItems,
+  // v1.33 T1: the reheat batch's LOCAL tags probe (cheap ffprobe, no
+  // network) -- server.js owns ffmpeg/ffprobe, so the yt-dlp module gets it
+  // deps-injected like every other server-owned primitive above.
+  probeEmbeddedTags,
   // v1.29.0 T3: the app's own DATA_DIR (resolved above, the SAME directory
   // db.json lives in) -- threaded through so lib/ytdlp/index.js's run-log
   // emit sites (`processSubscription`/`runOneShot`, via `deps.dataDir`) know
@@ -5205,6 +5597,13 @@ module.exports = {
   // `parseFfprobeTags`/`parseFfprobeStreams`'s existing testing contract).
   parseEmbeddedReleaseDateMs,
   deriveReleaseDate,
+  // v1.33 T1: embedded source-URL / youtubeId derivation + the reheat's
+  // local tags probe -- re-exported under the same testing contract as
+  // parseEmbeddedReleaseDateMs above.
+  parseEmbeddedSourceUrl,
+  youtubeIdFromUrlString,
+  deriveScanYoutubeId,
+  probeEmbeddedTags,
   PLAYABLE_VIDEO_CODECS,
   PLAYABLE_AUDIO_CODECS,
   parseCacheCap,
@@ -5220,6 +5619,10 @@ module.exports = {
   scanIntervalMs,
   selectAgedOut,
   selectPrunableIds,
+  // v1.33 T4 (tech-debt #10, Option C): the empty-but-present mountpoint
+  // detector -- re-exported under the same testing contract as
+  // selectPrunableIds above.
+  detectVanishedRoots,
   mergeScannedMetadata,
   transcodeCacheSize,
   effectiveCacheCap,
