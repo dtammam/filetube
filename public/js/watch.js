@@ -1798,6 +1798,14 @@ if (typeof module !== 'undefined' && module.exports) {
           // the same feedback without requiring a dismiss tap before the
           // navigate() below can proceed.
           showToast('File deleted.');
+          // v1.33.1 (QA gate): deleting an item can change the liked COUNT
+          // (a liked item's deletion removes it from the liked view) -- the
+          // count-gated sidebar entry's cached total must be refreshed, or
+          // deleting the LAST liked video leaves a stale Liked entry
+          // pointing at an empty view until a reload. The home view the
+          // navigate() below lands on re-applies through the same helper
+          // and picks up this refreshed cache.
+          applyLikedSidebarEntry(sidebarFoldersList, { force: true });
           if (window.FileTube && typeof window.FileTube.navigate === 'function') window.FileTube.navigate('/');
           else window.location.href = '/';
         } else {

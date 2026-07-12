@@ -147,3 +147,55 @@ test('watch page: liking the current video (the FIRST like ever) makes the sideb
     dom.window.close();
   }
 });
+
+test('watch page: UNLIKING the last liked video removes the sidebar entry live (reverse direction)', async () => {
+  const { fetchImpl } = makeFetchStub(1); // exactly one liked video: this one
+  const { dom } = await loadWatch(fetchImpl);
+  try {
+    await settle();
+    const { document } = dom.window;
+    assert.ok(document.querySelector('.sidebar-item-liked'), 'sanity: entry present while one like exists');
+
+    const likeBtn = document.getElementById('like-media-btn');
+    assert.ok(likeBtn && likeBtn.textContent.indexOf('Liked') === 0, 'sanity: the button reflects the liked state');
+    likeBtn.dispatchEvent(new dom.window.Event('click', { bubbles: true })); // unlike -> total drops to 0
+    await settle(20);
+
+    assert.strictEqual(document.querySelector('.sidebar-item-liked'), null,
+      'the entry must disappear the moment the LAST like is removed (force-refreshed count)');
+  } finally {
+    dom.window.close();
+  }
+});
+
+test('watch page: a transient /api/liked failure hides the entry for now but does NOT poison the cache -- the next render retries', async () => {
+  // First liked-count request fails; every later one succeeds with total 2.
+  let likedCalls = 0;
+  const base = makeFetchStub(2);
+  const fetchImpl = (input, init) => {
+    const url = typeof input === 'string' ? input : (input && input.url);
+    if (url === '/api/liked?limit=1') {
+      likedCalls += 1;
+      if (likedCalls === 1) return Promise.reject(new Error('transient network blip'));
+    }
+    return base.fetchImpl(input, init);
+  };
+  const { dom } = await loadWatch(fetchImpl);
+  try {
+    await settle();
+    const { document } = dom.window;
+    // The boot/render calls raced the one failed fetch -- whatever the
+    // interim state, a fresh application (any later re-render path) must
+    // retry and land the entry. Simulate the next render via the like
+    // button's own force-refresh hook being OFF the table: instead, unlike/
+    // like isn't needed -- just re-trigger a sidebar render through the
+    // page's own config path by calling the helper again from this realm.
+    dom.window.applyLikedSidebarEntry(document.getElementById('sidebar-folders-list'));
+    await settle(20);
+    assert.ok(document.querySelector('.sidebar-item-liked'),
+      'after a failed first fetch, a later render must retry (uncached failure) and show the entry');
+    assert.ok(likedCalls >= 2, 'sanity: the count endpoint was retried');
+  } finally {
+    dom.window.close();
+  }
+});

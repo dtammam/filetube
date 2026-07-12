@@ -668,8 +668,9 @@ function wireLogoVariantControls(variant, inputId, uploadId, resetId) {
       );
       // Swap the live header immediately so the change is visible without a
       // reload (same helper every page's boot uses; it resolves the variant
-      // for the CURRENT mode itself).
-      if (typeof applyCustomLogoIfSet === 'function') applyCustomLogoIfSet();
+      // for the CURRENT mode itself). `true` = force: a REPLACED same-variant
+      // logo must bypass the src-equality short-circuit and cache-bust.
+      if (typeof applyCustomLogoIfSet === 'function') applyCustomLogoIfSet(true);
     } catch (err) {
       if (statusEl) statusEl.textContent = 'Upload failed (network error).';
     }

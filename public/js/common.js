@@ -4018,7 +4018,7 @@ function requestMoveItem(id, targetFolder, fetchImpl) {
  * (the header + common.js are shared across all five shells); guarded for
  * Node/jsdom-without-header.
  */
-function applyCustomLogoIfSet() {
+function applyCustomLogoIfSet(force) {
   if (typeof document === 'undefined' || typeof fetch !== 'function') return;
   const logoEl = document.querySelector('.logo');
   if (!logoEl) return;
@@ -4027,17 +4027,21 @@ function applyCustomLogoIfSet() {
   // uploaded ("with only one uploaded, it is used for both"), so this stays a
   // dumb mode->URL mapping. Re-invoked by toggleTheme() so the header swaps
   // live with the moon/sun button.
+  // `force` (setup.js, right after an upload): bypasses the same-variant
+  // short-circuit AND cache-busts the fetch -- REPLACING the current mode's
+  // logo with a new image must swap live, not sit behind the src-equality
+  // check until a reload.
   const isDark = document.documentElement.getAttribute('data-mode') === 'dark';
   const url = isDark ? '/logo?variant=dark' : '/logo';
   fetch(url, { method: 'HEAD' })
     .then((r) => {
       if (!r || !r.ok) return; // no custom logo -- text (or the current img) stays
       const existing = logoEl.querySelector('img.logo-img');
-      if (existing && existing.getAttribute('src') === url) return; // already showing this variant
+      if (!force && existing && existing.getAttribute('src') === url) return; // already showing this variant
       const img = document.createElement('img');
       img.className = 'logo-img';
       img.alt = 'Logo';
-      img.src = url;
+      img.src = force ? url + (url.indexOf('?') >= 0 ? '&' : '?') + 'ts=' + Date.now() : url;
       // Only swap once the image actually loads -- a corrupt/vanished file
       // must never leave a broken-image glyph where the text logo was.
       img.addEventListener('load', () => {
@@ -4061,12 +4065,20 @@ function fetchLikedTotal(force) {
   if (force) likedTotalPromise = null;
   if (!likedTotalPromise) {
     likedTotalPromise = fetch('/api/liked?limit=1')
-      .then((r) => (r && r.ok ? r.json() : { total: 0 }))
+      .then((r) => (r && r.ok ? r.json() : Promise.reject(new Error('liked count fetch failed'))))
       .then((body) => {
         const n = body && Number(body.total);
         return Number.isFinite(n) && n > 0 ? n : 0;
       })
-      .catch(() => 0);
+      .catch(() => {
+        // Adversarial-gate fix: a TRANSIENT failure (network blip, 5xx) must
+        // not poison the session cache with a "confirmed 0" -- clear the
+        // cached promise so the NEXT render retries, while this caller still
+        // degrades to hidden-for-now. Only a genuine ok-response total is
+        // ever cached.
+        likedTotalPromise = null;
+        return 0;
+      });
   }
   return likedTotalPromise;
 }
