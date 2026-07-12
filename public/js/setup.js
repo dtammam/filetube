@@ -574,6 +574,12 @@ async function loadAutomationSettings() {
     // default -- mirrors autoplayNext's own prefill exactly.
     const backgroundAudioCheck = document.getElementById('background-audio-check');
     if (backgroundAudioCheck) backgroundAudioCheck.checked = !!s.backgroundAudioForVideo;
+    // v1.34 T4: custom-vs-native mobile video controls, OFF (native) by default.
+    const mobileCustomPlayerCheck = document.getElementById('mobile-custom-player-check');
+    if (mobileCustomPlayerCheck) mobileCustomPlayerCheck.checked = !!s.mobileCustomPlayer;
+    // v1.34: default home sort (release-date out of the box).
+    const defaultSortSelect = document.getElementById('default-sort-select');
+    if (defaultSortSelect) defaultSortSelect.value = typeof s.defaultSort === 'string' && s.defaultSort !== '' ? s.defaultSort : 'release-date';
     const cacheAgeSelect = document.getElementById('cache-age-select');
     if (cacheAgeSelect) cacheAgeSelect.value = String(s.cacheMaxAgeDays);
     const capInput = document.getElementById('cache-cap-input');
@@ -844,6 +850,24 @@ function wireStaticControls(signal) {
     scanIntervalSelect.addEventListener('change', (e) => {
       saveAutomationSetting('scanIntervalMinutes', parseInt(e.target.value, 10),
         document.getElementById('scan-interval-error'));
+    }, { signal });
+  }
+
+  // v1.34 T4: custom mobile player toggle -- same pattern as backgroundAudio.
+  const mobileCustomPlayerCheck = document.getElementById('mobile-custom-player-check');
+  if (mobileCustomPlayerCheck) {
+    mobileCustomPlayerCheck.addEventListener('change', (e) => {
+      saveAutomationSetting('mobileCustomPlayer', e.target.checked,
+        document.getElementById('mobile-custom-player-error'));
+    }, { signal });
+  }
+
+  // v1.34: default home sort -- same immediate-save pattern as defaultView.
+  const defaultSortSelect = document.getElementById('default-sort-select');
+  if (defaultSortSelect) {
+    defaultSortSelect.addEventListener('change', (e) => {
+      saveAutomationSetting('defaultSort', e.target.value,
+        document.getElementById('default-sort-error'));
     }, { signal });
   }
 

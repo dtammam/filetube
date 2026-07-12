@@ -80,7 +80,7 @@ beforeEach(() => {
 
 // ---- GET /api/settings -----------------------------------------------------
 
-test('GET /api/settings returns the 10-field shape with backfilled defaults on a fresh DB', async () => {
+test('GET /api/settings returns the 12-field shape with backfilled defaults on a fresh DB', async () => {
   const res = await fetch(`${base}/api/settings`);
   assert.equal(res.status, 200);
   const json = await res.json();
@@ -95,6 +95,8 @@ test('GET /api/settings returns the 10-field shape with backfilled defaults on a
     effectiveCacheMaxBytes: 5 * 1024 ** 3, // env unset -> 5 GB default
     customLogo: false, // v1.32: read-only flag, managed by /api/settings/logo
     customLogoDark: false, // v1.33.1: the dark-mode variant's own flag
+    defaultSort: 'release-date', // v1.34: the real-YouTube-feed flip
+    mobileCustomPlayer: false, // v1.34 T4: native mobile video controls by default
   });
 });
 
@@ -419,4 +421,33 @@ test('existing GET /api/config response shape is unaffected by Task 6 (plus v1.1
   // the correct move: the shape is still fully additive/backward-compatible,
   // and `folders`/`folderSettings` themselves are untouched.
   assert.deepEqual(Object.keys(json).sort(), ['folderSettings', 'folders', 'syntheticFolders'].sort());
+});
+
+// ---- v1.34: negative-path validation for the two new settings keys ----------
+test('POST /api/settings rejects an off-allowlist defaultSort and a non-boolean mobileCustomPlayer with 400s; valid values persist', async () => {
+  writeDb({ folders: [], folderSettings: {}, progress: {}, metadata: {}, settings: baseSettings() });
+
+  for (const bad of ['sparkly', '', 42, null]) {
+    const res = await fetch(`${base}/api/settings`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ defaultSort: bad }),
+    });
+    assert.equal(res.status, 400, `defaultSort=${JSON.stringify(bad)} must 400`);
+  }
+  for (const bad of ['true', 1, null, {}]) {
+    const res = await fetch(`${base}/api/settings`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mobileCustomPlayer: bad }),
+    });
+    assert.equal(res.status, 400, `mobileCustomPlayer=${JSON.stringify(bad)} must 400`);
+  }
+
+  const good = await fetch(`${base}/api/settings`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ defaultSort: 'newest', mobileCustomPlayer: true }),
+  });
+  assert.equal(good.status, 200);
+  const after = await (await fetch(`${base}/api/settings`)).json();
+  assert.equal(after.defaultSort, 'newest');
+  assert.equal(after.mobileCustomPlayer, true);
 });

@@ -996,8 +996,20 @@ if (typeof module !== 'undefined' && module.exports) {
         const res = await fetch(`${baseUrl}${separator}limit=${FULL_LIST_QUERY_LIMIT}`);
         const data = await res.json();
         const allFiles = Array.isArray(data.items) ? data.items : [];
-        let sortKey = 'newest';
-        try { sortKey = localStorage.getItem('filetube_sort') || 'newest'; } catch (_) { /* storage disabled -- fall back to newest */ }
+        // v1.34: same precedence as the home grid (main.js) -- explicit
+        // per-browser pick > the defaultSort setting > 'release-date' (the
+        // server default). Keeps prev/next stepping through the SAME order
+        // the home grid shows for browsers that rely on the setting.
+        let sortKey = null;
+        try { sortKey = localStorage.getItem('filetube_sort'); } catch (_) { /* storage disabled */ }
+        if (!sortKey) {
+          try {
+            const settingsRes = await fetch('/api/settings');
+            const settingsData = await settingsRes.json();
+            if (typeof settingsData.defaultSort === 'string' && settingsData.defaultSort !== '') sortKey = settingsData.defaultSort;
+          } catch (_) { /* settings unavailable -- fall through */ }
+        }
+        if (!sortKey) sortKey = 'release-date';
         const orderedIds = deriveOrderedIds(allFiles, sortKey);
         const { prevId, nextId } = computeNeighbors(orderedIds, mediaId);
 

@@ -1296,7 +1296,7 @@ test('AC6.3: buildYtdlpDownloadArgs argv is byte-identical to the pre-T3(b) shap
     '--newline',
     '-f', 'bestvideo+bestaudio/best',
     '-S', args.VIDEO_FORMAT_SORT,
-    '--embed-metadata', '--embed-thumbnail',
+    '--embed-metadata', '--embed-thumbnail', '--embed-chapters',
     '--write-subs', '--write-auto-subs', '--sub-langs', 'en.*', '--sub-format', 'vtt', '--convert-subs', 'vtt',
     '--download-archive', archivePath,
     '--no-warnings',

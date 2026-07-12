@@ -3972,6 +3972,117 @@ function showMoveModal(item, folders, onMove, doc) {
 }
 
 /**
+ * v1.34 T3 (Dean): the per-video CHAPTERS EDITOR modal -- a textarea, one
+ * "0:00 Title" line per chapter (the SAME grammar the server's
+ * parseChapterLines owns; the raw text is POSTed and parsed there, never
+ * client-side). Clearing the textarea removes the manual list (the item
+ * falls back to embedded/description chapters). Cloned from showMoveModal's
+ * exact createElement/busy-guard/teardown shape above; `doc` injectable for
+ * node:test. Called by player.js's chapters menu ("Edit/Add chapters…").
+ * `onSaved(resolvedBody)` receives the server's re-resolved
+ * `{chapters, chaptersSource}` on success.
+ */
+function showChaptersEditor(mediaId, initialText, onSaved, doc) {
+  const d = doc || document;
+
+  const backdrop = d.createElement('div');
+  backdrop.className = 'modal-backdrop';
+  backdrop.addEventListener('click', (e) => {
+    if (e && e.target === backdrop && !busy) teardown();
+  });
+
+  const modal = d.createElement('div');
+  modal.className = 'modal-content';
+  backdrop.appendChild(modal);
+
+  const title = d.createElement('div');
+  title.className = 'modal-title';
+  title.textContent = 'Edit chapters';
+  modal.appendChild(title);
+
+  const body = d.createElement('div');
+  body.className = 'modal-body';
+  modal.appendChild(body);
+
+  const hint = d.createElement('div');
+  hint.textContent = 'One chapter per line: a timestamp then a title (e.g. "0:00 Intro"). Leave empty to remove your custom chapters.';
+  body.appendChild(hint);
+
+  const textarea = d.createElement('textarea');
+  textarea.className = 'chapters-editor-textarea';
+  textarea.rows = 10;
+  textarea.value = typeof initialText === 'string' ? initialText : '';
+  textarea.setAttribute('aria-label', 'Chapters, one "0:00 Title" line per chapter');
+  body.appendChild(textarea);
+
+  const statusEl = d.createElement('div');
+  statusEl.className = 'modal-body';
+  modal.appendChild(statusEl);
+
+  const actionsRow = d.createElement('div');
+  actionsRow.className = 'modal-actions';
+
+  const cancelBtn = d.createElement('button');
+  cancelBtn.type = 'button';
+  cancelBtn.className = 'btn';
+  cancelBtn.textContent = 'Cancel';
+  cancelBtn.addEventListener('click', () => {
+    if (busy) return;
+    teardown();
+  });
+  actionsRow.appendChild(cancelBtn);
+
+  const saveBtn = d.createElement('button');
+  saveBtn.type = 'button';
+  saveBtn.className = 'btn btn-primary';
+  saveBtn.textContent = 'Save';
+  saveBtn.addEventListener('click', () => {
+    if (busy) return;
+    setBusy(true);
+    statusEl.textContent = 'Saving…';
+    fetch('/api/videos/' + encodeURIComponent(mediaId) + '/chapters', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: textarea.value }),
+    })
+      .then((res) => res.json().catch(() => ({})).then((bodyJson) => ({ ok: res.ok, bodyJson })))
+      .then(({ ok, bodyJson }) => {
+        if (!ok) {
+          setBusy(false);
+          statusEl.textContent = (bodyJson && bodyJson.error) || 'Could not save chapters.';
+          return;
+        }
+        if (typeof onSaved === 'function') onSaved(bodyJson);
+        teardown();
+      })
+      .catch(() => {
+        setBusy(false);
+        statusEl.textContent = 'Could not save chapters (network error).';
+      });
+  });
+  actionsRow.appendChild(saveBtn);
+
+  modal.appendChild(actionsRow);
+
+  let busy = false;
+  function setBusy(nextBusy) {
+    busy = nextBusy;
+    saveBtn.disabled = nextBusy;
+    cancelBtn.disabled = nextBusy;
+  }
+
+  function teardown() {
+    if (backdrop.classList) backdrop.classList.add('modal-closing');
+    closeOverlayThen(backdrop, 'modal-open', () => backdrop.remove());
+  }
+
+  d.body.appendChild(backdrop);
+  openOverlay(backdrop, 'modal-open');
+
+  return { backdrop, modal, textarea, statusEl, cancelBtn, saveBtn, teardown };
+}
+
+/**
  * Calls `POST /api/videos/:id/move` with `{ targetFolder }`. `fetchImpl` is
  * injectable (mirrors `triggerLibraryRescanAndRefresh`'s pattern) so this is
  * directly node:test-covered without a real network call. Resolves with the

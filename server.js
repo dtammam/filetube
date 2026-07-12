@@ -129,7 +129,18 @@ const DEFAULT_SETTINGS = {
   // autoplayNext's own pattern exactly (see settingsResponse/KNOWN_KEYS/the
   // POST validation branch below). Desktop and audio-type items are
   // completely unaffected (see public/js/player.js's handoff gating).
-  backgroundAudioForVideo: false
+  backgroundAudioForVideo: false,
+  // v1.34 (Dean): the DEFAULT home sort -- what the library renders when a
+  // browser has no explicit per-browser dropdown pick (localStorage
+  // `filetube_sort`) yet. Dean's "real-YouTube feed" flip: release-date is
+  // the out-of-the-box order now that the v1.33 trust chain landed. An
+  // explicit dropdown pick still wins in that browser (see main.js).
+  defaultSort: 'release-date',
+  // v1.34 T4 (Dean): when ON, mobile VIDEO keeps the CUSTOM control bar in
+  // the FULL player instead of the native iOS strip (public/js/player.js
+  // applyControlsMode). OFF by default -- native is today's behavior; this
+  // is the opt-in trial lever for the custom mobile experience.
+  mobileCustomPlayer: false
 };
 
 // Per-key merge so a partial/older `settings` object keeps whatever keys it
@@ -1612,6 +1623,128 @@ function youtubeIdFromUrlString(raw) {
   return classified.ok ? classified.videoId : null;
 }
 
+// ---- v1.34 T3 (Dean): chapters -----------------------------------------------
+//
+// Three sources, resolved at serve time (GET /api/videos/:id) in priority
+// order: `chaptersManual` (the per-video editor -- MANUAL ALWAYS WINS) ->
+// `chapters` (embedded file chapters, captured by the probe below) ->
+// timestamp lines parsed out of the embedded description tag. The two
+// parsers here are pure and share one normalized shape:
+// `{ startTime: <finite seconds >= 0>, title: <trimmed string, may be ''> }`,
+// sorted ascending, deduplicated on startTime, count-capped.
+
+const MAX_CHAPTERS = 300;
+const MAX_CHAPTER_TITLE_LENGTH = 200;
+
+// Normalize/bound one candidate chapter; null when unusable. Titles are
+// control-stripped and length-capped on code points (the same posture as
+// the yt-dlp module's sanitizeCapturedTitle -- emoji survive).
+function normalizeChapter(startTime, rawTitle) {
+  const t = Number(startTime);
+  if (!Number.isFinite(t) || t < 0) return null;
+  let title = typeof rawTitle === 'string' ? rawTitle : '';
+  // eslint-disable-next-line no-control-regex
+  title = title.replace(/[\x00-\x1f\x7f]/g, '').trim();
+  if (title.length > MAX_CHAPTER_TITLE_LENGTH) title = Array.from(title).slice(0, MAX_CHAPTER_TITLE_LENGTH).join('');
+  return { startTime: t, title };
+}
+
+// Sort ascending + dedup on startTime (first wins) + cap the count. Shared
+// tail of both parsers so their outputs are interchangeable.
+function finalizeChapters(list) {
+  const sorted = list.slice().sort((a, b) => a.startTime - b.startTime);
+  const out = [];
+  for (const ch of sorted) {
+    if (out.length > 0 && ch.startTime === out[out.length - 1].startTime) continue;
+    out.push(ch);
+    if (out.length >= MAX_CHAPTERS) break;
+  }
+  return out;
+}
+
+// Read ffprobe's top-level `chapters` array (present once buildFfprobeArgs
+// passes -show_chapters). Same robustness contract as parseFfprobeTags/
+// parseFfprobeStreams: accepts the parsed object OR raw stdout, try/catch
+// JSON.parse, NEVER throws, degrades to []. Uses `start_time` (float-seconds
+// string) -- `start`/`end` are time_base ticks and deliberately ignored.
+function parseFfprobeChapters(input) {
+  let j = input;
+  if (typeof input === 'string') {
+    try { j = JSON.parse(input); } catch (_) { return []; }
+  }
+  if (!j || typeof j !== 'object' || !Array.isArray(j.chapters)) return [];
+  const out = [];
+  for (const raw of j.chapters) {
+    if (!raw || typeof raw !== 'object') continue;
+    const title = raw.tags && typeof raw.tags === 'object' && typeof raw.tags.title === 'string' ? raw.tags.title : '';
+    const ch = normalizeChapter(raw.start_time, title);
+    if (ch) out.push(ch);
+  }
+  return finalizeChapters(out);
+}
+
+// A leading (optionally bracketed) "H:MM:SS" / "MM:SS" / "M:SS" timestamp
+// followed by an optional separator and the chapter title -- the classic
+// YouTube-description chapter-list line, and the SAME grammar the manual
+// editor's textarea uses (one grammar owner; the client posts raw text and
+// THIS parses it).
+const CHAPTER_LINE = /^\s*[([]?\s*((?:\d{1,3}:)?\d{1,2}:\d{2})\s*[)\]]?\s*[-–—:.]?\s*(.*)$/;
+
+function chapterTimestampToSeconds(str) {
+  const parts = String(str).split(':').map(Number);
+  if (parts.some((n) => !Number.isFinite(n) || n < 0)) return NaN;
+  if (parts.length === 3) return (parts[0] * 60 + parts[1]) * 60 + parts[2];
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  return NaN;
+}
+
+// Parse "0:00 Intro"-style lines out of free text (a description, or the
+// chapters editor's textarea). LENIENT: any line whose leading token parses
+// as a timestamp contributes; everything else is ignored. Pure, never
+// throws, [] on anything unusable. Callers apply their own acceptance rules
+// on top (see deriveDescriptionChapters below for the description gate).
+function parseChapterLines(text) {
+  if (typeof text !== 'string' || text === '') return [];
+  const out = [];
+  for (const line of text.split(/\r?\n/)) {
+    const m = CHAPTER_LINE.exec(line);
+    if (!m) continue;
+    const secs = chapterTimestampToSeconds(m[1]);
+    if (!Number.isFinite(secs)) continue;
+    const ch = normalizeChapter(secs, m[2]);
+    if (ch) out.push(ch);
+  }
+  return finalizeChapters(out);
+}
+
+// The DESCRIPTION acceptance gate: a description only counts as carrying a
+// chapter list when it parses to at least TWO chapters and the first starts
+// at 0:00 -- YouTube's own convention, and the difference between "a chapter
+// list" and "a stray timestamp mentioned in prose". Manual edits face no
+// such gate (the editor's textarea goes through bare parseChapterLines).
+function deriveDescriptionChapters(description) {
+  const parsed = parseChapterLines(description);
+  if (parsed.length < 2 || parsed[0].startTime !== 0) return [];
+  return parsed;
+}
+
+// Serve-time precedence resolver -- the ONE place the three sources meet.
+// Returns { chapters, chaptersSource } for the GET /api/videos/:id payload;
+// chapters is [] with source null when no source yields anything.
+function resolveItemChapters(item) {
+  if (Array.isArray(item.chaptersManual) && item.chaptersManual.length > 0) {
+    return { chapters: item.chaptersManual, chaptersSource: 'manual' };
+  }
+  if (Array.isArray(item.chapters) && item.chapters.length > 0) {
+    return { chapters: item.chapters, chaptersSource: 'embedded' };
+  }
+  const fromDescription = deriveDescriptionChapters(item.tags && item.tags.description);
+  if (fromDescription.length > 0) {
+    return { chapters: fromDescription, chaptersSource: 'description' };
+  }
+  return { chapters: [], chaptersSource: null };
+}
+
 // v1.33 T1: the reheat batch's LOCAL tags probe (deps-injected into
 // lib/ytdlp/index.js's runRepullMetadataBatch as `probeEmbeddedTags`) -- a
 // single, cheap, network-free ffprobe of the file's embedded format tags.
@@ -1649,8 +1782,10 @@ function probeEmbeddedTags(filePath) {
       let releaseDateMs = null;
       let sourceUrl = null;
       let title = null;
+      let chapters = [];
       try { releaseDateMs = parseEmbeddedReleaseDateMs(j); } catch (_) { releaseDateMs = null; }
       try { sourceUrl = parseEmbeddedSourceUrl(j); } catch (_) { sourceUrl = null; }
+      try { chapters = parseFfprobeChapters(j); } catch (_) { chapters = []; }
       const rawTags = (j && j.format && j.format.tags) || {};
       if (rawTags && typeof rawTags === 'object') {
         for (const k of Object.keys(rawTags)) {
@@ -1660,7 +1795,7 @@ function probeEmbeddedTags(filePath) {
           }
         }
       }
-      resolve({ releaseDateMs, sourceUrl, title });
+      resolve({ releaseDateMs, sourceUrl, title, chapters });
     });
   });
 }
@@ -1840,10 +1975,16 @@ function codecNeedsTranscode(videoCodec, audioCodec) {
 // a rotation-flagged phone-shot video) in the JSON output, which
 // `firstStreamRotation`/`parseFfprobeStreams` read back out to correct
 // coded-vs-display width/height (see their own comments).
+// v1.34 T3 (chapters): `-show_chapters` added -- purely additive to the SAME
+// single probe (no second spawn); `parseFfprobeChapters` (below) reads the
+// resulting top-level `chapters` array back out. Both probe paths (the
+// scan's extractMetadataAndThumbnail and the reheat's probeEmbeddedTags)
+// share this builder, so both emit chapters for free.
 function buildFfprobeArgs(filePath) {
   return [
     '-v', 'error',
     '-show_entries', 'format=duration:format_tags:stream=codec_name,codec_type,width,height:stream_disposition=attached_pic:stream_side_data=rotation',
+    '-show_chapters',
     '-of', 'json',
     filePath,
   ];
@@ -1896,7 +2037,7 @@ function extractMetadataAndThumbnail(filePath, mediaId, isAudio) {
       // ~line 1241) sees the codec keys as present (probed once, no usable
       // codec) instead of re-extracting (ffprobe attempt + ffmpeg thumbnail
       // attempt) every video item on every single scan forever.
-      return resolve({ duration: 0, hasThumbnail: false, artist: '', tags: {}, videoCodec: null, audioCodec: null, embeddedReleaseDateMs: null, embeddedSourceUrl: null, width: null, height: null });
+      return resolve({ duration: 0, hasThumbnail: false, artist: '', tags: {}, videoCodec: null, audioCodec: null, embeddedReleaseDateMs: null, embeddedSourceUrl: null, width: null, height: null, chapters: [] });
     }
 
     // Get duration + all format tags (artist -> channel name; the rest -> the
@@ -1940,6 +2081,9 @@ function extractMetadataAndThumbnail(filePath, mediaId, isAudio) {
       // new/updated branch turns it into a persisted `youtubeId` via the
       // classifySingleVideo gate.
       let embeddedSourceUrl = null;
+      // v1.34 T3: embedded chapters, from this SAME probe (-show_chapters).
+      // [] on probe failure or a file with none.
+      let chapters = [];
       // Feature A (v1.26.1): VIDEO-only intrinsic dimensions, from the SAME
       // probe -- `null` by default (audio items, a failed/errored probe, or
       // a video whose real stream dims weren't usable) exactly like
@@ -1970,6 +2114,7 @@ function extractMetadataAndThumbnail(filePath, mediaId, isAudio) {
           } catch (_) { videoCodec = null; audioCodec = null; }
           try { embeddedReleaseDateMs = parseEmbeddedReleaseDateMs(j); } catch (_) { embeddedReleaseDateMs = null; }
           try { embeddedSourceUrl = parseEmbeddedSourceUrl(j); } catch (_) { embeddedSourceUrl = null; }
+          try { chapters = parseFfprobeChapters(j); } catch (_) { chapters = []; }
         } catch (_) {}
       }
 
@@ -1980,7 +2125,7 @@ function extractMetadataAndThumbnail(filePath, mediaId, isAudio) {
         // metacharacters could otherwise be a command-injection vector
         // (matches the ffprobe `execFile` hardening above).
         execFile('ffmpeg', ['-i', filePath, '-an', '-vcodec', 'copy', '-y', thumbPath], (artErr) => {
-          resolve({ duration, artist, tags, videoCodec, audioCodec, embeddedReleaseDateMs, embeddedSourceUrl, width, height, hasThumbnail: !artErr && fs.existsSync(thumbPath) });
+          resolve({ duration, artist, tags, videoCodec, audioCodec, embeddedReleaseDateMs, embeddedSourceUrl, chapters, width, height, hasThumbnail: !artErr && fs.existsSync(thumbPath) });
         });
       } else {
         // Extract video frame (at 2 seconds or 10% of duration, whichever is
@@ -1988,7 +2133,7 @@ function extractMetadataAndThumbnail(filePath, mediaId, isAudio) {
         // reason as the audio-art branch above.
         const timestamp = duration > 5 ? 2 : Math.max(0, duration / 2);
         execFile('ffmpeg', ['-ss', String(timestamp), '-i', filePath, '-vframes', '1', '-q:v', '2', '-y', thumbPath], (frameErr) => {
-          resolve({ duration, artist, tags, videoCodec, audioCodec, embeddedReleaseDateMs, embeddedSourceUrl, width, height, hasThumbnail: !frameErr && fs.existsSync(thumbPath) });
+          resolve({ duration, artist, tags, videoCodec, audioCodec, embeddedReleaseDateMs, embeddedSourceUrl, chapters, width, height, hasThumbnail: !frameErr && fs.existsSync(thumbPath) });
         });
       }
     });
@@ -2555,6 +2700,11 @@ async function runScanDirectories() {
         // (never absent) once derivation has been attempted, mirroring the
         // codec fields' probed-once convention.
         newMetadata[id].youtubeId = deriveScanYoutubeId(filePath, info, ytdlpDownloadRoots, meta.embeddedSourceUrl);
+        // v1.34 T3: embedded chapters off the same probe -- always an array
+        // once a probe has run ([] = genuinely none), mirroring the codec
+        // fields' probed-once convention. The MANUAL chapters field
+        // (chaptersManual) is deliberately never touched by any scan path.
+        newMetadata[id].chapters = Array.isArray(meta.chapters) ? meta.chapters : [];
       } catch (err) {
         console.error(`Error extracting metadata for ${info.name}:`, err);
         // Metadata extraction itself failed (before `meta` resolved) -- the
@@ -2565,6 +2715,7 @@ async function runScanDirectories() {
         // filename-bracket only (there is no probe output to read a purl
         // from), `null` when that yields nothing.
         newMetadata[id].youtubeId = deriveScanYoutubeId(filePath, info, ytdlpDownloadRoots, null);
+        newMetadata[id].chapters = []; // probe failed -- none known (probed-once)
       }
       // v1.33 T3: a CHANGED file (same path, new size -- this whole re-init
       // branch) must not lose a previously captured/reheated real title
@@ -2594,6 +2745,12 @@ async function runScanDirectories() {
         }
         if (typeof existing.metadataRepulledAt === 'number') {
           newMetadata[id].metadataRepulledAt = existing.metadataRepulledAt;
+        }
+        // v1.34 T3: MANUAL chapters are user data with no probe source --
+        // a changed file must never lose them (embedded `chapters` refresh
+        // naturally from this branch's own probe).
+        if (Array.isArray(existing.chaptersManual)) {
+          newMetadata[id].chaptersManual = existing.chaptersManual;
         }
       }
       dbChanged = true;
@@ -2783,6 +2940,22 @@ async function runScanDirectories() {
             if (typeof freshItem.hasSubtitles === 'boolean') {
               item.hasSubtitles = freshItem.hasSubtitles;
             }
+            // v1.34 T3: reheat-refreshed embedded chapters ride the same
+            // completed-mid-scan adoption.
+            if (Array.isArray(freshItem.chapters)) {
+              item.chapters = freshItem.chapters;
+            }
+          }
+          // v1.34 T3: MANUAL chapters are written ONLY by the editor
+          // endpoint -- the scan never touches the field -- so the fresh
+          // on-disk value (present OR absent) is always at least as new as
+          // this scan's Phase-1 snapshot. Mirror it unconditionally: an edit
+          // that landed mid-scan survives, and a mid-scan CLEAR is not
+          // resurrected by the stale snapshot.
+          if (Array.isArray(freshItem.chaptersManual)) {
+            item.chaptersManual = freshItem.chaptersManual;
+          } else {
+            delete item.chaptersManual;
           }
           if ((item.youtubeId === null || item.youtubeId === undefined) &&
               typeof freshItem.youtubeId === 'string' && isSafeVideoId(freshItem.youtubeId)) {
@@ -2795,6 +2968,19 @@ async function runScanDirectories() {
           }
           if (item.metadataRepulledAt === undefined && typeof freshItem.metadataRepulledAt === 'number') {
             item.metadataRepulledAt = freshItem.metadataRepulledAt;
+          }
+          // v1.34 gate fix (adversarial CRITICAL -- the class's companion
+          // strike): a PARTIAL mid-scan reheat (markComplete false, marker
+          // not advanced) that populated chapters for the first time was
+          // lost to the snapshot -- the completed-adoption branch above
+          // never fired. Same gap-fill posture as sourceTitle/youtubeId:
+          // adopt the fresh value whenever the scan's own item has nothing
+          // (absent or empty), regardless of the marker. An item whose scan
+          // pass genuinely re-probed chapters this run carries a non-empty
+          // list of its own and is left alone.
+          if ((!Array.isArray(item.chapters) || item.chapters.length === 0) &&
+              Array.isArray(freshItem.chapters) && freshItem.chapters.length > 0) {
+            item.chapters = freshItem.chapters;
           }
         }
       }
@@ -3374,6 +3560,16 @@ app.get('/api/scan-status', (req, res) => {
 // Valid POST /api/settings values for the two enum-like fields. `cacheMaxBytes`
 // and `pruneMissing` are validated inline (positive-int-or-null, boolean).
 const SCAN_INTERVAL_VALID_VALUES = new Set([0, ...SCAN_INTERVAL_MINUTE_OPTIONS]);
+
+// v1.34: the defaultSort allowlist -- exactly the #sort-select option values
+// (public/index.html) / lib/videoQuery.js sortItems cases. Kept in sync by
+// the settings tests.
+// 'random' is deliberately NOT offered as a site-wide DEFAULT (gate fix):
+// prev/next and autoplay-next re-derive their order per event, so a random
+// DEFAULT would make "Next" jump arbitrarily and "Prev" almost never return
+// -- an explicit per-browser dropdown pick of "Feeling lucky" keeps its
+// existing (session-shuffle) behavior and is unaffected by this allowlist.
+const VALID_DEFAULT_SORTS = new Set(['newest', 'oldest', 'release-date', 'title-asc', 'title-desc', 'size-desc', 'size-asc']);
 const CACHE_MAX_AGE_DAYS_VALID_VALUES = new Set([0, 7, 14, 30, 90]);
 
 // Shape returned by both GET and POST /api/settings — the five persisted keys
@@ -3388,6 +3584,10 @@ function settingsResponse(settings) {
     defaultView: settings.defaultView,
     autoplayNext: settings.autoplayNext,
     backgroundAudioForVideo: settings.backgroundAudioForVideo,
+    // v1.34: the default home sort (see DEFAULT_SETTINGS).
+    defaultSort: settings.defaultSort,
+    // v1.34 T4: custom-vs-native mobile video controls (see DEFAULT_SETTINGS).
+    mobileCustomPlayer: settings.mobileCustomPlayer,
     effectiveCacheMaxBytes: effectiveCacheCap(settings),
     // v1.32 (custom logo): READ-ONLY here -- managed exclusively by the
     // dedicated POST/DELETE /api/settings/logo routes below (never via the
@@ -3571,7 +3771,7 @@ app.get('/api/settings', (req, res) => {
 // free of arbitrary/typo'd keys.
 app.post('/api/settings', async (req, res) => {
   const body = req.body || {};
-  const KNOWN_KEYS = ['scanIntervalMinutes', 'pruneMissing', 'cacheMaxBytes', 'cacheMaxAgeDays', 'defaultView', 'autoplayNext', 'backgroundAudioForVideo'];
+  const KNOWN_KEYS = ['scanIntervalMinutes', 'pruneMissing', 'cacheMaxBytes', 'cacheMaxAgeDays', 'defaultView', 'autoplayNext', 'backgroundAudioForVideo', 'defaultSort', 'mobileCustomPlayer'];
   for (const key of Object.keys(body)) {
     if (!KNOWN_KEYS.includes(key)) {
       return res.status(400).json({ error: `unknown settings key: ${key}` });
@@ -3602,6 +3802,15 @@ app.post('/api/settings', async (req, res) => {
   // to reject a since-removed folder path.
   if ('defaultView' in body && typeof body.defaultView !== 'string') {
     return res.status(400).json({ error: 'defaultView must be a string (folder path, or empty for Most Recent)' });
+  }
+  // v1.34: the default home sort -- allowlisted to exactly the sort keys the
+  // library dropdown offers (public/index.html #sort-select / videoQuery's
+  // sortItems cases), so a stray/garbage value can never persist.
+  if ('defaultSort' in body && !VALID_DEFAULT_SORTS.has(body.defaultSort)) {
+    return res.status(400).json({ error: 'defaultSort must be one of: ' + [...VALID_DEFAULT_SORTS].join(', ') });
+  }
+  if ('mobileCustomPlayer' in body && typeof body.mobileCustomPlayer !== 'boolean') {
+    return res.status(400).json({ error: 'mobileCustomPlayer must be a boolean' });
   }
   // v1.16.0 FR-3 (T3): autoplayNext -- boolean, mirrors pruneMissing's own
   // validation exactly.
@@ -3826,10 +4035,17 @@ app.get('/api/videos/:id', (req, res) => {
   // anything unsafe -- the spread's own raw `youtubeId` is informational;
   // THIS field is the one the client shares).
   const watchUrl = typeof item.youtubeId === 'string' ? buildWatchUrl(item.youtubeId) : null;
+  // v1.34 T3: the resolved chapter list (manual > embedded > description --
+  // see resolveItemChapters) plus its provenance for the editor UI. The
+  // spread's own raw `chapters`/`chaptersManual` are superseded by the
+  // resolved keys below (object-literal order).
+  const resolvedChapters = resolveItemChapters(item);
   res.json({
     ...item,
     ...(channelAvatarUrl ? { channelAvatarUrl } : {}),
     ...(watchUrl ? { watchUrl } : {}),
+    chapters: resolvedChapters.chapters,
+    chaptersSource: resolvedChapters.chaptersSource,
     progress: progress.timestamp,
     transcodeProgress: transcodeProgress[item.id] || 0,
     // v1.27.0 (EXPERIMENTAL): `audioStatus` itself already rides the `...item`
@@ -4801,6 +5017,17 @@ async function recordRepulledItemMeta(deps, mediaId, meta, nowMs = Date.now()) {
     if (typeof m.youtubeId === 'string' && isSafeVideoId(m.youtubeId)) {
       item.youtubeId = m.youtubeId;
     }
+    // v1.34 T3: re-pulled EMBEDDED/NETWORK chapters -- re-normalized through
+    // the same single grammar owner before anything is stored, SUPERSEDE
+    // semantics like releaseDate (a reheat is a deliberate refresh). Only
+    // ever touches the probe-derived field; chaptersManual stays the
+    // editor's alone.
+    if (Array.isArray(m.chapters)) {
+      const cleaned = finalizeChapters(m.chapters
+        .map((ch) => ch && typeof ch === 'object' ? normalizeChapter(ch.startTime, ch.title) : null)
+        .filter(Boolean));
+      item.chapters = cleaned;
+    }
     // Re-check the sidecar on disk NOW (after the subs pass), against the
     // item's OWN filePath -- same resolver the scan's `hasSubtitles`
     // detection and `GET /api/subtitles/:id` use, so this can never disagree
@@ -4935,6 +5162,54 @@ app.post('/api/videos/:id/dimensions', async (req, res) => {
   res.json({ success: true, applied });
 });
 
+// v1.34 T3 (Dean): the per-video CHAPTERS EDITOR endpoint. The client posts
+// the editor textarea's RAW TEXT (one "0:00 Title" line per chapter -- the
+// same grammar description parsing uses; parseChapterLines is the single
+// grammar owner) and the parsed result is stored as `chaptersManual` --
+// MANUAL ALWAYS WINS at serve time (resolveItemChapters). Empty/whitespace
+// text CLEARS the manual list (falling back to embedded/description).
+// Mirrors the dimensions route's exact updateDatabase + async-rejection
+// pattern above. The scan never writes chaptersManual, and the Phase-2
+// final-merge guard mirrors it from the fresh db unconditionally, so an
+// edit landing mid-scan can never be reverted.
+app.post('/api/videos/:id/chapters', async (req, res) => {
+  const body = req.body || {};
+  if (typeof body.text !== 'string') {
+    return res.status(400).json({ error: 'text must be a string (one "0:00 Title" line per chapter; empty to clear)' });
+  }
+  if (body.text.length > 20000) {
+    return res.status(400).json({ error: 'Chapter text too large (max 20000 characters)' });
+  }
+  const clearing = body.text.trim() === '';
+  const parsed = clearing ? [] : parseChapterLines(body.text);
+  if (!clearing && parsed.length === 0) {
+    return res.status(400).json({ error: 'No valid chapter lines found — use one "0:00 Title" line per chapter' });
+  }
+  let notFound = false;
+  let resolved = null;
+  try {
+    await updateDatabase(db => {
+      const item = db.metadata[req.params.id];
+      if (!item) {
+        notFound = true;
+        return false;
+      }
+      if (clearing) {
+        if ('chaptersManual' in item) delete item.chaptersManual;
+      } else {
+        item.chaptersManual = parsed;
+      }
+      resolved = resolveItemChapters(item);
+      return true;
+    });
+  } catch (err) {
+    console.error(`Error saving chapters for ${req.params.id}:`, err);
+    return res.status(500).json({ error: `Could not save chapters: ${err.message}` });
+  }
+  if (notFound) return res.status(404).json({ error: 'Media file not found' });
+  res.json({ success: true, ...resolved });
+});
+
 // API: Serve a subtitle track for a media item (A6, v1.24 UX Round, Wave 5).
 // Deliberately lives HERE, not in the yt-dlp module -- subtitle GRAB is
 // yt-dlp-module-adjacent (lib/ytdlp/args.js's buildYtdlpDownloadArgs), but
@@ -4975,6 +5250,18 @@ app.get('/api/subtitles/:id', (req, res) => {
   } catch (err) {
     console.error(`Error reading subtitle sidecar for ${req.params.id}:`, err);
     return res.status(404).json({ error: 'Subtitle file could not be read' });
+  }
+  // v1.34 T2 (desktop CC sync): `?offset=<seconds>` serves the document with
+  // every cue shifted earlier by that amount -- the client's live-transcode
+  // playback re-points its <track> here after a live seek, because the
+  // ffmpeg pipe's timeline restarts at 0 while cue times are absolute (see
+  // shiftVttCues' own comment, lib/subtitles.js). Bounded parse: absent/
+  // garbage/negative/absurd values serve the unshifted document, never a 400
+  // (a broken offset should degrade to v1.33 behavior, not kill captions).
+  const rawOffset = req.query.offset;
+  const offset = typeof rawOffset === 'string' ? Number(rawOffset) : NaN;
+  if (Number.isFinite(offset) && offset > 0 && offset <= 60 * 60 * 24) {
+    vttText = subtitles.shiftVttCues(vttText, offset);
   }
   res.setHeader('Content-Type', 'text/vtt');
   // FIX-7 (two-reviewer gate, cheap hardening): defense-in-depth alongside
@@ -5647,6 +5934,15 @@ module.exports = {
   youtubeIdFromUrlString,
   deriveScanYoutubeId,
   probeEmbeddedTags,
+  // v1.34 T3 (chapters): the pure parsers/resolver, re-exported under the
+  // same testing contract.
+  parseFfprobeChapters,
+  parseChapterLines,
+  deriveDescriptionChapters,
+  resolveItemChapters,
+  normalizeChapter,
+  finalizeChapters,
+  MAX_CHAPTERS,
   PLAYABLE_VIDEO_CODECS,
   PLAYABLE_AUDIO_CODECS,
   parseCacheCap,

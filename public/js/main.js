@@ -175,10 +175,17 @@ if (typeof module !== 'undefined' && module.exports) {
     let armDisarmTimer = null;
     const CARD_ARM_TIMEOUT_MS = 3000;
 
-    // Sort preference persists across visits
+    // Sort preference persists across visits. v1.34 (Dean): precedence is
+    // explicit per-browser dropdown pick (localStorage `filetube_sort`) >
+    // the server-side `defaultSort` setting (Settings page, out-of-the-box
+    // 'release-date' -- the real-YouTube-feed flip) > 'release-date'
+    // (matches the server default when the settings fetch fails). The
+    // provisional value below is refined from /api/settings in init()
+    // BEFORE the first page fetch whenever no explicit pick exists.
     let currentItems = [];
     let folderSettings = {}; // { "<path>": { name, hidden, hiddenFromSidebar } } — for author display, shared with cards
-    let currentSort = localStorage.getItem('filetube_sort') || 'newest';
+    const storedSortPick = localStorage.getItem('filetube_sort');
+    let currentSort = storedSortPick || 'release-date';
 
     // v1.30.0 T7 (A5): the home grid is now PAGINATED and SERVER-authoritative
     // for sort/filter (see server.js's T6, `GET /api/videos` ->
@@ -282,16 +289,28 @@ if (typeof module !== 'undefined' && module.exports) {
         // that no longer exists falls back to Most Recent. Only fetched on a
         // bare load -- a deep-link visit never pays for this extra request.
         // A network/parse failure here must never block the rest of the page.
-        if (!searchQuery && !folderFilter && !rootFilter && !likedFilter) {
-          // v1.32: ?liked=1 is an explicit scope param exactly like the
-          // other three -- the configured default view must never clobber
-          // a deep link to the Liked playlist.
+        // v1.34: the settings fetch now serves TWO defaults -- the item-4
+        // default view (bare loads only, unchanged) and the new defaultSort
+        // (any load where this browser has no explicit dropdown pick). One
+        // fetch covers both; a failure blocks neither (view falls back to
+        // Most Recent, sort keeps the provisional 'release-date').
+        const bareLoad = !searchQuery && !folderFilter && !rootFilter && !likedFilter;
+        if (bareLoad || !storedSortPick) {
           try {
             const settingsRes = await fetch('/api/settings');
             const settingsData = await settingsRes.json();
-            rootFilter = resolveDefaultView(rootFilter, searchQuery, folderFilter, settingsData.defaultView, folders);
+            if (bareLoad) {
+              // v1.32: ?liked=1 is an explicit scope param exactly like the
+              // other three -- the configured default view must never
+              // clobber a deep link to the Liked playlist.
+              rootFilter = resolveDefaultView(rootFilter, searchQuery, folderFilter, settingsData.defaultView, folders);
+            }
+            if (!storedSortPick && typeof settingsData.defaultSort === 'string' && settingsData.defaultSort !== '') {
+              currentSort = settingsData.defaultSort;
+              if (sortSelect) sortSelect.value = currentSort;
+            }
           } catch (err) {
-            console.error('Failed to load default view setting:', err);
+            console.error('Failed to load settings defaults:', err);
           }
         }
 
