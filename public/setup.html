@@ -160,13 +160,27 @@
         <p>Pick the icon style for FileTube's chrome. <strong>Auto</strong>
            matches it to the era above.</p>
         <div class="theme-picker" id="icon-picker"><!-- rendered by JS --></div>
-        <!-- v1.32 (Dean, "white-label"): replaceable header logo. -->
+        <!-- v1.32 (Dean, "white-label"): replaceable header logo.
+             v1.33.1: split into per-mode variants -- a light-mode and a
+             dark-mode logo; if only one is uploaded it is used for BOTH
+             modes (server-side fallback). -->
         <h3 style="margin-top:20px;">Logo</h3>
         <p>Replace the "FileTube" header text with your own image
-           (PNG/JPEG/WebP, max 1&nbsp;MB — it is scaled to fit the header).</p>
-        <input type="file" id="logo-file-input" accept="image/png,image/jpeg,image/webp" style="display:none;">
-        <button type="button" class="btn btn-sm" id="logo-upload-btn">Upload logo…</button>
-        <button type="button" class="btn btn-sm" id="logo-reset-btn" hidden>Use default logo</button>
+           (PNG/JPEG/WebP, max 1&nbsp;MB — it is scaled to fit the header).
+           You can upload a separate logo per light/dark mode; with only one
+           uploaded, it is used for both.</p>
+        <div class="form-group">
+          <label>Light-mode logo</label><br>
+          <input type="file" id="logo-file-input" accept="image/png,image/jpeg,image/webp" style="display:none;">
+          <button type="button" class="btn btn-sm" id="logo-upload-btn">Upload light logo…</button>
+          <button type="button" class="btn btn-sm" id="logo-reset-btn" hidden>Remove light logo</button>
+        </div>
+        <div class="form-group">
+          <label>Dark-mode logo</label><br>
+          <input type="file" id="logo-file-input-dark" accept="image/png,image/jpeg,image/webp" style="display:none;">
+          <button type="button" class="btn btn-sm" id="logo-upload-btn-dark">Upload dark logo…</button>
+          <button type="button" class="btn btn-sm" id="logo-reset-btn-dark" hidden>Remove dark logo</button>
+        </div>
         <div id="logo-status" class="sub-row-meta" style="margin-top:6px;"></div>
       </div>
 

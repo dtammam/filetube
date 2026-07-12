@@ -121,3 +121,94 @@ test('v1.32 gate fix: GET /logo sends X-Content-Type-Options: nosniff (subtitle-
   assert.equal(logo.status, 200);
   assert.equal(logo.headers.get('x-content-type-options'), 'nosniff');
 });
+
+// ---- v1.33.1: per-mode (light/dark) logo variants ---------------------------
+// The plain routes stay the LIGHT variant (byte-compatible with v1.32);
+// `?variant=dark` addresses the dark one. GET cross-falls-back so a single
+// upload serves BOTH modes; 404 only when neither is set.
+
+// A tiny-but-real JPEG head (SOI + APP0), distinct bytes from TINY_PNG so
+// serve assertions can tell the two variants apart.
+const TINY_JPEG = Buffer.concat([
+  Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]),
+  Buffer.from('JFIF\0', 'ascii'),
+  Buffer.alloc(16, 7),
+]);
+
+test('v1.33.1: dark-variant upload round-trips independently -- ?variant=dark serves it, settings reports both flags', async () => {
+  // Fresh light upload first (the earlier DELETE test cleared it).
+  await fetch(`${base}/api/settings/logo`, {
+    method: 'POST', headers: { 'Content-Type': 'image/png' }, body: TINY_PNG,
+  });
+  const post = await fetch(`${base}/api/settings/logo?variant=dark`, {
+    method: 'POST', headers: { 'Content-Type': 'image/jpeg' }, body: TINY_JPEG,
+  });
+  assert.equal(post.status, 200);
+
+  const light = await fetch(`${base}/logo`);
+  assert.equal(light.headers.get('content-type'), 'image/png');
+  assert.ok(Buffer.from(await light.arrayBuffer()).equals(TINY_PNG), 'plain /logo stays the light upload');
+
+  const dark = await fetch(`${base}/logo?variant=dark`);
+  assert.equal(dark.status, 200);
+  assert.equal(dark.headers.get('content-type'), 'image/jpeg');
+  assert.ok(Buffer.from(await dark.arrayBuffer()).equals(TINY_JPEG), '?variant=dark serves the dark upload');
+
+  const settings = await (await fetch(`${base}/api/settings`)).json();
+  assert.equal(settings.customLogo, true);
+  assert.equal(settings.customLogoDark, true);
+});
+
+test('v1.33.1: DELETE is variant-scoped -- removing the dark one leaves light serving, and dark then FALLS BACK to light', async () => {
+  const del = await fetch(`${base}/api/settings/logo?variant=dark`, { method: 'DELETE' });
+  assert.equal(del.status, 200);
+
+  const settings = await (await fetch(`${base}/api/settings`)).json();
+  assert.equal(settings.customLogo, true, 'the light variant must be untouched');
+  assert.equal(settings.customLogoDark, false);
+
+  const dark = await fetch(`${base}/logo?variant=dark`);
+  assert.equal(dark.status, 200, 'dark request must fall back to the light upload ("only one -> used for both")');
+  assert.equal(dark.headers.get('content-type'), 'image/png');
+  assert.ok(Buffer.from(await dark.arrayBuffer()).equals(TINY_PNG));
+});
+
+test('v1.33.1: the reverse fallback -- dark-only upload serves the plain (light) /logo too; 404 only when NEITHER is set', async () => {
+  // Clear light; upload dark only.
+  await fetch(`${base}/api/settings/logo`, { method: 'DELETE' });
+  await fetch(`${base}/api/settings/logo?variant=dark`, {
+    method: 'POST', headers: { 'Content-Type': 'image/jpeg' }, body: TINY_JPEG,
+  });
+
+  const light = await fetch(`${base}/logo`);
+  assert.equal(light.status, 200, 'light request must fall back to the dark upload');
+  assert.equal(light.headers.get('content-type'), 'image/jpeg');
+
+  // Clear dark too -> nothing set -> 404 both ways.
+  await fetch(`${base}/api/settings/logo?variant=dark`, { method: 'DELETE' });
+  assert.equal((await fetch(`${base}/logo`)).status, 404);
+  assert.equal((await fetch(`${base}/logo?variant=dark`)).status, 404);
+});
+
+test('v1.33.1: a garbage variant value normalizes to light (never a crash, never a third file)', async () => {
+  await fetch(`${base}/api/settings/logo?variant=sparkly`, {
+    method: 'POST', headers: { 'Content-Type': 'image/png' }, body: TINY_PNG,
+  });
+  const settings = await (await fetch(`${base}/api/settings`)).json();
+  assert.equal(settings.customLogo, true, 'an unknown variant lands on the light/default one');
+  assert.equal(settings.customLogoDark, false);
+  const served = await fetch(`${base}/logo?variant=sparkly`);
+  assert.equal(served.status, 200);
+  assert.equal(served.headers.get('content-type'), 'image/png');
+  // cleanup for any later-added tests
+  await fetch(`${base}/api/settings/logo`, { method: 'DELETE' });
+});
+
+test('v1.33.1: customLogoDarkMime is NOT settable via the generic POST /api/settings (unknown key -> 400)', async () => {
+  const res = await fetch(`${base}/api/settings`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ customLogoDarkMime: 'image/png' }),
+  });
+  assert.equal(res.status, 400);
+});

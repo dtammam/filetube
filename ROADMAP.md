@@ -80,6 +80,12 @@
 
 ## Shipped
 
+### v1.33.1 — Liked everywhere + light/dark logos (2026-07-12)
+
+- **Liked entry on every sidebar** (Dean: it was home-only): the built-in Liked link moved into a shared, count-gated helper — visible on home/watch/setup/stats/subscriptions sidebars and the mobile Playlists sheet iff at least one liked video exists; appears/disappears live on like/unlike/delete (no reload). Transient count-fetch failures are never cached.
+- **Per-mode header logos**: upload a separate light-mode and dark-mode logo in Settings; with only one uploaded it serves both modes (server-side cross-fallback); the header swaps live with the moon/sun toggle and after uploads. v1.32 single-logo installs unchanged.
+- Slim two-reviewer gate: both APPROVE (fix round: uncached transient failures, delete-refresh hook, replaced-logo live swap). 3715/3715 on Node 22.23.1 + 24.14.0.
+
 ### v1.33.0 — release-date trust chain, Share button, emoji titles, prune Option C, vegetables (2026-07-12)
 
 - **Release-date trust chain**: `youtubeId` persisted per item — filename `[id]` bracket (yt-dlp-rooted) or the embedded `purl`/`comment` source URL (the only id source for bracket-less metube-era imports), always through the hardened `classifySingleVideo` gate; schema-only backfill for pre-existing items (no re-probe). **Reheat gained a LOCAL ffprobe tags pass** — embedded date/source-URL/real-title, run before the network pull; network fetch only where an id is derivable; precedence network > embedded tag > mtime. Transient probe failures stay retryable; only a successful probe-with-nothing marks an item exhausted (honestly counted skipped, never done).

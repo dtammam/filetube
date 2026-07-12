@@ -583,20 +583,18 @@ if (typeof module !== 'undefined' && module.exports) {
       const visibleFolders = visibleSidebarFolders(folders, settings);
       // v1.32 (Dean): the built-in Liked playlist entry -- fixed, first,
       // never draggable/reorderable (it isn't a db.folders row), active when
-      // the ?liked=1 view is open. Static markup, no user-controlled text.
-      // Rendered even when no folders are configured (likes don't depend on
-      // folder mapping).
-      const likedEntry = `
-          <a href="/?liked=1" class="sidebar-item sidebar-item-liked ${likedFilter ? 'active' : ''}" title="Liked">
-            <i class="icon-star"></i> Liked
-          </a>
-        `;
+      // the ?liked=1 view is open. v1.33.1: no longer inlined -- applied via
+      // common.js's count-gated applyLikedSidebarEntry (visible iff at least
+      // one liked video exists), the SAME helper every other sidebar surface
+      // now uses. It prepends without touching siblings, so the [data-index]
+      // drag wiring below is unaffected.
       if (visibleFolders.length === 0) {
-        sidebarFoldersList.innerHTML = likedEntry
-          + '<div style="padding: 6px 24px; font-style: italic; color: var(--text-secondary);">None</div>';
+        sidebarFoldersList.innerHTML =
+          '<div style="padding: 6px 24px; font-style: italic; color: var(--text-secondary);">None</div>';
+        applyLikedSidebarEntry(sidebarFoldersList, { active: likedFilter });
         return;
       }
-      sidebarFoldersList.innerHTML = likedEntry + visibleFolders.map((f, index) => {
+      sidebarFoldersList.innerHTML = visibleFolders.map((f, index) => {
         const folderName = f.split(/[\\/]/).pop() || f;
         const label = (settings[f] && settings[f].name) || folderName;
         const isActive = rootFilter === f ? 'active' : '';
@@ -607,6 +605,7 @@ if (typeof module !== 'undefined' && module.exports) {
           </a>
         `;
       }).join('');
+      applyLikedSidebarEntry(sidebarFoldersList, { active: likedFilter });
 
       const items = sidebarFoldersList.querySelectorAll('.sidebar-item[data-index]');
       items.forEach((el) => {

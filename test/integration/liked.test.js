@@ -314,7 +314,23 @@ t32l('v1.32: main.js routes ?liked=1 to GET /api/liked and renders the built-in 
   const mainSrc = fs32.readFileSync(require('node:path').join(__dirname, '../../public/js/main.js'), 'utf8');
   a32l.ok(mainSrc.includes("urlParams.get('liked') === '1'"), 'main.js must parse the ?liked=1 scope param');
   a32l.ok(mainSrc.includes("likedFilter ? '/api/liked' : '/api/videos'"), 'buildVideosApiUrl must swap the endpoint for the liked view');
-  a32l.ok(mainSrc.includes('sidebar-item-liked'), 'the sidebar must render the built-in Liked entry');
+  // v1.33.1: the entry itself moved into common.js's shared, count-gated
+  // applyLikedSidebarEntry helper -- main.js must APPLY it, common.js must
+  // OWN it (and the sheet renderer must route through the same helper).
+  a32l.ok(mainSrc.includes('applyLikedSidebarEntry(sidebarFoldersList'), 'the home sidebar must apply the shared Liked entry helper');
   const commonSrc = fs32.readFileSync(require('node:path').join(__dirname, '../../public/js/common.js'), 'utf8');
-  a32l.ok(commonSrc.includes('sidebar-item-liked'), 'the mobile Playlists sheet must render the built-in Liked entry');
+  a32l.ok(commonSrc.includes('sidebar-item-liked'), 'common.js must own the built-in Liked entry markup');
+  a32l.ok(commonSrc.includes('function applyLikedSidebarEntry'), 'common.js must define the shared count-gated helper');
+  const watchSrc = fs32.readFileSync(require('node:path').join(__dirname, '../../public/js/watch.js'), 'utf8');
+  a32l.ok(watchSrc.includes('applyLikedSidebarEntry(sidebarFoldersList'), 'the watch sidebar must apply the shared Liked entry helper (v1.33.1 -- Dean: it was missing there)');
+  // v1.33.1 (QA gate): the remaining surfaces -- setup.js's sidebar render,
+  // the mobile Playlists sheet, the shared boot call that covers the
+  // stats/subscriptions shells -- and the two count-mutating refresh hooks
+  // (like toggle + item delete), static-scan-locked so no surface can
+  // silently drop the shared helper.
+  const setupSrc = fs32.readFileSync(require('node:path').join(__dirname, '../../public/js/setup.js'), 'utf8');
+  a32l.ok(setupSrc.includes('applyLikedSidebarEntry(sidebarContainer'), 'the setup sidebar must apply the shared Liked entry helper');
+  a32l.ok(commonSrc.includes('applyLikedSidebarEntry(list)'), 'the mobile Playlists sheet must route through the shared helper');
+  a32l.ok(commonSrc.includes("applyLikedSidebarEntry(document.getElementById('sidebar-folders-list'))"), 'the shared boot call must cover the stats/subscriptions shells');
+  a32l.ok((watchSrc.match(/applyLikedSidebarEntry\(sidebarFoldersList, \{ force: true \}\)/g) || []).length >= 2, 'both count-mutating paths (like toggle AND item delete) must force-refresh the cached total');
 });

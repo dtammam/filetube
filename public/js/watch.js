@@ -1633,6 +1633,11 @@ if (typeof module !== 'undefined' && module.exports) {
             return;
           }
           currentLikeState = { liked: !wasLiked };
+          // v1.33.1 (Dean): the sidebar's Liked entry is count-gated -- a
+          // like/unlike changes the count, so refresh the cached total and
+          // re-apply, making the entry appear the moment the FIRST like
+          // lands (his "even a liked Video" annoyance).
+          applyLikedSidebarEntry(sidebarFoldersList, { force: true });
         })
         .catch((err) => console.error('Like toggle failed (network error):', err))
         .finally(() => {
@@ -1793,6 +1798,14 @@ if (typeof module !== 'undefined' && module.exports) {
           // the same feedback without requiring a dismiss tap before the
           // navigate() below can proceed.
           showToast('File deleted.');
+          // v1.33.1 (QA gate): deleting an item can change the liked COUNT
+          // (a liked item's deletion removes it from the liked view) -- the
+          // count-gated sidebar entry's cached total must be refreshed, or
+          // deleting the LAST liked video leaves a stale Liked entry
+          // pointing at an empty view until a reload. The home view the
+          // navigate() below lands on re-applies through the same helper
+          // and picks up this refreshed cache.
+          applyLikedSidebarEntry(sidebarFoldersList, { force: true });
           if (window.FileTube && typeof window.FileTube.navigate === 'function') window.FileTube.navigate('/');
           else window.location.href = '/';
         } else {
@@ -1828,6 +1841,10 @@ if (typeof module !== 'undefined' && module.exports) {
     function renderSidebarFolders(folders, settings = {}) {
       if (folders.length === 0) {
         sidebarFoldersList.innerHTML = '<div style="padding: 6px 24px; font-style: italic; color: var(--text-secondary);">None</div>';
+        // v1.33.1 (Dean): the count-gated Liked entry, via the SAME shared
+        // helper every other sidebar surface uses -- this list previously
+        // never rendered it at all, so opening a video "lost" the Liked link.
+        applyLikedSidebarEntry(sidebarFoldersList);
         return;
       }
       sidebarFoldersList.innerHTML = folders.map(f => {
@@ -1840,6 +1857,7 @@ if (typeof module !== 'undefined' && module.exports) {
           </a>
         `;
       }).join('');
+      applyLikedSidebarEntry(sidebarFoldersList); // v1.33.1: see above
     }
 
     // NOTE: the header search box's click/keypress listeners are shell-owned

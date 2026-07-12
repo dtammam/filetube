@@ -87,6 +87,11 @@ function toggleTheme() {
   const mode = d.getAttribute('data-mode') === 'dark' ? 'light' : 'dark';
   const era = d.getAttribute('data-theme') || DEFAULT_ERA;
   applyTheme(era, mode);
+  // v1.33.1: the custom header logo is mode-variant (light/dark uploads) --
+  // re-resolve it live so the header tracks the toggle without a reload.
+  // Function declaration below in this same file (hoisted); no-ops cleanly
+  // when no custom logo is configured.
+  applyCustomLogoIfSet();
 }
 
 // Setup-page Appearance picker: changes era only, keeps the current mode.
@@ -2994,22 +2999,23 @@ function renderPlaylistsSheet(folders, folderSettings) {
   const settings = folderSettings || {};
   const visible = visibleSidebarFolders(folders, settings);
   // v1.32 (Dean): the built-in Liked playlist entry -- fixed, first, static
-  // markup (no user-controlled text), mirroring main.js's sidebar entry so
-  // the two playlist surfaces never disagree. Rendered even with zero
-  // configured folders (likes don't depend on folder mapping).
-  const likedEntry = '<a href="/?liked=1" class="sidebar-item sidebar-item-liked">'
-    + '<i class="icon-star"></i> Liked</a>';
+  // markup. v1.33.1: no longer inlined here -- applied through the SAME
+  // count-gated applyLikedSidebarEntry helper every sidebar surface now
+  // uses (visible iff at least one liked video exists), so the sheet and
+  // the sidebars can never disagree.
   if (visible.length === 0) {
-    list.innerHTML = likedEntry + '<div class="sidebar-item">No folders configured.</div>';
+    list.innerHTML = '<div class="sidebar-item">No folders configured.</div>';
+    applyLikedSidebarEntry(list);
     return;
   }
-  list.innerHTML = likedEntry + visible.map((f) => {
+  list.innerHTML = visible.map((f) => {
     const base = f.split(/[\\/]/).pop() || f;
     const label = (settings[f] && settings[f].name) || base;
     return '<a href="/?root=' + encodeURIComponent(f) +
       '" class="sidebar-item"><i class="icon-folder"></i> ' +
       escapeAttr(label) + '</a>';
   }).join('');
+  applyLikedSidebarEntry(list); // v1.33.1: count-gated Liked entry, prepended
 }
 
 // v1.21.0 FR-5: pure filter/derive step for the pinned-playlist Playlists-
@@ -4012,17 +4018,30 @@ function requestMoveItem(id, targetFolder, fetchImpl) {
  * (the header + common.js are shared across all five shells); guarded for
  * Node/jsdom-without-header.
  */
-function applyCustomLogoIfSet() {
+function applyCustomLogoIfSet(force) {
   if (typeof document === 'undefined' || typeof fetch !== 'function') return;
   const logoEl = document.querySelector('.logo');
   if (!logoEl) return;
-  fetch('/logo', { method: 'HEAD' })
+  // v1.33.1: variant-aware -- the DARK-mode logo when data-mode is dark, the
+  // light one otherwise. The server cross-falls-back when only one variant is
+  // uploaded ("with only one uploaded, it is used for both"), so this stays a
+  // dumb mode->URL mapping. Re-invoked by toggleTheme() so the header swaps
+  // live with the moon/sun button.
+  // `force` (setup.js, right after an upload): bypasses the same-variant
+  // short-circuit AND cache-busts the fetch -- REPLACING the current mode's
+  // logo with a new image must swap live, not sit behind the src-equality
+  // check until a reload.
+  const isDark = document.documentElement.getAttribute('data-mode') === 'dark';
+  const url = isDark ? '/logo?variant=dark' : '/logo';
+  fetch(url, { method: 'HEAD' })
     .then((r) => {
-      if (!r || !r.ok) return; // no custom logo -- text stays
+      if (!r || !r.ok) return; // no custom logo -- text (or the current img) stays
+      const existing = logoEl.querySelector('img.logo-img');
+      if (!force && existing && existing.getAttribute('src') === url) return; // already showing this variant
       const img = document.createElement('img');
       img.className = 'logo-img';
       img.alt = 'Logo';
-      img.src = '/logo';
+      img.src = force ? url + (url.indexOf('?') >= 0 ? '&' : '?') + 'ts=' + Date.now() : url;
       // Only swap once the image actually loads -- a corrupt/vanished file
       // must never leave a broken-image glyph where the text logo was.
       img.addEventListener('load', () => {
@@ -4031,6 +4050,66 @@ function applyCustomLogoIfSet() {
       });
     })
     .catch(() => { /* offline/no route -- text logo stays */ });
+}
+
+// ---- v1.33.1 (Dean): the Liked sidebar entry, EVERYWHERE -------------------
+// One shared helper so every surface that lists playlist/folder links (home
+// sidebar, watch sidebar, setup sidebar, stats/subscriptions shells, the
+// mobile Playlists sheet) shows the SAME built-in Liked entry under the SAME
+// rule: visible iff at least one liked video exists, hidden otherwise.
+// Count fetched once per page load (cached promise); `force: true` refreshes
+// it (the watch page calls that after a like/unlike so the entry appears the
+// moment the first like lands).
+let likedTotalPromise = null;
+function fetchLikedTotal(force) {
+  if (force) likedTotalPromise = null;
+  if (!likedTotalPromise) {
+    likedTotalPromise = fetch('/api/liked?limit=1')
+      .then((r) => (r && r.ok ? r.json() : Promise.reject(new Error('liked count fetch failed'))))
+      .then((body) => {
+        const n = body && Number(body.total);
+        return Number.isFinite(n) && n > 0 ? n : 0;
+      })
+      .catch(() => {
+        // Adversarial-gate fix: a TRANSIENT failure (network blip, 5xx) must
+        // not poison the session cache with a "confirmed 0" -- clear the
+        // cached promise so the NEXT render retries, while this caller still
+        // degrades to hidden-for-now. Only a genuine ok-response total is
+        // ever cached.
+        likedTotalPromise = null;
+        return 0;
+      });
+  }
+  return likedTotalPromise;
+}
+
+// Prepends (or removes) the Liked entry on `listEl`. Idempotent and safe to
+// call after any innerHTML re-render -- it never touches the other children,
+// so per-item wiring (the home sidebar's [data-index] drag handlers, etc.)
+// is unaffected. Static markup only, no user-controlled text.
+function applyLikedSidebarEntry(listEl, opts) {
+  if (!listEl || typeof fetch !== 'function') return;
+  const options = opts || {};
+  fetchLikedTotal(options.force === true).then((total) => {
+    const existing = listEl.querySelector('.sidebar-item-liked');
+    if (total > 0) {
+      if (existing) {
+        existing.classList.toggle('active', options.active === true);
+        return;
+      }
+      const entry = document.createElement('a');
+      entry.href = '/?liked=1';
+      entry.className = 'sidebar-item sidebar-item-liked' + (options.active === true ? ' active' : '');
+      entry.title = 'Liked';
+      const icon = document.createElement('i');
+      icon.className = 'icon-star';
+      entry.appendChild(icon);
+      entry.appendChild(document.createTextNode(' Liked'));
+      listEl.insertBefore(entry, listEl.firstChild);
+    } else if (existing) {
+      existing.remove();
+    }
+  });
 }
 
 /**
@@ -5510,6 +5589,12 @@ document.addEventListener('DOMContentLoaded', () => {
   // v1.32 (Dean, "white-label"): swap the text logo for the user-uploaded
   // image when one is configured -- runs on every page (shared header).
   applyCustomLogoIfSet();
+
+  // v1.33.1 (Dean): the Liked entry on EVERY page's sidebar folder list.
+  // Covers the shells that never re-render the list themselves (stats,
+  // subscriptions); the pages that DO re-render it (index/watch/setup) wipe
+  // this and re-apply through the same helper after their own render.
+  applyLikedSidebarEntry(document.getElementById('sidebar-folders-list'));
 
   // SPA-lite router boot (FR-1, T1): derives the current view from `location`
   // and runs its `init()` -- the identical path an in-app swap runs. Also

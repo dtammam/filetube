@@ -160,6 +160,9 @@ module.exports = [
         // setup.js right after a successful upload so the change is visible
         // without a reload.
         applyCustomLogoIfSet: 'readonly',
+        // v1.33.1: common.js's count-gated Liked sidebar entry, applied by
+        // every surface that (re-)renders #sidebar-folders-list.
+        applyLikedSidebarEntry: 'readonly',
         // C2/C3 (T3-WIRE, v1.24.0): item-count badge + format-toggle
         // (video/audio/both) library controls, consumed by main.js's
         // home/folder/playlist/channel grid render.
