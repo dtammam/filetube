@@ -3810,6 +3810,30 @@ a.sub-row-channel-link:focus-visible {
   .player-controls {
     height: 44px; /* comfortable >=44px touch target row, matching the existing mobile tap-target convention elsewhere in this file */
   }
+  /* v1.34.1 (Dean's on-device pass): TWO-ROW mobile bar. One 44px row could
+     not hold play + times + seek + speed/fs/pip/CC/Ch -- the seek bar
+     collapsed to an unusable sliver and buttons clipped off the edge. Row 1
+     is the full-width scrub row (current time, seek bar, duration -- the
+     duration fits again with the whole width to itself); row 2 is the
+     buttons. `order: -1` lifts the three scrub elements above the
+     DOM-first play button; among themselves they keep DOM order
+     (time-cur, seek, time-dur). Scoped to the FULL in-slot player -- the
+     DOCKED mini-player keeps its single trimmed row (its own 26px rules).
+     The bar-strip reservations below grow to match (80px). */
+  #player-slot .player-controls {
+    flex-wrap: wrap;
+    height: 80px;
+    align-content: center;
+    row-gap: 2px;
+  }
+  #player-slot .player-controls .pc-time,
+  #player-slot .player-controls .pc-seek {
+    order: -1;
+  }
+  #player-slot .player-controls .pc-seek {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
   .pc-btn {
     width: 44px;
     height: 44px;
@@ -3917,8 +3941,23 @@ a.sub-row-channel-link:focus-visible {
 }
 
 @media (max-width: 768px) {
+  /* v1.34.1: the FULL mobile bar is now two rows (80px, see the two-row
+     rules above) -- the reserved strip below the picture/art matches it.
+     Docked (26px) and native-controls (strip removed) keep their own rules. */
+  #player-slot #player-wrapper:not(.audio-expanded) {
+    padding-bottom: 80px;
+  }
   #player-wrapper:not(.audio-expanded) {
-    padding-bottom: 44px;  /* match the 44px mobile bar height */
+    padding-bottom: 44px;  /* non-slot fallback (docked wrapper has its own 26px rule below) */
+  }
+  /* Native-controls mode removes the strip entirely -- must outrank the
+     2-ID 80px reservation above (its own base rule is only 1 ID and would
+     otherwise lose, leaving an 80px dead band under native mobile video). */
+  #player-slot #player-wrapper:not(.audio-expanded).native-controls {
+    padding-bottom: 0;
+  }
+  #player-slot #player-wrapper.audio-mode:not(.audio-expanded) #audio-bg-art {
+    bottom: 80px;
   }
   #player-wrapper.audio-mode:not(.audio-expanded) #audio-bg-art {
     bottom: 44px;
@@ -3953,6 +3992,17 @@ a.sub-row-channel-link:focus-visible {
 #player-dock #player-wrapper:not(.audio-expanded) #media-player {
   aspect-ratio: 16 / 9;
   height: auto;
+}
+
+/* v1.34.1 (Dean's on-device pass): mobile bar declutter.
+   (1) The Ch button only earns its slot on mobile when the item actually
+   HAS chapters (player.js toggles .has-chapters per load) -- on a
+   chapterless item it was pure clutter on an already-tight bar.
+   (2) On narrow phones the total-duration label gives its ~60px to the
+   seek bar (the current-time label stays) -- the seek bar had collapsed
+   to a sliver. Desktop is untouched by both. */
+#player-wrapper.ff-mobile:not(.has-chapters) #chapters-btn {
+  display: none !important;
 }
 
 /* v1.34 T3 (Dean): chapter picker popup. Anchored to the control bar

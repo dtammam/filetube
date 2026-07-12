@@ -83,3 +83,24 @@ test('scrubRatioFromPointer clamps to [0,1] and returns null for a degenerate re
   assert.equal(scrubRatioFromPointer(50, 0, 0), null, 'zero-width rect -> null (skip the frame)');
   assert.equal(scrubRatioFromPointer(NaN, 0, 100), null);
 });
+
+// ---- v1.34.1 (Dean's on-device pass): mobile declutter + dismissable menu ---
+test('v1.34.1: the chapters UI is mobile-safe -- has-chapters class toggled per load, pointerdown outside-close wired, chapterless-mobile CSS hide + the TWO-ROW mobile bar present', () => {
+  assert.ok(playerSrc.includes("host.classList.toggle('has-chapters', currentChapters.length > 0)"),
+    'applyChaptersForMedia must expose the has-chapters hook CSS keys off');
+  assert.ok(playerSrc.includes("host.classList.remove('has-chapters')"),
+    'teardown must clear it');
+  assert.ok(playerSrc.includes("document.addEventListener('pointerdown', closeChaptersMenuOnOutside)"),
+    'the outside-close must ALSO bind pointerdown -- iOS never synthesizes click over the gesture-layer video surface');
+  const css = fs.readFileSync(path.join(ROOT, 'public', 'css', 'style.css'), 'utf8');
+  assert.match(css, /#player-wrapper\.ff-mobile:not\(\.has-chapters\) #chapters-btn \{\s*display: none !important;/,
+    'a chapterless mobile item must not spend a bar slot on the Ch button');
+  // The two-row mobile bar (Dean: seek bar had collapsed to an unusable
+  // sliver): full-width scrub row + 80px bar/strip, FULL in-slot player
+  // only, with the native-controls strip-removal outranking the 2-ID
+  // reservation.
+  assert.match(css, /#player-slot \.player-controls \{\s*flex-wrap: wrap;\s*height: 80px;/, 'two-row bar');
+  assert.match(css, /#player-slot \.player-controls \.pc-seek \{\s*flex: 1 1 auto;/, 'the seek bar owns its row');
+  assert.match(css, /#player-slot #player-wrapper:not\(\.audio-expanded\) \{\s*padding-bottom: 80px;/, 'the reserved strip matches the two-row bar');
+  assert.match(css, /#player-slot #player-wrapper:not\(\.audio-expanded\)\.native-controls \{\s*padding-bottom: 0;/, 'native mode still removes the strip (outranks the 2-ID reservation)');
+});
