@@ -393,3 +393,29 @@ t31('v1.31: parseYtdlpConfig threads the three new env knobs (and defaults them 
   assert.equal(defaults.socketTimeoutSeconds, 15);
   assert.equal(defaults.stallMinutes, 10);
 });
+
+// ---- v1.36 F1: parseListScanCap (the list-pass enumeration backstop) -------
+
+t31('v1.36: parseListScanCap defaults to 200, accepts 0 ("cap off") and bounded integers, rejects garbage back to the default', () => {
+  assert.equal(config.DEFAULT_LIST_SCAN_CAP, 200);
+  assert.equal(config.parseListScanCap(undefined), 200);
+  assert.equal(config.parseListScanCap(''), 200);
+  assert.equal(config.parseListScanCap(null), 200);
+  assert.equal(config.parseListScanCap('0'), 0, '0 is a valid, distinct "cap off" value');
+  assert.equal(config.parseListScanCap(0), 0);
+  assert.equal(config.parseListScanCap('50'), 50);
+  assert.equal(config.parseListScanCap(10000), 10000, 'MAX_LIST_SCAN_CAP is inclusive');
+  // (No `[]` case: `Number([])` coerces to 0, a valid "cap off" -- env
+  // values are always strings, and every sibling parser here shares the
+  // same Number() coercion latitude for non-string junk.)
+  for (const bad of [-1, 10001, 1.5, 'abc', NaN, {}]) {
+    assert.equal(config.parseListScanCap(bad), 200, `bad=${String(bad)} must fall back to the default`);
+  }
+});
+
+t31('v1.36: parseYtdlpConfig threads FILETUBE_YTDLP_LIST_SCAN_CAP (and defaults it when unset)', () => {
+  assert.equal(config.parseYtdlpConfig({ FILETUBE_YTDLP_LIST_SCAN_CAP: '75' }).listScanCap, 75);
+  assert.equal(config.parseYtdlpConfig({ FILETUBE_YTDLP_LIST_SCAN_CAP: '0' }).listScanCap, 0);
+  assert.equal(config.parseYtdlpConfig({}).listScanCap, 200);
+  assert.equal(config.parseYtdlpConfig({ FILETUBE_YTDLP_LIST_SCAN_CAP: 'garbage' }).listScanCap, 200);
+});

@@ -85,8 +85,14 @@ test('buildYtdlpListArgs: --dateafter is present as its own distinct argv-array 
   // in the array contains the date as a substring.
   assert.equal(result[idx], '--dateafter');
   assert.equal(result[idx + 1], '20260101');
+  // v1.36 F1: `--break-match-filters upload_date>=?<cutoff>` is the ONE
+  // other argv element that legitimately carries the cutoff digits -- as the
+  // suffix of a fixed literal prefix, never in any other form.
+  const breakIdx = result.indexOf('--break-match-filters');
+  assert.ok(breakIdx >= 0, 'v1.36 F1: the break-early filter must be present alongside --dateafter');
+  assert.equal(result[breakIdx + 1], 'upload_date>=?20260101');
   for (let i = 0; i < result.length; i++) {
-    if (i === idx + 1) continue;
+    if (i === idx + 1 || i === breakIdx + 1) continue;
     assert.ok(!result[i].includes('20260101'), `unexpected embedded cutoffDate in arg[${i}]: ${result[i]}`);
   }
 });
@@ -105,12 +111,23 @@ test('buildYtdlpListArgs OMITS --dateafter when sub.cutoffDate is malformed/inva
   }
 });
 
-test('buildYtdlpListArgs NEVER emits --playlist-end anymore, regardless of config.maxVideos/sub.maxVideos (count cap removed)', () => {
+// v1.36 F1 CONTRACT CHANGE: the list pass emits --playlist-end again -- but
+// driven EXCLUSIVELY by config.listScanCap (the wall-clock backstop behind
+// the break-early filter, default 200), NEVER by maxVideos. The original
+// v1.25 lock ("never emits --playlist-end anymore") is narrowed to what it
+// was actually protecting: maxVideos must not influence the list pass.
+test('buildYtdlpListArgs: --playlist-end is driven by config.listScanCap ONLY -- maxVideos never influences it (v1.25 invariant, v1.36 form)', () => {
   for (const maxVideos of [undefined, 0, 25, 100]) {
-    const config = makeConfig({ maxVideos });
+    const config = makeConfig({ maxVideos, listScanCap: 200 });
     const result = args.buildYtdlpListArgs(baseSub({ cutoffDate: '20260709', maxVideos }), config);
-    assert.ok(!result.includes('--playlist-end'), `maxVideos=${JSON.stringify(maxVideos)} must not produce --playlist-end anymore`);
+    const idx = result.indexOf('--playlist-end');
+    assert.ok(idx >= 0, 'the listScanCap backstop must be present');
+    assert.equal(result[idx + 1], '200', `maxVideos=${JSON.stringify(maxVideos)} must never change the cap value`);
   }
+  // listScanCap 0 = cap off: no --playlist-end at all (and with a cutoff the
+  // break filter still implies --lazy-playlist).
+  const uncapped = args.buildYtdlpListArgs(baseSub({ cutoffDate: '20260709' }), makeConfig({ listScanCap: 0 }));
+  assert.ok(!uncapped.includes('--playlist-end'), 'listScanCap=0 must omit the cap entirely');
 });
 
 // ---- playlistEndArgs: dormant, still exported/functional standalone ------
@@ -1332,6 +1349,11 @@ test('AC6.3: buildYtdlpListArgs argv is byte-identical to the pre-T3(b) shape ex
     '--sleep-requests', '1',
     '--retries', '5',
     '--download-archive', archivePath,
+    // v1.36 F1: break-early listing. This sub has NO cutoffDate, so no
+    // --break-match-filters -- but the listScanCap backstop (default 200)
+    // still applies, and any breakEarlyArgs content implies --lazy-playlist.
+    '--lazy-playlist',
+    '--playlist-end', '200',
     '--',
     sub.channelUrl,
   ];
@@ -1377,4 +1399,60 @@ test('resiliencePacingArgs: pure -- never throws for a missing/malformed config,
 test('resiliencePacingArgs: listOnly:true omits sleep-interval/max-sleep-interval/player_client even when configured', () => {
   const result = args.resiliencePacingArgs({ sleepInterval: 9, maxSleepInterval: 20, playerClient: 'web' }, { listOnly: true });
   assert.deepEqual(result, ['--socket-timeout', '15', '--sleep-requests', '1', '--retries', '5']);
+});
+
+// ---- v1.36 F1: breakEarlyArgs (break-early listing) -------------------------
+//
+// The "chronic burner" root cause fix: --dateafter is a FILTER, not a stop
+// condition, so the pre-F1 list pass full-extracted a channel's entire
+// unarchived back catalog on every poll -- deterministically timing out
+// large-catalog channels. These lock the three-part contract: lazy
+// enumeration, stop at the first pre-cutoff video, count-cap backstop.
+
+test('v1.36 breakEarlyArgs: valid cutoff -> --lazy-playlist + --break-match-filters upload_date>=?<cutoff> + the default --playlist-end 200 backstop', () => {
+  const result = args.breakEarlyArgs({ cutoffDate: '20260710' }, {});
+  assert.deepEqual(result, [
+    '--lazy-playlist',
+    '--break-match-filters', 'upload_date>=?20260710',
+    '--playlist-end', '200',
+  ]);
+});
+
+test('v1.36 breakEarlyArgs: the cutoff is re-validated at build time -- malformed/missing cutoffs emit NO break filter (fail safe), but the cap backstop still applies', () => {
+  for (const bad of [undefined, null, '', '2026071', '202607100', 'abcd0710', '2026-07-10', 20260710, {}]) {
+    const result = args.breakEarlyArgs({ cutoffDate: bad }, {});
+    assert.ok(!result.includes('--break-match-filters'), `cutoffDate=${JSON.stringify(bad)} must omit the break filter`);
+    assert.deepEqual(result, ['--lazy-playlist', '--playlist-end', '200'], 'the cap backstop (and its implied --lazy-playlist) must survive a bad cutoff');
+  }
+});
+
+test('v1.36 breakEarlyArgs: listScanCap is re-bounded through parseListScanCap at build time -- 0 disables the cap, garbage falls back to the 200 default', () => {
+  assert.deepEqual(
+    args.breakEarlyArgs({ cutoffDate: '20260710' }, { listScanCap: 0 }),
+    ['--lazy-playlist', '--break-match-filters', 'upload_date>=?20260710'],
+    'cap off: break filter only',
+  );
+  assert.deepEqual(
+    args.breakEarlyArgs({ cutoffDate: '20260710' }, { listScanCap: 50 }),
+    ['--lazy-playlist', '--break-match-filters', 'upload_date>=?20260710', '--playlist-end', '50'],
+  );
+  assert.deepEqual(
+    args.breakEarlyArgs({ cutoffDate: '20260710' }, { listScanCap: 'hostile' }),
+    ['--lazy-playlist', '--break-match-filters', 'upload_date>=?20260710', '--playlist-end', '200'],
+    'a malformed cap must fall back to the default, never emit a hostile value',
+  );
+  assert.deepEqual(args.breakEarlyArgs({}, { listScanCap: 0 }), [], 'no cutoff + cap off = nothing at all (incl. no orphan --lazy-playlist)');
+});
+
+test('v1.36 F1: buildYtdlpListArgs carries the full break-early trio before the "--" separator, and the break filter value is its own argv element', () => {
+  const config = makeConfig();
+  const result = args.buildYtdlpListArgs(baseSub({ cutoffDate: '20260710' }), config);
+  const sepIndex = result.indexOf('--');
+  for (const token of ['--lazy-playlist', '--break-match-filters', '--playlist-end']) {
+    const idx = result.indexOf(token);
+    assert.ok(idx >= 0, `${token} must be present`);
+    assert.ok(idx < sepIndex, `${token} must precede the "--" separator`);
+  }
+  assert.equal(result[result.indexOf('--break-match-filters') + 1], 'upload_date>=?20260710');
+  assert.equal(result[result.indexOf('--playlist-end') + 1], '200');
 });
