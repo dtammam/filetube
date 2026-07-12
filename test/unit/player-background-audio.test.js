@@ -1289,3 +1289,22 @@ test('v1.35 T2: the gesture prime never clobbers a pre-armed real src (blesses w
   assert.match(primeMatch[1], /if \(!bgAudioEl\.getAttribute\('src'\)\) \{\s*\n\s*bgAudioEl\.src = SILENT_PRIME_SRC;/,
     'SILENT_PRIME_SRC only fills an EMPTY element -- a pre-armed real sidecar is blessed (and buffered) as-is');
 });
+
+// ---- v1.35 gate fixes: enforced live-guard + buffer-cost gating -------------
+
+test('v1.35 gate fix: armBackgroundAudioSrc has an ENFORCED never-touch-live-playback guard (BACKGROUND_AUDIO blocked, HANDING_OFF allowed)', () => {
+  const armMatch = /function armBackgroundAudioSrc\(\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);
+  assert.ok(armMatch);
+  assert.match(armMatch[1], /if \(bgAudioState === BG_AUDIO_STATES\.BACKGROUND_AUDIO\) return false;/,
+    'a live-playing sidecar must be protected by an explicit state guard, not just URL idempotency');
+  assert.ok(!/HANDING_OFF\) return false/.test(armMatch[1]),
+    'HANDING_OFF must stay allowed -- the handoff itself routes through the single site');
+});
+
+test('v1.35 gate fix (adversarial): the eager BUFFER (preload=auto + load) is gated on preExtractAudio; the free src assignment is not', () => {
+  const armMatch = /function armBackgroundAudioSrc\(\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);
+  assert.match(armMatch[1], /if \(preExtractAudioCached\) \{\s*\n\s*bgAudioEl\.preload = 'auto';\s*\n\s*try \{ bgAudioEl\.load\(\); \}/,
+    'the per-watch network fetch only for installs that opted into the disclosed resource cost');
+  assert.match(PLAYER_JS, /preExtractAudioCached = !!\(settings && settings\.preExtractAudio\);/,
+    'cached off the same per-load settings fetch as its siblings');
+});

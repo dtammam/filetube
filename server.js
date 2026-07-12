@@ -2643,6 +2643,9 @@ async function runScanDirectories() {
       // v1.35 (preExtractAudio): a freshly-indexed yt-dlp-rooted VIDEO is a
       // download -- queue its sidecar extraction (after the save; see the
       // collector's comment above) when the setting is ON.
+      // (Read from the scan's Phase-1 snapshot -- a toggle flipped ON
+      // mid-scan catches the NEXT scan's fresh files; already-indexed items
+      // stay lazy-on-first-watch by design. Accepted narrow window.)
       if (db.settings && db.settings.preExtractAudio === true &&
           !isAudio && matchRootFolder(filePath, ytdlpDownloadRoots)) {
         preExtractCandidates.push({ id, filePath });

@@ -904,6 +904,11 @@ if (typeof module !== 'undefined' && module.exports) {
   var bgAudioEl = null;
   var bgAudioState = BG_AUDIO_STATES.INLINE_VIDEO;
   var bgAudioSettingCached = false;
+  // v1.35 gate fix (adversarial): the EAGER BUFFER half of the pre-arm
+  // (preload=auto + load(), a real network fetch of the whole sidecar per
+  // watch) is gated on preExtractAudio -- the setting whose copy discloses
+  // resource costs. Cached off the same per-load settings fetch.
+  var preExtractAudioCached = false;
   // v1.34 T4 (Dean): the "Use custom player controls on mobile" setting --
   // when ON, mobile VIDEO in FULL keeps the CUSTOM control bar instead of
   // flipping to the native iOS strip (applyControlsMode below). Cached per
@@ -1696,21 +1701,33 @@ if (typeof module !== 'undefined' && module.exports) {
   // preload=auto on an element the gesture-prime has already blessed --
   // turns the background handoff into a bare .play() on a buffered element,
   // instead of assign-src -> load -> play inside iOS's grudging
-  // background-transition window (the flakiness source). Guards: setting ON,
-  // sidecar confirmed ready, video item, still INLINE (never clobber an
-  // in-flight handoff), and never when the setting is OFF (the F3b lesson:
-  // a disabled install must never touch the real URL).
+  // background-transition window (the flakiness source). Guards: setting ON
+  // (the F3b lesson: a disabled install must never touch the real URL),
+  // sidecar confirmed ready, video item, and not LIVE-PLAYING background
+  // audio (HANDING_OFF is allowed -- the handoff routes through here).
   function armBackgroundAudioSrc() {
     if (!bgAudioEl || !currentId) return false;
     if (!bgAudioSettingCached) return false;
     if (bgAudioStatusKnown !== 'ready') return false;
     if (!currentData || currentData.type === 'audio') return false;
+    // QA gate fix: an ENFORCED guard (not just URL idempotency) -- never
+    // touch the element while it is LIVE-PLAYING background audio.
+    // HANDING_OFF is deliberately allowed: the handoff itself routes
+    // through here as the single assignment site.
+    if (bgAudioState === BG_AUDIO_STATES.BACKGROUND_AUDIO) return false;
     var audioUrl = '/audio/' + currentId;
     if (bgAudioEl.getAttribute('src') !== audioUrl) {
       bgAudioEl.src = audioUrl;
-      bgAudioEl.preload = 'auto';
-      try { bgAudioEl.load(); } catch (_) { /* buffering is best-effort */ }
-      recordLifecycleEvent('bgAudio:prearm', { detail: 'src set + preloading' });
+      // Gate fix (adversarial): the src ASSIGNMENT is free (preload stays
+      // 'none' -- no bytes move) and removes the risky assignment step from
+      // the lock-time window for every background-audio user. The EAGER
+      // BUFFER -- a full sidecar fetch on every watch -- only for installs
+      // that opted into preExtractAudio's disclosed resource cost.
+      if (preExtractAudioCached) {
+        bgAudioEl.preload = 'auto';
+        try { bgAudioEl.load(); } catch (_) { /* buffering is best-effort */ }
+      }
+      recordLifecycleEvent('bgAudio:prearm', { detail: preExtractAudioCached ? 'src set + preloading' : 'src set (lazy buffer)' });
     }
     return true;
   }
@@ -1977,7 +1994,7 @@ if (typeof module !== 'undefined' && module.exports) {
   // install. iOS's gesture-unlock is scoped to the ELEMENT, not the src it
   // happened to be playing when unlocked, so priming with an inert clip is
   // exactly as effective for a LATER real handoff. The real `/audio/:id`
-  // src is now assigned in exactly ONE place: `attemptBackgroundAudioHandoff`
+  // src is now assigned in exactly ONE place: `armBackgroundAudioSrc` (v1.35)
   // (already gated on the setting being on) -- grep `bgAudioEl.src` to
   // confirm there is no other assignment site.
   function primeBackgroundAudioElement() {
@@ -4410,6 +4427,7 @@ if (typeof module !== 'undefined' && module.exports) {
           // controls surface now that the setting is known (applyControlsMode
           // is idempotent and cheap; a no-change re-run is a no-op).
           mobileCustomPlayerCached = !!(settings && settings.mobileCustomPlayer);
+          preExtractAudioCached = !!(settings && settings.preExtractAudio); // v1.35 gate fix: the eager-buffer lever
           applyControlsMode();
           if (!bgAudioSettingCached) {
             // v1.27.2 (diagnostics): the arm line now records on EVERY
@@ -4460,6 +4478,10 @@ if (typeof module !== 'undefined' && module.exports) {
               // media should continue in the background (and play through
               // the silent switch, Dean-approved) -- the closest a web app
               // gets to a native audio app's background entitlement.
+              // (Deliberately one-way for the page lifetime: turning the
+              // setting OFF mid-session leaves the declaration standing
+              // until the next reload -- harmless, and reverting live would
+              // risk yanking an active session out from under playback.)
               try {
                 if (navigator.audioSession && navigator.audioSession.type !== 'playback') {
                   navigator.audioSession.type = 'playback';
