@@ -603,6 +603,16 @@ if (typeof module !== 'undefined' && module.exports) {
     // is updated.
     let likeBtn = null;
     let currentLikeState = { liked: false };
+    // v1.33 T2: watch-page "Share" button -- the runtime-created control
+    // itself (fresh per view instance, like `moveBtn`/`likeBtn` above).
+    // Mounted ONLY when the server derived an original YouTube link for this
+    // item (`mediaData.watchUrl`, GET /api/videos/:id) -- a plain local
+    // library file has nothing to share, so it gets no button at all.
+    let shareBtn = null;
+    // Restores the button's label after the transient "Copied!" feedback of
+    // the clipboard fallback below; tracked so a rapid double-tap never
+    // stacks two timers (the second tap clears the first).
+    let shareBtnResetTimer = null;
     // FIX C (two-reviewer-gate follow-up): the FR-2-derived display name,
     // computed once in initWatch() via the SAME resolveChannelName() call
     // that drives the on-page uploader display, cached here so the Subscribe
@@ -717,6 +727,10 @@ if (typeof module !== 'undefined' && module.exports) {
         // "Like" toggle now that `mediaData` (carrying the server-derived
         // `liked` field) is resolved.
         setupLikeButton();
+
+        // 3d. v1.33 T2: mount the "Share" button when the server derived an
+        // original YouTube link for this item (`mediaData.watchUrl`).
+        setupShareButton();
 
         // 4. Mount/play this media in the persistent player controller. This
         // is idempotent -- if the controller already has this exact id loaded
@@ -1652,6 +1666,69 @@ if (typeof module !== 'undefined' && module.exports) {
         likeBtn.addEventListener('click', handleToggleLike, { signal });
       }
       applyLikeButtonLabel(currentLikeState.liked);
+    }
+
+    // v1.33 T2: share the item's ORIGINAL YouTube link (`mediaData.watchUrl`,
+    // a server-side buildWatchUrl product -- never assembled client-side).
+    // Native share sheet when the browser has one (iOS/Android
+    // `navigator.share` -- exactly Dean's "share sheet with the real YouTube
+    // link" ask); clipboard copy with a transient "Copied!" label as the
+    // desktop fallback. An AbortError from `navigator.share` is the user
+    // closing the sheet -- silently fine, never an error.
+    function handleShareClick() {
+      if (!mediaData || typeof mediaData.watchUrl !== 'string' || mediaData.watchUrl === '') return;
+      const url = mediaData.watchUrl;
+      if (typeof navigator.share === 'function') {
+        navigator.share({ title: mediaData.title || 'FileTube', url })
+          .catch(() => { /* sheet dismissed / share failed -- no-op */ });
+        return;
+      }
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        navigator.clipboard.writeText(url)
+          .then(() => {
+            if (!shareBtn) return;
+            shareBtn.textContent = 'Copied!';
+            if (shareBtnResetTimer) clearTimeout(shareBtnResetTimer);
+            shareBtnResetTimer = setTimeout(() => {
+              if (shareBtn) shareBtn.textContent = 'Share';
+              shareBtnResetTimer = null;
+            }, 1500);
+          })
+          .catch((err) => console.error('Share: clipboard copy failed:', err));
+        return;
+      }
+      // No share sheet AND no clipboard API (very old / non-secure context):
+      // the URL is still in the page's metadata block; just log.
+      console.error('Share: no navigator.share or clipboard API available');
+    }
+
+    // Creates (once per view instance) and mounts the Share button as a
+    // sibling of Download/Delete/Move/Like inside `.watch-action-btns` --
+    // the SAME nowrap sub-group and createElement/textContent conventions as
+    // `setupMoveButton`/`setupLikeButton` above. Unlike those, it is
+    // CONDITIONAL: only an item the server derived an original YouTube link
+    // for (`mediaData.watchUrl`) gets one -- and a stale button from a prior
+    // item on this SPA view is removed when the current item has no link.
+    function setupShareButton() {
+      const watchActions = root.querySelector('.watch-actions');
+      if (!watchActions || !mediaData) return;
+      const hasUrl = typeof mediaData.watchUrl === 'string' && mediaData.watchUrl !== '';
+      if (!hasUrl) {
+        if (shareBtn) { shareBtn.remove(); shareBtn = null; }
+        return;
+      }
+      if (!shareBtn) {
+        shareBtn = document.createElement('button');
+        shareBtn.type = 'button';
+        shareBtn.id = 'share-media-btn';
+        shareBtn.className = 'btn';
+        shareBtn.title = 'Share the original YouTube link';
+        shareBtn.setAttribute('aria-label', 'Share the original YouTube link');
+        const btnGroup = watchActions.querySelector('.watch-action-btns');
+        (btnGroup || watchActions).appendChild(shareBtn);
+        shareBtn.addEventListener('click', handleShareClick, { signal });
+      }
+      shareBtn.textContent = 'Share';
     }
 
     // Opens the shared `showMoveModal` (common.js) with the CURRENT item +

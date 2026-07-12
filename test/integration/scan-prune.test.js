@@ -107,6 +107,15 @@ test('(a) CATASTROPHE GUARD: entries under a missing/unmounted root survive with
 
 test('(b) pruneMissing=true + present root + individually-gone file: pruned, sidecars cleaned up', async () => {
   const presentRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-present-'));
+  // v1.33 T4: a second, SURVIVING file under the same root -- without it,
+  // this root's entire prior content would vanish at once and the new
+  // empty-but-present unmount signature (detectVanishedRoots) would
+  // deliberately retain everything instead of pruning. An INDIVIDUAL
+  // deletion, by definition, leaves siblings behind; this keeper is that
+  // sibling. (The full-vanish behavior has its own dedicated tests in
+  // scan-prune-vanished-root.test.js.)
+  const keeperPath = path.join(presentRoot, 'keeper.mp4');
+  fs.writeFileSync(keeperPath, 'keeper-bytes');
   const filePath = path.join(presentRoot, 'gone.mp4');
   // Deliberately never created on disk -> simulates a deleted individual file.
   const id = getMediaId(filePath);
@@ -254,6 +263,10 @@ test('(f) legacy entry with no rootFolder under a missing/unresolvable root is r
 // directory to demonstrate selective, not blanket, retention.)
 test('(g) FR3.1: a present file whose statSync throws mid-scan is retained, while a genuinely-gone file elsewhere in the same scan still prunes', async () => {
   const presentRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-present-'));
+  // v1.33 T4: a surviving sibling, so the flaky-stat + gone pair doesn't
+  // read as "the root's entire content vanished" to detectVanishedRoots
+  // (which would retain the gone file too) -- same rationale as test (b).
+  fs.writeFileSync(path.join(presentRoot, 'keeper.mp4'), 'keeper-bytes');
   const flakyDir = path.join(presentRoot, 'flaky-subtree');
   fs.mkdirSync(flakyDir);
   const flakyPath = path.join(flakyDir, 'flaky.mp4');
@@ -329,6 +342,10 @@ test('(g) FR3.1: a present file whose statSync throws mid-scan is retained, whil
 // file's PRIOR incarnation and never touch disk for the new one.
 test('(h) FR3.2: a pruned id\'s persistedServedAt entry is cleared, so a re-added same-id file persists lastServedAt normally', async () => {
   const presentRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-present-'));
+  // v1.33 T4: a surviving sibling so the churn file's deletion stays an
+  // INDIVIDUAL prune rather than tripping detectVanishedRoots' full-vanish
+  // retention -- same rationale as tests (b)/(g).
+  fs.writeFileSync(path.join(presentRoot, 'keeper.mp4'), 'keeper-bytes');
   const filePath = path.join(presentRoot, 'churn.mp4');
   fs.writeFileSync(filePath, 'v1');
   const id = getMediaId(filePath);

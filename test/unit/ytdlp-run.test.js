@@ -137,9 +137,11 @@ test('DEFAULT_DOWNLOAD_TIMEOUT_MS is 180 minutes (raised from the previous 60-mi
 // injection-proofing an embedded newline in a free-text field now gets from
 // JSON-escaping.
 
-test('parseChannelMetaLine: parses a well-formed FTCHMETA JSON line into its 7 fields', () => {
+// v1.33 T3: the field set grew `title` (the real, emoji-intact video title).
+test('parseChannelMetaLine: parses a well-formed FTCHMETA JSON line into its 8 fields', () => {
   const line = `FTCHMETA ${JSON.stringify({
     id: 'dQw4w9WgXcQ',
+    title: 'Never Gonna Give You Up 🎵 (Official)',
     channel_url: 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw',
     channel_id: 'UCuAXFkgsw1L7xaCfnd5JJOw',
     uploader_url: 'https://www.youtube.com/@RickAstley',
@@ -150,6 +152,7 @@ test('parseChannelMetaLine: parses a well-formed FTCHMETA JSON line into its 7 f
   const result = parseChannelMetaLine(line);
   assert.deepEqual(result, {
     videoId: 'dQw4w9WgXcQ',
+    title: 'Never Gonna Give You Up 🎵 (Official)',
     channelUrl: 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw',
     channelId: 'UCuAXFkgsw1L7xaCfnd5JJOw',
     uploaderUrl: 'https://www.youtube.com/@RickAstley',
@@ -189,6 +192,7 @@ test('parseChannelMetaLine: yt-dlp\'s JSON `null` (unavailable field), an empty 
   const result = parseChannelMetaLine(line);
   assert.deepEqual(result, {
     videoId: 'vid123',
+    title: null,
     channelUrl: null,
     channelId: null,
     uploaderUrl: null,

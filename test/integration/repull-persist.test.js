@@ -324,7 +324,11 @@ test('enumerateRepullableItems: an id-suffixed item under the download root is e
   assert.equal(entry.alreadyRepulled, false);
 });
 
-test('enumerateRepullableItems: a non-id-suffixed (MeTube-style) item is ineligible', () => {
+// v1.33 T1: a bracket-less (MeTube-style) import is now ELIGIBLE -- it flows
+// through with null videoId/watchUrl so the batch worker's LOCAL ffprobe
+// tags pass still runs on it (the only shot such a file gets at an embedded
+// purl/date/title); only the NETWORK pass is gated on a watch URL.
+test('enumerateRepullableItems: a non-id-suffixed (MeTube-style) item is eligible with null videoId/watchUrl (local-pass only)', () => {
   const config = ytdlp.parseYtdlpConfig();
   const filePath = path.join(downloadDir, 'Plain Imported Video.mp4');
   const id = getMediaId(filePath);
@@ -335,9 +339,36 @@ test('enumerateRepullableItems: a non-id-suffixed (MeTube-style) item is ineligi
   };
 
   const result = enumerateRepullableItems(db, config);
-  assert.equal(result.eligible, 0);
-  assert.equal(result.ineligible, 1);
-  assert.equal(result.items.length, 0);
+  assert.equal(result.eligible, 1);
+  assert.equal(result.ineligible, 0);
+  assert.equal(result.items.length, 1);
+  assert.equal(result.items[0].videoId, null, 'no bracket and no persisted youtubeId -> null videoId');
+  assert.equal(result.items[0].watchUrl, null, 'no videoId -> no watch URL (network pass will be skipped)');
+});
+
+// v1.33 T1: a bracket-less item whose scan/reheat previously persisted a
+// `youtubeId` (e.g. from an embedded purl tag) gets a real videoId/watchUrl
+// off that persisted field -- re-validated through isSafeVideoId.
+test('enumerateRepullableItems: a bracket-less item with a persisted youtubeId is eligible with that id (garbage youtubeId ignored)', () => {
+  const config = ytdlp.parseYtdlpConfig();
+  const goodPath = path.join(downloadDir, 'Metube Import.mp4');
+  const goodId = getMediaId(goodPath);
+  const badPath = path.join(downloadDir, 'Corrupt Field.mp4');
+  const badId = getMediaId(badPath);
+  const db = {
+    metadata: {
+      [goodId]: { id: goodId, filePath: goodPath, name: path.basename(goodPath), ext: '.mp4', youtubeId: 'dQw4w9WgXcQ' },
+      [badId]: { id: badId, filePath: badPath, name: path.basename(badPath), ext: '.mp4', youtubeId: 'not a real id!!' },
+    },
+  };
+
+  const result = enumerateRepullableItems(db, config);
+  assert.equal(result.eligible, 2, 'both stay eligible (the local pass runs regardless)');
+  const byId = Object.fromEntries(result.items.map((it) => [it.mediaId, it]));
+  assert.equal(byId[goodId].videoId, 'dQw4w9WgXcQ');
+  assert.equal(byId[goodId].watchUrl, 'https://www.youtube.com/watch?v=dQw4w9WgXcQ');
+  assert.equal(byId[badId].videoId, null, 'a persisted youtubeId failing isSafeVideoId is never used');
+  assert.equal(byId[badId].watchUrl, null);
 });
 
 test('enumerateRepullableItems: an id-suffixed item OUTSIDE the download root is ineligible', () => {
@@ -384,15 +415,19 @@ test('enumerateRepullableItems: counts are correct across a mixed set, and an al
     };
 
     const result = enumerateRepullableItems(db, config);
-    assert.equal(result.eligible, 2);
-    assert.equal(result.ineligible, 2);
+    // v1.33 T1: the bracket-less item is now eligible too (local-pass-only,
+    // null videoId) -- only the outside-root item stays ineligible.
+    assert.equal(result.eligible, 3);
+    assert.equal(result.ineligible, 1);
 
     const byId = Object.fromEntries(result.items.map((it) => [it.mediaId, it]));
     assert.ok(byId[eligibleId]);
     assert.equal(byId[eligibleId].alreadyRepulled, false);
     assert.ok(byId[alreadyDoneId]);
     assert.equal(byId[alreadyDoneId].alreadyRepulled, true, 'an item with metadataRepulledAt must be flagged as already-done');
-    assert.ok(!byId[noSuffixId], 'the non-suffixed item must not appear in items at all');
+    assert.ok(byId[noSuffixId], 'the non-suffixed item now appears (local-pass eligible)');
+    assert.equal(byId[noSuffixId].videoId, null);
+    assert.equal(byId[noSuffixId].watchUrl, null);
     assert.ok(!byId[outsideId], 'the outside-root item must not appear in items at all');
   } finally {
     fs.rmSync(libDir, { recursive: true, force: true });
@@ -419,4 +454,70 @@ test('enumerateRepullableItems: the module disabled AND the download dir absent 
 
   // Re-create so afterEach's rmSync doesn't error on an already-gone dir.
   fs.mkdirSync(downloadDir, { recursive: true });
+});
+
+// ---- v1.33 T1/T3: sourceTitle + youtubeId persistence -----------------------
+
+test('recordRepulledItemMeta persists a sanitized sourceTitle (emoji intact) and updates the display title with it', async () => {
+  const filePath = path.join(downloadDir, 'Underscore_Folded_Name [ttl12345678].mp4');
+  fs.writeFileSync(filePath, 'video-bytes');
+  const id = getMediaId(filePath);
+
+  writeDb({
+    folders: [],
+    folderSettings: {},
+    progress: {},
+    metadata: {
+      [id]: {
+        id, name: path.basename(filePath), title: 'Underscore Folded Name', filePath,
+        folderName: path.basename(downloadDir), size: 11, ext: '.mp4', type: 'video',
+        addedAt: Date.now(), duration: 300, hasThumbnail: false, artist: '',
+      },
+    },
+    settings: baseSettings(),
+  });
+
+  const result = await recordRepulledItemMeta(
+    { loadDatabase, updateDatabase, getMediaId },
+    id,
+    { filePath, sourceTitle: '  Real Title 🎵 With\x00 Emoji  ', youtubeId: 'ttl12345678', markComplete: true },
+  );
+  assert.equal(result, true);
+
+  const item = JSON.parse(fs.readFileSync(DB_FILE, 'utf8')).metadata[id];
+  assert.equal(item.sourceTitle, 'Real Title 🎵 With Emoji', 'control chars stripped + trimmed, emoji SURVIVE (sanitizeCapturedTitle)');
+  assert.equal(item.title, 'Real Title 🎵 With Emoji', 'the display title is superseded by the real title');
+  assert.equal(item.youtubeId, 'ttl12345678');
+});
+
+test('recordRepulledItemMeta rejects an unsafe youtubeId and an empty-after-sanitize sourceTitle -- prior values untouched', async () => {
+  const filePath = path.join(downloadDir, 'Guarded Video [grd12345678].mp4');
+  fs.writeFileSync(filePath, 'video-bytes');
+  const id = getMediaId(filePath);
+
+  writeDb({
+    folders: [],
+    folderSettings: {},
+    progress: {},
+    metadata: {
+      [id]: {
+        id, name: path.basename(filePath), title: 'Guarded Video', filePath,
+        folderName: path.basename(downloadDir), size: 11, ext: '.mp4', type: 'video',
+        addedAt: Date.now(), duration: 300, hasThumbnail: false, artist: '',
+        youtubeId: 'grd12345678', sourceTitle: 'Existing Good Title',
+      },
+    },
+    settings: baseSettings(),
+  });
+
+  await recordRepulledItemMeta(
+    { loadDatabase, updateDatabase, getMediaId },
+    id,
+    { filePath, sourceTitle: '\x00\x1f  ', youtubeId: 'not-an-id-at-all!!' },
+  );
+
+  const item = JSON.parse(fs.readFileSync(DB_FILE, 'utf8')).metadata[id];
+  assert.equal(item.youtubeId, 'grd12345678', 'an isSafeVideoId-failing value must never overwrite a good one');
+  assert.equal(item.sourceTitle, 'Existing Good Title', 'an empty-after-sanitize title must never clobber a good one');
+  assert.equal(item.title, 'Guarded Video', 'the display title stays untouched too');
 });

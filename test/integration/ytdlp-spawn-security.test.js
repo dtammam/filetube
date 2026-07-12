@@ -1603,6 +1603,7 @@ test('runDownload: a captured FTCHMETA line is parsed onto result.channelMeta an
   assert.equal(result.channelMeta.length, 1);
   assert.deepEqual(result.channelMeta[0], {
     videoId: 'vid1',
+    title: null, // v1.33 T3: absent from this payload -> normalized null, like the dates
     channelUrl: 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw',
     channelId: 'UCuAXFkgsw1L7xaCfnd5JJOw',
     uploaderUrl: 'https://www.youtube.com/@x',

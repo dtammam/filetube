@@ -172,7 +172,11 @@ test('enabled: responds 202 with {started:true, eligible, ineligible}; the backg
     assert.deepEqual(repullCalls.map((c) => c.filePath), [itemA.filePath, itemB.filePath]);
     assert.deepEqual(recordCalls.map((c) => c.mediaId), [itemA.mediaId, itemB.mediaId]);
     assert.equal(recordCalls[0].meta.releaseDate, 1700000000000);
-    assert.equal(recordCalls[0].meta.channelAvatarUrl, 'https://example.com/avatar.jpg');
+    // v1.33 T1: the worker no longer forwards channelAvatarUrl (dead since
+    // v1.25 -- repullItemMetaAndSubs never returns it) and instead forwards
+    // the item's derived youtubeId for persistence.
+    assert.equal(recordCalls[0].meta.channelAvatarUrl, undefined);
+    assert.equal(recordCalls[0].meta.youtubeId, 'aaaaaaaaaaa');
     assert.equal(recordCalls[0].meta.filePath, itemA.filePath, 'filePath must be forwarded so recordRepulledItemMeta can re-check the subtitle sidecar');
     assert.equal(recordCalls[0].meta.markComplete, true, 'markComplete must be true when the subs pass (wroteSubs) completed');
 
@@ -266,8 +270,8 @@ test('a null result from repullItemMetaAndSubs is counted failed; the batch cont
 
   const recordCalls = [];
   run.repullItemMetaAndSubs = async (watchUrl) => (watchUrl === itemA.watchUrl ? null : { wroteSubs: true });
-  deps.recordRepulledItemMeta = async (d, mediaId) => {
-    recordCalls.push(mediaId);
+  deps.recordRepulledItemMeta = async (d, mediaId, meta) => {
+    recordCalls.push({ mediaId, meta });
     return true;
   };
 
@@ -276,7 +280,15 @@ test('a null result from repullItemMetaAndSubs is counted failed; the batch cont
     await fetch(`${base}/api/ytdlp/repull-metadata`, { method: 'POST' });
     await flush(30);
 
-    assert.deepEqual(recordCalls, [itemB.mediaId], 'only the successful item must be recorded; the null-result item must never call recordRepulledItemMeta');
+    // v1.33 T1: the null-result item now STILL calls recordRepulledItemMeta
+    // -- its derived youtubeId is worth persisting (gap-fill) even when the
+    // network pass produced nothing -- but with markComplete:false, so it
+    // stays retryable and is honestly counted failed, exactly as before.
+    assert.deepEqual(recordCalls.map((c) => c.mediaId), [itemA.mediaId, itemB.mediaId]);
+    assert.equal(recordCalls[0].meta.markComplete, false, 'the null-result item must stay retryable (never marked complete)');
+    assert.equal(recordCalls[0].meta.releaseDate, undefined, 'no releaseDate may be invented for a null result');
+    assert.equal(recordCalls[0].meta.youtubeId, 'aaaaaaaaaaa');
+    assert.equal(recordCalls[1].meta.markComplete, true);
     const entry = getReheatEntry();
     assert.equal(entry.failed, 1);
     assert.equal(entry.done, 1);
@@ -734,4 +746,145 @@ test('structural lock: server.js never CALLS enumerateRepullableItems/recordRepu
 
   assert.equal(countCallInvocations('enumerateRepullableItems'), 0, 'server.js must never itself CALL enumerateRepullableItems -- only lib/ytdlp/index.js (via the deps bridge) may call it');
   assert.equal(countCallInvocations('recordRepulledItemMeta'), 0, 'server.js must never itself CALL recordRepulledItemMeta -- only lib/ytdlp/index.js (via the deps bridge) may call it');
+});
+
+// ---- v1.33 T1: the LOCAL tags pass (probeEmbeddedTags dep) ------------------
+// A bracket-less (metube-era) item has null videoId/watchUrl. The worker's
+// LOCAL ffprobe pass (deps.probeEmbeddedTags) is its only shot: an embedded
+// `purl` yields a watch URL (and thus a network pass) on the fly; embedded
+// date/title are the fallback when the network yields nothing; an item with
+// NOTHING derivable is marked complete (exhausted) so it is never retried on
+// every later non-force reheat.
+
+test('local pass: a bracket-less item with an embedded purl derives a watch URL on the fly and network-repulls through it', async () => {
+  const deps = makeFakeDeps();
+  const item = makeItem({ videoId: null, watchUrl: null, filePath: '/downloads/chan/Metube Import.mp4' });
+  deps.enumerateRepullableItems = () => ({ items: [item], eligible: 1, ineligible: 0 });
+  deps.probeEmbeddedTags = async () => ({
+    releaseDateMs: 1500000000000,
+    sourceUrl: 'https://www.youtube.com/watch?v=eeeeeeeeeee',
+    title: 'Local Tag Title',
+  });
+
+  const repullCalls = [];
+  const recordCalls = [];
+  run.repullItemMetaAndSubs = async (watchUrl) => {
+    repullCalls.push(watchUrl);
+    return { releaseDate: 1600000000000, sourceTitle: 'Network Title 🎵', wroteSubs: true };
+  };
+  deps.recordRepulledItemMeta = async (d, mediaId, meta) => {
+    recordCalls.push({ mediaId, meta });
+    return true;
+  };
+
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    await fetch(`${base}/api/ytdlp/repull-metadata`, { method: 'POST' });
+    await flush(30);
+
+    assert.deepEqual(repullCalls, ['https://www.youtube.com/watch?v=eeeeeeeeeee'],
+      'the network pass must run against the purl-derived watch URL');
+    assert.equal(recordCalls.length, 1);
+    const meta = recordCalls[0].meta;
+    assert.equal(meta.youtubeId, 'eeeeeeeeeee', 'the purl-derived id is persisted');
+    assert.equal(meta.releaseDate, 1600000000000, 'NETWORK date beats the local embedded date');
+    assert.equal(meta.sourceTitle, 'Network Title 🎵', 'NETWORK title beats the local embedded title');
+    assert.equal(meta.markComplete, true);
+    assert.equal(getReheatEntry().done, 1);
+  } finally {
+    await close();
+  }
+});
+
+test('local pass: embedded date/title are the fallback when the network pass produces nothing usable', async () => {
+  const deps = makeFakeDeps();
+  const item = makeItem({ videoId: 'fffffffffff' }); // bracketed -- network runs directly
+  deps.enumerateRepullableItems = () => ({ items: [item], eligible: 1, ineligible: 0 });
+  deps.probeEmbeddedTags = async () => ({
+    releaseDateMs: 1500000000000,
+    sourceUrl: null,
+    title: 'Embedded Tag Title 🌸',
+  });
+
+  const recordCalls = [];
+  run.repullItemMetaAndSubs = async () => ({ wroteSubs: true }); // no releaseDate, no sourceTitle
+  deps.recordRepulledItemMeta = async (d, mediaId, meta) => {
+    recordCalls.push({ mediaId, meta });
+    return true;
+  };
+
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    await fetch(`${base}/api/ytdlp/repull-metadata`, { method: 'POST' });
+    await flush(30);
+
+    assert.equal(recordCalls.length, 1);
+    const meta = recordCalls[0].meta;
+    assert.equal(meta.releaseDate, 1500000000000, 'the LOCAL embedded date fills the gap the network left');
+    assert.equal(meta.sourceTitle, 'Embedded Tag Title 🌸', 'the LOCAL embedded title fills the gap too');
+    assert.equal(meta.youtubeId, 'fffffffffff');
+    assert.equal(meta.markComplete, true);
+  } finally {
+    await close();
+  }
+});
+
+test('local pass: an item with NOTHING derivable (no id anywhere, no local tags) is marked complete (exhausted) and never network-spawned', async () => {
+  const deps = makeFakeDeps();
+  const item = makeItem({ videoId: null, watchUrl: null, filePath: '/downloads/chan/Opaque File.mp4' });
+  deps.enumerateRepullableItems = () => ({ items: [item], eligible: 1, ineligible: 0 });
+  deps.probeEmbeddedTags = async () => ({ releaseDateMs: null, sourceUrl: null, title: null });
+
+  let networkCalled = false;
+  const recordCalls = [];
+  run.repullItemMetaAndSubs = async () => {
+    networkCalled = true;
+    return null;
+  };
+  deps.recordRepulledItemMeta = async (d, mediaId, meta) => {
+    recordCalls.push({ mediaId, meta });
+    return true;
+  };
+
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    await fetch(`${base}/api/ytdlp/repull-metadata`, { method: 'POST' });
+    await flush(30);
+
+    assert.equal(networkCalled, false, 'no watch URL is derivable -> the network pass must never spawn');
+    assert.equal(recordCalls.length, 1);
+    assert.equal(recordCalls[0].meta.markComplete, true,
+      'exhausted -- nothing a future non-force reheat could ever add, so mark complete to stop the retry loop');
+    assert.equal(recordCalls[0].meta.releaseDate, undefined, 'no date may be invented');
+    assert.equal(recordCalls[0].meta.sourceTitle, undefined);
+    assert.equal(getReheatEntry().done, 1);
+  } finally {
+    await close();
+  }
+});
+
+test('local pass: a probeEmbeddedTags dep that THROWS is contained -- the item still processes via its bracket id', async () => {
+  const deps = makeFakeDeps();
+  const item = makeItem({ videoId: 'ggggggggggg' });
+  deps.enumerateRepullableItems = () => ({ items: [item], eligible: 1, ineligible: 0 });
+  deps.probeEmbeddedTags = async () => { throw new Error('ffprobe exploded'); };
+
+  const recordCalls = [];
+  run.repullItemMetaAndSubs = async () => ({ releaseDate: 1700000000000, wroteSubs: true });
+  deps.recordRepulledItemMeta = async (d, mediaId, meta) => {
+    recordCalls.push(meta);
+    return true;
+  };
+
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    await fetch(`${base}/api/ytdlp/repull-metadata`, { method: 'POST' });
+    await flush(30);
+
+    assert.equal(recordCalls.length, 1);
+    assert.equal(recordCalls[0].releaseDate, 1700000000000);
+    assert.equal(getReheatEntry().done, 1, 'a local-probe failure must never fail the item');
+  } finally {
+    await close();
+  }
 });
