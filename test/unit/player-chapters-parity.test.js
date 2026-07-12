@@ -100,7 +100,9 @@ test('v1.34.1: the chapters UI is mobile-safe -- has-chapters class toggled per 
   // only, with the native-controls strip-removal outranking the 2-ID
   // reservation.
   assert.match(css, /#player-slot \.player-controls \{\s*flex-wrap: wrap;\s*height: 80px;/, 'two-row bar');
-  assert.match(css, /#player-slot \.player-controls \.pc-seek \{[\s\S]*?flex: 1 1 auto;[\s\S]*?min-width: calc\(100% - 170px\);/, 'the seek bar owns its row (v1.34.2: hard min-width)');
+  // v1.34.3: the min-width approach was replaced by the structural
+  // ::after line break (device-font-independent).
+  assert.match(css, /#player-slot \.player-controls::after \{\s*content: '';\s*order: -1;\s*flex-basis: 100%;/, 'the structural line break between scrub row and buttons');
   assert.match(css, /#player-slot #player-wrapper:not\(\.audio-expanded\) \{\s*padding-bottom: 80px;/, 'the reserved strip matches the two-row bar');
   assert.match(css, /#player-slot #player-wrapper:not\(\.audio-expanded\)\.native-controls \{\s*padding-bottom: 0;/, 'native mode still removes the strip (outranks the 2-ID reservation)');
 });
@@ -120,6 +122,21 @@ test('v1.34.2: the chapters menu has an explicit close (header ✕), touchstart/
   const pinIdx = css.indexOf('#player-wrapper.portrait-media:not(.audio-expanded) #media-player');
   const fsIdx = css.indexOf('#player-wrapper.css-fullscreen:not(.audio-expanded) #media-player');
   assert.ok(pinIdx >= 0 && fsIdx > pinIdx, 'css-fullscreen must outrank the portrait pin by order');
-  // Row exclusivity (round 2): the seek bar owns its row via hard min-width.
-  assert.match(css, /min-width: calc\(100% - 170px\);/, 'the scrub row cannot be shared by buttons');
+  // Row exclusivity (v1.34.3): structural ::after line break -- asserted
+  // in the v1.34.1 lock above.
+});
+
+
+// ---- v1.34.3 (Dean round 3): the dismissal ROOT CAUSE + faux hardening ------
+test('v1.34.3: [hidden] actually hides the chapters menu (the display:flex override was the entire dismissal saga), and faux fullscreen releases the mobile height clamps + keys off the active surface', () => {
+  const css = fs.readFileSync(path.join(ROOT, 'public', 'css', 'style.css'), 'utf8');
+  assert.match(css, /\.chapters-menu\[hidden\] \{[\s\S]*?display: none !important;/,
+    'without this rule, the menu class display:flex overrides the hidden attribute and NO close path can ever work');
+  const hiddenIdx = css.indexOf('.chapters-menu[hidden]');
+  const classIdx = css.indexOf('.chapters-menu {');
+  assert.ok(hiddenIdx >= 0 && classIdx >= 0, 'both rules present');
+  assert.match(css, /#player-wrapper\.css-fullscreen \{[\s\S]*?max-height: none !important;/,
+    'faux fullscreen must release the 45vh-78vh mobile clamps or it renders as a band');
+  assert.ok(playerSrc.includes("currentData && currentData.type !== 'audio' && state === STATE_FULL"),
+    'the faux trigger keys off the ACTIVE surface, not the async cached settings flag');
 });

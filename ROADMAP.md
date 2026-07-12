@@ -80,6 +80,8 @@
 
 ## Shipped
 
+### v1.34.3 — mobile player round 3 (2026-07-13): the dismissal root cause (display:flex silently overrode [hidden] — no close path could ever work), a structural flex line-break for the scrub row, faux-fullscreen height-clamp release + active-surface trigger.
+
 ### v1.34.2 — mobile player round 2 (2026-07-13, on-device iteration)
 
 - Scrub row is exclusive (buttons can no longer squeeze onto it); chapters menu gained an explicit ✕ close + iOS dismissal braces; custom-mode mobile fullscreen is now a CSS faux-fullscreen keeping FileTube's own bar (iPhone element-fullscreen is native-only by platform rule).
