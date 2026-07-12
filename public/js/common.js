@@ -3121,6 +3121,22 @@ function renderPlaylistsSheet(folders, folderSettings) {
 // already-validated field to read. Building this passthrough now means T11
 // never has to touch this client file -- it only ever adds the field
 // server-side.
+// v1.37.0 (books shelves-as-pins): ONE pin-fetch helper for every render
+// call site -- ytdlp channel pins first, book-shelf pins after (each fetch
+// independently degrades to [] on 404/disabled/network failure, so all four
+// enabled/disabled combinations reduce to today's behavior; a books-less +
+// ytdlp-less install renders exactly nothing, byte-identical).
+function fetchAllPins() {
+  const safeJson = (url) => fetch(url)
+    .then((r) => (r.ok ? r.json() : []))
+    .catch(() => []);
+  return Promise.all([safeJson('/api/subscriptions/pins'), safeJson('/api/books/pins')])
+    .then(([channelPins, bookPins]) => [
+      ...(Array.isArray(channelPins) ? channelPins : []),
+      ...(Array.isArray(bookPins) ? bookPins : []),
+    ]);
+}
+
 function derivePinnedPlaylistEntries(pins) {
   const list = Array.isArray(pins) ? pins : [];
   return list
@@ -3133,6 +3149,12 @@ function derivePinnedPlaylistEntries(pins) {
         channelDir: p.channelDir,
         label: trimmedLabel !== '' ? trimmedLabel : (base || 'Pinned channel'),
         channelAvatarUrl: avatarUrl,
+        // v1.37.0 (books shelves-as-pins): an optional explicit link target.
+        // ytdlp pins never carry one (null -> the renderers' existing
+        // `/?root=` default); a book-shelf pin's server payload pre-shapes
+        // `/books?root=...`. THE one deliberate shared-renderer widening --
+        // the shape-lock test updates in lockstep (exec plan risk #3).
+        href: typeof p.href === 'string' && p.href.startsWith('/') ? p.href : null,
       };
     });
 }
@@ -3224,7 +3246,9 @@ function renderPinnedPlaylists(pins, moduleEnabled) {
   entries.forEach((entry) => {
     const link = document.createElement('a');
     link.className = 'sidebar-item';
-    link.href = '/?root=' + encodeURIComponent(entry.channelDir);
+    // v1.37.0: a pre-shaped href (book shelves) wins; ytdlp pins keep the
+    // classic /?root= link (entry.href is null there).
+    link.href = entry.href || ('/?root=' + encodeURIComponent(entry.channelDir));
     // F1: real channel icon when captured (C6), else a deterministic
     // generated avatar -- replaces the old generic icon-star glyph.
     link.appendChild(buildPinAvatarNode(entry.label, entry.channelAvatarUrl));
@@ -3311,7 +3335,9 @@ function renderPinnedSidebar(pins) {
   entries.forEach((entry, index) => {
     const link = document.createElement('a');
     link.className = 'sidebar-item';
-    link.href = '/?root=' + encodeURIComponent(entry.channelDir);
+    // v1.37.0: a pre-shaped href (book shelves) wins; ytdlp pins keep the
+    // classic /?root= link (entry.href is null there).
+    link.href = entry.href || ('/?root=' + encodeURIComponent(entry.channelDir));
     // v1.24.3: drag-and-drop reorder target -- see
     // wirePinnedSidebarDragAndDrop below. `data-pin-id` is how a drop
     // recovers WHICH pin a rendered row represents (the reorder route is
@@ -5886,7 +5912,7 @@ if (typeof module !== 'undefined' && module.exports) {
     buildSubscribeRequestBody, buildSubscribeModal,
     // v1.25 QoL (T5): cutoffDate <-> <input type="date"> converters.
     cutoffDateToDateInput, dateInputToCutoffDate,
-    derivePinnedPlaylistEntries, renderPinnedSidebar, renderPinnedPlaylists,
+    derivePinnedPlaylistEntries, renderPinnedSidebar, renderPinnedPlaylists, fetchAllPins,
     isYtdlpManagedItem, deleteFlowFor, showHardDeleteModal,
     // v1.24.0 (T9): C1 move-files client picker.
     showMoveModal, requestMoveItem,

@@ -565,10 +565,8 @@ if (typeof module !== 'undefined' && module.exports) {
     // `[]` (no pins rendered), preserving the disabled-module no-op
     // guarantee -- this never logs/throws on a 404. Read-only: never writes
     // db.folders/folderSettings.
-    fetch('/api/subscriptions/pins')
-      .then((r) => (r.ok ? r.json() : []))
-      .catch(() => [])
-      .then((pins) => renderPinnedSidebar(pins));
+    // v1.37.0: channel pins + book-shelf pins, one merged sidebar section.
+    fetchAllPins().then((pins) => renderPinnedSidebar(pins));
 
     // Parse media ID
     const urlParams = new URLSearchParams(window.location.search);
@@ -1286,10 +1284,8 @@ if (typeof module !== 'undefined' && module.exports) {
     // without a page reload (AC: "the pinned-sidebar shortcut updates
     // immediately").
     function refreshPinnedSidebar() {
-      fetch('/api/subscriptions/pins')
-        .then((r) => (r.ok ? r.json() : []))
-        .catch(() => [])
-        .then((pins) => renderPinnedSidebar(pins));
+      // v1.37.0: channel + book-shelf pins, one merged sidebar section.
+      fetchAllPins().then((pins) => renderPinnedSidebar(pins));
     }
 
     // One-tap pin/unpin, mirroring subscriptions.js's togglePin exactly:

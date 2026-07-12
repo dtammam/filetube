@@ -1064,10 +1064,8 @@ function init(root) {
   // pins rendered), preserving the disabled-module no-op guarantee -- this
   // never logs/throws on a 404. Read-only: never writes db.folders/
   // folderSettings.
-  fetch('/api/subscriptions/pins')
-    .then((r) => (r.ok ? r.json() : []))
-    .catch(() => [])
-    .then((pins) => renderPinnedSidebar(pins));
+  // v1.37.0: channel pins + book-shelf pins, one merged sidebar section.
+  fetchAllPins().then((pins) => renderPinnedSidebar(pins));
 
   // Start
   loadConfig();

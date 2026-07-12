@@ -110,3 +110,29 @@ test('T9: locator builders match the server contract -- bounded cfi, optional in
   assert.deepEqual(readView.buildPdfLocator(12), { kind: 'pdf', page: 12 });
   assert.deepEqual(readView.buildPdfLocator(-1), { kind: 'pdf', page: 1 }, 'junk pages degrade to 1');
 });
+
+// ---- T10: the home-page book surfaces (pure builders in main.js) -------------
+
+const mainView = require('../../public/js/main.js');
+
+test('T10: buildBooksHomeSectionHtml -- empty items = EMPTY STRING (books-less home stays byte-identical); populated = escaped row', () => {
+  assert.equal(mainView.buildBooksHomeSectionHtml([], 'Continue reading', '/books'), '');
+  assert.equal(mainView.buildBooksHomeSectionHtml('junk', 'X', null), '');
+  const html = mainView.buildBooksHomeSectionHtml(
+    [{ id: 'b1', title: '<i>Sly</i> Book', progress: { percent: 40 } }],
+    'Continue reading',
+    '/books',
+  );
+  assert.ok(html.includes('Continue reading'));
+  assert.ok(html.includes('/read.html?b=b1'));
+  assert.ok(!html.includes('<i>Sly</i>'), 'titles escaped');
+  assert.ok(html.includes('width: 40%'), 'progress fill');
+  assert.ok(html.includes('href="/books"'), 'see-all link');
+});
+
+test('T10: buildBookRowCardHtml -- encoded ids, no progress bar on unread', () => {
+  const html = mainView.buildBookRowCardHtml({ id: 'a/b', title: 'T' });
+  assert.ok(html.includes('/read.html?b=a%2Fb'));
+  assert.ok(html.includes('/bookcover/a%2Fb'));
+  assert.ok(!html.includes('book-row-progress'));
+});
