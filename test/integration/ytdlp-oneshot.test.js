@@ -885,6 +885,50 @@ test('runExclusive: a poll trigger arriving while a one-shot is in-flight queues
 // snapshot, not stale/idle, for the ENTIRE time it waits its turn on the ----
 // shared runExclusive FIFO. -------------------------------------------------
 
+// ---- v1.36.2 gate follow-up (adversarial WARNING): subs-only one-off = done --
+
+test('v1.36.2: a one-off whose media completed but whose SUBTITLES exit-1d resolves to the SUCCESS path -- done state, archive appended, never a red chip', async () => {
+  const deps = makeFakeDeps();
+  const argsModule = require('../../lib/ytdlp/args');
+  const activityModule = require('../../lib/ytdlp/activity');
+
+  run.runDownload = async () => ({
+    ok: false, // yt-dlp exited 1 -- but only because of subtitles
+    code: 1,
+    stdout: '',
+    stderr: '',
+    error: 'yt-dlp exited with code 1',
+    itemFailures: [{ videoId: 'dQw4w9WgXcQ', reason: "Unable to download video subtitles for 'en': HTTP Error 429", subtitleOnly: true }],
+    // The FTCHMETA capture line the completed download printed -- the
+    // corroborating positive evidence.
+    channelMeta: [{ videoId: 'dQw4w9WgXcQ', channelUrl: 'https://www.youtube.com/@subsflaky' }],
+  });
+
+  const config = enabledConfig();
+  const { base, close } = await startTestApp(deps, config);
+  try {
+    const res = await postJson(base, '/api/ytdlp/download', { url: WATCH_VIDEO_URL });
+    assert.equal(res.status, 202);
+    const { jobId } = await res.json();
+
+    // Wait for the job to settle (bounded).
+    let entry = null;
+    for (let i = 0; i < 100; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      entry = activityModule.getSnapshot().oneShots[jobId];
+      if (entry && entry.state !== 'downloading' && entry.state !== 'queued') break;
+    }
+    assert.ok(entry, 'the job must have an activity entry');
+    assert.equal(entry.state, 'done', 'a subs-only non-zero exit must settle as DONE, not a red error chip contradicting its own success run-log line');
+
+    const archivePath = argsModule.resolveArchivePath(config);
+    const archiveText = fs.existsSync(archivePath) ? fs.readFileSync(archivePath, 'utf8') : '';
+    assert.ok(archiveText.includes('youtube dQw4w9WgXcQ'), 'the success path must run: the id is archived so a later subscription poll never re-downloads a duplicate');
+  } finally {
+    await close();
+  }
+});
+
 test('FIX-7 regression: a poll queued behind an in-flight one-shot shows its targeted subscriptions as "queued" in the status snapshot while it waits', async () => {
   const deps = makeFakeDeps();
   const sub = await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@chanA', format: 'video' });
