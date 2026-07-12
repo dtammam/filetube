@@ -363,3 +363,44 @@ test('v1.36 fix round 2: a hostile/malformed channel_id from a listing is never 
   await ytdlp.runPoll(deps, baseConfig(), sub.id);
   assert.ok(!getSub(deps, sub.id).channelId, 'a non-UC-shaped id must be rejected at the persistence boundary');
 });
+
+// ---- v1.36.1: skipShorts end-to-end on the UU-feed listing shape -------------
+
+test("v1.36.1 (Dean's report): a skipShorts=true sub listing a watch-form-URL Short (UU-feed shape, no /shorts/ marker) does NOT download it; skipShorts=false still does", async () => {
+  const deps = makeFakeDeps();
+  const sub = await store.addSubscription(deps, {
+    channelUrl: 'https://www.youtube.com/@shortsleak', format: 'video', quality: 'best', skipShorts: true,
+  });
+
+  const uuShapedListing = async () => ({
+    ok: true,
+    code: 101,
+    stdout: [
+      // A real video and a Short, BOTH with canonical watch-form URLs and no
+      // /shorts/ marker anywhere -- exactly what the UU uploads-feed listing
+      // yields when YouTube's renderer doesn't flag the Short.
+      JSON.stringify({ id: 'longform001', availability: 'public', upload_date: '20991231', webpage_url: 'https://www.youtube.com/watch?v=longform001', duration: 900, aspect_ratio: 1.7777 }),
+      JSON.stringify({ id: 'sneakyshort', availability: 'public', upload_date: '20991231', webpage_url: 'https://www.youtube.com/watch?v=sneakyshort', duration: 42, aspect_ratio: 0.5625 }),
+    ].join('\n'),
+    stderr: '',
+  });
+
+  const downloaded = [];
+  run.runList = uuShapedListing;
+  run.runDownload = async (subArg, cfg, targetIds) => {
+    downloaded.push(...targetIds);
+    return { ok: true, code: 0, stdout: '', stderr: '', channelMeta: [], itemFailures: [] };
+  };
+
+  await ytdlp.runPoll(deps, baseConfig(), sub.id);
+  assert.ok(downloaded.includes('longform001'), 'the long-form video downloads');
+  assert.ok(!downloaded.includes('sneakyshort'), 'the marker-less Short must be caught by the shape fallback');
+
+  // Posture unchanged: a sub that did NOT opt in still gets everything.
+  const permissive = await store.addSubscription(deps, {
+    channelUrl: 'https://www.youtube.com/@shortswelcome', format: 'video', quality: 'best', skipShorts: false,
+  });
+  downloaded.length = 0;
+  await ytdlp.runPoll(deps, baseConfig(), permissive.id);
+  assert.ok(downloaded.includes('sneakyshort'), 'skipShorts=false subs are untouched by the fallback');
+});

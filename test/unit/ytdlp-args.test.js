@@ -358,7 +358,7 @@ test('buildYtdlpDownloadArgs: the subtitle grab flags are fixed literals, never 
   const subLangsOccurrences = result.filter((el) => el === '--sub-langs').length;
   assert.equal(subLangsOccurrences, 1, 'exactly one --sub-langs flag, never duplicated/influenced by hostile sub fields');
   assert.equal(result[result.indexOf('--sub-langs') + 1], 'en.*');
-  assert.equal(args.SHORTS_MATCH_FILTER, 'webpage_url!*=/shorts/', 'sanity: this file\'s established fixed-literal posture is unchanged');
+  assert.equal(args.SHORTS_MATCH_FILTER, 'original_url!*=/shorts/', 'sanity: this file\'s established fixed-literal posture is unchanged');
 });
 
 // ---- C1: per-survivor watch-URL targeting (structural download scoping) --
@@ -480,7 +480,7 @@ test('buildYtdlpListArgs: emits the fixed --match-filter Shorts-exclusion argume
   const idx = result.indexOf('--match-filter');
   assert.ok(idx >= 0, '--match-filter must be present when skipShorts is true');
   assert.equal(result[idx + 1], args.SHORTS_MATCH_FILTER);
-  assert.equal(args.SHORTS_MATCH_FILTER, 'webpage_url!*=/shorts/', 'the filter must be the exact fixed constant');
+  assert.equal(args.SHORTS_MATCH_FILTER, 'original_url!*=/shorts/', 'the filter must be the exact fixed constant');
   assert.ok(idx < result.indexOf('--'), '--match-filter must precede the "--" separator');
 });
 
@@ -525,7 +525,7 @@ test('buildMatchFilterArg: neither clause active -> []', () => {
 test('buildMatchFilterArg: skipShorts alone -> a single --match-filter with only the Shorts clause', () => {
   assert.deepEqual(
     args.buildMatchFilterArg({ skipShorts: true, maxDurationSeconds: undefined }),
-    ['--match-filter', 'webpage_url!*=/shorts/']
+    ['--match-filter', 'original_url!*=/shorts/']
   );
 });
 
@@ -538,7 +538,7 @@ test('buildMatchFilterArg: maxDurationSeconds alone -> a single --match-filter w
 
 test('buildMatchFilterArg: BOTH active -> ONE --match-filter, clauses AND-joined with " & " (never two separate --match-filter args)', () => {
   const result = args.buildMatchFilterArg({ skipShorts: true, maxDurationSeconds: 7200 });
-  assert.deepEqual(result, ['--match-filter', 'webpage_url!*=/shorts/ & duration < 7200']);
+  assert.deepEqual(result, ['--match-filter', 'original_url!*=/shorts/ & duration < 7200']);
   // Exactly one --match-filter flag in the result (not two).
   assert.equal(result.filter((el) => el === '--match-filter').length, 1);
 });
@@ -555,7 +555,7 @@ test('buildYtdlpListArgs: emits the combined AND-joined --match-filter when both
   const result = args.buildYtdlpListArgs(baseSub({ skipShorts: true }), config);
   const idx = result.indexOf('--match-filter');
   assert.ok(idx >= 0);
-  assert.equal(result[idx + 1], 'webpage_url!*=/shorts/ & duration < 7200');
+  assert.equal(result[idx + 1], 'original_url!*=/shorts/ & duration < 7200');
   // Exactly one --match-filter arg -- never two separate ones (which yt-dlp
   // would OR together instead of AND).
   assert.equal(result.filter((el) => el === '--match-filter').length, 1);

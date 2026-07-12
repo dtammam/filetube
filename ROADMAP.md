@@ -80,6 +80,10 @@
 
 ## Shipped
 
+### v1.36.1 — shorts exclusion made shape-aware (2026-07-13)
+
+- Dean's on-device report confirmed: skipShorts subs downloaded Shorts after v1.36 — the detector keyed only on a /shorts/ URL marker the UU uploads-feed listing does not reliably carry. rules.isShort now adds YouTube's own classification rule as a fallback (<= 3 minutes AND vertical-or-square), fail-open on missing fields; the yt-dlp-side defense filter (inert since v1.15 — it keyed on webpage_url, which yt-dlp always canonicalizes) now keys on original_url and genuinely works where the marker exists. skipShorts=false subs untouched. Slim adversarial gate: APPROVE (heuristic verified as YouTube's post-Oct-2024 auto-classification rule; original_url entry-URL semantics verified in yt-dlp source).
+
 ### v1.36.0 — subscription-poll starvation fix (2026-07-13)
 
 - Root cause of the "same channels time out every poll" loop found and fixed: the list pass full-extracted a channel's entire never-downloaded back catalog on every run (--dateafter filters but never stops), so large-catalog channels deterministically blew the 5.1m budget. The list pass now targets the channel's combined UU uploads feed and STOPS at the first pre-cutoff video (--break-match-filters with a 7-day out-of-order slack; exit 101 mapped to success), with a 200-entry scan-cap backstop (FILETUBE_YTDLP_LIST_SCAN_CAP) and a budget that scales with what the argv can actually walk. Playlist subs and channelId-less fresh subs use the old bounded walk; channel subs self-heal their channelId from their first listing. The authoritative date gate moved into the survivor loop (rules.isBeforeCutoff).

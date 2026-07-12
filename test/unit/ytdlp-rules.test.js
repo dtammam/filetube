@@ -266,3 +266,49 @@ t36('v1.36 isBeforeCutoff: a missing/malformed cutoffDate keeps everything (mirr
     assert.equal(rules36.isBeforeCutoff({ upload_date: '19990101' }, bad), false, `cutoff=${JSON.stringify(bad)}`);
   }
 });
+
+// ---- v1.36.1: isShort shape fallback (Dean's on-device report) --------------
+//
+// A skipShorts=true sub downloaded Shorts after v1.36: the UU uploads-feed
+// listing does not reliably carry the /shorts/ URL marker (yt-dlp only
+// rewrites the entry URL when YouTube's playlist renderer flags the entry,
+// and webpage_url is ALWAYS canonicalized to watch form). The fallback
+// detects the defining shape instead: <=180s AND vertical-or-square.
+
+t36('v1.36.1 isShort: the URL marker still detects (layer 1 unchanged)', () => {
+  const rules36 = require('../../lib/ytdlp/rules');
+  assert.equal(rules36.isShort({ original_url: 'https://www.youtube.com/shorts/abc123defgh' }), true);
+  assert.equal(rules36.isShort({ webpage_url: 'https://www.youtube.com/shorts/abc123defgh' }), true);
+});
+
+t36('v1.36.1 isShort shape fallback: a watch-form URL with a vertical/square frame and <=180s duration IS a Short (the UU-feed shape)', () => {
+  const rules36 = require('../../lib/ytdlp/rules');
+  // The exact production shape: canonical watch URL, 9:16 vertical, 45s.
+  assert.equal(rules36.isShort({ webpage_url: 'https://www.youtube.com/watch?v=abc123defgh', duration: 45, aspect_ratio: 0.5625 }), true);
+  // Boundary: exactly 180s still counts (YouTube's current Shorts ceiling).
+  assert.equal(rules36.isShort({ webpage_url: 'https://www.youtube.com/watch?v=abc123defgh', duration: 180, aspect_ratio: 0.5625 }), true);
+  // Square (1:1) counts -- the Shorts player accepts aspect <= 1.
+  assert.equal(rules36.isShort({ duration: 60, aspect_ratio: 1 }), true);
+  // No precomputed aspect_ratio: width/height decide (width <= height).
+  assert.equal(rules36.isShort({ duration: 30, width: 1080, height: 1920 }), true);
+  assert.equal(rules36.isShort({ duration: 30, width: 1080, height: 1080 }), true);
+});
+
+t36('v1.36.1 isShort shape fallback: landscape or long videos are NEVER shape-detected (no false positives on normal content)', () => {
+  const rules36 = require('../../lib/ytdlp/rules');
+  assert.equal(rules36.isShort({ duration: 45, aspect_ratio: 1.7777 }), false, 'landscape, however brief, is not a Short');
+  assert.equal(rules36.isShort({ duration: 45, width: 1920, height: 1080 }), false);
+  assert.equal(rules36.isShort({ duration: 181, aspect_ratio: 0.5625 }), false, 'over the 180s ceiling is not a Short (a vertical long-form video)');
+  assert.equal(rules36.isShort({ duration: 3600, aspect_ratio: 0.5625 }), false);
+});
+
+t36('v1.36.1 isShort shape fallback: missing/malformed shape fields fail OPEN (download it), exactly the established posture', () => {
+  const rules36 = require('../../lib/ytdlp/rules');
+  assert.equal(rules36.isShort({ duration: 45 }), false, 'no dimensions and no ratio -> no shape verdict');
+  assert.equal(rules36.isShort({ aspect_ratio: 0.5625 }), false, 'no duration -> no shape verdict (an upcoming/live placeholder)');
+  assert.equal(rules36.isShort({ duration: '45', aspect_ratio: '0.5' }), false, 'string-typed junk never trips it');
+  assert.equal(rules36.isShort({ duration: 30, aspect_ratio: 'junk', width: 1080, height: 1920 }), true, 'a junk aspect_ratio falls through to the width/height compare');
+  assert.equal(rules36.isShort({ duration: NaN, aspect_ratio: NaN }), false);
+  assert.equal(rules36.isShort({ duration: 45, width: 0, height: 0 }), false);
+  assert.equal(rules36.isShort({}), false);
+});
