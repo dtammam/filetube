@@ -49,3 +49,32 @@ test('T7: vendored reader libs carry their upstream LICENSE files with the expec
     assert.notEqual(buf.toString('utf8', 0, 1), '<', `${rel} is not an HTML error page`);
   }
 });
+
+// ---- T8: the books page's pure card/chip builders ----------------------------
+
+const booksView = require('../../public/js/books.js');
+
+test('T8: buildBookCardHtml -- escaped title/author, encoded id in hrefs, progress bar only when meaningful', () => {
+  const html = booksView.buildBookCardHtml({
+    id: 'abc/def', title: '<b>Sneaky</b> & Title', author: "O'Author",
+    progress: { percent: 37.4 },
+  });
+  assert.ok(html.includes('/read.html?b=abc%2Fdef'), 'id URL-encoded');
+  assert.ok(!html.includes('<b>Sneaky</b>'), 'title escaped');
+  assert.ok(html.includes('&lt;b&gt;Sneaky&lt;/b&gt;'));
+  assert.ok(html.includes('&#039;Author'), 'author escaped');
+  assert.ok(html.includes('width: 37.4%'), 'progress fill');
+  const fresh = booksView.buildBookCardHtml({ id: 'x', title: 'T', author: '' });
+  assert.ok(!fresh.includes('book-progress-track'), 'no bar on unread books');
+});
+
+test('T8: deriveShelfChips -- sorted, malformed entries dropped, non-arrays degrade to []', () => {
+  const chips = booksView.deriveShelfChips([
+    { name: 'Zeta', dir: '/b/z', count: 1 },
+    { name: 'Alpha', dir: '/b/a', count: 2 },
+    { name: '', dir: '/b/broken' },
+    null,
+  ]);
+  assert.deepEqual(chips.map((c) => c.name), ['Alpha', 'Zeta']);
+  assert.deepEqual(booksView.deriveShelfChips('junk'), []);
+});

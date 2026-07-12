@@ -3878,6 +3878,38 @@ app.get('/api/books', (req, res) => {
   res.json({ items: shaped.slice(offset, offset + limit), total, offset, limit });
 });
 
+// ROUTE ORDER: the static-segment GETs (/folders, /pins) MUST register
+// before the /:id param route or Express matches :id="folders".
+// Shelf aggregation for the books page's chips: unique parent directories
+// with counts, joined against the shelf pins so the chip renders its pin
+// state (T10's pin gesture). Exposing shelf DIR paths to the operator's own
+// UI is the same trust level as /api/config exposing db.folders.
+app.get('/api/books/folders', (req, res) => {
+  const ns = booksStore.ensureBooks(getCachedDatabase());
+  const byDir = new Map();
+  for (const item of Object.values(ns.items)) {
+    if (typeof item.filePath !== 'string') continue;
+    const dir = path.dirname(item.filePath);
+    const existing = byDir.get(dir);
+    if (existing) existing.count += 1;
+    else byDir.set(dir, { name: item.folderName || path.basename(dir), dir, count: 1 });
+  }
+  const pinByDir = new Map(ns.pins.map((p) => [p.dir, p]));
+  const folders = [...byDir.values()].map((f) => {
+    const pin = pinByDir.get(f.dir);
+    return { ...f, pinned: Boolean(pin), pinId: pin ? pin.id : null };
+  });
+  res.json({ folders });
+});
+
+app.get('/api/books/pins', (req, res) => {
+  // Pre-shaped for the shared pinned-sidebar renderer: `channelDir` is the
+  // field name the renderer already keys on; `href` overrides its default
+  // `/?root=` link to the books page (the ONLY shared-renderer widening).
+  const pins = booksStore.listShelfPins({ loadDatabase });
+  res.json(pins.map((p) => ({ id: p.id, channelDir: p.dir, label: p.label, href: `/books?root=${encodeURIComponent(p.dir)}` })));
+});
+
 app.get('/api/books/:id', (req, res) => {
   const ns = booksStore.ensureBooks(getCachedDatabase());
   const item = ns.items[req.params.id];
@@ -4001,6 +4033,49 @@ app.post(
     res.json({ applied: true });
   },
 );
+
+// ---- Books: shelf pins (T10 server half -- the ytdlp pins route shapes) ----
+
+app.post('/api/books/pins', async (req, res) => {
+  const ns = booksStore.ensureBooks(getCachedDatabase());
+  const validation = booksStore.validateShelfPinInput(req.body, ns.folders);
+  if (!validation.ok) return res.status(400).json({ error: validation.error });
+  try {
+    const record = await booksStore.addShelfPin({ loadDatabase, updateDatabase, getMediaId }, validation.value);
+    res.json(record);
+  } catch (err) {
+    res.status(500).json({ error: `Could not pin shelf: ${err.message}` });
+  }
+});
+
+app.delete('/api/books/pins/:id', async (req, res) => {
+  try {
+    const removed = await booksStore.removeShelfPin({ loadDatabase, updateDatabase }, req.params.id);
+    if (!removed) return res.status(404).json({ error: 'Pin not found' });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: `Could not unpin shelf: ${err.message}` });
+  }
+});
+
+app.post('/api/books/pins/reorder', async (req, res) => {
+  const { orderedIds } = req.body || {};
+  if (!Array.isArray(orderedIds) || !orderedIds.every((id) => typeof id === 'string' && id !== '')) {
+    return res.status(400).json({ error: 'orderedIds must be an array of non-empty strings' });
+  }
+  try {
+    await booksStore.reorderShelfPins({ loadDatabase, updateDatabase }, orderedIds);
+    res.json(booksStore.listShelfPins({ loadDatabase }));
+  } catch (err) {
+    res.status(500).json({ error: `Could not reorder shelf pins: ${err.message}` });
+  }
+});
+
+// The clean /books URL (express.static already serves /books.html; this
+// mirrors the ytdlp module's own /subscriptions sendFile).
+app.get('/books', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'books.html'));
+});
 
 app.post('/api/books/:id/progress', (req, res) => {
   const ns = booksStore.ensureBooks(getCachedDatabase());

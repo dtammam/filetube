@@ -191,3 +191,45 @@ test('T6: a ping for a book deleted between ping and flush is DROPPED at flush (
   assert.ok(!loadDatabase().books.progress[doomedId], 'flush guard dropped the orphaned ping');
   await updateDatabase((db) => { db.settings.pruneMissing = false; return true; });
 });
+
+// ---- T8/T10 server half: folders aggregation + shelf pins + /books page -----
+
+test('T8: GET /api/books/folders aggregates shelves with counts and pin state; /books serves the page shell', async () => {
+  const agg = await (await fetch(`${base}/api/books/folders`)).json();
+  assert.ok(Array.isArray(agg.folders) && agg.folders.length >= 1);
+  const shelf = agg.folders[0];
+  assert.ok(shelf.name && shelf.dir && shelf.count >= 1);
+  assert.equal(shelf.pinned, false);
+
+  const page = await fetch(`${base}/books`);
+  assert.equal(page.status, 200);
+  assert.ok((await page.text()).includes('data-view="books"'), 'the books shell serves at the clean URL');
+});
+
+test('T10: shelf pins CRUD -- confinement 400, add (pre-shaped for the sidebar renderer), reorder, delete', async () => {
+  const outside = await postJson('/api/books/pins', { dir: '/etc', label: 'Nope' });
+  assert.equal(outside.status, 400, 'a dir outside every book root must never pin');
+
+  const add = await postJson('/api/books/pins', { dir: booksDir, label: 'Library' });
+  assert.equal(add.status, 200);
+  const record = await add.json();
+  assert.equal(record.dir, booksDir);
+
+  const listed = await (await fetch(`${base}/api/books/pins`)).json();
+  assert.equal(listed.length, 1);
+  assert.equal(listed[0].channelDir, booksDir, 'pre-shaped with the renderer field name');
+  assert.ok(listed[0].href.startsWith('/books?root='), 'href routes to the books page, not the video grid');
+
+  const agg = await (await fetch(`${base}/api/books/folders`)).json();
+  const pinnedShelf = agg.folders.find((f) => f.dir === booksDir);
+  assert.equal(pinnedShelf && pinnedShelf.pinned, true, 'the chips aggregation reflects pin state');
+  assert.equal(pinnedShelf.pinId, record.id);
+
+  const reorder = await postJson('/api/books/pins/reorder', { orderedIds: [record.id] });
+  assert.equal(reorder.status, 200);
+  assert.equal((await postJson('/api/books/pins/reorder', { orderedIds: [42] })).status, 400);
+
+  const del = await fetch(`${base}/api/books/pins/${record.id}`, { method: 'DELETE' });
+  assert.equal(del.status, 200);
+  assert.equal((await fetch(`${base}/api/books/pins/${record.id}`, { method: 'DELETE' })).status, 404);
+});
