@@ -1019,6 +1019,16 @@ function extractYtdlpVideoId(baseName) {
 // EXPLICIT downloader-written provenance tag, trusted from any root, but
 // only after it survives the classifySingleVideo gate. Returns the id or
 // `null` -- callers persist the `null` too (probed-once convention).
+//
+// ACCEPTED trust boundary (v1.33 gate, conscious decision): the embedded tag
+// is only ever a claim about which YouTube video this file CAME FROM --
+// anyone with write access to the media files themselves (already full
+// control in this LAN-only, single-user app) could edit it to point the
+// Share link / reheat metadata at a different-but-legitimate YouTube video.
+// The gate guarantees it can only ever be a well-formed YouTube video URL
+// (never another host, a playlist, or a credentialed URL); content-vs-id
+// agreement is not (and cannot be) verified. Revisit if multi-user/untrusted
+// library roots ever land (see ROADMAP's accounts item).
 function deriveScanYoutubeId(filePath, info, ytdlpRoots, embeddedSourceUrl) {
   if (matchRootFolder(filePath, ytdlpRoots)) {
     const bracketId = extractYtdlpVideoId(path.basename(info.name, info.ext));
@@ -1605,9 +1615,16 @@ function youtubeIdFromUrlString(raw) {
 // v1.33 T1: the reheat batch's LOCAL tags probe (deps-injected into
 // lib/ytdlp/index.js's runRepullMetadataBatch as `probeEmbeddedTags`) -- a
 // single, cheap, network-free ffprobe of the file's embedded format tags.
-// Returns `{ releaseDateMs, sourceUrl, title }` (each `null` when absent/
-// unparseable), or all-null on ffmpeg-unavailable / probe failure -- never
-// rejects. Reuses `buildFfprobeArgs` (the single source of truth for probe
+// Returns `{ releaseDateMs, sourceUrl, title }` (each `null` when the probe
+// SUCCEEDED but the tag is absent/unparseable), or `null` -- the whole value,
+// not a field -- on ffmpeg-unavailable / spawn error / empty or malformed
+// probe output. Never rejects. The null-vs-object distinction is
+// LOAD-BEARING (gate fix, adversarial WARNING): the reheat batch treats an
+// all-null OBJECT as "this file genuinely carries nothing" (safe to mark the
+// item exhausted/complete) but a `null` RESULT as "the probe itself failed,
+// transiently" (the item must stay retryable) -- collapsing the two would
+// let a brief ffmpeg hiccup permanently foreclose an item's future
+// discovery. Reuses `buildFfprobeArgs` (the single source of truth for probe
 // args) and the SAME parse helpers the scan's own probe uses, so the two can
 // never disagree about what an embedded tag means. NEVER touches thumbnails
 // or runs ffmpeg -- probe-only, exactly like `probeCodecsOnly` above (the
@@ -1617,25 +1634,32 @@ function youtubeIdFromUrlString(raw) {
 // `ytdlp.sanitizeCapturedTitle` before anything is stored.
 function probeEmbeddedTags(filePath) {
   return new Promise((resolve) => {
-    const empty = { releaseDateMs: null, sourceUrl: null, title: null };
-    if (!ffmpegAvailable) { resolve(empty); return; }
+    if (!ffmpegAvailable) { resolve(null); return; }
     execFile('ffprobe', buildFfprobeArgs(filePath), { maxBuffer: 16 * 1024 * 1024 }, (err, stdout) => {
-      if (err || !stdout) { resolve(empty); return; }
+      if (err || !stdout) { resolve(null); return; }
+      let j;
+      try {
+        j = JSON.parse(stdout);
+      } catch (_) {
+        // Malformed probe output = the probe FAILED (transient) -- null, per
+        // the contract above, never an all-null "genuinely nothing" object.
+        resolve(null);
+        return;
+      }
       let releaseDateMs = null;
       let sourceUrl = null;
       let title = null;
-      try {
-        const j = JSON.parse(stdout);
-        try { releaseDateMs = parseEmbeddedReleaseDateMs(j); } catch (_) { releaseDateMs = null; }
-        try { sourceUrl = parseEmbeddedSourceUrl(j); } catch (_) { sourceUrl = null; }
-        const rawTags = (j && j.format && j.format.tags) || {};
+      try { releaseDateMs = parseEmbeddedReleaseDateMs(j); } catch (_) { releaseDateMs = null; }
+      try { sourceUrl = parseEmbeddedSourceUrl(j); } catch (_) { sourceUrl = null; }
+      const rawTags = (j && j.format && j.format.tags) || {};
+      if (rawTags && typeof rawTags === 'object') {
         for (const k of Object.keys(rawTags)) {
           if (k.toLowerCase() === 'title' && typeof rawTags[k] === 'string' && rawTags[k].trim() !== '') {
             title = rawTags[k].trim();
             break;
           }
         }
-      } catch (_) { /* malformed probe output -- all-null */ }
+      }
       resolve({ releaseDateMs, sourceUrl, title });
     });
   });
@@ -2552,6 +2576,26 @@ async function runScanDirectories() {
         newMetadata[id].sourceTitle = existing.sourceTitle;
         newMetadata[id].title = existing.sourceTitle;
       }
+      // v1.33 gate fix (adversarial CRITICAL): the SAME carry-forward for the
+      // identity fields, symmetric with `sourceTitle` above. A re-encoded/
+      // replaced file (same path, new size) whose replacement tool stripped
+      // the embedded purl/comment tags would otherwise silently revert a
+      // previously-established `youtubeId` (reheat-discovered or backfilled)
+      // to this pass's fresh `null` derivation -- killing the Share button
+      // and the item's reheat identity. A NON-null fresh derivation (bracket
+      // or a still-present embedded tag) stays authoritative -- for the same
+      // file path it can only ever be the same id. `metadataRepulledAt` rides
+      // along for the same reason: the re-init literal omits it, and losing
+      // it would silently flip the item back to reheat-eligible.
+      if (existing) {
+        if (newMetadata[id].youtubeId === null &&
+            typeof existing.youtubeId === 'string' && isSafeVideoId(existing.youtubeId)) {
+          newMetadata[id].youtubeId = existing.youtubeId;
+        }
+        if (typeof existing.metadataRepulledAt === 'number') {
+          newMetadata[id].metadataRepulledAt = existing.metadataRepulledAt;
+        }
+      }
       dbChanged = true;
     }
 
@@ -2692,6 +2736,66 @@ async function runScanDirectories() {
         if (freshItem && freshItem.width && freshItem.height) {
           item.width = freshItem.width;
           item.height = freshItem.height;
+        }
+      }
+
+      // v1.33 gate fix (QA CRITICAL -- the stale-snapshot bug class's FOURTH
+      // strike): the SAME F1 guard, applied to the REHEAT-writable fields. A
+      // reheat batch (`recordRepulledItemMeta`, below) writes `sourceTitle`/
+      // `title`/`youtubeId`/`releaseDate`/`channelAvatarUrl`/`hasSubtitles`/
+      // `metadataRepulledAt` through its own `updateDatabase` calls with NO
+      // mutual exclusion against a running scan -- so a reheat landing after
+      // this scan's Phase-1 snapshot but before this final save would be
+      // silently reverted by the wholesale `newMetadata` replace below.
+      // Two rules, mirroring F1's "only fill what the scan's own pass didn't
+      // itself produce":
+      //  - A reheat that COMPLETED mid-scan (fresh `metadataRepulledAt` is
+      //    NEWER than the snapshot's) is authoritative for the whole field
+      //    group -- adopt it. The FR-2 bridge below still runs AFTER this and
+      //    may overwrite `sourceTitle`/`title` with a genuinely-fresh
+      //    download capture, which is the correct precedence (newest event).
+      //  - Independent of that, plain GAP-FILLS: a fresh `youtubeId`/
+      //    `sourceTitle`/`metadataRepulledAt` the scan's own item simply
+      //    LACKS is carried forward (a PARTIAL mid-scan reheat -- subs pass
+      //    failed, marker withheld -- at least keeps its discovered id/title
+      //    when the scan itself derived none).
+      // Bounded remainder (accepted): a partial mid-scan reheat that
+      // UPDATED an already-present releaseDate/sourceTitle can still lose
+      // that update to the snapshot -- the item stays retryable (marker
+      // unset), so the next reheat re-persists it with no scan running.
+      {
+        const freshItem = fresh.metadata[item.id];
+        if (freshItem) {
+          const freshReheatAt = typeof freshItem.metadataRepulledAt === 'number' ? freshItem.metadataRepulledAt : 0;
+          const snapshotReheatAt = typeof item.metadataRepulledAt === 'number' ? item.metadataRepulledAt : 0;
+          if (freshReheatAt > snapshotReheatAt) {
+            item.metadataRepulledAt = freshItem.metadataRepulledAt;
+            if (typeof freshItem.releaseDate === 'number' && Number.isFinite(freshItem.releaseDate)) {
+              item.releaseDate = freshItem.releaseDate;
+            }
+            if (typeof freshItem.sourceTitle === 'string' && freshItem.sourceTitle !== '') {
+              item.sourceTitle = freshItem.sourceTitle;
+              item.title = freshItem.sourceTitle;
+            }
+            if (typeof freshItem.channelAvatarUrl === 'string' && freshItem.channelAvatarUrl !== '') {
+              item.channelAvatarUrl = freshItem.channelAvatarUrl;
+            }
+            if (typeof freshItem.hasSubtitles === 'boolean') {
+              item.hasSubtitles = freshItem.hasSubtitles;
+            }
+          }
+          if ((item.youtubeId === null || item.youtubeId === undefined) &&
+              typeof freshItem.youtubeId === 'string' && isSafeVideoId(freshItem.youtubeId)) {
+            item.youtubeId = freshItem.youtubeId;
+          }
+          if ((typeof item.sourceTitle !== 'string' || item.sourceTitle === '') &&
+              typeof freshItem.sourceTitle === 'string' && freshItem.sourceTitle !== '') {
+            item.sourceTitle = freshItem.sourceTitle;
+            item.title = freshItem.sourceTitle;
+          }
+          if (item.metadataRepulledAt === undefined && typeof freshItem.metadataRepulledAt === 'number') {
+            item.metadataRepulledAt = freshItem.metadataRepulledAt;
+          }
         }
       }
 
@@ -3673,17 +3777,16 @@ app.get('/api/videos/:id', (req, res) => {
     const dbForAvatarLookup = { ...db, ytdlp: db.ytdlp ? structuredClone(db.ytdlp) : undefined };
     channelAvatarUrl = ytdlp.resolveItemChannelAvatarUrl(dbForAvatarLookup, item);
   }
+  // v1.33 T2 (Share button): the ORIGINAL YouTube watch URL, derived at
+  // serve time from the persisted `youtubeId` through the same buildWatchUrl
+  // gate the re-pull path uses (it re-validates the id and returns null on
+  // anything unsafe -- the spread's own raw `youtubeId` is informational;
+  // THIS field is the one the client shares).
+  const watchUrl = typeof item.youtubeId === 'string' ? buildWatchUrl(item.youtubeId) : null;
   res.json({
     ...item,
     ...(channelAvatarUrl ? { channelAvatarUrl } : {}),
-    // v1.33 T2 (Share button): the ORIGINAL YouTube watch URL, derived at
-    // serve time from the persisted `youtubeId` through the same
-    // buildWatchUrl gate the re-pull path uses (it re-validates the id and
-    // returns null on anything unsafe -- the spread's own raw `youtubeId` is
-    // informational; THIS field is the one the client shares).
-    ...(typeof item.youtubeId === 'string' && buildWatchUrl(item.youtubeId)
-      ? { watchUrl: buildWatchUrl(item.youtubeId) }
-      : {}),
+    ...(watchUrl ? { watchUrl } : {}),
     progress: progress.timestamp,
     transcodeProgress: transcodeProgress[item.id] || 0,
     // v1.27.0 (EXPERIMENTAL): `audioStatus` itself already rides the `...item`

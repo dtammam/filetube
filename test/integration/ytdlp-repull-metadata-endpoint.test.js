@@ -829,10 +829,12 @@ test('local pass: embedded date/title are the fallback when the network pass pro
   }
 });
 
-test('local pass: an item with NOTHING derivable (no id anywhere, no local tags) is marked complete (exhausted) and never network-spawned', async () => {
+test('local pass: an item with NOTHING derivable (probe SUCCEEDED, no id anywhere, no local tags) is marked complete (exhausted), never network-spawned, and honestly counted SKIPPED not done', async () => {
   const deps = makeFakeDeps();
   const item = makeItem({ videoId: null, watchUrl: null, filePath: '/downloads/chan/Opaque File.mp4' });
   deps.enumerateRepullableItems = () => ({ items: [item], eligible: 1, ineligible: 0 });
+  // A successful probe that found nothing -- the all-null OBJECT (vs `null`,
+  // which means the probe itself failed; see the transient test below).
   deps.probeEmbeddedTags = async () => ({ releaseDateMs: null, sourceUrl: null, title: null });
 
   let networkCalled = false;
@@ -857,7 +859,78 @@ test('local pass: an item with NOTHING derivable (no id anywhere, no local tags)
       'exhausted -- nothing a future non-force reheat could ever add, so mark complete to stop the retry loop');
     assert.equal(recordCalls[0].meta.releaseDate, undefined, 'no date may be invented');
     assert.equal(recordCalls[0].meta.sourceTitle, undefined);
-    assert.equal(getReheatEntry().done, 1);
+    // Honest bookkeeping (gate fix): NOTHING was fetched or persisted for
+    // this item -- counting it `done` would let a batch of bare imports
+    // report "N done" while doing zero work.
+    assert.equal(getReheatEntry().done, 0);
+    assert.equal(getReheatEntry().skipped, 1);
+    assert.equal(getReheatEntry().failed, 0);
+  } finally {
+    await close();
+  }
+});
+
+test('local pass: a TRANSIENT probe failure (probeEmbeddedTags resolves null) on an id-less item is counted failed and NOT marked complete -- the item stays retryable', async () => {
+  const deps = makeFakeDeps();
+  const item = makeItem({ videoId: null, watchUrl: null, filePath: '/downloads/chan/Locked File.mp4' });
+  deps.enumerateRepullableItems = () => ({ items: [item], eligible: 1, ineligible: 0 });
+  // `null` -- the whole value -- is probeEmbeddedTags' "the probe itself
+  // failed" contract (ffmpeg unavailable / spawn error / malformed output).
+  deps.probeEmbeddedTags = async () => null;
+
+  let networkCalled = false;
+  const recordCalls = [];
+  run.repullItemMetaAndSubs = async () => {
+    networkCalled = true;
+    return null;
+  };
+  deps.recordRepulledItemMeta = async (d, mediaId, meta) => {
+    recordCalls.push({ mediaId, meta });
+    return true;
+  };
+
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    await fetch(`${base}/api/ytdlp/repull-metadata`, { method: 'POST' });
+    await flush(30);
+
+    assert.equal(networkCalled, false);
+    assert.equal(recordCalls.length, 0,
+      'a transient probe failure must persist NOTHING -- especially not a markComplete that would permanently foreclose future discovery');
+    assert.equal(getReheatEntry().failed, 1, 'honestly failed (retryable), never done/skipped');
+    assert.equal(getReheatEntry().done, 0);
+    assert.equal(getReheatEntry().skipped, 0);
+  } finally {
+    await close();
+  }
+});
+
+test('local pass: an exhausted item whose local tags DID yield a date/title is counted done (real work landed) and marked complete', async () => {
+  const deps = makeFakeDeps();
+  const item = makeItem({ videoId: null, watchUrl: null, filePath: '/downloads/chan/Tagged Import.mp4' });
+  deps.enumerateRepullableItems = () => ({ items: [item], eligible: 1, ineligible: 0 });
+  deps.probeEmbeddedTags = async () => ({ releaseDateMs: 1400000000000, sourceUrl: null, title: 'Embedded Only Title' });
+
+  const recordCalls = [];
+  run.repullItemMetaAndSubs = async () => {
+    throw new Error('must never be called without a watch URL');
+  };
+  deps.recordRepulledItemMeta = async (d, mediaId, meta) => {
+    recordCalls.push({ mediaId, meta });
+    return true;
+  };
+
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    await fetch(`${base}/api/ytdlp/repull-metadata`, { method: 'POST' });
+    await flush(30);
+
+    assert.equal(recordCalls.length, 1);
+    assert.equal(recordCalls[0].meta.releaseDate, 1400000000000);
+    assert.equal(recordCalls[0].meta.sourceTitle, 'Embedded Only Title');
+    assert.equal(recordCalls[0].meta.markComplete, true);
+    assert.equal(getReheatEntry().done, 1, 'a date/title genuinely landed -- done, not skipped');
+    assert.equal(getReheatEntry().skipped, 0);
   } finally {
     await close();
   }
