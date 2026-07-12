@@ -107,3 +107,23 @@ test('a timestamp-shaped payload line inside a cue being DROPPED goes down with 
   assert.ok(shifted.includes('00:00:20.000 --> 00:00:30.000'), 'the survivor cue is shifted correctly');
   assert.ok(shifted.includes('Survivor'));
 });
+
+// ---- v1.34 gate fix, adversarial DELTA: the drop branch opens a block too ---
+test('a timestamp-shaped payload line inside a DROPPED cue whose own time would independently KEEP is never promoted into a phantom cue', () => {
+  const doc = [
+    'WEBVTT',
+    '',
+    '00:00:01.000 --> 00:00:03.000',
+    '00:05:00.000 --> 00:05:05.000',
+    'Trailing text',
+    '',
+    '00:01:00.000 --> 00:01:10.000',
+    'Survivor',
+    '',
+  ].join('\n');
+  const shifted = shiftVttCues(doc, 10); // first cue fully elapsed -> dropped whole
+  assert.ok(!shifted.includes('00:04:50.000'), 'the poison payload line must not become a phantom shifted cue');
+  assert.ok(!shifted.includes('Trailing text'), 'the dropped cue\'s remaining payload must not leak under fabricated timing');
+  assert.ok(shifted.includes('00:00:50.000 --> 00:01:00.000'), 'the survivor cue is shifted correctly');
+  assert.ok(shifted.includes('Survivor'));
+});
