@@ -1103,7 +1103,7 @@ if (typeof module !== 'undefined' && module.exports) {
     if (!host || !mediaPlayer) return;
     // v1.34.2: the CSS faux-fullscreen only makes sense in the FULL state --
     // docking/closing while in it must drop the fixed overlay.
-    if (state !== STATE_FULL) host.classList.remove('css-fullscreen');
+    if (state !== STATE_FULL) setCssFullscreen(false);
     var mobile = isMobileFormFactor();
     host.classList.toggle('ff-mobile', mobile);
     var isVideo = !!(currentData && currentData.type !== 'audio');
@@ -1124,6 +1124,16 @@ if (typeof module !== 'undefined' && module.exports) {
     } else {
       mediaPlayer.removeAttribute('controls');
       host.classList.remove('native-controls');
+    }
+  }
+
+  // v1.34.4: faux-fullscreen state setter -- host class (the fixed overlay
+  // treatment) and body class (scroll freeze + header/nav hide) must always
+  // move together.
+  function setCssFullscreen(on) {
+    if (host) host.classList.toggle('css-fullscreen', !!on);
+    if (typeof document !== 'undefined' && document.body) {
+      document.body.classList.toggle('ft-css-fullscreen', !!on);
     }
   }
 
@@ -3633,7 +3643,7 @@ if (typeof module !== 'undefined' && module.exports) {
         // right behavior -- period.
         if (isMobileFormFactor() && !inNativeControlsMode() &&
             currentData && currentData.type !== 'audio' && state === STATE_FULL) {
-          host.classList.toggle('css-fullscreen');
+          setCssFullscreen(!host.classList.contains('css-fullscreen'));
           return;
         }
         // 'native-fullscreen' -- EXISTING video path, byte-identical to
@@ -4172,7 +4182,7 @@ if (typeof module !== 'undefined' && module.exports) {
     if (ccBtn) { ccBtn.style.display = 'none'; ccBtn.classList.remove('active'); ccBtn.setAttribute('aria-pressed', 'false'); }
     if (ccTrack && ccTrack.track) ccTrack.track.mode = 'disabled';
     resetChaptersUi(); // v1.34 T3: menu closed/emptied, button hidden until next load
-    if (host) host.classList.remove('css-fullscreen'); // v1.34.2: never leak the fixed overlay across loads
+    setCssFullscreen(false); // v1.34.2: never leak the fixed overlay across loads
     // Feature B (v1.26.1): the outgoing media's caption overlay must never
     // bleed into the next item -- reset the on/off flag and force-hide/clear
     // the overlay itself (mirrors the CC button reset just above).
