@@ -80,6 +80,10 @@
 
 ## Shipped
 
+### v1.34.1 — mobile player usability (2026-07-13, on-device iteration)
+
+- Two-row mobile control bar: full-width scrub row (the seek bar was an unusable sliver), buttons below; Ch button only shows on mobile when the item has chapters; the chapters menu dismisses on tap-outside (iOS click-synthesis quirk fixed with pointerdown).
+
 ### v1.34.0 — player quality wave: shorts, CC sync, chapters, scrubbing, custom-mobile option, default sort, stuck one-shots (2026-07-13)
 
 - **Shorts same footprint**: portrait videos render in the standard 16:9 player box (pillarboxed) on desktop AND mobile — no more oversized Shorts.
