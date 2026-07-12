@@ -80,6 +80,8 @@
 
 ## Shipped
 
+### v1.34.4 — mobile player round 4 (2026-07-13): faux fullscreen now covers the app chrome (z-order: it sat under the fixed header/nav — the visible search bar + the landscape gap), page scroll frozen while fullscreen, bar overlays the picture and grows for the safe area (the missing buttons row).
+
 ### v1.34.3 — mobile player round 3 (2026-07-13): the dismissal root cause (display:flex silently overrode [hidden] — no close path could ever work), a structural flex line-break for the scrub row, faux-fullscreen height-clamp release + active-surface trigger.
 
 ### v1.34.2 — mobile player round 2 (2026-07-13, on-device iteration)

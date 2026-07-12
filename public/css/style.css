@@ -4020,7 +4020,7 @@ a.sub-row-channel-link:focus-visible {
 #player-wrapper.css-fullscreen {
   position: fixed;
   inset: 0;
-  z-index: 200;
+  z-index: 1500; /* above header (~1000) + .bottom-nav (900), below modals/sheets (2000) so the chapters editor still opens over it */
   background: #000;
   border-radius: 0;
   /* v1.34.3: the mobile-portrait height clamps (45vh/78vh, further down)
@@ -4037,8 +4037,30 @@ a.sub-row-channel-link:focus-visible {
   width: 100%;
   object-fit: contain;
 }
+/* v1.34.4 (Dean round 4): the bar OVERLAYS the picture in faux fullscreen
+   (the AC14 fullscreen convention) -- no reserved strip, so there is no
+   bar-height/strip mismatch in either orientation. `height: auto` lets it
+   be two rows in portrait (<=768px rules) and one row in landscape, and
+   the safe-area padding GROWS the bar instead of eating the buttons row
+   inside a fixed 80px box (the "only the bar, no other buttons" symptom). */
+#player-wrapper.css-fullscreen:not(.audio-expanded) {
+  padding-bottom: 0 !important;
+}
 #player-wrapper.css-fullscreen .player-controls {
-  padding-bottom: env(safe-area-inset-bottom, 0px);
+  height: auto;
+  min-height: 40px;
+  padding-top: 4px;
+  padding-bottom: calc(4px + env(safe-area-inset-bottom, 0px));
+}
+/* The app chrome is fully covered by the overlay, but hide it explicitly
+   too (belt) and freeze page scroll so nothing can peek out under the
+   overlay in landscape (the "gap under displaying webpage" symptom). */
+body.ft-css-fullscreen {
+  overflow: hidden;
+}
+body.ft-css-fullscreen header,
+body.ft-css-fullscreen .bottom-nav {
+  visibility: hidden;
 }
 
 /* v1.34.1 (Dean's on-device pass): mobile bar declutter.

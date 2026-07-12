@@ -112,8 +112,8 @@ test('v1.34.2: the chapters menu has an explicit close (header ✕), touchstart/
   assert.ok(playerSrc.includes("closeBtn.className = 'chapters-menu-close'"), 'an explicit ✕ close button in the menu header');
   assert.ok(playerSrc.includes("document.addEventListener('touchstart', closeChaptersMenuOnOutside, { passive: true })"), 'touchstart fallback (iOS click/pointer synthesis quirks)');
   assert.ok(playerSrc.includes("mediaPlayer.addEventListener('play', closeChaptersMenu)"), 'any playback interaction closes the menu');
-  assert.ok(playerSrc.includes("host.classList.toggle('css-fullscreen')"), 'custom-mode mobile fullscreen toggles the CSS faux-fullscreen (iPhone element-fullscreen is native-only)');
-  assert.ok(playerSrc.includes("if (state !== STATE_FULL) host.classList.remove('css-fullscreen')"), 'docking/closing drops the fixed overlay');
+  assert.ok(playerSrc.includes("setCssFullscreen(!host.classList.contains('css-fullscreen'))"), 'custom-mode mobile fullscreen toggles the CSS faux-fullscreen (iPhone element-fullscreen is native-only)');
+  assert.ok(playerSrc.includes('if (state !== STATE_FULL) setCssFullscreen(false)'), 'docking/closing drops the fixed overlay');
   const css = fs.readFileSync(path.join(ROOT, 'public', 'css', 'style.css'), 'utf8');
   assert.match(css, /#player-wrapper\.css-fullscreen \{\s*position: fixed;\s*inset: 0;/, 'the faux-fullscreen host treatment');
   assert.match(css, /#player-wrapper\.css-fullscreen:not\(\.audio-expanded\) #media-player \{\s*aspect-ratio: auto;/, 'the aspect pin releases in faux fullscreen');
@@ -139,4 +139,16 @@ test('v1.34.3: [hidden] actually hides the chapters menu (the display:flex overr
     'faux fullscreen must release the 45vh-78vh mobile clamps or it renders as a band');
   assert.ok(playerSrc.includes("currentData && currentData.type !== 'audio' && state === STATE_FULL"),
     'the faux trigger keys off the ACTIVE surface, not the async cached settings flag');
+});
+
+
+// ---- v1.34.4 (Dean round 4): overlay stacking + safe-area bar ---------------
+test('v1.34.4: faux fullscreen outranks header/nav, freezes the page, and the bar grows for the safe area instead of clipping', () => {
+  const css = fs.readFileSync(path.join(ROOT, 'public', 'css', 'style.css'), 'utf8');
+  assert.match(css, /#player-wrapper\.css-fullscreen \{[\s\S]*?z-index: 1500;/, 'above header (1000) and .bottom-nav (900), below modals (2000)');
+  assert.match(css, /body\.ft-css-fullscreen \{\s*overflow: hidden;/, 'page scroll frozen (the landscape gap)');
+  assert.match(css, /body\.ft-css-fullscreen header,\s*body\.ft-css-fullscreen \.bottom-nav \{\s*visibility: hidden;/, 'chrome explicitly hidden');
+  assert.match(css, /#player-wrapper\.css-fullscreen:not\(\.audio-expanded\) \{\s*padding-bottom: 0 !important;/, 'the bar OVERLAYS the picture in faux fullscreen (no strip mismatch)');
+  assert.match(css, /#player-wrapper\.css-fullscreen \.player-controls \{\s*height: auto;[\s\S]*?env\(safe-area-inset-bottom/, 'the bar grows for the home indicator instead of clipping its buttons row');
+  assert.ok(playerSrc.includes('function setCssFullscreen(on)'), 'host + body classes move together');
 });
