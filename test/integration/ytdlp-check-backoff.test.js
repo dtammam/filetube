@@ -323,3 +323,43 @@ test('v1.36 F1 fix round: a listed pre-cutoff video (the slack window the break 
   assert.ok(!downloaded.includes('slackold002'), 'the pre-cutoff slack-window entry must be dropped by the JS date gate');
   assert.ok(downloaded.includes('dateless003'), 'a dateless entry (premiere/live placeholder) is kept, exactly as under --dateafter');
 });
+
+// ---- v1.36 fix round 2: list-driven channelId self-capture -------------------
+
+test('v1.36 fix round 2: a channelId-less sub self-captures its UC id from its first successful listing (write-once), healing into the break-safe UU shape', async () => {
+  const deps = makeFakeDeps();
+  const sub = await addSub(deps, 'https://www.youtube.com/@selfheal');
+  assert.ok(!getSub(deps, sub.id).channelId, 'precondition: fresh sub has no channelId');
+
+  run.runList = async () => ({
+    ok: true,
+    stdout: JSON.stringify({ id: 'healvid0001', availability: 'public', upload_date: '20991231', channel_id: 'UCselfhealABCDEFGHIJKLMN' }),
+    stderr: '',
+  });
+  run.runDownload = async () => ({ ok: true, code: 0, stdout: '', stderr: '', channelMeta: [], itemFailures: [] });
+  await ytdlp.runPoll(deps, baseConfig(), sub.id);
+  assert.equal(getSub(deps, sub.id).channelId, 'UCselfhealABCDEFGHIJKLMN', 'the listing itself backfills the id');
+
+  // Write-once (AC17): a later listing reporting a DIFFERENT id never
+  // reassigns.
+  run.runList = async () => ({
+    ok: true,
+    stdout: JSON.stringify({ id: 'healvid0002', availability: 'public', upload_date: '20991231', channel_id: 'UCdifferentIdXXXXXXXXXXX' }),
+    stderr: '',
+  });
+  await ytdlp.runPoll(deps, baseConfig(), sub.id);
+  assert.equal(getSub(deps, sub.id).channelId, 'UCselfhealABCDEFGHIJKLMN', 'write-once identity: never reassigned');
+});
+
+test('v1.36 fix round 2: a hostile/malformed channel_id from a listing is never persisted (CHANNEL_ID_PATTERN re-validation at the store boundary)', async () => {
+  const deps = makeFakeDeps();
+  const sub = await addSub(deps, 'https://www.youtube.com/@hostileid');
+  run.runList = async () => ({
+    ok: true,
+    stdout: JSON.stringify({ id: 'hostile0001', availability: 'public', upload_date: '20991231', channel_id: '../../etc/passwd' }),
+    stderr: '',
+  });
+  run.runDownload = async () => ({ ok: true, code: 0, stdout: '', stderr: '', channelMeta: [], itemFailures: [] });
+  await ytdlp.runPoll(deps, baseConfig(), sub.id);
+  assert.ok(!getSub(deps, sub.id).channelId, 'a non-UC-shaped id must be rejected at the persistence boundary');
+});

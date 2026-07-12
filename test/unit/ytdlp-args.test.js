@@ -58,29 +58,95 @@ test('buildYtdlpListArgs never embeds the URL into an option (it is its own arra
 // ---- buildYtdlpListArgs: date scoping (v1.25 T2 -> v1.36 F1 fix round) ----
 //
 // v1.25 scoped the LIST pass with `--dateafter <sub.cutoffDate>`. The v1.36
-// adversarial gate proved (against yt-dlp source) that yt-dlp evaluates its
-// daterange check BEFORE match filters and rejects NON-breakingly -- so a
-// co-present `--dateafter` masks `--break-match-filters` entirely and the
-// break-early stop can never fire. The list argv therefore emits the BREAK
-// filter (at cutoff-minus-7-days slack) and NEVER `--dateafter`; the date
-// semantics `--dateafter` provided now live in rules.isBeforeCutoff (JS).
+// adversarial gate then proved TWO things against yt-dlp source: (1) yt-dlp
+// evaluates its daterange check BEFORE match filters and rejects
+// NON-breakingly, so a co-present `--dateafter` masks `--break-match-filters`
+// entirely; (2) a BARE channel URL expands to SEPARATE videos/streams/shorts
+// tab playlists, and a break aborts the whole process -- so break-early is
+// only safe when the target is a single newest-first feed. The resulting
+// two-shape contract (args.js resolveBreakEarlyTarget):
+//   BREAK-SAFE (channel-root URL + captured UC channelId): target swaps to
+//   the combined UU uploads playlist, break filter (slacked) emitted,
+//   --dateafter ABSENT.
+//   FALLBACK (no channelId, or playlist-/watch-shaped sub): original target,
+//   --dateafter restored, NO break filter.
 
-test('buildYtdlpListArgs: a valid cutoffDate emits the break filter (slacked) and NEVER --dateafter, which would mask it', () => {
+// A well-formed UC id (UC + 22 id-charset chars) for the break-safe shape.
+const TEST_CHANNEL_ID = 'UCabcdefghijklmnopqrstuv';
+const TEST_UPLOADS_URL = 'https://www.youtube.com/playlist?list=UUabcdefghijklmnopqrstuv';
+
+test('buildYtdlpListArgs BREAK-SAFE shape: channel-root sub + channelId -> UU-feed target, slacked break filter, NO --dateafter', () => {
   const config = makeConfig();
-  const result = args.buildYtdlpListArgs(baseSub({ cutoffDate: '20260709' }), config);
+  const result = args.buildYtdlpListArgs(baseSub({ cutoffDate: '20260709', channelId: TEST_CHANNEL_ID }), config);
   assert.ok(!result.includes('--dateafter'), '--dateafter must be ABSENT -- its non-breaking daterange rejection masks --break-match-filters');
   const idx = result.indexOf('--break-match-filters');
-  assert.ok(idx >= 0, 'the break filter must be present for a valid cutoffDate');
+  assert.ok(idx >= 0, 'the break filter must be present');
   // 20260709 minus the 7-day slack window.
   assert.equal(result[idx + 1], 'upload_date>=?20260702');
-  // Must come before the `--` separator (never after it, where it could be
-  // mistaken for a positional argument).
   assert.ok(idx < result.indexOf('--'), 'the break filter must precede the "--" separator');
+  // The positional target is the combined UU uploads feed (videos + shorts +
+  // streams in ONE newest-first playlist), NOT the bare channel URL whose
+  // multi-tab expansion a break would truncate.
+  assert.equal(result[result.length - 1], TEST_UPLOADS_URL);
+  assert.equal(result[result.length - 2], '--');
+});
+
+test('buildYtdlpListArgs FALLBACK shape: a channel-root sub with NO channelId keeps its own URL, restores --dateafter, emits NO break filter', () => {
+  const config = makeConfig();
+  const sub = baseSub({ cutoffDate: '20260709' }); // no channelId captured yet
+  const result = args.buildYtdlpListArgs(sub, config);
+  assert.ok(!result.includes('--break-match-filters'), 'no single-feed target derivable -> a break could truncate the multi-tab expansion');
+  const idx = result.indexOf('--dateafter');
+  assert.ok(idx >= 0, 'with no break filter to mask, --dateafter is restored (the pre-v1.36 walk, cap-bounded)');
+  assert.equal(result[idx + 1], '20260709');
+  assert.equal(result[result.length - 1], sub.channelUrl, 'the target stays the subscription URL');
+});
+
+test('buildYtdlpListArgs FALLBACK shape: a /playlist?list= subscription NEVER gets a break filter or a UU swap, even WITH a channelId (no newest-first guarantee)', () => {
+  const config = makeConfig();
+  const playlistUrl = 'https://www.youtube.com/playlist?list=PLabcdefghijklm';
+  const result = args.buildYtdlpListArgs(
+    baseSub({ cutoffDate: '20260709', channelUrl: playlistUrl, channelId: TEST_CHANNEL_ID }),
+    config,
+  );
+  assert.ok(!result.includes('--break-match-filters'), 'a generic playlist whose head entry is old would break at entry one and list nothing, forever');
+  assert.ok(result.includes('--dateafter'), '--dateafter restored in the fallback shape');
+  assert.equal(result[result.length - 1], playlistUrl, 'the user subscribed to THIS playlist -- never swapped to the channel uploads feed');
+});
+
+test('buildYtdlpListArgs: a malformed/hostile channelId falls back safely (no break filter, no constructed URL)', () => {
+  const config = makeConfig();
+  for (const bad of ['UCshort', 'PLabcdefghijklmnopqrstuv', 'UC../../etc/passwd0000000', 'UCabcdefghijklmnopqrstu!', 12345, null]) {
+    const result = args.buildYtdlpListArgs(baseSub({ cutoffDate: '20260709', channelId: bad }), config);
+    assert.ok(!result.includes('--break-match-filters'), `channelId=${JSON.stringify(bad)} must not enable break-early`);
+    assert.equal(result[result.length - 1], baseSub().channelUrl, 'and must never influence the positional target');
+  }
+});
+
+test('v1.36 fix round 2: uploadsPlaylistUrl/resolveBreakEarlyTarget -- strict UC validation, channel-root-only', () => {
+  assert.equal(args.uploadsPlaylistUrl({ channelId: TEST_CHANNEL_ID }), TEST_UPLOADS_URL);
+  assert.equal(args.uploadsPlaylistUrl({ channelId: 'UCtooShort' }), null);
+  assert.equal(args.uploadsPlaylistUrl({}), null);
+  assert.equal(
+    args.resolveBreakEarlyTarget({ channelUrl: 'https://www.youtube.com/@somechannel', channelId: TEST_CHANNEL_ID }),
+    TEST_UPLOADS_URL,
+  );
+  assert.equal(
+    args.resolveBreakEarlyTarget({ channelUrl: 'https://www.youtube.com/playlist?list=PLxyzabcdefgh', channelId: TEST_CHANNEL_ID }),
+    null,
+    'playlist-shaped subs are never break-safe',
+  );
+  assert.equal(
+    args.resolveBreakEarlyTarget({ channelUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', channelId: TEST_CHANNEL_ID }),
+    null,
+    'watch-shaped subs are never break-safe',
+  );
+  assert.equal(args.resolveBreakEarlyTarget({ channelUrl: 'https://www.youtube.com/@somechannel' }), null, 'no channelId -> no UU feed derivable');
 });
 
 test('buildYtdlpListArgs: the slacked cutoff appears ONLY as the break-filter value element, never embedded in any other arg', () => {
   const config = makeConfig();
-  const result = args.buildYtdlpListArgs(baseSub({ cutoffDate: '20260101' }), config);
+  const result = args.buildYtdlpListArgs(baseSub({ cutoffDate: '20260101', channelId: TEST_CHANNEL_ID }), config);
   const breakIdx = result.indexOf('--break-match-filters');
   assert.ok(breakIdx >= 0);
   // 20260101 minus 7 days crosses the year boundary -- the pure-UTC date
@@ -94,7 +160,7 @@ test('buildYtdlpListArgs: the slacked cutoff appears ONLY as the break-filter va
 
 test('buildYtdlpListArgs OMITS --dateafter AND the break filter when sub.cutoffDate is missing/undefined (graceful, no date bound)', () => {
   const config = makeConfig();
-  const result = args.buildYtdlpListArgs(baseSub(), config); // no cutoffDate
+  const result = args.buildYtdlpListArgs(baseSub({ channelId: TEST_CHANNEL_ID }), config); // no cutoffDate
   assert.ok(!result.includes('--dateafter'), 'a missing cutoffDate must omit --dateafter entirely');
   assert.ok(!result.includes('--break-match-filters'), 'and the break filter');
 });
@@ -102,7 +168,7 @@ test('buildYtdlpListArgs OMITS --dateafter AND the break filter when sub.cutoffD
 test('buildYtdlpListArgs OMITS --dateafter and the break filter when sub.cutoffDate is malformed/invalid (fails safe, never a hostile value)', () => {
   const config = makeConfig();
   for (const bad of [null, '', '2026070', '202607099', 'abcd0709', '2026-07-09', 20260709, {}, ['20260709']]) {
-    const result = args.buildYtdlpListArgs(baseSub({ cutoffDate: bad }), config);
+    const result = args.buildYtdlpListArgs(baseSub({ cutoffDate: bad, channelId: TEST_CHANNEL_ID }), config);
     assert.ok(!result.includes('--dateafter'), `cutoffDate=${JSON.stringify(bad)} should omit --dateafter`);
     assert.ok(!result.includes('--break-match-filters'), `cutoffDate=${JSON.stringify(bad)} should omit the break filter`);
   }
@@ -1406,8 +1472,8 @@ test('resiliencePacingArgs: listOnly:true omits sleep-interval/max-sleep-interva
 // large-catalog channels. These lock the three-part contract: lazy
 // enumeration, stop at the first pre-cutoff video, count-cap backstop.
 
-test('v1.36 breakEarlyArgs: valid cutoff -> --lazy-playlist + --break-match-filters upload_date>=?<cutoff> + the default --playlist-end 200 backstop', () => {
-  const result = args.breakEarlyArgs({ cutoffDate: '20260710' }, {});
+test('v1.36 breakEarlyArgs: breakSafe + valid cutoff -> --lazy-playlist + --break-match-filters upload_date>=?<slacked> + the default --playlist-end 200 backstop', () => {
+  const result = args.breakEarlyArgs({ cutoffDate: '20260710' }, {}, { breakSafe: true });
   // 20260710 minus the 7-day slack window (see BREAK_EARLY_SLACK_DAYS).
   assert.deepEqual(result, [
     '--lazy-playlist',
@@ -1418,7 +1484,7 @@ test('v1.36 breakEarlyArgs: valid cutoff -> --lazy-playlist + --break-match-filt
 
 test('v1.36 breakEarlyArgs: the cutoff is re-validated at build time -- malformed/missing cutoffs emit NO break filter (fail safe), but the cap backstop still applies', () => {
   for (const bad of [undefined, null, '', '2026071', '202607100', 'abcd0710', '2026-07-10', 20260710, {}]) {
-    const result = args.breakEarlyArgs({ cutoffDate: bad }, {});
+    const result = args.breakEarlyArgs({ cutoffDate: bad }, {}, { breakSafe: true });
     assert.ok(!result.includes('--break-match-filters'), `cutoffDate=${JSON.stringify(bad)} must omit the break filter`);
     assert.deepEqual(result, ['--lazy-playlist', '--playlist-end', '200'], 'the cap backstop (and its implied --lazy-playlist) must survive a bad cutoff');
   }
@@ -1426,25 +1492,32 @@ test('v1.36 breakEarlyArgs: the cutoff is re-validated at build time -- malforme
 
 test('v1.36 breakEarlyArgs: listScanCap is re-bounded through parseListScanCap at build time -- 0 disables the cap, garbage falls back to the 200 default', () => {
   assert.deepEqual(
-    args.breakEarlyArgs({ cutoffDate: '20260710' }, { listScanCap: 0 }),
+    args.breakEarlyArgs({ cutoffDate: '20260710' }, { listScanCap: 0 }, { breakSafe: true }),
     ['--lazy-playlist', '--break-match-filters', 'upload_date>=?20260703'],
     'cap off: break filter only',
   );
   assert.deepEqual(
-    args.breakEarlyArgs({ cutoffDate: '20260710' }, { listScanCap: 50 }),
+    args.breakEarlyArgs({ cutoffDate: '20260710' }, { listScanCap: 50 }, { breakSafe: true }),
     ['--lazy-playlist', '--break-match-filters', 'upload_date>=?20260703', '--playlist-end', '50'],
   );
   assert.deepEqual(
-    args.breakEarlyArgs({ cutoffDate: '20260710' }, { listScanCap: 'hostile' }),
+    args.breakEarlyArgs({ cutoffDate: '20260710' }, { listScanCap: 'hostile' }, { breakSafe: true }),
     ['--lazy-playlist', '--break-match-filters', 'upload_date>=?20260703', '--playlist-end', '200'],
     'a malformed cap must fall back to the default, never emit a hostile value',
   );
-  assert.deepEqual(args.breakEarlyArgs({}, { listScanCap: 0 }), [], 'no cutoff + cap off = nothing at all (incl. no orphan --lazy-playlist)');
+  assert.deepEqual(args.breakEarlyArgs({}, { listScanCap: 0 }, { breakSafe: true }), [], 'no cutoff + cap off = nothing at all (incl. no orphan --lazy-playlist)');
+  // v1.36 fix round 2: the DEFAULT (no opts / breakSafe absent) is UNSAFE --
+  // a caller that does not decide never gets a break filter.
+  assert.deepEqual(
+    args.breakEarlyArgs({ cutoffDate: '20260710' }, {}),
+    ['--lazy-playlist', '--playlist-end', '200'],
+    'no breakSafe opt-in -> cap-only shape, never a break filter',
+  );
 });
 
 test('v1.36 F1: buildYtdlpListArgs carries the full break-early trio before the "--" separator, and the break filter value is its own argv element', () => {
   const config = makeConfig();
-  const result = args.buildYtdlpListArgs(baseSub({ cutoffDate: '20260710' }), config);
+  const result = args.buildYtdlpListArgs(baseSub({ cutoffDate: '20260710', channelId: TEST_CHANNEL_ID }), config);
   const sepIndex = result.indexOf('--');
   for (const token of ['--lazy-playlist', '--break-match-filters', '--playlist-end']) {
     const idx = result.indexOf(token);

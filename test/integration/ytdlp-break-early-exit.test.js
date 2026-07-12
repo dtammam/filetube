@@ -59,11 +59,30 @@ test('v1.36 F1: breakExitOk maps ONLY 101 -- a genuine exit 1 is still a failure
 });
 
 test('v1.36 F1: runList end-to-end -- a break-early exit 101 yields ok:true and a parseable listing (runList opts carry breakExitOk)', async () => {
-  const sub = { channelUrl: 'https://www.youtube.com/@exit101', cutoffDate: '20260710', format: 'video', quality: 'best' };
+  // v1.36 fix round 2: break-early is only armed in the BREAK-SAFE shape
+  // (channel-root URL + captured UC channelId -> the UU uploads-feed
+  // target). The id's suffix lands in the constructed playlist URL, which
+  // is how the fake binary (keyed on its last arg) knows to exit 101.
+  const sub = {
+    channelUrl: 'https://www.youtube.com/@exit101',
+    channelId: 'UCexit101exit101exit101x',
+    cutoffDate: '20260710',
+    format: 'video',
+    quality: 'best',
+  };
   const config = { downloadDir: fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-break-dl-')) };
   const result = await run.runList(sub, config);
   assert.equal(result.ok, true, 'runList must treat the break-early stop as success');
   assert.ok(result.stdout.includes('"newvid1"'), 'the listing must be intact for parseYtdlpVideoList');
+  fs.rmSync(config.downloadDir, { recursive: true, force: true });
+});
+
+test('v1.36 fix round 2: runList on a FALLBACK-shape sub (no channelId) does NOT bless exit 101 -- no break filter was armed, so 101 is a real failure', async () => {
+  const sub = { channelUrl: 'https://www.youtube.com/@exit101', cutoffDate: '20260710', format: 'video', quality: 'best' };
+  const config = { downloadDir: fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-break-dl2-')) };
+  const result = await run.runList(sub, config);
+  assert.equal(result.ok, false, 'breakExitOk must track the actual argv: no break filter emitted -> 101 stays a failure');
+  assert.equal(result.code, 101);
   fs.rmSync(config.downloadDir, { recursive: true, force: true });
 });
 
