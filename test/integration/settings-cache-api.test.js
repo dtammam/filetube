@@ -80,7 +80,7 @@ beforeEach(() => {
 
 // ---- GET /api/settings -----------------------------------------------------
 
-test('GET /api/settings returns the 8-field shape with backfilled defaults on a fresh DB', async () => {
+test('GET /api/settings returns the 9-field shape with backfilled defaults on a fresh DB', async () => {
   const res = await fetch(`${base}/api/settings`);
   assert.equal(res.status, 200);
   const json = await res.json();
@@ -93,6 +93,7 @@ test('GET /api/settings returns the 8-field shape with backfilled defaults on a 
     autoplayNext: false, // v1.16.0 FR-3 (T3): OFF by default
     backgroundAudioForVideo: false, // v1.27.0 (EXPERIMENTAL): OFF by default
     effectiveCacheMaxBytes: 5 * 1024 ** 3, // env unset -> 5 GB default
+    customLogo: false, // v1.32: read-only flag, managed by /api/settings/logo
   });
 });
 

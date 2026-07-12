@@ -1075,3 +1075,64 @@ test('CSS conformance: the chip\'s font-size declarations in style.css already r
   });
 });
 
+
+// ---- v1.32: check-vs-download failure kinds + Dismiss all -------------------
+const { test: t32 } = require('node:test');
+const a32 = require('node:assert');
+const common32 = require('../../public/js/common.js');
+
+t32('v1.32: chipItemLifecycle -- a check-kind error auto-dismisses; download-kind and untagged errors stay sticky', () => {
+  a32.equal(common32.chipItemLifecycle('error', 'check'), 'auto-dismiss');
+  a32.equal(common32.chipItemLifecycle('error', 'download'), 'sticky');
+  a32.equal(common32.chipItemLifecycle('error', undefined), 'sticky');
+  a32.equal(common32.chipItemLifecycle('error', null), 'sticky');
+  a32.equal(common32.chipItemLifecycle('cancelled', 'check'), 'sticky', 'cancel is never de-escalated');
+  a32.equal(common32.chipItemLifecycle('done', 'download'), 'auto-dismiss');
+});
+
+t32('v1.32: a check-failure subscription entry never reaches the chip (reducer drops it), so the badge stays quiet', () => {
+  const snapshot = {
+    subscriptions: {
+      s1: { state: 'error', error: 'yt-dlp list pass timed out after 5m and was killed', failureKind: 'check', name: 'Dormant' },
+      s2: { state: 'error', error: 'download broke', failureKind: 'download', name: 'RealFail' },
+    },
+    oneShots: {},
+  };
+  const state = common32.reduceDownloadChipState(snapshot, new Set());
+  a32.equal(state.items.length, 1, 'only the download failure survives');
+  a32.equal(state.items[0].name, 'RealFail');
+  a32.equal(common32.formatDownloadChipSummary(state), '1 download failed');
+});
+
+t32('v1.32: buildDownloadChipItem carries failureKind and renders the muted check status text', () => {
+  const item = common32.buildDownloadChipItem('subscription', 's1', {
+    state: 'error', error: 'yt-dlp list pass timed out after 5m and was killed', failureKind: 'check', name: 'Dormant',
+  });
+  a32.equal(item.failureKind, 'check');
+  a32.equal(item.statusText, 'Check failed — will retry automatically');
+  const dl = common32.buildDownloadChipItem('subscription', 's2', {
+    state: 'error', error: 'boom', failureKind: 'download', name: 'X',
+  });
+  a32.equal(dl.failureKind, 'download');
+  a32.equal(dl.statusText, 'boom');
+  const untagged = common32.buildDownloadChipItem('oneshot', 'j1', { state: 'error', error: 'oops' });
+  a32.equal(untagged.failureKind, null, 'unknown/absent kinds normalize to null (sticky severity)');
+});
+
+t32('v1.32 gate fix: formatBreakerChipText renders the one-line systemic signal ("" when not tripped)', () => {
+  a32.equal(common32.formatBreakerChipText(null), '');
+  a32.equal(common32.formatBreakerChipText(undefined), '');
+  const text = common32.formatBreakerChipText({ resumeAt: '2026-07-12T10:30:00.000Z', consecutiveFailures: 4, skipped: 20 });
+  a32.match(text, /^Downloads paused — retrying at /);
+  a32.equal(common32.formatBreakerChipText({ resumeAt: 'garbage' }), 'Downloads paused');
+});
+
+t32('v1.32 gate fix: a stale/absent failureKind on the client side always lands STICKY (the safe severity)', () => {
+  // The server clears stale kinds with failureKind:null; the client treats
+  // null/undefined/garbage identically -- sticky, never muted.
+  for (const kind of [null, undefined, '', 'weird', 42]) {
+    const item = common32.buildDownloadChipItem('subscription', 's1', { state: 'error', error: 'boom', failureKind: kind, name: 'X' });
+    a32.equal(item.failureKind, null);
+    a32.equal(common32.chipItemLifecycle(item.state, item.failureKind), 'sticky');
+  }
+});

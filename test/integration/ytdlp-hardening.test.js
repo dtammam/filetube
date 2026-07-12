@@ -529,3 +529,107 @@ test('GATE FIX (FR3.9): queued subscriptions in a multi-channel poll carry queue
   await ytdlp.runPoll(deps, baseConfig());
   assert.equal(observedAhead, 2, 'channel 3 must report 2 jobs ahead while channel 1 runs');
 });
+
+// ---- v1.32 --------------------------------------------------------------
+
+test('v1.32: the breaker backoff retry targets EXACTLY the deferred channels (array runPoll), not the full list from the top', async () => {
+  const deps = makeFakeDeps();
+  const subs = [];
+  for (let i = 1; i <= 5; i++) {
+    subs.push(await addSub(deps, { channelUrl: `https://www.youtube.com/@rs${i}` }));
+  }
+  const listCalls = [];
+  run.runList = async (sub) => {
+    listCalls.push(sub.channelUrl);
+    return { ok: false, code: 1, stdout: '', stderr: '', error: 'boom' };
+  };
+  run.runDownload = async () => ({ ok: true, code: 0, stdout: '', stderr: '', channelMeta: [], itemFailures: [] });
+
+  const config = baseConfig({ breakerFailures: 2, breakerBackoffMinutes: 30 });
+  await ytdlp.runPoll(deps, config);
+  assert.equal(listCalls.length, 2, 'trip after 2');
+  const state = ytdlp.getPollBreakerState();
+  assert.equal(state.skipped, 3);
+
+  // Simulate the resume directly with the deferred-id array (the timer's
+  // own callback shape). Channels succeed now.
+  listCalls.length = 0;
+  run.runList = async (sub) => {
+    listCalls.push(sub.channelUrl);
+    return { ok: true, stdout: '', stderr: '' };
+  };
+  const deferredIds = subs.slice(2).map((s) => s.id);
+  await ytdlp.runPoll(deps, config, deferredIds);
+  assert.deepEqual(
+    listCalls,
+    ['https://www.youtube.com/@rs3', 'https://www.youtube.com/@rs4', 'https://www.youtube.com/@rs5'],
+    'the resume must run ONLY the deferred channels, in order -- never the chronic burners at the head',
+  );
+  assert.equal(ytdlp.getPollBreakerState(), null, 'a clean array-targeted resume clears the breaker');
+});
+
+test('v1.32: runPoll with an array of ids intersects against existing subscriptions (stale ids dropped; empty intersection = not-found)', async () => {
+  const deps = makeFakeDeps();
+  const sub = await addSub(deps, { channelUrl: 'https://www.youtube.com/@only1' });
+  let calls = 0;
+  run.runList = async () => { calls += 1; return { ok: true, stdout: '', stderr: '' }; };
+  run.runDownload = async () => ({ ok: true, code: 0, stdout: '', stderr: '', channelMeta: [], itemFailures: [] });
+
+  await ytdlp.runPoll(deps, baseConfig(), [sub.id, 'ghost-id-deleted-long-ago']);
+  assert.equal(calls, 1, 'stale ids silently dropped, real one runs');
+
+  const result = await ytdlp.runPoll(deps, baseConfig(), ['ghost-a', 'ghost-b']);
+  assert.deepEqual(result, { started: false, reason: 'not-found' });
+});
+
+test('v1.32: a LIST-pass failure is tagged failureKind:"check" and a DOWNLOAD-pass failure failureKind:"download" on the activity entry', async () => {
+  const deps = makeFakeDeps();
+  const sub = await addSub(deps, { channelUrl: 'https://www.youtube.com/@kindcheck' });
+  run.runList = async () => ({ ok: false, code: 'ETIMEDOUT', stdout: '', stderr: '', error: 'yt-dlp list pass timed out after 5m and was killed' });
+  await ytdlp.runPoll(deps, baseConfig({ breakerFailures: 0 }));
+  let entry = activity.getSnapshot().subscriptions[sub.id];
+  assert.equal(entry.state, 'error');
+  assert.equal(entry.failureKind, 'check', 'list failure -> check kind');
+
+  run.runList = async () => ({ ok: true, stdout: ndjson([{ id: 'kindvid0001', availability: 'public' }]), stderr: '' });
+  run.runDownload = async () => ({ ok: false, code: 1, stdout: '', stderr: '', error: 'boom', channelMeta: [], itemFailures: [] });
+  await ytdlp.runPoll(deps, baseConfig({ breakerFailures: 0 }));
+  entry = activity.getSnapshot().subscriptions[sub.id];
+  assert.equal(entry.state, 'error');
+  assert.equal(entry.failureKind, 'download', 'download failure -> download kind');
+});
+
+test('v1.32 gate fix: a sub PAUSED during the backoff window is excluded from the array-targeted breaker resume (FR-D)', async () => {
+  const deps = makeFakeDeps();
+  const subs = [];
+  for (let i = 1; i <= 4; i++) {
+    subs.push(await addSub(deps, { channelUrl: `https://www.youtube.com/@pz${i}` }));
+  }
+  run.runList = async () => ({ ok: false, code: 1, stdout: '', stderr: '', error: 'boom' });
+  run.runDownload = async () => ({ ok: true, code: 0, stdout: '', stderr: '', channelMeta: [], itemFailures: [] });
+  await ytdlp.runPoll(deps, baseConfig({ breakerFailures: 2 }));
+  assert.equal(ytdlp.getPollBreakerState().skipped, 2);
+
+  // Admin pauses one of the two deferred channels during the backoff window.
+  await store.updateSubscription(deps, subs[2].id, { paused: true });
+
+  const listCalls = [];
+  run.runList = async (sub) => { listCalls.push(sub.channelUrl); return { ok: true, stdout: '', stderr: '' }; };
+  await ytdlp.runPoll(deps, baseConfig({ breakerFailures: 2 }), [subs[2].id, subs[3].id]);
+  assert.deepEqual(listCalls, ['https://www.youtube.com/@pz4'], 'the paused deferred sub must be skipped by the automatic resume');
+});
+
+test('v1.32 gate fix: a stale failureKind:"check" from a prior cycle is CLEARED by the catch-all error write (never mutes a real failure)', async () => {
+  const deps = makeFakeDeps();
+  const sub = await addSub(deps, { channelUrl: 'https://www.youtube.com/@stalekind' });
+  // Cycle 1: a genuine check failure tags the entry.
+  run.runList = async () => ({ ok: false, code: 'ETIMEDOUT', stdout: '', stderr: '', error: 'yt-dlp list pass timed out after 5m and was killed' });
+  await ytdlp.runPoll(deps, baseConfig({ breakerFailures: 0 }));
+  assert.equal(activity.getSnapshot().subscriptions[sub.id].failureKind, 'check');
+  // Cycle 2: an unexpected THROW reaches processSubscription's catch-all.
+  run.runList = async () => { throw new Error('unexpected builder explosion'); };
+  await ytdlp.runPoll(deps, baseConfig({ breakerFailures: 0 }));
+  const entry = activity.getSnapshot().subscriptions[sub.id];
+  assert.equal(entry.state, 'error');
+  assert.equal(entry.failureKind, null, 'the catch-all must CLEAR the stale check tag (shallow-merge staleness, FIX-3 class)');
+});

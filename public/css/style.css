@@ -397,6 +397,18 @@ header {
   font-weight: 900;
 }
 
+/* v1.32 (custom logo): the uploaded image is bounded to the text logo's own
+   box -- height pinned slightly above the 22px cap-height (the red pill's
+   padding makes the text block ~28px tall), width free up to a sane cap so
+   a wide wordmark can't push the header controls off-screen. */
+.logo-img {
+  height: 28px;
+  width: auto;
+  max-width: 160px;
+  display: block;
+  object-fit: contain;
+}
+
 .header-search {
   display: flex;
   align-items: center;
@@ -3033,6 +3045,11 @@ a.sub-row-channel-link:focus-visible {
   }
   .logo {
     font-size: var(--fs-2xl);
+  }
+  /* v1.32 (custom logo): scale the image with the mobile text size. */
+  .logo-img {
+    height: 24px;
+    max-width: 120px;
   }
   .header-search {
     margin: 0 6px;

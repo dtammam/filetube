@@ -3128,3 +3128,15 @@ t31test('v1.31 gate fix: history labels + reason lines for the tripped/requeued/
   // Pre-existing kinds keep their per-item failure semantics untouched.
   t31assert.equal(subsClient.formatHistoryFailuresLine({ outcome: 'success', reason: 'x' }), '');
 });
+
+t31test('v1.32: formatHistoryFailuresLine falls back to the run-level reason when a partial/error entry has NO per-item failures', () => {
+  const reason = 'error: yt-dlp list pass timed out after 5.1m and was killed';
+  t31assert.equal(subsClient.formatHistoryFailuresLine({ outcome: 'error', reason, failures: [] }), reason);
+  t31assert.equal(subsClient.formatHistoryFailuresLine({ outcome: 'error', reason }), reason);
+  // Per-item failures still win when present (unchanged v1.29 semantics).
+  const withItems = subsClient.formatHistoryFailuresLine({
+    outcome: 'error', reason, failures: [{ videoId: 'v1', reason: 'blocked' }],
+  });
+  t31assert.ok(withItems.includes('blocked'));
+  t31assert.ok(!withItems.includes('list pass'), 'reason fallback only when item lines are empty');
+});

@@ -2993,11 +2993,17 @@ function renderPlaylistsSheet(folders, folderSettings) {
   if (!list) return;
   const settings = folderSettings || {};
   const visible = visibleSidebarFolders(folders, settings);
+  // v1.32 (Dean): the built-in Liked playlist entry -- fixed, first, static
+  // markup (no user-controlled text), mirroring main.js's sidebar entry so
+  // the two playlist surfaces never disagree. Rendered even with zero
+  // configured folders (likes don't depend on folder mapping).
+  const likedEntry = '<a href="/?liked=1" class="sidebar-item sidebar-item-liked">'
+    + '<i class="icon-star"></i> Liked</a>';
   if (visible.length === 0) {
-    list.innerHTML = '<div class="sidebar-item">No folders configured.</div>';
+    list.innerHTML = likedEntry + '<div class="sidebar-item">No folders configured.</div>';
     return;
   }
-  list.innerHTML = visible.map((f) => {
+  list.innerHTML = likedEntry + visible.map((f) => {
     const base = f.split(/[\\/]/).pop() || f;
     const label = (settings[f] && settings[f].name) || base;
     return '<a href="/?root=' + encodeURIComponent(f) +
@@ -3997,6 +4003,37 @@ function requestMoveItem(id, targetFolder, fetchImpl) {
 // trash-can affordance (main.js). Guarded for Node (no-op there, matching
 // this file's other document-touching helpers).
 /**
+ * v1.32 (Dean, "white-label"): replace the header's text logo with the
+ * user-uploaded custom logo when one is configured. A cheap HEAD probe of
+ * GET /logo decides: 404 (or any failure) = keep the text logo untouched --
+ * the default experience never regresses for the no-logo case. The <img>
+ * is bounded by the `.logo-img` CSS rule to the text logo's own cap-height,
+ * so any aspect ratio slots into the same header box. Runs on every page
+ * (the header + common.js are shared across all five shells); guarded for
+ * Node/jsdom-without-header.
+ */
+function applyCustomLogoIfSet() {
+  if (typeof document === 'undefined' || typeof fetch !== 'function') return;
+  const logoEl = document.querySelector('.logo');
+  if (!logoEl) return;
+  fetch('/logo', { method: 'HEAD' })
+    .then((r) => {
+      if (!r || !r.ok) return; // no custom logo -- text stays
+      const img = document.createElement('img');
+      img.className = 'logo-img';
+      img.alt = 'Logo';
+      img.src = '/logo';
+      // Only swap once the image actually loads -- a corrupt/vanished file
+      // must never leave a broken-image glyph where the text logo was.
+      img.addEventListener('load', () => {
+        while (logoEl.firstChild) logoEl.removeChild(logoEl.firstChild);
+        logoEl.appendChild(img);
+      });
+    })
+    .catch(() => { /* offline/no route -- text logo stays */ });
+}
+
+/**
  * v1.31 P5 (FR5, pure): the human acknowledgement for a repull trigger's
  * response body (v1.29's `{accepted, started, reason}` discriminator).
  * Returns '' when there is nothing worth saying (a normally-started repull
@@ -4004,6 +4041,21 @@ function requestMoveItem(id, targetFolder, fetchImpl) {
  * only the OTHERWISE-INVISIBLE outcomes get a message). Callers render via
  * toast/`textContent` only.
  */
+/**
+ * v1.32 (gate fix, pure): the sitewide chip's one-line breaker summary.
+ * Individual check failures are muted off the badge, but a TRIPPED breaker
+ * (the systemic many-checks-failing signal) still shows everywhere as one
+ * compact, non-red line. '' when not tripped. Mirrors (compactly) the
+ * subscriptions page's own formatBreakerBannerText -- duplicated because
+ * the two files are separate browser scripts; keep the copy in sync.
+ */
+function formatBreakerChipText(breaker) {
+  if (!breaker || typeof breaker !== 'object') return '';
+  const resumeMs = typeof breaker.resumeAt === 'string' ? Date.parse(breaker.resumeAt) : NaN;
+  const when = Number.isNaN(resumeMs) ? '' : ' — retrying at ' + new Date(resumeMs).toLocaleTimeString();
+  return 'Downloads paused' + when;
+}
+
 function formatRepullAckText(body) {
   if (!body || typeof body !== 'object') return '';
   if (body.started === false && body.reason === 'busy') return 'Queued behind current run';
@@ -4214,8 +4266,17 @@ function buildOneShotRetryBody(entry) {
  * explicitly acknowledged, the same way a failure stays visible rather than
  * silently vanishing.
  */
-function chipItemLifecycle(state) {
+function chipItemLifecycle(state, failureKind) {
   if (state === 'done') return 'auto-dismiss';
+  // v1.32: a CHECK failure (list pass on a channel -- often a dormant one
+  // whose check timed out; server tags failureKind:'check') auto-dismisses
+  // like 'done' instead of sitting sticky red -- "nothing new was found
+  // (the check itself failed)" is noise on the chip, per Dean. The row
+  // status and the history page keep the full reason; the automatic
+  // poll/breaker retry machinery re-checks it regardless. A DOWNLOAD
+  // failure (failureKind:'download', or any error without a kind -- the
+  // safe default) stays sticky.
+  if (state === 'error' && failureKind === 'check') return 'auto-dismiss';
   if (state === 'error' || state === 'cancelled') return 'sticky';
   return 'active';
 }
@@ -4268,6 +4329,11 @@ function buildDownloadChipItem(kind, id, entry) {
   // at a frozen width.
   const phase = entry.phase === 'merging' || entry.phase === 'converting' ? entry.phase : null;
   const indeterminate = state === 'downloading' && (phase !== null || percent <= 0);
+  // v1.32: the server tags subscription error entries with failureKind
+  // ('check' = list pass, 'download' = download pass) -- carried through so
+  // the lifecycle/summary can de-escalate check noise. Absent/unknown values
+  // normalize to null (treated as 'download'-severity, the safe default).
+  const failureKind = entry.failureKind === 'check' || entry.failureKind === 'download' ? entry.failureKind : null;
   return {
     key: kind + ':' + id,
     id,
@@ -4277,7 +4343,10 @@ function buildDownloadChipItem(kind, id, entry) {
     state,
     phase,
     indeterminate,
-    statusText: formatOneOffStatusText(entry) || state,
+    failureKind,
+    statusText: state === 'error' && failureKind === 'check'
+      ? 'Check failed — will retry automatically'
+      : (formatOneOffStatusText(entry) || state),
     retryable: state === 'error',
   };
 }
@@ -4383,7 +4452,7 @@ function reduceDownloadChipState(snapshot, dismissedKeys) {
     // v1.24.9: a merely-queued/listing SUBSCRIPTION is sub-queue noise, not
     // an active download -- never contributes to the chip at all.
     if (item.kind === 'subscription' && (item.state === 'queued' || item.state === 'listing')) return false;
-    const lifecycle = chipItemLifecycle(item.state);
+    const lifecycle = chipItemLifecycle(item.state, item.failureKind);
     if (lifecycle === 'auto-dismiss') return false;
     if (lifecycle === 'sticky') return !dismissed.has(item.key);
     return true;
@@ -4872,6 +4941,28 @@ function injectDownloadStatusChip() {
       panel.hidden = true;
       chip.appendChild(panel);
 
+      // v1.32: 'Dismiss all' -- one tap acknowledges every currently-sticky
+      // terminal row (errors/cancelled) instead of dismissing them one by
+      // one. Appended directly to the panel (never tracked in rowsByKey, so
+      // updateDownloadChipPanel's row-cleanup loop leaves it alone); hidden
+      // whenever nothing is dismissible. Active (still-downloading/queued)
+      // rows are never dismissed by it.
+      const dismissAllBtn = document.createElement('button');
+      dismissAllBtn.type = 'button';
+      dismissAllBtn.className = 'btn btn-sm dl-status-chip-dismiss-all';
+      dismissAllBtn.textContent = 'Dismiss all';
+      dismissAllBtn.hidden = true;
+      dismissAllBtn.addEventListener('click', () => {
+        const state = reduceDownloadChipState(latestSnapshot, dismissedKeys);
+        for (const item of state.items) {
+          if (chipItemLifecycle(item.state, item.failureKind) === 'sticky') {
+            dismissedKeys.add(item.key);
+          }
+        }
+        render();
+      });
+      panel.appendChild(dismissAllBtn);
+
       summaryBtn.addEventListener('click', () => {
         expanded = !expanded;
         summaryBtn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
@@ -4958,13 +5049,23 @@ function injectDownloadStatusChip() {
 
       function render() {
         const state = reduceDownloadChipState(latestSnapshot, dismissedKeys);
-        if (!shouldShowDownloadChipOnPath(window.location.pathname) || state.count === 0) {
+        // v1.32 (gate fix, QA "check-storm invisibility"): individual CHECK
+        // failures are muted off the badge (Dean's noise ask), but a
+        // TRIPPED BREAKER -- the systemic "many checks are failing" signal,
+        // by definition -- still surfaces as one compact, non-red line on
+        // every page. De-noised, never fully silent.
+        const breakerText = formatBreakerChipText(latestSnapshot.breaker);
+        if (!shouldShowDownloadChipOnPath(window.location.pathname) || (state.count === 0 && breakerText === '')) {
           chip.hidden = true;
           return;
         }
         chip.hidden = false;
-        summaryText.textContent = formatDownloadChipSummary(state);
+        summaryText.textContent = state.count === 0 ? breakerText : formatDownloadChipSummary(state);
         chip.classList.toggle('dl-status-chip-has-error', state.hasError);
+        // v1.32: 'Dismiss all' only when there is something dismissible.
+        dismissAllBtn.hidden = !state.items.some(
+          (item) => chipItemLifecycle(item.state, item.failureKind) === 'sticky',
+        );
 
         // v1.24.9 (the ACTIVE-DOWNLOADS reframe): the "Stop all subscription
         // downloads" panel action is REMOVED -- the owner never wants a
@@ -5009,8 +5110,15 @@ function injectDownloadStatusChip() {
           .then((r) => (r.ok ? r.json() : Promise.reject(new Error('status endpoint returned ' + r.status))))
           .then((snapshot) => {
             latestSnapshot = snapshot && typeof snapshot === 'object'
-              ? { subscriptions: snapshot.subscriptions || {}, oneShots: snapshot.oneShots || {} }
-              : { subscriptions: {}, oneShots: {} };
+              ? {
+                subscriptions: snapshot.subscriptions || {},
+                oneShots: snapshot.oneShots || {},
+                // v1.32 (gate fix): the breaker state rides along so the
+                // SITEWIDE chip can show the one-line systemic signal even
+                // while individual check failures are muted off the badge.
+                breaker: snapshot.breaker || null,
+              }
+              : { subscriptions: {}, oneShots: {}, breaker: null };
             // v1.30.0 T8 (B1, AC5.3): persist which jobs are currently in
             // flight on every ACTIVE tick (a hidden-tab early-return above
             // never reaches here) -- the last value written here is what a
@@ -5399,6 +5507,10 @@ document.addEventListener('DOMContentLoaded', () => {
   // as the two injections above.
   injectDownloadStatusChip();
 
+  // v1.32 (Dean, "white-label"): swap the text logo for the user-uploaded
+  // image when one is configured -- runs on every page (shared header).
+  applyCustomLogoIfSet();
+
   // SPA-lite router boot (FR-1, T1): derives the current view from `location`
   // and runs its `init()` -- the identical path an in-app swap runs. Also
   // applies the initial active-nav highlight (bottom-nav + sidebar), which
@@ -5455,6 +5567,8 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     // v1.31 P5 (FR5): repull-ack formatter.
     formatRepullAckText,
+    // v1.32 (gate fix): the chip's one-line breaker summary.
+    formatBreakerChipText,
     getStarRating, getCommentCount, resolveChannelName, clampPositionState,
     resolveTheme, THEME_REGISTRY, activeNavItem,
     resolveIconSet, ICON_SET_REGISTRY, ICON_SETS,

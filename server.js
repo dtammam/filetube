@@ -3037,9 +3037,131 @@ function settingsResponse(settings) {
     defaultView: settings.defaultView,
     autoplayNext: settings.autoplayNext,
     backgroundAudioForVideo: settings.backgroundAudioForVideo,
-    effectiveCacheMaxBytes: effectiveCacheCap(settings)
+    effectiveCacheMaxBytes: effectiveCacheCap(settings),
+    // v1.32 (custom logo): READ-ONLY here -- managed exclusively by the
+    // dedicated POST/DELETE /api/settings/logo routes below (never via the
+    // generic POST /api/settings merge; the key is deliberately absent from
+    // KNOWN_KEYS so a stray write 400s).
+    customLogo: typeof settings.customLogoMime === 'string' && settings.customLogoMime !== ''
   };
 }
+
+// ---- v1.32: replaceable header logo ("white-label") -------------------------
+//
+// A user-uploaded image (PNG/JPEG/WebP only -- SVG is deliberately excluded:
+// an SVG can carry scripts and this file is served from the app's own
+// origin) stored as a single file in DATA_DIR and swapped in for the "FileTube"
+// text logo client-side (public/js/common.js's applyCustomLogoIfSet). Size
+// cap 1 MB; magic-byte sniffed server-side so a mislabeled Content-Type can
+// never plant a non-image; atomic write (tmp+rename) like every other
+// DATA_DIR artifact.
+const CUSTOM_LOGO_FILENAME = 'custom-logo.bin';
+const CUSTOM_LOGO_MAX_BYTES = 1024 * 1024;
+const CUSTOM_LOGO_TYPES = {
+  'image/png': (buf) => buf.length > 8 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47,
+  'image/jpeg': (buf) => buf.length > 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff,
+  'image/webp': (buf) => buf.length > 12 && buf.toString('ascii', 0, 4) === 'RIFF' && buf.toString('ascii', 8, 12) === 'WEBP',
+};
+
+function customLogoPath() {
+  return path.join(DATA_DIR, CUSTOM_LOGO_FILENAME);
+}
+
+// Serves the uploaded logo (404 when none is set -- the client's boot check
+// treats that as "keep the text logo"). `no-cache` so a replacement shows up
+// on the next load without a stale-cache fight.
+app.get('/logo', (req, res) => {
+  const db = getCachedDatabase();
+  const mime = db.settings && typeof db.settings.customLogoMime === 'string' ? db.settings.customLogoMime : '';
+  if (!mime || !Object.prototype.hasOwnProperty.call(CUSTOM_LOGO_TYPES, mime)) {
+    return res.status(404).json({ error: 'No custom logo configured' });
+  }
+  try {
+    const bytes = fs.readFileSync(customLogoPath());
+    res.setHeader('Content-Type', mime);
+    // v1.32 gate fix: same defense-in-depth header the subtitle route
+    // already sets for user-influenced content -- the bytes are magic-byte
+    // verified images, but never let a browser second-guess the type.
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Cache-Control', 'no-cache');
+    return res.send(bytes);
+  } catch (err) {
+    // Setting says yes but the file is gone (manual deletion, restored
+    // db.json without the data file) -- degrade to "no logo", never a crash.
+    console.error('Error serving custom logo (treating as unset):', err && err.message);
+    return res.status(404).json({ error: 'No custom logo configured' });
+  }
+});
+
+// Upload: raw image body (route-scoped express.raw -- this app deliberately
+// has no multipart dependency), validated by allowlisted Content-Type AND
+// magic bytes, capped at 1 MB.
+app.post(
+  '/api/settings/logo',
+  express.raw({ type: Object.keys(CUSTOM_LOGO_TYPES), limit: CUSTOM_LOGO_MAX_BYTES }),
+  async (req, res) => {
+    const mime = (req.headers['content-type'] || '').split(';')[0].trim();
+    if (!Object.prototype.hasOwnProperty.call(CUSTOM_LOGO_TYPES, mime)) {
+      return res.status(400).json({ error: 'Logo must be image/png, image/jpeg, or image/webp' });
+    }
+    const bytes = req.body;
+    if (!Buffer.isBuffer(bytes) || bytes.length === 0) {
+      return res.status(400).json({ error: 'Empty upload' });
+    }
+    if (!CUSTOM_LOGO_TYPES[mime](bytes)) {
+      return res.status(400).json({ error: 'File content does not match its image type' });
+    }
+    // Atomic write, same tmp+rename discipline as saveDatabase/runlog.
+    // v1.32 gate fix (adversarial): the file write happens INSIDE the
+    // updateDatabase mutator -- the single-writer FIFO then guarantees
+    // bytes-on-disk and customLogoMime always land together, closing the
+    // two-concurrent-uploads window where /logo could briefly serve one
+    // upload's bytes under the other's Content-Type.
+    const target = customLogoPath();
+    const tmp = `${target}.${process.pid}.${Date.now()}.tmp`;
+    try {
+      await updateDatabase(db => {
+        fs.writeFileSync(tmp, bytes);
+        fs.renameSync(tmp, target);
+        db.settings = { ...db.settings, customLogoMime: mime };
+        return true;
+      });
+    } catch (err) {
+      try { if (fs.existsSync(tmp)) fs.unlinkSync(tmp); } catch { /* best-effort */ }
+      console.error('Error saving custom logo:', err);
+      return res.status(500).json({ error: `Could not save logo: ${err.message}` });
+    }
+    return res.json({ ok: true });
+  },
+  // Route-scoped error handler: an oversized body raised by express.raw's
+  // limit becomes a clean JSON 413, mirroring the body-parser mapping the
+  // one-shot download route uses.
+  (err, req, res, next) => {
+    if (err && (err.type === 'entity.too.large' || err.status === 413)) {
+      return res.status(413).json({ error: 'Logo too large (max 1 MB)' });
+    }
+    return next(err);
+  }
+);
+
+// Reset to the default text logo.
+app.delete('/api/settings/logo', async (req, res) => {
+  try {
+    await updateDatabase(db => {
+      if (db.settings && 'customLogoMime' in db.settings) {
+        const next = { ...db.settings };
+        delete next.customLogoMime;
+        db.settings = next;
+      }
+      return true;
+    });
+    try { fs.unlinkSync(customLogoPath()); } catch { /* already gone -- fine */ }
+  } catch (err) {
+    console.error('Error removing custom logo:', err);
+    return res.status(500).json({ error: `Could not remove logo: ${err.message}` });
+  }
+  return res.json({ ok: true });
+});
 
 // API: Read the Automation & Storage settings for Settings-page prefill.
 app.get('/api/settings', (req, res) => {
@@ -3538,10 +3660,16 @@ app.get('/api/liked', (req, res) => {
   const offset = videoQuery.normalizeOffset(req.query.offset);
   const seed = videoQuery.normalizeSeed(req.query.seed);
 
-  const list = Object.values(db.metadata).filter(item => likedIds.has(item.id));
+  let list = Object.values(db.metadata).filter(item => likedIds.has(item.id));
+  // v1.32: the Liked view is now a real library scope (main.js's ?liked=1)
+  // -- honor the same format toggle the home grid forwards, so
+  // videos/audio/both filtering behaves identically in both views.
+  if (typeof req.query.format === 'string') {
+    list = videoQuery.filterByFormat(list, req.query.format);
+  }
 
-  // `total` is the full liked-set length, BEFORE slicing to a page -- same
-  // contract as GET /api/videos's own `total`.
+  // `total` is the full liked-set length (after format filtering), BEFORE
+  // slicing to a page -- same contract as GET /api/videos's own `total`.
   const total = list.length;
 
   const rng = sort === 'random' && seed !== undefined ? videoQuery.createSeededRng(seed) : undefined;
