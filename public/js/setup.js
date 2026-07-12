@@ -244,6 +244,9 @@ function renderSidebarFolders(folders, settings = {}) {
   const visible = visibleSidebarFolders(folders, settings);
   if (visible.length === 0) {
     sidebarContainer.innerHTML = '<div style="padding: 6px 24px; font-style: italic; color: var(--text-secondary);">None</div>';
+    // v1.33.1 (Dean): count-gated Liked entry, same shared helper as every
+    // other sidebar surface (prepends without touching siblings).
+    applyLikedSidebarEntry(sidebarContainer);
     return;
   }
   sidebarContainer.innerHTML = visible.map((f, index) => {
@@ -251,6 +254,7 @@ function renderSidebarFolders(folders, settings = {}) {
     const label = (settings[f] && settings[f].name) || base;
     return `<a href="/?root=${encodeURIComponent(f)}" class="sidebar-item" data-index="${index}" draggable="true" title="${escapeHtml(f)}"><i class="icon-folder"></i> ${escapeHtml(label)}</a>`;
   }).join('');
+  applyLikedSidebarEntry(sidebarContainer); // v1.33.1: see above
 
   const items = sidebarContainer.querySelectorAll('.sidebar-item[data-index]');
   items.forEach((el) => {
@@ -584,8 +588,9 @@ async function loadAutomationSettings() {
     // populateDefaultViewSelect() above).
     loadedDefaultView = typeof s.defaultView === 'string' ? s.defaultView : '';
     populateDefaultViewSelect();
-    // v1.32 (custom logo): reflect whether one is currently set.
-    updateLogoControls(!!s.customLogo);
+    // v1.32 (custom logo) / v1.33.1 (per-mode variants): reflect which
+    // variants are currently set.
+    updateLogoControls(!!s.customLogo, !!s.customLogoDark);
   } catch (err) {
     console.error('Failed to load automation settings:', err);
   }
@@ -597,19 +602,39 @@ async function loadAutomationSettings() {
 // the server validates the type allowlist + magic bytes + 1 MB cap.
 const LOGO_ALLOWED_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
 
-function updateLogoControls(hasCustomLogo) {
-  const resetBtn = document.getElementById('logo-reset-btn');
-  const statusEl = document.getElementById('logo-status');
-  if (resetBtn) resetBtn.hidden = !hasCustomLogo;
-  if (statusEl) statusEl.textContent = hasCustomLogo ? 'Custom logo active.' : 'Using the default FileTube logo.';
+// v1.33.1: tracks each variant's set/unset state so the shared status line
+// can describe the combined situation after any upload/reset.
+const logoVariantState = { light: false, dark: false };
+
+function describeLogoState() {
+  const { light, dark } = logoVariantState;
+  if (light && dark) return 'Custom light + dark logos active.';
+  if (light) return 'Custom logo active (used for both modes until a dark one is uploaded).';
+  if (dark) return 'Custom dark logo active (used for both modes until a light one is uploaded).';
+  return 'Using the default FileTube logo.';
 }
 
-function wireLogoControls() {
-  const fileInput = document.getElementById('logo-file-input');
-  const uploadBtn = document.getElementById('logo-upload-btn');
-  const resetBtn = document.getElementById('logo-reset-btn');
+function updateLogoControls(hasLight, hasDark) {
+  logoVariantState.light = !!hasLight;
+  logoVariantState.dark = !!hasDark;
+  const lightReset = document.getElementById('logo-reset-btn');
+  const darkReset = document.getElementById('logo-reset-btn-dark');
+  const statusEl = document.getElementById('logo-status');
+  if (lightReset) lightReset.hidden = !logoVariantState.light;
+  if (darkReset) darkReset.hidden = !logoVariantState.dark;
+  if (statusEl) statusEl.textContent = describeLogoState();
+}
+
+// Wires ONE variant's upload/reset pair against the variant-scoped routes
+// (v1.33.1: `?variant=dark` for the dark set; the plain route stays the
+// light/default one, byte-compatible with v1.32).
+function wireLogoVariantControls(variant, inputId, uploadId, resetId) {
+  const fileInput = document.getElementById(inputId);
+  const uploadBtn = document.getElementById(uploadId);
+  const resetBtn = document.getElementById(resetId);
   const statusEl = document.getElementById('logo-status');
   if (!fileInput || !uploadBtn || !resetBtn) return;
+  const routeSuffix = variant === 'dark' ? '?variant=dark' : '';
 
   uploadBtn.addEventListener('click', () => fileInput.click());
 
@@ -627,7 +652,7 @@ function wireLogoControls() {
     }
     if (statusEl) statusEl.textContent = 'Uploading…';
     try {
-      const r = await fetch('/api/settings/logo', {
+      const r = await fetch('/api/settings/logo' + routeSuffix, {
         method: 'POST',
         headers: { 'Content-Type': file.type },
         body: file,
@@ -637,9 +662,13 @@ function wireLogoControls() {
         if (statusEl) statusEl.textContent = body.error || 'Upload failed.';
         return;
       }
-      updateLogoControls(true);
+      updateLogoControls(
+        variant === 'light' ? true : logoVariantState.light,
+        variant === 'dark' ? true : logoVariantState.dark
+      );
       // Swap the live header immediately so the change is visible without a
-      // reload (same helper every page's boot uses).
+      // reload (same helper every page's boot uses; it resolves the variant
+      // for the CURRENT mode itself).
       if (typeof applyCustomLogoIfSet === 'function') applyCustomLogoIfSet();
     } catch (err) {
       if (statusEl) statusEl.textContent = 'Upload failed (network error).';
@@ -648,19 +677,27 @@ function wireLogoControls() {
 
   resetBtn.addEventListener('click', async () => {
     try {
-      const r = await fetch('/api/settings/logo', { method: 'DELETE' });
+      const r = await fetch('/api/settings/logo' + routeSuffix, { method: 'DELETE' });
       if (!r.ok) {
         if (statusEl) statusEl.textContent = 'Could not reset the logo.';
         return;
       }
-      updateLogoControls(false);
+      updateLogoControls(
+        variant === 'light' ? false : logoVariantState.light,
+        variant === 'dark' ? false : logoVariantState.dark
+      );
       // The header swap only ever goes text->img in-page; going back to the
-      // text logo cleanly is a reload's job.
+      // text logo (or the surviving variant) cleanly is a reload's job.
       window.location.reload();
     } catch (err) {
       if (statusEl) statusEl.textContent = 'Could not reset the logo (network error).';
     }
   });
+}
+
+function wireLogoControls() {
+  wireLogoVariantControls('light', 'logo-file-input', 'logo-upload-btn', 'logo-reset-btn');
+  wireLogoVariantControls('dark', 'logo-file-input-dark', 'logo-upload-btn-dark', 'logo-reset-btn-dark');
 }
 
 // GET /api/cache/size -> "Current size: X" via the shared formatFileSize.

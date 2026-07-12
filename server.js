@@ -3393,7 +3393,11 @@ function settingsResponse(settings) {
     // dedicated POST/DELETE /api/settings/logo routes below (never via the
     // generic POST /api/settings merge; the key is deliberately absent from
     // KNOWN_KEYS so a stray write 400s).
-    customLogo: typeof settings.customLogoMime === 'string' && settings.customLogoMime !== ''
+    customLogo: typeof settings.customLogoMime === 'string' && settings.customLogoMime !== '',
+    // v1.33.1: the DARK-mode variant's own read-only flag (same managed-by-
+    // dedicated-routes posture; `customLogoDarkMime` is likewise absent from
+    // KNOWN_KEYS so a stray generic-settings write 400s).
+    customLogoDark: typeof settings.customLogoDarkMime === 'string' && settings.customLogoDarkMime !== ''
   };
 }
 
@@ -3407,6 +3411,9 @@ function settingsResponse(settings) {
 // never plant a non-image; atomic write (tmp+rename) like every other
 // DATA_DIR artifact.
 const CUSTOM_LOGO_FILENAME = 'custom-logo.bin';
+// v1.33.1: the DARK-mode variant's own file. The original filename stays the
+// LIGHT/default variant so an existing v1.32 upload keeps working untouched.
+const CUSTOM_LOGO_DARK_FILENAME = 'custom-logo-dark.bin';
 const CUSTOM_LOGO_MAX_BYTES = 1024 * 1024;
 const CUSTOM_LOGO_TYPES = {
   'image/png': (buf) => buf.length > 8 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47,
@@ -3414,8 +3421,22 @@ const CUSTOM_LOGO_TYPES = {
   'image/webp': (buf) => buf.length > 12 && buf.toString('ascii', 0, 4) === 'RIFF' && buf.toString('ascii', 8, 12) === 'WEBP',
 };
 
-function customLogoPath() {
-  return path.join(DATA_DIR, CUSTOM_LOGO_FILENAME);
+// v1.33.1: variant plumbing. Anything that isn't exactly the string 'dark'
+// (absent, garbage, an array from a repeated query param) normalizes to
+// 'light' -- fail-closed to the pre-variant behavior.
+function resolveLogoVariant(raw) {
+  return raw === 'dark' ? 'dark' : 'light';
+}
+
+function customLogoPath(variant) {
+  return path.join(DATA_DIR, variant === 'dark' ? CUSTOM_LOGO_DARK_FILENAME : CUSTOM_LOGO_FILENAME);
+}
+
+// The settings key holding each variant's verified MIME type. The light key
+// keeps its v1.32 name (`customLogoMime`) for back-compat with an existing
+// upload's persisted settings.
+function customLogoMimeKey(variant) {
+  return variant === 'dark' ? 'customLogoDarkMime' : 'customLogoMime';
 }
 
 // Serves the uploaded logo (404 when none is set -- the client's boot check
@@ -3423,12 +3444,27 @@ function customLogoPath() {
 // on the next load without a stale-cache fight.
 app.get('/logo', (req, res) => {
   const db = getCachedDatabase();
-  const mime = db.settings && typeof db.settings.customLogoMime === 'string' ? db.settings.customLogoMime : '';
-  if (!mime || !Object.prototype.hasOwnProperty.call(CUSTOM_LOGO_TYPES, mime)) {
+  // v1.33.1: variant-aware with CROSS-FALLBACK -- ?variant=dark serves the
+  // dark logo when set, else the light one; the plain /logo (light) likewise
+  // falls back to a dark-only upload. "If only one is uploaded it is used
+  // for both" (Dean). 404 only when NEITHER variant is set.
+  const requested = resolveLogoVariant(req.query.variant);
+  const fallback = requested === 'dark' ? 'light' : 'dark';
+  const mimeFor = (v) => {
+    const m = db.settings && typeof db.settings[customLogoMimeKey(v)] === 'string' ? db.settings[customLogoMimeKey(v)] : '';
+    return m && Object.prototype.hasOwnProperty.call(CUSTOM_LOGO_TYPES, m) ? m : '';
+  };
+  let variant = requested;
+  let mime = mimeFor(requested);
+  if (!mime) {
+    variant = fallback;
+    mime = mimeFor(fallback);
+  }
+  if (!mime) {
     return res.status(404).json({ error: 'No custom logo configured' });
   }
   try {
-    const bytes = fs.readFileSync(customLogoPath());
+    const bytes = fs.readFileSync(customLogoPath(variant));
     res.setHeader('Content-Type', mime);
     // v1.32 gate fix: same defense-in-depth header the subtitle route
     // already sets for user-influenced content -- the bytes are magic-byte
@@ -3468,13 +3504,16 @@ app.post(
     // bytes-on-disk and customLogoMime always land together, closing the
     // two-concurrent-uploads window where /logo could briefly serve one
     // upload's bytes under the other's Content-Type.
-    const target = customLogoPath();
+    // v1.33.1: variant-scoped -- ?variant=dark lands in its own file + its
+    // own settings key, never touching the light variant (and vice versa).
+    const variant = resolveLogoVariant(req.query.variant);
+    const target = customLogoPath(variant);
     const tmp = `${target}.${process.pid}.${Date.now()}.tmp`;
     try {
       await updateDatabase(db => {
         fs.writeFileSync(tmp, bytes);
         fs.renameSync(tmp, target);
-        db.settings = { ...db.settings, customLogoMime: mime };
+        db.settings = { ...db.settings, [customLogoMimeKey(variant)]: mime };
         return true;
       });
     } catch (err) {
@@ -3497,16 +3536,20 @@ app.post(
 
 // Reset to the default text logo.
 app.delete('/api/settings/logo', async (req, res) => {
+  // v1.33.1: variant-scoped -- DELETE ?variant=dark removes only the dark
+  // variant; the plain DELETE keeps its v1.32 meaning (the light/default one).
+  const variant = resolveLogoVariant(req.query.variant);
+  const mimeKey = customLogoMimeKey(variant);
   try {
     await updateDatabase(db => {
-      if (db.settings && 'customLogoMime' in db.settings) {
+      if (db.settings && mimeKey in db.settings) {
         const next = { ...db.settings };
-        delete next.customLogoMime;
+        delete next[mimeKey];
         db.settings = next;
       }
       return true;
     });
-    try { fs.unlinkSync(customLogoPath()); } catch { /* already gone -- fine */ }
+    try { fs.unlinkSync(customLogoPath(variant)); } catch { /* already gone -- fine */ }
   } catch (err) {
     console.error('Error removing custom logo:', err);
     return res.status(500).json({ error: `Could not remove logo: ${err.message}` });
