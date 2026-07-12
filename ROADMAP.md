@@ -80,6 +80,12 @@
 
 ## Shipped
 
+### v1.35.0 — deterministic background audio (2026-07-13)
+
+- The lock-screen/app-switch background-audio handoff hardened at every layer: a `playback` audio-session declaration (Safari 16.4+ — the background-continuation entitlement; plays through the silent switch like a media app), the sidecar src pre-assigned at load (the risky step leaves iOS's transition window), and MediaSession metadata/handlers re-asserted across every swap.
+- New **Pre-extract background audio** setting (experimental, off): new downloads get their audio track extracted at scan time, played items' sidecars are pinned from cache eviction, and the sidecar is fully pre-buffered per watch — the maximum-determinism config. Base toggle alone gets the session + pre-assignment improvements with zero added network cost.
+- Gate: adversarial REQUEST CHANGES (eager fetch initially rode the wrong setting — re-gated onto the disclosed-cost lever) + QA APPROVE w/ an enforced live-playback guard; both delta-APPROVED. 3767/3767 on Node 22 + 24.
+
 ### v1.34.6 — audio expanded-view polish + custom-video findings doc (2026-07-13): the now-playing bar sits flush at the true bottom edge (safe-area padding inside the bar) and the cover art canvas ends ABOVE the bar (art never covered, worst-case landscape fixed); the custom mobile VIDEO effort is PAUSED per Dean — full honest record in [docs/mobile-custom-player-findings.md](docs/mobile-custom-player-findings.md) (what works, the three iOS platform walls, lessons, and the recommended future swing: adopt media-chrome/Vidstack or hybrid custom-inline/native-fullscreen instead of more hand-rolling).
 
 ### v1.34.5 — mobile player round 5 (2026-07-13): iOS's rotate-to-landscape native-fullscreen hijack is bounced into faux fullscreen in custom mode (rotation = the fullscreen gesture, FileTube controls kept); fullscreen bar blends into black.

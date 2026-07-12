@@ -140,7 +140,14 @@ const DEFAULT_SETTINGS = {
   // the FULL player instead of the native iOS strip (public/js/player.js
   // applyControlsMode). OFF by default -- native is today's behavior; this
   // is the opt-in trial lever for the custom mobile experience.
-  mobileCustomPlayer: false
+  mobileCustomPlayer: false,
+  // v1.35 (Dean, EXPERIMENTAL): deterministic background audio -- when ON,
+  // (a) freshly-downloaded yt-dlp videos get their .m4a audio sidecar
+  // extracted at scan time (not lazily on first watch), and (b) .m4a
+  // sidecars are PINNED: exempt from the automatic size-cap eviction and
+  // age sweep (the manual Settings "Clear cache" button still clears them
+  // -- explicit user intent wins). ~1MB per minute of audio on disk.
+  preExtractAudio: false
 };
 
 // Per-key merge so a partial/older `settings` object keeps whatever keys it
@@ -676,9 +683,17 @@ function activeProtectedPaths(now) {
 function evictTranscodeCache(maxBytes, justProducedPath) {
   let entries;
   try { entries = fs.readdirSync(TRANSCODE_DIR); } catch (_) { return 0; }
+  // v1.35 (preExtractAudio): while the setting is ON, .m4a background-audio
+  // sidecars are PINNED -- never candidates for the automatic size-cap
+  // eviction (this function) or the age sweep (below). The manual Settings
+  // "Clear cache" button (POST /api/cache/clear) still removes them --
+  // explicit user intent wins over the pin. They still COUNT toward the
+  // displayed cache size (honest accounting).
+  const pinAudioSidecars = !!(getCachedDatabase().settings || {}).preExtractAudio;
   const files = [];
   for (const name of entries) {
     if (!isCompletedTranscode(name)) continue;
+    if (pinAudioSidecars && name.endsWith('.m4a')) continue;
     const p = path.join(TRANSCODE_DIR, name);
     try {
       const st = fs.statSync(p);
@@ -776,9 +791,13 @@ function sweepAgedTranscodes(now) {
   const maxAgeMs = cacheMaxAgeDays ? cacheMaxAgeDays * 24 * 60 * 60 * 1000 : 0;
   let entries;
   try { entries = fs.readdirSync(TRANSCODE_DIR); } catch (_) { return 0; }
+  // v1.35 (preExtractAudio): same sidecar pin as evictTranscodeCache -- see
+  // its comment there.
+  const pinAudioSidecars = !!(db.settings || {}).preExtractAudio;
   const files = [];
   for (const name of entries) {
     if (!isCompletedTranscode(name)) continue;
+    if (pinAudioSidecars && name.endsWith('.m4a')) continue;
     const p = path.join(TRANSCODE_DIR, name);
     try {
       const st = fs.statSync(p);
@@ -2489,6 +2508,15 @@ async function runScanDirectories() {
   // (or none), so there is nothing new to consume for it.
   const freshlyScannedIds = new Set();
 
+  // v1.35 (preExtractAudio): freshly-indexed yt-dlp VIDEO files whose .m4a
+  // background-audio sidecar should be extracted eagerly. Collected during
+  // the walk but fired only AFTER the final save below -- queueAudioExtract's
+  // setAudioStatus writes db.metadata[id].audioStatus, and doing that
+  // mid-scan would race the Phase-2 wholesale metadata merge (the
+  // stale-snapshot class; the sidecar's own self-heal would eventually
+  // recover, but not writing into the race at all is strictly better).
+  const preExtractCandidates = [];
+
   for (const [filePath, info] of scannedFiles.entries()) {
     const id = getMediaId(filePath);
     const isAudio = AUDIO_EXTENSIONS.includes(info.ext);
@@ -2612,6 +2640,16 @@ async function runScanDirectories() {
       // v1.20.0 FR-2: mark this id as freshly-scanned -- see the Phase-2
       // channel-identity bridge, below.
       freshlyScannedIds.add(id);
+      // v1.35 (preExtractAudio): a freshly-indexed yt-dlp-rooted VIDEO is a
+      // download -- queue its sidecar extraction (after the save; see the
+      // collector's comment above) when the setting is ON.
+      // (Read from the scan's Phase-1 snapshot -- a toggle flipped ON
+      // mid-scan catches the NEXT scan's fresh files; already-indexed items
+      // stay lazy-on-first-watch by design. Accepted narrow window.)
+      if (db.settings && db.settings.preExtractAudio === true &&
+          !isAudio && matchRootFolder(filePath, ytdlpDownloadRoots)) {
+        preExtractCandidates.push({ id, filePath });
+      }
 
       // FIX-9 (two-reviewer gate): `cleanDisplayTitle` strips a trailing
       // ` [<11-char id>]` bracket -- exactly the shape `--restrict-filenames`
@@ -3110,6 +3148,19 @@ async function runScanDirectories() {
     return true;
   });
   if (dbChanged) console.log('Database synced successfully.');
+
+  // v1.35 (preExtractAudio): fire the collected sidecar extractions now that
+  // the final save has landed (see the collector's comment above for why not
+  // mid-scan). queueAudioExtract is idempotent (queue-de-duped, skips when
+  // the sidecar already exists, guards ffmpeg availability), so re-scans of
+  // the same fresh window are harmless.
+  for (const candidate of preExtractCandidates) {
+    try {
+      queueAudioExtract(candidate.id, candidate.filePath);
+    } catch (err) {
+      console.error(`preExtractAudio: failed to queue sidecar extraction for ${candidate.id}:`, err && err.message);
+    }
+  }
 }
 
 // Periodic scan timer, driven by the persisted `scanIntervalMinutes`
@@ -3588,6 +3639,8 @@ function settingsResponse(settings) {
     defaultSort: settings.defaultSort,
     // v1.34 T4: custom-vs-native mobile video controls (see DEFAULT_SETTINGS).
     mobileCustomPlayer: settings.mobileCustomPlayer,
+    // v1.35: deterministic background audio (see DEFAULT_SETTINGS).
+    preExtractAudio: settings.preExtractAudio,
     effectiveCacheMaxBytes: effectiveCacheCap(settings),
     // v1.32 (custom logo): READ-ONLY here -- managed exclusively by the
     // dedicated POST/DELETE /api/settings/logo routes below (never via the
@@ -3771,7 +3824,7 @@ app.get('/api/settings', (req, res) => {
 // free of arbitrary/typo'd keys.
 app.post('/api/settings', async (req, res) => {
   const body = req.body || {};
-  const KNOWN_KEYS = ['scanIntervalMinutes', 'pruneMissing', 'cacheMaxBytes', 'cacheMaxAgeDays', 'defaultView', 'autoplayNext', 'backgroundAudioForVideo', 'defaultSort', 'mobileCustomPlayer'];
+  const KNOWN_KEYS = ['scanIntervalMinutes', 'pruneMissing', 'cacheMaxBytes', 'cacheMaxAgeDays', 'defaultView', 'autoplayNext', 'backgroundAudioForVideo', 'defaultSort', 'mobileCustomPlayer', 'preExtractAudio'];
   for (const key of Object.keys(body)) {
     if (!KNOWN_KEYS.includes(key)) {
       return res.status(400).json({ error: `unknown settings key: ${key}` });
@@ -3811,6 +3864,9 @@ app.post('/api/settings', async (req, res) => {
   }
   if ('mobileCustomPlayer' in body && typeof body.mobileCustomPlayer !== 'boolean') {
     return res.status(400).json({ error: 'mobileCustomPlayer must be a boolean' });
+  }
+  if ('preExtractAudio' in body && typeof body.preExtractAudio !== 'boolean') {
+    return res.status(400).json({ error: 'preExtractAudio must be a boolean' });
   }
   // v1.16.0 FR-3 (T3): autoplayNext -- boolean, mirrors pruneMissing's own
   // validation exactly.
