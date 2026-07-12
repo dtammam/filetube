@@ -1407,6 +1407,12 @@ function getMockViews(mediaId, sizeBytes) {
 function activeNavItem(pathname, search) {
   if (pathname === '/setup.html') return 'settings';
   if (pathname === '/subscriptions') return 'subscriptions';
+  // v1.37.0 books: same unconditional-mapping posture as /subscriptions
+  // (the link only exists when >=1 book folder is configured). The reader
+  // (/read.html) deliberately maps to 'books' -- reading a book keeps the
+  // Books nav item lit, like watch keeps no item lit but books is a
+  // browsable section.
+  if (pathname === '/books' || pathname === '/books.html' || pathname === '/read.html') return 'books';
   if (pathname === '/' || pathname === '/index.html') return 'home';
   return null;
 }
@@ -1476,6 +1482,66 @@ function injectSubscriptionsNavLinkIfEnabled() {
         // Match the existing active-state highlight logic (DOMContentLoaded,
         // below) in case injection resolves after that already ran.
         if (activeNavItem(window.location.pathname, window.location.search) === 'subscriptions') {
+          navLink.classList.add('active');
+        }
+      }
+    })
+    .catch(() => { /* network/parse failure -- fail closed, inject nothing */ });
+}
+
+// ---- v1.37.0 books nav-link injection (the D4 posture, books-gated) --------
+//
+// The Books link exists only when the operator has configured >=1 book
+// folder -- a books-less install renders byte-identical chrome (the
+// disabled-module guarantee). Unlike the subscriptions probe (a
+// route-existence 404 check), /api/books/config always exists; the gate is
+// its CONTENT (folders.length). Pure decision extracted for node:test.
+function shouldInjectBooksNav(payload) {
+  return Boolean(payload && Array.isArray(payload.folders) && payload.folders.length > 0);
+}
+
+// Idempotent + defensive, mirroring injectSubscriptionsNavLinkIfEnabled.
+function injectBooksNavLinkIfEnabled() {
+  if (typeof document === 'undefined' || typeof fetch === 'undefined') return;
+  if (document.querySelector('[data-nav="books"]')) return; // already injected
+
+  fetch('/api/books/config')
+    .then((res) => (res.ok ? res.json() : null))
+    .then((payload) => {
+      if (!shouldInjectBooksNav(payload)) return; // books-less -- inject nothing
+      if (document.querySelector('[data-nav="books"]')) return; // raced a second call
+
+      // Sidebar entry, right after Library Settings (the subscriptions
+      // link's own anchor -- whichever injected first, they stack there).
+      const settingsSidebarLink = document.querySelector('a.sidebar-item[href="/setup.html"]');
+      if (settingsSidebarLink && settingsSidebarLink.parentElement) {
+        const sidebarLink = document.createElement('a');
+        sidebarLink.href = '/books';
+        sidebarLink.className = 'sidebar-item';
+        sidebarLink.setAttribute('data-nav-sidebar', 'books');
+        const sidebarIcon = document.createElement('i');
+        sidebarIcon.className = 'icon-folder';
+        sidebarLink.appendChild(sidebarIcon);
+        sidebarLink.appendChild(document.createTextNode(' Books'));
+        settingsSidebarLink.insertAdjacentElement('afterend', sidebarLink);
+      }
+
+      // Bottom-nav entry (mobile app shell).
+      const settingsNavItem = document.querySelector('#bottom-nav [data-nav="settings"]');
+      if (settingsNavItem && settingsNavItem.parentElement) {
+        const navLink = document.createElement('a');
+        navLink.href = '/books';
+        navLink.className = 'bottom-nav-item';
+        navLink.setAttribute('data-nav', 'books');
+        const navIcon = document.createElement('i');
+        navIcon.className = 'icon-folder';
+        const navLabel = document.createElement('span');
+        navLabel.className = 'bottom-nav-label';
+        navLabel.textContent = 'Books';
+        navLink.appendChild(navIcon);
+        navLink.appendChild(navLabel);
+        settingsNavItem.insertAdjacentElement('afterend', navLink);
+        if (activeNavItem(window.location.pathname, window.location.search) === 'books') {
           navLink.classList.add('active');
         }
       }
@@ -2334,6 +2400,12 @@ function deriveRouteView(pathname) {
   // enabled -- this pure mapping is unconditional (harmless when nothing ever
   // links here; mirrors activeNavItem's own unconditional mapping above).
   if (pathname === '/subscriptions') return 'subscriptions';
+  // v1.37.0 books: same unconditional-mapping posture -- the Books nav link
+  // is only injected when >=1 book folder is configured (see
+  // injectBooksNavLinkIfEnabled), and /read.html is only ever linked from
+  // book cards, so a books-less install never navigates here.
+  if (pathname === '/books' || pathname === '/books.html') return 'books';
+  if (pathname === '/read.html') return 'read';
   return null;
 }
 
@@ -2570,25 +2642,39 @@ if (typeof window !== 'undefined') {
   // (lib/ytdlp/index.js), so even a stray call here just rejects (handled by
   // `navigate`'s fallback-to-real-navigation below) rather than leaking
   // anything.
-  let subscriptionsScriptPromise = null;
-  function ensureSubscriptionsScriptLoaded() {
-    if (viewRegistry.subscriptions) return Promise.resolve();
-    if (subscriptionsScriptPromise) return subscriptionsScriptPromise;
-    subscriptionsScriptPromise = new Promise((resolve, reject) => {
+  // v1.37.0: generalized from the subscriptions-only loader into a
+  // src-keyed one-per-session lazy loader -- books/read reuse the exact
+  // load/retry semantics rather than forking them (the exec plan's T7
+  // "generalize rather than fork twice" instruction). A failed load clears
+  // its slot so a later navigation can retry instead of wedging forever.
+  const viewScriptPromises = {};
+  function ensureScriptLoaded(src, registryKey) {
+    if (viewRegistry[registryKey]) return Promise.resolve();
+    if (viewScriptPromises[src]) return viewScriptPromises[src];
+    viewScriptPromises[src] = new Promise((resolve, reject) => {
       const script = document.createElement('script');
-      script.src = '/js/subscriptions.js';
+      script.src = src;
       script.addEventListener('load', () => resolve());
       script.addEventListener('error', () => {
-        subscriptionsScriptPromise = null; // allow a later retry instead of wedging forever
-        reject(new Error('failed to load /js/subscriptions.js'));
+        viewScriptPromises[src] = null; // allow a later retry instead of wedging forever
+        reject(new Error(`failed to load ${src}`));
       });
       document.body.appendChild(script);
     });
-    return subscriptionsScriptPromise;
+    return viewScriptPromises[src];
   }
 
+  // Per-view lazy-script map. Views absent here (home/watch/setup) ship in
+  // the page shell and are always registered by boot time.
+  const VIEW_SCRIPT_SRC = {
+    subscriptions: '/js/subscriptions.js',
+    books: '/js/books.js',
+    read: '/js/read.js',
+  };
+
   function ensureViewScriptLoaded(view) {
-    return view === 'subscriptions' ? ensureSubscriptionsScriptLoaded() : Promise.resolve();
+    const src = VIEW_SCRIPT_SRC[view];
+    return src ? ensureScriptLoaded(src, view) : Promise.resolve();
   }
 
   // The one swap routine every navigation (an in-app click, `popstate`, and
@@ -5685,6 +5771,8 @@ document.addEventListener('DOMContentLoaded', () => {
   // every page (not just inside the `bottomNav` guard below) since it also
   // injects a sidebar link on pages that have one but no bottom nav.
   injectSubscriptionsNavLinkIfEnabled();
+  // v1.37.0 books: same boot-time probe-gated injection.
+  injectBooksNavLinkIfEnabled();
 
   // v1.15.0 item 3: one-off download header button + modal, gated by the
   // SAME capability probe pattern -- runs on every page for the same reason
@@ -5772,6 +5860,7 @@ if (typeof module !== 'undefined' && module.exports) {
     tokenize, rankRelated, RESULT_COUNT, SIMILAR_FLOOR,
     resolveAudioArtUrl,
     shouldInjectSubscriptionsNav,
+    shouldInjectBooksNav,
     fisherYatesShuffle, sortItems, shouldShowShuffleButton,
     deriveOrderedIds, computeNeighbors, parentFolder,
     visibleSidebarFolders, resolveDefaultView,
