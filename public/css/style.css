@@ -4051,6 +4051,12 @@ a.sub-row-channel-link:focus-visible {
   min-height: 40px;
   padding-top: 4px;
   padding-bottom: calc(4px + env(safe-area-inset-bottom, 0px));
+  /* v1.34.5: blend into the fullscreen black instead of the themed bar
+     chrome -- the safe-area padding read as a colored band at the bottom
+     ("some at the bottom"). Semi-transparent, the native-player convention. */
+  background: rgba(0, 0, 0, 0.75);
+  border-top: none;
+  box-shadow: none;
 }
 /* The app chrome is fully covered by the overlay, but hide it explicitly
    too (belt) and freeze page scroll so nothing can peek out under the

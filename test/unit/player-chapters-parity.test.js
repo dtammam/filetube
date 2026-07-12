@@ -152,3 +152,15 @@ test('v1.34.4: faux fullscreen outranks header/nav, freezes the page, and the ba
   assert.match(css, /#player-wrapper\.css-fullscreen \.player-controls \{\s*height: auto;[\s\S]*?env\(safe-area-inset-bottom/, 'the bar grows for the home indicator instead of clipping its buttons row');
   assert.ok(playerSrc.includes('function setCssFullscreen(on)'), 'host + body classes move together');
 });
+
+// ---- v1.34.5 (Dean round 5): the iOS rotate-to-native-fullscreen hijack -----
+test('v1.34.5: rotating a playing video to landscape in CUSTOM mode bounces out of the native player into faux fullscreen; the fullscreen bar blends into black', () => {
+  assert.ok(playerSrc.includes("mediaPlayer.addEventListener('webkitbeginfullscreen'"), 'the hijack listener exists');
+  assert.match(playerSrc, /webkitbeginfullscreen', function \(\) \{[\s\S]*?webkitExitFullscreen\(\);[\s\S]*?setCssFullscreen\(true\);/,
+    'custom mode bounces the native auto-fullscreen and grants faux fullscreen instead');
+  assert.match(playerSrc, /webkitbeginfullscreen', function \(\) \{\s*if \(!isMobileFormFactor\(\) \|\| inNativeControlsMode\(\)\) return;/,
+    'native-controls mode keeps the native rotation fullscreen untouched');
+  const css = fs.readFileSync(path.join(ROOT, 'public', 'css', 'style.css'), 'utf8');
+  assert.match(css, /#player-wrapper\.css-fullscreen \.player-controls \{[\s\S]*?background: rgba\(0, 0, 0, 0\.75\);/,
+    'the fullscreen bar blends into the black canvas (no themed band at the bottom)');
+});
