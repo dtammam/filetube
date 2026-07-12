@@ -90,6 +90,39 @@ This is the priority list for the next working branch — a **polish + feedback*
 
 ## Shipped
 
+### v1.32.0 — breaker starvation fix, diagnosable history, Liked view, custom logo (2026-07-12)
+
+Driven directly by Dean's live v1.31 production data (the breaker retry
+restarting from the top let 4 chronic slow channels starve the other 177
+forever) plus his UX punchlist:
+
+- **Breaker resume targets the deferred channels** (id-array runPoll) —
+  chronic burners rotate to the next scheduled poll, the tail never starves;
+  paused-during-backoff subs excluded (FR-D); clean resume clears the breaker.
+- **History rows always explain themselves** — run-level reasons render when
+  there are no per-item failures (no more bare "Failed").
+- **Chip noise cut, honestly** — list-pass ("check") failures are muted off
+  the badge entirely (rows + history keep the reason), download failures stay
+  sticky red, and a tripped breaker shows one compact sitewide line
+  ("Downloads paused — retrying at HH:MM") so a systemic storm is never
+  silent. Stale failureKind tags are explicitly cleared on every error write
+  (adversarial-gate CRITICAL). 'Dismiss all' on the chip panel.
+- **Subscriptions page QoL** — yt-dlp version line at the top; the list is
+  collapsible (persisted) so history/details need no 180-row scroll.
+- **Liked playlist surfaced** — built-in sidebar + Playlists-sheet entries;
+  ?liked=1 scopes the grid to GET /api/liked (format toggle honored).
+- **Custom header logo ("white-label")** — Settings upload (PNG/JPEG/WebP,
+  magic-byte sniffed, 1MB cap, no SVG, nosniff-served, race-free
+  single-writer persistence), bounded header swap on all five shells,
+  one-click reset. README hero updated to the full-res art.
+
+LEAN-MODE wave; two-reviewer gate passed after one fix round (QA + adversarial
+re-confirmed). 3645 tests on Node 22.23.1 + 24.14.0.
+
+**Dean's on-device ledger:** breaker banner + chip line during a throttled
+run; a paused chronic channel staying paused through a resume; the collapse
+toggle; Liked view; logo upload/reset from Settings.
+
 ### v1.31.0 — yt-dlp download hardening (2026-07-12)
 
 The wave that ends the "downloads fail for no reason" era. Root cause of Dean's
