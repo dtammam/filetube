@@ -80,6 +80,10 @@
 
 ## Shipped
 
+### v1.34.2 — mobile player round 2 (2026-07-13, on-device iteration)
+
+- Scrub row is exclusive (buttons can no longer squeeze onto it); chapters menu gained an explicit ✕ close + iOS dismissal braces; custom-mode mobile fullscreen is now a CSS faux-fullscreen keeping FileTube's own bar (iPhone element-fullscreen is native-only by platform rule).
+
 ### v1.34.1 — mobile player usability (2026-07-13, on-device iteration)
 
 - Two-row mobile control bar: full-width scrub row (the seek bar was an unusable sliver), buttons below; Ch button only shows on mobile when the item has chapters; the chapters menu dismisses on tap-outside (iOS click-synthesis quirk fixed with pointerdown).

@@ -3831,8 +3831,18 @@ a.sub-row-channel-link:focus-visible {
     order: -1;
   }
   #player-slot .player-controls .pc-seek {
+    /* v1.34.2 (Dean round 2): the seek bar must OWN its row. flex-shrink
+       let the play/speed buttons squeeze onto the scrub row by collapsing
+       the bar; a hard min-width that leaves room only for the two time
+       labels (~75px each incl. gaps) forces every button onto row 2. */
     flex: 1 1 auto;
-    min-width: 0;
+    min-width: calc(100% - 170px);
+  }
+  /* Exactly two rows: scrub (~32px) + buttons (44px) + gap -- keep the bar
+     from ever clipping a third row (the v1.34.1 screenshot showed CC/Ch
+     bottom-clipped when wrap produced three rows). */
+  #player-slot .player-controls .pc-time {
+    line-height: 30px;
   }
   .pc-btn {
     width: 44px;
@@ -3994,6 +4004,29 @@ a.sub-row-channel-link:focus-visible {
   height: auto;
 }
 
+/* v1.34.2 (Dean round 2): CSS faux-fullscreen for CUSTOM-mode mobile video.
+   iPhone element-fullscreen is native-player-only, so custom mode fills the
+   viewport with a fixed host instead -- OUR control bar (chapters, drag
+   scrubbing, CC) stays. z-index above header/nav/sheets; safe-area padded.
+   The video fills the free height (aspect pin released; object-fit:contain
+   letterboxes). The fs button toggles the class (player.js). */
+#player-wrapper.css-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: #000;
+  border-radius: 0;
+}
+#player-wrapper.css-fullscreen:not(.audio-expanded) #media-player {
+  aspect-ratio: auto;
+  height: 100%;
+  width: 100%;
+  object-fit: contain;
+}
+#player-wrapper.css-fullscreen .player-controls {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
 /* v1.34.1 (Dean's on-device pass): mobile bar declutter.
    (1) The Ch button only earns its slot on mobile when the item actually
    HAS chapters (player.js toggles .has-chapters per load) -- on a
@@ -4047,6 +4080,25 @@ a.sub-row-channel-link:focus-visible {
   color: var(--text-secondary);
   font-variant-numeric: tabular-nums;
   margin-right: 4px;
+}
+.chapters-menu-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px 6px 12px;
+  border-bottom: 1px solid var(--border-dark);
+  color: var(--text-secondary);
+  font-size: var(--fs-sm);
+}
+.chapters-menu-close {
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  font-size: var(--fs-2xl);
+  line-height: 1;
+  padding: 4px 10px;
+  cursor: pointer;
+  min-height: 32px;
 }
 .chapters-menu-edit {
   border-top: 1px solid var(--border-dark);

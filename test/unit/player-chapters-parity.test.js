@@ -100,7 +100,26 @@ test('v1.34.1: the chapters UI is mobile-safe -- has-chapters class toggled per 
   // only, with the native-controls strip-removal outranking the 2-ID
   // reservation.
   assert.match(css, /#player-slot \.player-controls \{\s*flex-wrap: wrap;\s*height: 80px;/, 'two-row bar');
-  assert.match(css, /#player-slot \.player-controls \.pc-seek \{\s*flex: 1 1 auto;/, 'the seek bar owns its row');
+  assert.match(css, /#player-slot \.player-controls \.pc-seek \{[\s\S]*?flex: 1 1 auto;[\s\S]*?min-width: calc\(100% - 170px\);/, 'the seek bar owns its row (v1.34.2: hard min-width)');
   assert.match(css, /#player-slot #player-wrapper:not\(\.audio-expanded\) \{\s*padding-bottom: 80px;/, 'the reserved strip matches the two-row bar');
   assert.match(css, /#player-slot #player-wrapper:not\(\.audio-expanded\)\.native-controls \{\s*padding-bottom: 0;/, 'native mode still removes the strip (outranks the 2-ID reservation)');
+});
+
+// ---- v1.34.2 (Dean round 2): dismissal braces + faux fullscreen -------------
+test('v1.34.2: the chapters menu has an explicit close (header ✕), touchstart/play-pause-seek dismissal braces, and custom-mode mobile fullscreen is the CSS faux path', () => {
+  assert.ok(playerSrc.includes("closeBtn.className = 'chapters-menu-close'"), 'an explicit ✕ close button in the menu header');
+  assert.ok(playerSrc.includes("document.addEventListener('touchstart', closeChaptersMenuOnOutside, { passive: true })"), 'touchstart fallback (iOS click/pointer synthesis quirks)');
+  assert.ok(playerSrc.includes("mediaPlayer.addEventListener('play', closeChaptersMenu)"), 'any playback interaction closes the menu');
+  assert.ok(playerSrc.includes("host.classList.toggle('css-fullscreen')"), 'custom-mode mobile fullscreen toggles the CSS faux-fullscreen (iPhone element-fullscreen is native-only)');
+  assert.ok(playerSrc.includes("if (state !== STATE_FULL) host.classList.remove('css-fullscreen')"), 'docking/closing drops the fixed overlay');
+  const css = fs.readFileSync(path.join(ROOT, 'public', 'css', 'style.css'), 'utf8');
+  assert.match(css, /#player-wrapper\.css-fullscreen \{\s*position: fixed;\s*inset: 0;/, 'the faux-fullscreen host treatment');
+  assert.match(css, /#player-wrapper\.css-fullscreen:not\(\.audio-expanded\) #media-player \{\s*aspect-ratio: auto;/, 'the aspect pin releases in faux fullscreen');
+  // Ordering: the css-fullscreen media rule must come AFTER the portrait
+  // 16:9 pin (equal specificity -- later wins).
+  const pinIdx = css.indexOf('#player-wrapper.portrait-media:not(.audio-expanded) #media-player');
+  const fsIdx = css.indexOf('#player-wrapper.css-fullscreen:not(.audio-expanded) #media-player');
+  assert.ok(pinIdx >= 0 && fsIdx > pinIdx, 'css-fullscreen must outrank the portrait pin by order');
+  // Row exclusivity (round 2): the seek bar owns its row via hard min-width.
+  assert.match(css, /min-width: calc\(100% - 170px\);/, 'the scrub row cannot be shared by buttons');
 });
