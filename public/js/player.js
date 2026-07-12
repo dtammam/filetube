@@ -3892,6 +3892,22 @@ if (typeof module !== 'undefined' && module.exports) {
       };
       document.addEventListener('click', closeChaptersMenuOnOutside);
       document.addEventListener('pointerdown', closeChaptersMenuOnOutside);
+      // v1.34.5 (Dean round 5): iOS AUTO-ENTERS the native fullscreen player
+      // when a playing inline video rotates to landscape (a Safari behavior,
+      // playsinline notwithstanding) -- in CUSTOM mode that hijacks the
+      // surface away from our bar. The rotation is still a fullscreen
+      // INTENT, so bounce out of the native player and grant FAUX
+      // fullscreen instead: rotate-sideways becomes the fullscreen gesture,
+      // with FileTube's own controls. Native-controls mode is untouched
+      // (rotating into the native player there is the desired behavior).
+      if (mediaPlayer) {
+        mediaPlayer.addEventListener('webkitbeginfullscreen', function () {
+          if (!isMobileFormFactor() || inNativeControlsMode()) return;
+          if (!currentData || currentData.type === 'audio') return;
+          try { mediaPlayer.webkitExitFullscreen(); } catch (_) { /* not fullscreen anymore -- fine */ }
+          setCssFullscreen(true);
+        });
+      }
       // v1.34.2: iOS belt-and-braces -- touchstart fires even where a
       // WebKit quirk eats pointer/click synthesis, and any play/pause/seek
       // interaction closes the menu regardless of where the tap landed.
