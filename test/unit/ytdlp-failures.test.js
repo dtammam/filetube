@@ -142,3 +142,72 @@ test('parseItemFailureLine: an embedded fake "known" id inside the reason text o
   );
   assert.equal(result.videoId, null, 'the id SLOT (forgedId) is what is checked, never text appearing later in the reason');
 });
+
+// ---- v1.36.2 (Dean): subtitle failures are non-blocking ----------------------
+//
+// A transcript that can't be fetched/converted must never turn a completed
+// media download into a failed history row. Two shapes: the per-video
+// `ERROR: [youtube] <id>: ... subtitles ...` line (tagged subtitleOnly,
+// attribution kept for diagnostics) and the global
+// `ERROR: Postprocessing: ...vtt...` line (previously parsed as NOTHING, so
+// a subs-only exit-1 read as a channel-level failure).
+
+test('v1.36.2: a per-video subtitle ERROR is tagged subtitleOnly (attribution kept)', () => {
+  const known = new Set(['vidsubs0001']);
+  const result = parseItemFailureLine("ERROR: [youtube] vidsubs0001: Unable to download video subtitles for 'en': HTTP Error 429", known);
+  assert.equal(result.videoId, 'vidsubs0001');
+  assert.equal(result.subtitleOnly, true);
+});
+
+test('v1.36.2: a global postprocessing subtitle ERROR (no [extractor] prefix) is now a subtitleOnly marker instead of parsing as nothing', () => {
+  const result = parseItemFailureLine('ERROR: Postprocessing: Error opening output files: Invalid argument (some-video.en.vtt)', new Set());
+  assert.ok(result, 'must parse');
+  assert.equal(result.videoId, null);
+  assert.equal(result.subtitleOnly, true);
+});
+
+test('v1.36.2: a NON-subtitle global ERROR still parses as nothing (channel-level failure posture unchanged)', () => {
+  assert.equal(parseItemFailureLine('ERROR: Unable to extract player version', new Set()), null);
+});
+
+test('v1.36.2: a non-subtitle per-video ERROR carries NO subtitleOnly tag (blocking classification unchanged)', () => {
+  const known = new Set(['vidreal0001']);
+  const result = parseItemFailureLine('ERROR: [youtube] vidreal0001: Video unavailable', known);
+  assert.equal(result.videoId, 'vidreal0001');
+  assert.ok(!('subtitleOnly' in result), 'no tag on real failures');
+});
+
+const { computeDownloadOutcome } = require('../../lib/ytdlp/failures');
+
+test('v1.36.2: computeDownloadOutcome -- a non-zero exit caused PURELY by subtitle errors is an honest SUCCESS (all targets credited)', () => {
+  const result = computeDownloadOutcome({
+    ok: false,
+    itemFailures: [
+      { videoId: 'vidsubs0001', reason: "Unable to download video subtitles for 'en': HTTP Error 429", subtitleOnly: true },
+      { videoId: null, reason: 'Postprocessing: Error opening output files (x.en.vtt)', subtitleOnly: true },
+    ],
+    targetIds: ['vidsubs0001', 'vidother002'],
+  });
+  assert.deepEqual(result, { outcome: 'success', succeeded: 2, failed: 0 });
+});
+
+test('v1.36.2: computeDownloadOutcome -- subtitle errors MIXED with a real failure still count only the real one (partial, not error)', () => {
+  const result = computeDownloadOutcome({
+    ok: false,
+    itemFailures: [
+      { videoId: 'vidsubs0001', reason: 'subtitles unavailable', subtitleOnly: true },
+      { videoId: 'vidreal0002', reason: 'Video unavailable' },
+    ],
+    targetIds: ['vidsubs0001', 'vidreal0002', 'vidfine0003'],
+  });
+  assert.equal(result.outcome, 'partial');
+  assert.equal(result.failed, 1, 'only the REAL failure counts');
+  assert.equal(result.succeeded, 2);
+});
+
+test('v1.36.2: computeDownloadOutcome -- ok:false with zero failures of ANY kind stays a channel-level error (Direction A unchanged)', () => {
+  assert.deepEqual(
+    computeDownloadOutcome({ ok: false, itemFailures: [], targetIds: ['a1', 'b2'] }),
+    { outcome: 'error', succeeded: 0, failed: 2 },
+  );
+});

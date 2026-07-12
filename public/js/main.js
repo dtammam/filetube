@@ -490,6 +490,14 @@ if (typeof module !== 'undefined' && module.exports) {
     function buildCardHtml(item) {
       const views = getMockViews(item.id, item.size);
       const relativeTime = formatRelativeTime(item.addedAt);
+      // v1.36.2 (Dean): carry the LAUNCH CONTEXT into the watch page. The
+      // watch page's prev/next was folder-scoped only -- a video opened from
+      // the Liked view walked its FOLDER's neighbors (or greyed out when it
+      // had none), never the Liked list the user was actually browsing.
+      // `list=liked` is read by watch.js's setupPrevNext and preserved by
+      // its own prev/next navigation, so stepping stays inside Liked.
+      // Additive: every other view keeps the bare URL (byte-identical).
+      const watchHref = `/watch.html?v=${item.id}${likedFilter ? '&list=liked' : ''}`;
       // Author/channel resolved the same way as the watch page (see common.js).
       const channelName = resolveChannelName(item, folderSettings);
       // Deterministic 3–5 star rating — the same value shows on this item's watch page.
@@ -512,7 +520,7 @@ if (typeof module !== 'undefined' && module.exports) {
 
       return `
         <div class="video-card">
-          <a href="/watch.html?v=${item.id}" class="thumbnail-container">
+          <a href="${watchHref}" class="thumbnail-container">
             <img class="thumbnail-img" src="/thumbnail/${item.id}" alt="${escapeHtml(item.title)}" loading="lazy" />
             ${durationBadge}
             ${progressBar}
@@ -524,7 +532,7 @@ if (typeof module !== 'undefined' && module.exports) {
             <i class="icon-download"></i>
           </a>
           <div class="video-info">
-            <a href="/watch.html?v=${item.id}" class="video-title" title="${escapeHtml(item.title)}">
+            <a href="${watchHref}" class="video-title" title="${escapeHtml(item.title)}">
               ${escapeHtml(item.title)}
             </a>
             <div class="video-uploader">

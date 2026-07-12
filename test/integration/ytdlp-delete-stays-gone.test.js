@@ -198,3 +198,60 @@ test('FR-I: a video deleted via DELETE /api/videos/:id stays gone -- the downloa
   assert.equal(fs.existsSync(videoFilePath), false);
   assert.equal(loadDatabase().metadata[videoId], undefined);
 });
+
+// ---- v1.36.2 (Dean: "sticky post-deletion") ----------------------------------
+
+test('v1.36.2: deleting an UN-ARCHIVED yt-dlp item records its id in the archive during the delete -- deletion is now authoritative for staying gone', async () => {
+  const config = ytdlp.parseYtdlpConfig();
+  fs.mkdirSync(config.downloadDir, { recursive: true });
+  const channelDir = path.join(config.downloadDir, 'Some Channel');
+  fs.mkdirSync(channelDir, { recursive: true });
+
+  // A yt-dlp-shaped file whose id was NEVER archived -- the one-off /
+  // lost-archive class that used to come back on the next poll.
+  const videoId = 'unarchived1';
+  const filePath = path.join(channelDir, `Great Video [${videoId}].mp4`);
+  fs.writeFileSync(filePath, 'video-bytes');
+  // A subtitle sidecar written by --write-subs: must be cleaned up too.
+  const vttPath = path.join(channelDir, `Great Video [${videoId}].en.vtt`);
+  fs.writeFileSync(vttPath, 'WEBVTT\n');
+
+  const mediaId = getMediaId(filePath);
+  await updateDatabase((db) => {
+    db.metadata[mediaId] = { id: mediaId, filePath, title: 'Great Video', type: 'video' };
+    return true;
+  });
+
+  const archivePath = args.resolveArchivePath(config);
+  const before = fs.existsSync(archivePath) ? fs.readFileSync(archivePath, 'utf8') : '';
+  assert.ok(!before.includes(`youtube ${videoId}`), 'precondition: the id is NOT in the archive');
+
+  const res = await fetch(`${base}/api/videos/${mediaId}`, { method: 'DELETE' });
+  assert.equal(res.status, 200);
+  assert.ok(!fs.existsSync(filePath), 'the file is gone');
+  assert.ok(!fs.existsSync(vttPath), 'the .vtt subtitle sidecar is cleaned up with it');
+  const after = fs.readFileSync(archivePath, 'utf8');
+  assert.ok(after.includes(`youtube ${videoId}`), 'the DELETE itself must record the id -- the next poll now skips it regardless of how it was originally downloaded');
+  assert.ok(!loadDatabase().metadata[mediaId], 'the library entry is gone');
+});
+
+test('v1.36.2: deleting a plain NON-yt-dlp library file never touches the archive (scoping)', async () => {
+  const libDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-plain-lib-'));
+  const filePath = path.join(libDir, 'Home Movie [notaytdlpv].mp4');
+  fs.writeFileSync(filePath, 'bytes');
+  const mediaId = getMediaId(filePath);
+  await updateDatabase((db) => {
+    db.metadata[mediaId] = { id: mediaId, filePath, title: 'Home Movie', type: 'video' };
+    return true;
+  });
+
+  const config = ytdlp.parseYtdlpConfig();
+  const archivePath = args.resolveArchivePath(config);
+  const before = fs.existsSync(archivePath) ? fs.readFileSync(archivePath, 'utf8') : '';
+
+  const res = await fetch(`${base}/api/videos/${mediaId}`, { method: 'DELETE' });
+  assert.equal(res.status, 200);
+  const after = fs.existsSync(archivePath) ? fs.readFileSync(archivePath, 'utf8') : '';
+  assert.equal(after, before, 'a non-download-root file must never write archive lines (its bracket-lookalike name is irrelevant)');
+  fs.rmSync(libDir, { recursive: true, force: true });
+});
