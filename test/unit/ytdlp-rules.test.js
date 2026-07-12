@@ -307,6 +307,7 @@ t36('v1.36.1 isShort shape fallback: missing/malformed shape fields fail OPEN (d
   assert.equal(rules36.isShort({ duration: 45 }), false, 'no dimensions and no ratio -> no shape verdict');
   assert.equal(rules36.isShort({ aspect_ratio: 0.5625 }), false, 'no duration -> no shape verdict (an upcoming/live placeholder)');
   assert.equal(rules36.isShort({ duration: '45', aspect_ratio: '0.5' }), false, 'string-typed junk never trips it');
+  assert.equal(rules36.isShort({ duration: 30, aspect_ratio: 'junk', width: 1080, height: 1920 }), true, 'a junk aspect_ratio falls through to the width/height compare');
   assert.equal(rules36.isShort({ duration: NaN, aspect_ratio: NaN }), false);
   assert.equal(rules36.isShort({ duration: 45, width: 0, height: 0 }), false);
   assert.equal(rules36.isShort({}), false);
