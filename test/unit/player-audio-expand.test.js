@@ -308,7 +308,11 @@ test('WARNING FIX -- CSS overlay rule: position/inset stay full-viewport (unchan
 
 test('SUGGESTION FIX -- CSS: the expanded control bar clears the bottom safe-area (iPhone home-indicator) without touching the normal in-slot/docked bar', () => {
   assert.ok(controlsRuleMatch, 'expected a #player-wrapper.audio-mode.audio-expanded .player-controls rule scoped to only the expanded overlay');
-  assert.match(controlsRuleMatch[1], /bottom:\s*env\(safe-area-inset-bottom(?:,\s*0px)?\)\s*;/, 'expected bottom: env(safe-area-inset-bottom, ...) to lift the absolutely-positioned bar clear of the safe area');
+  // v1.34.6 (Dean): the bar is FLUSH to the true bottom edge now -- the
+  // safe-area allowance lives INSIDE the bar as padding (the old bottom
+  // lift left a black gap strip under it).
+  assert.match(controlsRuleMatch[1], /bottom:\s*0\s*;/, 'the expanded bar sits flush at the bottom edge');
+  assert.match(controlsRuleMatch[1], /padding-bottom:\s*calc\(4px \+ env\(safe-area-inset-bottom,\s*0px\)\)\s*;/, 'safe-area clearance is internal padding');
   // The base `.player-controls` rule (unscoped) must stay untouched -- this
   // fix is scoped ONLY to the expanded overlay's bar.
   const baseControlsMatch = /(?:^|\n)\.player-controls\s*\{([^}]*)\}/.exec(CSS);

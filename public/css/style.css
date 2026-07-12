@@ -4360,6 +4360,13 @@ body.ft-css-fullscreen .bottom-nav {
    normal (non-expanded) audio-mode ambient art keeps `cover` (see ~913). */
 #player-wrapper.audio-mode.audio-expanded #audio-bg-art {
   background-size: contain;
+  /* v1.34.6 (Dean): the art canvas previously filled the WHOLE viewport,
+     so contain-fit art extended behind the control bar and got covered
+     (worst in landscape, where the art's height is the binding edge). End
+     the canvas above the bar instead: single-row bar (desktop/landscape
+     phones >768px) below; the two-row mobile bar overrides in the 768px
+     block further down. */
+  bottom: calc(52px + env(safe-area-inset-bottom, 0px));
 }
 
 /* The control bar (and `#fs-btn`, the exit affordance) is `position:
@@ -4374,7 +4381,14 @@ body.ft-css-fullscreen .bottom-nav {
    .player-controls` selector so ONLY the expanded overlay's bar is
    affected -- the normal in-slot and docked bars are untouched. */
 #player-wrapper.audio-mode.audio-expanded .player-controls {
-  bottom: env(safe-area-inset-bottom, 0px);
+  /* v1.34.6 (Dean): flush to the TRUE bottom edge -- the old
+     bottom: env(safe-area) lift left a black gap strip under the bar. The
+     safe-area allowance now lives INSIDE the bar as padding instead. */
+  bottom: 0;
+  height: auto;
+  min-height: 40px;
+  padding-top: 4px;
+  padding-bottom: calc(4px + env(safe-area-inset-bottom, 0px));
 }
 
 /* Feature B (v1.26.1): same safe-area lift as the control bar directly
@@ -4382,12 +4396,17 @@ body.ft-css-fullscreen .bottom-nav {
    so the caption overlay sits directly above the (already safe-area-lifted)
    bar in the expanded full-viewport view, instead of behind/under it. */
 #player-wrapper.audio-mode.audio-expanded .cc-overlay {
-  bottom: calc(40px + env(safe-area-inset-bottom, 0px));
+  bottom: calc(56px + env(safe-area-inset-bottom, 0px));
 }
 
 @media (max-width: 768px) {
   #player-wrapper.audio-mode.audio-expanded .cc-overlay {
-    bottom: calc(44px + env(safe-area-inset-bottom, 0px));
+    /* two-row mobile bar (v1.34.1) is ~90px tall in the expanded view */
+    bottom: calc(94px + env(safe-area-inset-bottom, 0px));
+  }
+  /* v1.34.6: the art canvas's above-the-bar cutoff, two-row variant. */
+  #player-wrapper.audio-mode.audio-expanded #audio-bg-art {
+    bottom: calc(94px + env(safe-area-inset-bottom, 0px));
   }
 }
 
