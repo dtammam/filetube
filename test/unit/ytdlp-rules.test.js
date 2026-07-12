@@ -235,3 +235,34 @@ test('isShort: false when missing/odd fields (never throws) -- fails open toward
 test('isShort: false when the fields are present but do not contain "/shorts/"', () => {
   assert.equal(isShort({ webpage_url: 'https://www.youtube.com/@somechannel' }), false);
 });
+
+// ---- v1.36 F1 fix round: isBeforeCutoff (the authoritative JS date gate) ---
+//
+// Replaces the retired `--dateafter` argv flag (which masked the break-early
+// filter -- see lib/ytdlp/args.js breakEarlyArgs). Must reproduce yt-dlp's
+// daterange semantics EXACTLY, including the keep-when-dateless behavior.
+
+const t36 = require('node:test').test;
+
+t36('v1.36 isBeforeCutoff: strictly-older upload_date -> true (skip); same-day or newer -> false (keep, --dateafter is >=)', () => {
+  const rules36 = require('../../lib/ytdlp/rules');
+  assert.equal(rules36.isBeforeCutoff({ upload_date: '20260701' }, '20260709'), true);
+  assert.equal(rules36.isBeforeCutoff({ upload_date: '20260709' }, '20260709'), false, 'same-day must be KEPT (>= semantics)');
+  assert.equal(rules36.isBeforeCutoff({ upload_date: '20260710' }, '20260709'), false);
+  // Year boundary: lexicographic YYYYMMDD compare == calendar compare.
+  assert.equal(rules36.isBeforeCutoff({ upload_date: '20251231' }, '20260101'), true);
+});
+
+t36('v1.36 isBeforeCutoff: a missing/malformed upload_date is KEPT (premiere/live placeholders flowed through --dateafter too)', () => {
+  const rules36 = require('../../lib/ytdlp/rules');
+  for (const meta of [{}, null, undefined, { upload_date: null }, { upload_date: '' }, { upload_date: '2026-07-09' }, { upload_date: 20260709 }]) {
+    assert.equal(rules36.isBeforeCutoff(meta, '20260709'), false, `meta=${JSON.stringify(meta)} must be kept`);
+  }
+});
+
+t36('v1.36 isBeforeCutoff: a missing/malformed cutoffDate keeps everything (mirrors dateAfterArgs fail-safe-to-no-bound)', () => {
+  const rules36 = require('../../lib/ytdlp/rules');
+  for (const bad of [undefined, null, '', '2026070', 'abcd0709', 20260709]) {
+    assert.equal(rules36.isBeforeCutoff({ upload_date: '19990101' }, bad), false, `cutoff=${JSON.stringify(bad)}`);
+  }
+});

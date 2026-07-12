@@ -270,3 +270,56 @@ test('v1.36 F3: scheduledPollTick SKIPS while a breaker resume timer is armed --
   await new Promise((resolve) => setTimeout(resolve, 100));
   assert.ok(listCalls > 0, 'with no breaker armed, the tick runs a normal full poll');
 });
+
+// ---- v1.36 fix round (adversarial W3): stranded breakerState -----------------
+
+test('v1.36 W3: a breaker resume whose ENTIRE deferred set became ineligible (paused/cooling) clears the breaker instead of stranding "retrying at <past>"', async () => {
+  const deps = makeFakeDeps();
+  const subs = [];
+  for (let i = 0; i < 3; i++) subs.push(await addSub(deps, `https://www.youtube.com/@w3sub${i}`));
+
+  run.runList = failList;
+  const config = baseConfig({ breakerFailures: 2, breakerBackoffMinutes: 30 });
+  await ytdlp.runPoll(deps, config);
+  assert.ok(ytdlp.getPollBreakerState(), 'precondition: tripped, sub 3 deferred');
+
+  // Between trip and resume, the lone deferred channel is paused (the
+  // natural admin reaction to a burner).
+  await store.updateSubscription(deps, subs[2].id, { paused: true });
+
+  // Fire the resume body directly (the same export-for-testability posture
+  // as scheduledPollTick -- the real timer is a >=1-minute setTimeout).
+  await ytdlp.fireBreakerResume(deps, config, [subs[2].id]);
+  assert.equal(ytdlp.getPollBreakerState(), null, 'a not-found resume must clear the breaker -- the deferred work is moot, and the status banner must not show a forever-past resumeAt');
+});
+
+// ---- v1.36 fix round: the authoritative JS date gate end-to-end --------------
+
+test('v1.36 F1 fix round: a listed pre-cutoff video (the slack window the break filter admits) is NEVER downloaded -- rules.isBeforeCutoff gates the survivor set', async () => {
+  const deps = makeFakeDeps();
+  const sub = await addSub(deps, 'https://www.youtube.com/@slackwindow');
+  // The cutoff-date model stamps a fresh sub with a real cutoff; pin a known
+  // one so the listing below is unambiguous.
+  await store.setSubscriptionStatus(deps, sub.id, { cutoffDate: '20260709' });
+
+  const downloaded = [];
+  run.runList = async () => ({
+    ok: true,
+    code: 101, // break-early stop -- ok:true with the pre-break JSON intact
+    stdout: [
+      JSON.stringify({ id: 'newvideo001', availability: 'public', upload_date: '20260711' }),
+      JSON.stringify({ id: 'slackold002', availability: 'public', upload_date: '20260705' }), // inside slack, pre-cutoff
+      JSON.stringify({ id: 'dateless003', availability: 'public' }), // no upload_date: must be KEPT (daterange parity)
+    ].join('\n'),
+    stderr: '',
+  });
+  run.runDownload = async (subArg, cfg, targetIds) => {
+    downloaded.push(...targetIds);
+    return { ok: true, code: 0, stdout: '', stderr: '', channelMeta: [], itemFailures: [] };
+  };
+
+  await ytdlp.runPoll(deps, baseConfig(), sub.id);
+  assert.ok(downloaded.includes('newvideo001'), 'the post-cutoff video downloads');
+  assert.ok(!downloaded.includes('slackold002'), 'the pre-cutoff slack-window entry must be dropped by the JS date gate');
+  assert.ok(downloaded.includes('dateless003'), 'a dateless entry (premiere/live placeholder) is kept, exactly as under --dateafter');
+});

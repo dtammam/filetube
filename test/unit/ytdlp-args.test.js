@@ -55,59 +55,56 @@ test('buildYtdlpListArgs never embeds the URL into an option (it is its own arra
   }
 });
 
-// ---- buildYtdlpListArgs: --dateafter date-based model (v1.25 QoL T2) -----
+// ---- buildYtdlpListArgs: date scoping (v1.25 T2 -> v1.36 F1 fix round) ----
 //
-// REPLACES the old v1.11.1 "download last N videos" cap: the LIST pass is no
-// longer bounded by `--playlist-end` at all (regardless of `config.maxVideos`
-// / `sub.maxVideos`, which are now dormant plumbing only) -- it is instead
-// bounded by `--dateafter <sub.cutoffDate>` (T1's validated `YYYYMMDD`
-// 8-digit string). `--download-archive` dedup is what actually prevents
-// re-downloads, so there is deliberately no count cap and no break-early
-// logic.
+// v1.25 scoped the LIST pass with `--dateafter <sub.cutoffDate>`. The v1.36
+// adversarial gate proved (against yt-dlp source) that yt-dlp evaluates its
+// daterange check BEFORE match filters and rejects NON-breakingly -- so a
+// co-present `--dateafter` masks `--break-match-filters` entirely and the
+// break-early stop can never fire. The list argv therefore emits the BREAK
+// filter (at cutoff-minus-7-days slack) and NEVER `--dateafter`; the date
+// semantics `--dateafter` provided now live in rules.isBeforeCutoff (JS).
 
-test('buildYtdlpListArgs includes "--dateafter <cutoffDate>" when sub.cutoffDate is a valid 8-digit YYYYMMDD string', () => {
+test('buildYtdlpListArgs: a valid cutoffDate emits the break filter (slacked) and NEVER --dateafter, which would mask it', () => {
   const config = makeConfig();
   const result = args.buildYtdlpListArgs(baseSub({ cutoffDate: '20260709' }), config);
-  const idx = result.indexOf('--dateafter');
-  assert.ok(idx >= 0, '--dateafter should be present for a valid cutoffDate');
-  assert.equal(result[idx + 1], '20260709');
+  assert.ok(!result.includes('--dateafter'), '--dateafter must be ABSENT -- its non-breaking daterange rejection masks --break-match-filters');
+  const idx = result.indexOf('--break-match-filters');
+  assert.ok(idx >= 0, 'the break filter must be present for a valid cutoffDate');
+  // 20260709 minus the 7-day slack window.
+  assert.equal(result[idx + 1], 'upload_date>=?20260702');
   // Must come before the `--` separator (never after it, where it could be
   // mistaken for a positional argument).
-  assert.ok(idx < result.indexOf('--'), '--dateafter must precede the "--" separator');
+  assert.ok(idx < result.indexOf('--'), 'the break filter must precede the "--" separator');
 });
 
-test('buildYtdlpListArgs: --dateafter is present as its own distinct argv-array element, not concatenated/interpolated into another arg', () => {
+test('buildYtdlpListArgs: the slacked cutoff appears ONLY as the break-filter value element, never embedded in any other arg', () => {
   const config = makeConfig();
   const result = args.buildYtdlpListArgs(baseSub({ cutoffDate: '20260101' }), config);
-  const idx = result.indexOf('--dateafter');
-  assert.ok(idx >= 0);
-  // Exactly two elements: the flag, then the bare date value -- nothing else
-  // in the array contains the date as a substring.
-  assert.equal(result[idx], '--dateafter');
-  assert.equal(result[idx + 1], '20260101');
-  // v1.36 F1: `--break-match-filters upload_date>=?<cutoff>` is the ONE
-  // other argv element that legitimately carries the cutoff digits -- as the
-  // suffix of a fixed literal prefix, never in any other form.
   const breakIdx = result.indexOf('--break-match-filters');
-  assert.ok(breakIdx >= 0, 'v1.36 F1: the break-early filter must be present alongside --dateafter');
-  assert.equal(result[breakIdx + 1], 'upload_date>=?20260101');
+  assert.ok(breakIdx >= 0);
+  // 20260101 minus 7 days crosses the year boundary -- the pure-UTC date
+  // arithmetic must handle it.
+  assert.equal(result[breakIdx + 1], 'upload_date>=?20251225');
   for (let i = 0; i < result.length; i++) {
-    if (i === idx + 1 || i === breakIdx + 1) continue;
-    assert.ok(!result[i].includes('20260101'), `unexpected embedded cutoffDate in arg[${i}]: ${result[i]}`);
+    if (i === breakIdx + 1) continue;
+    assert.ok(!result[i].includes('20251225') && !result[i].includes('20260101'), `unexpected embedded cutoff digits in arg[${i}]: ${result[i]}`);
   }
 });
 
-test('buildYtdlpListArgs OMITS --dateafter when sub.cutoffDate is missing/undefined (graceful, no date bound)', () => {
+test('buildYtdlpListArgs OMITS --dateafter AND the break filter when sub.cutoffDate is missing/undefined (graceful, no date bound)', () => {
   const config = makeConfig();
   const result = args.buildYtdlpListArgs(baseSub(), config); // no cutoffDate
   assert.ok(!result.includes('--dateafter'), 'a missing cutoffDate must omit --dateafter entirely');
+  assert.ok(!result.includes('--break-match-filters'), 'and the break filter');
 });
 
-test('buildYtdlpListArgs OMITS --dateafter when sub.cutoffDate is malformed/invalid (fails safe, never a hostile value)', () => {
+test('buildYtdlpListArgs OMITS --dateafter and the break filter when sub.cutoffDate is malformed/invalid (fails safe, never a hostile value)', () => {
   const config = makeConfig();
   for (const bad of [null, '', '2026070', '202607099', 'abcd0709', '2026-07-09', 20260709, {}, ['20260709']]) {
     const result = args.buildYtdlpListArgs(baseSub({ cutoffDate: bad }), config);
     assert.ok(!result.includes('--dateafter'), `cutoffDate=${JSON.stringify(bad)} should omit --dateafter`);
+    assert.ok(!result.includes('--break-match-filters'), `cutoffDate=${JSON.stringify(bad)} should omit the break filter`);
   }
 });
 
@@ -1411,9 +1408,10 @@ test('resiliencePacingArgs: listOnly:true omits sleep-interval/max-sleep-interva
 
 test('v1.36 breakEarlyArgs: valid cutoff -> --lazy-playlist + --break-match-filters upload_date>=?<cutoff> + the default --playlist-end 200 backstop', () => {
   const result = args.breakEarlyArgs({ cutoffDate: '20260710' }, {});
+  // 20260710 minus the 7-day slack window (see BREAK_EARLY_SLACK_DAYS).
   assert.deepEqual(result, [
     '--lazy-playlist',
-    '--break-match-filters', 'upload_date>=?20260710',
+    '--break-match-filters', 'upload_date>=?20260703',
     '--playlist-end', '200',
   ]);
 });
@@ -1429,16 +1427,16 @@ test('v1.36 breakEarlyArgs: the cutoff is re-validated at build time -- malforme
 test('v1.36 breakEarlyArgs: listScanCap is re-bounded through parseListScanCap at build time -- 0 disables the cap, garbage falls back to the 200 default', () => {
   assert.deepEqual(
     args.breakEarlyArgs({ cutoffDate: '20260710' }, { listScanCap: 0 }),
-    ['--lazy-playlist', '--break-match-filters', 'upload_date>=?20260710'],
+    ['--lazy-playlist', '--break-match-filters', 'upload_date>=?20260703'],
     'cap off: break filter only',
   );
   assert.deepEqual(
     args.breakEarlyArgs({ cutoffDate: '20260710' }, { listScanCap: 50 }),
-    ['--lazy-playlist', '--break-match-filters', 'upload_date>=?20260710', '--playlist-end', '50'],
+    ['--lazy-playlist', '--break-match-filters', 'upload_date>=?20260703', '--playlist-end', '50'],
   );
   assert.deepEqual(
     args.breakEarlyArgs({ cutoffDate: '20260710' }, { listScanCap: 'hostile' }),
-    ['--lazy-playlist', '--break-match-filters', 'upload_date>=?20260710', '--playlist-end', '200'],
+    ['--lazy-playlist', '--break-match-filters', 'upload_date>=?20260703', '--playlist-end', '200'],
     'a malformed cap must fall back to the default, never emit a hostile value',
   );
   assert.deepEqual(args.breakEarlyArgs({}, { listScanCap: 0 }), [], 'no cutoff + cap off = nothing at all (incl. no orphan --lazy-playlist)');
@@ -1453,6 +1451,6 @@ test('v1.36 F1: buildYtdlpListArgs carries the full break-early trio before the 
     assert.ok(idx >= 0, `${token} must be present`);
     assert.ok(idx < sepIndex, `${token} must precede the "--" separator`);
   }
-  assert.equal(result[result.indexOf('--break-match-filters') + 1], 'upload_date>=?20260710');
+  assert.equal(result[result.indexOf('--break-match-filters') + 1], 'upload_date>=?20260703');
   assert.equal(result[result.indexOf('--playlist-end') + 1], '200');
 });
