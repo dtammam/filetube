@@ -1101,6 +1101,9 @@ if (typeof module !== 'undefined' && module.exports) {
   // across orientation/resize, so re-deriving live is unnecessary).
   function applyControlsMode() {
     if (!host || !mediaPlayer) return;
+    // v1.34.2: the CSS faux-fullscreen only makes sense in the FULL state --
+    // docking/closing while in it must drop the fixed overlay.
+    if (state !== STATE_FULL) host.classList.remove('css-fullscreen');
     var mobile = isMobileFormFactor();
     host.classList.toggle('ff-mobile', mobile);
     var isVideo = !!(currentData && currentData.type !== 'audio');
@@ -3614,6 +3617,20 @@ if (typeof module !== 'undefined' && module.exports) {
           toggleAudioExpand();
           return;
         }
+        // v1.34.2 (Dean round 2): CUSTOM-mode mobile video fullscreen. On
+        // iPhone, element fullscreen for <video> is ALWAYS the native
+        // player (webkitEnterFullscreen -- a platform rule, no custom UI
+        // possible inside it), which defeated the whole point of the
+        // mobileCustomPlayer trial. In custom mode we use a CSS
+        // faux-fullscreen instead: the host goes position:fixed inset:0
+        // (see .css-fullscreen, style.css), keeping OUR bar -- chapters,
+        // scrubbing, CC -- on top of a full-viewport picture. The same
+        // button toggles back out. Native mode and desktop keep the real
+        // Fullscreen API path below, byte-identical.
+        if (isMobileFormFactor() && mobileCustomPlayerCached && !inNativeControlsMode()) {
+          host.classList.toggle('css-fullscreen');
+          return;
+        }
         // 'native-fullscreen' -- EXISTING video path, byte-identical to
         // before this FR (AC4): never touched for `.audio-mode`.
         if (inNativeFullscreen()) {
@@ -3782,6 +3799,22 @@ if (typeof module !== 'undefined' && module.exports) {
     function buildChaptersMenu() {
       if (!chaptersMenu) return;
       while (chaptersMenu.firstChild) chaptersMenu.removeChild(chaptersMenu.firstChild);
+      // v1.34.2 (Dean round 2): an EXPLICIT close affordance -- tap-outside
+      // dismissal exists too, but a visible header row with a close button
+      // is unambiguous on a phone.
+      var header = document.createElement('div');
+      header.className = 'chapters-menu-header';
+      var headerTitle = document.createElement('span');
+      headerTitle.textContent = 'Chapters';
+      header.appendChild(headerTitle);
+      var closeBtn = document.createElement('button');
+      closeBtn.type = 'button';
+      closeBtn.className = 'chapters-menu-close';
+      closeBtn.setAttribute('aria-label', 'Close chapters');
+      closeBtn.textContent = '\u00d7';
+      closeBtn.addEventListener('click', closeChaptersMenu);
+      header.appendChild(closeBtn);
+      chaptersMenu.appendChild(header);
       currentChapters.forEach(function (ch) {
         var item = document.createElement('button');
         item.type = 'button';
@@ -3844,6 +3877,15 @@ if (typeof module !== 'undefined' && module.exports) {
       };
       document.addEventListener('click', closeChaptersMenuOnOutside);
       document.addEventListener('pointerdown', closeChaptersMenuOnOutside);
+      // v1.34.2: iOS belt-and-braces -- touchstart fires even where a
+      // WebKit quirk eats pointer/click synthesis, and any play/pause/seek
+      // interaction closes the menu regardless of where the tap landed.
+      document.addEventListener('touchstart', closeChaptersMenuOnOutside, { passive: true });
+      if (mediaPlayer) {
+        mediaPlayer.addEventListener('play', closeChaptersMenu);
+        mediaPlayer.addEventListener('pause', closeChaptersMenu);
+        mediaPlayer.addEventListener('seeking', closeChaptersMenu);
+      }
     }
 
     // v1.26.4 fix (frozen audio-CC overlay, THE load-bearing fix): a
@@ -4125,6 +4167,7 @@ if (typeof module !== 'undefined' && module.exports) {
     if (ccBtn) { ccBtn.style.display = 'none'; ccBtn.classList.remove('active'); ccBtn.setAttribute('aria-pressed', 'false'); }
     if (ccTrack && ccTrack.track) ccTrack.track.mode = 'disabled';
     resetChaptersUi(); // v1.34 T3: menu closed/emptied, button hidden until next load
+    if (host) host.classList.remove('css-fullscreen'); // v1.34.2: never leak the fixed overlay across loads
     // Feature B (v1.26.1): the outgoing media's caption overlay must never
     // bleed into the next item -- reset the on/off flag and force-hide/clear
     // the overlay itself (mirrors the CC button reset just above).
