@@ -80,6 +80,13 @@
 
 ## Shipped
 
+### v1.36.0 — subscription-poll starvation fix (2026-07-13)
+
+- Root cause of the "same channels time out every poll" loop found and fixed: the list pass full-extracted a channel's entire never-downloaded back catalog on every run (--dateafter filters but never stops), so large-catalog channels deterministically blew the 5.1m budget. The list pass now targets the channel's combined UU uploads feed and STOPS at the first pre-cutoff video (--break-match-filters with a 7-day out-of-order slack; exit 101 mapped to success), with a 200-entry scan-cap backstop (FILETUBE_YTDLP_LIST_SCAN_CAP) and a budget that scales with what the argv can actually walk. Playlist subs and channelId-less fresh subs use the old bounded walk; channel subs self-heal their channelId from their first listing. The authoritative date gate moved into the survivor loop (rules.isBeforeCutoff).
+- Per-channel failure backoff: a failing channel cools down exponentially (30m..6h, success clears, explicit retry bypasses) instead of squatting at the head of every walk and feeding the breaker; the "next check ~" estimate reflects the window.
+- The hourly scheduler now yields to an armed breaker resume instead of steamrolling the deferred tail every interval; a resume whose whole deferred set became ineligible clears the breaker instead of stranding "retrying at <past>".
+- Gate: two rounds — QA CRITICAL (budget still wired to the dormant maxVideos) + adversarial CRITICALs verified against yt-dlp source (--dateafter masks break filters; bare channel URLs expand to separate video/stream/short tabs a break would truncate). Both delta-APPROVED. 3808/3808 on Node 22 + 24.
+
 ### v1.35.0 — deterministic background audio (2026-07-13)
 
 - The lock-screen/app-switch background-audio handoff hardened at every layer: a `playback` audio-session declaration (Safari 16.4+ — the background-continuation entitlement; plays through the silent switch like a media app), the sidecar src pre-assigned at load (the risky step leaves iOS's transition window), and MediaSession metadata/handlers re-asserted across every swap.
