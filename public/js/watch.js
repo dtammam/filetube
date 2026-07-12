@@ -1002,8 +1002,10 @@ if (typeof module !== 'undefined' && module.exports) {
         // item's folder: that is the list the user was actually browsing,
         // and a cross-folder liked item frequently has no folder-mates at
         // all (both buttons greyed -- the reported bug). GET /api/liked
-        // returns the identical {items,...} shape, already server-sorted by
-        // the same key, so everything downstream is unchanged.
+        // returns the identical {items,...} shape; ORDER parity with the
+        // grid comes from the client-side deriveOrderedIds re-sort below
+        // (the same resolved key the grid uses), exactly like the folder
+        // path -- the server's own default sort is immaterial here.
         const folder = parentFolder(mediaData && mediaData.filePath);
         const folderBase = folder ? '/api/videos?root=' + encodeURIComponent(folder) : '/api/videos';
         const baseUrl = listContext === 'liked' ? '/api/liked' : folderBase;

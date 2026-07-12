@@ -179,7 +179,7 @@ test('v1.36.2: a non-subtitle per-video ERROR carries NO subtitleOnly tag (block
 
 const { computeDownloadOutcome } = require('../../lib/ytdlp/failures');
 
-test('v1.36.2: computeDownloadOutcome -- a non-zero exit caused PURELY by subtitle errors is an honest SUCCESS (all targets credited)', () => {
+test('v1.36.2: computeDownloadOutcome -- a subs-only non-zero exit with CORROBORATED completions is an honest SUCCESS (all targets credited)', () => {
   const result = computeDownloadOutcome({
     ok: false,
     itemFailures: [
@@ -187,8 +187,44 @@ test('v1.36.2: computeDownloadOutcome -- a non-zero exit caused PURELY by subtit
       { videoId: null, reason: 'Postprocessing: Error opening output files (x.en.vtt)', subtitleOnly: true },
     ],
     targetIds: ['vidsubs0001', 'vidother002'],
+    completedCount: 2, // one FTCHMETA per completed download -- positive evidence
   });
   assert.deepEqual(result, { outcome: 'success', succeeded: 2, failed: 0 });
+});
+
+// v1.36.2 gate hardening (adversarial WARNING): the subs-only grant is
+// corroborated, never taken on faith -- an UNPARSED real fatal alongside a
+// subtitle line must not read as full success and advance the cutoff.
+test('v1.36.2 hardening: subs-only failures with PARTIAL completion evidence credit exactly what completed', () => {
+  const result = computeDownloadOutcome({
+    ok: false,
+    itemFailures: [{ videoId: null, reason: 'convert x.en.vtt failed', subtitleOnly: true }],
+    targetIds: ['a1', 'b2', 'c3'],
+    completedCount: 1, // e.g. an unparsed global fatal killed the rest
+  });
+  assert.deepEqual(result, { outcome: 'partial', succeeded: 1, failed: 2 });
+});
+
+test('v1.36.2 hardening: subs-only failures with ZERO completion evidence stay a channel-level error (nothing credited, safe retry)', () => {
+  for (const completedCount of [0, undefined, null, -1, 'junk']) {
+    const result = computeDownloadOutcome({
+      ok: false,
+      itemFailures: [{ videoId: null, reason: 'convert x.en.vtt failed', subtitleOnly: true }],
+      targetIds: ['a1', 'b2'],
+      completedCount,
+    });
+    assert.deepEqual(result, { outcome: 'error', succeeded: 0, failed: 2 }, 'completedCount=' + String(completedCount));
+  }
+});
+
+test('v1.36.2 hardening: a GLOBAL error line matches only on flag/extension tokens -- a creator title containing the word subtitles never qualifies', () => {
+  assert.equal(
+    parseItemFailureLine('ERROR: Postprocessing: could not merge "How To Add Subtitles To Your Videos.mp4"', new Set()),
+    null,
+    'bare nouns are NOT enough on id-less lines (creator-controlled text)',
+  );
+  const real = parseItemFailureLine('ERROR: Postprocessing: Error opening output files: Invalid argument (clip.en.vtt)', new Set());
+  assert.equal(real && real.subtitleOnly, true, 'the .vtt artifact token still qualifies');
 });
 
 test('v1.36.2: computeDownloadOutcome -- subtitle errors MIXED with a real failure still count only the real one (partial, not error)', () => {
@@ -199,6 +235,7 @@ test('v1.36.2: computeDownloadOutcome -- subtitle errors MIXED with a real failu
       { videoId: 'vidreal0002', reason: 'Video unavailable' },
     ],
     targetIds: ['vidsubs0001', 'vidreal0002', 'vidfine0003'],
+    completedCount: 2,
   });
   assert.equal(result.outcome, 'partial');
   assert.equal(result.failed, 1, 'only the REAL failure counts');
