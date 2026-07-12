@@ -78,3 +78,35 @@ test('T8: deriveShelfChips -- sorted, malformed entries dropped, non-arrays degr
   assert.deepEqual(chips.map((c) => c.name), ['Alpha', 'Zeta']);
   assert.deepEqual(booksView.deriveShelfChips('junk'), []);
 });
+
+// ---- T9: the reader's pure contract pieces -----------------------------------
+
+const readView = require('../../public/js/read.js');
+
+test('T9: READER_BLOCK_SELECTOR is the locked listen-from-here contract (change only with the wave-2 server chunker, in lockstep)', () => {
+  assert.equal(readView.READER_BLOCK_SELECTOR, 'p, h1, h2, h3, h4, h5, h6, li, blockquote, pre, figure, td');
+});
+
+test('T9: clampReaderFontSize -- bounded, stepped, junk-safe', () => {
+  assert.equal(readView.clampReaderFontSize(100), 100);
+  assert.equal(readView.clampReaderFontSize(1000), 170);
+  assert.equal(readView.clampReaderFontSize(10), 80);
+  assert.equal(readView.clampReaderFontSize(104), 100, 'snaps to the step');
+  assert.equal(readView.clampReaderFontSize('junk'), 100);
+});
+
+test('T9: normalizeReaderTheme -- allowlisted, defaults to paper', () => {
+  assert.equal(readView.normalizeReaderTheme('night'), 'night');
+  assert.equal(readView.normalizeReaderTheme('hotdog-stand'), 'paper');
+  assert.equal(readView.normalizeReaderTheme(undefined), 'paper');
+});
+
+test('T9: locator builders match the server contract -- bounded cfi, optional integer wave-2 keys, positive pdf page', () => {
+  const epub = readView.buildEpubLocator('epubcfi(/6/14!/4/2)', 3, 41);
+  assert.deepEqual(epub, { kind: 'epub', cfi: 'epubcfi(/6/14!/4/2)', spineIndex: 3, blockIndex: 41 });
+  const noKeys = readView.buildEpubLocator('x', null, -1);
+  assert.deepEqual(noKeys, { kind: 'epub', cfi: 'x' }, 'invalid wave-2 keys simply omitted');
+  assert.equal(readView.buildEpubLocator('y'.repeat(3000)).cfi.length, 2000, 'cfi bounded to the server cap');
+  assert.deepEqual(readView.buildPdfLocator(12), { kind: 'pdf', page: 12 });
+  assert.deepEqual(readView.buildPdfLocator(-1), { kind: 'pdf', page: 1 }, 'junk pages degrade to 1');
+});

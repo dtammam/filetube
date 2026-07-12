@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Read - FileTube</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
+  <link rel="icon" type="image/png" sizes="512x512" href="/icons/icon-512.png">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="theme-color" content="#cc0000">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="FileTube">
+  <link rel="preload" href="/fonts/roboto.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/css/style.css">
+  <style>
+    /* v1.37.0 reader chassis -- a full-height reading surface under the
+       shared shell header. Reading themes are reader-local (paper/sepia/
+       night) and independent of the app-wide era theme: long-form text has
+       its own legibility needs. Era tokens still style the chrome. */
+    .reader-chassis {
+      display: flex;
+      flex-direction: column;
+      /* Fill the viewport below the fixed header; the reader owns its own
+         scrolling/pagination inside the content pane. */
+      height: calc(100vh - var(--mobile-header-h, 56px) - env(safe-area-inset-bottom, 0px));
+      min-height: 320px;
+    }
+    .reader-topbar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 8px;
+      border-bottom: 1px solid var(--border-color, #444);
+      flex: 0 0 auto;
+    }
+    .reader-title {
+      flex: 1 1 auto;
+      min-width: 0;
+      font-weight: bold;
+      font-size: 14px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .reader-topbar .btn { flex: 0 0 auto; }
+    .reader-content {
+      flex: 1 1 auto;
+      min-height: 0;
+      position: relative;
+      overflow: hidden;
+    }
+    /* Reading-theme surface colors applied to the pane; epub.js's iframe
+       body is themed via its own registerTheme hooks in read.js. */
+    .reader-content.theme-paper { background: #f7f4ec; }
+    .reader-content.theme-sepia { background: #f0e3c9; }
+    .reader-content.theme-night { background: #101014; }
+    #reader-pane { width: 100%; height: 100%; }
+    /* PDF pages render into a scrollable canvas column. */
+    #reader-pane.pdf-scroll {
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      text-align: center;
+    }
+    #reader-pane.pdf-scroll canvas {
+      display: block;
+      margin: 8px auto;
+      max-width: 100%;
+      height: auto;
+      box-shadow: 0 1px 6px rgba(0,0,0,0.35);
+    }
+    .reader-bottombar {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 6px 10px calc(6px + env(safe-area-inset-bottom, 0px));
+      border-top: 1px solid var(--border-color, #444);
+      font-size: 12px;
+    }
+    .reader-progress-track {
+      flex: 1 1 auto;
+      height: 6px;
+      border-radius: 3px;
+      background: var(--border-color, #444);
+      overflow: hidden;
+    }
+    .reader-progress-fill {
+      height: 100%;
+      width: 0;
+      background: var(--accent, #cc0000);
+    }
+    .reader-percent { flex: 0 0 auto; min-width: 42px; text-align: right; opacity: 0.85; }
+    /* TOC + settings drawers -- the chapters-menu lessons applied: an
+       explicit [hidden]{display:none!important} companion for every
+       show/hide-via-hidden element with its own display rule. */
+    .reader-drawer {
+      position: absolute;
+      top: 0; right: 0; bottom: 0;
+      width: min(320px, 85vw);
+      background: var(--card-bg, #1c1c22);
+      border-left: 1px solid var(--border-color, #444);
+      overflow-y: auto;
+      z-index: 30;
+      display: flex;
+      flex-direction: column;
+      padding: 10px;
+    }
+    .reader-drawer[hidden] { display: none !important; }
+    .reader-drawer h3 { margin: 4px 0 10px; font-size: 14px; }
+    .reader-toc-item {
+      display: block;
+      padding: 7px 4px;
+      font-size: 13px;
+      border-bottom: 1px solid var(--border-color, #333);
+      cursor: pointer;
+      background: none;
+      border-left: none; border-right: none; border-top: none;
+      color: inherit;
+      text-align: left;
+      width: 100%;
+    }
+    .reader-settings-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 8px 0;
+      font-size: 13px;
+    }
+    .reader-tap-nav {
+      position: absolute;
+      top: 0; bottom: 0;
+      width: 22%;
+      z-index: 10;
+      background: none;
+      border: none;
+      cursor: pointer;
+    }
+    .reader-tap-prev { left: 0; }
+    .reader-tap-next { right: 0; }
+    .reader-status {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      opacity: 0.8;
+      z-index: 5;
+    }
+    .reader-status[hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-left">
+      <button class="menu-toggle" id="menu-toggle" aria-label="Open menu"><i class="icon-menu"></i></button>
+      <a href="/" class="logo">File<span class="tube">Tube</span></a>
+    </div>
+    <div class="header-search">
+      <div class="search-form">
+        <input type="text" id="search-input" class="search-input" placeholder="Search your files..." />
+        <button id="search-btn" class="search-btn">Search</button>
+      </div>
+    </div>
+    <div class="header-right">
+      <button class="theme-toggle" id="theme-toggle-btn" aria-label="Toggle light or dark mode"><i class="icon-moon"></i></button>
+    </div>
+  </header>
+
+  <div class="app-container">
+    <aside class="sidebar" id="sidebar">
+      <nav class="sidebar-section">
+        <a href="/" class="sidebar-item">
+          <i class="icon-home"></i> Home
+        </a>
+        <a href="/setup.html" class="sidebar-item">
+          <i class="icon-cog"></i> Library Settings
+        </a>
+        <!-- Subscriptions/Books links injected by common.js probes. -->
+      </nav>
+      <div class="sidebar-section">
+        <div class="sidebar-section-title">Playlists (Folders)</div>
+        <div id="sidebar-folders-list"></div>
+      </div>
+    </aside>
+
+    <main class="main-content" id="main-content">
+      <div id="view-root" data-view="read">
+        <div class="reader-chassis" id="reader-chassis">
+          <div class="reader-topbar">
+            <a href="/books" class="btn btn-sm" id="reader-back-btn" aria-label="Back to books">&#8592;</a>
+            <div class="reader-title" id="reader-title">Loading&hellip;</div>
+            <button class="btn btn-sm" id="reader-toc-btn" type="button" aria-label="Table of contents">Contents</button>
+            <button class="btn btn-sm" id="reader-settings-btn" type="button" aria-label="Reader settings">Aa</button>
+          </div>
+          <div class="reader-content theme-paper" id="reader-content">
+            <div id="reader-pane"></div>
+            <button class="reader-tap-nav reader-tap-prev" id="reader-tap-prev" aria-label="Previous page"></button>
+            <button class="reader-tap-nav reader-tap-next" id="reader-tap-next" aria-label="Next page"></button>
+            <div class="reader-status" id="reader-status">Opening book&hellip;</div>
+            <div class="reader-drawer" id="reader-toc-drawer" hidden>
+              <h3>Contents</h3>
+              <div id="reader-toc-list"></div>
+            </div>
+            <div class="reader-drawer" id="reader-settings-drawer" hidden>
+              <h3>Reader settings</h3>
+              <div class="reader-settings-row">
+                <span>Font size</span>
+                <span>
+                  <button class="btn btn-sm" id="reader-font-smaller" type="button" aria-label="Smaller text">A-</button>
+                  <button class="btn btn-sm" id="reader-font-larger" type="button" aria-label="Larger text">A+</button>
+                </span>
+              </div>
+              <div class="reader-settings-row">
+                <span>Theme</span>
+                <span>
+                  <button class="btn btn-sm" data-reader-theme="paper" type="button">Paper</button>
+                  <button class="btn btn-sm" data-reader-theme="sepia" type="button">Sepia</button>
+                  <button class="btn btn-sm" data-reader-theme="night" type="button">Night</button>
+                </span>
+              </div>
+            </div>
+          </div>
+          <div class="reader-bottombar">
+            <div class="reader-progress-track"><div class="reader-progress-fill" id="reader-progress-fill"></div></div>
+            <span class="reader-percent" id="reader-percent">0%</span>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <nav class="bottom-nav" id="bottom-nav" aria-label="Primary">
+    <a href="/" class="bottom-nav-item" data-nav="home">
+      <i class="icon-home"></i>
+      <span class="bottom-nav-label">Home</span>
+    </a>
+    <button type="button" class="bottom-nav-item" data-nav="playlists" id="nav-playlists-btn">
+      <i class="icon-folder"></i>
+      <span class="bottom-nav-label">Playlists</span>
+    </button>
+    <button type="button" class="bottom-nav-item" data-nav="theme" id="nav-theme-toggle">
+      <i class="icon-moon"></i>
+      <span class="bottom-nav-label">Dark</span>
+    </button>
+    <a href="/setup.html" class="bottom-nav-item" data-nav="settings">
+      <i class="icon-cog"></i>
+      <span class="bottom-nav-label">Settings</span>
+    </a>
+  </nav>
+
+  <div class="playlists-sheet-backdrop" id="playlists-backdrop" hidden></div>
+  <aside class="playlists-sheet" id="playlists-sheet" hidden aria-label="Playlists">
+    <div class="playlists-sheet-header">
+      <span>Playlists</span>
+      <button type="button" class="playlists-sheet-close" id="playlists-close" aria-label="Close">&times;</button>
+    </div>
+    <div class="playlists-sheet-list" id="playlists-sheet-list"></div>
+  </aside>
+
+  <!-- Core view scripts (see index.html); read.js loaded directly here for
+       progressive-enhancement hard loads; the reader's vendor libs
+       (JSZip/epub.js or pdf.js) are fetched lazily by read.js itself per
+       book format -- never by any other page. -->
+  <script src="/js/common.js"></script>
+  <script src="/js/main.js"></script>
+  <script src="/js/watch.js"></script>
+  <script src="/js/setup.js"></script>
+  <script src="/js/player.js"></script>
+  <script src="/js/books.js"></script>
+  <script src="/js/read.js"></script>
+</body>
+</html>
