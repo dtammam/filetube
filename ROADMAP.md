@@ -80,6 +80,8 @@
 
 ## Shipped
 
+### v1.34.6 — audio expanded-view polish + custom-video findings doc (2026-07-13): the now-playing bar sits flush at the true bottom edge (safe-area padding inside the bar) and the cover art canvas ends ABOVE the bar (art never covered, worst-case landscape fixed); the custom mobile VIDEO effort is PAUSED per Dean — full honest record in [docs/mobile-custom-player-findings.md](docs/mobile-custom-player-findings.md) (what works, the three iOS platform walls, lessons, and the recommended future swing: adopt media-chrome/Vidstack or hybrid custom-inline/native-fullscreen instead of more hand-rolling).
+
 ### v1.34.5 — mobile player round 5 (2026-07-13): iOS's rotate-to-landscape native-fullscreen hijack is bounced into faux fullscreen in custom mode (rotation = the fullscreen gesture, FileTube controls kept); fullscreen bar blends into black.
 
 ### v1.34.4 — mobile player round 4 (2026-07-13): faux fullscreen now covers the app chrome (z-order: it sat under the fixed header/nav — the visible search bar + the landscape gap), page scroll frozen while fullscreen, bar overlays the picture and grows for the safe area (the missing buttons row).

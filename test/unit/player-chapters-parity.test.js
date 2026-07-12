@@ -164,3 +164,14 @@ test('v1.34.5: rotating a playing video to landscape in CUSTOM mode bounces out 
   assert.match(css, /#player-wrapper\.css-fullscreen \.player-controls \{[\s\S]*?background: rgba\(0, 0, 0, 0\.75\);/,
     'the fullscreen bar blends into the black canvas (no themed band at the bottom)');
 });
+
+// ---- v1.34.6 (Dean): audio expanded-view bar/art geometry -------------------
+test('v1.34.6: the expanded audio bar is flush to the bottom edge (safe-area INSIDE it) and the art canvas ends above the bar in both bar layouts', () => {
+  const css = fs.readFileSync(path.join(ROOT, 'public', 'css', 'style.css'), 'utf8');
+  assert.match(css, /#player-wrapper\.audio-mode\.audio-expanded \.player-controls \{[\s\S]*?bottom: 0;[\s\S]*?padding-bottom: calc\(4px \+ env\(safe-area-inset-bottom, 0px\)\);/,
+    'flush bar, safe-area as internal padding (no gap strip under the bar)');
+  assert.match(css, /#player-wrapper\.audio-mode\.audio-expanded #audio-bg-art \{[\s\S]*?bottom: calc\(52px \+ env\(safe-area-inset-bottom, 0px\)\);/,
+    'single-row-bar art cutoff (desktop/landscape)');
+  assert.match(css, /#player-wrapper\.audio-mode\.audio-expanded #audio-bg-art \{\s*bottom: calc\(94px \+ env\(safe-area-inset-bottom, 0px\)\);/,
+    'two-row-bar art cutoff (mobile <=768px)');
+});

@@ -71,13 +71,13 @@ test('.cc-overlay gets the mobile 44px offset and the docked 26px offset, mirror
   assert.match(css, /#player-dock\s+\.cc-overlay\s*\{\s*bottom:\s*26px;/);
 });
 
-test('the audio-expanded view offsets .cc-overlay above the safe-area-lifted control bar (40px desktop / 44px mobile + safe-area-inset-bottom)', () => {
-  assert.match(css, /#player-wrapper\.audio-mode\.audio-expanded\s+\.cc-overlay\s*\{\s*bottom:\s*calc\(40px \+ env\(safe-area-inset-bottom,\s*0px\)\);/);
+test('the audio-expanded view offsets .cc-overlay above the FLUSH control bar (v1.34.6: 56px desktop / 94px two-row mobile + safe-area-inset-bottom)', () => {
+  assert.match(css, /#player-wrapper\.audio-mode\.audio-expanded\s+\.cc-overlay\s*\{\s*bottom:\s*calc\(56px \+ env\(safe-area-inset-bottom,\s*0px\)\);/);
   const mobileBlockMatch = /@media \(max-width: 768px\)\s*\{([\s\S]*?)\n\}/g;
   let found = false;
   let m;
   while ((m = mobileBlockMatch.exec(css))) {
-    if (/#player-wrapper\.audio-mode\.audio-expanded\s+\.cc-overlay\s*\{[^}]*bottom:\s*calc\(44px \+ env\(safe-area-inset-bottom,\s*0px\)\);/.test(m[1])) {
+    if (/#player-wrapper\.audio-mode\.audio-expanded\s+\.cc-overlay\s*\{[^}]*bottom:\s*calc\(94px \+ env\(safe-area-inset-bottom,\s*0px\)\);/.test(m[1])) {
       found = true;
       break;
     }
