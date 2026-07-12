@@ -109,3 +109,15 @@ test('v1.32: customLogoMime is NOT settable via the generic POST /api/settings (
   });
   assert.equal(post.status, 400);
 });
+
+test('v1.32 gate fix: GET /logo sends X-Content-Type-Options: nosniff (subtitle-route precedent)', async () => {
+  const post = await fetch(`${base}/api/settings/logo`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'image/png' },
+    body: TINY_PNG,
+  });
+  assert.equal(post.status, 200);
+  const logo = await fetch(`${base}/logo`);
+  assert.equal(logo.status, 200);
+  assert.equal(logo.headers.get('x-content-type-options'), 'nosniff');
+});

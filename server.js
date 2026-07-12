@@ -3079,6 +3079,10 @@ app.get('/logo', (req, res) => {
   try {
     const bytes = fs.readFileSync(customLogoPath());
     res.setHeader('Content-Type', mime);
+    // v1.32 gate fix: same defense-in-depth header the subtitle route
+    // already sets for user-influenced content -- the bytes are magic-byte
+    // verified images, but never let a browser second-guess the type.
+    res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Cache-Control', 'no-cache');
     return res.send(bytes);
   } catch (err) {
@@ -3108,12 +3112,17 @@ app.post(
       return res.status(400).json({ error: 'File content does not match its image type' });
     }
     // Atomic write, same tmp+rename discipline as saveDatabase/runlog.
+    // v1.32 gate fix (adversarial): the file write happens INSIDE the
+    // updateDatabase mutator -- the single-writer FIFO then guarantees
+    // bytes-on-disk and customLogoMime always land together, closing the
+    // two-concurrent-uploads window where /logo could briefly serve one
+    // upload's bytes under the other's Content-Type.
     const target = customLogoPath();
-    const tmp = `${target}.${process.pid}.tmp`;
+    const tmp = `${target}.${process.pid}.${Date.now()}.tmp`;
     try {
-      fs.writeFileSync(tmp, bytes);
-      fs.renameSync(tmp, target);
       await updateDatabase(db => {
+        fs.writeFileSync(tmp, bytes);
+        fs.renameSync(tmp, target);
         db.settings = { ...db.settings, customLogoMime: mime };
         return true;
       });

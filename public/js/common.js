@@ -4041,6 +4041,21 @@ function applyCustomLogoIfSet() {
  * only the OTHERWISE-INVISIBLE outcomes get a message). Callers render via
  * toast/`textContent` only.
  */
+/**
+ * v1.32 (gate fix, pure): the sitewide chip's one-line breaker summary.
+ * Individual check failures are muted off the badge, but a TRIPPED breaker
+ * (the systemic many-checks-failing signal) still shows everywhere as one
+ * compact, non-red line. '' when not tripped. Mirrors (compactly) the
+ * subscriptions page's own formatBreakerBannerText -- duplicated because
+ * the two files are separate browser scripts; keep the copy in sync.
+ */
+function formatBreakerChipText(breaker) {
+  if (!breaker || typeof breaker !== 'object') return '';
+  const resumeMs = typeof breaker.resumeAt === 'string' ? Date.parse(breaker.resumeAt) : NaN;
+  const when = Number.isNaN(resumeMs) ? '' : ' — retrying at ' + new Date(resumeMs).toLocaleTimeString();
+  return 'Downloads paused' + when;
+}
+
 function formatRepullAckText(body) {
   if (!body || typeof body !== 'object') return '';
   if (body.started === false && body.reason === 'busy') return 'Queued behind current run';
@@ -5034,12 +5049,18 @@ function injectDownloadStatusChip() {
 
       function render() {
         const state = reduceDownloadChipState(latestSnapshot, dismissedKeys);
-        if (!shouldShowDownloadChipOnPath(window.location.pathname) || state.count === 0) {
+        // v1.32 (gate fix, QA "check-storm invisibility"): individual CHECK
+        // failures are muted off the badge (Dean's noise ask), but a
+        // TRIPPED BREAKER -- the systemic "many checks are failing" signal,
+        // by definition -- still surfaces as one compact, non-red line on
+        // every page. De-noised, never fully silent.
+        const breakerText = formatBreakerChipText(latestSnapshot.breaker);
+        if (!shouldShowDownloadChipOnPath(window.location.pathname) || (state.count === 0 && breakerText === '')) {
           chip.hidden = true;
           return;
         }
         chip.hidden = false;
-        summaryText.textContent = formatDownloadChipSummary(state);
+        summaryText.textContent = state.count === 0 ? breakerText : formatDownloadChipSummary(state);
         chip.classList.toggle('dl-status-chip-has-error', state.hasError);
         // v1.32: 'Dismiss all' only when there is something dismissible.
         dismissAllBtn.hidden = !state.items.some(
@@ -5089,8 +5110,15 @@ function injectDownloadStatusChip() {
           .then((r) => (r.ok ? r.json() : Promise.reject(new Error('status endpoint returned ' + r.status))))
           .then((snapshot) => {
             latestSnapshot = snapshot && typeof snapshot === 'object'
-              ? { subscriptions: snapshot.subscriptions || {}, oneShots: snapshot.oneShots || {} }
-              : { subscriptions: {}, oneShots: {} };
+              ? {
+                subscriptions: snapshot.subscriptions || {},
+                oneShots: snapshot.oneShots || {},
+                // v1.32 (gate fix): the breaker state rides along so the
+                // SITEWIDE chip can show the one-line systemic signal even
+                // while individual check failures are muted off the badge.
+                breaker: snapshot.breaker || null,
+              }
+              : { subscriptions: {}, oneShots: {}, breaker: null };
             // v1.30.0 T8 (B1, AC5.3): persist which jobs are currently in
             // flight on every ACTIVE tick (a hidden-tab early-return above
             // never reaches here) -- the last value written here is what a
@@ -5539,6 +5567,8 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     // v1.31 P5 (FR5): repull-ack formatter.
     formatRepullAckText,
+    // v1.32 (gate fix): the chip's one-line breaker summary.
+    formatBreakerChipText,
     getStarRating, getCommentCount, resolveChannelName, clampPositionState,
     resolveTheme, THEME_REGISTRY, activeNavItem,
     resolveIconSet, ICON_SET_REGISTRY, ICON_SETS,

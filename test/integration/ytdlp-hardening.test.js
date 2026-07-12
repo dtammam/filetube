@@ -598,3 +598,38 @@ test('v1.32: a LIST-pass failure is tagged failureKind:"check" and a DOWNLOAD-pa
   assert.equal(entry.state, 'error');
   assert.equal(entry.failureKind, 'download', 'download failure -> download kind');
 });
+
+test('v1.32 gate fix: a sub PAUSED during the backoff window is excluded from the array-targeted breaker resume (FR-D)', async () => {
+  const deps = makeFakeDeps();
+  const subs = [];
+  for (let i = 1; i <= 4; i++) {
+    subs.push(await addSub(deps, { channelUrl: `https://www.youtube.com/@pz${i}` }));
+  }
+  run.runList = async () => ({ ok: false, code: 1, stdout: '', stderr: '', error: 'boom' });
+  run.runDownload = async () => ({ ok: true, code: 0, stdout: '', stderr: '', channelMeta: [], itemFailures: [] });
+  await ytdlp.runPoll(deps, baseConfig({ breakerFailures: 2 }));
+  assert.equal(ytdlp.getPollBreakerState().skipped, 2);
+
+  // Admin pauses one of the two deferred channels during the backoff window.
+  await store.updateSubscription(deps, subs[2].id, { paused: true });
+
+  const listCalls = [];
+  run.runList = async (sub) => { listCalls.push(sub.channelUrl); return { ok: true, stdout: '', stderr: '' }; };
+  await ytdlp.runPoll(deps, baseConfig({ breakerFailures: 2 }), [subs[2].id, subs[3].id]);
+  assert.deepEqual(listCalls, ['https://www.youtube.com/@pz4'], 'the paused deferred sub must be skipped by the automatic resume');
+});
+
+test('v1.32 gate fix: a stale failureKind:"check" from a prior cycle is CLEARED by the catch-all error write (never mutes a real failure)', async () => {
+  const deps = makeFakeDeps();
+  const sub = await addSub(deps, { channelUrl: 'https://www.youtube.com/@stalekind' });
+  // Cycle 1: a genuine check failure tags the entry.
+  run.runList = async () => ({ ok: false, code: 'ETIMEDOUT', stdout: '', stderr: '', error: 'yt-dlp list pass timed out after 5m and was killed' });
+  await ytdlp.runPoll(deps, baseConfig({ breakerFailures: 0 }));
+  assert.equal(activity.getSnapshot().subscriptions[sub.id].failureKind, 'check');
+  // Cycle 2: an unexpected THROW reaches processSubscription's catch-all.
+  run.runList = async () => { throw new Error('unexpected builder explosion'); };
+  await ytdlp.runPoll(deps, baseConfig({ breakerFailures: 0 }));
+  const entry = activity.getSnapshot().subscriptions[sub.id];
+  assert.equal(entry.state, 'error');
+  assert.equal(entry.failureKind, null, 'the catch-all must CLEAR the stale check tag (shallow-merge staleness, FIX-3 class)');
+});

@@ -1118,3 +1118,21 @@ t32('v1.32: buildDownloadChipItem carries failureKind and renders the muted chec
   const untagged = common32.buildDownloadChipItem('oneshot', 'j1', { state: 'error', error: 'oops' });
   a32.equal(untagged.failureKind, null, 'unknown/absent kinds normalize to null (sticky severity)');
 });
+
+t32('v1.32 gate fix: formatBreakerChipText renders the one-line systemic signal ("" when not tripped)', () => {
+  a32.equal(common32.formatBreakerChipText(null), '');
+  a32.equal(common32.formatBreakerChipText(undefined), '');
+  const text = common32.formatBreakerChipText({ resumeAt: '2026-07-12T10:30:00.000Z', consecutiveFailures: 4, skipped: 20 });
+  a32.match(text, /^Downloads paused — retrying at /);
+  a32.equal(common32.formatBreakerChipText({ resumeAt: 'garbage' }), 'Downloads paused');
+});
+
+t32('v1.32 gate fix: a stale/absent failureKind on the client side always lands STICKY (the safe severity)', () => {
+  // The server clears stale kinds with failureKind:null; the client treats
+  // null/undefined/garbage identically -- sticky, never muted.
+  for (const kind of [null, undefined, '', 'weird', 42]) {
+    const item = common32.buildDownloadChipItem('subscription', 's1', { state: 'error', error: 'boom', failureKind: kind, name: 'X' });
+    a32.equal(item.failureKind, null);
+    a32.equal(common32.chipItemLifecycle(item.state, item.failureKind), 'sticky');
+  }
+});
