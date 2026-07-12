@@ -961,3 +961,69 @@ test('local pass: a probeEmbeddedTags dep that THROWS is contained -- the item s
     await close();
   }
 });
+
+// ---- v1.34 gate fix (QA CRITICAL): the chapters-only persist gate -----------
+// An item whose probe yields ONLY chapters (no date/title/id change, no subs
+// write) must still reach recordRepulledItemMeta -- the persist gate's
+// OR-chain omitting the new field was the persist-gate bug class's FIFTH
+// strike, caught in-gate.
+test('a reheat item yielding ONLY chapters still persists them (never silently dropped)', async () => {
+  const deps = makeFakeDeps();
+  const item = makeItem({ videoId: 'ccccccccccc' });
+  deps.enumerateRepullableItems = () => ({ items: [item], eligible: 1, ineligible: 0 });
+
+  const recordCalls = [];
+  // Network pass yields chapters and nothing else; subs pass failed
+  // (wroteSubs false -> retryable), so WITHOUT chapters in the gate this
+  // item would skip recordRepulledItemMeta entirely.
+  run.repullItemMetaAndSubs = async () => ({
+    chapters: [{ startTime: 0, title: 'Intro' }, { startTime: 60, title: 'Main' }],
+    wroteSubs: false,
+  });
+  deps.recordRepulledItemMeta = async (d, mediaId, meta) => {
+    recordCalls.push({ mediaId, meta });
+    return true;
+  };
+
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    await fetch(`${base}/api/ytdlp/repull-metadata`, { method: 'POST' });
+    await flush(30);
+
+    assert.equal(recordCalls.length, 1, 'chapters alone must be enough to trigger the persist');
+    assert.deepEqual(recordCalls[0].meta.chapters, [{ startTime: 0, title: 'Intro' }, { startTime: 60, title: 'Main' }]);
+    assert.equal(recordCalls[0].meta.markComplete, false, 'subs still failed -- retryable, honest');
+    assert.equal(getReheatEntry().failed, 1, 'counted failed (subs incomplete) even though chapters persisted -- unchanged honest bookkeeping');
+  } finally {
+    await close();
+  }
+});
+
+test('local-pass chapters flow through to recordRepulledItemMeta with network > local precedence', async () => {
+  const deps = makeFakeDeps();
+  const item = makeItem({ videoId: 'ddddddddddd' });
+  deps.enumerateRepullableItems = () => ({ items: [item], eligible: 1, ineligible: 0 });
+  deps.probeEmbeddedTags = async () => ({
+    releaseDateMs: null, sourceUrl: null, title: null,
+    chapters: [{ startTime: 5, title: 'Local Embedded' }],
+  });
+
+  const recordCalls = [];
+  run.repullItemMetaAndSubs = async () => ({ wroteSubs: true }); // network yields no chapters
+  deps.recordRepulledItemMeta = async (d, mediaId, meta) => {
+    recordCalls.push({ mediaId, meta });
+    return true;
+  };
+
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    await fetch(`${base}/api/ytdlp/repull-metadata`, { method: 'POST' });
+    await flush(30);
+
+    assert.equal(recordCalls.length, 1);
+    assert.deepEqual(recordCalls[0].meta.chapters, [{ startTime: 5, title: 'Local Embedded' }],
+      'the LOCAL embedded chapters fill the gap the network left');
+  } finally {
+    await close();
+  }
+});

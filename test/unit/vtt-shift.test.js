@@ -66,3 +66,44 @@ test('shiftVttCues is a no-op for absent/invalid/non-positive offsets and never 
   const malformed = 'WEBVTT\n\nnot a timing line --> at all\npayload\n';
   assert.equal(typeof shiftVttCues(malformed, 5), 'string');
 });
+
+// ---- v1.34 gate fix (adversarial): cue-block context tracking ---------------
+test('a PAYLOAD line that looks exactly like a timing line is never re-parsed as a new cue (captions quoting timestamps)', () => {
+  const doc = [
+    'WEBVTT',
+    '',
+    '00:00:10.000 --> 00:00:20.000',
+    'The narrator says:',
+    '00:00:01.000 --> 00:00:02.000',
+    'and keeps talking',
+    '',
+    '00:00:30.000 --> 00:00:40.000',
+    'Second real cue',
+    '',
+  ].join('\n');
+  const shifted = shiftVttCues(doc, 5);
+  assert.ok(shifted.includes('00:00:05.000 --> 00:00:15.000'), 'the real first cue is shifted');
+  assert.ok(shifted.includes('00:00:01.000 --> 00:00:02.000'), 'the timestamp-shaped PAYLOAD line rides through untouched');
+  assert.ok(shifted.includes('The narrator says:'), 'payload before it survives');
+  assert.ok(shifted.includes('and keeps talking'), 'payload after it survives');
+  assert.ok(shifted.includes('00:00:25.000 --> 00:00:35.000'), 'the second real cue (after a blank boundary) is shifted normally');
+});
+
+test('a timestamp-shaped payload line inside a cue being DROPPED goes down with its cue, never truncates a neighbor', () => {
+  const doc = [
+    'WEBVTT',
+    '',
+    '00:00:01.000 --> 00:00:03.000',
+    'Early cue quoting 00:00:01.000 --> 00:00:02.000 inline is fine',
+    '00:00:02.000 --> 00:00:03.000',
+    '',
+    '00:00:30.000 --> 00:00:40.000',
+    'Survivor',
+    '',
+  ].join('\n');
+  const shifted = shiftVttCues(doc, 10); // first cue fully elapsed -> dropped whole
+  assert.ok(!shifted.includes('Early cue quoting'), 'the dropped cue payload goes');
+  assert.ok(!shifted.includes('00:00:02.000 --> 00:00:03.000'), 'its timestamp-shaped payload line goes with it');
+  assert.ok(shifted.includes('00:00:20.000 --> 00:00:30.000'), 'the survivor cue is shifted correctly');
+  assert.ok(shifted.includes('Survivor'));
+});

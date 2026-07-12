@@ -1110,6 +1110,10 @@ if (typeof module !== 'undefined' && module.exports) {
     // after load (see the settings fetch in setupForMedia), which re-invokes
     // this function, so the surface settles within the first moments of
     // playback and stays stable for the rest of the load.
+    // ACCEPTED tradeoff (v1.34 gate): with the setting ON there is a brief
+    // native-controls flash on each mobile video load before the fetch
+    // resolves -- deliberately preferred over blocking mount on a settings
+    // round-trip (the OFF/default path has no flash at all).
     var native = mobile && isVideo && state === STATE_FULL && !mobileCustomPlayerCached;
     if (native) {
       mediaPlayer.setAttribute('controls', '');
@@ -3517,8 +3521,9 @@ if (typeof module !== 'undefined' && module.exports) {
       // ONE 'change' on release (the sole commit point, so the
       // live-transcode reload-seek path is byte-identical). Keyboard
       // arrow-key seeking is untouched (native events still fire). The
-      // matching CSS half is `.pc-seek { touch-action: none; }` -- without
-      // it, iOS cancels the pointer stream mid-drag for page scrolling.
+      // matching CSS half is `.pc-range { touch-action: none; }` (the seek bar
+      // carries both classes) -- without it, iOS cancels the pointer stream
+      // mid-drag for page scrolling.
       if (typeof seekBar.setPointerCapture === 'function' && typeof PointerEvent !== 'undefined') {
         var seekDragging = false;
         var seekRatioFromPointer = function (e) {
@@ -3530,10 +3535,26 @@ if (typeof module !== 'undefined' && module.exports) {
           seekBar.value = String(ratio);
           seekBar.dispatchEvent(new Event(evtName));
         };
+        var endSeekDrag = function (e) {
+          if (!seekDragging) return;
+          seekDragging = false;
+          var ratio = e ? seekRatioFromPointer(e) : null;
+          if (ratio !== null) seekBar.value = String(ratio);
+          seekBar.dispatchEvent(new Event('change'));
+        };
         seekBar.addEventListener('pointerdown', function (e) {
           if (e.pointerType === 'mouse' && e.button !== 0) return;
           seekDragging = true;
           try { seekBar.setPointerCapture(e.pointerId); } catch (_) { /* capture unsupported -- moves still arrive while over the bar */ }
+          // Gate fix (adversarial): document-level one-shot backstops -- when
+          // capture is unsupported and the release lands OFF the bar,
+          // seekBar's own pointerup never fires, which would latch
+          // isScrubbing true forever (freezing the fill/time display for the
+          // session). With successful capture these fire redundantly after
+          // the element's own handler -- endSeekDrag's seekDragging guard
+          // makes the second call a no-op.
+          document.addEventListener('pointerup', endSeekDrag, { once: true });
+          document.addEventListener('pointercancel', endSeekDrag, { once: true });
           applySeekDragRatio(seekRatioFromPointer(e), 'input');
           e.preventDefault(); // we own this gesture: no native-range fallback, no scroll steal
         });
@@ -3541,20 +3562,12 @@ if (typeof module !== 'undefined' && module.exports) {
           if (!seekDragging) return;
           applySeekDragRatio(seekRatioFromPointer(e), 'input');
         });
-        seekBar.addEventListener('pointerup', function (e) {
-          if (!seekDragging) return;
-          seekDragging = false;
-          var ratio = seekRatioFromPointer(e);
-          if (ratio !== null) seekBar.value = String(ratio);
-          seekBar.dispatchEvent(new Event('change'));
-        });
+        seekBar.addEventListener('pointerup', endSeekDrag);
         seekBar.addEventListener('pointercancel', function () {
           // The system stole the pointer (rare with touch-action:none, but
           // possible) -- commit wherever the thumb currently sits rather
           // than leaving isScrubbing latched true forever.
-          if (!seekDragging) return;
-          seekDragging = false;
-          seekBar.dispatchEvent(new Event('change'));
+          endSeekDrag(null);
         });
       }
     }

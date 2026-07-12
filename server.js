@@ -2969,6 +2969,19 @@ async function runScanDirectories() {
           if (item.metadataRepulledAt === undefined && typeof freshItem.metadataRepulledAt === 'number') {
             item.metadataRepulledAt = freshItem.metadataRepulledAt;
           }
+          // v1.34 gate fix (adversarial CRITICAL -- the class's companion
+          // strike): a PARTIAL mid-scan reheat (markComplete false, marker
+          // not advanced) that populated chapters for the first time was
+          // lost to the snapshot -- the completed-adoption branch above
+          // never fired. Same gap-fill posture as sourceTitle/youtubeId:
+          // adopt the fresh value whenever the scan's own item has nothing
+          // (absent or empty), regardless of the marker. An item whose scan
+          // pass genuinely re-probed chapters this run carries a non-empty
+          // list of its own and is left alone.
+          if ((!Array.isArray(item.chapters) || item.chapters.length === 0) &&
+              Array.isArray(freshItem.chapters) && freshItem.chapters.length > 0) {
+            item.chapters = freshItem.chapters;
+          }
         }
       }
 
@@ -3551,7 +3564,12 @@ const SCAN_INTERVAL_VALID_VALUES = new Set([0, ...SCAN_INTERVAL_MINUTE_OPTIONS])
 // v1.34: the defaultSort allowlist -- exactly the #sort-select option values
 // (public/index.html) / lib/videoQuery.js sortItems cases. Kept in sync by
 // the settings tests.
-const VALID_DEFAULT_SORTS = new Set(['newest', 'oldest', 'release-date', 'title-asc', 'title-desc', 'size-desc', 'size-asc', 'random']);
+// 'random' is deliberately NOT offered as a site-wide DEFAULT (gate fix):
+// prev/next and autoplay-next re-derive their order per event, so a random
+// DEFAULT would make "Next" jump arbitrarily and "Prev" almost never return
+// -- an explicit per-browser dropdown pick of "Feeling lucky" keeps its
+// existing (session-shuffle) behavior and is unaffected by this allowlist.
+const VALID_DEFAULT_SORTS = new Set(['newest', 'oldest', 'release-date', 'title-asc', 'title-desc', 'size-desc', 'size-asc']);
 const CACHE_MAX_AGE_DAYS_VALID_VALUES = new Set([0, 7, 14, 30, 90]);
 
 // Shape returned by both GET and POST /api/settings — the five persisted keys

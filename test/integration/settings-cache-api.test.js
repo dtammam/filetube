@@ -422,3 +422,32 @@ test('existing GET /api/config response shape is unaffected by Task 6 (plus v1.1
   // and `folders`/`folderSettings` themselves are untouched.
   assert.deepEqual(Object.keys(json).sort(), ['folderSettings', 'folders', 'syntheticFolders'].sort());
 });
+
+// ---- v1.34: negative-path validation for the two new settings keys ----------
+test('POST /api/settings rejects an off-allowlist defaultSort and a non-boolean mobileCustomPlayer with 400s; valid values persist', async () => {
+  writeDb({ folders: [], folderSettings: {}, progress: {}, metadata: {}, settings: baseSettings() });
+
+  for (const bad of ['sparkly', '', 42, null]) {
+    const res = await fetch(`${base}/api/settings`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ defaultSort: bad }),
+    });
+    assert.equal(res.status, 400, `defaultSort=${JSON.stringify(bad)} must 400`);
+  }
+  for (const bad of ['true', 1, null, {}]) {
+    const res = await fetch(`${base}/api/settings`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mobileCustomPlayer: bad }),
+    });
+    assert.equal(res.status, 400, `mobileCustomPlayer=${JSON.stringify(bad)} must 400`);
+  }
+
+  const good = await fetch(`${base}/api/settings`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ defaultSort: 'newest', mobileCustomPlayer: true }),
+  });
+  assert.equal(good.status, 200);
+  const after = await (await fetch(`${base}/api/settings`)).json();
+  assert.equal(after.defaultSort, 'newest');
+  assert.equal(after.mobileCustomPlayer, true);
+});

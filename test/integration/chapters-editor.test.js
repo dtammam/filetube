@@ -168,3 +168,38 @@ test('re-init carry-forward (guard 1): a CHANGED file (same path, new size) keep
     'user chapter edits must survive a file replacement (the sourceTitle/youtubeId carry-forward\'s sibling)');
   assert.ok(Array.isArray(after.chapters), 'the probe-derived field re-derives naturally (array, [] when the new file has none)');
 });
+
+// ---- v1.34 gate fix (adversarial CRITICAL): chapters gap-fill in Phase-2 ----
+// A PARTIAL mid-scan reheat (markComplete:false -- subs failed, marker not
+// advanced) that populated `chapters` for the FIRST time must survive the
+// scan's final merge: the completed-adoption branch never fires (marker
+// unchanged), so the unconditional gap-fill is what protects it.
+test('HEADLINE: first-ever chapters written by a PARTIAL reheat mid-scan (marker not advanced) survive the final merge', async () => {
+  const { recordRepulledItemMeta } = require('../../server');
+
+  // Brand-new file -> the scan must await its probe (the yield window).
+  fs.writeFileSync(path.join(mediaDir, `yield-${Date.now()}.mp4`), 'new-bytes');
+  // Already-indexed, unchanged, codec-fields-present -> REUSE fast path,
+  // chapters field ABSENT (a pre-v1.34 item).
+  const item = seedItem('reheated-chapters-mid-scan.mp4', {});
+  delete item.chapters;
+  seedDb([item]);
+
+  const scanPromise = scanDirectories();
+  const reheatPromise = recordRepulledItemMeta(
+    { loadDatabase, updateDatabase, getMediaId },
+    item.id,
+    {
+      filePath: item.filePath,
+      chapters: [{ startTime: 0, title: 'First Ever' }, { startTime: 30, title: 'Second' }],
+      markComplete: false, // subs failed -- the marker does NOT advance
+    },
+    1_900_000_000_000,
+  );
+  await Promise.all([scanPromise, reheatPromise]);
+
+  const after = loadDatabase().metadata[item.id];
+  assert.deepEqual(after.chapters, [{ startTime: 0, title: 'First Ever' }, { startTime: 30, title: 'Second' }],
+    'first-ever chapters from a partial reheat must survive the scan merge (gap-fill, marker-independent)');
+  assert.equal(after.metadataRepulledAt, undefined, 'sanity: the marker really did not advance (the completed-adoption branch could not have fired)');
+});
