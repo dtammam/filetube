@@ -47,6 +47,12 @@ const { buildWatchUrl, classifySingleVideo, isSafeVideoId } = require('./lib/ytd
 // needs the exact same predicate, and a leaf module lets both sides
 // `require()` it directly without any circular dependency.
 const { isYtdlpIntermediate } = require('./lib/ytdlpIntermediates');
+// v1.37.0 books: the db.books namespace owner + the pure scanner core --
+// see docs/exec-plans/active/v1.37.0-books.md. Both are leaf modules over
+// deps this file already provides (loadDatabase/updateDatabase/getMediaId);
+// requiring them has no side effects (the ytdlp direct-require posture).
+const booksStore = require('./lib/books/store');
+const booksScan = require('./lib/books/scan');
 // C4 "fun stats" page (v1.24 UX Round, Wave 3): pure aggregation helpers over
 // `db.metadata`, unit-tested on their own against a synthetic fixture. See
 // lib/stats.js's header comment and `GET /api/stats` below for the full
@@ -69,6 +75,10 @@ const PORT = process.env.PORT || 3000;
 const DATA_DIR = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : (fs.existsSync('/app/data') ? '/app/data' : __dirname);
 const DB_FILE = path.join(DATA_DIR, 'db.json');
 const THUMBNAIL_DIR = path.join(DATA_DIR, '.thumbnails');
+// v1.37.0 books: covers live in a BOOKS-OWNED dir -- never THUMBNAIL_DIR,
+// so the media scan's thumbnail unlink loop can never touch a book cover
+// and the book scanner's cover pruning can never touch a video thumbnail.
+const BOOKCOVER_DIR = path.join(DATA_DIR, '.bookcovers');
 
 // Resolve the transcode cache directory: `TRANSCODE_DIR` env override (resolved
 // to an absolute path) takes precedence; otherwise default to `<dataDir>/
@@ -3182,7 +3192,12 @@ function armScanTimer() {
   const db = loadDatabase();
   const ms = scanIntervalMs(db.settings.scanIntervalMinutes);
   if (ms) {
-    scanTimer = setInterval(() => scanDirectories().catch(console.error), ms).unref();
+    scanTimer = setInterval(() => {
+      scanDirectories().catch(console.error);
+      // v1.37.0 books: piggyback on the media interval (exec plan §2) --
+      // no second timer, and a books-less install no-ops.
+      scanBooks().catch(console.error);
+    }, ms).unref();
   }
   return scanTimer;
 }
@@ -3571,6 +3586,182 @@ app.post('/api/scan', (req, res) => {
     scanDirectories().catch(console.error);
   }
   res.status(202).json({ scanning: true, alreadyInProgress });
+});
+
+// ---- Books (v1.37.0) --------------------------------------------------------
+//
+// The book library's server half: its OWN folder config (`db.books.folders`
+// -- never `db.folders`), its own scanner with the media scan's
+// overlap/coalescing discipline, and cover storage under BOOKCOVER_DIR.
+// Everything degrades to a no-op on a books-less install (zero folders =
+// zero scans = zero db writes = the disabled-module posture ytdlp set).
+// Full design: docs/exec-plans/active/v1.37.0-books.md.
+
+let bookScanState = { scanning: false, lastScan: null, rescanRequested: false };
+
+// Test-observability accessor, mirroring currentScanTimer/scanState reads.
+function currentBookScanState() {
+  return bookScanState;
+}
+
+async function runBookScan() {
+  // Phase-1 read (no lock): folders + the previous items snapshot. All the
+  // slow work (walk, zip reads, cover extraction) happens against this
+  // snapshot, off the writer lock -- the media scan's own discipline.
+  const db = loadDatabase();
+  const ns = booksStore.ensureBooks(db);
+  const folders = ns.folders.slice();
+  if (folders.length === 0 && Object.keys(ns.items).length === 0) return; // books-less: total no-op
+  const { items, covers, survivingIds, missingRoots } = booksScan.collectBooks(folders, ns.items, getMediaId);
+  for (const root of missingRoots) {
+    console.warn(`books: configured folder is missing/unmounted -- nothing under it will be pruned: ${root}`);
+  }
+
+  // Cover writes BEFORE the db merge (an item never claims hasCover before
+  // its file exists) -- atomic tmp+rename, best-effort per cover.
+  if (covers.length > 0) {
+    fs.mkdirSync(BOOKCOVER_DIR, { recursive: true });
+    for (const cover of covers) {
+      const finalPath = path.join(BOOKCOVER_DIR, `${cover.id}${cover.ext}`);
+      const tmpPath = `${finalPath}.tmp`;
+      try {
+        fs.writeFileSync(tmpPath, cover.data);
+        fs.renameSync(tmpPath, finalPath);
+      } catch (err) {
+        console.warn(`books: failed to write cover for ${cover.id} (${err && err.code}) -- placeholder card`);
+        try { fs.unlinkSync(tmpPath); } catch (_) { /* best-effort */ }
+      }
+    }
+  }
+
+  const pruneMissing = !!(db.settings && db.settings.pruneMissing);
+  const prunedIds = [];
+  await updateDatabase((fresh) => {
+    const freshNs = booksStore.ensureBooks(fresh);
+    const prunable = new Set(booksStore.selectPrunableBookIds(freshNs.items, survivingIds, { missingRoots, pruneMissing }));
+    const next = {};
+    for (const [id, item] of Object.entries(items)) {
+      // The books-internal persist-gate carve-out (exec plan risk #1): the
+      // ONLY non-scan writer of item fields is the client cover/pageCount
+      // backfill (POST /api/books/:id/cover), which can land between this
+      // scan's Phase-1 snapshot and this merge. Carry those three fields
+      // forward from the FRESH row whenever this pass didn't produce them
+      // itself -- regression-locked in the books scanner integration test.
+      const freshItem = freshNs.items[id];
+      let merged = item;
+      if (freshItem) {
+        if (!merged.hasCover && freshItem.hasCover === true) {
+          merged = { ...merged, hasCover: true, coverExt: freshItem.coverExt || null };
+        }
+        if (merged.pageCount === undefined && freshItem.pageCount !== undefined) {
+          merged = { ...merged, pageCount: freshItem.pageCount };
+        }
+      }
+      next[id] = merged;
+    }
+    // Non-surviving items: kept unless genuinely prunable (mount-loss guard
+    // + the pruneMissing gate live inside selectPrunableBookIds).
+    for (const [id, item] of Object.entries(freshNs.items)) {
+      if (next[id]) continue;
+      if (prunable.has(id)) {
+        prunedIds.push(id);
+        delete freshNs.progress[id];
+        continue;
+      }
+      next[id] = item;
+    }
+    freshNs.items = next;
+    return true;
+  });
+
+  // Cover-file hygiene for genuinely pruned books -- best-effort, after the
+  // db state is authoritative.
+  for (const id of prunedIds) {
+    for (const ext of ['.jpg', '.png']) {
+      try { fs.unlinkSync(path.join(BOOKCOVER_DIR, `${id}${ext}`)); } catch (_) { /* best-effort */ }
+    }
+  }
+}
+
+// Overlap/coalescing guard -- the scanDirectories discipline (a scan
+// requested mid-scan runs exactly one follow-up pass, never a concurrent
+// second walker).
+async function scanBooks() {
+  if (bookScanState.scanning) {
+    bookScanState.rescanRequested = true;
+    return;
+  }
+  bookScanState.scanning = true;
+  try {
+    let followups = 0;
+    do {
+      bookScanState.rescanRequested = false;
+      await runBookScan();
+      followups++;
+    } while (bookScanState.rescanRequested && followups <= MAX_RESCAN_FOLLOWUPS);
+  } catch (err) {
+    console.error('books: scan failed:', err);
+  } finally {
+    bookScanState.scanning = false;
+    bookScanState.lastScan = new Date().toISOString();
+  }
+}
+
+app.get('/api/books/config', (req, res) => {
+  res.json({ folders: booksStore.ensureBooks(getCachedDatabase()).folders });
+});
+
+app.post('/api/books/config', async (req, res) => {
+  const { folders } = req.body || {};
+  if (!Array.isArray(folders) || !folders.every((f) => typeof f === 'string' && f.trim() !== '')) {
+    return res.status(400).json({ error: 'folders must be an array of non-empty strings' });
+  }
+  const resolved = [];
+  const seen = new Set();
+  for (const raw of folders) {
+    const folder = path.resolve(raw.trim());
+    if (!fs.existsSync(folder) || !fs.statSync(folder).isDirectory()) {
+      return res.status(400).json({ error: `Folder does not exist: ${folder}` });
+    }
+    if (seen.has(folder)) continue;
+    seen.add(folder);
+    resolved.push(folder);
+  }
+  // HARD INVARIANT (exec plan §2): book roots may never overlap media roots
+  // in EITHER direction -- a file must have exactly one owner, or the two
+  // scanners' prune/merge semantics fight over it.
+  const mediaFolders = (getCachedDatabase().folders || []).map((f) => path.resolve(f));
+  for (const bookRoot of resolved) {
+    for (const mediaRoot of mediaFolders) {
+      if (bookRoot === mediaRoot || ytdlpArgs.isPathUnder(bookRoot, mediaRoot) || ytdlpArgs.isPathUnder(mediaRoot, bookRoot)) {
+        return res.status(400).json({ error: `Book folder overlaps a media folder: ${bookRoot} <-> ${mediaRoot}` });
+      }
+    }
+  }
+  try {
+    await updateDatabase((db) => {
+      booksStore.ensureBooks(db).folders = resolved;
+      return true;
+    });
+  } catch (err) {
+    return res.status(500).json({ error: `Could not save book folders: ${err.message}` });
+  }
+  res.json({ folders: resolved });
+  scanBooks().catch(console.error);
+});
+
+app.post('/api/books/scan', (req, res) => {
+  const alreadyInProgress = bookScanState.scanning;
+  if (alreadyInProgress) {
+    bookScanState.rescanRequested = true;
+  } else {
+    scanBooks().catch(console.error);
+  }
+  res.status(202).json({ scanning: true, alreadyInProgress });
+});
+
+app.get('/api/books/scan-status', (req, res) => {
+  res.json(bookScanState);
 });
 
 // FR-3 (v1.18.0): bounds the `transcodeNames` list GET /api/scan-status
@@ -5967,6 +6158,9 @@ if (require.main === module) {
       // does start.
       setImmediate(() => {
         scanDirectories().catch(console.error);
+        // v1.37.0 books: the boot book-scan rides the same deferred slot --
+        // a books-less install makes this a pure no-op (zero folders).
+        scanBooks().catch(console.error);
       });
     });
   })();
@@ -5980,6 +6174,11 @@ module.exports = {
   transcodedPath,
   // v1.36.2: the recoverable-delete errno set -- exported for unit coverage.
   RECOVERABLE_DELETE_CODES,
+  // v1.37.0 books: scanner + state accessor + cover dir, exported for the
+  // books integration tests (same posture as scanDirectories/THUMBNAIL_DIR).
+  scanBooks,
+  currentBookScanState,
+  BOOKCOVER_DIR,
   matchRootFolder,
   // C1 (v1.24 UX Round, Wave 3): move-files + id re-key -- re-exported so
   // tests (and T19's Wave 7 physical-reconcile move) can call these directly.
