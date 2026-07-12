@@ -3807,12 +3807,18 @@ if (typeof module !== 'undefined' && module.exports) {
       buildChaptersMenu();
       closeChaptersMenu();
       if (chaptersBtn) chaptersBtn.style.display = '';
+      // v1.34.1 (Dean's on-device pass): the mobile custom bar overflowed --
+      // CSS hides the Ch button on .ff-mobile when the item has NO chapters
+      // (the button was pure clutter there; "Add chapters" stays reachable
+      // on desktop and on any mobile item that already HAS chapters).
+      if (host) host.classList.toggle('has-chapters', currentChapters.length > 0);
     };
     resetChaptersUi = function () {
       currentChapters = [];
       closeChaptersMenu();
       if (chaptersMenu) while (chaptersMenu.firstChild) chaptersMenu.removeChild(chaptersMenu.firstChild);
       if (chaptersBtn) chaptersBtn.style.display = 'none';
+      if (host) host.classList.remove('has-chapters');
     };
     if (chaptersBtn) {
       chaptersBtn.addEventListener('click', function (e) {
@@ -3825,11 +3831,19 @@ if (typeof module !== 'undefined' && module.exports) {
     }
     if (!chaptersOutsideCloseWired) {
       chaptersOutsideCloseWired = true;
-      document.addEventListener('click', function (e) {
+      // v1.34.1 (Dean's on-device pass): BOTH click and pointerdown. iOS
+      // does not synthesize 'click' for taps on the gesture-layer video
+      // surface (touch handlers preventDefault) or non-interactive nodes --
+      // the click-only close left the menu un-dismissable on mobile.
+      // pointerdown fires universally; double delivery on desktop is a
+      // harmless second close on an already-hidden menu.
+      var closeChaptersMenuOnOutside = function (e) {
         if (!chaptersMenu || chaptersMenu.hidden) return;
         if (chaptersMenu.contains(e.target) || (chaptersBtn && chaptersBtn.contains(e.target))) return;
         closeChaptersMenu();
-      });
+      };
+      document.addEventListener('click', closeChaptersMenuOnOutside);
+      document.addEventListener('pointerdown', closeChaptersMenuOnOutside);
     }
 
     // v1.26.4 fix (frozen audio-CC overlay, THE load-bearing fix): a

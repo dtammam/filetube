@@ -142,7 +142,10 @@ test('native-controls round: the v1.23.5 "bar-below" reserved strip is still rev
   // inside a `@media (max-width: 768px)` block (belt-and-suspenders revert,
   // matching the existing fullscreen-restore pattern above).
   const allBaseRuleMatches = css.match(/#player-wrapper:not\(\.audio-expanded\)\.native-controls\s*\{/g) || [];
-  assert.strictEqual(allBaseRuleMatches.length, 2, 'expected the #player-wrapper:not(.audio-expanded).native-controls rule to appear twice (base + @media (max-width: 768px))');
+  // v1.34.1: a THIRD occurrence joined -- the #player-slot-scoped variant
+  // that outranks the two-row bar's 2-ID 80px strip reservation (see
+  // style.css's own comment there).
+  assert.strictEqual(allBaseRuleMatches.length, 3, 'expected the #player-wrapper:not(.audio-expanded).native-controls rule to appear three times (base + @media variant + the v1.34.1 #player-slot-scoped override)');
 
   const mediaBlockMatch = /@media \(max-width: 768px\)\s*\{([\s\S]*?)\n\}/g;
   let found = false;
