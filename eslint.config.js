@@ -21,6 +21,9 @@ module.exports = [
       '.thumbnails/**',
       'coverage/**',
       '.state/**',
+      // v1.37.0: vendored client dists (minified upstream code) -- see
+      // public/vendor/README.md.
+      'public/vendor/**',
       'docs/**',
     ],
   },
