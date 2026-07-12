@@ -1400,6 +1400,8 @@ if (typeof module !== 'undefined' && module.exports) {
   // overwhelmingly common case -- the setting defaults OFF and this is
   // mobile-only), so returning to the foreground with a normal inline video
   // is completely unaffected.
+  // (v1.35 T2: releaseBackgroundAudioElement strips the src on swap-back --
+  // the re-arm below restores readiness for the NEXT background transition.)
   function handleForegroundSwapBack() {
     if (bgAudioState !== BG_AUDIO_STATES.BACKGROUND_AUDIO && bgAudioState !== BG_AUDIO_STATES.HANDING_OFF) return;
     var resumeTime = bgAudioEl ? (bgAudioEl.currentTime || 0) : 0;
@@ -1414,6 +1416,12 @@ if (typeof module !== 'undefined' && module.exports) {
     }
     recordLifecycleEvent('bgAudio:swapback', { detail: 'audio=' + resumeTime.toFixed(1) + 's->video=' + (mediaPlayer ? mediaPlayer.currentTime.toFixed(1) : '?') + 's' });
     releaseBackgroundAudioElement();
+    // v1.35 T2: the release above stripped the src -- re-arm immediately so
+    // the NEXT lock/app-switch is just as deterministic as the first. (The
+    // MediaSession re-assert for the swapped-back video already happens in
+    // the visibilitychange-visible handler that called us -- see its own
+    // comment at the call site.)
+    armBackgroundAudioSrc();
     // F2 (two-reviewer gate): consume a deferred autoplay-advance (see
     // `runEndedCompletionCascade`'s own comment) the moment the app is back
     // in the foreground -- from here on this is an entirely ordinary
@@ -1680,6 +1688,33 @@ if (typeof module !== 'undefined' && module.exports) {
   // function performs an equivalent pause+save itself as part of the
   // attempt) or `false` if it wasn't eligible at all (caller falls through
   // to today's plain pause+save, completely unchanged).
+  // v1.35 T2 (deterministic background audio): THE single site that assigns
+  // the real /audio/:id source (evolves F3b: it used to live inline in
+  // attemptBackgroundAudioHandoff; both the handoff AND the new pre-arm path
+  // route through here, so the invariant "the real URL is assigned in
+  // exactly one function" survives). Pre-arming at PLAY TIME -- src +
+  // preload=auto on an element the gesture-prime has already blessed --
+  // turns the background handoff into a bare .play() on a buffered element,
+  // instead of assign-src -> load -> play inside iOS's grudging
+  // background-transition window (the flakiness source). Guards: setting ON,
+  // sidecar confirmed ready, video item, still INLINE (never clobber an
+  // in-flight handoff), and never when the setting is OFF (the F3b lesson:
+  // a disabled install must never touch the real URL).
+  function armBackgroundAudioSrc() {
+    if (!bgAudioEl || !currentId) return false;
+    if (!bgAudioSettingCached) return false;
+    if (bgAudioStatusKnown !== 'ready') return false;
+    if (!currentData || currentData.type === 'audio') return false;
+    var audioUrl = '/audio/' + currentId;
+    if (bgAudioEl.getAttribute('src') !== audioUrl) {
+      bgAudioEl.src = audioUrl;
+      bgAudioEl.preload = 'auto';
+      try { bgAudioEl.load(); } catch (_) { /* buffering is best-effort */ }
+      recordLifecycleEvent('bgAudio:prearm', { detail: 'src set + preloading' });
+    }
+    return true;
+  }
+
   function attemptBackgroundAudioHandoff(trigger) {
     if (!bgAudioEl) return false;
     var eligible = shouldHandOffToBackgroundAudio({
@@ -1701,8 +1736,12 @@ if (typeof module !== 'undefined' && module.exports) {
 
     var resumeTime = currentAbsTime();
     bgAudioState = nextBackgroundAudioState(bgAudioState, 'BACKGROUND', { eligible: true });
-    var audioUrl = '/audio/' + currentId;
-    if (bgAudioEl.getAttribute('src') !== audioUrl) bgAudioEl.src = audioUrl;
+    // v1.35 T2: with the pre-arm in place this is a no-op (already armed +
+    // buffered); armBackgroundAudioSrc remains the SINGLE site that ever
+    // assigns the real URL (the F3b invariant, evolved) -- every guard it
+    // applies necessarily holds here (the eligibility gate above already
+    // required settingOn + status ready).
+    armBackgroundAudioSrc();
     bgAudioEl.currentTime = resumeTime;
     // F-D (v1.27.1): `trigger` documents WHICH path fired -- 'visibility'
     // (the original, from handleBackgroundLifecycle) or 'pause-hidden' (the
@@ -1966,7 +2005,13 @@ if (typeof module !== 'undefined' && module.exports) {
       // itself when it actually runs, so overwriting it here first is safe
       // (and, per the guard just above, this line is unreachable once a
       // real handoff is already active).
-      bgAudioEl.src = SILENT_PRIME_SRC;
+      // v1.35 T2: a pre-armed element already carries the real sidecar --
+      // bless THAT (the muted play->pause cycle below works on any src, and
+      // priming the real sidecar warms its buffer too). Only an un-armed
+      // element gets the silent local clip.
+      if (!bgAudioEl.getAttribute('src')) {
+        bgAudioEl.src = SILENT_PRIME_SRC;
+      }
       var wasMuted = bgAudioEl.muted;
       bgAudioEl.muted = true;
       var p = bgAudioEl.play();
@@ -4305,6 +4350,7 @@ if (typeof module !== 'undefined' && module.exports) {
           // the overlay with an identical 'still pending' entry every 5s.
           if (justBecameReady) {
             recordLifecycleEvent('bgAudio:arm', { detail: 'status=ready (repoll)' });
+            armBackgroundAudioSrc(); // v1.35 T2: buffer it now, not at lock time
           }
           if (newStatus !== 'ready' && newStatus !== 'failed') {
             scheduleAudioStatusRepoll(id, gen, attemptsLeft - 1);
@@ -4409,6 +4455,19 @@ if (typeof module !== 'undefined' && module.exports) {
               // `scheduleAudioStatusRepoll`'s own `!body` guard already ends
               // the chain there, so nothing further is needed here.
               bgAudioStatusKnown = body ? (body.audioStatus || null) : null;
+              // v1.35 T1: declare a PLAYBACK audio session (Safari 16.4+)
+              // the moment the setting resolves ON -- tells iOS this app's
+              // media should continue in the background (and play through
+              // the silent switch, Dean-approved) -- the closest a web app
+              // gets to a native audio app's background entitlement.
+              try {
+                if (navigator.audioSession && navigator.audioSession.type !== 'playback') {
+                  navigator.audioSession.type = 'playback';
+                }
+              } catch (_) { /* API absent/locked -- fine */ }
+              // v1.35 T2: sidecar already ready -> pre-arm NOW, so the
+              // eventual background handoff is a bare play().
+              armBackgroundAudioSrc();
               // v1.27.1 (diagnostics): recorded once per load, only when the
               // setting actually resolved ON -- shows on the overlay whether
               // the feature was even ARMED for this item, and what the

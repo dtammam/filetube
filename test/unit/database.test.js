@@ -35,6 +35,7 @@ const DEFAULT_SETTINGS = {
   backgroundAudioForVideo: false, // v1.27.0 (EXPERIMENTAL): OFF by default
   defaultSort: 'release-date', // v1.34: the real-YouTube-feed flip
   mobileCustomPlayer: false, // v1.34 T4: native mobile video controls by default
+  preExtractAudio: false, // v1.35: deterministic background audio, OFF by default
 };
 
 test('loadDatabase: creates a default db when none exists', () => {

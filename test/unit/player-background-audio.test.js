@@ -569,20 +569,28 @@ test('F3b source-lock: primeBackgroundAudioElement() never primes while a real h
   assert.ok(guardIdx !== -1 && primedIdx !== -1 && guardIdx < primedIdx);
 });
 
-test('F3b source-lock: the ONLY bgAudioEl.src assignment to the real /audio/:id URL lives inside attemptBackgroundAudioHandoff (already setting-gated)', () => {
+test('F3b source-lock (v1.35 evolution): the ONLY real /audio/:id src assignment lives inside armBackgroundAudioSrc, which is itself setting-gated', () => {
   const assignmentSites = [...PLAYER_JS.matchAll(/bgAudioEl\.src\s*=\s*[^;]+;/g)].map((m) => m[0]);
-  // Exactly two real assignment sites in the whole file: the silent prime
-  // (primeBackgroundAudioElement) and the real handoff (attemptBackgroundAudioHandoff).
+  // Exactly two assignment sites in the whole file: the silent prime
+  // (primeBackgroundAudioElement) and the real URL (armBackgroundAudioSrc --
+  // called by BOTH the pre-arm points and attemptBackgroundAudioHandoff, so
+  // the single-function invariant survives the v1.35 pre-arm feature).
   assert.strictEqual(assignmentSites.length, 2, `expected exactly 2 bgAudioEl.src assignment sites, found: ${JSON.stringify(assignmentSites)}`);
   assert.ok(assignmentSites.some((s) => s.includes('SILENT_PRIME_SRC')), 'expected the silent-prime assignment');
-  assert.ok(assignmentSites.some((s) => s.includes('audioUrl')), 'expected the real-handoff assignment (via the audioUrl local)');
+  assert.ok(assignmentSites.some((s) => s.includes('audioUrl')), 'expected the real-URL assignment (via the audioUrl local)');
 
+  const armMatch = /function armBackgroundAudioSrc\(\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);
+  assert.ok(armMatch, 'expected to find armBackgroundAudioSrc()\'s source body');
+  const armBody = armMatch[1];
+  assert.match(armBody, /if \(!bgAudioSettingCached\) return false;/, 'the F3b lesson survives: a disabled install never touches the real URL');
+  assert.match(armBody, /if \(bgAudioStatusKnown !== 'ready'\) return false;/, 'never arm an unconfirmed sidecar');
+  assert.match(armBody, /var audioUrl = '\/audio\/' \+ currentId;/, 'the real URL is built here and only here');
+  assert.match(armBody, /bgAudioEl\.preload = 'auto';/, 'pre-arm buffers eagerly (the whole point)');
+  // The handoff routes through the same single site.
   const handoffMatch = /function attemptBackgroundAudioHandoff\(trigger\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);
   assert.ok(handoffMatch, 'expected to find attemptBackgroundAudioHandoff()\'s source body');
-  assert.match(handoffMatch[1], /var audioUrl = '\/audio\/' \+ currentId;/, 'the real /audio/:id URL must be assigned inside attemptBackgroundAudioHandoff');
-  // attemptBackgroundAudioHandoff only ever runs past shouldHandOffToBackgroundAudio's
-  // settingOn gate (see the mutual-exclusion source-lock test above) -- so
-  // this real-src assignment is itself setting-gated by construction.
+  assert.match(handoffMatch[1], /armBackgroundAudioSrc\(\);/, 'the handoff must route through the single assignment site');
+  assert.ok(!/bgAudioEl\.src\s*=/.test(handoffMatch[1]), 'no inline src assignment may remain in the handoff');
 });
 
 test('F3b: with the setting OFF, setupForMedia() never assigns bgAudioEl.src to the real /audio/:id URL at all', () => {
@@ -799,7 +807,7 @@ test("scheduleAudioStatusRepoll() records 'bgAudio:arm' (detail 'status=ready (r
   const match = /function scheduleAudioStatusRepoll\(id, gen, attemptsLeft\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);
   const body = match[1];
   assert.match(body, /var justBecameReady = newStatus === 'ready' && bgAudioStatusKnown !== 'ready';/);
-  assert.match(body, /if \(justBecameReady\) \{\s*\n\s*recordLifecycleEvent\('bgAudio:arm', \{ detail: 'status=ready \(repoll\)' \}\);\s*\n\s*\}/);
+  assert.match(body, /if \(justBecameReady\) \{\s*\n\s*recordLifecycleEvent\('bgAudio:arm', \{ detail: 'status=ready \(repoll\)' \}\);\s*\n\s*armBackgroundAudioSrc\(\); \/\/ v1\.35 T2[^\n]*\n\s*\}/);
   // The transition check must read the OLD bgAudioStatusKnown before it is
   // overwritten by the fresh response.
   const justBecameReadyIdx = body.indexOf('var justBecameReady');
@@ -1248,4 +1256,36 @@ test('gate fix (behavioral property): a user pause followed by an immediate lock
   const systemPauseAt = 20000;
   assert.equal(isFreshPrePauseCandidate(tapAt, systemPauseAt, 800), false, 'no recent gesture -> arming proceeds');
   assert.equal(isFreshPrePauseCandidate(systemPauseAt, systemPauseAt + 200, 1500), true, 'the visibility flip 200ms later consumes it -> handoff attempts');
+});
+
+// ---- v1.35 (deterministic background audio): source-locks -------------------
+
+test('v1.35 T1: the playback audio-session declaration exists, is setting-gated, and never throws where the API is absent', () => {
+  assert.match(PLAYER_JS, /navigator\.audioSession && navigator\.audioSession\.type !== 'playback'/,
+    'idempotent feature-detected declaration');
+  assert.match(PLAYER_JS, /navigator\.audioSession\.type = 'playback';/,
+    'the Safari 16.4+ playback session type -- the background-continuation entitlement');
+  // It must live inside the settings-fetch .then, AFTER bgAudioSettingCached
+  // resolves -- i.e. only a background-audio-enabled install ever declares it.
+  const idx = PLAYER_JS.indexOf("navigator.audioSession.type = 'playback'");
+  const cachedIdx = PLAYER_JS.indexOf('bgAudioSettingCached = !!(settings && settings.backgroundAudioForVideo)');
+  // (Ordering-only assertion: the declaration sits inside the prepare-audio
+  // continuation that only runs once the setting resolved ON.)
+  assert.ok(cachedIdx !== -1 && idx > cachedIdx,
+    'the declaration rides the same settings resolution that arms the feature');
+});
+
+test('v1.35 T2: pre-arm fires at every readiness point -- settings-fetch (ready at load), repoll ready-flip, and post-swap-back re-arm', () => {
+  const armCalls = [...PLAYER_JS.matchAll(/armBackgroundAudioSrc\(\);/g)].length;
+  assert.ok(armCalls >= 4, `expected >=4 armBackgroundAudioSrc() call sites (fetch-hook, repoll, swap-back, handoff), found ${armCalls}`);
+  const swapBackMatch = /function handleForegroundSwapBack\(\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);
+  assert.ok(swapBackMatch && /armBackgroundAudioSrc\(\);/.test(swapBackMatch[1]),
+    'swap-back must re-arm (release strips the src; the NEXT lock must be just as deterministic)');
+});
+
+test('v1.35 T2: the gesture prime never clobbers a pre-armed real src (blesses whatever is loaded)', () => {
+  const primeMatch = /function primeBackgroundAudioElement\(\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);
+  assert.ok(primeMatch, 'prime body');
+  assert.match(primeMatch[1], /if \(!bgAudioEl\.getAttribute\('src'\)\) \{\s*\n\s*bgAudioEl\.src = SILENT_PRIME_SRC;/,
+    'SILENT_PRIME_SRC only fills an EMPTY element -- a pre-armed real sidecar is blessed (and buffered) as-is');
 });

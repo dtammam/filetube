@@ -80,7 +80,7 @@ beforeEach(() => {
 
 // ---- GET /api/settings -----------------------------------------------------
 
-test('GET /api/settings returns the 12-field shape with backfilled defaults on a fresh DB', async () => {
+test('GET /api/settings returns the 13-field shape with backfilled defaults on a fresh DB', async () => {
   const res = await fetch(`${base}/api/settings`);
   assert.equal(res.status, 200);
   const json = await res.json();
@@ -97,6 +97,7 @@ test('GET /api/settings returns the 12-field shape with backfilled defaults on a
     customLogoDark: false, // v1.33.1: the dark-mode variant's own flag
     defaultSort: 'release-date', // v1.34: the real-YouTube-feed flip
     mobileCustomPlayer: false, // v1.34 T4: native mobile video controls by default
+    preExtractAudio: false, // v1.35: deterministic background audio, OFF by default
   });
 });
 
@@ -440,6 +441,14 @@ test('POST /api/settings rejects an off-allowlist defaultSort and a non-boolean 
       body: JSON.stringify({ mobileCustomPlayer: bad }),
     });
     assert.equal(res.status, 400, `mobileCustomPlayer=${JSON.stringify(bad)} must 400`);
+  }
+  // v1.35: same boolean gate for preExtractAudio.
+  for (const bad of ['true', 1, null, {}]) {
+    const res = await fetch(`${base}/api/settings`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ preExtractAudio: bad }),
+    });
+    assert.equal(res.status, 400, `preExtractAudio=${JSON.stringify(bad)} must 400`);
   }
 
   const good = await fetch(`${base}/api/settings`, {

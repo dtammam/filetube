@@ -574,6 +574,9 @@ async function loadAutomationSettings() {
     // default -- mirrors autoplayNext's own prefill exactly.
     const backgroundAudioCheck = document.getElementById('background-audio-check');
     if (backgroundAudioCheck) backgroundAudioCheck.checked = !!s.backgroundAudioForVideo;
+    // v1.35: deterministic background audio, OFF by default.
+    const preExtractAudioCheck = document.getElementById('pre-extract-audio-check');
+    if (preExtractAudioCheck) preExtractAudioCheck.checked = !!s.preExtractAudio;
     // v1.34 T4: custom-vs-native mobile video controls, OFF (native) by default.
     const mobileCustomPlayerCheck = document.getElementById('mobile-custom-player-check');
     if (mobileCustomPlayerCheck) mobileCustomPlayerCheck.checked = !!s.mobileCustomPlayer;
@@ -850,6 +853,15 @@ function wireStaticControls(signal) {
     scanIntervalSelect.addEventListener('change', (e) => {
       saveAutomationSetting('scanIntervalMinutes', parseInt(e.target.value, 10),
         document.getElementById('scan-interval-error'));
+    }, { signal });
+  }
+
+  // v1.35: pre-extract background audio toggle.
+  const preExtractAudioCheck = document.getElementById('pre-extract-audio-check');
+  if (preExtractAudioCheck) {
+    preExtractAudioCheck.addEventListener('change', (e) => {
+      saveAutomationSetting('preExtractAudio', e.target.checked,
+        document.getElementById('pre-extract-audio-error'));
     }, { signal });
   }
 
