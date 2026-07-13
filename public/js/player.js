@@ -4649,7 +4649,9 @@ if (typeof module !== 'undefined' && module.exports) {
 
     if (data.type === 'audio') {
       mediaPlayer.style.display = 'block';
-      mediaPlayer.poster = '/thumbnail/' + id;
+      // v1.38.0: a book-TTS item's id has no db.metadata thumbnail; use its
+      // explicit artUrl (book cover) as the poster instead of a 404 /thumbnail.
+      mediaPlayer.poster = (typeof data.artUrl === 'string' && data.artUrl) ? data.artUrl : ('/thumbnail/' + id);
       mediaPlayer.src = streamUrl;
 
       if (AUDIO_PLAYER_MODE === 'background') {

@@ -52,6 +52,13 @@
 - **Severity:** cosmetic-only, both reviewers explicitly non-blocking.
 - **Source:** v1.37.0 delta re-confirms (QA + adversarial APPROVE notes).
 
+## #37 — no periodic age-sweep / size-cap for the TTS audio cache (v1.38.0)
+- **What:** `DATA_DIR/tts-cache/` (`<key>.m4a` + `<key>.blocks.json` per synthesized chapter) is reclaimed only by: a book prune (deletes that book's files), `POST /api/cache/clear` (nukes all), and the boot reconcile (temps + stale-status). There is NO periodic age-sweep and NO byte-cap, so on a long-lived server the speech cache grows with every listened chapter until a manual clear or a prune. The v1.38.0 exec plan §8.5 called the size-cap "optional … where practical"; it was not implemented this wave.
+- **Bounded by:** speech m4a is small (mono 96k AAC — a chapter is typically a few hundred KB to a couple MB), and "Clear cache now" already purges it. Not a correctness bug; an operational disk-growth gap.
+- **Fix direction:** hook a tts-cache age-sweep (and optional byte-cap) into the existing `sweepAgedTranscodes`/`enforceCacheCap` boot + write-time surface, eagerly `clearBookAudioStatus` on each eviction (as the prune/clear paths already do).
+- **Severity:** Low. Adversarial-gate WARNING at v1.38.0, accepted-and-disclosed (ROADMAP known gap) rather than silently omitted.
+- **Source:** v1.38.0 two-adversarial-agent gate (block-contract/persist seat, WARNING 3).
+
 ## #35 — delete resolver edge residuals: invalid-UTF-8 names + NFC collisions (v1.37.5)
 - **What:** `resolveOnDiskPath` (server.js DELETE) resolves NFC/NFD path-component variants (the shipped fix), but two edges remain, both no-worse-than-pre-v1.37.5: (a) **invalid-UTF-8 / raw-byte filenames** — `fs.readdirSync` with default (utf8) encoding maps invalid bytes to U+FFFD, so a stored name with non-round-tripping bytes can't NFC-match any entry and falls through to `gone:true`, dropping the db entry while the file survives (the same reappear symptom, for a much rarer subset — yt-dlp uses `--restrict-filenames`, and local media names are typically valid UTF-8). (b) **NFC collision** — if a directory holds two byte-distinct entries that normalize-equal, the walk unlinks whichever `readdir` yields first; harmless in practice (the two are visually identical, and the exact-spelling `existsSync` short-circuit already covers the stored spelling).
 - **Fix direction:** for (a), re-enumerate with `fs.readdirSync(dir, { encoding: 'buffer' })` and compare raw bytes as a last-resort fallback before concluding `gone`; for (b), prefer an exact-byte match over a normalized one when both are present (already true via the top-level `existsSync`), else it's a non-issue.

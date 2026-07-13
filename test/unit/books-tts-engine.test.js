@@ -31,16 +31,18 @@ test('mapRate: piper uses length_scale = 1/rate (>1 slower), espeak uses wpm = 1
 
 // ---- Piper argv (verified: stdin text, --model/--config/--length_scale/--output_file/--quiet)
 
-test('buildPiperArgs: exact flag shape; --config omitted when absent; NO --rate flag', () => {
+test('buildPiperArgs: exact flag shape; --config omitted when absent; NO --rate and NO --quiet', () => {
   const args = eng.buildPiperArgs({ model: '/m/voice.onnx', wavOut: '/tmp/b0.wav', rate: 1 });
   assert.deepStrictEqual(args, [
     '--model', '/m/voice.onnx',
     '--length_scale', '1',
     '--sentence_silence', '0.4',
     '--output_file', '/tmp/b0.wav',
-    '--quiet',
   ]);
   assert.ok(!args.includes('--rate') && !args.includes('--speed'), 'piper has no --rate/--speed flag');
+  // piper1-gpl (the maintained fork) treats an unrecognized flag as SPOKEN
+  // TEXT, so --quiet would make it say "quiet" and never read stdin.
+  assert.ok(!args.includes('--quiet'), 'NEVER pass --quiet: it is inert-and-worse on piper1-gpl');
 });
 
 test('buildPiperArgs: includes --config when given and maps rate to length_scale', () => {

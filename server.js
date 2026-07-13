@@ -1111,7 +1111,11 @@ let ttsEngineAvailable = false;
   // `--version` may be unknown to a given engine build; ONLY a spawn failure
   // (ENOENT: not installed) disqualifies it. A binary that runs but exits
   // non-zero on --version is still present and usable.
-  execFile(bin, ['--version'], (err) => {
+  // A 5s timeout is defense-in-depth: no real piper/espeak build blocks on
+  // stdin during --version, but a misconfigured binary that did would otherwise
+  // wedge the probe (execFile has no default timeout) and leave TTS silently
+  // stuck "unavailable" with no log.
+  execFile(bin, ['--version'], { timeout: 5000 }, (err) => {
     if (err && err.code === 'ENOENT') {
       console.log(`TTS engine '${ttsConfig.engine}' (${bin}) not found on PATH -- "Listen from Here" disabled (books still work).`);
       return;
@@ -1161,6 +1165,18 @@ function ttsCacheKey(bookId, spineIndex) {
 }
 function ttsM4aPath(key) { return path.join(TTS_CACHE_DIR, `${key}.m4a`); }
 function ttsBlocksPath(key) { return path.join(TTS_CACHE_DIR, `${key}.blocks.json`); }
+
+// The key to SERVE for (bookId, spineIndex): prefer the key that was ACTUALLY
+// synthesized (recorded on the status row), so once a settings-write route
+// exists (selectable voice/rate is a reserved seam), a settings change between
+// synth and playback can't make the serve route recompute a DIFFERENT key than
+// /status reported 'ready' for -> a spurious 404 (gate finding, v1.38.0). Falls
+// back to the current-settings key only when no status row exists yet.
+function ttsServeKey(bookId, spineIndex) {
+  const audio = booksStore.readBooks(getCachedDatabase()).audio[bookId];
+  const entry = audio && audio[String(spineIndex)];
+  return (entry && entry.key) ? entry.key : ttsCacheKey(bookId, spineIndex);
+}
 
 // Look up a validated EPUB chapter for (bookId, spineIndex). Returns null for
 // an unknown/non-epub book or an out-of-range chapter -- every caller (worker
@@ -1298,7 +1314,14 @@ function wavDurationSec(wavPath) {
 // block -> concat to m4a -> write blocks.json. Atomic .tmp->rename finalize.
 async function runChapterSynthesis({ bookId, spineIndex, key }) {
   const chapter = resolveTtsChapter(bookId, spineIndex);
-  if (!chapter) return { ok: false };
+  if (!chapter) {
+    // The book was pruned/removed between enqueue and now. Drop the stale
+    // pending row WITHOUT recreating an audio map for a gone book
+    // (clearBookAudioStatus is a no-op when the map is already absent).
+    booksStore.clearBookAudioStatus({ updateDatabase }, bookId, spineIndex)
+      .catch((err) => console.error(`TTS: failed to clear status for a vanished book ${bookId}/${spineIndex}:`, err && err.message));
+    return { ok: false };
+  }
   setTtsStatus(bookId, spineIndex, { status: 'processing', key });
 
   const buf = await fs.promises.readFile(chapter.book.filePath);
@@ -1329,8 +1352,12 @@ async function runChapterSynthesis({ bookId, spineIndex, key }) {
     }
 
     if (wavFiles.length === 0) {
-      // Nothing speakable in this chapter -- report failed (honest "unavailable")
-      // rather than serving a zero-length file.
+      // Nothing speakable in this chapter (an image-only/nav chapter) -- mark it
+      // FAILED explicitly (honest "audio unavailable") rather than serving a
+      // zero-length file. Without this the row would stay 'processing' forever
+      // and the reader's status poll would spin (gate finding, v1.38.0). ok:false
+      // means processTtsQueue does NOT chain a prefetch off this chapter.
+      setTtsStatus(bookId, spineIndex, { status: 'failed', key });
       return { ok: false };
     }
 
@@ -1339,6 +1366,15 @@ async function runChapterSynthesis({ bookId, spineIndex, key }) {
     const tmpM4a = `${ttsM4aPath(key)}.tmp.m4a`;
     await runFfmpeg(booksTtsEngine.buildTtsEncodeArgs(listPath, tmpM4a));
     const durationSec = Math.round(cursorSec * 1000) / 1000;
+
+    // A book scan may have PRUNED this book while we were synthesizing. If so,
+    // finalizing here would recreate its audio row + leak cache files at a key
+    // the prune already swept (gate finding, v1.38.0). Re-validate as late as
+    // possible; if the book vanished, discard the temp and abort cleanly.
+    if (!resolveTtsChapter(bookId, spineIndex)) {
+      try { fs.unlinkSync(tmpM4a); } catch (_) { /* best-effort */ }
+      return { ok: false };
+    }
 
     // Atomic finalize: audio first, then the index -- a reader only ever asks
     // for blocks.json AFTER status is 'ready', which is written last.
@@ -4325,35 +4361,44 @@ app.get('/book/:id/file', (req, res) => {
 // configured; 404 for an unknown/non-epub book or out-of-range chapter.
 app.post('/book/:id/tts/:spineIndex/ensure', (req, res) => {
   if (!ttsAvailable()) return res.status(503).json({ error: 'Text-to-speech is not configured on this server' });
-  if (!resolveTtsChapter(req.params.id, req.params.spineIndex)) {
-    return res.status(404).json({ error: 'No such book chapter for text-to-speech' });
-  }
-  const result = queueChapterTts(req.params.id, req.params.spineIndex);
+  const chapter = resolveTtsChapter(req.params.id, req.params.spineIndex);
+  if (!chapter) return res.status(404).json({ error: 'No such book chapter for text-to-speech' });
+  // Use the NORMALIZED integer index everywhere (not the raw route param) so
+  // '02'/'2e0'/' 2 ' all address the SAME cache key/status row that ensure
+  // synthesizes under (gate finding: raw-vs-normalized key mismatch).
+  const result = queueChapterTts(req.params.id, chapter.spineIndex);
   res.json(result);
 });
 
 // Honest per-chapter status for the reader's poll.
 app.get('/api/books/:id/tts/:spineIndex/status', (req, res) => {
+  const idx = Number(req.params.spineIndex);
+  if (!Number.isInteger(idx) || idx < 0) return res.json({ status: 'none', durationSec: null });
   const audio = booksStore.readBooks(getCachedDatabase()).audio[req.params.id];
-  const entry = audio && audio[String(req.params.spineIndex)];
+  const entry = audio && audio[String(idx)];
   if (!entry) return res.json({ status: 'none', durationSec: null });
   res.json({ status: entry.status, durationSec: typeof entry.durationSec === 'number' ? entry.durationSec : null });
 });
 
 // Serve the synthesized chapter audio (sendFile => Accept-Ranges/206 native).
 app.get('/book/:id/tts/:spineIndex', (req, res) => {
-  if (!resolveTtsChapter(req.params.id, req.params.spineIndex)) return res.status(404).json({ error: 'No such book chapter' });
-  const key = ttsCacheKey(req.params.id, req.params.spineIndex);
+  const chapter = resolveTtsChapter(req.params.id, req.params.spineIndex);
+  if (!chapter) return res.status(404).json({ error: 'No such book chapter' });
+  const key = ttsServeKey(req.params.id, chapter.spineIndex);
   const m4a = ttsM4aPath(key);
   if (!fs.existsSync(m4a)) return res.status(404).json({ error: 'Audio not ready' });
+  // Protect an actively-streaming chapter from a concurrent "Clear cache now"
+  // (the RECENT_STREAM_MS set the transcode serve path already uses).
+  markServed(m4a);
   res.setHeader('Content-Type', 'audio/mp4');
   res.sendFile(m4a);
 });
 
 // The blockIndex -> startSec map the reader uses to seek to the right paragraph.
 app.get('/book/:id/tts/:spineIndex/blocks', (req, res) => {
-  if (!resolveTtsChapter(req.params.id, req.params.spineIndex)) return res.status(404).json({ error: 'No such book chapter' });
-  const key = ttsCacheKey(req.params.id, req.params.spineIndex);
+  const chapter = resolveTtsChapter(req.params.id, req.params.spineIndex);
+  if (!chapter) return res.status(404).json({ error: 'No such book chapter' });
+  const key = ttsServeKey(req.params.id, chapter.spineIndex);
   const blocksPath = ttsBlocksPath(key);
   if (!fs.existsSync(blocksPath)) return res.status(404).json({ error: 'Audio not ready' });
   res.setHeader('Content-Type', 'application/json');
@@ -4920,6 +4965,11 @@ app.post('/api/cache/clear', (req, res) => {
   for (const name of ttsFiles) {
     if (name.startsWith('.tmp-') || name.endsWith('.tmp.m4a') || name.endsWith('.blocks.json.tmp')) continue;
     const p = path.join(TTS_CACHE_DIR, name);
+    // Never yank a chapter audio out from under an ACTIVE listen session -- the
+    // same recentlyServed protection the transcode loop above uses. The .m4a is
+    // protected via markServed on serve; also spare its sibling .blocks.json.
+    if (protectedPaths.has(p)) continue;
+    if (name.endsWith('.blocks.json') && protectedPaths.has(path.join(TTS_CACHE_DIR, `${name.slice(0, -'.blocks.json'.length)}.m4a`))) continue;
     try {
       const st = fs.statSync(p);
       if (st.isDirectory()) continue;

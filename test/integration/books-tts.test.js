@@ -72,6 +72,7 @@ before(async () => {
       '<h1>Chapter One</h1><p>First para.</p><blockquote><p>Quoted.</p></blockquote>',
       '<p>Chapter two, first.</p><p>Chapter two, second.</p>',
       '<p>Chapter three.</p>',
+      '<figure><img src="plate.jpg" alt=""/></figure>', // chapter 3: image-only, NO speakable text
     ],
   }));
   await updateDatabase((db) => { booksStore.ensureBooks(db).folders = [booksDir]; return true; });
@@ -151,6 +152,15 @@ test('T9: GET /book/:id/tts/:spineIndex serves audio/mp4 with byte ranges; /bloc
   assert.ok(Array.isArray(await blocksRes.json()));
 });
 
+test('T9: a non-canonical index ("00") addresses the SAME cache key as ensure normalized it', async () => {
+  // chapter 0 is already ready; the serve route must normalize "00" -> 0 and
+  // find the file ensure synthesized under the numeric index (cache-key parity).
+  const res = await fetch(`${base}/book/${bookId}/tts/00`);
+  assert.strictEqual(res.status, 200, 'a leading-zero index must resolve to the same cached audio, not 404');
+  const status = await (await fetch(`${base}/api/books/${bookId}/tts/00/status`)).json();
+  assert.strictEqual(status.status, 'ready', 'status normalizes the index too');
+});
+
 test('T9: unknown book / out-of-range chapter -> 404; not-yet-synthesized file -> 404', async () => {
   assert.strictEqual((await fetch(`${base}/book/nope/tts/0`)).status, 404);
   assert.strictEqual((await fetch(`${base}/book/${bookId}/tts/99`)).status, 404);
@@ -174,6 +184,12 @@ test('T8: synthesis DEFERS while a yt-dlp download/poll is active, then proceeds
   assert.strictEqual(proceeded.status, 'ready', 'synthesis resumes once downloads are idle');
 });
 
+test('an image-only chapter (no speakable text) settles to "failed", never stuck "processing"', async () => {
+  await fetch(`${base}/book/${bookId}/tts/3/ensure`, { method: 'POST' });
+  const status = await pollStatus(3, 'ready'); // pollStatus returns on ready OR failed
+  assert.strictEqual(status.status, 'failed', 'a chapter with nothing to speak must end failed, not hang in processing');
+});
+
 test('T12: boot reconcile clears a stale "processing" and a file-less "ready", keeps a valid ready', async () => {
   // A crashed-mid-synth 'processing' entry + a 'ready' whose file was deleted.
   await updateDatabase((db) => {
@@ -193,16 +209,22 @@ test('T12: boot reconcile clears a stale "processing" and a file-less "ready", k
   assert.ok(audio[bookId] && audio[bookId]['0'] && audio[bookId]['0'].status === 'ready', 'a valid ready entry is kept');
 });
 
-test('T12: POST /api/cache/clear purges tts-cache files and resets audio status', async () => {
+test('T12: POST /api/cache/clear purges unprotected tts-cache + resets status, but spares a recently-served chapter', async () => {
   const cacheDir = path.join(process.env.DATA_DIR, 'tts-cache');
-  const before = fs.readdirSync(cacheDir).filter((n) => n.endsWith('.m4a'));
-  assert.ok(before.length > 0, 'precondition: some synthesized audio exists');
+  const audioBefore = booksStore.readBooks(loadDatabase()).audio[bookId];
+  const key0 = audioBefore['0'].key; // chapter 0 was served in earlier tests
+  const key1 = audioBefore['1'].key; // chapter 1 (one-ahead) was never served
+  const m4a0 = path.join(cacheDir, `${key0}.m4a`);
+  const m4a1 = path.join(cacheDir, `${key1}.m4a`);
+  assert.ok(fs.existsSync(m4a0) && fs.existsSync(m4a1), 'precondition: both chapters have audio');
 
+  await fetch(`${base}/book/${bookId}/tts/0`); // freshly mark chapter 0 as actively served
   const res = await fetch(`${base}/api/cache/clear`, { method: 'POST' });
   assert.strictEqual(res.status, 200);
   await new Promise((r) => setTimeout(r, 100)); // let the audio-reset updateDatabase land
 
-  assert.strictEqual(fs.readdirSync(cacheDir).filter((n) => n.endsWith('.m4a')).length, 0, 'all m4a purged');
+  assert.ok(fs.existsSync(m4a0), 'a recently-served chapter is SPARED (active-stream protection)');
+  assert.ok(!fs.existsSync(m4a1), 'an unprotected chapter IS purged');
   const audio = booksStore.readBooks(loadDatabase()).audio;
   assert.deepStrictEqual(audio, {}, 'the book audio status map is reset wholesale');
 });
