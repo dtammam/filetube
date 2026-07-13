@@ -226,5 +226,8 @@ test('T12: POST /api/cache/clear purges unprotected tts-cache + resets status, b
   assert.ok(fs.existsSync(m4a0), 'a recently-served chapter is SPARED (active-stream protection)');
   assert.ok(!fs.existsSync(m4a1), 'an unprotected chapter IS purged');
   const audio = booksStore.readBooks(loadDatabase()).audio;
-  assert.deepStrictEqual(audio, {}, 'the book audio status map is reset wholesale');
+  // The spared chapter keeps its status row (truthful while it plays on); the
+  // purged chapters' rows are dropped.
+  assert.ok(audio[bookId] && audio[bookId]['0'] && audio[bookId]['0'].status === 'ready', 'spared chapter keeps its ready status');
+  assert.strictEqual(audio[bookId]['1'], undefined, 'a purged chapter\'s status row is dropped');
 });

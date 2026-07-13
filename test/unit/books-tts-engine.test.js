@@ -29,7 +29,8 @@ test('mapRate: piper uses length_scale = 1/rate (>1 slower), espeak uses wpm = 1
   assert.deepStrictEqual(eng.mapRate('whatever', 1), { lengthScale: 1 });
 });
 
-// ---- Piper argv (verified: stdin text, --model/--config/--length_scale/--output_file/--quiet)
+// ---- Piper argv (verified: stdin text, --model/--config/--length_scale/--output_file;
+// ---- deliberately NO --quiet -- piper1-gpl would speak it as text)
 
 test('buildPiperArgs: exact flag shape; --config omitted when absent; NO --rate and NO --quiet', () => {
   const args = eng.buildPiperArgs({ model: '/m/voice.onnx', wavOut: '/tmp/b0.wav', rate: 1 });

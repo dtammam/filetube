@@ -4962,13 +4962,14 @@ app.post('/api/cache/clear', (req, res) => {
   // above). Skip in-flight work dirs/temps -- the worker cleans those itself.
   let ttsFiles;
   try { ttsFiles = fs.readdirSync(TTS_CACHE_DIR); } catch (_) { ttsFiles = []; }
+  const sparedTtsKeys = new Set(); // keys whose audio survived (actively streaming)
   for (const name of ttsFiles) {
     if (name.startsWith('.tmp-') || name.endsWith('.tmp.m4a') || name.endsWith('.blocks.json.tmp')) continue;
     const p = path.join(TTS_CACHE_DIR, name);
     // Never yank a chapter audio out from under an ACTIVE listen session -- the
     // same recentlyServed protection the transcode loop above uses. The .m4a is
     // protected via markServed on serve; also spare its sibling .blocks.json.
-    if (protectedPaths.has(p)) continue;
+    if (name.endsWith('.m4a') && protectedPaths.has(p)) { sparedTtsKeys.add(name.slice(0, -'.m4a'.length)); continue; }
     if (name.endsWith('.blocks.json') && protectedPaths.has(path.join(TTS_CACHE_DIR, `${name.slice(0, -'.blocks.json'.length)}.m4a`))) continue;
     try {
       const st = fs.statSync(p);
@@ -4980,11 +4981,20 @@ app.post('/api/cache/clear', (req, res) => {
       console.error(`Failed to clear cached TTS audio ${p}:`, e.message);
     }
   }
-  // The ready/pending map now points at deleted files -- reset it wholesale
-  // (best-effort; a clear-cache is a manual admin action). Mirrors the
-  // clearAudioStatus calls above for the transcode side.
-  updateDatabase((db) => { booksStore.ensureBooks(db).audio = {}; return true; })
-    .catch((err) => console.error('Failed to reset book audio status on cache clear:', err && err.message));
+  // Drop the status rows whose files we deleted, but KEEP a spared (actively
+  // streaming) chapter's row so its /status stays truthful while it plays on.
+  updateDatabase((db) => {
+    const ns = booksStore.ensureBooks(db);
+    for (const bookId of Object.keys(ns.audio)) {
+      const chapters = ns.audio[bookId];
+      for (const idx of Object.keys(chapters)) {
+        const entry = chapters[idx];
+        if (!entry || !entry.key || !sparedTtsKeys.has(entry.key)) delete chapters[idx];
+      }
+      if (Object.keys(chapters).length === 0) delete ns.audio[bookId];
+    }
+    return true;
+  }).catch((err) => console.error('Failed to reset book audio status on cache clear:', err && err.message));
   res.json({ success: true, removed, freedBytes });
 });
 
