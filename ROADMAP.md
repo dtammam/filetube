@@ -80,6 +80,12 @@
 
 ## Shipped
 
+### v1.39.1 — Book narration bar: mobile polish (2026-07-13)
+
+- Visual follow-up to v1.39.0 (no logic change). On mobile the now-playing bar looked "ugly as sin" and covered the page: it mounts the app's **FULL** player, which on phones deliberately blooms into a two-row 80px control bar plus an 80px reserved cover-art strip (v1.34.1) — so the bar inherited that whole tall block with an empty art band, unlike the compact desktop bar.
+- **Fix, following the app's own control conventions**: reader-scoped overrides (2 IDs + a class, so they outrank the mobile FULL-player rules) collapse the transport back to a **single compact row** and drop the reserved art strip — matching desktop and the docked mini-player. And the **⏮/⏭ chapter buttons no longer render as blue iOS emoji**: they used the U+23EE/U+23ED media-control codepoints iOS force-presents as color emoji. They're now **CSS-drawn** (a border-triangle + bar, the same technique as the player's `.pp-icon-play`) inside the app's beveled `.pc-btn`, so they match the play button — monochrome and theme-aware, on desktop and mobile.
+- Desktop is untouched (the collapse rules are mobile-only). Visual-only change on the already-gated v1.39.0 → on-device-iteration class. Typography lock + full unit suite green on Node v22 + v24.
+
 ### v1.39.0 — Book narration: in-reader now-playing bar + chapter nav + lock screen (2026-07-13)
 
 - The proper redesign of TTS playback (superseding the v1.38.2/.3/.4 patches, which were symptom-patching). Investigation-first: the transport controls **already existed** in the player's FULL audio bar — docking them into the 160px chip is what hid them. So: mount the player FULL as a real bottom **now-playing bar** in the reader (play/pause + scrub + elapsed/total time, reused from the shared player), with reader-owned **⏮/⏭ chapter** buttons + a cover and chapter label, plus **iOS lock-screen** controls (play/pause/seek + prev/next chapter).
