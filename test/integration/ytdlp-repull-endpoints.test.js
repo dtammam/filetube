@@ -25,6 +25,7 @@ const express = require('express');
 const ytdlp = require('../../lib/ytdlp');
 const run = require('../../lib/ytdlp/run');
 const store = require('../../lib/ytdlp/store');
+const args = require('../../lib/ytdlp/args');
 
 const originalRunList = run.runList;
 const originalRunDownload = run.runDownload;
@@ -138,6 +139,56 @@ test('POST /api/subscriptions/:id/repull polls only that one subscription (202),
     const notFoundRes = await fetch(`${base}/api/subscriptions/no-such-id/repull`, { method: 'POST' });
     assert.equal(notFoundRes.status, 404);
     assert.ok((await notFoundRes.json()).error);
+  } finally {
+    await close();
+  }
+});
+
+// ---- v1.37.5 (Dean's "Skip" action): POST /api/subscriptions/:id/skip ------
+
+test('POST /api/subscriptions/:id/skip appends the id to the skip list (200), idempotent; validates sub + videoId', async () => {
+  const deps = makeFakeDeps();
+  const subA = await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@chanA', format: 'video' });
+
+  const config = enabledConfig();
+  const { base, close } = await startTestApp(deps, config);
+  try {
+    // Unknown subscription -> 404.
+    const notFound = await fetch(`${base}/api/subscriptions/no-such-id/skip`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ videoId: 'dQw4w9WgXcQ' }),
+    });
+    assert.equal(notFound.status, 404);
+
+    // Missing / unsafe videoId -> 400 (nothing written).
+    const badId = await fetch(`${base}/api/subscriptions/${subA.id}/skip`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ videoId: '../etc/passwd' }),
+    });
+    assert.equal(badId.status, 400);
+    const noBody = await fetch(`${base}/api/subscriptions/${subA.id}/skip`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}),
+    });
+    assert.equal(noBody.status, 400);
+
+    // Valid skip -> 200, added:true, and the file carries the yt-dlp line.
+    const ok = await fetch(`${base}/api/subscriptions/${subA.id}/skip`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ videoId: 'dQw4w9WgXcQ' }),
+    });
+    assert.equal(ok.status, 200);
+    const okBody = await ok.json();
+    assert.equal(okBody.success, true);
+    assert.equal(okBody.videoId, 'dQw4w9WgXcQ');
+    assert.equal(okBody.added, true);
+    const skiplist = fs.readFileSync(args.resolveSkiplistPath(config), 'utf8');
+    assert.equal(skiplist, 'youtube dQw4w9WgXcQ\n');
+
+    // Idempotent: a second skip of the same id reports added:false and does
+    // not grow a duplicate line.
+    const again = await fetch(`${base}/api/subscriptions/${subA.id}/skip`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ videoId: 'dQw4w9WgXcQ' }),
+    });
+    assert.equal(again.status, 200);
+    assert.equal((await again.json()).added, false);
+    assert.equal(fs.readFileSync(args.resolveSkiplistPath(config), 'utf8'), 'youtube dQw4w9WgXcQ\n');
   } finally {
     await close();
   }

@@ -2380,6 +2380,32 @@ a.sub-row-channel-link:focus-visible {
   flex-wrap: wrap;
 }
 
+/* v1.37.5 (Dean's "Skip" action): the per-item failure list under a
+   subscription row is now one flex row per failed video, each with an
+   optional "Skip" button that adds the video to the permanent skip list.
+   Deliberately lives HERE in style.css rather than the subscriptions view's
+   page-local <style> block (where `.sub-row-failures` itself still sits), so
+   these rules survive an in-app SPA navigation that only swaps `#view-root`
+   -- see the CONTRIBUTING/working-style lesson on page-local head styles.
+   `.btn.btn-sm` already supplies the button chrome; era tokens only. */
+.sub-row-failure {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.sub-row-failure-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+.sub-row-skip {
+  flex: 0 0 auto;
+}
+
 /* v1.20.0 FR-4 -- per-subscription "View as Playlist" link
    (lib/ytdlp/client/subscriptions.js's createSubscriptionRow), a distinct
    block from the .sub-row-* set above. Rendered only when the row's
