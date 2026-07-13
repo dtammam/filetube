@@ -23,6 +23,9 @@ let folderSettings = {}; // { "<path>": { name, hidden } }
 // db.folders-exclusion invariant.
 let syntheticFolders = [];
 let loadedDefaultView = null; // null until the /api/settings fetch resolves
+// v1.38.0 Part A: book folders — an unordered set of paths (no per-folder
+// display/hide/reorder), wired to the existing /api/books/config routes.
+let bookFolders = [];
 let controller = null;
 // C4 remediation (v1.16.0): tracks pollScanStatus's one-shot post-scan
 // redirect timer so destroy() can clear it outright (belt-and-suspenders on
@@ -785,6 +788,139 @@ async function loadScanStatusLine() {
   }
 }
 
+// ---- v1.38.0 Part A: book folders --------------------------------------------
+//
+// A thin UI over the EXISTING, already-validated /api/books/config +
+// /api/books/scan routes (config was API-only since v1.37.0). Book roots are an
+// unordered set of paths -- no display-name/hide/reorder (that machinery is
+// media-only). Rows are built with createElement/textContent (XSS-safe for the
+// folder-path strings, no escapeHtml/innerHTML interpolation needed).
+
+function renderBookFolders() {
+  const container = document.getElementById('book-folders-builder-list');
+  if (!container) return;
+  container.innerHTML = '';
+  if (bookFolders.length === 0) {
+    container.innerHTML = '<div class="empty-folders-msg">No book folders configured yet. Add one above.</div>';
+    return;
+  }
+  bookFolders.forEach((folder, index) => {
+    const row = document.createElement('div');
+    row.className = 'folder-item-row';
+    const pathWrap = document.createElement('div');
+    pathWrap.style.cssText = 'flex:1; min-width:0;';
+    const pathText = document.createElement('div');
+    pathText.className = 'folder-path-text';
+    pathText.title = folder;
+    pathText.textContent = folder;
+    pathWrap.appendChild(pathText);
+    row.appendChild(pathWrap);
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'remove-folder-btn';
+    removeBtn.title = 'Remove folder';
+    removeBtn.textContent = '×'; // ×
+    removeBtn.addEventListener('click', () => {
+      bookFolders.splice(index, 1);
+      renderBookFolders();
+    }, { signal: controller.signal });
+    row.appendChild(removeBtn);
+    container.appendChild(row);
+  });
+}
+
+async function loadBookConfig() {
+  try {
+    const r = await fetch('/api/books/config');
+    if (!r.ok) return; // books disabled / no folders -> leave the empty state
+    const data = await r.json();
+    bookFolders = Array.isArray(data.folders) ? data.folders.slice() : [];
+    renderBookFolders();
+  } catch (err) {
+    console.error('Failed to load book folders:', err);
+  }
+}
+
+function pollBookScanStatus() {
+  const status = document.getElementById('book-scan-status');
+  fetch('/api/books/scan-status')
+    .then((r) => r.json())
+    .then((s) => {
+      if (!status) return;
+      if (s && s.scanning) {
+        status.textContent = 'Scanning books…';
+        status.style.color = 'var(--text-primary)';
+        setTimeout(pollBookScanStatus, 1000);
+      } else {
+        status.textContent = s && s.lastScan ? 'Books scanned.' : 'Idle.';
+        status.style.color = 'var(--text-secondary)';
+      }
+    })
+    .catch(() => {});
+}
+
+function wireBookFolderControls(signal) {
+  const addBtn = document.getElementById('add-book-folder-btn');
+  const input = document.getElementById('new-book-folder-path');
+  if (addBtn && input) {
+    const add = () => {
+      const v = input.value.trim();
+      if (!v) return;
+      if (bookFolders.includes(v)) { alert('This book folder is already added.'); return; }
+      bookFolders.push(v);
+      renderBookFolders();
+      input.value = '';
+    };
+    addBtn.addEventListener('click', add, { signal });
+    input.addEventListener('keypress', (e) => { if (e.key === 'Enter') add(); }, { signal });
+  }
+
+  const saveBtn = document.getElementById('save-book-config-btn');
+  const status = document.getElementById('book-scan-status');
+  if (saveBtn) {
+    saveBtn.addEventListener('click', async () => {
+      if (status) { status.textContent = 'Saving…'; status.style.color = 'var(--text-primary)'; }
+      try {
+        const r = await fetch('/api/books/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ folders: bookFolders }),
+        });
+        const data = await r.json().catch(() => ({}));
+        if (r.ok) {
+          // The server validated/deduped/overlap-checked; reflect its list back
+          // and reflect that it already kicked a scan.
+          bookFolders = Array.isArray(data.folders) ? data.folders.slice() : bookFolders;
+          renderBookFolders();
+          if (status) status.textContent = 'Saved — scanning books…';
+          pollBookScanStatus();
+        } else if (status) {
+          // Surface the server's readable error (existence / media-overlap).
+          status.textContent = (data && data.error) || 'Could not save book folders.';
+          status.style.color = 'var(--yt-red)';
+        }
+      } catch (err) {
+        if (status) { status.textContent = 'Could not save book folders.'; status.style.color = 'var(--yt-red)'; }
+        console.error('Save book folders failed:', err);
+      }
+    }, { signal });
+  }
+
+  const scanBtn = document.getElementById('scan-books-btn');
+  if (scanBtn) {
+    scanBtn.addEventListener('click', async () => {
+      scanBtn.disabled = true;
+      try {
+        await fetch('/api/books/scan', { method: 'POST' });
+        pollBookScanStatus();
+      } catch (err) {
+        console.error('Book scan failed to start:', err);
+      } finally {
+        scanBtn.disabled = false;
+      }
+    }, { signal });
+  }
+}
+
 function wireStaticControls(signal) {
   const addFolderBtn = document.getElementById('add-folder-btn');
   const newFolderPathInput = document.getElementById('new-folder-path');
@@ -1044,6 +1180,7 @@ function init(root) {
   loadedDefaultView = null;
 
   wireStaticControls(controller.signal);
+  wireBookFolderControls(controller.signal); // v1.38.0 Part A
   renderThemePicker();
   renderIconPicker();
   loadResumeThresholdControl();
@@ -1069,6 +1206,7 @@ function init(root) {
 
   // Start
   loadConfig();
+  loadBookConfig(); // v1.38.0 Part A: populate the book-folders list
 }
 
 function destroy() {

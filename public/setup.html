@@ -151,6 +151,44 @@
         </div>
       </div>
 
+      <!-- v1.38.0 (Part A): book folders. Mirrors the media-folders box above,
+           wired to the existing GET/POST /api/books/config + POST /api/books/scan
+           (config was API-only since v1.37.0 -- this closes that gap). Book roots
+           are an unordered set with no per-folder display/hide/reorder. -->
+      <div class="setup-box">
+        <h2>Book Folders</h2>
+        <p>
+          Directories where your EPUB and PDF books live. They appear in the Books library.
+          Book folders may not overlap your media folders (the server rejects an overlap).
+        </p>
+
+        <div class="form-group">
+          <label for="new-book-folder-path">Add Book Folder Directory Path</label>
+          <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+            <input type="text" id="new-book-folder-path" placeholder="e.g. /mnt/books" style="flex: 1 1 220px; min-width: 0;" />
+            <button class="btn" id="add-book-folder-btn" style="flex-shrink: 0;">Add Folder</button>
+          </div>
+          <small style="color: var(--text-secondary); margin-top: 6px; display: block;">
+            For Docker deployments, specify the directory path inside your container (e.g. /books).
+          </small>
+        </div>
+
+        <div class="form-group">
+          <label>Configured Book Directories</label>
+          <div class="folder-list-builder" id="book-folders-builder-list">
+            <div class="empty-folders-msg">No book folders configured yet. Add one above.</div>
+          </div>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 24px; border-top: 1px solid var(--border-color); padding-top: 16px; flex-wrap: wrap; gap: 10px;">
+          <span id="book-scan-status" style="font-weight: bold; color: var(--text-secondary);"></span>
+          <div style="display: flex; gap: 10px; flex-shrink: 0;">
+            <button class="btn" id="scan-books-btn">Scan Books Now</button>
+            <button class="btn btn-primary" id="save-book-config-btn" style="padding: 10px 20px; font-size: 13px;">Save Book Folders</button>
+          </div>
+        </div>
+      </div>
+
       <div class="setup-box">
         <h2>Appearance</h2>
         <p>Pick the YouTube era FileTube dresses up as. Light / dark is the
