@@ -3130,11 +3130,70 @@ function fetchAllPins() {
   const safeJson = (url) => fetch(url)
     .then((r) => (r.ok ? r.json() : []))
     .catch(() => []);
+  // v1.37.0 (Dean's orphaned-pin report): every pin is tagged with its
+  // SOURCE so the unpin control (buildUnpinButton below) knows which DELETE
+  // endpoint owns it -- the raw source field never enters
+  // derivePinnedPlaylistEntries' locked shape; the renderers read it off
+  // the parallel validPins view exactly like `id`.
   return Promise.all([safeJson('/api/subscriptions/pins'), safeJson('/api/books/pins')])
     .then(([channelPins, bookPins]) => [
-      ...(Array.isArray(channelPins) ? channelPins : []),
-      ...(Array.isArray(bookPins) ? bookPins : []),
+      ...(Array.isArray(channelPins) ? channelPins : []).map((p) => ({ ...p, pinSource: 'channel' })),
+      ...(Array.isArray(bookPins) ? bookPins : []).map((p) => ({ ...p, pinSource: 'books' })),
     ]);
+}
+
+// v1.37.0 (Dean's orphaned-pin report): the per-row UNPIN control. Before
+// this, unpinning required the pinned thing to still have a surface (a
+// watch page with videos, a subscription row) -- a pin whose folder emptied
+// out (or whose subscription was removed) was PERMANENT. This control lives
+// on the pinned rows themselves, so ANY pin is always unpinnable. Two-tap
+// arm/confirm (the card-delete pattern -- no native confirm()); the DELETE
+// endpoint is chosen by the pin's tagged source. `onDone` re-renders.
+function pinDeleteEndpoint(pin) {
+  return pin && pin.pinSource === 'books'
+    ? `/api/books/pins/${encodeURIComponent(pin.id)}`
+    : `/api/subscriptions/pins/${encodeURIComponent(pin.id)}`;
+}
+
+function buildUnpinButton(pin, onDone) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'pinned-unpin-btn';
+  btn.setAttribute('aria-label', 'Unpin');
+  btn.textContent = '×';
+  let armTimer = null;
+  btn.addEventListener('click', (event) => {
+    // Never navigate the row's own link.
+    event.preventDefault();
+    event.stopPropagation();
+    if (!pin || typeof pin.id !== 'string') return;
+    if (!btn.classList.contains('armed')) {
+      btn.classList.add('armed');
+      btn.textContent = 'Unpin?';
+      armTimer = setTimeout(() => {
+        btn.classList.remove('armed');
+        btn.textContent = '×';
+      }, 3000);
+      return;
+    }
+    if (armTimer) clearTimeout(armTimer);
+    btn.disabled = true;
+    fetch(pinDeleteEndpoint(pin), { method: 'DELETE' })
+      .catch(() => {})
+      .finally(() => {
+        if (typeof onDone === 'function') onDone();
+      });
+  });
+  return btn;
+}
+
+// The one refresh routine every unpin uses: re-fetch both pin sources and
+// rebuild BOTH surfaces (sidebar section + playlists sheet).
+function refreshAllPinSurfaces() {
+  fetchAllPins().then((pins) => {
+    renderPinnedSidebar(pins);
+    renderPinnedPlaylists(pins, true);
+  });
 }
 
 function derivePinnedPlaylistEntries(pins) {
@@ -3243,7 +3302,13 @@ function renderPinnedPlaylists(pins, moduleEnabled) {
   heading.textContent = 'Pinned';
   section.appendChild(heading);
 
-  entries.forEach((entry) => {
+  // v1.37.0: same-predicate parallel view of the raw pins, so each rendered
+  // row can recover its source record (id + pinSource) for the unpin
+  // control -- the sidebar renderer's validPins pattern.
+  const validSheetPins = (Array.isArray(pins) ? pins : [])
+    .filter((p) => p && typeof p.channelDir === 'string' && p.channelDir !== '');
+
+  entries.forEach((entry, sheetIndex) => {
     const link = document.createElement('a');
     link.className = 'sidebar-item';
     // v1.37.0: a pre-shaped href (book shelves) wins; ytdlp pins keep the
@@ -3257,6 +3322,12 @@ function renderPinnedPlaylists(pins, moduleEnabled) {
     // both the avatar and the label survive, neither ever passed through
     // innerHTML.
     link.appendChild(document.createTextNode(' ' + entry.label));
+    // v1.37.0 (Dean's orphaned-pin report): the unpin control -- see
+    // buildUnpinButton's comment.
+    const sheetSourcePin = validSheetPins[sheetIndex];
+    if (sheetSourcePin && typeof sheetSourcePin.id === 'string') {
+      link.appendChild(buildUnpinButton(sheetSourcePin, refreshAllPinSurfaces));
+    }
     section.appendChild(link);
   });
 
@@ -3353,6 +3424,11 @@ function renderPinnedSidebar(pins) {
     // both the avatar and the label survive, neither ever passed through
     // innerHTML. Same discipline as renderPinnedPlaylists above.
     link.appendChild(document.createTextNode(' ' + entry.label));
+    // v1.37.0 (Dean's orphaned-pin report): every pinned row carries its
+    // own unpin control -- see buildUnpinButton's comment.
+    if (sourcePin && typeof sourcePin.id === 'string') {
+      link.appendChild(buildUnpinButton(sourcePin, refreshAllPinSurfaces));
+    }
     section.appendChild(link);
   });
 
@@ -5887,6 +5963,7 @@ if (typeof module !== 'undefined' && module.exports) {
     resolveAudioArtUrl,
     shouldInjectSubscriptionsNav,
     shouldInjectBooksNav,
+    pinDeleteEndpoint,
     fisherYatesShuffle, sortItems, shouldShowShuffleButton,
     deriveOrderedIds, computeNeighbors, parentFolder,
     visibleSidebarFolders, resolveDefaultView,

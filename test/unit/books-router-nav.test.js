@@ -136,3 +136,30 @@ test('T10: buildBookRowCardHtml -- encoded ids, no progress bar on unread', () =
   assert.ok(html.includes('/bookcover/a%2Fb'));
   assert.ok(!html.includes('book-row-progress'));
 });
+
+// ---- v1.37.0 (Dean's orphaned-pin report): the unpin control -----------------
+
+const commonSrc = fs.readFileSync(path.join(__dirname, '../../public/js/common.js'), 'utf8');
+
+test('unpin: fetchAllPins tags every pin with its source, and pinDeleteEndpoint routes to the OWNING module', () => {
+  const common = require('../../public/js/common.js');
+  assert.equal(common.pinDeleteEndpoint({ id: 'a b', pinSource: 'books' }), '/api/books/pins/a%20b');
+  assert.equal(common.pinDeleteEndpoint({ id: 'x', pinSource: 'channel' }), '/api/subscriptions/pins/x');
+  assert.equal(common.pinDeleteEndpoint({ id: 'x' }), '/api/subscriptions/pins/x', 'untagged legacy pins default to the channel endpoint');
+  assert.ok(commonSrc.includes("pinSource: 'channel'") && commonSrc.includes("pinSource: 'books'"), 'fetchAllPins tags both sources');
+});
+
+test('unpin: BOTH pinned surfaces (sidebar + playlists sheet) attach buildUnpinButton to every row (source locks)', () => {
+  const calls = (commonSrc.match(/buildUnpinButton\(/g) || []).length;
+  assert.ok(calls >= 3, 'the builder + two renderer call sites');
+  assert.ok(commonSrc.includes('link.appendChild(buildUnpinButton(sourcePin, refreshAllPinSurfaces))'), 'sidebar rows carry the control');
+  assert.ok(commonSrc.includes('link.appendChild(buildUnpinButton(sheetSourcePin, refreshAllPinSurfaces))'), 'sheet rows carry the control');
+});
+
+test('unpin: the control is arm/confirm (card-delete pattern) and never navigates the row link', () => {
+  const fnStart = commonSrc.indexOf('function buildUnpinButton');
+  const fnBody = commonSrc.slice(fnStart, commonSrc.indexOf('\nfunction ', fnStart + 10));
+  assert.ok(fnBody.includes('event.preventDefault()') && fnBody.includes('event.stopPropagation()'), 'clicks never fall through to the row link');
+  assert.ok(fnBody.includes("classList.contains('armed')"), 'first tap arms');
+  assert.ok(fnBody.includes("method: 'DELETE'"), 'second tap deletes');
+});

@@ -29,6 +29,24 @@ class FakeNode {
 
   appendChild(child) { child.parentNode = this; this.children.push(child); return child; }
 
+  // v1.37.0 (unpin control): the rows now carry a real <button> built via
+  // setAttribute/classList/addEventListener -- extend the stub with inert
+  // implementations so the renderer keeps working against this fake DOM.
+  setAttribute(name, value) { this['_attr_' + name] = String(value); }
+
+  getAttribute(name) { const v = this['_attr_' + name]; return v === undefined ? null : v; }
+
+  addEventListener() { /* inert -- interaction is device/browser territory */ }
+
+  get classList() {
+    const self = this;
+    return {
+      add(cls) { if (!self.className.split(/\s+/).includes(cls)) self.className = (self.className + ' ' + cls).trim(); },
+      remove(cls) { self.className = self.className.split(/\s+/).filter((c) => c && c !== cls).join(' '); },
+      contains(cls) { return self.className.split(/\s+/).includes(cls); },
+    };
+  }
+
   removeChild(child) {
     const idx = this.children.indexOf(child);
     if (idx >= 0) this.children.splice(idx, 1);
