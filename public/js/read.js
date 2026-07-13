@@ -20,6 +20,14 @@
 // server chunker's ttsRev bump.
 const READER_BLOCK_SELECTOR = 'p, h1, h2, h3, h4, h5, h6, li, blockquote, pre, figure, td';
 
+// v1.38.0 TTS: the block-contract version. It is baked into the TTS cache key
+// (sha1(...:ttsRev)), so bumping it INVALIDATES every cached chapter audio.
+// HARD RULE: any change to READER_BLOCK_SELECTOR above — or to how the server
+// chunker (lib/books/tts-chunk.js) derives blocks from it — MUST bump this in
+// lockstep, so the reader's blockIndex math and the server's audio offsets can
+// never silently desync. Source-locked by test/unit/books-tts-chunk.test.js.
+const READER_TTS_REV = 1;
+
 // Reader prefs: bounded font scale (percent) + a named reading theme.
 const READER_FONT_MIN = 80;
 const READER_FONT_MAX = 170;
@@ -52,6 +60,7 @@ function buildPdfLocator(page) {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     READER_BLOCK_SELECTOR,
+    READER_TTS_REV,
     clampReaderFontSize,
     normalizeReaderTheme,
     buildEpubLocator,

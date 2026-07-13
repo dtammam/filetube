@@ -53,6 +53,12 @@ const { isYtdlpIntermediate } = require('./lib/ytdlpIntermediates');
 // requiring them has no side effects (the ytdlp direct-require posture).
 const booksStore = require('./lib/books/store');
 const booksScan = require('./lib/books/scan');
+// v1.38.0 TTS "Listen from Here": pure leaf helpers (env-config parse, engine
+// argv builders, chapter chunker). Same direct-require posture as the store.
+const booksTtsConfig = require('./lib/books/tts-config');
+const booksTtsEngine = require('./lib/books/tts-engine');
+const booksTtsChunk = require('./lib/books/tts-chunk');
+const booksZip = require('./lib/books/zip'); // chapter XHTML extraction for TTS
 // C4 "fun stats" page (v1.24 UX Round, Wave 3): pure aggregation helpers over
 // `db.metadata`, unit-tested on their own against a synthetic fixture. See
 // lib/stats.js's header comment and `GET /api/stats` below for the full
@@ -79,6 +85,9 @@ const THUMBNAIL_DIR = path.join(DATA_DIR, '.thumbnails');
 // so the media scan's thumbnail unlink loop can never touch a book cover
 // and the book scanner's cover pruning can never touch a video thumbnail.
 const BOOKCOVER_DIR = path.join(DATA_DIR, '.bookcovers');
+// v1.38.0 TTS: per-chapter synthesized audio cache (<key>.m4a + <key>.blocks.json),
+// a sibling of the thumbnail/cover caches. Created on demand by the worker.
+const TTS_CACHE_DIR = path.join(DATA_DIR, 'tts-cache');
 
 // Resolve the transcode cache directory: `TRANSCODE_DIR` env override (resolved
 // to an absolute path) takes precedence; otherwise default to `<dataDir>/
@@ -1087,6 +1096,263 @@ exec('ffmpeg -version', (error) => {
     console.log('FFmpeg is not available in system PATH. Will fall back to dynamic SVG templates for thumbnails.');
   }
 });
+
+// ---- v1.38.0 TTS "Listen from Here" engine availability (yt-dlp opt-in posture)
+//
+// Strictly opt-in like yt-dlp: the engine binary + (for Piper) a voice model
+// must be present, else the feature stays dark and the reader is fully
+// functional. `ttsEngineAvailable` is the async probe result; `ttsAvailable()`
+// ANDs it with ffmpeg (needed for the WAV->m4a encode), read at request time so
+// both async boot probes have settled by the time any route is hit.
+const ttsConfig = booksTtsConfig.parseTtsConfig(process.env);
+let ttsEngineAvailable = false;
+(function probeTtsEngine() {
+  const bin = booksTtsConfig.activeBin(ttsConfig);
+  // `--version` may be unknown to a given engine build; ONLY a spawn failure
+  // (ENOENT: not installed) disqualifies it. A binary that runs but exits
+  // non-zero on --version is still present and usable.
+  execFile(bin, ['--version'], (err) => {
+    if (err && err.code === 'ENOENT') {
+      console.log(`TTS engine '${ttsConfig.engine}' (${bin}) not found on PATH -- "Listen from Here" disabled (books still work).`);
+      return;
+    }
+    if (ttsConfig.engine === 'piper' && (!ttsConfig.piperModel || !fs.existsSync(ttsConfig.piperModel))) {
+      console.log('TTS: piper is present but FILETUBE_TTS_PIPER_MODEL is unset or missing on disk -- "Listen from Here" disabled.');
+      return;
+    }
+    ttsEngineAvailable = true;
+    console.log(`TTS engine '${ttsConfig.engine}' is available -- "Listen from Here" enabled.`);
+  });
+})();
+
+function ttsAvailable() {
+  return ttsEngineAvailable && ffmpegAvailable;
+}
+
+// ---- v1.38.0 TTS "Listen from Here" synthesis worker ------------------------
+//
+// Single-worker serialized FIFO (mirrors the audio-extract queue's shape): one
+// chapter at a time, engine + ffmpeg SPAWNED PER JOB and gone after (RAM-light
+// by architecture), synthesizing on demand + exactly one chapter ahead, and
+// DEFERRING while a yt-dlp download/poll is active (Dean's less-spiky choice).
+// Cache: TTS_CACHE_DIR/<key>.m4a + <key>.blocks.json, key =
+// sha1(bookId:spineIndex:engine:voice:rate:ttsRev). EPUB only (PDF has no
+// server-side text extraction here); a non-epub/absent book is a no-op.
+// How long the worker waits before re-checking the download-defer gate.
+// Env-overridable so tests can shrink the re-check window (the PROGRESS_FLUSH_MS
+// test posture); 5 s in production is invisible next to synthesis time.
+const TTS_DEFER_POLL_MS = Number(process.env.FILETUBE_TTS_DEFER_POLL_MS) || 5000;
+const ttsQueue = [];
+let ttsBusy = false;
+
+function ttsSettings() {
+  return booksStore.readBooks(getCachedDatabase()).settings || {};
+}
+
+// The cache key folds in engine/voice/rate/ttsRev, so a settings change
+// transparently re-synthesizes into a NEW file and the old one ages out; a
+// block-rule change (READER_TTS_REV) invalidates every cached chapter.
+function ttsCacheKey(bookId, spineIndex) {
+  const s = ttsSettings();
+  const voice = ttsConfig.engine === 'espeak-ng' ? ttsConfig.espeakVoice : (s.voice || '');
+  const rate = booksTtsEngine.clampRate(s.rate);
+  const raw = `${bookId}:${spineIndex}:${ttsConfig.engine}:${voice}:${rate}:${booksTtsChunk.READER_TTS_REV}`;
+  return crypto.createHash('sha1').update(raw).digest('hex');
+}
+function ttsM4aPath(key) { return path.join(TTS_CACHE_DIR, `${key}.m4a`); }
+function ttsBlocksPath(key) { return path.join(TTS_CACHE_DIR, `${key}.blocks.json`); }
+
+// Look up a validated EPUB chapter for (bookId, spineIndex). Returns null for
+// an unknown/non-epub book or an out-of-range chapter -- every caller (worker
+// AND routes) funnels validation through this ONE place.
+function resolveTtsChapter(bookId, spineIndex) {
+  const book = booksStore.readBooks(getCachedDatabase()).items[bookId];
+  if (!book || book.format !== 'epub' || !Array.isArray(book.spine)) return null;
+  const idx = Number(spineIndex);
+  if (!Number.isInteger(idx) || idx < 0 || idx >= book.spine.length) return null;
+  return { book, spineIndex: idx, spineEntry: book.spine[idx] };
+}
+
+// Set status without awaiting -- the no-clobber mutator is idempotent and the
+// worker's own control flow never depends on the write having landed.
+function setTtsStatus(bookId, spineIndex, patch) {
+  booksStore.setBookAudioStatus({ updateDatabase }, bookId, spineIndex, { ...patch, updatedAt: new Date().toISOString() })
+    .catch((err) => console.error(`TTS: failed to persist status for ${bookId}/${spineIndex}:`, err && err.message));
+}
+
+// Enqueue a chapter for synthesis (idempotent). Returns the CURRENT
+// {status, key} so the ensure route can answer immediately. `prefetch` marks a
+// one-chapter-ahead job: its own completion does NOT chain another prefetch, so
+// synthesis stays "the chapter you asked for + exactly one ahead", never a
+// runaway whole-book cascade. A user ensure (prefetch=false) is what advances
+// the read-ahead as the reader moves through the book.
+function queueChapterTts(bookId, spineIndex, prefetch = false) {
+  if (!ttsAvailable()) return { status: 'unavailable', key: null };
+  const chapter = resolveTtsChapter(bookId, spineIndex);
+  if (!chapter) return { status: 'unsupported', key: null };
+  const idx = chapter.spineIndex;
+  const key = ttsCacheKey(bookId, idx);
+  if (fs.existsSync(ttsM4aPath(key)) && fs.existsSync(ttsBlocksPath(key))) {
+    setTtsStatus(bookId, idx, { status: 'ready', key });
+    return { status: 'ready', key };
+  }
+  if (!ttsQueue.some((j) => j.bookId === bookId && j.spineIndex === idx)) {
+    ttsQueue.push({ bookId, spineIndex: idx, key, prefetch });
+    setTtsStatus(bookId, idx, { status: 'pending', key });
+  }
+  processTtsQueue();
+  return { status: 'pending', key };
+}
+
+function processTtsQueue() {
+  if (ttsBusy || ttsQueue.length === 0) return;
+  // Defer (do NOT dequeue) while a download/poll is in flight -- re-arm a short,
+  // unref'd timer and try again. A synth already in progress is never killed;
+  // only the NEXT dequeue waits. One-directional: downloads never wait for TTS.
+  if (ytdlp.isHeavyJobActive && ytdlp.isHeavyJobActive()) {
+    setTimeout(processTtsQueue, TTS_DEFER_POLL_MS).unref();
+    return;
+  }
+  const job = ttsQueue.shift();
+  ttsBusy = true;
+  runChapterSynthesis(job)
+    .then((result) => {
+      ttsBusy = false;
+      // One chapter ahead: only after a USER-requested job (not a prefetch —
+      // that would cascade into whole-book pregeneration), only on success, and
+      // only within spine bounds (queueChapterTts re-validates + dedups +
+      // short-circuits if already cached).
+      if (result && result.ok && !job.prefetch) queueChapterTts(job.bookId, job.spineIndex + 1, true);
+      processTtsQueue();
+    })
+    .catch((err) => {
+      ttsBusy = false;
+      console.error(`TTS synthesis failed for ${job.bookId}/${job.spineIndex}:`, err && err.message);
+      setTtsStatus(job.bookId, job.spineIndex, { status: 'failed', key: job.key });
+      processTtsQueue();
+    });
+}
+
+// Spawn the active engine for ONE block, piping text to stdin (never an argv
+// token). Resolves when the child exits 0 and the WAV exists; rejects otherwise.
+function synthesizeBlock(text, wavPath, rate) {
+  return new Promise((resolve, reject) => {
+    let bin;
+    let args;
+    if (ttsConfig.engine === 'espeak-ng') {
+      bin = ttsConfig.espeakBin;
+      args = booksTtsEngine.buildEspeakArgs({ voice: ttsConfig.espeakVoice, wavOut: wavPath, rate });
+    } else {
+      bin = ttsConfig.piperBin;
+      args = booksTtsEngine.buildPiperArgs({ model: ttsConfig.piperModel, config: ttsConfig.piperConfig, wavOut: wavPath, rate });
+    }
+    let proc;
+    try {
+      proc = spawn(bin, args, { stdio: ['pipe', 'ignore', 'pipe'] });
+    } catch (err) { reject(err); return; }
+    let stderrTail = '';
+    proc.stderr.on('data', (d) => { stderrTail = (stderrTail + d.toString()).slice(-2048); });
+    proc.on('error', reject);
+    proc.on('close', (code) => {
+      if (code === 0 && fs.existsSync(wavPath)) resolve();
+      else reject(new Error(`${ttsConfig.engine} exited ${code}${stderrTail ? `: ${stderrTail.trim()}` : ''}`));
+    });
+    proc.stdin.on('error', () => { /* EPIPE if the child died early -- surfaced via close */ });
+    proc.stdin.end(text);
+  });
+}
+
+function runFfmpeg(args) {
+  return new Promise((resolve, reject) => {
+    let proc;
+    try { proc = spawn('ffmpeg', args); } catch (err) { reject(err); return; }
+    let stderrTail = '';
+    proc.stderr.on('data', (d) => { stderrTail = (stderrTail + d.toString()).slice(-2048); });
+    proc.on('error', reject);
+    proc.on('close', (code) => (code === 0 ? resolve() : reject(new Error(`ffmpeg exited ${code}: ${stderrTail.trim()}`))));
+  });
+}
+
+// Duration (seconds) of a PCM WAV by parsing its header -- avoids an ffprobe
+// spawn per block. Scans RIFF chunks for `fmt ` (byte rate) and `data` (size);
+// duration = dataSize / byteRate. Returns 0 on anything unparseable.
+function wavDurationSec(wavPath) {
+  try {
+    const buf = fs.readFileSync(wavPath);
+    if (buf.length < 12 || buf.toString('ascii', 0, 4) !== 'RIFF' || buf.toString('ascii', 8, 12) !== 'WAVE') return 0;
+    let byteRate = 0;
+    let dataSize = 0;
+    let off = 12;
+    while (off + 8 <= buf.length) {
+      const id = buf.toString('ascii', off, off + 4);
+      const size = buf.readUInt32LE(off + 4);
+      if (id === 'fmt ' && off + 8 + 16 <= buf.length) byteRate = buf.readUInt32LE(off + 8 + 8);
+      else if (id === 'data') { dataSize = size; break; }
+      off += 8 + size + (size % 2); // chunks are word-aligned
+    }
+    return byteRate > 0 ? dataSize / byteRate : 0;
+  } catch (_) { return 0; }
+}
+
+// The synthesis pipeline for one chapter: extract XHTML -> chunk -> synth each
+// block -> concat to m4a -> write blocks.json. Atomic .tmp->rename finalize.
+async function runChapterSynthesis({ bookId, spineIndex, key }) {
+  const chapter = resolveTtsChapter(bookId, spineIndex);
+  if (!chapter) return { ok: false };
+  setTtsStatus(bookId, spineIndex, { status: 'processing', key });
+
+  const buf = await fs.promises.readFile(chapter.book.filePath);
+  const entries = booksZip.listEntries(buf);
+  const xhtmlBuf = booksZip.extractEntryByName(buf, entries, chapter.spineEntry.href);
+  const blocks = booksTtsChunk.chunkChapter(xhtmlBuf ? xhtmlBuf.toString('utf8') : '');
+
+  fs.mkdirSync(TTS_CACHE_DIR, { recursive: true });
+  const workDir = path.join(TTS_CACHE_DIR, `.tmp-${key}`);
+  fs.rmSync(workDir, { recursive: true, force: true });
+  fs.mkdirSync(workDir, { recursive: true });
+
+  try {
+    const rate = ttsSettings().rate;
+    const wavFiles = [];
+    const blockOffsets = []; // {blockIndex, startSec} for EVERY block (incl. empty)
+    let cursorSec = 0;
+    for (const b of blocks) {
+      // Every block gets an offset (empty ancestor-only slots point at the
+      // start of the next real audio, i.e. the current cursor) so the reader's
+      // blockIndex always maps to a sane startSec.
+      blockOffsets.push({ blockIndex: b.blockIndex, startSec: Math.round(cursorSec * 1000) / 1000 });
+      if (!b.text) continue;
+      const wavPath = path.join(workDir, `b${b.blockIndex}.wav`);
+      await synthesizeBlock(b.text, wavPath, rate);
+      wavFiles.push(wavPath);
+      cursorSec += wavDurationSec(wavPath);
+    }
+
+    if (wavFiles.length === 0) {
+      // Nothing speakable in this chapter -- report failed (honest "unavailable")
+      // rather than serving a zero-length file.
+      return { ok: false };
+    }
+
+    const listPath = path.join(workDir, 'concat.txt');
+    fs.writeFileSync(listPath, `${wavFiles.map((f) => `file '${f.replace(/'/g, "'\\''")}'`).join('\n')}\n`);
+    const tmpM4a = `${ttsM4aPath(key)}.tmp.m4a`;
+    await runFfmpeg(booksTtsEngine.buildTtsEncodeArgs(listPath, tmpM4a));
+    const durationSec = Math.round(cursorSec * 1000) / 1000;
+
+    // Atomic finalize: audio first, then the index -- a reader only ever asks
+    // for blocks.json AFTER status is 'ready', which is written last.
+    fs.renameSync(tmpM4a, ttsM4aPath(key));
+    const tmpBlocks = `${ttsBlocksPath(key)}.tmp`;
+    fs.writeFileSync(tmpBlocks, JSON.stringify(blockOffsets));
+    fs.renameSync(tmpBlocks, ttsBlocksPath(key));
+
+    setTtsStatus(bookId, spineIndex, { status: 'ready', key, durationSec });
+    return { ok: true };
+  } finally {
+    fs.rmSync(workDir, { recursive: true, force: true });
+  }
+}
 
 // ---- Pre-transcode queue (AVI and other non-web containers -> MP4) ----
 // Jobs run one at a time to avoid overloading a home server with parallel FFmpeg runs.
@@ -3812,6 +4078,14 @@ app.get('/api/books/scan-status', (req, res) => {
   res.json(bookScanState);
 });
 
+// v1.38.0 TTS: the reader calls this to decide whether to light the "Listen
+// from Here" control. `available` is the SAME gate every synthesis route
+// enforces (engine binary + Piper model + ffmpeg). Static-segment route,
+// declared before the `/api/books/:id/...` params (route-order lesson).
+app.get('/api/books/tts/config', (req, res) => {
+  res.json({ available: ttsAvailable(), engine: ttsConfig.engine });
+});
+
 // ---- Books: progress coalescer (T6 -- the v1.30 A4 discipline, books-owned) --
 //
 // A structural twin of `pendingProgress`/`flushPendingProgress` above (see
@@ -3990,6 +4264,53 @@ app.get('/book/:id/file', (req, res) => {
   // sendFile provides Accept-Ranges/206 natively -- what pdf.js range
   // loading wants; harmless for the whole-file EPUB fetch.
   res.sendFile(item.filePath);
+});
+
+// ---- v1.38.0 TTS "Listen from Here" routes ----------------------------------
+//
+// All file paths derive from the deterministic cache key over a
+// scanner-validated (bookId, spineIndex) -- never from a client path fragment,
+// so there is no arbitrary-file-read surface (mirrors /book/:id/file's own
+// membership check). The static `tts` segment sits under the already-matched
+// `:id`, so there is no route-order ambiguity with /book/:id/file.
+
+// Enqueue synthesis (idempotent). 503 if the engine/model/ffmpeg aren't
+// configured; 404 for an unknown/non-epub book or out-of-range chapter.
+app.post('/book/:id/tts/:spineIndex/ensure', (req, res) => {
+  if (!ttsAvailable()) return res.status(503).json({ error: 'Text-to-speech is not configured on this server' });
+  if (!resolveTtsChapter(req.params.id, req.params.spineIndex)) {
+    return res.status(404).json({ error: 'No such book chapter for text-to-speech' });
+  }
+  const result = queueChapterTts(req.params.id, req.params.spineIndex);
+  res.json(result);
+});
+
+// Honest per-chapter status for the reader's poll.
+app.get('/api/books/:id/tts/:spineIndex/status', (req, res) => {
+  const audio = booksStore.readBooks(getCachedDatabase()).audio[req.params.id];
+  const entry = audio && audio[String(req.params.spineIndex)];
+  if (!entry) return res.json({ status: 'none', durationSec: null });
+  res.json({ status: entry.status, durationSec: typeof entry.durationSec === 'number' ? entry.durationSec : null });
+});
+
+// Serve the synthesized chapter audio (sendFile => Accept-Ranges/206 native).
+app.get('/book/:id/tts/:spineIndex', (req, res) => {
+  if (!resolveTtsChapter(req.params.id, req.params.spineIndex)) return res.status(404).json({ error: 'No such book chapter' });
+  const key = ttsCacheKey(req.params.id, req.params.spineIndex);
+  const m4a = ttsM4aPath(key);
+  if (!fs.existsSync(m4a)) return res.status(404).json({ error: 'Audio not ready' });
+  res.setHeader('Content-Type', 'audio/mp4');
+  res.sendFile(m4a);
+});
+
+// The blockIndex -> startSec map the reader uses to seek to the right paragraph.
+app.get('/book/:id/tts/:spineIndex/blocks', (req, res) => {
+  if (!resolveTtsChapter(req.params.id, req.params.spineIndex)) return res.status(404).json({ error: 'No such book chapter' });
+  const key = ttsCacheKey(req.params.id, req.params.spineIndex);
+  const blocksPath = ttsBlocksPath(key);
+  if (!fs.existsSync(blocksPath)) return res.status(404).json({ error: 'Audio not ready' });
+  res.setHeader('Content-Type', 'application/json');
+  res.sendFile(blocksPath);
 });
 
 app.get('/bookcover/:id', (req, res) => {
