@@ -80,6 +80,12 @@
 
 ## Shipped
 
+### v1.38.3 — Listen from Here: the player actually mounts now (the real oversight) (2026-07-13)
+
+- Dean: the now-playing bar never appeared — on **desktop** either, so it wasn't just the iOS autoplay wall. Root cause: `player.load(id, data, {})` with **no slot** is a silent no-op — `mountInSlot` bails without a slot, so the persistent player host (and its `<audio>`) is created but **never attached to the DOM**. No bar, nothing plays, and the v1.38.2 "unlock" couldn't even find the element. The docked mini-player only appears if you `load` into a `#player-slot` and then `dock()`.
+- Fix (reader wiring): read.html gains a `#player-slot` mount point; read.js loads the audio into it and calls `player.dock()` to show the mini bar. Media ids are now **per-chapter** (`booktts:<book>:<spineIndex>`) so the player's adopt-by-id fast-path doesn't skip loading the next chapter; a constant unlock id + `suppressProgress` flag avoid adopt on the in-gesture silent-clip unlock and keep the player from writing `/api/progress` rows for a synthetic id; the dock's tap-to-expand carries a `readerHref` so it returns to the reader, not a video watch page. Combined with the v1.38.2 in-gesture unlock, playback should start and continue on the lock screen. 443 player/reader tests green.
+- Honest note: this is DOM/iOS runtime behavior a code gate can't exercise — **the desktop bar appearing is the fast confirmation of the mount fix; iOS lock-screen playback is Dean's on-device call.**
+
 ### v1.38.2 — Listen from Here now actually plays on iPhone (iOS autoplay unlock) (2026-07-13)
 
 - Dean's report: tap Listen → "Preparing audio…" flashes and disappears, but no sound; a second tap clears instantly with still no audio. Root cause: the **iOS autoplay gesture wall**. The chapter's `play()` fires *seconds* after the tap (synthesis → status poll → blocks fetch), so it's outside the user gesture and iOS silently blocks it (the swallowed `NotAllowedError`); the status text clears because the code assumed playback started.
