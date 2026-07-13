@@ -298,6 +298,18 @@ if (typeof module !== 'undefined' && module.exports) {
     } catch (_) {
       await rendition.display(); // a stale/foreign CFI falls back to the start
     }
+    // v1.37.3 (Dean: desktop pages sometimes EMPTY until a tap): epub.js can
+    // complete display() without painting when the container was measured
+    // mid-layout -- a tap forces the reflow it missed. Nudge one explicit
+    // re-measure a frame after display so the first paint never depends on
+    // user interaction.
+    requestAnimationFrame(() => {
+      const w = Math.floor(pane.clientWidth);
+      const h = Math.floor(pane.clientHeight);
+      if (w > 50 && h > 50) {
+        try { rendition.resize(w, h); } catch (_) { /* not ready */ }
+      }
+    });
     setStatus(root, '');
 
     const toc = [];
