@@ -196,7 +196,10 @@ if (typeof module !== 'undefined' && module.exports) {
       width: '100%',
       height: '100%',
       flow: 'paginated',
-      spread: 'none',
+      // v1.37.2: 'auto' = TWO pages side-by-side when the pane is wide
+      // (desktop/tablet landscape), ONE when narrow (phones) -- epub.js
+      // decides by width, so the layout scales with the device.
+      spread: 'auto',
       allowScriptedContent: false,
     });
 
@@ -286,6 +289,9 @@ if (typeof module !== 'undefined' && module.exports) {
       prev: () => rendition.prev().catch(() => {}),
       setFontSize: (pct) => rendition.themes.fontSize(`${pct}%`),
       setTheme: (name) => rendition.themes.select(name),
+      // v1.37.2: called (debounced) on window resize -- re-measures the
+      // pane so pagination/spread track the new dimensions.
+      refit: () => { try { rendition.resize(pane.clientWidth, pane.clientHeight); } catch (_) { /* not ready yet */ } },
       destroy: () => { try { book.destroy(); } catch (_) { /* already torn down */ } },
     };
   }
@@ -419,6 +425,34 @@ if (typeof module !== 'undefined' && module.exports) {
     const pane = root.querySelector('#reader-pane');
     const content = root.querySelector('#reader-content');
     if (!pane || !content) return;
+
+    // v1.37.2 (Dean's report: topbar buttons lost on desktop; unusable
+    // sizing on mobile): the CSS-var height guess was wrong on both form
+    // factors -- MEASURE the real available space instead. The chassis's
+    // own top offset accounts for the actual header (any theme/viewport),
+    // and the bottom-nav's live height accounts for mobile chrome. Re-run
+    // on resize/orientation change so the reading area always scales with
+    // the device.
+    const chassis = root.querySelector('#reader-chassis');
+    function sizeReader() {
+      if (!chassis) return;
+      const top = chassis.getBoundingClientRect().top + window.scrollY;
+      const bottomNav = document.getElementById('bottom-nav');
+      const navVisible = bottomNav && getComputedStyle(bottomNav).display !== 'none';
+      const navH = navVisible ? bottomNav.offsetHeight : 0;
+      const height = Math.max(320, window.innerHeight - top - navH);
+      chassis.style.height = height + 'px';
+    }
+    sizeReader();
+    let sizeDebounce = null;
+    window.addEventListener('resize', () => {
+      if (sizeDebounce) clearTimeout(sizeDebounce);
+      sizeDebounce = setTimeout(() => {
+        sizeDebounce = null;
+        sizeReader();
+        if (adapter && typeof adapter.refit === 'function') adapter.refit();
+      }, 150);
+    }, { signal });
 
     const params = new URLSearchParams(window.location.search);
     bookId = params.get('b');
