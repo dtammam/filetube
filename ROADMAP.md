@@ -80,6 +80,12 @@
 
 ## Shipped
 
+### v1.38.1 — TTS works out of the box (espeak-ng baked into the image) (2026-07-13)
+
+- Following v1.38.0, "Listen from Here" was strictly opt-in (you had to provide a Piper binary + voice model). Now the Docker image bakes in **espeak-ng** (Alpine `community`, ~a few MB, pure musl — the same repo ffmpeg already comes from) and defaults `FILETUBE_TTS_ENGINE` to it, so the reader's **Listen** button lights up with zero configuration — the yt-dlp "the binary's already there" posture. The voice is clear but robotic.
+- **Piper stays the opt-in quality upgrade** — it can't be baked on Alpine (its `onnxruntime` dependency has no musl wheels and would add ~300 MB nobody on the default needs), so mount a `.onnx` model and set `FILETUBE_TTS_ENGINE=piper` + `FILETUBE_TTS_PIPER_MODEL` to get the natural voice (a runtime `-e` overrides the image default). Upgraders who ran Piper via only the model env now also need `FILETUBE_TTS_ENGINE=piper` (README note).
+- No app code changed — the espeak-ng path was built and gate-approved in v1.38.0; this is a Dockerfile + README change. Slim adversarial gate APPROVE (Alpine package + voice data, espeak-ng's headless `--stdin`/`-w` flags, and its PCM WAV output all verified against source).
+
 ### v1.38.0 — TTS "Listen from Here" + book-folders Settings UI (2026-07-13)
 
 - **Listen from Here.** Open an EPUB in the reader, tap **Listen**, and FileTube reads it aloud *from the paragraph you're on* — playback continues on the lock screen with the book cover as artwork, reusing the battle-won background-audio machinery. The server splits the chapter's text into blocks by the *exact* rule the reader uses to track your position (one shared source of truth, version-locked so audio can never silently desync from text), synthesizes each block, and maps block → second-offset so the seek lands on the right words. It prepares one chapter ahead, never the whole book.

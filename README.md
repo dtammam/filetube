@@ -202,7 +202,7 @@ in the UI once enabled.
 directory — not an existing mapped library folder, and not an ancestor
 directory of one.
 
-### Text-to-speech: "Listen from Here" (v1.38.0, opt-in)
+### Text-to-speech: "Listen from Here" (v1.38, works out of the box)
 
 Read your EPUB books aloud from the paragraph you're on — playback continues on
 the lock screen with the book cover as artwork. Synthesis runs one chapter at a
@@ -229,6 +229,12 @@ engines.
 | `FILETUBE_TTS_PIPER_CONFIG` | `<model>.json` | Path to the model's config JSON. Defaults to piper's own `<model>.onnx.json` convention. |
 | `FILETUBE_TTS_ESPEAK_BIN` | `espeak-ng` | Path to the `espeak-ng` binary (PATH-resolved; bundled in the image). |
 | `FILETUBE_TTS_ESPEAK_VOICE` | `en` | espeak-ng voice id. |
+
+> **Upgrading from v1.38.0?** If you already had Piper working by mounting a
+> model and setting **only** `FILETUBE_TTS_PIPER_MODEL` (relying on the old
+> `piper` default), add `-e FILETUBE_TTS_ENGINE=piper` — the image now defaults
+> to the bundled `espeak-ng`, so without that flag your Piper model is ignored
+> and you'd hear the robotic voice instead.
 
 Synthesized chapter audio is cached under `<DATA_DIR>/tts-cache/`. There is no
 automatic size/age eviction yet (it's cleared by "Clear cache now" in Settings
