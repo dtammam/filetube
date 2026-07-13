@@ -3703,15 +3703,17 @@ a.sub-row-channel-link:focus-visible {
 .mute-icon-off::after {
   content: '';
   position: absolute;
-  left: 5px; /* v1.22 FR-1 nit fix: was 1px, sitting over the speaker BODY only;
-                +4px re-centers the diagonal over the glyph's optical center
-                (body + cone), matching Dean's on-device report. */
-  top: 0;
+  /* v1.39.5 (Dean: the muted slash sat off the glyph): center the diagonal on
+     the icon box instead of the old fragile top-left-origin + hand-tuned `left`
+     offset. translate(-50%,-50%) pins it to the glyph's true center; the height
+     (~the 16x14 box's diagonal) makes it cross the speaker corner-to-corner. */
+  left: 50%;
+  top: 50%;
   width: 2px;
-  height: 17px;
+  height: 20px;
   background-color: currentColor;
-  transform: rotate(45deg);
-  transform-origin: top left;
+  transform: translate(-50%, -50%) rotate(45deg);
+  transform-origin: center;
 }
 
 /* Fullscreen glyph is a plain static dingbat character (⛶) in the markup --
