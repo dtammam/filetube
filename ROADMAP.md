@@ -80,6 +80,10 @@
 
 ## Shipped
 
+### v1.37.4 — Continue-reading row no longer widens the page (2026-07-13)
+
+- The home book row scrolls internally but its content width was still setting the flex minimum of the main content area, widening the whole page past the mobile viewport (pinch-to-zoom symptom). Classic min-width:auto flex floor — removed, with max-width guards on the row. CSS-only; gate skipped (token economy), on-device is the arbiter.
+
 ### v1.37.3 — reader pagination fixed at the root (2026-07-13)
 
 - Every on-device pagination symptom (whole chapters as one giant page, overflow past the border, arrows skipping chapters, per-page size drift, text vanishing on arrow, chapter-granular progress, desktop pages blank until tapped) traced to ONE root cause: epub.js was handed percentage dimensions and measured an unsettled container, silently degrading to un-columned rendering. The reader now waits for settled layout and always passes explicit measured pixels (open, resize, and a one-frame post-display repaint nudge); phones are strictly single-page, wide panes get two; the pane clips residual overflow. Slim adversarial gate: APPROVE — diagnosis and all four fix mechanics verified line-by-line against the vendored epub.js source.
