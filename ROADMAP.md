@@ -80,6 +80,11 @@
 
 ## Shipped
 
+### v1.39.4 — Book narration bar: chapter glyphs in line with the controls (2026-07-13)
+
+- The ⏮/⏭ chapter buttons rendered ~20px lower than the play/seek/time control bar. Cause: the base `#player-wrapper:not(.audio-expanded)` rule reserves a 40px `padding-bottom` strip for the player's *absolutely-positioned* control bar — but the reader makes that bar `position:static`, so the reservation became an empty band below the controls, leaving the mount slot ~80px tall with the controls pinned to its top while the center-aligned chapter buttons sat at the slot's true middle. That padding was only killed on mobile (2-ID rule inside the phone media query); on desktop `#player-wrapper` (1 ID) still out-specified the reader's 2-class container rule.
+- **Fix**: kill the strip padding in the reader at the base (non-media) level with a 2-ID selector, so the mount slot collapses to the control-bar height on **both** desktop and mobile and the chapter glyphs line up with the transport. Removed the now-redundant mobile-only copy. Full unit suite green on Node v22 + v24.
+
 ### v1.39.3 — Book narration bar: reading-% stays visible (measured, not guessed) (2026-07-13)
 
 - The v1.39.2 attempt to keep the reading-% bar above the now-playing bar didn't work: the reader chassis height is set **inline by JS** (`sizeReader()`, the v1.37.2 "measure the real available space" fix), which overrode the CSS class it relied on — and the reservation was both a guessed pixel value and scoped mobile-only, so it was still covered on desktop *and* mobile.
