@@ -1580,10 +1580,18 @@ if (typeof module !== 'undefined' && module.exports) {
     if (!mediaPlayer) return;
     skip((details && details.seekOffset) || SKIP_SECONDS);
   });
-  // previoustrack/nexttrack deliberately NOT wired: the Prev/Next
-  // controls (and the ordered-neighbor lookup they use) live in
-  // watch.js as per-visit DOM, not in this persistent player controller --
-  // reaching into another file for them is out of scope for this fix.
+  // v1.39.0: previous/next TRACK is now wireable via `setTrackNav()` (below).
+  // The persistent player has no ordered-neighbor model of its own, so a caller
+  // that HAS one -- read.js registers prev/next CHAPTER for book narration --
+  // hands in {onPrev,onNext}; we set/clear the actual MediaSession handlers
+  // dynamically so the lock-screen prev/next controls appear ONLY while a
+  // handler is registered (a plain video load never sets it -> unchanged).
+  function setTrackNav(handlers) {
+    var hasPrev = !!(handlers && typeof handlers.onPrev === 'function');
+    var hasNext = !!(handlers && typeof handlers.onNext === 'function');
+    setMediaSessionAction('previoustrack', hasPrev ? function () { handlers.onPrev(); } : null);
+    setMediaSessionAction('nexttrack', hasNext ? function () { handlers.onNext(); } : null);
+  }
 
   // ---- FR-5 (T4): background/force-close lifecycle pause+persist ------------
   //
@@ -2698,6 +2706,16 @@ if (typeof module !== 'undefined' && module.exports) {
     // `gen !== loadGeneration` guard just above ensures this only ever reads
     // `loadAutoplayAdvance` while it still reflects THIS load.
     var autoplayAdvance = loadAutoplayAdvance;
+    // v1.39.0: a book-TTS item has no /api/progress row (synthetic id; its
+    // progress is the reader's own /api/books/:id/progress). Skip the read +
+    // the resume overlay entirely and go straight to a fresh auto-play, so a
+    // stray/aliased row can never surface a "Resume at…" prompt over narration.
+    if (currentData && currentData.suppressProgress) {
+      savedProgress = 0;
+      if (liveMode) startLiveStream(0, true);
+      else mediaPlayer.play().catch(function () {});
+      return;
+    }
     fetch('/api/progress/' + id)
       .then(function (res) { return res.json(); })
       .then(function (data) {
@@ -4783,6 +4801,7 @@ if (typeof module !== 'undefined' && module.exports) {
 
   function close() {
     loadGeneration++; // invalidate any in-flight poll/resume-check
+    setTrackNav(null); // v1.39.0: drop the lock-screen prev/next chapter handlers
     if (progressInterval) { clearInterval(progressInterval); progressInterval = null; }
     if (transcodePollTimer) { clearTimeout(transcodePollTimer); transcodePollTimer = null; }
     // F7 (two-reviewer NIT): cancel a still-pending audio-status repoll too, mirroring the two timers just above
@@ -4881,6 +4900,7 @@ if (typeof module !== 'undefined' && module.exports) {
     expand: expand,
     dock: dock,
     close: close,
+    setTrackNav: setTrackNav, // v1.39.0: register/clear lock-screen prev/next (book chapters)
     getState: function () { return state; },
     isLoopEnabled: isLoopEnabled, // FR-7 (TF, v1.22.0) -- watch.js's setupLoopToggle reads/writes through these
     setLoop: setLoop,

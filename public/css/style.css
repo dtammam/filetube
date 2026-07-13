@@ -5715,6 +5715,71 @@ body.ft-css-fullscreen .bottom-nav {
       opacity: 1;
     }
 
+/* ---- v1.39.0: in-reader now-playing bar (book narration) -------------------
+   The shared player mounts FULL into #player-slot here (not docked), so its
+   control bar renders as the transport; reader-owned prev/next CHAPTER buttons
+   flank it, with a cover + chapter label. In style.css (not a page-local
+   <style>) so it survives SPA #view-root swaps. */
+.reader-nowplaying {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 940; /* above .bottom-nav (900), below #player-dock (950)/modals */
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 10px calc(6px + env(safe-area-inset-bottom));
+  background: var(--header-bg);
+  border-top: 1px solid var(--border-color);
+  box-shadow: var(--shadow);
+}
+.reader-nowplaying[hidden] { display: none; }
+.reader-np-info { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.reader-np-cover {
+  width: 26px; height: 26px; object-fit: cover; border-radius: 3px;
+  flex-shrink: 0; background: var(--border-color);
+}
+.reader-np-cover:not([src]) { display: none; }
+.reader-np-chapter {
+  font-size: var(--fs-xs); color: var(--text-secondary);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.reader-np-transport { display: flex; align-items: center; gap: 8px; }
+.reader-np-btn {
+  flex-shrink: 0; background: none; border: none; color: var(--text-primary);
+  font-size: var(--fs-3xl); line-height: 1; padding: 6px 8px; cursor: pointer;
+  border-radius: var(--radius);
+}
+.reader-np-btn:disabled { opacity: 0.35; cursor: default; }
+.reader-player-slot { flex: 1; min-width: 0; }
+/* Compact the FULL audio host into the bar: hide the cover art / video element /
+   glyphs / video-only buttons; keep play/pause + scrub + time (+ speed). */
+.reader-nowplaying #media-player,
+.reader-nowplaying #audio-bg-art,
+.reader-nowplaying .art-play-glyph,
+.reader-nowplaying #audio-visualizer,
+.reader-nowplaying #skip-controls,
+.reader-nowplaying #speed-badge,
+.reader-nowplaying #fs-btn,
+.reader-nowplaying #pip-btn,
+.reader-nowplaying #cc-btn,
+.reader-nowplaying #chapters-btn,
+.reader-nowplaying #mute-btn,
+.reader-nowplaying #vol-bar { display: none !important; }
+.reader-nowplaying .player-container {
+  width: 100%; height: auto; aspect-ratio: auto; margin: 0;
+  background: none; border: none; border-radius: 0;
+}
+.reader-nowplaying .player-controls {
+  position: static; opacity: 1; transform: none;
+  height: 40px; padding: 0; border-top: none; box-shadow: none; background: none;
+}
+@media (max-width: 768px) {
+  /* Sit above the mobile bottom nav (~54px + safe area). */
+  .reader-nowplaying { bottom: calc(54px + env(safe-area-inset-bottom)); }
+}
+
 /* ---- v1.37.4 (Dean's report: Continue-reading row widens the page) ---------
    .main-content is a FLEX ITEM of .app-container; flex items default to
    min-width:auto (refuse to shrink below their content's natural width),

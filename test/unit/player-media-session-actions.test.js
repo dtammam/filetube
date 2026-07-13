@@ -60,9 +60,34 @@ test('registers a MediaSession action handler for play, pause, seekto, seekbackw
   assert.strictEqual(typeof recordedActions.seekforward, 'function');
 });
 
-test('does NOT register previoustrack/nexttrack (Prev/Next only live in watch.js, out of scope for this fix)', () => {
+test('does NOT register previoustrack/nexttrack at parse time (they are wired ON DEMAND via setTrackNav)', () => {
   assert.strictEqual(recordedActions.previoustrack, undefined);
   assert.strictEqual(recordedActions.nexttrack, undefined);
+});
+
+test('v1.39.0 setTrackNav: registers previoustrack/nexttrack that call onPrev/onNext, and clears them on null', () => {
+  const player = global.window.FileTube.player;
+  assert.strictEqual(typeof player.setTrackNav, 'function');
+
+  let prevCalls = 0; let nextCalls = 0;
+  player.setTrackNav({ onPrev: () => { prevCalls++; }, onNext: () => { nextCalls++; } });
+  assert.strictEqual(typeof recordedActions.previoustrack, 'function', 'previoustrack wired');
+  assert.strictEqual(typeof recordedActions.nexttrack, 'function', 'nexttrack wired');
+  recordedActions.previoustrack();
+  recordedActions.nexttrack();
+  assert.strictEqual(prevCalls, 1);
+  assert.strictEqual(nextCalls, 1);
+
+  // Clearing removes both handlers (the lock-screen prev/next controls vanish).
+  player.setTrackNav(null);
+  assert.strictEqual(recordedActions.previoustrack, null);
+  assert.strictEqual(recordedActions.nexttrack, null);
+
+  // Only-onNext registers just nexttrack.
+  player.setTrackNav({ onNext: () => {} });
+  assert.strictEqual(typeof recordedActions.nexttrack, 'function');
+  assert.strictEqual(recordedActions.previoustrack, null);
+  player.setTrackNav(null); // leave clean for other tests
 });
 
 test('the play handler never throws when nothing has been loaded yet (mediaPlayer still null)', () => {
