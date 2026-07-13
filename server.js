@@ -3949,6 +3949,7 @@ async function runBookScan() {
 
   const pruneMissing = !!(db.settings && db.settings.pruneMissing);
   const prunedIds = [];
+  const prunedAudioKeys = []; // v1.38.0: TTS cache keys of pruned books, deleted below
   await updateDatabase((fresh) => {
     const freshNs = booksStore.ensureBooks(fresh);
     // v1.37.0 gate fix (QA CRITICAL #2 -- the v1.33 tech-debt-#10 Option-C
@@ -3998,6 +3999,16 @@ async function runBookScan() {
       if (prunable.has(id)) {
         prunedIds.push(id);
         delete freshNs.progress[id];
+        // v1.38.0 persist-gate carry: a pruned book must not leak its TTS audio
+        // status rows OR orphan its cache files. Capture the keys before the
+        // delete so the files can be swept after the db state is authoritative.
+        const audioMap = freshNs.audio[id];
+        if (audioMap && typeof audioMap === 'object') {
+          for (const entry of Object.values(audioMap)) {
+            if (entry && entry.key) prunedAudioKeys.push(entry.key);
+          }
+          delete freshNs.audio[id];
+        }
         continue;
       }
       next[id] = item;
@@ -4011,6 +4022,12 @@ async function runBookScan() {
   for (const id of prunedIds) {
     for (const ext of ['.jpg', '.png']) {
       try { fs.unlinkSync(path.join(BOOKCOVER_DIR, `${id}${ext}`)); } catch (_) { /* best-effort */ }
+    }
+  }
+  // v1.38.0: sweep the pruned books' TTS cache files (m4a + blocks.json).
+  for (const key of prunedAudioKeys) {
+    for (const p of [ttsM4aPath(key), ttsBlocksPath(key)]) {
+      try { fs.unlinkSync(p); } catch (_) { /* best-effort */ }
     }
   }
 }
