@@ -182,6 +182,9 @@ if (typeof module !== 'undefined' && module.exports) {
     // click listener removes itself on fire; a stale class must not make a
     // plain "Preparing…" line look tappable).
     status.classList.remove('reader-status-tap');
+    // v1.39.0: drop any pending tap-to-play click listener so it can't leak
+    // across chapters (a stale ch2 handler firing on a ch3 element).
+    if (status._tapHandler) { status.removeEventListener('click', status._tapHandler); status._tapHandler = null; }
     if (text) {
       status.textContent = text;
       status.hidden = false;
@@ -282,11 +285,15 @@ if (typeof module !== 'undefined' && module.exports) {
   function offerTapToPlay(root, mp, startSec) {
     const status = root.querySelector('#reader-status');
     if (!status) return;
+    // Drop any prior tap handler first (a fast chapter change before the user
+    // tapped would otherwise leave two handlers on one click).
+    if (status._tapHandler) { status.removeEventListener('click', status._tapHandler); status._tapHandler = null; }
     status.textContent = '▶ Tap to start listening';
     status.hidden = false;
     status.classList.add('reader-status-tap');
     const onTap = () => {
       status.removeEventListener('click', onTap);
+      status._tapHandler = null;
       status.classList.remove('reader-status-tap');
       try { if (startSec > 0) mp.currentTime = startSec; } catch (_) { /* seek unsupported */ }
       const pr = mp.play();
@@ -296,6 +303,7 @@ if (typeof module !== 'undefined' && module.exports) {
         setStatus(root, '');
       }
     };
+    status._tapHandler = onTap;
     status.addEventListener('click', onTap);
   }
 
@@ -368,11 +376,15 @@ if (typeof module !== 'undefined' && module.exports) {
   // Prev/next CHAPTER: advance the narration to the neighbouring chapter (from
   // its start) and follow the reader page to match. Bounded by the spine.
   function advanceChapter(root, delta) {
-    if (currentTtsSpine == null) return;
+    if (currentTtsSpine == null || listenBusy) return; // ignore taps while a chapter is preparing
     const next = clampSpineIndex(currentTtsSpine + delta, spineCount);
     if (next == null) return; // at the first/last chapter
-    if (adapter && typeof adapter.goToSpine === 'function') adapter.goToSpine(next);
-    beginListen(root, next, 0);
+    // Follow the page ONLY once the new chapter actually starts playing
+    // (currentTtsSpine flips to `next` on success) -- otherwise a failed/blocked
+    // synth would leave the page on a chapter whose audio never loaded.
+    beginListen(root, next, 0).then(() => {
+      if (currentTtsSpine === next && adapter && typeof adapter.goToSpine === 'function') adapter.goToSpine(next);
+    });
   }
 
   function renderToc(root, entries, onSelect, signal) {

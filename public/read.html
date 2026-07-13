@@ -100,6 +100,28 @@
             <span class="reader-percent" id="reader-percent">0%</span>
           </div>
         </div>
+
+        <!-- v1.39.0 TTS "Listen from Here": the in-reader NOW-PLAYING BAR. It
+             lives INSIDE #view-root (the watch.js #player-slot pattern) so it
+             arrives with the SPA #view-root swap AND read.js's root.querySelector
+             finds it. The shared player mounts FULL into #player-slot here (NOT
+             docked), so its control bar (play/pause + scrub + time) renders as
+             the transport; reader-owned prev/next CHAPTER buttons flank it, with
+             a cover + chapter label. Hidden until the first Listen. On leaving
+             the reader the router docks the host into the shell #player-dock
+             (shouldDockOnTransition now handles 'read'), so this bar goes away
+             with the view swap while narration continues in the mini-player. -->
+        <div id="reader-nowplaying" class="reader-nowplaying" hidden aria-label="Now playing">
+          <div class="reader-np-info">
+            <img id="reader-np-cover" class="reader-np-cover" alt="" />
+            <span id="reader-np-chapter" class="reader-np-chapter"></span>
+          </div>
+          <div class="reader-np-transport">
+            <button id="reader-np-prev" class="reader-np-btn" type="button" aria-label="Previous chapter" disabled>&#9198;</button>
+            <div id="player-slot" class="reader-player-slot"></div>
+            <button id="reader-np-next" class="reader-np-btn" type="button" aria-label="Next chapter" disabled>&#9197;</button>
+          </div>
+        </div>
       </div>
     </main>
   </div>
@@ -132,23 +154,6 @@
     <div class="playlists-sheet-list" id="playlists-sheet-list"></div>
   </aside>
 
-  <!-- v1.39.0 TTS "Listen from Here": the in-reader NOW-PLAYING BAR. The shared
-       player mounts FULL into #player-slot (NOT docked), so its full control bar
-       (play/pause + scrub + elapsed/total time) renders here as the transport;
-       reader-owned prev/next CHAPTER buttons flank it, with a cover + chapter
-       label. Hidden until the first Listen. See read.js loadReaderAudio.
-       #player-dock stays for the router's dock-on-navigate-away behavior. -->
-  <div id="reader-nowplaying" class="reader-nowplaying" hidden aria-label="Now playing">
-    <div class="reader-np-info">
-      <img id="reader-np-cover" class="reader-np-cover" alt="" />
-      <span id="reader-np-chapter" class="reader-np-chapter"></span>
-    </div>
-    <div class="reader-np-transport">
-      <button id="reader-np-prev" class="reader-np-btn" type="button" aria-label="Previous chapter" disabled>&#9198;</button>
-      <div id="player-slot" class="reader-player-slot"></div>
-      <button id="reader-np-next" class="reader-np-btn" type="button" aria-label="Next chapter" disabled>&#9197;</button>
-    </div>
-  </div>
   <div id="player-dock" hidden></div>
   <template id="player-host-template">
     <div class="player-container" id="player-wrapper">

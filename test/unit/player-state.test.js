@@ -47,9 +47,16 @@ test('shouldDockOnTransition: watch -> watch (a different video) does NOT dock',
   assert.strictEqual(shouldDockOnTransition('watch', 'watch'), false);
 });
 
-test('shouldDockOnTransition: leaving any non-watch view never docks (nothing to dock FROM)', () => {
+test('shouldDockOnTransition: leaving a NON-hosting view (home/setup) never docks (nothing to dock FROM)', () => {
   assert.strictEqual(shouldDockOnTransition('home', 'watch'), false);
   assert.strictEqual(shouldDockOnTransition('setup', 'subscriptions'), false);
+});
+
+test('shouldDockOnTransition: v1.39.0 -- leaving read (book narration FULL host) docks like watch; read->read does not', () => {
+  assert.strictEqual(shouldDockOnTransition('read', 'home'), true);
+  assert.strictEqual(shouldDockOnTransition('read', 'books'), true);
+  assert.strictEqual(shouldDockOnTransition('read', 'watch'), true);
+  assert.strictEqual(shouldDockOnTransition('read', 'read'), false); // same-book/chapter reload adopts, no dock
 });
 
 test('shouldDockOnTransition: an unknown/null toView (progressive-enhancement boot has no "from") never docks', () => {
@@ -61,6 +68,7 @@ test('shouldDockOnTransition: player.js and common.js expose the identical decis
   const cases = [
     ['watch', 'home'], ['watch', 'watch'], ['home', 'watch'], ['watch', 'setup'],
     ['watch', 'subscriptions'], ['setup', 'home'], ['watch', null], [null, 'watch'],
+    ['read', 'home'], ['read', 'read'], ['read', 'watch'], ['books', 'read'],
   ];
   for (const [from, to] of cases) {
     assert.strictEqual(shouldDockOnTransition(from, to), routerShouldDockOnTransition(from, to));

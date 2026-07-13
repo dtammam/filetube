@@ -124,7 +124,12 @@ function isAdoptLoad(currentId, requestedId, state) {
 // which no-ops when nothing is loaded/already docked/closed) -- that half is
 // state, not a pure function of the two view names, so it stays in `dock()`.
 function shouldDockOnTransition(fromView, toView) {
-  return fromView === 'watch' && typeof toView === 'string' && toView !== 'watch';
+  // v1.39.0: 'read' joins 'watch' as a view that hosts the FULL player (book
+  // narration mounts FULL into the reader's #player-slot). Leaving EITHER for a
+  // different view docks the persistent host into the shell #player-dock so
+  // playback survives the #view-root swap; staying in the same view (watch->watch
+  // / read->read) adopts instead of docking.
+  return (fromView === 'watch' || fromView === 'read') && typeof toView === 'string' && toView !== fromView;
 }
 
 // The FULL/DOCKED/CLOSED transition a NAVIGATION (not a direct dock [x]/tap
@@ -4256,6 +4261,11 @@ if (typeof module !== 'undefined' && module.exports) {
 
   function teardownMediaState() {
     loadGeneration++; // invalidate any in-flight poll/resume-check tied to the previous media
+    // v1.39.0: clear any lock-screen prev/next CHAPTER handlers from a prior
+    // load (they close over a specific view). A book-audio load re-registers
+    // them right after via read.js; a plain video/audio load leaves them cleared
+    // -- matching the design contract "a non-audio load clears them".
+    setTrackNav(null);
     if (progressInterval) { clearInterval(progressInterval); progressInterval = null; }
     if (transcodePollTimer) { clearTimeout(transcodePollTimer); transcodePollTimer = null; }
     // F7 (two-reviewer NIT): cancel a still-pending audio-status repoll too, mirroring the two timers just above
