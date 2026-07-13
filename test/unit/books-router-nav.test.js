@@ -204,3 +204,14 @@ test('v1.37.1: books/reader styles live in the SHARED stylesheet -- the SPA rout
     assert.ok(!html.includes('<style>'), `${page} must carry NO page-local style block (lost on SPA swap)`);
   }
 });
+
+// ---- v1.37.3 (Dean's pagination report): explicit-pixel rendering locks ------
+
+test('v1.37.3: epub.js is NEVER handed percentage dimensions -- explicit measured pixels at open (settled via waitForPaneSize) and on refit', () => {
+  const readSrc = fs.readFileSync(path.join(__dirname, '../../public/js/read.js'), 'utf8');
+  assert.ok(!readSrc.includes("width: '100%'"), 'percentage width caused whole-chapter-as-one-page rendering');
+  assert.ok(readSrc.includes('waitForPaneSize(pane, signal)'), 'open waits for settled pane dimensions');
+  assert.ok(readSrc.includes('width: paneSize.width'), 'renderTo gets explicit pixels');
+  assert.ok(readSrc.includes('minSpreadWidth: 800'), 'phones stay strictly single-page; wide panes get two');
+  assert.ok(readSrc.includes('rendition.resize(w, h)'), 'refit passes explicit measured pixels');
+});

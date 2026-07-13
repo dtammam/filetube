@@ -5586,7 +5586,7 @@ body.ft-css-fullscreen .bottom-nav {
     .reader-content.theme-paper { background: #f7f4ec; }
     .reader-content.theme-sepia { background: #f0e3c9; }
     .reader-content.theme-night { background: #101014; }
-    #reader-pane { width: 100%; height: 100%; }
+    #reader-pane { width: 100%; height: 100%; overflow: hidden; /* v1.37.3: residual chapter overflow clips at the border, never spills */ }
     /* PDF pages render into a scrollable canvas column. */
     #reader-pane.pdf-scroll {
       overflow-y: auto;

@@ -94,6 +94,30 @@ if (typeof module !== 'undefined' && module.exports) {
     return null;
   }
 
+  // v1.37.3 (Dean's pagination report): epub.js's paginated flow columnizes
+  // each chapter against its container's MEASURED size. Handed percentage
+  // dimensions (or an unsettled container), it silently renders whole
+  // chapters as one enormous un-columned page -- overflow past the border,
+  // arrow keys skipping entire chapters, per-page size drift, and a
+  // chapter-granular progress bar (every symptom reported on-device).
+  // The fix everywhere: EXPLICIT, measured pixel dimensions, and never
+  // opening until the pane has settled ones.
+  function waitForPaneSize(pane, signal) {
+    return new Promise((resolve) => {
+      let tries = 0;
+      const check = () => {
+        if (signal.aborted) return resolve(null);
+        const w = pane.clientWidth;
+        const h = pane.clientHeight;
+        if (w > 50 && h > 50) return resolve({ width: Math.floor(w), height: Math.floor(h) });
+        tries += 1;
+        if (tries > 100) return resolve({ width: Math.max(320, Math.floor(w) || 320), height: Math.max(320, Math.floor(h) || 480) });
+        requestAnimationFrame(check);
+      };
+      check();
+    });
+  }
+
   function loadScriptOnce(src) {
     return new Promise((resolve, reject) => {
       if (document.querySelector(`script[src="${src}"]`)) return resolve();
@@ -192,14 +216,18 @@ if (typeof module !== 'undefined' && module.exports) {
     // without this subscription, a future failure class would hang at
     // 'Opening book...' exactly like the type-sniff bug did.
     book.on('openFailed', () => setStatus(root, 'Could not open this book.'));
+    // v1.37.3: EXPLICIT PIXELS, never percentages -- see waitForPaneSize's
+    // comment for the whole-chapter-as-one-page failure mode percentages
+    // caused on-device. minSpreadWidth 800 keeps phones strictly
+    // single-page; wide desktop panes get two.
+    const paneSize = await waitForPaneSize(pane, signal);
+    if (!paneSize || signal.aborted) return null;
     const rendition = book.renderTo(pane, {
-      width: '100%',
-      height: '100%',
+      width: paneSize.width,
+      height: paneSize.height,
       flow: 'paginated',
-      // v1.37.2: 'auto' = TWO pages side-by-side when the pane is wide
-      // (desktop/tablet landscape), ONE when narrow (phones) -- epub.js
-      // decides by width, so the layout scales with the device.
       spread: 'auto',
+      minSpreadWidth: 800,
       allowScriptedContent: false,
     });
 
@@ -270,6 +298,18 @@ if (typeof module !== 'undefined' && module.exports) {
     } catch (_) {
       await rendition.display(); // a stale/foreign CFI falls back to the start
     }
+    // v1.37.3 (Dean: desktop pages sometimes EMPTY until a tap): epub.js can
+    // complete display() without painting when the container was measured
+    // mid-layout -- a tap forces the reflow it missed. Nudge one explicit
+    // re-measure a frame after display so the first paint never depends on
+    // user interaction.
+    requestAnimationFrame(() => {
+      const w = Math.floor(pane.clientWidth);
+      const h = Math.floor(pane.clientHeight);
+      if (w > 50 && h > 50) {
+        try { rendition.resize(w, h); } catch (_) { /* not ready */ }
+      }
+    });
     setStatus(root, '');
 
     const toc = [];
@@ -291,7 +331,13 @@ if (typeof module !== 'undefined' && module.exports) {
       setTheme: (name) => rendition.themes.select(name),
       // v1.37.2: called (debounced) on window resize -- re-measures the
       // pane so pagination/spread track the new dimensions.
-      refit: () => { try { rendition.resize(pane.clientWidth, pane.clientHeight); } catch (_) { /* not ready yet */ } },
+      refit: () => {
+        const w = Math.floor(pane.clientWidth);
+        const h = Math.floor(pane.clientHeight);
+        if (w > 50 && h > 50) {
+          try { rendition.resize(w, h); } catch (_) { /* not ready yet */ }
+        }
+      },
       destroy: () => { try { book.destroy(); } catch (_) { /* already torn down */ } },
     };
   }
