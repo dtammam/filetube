@@ -17,8 +17,19 @@ process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-books-'))
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
 const {
-  app, loadDatabase, updateDatabase, getMediaId, scanBooks, BOOKCOVER_DIR,
+  app, loadDatabase, updateDatabase, getMediaId, scanBooks, currentBookScanState, BOOKCOVER_DIR,
 } = require('../../server');
+
+// v1.37.0 gate fix (W2 made the scanner cooperative-async): a scanBooks()
+// call landing while another scan is in flight COALESCES and returns
+// immediately -- deterministic tests must wait for the state machine to
+// settle, not just await their own call.
+async function scanBooksSettled() {
+  await scanBooks();
+  for (let i = 0; i < 400 && currentBookScanState().scanning; i++) {
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+}
 const { buildEpub } = require('../helpers/build-zip');
 
 let server;
@@ -48,7 +59,7 @@ function postJson(urlPath, body) {
 }
 
 test('T4: books-less install is a total no-op -- no db.books writes, scan settles instantly', async () => {
-  await scanBooks();
+  await scanBooksSettled();
   assert.ok(!loadDatabase().books || Object.keys((loadDatabase().books || {}).items || {}).length === 0);
 });
 
@@ -64,7 +75,7 @@ test('T4: config + scan discovers EPUB (full metadata + cover) and PDF (filename
   const cfgRes = await postJson('/api/books/config', { folders: [booksDir] });
   assert.equal(cfgRes.status, 200);
   // Config save fire-and-forgets a scan; run one explicitly for determinism.
-  await scanBooks();
+  await scanBooksSettled();
 
   const items = loadDatabase().books.items;
   const epub = Object.values(items).find((i) => i.format === 'epub');
@@ -87,14 +98,14 @@ test('T4: config + scan discovers EPUB (full metadata + cover) and PDF (filename
 test('T4: an unchanged rescan REUSES items (same object content, addedAt stable)', async () => {
   const beforeItems = loadDatabase().books.items;
   const epubBefore = Object.values(beforeItems).find((i) => i.format === 'epub');
-  await scanBooks();
+  await scanBooksSettled();
   const epubAfter = Object.values(loadDatabase().books.items).find((i) => i.format === 'epub');
   assert.deepEqual(epubAfter, epubBefore, 'unchanged path+size = full reuse, no re-extraction churn');
 });
 
 test('T4: a malformed "epub" (not a zip) indexes by filename -- the scan NEVER aborts', async () => {
   fs.writeFileSync(path.join(booksDir, 'Broken_Book.epub'), 'this is not a zip at all');
-  await scanBooks();
+  await scanBooksSettled();
   const broken = Object.values(loadDatabase().books.items).find((i) => i.title === 'Broken Book');
   assert.ok(broken, 'still indexed');
   assert.equal(broken.hasCover, false);
@@ -114,7 +125,7 @@ test('T4: mid-scan cover/pageCount backfill survives the merge (the 3-field carr
   // Force a re-extract of this item so the scanner's own pass would produce
   // hasCover:false (touch the size).
   fs.appendFileSync(pdf.filePath, ' padding');
-  await scanBooks();
+  await scanBooksSettled();
   const after = loadDatabase().books.items[getMediaId(pdf.filePath)];
   assert.equal(after.hasCover, true, 'carry-forward preserved the backfilled cover flag');
   assert.equal(after.coverExt, '.jpg');
@@ -137,13 +148,13 @@ test('T4: mount-loss guard -- a vanished root prunes NOTHING under it even with 
 
   // Genuine delete: remove the broken epub file -> pruned.
   fs.unlinkSync(path.join(booksDir, 'Broken_Book.epub'));
-  await scanBooks();
+  await scanBooksSettled();
   assert.ok(!Object.values(loadDatabase().books.items).some((i) => i.title === 'Broken Book'), 'genuinely deleted file pruned');
 
   // Mount loss: rename the whole root away -> everything PRESERVED.
   const hiddenDir = `${booksDir}.hidden`;
   fs.renameSync(booksDir, hiddenDir);
-  await scanBooks();
+  await scanBooksSettled();
   const preserved = loadDatabase().books.items;
   assert.ok(Object.values(preserved).some((i) => i.title === 'Dune'), 'unmounted root items preserved');
   assert.ok(loadDatabase().books.progress[epub.id], 'progress preserved too');
@@ -182,4 +193,36 @@ test('T4: POST /api/books/scan 202s and coalesces; scan-status reflects the stat
   assert.ok('scanning' in status && 'lastScan' in status);
   // Let the fire-and-forget scan settle before the next test file assertion.
   await new Promise((resolve) => setTimeout(resolve, 200));
+});
+
+test('GATE FIX (QA CRITICAL #2, the v1.33 Option-C lesson): a root that EXISTS but scans EMPTY while the library has items under it prunes NOTHING', async () => {
+  await updateDatabase((db) => { db.settings.pruneMissing = true; return true; });
+  const itemsBefore = Object.values(loadDatabase().books.items).filter((i) => i.rootFolder === booksDir);
+  assert.ok(itemsBefore.length >= 1, 'precondition: items exist under the root');
+  const epub = itemsBefore.find((i) => i.title === 'Dune');
+  await updateDatabase((db) => {
+    db.books.progress[epub.id] = { locator: { kind: 'epub', cfi: 'x' }, percent: 33, updatedAt: 't' };
+    return true;
+  });
+
+  // Simulate the unmounted-share-with-leftover-mountpoint signature: move
+  // every file OUT of the root but keep the directory itself present.
+  const stash = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-stash-'));
+  const moved = [];
+  for (const entry of fs.readdirSync(booksDir)) {
+    fs.renameSync(path.join(booksDir, entry), path.join(stash, entry));
+    moved.push(entry);
+  }
+  assert.ok(fs.existsSync(booksDir), 'the mountpoint dir still exists');
+
+  await scanBooksSettled();
+  const itemsAfter = Object.values(loadDatabase().books.items).filter((i) => i.rootFolder === booksDir);
+  assert.equal(itemsAfter.length, itemsBefore.length, 'an empty-but-present root must prune NOTHING (treated as unmounted)');
+  assert.ok(loadDatabase().books.progress[epub.id], 'reading progress preserved');
+
+  // Restore + a normal scan sees everything again.
+  for (const entry of moved) fs.renameSync(path.join(stash, entry), path.join(booksDir, entry));
+  fs.rmSync(stash, { recursive: true, force: true });
+  await scanBooksSettled();
+  await updateDatabase((db) => { db.settings.pruneMissing = false; return true; });
 });

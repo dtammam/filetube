@@ -89,7 +89,7 @@ module.exports = [
   // only for the CONSUMER scripts (not common.js itself, which defines them —
   // declaring them there would trip no-redeclare).
   {
-    files: ['public/js/main.js', 'public/js/watch.js', 'public/js/setup.js', 'public/js/player.js'],
+    files: ['public/js/main.js', 'public/js/watch.js', 'public/js/setup.js', 'public/js/player.js', 'public/js/books.js', 'public/js/read.js'],
     languageOptions: {
       globals: {
         clampPositionState: 'readonly',
@@ -156,6 +156,7 @@ module.exports = [
         renderPinnedSidebar: 'readonly',
         // v1.37.0 books: the merged pin fetch (common.js).
         fetchAllPins: 'readonly',
+        refreshAllPinSurfaces: 'readonly',
         // F1 (T3, v1.24.0): deterministic uploader/channel avatar fallback +
         // the real-avatar-vs-generated precedence seam, consumed by
         // watch.js's uploader/comment avatar render (T4, same wave).

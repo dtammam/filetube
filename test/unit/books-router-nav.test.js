@@ -163,3 +163,26 @@ test('unpin: the control is arm/confirm (card-delete pattern) and never navigate
   assert.ok(fnBody.includes("classList.contains('armed')"), 'first tap arms');
   assert.ok(fnBody.includes("method: 'DELETE'"), 'second tap deletes');
 });
+
+// ---- GATE FIXES (both reviewers' CRITICAL + warnings): source locks ----------
+
+test('GATE FIX C1: pin drag-reorder is SOURCE-SCOPED -- cross-source drops blocked, per-source ids to the owning endpoint, merged re-render', () => {
+  const src = fs.readFileSync(path.join(__dirname, '../../public/js/common.js'), 'utf8');
+  assert.ok(src.includes('function pinSourceOf(pin)'), 'the source decision helper exists');
+  assert.ok(src.includes('pinSourceOf(validPins[dragSrcIndex]) !== pinSourceOf(validPins[index])) return;'), 'cross-source rows are not drop targets');
+  assert.ok(src.includes("if (source !== pinSourceOf(validPins[index])) return;"), 'drop re-asserts same-source (defense-in-depth)');
+  assert.ok(src.includes(".filter((p) => pinSourceOf(p) === source)"), 'only the source own ids persist');
+  assert.ok(src.includes("source === 'books' ? '/api/books/pins/reorder' : '/api/subscriptions/pins/reorder'"), 'the endpoint follows the source -- the books reorder route is no longer client-dead');
+  assert.ok(src.includes('.finally(() => refreshAllPinSurfaces());'), 'the re-render is ALWAYS the merged fetch, never a single endpoint response');
+});
+
+test('GATE FIX (QA W4/W6 + S1/S9): sidebar highlight, injection guard, sheet enabled-hint, protocol-relative href rejection', () => {
+  const src = fs.readFileSync(path.join(__dirname, '../../public/js/common.js'), 'utf8');
+  assert.ok(src.includes("books: '/books'"), 'hrefByNavKey lights the Books sidebar link after SPA navigation');
+  assert.ok(src.includes('[data-nav-sidebar="books"]'), 'the injection guard covers the sidebar marker too');
+  assert.ok(src.includes("!p.href.startsWith('//')"), 'protocol-relative hrefs never qualify as same-app');
+  assert.ok(src.includes("Boolean(document.querySelector('[data-nav=\"subscriptions\"]'))"), 'the sheet empty-state hint follows the real ytdlp enablement probe');
+  const common = require('../../public/js/common.js');
+  const entry = common.derivePinnedPlaylistEntries([{ channelDir: '/b/x', label: 'X', href: '//evil.com/path' }]);
+  assert.equal(entry[0].href, null, 'behavioral: //host hrefs drop to null');
+});

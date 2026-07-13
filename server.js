@@ -3497,6 +3497,20 @@ app.post('/api/config', async (req, res) => {
       syntheticOrders.set(resolved, validFolders.length);
       continue;
     }
+    // v1.37.0 gate fix (adversarial W1): the books design's HARD INVARIANT
+    // -- "book roots may never overlap media roots in EITHER direction" --
+    // was only enforced on the books side (POST /api/books/config). Enforce
+    // the reverse here too: a media folder that equals, contains, or lives
+    // inside a configured BOOK root is rejected, or a later media save
+    // could silently double-own a subtree the two scanners' prune/merge
+    // semantics would then fight over.
+    const bookRoots = booksStore.ensureBooks(loadDatabase()).folders;
+    for (const bookRoot of bookRoots) {
+      const resolvedBookRoot = path.resolve(bookRoot);
+      if (resolved === resolvedBookRoot || ytdlpArgs.isPathUnder(resolved, resolvedBookRoot) || ytdlpArgs.isPathUnder(resolvedBookRoot, resolved)) {
+        return res.status(400).json({ error: `Media folder overlaps a book folder: ${trimmed} <-> ${bookRoot}` });
+      }
+    }
     validFolders.push(trimmed);
     originalByResolved.set(resolved, trimmed); // QW2
   }
@@ -3598,6 +3612,9 @@ app.post('/api/scan', (req, res) => {
 // Full design: docs/exec-plans/active/v1.37.0-books.md.
 
 let bookScanState = { scanning: false, lastScan: null, rescanRequested: false };
+// v1.37.0 gate fix (adversarial W4): the single deferred follow-up timer --
+// see scanBooks' finally block.
+let deferredBookRescanTimer = null;
 
 // Test-observability accessor, mirroring currentScanTimer/scanState reads.
 function currentBookScanState() {
@@ -3612,7 +3629,7 @@ async function runBookScan() {
   const ns = booksStore.ensureBooks(db);
   const folders = ns.folders.slice();
   if (folders.length === 0 && Object.keys(ns.items).length === 0) return; // books-less: total no-op
-  const { items, covers, survivingIds, missingRoots } = booksScan.collectBooks(folders, ns.items, getMediaId);
+  const { items, covers, survivingIds, missingRoots } = await booksScan.collectBooks(folders, ns.items, getMediaId);
   for (const root of missingRoots) {
     console.warn(`books: configured folder is missing/unmounted -- nothing under it will be pruned: ${root}`);
   }
@@ -3638,7 +3655,26 @@ async function runBookScan() {
   const prunedIds = [];
   await updateDatabase((fresh) => {
     const freshNs = booksStore.ensureBooks(fresh);
-    const prunable = new Set(booksStore.selectPrunableBookIds(freshNs.items, survivingIds, { missingRoots, pruneMissing }));
+    // v1.37.0 gate fix (QA CRITICAL #2 -- the v1.33 tech-debt-#10 Option-C
+    // lesson, now applied to books): a root whose mountpoint DIRECTORY
+    // still exists but yielded ZERO files this pass, while the library
+    // previously had items under it, is the classic unmounted-share-with-
+    // leftover-mountpoint signature -- treated as VANISHED (nothing under
+    // it prunes), never as a bulk deletion. Without this, an NFS/SMB
+    // hiccup + pruneMissing (default on) wiped every book AND its reading
+    // progress on the next scan -- the exact bug class the media scanner's
+    // detectVanishedRoots closed in v1.33.0.
+    const effectiveMissingRoots = new Set(missingRoots);
+    for (const root of folders) {
+      if (effectiveMissingRoots.has(root)) continue;
+      const hadItems = Object.values(freshNs.items).some((i) => i && i.rootFolder === root);
+      const hasSurvivors = Object.values(items).some((i) => i && i.rootFolder === root);
+      if (hadItems && !hasSurvivors) {
+        effectiveMissingRoots.add(root);
+        console.warn(`books: root ${root} exists but scanned EMPTY while the library has items under it -- treating as unmounted, pruning nothing beneath it`);
+      }
+    }
+    const prunable = new Set(booksStore.selectPrunableBookIds(freshNs.items, survivingIds, { missingRoots: effectiveMissingRoots, pruneMissing }));
     const next = {};
     for (const [id, item] of Object.entries(items)) {
       // The books-internal persist-gate carve-out (exec plan risk #1): the
@@ -3702,13 +3738,25 @@ async function scanBooks() {
   } catch (err) {
     console.error('books: scan failed:', err);
   } finally {
+    // v1.37.0 gate fix (adversarial W4 -- tech-debt #3's lesson ported): a
+    // rescan requested during the FINAL follow-up pass must not be silently
+    // dropped when the budget is spent -- arm exactly one deferred,
+    // rate-limited re-entry (single-guarded, unref'd, never stacked).
+    const stillPending = bookScanState.rescanRequested;
     bookScanState.scanning = false;
     bookScanState.lastScan = new Date().toISOString();
+    if (stillPending && !deferredBookRescanTimer) {
+      deferredBookRescanTimer = setTimeout(() => {
+        deferredBookRescanTimer = null;
+        scanBooks().catch(console.error);
+      }, 5000);
+      deferredBookRescanTimer.unref();
+    }
   }
 }
 
 app.get('/api/books/config', (req, res) => {
-  res.json({ folders: booksStore.ensureBooks(getCachedDatabase()).folders });
+  res.json({ folders: booksStore.readBooks(getCachedDatabase()).folders });
 });
 
 app.post('/api/books/config', async (req, res) => {
@@ -3810,8 +3858,8 @@ function armBookProgressFlushTimerIfNeeded() {
 // value (the effectiveProgress posture).
 function effectiveBookProgress(id) {
   if (pendingBookProgress.has(id)) return pendingBookProgress.get(id);
-  const ns = getCachedDatabase().books;
-  return (ns && ns.progress && ns.progress[id]) || null;
+  const ns = booksStore.readBooks(getCachedDatabase());
+  return ns.progress[id] || null;
 }
 
 // ---- Books: read APIs + file/cover serving (T5) ------------------------------
@@ -3851,7 +3899,7 @@ function publicBookListItem(item) {
 }
 
 app.get('/api/books', (req, res) => {
-  const ns = booksStore.ensureBooks(getCachedDatabase());
+  const ns = booksStore.readBooks(getCachedDatabase());
   let list = Object.values(ns.items);
   const search = typeof req.query.search === 'string' ? req.query.search.trim().toLowerCase() : '';
   if (search !== '') {
@@ -3885,7 +3933,7 @@ app.get('/api/books', (req, res) => {
 // state (T10's pin gesture). Exposing shelf DIR paths to the operator's own
 // UI is the same trust level as /api/config exposing db.folders.
 app.get('/api/books/folders', (req, res) => {
-  const ns = booksStore.ensureBooks(getCachedDatabase());
+  const ns = booksStore.readBooks(getCachedDatabase());
   const byDir = new Map();
   for (const item of Object.values(ns.items)) {
     if (typeof item.filePath !== 'string') continue;
@@ -3911,7 +3959,7 @@ app.get('/api/books/pins', (req, res) => {
 });
 
 app.get('/api/books/:id', (req, res) => {
-  const ns = booksStore.ensureBooks(getCachedDatabase());
+  const ns = booksStore.readBooks(getCachedDatabase());
   const item = ns.items[req.params.id];
   if (!item) return res.status(404).json({ error: 'Book not found' });
   res.json({
@@ -3924,8 +3972,14 @@ app.get('/api/books/:id', (req, res) => {
 
 const BOOK_CONTENT_TYPES = { epub: 'application/epub+zip', pdf: 'application/pdf' };
 
+// SECURITY INVARIANT (gate, adversarial S2): this route serves
+// item.filePath UNCHECKED because db.books.items rows are written
+// EXCLUSIVELY by the book scanner (paths confined to configured book
+// roots) and the cover-backfill route (which never touches filePath). Any
+// future writer of items[*].filePath MUST re-establish confinement here or
+// this becomes an arbitrary-file-read.
 app.get('/book/:id/file', (req, res) => {
-  const ns = booksStore.ensureBooks(getCachedDatabase());
+  const ns = booksStore.readBooks(getCachedDatabase());
   const item = ns.items[req.params.id];
   if (!item) return res.status(404).json({ error: 'Book not found' });
   if (!fs.existsSync(item.filePath)) return res.status(404).json({ error: 'Book file missing on disk' });
@@ -3939,7 +3993,7 @@ app.get('/book/:id/file', (req, res) => {
 });
 
 app.get('/bookcover/:id', (req, res) => {
-  const ns = booksStore.ensureBooks(getCachedDatabase());
+  const ns = booksStore.readBooks(getCachedDatabase());
   const item = ns.items[req.params.id];
   if (!item) return res.status(404).json({ error: 'Book not found' });
   if (item.hasCover === true && item.coverExt) {
@@ -3990,7 +4044,7 @@ app.post(
   '/api/books/:id/cover',
   express.raw({ type: Object.keys(BOOK_COVER_TYPES), limit: BOOK_COVER_MAX_BYTES }),
   async (req, res) => {
-    const ns = booksStore.ensureBooks(getCachedDatabase());
+    const ns = booksStore.readBooks(getCachedDatabase());
     const item = ns.items[req.params.id];
     if (!item) return res.status(404).json({ error: 'Book not found' });
     if (item.hasCover === true) return res.status(200).json({ applied: false, reason: 'already has a cover' });
@@ -4037,7 +4091,7 @@ app.post(
 // ---- Books: shelf pins (T10 server half -- the ytdlp pins route shapes) ----
 
 app.post('/api/books/pins', async (req, res) => {
-  const ns = booksStore.ensureBooks(getCachedDatabase());
+  const ns = booksStore.readBooks(getCachedDatabase());
   const validation = booksStore.validateShelfPinInput(req.body, ns.folders);
   if (!validation.ok) return res.status(400).json({ error: validation.error });
   try {
@@ -4078,7 +4132,7 @@ app.get('/books', (req, res) => {
 });
 
 app.post('/api/books/:id/progress', (req, res) => {
-  const ns = booksStore.ensureBooks(getCachedDatabase());
+  const ns = booksStore.readBooks(getCachedDatabase());
   const item = ns.items[req.params.id];
   if (!item) return res.status(404).json({ error: 'Book not found' });
   const { locator, percent } = req.body || {};

@@ -116,3 +116,36 @@ test('T1: the buildEpub fixture helper produces a zip this reader round-trips (t
   assert.equal(entries.find((e) => e.name === 'mimetype').method, 0);
   assert.equal(zlib.crc32(zip.extractEntryByName(epub, entries, 'mimetype')) >>> 0, zlib.crc32(Buffer.from('application/epub+zip')) >>> 0);
 });
+
+// ---- v1.37.0 gate fixes: the caps the first round left unexercised ----------
+
+test('GATE FIX (adversarial W3): a STORED entry with a LYING small uncompressedSize still hits the cap -- method 0 has no zlib backstop, so the stored size is checked independently', () => {
+  const big = Buffer.alloc(zip.MAX_INFLATED_BYTES + 1024, 7);
+  const buf = buildZip([{ name: 'stored-bomb.bin', data: big, method: 0 }]);
+  const entries = zip.listEntries(buf);
+  // Forge a tiny uncompressedSize into the central record (offset +24).
+  const eocdOffset = buf.length - 22;
+  const centralOffset = buf.readUInt32LE(eocdOffset + 16);
+  buf.writeUInt32LE(10, centralOffset + 24);
+  const lied = zip.listEntries(buf);
+  assert.equal(lied[0].uncompressedSize, 10, 'sanity: the lie is in place');
+  assert.throws(() => zip.extractEntry(buf, lied[0]), (err) => err.code === 'EZIPENTRYTOOBIG');
+  assert.ok(entries, 'original listing was fine');
+});
+
+test('GATE FIX (QA W5): the central-directory size cap and corrupt-central branches are exercised', () => {
+  const buf = buildZip([{ name: 'a.txt', data: 'aaaa' }]);
+  const eocdOffset = buf.length - 22;
+  // Oversized central directory claim -> EZIPCENTRALTOOBIG.
+  const bigCd = Buffer.from(buf);
+  bigCd.writeUInt32LE(zip.MAX_CENTRAL_DIR_BYTES + 1, eocdOffset + 12);
+  assert.throws(() => zip.listEntries(bigCd), (err) => err.code === 'EZIPCENTRALTOOBIG' || err.code === 'EZIPCORRUPT');
+  // Central directory extending past the EOCD -> EZIPCORRUPT.
+  const pastEnd = Buffer.from(buf);
+  pastEnd.writeUInt32LE(buf.length, pastEnd.length - 22 + 16); // offset beyond EOCD
+  assert.throws(() => zip.listEntries(pastEnd), (err) => err.code === 'EZIPCORRUPT');
+  // Inflated totalEntries walks past the real central dir -> EZIPCORRUPT.
+  const extraEntries = Buffer.from(buf);
+  extraEntries.writeUInt16LE(9, extraEntries.length - 22 + 10);
+  assert.throws(() => zip.listEntries(extraEntries), (err) => err.code === 'EZIPCORRUPT');
+});

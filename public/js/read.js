@@ -207,6 +207,17 @@ if (typeof module !== 'undefined' && module.exports) {
     // book once; cache the serialized result per book id+size so reopening
     // is instant (client-only concern; a cache miss regenerates).
     const locationsKey = `filetube_locations_${detail.id}_${detail.size}`;
+    // Gate fix (adversarial S3): the per-book locations cache is BOUNDED --
+    // keep at most 20 entries; evict strangers beyond that (no timestamps
+    // needed: an eviction just costs one regenerate-on-open later).
+    try {
+      const locationKeys = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith('filetube_locations_') && key !== locationsKey) locationKeys.push(key);
+      }
+      for (const key of locationKeys.slice(19)) localStorage.removeItem(key);
+    } catch (_) { /* storage disabled */ }
     book.ready.then(() => {
       const cached = readPref(locationsKey, '');
       if (cached) {

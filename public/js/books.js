@@ -180,7 +180,12 @@ if (typeof module !== 'undefined' && module.exports) {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ dir: chip.dir, label: chip.name }),
               });
-            request.then(() => loadShelfChips()).catch(() => {});
+            request.then(() => {
+              loadShelfChips();
+              // Gate fix (QA S7): the sidebar + Playlists sheet reflect the
+              // pin change immediately, not on the next full load.
+              if (typeof refreshAllPinSurfaces === 'function') refreshAllPinSurfaces();
+            }).catch(() => {});
           }, { signal });
           el.appendChild(pinBtn);
           chipsHost.appendChild(el);

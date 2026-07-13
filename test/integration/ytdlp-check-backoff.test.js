@@ -298,17 +298,27 @@ test('v1.36 W3: a breaker resume whose ENTIRE deferred set became ineligible (pa
 test('v1.36 F1 fix round: a listed pre-cutoff video (the slack window the break filter admits) is NEVER downloaded -- rules.isBeforeCutoff gates the survivor set', async () => {
   const deps = makeFakeDeps();
   const sub = await addSub(deps, 'https://www.youtube.com/@slackwindow');
-  // The cutoff-date model stamps a fresh sub with a real cutoff; pin a known
-  // one so the listing below is unambiguous.
-  await store.setSubscriptionStatus(deps, sub.id, { cutoffDate: '20260709' });
+  // DYNAMIC dates (gate fix-round lesson): the cutoff pin must be > the
+  // default (yesterday -- setSubscriptionStatus only advances FORWARD) and
+  // within parseCapturedReleaseDate's year bounds (far-future literals are
+  // rejected), and the fixture dates must straddle it. Near-today LITERALS
+  // rotted the day the calendar rolled past them.
+  const yyyymmdd = (offsetDays) => {
+    const d = new Date(Date.now() + offsetDays * 24 * 60 * 60 * 1000);
+    return String(d.getUTCFullYear()) + String(d.getUTCMonth() + 1).padStart(2, '0') + String(d.getUTCDate()).padStart(2, '0');
+  };
+  const cutoff = yyyymmdd(5);
+  const newDate = yyyymmdd(7);   // post-cutoff: kept
+  const slackDate = yyyymmdd(1); // pre-cutoff (inside a slack window): dropped by the JS gate
+  await store.setSubscriptionStatus(deps, sub.id, { cutoffDate: cutoff });
 
   const downloaded = [];
   run.runList = async () => ({
     ok: true,
     code: 101, // break-early stop -- ok:true with the pre-break JSON intact
     stdout: [
-      JSON.stringify({ id: 'newvideo001', availability: 'public', upload_date: '20260711' }),
-      JSON.stringify({ id: 'slackold002', availability: 'public', upload_date: '20260705' }), // inside slack, pre-cutoff
+      JSON.stringify({ id: 'newvideo001', availability: 'public', upload_date: newDate }),
+      JSON.stringify({ id: 'slackold002', availability: 'public', upload_date: slackDate }), // pre-cutoff
       JSON.stringify({ id: 'dateless003', availability: 'public' }), // no upload_date: must be KEPT (daterange parity)
     ].join('\n'),
     stderr: '',

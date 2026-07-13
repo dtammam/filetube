@@ -1503,7 +1503,10 @@ function shouldInjectBooksNav(payload) {
 // Idempotent + defensive, mirroring injectSubscriptionsNavLinkIfEnabled.
 function injectBooksNavLinkIfEnabled() {
   if (typeof document === 'undefined' || typeof fetch === 'undefined') return;
-  if (document.querySelector('[data-nav="books"]')) return; // already injected
+  // v1.37.0 gate fix (QA W6): the guard covers BOTH injected links -- the
+  // bottom-nav one (data-nav) AND the sidebar one (data-nav-sidebar), so a
+  // page without a #bottom-nav can never double-inject the sidebar link.
+  if (document.querySelector('[data-nav="books"]') || document.querySelector('[data-nav-sidebar="books"]')) return;
 
   fetch('/api/books/config')
     .then((res) => (res.ok ? res.json() : null))
@@ -2626,7 +2629,7 @@ if (typeof window !== 'undefined') {
     const sidebar = document.getElementById('sidebar');
     if (sidebar) {
       sidebar.querySelectorAll('.sidebar-item.active').forEach((el) => el.classList.remove('active'));
-      const hrefByNavKey = { home: '/', settings: '/setup.html', subscriptions: '/subscriptions' };
+      const hrefByNavKey = { home: '/', settings: '/setup.html', subscriptions: '/subscriptions', books: '/books' };
       const href = key ? hrefByNavKey[key] : null;
       const match = href && sidebar.querySelector('a.sidebar-item[href="' + href + '"]');
       if (match) match.classList.add('active');
@@ -3192,7 +3195,13 @@ function buildUnpinButton(pin, onDone) {
 function refreshAllPinSurfaces() {
   fetchAllPins().then((pins) => {
     renderPinnedSidebar(pins);
-    renderPinnedPlaylists(pins, true);
+    // Gate fix (adversarial S1): the sheet's zero-pin empty-state must only
+    // render when the ytdlp module is genuinely enabled -- the injected
+    // Subscriptions nav link IS that probe's durable result, so use its
+    // presence as the hint instead of hardcoding true (a books-only install
+    // keeps the disabled-module nothing-at-all posture).
+    const ytdlpEnabled = Boolean(document.querySelector('[data-nav="subscriptions"]'));
+    renderPinnedPlaylists(pins, ytdlpEnabled);
   });
 }
 
@@ -3213,7 +3222,9 @@ function derivePinnedPlaylistEntries(pins) {
         // `/?root=` default); a book-shelf pin's server payload pre-shapes
         // `/books?root=...`. THE one deliberate shared-renderer widening --
         // the shape-lock test updates in lockstep (exec plan risk #3).
-        href: typeof p.href === 'string' && p.href.startsWith('/') ? p.href : null,
+        // Same-app ABSOLUTE PATHS only: '/x' qualifies, protocol-relative
+        // '//host/x' (an external origin) does not (gate fix, QA S9).
+        href: typeof p.href === 'string' && p.href.startsWith('/') && !p.href.startsWith('//') ? p.href : null,
       };
     });
 }
@@ -3475,6 +3486,13 @@ function renderPinnedSidebar(pins) {
 // @param {HTMLElement} section the freshly-built `#sidebar-pinned-section`
 // @param {Array<object>} validPins the SAME filtered/ordered pin records
 //   `renderPinnedSidebar` rendered rows FROM (index-aligned with the rows)
+// v1.37.0 gate fix (BOTH reviewers' CRITICAL): the pin's owning module --
+// drag scoping and the reorder endpoint are decided by this, exactly like
+// pinDeleteEndpoint above. Untagged legacy pins default to 'channel'.
+function pinSourceOf(pin) {
+  return pin && pin.pinSource === 'books' ? 'books' : 'channel';
+}
+
 function wirePinnedSidebarDragAndDrop(section, validPins) {
   const rows = Array.prototype.slice.call(section.querySelectorAll('.sidebar-item[data-pin-id]'));
   let dragSrcIndex = null;
@@ -3490,6 +3508,11 @@ function wirePinnedSidebarDragAndDrop(section, validPins) {
       }
     });
     rowEl.addEventListener('dragover', (e) => {
+      // v1.37.0 gate fix: a row from ANOTHER pin source is NOT a drop
+      // target (no preventDefault = the browser shows no-drop) -- channel
+      // pins reorder among channel pins, book shelves among book shelves,
+      // per the exec plan's own "within their own section only" contract.
+      if (dragSrcIndex !== null && pinSourceOf(validPins[dragSrcIndex]) !== pinSourceOf(validPins[index])) return;
       e.preventDefault();
       if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
       const rect = rowEl.getBoundingClientRect();
@@ -3507,9 +3530,21 @@ function wirePinnedSidebarDragAndDrop(section, validPins) {
       const fromIndex = dragSrcIndex;
       dragSrcIndex = null;
       if (fromIndex === null || Number.isNaN(index)) return;
+      const source = pinSourceOf(validPins[fromIndex]);
+      // Cross-source drops are already blocked at dragover; re-assert here
+      // (defense-in-depth against a synthetic drop event).
+      if (source !== pinSourceOf(validPins[index])) return;
       const toIndex = computeDropIndex(fromIndex, index, before);
       const reordered = moveArrayItem(validPins, fromIndex, toIndex);
-      persistPinReorder(reordered.map((p) => p && p.id).filter((id) => typeof id === 'string' && id !== ''));
+      // v1.37.0 gate fix: persist ONLY this source's ids, in their new
+      // relative order, to this source's OWN endpoint -- a mixed id list
+      // hitting the ytdlp endpoint tail-dropped every book id and the
+      // response re-render made book pins vanish from the sidebar.
+      const orderedIds = reordered
+        .filter((p) => pinSourceOf(p) === source)
+        .map((p) => p && p.id)
+        .filter((id) => typeof id === 'string' && id !== '');
+      persistPinReorder(orderedIds, source);
     });
     rowEl.addEventListener('dragend', () => {
       dragSrcIndex = null;
@@ -3528,21 +3563,26 @@ function wirePinnedSidebarDragAndDrop(section, validPins) {
 // so a rejected/errored drag can never leave the sidebar silently diverged
 // from what is actually persisted -- mirrors
 // lib/ytdlp/client/subscriptions.js's `persistReorder` fail-safe EXACTLY.
-function persistPinReorder(orderedIds) {
-  fetch('/api/subscriptions/pins/reorder', {
+function persistPinReorder(orderedIds, source) {
+  // v1.37.0 gate fix (BOTH reviewers' CRITICAL): the endpoint is the pin
+  // SOURCE's own (book shelves have their own reorder route -- previously
+  // client-dead), and the re-render ALWAYS goes through the merged
+  // refreshAllPinSurfaces -- never a single endpoint's response, which only
+  // carries that module's pins and made the other module's pins vanish
+  // from the sidebar until the next full load.
+  const endpoint = source === 'books' ? '/api/books/pins/reorder' : '/api/subscriptions/pins/reorder';
+  fetch(endpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ orderedIds }),
   })
-    .then((r) => (r.ok ? r.json() : Promise.reject(new Error('pin reorder failed with status ' + r.status))))
-    .then((pins) => renderPinnedSidebar(pins))
+    .then((r) => (r.ok ? null : Promise.reject(new Error('pin reorder failed with status ' + r.status))))
     .catch((err) => {
+      // A failed request still falls through to the merged refetch below --
+      // the sidebar must never trust the optimistic client-side order.
       console.error('Pin reorder failed:', err);
-      fetch('/api/subscriptions/pins')
-        .then((r) => (r.ok ? r.json() : []))
-        .catch(() => [])
-        .then((pins) => renderPinnedSidebar(pins));
-    });
+    })
+    .finally(() => refreshAllPinSurfaces());
 }
 
 // v1.26.2 polish (Dean punchlist -- sheet/modal transitions): every bottom
