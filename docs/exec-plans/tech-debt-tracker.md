@@ -46,3 +46,8 @@
 - **What:** `DELETE /api/videos/:id?removeAnyway=true` (offered on EROFS/EACCES, and since v1.36.2 also EBUSY/EPERM) deliberately leaves the file on disk; the next scan re-discovers it and resurrects the library entry (same path-hashed id). The v1.36.2 archive-append stops yt-dlp re-DOWNLOADS, not scanner re-ADDS. Pre-existing since v1.13; the wider errno set makes it likelier to be hit (EBUSY is often transient).
 - **Fix direction:** a deferred-unlink retry for tombstoned paths (e.g. attempted at scan time), or a scan-suppression tombstone list. Honest UI copy already warns ("may reappear on the next scan").
 - **Source:** v1.36.2 slim gate (adversarial APPROVE, ship-note 2).
+
+## #33 — nav-injector idempotency + sheet-hint parity nits (v1.37.0 gate residuals)
+- **What:** (a) `injectBooksNavLinkIfEnabled`'s inner post-fetch recheck only tests `data-nav`, leaving a narrow simultaneous-first-call double-inject window on a `#bottom-nav`-less page; the SUBSCRIPTIONS injector has the same sidebar-marker gap the books entry guard already fixed (parity candidate). (b) `refreshAllPinSurfaces`' ytdlp-enablement proxy (`[data-nav="subscriptions"]` presence) errs conservative on shells without a bottom nav (no empty-state where one could show).
+- **Severity:** cosmetic-only, both reviewers explicitly non-blocking.
+- **Source:** v1.37.0 delta re-confirms (QA + adversarial APPROVE notes).
