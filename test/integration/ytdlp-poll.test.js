@@ -152,6 +152,31 @@ test('runPoll applies isArchived/premiere/skip filters, downloads only survivors
   assert.equal(deps.scanCalls.length, 1, 'scanDirectories must be triggered after processing the subscription (AC17)');
 });
 
+// ---- v1.37.5 (Dean's "Skip" action): a skip-listed video is never a survivor
+
+test('a video on the permanent skip list is excluded from the download targets, like the archive', async () => {
+  const deps = makeFakeDeps();
+  await addSub(deps);
+
+  const skippedVideo = { id: 'skipped1', extractor_key: 'Youtube', availability: 'public' };
+  const survivorVideo = { id: 'survivor1', availability: 'public' };
+
+  // The skip list lives at its own resolved path, sharing the archive's
+  // `<extractor> <id>` line format (lowercase extractor, as yt-dlp writes it).
+  fs.writeFileSync(args.resolveSkiplistPath(baseConfig()), 'youtube skipped1\n', 'utf8');
+
+  let capturedTargetIds = null;
+  run.runList = async () => ({ ok: true, stdout: ndjson([skippedVideo, survivorVideo]), stderr: '' });
+  run.runDownload = async (_sub, _config, targetIds) => {
+    capturedTargetIds = targetIds;
+    return { ok: true, code: 0, stdout: '', stderr: '' };
+  };
+
+  const result = await ytdlp.runPoll(deps, baseConfig());
+  assert.equal(result.started, true);
+  assert.deepEqual(capturedTargetIds, ['survivor1'], 'the skip-listed id must never appear among download targets');
+});
+
 // ---- D5: survivorIds is de-duplicated before building download args -------
 
 test('D5: a video listed twice in one channel dump (duplicate id, e.g. under two tabs) counts once and produces a single download target', async () => {
