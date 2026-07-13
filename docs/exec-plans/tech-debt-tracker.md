@@ -51,3 +51,8 @@
 - **What:** (a) `injectBooksNavLinkIfEnabled`'s inner post-fetch recheck only tests `data-nav`, leaving a narrow simultaneous-first-call double-inject window on a `#bottom-nav`-less page; the SUBSCRIPTIONS injector has the same sidebar-marker gap the books entry guard already fixed (parity candidate). (b) `refreshAllPinSurfaces`' ytdlp-enablement proxy (`[data-nav="subscriptions"]` presence) errs conservative on shells without a bottom nav (no empty-state where one could show).
 - **Severity:** cosmetic-only, both reviewers explicitly non-blocking.
 - **Source:** v1.37.0 delta re-confirms (QA + adversarial APPROVE notes).
+
+## #34 — subscriptions.html page-local styles are lost on in-app swaps (pre-existing)
+- **What:** the SPA router's extractViewFragment takes only #view-root, so lib/ytdlp/views/subscriptions.html's page-local <style> block (`.sub-*` classes, since the original T5 commit) never loads when /subscriptions is reached via in-app navigation — the same latent unstyled-fragment exposure v1.37.1 fixed for the books/reader pages by relocating their styles into style.css.
+- **Fix direction:** relocate the subscriptions page-local styles into public/css/style.css (the v1.37.1 pattern), or teach the router to adopt view-scoped styles.
+- **Source:** v1.37.1 slim gate (adversarial APPROVE, verification (d)).

@@ -187,6 +187,11 @@ if (typeof module !== 'undefined' && module.exports) {
     // none, so it was treated as an UNPACKED book directory and epub.js
     // fetched /book/<id>/file/META-INF/container.xml (404) forever.
     const book = window.ePub(`/book/${encodeURIComponent(detail.id)}/file`, { openAs: 'epub' });
+    // Gate residual (v1.37.1 slim gate): epub.js converts ANY genuine open
+    // failure into an 'openFailed' EVENT (never a promise rejection) --
+    // without this subscription, a future failure class would hang at
+    // 'Opening book...' exactly like the type-sniff bug did.
+    book.on('openFailed', () => setStatus(root, 'Could not open this book.'));
     const rendition = book.renderTo(pane, {
       width: '100%',
       height: '100%',
