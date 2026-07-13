@@ -47,6 +47,12 @@ const { buildWatchUrl, classifySingleVideo, isSafeVideoId } = require('./lib/ytd
 // needs the exact same predicate, and a leaf module lets both sides
 // `require()` it directly without any circular dependency.
 const { isYtdlpIntermediate } = require('./lib/ytdlpIntermediates');
+// v1.37.0 books: the db.books namespace owner + the pure scanner core --
+// see docs/exec-plans/active/v1.37.0-books.md. Both are leaf modules over
+// deps this file already provides (loadDatabase/updateDatabase/getMediaId);
+// requiring them has no side effects (the ytdlp direct-require posture).
+const booksStore = require('./lib/books/store');
+const booksScan = require('./lib/books/scan');
 // C4 "fun stats" page (v1.24 UX Round, Wave 3): pure aggregation helpers over
 // `db.metadata`, unit-tested on their own against a synthetic fixture. See
 // lib/stats.js's header comment and `GET /api/stats` below for the full
@@ -69,6 +75,10 @@ const PORT = process.env.PORT || 3000;
 const DATA_DIR = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : (fs.existsSync('/app/data') ? '/app/data' : __dirname);
 const DB_FILE = path.join(DATA_DIR, 'db.json');
 const THUMBNAIL_DIR = path.join(DATA_DIR, '.thumbnails');
+// v1.37.0 books: covers live in a BOOKS-OWNED dir -- never THUMBNAIL_DIR,
+// so the media scan's thumbnail unlink loop can never touch a book cover
+// and the book scanner's cover pruning can never touch a video thumbnail.
+const BOOKCOVER_DIR = path.join(DATA_DIR, '.bookcovers');
 
 // Resolve the transcode cache directory: `TRANSCODE_DIR` env override (resolved
 // to an absolute path) takes precedence; otherwise default to `<dataDir>/
@@ -3182,7 +3192,12 @@ function armScanTimer() {
   const db = loadDatabase();
   const ms = scanIntervalMs(db.settings.scanIntervalMinutes);
   if (ms) {
-    scanTimer = setInterval(() => scanDirectories().catch(console.error), ms).unref();
+    scanTimer = setInterval(() => {
+      scanDirectories().catch(console.error);
+      // v1.37.0 books: piggyback on the media interval (exec plan §2) --
+      // no second timer, and a books-less install no-ops.
+      scanBooks().catch(console.error);
+    }, ms).unref();
   }
   return scanTimer;
 }
@@ -3482,6 +3497,20 @@ app.post('/api/config', async (req, res) => {
       syntheticOrders.set(resolved, validFolders.length);
       continue;
     }
+    // v1.37.0 gate fix (adversarial W1): the books design's HARD INVARIANT
+    // -- "book roots may never overlap media roots in EITHER direction" --
+    // was only enforced on the books side (POST /api/books/config). Enforce
+    // the reverse here too: a media folder that equals, contains, or lives
+    // inside a configured BOOK root is rejected, or a later media save
+    // could silently double-own a subtree the two scanners' prune/merge
+    // semantics would then fight over.
+    const bookRoots = booksStore.ensureBooks(loadDatabase()).folders;
+    for (const bookRoot of bookRoots) {
+      const resolvedBookRoot = path.resolve(bookRoot);
+      if (resolved === resolvedBookRoot || ytdlpArgs.isPathUnder(resolved, resolvedBookRoot) || ytdlpArgs.isPathUnder(resolvedBookRoot, resolved)) {
+        return res.status(400).json({ error: `Media folder overlaps a book folder: ${trimmed} <-> ${bookRoot}` });
+      }
+    }
     validFolders.push(trimmed);
     originalByResolved.set(resolved, trimmed); // QW2
   }
@@ -3571,6 +3600,568 @@ app.post('/api/scan', (req, res) => {
     scanDirectories().catch(console.error);
   }
   res.status(202).json({ scanning: true, alreadyInProgress });
+});
+
+// ---- Books (v1.37.0) --------------------------------------------------------
+//
+// The book library's server half: its OWN folder config (`db.books.folders`
+// -- never `db.folders`), its own scanner with the media scan's
+// overlap/coalescing discipline, and cover storage under BOOKCOVER_DIR.
+// Everything degrades to a no-op on a books-less install (zero folders =
+// zero scans = zero db writes = the disabled-module posture ytdlp set).
+// Full design: docs/exec-plans/active/v1.37.0-books.md.
+
+let bookScanState = { scanning: false, lastScan: null, rescanRequested: false };
+// v1.37.0 gate fix (adversarial W4): the single deferred follow-up timer --
+// see scanBooks' finally block.
+let deferredBookRescanTimer = null;
+
+// Test-observability accessor, mirroring currentScanTimer/scanState reads.
+function currentBookScanState() {
+  return bookScanState;
+}
+
+async function runBookScan() {
+  // Phase-1 read (no lock): folders + the previous items snapshot. All the
+  // slow work (walk, zip reads, cover extraction) happens against this
+  // snapshot, off the writer lock -- the media scan's own discipline.
+  const db = loadDatabase();
+  const ns = booksStore.ensureBooks(db);
+  const folders = ns.folders.slice();
+  if (folders.length === 0 && Object.keys(ns.items).length === 0) return; // books-less: total no-op
+  const { items, covers, survivingIds, missingRoots } = await booksScan.collectBooks(folders, ns.items, getMediaId);
+  for (const root of missingRoots) {
+    console.warn(`books: configured folder is missing/unmounted -- nothing under it will be pruned: ${root}`);
+  }
+
+  // Cover writes BEFORE the db merge (an item never claims hasCover before
+  // its file exists) -- atomic tmp+rename, best-effort per cover.
+  if (covers.length > 0) {
+    fs.mkdirSync(BOOKCOVER_DIR, { recursive: true });
+    for (const cover of covers) {
+      const finalPath = path.join(BOOKCOVER_DIR, `${cover.id}${cover.ext}`);
+      const tmpPath = `${finalPath}.tmp`;
+      try {
+        fs.writeFileSync(tmpPath, cover.data);
+        fs.renameSync(tmpPath, finalPath);
+      } catch (err) {
+        console.warn(`books: failed to write cover for ${cover.id} (${err && err.code}) -- placeholder card`);
+        try { fs.unlinkSync(tmpPath); } catch (_) { /* best-effort */ }
+      }
+    }
+  }
+
+  const pruneMissing = !!(db.settings && db.settings.pruneMissing);
+  const prunedIds = [];
+  await updateDatabase((fresh) => {
+    const freshNs = booksStore.ensureBooks(fresh);
+    // v1.37.0 gate fix (QA CRITICAL #2 -- the v1.33 tech-debt-#10 Option-C
+    // lesson, now applied to books): a root whose mountpoint DIRECTORY
+    // still exists but yielded ZERO files this pass, while the library
+    // previously had items under it, is the classic unmounted-share-with-
+    // leftover-mountpoint signature -- treated as VANISHED (nothing under
+    // it prunes), never as a bulk deletion. Without this, an NFS/SMB
+    // hiccup + pruneMissing (default on) wiped every book AND its reading
+    // progress on the next scan -- the exact bug class the media scanner's
+    // detectVanishedRoots closed in v1.33.0.
+    const effectiveMissingRoots = new Set(missingRoots);
+    for (const root of folders) {
+      if (effectiveMissingRoots.has(root)) continue;
+      const hadItems = Object.values(freshNs.items).some((i) => i && i.rootFolder === root);
+      const hasSurvivors = Object.values(items).some((i) => i && i.rootFolder === root);
+      if (hadItems && !hasSurvivors) {
+        effectiveMissingRoots.add(root);
+        console.warn(`books: root ${root} exists but scanned EMPTY while the library has items under it -- treating as unmounted, pruning nothing beneath it`);
+      }
+    }
+    const prunable = new Set(booksStore.selectPrunableBookIds(freshNs.items, survivingIds, { missingRoots: effectiveMissingRoots, pruneMissing }));
+    const next = {};
+    for (const [id, item] of Object.entries(items)) {
+      // The books-internal persist-gate carve-out (exec plan risk #1): the
+      // ONLY non-scan writer of item fields is the client cover/pageCount
+      // backfill (POST /api/books/:id/cover), which can land between this
+      // scan's Phase-1 snapshot and this merge. Carry those three fields
+      // forward from the FRESH row whenever this pass didn't produce them
+      // itself -- regression-locked in the books scanner integration test.
+      const freshItem = freshNs.items[id];
+      let merged = item;
+      if (freshItem) {
+        if (!merged.hasCover && freshItem.hasCover === true) {
+          merged = { ...merged, hasCover: true, coverExt: freshItem.coverExt || null };
+        }
+        if (merged.pageCount === undefined && freshItem.pageCount !== undefined) {
+          merged = { ...merged, pageCount: freshItem.pageCount };
+        }
+      }
+      next[id] = merged;
+    }
+    // Non-surviving items: kept unless genuinely prunable (mount-loss guard
+    // + the pruneMissing gate live inside selectPrunableBookIds).
+    for (const [id, item] of Object.entries(freshNs.items)) {
+      if (next[id]) continue;
+      if (prunable.has(id)) {
+        prunedIds.push(id);
+        delete freshNs.progress[id];
+        continue;
+      }
+      next[id] = item;
+    }
+    freshNs.items = next;
+    return true;
+  });
+
+  // Cover-file hygiene for genuinely pruned books -- best-effort, after the
+  // db state is authoritative.
+  for (const id of prunedIds) {
+    for (const ext of ['.jpg', '.png']) {
+      try { fs.unlinkSync(path.join(BOOKCOVER_DIR, `${id}${ext}`)); } catch (_) { /* best-effort */ }
+    }
+  }
+}
+
+// Overlap/coalescing guard -- the scanDirectories discipline (a scan
+// requested mid-scan runs exactly one follow-up pass, never a concurrent
+// second walker).
+async function scanBooks() {
+  if (bookScanState.scanning) {
+    bookScanState.rescanRequested = true;
+    return;
+  }
+  bookScanState.scanning = true;
+  try {
+    let followups = 0;
+    do {
+      bookScanState.rescanRequested = false;
+      await runBookScan();
+      followups++;
+    } while (bookScanState.rescanRequested && followups <= MAX_RESCAN_FOLLOWUPS);
+  } catch (err) {
+    console.error('books: scan failed:', err);
+  } finally {
+    // v1.37.0 gate fix (adversarial W4 -- tech-debt #3's lesson ported): a
+    // rescan requested during the FINAL follow-up pass must not be silently
+    // dropped when the budget is spent -- arm exactly one deferred,
+    // rate-limited re-entry (single-guarded, unref'd, never stacked).
+    const stillPending = bookScanState.rescanRequested;
+    bookScanState.scanning = false;
+    bookScanState.lastScan = new Date().toISOString();
+    if (stillPending && !deferredBookRescanTimer) {
+      deferredBookRescanTimer = setTimeout(() => {
+        deferredBookRescanTimer = null;
+        scanBooks().catch(console.error);
+      }, 5000);
+      deferredBookRescanTimer.unref();
+    }
+  }
+}
+
+app.get('/api/books/config', (req, res) => {
+  res.json({ folders: booksStore.readBooks(getCachedDatabase()).folders });
+});
+
+app.post('/api/books/config', async (req, res) => {
+  const { folders } = req.body || {};
+  if (!Array.isArray(folders) || !folders.every((f) => typeof f === 'string' && f.trim() !== '')) {
+    return res.status(400).json({ error: 'folders must be an array of non-empty strings' });
+  }
+  const resolved = [];
+  const seen = new Set();
+  for (const raw of folders) {
+    const folder = path.resolve(raw.trim());
+    if (!fs.existsSync(folder) || !fs.statSync(folder).isDirectory()) {
+      return res.status(400).json({ error: `Folder does not exist: ${folder}` });
+    }
+    if (seen.has(folder)) continue;
+    seen.add(folder);
+    resolved.push(folder);
+  }
+  // HARD INVARIANT (exec plan §2): book roots may never overlap media roots
+  // in EITHER direction -- a file must have exactly one owner, or the two
+  // scanners' prune/merge semantics fight over it.
+  const mediaFolders = (getCachedDatabase().folders || []).map((f) => path.resolve(f));
+  for (const bookRoot of resolved) {
+    for (const mediaRoot of mediaFolders) {
+      if (bookRoot === mediaRoot || ytdlpArgs.isPathUnder(bookRoot, mediaRoot) || ytdlpArgs.isPathUnder(mediaRoot, bookRoot)) {
+        return res.status(400).json({ error: `Book folder overlaps a media folder: ${bookRoot} <-> ${mediaRoot}` });
+      }
+    }
+  }
+  try {
+    await updateDatabase((db) => {
+      booksStore.ensureBooks(db).folders = resolved;
+      return true;
+    });
+  } catch (err) {
+    return res.status(500).json({ error: `Could not save book folders: ${err.message}` });
+  }
+  res.json({ folders: resolved });
+  scanBooks().catch(console.error);
+});
+
+app.post('/api/books/scan', (req, res) => {
+  const alreadyInProgress = bookScanState.scanning;
+  if (alreadyInProgress) {
+    bookScanState.rescanRequested = true;
+  } else {
+    scanBooks().catch(console.error);
+  }
+  res.status(202).json({ scanning: true, alreadyInProgress });
+});
+
+app.get('/api/books/scan-status', (req, res) => {
+  res.json(bookScanState);
+});
+
+// ---- Books: progress coalescer (T6 -- the v1.30 A4 discipline, books-owned) --
+//
+// A structural twin of `pendingProgress`/`flushPendingProgress` above (see
+// that section's full rationale): reading-position pings are frequent and
+// cheap-to-lose, so they stage here and flush as ONE atomic write per
+// window. Deliberately NOT routed through `POST /api/progress` -- its value
+// shape ({timestamp,duration}) cannot express a CFI locator, and its flush
+// guard is `db.metadata[id]` (books live in db.books.items).
+const pendingBookProgress = new Map();
+let bookProgressFlushTimer = null;
+
+function currentBookProgressFlushTimer() {
+  return bookProgressFlushTimer;
+}
+
+function flushPendingBookProgress() {
+  if (bookProgressFlushTimer) {
+    clearTimeout(bookProgressFlushTimer);
+    bookProgressFlushTimer = null;
+  }
+  if (pendingBookProgress.size === 0) return Promise.resolve(false);
+  const snapshot = new Map(pendingBookProgress);
+  pendingBookProgress.clear();
+  return updateDatabase((db) => {
+    const ns = booksStore.ensureBooks(db);
+    for (const [id, value] of snapshot) {
+      // Same deleted-between-ping-and-flush guard as the media coalescer: a
+      // flush must never resurrect progress for a pruned book.
+      if (ns.items[id]) ns.progress[id] = value;
+    }
+    return true;
+  }).catch((err) => {
+    console.error('Error flushing batched book progress:', err);
+  });
+}
+
+function armBookProgressFlushTimerIfNeeded() {
+  if (bookProgressFlushTimer) return;
+  bookProgressFlushTimer = setTimeout(flushPendingBookProgress, PROGRESS_FLUSH_MS);
+  bookProgressFlushTimer.unref();
+}
+
+// Read-your-writes overlay -- pending first, then the cache's last-flushed
+// value (the effectiveProgress posture).
+function effectiveBookProgress(id) {
+  if (pendingBookProgress.has(id)) return pendingBookProgress.get(id);
+  const ns = booksStore.readBooks(getCachedDatabase());
+  return ns.progress[id] || null;
+}
+
+// ---- Books: read APIs + file/cover serving (T5) ------------------------------
+
+// Sort comparators -- the /api/videos sort-key posture (unknown keys fall
+// back to the default) with book-native keys.
+function sortBookList(list, sortKey) {
+  const byTitle = (a, b) => String(a.title || '').localeCompare(String(b.title || ''), undefined, { sensitivity: 'base' });
+  switch (sortKey) {
+    case 'title-asc': return list.sort(byTitle);
+    case 'title-desc': return list.sort((a, b) => byTitle(b, a));
+    case 'author': return list.sort((a, b) => String(a.author || '').localeCompare(String(b.author || ''), undefined, { sensitivity: 'base' }) || byTitle(a, b));
+    case 'recent-progress': return list.sort((a, b) => String((b.progress && b.progress.updatedAt) || '').localeCompare(String((a.progress && a.progress.updatedAt) || '')));
+    case 'recent':
+    default: return list.sort((a, b) => String(b.addedAt || '').localeCompare(String(a.addedAt || '')));
+  }
+}
+
+// The public item shape: everything the cards/reader need, progress overlaid
+// (effective = pending-first), spine included only on the detail route (the
+// list stays light for hundreds of books).
+function publicBookListItem(item) {
+  const progress = effectiveBookProgress(item.id);
+  return {
+    id: item.id,
+    title: item.title,
+    author: item.author,
+    format: item.format,
+    folderName: item.folderName,
+    rootFolder: item.rootFolder,
+    size: item.size,
+    addedAt: item.addedAt,
+    hasCover: item.hasCover === true,
+    pageCount: item.pageCount,
+    progress: progress ? { percent: progress.percent, updatedAt: progress.updatedAt } : null,
+  };
+}
+
+app.get('/api/books', (req, res) => {
+  const ns = booksStore.readBooks(getCachedDatabase());
+  let list = Object.values(ns.items);
+  const search = typeof req.query.search === 'string' ? req.query.search.trim().toLowerCase() : '';
+  if (search !== '') {
+    list = list.filter((i) => [i.title, i.author, i.folderName]
+      .some((field) => typeof field === 'string' && field.toLowerCase().includes(search)));
+  }
+  const root = typeof req.query.root === 'string' ? req.query.root : '';
+  if (root !== '') {
+    // The home grid's `underFolder` idiom: the folder itself or anything
+    // beneath it (path-prefix on the item's file path).
+    list = list.filter((i) => typeof i.filePath === 'string' && (i.filePath === root || i.filePath.startsWith(root.endsWith(path.sep) ? root : root + path.sep)));
+  }
+  let shaped = list.map(publicBookListItem);
+  if (req.query.filter === 'reading') {
+    shaped = shaped.filter((i) => i.progress && i.progress.percent > 0 && i.progress.percent < 98);
+    shaped.sort((a, b) => String((b.progress && b.progress.updatedAt) || '').localeCompare(String((a.progress && a.progress.updatedAt) || '')));
+  } else {
+    sortBookList(shaped, typeof req.query.sort === 'string' ? req.query.sort : 'recent');
+  }
+  const total = shaped.length;
+  const offset = Math.max(0, parseInt(req.query.offset, 10) || 0);
+  const rawLimit = parseInt(req.query.limit, 10);
+  const limit = Number.isInteger(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 10000) : 100;
+  res.json({ items: shaped.slice(offset, offset + limit), total, offset, limit });
+});
+
+// ROUTE ORDER: the static-segment GETs (/folders, /pins) MUST register
+// before the /:id param route or Express matches :id="folders".
+// Shelf aggregation for the books page's chips: unique parent directories
+// with counts, joined against the shelf pins so the chip renders its pin
+// state (T10's pin gesture). Exposing shelf DIR paths to the operator's own
+// UI is the same trust level as /api/config exposing db.folders.
+app.get('/api/books/folders', (req, res) => {
+  const ns = booksStore.readBooks(getCachedDatabase());
+  const byDir = new Map();
+  for (const item of Object.values(ns.items)) {
+    if (typeof item.filePath !== 'string') continue;
+    const dir = path.dirname(item.filePath);
+    const existing = byDir.get(dir);
+    if (existing) existing.count += 1;
+    else byDir.set(dir, { name: item.folderName || path.basename(dir), dir, count: 1 });
+  }
+  const pinByDir = new Map(ns.pins.map((p) => [p.dir, p]));
+  const folders = [...byDir.values()].map((f) => {
+    const pin = pinByDir.get(f.dir);
+    return { ...f, pinned: Boolean(pin), pinId: pin ? pin.id : null };
+  });
+  res.json({ folders });
+});
+
+app.get('/api/books/pins', (req, res) => {
+  // Pre-shaped for the shared pinned-sidebar renderer: `channelDir` is the
+  // field name the renderer already keys on; `href` overrides its default
+  // `/?root=` link to the books page (the ONLY shared-renderer widening).
+  const pins = booksStore.listShelfPins({ loadDatabase });
+  res.json(pins.map((p) => ({ id: p.id, channelDir: p.dir, label: p.label, href: `/books?root=${encodeURIComponent(p.dir)}` })));
+});
+
+app.get('/api/books/:id', (req, res) => {
+  const ns = booksStore.readBooks(getCachedDatabase());
+  const item = ns.items[req.params.id];
+  if (!item) return res.status(404).json({ error: 'Book not found' });
+  res.json({
+    ...publicBookListItem(item),
+    filePath: item.filePath,
+    spine: Array.isArray(item.spine) ? item.spine : [],
+    locator: (effectiveBookProgress(item.id) || {}).locator || null,
+  });
+});
+
+const BOOK_CONTENT_TYPES = { epub: 'application/epub+zip', pdf: 'application/pdf' };
+
+// SECURITY INVARIANT (gate, adversarial S2): this route serves
+// item.filePath UNCHECKED because db.books.items rows are written
+// EXCLUSIVELY by the book scanner (paths confined to configured book
+// roots) and the cover-backfill route (which never touches filePath). Any
+// future writer of items[*].filePath MUST re-establish confinement here or
+// this becomes an arbitrary-file-read.
+app.get('/book/:id/file', (req, res) => {
+  const ns = booksStore.readBooks(getCachedDatabase());
+  const item = ns.items[req.params.id];
+  if (!item) return res.status(404).json({ error: 'Book not found' });
+  if (!fs.existsSync(item.filePath)) return res.status(404).json({ error: 'Book file missing on disk' });
+  res.setHeader('Content-Type', BOOK_CONTENT_TYPES[item.format] || 'application/octet-stream');
+  if (req.query.download === '1') {
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(`${item.title || 'book'}.${item.format}`)}"`);
+  }
+  // sendFile provides Accept-Ranges/206 natively -- what pdf.js range
+  // loading wants; harmless for the whole-file EPUB fetch.
+  res.sendFile(item.filePath);
+});
+
+app.get('/bookcover/:id', (req, res) => {
+  const ns = booksStore.readBooks(getCachedDatabase());
+  const item = ns.items[req.params.id];
+  if (!item) return res.status(404).json({ error: 'Book not found' });
+  if (item.hasCover === true && item.coverExt) {
+    const coverPath = path.join(BOOKCOVER_DIR, `${item.id}${item.coverExt}`);
+    if (fs.existsSync(coverPath)) {
+      res.setHeader('Content-Type', item.coverExt === '.png' ? 'image/png' : 'image/jpeg');
+      // Covers are immutable per id (a changed file gets a new path-hash id
+      // only if the path changes; a re-extracted cover overwrites in place,
+      // so cap the cache at a day rather than immutable).
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      return res.sendFile(coverPath);
+    }
+  }
+  // Book-styled SVG placeholder -- title/author text, escaped exactly like
+  // the /thumbnail fallback (a hostile title must never become markup).
+  const title = String(item.title || 'Book');
+  const author = String(item.author || '');
+  const svg = `
+    <svg width="160" height="240" viewBox="0 0 160 240" xmlns="http://www.w3.org/2000/svg">
+      <rect width="160" height="240" fill="#3a3f58"/>
+      <rect x="8" y="8" width="144" height="224" fill="none" stroke="#8890b5" stroke-width="2"/>
+      <text x="80" y="110" font-family="Georgia, serif" font-size="13" fill="#e8e8f0" text-anchor="middle" font-weight="bold">
+        ${escapeHtml(title.length > 20 ? `${title.substring(0, 18)}...` : title)}
+      </text>
+      <text x="80" y="132" font-family="Georgia, serif" font-size="9" fill="#aab" text-anchor="middle">
+        ${escapeHtml(author.length > 26 ? `${author.substring(0, 24)}...` : author)}
+      </text>
+      <text x="80" y="220" font-family="Arial, sans-serif" font-size="8" fill="#778" text-anchor="middle">${item.format === 'pdf' ? 'PDF' : 'EPUB'}</text>
+    </svg>
+  `;
+  res.setHeader('Content-Type', 'image/svg+xml');
+  res.send(svg);
+});
+
+// PDF cover backfill (T5/§2): the reader has page 1 decoded anyway; it POSTs
+// a one-shot JPEG/PNG snapshot. Magic-byte sniffed, bounded, NO-CLOBBER
+// (the dimensions-backfill contract), atomic tmp+rename.
+// (Own sniffer literals rather than referencing CUSTOM_LOGO_TYPES: that
+// const is declared LATER in this file -- a module-load-time reference here
+// would be a temporal-dead-zone boot crash. Same magic bytes.)
+const BOOK_COVER_TYPES = {
+  'image/jpeg': (buf) => buf.length > 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff,
+  'image/png': (buf) => buf.length > 8 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47,
+};
+const BOOK_COVER_MAX_BYTES = 512 * 1024;
+
+app.post(
+  '/api/books/:id/cover',
+  express.raw({ type: Object.keys(BOOK_COVER_TYPES), limit: BOOK_COVER_MAX_BYTES }),
+  async (req, res) => {
+    const ns = booksStore.readBooks(getCachedDatabase());
+    const item = ns.items[req.params.id];
+    if (!item) return res.status(404).json({ error: 'Book not found' });
+    if (item.hasCover === true) return res.status(200).json({ applied: false, reason: 'already has a cover' });
+    const mime = String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
+    const sniff = BOOK_COVER_TYPES[mime];
+    const bytes = req.body;
+    if (!sniff || !Buffer.isBuffer(bytes) || bytes.length === 0 || !sniff(bytes)) {
+      return res.status(400).json({ error: 'body must be a real JPEG or PNG image' });
+    }
+    const ext = mime === 'image/png' ? '.png' : '.jpg';
+    const finalPath = path.join(BOOKCOVER_DIR, `${item.id}${ext}`);
+    const tmpPath = `${finalPath}.tmp`;
+    try {
+      fs.mkdirSync(BOOKCOVER_DIR, { recursive: true });
+      fs.writeFileSync(tmpPath, bytes);
+      fs.renameSync(tmpPath, finalPath);
+    } catch (err) {
+      try { fs.unlinkSync(tmpPath); } catch (_) { /* best-effort */ }
+      return res.status(500).json({ error: `Could not store cover: ${err.message}` });
+    }
+    // Optional pageCount rides along (?pages=), validated as a plausible
+    // positive integer -- the isValidMediaDimension posture.
+    const rawPages = parseInt(req.query.pages, 10);
+    const pageCount = Number.isInteger(rawPages) && rawPages > 0 && rawPages < 100000 ? rawPages : undefined;
+    try {
+      await updateDatabase((db) => {
+        const freshNs = booksStore.ensureBooks(db);
+        const fresh = freshNs.items[item.id];
+        if (!fresh) return false; // pruned between read and write: drop
+        if (fresh.hasCover !== true) {
+          fresh.hasCover = true;
+          fresh.coverExt = ext;
+        }
+        if (pageCount !== undefined && fresh.pageCount === undefined) fresh.pageCount = pageCount;
+        return true;
+      });
+    } catch (err) {
+      return res.status(500).json({ error: `Cover stored but the record update failed: ${err.message}` });
+    }
+    res.json({ applied: true });
+  },
+);
+
+// ---- Books: shelf pins (T10 server half -- the ytdlp pins route shapes) ----
+
+app.post('/api/books/pins', async (req, res) => {
+  const ns = booksStore.readBooks(getCachedDatabase());
+  const validation = booksStore.validateShelfPinInput(req.body, ns.folders);
+  if (!validation.ok) return res.status(400).json({ error: validation.error });
+  try {
+    const record = await booksStore.addShelfPin({ loadDatabase, updateDatabase, getMediaId }, validation.value);
+    res.json(record);
+  } catch (err) {
+    res.status(500).json({ error: `Could not pin shelf: ${err.message}` });
+  }
+});
+
+app.delete('/api/books/pins/:id', async (req, res) => {
+  try {
+    const removed = await booksStore.removeShelfPin({ loadDatabase, updateDatabase }, req.params.id);
+    if (!removed) return res.status(404).json({ error: 'Pin not found' });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: `Could not unpin shelf: ${err.message}` });
+  }
+});
+
+app.post('/api/books/pins/reorder', async (req, res) => {
+  const { orderedIds } = req.body || {};
+  if (!Array.isArray(orderedIds) || !orderedIds.every((id) => typeof id === 'string' && id !== '')) {
+    return res.status(400).json({ error: 'orderedIds must be an array of non-empty strings' });
+  }
+  try {
+    await booksStore.reorderShelfPins({ loadDatabase, updateDatabase }, orderedIds);
+    res.json(booksStore.listShelfPins({ loadDatabase }));
+  } catch (err) {
+    res.status(500).json({ error: `Could not reorder shelf pins: ${err.message}` });
+  }
+});
+
+// The clean /books URL (express.static already serves /books.html; this
+// mirrors the ytdlp module's own /subscriptions sendFile).
+app.get('/books', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'books.html'));
+});
+
+app.post('/api/books/:id/progress', (req, res) => {
+  const ns = booksStore.readBooks(getCachedDatabase());
+  const item = ns.items[req.params.id];
+  if (!item) return res.status(404).json({ error: 'Book not found' });
+  const { locator, percent } = req.body || {};
+  if (!locator || typeof locator !== 'object' || locator.kind !== item.format) {
+    return res.status(400).json({ error: `locator.kind must be '${item.format}' for this book` });
+  }
+  if (item.format === 'epub' && typeof locator.cfi !== 'string') {
+    return res.status(400).json({ error: 'locator.cfi must be a string for an epub' });
+  }
+  if (item.format === 'pdf' && !(Number.isInteger(locator.page) && locator.page > 0)) {
+    return res.status(400).json({ error: 'locator.page must be a positive integer for a pdf' });
+  }
+  if (typeof percent !== 'number' || !Number.isFinite(percent) || percent < 0 || percent > 100) {
+    return res.status(400).json({ error: 'percent must be a number in [0, 100]' });
+  }
+  // Bound the stored locator to the known fields (a hostile ping must not
+  // grow db.json with arbitrary keys), spineIndex/blockIndex validated as
+  // non-negative integers when present (the wave-2 listen-from-here keys).
+  const clean = { kind: locator.kind };
+  if (item.format === 'epub') {
+    clean.cfi = String(locator.cfi).slice(0, 2000);
+    if (Number.isInteger(locator.spineIndex) && locator.spineIndex >= 0) clean.spineIndex = locator.spineIndex;
+    if (Number.isInteger(locator.blockIndex) && locator.blockIndex >= 0) clean.blockIndex = locator.blockIndex;
+  } else {
+    clean.page = locator.page;
+  }
+  pendingBookProgress.set(item.id, { locator: clean, percent, updatedAt: new Date().toISOString() });
+  armBookProgressFlushTimerIfNeeded();
+  res.json({ success: true });
 });
 
 // FR-3 (v1.18.0): bounds the `transcodeNames` list GET /api/scan-status
@@ -5876,7 +6467,9 @@ if (require.main === module) {
   // is never left torn either way (saveDatabase's write-temp-then-rename is
   // unaffected).
   const flushProgressOnExit = (exitAfter) => () => {
-    flushPendingProgress().finally(() => {
+    // v1.37.0 books: both coalescers flush on every graceful-exit path --
+    // the book flush shares the media flush's exact loss-bound contract.
+    Promise.allSettled([flushPendingProgress(), flushPendingBookProgress()]).then(() => {
       if (exitAfter) process.exit(0);
     });
   };
@@ -5967,6 +6560,9 @@ if (require.main === module) {
       // does start.
       setImmediate(() => {
         scanDirectories().catch(console.error);
+        // v1.37.0 books: the boot book-scan rides the same deferred slot --
+        // a books-less install makes this a pure no-op (zero folders).
+        scanBooks().catch(console.error);
       });
     });
   })();
@@ -5980,6 +6576,14 @@ module.exports = {
   transcodedPath,
   // v1.36.2: the recoverable-delete errno set -- exported for unit coverage.
   RECOVERABLE_DELETE_CODES,
+  // v1.37.0 books: scanner + state accessor + cover dir, exported for the
+  // books integration tests (same posture as scanDirectories/THUMBNAIL_DIR).
+  scanBooks,
+  currentBookScanState,
+  BOOKCOVER_DIR,
+  flushPendingBookProgress,
+  currentBookProgressFlushTimer,
+  effectiveBookProgress,
   matchRootFolder,
   // C1 (v1.24 UX Round, Wave 3): move-files + id re-key -- re-exported so
   // tests (and T19's Wave 7 physical-reconcile move) can call these directly.

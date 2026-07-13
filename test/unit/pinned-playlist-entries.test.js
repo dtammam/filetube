@@ -20,7 +20,10 @@ test('derivePinnedPlaylistEntries: passes through a well-formed pin with its lab
   const entries = derivePinnedPlaylistEntries([
     { id: 'p1', channelDir: '/data/ytdlp-downloads/My Channel', label: 'My Channel', pinnedAt: '2026-01-01T00:00:00.000Z' },
   ]);
-  assert.deepStrictEqual(entries, [{ channelDir: '/data/ytdlp-downloads/My Channel', label: 'My Channel', channelAvatarUrl: null }]);
+  // v1.37.0 DELIBERATE shape-lock update (exec plan risk #3): entries gained
+  // an optional 'href' (book-shelf pins pre-shape '/books?root=...'; ytdlp
+  // pins carry none -> null -> the renderers' classic /?root= default).
+  assert.deepStrictEqual(entries, [{ channelDir: '/data/ytdlp-downloads/My Channel', label: 'My Channel', channelAvatarUrl: null, href: null }]);
 });
 
 test('derivePinnedPlaylistEntries: passes through a valid channelAvatarUrl, trimmed', () => {
@@ -74,4 +77,16 @@ test('derivePinnedPlaylistEntries: preserves order and handles multiple pins', (
     { id: 'p2', channelDir: '/d/b', label: 'B' },
   ]);
   assert.deepStrictEqual(entries.map((e) => e.label), ['A', 'B']);
+});
+
+
+// ---- v1.37.0: the href widening (book shelves-as-pins) ----------------------
+
+test('v1.37.0: a pre-shaped absolute-path href passes through; junk/external hrefs are dropped to null (renderers fall back to /?root=)', () => {
+  const withHref = derivePinnedPlaylistEntries([{ channelDir: '/b/SciFi', label: 'Sci-Fi', href: '/books?root=%2Fb%2FSciFi' }]);
+  assert.strictEqual(withHref[0].href, '/books?root=%2Fb%2FSciFi');
+  const external = derivePinnedPlaylistEntries([{ channelDir: '/b/x', label: 'X', href: 'https://evil.com/' }]);
+  assert.strictEqual(external[0].href, null, 'only same-app absolute paths qualify');
+  const junk = derivePinnedPlaylistEntries([{ channelDir: '/b/y', label: 'Y', href: 42 }]);
+  assert.strictEqual(junk[0].href, null);
 });

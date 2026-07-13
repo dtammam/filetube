@@ -1407,6 +1407,12 @@ function getMockViews(mediaId, sizeBytes) {
 function activeNavItem(pathname, search) {
   if (pathname === '/setup.html') return 'settings';
   if (pathname === '/subscriptions') return 'subscriptions';
+  // v1.37.0 books: same unconditional-mapping posture as /subscriptions
+  // (the link only exists when >=1 book folder is configured). The reader
+  // (/read.html) deliberately maps to 'books' -- reading a book keeps the
+  // Books nav item lit, like watch keeps no item lit but books is a
+  // browsable section.
+  if (pathname === '/books' || pathname === '/books.html' || pathname === '/read.html') return 'books';
   if (pathname === '/' || pathname === '/index.html') return 'home';
   return null;
 }
@@ -1476,6 +1482,69 @@ function injectSubscriptionsNavLinkIfEnabled() {
         // Match the existing active-state highlight logic (DOMContentLoaded,
         // below) in case injection resolves after that already ran.
         if (activeNavItem(window.location.pathname, window.location.search) === 'subscriptions') {
+          navLink.classList.add('active');
+        }
+      }
+    })
+    .catch(() => { /* network/parse failure -- fail closed, inject nothing */ });
+}
+
+// ---- v1.37.0 books nav-link injection (the D4 posture, books-gated) --------
+//
+// The Books link exists only when the operator has configured >=1 book
+// folder -- a books-less install renders byte-identical chrome (the
+// disabled-module guarantee). Unlike the subscriptions probe (a
+// route-existence 404 check), /api/books/config always exists; the gate is
+// its CONTENT (folders.length). Pure decision extracted for node:test.
+function shouldInjectBooksNav(payload) {
+  return Boolean(payload && Array.isArray(payload.folders) && payload.folders.length > 0);
+}
+
+// Idempotent + defensive, mirroring injectSubscriptionsNavLinkIfEnabled.
+function injectBooksNavLinkIfEnabled() {
+  if (typeof document === 'undefined' || typeof fetch === 'undefined') return;
+  // v1.37.0 gate fix (QA W6): the guard covers BOTH injected links -- the
+  // bottom-nav one (data-nav) AND the sidebar one (data-nav-sidebar), so a
+  // page without a #bottom-nav can never double-inject the sidebar link.
+  if (document.querySelector('[data-nav="books"]') || document.querySelector('[data-nav-sidebar="books"]')) return;
+
+  fetch('/api/books/config')
+    .then((res) => (res.ok ? res.json() : null))
+    .then((payload) => {
+      if (!shouldInjectBooksNav(payload)) return; // books-less -- inject nothing
+      if (document.querySelector('[data-nav="books"]')) return; // raced a second call
+
+      // Sidebar entry, right after Library Settings (the subscriptions
+      // link's own anchor -- whichever injected first, they stack there).
+      const settingsSidebarLink = document.querySelector('a.sidebar-item[href="/setup.html"]');
+      if (settingsSidebarLink && settingsSidebarLink.parentElement) {
+        const sidebarLink = document.createElement('a');
+        sidebarLink.href = '/books';
+        sidebarLink.className = 'sidebar-item';
+        sidebarLink.setAttribute('data-nav-sidebar', 'books');
+        const sidebarIcon = document.createElement('i');
+        sidebarIcon.className = 'icon-folder';
+        sidebarLink.appendChild(sidebarIcon);
+        sidebarLink.appendChild(document.createTextNode(' Books'));
+        settingsSidebarLink.insertAdjacentElement('afterend', sidebarLink);
+      }
+
+      // Bottom-nav entry (mobile app shell).
+      const settingsNavItem = document.querySelector('#bottom-nav [data-nav="settings"]');
+      if (settingsNavItem && settingsNavItem.parentElement) {
+        const navLink = document.createElement('a');
+        navLink.href = '/books';
+        navLink.className = 'bottom-nav-item';
+        navLink.setAttribute('data-nav', 'books');
+        const navIcon = document.createElement('i');
+        navIcon.className = 'icon-folder';
+        const navLabel = document.createElement('span');
+        navLabel.className = 'bottom-nav-label';
+        navLabel.textContent = 'Books';
+        navLink.appendChild(navIcon);
+        navLink.appendChild(navLabel);
+        settingsNavItem.insertAdjacentElement('afterend', navLink);
+        if (activeNavItem(window.location.pathname, window.location.search) === 'books') {
           navLink.classList.add('active');
         }
       }
@@ -2334,6 +2403,12 @@ function deriveRouteView(pathname) {
   // enabled -- this pure mapping is unconditional (harmless when nothing ever
   // links here; mirrors activeNavItem's own unconditional mapping above).
   if (pathname === '/subscriptions') return 'subscriptions';
+  // v1.37.0 books: same unconditional-mapping posture -- the Books nav link
+  // is only injected when >=1 book folder is configured (see
+  // injectBooksNavLinkIfEnabled), and /read.html is only ever linked from
+  // book cards, so a books-less install never navigates here.
+  if (pathname === '/books' || pathname === '/books.html') return 'books';
+  if (pathname === '/read.html') return 'read';
   return null;
 }
 
@@ -2554,7 +2629,7 @@ if (typeof window !== 'undefined') {
     const sidebar = document.getElementById('sidebar');
     if (sidebar) {
       sidebar.querySelectorAll('.sidebar-item.active').forEach((el) => el.classList.remove('active'));
-      const hrefByNavKey = { home: '/', settings: '/setup.html', subscriptions: '/subscriptions' };
+      const hrefByNavKey = { home: '/', settings: '/setup.html', subscriptions: '/subscriptions', books: '/books' };
       const href = key ? hrefByNavKey[key] : null;
       const match = href && sidebar.querySelector('a.sidebar-item[href="' + href + '"]');
       if (match) match.classList.add('active');
@@ -2570,25 +2645,39 @@ if (typeof window !== 'undefined') {
   // (lib/ytdlp/index.js), so even a stray call here just rejects (handled by
   // `navigate`'s fallback-to-real-navigation below) rather than leaking
   // anything.
-  let subscriptionsScriptPromise = null;
-  function ensureSubscriptionsScriptLoaded() {
-    if (viewRegistry.subscriptions) return Promise.resolve();
-    if (subscriptionsScriptPromise) return subscriptionsScriptPromise;
-    subscriptionsScriptPromise = new Promise((resolve, reject) => {
+  // v1.37.0: generalized from the subscriptions-only loader into a
+  // src-keyed one-per-session lazy loader -- books/read reuse the exact
+  // load/retry semantics rather than forking them (the exec plan's T7
+  // "generalize rather than fork twice" instruction). A failed load clears
+  // its slot so a later navigation can retry instead of wedging forever.
+  const viewScriptPromises = {};
+  function ensureScriptLoaded(src, registryKey) {
+    if (viewRegistry[registryKey]) return Promise.resolve();
+    if (viewScriptPromises[src]) return viewScriptPromises[src];
+    viewScriptPromises[src] = new Promise((resolve, reject) => {
       const script = document.createElement('script');
-      script.src = '/js/subscriptions.js';
+      script.src = src;
       script.addEventListener('load', () => resolve());
       script.addEventListener('error', () => {
-        subscriptionsScriptPromise = null; // allow a later retry instead of wedging forever
-        reject(new Error('failed to load /js/subscriptions.js'));
+        viewScriptPromises[src] = null; // allow a later retry instead of wedging forever
+        reject(new Error(`failed to load ${src}`));
       });
       document.body.appendChild(script);
     });
-    return subscriptionsScriptPromise;
+    return viewScriptPromises[src];
   }
 
+  // Per-view lazy-script map. Views absent here (home/watch/setup) ship in
+  // the page shell and are always registered by boot time.
+  const VIEW_SCRIPT_SRC = {
+    subscriptions: '/js/subscriptions.js',
+    books: '/js/books.js',
+    read: '/js/read.js',
+  };
+
   function ensureViewScriptLoaded(view) {
-    return view === 'subscriptions' ? ensureSubscriptionsScriptLoaded() : Promise.resolve();
+    const src = VIEW_SCRIPT_SRC[view];
+    return src ? ensureScriptLoaded(src, view) : Promise.resolve();
   }
 
   // The one swap routine every navigation (an in-app click, `popstate`, and
@@ -3035,6 +3124,87 @@ function renderPlaylistsSheet(folders, folderSettings) {
 // already-validated field to read. Building this passthrough now means T11
 // never has to touch this client file -- it only ever adds the field
 // server-side.
+// v1.37.0 (books shelves-as-pins): ONE pin-fetch helper for every render
+// call site -- ytdlp channel pins first, book-shelf pins after (each fetch
+// independently degrades to [] on 404/disabled/network failure, so all four
+// enabled/disabled combinations reduce to today's behavior; a books-less +
+// ytdlp-less install renders exactly nothing, byte-identical).
+function fetchAllPins() {
+  const safeJson = (url) => fetch(url)
+    .then((r) => (r.ok ? r.json() : []))
+    .catch(() => []);
+  // v1.37.0 (Dean's orphaned-pin report): every pin is tagged with its
+  // SOURCE so the unpin control (buildUnpinButton below) knows which DELETE
+  // endpoint owns it -- the raw source field never enters
+  // derivePinnedPlaylistEntries' locked shape; the renderers read it off
+  // the parallel validPins view exactly like `id`.
+  return Promise.all([safeJson('/api/subscriptions/pins'), safeJson('/api/books/pins')])
+    .then(([channelPins, bookPins]) => [
+      ...(Array.isArray(channelPins) ? channelPins : []).map((p) => ({ ...p, pinSource: 'channel' })),
+      ...(Array.isArray(bookPins) ? bookPins : []).map((p) => ({ ...p, pinSource: 'books' })),
+    ]);
+}
+
+// v1.37.0 (Dean's orphaned-pin report): the per-row UNPIN control. Before
+// this, unpinning required the pinned thing to still have a surface (a
+// watch page with videos, a subscription row) -- a pin whose folder emptied
+// out (or whose subscription was removed) was PERMANENT. This control lives
+// on the pinned rows themselves, so ANY pin is always unpinnable. Two-tap
+// arm/confirm (the card-delete pattern -- no native confirm()); the DELETE
+// endpoint is chosen by the pin's tagged source. `onDone` re-renders.
+function pinDeleteEndpoint(pin) {
+  return pin && pin.pinSource === 'books'
+    ? `/api/books/pins/${encodeURIComponent(pin.id)}`
+    : `/api/subscriptions/pins/${encodeURIComponent(pin.id)}`;
+}
+
+function buildUnpinButton(pin, onDone) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'pinned-unpin-btn';
+  btn.setAttribute('aria-label', 'Unpin');
+  btn.textContent = '×';
+  let armTimer = null;
+  btn.addEventListener('click', (event) => {
+    // Never navigate the row's own link.
+    event.preventDefault();
+    event.stopPropagation();
+    if (!pin || typeof pin.id !== 'string') return;
+    if (!btn.classList.contains('armed')) {
+      btn.classList.add('armed');
+      btn.textContent = 'Unpin?';
+      armTimer = setTimeout(() => {
+        btn.classList.remove('armed');
+        btn.textContent = '×';
+      }, 3000);
+      return;
+    }
+    if (armTimer) clearTimeout(armTimer);
+    btn.disabled = true;
+    fetch(pinDeleteEndpoint(pin), { method: 'DELETE' })
+      .catch(() => {})
+      .finally(() => {
+        if (typeof onDone === 'function') onDone();
+      });
+  });
+  return btn;
+}
+
+// The one refresh routine every unpin uses: re-fetch both pin sources and
+// rebuild BOTH surfaces (sidebar section + playlists sheet).
+function refreshAllPinSurfaces() {
+  fetchAllPins().then((pins) => {
+    renderPinnedSidebar(pins);
+    // Gate fix (adversarial S1): the sheet's zero-pin empty-state must only
+    // render when the ytdlp module is genuinely enabled -- the injected
+    // Subscriptions nav link IS that probe's durable result, so use its
+    // presence as the hint instead of hardcoding true (a books-only install
+    // keeps the disabled-module nothing-at-all posture).
+    const ytdlpEnabled = Boolean(document.querySelector('[data-nav="subscriptions"]'));
+    renderPinnedPlaylists(pins, ytdlpEnabled);
+  });
+}
+
 function derivePinnedPlaylistEntries(pins) {
   const list = Array.isArray(pins) ? pins : [];
   return list
@@ -3047,6 +3217,14 @@ function derivePinnedPlaylistEntries(pins) {
         channelDir: p.channelDir,
         label: trimmedLabel !== '' ? trimmedLabel : (base || 'Pinned channel'),
         channelAvatarUrl: avatarUrl,
+        // v1.37.0 (books shelves-as-pins): an optional explicit link target.
+        // ytdlp pins never carry one (null -> the renderers' existing
+        // `/?root=` default); a book-shelf pin's server payload pre-shapes
+        // `/books?root=...`. THE one deliberate shared-renderer widening --
+        // the shape-lock test updates in lockstep (exec plan risk #3).
+        // Same-app ABSOLUTE PATHS only: '/x' qualifies, protocol-relative
+        // '//host/x' (an external origin) does not (gate fix, QA S9).
+        href: typeof p.href === 'string' && p.href.startsWith('/') && !p.href.startsWith('//') ? p.href : null,
       };
     });
 }
@@ -3135,10 +3313,18 @@ function renderPinnedPlaylists(pins, moduleEnabled) {
   heading.textContent = 'Pinned';
   section.appendChild(heading);
 
-  entries.forEach((entry) => {
+  // v1.37.0: same-predicate parallel view of the raw pins, so each rendered
+  // row can recover its source record (id + pinSource) for the unpin
+  // control -- the sidebar renderer's validPins pattern.
+  const validSheetPins = (Array.isArray(pins) ? pins : [])
+    .filter((p) => p && typeof p.channelDir === 'string' && p.channelDir !== '');
+
+  entries.forEach((entry, sheetIndex) => {
     const link = document.createElement('a');
     link.className = 'sidebar-item';
-    link.href = '/?root=' + encodeURIComponent(entry.channelDir);
+    // v1.37.0: a pre-shaped href (book shelves) wins; ytdlp pins keep the
+    // classic /?root= link (entry.href is null there).
+    link.href = entry.href || ('/?root=' + encodeURIComponent(entry.channelDir));
     // F1: real channel icon when captured (C6), else a deterministic
     // generated avatar -- replaces the old generic icon-star glyph.
     link.appendChild(buildPinAvatarNode(entry.label, entry.channelAvatarUrl));
@@ -3147,6 +3333,12 @@ function renderPinnedPlaylists(pins, moduleEnabled) {
     // both the avatar and the label survive, neither ever passed through
     // innerHTML.
     link.appendChild(document.createTextNode(' ' + entry.label));
+    // v1.37.0 (Dean's orphaned-pin report): the unpin control -- see
+    // buildUnpinButton's comment.
+    const sheetSourcePin = validSheetPins[sheetIndex];
+    if (sheetSourcePin && typeof sheetSourcePin.id === 'string') {
+      link.appendChild(buildUnpinButton(sheetSourcePin, refreshAllPinSurfaces));
+    }
     section.appendChild(link);
   });
 
@@ -3225,7 +3417,9 @@ function renderPinnedSidebar(pins) {
   entries.forEach((entry, index) => {
     const link = document.createElement('a');
     link.className = 'sidebar-item';
-    link.href = '/?root=' + encodeURIComponent(entry.channelDir);
+    // v1.37.0: a pre-shaped href (book shelves) wins; ytdlp pins keep the
+    // classic /?root= link (entry.href is null there).
+    link.href = entry.href || ('/?root=' + encodeURIComponent(entry.channelDir));
     // v1.24.3: drag-and-drop reorder target -- see
     // wirePinnedSidebarDragAndDrop below. `data-pin-id` is how a drop
     // recovers WHICH pin a rendered row represents (the reorder route is
@@ -3241,6 +3435,11 @@ function renderPinnedSidebar(pins) {
     // both the avatar and the label survive, neither ever passed through
     // innerHTML. Same discipline as renderPinnedPlaylists above.
     link.appendChild(document.createTextNode(' ' + entry.label));
+    // v1.37.0 (Dean's orphaned-pin report): every pinned row carries its
+    // own unpin control -- see buildUnpinButton's comment.
+    if (sourcePin && typeof sourcePin.id === 'string') {
+      link.appendChild(buildUnpinButton(sourcePin, refreshAllPinSurfaces));
+    }
     section.appendChild(link);
   });
 
@@ -3287,6 +3486,13 @@ function renderPinnedSidebar(pins) {
 // @param {HTMLElement} section the freshly-built `#sidebar-pinned-section`
 // @param {Array<object>} validPins the SAME filtered/ordered pin records
 //   `renderPinnedSidebar` rendered rows FROM (index-aligned with the rows)
+// v1.37.0 gate fix (BOTH reviewers' CRITICAL): the pin's owning module --
+// drag scoping and the reorder endpoint are decided by this, exactly like
+// pinDeleteEndpoint above. Untagged legacy pins default to 'channel'.
+function pinSourceOf(pin) {
+  return pin && pin.pinSource === 'books' ? 'books' : 'channel';
+}
+
 function wirePinnedSidebarDragAndDrop(section, validPins) {
   const rows = Array.prototype.slice.call(section.querySelectorAll('.sidebar-item[data-pin-id]'));
   let dragSrcIndex = null;
@@ -3302,6 +3508,11 @@ function wirePinnedSidebarDragAndDrop(section, validPins) {
       }
     });
     rowEl.addEventListener('dragover', (e) => {
+      // v1.37.0 gate fix: a row from ANOTHER pin source is NOT a drop
+      // target (no preventDefault = the browser shows no-drop) -- channel
+      // pins reorder among channel pins, book shelves among book shelves,
+      // per the exec plan's own "within their own section only" contract.
+      if (dragSrcIndex !== null && pinSourceOf(validPins[dragSrcIndex]) !== pinSourceOf(validPins[index])) return;
       e.preventDefault();
       if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
       const rect = rowEl.getBoundingClientRect();
@@ -3319,9 +3530,21 @@ function wirePinnedSidebarDragAndDrop(section, validPins) {
       const fromIndex = dragSrcIndex;
       dragSrcIndex = null;
       if (fromIndex === null || Number.isNaN(index)) return;
+      const source = pinSourceOf(validPins[fromIndex]);
+      // Cross-source drops are already blocked at dragover; re-assert here
+      // (defense-in-depth against a synthetic drop event).
+      if (source !== pinSourceOf(validPins[index])) return;
       const toIndex = computeDropIndex(fromIndex, index, before);
       const reordered = moveArrayItem(validPins, fromIndex, toIndex);
-      persistPinReorder(reordered.map((p) => p && p.id).filter((id) => typeof id === 'string' && id !== ''));
+      // v1.37.0 gate fix: persist ONLY this source's ids, in their new
+      // relative order, to this source's OWN endpoint -- a mixed id list
+      // hitting the ytdlp endpoint tail-dropped every book id and the
+      // response re-render made book pins vanish from the sidebar.
+      const orderedIds = reordered
+        .filter((p) => pinSourceOf(p) === source)
+        .map((p) => p && p.id)
+        .filter((id) => typeof id === 'string' && id !== '');
+      persistPinReorder(orderedIds, source);
     });
     rowEl.addEventListener('dragend', () => {
       dragSrcIndex = null;
@@ -3340,21 +3563,26 @@ function wirePinnedSidebarDragAndDrop(section, validPins) {
 // so a rejected/errored drag can never leave the sidebar silently diverged
 // from what is actually persisted -- mirrors
 // lib/ytdlp/client/subscriptions.js's `persistReorder` fail-safe EXACTLY.
-function persistPinReorder(orderedIds) {
-  fetch('/api/subscriptions/pins/reorder', {
+function persistPinReorder(orderedIds, source) {
+  // v1.37.0 gate fix (BOTH reviewers' CRITICAL): the endpoint is the pin
+  // SOURCE's own (book shelves have their own reorder route -- previously
+  // client-dead), and the re-render ALWAYS goes through the merged
+  // refreshAllPinSurfaces -- never a single endpoint's response, which only
+  // carries that module's pins and made the other module's pins vanish
+  // from the sidebar until the next full load.
+  const endpoint = source === 'books' ? '/api/books/pins/reorder' : '/api/subscriptions/pins/reorder';
+  fetch(endpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ orderedIds }),
   })
-    .then((r) => (r.ok ? r.json() : Promise.reject(new Error('pin reorder failed with status ' + r.status))))
-    .then((pins) => renderPinnedSidebar(pins))
+    .then((r) => (r.ok ? null : Promise.reject(new Error('pin reorder failed with status ' + r.status))))
     .catch((err) => {
+      // A failed request still falls through to the merged refetch below --
+      // the sidebar must never trust the optimistic client-side order.
       console.error('Pin reorder failed:', err);
-      fetch('/api/subscriptions/pins')
-        .then((r) => (r.ok ? r.json() : []))
-        .catch(() => [])
-        .then((pins) => renderPinnedSidebar(pins));
-    });
+    })
+    .finally(() => refreshAllPinSurfaces());
 }
 
 // v1.26.2 polish (Dean punchlist -- sheet/modal transitions): every bottom
@@ -5685,6 +5913,8 @@ document.addEventListener('DOMContentLoaded', () => {
   // every page (not just inside the `bottomNav` guard below) since it also
   // injects a sidebar link on pages that have one but no bottom nav.
   injectSubscriptionsNavLinkIfEnabled();
+  // v1.37.0 books: same boot-time probe-gated injection.
+  injectBooksNavLinkIfEnabled();
 
   // v1.15.0 item 3: one-off download header button + modal, gated by the
   // SAME capability probe pattern -- runs on every page for the same reason
@@ -5772,6 +6002,8 @@ if (typeof module !== 'undefined' && module.exports) {
     tokenize, rankRelated, RESULT_COUNT, SIMILAR_FLOOR,
     resolveAudioArtUrl,
     shouldInjectSubscriptionsNav,
+    shouldInjectBooksNav,
+    pinDeleteEndpoint,
     fisherYatesShuffle, sortItems, shouldShowShuffleButton,
     deriveOrderedIds, computeNeighbors, parentFolder,
     visibleSidebarFolders, resolveDefaultView,
@@ -5797,7 +6029,7 @@ if (typeof module !== 'undefined' && module.exports) {
     buildSubscribeRequestBody, buildSubscribeModal,
     // v1.25 QoL (T5): cutoffDate <-> <input type="date"> converters.
     cutoffDateToDateInput, dateInputToCutoffDate,
-    derivePinnedPlaylistEntries, renderPinnedSidebar, renderPinnedPlaylists,
+    derivePinnedPlaylistEntries, renderPinnedSidebar, renderPinnedPlaylists, fetchAllPins,
     isYtdlpManagedItem, deleteFlowFor, showHardDeleteModal,
     // v1.24.0 (T9): C1 move-files client picker.
     showMoveModal, requestMoveItem,

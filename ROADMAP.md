@@ -80,6 +80,15 @@
 
 ## Shipped
 
+### v1.37.0 — Books: library + reader + progress (2026-07-13)
+
+- FileTube becomes a media platform for text too: EPUB + PDF libraries scanned from configured book folders into a new Books page (portrait cover cards, shelf chips, sort, era styling), with an in-app reader (themes, font size, TOC, tap/keyboard paging, exact resume) and per-book position/percent progress feeding a continue-reading row on home and books-in-search.
+- Zero new server dependencies: EPUB metadata/covers come from a hand-rolled, capped, hostile-input-hardened zip + OPF pipeline; the reader vendors epub.js/JSZip/pdf.js as lazy client assets. PDFs backfill their own cover from page 1 on first open.
+- Everything lives in a books-owned db namespace (structurally immune to the media scan's merge), with the media scanner's hard lessons ported on day one: cooperative-async walking, mount-loss + empty-mountpoint prune guards, folder-overlap rejection in BOTH directions, a books-owned progress coalescer.
+- Shelves join the pinned-playlists sidebar; every pinned row (channels AND shelves) now carries its own unpin control — orphaned pins are no longer permanent (Dean's report).
+- KNOWN GAP: book folders are configured via API only this release (POST /api/books/config) — the Settings-page UI ships in v1.37.1 alongside TTS.
+- Gate: QA + adversarial both REQUEST CHANGES (2 CRITICALs: source-scoped pin reorder; the Option-C mountpoint guard) -> full fix round -> both delta-APPROVED. 3897/3897 on Node 22 + 24.
+
 ### v1.36.2 — four minors + gate hardenings (2026-07-13)
 
 - Liked is a real prev/next context: cards opened from the Liked view carry it into the player, the arrows walk the Liked list in grid order, and stepping stays inside it.

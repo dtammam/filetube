@@ -251,3 +251,45 @@ clients (iOS Safari) can play them.
   atime is only a fallback, being unreliable under `relatime`/`noatime`).
 - iOS Safari cannot play a non-seekable live stream, which is why mobile uses the
   pre-transcoded, seekable MP4 path.
+
+## Books module (v1.37.0)
+
+A third media class alongside video/audio: EPUB + PDF libraries scanned from
+operator-configured folders, read in-app, with per-book position/percent
+progress. Design record: `docs/exec-plans/active/v1.37.0-books.md`.
+
+- **Namespace**: everything lives under `db.books`
+  (`folders/items/progress/pins/settings`), owned by `lib/books/store.js`
+  (`ensureBooks` backfill). Deliberately NOT `db.metadata`: the media scan's
+  Phase-2 merge never sees books, structurally retiring the persist-gate bug
+  class for this feature. Book ids reuse `getMediaId(filePath)`.
+- **Scanner**: `lib/books/scan.js` (pure walk/extract) + `scanBooks()` in
+  server.js (own `bookScanState` with the media scan's overlap/coalescing
+  discipline; boot/manual/config-save/interval-piggyback triggers). EPUB
+  metadata comes from a dependency-free zip reader (`lib/books/zip.js`,
+  central-directory authority, zip-bomb caps) + a scoped OPF scanner
+  (`lib/books/opf.js`); covers extract to `DATA_DIR/.bookcovers/`. Every
+  malformed book degrades to a filename-titled card -- never a scan abort.
+  Book roots may not overlap media roots (rejected at config save, both
+  directions).
+- **Serving**: `GET /api/books` (videos-contract parity + `filter=reading`),
+  `GET /api/books/:id` (spine + locator), `GET /book/:id/file` (native 206
+  ranges), `GET /bookcover/:id` (real cover else escaped SVG placeholder),
+  `POST /api/books/:id/cover` (the PDF page-1 client backfill: magic-sniffed,
+  no-clobber). Progress pings coalesce in a books-owned twin of the v1.30
+  progress coalescer.
+- **Client**: `/books` (cover-card grid, shelf chips w/ pin toggles) and
+  `/read.html?b=<id>` (reader chassis; vendored epub.js/JSZip/pdf.js under
+  `public/vendor/`, lazily loaded by the reader only). Locators:
+  `{kind:'epub', cfi, spineIndex, blockIndex}` / `{kind:'pdf', page}` --
+  `blockIndex` counts block elements (`READER_BLOCK_SELECTOR` in read.js) and
+  is the dual-implementation contract for wave-2 TTS "Listen from Here".
+  Shelf pins join the existing pinned-playlists sidebar via `fetchAllPins` +
+  the one deliberate renderer widening (optional `href`).
+- **Disabled-module posture**: zero configured folders = no nav link, no home
+  row, no scans, no db writes -- byte-identical chrome (the ytdlp guarantee).
+- **Wave 2 (v1.37.1, designed not built)**: server-side TTS (Piper default /
+  espeak-ng fallback, strictly opt-in binaries), one-chapter-at-a-time
+  serialized synthesis to `DATA_DIR/tts-cache/<key>.m4a` +
+  `<key>.blocks.json` (blockIndex -> startSec: the Listen-from-Here index),
+  played through the existing background-audio machinery.

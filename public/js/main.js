@@ -95,11 +95,54 @@ function buildSkeletonGrid(n) {
 // without over-committing to a specific viewport width.
 const SKELETON_CARD_COUNT = 8;
 
+// v1.37.0 T10 (books): pure builders for the home surfaces -- the
+// continue-reading row (bare home view only) and the books-in-search
+// section. Cover cards are compact portrait tiles linking to /read.html;
+// escapeHtml discipline matches buildCardHtml's (attribute + text escapes).
+function escapeBookRowHtml(text) {
+  return String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function buildBookRowCardHtml(item) {
+  const percent = item && item.progress && typeof item.progress.percent === 'number'
+    ? Math.min(100, Math.max(0, item.progress.percent))
+    : 0;
+  const bar = percent > 0.5
+    ? `<div class="book-row-progress"><div class="book-row-progress-fill" style="width: ${percent}%"></div></div>`
+    : '';
+  return `
+    <a class="book-row-card" href="/read.html?b=${encodeURIComponent(item.id)}" title="${escapeBookRowHtml(item.title)}">
+      <span class="book-row-cover"><img src="/bookcover/${encodeURIComponent(item.id)}" alt="" loading="lazy" />${bar}</span>
+      <span class="book-row-title">${escapeBookRowHtml(item.title)}</span>
+    </a>
+  `;
+}
+
+// The whole row/section: empty items = empty string = nothing rendered
+// (books-less installs keep a byte-identical home).
+function buildBooksHomeSectionHtml(items, heading, seeAllHref) {
+  if (!Array.isArray(items) || items.length === 0) return '';
+  const seeAll = seeAllHref ? `<a class="books-row-seeall" href="${escapeBookRowHtml(seeAllHref)}">See all</a>` : '';
+  return `
+    <section class="books-home-row">
+      <div class="books-home-row-header"><h3>${escapeBookRowHtml(heading)}</h3>${seeAll}</div>
+      <div class="books-home-row-scroller">${items.map(buildBookRowCardHtml).join('')}</div>
+    </section>
+  `;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     buildCardDownloadHref,
     buildCardDownloadFilename,
     buildSkeletonGrid,
+    buildBookRowCardHtml,
+    buildBooksHomeSectionHtml,
   };
 }
 
@@ -985,10 +1028,38 @@ if (typeof module !== 'undefined' && module.exports) {
     // `[]` (no pins rendered), preserving the disabled-module no-op
     // guarantee -- this never logs/throws on a 404. Read-only: never writes
     // db.folders/folderSettings.
-    fetch('/api/subscriptions/pins')
-      .then((r) => (r.ok ? r.json() : []))
-      .catch(() => [])
-      .then((pins) => renderPinnedSidebar(pins));
+    // v1.37.0: channel pins + book-shelf pins, one merged sidebar section.
+    fetchAllPins().then((pins) => renderPinnedSidebar(pins));
+
+    // v1.37.0 T10 (books): the home book surfaces. BARE home view -> a
+    // 'Continue reading' row above the grid; SEARCH view -> a 'Books'
+    // section above the video results. Both fetch-and-forget: any failure
+    // (or a books-less install's empty list) renders NOTHING and the home
+    // page stays byte-identical.
+    const booksRowHost = document.createElement('div');
+    if (videoGrid && videoGrid.parentElement) {
+      videoGrid.insertAdjacentElement('beforebegin', booksRowHost);
+      const bareHome = !searchQuery && !folderFilter && !rootFilter && !likedFilter;
+      if (bareHome) {
+        fetch('/api/books?filter=reading&limit=10')
+          .then((r) => (r.ok ? r.json() : { items: [] }))
+          .then((data) => {
+            booksRowHost.innerHTML = buildBooksHomeSectionHtml(data.items, 'Continue reading', '/books');
+          })
+          .catch(() => { booksRowHost.innerHTML = ''; });
+      } else if (searchQuery) {
+        fetch('/api/books?search=' + encodeURIComponent(searchQuery) + '&limit=12')
+          .then((r) => (r.ok ? r.json() : { items: [] }))
+          .then((data) => {
+            booksRowHost.innerHTML = buildBooksHomeSectionHtml(
+              data.items,
+              'Books',
+              '/books?search=' + encodeURIComponent(searchQuery),
+            );
+          })
+          .catch(() => { booksRowHost.innerHTML = ''; });
+      }
+    }
 
     // v1.29.0 T8 (R2.3/R2.4, AC4.3/AC4.4): expose THIS instance's own
     // loadLibrary() as the corner chip's in-place library-refresh hook (see
