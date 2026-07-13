@@ -186,3 +186,21 @@ test('GATE FIX (QA W4/W6 + S1/S9): sidebar highlight, injection guard, sheet ena
   const entry = common.derivePinnedPlaylistEntries([{ channelDir: '/b/x', label: 'X', href: '//evil.com/path' }]);
   assert.equal(entry[0].href, null, 'behavioral: //host hrefs drop to null');
 });
+
+// ---- v1.37.1 hotfix locks (Dean's stuck-"Opening book" report) ---------------
+
+test("v1.37.1: ePub() is called with openAs:'epub' -- the extension-less /book/:id/file URL otherwise type-sniffs as an unpacked DIRECTORY and hangs fetching container.xml", () => {
+  const readSrc = fs.readFileSync(path.join(__dirname, '../../public/js/read.js'), 'utf8');
+  assert.ok(readSrc.includes("{ openAs: 'epub' }"), 'the archived-epub hint must be explicit');
+});
+
+test('v1.37.1: books/reader styles live in the SHARED stylesheet -- the SPA router swaps only #view-root, so page-local <head> styles are lost on in-app navigation', () => {
+  const css = fs.readFileSync(path.join(__dirname, '../../public/css/style.css'), 'utf8');
+  for (const cls of ['.reader-chassis', '.reader-topbar', '.reader-drawer', '.books-grid', '.book-cover-link', '.books-shelf-chip']) {
+    assert.ok(css.includes(`${cls} {`) || css.includes(`${cls},`), `${cls} must be in style.css`);
+  }
+  for (const page of ['books.html', 'read.html']) {
+    const html = fs.readFileSync(path.join(__dirname, `../../public/${page}`), 'utf8');
+    assert.ok(!html.includes('<style>'), `${page} must carry NO page-local style block (lost on SPA swap)`);
+  }
+});
