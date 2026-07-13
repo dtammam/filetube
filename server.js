@@ -4757,6 +4757,53 @@ app.post('/api/progress', (req, res) => {
 // died at the generic 500 with no escape hatch. Exported for unit coverage.
 const RECOVERABLE_DELETE_CODES = new Set(['EROFS', 'EACCES', 'EBUSY', 'EPERM']);
 
+// v1.38 (Dean: "I delete things and they don't actually get deleted" -- gone
+// from the list, back after a rescan, only a SMALL % of files, NOT a
+// permissions problem): resolve the stored `filePath` to the ACTUAL on-disk
+// entry before we unlink. Root cause of that bug: an item's id IS the md5 of
+// its path string and both `fs.existsSync`/`fs.unlinkSync` take that exact
+// byte sequence -- but a file's on-disk name can carry a DIFFERENT Unicode
+// normalization than what we persisted (NFC vs NFD; macOS/APFS and many SMB
+// shares hand back NFD, while a name typed/stored elsewhere is NFC). A single
+// combining-mark difference makes `existsSync(storedPath)` miss the real file;
+// the OLD handler then skipped the unlink, logged a warning, and deleted the
+// db entry anyway with `{success:true}` -- so the card vanished (client trusts
+// success) while the file survived and the next scan re-indexed it. This maps
+// the stored path to the real entry by comparing NFC-normalized basenames
+// within the parent directory, so the true file gets unlinked. Returns:
+//   { realPath: <string> }              -- found (may equal filePath): unlink this
+//   { realPath: null, gone: true }      -- parent readable, no match / dir gone:
+//                                          genuinely absent (desired end state holds)
+//   { realPath: null, unreadable: err } -- parent dir un-enumerable (EACCES/EPERM/
+//                                          ENOTDIR): CANNOT confirm removal
+// The `unreadable` case is exactly what must NOT silently drop the library
+// entry (that is the reported bug); the caller surfaces it as a recoverable
+// 409 with the same opt-in `removeAnyway` escape hatch as a read-only volume.
+function resolveOnDiskPath(filePath) {
+  try {
+    if (fs.existsSync(filePath)) return { realPath: filePath };
+  } catch (_) { /* fall through to the directory scan */ }
+  const dir = path.dirname(filePath);
+  let wantNfc;
+  try { wantNfc = path.basename(filePath).normalize('NFC'); } catch (_) { wantNfc = path.basename(filePath); }
+  let entries;
+  try {
+    entries = fs.readdirSync(dir);
+  } catch (err) {
+    // ENOENT: the parent dir (or an ancestor) is gone -> the file is genuinely
+    // absent. Any other errno (EACCES/EPERM/ENOTDIR) means we could not
+    // enumerate the dir to confirm -> report it as unconfirmable, never as gone.
+    if (err && err.code === 'ENOENT') return { realPath: null, gone: true };
+    return { realPath: null, unreadable: err };
+  }
+  for (const name of entries) {
+    let nfc;
+    try { nfc = name.normalize('NFC'); } catch (_) { nfc = name; }
+    if (nfc === wantNfc) return { realPath: path.join(dir, name) };
+  }
+  return { realPath: null, gone: true };
+}
+
 // API: Delete video/audio file
 app.delete('/api/videos/:id', async (req, res) => {
   // v1.30 A3: a PURE read to look up `item` -- never mutated here, and the
@@ -4776,13 +4823,48 @@ app.delete('/api/videos/:id', async (req, res) => {
   const removeAnyway = req.query.removeAnyway === 'true' || req.query.removeAnyway === '1';
   let fileRemainsOnDisk = false;
 
+  // v1.38: resolve the stored path to the REAL on-disk entry (handles an
+  // NFC/NFD-variant name that `existsSync(item.filePath)` would miss) BEFORE
+  // touching the db -- see `resolveOnDiskPath`'s doc comment for the bug this
+  // closes.
+  const resolved = resolveOnDiskPath(filePath);
+  if (resolved.realPath === null && resolved.unreadable) {
+    // We could not even ENUMERATE the parent dir (EACCES/EPERM/ENOTDIR), so we
+    // cannot confirm the file is gone. Dropping the library entry here is
+    // exactly the "disappears from the list but the file survives -> rescan
+    // resurrects it" bug -- so leave the db COMPLETELY untouched and surface a
+    // recoverable 409 (same opt-in `removeAnyway` follow-up as a read-only
+    // volume). Only once the caller explicitly accepts does the entry go.
+    if (!removeAnyway) {
+      const code = resolved.unreadable.code;
+      console.error(`Cannot delete ${filePath}: parent directory un-enumerable (${code || 'unknown'}); library entry left intact.`);
+      return res.status(409).json({
+        error: `Could not delete the file: its folder could not be read (${code || 'unknown'}), so removal can't be confirmed. The file was not removed.`,
+        code,
+        readOnly: true,
+      });
+    }
+    fileRemainsOnDisk = true; // removeAnyway: caller accepts it may reappear on the next scan.
+  }
+  // The concrete path we unlink + hang sidecar cleanup off of. Null only when
+  // the file is genuinely absent (`gone`) or unconfirmable-but-removeAnyway.
+  const mediaPathOnDisk = resolved.realPath;
+
   try {
     // Delete actual file from filesystem
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
-      console.log(`Deleted file from disk: ${filePath}`);
-    } else {
-      console.warn(`File did not exist on disk when trying to delete: ${filePath}`);
+    if (mediaPathOnDisk) {
+      fs.unlinkSync(mediaPathOnDisk);
+      if (mediaPathOnDisk !== filePath) {
+        console.log(`Deleted file from disk (resolved a Unicode/name variant of the stored path): ${mediaPathOnDisk}`);
+      } else {
+        console.log(`Deleted file from disk: ${mediaPathOnDisk}`);
+      }
+    } else if (!fileRemainsOnDisk) {
+      // resolved.gone: genuinely absent (parent dir readable with no matching
+      // entry, or the dir itself is gone). The desired end state ("not on
+      // disk") already holds -> SUCCESS; fall through to remove the orphaned
+      // library entry, matching the v1.36.2 alreadyGone contract below.
+      console.warn(`File not on disk when deleting (already gone): ${filePath}`);
     }
 
     // Clean up thumbnail
@@ -4803,8 +4885,12 @@ app.delete('/api/videos/:id', async (req, res) => {
     // library item (not a media extension), but leaving it litters the
     // channel folder forever. Never blocks the delete.
     try {
-      const dir = path.dirname(filePath);
-      const base = path.basename(filePath, path.extname(filePath));
+      // v1.38: hang sidecar cleanup off the RESOLVED on-disk path (its
+      // `<basename>.<lang>.vtt` neighbours share the real file's exact name),
+      // falling back to the stored path when the media file was already gone.
+      const mediaPath = mediaPathOnDisk || filePath;
+      const dir = path.dirname(mediaPath);
+      const base = path.basename(mediaPath, path.extname(mediaPath));
       for (const name of fs.readdirSync(dir)) {
         if (name.startsWith(`${base}.`) && name.endsWith('.vtt')) {
           try { fs.unlinkSync(path.join(dir, name)); } catch (_) { /* best-effort */ }
@@ -6576,6 +6662,9 @@ module.exports = {
   transcodedPath,
   // v1.36.2: the recoverable-delete errno set -- exported for unit coverage.
   RECOVERABLE_DELETE_CODES,
+  // v1.38: stored-path -> real on-disk entry resolver (NFC/NFD-aware) --
+  // exported for unit coverage of the delete-doesn't-delete fix.
+  resolveOnDiskPath,
   // v1.37.0 books: scanner + state accessor + cover dir, exported for the
   // books integration tests (same posture as scanDirectories/THUMBNAIL_DIR).
   scanBooks,
