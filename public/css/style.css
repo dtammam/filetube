@@ -5681,3 +5681,16 @@ body.ft-css-fullscreen .bottom-nav {
       z-index: 5;
     }
     .reader-status[hidden] { display: none !important; }
+
+/* ---- v1.37.4 (Dean's report: Continue-reading row widens the page) ---------
+   .main-content is a FLEX ITEM of .app-container; flex items default to
+   min-width:auto (refuse to shrink below their content's natural width),
+   and the books row's horizontal scroller contributes its FULL content
+   width (~1000px of covers) to that minimum even though it scrolls
+   internally -- so the whole page widened past the viewport on mobile
+   (pinch-to-zoom symptom). min-width:0 removes the floor; the scroller
+   then scrolls inside the viewport-width page as designed. The max-width
+   guards are belt-and-suspenders for any future wide child. */
+.main-content { min-width: 0; }
+.books-home-row { max-width: 100%; min-width: 0; }
+.books-home-row-scroller { max-width: 100%; }
