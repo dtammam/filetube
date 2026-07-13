@@ -2792,6 +2792,10 @@ if (typeof module !== 'undefined' && module.exports) {
   // request shape/behavior.
   function saveProgressToServer(time, opts) {
     if (!currentId) return;
+    // v1.38.3: a book-TTS item is not a db.metadata media item -- its id is
+    // synthetic and its progress is the reader's own (/api/books/:id/progress).
+    // Never write /api/progress rows for it.
+    if (currentData && currentData.suppressProgress) return;
     var fetchOpts = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -4733,7 +4737,12 @@ if (typeof module !== 'undefined' && module.exports) {
     dockEl.appendChild(dockCloseBtn);
     dockEl.addEventListener('click', function () {
       if (state !== STATE_DOCKED || !currentId) return;
-      var url = '/watch.html?v=' + encodeURIComponent(currentId);
+      // v1.38.3: a book-TTS item carries an explicit reader href -- tapping the
+      // mini bar returns to THAT reader, not /watch.html?v=<bookId> (which is
+      // a video route and would 404 for a book id).
+      var url = (currentData && typeof currentData.readerHref === 'string' && currentData.readerHref)
+        ? currentData.readerHref
+        : '/watch.html?v=' + encodeURIComponent(currentId);
       if (window.FileTube && typeof window.FileTube.navigate === 'function') window.FileTube.navigate(url);
       else window.location.href = url;
     });

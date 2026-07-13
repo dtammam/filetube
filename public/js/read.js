@@ -205,23 +205,48 @@ if (typeof module !== 'undefined' && module.exports) {
   }
   const TTS_UNLOCK_CLIP = makeSilentWavDataUri(30);
 
-  // Mount + user-activate the shared player's media element DURING the Listen
-  // tap. player.load() mounts the host and sets the src synchronously; the
-  // direct play() right after is what blesses the element within the gesture
-  // (player.load's OWN play() is deferred behind an async progress fetch, so it
-  // can't do the blessing itself). Best-effort throughout.
-  function primeAudioForGesture(root) {
+  // A constant media id for the in-gesture unlock load. It is DIFFERENT from any
+  // real chapter id on purpose: player.load() adopts (reparents, does NOT reload
+  // the src) when the requested id equals the currently-loaded one
+  // (isAdoptLoad). Loading the unlock item first resets currentId to this
+  // sentinel, so the subsequent REAL chapter load is never adopted and always
+  // fully (re)loads -- even when re-listening the same chapter.
+  const TTS_UNLOCK_ID = 'booktts:unlock';
+  // Per-CHAPTER media id (never the bare bookId): a book has many chapters, and
+  // a shared id would make chapter N+1 get adopted (its audio never loaded).
+  function ttsMediaId(spineIndex) { return `booktts:${bookId}:${spineIndex}`; }
+
+  // Hand a book-audio item to the shared player AND make it visible: load into
+  // the reader's #player-slot (FULL) then dock() to the mini bar. This is the
+  // crux -- `player.load()` with NO slot is a silent no-op (mountInSlot bails),
+  // so the host never attaches to the page (no bar, no audio element in the
+  // DOM). `readerHref` makes the dock's tap-to-expand return to THIS reader;
+  // `suppressProgress` keeps the player from writing /api/progress rows for a
+  // synthetic id (book progress is the reader's own). Returns #media-player.
+  function loadReaderAudio(root, id, streamSrc) {
     const player = window.FileTube && window.FileTube.player;
-    if (!player || typeof player.load !== 'function') return;
+    if (!player || typeof player.load !== 'function') return null;
+    const slot = root.querySelector('#player-slot') || document.getElementById('player-slot');
+    if (!slot) return null;
     const titleEl = root.querySelector('#reader-title');
-    player.load(bookId, {
+    player.load(id, {
       type: 'audio',
       title: titleEl ? titleEl.textContent : 'Book',
       folderName: '',
-      streamSrc: TTS_UNLOCK_CLIP,
+      streamSrc,
       artUrl: `/bookcover/${encodeURIComponent(bookId)}`,
-    }, {});
-    const mp = document.getElementById('media-player');
+      readerHref: `/read.html?b=${encodeURIComponent(bookId)}`,
+      suppressProgress: true,
+    }, { slot });
+    if (typeof player.dock === 'function') player.dock();
+    return document.getElementById('media-player');
+  }
+
+  // Mount + user-activate the media element DURING the Listen tap (iOS gesture
+  // wall): load a silent clip so the element is in the DOM and blessed by a
+  // direct in-gesture play(); the real audio swaps into that same element.
+  function primeAudioForGesture(root) {
+    const mp = loadReaderAudio(root, TTS_UNLOCK_ID, TTS_UNLOCK_CLIP);
     if (mp) {
       try { const p = mp.play(); if (p && typeof p.catch === 'function') p.catch(() => {}); } catch (_) { /* blessed on the call itself */ }
     }
@@ -262,22 +287,11 @@ if (typeof module !== 'undefined' && module.exports) {
           if (typeof b.blockIndex === 'number' && b.blockIndex <= blockIndex) startSec = b.startSec;
           else break;
         }
-        const titleEl = root.querySelector('#reader-title');
-        const player = window.FileTube && window.FileTube.player;
-        if (!player || typeof player.load !== 'function') return;
-        player.load(bookId, {
-          type: 'audio',
-          title: titleEl ? titleEl.textContent : 'Book',
-          folderName: '',
-          streamSrc: `/book/${encodeURIComponent(bookId)}/tts/${spineIndex}`,
-          artUrl: `/bookcover/${encodeURIComponent(bookId)}`,
-        }, {});
-        if (startSec > 0) {
-          const mp = document.getElementById('media-player');
-          if (mp) {
-            const onMeta = () => { try { mp.currentTime = startSec; } catch (_) { /* seek unsupported */ } mp.removeEventListener('loadedmetadata', onMeta); };
-            mp.addEventListener('loadedmetadata', onMeta);
-          }
+        // Swap the real chapter audio into the (now blessed, docked) element.
+        const mp = loadReaderAudio(root, ttsMediaId(spineIndex), `/book/${encodeURIComponent(bookId)}/tts/${spineIndex}`);
+        if (mp && startSec > 0) {
+          const onMeta = () => { try { mp.currentTime = startSec; } catch (_) { /* seek unsupported */ } mp.removeEventListener('loadedmetadata', onMeta); };
+          mp.addEventListener('loadedmetadata', onMeta);
         }
         setStatus(root, '');
         // Warm the next chapter so playback continues seamlessly.

@@ -135,7 +135,12 @@
   <!-- v1.38.0 TTS "Listen from Here": the player host, so read.js can dock the
        battle-won background-audio player (hidden <audio> + MediaSession) for a
        book chapter's synthesized audio. Byte-identical to setup/watch's host
-       so the shared player.js ensureHost() mounts here unchanged. -->
+       so the shared player.js ensureHost() mounts here unchanged.
+       v1.38.3: #player-slot is the FULL mount point player.load() needs before
+       we dock() -- load(no slot) is a no-op (mountInSlot bails), so the host
+       would never attach to the page. The host leaves this slot the instant we
+       dock, so it stays empty. -->
+  <div id="player-slot" class="reader-player-slot"></div>
   <div id="player-dock" hidden></div>
   <template id="player-host-template">
     <div class="player-container" id="player-wrapper">
