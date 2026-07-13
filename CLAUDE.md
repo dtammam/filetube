@@ -7,6 +7,15 @@ with on-demand transcoding of browser-incompatible containers (e.g. AVI) to MP4.
 
 This file is the Claude Code entry point for this repo.
 
+## READ FIRST: the working style that superseded this pipeline
+
+**docs/CLAUDE-WORKING-STYLE.md** is the authoritative process document,
+written at the v1.37.2 handoff. Dean endorsed "lean mode" (direct
+implementation + a two-reviewer adversarial gate + dual-Node suites +
+release ceremony) over the agent pipeline below around v1.26; the pipeline
+sections that follow are LEGACY and the .state/ files are stale. Persistent
+memory (auto-loaded) carries the current project state and hard-won lessons.
+
 ## Agent architecture
 
 This repo uses a multi-agent SDLC pipeline. Do NOT try to handle the full
