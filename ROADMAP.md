@@ -80,6 +80,12 @@
 
 ## Shipped
 
+### v1.39.3 — Book narration bar: reading-% stays visible (measured, not guessed) (2026-07-13)
+
+- The v1.39.2 attempt to keep the reading-% bar above the now-playing bar didn't work: the reader chassis height is set **inline by JS** (`sizeReader()`, the v1.37.2 "measure the real available space" fix), which overrode the CSS class it relied on — and the reservation was both a guessed pixel value and scoped mobile-only, so it was still covered on desktop *and* mobile.
+- **Fix (Dean's steer — pixel/percent guessing doesn't scale): measure the bar.** `sizeReader()` already measures the header offset and the nav's live `offsetHeight`; it now also subtracts the now-playing bar's real rendered `offsetHeight` when it's visible. Zero magic numbers, self-adjusting to any device / font size / bar layout, and correct on both form factors (the desktop bar sits at `bottom:0`, the mobile bar above the nav — measurement handles both). The reveal path re-fits the surface (`requestAnimationFrame` → `sizeReader()` + `refit()`) so the reader re-paginates to the reduced height the moment narration starts. The dead CSS px-guess rule was removed.
+- Full unit suite + typography lock green on Node v22 + v24.
+
 ### v1.39.2 — Book narration bar: glyphs, progress bar, nav order (2026-07-13)
 
 - Follow-up to v1.39.1 from Dean's on-device pass (all visual/CSS, no logic beyond one class toggle):

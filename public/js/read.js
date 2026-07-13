@@ -90,6 +90,8 @@ if (typeof module !== 'undefined' && module.exports) {
   let spineCount = null;      // number of chapters (from GET /api/books/:id)
   let currentTtsSpine = null; // the chapter whose audio is currently loaded
   let listenBusy = false;     // guards overlapping Listen/chapter-advance requests
+  let sizeReaderSurface = null; // init() exposes its measure-and-fit fn so the
+                                // narration bar reveal can re-fit the chassis
 
   const FONT_KEY = 'filetube_reader_fontsize';
   const THEME_KEY = 'filetube_reader_theme';
@@ -233,10 +235,15 @@ if (typeof module !== 'undefined' && module.exports) {
     // No dock() -- keep it FULL in the reader bar.
     const bar = root.querySelector('#reader-nowplaying');
     if (bar) bar.hidden = false;
-    // Reserve the bar's footprint so the reader's own bottom bar (reading %)
-    // sits ABOVE the fixed now-playing bar instead of being covered (mobile).
-    const chassis = root.querySelector('#reader-chassis');
-    if (chassis) chassis.classList.add('reader-np-active');
+    // Now the bar is visible, re-fit the reading surface above it (its footprint
+    // is now measurable). rAF lets the just-revealed bar lay out first; refit
+    // re-paginates the reader to the new height. Runs on desktop + mobile.
+    if (typeof sizeReaderSurface === 'function') {
+      requestAnimationFrame(() => {
+        sizeReaderSurface();
+        if (adapter && typeof adapter.refit === 'function') adapter.refit();
+      });
+    }
     const cover = root.querySelector('#reader-np-cover');
     if (cover && cover.getAttribute('src') !== `/bookcover/${encodeURIComponent(bookId)}`) {
       cover.setAttribute('src', `/bookcover/${encodeURIComponent(bookId)}`);
@@ -710,9 +717,18 @@ if (typeof module !== 'undefined' && module.exports) {
       const bottomNav = document.getElementById('bottom-nav');
       const navVisible = bottomNav && getComputedStyle(bottomNav).display !== 'none';
       const navH = navVisible ? bottomNav.offsetHeight : 0;
-      const height = Math.max(320, window.innerHeight - top - navH);
+      // v1.39.3 (Dean's report: the narration bar covers the reading-% bar on
+      // BOTH form factors). The now-playing bar is a fixed element sitting just
+      // above the nav -- reserve its REAL rendered height (not a guessed px or
+      // %) so the reader's own bottom bar stays visible above it. Same live-
+      // measurement approach already used for the header offset + nav height;
+      // adapts to any device, font size, or bar layout with zero magic numbers.
+      const np = root.querySelector('#reader-nowplaying');
+      const npH = (np && !np.hidden) ? np.offsetHeight : 0;
+      const height = Math.max(320, window.innerHeight - top - navH - npH);
       chassis.style.height = height + 'px';
     }
+    sizeReaderSurface = sizeReader;
     sizeReader();
     let sizeDebounce = null;
     window.addEventListener('resize', () => {
@@ -865,6 +881,7 @@ if (typeof module !== 'undefined' && module.exports) {
     }
     if (controller) controller.abort();
     controller = null;
+    sizeReaderSurface = null; // its closure references the torn-down chassis
     bookId = null;
     lastLocator = null;
     // v1.39.0: drop reader-scoped narration state. The player itself is NOT

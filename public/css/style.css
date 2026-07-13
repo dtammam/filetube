@@ -5835,15 +5835,10 @@ body.ft-css-fullscreen .bottom-nav {
   .reader-nowplaying #player-slot .player-controls .pc-seek {
     order: 0; /* undo the scrub-lift; one inline row again */
   }
-  /* When the narration bar is showing (read.js adds .reader-np-active), shrink
-     the reading surface by the bar's footprint so the reader's OWN bottom bar
-     (reading %) rises ABOVE the fixed now-playing bar instead of being covered
-     (Dean's report). Mobile only -- desktop bar sits at bottom:0 and its layout
-     is untouched. --reader-np-h is the bar's height + its 54px nav offset;
-     tunable if the on-device gap needs a nudge. */
-  .reader-chassis.reader-np-active {
-    height: calc(100vh - var(--mobile-header-h, 56px) - env(safe-area-inset-bottom, 0px) - var(--reader-np-h, 92px));
-  }
+  /* NB: the reader chassis height that keeps the reading-% bar visible above
+     this bar is set by read.js's sizeReader() (it MEASURES the bar's real
+     height on both form factors) -- not by a CSS px/% guess, which never
+     scaled. See public/js/read.js. */
 }
 
 /* ---- v1.37.4 (Dean's report: Continue-reading row widens the page) ---------
