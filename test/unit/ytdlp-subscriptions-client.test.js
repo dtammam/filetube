@@ -56,6 +56,8 @@ const {
   isPartialRowStatus,
   buildFailureLines,
   formatFailuresLine,
+  buildFailureItems,
+  renderFailuresInto,
   formatWarningLine,
   // v1.29.0 T6 (R1.1/R1.2/R1.5): row-level Retry-affordance gating +
   // busy-coalescing "queued behind current run" render.
@@ -1323,7 +1325,23 @@ test('createSubscriptionRow: a hostile lastStatus (composed error text) is also 
 
 // ---- v1.24.0 A2 (T14): per-item failure list in .sub-row-failures ---------
 
-test('createSubscriptionRow: renders .sub-row-failures with one "video: reason" line per failure and un-hides it when a live error entry has failures', () => {
+// v1.37.5: the failures block is now one `.sub-row-failure` child row per
+// failed video (each with a `.sub-row-failure-text` span, plus an optional
+// Skip button). These helpers read that structure back out.
+function failureRows(failuresEl) {
+  return failuresEl.children.filter((el) => el.className === 'sub-row-failure');
+}
+function failureTexts(failuresEl) {
+  return failureRows(failuresEl).map((row) => {
+    const span = row.children.find((el) => el.className === 'sub-row-failure-text');
+    return span ? span.textContent : '';
+  });
+}
+function skipButtonOf(failureRow) {
+  return failureRow.children.find((el) => (el.className || '').includes('sub-row-skip'));
+}
+
+test('createSubscriptionRow: renders .sub-row-failures with one "video: reason" row per failure and un-hides it when a live error entry has failures', () => {
   const sub = { id: 'a2-1', name: 'Chan', channelUrl: 'https://www.youtube.com/@a2-1', lastCheckedAt: null, lastStatus: null };
   const liveEntry = {
     state: 'error',
@@ -1338,7 +1356,59 @@ test('createSubscriptionRow: renders .sub-row-failures with one "video: reason" 
   const failuresEl = info.children.find((el) => el.className === 'sub-row-failures');
   assert.ok(failuresEl, '.sub-row-failures must exist on every row (hidden when empty)');
   assert.strictEqual(failuresEl.hidden, false);
-  assert.strictEqual(failuresEl.textContent, 'Cool Video: Video unavailable | Unknown video: unattributed reason');
+  assert.deepStrictEqual(failureTexts(failuresEl), ['Cool Video: Video unavailable', 'Unknown video: unattributed reason']);
+});
+
+test('buildFailureItems: structured {label,reason,videoId}, state/outcome gated, unattributed videoId is empty string', () => {
+  // error state -> items; the label prefers title, then videoId, then a fallback.
+  assert.deepStrictEqual(
+    buildFailureItems({ state: 'error', failures: [
+      { videoId: 'v1', title: 'T', reason: 'r' },
+      { videoId: 'v2', reason: '' },
+      { videoId: null, reason: 'x' },
+    ] }),
+    [
+      { label: 'T', reason: 'r', videoId: 'v1' },
+      { label: 'v2', reason: 'Unknown reason', videoId: 'v2' },
+      { label: 'Unknown video', reason: 'x', videoId: '' },
+    ],
+  );
+  // A non-terminal state with a stale failures array yields nothing (gated).
+  assert.deepStrictEqual(buildFailureItems({ state: 'downloading', failures: [{ videoId: 'v', reason: 'stale' }] }), []);
+  // A 'done' run is only surfaced when it is a partial outcome.
+  assert.deepStrictEqual(buildFailureItems({ state: 'done', outcome: 'success', failures: [{ videoId: 'v', reason: 'r' }] }), []);
+  assert.strictEqual(buildFailureItems({ state: 'done', outcome: 'partial', failures: [{ videoId: 'v', reason: 'r' }] }).length, 1);
+});
+
+test('createSubscriptionRow: a Skip button appears only for a failure with a videoId (and only when onSkip is wired), and clicking it calls onSkip(subId, videoId)', () => {
+  const calls = [];
+  const sub = { id: 'skip-sub', name: 'Chan', channelUrl: 'https://www.youtube.com/@skip', lastStatus: null };
+  const liveEntry = {
+    state: 'error',
+    failures: [
+      { videoId: 'vidWithId', title: 'Has Id', reason: 'boom' },
+      { videoId: null, reason: 'no id here' },
+    ],
+  };
+  const row = createSubscriptionRow(sub, fakeDoc, { onSkip: (subId, videoId) => { calls.push([subId, videoId]); return Promise.resolve(true); } }, liveEntry);
+  const info = row.children.find((el) => el.className === 'sub-row-info');
+  const failuresEl = info.children.find((el) => el.className === 'sub-row-failures');
+  const rows = failureRows(failuresEl);
+  assert.strictEqual(rows.length, 2);
+  const btnWithId = skipButtonOf(rows[0]);
+  assert.ok(btnWithId, 'a failure carrying a videoId must render a Skip button');
+  assert.strictEqual(skipButtonOf(rows[1]), undefined, 'an unattributed failure (no videoId) must render NO Skip button');
+  btnWithId.click({ stopPropagation() {} });
+  assert.deepStrictEqual(calls, [['skip-sub', 'vidWithId']]);
+});
+
+test('createSubscriptionRow: with a videoId failure but NO onSkip handler, no Skip button is rendered', () => {
+  const sub = { id: 'noskip-sub', lastStatus: null };
+  const liveEntry = { state: 'error', failures: [{ videoId: 'vidX', reason: 'boom' }] };
+  const row = createSubscriptionRow(sub, fakeDoc, {}, liveEntry);
+  const info = row.children.find((el) => el.className === 'sub-row-info');
+  const failuresEl = info.children.find((el) => el.className === 'sub-row-failures');
+  assert.strictEqual(skipButtonOf(failureRows(failuresEl)[0]), undefined);
 });
 
 test('createSubscriptionRow: .sub-row-failures is present but HIDDEN (empty textContent) when there is no live error entry', () => {
@@ -1378,7 +1448,7 @@ test('createSubscriptionRow: a partial live entry (state "done", outcome "partia
   assert.strictEqual(statusEl.classList.contains('sub-row-status-partial'), true);
   assert.notStrictEqual(statusEl.textContent, 'Done');
   assert.strictEqual(failuresEl.hidden, false);
-  assert.strictEqual(failuresEl.textContent, 'Cool Video: Video unavailable');
+  assert.deepStrictEqual(failureTexts(failuresEl), ['Cool Video: Video unavailable']);
 });
 
 test('createSubscriptionRow: a plain success/error/no-entry row never gets the sub-row-status-partial class', () => {
@@ -1428,7 +1498,7 @@ test('createSubscriptionRow: a hostile reason/title inside a failure entry is re
   const row = createSubscriptionRow(sub, fakeDoc, {}, liveEntry);
   const info = row.children.find((el) => el.className === 'sub-row-info');
   const failuresEl = info.children.find((el) => el.className === 'sub-row-failures');
-  assert.ok(failuresEl.textContent.includes(hostileReason));
+  assert.ok(failureTexts(failuresEl).some((t) => t.includes(hostileReason)), 'the hostile reason must be present as inert text');
   const tagNames = new Set([...row.walk()].map((el) => el.tagName));
   assert.ok(!tagNames.has('IMG'), 'no <img> element must ever be created from a failure reason');
 });
@@ -2173,6 +2243,42 @@ test('applyStatusUpdatesInPlace: A2 (T14) -- re-hides .sub-row-failures once the
   const failuresEl = info.children.find((el) => el.className === 'sub-row-failures');
   assert.strictEqual(failuresEl.hidden, true);
   assert.strictEqual(failuresEl.textContent, '');
+});
+
+test('applyStatusUpdatesInPlace: v1.37.5 -- given handlers + a doc (the live controller path), a failure surfacing on a poll tick renders a working Skip button', () => {
+  const calls = [];
+  const sub = { id: 'a2-skip-tick', name: 'Chan', channelUrl: 'https://www.youtube.com/@a2-skip-tick', lastStatus: null };
+  const row = createSubscriptionRow(sub, fakeDoc, {}); // built with no failures
+  const rowElementsById = { 'a2-skip-tick': row };
+
+  applyStatusUpdatesInPlace(
+    rowElementsById,
+    [sub],
+    { subscriptions: { 'a2-skip-tick': { state: 'error', failures: [{ videoId: 'vidTick', title: 'T', reason: 'boom' }] } } },
+    { onSkip: (subId, videoId) => { calls.push([subId, videoId]); return Promise.resolve(true); } },
+    fakeDoc,
+  );
+
+  const info = row.children.find((el) => el.className === 'sub-row-info');
+  const failuresEl = info.children.find((el) => el.className === 'sub-row-failures');
+  const failureRow = failuresEl.children.find((el) => el.className === 'sub-row-failure');
+  assert.ok(failureRow, 'a per-video failure row must be built on the tick');
+  const skipBtn = failureRow.children.find((el) => (el.className || '').includes('sub-row-skip'));
+  assert.ok(skipBtn, 'the Skip button must render on the in-place tick when handlers+doc are supplied');
+  skipBtn.click({ stopPropagation() {} });
+  assert.deepStrictEqual(calls, [['a2-skip-tick', 'vidTick']]);
+});
+
+test('renderFailuresInto: with no usable doc, falls back to the classic single joined text line (byte-identical to pre-v1.37.5)', () => {
+  const container = new FakeElement('div');
+  const entry = { state: 'error', failures: [
+    { videoId: 'v1', title: 'One', reason: 'a' },
+    { videoId: null, reason: 'b' },
+  ] };
+  renderFailuresInto(container, entry, null, { onSkip: () => Promise.resolve(true) }, 'sub');
+  assert.strictEqual(container.hidden, false);
+  assert.strictEqual(container.textContent, 'One: a | Unknown video: b');
+  assert.strictEqual(container.children.length, 0, 'the fallback must never createElement');
 });
 
 // ---- v1.29.0 T4 (R3a.6, R3c.1 client): partial marker class + warning line -
