@@ -80,6 +80,10 @@
 
 ## Shipped
 
+### v1.39.5 — Muted volume-slider glyph recentered (2026-07-13)
+
+- The diagonal "muted" slash over the speaker icon sat off the glyph (Dean's report). It was drawn from a `top-left` transform origin with a hand-tuned `left: 5px` offset — fragile. Recentered it on the icon box (`left/top: 50%` + `translate(-50%, -50%)`, height ≈ the box diagonal so it crosses the speaker corner-to-corner). Pure CSS, no magic offset.
+
 ### v1.39.4 — Book narration bar: chapter glyphs in line with the controls (2026-07-13)
 
 - The ⏮/⏭ chapter buttons rendered ~20px lower than the play/seek/time control bar. Cause: the base `#player-wrapper:not(.audio-expanded)` rule reserves a 40px `padding-bottom` strip for the player's *absolutely-positioned* control bar — but the reader makes that bar `position:static`, so the reservation became an empty band below the controls, leaving the mount slot ~80px tall with the controls pinned to its top while the center-aligned chapter buttons sat at the slot's true middle. That padding was only killed on mobile (2-ID rule inside the phone media query); on desktop `#player-wrapper` (1 ID) still out-specified the reader's 2-class container rule.

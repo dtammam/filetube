@@ -228,24 +228,24 @@ test('AC24: the #speed-btn rules introduce no hardcoded color values (era tokens
   assert.ok(!/rgba?\(/.test(rule[1]), 'no rgb()/rgba() colors expected in the #speed-btn rule');
 });
 
-// ---- Mute-slash nit: shifted right off the original mis-centered value ----
+// ---- Mute-slash: centered on the glyph box (v1.39.5, superseding the v1.22
+//      top-left-origin + hand-tuned `left` px nudge, which still sat off-glyph) --
 
-test('mute-slash nit: .mute-icon-off::after is no longer left at the original mis-centered 1px', () => {
+test('mute-slash: .mute-icon-off::after is centered on the glyph box (no fragile px offset)', () => {
   const rule = /\.mute-icon-off::after\s*\{([^}]*)\}/.exec(css);
   assert.ok(rule, 'expected .mute-icon-off::after rule');
-  const leftMatch = /left:\s*(-?\d+(?:\.\d+)?)px/.exec(rule[1]);
-  assert.ok(leftMatch, 'expected a `left: <n>px` declaration on .mute-icon-off::after');
-  const leftValue = Number(leftMatch[1]);
-  assert.notStrictEqual(leftValue, 1, 'left should have moved off the original mis-centered 1px value');
-  assert.ok(leftValue > 1 && leftValue <= 8, `expected the slash to shift RIGHT toward the glyph center (got left: ${leftValue}px)`);
-  // currentColor only -- no new hardcoded color introduced by the nit fix.
+  // Centered via percentage anchoring, NOT a hand-tuned px `left`/`top`.
+  assert.match(rule[1], /left:\s*50%;/, 'slash should be horizontally centered (left: 50%)');
+  assert.match(rule[1], /top:\s*50%;/, 'slash should be vertically centered (top: 50%)');
+  assert.ok(!/left:\s*-?\d+(?:\.\d+)?px/.test(rule[1]), 'the fragile px `left` offset should be gone');
+  // currentColor only -- no new hardcoded color introduced.
   assert.match(rule[1], /background-color:\s*currentColor;/);
 });
 
-test('mute-slash nit: the rotation/anchoring mechanics are otherwise unchanged (still a 45deg diagonal anchored top-left)', () => {
+test('mute-slash: still a 45deg diagonal, now pinned to the glyph center', () => {
   const rule = /\.mute-icon-off::after\s*\{([^}]*)\}/.exec(css);
-  assert.match(rule[1], /transform:\s*rotate\(45deg\);/);
-  assert.match(rule[1], /transform-origin:\s*top left;/);
+  assert.match(rule[1], /transform:\s*translate\(-50%,\s*-50%\)\s*rotate\(45deg\);/, 'centered translate + 45deg rotation');
+  assert.match(rule[1], /transform-origin:\s*center;/);
 });
 
 // ---- AC12: no new hardcoded colors in the v1.22/v1.22.1 FR-1 section ------
