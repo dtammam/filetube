@@ -1405,13 +1405,16 @@ if (typeof module !== 'undefined' && module.exports) {
     currentChannelName = channelName || '';
     if (!('mediaSession' in navigator) || typeof MediaMetadata === 'undefined') return;
     try {
+      // v1.38.0: prefer an explicit artUrl (a book cover) for the lock-screen
+      // artwork -- the resolveAudioArtUrl precedent, retargeted for TTS.
+      var art = (currentData && typeof currentData.artUrl === 'string' && currentData.artUrl) ? currentData.artUrl : ('/thumbnail/' + id);
       navigator.mediaSession.metadata = new MediaMetadata({
         title: title || 'FileTube',
         artist: channelName || '',
         album: 'FileTube',
         artwork: [
-          { src: '/thumbnail/' + id, sizes: '256x256', type: 'image/jpeg' },
-          { src: '/thumbnail/' + id, sizes: '512x512', type: 'image/jpeg' },
+          { src: art, sizes: '256x256', type: 'image/jpeg' },
+          { src: art, sizes: '512x512', type: 'image/jpeg' },
         ],
       });
       var el = activeMediaElement(); // v1.27.0
@@ -4407,6 +4410,13 @@ if (typeof module !== 'undefined' && module.exports) {
   function setupForMedia(id, data) {
     var gen = loadGeneration;
     var streamUrl = '/video/' + id;
+    // v1.38.0 TTS "Listen from Here": an audio item may carry an explicit
+    // stream URL (a book chapter's synthesized /book/:id/tts/:spineIndex)
+    // instead of the default /video/:id. Additive + audio-only -- video and
+    // ordinary audio are byte-identical to before.
+    if (data.type === 'audio' && typeof data.streamSrc === 'string' && data.streamSrc) {
+      streamUrl = data.streamSrc;
+    }
 
     // v1.27.0 (background-audio-for-video, EXPERIMENTAL): reset THIS load's
     // cached setting/status, then (video + mobile only) fetch+cache the
@@ -4643,7 +4653,9 @@ if (typeof module !== 'undefined' && module.exports) {
       mediaPlayer.src = streamUrl;
 
       if (AUDIO_PLAYER_MODE === 'background') {
-        var artUrl = resolveAudioArtUrl(data);
+        // v1.38.0: an explicit artUrl (a book cover, /bookcover/:id) wins over
+        // the media thumbnail-derived art -- else the existing behavior.
+        var artUrl = (typeof data.artUrl === 'string' && data.artUrl) ? data.artUrl : resolveAudioArtUrl(data);
         if (artUrl) {
           audioBgArt.style.backgroundImage = 'url("' + artUrl + '")';
           audioBgArt.style.display = 'block';
