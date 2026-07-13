@@ -5559,6 +5559,7 @@ body.ft-css-fullscreen .bottom-nav {
     .reader-topbar {
       display: flex;
       align-items: center;
+      flex-wrap: wrap; /* v1.37.2: buttons wrap to a second row, never clipped */
       gap: 8px;
       padding: 6px 8px;
       border-bottom: 1px solid var(--border-color, #444);
