@@ -80,6 +80,11 @@
 
 ## Shipped
 
+### v1.38.2 — Listen from Here now actually plays on iPhone (iOS autoplay unlock) (2026-07-13)
+
+- Dean's report: tap Listen → "Preparing audio…" flashes and disappears, but no sound; a second tap clears instantly with still no audio. Root cause: the **iOS autoplay gesture wall**. The chapter's `play()` fires *seconds* after the tap (synthesis → status poll → blocks fetch), so it's outside the user gesture and iOS silently blocks it (the swallowed `NotAllowedError`); the status text clears because the code assumed playback started.
+- Fix (reader client only): on the Listen tap, a brief **silent clip** is loaded and played on the shared media element *within the gesture* — this "blesses" the element (the unlock is scoped to the element, not the src, matching player.js's own iOS handling), so the real narration then plays when it swaps in. No change to the battle-won player internals; all 443 player/reader unit tests still green. This is an iOS-runtime fix a code gate can't exercise — pending Dean's on-device confirmation (ship, test, iterate).
+
 ### v1.38.1 — TTS works out of the box (espeak-ng baked into the image) (2026-07-13)
 
 - Following v1.38.0, "Listen from Here" was strictly opt-in (you had to provide a Piper binary + voice model). Now the Docker image bakes in **espeak-ng** (Alpine `community`, ~a few MB, pure musl — the same repo ffmpeg already comes from) and defaults `FILETUBE_TTS_ENGINE` to it, so the reader's **Listen** button lights up with zero configuration — the yt-dlp "the binary's already there" posture. The voice is clear but robotic.
