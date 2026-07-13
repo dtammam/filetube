@@ -80,6 +80,10 @@
 
 ## Shipped
 
+### v1.37.2 — reader layout scales with the device (2026-07-13)
+
+- The reading area now measures its real available space (actual header offset + live bottom-nav height) on open and on every resize/rotation instead of guessing with CSS vars -- fixes the clipped Contents/Aa buttons on desktop and the unusable sizing on mobile. epub.js renders two pages side-by-side when the pane is wide, one when narrow (spread auto), refitting on resize; the topbar wraps rather than ever clipping. Gate skipped by owner request (token economy) -- on-device pass is the arbiter.
+
 ### v1.37.0 — Books: library + reader + progress (2026-07-13)
 
 - FileTube becomes a media platform for text too: EPUB + PDF libraries scanned from configured book folders into a new Books page (portrait cover cards, shelf chips, sort, era styling), with an in-app reader (themes, font size, TOC, tap/keyboard paging, exact resume) and per-book position/percent progress feeding a continue-reading row on home and books-in-search.
