@@ -182,7 +182,11 @@ if (typeof module !== 'undefined' && module.exports) {
     if (signal.aborted) return null;
     setStatus(root, 'Opening book…');
 
-    const book = window.ePub(`/book/${encodeURIComponent(detail.id)}/file`);
+    // openAs: 'epub' is REQUIRED (v1.37.1 hotfix, Dean's stuck-open report):
+    // epub.js type-sniffs its input by URL EXTENSION -- /book/<id>/file has
+    // none, so it was treated as an UNPACKED book directory and epub.js
+    // fetched /book/<id>/file/META-INF/container.xml (404) forever.
+    const book = window.ePub(`/book/${encodeURIComponent(detail.id)}/file`, { openAs: 'epub' });
     const rendition = book.renderTo(pane, {
       width: '100%',
       height: '100%',

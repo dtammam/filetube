@@ -5434,3 +5434,249 @@ body.ft-css-fullscreen .bottom-nav {
   color: #fff;
   font-size: var(--fs-xs);
 }
+
+/* ---- v1.37.1: books page styles (moved from the page <head> -- the SPA
+   router swaps only #view-root, so page-local styles were lost on in-app
+   navigation) */
+
+    /* v1.37.0 books page -- era tokens only, no hardcoded colors (the
+       subscriptions.html page-local-style precedent). Cover cards are
+       PORTRAIT (2:3) unlike the 16:9 video cards, so they get their own
+       grid rather than reusing .video-card's aspect machinery. */
+    .books-toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .books-toolbar h2 { margin: 0; }
+    .books-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+      gap: 16px;
+    }
+    .book-card {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+    .book-cover-link {
+      display: block;
+      aspect-ratio: 2 / 3;
+      border-radius: 4px;
+      overflow: hidden;
+      background: var(--thumbnail-bg, #222);
+      position: relative;
+    }
+    .book-cover-img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .book-progress-track {
+      position: absolute;
+      left: 0; right: 0; bottom: 0;
+      height: 4px;
+      background: rgba(0, 0, 0, 0.5);
+    }
+    .book-progress-fill {
+      height: 100%;
+      background: var(--accent, #cc0000);
+    }
+    .book-title {
+      margin-top: 6px;
+      font-weight: bold;
+      font-size: var(--fs-base);
+      overflow: hidden;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+    }
+    .book-author {
+      font-size: var(--fs-sm);
+      opacity: 0.75;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .books-shelf-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+    .books-shelf-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border: 1px solid var(--border-color, #444);
+      border-radius: 14px;
+      font-size: var(--fs-sm);
+      cursor: pointer;
+      background: none;
+      color: inherit;
+    }
+    .books-shelf-chip.active { background: var(--accent, #cc0000); color: #fff; border-color: transparent; }
+    .books-shelf-pin-btn {
+      border: none;
+      background: none;
+      cursor: pointer;
+      color: inherit;
+      opacity: 0.7;
+      padding: 0 2px;
+      font-size: var(--fs-sm);
+    }
+    .books-shelf-pin-btn.pinned { opacity: 1; }
+    .books-empty {
+      opacity: 0.75;
+      padding: 24px 0;
+    }
+    .books-section-title {
+      margin: 18px 0 10px;
+      font-size: var(--fs-lg);
+    }
+
+/* ---- v1.37.1: reader styles (moved from the page <head> -- the SPA
+   router swaps only #view-root, so page-local styles were lost on in-app
+   navigation) */
+
+    /* v1.37.0 reader chassis -- a full-height reading surface under the
+       shared shell header. Reading themes are reader-local (paper/sepia/
+       night) and independent of the app-wide era theme: long-form text has
+       its own legibility needs. Era tokens still style the chrome. */
+    .reader-chassis {
+      display: flex;
+      flex-direction: column;
+      /* Fill the viewport below the fixed header; the reader owns its own
+         scrolling/pagination inside the content pane. */
+      height: calc(100vh - var(--mobile-header-h, 56px) - env(safe-area-inset-bottom, 0px));
+      min-height: 320px;
+    }
+    .reader-topbar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 8px;
+      border-bottom: 1px solid var(--border-color, #444);
+      flex: 0 0 auto;
+    }
+    .reader-title {
+      flex: 1 1 auto;
+      min-width: 0;
+      font-weight: bold;
+      font-size: var(--fs-md);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .reader-topbar .btn { flex: 0 0 auto; }
+    .reader-content {
+      flex: 1 1 auto;
+      min-height: 0;
+      position: relative;
+      overflow: hidden;
+    }
+    /* Reading-theme surface colors applied to the pane; epub.js's iframe
+       body is themed via its own registerTheme hooks in read.js. */
+    .reader-content.theme-paper { background: #f7f4ec; }
+    .reader-content.theme-sepia { background: #f0e3c9; }
+    .reader-content.theme-night { background: #101014; }
+    #reader-pane { width: 100%; height: 100%; }
+    /* PDF pages render into a scrollable canvas column. */
+    #reader-pane.pdf-scroll {
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      text-align: center;
+    }
+    #reader-pane.pdf-scroll canvas {
+      display: block;
+      margin: 8px auto;
+      max-width: 100%;
+      height: auto;
+      box-shadow: 0 1px 6px rgba(0,0,0,0.35);
+    }
+    .reader-bottombar {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 6px 10px calc(6px + env(safe-area-inset-bottom, 0px));
+      border-top: 1px solid var(--border-color, #444);
+      font-size: var(--fs-sm);
+    }
+    .reader-progress-track {
+      flex: 1 1 auto;
+      height: 6px;
+      border-radius: 3px;
+      background: var(--border-color, #444);
+      overflow: hidden;
+    }
+    .reader-progress-fill {
+      height: 100%;
+      width: 0;
+      background: var(--accent, #cc0000);
+    }
+    .reader-percent { flex: 0 0 auto; min-width: 42px; text-align: right; opacity: 0.85; }
+    /* TOC + settings drawers -- the chapters-menu lessons applied: an
+       explicit [hidden]{display:none!important} companion for every
+       show/hide-via-hidden element with its own display rule. */
+    .reader-drawer {
+      position: absolute;
+      top: 0; right: 0; bottom: 0;
+      width: min(320px, 85vw);
+      background: var(--card-bg, #1c1c22);
+      border-left: 1px solid var(--border-color, #444);
+      overflow-y: auto;
+      z-index: 30;
+      display: flex;
+      flex-direction: column;
+      padding: 10px;
+    }
+    .reader-drawer[hidden] { display: none !important; }
+    .reader-drawer h3 { margin: 4px 0 10px; font-size: var(--fs-md); }
+    .reader-toc-item {
+      display: block;
+      padding: 7px 4px;
+      font-size: var(--fs-base);
+      border-bottom: 1px solid var(--border-color, #333);
+      cursor: pointer;
+      background: none;
+      border-left: none; border-right: none; border-top: none;
+      color: inherit;
+      text-align: left;
+      width: 100%;
+    }
+    .reader-settings-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 8px 0;
+      font-size: var(--fs-base);
+    }
+    .reader-tap-nav {
+      position: absolute;
+      top: 0; bottom: 0;
+      width: 22%;
+      z-index: 10;
+      background: none;
+      border: none;
+      cursor: pointer;
+    }
+    .reader-tap-prev { left: 0; }
+    .reader-tap-next { right: 0; }
+    .reader-status {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: var(--fs-md);
+      opacity: 0.8;
+      z-index: 5;
+    }
+    .reader-status[hidden] { display: none !important; }
