@@ -2269,6 +2269,35 @@ test('applyStatusUpdatesInPlace: v1.37.5 -- given handlers + a doc (the live con
   assert.deepStrictEqual(calls, [['a2-skip-tick', 'vidTick']]);
 });
 
+test('applyStatusUpdatesInPlace: v1.37.5 -- an IDENTICAL failures set on a later tick is a no-op that PRESERVES the clicked "Skipped" button state (signature guard)', async () => {
+  const sub = { id: 'a2-skip-preserve', name: 'Chan', channelUrl: 'https://www.youtube.com/@a2-skip-preserve', lastStatus: null };
+  const liveEntry = { state: 'error', failures: [{ videoId: 'vidKeep', title: 'K', reason: 'boom' }] };
+  const handlers = { onSkip: () => Promise.resolve(true) };
+  const row = createSubscriptionRow(sub, fakeDoc, handlers, liveEntry);
+  const rowElementsById = { 'a2-skip-preserve': row };
+
+  const info = row.children.find((el) => el.className === 'sub-row-info');
+  const failuresEl = info.children.find((el) => el.className === 'sub-row-failures');
+  const failureRowBefore = failuresEl.children.find((el) => el.className === 'sub-row-failure');
+  const skipBtn = failureRowBefore.children.find((el) => (el.className || '').includes('sub-row-skip'));
+  assert.ok(skipBtn);
+
+  // User clicks Skip -> the button transitions to "Skipped" (async resolve).
+  skipBtn.click({ stopPropagation() {} });
+  await Promise.resolve(); // flush the onSkip().then() microtask
+  assert.strictEqual(skipBtn.textContent, 'Skipped');
+  assert.strictEqual(skipBtn.disabled, true);
+
+  // A later poll tick reports the SAME failures set -> must be a no-op: the
+  // exact same button node + its "Skipped" text survive, never rebuilt.
+  applyStatusUpdatesInPlace(rowElementsById, [sub], { subscriptions: { 'a2-skip-preserve': liveEntry } }, handlers, fakeDoc);
+  const failureRowAfter = failuresEl.children.find((el) => el.className === 'sub-row-failure');
+  assert.strictEqual(failureRowAfter, failureRowBefore, 'the failure row must not be rebuilt when the failures set is unchanged');
+  const skipBtnAfter = failureRowAfter.children.find((el) => (el.className || '').includes('sub-row-skip'));
+  assert.strictEqual(skipBtnAfter, skipBtn, 'the SAME Skip button node must survive the no-op tick');
+  assert.strictEqual(skipBtnAfter.textContent, 'Skipped', 'the clicked "Skipped" state must be preserved across an identical tick');
+});
+
 test('renderFailuresInto: with no usable doc, falls back to the classic single joined text line (byte-identical to pre-v1.37.5)', () => {
   const container = new FakeElement('div');
   const entry = { state: 'error', failures: [

@@ -88,8 +88,17 @@ clients (iOS Safari) can play them.
   directory is a network share (SMB/NFS) that is transiently unmounted at
   poll time, or is wiped outright, dedup state is lost and a subsequent poll
   re-downloads each subscribed channel's videos up to its `maxVideos` window
-  — keep the download directory on stable, always-mounted storage. The poll
-  mirrors
+  — keep the download directory on stable, always-mounted storage. A **second,
+  deliberately-separate** dotfile lives beside the archive:
+  `.ytdlp-skiplist.txt` (v1.37.5), the permanent per-video SKIP list a user's
+  "Skip" action on a failed-download row writes to (`args.resolveSkiplistPath`
+  / `index.js` `recordSkip`). It shares the archive's `<extractor> <id>` line
+  format (so `rules.isArchived` doubles as its membership check) and the
+  survivor loop consults it once per cycle to exclude skipped ids from every
+  channel's downloads forever — kept distinct from the archive so "already
+  downloaded" and "deliberately rejected" never bleed together (a skip stays
+  independently inspectable, and clearing the archive to force a re-download
+  never un-skips a rejected video). The poll mirrors
   `armScanTimer` (`.unref()`'d, re-armable, off when the interval is 0), and
   long downloads run OUTSIDE the `updateDatabase` lock (only a short
   last-checked/status write re-enters it). Security-critical surface (command

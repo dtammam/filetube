@@ -52,6 +52,18 @@
 - **Severity:** cosmetic-only, both reviewers explicitly non-blocking.
 - **Source:** v1.37.0 delta re-confirms (QA + adversarial APPROVE notes).
 
+## #35 — delete resolver edge residuals: invalid-UTF-8 names + NFC collisions (v1.37.5)
+- **What:** `resolveOnDiskPath` (server.js DELETE) resolves NFC/NFD path-component variants (the shipped fix), but two edges remain, both no-worse-than-pre-v1.37.5: (a) **invalid-UTF-8 / raw-byte filenames** — `fs.readdirSync` with default (utf8) encoding maps invalid bytes to U+FFFD, so a stored name with non-round-tripping bytes can't NFC-match any entry and falls through to `gone:true`, dropping the db entry while the file survives (the same reappear symptom, for a much rarer subset — yt-dlp uses `--restrict-filenames`, and local media names are typically valid UTF-8). (b) **NFC collision** — if a directory holds two byte-distinct entries that normalize-equal, the walk unlinks whichever `readdir` yields first; harmless in practice (the two are visually identical, and the exact-spelling `existsSync` short-circuit already covers the stored spelling).
+- **Fix direction:** for (a), re-enumerate with `fs.readdirSync(dir, { encoding: 'buffer' })` and compare raw bytes as a last-resort fallback before concluding `gone`; for (b), prefer an exact-byte match over a normalized one when both are present (already true via the top-level `existsSync`), else it's a non-issue.
+- **Severity:** Low. Both were adversarial-gate SUGGESTIONs at v1.37.5, explicitly non-blocking and outside the claimed NFC/NFD scope.
+- **Source:** v1.37.5 two-adversarial-agent gate (delete-focus seat, Findings 2 & 3).
+
+## #36 — delete: a thumbnail/transcode-sidecar unlink errno can 409 after the media file WAS removed (pre-existing)
+- **What:** in `DELETE /api/videos/:id`, the thumbnail (`THUMBNAIL_DIR/<id>.jpg`) and transcode-sidecar (`transcodedPath(id)`) unlinks run inside the SAME try/catch as the main media unlink. If the media file unlinks successfully but a subsequent sidecar unlink throws a RECOVERABLE-class errno (EBUSY/EPERM/EROFS/EACCES), the handler returns a 409 "the file was not removed" and leaves the db entry, even though the media file WAS deleted — a misleading status + a stale, unplayable library entry. Pre-existing structure (not introduced by v1.37.5), and low real-world risk: thumbnails/transcodes live on local app disk, not the (possibly unmounted) media volume the recoverable-errno path is designed for.
+- **Fix direction:** wrap the thumbnail/transcode/`.vtt` sidecar cleanups in their own best-effort try/catch (like the `.vtt` loop already is), so only a MEDIA-file unlink error can drive the 409/500 branches; a sidecar failure should never block or misreport the media delete.
+- **Severity:** Low. QA SUGGESTION at the v1.37.5 gate (adjacent to the resolveOnDiskPath work), accepted-not-fixed for scope.
+- **Source:** v1.37.5 two-adversarial-agent gate (QA seat).
+
 ## #34 — subscriptions.html page-local styles are lost on in-app swaps (pre-existing)
 - **What:** the SPA router's extractViewFragment takes only #view-root, so lib/ytdlp/views/subscriptions.html's page-local <style> block (`.sub-*` classes, since the original T5 commit) never loads when /subscriptions is reached via in-app navigation — the same latent unstyled-fragment exposure v1.37.1 fixed for the books/reader pages by relocating their styles into style.css.
 - **Fix direction:** relocate the subscriptions page-local styles into public/css/style.css (the v1.37.1 pattern), or teach the router to adopt view-scoped styles.

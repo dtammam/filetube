@@ -4757,7 +4757,7 @@ app.post('/api/progress', (req, res) => {
 // died at the generic 500 with no escape hatch. Exported for unit coverage.
 const RECOVERABLE_DELETE_CODES = new Set(['EROFS', 'EACCES', 'EBUSY', 'EPERM']);
 
-// v1.38 (Dean: "I delete things and they don't actually get deleted" -- gone
+// v1.37.5 (Dean: "I delete things and they don't actually get deleted" -- gone
 // from the list, back after a rescan, only a SMALL % of files, NOT a
 // permissions problem): resolve the stored `filePath` to the ACTUAL on-disk
 // entry before we unlink. Root cause of that bug: an item's id IS the md5 of
@@ -4769,39 +4769,61 @@ const RECOVERABLE_DELETE_CODES = new Set(['EROFS', 'EACCES', 'EBUSY', 'EPERM']);
 // the OLD handler then skipped the unlink, logged a warning, and deleted the
 // db entry anyway with `{success:true}` -- so the card vanished (client trusts
 // success) while the file survived and the next scan re-indexed it. This maps
-// the stored path to the real entry by comparing NFC-normalized basenames
-// within the parent directory, so the true file gets unlinked. Returns:
-//   { realPath: <string> }              -- found (may equal filePath): unlink this
-//   { realPath: null, gone: true }      -- parent readable, no match / dir gone:
-//                                          genuinely absent (desired end state holds)
-//   { realPath: null, unreadable: err } -- parent dir un-enumerable (EACCES/EPERM/
-//                                          ENOTDIR): CANNOT confirm removal
+// the stored path to the real entry by resolving it ONE PATH COMPONENT AT A
+// TIME by NFC-normalized match, so a normalization difference in ANY segment
+// is handled -- not just the leaf filename. This matters because FileTube
+// stores downloads in per-CHANNEL folders and SMB/APFS emit NFD for the WHOLE
+// path, so a diacritic in the FOLDER name (Beyonce, Motorhead) is the same
+// failure as one in the filename (v1.37.5 gate finding). Each segment is tried
+// as an EXACT child first (cheap -- the all-ASCII common case never enumerates
+// a directory), then by NFC-normalized match within its real parent. Returns:
+//   { realPath: <string> }              -- resolved (may equal filePath): unlink this
+//   { realPath: null, gone: true }      -- a segment is genuinely absent (dir
+//                                          readable, no match): desired end state holds
+//   { realPath: null, unreadable: err } -- a dir on the path is un-enumerable
+//                                          (EACCES/EPERM/ENOTDIR): CANNOT confirm removal
 // The `unreadable` case is exactly what must NOT silently drop the library
 // entry (that is the reported bug); the caller surfaces it as a recoverable
 // 409 with the same opt-in `removeAnyway` escape hatch as a read-only volume.
 function resolveOnDiskPath(filePath) {
   try {
     if (fs.existsSync(filePath)) return { realPath: filePath };
-  } catch (_) { /* fall through to the directory scan */ }
-  const dir = path.dirname(filePath);
-  let wantNfc;
-  try { wantNfc = path.basename(filePath).normalize('NFC'); } catch (_) { wantNfc = path.basename(filePath); }
-  let entries;
-  try {
-    entries = fs.readdirSync(dir);
-  } catch (err) {
-    // ENOENT: the parent dir (or an ancestor) is gone -> the file is genuinely
-    // absent. Any other errno (EACCES/EPERM/ENOTDIR) means we could not
-    // enumerate the dir to confirm -> report it as unconfirmable, never as gone.
-    if (err && err.code === 'ENOENT') return { realPath: null, gone: true };
-    return { realPath: null, unreadable: err };
+  } catch (_) { /* fall through to the component walk */ }
+  const resolvedAbs = path.resolve(filePath);
+  const parts = resolvedAbs.split(path.sep).filter((p) => p !== '');
+  let current = path.isAbsolute(resolvedAbs) ? path.sep : '.';
+  for (const part of parts) {
+    // Fast path: the exact byte-spelling of this segment exists -- descend
+    // without enumerating (keeps a mostly-ASCII path to O(depth) stats).
+    const exact = path.join(current, part);
+    let existsExact = false;
+    try { existsExact = fs.existsSync(exact); } catch (_) { existsExact = false; }
+    if (existsExact) { current = exact; continue; }
+    // This segment's exact spelling is missing -- look for a Unicode-variant
+    // sibling (NFC/NFD) in the real parent directory.
+    let entries;
+    try {
+      entries = fs.readdirSync(current);
+    } catch (err) {
+      // ENOENT: the parent itself vanished mid-walk -> genuinely gone. Any
+      // other errno (EACCES/EPERM/ENOTDIR) means we could not enumerate to
+      // confirm -> unconfirmable, never reported as gone.
+      if (err && err.code === 'ENOENT') return { realPath: null, gone: true };
+      return { realPath: null, unreadable: err };
+    }
+    let want;
+    try { want = part.normalize('NFC'); } catch (_) { want = part; }
+    let matched = null;
+    for (const name of entries) {
+      let nfc;
+      try { nfc = name.normalize('NFC'); } catch (_) { nfc = name; }
+      if (nfc === want) { matched = name; break; }
+    }
+    // Dir readable but no canonical match -> this segment is genuinely absent.
+    if (matched === null) return { realPath: null, gone: true };
+    current = path.join(current, matched);
   }
-  for (const name of entries) {
-    let nfc;
-    try { nfc = name.normalize('NFC'); } catch (_) { nfc = name; }
-    if (nfc === wantNfc) return { realPath: path.join(dir, name) };
-  }
-  return { realPath: null, gone: true };
+  return { realPath: current };
 }
 
 // API: Delete video/audio file
@@ -4823,7 +4845,7 @@ app.delete('/api/videos/:id', async (req, res) => {
   const removeAnyway = req.query.removeAnyway === 'true' || req.query.removeAnyway === '1';
   let fileRemainsOnDisk = false;
 
-  // v1.38: resolve the stored path to the REAL on-disk entry (handles an
+  // v1.37.5: resolve the stored path to the REAL on-disk entry (handles an
   // NFC/NFD-variant name that `existsSync(item.filePath)` would miss) BEFORE
   // touching the db -- see `resolveOnDiskPath`'s doc comment for the bug this
   // closes.
@@ -4885,7 +4907,7 @@ app.delete('/api/videos/:id', async (req, res) => {
     // library item (not a media extension), but leaving it litters the
     // channel folder forever. Never blocks the delete.
     try {
-      // v1.38: hang sidecar cleanup off the RESOLVED on-disk path (its
+      // v1.37.5: hang sidecar cleanup off the RESOLVED on-disk path (its
       // `<basename>.<lang>.vtt` neighbours share the real file's exact name),
       // falling back to the stored path when the media file was already gone.
       const mediaPath = mediaPathOnDisk || filePath;
@@ -6662,7 +6684,7 @@ module.exports = {
   transcodedPath,
   // v1.36.2: the recoverable-delete errno set -- exported for unit coverage.
   RECOVERABLE_DELETE_CODES,
-  // v1.38: stored-path -> real on-disk entry resolver (NFC/NFD-aware) --
+  // v1.37.5: stored-path -> real on-disk entry resolver (NFC/NFD-aware) --
   // exported for unit coverage of the delete-doesn't-delete fix.
   resolveOnDiskPath,
   // v1.37.0 books: scanner + state accessor + cover dir, exported for the

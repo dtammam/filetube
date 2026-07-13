@@ -1,6 +1,6 @@
 'use strict';
 
-// [UNIT] v1.38 -- the "I delete things and they don't actually get deleted"
+// [UNIT] v1.37.5 -- the "I delete things and they don't actually get deleted"
 // fix (Dean): DELETE /api/videos/:id used to skip the unlink and delete the
 // db entry anyway with {success:true} whenever `fs.existsSync(item.filePath)`
 // missed the real file -- so the card vanished (client trusts success) while
@@ -10,9 +10,11 @@
 // shares emit), and `existsSync` compares byte-exact.
 //
 // `resolveOnDiskPath` maps the stored path to the REAL on-disk entry by
-// NFC-normalized basename match within the parent dir, and reports the three
-// states the handler must distinguish (found / genuinely-gone / un-enumerable)
-// so a delete that CANNOT be confirmed is surfaced honestly instead of faked.
+// resolving it one path component at a time by NFC-normalized match (so a
+// normalization difference in ANY segment -- a per-channel FOLDER as much as
+// the leaf -- is handled), and reports the three states the handler must
+// distinguish (found / genuinely-gone / un-enumerable) so a delete that CANNOT
+// be confirmed is surfaced honestly instead of faked.
 
 const os = require('node:os');
 const fs = require('node:fs');
@@ -51,6 +53,24 @@ test('NFC stored path resolves to the NFD file actually on disk (the headline fi
   assert.strictEqual(resolved.realPath, onDisk, 'must resolve to the real NFD entry, not null');
   assert.strictEqual(resolved.gone, undefined);
   assert.strictEqual(resolved.unreadable, undefined);
+});
+
+test('NFC/NFD mismatch in an ANCESTOR (channel folder) resolves too, not just the leaf', () => {
+  // FileTube stores downloads in per-channel folders; SMB/APFS emit NFD for
+  // the WHOLE path. The diacritic here is in the FOLDER name, and the file
+  // name is plain ASCII -- the pre-walk basename-only fix would have missed it.
+  const root = tmpDir();
+  const folderNfd = 'Beyonce\u0301'; // 'e' + U+0301 combining acute (NFD)
+  const folderNfc = 'Beyonc\u00e9'; // precomposed U+00E9 (NFC)
+  const onDiskDir = path.join(root, folderNfd);
+  fs.mkdirSync(onDiskDir, { recursive: true });
+  const onDisk = path.join(onDiskDir, 'clip.mp4');
+  fs.writeFileSync(onDisk, 'x');
+
+  const stored = path.join(root, folderNfc, 'clip.mp4');
+  assert.ok(!fs.existsSync(stored), 'precondition: existsSync must MISS the NFC folder spelling');
+  const resolved = resolveOnDiskPath(stored);
+  assert.strictEqual(resolved.realPath, onDisk, 'must resolve through the NFD folder to the real file');
 });
 
 test('genuinely absent (dir exists, no matching entry) -> { gone: true }, no fake path', () => {

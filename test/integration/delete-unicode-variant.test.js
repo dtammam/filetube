@@ -1,6 +1,6 @@
 'use strict';
 
-// [INTEGRATION] v1.38 -- the real DELETE /api/videos/:id route must actually
+// [INTEGRATION] v1.37.5 -- the real DELETE /api/videos/:id route must actually
 // remove a file whose on-disk name is a Unicode NORMALIZATION variant of the
 // stored path (NFD on disk vs NFC in db.metadata), and must NOT report a fake
 // success (dropping the library entry) when it cannot even confirm the file's
