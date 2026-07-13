@@ -2484,7 +2484,12 @@ function isStaleNavGeneration(gen, currentGeneration) {
 // Whether there's actually anything loaded to dock is a STATEFUL guard that
 // intentionally lives in `player.dock()` itself, not here.
 function shouldDockOnTransition(fromView, toView) {
-  return fromView === 'watch' && typeof toView === 'string' && toView !== 'watch';
+  // v1.39.0: 'read' joins 'watch' as a view that hosts the FULL player (book
+  // narration mounts FULL into the reader's #player-slot). Leaving EITHER for a
+  // different view docks the persistent host into the shell #player-dock so
+  // playback survives the #view-root swap; staying (watch->watch / read->read)
+  // adopts instead of docking. Mirrored in player.js.
+  return (fromView === 'watch' || fromView === 'read') && typeof toView === 'string' && toView !== fromView;
 }
 
 // Guarded so requiring this file in Node (for unit tests) never touches

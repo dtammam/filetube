@@ -80,6 +80,14 @@
 
 ## Shipped
 
+### v1.39.0 — Book narration: in-reader now-playing bar + chapter nav + lock screen (2026-07-13)
+
+- The proper redesign of TTS playback (superseding the v1.38.2/.3/.4 patches, which were symptom-patching). Investigation-first: the transport controls **already existed** in the player's FULL audio bar — docking them into the 160px chip is what hid them. So: mount the player FULL as a real bottom **now-playing bar** in the reader (play/pause + scrub + elapsed/total time, reused from the shared player), with reader-owned **⏮/⏭ chapter** buttons + a cover and chapter label, plus **iOS lock-screen** controls (play/pause/seek + prev/next chapter).
+- **Prev/next = next/previous chapter**: advances the narration *and* follows the reader page; bounded by the spine; the page only follows once the chapter actually starts playing.
+- **Reliable iOS start**: `play()` is attempted immediately and *observed*; on the autoplay block the reading pane becomes "▶ Tap to start listening" (a fresh gesture that always plays and unlocks the session). Fixes a real dead-end in the prior patch where play was gated behind an event iOS may never fire.
+- **Reuse, not rebuild**: the only shared-player changes are two additive seams — `setTrackNav` (lock-screen prev/next) and a `suppressProgress` read-gate (no `/api/progress` for the synthetic book id) — plus `'read'` joining `'watch'` as a view whose player docks on navigate-away (so narration keeps playing in the mini-player when you leave the reader).
+- **Gate:** full two-reviewer gate. Both reviewers independently caught a would-be fourth-wrong-ship CRITICAL — the bar was placed outside `#view-root`, so it never mounted on the normal click-into-a-book path (SPA swaps only `#view-root`) — plus the missing dock-on-leave (a ghost bar). Both fixed (bar moved inside `#view-root`, `'read'` added to `shouldDockOnTransition`), delta re-confirmed APPROVE. Full suite green on Node v22 + v24. The bar's exact look + iOS lock-screen behavior are Dean's on-device call.
+
 ### v1.38.4 — Listen from Here on iPhone: reliable "Tap to play" (2026-07-13)
 
 - v1.38.3 fixed the mount (desktop confirmed working), but iOS still didn't play: the in-gesture silent-clip "unlock" wasn't blessing the element (likely the 8-bit WAV data URI iOS won't decode). Rather than chase a fragile unlock that can't be tested off-device, the reader now drives `play()` itself and OBSERVES the autoplay-blocked rejection: when iOS refuses, the whole reading pane becomes a big **"▶ Tap to start listening"** target. That tap is a fresh gesture with the audio already loaded, so it always plays — and the first successful user-initiated play unlocks the persistent media element, so every later chapter auto-plays (the player's own documented behavior). Desktop is unaffected (autoplay succeeds → no prompt). The fragile silent-clip unlock was removed.

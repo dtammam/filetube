@@ -57,6 +57,15 @@ function buildPdfLocator(page) {
   return { kind: 'pdf', page: Number.isInteger(page) && page > 0 ? page : 1 };
 }
 
+// v1.39.0: clamp a target chapter (spine) index to the valid range for prev/next
+// chapter narration. `count` null => unknown length (only the lower bound is
+// enforced). Returns the index, or null when out of range (a first/last edge).
+function clampSpineIndex(idx, count) {
+  if (!Number.isInteger(idx) || idx < 0) return null;
+  if (count != null && idx >= count) return null;
+  return idx;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     READER_BLOCK_SELECTOR,
@@ -65,6 +74,7 @@ if (typeof module !== 'undefined' && module.exports) {
     normalizeReaderTheme,
     buildEpubLocator,
     buildPdfLocator,
+    clampSpineIndex,
   };
 }
 
@@ -76,6 +86,10 @@ if (typeof module !== 'undefined' && module.exports) {
   let lastLocator = null;
   let lastPercent = 0;
   let bookId = null;
+  // v1.39.0 narration bar state.
+  let spineCount = null;      // number of chapters (from GET /api/books/:id)
+  let currentTtsSpine = null; // the chapter whose audio is currently loaded
+  let listenBusy = false;     // guards overlapping Listen/chapter-advance requests
 
   const FONT_KEY = 'filetube_reader_fontsize';
   const THEME_KEY = 'filetube_reader_theme';
@@ -168,6 +182,9 @@ if (typeof module !== 'undefined' && module.exports) {
     // click listener removes itself on fire; a stale class must not make a
     // plain "Preparing…" line look tappable).
     status.classList.remove('reader-status-tap');
+    // v1.39.0: drop any pending tap-to-play click listener so it can't leak
+    // across chapters (a stale ch2 handler firing on a ch3 element).
+    if (status._tapHandler) { status.removeEventListener('click', status._tapHandler); status._tapHandler = null; }
     if (text) {
       status.textContent = text;
       status.hidden = false;
@@ -191,13 +208,13 @@ if (typeof module !== 'undefined' && module.exports) {
   // so its audio would never load.
   function ttsMediaId(spineIndex) { return `booktts:${bookId}:${spineIndex}`; }
 
-  // Hand a book-audio item to the shared player AND make it visible: load into
-  // the reader's #player-slot (FULL) then dock() to the mini bar. This is the
-  // crux -- `player.load()` with NO slot is a silent no-op (mountInSlot bails),
-  // so the host never attaches to the page (no bar, no audio element in the
-  // DOM). `readerHref` makes the dock's tap-to-expand return to THIS reader;
-  // `suppressProgress` keeps the player from writing /api/progress rows for a
-  // synthetic id (book progress is the reader's own). Returns #media-player.
+  // Hand a book-audio item to the shared player as the in-reader NOW-PLAYING BAR.
+  // We mount FULL into #player-slot and DO NOT dock -- the host stays FULL so its
+  // full control bar (play/pause + scrub + elapsed/total time) renders as the
+  // bar (docking hid all of that behind a 160px chip; v1.39.0). `suppressProgress`
+  // keeps the player from reading/writing /api/progress for the synthetic id
+  // (book progress is the reader's own); lock-screen prev/next route to chapter
+  // advance via the player's setTrackNav seam. Returns #media-player.
   function loadReaderAudio(root, id, streamSrc) {
     const player = window.FileTube && window.FileTube.player;
     if (!player || typeof player.load !== 'function') return null;
@@ -213,8 +230,31 @@ if (typeof module !== 'undefined' && module.exports) {
       readerHref: `/read.html?b=${encodeURIComponent(bookId)}`,
       suppressProgress: true,
     }, { slot });
-    if (typeof player.dock === 'function') player.dock();
+    // No dock() -- keep it FULL in the reader bar.
+    const bar = root.querySelector('#reader-nowplaying');
+    if (bar) bar.hidden = false;
+    const cover = root.querySelector('#reader-np-cover');
+    if (cover && cover.getAttribute('src') !== `/bookcover/${encodeURIComponent(bookId)}`) {
+      cover.setAttribute('src', `/bookcover/${encodeURIComponent(bookId)}`);
+    }
+    if (typeof player.setTrackNav === 'function') {
+      player.setTrackNav({ onPrev: () => advanceChapter(root, -1), onNext: () => advanceChapter(root, 1) });
+    }
     return document.getElementById('media-player');
+  }
+
+  // Reflect the currently-playing chapter in the bar (label + prev/next enabled).
+  function updateNowPlayingChrome(root, spineIndex) {
+    const label = root.querySelector('#reader-np-chapter');
+    if (label) {
+      label.textContent = (typeof spineIndex === 'number')
+        ? (spineCount ? `Chapter ${spineIndex + 1} of ${spineCount}` : `Chapter ${spineIndex + 1}`)
+        : '';
+    }
+    const prev = root.querySelector('#reader-np-prev');
+    const next = root.querySelector('#reader-np-next');
+    if (prev) prev.disabled = !(typeof spineIndex === 'number' && spineIndex > 0);
+    if (next) next.disabled = !(typeof spineIndex === 'number' && spineCount != null && spineIndex < spineCount - 1);
   }
 
   // Poll a chapter's synthesis status until it is ready (true) or failed/timed
@@ -237,20 +277,23 @@ if (typeof module !== 'undefined' && module.exports) {
     });
   }
 
-  // Show a tappable "start listening" affordance in the reader status line.
-  // This is the RELIABLE path on iOS: the tap is a fresh user gesture WITH the
-  // audio already loaded, so play() is always permitted -- and that first
-  // successful user-initiated play() unlocks the persistent media element for
-  // the rest of the session, so every later chapter auto-plays (see player.js's
-  // own note about the element being unlocked after one tap).
+  // A tappable "start listening" affordance filling the reading pane -- the
+  // RELIABLE iOS path: the tap is a fresh user gesture WITH the audio loaded, so
+  // play() is always permitted, and that first successful user-initiated play()
+  // unlocks the persistent media element for the session so every later chapter
+  // auto-plays (player.js's own documented behavior).
   function offerTapToPlay(root, mp, startSec) {
     const status = root.querySelector('#reader-status');
     if (!status) return;
+    // Drop any prior tap handler first (a fast chapter change before the user
+    // tapped would otherwise leave two handlers on one click).
+    if (status._tapHandler) { status.removeEventListener('click', status._tapHandler); status._tapHandler = null; }
     status.textContent = '▶ Tap to start listening';
     status.hidden = false;
     status.classList.add('reader-status-tap');
     const onTap = () => {
       status.removeEventListener('click', onTap);
+      status._tapHandler = null;
       status.classList.remove('reader-status-tap');
       try { if (startSec > 0) mp.currentTime = startSec; } catch (_) { /* seek unsupported */ }
       const pr = mp.play();
@@ -260,13 +303,15 @@ if (typeof module !== 'undefined' && module.exports) {
         setStatus(root, '');
       }
     };
+    status._tapHandler = onTap;
     status.addEventListener('click', onTap);
   }
 
-  // Fetch the block->startSec map, mount the chapter audio into the docked
-  // mini-player (book cover as artwork), seek to the paragraph the reader is on,
-  // and start playback. If the browser blocks autoplay (iOS, no surviving
-  // gesture), fall back to an explicit "Tap to start listening". Prefetch next.
+  // Fetch the block->startSec map, mount the chapter audio into the now-playing
+  // bar (book cover as artwork), start playback from the reading paragraph, and
+  // prefetch the next chapter. play() is attempted IMMEDIATELY (never gated on a
+  // media event -- iOS may never fire one before a gesture) and OBSERVED: on an
+  // autoplay block it falls back to "▶ Tap to start listening".
   function startTtsPlayback(root, spineIndex, blockIndex) {
     return fetch(`/book/${encodeURIComponent(bookId)}/tts/${spineIndex}/blocks`)
       .then((r) => (r.ok ? r.json() : []))
@@ -281,48 +326,65 @@ if (typeof module !== 'undefined' && module.exports) {
         }
         const mp = loadReaderAudio(root, ttsMediaId(spineIndex), `/book/${encodeURIComponent(bookId)}/tts/${spineIndex}`);
         if (!mp) { setStatus(root, 'Audio isn’t available right now.'); return; }
-        // Seek + play once the element has metadata (start immediately if it
-        // already does). We drive play() ourselves so we can OBSERVE the
-        // autoplay-blocked rejection and surface the tap-to-play fallback --
-        // the player's own play() swallows it.
-        const begin = () => {
-          try { if (startSec > 0) mp.currentTime = startSec; } catch (_) { /* seek unsupported */ }
-          const pr = mp.play();
-          if (pr && typeof pr.then === 'function') {
-            pr.then(() => setStatus(root, '')).catch(() => offerTapToPlay(root, mp, startSec));
-          } else {
-            setStatus(root, '');
-          }
-        };
-        if (mp.readyState >= 1) begin();
-        else mp.addEventListener('loadedmetadata', begin, { once: true });
-        // Warm the next chapter so playback continues seamlessly.
+        currentTtsSpine = spineIndex;
+        updateNowPlayingChrome(root, spineIndex);
+        // Seek to the paragraph once metadata is available (best-effort; a tiny
+        // start-of-chapter blip if metadata lags the first samples).
+        const seek = () => { try { if (startSec > 0) mp.currentTime = startSec; } catch (_) { /* unsupported */ } };
+        if (mp.readyState >= 1) seek();
+        mp.addEventListener('loadedmetadata', seek, { once: true });
+        // Attempt play NOW and observe the block -> tap-to-play fallback.
+        const pr = mp.play();
+        if (pr && typeof pr.then === 'function') {
+          pr.then(() => setStatus(root, '')).catch(() => offerTapToPlay(root, mp, startSec));
+        } else {
+          setStatus(root, '');
+        }
+        // Warm the next chapter so it's ready when the reader advances.
         fetch(`/book/${encodeURIComponent(bookId)}/tts/${spineIndex + 1}/ensure`, { method: 'POST' }).catch(() => {});
       });
   }
 
-  function startListenFromHere(root, btn) {
-    if (!lastLocator || lastLocator.kind !== 'epub' || typeof lastLocator.spineIndex !== 'number') {
-      setStatus(root, 'Listening isn’t available for this spot.');
-      return;
-    }
-    const spineIndex = lastLocator.spineIndex;
-    const blockIndex = typeof lastLocator.blockIndex === 'number' ? lastLocator.blockIndex : 0;
-    btn.disabled = true;
+  // The shared synthesize -> poll -> play flow for a given chapter/paragraph,
+  // guarded against overlapping requests (a fast prev/next tap or a re-Listen).
+  function beginListen(root, spineIndex, blockIndex) {
+    if (listenBusy) return Promise.resolve();
+    listenBusy = true;
     setStatus(root, 'Preparing audio…');
-    fetch(`/book/${encodeURIComponent(bookId)}/tts/${spineIndex}/ensure`, { method: 'POST' })
+    return fetch(`/book/${encodeURIComponent(bookId)}/tts/${spineIndex}/ensure`, { method: 'POST' })
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`ensure ${r.status}`))))
       .then(() => pollTtsReady(bookId, spineIndex))
       .then((ok) => {
-        btn.disabled = false;
         if (!ok) { setStatus(root, 'Audio isn’t available for this chapter.'); return null; }
         return startTtsPlayback(root, spineIndex, blockIndex);
       })
       .catch((err) => {
-        btn.disabled = false;
         console.error('Listen from here failed:', err);
         setStatus(root, 'Audio isn’t available right now.');
-      });
+      })
+      .then((v) => { listenBusy = false; return v; }, (e) => { listenBusy = false; throw e; });
+  }
+
+  function startListenFromHere(root) {
+    if (!lastLocator || lastLocator.kind !== 'epub' || typeof lastLocator.spineIndex !== 'number') {
+      setStatus(root, 'Listening isn’t available for this spot.');
+      return;
+    }
+    beginListen(root, lastLocator.spineIndex, typeof lastLocator.blockIndex === 'number' ? lastLocator.blockIndex : 0);
+  }
+
+  // Prev/next CHAPTER: advance the narration to the neighbouring chapter (from
+  // its start) and follow the reader page to match. Bounded by the spine.
+  function advanceChapter(root, delta) {
+    if (currentTtsSpine == null || listenBusy) return; // ignore taps while a chapter is preparing
+    const next = clampSpineIndex(currentTtsSpine + delta, spineCount);
+    if (next == null) return; // at the first/last chapter
+    // Follow the page ONLY once the new chapter actually starts playing
+    // (currentTtsSpine flips to `next` on success) -- otherwise a failed/blocked
+    // synth would leave the page on a chapter whose audio never loaded.
+    beginListen(root, next, 0).then(() => {
+      if (currentTtsSpine === next && adapter && typeof adapter.goToSpine === 'function') adapter.goToSpine(next);
+    });
   }
 
   function renderToc(root, entries, onSelect, signal) {
@@ -481,6 +543,10 @@ if (typeof module !== 'undefined' && module.exports) {
     return {
       next: () => rendition.next().catch(() => {}),
       prev: () => rendition.prev().catch(() => {}),
+      // v1.39.0: jump the visible page to a spine index (epub.js display()
+      // accepts a numeric spine position) -- used to follow prev/next chapter
+      // narration. Best-effort; a bad index just no-ops.
+      goToSpine: (idx) => rendition.display(idx).catch(() => {}),
       setFontSize: (pct) => rendition.themes.fontSize(`${pct}%`),
       setTheme: (name) => rendition.themes.select(name),
       // v1.37.2: called (debounced) on window resize -- re-measures the
@@ -730,8 +796,14 @@ if (typeof module !== 'undefined' && module.exports) {
         .then((r) => (r.ok ? r.json() : null))
         .then((cfg) => { if (cfg && cfg.available) { ttsEngineReady = true; maybeShowListen(); } })
         .catch(() => { /* keep the control hidden on any error */ });
-      listenBtn.addEventListener('click', () => startListenFromHere(root, listenBtn), { signal });
+      listenBtn.addEventListener('click', () => startListenFromHere(root), { signal });
     }
+
+    // v1.39.0: the now-playing bar's prev/next CHAPTER buttons.
+    const npPrev = root.querySelector('#reader-np-prev');
+    const npNext = root.querySelector('#reader-np-next');
+    if (npPrev) npPrev.addEventListener('click', () => advanceChapter(root, -1), { signal });
+    if (npNext) npNext.addEventListener('click', () => advanceChapter(root, 1), { signal });
 
     // Tap zones + keys.
     const tapPrev = root.querySelector('#reader-tap-prev');
@@ -765,6 +837,8 @@ if (typeof module !== 'undefined' && module.exports) {
         }
         // v1.38.0 TTS: only EPUB books can "Listen from here".
         if (detail.format === 'epub') { listenBookIsEpub = true; maybeShowListen(); }
+        // v1.39.0: chapter count for prev/next-chapter bounds.
+        spineCount = Array.isArray(detail.spine) ? detail.spine.length : null;
         const open = detail.format === 'pdf' ? openPdf : openEpub;
         return open(root, pane, detail, signal);
       })
@@ -789,6 +863,15 @@ if (typeof module !== 'undefined' && module.exports) {
     controller = null;
     bookId = null;
     lastLocator = null;
+    // v1.39.0: drop reader-scoped narration state. The player itself is NOT
+    // closed here -- leaving the reader lets narration keep playing (the router
+    // docks it); but the lock-screen prev/next CHAPTER handlers reference this
+    // torn-down view, so clear them.
+    spineCount = null;
+    currentTtsSpine = null;
+    listenBusy = false;
+    const player = window.FileTube && window.FileTube.player;
+    if (player && typeof player.setTrackNav === 'function') player.setTrackNav(null);
   }
 
   if (window.FileTube && typeof window.FileTube.registerView === 'function') {
