@@ -80,6 +80,10 @@
 
 ## Shipped
 
+### v1.37.3 — reader pagination fixed at the root (2026-07-13)
+
+- Every on-device pagination symptom (whole chapters as one giant page, overflow past the border, arrows skipping chapters, per-page size drift, text vanishing on arrow, chapter-granular progress, desktop pages blank until tapped) traced to ONE root cause: epub.js was handed percentage dimensions and measured an unsettled container, silently degrading to un-columned rendering. The reader now waits for settled layout and always passes explicit measured pixels (open, resize, and a one-frame post-display repaint nudge); phones are strictly single-page, wide panes get two; the pane clips residual overflow. Slim adversarial gate: APPROVE — diagnosis and all four fix mechanics verified line-by-line against the vendored epub.js source.
+
 ### v1.37.2 — reader layout scales with the device (2026-07-13)
 
 - The reading area now measures its real available space (actual header offset + live bottom-nav height) on open and on every resize/rotation instead of guessing with CSS vars -- fixes the clipped Contents/Aa buttons on desktop and the unusable sizing on mobile. epub.js renders two pages side-by-side when the pane is wide, one when narrow (spread auto), refitting on resize; the topbar wraps rather than ever clipping. Gate skipped by owner request (token economy) -- on-device pass is the arbiter.
