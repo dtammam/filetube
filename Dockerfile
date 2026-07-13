@@ -4,7 +4,17 @@ FROM node:22-alpine
 # Install FFmpeg/FFprobe (video metadata + thumbnails) plus python3/py3-pip,
 # which are only needed to install yt-dlp below (yt-dlp itself also shells
 # out to ffmpeg for post-processing, so it reuses this layer).
-RUN apk add --no-cache ffmpeg python3 py3-pip
+#
+# v1.38.1: also bake in espeak-ng (Alpine `community` repo, enabled by default
+# in node:*-alpine) so the TTS "Listen from Here" reader feature works OUT OF
+# THE BOX -- same posture as the yt-dlp binary below: the engine is already
+# there, the user chooses nothing. espeak-ng is tiny (~a few MB) + pure musl,
+# so it's cheap to ship for everyone. The higher-quality Piper engine is NOT
+# baked (its onnxruntime dependency has no musl/Alpine wheels, and it would add
+# ~300MB nobody who sticks with the default needs) -- Piper stays STRICTLY
+# opt-in: set FILETUBE_TTS_ENGINE=piper + FILETUBE_TTS_PIPER_MODEL to a mounted
+# .onnx voice model (see README) to upgrade the voice.
+RUN apk add --no-cache ffmpeg python3 py3-pip espeak-ng
 
 # Pin the bundled yt-dlp version. This ARG (and the mirrored ENV below) is
 # the SOURCE OF TRUTH for the binary shipped in the image -- the app-level
@@ -25,6 +35,15 @@ RUN pip install --no-cache-dir --break-system-packages "yt-dlp==${YTDLP_VERSION}
 # Mirror the pin into the running app's env so its informational
 # `config.version` (lib/ytdlp/config.js) matches the binary actually bundled.
 ENV FILETUBE_YTDLP_VERSION=${YTDLP_VERSION}
+
+# v1.38.1: the image ships espeak-ng (above), so default the TTS engine to it --
+# the "Listen from Here" control lights up with no configuration. A user who
+# mounts a Piper voice model overrides this at runtime with
+# `-e FILETUBE_TTS_ENGINE=piper -e FILETUBE_TTS_PIPER_MODEL=/path/to/voice.onnx`
+# (a runtime `-e` always wins over this image ENV). The app's own code default
+# stays `piper` (the preferred engine when a model is provided); this ENV is
+# what makes the SHIPPED image work out of the box with the bundled engine.
+ENV FILETUBE_TTS_ENGINE=espeak-ng
 
 # Set working directory inside container
 WORKDIR /app
