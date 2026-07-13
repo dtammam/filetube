@@ -182,6 +182,51 @@ if (typeof module !== 'undefined' && module.exports) {
 
   // ---- v1.38.0 TTS "Listen from Here" -----------------------------------------
 
+  // A brief SILENT audio clip (built once, at runtime, so no huge literal sits
+  // in source). It exists solely to satisfy the iOS autoplay gesture wall: the
+  // REAL chapter audio only becomes playable seconds after the tap (synthesis +
+  // status poll + blocks fetch), by which point the tap gesture is long gone and
+  // iOS silently blocks play() (the swallowed NotAllowedError = "no audio, the
+  // Preparing text just disappears"). Playing this clip DURING the tap
+  // user-activates ("blesses") the shared media element; that blessing is scoped
+  // to the ELEMENT, not the src (see player.js), so the real audio then plays.
+  function makeSilentWavDataUri(seconds) {
+    const sr = 8000; const dataSize = sr * seconds; // 8-bit mono PCM
+    const bytes = new Uint8Array(44 + dataSize);
+    const dv = new DataView(bytes.buffer);
+    const wr = (off, s) => { for (let i = 0; i < s.length; i++) bytes[off + i] = s.charCodeAt(i); };
+    wr(0, 'RIFF'); dv.setUint32(4, 36 + dataSize, true); wr(8, 'WAVE');
+    wr(12, 'fmt '); dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true);
+    dv.setUint32(24, sr, true); dv.setUint32(28, sr, true); dv.setUint16(32, 1, true); dv.setUint16(34, 8, true);
+    wr(36, 'data'); dv.setUint32(40, dataSize, true);
+    bytes.fill(0x80, 44); // 0x80 = 8-bit PCM silence
+    let bin = ''; for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+    return 'data:audio/wav;base64,' + btoa(bin);
+  }
+  const TTS_UNLOCK_CLIP = makeSilentWavDataUri(30);
+
+  // Mount + user-activate the shared player's media element DURING the Listen
+  // tap. player.load() mounts the host and sets the src synchronously; the
+  // direct play() right after is what blesses the element within the gesture
+  // (player.load's OWN play() is deferred behind an async progress fetch, so it
+  // can't do the blessing itself). Best-effort throughout.
+  function primeAudioForGesture(root) {
+    const player = window.FileTube && window.FileTube.player;
+    if (!player || typeof player.load !== 'function') return;
+    const titleEl = root.querySelector('#reader-title');
+    player.load(bookId, {
+      type: 'audio',
+      title: titleEl ? titleEl.textContent : 'Book',
+      folderName: '',
+      streamSrc: TTS_UNLOCK_CLIP,
+      artUrl: `/bookcover/${encodeURIComponent(bookId)}`,
+    }, {});
+    const mp = document.getElementById('media-player');
+    if (mp) {
+      try { const p = mp.play(); if (p && typeof p.catch === 'function') p.catch(() => {}); } catch (_) { /* blessed on the call itself */ }
+    }
+  }
+
   // Poll a chapter's synthesis status until it is ready (true) or failed/timed
   // out (false). Synthesis of a long chapter can take a while, so the ceiling is
   // generous; the reader shows an honest "Preparing audio…" throughout.
@@ -247,6 +292,9 @@ if (typeof module !== 'undefined' && module.exports) {
     }
     const spineIndex = lastLocator.spineIndex;
     const blockIndex = typeof lastLocator.blockIndex === 'number' ? lastLocator.blockIndex : 0;
+    // Unlock playback WITHIN this tap (the iOS gesture wall) before any async
+    // work -- the real audio's play() lands seconds later, outside the gesture.
+    primeAudioForGesture(root);
     btn.disabled = true;
     setStatus(root, 'Preparing audio…');
     fetch(`/book/${encodeURIComponent(bookId)}/tts/${spineIndex}/ensure`, { method: 'POST' })
