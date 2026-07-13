@@ -202,6 +202,31 @@ in the UI once enabled.
 directory — not an existing mapped library folder, and not an ancestor
 directory of one.
 
+### Text-to-speech: "Listen from Here" (v1.38.0, opt-in)
+
+Read your EPUB books aloud from the paragraph you're on — playback continues on
+the lock screen with the book cover as artwork. It is **strictly opt-in**, like
+yt-dlp: set the engine binary + a voice model and the reader's **Listen** button
+lights up; leave them unset and books work exactly as before (the button never
+appears). The default engine is [Piper](https://github.com/OHF-Voice/piper1-gpl)
+(natural-sounding, needs a `.onnx` voice model); `espeak-ng` is a lighter,
+robotic fallback. FFmpeg is required (it encodes the audio). Synthesis runs one
+chapter at a time and automatically **defers while a subscription download is in
+progress** so the two never spike your CPU/disk together.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `FILETUBE_TTS_ENGINE` | `piper` | Which engine to use: `piper` or `espeak-ng`. |
+| `FILETUBE_TTS_PIPER_BIN` | `piper` | Path to the `piper` binary (PATH-resolved by default). |
+| `FILETUBE_TTS_PIPER_MODEL` | unset | Path (inside the container) to a Piper `.onnx` voice model. **Required** for Piper to activate — unset = Listen stays dark. |
+| `FILETUBE_TTS_PIPER_CONFIG` | `<model>.json` | Path to the model's config JSON. Defaults to piper's own `<model>.onnx.json` convention. |
+| `FILETUBE_TTS_ESPEAK_BIN` | `espeak-ng` | Path to the `espeak-ng` binary (used when `FILETUBE_TTS_ENGINE=espeak-ng`). |
+| `FILETUBE_TTS_ESPEAK_VOICE` | `en` | espeak-ng voice id. |
+
+Synthesized chapter audio is cached under `<DATA_DIR>/tts-cache/`. There is no
+automatic size/age eviction yet (it's cleared by "Clear cache now" in Settings
+and when a book is removed) — a known limitation for very large libraries.
+
 ### Members-only / age-gated content
 
 Members-only and age-gated videos require cookies from a logged-in YouTube

@@ -25,7 +25,7 @@ function makeFakeDeps(initialDb = {}) {
 test('T3: ensureBooks builds a fresh well-formed namespace and is idempotent (present keys untouched)', () => {
   const db = {};
   const ns = store.ensureBooks(db);
-  assert.deepEqual(ns, { folders: [], items: {}, progress: {}, pins: [], settings: {} });
+  assert.deepEqual(ns, { folders: [], items: {}, progress: {}, pins: [], settings: {}, audio: {} });
   ns.items.abc = { id: 'abc' };
   ns.folders.push('/books');
   const again = store.ensureBooks(db);
@@ -41,6 +41,74 @@ test('T3: ensureBooks repairs individually broken sub-keys without touching heal
   assert.deepEqual(ns.progress, {});
   assert.deepEqual(ns.pins, []);
   assert.deepEqual(ns.settings, {});
+});
+
+// ---- v1.38.0 TTS: db.books.audio reservation + no-clobber mutators (T1) ------
+
+test('T1: ensureBooks reserves `audio` and PRESERVES an existing audio map (no-clobber round-trip)', () => {
+  const db = {};
+  const ns = store.ensureBooks(db);
+  assert.deepEqual(ns.audio, {}, 'fresh namespace reserves an empty audio map');
+  ns.audio.book1 = { 3: { status: 'ready', key: 'abc', durationSec: 12.5, updatedAt: 't' } };
+  const again = store.ensureBooks(db);
+  assert.deepEqual(again.audio.book1['3'], { status: 'ready', key: 'abc', durationSec: 12.5, updatedAt: 't' },
+    'a present audio map is never rebuilt/dropped by ensureBooks');
+});
+
+test('T1: ensureBooks repairs a broken audio key without touching a healthy one', () => {
+  assert.deepEqual(store.ensureBooks({ books: { audio: 'junk' } }).audio, {});
+  const healthy = { books: { audio: { b: { 0: { status: 'processing' } } } } };
+  assert.equal(store.ensureBooks(healthy).audio.b['0'].status, 'processing');
+});
+
+test('T1: readBooks CARRIES audio through the read view (the drop-on-read bug this guards)', () => {
+  const db = { books: { folders: [], items: {}, progress: {}, pins: [], settings: {}, audio: { b: { 2: { status: 'ready' } } } } };
+  const view = store.readBooks(db);
+  assert.deepEqual(view.audio, { b: { 2: { status: 'ready' } } }, 'readBooks must not drop audio state');
+  // A missing/broken audio key defaults to {} rather than undefined.
+  assert.deepEqual(store.readBooks({ books: { audio: [] } }).audio, {});
+  assert.deepEqual(store.readBooks({}).audio, {});
+});
+
+test('T1: setBookAudioStatus writes, merges, and is no-clobber (skips the save when unchanged)', async () => {
+  const deps = makeFakeDeps();
+  let saved = await store.setBookAudioStatus(deps, 'b', 4, { status: 'processing' });
+  assert.equal(saved, true, 'first write saves');
+  assert.deepEqual(deps.loadDatabase().books.audio.b['4'], { status: 'processing' });
+
+  saved = await store.setBookAudioStatus(deps, 'b', 4, { status: 'ready', durationSec: 30 });
+  assert.equal(saved, true, 'a real change saves');
+  assert.deepEqual(deps.loadDatabase().books.audio.b['4'], { status: 'ready', durationSec: 30 });
+
+  saved = await store.setBookAudioStatus(deps, 'b', 4, { status: 'ready' });
+  assert.equal(saved, false, 'a no-op merge skips the save (no-clobber)');
+
+  // numeric and string spineIndex address the SAME slot.
+  await store.setBookAudioStatus(deps, 'b', '4', { status: 'failed' });
+  assert.equal(deps.loadDatabase().books.audio.b['4'].status, 'failed');
+});
+
+test('T1: clearBookAudioStatus removes one chapter (tidying an empty book) or a whole book', async () => {
+  const deps = makeFakeDeps();
+  await store.setBookAudioStatus(deps, 'b', 0, { status: 'ready' });
+  await store.setBookAudioStatus(deps, 'b', 1, { status: 'ready' });
+
+  let cleared = await store.clearBookAudioStatus(deps, 'b', 0);
+  assert.equal(cleared, true);
+  assert.equal(deps.loadDatabase().books.audio.b['0'], undefined);
+  assert.equal(deps.loadDatabase().books.audio.b['1'].status, 'ready', 'siblings untouched');
+
+  assert.equal(await store.clearBookAudioStatus(deps, 'b', 0), false, 'clearing an unknown chapter is a no-op');
+
+  // Clearing the last chapter tidies the empty per-book object.
+  await store.clearBookAudioStatus(deps, 'b', 1);
+  assert.equal(deps.loadDatabase().books.audio.b, undefined, 'empty per-book map is dropped');
+
+  // Whole-book clear (spineIndex omitted) used on prune/delete.
+  await store.setBookAudioStatus(deps, 'c', 0, { status: 'ready' });
+  assert.equal(await store.clearBookAudioStatus(deps, 'c'), true);
+  assert.equal(deps.loadDatabase().books.audio.c, undefined);
+  assert.equal(await store.clearBookAudioStatus(deps, 'nope'), false, 'clearing an unknown book is a no-op');
 });
 
 // ---- selectPrunableBookIds ----------------------------------------------------

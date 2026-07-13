@@ -20,6 +20,14 @@
 // server chunker's ttsRev bump.
 const READER_BLOCK_SELECTOR = 'p, h1, h2, h3, h4, h5, h6, li, blockquote, pre, figure, td';
 
+// v1.38.0 TTS: the block-contract version. It is baked into the TTS cache key
+// (sha1(...:ttsRev)), so bumping it INVALIDATES every cached chapter audio.
+// HARD RULE: any change to READER_BLOCK_SELECTOR above — or to how the server
+// chunker (lib/books/tts-chunk.js) derives blocks from it — MUST bump this in
+// lockstep, so the reader's blockIndex math and the server's audio offsets can
+// never silently desync. Source-locked by test/unit/books-tts-chunk.test.js.
+const READER_TTS_REV = 1;
+
 // Reader prefs: bounded font scale (percent) + a named reading theme.
 const READER_FONT_MIN = 80;
 const READER_FONT_MAX = 170;
@@ -52,6 +60,7 @@ function buildPdfLocator(page) {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     READER_BLOCK_SELECTOR,
+    READER_TTS_REV,
     clampReaderFontSize,
     normalizeReaderTheme,
     buildEpubLocator,
@@ -169,6 +178,90 @@ if (typeof module !== 'undefined' && module.exports) {
     const clamped = Math.min(100, Math.max(0, percent));
     if (fill) fill.style.width = `${clamped}%`;
     if (label) label.textContent = `${Math.round(clamped)}%`;
+  }
+
+  // ---- v1.38.0 TTS "Listen from Here" -----------------------------------------
+
+  // Poll a chapter's synthesis status until it is ready (true) or failed/timed
+  // out (false). Synthesis of a long chapter can take a while, so the ceiling is
+  // generous; the reader shows an honest "Preparing audio…" throughout.
+  function pollTtsReady(id, spineIndex) {
+    return new Promise((resolve) => {
+      const deadline = Date.now() + 120000;
+      const tick = () => {
+        fetch(`/api/books/${encodeURIComponent(id)}/tts/${spineIndex}/status`)
+          .then((r) => r.json())
+          .then((s) => {
+            if (s.status === 'ready') return resolve(true);
+            if (s.status === 'failed' || Date.now() > deadline) return resolve(false);
+            setTimeout(tick, 1000);
+          })
+          .catch(() => resolve(false));
+      };
+      tick();
+    });
+  }
+
+  // Fetch the block->startSec map, hand the chapter audio to the shared player
+  // (the battle-won background-audio path) with the book cover as artwork, and
+  // seek to the paragraph the reader is on. Also prefetches the next chapter.
+  function startTtsPlayback(root, spineIndex, blockIndex) {
+    return fetch(`/book/${encodeURIComponent(bookId)}/tts/${spineIndex}/blocks`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((blocks) => {
+        // The nearest block whose index is <= our position (an ancestor-only
+        // slot shares the next real block's startSec, so this always lands on
+        // spoken audio at or before the reading point).
+        let startSec = 0;
+        for (const b of blocks) {
+          if (typeof b.blockIndex === 'number' && b.blockIndex <= blockIndex) startSec = b.startSec;
+          else break;
+        }
+        const titleEl = root.querySelector('#reader-title');
+        const player = window.FileTube && window.FileTube.player;
+        if (!player || typeof player.load !== 'function') return;
+        player.load(bookId, {
+          type: 'audio',
+          title: titleEl ? titleEl.textContent : 'Book',
+          folderName: '',
+          streamSrc: `/book/${encodeURIComponent(bookId)}/tts/${spineIndex}`,
+          artUrl: `/bookcover/${encodeURIComponent(bookId)}`,
+        }, {});
+        if (startSec > 0) {
+          const mp = document.getElementById('media-player');
+          if (mp) {
+            const onMeta = () => { try { mp.currentTime = startSec; } catch (_) { /* seek unsupported */ } mp.removeEventListener('loadedmetadata', onMeta); };
+            mp.addEventListener('loadedmetadata', onMeta);
+          }
+        }
+        setStatus(root, '');
+        // Warm the next chapter so playback continues seamlessly.
+        fetch(`/book/${encodeURIComponent(bookId)}/tts/${spineIndex + 1}/ensure`, { method: 'POST' }).catch(() => {});
+      });
+  }
+
+  function startListenFromHere(root, btn) {
+    if (!lastLocator || lastLocator.kind !== 'epub' || typeof lastLocator.spineIndex !== 'number') {
+      setStatus(root, 'Listening isn’t available for this spot.');
+      return;
+    }
+    const spineIndex = lastLocator.spineIndex;
+    const blockIndex = typeof lastLocator.blockIndex === 'number' ? lastLocator.blockIndex : 0;
+    btn.disabled = true;
+    setStatus(root, 'Preparing audio…');
+    fetch(`/book/${encodeURIComponent(bookId)}/tts/${spineIndex}/ensure`, { method: 'POST' })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`ensure ${r.status}`))))
+      .then(() => pollTtsReady(bookId, spineIndex))
+      .then((ok) => {
+        btn.disabled = false;
+        if (!ok) { setStatus(root, 'Audio isn’t available for this chapter.'); return null; }
+        return startTtsPlayback(root, spineIndex, blockIndex);
+      })
+      .catch((err) => {
+        btn.disabled = false;
+        console.error('Listen from here failed:', err);
+        setStatus(root, 'Audio isn’t available right now.');
+      });
   }
 
   function renderToc(root, entries, onSelect, signal) {
@@ -562,6 +655,23 @@ if (typeof module !== 'undefined' && module.exports) {
       }, { signal });
     }
 
+    // v1.38.0 TTS "Listen from Here": the control lights only when an engine is
+    // configured (opt-in like yt-dlp) AND the book is an EPUB (PDF has no
+    // server-side text extraction here). Both gates must pass to unhide it.
+    const listenBtn = root.querySelector('#reader-listen-btn');
+    let ttsEngineReady = false;
+    let listenBookIsEpub = false;
+    const maybeShowListen = () => {
+      if (listenBtn && ttsEngineReady && listenBookIsEpub) listenBtn.hidden = false;
+    };
+    if (listenBtn) {
+      fetch('/api/books/tts/config')
+        .then((r) => (r.ok ? r.json() : null))
+        .then((cfg) => { if (cfg && cfg.available) { ttsEngineReady = true; maybeShowListen(); } })
+        .catch(() => { /* keep the control hidden on any error */ });
+      listenBtn.addEventListener('click', () => startListenFromHere(root, listenBtn), { signal });
+    }
+
     // Tap zones + keys.
     const tapPrev = root.querySelector('#reader-tap-prev');
     const tapNext = root.querySelector('#reader-tap-next');
@@ -592,6 +702,8 @@ if (typeof module !== 'undefined' && module.exports) {
         if (detail.progress && typeof detail.progress.percent === 'number') {
           updateProgressBar(root, detail.progress.percent);
         }
+        // v1.38.0 TTS: only EPUB books can "Listen from here".
+        if (detail.format === 'epub') { listenBookIsEpub = true; maybeShowListen(); }
         const open = detail.format === 'pdf' ? openPdf : openEpub;
         return open(root, pane, detail, signal);
       })
