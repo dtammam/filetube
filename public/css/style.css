@@ -5746,12 +5746,31 @@ body.ft-css-fullscreen .bottom-nav {
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .reader-np-transport { display: flex; align-items: center; gap: 8px; }
-.reader-np-btn {
-  flex-shrink: 0; background: none; border: none; color: var(--text-primary);
-  font-size: var(--fs-3xl); line-height: 1; padding: 6px 8px; cursor: pointer;
-  border-radius: var(--radius);
-}
+/* Chapter prev/next reuse the app's beveled .pc-btn (like #pp-btn) and draw
+   their skip-to-track glyph in CSS -- NOT the U+23EE/U+23ED emoji-presentation
+   codepoints iOS renders as blue color emoji. Matches .pp-icon-play's approach
+   (a border-triangle) with an added bar, the classic "prev/next track" mark. */
+.reader-np-btn { flex-shrink: 0; }
 .reader-np-btn:disabled { opacity: 0.35; cursor: default; }
+.reader-np-ico { position: relative; display: block; width: 15px; height: 14px; }
+.reader-np-next .reader-np-ico::before {
+  content: ''; position: absolute; top: 0; left: 0;
+  border-style: solid; border-width: 7px 0 7px 11px;
+  border-color: transparent transparent transparent currentColor;
+}
+.reader-np-next .reader-np-ico::after {
+  content: ''; position: absolute; top: 0; left: 12px; width: 3px; height: 14px;
+  background: currentColor;
+}
+.reader-np-prev .reader-np-ico::before {
+  content: ''; position: absolute; top: 0; right: 0;
+  border-style: solid; border-width: 7px 11px 7px 0;
+  border-color: transparent currentColor transparent transparent;
+}
+.reader-np-prev .reader-np-ico::after {
+  content: ''; position: absolute; top: 0; right: 12px; width: 3px; height: 14px;
+  background: currentColor;
+}
 .reader-player-slot { flex: 1; min-width: 0; }
 /* Compact the FULL audio host into the bar: hide the cover art / video element /
    glyphs / video-only buttons; keep play/pause + scrub + time (+ speed). */
@@ -5778,6 +5797,28 @@ body.ft-css-fullscreen .bottom-nav {
 @media (max-width: 768px) {
   /* Sit above the mobile bottom nav (~54px + safe area). */
   .reader-nowplaying { bottom: calc(54px + env(safe-area-inset-bottom)); }
+  /* The mounted host is the app's FULL player, which on mobile expands to a
+     TWO-ROW 80px control bar + an 80px reserved cover-art strip (v1.34.1,
+     `#player-slot #player-wrapper`/`.player-controls` above). In the reader
+     bar that is NOT the full-screen player -- left alone it produced a tall,
+     screen-covering block with an empty art band (Dean's report). Collapse it
+     back to ONE compact transport row (matching desktop + the app's docked
+     single-row bar). Specificity: 2 IDs + a class outranks the mobile rules'
+     2 IDs; `!important` on the strip belt-and-suspenders. */
+  .reader-nowplaying #player-slot #player-wrapper:not(.audio-expanded) {
+    padding-bottom: 0 !important;
+  }
+  .reader-nowplaying #player-slot .player-controls {
+    flex-wrap: nowrap;
+    height: 44px;
+  }
+  .reader-nowplaying #player-slot .player-controls::after {
+    content: none; /* drop the forced scrub/buttons row break */
+  }
+  .reader-nowplaying #player-slot .player-controls .pc-time,
+  .reader-nowplaying #player-slot .player-controls .pc-seek {
+    order: 0; /* undo the scrub-lift; one inline row again */
+  }
 }
 
 /* ---- v1.37.4 (Dean's report: Continue-reading row widens the page) ---------
