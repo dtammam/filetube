@@ -5806,6 +5806,16 @@ body.ft-css-fullscreen .bottom-nav {
   width: 100%; height: auto; aspect-ratio: auto; margin: 0;
   background: none; border: none; border-radius: 0;
 }
+/* Kill the 40px control-strip padding the base `#player-wrapper:not(
+   .audio-expanded)` reserves for its ABSOLUTELY-positioned bar. In the reader
+   we make the bar `position:static`, so that reservation is just an empty band
+   BELOW the controls -- it left the slot ~80px tall with the controls at the
+   top, so the center-aligned ⏮/⏭ landed lower than the bar (Dean: "get the bar
+   in line with the two glyphs"). 2 IDs beat the base rule's 1-ID+class; base
+   (not media-scoped) so it fixes desktop AND mobile in one place. */
+.reader-nowplaying #player-slot #player-wrapper:not(.audio-expanded) {
+  padding-bottom: 0 !important;
+}
 .reader-nowplaying .player-controls {
   position: static; opacity: 1; transform: none;
   height: 40px; padding: 0; border-top: none; box-shadow: none; background: none;
@@ -5814,16 +5824,11 @@ body.ft-css-fullscreen .bottom-nav {
   /* Sit above the mobile bottom nav (~54px + safe area). */
   .reader-nowplaying { bottom: calc(54px + env(safe-area-inset-bottom)); }
   /* The mounted host is the app's FULL player, which on mobile expands to a
-     TWO-ROW 80px control bar + an 80px reserved cover-art strip (v1.34.1,
-     `#player-slot #player-wrapper`/`.player-controls` above). In the reader
-     bar that is NOT the full-screen player -- left alone it produced a tall,
-     screen-covering block with an empty art band (Dean's report). Collapse it
-     back to ONE compact transport row (matching desktop + the app's docked
-     single-row bar). Specificity: 2 IDs + a class outranks the mobile rules'
-     2 IDs; `!important` on the strip belt-and-suspenders. */
-  .reader-nowplaying #player-slot #player-wrapper:not(.audio-expanded) {
-    padding-bottom: 0 !important;
-  }
+     TWO-ROW 80px control bar (v1.34.1, `#player-slot .player-controls` above).
+     In the reader bar that is NOT the full-screen player -- collapse it back to
+     ONE compact transport row (matching desktop + the app's docked single-row
+     bar). The reserved cover-art strip is already killed at the base level
+     above (padding-bottom:0), which fixes both form factors. */
   .reader-nowplaying #player-slot .player-controls {
     flex-wrap: nowrap;
     height: 44px;
