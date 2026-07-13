@@ -51,7 +51,7 @@ process.env.FILETUBE_TTS_DEFER_POLL_MS = '100'; // fast defer re-check for the T
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-const { app, updateDatabase, loadDatabase, scanBooks } = require('../../server');
+const { app, updateDatabase, loadDatabase, scanBooks, reconcileTtsCacheAtBoot } = require('../../server');
 const booksStore = require('../../lib/books/store');
 const ytdlp = require('../../lib/ytdlp');
 const { buildEpub } = require('../helpers/build-zip');
@@ -172,4 +172,37 @@ test('T8: synthesis DEFERS while a yt-dlp download/poll is active, then proceeds
   ytdlp.isHeavyJobActive = () => false;
   const proceeded = await pollStatus(2, 'ready');
   assert.strictEqual(proceeded.status, 'ready', 'synthesis resumes once downloads are idle');
+});
+
+test('T12: boot reconcile clears a stale "processing" and a file-less "ready", keeps a valid ready', async () => {
+  // A crashed-mid-synth 'processing' entry + a 'ready' whose file was deleted.
+  await updateDatabase((db) => {
+    const ns = booksStore.ensureBooks(db);
+    ns.audio.ghost = { 0: { status: 'processing', key: 'nofile-processing' } };
+    ns.audio[bookId] = ns.audio[bookId] || {};
+    ns.audio[bookId]['5'] = { status: 'ready', key: 'nofile-ready', durationSec: 9 };
+    return true;
+  });
+  reconcileTtsCacheAtBoot();
+  await new Promise((r) => setTimeout(r, 100)); // let the reconcile updateDatabase land
+
+  const audio = booksStore.readBooks(loadDatabase()).audio;
+  assert.strictEqual(audio.ghost, undefined, 'a stale processing book is swept (and its empty map dropped)');
+  assert.strictEqual(audio[bookId] && audio[bookId]['5'], undefined, 'a file-less ready entry is cleared');
+  // Chapter 0's genuinely-ready entry (real file on disk) survives.
+  assert.ok(audio[bookId] && audio[bookId]['0'] && audio[bookId]['0'].status === 'ready', 'a valid ready entry is kept');
+});
+
+test('T12: POST /api/cache/clear purges tts-cache files and resets audio status', async () => {
+  const cacheDir = path.join(process.env.DATA_DIR, 'tts-cache');
+  const before = fs.readdirSync(cacheDir).filter((n) => n.endsWith('.m4a'));
+  assert.ok(before.length > 0, 'precondition: some synthesized audio exists');
+
+  const res = await fetch(`${base}/api/cache/clear`, { method: 'POST' });
+  assert.strictEqual(res.status, 200);
+  await new Promise((r) => setTimeout(r, 100)); // let the audio-reset updateDatabase land
+
+  assert.strictEqual(fs.readdirSync(cacheDir).filter((n) => n.endsWith('.m4a')).length, 0, 'all m4a purged');
+  const audio = booksStore.readBooks(loadDatabase()).audio;
+  assert.deepStrictEqual(audio, {}, 'the book audio status map is reset wholesale');
 });

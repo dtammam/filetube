@@ -1354,6 +1354,36 @@ async function runChapterSynthesis({ bookId, spineIndex, key }) {
   }
 }
 
+// v1.38.0 T12: boot reconcile — the transcode-reconcile posture for TTS.
+// Sweeps orphaned work dirs / temp files from a killed synth, then resets stale
+// audio status: a 'pending'/'processing' entry has no live worker after a fresh
+// boot, and a 'ready' entry whose cache file vanished is a lie. 'failed' entries
+// are left as-is (a later ensure re-queues them since no cache file exists).
+function reconcileTtsCacheAtBoot() {
+  try {
+    for (const name of fs.readdirSync(TTS_CACHE_DIR)) {
+      if (name.startsWith('.tmp-') || name.endsWith('.tmp.m4a') || name.endsWith('.blocks.json.tmp')) {
+        try { fs.rmSync(path.join(TTS_CACHE_DIR, name), { recursive: true, force: true }); } catch (_) { /* best-effort */ }
+      }
+    }
+  } catch (_) { /* no tts-cache dir yet */ }
+  updateDatabase((db) => {
+    const ns = booksStore.ensureBooks(db);
+    let changed = false;
+    for (const bookId of Object.keys(ns.audio)) {
+      const chapters = ns.audio[bookId];
+      for (const idx of Object.keys(chapters)) {
+        const e = chapters[idx];
+        const fileGone = !e || !e.key || !fs.existsSync(ttsM4aPath(e.key)) || !fs.existsSync(ttsBlocksPath(e.key));
+        const inFlightStale = e && (e.status === 'processing' || e.status === 'pending');
+        if (inFlightStale || (e && e.status === 'ready' && fileGone)) { delete chapters[idx]; changed = true; }
+      }
+      if (Object.keys(chapters).length === 0) { delete ns.audio[bookId]; changed = true; }
+    }
+    return changed;
+  }).catch((err) => console.error('TTS boot reconcile failed:', err && err.message));
+}
+
 // ---- Pre-transcode queue (AVI and other non-web containers -> MP4) ----
 // Jobs run one at a time to avoid overloading a home server with parallel FFmpeg runs.
 const transcodeQueue = [];
@@ -4866,6 +4896,28 @@ app.post('/api/cache/clear', (req, res) => {
       console.error(`Failed to clear cached transcode ${p}:`, e.message);
     }
   }
+  // v1.38.0: also purge the TTS audio cache (nuke-all, like the transcode side
+  // above). Skip in-flight work dirs/temps -- the worker cleans those itself.
+  let ttsFiles;
+  try { ttsFiles = fs.readdirSync(TTS_CACHE_DIR); } catch (_) { ttsFiles = []; }
+  for (const name of ttsFiles) {
+    if (name.startsWith('.tmp-') || name.endsWith('.tmp.m4a') || name.endsWith('.blocks.json.tmp')) continue;
+    const p = path.join(TTS_CACHE_DIR, name);
+    try {
+      const st = fs.statSync(p);
+      if (st.isDirectory()) continue;
+      fs.unlinkSync(p);
+      removed++;
+      freedBytes += st.size;
+    } catch (e) {
+      console.error(`Failed to clear cached TTS audio ${p}:`, e.message);
+    }
+  }
+  // The ready/pending map now points at deleted files -- reset it wholesale
+  // (best-effort; a clear-cache is a manual admin action). Mirrors the
+  // clearAudioStatus calls above for the transcode side.
+  updateDatabase((db) => { booksStore.ensureBooks(db).audio = {}; return true; })
+    .catch((err) => console.error('Failed to reset book audio status on cache clear:', err && err.message));
   res.json({ success: true, removed, freedBytes });
 });
 
@@ -6918,6 +6970,9 @@ if (require.main === module) {
   // Age sweep runs as a separate step immediately before the size-cap
   // eviction (never folded into evictTranscodeCache itself).
   sweepAgedTranscodes(Date.now());
+  // v1.38.0 T12: TTS cache hygiene -- sweep orphaned synth temps and reset any
+  // stale 'processing'/'pending' or file-less 'ready' audio status.
+  reconcileTtsCacheAtBoot();
   // v1.30 A3: this is the process's first-ever db read, so `getCachedDatabase()`
   // here is exactly one `loadDatabase()` call (same as before) and has the
   // added benefit of pre-warming the cache before `app.listen` below, so the
@@ -7011,6 +7066,9 @@ module.exports = {
   // v1.37.0 books: scanner + state accessor + cover dir, exported for the
   // books integration tests (same posture as scanDirectories/THUMBNAIL_DIR).
   scanBooks,
+  // v1.38.0 TTS: boot reconcile (stale-status/orphan-temp sweep), exported for
+  // direct test coverage (mirrors reconcileTranscode's own testing contract).
+  reconcileTtsCacheAtBoot,
   currentBookScanState,
   BOOKCOVER_DIR,
   flushPendingBookProgress,
