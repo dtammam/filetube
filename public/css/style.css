@@ -3141,6 +3141,20 @@ a.sub-row-channel-link:focus-visible {
     color: var(--yt-red);
   }
 
+  /* v1.39.2 (Dean): a more intuitive mobile bottom-nav order --
+     Home | Playlists | Download | Subs | Books | Light/Dark | Settings.
+     The base 4 items (home/playlists/theme/settings) ship in the page HTML;
+     Subs/Books/Download are JS-injected relative to Settings (common.js), so
+     DOM order varies. `order` on the flex children pins the visual sequence
+     regardless of injection timing. */
+  #bottom-nav [data-nav="home"]             { order: 1; }
+  #bottom-nav [data-nav="playlists"]        { order: 2; }
+  #bottom-nav [data-nav="oneoff-download"]  { order: 3; }
+  #bottom-nav [data-nav="subscriptions"]    { order: 4; }
+  #bottom-nav [data-nav="books"]            { order: 5; }
+  #bottom-nav [data-nav="theme"]            { order: 6; }
+  #bottom-nav [data-nav="settings"]         { order: 7; }
+
   /* ---- Mobile app shell: header restructure ----------------------------
      Top-left logo + full-width search below it; header-right (Settings +
      moon toggle) and the hamburger fold into the bottom nav. */
@@ -5753,21 +5767,23 @@ body.ft-css-fullscreen .bottom-nav {
 .reader-np-btn { flex-shrink: 0; }
 .reader-np-btn:disabled { opacity: 0.35; cursor: default; }
 .reader-np-ico { position: relative; display: block; width: 15px; height: 14px; }
-.reader-np-next .reader-np-ico::before {
+/* NB: #reader-np-next/#reader-np-prev are IDs on the buttons -- the glyphs
+   never rendered while these were written as .class selectors (v1.39.1). */
+#reader-np-next .reader-np-ico::before {
   content: ''; position: absolute; top: 0; left: 0;
   border-style: solid; border-width: 7px 0 7px 11px;
   border-color: transparent transparent transparent currentColor;
 }
-.reader-np-next .reader-np-ico::after {
+#reader-np-next .reader-np-ico::after {
   content: ''; position: absolute; top: 0; left: 12px; width: 3px; height: 14px;
   background: currentColor;
 }
-.reader-np-prev .reader-np-ico::before {
+#reader-np-prev .reader-np-ico::before {
   content: ''; position: absolute; top: 0; right: 0;
   border-style: solid; border-width: 7px 11px 7px 0;
   border-color: transparent currentColor transparent transparent;
 }
-.reader-np-prev .reader-np-ico::after {
+#reader-np-prev .reader-np-ico::after {
   content: ''; position: absolute; top: 0; right: 12px; width: 3px; height: 14px;
   background: currentColor;
 }
@@ -5818,6 +5834,15 @@ body.ft-css-fullscreen .bottom-nav {
   .reader-nowplaying #player-slot .player-controls .pc-time,
   .reader-nowplaying #player-slot .player-controls .pc-seek {
     order: 0; /* undo the scrub-lift; one inline row again */
+  }
+  /* When the narration bar is showing (read.js adds .reader-np-active), shrink
+     the reading surface by the bar's footprint so the reader's OWN bottom bar
+     (reading %) rises ABOVE the fixed now-playing bar instead of being covered
+     (Dean's report). Mobile only -- desktop bar sits at bottom:0 and its layout
+     is untouched. --reader-np-h is the bar's height + its 54px nav offset;
+     tunable if the on-device gap needs a nudge. */
+  .reader-chassis.reader-np-active {
+    height: calc(100vh - var(--mobile-header-h, 56px) - env(safe-area-inset-bottom, 0px) - var(--reader-np-h, 92px));
   }
 }
 

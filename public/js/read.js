@@ -233,6 +233,10 @@ if (typeof module !== 'undefined' && module.exports) {
     // No dock() -- keep it FULL in the reader bar.
     const bar = root.querySelector('#reader-nowplaying');
     if (bar) bar.hidden = false;
+    // Reserve the bar's footprint so the reader's own bottom bar (reading %)
+    // sits ABOVE the fixed now-playing bar instead of being covered (mobile).
+    const chassis = root.querySelector('#reader-chassis');
+    if (chassis) chassis.classList.add('reader-np-active');
     const cover = root.querySelector('#reader-np-cover');
     if (cover && cover.getAttribute('src') !== `/bookcover/${encodeURIComponent(bookId)}`) {
       cover.setAttribute('src', `/bookcover/${encodeURIComponent(bookId)}`);

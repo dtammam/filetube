@@ -80,6 +80,14 @@
 
 ## Shipped
 
+### v1.39.2 — Book narration bar: glyphs, progress bar, nav order (2026-07-13)
+
+- Follow-up to v1.39.1 from Dean's on-device pass (all visual/CSS, no logic beyond one class toggle):
+  - **Chapter glyphs now render.** In v1.39.1 the CSS-drawn ⏮/⏭ were keyed off `.reader-np-next`/`.reader-np-prev` **class** selectors, but those are element **IDs** — so the `::before`/`::after` triangles never generated and the buttons showed as empty boxes. Switched to `#reader-np-next`/`#reader-np-prev`.
+  - **Reading-% bar stays visible.** The fixed now-playing bar covered the reader's own bottom progress bar. read.js now adds `.reader-np-active` to the chassis when the bar is shown, and (mobile only) the chassis shrinks by the bar's footprint so the reading-% bar sits above it. Driven by a JS class toggle, not `:has()`, for iOS reliability.
+  - **More intuitive mobile bottom-nav order**: `Home · Playlists · Download · Subs · Books · Light/Dark · Settings`. The base items ship in HTML and Subs/Books/Download are JS-injected relative to Settings, so DOM order varies — pinned with CSS `order` on the flex children (mobile only), injection-agnostic.
+- Desktop untouched. Full unit suite + typography lock green on Node v22 + v24.
+
 ### v1.39.1 — Book narration bar: mobile polish (2026-07-13)
 
 - Visual follow-up to v1.39.0 (no logic change). On mobile the now-playing bar looked "ugly as sin" and covered the page: it mounts the app's **FULL** player, which on phones deliberately blooms into a two-row 80px control bar plus an 80px reserved cover-art strip (v1.34.1) — so the bar inherited that whole tall block with an empty art band, unlike the compact desktop bar.
