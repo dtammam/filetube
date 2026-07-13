@@ -164,6 +164,10 @@ if (typeof module !== 'undefined' && module.exports) {
   function setStatus(root, text) {
     const status = root.querySelector('#reader-status');
     if (!status) return;
+    // v1.38.4: any status change drops the tap-to-play affordance styling (its
+    // click listener removes itself on fire; a stale class must not make a
+    // plain "Preparing…" line look tappable).
+    status.classList.remove('reader-status-tap');
     if (text) {
       status.textContent = text;
       status.hidden = false;
@@ -182,38 +186,9 @@ if (typeof module !== 'undefined' && module.exports) {
 
   // ---- v1.38.0 TTS "Listen from Here" -----------------------------------------
 
-  // A brief SILENT audio clip (built once, at runtime, so no huge literal sits
-  // in source). It exists solely to satisfy the iOS autoplay gesture wall: the
-  // REAL chapter audio only becomes playable seconds after the tap (synthesis +
-  // status poll + blocks fetch), by which point the tap gesture is long gone and
-  // iOS silently blocks play() (the swallowed NotAllowedError = "no audio, the
-  // Preparing text just disappears"). Playing this clip DURING the tap
-  // user-activates ("blesses") the shared media element; that blessing is scoped
-  // to the ELEMENT, not the src (see player.js), so the real audio then plays.
-  function makeSilentWavDataUri(seconds) {
-    const sr = 8000; const dataSize = sr * seconds; // 8-bit mono PCM
-    const bytes = new Uint8Array(44 + dataSize);
-    const dv = new DataView(bytes.buffer);
-    const wr = (off, s) => { for (let i = 0; i < s.length; i++) bytes[off + i] = s.charCodeAt(i); };
-    wr(0, 'RIFF'); dv.setUint32(4, 36 + dataSize, true); wr(8, 'WAVE');
-    wr(12, 'fmt '); dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true);
-    dv.setUint32(24, sr, true); dv.setUint32(28, sr, true); dv.setUint16(32, 1, true); dv.setUint16(34, 8, true);
-    wr(36, 'data'); dv.setUint32(40, dataSize, true);
-    bytes.fill(0x80, 44); // 0x80 = 8-bit PCM silence
-    let bin = ''; for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
-    return 'data:audio/wav;base64,' + btoa(bin);
-  }
-  const TTS_UNLOCK_CLIP = makeSilentWavDataUri(30);
-
-  // A constant media id for the in-gesture unlock load. It is DIFFERENT from any
-  // real chapter id on purpose: player.load() adopts (reparents, does NOT reload
-  // the src) when the requested id equals the currently-loaded one
-  // (isAdoptLoad). Loading the unlock item first resets currentId to this
-  // sentinel, so the subsequent REAL chapter load is never adopted and always
-  // fully (re)loads -- even when re-listening the same chapter.
-  const TTS_UNLOCK_ID = 'booktts:unlock';
   // Per-CHAPTER media id (never the bare bookId): a book has many chapters, and
-  // a shared id would make chapter N+1 get adopted (its audio never loaded).
+  // a shared id would make chapter N+1 get adopted by the player (isAdoptLoad),
+  // so its audio would never load.
   function ttsMediaId(spineIndex) { return `booktts:${bookId}:${spineIndex}`; }
 
   // Hand a book-audio item to the shared player AND make it visible: load into
@@ -242,16 +217,6 @@ if (typeof module !== 'undefined' && module.exports) {
     return document.getElementById('media-player');
   }
 
-  // Mount + user-activate the media element DURING the Listen tap (iOS gesture
-  // wall): load a silent clip so the element is in the DOM and blessed by a
-  // direct in-gesture play(); the real audio swaps into that same element.
-  function primeAudioForGesture(root) {
-    const mp = loadReaderAudio(root, TTS_UNLOCK_ID, TTS_UNLOCK_CLIP);
-    if (mp) {
-      try { const p = mp.play(); if (p && typeof p.catch === 'function') p.catch(() => {}); } catch (_) { /* blessed on the call itself */ }
-    }
-  }
-
   // Poll a chapter's synthesis status until it is ready (true) or failed/timed
   // out (false). Synthesis of a long chapter can take a while, so the ceiling is
   // generous; the reader shows an honest "Preparing audio…" throughout.
@@ -272,9 +237,36 @@ if (typeof module !== 'undefined' && module.exports) {
     });
   }
 
-  // Fetch the block->startSec map, hand the chapter audio to the shared player
-  // (the battle-won background-audio path) with the book cover as artwork, and
-  // seek to the paragraph the reader is on. Also prefetches the next chapter.
+  // Show a tappable "start listening" affordance in the reader status line.
+  // This is the RELIABLE path on iOS: the tap is a fresh user gesture WITH the
+  // audio already loaded, so play() is always permitted -- and that first
+  // successful user-initiated play() unlocks the persistent media element for
+  // the rest of the session, so every later chapter auto-plays (see player.js's
+  // own note about the element being unlocked after one tap).
+  function offerTapToPlay(root, mp, startSec) {
+    const status = root.querySelector('#reader-status');
+    if (!status) return;
+    status.textContent = '▶ Tap to start listening';
+    status.hidden = false;
+    status.classList.add('reader-status-tap');
+    const onTap = () => {
+      status.removeEventListener('click', onTap);
+      status.classList.remove('reader-status-tap');
+      try { if (startSec > 0) mp.currentTime = startSec; } catch (_) { /* seek unsupported */ }
+      const pr = mp.play();
+      if (pr && typeof pr.then === 'function') {
+        pr.then(() => setStatus(root, '')).catch(() => offerTapToPlay(root, mp, startSec)); // still blocked -> keep offering
+      } else {
+        setStatus(root, '');
+      }
+    };
+    status.addEventListener('click', onTap);
+  }
+
+  // Fetch the block->startSec map, mount the chapter audio into the docked
+  // mini-player (book cover as artwork), seek to the paragraph the reader is on,
+  // and start playback. If the browser blocks autoplay (iOS, no surviving
+  // gesture), fall back to an explicit "Tap to start listening". Prefetch next.
   function startTtsPlayback(root, spineIndex, blockIndex) {
     return fetch(`/book/${encodeURIComponent(bookId)}/tts/${spineIndex}/blocks`)
       .then((r) => (r.ok ? r.json() : []))
@@ -287,13 +279,23 @@ if (typeof module !== 'undefined' && module.exports) {
           if (typeof b.blockIndex === 'number' && b.blockIndex <= blockIndex) startSec = b.startSec;
           else break;
         }
-        // Swap the real chapter audio into the (now blessed, docked) element.
         const mp = loadReaderAudio(root, ttsMediaId(spineIndex), `/book/${encodeURIComponent(bookId)}/tts/${spineIndex}`);
-        if (mp && startSec > 0) {
-          const onMeta = () => { try { mp.currentTime = startSec; } catch (_) { /* seek unsupported */ } mp.removeEventListener('loadedmetadata', onMeta); };
-          mp.addEventListener('loadedmetadata', onMeta);
-        }
-        setStatus(root, '');
+        if (!mp) { setStatus(root, 'Audio isn’t available right now.'); return; }
+        // Seek + play once the element has metadata (start immediately if it
+        // already does). We drive play() ourselves so we can OBSERVE the
+        // autoplay-blocked rejection and surface the tap-to-play fallback --
+        // the player's own play() swallows it.
+        const begin = () => {
+          try { if (startSec > 0) mp.currentTime = startSec; } catch (_) { /* seek unsupported */ }
+          const pr = mp.play();
+          if (pr && typeof pr.then === 'function') {
+            pr.then(() => setStatus(root, '')).catch(() => offerTapToPlay(root, mp, startSec));
+          } else {
+            setStatus(root, '');
+          }
+        };
+        if (mp.readyState >= 1) begin();
+        else mp.addEventListener('loadedmetadata', begin, { once: true });
         // Warm the next chapter so playback continues seamlessly.
         fetch(`/book/${encodeURIComponent(bookId)}/tts/${spineIndex + 1}/ensure`, { method: 'POST' }).catch(() => {});
       });
@@ -306,9 +308,6 @@ if (typeof module !== 'undefined' && module.exports) {
     }
     const spineIndex = lastLocator.spineIndex;
     const blockIndex = typeof lastLocator.blockIndex === 'number' ? lastLocator.blockIndex : 0;
-    // Unlock playback WITHIN this tap (the iOS gesture wall) before any async
-    // work -- the real audio's play() lands seconds later, outside the gesture.
-    primeAudioForGesture(root);
     btn.disabled = true;
     setStatus(root, 'Preparing audio…');
     fetch(`/book/${encodeURIComponent(bookId)}/tts/${spineIndex}/ensure`, { method: 'POST' })

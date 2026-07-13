@@ -5707,6 +5707,13 @@ body.ft-css-fullscreen .bottom-nav {
       z-index: 5;
     }
     .reader-status[hidden] { display: none !important; }
+    /* v1.38.4: the "Tap to start listening" fallback fills the pane (inset:0)
+       so the whole reading area is one big tap target when iOS blocks autoplay. */
+    .reader-status.reader-status-tap {
+      cursor: pointer;
+      font-weight: 700;
+      opacity: 1;
+    }
 
 /* ---- v1.37.4 (Dean's report: Continue-reading row widens the page) ---------
    .main-content is a FLEX ITEM of .app-container; flex items default to
