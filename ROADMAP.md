@@ -80,6 +80,10 @@
 
 ## Shipped
 
+### v1.38.4 — Listen from Here on iPhone: reliable "Tap to play" (2026-07-13)
+
+- v1.38.3 fixed the mount (desktop confirmed working), but iOS still didn't play: the in-gesture silent-clip "unlock" wasn't blessing the element (likely the 8-bit WAV data URI iOS won't decode). Rather than chase a fragile unlock that can't be tested off-device, the reader now drives `play()` itself and OBSERVES the autoplay-blocked rejection: when iOS refuses, the whole reading pane becomes a big **"▶ Tap to start listening"** target. That tap is a fresh gesture with the audio already loaded, so it always plays — and the first successful user-initiated play unlocks the persistent media element, so every later chapter auto-plays (the player's own documented behavior). Desktop is unaffected (autoplay succeeds → no prompt). The fragile silent-clip unlock was removed.
+
 ### v1.38.3 — Listen from Here: the player actually mounts now (the real oversight) (2026-07-13)
 
 - Dean: the now-playing bar never appeared — on **desktop** either, so it wasn't just the iOS autoplay wall. Root cause: `player.load(id, data, {})` with **no slot** is a silent no-op — `mountInSlot` bails without a slot, so the persistent player host (and its `<audio>`) is created but **never attached to the DOM**. No bar, nothing plays, and the v1.38.2 "unlock" couldn't even find the element. The docked mini-player only appears if you `load` into a `#player-slot` and then `dock()`.
