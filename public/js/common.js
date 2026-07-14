@@ -1267,6 +1267,73 @@ function parentFolder(filePath) {
   return folder === filePath ? '' : folder;
 }
 
+// ---- v1.40.0: browse-context for context-aware prev/next -------------------
+// When a video is opened from a browsing view (a folder / search / liked list,
+// in any sort INCLUDING a server-seeded shuffle), prev/next should walk THAT
+// list's exact on-screen order -- not the item's own channel folder (the
+// pre-v1.40.0 behavior, kept as the fallback when no context travels with the
+// link, e.g. a related-card hop or an old bookmark). The order is
+// SERVER-authoritative (sort + seed are applied server-side), so the watch page
+// can't re-derive it -- a client-side re-shuffle would not match what was on
+// screen. Instead we carry a compact descriptor of the view's list-API query
+// and RE-FETCH the same list; the response order IS the browsed order (used
+// verbatim, never re-sorted). These three helpers are the single source of
+// truth for that descriptor, shared by main.js (emit on card links), watch.js
+// (the on-page prev/next buttons) and player.js (autoplay-at-end).
+
+// Serialize a browse context to the `ctx` param's VALUE (a JSON string, NOT
+// percent-encoded). Fields mirror buildVideosApiUrl (main.js); `src` picks the
+// endpoint (the liked list vs the main library). Empty fields are dropped;
+// returns '' when nothing meaningful remains (caller omits the param -> the
+// folder-scoped fallback). The URL layer is the CALLER's job: writing this into
+// a URL requires encodeURIComponent(...), and reading it back via
+// URLSearchParams.get(...) already percent-decodes it before decodeListContext.
+// (Doing the percent step here too would double-encode/decode and corrupt any
+// value containing % / & / # / + -- e.g. a search like "R&B" or "50% off".)
+function encodeListContext(ctx) {
+  if (!ctx || typeof ctx !== 'object') return '';
+  var out = {};
+  if (ctx.src === 'liked') out.src = 'liked';
+  if (ctx.sort) out.sort = String(ctx.sort);
+  if (ctx.seed !== undefined && ctx.seed !== null && ctx.seed !== '') out.seed = String(ctx.seed);
+  if (ctx.search) out.search = String(ctx.search);
+  if (ctx.folder) out.folder = String(ctx.folder);
+  if (ctx.root) out.root = String(ctx.root);
+  if (ctx.format) out.format = String(ctx.format);
+  if (Object.keys(out).length === 0) return '';
+  try { return JSON.stringify(out); } catch (_) { return ''; }
+}
+
+// Parse a `ctx` param VALUE (the already-percent-decoded JSON string, as
+// URLSearchParams.get hands it back) into its object, or null if absent/garbage
+// (caller falls back to folder scope -- never throws). No decodeURIComponent
+// here: the caller/URLSearchParams already did the percent layer.
+function decodeListContext(param) {
+  if (!param || typeof param !== 'string') return null;
+  try {
+    var obj = JSON.parse(param);
+    return (obj && typeof obj === 'object' && !Array.isArray(obj)) ? obj : null;
+  } catch (_) { return null; }
+}
+
+// Build the full-list API URL that reproduces a browse context's exact order.
+// `fullLimit` is the caller's "give me everything" cap. The response MUST be
+// used in its returned order (server already applied sort+seed) -- callers do
+// NOT pass it through deriveOrderedIds.
+function buildContextListUrl(ctx, fullLimit) {
+  var c = ctx || {};
+  var params = [];
+  if (c.search) params.push('search=' + encodeURIComponent(c.search));
+  if (c.folder) params.push('folder=' + encodeURIComponent(c.folder));
+  if (c.root) params.push('root=' + encodeURIComponent(c.root));
+  if (c.sort) params.push('sort=' + encodeURIComponent(c.sort));
+  if (c.format) params.push('format=' + encodeURIComponent(c.format));
+  if (c.seed !== undefined && c.seed !== null && c.seed !== '') params.push('seed=' + encodeURIComponent(c.seed));
+  params.push('limit=' + fullLimit);
+  var endpoint = c.src === 'liked' ? '/api/liked' : '/api/videos';
+  return endpoint + '?' + params.join('&');
+}
+
 // ---- Hide-from-sidebar (v1.14.0 item 3) ------------------------------------
 
 // Pure: filters `folders` down to the ones that should appear in a
@@ -6011,6 +6078,7 @@ if (typeof module !== 'undefined' && module.exports) {
     pinDeleteEndpoint,
     fisherYatesShuffle, sortItems, shouldShowShuffleButton,
     deriveOrderedIds, computeNeighbors, parentFolder,
+    encodeListContext, decodeListContext, buildContextListUrl,
     visibleSidebarFolders, resolveDefaultView,
     moveArrayItem, computeDropIndex, rebuildFullFolderOrder,
     isSyntheticFolder,
