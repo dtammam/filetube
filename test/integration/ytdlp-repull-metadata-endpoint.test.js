@@ -36,6 +36,9 @@ const activity = require('../../lib/ytdlp/activity');
 const originalRunList = run.runList;
 const originalRunDownload = run.runDownload;
 const originalRepullItemMetaAndSubs = run.repullItemMetaAndSubs;
+// v1.41.5: the reheat now probes a discovered channel's avatar (once per
+// distinct channel) through `ensureChannelAvatar` -> `run.probeChannelAvatar`.
+const originalProbeChannelAvatar = run.probeChannelAvatar;
 
 let tmpDir;
 
@@ -49,6 +52,7 @@ afterEach(() => {
   run.runList = originalRunList;
   run.runDownload = originalRunDownload;
   run.repullItemMetaAndSubs = originalRepullItemMetaAndSubs;
+  run.probeChannelAvatar = originalProbeChannelAvatar;
   ytdlp.resetRepullMetadataStateForTests();
   activity.resetForTests();
   ytdlp.armYtdlpTimer(ytdlp.parseYtdlpConfig({})); // clear any armed timer between tests
@@ -105,6 +109,12 @@ function makeItem(overrides = {}) {
     filePath: `/downloads/chan/Some Video [${videoId}].mp4`,
     videoId,
     watchUrl: `https://www.youtube.com/watch?v=${videoId}`,
+    // v1.41.5: these fixtures all live under the module's own download dir, so
+    // the real `enumerateRepullableItems` would flag them -- which is what
+    // licenses the batch to trust their embedded tags (see `trustEmbeddedTags`,
+    // lib/ytdlp/index.js). A plain-library-root item is built literally in the
+    // tests that need one, deliberately WITHOUT this flag.
+    inDownloadRoot: true,
     alreadyRepulled: false,
     ...overrides,
   };
@@ -165,7 +175,9 @@ test('enabled: responds 202 with {started:true, eligible, ineligible}; the backg
   try {
     const res = await fetch(`${base}/api/ytdlp/repull-metadata`, { method: 'POST' });
     assert.equal(res.status, 202);
-    assert.deepEqual(await res.json(), { started: true, eligible: 2, ineligible: 3 });
+    // v1.41.5: `withSourceId` rides along (0 here -- this test's stubbed
+    // enumerator predates the field, and the route clamps an absent one).
+    assert.deepEqual(await res.json(), { started: true, eligible: 2, ineligible: 3, withSourceId: 0 });
 
     await flush(30);
     assert.deepEqual(repullCalls.map((c) => c.watchUrl), [itemA.watchUrl, itemB.watchUrl], 'both items must be re-pulled, in order');
@@ -1023,6 +1035,281 @@ test('local-pass chapters flow through to recordRepulledItemMeta with network > 
     assert.equal(recordCalls.length, 1);
     assert.deepEqual(recordCalls[0].meta.chapters, [{ startTime: 5, title: 'Local Embedded' }],
       'the LOCAL embedded chapters fill the gap the network left');
+  } finally {
+    await close();
+  }
+});
+
+// ---- v1.41.5 (Dean's MeTube-import hydration): channel identity + a ---------
+// ONCE-PER-CHANNEL avatar probe --------------------------------------------
+
+test('the batch threads Pass A\'s channel identity into recordRepulledItemMeta, and probes the avatar ONCE PER DISTINCT CHANNEL (not once per item)', async () => {
+  const deps = makeFakeDeps({ ytdlp: { subscriptions: [], channelAvatars: {}, downloadMeta: {} } });
+  // 4 imported items across 2 channels -- the shape of Dean's library (many
+  // videos, few channels). A per-ITEM avatar probe would be 4 spawns.
+  const items = [
+    makeItem({ videoId: 'aaaaaaaaaaa' }),
+    makeItem({ videoId: 'bbbbbbbbbbb' }),
+    makeItem({ videoId: 'ccccccccccc' }),
+    makeItem({ videoId: 'ddddddddddd' }),
+  ];
+  deps.enumerateRepullableItems = () => ({ items, eligible: 4, ineligible: 0, withSourceId: 4 });
+
+  const CHANNEL_ONE = {
+    channelUrl: 'https://www.youtube.com/@ChannelOne',
+    channelId: 'UC1111111111111111111111',
+    channelName: 'Channel One',
+  };
+  const CHANNEL_TWO = {
+    channelUrl: 'https://www.youtube.com/@ChannelTwo',
+    channelId: 'UC2222222222222222222222',
+    channelName: 'Channel Two',
+  };
+  const channelByVideo = {
+    'https://www.youtube.com/watch?v=aaaaaaaaaaa': CHANNEL_ONE,
+    'https://www.youtube.com/watch?v=bbbbbbbbbbb': CHANNEL_ONE,
+    'https://www.youtube.com/watch?v=ccccccccccc': CHANNEL_TWO,
+    'https://www.youtube.com/watch?v=ddddddddddd': CHANNEL_ONE,
+  };
+
+  run.repullItemMetaAndSubs = async (watchUrl) => ({
+    channel: { ...channelByVideo[watchUrl] },
+    wroteSubs: false,
+    subsSkipped: true, // an out-of-root import: Pass B can never run
+  });
+
+  const avatarProbes = [];
+  run.probeChannelAvatar = async (channelUrl) => {
+    avatarProbes.push(channelUrl);
+    return { avatarUrl: `https://yt3.googleusercontent.com/${encodeURIComponent(channelUrl)}.jpg`, channelId: null, channelUrl };
+  };
+
+  const recordCalls = [];
+  deps.recordRepulledItemMeta = async (d, mediaId, meta) => {
+    recordCalls.push({ mediaId, meta });
+    return true;
+  };
+
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    await fetch(`${base}/api/ytdlp/repull-metadata`, { method: 'POST' });
+    await flush(60);
+
+    assert.equal(recordCalls.length, 4);
+    assert.deepEqual(recordCalls[0].meta.channel, CHANNEL_ONE, 'the discovered identity must reach the persistence seam');
+    assert.deepEqual(recordCalls[2].meta.channel, CHANNEL_TWO);
+    assert.ok(recordCalls[0].meta.channelAvatarUrl, 'the probed avatar rides along with it');
+
+    assert.deepEqual(avatarProbes, [CHANNEL_ONE.channelUrl, CHANNEL_TWO.channelUrl],
+      'exactly ONE avatar probe per DISTINCT channel -- 4 items across 2 channels must never mean 4 probes');
+
+    // Every item still gets the right avatar, memo hit or not.
+    assert.equal(recordCalls[3].meta.channelAvatarUrl, recordCalls[0].meta.channelAvatarUrl,
+      'the 3rd item on channel one reuses the memoized avatar');
+
+    const entry = getReheatEntry();
+    assert.equal(entry.state, 'done');
+    assert.equal(entry.done, 4, 'an out-of-root import whose subs pass could never run is DONE, not failed');
+    assert.equal(entry.failed, 0);
+  } finally {
+    await close();
+  }
+});
+
+test('a FAILED avatar probe is memoized too -- a channel whose avatar cannot be probed is never re-probed once per item', async () => {
+  const deps = makeFakeDeps({ ytdlp: { subscriptions: [], channelAvatars: {}, downloadMeta: {} } });
+  const items = [makeItem({ videoId: 'aaaaaaaaaaa' }), makeItem({ videoId: 'bbbbbbbbbbb' }), makeItem({ videoId: 'ccccccccccc' })];
+  deps.enumerateRepullableItems = () => ({ items, eligible: 3, ineligible: 0, withSourceId: 3 });
+
+  run.repullItemMetaAndSubs = async () => ({
+    channel: { channelUrl: 'https://www.youtube.com/@OneChannel', channelName: 'One Channel' },
+    wroteSubs: true,
+  });
+
+  let probeCount = 0;
+  run.probeChannelAvatar = async () => {
+    probeCount += 1;
+    return null; // total miss (the channel endpoint yielded nothing usable)
+  };
+
+  const recordCalls = [];
+  deps.recordRepulledItemMeta = async (d, mediaId, meta) => {
+    recordCalls.push(meta);
+    return true;
+  };
+
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    await fetch(`${base}/api/ytdlp/repull-metadata`, { method: 'POST' });
+    await flush(60);
+
+    assert.equal(probeCount, 1, 'a miss is cached: 3 items on one channel must still cost exactly ONE probe');
+    assert.equal(recordCalls.length, 3);
+    assert.equal(recordCalls[0].channelAvatarUrl, undefined, 'no avatar found -> the field is simply absent (never an empty string)');
+    assert.ok(recordCalls[0].channel, 'the identity still lands -- an avatar is a bonus, not a precondition');
+  } finally {
+    await close();
+  }
+});
+
+test('an item whose ONLY new fact is its channel identity is persisted and counted done (never dropped as "nothing to persist")', async () => {
+  const deps = makeFakeDeps({ ytdlp: { subscriptions: [], channelAvatars: {}, downloadMeta: {} } });
+  // No videoId anywhere on the item -- but a local embedded purl gives the
+  // worker a watch URL, and the network pass comes back with ONLY a channel.
+  const item = { mediaId: 'media-import', filePath: '/library/music/Some Song.mp3', videoId: null, watchUrl: null, alreadyRepulled: false };
+  deps.enumerateRepullableItems = () => ({ items: [item], eligible: 1, ineligible: 0, withSourceId: 0 });
+  deps.probeEmbeddedTags = async () => ({ sourceUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', releaseDateMs: null, title: null, chapters: null });
+
+  run.repullItemMetaAndSubs = async () => ({
+    channel: { channelUrl: 'https://www.youtube.com/@RickAstley', channelName: 'Rick Astley' },
+    wroteSubs: false,
+    subsSkipped: true,
+  });
+  run.probeChannelAvatar = async () => null;
+
+  const recordCalls = [];
+  deps.recordRepulledItemMeta = async (d, mediaId, meta) => {
+    recordCalls.push(meta);
+    return true;
+  };
+
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    await fetch(`${base}/api/ytdlp/repull-metadata`, { method: 'POST' });
+    await flush(60);
+
+    assert.equal(recordCalls.length, 1, 'the channel-only result must still be persisted (the persist-gate bug class)');
+    assert.equal(recordCalls[0].channel.channelName, 'Rick Astley');
+    assert.equal(recordCalls[0].youtubeId, 'dQw4w9WgXcQ', 'the id the LOCAL purl tag surfaced is persisted too');
+    assert.equal(recordCalls[0].markComplete, true, 'subsSkipped -> the item is done, not retried on every later reheat');
+
+    const entry = getReheatEntry();
+    assert.equal(entry.done, 1);
+    assert.equal(entry.failed, 0);
+  } finally {
+    await close();
+  }
+});
+
+test('a tagless local file (no id, no embedded source URL) NEVER reaches the network -- no repull spawn, no avatar probe', async () => {
+  const deps = makeFakeDeps({ ytdlp: { subscriptions: [], channelAvatars: {}, downloadMeta: {} } });
+  const item = { mediaId: 'media-home-video', filePath: '/library/home/Family BBQ.mp4', videoId: null, watchUrl: null, alreadyRepulled: false };
+  deps.enumerateRepullableItems = () => ({ items: [item], eligible: 1, ineligible: 0, withSourceId: 0 });
+  // The LOCAL probe ran fine and found nothing -- a genuine home video.
+  deps.probeEmbeddedTags = async () => ({ sourceUrl: null, releaseDateMs: null, title: null, chapters: null });
+
+  let repullCalls = 0;
+  let avatarProbes = 0;
+  run.repullItemMetaAndSubs = async () => { repullCalls += 1; return { wroteSubs: true }; };
+  run.probeChannelAvatar = async () => { avatarProbes += 1; return null; };
+  deps.recordRepulledItemMeta = async () => true;
+
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    await fetch(`${base}/api/ytdlp/repull-metadata`, { method: 'POST' });
+    await flush(60);
+
+    assert.equal(repullCalls, 0, 'a file with no derivable YouTube id must NEVER trigger a yt-dlp network call');
+    assert.equal(avatarProbes, 0, 'and never an avatar probe either');
+
+    const entry = getReheatEntry();
+    assert.equal(entry.skipped, 1, 'exhausted with nothing to persist -> honestly skipped, never "done"');
+    assert.equal(entry.done, 0);
+    assert.equal(entry.failed, 0);
+  } finally {
+    await close();
+  }
+});
+
+// GATE FIX (adversarial CRITICAL #2 -- promoted from the reviewer's repro):
+// the widened, root-agnostic gate enumerates ordinary NON-YouTube library files
+// (ripped CDs, home videos, movie rips) so their embedded tags can still be
+// checked for a purl. The batch must NOT then drag the v1.33 local-tag
+// fallbacks onto them: `recordRepulledItemMeta` applies sourceTitle/releaseDate
+// as a SUPERSEDE, so a ripper's generic ID3 `title` ("Track 05") would replace
+// Dean's curated, filename-derived title -- irreversibly (there is no
+// title-edit endpoint, and the scan's carry-forward re-prefers sourceTitle
+// forever) -- and an embedded `date` tag would rewrite releaseDate, reordering
+// the library-wide default sort. Zero network calls involved: it would corrupt
+// the title with withSourceId === 0.
+test('a NON-YouTube library file (no id, no source URL) never has its title/date/chapters superseded by its own embedded tags', async () => {
+  const deps = makeFakeDeps({ ytdlp: { subscriptions: [], channelAvatars: {}, downloadMeta: {} } });
+  const item = { mediaId: 'media-cd-rip', filePath: '/library/music/Beethoven - Symphony No. 5.mp3', videoId: null, watchUrl: null, alreadyRepulled: false };
+  deps.enumerateRepullableItems = () => ({ items: [item], eligible: 1, ineligible: 0, withSourceId: 0 });
+  // The local ffprobe pass succeeds and returns the file's REAL embedded tags --
+  // a generic ripper title, a composition date, container chapters. None of it
+  // is YouTube provenance, and none of it may be persisted.
+  deps.probeEmbeddedTags = async () => ({
+    sourceUrl: null,
+    title: 'Track 05',
+    releaseDateMs: Date.UTC(1808, 11, 22),
+    chapters: [{ startTime: 0, title: 'Allegro con brio' }],
+  });
+
+  let repullCalls = 0;
+  run.repullItemMetaAndSubs = async () => { repullCalls += 1; return { wroteSubs: true }; };
+  run.probeChannelAvatar = async () => null;
+
+  const recordCalls = [];
+  deps.recordRepulledItemMeta = async (d, mediaId, meta) => {
+    recordCalls.push(meta);
+    return true;
+  };
+
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    await fetch(`${base}/api/ytdlp/repull-metadata`, { method: 'POST' });
+    await flush(60);
+
+    assert.equal(repullCalls, 0, 'sanity: no network call for a file with no YouTube id');
+    assert.equal(recordCalls.length, 1, 'the item is still marked exhausted (so it is never re-probed)');
+    assert.equal(recordCalls[0].sourceTitle, undefined, 'a NON-YouTube file\'s ID3 title must NEVER be forwarded into the SUPERSEDE write');
+    assert.equal(recordCalls[0].releaseDate, undefined, 'nor its embedded date (it would reorder the whole library\'s default sort)');
+    assert.equal(recordCalls[0].chapters, undefined, 'nor its container chapters');
+    assert.equal(recordCalls[0].markComplete, true, 'exhausted -> marked, never re-probed on later reheats');
+
+    const entry = getReheatEntry();
+    assert.equal(entry.skipped, 1, 'nothing was persisted -> honestly skipped, never "done"');
+  } finally {
+    await close();
+  }
+});
+
+// The SAME local tags, on a file that IS a YouTube import (its embedded purl
+// gives the batch a watch URL): here the fallbacks are exactly right and MUST
+// still fire -- the v1.33 behavior this guard must not regress.
+test('a YouTube-identified import still gets its LOCAL embedded title/date/chapters as the network fallback (v1.33 behavior preserved)', async () => {
+  const deps = makeFakeDeps({ ytdlp: { subscriptions: [], channelAvatars: {}, downloadMeta: {} } });
+  const item = { mediaId: 'media-import', filePath: '/library/yt/Some Import.mp4', videoId: null, watchUrl: null, alreadyRepulled: false };
+  deps.enumerateRepullableItems = () => ({ items: [item], eligible: 1, ineligible: 0, withSourceId: 0 });
+  deps.probeEmbeddedTags = async () => ({
+    sourceUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', // <- the purl tag: this IS a YouTube video
+    title: 'Rick Astley - Never Gonna Give You Up',
+    releaseDateMs: Date.UTC(2009, 9, 25),
+    chapters: [{ startTime: 0, title: 'Intro' }],
+  });
+
+  // The NETWORK pass fails outright (offline / video gone) -- so the local tags
+  // are all we have, and they are legitimate YouTube provenance.
+  run.repullItemMetaAndSubs = async () => null;
+  run.probeChannelAvatar = async () => null;
+
+  const recordCalls = [];
+  deps.recordRepulledItemMeta = async (d, mediaId, meta) => {
+    recordCalls.push(meta);
+    return true;
+  };
+
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    await fetch(`${base}/api/ytdlp/repull-metadata`, { method: 'POST' });
+    await flush(60);
+
+    assert.equal(recordCalls.length, 1);
+    assert.equal(recordCalls[0].sourceTitle, 'Rick Astley - Never Gonna Give You Up');
+    assert.equal(recordCalls[0].releaseDate, Date.UTC(2009, 9, 25));
+    assert.deepEqual(recordCalls[0].chapters, [{ startTime: 0, title: 'Intro' }]);
+    assert.equal(recordCalls[0].youtubeId, 'dQw4w9WgXcQ');
   } finally {
     await close();
   }

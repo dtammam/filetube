@@ -664,3 +664,185 @@ test('repullItemMetaAndSubs never throws even if spawn itself throws synchronous
   const result = await run.repullItemMetaAndSubs(WATCH_URL, mediaFilePath, config);
   assert.equal(result, null);
 });
+
+// ---- v1.41.5 (Dean's MeTube-import hydration): Pass A also returns the -----
+// video's CHANNEL IDENTITY, off the SAME --dump-json payload it already
+// fetched. This is what turns an imported file's generic folder-name
+// "channel" into the real creator (name + avatar + Subscribe button). Every
+// field crosses the SINGLE download-capture gate
+// (store.sanitizeCapturedChannelMeta) -- these tests lock that, not a second,
+// forked validator.
+
+test('repullItemMetaAndSubs Pass A: parses channel_url/channel_id/channel/uploader_url out of the SAME --dump-json payload (no extra spawn)', async () => {
+  const root = makeDownloadRoot();
+  const mediaFilePath = path.join(root, 'My Video [dQw4w9WgXcQ].mp4');
+  fs.writeFileSync(mediaFilePath, 'not a real video');
+  const spawnChild = stubSpawn();
+  const config = { downloadDir: root, cookiesFile: null };
+
+  const resultPromise = run.repullItemMetaAndSubs(WATCH_URL, mediaFilePath, config);
+  const passAChild = spawnChild(0);
+  passAChild.stdout.emit('data', Buffer.from(JSON.stringify(VALID_META_JSON)));
+  passAChild.emit('close', 0, null);
+  await flush();
+  const passBChild = spawnChild(1);
+  passBChild.emit('close', 0, null);
+  const result = await resultPromise;
+
+  assert.deepStrictEqual(result.channel, {
+    channelUrl: 'https://www.youtube.com/@SomeChannel',
+    channelHandleUrl: 'https://www.youtube.com/@SomeChannelHandle',
+    channelId: 'UC1234567890123456789012',
+    channelName: 'Some Channel',
+  });
+  assert.equal(capturedSpawnCalls.length, 2, 'identity must come from the EXISTING Pass A dump -- never a third spawn');
+  // The avatar is still NOT read per-video (the v1.25 finding stands): it is
+  // probed once per channel by the batch, via probeChannelAvatar.
+  assert.equal(Object.prototype.hasOwnProperty.call(result, 'channelAvatarUrl'), false);
+});
+
+test('repullItemMetaAndSubs Pass A: `uploader` is the channel-name fallback when `channel` is absent', async () => {
+  const root = makeDownloadRoot();
+  const mediaFilePath = path.join(root, 'My Video [dQw4w9WgXcQ].mp4');
+  fs.writeFileSync(mediaFilePath, 'not a real video');
+  const spawnChild = stubSpawn();
+  const config = { downloadDir: root, cookiesFile: null };
+
+  const resultPromise = run.repullItemMetaAndSubs(WATCH_URL, mediaFilePath, config);
+  const passAChild = spawnChild(0);
+  passAChild.stdout.emit('data', Buffer.from(JSON.stringify({
+    id: 'dQw4w9WgXcQ',
+    channel_url: 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw',
+    uploader: 'Rick Astley',
+  })));
+  passAChild.emit('close', 0, null);
+  await flush();
+  const passBChild = spawnChild(1);
+  passBChild.emit('close', 0, null);
+  const result = await resultPromise;
+
+  assert.equal(result.channel.channelName, 'Rick Astley');
+  assert.equal(result.channel.channelUrl, 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw');
+  assert.equal(result.channel.channelId, undefined, 'no channel_id in the payload -- the field is simply absent');
+});
+
+test('repullItemMetaAndSubs Pass A: a HOSTILE/invalid channel_url yields NO channel identity at all (the single sanitizeCapturedChannelMeta gate), while the release date still survives', async () => {
+  const root = makeDownloadRoot();
+  const mediaFilePath = path.join(root, 'My Video [dQw4w9WgXcQ].mp4');
+  fs.writeFileSync(mediaFilePath, 'not a real video');
+  const spawnChild = stubSpawn();
+  const config = { downloadDir: root, cookiesFile: null };
+
+  const resultPromise = run.repullItemMetaAndSubs(WATCH_URL, mediaFilePath, config);
+  const passAChild = spawnChild(0);
+  passAChild.stdout.emit('data', Buffer.from(JSON.stringify({
+    id: 'dQw4w9WgXcQ',
+    channel_url: 'javascript:alert(1)',
+    uploader_url: 'https://evil.example.com/@notyoutube',
+    channel_id: 'not-a-channel-id',
+    channel: 'Hostile Channel',
+    release_date: '20230120',
+  })));
+  passAChild.emit('close', 0, null);
+  await flush();
+  const passBChild = spawnChild(1);
+  passBChild.emit('close', 0, null);
+  const result = await resultPromise;
+
+  assert.equal(result.channel, undefined, 'no channel URL survives validation -> no identity is returned at all (never a half-formed one)');
+  assert.equal(result.releaseDate, Date.UTC(2023, 0, 20), 'a bad channel URL must never cost us a good release date (the independent-validator posture)');
+});
+
+test('repullItemMetaAndSubs: an OUT-OF-ROOT media file (a MeTube import) reports subsSkipped:true -- a STRUCTURAL skip, not a retryable subs failure', async () => {
+  const root = makeDownloadRoot();
+  const libraryDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-repull-import-'));
+  const mediaFilePath = path.join(libraryDir, 'Some MeTube Song.mp3');
+  fs.writeFileSync(mediaFilePath, 'not a real song');
+  const spawnChild = stubSpawn();
+  const config = { downloadDir: root, cookiesFile: null };
+
+  const resultPromise = run.repullItemMetaAndSubs(WATCH_URL, mediaFilePath, config);
+  const passAChild = spawnChild(0);
+  passAChild.stdout.emit('data', Buffer.from(JSON.stringify(VALID_META_JSON)));
+  passAChild.emit('close', 0, null);
+  const result = await resultPromise;
+
+  assert.equal(capturedSpawnCalls.length, 1, 'Pass B still never spawns for a file outside the download root (the confinement is untouched)');
+  assert.equal(result.wroteSubs, false);
+  assert.equal(result.subsSkipped, true, 'the caller needs to tell "cannot ever run" apart from "transiently failed"');
+  assert.ok(result.channel, 'the import still gets its channel identity -- that is the whole point of the widened reheat');
+  fs.rmSync(libraryDir, { recursive: true, force: true });
+});
+
+test('repullItemMetaAndSubs: an IN-ROOT file whose subs pass genuinely fails reports wroteSubs:false and NO subsSkipped (still retryable)', async () => {
+  const root = makeDownloadRoot();
+  const mediaFilePath = path.join(root, 'My Video [dQw4w9WgXcQ].mp4');
+  fs.writeFileSync(mediaFilePath, 'not a real video');
+  const spawnChild = stubSpawn();
+  const config = { downloadDir: root, cookiesFile: null };
+
+  const resultPromise = run.repullItemMetaAndSubs(WATCH_URL, mediaFilePath, config);
+  const passAChild = spawnChild(0);
+  passAChild.stdout.emit('data', Buffer.from(JSON.stringify(VALID_META_JSON)));
+  passAChild.emit('close', 0, null);
+  await flush();
+  const passBChild = spawnChild(1);
+  passBChild.emit('close', 1, null); // non-zero exit -- a TRANSIENT failure
+  const result = await resultPromise;
+
+  assert.equal(result.wroteSubs, false);
+  assert.equal(result.subsSkipped, undefined, 'a real subs failure must NEVER be reported as a structural skip (it would be marked complete and never retried)');
+});
+
+// GATE FIX (adversarial WARNING): `realpathUnderChannelDir` fails CLOSED -- it
+// returns false BOTH for "genuinely outside the root" and for ANY realpathSync
+// throw (a NAS/mount blip, EACCES, a file deleted mid-run). Reporting
+// `subsSkipped` for the latter would permanently mark an IN-ROOT item reheated
+// with no subtitles ever fetched, and every later non-force reheat would skip
+// it -- strictly worse than the pre-v1.41.5 behavior. Only a GENUINELY
+// structural skip may claim the flag.
+test('repullItemMetaAndSubs: an IN-ROOT media file that does NOT resolve on disk (a NAS blip) does NOT claim subsSkipped -- it stays retryable', async () => {
+  const root = makeDownloadRoot();
+  // The path is under the root, but nothing is there: realpathSync throws, so
+  // realpathUnderChannelDir fails closed -- exactly the transient shape.
+  const mediaFilePath = path.join(root, 'Vanished Mid Run [dQw4w9WgXcQ].mp4');
+  const spawnChild = stubSpawn();
+  const config = { downloadDir: root, cookiesFile: null };
+
+  const resultPromise = run.repullItemMetaAndSubs(WATCH_URL, mediaFilePath, config);
+  const passAChild = spawnChild(0);
+  passAChild.stdout.emit('data', Buffer.from(JSON.stringify(VALID_META_JSON)));
+  passAChild.emit('close', 0, null);
+  const result = await resultPromise;
+
+  assert.equal(capturedSpawnCalls.length, 1, 'Pass B still never spawns for an unresolvable path (the confinement is untouched)');
+  assert.equal(result.wroteSubs, false);
+  assert.equal(result.subsSkipped, undefined,
+    'an unreadable/vanished path is TRANSIENT -- claiming a structural skip would mark it done forever with no subtitles');
+});
+
+test('repullItemMetaAndSubs: an out-of-root file that DOES resolve claims subsSkipped (structural), and so does a run with no download root configured at all', async () => {
+  const root = makeDownloadRoot();
+  const libraryDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-repull-structural-'));
+  const mediaFilePath = path.join(libraryDir, 'Real Import.mp3');
+  fs.writeFileSync(mediaFilePath, 'real bytes on disk');
+
+  // (a) out-of-root, resolves fine -> structural.
+  let spawnChild = stubSpawn();
+  let resultPromise = run.repullItemMetaAndSubs(WATCH_URL, mediaFilePath, { downloadDir: root, cookiesFile: null });
+  let passAChild = spawnChild(0);
+  passAChild.stdout.emit('data', Buffer.from(JSON.stringify(VALID_META_JSON)));
+  passAChild.emit('close', 0, null);
+  assert.equal((await resultPromise).subsSkipped, true, 'a real file that simply lives elsewhere can never get a sidecar -- structural');
+
+  // (b) no download root configured at all -> structural too (no spawn is possible).
+  capturedSpawnCalls = [];
+  spawnChild = stubSpawn();
+  resultPromise = run.repullItemMetaAndSubs(WATCH_URL, mediaFilePath, { downloadDir: '', cookiesFile: null });
+  passAChild = spawnChild(0);
+  passAChild.stdout.emit('data', Buffer.from(JSON.stringify(VALID_META_JSON)));
+  passAChild.emit('close', 0, null);
+  assert.equal((await resultPromise).subsSkipped, true, 'no root configured -> no subtitle pass will ever exist for this item');
+
+  fs.rmSync(libraryDir, { recursive: true, force: true });
+});

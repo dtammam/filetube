@@ -1150,6 +1150,19 @@ function pruneDeleteTombstones(tombstones, now = Date.now()) {
 // (never another host, a playlist, or a credentialed URL); content-vs-id
 // agreement is not (and cannot be) verified. Revisit if multi-user/untrusted
 // library roots ever land (see ROADMAP's accounts item).
+//
+// v1.41.5 WIDENED (Dean's explicit call): this id is now also what makes an
+// item eligible for the reheat's NETWORK pass from ANY library root, not just
+// the module's own download dir -- see `enumerateRepullableItems`. That makes
+// this the FIRST code path that aims a yt-dlp network call at a file FileTube
+// did not download itself (Dean's MeTube-era .mp3/.mp4 imports, whose only
+// link back to YouTube is exactly this tag). The blast radius of a forged tag
+// is unchanged in KIND (a well-formed YouTube video URL, fetched read-only,
+// `--skip-download`; the media file is never touched) and now also covers the
+// channel identity written back onto the item -- which the never-overwrite
+// guard in `recordRepulledItemMeta` keeps from ever re-pointing an item that
+// already has one. A file with NO such tag and no `[id]` bracket is never
+// fetched at all (its local probe finds nothing and the item is skipped).
 function deriveScanYoutubeId(filePath, info, ytdlpRoots, embeddedSourceUrl) {
   if (matchRootFolder(filePath, ytdlpRoots)) {
     const bracketId = extractYtdlpVideoId(path.basename(info.name, info.ext));
@@ -3257,6 +3270,33 @@ async function runScanDirectories() {
         if (Array.isArray(existing.chaptersManual)) {
           newMetadata[id].chaptersManual = existing.chaptersManual;
         }
+        // v1.41.5 (MeTube-import hydration): the CHANNEL IDENTITY carries
+        // forward too -- same reasoning as `youtubeId`/`sourceTitle` above,
+        // and this is the persist-gate/stale-snapshot bug class's checkpoint
+        // for the new fields. A yt-dlp-rooted item could always re-derive its
+        // identity from its own download FOLDER on the next scan (the AC17
+        // backfill below), but a HYDRATED IMPORT cannot: it lives in a plain
+        // library root, so this re-init branch (same path, changed size --
+        // e.g. Dean re-encodes or replaces a file) is the ONLY thing standing
+        // between it and silently reverting to a generic folder-name channel.
+        // The re-init literal never sets these, so this is a pure carry (no
+        // supersede question), and the reheat's own never-overwrite guard
+        // means a later reheat won't "fix" what a scan quietly dropped.
+        if (typeof existing.channelUrl === 'string' && existing.channelUrl !== '') {
+          newMetadata[id].channelUrl = existing.channelUrl;
+        }
+        if (typeof existing.channelHandleUrl === 'string' && existing.channelHandleUrl !== '') {
+          newMetadata[id].channelHandleUrl = existing.channelHandleUrl;
+        }
+        if (typeof existing.channelId === 'string' && existing.channelId !== '') {
+          newMetadata[id].channelId = existing.channelId;
+        }
+        if (typeof existing.channelName === 'string' && existing.channelName !== '') {
+          newMetadata[id].channelName = existing.channelName;
+        }
+        if (typeof existing.channelAvatarUrl === 'string' && existing.channelAvatarUrl !== '') {
+          newMetadata[id].channelAvatarUrl = existing.channelAvatarUrl;
+        }
       }
       dbChanged = true;
     }
@@ -3486,6 +3526,33 @@ async function runScanDirectories() {
           if ((!Array.isArray(item.chapters) || item.chapters.length === 0) &&
               Array.isArray(freshItem.chapters) && freshItem.chapters.length > 0) {
             item.chapters = freshItem.chapters;
+          }
+          // v1.41.5 gate fix (adversarial CRITICAL -- the persist-gate/
+          // stale-snapshot class's SIXTH strike, and the THIRD in this exact
+          // block): the reheat's newly-writable CHANNEL IDENTITY needs the
+          // same carry-forward. It is now a LIBRARY-WIDE batch that can run
+          // for minutes-to-hours against a periodic scan with no mutual
+          // exclusion (see this block's own header), so a hydration landing
+          // mid-scan was silently reverted by the wholesale `newMetadata`
+          // replace -- while `metadataRepulledAt` (adopted above) SURVIVED,
+          // meaning a later non-force reheat would skip the item forever, and
+          // the AC17 folder backfill can't heal a plain-library-root import
+          // (it is scoped to ytdlpDownloadRoots). Permanent identity loss.
+          //
+          // GAP-FILL posture, NOT marker-gated (mirrors the youtubeId/
+          // sourceTitle gap-fills above): a PARTIAL mid-scan reheat -- the
+          // network pass discovered the channel but the subs pass failed, so
+          // the marker was withheld -- must keep its identity too.
+          //
+          // Adopted as a UNIT, keyed on `channelUrl`: never mix channel A's
+          // URL with channel B's name. Runs BEFORE the FR-2 bridge below, so
+          // a genuinely-fresh download capture still wins (newest event).
+          if (!item.channelUrl && typeof freshItem.channelUrl === 'string' && freshItem.channelUrl !== '') {
+            item.channelUrl = freshItem.channelUrl;
+            if (freshItem.channelHandleUrl) item.channelHandleUrl = freshItem.channelHandleUrl;
+            if (freshItem.channelId) item.channelId = freshItem.channelId;
+            if (freshItem.channelName) item.channelName = freshItem.channelName;
+            if (freshItem.channelAvatarUrl) item.channelAvatarUrl = freshItem.channelAvatarUrl;
           }
         }
       }
@@ -6291,10 +6358,7 @@ async function migrateOneOffsIntoChannelFolders(deps, config) {
 
 /**
  * Pure eligibility gate: classify every `db.metadata` item as re-pullable or
- * not, without touching the filesystem or the database. An item is eligible
- * iff it physically lives under the module's own yt-dlp download root
- * (`ytdlp.extraScanRoots(config)`) -- mirroring the scan bridge's own
- * scoping so a non-yt-dlp library file is never fed a re-pull job.
+ * not, without touching the filesystem or the database.
  *
  * v1.33 T1: a video id is NO LONGER required for eligibility. Each item
  * carries the best id currently derivable -- the filename's `[<11-char id>]`
@@ -6305,24 +6369,59 @@ async function migrateOneOffsIntoChannelFolders(deps, config) {
  * pass on those regardless, and can derive a watch URL on the fly from an
  * embedded `purl` tag; only the NETWORK pass is gated on a watch URL.
  *
+ * v1.41.5 (Dean's MeTube-import hydration): this gate is now ROOT-AGNOSTIC.
+ * It used to hard-require `matchRootFolder(item.filePath, downloadRoots)` --
+ * which excluded exactly the library Dean actually needs hydrated: .mp3/.mp4
+ * files MeTube downloaded into a NORMAL library root (never FileTube's own
+ * yt-dlp download dir), with no `[<id>]` filename bracket but WITH the source
+ * YouTube URL in their embedded `comment`/`purl` tag. Those items already
+ * carry a valid `item.youtubeId` (the scan's `deriveScanYoutubeId` has been
+ * root-agnostic through the embedded tag since v1.33), so the ONLY thing
+ * standing between them and a full identity backfill was this scoping check.
+ *
+ * What replaced it -- an item is eligible when it can plausibly yield a
+ * YouTube video id:
+ *   1. a filename `[<11-char id>]` bracket -- ONLY trusted for a file rooted
+ *      under the module's own download dir (`ytdlp.extraScanRoots(config)`,
+ *      still computed here for exactly this purpose). An ordinary library
+ *      file can innocently carry an 11-char bracket (`Vacation
+ *      [Holiday2024].mp4` -- see `cleanDisplayTitle`'s own note), and
+ *      trusting that outside the download root would aim a NETWORK call at a
+ *      coincidence.
+ *   2. else a persisted `item.youtubeId` that survives `isSafeVideoId` --
+ *      trusted from ANY root, because it can only have come from the
+ *      downloader's own embedded provenance tag (the trust boundary
+ *      `deriveScanYoutubeId` documents, above) or a prior reheat.
+ *   3. else `null` id -- still enumerated (never a network call: the worker
+ *      gates its spawn on a watch URL) purely so the worker's LOCAL,
+ *      network-free ffprobe tags pass can still upgrade it from an embedded
+ *      `purl` a pre-v1.33 scan never stored. A genuine home video with no
+ *      tags at all resolves nothing there, is marked `exhausted`, counted
+ *      `skipped`, and never touches the network.
+ * `withSourceId` counts (2)+(1) -- the items a network pass will actually
+ * run for -- so the caller can report an honest blast radius instead of
+ * implying every library file is about to be fetched.
+ *
+ * The old `downloadRoots.length === 0 -> everything ineligible` early return
+ * is gone with the scoping: a perfectly normal deployment now has re-pullable
+ * items with no download root involved at all.
+ *
  * Each eligible item's own `metadataRepulledAt` (already set by a prior
  * `recordRepulledItemMeta` call, or absent) is surfaced as `alreadyRepulled`
  * so the caller can decide whether to skip it (a `force` re-run is the
  * caller's own concern -- this helper only classifies, it never filters on
- * that flag itself).
+ * that flag itself). Dean's imported items have never been through a reheat
+ * batch (they were ineligible until now), so none of them carry the marker:
+ * the FIRST widened run picks up every one of them, no `force` needed.
  *
  * @param {object} db a `loadDatabase()`-shaped db snapshot
  * @param {object} config a parsed yt-dlp config (`ytdlp.parseYtdlpConfig()`)
- * @returns {{items: Array<{mediaId: string, filePath: string, videoId: string|null, watchUrl: string|null, alreadyRepulled: boolean}>, eligible: number, ineligible: number}}
+ * @returns {{items: Array<{mediaId: string, filePath: string, videoId: string|null, watchUrl: string|null, inDownloadRoot: boolean, alreadyRepulled: boolean}>, eligible: number, ineligible: number, withSourceId: number}}
  */
 function enumerateRepullableItems(db, config) {
-  const result = { items: [], eligible: 0, ineligible: 0 };
+  const result = { items: [], eligible: 0, ineligible: 0, withSourceId: 0 };
   const metadata = (db && db.metadata) || {};
   const downloadRoots = ytdlp.extraScanRoots(config);
-  if (downloadRoots.length === 0) {
-    result.ineligible = Object.keys(metadata).length;
-    return result;
-  }
 
   for (const id of Object.keys(metadata)) {
     const item = metadata[id];
@@ -6330,23 +6429,20 @@ function enumerateRepullableItems(db, config) {
       result.ineligible++;
       continue;
     }
-    // Same double-scoping as the scan's own channel-identity bridge: rooted
-    // under the download dir AND filename-shaped like a yt-dlp download.
-    if (!matchRootFolder(item.filePath, downloadRoots)) {
-      result.ineligible++;
-      continue;
-    }
     const baseName = path.basename(item.filePath, path.extname(item.filePath));
-    // v1.33 T1: filename `[id]` bracket first; else a previously-persisted
-    // `youtubeId` (scan backfill / a prior reheat's own discovery),
-    // re-checked through isSafeVideoId (untrusted-until-proven, same as
-    // every other persisted-then-reread field). An item with NEITHER is no
-    // longer ineligible: it flows through with null videoId/watchUrl so the
-    // batch worker's LOCAL ffprobe pass (embedded date/purl/title -- the
-    // only shot a bracket-less metube-era import gets) still runs; the
+    // Filename `[id]` bracket first -- but ONLY inside the download root (see
+    // this function's doc comment: the bracket is a yt-dlp naming convention
+    // there and a coincidence anywhere else). Else a previously-persisted
+    // `youtubeId` (scan backfill from the embedded tag / a prior reheat's own
+    // discovery), re-checked through isSafeVideoId (untrusted-until-proven,
+    // same as every other persisted-then-reread field) and trusted from any
+    // root. An item with NEITHER still flows through with null
+    // videoId/watchUrl so the batch worker's LOCAL ffprobe pass runs; the
     // worker derives a watch URL from an embedded purl on the fly when one
     // exists (see runRepullMetadataBatch, lib/ytdlp/index.js).
-    const bracketId = extractYtdlpVideoId(baseName);
+    const bracketId = matchRootFolder(item.filePath, downloadRoots)
+      ? extractYtdlpVideoId(baseName)
+      : null;
     const videoId = bracketId || (isSafeVideoId(item.youtubeId) ? item.youtubeId : null);
     const watchUrl = videoId ? buildWatchUrl(videoId) : null;
 
@@ -6355,9 +6451,19 @@ function enumerateRepullableItems(db, config) {
       filePath: item.filePath,
       videoId,
       watchUrl,
+      // v1.41.5 gate fix: does this file live under the module's OWN download
+      // dir? Before the widening, that was true of EVERY enumerated item and
+      // was therefore implicit -- it is what licenses the batch to trust the
+      // file's embedded `title`/`date` tags as YouTube provenance (a file in
+      // there was put there by yt-dlp/metube). Now that plain library files are
+      // enumerated too, the batch needs the fact explicitly, or it would
+      // supersede a ripped CD's curated title with its ID3 tag. See
+      // `runRepullMetadataBatch`'s `trustEmbeddedTags`.
+      inDownloadRoot: !!matchRootFolder(item.filePath, downloadRoots),
       alreadyRepulled: !!item.metadataRepulledAt,
     });
     result.eligible++;
+    if (videoId) result.withSourceId++;
   }
 
   return result;
@@ -6378,7 +6484,30 @@ function enumerateRepullableItems(db, config) {
  *   re-pull is a deliberate refresh, not a gap-fill, so it must never lose to
  *   a stale/mtime-derived value the way the scan's ADDITIVE
  *   `hasOwnProperty`-guarded backfills (~1526/1563) do.
- * - `meta.channelAvatarUrl`, when a non-empty string, is set the same way.
+ * - `meta.channelAvatarUrl`, when a non-empty string, is set the same way --
+ *   but ONLY when the item is attributable to the channel that avatar belongs
+ *   to (see `meta.channel` below). (v1.41.5: this branch was DEAD -- nothing
+ *   ever passed the field, since a per-video `--dump-json` carries no
+ *   `channel_thumbnail`. It is live again: the reheat batch now hands it the
+ *   avatar `ensureChannelAvatar` probed for this item's newly-discovered
+ *   channel, ONCE per distinct channel.)
+ * - `meta.channel` (v1.41.5, MeTube-import hydration), when present, carries
+ *   the item's CHANNEL IDENTITY -- `{channelUrl, channelHandleUrl?,
+ *   channelId?, channelName?}`, already validated by the SINGLE gate the
+ *   download-capture path uses (`store.sanitizeCapturedChannelMeta`, called
+ *   in `run.repullItemMetaAndSubs` off the same `--dump-json` payload). This
+ *   is what turns a MeTube-imported file's generic folder-name "channel" into
+ *   the real creator (name + avatar + a working Subscribe button:
+ *   `resolveChannelName`/`deriveChannelIdentity`, public/js/common.js).
+ *   Unlike `releaseDate`/`sourceTitle` above, identity is written with a
+ *   NEVER-OVERWRITE guard -- the SAME AC17 posture as the scan's own
+ *   folder-based backfill (~line 3562, `if (!item.channelUrl)`): an item that
+ *   already has a `channelUrl` (a native FileTube download, or a previously
+ *   hydrated import) is never re-pointed at a different channel by a reheat.
+ *   Its individual gaps are still filled, but ONLY when the discovered
+ *   `channelUrl` is the SAME channel -- so a video that has since been
+ *   re-uploaded elsewhere can never staple channel B's name/id/avatar onto an
+ *   item already attributed to channel A.
  * - `item.hasSubtitles` is UNCONDITIONALLY recomputed from
  *   `subtitles.findSubtitleSidecar(item.filePath)` -- re-checked against the
  *   real filesystem so a subtitle sidecar the re-pull job just wrote lights
@@ -6407,7 +6536,7 @@ function enumerateRepullableItems(db, config) {
  *
  * @param {{loadDatabase?: Function, updateDatabase: Function, getMediaId?: Function}} deps
  * @param {string} mediaId
- * @param {{releaseDate?: number, channelAvatarUrl?: string, filePath: string, markComplete?: boolean}} meta
+ * @param {{releaseDate?: number, channelAvatarUrl?: string, channel?: {channelUrl: string, channelHandleUrl?: string, channelId?: string, channelName?: string}, filePath: string, markComplete?: boolean}} meta
  * @param {number} [nowMs] injectable clock, for deterministic tests (mirrors store.js's own `nowMs=Date.now()` pattern)
  * @returns {Promise<boolean>} resolves `true` if the item was updated, `false` on a safe no-op
  */
@@ -6424,7 +6553,62 @@ async function recordRepulledItemMeta(deps, mediaId, meta, nowMs = Date.now()) {
     if (typeof m.releaseDate === 'number' && Number.isFinite(m.releaseDate)) {
       item.releaseDate = m.releaseDate; // SUPERSEDE, not gap-fill
     }
-    if (typeof m.channelAvatarUrl === 'string' && m.channelAvatarUrl !== '') {
+    // v1.41.5 (MeTube-import hydration): the channel identity the network
+    // metadata pass discovered -- NEVER-OVERWRITE (AC17 posture), see this
+    // function's doc comment. `m.channel` has already crossed
+    // `store.sanitizeCapturedChannelMeta` in run.js (channelUrl normalized by
+    // `url.validateChannelUrl`, channelId `UC…`-shaped, channelName
+    // control-stripped/capped) -- the shape checks below are the same
+    // re-validate-at-the-write-boundary defense-in-depth every other branch
+    // here uses, never a second/forked validator.
+    const c = m.channel && typeof m.channel === 'object' ? m.channel : null;
+    // Is the discovered channel the one this item is ALREADY attributed to?
+    // (gate fix, adversarial SUGGESTION): compare by `channelId` when BOTH
+    // sides know one -- yt-dlp returns the canonical `/channel/UC…` form while
+    // a folder-backfilled item carries the subscription's HANDLE url
+    // (`/@name`), so a bare string compare would have declined the gap-fill
+    // branch's own headline use case. URL equality is the fallback when either
+    // side has no id.
+    const sameChannel = c && item.channelUrl && (
+      (typeof item.channelId === 'string' && item.channelId !== '' && typeof c.channelId === 'string' && c.channelId !== '')
+        ? item.channelId === c.channelId
+        : item.channelUrl === c.channelUrl
+    );
+    // The item is attributable to this discovered channel iff it has no
+    // identity yet, or the identity it has IS this channel. Everything below
+    // -- including the avatar -- is gated on it (gate fix, adversarial
+    // WARNING): the avatar used to be written unconditionally, ABOVE this
+    // guard, so an item the guard correctly DECLINED to re-point still got the
+    // other channel's face stapled onto it (channel A's name over channel B's
+    // avatar on the watch page).
+    const attributable = !!c && (!item.channelUrl || sameChannel);
+    if (c && typeof c.channelUrl === 'string' && c.channelUrl !== '' && attributable) {
+      if (!item.channelUrl) {
+        // A genuine gap -- exactly Dean's MeTube imports (a folder name is all
+        // they ever had). Write the identity as a UNIT: all of it comes from
+        // this one video's own info dict, so it can never be mixed.
+        item.channelUrl = c.channelUrl;
+        if (typeof c.channelHandleUrl === 'string' && c.channelHandleUrl !== '') item.channelHandleUrl = c.channelHandleUrl;
+        if (typeof c.channelId === 'string' && c.channelId !== '') item.channelId = c.channelId;
+        if (typeof c.channelName === 'string' && c.channelName !== '') item.channelName = c.channelName;
+      } else {
+        // Already attributed to this SAME channel -- fill genuine per-field
+        // gaps only (e.g. a folder-backfilled item that got a handle URL but
+        // no channelId), never re-point or rewrite what is already there. The
+        // existing `channelUrl` is deliberately NOT normalized to the
+        // canonical form: rewriting it is an overwrite, not a gap-fill, and
+        // every consumer already joins on channelId/handle alike.
+        if (!item.channelHandleUrl && typeof c.channelHandleUrl === 'string' && c.channelHandleUrl !== '') item.channelHandleUrl = c.channelHandleUrl;
+        if (!item.channelId && typeof c.channelId === 'string' && c.channelId !== '') item.channelId = c.channelId;
+        if (!item.channelName && typeof c.channelName === 'string' && c.channelName !== '') item.channelName = c.channelName;
+      }
+    }
+    // ...and the avatar the batch probed for THAT channel, only when the item
+    // is genuinely attributable to it (see `attributable` above). An item with
+    // no `m.channel` at all (no identity was discovered this run) can still
+    // take an avatar -- that is the pre-existing, item-scoped contract, and
+    // there is no other channel it could belong to.
+    if (typeof m.channelAvatarUrl === 'string' && m.channelAvatarUrl !== '' && (!c || attributable)) {
       item.channelAvatarUrl = m.channelAvatarUrl;
     }
     // v1.33 T3: the re-pulled REAL title (network `--dump-json` or the local
