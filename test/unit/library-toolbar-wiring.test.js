@@ -106,24 +106,25 @@ test('main.js: fetchLibraryPage0 never assigns innerHTML directly for the C2/C3 
 
 // ---- index.html: C5 release-date sort option ---------------------------------
 
-test('index.html: #sort-select gains a "release-date" option (available, not default)', () => {
-  const selectMatch = /<select id="sort-select"[^>]*>([\s\S]*?)<\/select>/.exec(indexHtml);
-  assert.ok(selectMatch, 'expected to find #sort-select in index.html');
-  const optionsBlock = selectMatch[1];
+// v1.41.2: the sort control is a custom .btn dropdown (#sort-menu with
+// [data-sort] <li>s), not a native <select> -- see index.html / main.js.
+test('index.html: the sort dropdown offers a "release-date" option (available, not default)', () => {
+  const menuMatch = /<ul class="sort-menu"[^>]*>([\s\S]*?)<\/ul>/.exec(indexHtml);
+  assert.ok(menuMatch, 'expected to find #sort-menu in index.html');
+  const itemsBlock = menuMatch[1];
 
-  assert.match(optionsBlock, /<option value="release-date">Release date<\/option>/);
+  assert.match(itemsBlock, /<li role="option" data-sort="release-date">Release date<\/li>/);
 
-  // The FIRST <option> must remain "newest" -- C5 is available-only, the
-  // default home order (and the first/selected-by-default markup option) is
-  // unchanged (Dean's decision 8).
-  const firstOption = /<option value="([^"]+)"/.exec(optionsBlock);
-  assert.strictEqual(firstOption[1], 'newest', 'the default sort option must remain "newest" -- release-date is available-only, never the default');
+  // The FIRST option must remain "newest" -- the default home order is
+  // unchanged; release-date is available-only, never the default.
+  const firstItem = /data-sort="([^"]+)"/.exec(itemsBlock);
+  assert.strictEqual(firstItem[1], 'newest', 'the default sort option must remain "newest"');
 });
 
-test('index.html: every pre-existing #sort-select option is still present, byte-for-byte, alongside the new release-date option', () => {
-  const selectMatch = /<select id="sort-select"[^>]*>([\s\S]*?)<\/select>/.exec(indexHtml);
-  const optionsBlock = selectMatch[1];
-  const values = [...optionsBlock.matchAll(/<option value="([^"]+)">/g)].map((m) => m[1]);
+test('index.html: every sort option is still present in the dropdown menu', () => {
+  const menuMatch = /<ul class="sort-menu"[^>]*>([\s\S]*?)<\/ul>/.exec(indexHtml);
+  const itemsBlock = menuMatch[1];
+  const values = [...itemsBlock.matchAll(/data-sort="([^"]+)"/g)].map((m) => m[1]);
   assert.deepStrictEqual(values, [
     'newest', 'oldest', 'release-date', 'title-asc', 'title-desc', 'size-desc', 'size-asc', 'random',
   ]);

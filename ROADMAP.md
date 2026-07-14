@@ -80,6 +80,11 @@
 
 ## Shipped
 
+### v1.41.2 — Uniform filter row: custom sort dropdown (2026-07-14)
+
+- The All/Videos/Audio pills, the sort control, and Shuffle/Rescan are now all the same font and size (Dean). The blocker: a native `<select>` under 16px triggers iOS's focus-zoom, so the sort control was pinned to 16px — a size larger than the 12px pills. v1.41.0 wrongly matched everything *up* to 16px (too chunky). The fix replaces the native `<select>` with a **custom button-styled dropdown** (`.btn.sort-select-btn` + a `.sort-menu` list): being a `<button>`, it never triggers the zoom, so the whole row is uniform at 12px with no tradeoff. Full keyboard support (arrow keys / Enter / Escape / roving focus), non-optimistic same-effects wiring as the old select (persist + shuffle-visibility + refetch), and a guard so a tampered `filetube_sort` can't crash the view.
+- Two-reviewer gate: both APPROVE (goal verified met — identical 12px/600/padding across all three control types, desktop and mobile, no zoom). Their follow-ups (keyboard nav, localStorage crash guard, a stale comment) all addressed. Full suite green on Node v22 + v24 (3999 tests).
+
 ### v1.41.1 — Subtitles render bottom-center (2026-07-14)
 
 - Captions were rendering bottom-left / left-justified (Dean). A WebVTT cue's horizontal position + text justification come from per-cue *settings* on the timing line (`position`/`align`); CSS `::cue` can restyle the text but can't move the cue box. Video captions use the native `<track>` (browser-drawn), and cues from SRT (no settings → browser default) or yt-dlp `.vtt` sidecars (often author-positioned) landed off-center. Fix: the `/api/subtitles` route now normalizes every served cue's settings to `position:50% align:center` (new pure `centerVttCues`, cue-block-aware like `shiftVttCues`), so all captions sit bottom-center — inline, fullscreen, desktop, and mobile-native alike (the audio-mode custom overlay was already centered). This overrides any author positioning in `.vtt` sidecars, which is the intended global behavior. Full suite green on Node v22 + v24.

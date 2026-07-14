@@ -139,16 +139,27 @@
         <div class="section-title">
           <span id="videos-section-header">Recently Added</span>
           <div class="section-actions">
-            <select id="sort-select" class="sort-select" title="Sort library">
-              <option value="newest">Newest first</option>
-              <option value="oldest">Oldest first</option>
-              <option value="release-date">Release date</option>
-              <option value="title-asc">Title (A–Z)</option>
-              <option value="title-desc">Title (Z–A)</option>
-              <option value="size-desc">Largest first</option>
-              <option value="size-asc">Smallest first</option>
-              <option value="random">Feeling lucky</option>
-            </select>
+            <!-- v1.41.2 (Dean): a custom button-styled sort dropdown, NOT a
+                 native <select>. A <select> under 16px triggers iOS's
+                 focus-zoom (the v1.26.2 floor), which forced it a size larger
+                 than the 12px filter pills; this is a plain .btn so the whole
+                 row is one uniform size with no zoom. Wired in main.js. -->
+            <div class="sort-dropdown" id="sort-dropdown">
+              <button type="button" class="btn sort-select-btn" id="sort-select-btn" title="Sort library" aria-haspopup="listbox" aria-expanded="false">
+                <span id="sort-select-label">Release date</span>
+                <span class="sort-caret" aria-hidden="true">&#9662;</span>
+              </button>
+              <ul class="sort-menu" id="sort-menu" role="listbox" aria-label="Sort library" hidden>
+                <li role="option" data-sort="newest">Newest first</li>
+                <li role="option" data-sort="oldest">Oldest first</li>
+                <li role="option" data-sort="release-date">Release date</li>
+                <li role="option" data-sort="title-asc">Title (A&ndash;Z)</li>
+                <li role="option" data-sort="title-desc">Title (Z&ndash;A)</li>
+                <li role="option" data-sort="size-desc">Largest first</li>
+                <li role="option" data-sort="size-asc">Smallest first</li>
+                <li role="option" data-sort="random">Feeling lucky</li>
+              </ul>
+            </div>
             <!-- Visual-consistency polish: dropped the vestigial `.btn-sm`
                  class + inline font-size/padding override (`.btn-sm` itself
                  carries no CSS rule -- see style.css -- so these were the

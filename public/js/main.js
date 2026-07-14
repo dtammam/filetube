@@ -194,7 +194,12 @@ if (typeof module !== 'undefined' && module.exports) {
     const searchInput = document.getElementById('search-input');
     const rescanBtn = root.querySelector('#rescan-library-btn');
     const videosHeader = root.querySelector('#videos-section-header');
-    const sortSelect = root.querySelector('#sort-select');
+    // v1.41.2: the sort control is a custom .btn dropdown (not a native
+    // <select> -- see index.html / the wiring below).
+    const sortDropdown = root.querySelector('#sort-dropdown');
+    const sortBtn = root.querySelector('#sort-select-btn');
+    const sortLabel = root.querySelector('#sort-select-label');
+    const sortMenu = root.querySelector('#sort-menu');
     const shuffleAgainBtn = root.querySelector('#shuffle-again-btn');
     // C2/C3 (v1.24.0, T3-WIRE): the shared "actions" row that already holds
     // the sort <select>/shuffle/rescan controls -- the format toggle mounts
@@ -350,7 +355,7 @@ if (typeof module !== 'undefined' && module.exports) {
             }
             if (!storedSortPick && typeof settingsData.defaultSort === 'string' && settingsData.defaultSort !== '') {
               currentSort = settingsData.defaultSort;
-              if (sortSelect) sortSelect.value = currentSort;
+              applySortLabel(currentSort);
             }
           } catch (err) {
             console.error('Failed to load settings defaults:', err);
@@ -893,14 +898,90 @@ if (typeof module !== 'undefined' && module.exports) {
     // (bound once at boot by common.js — see the C1 remediation comment
     // there), not wired per-view here.
 
-    if (sortSelect) {
-      sortSelect.value = currentSort;
+    // v1.41.2: custom sort dropdown wiring. Function DECLARATIONS (hoisted) so
+    // the async settings-default apply above (applySortLabel) can call them.
+    function sortOptions() {
+      return sortMenu ? Array.prototype.slice.call(sortMenu.querySelectorAll('[data-sort]')) : [];
+    }
+    function sortMenuItem(value) {
+      // NOTE: `value` can be an untrusted localStorage string -- a selector-
+      // breaking char (e.g. `"]`) would make querySelector throw and, since
+      // applySortLabel runs synchronously at init, take down the whole home
+      // view. Match by iterating instead of interpolating into a selector.
+      return sortOptions().find((li) => li.getAttribute('data-sort') === value) || null;
+    }
+    function applySortLabel(value) {
+      const item = sortMenuItem(value);
+      if (sortLabel && item) sortLabel.textContent = item.textContent;
+      sortOptions().forEach((li) => {
+        const on = li.getAttribute('data-sort') === value;
+        li.classList.toggle('active', on);
+        li.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
+    }
+    function openSortMenu(focusValue) {
+      if (!sortMenu || !sortBtn) return;
+      sortMenu.hidden = false;
+      sortBtn.setAttribute('aria-expanded', 'true');
+      const opts = sortOptions();
+      const target = opts.find((li) => li.getAttribute('data-sort') === focusValue) || opts[0];
+      if (target) target.focus();
+    }
+    function closeSortMenu(returnFocus) {
+      if (!sortMenu || !sortBtn) return;
+      sortMenu.hidden = true;
+      sortBtn.setAttribute('aria-expanded', 'false');
+      if (returnFocus) sortBtn.focus();
+    }
+    function chooseSort(value, returnFocus) {
+      closeSortMenu(returnFocus);
+      if (!value || value === currentSort) return;
+      currentSort = value;
+      localStorage.setItem('filetube_sort', currentSort);
+      applySortLabel(currentSort);
       updateShuffleButtonVisibility();
-      sortSelect.addEventListener('change', () => {
-        currentSort = sortSelect.value;
-        localStorage.setItem('filetube_sort', currentSort);
-        updateShuffleButtonVisibility();
-        resetAndReload();
+      resetAndReload();
+    }
+    if (sortBtn && sortMenu) {
+      sortOptions().forEach((li) => { li.tabIndex = -1; }); // roving focus target
+      applySortLabel(currentSort);
+      updateShuffleButtonVisibility();
+      sortBtn.addEventListener('click', (e) => {
+        e.stopPropagation(); // don't let the document-level close handler see this
+        if (sortMenu.hidden) openSortMenu(currentSort); else closeSortMenu();
+      }, { signal });
+      // Keyboard: open on ArrowDown/Up from the button (Enter/Space already
+      // open via native button activation -> click).
+      sortBtn.addEventListener('keydown', (e) => {
+        if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && sortMenu.hidden) {
+          e.preventDefault();
+          openSortMenu(currentSort);
+        }
+      }, { signal });
+      sortMenu.addEventListener('click', (e) => {
+        const li = e.target.closest('[data-sort]');
+        if (li) chooseSort(li.getAttribute('data-sort'), false);
+      }, { signal });
+      // Keyboard nav within the open menu: arrows move roving focus, Enter/
+      // Space selects, Escape/Tab close (Escape returns focus to the button).
+      sortMenu.addEventListener('keydown', (e) => {
+        const opts = sortOptions();
+        const idx = opts.indexOf(document.activeElement);
+        if (e.key === 'ArrowDown') { e.preventDefault(); (opts[idx + 1] || opts[0]).focus(); }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); (opts[idx - 1] || opts[opts.length - 1]).focus(); }
+        else if (e.key === 'Home') { e.preventDefault(); opts[0].focus(); }
+        else if (e.key === 'End') { e.preventDefault(); opts[opts.length - 1].focus(); }
+        else if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          const li = document.activeElement;
+          if (li && li.getAttribute('data-sort')) chooseSort(li.getAttribute('data-sort'), true);
+        } else if (e.key === 'Escape') { e.preventDefault(); closeSortMenu(true); }
+      }, { signal });
+      // Close on any outside click (the menu overlays the grid).
+      document.addEventListener('click', (e) => {
+        if (sortMenu.hidden) return;
+        if (sortDropdown && sortDropdown.contains(e.target)) return;
+        closeSortMenu();
       }, { signal });
     }
 
