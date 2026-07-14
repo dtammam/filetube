@@ -371,7 +371,12 @@ test('enumerateRepullableItems: a bracket-less item with a persisted youtubeId i
   assert.equal(byId[badId].watchUrl, null);
 });
 
-test('enumerateRepullableItems: an id-suffixed item OUTSIDE the download root is ineligible', () => {
+// v1.41.5 (MeTube-import hydration): the gate is ROOT-AGNOSTIC now -- an
+// outside-root item is enumerated -- but its filename BRACKET is still never
+// trusted out there (an ordinary library file can innocently carry an 11-char
+// bracket, e.g. `Vacation [Holiday2024].mp4`). So it flows through with a
+// null videoId: local tag check only, NO network call.
+test('enumerateRepullableItems: an id-suffixed item OUTSIDE the download root is eligible but its bracket is NOT trusted (null videoId -> no network pass)', () => {
   const config = ytdlp.parseYtdlpConfig();
   const libDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-repull-lib-'));
   try {
@@ -384,8 +389,48 @@ test('enumerateRepullableItems: an id-suffixed item OUTSIDE the download root is
     };
 
     const result = enumerateRepullableItems(db, config);
-    assert.equal(result.eligible, 0, 'a file outside the download root must never be eligible, even if id-shaped');
-    assert.equal(result.ineligible, 1);
+    assert.equal(result.eligible, 1, 'root-agnostic: the item IS enumerated (for the local, network-free tags pass)');
+    assert.equal(result.ineligible, 0);
+    assert.equal(result.items[0].videoId, null, 'a bracket outside the download root must never be trusted as a video id');
+    assert.equal(result.items[0].watchUrl, null, 'no videoId -> no watch URL -> the batch never spawns a network pass for it');
+    assert.equal(result.withSourceId, 0, 'nothing here goes to the network');
+  } finally {
+    fs.rmSync(libDir, { recursive: true, force: true });
+  }
+});
+
+// v1.41.5: THE case Dean actually has -- a MeTube-downloaded file sitting in a
+// NORMAL library root (never FileTube's download dir), with no `[id]` bracket
+// but with the source YouTube URL in its embedded tags, which the scan already
+// persisted as `item.youtubeId` (deriveScanYoutubeId is root-agnostic through
+// that tag). It must be eligible WITH a real watch URL -- that is what lets the
+// batch fetch its channel identity.
+test('enumerateRepullableItems: an OUTSIDE-root item with a persisted youtubeId (a MeTube import) is eligible with a real watchUrl', () => {
+  const config = ytdlp.parseYtdlpConfig();
+  const libDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-repull-metube-'));
+  try {
+    const filePath = path.join(libDir, 'Some MeTube Song.mp3');
+    const id = getMediaId(filePath);
+    const homeVideoPath = path.join(libDir, 'Family BBQ.mp4');
+    const homeVideoId = getMediaId(homeVideoPath);
+    const db = {
+      metadata: {
+        [id]: { id, filePath, name: path.basename(filePath), ext: '.mp3', youtubeId: 'dQw4w9WgXcQ' },
+        // A genuine home video: probed once, no embedded source URL found.
+        [homeVideoId]: { id: homeVideoId, filePath: homeVideoPath, name: path.basename(homeVideoPath), ext: '.mp4', youtubeId: null },
+      },
+    };
+
+    const result = enumerateRepullableItems(db, config);
+    assert.equal(result.eligible, 2);
+    assert.equal(result.ineligible, 0);
+    assert.equal(result.withSourceId, 1, 'ONLY the MeTube import has a source id -- the home video never reaches the network');
+
+    const byId = Object.fromEntries(result.items.map((it) => [it.mediaId, it]));
+    assert.equal(byId[id].videoId, 'dQw4w9WgXcQ', 'the embedded-tag-derived id is trusted from ANY root');
+    assert.equal(byId[id].watchUrl, 'https://www.youtube.com/watch?v=dQw4w9WgXcQ');
+    assert.equal(byId[homeVideoId].videoId, null, 'a tagless home video yields no id -- local pass only, never a network call');
+    assert.equal(byId[homeVideoId].watchUrl, null);
   } finally {
     fs.rmSync(libDir, { recursive: true, force: true });
   }
@@ -415,10 +460,13 @@ test('enumerateRepullableItems: counts are correct across a mixed set, and an al
     };
 
     const result = enumerateRepullableItems(db, config);
-    // v1.33 T1: the bracket-less item is now eligible too (local-pass-only,
-    // null videoId) -- only the outside-root item stays ineligible.
-    assert.equal(result.eligible, 3);
-    assert.equal(result.ineligible, 1);
+    // v1.33 T1: the bracket-less item is eligible (local-pass-only, null
+    // videoId). v1.41.5: so is the outside-root one -- but with a null videoId,
+    // because its bracket is not trusted out there. `withSourceId` is what
+    // separates the two network-bound items from the two local-only ones.
+    assert.equal(result.eligible, 4);
+    assert.equal(result.ineligible, 0);
+    assert.equal(result.withSourceId, 2, 'only the two IN-ROOT id-suffixed items reach the network');
 
     const byId = Object.fromEntries(result.items.map((it) => [it.mediaId, it]));
     assert.ok(byId[eligibleId]);
@@ -428,29 +476,58 @@ test('enumerateRepullableItems: counts are correct across a mixed set, and an al
     assert.ok(byId[noSuffixId], 'the non-suffixed item now appears (local-pass eligible)');
     assert.equal(byId[noSuffixId].videoId, null);
     assert.equal(byId[noSuffixId].watchUrl, null);
-    assert.ok(!byId[outsideId], 'the outside-root item must not appear in items at all');
+    assert.ok(byId[outsideId], 'v1.41.5: the outside-root item is enumerated too');
+    assert.equal(byId[outsideId].videoId, null, 'but with no trusted id -- local pass only');
   } finally {
     fs.rmSync(libDir, { recursive: true, force: true });
   }
 });
 
-test('enumerateRepullableItems: the module disabled AND the download dir absent yields zero eligible, all ineligible', () => {
-  delete process.env.FILETUBE_YTDLP_ENABLED; // override beforeEach's 'true'
-  fs.rmSync(downloadDir, { recursive: true, force: true }); // dir now absent too
+// An item with no filePath at all is the ONLY thing that stays structurally
+// ineligible now (v1.41.5) -- there is nothing to probe and nothing to key on.
+test('enumerateRepullableItems: an item with no usable filePath is ineligible', () => {
   const config = ytdlp.parseYtdlpConfig();
-  assert.equal(ytdlp.isEnabled(config), false, 'sanity: the module must be disabled for this test');
-
-  const filePath = path.join(downloadDir, 'Would Be Eligible [wbe12345678].mp4');
-  const id = getMediaId(filePath);
   const db = {
     metadata: {
-      [id]: { id, filePath, name: path.basename(filePath), ext: '.mp4' },
+      broken1: { id: 'broken1', name: 'x.mp4', ext: '.mp4' },
+      broken2: { id: 'broken2', filePath: '', name: 'y.mp4', ext: '.mp4' },
     },
   };
 
   const result = enumerateRepullableItems(db, config);
   assert.equal(result.eligible, 0);
-  assert.equal(result.ineligible, 1);
+  assert.equal(result.ineligible, 2);
+  assert.equal(result.items.length, 0);
+});
+
+// v1.41.5: with NO download root configured at all, the old gate declared the
+// whole library ineligible and the reheat could do nothing. Now the items still
+// flow through for their local tags pass -- and a bracket, with no root to
+// anchor it, is still never trusted (no network call).
+test('enumerateRepullableItems: with no download root configured, items are still enumerated (local pass) but no bracket is trusted', () => {
+  delete process.env.FILETUBE_YTDLP_ENABLED; // override beforeEach's 'true'
+  fs.rmSync(downloadDir, { recursive: true, force: true }); // dir now absent too
+  const config = ytdlp.parseYtdlpConfig();
+  assert.equal(ytdlp.isEnabled(config), false, 'sanity: the module must be disabled for this test');
+
+  const filePath = path.join(downloadDir, 'Bracketed But Rootless [wbe12345678].mp4');
+  const id = getMediaId(filePath);
+  const taggedPath = path.join(downloadDir, 'Tagged Import.mp4');
+  const taggedId = getMediaId(taggedPath);
+  const db = {
+    metadata: {
+      [id]: { id, filePath, name: path.basename(filePath), ext: '.mp4' },
+      [taggedId]: { id: taggedId, filePath: taggedPath, name: path.basename(taggedPath), ext: '.mp4', youtubeId: 'dQw4w9WgXcQ' },
+    },
+  };
+
+  const result = enumerateRepullableItems(db, config);
+  assert.equal(result.eligible, 2, 'no early "everything is ineligible" return any more');
+  assert.equal(result.ineligible, 0);
+  assert.equal(result.withSourceId, 1, 'only the persisted-youtubeId item can reach the network');
+  const byId = Object.fromEntries(result.items.map((it) => [it.mediaId, it]));
+  assert.equal(byId[id].videoId, null, 'with no download root, a filename bracket is never trusted');
+  assert.equal(byId[taggedId].videoId, 'dQw4w9WgXcQ');
 
   // Re-create so afterEach's rmSync doesn't error on an already-gone dir.
   fs.mkdirSync(downloadDir, { recursive: true });
@@ -520,4 +597,281 @@ test('recordRepulledItemMeta rejects an unsafe youtubeId and an empty-after-sani
   assert.equal(item.youtubeId, 'grd12345678', 'an isSafeVideoId-failing value must never overwrite a good one');
   assert.equal(item.sourceTitle, 'Existing Good Title', 'an empty-after-sanitize title must never clobber a good one');
   assert.equal(item.title, 'Guarded Video', 'the display title stays untouched too');
+});
+
+// ---- v1.41.5: CHANNEL IDENTITY hydration (Dean's MeTube imports) -----------
+//
+// The whole point of the widened reheat: an imported file that showed a
+// generic folder-name "channel" gets the REAL creator written onto it
+// (channelName -> the card/watch-page label via resolveChannelName;
+// channelUrl -> the Subscribe button via deriveChannelIdentity, both
+// public/js/common.js). Identity is gap-fill ONLY (the AC17 never-overwrite
+// posture the scan's folder backfill already uses) -- unlike title/releaseDate,
+// which a reheat deliberately supersedes.
+
+function importedItemDb(filePath, id, extra = {}) {
+  return {
+    folders: [],
+    folderSettings: {},
+    progress: {},
+    metadata: {
+      [id]: {
+        id, name: path.basename(filePath), title: path.basename(filePath, path.extname(filePath)), filePath,
+        folderName: 'MeTube Downloads', size: 11, ext: path.extname(filePath), type: 'video',
+        addedAt: Date.now(), duration: 300, hasThumbnail: false, artist: '',
+        youtubeId: 'dQw4w9WgXcQ',
+        ...extra,
+      },
+    },
+    settings: baseSettings(),
+  };
+}
+
+const HYDRATED_CHANNEL = {
+  channelUrl: 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw',
+  channelHandleUrl: 'https://www.youtube.com/@RickAstley',
+  channelId: 'UCuAXFkgsw1L7xaCfnd5JJOw',
+  channelName: 'Rick Astley',
+};
+
+test('recordRepulledItemMeta hydrates an identity-less (MeTube-imported) item with channelUrl/channelHandleUrl/channelId/channelName + the probed avatar', async () => {
+  const libDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-repull-hydrate-'));
+  try {
+    const filePath = path.join(libDir, 'Never Gonna Give You Up.mp4');
+    fs.writeFileSync(filePath, 'video-bytes');
+    const id = getMediaId(filePath);
+    writeDb(importedItemDb(filePath, id));
+
+    const ok = await recordRepulledItemMeta(
+      { loadDatabase, updateDatabase, getMediaId },
+      id,
+      {
+        filePath,
+        channel: { ...HYDRATED_CHANNEL },
+        channelAvatarUrl: 'https://yt3.googleusercontent.com/avatar.jpg',
+        markComplete: true,
+      },
+    );
+    assert.equal(ok, true);
+
+    const item = JSON.parse(fs.readFileSync(DB_FILE, 'utf8')).metadata[id];
+    assert.equal(item.channelUrl, HYDRATED_CHANNEL.channelUrl, 'the Subscribe button needs channelUrl (deriveChannelIdentity)');
+    assert.equal(item.channelHandleUrl, HYDRATED_CHANNEL.channelHandleUrl);
+    assert.equal(item.channelId, HYDRATED_CHANNEL.channelId);
+    assert.equal(item.channelName, 'Rick Astley', 'the real creator name replaces the generic folder label (resolveChannelName)');
+    assert.equal(item.channelAvatarUrl, 'https://yt3.googleusercontent.com/avatar.jpg', 'the once-dead channelAvatarUrl branch is live again');
+  } finally {
+    fs.rmSync(libDir, { recursive: true, force: true });
+  }
+});
+
+test('(NEVER-OVERWRITE, AC17) recordRepulledItemMeta never re-points an item that ALREADY has a channelUrl at a different channel', async () => {
+  const libDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-repull-noclobber-'));
+  try {
+    const filePath = path.join(libDir, 'Already Attributed.mp4');
+    fs.writeFileSync(filePath, 'video-bytes');
+    const id = getMediaId(filePath);
+    writeDb(importedItemDb(filePath, id, {
+      channelUrl: 'https://www.youtube.com/@OriginalChannel',
+      channelId: 'UC0000000000000000000000',
+      channelName: 'Original Channel',
+    }));
+
+    await recordRepulledItemMeta(
+      { loadDatabase, updateDatabase, getMediaId },
+      id,
+      { filePath, channel: { ...HYDRATED_CHANNEL }, markComplete: true },
+    );
+
+    const item = JSON.parse(fs.readFileSync(DB_FILE, 'utf8')).metadata[id];
+    assert.equal(item.channelUrl, 'https://www.youtube.com/@OriginalChannel', 'an existing channelUrl is NEVER overwritten by a reheat');
+    assert.equal(item.channelId, 'UC0000000000000000000000');
+    assert.equal(item.channelName, 'Original Channel');
+    assert.equal(item.channelHandleUrl, undefined, 'nor is a DIFFERENT channel\'s handle stapled onto it');
+  } finally {
+    fs.rmSync(libDir, { recursive: true, force: true });
+  }
+});
+
+test('(NEVER-OVERWRITE, AC17) an item already attributed to the SAME channel gets its genuine GAPS filled (id/name/handle), and nothing else touched', async () => {
+  const libDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-repull-gapfill-'));
+  try {
+    const filePath = path.join(libDir, 'Partially Attributed.mp4');
+    fs.writeFileSync(filePath, 'video-bytes');
+    const id = getMediaId(filePath);
+    writeDb(importedItemDb(filePath, id, {
+      channelUrl: HYDRATED_CHANNEL.channelUrl, // same channel, but no id/name yet
+      channelName: 'Stale But Mine',
+    }));
+
+    await recordRepulledItemMeta(
+      { loadDatabase, updateDatabase, getMediaId },
+      id,
+      { filePath, channel: { ...HYDRATED_CHANNEL }, markComplete: true },
+    );
+
+    const item = JSON.parse(fs.readFileSync(DB_FILE, 'utf8')).metadata[id];
+    assert.equal(item.channelId, HYDRATED_CHANNEL.channelId, 'a genuine gap on the SAME channel is filled');
+    assert.equal(item.channelHandleUrl, HYDRATED_CHANNEL.channelHandleUrl);
+    assert.equal(item.channelName, 'Stale But Mine', 'an EXISTING name is still never overwritten (gap-fill, not refresh)');
+  } finally {
+    fs.rmSync(libDir, { recursive: true, force: true });
+  }
+});
+
+test('recordRepulledItemMeta: an absent meta.channel leaves an item\'s identity completely untouched', async () => {
+  const libDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-repull-nochannel-'));
+  try {
+    const filePath = path.join(libDir, 'No Channel Discovered.mp4');
+    fs.writeFileSync(filePath, 'video-bytes');
+    const id = getMediaId(filePath);
+    writeDb(importedItemDb(filePath, id));
+
+    await recordRepulledItemMeta(
+      { loadDatabase, updateDatabase, getMediaId },
+      id,
+      { filePath, releaseDate: 1_700_000_000_000, markComplete: true },
+    );
+
+    const item = JSON.parse(fs.readFileSync(DB_FILE, 'utf8')).metadata[id];
+    assert.equal(item.channelUrl, undefined);
+    assert.equal(item.channelName, undefined);
+    assert.equal(item.releaseDate, 1_700_000_000_000, 'the rest of the re-pull still lands');
+  } finally {
+    fs.rmSync(libDir, { recursive: true, force: true });
+  }
+});
+
+test('recordRepulledItemMeta: a malformed meta.channel (no channelUrl) is inert -- no partial identity is ever written', async () => {
+  const libDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-repull-malformed-'));
+  try {
+    const filePath = path.join(libDir, 'Malformed Channel.mp4');
+    fs.writeFileSync(filePath, 'video-bytes');
+    const id = getMediaId(filePath);
+    writeDb(importedItemDb(filePath, id));
+
+    for (const bad of [null, {}, { channelUrl: '' }, { channelName: 'Name Only' }, 'nonsense']) {
+      await recordRepulledItemMeta(
+        { loadDatabase, updateDatabase, getMediaId },
+        id,
+        { filePath, channel: bad },
+      );
+      const item = JSON.parse(fs.readFileSync(DB_FILE, 'utf8')).metadata[id];
+      assert.equal(item.channelUrl, undefined, `channel=${JSON.stringify(bad)} must write no channelUrl`);
+      assert.equal(item.channelName, undefined, `channel=${JSON.stringify(bad)} must never write a name without a URL (no half-formed identity)`);
+    }
+  } finally {
+    fs.rmSync(libDir, { recursive: true, force: true });
+  }
+});
+
+// GATE FIX (adversarial WARNING): the avatar used to be written UNCONDITIONALLY,
+// above the never-overwrite guard -- so an item the guard correctly DECLINED to
+// re-point still got the other channel's face. Channel A's name over channel
+// B's avatar on the watch page.
+test('(NEVER-OVERWRITE) an item attributed to a DIFFERENT channel is not given the discovered channel\'s AVATAR either', async () => {
+  const libDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-repull-avatar-guard-'));
+  try {
+    const filePath = path.join(libDir, 'Other Channel.mp4');
+    fs.writeFileSync(filePath, 'video-bytes');
+    const id = getMediaId(filePath);
+    writeDb(importedItemDb(filePath, id, {
+      channelUrl: 'https://www.youtube.com/@OriginalChannel',
+      channelId: 'UC0000000000000000000000',
+      channelName: 'Original Channel',
+      channelAvatarUrl: 'https://yt3.googleusercontent.com/original.jpg',
+    }));
+
+    await recordRepulledItemMeta(
+      { loadDatabase, updateDatabase, getMediaId },
+      id,
+      { filePath, channel: { ...HYDRATED_CHANNEL }, channelAvatarUrl: 'https://yt3.googleusercontent.com/rick.jpg', markComplete: true },
+    );
+
+    const item = JSON.parse(fs.readFileSync(DB_FILE, 'utf8')).metadata[id];
+    assert.equal(item.channelUrl, 'https://www.youtube.com/@OriginalChannel');
+    assert.equal(item.channelAvatarUrl, 'https://yt3.googleusercontent.com/original.jpg',
+      'a declined identity must never leave its AVATAR behind (channel A\'s name over channel B\'s face)');
+  } finally {
+    fs.rmSync(libDir, { recursive: true, force: true });
+  }
+});
+
+// GATE FIX (adversarial SUGGESTION): yt-dlp returns the CANONICAL `/channel/UC…`
+// url, while a folder-backfilled item carries the subscription's HANDLE url
+// (`/@name`). A bare string compare would have declined the gap-fill branch's
+// own headline use case. Same-channel is decided by channelId when both sides
+// know one.
+test('(SAME-CHANNEL by channelId) a folder-backfilled item carrying the HANDLE url still gets its gaps filled from the canonical /channel/UC… discovery', async () => {
+  const libDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-repull-handle-'));
+  try {
+    const filePath = path.join(libDir, 'Handle Url Item.mp4');
+    fs.writeFileSync(filePath, 'video-bytes');
+    const id = getMediaId(filePath);
+    writeDb(importedItemDb(filePath, id, {
+      channelUrl: 'https://www.youtube.com/@RickAstley', // the HANDLE form
+      channelId: 'UCuAXFkgsw1L7xaCfnd5JJOw',             // ...but the SAME channel
+    }));
+
+    await recordRepulledItemMeta(
+      { loadDatabase, updateDatabase, getMediaId },
+      id,
+      { filePath, channel: { ...HYDRATED_CHANNEL }, channelAvatarUrl: 'https://yt3.googleusercontent.com/rick.jpg', markComplete: true },
+    );
+
+    const item = JSON.parse(fs.readFileSync(DB_FILE, 'utf8')).metadata[id];
+    assert.equal(item.channelName, 'Rick Astley', 'the missing name is filled -- the two URLs are different FORMS of one channel');
+    assert.equal(item.channelHandleUrl, HYDRATED_CHANNEL.channelHandleUrl);
+    assert.equal(item.channelAvatarUrl, 'https://yt3.googleusercontent.com/rick.jpg', 'and its avatar is genuinely this item\'s own');
+    assert.equal(item.channelUrl, 'https://www.youtube.com/@RickAstley', 'the existing URL is never rewritten (gap-fill, not normalize)');
+  } finally {
+    fs.rmSync(libDir, { recursive: true, force: true });
+  }
+});
+
+test('(SAME-CHANNEL by channelId) a DIFFERENT channelId is still declined even when... the urls happen to differ too', async () => {
+  const libDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-repull-diffid-'));
+  try {
+    const filePath = path.join(libDir, 'Different Id.mp4');
+    fs.writeFileSync(filePath, 'video-bytes');
+    const id = getMediaId(filePath);
+    writeDb(importedItemDb(filePath, id, {
+      channelUrl: 'https://www.youtube.com/@SomeoneElse',
+      channelId: 'UC9999999999999999999999',
+    }));
+
+    await recordRepulledItemMeta(
+      { loadDatabase, updateDatabase, getMediaId },
+      id,
+      { filePath, channel: { ...HYDRATED_CHANNEL }, channelAvatarUrl: 'https://yt3.googleusercontent.com/rick.jpg', markComplete: true },
+    );
+
+    const item = JSON.parse(fs.readFileSync(DB_FILE, 'utf8')).metadata[id];
+    assert.equal(item.channelId, 'UC9999999999999999999999');
+    assert.equal(item.channelName, undefined, 'a different channel never lends its name');
+    assert.equal(item.channelAvatarUrl, undefined, 'nor its avatar');
+  } finally {
+    fs.rmSync(libDir, { recursive: true, force: true });
+  }
+});
+
+test('an item with NO channel identity at all still accepts an avatar (the pre-existing item-scoped contract)', async () => {
+  const libDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-repull-avatar-only-'));
+  try {
+    const filePath = path.join(libDir, 'Avatar Only.mp4');
+    fs.writeFileSync(filePath, 'video-bytes');
+    const id = getMediaId(filePath);
+    writeDb(importedItemDb(filePath, id));
+
+    await recordRepulledItemMeta(
+      { loadDatabase, updateDatabase, getMediaId },
+      id,
+      { filePath, channelAvatarUrl: 'https://yt3.googleusercontent.com/solo.jpg', markComplete: true },
+    );
+
+    const item = JSON.parse(fs.readFileSync(DB_FILE, 'utf8')).metadata[id];
+    assert.equal(item.channelAvatarUrl, 'https://yt3.googleusercontent.com/solo.jpg');
+  } finally {
+    fs.rmSync(libDir, { recursive: true, force: true });
+  }
 });

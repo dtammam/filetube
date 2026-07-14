@@ -2634,42 +2634,80 @@ test('REHEAT_ACTIVITY_ID: mirrors the server\'s fixed one-shot activity key', ()
 // ---- formatReheatSummary (the 202 response's blast-radius line) -----------
 
 test('formatReheatSummary: eligible items with no ineligible ones renders a plain count (plural)', () => {
-  assert.strictEqual(formatReheatSummary(5, 0), 'Re-pulling 5 items');
+  assert.strictEqual(formatReheatSummary(5, 0), 'Reheating 5 items');
 });
 
 test('formatReheatSummary: exactly one eligible item uses the singular "item"', () => {
-  assert.strictEqual(formatReheatSummary(1, 0), 'Re-pulling 1 item');
+  assert.strictEqual(formatReheatSummary(1, 0), 'Reheating 1 item');
 });
 
-test('formatReheatSummary: eligible AND ineligible both render, with the ineligible reason spelled out', () => {
+test('formatReheatSummary: eligible AND ineligible both render', () => {
   assert.strictEqual(
     formatReheatSummary(12, 40),
-    'Re-pulling 12 items · 40 not re-pullable (imported / no source id)'
+    'Reheating 12 items · 40 skipped'
   );
 });
 
-test('formatReheatSummary: eligible === 0 renders the explicit "nothing to re-pull" message, never "Re-pulling 0 items"', () => {
+test('formatReheatSummary: eligible === 0 renders the explicit "nothing to reheat" message, never "Reheating 0 items"', () => {
   const result = formatReheatSummary(0, 40);
-  assert.strictEqual(
-    result,
-    'No re-pullable items found — only videos FileTube downloaded itself can be re-pulled.'
-  );
-  assert.ok(!result.includes('Re-pulling 0'));
+  assert.strictEqual(result, 'Nothing to reheat — no library items found.');
+  assert.ok(!result.includes('Reheating 0'));
 });
 
 test('formatReheatSummary: eligible === 0 with ineligible === 0 too (an empty library) still renders the zero-eligible message', () => {
+  assert.strictEqual(formatReheatSummary(0, 0), 'Nothing to reheat — no library items found.');
+});
+
+// v1.41.5 (MeTube-import hydration): the gate is root-agnostic now, so the
+// summary must say how many of the eligible items actually go to the NETWORK
+// (they carry a YouTube source id) vs. how many only get a local tag check --
+// otherwise "Reheating 5,000 items" over a whole library badly overstates it.
+test('formatReheatSummary: withSourceId < eligible calls out how many actually have a source link', () => {
   assert.strictEqual(
-    formatReheatSummary(0, 0),
-    'No re-pullable items found — only videos FileTube downloaded itself can be re-pulled.'
+    formatReheatSummary(100, 0, 12),
+    'Reheating 100 items · 12 with a YouTube source link (the rest get a local tag check) · '
+    + 'one fetch each, so this can take a while — downloads and checks wait until it finishes (Cancel stops it between items)'
   );
+});
+
+test('formatReheatSummary: withSourceId === eligible says so plainly', () => {
+  assert.strictEqual(
+    formatReheatSummary(7, 0, 7),
+    'Reheating 7 items · all with a YouTube source link · '
+    + 'one fetch each, so this can take a while — downloads and checks wait until it finishes (Cancel stops it between items)'
+  );
+});
+
+// Gate fix (adversarial WARNING -- scale honesty): a network-bound reheat holds
+// the shared runExclusive gate, so downloads/polls queue behind it. The line
+// must say so -- but ONLY when something is actually network-bound.
+test('formatReheatSummary: a network-bound reheat discloses the duration + that downloads wait behind it', () => {
+  const line = formatReheatSummary(500, 0, 480);
+  assert.ok(line.includes('take a while'), line);
+  assert.ok(line.includes('downloads and checks wait'), line);
+  assert.ok(line.includes('Cancel'), line);
+});
+
+test('formatReheatSummary: withSourceId === 0 is explicit that nothing goes to the network -- and does NOT warn about blocking (nothing spawns)', () => {
+  assert.strictEqual(
+    formatReheatSummary(30, 0, 0),
+    'Reheating 30 items · none have a YouTube source link yet (local tag check only)'
+  );
+});
+
+test('formatReheatSummary: an absent withSourceId (older/stubbed server) simply omits that clause', () => {
+  assert.strictEqual(formatReheatSummary(9, 2), 'Reheating 9 items · 2 skipped');
 });
 
 test('formatReheatSummary: non-finite/negative/missing counts are clamped to 0 rather than rendering "undefined"/"NaN"', () => {
   for (const bad of [undefined, null, NaN, -3, 'five', {}]) {
-    const result = formatReheatSummary(bad, bad);
+    const result = formatReheatSummary(bad, bad, bad);
     assert.ok(!result.includes('undefined'), `formatReheatSummary(${bad}) leaked "undefined": ${result}`);
     assert.ok(!result.includes('NaN'), `formatReheatSummary(${bad}) leaked "NaN": ${result}`);
   }
+  // A garbage `withSourceId` alongside REAL counts must not render either.
+  const mixed = formatReheatSummary(5, 1, NaN);
+  assert.ok(!mixed.includes('undefined') && !mixed.includes('NaN'), mixed);
 });
 
 // ---- formatReheatProgressText (the live LiveEntry progress line) ----------
@@ -2804,7 +2842,7 @@ test('triggerReheat: POSTs the correct endpoint/method, disables the button imme
   assert.strictEqual(button.disabled, true, 'stays disabled after a successful 202 -- the poll re-enables it once terminal');
 });
 
-test('triggerReheat: eligible === 0 surfaces the explicit "nothing re-pullable" message on a real 202 response', async () => {
+test('triggerReheat: eligible === 0 surfaces the explicit "nothing to reheat" message on a real 202 response', async () => {
   const button = new FakeElement('button');
   const status = new FakeElement('span');
   const elements = { button, status, cancelButton: new FakeElement('button') };
@@ -2813,10 +2851,25 @@ test('triggerReheat: eligible === 0 surfaces the explicit "nothing re-pullable" 
   triggerReheat(elements, fetchImpl);
   await flushMicrotasks();
 
-  assert.strictEqual(
-    status.textContent,
-    'No re-pullable items found — only videos FileTube downloaded itself can be re-pulled.'
-  );
+  assert.strictEqual(status.textContent, 'Nothing to reheat — no library items found.');
+});
+
+// v1.41.5: the 202's new `withSourceId` must actually reach the summary line --
+// it is the only thing that keeps a whole-library reheat from reading as if
+// every home video were about to be fetched from YouTube.
+test('triggerReheat: the 202\'s withSourceId is forwarded into the rendered summary', async () => {
+  const button = new FakeElement('button');
+  const status = new FakeElement('span');
+  const elements = { button, status, cancelButton: new FakeElement('button') };
+  const fetchImpl = () => Promise.resolve(fakeJsonResponse(true, 202, {
+    started: true, eligible: 120, ineligible: 0, withSourceId: 8,
+  }));
+
+  triggerReheat(elements, fetchImpl);
+  await flushMicrotasks();
+
+  assert.strictEqual(status.textContent, formatReheatSummary(120, 0, 8));
+  assert.ok(status.textContent.includes('8 with a YouTube source link'), status.textContent);
 });
 
 test('triggerReheat: a 409 alreadyRunning response is reflected as "already in progress", never treated as a failure or a second start', async () => {

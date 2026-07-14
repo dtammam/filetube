@@ -240,15 +240,20 @@
               <i class="icon-refresh"></i> Check all subscriptions now
             </button>
             <!-- v1.25 QoL follow-up, reheat: triggers a metadata+subtitle
-                 re-pull over EXISTING yt-dlp downloads (POST
+                 re-pull over EXISTING library items (POST
                  /api/ytdlp/repull-metadata), distinct from the Check-all
-                 button above (which polls for NEW videos). Progress/terminal
-                 state ride the SAME ~2.5s GET /api/subscriptions/status poll
-                 this page already runs -- see
-                 lib/ytdlp/client/subscriptions.js's applyReheatStateToControls. -->
+                 button above (which polls for NEW videos). v1.41.5: no longer
+                 limited to FileTube's own downloads -- an imported/MeTube-era
+                 video anywhere in the library is hydrated with its real
+                 channel (name, avatar, Subscribe button) from the YouTube URL
+                 embedded in its own file tags, hence the widened label.
+                 Progress/terminal state ride the SAME ~2.5s
+                 GET /api/subscriptions/status poll this page already runs --
+                 see lib/ytdlp/client/subscriptions.js's applyReheatStateToControls. -->
             <button class="btn btn-sm" id="sub-reheat-cancel-btn" type="button" hidden>Cancel</button>
-            <button class="btn btn-sm" id="sub-reheat-btn" type="button">
-              <i class="icon-refresh"></i> Reheat metadata
+            <button class="btn btn-sm" id="sub-reheat-btn" type="button"
+                    title="Re-fetch channel, title, date, chapters and subtitles for videos already in your library — including imported/MeTube ones">
+              <i class="icon-refresh"></i> Reheat metadata &amp; channels
             </button>
             <!-- v1.25.5 QoL follow-up (channel avatars, round 2): triggers a
                  bulk re-probe of EVERY subscription's channel avatar (POST
