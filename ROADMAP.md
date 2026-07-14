@@ -80,6 +80,10 @@
 
 ## Shipped
 
+### v1.40.1 — Fix: portrait/Shorts cards rendered oversized (v1.40.0 regression) (2026-07-14)
+
+- The v1.40.0 `.card-media` wrapper (added so the Like heart anchors to the thumbnail) was a plain block, which broke thumbnail sizing for portrait/Shorts videos: `.thumbnail-container`'s `aspect-ratio: 16/9` height is only *definite* — so its `.thumbnail-img { height: 100% }` resolves and crops to 16:9 — when the container is a **flex item** (as it was as a direct child of `.video-card`). Under a block wrapper the height went indefinite, `height: 100%` collapsed to `auto`, and a portrait thumbnail rendered at its full natural height (a giant card). Fix: `.card-media` is now `display: flex; flex-direction: column`, restoring the flex-item context. Regression-locked in tests. Full suite green on Node v22 + v24.
+
 ### v1.40.0 — Card Like button + context-aware Next/Prev (2026-07-14)
 
 Two features (Dean), built together and run through the two-reviewer adversarial gate.
