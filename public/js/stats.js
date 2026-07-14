@@ -223,6 +223,107 @@ function renderMostWatched(root, mostWatched) {
   });
 }
 
+// ---- v1.41.0: Books inventory + About/version section ----------------------
+
+function renderBookTiles(root, books) {
+  clearChildren(root);
+  const b = books || {};
+  const byFormat = b.byFormat || {};
+  const epub = byFormat.epub || {};
+  const pdf = byFormat.pdf || {};
+  root.appendChild(buildStatTile(formatCount(b.count || 0), 'Books'));
+  root.appendChild(buildStatTile(formatByteSize(b.totalSizeBytes || 0), 'Total size on disk'));
+  root.appendChild(buildStatTile(formatCount(epub.count || 0), 'EPUB'));
+  root.appendChild(buildStatTile(formatCount(pdf.count || 0), 'PDF'));
+  root.appendChild(buildStatTile(formatCount(b.narratedCount || 0), 'With narration'));
+}
+
+// Book folder rows are size-only (books have no duration) -- so a dedicated row
+// rather than buildBreakdownRow (which shows a duration segment).
+function buildBookFolderRow(group) {
+  const row = document.createElement('div');
+  row.style.cssText = 'display:flex; justify-content:space-between; align-items:center; gap:10px; padding:8px 4px; border-bottom:1px solid var(--border-color);';
+  const labelEl = document.createElement('span');
+  labelEl.textContent = group.folderName;
+  labelEl.style.cssText = 'font-weight:bold; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;';
+  const valueEl = document.createElement('span');
+  valueEl.textContent = `${formatCount(group.count)} · ${formatByteSize(group.totalSizeBytes)}`;
+  valueEl.style.cssText = 'color:var(--text-secondary); font-size:12px; flex-shrink:0;';
+  row.appendChild(labelEl);
+  row.appendChild(valueEl);
+  return row;
+}
+
+function renderBookFolders(root, books) {
+  clearChildren(root);
+  const groups = (books && Array.isArray(books.byFolder)) ? books.byFolder : [];
+  if (groups.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'theme-card-blurb';
+    empty.textContent = 'No books yet — add a book folder in Library Settings.';
+    root.appendChild(empty);
+    return;
+  }
+  for (const group of groups) root.appendChild(buildBookFolderRow(group));
+}
+
+// A GitHub-style external link. href is always a server-provided repo URL (a
+// trusted constant, never user data) with a fixed path; label is fixed text.
+function buildRepoLink(href, text) {
+  const a = document.createElement('a');
+  a.href = href;
+  a.textContent = text;
+  a.target = '_blank';
+  a.rel = 'noopener noreferrer';
+  a.style.cssText = 'color:var(--accent, #cc0000); text-decoration:none; font-weight:bold;';
+  return a;
+}
+
+// One "label ..... value" row where the value can be a text node OR a link.
+function buildAboutRow(label, valueNode) {
+  const row = document.createElement('div');
+  row.style.cssText = 'display:flex; justify-content:space-between; align-items:center; gap:10px; padding:8px 4px; border-bottom:1px solid var(--border-color);';
+  const labelEl = document.createElement('span');
+  labelEl.textContent = label;
+  labelEl.style.cssText = 'font-weight:bold;';
+  const valueEl = document.createElement('span');
+  valueEl.style.cssText = 'color:var(--text-secondary); flex-shrink:0;';
+  valueEl.appendChild(valueNode);
+  row.appendChild(labelEl);
+  row.appendChild(valueEl);
+  return row;
+}
+
+function renderAbout(root, system) {
+  clearChildren(root);
+  const sys = system || {};
+  const repoUrl = (typeof sys.repoUrl === 'string' && sys.repoUrl) ? sys.repoUrl : 'https://github.com/dtammam/filetube';
+
+  // FileTube version -> links to its own release tag.
+  if (sys.version) {
+    root.appendChild(buildAboutRow('FileTube', buildRepoLink(`${repoUrl}/releases/tag/v${sys.version}`, `v${sys.version}`)));
+  }
+  // yt-dlp -- shown ONLY when the module is enabled AND a version is known
+  // (Dean: if it isn't installed, don't show the row at all).
+  if (sys.ytdlp && sys.ytdlp.enabled && sys.ytdlp.version) {
+    root.appendChild(buildAboutRow('yt-dlp', document.createTextNode(sys.ytdlp.version)));
+  }
+  // Text-to-speech -- shown when available; version when known (espeak-ng),
+  // otherwise just the engine name (piper's --version isn't trustworthy).
+  if (sys.tts && sys.tts.available && sys.tts.engine) {
+    const ttsText = sys.tts.version ? `${sys.tts.engine} ${sys.tts.version}` : sys.tts.engine;
+    root.appendChild(buildAboutRow('Text-to-speech', document.createTextNode(ttsText)));
+  }
+
+  // GitHub links.
+  const links = document.createElement('div');
+  links.style.cssText = 'display:flex; flex-wrap:wrap; gap:16px; padding:14px 4px 4px;';
+  links.appendChild(buildRepoLink(repoUrl, 'GitHub repository'));
+  links.appendChild(buildRepoLink(`${repoUrl}/releases`, 'Releases'));
+  links.appendChild(buildRepoLink(`${repoUrl}/issues`, 'Report an issue'));
+  root.appendChild(links);
+}
+
 function renderStatsDashboard(statsData) {
   const glanceRoot = document.getElementById('stats-glance-grid');
   const byTypeRoot = document.getElementById('stats-by-type');
@@ -230,6 +331,9 @@ function renderStatsDashboard(statsData) {
   const channelRoot = document.getElementById('stats-channel-list');
   const recordsRoot = document.getElementById('stats-records-grid');
   const mostWatchedRoot = document.getElementById('stats-most-watched-list');
+  const booksRoot = document.getElementById('stats-books-grid');
+  const booksFolderRoot = document.getElementById('stats-books-folder-list');
+  const aboutRoot = document.getElementById('stats-about');
 
   if (glanceRoot) renderGlanceTiles(glanceRoot, statsData);
   if (byTypeRoot) {
@@ -241,6 +345,9 @@ function renderStatsDashboard(statsData) {
   if (channelRoot) renderBreakdownList(channelRoot, statsData.byChannel, (g) => shortenChannelLabel(g.channelUrl), 'No subscribed-channel content yet.');
   if (recordsRoot) renderRecordTiles(recordsRoot, statsData);
   if (mostWatchedRoot) renderMostWatched(mostWatchedRoot, statsData.mostWatched);
+  if (booksRoot) renderBookTiles(booksRoot, statsData.books);
+  if (booksFolderRoot) renderBookFolders(booksFolderRoot, statsData.books);
+  if (aboutRoot) renderAbout(aboutRoot, statsData.system);
 }
 
 function renderStatsError() {

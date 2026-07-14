@@ -177,6 +177,29 @@
           <!-- Populated dynamically by /js/stats.js -->
         </div>
       </div>
+
+      <!-- v1.41.0 (Dean): books are part of the same library -- inventory them
+           here too (count, size, EPUB/PDF split, how many have TTS narration,
+           and a per-folder breakdown). -->
+      <div class="setup-box">
+        <h2>Books</h2>
+        <div class="theme-picker" id="stats-books-grid">
+          <!-- Populated dynamically by /js/stats.js -->
+        </div>
+        <div class="folder-list-builder" id="stats-books-folder-list" style="margin-top:12px;">
+          <!-- Populated dynamically by /js/stats.js -->
+        </div>
+      </div>
+
+      <!-- v1.41.0 (Dean): the About/version hub -- FileTube + yt-dlp + TTS
+           versions and GitHub links, all in one place. Rows hide themselves
+           when a component isn't installed. -->
+      <div class="setup-box">
+        <h2>About FileTube</h2>
+        <div class="folder-list-builder" id="stats-about">
+          <!-- Populated dynamically by /js/stats.js -->
+        </div>
+      </div>
       </div>
     </main>
   </div>

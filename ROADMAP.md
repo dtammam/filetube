@@ -80,6 +80,17 @@
 
 ## Shipped
 
+### v1.41.0 — Stats page: About/versions, books inventory, uniform sort control (2026-07-14)
+
+The Stats page becomes the whole-library + About hub (Dean), run through the two-reviewer gate (both APPROVE, no fix round needed).
+
+- **About FileTube section:** shows the **FileTube version** (links to its own GitHub release tag), the **yt-dlp version**, and the **TTS engine + version**, plus GitHub links (repository / releases / report-an-issue). Rows hide themselves when a component isn't installed (yt-dlp not enabled → no row; TTS unavailable → no row). FileTube's version is now surfaced to the client for the first time (`require('./package.json').version`).
+- **yt-dlp version moved here** from the Subscriptions page (it lived only there before) — one home for version info. The Subscriptions page keeps its breaker banner. yt-dlp's version was already probed + cached; a new `getCachedYtdlpVersion()` accessor feeds Stats (spawn-free, TTL-guarded).
+- **TTS engine version:** the boot probe already ran `--version`; it now captures the output and parses a version for **espeak-ng** (the baked-in default). Piper's `--version` output isn't trustworthy (the v1.38 gate lesson), so it shows just the engine name.
+- **Books inventory:** books are part of the same library, so Stats now aggregates them too — total books, total size, EPUB/PDF split, how many have TTS narration generated, and a per-folder breakdown (`computeBookStats` over `db.books`, mirroring the video stats).
+- **Uniform sort control:** the "Release date" sort dropdown now matches the size/font of the All/Videos/Audio filter pills (padding aligned to `.btn`; on mobile the pills match the select's 16px iOS no-zoom floor rather than shrinking the select, which could reintroduce focus-zoom).
+- Full suite green on Node v22 + v24 (3991 tests).
+
 ### v1.40.1 — Fix: portrait/Shorts cards rendered oversized (v1.40.0 regression) (2026-07-14)
 
 - The v1.40.0 `.card-media` wrapper (added so the Like heart anchors to the thumbnail) was a plain block, which broke thumbnail sizing for portrait/Shorts videos: `.thumbnail-container`'s `aspect-ratio: 16/9` height is only *definite* — so its `.thumbnail-img { height: 100% }` resolves and crops to 16:9 — when the container is a **flex item** (as it was as a direct child of `.video-card`). Under a block wrapper the height went indefinite, `height: 100%` collapsed to `auto`, and a portrait thumbnail rendered at its full natural height (a giant card). Fix: `.card-media` is now `display: flex; flex-direction: column`, restoring the flex-item context. Regression-locked in tests. Full suite green on Node v22 + v24.

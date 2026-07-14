@@ -64,6 +64,11 @@ const booksZip = require('./lib/books/zip'); // chapter XHTML extraction for TTS
 // lib/stats.js's header comment and `GET /api/stats` below for the full
 // live-compute rationale.
 const stats = require('./lib/stats');
+// v1.41.0: app version + repo URL, surfaced on the Stats "About" section
+// (FileTube version links to its own release tag). The only place the client
+// learns the version; nothing else reads package.json server-side.
+const APP_VERSION = require('./package.json').version;
+const REPO_URL = 'https://github.com/dtammam/filetube';
 // A6 subtitles (v1.24 UX Round, Wave 5): pure srtToVtt + findSubtitleSidecar,
 // shared by the scan's additive `hasSubtitles` detection below and
 // `GET /api/subtitles/:id` -- see lib/subtitles.js's header comment.
@@ -1106,6 +1111,7 @@ exec('ffmpeg -version', (error) => {
 // both async boot probes have settled by the time any route is hit.
 const ttsConfig = booksTtsConfig.parseTtsConfig(process.env);
 let ttsEngineAvailable = false;
+let ttsEngineVersion = null; // v1.41.0: shown on the Stats About section (espeak-ng only; see parseEngineVersion)
 (function probeTtsEngine() {
   const bin = booksTtsConfig.activeBin(ttsConfig);
   // `--version` may be unknown to a given engine build; ONLY a spawn failure
@@ -1115,7 +1121,7 @@ let ttsEngineAvailable = false;
   // stdin during --version, but a misconfigured binary that did would otherwise
   // wedge the probe (execFile has no default timeout) and leave TTS silently
   // stuck "unavailable" with no log.
-  execFile(bin, ['--version'], { timeout: 5000 }, (err) => {
+  execFile(bin, ['--version'], { timeout: 5000 }, (err, stdout) => {
     if (err && err.code === 'ENOENT') {
       console.log(`TTS engine '${ttsConfig.engine}' (${bin}) not found on PATH -- "Listen from Here" disabled (books still work).`);
       return;
@@ -1125,6 +1131,8 @@ let ttsEngineAvailable = false;
       return;
     }
     ttsEngineAvailable = true;
+    // v1.41.0: capture the version for the Stats About section (espeak-ng only).
+    ttsEngineVersion = booksTtsConfig.parseEngineVersion(ttsConfig.engine, stdout);
     console.log(`TTS engine '${ttsConfig.engine}' is available -- "Listen from Here" enabled.`);
   });
 })();
@@ -6319,7 +6327,22 @@ async function recordRepulledItemMeta(deps, mediaId, meta, nowMs = Date.now()) {
 // real benefit.
 app.get('/api/stats', (req, res) => {
   const db = getCachedDatabase(); // v1.30 A3: pure read on a request/serve path
-  res.json(stats.computeLibraryStats(db.metadata));
+  const books = booksStore.readBooks(db);
+  // v1.41.0 (Dean): the Stats page is now the whole-library + About hub --
+  // fold in book inventory and the version/links "system" block. yt-dlp version
+  // moved here from the Subscriptions page; rows the client hides when a thing
+  // isn't installed (ytdlp not enabled -> null; TTS not available).
+  const ytdlpEnabled = ytdlp.isEnabled(ytdlp.parseYtdlpConfig());
+  res.json({
+    ...stats.computeLibraryStats(db.metadata),
+    books: stats.computeBookStats(books.items, books.audio),
+    system: {
+      version: APP_VERSION,
+      repoUrl: REPO_URL,
+      ytdlp: { enabled: ytdlpEnabled, version: ytdlpEnabled ? ytdlp.getCachedYtdlpVersion() : null },
+      tts: { available: ttsAvailable(), engine: ttsConfig.engine, version: ttsEngineVersion },
+    },
+  });
 });
 
 // API: Record a watch-page open, for C4 "most-watched" (v1.24 UX Round,
