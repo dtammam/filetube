@@ -6553,6 +6553,10 @@ app.get('/api/subtitles/:id', (req, res) => {
   if (Number.isFinite(offset) && offset > 0 && offset <= 60 * 60 * 24) {
     vttText = subtitles.shiftVttCues(vttText, offset);
   }
+  // v1.41.1 (Dean): normalize every cue to bottom-center (last, so it keeps
+  // whatever times the optional shift produced). CSS can't reposition native
+  // cues, so we fix it at the source for both SRT-derived and .vtt captions.
+  vttText = subtitles.centerVttCues(vttText);
   res.setHeader('Content-Type', 'text/vtt');
   // FIX-7 (two-reviewer gate, cheap hardening): defense-in-depth alongside
   // the explicit `text/vtt` Content-Type above -- a browser that ignores (or

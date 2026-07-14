@@ -80,6 +80,10 @@
 
 ## Shipped
 
+### v1.41.1 — Subtitles render bottom-center (2026-07-14)
+
+- Captions were rendering bottom-left / left-justified (Dean). A WebVTT cue's horizontal position + text justification come from per-cue *settings* on the timing line (`position`/`align`); CSS `::cue` can restyle the text but can't move the cue box. Video captions use the native `<track>` (browser-drawn), and cues from SRT (no settings → browser default) or yt-dlp `.vtt` sidecars (often author-positioned) landed off-center. Fix: the `/api/subtitles` route now normalizes every served cue's settings to `position:50% align:center` (new pure `centerVttCues`, cue-block-aware like `shiftVttCues`), so all captions sit bottom-center — inline, fullscreen, desktop, and mobile-native alike (the audio-mode custom overlay was already centered). This overrides any author positioning in `.vtt` sidecars, which is the intended global behavior. Full suite green on Node v22 + v24.
+
 ### v1.41.0 — Stats page: About/versions, books inventory, uniform sort control (2026-07-14)
 
 The Stats page becomes the whole-library + About hub (Dean), run through the two-reviewer gate (both APPROVE, no fix round needed).

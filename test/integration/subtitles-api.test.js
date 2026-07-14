@@ -61,11 +61,15 @@ test('GET /api/subtitles/:id 404s when the item has no sidecar at all', async ()
   assert.equal(res.status, 404);
 });
 
-test('GET /api/subtitles/:id serves a bare .vtt sidecar as-is with Content-Type text/vtt', async () => {
+test('GET /api/subtitles/:id serves a .vtt sidecar with cues normalized to bottom-center (v1.41.1)', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-subs-vtt-'));
   const filePath = path.join(root, 'captioned.mp4');
   fs.writeFileSync(filePath, 'video-bytes');
-  const vttBody = 'WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nHello from a real .vtt file\n';
+  // v1.41.1 (Dean): captions render bottom-center, not the browser's default
+  // placement. The route normalizes every cue's settings to
+  // `position:50% align:center` -- for .vtt sidecars (yt-dlp's shape) too, not
+  // just SRT-derived -- so the passthrough is no longer byte-for-byte.
+  const vttBody = 'WEBVTT\n\n00:00:01.000 --> 00:00:02.000 align:start position:10%\nHello from a real .vtt file\n';
   fs.writeFileSync(path.join(root, 'captioned.vtt'), vttBody);
   writeDb(baseDb({
     id2: { id: 'id2', title: 'Captioned', type: 'video', ext: '.mp4', filePath, folderName: path.basename(root), size: 1, addedAt: 1 },
@@ -75,7 +79,9 @@ test('GET /api/subtitles/:id serves a bare .vtt sidecar as-is with Content-Type 
   assert.equal(res.status, 200);
   assert.match(res.headers.get('content-type') || '', /text\/vtt/);
   const body = await res.text();
-  assert.equal(body, vttBody, 'a .vtt sidecar is served byte-for-byte, no conversion');
+  assert.match(body, /00:00:01\.000 --> 00:00:02\.000 position:50% align:center/, 'cue forced to bottom-center');
+  assert.ok(!/align:start/.test(body) && !/position:10%/.test(body), 'author positioning overridden');
+  assert.ok(body.includes('Hello from a real .vtt file'), 'payload preserved');
 });
 
 test('GET /api/subtitles/:id converts a local .srt sidecar to VTT on the fly', async () => {
