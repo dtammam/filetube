@@ -1374,6 +1374,11 @@ test('AC6.3: buildYtdlpDownloadArgs argv is byte-identical to the pre-T3(b) shap
   const expected = [
     '--windows-filenames',
     '--newline',
+    // v1.41.3 (deletion tombstones): pins mtime = download time on every
+    // deployment/user-config, so the scan's tombstone mtime comparison can
+    // never mistake a deliberate re-download for the already-deleted file --
+    // see buildYtdlpDownloadArgs' own comment. DELIBERATE lock update.
+    '--no-mtime',
     '-f', 'bestvideo+bestaudio/best',
     '-S', args.VIDEO_FORMAT_SORT,
     '--embed-metadata', '--embed-thumbnail', '--embed-chapters',

@@ -296,7 +296,7 @@ test('DELETE /api/videos/:id returns a clear 409 (not a generic 500) on an EROFS
   }
 });
 
-test('DELETE /api/videos/:id?removeAnyway=true removes the db entry when unlink fails with EROFS, and notes the file remains on disk', async () => {
+test('DELETE /api/videos/:id?removeAnyway=true removes the db entry when unlink fails with EROFS, and notes the next scan will retry the deletion', async () => {
   const filePath = path.join(os.tmpdir(), `filetube-delete-erofs-anyway-${Date.now()}.mp4`);
   seedDeleteTarget('vidErofsAnyway', filePath);
 
@@ -308,7 +308,9 @@ test('DELETE /api/videos/:id?removeAnyway=true removes the db entry when unlink 
     const json = await res.json();
     assert.equal(json.success, true);
     assert.equal(json.fileRemainsOnDisk, true);
-    assert.match(json.message, /remains on disk/i);
+    // v1.41.3: the message contract changed with the deletion tombstones --
+    // the next scan now RETRIES the unlink once rather than re-indexing.
+    assert.match(json.message, /could not be deleted/i);
     assert.match(json.message, /scan/i);
 
     const dbAfter = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));

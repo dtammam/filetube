@@ -64,6 +64,7 @@ test('loadDatabase: recovers from a corrupt db.json instead of throwing', () => 
     progress: {},
     metadata: {},
     liked: [], // v1.30 C2: liked-item membership, backfilled like every other top-level key
+    deleteTombstones: {}, // v1.41.3: deletion tombstones, backfilled like every other top-level key
     settings: DEFAULT_SETTINGS,
   });
 });
@@ -75,6 +76,7 @@ test('saveDatabase + loadDatabase: round-trips data faithfully', () => {
     progress: { abc: { timestamp: 42, duration: 100 } },
     metadata: { abc: { id: 'abc', title: 'Test' } },
     liked: ['abc'],
+    deleteTombstones: {}, // v1.41.3: backfilled like every other top-level key
     settings: DEFAULT_SETTINGS,
   };
   saveDatabase(original);
