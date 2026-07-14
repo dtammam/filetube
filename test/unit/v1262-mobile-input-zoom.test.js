@@ -92,14 +92,17 @@ test('class-selector surfaces the global element-selector rule cannot outrank (h
   const blocks = mobileBlocks(css);
   let matchedValue = null;
   const hasOverride = blocks.some((block) => {
-    const rule = /\.comment-input-box,\s*\n\s*\.sort-select,\s*\n\s*\.folder-name-input\s*\{([^}]*)\}/.exec(block);
+    // v1.41.2: .sort-select was removed from this group -- the sort control is
+    // now a custom .btn dropdown (not a native <select>), so it's no longer a
+    // <16px focus-zoom surface and needs no floor override.
+    const rule = /\.comment-input-box,\s*\n\s*\.folder-name-input\s*\{([^}]*)\}/.exec(block);
     if (!rule) return false;
     const fontSize = /font-size:\s*([^;]+);/.exec(rule[1]);
     if (!fontSize) return false;
     matchedValue = fontSize[1];
     return true;
   });
-  assert.ok(hasOverride, 'expected an explicit mobile floor override for .comment-input-box/.sort-select/.folder-name-input');
+  assert.ok(hasOverride, 'expected an explicit mobile floor override for .comment-input-box/.folder-name-input');
   assert.strictEqual(matchedValue.trim(), 'var(--fs-input-min)', 'expected the override to be tokenized via --fs-input-min (AC7.2)');
   assert.ok(resolveFontSizePx(matchedValue) >= 16, `expected --fs-input-min to resolve to >=16px, got ${resolveFontSizePx(matchedValue)}px`);
 });
@@ -121,13 +124,11 @@ test('.folder-name-input has a real desktop-sized (12px, tokenized) base CSS rul
   assert.strictEqual(resolveFontSizePx(fontSize[1]), 12, 'expected .folder-name-input desktop base to stay 12px (via its token)');
 });
 
-test('desktop sizing for the systemic-fix surfaces is unchanged outside the mobile breakpoint (12px/13px bases still present, now tokenized)', () => {
-  const sortSelectRule = /^\.sort-select\s*\{([^}]*)\}/m.exec(css);
-  assert.ok(sortSelectRule, 'expected a base (non-media-query) .sort-select rule');
-  const sortSelectFontSize = /font-size:\s*([^;]+);/.exec(sortSelectRule[1]);
-  assert.ok(sortSelectFontSize, 'expected a font-size declaration on the base .sort-select rule');
-  assert.strictEqual(resolveFontSizePx(sortSelectFontSize[1]), 12, 'expected .sort-select base to stay 12px on desktop');
-
+test('desktop sizing for the systemic-fix surfaces is unchanged outside the mobile breakpoint (13px base still present, tokenized)', () => {
+  // v1.41.2: the former .sort-select (12px) is gone -- the sort control is now a
+  // custom .btn dropdown (.sort-select-btn), which inherits .btn's --fs-sm (12px)
+  // and, being a button not a <select>, never triggers the iOS focus-zoom this
+  // suite guards. So this now only pins .comment-input-box's desktop base.
   const commentBoxRule = /^\.comment-input-box\s*\{([^}]*)\}/m.exec(css);
   assert.ok(commentBoxRule, 'expected a base (non-media-query) .comment-input-box rule');
   const commentBoxFontSize = /font-size:\s*([^;]+);/.exec(commentBoxRule[1]);

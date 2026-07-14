@@ -320,9 +320,10 @@ test('home grid: a sort change refetches a fresh page 0 with the new sort param 
     assert.strictEqual(document.querySelectorAll('#video-grid .video-card').length, 60);
     assert.strictEqual(videosCallCount(calls), 1);
 
-    const sortSelect = document.getElementById('sort-select');
-    sortSelect.value = 'title-asc';
-    sortSelect.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+    // v1.41.2: the sort control is a custom dropdown -- pick an option by
+    // clicking its menu item (the same UI path a user takes).
+    const sortItem = document.querySelector('#sort-menu [data-sort="title-asc"]');
+    sortItem.dispatchEvent(new dom.window.Event('click', { bubbles: true }));
     await settle();
 
     assert.strictEqual(videosCallCount(calls), 2, 'expected the sort change to trigger exactly one more /api/videos fetch');
@@ -373,12 +374,11 @@ test('home grid: "shuffle again" re-fetches page 0 with a FRESH seed each time (
   try {
     await settle();
     const { document, window } = dom.window;
-    // Switch to "random" via the real <select> control (the same UI path a
+    // Switch to "random" via the custom sort dropdown (the same UI path a
     // user would take) -- this both persists `filetube_sort=random` AND
     // triggers the reset that makes the Shuffle button visible.
-    const sortSelect = document.getElementById('sort-select');
-    sortSelect.value = 'random';
-    sortSelect.dispatchEvent(new window.Event('change', { bubbles: true }));
+    const sortItem = document.querySelector('#sort-menu [data-sort="random"]');
+    sortItem.dispatchEvent(new window.Event('click', { bubbles: true }));
     await settle();
 
     const firstSeedCall = calls.filter((c) => c.url.indexOf('/api/videos?') === 0).pop();

@@ -694,32 +694,67 @@ header {
                    instead of forcing the row past the viewport width */
 }
 
-/* v1.17.0 FR-1 (named via the console overflow diagnostic, see Decision log):
-   `<select>` is a flex item here with no author `min-width`, so its UA default
-   `min-width: auto` resolves to its *intrinsic* (unshrinkable) content width --
-   driven by its longest `<option>` ("I'm Feeling Lucky (random)"). On a phone
-   viewport, once `.section-actions` wraps (see the mobile block below), the
-   select still refuses to shrink below that intrinsic width and its right
-   edge pushes past 100vw, forcing mobile Safari to zoom the whole page out
-   (read as: header/search render tiny, pinch-zoom "fixes" it). `max-width:
-   100%` + `min-width: 0` let it shrink to fit its row like every other flex
-   child; the visible text truncates via the UA's native select rendering,
-   which is harmless (the full option list is unaffected). This is the actual
-   overflow source, not a shell-level `overflow-x` mask. */
-.sort-select {
-  background-color: var(--btn-bg);
-  color: var(--text-primary);
-  border: 1px solid var(--border-dark);
-  border-radius: var(--radius);
-  /* v1.41.0 (Dean): match the .btn box (padding + font) of the All/Videos/Audio
-     filter pills next to it so the sort control is the same size, not a taller
-     odd-one-out. (Padding was 4px 8px.) */
-  padding: 6px 12px;
-  font-size: var(--fs-sm);
-  font-weight: normal;
-  cursor: pointer;
+/* v1.41.2 (Dean): the sort control is a custom .btn dropdown, NOT a native
+   <select>. The button IS a `.btn` (`.btn.sort-select-btn`), so it's pixel-
+   identical to the All/Videos/Audio filter pills -- same 12px/600/padding -- and
+   being a plain button it never triggers iOS's <16px focus-zoom, which used to
+   force a native <select> a size larger than the pills. `max-width:100%`+
+   `min-width:0` keep the FR-1 mobile-overflow fix (the row can wrap/shrink
+   without the control's intrinsic width pushing past 100vw). */
+.sort-dropdown {
+  position: relative;
+  display: inline-flex;
   max-width: 100%;
   min-width: 0;
+}
+.sort-select-btn {
+  max-width: 100%;
+  min-width: 0;
+}
+.sort-select-btn > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sort-caret {
+  flex-shrink: 0;
+  font-size: var(--fs-xs);
+  line-height: 1;
+}
+/* The options menu -- absolutely positioned below the button, overlaying the
+   grid; `[hidden]` (toggled in main.js) is the single show/hide mechanism. */
+.sort-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 30; /* above the video grid cards (z-index 2), below the dock/modals */
+  margin: 0;
+  padding: 4px;
+  min-width: 100%;
+  list-style: none;
+  background-color: var(--btn-bg);
+  border: 1px solid var(--border-dark);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+.sort-menu[hidden] {
+  display: none;
+}
+.sort-menu li {
+  padding: 7px 12px;
+  border-radius: var(--radius);
+  font-size: var(--fs-sm);
+  color: var(--text-primary);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.sort-menu li:hover,
+.sort-menu li:focus-visible {
+  background-color: var(--btn-hover);
+}
+.sort-menu li.active {
+  color: var(--yt-red);
+  font-weight: 600;
 }
 
 /* v1.26.2 polish fix (Dean punchlist #5): #rescan-library-btn's label swaps
@@ -3119,19 +3154,17 @@ a.sub-row-channel-link:focus-visible {
      comment above) are exactly that case; explicit mobile-only overrides
      here restore the 16px no-zoom floor for them specifically. */
   .comment-input-box,
-  .sort-select,
   .folder-name-input {
     font-size: var(--fs-input-min);
   }
 
-  /* v1.41.0 (Dean): the .sort-select is bumped to the 16px iOS no-zoom floor
-     above, which otherwise made it a larger odd-one-out next to the
-     All/Videos/Audio filter pills. Match those pills UP to the same size so the
-     whole filter row is uniform on mobile (buttons never trigger focus-zoom, so
-     matching the select DOWN to <16px -- which could -- is deliberately avoided). */
-  .format-toggle-btn {
-    font-size: var(--fs-input-min);
-  }
+  /* v1.41.2 (Dean): the whole filter row -- All/Videos/Audio pills, the sort
+     dropdown, Shuffle/Rescan -- is ONE uniform size (--fs-sm, the .btn size),
+     not the chunky 16px v1.41.0 tried. This is possible because the sort
+     control is now a custom .btn dropdown (a <button>, see .sort-* rules
+     below), NOT a native <select> -- so the 16px iOS-no-zoom floor above no
+     longer needs to apply to it, and there is no zoom to trade off. No mobile
+     font-size override for these controls: all three inherit .btn's --fs-sm. */
 
   .sidebar {
     transform: translateX(-230px);
