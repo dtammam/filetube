@@ -580,6 +580,12 @@ async function loadAutomationSettings() {
     // v1.35: deterministic background audio, OFF by default.
     const preExtractAudioCheck = document.getElementById('pre-extract-audio-check');
     if (preExtractAudioCheck) preExtractAudioCheck.checked = !!s.preExtractAudio;
+    // v1.41.6: relocate hydrated imports into their channel folder. ON by
+    // default -- so an older server (or a fetch that returned no such key) must
+    // NOT render this as off: `!== false` keeps `undefined` checked, matching
+    // the server's own default.
+    const relocateHydratedCheck = document.getElementById('relocate-hydrated-check');
+    if (relocateHydratedCheck) relocateHydratedCheck.checked = s.relocateHydratedImports !== false;
     // v1.34 T4: custom-vs-native mobile video controls, OFF (native) by default.
     const mobileCustomPlayerCheck = document.getElementById('mobile-custom-player-check');
     if (mobileCustomPlayerCheck) mobileCustomPlayerCheck.checked = !!s.mobileCustomPlayer;
@@ -998,6 +1004,15 @@ function wireStaticControls(signal) {
     preExtractAudioCheck.addEventListener('change', (e) => {
       saveAutomationSetting('preExtractAudio', e.target.checked,
         document.getElementById('pre-extract-audio-error'));
+    }, { signal });
+  }
+
+  // v1.41.6: relocate-hydrated-imports toggle -- same pattern as preExtractAudio.
+  const relocateHydratedCheck = document.getElementById('relocate-hydrated-check');
+  if (relocateHydratedCheck) {
+    relocateHydratedCheck.addEventListener('change', (e) => {
+      saveAutomationSetting('relocateHydratedImports', e.target.checked,
+        document.getElementById('relocate-hydrated-error'));
     }, { signal });
   }
 

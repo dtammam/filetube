@@ -36,6 +36,12 @@ const DEFAULT_SETTINGS = {
   defaultSort: 'release-date', // v1.34: the real-YouTube-feed flip
   mobileCustomPlayer: false, // v1.34 T4: native mobile video controls by default
   preExtractAudio: false, // v1.35: deterministic background audio, OFF by default
+  // v1.41.6 DELIBERATE key-set change (this deep-equal is the settings-shape
+  // LOCK -- adding a key here is a conscious act, not a fixup): the reheat's
+  // import-relocation lever. ON by default, unlike every other boolean above,
+  // because relocating a hydrated MeTube import into its channel folder IS the
+  // feature -- the toggle exists to turn it OFF. See server.js DEFAULT_SETTINGS.
+  relocateHydratedImports: true,
 };
 
 test('loadDatabase: creates a default db when none exists', () => {

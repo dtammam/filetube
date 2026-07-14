@@ -2740,6 +2740,26 @@ test('formatReheatProgressText: "done" with no skipped/failed omits those segmen
   );
 });
 
+// v1.41.6 (import relocation): moves are reported ALONGSIDE the metadata
+// counters, never folded into them -- a reheat that hydrated everything but
+// could not move 3 files must not read as an unqualified success.
+test('formatReheatProgressText: v1.41.6 relocation counters appear on both the running and done lines, and are omitted when zero/absent', () => {
+  assert.strictEqual(
+    formatReheatProgressText({ state: 'running', total: 10, done: 3, skipped: 0, failed: 0, moved: 2, moveFailed: 1, current: 'dQw4w9WgXcQ' }),
+    'Reheating: 3 of 10 done · 2 moved into channel folders · 1 could not be moved · current: dQw4w9WgXcQ'
+  );
+  assert.strictEqual(
+    formatReheatProgressText({ state: 'done', total: 10, done: 10, skipped: 0, failed: 0, moved: 4, moveFailed: 0 }),
+    'Reheat done: 10 of 10 updated · 4 moved into channel folders'
+  );
+  // An older/stubbed server (or a batch with the toggle off) sends neither
+  // counter -- the line must be byte-identical to the pre-v1.41.6 one.
+  assert.strictEqual(
+    formatReheatProgressText({ state: 'done', total: 5, done: 5, skipped: 0, failed: 0 }),
+    'Reheat done: 5 of 5 updated'
+  );
+});
+
 test('formatReheatProgressText: "cancelled" renders a partial-progress summary', () => {
   assert.strictEqual(
     formatReheatProgressText({ state: 'cancelled', total: 10, done: 4 }),

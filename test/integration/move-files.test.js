@@ -19,7 +19,7 @@ const THUMBNAIL_DIR = path.join(DATA_DIR, '.thumbnails');
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
 const {
-  app, getMediaId, loadDatabase, saveDatabase, updateDatabase, moveItemToFolder,
+  app, getMediaId, loadDatabase, saveDatabase, updateDatabase, moveItemToFolder, transcodedPath,
 } = require('../../server');
 
 let server;
@@ -373,16 +373,22 @@ test('moveItemToFolder: a concurrent DELETE landing between the initial load and
   assert.equal(result.status, 404);
   assert.match(result.error, /removed before the move could be recorded/);
 
-  // Locked, DOCUMENTED current behavior: the physical move already completed
-  // before the mutator ran, and is NOT rolled back on this race. The file
-  // simply sits at its new path with no db entry until the next scan finds
-  // and re-adds it (a legitimate fresh add -- there is no surviving prior db
-  // entry left to re-key or preserve progress for; the delete already won).
-  assert.ok(!fs.existsSync(filePath), 'the source is gone -- the move itself already completed on disk');
-  assert.ok(fs.existsSync(newPath), 'the file must still exist at newPath, self-healing on the next scan');
+  // v1.41.6 gate fix (QA WARNING) -- BEHAVIOR DELIBERATELY CHANGED. This used to
+  // leave the file sitting at `newPath` with no db entry, "self-healing on the
+  // next scan". That was tolerable when a move meant "into another library
+  // folder"; it is NOT tolerable now that a move can land a file in a yt-dlp
+  // CHANNEL FOLDER with an `[id]` bracket: the next scan would index the video
+  // the user just DELETED straight back into the library, and the DELETE's own
+  // tombstone -- keyed on the OLD path's id -- could not suppress it. v1.41.3's
+  // "delete stays gone", defeated by a race.
+  //
+  // The move is now ROLLED BACK: the destination we created exclusively moments
+  // ago is removed, and the user's delete stands.
+  assert.ok(!fs.existsSync(newPath), 'the exclusively-created destination must be rolled back -- a deleted video must not reappear');
+  assert.match(result.error, /rolled back/);
 });
 
-test('moveItemToFolder: the updateDatabase mutator THROWING after the FS move already succeeded returns the "moved on disk but database update failed" response, file physically at newPath', async () => {
+test('moveItemToFolder: the RE-KEY mutator THROWING after the FS move already succeeded leaves the SOURCE intact and correctly indexed (v1.41.6: the db is re-keyed before the source is unlinked)', async () => {
   const srcDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-move-db-fail-src-'));
   const dstDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-move-db-fail-dst-'));
   const filePath = path.join(srcDir, 'clip.mp4');
@@ -392,7 +398,17 @@ test('moveItemToFolder: the updateDatabase mutator THROWING after the FS move al
 
   seedItem({ id: oldId, filePath, folders: [srcDir, dstDir] });
 
-  const throwingUpdateDatabase = () => Promise.reject(new Error('simulated db write failure'));
+  // v1.41.6: the move now opens TWO mutators -- (1) the pre-move destination
+  // tombstone retirement, which must commit BEFORE any byte moves, and (2) the
+  // re-key. This harness fails only the SECOND, which is the case under test
+  // (a db failure once the filesystem has already changed). Failing the FIRST is
+  // covered by its own test below.
+  let calls = 0;
+  const throwingUpdateDatabase = (fn) => {
+    calls += 1;
+    if (calls === 1) return updateDatabase(fn);
+    return Promise.reject(new Error('simulated db write failure'));
+  };
 
   const result = await moveItemToFolder(
     { loadDatabase, updateDatabase: throwingUpdateDatabase, getMediaId },
@@ -402,12 +418,148 @@ test('moveItemToFolder: the updateDatabase mutator THROWING after the FS move al
 
   assert.equal(result.ok, false);
   assert.equal(result.status, 500);
-  assert.match(result.error, /File moved on disk but the database update failed/);
+  assert.match(result.error, /the move was rolled back/);
   assert.equal(result.newPath, newPath);
 
-  // The FS move itself is NOT rolled back on a db-write failure -- the file
-  // is left correctly relocated on disk (the caller's error message says so
-  // explicitly), even though the db is now stale until the next scan.
-  assert.ok(!fs.existsSync(filePath), 'the FS move already happened, despite the db update failing');
-  assert.ok(fs.existsSync(newPath), 'the file is physically at newPath despite the db failure');
+  // v1.41.6 gate fix (QA WARNING -- FS/DB ORDERING + ROLLBACK) -- BEHAVIOR
+  // DELIBERATELY CHANGED, TWICE.
+  //
+  // (a) The re-key now runs BEFORE the source is unlinked, so a failed db write
+  //     can no longer strand the db pointing at a path that does not exist (which
+  //     cost the item its entire history on the next scan: progress, Like,
+  //     addedAt, chapters, the reheat marker -- and, cross-device, a fresh mtime
+  //     that also reordered the default release-date sort).
+  // (b) The destination is now ROLLED BACK. `updateDatabase` never calls
+  //     `saveDatabase` when the mutator throws, and `saveDatabase` writes a temp
+  //     file + fsync + ATOMIC rename with only non-throwing assignments after it
+  //     -- so on ANY rejection the re-key provably did not land, and the
+  //     destination (created moments earlier via an EXCLUSIVE link/copy) is
+  //     provably ours to remove. Leaving it behind was not merely untidy: under
+  //     the relocation it sits in a channel folder with a native `[id]` name, so
+  //     the next scan would index it as a SECOND copy of the same video.
+  assert.ok(fs.existsSync(filePath), 'THE SOURCE MUST SURVIVE a failed db write -- it is unlinked only after a COMMITTED re-key');
+  assert.ok(!fs.existsSync(newPath), 'and the destination must be rolled back -- otherwise the next scan indexes it as a duplicate item');
+  const dbAfter = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+  assert.equal(dbAfter.metadata[oldId].filePath, filePath, 'the db still points at the file that is really there');
+  assert.equal(Object.keys(dbAfter.metadata).length, 1, 'exactly one item -- the pre-move state is exactly restored');
+});
+
+// ---- v1.41.6: the re-key gaps this function carried for three releases -----
+//
+// `db.liked` (v1.30) and the `.m4a` background-audio sidecar (v1.35) were both
+// added to the app AFTER `moveItemToFolder` was written and never joined its
+// re-key. Every move -- this route, and the T4 one-off migration -- therefore
+// dropped the item's LIKE (silent data loss: the id in `db.liked` stopped
+// matching any item) and orphaned its audio sidecar under the dead id. Found
+// while wiring v1.41.6's import-relocation onto the same machinery; fixed at
+// the seam, so all three callers get it.
+
+test('v1.41.6 REGRESSION: a LIKED item keeps its Like across a move (db.liked is an array of media ids -- it must follow the re-key)', async () => {
+  const srcDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-move-like-src-'));
+  const dstDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-move-like-dst-'));
+  const filePath = path.join(srcDir, 'liked.mp4');
+  fs.writeFileSync(filePath, 'bytes');
+  const oldId = getMediaId(filePath);
+  const newPath = path.join(dstDir, 'liked.mp4');
+  const newId = getMediaId(newPath);
+
+  seedItem({ id: oldId, filePath, folders: [srcDir, dstDir] });
+  // A second, UNRELATED liked id -- the re-key must be surgical (in place, same
+  // index) and must not disturb the rest of the list or its order.
+  await updateDatabase((db) => { db.liked = ['other-id', oldId]; return true; });
+
+  const res = await fetch(`${base}/api/videos/${oldId}/move`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ targetFolder: dstDir }),
+  });
+  assert.equal(res.status, 200);
+
+  const dbAfter = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+  assert.deepStrictEqual(dbAfter.liked, ['other-id', newId], 'the Like must survive the move under the NEW id, in place');
+});
+
+test('v1.41.6 REGRESSION: the .m4a background-audio sidecar follows the move (it was orphaned under the dead id since v1.35)', async () => {
+  const srcDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-move-audio-src-'));
+  const dstDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-move-audio-dst-'));
+  const filePath = path.join(srcDir, 'withaudio.mp4');
+  fs.writeFileSync(filePath, 'bytes');
+  const oldId = getMediaId(filePath);
+  const newPath = path.join(dstDir, 'withaudio.mp4');
+  const newId = getMediaId(newPath);
+
+  seedItem({ id: oldId, filePath, folders: [srcDir, dstDir] });
+
+  // The sidecar lives next to the transcode cache, same id-keyed convention.
+  const cacheDir = path.dirname(transcodedPath(oldId));
+  fs.mkdirSync(cacheDir, { recursive: true });
+  fs.writeFileSync(path.join(cacheDir, `${oldId}.m4a`), 'audio-bytes');
+
+  const res = await fetch(`${base}/api/videos/${oldId}/move`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ targetFolder: dstDir }),
+  });
+  assert.equal(res.status, 200);
+
+  assert.ok(fs.existsSync(path.join(cacheDir, `${newId}.m4a`)), 'the background-audio sidecar must be re-keyed to the new id');
+  assert.ok(!fs.existsSync(path.join(cacheDir, `${oldId}.m4a`)), 'and must not be left orphaned under the old id');
+});
+
+test('v1.41.6 REGRESSION: EVERY language subtitle sidecar follows the move, not just the first one the resolver ranks', async () => {
+  const srcDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-move-multisub-src-'));
+  const dstDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-move-multisub-dst-'));
+  const filePath = path.join(srcDir, 'Talk [abcdefghijk].mp4');
+  fs.writeFileSync(filePath, 'bytes');
+  const oldId = getMediaId(filePath);
+
+  seedItem({ id: oldId, filePath, folders: [srcDir, dstDir] });
+  fs.writeFileSync(path.join(srcDir, 'Talk [abcdefghijk].en.vtt'), 'WEBVTT\n');
+  fs.writeFileSync(path.join(srcDir, 'Talk [abcdefghijk].es.vtt'), 'WEBVTT\n');
+  fs.writeFileSync(path.join(srcDir, 'Talk [abcdefghijk].fr.srt'), '1\n');
+  // An unrelated item in the same folder whose basename merely BEGINS with ours
+  // -- its sidecar must not be dragged along (stealing another item's subtitles
+  // is not an acceptable cost of a move).
+  fs.writeFileSync(path.join(srcDir, 'Talk [abcdefghijk].part2.mp4'), 'bytes');
+  fs.writeFileSync(path.join(srcDir, 'Talk [abcdefghijk].part2.en.vtt'), 'WEBVTT\n');
+
+  const res = await fetch(`${base}/api/videos/${oldId}/move`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ targetFolder: dstDir }),
+  });
+  assert.equal(res.status, 200);
+
+  assert.ok(fs.existsSync(path.join(dstDir, 'Talk [abcdefghijk].en.vtt')), '.en.vtt must follow');
+  assert.ok(fs.existsSync(path.join(dstDir, 'Talk [abcdefghijk].es.vtt')), '.es.vtt must follow too');
+  assert.ok(fs.existsSync(path.join(dstDir, 'Talk [abcdefghijk].fr.srt')), 'and the .srt');
+  assert.ok(!fs.existsSync(path.join(srcDir, 'Talk [abcdefghijk].es.vtt')), 'no sidecar may be left behind next to a media file that no longer exists');
+  assert.ok(fs.existsSync(path.join(srcDir, 'Talk [abcdefghijk].part2.en.vtt')), 'ANOTHER item\'s sidecar must never be claimed by this move');
+});
+
+test('v1.41.6: a db failure BEFORE the filesystem is touched (the destination-tombstone retirement) refuses the move outright -- nothing is created, nothing is moved', async () => {
+  const srcDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-move-pre-fail-src-'));
+  const dstDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-move-pre-fail-dst-'));
+  const filePath = path.join(srcDir, 'clip.mp4');
+  fs.writeFileSync(filePath, 'clip-bytes');
+  const oldId = getMediaId(filePath);
+  const newPath = path.join(dstDir, 'clip.mp4');
+
+  seedItem({ id: oldId, filePath, folders: [srcDir, dstDir] });
+
+  // The FIRST mutator (retiring any deletion tombstone at the destination) is the
+  // one thing that makes the destination path safe to occupy. If it cannot be
+  // committed, we cannot prove a scan will not reap whatever we put there -- so
+  // the move is refused before a single byte moves.
+  const result = await moveItemToFolder(
+    { loadDatabase, updateDatabase: () => Promise.reject(new Error('simulated db write failure')), getMediaId },
+    oldId,
+    dstDir,
+  );
+
+  assert.equal(result.ok, false);
+  assert.equal(result.status, 500);
+  assert.match(result.error, /deletion tombstone/);
+  assert.ok(fs.existsSync(filePath), 'the source is untouched');
+  assert.ok(!fs.existsSync(newPath), 'and nothing was created at the destination');
 });

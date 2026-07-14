@@ -80,7 +80,7 @@ beforeEach(() => {
 
 // ---- GET /api/settings -----------------------------------------------------
 
-test('GET /api/settings returns the 13-field shape with backfilled defaults on a fresh DB', async () => {
+test('GET /api/settings returns the 14-field shape with backfilled defaults on a fresh DB', async () => {
   const res = await fetch(`${base}/api/settings`);
   assert.equal(res.status, 200);
   const json = await res.json();
@@ -98,6 +98,13 @@ test('GET /api/settings returns the 13-field shape with backfilled defaults on a
     defaultSort: 'release-date', // v1.34: the real-YouTube-feed flip
     mobileCustomPlayer: false, // v1.34 T4: native mobile video controls by default
     preExtractAudio: false, // v1.35: deterministic background audio, OFF by default
+    // v1.41.6 DELIBERATE key-set change (this full-shape deep-equal is the
+    // settings-API LOCK): the reheat's import-relocation lever. ON by default
+    // -- the ONLY default-on boolean here, because relocating a hydrated
+    // MeTube import into its channel folder is the feature itself; the toggle
+    // exists so an operator can turn it OFF and keep their library physically
+    // where it is. Mirrored in test/unit/database.test.js's DEFAULT_SETTINGS.
+    relocateHydratedImports: true,
   });
 });
 
@@ -451,6 +458,17 @@ test('POST /api/settings rejects an off-allowlist defaultSort and a non-boolean 
     assert.equal(res.status, 400, `preExtractAudio=${JSON.stringify(bad)} must 400`);
   }
 
+  // v1.41.6: same boolean gate for relocateHydratedImports -- this key decides
+  // whether user FILES get moved, so a non-boolean 400s rather than being
+  // coerced into a truthy "yes, move them".
+  for (const bad of ['true', 1, null, {}]) {
+    const res = await fetch(`${base}/api/settings`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ relocateHydratedImports: bad }),
+    });
+    assert.equal(res.status, 400, `relocateHydratedImports=${JSON.stringify(bad)} must 400`);
+  }
+
   const good = await fetch(`${base}/api/settings`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ defaultSort: 'newest', mobileCustomPlayer: true }),
@@ -459,4 +477,13 @@ test('POST /api/settings rejects an off-allowlist defaultSort and a non-boolean 
   const after = await (await fetch(`${base}/api/settings`)).json();
   assert.equal(after.defaultSort, 'newest');
   assert.equal(after.mobileCustomPlayer, true);
+
+  // v1.41.6: the default-ON key can be turned OFF and that sticks (the opt-out
+  // is the whole reason the toggle exists).
+  const off = await fetch(`${base}/api/settings`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ relocateHydratedImports: false }),
+  });
+  assert.equal(off.status, 200);
+  assert.equal((await (await fetch(`${base}/api/settings`)).json()).relocateHydratedImports, false);
 });
