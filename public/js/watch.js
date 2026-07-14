@@ -1905,7 +1905,14 @@ if (typeof module !== 'undefined' && module.exports) {
 
     // Header folder list rendering
     function renderSidebarFolders(folders, settings = {}) {
-      if (folders.length === 0) {
+      // v1.41.4 (Dean bug): a folder flagged folderSettings[path].hiddenFromSidebar
+      // must be omitted here TOO, exactly as the home sidebar (main.js), the
+      // Setup list (setup.js), and the mobile Playlists sheet (common.js) already
+      // do via visibleSidebarFolders(). This list previously mapped the RAW
+      // `folders` array, so opening a video re-showed every hidden folder in the
+      // sidebar -- the visibility setting held on Home but was ignored on watch.
+      const visibleFolders = visibleSidebarFolders(folders, settings);
+      if (visibleFolders.length === 0) {
         sidebarFoldersList.innerHTML = '<div style="padding: 6px 24px; font-style: italic; color: var(--text-secondary);">None</div>';
         // v1.33.1 (Dean): the count-gated Liked entry, via the SAME shared
         // helper every other sidebar surface uses -- this list previously
@@ -1913,7 +1920,7 @@ if (typeof module !== 'undefined' && module.exports) {
         applyLikedSidebarEntry(sidebarFoldersList);
         return;
       }
-      sidebarFoldersList.innerHTML = folders.map(f => {
+      sidebarFoldersList.innerHTML = visibleFolders.map(f => {
         const folderName = f.split(/[\\/]/).pop() || f;
         const label = (settings[f] && settings[f].name) || folderName;
         // ?root= shows everything under the mapped folder, including subfolders.

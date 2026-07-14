@@ -80,6 +80,12 @@
 
 ## Shipped
 
+### v1.41.4 — Hidden folders stay hidden on the watch page (2026-07-14)
+
+- Fixes Dean's report: folders configured NOT to show in the sidebar were correctly hidden on Home, but opening any video re-showed **all** of them in the watch page's sidebar.
+- Root cause, one seat out of four: the sidebar-visibility rule lives in one shared pure helper (`visibleSidebarFolders(folders, settings)`, common.js) which Home, the Setup list, and the mobile Playlists sheet all route through — but `watch.js`'s `renderSidebarFolders` mapped the **raw** `folders` array, so `folderSettings[path].hiddenFromSidebar` was simply never consulted there. The fix routes both the empty-check and the link map through the same shared helper (no duplicated filter); watch was the last unfiltered seat (every writer to `#sidebar-folders-list` was enumerated to confirm).
+- Slim gate: APPROVE, no blocking findings. It mutation-tested the new tests (reverting the fix fails 3 of 4 — they are not vacuous source-greps), disproved a hypothesized active-highlight index bug, and verified `common.js` loads before `watch.js` on every HTML entry. Its one nit (a brittle regex window that could falsely fail if a comment grew) was fixed. Full suite green on Node v22 + v24 (4014 tests); one unrelated espeak-ng flake appeared in a single Node 22 run and did not reproduce (passes standalone on this branch AND on clean main, green on Node 24) — same known full-suite-load flake class, not a regression.
+
 ### v1.41.3 — Delete stays gone: deletion tombstones + scan deferred retry (2026-07-14)
 
 - Fixes Dean's report: some yt-dlp videos "successfully deleted" came back after a re-scan. Root cause is the class tech-debt #32/#35a documented: any `DELETE /api/videos/:id` path that reports success **without a verified unlink** (the resolver concluding "already gone" on a stored name that doesn't round-trip to disk, or an opt-in `removeAnyway` on a transient EBUSY) leaves the file on disk, and the next scan re-discovered it under the same path-hashed id. v1.37.5 fixed the NFC/NFD variant of this; these were the remaining siblings.
