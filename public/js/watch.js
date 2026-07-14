@@ -577,6 +577,13 @@ if (typeof module !== 'undefined' && module.exports) {
     // behavior, byte-identical to pre-v1.36.2); the shape generalizes to
     // future virtual views (search, feeds) without another plumbing pass.
     const listContext = urlParams.get('list') === 'liked' ? 'liked' : null;
+    // v1.40.0 (Dean): the FULL browse context the user was viewing (folder /
+    // search / liked scope + sort + shuffle seed), superseding `list=liked`
+    // (still honored above as a fallback for old links). `rawBrowseCtx` is the
+    // opaque encoded param, carried verbatim across prev/next/autoplay hops and
+    // into the player; `browseCtx` is its decoded form for the prev/next fetch.
+    const rawBrowseCtx = urlParams.get('ctx') || '';
+    const browseCtx = decodeListContext(rawBrowseCtx);
 
     if (!mediaId) {
       window.location.href = '/';
@@ -651,7 +658,11 @@ if (typeof module !== 'undefined' && module.exports) {
       window.FileTube.player.getState()
     );
     if (entryReparentAction === 'adopt') {
-      const mountedEarly = window.FileTube.player.load(mediaId, {}, { slot: playerSlot });
+      // v1.40.0: carry the CURRENT browse context on the early adopt-mount too,
+      // so re-opening a docked video from a new list view refreshes autoplay's
+      // context immediately (load()'s adopt branch applies it). Data is
+      // otherwise ignored on adopt.
+      const mountedEarly = window.FileTube.player.load(mediaId, { browseCtx: rawBrowseCtx }, { slot: playerSlot });
       if (!mountedEarly) showFatalViewError(root);
     } else if (entryReparentAction === 'reparent') {
       // Eagerly reparent the STILL-loaded previous video's host into THIS
@@ -744,8 +755,11 @@ if (typeof module !== 'undefined' && module.exports) {
         // already done by the time we get here); otherwise it's a genuine new
         // load, including its own resume-overlay/transcode-overlay/Media
         // Session setup. `data` merges in `channelName` since the controller
-        // doesn't have folderSettings.
-        const mounted = window.FileTube.player.load(mediaId, { ...mediaData, channelName }, { slot: playerSlot });
+        // doesn't have folderSettings. v1.40.0: `browseCtx` (the raw encoded
+        // context param) rides along so autoplay-at-end -- which runs off the
+        // controller's own state, even while docked on another page -- can
+        // advance through the SAME browsed list/order the on-page prev/next use.
+        const mounted = window.FileTube.player.load(mediaId, { ...mediaData, channelName, browseCtx: rawBrowseCtx }, { slot: playerSlot });
         if (!mounted) {
           showFatalViewError(root);
         }
@@ -1004,28 +1018,45 @@ if (typeof module !== 'undefined' && module.exports) {
         // grid comes from the client-side deriveOrderedIds re-sort below
         // (the same resolved key the grid uses), exactly like the folder
         // path -- the server's own default sort is immaterial here.
-        const folder = parentFolder(mediaData && mediaData.filePath);
-        const folderBase = folder ? '/api/videos?root=' + encodeURIComponent(folder) : '/api/videos';
-        const baseUrl = listContext === 'liked' ? '/api/liked' : folderBase;
-        const separator = baseUrl.includes('?') ? '&' : '?';
-        const res = await fetch(`${baseUrl}${separator}limit=${FULL_LIST_QUERY_LIMIT}`);
-        const data = await res.json();
-        const allFiles = Array.isArray(data.items) ? data.items : [];
-        // v1.34: same precedence as the home grid (main.js) -- explicit
-        // per-browser pick > the defaultSort setting > 'release-date' (the
-        // server default). Keeps prev/next stepping through the SAME order
-        // the home grid shows for browsers that rely on the setting.
-        let sortKey = null;
-        try { sortKey = localStorage.getItem('filetube_sort'); } catch (_) { /* storage disabled */ }
-        if (!sortKey) {
-          try {
-            const settingsRes = await fetch('/api/settings');
-            const settingsData = await settingsRes.json();
-            if (typeof settingsData.defaultSort === 'string' && settingsData.defaultSort !== '') sortKey = settingsData.defaultSort;
-          } catch (_) { /* settings unavailable -- fall through */ }
+        // v1.40.0 (Dean): when a full browse context travelled with the link
+        // (`?ctx=`, set by the home grid's cards -- see main.js), prev/next walk
+        // the EXACT list the user was viewing, in its EXACT on-screen order --
+        // the folder/search/liked scope, sort, AND the server shuffle seed.
+        // We re-fetch that same list-API query and use the RESPONSE order
+        // verbatim (the server already applied sort+seed) -- crucially NOT
+        // deriveOrderedIds, which would re-shuffle a `random` list to a
+        // different order than what was on screen. Absent/garbage ctx falls
+        // through to the pre-v1.40.0 folder/liked path below.
+        let orderedIds;
+        if (browseCtx) {
+          const res = await fetch(buildContextListUrl(browseCtx, FULL_LIST_QUERY_LIMIT));
+          const data = await res.json();
+          const allFiles = Array.isArray(data.items) ? data.items : [];
+          orderedIds = allFiles.map((it) => it && it.id);
+        } else {
+          const folder = parentFolder(mediaData && mediaData.filePath);
+          const folderBase = folder ? '/api/videos?root=' + encodeURIComponent(folder) : '/api/videos';
+          const baseUrl = listContext === 'liked' ? '/api/liked' : folderBase;
+          const separator = baseUrl.includes('?') ? '&' : '?';
+          const res = await fetch(`${baseUrl}${separator}limit=${FULL_LIST_QUERY_LIMIT}`);
+          const data = await res.json();
+          const allFiles = Array.isArray(data.items) ? data.items : [];
+          // v1.34: same precedence as the home grid (main.js) -- explicit
+          // per-browser pick > the defaultSort setting > 'release-date' (the
+          // server default). Keeps prev/next stepping through the SAME order
+          // the home grid shows for browsers that rely on the setting.
+          let sortKey = null;
+          try { sortKey = localStorage.getItem('filetube_sort'); } catch (_) { /* storage disabled */ }
+          if (!sortKey) {
+            try {
+              const settingsRes = await fetch('/api/settings');
+              const settingsData = await settingsRes.json();
+              if (typeof settingsData.defaultSort === 'string' && settingsData.defaultSort !== '') sortKey = settingsData.defaultSort;
+            } catch (_) { /* settings unavailable -- fall through */ }
+          }
+          if (!sortKey) sortKey = 'release-date';
+          orderedIds = deriveOrderedIds(allFiles, sortKey);
         }
-        if (!sortKey) sortKey = 'release-date';
-        const orderedIds = deriveOrderedIds(allFiles, sortKey);
         const { prevId, nextId } = computeNeighbors(orderedIds, mediaId);
 
         prevBtn.disabled = !prevId;
@@ -1435,7 +1466,14 @@ if (typeof module !== 'undefined' && module.exports) {
       // v1.36.2: PRESERVE the launch context across prev/next/autoplay
       // hops -- stepping through the Liked list must stay in the Liked
       // list, not silently fall back to folder order after the first hop.
-      const url = '/watch.html?v=' + encodeURIComponent(id) + (listContext ? '&list=' + encodeURIComponent(listContext) : '');
+      // v1.40.0: carry the browse context forward so every hop keeps walking
+      // the same list/order. rawBrowseCtx is the DECODED param value (from
+      // urlParams.get), so it must be re-encoded here for the URL. Falls back to
+      // the legacy `list=liked` carry for old-style links.
+      const ctxSuffix = rawBrowseCtx
+        ? '&ctx=' + encodeURIComponent(rawBrowseCtx)
+        : (listContext ? '&list=' + encodeURIComponent(listContext) : '');
+      const url = '/watch.html?v=' + encodeURIComponent(id) + ctxSuffix;
       if (window.FileTube && typeof window.FileTube.navigate === 'function') {
         window.FileTube.navigate(url);
       } else {

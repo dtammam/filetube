@@ -5078,7 +5078,11 @@ app.get('/api/videos', (req, res) => {
     return {
       ...item,
       progress: progress.timestamp,
-      progressPercent: progress.duration > 0 ? (progress.timestamp / progress.duration) * 100 : 0
+      progressPercent: progress.duration > 0 ? (progress.timestamp / progress.duration) * 100 : 0,
+      // v1.40.0: per-item liked flag so the grid can render each card's Like
+      // control in its correct initial state (same derivation as the single
+      // GET /api/videos/:id route and the by-construction flag on /api/liked).
+      liked: Array.isArray(db.liked) && db.liked.includes(item.id)
     };
   });
 

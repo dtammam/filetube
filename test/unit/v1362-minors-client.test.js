@@ -26,10 +26,17 @@ const playerSrc = fs.readFileSync(path.join(__dirname, '../../public/js/player.j
 
 // ---- Bug A: the Liked launch context ----------------------------------------
 
-test('v1.36.2 A: home grid cards carry ?list=liked ONLY in the Liked view (watchHref), and both card anchors use it', () => {
+test('v1.40.0 A (supersedes v1.36.2 list=liked): home grid cards carry the FULL browse context via ?ctx=, both anchors use watchHref', () => {
+  // v1.40.0 generalized the v1.36.2 `list=liked`-only carry into a full
+  // browse-context param (scope + sort + shuffle seed) so prev/next follows the
+  // exact on-screen order, not just the Liked list.
   assert.ok(
-    mainSrc.includes("${likedFilter ? '&list=liked' : ''}"),
-    'buildCardHtml must append the context param conditionally on likedFilter',
+    mainSrc.includes('const ctxParam = currentBrowseContextParam();'),
+    'buildCardHtml must derive the browse-context param from the live view state',
+  );
+  assert.ok(
+    mainSrc.includes("${ctxParam ? '&ctx=' + encodeURIComponent(ctxParam) : ''}"),
+    'the ctx param is URL-encoded and appended to watchHref only when non-empty (empty -> folder fallback)',
   );
   const anchorUses = (mainSrc.match(/href="\$\{watchHref\}"/g) || []).length;
   assert.equal(anchorUses, 2, 'both the thumbnail and the title anchors must use the context-carrying href');

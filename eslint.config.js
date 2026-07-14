@@ -132,6 +132,11 @@ module.exports = [
         deriveOrderedIds: 'readonly',
         computeNeighbors: 'readonly',
         parentFolder: 'readonly',
+        // v1.40.0 browse-context helpers -- consumed by main.js (emit card
+        // links), watch.js (prev/next) and player.js (autoplay-next).
+        encodeListContext: 'readonly',
+        decodeListContext: 'readonly',
+        buildContextListUrl: 'readonly',
         // setup.js-only (FR-1, T1 extraction from setup.html's former inline script)
         gbToBytes: 'readonly',
         bytesToGb: 'readonly',

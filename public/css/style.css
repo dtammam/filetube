@@ -748,6 +748,18 @@ header {
   position: relative;
 }
 
+/* v1.40.0: the thumbnail + its corner overlays (download/delete/like) live in
+   this box so the overlays anchor to the THUMBNAIL, not the whole card. Before
+   this, the overlays were absolute against `.video-card` and only looked
+   thumbnail-cornered because the top-anchored ones happen to share the card's
+   top edge; a BOTTOM-anchored control (the new Like heart) would otherwise sit
+   at the card's bottom, over the title/meta/rating. This box is thumbnail-
+   height (the badge/buttons are out of flow), so bottom:6px reaches the
+   thumbnail's bottom-left. */
+.card-media {
+  position: relative;
+}
+
 .thumbnail-container {
   position: relative;
   width: 100%;
@@ -879,6 +891,46 @@ header {
 }
 
 .card-download-btn .icon-download {
+  width: 14px;
+  height: 14px;
+}
+
+/* v1.40.0 (Dean): home/library card "Like" affordance. A SIBLING of
+   `.thumbnail-container` (like the download/delete overlays -- never nested in
+   the watch-link `<a>`), positioned over the thumbnail's BOTTOM-LEFT corner --
+   the last free corner (duration badge = bottom-right, download = top-left,
+   delete = top-right). Mirrors `.card-download-btn`'s look/size/opacity. When
+   liked, the heart fills red (via currentColor on the mask) and stays fully
+   opaque so the state is legible at a glance. Era tokens only. */
+.card-like-btn {
+  position: absolute;
+  bottom: 6px;
+  left: 6px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 6px;
+  border: none;
+  border-radius: var(--radius);
+  background-color: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  cursor: pointer;
+  opacity: 0.85;
+  transition: opacity 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+}
+
+.card-like-btn:hover,
+.card-like-btn:focus-visible {
+  opacity: 1;
+}
+
+.card-like-btn.liked {
+  opacity: 1;
+  color: var(--yt-red);
+}
+
+.card-like-btn .icon-heart {
   width: 14px;
   height: 14px;
 }
@@ -2820,6 +2872,7 @@ a.sub-row-channel-link:focus-visible {
 .icon-refresh,
 .icon-arrow-up,
 .icon-arrow-down,
+.icon-heart,
 .icon-download,
 .icon-shuffle {
   display: inline-block;
@@ -2850,6 +2903,12 @@ a.sub-row-channel-link:focus-visible {
    chrome icon above -- replaces the old fixed "\2B07" unicode glyph (removed
    below the @supports guard). */
 .icon-download { -webkit-mask-image: url(/assets/icons/download.svg); mask-image: url(/assets/icons/download.svg); }
+/* v1.40.0: Like heart for the card corner control. A real SVG mask painted in
+   currentColor like every other .icon-* (NOT the U+2665 codepoint, which iOS
+   force-renders as the red-heart emoji). Only the base/outlined mask is added;
+   the rounded/filled/emoji sets fall back to this, same as any un-overridden
+   icon. */
+.icon-heart { -webkit-mask-image: url(/assets/icons/heart.svg); mask-image: url(/assets/icons/heart.svg); }
 /* "Shuffle again" (v1.15.1) originally shipped as a fixed ::before unicode
    glyph outside the icon-set system, which meant it rendered as a raw emoji
    (U+1F500) even in non-emoji/modern themes -- unlike every other .icon-*
@@ -2866,7 +2925,7 @@ a.sub-row-channel-link:focus-visible {
 @supports (mask-image: url("#")) or (-webkit-mask-image: url("#")) {
   .icon-home, .icon-folder, .icon-cog, .icon-delete, .icon-moon, .icon-sun,
   .icon-menu, .icon-search, .icon-play, .icon-refresh, .icon-arrow-up, .icon-arrow-down,
-  .icon-download, .icon-shuffle {
+  .icon-heart, .icon-download, .icon-shuffle {
     background-color: currentColor;
   }
 }

@@ -2932,23 +2932,44 @@ if (typeof module !== 'undefined' && module.exports) {
         // Prev/Next buttons (watch.js) via the SAME parentFolder helper -- so
         // "next" means the same thing whether you tap Next or a video ends
         // (Dean: walk the item's folder, not the whole library).
-        var advanceFolder = parentFolder(currentData && currentData.filePath);
-        // v1.30.0 T7: same paginated `{ items, ... }` shape + FULL-set
-        // requirement as watch.js's Prev/Next (see
-        // AUTOPLAY_ADVANCE_FULL_LIST_LIMIT, above) -- deriveOrderedIds needs
-        // the ended item's folder-mates in full, or its next-in-order
-        // neighbor could sit past a truncated page-1 boundary and autoplay
-        // would silently stop advancing.
-        var advanceBaseUrl = advanceFolder ? '/api/videos?root=' + encodeURIComponent(advanceFolder) : '/api/videos';
-        var advanceSeparator = advanceBaseUrl.indexOf('?') !== -1 ? '&' : '?';
-        return fetch(advanceBaseUrl + advanceSeparator + 'limit=' + AUTOPLAY_ADVANCE_FULL_LIST_LIMIT)
+        // v1.40.0 (Dean): when a browse context rode along with this item (set
+        // by watch.js at load from the `?ctx=` the grid card carried), autoplay
+        // advances through the SAME list/order the on-page Prev/Next use -- the
+        // browsed folder/search/liked scope + sort + shuffle seed -- using the
+        // server RESPONSE order verbatim (never deriveOrderedIds, which would
+        // re-shuffle a `random` list). This runs off the controller's own state,
+        // so it works even while docked on another page. Absent ctx falls
+        // through to the pre-v1.40.0 parent-folder behavior below.
+        var advanceRawCtx = (currentData && currentData.browseCtx) || '';
+        var advanceBrowseCtx = decodeListContext(advanceRawCtx);
+        var advanceUrl;
+        if (advanceBrowseCtx) {
+          advanceUrl = buildContextListUrl(advanceBrowseCtx, AUTOPLAY_ADVANCE_FULL_LIST_LIMIT);
+        } else {
+          var advanceFolder = parentFolder(currentData && currentData.filePath);
+          // v1.30.0 T7: same paginated `{ items, ... }` shape + FULL-set
+          // requirement as watch.js's Prev/Next (see
+          // AUTOPLAY_ADVANCE_FULL_LIST_LIMIT, above) -- deriveOrderedIds needs
+          // the ended item's folder-mates in full, or its next-in-order
+          // neighbor could sit past a truncated page-1 boundary and autoplay
+          // would silently stop advancing.
+          var advanceBaseUrl = advanceFolder ? '/api/videos?root=' + encodeURIComponent(advanceFolder) : '/api/videos';
+          var advanceSeparator = advanceBaseUrl.indexOf('?') !== -1 ? '&' : '?';
+          advanceUrl = advanceBaseUrl + advanceSeparator + 'limit=' + AUTOPLAY_ADVANCE_FULL_LIST_LIMIT;
+        }
+        return fetch(advanceUrl)
           .then(function (res) { return res.json(); })
           .then(function (data) {
             if (currentId !== endedId) return; // controller has moved on -- stale, no-op
             var videos = Array.isArray(data && data.items) ? data.items : [];
-            var sortKey = 'newest';
-            try { sortKey = localStorage.getItem('filetube_sort') || 'newest'; } catch (_) { /* storage disabled -- fall back to newest */ }
-            var orderedIds = deriveOrderedIds(videos, sortKey);
+            var orderedIds;
+            if (advanceBrowseCtx) {
+              orderedIds = videos.map(function (it) { return it && it.id; }); // server order verbatim
+            } else {
+              var sortKey = 'newest';
+              try { sortKey = localStorage.getItem('filetube_sort') || 'newest'; } catch (_) { /* storage disabled -- fall back to newest */ }
+              orderedIds = deriveOrderedIds(videos, sortKey);
+            }
             var neighbors = computeNeighbors(orderedIds, endedId);
             if (!neighbors.nextId) return; // end of the order -- no wrap, no-op
             if (window.FileTube && typeof window.FileTube.navigate === 'function') {
@@ -2957,7 +2978,10 @@ if (typeof module !== 'undefined' && module.exports) {
               // handleResumePlayback (via shouldShowResumeOverlay) to skip
               // the resume-overlay prompt for THIS specific advance only.
               autoplayAdvancePending = true;
-              window.FileTube.navigate('/watch.html?v=' + encodeURIComponent(neighbors.nextId));
+              // v1.40.0: preserve the context so the NEXT autoplay hop keeps
+              // walking the same list (pre-v1.40.0 this dropped it entirely).
+              // advanceRawCtx is the DECODED value -> re-encode it for the URL.
+              window.FileTube.navigate('/watch.html?v=' + encodeURIComponent(neighbors.nextId) + (advanceRawCtx ? '&ctx=' + encodeURIComponent(advanceRawCtx) : ''));
             }
           });
       })
@@ -4885,6 +4909,15 @@ if (typeof module !== 'undefined' && module.exports) {
     if (!ensureHost()) return false;
     var adopt = isAdoptLoad(currentId, id, state);
     if (adopt) {
+      // v1.40.0: an adopt reuses the loaded media untouched, but the BROWSE
+      // CONTEXT can differ when the same video is re-opened from a different
+      // list view (e.g. docked, then clicked again from a shuffled home grid).
+      // Refresh just the context so autoplay-at-end walks the list the user is
+      // NOW viewing -- matching the on-page prev/next -- never any playback
+      // state (that's why adopt exists). Any string (incl. '') reflects the
+      // current navigation: a context-less re-open clears it to the folder
+      // fallback. Skipped only when data carries no browseCtx field at all.
+      if (data && typeof data.browseCtx === 'string' && currentData) currentData.browseCtx = data.browseCtx;
       expand(options.slot);
       return true;
     }

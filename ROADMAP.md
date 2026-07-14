@@ -80,6 +80,14 @@
 
 ## Shipped
 
+### v1.40.0 — Card Like button + context-aware Next/Prev (2026-07-14)
+
+Two features (Dean), built together and run through the two-reviewer adversarial gate.
+
+- **Per-card Like control.** Every video card gets a heart in the **bottom-left** corner, mirroring the existing Download (top-left) / Delete (top-right) corner controls. It toggles the same `db.liked` membership the watch-page Like button uses (`POST`/`DELETE /api/liked/:id`), non-optimistically (the heart flips only after the request succeeds), and fills **red** when liked. The heart is a real SVG mask (`heart.svg` + `.icon-heart`), painted in `currentColor` like every other icon — deliberately not the U+2665 codepoint (which iOS renders as the red-heart emoji). `GET /api/videos` now tags each item with `liked` so cards render their initial state. The thumbnail + its three overlays are wrapped in a `.card-media` box so the corner controls anchor to the thumbnail, not the whole card.
+- **Context-aware Next/Prev.** Opening a video from a browsing view now makes Prev/Next (and autoplay-at-end) walk **that view's exact on-screen order** — the folder/search/liked scope, the sort, **and** the server shuffle seed — instead of the item's own channel folder. A compact `ctx` param travels with the card link (and across every hop, and into the docked player for autoplay); the watch page re-fetches the same list-API query and steps through the **server response order verbatim** (never re-derived client-side, which would re-shuffle a `random` list differently than what was on screen). Channel/folder order stays the fallback when no context travels with the link (related-card hops, old bookmarks). Shared encode/decode/URL helpers live in common.js.
+- **Gate:** two adversarial reviewers, both APPROVE after one fix round. They caught: a `ctx` percent-encoding layering bug that would have silently dropped context mid-session for common search terms (`R&B`, `50% off`); the Like heart anchoring to the card instead of the thumbnail; and a stale-context case on same-video re-entry. All fixed; new URL round-trip tests lock the encoding. Full suite green on Node v22 + v24 (3982 tests).
+
 ### v1.39.5 — Muted volume-slider glyph recentered (2026-07-13)
 
 - The diagonal "muted" slash over the speaker icon sat off the glyph (Dean's report). It was drawn from a `top-left` transform origin with a hand-tuned `left: 5px` offset — fragile. Recentered it on the icon box (`left/top: 50%` + `translate(-50%, -50%)`, height ≈ the box diagonal so it crosses the speaker corner-to-corner). Pure CSS, no magic offset.

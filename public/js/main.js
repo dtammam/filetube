@@ -530,17 +530,36 @@ if (typeof module !== 'undefined' && module.exports) {
     // Pure(ish) card-markup builder -- extracted from the old renderMediaGrid
     // so BOTH the page-0 replace path and the append-a-page path (below)
     // build identical card markup from a single source of truth.
+    // v1.40.0: the current view's browse context, encoded for the watch link.
+    // Mirrors buildVideosApiUrl's server-order inputs (scope + sort + format +
+    // shuffle seed) so prev/next on the watch page reproduces THIS exact list.
+    // Recomputed per render so it always reflects the live sort/seed (a
+    // sort-change or "shuffle again" re-renders the whole grid).
+    function currentBrowseContextParam() {
+      return encodeListContext({
+        src: likedFilter ? 'liked' : 'videos',
+        sort: currentSort,
+        seed: currentSeed,
+        search: searchQuery,
+        folder: folderFilter,
+        root: rootFilter,
+        format: getStoredFormatFilter(),
+      });
+    }
+
     function buildCardHtml(item) {
       const views = getMockViews(item.id, item.size);
       const relativeTime = formatRelativeTime(item.addedAt);
-      // v1.36.2 (Dean): carry the LAUNCH CONTEXT into the watch page. The
-      // watch page's prev/next was folder-scoped only -- a video opened from
-      // the Liked view walked its FOLDER's neighbors (or greyed out when it
-      // had none), never the Liked list the user was actually browsing.
-      // `list=liked` is read by watch.js's setupPrevNext and preserved by
-      // its own prev/next navigation, so stepping stays inside Liked.
-      // Additive: every other view keeps the bare URL (byte-identical).
-      const watchHref = `/watch.html?v=${item.id}${likedFilter ? '&list=liked' : ''}`;
+      // v1.40.0 (Dean, superseding the v1.36.2 `list=liked`-only carry): carry
+      // the FULL browse context into the watch page so prev/next walks THIS
+      // view's exact on-screen order -- the current folder/search/liked scope,
+      // sort, AND the server shuffle seed -- not the item's own channel folder.
+      // The watch page re-fetches the same list-API query and steps through the
+      // response order (see common.js buildContextListUrl / watch.js
+      // setupPrevNext). Empty ctx (nothing meaningful to carry) -> bare URL ->
+      // the folder-scoped fallback, byte-identical to pre-v1.40.0.
+      const ctxParam = currentBrowseContextParam();
+      const watchHref = `/watch.html?v=${item.id}${ctxParam ? '&ctx=' + encodeURIComponent(ctxParam) : ''}`;
       // Author/channel resolved the same way as the watch page (see common.js).
       const channelName = resolveChannelName(item, folderSettings);
       // Deterministic 3–5 star rating — the same value shows on this item's watch page.
@@ -563,17 +582,22 @@ if (typeof module !== 'undefined' && module.exports) {
 
       return `
         <div class="video-card">
-          <a href="${watchHref}" class="thumbnail-container">
-            <img class="thumbnail-img" src="/thumbnail/${item.id}" alt="${escapeHtml(item.title)}" loading="lazy" />
-            ${durationBadge}
-            ${progressBar}
-          </a>
-          <button type="button" class="card-delete-btn" data-id="${escapeHtml(item.id)}" aria-label="Delete this video">
-            <i class="icon-delete"></i><span class="card-delete-confirm">Sure?</span>
-          </button>
-          <a class="card-download-btn" href="${buildCardDownloadHref(item.id)}" download="${escapeHtml(buildCardDownloadFilename(item.title, item.ext))}" aria-label="Save to device" title="Save to device">
-            <i class="icon-download"></i>
-          </a>
+          <div class="card-media">
+            <a href="${watchHref}" class="thumbnail-container">
+              <img class="thumbnail-img" src="/thumbnail/${item.id}" alt="${escapeHtml(item.title)}" loading="lazy" />
+              ${durationBadge}
+              ${progressBar}
+            </a>
+            <button type="button" class="card-delete-btn" data-id="${escapeHtml(item.id)}" aria-label="Delete this video">
+              <i class="icon-delete"></i><span class="card-delete-confirm">Sure?</span>
+            </button>
+            <a class="card-download-btn" href="${buildCardDownloadHref(item.id)}" download="${escapeHtml(buildCardDownloadFilename(item.title, item.ext))}" aria-label="Save to device" title="Save to device">
+              <i class="icon-download"></i>
+            </a>
+            <button type="button" class="card-like-btn${item.liked ? ' liked' : ''}" data-id="${escapeHtml(item.id)}" aria-label="${item.liked ? 'Unlike' : 'Like'}" aria-pressed="${item.liked ? 'true' : 'false'}" title="Like">
+              <i class="icon-heart"></i>
+            </button>
+          </div>
           <div class="video-info">
             <a href="${watchHref}" class="video-title" title="${escapeHtml(item.title)}">
               ${escapeHtml(item.title)}
@@ -983,6 +1007,44 @@ if (typeof module !== 'undefined' && module.exports) {
     // (common.js) as a conscious 3rd action; only confirming THERE calls
     // `deleteCardById` (AC46/AC49). Both paths converge on the exact same,
     // unmodified `deleteCardById` -> `DELETE /api/videos/:id` (AC48).
+    // v1.40.0 (Dean): per-card Like toggle. Same `db.liked` id-array membership
+    // the watch page's Like button uses (POST/DELETE /api/liked/:id), and the
+    // same NON-optimistic posture -- the heart flips only after the request
+    // resolves, never on a failed/pending request. Delegated on the grid like
+    // the delete control. The card stays in place on unlike (even in the Liked
+    // view) -- removing a card mid-grid is disruptive; the heart just greys.
+    function applyCardLikeState(btn, liked) {
+      btn.classList.toggle('liked', liked);
+      btn.setAttribute('aria-pressed', liked ? 'true' : 'false');
+      btn.setAttribute('aria-label', liked ? 'Unlike' : 'Like');
+      btn.setAttribute('title', liked ? 'Unlike' : 'Like');
+    }
+    async function toggleCardLike(btn) {
+      const id = btn.dataset.id;
+      if (!id || btn.disabled) return;
+      const currentlyLiked = btn.classList.contains('liked');
+      btn.disabled = true;
+      try {
+        const res = await fetch('/api/liked/' + encodeURIComponent(id), { method: currentlyLiked ? 'DELETE' : 'POST' });
+        if (!res.ok) throw new Error('like request failed: ' + res.status);
+        const data = await res.json().catch(() => ({}));
+        const nowLiked = typeof data.liked === 'boolean' ? data.liked : !currentlyLiked;
+        applyCardLikeState(btn, nowLiked);
+        // Persist onto the in-memory item so a later grid re-render (sort/seed
+        // reset) rebuilds the card in its correct state.
+        const item = currentItems.find((it) => it.id === id);
+        if (item) item.liked = nowLiked;
+      } catch (_) {
+        /* leave the heart unchanged on failure -- never fake success */
+      } finally {
+        btn.disabled = false;
+      }
+    }
+    videoGrid.addEventListener('click', (e) => {
+      const likeBtn = e.target.closest('.card-like-btn');
+      if (likeBtn) { e.preventDefault(); toggleCardLike(likeBtn); return; }
+    }, { signal });
+
     videoGrid.addEventListener('click', (e) => {
       const btn = e.target.closest('.card-delete-btn');
       if (!btn) return; // any other click inside the grid -- outside-click disarm (below) handles it

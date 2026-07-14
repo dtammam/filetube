@@ -107,11 +107,11 @@ test('init(): the reparent decision is derived from the LIVE controller state (c
   assert.match(watchJs, fnCallMatch, 'expected resolveWatchEntryReparentAction to be called with (player.currentId, mediaId, player.getState())');
 });
 
-test('init(): the pre-existing same-id "adopt" fast path (dock-tap / same-video reparent) is preserved, still calling player.load(mediaId, {}, { slot: playerSlot }) with its own fatal-error guard', () => {
+test('init(): the same-id "adopt" fast path (dock-tap / same-video reparent) is preserved, now carrying the browse context (v1.40.0) + its own fatal-error guard', () => {
   assert.match(
     watchJs,
-    /entryReparentAction === 'adopt'\) \{[\s\S]{0,200}?const mountedEarly = window\.FileTube\.player\.load\(mediaId, \{\}, \{ slot: playerSlot \}\);[\s\S]{0,100}?if \(!mountedEarly\) showFatalViewError\(root\);/,
-    'expected the adopt branch to be unchanged: player.load(mediaId, {}, { slot: playerSlot }) + the fatal-error guard'
+    /entryReparentAction === 'adopt'\) \{[\s\S]{0,400}?const mountedEarly = window\.FileTube\.player\.load\(mediaId, \{ browseCtx: rawBrowseCtx \}, \{ slot: playerSlot \}\);[\s\S]{0,100}?if \(!mountedEarly\) showFatalViewError\(root\);/,
+    'expected the adopt branch to carry the browse context: player.load(mediaId, { browseCtx: rawBrowseCtx }, { slot: playerSlot }) + the fatal-error guard'
   );
 });
 
