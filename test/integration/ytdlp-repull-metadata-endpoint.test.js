@@ -1534,3 +1534,61 @@ test('v1.41.6: an ALREADY-hydrated item (skipped by a non-force reheat) is still
     await close();
   }
 });
+
+// ---- v1.41.7 (Dean has NO media backup): DRY-RUN preview route -------------
+
+test('preview: POST /api/ytdlp/repull-metadata/preview returns the plan from deps.previewImportRelocations and makes NO spawn/write', async () => {
+  const deps = makeFakeDeps();
+  const plan = {
+    moves: [{ mediaId: 'm1', title: 'A', currentPath: '/lib/a.mp4', destinationPath: '/dl/chan/a [id].mp4', transfer: 'copy', sizeBytes: 5 }],
+    skips: [{ mediaId: 's1', title: 'Home', currentPath: '/lib/h.mp4', reason: 'no-youtube-identity' }],
+    summary: { totalItems: 2, moveCount: 1, skipCount: 1, hardlinkCount: 0, copyCount: 1, unknownCount: 0, copyBytes: 5, hardlinkBytes: 0 },
+  };
+  let previewArgs = null;
+  deps.previewImportRelocations = (d, cfg) => { previewArgs = { d, cfg }; return plan; };
+  let spawned = false;
+  run.repullItemMetaAndSubs = async () => { spawned = true; return null; };
+
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    const res = await fetch(`${base}/api/ytdlp/repull-metadata/preview`, { method: 'POST' });
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.deepEqual(body, plan, 'the route returns the plan verbatim');
+    assert.ok(previewArgs, 'the route delegates to deps.previewImportRelocations');
+    await flush();
+    assert.equal(spawned, false, 'a preview must never spawn a re-pull');
+  } finally {
+    await close();
+  }
+});
+
+test('preview: a deployment missing the previewImportRelocations wiring gets a clean 503, not a crash', async () => {
+  const deps = makeFakeDeps();
+  delete deps.previewImportRelocations; // makeFakeDeps never set it; be explicit
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    const res = await fetch(`${base}/api/ytdlp/repull-metadata/preview`, { method: 'POST' });
+    assert.equal(res.status, 503);
+  } finally {
+    await close();
+  }
+});
+
+test('preview: is NOT gated on the single-flight reheat lock -- it is read-only and works during a running batch', async () => {
+  const deps = makeFakeDeps();
+  deps.previewImportRelocations = () => ({ moves: [], skips: [], summary: { totalItems: 0, moveCount: 0, skipCount: 0, hardlinkCount: 0, copyCount: 0, unknownCount: 0, copyBytes: 0, hardlinkBytes: 0 } });
+  // Simulate an in-flight reheat: a slow item so the batch is still running.
+  deps.enumerateRepullableItems = () => ({ items: [makeItem({ videoId: 'ccccccccccc' })], eligible: 1, ineligible: 0 });
+  run.repullItemMetaAndSubs = async () => { await flush(60); return { wroteSubs: true }; };
+
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    await fetch(`${base}/api/ytdlp/repull-metadata`, { method: 'POST' }); // start a batch
+    const res = await fetch(`${base}/api/ytdlp/repull-metadata/preview`, { method: 'POST' }); // during it
+    assert.equal(res.status, 200, 'the preview must not be blocked by a running reheat');
+    await flush(120); // let the batch drain before teardown
+  } finally {
+    await close();
+  }
+});

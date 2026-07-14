@@ -6045,6 +6045,44 @@ function computeMoveTarget(filePath, targetFolder, allowedRoots, opts = {}) {
 }
 
 /**
+ * v1.41.7 (Dean has NO backup of his media -- no spare storage, so a bulk file
+ * op runs on irreplaceable files with no safety net): checksum a file by
+ * STREAMING it through sha256 in chunks. Used to verify a cross-filesystem copy
+ * by CONTENT before the source (the only other copy) is unlinked -- see
+ * `moveItemToFolder`'s EXDEV branch.
+ *
+ * MEMORY BEHAVIOR (load-bearing -- these are multi-GB video files): a read
+ * stream pulls the file in bounded chunks (Node's default 64 KiB highWaterMark)
+ * and `hash.update` folds each chunk into fixed-size internal state, so the file
+ * is NEVER read whole into a Buffer -- peak memory is one chunk plus the digest
+ * state, constant regardless of file size. `fsImpl.createReadStream` is honored
+ * (defaulting to the real `fs`) purely so a test's injected fs can drive this
+ * deterministically; every real caller uses the real module.
+ *
+ * Rejects on any read error -- the caller treats an unreadable file as a FAILED
+ * verification and leaves the source untouched (never deletes what it could not
+ * prove).
+ */
+function hashFileStreaming(filePath, fsImpl) {
+  const createReadStream = (fsImpl && typeof fsImpl.createReadStream === 'function')
+    ? fsImpl.createReadStream
+    : fs.createReadStream;
+  return new Promise((resolve, reject) => {
+    let stream;
+    try {
+      stream = createReadStream(filePath);
+    } catch (err) {
+      reject(err);
+      return;
+    }
+    const hash = crypto.createHash('sha256');
+    stream.on('error', reject);
+    stream.on('data', (chunk) => hash.update(chunk));
+    stream.on('end', () => resolve(hash.digest('hex')));
+  });
+}
+
+/**
  * Move a library item to another configured folder, re-keying its id and
  * every id-keyed sidecar. `deps` ({ loadDatabase, updateDatabase, getMediaId,
  * fs? }) is accepted (rather than closing over this module's own state
@@ -6175,11 +6213,12 @@ async function moveItemToFolder(deps, id, targetFolder, opts = {}) {
       // a NAS/second volume -- into the yt-dlp download dir, so EXDEV is the
       // EXPECTED path there, and it is the one where a half-written
       // destination followed by an unlinked source would be real data loss.
-      // Hence the verify-then-unlink discipline below: the copy is fsync'd and
-      // its size is checked against the source BEFORE the caller is allowed to
-      // reach the `unlinkSync(oldPath)` further down; a short/torn copy takes
-      // the partial destination back out and fails the move with BOTH the file
-      // and the db entry untouched.
+      // Hence the verify-then-unlink discipline below: the copy is fsync'd, its
+      // size is checked as a cheap pre-filter, and then (v1.41.7) its CONTENT is
+      // checksum-verified against the source BEFORE the caller is allowed to
+      // reach the `unlinkSync(oldPath)` further down; a short/torn/corrupt copy
+      // takes the partial destination back out and fails the move with BOTH the
+      // file and the db entry untouched.
       try {
         fsImpl.copyFileSync(oldPath, newPath, fs.constants.COPYFILE_EXCL);
       } catch (copyErr) {
@@ -6202,14 +6241,12 @@ async function moveItemToFolder(deps, id, targetFolder, opts = {}) {
       } catch (syncErr) {
         console.error(`Move: could not fsync the cross-device copy at ${newPath} (continuing):`, syncErr.message);
       }
-      // SIZE-verify BEFORE the source is ever unlinked: destination genuinely
-      // present, and the same number of bytes. This is a size check, NOT an
-      // integrity check -- no checksum is computed, so a same-length corruption
-      // would pass (accepted: the alternative is re-reading every byte of every
-      // relocated video). A mismatch means a truncated/torn copy (ENOSPC on a
-      // filesystem that reports lazily, a NAS write that silently short-wrote)
-      // -- take the bad destination back out and leave the source exactly
-      // where it is. Nothing downstream has run yet, so the db is untouched too.
+      // SIZE-verify FIRST, as a cheap PRE-FILTER before the expensive hash:
+      // destination genuinely present, and the same number of bytes. A mismatch
+      // means a truncated/torn copy (ENOSPC on a filesystem that reports lazily,
+      // a NAS write that silently short-wrote) -- take the bad destination back
+      // out and leave the source exactly where it is. Fast to fail here before
+      // hashing gigabytes.
       try {
         const srcSize = fsImpl.statSync(oldPath).size;
         const dstSize = fsImpl.statSync(newPath).size;
@@ -6225,6 +6262,47 @@ async function moveItemToFolder(deps, id, targetFolder, opts = {}) {
         return {
           ok: false, status: 500,
           error: `Could not verify the cross-device copy (${statErr.message}) -- the source file was left untouched`,
+        };
+      }
+
+      // v1.41.7 (Dean has NO media backup -- this is the WHOLE reason this exists):
+      // SIZE-EQUAL IS NOT INTACT. A cross-filesystem copy (NAS -> local, an
+      // overlay/fuse mount) can land the exact right number of bytes and still be
+      // silently corrupted -- a flipped block, a torn-then-refilled write, a NAS
+      // that lies about a completed flush. The OLD code unlinked the source on a
+      // size match ALONE, which on this one path means deleting the only remaining
+      // copy of an irreplaceable file on the strength of an unverified duplicate.
+      // So the source is now unlinked ONLY after a full sha256 of BOTH files
+      // matches, computed by streaming (constant memory -- see `hashFileStreaming`).
+      //
+      // COST, disclosed honestly (and surfaced in the preview UI): a
+      // cross-filesystem move now reads every byte of the file TWICE -- once to
+      // copy, once to hash each side. The same-filesystem `linkSync` path above
+      // never reaches here and pays NOTHING: a hard link is the same inode, so
+      // there is nothing to compare -- source and destination are literally the
+      // same bytes on disk.
+      //
+      // On mismatch OR an unreadable file: remove the destination copy, leave the
+      // source untouched, and fail honestly -- the caller (the reheat batch)
+      // counts this into its existing failure counter, and the db entry has not
+      // been touched (the re-key mutator below has not run yet).
+      try {
+        const [srcDigest, dstDigest] = await Promise.all([
+          hashFileStreaming(oldPath, fsImpl),
+          hashFileStreaming(newPath, fsImpl),
+        ]);
+        if (srcDigest !== dstDigest) {
+          try { fsImpl.unlinkSync(newPath); } catch (_) { /* best-effort cleanup of the corrupt copy */ }
+          return {
+            ok: false, status: 500,
+            error: 'Cross-device copy verification failed (sha256 checksum mismatch) -- the corrupt copy was removed and the source file was left untouched',
+          };
+        }
+      } catch (hashErr) {
+        try { fsImpl.unlinkSync(newPath); } catch (_) { /* best-effort cleanup of the unverifiable copy */ }
+        return {
+          ok: false, status: 500,
+          error: `Could not checksum-verify the cross-device copy (${hashErr.message}) -- the copy was removed and the source file was left untouched`,
         };
       }
     } else {
@@ -6778,6 +6856,264 @@ async function migrateOneOffsIntoChannelFolders(deps, config) {
   return summary;
 }
 
+// v1.41.7 (Dean has NO media backup): the nearest EXISTING ancestor of a
+// (possibly not-yet-created) directory. The real relocation `mkdirSync`s the
+// channel folder, but the DRY-RUN preview must classify the move -- hardlink vs
+// cross-filesystem copy -- WITHOUT creating anything. A directory-to-be always
+// lands on the same filesystem as the existing parent it will be created under,
+// so stat that. Confined destinations always sit under an existing download
+// root, so this terminates well before the filesystem root; the bounded loop is
+// pure belt-and-braces.
+function nearestExistingDir(dir, fsImpl) {
+  let current = path.resolve(dir);
+  for (let i = 0; i < 128; i++) {
+    if (fsImpl.existsSync(current)) return current;
+    const parent = path.dirname(current);
+    if (parent === current) return current; // filesystem root -- stop
+    current = parent;
+  }
+  return current;
+}
+
+// v1.41.7 (Dean has NO media backup): a BEST-EFFORT PREDICTION of whether the
+// real move will be a same-filesystem HARD LINK (linkSync -- no bytes copied,
+// same inode) or a cross-filesystem COPY (bytes duplicated, source deleted after
+// a checksum match). Determined WITHOUT moving anything: `st.dev` is the
+// filesystem device id, and a hard link can only span files on the same device
+// -- so equal `dev` PREDICTS `linkSync` will succeed, unequal PREDICTS the EXDEV
+// copy path. The destination DIR may not exist yet (the real move creates it), so
+// compare against the nearest existing ancestor.
+//
+// This is a PREDICTION, not a guarantee (gate fix, HONESTY 2, adversarial): a
+// mount boundary between the nearest existing ancestor and the to-be-created leaf
+// (autofs/automount, a nested mount) can make an ancestor stat same-device while
+// the created leaf is cross-device; and a same-dev filesystem that does not
+// support hard links (some FUSE/SMB) makes `linkSync` throw. Neither endangers a
+// file -- the executor's copy path is the checksum-verified one, and a link that
+// hard-fails leaves the source intact -- but the hardlink/copy split is FALSE
+// CONFIDENCE about METHOD/COST if read as certain. The preview modal discloses
+// this explicitly; the guarantee Dean relies on is the checksum, not this label.
+// Returns `'unknown'` (never a guess) when either side can't be stat'd.
+function classifyTransfer(sourcePath, destinationDir, fsImpl) {
+  try {
+    const srcDev = fsImpl.statSync(sourcePath).dev;
+    const destDev = fsImpl.statSync(nearestExistingDir(destinationDir, fsImpl)).dev;
+    const sameDevice = srcDev === destDev;
+    return { transfer: sameDevice ? 'hardlink' : 'copy', sameDevice };
+  } catch {
+    return { transfer: 'unknown', sameDevice: null };
+  }
+}
+
+// v1.41.7 (Dean has NO media backup -- and wants the preview honest about what a
+// reheat touches AND IN WHAT WAY): a reheat does TWO things per item -- (1)
+// hydrate/refresh channel metadata (no file touch), and (2) maybe relocate the
+// file. This classifies the METADATA half from PERSISTED STATE ONLY -- never a
+// network call, never an ffprobe:
+//   - 'up-to-date'  -- the item already carries the reheat marker
+//     (`metadataRepulledAt`), so a NON-force reheat SKIPS its metadata pass
+//     entirely (see `runRepullMetadataBatch`'s `if (item.alreadyRepulled &&
+//     !force)` branch). No metadata will change. This is exactly the
+//     `!!item.metadataRepulledAt` predicate `enumerateRepullableItems` uses for
+//     its `alreadyRepulled` flag -- so the preview and the executor cannot drift.
+//   - 'may-refresh' -- no marker yet, so the reheat WILL attempt a metadata pass.
+//     Whether it actually changes anything depends on the network/ffprobe result,
+//     which we deliberately do NOT fetch -- so we say "may be refreshed", never
+//     assert it will. (Never overstate: Dean's rule.)
+// Kept as its own tiny exported helper so BOTH `planImportRelocation` and the
+// preview builder read the metadata effect from the SAME place.
+function classifyMetadataEffect(item) {
+  return (item && item.metadataRepulledAt) ? 'up-to-date' : 'may-refresh';
+}
+
+// ---- v1.41.7 (Dean has NO media backup): the SHARED relocation DECISION -------
+//
+// THE ANTI-DRIFT SEAM. Dean is about to run a bulk, irreversible file op on
+// irreplaceable files with no backup, and he needs a "Preview changes" button
+// that shows EXACTLY what a Reheat will do before it does it. A preview that
+// computed eligibility with its OWN copy of the rules could quietly disagree
+// with the executor -- and a preview that lies about which files move is worse
+// than no preview at all. So the move/skip decision lives in ONE pure function,
+// and BOTH the executor (`relocateHydratedImportIntoChannelFolder`) and the
+// preview (`buildImportRelocationPreview`) call it. There is no second copy of
+// "would it move?" anywhere.
+//
+// PURE + READ-ONLY: this reads `db` and the filesystem (existsSync/statSync)
+// but MUTATES NOTHING -- no updateDatabase, no fs write, no spawn, no network.
+// That is what makes it safe for the preview to call over the whole library.
+// (The one opportunistic WRITE the old executor did -- backfilling a
+// subscription's channelId -- has moved OUT to the executor's move branch, so
+// the shared decision is write-free.)
+//
+// Every clause below is the SAME clause the v1.41.6 executor had, in the same
+// order, with the same reason strings (the executor now maps this function's
+// result straight onto its `{status, reason}` contract). See the executor's own
+// header, still below, for WHY each clause exists -- this is the load-bearing
+// "moves user files" logic and its comments are the record of a gate that took
+// three rounds and caught a bug that destroyed files.
+//
+// Returns one of:
+//   { action: 'move', reason: 'ok', ...destination + transfer classification }
+//   { action: 'skip', reason: <one of the executor's skip reasons> }
+//   { action: 'skip', reason: 'channel-dir-unresolvable', status: 'failed', failReason }
+//     -- the ONE non-move outcome the executor reports as a hard FAILURE rather
+//     than a skip (a misconfigured/unconfinable download root, not "not a
+//     candidate").
+//
+// PERF (v1.41.7 gate fix, QA WARNING 1): `dbSnapshot` is an OPTIONAL, already-
+// loaded `db` the caller hands in so a whole-library preview does NOT pay one
+// full synchronous `loadDatabase()` (readFileSync + JSON.parse of the entire
+// file) PER ITEM -- an O(N x dbSize) event-loop freeze the gate measured at ~11 s
+// on a 2000-item library, exactly Dean's large-MeTube-library use case. The
+// preview loads the db ONCE and threads it here; the EXECUTOR passes nothing and
+// keeps its fresh per-item read (it needs to observe a mid-batch settings flip).
+// This does NOT weaken anti-drift: only the db SOURCE differs, never the decision
+// logic -- and a point-in-time snapshot is exactly right for a point-in-time
+// preview.
+function planImportRelocation(deps, config, mediaId, dbSnapshot) {
+  const d = deps || {};
+  const loadDb = d.loadDatabase;
+  const updateDb = d.updateDatabase;
+  const fsImpl = d.fs || fs;
+
+  if (typeof loadDb !== 'function' || typeof updateDb !== 'function') {
+    return { action: 'skip', reason: 'no-deps', mediaId };
+  }
+  // Disabled-module no-op (mirrors every other yt-dlp entry point's gate).
+  if (!ytdlp.isEnabled(config)) return { action: 'skip', reason: 'module-disabled', mediaId };
+  const downloadRoots = ytdlp.extraScanRoots(config);
+  if (downloadRoots.length === 0) return { action: 'skip', reason: 'no-download-root', mediaId };
+
+  // Use the caller's snapshot when supplied (the preview's O(1) read); otherwise
+  // load fresh (the executor's per-item read).
+  const db = dbSnapshot || loadDb();
+
+  // The operator's opt-out (ON by default -- see DEFAULT_SETTINGS). Read from
+  // the FRESH db so flipping it off mid-batch stops the very next item.
+  if (db.settings && db.settings.relocateHydratedImports === false) {
+    return { action: 'skip', reason: 'setting-off', mediaId };
+  }
+
+  const item = db.metadata && db.metadata[mediaId];
+  if (!item || typeof item.filePath !== 'string' || item.filePath === '') {
+    return { action: 'skip', reason: 'item-gone', mediaId };
+  }
+
+  // A human-readable label for the preview (never a full server path in the
+  // move-decision itself; the preview renders currentPath separately). Falls
+  // back to the basename.
+  const title = (typeof item.title === 'string' && item.title.trim() !== '')
+    ? item.title.trim()
+    : path.basename(item.filePath);
+  const currentPath = item.filePath;
+  // v1.41.7: the METADATA half of the reheat's effect on this item (see
+  // `classifyMetadataEffect`) -- threaded through the SAME decision so the
+  // preview's "what would be touched, and in what way" can never drift from what
+  // the executor's batch does.
+  const metadataEffect = classifyMetadataEffect(item);
+  const skipWithItem = (reason, extra) => ({ action: 'skip', reason, mediaId, title, currentPath, metadataEffect, ...(extra || {}) });
+
+  // Already home: a native download, or an import a previous reheat relocated.
+  if (matchRootFolder(item.filePath, downloadRoots)) {
+    return skipWithItem('already-in-download-root');
+  }
+
+  // Identity, re-validated at the write boundary (db.json is a file anything
+  // could have touched, and this decision moves a file). No YouTube identity =>
+  // never moved: this is the clause that keeps genuine local media untouched.
+  const channelName = typeof item.channelName === 'string' ? item.channelName.trim() : '';
+  const youtubeId = isSafeVideoId(item.youtubeId) ? item.youtubeId : null;
+  const channelUrlCheck = validateChannelUrl(item.channelUrl);
+  if (!channelUrlCheck.ok || channelName === '' || !youtubeId) {
+    return skipWithItem('no-youtube-identity');
+  }
+
+  // The file itself must still be there.
+  if (!fsImpl.existsSync(item.filePath)) return skipWithItem('file-missing');
+
+  // DON'T MOVE WHAT SOMEONE IS WATCHING (the id is a hash of the PATH; a move
+  // re-keys it out from under a mid-playback client).
+  if (activeProtectedPaths(Date.now()).has(item.filePath)) {
+    return skipWithItem('recently-watched');
+  }
+
+  // DON'T MOVE WHAT FFMPEG IS WORKING ON (a queued/running transcode/audio job
+  // pins the old path; a move strands it).
+  if (isMediaJobInFlight(item)) {
+    return skipWithItem('transcode-or-audio-job-in-flight');
+  }
+
+  const channelForJoin = {
+    channelUrl: channelUrlCheck.url,
+    channelHandleUrl: item.channelHandleUrl,
+    channelId: item.channelId,
+    channelName,
+  };
+
+  // When even the both-URL-forms + id join can't decide, don't guess -- a
+  // skipped file is recoverable, a split library is not.
+  if (ytdlp.hasAmbiguousChannelSubscription(db, channelForJoin)) {
+    return skipWithItem('ambiguous-subscription');
+  }
+
+  let targetDir;
+  try {
+    targetDir = ytdlp.resolveChannelDirForChannel(db, config, channelForJoin);
+  } catch (err) {
+    // The executor treats this as a hard FAILURE, not a skip.
+    return {
+      action: 'skip', reason: 'channel-dir-unresolvable', status: 'failed',
+      failReason: `channel-dir: ${err && err.message}`, mediaId, title, currentPath, metadataEffect,
+    };
+  }
+
+  // Destination NAME: the native yt-dlp shape, then VERIFY the bracket reads
+  // back as this exact id (never assume) -- a mismatch is a skip.
+  const ext = path.extname(item.filePath);
+  const relocationTitle = resolveRelocationTitle(item);
+  const newBaseName = `${relocationTitle} [${youtubeId}]${ext}`;
+  if (extractYtdlpVideoId(path.basename(newBaseName, ext)) !== youtubeId) {
+    return skipWithItem('id-not-bracket-shaped');
+  }
+
+  const destinationPath = path.join(targetDir, newBaseName);
+
+  // Destination occupied: the channel folder already holds this exact file (the
+  // same video downloaded natively). A SKIP, never a clobber -- the executor
+  // reaches the same outcome via `moveItemToFolder`'s 409, but surfacing it here
+  // lets the preview show it up front (and lets the executor short-circuit).
+  if (fsImpl.existsSync(destinationPath)) {
+    return skipWithItem('destination-occupied');
+  }
+
+  // How the real move will transfer the bytes -- THE fact Dean needs to judge
+  // safety. Computed without moving anything (see `classifyTransfer`).
+  let sizeBytes = null;
+  try { sizeBytes = fsImpl.statSync(item.filePath).size; } catch { sizeBytes = null; }
+  const { transfer, sameDevice } = classifyTransfer(item.filePath, targetDir, fsImpl);
+
+  return {
+    action: 'move',
+    reason: 'ok',
+    mediaId,
+    title,
+    currentPath,
+    metadataEffect,
+    destinationDir: targetDir,
+    destinationPath,
+    newBaseName,
+    youtubeId,
+    // Carried so the executor can do its opportunistic channelId backfill
+    // WITHOUT re-deriving them (keeps the write out of this pure function).
+    channelUrlValidated: channelUrlCheck.url,
+    channelHandleUrl: item.channelHandleUrl,
+    channelId: item.channelId,
+    transfer,
+    sameDevice,
+    sizeBytes,
+  };
+}
+
 // ---- v1.41.6 (Dean): relocate a HYDRATED IMPORT into its channel folder ----
 //
 // The other half of v1.41.5. That release taught the reheat to hydrate a
@@ -6859,165 +7195,44 @@ async function relocateHydratedImportIntoChannelFolder(deps, config, mediaId) {
   const d = deps || {};
   const loadDb = d.loadDatabase;
   const updateDb = d.updateDatabase;
-  if (typeof loadDb !== 'function' || typeof updateDb !== 'function') {
-    return { status: 'skipped', reason: 'no-deps' };
+
+  // v1.41.7: the move/skip DECISION now lives in ONE shared, pure function
+  // (`planImportRelocation`, above) that the "Preview changes" button calls too
+  // -- so the preview can never lie about what a Reheat will actually do. Every
+  // eligibility clause the v1.41.6 executor carried inline is now in there, in
+  // the same order, with the same reason strings; the executor simply maps the
+  // plan's result onto its `{status, reason}` contract and, for a `move`, does
+  // the WRITES (the channelId backfill + `moveItemToFolder` + archive append)
+  // that the pure decision deliberately does not.
+  const plan = planImportRelocation(deps, config, mediaId);
+  if (plan.action !== 'move') {
+    // `channel-dir-unresolvable` is the ONE non-move outcome that is a hard
+    // FAILURE (an unconfinable/misconfigured download root), not a skip -- the
+    // plan flags it with `status: 'failed'`. Everything else is an honest skip
+    // whose reason string is unchanged from v1.41.6.
+    if (plan.status === 'failed') {
+      return { status: 'failed', reason: plan.failReason || plan.reason };
+    }
+    return { status: 'skipped', reason: plan.reason };
   }
 
-  // Disabled-module no-op (mirrors every other yt-dlp entry point's gate).
-  if (!ytdlp.isEnabled(config)) return { status: 'skipped', reason: 'module-disabled' };
-  const downloadRoots = ytdlp.extraScanRoots(config);
-  if (downloadRoots.length === 0) return { status: 'skipped', reason: 'no-download-root' };
-
-  const db = loadDb();
-
-  // The operator's opt-out (ON by default -- see DEFAULT_SETTINGS). Checked
-  // per item, from the FRESH db, so flipping it off mid-batch stops the very
-  // next item rather than only taking effect on the next reheat.
-  if (db.settings && db.settings.relocateHydratedImports === false) {
-    return { status: 'skipped', reason: 'setting-off' };
-  }
-
-  const item = db.metadata && db.metadata[mediaId];
-  if (!item || typeof item.filePath !== 'string' || item.filePath === '') {
-    return { status: 'skipped', reason: 'item-gone' }; // vanished mid-batch -- a safe no-op, like recordRepulledItemMeta's own
-  }
-
-  // Already home: a native download, or an import a previous reheat already
-  // relocated. The idempotency clause -- NOT counted as a move.
-  if (matchRootFolder(item.filePath, downloadRoots)) {
-    return { status: 'skipped', reason: 'already-in-download-root' };
-  }
-
-  // Identity, re-validated at the write boundary (defense in depth: these
-  // fields crossed `store.sanitizeCapturedChannelMeta` when they were written,
-  // but db.json is a file on disk that anything could have touched, and this
-  // decision moves a file).
-  const channelName = typeof item.channelName === 'string' ? item.channelName.trim() : '';
-  const youtubeId = isSafeVideoId(item.youtubeId) ? item.youtubeId : null;
-  const channelUrlCheck = validateChannelUrl(item.channelUrl);
-  if (!channelUrlCheck.ok || channelName === '' || !youtubeId) {
-    // The ordinary, expected outcome for most of the library: a home video, a
-    // ripped CD, a movie -- or an import whose hydration did not (yet) yield a
-    // full identity. Never moved.
-    return { status: 'skipped', reason: 'no-youtube-identity' };
-  }
-
-  // The file itself must still be there. (`moveItemToFolder` would report the
-  // ENOENT honestly anyway; checking first keeps a vanished file out of the
-  // FAILED bucket, where it would read as "the relocation is broken".)
-  if (!fs.existsSync(item.filePath)) {
-    return { status: 'skipped', reason: 'file-missing' };
-  }
-
-  // v1.41.6 gate fix (WARNING, both seats): DON'T MOVE WHAT SOMEONE IS WATCHING.
-  // The media id is a hash of the PATH, so a move re-keys the item -- but the
-  // CLIENT that is mid-playback goes on using the OLD id for the rest of that
-  // session: every subsequent progress ping is written against an id that no
-  // longer exists (dropped on flush), and a seek re-requests `GET /video/<oldId>`
-  // and 404s while audio keeps playing from the already-open fd. Nothing the
-  // server can do to its own maps fixes the client's copy of the id. So the file
-  // simply is not moved while it is hot: `activeProtectedPaths` is the SAME
-  // live-watch protection set the transcode-cache eviction already refuses to
-  // delete inside (RECENT_STREAM_MS = 10 minutes). The next reheat picks it up.
-  if (activeProtectedPaths(Date.now()).has(item.filePath)) {
-    return { status: 'skipped', reason: 'recently-watched' };
-  }
-
-  // v1.41.6 gate fix (adversarial WARNING): DON'T MOVE WHAT FFMPEG IS WORKING ON.
-  // A queued/running transcode or audio-extract job holds `{id: oldId, srcPath:
-  // oldPath}`. After a move, `processTranscodeQueue` finds `srcPath` gone and
-  // SILENTLY DROPS the job without clearing the status -- while the re-keyed item
-  // carries `transcodeStatus: 'pending'|'processing'` onto its new id, which
-  // `reconcileTranscode` deliberately leaves alone (an in-flight job is not the
-  // scan's to touch). The item would sit NON-PLAYABLE until the process
-  // restarted; a 'processing' job would also finish into an orphan sidecar under
-  // the dead id. Refuse the move; the job completes, and the next reheat relocates
-  // an item that is quietly at rest.
-  if (isMediaJobInFlight(item)) {
-    return { status: 'skipped', reason: 'transcode-or-audio-job-in-flight' };
-  }
-
-  // Destination folder. `ytdlp.resolveChannelDirForChannel` returns the SAME
-  // `resolveChannelDir(config, sub)` folder a subscription's own downloads use
-  // WHEN THIS CHANNEL IS SUBSCRIBED -- byte-identical, never a parallel folder (a
-  // subscription's folder folds `sub.name`, usually the @handle, while
-  // `channelName` is yt-dlp's real display name; filing by the latter would give
-  // one channel two sidebar folders forever, permanently, since eligibility
-  // clause 3 means the files are never moved again).
-  //
-  // The item's `channelHandleUrl` is threaded through DELIBERATELY (gate fix,
-  // CRITICAL, both seats): `addSubscription` NEVER writes a `channelId` -- it is
-  // only backfilled by a successful poll/probe -- so a sub added by @handle that
-  // has not polled yet (just added, manual interval, breaker open, network down)
-  // has no id to match on, and its `/@RickAstley` URL does not string-equal the
-  // `/channel/UC...` form the item carries. Without the handle form in hand the
-  // matcher misses and the library splits. `resolveItemChannelAvatarUrl` already
-  // joins on both forms; this is now the same join.
-  const channelForJoin = {
-    channelUrl: channelUrlCheck.url,
-    channelHandleUrl: item.channelHandleUrl,
-    channelId: item.channelId,
-    channelName,
-  };
-
-  // ...and when even THAT join cannot decide -- a subscription exists that
-  // carries neither a channelId nor a URL in a form we can compare against
-  // anything this item knows -- we do not guess. A skipped file is recoverable
-  // (the next reheat, after that subscription's first poll backfills its
-  // channelId, files it correctly); a split library is not. Fail towards doing
-  // nothing.
-  if (ytdlp.hasAmbiguousChannelSubscription(db, channelForJoin)) {
-    return { status: 'skipped', reason: 'ambiguous-subscription' };
-  }
-
-  let targetDir;
-  try {
-    targetDir = ytdlp.resolveChannelDirForChannel(db, config, channelForJoin);
-  } catch (err) {
-    return { status: 'failed', reason: `channel-dir: ${err && err.message}` };
-  }
+  const { destinationDir: targetDir, newBaseName, youtubeId } = plan;
 
   // Belt-and-braces on the SAME class: if this channel IS subscribed and we now
   // hold a validated channelId the subscription lacks, record it. That both makes
-  // every FUTURE join (avatars, folder matching, this function) exact, and means
+  // every FUTURE join (avatars, folder matching, the plan above) exact, and means
   // the miss can only ever happen once per subscription. Never throws; a failure
-  // here is irrelevant to the move (the folder is already resolved above).
+  // here is irrelevant to the move (the folder is already resolved). This is the
+  // one WRITE the pure decision could not do -- it lives here, on the move path.
   try {
-    if (typeof item.channelId === 'string' && item.channelId !== '') {
+    if (typeof plan.channelId === 'string' && plan.channelId !== '') {
       await ytdlp.backfillSubscriptionChannelIdForChannel(
         { loadDatabase: loadDb, updateDatabase: updateDb },
-        { channelUrl: channelUrlCheck.url, channelHandleUrl: item.channelHandleUrl, channelId: item.channelId },
+        { channelUrl: plan.channelUrlValidated, channelHandleUrl: plan.channelHandleUrl, channelId: plan.channelId },
       );
     }
   } catch (err) {
     console.error('Relocate: could not backfill the subscription channelId (continuing):', err && err.message);
-  }
-
-  // Destination NAME: the native yt-dlp shape (`args.OUTPUT_TEMPLATE` is
-  // `%(title)s [%(id)s].%(ext)s`). This is what makes the relocated import
-  // indistinguishable from a download to every downstream reader -- above all
-  // `deriveScanYoutubeId`/`extractYtdlpVideoId`, which re-derive the video id
-  // from the bracket for any file under the download root, so the item keeps
-  // its YouTube identity even if `db.metadata` is ever rebuilt from scratch.
-  const ext = path.extname(item.filePath); // preserved verbatim -- we transcode nothing here
-  const title = resolveRelocationTitle(item);
-  const newBaseName = `${title} [${youtubeId}]${ext}`;
-
-  // VERIFY WHAT WAS ACTUALLY BUILT, never assume (SF4's discipline, applied to
-  // the name): does the bracket we just wrote actually read back as this video's
-  // id? `isSafeVideoId` is a charset/length gate (1-64 chars, the repo-wide
-  // `?v=` param rule) while `extractYtdlpVideoId` -- the reader on the other
-  // side, and the one the SCAN uses -- only recognizes the EXACT 11-character
-  // YouTube shape. Every real YouTube id is 11 chars, so the two agree in
-  // practice; but an id that passed the write-side gate without matching the
-  // read-side shape would produce a file whose bracket is decorative: the whole
-  // point of the native filename ("a future scan re-derives the id from the
-  // name") would be silently lost. Rather than hardcode `11` here (a second,
-  // driftable copy of the bracket contract), the check ASKS the reader. A
-  // mismatch is a skip: the item stays where it is, fully functional, with its
-  // persisted `youtubeId` intact.
-  if (extractYtdlpVideoId(path.basename(newBaseName, ext)) !== youtubeId) {
-    return { status: 'skipped', reason: 'id-not-bracket-shaped' };
   }
 
   const result = await moveItemToFolder(deps, mediaId, targetDir, { newBaseName });
@@ -7049,8 +7264,180 @@ async function relocateHydratedImportIntoChannelFolder(deps, config, mediaId) {
     console.warn(`Relocate: ${result.newPath} is NOT recorded in .ytdlp-archive.txt -- a subscription poll of this channel may re-download it.`);
   }
 
-  console.log(`Relocate: hydrated import moved into its channel folder: ${item.filePath} -> ${result.newPath}`);
+  console.log(`Relocate: hydrated import moved into its channel folder: ${plan.currentPath} -> ${result.newPath}`);
   return { status: 'moved', reason: 'ok', newId: result.newId, newPath: result.newPath, archived };
+}
+
+// ---- v1.41.7 (Dean has NO media backup): the DRY-RUN preview -----------------
+//
+// The headline of this release. Dean cannot back up his media, so before he runs
+// a bulk, irreversible relocation he needs to SEE exactly what it will do -- and
+// (Dean's explicit ask) WHAT WOULD BE TOUCHED AND IN WHAT WAY. This drives EVERY
+// db item through the SAME `planImportRelocation` predicate the executor uses --
+// so the preview is a true dry run, not a parallel guess.
+//
+// A reheat does TWO things per item: (1) hydrate/refresh channel metadata (no
+// file touch), and (2) maybe relocate the file. So each item is classified into
+// ONE of five honest categories:
+//
+//   1. 'move-hardlink'   -- file HARD-LINKED into the channel folder (no bytes
+//                           copied, same inode, inherently safe).
+//   2. 'move-copy'       -- file COPIED across filesystems (bytes duplicated,
+//                           original deleted after a sha256 match). THE warning
+//                           category.
+//   3. 'metadata-only'   -- the FILE STAYS PUT (already under a download root,
+//                           ambiguous subscription we deliberately won't guess,
+//                           in-flight transcode, recently watched, destination
+//                           occupied, relocation toggled off, ...), but a reheat
+//                           may still refresh its channel metadata. File NOT
+//                           touched.
+//   4. 'untouched'       -- no YouTube identity in the database: the FILE is not
+//                           moved, and nothing here points to YouTube. But this
+//                           is NOT "nothing happens": a reheat still runs a local,
+//                           network-free ffprobe over such a file and can recompute
+//                           `hasSubtitles`/embedded date. So a NEVER-reheated one
+//                           carries `metadataEffect: 'may-refresh'` and BOTH the
+//                           row and the summary say so out loud (gate fix, HONESTY
+//                           1). An already-reheated one is skipped whole by a
+//                           non-force reheat, so it is genuinely untouched.
+//   5. 'would-hydrate-first' -- has a video id but no full channel identity yet:
+//                           a real reheat would hydrate it FIRST (a network
+//                           pass), and only then could a destination be computed.
+//                           We never fetch, so the destination is honestly
+//                           "unknown until then".
+//
+// The METADATA half (`metadataEffect`: 'up-to-date' | 'may-refresh') comes from
+// the SAME `classifyMetadataEffect` predicate `enumerateRepullableItems` gates on
+// -- so the preview cannot overstate or drift from what the executor's batch
+// actually does.
+//
+// STRUCTURALLY INCAPABLE OF WRITING: it calls `deps.loadDatabase()` and
+// `planImportRelocation` (both read-only) and NOTHING ELSE. No `updateDatabase`,
+// no filesystem mutation, no `runExclusive`, no yt-dlp/ffmpeg spawn, no network.
+//
+// @param {{loadDatabase: Function, updateDatabase: Function, getMediaId: Function, fs?: object}} deps
+// @param {object} config a parsed yt-dlp config
+// @returns {{moves: Array, skips: Array, summary: object}}
+function buildImportRelocationPreview(deps, config) {
+  const d = deps || {};
+  const loadDb = d.loadDatabase;
+  const moves = [];
+  const skips = [];
+  let hardlinkCount = 0;
+  let copyCount = 0;
+  let unknownCount = 0;
+  let copyBytes = 0;
+  let hardlinkBytes = 0;
+  let metadataOnlyCount = 0;
+  let wouldHydrateCount = 0;
+  let untouchedCount = 0;
+  // v1.41.7 gate fix (HONESTY 1, both seats): of the 'untouched' items, how many
+  // would still have a local, network-free ffprobe tag check run over them by a
+  // reheat (never-reheated ones). Kept separate so the summary can be honest --
+  // "not touched" overstates for a file whose `hasSubtitles`/embedded date a
+  // reheat CAN still recompute.
+  let untouchedMayRefreshCount = 0;
+
+  // v1.41.7 gate fix (QA WARNING 1 -- the perf blocker): load the db ONCE and
+  // thread it into every per-item decision, instead of `planImportRelocation`
+  // re-reading (readFileSync + full JSON.parse) once PER ITEM. A point-in-time
+  // snapshot is exactly right for a point-in-time preview.
+  const db = (typeof loadDb === 'function') ? loadDb() : {};
+  const metadata = (db && db.metadata) || {};
+  const ids = Object.keys(metadata);
+
+  for (const mediaId of ids) {
+    // ONE shared decision -- identical to what the executor would decide for this
+    // item right now. No fetch, no ffprobe: purely persisted db state + read-only
+    // fs stats. The already-loaded `db` snapshot is threaded in (perf: no per-item
+    // reload) -- the decision LOGIC is byte-identical to the executor's, only the
+    // db source differs.
+    const plan = planImportRelocation(deps, config, mediaId, db);
+    const item = metadata[mediaId];
+    // The metadata half -- the SAME predicate the batch gates on (see
+    // `classifyMetadataEffect`). Preferred off the plan (item-bearing paths),
+    // else computed from the item directly for the rare global-skip paths
+    // (module-disabled / no-download-root / setting-off / item-gone) -- the SAME
+    // function either way, never a separate reimplementation.
+    const metadataEffect = plan.metadataEffect || classifyMetadataEffect(item);
+
+    if (plan.action === 'move') {
+      const bytes = Number.isFinite(plan.sizeBytes) ? plan.sizeBytes : 0;
+      const category = plan.transfer === 'hardlink' ? 'move-hardlink'
+        : (plan.transfer === 'copy' ? 'move-copy' : 'move-unknown');
+      moves.push({
+        mediaId,
+        title: plan.title,
+        currentPath: plan.currentPath,
+        destinationPath: plan.destinationPath,
+        transfer: plan.transfer, // 'hardlink' | 'copy' | 'unknown'
+        sizeBytes: plan.sizeBytes,
+        category,
+        metadataEffect,
+      });
+      if (plan.transfer === 'hardlink') { hardlinkCount += 1; hardlinkBytes += bytes; }
+      else if (plan.transfer === 'copy') { copyCount += 1; copyBytes += bytes; }
+      else { unknownCount += 1; }
+      continue;
+    }
+
+    // A NON-move. The relocation DECISION is entirely the plan's; the preview
+    // layer only assigns the plain-language CATEGORY (Dean's "in what way") and a
+    // friendlier reason label. Three cases:
+    //   - 'no-youtube-identity' WITH a derivable youtubeId -> would-hydrate-first
+    //     (not yet hydrated; destination unknown until a real reheat probes it);
+    //   - 'no-youtube-identity' WITHOUT one -> untouched (genuine local media);
+    //   - any other skip reason -> metadata-only (the file stays put for a benign
+    //     reason, but the reheat may still refresh channel metadata).
+    let reason = plan.reason;
+    let category;
+    if (plan.reason === 'no-youtube-identity') {
+      if (item && isSafeVideoId(item.youtubeId)) {
+        reason = 'would-hydrate-first';
+        category = 'would-hydrate-first';
+        wouldHydrateCount += 1;
+      } else {
+        category = 'untouched';
+        untouchedCount += 1;
+        // Honest bookkeeping: a never-reheated file still gets a local tag check.
+        if (metadataEffect === 'may-refresh') untouchedMayRefreshCount += 1;
+      }
+    } else {
+      category = 'metadata-only';
+      metadataOnlyCount += 1;
+    }
+
+    skips.push({
+      mediaId,
+      title: plan.title || (item && typeof item.title === 'string' && item.title) ||
+        (item && typeof item.filePath === 'string' ? path.basename(item.filePath) : ''),
+      currentPath: plan.currentPath || (item && item.filePath) || '',
+      reason,
+      category,
+      metadataEffect,
+    });
+  }
+
+  return {
+    moves,
+    skips,
+    summary: {
+      totalItems: ids.length,
+      moveCount: moves.length,
+      skipCount: skips.length,
+      hardlinkCount,
+      copyCount,
+      unknownCount,
+      copyBytes,
+      hardlinkBytes,
+      // v1.41.7: the metadata/effect taxonomy counts (Dean's "what would be
+      // touched, and in what way").
+      metadataOnlyCount,
+      wouldHydrateCount,
+      untouchedCount,
+      untouchedMayRefreshCount,
+    },
+  };
 }
 
 // v1.41.6 gate fix (adversarial WARNING): is ffmpeg queued on, or actively
@@ -8206,6 +8593,12 @@ ytdlp.registerRoutes(app, {
   // (the same circular-require-avoiding bridge `recordRepulledItemMeta` uses).
   // The batch calls it per item, AFTER that item's hydration has persisted.
   relocateHydratedImport: relocateHydratedImportIntoChannelFolder,
+  // v1.41.7 (Dean has NO media backup): the DRY-RUN preview seam. server.js owns
+  // the shared `planImportRelocation` decision + `db.settings`, so the yt-dlp
+  // module's `POST /api/ytdlp/repull-metadata/preview` route gets this deps-
+  // injected like every other server-owned primitive. It is READ-ONLY -- it
+  // never writes db.json, moves a file, or spawns anything.
+  previewImportRelocations: buildImportRelocationPreview,
   // v1.33 T1: the reheat batch's LOCAL tags probe (cheap ffprobe, no
   // network) -- server.js owns ffmpeg/ffprobe, so the yt-dlp module gets it
   // deps-injected like every other server-owned primitive above.
@@ -8410,6 +8803,18 @@ module.exports = {
   // builds the destination name with -- exported for direct test coverage, the
   // same posture as `moveItemToFolder`/`migrateOneOffsIntoChannelFolders` above.
   relocateHydratedImportIntoChannelFolder,
+  // v1.41.7 (Dean has NO media backup): the shared move/skip DECISION
+  // (`planImportRelocation` -- the ONE predicate both the executor above and the
+  // preview below call, so a preview can never drift from the real op), the
+  // DRY-RUN preview builder over the whole library, the hardlink-vs-copy
+  // classifier, and the streaming checksum used to verify a cross-filesystem
+  // copy before the source is deleted. Exported for direct test coverage, same
+  // posture as `moveItemToFolder`/`relocateHydratedImportIntoChannelFolder`.
+  planImportRelocation,
+  buildImportRelocationPreview,
+  classifyTransfer,
+  classifyMetadataEffect,
+  hashFileStreaming,
   resolveRelocationTitle,
   cleanDisplayTitle,
   extractYtdlpVideoId,

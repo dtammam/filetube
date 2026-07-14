@@ -58,6 +58,12 @@ test('A5/B1: every slash-prefixed "/repull" string literal across the T6-owned f
     // comments.
     "'/api/ytdlp/repull-metadata'", "'/api/ytdlp/repull-metadata/cancel'",
     '`POST /api/ytdlp/repull-metadata`', '`/api/ytdlp/repull-metadata`', '`/api/ytdlp/repull-metadata/cancel`',
+    // v1.41.7 (Dean has NO media backup): the DRY-RUN relocation preview route
+    // -- a legitimately-added, read-only endpoint the "Preview changes" button
+    // calls (see test/integration/repull-relocate-preview.test.js +
+    // ytdlp-repull-metadata-endpoint.test.js). Its fetch-call string literal and
+    // its doc-comment markdown-code-span mention.
+    "'/api/ytdlp/repull-metadata/preview'", '`/api/ytdlp/repull-metadata/preview`',
   ]);
   const pattern = /(['"`])[^'"`]*\/repull[^'"`]*\1/g;
   const found = [];
