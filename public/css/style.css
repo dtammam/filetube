@@ -711,7 +711,10 @@ header {
   color: var(--text-primary);
   border: 1px solid var(--border-dark);
   border-radius: var(--radius);
-  padding: 4px 8px;
+  /* v1.41.0 (Dean): match the .btn box (padding + font) of the All/Videos/Audio
+     filter pills next to it so the sort control is the same size, not a taller
+     odd-one-out. (Padding was 4px 8px.) */
+  padding: 6px 12px;
   font-size: var(--fs-sm);
   font-weight: normal;
   cursor: pointer;
@@ -3118,6 +3121,15 @@ a.sub-row-channel-link:focus-visible {
   .comment-input-box,
   .sort-select,
   .folder-name-input {
+    font-size: var(--fs-input-min);
+  }
+
+  /* v1.41.0 (Dean): the .sort-select is bumped to the 16px iOS no-zoom floor
+     above, which otherwise made it a larger odd-one-out next to the
+     All/Videos/Audio filter pills. Match those pills UP to the same size so the
+     whole filter row is uniform on mobile (buttons never trigger focus-zoom, so
+     matching the select DOWN to <16px -- which could -- is deliberately avoided). */
+  .format-toggle-btn {
     font-size: var(--fs-input-min);
   }
 
