@@ -202,6 +202,10 @@ function loadDatabase() {
       // v1.30 C2: liked-item membership (array of media ids) -- the SINGLE
       // source of truth for "liked" state (no separate boolean flag anywhere).
       liked: [],
+      // v1.41.3: deletion tombstones -- { [id]: { filePath, deletedAt } },
+      // written by DELETE /api/videos/:id, consumed by the scan (see the
+      // tombstone block in the scan's per-file loop for the full contract).
+      deleteTombstones: {},
       settings: withDefaultSettings()
     };
     try {
@@ -229,12 +233,14 @@ function loadDatabase() {
     // v1.30 C2: backfill `liked` (array of media ids) for a legacy/partial
     // db.json the same way every other top-level key above is backfilled.
     if (!Array.isArray(db.liked)) db.liked = [];
+    // v1.41.3: backfill `deleteTombstones` like every other top-level key.
+    if (!db.deleteTombstones || typeof db.deleteTombstones !== 'object' || Array.isArray(db.deleteTombstones)) db.deleteTombstones = {};
     db.settings = withDefaultSettings(db.settings); // backfill for older databases
     return db;
   } catch (err) {
     console.error('Error reading db.json, resetting database:', err);
     // Every code path out of loadDatabase must hand back a settings-bearing DB.
-    return { folders: [], folderSettings: {}, progress: {}, metadata: {}, liked: [], settings: withDefaultSettings() };
+    return { folders: [], folderSettings: {}, progress: {}, metadata: {}, liked: [], deleteTombstones: {}, settings: withDefaultSettings() };
   }
 }
 
@@ -1062,6 +1068,67 @@ function cleanDisplayTitle(baseName) {
 function extractYtdlpVideoId(baseName) {
   const m = /^(.*?)[ _]\[([A-Za-z0-9_-]{11})\]$/.exec(baseName);
   return m ? m[2] : null;
+}
+
+// ---- v1.41.3: deletion tombstones (tech-debt #32 + #35a) -------------------
+//
+// "Delete stays gone" has TWO adversaries. v1.36.2's delete-time archive
+// append made deletion authoritative against yt-dlp RE-DOWNLOADS; these
+// tombstones make it authoritative against the SCANNER. The class they
+// close: any delete that reports success while the file survives on disk --
+// the resolver falsely concluding "already gone" on a name that doesn't
+// round-trip (tech-debt #35a: invalid-UTF-8/metube-era names, exotic mount
+// charset mappings), an opt-in removeAnyway on a transient EBUSY (#32), or
+// a TOCTOU between the unlink and the next scan. In every variant the next
+// scan re-discovered the file and resurrected the library entry under the
+// same path-hashed id.
+//
+// Contract: DELETE /api/videos/:id records { filePath, deletedAt } under the
+// item's id in db.deleteTombstones (same mutator that removes the metadata
+// entry). When a scan re-discovers a tombstoned id, it holds the file's TRUE
+// on-disk path (its own readdir produced it -- no stored-name round-trip
+// problem can exist at this point), so:
+//   - file mtime  > deletedAt -> NEWER content at the same path (a deliberate
+//     re-download or a restored copy): drop the tombstone, index normally.
+//   - file mtime <= deletedAt -> the very file the user already deleted:
+//     retry the unlink AT THE SCANNED PATH. Success -> stays gone, tombstone
+//     consumed. Failure -> drop the tombstone and index it honestly (the
+//     file exists and we cannot remove it -- hiding it would be a lie), with
+//     a log line naming the errno.
+// Every scan encounter consumes the tombstone -- each delete buys exactly
+// one deferred retry, so this can never turn into a silent forever-suppress.
+//
+// Tombstones are minted ONLY for UNVERIFIED delete conclusions (resolver
+// `gone`, ENOENT `alreadyGone`, removeAnyway) -- a verified fs.unlinkSync
+// success mints nothing, so a normal delete can never arm a trap for a
+// later mtime-preserving restore (rsync -a/Syncthing/backup tools).
+//
+// Growth bounds: pruned on every write (age + FIFO cap). A lingering
+// tombstone is inert unless a file appears at that exact path with an mtime
+// predating the delete -- which IS the deleted file, so acting on it late
+// is still honoring the user's delete. This INCLUDES the mount-outage case
+// (intended): a vanished parent dir resolves as `gone` -> the delete
+// "succeeds" unverified and mints a tombstone -> when the mount returns,
+// the next scan completes the deletion the user was already told happened.
+// (A parent that is present but UNREADABLE -- EACCES/EPERM -- still 409s
+// without touching the db, unless the caller opts into removeAnyway.)
+const DELETE_TOMBSTONE_CAP = 500;
+const DELETE_TOMBSTONE_MAX_AGE_MS = 90 * 24 * 60 * 60 * 1000; // 90 days
+
+// Pure, in-place prune: drops malformed/expired entries, then FIFO-caps by
+// deletedAt (oldest first). `now` injectable for tests. Exported.
+function pruneDeleteTombstones(tombstones, now = Date.now()) {
+  for (const id of Object.keys(tombstones)) {
+    const t = tombstones[id];
+    if (!t || typeof t.deletedAt !== 'number' || now - t.deletedAt > DELETE_TOMBSTONE_MAX_AGE_MS) {
+      delete tombstones[id];
+    }
+  }
+  const ids = Object.keys(tombstones);
+  if (ids.length > DELETE_TOMBSTONE_CAP) {
+    ids.sort((a, b) => tombstones[a].deletedAt - tombstones[b].deletedAt);
+    for (const id of ids.slice(0, ids.length - DELETE_TOMBSTONE_CAP)) delete tombstones[id];
+  }
 }
 
 // v1.33 T1: scan-time YouTube-id derivation, shared by the new/updated
@@ -2867,9 +2934,59 @@ async function runScanDirectories() {
   // recover, but not writing into the race at all is strictly better).
   const preExtractCandidates = [];
 
+  // v1.41.3 deletion tombstones (see pruneDeleteTombstones' header for the
+  // full contract). Read from the Phase-1 snapshot -- a tombstone minted by
+  // a DELETE that lands mid-scan is the concurrent-delete case HR1b (below)
+  // already covers; ids consumed HERE are removed from the FRESH in-lock db
+  // in the final mutator (never a wholesale replace of the namespace).
+  const deleteTombstones = (db.deleteTombstones && typeof db.deleteTombstones === 'object') ? db.deleteTombstones : {};
+  const consumedTombstoneIds = new Set();
+
   for (const [filePath, info] of scannedFiles.entries()) {
     const id = getMediaId(filePath);
     const isAudio = AUDIO_EXTENSIONS.includes(info.ext);
+
+    // v1.41.3: a re-discovered file whose id was DELETEd. The walk just
+    // enumerated this exact path, so unlinking it here cannot suffer the
+    // stored-name round-trip failures that let the original delete falsely
+    // succeed (tech-debt #35a). mtime NEWER than the delete means new
+    // content the user put back on purpose -- index it and forget the
+    // tombstone. Either way the tombstone is consumed: one delete, one
+    // deferred retry, never a standing suppress-list.
+    const tombstone = deleteTombstones[id];
+    if (tombstone && typeof tombstone.deletedAt === 'number') {
+      consumedTombstoneIds.add(id);
+      dbChanged = true; // the consumption itself must persist
+      const isNewerContent = typeof info.mtimeMs === 'number' && info.mtimeMs > tombstone.deletedAt;
+      if (!isNewerContent) {
+        try {
+          fs.unlinkSync(filePath);
+          console.log(`Scan: removed a deleted file that had survived its delete (deferred retry): ${filePath}`);
+          // Best-effort .vtt subtitle-sidecar sweep, keyed off the SCANNED
+          // basename (the original delete's sweep keyed off the stored
+          // spelling and, in the #35a class, missed them) -- mirrors the
+          // DELETE route's own v1.36.2 sweep; never blocks the scan.
+          try {
+            const dir = path.dirname(filePath);
+            const base = path.basename(filePath, path.extname(filePath));
+            for (const name of fs.readdirSync(dir)) {
+              if (name.startsWith(`${base}.`) && name.endsWith('.vtt')) {
+                try { fs.unlinkSync(path.join(dir, name)); } catch (_) { /* best-effort */ }
+              }
+            }
+          } catch (_) { /* best-effort -- e.g. the dir vanished */ }
+          // Keep /api/scan-status honest for this pass: this file was
+          // processed (its processing was the removal), and the cooperative
+          // yield must not be skipped on a reap-heavy pass.
+          scanState.processed++;
+          await maybeYieldScan(yieldState);
+          continue; // stays gone -- never re-indexed
+        } catch (err) {
+          console.warn(`Scan: deferred delete retry failed (${(err && err.code) || 'unknown'}) -- re-indexing honestly: ${filePath}`);
+          // fall through: the file exists and is undeletable; index it.
+        }
+      }
+    }
 
     // If metadata already exists and file hasn't changed (based on size/mtime), reuse it.
     // FR-1b (v1.18.0) backfill, HOTFIXED in v1.18.1: a VIDEO item is only
@@ -3484,6 +3601,13 @@ async function runScanDirectories() {
           !Object.prototype.hasOwnProperty.call(fresh.metadata, id)) {
         delete newMetadata[id];
       }
+    }
+
+    // v1.41.3: consume the tombstones this scan acted on -- targeted key
+    // deletes against the FRESH map only (a tombstone minted mid-scan by a
+    // concurrent DELETE is not in consumedTombstoneIds and survives intact).
+    if (consumedTombstoneIds.size && fresh.deleteTombstones && typeof fresh.deleteTombstones === 'object') {
+      for (const id of consumedTombstoneIds) delete fresh.deleteTombstones[id];
     }
 
     fresh.metadata = mergeScannedMetadata(fresh.metadata, newMetadata);
@@ -5306,6 +5430,16 @@ app.delete('/api/videos/:id', async (req, res) => {
   // proceed. See docs/exec-plans/active/2026-07-06-v1.13-polish.md item 5.
   const removeAnyway = req.query.removeAnyway === 'true' || req.query.removeAnyway === '1';
   let fileRemainsOnDisk = false;
+  // v1.41.3: true ONLY when this handler itself watched fs.unlinkSync succeed
+  // on the resolved on-disk path. Every OTHER success-reporting conclusion
+  // (resolver `gone`, ENOENT `alreadyGone`, removeAnyway) is UNVERIFIED --
+  // the file may in fact survive -- and mints a deletion tombstone below so
+  // the next scan can finish the job (or honestly re-index). A verified
+  // unlink mints NOTHING: the file is provably gone, and a same-path file
+  // appearing later (even with an old mtime -- rsync -a, Syncthing, a backup
+  // restore all preserve mtimes) is the user putting content BACK, which the
+  // scan must index, never reap.
+  let unlinkVerified = false;
 
   // v1.37.5: resolve the stored path to the REAL on-disk entry (handles an
   // NFC/NFD-variant name that `existsSync(item.filePath)` would miss) BEFORE
@@ -5338,6 +5472,7 @@ app.delete('/api/videos/:id', async (req, res) => {
     // Delete actual file from filesystem
     if (mediaPathOnDisk) {
       fs.unlinkSync(mediaPathOnDisk);
+      unlinkVerified = true;
       if (mediaPathOnDisk !== filePath) {
         console.log(`Deleted file from disk (resolved a Unicode/name variant of the stored path): ${mediaPathOnDisk}`);
       } else {
@@ -5412,7 +5547,9 @@ app.delete('/api/videos/:id', async (req, res) => {
       // failure and explicitly asked to remove the library entry anyway.
       // Best-effort the sidecars too, but a sidecar failure must never block
       // the db cleanup below -- the underlying file is deliberately left on
-      // disk either way, and will be re-indexed on the mount's next rescan.
+      // disk. v1.41.3: the unverified tombstone minted below means the next
+      // scan RETRIES the unlink once (a transient EBUSY usually clears);
+      // only if that retry also fails is the file re-indexed.
       fileRemainsOnDisk = true;
       const thumbPath = path.join(THUMBNAIL_DIR, `${item.id}.jpg`);
       try { if (fs.existsSync(thumbPath)) fs.unlinkSync(thumbPath); } catch (_) { /* best-effort */ }
@@ -5473,6 +5610,24 @@ app.delete('/api/videos/:id', async (req, res) => {
     await updateDatabase(freshDb => {
       delete freshDb.metadata[item.id];
       delete freshDb.progress[item.id];
+      // v1.41.3: mint the deletion tombstone (tech-debt #32/#35a) in the SAME
+      // mutator that removes the entry -- but ONLY for an UNVERIFIED
+      // conclusion (see unlinkVerified's declaration): a false "already gone"
+      // on a non-round-tripping name, or a deliberately-skipped unlink
+      // (removeAnyway on a transient EBUSY). The scan's deferred-retry
+      // contract (pruneDeleteTombstones' header) finishes those deletes. A
+      // VERIFIED unlink mints nothing -- tombstoning it would turn every
+      // normal delete into a 90-day unlink trap for mtime-preserving
+      // restores (adversarial-gate CRITICAL, this release).
+      if (!unlinkVerified) {
+        if (!freshDb.deleteTombstones || typeof freshDb.deleteTombstones !== 'object' || Array.isArray(freshDb.deleteTombstones)) freshDb.deleteTombstones = {};
+        freshDb.deleteTombstones[item.id] = { filePath, deletedAt: Date.now() };
+        pruneDeleteTombstones(freshDb.deleteTombstones);
+      }
+      // tech-debt #5 (v1.30-era): mirror the scan-prune path so a
+      // manually-deleted recently-served video doesn't strand a
+      // persistedServedAt Map entry until id-reuse/restart.
+      clearPersistedServedAt(item.id);
       return true;
     });
   } catch (err) {
@@ -5489,7 +5644,7 @@ app.delete('/api/videos/:id', async (req, res) => {
     return res.json({
       success: true,
       fileRemainsOnDisk: true,
-      message: 'Removed from your library. Note: the file remains on disk -- if this location is still scanned, it may reappear on the next scan.',
+      message: 'Removed from your library. Note: the file itself could not be deleted -- the next library scan will retry the deletion once; if it still cannot be deleted, it will reappear.',
     });
   }
 
@@ -7171,6 +7326,11 @@ module.exports = {
   // v1.37.5: stored-path -> real on-disk entry resolver (NFC/NFD-aware) --
   // exported for unit coverage of the delete-doesn't-delete fix.
   resolveOnDiskPath,
+  // v1.41.3: deletion-tombstone prune (pure, in-place) + its bounds --
+  // exported for unit coverage of the delete-resurrect fix.
+  pruneDeleteTombstones,
+  DELETE_TOMBSTONE_CAP,
+  DELETE_TOMBSTONE_MAX_AGE_MS,
   // v1.37.0 books: scanner + state accessor + cover dir, exported for the
   // books integration tests (same posture as scanDirectories/THUMBNAIL_DIR).
   scanBooks,
