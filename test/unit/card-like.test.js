@@ -47,7 +47,15 @@ test('style.css: .card-like-btn is a bottom-left corner control that turns red w
 test('the corner controls anchor to the thumbnail via .card-media (so bottom:6px reaches the thumbnail, not the card bottom)', () => {
   // v1.40.0 gate fix: overlays live in a thumbnail-height positioning box, not
   // directly on .video-card (whose bottom is below the title/meta/rating).
-  assert.match(css, /\.card-media\s*\{[^}]*position:\s*relative;/, 'expected .card-media { position: relative }');
+  const rule = /\.card-media\s*\{([^}]*)\}/.exec(css);
+  assert.ok(rule, 'expected a .card-media rule');
+  assert.match(rule[1], /position:\s*relative;/, 'expected .card-media { position: relative }');
+  // v1.40.1 regression lock: .card-media MUST be a flex column so
+  // .thumbnail-container stays a flex item -- otherwise its aspect-ratio:16/9
+  // height goes indefinite, .thumbnail-img{height:100%} collapses to auto, and
+  // portrait/Shorts thumbnails render oversized at natural height.
+  assert.match(rule[1], /display:\s*flex;/, 'card-media must be flex so the thumbnail keeps its definite 16:9 height');
+  assert.match(rule[1], /flex-direction:\s*column;/);
   assert.ok(mainSrc.includes('<div class="card-media">'), 'the card wraps the thumbnail + overlays in .card-media');
 });
 

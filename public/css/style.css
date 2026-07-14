@@ -755,9 +755,19 @@ header {
    top edge; a BOTTOM-anchored control (the new Like heart) would otherwise sit
    at the card's bottom, over the title/meta/rating. This box is thumbnail-
    height (the badge/buttons are out of flow), so bottom:6px reaches the
-   thumbnail's bottom-left. */
+   thumbnail's bottom-left.
+   v1.40.1 (regression fix): `display:flex; flex-direction:column` is REQUIRED,
+   not just `position:relative`. `.thumbnail-container`'s `aspect-ratio:16/9`
+   height is only DEFINITE (so its `.thumbnail-img { height:100% }` resolves and
+   crops to 16:9) when the container is a FLEX ITEM -- which it was as a direct
+   child of `.video-card`. A plain block wrapper made that height indefinite, so
+   `height:100%` collapsed to auto and a portrait/Shorts thumbnail rendered at
+   its full natural height (oversized card). Making this wrapper a flex column
+   restores the flex-item context. */
 .card-media {
   position: relative;
+  display: flex;
+  flex-direction: column;
 }
 
 .thumbnail-container {
