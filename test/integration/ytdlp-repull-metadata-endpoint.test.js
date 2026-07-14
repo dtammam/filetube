@@ -1314,3 +1314,223 @@ test('a YouTube-identified import still gets its LOCAL embedded title/date/chapt
     await close();
   }
 });
+
+// ---- v1.41.6: the import-relocation seam (`deps.relocateHydratedImport`) ----
+//
+// The relocation DECISION (eligibility, never touching local media, the
+// settings toggle, confinement, no-clobber, the id re-key) belongs to
+// server.js's `relocateHydratedImportIntoChannelFolder` and is covered against
+// the real filesystem in test/integration/repull-relocate.test.js. What this
+// file owns is the BATCH's contract with that seam: when it is called, on which
+// items, and how its outcome is counted.
+
+test('v1.41.6: the batch calls the relocation seam for each recorded item, AFTER its metadata persisted, and counts `moved` in the activity entry', async () => {
+  const deps = makeFakeDeps({ ytdlp: { subscriptions: [], channelAvatars: {}, downloadMeta: {} } });
+  const item = { mediaId: 'media-import', filePath: '/library/yt/Some Import.mp4', videoId: null, watchUrl: null, alreadyRepulled: false };
+  deps.enumerateRepullableItems = () => ({ items: [item], eligible: 1, ineligible: 0, withSourceId: 0 });
+  deps.probeEmbeddedTags = async () => ({ sourceUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' });
+  run.repullItemMetaAndSubs = async () => ({
+    sourceTitle: 'Never Gonna Give You Up',
+    subsSkipped: true, // outside the download root -- the v1.41.5 structural skip
+    channel: { channelUrl: 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw', channelName: 'Rick Astley' },
+  });
+  run.probeChannelAvatar = async () => null;
+
+  const order = [];
+  deps.recordRepulledItemMeta = async () => { order.push('record'); return true; };
+  const relocCalls = [];
+  deps.relocateHydratedImport = async (d, config, mediaId) => {
+    order.push('relocate');
+    relocCalls.push(mediaId);
+    return { status: 'moved', newId: 'new-id', newPath: '/downloads/Rick Astley/Never Gonna Give You Up [dQw4w9WgXcQ].mp4' };
+  };
+
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    await fetch(`${base}/api/ytdlp/repull-metadata`, { method: 'POST' });
+    await flush(60);
+
+    assert.deepEqual(relocCalls, ['media-import'], 'the seam is called once, with the item\'s CURRENT (pre-move) media id');
+    assert.deepEqual(order, ['record', 'relocate'], 'the file may only move AFTER its hydrated identity has persisted');
+
+    const entry = getReheatEntry();
+    assert.equal(entry.moved, 1, 'a relocation is counted');
+    assert.equal(entry.done, 1, 'and the metadata reheat still counts as done');
+    assert.equal(entry.failed, 0);
+  } finally {
+    await close();
+  }
+});
+
+test('v1.41.6: a FAILED relocation is counted as `moveFailed` -- never as a failed reheat (the metadata pass succeeded) and never wedges the batch', async () => {
+  const deps = makeFakeDeps({ ytdlp: { subscriptions: [], channelAvatars: {}, downloadMeta: {} } });
+  const items = [
+    { mediaId: 'media-a', filePath: '/library/yt/A.mp4', videoId: 'aaaaaaaaaaa', watchUrl: 'https://www.youtube.com/watch?v=aaaaaaaaaaa', alreadyRepulled: false },
+    { mediaId: 'media-b', filePath: '/library/yt/B.mp4', videoId: 'bbbbbbbbbbb', watchUrl: 'https://www.youtube.com/watch?v=bbbbbbbbbbb', alreadyRepulled: false },
+  ];
+  deps.enumerateRepullableItems = () => ({ items, eligible: 2, ineligible: 0, withSourceId: 2 });
+  run.repullItemMetaAndSubs = async () => ({ sourceTitle: 'T', wroteSubs: true });
+  run.probeChannelAvatar = async () => null;
+  deps.recordRepulledItemMeta = async () => true;
+  deps.relocateHydratedImport = async (d, config, mediaId) => (
+    mediaId === 'media-a'
+      ? { status: 'failed', reason: 'Could not move the file: EACCES' }
+      : { status: 'skipped', reason: 'no-youtube-identity' }
+  );
+
+  const errors = [];
+  const originalError = console.error;
+  console.error = (...args) => errors.push(args.join(' '));
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    await fetch(`${base}/api/ytdlp/repull-metadata`, { method: 'POST' });
+    await flush(80);
+
+    const entry = getReheatEntry();
+    assert.equal(entry.moveFailed, 1, 'the failed move is reported honestly');
+    assert.equal(entry.moved, 0);
+    assert.equal(entry.done, 2, 'both metadata reheats still succeeded -- a failed MOVE is not a failed reheat');
+    assert.equal(entry.failed, 0);
+    assert.equal(entry.state, 'done', 'and a failed move never wedges the batch');
+    assert.ok(errors.some((e) => e.includes('could not relocate')), 'the failure is logged');
+  } finally {
+    console.error = originalError;
+    await close();
+  }
+});
+
+test('v1.41.6: a relocation seam that THROWS is contained -- counted, logged, and the batch runs to completion', async () => {
+  const deps = makeFakeDeps({ ytdlp: { subscriptions: [], channelAvatars: {}, downloadMeta: {} } });
+  // An out-of-root item with an id -- i.e. an actual relocation candidate (an
+  // in-root item never reaches the seam at all; see the pre-filter).
+  deps.enumerateRepullableItems = () => ({
+    items: [makeItem({ filePath: '/library/yt/Import.mp4', inDownloadRoot: false })],
+    eligible: 1, ineligible: 0, withSourceId: 1,
+  });
+  run.repullItemMetaAndSubs = async () => ({ sourceTitle: 'T', wroteSubs: true });
+  run.probeChannelAvatar = async () => null;
+  deps.recordRepulledItemMeta = async () => true;
+  deps.relocateHydratedImport = async () => { throw new Error('boom'); };
+
+  const originalError = console.error;
+  console.error = () => {};
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    await fetch(`${base}/api/ytdlp/repull-metadata`, { method: 'POST' });
+    await flush(60);
+
+    const entry = getReheatEntry();
+    assert.equal(entry.moveFailed, 1);
+    assert.equal(entry.done, 1, 'the metadata reheat still succeeded');
+    assert.equal(entry.state, 'done');
+  } finally {
+    console.error = originalError;
+    await close();
+  }
+});
+
+test('v1.41.6: an item whose metadata write did NOT land is never relocated (a file must not move on the strength of a write that failed)', async () => {
+  const deps = makeFakeDeps({ ytdlp: { subscriptions: [], channelAvatars: {}, downloadMeta: {} } });
+  // A genuine relocation candidate (out of root, with an id), so the ONLY thing
+  // standing between it and a move is the `recorded` gate under test.
+  deps.enumerateRepullableItems = () => ({
+    items: [makeItem({ filePath: '/library/yt/Import.mp4', inDownloadRoot: false })],
+    eligible: 1, ineligible: 0, withSourceId: 1,
+  });
+  run.repullItemMetaAndSubs = async () => ({ sourceTitle: 'T', wroteSubs: true });
+  run.probeChannelAvatar = async () => null;
+  deps.recordRepulledItemMeta = async () => false; // the item vanished mid-batch
+  let called = false;
+  deps.relocateHydratedImport = async () => { called = true; return { status: 'moved' }; };
+
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    await fetch(`${base}/api/ytdlp/repull-metadata`, { method: 'POST' });
+    await flush(60);
+
+    assert.equal(called, false, 'no relocation for an item whose identity never persisted');
+    const entry = getReheatEntry();
+    assert.equal(entry.moved, 0);
+    assert.equal(entry.failed, 1, 'and the reheat itself is honestly failed');
+  } finally {
+    await close();
+  }
+});
+
+test('v1.41.6: a deps bundle WITHOUT the relocation seam (older/stubbed server) reheats exactly as it did in v1.41.5 -- no throw, no counters', async () => {
+  const deps = makeFakeDeps({ ytdlp: { subscriptions: [], channelAvatars: {}, downloadMeta: {} } });
+  // A relocation candidate, so the absent seam is genuinely the only reason
+  // nothing moves.
+  deps.enumerateRepullableItems = () => ({
+    items: [makeItem({ filePath: '/library/yt/Import.mp4', inDownloadRoot: false })],
+    eligible: 1, ineligible: 0, withSourceId: 1,
+  });
+  run.repullItemMetaAndSubs = async () => ({ sourceTitle: 'T', wroteSubs: true });
+  run.probeChannelAvatar = async () => null;
+  deps.recordRepulledItemMeta = async () => true;
+  // deliberately no deps.relocateHydratedImport
+
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    await fetch(`${base}/api/ytdlp/repull-metadata`, { method: 'POST' });
+    await flush(60);
+
+    const entry = getReheatEntry();
+    assert.equal(entry.done, 1);
+    assert.equal(entry.moved, 0);
+    assert.equal(entry.moveFailed, 0);
+    assert.equal(entry.state, 'done');
+  } finally {
+    await close();
+  }
+});
+
+// DEAN'S ACTUAL LIBRARY STATE, and the literal ask ("if a reheat FINDS a
+// hydrated file not in such a folder, fix it"): v1.41.5's reheat already
+// hydrated every import, so every one of them carries `metadataRepulledAt` and
+// lands on the non-force SKIP path. If the relocation only ran for freshly
+// reheated items, Dean would press Reheat, watch it skip the whole library, and
+// see nothing move.
+test('v1.41.6: an ALREADY-hydrated item (skipped by a non-force reheat) is still relocated -- no network pass, no force flag needed', async () => {
+  const deps = makeFakeDeps({ ytdlp: { subscriptions: [], channelAvatars: {}, downloadMeta: {} } });
+  const items = [
+    // A previously-hydrated MeTube import: marked, outside the download root,
+    // with a persisted youtubeId. THE case.
+    { mediaId: 'media-import', filePath: '/library/yt/Some Import.mp4', videoId: 'dQw4w9WgXcQ', watchUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', inDownloadRoot: false, alreadyRepulled: true },
+    // A home video: marked, outside the root, NO id -> must not even reach the seam.
+    { mediaId: 'media-home', filePath: '/library/home/BBQ.mp4', videoId: null, watchUrl: null, inDownloadRoot: false, alreadyRepulled: true },
+    // A native download: marked, already in the root -> must not reach the seam.
+    { mediaId: 'media-native', filePath: '/downloads/chan/V [aaaaaaaaaaa].mp4', videoId: 'aaaaaaaaaaa', watchUrl: 'https://www.youtube.com/watch?v=aaaaaaaaaaa', inDownloadRoot: true, alreadyRepulled: true },
+  ];
+  deps.enumerateRepullableItems = () => ({ items, eligible: 3, ineligible: 0, withSourceId: 2 });
+
+  let networkCalls = 0;
+  run.repullItemMetaAndSubs = async () => { networkCalls += 1; return { wroteSubs: true }; };
+  run.probeChannelAvatar = async () => null;
+  let recordCalls = 0;
+  deps.recordRepulledItemMeta = async () => { recordCalls += 1; return true; };
+
+  const seen = [];
+  deps.relocateHydratedImport = async (d, config, mediaId) => {
+    seen.push(mediaId);
+    return { status: 'moved', newId: 'new', newPath: '/downloads/Rick Astley/x.mp4' };
+  };
+
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    await fetch(`${base}/api/ytdlp/repull-metadata`, { method: 'POST' });
+    await flush(80);
+
+    assert.deepEqual(seen, ['media-import'], 'ONLY the out-of-root item with a YouTube id is offered to the relocation seam');
+    assert.equal(networkCalls, 0, 'and it costs NO network pass -- the metadata is already hydrated');
+    assert.equal(recordCalls, 0, 'and no metadata write');
+
+    const entry = getReheatEntry();
+    assert.equal(entry.moved, 1);
+    assert.equal(entry.skipped, 3, 'all three are still honestly counted as skipped reheats');
+    assert.equal(entry.done, 0);
+    assert.equal(entry.state, 'done');
+  } finally {
+    await close();
+  }
+});

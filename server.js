@@ -37,7 +37,13 @@ const ytdlpArgs = require('./lib/ytdlp/args');
 // bracket-less metube-era filename); `isSafeVideoId` guards the persisted
 // `youtubeId` field on both write paths -- same direct-require posture as
 // `buildWatchUrl` below.
-const { buildWatchUrl, classifySingleVideo, isSafeVideoId } = require('./lib/ytdlp/url');
+// v1.41.6: `validateChannelUrl` -- the SINGLE channel-URL validator this app
+// has (lib/ytdlp/url.js; `store.sanitizeCapturedChannelMeta` and
+// `args.requireValidUrl` are both built on it, and nothing here forks it) --
+// re-validates a persisted `item.channelUrl` at the one boundary where it
+// decides whether a USER FILE gets physically moved. See
+// `relocateHydratedImportIntoChannelFolder`.
+const { buildWatchUrl, classifySingleVideo, isSafeVideoId, validateChannelUrl } = require('./lib/ytdlp/url');
 // v1.15.1 hotfix: pure predicate for yt-dlp's own intermediate/partial-
 // download artifacts (merge temps, per-format fragments, `.part`/`.ytdl`
 // markers) left in its download dir mid-download or after a killed/failed
@@ -171,7 +177,18 @@ const DEFAULT_SETTINGS = {
   // sidecars are PINNED: exempt from the automatic size-cap eviction and
   // age sweep (the manual Settings "Clear cache" button still clears them
   // -- explicit user intent wins). ~1MB per minute of audio on disk.
-  preExtractAudio: false
+  preExtractAudio: false,
+  // v1.41.6 (Dean's MeTube-import relocation): after the reheat hydrates an
+  // imported video with its real channel identity (v1.41.5), physically MOVE
+  // the file into that channel's folder under the yt-dlp download dir, so an
+  // import becomes indistinguishable from a native download (it appears under
+  // the channel's sidebar folder, can be pinned, and its channel link
+  // resolves). ON by default -- this is Dean's explicit ask and the whole
+  // point of the release; the toggle exists so an operator who wants their
+  // library left physically where it is can say so. The relocation is the
+  // ONLY setting here that MOVES USER FILES, so every eligibility rule around
+  // it is deliberately conservative (see relocateHydratedImportIntoChannelFolder).
+  relocateHydratedImports: true
 };
 
 // Per-key merge so a partial/older `settings` object keeps whatever keys it
@@ -2971,7 +2988,46 @@ async function runScanDirectories() {
       consumedTombstoneIds.add(id);
       dbChanged = true; // the consumption itself must persist
       const isNewerContent = typeof info.mtimeMs === 'number' && info.mtimeMs > tombstone.deletedAt;
-      if (!isNewerContent) {
+      // v1.41.6 gate fix (adversarial CRITICAL -- proven with a runnable repro,
+      // no crash required). THIS BRANCH UNLINKS A USER'S MEDIA FILE, and it was
+      // deciding to do so from `db`, the Phase-1 SNAPSHOT taken at scan start.
+      // Anything that legitimately puts a file at a tombstoned path WHILE a scan
+      // is in flight is therefore invisible to it. v1.41.6's import-relocation is
+      // exactly such a writer: it moves a file into a channel folder that may
+      // carry a 90-day-old tombstone, and `linkSync` preserves the ORIGINAL
+      // inode mtime -- so the relocated file looks, to the check above, precisely
+      // like "the very file the user already deleted" (mtime <= deletedAt). The
+      // relocation has already unlinked the source, so an unlink here is
+      // IRREVERSIBLE LOSS of the only copy.
+      //
+      // Two re-checks against the FRESH on-disk db, immediately before the
+      // unlink. Both are cheap: this whole block only runs on the rare tombstone
+      // HIT, never on the ordinary per-file path.
+      //   1. is the tombstone still there? (the relocation retires it in its own
+      //      mutator BEFORE it touches the filesystem -- see moveItemToFolder);
+      //   2. does a live metadata entry claim THIS EXACT PATH? An indexed item
+      //      is by definition not a deleted one, whatever a stale tombstone says.
+      // (2) is deliberately broader than (1): it hardens the whole class against
+      // ANY future mid-scan writer, not just this one.
+      let stillDeleted = !isNewerContent;
+      if (stillDeleted) {
+        try {
+          const freshDb = loadDatabase();
+          const freshTombstone = freshDb.deleteTombstones && freshDb.deleteTombstones[id];
+          const claimed = freshDb.metadata && freshDb.metadata[id] &&
+            freshDb.metadata[id].filePath === filePath;
+          if (!freshTombstone || claimed) {
+            stillDeleted = false;
+            console.log(`Scan: NOT reaping ${filePath} -- the delete tombstone was retired (or the path is claimed by a live library item) while this scan was running.`);
+          }
+        } catch (err) {
+          // Cannot establish that the delete still stands -> do not destroy the
+          // file. Fail CLOSED, in the direction that keeps the bytes.
+          stillDeleted = false;
+          console.warn(`Scan: could not re-verify the delete tombstone for ${filePath} (${err && err.message}) -- keeping the file.`);
+        }
+      }
+      if (stillDeleted) {
         try {
           fs.unlinkSync(filePath);
           console.log(`Scan: removed a deleted file that had survived its delete (deferred retry): ${filePath}`);
@@ -3668,6 +3724,41 @@ async function runScanDirectories() {
           !Object.prototype.hasOwnProperty.call(fresh.metadata, id)) {
         delete newMetadata[id];
       }
+    }
+
+    // v1.41.6 -- HR1b's MIRROR IMAGE, and this release's persist-gate/
+    // stale-snapshot checkpoint (the class has now struck six times; the sixth
+    // was last release).
+    //
+    // `mergeScannedMetadata` below is AUTHORITATIVE FOR MEMBERSHIP: whatever is
+    // not in `newMetadata` is gone from `db.metadata`. HR1b (above) uses that
+    // to keep a concurrently-DELETEd id from being resurrected. The same
+    // property is lethal to a concurrent RE-KEY: the reheat's import-relocation
+    // (`relocateHydratedImportIntoChannelFolder`) moves a file and gives it a
+    // BRAND-NEW path-derived id inside `fresh.metadata` -- an id this scan's
+    // Phase-1 walk, which saw the file at its OLD path, has never heard of. The
+    // old id is (correctly) dropped by HR1b, and the new one is not in
+    // `newMetadata`, so the wholesale replace would silently DELETE the item's
+    // metadata entry outright: the video vanishes from the library until some
+    // later scan re-indexes the file as a stranger -- with its release date,
+    // chapters, reheat marker and `addedAt` position gone. The reheat batch runs
+    // for minutes-to-hours against a periodic scan with NO mutual exclusion (see
+    // the merge block's own header), so this is not a narrow race.
+    //
+    // The rule: an id present in the FRESH db that this scan never saw
+    // (`!phase1Ids.has(id)`) appeared DURING the scan -- a concurrent add or
+    // re-key -- and the scan's stale snapshot is in no position to prune it.
+    // Carry it forward, but only when its file is genuinely on disk, so this can
+    // never resurrect a phantom. Deliberately NOT scoped to the relocation: any
+    // future mid-scan writer of a new id gets the same protection, which is the
+    // whole point of a checkpoint.
+    for (const id of Object.keys(fresh.metadata)) {
+      if (Object.prototype.hasOwnProperty.call(newMetadata, id)) continue; // the scan has its own, newer view
+      if (phase1Ids.has(id)) continue; // pre-existing: the scan's prune/retain decision (above) stands
+      const freshEntry = fresh.metadata[id];
+      if (!freshEntry || typeof freshEntry.filePath !== 'string' || freshEntry.filePath === '') continue;
+      if (!fs.existsSync(freshEntry.filePath)) continue; // no file behind it -- nothing to keep alive
+      newMetadata[id] = freshEntry;
     }
 
     // v1.41.3: consume the tombstones this scan acted on -- targeted key
@@ -4844,6 +4935,9 @@ function settingsResponse(settings) {
     mobileCustomPlayer: settings.mobileCustomPlayer,
     // v1.35: deterministic background audio (see DEFAULT_SETTINGS).
     preExtractAudio: settings.preExtractAudio,
+    // v1.41.6: relocate hydrated imports into their channel folder (see
+    // DEFAULT_SETTINGS) -- ON by default.
+    relocateHydratedImports: settings.relocateHydratedImports,
     effectiveCacheMaxBytes: effectiveCacheCap(settings),
     // v1.32 (custom logo): READ-ONLY here -- managed exclusively by the
     // dedicated POST/DELETE /api/settings/logo routes below (never via the
@@ -5027,7 +5121,12 @@ app.get('/api/settings', (req, res) => {
 // free of arbitrary/typo'd keys.
 app.post('/api/settings', async (req, res) => {
   const body = req.body || {};
-  const KNOWN_KEYS = ['scanIntervalMinutes', 'pruneMissing', 'cacheMaxBytes', 'cacheMaxAgeDays', 'defaultView', 'autoplayNext', 'backgroundAudioForVideo', 'defaultSort', 'mobileCustomPlayer', 'preExtractAudio'];
+  // v1.41.6 DELIBERATE key-set change (this list is locked by
+  // test/unit/database.test.js's DEFAULT_SETTINGS deep-equal and
+  // test/integration/settings-cache-api.test.js's full-shape assertion, both
+  // updated in the same commit): `relocateHydratedImports` joins the set --
+  // the reheat's "move a hydrated import into its channel folder" lever.
+  const KNOWN_KEYS = ['scanIntervalMinutes', 'pruneMissing', 'cacheMaxBytes', 'cacheMaxAgeDays', 'defaultView', 'autoplayNext', 'backgroundAudioForVideo', 'defaultSort', 'mobileCustomPlayer', 'preExtractAudio', 'relocateHydratedImports'];
   for (const key of Object.keys(body)) {
     if (!KNOWN_KEYS.includes(key)) {
       return res.status(400).json({ error: `unknown settings key: ${key}` });
@@ -5070,6 +5169,12 @@ app.post('/api/settings', async (req, res) => {
   }
   if ('preExtractAudio' in body && typeof body.preExtractAudio !== 'boolean') {
     return res.status(400).json({ error: 'preExtractAudio must be a boolean' });
+  }
+  // v1.41.6: relocateHydratedImports -- boolean, mirrors preExtractAudio's own
+  // validation exactly. A non-boolean here would decide whether user FILES get
+  // moved, so it 400s like every other typed key rather than being coerced.
+  if ('relocateHydratedImports' in body && typeof body.relocateHydratedImports !== 'boolean') {
+    return res.status(400).json({ error: 'relocateHydratedImports must be a boolean' });
   }
   // v1.16.0 FR-3 (T3): autoplayNext -- boolean, mirrors pruneMissing's own
   // validation exactly.
@@ -5815,11 +5920,21 @@ app.get('/api/liked', (req, res) => {
 // functions below exist specifically to prevent that: `computeMoveTarget`
 // resolves + CONFINES the destination (pure, zero filesystem access) before
 // any FS op ever runs; `moveItemToFolder` does the FS move, then re-keys
-// `db.metadata`/`db.progress` and renames the thumbnail/transcode/subtitle
-// sidecars from the OLD path-derived id to the NEW one, all inside ONE
-// `updateDatabase` mutator -- so the next scan finds the file already
-// indexed under its new-path id and takes the reuse fast-path, history
-// intact, not a delete+new-add.
+// `db.metadata`/`db.progress`/`db.liked`/`db.deleteTombstones` and renames the
+// thumbnail/transcode/background-audio/subtitle sidecars from the OLD
+// path-derived id to the NEW one, all inside ONE `updateDatabase` mutator --
+// so the next scan finds the file already indexed under its new-path id and
+// takes the reuse fast-path, history intact, not a delete+new-add.
+//
+// v1.41.6 completed that list. `db.liked` (v1.30) and the `.m4a`
+// background-audio sidecar (v1.35) were both added to the app AFTER this
+// function was written and never joined its re-key -- so every move silently
+// dropped the item's Like and orphaned its audio sidecar -- and
+// `deleteTombstones` (v1.41.3) could reap the moved file at its destination.
+// The one thing that is deliberately NOT id-keyed and therefore needs nothing
+// here: `db.ytdlp.pins`, whose `id` is `getMediaId(channelDir)` -- a hash of a
+// FOLDER, not of a media file (see lib/ytdlp/store.js's pin comment) -- so no
+// media move can ever invalidate a pin.
 
 /**
  * Which folders is a move allowed to land in? Mirrors `runScanDirectories`'s
@@ -5867,9 +5982,21 @@ function configuredLibraryRoots(db) {
  * model on this single-user LAN box, same as everywhere else this codebase
  * makes that call.
  *
+ * v1.41.6 (`opts.newBaseName`, OPTIONAL): the move may also RENAME the file.
+ * The reheat's import-relocation (see `relocateHydratedImportIntoChannelFolder`)
+ * needs the destination to carry the NATIVE yt-dlp filename shape
+ * (`<title> [<videoId>].<ext>`) so a future scan re-derives the video id from
+ * the filename bracket exactly like a real download's. Omitted (every
+ * pre-existing caller) => the source basename is preserved verbatim, byte for
+ * byte, as before. Supplied => it must be a bare, single-segment filename:
+ * anything carrying a path separator, or `.`/`..`, is REJECTED here (a pure
+ * decision, before any FS op) rather than normalized -- a rename is the one
+ * place a caller-built string re-enters the path layer, so it gets the same
+ * "verify what was actually built, never assume" treatment as the folder.
+ *
  * Returns `{ ok:true, newPath }` on success, `{ ok:false, error }` otherwise.
  */
-function computeMoveTarget(filePath, targetFolder, allowedRoots) {
+function computeMoveTarget(filePath, targetFolder, allowedRoots, opts = {}) {
   if (typeof filePath !== 'string' || filePath === '') {
     return { ok: false, error: 'invalid source file path' };
   }
@@ -5887,7 +6014,17 @@ function computeMoveTarget(filePath, targetFolder, allowedRoots) {
     return { ok: false, error: 'targetFolder is outside every configured/allowed library folder' };
   }
 
-  const baseName = path.basename(filePath);
+  const rename = (opts && typeof opts.newBaseName === 'string') ? opts.newBaseName : null;
+  if (rename !== null) {
+    // A caller-supplied destination NAME. `path.basename(rename) === rename`
+    // is the structural check: it fails for `a/b`, `../x`, `x/` and (on
+    // Windows spellings) `a\b`, so no rename can ever add a path segment or
+    // climb out of the confined folder.
+    if (rename.trim() === '' || rename === '.' || rename === '..' || path.basename(rename) !== rename) {
+      return { ok: false, error: 'invalid destination file name' };
+    }
+  }
+  const baseName = rename !== null ? rename : path.basename(filePath);
   if (!baseName || baseName === '.' || baseName === '..') {
     return { ok: false, error: 'invalid source file path' };
   }
@@ -5928,8 +6065,11 @@ function computeMoveTarget(filePath, targetFolder, allowedRoots) {
  * @param {{loadDatabase: Function, updateDatabase: Function, getMediaId: Function, fs?: object}} deps
  * @param {string} id current media id
  * @param {string} targetFolder untrusted client-supplied destination folder
+ * @param {{newBaseName?: string}} [opts] v1.41.6: optionally RENAME the file as
+ *   part of the move (see `computeMoveTarget`'s own `opts` contract). Omitted
+ *   by every pre-existing caller -- the basename is preserved as before.
  */
-async function moveItemToFolder(deps, id, targetFolder) {
+async function moveItemToFolder(deps, id, targetFolder, opts = {}) {
   const d = deps || {};
   const loadDb = d.loadDatabase;
   const updateDb = d.updateDatabase;
@@ -5946,7 +6086,7 @@ async function moveItemToFolder(deps, id, targetFolder) {
   }
 
   const allowedRoots = configuredLibraryRoots(db);
-  const target = computeMoveTarget(item.filePath, targetFolder, allowedRoots);
+  const target = computeMoveTarget(item.filePath, targetFolder, allowedRoots, opts);
   if (!target.ok) {
     return { ok: false, status: 400, error: target.error };
   }
@@ -5961,6 +6101,44 @@ async function moveItemToFolder(deps, id, targetFolder) {
   // atomically exclusive, not on this pre-check -- see the comment there.
   if (fsImpl.existsSync(newPath)) {
     return { ok: false, status: 409, error: 'A file already exists at the destination' };
+  }
+
+  // v1.41.6 gate fix (adversarial CRITICAL -- ORDERING IS THE FIX, and it must
+  // happen HERE, before a single byte moves).
+  //
+  // A v1.41.3 deletion tombstone at the DESTINATION path (`getMediaId(newPath)`)
+  // tells the scan's deferred-delete retry "the user deleted this; if you ever
+  // see a file at that path again with an older mtime, unlink it." Tombstones are
+  // minted on any unverified delete -- including the wholly ordinary "the file
+  // was already gone out-of-band, the user clicks Delete, the unlink ENOENTs"
+  // case -- and they live for 90 days. `linkSync` (the same-volume path: the
+  // ORDINARY Docker install) preserves the inode and therefore the ORIGINAL
+  // mtime, so a file relocated into such a path matches that description exactly.
+  //
+  // Retiring the tombstone at the END of the move -- inside the same mutator as
+  // the re-key, AFTER the source had been unlinked -- left a window in which the
+  // only copy of the file sat at a path db.json still said was deleted. A crash,
+  // an OOM kill or a `docker compose down` in that window made the reap
+  // PERMANENT; and a scan that had merely STARTED before the mutator committed
+  // reaped it with no crash at all, from its stale Phase-1 snapshot.
+  //
+  // So the tombstone is retired FIRST, in its own committed mutator, before the
+  // filesystem is touched. Crashing after this point loses a tombstone whose file
+  // is still safely at its source -- the harmless direction. (The scan's own
+  // re-verify, added in the same release, closes the in-flight-scan half; this
+  // closes the crash half. Both are needed: neither alone is sufficient.)
+  const newIdForTombstone = computeId(newPath);
+  try {
+    await updateDb((freshDb) => {
+      if (!freshDb.deleteTombstones || typeof freshDb.deleteTombstones !== 'object') return false;
+      if (!Object.prototype.hasOwnProperty.call(freshDb.deleteTombstones, newIdForTombstone)) return false;
+      delete freshDb.deleteTombstones[newIdForTombstone];
+      return true;
+    });
+  } catch (err) {
+    // Could not retire it -> we cannot prove the destination is safe to occupy.
+    // Refuse the move rather than move a file into a path a scan may reap.
+    return { ok: false, status: 500, error: `Could not clear the destination's deletion tombstone: ${err.message}` };
   }
 
   try {
@@ -5991,6 +6169,17 @@ async function moveItemToFolder(deps, id, targetFolder) {
       // EXCLUSIVE copy. `COPYFILE_EXCL` gives the identical atomic-exclusive
       // guarantee as `linkSync` above (fails with EEXIST rather than
       // clobbering a concurrently-created destination).
+      //
+      // v1.41.6: this branch is no longer the rare case. The reheat's
+      // import-relocation moves Dean's MeTube library -- which may well sit on
+      // a NAS/second volume -- into the yt-dlp download dir, so EXDEV is the
+      // EXPECTED path there, and it is the one where a half-written
+      // destination followed by an unlinked source would be real data loss.
+      // Hence the verify-then-unlink discipline below: the copy is fsync'd and
+      // its size is checked against the source BEFORE the caller is allowed to
+      // reach the `unlinkSync(oldPath)` further down; a short/torn copy takes
+      // the partial destination back out and fails the move with BOTH the file
+      // and the db entry untouched.
       try {
         fsImpl.copyFileSync(oldPath, newPath, fs.constants.COPYFILE_EXCL);
       } catch (copyErr) {
@@ -5999,32 +6188,82 @@ async function moveItemToFolder(deps, id, targetFolder) {
         }
         return { ok: false, status: 500, error: `Could not move the file across devices: ${copyErr.message}` };
       }
+      // Durability: `copyFileSync` does not itself fsync, so a power loss
+      // between the copy and the source unlink could leave a destination whose
+      // bytes never reached the platter while the ONLY other copy was removed.
+      // Best-effort (a filesystem that refuses the fsync must not fail an
+      // otherwise-good move) and `fsImpl`-guarded so a test's minimal fs stub
+      // need not implement it.
+      try {
+        if (typeof fsImpl.openSync === 'function' && typeof fsImpl.fsyncSync === 'function') {
+          const fd = fsImpl.openSync(newPath, 'r+');
+          try { fsImpl.fsyncSync(fd); } finally { fsImpl.closeSync(fd); }
+        }
+      } catch (syncErr) {
+        console.error(`Move: could not fsync the cross-device copy at ${newPath} (continuing):`, syncErr.message);
+      }
+      // SIZE-verify BEFORE the source is ever unlinked: destination genuinely
+      // present, and the same number of bytes. This is a size check, NOT an
+      // integrity check -- no checksum is computed, so a same-length corruption
+      // would pass (accepted: the alternative is re-reading every byte of every
+      // relocated video). A mismatch means a truncated/torn copy (ENOSPC on a
+      // filesystem that reports lazily, a NAS write that silently short-wrote)
+      // -- take the bad destination back out and leave the source exactly
+      // where it is. Nothing downstream has run yet, so the db is untouched too.
+      try {
+        const srcSize = fsImpl.statSync(oldPath).size;
+        const dstSize = fsImpl.statSync(newPath).size;
+        if (srcSize !== dstSize) {
+          try { fsImpl.unlinkSync(newPath); } catch (_) { /* best-effort cleanup of the bad copy */ }
+          return {
+            ok: false, status: 500,
+            error: `Cross-device copy verification failed (${dstSize} of ${srcSize} bytes at the destination) -- the source file was left untouched`,
+          };
+        }
+      } catch (statErr) {
+        try { fsImpl.unlinkSync(newPath); } catch (_) { /* best-effort cleanup of the unverifiable copy */ }
+        return {
+          ok: false, status: 500,
+          error: `Could not verify the cross-device copy (${statErr.message}) -- the source file was left untouched`,
+        };
+      }
     } else {
       return { ok: false, status: 500, error: `Could not move the file: ${err.message}` };
     }
   }
 
-  // The exclusive link/copy above succeeded: the file's bytes now exist at
-  // BOTH oldPath and newPath (same inode via hard link, or an independent
-  // copy cross-device). Remove the source. If THIS fails, degrade
-  // gracefully rather than discarding a move that already succeeded: log and
-  // continue -- the file is correctly readable at `newPath` either way. A
-  // crash between the link/copy above and this unlink leaves a self-healing
-  // dual hardlink (same inode, same content -- NOT data loss, and strictly
-  // safer than the previous silent-clobber this replaces); the next scan
-  // simply sees the file twice until the stale directory entry is cleaned up.
-  try {
-    fsImpl.unlinkSync(oldPath);
-  } catch (err) {
-    console.error(`Move: file linked/copied to ${newPath} but the old path ${oldPath} could not be removed:`, err.message);
-  }
-
-  // Single updateDatabase mutator, AFTER the FS move above succeeded:
-  // re-key db.metadata/db.progress and rename every id-keyed sidecar. Every
-  // sidecar rename is best-effort/idempotent (own try/catch) -- a thumbnail/
-  // transcode/subtitle rename failure never blocks the re-key itself; the
-  // file is already physically moved, so degrading gracefully here (log +
-  // continue) beats leaving the db half-migrated.
+  // The exclusive link/copy above succeeded: the file's bytes now exist at BOTH
+  // oldPath and newPath (same inode via hard link, or an independent, size-
+  // verified copy cross-device).
+  //
+  // v1.41.6 gate fix (QA WARNING -- FS/DB ORDERING). The source is NOT unlinked
+  // yet: the DATABASE IS RE-KEYED FIRST, and the unlink happens only after that
+  // mutator has committed (below). The old order (unlink, then re-key) left a
+  // window -- not an instantaneous one; `updateDb` queues behind `dbWriteChain`
+  // and can be backlogged for seconds during a scan -- in which db.json pointed
+  // at a path that no longer existed. Process death there cost the item its
+  // entire history: the next scan pruned the old id (taking `db.progress` with
+  // it, leaving a dangling `db.liked` entry) and re-added the file at its new
+  // path as a STRANGER -- addedAt, progress, Like, chapters and the reheat marker
+  // gone, and on the cross-device path `releaseDate` re-derived from a fresh
+  // mtime, so it also jumped to the top of the default release-date sort.
+  //
+  // Re-keying first inverts the failure mode into the recoverable direction: a
+  // crash between the link/copy and the unlink leaves a stray directory entry at
+  // the old path -- a VISIBLE artifact (a same-inode hard link on the ordinary
+  // same-volume path; a genuine duplicate on the cross-device path, consuming
+  // real extra disk and NOT self-healing -- see the EXDEV branch) that the user
+  // can simply delete -- while the db, the id, and every scrap of history are
+  // already correct and pointing at a file that really is there.
+  //
+  // LOAD-BEARING INVARIANT (why re-keying before the unlink cannot race the
+  // scan): everything from the exclusive link/copy through the `updateDb(...)`
+  // call below runs SYNCHRONOUSLY in one tick -- the mutator is enqueued onto
+  // `dbWriteChain` in the same tick the filesystem changed. So any scan whose
+  // walk observed the POST-move filesystem necessarily enqueues its own final
+  // merge AFTER ours, and sees the re-keyed item; and any scan that observed the
+  // PRE-move filesystem is handled by the Phase-2 adoption/HR1b pair. There is no
+  // interleaving in which a scan sees the new file but not the new id.
   const oldId = id;
   let mutatorResult;
   try {
@@ -6036,10 +6275,35 @@ async function moveItemToFolder(deps, id, targetFolder) {
 
       freshItem.filePath = newPath;
       freshItem.id = newId;
+      // v1.41.6: the move may also have RENAMED the file (`opts.newBaseName`
+      // -- the reheat's import-relocation gives the file its native
+      // `<title> [<videoId>].<ext>` shape). `name` is the on-disk basename
+      // everywhere else in this file (the scan sets it, and the FR-2 channel
+      // bridge reads the `[id]` bracket back out of `path.basename(item.name,
+      // item.ext)`), so leaving it on the OLD name would make the item lie
+      // about its own file. Derived from `newPath`, never from the caller's
+      // string.
+      freshItem.name = path.basename(newPath);
       // Mirrors scanDirRecursive's own folderName derivation (immediate
       // parent dir basename) so the moved item's folder label doesn't go
       // stale until the next scan recomputes it anyway.
       freshItem.folderName = path.basename(path.dirname(newPath)) || freshItem.folderName;
+      // v1.41.6: ...and the same for `rootFolder`, which the scan recomputes
+      // from `matchRootFolder` (see runScanDirectories' reconcile loop) and
+      // which hidden-folder filtering, `selectPrunableIds`' mount-loss guard
+      // and `detectVanishedRoots` all attribute items by. Every PREVIOUS
+      // caller moved a file WITHIN one root (the C1 route between library
+      // folders is root-to-root, but the T4 one-off migration stays inside the
+      // download root), so a stale value was survivable until the next scan.
+      // The reheat's relocation crosses roots BY DEFINITION -- a plain library
+      // root -> the yt-dlp download root -- so a stale `rootFolder` would
+      // attribute the item to a root it no longer lives under. Recomputed from
+      // the same `configuredLibraryRoots` the destination was confined against;
+      // a `null` (unattributable) result keeps the existing value rather than
+      // blanking it, since an item with no root is retained-not-pruned (guard
+      // (3) in selectPrunableIds) and we must not weaken that by accident.
+      const newRoot = matchRootFolder(newPath, configuredLibraryRoots(freshDb));
+      if (newRoot) freshItem.rootFolder = newRoot;
 
       delete freshDb.metadata[oldId];
       freshDb.metadata[newId] = freshItem;
@@ -6047,6 +6311,52 @@ async function moveItemToFolder(deps, id, targetFolder) {
       if (Object.prototype.hasOwnProperty.call(freshDb.progress, oldId)) {
         freshDb.progress[newId] = freshDb.progress[oldId];
         delete freshDb.progress[oldId];
+      }
+
+      // v1.30 C2: LIKED state is membership in `db.liked` (an ARRAY of media
+      // ids -- there is no boolean on the item), so it is id-keyed exactly
+      // like `db.progress` and has to follow the re-key. It did not, until
+      // v1.41.6: every move since v1.30 (the C1 route, the T4 one-off
+      // migration) silently DROPPED the item's Like -- the id in the array
+      // stopped matching any item and the heart came back empty, with no way
+      // for the user to know why. Written back in place (same index) so the
+      // liked-view's array order -- which is what `likedItems` renders by --
+      // is preserved rather than bumping the item to the end.
+      if (Array.isArray(freshDb.liked)) {
+        const likedIndex = freshDb.liked.indexOf(oldId);
+        if (likedIndex !== -1) freshDb.liked[likedIndex] = newId;
+      }
+
+      // NOTE (gate fix round 3, QA sub-note): the three MODULE-LEVEL maps this
+      // move also has to re-key -- `pendingProgress`, `persistedServedAt`,
+      // `recentlyServed` -- are deliberately NOT touched inside this mutator.
+      // They are process memory, not part of `freshDb`, so a `saveDatabase` throw
+      // would roll the database back while leaving them mutated: the in-flight
+      // progress ping would end up keyed to a `newId` that has no metadata entry,
+      // and `flushPendingProgress` would drop it. They are re-keyed AFTER this
+      // mutator has committed instead (see `rekeyInFlightState`, below the
+      // updateDb call), where the db and the maps can only ever agree.
+
+      // v1.41.3 deletion tombstones (`{ [id]: { filePath, deletedAt } }`), also
+      // id-keyed.
+      //
+      // `deleteTombstones[newId]` -- the DESTINATION's tombstone, the one that
+      // can get the relocated file reaped -- is NOT retired here: it is retired
+      // in its own committed mutator BEFORE the filesystem is touched (see the
+      // big comment above the link/copy). Doing it here was the CRITICAL the gate
+      // proved: by the time this mutator ran, the source was already gone and the
+      // tombstone was still live on disk. This delete is kept only as a
+      // belt-and-braces no-op for the ordinary case where the pre-move mutator
+      // already removed it, and as the correct behavior for any caller that
+      // reaches this mutator by another route.
+      //
+      // `deleteTombstones[oldId]` is stale by construction (a tombstone plus a
+      // live metadata entry under the same id can only be a leftover), and the
+      // path it names is now empty. Dropped so it can never be applied to some
+      // future file that lands at the old path.
+      if (freshDb.deleteTombstones && typeof freshDb.deleteTombstones === 'object') {
+        delete freshDb.deleteTombstones[newId];
+        delete freshDb.deleteTombstones[oldId];
       }
 
       try {
@@ -6065,49 +6375,199 @@ async function moveItemToFolder(deps, id, targetFolder) {
         console.error(`Move: failed to re-key transcode sidecar for ${oldId} -> ${newId}:`, transcodeErr.message);
       }
 
-      // Subtitle sidecar (A6, T16 shipped in Wave 5; this rename is a T16
-      // completion follow-up). Reuses `lib/subtitles.js`'s own
-      // `findSubtitleSidecar` -- the SAME resolver the scan's `hasSubtitles`
-      // detection and the `GET /api/subtitles/:id` serve route use -- so this
-      // rename can never disagree with what those two consider "this item's
-      // sidecar." That resolver's real priority order is (1) an
-      // explicit-language VTT, `<base>.<lang>.vtt` (the shape yt-dlp's own
-      // downloads actually land in per `OUTPUT_TEMPLATE`, e.g.
-      // "Title [id].en.vtt"), (2) a bare `<base>.vtt`, (3) a bare `<base>.srt`
-      // -- NOT just the bare-name shapes a naive `.vtt`/`.srt` loop would
-      // catch. Whatever suffix follows the OLD basename (".en.vtt", ".vtt",
-      // or ".srt") is preserved verbatim on the NEW basename, so a
-      // language-tagged sidecar keeps its language tag across the move.
+      // v1.35 background-audio sidecar (`audioPath(id)`, the `.m4a` extraction
+      // the iOS background-audio handoff plays). Same id-keyed cache dir as the
+      // transcode above, and it was simply MISSING from this re-key until
+      // v1.41.6: a moved item's sidecar was orphaned under the dead id (dead
+      // weight against the cache cap until the age sweep got to it) and the
+      // item had to re-extract from scratch on its next background hand-off --
+      // exactly the "deterministic background audio" promise `preExtractAudio`
+      // exists to make, quietly broken by a move.
       try {
+        const oldAudio = audioPath(oldId);
+        const newAudio = audioPath(newId);
+        if (fsImpl.existsSync(oldAudio)) fsImpl.renameSync(oldAudio, newAudio);
+      } catch (audioErr) {
+        console.error(`Move: failed to re-key background-audio sidecar for ${oldId} -> ${newId}:`, audioErr.message);
+      }
+
+      // Subtitle sidecars (A6, T16 shipped in Wave 5; this rename is a T16
+      // completion follow-up).
+      //
+      // v1.41.6: this used to move exactly ONE sidecar -- whichever
+      // `lib/subtitles.js`'s `findSubtitleSidecar` resolver ranked first. That
+      // is the right resolver for "which sidecar do we SERVE", but the wrong
+      // question for "which files belong to this item": a yt-dlp download with
+      // several subtitle languages lands `<base>.en.vtt` AND `<base>.es.vtt`,
+      // and every one after the first was left behind at the old path --
+      // orphaned next to a media file that no longer exists, and gone from the
+      // item forever. The move now sweeps the source directory for the item's
+      // WHOLE sidecar set, the same way the DELETE route's v1.36.2 sweep does,
+      // and preserves each file's suffix verbatim on the new basename (so a
+      // language tag survives the move, and a rename carries the set with it).
+      //
+      // The sweep is deliberately NARROW: `<oldBase>.vtt`, `<oldBase>.srt` or
+      // `<oldBase>.<lang>.vtt|srt` with a short, token-shaped `<lang>`. A
+      // broader `startsWith(oldBase + '.') && endsWith('.vtt')` (what delete
+      // uses -- it can afford to be greedy, since it is removing a file whose
+      // media is going away) could in principle claim a DIFFERENT item's
+      // sidecar whose own basename begins with ours ("Trip.mp4" +
+      // "Trip.day2.mp4" -> "Trip.day2.vtt"), and stealing another item's
+      // subtitles is not an acceptable cost of a move. Best-effort throughout:
+      // a sidecar failure logs and continues -- the media file is already
+      // physically moved and its db entry MUST still be re-keyed.
+      try {
+        const oldDir = path.dirname(oldPath);
         const newDir = path.dirname(newPath);
         const oldBase = path.basename(oldPath, path.extname(oldPath));
         const newBase = path.basename(newPath, path.extname(newPath));
-        const sidecar = subtitles.findSubtitleSidecar(oldPath, fsImpl);
-        if (sidecar) {
-          const oldSubName = path.basename(sidecar.path);
-          const suffix = oldSubName.slice(oldBase.length); // e.g. ".en.vtt", ".vtt", ".srt"
-          const newSub = path.join(newDir, newBase + suffix);
-          if (fsImpl.existsSync(sidecar.path)) fsImpl.renameSync(sidecar.path, newSub);
+        const sidecarSuffix = /^\.(?:[A-Za-z0-9_-]{1,15}\.)?(?:vtt|srt)$/i;
+        for (const name of fsImpl.readdirSync(oldDir)) {
+          if (!name.startsWith(`${oldBase}.`)) continue;
+          const suffix = name.slice(oldBase.length); // e.g. ".en.vtt", ".vtt", ".srt"
+          if (!sidecarSuffix.test(suffix)) continue;
+          const from = path.join(oldDir, name);
+          const to = path.join(newDir, newBase + suffix);
+          try {
+            // Never clobber an existing sidecar at the destination (a same-named
+            // subtitle already there belongs to whatever else lives in that
+            // folder -- the media move's own no-clobber guarantee, applied to
+            // the sidecar set).
+            if (fsImpl.existsSync(to)) continue;
+            fsImpl.renameSync(from, to);
+          } catch (renameErr) {
+            if (renameErr && renameErr.code === 'EXDEV') {
+              // Cross-device (the NAS-to-local relocation case): copy, then
+              // remove the source -- never the other way round.
+              try {
+                fsImpl.copyFileSync(from, to, fs.constants.COPYFILE_EXCL);
+                fsImpl.unlinkSync(from);
+              } catch (copyErr) {
+                console.error(`Move: failed to carry subtitle sidecar ${name} across devices:`, copyErr.message);
+              }
+            } else {
+              console.error(`Move: failed to carry subtitle sidecar ${name}:`, renameErr.message);
+            }
+          }
         }
       } catch (subErr) {
-        console.error(`Move: failed to re-key subtitle sidecar for ${oldId} -> ${newId}:`, subErr.message);
+        console.error(`Move: failed to re-key subtitle sidecars for ${oldId} -> ${newId}:`, subErr.message);
       }
 
       return newId;
     });
   } catch (err) {
+    // ROLLED BACK (gate fix round 3, QA WARNING -- and the previous comment here,
+    // which claimed we "cannot prove nothing was persisted", was simply FALSE
+    // against this codebase; QA traced it and it does not hold):
+    //
+    //   - `updateDatabase` runs `const result = mutatorFn(db); if (result !== false)
+    //     saveDatabase(db);` -- a THROW from the mutator means `saveDatabase` is
+    //     never called at all.
+    //   - `saveDatabase` writes a temp file, fsyncs it, then ATOMICALLY renames it
+    //     over DB_FILE. The only statements after that rename are two plain
+    //     assignments (`dbCache = db; dbCacheValid = true;`), which cannot throw.
+    //     So any throw is at or before the atomic rename: DB_FILE is untouched.
+    //   - `loadDatabase` re-reads and re-parses the file on every call and never
+    //     hands out `dbCache` by reference, so the half-mutated in-memory object
+    //     this mutator may have left behind is unreachable and corrupts nothing.
+    //
+    // => On ANY rejection, the re-key provably did not land. The destination is
+    // ours (created moments ago via an EXCLUSIVE linkSync/COPYFILE_EXCL, never a
+    // pre-existing file), so unlinking it restores the exact pre-move state.
+    //
+    // And NOT rolling back is worse than "a leftover the user can delete": the
+    // destination sits in a CHANNEL FOLDER under the download root with a native
+    // `<title> [id].ext` name, so the next scan indexes it as a BRAND-NEW item
+    // (new path -> new getMediaId) -- the same video twice in the library, and on
+    // the cross-device path a real duplicate burning real disk.
+    try {
+      fsImpl.unlinkSync(newPath);
+    } catch (unlinkErr) {
+      console.error(`Move: the database update failed and the destination copy at ${newPath} could not be rolled back:`, unlinkErr.message);
+    }
     return {
       ok: false, status: 500,
-      error: `File moved on disk but the database update failed: ${err.message}`,
+      error: `The database update failed, so the move was rolled back (the original is untouched): ${err.message}`,
       newPath,
     };
   }
 
   if (mutatorResult === false) {
-    return { ok: false, status: 404, error: 'Media file was removed before the move could be recorded' };
+    // v1.41.6 gate fix (QA WARNING): a DELETE committed between our initial
+    // `loadDb()` and this mutator -- the item is gone from db.metadata. The FS
+    // link/copy has ALREADY happened, so without this rollback the bytes would
+    // sit at `newPath` (under the yt-dlp download root, with an `[id]` bracket,
+    // in a channel folder) with no db entry, and the DELETE's own tombstone --
+    // keyed on the OLD path's id -- could not suppress them. The very next scan
+    // would index the video the user just deleted straight back into the
+    // library, defeating v1.41.3's "delete stays gone".
+    //
+    // Removing `newPath` is safe and correct: we created it EXCLUSIVELY moments
+    // ago (linkSync/COPYFILE_EXCL -- it is ours, never a pre-existing file), and
+    // the user's deliberate delete is the newest expression of intent. On the
+    // same-volume path it is a hard link to the very inode the DELETE unlinked,
+    // so removing it completes the deletion the user asked for.
+    try {
+      fsImpl.unlinkSync(newPath);
+    } catch (err) {
+      console.error(`Move: item ${oldId} was deleted mid-move; could not remove the copy at ${newPath}:`, err.message);
+    }
+    return {
+      ok: false, status: 404,
+      error: 'Media file was removed before the move could be recorded -- the move was rolled back',
+    };
+  }
+
+  // The db re-key is COMMITTED. Now -- and only now -- carry the PROCESS-MEMORY
+  // state that is keyed by the same id/path onto the new key. Doing this inside
+  // the mutator (where it lived until the round-3 gate) meant a `saveDatabase`
+  // throw rolled the DATABASE back while leaving these maps re-keyed: the
+  // in-flight progress ping would then be keyed to a `newId` with no metadata
+  // entry, and `flushPendingProgress` (which drops any id whose metadata is gone)
+  // would silently destroy it -- the very loss the carry exists to prevent.
+  rekeyInFlightState(oldId, mutatorResult, oldPath, newPath);
+
+  // Only now is the source directory entry removed. A failure here is a stray
+  // leftover, never data loss (the db and the bytes already agree) -- log and
+  // continue, exactly as before.
+  try {
+    fsImpl.unlinkSync(oldPath);
+  } catch (err) {
+    console.error(`Move: file linked/copied to ${newPath} and the database re-keyed, but the old path ${oldPath} could not be removed:`, err.message);
   }
 
   return { ok: true, oldId, newId: mutatorResult, newPath };
+}
+
+/**
+ * Carry a moved item's PROCESS-MEMORY state from its old id/path to its new ones.
+ * Called by `moveItemToFolder` immediately AFTER its `updateDatabase` mutator has
+ * committed -- never from inside it (see that call site's comment: a rolled-back
+ * db must not leave these maps re-keyed).
+ *
+ *  - `pendingProgress`: a watch position posted seconds ago is still in this
+ *    debounced staging Map, and `flushPendingProgress` DROPS any id whose
+ *    `db.metadata[id]` has gone -- which is exactly what the re-key does to the
+ *    old id. Without this carry, a move silently destroys the viewer's position.
+ *  - `persistedServedAt` (S-1): the serve-write throttle. Left behind, the dead id
+ *    lingers forever (the unbounded-growth + suppressed-re-add leak that map's own
+ *    comment documents) while the new id has no entry at all.
+ *  - `recentlyServed`: PATH-keyed live-watch protection, so a file that was being
+ *    streamed keeps its cache-eviction protection at its new path.
+ */
+function rekeyInFlightState(oldId, newId, oldPath, newPath) {
+  if (pendingProgress.has(oldId)) {
+    pendingProgress.set(newId, pendingProgress.get(oldId));
+    pendingProgress.delete(oldId);
+  }
+  const servedAt = persistedServedAt.get(oldId);
+  clearPersistedServedAt(oldId);
+  if (servedAt !== undefined) persistedServedAt.set(newId, servedAt);
+  if (recentlyServed.has(oldPath)) {
+    recentlyServed.set(newPath, recentlyServed.get(oldPath));
+    recentlyServed.delete(oldPath);
+  }
 }
 
 // API: Move a video/audio file into another configured library folder (C1).
@@ -6316,6 +6776,383 @@ async function migrateOneOffsIntoChannelFolders(deps, config) {
 
   console.log(`yt-dlp one-off migration: complete (${summary.moved} moved, ${summary.skipped} skipped, ${summary.collisions} collision(s) skipped, ${summary.errors} error(s))`);
   return summary;
+}
+
+// ---- v1.41.6 (Dean): relocate a HYDRATED IMPORT into its channel folder ----
+//
+// The other half of v1.41.5. That release taught the reheat to hydrate a
+// MeTube-era import -- a file sitting in an ordinary library root, with no
+// `[videoid]` filename bracket, whose only link back to YouTube is the source
+// URL in its embedded `comment`/`purl` tag -- with its REAL channel identity
+// (channelUrl/channelId/channelName/avatar) + `youtubeId`. The card then shows
+// the right creator and a working Subscribe button... but the file is still
+// physically a stranger: it does not live under a channel folder, so it cannot
+// be pinned, it does not appear in the channel's sidebar folder, and its
+// channel link resolves to whatever folder it happens to sit in (the disclosed
+// v1.41.5 gap). Dean's ask: "make an import indistinguishable from a native
+// download -- and if a reheat finds a hydrated file NOT in such a folder, fix
+// it."
+//
+// So: after hydration lands for an item, MOVE the file into that channel's
+// folder -- via `ytdlp.resolveChannelDirForChannel`, which hands back the
+// EXISTING subscription's own `resolveChannelDir(config, sub)` folder when the
+// channel is subscribed (byte-identical to where its downloads land, NOT a
+// parallel channelName-derived folder -- see that function's header for the trap)
+// and the channel's display name otherwise -- and give it the native
+// `<title> [<videoId>].<ext>` filename shape, so a future scan re-derives its id
+// from the filename bracket exactly like a real download's.
+//
+// THIS MOVES USER FILES. Every rule below is written from that premise:
+//
+// ELIGIBILITY is a conjunction, and anything that fails ANY clause is skipped
+// (never "best-effort moved"):
+//   - the module is enabled and has a resolvable download dir;
+//   - the item carries a `channelUrl` that still passes `validateChannelUrl`
+//     (re-validated HERE, at the write boundary, not trusted from db.json) AND
+//     a non-empty `channelName` AND a `youtubeId` that still passes
+//     `isSafeVideoId`. No YouTube identity => never moved. This is the clause
+//     that keeps genuine local media -- Dean's home videos, his ripped CDs,
+//     his movie rips -- physically untouched: they have no channelUrl and no
+//     youtubeId, and the widened v1.41.5 reheat enumerates them, so this gate
+//     is the only thing standing between them and a relocation.
+//   - the item is NOT already under a yt-dlp download root (`matchRootFolder`).
+//     A native download is already home. An item in the download root but in
+//     the "wrong" channel folder is DELIBERATELY out of scope: that is exactly
+//     the library-wide-reorganization hazard the v1.25 gate caught for
+//     `migrateOneOffsIntoChannelFolders` (a subscription's folder is derived
+//     from `sub.name`, while `channelName` is yt-dlp's real display name, and
+//     the two routinely sanitize differently -- relocating on that mismatch
+//     would split every subscribed channel's library in two while the
+//     downloader kept writing to the old folder). See that function's header.
+//   - the file still exists on disk.
+//
+// SAFETY: the move itself is `moveItemToFolder` -- the same atomically-exclusive
+// link-or-copy + verify + unlink + id re-key machinery `POST /api/videos/:id/move`
+// and the T4 migration use (see its header for the `getMediaId`-hash-stability
+// hazard). It never clobbers: a destination that already exists (the same video
+// already downloaded natively into that channel folder) is a 409, which this
+// function reports as a SKIP -- not a failure, and never an overwrite. It never
+// unlinks the source until the destination is verified present and the same
+// size (the EXDEV/NAS path). On any failure BOTH the file and the db entry are
+// left exactly as they were.
+//
+// ARCHIVE: a successful move is followed by `recordOneShotInArchive`. This is
+// load-bearing, not bookkeeping, and it is a SINGLE POINT OF FAILURE: the file
+// now sits in a channel folder under the download root, so a poll of that
+// channel would see a video it has no archive line for, in a folder it owns, and
+// re-download a duplicate -- and yt-dlp's own "file already exists" skip cannot
+// back us up, because the name we build is not byte-identical to the one yt-dlp
+// would (see `resolveRelocationTitle`). So an append failure is REPORTED to the
+// caller (`archived: false`), which surfaces it in the reheat's activity entry,
+// rather than being logged to stderr and forgotten (gate fix, QA WARNING).
+//
+// IDEMPOTENT: a second reheat finds the item already under a download root
+// (clause 3) and skips it -- no move, no re-count, no thrash.
+//
+// @param {{loadDatabase: Function, updateDatabase: Function, getMediaId: Function, fs?: object}} deps same shape moveItemToFolder takes
+// @param {object} config a parsed yt-dlp config
+// @param {string} mediaId the item's CURRENT (pre-move) media id
+// @returns {Promise<{status: 'moved'|'skipped'|'failed', reason: string, newId?: string, newPath?: string, archived?: boolean}>}
+//   never throws for an anticipated failure; `status` is what the reheat batch
+//   counts.
+async function relocateHydratedImportIntoChannelFolder(deps, config, mediaId) {
+  const d = deps || {};
+  const loadDb = d.loadDatabase;
+  const updateDb = d.updateDatabase;
+  if (typeof loadDb !== 'function' || typeof updateDb !== 'function') {
+    return { status: 'skipped', reason: 'no-deps' };
+  }
+
+  // Disabled-module no-op (mirrors every other yt-dlp entry point's gate).
+  if (!ytdlp.isEnabled(config)) return { status: 'skipped', reason: 'module-disabled' };
+  const downloadRoots = ytdlp.extraScanRoots(config);
+  if (downloadRoots.length === 0) return { status: 'skipped', reason: 'no-download-root' };
+
+  const db = loadDb();
+
+  // The operator's opt-out (ON by default -- see DEFAULT_SETTINGS). Checked
+  // per item, from the FRESH db, so flipping it off mid-batch stops the very
+  // next item rather than only taking effect on the next reheat.
+  if (db.settings && db.settings.relocateHydratedImports === false) {
+    return { status: 'skipped', reason: 'setting-off' };
+  }
+
+  const item = db.metadata && db.metadata[mediaId];
+  if (!item || typeof item.filePath !== 'string' || item.filePath === '') {
+    return { status: 'skipped', reason: 'item-gone' }; // vanished mid-batch -- a safe no-op, like recordRepulledItemMeta's own
+  }
+
+  // Already home: a native download, or an import a previous reheat already
+  // relocated. The idempotency clause -- NOT counted as a move.
+  if (matchRootFolder(item.filePath, downloadRoots)) {
+    return { status: 'skipped', reason: 'already-in-download-root' };
+  }
+
+  // Identity, re-validated at the write boundary (defense in depth: these
+  // fields crossed `store.sanitizeCapturedChannelMeta` when they were written,
+  // but db.json is a file on disk that anything could have touched, and this
+  // decision moves a file).
+  const channelName = typeof item.channelName === 'string' ? item.channelName.trim() : '';
+  const youtubeId = isSafeVideoId(item.youtubeId) ? item.youtubeId : null;
+  const channelUrlCheck = validateChannelUrl(item.channelUrl);
+  if (!channelUrlCheck.ok || channelName === '' || !youtubeId) {
+    // The ordinary, expected outcome for most of the library: a home video, a
+    // ripped CD, a movie -- or an import whose hydration did not (yet) yield a
+    // full identity. Never moved.
+    return { status: 'skipped', reason: 'no-youtube-identity' };
+  }
+
+  // The file itself must still be there. (`moveItemToFolder` would report the
+  // ENOENT honestly anyway; checking first keeps a vanished file out of the
+  // FAILED bucket, where it would read as "the relocation is broken".)
+  if (!fs.existsSync(item.filePath)) {
+    return { status: 'skipped', reason: 'file-missing' };
+  }
+
+  // v1.41.6 gate fix (WARNING, both seats): DON'T MOVE WHAT SOMEONE IS WATCHING.
+  // The media id is a hash of the PATH, so a move re-keys the item -- but the
+  // CLIENT that is mid-playback goes on using the OLD id for the rest of that
+  // session: every subsequent progress ping is written against an id that no
+  // longer exists (dropped on flush), and a seek re-requests `GET /video/<oldId>`
+  // and 404s while audio keeps playing from the already-open fd. Nothing the
+  // server can do to its own maps fixes the client's copy of the id. So the file
+  // simply is not moved while it is hot: `activeProtectedPaths` is the SAME
+  // live-watch protection set the transcode-cache eviction already refuses to
+  // delete inside (RECENT_STREAM_MS = 10 minutes). The next reheat picks it up.
+  if (activeProtectedPaths(Date.now()).has(item.filePath)) {
+    return { status: 'skipped', reason: 'recently-watched' };
+  }
+
+  // v1.41.6 gate fix (adversarial WARNING): DON'T MOVE WHAT FFMPEG IS WORKING ON.
+  // A queued/running transcode or audio-extract job holds `{id: oldId, srcPath:
+  // oldPath}`. After a move, `processTranscodeQueue` finds `srcPath` gone and
+  // SILENTLY DROPS the job without clearing the status -- while the re-keyed item
+  // carries `transcodeStatus: 'pending'|'processing'` onto its new id, which
+  // `reconcileTranscode` deliberately leaves alone (an in-flight job is not the
+  // scan's to touch). The item would sit NON-PLAYABLE until the process
+  // restarted; a 'processing' job would also finish into an orphan sidecar under
+  // the dead id. Refuse the move; the job completes, and the next reheat relocates
+  // an item that is quietly at rest.
+  if (isMediaJobInFlight(item)) {
+    return { status: 'skipped', reason: 'transcode-or-audio-job-in-flight' };
+  }
+
+  // Destination folder. `ytdlp.resolveChannelDirForChannel` returns the SAME
+  // `resolveChannelDir(config, sub)` folder a subscription's own downloads use
+  // WHEN THIS CHANNEL IS SUBSCRIBED -- byte-identical, never a parallel folder (a
+  // subscription's folder folds `sub.name`, usually the @handle, while
+  // `channelName` is yt-dlp's real display name; filing by the latter would give
+  // one channel two sidebar folders forever, permanently, since eligibility
+  // clause 3 means the files are never moved again).
+  //
+  // The item's `channelHandleUrl` is threaded through DELIBERATELY (gate fix,
+  // CRITICAL, both seats): `addSubscription` NEVER writes a `channelId` -- it is
+  // only backfilled by a successful poll/probe -- so a sub added by @handle that
+  // has not polled yet (just added, manual interval, breaker open, network down)
+  // has no id to match on, and its `/@RickAstley` URL does not string-equal the
+  // `/channel/UC...` form the item carries. Without the handle form in hand the
+  // matcher misses and the library splits. `resolveItemChannelAvatarUrl` already
+  // joins on both forms; this is now the same join.
+  const channelForJoin = {
+    channelUrl: channelUrlCheck.url,
+    channelHandleUrl: item.channelHandleUrl,
+    channelId: item.channelId,
+    channelName,
+  };
+
+  // ...and when even THAT join cannot decide -- a subscription exists that
+  // carries neither a channelId nor a URL in a form we can compare against
+  // anything this item knows -- we do not guess. A skipped file is recoverable
+  // (the next reheat, after that subscription's first poll backfills its
+  // channelId, files it correctly); a split library is not. Fail towards doing
+  // nothing.
+  if (ytdlp.hasAmbiguousChannelSubscription(db, channelForJoin)) {
+    return { status: 'skipped', reason: 'ambiguous-subscription' };
+  }
+
+  let targetDir;
+  try {
+    targetDir = ytdlp.resolveChannelDirForChannel(db, config, channelForJoin);
+  } catch (err) {
+    return { status: 'failed', reason: `channel-dir: ${err && err.message}` };
+  }
+
+  // Belt-and-braces on the SAME class: if this channel IS subscribed and we now
+  // hold a validated channelId the subscription lacks, record it. That both makes
+  // every FUTURE join (avatars, folder matching, this function) exact, and means
+  // the miss can only ever happen once per subscription. Never throws; a failure
+  // here is irrelevant to the move (the folder is already resolved above).
+  try {
+    if (typeof item.channelId === 'string' && item.channelId !== '') {
+      await ytdlp.backfillSubscriptionChannelIdForChannel(
+        { loadDatabase: loadDb, updateDatabase: updateDb },
+        { channelUrl: channelUrlCheck.url, channelHandleUrl: item.channelHandleUrl, channelId: item.channelId },
+      );
+    }
+  } catch (err) {
+    console.error('Relocate: could not backfill the subscription channelId (continuing):', err && err.message);
+  }
+
+  // Destination NAME: the native yt-dlp shape (`args.OUTPUT_TEMPLATE` is
+  // `%(title)s [%(id)s].%(ext)s`). This is what makes the relocated import
+  // indistinguishable from a download to every downstream reader -- above all
+  // `deriveScanYoutubeId`/`extractYtdlpVideoId`, which re-derive the video id
+  // from the bracket for any file under the download root, so the item keeps
+  // its YouTube identity even if `db.metadata` is ever rebuilt from scratch.
+  const ext = path.extname(item.filePath); // preserved verbatim -- we transcode nothing here
+  const title = resolveRelocationTitle(item);
+  const newBaseName = `${title} [${youtubeId}]${ext}`;
+
+  // VERIFY WHAT WAS ACTUALLY BUILT, never assume (SF4's discipline, applied to
+  // the name): does the bracket we just wrote actually read back as this video's
+  // id? `isSafeVideoId` is a charset/length gate (1-64 chars, the repo-wide
+  // `?v=` param rule) while `extractYtdlpVideoId` -- the reader on the other
+  // side, and the one the SCAN uses -- only recognizes the EXACT 11-character
+  // YouTube shape. Every real YouTube id is 11 chars, so the two agree in
+  // practice; but an id that passed the write-side gate without matching the
+  // read-side shape would produce a file whose bracket is decorative: the whole
+  // point of the native filename ("a future scan re-derives the id from the
+  // name") would be silently lost. Rather than hardcode `11` here (a second,
+  // driftable copy of the bracket contract), the check ASKS the reader. A
+  // mismatch is a skip: the item stays where it is, fully functional, with its
+  // persisted `youtubeId` intact.
+  if (extractYtdlpVideoId(path.basename(newBaseName, ext)) !== youtubeId) {
+    return { status: 'skipped', reason: 'id-not-bracket-shaped' };
+  }
+
+  const result = await moveItemToFolder(deps, mediaId, targetDir, { newBaseName });
+  if (!result.ok) {
+    if (result.status === 409) {
+      // The destination is occupied -- this channel folder ALREADY holds a file
+      // by that exact name, i.e. the same video, downloaded natively. Not a
+      // failure and emphatically not something to overwrite: the user has two
+      // copies of one video and gets to decide. Reported, never clobbered.
+      return { status: 'skipped', reason: 'destination-occupied' };
+    }
+    return { status: 'failed', reason: result.error || 'move failed' };
+  }
+
+  // The file now lives in a channel folder under the download root. If that
+  // channel is subscribed, the next poll would otherwise treat this video as one
+  // it has never downloaded -- and re-download it. The move itself has already
+  // succeeded, so a failed append is NOT a failed relocation; but it is also not
+  // nothing (see this function's ARCHIVE note), so it is reported rather than
+  // swallowed. `recordOneShotInArchive` now returns whether the id is on record.
+  let archived = false;
+  try {
+    archived = ytdlp.recordOneShotInArchive(config, youtubeId) !== false;
+  } catch (err) {
+    archived = false;
+    console.error(`Relocate: moved ${result.newPath} but could not record ${youtubeId} in the yt-dlp archive:`, err && err.message);
+  }
+  if (!archived) {
+    console.warn(`Relocate: ${result.newPath} is NOT recorded in .ytdlp-archive.txt -- a subscription poll of this channel may re-download it.`);
+  }
+
+  console.log(`Relocate: hydrated import moved into its channel folder: ${item.filePath} -> ${result.newPath}`);
+  return { status: 'moved', reason: 'ok', newId: result.newId, newPath: result.newPath, archived };
+}
+
+// v1.41.6 gate fix (adversarial WARNING): is ffmpeg queued on, or actively
+// working on, this item? Two independent signals, because neither alone is
+// complete:
+//   - the QUEUES (`transcodeQueue`/`audioExtractQueue`) hold not-yet-started jobs
+//     pinned to `{id, srcPath}` -- a move invalidates `srcPath` and the worker
+//     then drops the job silently, leaving the status stuck forever;
+//   - the item's own `transcodeStatus`/`audioStatus` is what a RUNNING job sets
+//     (the busy job's id is not tracked anywhere else), and it also covers a job
+//     queued before a restart.
+// Pure: reads module state and the item, touches nothing.
+function isMediaJobInFlight(item) {
+  const id = item && item.id;
+  const busyStatuses = new Set(['pending', 'processing']);
+  if (item && busyStatuses.has(item.transcodeStatus)) return true;
+  if (item && busyStatuses.has(item.audioStatus)) return true;
+  if (typeof id === 'string' && id !== '') {
+    if (transcodeQueue.some((job) => job && job.id === id)) return true;
+    if (audioExtractQueue.some((job) => job && job.id === id)) return true;
+  }
+  return false;
+}
+
+// The `%(title)s` half of the relocated file's native name (see
+// `relocateHydratedImportIntoChannelFolder`). Prefers the REAL title the reheat
+// just pulled from yt-dlp (`sourceTitle`) over the item's display title, which
+// for an import is only ever its own filename; falls back to the current
+// basename with any existing `[id]` bracket stripped (`cleanDisplayTitle`) so a
+// re-run can never produce `Title [id] [id]`.
+//
+// Sanitization is a CONSERVATIVE, path-safe fold of our own -- deliberately NOT
+// byte-identical to what yt-dlp produces (gate fix, QA WARNING: this comment used
+// to claim it "mirrors --windows-filenames", which is false). yt-dlp maps the
+// reserved characters to FULL-WIDTH lookalikes (`?` -> `？`) and imposes no length
+// cap; we replace them with `-` and bound the length. Consequence, stated
+// plainly: the name FileTube builds for a relocated import generally DIFFERS from
+// the one yt-dlp would have written for the same video, so yt-dlp's own
+// "file already exists" skip cannot be relied on as a second line of defense
+// against a re-download -- the `.ytdlp-archive.txt` append is the ONLY thing
+// standing between a relocated import and a duplicate download, which is why an
+// archive-append failure is now surfaced to the batch instead of logged and
+// forgotten (see the caller).
+//
+// What it does do: strip control characters, fold the path-dangerous set
+// `/ \ : * ? " < > |`, kill traversal sequences, and refuse leading/trailing dots
+// and spaces -- while KEEPING spaces, unicode and ordinary punctuation, which is
+// what makes a native download's filename human-readable. `sanitizeChannelName`
+// (lib/ytdlp/args.js) is deliberately NOT reused: it is a strict A-Z0-9 allowlist
+// built for a single FOLDER segment and would fold a real video title into
+// unreadable dashes ("Dr. Strangelove" -> "Dr- Strangelove"). The traversal
+// guarantee does NOT rest on this sanitizer anyway -- `computeMoveTarget`
+// structurally rejects any name that is not a single path segment, and
+// `resolveChannelDir` confines the folder -- the same two-layer posture SF4
+// documents for the download path itself.
+//
+// LENGTH IS MEASURED IN BYTES (gate fix, adversarial WARNING). `NAME_MAX` is 255
+// BYTES on ext4/overlayfs, not 255 characters: the previous 120-CHARACTER cap let
+// a 120-char CJK title through as 360 bytes and a 120-char emoji title as 480,
+// both of which ENAMETOOLONG -- so the feature silently failed for an entire
+// realistic class of titles (proven with a runnable repro). The budget below is
+// what remains of 255 after the ` [<11-char id>]` suffix (15 bytes) and the file
+// extension, with room to spare; truncation cuts on a CODE-POINT boundary
+// (spread into an array of code points, never `slice` on UTF-16 units), so a
+// multi-byte sequence -- or an astral-plane emoji's surrogate pair -- can never
+// be cut in half into a replacement character.
+const RELOCATION_TITLE_MAX_BYTES = 200; // 200 + " [11-char id]" (15) + ".webm" (5) = 220 bytes, comfortably inside NAME_MAX (255)
+
+// Truncate `s` to at most `maxBytes` UTF-8 bytes, never splitting a code point.
+function truncateToBytes(s, maxBytes) {
+  if (Buffer.byteLength(s, 'utf8') <= maxBytes) return s;
+  let out = '';
+  let used = 0;
+  for (const cp of s) { // string iteration is by CODE POINT, not UTF-16 unit
+    const size = Buffer.byteLength(cp, 'utf8');
+    if (used + size > maxBytes) break;
+    out += cp;
+    used += size;
+  }
+  return out;
+}
+
+function resolveRelocationTitle(item) {
+  const raw = (typeof item.sourceTitle === 'string' && item.sourceTitle.trim() !== '')
+    ? item.sourceTitle
+    : cleanDisplayTitle(path.basename(item.filePath, path.extname(item.filePath)));
+  let cleaned = String(raw || '')
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\x00-\x1f\x7f]/g, '')
+    .replace(/[/\\:*?"<>|]/g, '-')
+    .replace(/\.\./g, '-') // no traversal sequence can survive, in any ordering
+    .trim()
+    // No leading dot or dash: a leading dot is a hidden file (the scan's own
+    // walk skips dotfiles), and a leading dash is the classic
+    // filename-looks-like-a-flag hazard. `sanitizeChannelName` strips leading
+    // dashes for the same reason.
+    .replace(/^[-. ]+/, '');
+  cleaned = truncateToBytes(cleaned, RELOCATION_TITLE_MAX_BYTES).trim();
+  // No trailing dot/space (Windows-hostile, and a trailing dot next to the
+  // ` [id]` suffix reads as a broken name everywhere else).
+  cleaned = cleaned.replace(/[. ]+$/, '');
+  return cleaned === '' ? 'video' : cleaned;
 }
 
 // ---- Metadata+subtitle re-pull backfill (v1.25 QoL follow-up) -------------
@@ -7174,6 +8011,17 @@ app.get('/video/:id', (req, res) => {
   // sweep keys off -- unchanged from before the refactor, just relocated
   // into the shared `onServe` callback.
   sendRangeable(req, res, filePath, contentType, () => {
+    // v1.41.6 (gate fix): mark the item's SOURCE path live-watched on EVERY
+    // serve, not just when a cached transcode is being served. `recentlyServed`
+    // was previously fed only by the cache paths it protects from eviction --
+    // there was no signal anywhere for "someone is watching this library file
+    // right now". The import-relocation needs exactly that signal: it must not
+    // move a file mid-playback (the client would keep using the old, now-dead id
+    // for the rest of the session -- see its `recently-watched` clause). Purely
+    // additive for the eviction/age-sweep readers of this set: they only ever
+    // test membership for files INSIDE the cache directory, and a library path
+    // is never one of those.
+    markServed(item.filePath);
     if (servingCachedTranscode) {
       markServed(filePath);
       recordServed(item.id);
@@ -7262,6 +8110,11 @@ app.get('/audio/:id', (req, res) => {
   if (fs.existsSync(out)) {
     return sendRangeable(req, res, out, 'audio/mp4', () => {
       markServed(out);
+      // v1.41.6 (gate fix): the SOURCE path too -- a background-audio handoff is
+      // an active viewing session, and the import-relocation must not re-key an
+      // item out from under the client that is mid-playback. See the same mark
+      // in `GET /video/:id` for the full reasoning.
+      markServed(item.filePath);
       recordServed(item.id);
     });
   }
@@ -7347,6 +8200,12 @@ ytdlp.registerRoutes(app, {
   getMediaId,
   recordRepulledItemMeta,
   enumerateRepullableItems,
+  // v1.41.6: the reheat's import-relocation seam -- server.js owns the move +
+  // id re-key machinery (`moveItemToFolder`) and `db.settings`, so the yt-dlp
+  // module gets this deps-injected like every other server-owned primitive
+  // (the same circular-require-avoiding bridge `recordRepulledItemMeta` uses).
+  // The batch calls it per item, AFTER that item's hydration has persisted.
+  relocateHydratedImport: relocateHydratedImportIntoChannelFolder,
   // v1.33 T1: the reheat batch's LOCAL tags probe (cheap ffprobe, no
   // network) -- server.js owns ffmpeg/ffprobe, so the yt-dlp module gets it
   // deps-injected like every other server-owned primitive above.
@@ -7546,6 +8405,12 @@ module.exports = {
   // deps-bridge wiring contract lib/ytdlp/index.js's `registerRoutes` uses.
   recordRepulledItemMeta,
   enumerateRepullableItems,
+  // v1.41.6: the reheat's import-relocation (move a hydrated MeTube import into
+  // its channel folder + native filename) and the pure title->filename helper it
+  // builds the destination name with -- exported for direct test coverage, the
+  // same posture as `moveItemToFolder`/`migrateOneOffsIntoChannelFolders` above.
+  relocateHydratedImportIntoChannelFolder,
+  resolveRelocationTitle,
   cleanDisplayTitle,
   extractYtdlpVideoId,
   contentDispositionAttachment,

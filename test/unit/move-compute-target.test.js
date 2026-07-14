@@ -102,3 +102,47 @@ test('never mutates its inputs (pure)', () => {
   computeMoveTarget('/media/lib/movie.mp4', '/media/lib/sub', allowedRoots);
   assert.deepStrictEqual(allowedRoots, snapshot);
 });
+
+// ---- v1.41.6: the OPTIONAL rename (`opts.newBaseName`) ---------------------
+//
+// The reheat's import-relocation needs the destination to carry the NATIVE
+// yt-dlp filename shape (`<title> [<videoId>].<ext>`), so the move may also
+// rename. That is the one place a CALLER-BUILT string re-enters the path layer,
+// so it is structurally checked here -- rejected, never normalized.
+
+test('v1.41.6: opts.newBaseName renames the file as part of the move', () => {
+  const result = computeMoveTarget('/media/lib/Some Import.mp4', '/dl/Rick Astley', ['/dl'], {
+    newBaseName: 'Never Gonna Give You Up [dQw4w9WgXcQ].mp4',
+  });
+  assert.strictEqual(result.ok, true);
+  assert.strictEqual(result.newPath, path.join('/dl/Rick Astley', 'Never Gonna Give You Up [dQw4w9WgXcQ].mp4'));
+});
+
+test('v1.41.6: omitting opts leaves the source basename byte-identical (every pre-existing caller)', () => {
+  const withEmptyOpts = computeMoveTarget('/media/lib/movie.mp4', '/media/other', ['/media/other'], {});
+  const withNoOpts = computeMoveTarget('/media/lib/movie.mp4', '/media/other', ['/media/other']);
+  assert.strictEqual(withEmptyOpts.newPath, path.join('/media/other', 'movie.mp4'));
+  assert.deepStrictEqual(withNoOpts, withEmptyOpts);
+});
+
+test('v1.41.6 ADVERSARIAL: a newBaseName carrying a path separator or a traversal segment is REJECTED, never normalized', () => {
+  for (const bad of ['../escape.mp4', 'sub/dir.mp4', '..', '.', '', '   ', 'a/../../b.mp4', 'dir/']) {
+    const result = computeMoveTarget('/media/lib/movie.mp4', '/media/other', ['/media/other'], { newBaseName: bad });
+    assert.strictEqual(result.ok, false, `newBaseName=${JSON.stringify(bad)} must be rejected`);
+    assert.match(result.error, /invalid destination file name/i);
+  }
+});
+
+test('v1.41.6: a non-string newBaseName is ignored (falls back to the source basename) rather than throwing', () => {
+  for (const ignored of [undefined, null, 42, {}]) {
+    const result = computeMoveTarget('/media/lib/movie.mp4', '/media/other', ['/media/other'], { newBaseName: ignored });
+    assert.strictEqual(result.ok, true);
+    assert.strictEqual(result.newPath, path.join('/media/other', 'movie.mp4'));
+  }
+});
+
+test('v1.41.6: a rename INTO the same folder+name as the source is still rejected as a no-op move', () => {
+  const result = computeMoveTarget('/media/lib/movie.mp4', '/media/lib', ['/media/lib'], { newBaseName: 'movie.mp4' });
+  assert.strictEqual(result.ok, false);
+  assert.match(result.error, /same file/i);
+});
