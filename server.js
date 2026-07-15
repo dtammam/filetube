@@ -1121,9 +1121,15 @@ function extractYtdlpVideoId(baseName) {
 // later mtime-preserving restore (rsync -a/Syncthing/backup tools).
 //
 // Growth bounds: pruned on every write (age + FIFO cap). A lingering
-// tombstone is inert unless a file appears at that exact path with an mtime
-// predating the delete -- which IS the deleted file, so acting on it late
-// is still honoring the user's delete. This INCLUDES the mount-outage case
+// tombstone is inert unless a file appears that the scan can bind back to
+// this delete: EITHER at that exact path (primary key = md5(path)), OR --
+// after the v1.41.9 SEAM 2 secondary match -- a yt-dlp file in the SAME
+// PARENT DIR with the SAME EXTENSION and SAME `[id]` bracket (a divergent
+// leaf spelling of the very file that was deleted; see the scan's SEAM 2
+// block, which is dirname+ext-confined precisely so a same-id copy in a
+// DIFFERENT folder is never touched). With an mtime predating the delete
+// that IS the deleted file, so acting on it late still honors the user's
+// delete. This INCLUDES the mount-outage case
 // (intended): a vanished parent dir resolves as `gone` -> the delete
 // "succeeds" unverified and mints a tombstone -> when the mount returns,
 // the next scan completes the deletion the user was already told happened.
@@ -2983,9 +2989,56 @@ async function runScanDirectories() {
     // content the user put back on purpose -- index it and forget the
     // tombstone. Either way the tombstone is consumed: one delete, one
     // deferred retry, never a standing suppress-list.
-    const tombstone = deleteTombstones[id];
+    let tombstone = deleteTombstones[id];
+    let tombstoneKey = id;
+    if (!tombstone) {
+      // SEAM 2 (defense-in-depth secondary match): the primary lookup above is
+      // keyed by md5(realDiskPath), but a tombstone from THIS bug class was
+      // minted under md5(storedPath) -- a spelling that diverges from what
+      // landed on disk (full-width/emoji/invalid-UTF-8/relocation), so the
+      // direct hit MISSES and, without this, the survivor is re-indexed and the
+      // deleted video REAPPEARS. Recover the match through the yt-dlp id (the
+      // stable invariant on both spellings), but only inside the module's own
+      // download roots, only on an EXACT id match, and only for a tombstoned
+      // path that is itself under a download root -- so this can never reap a
+      // DIFFERENT video, and (via the mtime<=deletedAt check below) never a
+      // file the user deliberately re-downloaded.
+      const scannedRoot = matchRootFolder(filePath, ytdlpDownloadRoots);
+      if (scannedRoot) {
+        const scannedYtId = extractYtdlpVideoId(path.basename(filePath, info.ext));
+        if (scannedYtId) {
+          // CRITICAL (v1.41.9 gate): the secondary match must identify the SAME
+          // FILE under a divergent leaf spelling -- NOT merely the same youtube
+          // id somewhere under a download root. A divergent stored-vs-disk
+          // spelling of one file always shares its PARENT DIR and EXTENSION;
+          // only the leaf title bytes differ. Without the dirname+extname
+          // confinement below, deleting "copy A in chan1" would authorize the
+          // scan to unlink an UNRELATED "copy B of the same video id in chan2"
+          // (a cross-posted video, a Topic/VEVO mirror, the same video in two
+          // subscriptions) -- a file the user never deleted, and mtime is NO
+          // safety net here (yt-dlp's default --mtime back-dates a fresh
+          // download to the video's UPLOAD time, so a legitimately-fresh copy B
+          // has an OLD mtime and fails the mtime<=deletedAt gate). Relocation
+          // into a NEW folder is deliberately NOT covered here -- it is handled
+          // by the metadata re-key (the claim guard) + moveItemToFolder's
+          // destination-tombstone retirement, never by a cross-directory reach.
+          // Pick the NEWEST deletedAt on an id tie (most recent delete intent)
+          // so the isNewerContent decision is deterministic, not iteration-order
+          // dependent.
+          for (const [tid, t] of Object.entries(deleteTombstones)) {
+            if (!t || typeof t.deletedAt !== 'number' || t.youtubeId !== scannedYtId) continue;
+            if (!matchRootFolder(t.filePath || '', ytdlpDownloadRoots)) continue;
+            if (path.dirname(t.filePath) !== path.dirname(filePath)) continue;
+            if (path.extname(t.filePath) !== path.extname(filePath)) continue;
+            if (tombstone && t.deletedAt <= tombstone.deletedAt) continue;
+            tombstone = t;
+            tombstoneKey = tid;
+          }
+        }
+      }
+    }
     if (tombstone && typeof tombstone.deletedAt === 'number') {
-      consumedTombstoneIds.add(id);
+      consumedTombstoneIds.add(tombstoneKey);
       dbChanged = true; // the consumption itself must persist
       const isNewerContent = typeof info.mtimeMs === 'number' && info.mtimeMs > tombstone.deletedAt;
       // v1.41.6 gate fix (adversarial CRITICAL -- proven with a runnable repro,
@@ -3013,7 +3066,12 @@ async function runScanDirectories() {
       if (stillDeleted) {
         try {
           const freshDb = loadDatabase();
-          const freshTombstone = freshDb.deleteTombstones && freshDb.deleteTombstones[id];
+          // Re-verify against the tombstone we actually matched (primary key
+          // `id`, or the SEAM 2 secondary key `tombstoneKey`).
+          const freshTombstone = freshDb.deleteTombstones && freshDb.deleteTombstones[tombstoneKey];
+          // The live-claim guard stays keyed by `id` (= md5(filePath)): any
+          // legitimate live entry claiming THIS path is keyed by md5 of THIS
+          // path, whatever key the tombstone used.
           const claimed = freshDb.metadata && freshDb.metadata[id] &&
             freshDb.metadata[id].filePath === filePath;
           if (!freshTombstone || claimed) {
@@ -5543,6 +5601,78 @@ const RECOVERABLE_DELETE_CODES = new Set(['EROFS', 'EACCES', 'EBUSY', 'EPERM']);
 // The `unreadable` case is exactly what must NOT silently drop the library
 // entry (that is the reported bug); the caller surfaces it as a recoverable
 // 409 with the same opt-in `removeAnyway` escape hatch as a read-only volume.
+//
+// SEAM 1 (the recurring "delete a yt-dlp video -> rescan -> it REAPPEARS" bug,
+// "fixed" twice and still shipping): when the exact spelling AND the NFC/NFD
+// sibling walk BOTH fail on the LEAF filename, `resolveLeafByBracketId` below
+// is the last-resort resolver. WHY this class exists at all: the library id is
+// `md5(item.filePath)` = the STORED spelling, but yt-dlp can land the file at a
+// spelling that DIVERGES from what we stored in a way NFC/NFD cannot bridge --
+// a full-width U+FF1F where the title had '?', an emoji ZWJ sequence, raw
+// invalid-UTF-8 metube-era bytes, or a relocation-computed name that diverged
+// from what actually hit disk. For those, `existsSync(stored)` is false and the
+// NFC walk finds no canonical sibling, so this resolver USED to return `gone`
+// even though the real bytes are right there -- the delete then falsely reports
+// "already gone", never unlinks the file, AND files a tombstone keyed by
+// md5(storedPath) that the scanner (which keys by md5(realDiskPath)) can never
+// match, so the survivor is re-indexed and the video comes back. The `[id]`
+// bracket is the STABLE INVARIANT that survives any title mangling, so we
+// recover the real entry by its 11-char youtube id + extension.
+function resolveLeafByBracketId(dir, storedLeaf, stringEntries) {
+  const storedExt = path.extname(storedLeaf);
+  // SCOPING: only ever fires when the STORED basename itself carries a yt-dlp
+  // `[<11-char id>]` bracket, so a non-yt-dlp file can never be matched by a
+  // coincidental bracket on a neighbour. Confined to `dir` (the stored path's
+  // own already-resolved parent) -- never roams.
+  const wantId = extractYtdlpVideoId(path.basename(storedLeaf, storedExt));
+  if (!wantId) return null;
+  // Pass 1: the plain string entries readdir already produced (covers the
+  // full-width / emoji-ZWJ divergences -- valid UTF-8, so they round-trip).
+  let hit = null;
+  for (const name of stringEntries) {
+    if (path.extname(name) !== storedExt) continue;
+    if (extractYtdlpVideoId(path.basename(name, storedExt)) !== wantId) continue;
+    const candidate = path.join(dir, name);
+    // A name carrying invalid UTF-8 bytes decodes to U+FFFD replacement chars
+    // in its string form, whose bracket still matches here but whose path does
+    // NOT round-trip to the real bytes -- verify it actually resolves before
+    // trusting it (else it falls to the raw-bytes Pass 2 below).
+    let ok = false;
+    try { ok = fs.existsSync(candidate); } catch (_) { ok = false; }
+    if (!ok) continue;
+    if (hit !== null && hit !== candidate) return null; // two matches -> ambiguous: do not guess
+    hit = candidate;
+  }
+  if (hit !== null) return { realPath: hit };
+  // Pass 2 (tech-debt #35a): a name that does not round-trip through a UTF-8
+  // string decode -- Node replaced its bad bytes with U+FFFD, so Pass 1 could
+  // not resolve it. Enumerate as raw buffers, match the ASCII `[id]` bracket in
+  // the raw bytes, and hand back the ACTUAL entry (a Buffer path) so the caller
+  // unlinks the real file rather than a lossy reconstruction.
+  let bufEntries;
+  try { bufEntries = fs.readdirSync(dir, { encoding: 'buffer' }); } catch (_) { return null; }
+  const extBuf = Buffer.from(storedExt, 'utf8');
+  const bracketBuf = Buffer.from(`[${wantId}]`, 'utf8'); // the id is ASCII -> exact byte match
+  let rawHit = null;
+  for (const buf of bufEntries) {
+    if (buf.length < extBuf.length || !buf.subarray(buf.length - extBuf.length).equals(extBuf)) continue;
+    const stem = buf.subarray(0, buf.length - extBuf.length);
+    if (stem.length <= bracketBuf.length) continue; // need at least one title byte before the bracket
+    if (!stem.subarray(stem.length - bracketBuf.length).equals(bracketBuf)) continue;
+    // Mirror extractYtdlpVideoId's ` [` / `_[` separator: the byte before the
+    // bracket must be a space or underscore (so a mid-name coincidental bracket
+    // is never matched).
+    const sep = stem[stem.length - bracketBuf.length - 1];
+    if (sep !== 0x20 && sep !== 0x5F) continue;
+    if (rawHit !== null) return null; // ambiguous: do not guess
+    rawHit = buf;
+  }
+  if (rawHit === null) return null;
+  const rawPath = Buffer.concat([Buffer.from(dir + path.sep, 'utf8'), rawHit]);
+  // realPath is a display-only lossy string; realPathRaw is what MUST be unlinked.
+  return { realPath: path.join(dir, rawHit.toString('utf8')), realPathRaw: rawPath };
+}
+
 function resolveOnDiskPath(filePath) {
   try {
     if (fs.existsSync(filePath)) return { realPath: filePath };
@@ -5550,7 +5680,9 @@ function resolveOnDiskPath(filePath) {
   const resolvedAbs = path.resolve(filePath);
   const parts = resolvedAbs.split(path.sep).filter((p) => p !== '');
   let current = path.isAbsolute(resolvedAbs) ? path.sep : '.';
-  for (const part of parts) {
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+    const isLeaf = i === parts.length - 1;
     // Fast path: the exact byte-spelling of this segment exists -- descend
     // without enumerating (keeps a mostly-ASCII path to O(depth) stats).
     const exact = path.join(current, part);
@@ -5576,6 +5708,16 @@ function resolveOnDiskPath(filePath) {
       let nfc;
       try { nfc = name.normalize('NFC'); } catch (_) { nfc = name; }
       if (nfc === want) { matched = name; break; }
+    }
+    if (matched === null && isLeaf) {
+      // SEAM 1 last-resort: the leaf's title bytes diverged past NFC/NFD --
+      // recover the real file by its stable yt-dlp `[id]` bracket (see
+      // resolveLeafByBracketId's header for the resurrect-bug this closes).
+      // ADDITIVE: only reached after the exact + NFC/NFD attempts already
+      // failed, and only when the parent dir was successfully enumerated
+      // (so the `unreadable`->409 vs `gone`->success distinction is intact).
+      const byId = resolveLeafByBracketId(current, part, entries);
+      if (byId) return byId;
     }
     // Dir readable but no canonical match -> this segment is genuinely absent.
     if (matched === null) return { realPath: null, gone: true };
@@ -5643,7 +5785,12 @@ app.delete('/api/videos/:id', async (req, res) => {
   try {
     // Delete actual file from filesystem
     if (mediaPathOnDisk) {
-      fs.unlinkSync(mediaPathOnDisk);
+      // SEAM 1: when the resolver matched a non-round-tripping name via its raw
+      // bytes (`realPathRaw`, a Buffer path), unlink THAT actual dirent -- the
+      // string `mediaPathOnDisk` is a lossy U+FFFD reconstruction that would
+      // ENOENT. For every ordinary case realPathRaw is absent and this is the
+      // plain string path.
+      fs.unlinkSync(resolved.realPathRaw || mediaPathOnDisk);
       unlinkVerified = true;
       if (mediaPathOnDisk !== filePath) {
         console.log(`Deleted file from disk (resolved a Unicode/name variant of the stored path): ${mediaPathOnDisk}`);
@@ -5793,7 +5940,21 @@ app.delete('/api/videos/:id', async (req, res) => {
       // restores (adversarial-gate CRITICAL, this release).
       if (!unlinkVerified) {
         if (!freshDb.deleteTombstones || typeof freshDb.deleteTombstones !== 'object' || Array.isArray(freshDb.deleteTombstones)) freshDb.deleteTombstones = {};
-        freshDb.deleteTombstones[item.id] = { filePath, deletedAt: Date.now() };
+        // SEAM 2 (defense-in-depth): the tombstone is keyed by md5(storedPath),
+        // but the scanner can only recompute md5(realDiskPath) -- and in this
+        // whole bug class those two DIVERGE, so the scanner's direct key lookup
+        // never matches and the tombstone sits dead for 90 days while the
+        // survivor is re-indexed. Record the yt-dlp id too (the stable
+        // invariant on BOTH the stored and the on-disk name) so the scan can
+        // recover the match by id when SEAM 1 could not unlink at delete time
+        // (a truly-unreadable parent -> removeAnyway, or an unforeseen
+        // divergence). Same two-source trust order as the archive append above:
+        // the stored basename's `[id]` bracket, else the persisted youtubeId
+        // re-checked through isSafeVideoId. null for a non-yt-dlp file (its
+        // secondary match never fires -- see the scan's SEAM 2 block).
+        const tombstoneYoutubeId = extractYtdlpVideoId(path.basename(filePath, path.extname(filePath)))
+          || (isSafeVideoId(item.youtubeId) ? item.youtubeId : null);
+        freshDb.deleteTombstones[item.id] = { filePath, deletedAt: Date.now(), youtubeId: tombstoneYoutubeId };
         pruneDeleteTombstones(freshDb.deleteTombstones);
       }
       // tech-debt #5 (v1.30-era): mirror the scan-prune path so a
