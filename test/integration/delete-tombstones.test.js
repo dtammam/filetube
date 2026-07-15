@@ -100,6 +100,48 @@ function seedLibraryWithVideo(libDir, fileName) {
   return { filePath, id };
 }
 
+// SEAM 1/2 (v1.41.9): seed a yt-dlp item whose STORED filePath spelling differs
+// from the REAL on-disk spelling in a way NFC/NFD cannot bridge (the id is
+// md5(STORED) as in real life, while the bytes live at `diskName`). Models the
+// full-width-'?' / emoji / invalid-UTF-8 / relocation divergence that made the
+// delete fake success and the tombstone unmatchable.
+function seedDivergentVideo(libDir, storedName, diskName) {
+  const storedPath = path.join(libDir, storedName);
+  const diskPath = path.join(libDir, diskName);
+  fs.writeFileSync(diskPath, 'video-bytes');
+  const id = getMediaId(storedPath);
+  writeDb({
+    folders: [libDir],
+    folderSettings: {},
+    progress: {},
+    metadata: {
+      [id]: {
+        id,
+        name: storedName,
+        title: storedName,
+        filePath: storedPath,
+        folderName: path.basename(libDir),
+        size: fs.statSync(diskPath).size,
+        ext: path.extname(storedName),
+        type: 'video',
+        addedAt: new Date().toISOString(),
+        duration: 12,
+        hasThumbnail: false,
+        rootFolder: libDir,
+        videoCodec: 'h264',
+        audioCodec: 'aac',
+        needsTranscode: false,
+        releaseDate: new Date().toISOString(),
+        youtubeId: null,
+      },
+    },
+    liked: [],
+    deleteTombstones: {},
+    settings: baseSettings(),
+  });
+  return { storedPath, diskPath, id };
+}
+
 // An UNVERIFIED-success delete: the file is gone from disk when the handler
 // runs, so it concludes "already gone" -- success without a watched unlink.
 async function unverifiedDelete(filePath, id) {
@@ -156,6 +198,188 @@ test('HEADLINE (the resurrect bug): a file surviving its unverified "successful"
   const db = readDb();
   assert.strictEqual(db.metadata[id], undefined, 'entry NOT resurrected');
   assert.strictEqual(db.deleteTombstones[id], undefined, 'tombstone consumed');
+});
+
+// ---- SEAM 1 (v1.41.9): the actual recurring resurrect bug. The prior HEADLINE
+// above recreates the survivor at the SAME byte-spelling as item.filePath, so
+// md5(disk)==md5(stored), the tombstone matches, and the scan reaps it -- the
+// divergent-spelling case (the REAL bug) was never exercised. Here the on-disk
+// spelling DIVERGES from the stored spelling (full-width U+FF1F, not
+// NFC/NFD-bridgeable). On main the delete-time resolver reports `gone`, the
+// delete fakes success WITHOUT unlinking, mints a tombstone keyed by
+// md5(storedPath), and the next scan (keying by md5(diskPath)) re-indexes the
+// survivor -> the video REAPPEARS. SEAM 1 makes the delete find the file by its
+// stable `[id]` bracket and VERIFY-unlink it: no survivor, no tombstone.
+// FAILS on main (the file survives the delete); PASSES with SEAM 1.
+test('HEADLINE (SEAM 1 -- the resurrect bug): a divergent-spelling yt-dlp file is VERIFY-unlinked by its [id] bracket, never resurrected', async () => {
+  const libDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-tomb-lib-'));
+  const storedName = 'What is Love- [dQw4w9WgXcQ].mp4'; // ASCII '-' (persisted)
+  const diskName = 'What is Love\uFF1F [dQw4w9WgXcQ].mp4'; // full-width '?' (on disk)
+  const { diskPath, id } = seedDivergentVideo(libDir, storedName, diskName);
+
+  const res = await fetch(`${base}/api/videos/${id}`, { method: 'DELETE' });
+  assert.strictEqual(res.status, 200);
+  assert.strictEqual((await res.json()).success, true);
+  // The core fix: the real bytes are gone, unlinked despite the divergence.
+  assert.ok(!fs.existsSync(diskPath), 'SEAM 1: the real on-disk file was unlinked (found by its id bracket)');
+  let db = readDb();
+  assert.strictEqual(db.deleteTombstones[id], undefined, 'a VERIFIED unlink mints NO tombstone');
+
+  await scanDirectories();
+  db = readDb();
+  assert.strictEqual(db.metadata[id], undefined, 'not resurrected under the stored-spelling id');
+  assert.strictEqual(db.metadata[getMediaId(diskPath)], undefined, 'not resurrected under the on-disk-spelling id');
+});
+
+// ---- SEAM 2 (v1.41.9): defense-in-depth. When SEAM 1 RESOLVES the file but
+// the unlink still cannot happen (a read-only/permission-denied parent taken
+// with removeAnyway), a tombstone is minted keyed by md5(storedPath) -- which
+// the scan (keying by md5(diskPath)) cannot match directly. The tombstone now
+// also carries the yt-dlp id, and the scan does a SECONDARY match by that id
+// (confined to the module's own download roots, exact id, mtime<=deletedAt) so
+// the deferred retry still completes. Uses FILETUBE_YTDLP_DOWNLOAD_DIR so the
+// files sit under a real download root (matchRootFolder must succeed).
+test('SEAM 2: a divergent survivor left undeletable at delete time is reaped by the scan via the youtube-id secondary match', { skip: rootSkip }, async () => {
+  const prev = process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
+  const dl = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-tomb-dl-'));
+  process.env.FILETUBE_YTDLP_DOWNLOAD_DIR = dl;
+  try {
+    const storedName = 'Clip- [dQw4w9WgXcQ].mp4';
+    const diskName = 'Clip\uFF1F [dQw4w9WgXcQ].mp4';
+    const { diskPath, id } = seedDivergentVideo(dl, storedName, diskName);
+
+    // Read+exec only: SEAM 1 RESOLVES the file (dir is readable) but the unlink
+    // fails (dir not writable) -> removeAnyway -> unverified tombstone minted.
+    fs.chmodSync(dl, 0o555);
+    let res;
+    try {
+      res = await fetch(`${base}/api/videos/${id}?removeAnyway=true`, { method: 'DELETE' });
+    } finally {
+      fs.chmodSync(dl, 0o755); // the transient condition clears before the scan
+    }
+    const body = await res.json();
+    assert.strictEqual(body.success, true);
+    assert.strictEqual(body.fileRemainsOnDisk, true);
+
+    let db = readDb();
+    assert.ok(db.deleteTombstones[id], 'unverified success minted a tombstone keyed by md5(storedPath)');
+    assert.strictEqual(db.deleteTombstones[id].youtubeId, 'dQw4w9WgXcQ', 'tombstone carries the yt-dlp id for the secondary match');
+    assert.ok(fs.existsSync(diskPath), 'the real file survived (read-only parent at delete time)');
+    // Direct key lookup CANNOT match -- prove the divergence the secondary match must bridge.
+    assert.notStrictEqual(getMediaId(diskPath), id, 'md5(disk) != md5(stored): the primary lookup misses');
+    backdate(diskPath, db.deleteTombstones[id].deletedAt);
+
+    await scanDirectories();
+
+    assert.ok(!fs.existsSync(diskPath), 'SEAM 2: the scan reaped the survivor via the youtube-id secondary match');
+    db = readDb();
+    assert.strictEqual(db.metadata[getMediaId(diskPath)], undefined, 'not resurrected');
+    assert.strictEqual(db.deleteTombstones[id], undefined, 'tombstone consumed (one deferred retry per delete)');
+  } finally {
+    if (prev === undefined) delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
+    else process.env.FILETUBE_YTDLP_DOWNLOAD_DIR = prev;
+  }
+});
+
+// CRITICAL regression (v1.41.9 gate, proven by a runnable repro): SEAM 2 must
+// NOT reap a DIFFERENT file that merely shares the youtube id. Deleting "copy A
+// in chan1" (unverified -> tombstone with the id) must never authorize the scan
+// to unlink an unrelated "copy B of the same video in chan2" (a cross-post, a
+// Topic/VEVO mirror, the same video in two subscriptions). mtime is no safety
+// net: yt-dlp's default --mtime back-dates a fresh copy B to the video's UPLOAD
+// time, so it has an OLD mtime and fails the mtime<=deletedAt gate. The
+// dirname+extname confinement on the secondary match is what spares copy B.
+// FAILS if the dirname/extname guard is reverted (copy B is reaped = data loss).
+test('SEAM 2 SAFETY (CRITICAL): a same-id copy in a DIFFERENT folder is SPARED, whatever its mtime', { skip: rootSkip }, async () => {
+  const prev = process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-tomb-root-'));
+  const chan1 = path.join(root, 'chan1');
+  const chan2 = path.join(root, 'chan2');
+  fs.mkdirSync(chan1); fs.mkdirSync(chan2);
+  process.env.FILETUBE_YTDLP_DOWNLOAD_DIR = root;
+  try {
+    const YID = 'dQw4w9WgXcQ';
+    // Copy A: stored in chan1, real file already gone -> unverified delete.
+    const aName = `Song A [${YID}].mp4`;
+    const aPath = path.join(chan1, aName);
+    const aId = getMediaId(aPath);
+    // Copy B: a REAL second copy in chan2 (a different subscription), unindexed,
+    // OLD mtime (yt-dlp back-dates by default) -- the only copy of B.
+    const bPath = path.join(chan2, `Song B [${YID}].mp4`);
+    fs.writeFileSync(bPath, 'the-only-copy-of-B');
+
+    writeDb({
+      folders: [chan1, chan2],
+      folderSettings: {},
+      progress: {},
+      metadata: {
+        [aId]: {
+          id: aId, name: aName, title: aName, filePath: aPath,
+          folderName: 'chan1', size: 10, ext: '.mp4', type: 'video',
+          addedAt: new Date().toISOString(), duration: 12, hasThumbnail: false,
+          rootFolder: chan1, videoCodec: 'h264', audioCodec: 'aac',
+          needsTranscode: false, releaseDate: new Date().toISOString(),
+          youtubeId: YID,
+        },
+      },
+      liked: [],
+      deleteTombstones: {},
+      settings: baseSettings(),
+    });
+
+    const res = await fetch(`${base}/api/videos/${aId}`, { method: 'DELETE' });
+    assert.strictEqual(res.status, 200);
+    const db0 = readDb();
+    assert.ok(db0.deleteTombstones[aId], 'tombstone minted for copy A');
+    assert.strictEqual(db0.deleteTombstones[aId].youtubeId, YID, 'tombstone carries the id');
+
+    // Back-date copy B to BEFORE the delete (models yt-dlp --mtime upload time).
+    backdate(bPath, db0.deleteTombstones[aId].deletedAt);
+
+    await scanDirectories();
+
+    assert.ok(fs.existsSync(bPath), 'DATA LOSS GUARD: copy B in chan2 must SURVIVE deleting copy A in chan1');
+    const db = readDb();
+    assert.ok(db.metadata[getMediaId(bPath)], 'copy B indexed normally');
+  } finally {
+    if (prev === undefined) delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
+    else process.env.FILETUBE_YTDLP_DOWNLOAD_DIR = prev;
+  }
+});
+
+// Proves the dirname guard did NOT over-restrict: the REAL divergent-same-file
+// case (same folder, same ext, same id, OLD mtime) is still reaped -- exactly
+// the bug SEAM 2 exists to close, and with the sound (dirname+ext), not the
+// unsound (mtime), safety net.
+test('SEAM 2: a same-folder, same-id, OLDER-mtime divergent survivor IS still reaped (guard did not over-restrict)', { skip: rootSkip }, async () => {
+  const prev = process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
+  const dl = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-tomb-dl-'));
+  process.env.FILETUBE_YTDLP_DOWNLOAD_DIR = dl;
+  try {
+    const storedName = 'Clip- [dQw4w9WgXcQ].mp4';
+    const diskName = 'Clip\uFF1F [dQw4w9WgXcQ].mp4';
+    const { diskPath, id } = seedDivergentVideo(dl, storedName, diskName);
+
+    fs.chmodSync(dl, 0o555);
+    try {
+      await fetch(`${base}/api/videos/${id}?removeAnyway=true`, { method: 'DELETE' });
+    } finally {
+      fs.chmodSync(dl, 0o755);
+    }
+    const db0 = readDb();
+    assert.ok(db0.deleteTombstones[id], 'tombstone minted');
+    backdate(diskPath, db0.deleteTombstones[id].deletedAt); // OLDER than the delete
+
+    await scanDirectories();
+
+    assert.ok(!fs.existsSync(diskPath), 'the genuine same-file survivor is reaped (older mtime, same dir+ext)');
+    const db = readDb();
+    assert.strictEqual(db.metadata[getMediaId(diskPath)], undefined, 'not resurrected');
+    assert.strictEqual(db.deleteTombstones[id], undefined, 'tombstone consumed');
+  } finally {
+    if (prev === undefined) delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
+    else process.env.FILETUBE_YTDLP_DOWNLOAD_DIR = prev;
+  }
 });
 
 test('a mtime-preserving RESTORE after a verified delete is indexed normally (no tombstone, no reap)', async () => {
