@@ -80,6 +80,11 @@
 
 ## Shipped
 
+### v1.41.8 — Fix: the "Preview changes" modal never appeared on in-app navigation (2026-07-15)
+
+- Dean reported that clicking "Preview changes" flashed "Computing preview…" for a moment and then showed nothing. Root cause: the v1.41.7 modal's markup (`#reloc-preview-backdrop`) lived *outside* `#view-root` and its `.reloc-preview-*` styles lived in a page-local `<head><style>` block — but the SPA router's `extractViewFragment` swaps in *only* the `#view-root` subtree on in-app navigation, so on a nav-link visit (as opposed to a hard page refresh) the modal element was never mounted and its open silently no-opped. The Reheat button worked because it *was* inside `#view-root`; the modal wasn't. This is tech-debt #34 / the known "page-local styles are lost on the SPA swap" class, which the new modal landed squarely in.
+- Fix (mirrors the working `#playlists-sheet` overlay pattern): the modal markup moved *inside* `#view-root` so the swap mounts it, and the `.reloc-preview-*` rules moved into `public/css/style.css` so they survive the swap (font sizes tokenized to `--fs-*` per the type-scale rule; rendered sizes unchanged, colors/layout identical). Verified no `#view-root` ancestor carries a `transform`/`filter` that would break the modal's `position: fixed`. A regression test locks all four modal IDs as `#view-root` descendants and the styles as present in style.css (mutation-tested: reverting either half turns it red). Closes the v1.41.7 portion of tech-debt #34. Adversarial slim gate APPROVE; full suite green on Node v22 + v24.
+
 ### v1.41.7 — Reheat "Preview changes" + checksum-verified cross-filesystem moves (2026-07-14)
 
 - The safety net for v1.41.6's relocation, built because the owner **cannot back up** his media folder — so a bulk, irreversible file operation needed to be inspectable and provably non-destructive before it runs.
