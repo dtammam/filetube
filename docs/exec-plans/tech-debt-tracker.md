@@ -71,7 +71,8 @@
 - **Severity:** Low. QA SUGGESTION at the v1.37.5 gate (adjacent to the resolveOnDiskPath work), accepted-not-fixed for scope.
 - **Source:** v1.37.5 two-adversarial-agent gate (QA seat).
 
-## #34 — subscriptions.html page-local styles are lost on in-app swaps (pre-existing)
+## #34 — subscriptions.html page-local styles are lost on in-app swaps (pre-existing) — PARTIALLY resolved v1.41.8
 - **What:** the SPA router's extractViewFragment takes only #view-root, so lib/ytdlp/views/subscriptions.html's page-local <style> block (`.sub-*` classes, since the original T5 commit) never loads when /subscriptions is reached via in-app navigation — the same latent unstyled-fragment exposure v1.37.1 fixed for the books/reader pages by relocating their styles into style.css.
-- **Fix direction:** relocate the subscriptions page-local styles into public/css/style.css (the v1.37.1 pattern), or teach the router to adopt view-scoped styles.
-- **Source:** v1.37.1 slim gate (adversarial APPROVE, verification (d)).
+- **v1.41.8 note:** this class BIT for real — the v1.41.7 "Preview changes" modal landed both its markup (outside #view-root) AND its `.reloc-preview-*` styles (in the page-local <style>) in the fragile spot, so the modal never appeared on in-app nav (Dean's bug report). Fixed by moving the modal INSIDE #view-root and its rules into style.css. The `.reloc-preview-*` slice of the page-local block is now resolved and lock-tested (test/unit/reloc-preview-mount.test.js). The ORIGINAL `.sub-*` slice remains page-local and still latent — a `.sub-*`-styled element that isn't already covered by style.css would still render unstyled on an in-app swap.
+- **Fix direction (remaining):** relocate the REMAINING subscriptions page-local `.sub-*` styles into public/css/style.css (the v1.37.1 pattern), or teach the router to adopt view-scoped styles. Any NEW element added to subscriptions.html must put its styles in style.css and its markup inside #view-root from the start.
+- **Source:** v1.37.1 slim gate (adversarial APPROVE, verification (d)); v1.41.8 bug + partial fix.
