@@ -187,6 +187,39 @@ beforeEach(() => {
   if (fs.existsSync(DB_FILE)) fs.rmSync(DB_FILE);
 });
 
+// v1.41.13 (gate W4): the persist checkpoint under the ACTUAL six-strike
+// trigger -- a CHANGED file (same path, new size) forces the re-init branch. A
+// universal item in a PLAIN library folder (outside the download root, so the
+// scan bridge can't re-derive its identity and mask a dropped carry-forward)
+// must keep sourceExtractor/sourceId across the rescan.
+test('W4: a universal item in a plain library folder keeps sourceExtractor/sourceId across a CHANGED-FILE rescan', async () => {
+  const libDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-tomb-lib-'));
+  const fileName = 'A Hydrated Import [Vimeo=austrian⧸page=1].mp4';
+  const filePath = path.join(libDir, fileName);
+  fs.writeFileSync(filePath, 'v1');
+  const id = getMediaId(filePath);
+  writeDb({
+    folders: [libDir], folderSettings: {}, progress: {},
+    metadata: { [id]: {
+      id, name: fileName, title: fileName, filePath, folderName: path.basename(libDir),
+      size: fs.statSync(filePath).size, ext: '.mp4', type: 'video', addedAt: new Date().toISOString(),
+      duration: 12, hasThumbnail: false, rootFolder: libDir, videoCodec: 'h264', audioCodec: 'aac',
+      needsTranscode: false, youtubeId: null,
+      sourceExtractor: 'Vimeo', sourceId: 'austrian/page=1', // RAW id (has a slash)
+    } },
+    liked: [], deleteTombstones: {}, settings: baseSettings(),
+  });
+
+  // Change the file's SIZE -> the scan takes the new/updated re-init branch.
+  fs.writeFileSync(filePath, 'v2-bigger-content');
+  await scanDirectories();
+
+  const item = readDb().metadata[id];
+  assert.ok(item, 'still indexed');
+  assert.strictEqual(item.sourceExtractor, 'Vimeo', 'source extractor survived the re-init');
+  assert.strictEqual(item.sourceId, 'austrian/page=1', 'the RAW sourceId survived (never clobbered by the sanitized bracket)');
+});
+
 test('an UNVERIFIED delete (file absent at delete time) mints a tombstone; a VERIFIED unlink mints none', async () => {
   const libDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-tomb-lib-'));
 

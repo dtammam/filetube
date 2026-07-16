@@ -3807,17 +3807,42 @@ async function runScanDirectories() {
               item.title = consumedU.sourceTitle;
             }
             dbChanged = true;
-          } else {
-            // No capture bridged (older download, or capture failed) -- still
-            // record the source identity from the on-disk bracket so delete/
-            // archive (P3) can key off it; the bracket id is the sanitized
-            // form, adequate as a fallback identity.
+          } else if (!item.sourceId) {
+            // No capture bridged (older download, or already consumed) AND the
+            // item has no source identity yet -- record it from the on-disk
+            // bracket. GAP-FILL ONLY (gate WARNING W1): an unconditional write
+            // here clobbered the carried-forward RAW sourceId with the on-disk
+            // SANITIZED bracket id on a changed-file rescan (raw `austrian/
+            // page=1` -> sanitized `austrian⧸page=1`), and P3 keys the archive/
+            // delete off sourceId (D5: RAW is authoritative) -> a deleted video
+            // would re-download. The raw value, once persisted, is preserved by
+            // the re-init carry-forward; only a genuinely-identity-less item is
+            // filled here, from the best available (sanitized) fallback.
             item.sourceExtractor = mediaRef.source;
             item.sourceId = mediaRef.id;
             dbChanged = true;
           }
           // D1a: a proxy-host YouTube item keeps its real YouTube identity.
-          if (isYt && isSafeVideoId(mediaRef.id)) item.youtubeId = mediaRef.id;
+          // Its capture (extractor_key 'Youtube') was stored by the YouTube
+          // sanitize branch keyed by the BARE videoId -- but on disk it carries
+          // the `[Youtube=id]` bracket, so `videoId` above is null and the
+          // YouTube-consume block below never runs. Recover it HERE: set
+          // youtubeId and consume the YouTube downloadMeta by the bracket id, so
+          // channelUrl/channelId/channelName/avatar reach the item (gate W2).
+          if (isYt && isSafeVideoId(mediaRef.id)) {
+            item.youtubeId = mediaRef.id;
+            const consumedYt = ytdlp.consumeDownloadChannelMeta(fresh, mediaRef.id);
+            if (consumedYt) {
+              item.channelUrl = consumedYt.channelUrl;
+              if (consumedYt.channelHandleUrl) item.channelHandleUrl = consumedYt.channelHandleUrl;
+              if (consumedYt.channelId) item.channelId = consumedYt.channelId;
+              if (consumedYt.channelName) item.channelName = consumedYt.channelName;
+              if (consumedYt.channelAvatarUrl) item.channelAvatarUrl = consumedYt.channelAvatarUrl;
+              if (typeof consumedYt.releaseDate === 'number' && Number.isFinite(consumedYt.releaseDate)) item.releaseDate = consumedYt.releaseDate;
+              if (typeof consumedYt.sourceTitle === 'string' && consumedYt.sourceTitle !== '') { item.sourceTitle = consumedYt.sourceTitle; item.title = consumedYt.sourceTitle; }
+              dbChanged = true;
+            }
+          }
         }
         if (videoId) {
           // v1.33 T1: the bracket id IS this item's YouTube id -- persist it

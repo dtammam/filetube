@@ -142,6 +142,36 @@ test('isPlausibleMediaUrl: a hostile prefix glued before an embedded URL is neut
   assert.match(inner.error, /not allowed/);
 });
 
+test('C1 (gate CRITICAL): an IPv4-mapped IPv6 literal is caught THROUGH the real URL parser (not a hand-built form)', () => {
+  // new URL() serializes ::ffff:a.b.c.d to HEX hextets -- the actual bytes the
+  // SSRF guard must classify. Drive the WHOLE intake, not isPrivateOrLocalHost
+  // with a production-never-emits dotted string.
+  for (const u of [
+    'http://[::ffff:169.254.169.254]/Mediasite/Play/0123456789abcdef0123456789abcdef', // cloud metadata
+    'http://[::ffff:127.0.0.1]:8080/x',   // loopback
+    'http://[::ffff:10.0.0.1]/x',         // private
+    'http://[0:0:0:0:0:ffff:a9fe:a9fe]/x', // fully-spelled mapped 169.254.169.254
+  ]) {
+    const r = isPlausibleMediaUrl(u);
+    assert.strictEqual(r.ok, false, `${u} must be refused (SSRF)`);
+    assert.match(r.error, /not allowed/);
+  }
+  // A genuine public IPv6 still passes.
+  assert.strictEqual(isPlausibleMediaUrl('http://[2001:4860:4860::8888]/x').ok, true);
+});
+
+test('C2 (gate CRITICAL): the universal lane PRESERVES a non-YouTube query identity (never the YouTube v/list allowlist)', () => {
+  const bili = isPlausibleMediaUrl('https://www.bilibili.com/video/BV1xx411c7mD?p=3');
+  assert.strictEqual(bili.ok, true);
+  assert.match(bili.url, /[?&]p=3/, 'the ?p=3 part selector MUST survive (yt-dlp downloads the wrong part otherwise)');
+
+  const multi = isPlausibleMediaUrl('https://vk.com/video?z=abc&list=xyz&video_id=42');
+  assert.strictEqual(multi.ok, true);
+  assert.match(multi.url, /video_id=42/, 'the resource id in the query survives');
+  assert.match(multi.url, /z=abc/, 'other params survive too');
+  assert.ok(!/ /.test(multi.url), 'no bare unsafe chars remain (query re-encoded via searchParams)');
+});
+
 test('isPlausibleMediaUrl: no user-visible message leaks an internal parameter name', () => {
   // The screenshot bug: "channelUrl host is not an allowed YouTube host".
   for (const u of ['http://127.0.0.1/x', 'ftp://x/y', 'https://user:p@vimeo.com/1', 'https://a.com/x y']) {

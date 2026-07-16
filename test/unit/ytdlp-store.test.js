@@ -2212,6 +2212,26 @@ test('v1.41.13 bridge round-trip: record a universal capture, consume it by comp
   assert.equal(store.consumeUniversalDownloadMeta(db, key), null, 'a second consume returns null');
 });
 
+test('v1.41.13 bridge (W3): a capture WITH a filePath is keyed by the RENDERED BASENAME, consumed by path.basename -- not the composite', () => {
+  let db = { ytdlp: { downloadMeta: {} } };
+  const deps = { updateDatabase: async (fn) => { fn(db); return db; } };
+  // A non-round-tripping raw id: '/' sanitizes on disk, so the composite
+  // (raw) key != the on-disk basename key. Only the basename key lets the scan
+  // find it (design D5 / gate W3 -- a composite-only key would silently miss).
+  const rawId = 'austrian/page=1';
+  const diskBasename = 'Talk [Vimeo=austrian⧸page=1].mp4'; // '/' sanitized to U+29F8
+  const filePath = '/media/ytdlp/Vimeo/' + diskBasename;
+  return store.recordDownloadChannelMeta(deps, { source: 'Vimeo', videoId: rawId, uploader: 'Studio', filePath }).then(() => {
+    assert.ok(db.ytdlp.downloadMeta[diskBasename], 'keyed by the rendered basename');
+    assert.equal(db.ytdlp.downloadMeta[store.compositeMetaKey('Vimeo', rawId)], undefined, 'NOT keyed by the raw composite');
+    // The scan consumes by path.basename(item.filePath) -- exactly the key.
+    const consumed = store.consumeUniversalDownloadMeta(db, diskBasename);
+    assert.ok(consumed);
+    assert.equal(consumed.sourceId, rawId, 'the RAW id is the authoritative payload (never the sanitized bracket)');
+    assert.equal(consumed.channelName, 'Studio');
+  });
+});
+
 test('v1.41.13 bridge: consumeUniversalDownloadMeta ignores a YouTube (non-universal) entry, and YouTube consume ignores a universal one', () => {
   const db = { ytdlp: { downloadMeta: {
     'dQw4w9WgXcQ': { channelUrl: 'https://www.youtube.com/@RickAstley', capturedAt: 1 },

@@ -1579,7 +1579,7 @@ test('the extractor gate + universal template NEVER leak onto a YouTube one-off 
   const yt = args.buildYtdlpDownloadArgs(baseSub(), config, ['vid1'], { oneOff: true });
   assert.ok(!yt.includes('--use-extractors'), 'no extractor gate on a YouTube one-off');
   assert.ok(!yt.includes('--playlist-items'), 'no single-item bound on a YouTube one-off');
-  assert.ok(yt[yt.indexOf('-o') + 1].endsWith(args.OUTPUT_TEMPLATE ? '[%(id)s].%(ext)s' : '[%(id)s].%(ext)s'), 'legacy template');
+  assert.ok(yt[yt.indexOf('-o') + 1].endsWith(args.OUTPUT_TEMPLATE), 'legacy template (gate S2: assert the real constant, not a dead ternary)');
   // Subscription download (oneOff falsy): unchanged too.
   const sub = args.buildYtdlpDownloadArgs(baseSub(), config, ['vid1'], {});
   assert.ok(!sub.includes('--use-extractors'), 'no extractor gate on a subscription download');

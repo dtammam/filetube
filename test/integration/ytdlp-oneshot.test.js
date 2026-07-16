@@ -18,6 +18,7 @@ const express = require('express');
 
 const ytdlp = require('../../lib/ytdlp');
 const run = require('../../lib/ytdlp/run');
+const shortlink = require('../../lib/ytdlp/shortlink');
 const store = require('../../lib/ytdlp/store');
 const args = require('../../lib/ytdlp/args');
 const { formatBodyParserError } = require('../../lib/bodyParserErrors');
@@ -244,6 +245,30 @@ test('POST /api/ytdlp/download with a malformed/non-http(s)/YouTube-channel/priv
 });
 
 // ---- v1.41.13: the universal lane -- a non-YouTube media URL is ACCEPTED ----
+test('D6: a Facebook share SHORTLINK is resolved to its /reel URL before the spawn (Dean\'s case)', async () => {
+  const deps = makeFakeDeps();
+  let captured = null;
+  run.runDownload = async (sub, config, targetIds, opts) => { captured = opts; return { ok: true, code: 0, stdout: '', stderr: '' }; };
+  const realResolve = shortlink.resolveShortlink;
+  shortlink.resolveShortlink = async (u) =>
+    u === 'https://www.facebook.com/share/r/1Hk9jStL2C/'
+      ? { ok: true, url: 'https://www.facebook.com/reel/897928030021587/?rdid=x' }
+      : { ok: true, url: u };
+
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    const res = await postJson(base, '/api/ytdlp/download', { url: 'https://www.facebook.com/share/r/1Hk9jStL2C/' });
+    assert.equal(res.status, 202, 'the share link is accepted');
+    const deadline = Date.now() + 4000;
+    while (captured === null && Date.now() < deadline) await new Promise((r) => setTimeout(r, 25));
+    assert.ok(captured, 'the download ran');
+    assert.equal(captured.sourceUrl, 'https://www.facebook.com/reel/897928030021587/?rdid=x', 'D6 resolved the shortlink to the reel URL before spawning');
+  } finally {
+    shortlink.resolveShortlink = realResolve;
+    await close();
+  }
+});
+
 test('POST /api/ytdlp/download with a non-YouTube media URL is accepted (202) and spawns with the universal argv', async () => {
   const deps = makeFakeDeps();
   let captured = null;
