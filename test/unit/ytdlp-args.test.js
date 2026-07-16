@@ -1617,3 +1617,8 @@ test('universal one-off WITHOUT autoUploaderFolder (explicit folder) uses the co
   assert.ok(!template.includes('%(uploader'), 'an explicit-folder universal one-off does NOT fold by uploader');
   assert.ok(template.includes(path.join('My Folder', args.UNIVERSAL_OUTPUT_TEMPLATE)), 'it uses the confined channelDir');
 });
+
+test('universal template caps the title to 100 chars (ENAMETOOLONG fix) with the [id] bracket intact', () => {
+  assert.match(args.UNIVERSAL_OUTPUT_TEMPLATE, /%\(title\)\.100s \[%\(extractor_key\)s=%\(id\)s\]\.%\(ext\)s/,
+    'the universal filename template caps the title at 100 chars so a long FB/Reddit description-as-title cannot overrun the 255-byte limit');
+});
