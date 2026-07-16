@@ -1585,3 +1585,18 @@ test('the extractor gate + universal template NEVER leak onto a YouTube one-off 
   assert.ok(!sub.includes('--use-extractors'), 'no extractor gate on a subscription download');
   assert.ok(sub.includes('--download-archive'), 'subscription keeps the shared archive');
 });
+
+test('universal one-off: uses the extended print template (extractor_key/uploader/filepath); YouTube+subs keep the legacy one', () => {
+  const config = makeConfig();
+  const universal = args.buildYtdlpDownloadArgs(baseSub({ name: 'Vimeo' }), config, [], { oneOff: true, sourceUrl: 'https://vimeo.com/76979871' });
+  const uni = universal[universal.indexOf('--print') + 1];
+  assert.equal(uni, args.UNIVERSAL_CHANNEL_META_PRINT_TEMPLATE);
+  assert.match(uni, /extractor_key/);
+  assert.match(uni, /filepath/);
+  assert.match(uni, /uploader[,)]/);
+
+  const yt = args.buildYtdlpDownloadArgs(baseSub(), config, ['vid1'], { oneOff: true });
+  assert.equal(yt[yt.indexOf('--print') + 1], args.CHANNEL_META_PRINT_TEMPLATE, 'YouTube one-off keeps the legacy template (byte-identical)');
+  const sub = args.buildYtdlpDownloadArgs(baseSub(), config, ['vid1'], {});
+  assert.equal(sub[sub.indexOf('--print') + 1], args.CHANNEL_META_PRINT_TEMPLATE, 'subscription keeps the legacy template (byte-identical)');
+});
