@@ -414,7 +414,7 @@ every failure in plain words.
 - [x] **Real icon assets** — replaced the emoji `.icon-*` set + raw inline emojis with self-hosted Google Material Symbols (Apache-2.0), themed via `currentColor`, plus an icon-set system (Outlined/Rounded/Filled/Emoji + auto-per-era).
 - [x] **Agent SDLC pipeline (handoff-harness)** — the multi-agent engineering pipeline (`.claude/agents` + commands + `.state`) is installed and in active use to drive every feature.
 
-- [x] **YouTube-style player** — inline iOS playback (no forced fullscreen); ±15s skip via on-player buttons, double-tap, and ← / → keys; buttons hidden on mobile; autoplay disabled on mobile.
+- [x] **YouTube-style player** — inline iOS playback (no forced fullscreen); ±15s skip via on-player buttons and double-tap (← / → keys skip 5s and J/L 10s since v1.41.11's YouTube-shortcut set); buttons hidden on mobile; autoplay disabled on mobile.
 - [x] **AVI playback (hybrid + lazy)** — desktop streams a live transcode (instant); mobile/iOS plays a seekable pre-transcoded MP4. Transcoding is **lazy** — only AVIs actually watched on mobile are cached (not the whole library), with a "Preparing video" overlay + live %.
 - [x] **Simplified audio player** — no spinning vinyl; embedded cover art (or placeholder) as a still with native controls that work on desktop and iOS.
 - [x] **Custom folder display names** — friendly per-folder name shown in the sidebar (set in Setup).

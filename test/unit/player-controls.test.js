@@ -283,40 +283,45 @@ test('FIX 1: releaseHold() (transient hold-2x restore) sets ONLY playbackRate, n
 });
 
 // ---- v1.41.11 (Dean): YouTube-style shortcuts -------------------------------
-// prevPlaybackRate (the `<` key) + source-locks on the keydown switch, the
-// wheel-over-volume-slider gesture, and watch.js's trackNav registration
-// (the piece that makes hardware previous/next media keys actually fire --
-// browsers only auto-wire play/pause; prev/next need MediaSession handlers).
+// stepPlaybackRateClamped (the </> keys) + source-locks on the keydown
+// switch, the wheel-over-volume-slider gesture, and watch.js's trackNav
+// registration (the piece that makes hardware previous/next media keys
+// actually fire -- browsers only auto-wire play/pause; prev/next need
+// MediaSession handlers). Gate fix round: the keyboard pair CLAMPS at both
+// ends (adversarial W4 -- '<' at 1x wrapping to 2x was an intent inversion;
+// YouTube clamps), while #speed-btn keeps its wrapping cycle.
 
-const { prevPlaybackRate } = require('../../public/js/player.js');
+const { stepPlaybackRateClamped } = require('../../public/js/player.js');
 
-test('prevPlaybackRate: steps BACKWARD through the fixed rate cycle, mirror of next', () => {
-  assert.strictEqual(prevPlaybackRate(2), 1.75);
-  assert.strictEqual(prevPlaybackRate(1.75), 1.5);
-  assert.strictEqual(prevPlaybackRate(1.5), 1.25);
-  assert.strictEqual(prevPlaybackRate(1.25), 1);
+test('stepPlaybackRateClamped: steps down through the rate list ('<' key)', () => {
+  assert.strictEqual(stepPlaybackRateClamped(2, -1), 1.75);
+  assert.strictEqual(stepPlaybackRateClamped(1.75, -1), 1.5);
+  assert.strictEqual(stepPlaybackRateClamped(1.5, -1), 1.25);
+  assert.strictEqual(stepPlaybackRateClamped(1.25, -1), 1);
 });
 
-test('prevPlaybackRate: wraps from the slowest rate to the fastest (mirror of next\'s 2x -> 1x)', () => {
-  assert.strictEqual(prevPlaybackRate(1), 2);
+test('stepPlaybackRateClamped: CLAMPS at both ends -- no wrap-around intent inversion (gate W4)', () => {
+  assert.strictEqual(stepPlaybackRateClamped(1, -1), 1, "'<' at minimum speed is a no-op, never a jump to 2x");
+  assert.strictEqual(stepPlaybackRateClamped(2, 1), 2, "'>' at maximum speed is a no-op");
 });
 
-test('prevPlaybackRate: an unrecognized/foreign current rate degrades to the first rate, never throws', () => {
-  assert.strictEqual(prevPlaybackRate(3), 1);
-  assert.strictEqual(prevPlaybackRate(undefined), 1);
-  assert.strictEqual(prevPlaybackRate(NaN), 1);
+test('stepPlaybackRateClamped: steps up ('>' key) and degrades a foreign rate to the first rate', () => {
+  assert.strictEqual(stepPlaybackRateClamped(1, 1), 1.25);
+  assert.strictEqual(stepPlaybackRateClamped(3, -1), 1);
+  assert.strictEqual(stepPlaybackRateClamped(undefined, 1), 1);
+  assert.strictEqual(stepPlaybackRateClamped(NaN, -1), 1);
 });
 
 test('v1.41.11 source-lock: the FULL-only keydown switch carries the YouTube set', () => {
   const src = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'player.js'), 'utf8');
   const start = src.indexOf('the switch below mirrors YouTube');
   assert.ok(start >= 0, 'the v1.41.11 shortcut block exists');
-  const block = src.slice(start, start + 3200);
+  const block = src.slice(start, start + 5200); // wide enough to span the whole switch incl. the live-aware digit case
   assert.match(block, /case 'ArrowLeft': e\.preventDefault\(\); skip\(-5\);/, 'arrows are YouTube 5s now (J/L own the 10s step)');
   assert.match(block, /case 'j': case 'J': e\.preventDefault\(\); skip\(-10\);/, 'J rewinds 10s');
   assert.match(block, /case 'ArrowUp': e\.preventDefault\(\); adjustVolume\(VOLUME_STEP\);/, 'ArrowUp raises volume');
-  assert.match(block, /applyPlaybackRate\(nextPlaybackRate\(mediaPlayer\.playbackRate\)\)/, '> speeds up through the shared apply path');
-  assert.match(block, /applyPlaybackRate\(prevPlaybackRate\(mediaPlayer\.playbackRate\)\)/, '< slows down through the same path');
+  assert.match(block, /applyPlaybackRate\(stepPlaybackRateClamped\(mediaPlayer\.playbackRate, 1\)\)/, '> speeds up through the shared apply path (clamped)');
+  assert.match(block, /applyPlaybackRate\(stepPlaybackRateClamped\(mediaPlayer\.playbackRate, -1\)\)/, '< slows down through the same path (clamped)');
   assert.match(block, /case 'N':\s*if \(e\.shiftKey && trackNavHandlers/, 'Shift+N drives the registered trackNav seam');
   assert.match(block, /case '9': \{/, 'digit percent-seek cases exist');
   assert.match(block, /case 'k':\s*case 'K':\s*case ' ':/, 'K joins Space on togglePlayPause');
@@ -338,4 +343,35 @@ test('v1.41.11 source-lock: setTrackNav stores handlers for the keyboard seam an
   const src = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'player.js'), 'utf8');
   assert.match(src, /trackNavHandlers = \(hasPrev \|\| hasNext\) \? handlers : null;/, 'handlers stored for Shift+N/P');
   assert.match(src, /setMediaSessionAction\('previoustrack', hasPrev \? function \(\) \{ handlers\.onPrev\(\); \} : null\);/, 'per-direction MediaSession wiring unchanged');
+});
+
+// ---- v1.41.11 gate fix round: source-locks for the three seat findings ------
+
+test('gate W1: skip() derives the ripple label from the ACTUAL delta (shells hard-code 15s)', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'player.js'), 'utf8');
+  const skipStart = src.indexOf('function skip(delta)');
+  assert.ok(skipStart >= 0);
+  const body = src.slice(skipStart, skipStart + 1200);
+  assert.match(body, /ripple\.textContent = delta < 0\s*\? '« ' \+ Math\.abs\(delta\) \+ 's'\s*: Math\.abs\(delta\) \+ 's »';/,
+    'a 5s arrow press must flash "5s »", never the markup\'s hard-coded 15');
+});
+
+test('gate W2: the digit percent-seek honors the liveMode invariant (startLiveStream, never a raw currentTime write) and saves immediately', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'player.js'), 'utf8');
+  const caseStart = src.indexOf("case '0': case '1':");
+  assert.ok(caseStart >= 0);
+  const body = src.slice(caseStart, caseStart + 1800);
+  assert.match(body, /if \(liveMode\) \{[\s\S]*?startLiveStream\(liveTarget, true\);[\s\S]*?saveProgressToServer\(liveTarget\);/,
+    'live branch routes through startLiveStream + immediate save (skip()/seekToChapter parity)');
+  assert.match(body, /digitEl\.currentTime = dur \* fraction;\s*saveProgressToServer\(currentAbsTime\(\)\);/,
+    'non-live branch seeks the active element and saves immediately');
+});
+
+test('gate W3: setupPrevNext bails on a stale (aborted) view before registering trackNav handlers', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'watch.js'), 'utf8');
+  const regIdx = src.indexOf('window.FileTube.player.setTrackNav({');
+  assert.ok(regIdx >= 0);
+  const guardIdx = src.lastIndexOf('if (signal.aborted) return;', regIdx);
+  assert.ok(guardIdx >= 0 && regIdx - guardIdx < 600,
+    'the staleness guard sits immediately before the registration -- a departed view\'s slow fetch must never overwrite the current view\'s (or the reader\'s) media-key handlers');
 });

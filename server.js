@@ -8255,7 +8255,11 @@ app.get('/api/duplicates', (req, res) => {
 // The same report as a downloadable CSV (Dean: "exportable output"). Static
 // ASCII filename -- contentDispositionAttachment is for media titles; nothing
 // here needs RFC 5987. One row per file, section-tagged; see
-// duplicateReportToCsv for the quoting contract.
+// duplicateReportToCsv for the quoting + formula-defusal contract.
+// Synchronous O(n) on the request thread, same posture as /api/stats above --
+// the v1.41.11 gate probed a pathological 100k-item library at ~390ms report
+// + ~230ms CSV, acceptable at home-server scale; revisit only if libraries
+// grow an order of magnitude past that.
 app.get('/api/duplicates.csv', (req, res) => {
   const db = getCachedDatabase();
   const csv = stats.duplicateReportToCsv(stats.computeDuplicateReport(db.metadata, { extractVideoId: extractYtdlpVideoId }));

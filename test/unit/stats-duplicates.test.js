@@ -95,7 +95,7 @@ test('no injected extractor -> idGroups is empty (name groups unaffected); malfo
   assert.equal(computeDuplicateReport(undefined, OPTS).nameGroups.length, 0, 'missing metadata is an empty report');
 });
 
-test('CSV: header + one section-tagged row per file, CRLF, all fields quoted, internal quotes doubled', () => {
+test('CSV: header + one section-tagged row per file, CRLF, all fields quoted, internal quotes doubled, wasted on the FIRST group row only', () => {
   const report = computeDuplicateReport(meta([
     { id: 'a', filePath: '/x/Weird, "quoted" 😳.mp4', size: 9 },
     { id: 'b', filePath: '/y/Weird, "quoted" 😳.mp4', size: 7 },
@@ -105,5 +105,39 @@ test('CSV: header + one section-tagged row per file, CRLF, all fields quoted, in
   assert.equal(lines[0], '"section","group_key","file_path","size_bytes","group_file_count","group_wasted_bytes"');
   assert.equal(lines.length, 4, 'header + 2 rows + trailing CRLF');
   assert.ok(lines[1].startsWith('"same-filename","Weird, ""quoted"" 😳.mp4","/x/Weird, ""quoted"" 😳.mp4","9"'), `row escaping: ${lines[1]}`);
+  // Adversarial-gate fix: group_wasted_bytes appears once per group (first
+  // row), so a naive spreadsheet column SUM equals the real reclaim total
+  // instead of multiplying it by group size.
+  assert.ok(lines[1].endsWith(',"7"'), `first group row carries the wasted bytes: ${lines[1]}`);
+  assert.ok(lines[2].endsWith(',""'), `subsequent group rows leave it empty: ${lines[2]}`);
   assert.equal(duplicateReportToCsv({ nameGroups: [], idGroups: [] }).split('\r\n').length, 2, 'empty report = header only');
+});
+
+test('CSV: a field starting with = + - or @ is defused with a leading apostrophe (formula-injection hardening, OWASP class)', () => {
+  // NB: a POSIX filename cannot contain '/', so the hostile title uses a
+  // slash-free formula shape (yt-dlp writes titles like this verbatim).
+  const report = computeDuplicateReport(meta([
+    { id: 'a', filePath: '/x/=SUM(A1:A9)+cmd [zzzzzzzzzzz].mp4', size: 5 },
+    { id: 'b', filePath: '/y/=SUM(A1:A9)+cmd [zzzzzzzzzzz].mp4', size: 5 },
+  ]), OPTS);
+  const csv = duplicateReportToCsv(report);
+  assert.ok(csv.includes('"\'=SUM(A1:A9)+cmd [zzzzzzzzzzz].mp4"'),
+    'the group key cell is defused with a leading apostrophe');
+  assert.ok(!/,"=SUM/.test(csv), 'no cell begins with a live formula character');
+  assert.ok(csv.includes('"/x/=SUM'), 'a path starting with / is untouched (defusal only fires on the dangerous leading chars)');
+});
+
+test('name lens groups NFC/NFD normalization variants of the same filename (the v1.41.9 class, read-only lens)', () => {
+  // \u escapes, never typed accents (the v1.37.5 fixture lesson): editors
+  // and toolchains silently re-normalize typed accents, making the fixture
+  // inert while staying green.
+  const nfc = 'Beyonc\u00E9 - Halo.mp3';   // precomposed e-acute
+  const nfd = 'Beyonce\u0301 - Halo.mp3';  // e + combining acute
+  const report = computeDuplicateReport(meta([
+    { id: 'a', filePath: `/lib/a/${nfc}`, size: 10 },
+    { id: 'b', filePath: `/lib/b/${nfd}`, size: 8 },
+  ]), OPTS);
+  assert.equal(report.nameGroups.length, 1, 'the two spellings are one filename to a human');
+  assert.equal(report.nameGroups[0].items.length, 2);
+  assert.ok(report.nameGroups[0].items.some((i) => i.filePath.includes(nfd)), 'items keep their REAL on-disk paths');
 });

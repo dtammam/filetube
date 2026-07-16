@@ -9,8 +9,9 @@ Grades each domain by architectural layer. Updated periodically.
 If a grade is C/D/F, the next action must be concrete.
 
 Graded 2026-07-16 (v1.41.11) from the shipped evidence: the ROADMAP release
-history, `docs/exec-plans/tech-debt-tracker.md` (25 open items), the recurring
-bug classes the gates have caught, and the test suite (4,200+ tests, 157 unit
+history, `docs/exec-plans/tech-debt-tracker.md` (25 active-table rows plus 6
+open numbered residual sections — ~31 outstanding items), the recurring bug
+classes the gates have caught, and the test suite (4,200+ tests, 157 unit
 + 100 integration files, run on Node 22 + 24 for every release).
 
 | Domain | Types | Repo | Service | Runtime | UI | Tests | Overall |
@@ -45,7 +46,7 @@ bug classes the gates have caught, and the test suite (4,200+ tests, 157 unit
   merge/carry-forward sites). That is a type-system problem paid for in gate
   rounds. Scan & persistence gets the D; everywhere else the comment
   contracts earn a C.
-- **Repo (C for server-side domains):** `server.js` is a ~9,900-line
+- **Repo (C for server-side domains):** `server.js` is a ~9,400-line
   monolith. It is well-commented and the newer subsystems (`lib/ytdlp`,
   `lib/books`, `lib/stats`) are properly extracted with deps-bundle seams —
   but streaming, scan, delete, player-serving, and settings all still live in
@@ -78,8 +79,10 @@ bug classes the gates have caught, and the test suite (4,200+ tests, 157 unit
 - **Build/test/release (A-):** dual-Node suites on every release, a
   two-reviewer adversarial gate with delta re-confirms, quality gates in
   pre-commit/pre-push hooks, honest release notes with disclosed residuals.
-  Docked a notch for the two documented full-suite-load flakes and the lack
-  of CI-enforced gating (the process is discipline, not automation).
+  Docked a notch for the one formally documented full-suite-load flake (the
+  thumbnail sendFile test; a second suspect, books-tts-espeak, is noted only
+  in session memory and has never been promoted to a doc) and the lack of
+  CI-enforced gating (the process is discipline, not automation).
 
 ## Action items
 

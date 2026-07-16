@@ -19,7 +19,7 @@ FileTube is a personal media application that lets you consume your local video 
 ## Features
 
 - **Nostalgic YouTube layout** — Classic grid, uploader channels, star ratings, and mock comments.
-- **YouTube-style player with custom blocky controls** — Theme-aware, app-owned playback controls (not the browser's native bar) for both video and audio; plays inline on iOS (no forced fullscreen), with ±15s skip (on-player buttons, double-tap, or the ← / → keys), press-and-hold for 2×, an adjustable playback-speed control (1×–2×), a loop/repeat toggle, and a full-screen view for both video and audio.
+- **YouTube-style player with custom blocky controls** — Theme-aware, app-owned playback controls (not the browser's native bar) for both video and audio; plays inline on iOS (no forced fullscreen), with ±15s skip (on-player buttons or double-tap), YouTube-style keyboard shortcuts on desktop (← / → ±5s, J/L ±10s, K/Space, 0–9 jump, ↑/↓ + scroll-wheel volume, M, C, < / >, F, Shift+N/P), press-and-hold for 2×, an adjustable playback-speed control (1×–2×), a loop/repeat toggle, and a full-screen view for both video and audio.
 - **Docked mini-player + continuous browsing** — Keep watching while you browse: the player docks to a corner instead of stopping when you navigate away, with prev/next controls and an optional autoplay-next setting. Video also has a one-tap theatre mode, native Picture-in-Picture, and keeps playing across browser tabs on desktop.
 - **Smart resume playback** — Automatically saves your progress and prompts you to resume where you left off.
 - **Auto-generated thumbnails** — Uses FFmpeg to extract video frames or audio cover art automatically.

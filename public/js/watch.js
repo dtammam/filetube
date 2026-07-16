@@ -1072,12 +1072,19 @@ if (typeof module !== 'undefined' && module.exports) {
         // wire play/pause automatically, but previous/next fire ONLY when
         // explicit MediaSession handlers exist. One registration powers the
         // media keys, the lock screen, and the desktop Shift+N/Shift+P
-        // shortcuts (player.js drives all three through this seam). Ordering
-        // is safe by construction: load()'s teardownMediaState clears
-        // trackNav synchronously during view init, and this line runs after
-        // this function's list fetches resolve -- so every watch->watch hop
-        // clears then re-registers, and a book-narration load re-registers
-        // its own chapter handlers the same way (read.js).
+        // shortcuts (player.js drives all three through this seam).
+        //
+        // GATE FIX (both seats, this release): this function sits behind
+        // uncancelled fetches, so a SLOW list fetch from a departed view can
+        // resolve AFTER the next view has already registered its own
+        // handlers -- without a staleness guard, watch A's neighbors would
+        // silently overwrite watch B's (or a book narration's chapter
+        // handlers), sending media-key "next" to the wrong place. The view's
+        // AbortController signal is the staleness truth: destroy() aborts it
+        // before any successor view registers, so a stale continuation
+        // always sees aborted=true here and registers nothing. (read.js's
+        // own registration is synchronous and never needed this.)
+        if (signal.aborted) return;
         if (window.FileTube && window.FileTube.player
             && typeof window.FileTube.player.setTrackNav === 'function' && (prevId || nextId)) {
           window.FileTube.player.setTrackNav({

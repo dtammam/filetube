@@ -646,14 +646,19 @@ function nextPlaybackRate(current) {
   return PLAYBACK_RATES[(idx + 1) % PLAYBACK_RATES.length];
 }
 
-// v1.41.11 (Dean: YouTube-style shortcuts): the `<` key steps the cycle the
-// OTHER way. Same pure-lookup contract as nextPlaybackRate above -- an
-// unrecognized current rate returns the FIRST rate (never throws), and the
-// step below 1x wraps to 2x, the exact mirror of next's 2x -> 1x wrap.
-function prevPlaybackRate(current) {
+// v1.41.11 (Dean: YouTube-style shortcuts): the </> keys step the rate list
+// WITHOUT wrapping -- YouTube clamps at both ends ('<' at minimum speed is a
+// no-op), and a wrap is an intent inversion for a directional key: '<' at 1x
+// meaning "jump to 2x" is the opposite of "slow down" (adversarial-gate W4,
+// this release). The single #speed-btn keeps its wrapping nextPlaybackRate
+// cycle above -- a one-direction button NEEDS the wrap to reach every rate.
+// Same pure-lookup contract: an unrecognized current rate degrades to the
+// first rate, never throws. `dir` is +1 (faster) or -1 (slower).
+function stepPlaybackRateClamped(current, dir) {
   var idx = PLAYBACK_RATES.indexOf(current);
   if (idx === -1) return PLAYBACK_RATES[0];
-  return PLAYBACK_RATES[(idx - 1 + PLAYBACK_RATES.length) % PLAYBACK_RATES.length];
+  var stepped = Math.min(PLAYBACK_RATES.length - 1, Math.max(0, idx + dir));
+  return PLAYBACK_RATES[stepped];
 }
 
 // ---- FR-5 (T1, v1.22.1): desktop click-video-to-toggle-play/pause guard ---
@@ -814,8 +819,8 @@ if (typeof module !== 'undefined' && module.exports) {
     resolveMobileFormFactor,
     resolveEndedAction,
     nextPlaybackRate,
-    // v1.41.11: the `<` shortcut's reverse cycle step -- see prevPlaybackRate.
-    prevPlaybackRate,
+    // v1.41.11: the </> shortcuts' clamped step -- see stepPlaybackRateClamped.
+    stepPlaybackRateClamped,
     shouldDesktopVideoTapToggle,
     resolveFsButtonAction,
     computeMediaAspectRatio,
@@ -2412,7 +2417,18 @@ if (typeof module !== 'undefined' && module.exports) {
   // ---- skip (+-15s), ripple, hold-to-2x, dbl-tap ------------------------------
 
   function skip(delta) {
-    flashRipple(delta < 0 ? skipRippleLeft : skipRippleRight);
+    // v1.41.11 gate fix (adversarial W1): the shells hard-code "« 15s"/"15s »"
+    // in the ripple markup, which was always true while every skip was
+    // SKIP_SECONDS -- the keyboard shortcuts now skip 5s (arrows) and 10s
+    // (J/L), so the label is derived from the ACTUAL delta on every flash
+    // (the on-bar buttons/double-tap still legitimately show 15).
+    var ripple = delta < 0 ? skipRippleLeft : skipRippleRight;
+    if (ripple) {
+      ripple.textContent = delta < 0
+        ? '« ' + Math.abs(delta) + 's'
+        : Math.abs(delta) + 's »';
+    }
+    flashRipple(ripple);
     if (liveMode) {
       var total = (currentData && currentData.duration) || Infinity;
       var target = Math.max(0, Math.min(total, currentAbsTime() + delta));
@@ -4289,8 +4305,8 @@ if (typeof module !== 'undefined' && module.exports) {
           e.preventDefault();
           if (ccBtn && ccBtn.style.display !== 'none') ccBtn.click();
           break;
-        case '>': e.preventDefault(); applyPlaybackRate(nextPlaybackRate(mediaPlayer.playbackRate)); break;
-        case '<': e.preventDefault(); applyPlaybackRate(prevPlaybackRate(mediaPlayer.playbackRate)); break;
+        case '>': e.preventDefault(); applyPlaybackRate(stepPlaybackRateClamped(mediaPlayer.playbackRate, 1)); break;
+        case '<': e.preventDefault(); applyPlaybackRate(stepPlaybackRateClamped(mediaPlayer.playbackRate, -1)); break;
         case 'N':
           if (e.shiftKey && trackNavHandlers && typeof trackNavHandlers.onNext === 'function') {
             e.preventDefault();
@@ -4305,10 +4321,30 @@ if (typeof module !== 'undefined' && module.exports) {
           break;
         case '0': case '1': case '2': case '3': case '4':
         case '5': case '6': case '7': case '8': case '9': {
-          var dur = mediaPlayer.duration;
+          // v1.41.11 gate fix (adversarial W2): honor the file's liveMode
+          // seek invariant -- every seek during a live transcode must route
+          // through startLiveStream (the element's own duration/currentTime
+          // are the transcoded-so-far segment, not the video; a raw
+          // currentTime write here jumped to 50% of the SEGMENT and then
+          // corrupted the saved resume position via liveOffset+elementTime).
+          // Mirrors skip()/seekToChapter's live branch exactly, including
+          // the immediate progress save both of them do.
+          e.preventDefault();
+          var fraction = Number(e.key) / 10;
+          if (liveMode) {
+            var liveTotal = (currentData && currentData.duration) || 0;
+            if (isFinite(liveTotal) && liveTotal > 0) {
+              var liveTarget = liveTotal * fraction;
+              startLiveStream(liveTarget, true);
+              saveProgressToServer(liveTarget);
+            }
+            break;
+          }
+          var digitEl = activeMediaElement();
+          var dur = digitEl.duration;
           if (typeof dur === 'number' && isFinite(dur) && dur > 0) {
-            e.preventDefault();
-            mediaPlayer.currentTime = dur * (Number(e.key) / 10);
+            digitEl.currentTime = dur * fraction;
+            saveProgressToServer(currentAbsTime());
           }
           break;
         }

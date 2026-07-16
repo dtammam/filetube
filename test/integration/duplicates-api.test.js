@@ -80,5 +80,6 @@ test('GET /api/duplicates.csv: text/csv attachment with quoted, section-tagged r
   assert.equal(lines[0], '"section","group_key","file_path","size_bytes","group_file_count","group_wasted_bytes"');
   assert.equal(lines.filter((l) => l.startsWith('"same-filename"')).length, 2);
   assert.equal(lines.filter((l) => l.startsWith('"same-videoid"')).length, 2);
-  assert.ok(csv.includes('"/dl/chan2/New Title [AAAAAAAAAAA].mp4","100","2","100"'), 'per-file row carries its group context');
+  assert.ok(csv.includes('"/dl/chan1/Old Title [AAAAAAAAAAA].mp4","900","2","100"'), 'the group\'s FIRST row carries the wasted-bytes estimate');
+  assert.ok(csv.includes('"/dl/chan2/New Title [AAAAAAAAAAA].mp4","100","2",""'), 'subsequent rows leave it empty (no naive-SUM double count)');
 });
