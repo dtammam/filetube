@@ -4445,9 +4445,24 @@ function applyCustomLogoIfSet(force) {
   // check until a reload.
   const isDark = document.documentElement.getAttribute('data-mode') === 'dark';
   const url = isDark ? '/logo?variant=dark' : '/logo';
+  // v1.41.17 (Dean): the FOUC flag. A tiny pre-paint head script reads
+  // localStorage['ft-custom-logo'] and stamps html.ft-custom-logo so CSS
+  // collapses the text wordmark BEFORE first paint -- no flash of "FileTube"
+  // before the image swaps in. We are the sole writer: set it when a logo is
+  // confirmed present, clear it (and the class, restoring the text) when the
+  // probe 404s or the image fails to load, so a removed/corrupt logo self-heals.
+  const clearLogoFlag = () => {
+    try { localStorage.removeItem('ft-custom-logo'); } catch (_) { /* storage disabled */ }
+    document.documentElement.classList.remove('ft-custom-logo');
+  };
+  const setLogoFlag = () => {
+    try { localStorage.setItem('ft-custom-logo', '1'); } catch (_) { /* storage disabled */ }
+    document.documentElement.classList.add('ft-custom-logo');
+  };
   fetch(url, { method: 'HEAD' })
     .then((r) => {
-      if (!r || !r.ok) return; // no custom logo -- text (or the current img) stays
+      if (!r || !r.ok) { clearLogoFlag(); return; } // no custom logo -- text stays, flag cleared
+      setLogoFlag();
       const existing = logoEl.querySelector('img.logo-img');
       if (!force && existing && existing.getAttribute('src') === url) return; // already showing this variant
       const img = document.createElement('img');
@@ -4460,8 +4475,11 @@ function applyCustomLogoIfSet(force) {
         while (logoEl.firstChild) logoEl.removeChild(logoEl.firstChild);
         logoEl.appendChild(img);
       });
+      // If the confirmed-present file nonetheless fails to decode, restore the
+      // text wordmark rather than leave the pre-paint-hidden slot empty.
+      img.addEventListener('error', clearLogoFlag);
     })
-    .catch(() => { /* offline/no route -- text logo stays */ });
+    .catch(() => { /* offline/no route -- leave the flag as-is; text or current img stays */ });
 }
 
 // ---- v1.33.1 (Dean): the Liked sidebar entry, EVERYWHERE -------------------
