@@ -4826,6 +4826,14 @@ if (typeof module !== 'undefined' && module.exports) {
       resumeDirectly(savedProgress);
     }
     exitAudioExpand(); // FR-1 (T1, v1.22.2, AC5): never dock a fixed-overlay expanded wrapper
+    // v1.41.11: chapters are hidden entirely while docked (style.css
+    // `#player-dock #chapters-btn/.chapters-menu`) -- close the menu here so
+    // the button's aria-expanded never claims an open menu that CSS has
+    // hidden, and so expanding back to FULL doesn't resurrect a stale popup.
+    // (closeChaptersMenu lives in wireChrome's closure; these are its exact
+    // two statements against the module-level element refs.)
+    if (chaptersMenu) chaptersMenu.hidden = true;
+    if (chaptersBtn) chaptersBtn.setAttribute('aria-expanded', 'false');
     if (host.parentNode !== dockEl) dockEl.appendChild(host);
     dockEl.hidden = false;
     state = STATE_DOCKED;

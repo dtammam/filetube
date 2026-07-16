@@ -4323,6 +4323,52 @@ body.ft-css-fullscreen .bottom-nav {
   resize: vertical;
 }
 
+/* v1.41.11 (Dean: "compressed and small" on mobile): the base .chapters-menu
+   above is sized for a WIDE desktop player (min-width 220px, capped at 80% of
+   the bar) -- inside a ~390px phone player that renders as a narrow,
+   ellipsis-heavy strip with dense rows. At the mobile breakpoint the popup
+   spans the player's full width above the control bar, rows become real 44px
+   tap targets (the iOS floor), and chapter titles wrap to two lines instead
+   of truncating. Geometry only -- same element, same open/close wiring, and
+   the [hidden] display:none !important rule above still wins. */
+@media (max-width: 768px) {
+  .chapters-menu {
+    left: 8px;
+    right: 8px;
+    min-width: 0;
+    max-width: none;
+    max-height: 50vh;
+  }
+  .chapters-menu-item {
+    padding: 12px 14px;
+    min-height: 44px;
+    /* Wrap long titles (base rule nowrap-ellipsizes them into uselessness at
+       phone width), capped at 2 lines via the line-clamp box. */
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow: hidden;
+  }
+  .chapters-menu-close {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+
+/* v1.41.11 (Dean: "shows up oddly in the miniplayer"): chapters have no place
+   in the 160-280px docked mini-player -- the popup anchors inside the dock
+   and renders at ~80% of 160px. Same rationale + precedent as the
+   `#player-dock .skip-controls, .speed-badge` compact-bar rules above: hide
+   the button and the menu entirely while docked; the full chapters UI
+   reappears the moment the host expands back to FULL. player.js's dock()
+   also closes the menu so the button's aria-expanded state stays truthful. */
+#player-dock #chapters-btn,
+#player-dock .chapters-menu {
+  display: none !important;
+}
+
 /* === Feature B (v1.26.1): AUDIO-mode custom caption overlay ================
    iOS can't paint native <track> cues over the cover-art layer in audio
    mode (the <video> itself is transparent/pointer-events:none there, see
