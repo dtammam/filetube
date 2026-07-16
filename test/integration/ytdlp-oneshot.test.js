@@ -269,6 +269,50 @@ test('D6: a Facebook share SHORTLINK is resolved to its /reel URL before the spa
   }
 });
 
+test('W3: a shortlink resolving to a YOUTUBE URL switches to the legacy lane (youtubeId, not the universal template)', async () => {
+  const deps = makeFakeDeps();
+  let captured = null;
+  run.runDownload = async (sub, config, targetIds, opts) => { captured = { targetIds, opts }; return { ok: true, code: 0, stdout: '', stderr: '' }; };
+  const realResolve = shortlink.resolveShortlink;
+  // A t.co shortlink (isLikelyShortlink true) resolving to a real YouTube watch URL.
+  shortlink.resolveShortlink = async () => ({ ok: true, url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' });
+
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    const res = await postJson(base, '/api/ytdlp/download', { url: 'https://t.co/abc123' });
+    assert.equal(res.status, 202);
+    const deadline = Date.now() + 4000;
+    while (captured === null && Date.now() < deadline) await new Promise((r) => setTimeout(r, 25));
+    assert.ok(captured, 'the download ran');
+    assert.deepEqual(captured.targetIds, ['dQw4w9WgXcQ'], 'switched to the legacy lane: the YouTube video id is the target');
+    assert.equal(captured.opts.sourceUrl, undefined, 'NOT the universal lane -- no sourceUrl, so the legacy [id] template + youtubeId apply');
+  } finally {
+    shortlink.resolveShortlink = realResolve;
+    await close();
+  }
+});
+
+test('W1: a canonical (non-shortlink) universal URL is NOT redirect-resolved -- yt-dlp gets it untouched', async () => {
+  const deps = makeFakeDeps();
+  let resolveCalled = false;
+  let captured = null;
+  run.runDownload = async (sub, config, targetIds, opts) => { captured = opts; return { ok: true, code: 0, stdout: '', stderr: '' }; };
+  const realResolve = shortlink.resolveShortlink;
+  shortlink.resolveShortlink = async (u) => { resolveCalled = true; return { ok: true, url: u }; };
+
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    await postJson(base, '/api/ytdlp/download', { url: 'https://vimeo.com/76979871' });
+    const deadline = Date.now() + 4000;
+    while (captured === null && Date.now() < deadline) await new Promise((r) => setTimeout(r, 25));
+    assert.equal(resolveCalled, false, 'a canonical /76979871 URL is not shortlink-shaped -> the resolver never runs');
+    assert.equal(captured.sourceUrl, 'https://vimeo.com/76979871', 'yt-dlp gets the original URL');
+  } finally {
+    shortlink.resolveShortlink = realResolve;
+    await close();
+  }
+});
+
 test('POST /api/ytdlp/download with a non-YouTube media URL is accepted (202) and spawns with the universal argv', async () => {
   const deps = makeFakeDeps();
   let captured = null;

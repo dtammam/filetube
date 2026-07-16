@@ -6253,8 +6253,17 @@ app.delete('/api/videos/:id', async (req, res) => {
         // the raw ref -- SEAM-2 matches on the bracket pair (both sides read
         // dirents -> both sanitized), never raw-vs-bracket (design D5).
         const deleteBracket = extractMediaRef(path.basename(filePath, path.extname(filePath)));
+        // gate CRITICAL C1: the bracketId is ALWAYS the delete-time bracket id
+        // when a sourceRef is built. The old `!tombstoneYoutubeId` guard
+        // conflated "has a youtubeId" with "on-disk bracket is legacy 11-char"
+        // -- FALSE for a D1a proxy-host item (yewtu.be), whose youtubeId IS set
+        // but whose on-disk bracket is the universal `[Youtube=id]` shape,
+        // matchable ONLY by SEAM-2's universal (bracket) branch. Suppressing
+        // bracketId there disabled BOTH match paths -> the deleted proxy-host
+        // video RESURRECTED. A pure-YouTube item never builds a sourceRef
+        // (no sourceExtractor/sourceId), so this is a no-op on the YouTube path.
         const tombstoneSourceRef = (item.sourceExtractor && item.sourceId)
-          ? { extractor: item.sourceExtractor, id: item.sourceId, bracketId: deleteBracket && !tombstoneYoutubeId ? deleteBracket.id : undefined }
+          ? { extractor: item.sourceExtractor, id: item.sourceId, bracketId: deleteBracket ? deleteBracket.id : undefined }
           : null;
         freshDb.deleteTombstones[item.id] = {
           filePath, deletedAt: Date.now(), youtubeId: tombstoneYoutubeId,

@@ -232,13 +232,22 @@ test('a scanned NON-YouTube download gets sourceExtractor/sourceId + channelName
   }
 });
 
-test('D1a: a proxy-host YouTube download ([Youtube=id] bracket) ALSO gets youtubeId set (Share/reheat identity restored)', async () => {
+test('D1a: a proxy-host YouTube download ([Youtube=id] bracket) gets youtubeId set AND its captured channel identity bridged (gate S2)', async () => {
   process.env.FILETUBE_YTDLP_ENABLED = 'true';
   process.env.FILETUBE_YTDLP_DOWNLOAD_DIR = downloadDir;
   try {
     const basename = 'Proxied Clip [Youtube=dQw4w9WgXcQ].mp4';
     const filePath = path.join(downloadDir, basename);
     fs.writeFileSync(filePath, 'not a real video');
+    // The capture (extractor_key 'Youtube') was stored by the YouTube branch,
+    // keyed by the BARE videoId -- the scan must recover it despite the
+    // [Youtube=id] bracket (gate W2/S2).
+    await updateDatabase((db) => {
+      store.ensureYtdlp(db).downloadMeta.dQw4w9WgXcQ = {
+        channelUrl: 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw',
+        channelName: 'Rick Astley', capturedAt: Date.now(),
+      };
+    });
 
     await scanDirectories();
 
@@ -247,6 +256,9 @@ test('D1a: a proxy-host YouTube download ([Youtube=id] bracket) ALSO gets youtub
     assert.ok(item, 'sanity: indexed');
     assert.equal(item.youtubeId, 'dQw4w9WgXcQ', 'D1a: the real YouTube id is recovered from the [Youtube=id] bracket');
     assert.equal(item.sourceExtractor, 'Youtube', 'and the source is recorded');
+    assert.equal(item.channelUrl, 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw', 'S2: the captured channel identity is bridged (not orphaned)');
+    assert.equal(item.channelName, 'Rick Astley');
+    assert.equal(store.ensureYtdlp(loadDatabase()).downloadMeta.dQw4w9WgXcQ, undefined, 'the YouTube capture was consumed');
   } finally {
     delete process.env.FILETUBE_YTDLP_ENABLED;
     delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;

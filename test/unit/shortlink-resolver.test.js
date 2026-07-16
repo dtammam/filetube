@@ -134,3 +134,14 @@ test('D6: a per-hop request error fails closed (no partial resolution)', async (
   assert.strictEqual(r.ok, false);
   assert.match(r.error, /request error/);
 });
+
+// gate W1: only shortlink-shaped URLs are resolved -- a canonical URL is not.
+const { isLikelyShortlink } = require('../../lib/ytdlp/shortlink');
+test('isLikelyShortlink: share paths + shortener hosts are resolvable; canonical URLs are not', () => {
+  for (const u of ['https://www.facebook.com/share/r/1Hk9jStL2C/', 'https://t.co/abc123', 'https://fb.me/xyz', 'https://bit.ly/abc']) {
+    assert.strictEqual(isLikelyShortlink(u), true, `${u} should be treated as a shortlink`);
+  }
+  for (const u of ['https://vimeo.com/76979871', 'https://www.instagram.com/reel/CabcDEF123/', 'https://www.youtube.com/watch?v=x', 'https://soundcloud.com/artist/track']) {
+    assert.strictEqual(isLikelyShortlink(u), false, `${u} is canonical -- must NOT be redirect-resolved`);
+  }
+});
