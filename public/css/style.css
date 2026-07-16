@@ -388,6 +388,17 @@ header {
   color: var(--text-primary);
 }
 
+/* v1.41.17 (Dean): logo FOUC guard. html.ft-custom-logo is stamped PRE-PAINT by
+   a tiny head script when a custom logo was seen on a prior load (localStorage
+   ft-custom-logo=1). Hide the text wordmark (visibility -- it never paints)
+   before common.js swaps in the (usually HTTP-cached) uploaded image; the image
+   is re-shown when it lands. Keep the box height so the header doesn't jump.
+   common.js clears the flag/class on a 404 or image-load error, restoring the
+   text -- so a removed logo self-heals back to "FileTube". (Uses visibility
+   rather than a zeroed font size, so the type-scale-token lock stays intact.) */
+.ft-custom-logo .logo { visibility: hidden; min-height: 28px; }
+.ft-custom-logo .logo .logo-img { visibility: visible; }
+
 .logo span.tube {
   background-color: var(--yt-red);
   color: #ffffff;

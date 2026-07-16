@@ -65,6 +65,13 @@
           : storedIcons === 'auto' ? iconAutoMap[era]   // `era` already validated above
           : 'outlined';
         d.setAttribute('data-icons', iconSet);
+
+        /* v1.41.17 (Dean): logo FOUC guard. When a prior load recorded a custom
+           header logo (localStorage ft-custom-logo=1, written by common.js's
+           applyCustomLogoIfSet), stamp html.ft-custom-logo so CSS collapses the
+           "FileTube" text wordmark before paint -- it never flashes before the
+           image swaps in. common.js clears the flag on a 404/load error. */
+        if (localStorage.getItem('ft-custom-logo') === '1') d.classList.add('ft-custom-logo');
       } catch (_) {
         d.setAttribute('data-theme', '2021');
         d.setAttribute('data-mode', 'light');

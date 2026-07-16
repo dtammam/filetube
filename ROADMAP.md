@@ -80,6 +80,11 @@
 
 ## Shipped
 
+### v1.41.17 — Kill the header FOUC (logo + theme) on refresh (2026-07-16)
+
+- Dean noticed the "FileTube" text logo flashes on page refresh before his custom uploaded logo swaps in. Root cause: the header shells are static HTML served verbatim, so the text wordmark always paints first; `applyCustomLogoIfSet` only swaps the image in after an async `/logo` probe. Fix: `common.js` now records a `localStorage` flag when a custom logo is confirmed present, and a tiny **pre-paint** head script stamps `html.ft-custom-logo` so CSS hides the wordmark (via `visibility`, keeping the type-scale-token lock intact) before it can paint — the text never flashes. The flag self-heals: a 404 or an undecodable image clears it and restores the text, so removing a logo brings "FileTube" back on the next refresh.
+- **While there ("are there other things hit by this pattern?"):** the same static-default-then-JS-swap pattern also drives the theme/era/dark-mode/icon-set, guarded by a pre-paint script on four shells — but `read.html` and `books.html` were shipped **without** it, so a dark-mode or retro-era user flashed the default light/2021 theme on every refresh of the reader/books pages. Added the full guard (theme + logo) to both. A new source-lock test now asserts every header-bearing shell carries both guards before `<body>`, so a future shell can't ship without them.
+
 ### v1.41.16 — Long-title downloads no longer fail (ENAMETOOLONG) (2026-07-16)
 
 - Dean hit `[Errno 36] Filename too long` downloading a Facebook video. A non-YouTube "title" is often the full post/video **description** — hundreds of characters — and the universal filename template used it whole, overrunning the filesystem's 255-byte filename limit. Fixed: the universal template now caps the title at 100 characters (`%(title).100s`), with the `[id]` bracket and extension still intact, so the id/delete machinery is unaffected. The **displayed** title is untouched — it comes from the captured full title, not the on-disk filename. (The folder in Dean's error — `s34nvideos` — confirms the v1.41.14 per-uploader folder fix is working.) YouTube's own template is left uncapped (YouTube caps titles near 100 chars anyway), keeping it byte-identical.
