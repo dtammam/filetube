@@ -2,6 +2,7 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { pipeline } = require('stream');
 const { exec, execFile, spawn } = require('child_process');
 const mime = require('mime-types');
 require('dotenv').config();
@@ -3109,6 +3110,28 @@ async function runScanDirectories() {
           await maybeYieldScan(yieldState);
           continue; // stays gone -- never re-indexed
         } catch (err) {
+          if (err && err.code === 'ENOENT') {
+            // v1.41.10: unlink says "no such file" for a path THIS SCAN just
+            // enumerated. That contradiction is the SMB/CIFS DELETE_PENDING
+            // state (an open handle somewhere pins an already-deleted file;
+            // the dirent stays enumerable while every new open is refused
+            // with a status the kernel maps to ENOENT) -- or the file
+            // genuinely vanished between enumeration and now, in which case
+            // suppressing it costs nothing. Either way this is NOT the
+            // undeletable-volume case the honest re-index below exists for
+            // (those are EBUSY/EPERM/EROFS/EACCES), so: keep it hidden and
+            // KEEP the tombstone -- un-consume it so every scan keeps
+            // retrying until the dirent actually disappears. The 90-day
+            // prune (pruneDeleteTombstones) is the backstop that keeps a
+            // never-closing external handle from becoming a silent forever-
+            // suppression; the "one delete, one retry" rule stands for every
+            // other errno.
+            consumedTombstoneIds.delete(tombstoneKey);
+            console.warn(`Scan: deferred delete retry hit ENOENT on a path this scan just enumerated (delete-pending: open handles elsewhere) -- keeping it hidden, keeping the tombstone: ${filePath}`);
+            scanState.processed++;
+            await maybeYieldScan(yieldState);
+            continue; // suppressed -- never re-indexed while the delete is pending
+          }
           console.warn(`Scan: deferred delete retry failed (${(err && err.code) || 'unknown'}) -- re-indexing honestly: ${filePath}`);
           // fall through: the file exists and is undeletable; index it.
         }
@@ -5673,6 +5696,37 @@ function resolveLeafByBracketId(dir, storedLeaf, stringEntries) {
   return { realPath: path.join(dir, rawHit.toString('utf8')), realPathRaw: rawPath };
 }
 
+// v1.41.10: after a delete path believes the file is gone (a watched
+// unlinkSync OR an ENOENT "already gone"), ask the PARENT DIRECTORY's own
+// enumeration -- raw bytes, the same modality the scanner trusts. A file in
+// SMB/CIFS DELETE_PENDING (an open handle somewhere pins an already-deleted
+// file) keeps its dirent enumerable while existsSync/unlink/open all report
+// ENOENT -- readdir is the one observable that distinguishes "gone" from
+// "undead". Accepts the same string-or-Buffer path shapes the delete route
+// resolves (realPathRaw is a Buffer for non-round-tripping names). Returns
+// true ONLY when the exact leaf bytes are still listed; on any doubt
+// (unreadable dir, separator-less path) it returns false, so a false positive
+// can never downgrade an honest delete into a tombstoned one.
+function leafStillEnumerated(p) {
+  let dirPart;
+  let leafBuf;
+  if (Buffer.isBuffer(p)) {
+    const sep = p.lastIndexOf(path.sep.charCodeAt(0));
+    if (sep < 0) return false;
+    dirPart = p.subarray(0, sep);
+    leafBuf = p.subarray(sep + 1);
+  } else {
+    dirPart = path.dirname(p);
+    leafBuf = Buffer.from(path.basename(p), 'utf8');
+  }
+  if (leafBuf.length === 0) return false;
+  try {
+    return fs.readdirSync(dirPart, { encoding: 'buffer' }).some((e) => e.equals(leafBuf));
+  } catch (_) {
+    return false;
+  }
+}
+
 function resolveOnDiskPath(filePath) {
   try {
     if (fs.existsSync(filePath)) return { realPath: filePath };
@@ -5781,6 +5835,25 @@ app.delete('/api/videos/:id', async (req, res) => {
   // The concrete path we unlink + hang sidecar cleanup off of. Null only when
   // the file is genuinely absent (`gone`) or unconfirmable-but-removeAnyway.
   const mediaPathOnDisk = resolved.realPath;
+
+  // v1.41.10: close OUR OWN live streaming handles on everything this delete
+  // is about to unlink, and wait (bounded) for the fds to actually close
+  // BEFORE the unlink. An open read handle turns an SMB/CIFS delete into
+  // server-side DELETE_PENDING -- the dirent stays enumerable until the last
+  // holder closes while every retry reports ENOENT -- and this process was
+  // itself the holder in the incident this fixes (seek-abandoned Range
+  // streams; see activeMediaStreams' header). Registry keys are the exact
+  // strings handed to createReadStream: the stored path, the resolved
+  // on-disk variant, and the two id-keyed sidecars a player may be pulling.
+  const releasePaths = new Set([filePath, transcodedPath(item.id), audioPath(item.id)]);
+  if (mediaPathOnDisk) releasePaths.add(mediaPathOnDisk);
+  // Parallel: the bounded waits overlap, so even the pathological all-wedged
+  // case delays the DELETE by one 3s cap, not one per path.
+  const releasedStreams = (await Promise.all([...releasePaths].map((p) => destroyMediaStreams(p))))
+    .reduce((a, b) => a + b, 0);
+  if (releasedStreams > 0) {
+    console.log(`Delete: destroyed ${releasedStreams} live read stream(s) on ${filePath} before unlinking.`);
+  }
 
   try {
     // Delete actual file from filesystem
@@ -5894,6 +5967,30 @@ app.delete('/api/videos/:id', async (req, res) => {
     }
   }
 
+  // v1.41.10: post-verify against the parent directory. BOTH success shapes
+  // above -- a watched unlinkSync AND the ENOENT->"already gone" conclusion --
+  // can lie when the server holds the file in DELETE_PENDING (an open handle
+  // this process failed to release, or one on another machine entirely): the
+  // unlink "succeeds" or ENOENTs, yet the dirent stays enumerable and the next
+  // scan re-indexes it. If the exact leaf bytes are still listed, the file is
+  // NOT gone: say so (fileRemainsOnDisk + deletePending below), and downgrade
+  // unlinkVerified so the tombstone mint fires -- by the tombstone contract
+  // (v1.41.3) a conclusion contradicted by the directory itself is the
+  // definition of unverified. False-positive risk (a same-name file recreated
+  // in the ms between unlink and readdir) is accepted: the archive append
+  // below already blocks the only plausible same-path writer (a yt-dlp
+  // re-download), and leafStillEnumerated fails toward "gone" on any doubt.
+  let deletePending = false;
+  if (!fileRemainsOnDisk) {
+    const checkPath = resolved.realPathRaw || mediaPathOnDisk || filePath;
+    if (leafStillEnumerated(checkPath)) {
+      deletePending = true;
+      fileRemainsOnDisk = true;
+      unlinkVerified = false;
+      console.warn(`Delete: ${filePath} is STILL enumerated by its parent directory after the unlink (server-side delete-pending: an open handle somewhere is pinning it) -- reporting honestly and minting a tombstone.`);
+    }
+  }
+
   // v1.36.2 (Dean: "sticky post-deletion" -- the "comes back" half): make
   // DELETION authoritative for staying gone. "Delete stays gone" previously
   // relied entirely on the id already being in the shared download archive
@@ -5977,7 +6074,10 @@ app.delete('/api/videos/:id', async (req, res) => {
     return res.json({
       success: true,
       fileRemainsOnDisk: true,
-      message: 'Removed from your library. Note: the file itself could not be deleted -- the next library scan will retry the deletion once; if it still cannot be deleted, it will reappear.',
+      ...(deletePending ? { deletePending: true } : {}),
+      message: deletePending
+        ? 'Removed from your library, but the storage side reports the file is still held open (by another program or device), so it stays on disk until that handle closes. Library scans will keep it hidden and keep retrying the deletion.'
+        : 'Removed from your library. Note: the file itself could not be deleted -- the next library scan will retry the deletion once; if it still cannot be deleted, it will reappear.',
     });
   }
 
@@ -8413,6 +8513,75 @@ function contentDispositionAttachment(title, ext) {
   return `attachment; filename="${asciiName}"; filename*=UTF-8''${encoded}`;
 }
 
+// ---- v1.41.10: live media read-stream registry ------------------------------
+// WHY (the "undeletable emoji files" incident, 2026-07-16): every browser seek
+// aborts its in-flight Range request, and `source.pipe(dest)` does NOT destroy
+// the source fs.ReadStream when the destination closes early -- each abandoned
+// request stranded one open fd on the media file, forever (~180 were found
+// pinned on three files in production). On an SMB/CIFS volume an open handle
+// turns a delete into server-side DELETE_PENDING: the dirent stays enumerable
+// until the LAST handle closes, every new open (including unlink's own
+// open-for-delete) is refused with a status the kernel maps to ENOENT, the
+// DELETE route concluded "already gone", and the next scan re-indexed the
+// survivor -- the resurrect loop, with the filename's emoji as an innocent
+// bystander. Two duties:
+//   1. sendRangeable() pipes via stream.pipeline(), which DOES destroy the
+//      source on premature response close -- no stranded fd in the first place
+//      (and a mid-stream fs read error lands in its callback instead of being
+//      an unhandled 'error' event).
+//   2. DELETE /api/videos/:id calls destroyMediaStreams() on every path it is
+//      about to unlink, so deleting a video mid-playback cannot leave OUR OWN
+//      handle pinning the file into DELETE_PENDING.
+// Keyed by the exact filePath string handed to fs.createReadStream -- the same
+// string the DELETE route resolves, so lookups are plain Map hits.
+const activeMediaStreams = new Map(); // filePath -> Set<fs.ReadStream>
+
+function registerMediaStream(filePath, stream) {
+  let set = activeMediaStreams.get(filePath);
+  if (!set) {
+    set = new Set();
+    activeMediaStreams.set(filePath, set);
+  }
+  set.add(stream);
+  // fs streams autoDestroy by default, and 'close' fires exactly once after
+  // any terminal outcome (normal end, error, or destroy) -- the one hook that
+  // can never leak a registry entry.
+  stream.once('close', () => {
+    set.delete(stream);
+    if (set.size === 0) activeMediaStreams.delete(filePath);
+  });
+}
+
+// Destroy every live read stream on `filePath` and wait -- bounded -- for
+// their fds to actually close (the close(2) is async in libuv; an unlink
+// issued while the fd is still open is exactly the DELETE_PENDING trap on
+// network filesystems). Resolves with the number of streams destroyed. On
+// timeout the caller's unlink proceeds anyway: the worst case is the pre-fix
+// behavior, never a hung DELETE request.
+function destroyMediaStreams(filePath, timeoutMs = 3000) {
+  const set = activeMediaStreams.get(filePath);
+  if (!set || set.size === 0) return Promise.resolve(0);
+  const streams = [...set];
+  const allClosed = Promise.all(streams.map((s) => new Promise((resolve) => {
+    if (s.closed || s.destroyed) return resolve();
+    s.once('close', resolve);
+  })));
+  for (const s of streams) {
+    try { s.destroy(); } catch (_) { /* already torn down */ }
+  }
+  // NOT unref'd: the cap must be able to fire even when this timer is the
+  // only thing left on the loop (it lives only for the duration of a DELETE
+  // request, so it never holds an idle process open in practice).
+  let timer;
+  const cap = new Promise((resolve) => {
+    timer = setTimeout(resolve, timeoutMs);
+  });
+  return Promise.race([allClosed, cap]).then(() => {
+    clearTimeout(timer);
+    return streams.length;
+  });
+}
+
 // Shared Range-request byte-serving helper (v1.27.0), factored out of
 // GET /video/:id's own Range-parsing/response-header logic so GET /audio/:id
 // (the background-audio sidecar, below) can reuse the EXACT same mechanics
@@ -8470,6 +8639,7 @@ function sendRangeable(req, res, filePath, contentType, onServe) {
 
     const chunksize = (end - start) + 1;
     const file = fs.createReadStream(filePath, { start, end });
+    registerMediaStream(filePath, file);
     const head = {
       'Content-Range': `bytes ${start}-${end}/${fileSize}`,
       'Accept-Ranges': 'bytes',
@@ -8478,14 +8648,20 @@ function sendRangeable(req, res, filePath, contentType, onServe) {
     };
 
     res.writeHead(206, head);
-    file.pipe(res);
+    // pipeline, NOT .pipe(): destroys `file` when the response goes away first
+    // (every seek aborts the previous Range request) -- see the registry header
+    // above. The error argument is deliberately ignored: a premature client
+    // close is routine, and a mid-stream read error already destroyed both ends.
+    pipeline(file, res, () => {});
   } else {
     const head = {
       'Content-Length': fileSize,
       'Content-Type': contentType,
     };
     res.writeHead(200, head);
-    fs.createReadStream(filePath).pipe(res);
+    const file = fs.createReadStream(filePath);
+    registerMediaStream(filePath, file);
+    pipeline(file, res, () => {});
   }
 }
 
@@ -8918,6 +9094,13 @@ module.exports = {
   app,
   needsTranscode,
   transcodedPath,
+  // v1.41.10: the live media read-stream registry (leaked-fd/DELETE_PENDING
+  // fix) + the delete route's parent-dir post-verify -- exported for direct
+  // test coverage (see activeMediaStreams' header for the incident).
+  activeMediaStreams,
+  registerMediaStream,
+  destroyMediaStreams,
+  leafStillEnumerated,
   // v1.36.2: the recoverable-delete errno set -- exported for unit coverage.
   RECOVERABLE_DELETE_CODES,
   // v1.37.5: stored-path -> real on-disk entry resolver (NFC/NFD-aware) --
