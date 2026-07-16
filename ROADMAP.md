@@ -80,6 +80,13 @@
 
 ## Shipped
 
+### v1.41.12 — Chapter loop: loop one section of a video or audio item (2026-07-16)
+
+- Dean: loop a specific chapter — "helpful if it's like a music album." Every row in the chapters menu now carries a **Loop** toggle (a word, deliberately not a glyph — the iOS forced-emoji lesson): tap to loop that section, tap again to stop, tap a different chapter to move playback and the loop there together. The chapters button tints while a loop is armed. Session-only by design: cleared on every new item, on chapter edits, and on player close. It works on the lock screen (the boundary clamp rides both media elements, so a background-audio album track loops exactly like the foreground one), respects the live-transcode seek contract, and at the last chapter it outranks both the whole-video loop and autoplay-next — a looping track never zeroes its progress or advances.
+- **Escape hatch (gate-driven design):** any explicit seek that lands outside the looped section — dragging the seek bar, J/L/arrows, a digit jump, or **the lock-screen scrubber** — disarms the loop. Pre-fix, the next timeupdate yanked you back within a quarter second, and a docked mini-player (chapters hidden there) had no escape at all.
+- Full two-reviewer gate, three rounds. Round 1, both seats convergent on a CRITICAL: arming the loop consulted the media element's duration during a live transcode — the transcoded-so-far segment, not the video, violating a contract this file documents three times — so a last-chapter loop on an AVI silently refused to arm, or armed truncated and respawned ffmpeg every ~25 seconds. Round 2 (adversarial, mutation-proven): two of my test locks were satisfiable by lookalike neighbor lines — deleting the loop branch's own safety lines passed the suite green — and the lock-screen scrubber was the sixth seek surface missing the disarm. All fixed and mutation-verified dead; both seats delta-APPROVE. A refused loop is now a visible toast, never a silent no-op (the silence had masked the CRITICAL).
+- **Disclosed:** one non-reproducing Node 22 full-suite failure of the documented thumbnail-sendFile flake (standalone 6/6); sub-half-second chapters refuse to loop (epsilon guard); tech-debt #40 filed for a pre-existing, unrelated seekto/liveMode basis limitation the QA seat spotted while verifying. Also on this branch: the v1.42.0 universal-downloads design plan, taken through two adversarial design-review rounds to APPROVE (see docs/exec-plans/active/v1.42.0-universal-oneoffs.md).
+
 ### v1.41.11 — Mobile chapters polish, duplicates report, YouTube keyboard shortcuts, quality scorecard (2026-07-16)
 
 - Dean's overnight four-item wave, scoped at intake (all recommendations accepted) and run autonomously end-to-end.

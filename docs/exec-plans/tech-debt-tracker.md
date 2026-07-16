@@ -88,3 +88,9 @@
 - **Fix direction:** debounce the save inside `skip()` for `event.repeat` presses (save on the FIRST press and on key-up/last-in-burst), or a small client-side trailing-edge coalescer around `saveProgressToServer` for keyboard-origin skips. Touches battle-won save semantics — do it as its own gated change, not a drive-by.
 - **Severity:** Low. Adversarial-gate SUGGESTION at v1.41.11, accepted-and-disclosed.
 - **Source:** v1.41.11 two-reviewer gate (adversarial seat, suggestion 5).
+
+## #40 — MediaSession seekto applies lock-screen scrub positions without a liveMode offset basis (pre-existing)
+- **What:** the `seekto` handler (player.js ~1618) writes `details.seekTime` straight to `el.currentTime`/`fastSeek` with no liveMode branch — during a desktop live transcode the element's timeline is the transcoded-so-far segment offset by `liveOffset`, so a media-hub scrub would land at the wrong absolute position. Pre-existing (predates v1.41.12; the v1.41.12 delta only added the chapter-loop disarm, which the QA seat verified is basis-correct for its own purpose). Bounded: MediaSession seekto is effectively a lock-screen/media-hub surface; background audio is never liveMode, and desktop media-hub scrubbing of a live-transcoding AVI is a rare intersection.
+- **Fix direction:** mirror skip()'s liveMode branch — compute the absolute target and route through `startLiveStream(target, true)`.
+- **Severity:** Low. QA-seat observation at the v1.41.12 delta-2, explicitly out of that diff's scope; filed rather than drive-by-fixed.
+- **Source:** v1.41.12 two-reviewer gate (QA seat, delta-2 note).
