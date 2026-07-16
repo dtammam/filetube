@@ -175,3 +175,32 @@ test('v1.34.6: the expanded audio bar is flush to the bottom edge (safe-area INS
   assert.match(css, /#player-wrapper\.audio-mode\.audio-expanded #audio-bg-art \{\s*bottom: calc\(94px \+ env\(safe-area-inset-bottom, 0px\)\);/,
     'two-row-bar art cutoff (mobile <=768px)');
 });
+
+// ---- v1.41.11 (Dean): mobile chapters legibility + docked-miniplayer hide ---
+// Dean: the chapter picker was "compressed and small" on the mobile watch
+// page (the base .chapters-menu is sized for a wide desktop player) and
+// "shows up oddly in the miniplayer" (the popup anchored inside the 160-280px
+// dock). Locks the two CSS halves and the dock() ARIA-truth close.
+test('v1.41.11: mobile chapters menu spans the player width with 44px tap targets and 2-line wrapped titles', () => {
+  const css = fs.readFileSync(path.join(ROOT, 'public', 'css', 'style.css'), 'utf8');
+  const start = css.indexOf('v1.41.11 (Dean: "compressed and small" on mobile)');
+  assert.ok(start >= 0, 'the mobile chapters block (with its dated rationale comment) exists in style.css');
+  const block = css.slice(start, start + 1600);
+  assert.match(block, /@media \(max-width: 768px\) \{[\s\S]*?\.chapters-menu \{[\s\S]*?left: 8px;[\s\S]*?right: 8px;[\s\S]*?max-width: none;/,
+    'the popup spans the player width at the mobile breakpoint (no more 220px strip)');
+  assert.match(block, /\.chapters-menu-item \{[\s\S]*?min-height: 44px;[\s\S]*?white-space: normal;[\s\S]*?-webkit-line-clamp: 2;/,
+    'rows are real tap targets and titles wrap to two lines instead of ellipsizing');
+});
+
+test('v1.41.11: chapters are hidden entirely in the docked mini-player, and dock() closes the menu for ARIA truth', () => {
+  const css = fs.readFileSync(path.join(ROOT, 'public', 'css', 'style.css'), 'utf8');
+  assert.match(css, /#player-dock #chapters-btn,\s*#player-dock \.chapters-menu \{\s*display: none !important;/,
+    'both the button and the popup are display:none inside #player-dock (skip-controls precedent)');
+  const playerSrc = fs.readFileSync(path.join(ROOT, 'public', 'js', 'player.js'), 'utf8');
+  const dockStart = playerSrc.indexOf('function dock()');
+  const dockEnd = playerSrc.indexOf('function close()', dockStart);
+  assert.ok(dockStart >= 0 && dockEnd > dockStart, 'dock() precedes close() (source-lock slice bounds)');
+  const dockBody = playerSrc.slice(dockStart, dockEnd);
+  assert.ok(dockBody.includes('chaptersMenu.hidden = true'), 'dock() hides the menu');
+  assert.ok(dockBody.includes("chaptersBtn.setAttribute('aria-expanded', 'false')"), 'dock() resets the button ARIA state');
+});

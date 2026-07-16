@@ -1064,6 +1064,34 @@ if (typeof module !== 'undefined' && module.exports) {
 
         if (prevId) prevBtn.addEventListener('click', () => navigateToWatch(prevId), { signal });
         if (nextId) nextBtn.addEventListener('click', () => navigateToWatch(nextId), { signal });
+
+        // v1.41.11 (Dean: "play/pause works on my keyboard, but others
+        // don't"): register the SAME context-aware neighbors with the
+        // player's trackNav seam (v1.39.0 -- previously reader-chapters
+        // only). This is the missing piece for hardware media keys: browsers
+        // wire play/pause automatically, but previous/next fire ONLY when
+        // explicit MediaSession handlers exist. One registration powers the
+        // media keys, the lock screen, and the desktop Shift+N/Shift+P
+        // shortcuts (player.js drives all three through this seam).
+        //
+        // GATE FIX (both seats, this release): this function sits behind
+        // uncancelled fetches, so a SLOW list fetch from a departed view can
+        // resolve AFTER the next view has already registered its own
+        // handlers -- without a staleness guard, watch A's neighbors would
+        // silently overwrite watch B's (or a book narration's chapter
+        // handlers), sending media-key "next" to the wrong place. The view's
+        // AbortController signal is the staleness truth: destroy() aborts it
+        // before any successor view registers, so a stale continuation
+        // always sees aborted=true here and registers nothing. (read.js's
+        // own registration is synchronous and never needed this.)
+        if (signal.aborted) return;
+        if (window.FileTube && window.FileTube.player
+            && typeof window.FileTube.player.setTrackNav === 'function' && (prevId || nextId)) {
+          window.FileTube.player.setTrackNav({
+            onPrev: prevId ? () => navigateToWatch(prevId) : undefined,
+            onNext: nextId ? () => navigateToWatch(nextId) : undefined,
+          });
+        }
       } catch (e) {
         console.error('Error deriving prev/next order:', e);
         prevBtn.disabled = true;

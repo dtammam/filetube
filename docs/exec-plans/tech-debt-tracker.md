@@ -82,3 +82,9 @@
 - **Fix direction:** track live-transcode child processes per source path (a `Map<srcPath, Set<ChildProcess>>` beside the stream registry) and SIGKILL them in the DELETE route's release step, mirroring `destroyMediaStreams`.
 - **Severity:** Low — honest-and-self-healing, never data loss or a resurrect loop.
 - **Source:** v1.41.10 two-reviewer gate (QA seat, SUGGESTION).
+
+## #39 — held arrow/J/L keys fire an unthrottled POST /api/progress per autorepeat (v1.41.11 residual)
+- **What:** every `skip()` saves progress immediately (correct for a single press — a skip-then-close must not lose the position). Keyboard autorepeat means HOLDING ← / → (now a natural scrub gesture at 5s steps) fires ~25 `skip()`+POSTs/second for the duration of the hold. Pre-existing class (arrows existed at 15s), aggravated by v1.41.11 making holds attractive. Bounded: the server-side progress coalescer (v1.30 A4) folds the writes into one atomic db write per window, so this is LAN HTTP chatter, not disk churn.
+- **Fix direction:** debounce the save inside `skip()` for `event.repeat` presses (save on the FIRST press and on key-up/last-in-burst), or a small client-side trailing-edge coalescer around `saveProgressToServer` for keyboard-origin skips. Touches battle-won save semantics — do it as its own gated change, not a drive-by.
+- **Severity:** Low. Adversarial-gate SUGGESTION at v1.41.11, accepted-and-disclosed.
+- **Source:** v1.41.11 two-reviewer gate (adversarial seat, suggestion 5).

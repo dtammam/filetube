@@ -8241,6 +8241,33 @@ app.get('/api/stats', (req, res) => {
   });
 });
 
+// v1.41.11 (Dean: "see files that are truly duplicates so I can clean them
+// up -- wasted storage"): the duplicates report. Same posture as /api/stats
+// directly above -- a pure O(n) transform over db.metadata per request (see
+// computeDuplicateReport's header in lib/stats.js for the two sections and
+// the injected-extractor contract). READ-ONLY by design: no delete actions
+// anywhere on this surface (Dean's no-data-loss norm); he cleans up by hand.
+app.get('/api/duplicates', (req, res) => {
+  const db = getCachedDatabase(); // pure read on a request path (v1.30 A3)
+  res.json(stats.computeDuplicateReport(db.metadata, { extractVideoId: extractYtdlpVideoId }));
+});
+
+// The same report as a downloadable CSV (Dean: "exportable output"). Static
+// ASCII filename -- contentDispositionAttachment is for media titles; nothing
+// here needs RFC 5987. One row per file, section-tagged; see
+// duplicateReportToCsv for the quoting + formula-defusal contract.
+// Synchronous O(n) on the request thread, same posture as /api/stats above --
+// the v1.41.11 gate probed a pathological 100k-item library at ~390ms report
+// + ~230ms CSV, acceptable at home-server scale; revisit only if libraries
+// grow an order of magnitude past that.
+app.get('/api/duplicates.csv', (req, res) => {
+  const db = getCachedDatabase();
+  const csv = stats.duplicateReportToCsv(stats.computeDuplicateReport(db.metadata, { extractVideoId: extractYtdlpVideoId }));
+  res.set('Content-Type', 'text/csv; charset=utf-8');
+  res.set('Content-Disposition', 'attachment; filename="filetube-duplicates.csv"');
+  res.send(csv);
+});
+
 // API: Record a watch-page open, for C4 "most-watched" (v1.24 UX Round,
 // Wave 3). A dedicated, separate route -- deliberately NOT folded into
 // `POST /api/progress` (fires repeatedly throughout playback via periodic

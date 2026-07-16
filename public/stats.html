@@ -191,6 +191,25 @@
         </div>
       </div>
 
+      <!-- v1.41.11 (Dean): duplicates report -- same-filename groups plus
+           same-videoid/different-filename groups, straight from the library
+           index. READ-ONLY (no delete buttons here, by explicit decision);
+           the CSV link downloads the full flat report for offline cleanup. -->
+      <div class="setup-box">
+        <h2>Duplicates</h2>
+        <p>
+          Files that share an exact filename, or the same YouTube video under
+          different filenames -- candidates for reclaiming storage. Video-id
+          groups are matched by the <code>[id]</code> in the filename, so
+          double-check each group before cleaning up. Review and clean up by
+          hand; nothing on this page deletes anything.
+          <a href="/api/duplicates.csv" id="stats-duplicates-export">Export CSV</a>
+        </p>
+        <div class="folder-list-builder" id="stats-duplicates-list">
+          <!-- Populated dynamically by /js/stats.js -->
+        </div>
+      </div>
+
       <!-- v1.41.0 (Dean): the About/version hub -- FileTube + yt-dlp + TTS
            versions and GitHub links, all in one place. Rows hide themselves
            when a component isn't installed. -->

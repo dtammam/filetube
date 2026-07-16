@@ -646,6 +646,21 @@ function nextPlaybackRate(current) {
   return PLAYBACK_RATES[(idx + 1) % PLAYBACK_RATES.length];
 }
 
+// v1.41.11 (Dean: YouTube-style shortcuts): the </> keys step the rate list
+// WITHOUT wrapping -- YouTube clamps at both ends ('<' at minimum speed is a
+// no-op), and a wrap is an intent inversion for a directional key: '<' at 1x
+// meaning "jump to 2x" is the opposite of "slow down" (adversarial-gate W4,
+// this release). The single #speed-btn keeps its wrapping nextPlaybackRate
+// cycle above -- a one-direction button NEEDS the wrap to reach every rate.
+// Same pure-lookup contract: an unrecognized current rate degrades to the
+// first rate, never throws. `dir` is +1 (faster) or -1 (slower).
+function stepPlaybackRateClamped(current, dir) {
+  var idx = PLAYBACK_RATES.indexOf(current);
+  if (idx === -1) return PLAYBACK_RATES[0];
+  var stepped = Math.min(PLAYBACK_RATES.length - 1, Math.max(0, idx + dir));
+  return PLAYBACK_RATES[stepped];
+}
+
 // ---- FR-5 (T1, v1.22.1): desktop click-video-to-toggle-play/pause guard ---
 // Pure gate behind the new desktop-only `#media-player` 'click' listener
 // (`wireHostListeners`, below), mirroring `shouldArtSingleTapAct`'s role for
@@ -804,6 +819,8 @@ if (typeof module !== 'undefined' && module.exports) {
     resolveMobileFormFactor,
     resolveEndedAction,
     nextPlaybackRate,
+    // v1.41.11: the </> shortcuts' clamped step -- see stepPlaybackRateClamped.
+    stepPlaybackRateClamped,
     shouldDesktopVideoTapToggle,
     resolveFsButtonAction,
     computeMediaAspectRatio,
@@ -1591,9 +1608,15 @@ if (typeof module !== 'undefined' && module.exports) {
   // hands in {onPrev,onNext}; we set/clear the actual MediaSession handlers
   // dynamically so the lock-screen prev/next controls appear ONLY while a
   // handler is registered (a plain video load never sets it -> unchanged).
+  // v1.41.11: the registered handlers are also kept HERE so the desktop
+  // Shift+N/Shift+P shortcuts (the FULL-only keydown switch below) drive the
+  // exact same navigation the hardware media keys / lock screen get -- one
+  // registration, three surfaces, no second neighbor model.
+  var trackNavHandlers = null;
   function setTrackNav(handlers) {
     var hasPrev = !!(handlers && typeof handlers.onPrev === 'function');
     var hasNext = !!(handlers && typeof handlers.onNext === 'function');
+    trackNavHandlers = (hasPrev || hasNext) ? handlers : null;
     setMediaSessionAction('previoustrack', hasPrev ? function () { handlers.onPrev(); } : null);
     setMediaSessionAction('nexttrack', hasNext ? function () { handlers.onNext(); } : null);
   }
@@ -2394,7 +2417,18 @@ if (typeof module !== 'undefined' && module.exports) {
   // ---- skip (+-15s), ripple, hold-to-2x, dbl-tap ------------------------------
 
   function skip(delta) {
-    flashRipple(delta < 0 ? skipRippleLeft : skipRippleRight);
+    // v1.41.11 gate fix (adversarial W1): the shells hard-code "« 15s"/"15s »"
+    // in the ripple markup, which was always true while every skip was
+    // SKIP_SECONDS -- the keyboard shortcuts now skip 5s (arrows) and 10s
+    // (J/L), so the label is derived from the ACTUAL delta on every flash
+    // (the on-bar buttons/double-tap still legitimately show 15).
+    var ripple = delta < 0 ? skipRippleLeft : skipRippleRight;
+    if (ripple) {
+      ripple.textContent = delta < 0
+        ? '« ' + Math.abs(delta) + 's'
+        : Math.abs(delta) + 's »';
+    }
+    flashRipple(ripple);
     if (liveMode) {
       var total = (currentData && currentData.duration) || Infinity;
       var target = Math.max(0, Math.min(total, currentAbsTime() + delta));
@@ -3224,6 +3258,32 @@ if (typeof module !== 'undefined' && module.exports) {
     } catch (_) { /* storage disabled/full -- persistence is best-effort only */ }
   }
 
+  // v1.41.11 (Dean: YouTube-style shortcuts): the shared 5% volume step for
+  // ArrowUp/ArrowDown and the wheel-over-slider gesture. Only sets
+  // mediaPlayer.volume/.muted -- slider fill, mute icon, and persistence all
+  // ride the existing 'volumechange' listener (one sync path, no drift).
+  // Raising volume off zero un-mutes, matching the slider's own input rule.
+  var VOLUME_STEP = 0.05;
+  function adjustVolume(delta) {
+    if (!mediaPlayer) return;
+    var v = Math.min(1, Math.max(0, (Number(mediaPlayer.volume) || 0) + delta));
+    v = Math.round(v * 100) / 100; // keep 0.05 steps from drifting into float dust
+    mediaPlayer.volume = v;
+    if (v > 0 && mediaPlayer.muted) mediaPlayer.muted = false;
+  }
+
+  // v1.41.11: the one place a playback rate is APPLIED -- extracted from the
+  // #speed-btn click handler so the </> shortcuts and the button can never
+  // diverge on the defaultPlaybackRate/label/persist trio (FIX 1, v1.22.1:
+  // defaultPlaybackRate is what makes the rate survive the next load()).
+  function applyPlaybackRate(rate) {
+    if (!mediaPlayer) return;
+    mediaPlayer.playbackRate = rate;
+    mediaPlayer.defaultPlaybackRate = rate;
+    updateSpeedBtnUI(rate);
+    persistPlaybackRate(rate);
+  }
+
   // ---- loop/repeat (FR-7, TF, v1.22.0) --------------------------------------
   // Guarded try/catch exactly like `loadStoredVolume`/`loadStoredMuted` above
   // (storage disabled/unavailable degrades to "loop off," never throws).
@@ -3742,6 +3802,18 @@ if (typeof module !== 'undefined' && module.exports) {
         mediaPlayer.volume = v;
         if (v > 0 && mediaPlayer.muted) mediaPlayer.muted = false; // raising volume off 0 implies un-muting, matching native <audio controls> behavior
       });
+      // v1.41.11 (Dean: "mouse scroll wheel impacts the volume slider like
+      // YouTube"): wheel OVER THE SLIDER ONLY -- deliberately not over the
+      // whole video (Dean's pick), so the page keeps scrolling normally
+      // everywhere else. 5% steps, same as the ArrowUp/ArrowDown shortcuts;
+      // passive:false because preventDefault must stop the page scroll while
+      // the cursor is on the slider. All UI sync + persistence rides the
+      // existing 'volumechange' listener.
+      volBar.addEventListener('wheel', function (e) {
+        if (!mediaPlayer) return;
+        e.preventDefault();
+        adjustVolume(e.deltaY < 0 ? VOLUME_STEP : -VOLUME_STEP);
+      }, { passive: false });
     }
 
     // FR-4 (T1, v1.22.1): the persistent speed cycle button -- placed
@@ -3755,11 +3827,7 @@ if (typeof module !== 'undefined' && module.exports) {
     if (speedBtn) {
       speedBtn.addEventListener('click', function () {
         if (!mediaPlayer) return;
-        var rate = nextPlaybackRate(mediaPlayer.playbackRate);
-        mediaPlayer.playbackRate = rate;
-        mediaPlayer.defaultPlaybackRate = rate;
-        updateSpeedBtnUI(rate);
-        persistPlaybackRate(rate);
+        applyPlaybackRate(nextPlaybackRate(mediaPlayer.playbackRate));
       });
     }
 
@@ -4218,9 +4286,70 @@ if (typeof module !== 'undefined' && module.exports) {
       var tag = (el && el.tagName) || '';
       if (['INPUT', 'TEXTAREA', 'BUTTON', 'SELECT', 'A'].indexOf(tag) !== -1 || (el && el.isContentEditable)) return;
       if (awaitingTranscode) return;
+      // v1.41.11 (Dean): the switch below mirrors YouTube's core shortcut
+      // set. Arrow seeks moved from SKIP_SECONDS (15s) to YouTube's 5s --
+      // J/L take over the "big" step at 10s; the on-bar skip buttons keep
+      // SKIP_SECONDS untouched. Digits jump to N*10%. Shift+N/Shift+P drive
+      // the SAME registered trackNav handlers the hardware media keys and
+      // lock screen use (watch.js registers its context-aware prev/next
+      // there; read.js its chapters). C routes through #cc-btn's click so
+      // the audio-overlay-vs-video-track logic lives in exactly one place.
       switch (e.key) {
-        case 'ArrowLeft': e.preventDefault(); skip(-SKIP_SECONDS); break;
-        case 'ArrowRight': e.preventDefault(); skip(SKIP_SECONDS); break;
+        case 'ArrowLeft': e.preventDefault(); skip(-5); break;
+        case 'ArrowRight': e.preventDefault(); skip(5); break;
+        case 'j': case 'J': e.preventDefault(); skip(-10); break;
+        case 'l': case 'L': e.preventDefault(); skip(10); break;
+        case 'ArrowUp': e.preventDefault(); adjustVolume(VOLUME_STEP); break;
+        case 'ArrowDown': e.preventDefault(); adjustVolume(-VOLUME_STEP); break;
+        case 'c': case 'C':
+          e.preventDefault();
+          if (ccBtn && ccBtn.style.display !== 'none') ccBtn.click();
+          break;
+        case '>': e.preventDefault(); applyPlaybackRate(stepPlaybackRateClamped(mediaPlayer.playbackRate, 1)); break;
+        case '<': e.preventDefault(); applyPlaybackRate(stepPlaybackRateClamped(mediaPlayer.playbackRate, -1)); break;
+        case 'N':
+          if (e.shiftKey && trackNavHandlers && typeof trackNavHandlers.onNext === 'function') {
+            e.preventDefault();
+            trackNavHandlers.onNext();
+          }
+          break;
+        case 'P':
+          if (e.shiftKey && trackNavHandlers && typeof trackNavHandlers.onPrev === 'function') {
+            e.preventDefault();
+            trackNavHandlers.onPrev();
+          }
+          break;
+        case '0': case '1': case '2': case '3': case '4':
+        case '5': case '6': case '7': case '8': case '9': {
+          // v1.41.11 gate fix (adversarial W2): honor the file's liveMode
+          // seek invariant -- every seek during a live transcode must route
+          // through startLiveStream (the element's own duration/currentTime
+          // are the transcoded-so-far segment, not the video; a raw
+          // currentTime write here jumped to 50% of the SEGMENT and then
+          // corrupted the saved resume position via liveOffset+elementTime).
+          // Mirrors skip()/seekToChapter's live branch exactly, including
+          // the immediate progress save both of them do.
+          e.preventDefault();
+          var fraction = Number(e.key) / 10;
+          if (liveMode) {
+            var liveTotal = (currentData && currentData.duration) || 0;
+            if (isFinite(liveTotal) && liveTotal > 0) {
+              var liveTarget = liveTotal * fraction;
+              startLiveStream(liveTarget, true);
+              saveProgressToServer(liveTarget);
+            }
+            break;
+          }
+          var digitEl = activeMediaElement();
+          var dur = digitEl.duration;
+          if (typeof dur === 'number' && isFinite(dur) && dur > 0) {
+            digitEl.currentTime = dur * fraction;
+            saveProgressToServer(currentAbsTime());
+          }
+          break;
+        }
+        case 'k':
+        case 'K':
         case ' ':
         case 'Spacebar':
           e.preventDefault();
@@ -4826,6 +4955,14 @@ if (typeof module !== 'undefined' && module.exports) {
       resumeDirectly(savedProgress);
     }
     exitAudioExpand(); // FR-1 (T1, v1.22.2, AC5): never dock a fixed-overlay expanded wrapper
+    // v1.41.11: chapters are hidden entirely while docked (style.css
+    // `#player-dock #chapters-btn/.chapters-menu`) -- close the menu here so
+    // the button's aria-expanded never claims an open menu that CSS has
+    // hidden, and so expanding back to FULL doesn't resurrect a stale popup.
+    // (closeChaptersMenu lives in wireChrome's closure; these are its exact
+    // two statements against the module-level element refs.)
+    if (chaptersMenu) chaptersMenu.hidden = true;
+    if (chaptersBtn) chaptersBtn.setAttribute('aria-expanded', 'false');
     if (host.parentNode !== dockEl) dockEl.appendChild(host);
     dockEl.hidden = false;
     state = STATE_DOCKED;
