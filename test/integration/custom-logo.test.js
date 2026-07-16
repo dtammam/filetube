@@ -212,3 +212,44 @@ test('v1.33.1: customLogoDarkMime is NOT settable via the generic POST /api/sett
   });
   assert.equal(res.status, 400);
 });
+
+// ---- v1.41.18 (Dean): server-side FOUC kill --------------------------------
+// The header shells are static HTML, so the text wordmark painted before the
+// custom logo swapped in -- a flash on every refresh. The server now bakes
+// `ft-custom-logo` onto <html> at serve time when a logo is configured, so the
+// wordmark-hiding CSS is in force before any parsing. Self-contained: manages
+// its own logo state so it is order-independent of the tests above.
+const SHELL_PATHS = ['/', '/index.html', '/watch.html', '/stats.html', '/setup.html', '/read.html', '/books.html', '/books'];
+
+test('v1.41.18: NO ft-custom-logo class on any shell when no custom logo is configured', async () => {
+  await fetch(`${base}/api/settings/logo`, { method: 'DELETE' });
+  await fetch(`${base}/api/settings/logo?variant=dark`, { method: 'DELETE' });
+  for (const p of SHELL_PATHS) {
+    const html = await (await fetch(`${base}${p}`)).text();
+    const htmlTag = /<html\b[^>]*>/i.exec(html)[0];
+    assert.doesNotMatch(htmlTag, /ft-custom-logo/, `${p} must NOT carry the class with no logo configured (${htmlTag})`);
+  }
+});
+
+test('v1.41.18: EVERY shell is served with ft-custom-logo baked onto <html> once a logo is configured (pre-paint, zero flash)', async () => {
+  const post = await fetch(`${base}/api/settings/logo`, {
+    method: 'POST', headers: { 'Content-Type': 'image/png' }, body: TINY_PNG,
+  });
+  assert.equal(post.status, 200);
+  for (const p of SHELL_PATHS) {
+    const res = await fetch(`${base}${p}`);
+    assert.equal(res.status, 200, `${p} serves`);
+    const html = await res.text();
+    const htmlTag = /<html\b[^>]*>/i.exec(html)[0];
+    assert.match(htmlTag, /\bft-custom-logo\b/, `${p} must carry ft-custom-logo on <html> (${htmlTag})`);
+    // The existing lang attr must survive the injection (no clobbering).
+    assert.match(htmlTag, /lang="en"/, `${p} must keep lang="en" alongside the injected class`);
+  }
+});
+
+test('v1.41.18: the class is withdrawn again after the logo is DELETED (self-heals to the text wordmark)', async () => {
+  await fetch(`${base}/api/settings/logo`, { method: 'DELETE' });
+  const html = await (await fetch(`${base}/`)).text();
+  const htmlTag = /<html\b[^>]*>/i.exec(html)[0];
+  assert.doesNotMatch(htmlTag, /ft-custom-logo/, 'a removed logo brings the text wordmark back on the next load');
+});

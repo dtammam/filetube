@@ -80,6 +80,10 @@
 
 ## Shipped
 
+### v1.41.18 — Header logo FOUC: fix it at the source (server-side) (2026-07-16)
+
+- v1.41.17's client-side approach didn't actually stop the flash: the `localStorage` flag it relied on is only written *after* a first successful load, so it can never cover the very first paint, and it collapses entirely if storage is cleared/blocked or a stale asset is served. Dean still saw the text "FileTube" logo on every refresh. Fixed at the source: the server now bakes `ft-custom-logo` onto the `<html>` tag **at serve time** whenever a custom logo is configured, so the wordmark-hiding CSS is in force before the browser parses anything — zero flash, no bootstrap, no dependency on client storage. The HTML is served `no-cache` (revalidated each load), so it's always current, and the injection is withdrawn the moment the logo is deleted (text returns). A shared `sendShellHtml` helper covers all six public shells plus the yt-dlp module's gated `/subscriptions` page (dep-injected, so its 404-when-disabled behavior is preserved). The v1.41.17 client flag stays as harmless defense-in-depth.
+
 ### v1.41.17 — Kill the header FOUC (logo + theme) on refresh (2026-07-16)
 
 - Dean noticed the "FileTube" text logo flashes on page refresh before his custom uploaded logo swaps in. Root cause: the header shells are static HTML served verbatim, so the text wordmark always paints first; `applyCustomLogoIfSet` only swaps the image in after an async `/logo` probe. Fix: `common.js` now records a `localStorage` flag when a custom logo is confirmed present, and a tiny **pre-paint** head script stamps `html.ft-custom-logo` so CSS hides the wordmark (via `visibility`, keeping the type-scale-token lock intact) before it can paint — the text never flashes. The flag self-heals: a 404 or an undecodable image clears it and restores the text, so removing a logo brings "FileTube" back on the next refresh.
