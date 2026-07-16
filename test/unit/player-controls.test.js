@@ -256,9 +256,18 @@ test('FIX 1: initPlaybackRate() sets defaultPlaybackRate alongside playbackRate 
 });
 
 test('FIX 1: the #speed-btn click handler sets defaultPlaybackRate alongside playbackRate -- a manually-chosen rate must also survive every future load()', () => {
+  // v1.41.11: the trio (playbackRate + defaultPlaybackRate + label/persist)
+  // moved from the click handler into the shared applyPlaybackRate() so the
+  // new </> keyboard shortcuts can never diverge from the button. The lock
+  // follows: the click handler must route through applyPlaybackRate, and
+  // applyPlaybackRate must still carry FIX 1's defaultPlaybackRate write.
   const body = speedBtnClickMatch[1];
-  assert.match(body, /mediaPlayer\.playbackRate\s*=\s*rate\s*;/);
-  assert.match(body, /mediaPlayer\.defaultPlaybackRate\s*=\s*rate\s*;/);
+  assert.match(body, /applyPlaybackRate\(nextPlaybackRate\(mediaPlayer\.playbackRate\)\)/);
+  const applyMatch = /function applyPlaybackRate\(rate\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);
+  assert.ok(applyMatch, 'expected to find applyPlaybackRate()\'s source body in player.js');
+  assert.match(applyMatch[1], /mediaPlayer\.playbackRate\s*=\s*rate\s*;/);
+  assert.match(applyMatch[1], /mediaPlayer\.defaultPlaybackRate\s*=\s*rate\s*;/);
+  assert.match(applyMatch[1], /persistPlaybackRate\(rate\)\s*;/);
 });
 
 test('FIX 1: engageHold() (transient hold-2x) sets ONLY playbackRate, never defaultPlaybackRate -- the transient 2x must not become the persistent base rate', () => {
@@ -271,4 +280,62 @@ test('FIX 1: releaseHold() (transient hold-2x restore) sets ONLY playbackRate, n
   const body = releaseHoldMatch[1];
   assert.match(body, /mediaPlayer\.playbackRate\s*=\s*prevRate/);
   assert.ok(!/defaultPlaybackRate/.test(body), 'releaseHold() must not touch mediaPlayer.defaultPlaybackRate');
+});
+
+// ---- v1.41.11 (Dean): YouTube-style shortcuts -------------------------------
+// prevPlaybackRate (the `<` key) + source-locks on the keydown switch, the
+// wheel-over-volume-slider gesture, and watch.js's trackNav registration
+// (the piece that makes hardware previous/next media keys actually fire --
+// browsers only auto-wire play/pause; prev/next need MediaSession handlers).
+
+const { prevPlaybackRate } = require('../../public/js/player.js');
+
+test('prevPlaybackRate: steps BACKWARD through the fixed rate cycle, mirror of next', () => {
+  assert.strictEqual(prevPlaybackRate(2), 1.75);
+  assert.strictEqual(prevPlaybackRate(1.75), 1.5);
+  assert.strictEqual(prevPlaybackRate(1.5), 1.25);
+  assert.strictEqual(prevPlaybackRate(1.25), 1);
+});
+
+test('prevPlaybackRate: wraps from the slowest rate to the fastest (mirror of next\'s 2x -> 1x)', () => {
+  assert.strictEqual(prevPlaybackRate(1), 2);
+});
+
+test('prevPlaybackRate: an unrecognized/foreign current rate degrades to the first rate, never throws', () => {
+  assert.strictEqual(prevPlaybackRate(3), 1);
+  assert.strictEqual(prevPlaybackRate(undefined), 1);
+  assert.strictEqual(prevPlaybackRate(NaN), 1);
+});
+
+test('v1.41.11 source-lock: the FULL-only keydown switch carries the YouTube set', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'player.js'), 'utf8');
+  const start = src.indexOf('the switch below mirrors YouTube');
+  assert.ok(start >= 0, 'the v1.41.11 shortcut block exists');
+  const block = src.slice(start, start + 3200);
+  assert.match(block, /case 'ArrowLeft': e\.preventDefault\(\); skip\(-5\);/, 'arrows are YouTube 5s now (J/L own the 10s step)');
+  assert.match(block, /case 'j': case 'J': e\.preventDefault\(\); skip\(-10\);/, 'J rewinds 10s');
+  assert.match(block, /case 'ArrowUp': e\.preventDefault\(\); adjustVolume\(VOLUME_STEP\);/, 'ArrowUp raises volume');
+  assert.match(block, /applyPlaybackRate\(nextPlaybackRate\(mediaPlayer\.playbackRate\)\)/, '> speeds up through the shared apply path');
+  assert.match(block, /applyPlaybackRate\(prevPlaybackRate\(mediaPlayer\.playbackRate\)\)/, '< slows down through the same path');
+  assert.match(block, /case 'N':\s*if \(e\.shiftKey && trackNavHandlers/, 'Shift+N drives the registered trackNav seam');
+  assert.match(block, /case '9': \{/, 'digit percent-seek cases exist');
+  assert.match(block, /case 'k':\s*case 'K':\s*case ' ':/, 'K joins Space on togglePlayPause');
+});
+
+test('v1.41.11 source-lock: wheel over the volume slider adjusts volume (slider only, passive:false)', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'player.js'), 'utf8');
+  assert.match(src, /volBar\.addEventListener\('wheel', function \(e\) \{[\s\S]*?e\.preventDefault\(\);[\s\S]*?adjustVolume\(e\.deltaY < 0 \? VOLUME_STEP : -VOLUME_STEP\);[\s\S]*?\}, \{ passive: false \}\)/,
+    'the wheel listener is on volBar (never the whole video -- Dean picked slider-only), preventDefaults, and steps 5%');
+});
+
+test('v1.41.11 source-lock: watch.js registers its context-aware prev/next with the player trackNav seam', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'watch.js'), 'utf8');
+  assert.match(src, /window\.FileTube\.player\.setTrackNav\(\{\s*onPrev: prevId \? \(\) => navigateToWatch\(prevId\) : undefined,\s*onNext: nextId \? \(\) => navigateToWatch\(nextId\) : undefined,\s*\}\)/,
+    'setupPrevNext hands its computed neighbors to setTrackNav (media keys + lock screen + Shift+N/P all ride this one registration)');
+});
+
+test('v1.41.11 source-lock: setTrackNav stores handlers for the keyboard seam and still sets MediaSession per-direction', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'player.js'), 'utf8');
+  assert.match(src, /trackNavHandlers = \(hasPrev \|\| hasNext\) \? handlers : null;/, 'handlers stored for Shift+N/P');
+  assert.match(src, /setMediaSessionAction\('previoustrack', hasPrev \? function \(\) \{ handlers\.onPrev\(\); \} : null\);/, 'per-direction MediaSession wiring unchanged');
 });

@@ -1064,6 +1064,27 @@ if (typeof module !== 'undefined' && module.exports) {
 
         if (prevId) prevBtn.addEventListener('click', () => navigateToWatch(prevId), { signal });
         if (nextId) nextBtn.addEventListener('click', () => navigateToWatch(nextId), { signal });
+
+        // v1.41.11 (Dean: "play/pause works on my keyboard, but others
+        // don't"): register the SAME context-aware neighbors with the
+        // player's trackNav seam (v1.39.0 -- previously reader-chapters
+        // only). This is the missing piece for hardware media keys: browsers
+        // wire play/pause automatically, but previous/next fire ONLY when
+        // explicit MediaSession handlers exist. One registration powers the
+        // media keys, the lock screen, and the desktop Shift+N/Shift+P
+        // shortcuts (player.js drives all three through this seam). Ordering
+        // is safe by construction: load()'s teardownMediaState clears
+        // trackNav synchronously during view init, and this line runs after
+        // this function's list fetches resolve -- so every watch->watch hop
+        // clears then re-registers, and a book-narration load re-registers
+        // its own chapter handlers the same way (read.js).
+        if (window.FileTube && window.FileTube.player
+            && typeof window.FileTube.player.setTrackNav === 'function' && (prevId || nextId)) {
+          window.FileTube.player.setTrackNav({
+            onPrev: prevId ? () => navigateToWatch(prevId) : undefined,
+            onNext: nextId ? () => navigateToWatch(nextId) : undefined,
+          });
+        }
       } catch (e) {
         console.error('Error deriving prev/next order:', e);
         prevBtn.disabled = true;
