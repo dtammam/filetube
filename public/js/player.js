@@ -625,6 +625,30 @@ function resolveEndedAction(ctx) {
   return 'stop';
 }
 
+// ---- v1.41.12 (Dean): chapter loop pure helper ------------------------------
+// Resolve the [start, end) bounds of the chapter at `index`: end is the NEXT
+// chapter's startTime, or `duration` for the last chapter. Returns null on
+// any shape that can't make a sane loop (bad index, malformed startTime, an
+// unresolvable or non-positive-width window) so the caller REFUSES to arm a
+// broken loop rather than arming one that yanks playback somewhere wrong.
+// Pure lookup (no DOM/element reads) -- the live arming site passes the
+// element/metadata duration it already has.
+function resolveChapterLoopBounds(chapters, index, duration) {
+  if (!Array.isArray(chapters) || typeof index !== 'number' || index < 0 || index >= chapters.length) return null;
+  var ch = chapters[index];
+  if (!ch || typeof ch.startTime !== 'number' || !isFinite(ch.startTime) || ch.startTime < 0) return null;
+  var next = chapters[index + 1];
+  var end = null;
+  if (next && typeof next.startTime === 'number' && isFinite(next.startTime)) end = next.startTime;
+  else if (typeof duration === 'number' && isFinite(duration) && duration > 0) end = duration;
+  // Gate suggestion (v1.41.12 round 1): a window at or under 0.5s is refused
+  // outright -- the clamp's 0.05s epsilon would otherwise sit at/before the
+  // start for sub-epsilon widths, degenerating playback into ~250ms seek
+  // churn slivers. No real chapter is half a second long.
+  if (end === null || end - ch.startTime <= 0.5) return null;
+  return { start: ch.startTime, end: end };
+}
+
 // ---- FR-4 (T1, v1.22.1): persistent playback-speed pure helper ------------
 // The fixed cycle of rates `#speed-btn` steps through on every click/tap:
 // 1x -> 1.25x -> 1.5x -> 1.75x -> 2x -> 1x (wraps). Kept as a MODULE-LEVEL
@@ -818,6 +842,8 @@ if (typeof module !== 'undefined' && module.exports) {
     shouldArtSingleTapAct,
     resolveMobileFormFactor,
     resolveEndedAction,
+    // v1.41.12: chapter-loop bounds resolver -- see resolveChapterLoopBounds.
+    resolveChapterLoopBounds,
     nextPlaybackRate,
     // v1.41.11: the </> shortcuts' clamped step -- see stepPlaybackRateClamped.
     stepPlaybackRateClamped,
@@ -886,6 +912,13 @@ if (typeof module !== 'undefined' && module.exports) {
   // (manual > embedded > description -- resolved server-side).
   var chaptersBtn, chaptersMenu;
   var currentChapters = [];
+  // v1.41.12 (Dean: "loop that specific section -- like a music album"):
+  // the armed chapter loop, or null. { start, end, index } resolved via
+  // resolveChapterLoopBounds at arm time. SESSION-ONLY by design: cleared on
+  // every load (teardownMediaState) and whenever the chapter set is edited
+  // (applyChaptersForMedia) -- indexes shift under an edit, so carrying the
+  // loop across one would loop the wrong section.
+  var chapterLoop = null;
   var chaptersOutsideCloseWired = false;
   // Assigned inside wireHostListeners' closure; no-op stubs until then so a
   // teardown racing first wiring can never throw.
@@ -1585,6 +1618,12 @@ if (typeof module !== 'undefined' && module.exports) {
   setMediaSessionAction('seekto', function (details) {
     var el = activeMediaElement();
     if (!el || details == null || details.seekTime == null) return;
+    // v1.41.12 gate delta (adversarial R2): the lock-screen scrubber is the
+    // SIXTH explicit-seek surface -- and the one with no menu, no seek bar,
+    // no dock-expand. Dragging past the loop end there must disarm exactly
+    // like the in-app seeks (element time is absolute here; background audio
+    // is never liveMode).
+    disarmChapterLoopIfSeekOutside(details.seekTime);
     if (details.fastSeek && 'fastSeek' in el) {
       el.fastSeek(details.seekTime);
     } else {
@@ -2432,6 +2471,7 @@ if (typeof module !== 'undefined' && module.exports) {
     if (liveMode) {
       var total = (currentData && currentData.duration) || Infinity;
       var target = Math.max(0, Math.min(total, currentAbsTime() + delta));
+      disarmChapterLoopIfSeekOutside(target); // v1.41.12 gate W3: explicit seek out = disarm
       startLiveStream(target, true);
       saveProgressToServer(target);
       return;
@@ -2444,7 +2484,9 @@ if (typeof module !== 'undefined' && module.exports) {
     var el = activeMediaElement();
     var dur = el.duration;
     if (!isFinite(dur) || dur <= 0) return;
-    el.currentTime = Math.max(0, Math.min(dur, el.currentTime + delta));
+    var skipTarget = Math.max(0, Math.min(dur, el.currentTime + delta));
+    disarmChapterLoopIfSeekOutside(skipTarget); // v1.41.12 gate W3: explicit seek out = disarm
+    el.currentTime = skipTarget;
     saveProgressToServer(currentAbsTime());
   }
 
@@ -3071,8 +3113,69 @@ if (typeof module !== 'undefined' && module.exports) {
   // time that flag is consumed the app is back in the foreground and this is
   // an entirely ordinary `handleAutoplayNext()` call, no different from any
   // other 'ended' advance.
+  // v1.41.12: the timeupdate-side half of the chapter loop. Interior chapter
+  // boundaries never reach 'ended' -- this clamp wraps playback back to the
+  // chapter start as the end boundary is crossed. Attached to BOTH media
+  // elements (mediaPlayer + bgAudioEl) so a lock-screen/background-audio
+  // session loops exactly like the foreground one; the activeMediaElement()
+  // read keeps the two from double-firing meaningfully (the inactive element
+  // isn't advancing). In liveMode the boundary is checked against
+  // currentAbsTime() and the wrap routes through startLiveStream, the same
+  // live-seek contract skip()/seekToChapter honor. The 0.05s epsilon absorbs
+  // timeupdate's firing granularity without ever wrapping early enough to
+  // clip audible content.
+  // v1.41.12 gate W3: an EXPLICIT user seek that lands outside the loop
+  // bounds DISARMS the loop -- "drag the seek bar to leave" is the natural
+  // escape gesture and must win (pre-fix, the next timeupdate yanked
+  // playback back within ~250ms, and a DOCKED item had no escape at all
+  // because the chapters menu is hidden in the mini-player). Called from the
+  // three explicit-seek commit points (scrub commit, skip(), digit jump)
+  // with the ABSOLUTE target; the clamp's own wrap never routes through
+  // here, so looping itself is unaffected. Controller-level (can't reach the
+  // closure's updateChapterLoopIndicator), so it clears the button tint
+  // directly, like teardownMediaState; the menu itself rebuilds on every
+  // open, so a stale 'Looping' label can't survive to the next look.
+  function disarmChapterLoopIfSeekOutside(targetAbs) {
+    if (!chapterLoop) return;
+    if (typeof targetAbs !== 'number' || !isFinite(targetAbs)) return;
+    if (targetAbs < chapterLoop.start || targetAbs >= chapterLoop.end) {
+      chapterLoop = null;
+      if (chaptersBtn) chaptersBtn.classList.remove('chapter-looping');
+    }
+  }
+
+  function enforceChapterLoop() {
+    if (!chapterLoop) return;
+    if (liveMode) {
+      if (currentAbsTime() >= chapterLoop.end) startLiveStream(chapterLoop.start, true);
+      return;
+    }
+    var el = activeMediaElement();
+    if (!el || el.seeking) return;
+    if (el.currentTime >= chapterLoop.end - 0.05 && el.currentTime > chapterLoop.start) {
+      el.currentTime = chapterLoop.start;
+    }
+  }
+
   function runEndedCompletionCascade(el, opts) {
     var backgrounded = !!(opts && opts.backgrounded);
+    // v1.41.12: an armed CHAPTER loop outranks everything below -- including
+    // the whole-item loop toggle and autoplay-next (looping one album track
+    // must never reset progress to 0, replay the whole item, or advance).
+    // Only reachable when the looped chapter is the LAST one (end ===
+    // duration -- interior boundaries are wrapped by enforceChapterLoop
+    // before 'ended' can fire).
+    if (chapterLoop) {
+      prePauseCandidateAt = 0;
+      if (liveMode) {
+        startLiveStream(chapterLoop.start, true);
+      } else if (el) {
+        el.currentTime = chapterLoop.start;
+        el.play().catch(function () {});
+      }
+      saveProgressToServer(chapterLoop.start);
+      return;
+    }
     // v1.27.2 gate fix: a natural end fires 'pause' BEFORE 'ended' (HTML
     // spec), and that pause is unsuppressed + visible + INLINE_VIDEO -- so
     // it just ARMED a pre-pause candidate. Left standing, a lock within the
@@ -3588,6 +3691,10 @@ if (typeof module !== 'undefined' && module.exports) {
       if (bgAudioState !== BG_AUDIO_STATES.BACKGROUND_AUDIO) return;
       runEndedCompletionCascade(bgAudioEl, { backgrounded: true });
     });
+    // v1.41.12: chapter-loop boundary clamp for the background-audio clock --
+    // see enforceChapterLoop (a lock-screen album-track loop must wrap exactly
+    // like the foreground one).
+    bgAudioEl.addEventListener('timeupdate', enforceChapterLoop);
     // v1.27.0: gesture-prime coverage for mobile video's NATIVE `controls`
     // strip (FULL, native-controls round) -- that strip's own internal tap
     // handling isn't interceptable from this file, but `touchstart` on the
@@ -3627,6 +3734,9 @@ if (typeof module !== 'undefined' && module.exports) {
     mediaPlayer.addEventListener('seeked', function () { updatePositionState(true); });
     mediaPlayer.addEventListener('ratechange', function () { updatePositionState(true); });
     mediaPlayer.addEventListener('timeupdate', function () { updatePositionState(false); });
+    // v1.41.12: chapter-loop boundary clamp (foreground element) -- see
+    // enforceChapterLoop's own comment for the live/background contracts.
+    mediaPlayer.addEventListener('timeupdate', enforceChapterLoop);
 
     // FR-2 (T2, v1.21.0): the custom control bar's own reactions to native
     // media events -- additional listeners alongside every one above, none of
@@ -3717,6 +3827,7 @@ if (typeof module !== 'undefined' && module.exports) {
           liveMode: liveMode,
           liveTotal: currentData && currentData.duration,
         });
+        disarmChapterLoopIfSeekOutside(target); // v1.41.12 gate W3: scrubbing out of the loop disarms it
         if (liveMode) {
           startLiveStream(target, true);
         } else {
@@ -3999,7 +4110,58 @@ if (typeof module !== 'undefined' && module.exports) {
       if (chaptersMenu) chaptersMenu.hidden = true;
       if (chaptersBtn) chaptersBtn.setAttribute('aria-expanded', 'false');
     }
-    function seekToChapter(t) {
+    // v1.41.12: arm (or move) the chapter loop. Bounds come from the pure
+    // resolveChapterLoopBounds -- duration prefers the live element's
+    // metadata, falling back to the item's probed duration (which is also
+    // what the liveMode absolute-time contract needs). Refuses silently on
+    // an unresolvable window (the pure helper's null). `seekIn` jumps into
+    // the chapter when arming from outside it -- tapping Loop on track 5
+    // while track 2 plays means "loop track 5", not "yank me back at some
+    // future boundary crossing".
+    function armChapterLoop(index, opts) {
+      var el = activeMediaElement();
+      // v1.41.12 gate CRITICAL (both seats, first round): in liveMode the
+      // element's duration is the transcoded-so-far SEGMENT, never the real
+      // source length -- the same thrice-documented contract seekTotalDuration
+      // / seekCommitTarget FIX 5 / the v1.41.11 digit-seek fix all honor.
+      // Using it here silently refused (or truncated + ffmpeg-churned) a
+      // last-chapter loop on any live transcode. liveMode therefore trusts
+      // ONLY the item's probed duration; the element wins otherwise.
+      var dur = liveMode
+        ? (currentData && currentData.duration)
+        : ((el && typeof el.duration === 'number' && isFinite(el.duration) && el.duration > 0)
+          ? el.duration
+          : (currentData && currentData.duration));
+      var bounds = resolveChapterLoopBounds(currentChapters, index, dur);
+      if (!bounds) {
+        // Visible refusal (gate suggestion): a silent no-op on tap reads as a
+        // broken button and masked the CRITICAL above on-device.
+        if (typeof showToast === 'function') showToast('This chapter has no resolvable end to loop to.');
+        return;
+      }
+      chapterLoop = { start: bounds.start, end: bounds.end, index: index };
+      updateChapterLoopIndicator();
+      if (opts && opts.seekIn) {
+        var now = liveMode ? currentAbsTime() : (el ? el.currentTime : 0);
+        // seekToChapterTime, NOT seekToChapter: arming must never close the
+        // menu (gate consistency fix -- Loop-tap now behaves identically
+        // whether the playhead was inside or outside the chapter).
+        if (now < bounds.start || now >= bounds.end) seekToChapterTime(bounds.start);
+      }
+      if (opts && opts.rebuild) buildChaptersMenu();
+    }
+
+    // The bar-level "a loop is armed" signal: the chapters button carries
+    // .chapter-looping (style.css tints it) so the state is visible with the
+    // menu closed.
+    function updateChapterLoopIndicator() {
+      if (chaptersBtn) chaptersBtn.classList.toggle('chapter-looping', !!chapterLoop);
+    }
+
+    // v1.41.12: the seek half without the menu-close, so armChapterLoop's
+    // seek-in can jump WITHOUT dismissing the menu (the row-tap path below
+    // keeps the original close-on-seek behavior).
+    function seekToChapterTime(t) {
       if (!mediaPlayer) return;
       if (liveMode) {
         startLiveStream(t, true);
@@ -4008,6 +4170,9 @@ if (typeof module !== 'undefined' && module.exports) {
         if (mediaPlayer.paused) mediaPlayer.play().catch(function () {});
       }
       saveProgressToServer(t);
+    }
+    function seekToChapter(t) {
+      seekToChapterTime(t);
       closeChaptersMenu();
     }
     function openChaptersEditorFromMenu() {
@@ -4019,6 +4184,10 @@ if (typeof module !== 'undefined' && module.exports) {
       window.showChaptersEditor(currentId, lines, function (resolved) {
         currentChapters = Array.isArray(resolved && resolved.chapters) ? resolved.chapters : [];
         if (currentData) currentData.chapters = currentChapters;
+        // v1.41.12: an edited chapter set invalidates any armed loop (same
+        // rule as applyChaptersForMedia -- indexes/boundaries shifted).
+        chapterLoop = null;
+        updateChapterLoopIndicator();
         buildChaptersMenu();
       });
     }
@@ -4041,7 +4210,14 @@ if (typeof module !== 'undefined' && module.exports) {
       closeBtn.addEventListener('click', closeChaptersMenu);
       header.appendChild(closeBtn);
       chaptersMenu.appendChild(header);
-      currentChapters.forEach(function (ch) {
+      currentChapters.forEach(function (ch, index) {
+        // v1.41.12 (Dean): each chapter is now a ROW -- the existing seek
+        // button plus a per-chapter Loop toggle (his pick: "like a music
+        // album" -- loop one track). Text label, deliberately not a glyph:
+        // the v1.39 lesson is that transport-glyph codepoints render as
+        // forced blue emoji on iOS; a word can't.
+        var row = document.createElement('div');
+        row.className = 'chapters-menu-row';
         var item = document.createElement('button');
         item.type = 'button';
         item.className = 'chapters-menu-item';
@@ -4050,8 +4226,33 @@ if (typeof module !== 'undefined' && module.exports) {
         time.textContent = formatDuration(ch.startTime);
         item.appendChild(time);
         item.appendChild(document.createTextNode(' ' + (ch.title || 'Chapter')));
-        item.addEventListener('click', function () { seekToChapter(ch.startTime); });
-        chaptersMenu.appendChild(item);
+        item.addEventListener('click', function () {
+          // Tapping a chapter while a loop is armed MOVES the loop to that
+          // chapter (album flow: "play this track" while looping means "loop
+          // this track now") -- tapping with no loop armed just seeks.
+          if (chapterLoop && chapterLoop.index !== index) armChapterLoop(index, { rebuild: true });
+          seekToChapter(ch.startTime);
+        });
+        var isLooping = !!(chapterLoop && chapterLoop.index === index);
+        var loopBtn = document.createElement('button');
+        loopBtn.type = 'button';
+        loopBtn.className = 'chapters-menu-loop' + (isLooping ? ' active' : '');
+        loopBtn.textContent = isLooping ? 'Looping' : 'Loop';
+        loopBtn.setAttribute('aria-pressed', isLooping ? 'true' : 'false');
+        loopBtn.setAttribute('aria-label', (isLooping ? 'Stop looping chapter: ' : 'Loop chapter: ') + (ch.title || 'Chapter'));
+        loopBtn.addEventListener('click', function (e) {
+          e.stopPropagation(); // never trigger the row's seek
+          if (isLooping) {
+            chapterLoop = null;
+            updateChapterLoopIndicator();
+            buildChaptersMenu();
+            return;
+          }
+          armChapterLoop(index, { rebuild: true, seekIn: true });
+        });
+        row.appendChild(item);
+        row.appendChild(loopBtn);
+        chaptersMenu.appendChild(row);
       });
       var edit = document.createElement('button');
       edit.type = 'button';
@@ -4063,6 +4264,11 @@ if (typeof module !== 'undefined' && module.exports) {
     // Exposed to setupForMedia (which runs outside this wiring closure).
     applyChaptersForMedia = function (data) {
       currentChapters = data && Array.isArray(data.chapters) ? data.chapters : [];
+      // v1.41.12: a new chapter set invalidates any armed loop (indexes and
+      // boundaries both shift) -- belt-and-suspenders with teardownMediaState,
+      // which already clears it on every load.
+      chapterLoop = null;
+      updateChapterLoopIndicator();
       buildChaptersMenu();
       closeChaptersMenu();
       if (chaptersBtn) chaptersBtn.style.display = '';
@@ -4084,6 +4290,11 @@ if (typeof module !== 'undefined' && module.exports) {
         e.stopPropagation();
         if (!chaptersMenu) return;
         var opening = chaptersMenu.hidden;
+        // v1.41.12: rebuild on every OPEN so the per-row Loop labels always
+        // reflect the live chapterLoop state -- a seek-outside disarm
+        // (disarmChapterLoopIfSeekOutside, controller-level) can't reach the
+        // menu builder, so the menu re-derives truth each time it appears.
+        if (opening) buildChaptersMenu();
         chaptersMenu.hidden = !opening;
         chaptersBtn.setAttribute('aria-expanded', opening ? 'true' : 'false');
       });
@@ -4335,6 +4546,7 @@ if (typeof module !== 'undefined' && module.exports) {
             var liveTotal = (currentData && currentData.duration) || 0;
             if (isFinite(liveTotal) && liveTotal > 0) {
               var liveTarget = liveTotal * fraction;
+              disarmChapterLoopIfSeekOutside(liveTarget); // v1.41.12 gate W3
               startLiveStream(liveTarget, true);
               saveProgressToServer(liveTarget);
             }
@@ -4343,7 +4555,9 @@ if (typeof module !== 'undefined' && module.exports) {
           var digitEl = activeMediaElement();
           var dur = digitEl.duration;
           if (typeof dur === 'number' && isFinite(dur) && dur > 0) {
-            digitEl.currentTime = dur * fraction;
+            var digitTarget = dur * fraction;
+            disarmChapterLoopIfSeekOutside(digitTarget); // v1.41.12 gate W3
+            digitEl.currentTime = digitTarget;
             saveProgressToServer(currentAbsTime());
           }
           break;
@@ -4419,6 +4633,10 @@ if (typeof module !== 'undefined' && module.exports) {
     // them right after via read.js; a plain video/audio load leaves them cleared
     // -- matching the design contract "a non-audio load clears them".
     setTrackNav(null);
+    // v1.41.12: chapter loops are session-only and PER-ITEM -- a loop armed
+    // on the previous item must never clamp the next one's playback.
+    chapterLoop = null;
+    if (chaptersBtn) chaptersBtn.classList.remove('chapter-looping');
     if (progressInterval) { clearInterval(progressInterval); progressInterval = null; }
     if (transcodePollTimer) { clearTimeout(transcodePollTimer); transcodePollTimer = null; }
     // F7 (two-reviewer NIT): cancel a still-pending audio-status repoll too, mirroring the two timers just above
@@ -5025,6 +5243,11 @@ if (typeof module !== 'undefined' && module.exports) {
     bgAudioSettingCached = false;
     bgAudioStatusKnown = null;
     prePauseCandidateAt = 0; // v1.27.2: mirrors teardownMediaState -- no candidate survives a CLOSE
+    // v1.41.12 (QA gate): same defense-in-depth convention as its siblings
+    // above -- a chapter loop never survives a CLOSE either (teardown on the
+    // next load would clear it anyway, but that safety is indirect).
+    chapterLoop = null;
+    if (chaptersBtn) chaptersBtn.classList.remove('chapter-looping');
     pendingAutoplayNextOnForeground = false; // F2: never let a deferred advance survive a CLOSE either
     if (bgAudioEl) {
       try { bgAudioEl.pause(); bgAudioEl.removeAttribute('src'); bgAudioEl.load(); } catch (_) { /* best-effort only */ }

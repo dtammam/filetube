@@ -50,7 +50,11 @@ test('player.js: chapters lifecycle is wired -- refs cached, applied per load, r
   assert.ok(playerSrc.includes("chaptersBtn = host.querySelector('#chapters-btn')"), 'ensureHost must cache the button ref');
   assert.ok(playerSrc.includes('applyChaptersForMedia(data)'), 'setupForMedia must apply the loaded item\'s chapters');
   assert.ok(playerSrc.includes('resetChaptersUi()'), 'teardown must reset the chapters UI');
-  assert.match(playerSrc, /function seekToChapter\(t\) \{[\s\S]*?startLiveStream\(t, true\)/, 'a chapter pick in live mode must route through startLiveStream (the reload-seek path)');
+  // v1.41.12: the seek body moved to seekToChapterTime (the no-menu-close
+  // variant armChapterLoop's seek-in uses); seekToChapter = that + close.
+  // The lock follows the split -- same live-reload-seek behavior, new home.
+  assert.match(playerSrc, /function seekToChapterTime\(t\) \{[\s\S]*?startLiveStream\(t, true\)/, 'a chapter pick in live mode must route through startLiveStream (the reload-seek path)');
+  assert.match(playerSrc, /function seekToChapter\(t\) \{\s*seekToChapterTime\(t\);\s*closeChaptersMenu\(\);/, 'the row-tap path keeps close-on-seek');
   assert.ok(playerSrc.includes('window.showChaptersEditor'), 'the menu must hand editing off to common.js\'s editor');
 });
 
@@ -203,4 +207,132 @@ test('v1.41.11: chapters are hidden entirely in the docked mini-player, and dock
   const dockBody = playerSrc.slice(dockStart, dockEnd);
   assert.ok(dockBody.includes('chaptersMenu.hidden = true'), 'dock() hides the menu');
   assert.ok(dockBody.includes("chaptersBtn.setAttribute('aria-expanded', 'false')"), 'dock() resets the button ARIA state');
+});
+
+// ---- v1.41.12 (Dean): chapter loop ------------------------------------------
+// "Loop that specific section -- like a music album." Pure bounds resolver +
+// source-locks on the four seams that make the loop correct: the timeupdate
+// clamp on BOTH media elements, the 'ended' cascade pre-emption (last
+// chapter), the per-load/per-edit clears, and the menu's per-row toggle.
+
+const { resolveChapterLoopBounds } = require('../../public/js/player.js');
+
+test('resolveChapterLoopBounds: interior chapter ends at the NEXT chapter start; last chapter ends at duration', () => {
+  const chapters = [
+    { startTime: 0, title: 'Intro' },
+    { startTime: 60, title: 'Track 1' },
+    { startTime: 200, title: 'Track 2' },
+  ];
+  assert.deepStrictEqual(resolveChapterLoopBounds(chapters, 1, 300), { start: 60, end: 200 });
+  assert.deepStrictEqual(resolveChapterLoopBounds(chapters, 2, 300), { start: 200, end: 300 });
+  assert.deepStrictEqual(resolveChapterLoopBounds(chapters, 0, 300), { start: 0, end: 60 });
+});
+
+test('resolveChapterLoopBounds: REFUSES (null) anything that cannot make a sane loop', () => {
+  const chapters = [{ startTime: 0 }, { startTime: 60 }];
+  assert.strictEqual(resolveChapterLoopBounds(chapters, 2, 300), null, 'out-of-range index');
+  assert.strictEqual(resolveChapterLoopBounds(chapters, -1, 300), null, 'negative index');
+  assert.strictEqual(resolveChapterLoopBounds(chapters, 1, NaN), null, 'last chapter with unknowable duration');
+  assert.strictEqual(resolveChapterLoopBounds(chapters, 1, 30), null, 'duration BEFORE the chapter start (zero/negative window)');
+  assert.strictEqual(resolveChapterLoopBounds([{ startTime: 'x' }], 0, 100), null, 'malformed startTime');
+  assert.strictEqual(resolveChapterLoopBounds(null, 0, 100), null, 'no chapters at all');
+  assert.strictEqual(resolveChapterLoopBounds(chapters, '1', 300), null, 'non-numeric index');
+});
+
+test('v1.41.12 source-lock: the boundary clamp is wired on BOTH media elements and is live-transcode-aware', () => {
+  const src = fs.readFileSync(path.join(ROOT, 'public', 'js', 'player.js'), 'utf8');
+  assert.match(src, /mediaPlayer\.addEventListener\('timeupdate', enforceChapterLoop\)/, 'foreground element clamped');
+  assert.match(src, /bgAudioEl\.addEventListener\('timeupdate', enforceChapterLoop\)/, 'background-audio element clamped (lock-screen loops too)');
+  const fn = src.slice(src.indexOf('function enforceChapterLoop()'), src.indexOf('function enforceChapterLoop()') + 900);
+  assert.match(fn, /if \(liveMode\) \{\s*if \(currentAbsTime\(\) >= chapterLoop\.end\) startLiveStream\(chapterLoop\.start, true\);/,
+    'liveMode wraps through startLiveStream against absolute time (the skip()/seekToChapter contract)');
+});
+
+test('v1.41.12 source-lock: the ended cascade pre-empts for an armed chapter loop BEFORE the progress-0 reset and loop/advance chain', () => {
+  const src = fs.readFileSync(path.join(ROOT, 'public', 'js', 'player.js'), 'utf8');
+  const fnStart = src.indexOf('function runEndedCompletionCascade');
+  const body = src.slice(fnStart, fnStart + 2600);
+  const loopBranch = body.indexOf('if (chapterLoop) {');
+  const progressReset = body.indexOf('saveProgressToServer(0)');
+  assert.ok(loopBranch >= 0 && progressReset > loopBranch,
+    'chapterLoop branch must run before the reset-to-0 -- a looping album track never zeroes its progress or advances');
+  // Gate round 1 (adversarial W1/W2, both MUTATION-PROVEN gaps): the original
+  // lazy regex matched forward into the WHOLE-ITEM loop's return, so deleting
+  // this branch's own `return;` (or its prePauseCandidateAt kill) passed the
+  // suite. Slice the branch body EXACTLY -- everything between the branch
+  // open and the progress reset -- and assert its three load-bearing lines.
+  const branchBody = body.slice(loopBranch, progressReset);
+  // Delta R1 (mutation-proven AGAIN): a bare .includes() was satisfied by
+  // the cascade's OUTER v1.27.2 kill sitting between the branch's close and
+  // the progress reset. The kill must be the branch's FIRST statement --
+  // anchored to the branch opener, no lookalike can satisfy it.
+  assert.match(branchBody, /if \(chapterLoop\) \{\s*prePauseCandidateAt = 0;/,
+    'W2: the v1.27.2 lock-screen-restart kill is the branch\'s FIRST statement');
+  assert.ok(/el\.play\(\)\.catch\(function \(\) \{\}\);/.test(branchBody), 'the branch replays');
+  assert.ok(/saveProgressToServer\(chapterLoop\.start\);\s*return;/.test(branchBody),
+    'W1: the branch saves the CHAPTER position and returns before the reset -- deleting this return must fail HERE');
+});
+
+test('v1.41.12 source-lock: the loop is cleared on every load and on every chapter-set change', () => {
+  const src = fs.readFileSync(path.join(ROOT, 'public', 'js', 'player.js'), 'utf8');
+  const teardown = src.slice(src.indexOf('function teardownMediaState()'), src.indexOf('function teardownMediaState()') + 1200);
+  assert.match(teardown, /chapterLoop = null;/, 'per-load clear');
+  assert.match(teardown, /chaptersBtn\.classList\.remove\('chapter-looping'\)/, 'indicator cleared with it');
+  const apply = src.slice(src.indexOf('applyChaptersForMedia = function (data)'), src.indexOf('applyChaptersForMedia = function (data)') + 700);
+  assert.match(apply, /chapterLoop = null;/, 'new chapter set clears the loop');
+  const editor = src.slice(src.indexOf('window.showChaptersEditor(currentId'), src.indexOf('window.showChaptersEditor(currentId') + 700);
+  assert.match(editor, /chapterLoop = null;/, 'edited chapter set clears the loop');
+});
+
+test('v1.41.12 source-lock: per-row Loop toggle in the menu + styles present (word label, never a glyph)', () => {
+  const src = fs.readFileSync(path.join(ROOT, 'public', 'js', 'player.js'), 'utf8');
+  assert.match(src, /loopBtn\.textContent = isLooping \? 'Looping' : 'Loop';/, 'text label (iOS glyph lesson)');
+  assert.match(src, /loopBtn\.addEventListener\('click', function \(e\) \{\s*e\.stopPropagation\(\);/, 'loop tap never triggers the row seek');
+  assert.match(src, /armChapterLoop\(index, \{ rebuild: true, seekIn: true \}\)/, 'arming from outside the chapter seeks into it');
+  const css = fs.readFileSync(path.join(ROOT, 'public', 'css', 'style.css'), 'utf8');
+  assert.match(css, /\.chapters-menu-row \{\s*display: flex;/, 'row layout');
+  assert.match(css, /#chapters-btn\.chapter-looping \{/, 'bar-level armed indicator');
+  assert.match(css, /\.chapters-menu-loop \{[\s\S]*?min-height: 44px;/, 'mobile tap target for the toggle');
+});
+
+// ---- v1.41.12 gate fix round: locks for the round-1 findings ----------------
+
+test('gate C1: armChapterLoop trusts ONLY currentData.duration in liveMode (the thrice-documented segment-duration contract)', () => {
+  const src = fs.readFileSync(path.join(ROOT, 'public', 'js', 'player.js'), 'utf8');
+  const fnStart = src.indexOf('function armChapterLoop(index, opts)');
+  assert.ok(fnStart >= 0);
+  const body = src.slice(fnStart, fnStart + 1800);
+  assert.match(body, /var dur = liveMode\s*\? \(currentData && currentData\.duration\)\s*:/,
+    'liveMode must never consult el.duration (the transcoded-so-far segment) for the last chapter\'s end');
+  assert.match(body, /if \(!bounds\) \{[\s\S]*?showToast\(/, 'a refused arm is VISIBLE, never a silent no-op');
+});
+
+test('gate W3: every explicit-seek commit point disarms an out-of-bounds chapter loop (scrub, skip live+non-live, digits live+non-live)', () => {
+  const src = fs.readFileSync(path.join(ROOT, 'public', 'js', 'player.js'), 'utf8');
+  const calls = src.match(/disarmChapterLoopIfSeekOutside\(/g) || [];
+  assert.ok(calls.length >= 7, `helper + 6 call sites expected (incl. the MediaSession seekto lock-screen scrubber -- delta R2), found ${calls.length} references`);
+  assert.match(src, /setMediaSessionAction\('seekto', function \(details\) \{[\s\S]*?disarmChapterLoopIfSeekOutside\(details\.seekTime\);/,
+    'the lock-screen scrubber disarms before it seeks');
+  const helper = src.slice(src.indexOf('function disarmChapterLoopIfSeekOutside('), src.indexOf('function disarmChapterLoopIfSeekOutside(') + 900);
+  assert.match(helper, /targetAbs < chapterLoop\.start \|\| targetAbs >= chapterLoop\.end/, 'outside = strictly outside [start, end)');
+  assert.match(helper, /chaptersBtn\.classList\.remove\('chapter-looping'\)/, 'the bar tint clears with the disarm');
+});
+
+test('gate round-1 polish locks: menu rebuilds on every open; loop seek-in never closes the menu; close() clears the loop', () => {
+  const src = fs.readFileSync(path.join(ROOT, 'public', 'js', 'player.js'), 'utf8');
+  assert.match(src, /if \(opening\) buildChaptersMenu\(\);/, 'open re-derives Loop labels (a controller-level disarm cannot reach the builder)');
+  assert.match(src, /if \(now < bounds\.start \|\| now >= bounds\.end\) seekToChapterTime\(bounds\.start\);/,
+    'arming seeks via the no-close variant');
+  // Anchor on close()'s unique v1.27.2 sibling-clear comment (a bare
+  // 'function close() {' matches an unrelated earlier closure).
+  const anchor = src.indexOf('prePauseCandidateAt = 0; // v1.27.2: mirrors teardownMediaState');
+  assert.ok(anchor >= 0, 'close()\'s defense-in-depth block exists');
+  const closeBody = src.slice(anchor, anchor + 500);
+  assert.ok(closeBody.includes('chapterLoop = null;'), 'defense-in-depth clear in close(), matching its sibling flags');
+});
+
+test('gate S1: sub-half-second loop windows are refused by the resolver (epsilon-churn guard)', () => {
+  assert.strictEqual(resolveChapterLoopBounds([{ startTime: 10 }, { startTime: 10.04 }], 0, 100), null, '0.04s window refused');
+  assert.strictEqual(resolveChapterLoopBounds([{ startTime: 10 }, { startTime: 10.5 }], 0, 100), null, 'exactly 0.5s refused (boundary)');
+  assert.deepStrictEqual(resolveChapterLoopBounds([{ startTime: 10 }, { startTime: 10.6 }], 0, 100), { start: 10, end: 10.6 }, '0.6s allowed');
 });
