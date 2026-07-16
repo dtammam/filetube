@@ -142,6 +142,33 @@ function seedDivergentVideo(libDir, storedName, diskName) {
   return { storedPath, diskPath, id };
 }
 
+// v1.41.13: a NON-YouTube divergent survivor -- stored under one [Extractor=id]
+// spelling, real bytes under a divergent spelling of the SAME bracket. Carries
+// sourceExtractor/sourceId so the delete mints a sourceRef tombstone and SEAM-2
+// can reap it by bracket identity.
+function seedDivergentUniversalVideo(libDir, storedName, diskName, extractor, id) {
+  const storedPath = path.join(libDir, storedName);
+  const diskPath = path.join(libDir, diskName);
+  fs.writeFileSync(diskPath, 'video-bytes');
+  const mediaId = getMediaId(storedPath);
+  writeDb({
+    folders: [libDir], folderSettings: {}, progress: {},
+    metadata: {
+      [mediaId]: {
+        id: mediaId, name: storedName, title: storedName, filePath: storedPath,
+        folderName: path.basename(libDir), size: fs.statSync(diskPath).size,
+        ext: path.extname(storedName), type: 'video', addedAt: new Date().toISOString(),
+        duration: 12, hasThumbnail: false, rootFolder: libDir,
+        videoCodec: 'h264', audioCodec: 'aac', needsTranscode: false,
+        releaseDate: new Date().toISOString(), youtubeId: null,
+        sourceExtractor: extractor, sourceId: id,
+      },
+    },
+    liked: [], deleteTombstones: {}, settings: baseSettings(),
+  });
+  return { storedPath, diskPath, id: mediaId };
+}
+
 // An UNVERIFIED-success delete: the file is gone from disk when the handler
 // runs, so it concludes "already gone" -- success without a watched unlink.
 async function unverifiedDelete(filePath, id) {
@@ -158,6 +185,39 @@ function backdate(filePath, deletedAt) {
 
 beforeEach(() => {
   if (fs.existsSync(DB_FILE)) fs.rmSync(DB_FILE);
+});
+
+// v1.41.13 (gate W4): the persist checkpoint under the ACTUAL six-strike
+// trigger -- a CHANGED file (same path, new size) forces the re-init branch. A
+// universal item in a PLAIN library folder (outside the download root, so the
+// scan bridge can't re-derive its identity and mask a dropped carry-forward)
+// must keep sourceExtractor/sourceId across the rescan.
+test('W4: a universal item in a plain library folder keeps sourceExtractor/sourceId across a CHANGED-FILE rescan', async () => {
+  const libDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-tomb-lib-'));
+  const fileName = 'A Hydrated Import [Vimeo=austrian⧸page=1].mp4';
+  const filePath = path.join(libDir, fileName);
+  fs.writeFileSync(filePath, 'v1');
+  const id = getMediaId(filePath);
+  writeDb({
+    folders: [libDir], folderSettings: {}, progress: {},
+    metadata: { [id]: {
+      id, name: fileName, title: fileName, filePath, folderName: path.basename(libDir),
+      size: fs.statSync(filePath).size, ext: '.mp4', type: 'video', addedAt: new Date().toISOString(),
+      duration: 12, hasThumbnail: false, rootFolder: libDir, videoCodec: 'h264', audioCodec: 'aac',
+      needsTranscode: false, youtubeId: null,
+      sourceExtractor: 'Vimeo', sourceId: 'austrian/page=1', // RAW id (has a slash)
+    } },
+    liked: [], deleteTombstones: {}, settings: baseSettings(),
+  });
+
+  // Change the file's SIZE -> the scan takes the new/updated re-init branch.
+  fs.writeFileSync(filePath, 'v2-bigger-content');
+  await scanDirectories();
+
+  const item = readDb().metadata[id];
+  assert.ok(item, 'still indexed');
+  assert.strictEqual(item.sourceExtractor, 'Vimeo', 'source extractor survived the re-init');
+  assert.strictEqual(item.sourceId, 'austrian/page=1', 'the RAW sourceId survived (never clobbered by the sanitized bracket)');
 });
 
 test('an UNVERIFIED delete (file absent at delete time) mints a tombstone; a VERIFIED unlink mints none', async () => {
@@ -239,6 +299,190 @@ test('HEADLINE (SEAM 1 -- the resurrect bug): a divergent-spelling yt-dlp file i
 // (confined to the module's own download roots, exact id, mtime<=deletedAt) so
 // the deferred retry still completes. Uses FILETUBE_YTDLP_DOWNLOAD_DIR so the
 // files sit under a real download root (matchRootFolder must succeed).
+// v1.41.13 (design D4/D5): the SAME SEAM-2 defense-in-depth for a NON-YouTube
+// item -- an undeletable divergent [Vimeo=id] survivor is reaped by the scan's
+// bracket-vs-bracket secondary match, and the delete mints a sourceRef
+// tombstone (never a raw-vs-bracket compare).
+test('SEAM 1 (universal): a divergent non-YouTube survivor is VERIFY-unlinked by its [Extractor=id] bracket at delete time', { skip: rootSkip }, async () => {
+  const prev = process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
+  const dl = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-tomb-udl-'));
+  process.env.FILETUBE_YTDLP_DOWNLOAD_DIR = dl;
+  try {
+    // Stored under one spelling, real bytes under a DIVERGENT spelling of the
+    // SAME [Vimeo=76979871] bracket (full-width vs ascii before the bracket).
+    const storedName = 'Clip- [Vimeo=76979871].mp4';
+    const diskName = 'Clip？ [Vimeo=76979871].mp4';
+    const { diskPath, id } = seedDivergentUniversalVideo(dl, storedName, diskName, 'Vimeo', '76979871');
+    // Sanity: the stored spelling doesn't exist; only the divergent one does.
+    assert.notStrictEqual(getMediaId(diskPath), id, 'md5(disk) != md5(stored): the primary path misses');
+
+    const res = await fetch(`${base}/api/videos/${id}`, { method: 'DELETE' });
+    const body = await res.json();
+    assert.strictEqual(body.success, true);
+    assert.ok(!body.fileRemainsOnDisk, 'SEAM 1 found and unlinked the real file -- nothing remains');
+    assert.ok(!fs.existsSync(diskPath), 'the divergent-spelling file was VERIFY-unlinked by its bracket');
+
+    const db = readDb();
+    assert.strictEqual(db.metadata[id], undefined, 'library entry removed');
+    // A VERIFIED unlink mints NO tombstone (v1.41.3 contract) -- nothing to reap.
+    assert.strictEqual(db.deleteTombstones[id], undefined, 'a verified universal unlink mints no tombstone');
+  } finally {
+    if (prev === undefined) delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
+    else process.env.FILETUBE_YTDLP_DOWNLOAD_DIR = prev;
+  }
+});
+
+test('SEAM 2 (universal): an UNDELETABLE-at-delete-time divergent survivor is reaped by the scan via the sourceRef bracket match', { skip: rootSkip }, async () => {
+  const prev = process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
+  const dl = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-tomb-udl2-'));
+  process.env.FILETUBE_YTDLP_DOWNLOAD_DIR = dl;
+  try {
+    const storedName = 'Clip- [Vimeo=76979871].mp4';
+    const diskName = 'Clip？ [Vimeo=76979871].mp4';
+    const { diskPath, id } = seedDivergentUniversalVideo(dl, storedName, diskName, 'Vimeo', '76979871');
+
+    // Read+exec only: SEAM 1 RESOLVES the file (dir readable) but the unlink
+    // fails (dir not writable) -> removeAnyway -> unverified sourceRef tombstone.
+    fs.chmodSync(dl, 0o555);
+    let res;
+    try { res = await fetch(`${base}/api/videos/${id}?removeAnyway=true`, { method: 'DELETE' }); }
+    finally { fs.chmodSync(dl, 0o755); }
+    assert.strictEqual((await res.json()).fileRemainsOnDisk, true);
+
+    let db = readDb();
+    assert.ok(db.deleteTombstones[id] && db.deleteTombstones[id].sourceRef, 'a universal delete mints a sourceRef tombstone');
+    assert.strictEqual(db.deleteTombstones[id].sourceRef.extractor, 'Vimeo');
+    assert.strictEqual(db.deleteTombstones[id].sourceRef.bracketId, '76979871');
+    assert.ok(fs.existsSync(diskPath), 'the divergent survivor is still on disk');
+    backdate(diskPath, db.deleteTombstones[id].deletedAt);
+
+    await scanDirectories();
+
+    assert.ok(!fs.existsSync(diskPath), 'SEAM 2 (universal): the scan reaped the divergent survivor by bracket identity');
+    db = readDb();
+    assert.strictEqual(db.metadata[getMediaId(diskPath)], undefined, 'not resurrected');
+    assert.strictEqual(db.deleteTombstones[id], undefined, 'tombstone consumed');
+  } finally {
+    if (prev === undefined) delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
+    else process.env.FILETUBE_YTDLP_DOWNLOAD_DIR = prev;
+  }
+});
+
+// gate CRITICAL C1: a D1a PROXY-HOST YouTube one-off (yewtu.be) lands as
+// `[Youtube=id].mp4` with item.youtubeId SET. Its unverified-delete tombstone
+// must carry a sourceRef.bracketId so SEAM-2's universal branch can reap a
+// divergent survivor -- the old `!tombstoneYoutubeId` guard suppressed it,
+// resurrecting the deleted video. This fixture (youtubeId set + universal
+// bracket) is the ONLY one that flips that ternary.
+test('C1: a divergent-spelling [Youtube=id] proxy-host survivor is reaped (tombstone carries bracketId despite youtubeId)', { skip: rootSkip }, async () => {
+  const prev = process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
+  const dl = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-tomb-c1-'));
+  process.env.FILETUBE_YTDLP_DOWNLOAD_DIR = dl;
+  try {
+    const storedName = 'Clip- [Youtube=dQw4w9WgXcQ].mp4';
+    const diskName = 'Clip？ [Youtube=dQw4w9WgXcQ].mp4';
+    const storedPath = path.join(dl, storedName);
+    const diskPath = path.join(dl, diskName);
+    fs.writeFileSync(diskPath, 'video-bytes');
+    const id = getMediaId(storedPath);
+    writeDb({
+      folders: [dl], folderSettings: {}, progress: {},
+      metadata: { [id]: {
+        id, name: storedName, title: storedName, filePath: storedPath, folderName: path.basename(dl),
+        size: fs.statSync(diskPath).size, ext: '.mp4', type: 'video', addedAt: new Date().toISOString(),
+        duration: 12, hasThumbnail: false, rootFolder: dl, videoCodec: 'h264', audioCodec: 'aac',
+        needsTranscode: false,
+        youtubeId: 'dQw4w9WgXcQ',           // proxy-host: real YouTube id IS set
+        sourceExtractor: 'Youtube', sourceId: 'dQw4w9WgXcQ',
+      } },
+      liked: [], deleteTombstones: {}, settings: baseSettings(),
+    });
+
+    fs.chmodSync(dl, 0o555);
+    try { await fetch(`${base}/api/videos/${id}?removeAnyway=true`, { method: 'DELETE' }); }
+    finally { fs.chmodSync(dl, 0o755); }
+
+    const db = readDb();
+    assert.ok(db.deleteTombstones[id] && db.deleteTombstones[id].sourceRef, 'sourceRef tombstone minted');
+    assert.strictEqual(db.deleteTombstones[id].sourceRef.bracketId, 'dQw4w9WgXcQ', 'C1: bracketId is present despite youtubeId being set');
+    backdate(diskPath, db.deleteTombstones[id].deletedAt);
+
+    await scanDirectories();
+
+    assert.ok(!fs.existsSync(diskPath), 'C1: the proxy-host divergent survivor is reaped -- NOT resurrected');
+    assert.strictEqual(readDb().metadata[getMediaId(diskPath)], undefined, 'not re-indexed');
+  } finally {
+    if (prev === undefined) delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
+    else process.env.FILETUBE_YTDLP_DOWNLOAD_DIR = prev;
+  }
+});
+
+test('W2: a universal delete appends the RAW sourceId to the archive (never the sanitized bracket)', { skip: rootSkip }, async () => {
+  const prev = process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
+  const prevEnabled = process.env.FILETUBE_YTDLP_ENABLED;
+  const dl = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-tomb-w2-'));
+  process.env.FILETUBE_YTDLP_DOWNLOAD_DIR = dl;
+  process.env.FILETUBE_YTDLP_ENABLED = 'true'; // the delete-route archive append is gated on isEnabled
+  try {
+    // A slash-bearing RAW id: the on-disk bracket sanitizes it, so raw != bracket.
+    const name = 'Track [Vimeo=austrian⧸page=1].mp4';
+    const filePath = path.join(dl, name);
+    fs.writeFileSync(filePath, 'x');
+    const id = getMediaId(filePath);
+    writeDb({
+      folders: [dl], folderSettings: {}, progress: {},
+      metadata: { [id]: {
+        id, name, title: name, filePath, folderName: path.basename(dl), size: 1, ext: '.mp4',
+        type: 'video', addedAt: new Date().toISOString(), youtubeId: null,
+        sourceExtractor: 'Vimeo', sourceId: 'austrian/page=1', // RAW (slash)
+      } },
+      liked: [], deleteTombstones: {}, settings: baseSettings(),
+    });
+
+    await fetch(`${base}/api/videos/${id}`, { method: 'DELETE' });
+
+    const archive = fs.readFileSync(path.join(dl, '.ytdlp-archive.txt'), 'utf8');
+    assert.match(archive, /^vimeo austrian\/page=1$/m, 'the RAW id is archived (make_archive_id format), never the sanitized bracket');
+    assert.ok(!/austrian⧸page=1/.test(archive), 'the sanitized bracket id must NOT appear in the archive');
+  } finally {
+    if (prev === undefined) delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
+    else process.env.FILETUBE_YTDLP_DOWNLOAD_DIR = prev;
+    if (prevEnabled === undefined) delete process.env.FILETUBE_YTDLP_ENABLED;
+    else process.env.FILETUBE_YTDLP_ENABLED = prevEnabled;
+  }
+});
+
+test('SEAM 2 (universal) SAFETY: a same-source-id copy in a DIFFERENT folder is SPARED', { skip: rootSkip }, async () => {
+  const prev = process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
+  const dl = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-tomb-usafe-'));
+  process.env.FILETUBE_YTDLP_DOWNLOAD_DIR = dl;
+  try {
+    const chanA = path.join(dl, 'ChanA'); fs.mkdirSync(chanA);
+    const chanB = path.join(dl, 'ChanB'); fs.mkdirSync(chanB);
+    const storedName = 'A- [Vimeo=76979871].mp4';
+    const diskNameA = 'A？ [Vimeo=76979871].mp4';
+    const { diskPath: survivorA, id } = seedDivergentUniversalVideo(chanA, storedName, diskNameA, 'Vimeo', '76979871');
+    // A DIFFERENT copy of the same source id in ChanB -- the user never deleted this.
+    const copyB = path.join(chanB, 'B [Vimeo=76979871].mp4');
+    fs.writeFileSync(copyB, 'a different file the user keeps');
+
+    fs.chmodSync(chanA, 0o555);
+    try { await fetch(`${base}/api/videos/${id}?removeAnyway=true`, { method: 'DELETE' }); }
+    finally { fs.chmodSync(chanA, 0o755); }
+    const db = readDb();
+    backdate(survivorA, db.deleteTombstones[id].deletedAt);
+    backdate(copyB, db.deleteTombstones[id].deletedAt); // even with a reap-eligible mtime
+
+    await scanDirectories();
+
+    assert.ok(!fs.existsSync(survivorA), 'the same-folder divergent survivor IS reaped');
+    assert.ok(fs.existsSync(copyB), 'CRITICAL: the different-folder copy of the same source id is SPARED');
+  } finally {
+    if (prev === undefined) delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
+    else process.env.FILETUBE_YTDLP_DOWNLOAD_DIR = prev;
+  }
+});
+
 test('SEAM 2: a divergent survivor left undeletable at delete time is reaped by the scan via the youtube-id secondary match', { skip: rootSkip }, async () => {
   const prev = process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
   const dl = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-tomb-dl-'));

@@ -395,7 +395,7 @@ test('buildOneOffModal: Download with a blank URL does NOT call onDownload, and 
   modal.urlInput.value = '   ';
   modal.downloadBtn.click();
   assert.strictEqual(calls.length, 0);
-  assert.strictEqual(modal.statusEl.textContent, 'Enter a video URL.');
+  assert.strictEqual(modal.statusEl.textContent, 'Enter a media URL.');
 });
 
 test('buildOneOffModal: Download with a filled form (no folder typed) posts {url, format, quality, filetype} -- folder omitted (channel-derived default)', () => {

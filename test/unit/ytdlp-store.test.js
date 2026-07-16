@@ -2144,3 +2144,102 @@ test('resolveItemChannelAvatarUrl precedence: falls back to the EXISTING sub-joi
   };
   assert.equal(store.resolveItemChannelAvatarUrl(db, { channelId }), 'https://yt3.ggpht.com/sub-only.jpg');
 });
+
+// ---- v1.41.13 (universal one-offs): source-aware downloadMeta bridge --------
+// A NON-YouTube capture takes the universal branch: minimal raw-id gate, no
+// YouTube channelUrl requirement, channelName from channel/uploader, composite
+// `<extractor> <id>` key. The YouTube branch is byte-for-byte unchanged (the
+// tests above still pass). Hostile-id corpus (design task-0) is first-class.
+
+test('v1.41.13 sanitize: a non-YouTube capture is KEPT (no channelUrl needed), keyed by composite <extractor> <id>', () => {
+  const r = store.sanitizeCapturedChannelMeta({ source: 'Vimeo', videoId: '76979871', channelName: 'Some Studio', title: 'A Film' });
+  assert.ok(r, 'a non-YouTube capture is not dropped');
+  assert.equal(r.universal, true);
+  assert.equal(r.sourceExtractor, 'Vimeo');
+  assert.equal(r.sourceId, '76979871');
+  assert.equal(r.key, 'vimeo 76979871', 'composite key lowercases the extractor');
+  assert.equal(r.channelName, 'Some Studio', 'the pseudo-channel label is captured');
+});
+
+test('v1.41.13 sanitize: channelName falls back channel -> uploader for the pseudo-channel label (D7)', () => {
+  assert.equal(store.sanitizeCapturedChannelMeta({ source: 'Vimeo', videoId: '1', channelName: 'Real Channel', uploader: 'The Uploader' }).channelName, 'Real Channel');
+  assert.equal(store.sanitizeCapturedChannelMeta({ source: 'Vimeo', videoId: '1', uploader: 'The Uploader' }).channelName, 'The Uploader');
+  assert.equal(store.sanitizeCapturedChannelMeta({ source: 'Vimeo', videoId: '1' }).channelName, undefined);
+});
+
+test('v1.41.13 sanitize: hostile-but-legal extractor ids pass the MINIMAL gate (slashes/spaces/=, design task-0)', () => {
+  for (const id of ['id=6', 'MTQ2NjMxOQ==', 'austrian/page=1', 'kichiku mad']) {
+    const r = store.sanitizeCapturedChannelMeta({ source: 'Foo', videoId: id });
+    assert.ok(r, `raw id ${JSON.stringify(id)} must be kept (no charset restriction)`);
+    assert.equal(r.sourceId, id);
+  }
+  // A newline in the raw id is stripped (archive-line-forgery guard).
+  assert.equal(store.sanitizeCapturedChannelMeta({ source: 'Foo', videoId: 'a\nb' }).sourceId, 'ab');
+  assert.equal(store.sanitizeCapturedChannelMeta({ source: 'Foo', videoId: '' }), null, 'empty id dropped');
+  assert.equal(store.sanitizeCapturedChannelMeta({ source: 'Foo', videoId: 'x'.repeat(257) }), null, 'over-256 id dropped');
+});
+
+test('v1.41.13 sanitize: a plugin extractor key (+ suffix) yields no usable universal entry', () => {
+  assert.equal(store.sanitizeCapturedChannelMeta({ source: 'Some+plugin', videoId: 'abc' }), null);
+});
+
+test('v1.41.13 sanitize: a proxy-host YouTube capture (source Youtube) still takes the YouTube branch', () => {
+  const r = store.sanitizeCapturedChannelMeta({
+    source: 'Youtube', videoId: 'dQw4w9WgXcQ',
+    channelUrl: 'https://www.youtube.com/@RickAstley', channelName: 'Rick Astley',
+  });
+  assert.ok(r && !r.universal, 'source=Youtube takes the YouTube branch');
+  assert.equal(r.videoId, 'dQw4w9WgXcQ');
+  assert.equal(r.channelUrl, 'https://www.youtube.com/@RickAstley');
+});
+
+test('v1.41.13 bridge round-trip: record a universal capture, consume it by composite key', async () => {
+  let db = { ytdlp: { downloadMeta: {} } };
+  const deps = { updateDatabase: async (fn) => { fn(db); return db; } };
+  const ok = await store.recordDownloadChannelMeta(deps, { source: 'Vimeo', videoId: '76979871', uploader: 'Studio X', title: 'Doc' });
+  assert.equal(ok, true);
+  const key = store.compositeMetaKey('Vimeo', '76979871');
+  assert.equal(key, 'vimeo 76979871');
+  assert.ok(db.ytdlp.downloadMeta[key] && db.ytdlp.downloadMeta[key].universal === true, 'stored under the composite key');
+
+  const consumed = store.consumeUniversalDownloadMeta(db, key);
+  assert.ok(consumed);
+  assert.equal(consumed.sourceExtractor, 'Vimeo');
+  assert.equal(consumed.sourceId, '76979871');
+  assert.equal(consumed.channelName, 'Studio X');
+  assert.equal(consumed.sourceTitle, 'Doc');
+  assert.equal(db.ytdlp.downloadMeta[key], undefined, 'consumed -> key deleted');
+  assert.equal(store.consumeUniversalDownloadMeta(db, key), null, 'a second consume returns null');
+});
+
+test('v1.41.13 bridge (W3): a capture WITH a filePath is keyed by the RENDERED BASENAME, consumed by path.basename -- not the composite', () => {
+  let db = { ytdlp: { downloadMeta: {} } };
+  const deps = { updateDatabase: async (fn) => { fn(db); return db; } };
+  // A non-round-tripping raw id: '/' sanitizes on disk, so the composite
+  // (raw) key != the on-disk basename key. Only the basename key lets the scan
+  // find it (design D5 / gate W3 -- a composite-only key would silently miss).
+  const rawId = 'austrian/page=1';
+  const diskBasename = 'Talk [Vimeo=austrian⧸page=1].mp4'; // '/' sanitized to U+29F8
+  const filePath = '/media/ytdlp/Vimeo/' + diskBasename;
+  return store.recordDownloadChannelMeta(deps, { source: 'Vimeo', videoId: rawId, uploader: 'Studio', filePath }).then(() => {
+    assert.ok(db.ytdlp.downloadMeta[diskBasename], 'keyed by the rendered basename');
+    assert.equal(db.ytdlp.downloadMeta[store.compositeMetaKey('Vimeo', rawId)], undefined, 'NOT keyed by the raw composite');
+    // The scan consumes by path.basename(item.filePath) -- exactly the key.
+    const consumed = store.consumeUniversalDownloadMeta(db, diskBasename);
+    assert.ok(consumed);
+    assert.equal(consumed.sourceId, rawId, 'the RAW id is the authoritative payload (never the sanitized bracket)');
+    assert.equal(consumed.channelName, 'Studio');
+  });
+});
+
+test('v1.41.13 bridge: consumeUniversalDownloadMeta ignores a YouTube (non-universal) entry, and YouTube consume ignores a universal one', () => {
+  const db = { ytdlp: { downloadMeta: {
+    'dQw4w9WgXcQ': { channelUrl: 'https://www.youtube.com/@RickAstley', capturedAt: 1 },
+    'vimeo 5': { universal: true, sourceExtractor: 'Vimeo', sourceId: '5', capturedAt: 1 },
+  } } };
+  assert.equal(store.consumeUniversalDownloadMeta(db, 'dQw4w9WgXcQ'), null, 'universal consume skips a YouTube entry');
+  assert.equal(store.consumeDownloadChannelMeta(db, 'vimeo 5'), null, 'YouTube consume skips a universal entry (and bad key shape)');
+  // Both entries remain (neither was wrongly consumed) besides the key-delete
+  // that a matched consume would do -- here nothing matched.
+  assert.ok(db.ytdlp.downloadMeta['dQw4w9WgXcQ'], 'YouTube entry intact');
+});

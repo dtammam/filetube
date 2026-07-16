@@ -1532,3 +1532,71 @@ test('v1.36 F1: buildYtdlpListArgs carries the full break-early trio before the 
   assert.equal(result[result.indexOf('--break-match-filters') + 1], 'upload_date>=?20260703');
   assert.equal(result[result.indexOf('--playlist-end') + 1], '200');
 });
+
+// ---- v1.41.13: the UNIVERSAL one-off lane (any named yt-dlp extractor) -------
+// opts.sourceUrl (a pre-validated non-YouTube URL) replaces the YouTube video
+// ids: direct positional target, the [ExtractorKey=id] output template, and
+// the extractor-gate + single-item flags -- NONE of which may leak onto a
+// YouTube one-off or a subscription download.
+
+test('universal one-off: the pre-validated sourceUrl is the last positional after "--" (not a watch URL)', () => {
+  const config = makeConfig();
+  const result = args.buildYtdlpDownloadArgs(baseSub({ name: 'Vimeo' }), config, [], { oneOff: true, sourceUrl: 'https://vimeo.com/76979871' });
+  assert.equal(result[result.length - 2], '--');
+  assert.equal(result[result.length - 1], 'https://vimeo.com/76979871');
+});
+
+test('universal one-off: uses the [extractor_key=id] output template, confined under the download dir', () => {
+  const config = makeConfig();
+  const result = args.buildYtdlpDownloadArgs(baseSub({ name: 'Vimeo' }), config, [], { oneOff: true, sourceUrl: 'https://vimeo.com/76979871' });
+  const template = result[result.indexOf('-o') + 1];
+  assert.ok(template.endsWith(args.UNIVERSAL_OUTPUT_TEMPLATE), `expected the universal template, got ${template}`);
+  assert.ok(template.startsWith(path.resolve(config.downloadDir) + path.sep), 'still confined under the download dir');
+});
+
+test('universal one-off: carries --use-extractors default,-generic + --no-playlist + --playlist-items 1', () => {
+  const config = makeConfig();
+  const result = args.buildYtdlpDownloadArgs(baseSub({ name: 'Vimeo' }), config, [], { oneOff: true, sourceUrl: 'https://vimeo.com/76979871' });
+  const ie = result.indexOf('--use-extractors');
+  assert.ok(ie >= 0 && result[ie + 1] === 'default,-generic', 'extractor gate present');
+  assert.ok(result.includes('--no-playlist'), '--no-playlist present');
+  const pi = result.indexOf('--playlist-items');
+  assert.ok(pi >= 0 && result[pi + 1] === '1', 'single-item bound present');
+});
+
+test('universal one-off: re-validates sourceUrl at build time -- a private-IP URL throws, never spawns', () => {
+  const config = makeConfig();
+  assert.throws(
+    () => args.buildYtdlpDownloadArgs(baseSub(), config, [], { oneOff: true, sourceUrl: 'http://169.254.169.254/latest/' }),
+    /re-validation/,
+    'a sourceUrl that fails the loose gate must throw before becoming a positional',
+  );
+});
+
+test('the extractor gate + universal template NEVER leak onto a YouTube one-off or a subscription download', () => {
+  const config = makeConfig();
+  // YouTube one-off (no sourceUrl): legacy template + no extractor gate.
+  const yt = args.buildYtdlpDownloadArgs(baseSub(), config, ['vid1'], { oneOff: true });
+  assert.ok(!yt.includes('--use-extractors'), 'no extractor gate on a YouTube one-off');
+  assert.ok(!yt.includes('--playlist-items'), 'no single-item bound on a YouTube one-off');
+  assert.ok(yt[yt.indexOf('-o') + 1].endsWith(args.OUTPUT_TEMPLATE), 'legacy template (gate S2: assert the real constant, not a dead ternary)');
+  // Subscription download (oneOff falsy): unchanged too.
+  const sub = args.buildYtdlpDownloadArgs(baseSub(), config, ['vid1'], {});
+  assert.ok(!sub.includes('--use-extractors'), 'no extractor gate on a subscription download');
+  assert.ok(sub.includes('--download-archive'), 'subscription keeps the shared archive');
+});
+
+test('universal one-off: uses the extended print template (extractor_key/uploader/filepath); YouTube+subs keep the legacy one', () => {
+  const config = makeConfig();
+  const universal = args.buildYtdlpDownloadArgs(baseSub({ name: 'Vimeo' }), config, [], { oneOff: true, sourceUrl: 'https://vimeo.com/76979871' });
+  const uni = universal[universal.indexOf('--print') + 1];
+  assert.equal(uni, args.UNIVERSAL_CHANNEL_META_PRINT_TEMPLATE);
+  assert.match(uni, /extractor_key/);
+  assert.match(uni, /filepath/);
+  assert.match(uni, /uploader[,)]/);
+
+  const yt = args.buildYtdlpDownloadArgs(baseSub(), config, ['vid1'], { oneOff: true });
+  assert.equal(yt[yt.indexOf('--print') + 1], args.CHANNEL_META_PRINT_TEMPLATE, 'YouTube one-off keeps the legacy template (byte-identical)');
+  const sub = args.buildYtdlpDownloadArgs(baseSub(), config, ['vid1'], {});
+  assert.equal(sub[sub.indexOf('--print') + 1], args.CHANNEL_META_PRINT_TEMPLATE, 'subscription keeps the legacy template (byte-identical)');
+});

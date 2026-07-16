@@ -138,7 +138,7 @@ test('DEFAULT_DOWNLOAD_TIMEOUT_MS is 180 minutes (raised from the previous 60-mi
 // JSON-escaping.
 
 // v1.33 T3: the field set grew `title` (the real, emoji-intact video title).
-test('parseChannelMetaLine: parses a well-formed FTCHMETA JSON line into its 8 fields', () => {
+test('parseChannelMetaLine: parses a well-formed FTCHMETA JSON line (legacy YouTube: new universal fields are null)', () => {
   const line = `FTCHMETA ${JSON.stringify({
     id: 'dQw4w9WgXcQ',
     title: 'Never Gonna Give You Up 🎵 (Official)',
@@ -159,7 +159,28 @@ test('parseChannelMetaLine: parses a well-formed FTCHMETA JSON line into its 8 f
     channelName: 'Rick Astley',
     uploadDate: '20091025',
     releaseDate: '20091026',
+    // v1.41.13: universal-lane fields, absent on a legacy YouTube capture.
+    source: null,
+    uploader: null,
+    filePath: null,
   });
+});
+
+test('parseChannelMetaLine: a UNIVERSAL-lane line carries source/uploader/filePath (v1.41.13)', () => {
+  const line = `FTCHMETA ${JSON.stringify({
+    id: '76979871',
+    title: 'A Vimeo Film',
+    extractor_key: 'Vimeo',
+    uploader: 'Some Studio',
+    channel: 'Some Studio Channel',
+    filepath: '/media/ytdlp/Vimeo/A Vimeo Film [Vimeo=76979871].mp4',
+  })}`;
+  const result = parseChannelMetaLine(line);
+  assert.equal(result.videoId, '76979871');
+  assert.equal(result.source, 'Vimeo');
+  assert.equal(result.uploader, 'Some Studio');
+  assert.equal(result.channelName, 'Some Studio Channel');
+  assert.equal(result.filePath, '/media/ytdlp/Vimeo/A Vimeo Film [Vimeo=76979871].mp4');
 });
 
 // v1.25 QoL bugfix regression lock: a real per-video info dict never carries
@@ -199,6 +220,9 @@ test('parseChannelMetaLine: yt-dlp\'s JSON `null` (unavailable field), an empty 
     channelName: null,
     uploadDate: null,
     releaseDate: null,
+    source: null,
+    uploader: null,
+    filePath: null,
   });
 });
 

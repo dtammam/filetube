@@ -44,7 +44,7 @@ const ytdlpArgs = require('./lib/ytdlp/args');
 // re-validates a persisted `item.channelUrl` at the one boundary where it
 // decides whether a USER FILE gets physically moved. See
 // `relocateHydratedImportIntoChannelFolder`.
-const { buildWatchUrl, classifySingleVideo, isSafeVideoId, validateChannelUrl } = require('./lib/ytdlp/url');
+const { buildWatchUrl, classifySingleVideo, isSafeVideoId, validateChannelUrl, extractMediaRef } = require('./lib/ytdlp/url');
 // v1.15.1 hotfix: pure predicate for yt-dlp's own intermediate/partial-
 // download artifacts (merge temps, per-format fragments, `.part`/`.ytdl`
 // markers) left in its download dir mid-download or after a killed/failed
@@ -3051,6 +3051,29 @@ async function runScanDirectories() {
             tombstone = t;
             tombstoneKey = tid;
           }
+        } else {
+          // v1.41.13 (design D4/D5): the SAME secondary match for a NON-YouTube
+          // survivor. The on-disk bracket is the SANITIZED id, and the
+          // tombstone stored the bracket id observed at delete time -- so match
+          // BRACKET-vs-BRACKET (both dirent-derived, both sanitized; never the
+          // raw sourceId), under the IDENTICAL same-dir + same-ext confinement
+          // the YouTube branch uses. Cross-directory copies of the same source
+          // id are never reaped (the confinement); mtime is no safety net here
+          // either, so the dir+ext guard is load-bearing exactly as above.
+          const scannedRef = extractMediaRef(path.basename(filePath, info.ext));
+          if (scannedRef && scannedRef.source) {
+            for (const [tid, t] of Object.entries(deleteTombstones)) {
+              if (!t || typeof t.deletedAt !== 'number' || !t.sourceRef) continue;
+              if (t.sourceRef.bracketId !== scannedRef.id) continue;
+              if ((t.sourceRef.extractor || '').toLowerCase() !== scannedRef.source.toLowerCase()) continue;
+              if (!matchRootFolder(t.filePath || '', ytdlpDownloadRoots)) continue;
+              if (path.dirname(t.filePath) !== path.dirname(filePath)) continue;
+              if (path.extname(t.filePath) !== path.extname(filePath)) continue;
+              if (tombstone && t.deletedAt <= tombstone.deletedAt) continue;
+              tombstone = t;
+              tombstoneKey = tid;
+            }
+          }
         }
       }
     }
@@ -3462,6 +3485,19 @@ async function runScanDirectories() {
         if (typeof existing.channelAvatarUrl === 'string' && existing.channelAvatarUrl !== '') {
           newMetadata[id].channelAvatarUrl = existing.channelAvatarUrl;
         }
+        // v1.41.13 (universal one-offs): the non-YouTube source identity carries
+        // forward with the rest -- the persist-gate checkpoint for the two new
+        // fields (the six-strike class). A universal item CAN re-derive
+        // sourceExtractor/sourceId from its own `[Extractor=id]` bracket on the
+        // next scan (the bridge block does), but carrying them here keeps an
+        // unchanged-item rescan from momentarily dropping them, matching every
+        // sibling field above.
+        if (typeof existing.sourceExtractor === 'string' && existing.sourceExtractor !== '') {
+          newMetadata[id].sourceExtractor = existing.sourceExtractor;
+        }
+        if (typeof existing.sourceId === 'string' && existing.sourceId !== '') {
+          newMetadata[id].sourceId = existing.sourceId;
+        }
       }
       dbChanged = true;
     }
@@ -3719,6 +3755,14 @@ async function runScanDirectories() {
             if (freshItem.channelName) item.channelName = freshItem.channelName;
             if (freshItem.channelAvatarUrl) item.channelAvatarUrl = freshItem.channelAvatarUrl;
           }
+          // v1.41.13: the same mid-scan-reheat gap-fill for the universal
+          // source identity (persist-gate checkpoint). Keyed on sourceExtractor
+          // as a unit (never mix one item's extractor with another's id), and
+          // gap-fill only -- a fresh bracket-re-derivation this scan still wins.
+          if (!item.sourceExtractor && typeof freshItem.sourceExtractor === 'string' && freshItem.sourceExtractor !== '') {
+            item.sourceExtractor = freshItem.sourceExtractor;
+            if (freshItem.sourceId) item.sourceId = freshItem.sourceId;
+          }
         }
       }
 
@@ -3738,6 +3782,68 @@ async function runScanDirectories() {
       // channel identity, exactly as documented (AC12).
       if (freshlyScannedIds.has(item.id) && matchRootFolder(item.filePath, ytdlpDownloadRoots)) {
         const videoId = extractYtdlpVideoId(path.basename(item.name, item.ext));
+        // v1.41.13 (universal one-offs, design D2 touch #6 + D1a): a
+        // non-legacy-YouTube file carries a `[ExtractorKey=id]` bracket. Bridge
+        // its pseudo-channel identity from the universal downloadMeta entry
+        // (keyed by the rendered basename -- design D5), writing
+        // sourceExtractor/sourceId + channelName (the D7 label) onto the item.
+        // If the extractor is Youtube (a proxy-host download -- yewtu.be etc.,
+        // design D1a), ALSO set youtubeId so Share/reheat identity is restored.
+        // extractMediaRef's legacy branch never fires here (that's `videoId`
+        // above); this is strictly the `key=id` shape.
+        const mediaRef = !videoId ? extractMediaRef(path.basename(item.name, item.ext)) : null;
+        if (mediaRef && mediaRef.source) {
+          const isYt = mediaRef.source.toLowerCase() === 'youtube';
+          const consumedU = ytdlp.consumeUniversalDownloadMeta(fresh, path.basename(item.filePath));
+          if (consumedU) {
+            item.sourceExtractor = consumedU.sourceExtractor;
+            item.sourceId = consumedU.sourceId;
+            if (consumedU.channelName) item.channelName = consumedU.channelName;
+            if (typeof consumedU.releaseDate === 'number' && Number.isFinite(consumedU.releaseDate)) {
+              item.releaseDate = consumedU.releaseDate;
+            }
+            if (typeof consumedU.sourceTitle === 'string' && consumedU.sourceTitle !== '') {
+              item.sourceTitle = consumedU.sourceTitle;
+              item.title = consumedU.sourceTitle;
+            }
+            dbChanged = true;
+          } else if (!item.sourceId) {
+            // No capture bridged (older download, or already consumed) AND the
+            // item has no source identity yet -- record it from the on-disk
+            // bracket. GAP-FILL ONLY (gate WARNING W1): an unconditional write
+            // here clobbered the carried-forward RAW sourceId with the on-disk
+            // SANITIZED bracket id on a changed-file rescan (raw `austrian/
+            // page=1` -> sanitized `austrian⧸page=1`), and P3 keys the archive/
+            // delete off sourceId (D5: RAW is authoritative) -> a deleted video
+            // would re-download. The raw value, once persisted, is preserved by
+            // the re-init carry-forward; only a genuinely-identity-less item is
+            // filled here, from the best available (sanitized) fallback.
+            item.sourceExtractor = mediaRef.source;
+            item.sourceId = mediaRef.id;
+            dbChanged = true;
+          }
+          // D1a: a proxy-host YouTube item keeps its real YouTube identity.
+          // Its capture (extractor_key 'Youtube') was stored by the YouTube
+          // sanitize branch keyed by the BARE videoId -- but on disk it carries
+          // the `[Youtube=id]` bracket, so `videoId` above is null and the
+          // YouTube-consume block below never runs. Recover it HERE: set
+          // youtubeId and consume the YouTube downloadMeta by the bracket id, so
+          // channelUrl/channelId/channelName/avatar reach the item (gate W2).
+          if (isYt && isSafeVideoId(mediaRef.id)) {
+            item.youtubeId = mediaRef.id;
+            const consumedYt = ytdlp.consumeDownloadChannelMeta(fresh, mediaRef.id);
+            if (consumedYt) {
+              item.channelUrl = consumedYt.channelUrl;
+              if (consumedYt.channelHandleUrl) item.channelHandleUrl = consumedYt.channelHandleUrl;
+              if (consumedYt.channelId) item.channelId = consumedYt.channelId;
+              if (consumedYt.channelName) item.channelName = consumedYt.channelName;
+              if (consumedYt.channelAvatarUrl) item.channelAvatarUrl = consumedYt.channelAvatarUrl;
+              if (typeof consumedYt.releaseDate === 'number' && Number.isFinite(consumedYt.releaseDate)) item.releaseDate = consumedYt.releaseDate;
+              if (typeof consumedYt.sourceTitle === 'string' && consumedYt.sourceTitle !== '') { item.sourceTitle = consumedYt.sourceTitle; item.title = consumedYt.sourceTitle; }
+              dbChanged = true;
+            }
+          }
+        }
         if (videoId) {
           // v1.33 T1: the bracket id IS this item's YouTube id -- persist it
           // (the new/updated branch above already set it from the same
@@ -5672,17 +5778,24 @@ const RECOVERABLE_DELETE_CODES = new Set(['EROFS', 'EACCES', 'EBUSY', 'EPERM']);
 function resolveLeafByBracketId(dir, storedLeaf, stringEntries) {
   const storedExt = path.extname(storedLeaf);
   // SCOPING: only ever fires when the STORED basename itself carries a yt-dlp
-  // `[<11-char id>]` bracket, so a non-yt-dlp file can never be matched by a
-  // coincidental bracket on a neighbour. Confined to `dir` (the stored path's
-  // own already-resolved parent) -- never roams.
-  const wantId = extractYtdlpVideoId(path.basename(storedLeaf, storedExt));
-  if (!wantId) return null;
+  // bracket -- either the legacy YouTube `[<11-char id>]` OR (v1.41.13) the
+  // universal `[<ExtractorKey>=<id>]` -- so a non-yt-dlp file can never be
+  // matched by a coincidental bracket on a neighbour. Confined to `dir` (the
+  // stored path's own already-resolved parent) -- never roams. `extractMediaRef`
+  // parses both shapes; the YouTube leg is byte-identical to the prior
+  // extractYtdlpVideoId behavior (same 11-char bracket, same id).
+  const wantRef = extractMediaRef(path.basename(storedLeaf, storedExt));
+  if (!wantRef) return null;
+  // The exact bracket text this ref renders as on disk: `[id]` for YouTube,
+  // `[Key=id]` for a universal source. Used for the raw-bytes Pass 2 below.
+  const wantBracket = wantRef.source === 'youtube' ? `[${wantRef.id}]` : `[${wantRef.source}=${wantRef.id}]`;
   // Pass 1: the plain string entries readdir already produced (covers the
   // full-width / emoji-ZWJ divergences -- valid UTF-8, so they round-trip).
   let hit = null;
   for (const name of stringEntries) {
     if (path.extname(name) !== storedExt) continue;
-    if (extractYtdlpVideoId(path.basename(name, storedExt)) !== wantId) continue;
+    const nameRef = extractMediaRef(path.basename(name, storedExt));
+    if (!nameRef || nameRef.source !== wantRef.source || nameRef.id !== wantRef.id) continue;
     const candidate = path.join(dir, name);
     // A name carrying invalid UTF-8 bytes decodes to U+FFFD replacement chars
     // in its string form, whose bracket still matches here but whose path does
@@ -5703,7 +5816,7 @@ function resolveLeafByBracketId(dir, storedLeaf, stringEntries) {
   let bufEntries;
   try { bufEntries = fs.readdirSync(dir, { encoding: 'buffer' }); } catch (_) { return null; }
   const extBuf = Buffer.from(storedExt, 'utf8');
-  const bracketBuf = Buffer.from(`[${wantId}]`, 'utf8'); // the id is ASCII -> exact byte match
+  const bracketBuf = Buffer.from(wantBracket, 'utf8'); // ASCII bracket text -> exact byte match
   let rawHit = null;
   for (const buf of bufEntries) {
     if (buf.length < extBuf.length || !buf.subarray(buf.length - extBuf.length).equals(extBuf)) continue;
@@ -6080,8 +6193,18 @@ app.delete('/api/videos/:id', async (req, res) => {
     const ytdlpConfig = ytdlp.parseYtdlpConfig();
     if (ytdlp.isEnabled(ytdlpConfig) && matchRootFolder(filePath, ytdlp.extraScanRoots(ytdlpConfig))) {
       const baseName = path.basename(filePath, path.extname(filePath));
+      // v1.41.13: archive by the item's real SOURCE. A legacy YouTube item
+      // keeps `youtube <id>` (from the [id] bracket or the persisted
+      // youtubeId). A universal item records `<extractor> <sourceId>` -- the
+      // RAW sourceId from metadata (authoritative, matches make_archive_id),
+      // never the sanitized on-disk bracket (design D5). extractMediaRef also
+      // recovers the source for a legacy-less item that carries the new bracket.
       const youtubeId = extractYtdlpVideoId(baseName) || (isSafeVideoId(item.youtubeId) ? item.youtubeId : null);
-      if (youtubeId) ytdlp.recordOneShotInArchive(ytdlpConfig, youtubeId);
+      if (youtubeId) {
+        ytdlp.recordOneShotInArchive(ytdlpConfig, youtubeId, 'youtube');
+      } else if (typeof item.sourceExtractor === 'string' && item.sourceExtractor !== '' && typeof item.sourceId === 'string' && item.sourceId !== '') {
+        ytdlp.recordOneShotInArchive(ytdlpConfig, item.sourceId, item.sourceExtractor);
+      }
     }
   } catch (err) {
     // Best-effort by contract -- a failed archive append must never block
@@ -6123,7 +6246,29 @@ app.delete('/api/videos/:id', async (req, res) => {
         // secondary match never fires -- see the scan's SEAM 2 block).
         const tombstoneYoutubeId = extractYtdlpVideoId(path.basename(filePath, path.extname(filePath)))
           || (isSafeVideoId(item.youtubeId) ? item.youtubeId : null);
-        freshDb.deleteTombstones[item.id] = { filePath, deletedAt: Date.now(), youtubeId: tombstoneYoutubeId };
+        // v1.41.13 (design D4): a non-YouTube item records its source ref too,
+        // so the scan's SEAM-2 secondary match can bind a divergent-spelling
+        // survivor by identity (same folder + ext, exactly like the YouTube
+        // id match). The bracket observed at delete time is stored alongside
+        // the raw ref -- SEAM-2 matches on the bracket pair (both sides read
+        // dirents -> both sanitized), never raw-vs-bracket (design D5).
+        const deleteBracket = extractMediaRef(path.basename(filePath, path.extname(filePath)));
+        // gate CRITICAL C1: the bracketId is ALWAYS the delete-time bracket id
+        // when a sourceRef is built. The old `!tombstoneYoutubeId` guard
+        // conflated "has a youtubeId" with "on-disk bracket is legacy 11-char"
+        // -- FALSE for a D1a proxy-host item (yewtu.be), whose youtubeId IS set
+        // but whose on-disk bracket is the universal `[Youtube=id]` shape,
+        // matchable ONLY by SEAM-2's universal (bracket) branch. Suppressing
+        // bracketId there disabled BOTH match paths -> the deleted proxy-host
+        // video RESURRECTED. A pure-YouTube item never builds a sourceRef
+        // (no sourceExtractor/sourceId), so this is a no-op on the YouTube path.
+        const tombstoneSourceRef = (item.sourceExtractor && item.sourceId)
+          ? { extractor: item.sourceExtractor, id: item.sourceId, bracketId: deleteBracket ? deleteBracket.id : undefined }
+          : null;
+        freshDb.deleteTombstones[item.id] = {
+          filePath, deletedAt: Date.now(), youtubeId: tombstoneYoutubeId,
+          ...(tombstoneSourceRef ? { sourceRef: tombstoneSourceRef } : {}),
+        };
         pruneDeleteTombstones(freshDb.deleteTombstones);
       }
       // tech-debt #5 (v1.30-era): mirror the scan-prune path so a
