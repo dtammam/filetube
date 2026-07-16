@@ -1600,3 +1600,20 @@ test('universal one-off: uses the extended print template (extractor_key/uploade
   const sub = args.buildYtdlpDownloadArgs(baseSub(), config, ['vid1'], {});
   assert.equal(sub[sub.indexOf('--print') + 1], args.CHANNEL_META_PRINT_TEMPLATE, 'subscription keeps the legacy template (byte-identical)');
 });
+
+test('universal one-off (autoUploaderFolder): folds by %(uploader)s under the download ROOT (Dean folder fix)', () => {
+  const config = makeConfig();
+  const result = args.buildYtdlpDownloadArgs(baseSub({ name: 'Vimeo' }), config, [], { oneOff: true, sourceUrl: 'https://vimeo.com/76979871', autoUploaderFolder: true });
+  const template = result[result.indexOf('-o') + 1];
+  const root = path.resolve(config.downloadDir);
+  assert.equal(template, path.join(root, '%(uploader,uploader_id,extractor_key)s', args.UNIVERSAL_OUTPUT_TEMPLATE),
+    'the uploader subfolder is under the download root (confinement checks the root), with the universal template');
+});
+
+test('universal one-off WITHOUT autoUploaderFolder (explicit folder) uses the confined channelDir, not the uploader template', () => {
+  const config = makeConfig();
+  const result = args.buildYtdlpDownloadArgs(baseSub({ name: 'My Folder' }), config, [], { oneOff: true, sourceUrl: 'https://vimeo.com/76979871' });
+  const template = result[result.indexOf('-o') + 1];
+  assert.ok(!template.includes('%(uploader'), 'an explicit-folder universal one-off does NOT fold by uploader');
+  assert.ok(template.includes(path.join('My Folder', args.UNIVERSAL_OUTPUT_TEMPLATE)), 'it uses the confined channelDir');
+});

@@ -80,6 +80,11 @@
 
 ## Shipped
 
+### v1.41.14 — Universal one-offs: per-uploader folders + Reddit share links (Dean's on-device pass) (2026-07-16)
+
+- Dean tested v1.41.13 and found three things. **(1) Everything landed in one "Uncategorized" folder** — the design intended per-uploader folders but the implementation dumped every non-YouTube download into the fallback folder, so they never grouped as pseudo-channels. Fixed: a universal one-off with no explicit folder now folds by `%(uploader)s` (fallback uploader-id, then the extractor name) at the download root, so a SoundCloud track by an artist and a Facebook creator's video each get their own channel-folder and group/sort like YouTube channels. Doubly confined — yt-dlp sanitizes the folder name (no traversal) and the post-download check independently verifies the file is under the download root. An explicit folder override still wins. **(2) A Reddit share link failed** (`reddit.com/r/…/s/…` → "No suitable extractor"): the D6 resolver didn't recognize Reddit's `/s/` share shape, and its request user-agent got a `403` from Reddit — both fixed (Reddit share links 301-redirect to the real `/comments/` URL yt-dlp handles, but only for a browser-like user-agent, which the resolver now sends). **(3) No avatar on the tiles** — expected: home tiles show no channel avatar for *any* item (YouTube included); the pseudo-channel monogram avatar appears on the watch page and channel sidebar, and now that items fold by uploader, that's where it shows.
+- Note: the fix applies to *new* downloads; the two files already in "Uncategorized" stay put (delete + re-download to re-file them, or leave them).
+
 ### v1.41.13 — Universal one-off downloads: any yt-dlp-supported site, not just YouTube (2026-07-16)
 
 - Dean: "make the URLs supported by yt-dlp all supported by FileTube… I won't be limited to just YouTube." The one-off download box (both the page modal and the API/iOS-Shortcut route — they share one endpoint) now accepts any URL a **named** yt-dlp extractor supports (~1,800 sites: Vimeo, SoundCloud, Bandcamp, Facebook, …). Paste it, it downloads, indexes, plays, and deletes cleanly — and non-YouTube items **group and sort by their uploader as a pseudo-channel, exactly as if it were YouTube** (Dean's ask), with a generated monogram avatar. YouTube behavior is byte-for-byte unchanged throughout.

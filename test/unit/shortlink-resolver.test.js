@@ -145,3 +145,9 @@ test('isLikelyShortlink: share paths + shortener hosts are resolvable; canonical
     assert.strictEqual(isLikelyShortlink(u), false, `${u} is canonical -- must NOT be redirect-resolved`);
   }
 });
+
+test('isLikelyShortlink: reddit.com/.../s/<id> share links are resolvable (Dean on-device case)', () => {
+  assert.strictEqual(isLikelyShortlink('https://www.reddit.com/r/SipsTea/s/ZsTtmUWlmh'), true);
+  assert.strictEqual(isLikelyShortlink('https://reddit.com/user/x/s/abc123'), true);
+  assert.strictEqual(isLikelyShortlink('https://www.reddit.com/r/SipsTea/comments/1uybo8z/title/'), false, 'a full /comments/ URL is canonical, not a shortlink');
+});
