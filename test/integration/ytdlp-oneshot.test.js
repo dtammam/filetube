@@ -213,9 +213,12 @@ test('POST /api/ytdlp/download with a playlist URL responds 400 and never spawns
   }
 });
 
-// ---- AC10: malformed/non-YouTube/non-http(s) -> 400 -------------------------
+// ---- AC10 (v1.41.13): malformed/non-http(s)/YouTube-channel -> 400 ----------
+// (A non-YouTube MEDIA URL is NO LONGER a 400 -- see the universal-lane test
+// below. The still-invalid classes are: non-http(s), unparseable, a YouTube
+// channel/playlist, a private-IP target, and a missing URL.)
 
-test('POST /api/ytdlp/download with a malformed/non-YouTube/non-http(s) URL responds 400', async () => {
+test('POST /api/ytdlp/download with a malformed/non-http(s)/YouTube-channel/private URL responds 400', async () => {
   const deps = makeFakeDeps();
   run.runDownload = async () => ({ ok: true, code: 0, stdout: '', stderr: '' });
 
@@ -227,11 +230,39 @@ test('POST /api/ytdlp/download with a malformed/non-YouTube/non-http(s) URL resp
     const notAUrl = await postJson(base, '/api/ytdlp/download', { url: 'not a url at all' });
     assert.equal(notAUrl.status, 400);
 
-    const wrongHost = await postJson(base, '/api/ytdlp/download', { url: 'https://vimeo.com/12345' });
-    assert.equal(wrongHost.status, 400);
+    const ytChannel = await postJson(base, '/api/ytdlp/download', { url: 'https://www.youtube.com/@somechannel' });
+    assert.equal(ytChannel.status, 400, 'a YouTube channel is still a hard reject (never the universal lane)');
+
+    const privateTarget = await postJson(base, '/api/ytdlp/download', { url: 'http://169.254.169.254/latest/' });
+    assert.equal(privateTarget.status, 400, 'a private-IP target is refused (SSRF guard)');
 
     const missingUrl = await postJson(base, '/api/ytdlp/download', {});
     assert.equal(missingUrl.status, 400);
+  } finally {
+    await close();
+  }
+});
+
+// ---- v1.41.13: the universal lane -- a non-YouTube media URL is ACCEPTED ----
+test('POST /api/ytdlp/download with a non-YouTube media URL is accepted (202) and spawns with the universal argv', async () => {
+  const deps = makeFakeDeps();
+  let captured = null;
+  run.runDownload = async (sub, config, targetIds, opts) => {
+    captured = { targetIds, opts };
+    return { ok: true, code: 0, stdout: '', stderr: '' };
+  };
+
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    const res = await postJson(base, '/api/ytdlp/download', { url: 'https://vimeo.com/76979871' });
+    assert.equal(res.status, 202, 'a Vimeo URL is accepted');
+    // Wait for the background job to reach the (stubbed) spawn.
+    const deadline = Date.now() + 4000;
+    while (captured === null && Date.now() < deadline) await new Promise((r) => setTimeout(r, 25));
+    assert.ok(captured, 'run.runDownload was invoked for the universal job');
+    assert.deepEqual(captured.targetIds, [], 'universal lane passes no video ids');
+    assert.equal(captured.opts.oneOff, true);
+    assert.equal(captured.opts.sourceUrl, 'https://vimeo.com/76979871', 'the raw sourceUrl is threaded to the spawn');
   } finally {
     await close();
   }

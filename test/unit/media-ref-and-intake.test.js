@@ -115,17 +115,16 @@ test('isPlausibleMediaUrl: rejects the whole hostile catalogue', () => {
   const bad = {
     'ftp://example.com/x': /http/,
     'file:///etc/passwd': /http/,
-    'javascript:alert(1)': /http|media URL|forbidden/,
+    'javascript:alert(1)': /http|media URL|characters/,
     'https://user:pass@vimeo.com/1': /credentials/,
     'http://127.0.0.1/admin': /not allowed/,
     'http://169.254.169.254/latest/meta-data/': /not allowed/,
     'http://localhost:8080/': /not allowed/,
     'http://[::1]/': /not allowed/,
     'http://2130706433/': /not allowed/,
-    '-oProxy=http://evil': /start with|forbidden/,
-    'https://example.com/a b': /forbidden characters/,
+    '-notaurl': /not allowed|media URL/,
     '': /required/,
-    'not a url at all': /media URL|forbidden/,
+    'not a url at all': /media URL|characters/,
   };
   for (const [u, re] of Object.entries(bad)) {
     const r = isPlausibleMediaUrl(u);
@@ -134,10 +133,81 @@ test('isPlausibleMediaUrl: rejects the whole hostile catalogue', () => {
   }
 });
 
+test('isPlausibleMediaUrl: a hostile prefix glued before an embedded URL is neutralized by extraction (matches validateChannelUrl F6)', () => {
+  // The embedded URL is extracted and the prefix discarded -- so option
+  // injection can't survive, and a private-IP embedded target is still caught.
+  assert.strictEqual(isPlausibleMediaUrl('garbage prefix http://vimeo.com/1').ok, true, 'the real URL is extracted and accepted');
+  const inner = isPlausibleMediaUrl('$(evil) http://169.254.169.254/latest/');
+  assert.strictEqual(inner.ok, false, 'an embedded private-IP target is still caught by the SSRF guard after extraction');
+  assert.match(inner.error, /not allowed/);
+});
+
 test('isPlausibleMediaUrl: no user-visible message leaks an internal parameter name', () => {
   // The screenshot bug: "channelUrl host is not an allowed YouTube host".
   for (const u of ['http://127.0.0.1/x', 'ftp://x/y', 'https://user:p@vimeo.com/1', 'https://a.com/x y']) {
     const r = isPlausibleMediaUrl(u);
     assert.ok(!/channelUrl|videoId|isSafe/.test(r.error), `error must not leak internals: "${r.error}"`);
+  }
+});
+
+// ---- classifyOneOffUrl: the YouTube-vs-universal lane branch (D1a) ----------
+
+const { classifyOneOffUrl } = require('../../lib/ytdlp/url.js');
+
+test('classifyOneOffUrl: a YouTube single-video URL takes the legacy lane, byte-for-byte', () => {
+  const r = classifyOneOffUrl('https://www.youtube.com/watch?v=dQw4w9WgXcQ');
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.lane, 'youtube');
+  assert.strictEqual(r.videoId, 'dQw4w9WgXcQ');
+  assert.match(r.watchUrl, /youtube\.com\/watch\?v=dQw4w9WgXcQ/);
+  assert.strictEqual(r.sourceUrl, undefined, 'the youtube lane carries no raw sourceUrl');
+});
+
+test('classifyOneOffUrl: youtu.be + shorts + share-sheet prose all stay the legacy lane', () => {
+  for (const u of [
+    'https://youtu.be/dQw4w9WgXcQ',
+    'https://www.youtube.com/shorts/abcdefghijk',
+    'Check this out\nhttps://youtu.be/dQw4w9WgXcQ?si=xyz',
+  ]) {
+    const r = classifyOneOffUrl(u);
+    assert.strictEqual(r.ok, true, `${u}: ${r.error || ''}`);
+    assert.strictEqual(r.lane, 'youtube', `${u} should be the youtube lane`);
+  }
+});
+
+test('classifyOneOffUrl: a non-YouTube media URL takes the universal lane with a raw sourceUrl', () => {
+  for (const u of ['https://vimeo.com/76979871', 'https://soundcloud.com/artist/track', 'https://www.facebook.com/reel/897928030021587/']) {
+    const r = classifyOneOffUrl(u);
+    assert.strictEqual(r.ok, true, `${u}: ${r.error || ''}`);
+    assert.strictEqual(r.lane, 'universal');
+    assert.ok(typeof r.sourceUrl === 'string' && r.sourceUrl.startsWith('http'), `${u} carries a sourceUrl`);
+    assert.strictEqual(r.videoId, undefined);
+  }
+});
+
+test('classifyOneOffUrl: a non-YouTube URL is normalized (Shortcut prose extraction) before the universal lane', () => {
+  const r = classifyOneOffUrl('My fav track "https://soundcloud.com/artist/track"');
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.lane, 'universal');
+  assert.strictEqual(r.sourceUrl, 'https://soundcloud.com/artist/track', 'quotes + prose stripped');
+});
+
+test('classifyOneOffUrl: a YouTube CHANNEL/playlist/unsupported-shape is a hard reject, NEVER the universal lane', () => {
+  for (const u of [
+    'https://www.youtube.com/@somechannel',
+    'https://www.youtube.com/playlist?list=PLxxxxxxxx',
+    'https://www.youtube.com/clip/UgkxSomeClipId',   // YoutubeIE matches this, classifySingleVideo does not
+  ]) {
+    const r = classifyOneOffUrl(u);
+    assert.strictEqual(r.ok, false, `${u} must be rejected, not universal-laned`);
+    assert.ok(!/lane/.test(JSON.stringify(r)), `${u} must not produce a lane`);
+  }
+});
+
+test('classifyOneOffUrl: private/hostile targets are rejected with a leak-free message', () => {
+  for (const u of ['http://127.0.0.1/admin', 'ftp://x/y', 'https://user:p@vimeo.com/1', '']) {
+    const r = classifyOneOffUrl(u);
+    assert.strictEqual(r.ok, false, `${u} must be rejected`);
+    assert.ok(!/channelUrl|videoId|isSafe/.test(r.error || ''), `no internal leak: "${r.error}"`);
   }
 });
