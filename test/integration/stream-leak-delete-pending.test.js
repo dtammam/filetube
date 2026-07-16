@@ -22,10 +22,15 @@
 //      first scan after the handles clear finishes the job . test "scan-retry"
 //
 // DELETE_PENDING itself cannot be reproduced on a local POSIX fs (unlink of
-// an open file succeeds immediately), so tests 3-4 simulate its exact
-// observable contract at the fs seam: unlinkSync throws ENOENT while the
-// dirent remains enumerable. server.js and this test share the SAME `fs`
-// module instance, so patching fs.unlinkSync here patches the route.
+// an open file succeeds immediately), so tests 3+ simulate its exact
+// observable contract at the fs seam: the dirent remains enumerable while
+// unlink AND every new open report ENOENT (the production probe confirmed
+// delete-pending files refuse opens -- that unopenability is exactly what
+// the route's post-verify discriminates on, per this release's adversarial
+// CRITICAL: an enumerated-but-OPENABLE leaf is a brand-new file that landed
+// in the unlink->readdir window and must NOT be tombstoned). server.js and
+// this test share the SAME `fs` module instance, so patching fs.unlinkSync/
+// fs.openSync here patches the route.
 
 const os = require('node:os');
 const fs = require('node:fs');
@@ -161,19 +166,42 @@ test('delete-mid-stream: DELETE destroys our own live streams first, then the un
   assert.deepStrictEqual(db.deleteTombstones, {}, 'a VERIFIED unlink mints no tombstone (v1.41.3 contract)');
 });
 
-test('post-verify: ENOENT unlink + still-enumerated dirent -> honest deletePending response + tombstone, never fake success', async () => {
-  const { filePath, id } = seedVideo('undead ？ [ccccccccccc].mp4', 1024);
-
+// Patch the fs seam to the DELETE_PENDING contract for one path: the dirent
+// stays enumerable while unlink and every new open throw ENOENT. Returns a
+// restore function. `unlinkMode: 'noop'` models the OTHER production shape --
+// the FIRST delete on CIFS, where unlink reports success (the server accepted
+// the disposition) yet the dirent survives.
+function patchDeletePending(filePath, { unlinkMode = 'throw' } = {}) {
   const realUnlinkSync = fs.unlinkSync;
+  const realOpenSync = fs.openSync;
+  const enoent = (op, s) => {
+    const err = new Error(`ENOENT: no such file or directory, ${op} '${s}'`);
+    err.code = 'ENOENT';
+    return err;
+  };
   fs.unlinkSync = (p) => {
     const s = Buffer.isBuffer(p) ? p.toString('utf8') : String(p);
     if (s === filePath) {
-      const err = new Error(`ENOENT: no such file or directory, unlink '${s}'`);
-      err.code = 'ENOENT';
-      throw err; // DELETE_PENDING's observable: unlink refused as "not found"...
+      if (unlinkMode === 'noop') return undefined; // "success" without the file going away
+      throw enoent('unlink', s);
     }
     return realUnlinkSync(p);
   };
+  fs.openSync = (p, ...args) => {
+    const s = Buffer.isBuffer(p) ? p.toString('utf8') : String(p);
+    if (s === filePath) throw enoent('open', s); // delete-pending refuses every new open
+    return realOpenSync(p, ...args);
+  };
+  return () => {
+    fs.unlinkSync = realUnlinkSync;
+    fs.openSync = realOpenSync;
+  };
+}
+
+test('post-verify: ENOENT unlink + still-enumerated unopenable dirent -> honest deletePending response + tombstone, never fake success', async () => {
+  const { filePath, id } = seedVideo('undead ？ [ccccccccccc].mp4', 1024);
+
+  const restore = patchDeletePending(filePath);
   try {
     const del = await fetch(`${base}/api/videos/${id}`, { method: 'DELETE' });
     assert.equal(del.status, 200);
@@ -188,16 +216,78 @@ test('post-verify: ENOENT unlink + still-enumerated dirent -> honest deletePendi
     assert.strictEqual(db.metadata[id], undefined, 'entry removed from the library');
     assert.ok(db.deleteTombstones[id], 'unverified conclusion minted a tombstone');
   } finally {
+    restore();
+  }
+});
+
+test('post-verify, verified shape: unlink "succeeds" but the unopenable dirent survives -> deletePending + tombstone (the first-delete-on-CIFS shape)', async () => {
+  const { filePath, id } = seedVideo('quiet-survivor [eeeeeeeeeee].mp4', 1024);
+
+  const restore = patchDeletePending(filePath, { unlinkMode: 'noop' });
+  try {
+    const del = await fetch(`${base}/api/videos/${id}`, { method: 'DELETE' });
+    assert.equal(del.status, 200);
+    const body = await del.json();
+    assert.equal(body.success, true);
+    assert.equal(body.fileRemainsOnDisk, true, 'a watched unlink whose dirent survives must NOT claim the file is gone');
+    assert.equal(body.deletePending, true);
+    const db = readDb();
+    assert.strictEqual(db.metadata[id], undefined);
+    assert.ok(db.deleteTombstones[id], 'the downgrade minted a tombstone so the scan keeps it hidden');
+  } finally {
+    restore();
+  }
+});
+
+test('C1 regression: a NEW file recreated at the same path in the unlink window is NEVER tombstoned, and the scan indexes it instead of reaping it', async () => {
+  const { filePath, id } = seedVideo('recreated-in-window [fffffffffff].mp4', 1024);
+
+  // The adversarial gate's repro: the unlink genuinely succeeds, and an
+  // external writer (an in-flight yt-dlp re-download, a sync client) lands a
+  // brand-new file at the same leaf before the route's post-verify readdir --
+  // with a BACKDATED mtime (yt-dlp's default --mtime), which defeats the
+  // scan's mtime<=deletedAt restore check. Pre-fix, the post-verify
+  // tombstoned the new file and the next scan unlinked it: silent data loss.
+  const realUnlinkSync = fs.unlinkSync;
+  fs.unlinkSync = (p) => {
+    const s = Buffer.isBuffer(p) ? p.toString('utf8') : String(p);
+    realUnlinkSync(p);
+    if (s === filePath) {
+      fs.writeFileSync(filePath, 'BRAND-NEW-CONTENT-THE-USER-NEVER-DELETED');
+      const past = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      fs.utimesSync(filePath, past, past); // backdated: mtime is NO safety net
+    }
+  };
+  try {
+    const del = await fetch(`${base}/api/videos/${id}`, { method: 'DELETE' });
+    assert.equal(del.status, 200);
+    const body = await del.json();
+    assert.equal(body.success, true);
+    assert.ok(!body.fileRemainsOnDisk, 'the DELETED file is gone; the survivor is different content');
+    assert.ok(!body.deletePending, 'an openable survivor is not delete-pending');
+
+    let db = readDb();
+    assert.deepStrictEqual(db.deleteTombstones, {}, 'CRITICAL C1: the recreated file must NOT be tombstoned');
+
+    await scanDirectories();
+    db = readDb();
+    assert.ok(fs.existsSync(filePath), 'the new file SURVIVES the next scan (pre-fix it was reaped here)');
+    assert.equal(fs.readFileSync(filePath, 'utf8'), 'BRAND-NEW-CONTENT-THE-USER-NEVER-DELETED');
+    assert.ok(db.metadata[id], 'and is indexed as the new content it is');
+  } finally {
     fs.unlinkSync = realUnlinkSync;
   }
 });
 
-test('scan-retry: ENOENT keeps the tombstone + keeps the file hidden; the first clean scan finishes the delete', async () => {
-  const { filePath, id } = seedVideo('pending-then-cleared [ddddddddddd].mp4', 1024);
+test('ENOENT shape + OPENABLE survivor keeps the pre-v1.41.10 contract: success, tombstone, no deletePending flag', async () => {
+  const { filePath, id } = seedVideo('openable-enoent [ggggggggggg].mp4', 1024);
 
-  // Delete while the fs reports the DELETE_PENDING contract (as above).
+  // unlink ENOENTs but the file opens fine (e.g. recreated after an external
+  // delete): not the pending signature -- the response must not claim a held-
+  // open file, and the v1.41.3 unverified tombstone still lets the scan's
+  // mtime/fresh-db checks decide what the surviving bytes are.
   const realUnlinkSync = fs.unlinkSync;
-  const pendingUnlink = (p) => {
+  fs.unlinkSync = (p) => {
     const s = Buffer.isBuffer(p) ? p.toString('utf8') : String(p);
     if (s === filePath) {
       const err = new Error(`ENOENT: no such file or directory, unlink '${s}'`);
@@ -206,7 +296,25 @@ test('scan-retry: ENOENT keeps the tombstone + keeps the file hidden; the first 
     }
     return realUnlinkSync(p);
   };
-  fs.unlinkSync = pendingUnlink;
+  try {
+    const del = await fetch(`${base}/api/videos/${id}`, { method: 'DELETE' });
+    assert.equal(del.status, 200);
+    const body = await del.json();
+    assert.equal(body.success, true);
+    assert.ok(!body.deletePending, 'openable survivor must not be labeled delete-pending');
+    const db = readDb();
+    assert.strictEqual(db.metadata[id], undefined);
+    assert.ok(db.deleteTombstones[id], 'the v1.41.3 unverified tombstone is unchanged');
+  } finally {
+    fs.unlinkSync = realUnlinkSync;
+  }
+});
+
+test('scan-retry: ENOENT keeps the tombstone + keeps the file hidden; the first clean scan finishes the delete', async () => {
+  const { filePath, id } = seedVideo('pending-then-cleared [ddddddddddd].mp4', 1024);
+
+  // Delete while the fs reports the DELETE_PENDING contract (as above).
+  const restore = patchDeletePending(filePath);
   try {
     const del = await fetch(`${base}/api/videos/${id}`, { method: 'DELETE' });
     assert.equal((await del.json()).deletePending, true, 'precondition: delete saw the pending state');
@@ -224,7 +332,7 @@ test('scan-retry: ENOENT keeps the tombstone + keeps the file hidden; the first 
     assert.strictEqual(db.metadata[id], undefined, 'still hidden on the next scan');
     assert.ok(db.deleteTombstones[id], 'tombstone still standing');
   } finally {
-    fs.unlinkSync = realUnlinkSync;
+    restore();
   }
 
   // The pinning handle "closes" (fs behaves normally again): the very next

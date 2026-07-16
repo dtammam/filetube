@@ -1110,16 +1110,32 @@ function extractYtdlpVideoId(baseName) {
 //     re-download or a restored copy): drop the tombstone, index normally.
 //   - file mtime <= deletedAt -> the very file the user already deleted:
 //     retry the unlink AT THE SCANNED PATH. Success -> stays gone, tombstone
-//     consumed. Failure -> drop the tombstone and index it honestly (the
-//     file exists and we cannot remove it -- hiding it would be a lie), with
-//     a log line naming the errno.
-// Every scan encounter consumes the tombstone -- each delete buys exactly
-// one deferred retry, so this can never turn into a silent forever-suppress.
+//     consumed. Failure -> depends on the errno (v1.41.10):
+//       * ENOENT on a path this scan JUST enumerated is the SMB/CIFS
+//         DELETE_PENDING signature (an open handle somewhere pins an
+//         already-deleted file; every new open is refused as "not found"
+//         while the dirent stays enumerable). The file is neither indexable
+//         content nor an undeletable-volume case: keep it hidden and KEEP
+//         the tombstone, retrying every scan until the dirent disappears.
+//         The 90-day prune below is the backstop against a handle that
+//         never closes becoming a silent forever-suppress.
+//       * every other errno (EBUSY/EPERM/EROFS/...): drop the tombstone and
+//         index the file honestly (it exists and we cannot remove it --
+//         hiding it would be a lie), with a log line naming the errno.
+// Outside the delete-pending case, every scan encounter consumes the
+// tombstone -- each delete buys one deferred retry, never a suppress-list.
 //
-// Tombstones are minted ONLY for UNVERIFIED delete conclusions (resolver
-// `gone`, ENOENT `alreadyGone`, removeAnyway) -- a verified fs.unlinkSync
-// success mints nothing, so a normal delete can never arm a trap for a
-// later mtime-preserving restore (rsync -a/Syncthing/backup tools).
+// Tombstones are minted ONLY for UNVERIFIED delete conclusions -- resolver
+// `gone`, ENOENT `alreadyGone`, removeAnyway, and (v1.41.10) a watched
+// unlinkSync whose leaf the parent dir STILL enumerates as unopenable
+// afterward (delete-pending: the unlink "succeeded" without the file going
+// away, which is the definition of unverified). A verified-AND-gone unlink
+// mints nothing, so a normal delete can never arm a trap for a later
+// mtime-preserving restore (rsync -a/Syncthing/backup tools); a still-
+// enumerated-but-OPENABLE leaf after a verified unlink is a brand-new file
+// that landed in the window and also mints nothing (adversarial-gate
+// CRITICAL, v1.41.10: tombstoning it would schedule the reap of content the
+// user never deleted).
 //
 // Growth bounds: pruned on every write (age + FIFO cap). A lingering
 // tombstone is inert unless a file appears that the scan can bind back to
@@ -3039,6 +3055,11 @@ async function runScanDirectories() {
       }
     }
     if (tombstone && typeof tombstone.deletedAt === 'number') {
+      // v1.41.10: remembered so the delete-pending branch below can restore it
+      // -- its un-consume makes this file's net db effect zero, and leaving
+      // dbChanged forced-true would rewrite db.json on every scan for as long
+      // as the pending state lasts (QA-gate suggestion, this release).
+      const dbChangedBeforeConsume = dbChanged;
       consumedTombstoneIds.add(tombstoneKey);
       dbChanged = true; // the consumption itself must persist
       const isNewerContent = typeof info.mtimeMs === 'number' && info.mtimeMs > tombstone.deletedAt;
@@ -3088,6 +3109,12 @@ async function runScanDirectories() {
       }
       if (stillDeleted) {
         try {
+          // v1.41.10 (adversarial-gate suggestion): if OUR OWN process is the
+          // pinning handle (a stream that re-registered in the delete's
+          // destroy->unlink window, or one whose 3s destroy cap expired), the
+          // scan can self-heal instead of waiting on a client that may never
+          // close -- destroy any registered streams before retrying.
+          await destroyMediaStreams(filePath);
           fs.unlinkSync(filePath);
           console.log(`Scan: removed a deleted file that had survived its delete (deferred retry): ${filePath}`);
           // Best-effort .vtt subtitle-sidecar sweep, keyed off the SCANNED
@@ -3127,6 +3154,7 @@ async function runScanDirectories() {
             // suppression; the "one delete, one retry" rule stands for every
             // other errno.
             consumedTombstoneIds.delete(tombstoneKey);
+            dbChanged = dbChangedBeforeConsume; // net-zero for this file: no forced rewrite per scan
             console.warn(`Scan: deferred delete retry hit ENOENT on a path this scan just enumerated (delete-pending: open handles elsewhere) -- keeping it hidden, keeping the tombstone: ${filePath}`);
             scanState.processed++;
             await maybeYieldScan(yieldState);
@@ -5846,6 +5874,10 @@ app.delete('/api/videos/:id', async (req, res) => {
   // strings handed to createReadStream: the stored path, the resolved
   // on-disk variant, and the two id-keyed sidecars a player may be pulling.
   const releasePaths = new Set([filePath, transcodedPath(item.id), audioPath(item.id)]);
+  // Defensive: today no route streams the RESOLVED variant when it differs
+  // from item.filePath (players receive item.filePath verbatim), so this Set
+  // member is a no-op lookup -- it exists so a future caller that streams the
+  // resolved spelling is covered without anyone having to remember this line.
   if (mediaPathOnDisk) releasePaths.add(mediaPathOnDisk);
   // Parallel: the bounded waits overlap, so even the pathological all-wedged
   // case delays the DELETE by one 3s cap, not one per path.
@@ -5972,22 +6004,62 @@ app.delete('/api/videos/:id', async (req, res) => {
   // can lie when the server holds the file in DELETE_PENDING (an open handle
   // this process failed to release, or one on another machine entirely): the
   // unlink "succeeds" or ENOENTs, yet the dirent stays enumerable and the next
-  // scan re-indexes it. If the exact leaf bytes are still listed, the file is
-  // NOT gone: say so (fileRemainsOnDisk + deletePending below), and downgrade
-  // unlinkVerified so the tombstone mint fires -- by the tombstone contract
-  // (v1.41.3) a conclusion contradicted by the directory itself is the
-  // definition of unverified. False-positive risk (a same-name file recreated
-  // in the ms between unlink and readdir) is accepted: the archive append
-  // below already blocks the only plausible same-path writer (a yt-dlp
-  // re-download), and leafStillEnumerated fails toward "gone" on any doubt.
+  // scan re-indexes it. If the exact leaf bytes are still listed AND the leaf
+  // is unopenable, the file is NOT gone: say so (fileRemainsOnDisk +
+  // deletePending below), and downgrade unlinkVerified so the tombstone mint
+  // fires -- by the tombstone contract (v1.41.3) a conclusion contradicted by
+  // the directory itself is the definition of unverified.
+  //
+  // Adversarial-gate CRITICAL (C1, this release): "still enumerated" ALONE
+  // must never downgrade a VERIFIED unlink. An external writer can land a
+  // brand-new file at the same leaf inside the unlink->readdir window (an
+  // in-flight yt-dlp re-download completing -- the archive append below only
+  // gates FUTURE download starts -- or a sync-client restore), and tombstoning
+  // THAT file schedules the scan to reap content the user never deleted:
+  // yt-dlp's default --mtime backdating defeats the scan's mtime<=deletedAt
+  // gate, and the fresh-db guards can't help (the tombstone is fresh; the
+  // metadata entry was just removed). Proven with a runnable repro against
+  // this branch; main kept the file. So discriminate undead-vs-recreated by
+  // OPENABILITY -- the incident's own signature: a DELETE_PENDING dirent is
+  // enumerable while every NEW open is refused (Linux cifs maps
+  // STATUS_DELETE_PENDING to ENOENT), whereas a recreated file opens fine.
+  // Deliberately an open, NOT existsSync: with actimeo=1 a stat can be
+  // answered from the client attribute cache for up to a second after the
+  // unlink and would misclassify a genuinely-pending file as recreated; an
+  // open is a real server round-trip. (An enumerated survivor that opens
+  // EACCES is misread as pending -- accepted: the worst case is one tombstone
+  // whose scan-side reap still re-checks mtime and the fresh-db guards.)
+  //
+  // Known residual (QA W1, disclosed): the OPPOSITE miss -- a stale
+  // client-side directory cache omitting a genuinely-pinned survivor -- makes
+  // this check pass, no tombstone is minted, and the next scan re-indexes the
+  // survivor once. Self-healing: deleting the re-indexed card again lands in
+  // the ENOENT shape above, which readdir (by then long past any cache TTL)
+  // catches and tombstones. One extra user delete, never data loss.
   let deletePending = false;
   if (!fileRemainsOnDisk) {
     const checkPath = resolved.realPathRaw || mediaPathOnDisk || filePath;
     if (leafStillEnumerated(checkPath)) {
-      deletePending = true;
-      fileRemainsOnDisk = true;
-      unlinkVerified = false;
-      console.warn(`Delete: ${filePath} is STILL enumerated by its parent directory after the unlink (server-side delete-pending: an open handle somewhere is pinning it) -- reporting honestly and minting a tombstone.`);
+      let openable = false;
+      try {
+        fs.closeSync(fs.openSync(checkPath, 'r'));
+        openable = true;
+      } catch (_) { /* unopenable: the delete-pending signature */ }
+      if (!openable) {
+        deletePending = true;
+        fileRemainsOnDisk = true;
+        unlinkVerified = false;
+        console.warn(`Delete: ${filePath} is STILL enumerated by its parent directory and refuses opens after the unlink (server-side delete-pending: an open handle somewhere is pinning it) -- reporting honestly and minting a tombstone.`);
+      } else if (unlinkVerified) {
+        // Enumerated AND openable after a watched unlink: a NEW file landed at
+        // this leaf inside the window. It is not the user's delete target --
+        // keep the verified conclusion (and therefore NO tombstone) so the
+        // next scan indexes it as the new content it is.
+        console.log(`Delete: a different file appeared at ${filePath} immediately after the unlink -- leaving it alone (new content, not ours to remove).`);
+      }
+      // (ENOENT shape + openable: keep the pre-existing v1.41.3 contract
+      // exactly -- success + unverified tombstone; the scan's mtime and
+      // fresh-db checks decide what the surviving bytes are.)
     }
   }
 
@@ -8534,6 +8606,12 @@ function contentDispositionAttachment(title, ext) {
 //      handle pinning the file into DELETE_PENDING.
 // Keyed by the exact filePath string handed to fs.createReadStream -- the same
 // string the DELETE route resolves, so lookups are plain Map hits.
+// SCOPE (QA gate, disclosed): only fs.ReadStreams flow through here -- a live
+// transcode (`?live=1`) pins the source via ffmpeg's OWN fd, which no registry
+// entry can destroy. That path is covered by the post-verify + tombstone +
+// scan-suppress net instead (the delete reports deletePending honestly and the
+// scan keeps the item hidden until ffmpeg exits -- its req-close SIGKILL makes
+// that prompt). Tracked in tech-debt as the residual of this class.
 const activeMediaStreams = new Map(); // filePath -> Set<fs.ReadStream>
 
 function registerMediaStream(filePath, stream) {
