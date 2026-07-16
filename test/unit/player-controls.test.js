@@ -363,8 +363,12 @@ test('gate W2: the digit percent-seek honors the liveMode invariant (startLiveSt
   const body = src.slice(caseStart, caseStart + 1800);
   assert.match(body, /if \(liveMode\) \{[\s\S]*?startLiveStream\(liveTarget, true\);[\s\S]*?saveProgressToServer\(liveTarget\);/,
     'live branch routes through startLiveStream + immediate save (skip()/seekToChapter parity)');
-  assert.match(body, /digitEl\.currentTime = dur \* fraction;\s*saveProgressToServer\(currentAbsTime\(\)\);/,
+  // v1.41.12: both branches gained a disarmChapterLoopIfSeekOutside(target)
+  // call before the seek (gate W3) -- the lock follows, still pinning the
+  // seek-then-immediate-save pair.
+  assert.match(body, /digitEl\.currentTime = digitTarget;\s*saveProgressToServer\(currentAbsTime\(\)\);/,
     'non-live branch seeks the active element and saves immediately');
+  assert.match(body, /disarmChapterLoopIfSeekOutside\(digitTarget\);/, 'digit jumps disarm an out-of-bounds chapter loop');
 });
 
 test('gate W3: setupPrevNext bails on a stale (aborted) view before registering trackNav handlers', () => {

@@ -4332,7 +4332,11 @@ body.ft-css-fullscreen .bottom-nav {
   font-size: var(--fs-sm);
   padding: 8px 12px;
   cursor: pointer;
-  align-self: center;
+  /* stretch + inner centering (not align-self:center) so the left border
+     spans a 2-line-wrapped row's full height (gate nit, v1.41.12) */
+  align-self: stretch;
+  display: flex;
+  align-items: center;
   min-height: 32px;
 }
 .chapters-menu-loop:hover {
