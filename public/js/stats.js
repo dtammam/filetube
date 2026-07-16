@@ -223,6 +223,64 @@ function renderMostWatched(root, mostWatched) {
   });
 }
 
+// ---- v1.41.11 (Dean): duplicates report -------------------------------------
+// Renders GET /api/duplicates (see lib/stats.js computeDuplicateReport for the
+// two sections' semantics). Same idioms as the rest of this page: textContent
+// only (filenames are user-controlled), inline styles (this page owns no CSS),
+// and the existing container classes. READ-ONLY -- deliberately no delete
+// affordance anywhere in here. Long reports render the top groups per section
+// with an explicit "N more in the CSV" line -- never a silent cap.
+const DUPLICATE_GROUPS_RENDER_CAP = 50;
+
+function renderDuplicates(root, report) {
+  clearChildren(root);
+  const rep = report || {};
+  const nameGroups = Array.isArray(rep.nameGroups) ? rep.nameGroups : [];
+  const idGroups = Array.isArray(rep.idGroups) ? rep.idGroups : [];
+  if (nameGroups.length === 0 && idGroups.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'theme-card-blurb';
+    empty.textContent = 'No duplicates found — every filename and video id in the library is unique.';
+    root.appendChild(empty);
+    return;
+  }
+  const renderSection = (title, groups, keyLabel) => {
+    if (groups.length === 0) return;
+    const header = document.createElement('div');
+    header.textContent = title;
+    header.style.cssText = 'font-weight:bold; padding:10px 4px 4px;';
+    root.appendChild(header);
+    groups.slice(0, DUPLICATE_GROUPS_RENDER_CAP).forEach((group) => {
+      const items = Array.isArray(group.items) ? group.items : [];
+      const row = document.createElement('div');
+      row.style.cssText = 'padding:8px 4px; border-bottom:1px solid var(--border-color);';
+      const label = document.createElement('div');
+      label.textContent = keyLabel(group);
+      label.style.cssText = 'overflow:hidden; text-overflow:ellipsis; white-space:nowrap;';
+      const meta = document.createElement('div');
+      meta.textContent = `${formatCount(items.length)} copies · ${formatByteSize(group.totalBytes)} total · ${formatByteSize(group.wastedBytes)} reclaimable (keeping the largest)`;
+      meta.style.cssText = 'color:var(--text-secondary); font-size:12px;';
+      row.appendChild(label);
+      row.appendChild(meta);
+      items.forEach((item) => {
+        const pathLine = document.createElement('div');
+        pathLine.textContent = `${item.filePath} (${formatByteSize(item.size)})`;
+        pathLine.style.cssText = 'color:var(--text-secondary); font-size:12px; padding-left:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;';
+        row.appendChild(pathLine);
+      });
+      root.appendChild(row);
+    });
+    if (groups.length > DUPLICATE_GROUPS_RENDER_CAP) {
+      const more = document.createElement('div');
+      more.className = 'theme-card-blurb';
+      more.textContent = `…and ${formatCount(groups.length - DUPLICATE_GROUPS_RENDER_CAP)} more groups — the CSV export has the complete list.`;
+      root.appendChild(more);
+    }
+  };
+  renderSection('Same filename', nameGroups, (group) => group.key);
+  renderSection('Same video, different filenames', idGroups, (group) => `Video id [${group.key}]`);
+}
+
 // ---- v1.41.0: Books inventory + About/version section ----------------------
 
 function renderBookTiles(root, books) {
@@ -370,6 +428,29 @@ function init() {
     .catch((err) => {
       console.error('Failed to load stats:', err);
       renderStatsError();
+    });
+  // v1.41.11: the duplicates report is its own fetch + render, deliberately
+  // independent of /api/stats above -- a failure in either never blanks the
+  // other's sections.
+  fetch('/api/duplicates')
+    .then((res) => {
+      if (!res.ok) throw new Error(`GET /api/duplicates failed (${res.status})`);
+      return res.json();
+    })
+    .then((report) => {
+      const root = document.getElementById('stats-duplicates-list');
+      if (root) renderDuplicates(root, report);
+    })
+    .catch((err) => {
+      console.error('Failed to load duplicates report:', err);
+      const root = document.getElementById('stats-duplicates-list');
+      if (root) {
+        clearChildren(root);
+        const error = document.createElement('div');
+        error.className = 'theme-card-blurb';
+        error.textContent = 'Could not load the duplicates report right now. Try refreshing the page.';
+        root.appendChild(error);
+      }
     });
 }
 
