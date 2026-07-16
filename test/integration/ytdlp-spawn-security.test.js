@@ -1610,6 +1610,10 @@ test('runDownload: a captured FTCHMETA line is parsed onto result.channelMeta an
     channelName: 'Some Channel',
     uploadDate: null,
     releaseDate: null,
+    // v1.41.13: universal-lane fields, null on a legacy YouTube capture.
+    source: null,
+    uploader: null,
+    filePath: null,
   });
   // The FTCHMETA line must never be misinterpreted as a progress patch --
   // only the one real progress line above produced an onProgress call.

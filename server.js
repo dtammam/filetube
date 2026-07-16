@@ -44,7 +44,7 @@ const ytdlpArgs = require('./lib/ytdlp/args');
 // re-validates a persisted `item.channelUrl` at the one boundary where it
 // decides whether a USER FILE gets physically moved. See
 // `relocateHydratedImportIntoChannelFolder`.
-const { buildWatchUrl, classifySingleVideo, isSafeVideoId, validateChannelUrl } = require('./lib/ytdlp/url');
+const { buildWatchUrl, classifySingleVideo, isSafeVideoId, validateChannelUrl, extractMediaRef } = require('./lib/ytdlp/url');
 // v1.15.1 hotfix: pure predicate for yt-dlp's own intermediate/partial-
 // download artifacts (merge temps, per-format fragments, `.part`/`.ytdl`
 // markers) left in its download dir mid-download or after a killed/failed
@@ -3462,6 +3462,19 @@ async function runScanDirectories() {
         if (typeof existing.channelAvatarUrl === 'string' && existing.channelAvatarUrl !== '') {
           newMetadata[id].channelAvatarUrl = existing.channelAvatarUrl;
         }
+        // v1.41.13 (universal one-offs): the non-YouTube source identity carries
+        // forward with the rest -- the persist-gate checkpoint for the two new
+        // fields (the six-strike class). A universal item CAN re-derive
+        // sourceExtractor/sourceId from its own `[Extractor=id]` bracket on the
+        // next scan (the bridge block does), but carrying them here keeps an
+        // unchanged-item rescan from momentarily dropping them, matching every
+        // sibling field above.
+        if (typeof existing.sourceExtractor === 'string' && existing.sourceExtractor !== '') {
+          newMetadata[id].sourceExtractor = existing.sourceExtractor;
+        }
+        if (typeof existing.sourceId === 'string' && existing.sourceId !== '') {
+          newMetadata[id].sourceId = existing.sourceId;
+        }
       }
       dbChanged = true;
     }
@@ -3719,6 +3732,14 @@ async function runScanDirectories() {
             if (freshItem.channelName) item.channelName = freshItem.channelName;
             if (freshItem.channelAvatarUrl) item.channelAvatarUrl = freshItem.channelAvatarUrl;
           }
+          // v1.41.13: the same mid-scan-reheat gap-fill for the universal
+          // source identity (persist-gate checkpoint). Keyed on sourceExtractor
+          // as a unit (never mix one item's extractor with another's id), and
+          // gap-fill only -- a fresh bracket-re-derivation this scan still wins.
+          if (!item.sourceExtractor && typeof freshItem.sourceExtractor === 'string' && freshItem.sourceExtractor !== '') {
+            item.sourceExtractor = freshItem.sourceExtractor;
+            if (freshItem.sourceId) item.sourceId = freshItem.sourceId;
+          }
         }
       }
 
@@ -3738,6 +3759,43 @@ async function runScanDirectories() {
       // channel identity, exactly as documented (AC12).
       if (freshlyScannedIds.has(item.id) && matchRootFolder(item.filePath, ytdlpDownloadRoots)) {
         const videoId = extractYtdlpVideoId(path.basename(item.name, item.ext));
+        // v1.41.13 (universal one-offs, design D2 touch #6 + D1a): a
+        // non-legacy-YouTube file carries a `[ExtractorKey=id]` bracket. Bridge
+        // its pseudo-channel identity from the universal downloadMeta entry
+        // (keyed by the rendered basename -- design D5), writing
+        // sourceExtractor/sourceId + channelName (the D7 label) onto the item.
+        // If the extractor is Youtube (a proxy-host download -- yewtu.be etc.,
+        // design D1a), ALSO set youtubeId so Share/reheat identity is restored.
+        // extractMediaRef's legacy branch never fires here (that's `videoId`
+        // above); this is strictly the `key=id` shape.
+        const mediaRef = !videoId ? extractMediaRef(path.basename(item.name, item.ext)) : null;
+        if (mediaRef && mediaRef.source) {
+          const isYt = mediaRef.source.toLowerCase() === 'youtube';
+          const consumedU = ytdlp.consumeUniversalDownloadMeta(fresh, path.basename(item.filePath));
+          if (consumedU) {
+            item.sourceExtractor = consumedU.sourceExtractor;
+            item.sourceId = consumedU.sourceId;
+            if (consumedU.channelName) item.channelName = consumedU.channelName;
+            if (typeof consumedU.releaseDate === 'number' && Number.isFinite(consumedU.releaseDate)) {
+              item.releaseDate = consumedU.releaseDate;
+            }
+            if (typeof consumedU.sourceTitle === 'string' && consumedU.sourceTitle !== '') {
+              item.sourceTitle = consumedU.sourceTitle;
+              item.title = consumedU.sourceTitle;
+            }
+            dbChanged = true;
+          } else {
+            // No capture bridged (older download, or capture failed) -- still
+            // record the source identity from the on-disk bracket so delete/
+            // archive (P3) can key off it; the bracket id is the sanitized
+            // form, adequate as a fallback identity.
+            item.sourceExtractor = mediaRef.source;
+            item.sourceId = mediaRef.id;
+            dbChanged = true;
+          }
+          // D1a: a proxy-host YouTube item keeps its real YouTube identity.
+          if (isYt && isSafeVideoId(mediaRef.id)) item.youtubeId = mediaRef.id;
+        }
         if (videoId) {
           // v1.33 T1: the bracket id IS this item's YouTube id -- persist it
           // (the new/updated branch above already set it from the same

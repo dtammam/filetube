@@ -185,3 +185,70 @@ test('a seeded downloadMeta entry with a HOSTILE channelUrl never reaches db.met
     delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
   }
 });
+
+// ---- v1.41.13 (universal one-offs): the non-YouTube scan bridge -------------
+
+test('a scanned NON-YouTube download gets sourceExtractor/sourceId + channelName (pseudo-channel) from a universal downloadMeta entry, keyed by rendered basename, and survives a rescan', async () => {
+  process.env.FILETUBE_YTDLP_ENABLED = 'true';
+  process.env.FILETUBE_YTDLP_DOWNLOAD_DIR = downloadDir;
+  try {
+    const basename = 'A Vimeo Film [Vimeo=76979871].mp4';
+    const filePath = path.join(downloadDir, basename);
+    fs.writeFileSync(filePath, 'not a real video');
+
+    await updateDatabase((db) => {
+      const ns = store.ensureYtdlp(db);
+      // Universal entries are keyed by the rendered on-disk BASENAME (design D5).
+      ns.downloadMeta[basename] = {
+        universal: true,
+        sourceExtractor: 'Vimeo',
+        sourceId: '76979871',
+        channelName: 'Some Studio',
+        capturedAt: Date.now(),
+      };
+    });
+
+    await scanDirectories();
+
+    const id = getMediaId(filePath);
+    let item = loadDatabase().metadata[id];
+    assert.ok(item, 'sanity: the non-YouTube file is indexed');
+    assert.equal(item.sourceExtractor, 'Vimeo');
+    assert.equal(item.sourceId, '76979871');
+    assert.equal(item.channelName, 'Some Studio', 'the pseudo-channel label (D7) is attached');
+    assert.equal(item.channelUrl, undefined, 'no YouTube channelUrl for a non-YouTube item');
+    assert.equal(item.youtubeId, undefined, 'a real non-YouTube item never gets a youtubeId');
+
+    // Consumed, and the identity SURVIVES a second (unchanged-item) scan.
+    assert.equal(store.ensureYtdlp(loadDatabase()).downloadMeta[basename], undefined, 'universal entry consumed');
+    await scanDirectories();
+    item = loadDatabase().metadata[id];
+    assert.equal(item.sourceExtractor, 'Vimeo', 'source identity survives the rescan (persist checkpoint)');
+    assert.equal(item.sourceId, '76979871');
+    assert.equal(item.channelName, 'Some Studio');
+  } finally {
+    delete process.env.FILETUBE_YTDLP_ENABLED;
+    delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
+  }
+});
+
+test('D1a: a proxy-host YouTube download ([Youtube=id] bracket) ALSO gets youtubeId set (Share/reheat identity restored)', async () => {
+  process.env.FILETUBE_YTDLP_ENABLED = 'true';
+  process.env.FILETUBE_YTDLP_DOWNLOAD_DIR = downloadDir;
+  try {
+    const basename = 'Proxied Clip [Youtube=dQw4w9WgXcQ].mp4';
+    const filePath = path.join(downloadDir, basename);
+    fs.writeFileSync(filePath, 'not a real video');
+
+    await scanDirectories();
+
+    const id = getMediaId(filePath);
+    const item = loadDatabase().metadata[id];
+    assert.ok(item, 'sanity: indexed');
+    assert.equal(item.youtubeId, 'dQw4w9WgXcQ', 'D1a: the real YouTube id is recovered from the [Youtube=id] bracket');
+    assert.equal(item.sourceExtractor, 'Youtube', 'and the source is recorded');
+  } finally {
+    delete process.env.FILETUBE_YTDLP_ENABLED;
+    delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
+  }
+});
