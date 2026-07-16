@@ -4310,6 +4310,43 @@ body.ft-css-fullscreen .bottom-nav {
   border-top: 1px solid var(--border-dark);
   color: var(--text-secondary);
 }
+/* v1.41.12 (Dean): per-chapter loop toggle. Each chapter is a flex ROW (seek
+   button + Loop toggle); the toggle is a WORD, not a glyph (v1.39 lesson:
+   transport-glyph codepoints render as forced blue emoji on iOS). Token-
+   driven like the rest of the menu. */
+.chapters-menu-row {
+  display: flex;
+  align-items: stretch;
+}
+.chapters-menu-row .chapters-menu-item {
+  flex: 1 1 auto;
+  min-width: 0; /* let the title ellipsize/clamp instead of forcing the row wide */
+}
+.chapters-menu-loop {
+  flex: 0 0 auto;
+  background: none;
+  border: none;
+  border-left: 1px solid var(--border-dark);
+  color: var(--text-secondary);
+  font-family: var(--font-family);
+  font-size: var(--fs-sm);
+  padding: 8px 12px;
+  cursor: pointer;
+  align-self: center;
+  min-height: 32px;
+}
+.chapters-menu-loop:hover {
+  background: var(--hover-bg, rgba(128, 128, 128, 0.15));
+}
+.chapters-menu-loop.active {
+  color: var(--yt-red);
+  font-weight: bold;
+}
+/* Bar-level armed signal: the Ch button tints while a chapter loop is on, so
+   the state is visible with the menu closed. */
+#chapters-btn.chapter-looping {
+  color: var(--yt-red);
+}
 .chapters-editor-textarea {
   width: 100%;
   font-family: monospace;
@@ -4354,6 +4391,12 @@ body.ft-css-fullscreen .bottom-nav {
   .chapters-menu-close {
     min-width: 44px;
     min-height: 44px;
+  }
+  /* v1.41.12: the per-row Loop toggle keeps a real tap target on phones. */
+  .chapters-menu-loop {
+    min-width: 44px;
+    min-height: 44px;
+    padding: 12px 14px;
   }
 }
 
