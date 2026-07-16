@@ -1,8 +1,8 @@
 ---
 name: principal-engineer
 description: >
-  Handles the Design stage. Produces technical design documents based on approved
-  requirements. Invoked by the engineering-manager via inbox files.
+  LEGACY — retired pipeline agent; do NOT invoke (see CLAUDE.md Legacy section).
+  Formerly handled the Design stage in the handoff-harness pipeline.
 tools: Read, Write, Edit, Glob, Grep
 model: opus
 ---

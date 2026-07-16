@@ -1,4 +1,4 @@
-# Run the Quality Assurance agent.
+# LEGACY (retired pipeline — do not use; see CLAUDE.md): Run the Quality Assurance agent.
 
 Invoke the quality-assurance agent from the mobile workflow (Session 2).
 Use this in Session 2 (specialist workbench) after the EM has routed work via `/prep-qa-review` in Session 1.

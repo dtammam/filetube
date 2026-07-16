@@ -1,4 +1,4 @@
-# Close out the feature, commit, push, create a PR, and optionally walk through a release.
+# LEGACY (retired pipeline — do not use; see CLAUDE.md): Close out the feature, commit, push, create a PR, and optionally walk through a release.
 
 ## What this does
 

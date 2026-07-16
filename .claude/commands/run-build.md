@@ -1,4 +1,4 @@
-# Run the Build Specialist agent.
+# LEGACY (retired pipeline — do not use; see CLAUDE.md): Run the Build Specialist agent.
 
 Invoke the build-specialist specialist agent from the mobile workflow (Session 2).
 Use this in Session 2 (specialist workbench) after the EM has routed work via `/prep-build-verify` in Session 1.

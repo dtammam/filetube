@@ -1,4 +1,4 @@
-# Run the Principal Engineer agent.
+# LEGACY (retired pipeline — do not use; see CLAUDE.md): Run the Principal Engineer agent.
 
 Invoke the principal-engineer specialist agent from the mobile workflow (Session 2).
 Use this in Session 2 (specialist workbench) after the EM has routed work via `/prep-pe-design` in Session 1.

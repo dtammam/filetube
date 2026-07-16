@@ -1,8 +1,8 @@
 ---
 name: build-specialist
 description: >
-  Handles build verification and test execution after implementation tasks.
-  Invoked by the engineering-manager via inbox files.
+  LEGACY — retired pipeline agent; do NOT invoke (see CLAUDE.md Legacy section).
+  Formerly ran build verification and tests in the handoff-harness pipeline.
 tools: Read, Bash, Glob, Grep
 model: haiku
 ---

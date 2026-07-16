@@ -1,4 +1,4 @@
-# Run a code review on the current changes before merging.
+# LEGACY (retired pipeline — do not use; see CLAUDE.md): Run a code review on the current changes before merging.
 
 ## What this does
 

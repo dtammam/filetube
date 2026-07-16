@@ -1,11 +1,10 @@
 ---
 name: engineering-manager
 description: >
-  Use PROACTIVELY for any feature request, bug fix, refactor, or significant change.
-  This is the master SDLC orchestrator. It tracks feature lifecycle state, delegates
-  to specialist agents, and enforces stage-gate discipline. It never writes application
-  code, tests, or build scripts. If the user describes work to be done, this agent
-  should coordinate it.
+  LEGACY — retired pipeline agent; do NOT invoke (lean mode in CLAUDE.md replaced
+  this pipeline; reference in docs/references/legacy-agent-pipeline.md). Former
+  master SDLC orchestrator: tracked feature lifecycle state, delegated to
+  specialist agents, enforced stage-gate discipline.
 tools: Read, Write, Edit, Glob, Grep
 model: opus
 ---

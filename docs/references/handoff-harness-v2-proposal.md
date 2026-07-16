@@ -2,7 +2,7 @@
 
 A proposal for the next revision of
 [handoff-harness](https://github.com/dtammam/handoff-harness), distilled
-from ~90 FileTube releases (v1.26 → v1.41.x) run in lean mode after the
+from ~65 FileTube releases (v1.26 → v1.41.x) run in lean mode after the
 v1 pipeline was retired. Companion to `lean-mode-methodology.md` (the
 portable spec of WHAT to operate); this doc is about WHAT THE HARNESS
 REPO SHIPS and how v1 installs migrate.
@@ -112,8 +112,12 @@ Notable design decisions:
    pipeline routing instructions; keep the project-config block.
 2. Archive the pipeline reference into
    `docs/references/legacy-agent-pipeline.md`; leave `.claude/agents/`
-   files on disk (quality-assurance is still the QA seat; the rest are
-   inert without CLAUDE.md routing to them).
+   files on disk (quality-assurance is still the QA seat) but **mark
+   every retired agent and command description `LEGACY — do not
+   invoke`** — descriptions are injected into every session's tool
+   roster independently of CLAUDE.md, so an un-marked "use PROACTIVELY"
+   orchestrator can still self-route sessions into the dead pipeline
+   (the gate caught exactly this).
 3. Delete `.state/` from the repo; strip the feature-state/inbox
    sections from `session-start.sh`.
 4. Add the adversarial-reviewer agent definition (FileTube currently

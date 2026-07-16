@@ -1,4 +1,4 @@
-# Gather requirements and acceptance criteria.
+# LEGACY (retired pipeline — do not use; see CLAUDE.md): Gather requirements and acceptance criteria.
 
 Routes to the Product Manager agent, who defines goal, scope, constraints, and writes the exec plan.
 

@@ -1,7 +1,7 @@
 # Lean Mode — a portable methodology spec
 
 A repo-agnostic specification of the working method proven on FileTube
-across v1.26 → v1.41.x (~90 releases). Written so it can seed other
+across v1.26 → v1.41.x (~65 releases). Written so it can seed other
 repositories — hand this document to an onboarding agent (or a future
 handoff-harness) and it describes exactly what to install and how to
 operate. FileTube-specific values appear only as `{{PLACEHOLDER}}`
@@ -135,7 +135,7 @@ same agents (preserved context), not fresh ones.
 | -------- | ------- |
 | `CLAUDE.md` | Operating contract: methodology summary + project config |
 | Persistent memory (or `docs/` equivalent) | Shipped records with LESSONS, active-work briefs, environment quirks |
-| `docs/exec-plans/active|completed|future/` | Wave designs; the reviewers' spec |
+| `docs/exec-plans/{active,completed,future}/` | Wave designs; the reviewers' spec |
 | `docs/exec-plans/tech-debt-tracker.md` | Numbered accepted residuals + revisit triggers |
 | `ROADMAP.md` (or CHANGELOG) | Honest shipped-log incl. what the gate caught |
 | `docs/ARCHITECTURE.md`, `docs/CONTRIBUTING.md` | System context + standards the reviewers enforce |

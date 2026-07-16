@@ -22,6 +22,12 @@ on each release; following a pinned `1.4.2` never moves.
 
 ## Cutting a release
 
+> **Scope note:** the steps below are the minimal manual/Docker-tag
+> mechanics. The full release ceremony actually used for this repo
+> (release branch → gate → no-ff merge → tag → push) lives in
+> `CLAUDE.md`; this doc is authoritative only for how tags map to
+> published images.
+
 1. Make sure `main` is green (CI passes) and you're on it:
    ```bash
    git checkout main && git pull

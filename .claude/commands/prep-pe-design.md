@@ -1,4 +1,4 @@
-# Produce a technical design.
+# LEGACY (retired pipeline — do not use; see CLAUDE.md): Produce a technical design.
 
 Routes to the Principal Engineer agent, who reads the exec plan and codebase, then writes an approach, component changes, risks, and alternatives into the exec plan.
 

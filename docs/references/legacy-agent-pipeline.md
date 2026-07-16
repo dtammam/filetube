@@ -59,7 +59,26 @@ autonomous session.
 ## Docs the pipeline introduced (still maintained)
 
 `docs/ARCHITECTURE.md`, `docs/CONTRIBUTING.md`, `docs/RELIABILITY.md`,
-`docs/AGENTS.md` (human-maintained), and the `docs/exec-plans/`
-structure (active/completed/future + tech-debt-tracker) all predate lean
-mode but remain in active use — lean mode kept the artifacts and dropped
-the ceremony.
+and the `docs/exec-plans/` structure (active/completed/future +
+tech-debt-tracker) all predate lean mode but remain in active use — lean
+mode kept the artifacts and dropped the ceremony.
+
+`docs/AGENTS.md` is the exception: its content is pure pipeline
+procedure (stage transitions, agent boundaries, state-file
+coordination), but its header marks it HUMAN-MAINTAINED — no agent may
+modify it. It awaits Dean's own edit or retirement; until then, treat it
+as historical alongside this file.
+
+## Other v1 remnants on disk (inert, kept for the record)
+
+- `scripts/run-*.sh` — specialist launchers; they read `.state/inbox/*`
+  and now fail closed (exit 1) since `.state/` was removed.
+- `setup.sh` — the v1 install verifier; its expected-dirs check now
+  reports `.state/*` as missing. Harmless; do not "fix" by recreating
+  `.state/`.
+- `.harness/manifest.json` — the v1 install manifest; still lists the
+  deleted `.state/**/.gitkeep` files as harness-owned. A future harness
+  update pass should regenerate it.
+- The five retired agent definitions and seventeen retired commands
+  under `.claude/` carry a `LEGACY` marker in their descriptions as of
+  v1.41.19 so tool rosters can't route sessions into the dead pipeline.

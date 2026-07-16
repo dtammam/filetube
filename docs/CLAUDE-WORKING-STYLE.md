@@ -53,7 +53,9 @@ v1.26, and it has been the standard since (CLAUDE.md now codifies it):
    its tests, each green before the next. Commit messages explain the WHY
    (this repo's comments and messages are load-bearing documentation).
 4. **The two-reviewer gate** (details below). Full gate for waves; a
-   single adversarial "slim gate" for hotfixes/minor batches. Dean once
+   single adversarial "slim gate" for hotfixes/minor batches — but
+   **anything that can lose or corrupt data gets the FULL gate, never
+   slim** (Dean's explicit norm: "I cannot lose data"). Dean once
    authorized skipping the gate entirely for a one-line-class fix under
    token pressure — that is the exception, and it was disclosed in the
    release notes.

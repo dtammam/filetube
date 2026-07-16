@@ -1,4 +1,4 @@
-# Implement the next incomplete task.
+# LEGACY (retired pipeline — do not use; see CLAUDE.md): Implement the next incomplete task.
 
 Routes to the Software Developer agent, who writes code and tests for ONE task, runs quality checks, and reports what changed.
 
