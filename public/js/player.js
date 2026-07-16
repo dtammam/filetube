@@ -1618,6 +1618,12 @@ if (typeof module !== 'undefined' && module.exports) {
   setMediaSessionAction('seekto', function (details) {
     var el = activeMediaElement();
     if (!el || details == null || details.seekTime == null) return;
+    // v1.41.12 gate delta (adversarial R2): the lock-screen scrubber is the
+    // SIXTH explicit-seek surface -- and the one with no menu, no seek bar,
+    // no dock-expand. Dragging past the loop end there must disarm exactly
+    // like the in-app seeks (element time is absolute here; background audio
+    // is never liveMode).
+    disarmChapterLoopIfSeekOutside(details.seekTime);
     if (details.fastSeek && 'fastSeek' in el) {
       el.fastSeek(details.seekTime);
     } else {

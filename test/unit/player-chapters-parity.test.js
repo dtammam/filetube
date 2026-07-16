@@ -262,8 +262,12 @@ test('v1.41.12 source-lock: the ended cascade pre-empts for an armed chapter loo
   // suite. Slice the branch body EXACTLY -- everything between the branch
   // open and the progress reset -- and assert its three load-bearing lines.
   const branchBody = body.slice(loopBranch, progressReset);
-  assert.ok(branchBody.includes('prePauseCandidateAt = 0;'),
-    'W2: the v1.27.2 lock-screen-restart kill lives INSIDE the branch');
+  // Delta R1 (mutation-proven AGAIN): a bare .includes() was satisfied by
+  // the cascade's OUTER v1.27.2 kill sitting between the branch's close and
+  // the progress reset. The kill must be the branch's FIRST statement --
+  // anchored to the branch opener, no lookalike can satisfy it.
+  assert.match(branchBody, /if \(chapterLoop\) \{\s*prePauseCandidateAt = 0;/,
+    'W2: the v1.27.2 lock-screen-restart kill is the branch\'s FIRST statement');
   assert.ok(/el\.play\(\)\.catch\(function \(\) \{\}\);/.test(branchBody), 'the branch replays');
   assert.ok(/saveProgressToServer\(chapterLoop\.start\);\s*return;/.test(branchBody),
     'W1: the branch saves the CHAPTER position and returns before the reset -- deleting this return must fail HERE');
@@ -306,7 +310,9 @@ test('gate C1: armChapterLoop trusts ONLY currentData.duration in liveMode (the 
 test('gate W3: every explicit-seek commit point disarms an out-of-bounds chapter loop (scrub, skip live+non-live, digits live+non-live)', () => {
   const src = fs.readFileSync(path.join(ROOT, 'public', 'js', 'player.js'), 'utf8');
   const calls = src.match(/disarmChapterLoopIfSeekOutside\(/g) || [];
-  assert.ok(calls.length >= 6, `helper + 5 call sites expected, found ${calls.length} references`);
+  assert.ok(calls.length >= 7, `helper + 6 call sites expected (incl. the MediaSession seekto lock-screen scrubber -- delta R2), found ${calls.length} references`);
+  assert.match(src, /setMediaSessionAction\('seekto', function \(details\) \{[\s\S]*?disarmChapterLoopIfSeekOutside\(details\.seekTime\);/,
+    'the lock-screen scrubber disarms before it seeks');
   const helper = src.slice(src.indexOf('function disarmChapterLoopIfSeekOutside('), src.indexOf('function disarmChapterLoopIfSeekOutside(') + 900);
   assert.match(helper, /targetAbs < chapterLoop\.start \|\| targetAbs >= chapterLoop\.end/, 'outside = strictly outside [start, end)');
   assert.match(helper, /chaptersBtn\.classList\.remove\('chapter-looping'\)/, 'the bar tint clears with the disarm');
