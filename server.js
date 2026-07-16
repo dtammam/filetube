@@ -3051,6 +3051,29 @@ async function runScanDirectories() {
             tombstone = t;
             tombstoneKey = tid;
           }
+        } else {
+          // v1.41.13 (design D4/D5): the SAME secondary match for a NON-YouTube
+          // survivor. The on-disk bracket is the SANITIZED id, and the
+          // tombstone stored the bracket id observed at delete time -- so match
+          // BRACKET-vs-BRACKET (both dirent-derived, both sanitized; never the
+          // raw sourceId), under the IDENTICAL same-dir + same-ext confinement
+          // the YouTube branch uses. Cross-directory copies of the same source
+          // id are never reaped (the confinement); mtime is no safety net here
+          // either, so the dir+ext guard is load-bearing exactly as above.
+          const scannedRef = extractMediaRef(path.basename(filePath, info.ext));
+          if (scannedRef && scannedRef.source) {
+            for (const [tid, t] of Object.entries(deleteTombstones)) {
+              if (!t || typeof t.deletedAt !== 'number' || !t.sourceRef) continue;
+              if (t.sourceRef.bracketId !== scannedRef.id) continue;
+              if ((t.sourceRef.extractor || '').toLowerCase() !== scannedRef.source.toLowerCase()) continue;
+              if (!matchRootFolder(t.filePath || '', ytdlpDownloadRoots)) continue;
+              if (path.dirname(t.filePath) !== path.dirname(filePath)) continue;
+              if (path.extname(t.filePath) !== path.extname(filePath)) continue;
+              if (tombstone && t.deletedAt <= tombstone.deletedAt) continue;
+              tombstone = t;
+              tombstoneKey = tid;
+            }
+          }
         }
       }
     }
@@ -5730,17 +5753,24 @@ const RECOVERABLE_DELETE_CODES = new Set(['EROFS', 'EACCES', 'EBUSY', 'EPERM']);
 function resolveLeafByBracketId(dir, storedLeaf, stringEntries) {
   const storedExt = path.extname(storedLeaf);
   // SCOPING: only ever fires when the STORED basename itself carries a yt-dlp
-  // `[<11-char id>]` bracket, so a non-yt-dlp file can never be matched by a
-  // coincidental bracket on a neighbour. Confined to `dir` (the stored path's
-  // own already-resolved parent) -- never roams.
-  const wantId = extractYtdlpVideoId(path.basename(storedLeaf, storedExt));
-  if (!wantId) return null;
+  // bracket -- either the legacy YouTube `[<11-char id>]` OR (v1.41.13) the
+  // universal `[<ExtractorKey>=<id>]` -- so a non-yt-dlp file can never be
+  // matched by a coincidental bracket on a neighbour. Confined to `dir` (the
+  // stored path's own already-resolved parent) -- never roams. `extractMediaRef`
+  // parses both shapes; the YouTube leg is byte-identical to the prior
+  // extractYtdlpVideoId behavior (same 11-char bracket, same id).
+  const wantRef = extractMediaRef(path.basename(storedLeaf, storedExt));
+  if (!wantRef) return null;
+  // The exact bracket text this ref renders as on disk: `[id]` for YouTube,
+  // `[Key=id]` for a universal source. Used for the raw-bytes Pass 2 below.
+  const wantBracket = wantRef.source === 'youtube' ? `[${wantRef.id}]` : `[${wantRef.source}=${wantRef.id}]`;
   // Pass 1: the plain string entries readdir already produced (covers the
   // full-width / emoji-ZWJ divergences -- valid UTF-8, so they round-trip).
   let hit = null;
   for (const name of stringEntries) {
     if (path.extname(name) !== storedExt) continue;
-    if (extractYtdlpVideoId(path.basename(name, storedExt)) !== wantId) continue;
+    const nameRef = extractMediaRef(path.basename(name, storedExt));
+    if (!nameRef || nameRef.source !== wantRef.source || nameRef.id !== wantRef.id) continue;
     const candidate = path.join(dir, name);
     // A name carrying invalid UTF-8 bytes decodes to U+FFFD replacement chars
     // in its string form, whose bracket still matches here but whose path does
@@ -5761,7 +5791,7 @@ function resolveLeafByBracketId(dir, storedLeaf, stringEntries) {
   let bufEntries;
   try { bufEntries = fs.readdirSync(dir, { encoding: 'buffer' }); } catch (_) { return null; }
   const extBuf = Buffer.from(storedExt, 'utf8');
-  const bracketBuf = Buffer.from(`[${wantId}]`, 'utf8'); // the id is ASCII -> exact byte match
+  const bracketBuf = Buffer.from(wantBracket, 'utf8'); // ASCII bracket text -> exact byte match
   let rawHit = null;
   for (const buf of bufEntries) {
     if (buf.length < extBuf.length || !buf.subarray(buf.length - extBuf.length).equals(extBuf)) continue;
@@ -6138,8 +6168,18 @@ app.delete('/api/videos/:id', async (req, res) => {
     const ytdlpConfig = ytdlp.parseYtdlpConfig();
     if (ytdlp.isEnabled(ytdlpConfig) && matchRootFolder(filePath, ytdlp.extraScanRoots(ytdlpConfig))) {
       const baseName = path.basename(filePath, path.extname(filePath));
+      // v1.41.13: archive by the item's real SOURCE. A legacy YouTube item
+      // keeps `youtube <id>` (from the [id] bracket or the persisted
+      // youtubeId). A universal item records `<extractor> <sourceId>` -- the
+      // RAW sourceId from metadata (authoritative, matches make_archive_id),
+      // never the sanitized on-disk bracket (design D5). extractMediaRef also
+      // recovers the source for a legacy-less item that carries the new bracket.
       const youtubeId = extractYtdlpVideoId(baseName) || (isSafeVideoId(item.youtubeId) ? item.youtubeId : null);
-      if (youtubeId) ytdlp.recordOneShotInArchive(ytdlpConfig, youtubeId);
+      if (youtubeId) {
+        ytdlp.recordOneShotInArchive(ytdlpConfig, youtubeId, 'youtube');
+      } else if (typeof item.sourceExtractor === 'string' && item.sourceExtractor !== '' && typeof item.sourceId === 'string' && item.sourceId !== '') {
+        ytdlp.recordOneShotInArchive(ytdlpConfig, item.sourceId, item.sourceExtractor);
+      }
     }
   } catch (err) {
     // Best-effort by contract -- a failed archive append must never block
@@ -6181,7 +6221,20 @@ app.delete('/api/videos/:id', async (req, res) => {
         // secondary match never fires -- see the scan's SEAM 2 block).
         const tombstoneYoutubeId = extractYtdlpVideoId(path.basename(filePath, path.extname(filePath)))
           || (isSafeVideoId(item.youtubeId) ? item.youtubeId : null);
-        freshDb.deleteTombstones[item.id] = { filePath, deletedAt: Date.now(), youtubeId: tombstoneYoutubeId };
+        // v1.41.13 (design D4): a non-YouTube item records its source ref too,
+        // so the scan's SEAM-2 secondary match can bind a divergent-spelling
+        // survivor by identity (same folder + ext, exactly like the YouTube
+        // id match). The bracket observed at delete time is stored alongside
+        // the raw ref -- SEAM-2 matches on the bracket pair (both sides read
+        // dirents -> both sanitized), never raw-vs-bracket (design D5).
+        const deleteBracket = extractMediaRef(path.basename(filePath, path.extname(filePath)));
+        const tombstoneSourceRef = (item.sourceExtractor && item.sourceId)
+          ? { extractor: item.sourceExtractor, id: item.sourceId, bracketId: deleteBracket && !tombstoneYoutubeId ? deleteBracket.id : undefined }
+          : null;
+        freshDb.deleteTombstones[item.id] = {
+          filePath, deletedAt: Date.now(), youtubeId: tombstoneYoutubeId,
+          ...(tombstoneSourceRef ? { sourceRef: tombstoneSourceRef } : {}),
+        };
         pruneDeleteTombstones(freshDb.deleteTombstones);
       }
       // tech-debt #5 (v1.30-era): mirror the scan-prune path so a
