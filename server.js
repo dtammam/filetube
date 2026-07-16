@@ -4175,6 +4175,71 @@ app.use((err, req, res, next) => {
   }
   return next(err);
 });
+// v1.41.18 (Dean): kill the header logo FOUC at the SOURCE. The header shells
+// are static HTML, so the "FileTube" text wordmark always painted before
+// common.js could swap in a configured custom logo -- a flash on every refresh.
+// The v1.41.17 client approach (a localStorage flag stamped pre-paint) could
+// not cover the FIRST paint -- the flag is only written after a prior
+// successful load -- and collapsed if storage was cleared/blocked. Fix it
+// server-side: when a custom logo is configured, bake `ft-custom-logo` onto
+// <html> at serve time so the wordmark-hiding CSS (.ft-custom-logo .logo) is in
+// force before ANY parsing. HTML is served no-cache (revalidated each load), so
+// this is always current, needs no bootstrap, and depends on nothing
+// client-side. Only full-page loads/refreshes hit this; in-app SPA nav keeps
+// the header, so there is no FOUC there to fix.
+const FOUC_SHELL_FILES = new Set(['index.html', 'watch.html', 'stats.html', 'setup.html', 'read.html', 'books.html']);
+function shellHtmlForRequestPath(p) {
+  if (p === '/' || p === '/index.html') return 'index.html';
+  if (p === '/books' || p === '/books.html') return 'books.html';
+  const bare = p.startsWith('/') ? p.slice(1) : p;
+  return FOUC_SHELL_FILES.has(bare) ? bare : null;
+}
+function customLogoConfigured() {
+  try {
+    const db = getCachedDatabase();
+    const s = (db && db.settings) || {};
+    return (typeof s.customLogoMime === 'string' && s.customLogoMime !== '')
+      || (typeof s.customLogoDarkMime === 'string' && s.customLogoDarkMime !== '');
+  } catch (_) {
+    return false;
+  }
+}
+// Inject `ft-custom-logo` into the shell's <html> tag, preserving any existing
+// class/attrs. Idempotent: never doubles the class if it is somehow present.
+function injectCustomLogoClass(html) {
+  return html.replace(/<html\b([^>]*)>/i, (full, attrs) => {
+    const a = attrs || '';
+    if (/\bft-custom-logo\b/.test(a)) return full;
+    const classMatch = /\bclass\s*=\s*"([^"]*)"/i.exec(a);
+    if (classMatch) {
+      const replaced = a.replace(classMatch[0], `class="${classMatch[1]} ft-custom-logo"`);
+      return `<html${replaced}>`;
+    }
+    return `<html${a} class="ft-custom-logo">`;
+  });
+}
+// Read a header shell from disk and send it with the custom-logo class injected
+// when one is configured. Returns false (having sent nothing) if the file can't
+// be read, so callers can fall through. Shared by the static-shell middleware
+// below AND the yt-dlp module's gated /subscriptions route (dep-injected), so
+// EVERY header-bearing page gets the identical zero-flash treatment.
+function sendShellHtml(res, absFilePath) {
+  let html;
+  try {
+    html = fs.readFileSync(absFilePath, 'utf8');
+  } catch (_) {
+    return false;
+  }
+  if (customLogoConfigured()) html = injectCustomLogoClass(html);
+  res.setHeader('Cache-Control', 'no-cache');
+  res.type('html').send(html);
+  return true;
+}
+app.get('*', (req, res, next) => {
+  const shell = shellHtmlForRequestPath(req.path);
+  if (!shell) return next();
+  if (!sendShellHtml(res, path.join(__dirname, 'public', shell))) return next();
+});
 // Serve the app assets with revalidation (no-cache) so updated HTML/JS/CSS show up
 // immediately behind caches (browsers, nginx) instead of serving stale files.
 // ETag/Last-Modified still allow cheap 304s when nothing changed.
@@ -9180,6 +9245,12 @@ ytdlp.registerRoutes(app, {
   // (the same circular-require-avoiding bridge `recordRepulledItemMeta` uses).
   // The batch calls it per item, AFTER that item's hydration has persisted.
   relocateHydratedImport: relocateHydratedImportIntoChannelFolder,
+  // v1.41.18 (Dean): the shared shell-renderer so the module's GATED
+  // /subscriptions page (a native 404 when the module is off -- server.js's
+  // static middleware deliberately does NOT hijack it, preserving AC3) gets the
+  // SAME server-side custom-logo-class injection every other header shell does,
+  // killing the text-wordmark FOUC there too.
+  sendShellHtml,
   // v1.41.7 (Dean has NO media backup): the DRY-RUN preview seam. server.js owns
   // the shared `planImportRelocation` decision + `db.settings`, so the yt-dlp
   // module's `POST /api/ytdlp/repull-metadata/preview` route gets this deps-

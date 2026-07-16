@@ -63,6 +63,37 @@ test('style.css hides the text wordmark under html.ft-custom-logo, re-showing th
     'the swapped-in image must be re-shown (its parent .logo is visibility:hidden)');
 });
 
+// The yt-dlp module's /subscriptions page is a 7th header shell, but its route
+// is GATED (a native 404 when the module is off), so server.js's static-shell
+// middleware deliberately does NOT hijack it. Instead the route renders through
+// the shared sendShellHtml helper (dep-injected) so the custom-logo class is
+// baked in server-side -- same zero-flash treatment, no client-flag dependency.
+test('subscriptions.html is an injectable shell (carries the theme guard, <html lang>, and style.css)', () => {
+  const html = fs.readFileSync(path.join(__dirname, '..', '..', 'lib', 'ytdlp', 'views', 'subscriptions.html'), 'utf8');
+  const bodyAt = html.indexOf('<body');
+  const head = html.slice(0, bodyAt);
+  assert.match(html, /class="logo">File<span class="tube">Tube<\/span>/, 'renders the text wordmark');
+  assert.match(head, /setAttribute\('data-theme'/, 'carries the theme guard before <body>');
+  assert.match(html, /<html\b[^>]*lang="en"[^>]*>/i, 'has an injectable <html lang="en"> tag');
+  assert.match(html, /href="\/css\/style\.css"/, 'links style.css so the .ft-custom-logo rule applies');
+});
+
+test('the /subscriptions route renders via the shared sendShellHtml helper (server-side logo injection)', () => {
+  const idx = fs.readFileSync(path.join(__dirname, '..', '..', 'lib', 'ytdlp', 'index.js'), 'utf8');
+  assert.match(idx, /app\.get\('\/subscriptions'[\s\S]{0,800}deps\.sendShellHtml/,
+    'the /subscriptions route must call deps.sendShellHtml so the custom-logo class is injected pre-paint');
+  const srv = fs.readFileSync(path.join(__dirname, '..', '..', 'server.js'), 'utf8');
+  assert.match(srv, /sendShellHtml,/, 'server.js must dep-inject sendShellHtml into the yt-dlp module');
+});
+
+test('server.js injects ft-custom-logo onto <html> only when a custom logo is configured (the pre-paint kill)', () => {
+  const srv = fs.readFileSync(path.join(__dirname, '..', '..', 'server.js'), 'utf8');
+  assert.match(srv, /function injectCustomLogoClass/, 'the injector exists');
+  assert.match(srv, /function customLogoConfigured/, 'gated on whether a logo is actually configured');
+  assert.match(srv, /if \(customLogoConfigured\(\)\) html = injectCustomLogoClass\(html\)/,
+    'the class is injected ONLY when a logo is configured -- no-logo pages keep the text wordmark');
+});
+
 test('common.js is the sole writer of the ft-custom-logo flag and self-heals on 404 / load error', () => {
   const js = fs.readFileSync(path.join(PUBLIC, 'js', 'common.js'), 'utf8');
   // Set when a logo is confirmed present...
