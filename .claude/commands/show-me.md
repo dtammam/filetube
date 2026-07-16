@@ -1,4 +1,4 @@
-# Read-only pipeline status report.
+# LEGACY (retired pipeline — do not use; see CLAUDE.md): Read-only pipeline status report.
 
 Read-only status report for the current SDLC pipeline state.
 

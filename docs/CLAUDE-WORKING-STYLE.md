@@ -1,10 +1,14 @@
 # Working with Dean on FileTube — handoff from Claude Fable 5
 
 Written 2026-07-13 by the outgoing model at Dean's request, after shipping
-v1.25 → v1.37.2 together. This documents how the working relationship
-actually operates — where it deviates from the harness in CLAUDE.md, what
-earned Dean's trust, and how to continue it. Read this alongside the
-persistent memory directory (loaded into your context each session) and
+v1.25 → v1.37.2 together; kept current since. This is the narrative
+companion to CLAUDE.md, which codifies the same methodology as the repo's
+operating contract (as of v1.41.19 the two no longer conflict — CLAUDE.md
+is lean-mode-first and the old pipeline is archived in
+`docs/references/legacy-agent-pipeline.md`). This doc adds what a contract
+can't: how the working relationship actually operates, what earned Dean's
+trust, and how to continue it. Read it alongside the persistent memory
+directory (loaded into your context each session) and
 `docs/exec-plans/tech-debt-tracker.md`.
 
 ## The one-paragraph version
@@ -17,16 +21,16 @@ say-so) and **ruthless honesty** (failures reported verbatim, regressions
 scored as regressions, known gaps disclosed in release notes). Never trade
 either for speed.
 
-## Deviation from the harness: "lean mode"
+## "Lean mode" — how it displaced the harness
 
-CLAUDE.md describes a multi-agent SDLC pipeline (engineering-manager →
-product-manager → principal-engineer → software-developer → ...). Dean
+This repo was seeded with a multi-agent SDLC pipeline (engineering-manager
+→ product-manager → principal-engineer → software-developer → ...). Dean
 explicitly endorsed replacing that ceremony with **lean mode** around
-v1.26, and it has been the standard since:
+v1.26, and it has been the standard since (CLAUDE.md now codifies it):
 
 - **You implement directly** in the main session — no EM/PM/SDE
-  hand-offs, no `.state/` file choreography (those files are stale;
-  ignore them).
+  hand-offs, no `.state/` file choreography (retired; the pipeline
+  reference lives in `docs/references/legacy-agent-pipeline.md`).
 - What you KEEP from the pipeline's spirit: requirements clarity up
   front, a written design for big waves (`docs/exec-plans/active/`),
   task decomposition with per-task tests, and independent review before
@@ -49,7 +53,9 @@ v1.26, and it has been the standard since:
    its tests, each green before the next. Commit messages explain the WHY
    (this repo's comments and messages are load-bearing documentation).
 4. **The two-reviewer gate** (details below). Full gate for waves; a
-   single adversarial "slim gate" for hotfixes/minor batches. Dean once
+   single adversarial "slim gate" for hotfixes/minor batches — but
+   **anything that can lose or corrupt data gets the FULL gate, never
+   slim** (Dean's explicit norm: "I cannot lose data"). Dean once
    authorized skipping the gate entirely for a one-line-class fix under
    token pressure — that is the exception, and it was disclosed in the
    release notes.
@@ -159,22 +165,14 @@ working, not failing.
    libs are allowed (`public/vendor/`, eslint-ignored), new SERVER
    runtime deps are not (ffmpeg + optional yt-dlp only).
 
-## Where things stand (2026-07-13)
+## Where things stand
 
-- Shipped through **v1.37.2** (Books platform + reader; see ROADMAP).
-- Dean's on-device probes for v1.37.x may still surface reader issues —
-  iterate as hotfixes.
-- **Next wave: v1.38 = TTS ("Listen from Here") + the book-folders
-  Settings page UI.** The complete design is in
-  `docs/exec-plans/completed/v1.37.0-books.md` §6 (wave-2 seams) and the
-  memory brief: Piper as a strictly-opt-in binary (yt-dlp posture),
-  espeak-ng fallback, one-chapter-at-a-time serialized synthesis to
-  `tts-cache/<key>.m4a` + `<key>.blocks.json` (blockIndex → startSec is
-  the Listen-from-Here index), playback through the EXISTING
-  background-audio machinery. The server-side text chunker MUST implement
-  `READER_BLOCK_SELECTOR`'s exact block rule (read.js) — bump `ttsRev`
-  in the cache key on any change. Dean's box: ~12GB RAM shared; RAM
-  discipline comes from architecture (spawn-per-job), not engine choice.
+Current state does NOT live in this document — it rots here. Find it in:
+
+- **Persistent memory** (auto-loaded each session): the shipped-release
+  records, active-work briefs, and the lessons index.
+- **ROADMAP.md**: the honest Shipped log and the planned backlog.
+- **docs/exec-plans/**: active plans and the tech-debt tracker.
 
 Take care of this project — and of Dean's trust in the process. It was
 earned one honest gate at a time.

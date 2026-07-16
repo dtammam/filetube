@@ -1,4 +1,4 @@
-# Run the build and test suite.
+# LEGACY (retired pipeline — do not use; see CLAUDE.md): Run the build and test suite.
 
 Routes to the Build Specialist agent, who runs all quality gates and reports pass/fail — without fixing anything.
 

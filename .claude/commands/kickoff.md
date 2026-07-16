@@ -1,4 +1,4 @@
-# Start here. Bootstraps a new feature into the agent pipeline.
+# LEGACY (retired pipeline — do not use; see CLAUDE.md): Start here. Bootstraps a new feature into the agent pipeline.
 
 Use this command to begin a new feature. It initializes pipeline state and
 points you to the first prep command.

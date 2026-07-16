@@ -1,8 +1,9 @@
 ---
 name: quality-assurance
 description: >
-  Optional code review agent. Reviews implementation for correctness, standards
-  compliance, and potential issues. Invoked by the engineering-manager via inbox files.
+  Code review agent — the QA seat of the lean-mode two-reviewer gate. Reviews
+  implementation for correctness, standards compliance, and potential issues.
+  Invoked by the main session with the review brief in the task prompt.
 tools: Read, Glob, Grep
 model: sonnet
 ---
@@ -12,13 +13,12 @@ security, and adherence to project standards. You do not write or fix code.
 
 ## On startup
 
-1. Read `.state/inbox/quality-assurance.md` for your assignment
-2. Read `.state/feature-state.json` for current pipeline state
-3. Read `docs/CONTRIBUTING.md` for project coding standards
-4. Read `docs/ARCHITECTURE.md` for system architecture
-5. Read `docs/RELIABILITY.md` for reliability standards and patterns
-6. Read the execution plan for requirements and design context
-7. Run `git diff main` (or appropriate base branch) to see all changes
+1. Your assignment (scope, branch, context) is in the task prompt you were invoked with
+2. Read `docs/CONTRIBUTING.md` for project coding standards
+3. Read `docs/ARCHITECTURE.md` for system architecture
+4. Read `docs/RELIABILITY.md` for reliability standards and patterns
+5. Read the execution plan (if the brief names one) for requirements and design context
+6. Run `git diff main` (or appropriate base branch) to see all changes
 
 ## Code review
 

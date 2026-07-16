@@ -67,3 +67,6 @@ tmp/
 
 # --- Local agent/editor settings ---
 .claude/settings.local.json
+
+# Legacy handoff-harness pipeline state (retired v1.41.19)
+.state/

@@ -25,22 +25,6 @@ if [ -f "$DEBT_FILE" ]; then
   DEBT_COUNT="$(awk '/^## Active/,/^## Closed/' "$DEBT_FILE" | grep -cE '^\| *[0-9]' || true)"
 fi
 
-# Feature state
-STATE_FILE="$ROOT/.state/feature-state.json"
-FEATURE_STAGE="none"
-FEATURE_NAME=""
-if [ -f "$STATE_FILE" ] && [ -s "$STATE_FILE" ] && [ "$(cat "$STATE_FILE")" != "{}" ]; then
-  FEATURE_NAME="$(grep -o '"feature_name"[[:space:]]*:[[:space:]]*"[^"]*"' "$STATE_FILE" 2>/dev/null | head -1 | sed 's/.*: *"//;s/"//')"
-  FEATURE_STAGE="$(grep -o '"stage"[[:space:]]*:[[:space:]]*"[^"]*"' "$STATE_FILE" 2>/dev/null | head -1 | sed 's/.*: *"//;s/"//')"
-fi
-
-# Pending inbox files
-INBOX_DIR="$ROOT/.state/inbox"
-PENDING_INBOX=""
-if [ -d "$INBOX_DIR" ]; then
-  PENDING_INBOX="$(find "$INBOX_DIR" -maxdepth 1 -name '*.md' -not -empty -exec basename {} .md \; 2>/dev/null | sort)"
-fi
-
 # Output
 echo "=== Session Context ==="
 echo "Branch: $BRANCH ($DIRTY uncommitted changes)"
@@ -49,13 +33,6 @@ if [ -n "$PLANS" ]; then
   echo "$PLANS" | sed 's/^/  - /'
 fi
 echo "Tech debt items: $DEBT_COUNT"
-if [ -n "$FEATURE_NAME" ]; then
-  echo "Active feature: $FEATURE_NAME (stage: $FEATURE_STAGE)"
-fi
-if [ -n "$PENDING_INBOX" ]; then
-  echo "Pending inbox:"
-  echo "$PENDING_INBOX" | sed 's/^/  - /'
-fi
 # Unfilled placeholder detection
 CLAUDE_MD="$ROOT/CLAUDE.md"
 if [ -f "$CLAUDE_MD" ] && grep -q '{{' "$CLAUDE_MD" 2>/dev/null; then

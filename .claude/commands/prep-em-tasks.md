@@ -1,4 +1,4 @@
-# Break the approved design into discrete, implementable tasks.
+# LEGACY (retired pipeline — do not use; see CLAUDE.md): Break the approved design into discrete, implementable tasks.
 
 The engineering-manager reads the exec plan and splits the work into small, independently testable units with clear definitions of done.
 

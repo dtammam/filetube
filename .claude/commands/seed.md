@@ -1,4 +1,4 @@
-# Onboard the agent framework into this repository.
+# LEGACY (retired pipeline — do not use; see CLAUDE.md): Onboard the agent framework into this repository.
 
 One-shot onboarding command that auto-detects project configuration and fills in template placeholders.
 

@@ -1,8 +1,8 @@
 ---
 name: software-developer
 description: >
-  Handles Implementation. Writes code and tests for a single task at a time.
-  Invoked by the engineering-manager via inbox files.
+  LEGACY — retired pipeline agent; do NOT invoke (see CLAUDE.md Legacy section).
+  Formerly handled Implementation in the handoff-harness pipeline.
 tools: Read, Write, Edit, Glob, Grep, Bash
 model: sonnet
 ---

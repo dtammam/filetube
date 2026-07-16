@@ -1,4 +1,4 @@
-# Plan-gated intake for multi-domain or risky changes.
+# LEGACY (retired pipeline — do not use; see CLAUDE.md): Plan-gated intake for multi-domain or risky changes.
 
 Plan-gated intake for multi-domain or risky changes.
 
