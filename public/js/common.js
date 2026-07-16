@@ -2001,7 +2001,8 @@ function buildOneOffModal(doc, handlers) {
   const urlInput = d.createElement('input');
   urlInput.type = 'text';
   urlInput.className = 'oneoff-modal-field';
-  urlInput.setAttribute('placeholder', 'https://www.youtube.com/watch?v=...');
+  // v1.41.13: any yt-dlp-supported site, not just YouTube (universal one-offs).
+  urlInput.setAttribute('placeholder', 'Media URL — any yt-dlp-supported site');
   modal.appendChild(urlInput);
 
   const row = d.createElement('div');
@@ -2093,7 +2094,7 @@ function buildOneOffModal(doc, handlers) {
   downloadBtn.addEventListener('click', () => {
     const url = typeof urlInput.value === 'string' ? urlInput.value.trim() : '';
     if (!url) {
-      statusEl.textContent = 'Enter a video URL.';
+      statusEl.textContent = 'Enter a media URL.';
       return;
     }
     const body = buildOneOffDownloadBody(url, formatSelect.value, qualitySelect.value, filetypeSelect.value, folderInput.value);
