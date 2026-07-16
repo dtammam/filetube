@@ -833,7 +833,11 @@ if (typeof module !== 'undefined' && module.exports) {
           currentTotal = Math.max(0, currentTotal - 1);
           removeCardFromGrid(id);
           updateItemCountBadge();
-          showToast('File deleted.');
+          // v1.41.10 (QA gate): the server distinguishes a clean delete from a
+          // file that could not actually be removed (held open / read-only) --
+          // surfacing only "File deleted." for all of them hid every honest
+          // message this API sends. Same three-way toast as watch.js's delete.
+          showToast(deleteResultToast(data));
         } else {
           showToast('Error deleting file: ' + (data.error || 'unknown error'));
         }

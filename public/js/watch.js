@@ -1862,8 +1862,10 @@ if (typeof module !== 'undefined' && module.exports) {
           // FR-3(a), T2: the post-success alert() was blocking friction --
           // a brief, non-blocking, auto-dismissing toast (common.js) gives
           // the same feedback without requiring a dismiss tap before the
-          // navigate() below can proceed.
-          showToast('File deleted.');
+          // navigate() below can proceed. v1.41.10 (QA gate): the message now
+          // reflects the server's actual outcome (clean / remains / pending)
+          // via the shared deleteResultToast mapper.
+          showToast(deleteResultToast(data));
           // v1.33.1 (QA gate): deleting an item can change the liked COUNT
           // (a liked item's deletion removes it from the liked view) -- the
           // count-gated sidebar entry's cached total must be refreshed, or

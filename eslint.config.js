@@ -111,6 +111,9 @@ module.exports = [
         // arm/disarm reducer (main.js only, but declared alongside its
         // sibling helpers here for consistency).
         showToast: 'readonly',
+        // v1.41.10 (QA gate): shared delete-outcome -> toast-message mapper
+        // (common.js), used by both delete flows (main.js cards + watch.js).
+        deleteResultToast: 'readonly',
         nextArmState: 'readonly',
         THEME_REGISTRY: 'readonly',
         resolveIconSet: 'readonly',

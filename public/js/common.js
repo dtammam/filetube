@@ -4553,6 +4553,23 @@ function formatRepullAckText(body) {
   return '';
 }
 
+// v1.41.10 (QA gate): DELETE /api/videos/:id can succeed three different ways
+// -- clean delete, file-remains (read-only volume / undeletable, scan will
+// retry), and delete-pending (the storage side reports an open handle still
+// pinning the file; it finishes deleting when that handle closes). Both delete
+// flows (main.js cards, watch.js page) used to toast a hardcoded "File
+// deleted." for all three, so the server's honest messages were dead code.
+// One shared mapper so the two flows can't drift.
+function deleteResultToast(data) {
+  if (data && data.deletePending) {
+    return 'Removed from library. The file is still held open on the storage side -- it will finish deleting when that handle closes.';
+  }
+  if (data && data.fileRemainsOnDisk) {
+    return 'Removed from library, but the file itself could not be deleted -- the next scan will retry.';
+  }
+  return 'File deleted.';
+}
+
 function showToast(msg) {
   if (typeof document === 'undefined') return;
   const toast = document.createElement('div');
