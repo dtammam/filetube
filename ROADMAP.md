@@ -80,6 +80,10 @@
 
 ## Shipped
 
+### v1.41.16 — Long-title downloads no longer fail (ENAMETOOLONG) (2026-07-16)
+
+- Dean hit `[Errno 36] Filename too long` downloading a Facebook video. A non-YouTube "title" is often the full post/video **description** — hundreds of characters — and the universal filename template used it whole, overrunning the filesystem's 255-byte filename limit. Fixed: the universal template now caps the title at 100 characters (`%(title).100s`), with the `[id]` bracket and extension still intact, so the id/delete machinery is unaffected. The **displayed** title is untouched — it comes from the captured full title, not the on-disk filename. (The folder in Dean's error — `s34nvideos` — confirms the v1.41.14 per-uploader folder fix is working.) YouTube's own template is left uncapped (YouTube caps titles near 100 chars anyway), keeping it byte-identical.
+
 ### v1.41.15 — Facebook share links that serve a JS interstitial (Dean's on-device pass) (2026-07-16)
 
 - Dean's second test found a Facebook share link (`facebook.com/share/r/…`) still failing "No suitable extractor found", even though v1.41.14 handles share links. Root cause: this link (unlike the first one, which HTTP-redirected) is served by Facebook as a **200 HTML page, not a redirect** — a JS interstitial — so the redirect-only resolver couldn't reach the real video. But the real reel URL *is* embedded in that page's HTML. Fix: the D6 resolver now, on a terminal HTML page, reads a **bounded** slice of the body (512 KB cap, hard wall-clock deadline) and extracts the canonical video URL (`og:url`, or a same-host `/reel/<id>` path), then hands that to yt-dlp. Same-host-confined and re-run through the full SSRF guard, so it can never be steered to an internal or off-site address. Reviewed by a focused adversarial SSRF/DoS pass (SAFE-TO-SHIP; the one slow-drip-DoS finding was fixed in the same change with an absolute read deadline).
