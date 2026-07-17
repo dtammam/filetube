@@ -120,6 +120,13 @@ test('SUGGESTION-7: the token is CANONICAL — a padded/re-encoded mac does not 
   assert.equal(verifySession(`${payloadB64}.${mac}=`, secret, { nowSeconds: now }), null, 'trailing padding refused');
   assert.equal(verifySession(`${payloadB64}.${mac}==`, secret, { nowSeconds: now }), null, 'double padding refused');
   assert.equal(verifySession(`${payloadB64}.${mac} `, secret, { nowSeconds: now }), null, 'trailing space refused');
+  // Delta-regression guard: a mac of 43 UTF-16 CODE UNITS but >43 UTF-8
+  // BYTES (multibyte / astral) must return null, NOT throw — cookies are
+  // attacker-controlled and verifySession's contract is no-throw. A naive
+  // String.length gate would pass these into timingSafeEqual and throw.
+  assert.equal(verifySession(`${payloadB64}.${'é' + mac.slice(1)}`, secret, { nowSeconds: now }), null, 'multibyte mac (43 units/44 bytes) refused, not thrown');
+  assert.doesNotThrow(() => verifySession(`${payloadB64}.${'𝕏' + mac.slice(2)}`, secret, { nowSeconds: now }), 'astral-plane mac must not throw');
+  assert.equal(verifySession(`${payloadB64}.${'𝕏' + mac.slice(2)}`, secret, { nowSeconds: now }), null, 'astral mac refused');
 });
 
 test('verifySession: non-integer/hostile uid/tv shapes are refused (the per-request row re-check depends on them)', () => {
