@@ -37,14 +37,34 @@ afterEach(() => {
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });
 
+// v1.43 (chunk 4b): pins are PER-USER -- the routes read/write through
+// `deps.userChannelPins` (server.js bridges it to user_channel_pins rows).
+// The fake mirrors that backend with an in-memory per-user map; the fake
+// TEST_UID matches the req.user the harness middleware injects below.
+const TEST_UID = 1;
 function makeFakeDeps(initialDb = {}) {
   let db = initialDb;
+  const userPins = new Map();
   return {
     loadDatabase: () => db,
     updateDatabase: (mutatorFn) => Promise.resolve(mutatorFn(db)),
     scanDirectories: async () => {},
     getMediaId: (input) => crypto.createHash('md5').update(input).digest('hex'),
+    userChannelPins: {
+      list: (uid) => (userPins.get(uid) || []).slice().sort((a, b) => (a.order || 0) - (b.order || 0)),
+      replace: (uid, pins) => { userPins.set(uid, pins); },
+    },
   };
+}
+
+// Seed a pin the way the POST route does: the pure reducer against the
+// user's current list, persisted through the per-user backend.
+function seedPin(deps, { channelDir, label }) {
+  const result = store.reduceAddPin(deps.userChannelPins.list(TEST_UID), {
+    id: deps.getMediaId(channelDir), channelDir, label, pinnedAt: new Date().toISOString(),
+  });
+  deps.userChannelPins.replace(TEST_UID, result.pins);
+  return result.record;
 }
 
 function enabledConfig(overrides = {}) {
@@ -66,6 +86,10 @@ function disabledConfig(overrides = {}) {
 async function startTestApp(deps, config) {
   const app = express();
   app.use(express.json());
+  // v1.43: the real app's auth gate sets req.user before any route runs;
+  // this standalone harness injects the same shape (the pin routes key
+  // their per-user reads/writes on req.user.id).
+  app.use((req, res, next) => { req.user = { id: TEST_UID, role: 'admin' }; next(); });
   ytdlp.registerRoutes(app, deps, config);
   const server = await new Promise((resolve) => {
     const s = app.listen(0, '127.0.0.1', () => resolve(s));
@@ -81,9 +105,9 @@ async function startTestApp(deps, config) {
 
 test('POST /api/subscriptions/pins/reorder persists the new order and returns the reordered, order-sorted list', async () => {
   const deps = makeFakeDeps();
-  const pinA = await store.addPin(deps, { channelDir: path.join(tmpDir, 'Chan A'), label: 'Chan A' });
-  const pinB = await store.addPin(deps, { channelDir: path.join(tmpDir, 'Chan B'), label: 'Chan B' });
-  const pinC = await store.addPin(deps, { channelDir: path.join(tmpDir, 'Chan C'), label: 'Chan C' });
+  const pinA = seedPin(deps, { channelDir: path.join(tmpDir, 'Chan A'), label: 'Chan A' });
+  const pinB = seedPin(deps, { channelDir: path.join(tmpDir, 'Chan B'), label: 'Chan B' });
+  const pinC = seedPin(deps, { channelDir: path.join(tmpDir, 'Chan C'), label: 'Chan C' });
 
   const { base, close } = await startTestApp(deps, enabledConfig());
   try {
@@ -106,8 +130,8 @@ test('POST /api/subscriptions/pins/reorder persists the new order and returns th
 
 test('POST /api/subscriptions/pins/reorder with a non-array orderedIds returns 400 and never touches persisted order', async () => {
   const deps = makeFakeDeps();
-  const pinA = await store.addPin(deps, { channelDir: path.join(tmpDir, 'Orig A'), label: 'Orig A' });
-  const pinB = await store.addPin(deps, { channelDir: path.join(tmpDir, 'Orig B'), label: 'Orig B' });
+  const pinA = seedPin(deps, { channelDir: path.join(tmpDir, 'Orig A'), label: 'Orig A' });
+  const pinB = seedPin(deps, { channelDir: path.join(tmpDir, 'Orig B'), label: 'Orig B' });
 
   const { base, close } = await startTestApp(deps, enabledConfig());
   try {
@@ -128,8 +152,8 @@ test('POST /api/subscriptions/pins/reorder with a non-array orderedIds returns 4
 
 test('POST /api/subscriptions/pins/reorder tolerates unknown ids -- ignores them, never errors (store contract passthrough)', async () => {
   const deps = makeFakeDeps();
-  const pinA = await store.addPin(deps, { channelDir: path.join(tmpDir, 'Tol A'), label: 'Tol A' });
-  const pinB = await store.addPin(deps, { channelDir: path.join(tmpDir, 'Tol B'), label: 'Tol B' });
+  const pinA = seedPin(deps, { channelDir: path.join(tmpDir, 'Tol A'), label: 'Tol A' });
+  const pinB = seedPin(deps, { channelDir: path.join(tmpDir, 'Tol B'), label: 'Tol B' });
 
   const { base, close } = await startTestApp(deps, enabledConfig());
   try {
@@ -154,8 +178,8 @@ test('POST /api/subscriptions/pins/reorder response is enriched with each pin\'s
   await store.recordSubscriptionChannelAvatar(deps, channelUrl, 'https://yt3.ggpht.com/reorder-avatar.jpg');
 
   const channelDir = args.resolveChannelDir({ downloadDir: tmpDir }, { name });
-  const pinA = await store.addPin(deps, { channelDir, label: name });
-  const pinB = await store.addPin(deps, { channelDir: path.join(tmpDir, 'No Avatar Chan'), label: 'No Avatar Chan' });
+  const pinA = seedPin(deps, { channelDir, label: name });
+  const pinB = seedPin(deps, { channelDir: path.join(tmpDir, 'No Avatar Chan'), label: 'No Avatar Chan' });
 
   const { base, close } = await startTestApp(deps, enabledConfig());
   try {
@@ -181,8 +205,8 @@ test('POST /api/subscriptions/pins/reorder response is enriched with each pin\'s
 
 test('REGRESSION: db.folders/db.folderSettings stay empty across a pin reorder (structural invariant)', async () => {
   const deps = makeFakeDeps({ folders: ['/movies'], folderSettings: { '/movies': { name: 'Movies' } } });
-  const pinA = await store.addPin(deps, { channelDir: path.join(tmpDir, 'Invariant A'), label: 'Invariant A' });
-  const pinB = await store.addPin(deps, { channelDir: path.join(tmpDir, 'Invariant B'), label: 'Invariant B' });
+  const pinA = seedPin(deps, { channelDir: path.join(tmpDir, 'Invariant A'), label: 'Invariant A' });
+  const pinB = seedPin(deps, { channelDir: path.join(tmpDir, 'Invariant B'), label: 'Invariant B' });
 
   const { base, close } = await startTestApp(deps, enabledConfig());
   try {

@@ -5059,6 +5059,18 @@ async function runBookScan() {
     return true;
   });
 
+  // v1.43: per-user reading positions are book-id-keyed carriers -- pruned
+  // books shed them too (post-commit, the removeMediaState posture; one
+  // transaction for the set). Shelf pins are DIR-keyed, not book-keyed, so
+  // they are deliberately untouched here.
+  if (prunedIds.length > 0) {
+    try {
+      userStore.removeBookState(prunedIds);
+    } catch (err) {
+      console.error('books: failed to prune per-user reading positions (continuing):', err && err.message);
+    }
+  }
+
   // Cover-file hygiene for genuinely pruned books -- best-effort, after the
   // db state is authoritative.
   for (const id of prunedIds) {
@@ -5179,10 +5191,18 @@ app.get('/api/books/tts/config', (req, res) => {
 //
 // A structural twin of `pendingProgress`/`flushPendingProgress` above (see
 // that section's full rationale): reading-position pings are frequent and
-// cheap-to-lose, so they stage here and flush as ONE atomic write per
+// cheap-to-lose, so they stage here and flush as ONE durable write per
 // window. Deliberately NOT routed through `POST /api/progress` -- its value
 // shape ({timestamp,duration}) cannot express a CFI locator, and its flush
-// guard is `db.metadata[id]` (books live in db.books.items).
+// guard is book membership (books live in db.books.items).
+//
+// v1.43 (chunk 4b): reading positions belong to a USER -- same rework as
+// the media coalescer above: keys are `<userId>:<bookId>`, entries carry
+// `{userId, bookId, value}`, the flush batch-upserts `user_book_progress`
+// (one transaction) via the return-false mutator that keeps the
+// deleted-between-ping-and-flush guard race-free and preserves the restore
+// ordering. `db.books.progress` is the frozen pre-auth record; the cutover
+// is total.
 const pendingBookProgress = new Map();
 let bookProgressFlushTimer = null;
 
@@ -5190,23 +5210,29 @@ function currentBookProgressFlushTimer() {
   return bookProgressFlushTimer;
 }
 
+let bookProgressFlushWriteCount = 0;
+function __getBookProgressFlushWriteCount() {
+  return bookProgressFlushWriteCount;
+}
 function flushPendingBookProgress() {
   if (bookProgressFlushTimer) {
     clearTimeout(bookProgressFlushTimer);
     bookProgressFlushTimer = null;
   }
   if (pendingBookProgress.size === 0) return Promise.resolve(false);
-  const snapshot = new Map(pendingBookProgress);
+  const snapshot = [...pendingBookProgress.values()];
   pendingBookProgress.clear();
   return updateDatabase((db) => {
-    const ns = booksStore.ensureBooks(db);
-    for (const [id, value] of snapshot) {
-      // Same deleted-between-ping-and-flush guard as the media coalescer: a
-      // flush must never resurrect progress for a pruned book.
-      if (ns.items[id]) ns.progress[id] = value;
+    const ns = booksStore.readBooks(db);
+    // Same deleted-between-ping-and-flush guard as the media coalescer: a
+    // flush must never resurrect progress for a pruned book.
+    const rows = snapshot.filter((entry) => ns.items[entry.bookId]);
+    if (rows.length > 0) {
+      userStore.setBookProgressBatch(rows);
+      bookProgressFlushWriteCount++;
     }
-    return true;
-  }).catch((err) => {
+    return false; // per-user rows only -- never a doc-table write from a flush
+  }).then(() => true).catch((err) => {
     console.error('Error flushing batched book progress:', err);
   });
 }
@@ -5217,12 +5243,13 @@ function armBookProgressFlushTimerIfNeeded() {
   bookProgressFlushTimer.unref();
 }
 
-// Read-your-writes overlay -- pending first, then the cache's last-flushed
-// value (the effectiveProgress posture).
-function effectiveBookProgress(id) {
-  if (pendingBookProgress.has(id)) return pendingBookProgress.get(id);
-  const ns = booksStore.readBooks(getCachedDatabase());
-  return ns.progress[id] || null;
+// Read-your-writes overlay -- pending first, then the user's committed
+// `user_book_progress` row (the effectiveProgress posture; never the frozen
+// db.books.progress record).
+function effectiveBookProgress(userId, id) {
+  const pending = pendingBookProgress.get(pendingProgressKey(userId, id));
+  if (pending) return pending.value;
+  return userStore.getOneBookProgress(userId, id);
 }
 
 // ---- Books: read APIs + file/cover serving (T5) ------------------------------
@@ -5242,10 +5269,10 @@ function sortBookList(list, sortKey) {
 }
 
 // The public item shape: everything the cards/reader need, progress overlaid
-// (effective = pending-first), spine included only on the detail route (the
-// list stays light for hundreds of books).
-function publicBookListItem(item) {
-  const progress = effectiveBookProgress(item.id);
+// (effective = pending-first, per-user), spine included only on the detail
+// route (the list stays light for hundreds of books).
+function publicBookListItem(item, userId) {
+  const progress = effectiveBookProgress(userId, item.id);
   return {
     id: item.id,
     title: item.title,
@@ -5275,7 +5302,9 @@ app.get('/api/books', (req, res) => {
     // beneath it (path-prefix on the item's file path).
     list = list.filter((i) => typeof i.filePath === 'string' && (i.filePath === root || i.filePath.startsWith(root.endsWith(path.sep) ? root : root + path.sep)));
   }
-  let shaped = list.map(publicBookListItem);
+  // Explicit lambda (NOT `list.map(publicBookListItem)`): map would pass the
+  // array INDEX as the second argument, which is now the userId parameter.
+  let shaped = list.map((item) => publicBookListItem(item, req.user.id));
   if (req.query.filter === 'reading') {
     shaped = shaped.filter((i) => i.progress && i.progress.percent > 0 && i.progress.percent < 98);
     shaped.sort((a, b) => String((b.progress && b.progress.updatedAt) || '').localeCompare(String((a.progress && a.progress.updatedAt) || '')));
@@ -5305,7 +5334,8 @@ app.get('/api/books/folders', (req, res) => {
     if (existing) existing.count += 1;
     else byDir.set(dir, { name: item.folderName || path.basename(dir), dir, count: 1 });
   }
-  const pinByDir = new Map(ns.pins.map((p) => [p.dir, p]));
+  // v1.43: pin state is the signed-in user's own shelf pins.
+  const pinByDir = new Map(userStore.getBookPins(req.user.id).map((p) => [p.dir, p]));
   const folders = [...byDir.values()].map((f) => {
     const pin = pinByDir.get(f.dir);
     return { ...f, pinned: Boolean(pin), pinId: pin ? pin.id : null };
@@ -5317,7 +5347,9 @@ app.get('/api/books/pins', (req, res) => {
   // Pre-shaped for the shared pinned-sidebar renderer: `channelDir` is the
   // field name the renderer already keys on; `href` overrides its default
   // `/?root=` link to the books page (the ONLY shared-renderer widening).
-  const pins = booksStore.listShelfPins({ loadDatabase });
+  // v1.43: the signed-in user's own shelf pins (the store reads them
+  // pin_order-sorted, matching listShelfPins' order contract).
+  const pins = userStore.getBookPins(req.user.id);
   res.json(pins.map((p) => ({ id: p.id, channelDir: p.dir, label: p.label, href: `/books?root=${encodeURIComponent(p.dir)}` })));
 });
 
@@ -5326,10 +5358,10 @@ app.get('/api/books/:id', (req, res) => {
   const item = ns.items[req.params.id];
   if (!item) return res.status(404).json({ error: 'Book not found' });
   res.json({
-    ...publicBookListItem(item),
+    ...publicBookListItem(item, req.user.id),
     filePath: item.filePath,
     spine: Array.isArray(item.spine) ? item.spine : [],
-    locator: (effectiveBookProgress(item.id) || {}).locator || null,
+    locator: (effectiveBookProgress(req.user.id, item.id) || {}).locator || null,
   });
 });
 
@@ -5509,36 +5541,47 @@ app.post(
 
 // ---- Books: shelf pins (T10 server half -- the ytdlp pins route shapes) ----
 
-app.post('/api/books/pins', async (req, res) => {
+// v1.43 (chunk 4b): shelf pins are per-user. The routes keep booksStore's
+// PURE reducers as the single source of pin semantics (idempotent re-pin,
+// max(order)+1 tail append, FIFO cap, stable reorder partition) and persist
+// the reducer output to the user's user_book_pins rows -- the validation
+// (root confinement) is unchanged.
+app.post('/api/books/pins', (req, res) => {
   const ns = booksStore.readBooks(getCachedDatabase());
   const validation = booksStore.validateShelfPinInput(req.body, ns.folders);
   if (!validation.ok) return res.status(400).json({ error: validation.error });
   try {
-    const record = await booksStore.addShelfPin({ loadDatabase, updateDatabase, getMediaId }, validation.value);
-    res.json(record);
+    const { dir, label } = validation.value;
+    const result = booksStore.reduceAddShelfPin(userStore.getBookPins(req.user.id), {
+      id: getMediaId(dir), dir, label, pinnedAt: new Date().toISOString(),
+    });
+    if (result.changed) userStore.setBookPins(req.user.id, result.pins);
+    res.json(result.record);
   } catch (err) {
     res.status(500).json({ error: `Could not pin shelf: ${err.message}` });
   }
 });
 
-app.delete('/api/books/pins/:id', async (req, res) => {
+app.delete('/api/books/pins/:id', (req, res) => {
   try {
-    const removed = await booksStore.removeShelfPin({ loadDatabase, updateDatabase }, req.params.id);
-    if (!removed) return res.status(404).json({ error: 'Pin not found' });
+    const result = booksStore.reduceRemoveShelfPin(userStore.getBookPins(req.user.id), req.params.id);
+    if (!result.changed) return res.status(404).json({ error: 'Pin not found' });
+    userStore.setBookPins(req.user.id, result.pins);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: `Could not unpin shelf: ${err.message}` });
   }
 });
 
-app.post('/api/books/pins/reorder', async (req, res) => {
+app.post('/api/books/pins/reorder', (req, res) => {
   const { orderedIds } = req.body || {};
   if (!Array.isArray(orderedIds) || !orderedIds.every((id) => typeof id === 'string' && id !== '')) {
     return res.status(400).json({ error: 'orderedIds must be an array of non-empty strings' });
   }
   try {
-    await booksStore.reorderShelfPins({ loadDatabase, updateDatabase }, orderedIds);
-    res.json(booksStore.listShelfPins({ loadDatabase }));
+    const reordered = booksStore.reduceReorderShelfPins(userStore.getBookPins(req.user.id), orderedIds);
+    userStore.setBookPins(req.user.id, reordered);
+    res.json(userStore.getBookPins(req.user.id));
   } catch (err) {
     res.status(500).json({ error: `Could not reorder shelf pins: ${err.message}` });
   }
@@ -5578,7 +5621,11 @@ app.post('/api/books/:id/progress', (req, res) => {
   } else {
     clean.page = locator.page;
   }
-  pendingBookProgress.set(item.id, { locator: clean, percent, updatedAt: new Date().toISOString() });
+  pendingBookProgress.set(pendingProgressKey(req.user.id, item.id), {
+    userId: req.user.id,
+    bookId: item.id,
+    value: { locator: clean, percent, updatedAt: new Date().toISOString() },
+  });
   armBookProgressFlushTimerIfNeeded();
   res.json({ success: true });
 });
@@ -9927,6 +9974,16 @@ ytdlp.registerRoutes(app, {
   getMediaId,
   recordRepulledItemMeta,
   enumerateRepullableItems,
+  // v1.43 (chunk 4b): channel pins are per-user (user_channel_pins rows).
+  // The pin routes keep lib/ytdlp/store.js's PURE reducers as the single
+  // source of pin semantics and persist through this two-call backend --
+  // deps-injected like every other server-owned primitive (the same
+  // circular-require-avoiding bridge as the rest of this object). `list`
+  // returns pin_order-sorted records (the listPins order contract).
+  userChannelPins: {
+    list: (userId) => userStore.getChannelPins(userId),
+    replace: (userId, pins) => userStore.setChannelPins(userId, pins),
+  },
   // v1.41.6: the reheat's import-relocation seam -- server.js owns the move +
   // id re-key machinery (`moveItemToFolder`) and `db.settings`, so the yt-dlp
   // module gets this deps-injected like every other server-owned primitive
@@ -10134,6 +10191,7 @@ module.exports = {
   flushPendingBookProgress,
   currentBookProgressFlushTimer,
   effectiveBookProgress,
+  __getBookProgressFlushWriteCount,
   matchRootFolder,
   // C1 (v1.24 UX Round, Wave 3): move-files + id re-key -- re-exported so
   // tests (and T19's Wave 7 physical-reconcile move) can call these directly.
