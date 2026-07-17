@@ -132,6 +132,36 @@ to today's behavior with no config changes needed):
 | `TRANSCODE_DIR` | `<DATA_DIR>/transcoded` | Where the on-demand transcoded MP4 cache is written. Point it at a different disk/mount if you want the cache off your main data volume (e.g. faster local storage, or a large external/NFS share). The directory is created on boot if missing; the existing size-cap eviction and age-retention sweep both key off this same directory. |
 | `TRANSCODE_CRF` | `23` | The x264 CRF (quality) used for both on-demand transcode paths (cached and live). Lower = higher quality/larger files, higher = smaller files/lower quality. Valid range is `1`-`51`; anything unset/invalid/out of range falls back to `23` (a warning is logged, the server never crashes). Opt-in only — the default is unchanged. |
 
+### The database (v1.42+: SQLite) and upgrading from v1.41 or earlier
+
+From v1.42, FileTube's library state lives in `DATA_DIR/filetube.db`
+(SQLite via Node's built-in driver — no new dependencies). **The migration
+is automatic and non-destructive:** the first v1.42+ boot imports your
+existing `db.json` and then never touches it again — the file stays
+byte-for-byte intact forever, so an older FileTube version can keep
+running against it (e.g. prod on the old tag while you trial the new one
+against the same media from a different `DATA_DIR`). If `db.json` is
+unreadable, boot stops with a clear message and creates nothing — it can
+never silently start you over with an empty library.
+
+Before upgrading you can dry-run the migration against your real database
+(nothing is written anywhere permanent; your db.json is hash-verified
+untouched):
+
+```bash
+node scripts/migrate-check.js /path/to/DATA_DIR/db.json
+```
+
+Two related tools/levers:
+
+| Variable / tool | What it does |
+|-----------------|---------------|
+| `FILETUBE_READ_ONLY_MEDIA=1` | Beta safe mode for a second instance sharing your media folders: deletes, moves, downloads, re-pulls, reheat, and skip-list writes all refuse with a clear error, the scheduled poll is a no-op, and the scan will never remove a media file. Playback, likes, progress, and settings work normally. |
+| `GET /api/admin/backup` | Downloads a full JSON backup of the instance (library state, settings, custom logo). `POST /api/admin/restore` restores it. In v1.42 these are as open as the rest of the API; v1.43 puts them behind admin auth. |
+
+v1.42 also raises the minimum Node version to **22.13** (the Docker image
+already ships Node 22; only bare-metal installs on Node 20 need to upgrade).
+
 ### Staying up to date (or pinning a version)
 
 Set `FILETUBE_IMAGE_TAG` in your `.env` to choose how you track updates:
@@ -293,7 +323,7 @@ time — there is no runtime or in-app auto-update. To pick up a newer
 ## Local Development (Without Docker)
 
 ### Prerequisites
-- Node.js (v20+; the Docker image ships Node 22 LTS)
+- Node.js v22.13+ (the SQLite persistence layer uses the `node:sqlite` builtin; the Docker image ships Node 22 LTS)
 - FFmpeg installed and in your system PATH (optional, but required for video thumbnails).
 
 ### Run steps

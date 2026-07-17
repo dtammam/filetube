@@ -53,6 +53,13 @@ bin/
 # db.json holds folder paths + watch progress; .thumbnails/ is a regenerable cache.
 # In Docker these live under the mounted DATA_DIR (./data); in local dev they land in the repo root.
 /db.json
+# v1.42: the SQLite store + WAL sidecars (same reasoning as db.json above).
+/filetube.db
+/filetube.db-wal
+/filetube.db-shm
+/filetube.db.tmp
+/filetube.db.tmp-wal
+/filetube.db.tmp-shm
 .thumbnails/
 /data/
 

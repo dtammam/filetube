@@ -71,6 +71,19 @@ const booksZip = require('./lib/books/zip'); // chapter XHTML extraction for TTS
 // lib/stats.js's header comment and `GET /api/stats` below for the full
 // live-compute rationale.
 const stats = require('./lib/stats');
+// v1.42: FileTube requires Node >= 22.13 (the first line where node:sqlite
+// is available unflagged; engines bumped from >=20 — a BREAKING change,
+// disclosed in the release notes). Checked explicitly BEFORE the adapter
+// require so an old Node fails with THIS message instead of a cryptic
+// module-not-found deep in a require chain. The Docker image (node:22-alpine)
+// already satisfies it.
+{
+  const [major, minor] = process.versions.node.split('.').map(Number);
+  if (major < 22 || (major === 22 && minor < 13)) {
+    console.error(`FATAL: FileTube v1.42+ requires Node >= 22.13 (found ${process.versions.node}). The SQLite persistence layer is built on the node:sqlite builtin. Upgrade Node (the official Docker image already ships Node 22).`);
+    process.exit(1);
+  }
+}
 // v1.42: the SQLite persistence adapter — the ONLY module that touches
 // node:sqlite (source-locked). server.js owns the seam (loadDatabase/
 // saveDatabase/updateDatabase/getCachedDatabase, all unchanged in contract);
