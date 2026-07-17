@@ -831,6 +831,14 @@ if (typeof module !== 'undefined' && module.exports) {
     if (tapPrev) tapPrev.addEventListener('click', () => adapter && adapter.prev(), { signal });
     if (tapNext) tapNext.addEventListener('click', () => adapter && adapter.next(), { signal });
     document.addEventListener('keydown', (event) => {
+      // v1.43.1 B3: never page-flip while the user is TYPING (header search,
+      // any modal input) -- the same typing-context guard the player.js
+      // shortcut switch has carried since v1.16, which this handler was
+      // missing entirely: an arrow key pressed mid-word in the search box
+      // silently flipped the book underneath.
+      const el = document.activeElement;
+      const tag = (el && el.tagName) || '';
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(tag) || (el && el.isContentEditable)) return;
       if (event.key === 'ArrowRight') { if (adapter) adapter.next(); }
       if (event.key === 'ArrowLeft') { if (adapter) adapter.prev(); }
     }, { signal });

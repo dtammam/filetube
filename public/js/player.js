@@ -3836,6 +3836,25 @@ if (typeof module !== 'undefined' && module.exports) {
       playerControls.addEventListener('click', function (e) { e.stopPropagation(); });
     }
 
+    // v1.43.1 B3 (Dean: "space pauses the video"): a POINTER click on any
+    // player button (play/pause, skip, mute, CC, fullscreen, chapters rows)
+    // leaves that button FOCUSED. The keyboard-shortcut switch below
+    // correctly early-returns while a BUTTON has focus (so Space/Enter keep
+    // activating focused controls for keyboard users) -- but it can't
+    // preventDefault there, so after a mouse/tap on e.g. the pause button,
+    // the NEXT Space keystroke re-fires that button via the browser's
+    // click-the-focused-button default and toggles playback the user never
+    // asked for. Fix at the focus source: blur pointer-driven button clicks.
+    // `e.detail === 0` is a KEYBOARD activation (Enter/Space synthesize a
+    // detail-0 click) -- those keep focus, so Tab-navigation is untouched.
+    // Capture phase, because the control bar's delegated stopPropagation
+    // above would keep a bubble-phase listener from ever seeing bar clicks.
+    host.addEventListener('click', function (e) {
+      if (e.detail === 0) return; // keyboard activation -- a11y focus stays
+      var btn = e.target && e.target.closest ? e.target.closest('button') : null;
+      if (btn) btn.blur();
+    }, true);
+
     if (ppBtn) {
       ppBtn.addEventListener('click', function () {
         primeBackgroundAudioElement(); // v1.27.0: synchronous gesture-prime BEFORE the play() below (DOCKED + non-native-controls FULL path)
