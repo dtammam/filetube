@@ -22,7 +22,6 @@ const fs = require('node:fs');
 const path = require('node:path');
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-hydrate-rescan-'));
 const DATA_DIR = process.env.DATA_DIR;
-const DB_FILE = path.join(DATA_DIR, 'db.json');
 
 const cp = require('child_process');
 
@@ -53,8 +52,9 @@ const { test, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert');
 const {
   scanDirectories, getMediaId, saveDatabase, loadDatabase, updateDatabase, recordRepulledItemMeta,
-  enumerateRepullableItems,
+  enumerateRepullableItems, __resetDatabaseForTests,
 } = require('../../server');
+const { readPersistedDatabase } = require('../../lib/db/sqlite');
 const ytdlp = require('../../lib/ytdlp');
 
 function baseSettings() {
@@ -71,8 +71,10 @@ const HYDRATED = {
 
 let libraryDir;
 
-beforeEach(() => {
-  if (fs.existsSync(DB_FILE)) fs.rmSync(DB_FILE);
+beforeEach(async () => {
+  // v1.42: the between-test reset (an OPEN SQLite database cannot be rm'd out
+  // from under its connection the way db.json could).
+  await __resetDatabaseForTests();
   // A NORMAL library root -- deliberately NOT FileTube's yt-dlp download dir.
   // This is exactly where Dean's MeTube downloads live.
   libraryDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-metube-library-'));
@@ -84,8 +86,11 @@ afterEach(() => {
   fs.rmSync(libraryDir, { recursive: true, force: true });
 });
 
+// v1.42: persisted-state reads go through the sanctioned SQLite helper (a
+// second, read-only connection). An empty metadata namespace persists as zero
+// rows (absent), hence the `|| {}`.
 function readItem(id) {
-  return JSON.parse(fs.readFileSync(DB_FILE, 'utf8')).metadata[id];
+  return (readPersistedDatabase(DATA_DIR).metadata || {})[id];
 }
 
 // Index a bracket-less import (the MeTube shape), then hydrate it exactly the

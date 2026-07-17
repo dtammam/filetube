@@ -10,12 +10,12 @@ const fs = require('node:fs');
 const path = require('node:path');
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-settings-cache-'));
 const DATA_DIR = process.env.DATA_DIR;
-const DB_FILE = path.join(DATA_DIR, 'db.json');
 const TRANSCODE_DIR = path.join(DATA_DIR, 'transcoded');
 
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
-const { app, armScanTimer, currentScanTimer, saveDatabase } = require('../../server');
+const { app, armScanTimer, currentScanTimer, saveDatabase, __resetDatabaseForTests, __failNextSaveForTests } = require('../../server');
+const { readPersistedDatabase } = require('../../lib/db/sqlite');
 
 const DEFAULT_SETTINGS = {
   scanIntervalMinutes: 30,
@@ -38,8 +38,10 @@ function writeDb(db) {
   saveDatabase(db);
 }
 
+// v1.42: persisted-state reads go through the sanctioned second-connection
+// helper (SQLite replaced db.json).
 function readDb() {
-  return JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+  return readPersistedDatabase(DATA_DIR);
 }
 
 // Drop a dummy transcoded MP4 (no FFmpeg needed) with a known size.
@@ -70,10 +72,12 @@ after(async () => {
   if (leftover) clearInterval(leftover);
 });
 
-beforeEach(() => {
-  // Start every test from a fresh db.json and an empty TRANSCODE_DIR so
-  // settings/cache assertions aren't polluted across cases.
-  if (fs.existsSync(DB_FILE)) fs.rmSync(DB_FILE);
+beforeEach(async () => {
+  // Start every test from a fresh persisted store and an empty TRANSCODE_DIR
+  // so settings/cache assertions aren't polluted across cases (v1.42: an
+  // OPEN SQLite database cannot be rm'd out from under its connection the
+  // way db.json could).
+  await __resetDatabaseForTests();
   fs.mkdirSync(TRANSCODE_DIR, { recursive: true });
   for (const name of fs.readdirSync(TRANSCODE_DIR)) fs.rmSync(path.join(TRANSCODE_DIR, name));
 });
@@ -150,20 +154,18 @@ test('POST /api/settings persists a valid partial update and a subsequent GET re
 test('POST /api/settings returns 500 JSON (not a hang) when persisting the settings write fails', async () => {
   writeDb({ folders: [], folderSettings: {}, progress: {}, metadata: {}, settings: baseSettings() });
 
-  const realWriteFileSync = fs.writeFileSync;
-  fs.writeFileSync = () => { throw new Error('simulated disk failure'); };
-  try {
-    const res = await fetch(`${base}/api/settings`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pruneMissing: false }),
-    });
-    assert.equal(res.status, 500);
-    const json = await res.json();
-    assert.equal(typeof json.error, 'string');
-  } finally {
-    fs.writeFileSync = realWriteFileSync;
-  }
+  // v1.42: the fs.writeFileSync stub can't intercept SQLite; the sanctioned
+  // replacement is __failNextSaveForTests() — the same one-shot "this write
+  // dies" force, injected at the seam instead of under it (self-disarms).
+  __failNextSaveForTests(new Error('simulated disk failure'));
+  const res = await fetch(`${base}/api/settings`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pruneMissing: false }),
+  });
+  assert.equal(res.status, 500);
+  const json = await res.json();
+  assert.equal(typeof json.error, 'string');
 
   // Untouched by the failed write -- the prior settings must still be intact.
   assert.equal(readDb().settings.pruneMissing, true, 'a failed save must not leave a partially-applied change');

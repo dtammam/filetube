@@ -25,7 +25,6 @@ const fs = require('node:fs');
 const path = require('node:path');
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-progress-coalescer-'));
 process.env.PROGRESS_FLUSH_MS = '150';
-const DB_FILE = path.join(process.env.DATA_DIR, 'db.json');
 const THUMBNAIL_DIR = path.join(process.env.DATA_DIR, '.thumbnails');
 fs.mkdirSync(THUMBNAIL_DIR, { recursive: true });
 
@@ -42,7 +41,9 @@ const {
   flushPendingProgress,
   currentProgressFlushTimer,
   __getSaveDatabaseCallCount,
+  __failNextSaveForTests,
 } = require('../../server');
+const { readPersistedDatabase } = require('../../lib/db/sqlite');
 
 let server;
 let base;
@@ -344,29 +345,35 @@ test('AC4.2: the scan\'s final merge triggers exactly 1 saveDatabase call for an
 
 // ---- AC4.2: torn-write round-trip (real mutations never leave a torn file) ----
 
-test('AC4.2: a simulated crash mid-write during POST /api/config never leaves db.json torn -- the prior file survives byte-identical and still parses', async () => {
+test('AC4.2: a simulated crash mid-write during POST /api/config never tears the store -- 500 surfaces, the prior committed state survives intact', async () => {
+  // v1.42: the old fs.renameSync stub can't intercept SQLite; the sanctioned
+  // replacement is __failNextSaveForTests() — the same one-shot "this write
+  // dies" force, injected at the seam instead of under it.
   saveDatabase({
     folders: ['/keep-me'], folderSettings: {}, progress: {}, metadata: {}, settings: baseSettings(),
   });
-  const before = fs.readFileSync(DB_FILE, 'utf8');
+  const before = readPersistedDatabase(process.env.DATA_DIR);
 
-  const realRenameSync = fs.renameSync;
-  fs.renameSync = () => { throw new Error('simulated crash before rename'); };
-  try {
-    const res = await fetch(`${base}/api/config`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ folders: [] }),
-    });
-    assert.equal(res.status, 500, 'a crash mid-write must surface as a 500, not a silent false success');
-  } finally {
-    fs.renameSync = realRenameSync;
-  }
+  __failNextSaveForTests(new Error('simulated crash before commit'));
+  const res = await fetch(`${base}/api/config`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ folders: [] }),
+  });
+  assert.equal(res.status, 500, 'a crash mid-write must surface as a 500, not a silent false success');
 
-  const after = fs.readFileSync(DB_FILE, 'utf8');
-  assert.equal(after, before, 'db.json must be byte-identical to its pre-crash content -- never torn/partially written');
-  assert.doesNotThrow(() => JSON.parse(after), 'db.json must still parse as valid JSON after a crash-before-rename');
-  assert.deepEqual(JSON.parse(after).folders, ['/keep-me'], 'the prior, fully-committed state survives intact');
+  const after = readPersistedDatabase(process.env.DATA_DIR);
+  assert.deepEqual(after, before, 'the persisted state must be identical to its pre-crash commit -- never torn/partially written');
+  assert.deepEqual(after.folders, ['/keep-me'], 'the prior, fully-committed state survives intact');
+
+  // And the chain is not wedged: the next clean write commits normally.
+  const res2 = await fetch(`${base}/api/config`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ folders: [] }),
+  });
+  assert.equal(res2.status, 200);
+  assert.deepEqual(readPersistedDatabase(process.env.DATA_DIR).folders, [], 'a later clean write proceeds normally');
 });
 
 // ---- AC4.3 (converse): bounded, progress-only relaxation ------------------
@@ -380,7 +387,7 @@ test('AC4.3: a crash simulated at an arbitrary point relative to a flush leaves 
     },
     settings: baseSettings(),
   });
-  const before = fs.readFileSync(DB_FILE, 'utf8');
+  const before = readPersistedDatabase(process.env.DATA_DIR);
 
   // A ping is staged (queued, not yet flushed) -- exactly the window AC4.3
   // describes as "an arbitrary point relative to a flush".
@@ -388,16 +395,14 @@ test('AC4.3: a crash simulated at an arbitrary point relative to a flush leaves 
   assert.ok(pendingProgress.has('vidCrash'));
 
   // Simulate a hard crash (SIGKILL-equivalent): the write never even starts --
-  // db.json on disk is whatever it was BEFORE this ping was staged.
-  const onCrash = fs.readFileSync(DB_FILE, 'utf8');
-  assert.equal(onCrash, before, 'db.json on disk is untouched by an unflushed pending ping -- never torn');
-  assert.doesNotThrow(() => JSON.parse(onCrash), 'db.json must still parse via loadDatabase\'s corrupt-JSON-recovery contract (here: is simply valid, untouched JSON)');
+  // the persisted store is whatever it was BEFORE this ping was staged.
+  const onCrash = readPersistedDatabase(process.env.DATA_DIR);
+  assert.deepEqual(onCrash, before, 'the persisted store is untouched by an unflushed pending ping -- never torn');
 
-  const recovered = JSON.parse(onCrash);
-  assert.equal(recovered.progress.vidCrash, undefined, 'the lost data is bounded to the unflushed watch position only');
-  assert.deepEqual(recovered.folders, ['/untouched-folder'], 'folders/metadata/settings are NEVER at risk from the progress coalescer');
-  assert.ok(recovered.metadata.vidCrash, 'metadata itself (unlike progress) is never at risk');
-  assert.ok(recovered.metadata.vidUnrelated, 'an unrelated item is completely unaffected');
+  assert.equal((onCrash.progress || {}).vidCrash, undefined, 'the lost data is bounded to the unflushed watch position only');
+  assert.deepEqual(onCrash.folders, ['/untouched-folder'], 'folders/metadata/settings are NEVER at risk from the progress coalescer');
+  assert.ok(onCrash.metadata.vidCrash, 'metadata itself (unlike progress) is never at risk');
+  assert.ok(onCrash.metadata.vidUnrelated, 'an unrelated item is completely unaffected');
 });
 
 test('AC4.3: after a normal flush (not a crash), the position IS durable on disk and parses correctly', async () => {
@@ -408,7 +413,7 @@ test('AC4.3: after a normal flush (not a crash), the position IS durable on disk
   });
   await postProgress('vidDurable', 88, 100);
   await flushPendingProgress();
-  const onDisk = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+  const onDisk = readPersistedDatabase(process.env.DATA_DIR);
   assert.equal(onDisk.progress.vidDurable.timestamp, 88);
 });
 

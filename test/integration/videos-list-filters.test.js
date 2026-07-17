@@ -12,11 +12,10 @@ const os = require('node:os');
 const fs = require('node:fs');
 const path = require('node:path');
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-videos-filters-'));
-const DB_FILE = path.join(process.env.DATA_DIR, 'db.json');
 
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
-const { app, saveDatabase } = require('../../server');
+const { app, saveDatabase, __resetDatabaseForTests } = require('../../server');
 
 let server;
 let base;
@@ -33,8 +32,9 @@ after(async () => {
   await new Promise((resolve) => server.close(resolve));
 });
 
-beforeEach(() => {
-  if (fs.existsSync(DB_FILE)) fs.rmSync(DB_FILE);
+beforeEach(async () => {
+  // v1.42: SQLite replaced db.json; the sanctioned between-test reset.
+  await __resetDatabaseForTests();
 });
 
 // v1.30 A3 (in-memory DB read cache): seed via the exported `saveDatabase()`

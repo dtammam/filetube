@@ -9,11 +9,11 @@ const os = require('node:os');
 const fs = require('node:fs');
 const path = require('node:path');
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-default-view-'));
-const DB_FILE = path.join(process.env.DATA_DIR, 'db.json');
 
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
-const { app, saveDatabase } = require('../../server');
+const { app, saveDatabase, __resetDatabaseForTests } = require('../../server');
+const { readPersistedDatabase } = require('../../lib/db/sqlite');
 
 const DEFAULT_SETTINGS = {
   scanIntervalMinutes: 30,
@@ -49,8 +49,9 @@ after(async () => {
   await new Promise((resolve) => server.close(resolve));
 });
 
-beforeEach(() => {
-  if (fs.existsSync(DB_FILE)) fs.rmSync(DB_FILE);
+beforeEach(async () => {
+  // v1.42: SQLite replaced db.json; the sanctioned between-test reset.
+  await __resetDatabaseForTests();
 });
 
 test('GET /api/settings never omits defaultView, and it defaults to "" (Most Recent) on a fresh db', async () => {
@@ -85,7 +86,7 @@ test('GET /api/settings after a POST reflects the persisted defaultView (round-t
   const getJson = await (await fetch(`${base}/api/settings`)).json();
   assert.equal(getJson.defaultView, '/media/music');
 
-  const onDisk = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+  const onDisk = readPersistedDatabase(process.env.DATA_DIR);
   assert.equal(onDisk.settings.defaultView, '/media/music', 'persisted to db.json, not just returned in the response');
 });
 
@@ -101,7 +102,7 @@ test('POST /api/settings rejects a non-string defaultView with 400 and mutates n
   const json = await res.json();
   assert.equal(typeof json.error, 'string');
 
-  const onDisk = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+  const onDisk = readPersistedDatabase(process.env.DATA_DIR);
   assert.equal(onDisk.settings.defaultView, '/media/keep', 'a rejected request must leave the prior value untouched');
 });
 
@@ -127,6 +128,6 @@ test('POST /api/settings with an invalid defaultView does not partially persist 
   });
   assert.equal(res.status, 400);
 
-  const onDisk = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+  const onDisk = readPersistedDatabase(process.env.DATA_DIR);
   assert.deepEqual(onDisk.settings, baseSettings(), 'no key from the rejected request may be persisted, not even the otherwise-valid one');
 });

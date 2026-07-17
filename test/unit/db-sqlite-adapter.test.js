@@ -198,6 +198,59 @@ test('unknown keys throw instead of being silently dropped (top-level and contai
   }
 });
 
+test('save: a MID-TRANSACTION statement failure rolls back every row of that save (snapshot not advanced)', () => {
+  const a = new SqliteAdapter(dbPath(), { log: () => {} });
+  try {
+    const db = fullFixture();
+    delete db.metadata.vid1.viewCount;
+    delete db.metadata.vid3.viewCount;
+    a.save(db);
+    const before = readPersistedDatabase(dir);
+
+    // Stub the kv upsert so it fails AFTER the singleton writes of the same
+    // save have already executed inside the open transaction — the rollback
+    // must discard those too, and the diff snapshot must not advance.
+    const realUpsertKv = a.stmts.upsertKv;
+    a.stmts.upsertKv = { run: () => { throw new Error('simulated statement failure'); } };
+    const db2 = a.load();
+    db2.folders = ['/never-committed']; // singleton write, executes before the kv poison
+    db2.metadata.vid2.title = 'never';  // kv write, hits the stub
+    try {
+      assert.throws(() => a.save(db2), /simulated statement failure/);
+    } finally {
+      a.stmts.upsertKv = realUpsertKv;
+    }
+
+    assert.deepStrictEqual(readPersistedDatabase(dir), before,
+      'EVERY row of the failed transaction rolled back — including the singleton written before the poison');
+
+    // Snapshot must still reflect disk: the same change saved cleanly now
+    // must write BOTH rows (had the snapshot advanced, the diff would skip them).
+    const db3 = a.load();
+    db3.folders = ['/never-committed'];
+    db3.metadata.vid2.title = 'never';
+    const stats = a.save(db3);
+    assert.deepStrictEqual(stats, { rowsWritten: 2, rowsDeleted: 0 });
+  } finally {
+    a.close();
+  }
+});
+
+test('save: an undefined value is dropped silently — matching JSON.stringify\'s legacy db.json semantics', () => {
+  // Pre-v1.42, JSON.stringify(db) simply OMITTED keys whose value was
+  // undefined; the diff-save preserves that exact behavior (stringify yields
+  // undefined on both sides of the compare, so no row is written). Locked
+  // here so a future refactor doesn't accidentally turn it into a NOT NULL
+  // crash or a literal "undefined" string row.
+  const a = new SqliteAdapter(dbPath(), { log: () => {} });
+  try {
+    a.save({ folders: [], metadata: { real: { id: 'real' }, ghost: undefined } });
+    assert.deepStrictEqual(readPersistedDatabase(dir).metadata, { real: { id: 'real' } });
+  } finally {
+    a.close();
+  }
+});
+
 test('re-entrant transaction guard throws the adapter error, not SQLite\'s', () => {
   const a = new SqliteAdapter(dbPath(), { log: () => {} });
   try {

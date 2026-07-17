@@ -28,12 +28,11 @@ const os = require('node:os');
 const fs = require('node:fs');
 const path = require('node:path');
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-scan-clobber-'));
-const DATA_DIR = process.env.DATA_DIR;
-const DB_FILE = path.join(DATA_DIR, 'db.json');
 
 const { test, beforeEach } = require('node:test');
 const assert = require('node:assert');
-const { scanDirectories, recordServed, loadDatabase, saveDatabase, updateDatabase, getMediaId } = require('../../server');
+const { scanDirectories, recordServed, loadDatabase, saveDatabase, updateDatabase, getMediaId, __resetDatabaseForTests } = require('../../server');
+const { readPersistedDatabase } = require('../../lib/db/sqlite');
 
 function baseSettings(overrides) {
   return {
@@ -53,11 +52,11 @@ function writeDb(db) {
 }
 
 function readDb() {
-  return JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+  return readPersistedDatabase(process.env.DATA_DIR);
 }
 
-beforeEach(() => {
-  if (fs.existsSync(DB_FILE)) fs.rmSync(DB_FILE);
+beforeEach(async () => {
+  await __resetDatabaseForTests();
 });
 
 test('HEADLINE: a settings write AND a recordServed lastServedAt write made during an in-flight scan both survive the scan\'s final save', async () => {

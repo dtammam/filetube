@@ -9,11 +9,11 @@ const os = require('node:os');
 const fs = require('node:fs');
 const path = require('node:path');
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-dupes-'));
-const DB_FILE = path.join(process.env.DATA_DIR, 'db.json');
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
 const { app, saveDatabase } = require('../../server');
+const { readPersistedDatabase } = require('../../lib/db/sqlite');
 
 let server;
 let base;
@@ -50,7 +50,11 @@ after(async () => {
 });
 
 test('GET /api/duplicates: both sections populated via the production extractor, sorted by reclaim', async () => {
-  const dbBefore = fs.readFileSync(DB_FILE, 'utf8');
+  // v1.42: the read-only contract is asserted over the persisted rows via the
+  // sanctioned second-connection helper (raw SQLite file bytes are not a
+  // stable comparison surface -- WAL checkpoints move bytes without any
+  // logical change).
+  const dbBefore = readPersistedDatabase(process.env.DATA_DIR);
   const res = await fetch(`${base}/api/duplicates`);
   assert.equal(res.status, 200);
   const report = await res.json();
@@ -67,7 +71,7 @@ test('GET /api/duplicates: both sections populated via the production extractor,
     nameGroupCount: 1, nameFileCount: 2, nameWastedBytes: 200,
     idGroupCount: 1, idFileCount: 2, idWastedBytes: 100,
   });
-  assert.equal(fs.readFileSync(DB_FILE, 'utf8'), dbBefore, 'read-only: the report never mutates db.json');
+  assert.deepEqual(readPersistedDatabase(process.env.DATA_DIR), dbBefore, 'read-only: the report never mutates the persisted db');
 });
 
 test('GET /api/duplicates.csv: text/csv attachment with quoted, section-tagged rows', async () => {

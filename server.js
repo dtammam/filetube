@@ -71,6 +71,11 @@ const booksZip = require('./lib/books/zip'); // chapter XHTML extraction for TTS
 // lib/stats.js's header comment and `GET /api/stats` below for the full
 // live-compute rationale.
 const stats = require('./lib/stats');
+// v1.42: the SQLite persistence adapter — the ONLY module that touches
+// node:sqlite (source-locked). server.js owns the seam (loadDatabase/
+// saveDatabase/updateDatabase/getCachedDatabase, all unchanged in contract);
+// the adapter owns storage. See lib/db/sqlite.js's header.
+const sqliteDb = require('./lib/db/sqlite');
 // v1.41.0: app version + repo URL, surfaced on the Stats "About" section
 // (FileTube version links to its own release tag). The only place the client
 // learns the version; nothing else reads package.json server-side.
@@ -117,6 +122,20 @@ const TRANSCODE_DIR = resolveTranscodeDir(process.env, DATA_DIR);
 if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
 }
+
+// ---- v1.42: SQLite persistence (lib/db/sqlite.js) ---------------------------
+// The database lives in DATA_DIR/filetube.db from this release on. Boot order
+// (exec plan v1.42-multiuser-tranche.md, "Migration (boot order)"):
+// filetube.db exists → use it; else db.json exists → one-time WAL-safe import
+// (db.json stays byte-for-byte untouched FOREVER — the parallel-run contract:
+// an old-tag instance sharing the media can keep running against it); else
+// fresh empty schema. A CORRUPT db.json here THROWS and aborts boot without
+// creating filetube.db (review F2) — deliberate: a silent fresh-empty start
+// would strand the entire library behind boot rule #1 on every later boot.
+const { adapter: dbAdapter } = sqliteDb.openAdapter(DATA_DIR, {
+  log: (line) => console.log(line),
+});
+
 if (!fs.existsSync(THUMBNAIL_DIR)) {
   fs.mkdirSync(THUMBNAIL_DIR, { recursive: true });
 }
@@ -208,70 +227,56 @@ function withDefaultSettings(settings) {
 // how tests read it back out.
 let loadDatabaseCallCount = 0;
 
-// Ensure database file exists
+// Load the database: assemble from SQLite rows (v1.42; the adapter preserves
+// the exact object shape db.json produced) and re-apply the SAME backfills
+// this function has always applied to a partial/legacy source (review F3:
+// import stores namespaces raw; backfill stays load-time-owned — so a DB
+// imported from a legacy-shape db.json behaves identically to loading that
+// db.json directly, and future DEFAULT_SETTINGS keys keep appearing without
+// a re-import). A fresh/empty DB assembles to {} and the backfills below
+// produce exactly the old initial-create defaults — no eager write needed;
+// the first real saveDatabase persists them.
 function loadDatabase() {
   loadDatabaseCallCount++;
-  if (!fs.existsSync(DB_FILE)) {
-    const initialDb = {
-      folders: [],
-      folderSettings: {},
-      progress: {},
-      metadata: {},
-      // v1.30 C2: liked-item membership (array of media ids) -- the SINGLE
-      // source of truth for "liked" state (no separate boolean flag anywhere).
-      liked: [],
-      // v1.41.3: deletion tombstones -- { [id]: { filePath, deletedAt } },
-      // written by DELETE /api/videos/:id, consumed by the scan (see the
-      // tombstone block in the scan's per-file loop for the full contract).
-      deleteTombstones: {},
-      // v1.42: per-id watch counters, extracted OUT of `db.metadata` items
-      // (see the view endpoint's comment).
-      viewCounts: {},
-      settings: withDefaultSettings()
-    };
-    try {
-      fs.writeFileSync(DB_FILE, JSON.stringify(initialDb, null, 2), 'utf8');
-    } catch (err) {
-      // An EACCES/ENOSPC etc. here must never throw OUTSIDE a try/catch (this
-      // call site predates updateDatabase/saveDatabase's error handling). Log
-      // and hand back the in-memory default regardless -- the caller can still
-      // operate against it, and the next successful saveDatabase persists it.
-      console.error('Error creating initial db.json:', err);
+  const db = dbAdapter.load();
+  // Backfill EVERY top-level key (not just folderSettings/settings) so a
+  // partial/legacy source (imported old db.json, or an empty-namespace
+  // normalization — see lib/db/sqlite.js's load() comment) can never make a
+  // mutator throw a TypeError against a missing `folders`/`progress`/
+  // `metadata`.
+  if (!Array.isArray(db.folders)) db.folders = [];
+  if (!db.folderSettings || typeof db.folderSettings !== 'object') db.folderSettings = {}; // backfill for older databases
+  if (!db.progress || typeof db.progress !== 'object') db.progress = {};
+  if (!db.metadata || typeof db.metadata !== 'object') db.metadata = {};
+  // v1.30 C2: backfill `liked` (array of media ids) the same way every other
+  // top-level key above is backfilled.
+  if (!Array.isArray(db.liked)) db.liked = [];
+  // v1.41.3: backfill `deleteTombstones` like every other top-level key.
+  if (!db.deleteTombstones || typeof db.deleteTombstones !== 'object' || Array.isArray(db.deleteTombstones)) db.deleteTombstones = {};
+  // v1.42: backfill `viewCounts` — the extracted per-id watch counters (see
+  // the view endpoint's own comment for why this lives OUTSIDE `db.metadata`
+  // items).
+  if (!db.viewCounts || typeof db.viewCounts !== 'object' || Array.isArray(db.viewCounts)) db.viewCounts = {};
+  // v1.42: when a container namespace EXISTS, backfill its per-key
+  // sub-namespaces the same way. Under db.json, ensureBooks/ensureYtdlp
+  // created these keys once and the empty `{}` persisted forever; under
+  // SQLite an empty doc_kv namespace has zero rows and assembles as absent,
+  // which would silently break every consumer that (correctly, per the old
+  // invariant) assumes `db.books.progress` exists whenever `db.books` does.
+  // The containers themselves stay lazy (ensure* call-site-owned, as today).
+  if (db.books && typeof db.books === 'object') {
+    for (const k of ['items', 'progress', 'audio']) {
+      if (!db.books[k] || typeof db.books[k] !== 'object' || Array.isArray(db.books[k])) db.books[k] = {};
     }
-    return initialDb;
   }
-  try {
-    const data = fs.readFileSync(DB_FILE, 'utf8');
-    const db = JSON.parse(data);
-    // Backfill EVERY top-level key (not just folderSettings/settings) so a
-    // valid-JSON but partial/legacy db.json (hand-edited, or written by an
-    // older version) can never make a mutator throw a TypeError against a
-    // missing `folders`/`progress`/`metadata`.
-    if (!Array.isArray(db.folders)) db.folders = [];
-    if (!db.folderSettings || typeof db.folderSettings !== 'object') db.folderSettings = {}; // backfill for older databases
-    if (!db.progress || typeof db.progress !== 'object') db.progress = {};
-    if (!db.metadata || typeof db.metadata !== 'object') db.metadata = {};
-    // v1.30 C2: backfill `liked` (array of media ids) for a legacy/partial
-    // db.json the same way every other top-level key above is backfilled.
-    if (!Array.isArray(db.liked)) db.liked = [];
-    // v1.41.3: backfill `deleteTombstones` like every other top-level key.
-    if (!db.deleteTombstones || typeof db.deleteTombstones !== 'object' || Array.isArray(db.deleteTombstones)) db.deleteTombstones = {};
-    // v1.42: backfill `viewCounts` — the extracted per-id watch counters
-    // (see the view endpoint's own comment for why this lives OUTSIDE
-    // `db.metadata` items).
-    if (!db.viewCounts || typeof db.viewCounts !== 'object' || Array.isArray(db.viewCounts)) db.viewCounts = {};
-    db.settings = withDefaultSettings(db.settings); // backfill for older databases
-    return db;
-  } catch (err) {
-    console.error('Error reading db.json, resetting database:', err);
-    // Every code path out of loadDatabase must hand back a settings-bearing DB.
-    return { folders: [], folderSettings: {}, progress: {}, metadata: {}, liked: [], deleteTombstones: {}, viewCounts: {}, settings: withDefaultSettings() };
+  if (db.ytdlp && typeof db.ytdlp === 'object') {
+    for (const k of ['downloadMeta', 'channelAvatars']) {
+      if (!db.ytdlp[k] || typeof db.ytdlp[k] !== 'object' || Array.isArray(db.ytdlp[k])) db.ytdlp[k] = {};
+    }
   }
+  db.settings = withDefaultSettings(db.settings); // backfill for older databases
+  return db;
 }
-
-// Monotonic counter (per-process) that, combined with the pid, guarantees a
-// unique same-directory temp filename per save -- see saveDatabase below.
-let dbTmpSeq = 0;
 
 // Module-level `saveDatabase` call counter (v1.30 A4, AC4.1/AC4.2
 // instrumentation): every `saveDatabase()` call anywhere in this file
@@ -286,66 +291,70 @@ let dbTmpSeq = 0;
 // unbatched). See `__getSaveDatabaseCallCount()` below.
 let saveDatabaseCallCount = 0;
 
-// Atomic on-disk save: write-temp-then-rename, mirroring the existing
-// ".tmp.mp4" atomic-finalize pattern already used for transcodes. The temp
-// file lives in the SAME directory as DB_FILE so `renameSync` is an atomic
-// metadata-only operation on POSIX filesystems (a cross-filesystem rename
-// would silently become a copy, which is not atomic). `fsync`ing the fd
-// before the rename flushes the bytes to disk first, so a crash either
-// leaves the OLD db.json fully intact (crash before rename) or the NEW one
-// fully intact (crash after) -- never a half-written/truncated file.
+// Atomic on-disk save (v1.42): ONE SQLite transaction via the adapter's
+// diff-save — per-row serialized JSON compared against the last commit's
+// snapshot, so only changed/inserted/deleted rows are written. A crash
+// leaves either the OLD committed state fully intact (crash before COMMIT)
+// or the NEW one (crash after) — SQLite's journal guarantees no torn state,
+// the same either/or contract the old write-temp+fsync+rename provided for
+// db.json.
 //
-// Durability note: this guards against PROCESS crashes (this app's threat
-// model per RELIABILITY.md), not power loss -- the rename is not followed by
-// a fsync of DATA_DIR itself, so a power-loss right at/after the rename can,
-// on some filesystems, REVERT to the old db.json on next mount. It can never
-// leave a torn/half-written file either way.
+// Durability note: guards against PROCESS crashes (this app's threat model
+// per RELIABILITY.md); power-loss durability follows SQLite's WAL semantics
+// (synchronous=NORMAL default) — a power cut can revert the very last
+// commit(s) on some filesystems but can never produce a torn/half-written
+// database.
 //
-// On a write/rename failure this call's own temp file is cleaned up on a
-// best-effort basis, the original DB_FILE is left untouched, and the error
-// is RETHROWN so the caller (updateDatabase) REJECTS instead of silently
-// resolving a false success. The best-effort cleanup can itself not run at
-// all (e.g. the process is SIGKILLed/OOM-killed between openSync and the
-// rename) and leave an orphan `db.json.<pid>.<seq>.tmp` behind -- the
-// startup sweep (cleanupOrphanDbTmp, mirroring cleanupOrphanTmp for
-// transcodes) reclaims those on the next boot. Stays SYNCHRONOUS on purpose:
-// the mutate-then-save critical section inside updateDatabase (below) must
-// complete in a single tick.
+// On a failed transaction the adapter ROLLS BACK (on-disk state untouched,
+// diff snapshot unchanged) and the error is RETHROWN so the caller
+// (updateDatabase) REJECTS instead of silently resolving a false success.
+// Stays SYNCHRONOUS on purpose: the mutate-then-save critical section
+// inside updateDatabase (below) must complete in a single tick.
 //
 // v1.30 A3 (in-memory DB read cache): on a SUCCESSFUL save, `db` (the
 // just-written object) BECOMES the read cache -- set here, immediately after
-// the atomic rename, with no `await` in between (this whole function is
+// the commit, with no `await` in between (this whole function is
 // synchronous). `saveDatabase` is the SOLE writer of `dbCache`; every real
 // caller today reaches it exclusively through `updateDatabase`'s
 // fresh-read-inside-the-lock (see that function's own comment), so this is
-// still "one write's critical section, one cache-set" -- just located here
-// instead of duplicated at every call site. See the coherency argument above
-// `dbCache`'s own declaration for why this can never produce a torn/stale
-// read. On a FAILED save (the catch branch below, which rethrows) the cache
-// is deliberately left untouched -- an unpersisted `db` must never become
-// the cache.
+// still "one write's critical section, one cache-set". See the coherency
+// argument above `dbCache`'s own declaration for why this can never produce
+// a torn/stale read. On a FAILED save (the catch branch below, which
+// rethrows) the cache is deliberately left untouched -- an unpersisted `db`
+// must never become the cache.
+// Test-only one-shot save-failure injector (v1.42). Pre-SQLite, tests forced
+// a persist failure by stubbing fs.writeFileSync/fs.renameSync — the seam the
+// adapter closed. This is the sanctioned replacement (same posture as the
+// __get*CallCount observability accessors): arm it, and the NEXT saveDatabase
+// call throws before touching the adapter, exercising the exact
+// route-returns-500 / prior-state-intact / chain-not-wedged contracts the
+// old stubs exercised. Self-disarms after one shot; inert in production.
+let failNextSaveError = null;
+function __failNextSaveForTests(err) {
+  failNextSaveError = err instanceof Error ? err : new Error('simulated save failure (test injection)');
+}
+
 function saveDatabase(db) {
   saveDatabaseCallCount++;
-  const tmp = `${DB_FILE}.${process.pid}.${dbTmpSeq++}.tmp`;
   try {
-    const json = JSON.stringify(db, null, 2);
-    const fd = fs.openSync(tmp, 'w');
-    try {
-      fs.writeFileSync(fd, json, 'utf8');
-      fs.fsyncSync(fd); // flush bytes to disk before the rename gate
-    } finally {
-      fs.closeSync(fd);
+    if (failNextSaveError) {
+      const injected = failNextSaveError;
+      failNextSaveError = null;
+      throw injected;
     }
-    fs.renameSync(tmp, DB_FILE); // atomic within DATA_DIR's filesystem
+    // v1.42: one SQLite transaction replaces write-temp+fsync+rename — the
+    // adapter diffs per-row serialized JSON against its last-commit snapshot
+    // and writes only changed/inserted/deleted rows (a one-item mutation is
+    // one row, not a 175 KB whole-file rewrite). Crash safety comes from the
+    // transaction; the old orphan-tmp sweep survives only for legacy
+    // db.json.*.tmp files a pre-v1.42 crash may have left behind. Stays
+    // SYNCHRONOUS: the mutate-then-save critical section inside
+    // updateDatabase must complete in a single tick, exactly as before.
+    dbAdapter.save(db);
     dbCache = db;
     dbCacheValid = true;
   } catch (err) {
-    console.error('Error saving db.json:', err);
-    try {
-      if (fs.existsSync(tmp)) fs.unlinkSync(tmp); // best-effort cleanup for THIS call's temp
-    } catch (cleanupErr) {
-      console.error('Error cleaning up temp db file:', cleanupErr);
-    }
+    console.error('Error saving database:', err);
     throw err; // PROPAGATE: caller (updateDatabase) must reject, never a false success
   }
 }
@@ -453,7 +462,88 @@ function getCachedDatabase() {
     dbCache = loadDatabase();
     dbCacheValid = true;
   }
-  return dbCache;
+  // v1.42 dev/test aliasing guard (exec plan known-risk #2): the diff-save
+  // trusts that NOTHING mutates the last-committed object — a reader that
+  // mutated the cache would change state the diff can never see (it compares
+  // the NEXT fresh load against the snapshot, both derived from disk, so the
+  // mutation silently haunts only in-memory reads). Under the test runner
+  // (NODE_TEST_CONTEXT) or an explicit opt-in, hand readers a throwing Proxy
+  // instead of the raw object so any cache mutation fails LOUDLY at the
+  // mutation site. A throwing Proxy, deliberately NOT Object.freeze:
+  // server.js is not strict mode, so writes to a frozen object are silent
+  // no-ops — masking the exact bug this guard exists to catch (design
+  // review F7).
+  return DB_CACHE_GUARD ? guardAgainstMutation(dbCache) : dbCache;
+}
+
+// See getCachedDatabase directly above. Wrap-on-read with a WeakMap proxy
+// cache so object identity stays stable across property accesses; only
+// mutation traps throw — reads, enumeration, and JSON serialization pass
+// through untouched.
+const DB_CACHE_GUARD = Boolean(process.env.NODE_TEST_CONTEXT || process.env.FILETUBE_DB_CACHE_GUARD);
+const mutationGuardProxies = new WeakMap();
+function guardAgainstMutation(value) {
+  if (value === null || typeof value !== 'object') return value;
+  let proxy = mutationGuardProxies.get(value);
+  if (!proxy) {
+    proxy = new Proxy(value, {
+      get(target, prop, receiver) {
+        return guardAgainstMutation(Reflect.get(target, prop, receiver));
+      },
+      set(target, prop) {
+        throw new Error(`Read-cache mutation: attempted to set '${String(prop)}' on an object served by getCachedDatabase(). Mutate through updateDatabase()'s fresh load instead — the diff-save cannot see cache mutations (v1.42).`);
+      },
+      deleteProperty(target, prop) {
+        throw new Error(`Read-cache mutation: attempted to delete '${String(prop)}' on an object served by getCachedDatabase(). Mutate through updateDatabase()'s fresh load instead (v1.42).`);
+      },
+      defineProperty(target, prop) {
+        throw new Error(`Read-cache mutation: attempted to define '${String(prop)}' on an object served by getCachedDatabase(). Mutate through updateDatabase()'s fresh load instead (v1.42).`);
+      },
+    });
+    mutationGuardProxies.set(value, proxy);
+  }
+  return proxy;
+}
+
+// v1.42: wipe-and-replace the persisted state coherently — the ONE primitive
+// behind both the instance-restore endpoint and the tests' between-case
+// reset (which used to be `fs.rmSync(db.json)`). Everything the design-delta
+// review's F5 demands happens here, in one exclusive section:
+//   1. the adapter wipes + repopulates inside ONE transaction and rebuilds
+//      its diff snapshot from disk,
+//   2. both progress coalescers are cleared AND their timers cancelled (a
+//      pre-wipe ping whose id exists in the new state must never flush OVER
+//      freshly-restored rows),
+//   3. the read cache is invalidated so the next read reflects the new state
+//      with zero intervening writes.
+// Enqueued on the write chain so it can never interleave with a mutator's
+// load-mutate-save tick.
+function replacePersistedState(populateFn) {
+  const run = dbWriteChain.then(() => {
+    dbAdapter.exclusiveReplace(populateFn || (() => {}));
+    pendingProgress.clear();
+    if (progressFlushTimer) {
+      clearTimeout(progressFlushTimer);
+      progressFlushTimer = null;
+    }
+    pendingBookProgress.clear();
+    if (bookProgressFlushTimer) {
+      clearTimeout(bookProgressFlushTimer);
+      bookProgressFlushTimer = null;
+    }
+    dbCache = null;
+    dbCacheValid = false;
+  });
+  dbWriteChain = run.catch(() => {});
+  return run;
+}
+
+// Test primitive (v1.42): the between-test reset. Pre-v1.42 lifecycle tests
+// deleted db.json between cases and let loadDatabase re-create defaults;
+// deleting an OPEN SQLite database out from under its connection is not a
+// thing, so tests call this instead.
+function __resetDatabaseForTests() {
+  return replacePersistedState(null);
 }
 
 // ---- Progress-write coalescer (v1.30 A4, AC4.1-AC4.3) ----------------------
@@ -680,11 +770,14 @@ function cleanupOrphanTmp(dir) {
   return removed;
 }
 
-// Delete orphaned `db.json.<pid>.<seq>.tmp` files (left if the process was
-// SIGKILLed/OOM-killed between saveDatabase's openSync(tmp) and its rename --
-// see saveDatabase's comment). Mirrors cleanupOrphanTmp's shape/contract
-// exactly; the original DB_FILE is never touched. Returns the count removed.
-// Safe to call on startup.
+// LEGACY sweep (pre-v1.42): delete orphaned `db.json.<pid>.<seq>.tmp` files
+// a pre-SQLite saveDatabase could leave behind if the process was
+// SIGKILLed/OOM-killed between its openSync(tmp) and rename. v1.42's
+// saveDatabase writes SQLite transactions and can't mint these, but an
+// upgrade from a crashed old-tag instance can still find one lying in
+// DATA_DIR — so the boot-time sweep stays. The original db.json is never
+// touched (it's the parallel-run contract's read-only artifact). Returns
+// the count removed.
 function cleanupOrphanDbTmp(dir) {
   let entries;
   try { entries = fs.readdirSync(dir); } catch (_) { return 0; }
@@ -5714,11 +5807,16 @@ app.get('/api/videos/:id', (req, res) => {
     // place would violate the "cache replaced by reference, never mutated
     // in place" invariant the whole read-cache's coherency argument depends
     // on -- so this lookup gets its own deep-cloned `ytdlp` namespace
-    // (structuredClone, only reached when the avatar is genuinely missing)
-    // instead of the live cache reference. Every other field of `db` is
-    // still shared/read-only here -- only `.ytdlp` is ever written by
-    // `ensureYtdlp`.
-    const dbForAvatarLookup = { ...db, ytdlp: db.ytdlp ? structuredClone(db.ytdlp) : undefined };
+    // (a JSON round-trip deep clone, only reached when the avatar is
+    // genuinely missing) instead of the live cache reference. Every other
+    // field of `db` is still shared/read-only here -- only `.ytdlp` is ever
+    // written by `ensureYtdlp`. v1.42: JSON round-trip, NOT structuredClone
+    // -- under the test runner the cache is served through the throwing
+    // mutation-guard Proxy (see getCachedDatabase), and V8's structured
+    // clone cannot serialize Proxies (DataCloneError); JSON.stringify reads
+    // through the guard's get traps transparently, and db.ytdlp is plain
+    // JSON data by construction (it round-trips through the store).
+    const dbForAvatarLookup = { ...db, ytdlp: db.ytdlp ? JSON.parse(JSON.stringify(db.ytdlp)) : undefined };
     channelAvatarUrl = ytdlp.resolveItemChannelAvatarUrl(dbForAvatarLookup, item);
   }
   // v1.33 T2 (Share button): the ORIGINAL YouTube watch URL, derived at
@@ -7092,11 +7190,12 @@ async function moveItemToFolder(deps, id, targetFolder, opts = {}) {
     //   - `updateDatabase` runs `const result = mutatorFn(db); if (result !== false)
     //     saveDatabase(db);` -- a THROW from the mutator means `saveDatabase` is
     //     never called at all.
-    //   - `saveDatabase` writes a temp file, fsyncs it, then ATOMICALLY renames it
-    //     over DB_FILE. The only statements after that rename are two plain
-    //     assignments (`dbCache = db; dbCacheValid = true;`), which cannot throw.
-    //     So any throw is at or before the atomic rename: DB_FILE is untouched.
-    //   - `loadDatabase` re-reads and re-parses the file on every call and never
+    //   - `saveDatabase` (v1.42) commits ONE SQLite transaction; a failure
+    //     ROLLS BACK with the on-disk state untouched, and the only
+    //     statements after a successful commit are two plain assignments
+    //     (`dbCache = db; dbCacheValid = true;`), which cannot throw. So any
+    //     throw leaves the committed state exactly as it was.
+    //   - `loadDatabase` re-assembles a fresh object on every call and never
     //     hands out `dbCache` by reference, so the half-mutated in-memory object
     //     this mutator may have left behind is unreachable and corrupts nothing.
     //
@@ -9528,6 +9627,14 @@ module.exports = {
   loadDatabase,
   saveDatabase,
   updateDatabase,
+  // v1.42: the coherent wipe-and-replace primitive (restore endpoint + the
+  // tests' between-case reset — pre-v1.42 tests deleted db.json between
+  // cases; an OPEN SQLite database cannot be deleted out from under its
+  // connection, so tests call __resetDatabaseForTests() instead). See
+  // replacePersistedState's own comment for the F5 coherency contract.
+  replacePersistedState,
+  __resetDatabaseForTests,
+  __failNextSaveForTests,
   // v1.30 A3 (in-memory DB read cache): re-exported so tests can exercise the
   // cache directly and assert AC3.3's O(1)-loads claim (mirrors every other
   // DB-layer primitive's own testing contract above).

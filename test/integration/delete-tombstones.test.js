@@ -24,11 +24,11 @@ const fs = require('node:fs');
 const path = require('node:path');
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-tomb-'));
 const DATA_DIR = process.env.DATA_DIR;
-const DB_FILE = path.join(DATA_DIR, 'db.json');
 
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
-const { app, scanDirectories, saveDatabase, getMediaId } = require('../../server');
+const { app, scanDirectories, saveDatabase, getMediaId, __resetDatabaseForTests } = require('../../server');
+const { readPersistedDatabase } = require('../../lib/db/sqlite');
 
 const isRoot = typeof process.getuid === 'function' && process.getuid() === 0;
 const rootSkip = isRoot ? 'unlink perms are not enforceable as root' : false;
@@ -61,7 +61,13 @@ function writeDb(db) {
 }
 
 function readDb() {
-  return JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+  // v1.42: persisted-state reads go through the sanctioned helper. Empty
+  // doc_kv namespaces assemble as absent — backfill the two this suite
+  // asserts against so its expectations keep reading naturally.
+  const db = readPersistedDatabase(DATA_DIR);
+  if (!db.metadata) db.metadata = {};
+  if (!db.deleteTombstones) db.deleteTombstones = {};
+  return db;
 }
 
 function seedLibraryWithVideo(libDir, fileName) {
@@ -183,8 +189,8 @@ function backdate(filePath, deletedAt) {
   fs.utimesSync(filePath, t, t);
 }
 
-beforeEach(() => {
-  if (fs.existsSync(DB_FILE)) fs.rmSync(DB_FILE);
+beforeEach(async () => {
+  await __resetDatabaseForTests();
 });
 
 // v1.41.13 (gate W4): the persist checkpoint under the ACTUAL six-strike

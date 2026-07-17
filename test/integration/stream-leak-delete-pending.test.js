@@ -37,13 +37,14 @@ const fs = require('node:fs');
 const path = require('node:path');
 const http = require('node:http');
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-pending-'));
-const DB_FILE = path.join(process.env.DATA_DIR, 'db.json');
 
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
 const {
   app, saveDatabase, getMediaId, scanDirectories, activeMediaStreams,
+  __resetDatabaseForTests,
 } = require('../../server');
+const { readPersistedDatabase } = require('../../lib/db/sqlite');
 
 let server;
 let base;
@@ -63,8 +64,8 @@ after(async () => {
   fs.rmSync(libDir, { recursive: true, force: true });
 });
 
-beforeEach(() => {
-  if (fs.existsSync(DB_FILE)) fs.rmSync(DB_FILE);
+beforeEach(async () => {
+  await __resetDatabaseForTests();
   for (const name of fs.readdirSync(libDir)) fs.rmSync(path.join(libDir, name), { force: true });
   activeMediaStreams.clear();
 });
@@ -74,7 +75,12 @@ function baseSettings() {
 }
 
 function readDb() {
-  return JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+  // v1.42: the sanctioned persisted-state read; empty doc_kv namespaces
+  // assemble as absent, so backfill the ones this suite asserts against.
+  const db = readPersistedDatabase(process.env.DATA_DIR);
+  if (!db.metadata) db.metadata = {};
+  if (!db.deleteTombstones) db.deleteTombstones = {};
+  return db;
 }
 
 // 8 MiB: large enough that neither the server's socket buffer nor the

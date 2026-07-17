@@ -29,12 +29,11 @@ const os = require('node:os');
 const fs = require('node:fs');
 const path = require('node:path');
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-scan-delete-reconcile-'));
-const DATA_DIR = process.env.DATA_DIR;
-const DB_FILE = path.join(DATA_DIR, 'db.json');
 
 const { test, beforeEach } = require('node:test');
 const assert = require('node:assert');
-const { scanDirectories, updateDatabase, getMediaId, saveDatabase } = require('../../server');
+const { scanDirectories, updateDatabase, getMediaId, saveDatabase, __resetDatabaseForTests } = require('../../server');
+const { readPersistedDatabase } = require('../../lib/db/sqlite');
 
 function baseSettings(overrides) {
   return {
@@ -54,11 +53,11 @@ function writeDb(db) {
 }
 
 function readDb() {
-  return JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+  return readPersistedDatabase(process.env.DATA_DIR);
 }
 
-beforeEach(() => {
-  if (fs.existsSync(DB_FILE)) fs.rmSync(DB_FILE);
+beforeEach(async () => {
+  await __resetDatabaseForTests();
 });
 
 test('HEADLINE: a DELETE committing DURING a scan (after Phase 1 builds newMetadata, before Phase 2 runs) leaves the id deleted, not resurrected', async () => {
@@ -113,7 +112,9 @@ test('HEADLINE: a DELETE committing DURING a scan (after Phase 1 builds newMetad
   const finalDb = readDb();
   assert.ok(!finalDb.metadata[idZ],
     'a concurrently-DELETEd id must stay deleted, not be resurrected by the scan\'s stale Phase-1 snapshot');
-  assert.ok(!finalDb.progress[idZ], 'the deleted id\'s progress entry must stay gone too');
+  // v1.42 persisted shape: an emptied `progress` namespace assembles as ABSENT
+  // (zero rows), so guard the container before probing the key.
+  assert.ok(!(finalDb.progress && finalDb.progress[idZ]), 'the deleted id\'s progress entry must stay gone too');
   assert.ok(finalDb.metadata[idN], 'the scan\'s own genuinely-new file must still be added alongside the concurrent delete');
 });
 

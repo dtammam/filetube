@@ -14,11 +14,11 @@ const fs = require('node:fs');
 const path = require('node:path');
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-dims-'));
 const DATA_DIR = process.env.DATA_DIR;
-const DB_FILE = path.join(DATA_DIR, 'db.json');
 
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
-const { app, MAX_MEDIA_DIMENSION, saveDatabase } = require('../../server');
+const { app, MAX_MEDIA_DIMENSION, saveDatabase, __resetDatabaseForTests } = require('../../server');
+const { readPersistedDatabase } = require('../../lib/db/sqlite');
 
 let server;
 let base;
@@ -35,8 +35,9 @@ after(async () => {
   await new Promise((resolve) => server.close(resolve));
 });
 
-beforeEach(() => {
-  if (fs.existsSync(DB_FILE)) fs.rmSync(DB_FILE);
+beforeEach(async () => {
+  // v1.42: SQLite replaced db.json; the sanctioned between-test reset.
+  await __resetDatabaseForTests();
 });
 
 // v1.30 A3 (in-memory DB read cache): seed via the exported `saveDatabase()`
@@ -70,7 +71,7 @@ test('POST /api/videos/:id/dimensions: fills width/height for a video item that 
   const body = await res.json();
   assert.deepEqual(body, { success: true, applied: true });
 
-  const db = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+  const db = readPersistedDatabase(DATA_DIR);
   assert.equal(db.metadata.v1.width, 1080);
   assert.equal(db.metadata.v1.height, 1920);
 });
@@ -82,7 +83,7 @@ test('POST /api/videos/:id/dimensions: no-clobber -- an item that already carrie
   const body = await res.json();
   assert.deepEqual(body, { success: true, applied: false });
 
-  const db = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+  const db = readPersistedDatabase(DATA_DIR);
   assert.equal(db.metadata.v1.width, 1920, 'must not be overwritten by a later POST');
   assert.equal(db.metadata.v1.height, 1080);
 });
@@ -92,8 +93,10 @@ test('POST /api/videos/:id/dimensions: 404s for an id not in db.metadata, withou
   const res = await postDims('does-not-exist', { width: 1920, height: 1080 });
   assert.equal(res.status, 404);
 
-  const db = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
-  assert.deepEqual(db.metadata, {});
+  const db = readPersistedDatabase(DATA_DIR);
+  // v1.42 persisted shape: an empty metadata namespace assembles as ABSENT
+  // (zero rows) -- the claim (no item was created) is unchanged.
+  assert.deepEqual(db.metadata ?? {}, {});
 });
 
 test('POST /api/videos/:id/dimensions: 400s for an AUDIO item -- dimensions never apply to audio', async () => {
@@ -101,7 +104,7 @@ test('POST /api/videos/:id/dimensions: 400s for an AUDIO item -- dimensions neve
   const res = await postDims('a1', { width: 1920, height: 1080 });
   assert.equal(res.status, 400);
 
-  const db = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+  const db = readPersistedDatabase(DATA_DIR);
   assert.equal('width' in db.metadata.a1, false);
 });
 
@@ -133,7 +136,7 @@ test('POST /api/videos/:id/dimensions: accepts a width/height exactly at MAX_MED
   writeDb({ metadata: { v1: seedItem('v1') } });
   const res = await postDims('v1', { width: MAX_MEDIA_DIMENSION, height: MAX_MEDIA_DIMENSION });
   assert.equal(res.status, 200);
-  const db = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+  const db = readPersistedDatabase(DATA_DIR);
   assert.equal(db.metadata.v1.width, MAX_MEDIA_DIMENSION);
 });
 
@@ -148,7 +151,7 @@ test('POST /api/videos/:id/dimensions: 400s for a single-element array width (Nu
   writeDb({ metadata: { v1: seedItem('v1') } });
   const res = await postDims('v1', { width: [1920], height: 1080 });
   assert.equal(res.status, 400);
-  const db = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+  const db = readPersistedDatabase(DATA_DIR);
   assert.equal('width' in db.metadata.v1, false);
 });
 
@@ -156,7 +159,7 @@ test('POST /api/videos/:id/dimensions: 400s for a boolean width (Number(true) ==
   writeDb({ metadata: { v1: seedItem('v1') } });
   const res = await postDims('v1', { width: true, height: 1080 });
   assert.equal(res.status, 400);
-  const db = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+  const db = readPersistedDatabase(DATA_DIR);
   assert.equal('width' in db.metadata.v1, false);
 });
 
@@ -164,7 +167,7 @@ test('POST /api/videos/:id/dimensions: 400s for a hex-string width (Number(\'0x1
   writeDb({ metadata: { v1: seedItem('v1') } });
   const res = await postDims('v1', { width: '0x10', height: 1080 });
   assert.equal(res.status, 400);
-  const db = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+  const db = readPersistedDatabase(DATA_DIR);
   assert.equal('width' in db.metadata.v1, false);
 });
 
@@ -172,7 +175,7 @@ test('POST /api/videos/:id/dimensions: still accepts a plain digit-only numeric 
   writeDb({ metadata: { v1: seedItem('v1') } });
   const res = await postDims('v1', { width: '1920', height: '1080' });
   assert.equal(res.status, 200);
-  const db = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+  const db = readPersistedDatabase(DATA_DIR);
   assert.equal(db.metadata.v1.width, 1920);
   assert.equal(db.metadata.v1.height, 1080);
 });

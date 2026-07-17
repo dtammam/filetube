@@ -30,6 +30,7 @@ const {
   saveDatabase,
   loadDatabase,
   __getSaveDatabaseCallCount,
+  __resetDatabaseForTests,
 } = require('../../server');
 
 let server;
@@ -270,39 +271,44 @@ test('AC4.2: DELETE /api/liked/:id on a non-member STILL performs exactly 1 writ
 
 // ---- Backfill: db.liked = [] across all three loadDatabase default paths --
 
-test('backfill: a fresh (nonexistent) db.json is created with liked: []', () => {
-  // `DB_FILE` is derived from `DATA_DIR` once at server.js module-load time
-  // (this suite's own `process.env.DATA_DIR`, set at the top of this file),
-  // so this test exercises the no-such-file branch directly by removing the
-  // on-disk file loadDatabase() itself would otherwise find, then inspecting
-  // the fresh db.json it creates in its place.
-  if (fs.existsSync(DB_FILE)) fs.unlinkSync(DB_FILE);
+test('backfill: an empty (fresh) persisted store loads with liked: []', async () => {
+  // v1.42: the "no db file" branch became "no rows" — an empty store must
+  // still assemble to a liked-bearing default. (Pre-v1.42 this test removed
+  // db.json and asserted the initial-create write; the eager write is
+  // subsumed by the adapter, defaults persist on the first real save.)
+  await __resetDatabaseForTests();
   const db = loadDatabase();
-  assert.deepEqual(db.liked, [], 'a brand-new db.json must carry liked: []');
-  assert.ok(fs.existsSync(DB_FILE), 'loadDatabase must have written the initial db.json to disk');
+  assert.deepEqual(db.liked, [], 'a fresh store must carry liked: []');
 });
 
-test('backfill: a legacy/partial db.json missing `liked` loads with db.liked = []', () => {
-  // Written directly (bypassing saveDatabase) to simulate a genuinely
-  // pre-C2 on-disk db.json, mirroring how other backfill tests in this repo
-  // seed a legacy shape.
-  fs.writeFileSync(DB_FILE, JSON.stringify({
+test('backfill: a legacy/partial persisted set missing `liked` loads with db.liked = []', () => {
+  // Seeded through saveDatabase with the `liked` key deliberately absent —
+  // the same pre-C2 legacy shape the old raw-write seeded, now expressed
+  // through the seam (the import path's raw-fixture leg is covered in
+  // test/unit/db-sqlite-adapter.test.js's legacy-shape import test).
+  saveDatabase({
     folders: [], folderSettings: {}, progress: {},
     metadata: { legacy: seedItem('legacy') },
     settings: baseSettings(),
     // deliberately no `liked` key at all
-  }, null, 2), 'utf8');
+  });
 
   const db = loadDatabase();
-  assert.deepEqual(db.liked, [], 'a legacy db.json without `liked` must backfill to []');
+  assert.deepEqual(db.liked, [], 'a legacy set without `liked` must backfill to []');
   assert.ok(db.metadata.legacy, 'other fields must remain intact after backfill');
 });
 
-test('backfill: a corrupt db.json resets to a settings-bearing DB that also carries liked: []', () => {
+test('v1.42 migration-path: a corrupt db.json beside the ACTIVE store is inert (liked reads keep working)', () => {
+  // Pre-v1.42 a corrupt db.json triggered loadDatabase's reset-to-fresh
+  // recovery (and this test asserted the fallback carried liked: []). The
+  // recovery path no longer exists: db.json is a frozen legacy artifact once
+  // filetube.db is live — garbage in it must not perturb anything. (Corrupt
+  // db.json at FIRST boot aborts the import instead — AC9, adapter suite.)
   fs.writeFileSync(DB_FILE, '{ not valid json', 'utf8');
   const db = loadDatabase();
-  assert.deepEqual(db.liked, [], 'the corrupt-JSON reset fallback must also carry liked: []');
-  assert.ok(db.settings, 'the corrupt-JSON reset fallback must still be settings-bearing');
+  assert.deepEqual(db.liked, [], 'load ignores the corrupt legacy file entirely');
+  assert.ok(db.settings, 'and still yields a settings-bearing DB');
+  fs.rmSync(DB_FILE);
 });
 
 // ---- v1.32: the Liked playlist view (first consumer of GET /api/liked) ------

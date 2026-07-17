@@ -25,6 +25,7 @@ const { test, before, after } = require('node:test');
 const assert = require('node:assert');
 const express = require('express');
 const { app, currentYtdlpPollTimer } = require('../../server');
+const { readPersistedDatabase } = require('../../lib/db/sqlite');
 const ytdlp = require('../../lib/ytdlp');
 
 let server;
@@ -86,9 +87,9 @@ test('T2 CRUD + settings routes 404 when the module is disabled', async () => {
 });
 
 test('disabled path never writes a db.ytdlp namespace', () => {
-  const dbPath = path.join(process.env.DATA_DIR, 'db.json');
-  if (!fs.existsSync(dbPath)) return; // nothing persisted yet is also fine
-  const raw = JSON.parse(fs.readFileSync(dbPath, 'utf8'));
+  // v1.42: read the persisted store via the sanctioned independent
+  // connection. Nothing persisted at all yields {} -- equally fine.
+  const raw = readPersistedDatabase(process.env.DATA_DIR);
   assert.equal(raw.ytdlp, undefined, 'a disabled module must never materialize db.ytdlp');
 });
 

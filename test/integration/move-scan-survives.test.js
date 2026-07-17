@@ -15,13 +15,26 @@ const fs = require('node:fs');
 const path = require('node:path');
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-move-scan-'));
 const DATA_DIR = process.env.DATA_DIR;
-const DB_FILE = path.join(DATA_DIR, 'db.json');
 
 const { test } = require('node:test');
 const assert = require('node:assert');
 const {
-  getMediaId, loadDatabase, updateDatabase, moveItemToFolder, scanDirectories,
+  getMediaId, loadDatabase, saveDatabase, updateDatabase, moveItemToFolder, scanDirectories,
 } = require('../../server');
+const { readPersistedDatabase } = require('../../lib/db/sqlite');
+
+// v1.42: seeds go through the exported saveDatabase (the adapter opened at
+// require time, so a raw db.json write would be dead); persisted-state
+// assertions go through the sanctioned SQLite read helper. An EMPTY doc_kv
+// namespace persists as zero rows (absent); backfill the ones this file
+// dereferences so `finalDb.progress[id]`-style reads stay valid.
+function readDb() {
+  const db = readPersistedDatabase(DATA_DIR);
+  for (const ns of ['metadata', 'progress']) {
+    if (!db[ns]) db[ns] = {};
+  }
+  return db;
+}
 
 function baseSettings() {
   return { scanIntervalMinutes: 0, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 0, defaultView: '', autoplayNext: false };
@@ -38,7 +51,7 @@ test('HEADLINE: watch progress for a moved item survives the next scan unchanged
   const newId = getMediaId(newPath);
   assert.notEqual(oldId, newId, 'sanity: moving to a different folder must change the path-derived id');
 
-  fs.writeFileSync(DB_FILE, JSON.stringify({
+  saveDatabase({
     folders: [srcDir, dstDir],
     folderSettings: {},
     progress: { [oldId]: { timestamp: 123, duration: 600, updatedAt: '2026-07-01T00:00:00.000Z' } },
@@ -51,20 +64,20 @@ test('HEADLINE: watch progress for a moved item survives the next scan unchanged
       },
     },
     settings: baseSettings(),
-  }, null, 2), 'utf8');
+  });
 
   const moveResult = await moveItemToFolder({ loadDatabase, updateDatabase, getMediaId }, oldId, dstDir);
   assert.equal(moveResult.ok, true);
   assert.equal(moveResult.newId, newId);
 
-  const progressBeforeScan = JSON.parse(fs.readFileSync(DB_FILE, 'utf8')).progress[newId];
+  const progressBeforeScan = readDb().progress[newId];
   assert.deepStrictEqual(progressBeforeScan, { timestamp: 123, duration: 600, updatedAt: '2026-07-01T00:00:00.000Z' });
 
   // The mandatory regression: run the NEXT scan, exactly as if the operator
   // triggered (or the timer fired) a rescan after the move.
   await scanDirectories();
 
-  const finalDb = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+  const finalDb = readDb();
 
   // Not a delete: the new-path id must still carry the SAME watch progress,
   // byte-for-byte, that existed right after the move -- a scan reusing the
@@ -93,7 +106,7 @@ test('a moved item with NO prior watch progress: single entry, no duplicate, aft
   const newPath = path.join(dstDir, 'clip.mp4');
   const newId = getMediaId(newPath);
 
-  fs.writeFileSync(DB_FILE, JSON.stringify({
+  saveDatabase({
     folders: [srcDir, dstDir],
     folderSettings: {},
     progress: {},
@@ -106,14 +119,14 @@ test('a moved item with NO prior watch progress: single entry, no duplicate, aft
       },
     },
     settings: baseSettings(),
-  }, null, 2), 'utf8');
+  });
 
   const moveResult = await moveItemToFolder({ loadDatabase, updateDatabase, getMediaId }, oldId, dstDir);
   assert.equal(moveResult.ok, true);
 
   await scanDirectories();
 
-  const finalDb = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+  const finalDb = readDb();
   assert.equal(Object.keys(finalDb.metadata).length, 1);
   assert.ok(finalDb.metadata[newId]);
   assert.ok(!finalDb.metadata[oldId]);

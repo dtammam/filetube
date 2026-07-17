@@ -10,11 +10,11 @@ const os = require('node:os');
 const fs = require('node:fs');
 const path = require('node:path');
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-autoplay-next-'));
-const DB_FILE = path.join(process.env.DATA_DIR, 'db.json');
 
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
-const { app, saveDatabase } = require('../../server');
+const { app, saveDatabase, __resetDatabaseForTests } = require('../../server');
+const { readPersistedDatabase } = require('../../lib/db/sqlite');
 
 const DEFAULT_SETTINGS = {
   scanIntervalMinutes: 30,
@@ -51,8 +51,9 @@ after(async () => {
   await new Promise((resolve) => server.close(resolve));
 });
 
-beforeEach(() => {
-  if (fs.existsSync(DB_FILE)) fs.rmSync(DB_FILE);
+beforeEach(async () => {
+  // v1.42: SQLite replaced db.json; the sanctioned between-test reset.
+  await __resetDatabaseForTests();
 });
 
 test('GET /api/settings never omits autoplayNext, and it defaults to false (OFF) on a fresh db', async () => {
@@ -87,7 +88,7 @@ test('GET /api/settings after a POST reflects the persisted autoplayNext (round-
   const getJson = await (await fetch(`${base}/api/settings`)).json();
   assert.equal(getJson.autoplayNext, true);
 
-  const onDisk = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+  const onDisk = readPersistedDatabase(process.env.DATA_DIR);
   assert.equal(onDisk.settings.autoplayNext, true, 'persisted to db.json, not just returned in the response');
 });
 
@@ -115,7 +116,7 @@ test('POST /api/settings rejects a non-boolean autoplayNext with 400 and mutates
   const json = await res.json();
   assert.equal(typeof json.error, 'string');
 
-  const onDisk = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+  const onDisk = readPersistedDatabase(process.env.DATA_DIR);
   assert.equal(onDisk.settings.autoplayNext, true, 'a rejected request must leave the prior value untouched');
 });
 
@@ -129,6 +130,6 @@ test('POST /api/settings with an invalid autoplayNext does not partially persist
   });
   assert.equal(res.status, 400);
 
-  const onDisk = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+  const onDisk = readPersistedDatabase(process.env.DATA_DIR);
   assert.deepEqual(onDisk.settings, baseSettings(), 'no key from the rejected request may be persisted, not even the otherwise-valid one');
 });
