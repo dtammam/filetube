@@ -48,7 +48,11 @@ test('no users: a page request redirects to /welcome; an API 401s; /welcome + as
   assert.equal((await raw('/welcome', { headers: { Accept: 'text/html' } })).status, 200);
   assert.equal((await raw('/css/style.css')).status, 200);
   assert.equal((await raw('/js/common.js')).status, 200);
-  assert.equal((await raw('/js/login.js')).status, 401, '/js/login.js is NOT allowlisted (only common.js is)');
+  // v1.43 gate fix: /js/login.js carries the login/welcome form-submit
+  // handlers, so the logged-OUT browser MUST be able to fetch it or sign-in
+  // is impossible. (The prior assertion wrongly locked in a 401 that broke
+  // browser login; the route-census test now guards this.)
+  assert.equal((await raw('/js/login.js')).status, 200, '/js/login.js must be reachable pre-auth — it wires the sign-in form');
   // /login redirects to /welcome while there are no users.
   assert.equal((await raw('/login', { headers: { Accept: 'text/html' } })).location, '/welcome');
 });

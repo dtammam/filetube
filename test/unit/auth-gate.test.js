@@ -18,7 +18,7 @@ const authCrypto = require('../../lib/auth/crypto');
 // ---- allowlist (WARNING-3) --------------------------------------------------
 
 test('allowlist: the intended pre-login surface is reachable; everything else is not', () => {
-  for (const p of ['/login', '/welcome', '/logo', '/manifest.webmanifest', '/favicon.svg', '/favicon.ico', '/css/style.css', '/js/common.js', '/fonts/roboto.woff2', '/icons/icon-192.png', '/assets/icons/outlined/home.svg']) {
+  for (const p of ['/login', '/welcome', '/logo', '/manifest.webmanifest', '/favicon.svg', '/favicon.ico', '/css/style.css', '/js/common.js', '/js/login.js', '/fonts/roboto.woff2', '/icons/icon-192.png', '/assets/icons/outlined/home.svg']) {
     assert.equal(gate.isAllowlisted('GET', p), true, `GET ${p} allowed pre-login`);
   }
   assert.equal(gate.isAllowlisted('POST', '/api/auth/login'), true);

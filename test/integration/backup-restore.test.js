@@ -44,6 +44,14 @@ after(async () => {
 
 beforeEach(async () => {
   await __resetDatabaseForTests();
+  // A restore-with-users in a prior test bumps testadmin's token_version (the
+  // CRITICAL-1 floor), which kills the global patched-fetch cookie (minted at
+  // the old tv). In a real browser the reissued Set-Cookie is adopted; the
+  // test harness must re-sync manually. Re-authenticate cleanly (unpatch then
+  // re-patch, re-signing at the current tv) so each case starts with a live
+  // operator cookie.
+  auth.restore();
+  auth = authenticateFetch(server, base);
   for (const f of ['custom-logo.bin', 'custom-logo-dark.bin']) {
     try { fs.unlinkSync(path.join(DATA_DIR, f)); } catch { /* fine */ }
   }
@@ -173,6 +181,12 @@ test('F5 coherency: a progress ping staged BEFORE the restore never lands after 
   const res = await postRestore(bundle);
   assert.equal(res.status, 200);
   assert.ok(!pendingProgress.has(pendingKey), 'the restore cleared the staged ping');
+
+  // The restore bumped the operator's tv (CRITICAL-1 floor) and reissued the
+  // cookie in the response; re-sync the patched-fetch cookie so the
+  // continuation reads authenticate (a browser would have adopted Set-Cookie).
+  auth.restore();
+  auth = authenticateFetch(server, base);
 
   // Zero intervening writes: the very next read serves the RESTORED per-user
   // position (the original v1.42 F5 contract, now at the per-user layer).
@@ -368,4 +382,44 @@ test('v1.43: a v1.42-format bundle (users absent or empty) restores the docs and
   assert.deepEqual(userStore.listUsers().map((u) => u.username).sort(), usersBefore,
     'a bundle without accounts must never wipe the instance\'s accounts');
   assert.equal(loadDatabase().metadata.vid1.title, 'Clip', 'the doc restore still ran');
+});
+
+// ---- gate CRITICAL-1 (adversarial): restore must invalidate OTHER live sessions ----
+
+test('CRITICAL-1: an id-reassigning restore invalidates a THIRD PARTY\'s live cookie -- no cross-user bleed / privilege escalation', async () => {
+  const { __mintTestSession } = require('../../server');
+  saveDatabase(fullState());
+
+  // "Beta" instance: a friend `sam` (member) signs in and holds a REAL live
+  // cookie {uid: sam.id, tv: 0}. No forging -- his genuine session is the
+  // attack vehicle.
+  const me = userStore.getByUsername('testadmin');
+  const sam = __mintTestSession({ username: 'sam', role: 'member' });
+  assert.equal((await fetch(`${base}/api/auth/me`, { headers: { Cookie: sam.cookie } })).status, 200, 'precondition: sam is live');
+
+  // A bundle (e.g. exported from a DIFFERENT prod instance) that reassigns
+  // sam's exact id to a DIFFERENT identity -- admin `alice`, tv 0. Without the
+  // fix, sam's {uid: sam.id, tv: 0} cookie would authenticate as alice and
+  // inherit her ADMIN. The operator (testadmin) is present so the self-lockout
+  // guard passes.
+  const bundle = await getBackup();
+  bundle.users = [
+    { id: me.id, username: 'testadmin', displayName: 'Admin', passwordHash: 'scrypt$32768$8$1$aa$bb', role: 'admin', canManageSubscriptions: true, settingsJson: '{}', tokenVersion: 0, disabled: false, createdAt: '2026-01-01T00:00:00.000Z' },
+    { id: sam.user.id, username: 'alice', displayName: 'Alice', passwordHash: 'scrypt$32768$8$1$aa$bb', role: 'admin', canManageSubscriptions: true, settingsJson: '{}', tokenVersion: 0, disabled: false, createdAt: '2026-01-01T00:00:00.000Z' },
+  ];
+
+  const res = await postRestore(bundle);
+  assert.equal(res.status, 200);
+  const alice = userStore.getByUsername('alice');
+  assert.ok(alice && alice.id === sam.user.id, 'alice landed at sam\'s exact former id');
+
+  // THE ATTACK: sam's still-held cookie must NOT authenticate as the restored
+  // alice -- the tv floor bumped alice's tv above sam's cookie tv (0), so the
+  // gate's tv check rejects it. No cross-user bleed, no privilege escalation.
+  const bleed = await fetch(`${base}/api/auth/me`, { headers: { Cookie: sam.cookie } });
+  assert.equal(bleed.status, 401, 'a pre-restore cookie is dead after the id-reassigning restore -- no bleed, no escalation');
+  assert.ok(alice.tokenVersion > 0, 'alice\'s restored tv was floored above any live cookie value');
+
+  // The operator, by contrast, got a reissued cookie and stays signed in.
+  assert.ok(res.headers.get('set-cookie'), 'the operator is reissued a valid cookie against the restored row');
 });

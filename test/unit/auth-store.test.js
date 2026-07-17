@@ -131,7 +131,7 @@ test('two users have fully independent per-user state', () => {
 
 // ---- v1.43 chunk 4b: batch flush + media-id lifecycle helpers ---------------
 
-test('setProgressBatch commits many users x many ids in one transaction; a throw mid-batch rolls the WHOLE batch back', () => {
+test('setProgressBatch commits many users x many ids in one transaction; a vanished-user entry is filtered, survivors commit (gate WARNING-1)', () => {
   const a = store.createFirstAdmin({ username: 'a', displayName: 'A', passwordHash: 'h' }, null, ISO);
   const b = store.createUser({ username: 'b', displayName: 'B', passwordHash: 'h', role: 'member' }, ISO);
   store.setProgressBatch([
@@ -143,13 +143,15 @@ test('setProgressBatch commits many users x many ids in one transaction; a throw
   assert.equal(store.getOneProgress(a.id, 'v2').timestamp, 2);
   assert.equal(store.getOneProgress(b.id, 'v1').timestamp, 9);
 
-  // Atomicity: a batch whose LAST row violates the FK (unknown user id)
-  // must land nothing at all.
-  assert.throws(() => store.setProgressBatch([
+  // Gate WARNING-1: a batch carrying an entry for a NON-existent user must
+  // NOT throw/roll-back the whole batch (which would destroy co-users'
+  // positions) -- the ghost entry is filtered before the transaction and the
+  // survivor commits. (Pre-fix this FK-violated and rolled back a.v3 too.)
+  assert.doesNotThrow(() => store.setProgressBatch([
     { userId: a.id, mediaId: 'v3', value: { timestamp: 3, duration: 10, updatedAt: ISO } },
     { userId: 999999, mediaId: 'v3', value: { timestamp: 4, duration: 10, updatedAt: ISO } },
   ]));
-  assert.equal(store.getOneProgress(a.id, 'v3'), null, 'the failed batch rolled back whole');
+  assert.equal(store.getOneProgress(a.id, 'v3').timestamp, 3, 'the survivor committed; only the ghost was dropped');
 });
 
 test('removeMediaState deletes EVERY user\'s progress + liked rows for the media id, and nothing else', () => {
@@ -193,4 +195,64 @@ test('__clearUserStateForTests wipes per-user STATE but keeps the users (session
   assert.equal(store.countUsers(), 1, 'the user survives');
   assert.deepEqual(store.getLiked(a.id), []);
   assert.equal(store.getOneProgress(a.id, 'v'), null);
+});
+
+// ---- v1.43 gate round: restore session-invalidation + batch resilience ------
+
+test('CRITICAL-1: replaceAllUsersRaw stamps every restored token_version ABOVE the pre-wipe max, so no live cookie can match', () => {
+  // Pre-wipe: two users, one with a bumped tv (a prior password reset).
+  const a = store.createFirstAdmin({ username: 'a', displayName: 'A', passwordHash: 'h' }, null, ISO);
+  const b = store.createUser({ username: 'b', displayName: 'B', passwordHash: 'h', role: 'member' }, ISO);
+  store.updatePassword(b.id, 'h2'); // b.tv -> 1
+  store.updatePassword(b.id, 'h3'); // b.tv -> 2 (the pre-wipe MAX)
+  assert.equal(store.getById(b.id).tokenVersion, 2);
+
+  // A bundle that reassigns ids to DIFFERENT identities, all with tv 0 (the
+  // adversarial repro shape). The floor must exceed the pre-wipe max (2).
+  store.replaceAllUsersRaw([
+    { id: a.id, username: 'a', displayName: 'A', passwordHash: 'h', role: 'admin', canManageSubscriptions: true, settingsJson: '{}', tokenVersion: 0, disabled: false, createdAt: ISO },
+    { id: b.id, username: 'carol', displayName: 'Carol', passwordHash: 'h', role: 'admin', canManageSubscriptions: true, settingsJson: '{}', tokenVersion: 0, disabled: false, createdAt: ISO },
+  ]);
+  // A live cookie for id b.id had tv <= 2; every restored row is now tv >= 3.
+  assert.ok(store.getById(a.id).tokenVersion >= 3, 'restored tv floored above the pre-wipe max');
+  assert.ok(store.getById(b.id).tokenVersion >= 3, 'the reassigned identity at the same id also floored -- a stale {uid, tv:0/1/2} cookie can never match');
+});
+
+test('CRITICAL-1: a restore with a HIGHER bundle tv keeps that higher value (max of bundle and floor)', () => {
+  store.createFirstAdmin({ username: 'a', displayName: 'A', passwordHash: 'h' }, null, ISO);
+  store.replaceAllUsersRaw([
+    { id: 1, username: 'a', displayName: 'A', passwordHash: 'h', role: 'admin', canManageSubscriptions: true, settingsJson: '{}', tokenVersion: 99, disabled: false, createdAt: ISO },
+  ]);
+  assert.equal(store.getById(1).tokenVersion, 99, 'a bundle tv above the floor is preserved verbatim');
+});
+
+test('WARNING-2: replaceAllUsersRaw normalizes (trims) the username, so a padded bundle username stays loginnable', () => {
+  store.createFirstAdmin({ username: 'a', displayName: 'A', passwordHash: 'h' }, null, ISO);
+  store.replaceAllUsersRaw([
+    { id: 1, username: '  dean  ', displayName: 'Dean', passwordHash: 'h', role: 'admin', canManageSubscriptions: true, settingsJson: '{}', tokenVersion: 0, disabled: false, createdAt: ISO },
+  ]);
+  const found = store.getByUsername('dean'); // login trims -> must match
+  assert.ok(found, 'a trimmed lookup resolves the restored account');
+  assert.equal(found.username, 'dean', 'stored username is trimmed, not padded');
+});
+
+test('WARNING-1: setProgressBatch/setBookProgressBatch skip entries for a vanished user (no FK poison, co-users survive)', () => {
+  const a = store.createFirstAdmin({ username: 'a', displayName: 'A', passwordHash: 'h' }, null, ISO);
+  const b = store.createUser({ username: 'b', displayName: 'B', passwordHash: 'h', role: 'member' }, ISO);
+  const ghostId = b.id;
+  store.deleteUser(b.id); // b is gone; a staged ping still references ghostId
+
+  // The batch carries a survivor (a) AND a ghost (b) -- the ghost must be
+  // dropped, the survivor must commit (pre-fix this FK-violated the whole tx).
+  assert.doesNotThrow(() => store.setProgressBatch([
+    { userId: a.id, mediaId: 'v1', value: { timestamp: 5, duration: 10, updatedAt: ISO } },
+    { userId: ghostId, mediaId: 'v1', value: { timestamp: 9, duration: 10, updatedAt: ISO } },
+  ]));
+  assert.equal(store.getOneProgress(a.id, 'v1').timestamp, 5, 'the survivor\'s position committed');
+
+  assert.doesNotThrow(() => store.setBookProgressBatch([
+    { userId: a.id, bookId: 'bk1', value: { percent: 50, updatedAt: ISO } },
+    { userId: ghostId, bookId: 'bk1', value: { percent: 90, updatedAt: ISO } },
+  ]));
+  assert.equal(store.getOneBookProgress(a.id, 'bk1').percent, 50);
 });

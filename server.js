@@ -4791,12 +4791,30 @@ app.delete('/api/users/:id', (req, res) => {
   if (wouldRemoveLastAdmin(target.id, 'delete')) {
     return res.status(409).json({ error: 'That is the last enabled admin - deletion is refused so the instance cannot lock itself out.' });
   }
+  // Gate WARNING-1 (adversarial): drop this user's staged (un-flushed)
+  // pings BEFORE the row is deleted — otherwise the next flush would carry a
+  // ping whose user_id no longer exists. The batch flush filters vanished
+  // users too (defense in depth), but clearing at the source keeps the
+  // coalescer honest and avoids a wasted FK-filter round.
+  dropPendingProgressForUser(target.id);
   // Hard delete: ON DELETE CASCADE clears the per-user state; AUTOINCREMENT
   // guarantees the id is never reused, so any still-valid cookie for it can
   // never inherit a future account (design-delta SUGGESTION-6).
   userStore.deleteUser(target.id);
   return res.json({ success: true });
 });
+
+// Remove every staged (not-yet-flushed) progress/book-progress ping owned by
+// a user id, across both coalescers — called when a user is deleted so a
+// vanished user_id never reaches a flush batch (gate WARNING-1).
+function dropPendingProgressForUser(userId) {
+  for (const [key, entry] of [...pendingProgress]) {
+    if (entry.userId === userId) pendingProgress.delete(key);
+  }
+  for (const [key, entry] of [...pendingBookProgress]) {
+    if (entry.userId === userId) pendingBookProgress.delete(key);
+  }
+}
 // v1.41.18 (Dean): kill the header logo FOUC at the SOURCE. The header shells
 // are static HTML, so the "FileTube" text wordmark always painted before
 // common.js could swap in a configured custom logo -- a flash on every refresh.
