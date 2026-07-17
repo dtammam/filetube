@@ -2191,6 +2191,10 @@ function reconcileTranscode(item) {
 const EMBEDDED_TAG_WHITELIST = [
   'title', 'artist', 'album', 'date', 'genre', 'composer',
   'description', 'comment', 'show', 'copyright',
+  // v1.44 music: album grouping + track ordering. `albumartist`/`track`/`disc`
+  // are the canonical ffmpeg tag names; common aliases (album_artist,
+  // tracknumber, discnumber) are folded in by the post-processing below.
+  'albumartist', 'track', 'disc',
 ];
 function parseFfprobeTags(input) {
   let j = input;
@@ -2211,6 +2215,19 @@ function parseFfprobeTags(input) {
   }
   // "year" is a common alias for date (ID3 etc.) — fall back to it.
   if (!out.date && lower.year) out.date = lower.year;
+  // v1.44 music: fold common alias spellings into the canonical keys (the
+  // whitelist only copies exact matches, so these aliases need explicit
+  // fallbacks). `album_artist`/`album artist` (ffmpeg/ID3 TPE2),
+  // `tracknumber`/`track_number`, `discnumber`/`disc_number`.
+  if (!out.albumartist && (lower.album_artist || lower['album artist'])) {
+    out.albumartist = lower.album_artist || lower['album artist'];
+  }
+  if (!out.track && (lower.tracknumber || lower.track_number)) {
+    out.track = lower.tracknumber || lower.track_number;
+  }
+  if (!out.disc && (lower.discnumber || lower.disc_number)) {
+    out.disc = lower.discnumber || lower.disc_number;
+  }
   // description and comment are frequently identical — dedup (case-insensitive).
   if (out.description && out.comment && out.description.toLowerCase() === out.comment.toLowerCase()) {
     delete out.comment;
