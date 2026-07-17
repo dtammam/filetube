@@ -87,7 +87,12 @@ test('fresh open creates the full v1 schema with empty user tables', () => {
       const { c } = a.sql.prepare(`SELECT COUNT(*) AS c FROM ${table}`).get();
       assert.strictEqual(c, 0, `${table} exists and is empty (born-complete schema, exec plan)`);
     }
-    assert.strictEqual(a.sql.prepare('PRAGMA user_version').get().user_version, 1);
+    assert.strictEqual(a.sql.prepare('PRAGMA user_version').get().user_version, 2);
+    // v1.43 schema v2: users.id is AUTOINCREMENT (never reuses a reaped id —
+    // design-delta SUGGESTION-6). sqlite_autoindex/sqlite_sequence presence
+    // is the fingerprint.
+    const usersSql = a.sql.prepare("SELECT sql FROM sqlite_master WHERE name='users'").get().sql;
+    assert.match(usersSql, /AUTOINCREMENT/, 'users.id is AUTOINCREMENT');
   } finally {
     a.close();
   }
