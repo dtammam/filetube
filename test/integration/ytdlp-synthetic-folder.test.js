@@ -52,6 +52,7 @@ delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
 const { app, scanState, scanDirectories, loadDatabase, updateDatabase, getMediaId } = require('../../server');
+const { authenticateFetch } = require('../helpers/auth');
 const ytdlp = require('../../lib/ytdlp');
 
 let server;
@@ -64,6 +65,7 @@ before(async () => {
     server = app.listen(0, '127.0.0.1', resolve);
   });
   base = `http://127.0.0.1:${server.address().port}`;
+  authenticateFetch(server, base); // v1.43: auth through the real gate
 });
 
 after(async () => {

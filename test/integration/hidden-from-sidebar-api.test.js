@@ -14,6 +14,7 @@ process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-hidden-si
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
 const { app, __resetDatabaseForTests } = require('../../server');
+const { authenticateFetch } = require('../helpers/auth');
 
 let server;
 let base;
@@ -25,6 +26,7 @@ before(async () => {
     server = app.listen(0, '127.0.0.1', resolve);
   });
   base = `http://127.0.0.1:${server.address().port}`;
+  authenticateFetch(server, base); // v1.43: auth through the real gate
 });
 
 after(async () => {

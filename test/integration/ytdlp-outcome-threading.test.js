@@ -32,6 +32,7 @@ const assert = require('node:assert');
 const {
   app, loadDatabase, updateDatabase, scanDirectories, getMediaId,
 } = require('../../server');
+const { authenticateFetch } = require('../helpers/auth');
 const { readPersistedDatabase } = require('../../lib/db/sqlite');
 const ytdlp = require('../../lib/ytdlp');
 const run = require('../../lib/ytdlp/run');
@@ -50,6 +51,7 @@ before(async () => {
     server = app.listen(0, '127.0.0.1', resolve);
   });
   base = `http://127.0.0.1:${server.address().port}`;
+  authenticateFetch(server, base); // v1.43: auth through the real gate
 });
 
 after(async () => {

@@ -9,18 +9,21 @@ process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-test-'));
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-const { app, transcodedPath, saveDatabase, flushPendingProgress, loadDatabase, __failNextSaveForTests } = require('../../server');
+const { app, transcodedPath, saveDatabase, flushPendingProgress, loadDatabase, __failNextSaveForTests, userStore } = require('../../server');
+const { authenticateFetch } = require('../helpers/auth');
 const { readPersistedDatabase } = require('../../lib/db/sqlite');
 const THUMBNAIL_DIR = path.join(process.env.DATA_DIR, '.thumbnails');
 
 let server;
 let base;
+let auth;
 
 before(async () => {
   await new Promise((resolve) => {
     server = app.listen(0, '127.0.0.1', resolve);
   });
   base = `http://127.0.0.1:${server.address().port}`;
+  auth = authenticateFetch(server, base); // v1.43: auth through the real gate
 });
 
 after(async () => {
@@ -216,16 +219,23 @@ test('flushPendingProgress: a failed flush is caught and logged, never throws, a
     body: JSON.stringify({ id: 'vidFlushFail', timestamp: 7 }),
   });
 
-  // v1.42: the one-shot injector replaces the fs.writeFileSync stub -- the
-  // flush's own saveDatabase call consumes the shot and throws (self-disarms).
-  __failNextSaveForTests(new Error('simulated disk failure'));
-  await assert.doesNotReject(
-    flushPendingProgress(),
-    'a flush write failure must be caught internally, never left as an unhandled rejection'
-  );
+  // v1.43: the flush writes the relational user_progress batch, not the doc
+  // tables (so the v1.42 __failNextSaveForTests shot can't reach it). Force
+  // the failure at the seam the flush actually crosses: the store's batch
+  // upsert. One shot, restored in finally.
+  const origBatch = userStore.setProgressBatch;
+  userStore.setProgressBatch = () => { throw new Error('simulated user-table failure'); };
+  try {
+    await assert.doesNotReject(
+      flushPendingProgress(),
+      'a flush write failure must be caught internally, never left as an unhandled rejection'
+    );
+  } finally {
+    userStore.setProgressBatch = origBatch;
+  }
   // The failed ping is gone (already cleared before the failed write) -- the
   // same bounded "lose at most one window" outcome AC4.3 already accepts.
-  assert.equal(loadDatabase().progress.vidFlushFail, undefined, 'the failed flush never persisted');
+  assert.equal(userStore.getOneProgress(auth.user.id, 'vidFlushFail'), null, 'the failed flush never persisted');
 
   // The chain must not be wedged: the NEXT ping + flush still commits normally.
   await fetch(`${base}/api/progress`, {
@@ -234,7 +244,7 @@ test('flushPendingProgress: a failed flush is caught and logged, never throws, a
     body: JSON.stringify({ id: 'vidFlushFail', timestamp: 9 }),
   });
   await flushPendingProgress();
-  assert.equal(loadDatabase().progress.vidFlushFail.timestamp, 9, 'a subsequent flush still commits after a prior one failed');
+  assert.equal(userStore.getOneProgress(auth.user.id, 'vidFlushFail').timestamp, 9, 'a subsequent flush still commits after a prior one failed');
 });
 
 test('DELETE /api/videos/:id returns 500 JSON (not a hang) when the db-metadata cleanup fails to persist', async () => {

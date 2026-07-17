@@ -25,6 +25,7 @@ const { test, before, after } = require('node:test');
 const assert = require('node:assert');
 const express = require('express');
 const { app, currentYtdlpPollTimer } = require('../../server');
+const { authenticateFetch } = require('../helpers/auth');
 const { readPersistedDatabase } = require('../../lib/db/sqlite');
 const ytdlp = require('../../lib/ytdlp');
 
@@ -36,6 +37,7 @@ before(async () => {
     server = app.listen(0, '127.0.0.1', resolve);
   });
   base = `http://127.0.0.1:${server.address().port}`;
+  authenticateFetch(server, base); // v1.43: auth through the real gate
 });
 
 after(async () => {

@@ -63,8 +63,9 @@ const assert = require('node:assert');
 const {
   app, getMediaId, loadDatabase, saveDatabase, updateDatabase, scanDirectories,
   relocateHydratedImportIntoChannelFolder, resolveRelocationTitle, transcodedPath,
-  flushPendingProgress,
+  flushPendingProgress, userStore,
 } = require('../../server');
+const { authenticateFetch } = require('../helpers/auth');
 const { readPersistedDatabase } = require('../../lib/db/sqlite');
 const ytdlp = require('../../lib/ytdlp');
 const ytdlpArgs = require('../../lib/ytdlp/args');
@@ -856,6 +857,7 @@ test('a file that is being WATCHED (served within RECENT_STREAM_MS) is not moved
   const server = app.listen(0, '127.0.0.1');
   await new Promise((r) => server.once('listening', r));
   const base = `http://127.0.0.1:${server.address().port}`;
+  authenticateFetch(server, base); // v1.43: auth through the real gate
   try {
     // Stream it (this is what marks the path live-watched).
     const res = await fetch(`${base}/video/${id}`, { headers: { Range: 'bytes=0-3' } });
@@ -880,6 +882,7 @@ test('watch progress posted just before a move is NOT lost: pendingProgress is r
   const server = app.listen(0, '127.0.0.1');
   await new Promise((r) => server.once('listening', r));
   const base = `http://127.0.0.1:${server.address().port}`;
+  const auth = authenticateFetch(server, base); // v1.43: auth through the real gate
   try {
     // A ping lands in the debounced pendingProgress staging map (NOT yet in db).
     const posted = await fetch(`${base}/api/progress`, {
@@ -895,10 +898,14 @@ test('watch progress posted just before a move is NOT lost: pendingProgress is r
 
     await flushPendingProgress(); // the debounce timer fires
 
-    const db = readDb();
-    assert.equal(db.progress[newId] && db.progress[newId].timestamp, 120,
-      'the pending ping must be flushed against the NEW id -- flushPendingProgress drops any id whose metadata entry is gone, so an un-re-keyed pending ping is silently destroyed');
-    assert.equal(db.progress[oldId], undefined, 'and nothing is left under the dead id');
+    // v1.43: positions are per-user rows now -- the pending ping must land in
+    // user_progress under the NEW id (flushPendingProgress drops any id whose
+    // metadata entry is gone, so an un-re-keyed pending ping is silently
+    // destroyed).
+    const row = userStore.getOneProgress(auth.user.id, newId);
+    assert.equal(row && row.timestamp, 120,
+      'the pending ping must be flushed against the NEW id');
+    assert.equal(userStore.getOneProgress(auth.user.id, oldId), null, 'and nothing is left under the dead id');
   } finally {
     server.closeAllConnections?.();
     await new Promise((r) => server.close(r));
@@ -1059,6 +1066,7 @@ test('a failed db re-key does not leave the in-flight progress ping stranded on 
   const server = app.listen(0, '127.0.0.1');
   await new Promise((r) => server.once('listening', r));
   const base = `http://127.0.0.1:${server.address().port}`;
+  const auth = authenticateFetch(server, base); // v1.43: auth through the real gate
   try {
     await fetch(`${base}/api/progress`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -1082,10 +1090,15 @@ test('a failed db re-key does not leave the in-flight progress ping stranded on 
 
     await flushPendingProgress();
 
-    const db = readDb();
-    assert.equal(db.progress[oldId] && db.progress[oldId].timestamp, 77,
-      'the db rolled back, so the ping must still be keyed to the id that still exists -- re-keying the in-memory maps inside the mutator would have stranded it on a newId with no metadata entry, and the flush would have dropped it');
-    assert.equal(db.progress[newId], undefined);
+    // v1.43: per-user rows -- the db rolled back, so the ping must still be
+    // keyed to the id that still exists. Re-keying the staged ping (or the
+    // user_progress rows -- both live in rekeyInFlightState, which only runs
+    // AFTER a committed mutator) inside the mutator would have stranded it on
+    // a newId with no metadata entry, and the flush would have dropped it.
+    const row = userStore.getOneProgress(auth.user.id, oldId);
+    assert.equal(row && row.timestamp, 77,
+      'the ping must land under the id that still exists after the rollback');
+    assert.equal(userStore.getOneProgress(auth.user.id, newId), null);
   } finally {
     server.closeAllConnections?.();
     await new Promise((r) => server.close(r));

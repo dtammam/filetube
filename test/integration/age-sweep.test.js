@@ -24,6 +24,7 @@ const {
   __resetDatabaseForTests,
   __getLoadDatabaseCallCount,
 } = require('../../server');
+const { authenticateFetch } = require('../helpers/auth');
 const { readPersistedDatabase } = require('../../lib/db/sqlite');
 
 // Mirrors server.js's RECENT_STREAM_MS (10 minutes) -- not exported since it's
@@ -73,6 +74,7 @@ before(async () => {
     server = app.listen(0, '127.0.0.1', resolve);
   });
   base = `http://127.0.0.1:${server.address().port}`;
+  authenticateFetch(server, base); // v1.43: auth through the real gate
 });
 
 after(async () => {

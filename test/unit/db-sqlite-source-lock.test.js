@@ -25,6 +25,18 @@ const ALLOWED = path.join('lib', 'db', 'sqlite.js');
 // cheap and keeps the rule simple).
 const SCAN_ROOTS = ['server.js', 'lib', 'scripts', 'test'];
 
+// Strip // line-comments and block-comments so a comment MENTIONING a
+// require (e.g. "does NOT require('node:sqlite')") can't trip the match —
+// the lock cares about real requires, not prose. Crude but sufficient: it
+// over-strips string literals that look like comments, which only ever
+// makes the lock MORE permissive on strings (never a false positive), and
+// no real require lives inside a string.
+function stripComments(src) {
+  return src
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/(^|[^:])\/\/[^\n]*/g, '$1'); // avoid eating the '//' in 'http://'
+}
+
 function walk(entry, out) {
   const full = path.join(ROOT, entry);
   const stat = fs.statSync(full);
@@ -46,9 +58,10 @@ test('node:sqlite is required ONLY by lib/db/sqlite.js', () => {
   const offenders = [];
   for (const rel of files) {
     if (rel === ALLOWED) continue;
-    const src = fs.readFileSync(path.join(ROOT, rel), 'utf8');
-    // Match require/import of the builtin. Comments mentioning the string
-    // in prose are fine; a require() is not.
+    // Match require/import of the builtin, comments stripped first so a
+    // comment mentioning the string in prose is fine (this test's own
+    // stated contract, now actually enforced).
+    const src = stripComments(fs.readFileSync(path.join(ROOT, rel), 'utf8'));
     if (/require\(\s*['"]node:sqlite['"]\s*\)/.test(src) || /from\s+['"]node:sqlite['"]/.test(src)) {
       offenders.push(rel);
     }
@@ -86,7 +99,7 @@ test('no third-party sqlite driver is required anywhere', () => {
   for (const root of SCAN_ROOTS) walk(root, files);
   const offenders = [];
   for (const rel of files) {
-    const src = fs.readFileSync(path.join(ROOT, rel), 'utf8');
+    const src = stripComments(fs.readFileSync(path.join(ROOT, rel), 'utf8'));
     if (/require\(\s*['"](?:better-sqlite3|sqlite3?|knex|sequelize)['"]\s*\)/.test(src)) {
       offenders.push(rel);
     }

@@ -38,6 +38,7 @@ const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
 const express = require('express');
 const { app, loadDatabase, updateDatabase, getMediaId, __resetDatabaseForTests } = require('../../server');
+const { authenticateFetch } = require('../helpers/auth');
 const ytdlp = require('../../lib/ytdlp');
 const store = require('../../lib/ytdlp/store');
 const args = require('../../lib/ytdlp/args');
@@ -50,6 +51,7 @@ before(async () => {
     server = app.listen(0, '127.0.0.1', resolve);
   });
   base = `http://127.0.0.1:${server.address().port}`;
+  authenticateFetch(server, base); // v1.43: auth through the real gate
 });
 
 after(async () => {
@@ -330,4 +332,32 @@ test('disabled-module no-op preserved: all 3 pin routes 404 when the module is d
   } finally {
     process.env.FILETUBE_YTDLP_ENABLED = 'true';
   }
+});
+
+// ---- v1.43 (chunk 4b): channel pins are per-user ---------------------------
+
+test('per-user isolation: channel pins never bleed across accounts (list, folders invariant intact)', async () => {
+  const { __mintTestSession } = require('../../server');
+  const second = __mintTestSession({ username: 'pinuser2' });
+  const channelDir = path.join(downloadDir, 'My Channel Only');
+
+  const addRes = await fetch(`${base}/api/subscriptions/pins`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ channelDir, label: 'My Channel Only' }),
+  });
+  assert.equal(addRes.status, 201);
+
+  const adminList = await (await fetch(`${base}/api/subscriptions/pins`)).json();
+  assert.equal(adminList.length, 1, 'the admin sees their own pin');
+  const secondList = await (await fetch(`${base}/api/subscriptions/pins`, { headers: { Cookie: second.cookie } })).json();
+  assert.deepEqual(secondList, [], 'another user\'s pin never appears in this user\'s sidebar');
+
+  // The second user unpinning the admin's pin id 404s (it is not THEIR pin)
+  // and leaves the admin's pin intact.
+  const foreignDelete = await fetch(`${base}/api/subscriptions/pins/${adminList[0].id}`, {
+    method: 'DELETE', headers: { Cookie: second.cookie },
+  });
+  assert.equal(foreignDelete.status, 404);
+  assert.equal((await (await fetch(`${base}/api/subscriptions/pins`)).json()).length, 1, 'the admin\'s pin survives');
 });

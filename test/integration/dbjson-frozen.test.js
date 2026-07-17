@@ -33,6 +33,7 @@ const HASH_AT_BOOT = crypto.createHash('sha256').update(fs.readFileSync(DB_FILE)
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
 const { app, updateDatabase, loadDatabase, flushPendingProgress } = require('../../server');
+const { authenticateFetch } = require('../helpers/auth');
 const { readPersistedDatabase } = require('../../lib/db/sqlite');
 
 let server;
@@ -43,6 +44,7 @@ before(async () => {
     server = app.listen(0, '127.0.0.1', resolve);
   });
   base = `http://127.0.0.1:${server.address().port}`;
+  authenticateFetch(server, base); // v1.43: auth through the real gate
 });
 
 after(async () => {

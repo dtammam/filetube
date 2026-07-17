@@ -44,11 +44,13 @@ const {
   app, saveDatabase, getMediaId, scanDirectories, activeMediaStreams,
   __resetDatabaseForTests,
 } = require('../../server');
+const { authenticateFetch } = require('../helpers/auth');
 const { readPersistedDatabase } = require('../../lib/db/sqlite');
 
 let server;
 let base;
 let libDir;
+let authCookie; // v1.43: session cookie for the raw http.get client (fetch is patched separately)
 
 before(async () => {
   libDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-pending-lib-'));
@@ -56,6 +58,7 @@ before(async () => {
     server = app.listen(0, '127.0.0.1', resolve);
   });
   base = `http://127.0.0.1:${server.address().port}`;
+  ({ cookie: authCookie } = authenticateFetch(server, base)); // v1.43: auth through the real gate
 });
 
 after(async () => {
@@ -129,7 +132,9 @@ function pollUntil(cond, what, timeoutMs = 5000) {
 // state a viewer mid-playback (or an abandoned seek, pre-fix) holds.
 function openStalledStream(id, range) {
   return new Promise((resolve, reject) => {
-    const req = http.get(`${base}/video/${id}`, range ? { headers: { Range: range } } : {}, (res) => {
+    const headers = { Cookie: authCookie }; // v1.43: raw http.get must carry the session (fetch patch does not cover it)
+    if (range) headers.Range = range;
+    const req = http.get(`${base}/video/${id}`, { headers }, (res) => {
       res.once('data', () => {
         res.pause();
         resolve({ req, res });

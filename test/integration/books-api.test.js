@@ -18,12 +18,15 @@ const assert = require('node:assert');
 const {
   app, loadDatabase, updateDatabase, getMediaId, scanBooks,
   flushPendingBookProgress, effectiveBookProgress,
+  __getBookProgressFlushWriteCount, __mintTestSession, userStore,
 } = require('../../server');
+const { authenticateFetch } = require('../helpers/auth');
 const { readPersistedDatabase } = require('../../lib/db/sqlite');
 const { buildEpub } = require('../helpers/build-zip');
 
 let server;
 let base;
+let uid; // the authenticated test admin's user id (v1.43: progress/pins are per-user)
 let booksDir;
 let epubId;
 let pdfId;
@@ -47,6 +50,8 @@ before(async () => {
     server = app.listen(0, '127.0.0.1', resolve);
   });
   base = `http://127.0.0.1:${server.address().port}`;
+  const auth = authenticateFetch(server, base); // v1.43: auth through the real gate
+  uid = auth.user.id;
 });
 
 after(async () => {
@@ -150,15 +155,19 @@ test('T6: progress pings coalesce (N pings -> ONE write), read-your-writes befor
   const detail = await (await fetch(`${base}/api/books/${epubId}`)).json();
   assert.equal(detail.progress.percent, 50);
   assert.equal(detail.locator.blockIndex, 5, 'the wave-2 listen-from-here key round-trips');
-  assert.equal(effectiveBookProgress(epubId).percent, 50);
+  assert.equal(effectiveBookProgress(uid, epubId).percent, 50);
 
+  const flushesBefore = __getBookProgressFlushWriteCount();
   await flushPendingBookProgress();
-  const persisted = loadDatabase().books.progress[epubId];
+  assert.equal(__getBookProgressFlushWriteCount() - flushesBefore, 1, '5 pings -> ONE batch transaction');
+  // v1.43: the position lives in the USER's user_book_progress row; the
+  // doc-table books.progress namespace is the frozen pre-auth record and
+  // must never gain a row from a flush.
+  const persisted = userStore.getOneBookProgress(uid, epubId);
   assert.equal(persisted.percent, 50, 'exactly the LAST ping persisted');
-  // v1.42: the old db.json-mtime "a write happened" proxy is replaced by a
-  // direct persisted-state read over an independent connection.
-  assert.equal(readPersistedDatabase(process.env.DATA_DIR).books.progress[epubId].percent, 50,
-    'the flush is durably persisted (independent read-only connection)');
+  const frozen = readPersistedDatabase(process.env.DATA_DIR).books;
+  assert.ok(!(frozen && frozen.progress && frozen.progress[epubId]),
+    'the frozen doc-table record is never written by a per-user flush');
 
   // Wrong-kind and malformed locators 400.
   assert.equal((await postJson(`/api/books/${epubId}/progress`, { locator: { kind: 'pdf', page: 3 }, percent: 10 })).status, 400);
@@ -191,7 +200,7 @@ test('T6: a ping for a book deleted between ping and flush is DROPPED at flush (
   fs.unlinkSync(doomed);
   await scanBooks();
   await flushPendingBookProgress();
-  assert.ok(!loadDatabase().books.progress[doomedId], 'flush guard dropped the orphaned ping');
+  assert.equal(userStore.getOneBookProgress(uid, doomedId), null, 'flush guard dropped the orphaned ping');
   await updateDatabase((db) => { db.settings.pruneMissing = false; return true; });
 });
 
@@ -235,4 +244,66 @@ test('T10: shelf pins CRUD -- confinement 400, add (pre-shaped for the sidebar r
   const del = await fetch(`${base}/api/books/pins/${record.id}`, { method: 'DELETE' });
   assert.equal(del.status, 200);
   assert.equal((await fetch(`${base}/api/books/pins/${record.id}`, { method: 'DELETE' })).status, 404);
+});
+
+// ---- v1.43 (chunk 4b): per-user isolation ----------------------------------
+
+test('per-user isolation: reading positions and shelf pins never bleed across accounts', async () => {
+  const second = __mintTestSession({ username: 'bookuser2' });
+
+  // The admin reads to 60%; the second user reads the SAME book to 20%.
+  assert.equal((await postJson(`/api/books/${epubId}/progress`, {
+    locator: { kind: 'epub', cfi: 'epubcfi(/admin)' }, percent: 60,
+  })).status, 200);
+  const r2 = await fetch(`${base}/api/books/${epubId}/progress`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Cookie: second.cookie },
+    body: JSON.stringify({ locator: { kind: 'epub', cfi: 'epubcfi(/second)' }, percent: 20 }),
+  });
+  assert.equal(r2.status, 200);
+  await flushPendingBookProgress();
+
+  assert.equal(userStore.getOneBookProgress(uid, epubId).percent, 60);
+  assert.equal(userStore.getOneBookProgress(second.user.id, epubId).percent, 20);
+
+  const adminDetail = await (await fetch(`${base}/api/books/${epubId}`)).json();
+  assert.equal(adminDetail.locator.cfi, 'epubcfi(/admin)', 'the admin resumes at THEIR position');
+  const secondDetail = await (await fetch(`${base}/api/books/${epubId}`, { headers: { Cookie: second.cookie } })).json();
+  assert.equal(secondDetail.locator.cfi, 'epubcfi(/second)', 'the second user resumes at THEIRS');
+
+  // Pins: the second user pins a shelf; the admin's pin list stays empty.
+  const pin = await fetch(`${base}/api/books/pins`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Cookie: second.cookie },
+    body: JSON.stringify({ dir: booksDir, label: 'Second Shelf' }),
+  });
+  assert.equal(pin.status, 200);
+  const adminPins = await (await fetch(`${base}/api/books/pins`)).json();
+  assert.deepEqual(adminPins, [], 'another user\'s shelf pin never appears in the admin\'s sidebar');
+  const secondPins = await (await fetch(`${base}/api/books/pins`, { headers: { Cookie: second.cookie } })).json();
+  assert.equal(secondPins.length, 1);
+  assert.equal(secondPins[0].channelDir, booksDir);
+  // The folders aggregation's pin state is per-user too.
+  const adminAgg = await (await fetch(`${base}/api/books/folders`)).json();
+  assert.equal(adminAgg.folders.find((f) => f.dir === booksDir).pinned, false);
+  const secondAgg = await (await fetch(`${base}/api/books/folders`, { headers: { Cookie: second.cookie } })).json();
+  assert.equal(secondAgg.folders.find((f) => f.dir === booksDir).pinned, true);
+});
+
+test('v1.43 carrier: the books scan prune removes EVERY user\'s reading position for the pruned book', async () => {
+  const second = __mintTestSession({ username: 'bookuser3' });
+  const doomed = path.join(booksDir, 'doomed-carrier.epub');
+  fs.writeFileSync(doomed, buildEpub({ title: 'Doomed Carrier' }));
+  await scanBooks();
+  const doomedId = getMediaId(doomed);
+  userStore.setBookProgress(uid, doomedId, { percent: 10, updatedAt: new Date().toISOString() });
+  userStore.setBookProgress(second.user.id, doomedId, { percent: 30, updatedAt: new Date().toISOString() });
+
+  await updateDatabase((db) => { db.settings.pruneMissing = true; return true; });
+  fs.unlinkSync(doomed);
+  await scanBooks();
+  await updateDatabase((db) => { db.settings.pruneMissing = false; return true; });
+
+  assert.equal(userStore.getOneBookProgress(uid, doomedId), null, 'the admin\'s position pruned with the book');
+  assert.equal(userStore.getOneBookProgress(second.user.id, doomedId), null, 'every OTHER user\'s position too (no stale resurrection onto a same-path re-add)');
 });

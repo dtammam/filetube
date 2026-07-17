@@ -19,6 +19,7 @@ const assert = require('node:assert');
 const {
   app, loadDatabase, updateDatabase, getMediaId, scanBooks, currentBookScanState, BOOKCOVER_DIR,
 } = require('../../server');
+const { authenticateFetch } = require('../helpers/auth');
 
 // v1.37.0 gate fix (W2 made the scanner cooperative-async): a scanBooks()
 // call landing while another scan is in flight COALESCES and returns
@@ -42,6 +43,7 @@ before(async () => {
     server = app.listen(0, '127.0.0.1', resolve);
   });
   base = `http://127.0.0.1:${server.address().port}`;
+  authenticateFetch(server, base); // v1.43: auth through the real gate
 });
 
 after(async () => {

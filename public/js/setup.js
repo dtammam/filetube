@@ -1185,6 +1185,213 @@ function wireStaticControls(signal) {
   }
 }
 
+// ---- v1.43: Account + admin user management -------------------------------
+// Server-enforced (every /api/users route 403s for non-admins); the client
+// role check below only decides what to RENDER. All display text uses
+// hyphens, never em dashes (Dean's hard rule).
+
+function accountErrorEl() {
+  return document.getElementById('add-user-error');
+}
+
+async function initAccountSection(signal) {
+  const chip = document.getElementById('account-chip');
+  const logoutBtn = document.getElementById('logout-btn');
+  if (!chip || !logoutBtn) return;
+  logoutBtn.addEventListener('click', async () => {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch (_) { /* the redirect below lands on /login either way */ }
+    window.location.href = '/login';
+  }, { signal });
+
+  let me = null;
+  try {
+    const r = await fetch('/api/auth/me');
+    if (r.ok) me = await r.json();
+  } catch (_) { /* chip shows the failure text below */ }
+  if (!me || !me.user) {
+    chip.textContent = 'Could not load your account.';
+    return;
+  }
+  const roleLabel = me.user.role === 'admin' ? 'admin' : 'member';
+  chip.textContent = `Signed in as ${me.user.displayName || me.user.username} (${roleLabel})`;
+
+  if (me.user.role === 'admin') {
+    const usersBox = document.getElementById('users-box');
+    if (usersBox) usersBox.hidden = false;
+    wireAddUserForm(signal, me.user);
+    loadUsersList(signal, me.user);
+    const backupBox = document.getElementById('backup-box');
+    if (backupBox) backupBox.hidden = false;
+    wireRestoreControls(signal);
+  }
+}
+
+// v1.43: restore-from-file. Reads the picked JSON, confirms (a restore
+// REPLACES config + accounts), POSTs, and surfaces the server's honest
+// error text verbatim (the self-lockout refusal in particular).
+function wireRestoreControls(signal) {
+  const btn = document.getElementById('restore-btn');
+  const fileInput = document.getElementById('restore-file-input');
+  const statusEl = document.getElementById('restore-status');
+  if (!btn || !fileInput) return;
+  btn.addEventListener('click', async () => {
+    setFieldError(statusEl, null);
+    const file = fileInput.files && fileInput.files[0];
+    if (!file) {
+      setFieldError(statusEl, 'Pick a backup file first.');
+      return;
+    }
+    let bundle;
+    try {
+      bundle = JSON.parse(await file.text());
+    } catch (_) {
+      setFieldError(statusEl, 'That file is not valid JSON.');
+      return;
+    }
+    if (!window.confirm('Restore this backup? It replaces this FileTube\'s configuration and accounts with the backup\'s contents.')) return;
+    try {
+      const r = await fetch('/api/admin/restore', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(bundle),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        setFieldError(statusEl, data.error || 'Restore failed.');
+        return;
+      }
+      window.alert('Restore complete. The page will reload.');
+      window.location.reload();
+    } catch (_) {
+      setFieldError(statusEl, 'Restore failed (network error).');
+    }
+  }, { signal });
+}
+
+async function loadUsersList(signal, me) {
+  const listEl = document.getElementById('users-list');
+  if (!listEl) return;
+  let payload = null;
+  try {
+    const r = await fetch('/api/users');
+    if (r.ok) payload = await r.json();
+  } catch (_) { /* rendered below */ }
+  if (!payload || !Array.isArray(payload.users)) {
+    listEl.textContent = 'Could not load the user list.';
+    return;
+  }
+  listEl.innerHTML = '';
+  for (const user of payload.users) {
+    listEl.appendChild(renderUserRow(user, me, signal));
+  }
+}
+
+// One row per user: name + badges, then the admin actions. Buttons re-fetch
+// the list after every change so the rendered state is always the server's.
+function renderUserRow(user, me, signal) {
+  const row = document.createElement('div');
+  row.className = 'users-row';
+  const isSelf = user.id === me.id;
+
+  const who = document.createElement('div');
+  who.className = 'users-row-who';
+  const name = document.createElement('strong');
+  name.textContent = user.displayName || user.username;
+  who.appendChild(name);
+  const meta = document.createElement('span');
+  meta.className = 'users-row-meta';
+  const badges = [user.username, user.role];
+  if (user.canManageSubscriptions) badges.push('subscriptions');
+  if (user.disabled) badges.push('disabled');
+  if (isSelf) badges.push('you');
+  meta.textContent = badges.join(' - ');
+  who.appendChild(meta);
+  row.appendChild(who);
+
+  const actions = document.createElement('div');
+  actions.className = 'users-row-actions';
+  const refresh = () => loadUsersList(signal, me);
+  const act = async (path, body, confirmText) => {
+    if (confirmText && !window.confirm(confirmText)) return;
+    try {
+      const r = await fetch(path, {
+        method: body === undefined ? 'DELETE' : 'POST',
+        headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        window.alert(data.error || 'That change was refused.');
+        return;
+      }
+      refresh();
+    } catch (_) {
+      window.alert('That change failed (network error).');
+    }
+  };
+
+  const addBtn = (label, onClick) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'btn btn-sm';
+    b.textContent = label;
+    b.addEventListener('click', onClick, { signal });
+    actions.appendChild(b);
+  };
+
+  addBtn('Reset password', () => {
+    const pw = window.prompt(`New password for ${user.username} (at least 8 characters):`);
+    if (pw === null) return;
+    act(`/api/users/${user.id}/password`, { password: pw });
+  });
+  if (!isSelf) {
+    addBtn(user.disabled ? 'Enable' : 'Disable', () => act(`/api/users/${user.id}/disabled`, { disabled: !user.disabled }));
+  }
+  addBtn(user.role === 'admin' ? 'Make member' : 'Make admin', () => act(`/api/users/${user.id}/role`, { role: user.role === 'admin' ? 'member' : 'admin' }));
+  addBtn(user.canManageSubscriptions ? 'Revoke subscriptions' : 'Allow subscriptions', () => act(`/api/users/${user.id}/subscriptions-flag`, { canManageSubscriptions: !user.canManageSubscriptions }));
+  if (!isSelf) {
+    addBtn('Delete', () => act(`/api/users/${user.id}`, undefined,
+      `Delete ${user.username}? Their watch progress, likes, reading positions, and pins go with the account. This cannot be undone.`));
+  }
+  row.appendChild(actions);
+  return row;
+}
+
+function wireAddUserForm(signal, me) {
+  const btn = document.getElementById('add-user-btn');
+  if (!btn) return;
+  btn.addEventListener('click', async () => {
+    const errorEl = accountErrorEl();
+    const username = (document.getElementById('new-user-username').value || '').trim();
+    const displayName = (document.getElementById('new-user-displayname').value || '').trim();
+    const password = document.getElementById('new-user-password').value || '';
+    const role = document.getElementById('new-user-role').value === 'admin' ? 'admin' : 'member';
+    const canManageSubscriptions = document.getElementById('new-user-subs-flag').checked;
+    setFieldError(errorEl, null);
+    try {
+      const r = await fetch('/api/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, displayName, password, role, canManageSubscriptions }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        setFieldError(errorEl, data.error || 'Could not add the user.');
+        return;
+      }
+      document.getElementById('new-user-username').value = '';
+      document.getElementById('new-user-displayname').value = '';
+      document.getElementById('new-user-password').value = '';
+      document.getElementById('new-user-subs-flag').checked = false;
+      loadUsersList(signal, me);
+    } catch (_) {
+      setFieldError(errorEl, 'Could not add the user (network error).');
+    }
+  }, { signal });
+}
+
 // ---- Registered view module (FR-1, T1) ---------------------------------
 
 function init(root) {
@@ -1206,6 +1413,8 @@ function init(root) {
   loadScanStatusLine();
   // v1.32 (custom logo): wire the Appearance-box upload/reset controls.
   wireLogoControls();
+  // v1.43: Account chip + sign out + (admin) user management.
+  initAccountSection(controller.signal);
 
   // v1.22.0 FR-5 (AC32-AC38): desktop-sidebar channel pins -- a SEPARATE
   // fetch against the module's own gated pin store, independent of

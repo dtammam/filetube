@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Welcome to FileTube</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
+  <link rel="icon" type="image/png" sizes="512x512" href="/icons/icon-512.png">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="theme-color" content="#cc0000">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="FileTube">
+  <link rel="preload" href="/fonts/roboto.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/css/style.css">
+  <script>
+    /* FOUC guard — identical to the other shells (see login.html). */
+    (function () {
+      var d = document.documentElement;
+      try {
+        var eras = ['2005', '2009', '2014', '2021'];
+        var modes = ['light', 'dark'];
+        var e = localStorage.getItem('ft-era');
+        var m = localStorage.getItem('ft-mode');
+        var legacy = localStorage.getItem('theme');
+        var era = eras.indexOf(e) >= 0 ? e : '2021';
+        var mode = modes.indexOf(m) >= 0 ? m
+          : (e == null && m == null && (legacy === 'dark' || legacy === 'light')) ? legacy
+          : 'light';
+        d.setAttribute('data-theme', era);
+        d.setAttribute('data-mode', mode);
+        var iconSets = ['outlined', 'rounded', 'filled', 'emoji'];
+        var iconAutoMap = { '2005': 'emoji', '2009': 'emoji', '2014': 'filled', '2021': 'rounded' };
+        var storedIcons = localStorage.getItem('ft-icons');
+        var iconSet = iconSets.indexOf(storedIcons) >= 0 ? storedIcons
+          : storedIcons === 'auto' ? iconAutoMap[era]
+          : 'outlined';
+        d.setAttribute('data-icons', iconSet);
+        if (localStorage.getItem('ft-custom-logo') === '1') d.classList.add('ft-custom-logo');
+      } catch (_) {
+        d.setAttribute('data-theme', '2021');
+        d.setAttribute('data-mode', 'light');
+        d.setAttribute('data-icons', 'outlined');
+      }
+    })();
+  </script>
+</head>
+<body>
+  <main class="login-page">
+    <div class="login-card">
+      <div class="login-brand">
+        <span class="login-wordmark" aria-label="FileTube"><span class="login-wordmark-text">File<span class="tube">Tube</span></span><img class="login-logo-img" alt="" hidden></span>
+        <p class="login-tagline">Welcome. Create the owner account. You'll be the admin, and everything already in this library becomes yours.</p>
+      </div>
+
+      <form class="login-form" id="welcome-form" autocomplete="on" novalidate>
+        <div class="login-field">
+          <label for="welcome-username">Username</label>
+          <input type="text" id="welcome-username" name="username" autocomplete="username"
+                 autocapitalize="none" autocorrect="off" spellcheck="false" required>
+        </div>
+        <div class="login-field">
+          <label for="welcome-display">Display name <span style="text-transform:none;font-weight:400;">(optional)</span></label>
+          <input type="text" id="welcome-display" name="displayName" autocomplete="name">
+        </div>
+        <div class="login-field">
+          <label for="welcome-password">Password</label>
+          <input type="password" id="welcome-password" name="password" autocomplete="new-password" required>
+        </div>
+        <div class="login-field">
+          <label for="welcome-confirm">Confirm password</label>
+          <input type="password" id="welcome-confirm" name="confirm" autocomplete="new-password" required>
+        </div>
+        <div class="login-error" id="welcome-error" role="alert" aria-live="polite"></div>
+        <button type="submit" class="login-submit" id="welcome-submit">Create admin &amp; sign in</button>
+      </form>
+
+      <div class="login-era-switch" role="group" aria-label="Choose a theme era">
+        <span>Era:</span>
+        <button type="button" data-era="2005" aria-pressed="false">'05</button>
+        <button type="button" data-era="2009" aria-pressed="false">'09</button>
+        <button type="button" data-era="2014" aria-pressed="false">'14</button>
+        <button type="button" data-era="2021" aria-pressed="false">'21</button>
+      </div>
+    </div>
+    <p class="login-foot">This one-time setup runs only until an account exists. After this, sign in from any device.</p>
+  </main>
+
+  <script src="/js/common.js"></script>
+  <script src="/js/login.js"></script>
+</body>
+</html>

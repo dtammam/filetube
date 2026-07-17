@@ -150,6 +150,32 @@ const { adapter: dbAdapter } = sqliteDb.openAdapter(DATA_DIR, {
   log: (line) => console.log(line),
 });
 
+// ---- v1.43: auth (users + sessions) ----------------------------------------
+// The gate itself is installed as ONE app.use below (after the body-parser
+// error handler, before the shell catch-all — see the auth-gate block).
+// Everything cryptographic lives in lib/auth/crypto.js; accounts in
+// lib/auth/store.js; the middleware/allowlist/limiter in lib/auth/gate.js.
+const authCrypto = require('./lib/auth/crypto');
+const createUserStore = require('./lib/auth/store');
+const authGateLib = require('./lib/auth/gate');
+const userStore = createUserStore(dbAdapter);
+// Fail-closed at boot: a short/placeholder secret throws here (before listen).
+const SESSION_SECRET = authGateLib.resolveSessionSecret(DATA_DIR, process.env, (line) => console.log(line));
+const AUTH_COOKIE_NAME = authGateLib.cookieNameFor(DATA_DIR);
+const TRUST_PROXY = process.env.FILETUBE_TRUST_PROXY === '1';
+const loginRateLimiter = authGateLib.createRateLimiter();
+// The Shortcut API token (intake #1): when set, POST /api/ytdlp/download
+// accepts it via header as an alternative to a session cookie. Unset =
+// mechanism off (that endpoint is cookie-gated like everything else).
+const API_TOKEN = (typeof process.env.FILETUBE_API_TOKEN === 'string' && process.env.FILETUBE_API_TOKEN.length > 0)
+  ? process.env.FILETUBE_API_TOKEN : null;
+if (TRUST_PROXY) {
+  console.log('[auth] FILETUBE_TRUST_PROXY=1 — X-Forwarded-Proto is trusted; the session cookie gets Secure on https requests (required for a TLS-terminating reverse proxy).');
+}
+if (API_TOKEN) {
+  console.log('[auth] FILETUBE_API_TOKEN is set — the one-off download endpoint (POST /api/ytdlp/download) accepts it via the X-FileTube-Token header for the iOS Shortcut.');
+}
+
 // ---- v1.42: the beta safe-mode lever (exec plan AC8, owner-approved) --------
 // FILETUBE_READ_ONLY_MEDIA=1 turns the parallel-run operational rules ("no
 // deletes, no moves, no downloads from the beta") from remembered into
@@ -588,7 +614,22 @@ function replacePersistedState(populateFn) {
 // deleting an OPEN SQLite database out from under its connection is not a
 // thing, so tests call this instead.
 function __resetDatabaseForTests() {
-  return replacePersistedState(null);
+  // v1.43: deliberately does NOT clear the `users` table itself. Pre-auth
+  // suites mint ONE admin in before() (via the auth test helper) to
+  // authenticate through the gate; that admin must survive each case's reset
+  // so its session cookie stays valid all suite. Only the auth-flow suite,
+  // which tests the zero-users funnel, wipes users — via __clearUsersForTests
+  // below. Per-user STATE (progress/liked/pins), however, IS wiped — chunk 4b
+  // moved it out of the doc tables the exclusiveReplace covers, and a case's
+  // watch positions must not bleed into the next (the pre-4b reset semantics,
+  // restored for the new home).
+  return replacePersistedState(null).then(() => {
+    try { userStore.__clearUserStateForTests(); } catch (_) { /* user tables absent in an odd harness */ }
+  });
+}
+// Test-only: wipe users (the auth-flow suite's zero-users precondition).
+function __clearUsersForTests() {
+  try { userStore.__clearAllUsersForTests(); } catch (_) { /* users table absent in an odd harness */ }
 }
 
 // ---- Progress-write coalescer (v1.30 A4, AC4.1-AC4.3) ----------------------
@@ -600,13 +641,28 @@ function __resetDatabaseForTests() {
 // calling `updateDatabase` directly. `pendingProgress` is a staging area: a
 // ping is recorded here and the request returns immediately; a single
 // debounce timer covers the whole batch window, so N pings (against the
-// same or different ids) inside one window collapse into ONE whole-file
-// atomic write (AC4.1). Nothing else ever routes through this Map --
+// same or different ids) inside one window collapse into ONE durable write
+// (AC4.1). Nothing else ever routes through this Map --
 // `DELETE /api/videos/:id`, `POST /api/config`, `POST /api/settings`, and
 // the scan's final merge all still call `updateDatabase` directly, exactly
 // once per invocation (AC4.2); see each of their own call sites, unchanged
 // by this section.
+//
+// v1.43 (per-user scoping): watch positions belong to a USER now, so the
+// staging key is `<userId>:<mediaId>` (userId is an integer, mediaId is hex
+// -- ':' can't collide) and each entry carries `{userId, mediaId, value}`.
+// The flush upserts the batch into the relational `user_progress` table via
+// `userStore.setProgressBatch` (ONE SQLite transaction per window -- the
+// AC4.1 contract survives the move) instead of mutating the doc-table
+// `db.progress` namespace, which is retained untouched as the frozen
+// pre-auth record the exec plan's adoption section describes. The cutover
+// is total: no reader falls back to `db.progress` (a read-through fallback
+// after adoption is the divergence bug farm design finding #6 warned
+// about).
 const pendingProgress = new Map();
+function pendingProgressKey(userId, mediaId) {
+  return `${userId}:${mediaId}`;
+}
 
 // Batch window in ms -- the production default (5000) matches the design's
 // tunable bound (a realistic ~4s ping cadence needs a >=5s window for a
@@ -636,31 +692,48 @@ function currentProgressFlushTimer() {
 }
 
 // Snapshot-and-clear every queued ping, then persist the whole batch as ONE
-// atomic `updateDatabase` write -- covers the full window in a single
-// write+fsync no matter how many ids/pings it holds. The
-// `if (db.metadata[id])` guard drops an id that was deleted (via
-// `DELETE /api/videos/:id`) between its ping and this flush, so a flush can
-// never resurrect a metadata entry the operator already removed. A no-op
-// (nothing pending -- e.g. the shutdown handler firing with an empty batch)
-// skips `updateDatabase` entirely, never an empty write. Shared by the
+// durable write -- covers the full window in a single SQLite transaction no
+// matter how many users/ids/pings it holds. The `db.metadata[mediaId]`
+// guard drops an id that was deleted (via `DELETE /api/videos/:id`) between
+// its ping and this flush, so a flush can never resurrect state for a
+// removed item. A no-op (nothing pending -- e.g. the shutdown handler
+// firing with an empty batch) skips the write chain entirely. Shared by the
 // debounce timer (`armProgressFlushTimerIfNeeded`, below) AND the shutdown
 // handlers (registered under `require.main === module`, near
 // `app.listen`), and directly exported so tests can trigger a flush
 // deterministically instead of waiting out `PROGRESS_FLUSH_MS`.
+//
+// v1.43: the batch upserts into `user_progress` (userStore.setProgressBatch,
+// one transaction) instead of the doc-table `db.progress`. It still rides
+// `updateDatabase`'s write chain -- with a mutator that returns `false`
+// (no doc-table save) -- for two load-bearing reasons: (1) the mutator's
+// fresh in-lock `db` is what makes the deleted-between-ping-and-flush guard
+// race-free, and (2) chain ordering preserves the v1.42 F5 restore
+// contract (a flush enqueued before a wipe-and-replace lands before it or
+// not at all -- `replacePersistedState` clears this Map inside its own
+// chained step, exactly as before).
+let progressFlushWriteCount = 0;
+function __getProgressFlushWriteCount() {
+  return progressFlushWriteCount;
+}
 function flushPendingProgress() {
   if (progressFlushTimer) {
     clearTimeout(progressFlushTimer);
     progressFlushTimer = null;
   }
   if (pendingProgress.size === 0) return Promise.resolve(false);
-  const snapshot = new Map(pendingProgress);
+  const snapshot = [...pendingProgress.values()];
   pendingProgress.clear();
   return updateDatabase(db => {
-    for (const [id, value] of snapshot) {
-      if (db.metadata[id]) db.progress[id] = value;
+    // OWN-property guard (v1.42 __proto__ lesson) -- same reasoning as the
+    // POST route's staging check; the flush is the last gate before a row.
+    const rows = snapshot.filter(entry => Object.prototype.hasOwnProperty.call(db.metadata, entry.mediaId));
+    if (rows.length > 0) {
+      userStore.setProgressBatch(rows);
+      progressFlushWriteCount++;
     }
-    return true;
-  }).catch(err => {
+    return false; // per-user rows only -- never a doc-table write from a flush
+  }).then(() => true).catch(err => {
     // A failed flush must never crash the process or wedge a future flush --
     // `updateDatabase`'s own chain already survives a rejected mutator/save
     // (see its comment above); this just logs so the failure stays visible.
@@ -682,13 +755,18 @@ function armProgressFlushTimerIfNeeded() {
 
 // Read-your-writes overlay (keeps A3's "cache is never mutated in place"
 // invariant intact): a just-posted, not-yet-flushed position lives ONLY in
-// `pendingProgress` until the next flush commits it into `db.progress` -- so
-// every progress READER checks the overlay first, making a client's own
-// just-saved position visible immediately without ever writing into the
-// shared `getCachedDatabase()` object. Falls through to the cache's
-// (as-of-last-flush) value when nothing is pending for `id`.
-function effectiveProgress(id) {
-  return pendingProgress.get(id) ?? getCachedDatabase().progress[id];
+// `pendingProgress` until the next flush commits it -- so every progress
+// READER checks the overlay first, making a client's own just-saved
+// position visible immediately. Falls through to the user's committed
+// `user_progress` row (a warm prepared-statement point SELECT -- the
+// design-delta SUGGESTION-6 no-full-reparse contract) when nothing is
+// pending. NEVER consults the frozen pre-auth `db.progress` record: the
+// adoption cutover is total (design finding #6 -- a read-through fallback
+// is the divergence bug farm).
+function effectiveProgress(userId, id) {
+  const pending = pendingProgress.get(pendingProgressKey(userId, id));
+  if (pending) return pending.value;
+  return userStore.getOneProgress(userId, id) || undefined;
 }
 
 // Media extensions
@@ -4182,6 +4260,19 @@ async function runScanDirectories() {
   });
   if (dbChanged) console.log('Database synced successfully.');
 
+  // v1.43: mirror the mutator's `fresh.progress`/`fresh.viewCounts` prune
+  // onto the per-user rows (user_progress/user_liked -- id-keyed carriers,
+  // the v1.41.6 class), AFTER the doc commit for the same rolled-back-write
+  // reason rekeyInFlightState documents. One transaction for the whole
+  // prunable set.
+  if (prunable.size > 0) {
+    try {
+      userStore.removeMediaState([...prunable]);
+    } catch (err) {
+      console.error('Scan: failed to prune per-user progress/liked for removed items (continuing):', err && err.message);
+    }
+  }
+
   // v1.35 (preExtractAudio): fire the collected sidecar extractions now that
   // the final save has landed (see the collector's comment above for why not
   // mid-scan). queueAudioExtract is idempotent (queue-de-duped, skips when
@@ -4361,6 +4452,369 @@ app.use((err, req, res, next) => {
   }
   return next(err);
 });
+
+// ---- v1.43: the auth gate + auth routes ------------------------------------
+// ONE app.use, installed HERE (after express.json + the body-parser error
+// handler, BEFORE the shell catch-all + static + all ytdlp routes at the
+// bottom), so it covers every route, static asset, and byte stream by
+// default (design + drift #1). The allowlist lets the login surface through;
+// everything else needs a valid session (or funnels to /welcome when no
+// users exist yet). Pages redirect to /login; APIs 401.
+//
+// Test bypass: the SECURITY of the gate is proven by lib/auth's own unit
+// suites (crypto/store/gate, 50+ tests) and by dedicated integration tests
+// (auth-flow) that exercise the REAL gate end-to-end. For every OTHER
+// integration test — which predates auth and asserts route behavior, not
+// auth — the gate is bypassed via a helper that seeds a test session, so
+// those suites keep testing what they test. The bypass is NOT an env flag
+// (an env that disables auth is a prod foot-gun); it is the presence of a
+// valid session cookie, exactly like a real browser. See
+// test/helpers/auth.js.
+const authGate = authGateLib.createAuthGate({
+  store: userStore,
+  secret: SESSION_SECRET,
+  cookieName: AUTH_COOKIE_NAME,
+  trustProxy: TRUST_PROXY,
+  apiToken: API_TOKEN, // the Shortcut token for POST /api/ytdlp/download
+});
+app.use(authGate);
+
+// Set/clear the session cookie for a user id (+ current tv).
+function issueSessionCookie(res, req, user) {
+  const token = authCrypto.signSession({ uid: user.id, tv: user.tokenVersion }, SESSION_SECRET);
+  res.setHeader('Set-Cookie', authGateLib.serializeCookie(AUTH_COOKIE_NAME, token, {
+    maxAgeSeconds: authCrypto.SESSION_SECONDS_DEFAULT,
+    secure: authGateLib.requestIsHttps(req, TRUST_PROXY),
+  }));
+}
+function clearSessionCookie(res) {
+  res.setHeader('Set-Cookie', authGateLib.serializeCookie(AUTH_COOKIE_NAME, '', { expired: true }));
+}
+function rateKey(req, username) {
+  const ip = (TRUST_PROXY && typeof req.headers['x-forwarded-for'] === 'string'
+    ? req.headers['x-forwarded-for'].split(',')[0].trim()
+    : (req.socket && req.socket.remoteAddress)) || 'unknown';
+  return `${ip}|${String(username || '').toLowerCase()}`;
+}
+
+// POST /api/auth/setup — one-time create-admin. Allowlisted ONLY while zero
+// users exist (the gate 409s it otherwise). Adopts the pre-auth global
+// state into the new admin (design-delta WARNING-4: hash async FIRST, then
+// the count-guarded insert + adoption in one synchronous transaction).
+app.post('/api/auth/setup', async (req, res) => {
+  const body = req.body || {};
+  const username = typeof body.username === 'string' ? body.username.trim() : '';
+  const displayName = typeof body.displayName === 'string' ? body.displayName.trim() : '';
+  const password = typeof body.password === 'string' ? body.password : '';
+  const limit = loginRateLimiter.take(rateKey(req, username));
+  if (!limit.allowed) return res.status(429).json({ error: 'too many attempts', retryAfterSec: limit.retryAfterSec });
+  if (!userStore.validateUsername(username)) return res.status(400).json({ error: 'Username can use letters, numbers, and . _ - (up to 64 characters).' });
+  if (password.length < 8) return res.status(400).json({ error: 'Use a password of at least 8 characters.' });
+  try {
+    const passwordHash = await authCrypto.hashPassword(password); // async: off the event loop
+    // Read the pre-auth global state to adopt (once, before the tx).
+    const db = getCachedDatabase();
+    const books = booksStore.readBooks(db);
+    const ytd = (db.ytdlp && typeof db.ytdlp === 'object') ? db.ytdlp : {};
+    const adoption = {
+      progress: db.progress || {},
+      liked: Array.isArray(db.liked) ? db.liked : [],
+      bookProgress: books.progress || {},
+      bookPins: Array.isArray(books.pins) ? books.pins : [],
+      channelPins: Array.isArray(ytd.pins) ? ytd.pins : [],
+    };
+    const admin = userStore.createFirstAdmin({ username, displayName, passwordHash }, adoption, new Date().toISOString());
+    if (!admin) return res.status(409).json({ error: 'setup already complete' });
+    loginRateLimiter.refund(rateKey(req, username));
+    issueSessionCookie(res, req, admin);
+    return res.json({ success: true, user: publicUser(admin) });
+  } catch (err) {
+    console.error('Error in /api/auth/setup:', err);
+    return res.status(500).json({ error: `Could not create the admin account: ${err.message}` });
+  }
+});
+
+// POST /api/auth/login — verify credentials, set the session cookie. Honest
+// timing: always run a hash (a dummy for an unknown user) so a missing
+// username doesn't return faster than a wrong password (user-enumeration
+// timing guard).
+const DUMMY_HASH = 'scrypt$32768$8$1$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
+app.post('/api/auth/login', async (req, res) => {
+  const body = req.body || {};
+  const username = typeof body.username === 'string' ? body.username.trim() : '';
+  const password = typeof body.password === 'string' ? body.password : '';
+  const key = rateKey(req, username);
+  const limit = loginRateLimiter.take(key);
+  if (!limit.allowed) return res.status(429).json({ error: 'too many attempts', retryAfterSec: limit.retryAfterSec });
+  try {
+    const user = username ? userStore.getByUsername(username) : null;
+    const hash = user ? userStore.getPasswordHash(user.id) : DUMMY_HASH;
+    const result = await authCrypto.verifyPassword(password, hash || DUMMY_HASH);
+    if (!user || user.disabled || !result.ok) {
+      return res.status(401).json({ error: 'That username or password is not right.' });
+    }
+    // Params-upgrade-on-login: re-hash at current cost if the stored hash lags.
+    if (result.needsRehash) {
+      try { userStore.updatePassword(user.id, await authCrypto.hashPassword(password)); } catch (_) { /* non-fatal */ }
+    }
+    const fresh = userStore.getById(user.id); // pick up any tv bump from the rehash
+    loginRateLimiter.refund(key);
+    issueSessionCookie(res, req, fresh);
+    return res.json({ success: true, user: publicUser(fresh) });
+  } catch (err) {
+    console.error('Error in /api/auth/login:', err);
+    return res.status(500).json({ error: `Sign-in failed: ${err.message}` });
+  }
+});
+
+// POST /api/auth/logout — clear the cookie (gated: you must be signed in).
+app.post('/api/auth/logout', (req, res) => {
+  clearSessionCookie(res);
+  return res.json({ success: true });
+});
+
+// GET /api/auth/me — the current user (gated). Powers the Settings Account
+// chip + client "am I logged in / am I admin" checks. `settings` is the
+// user's mirrored display prefs (settings_json) — the device-sync source a
+// FRESH device pulls from before localStorage has anything (locked intake
+// #6: localStorage stays the immediate, device-local source of truth).
+app.get('/api/auth/me', (req, res) => {
+  return res.json({ user: publicUser(req.user), settings: parseUserSettings(req.user) });
+});
+
+function parseUserSettings(user) {
+  try {
+    const parsed = JSON.parse(user.settingsJson || '{}');
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+// POST /api/me/settings — mirror a display pref (theme/era/icons) onto the
+// user record. Fire-and-forget from the client pickers; localStorage stays
+// the device-local fast path, this is only the cross-device seed. Keys are
+// allowlisted and values bounded — settings_json must never become an
+// arbitrary client-writable blob.
+const MIRRORED_SETTING_KEYS = new Set(['theme', 'era', 'icons']);
+app.post('/api/me/settings', (req, res) => {
+  const body = req.body || {};
+  const merged = parseUserSettings(req.user);
+  for (const key of Object.keys(body)) {
+    if (!MIRRORED_SETTING_KEYS.has(key)) {
+      return res.status(400).json({ error: `unknown setting '${key}'` });
+    }
+    const value = body[key];
+    if (value === null) {
+      delete merged[key]; // explicit null clears the mirror (pref reset)
+      continue;
+    }
+    if (typeof value !== 'string' || !/^[A-Za-z0-9_-]{1,32}$/.test(value)) {
+      return res.status(400).json({ error: `invalid value for '${key}'` });
+    }
+    merged[key] = value;
+  }
+  userStore.setSettingsJson(req.user.id, merged);
+  return res.json({ success: true, settings: merged });
+});
+
+// Test-only: mint a genuine session cookie for tests (see the export comment).
+function __mintTestSession(opts = {}) {
+  const username = opts.username || 'testadmin';
+  let user = userStore.getByUsername(username);
+  if (!user) {
+    if (userStore.countUsers() === 0) {
+      user = userStore.createFirstAdmin(
+        { username, displayName: username, passwordHash: 'scrypt$32768$8$1$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' },
+        null, new Date().toISOString()
+      );
+    } else {
+      user = userStore.createUser(
+        { username, displayName: username, passwordHash: 'scrypt$32768$8$1$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA', role: opts.role || 'admin', canManageSubscriptions: true },
+        new Date().toISOString()
+      );
+    }
+  }
+  const token = authCrypto.signSession({ uid: user.id, tv: user.tokenVersion }, SESSION_SECRET);
+  return { cookie: `${AUTH_COOKIE_NAME}=${encodeURIComponent(token)}`, user: publicUser(user), cookieName: AUTH_COOKIE_NAME, token };
+}
+
+// The safe public projection of a user row (never the password hash).
+function publicUser(u) {
+  if (!u) return null;
+  return {
+    id: u.id, username: u.username, displayName: u.displayName,
+    role: u.role, canManageSubscriptions: u.canManageSubscriptions,
+  };
+}
+
+// ---- v1.43 chunk 4c: admin user management ---------------------------------
+// Everything below is admin-only (the gate already guarantees a signed-in
+// req.user; these add the role check). Response shapes reuse publicUser /
+// listUsers' projection — a password hash can never ride any of them.
+
+function requireAdmin(req, res) {
+  if (!req.user || req.user.role !== 'admin') {
+    res.status(403).json({ error: 'Only an admin can manage users.' });
+    return false;
+  }
+  return true;
+}
+
+// The self-lockout guard for user management: refuse any change that would
+// leave the instance with ZERO enabled admins (disable/demote/delete of the
+// last one). Instant revocation (token_version bumps) makes such a mistake
+// unrecoverable from the UI — there would be nobody left who can undo it.
+function wouldRemoveLastAdmin(targetId, change) {
+  const target = userStore.getById(targetId);
+  if (!target) return false; // 404s elsewhere
+  const isEnabledAdmin = target.role === 'admin' && !target.disabled;
+  if (!isEnabledAdmin) return false;
+  const enabledAdmins = userStore.listUsers().filter((u) => u.role === 'admin' && !u.disabled);
+  if (enabledAdmins.length > 1) return false;
+  return change === 'disable' || change === 'demote' || change === 'delete';
+}
+
+const USERNAME_RULE_MESSAGE = 'Username can use letters, numbers, and . _ - (up to 64 characters).';
+const PASSWORD_RULE_MESSAGE = 'Use a password of at least 8 characters.';
+
+app.get('/api/users', (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  res.json({ users: userStore.listUsers() });
+});
+
+app.post('/api/users', async (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  const body = req.body || {};
+  const username = typeof body.username === 'string' ? body.username.trim() : '';
+  const displayName = typeof body.displayName === 'string' ? body.displayName.trim() : '';
+  const password = typeof body.password === 'string' ? body.password : '';
+  const role = body.role === 'admin' ? 'admin' : 'member';
+  const canManageSubscriptions = body.canManageSubscriptions === true;
+  if (!userStore.validateUsername(username)) return res.status(400).json({ error: USERNAME_RULE_MESSAGE });
+  if (password.length < 8) return res.status(400).json({ error: PASSWORD_RULE_MESSAGE });
+  if (userStore.getByUsername(username)) return res.status(409).json({ error: 'That username is already taken.' });
+  try {
+    const passwordHash = await authCrypto.hashPassword(password); // async: off the event loop
+    // The UNIQUE(username COLLATE NOCASE) constraint is the race backstop
+    // behind the friendly pre-check above.
+    const user = userStore.createUser({ username, displayName, passwordHash, role, canManageSubscriptions }, new Date().toISOString());
+    return res.status(201).json({ success: true, user: publicUser(user) });
+  } catch (err) {
+    if (String(err.message || '').includes('UNIQUE')) {
+      return res.status(409).json({ error: 'That username is already taken.' });
+    }
+    console.error('Error creating user:', err);
+    return res.status(500).json({ error: `Could not create the user: ${err.message}` });
+  }
+});
+
+// Shared target resolution: integer id, existing row.
+function resolveTargetUser(req, res) {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) {
+    res.status(400).json({ error: 'invalid user id' });
+    return null;
+  }
+  const target = userStore.getById(id);
+  if (!target) {
+    res.status(404).json({ error: 'No such user.' });
+    return null;
+  }
+  return target;
+}
+
+app.post('/api/users/:id/password', async (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  const target = resolveTargetUser(req, res);
+  if (!target) return;
+  const password = req.body && typeof req.body.password === 'string' ? req.body.password : '';
+  if (password.length < 8) return res.status(400).json({ error: PASSWORD_RULE_MESSAGE });
+  try {
+    const passwordHash = await authCrypto.hashPassword(password);
+    userStore.updatePassword(target.id, passwordHash); // bumps token_version -> every session revoked
+    // Resetting YOUR OWN password revokes your own cookie too — reissue it
+    // so the admin doing the reset is not bounced to /login mid-task.
+    if (target.id === req.user.id) {
+      issueSessionCookie(res, req, userStore.getById(target.id));
+    }
+    return res.json({ success: true });
+  } catch (err) {
+    console.error('Error resetting password:', err);
+    return res.status(500).json({ error: `Could not reset the password: ${err.message}` });
+  }
+});
+
+app.post('/api/users/:id/disabled', (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  const target = resolveTargetUser(req, res);
+  if (!target) return;
+  const disabled = req.body && req.body.disabled === true;
+  if (disabled && target.id === req.user.id) {
+    return res.status(409).json({ error: 'You cannot disable your own account.' });
+  }
+  if (disabled && wouldRemoveLastAdmin(target.id, 'disable')) {
+    return res.status(409).json({ error: 'That is the last enabled admin - disable is refused so the instance cannot lock itself out.' });
+  }
+  userStore.setDisabled(target.id, disabled); // bumps token_version -> instant revocation on disable
+  return res.json({ success: true, user: publicUser(userStore.getById(target.id)) });
+});
+
+app.post('/api/users/:id/role', (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  const target = resolveTargetUser(req, res);
+  if (!target) return;
+  const role = req.body && req.body.role;
+  if (role !== 'admin' && role !== 'member') return res.status(400).json({ error: "role must be 'admin' or 'member'" });
+  if (role === 'member' && wouldRemoveLastAdmin(target.id, 'demote')) {
+    return res.status(409).json({ error: 'That is the last enabled admin - demotion is refused so the instance cannot lock itself out.' });
+  }
+  userStore.setRole(target.id, role);
+  return res.json({ success: true, user: publicUser(userStore.getById(target.id)) });
+});
+
+app.post('/api/users/:id/subscriptions-flag', (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  const target = resolveTargetUser(req, res);
+  if (!target) return;
+  userStore.setCanManageSubscriptions(target.id, req.body && req.body.canManageSubscriptions === true);
+  return res.json({ success: true, user: publicUser(userStore.getById(target.id)) });
+});
+
+app.delete('/api/users/:id', (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  const target = resolveTargetUser(req, res);
+  if (!target) return;
+  if (target.id === req.user.id) {
+    return res.status(409).json({ error: 'You cannot delete your own account.' });
+  }
+  if (wouldRemoveLastAdmin(target.id, 'delete')) {
+    return res.status(409).json({ error: 'That is the last enabled admin - deletion is refused so the instance cannot lock itself out.' });
+  }
+  // Gate WARNING-1 (adversarial): drop this user's staged (un-flushed)
+  // pings BEFORE the row is deleted — otherwise the next flush would carry a
+  // ping whose user_id no longer exists. The batch flush filters vanished
+  // users too (defense in depth), but clearing at the source keeps the
+  // coalescer honest and avoids a wasted FK-filter round.
+  dropPendingProgressForUser(target.id);
+  // Hard delete: ON DELETE CASCADE clears the per-user state; AUTOINCREMENT
+  // guarantees the id is never reused, so any still-valid cookie for it can
+  // never inherit a future account (design-delta SUGGESTION-6).
+  userStore.deleteUser(target.id);
+  return res.json({ success: true });
+});
+
+// Remove every staged (not-yet-flushed) progress/book-progress ping owned by
+// a user id, across both coalescers — called when a user is deleted so a
+// vanished user_id never reaches a flush batch (gate WARNING-1).
+function dropPendingProgressForUser(userId) {
+  for (const [key, entry] of [...pendingProgress]) {
+    if (entry.userId === userId) pendingProgress.delete(key);
+  }
+  for (const [key, entry] of [...pendingBookProgress]) {
+    if (entry.userId === userId) pendingBookProgress.delete(key);
+  }
+}
 // v1.41.18 (Dean): kill the header logo FOUC at the SOURCE. The header shells
 // are static HTML, so the "FileTube" text wordmark always painted before
 // common.js could swap in a configured custom logo -- a flash on every refresh.
@@ -4373,10 +4827,15 @@ app.use((err, req, res, next) => {
 // this is always current, needs no bootstrap, and depends on nothing
 // client-side. Only full-page loads/refreshes hit this; in-app SPA nav keeps
 // the header, so there is no FOUC there to fix.
-const FOUC_SHELL_FILES = new Set(['index.html', 'watch.html', 'stats.html', 'setup.html', 'read.html', 'books.html']);
+const FOUC_SHELL_FILES = new Set(['index.html', 'watch.html', 'stats.html', 'setup.html', 'read.html', 'books.html', 'login.html', 'welcome.html']);
 function shellHtmlForRequestPath(p) {
   if (p === '/' || p === '/index.html') return 'index.html';
   if (p === '/books' || p === '/books.html') return 'books.html';
+  // v1.43 auth: the pretty routes /login and /welcome serve their shells (the
+  // gate above lets them through the allowlist; here they get the same
+  // custom-logo/no-cache treatment as every other shell).
+  if (p === '/login') return 'login.html';
+  if (p === '/welcome') return 'welcome.html';
   const bare = p.startsWith('/') ? p.slice(1) : p;
   return FOUC_SHELL_FILES.has(bare) ? bare : null;
 }
@@ -4809,6 +5268,18 @@ async function runBookScan() {
     return true;
   });
 
+  // v1.43: per-user reading positions are book-id-keyed carriers -- pruned
+  // books shed them too (post-commit, the removeMediaState posture; one
+  // transaction for the set). Shelf pins are DIR-keyed, not book-keyed, so
+  // they are deliberately untouched here.
+  if (prunedIds.length > 0) {
+    try {
+      userStore.removeBookState(prunedIds);
+    } catch (err) {
+      console.error('books: failed to prune per-user reading positions (continuing):', err && err.message);
+    }
+  }
+
   // Cover-file hygiene for genuinely pruned books -- best-effort, after the
   // db state is authoritative.
   for (const id of prunedIds) {
@@ -4929,10 +5400,18 @@ app.get('/api/books/tts/config', (req, res) => {
 //
 // A structural twin of `pendingProgress`/`flushPendingProgress` above (see
 // that section's full rationale): reading-position pings are frequent and
-// cheap-to-lose, so they stage here and flush as ONE atomic write per
+// cheap-to-lose, so they stage here and flush as ONE durable write per
 // window. Deliberately NOT routed through `POST /api/progress` -- its value
 // shape ({timestamp,duration}) cannot express a CFI locator, and its flush
-// guard is `db.metadata[id]` (books live in db.books.items).
+// guard is book membership (books live in db.books.items).
+//
+// v1.43 (chunk 4b): reading positions belong to a USER -- same rework as
+// the media coalescer above: keys are `<userId>:<bookId>`, entries carry
+// `{userId, bookId, value}`, the flush batch-upserts `user_book_progress`
+// (one transaction) via the return-false mutator that keeps the
+// deleted-between-ping-and-flush guard race-free and preserves the restore
+// ordering. `db.books.progress` is the frozen pre-auth record; the cutover
+// is total.
 const pendingBookProgress = new Map();
 let bookProgressFlushTimer = null;
 
@@ -4940,23 +5419,30 @@ function currentBookProgressFlushTimer() {
   return bookProgressFlushTimer;
 }
 
+let bookProgressFlushWriteCount = 0;
+function __getBookProgressFlushWriteCount() {
+  return bookProgressFlushWriteCount;
+}
 function flushPendingBookProgress() {
   if (bookProgressFlushTimer) {
     clearTimeout(bookProgressFlushTimer);
     bookProgressFlushTimer = null;
   }
   if (pendingBookProgress.size === 0) return Promise.resolve(false);
-  const snapshot = new Map(pendingBookProgress);
+  const snapshot = [...pendingBookProgress.values()];
   pendingBookProgress.clear();
   return updateDatabase((db) => {
-    const ns = booksStore.ensureBooks(db);
-    for (const [id, value] of snapshot) {
-      // Same deleted-between-ping-and-flush guard as the media coalescer: a
-      // flush must never resurrect progress for a pruned book.
-      if (ns.items[id]) ns.progress[id] = value;
+    const ns = booksStore.readBooks(db);
+    // Same deleted-between-ping-and-flush guard as the media coalescer: a
+    // flush must never resurrect progress for a pruned book. OWN-property
+    // (the v1.42 __proto__ lesson), same as the media flush above.
+    const rows = snapshot.filter((entry) => Object.prototype.hasOwnProperty.call(ns.items, entry.bookId));
+    if (rows.length > 0) {
+      userStore.setBookProgressBatch(rows);
+      bookProgressFlushWriteCount++;
     }
-    return true;
-  }).catch((err) => {
+    return false; // per-user rows only -- never a doc-table write from a flush
+  }).then(() => true).catch((err) => {
     console.error('Error flushing batched book progress:', err);
   });
 }
@@ -4967,12 +5453,13 @@ function armBookProgressFlushTimerIfNeeded() {
   bookProgressFlushTimer.unref();
 }
 
-// Read-your-writes overlay -- pending first, then the cache's last-flushed
-// value (the effectiveProgress posture).
-function effectiveBookProgress(id) {
-  if (pendingBookProgress.has(id)) return pendingBookProgress.get(id);
-  const ns = booksStore.readBooks(getCachedDatabase());
-  return ns.progress[id] || null;
+// Read-your-writes overlay -- pending first, then the user's committed
+// `user_book_progress` row (the effectiveProgress posture; never the frozen
+// db.books.progress record).
+function effectiveBookProgress(userId, id) {
+  const pending = pendingBookProgress.get(pendingProgressKey(userId, id));
+  if (pending) return pending.value;
+  return userStore.getOneBookProgress(userId, id);
 }
 
 // ---- Books: read APIs + file/cover serving (T5) ------------------------------
@@ -4992,10 +5479,10 @@ function sortBookList(list, sortKey) {
 }
 
 // The public item shape: everything the cards/reader need, progress overlaid
-// (effective = pending-first), spine included only on the detail route (the
-// list stays light for hundreds of books).
-function publicBookListItem(item) {
-  const progress = effectiveBookProgress(item.id);
+// (effective = pending-first, per-user), spine included only on the detail
+// route (the list stays light for hundreds of books).
+function publicBookListItem(item, userId) {
+  const progress = effectiveBookProgress(userId, item.id);
   return {
     id: item.id,
     title: item.title,
@@ -5025,7 +5512,9 @@ app.get('/api/books', (req, res) => {
     // beneath it (path-prefix on the item's file path).
     list = list.filter((i) => typeof i.filePath === 'string' && (i.filePath === root || i.filePath.startsWith(root.endsWith(path.sep) ? root : root + path.sep)));
   }
-  let shaped = list.map(publicBookListItem);
+  // Explicit lambda (NOT `list.map(publicBookListItem)`): map would pass the
+  // array INDEX as the second argument, which is now the userId parameter.
+  let shaped = list.map((item) => publicBookListItem(item, req.user.id));
   if (req.query.filter === 'reading') {
     shaped = shaped.filter((i) => i.progress && i.progress.percent > 0 && i.progress.percent < 98);
     shaped.sort((a, b) => String((b.progress && b.progress.updatedAt) || '').localeCompare(String((a.progress && a.progress.updatedAt) || '')));
@@ -5055,7 +5544,8 @@ app.get('/api/books/folders', (req, res) => {
     if (existing) existing.count += 1;
     else byDir.set(dir, { name: item.folderName || path.basename(dir), dir, count: 1 });
   }
-  const pinByDir = new Map(ns.pins.map((p) => [p.dir, p]));
+  // v1.43: pin state is the signed-in user's own shelf pins.
+  const pinByDir = new Map(userStore.getBookPins(req.user.id).map((p) => [p.dir, p]));
   const folders = [...byDir.values()].map((f) => {
     const pin = pinByDir.get(f.dir);
     return { ...f, pinned: Boolean(pin), pinId: pin ? pin.id : null };
@@ -5067,7 +5557,9 @@ app.get('/api/books/pins', (req, res) => {
   // Pre-shaped for the shared pinned-sidebar renderer: `channelDir` is the
   // field name the renderer already keys on; `href` overrides its default
   // `/?root=` link to the books page (the ONLY shared-renderer widening).
-  const pins = booksStore.listShelfPins({ loadDatabase });
+  // v1.43: the signed-in user's own shelf pins (the store reads them
+  // pin_order-sorted, matching listShelfPins' order contract).
+  const pins = userStore.getBookPins(req.user.id);
   res.json(pins.map((p) => ({ id: p.id, channelDir: p.dir, label: p.label, href: `/books?root=${encodeURIComponent(p.dir)}` })));
 });
 
@@ -5076,10 +5568,10 @@ app.get('/api/books/:id', (req, res) => {
   const item = ns.items[req.params.id];
   if (!item) return res.status(404).json({ error: 'Book not found' });
   res.json({
-    ...publicBookListItem(item),
+    ...publicBookListItem(item, req.user.id),
     filePath: item.filePath,
     spine: Array.isArray(item.spine) ? item.spine : [],
-    locator: (effectiveBookProgress(item.id) || {}).locator || null,
+    locator: (effectiveBookProgress(req.user.id, item.id) || {}).locator || null,
   });
 });
 
@@ -5259,36 +5751,47 @@ app.post(
 
 // ---- Books: shelf pins (T10 server half -- the ytdlp pins route shapes) ----
 
-app.post('/api/books/pins', async (req, res) => {
+// v1.43 (chunk 4b): shelf pins are per-user. The routes keep booksStore's
+// PURE reducers as the single source of pin semantics (idempotent re-pin,
+// max(order)+1 tail append, FIFO cap, stable reorder partition) and persist
+// the reducer output to the user's user_book_pins rows -- the validation
+// (root confinement) is unchanged.
+app.post('/api/books/pins', (req, res) => {
   const ns = booksStore.readBooks(getCachedDatabase());
   const validation = booksStore.validateShelfPinInput(req.body, ns.folders);
   if (!validation.ok) return res.status(400).json({ error: validation.error });
   try {
-    const record = await booksStore.addShelfPin({ loadDatabase, updateDatabase, getMediaId }, validation.value);
-    res.json(record);
+    const { dir, label } = validation.value;
+    const result = booksStore.reduceAddShelfPin(userStore.getBookPins(req.user.id), {
+      id: getMediaId(dir), dir, label, pinnedAt: new Date().toISOString(),
+    });
+    if (result.changed) userStore.setBookPins(req.user.id, result.pins);
+    res.json(result.record);
   } catch (err) {
     res.status(500).json({ error: `Could not pin shelf: ${err.message}` });
   }
 });
 
-app.delete('/api/books/pins/:id', async (req, res) => {
+app.delete('/api/books/pins/:id', (req, res) => {
   try {
-    const removed = await booksStore.removeShelfPin({ loadDatabase, updateDatabase }, req.params.id);
-    if (!removed) return res.status(404).json({ error: 'Pin not found' });
+    const result = booksStore.reduceRemoveShelfPin(userStore.getBookPins(req.user.id), req.params.id);
+    if (!result.changed) return res.status(404).json({ error: 'Pin not found' });
+    userStore.setBookPins(req.user.id, result.pins);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: `Could not unpin shelf: ${err.message}` });
   }
 });
 
-app.post('/api/books/pins/reorder', async (req, res) => {
+app.post('/api/books/pins/reorder', (req, res) => {
   const { orderedIds } = req.body || {};
   if (!Array.isArray(orderedIds) || !orderedIds.every((id) => typeof id === 'string' && id !== '')) {
     return res.status(400).json({ error: 'orderedIds must be an array of non-empty strings' });
   }
   try {
-    await booksStore.reorderShelfPins({ loadDatabase, updateDatabase }, orderedIds);
-    res.json(booksStore.listShelfPins({ loadDatabase }));
+    const reordered = booksStore.reduceReorderShelfPins(userStore.getBookPins(req.user.id), orderedIds);
+    userStore.setBookPins(req.user.id, reordered);
+    res.json(userStore.getBookPins(req.user.id));
   } catch (err) {
     res.status(500).json({ error: `Could not reorder shelf pins: ${err.message}` });
   }
@@ -5302,7 +5805,9 @@ app.get('/books', (req, res) => {
 
 app.post('/api/books/:id/progress', (req, res) => {
   const ns = booksStore.readBooks(getCachedDatabase());
-  const item = ns.items[req.params.id];
+  // OWN-property check (v1.42 __proto__ lesson): this id persists into
+  // user_book_progress -- see POST /api/progress's identical guard.
+  const item = Object.prototype.hasOwnProperty.call(ns.items, req.params.id) ? ns.items[req.params.id] : undefined;
   if (!item) return res.status(404).json({ error: 'Book not found' });
   const { locator, percent } = req.body || {};
   if (!locator || typeof locator !== 'object' || locator.kind !== item.format) {
@@ -5328,7 +5833,11 @@ app.post('/api/books/:id/progress', (req, res) => {
   } else {
     clean.page = locator.page;
   }
-  pendingBookProgress.set(item.id, { locator: clean, percent, updatedAt: new Date().toISOString() });
+  pendingBookProgress.set(pendingProgressKey(req.user.id, item.id), {
+    userId: req.user.id,
+    bookId: item.id,
+    value: { locator: clean, percent, updatedAt: new Date().toISOString() },
+  });
   armBookProgressFlushTimerIfNeeded();
   res.json({ success: true });
 });
@@ -5582,13 +6091,18 @@ app.delete('/api/settings/logo', async (req, res) => {
 // node:sqlite backup() API is deliberately unused (empirically unsafe under
 // concurrent writes — see lib/db/sqlite.js's header).
 //
-// v1.42 trust model: these endpoints are as open as the rest of the API (no
-// auth exists yet) — DISCLOSED in the release notes; v1.43 makes them
-// admin-only and adds the self-lockout guard.
+// v1.43: both endpoints are ADMIN-ONLY (the v1.42 open posture was a
+// disclosed one-release gap), the bundle carries the full `users` set
+// (password hashes included — the Settings UI flags the file sensitive),
+// and restore holds the self-lockout guard: the RESTORING admin must exist
+// in the bundle as an enabled admin, or the restore is refused whole. The
+// session secret is NEVER part of a bundle (secrets don't ride bundles —
+// per-instance cookie isolation depends on secrets differing).
 const BACKUP_SCHEMA = 'filetube-backup-v1';
 const BACKUP_NAMESPACE_KEYS = ['folders', 'folderSettings', 'progress', 'metadata', 'liked', 'deleteTombstones', 'viewCounts', 'settings', 'books', 'ytdlp'];
 
 app.get('/api/admin/backup', async (req, res) => {
+  if (!requireAdmin(req, res)) return;
   try {
     let bundle;
     // A read-only pass enqueued as a mutator that skips its save: the chain
@@ -5611,7 +6125,10 @@ app.get('/api/admin/backup', async (req, res) => {
           }
         }
       }
-      bundle.users = []; // reserved (v1.43 populates; format fixed from day one)
+      // v1.43: the full account set, hashes and per-user state included —
+      // enqueued on the same chained tick as the doc snapshot, so the two
+      // halves describe one moment.
+      bundle.users = userStore.exportUsersForBackup();
       return false; // read-only pass — never save
     });
     res.setHeader('Content-Disposition', contentDispositionAttachment(`filetube-backup-${new Date().toISOString().slice(0, 10)}.json`));
@@ -5628,8 +6145,34 @@ app.get('/api/admin/backup', async (req, res) => {
 function validateBackupBundle(bundle) {
   if (!bundle || typeof bundle !== 'object' || Array.isArray(bundle)) return 'bundle must be a JSON object';
   if (bundle.schema !== BACKUP_SCHEMA) return `unsupported schema '${bundle.schema}' (expected ${BACKUP_SCHEMA})`;
-  if (bundle.users !== undefined && (!Array.isArray(bundle.users) || bundle.users.length > 0)) {
-    return 'bundle contains user accounts; this FileTube version cannot restore them (users arrive in v1.43) — refusing a lossy restore';
+  // v1.43: a users array restores fully. Field-level validation up front —
+  // any bad entry refuses the WHOLE bundle before the wipe starts (the
+  // no-lossy-restore posture). An absent/empty users array is the v1.42
+  // format: legal, and the restore leaves the CURRENT accounts untouched
+  // (wiping users on a bundle that carries none would lock the instance out).
+  if (bundle.users !== undefined) {
+    if (!Array.isArray(bundle.users)) return 'users must be an array';
+    const seenIds = new Set();
+    const seenNames = new Set();
+    for (let i = 0; i < bundle.users.length; i++) {
+      const u = bundle.users[i];
+      const where = `users[${i}]`;
+      if (!u || typeof u !== 'object') return `${where}: must be an object`;
+      if (!Number.isInteger(u.id) || u.id <= 0) return `${where}: id must be a positive integer`;
+      if (seenIds.has(u.id)) return `${where}: duplicate user id ${u.id}`;
+      seenIds.add(u.id);
+      if (typeof u.username !== 'string' || !userStore.validateUsername(u.username)) return `${where}: invalid username`;
+      const nameKey = u.username.trim().toLowerCase();
+      if (seenNames.has(nameKey)) return `${where}: duplicate username '${u.username}'`;
+      seenNames.add(nameKey);
+      if (typeof u.passwordHash !== 'string' || u.passwordHash === '') return `${where}: missing password hash`;
+      if (u.role !== 'admin' && u.role !== 'member') return `${where}: role must be 'admin' or 'member'`;
+      for (const [field, kind] of [['progress', 'object'], ['bookProgress', 'object'], ['liked', 'array'], ['bookPins', 'array'], ['channelPins', 'array']]) {
+        if (u[field] === undefined) continue;
+        const ok = kind === 'array' ? Array.isArray(u[field]) : (typeof u[field] === 'object' && u[field] !== null && !Array.isArray(u[field]));
+        if (!ok) return `${where}: ${field} must be an ${kind}`;
+      }
+    }
   }
   const known = new Set([...BACKUP_NAMESPACE_KEYS, 'schema', 'exportedAt', 'appVersion', 'customLogo', 'users']);
   for (const key of Object.keys(bundle)) {
@@ -5670,9 +6213,26 @@ function validateBackupBundle(bundle) {
 // carry a real bundle (175 KB of state + up to 2 MB of logo b64) — same
 // route-scoped-parser posture as the logo upload's express.raw.
 app.post('/api/admin/restore', express.json({ limit: '16mb' }), async (req, res) => {
+  if (!requireAdmin(req, res)) return;
   const bundle = req.body;
   const problem = validateBackupBundle(bundle);
   if (problem) return res.status(400).json({ error: problem });
+
+  // Self-lockout guard (exec plan, locked answer 7): when the bundle
+  // replaces the user set, the admin PERFORMING the restore must exist in
+  // it as an ENABLED ADMIN — matched by username (ids may differ across
+  // instances), refused whole otherwise. Without this, one restore of a
+  // stale/foreign bundle locks the instance's only operator out the moment
+  // the wipe commits.
+  const restoresUsers = Array.isArray(bundle.users) && bundle.users.length > 0;
+  if (restoresUsers) {
+    const self = bundle.users.find((u) => u.username.trim().toLowerCase() === req.user.username.toLowerCase());
+    if (!self || self.role !== 'admin' || self.disabled) {
+      return res.status(409).json({
+        error: `This bundle does not contain '${req.user.username}' as an enabled admin - restoring it would lock you out, so it is refused. Restore from an account that exists in the bundle as an admin.`,
+      });
+    }
+  }
 
   const dbPart = {};
   for (const key of BACKUP_NAMESPACE_KEYS) {
@@ -5707,12 +6267,26 @@ app.post('/api/admin/restore', express.json({ limit: '16mb' }), async (req, res)
           try { fs.unlinkSync(finalPath); } catch { /* no stale variant -- fine */ }
         }
       }
+      // v1.43: replace the user set INSIDE the same open transaction — the
+      // account restore commits (or rolls back) atomically with the doc
+      // tables. A bundle without users (v1.42 format) keeps the current
+      // accounts untouched.
+      if (restoresUsers) {
+        userStore.replaceAllUsersRaw(bundle.users);
+      }
     });
   } catch (err) {
     console.error('Error restoring backup bundle:', err);
     return res.status(500).json({ error: `Restore failed and was rolled back: ${err.message}` });
   }
-  res.json({ success: true, restoredNamespaces: Object.keys(dbPart) });
+  // The restore replaced the restoring admin's own row (possibly with a
+  // different id/token_version than their live cookie carries) — reissue
+  // the cookie against the RESTORED row so the operator stays signed in.
+  if (restoresUsers) {
+    const restoredSelf = userStore.getByUsername(req.user.username);
+    if (restoredSelf) issueSessionCookie(res, req, restoredSelf);
+  }
+  res.json({ success: true, restoredNamespaces: Object.keys(dbPart), usersRestored: restoresUsers ? bundle.users.length : 0 });
 });
 
 // API: Read the Automation & Storage settings for Settings-page prefill.
@@ -5985,8 +6559,11 @@ app.get('/api/videos', (req, res) => {
   // overlays any not-yet-flushed `pendingProgress` entry over the cache
   // (read-your-writes). Doing this AFTER slicing (not over the full filtered
   // list) keeps the per-request cost bounded to the page size.
+  // v1.43: the liked flag derives from the USER's membership set -- ONE
+  // user_liked read per request, shared across the page's items.
+  const likedSet = new Set(userStore.getLiked(req.user.id));
   const items = page.map(item => {
-    const progress = effectiveProgress(item.id) || { timestamp: 0, duration: 0 };
+    const progress = effectiveProgress(req.user.id, item.id) || { timestamp: 0, duration: 0 };
     return {
       ...item,
       progress: progress.timestamp,
@@ -5994,7 +6571,7 @@ app.get('/api/videos', (req, res) => {
       // v1.40.0: per-item liked flag so the grid can render each card's Like
       // control in its correct initial state (same derivation as the single
       // GET /api/videos/:id route and the by-construction flag on /api/liked).
-      liked: Array.isArray(db.liked) && db.liked.includes(item.id)
+      liked: likedSet.has(item.id)
     };
   });
 
@@ -6010,7 +6587,8 @@ app.get('/api/videos/:id', (req, res) => {
   }
 
   // v1.30 A4: overlay any not-yet-flushed `pendingProgress` entry (read-your-writes).
-  const progress = effectiveProgress(item.id) || { timestamp: 0 };
+  // v1.43: scoped to the signed-in user.
+  const progress = effectiveProgress(req.user.id, item.id) || { timestamp: 0 };
   // v1.25 QoL bugfix: serve-time fallback for the watch page's uploader
   // avatar. `item.channelAvatarUrl` (a persisted, item-level capture) stays
   // authoritative when present; only when it is EMPTY does this look up the
@@ -6071,19 +6649,22 @@ app.get('/api/videos/:id', (req, res) => {
     // transcodeStatus's own spread-through); only the live in-memory percent
     // needs adding explicitly, mirroring transcodeProgress just above.
     audioProgress: audioExtractProgress[item.id] || 0,
-    // v1.30 C2: `liked` is DERIVED from `db.liked` membership at request
-    // time -- never persisted on the item itself. Membership IS the like
-    // state (see POST/DELETE /api/liked/:id below); this is purely a
-    // read-time convenience so the watch page's initial paint doesn't need a
-    // second `GET /api/liked` round-trip just to know this one item's state.
-    liked: Array.isArray(db.liked) && db.liked.includes(item.id)
+    // v1.30 C2: `liked` is DERIVED from membership at request time -- never
+    // persisted on the item itself. Membership IS the like state (see
+    // POST/DELETE /api/liked/:id below); this is purely a read-time
+    // convenience so the watch page's initial paint doesn't need a second
+    // `GET /api/liked` round-trip just to know this one item's state.
+    // v1.43: the signed-in user's user_liked rows, not the frozen db.liked.
+    liked: userStore.getLiked(req.user.id).includes(item.id)
   });
 });
 
 // API: Get watch progress -- v1.30 A4: overlay any not-yet-flushed
 // `pendingProgress` entry (read-your-writes); see `effectiveProgress` above.
+// v1.43: scoped to the signed-in user (`req.user` is set by the auth gate on
+// every non-allowlisted route).
 app.get('/api/progress/:id', (req, res) => {
-  const progress = effectiveProgress(req.params.id) || { timestamp: 0 };
+  const progress = effectiveProgress(req.user.id, req.params.id) || { timestamp: 0 };
   res.json(progress);
 });
 
@@ -6105,14 +6686,22 @@ app.post('/api/progress', (req, res) => {
     return res.status(400).json({ error: 'id and numeric timestamp are required' });
   }
   const db = getCachedDatabase(); // v1.30 A3: hot GET reader (existence check only)
-  const item = db.metadata[id];
+  // OWN-property check (v1.42 __proto__ row-key lesson): a plain truthiness
+  // probe lets id='__proto__'/'constructor' pass via Object.prototype
+  // inheritance, and v1.43 persists this client-supplied id into
+  // user_progress -- a stored junk-key row minted by any signed-in user.
+  const item = Object.prototype.hasOwnProperty.call(db.metadata, id) ? db.metadata[id] : undefined;
   if (!item) {
     return res.status(404).json({ error: 'Media not found' });
   }
-  pendingProgress.set(id, {
-    timestamp,
-    duration: duration || item.duration || 0,
-    updatedAt: new Date().toISOString()
+  pendingProgress.set(pendingProgressKey(req.user.id, id), {
+    userId: req.user.id,
+    mediaId: id,
+    value: {
+      timestamp,
+      duration: duration || item.duration || 0,
+      updatedAt: new Date().toISOString()
+    }
   });
   armProgressFlushTimerIfNeeded();
   res.json({ success: true });
@@ -6691,6 +7280,21 @@ app.delete('/api/videos/:id', async (req, res) => {
     return res.status(500).json({ error: `File deleted from disk but failed to update database: ${err.message}` });
   }
 
+  // v1.43: the per-user rows (user_progress/user_liked) are id-keyed carriers
+  // exactly like db.progress/db.viewCounts above, and go with the item for
+  // the same two reasons (unbounded growth under churn; stale state
+  // resurrecting onto a future re-add of the same path = same md5 id).
+  // AFTER the doc-table commit (the rekeyInFlightState posture): a rolled-
+  // back delete must never have already destroyed users' positions. A crash
+  // in this tiny window leaves orphan rows whose only effect is that a
+  // re-add of the exact same path resumes where users left off -- benign,
+  // and the flush guard never writes new rows for a metadata-less id.
+  try {
+    userStore.removeMediaState(item.id);
+  } catch (err) {
+    console.error(`Delete: failed to remove per-user progress/liked for ${item.id} (continuing):`, err.message);
+  }
+
   if (fileRemainsOnDisk) {
     return res.json({
       success: true,
@@ -6707,31 +7311,30 @@ app.delete('/api/videos/:id', async (req, res) => {
 
 // ---- v1.30 C2 (Visual polish cluster): Like -> "Liked" playlist --------
 //
-// Like state IS membership in `db.liked` (an array of media ids) -- there is
-// no separate boolean flag anywhere (not on `db.metadata[id]`, not in
-// settings) to ever drift out of sync with it. All three routes below are
-// REAL mutations through `updateDatabase`: unlike the progress coalescer
-// (v1.30 A4), every invocation here produces exactly ONE atomic write+fsync
-// -- the mutator always `return`s `true` (never skips the save), the same
-// "naturally idempotent, always-write" posture `DELETE /api/videos/:id`
-// already uses for its own db-cleanup step above (see that handler's own
-// comment) -- so AC4.2's "1:1 write-per-invocation, not batched" holds even
-// on a duplicate add / a remove-of-a-non-member.
+// Like state IS membership -- there is no separate boolean flag anywhere
+// (not on `db.metadata[id]`, not in settings) to ever drift out of sync
+// with it. v1.43 (chunk 4b): membership lives in the relational
+// `user_liked` table keyed by (user_id, media_id) -- a Like belongs to a
+// USER. The doc-table `db.liked` array is retained untouched as the frozen
+// pre-auth record (adopted into the first admin at /welcome); no reader
+// falls back to it (the total-cutover contract, design finding #6). The
+// mutations below are direct synchronous upserts/deletes on the warm
+// SQLite handle -- still exactly one durable write per invocation
+// (AC4.2's unbatched 1:1 posture), just against the user table instead of
+// a whole doc-table save.
 
 // API: Like an item (idempotent add). 404s exactly like the other single-id
 // routes above if the id isn't a real library item -- mirrors
 // `DELETE /api/videos/:id`'s own existence-check-then-mutate shape.
-app.post('/api/liked/:id', async (req, res) => {
+app.post('/api/liked/:id', (req, res) => {
   const db = getCachedDatabase(); // v1.30 A3: hot GET reader (existence check only)
-  const item = db.metadata[req.params.id];
+  // OWN-property check (v1.42 __proto__ lesson): this id persists into
+  // user_liked -- see POST /api/progress's identical guard.
+  const item = Object.prototype.hasOwnProperty.call(db.metadata, req.params.id) ? db.metadata[req.params.id] : undefined;
   if (!item) {
     return res.status(404).json({ error: 'Media file not found' });
   }
-  await updateDatabase(freshDb => {
-    if (!Array.isArray(freshDb.liked)) freshDb.liked = [];
-    if (!freshDb.liked.includes(item.id)) freshDb.liked.push(item.id);
-    return true; // always exactly 1 atomic write per invocation (AC4.2), even on an idempotent re-add
-  });
+  userStore.addLiked(req.user.id, item.id, new Date().toISOString()); // ON CONFLICT DO NOTHING -> idempotent re-add
   res.json({ success: true, liked: true });
 });
 
@@ -6739,23 +7342,20 @@ app.post('/api/liked/:id', async (req, res) => {
 // removing membership for an id that's already absent (or was since deleted
 // from the library entirely) is itself the desired end state, nothing to
 // 404 on.
-app.delete('/api/liked/:id', async (req, res) => {
-  const id = req.params.id;
-  await updateDatabase(freshDb => {
-    if (!Array.isArray(freshDb.liked)) freshDb.liked = [];
-    freshDb.liked = freshDb.liked.filter(likedId => likedId !== id);
-    return true; // always exactly 1 atomic write per invocation (AC4.2), even on a non-member remove
-  });
+app.delete('/api/liked/:id', (req, res) => {
+  userStore.removeLiked(req.user.id, req.params.id);
   res.json({ success: true, liked: false });
 });
 
 // API: List liked items -- reuses the SAME `{items,total,offset,limit}`
 // shaping / sort+pagination pipeline `GET /api/videos` (T6, A5) established,
-// scoped down to the ids currently present in `db.liked`. Read-only; never
+// scoped down to the signed-in user's liked membership. Read-only; never
 // mutates membership.
 app.get('/api/liked', (req, res) => {
   const db = getCachedDatabase(); // v1.30 A3: hot GET reader
-  const likedIds = new Set(Array.isArray(db.liked) ? db.liked : []);
+  // v1.43: membership is the signed-in user's user_liked rows (a warm
+  // prepared-statement read), never the frozen db.liked record.
+  const likedIds = new Set(userStore.getLiked(req.user.id));
   const sort = typeof req.query.sort === 'string' ? req.query.sort : 'newest';
   const limit = videoQuery.normalizeLimit(req.query.limit);
   const offset = videoQuery.normalizeOffset(req.query.offset);
@@ -6778,7 +7378,7 @@ app.get('/api/liked', (req, res) => {
   const page = sorted.slice(offset, offset + limit);
 
   const items = page.map(item => {
-    const progress = effectiveProgress(item.id) || { timestamp: 0, duration: 0 };
+    const progress = effectiveProgress(req.user.id, item.id) || { timestamp: 0, duration: 0 };
     return {
       ...item,
       liked: true, // every item in this listing is, by construction, a liked member
@@ -7531,11 +8131,29 @@ async function moveItemToFolder(deps, id, targetFolder, opts = {}) {
  *    comment documents) while the new id has no entry at all.
  *  - `recentlyServed`: PATH-keyed live-watch protection, so a file that was being
  *    streamed keeps its cache-eviction protection at its new path.
+ *  - v1.43: the relational `user_progress`/`user_liked` rows (not process
+ *    memory, but the same after-the-commit ordering argument applies -- see
+ *    the inline comment).
  */
 function rekeyInFlightState(oldId, newId, oldPath, newPath) {
-  if (pendingProgress.has(oldId)) {
-    pendingProgress.set(newId, pendingProgress.get(oldId));
-    pendingProgress.delete(oldId);
+  // v1.43: pendingProgress is keyed `<userId>:<mediaId>` -- carry EVERY
+  // user's staged position for the moved item, not just one entry.
+  for (const [key, entry] of [...pendingProgress]) {
+    if (entry.mediaId === oldId) {
+      pendingProgress.delete(key);
+      pendingProgress.set(pendingProgressKey(entry.userId, newId), { ...entry, mediaId: newId });
+    }
+  }
+  // The COMMITTED per-user rows follow the same post-commit posture as the
+  // maps here: re-keying them inside the mutator would leave the relational
+  // rows pointing at a `newId` the rolled-back doc tables never learned
+  // about. `UPDATE OR REPLACE`, so a collision with an already-re-keyed row
+  // can't throw. (user_liked rides along -- the v1.41.6 lesson says every
+  // id-keyed carrier moves in the SAME commit as the namespace it mirrors.)
+  try {
+    userStore.rekeyMediaState(oldId, newId);
+  } catch (err) {
+    console.error(`Move: failed to re-key per-user progress/liked for ${oldId} -> ${newId}:`, err.message);
   }
   const servedAt = persistedServedAt.get(oldId);
   clearPersistedServedAt(oldId);
@@ -9639,6 +10257,16 @@ ytdlp.registerRoutes(app, {
   getMediaId,
   recordRepulledItemMeta,
   enumerateRepullableItems,
+  // v1.43 (chunk 4b): channel pins are per-user (user_channel_pins rows).
+  // The pin routes keep lib/ytdlp/store.js's PURE reducers as the single
+  // source of pin semantics and persist through this two-call backend --
+  // deps-injected like every other server-owned primitive (the same
+  // circular-require-avoiding bridge as the rest of this object). `list`
+  // returns pin_order-sorted records (the listPins order contract).
+  userChannelPins: {
+    list: (userId) => userStore.getChannelPins(userId),
+    replace: (userId, pins) => userStore.setChannelPins(userId, pins),
+  },
   // v1.41.6: the reheat's import-relocation seam -- server.js owns the move +
   // id re-key machinery (`moveItemToFolder`) and `db.settings`, so the yt-dlp
   // module gets this deps-injected like every other server-owned primitive
@@ -9846,6 +10474,7 @@ module.exports = {
   flushPendingBookProgress,
   currentBookProgressFlushTimer,
   effectiveBookProgress,
+  __getBookProgressFlushWriteCount,
   matchRootFolder,
   // C1 (v1.24 UX Round, Wave 3): move-files + id re-key -- re-exported so
   // tests (and T19's Wave 7 physical-reconcile move) can call these directly.
@@ -9900,6 +10529,16 @@ module.exports = {
   __resetDatabaseForTests,
   __failNextSaveForTests,
   __getPersistedStateEpoch,
+  // v1.43: test-only session minting. Creates an admin if none exists and
+  // returns a valid session cookie header value, so pre-auth integration
+  // suites authenticate through the REAL gate (the gate's security is proven
+  // by lib/auth's unit suites + the auth-flow integration test; other suites
+  // just need to be logged in to test what they test). NOT an auth bypass —
+  // it produces a genuine cookie exactly like a browser login would.
+  __mintTestSession,
+  __clearUsersForTests,
+  userStore,
+  AUTH_COOKIE_NAME,
   // v1.42 AC7: the Node-floor predicate, exported so the boot check's
   // boundary (22.13 = first unflagged node:sqlite) is testable without
   // spawning per-version binaries.
@@ -9916,10 +10555,16 @@ module.exports = {
   // comment (above `pendingProgress`, near `getCachedDatabase`) for what it
   // does.
   pendingProgress,
+  pendingProgressKey,
   PROGRESS_FLUSH_MS,
   effectiveProgress,
   flushPendingProgress,
   currentProgressFlushTimer,
+  // v1.43 (per-user coalescer): the flush no longer writes the doc tables, so
+  // AC4.1's write-amplification claim is asserted against this counter (one
+  // increment per committed user_progress batch transaction) instead of
+  // __getSaveDatabaseCallCount.
+  __getProgressFlushWriteCount,
   __getSaveDatabaseCallCount,
   reconcileTranscode,
   parseFfprobeTags,

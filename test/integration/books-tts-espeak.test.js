@@ -38,6 +38,7 @@ process.env.FILETUBE_TTS_ENGINE = 'espeak-ng'; // select the fallback engine
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
 const { app, updateDatabase, loadDatabase, scanBooks } = require('../../server');
+const { authenticateFetch } = require('../helpers/auth');
 const booksStore = require('../../lib/books/store');
 const { buildEpub } = require('../helpers/build-zip');
 
@@ -54,6 +55,7 @@ before(async () => {
   bookId = Object.keys(booksStore.readBooks(loadDatabase()).items)[0];
   await new Promise((resolve) => { server = app.listen(0, '127.0.0.1', resolve); });
   base = `http://127.0.0.1:${server.address().port}`;
+  authenticateFetch(server, base); // v1.43: auth through the real gate
   await new Promise((r) => setTimeout(r, 150));
 });
 

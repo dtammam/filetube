@@ -416,6 +416,94 @@
           <small id="cache-cap-error" class="field-error"></small>
         </div>
       </div>
+
+      <!-- v1.43: Account (everyone) - who you are + sign out. Markup lives
+           INSIDE #view-root and styles in style.css (the v1.41.8 SPA-swap
+           lesson). -->
+      <div class="setup-box" id="account-box">
+        <h2>Account</h2>
+        <div class="account-row">
+          <span id="account-chip" aria-live="polite">Loading your account...</span>
+          <button class="btn" id="logout-btn">Sign out</button>
+        </div>
+      </div>
+
+      <!-- v1.43: Users (admin only - revealed by setup.js after /api/auth/me
+           confirms the role; the server enforces it regardless). -->
+      <div class="setup-box" id="users-box" hidden>
+        <h2>Users</h2>
+        <p>
+          Accounts for your family and friends. Everyone signed in sees the same library for now -
+          per-person library limits arrive in a later release. Each person gets their own watch
+          progress, likes, reading positions, and pinned channels.
+        </p>
+        <div id="users-list" class="users-list" aria-live="polite"></div>
+
+        <h3>Add a user</h3>
+        <div class="users-add-form">
+          <div class="form-group">
+            <label for="new-user-username">Username</label>
+            <input type="text" id="new-user-username" autocomplete="off" />
+          </div>
+          <div class="form-group">
+            <label for="new-user-displayname">Display name (optional)</label>
+            <input type="text" id="new-user-displayname" autocomplete="off" />
+          </div>
+          <div class="form-group">
+            <label for="new-user-password">Password</label>
+            <input type="password" id="new-user-password" autocomplete="new-password" />
+          </div>
+          <div class="form-group">
+            <label for="new-user-role">Role</label>
+            <select id="new-user-role" class="setup-select">
+              <option value="member" selected>Member</option>
+              <option value="admin">Admin</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label style="display:flex; align-items:center; gap:8px; font-weight:normal;">
+              <input type="checkbox" id="new-user-subs-flag" />
+              Can manage channel subscriptions
+            </label>
+          </div>
+          <div class="account-row">
+            <button class="btn btn-primary" id="add-user-btn">Add user</button>
+            <small id="add-user-error" class="field-error" role="alert" aria-live="polite"></small>
+          </div>
+        </div>
+      </div>
+
+      <!-- v1.43: instance backup/restore (admin only - revealed with the
+           Users box). The bundle now includes user accounts, so the download
+           is flagged sensitive. -->
+      <div class="setup-box" id="backup-box" hidden>
+        <h2>Backup &amp; Restore</h2>
+        <p>
+          Downloads a snapshot of this FileTube's configuration and everyone's personal state -
+          folders, settings, watch progress, likes, reading positions, pins, view counts, and
+          user accounts. Media files are never included.
+        </p>
+        <div class="form-group">
+          <a class="btn" id="backup-download-link" href="/api/admin/backup" download>Download backup</a>
+          <small style="color: var(--text-secondary); margin-top:6px; display:block;">
+            This file contains every account's password hash. Treat it like a password: store it
+            somewhere private, never share it.
+          </small>
+        </div>
+        <div class="form-group">
+          <label for="restore-file-input">Restore from a backup file</label>
+          <input type="file" id="restore-file-input" accept="application/json,.json" />
+          <div class="account-row" style="margin-top:8px;">
+            <button class="btn" id="restore-btn">Restore</button>
+            <small id="restore-status" class="field-error" role="alert" aria-live="polite"></small>
+          </div>
+          <small style="color: var(--text-secondary); margin-top:6px; display:block;">
+            Restoring replaces this FileTube's configuration and accounts with the backup's
+            contents. A backup that does not include your own admin account is refused, so a
+            restore can never lock you out.
+          </small>
+        </div>
+      </div>
       </div>
     </main>
   </div>

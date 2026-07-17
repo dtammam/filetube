@@ -13,6 +13,7 @@ process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-dupes-'))
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
 const { app, saveDatabase } = require('../../server');
+const { authenticateFetch } = require('../helpers/auth');
 const { readPersistedDatabase } = require('../../lib/db/sqlite');
 
 let server;
@@ -21,6 +22,7 @@ let base;
 before(async () => {
   await new Promise((resolve) => { server = app.listen(0, '127.0.0.1', resolve); });
   base = `http://127.0.0.1:${server.address().port}`;
+  authenticateFetch(server, base); // v1.43: auth through the real gate
 
   const items = [
     { id: 'n1', filePath: '/lib/a/copy me 😳.mp4', size: 300 },
