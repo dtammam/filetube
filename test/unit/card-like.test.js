@@ -67,6 +67,10 @@ test('main.js: the card renders a .card-like-btn reflecting item.liked, and togg
   assert.ok(mainSrc.includes("if (!res.ok) throw new Error('like request failed"), 'a failed request never fakes success');
 });
 
-test('server.js: the GET /api/videos list tags each item with a `liked` flag from db.liked', () => {
-  assert.match(serverSrc, /liked:\s*Array\.isArray\(db\.liked\)\s*&&\s*db\.liked\.includes\(item\.id\)/);
+test('server.js: the GET /api/videos list tags each item with a `liked` flag from the USER\'s membership', () => {
+  // v1.43 (chunk 4b): membership moved from the frozen db.liked record to
+  // per-user user_liked rows -- the list derivation reads ONE per-request
+  // membership set for the signed-in user and tags each page item from it.
+  assert.match(serverSrc, /const likedSet = new Set\(userStore\.getLiked\(req\.user\.id\)\)/);
+  assert.match(serverSrc, /liked:\s*likedSet\.has\(item\.id\)/);
 });

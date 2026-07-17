@@ -6235,6 +6235,9 @@ app.get('/api/videos', (req, res) => {
   // overlays any not-yet-flushed `pendingProgress` entry over the cache
   // (read-your-writes). Doing this AFTER slicing (not over the full filtered
   // list) keeps the per-request cost bounded to the page size.
+  // v1.43: the liked flag derives from the USER's membership set -- ONE
+  // user_liked read per request, shared across the page's items.
+  const likedSet = new Set(userStore.getLiked(req.user.id));
   const items = page.map(item => {
     const progress = effectiveProgress(req.user.id, item.id) || { timestamp: 0, duration: 0 };
     return {
@@ -6244,7 +6247,7 @@ app.get('/api/videos', (req, res) => {
       // v1.40.0: per-item liked flag so the grid can render each card's Like
       // control in its correct initial state (same derivation as the single
       // GET /api/videos/:id route and the by-construction flag on /api/liked).
-      liked: Array.isArray(db.liked) && db.liked.includes(item.id)
+      liked: likedSet.has(item.id)
     };
   });
 
@@ -6322,12 +6325,13 @@ app.get('/api/videos/:id', (req, res) => {
     // transcodeStatus's own spread-through); only the live in-memory percent
     // needs adding explicitly, mirroring transcodeProgress just above.
     audioProgress: audioExtractProgress[item.id] || 0,
-    // v1.30 C2: `liked` is DERIVED from `db.liked` membership at request
-    // time -- never persisted on the item itself. Membership IS the like
-    // state (see POST/DELETE /api/liked/:id below); this is purely a
-    // read-time convenience so the watch page's initial paint doesn't need a
-    // second `GET /api/liked` round-trip just to know this one item's state.
-    liked: Array.isArray(db.liked) && db.liked.includes(item.id)
+    // v1.30 C2: `liked` is DERIVED from membership at request time -- never
+    // persisted on the item itself. Membership IS the like state (see
+    // POST/DELETE /api/liked/:id below); this is purely a read-time
+    // convenience so the watch page's initial paint doesn't need a second
+    // `GET /api/liked` round-trip just to know this one item's state.
+    // v1.43: the signed-in user's user_liked rows, not the frozen db.liked.
+    liked: userStore.getLiked(req.user.id).includes(item.id)
   });
 });
 
@@ -6979,31 +6983,28 @@ app.delete('/api/videos/:id', async (req, res) => {
 
 // ---- v1.30 C2 (Visual polish cluster): Like -> "Liked" playlist --------
 //
-// Like state IS membership in `db.liked` (an array of media ids) -- there is
-// no separate boolean flag anywhere (not on `db.metadata[id]`, not in
-// settings) to ever drift out of sync with it. All three routes below are
-// REAL mutations through `updateDatabase`: unlike the progress coalescer
-// (v1.30 A4), every invocation here produces exactly ONE atomic write+fsync
-// -- the mutator always `return`s `true` (never skips the save), the same
-// "naturally idempotent, always-write" posture `DELETE /api/videos/:id`
-// already uses for its own db-cleanup step above (see that handler's own
-// comment) -- so AC4.2's "1:1 write-per-invocation, not batched" holds even
-// on a duplicate add / a remove-of-a-non-member.
+// Like state IS membership -- there is no separate boolean flag anywhere
+// (not on `db.metadata[id]`, not in settings) to ever drift out of sync
+// with it. v1.43 (chunk 4b): membership lives in the relational
+// `user_liked` table keyed by (user_id, media_id) -- a Like belongs to a
+// USER. The doc-table `db.liked` array is retained untouched as the frozen
+// pre-auth record (adopted into the first admin at /welcome); no reader
+// falls back to it (the total-cutover contract, design finding #6). The
+// mutations below are direct synchronous upserts/deletes on the warm
+// SQLite handle -- still exactly one durable write per invocation
+// (AC4.2's unbatched 1:1 posture), just against the user table instead of
+// a whole doc-table save.
 
 // API: Like an item (idempotent add). 404s exactly like the other single-id
 // routes above if the id isn't a real library item -- mirrors
 // `DELETE /api/videos/:id`'s own existence-check-then-mutate shape.
-app.post('/api/liked/:id', async (req, res) => {
+app.post('/api/liked/:id', (req, res) => {
   const db = getCachedDatabase(); // v1.30 A3: hot GET reader (existence check only)
   const item = db.metadata[req.params.id];
   if (!item) {
     return res.status(404).json({ error: 'Media file not found' });
   }
-  await updateDatabase(freshDb => {
-    if (!Array.isArray(freshDb.liked)) freshDb.liked = [];
-    if (!freshDb.liked.includes(item.id)) freshDb.liked.push(item.id);
-    return true; // always exactly 1 atomic write per invocation (AC4.2), even on an idempotent re-add
-  });
+  userStore.addLiked(req.user.id, item.id, new Date().toISOString()); // ON CONFLICT DO NOTHING -> idempotent re-add
   res.json({ success: true, liked: true });
 });
 
@@ -7011,23 +7012,20 @@ app.post('/api/liked/:id', async (req, res) => {
 // removing membership for an id that's already absent (or was since deleted
 // from the library entirely) is itself the desired end state, nothing to
 // 404 on.
-app.delete('/api/liked/:id', async (req, res) => {
-  const id = req.params.id;
-  await updateDatabase(freshDb => {
-    if (!Array.isArray(freshDb.liked)) freshDb.liked = [];
-    freshDb.liked = freshDb.liked.filter(likedId => likedId !== id);
-    return true; // always exactly 1 atomic write per invocation (AC4.2), even on a non-member remove
-  });
+app.delete('/api/liked/:id', (req, res) => {
+  userStore.removeLiked(req.user.id, req.params.id);
   res.json({ success: true, liked: false });
 });
 
 // API: List liked items -- reuses the SAME `{items,total,offset,limit}`
 // shaping / sort+pagination pipeline `GET /api/videos` (T6, A5) established,
-// scoped down to the ids currently present in `db.liked`. Read-only; never
+// scoped down to the signed-in user's liked membership. Read-only; never
 // mutates membership.
 app.get('/api/liked', (req, res) => {
   const db = getCachedDatabase(); // v1.30 A3: hot GET reader
-  const likedIds = new Set(Array.isArray(db.liked) ? db.liked : []);
+  // v1.43: membership is the signed-in user's user_liked rows (a warm
+  // prepared-statement read), never the frozen db.liked record.
+  const likedIds = new Set(userStore.getLiked(req.user.id));
   const sort = typeof req.query.sort === 'string' ? req.query.sort : 'newest';
   const limit = videoQuery.normalizeLimit(req.query.limit);
   const offset = videoQuery.normalizeOffset(req.query.offset);

@@ -1,20 +1,27 @@
 'use strict';
 
 // [INTEGRATION] v1.30 C2 (Visual polish cluster, T11) -- Like -> "Liked"
-// playlist. `db.liked` (an array of media ids) is the SINGLE source of truth
-// for like state; there is no separate boolean flag anywhere. Covers:
+// playlist. Membership is the SINGLE source of truth for like state; there
+// is no separate boolean flag anywhere. Covers:
 //
 //   AC7.3 (headline): add / duplicate-add (idempotent, no dup) / remove
 //   round-trip leaves NO residual membership. GET /api/liked reflects the
 //   current set in the T6 {items,total,offset,limit} shape.
 //
-//   AC4.2 (regression): each liked route (POST/DELETE /api/liked/:id)
-//   produces EXACTLY 1 atomic write+fsync per invocation -- unbatched, unlike
-//   the T5 progress coalescer -- asserted via the `__getSaveDatabaseCallCount`
-//   write-count spy (mirrors progress-coalescer.test.js's own AC4.2 style).
+//   Write posture (was AC4.2's 1:1 doc-table save): each liked route is one
+//   direct durable write against user_liked -- unbatched, unlike the T5
+//   progress coalescer -- and NEVER a doc-table save (the frozen-record
+//   contract), asserted via the `__getSaveDatabaseCallCount` spy.
 //
-//   Backfill: a legacy/partial db.json without `liked` loads with
-//   `db.liked = []` across all three `loadDatabase` default paths.
+//   Backfill: a legacy/partial store without `liked` loads with
+//   `db.liked = []` across the loadDatabase default paths (the FROZEN
+//   pre-auth record -- readers no longer consult it, but its shape contract
+//   holds for adoption + old-tag parallel-run).
+//
+// v1.43 (chunk 4b): a Like belongs to a USER -- membership lives in the
+// relational `user_liked` table keyed by (user_id, media_id). The doc-table
+// `db.liked` array is retained untouched as the frozen pre-auth record; the
+// routes read/write ONLY the signed-in user's rows.
 const os = require('node:os');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -31,18 +38,22 @@ const {
   loadDatabase,
   __getSaveDatabaseCallCount,
   __resetDatabaseForTests,
+  __mintTestSession,
+  userStore,
 } = require('../../server');
 const { authenticateFetch } = require('../helpers/auth');
 
 let server;
 let base;
+let uid; // the authenticated test admin's user id
 
 before(async () => {
   await new Promise((resolve) => {
     server = app.listen(0, '127.0.0.1', resolve);
   });
   base = `http://127.0.0.1:${server.address().port}`;
-  authenticateFetch(server, base); // v1.43: auth through the real gate
+  const auth = authenticateFetch(server, base); // v1.43: auth through the real gate
+  uid = auth.user.id;
 });
 
 after(async () => {
@@ -83,15 +94,22 @@ async function unlike(id) {
   return fetch(`${base}/api/liked/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
 
+// Seed helper: every test starts with an empty user_liked slate for the
+// admin (saveDatabase only resets doc tables; per-user rows are relational).
+function clearUserLiked() {
+  for (const id of userStore.getLiked(uid)) userStore.removeLiked(uid, id);
+}
+
 // ---- AC7.3: add / duplicate-add (idempotent) / remove round-trip ----------
 
-test('AC7.3: POST /api/liked/:id adds membership', async () => {
+test('AC7.3: POST /api/liked/:id adds membership (per-user)', async () => {
   saveDatabase({
     folders: [], folderSettings: {}, progress: {},
     metadata: { likeA: seedItem('likeA') },
     liked: [],
     settings: baseSettings(),
   });
+  clearUserLiked();
 
   const res = await like('likeA');
   assert.equal(res.status, 200);
@@ -99,8 +117,8 @@ test('AC7.3: POST /api/liked/:id adds membership', async () => {
   assert.equal(body.success, true);
   assert.equal(body.liked, true);
 
-  const db = loadDatabase();
-  assert.deepEqual(db.liked, ['likeA']);
+  assert.deepEqual(userStore.getLiked(uid), ['likeA']);
+  assert.deepEqual(loadDatabase().liked, [], 'the frozen db.liked record is never written by the route');
 });
 
 test('AC7.3: a duplicate POST /api/liked/:id is idempotent -- no duplicate entry', async () => {
@@ -110,13 +128,13 @@ test('AC7.3: a duplicate POST /api/liked/:id is idempotent -- no duplicate entry
     liked: [],
     settings: baseSettings(),
   });
+  clearUserLiked();
 
   await like('likeB');
   const res = await like('likeB'); // second, duplicate add
   assert.equal(res.status, 200);
 
-  const db = loadDatabase();
-  assert.deepEqual(db.liked, ['likeB'], 'a duplicate add must never produce a second entry');
+  assert.deepEqual(userStore.getLiked(uid), ['likeB'], 'a duplicate add must never produce a second entry');
 });
 
 test('AC7.3: DELETE /api/liked/:id removes membership, and the round-trip leaves NO residual membership', async () => {
@@ -126,42 +144,45 @@ test('AC7.3: DELETE /api/liked/:id removes membership, and the round-trip leaves
     liked: [],
     settings: baseSettings(),
   });
+  clearUserLiked();
 
   await like('likeC');
-  assert.deepEqual(loadDatabase().liked, ['likeC']);
+  assert.deepEqual(userStore.getLiked(uid), ['likeC']);
 
   const res = await unlike('likeC');
   assert.equal(res.status, 200);
   const body = await res.json();
   assert.equal(body.liked, false);
 
-  const db = loadDatabase();
-  assert.deepEqual(db.liked, [], 'like-then-unlike must leave no residual membership');
+  assert.deepEqual(userStore.getLiked(uid), [], 'like-then-unlike must leave no residual membership');
 });
 
 test('AC7.3: removing a non-member is a no-op (idempotent) and never throws/errors', async () => {
   saveDatabase({
     folders: [], folderSettings: {}, progress: {},
-    metadata: { likeD: seedItem('likeD') },
-    liked: ['someOtherId'],
+    metadata: { likeD: seedItem('likeD'), someOtherId: seedItem('someOtherId') },
+    liked: [],
     settings: baseSettings(),
   });
+  clearUserLiked();
+  await like('someOtherId');
 
   const res = await unlike('likeD'); // never liked in the first place
   assert.equal(res.status, 200);
-  assert.deepEqual(loadDatabase().liked, ['someOtherId'], 'unrelated membership must be untouched');
+  assert.deepEqual(userStore.getLiked(uid), ['someOtherId'], 'unrelated membership must be untouched');
 });
 
 test('AC7.3: POST /api/liked/:id 404s for an id that is not a real library item', async () => {
   saveDatabase({ folders: [], folderSettings: {}, progress: {}, metadata: {}, liked: [], settings: baseSettings() });
+  clearUserLiked();
   const res = await like('ghost-id');
   assert.equal(res.status, 404);
-  assert.deepEqual(loadDatabase().liked, [], 'a 404 must never stage a membership entry');
+  assert.deepEqual(userStore.getLiked(uid), [], 'a 404 must never stage a membership entry');
 });
 
 // ---- GET /api/liked: T6 {items,total,offset,limit} shape, membership set --
 
-test('GET /api/liked lists exactly the current liked set in the {items,total,offset,limit} shape', async () => {
+test('GET /api/liked lists exactly the current user\'s liked set in the {items,total,offset,limit} shape', async () => {
   saveDatabase({
     folders: [], folderSettings: {}, progress: {},
     metadata: {
@@ -169,9 +190,12 @@ test('GET /api/liked lists exactly the current liked set in the {items,total,off
       lik2: seedItem('lik2', { addedAt: 2000 }),
       lik3: seedItem('lik3', { addedAt: 3000 }), // never liked
     },
-    liked: ['lik1', 'lik2'],
+    liked: [],
     settings: baseSettings(),
   });
+  clearUserLiked();
+  await like('lik1');
+  await like('lik2');
 
   const res = await fetch(`${base}/api/liked`);
   assert.equal(res.status, 200);
@@ -192,20 +216,75 @@ test('GET /api/liked returns an empty page when nothing is liked', async () => {
     liked: [],
     settings: baseSettings(),
   });
+  clearUserLiked();
   const res = await fetch(`${base}/api/liked`);
   const body = await res.json();
   assert.deepEqual(body, { items: [], total: 0, offset: 0, limit: body.limit });
 });
 
+// ---- v1.43: per-user isolation --------------------------------------------
+
+test('per-user isolation: each user\'s Liked view is their OWN -- likes never bleed across accounts', async () => {
+  saveDatabase({
+    folders: [], folderSettings: {}, progress: {},
+    metadata: { mineOnly: seedItem('mineOnly'), yoursOnly: seedItem('yoursOnly') },
+    liked: [],
+    settings: baseSettings(),
+  });
+  clearUserLiked();
+  const second = __mintTestSession({ username: 'likeduser2' });
+  for (const id of userStore.getLiked(second.user.id)) userStore.removeLiked(second.user.id, id);
+
+  await like('mineOnly'); // the admin
+  const res = await fetch(`${base}/api/liked/yoursOnly`, { method: 'POST', headers: { Cookie: second.cookie } });
+  assert.equal(res.status, 200);
+
+  const adminList = await (await fetch(`${base}/api/liked`)).json();
+  assert.deepEqual(adminList.items.map((i) => i.id), ['mineOnly'], 'the admin sees only their own like');
+  const secondList = await (await fetch(`${base}/api/liked`, { headers: { Cookie: second.cookie } })).json();
+  assert.deepEqual(secondList.items.map((i) => i.id), ['yoursOnly'], 'the second user sees only THEIR like');
+
+  // The per-item derived flag is per-user too (the card-heart initial state).
+  const adminItem = await (await fetch(`${base}/api/videos/yoursOnly`)).json();
+  assert.equal(adminItem.liked, false, 'another user\'s like never lights the admin\'s heart');
+  const secondItem = await (await fetch(`${base}/api/videos/yoursOnly`, { headers: { Cookie: second.cookie } })).json();
+  assert.equal(secondItem.liked, true);
+});
+
+test('v1.43 carrier: DELETE /api/videos/:id removes the deleting user\'s AND every other user\'s like/progress rows for the item', async () => {
+  const filePath = path.join(os.tmpdir(), `filetube-liked-delete-${Date.now()}.mp4`);
+  fs.writeFileSync(filePath, 'bytes');
+  saveDatabase({
+    folders: [], folderSettings: {}, progress: {},
+    metadata: { delCarrier: seedItem('delCarrier', { filePath }) },
+    liked: [],
+    settings: baseSettings(),
+  });
+  clearUserLiked();
+  const second = __mintTestSession({ username: 'likeduser3' });
+  await like('delCarrier');
+  userStore.addLiked(second.user.id, 'delCarrier', new Date().toISOString());
+  userStore.setProgress(second.user.id, 'delCarrier', { timestamp: 9, duration: 100, updatedAt: new Date().toISOString() });
+
+  const res = await fetch(`${base}/api/videos/delCarrier`, { method: 'DELETE' });
+  assert.equal(res.status, 200);
+
+  assert.deepEqual(userStore.getLiked(uid), [], 'the deleter\'s like goes with the item');
+  assert.ok(!userStore.getLiked(second.user.id).includes('delCarrier'), 'every OTHER user\'s like goes too (no stale resurrection onto a same-path re-add)');
+  assert.equal(userStore.getOneProgress(second.user.id, 'delCarrier'), null, 'and their progress row');
+});
+
 // ---- GET /api/videos/:id: derived `liked` field (not persisted) -----------
 
-test('GET /api/videos/:id derives `liked` from db.liked membership at request time', async () => {
+test('GET /api/videos/:id derives `liked` from the user\'s membership at request time', async () => {
   saveDatabase({
     folders: [], folderSettings: {}, progress: {},
     metadata: { derivedA: seedItem('derivedA') },
-    liked: ['derivedA'],
+    liked: [],
     settings: baseSettings(),
   });
+  clearUserLiked();
+  await like('derivedA');
   let res = await fetch(`${base}/api/videos/derivedA`);
   let body = await res.json();
   assert.equal(body.liked, true);
@@ -216,59 +295,24 @@ test('GET /api/videos/:id derives `liked` from db.liked membership at request ti
   assert.equal(body.liked, false, 'the derived field must reflect membership immediately after unlike, never a stale/stored flag');
 });
 
-// ---- AC4.2: each liked route is exactly 1:1 atomic write+fsync -----------
+// ---- Write posture: direct user-table writes, ZERO doc-table saves --------
 
-test('AC4.2: POST /api/liked/:id triggers exactly 1 saveDatabase call per invocation', async () => {
+test('liked routes never issue a doc-table save (the frozen-record contract), while membership still commits durably', async () => {
   saveDatabase({
     folders: [], folderSettings: {}, progress: {},
     metadata: { writeA: seedItem('writeA') },
     liked: [],
     settings: baseSettings(),
   });
+  clearUserLiked();
   const before = __getSaveDatabaseCallCount();
-  const res = await like('writeA');
-  assert.equal(res.status, 200);
-  assert.equal(__getSaveDatabaseCallCount() - before, 1, 'POST /api/liked/:id must be exactly 1:1 (unbatched)');
-});
-
-test('AC4.2: a duplicate (idempotent) POST /api/liked/:id STILL performs exactly 1 write on that invocation (never batched/skipped)', async () => {
-  saveDatabase({
-    folders: [], folderSettings: {}, progress: {},
-    metadata: { writeB: seedItem('writeB') },
-    liked: [],
-    settings: baseSettings(),
-  });
-  await like('writeB');
-  const before = __getSaveDatabaseCallCount();
-  const res = await like('writeB'); // duplicate add
-  assert.equal(res.status, 200);
-  assert.equal(__getSaveDatabaseCallCount() - before, 1, 'a duplicate add is still its OWN atomic write, unlike progress\'s batched skip-on-no-change posture');
-});
-
-test('AC4.2: DELETE /api/liked/:id triggers exactly 1 saveDatabase call per invocation', async () => {
-  saveDatabase({
-    folders: [], folderSettings: {}, progress: {},
-    metadata: { writeC: seedItem('writeC') },
-    liked: ['writeC'],
-    settings: baseSettings(),
-  });
-  const before = __getSaveDatabaseCallCount();
-  const res = await unlike('writeC');
-  assert.equal(res.status, 200);
-  assert.equal(__getSaveDatabaseCallCount() - before, 1, 'DELETE /api/liked/:id must be exactly 1:1 (unbatched)');
-});
-
-test('AC4.2: DELETE /api/liked/:id on a non-member STILL performs exactly 1 write (idempotent, but not skipped)', async () => {
-  saveDatabase({
-    folders: [], folderSettings: {}, progress: {},
-    metadata: { writeD: seedItem('writeD') },
-    liked: [],
-    settings: baseSettings(),
-  });
-  const before = __getSaveDatabaseCallCount();
-  const res = await unlike('writeD'); // never liked
-  assert.equal(res.status, 200);
-  assert.equal(__getSaveDatabaseCallCount() - before, 1);
+  assert.equal((await like('writeA')).status, 200);
+  assert.equal((await like('writeA')).status, 200); // duplicate add
+  assert.equal((await unlike('writeA')).status, 200);
+  assert.equal((await unlike('writeA')).status, 200); // non-member remove
+  assert.equal(__getSaveDatabaseCallCount() - before, 0,
+    'like/unlike write user_liked directly -- the doc tables (and db.liked) are never touched');
+  assert.deepEqual(userStore.getLiked(uid), [], 'the round-trip still left the correct committed end state');
 });
 
 // ---- Backfill: db.liked = [] across all three loadDatabase default paths --
