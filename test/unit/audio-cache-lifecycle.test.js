@@ -24,7 +24,9 @@ const {
   cleanupOrphanTmp,
   evictTranscodeCache,
   sweepAgedTranscodes,
+  saveDatabase,
 } = require('../../server');
+const { readPersistedDatabase } = require('../../lib/db/sqlite');
 
 const f = (p, size, atimeMs) => ({ path: p, size, atimeMs });
 
@@ -138,17 +140,16 @@ test('evictTranscodeCache: LRU eviction spans BOTH .mp4 and .m4a in the SAME siz
 
 test('sweepAgedTranscodes: age-retention sweep removes a stale .m4a sidecar via its OWN db.metadata[id].lastServedAt', () => {
   for (const n of fs.readdirSync(TRANSCODE_DIR)) fs.unlinkSync(path.join(TRANSCODE_DIR, n));
-  const DB_FILE = path.join(process.env.DATA_DIR, 'db.json');
   const id = 'vid-aged-audio';
   const p = path.join(TRANSCODE_DIR, `${id}.m4a`);
   fs.writeFileSync(p, Buffer.alloc(10));
   const staleTime = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
   fs.utimesSync(p, staleTime, staleTime);
-  fs.writeFileSync(DB_FILE, JSON.stringify({
+  saveDatabase({
     folders: [], folderSettings: {}, progress: {},
     metadata: { [id]: { id, lastServedAt: Date.now() - 90 * 24 * 60 * 60 * 1000 } },
     settings: { cacheMaxAgeDays: 30 },
-  }, null, 2));
+  });
 
   const removed = sweepAgedTranscodes(Date.now());
   assert.equal(removed, 1);
@@ -159,7 +160,6 @@ test('sweepAgedTranscodes: age-retention sweep removes a stale .m4a sidecar via 
 
 test('evictTranscodeCache: clears audioStatus for an EVICTED .m4a sidecar, leaves an evicted .mp4\'s transcodeStatus untouched (matches the existing scan-lazy pattern)', async () => {
   for (const n of fs.readdirSync(TRANSCODE_DIR)) fs.unlinkSync(path.join(TRANSCODE_DIR, n));
-  const DB_FILE = path.join(process.env.DATA_DIR, 'db.json');
   const audioId = 'vid-evict-audio-status';
   const videoId = 'vid-evict-transcode-status';
   const write = (name, bytes, atimeSec) => {
@@ -171,13 +171,13 @@ test('evictTranscodeCache: clears audioStatus for an EVICTED .m4a sidecar, leave
   const oldAudio = write(`${audioId}.m4a`, 100, 1000);
   const oldVideo = write(`${videoId}.mp4`, 100, 1100);
   const freshKeep = write('keep.m4a', 100, 9000);
-  fs.writeFileSync(DB_FILE, JSON.stringify({
+  saveDatabase({
     folders: [], folderSettings: {}, progress: {},
     metadata: {
       [audioId]: { id: audioId, audioStatus: 'ready' },
       [videoId]: { id: videoId, transcodeStatus: 'ready' },
     },
-  }, null, 2));
+  });
 
   const removed = evictTranscodeCache(100, freshKeep);
   assert.equal(removed, 2);
@@ -187,7 +187,7 @@ test('evictTranscodeCache: clears audioStatus for an EVICTED .m4a sidecar, leave
   // chain) -- give it a tick to land, mirroring the audio-endpoint suite's
   // own recordServed-landing pattern.
   await new Promise((resolve) => setTimeout(resolve, 50));
-  const db = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+  const db = readPersistedDatabase(process.env.DATA_DIR);
   assert.equal(db.metadata[audioId].audioStatus, undefined, 'the evicted .m4a\'s stale audioStatus must be cleared');
   assert.equal(
     db.metadata[videoId].transcodeStatus, 'ready',
@@ -197,22 +197,21 @@ test('evictTranscodeCache: clears audioStatus for an EVICTED .m4a sidecar, leave
 
 test('sweepAgedTranscodes: clears audioStatus for an aged-out .m4a sidecar', async () => {
   for (const n of fs.readdirSync(TRANSCODE_DIR)) fs.unlinkSync(path.join(TRANSCODE_DIR, n));
-  const DB_FILE = path.join(process.env.DATA_DIR, 'db.json');
   const id = 'vid-aged-audio-status';
   const p = path.join(TRANSCODE_DIR, `${id}.m4a`);
   fs.writeFileSync(p, Buffer.alloc(10));
   const staleTime = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
   fs.utimesSync(p, staleTime, staleTime);
-  fs.writeFileSync(DB_FILE, JSON.stringify({
+  saveDatabase({
     folders: [], folderSettings: {}, progress: {},
     metadata: { [id]: { id, audioStatus: 'ready', lastServedAt: Date.now() - 90 * 24 * 60 * 60 * 1000 } },
     settings: { cacheMaxAgeDays: 30 },
-  }, null, 2));
+  });
 
   const removed = sweepAgedTranscodes(Date.now());
   assert.equal(removed, 1);
 
   await new Promise((resolve) => setTimeout(resolve, 50));
-  const db = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+  const db = readPersistedDatabase(process.env.DATA_DIR);
   assert.equal(db.metadata[id].audioStatus, undefined, 'the aged-out .m4a\'s stale audioStatus must be cleared');
 });

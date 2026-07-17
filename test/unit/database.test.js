@@ -1,12 +1,19 @@
 'use strict';
 
-// Fresh, isolated DATA_DIR per test file (own process). Every test controls the
-// db.json in this dir directly, so there is no shared-state bleed.
+// Fresh, isolated DATA_DIR per test file (own process). v1.42: the persisted
+// store is SQLite (DATA_DIR/filetube.db) behind lib/db/sqlite.js; these tests
+// exercise server.js's seam (loadDatabase/saveDatabase/updateDatabase) against
+// it. Persisted-state assertions go through `readPersistedDatabase()` (the
+// sanctioned helper — a second, read-only connection, never the app's own
+// accounting); the between-test reset is `__resetDatabaseForTests()` (an OPEN
+// SQLite database cannot be rm'd out from under its connection the way
+// db.json could).
 const os = require('node:os');
 const fs = require('node:fs');
 const path = require('node:path');
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-test-'));
-const DB_FILE = path.join(process.env.DATA_DIR, 'db.json');
+const DB_FILE = path.join(process.env.DATA_DIR, 'db.json'); // legacy artifact — only ever written BY tests as a decoy now
+const SQLITE_FILE = path.join(process.env.DATA_DIR, 'filetube.db');
 
 const { test, beforeEach } = require('node:test');
 const assert = require('node:assert');
@@ -18,10 +25,16 @@ const {
   transcodedPath,
   reconcileTranscode,
   cleanupOrphanDbTmp,
+  __resetDatabaseForTests,
+  nodeVersionSupported,
 } = require('../../server');
+const { readPersistedDatabase } = require('../../lib/db/sqlite');
 
-beforeEach(() => {
-  // Start each test from a clean slate.
+beforeEach(async () => {
+  // Start each test from a clean slate (rows wiped, coalescers cleared,
+  // read cache invalidated). Also remove any decoy db.json a prior test
+  // planted.
+  await __resetDatabaseForTests();
   if (fs.existsSync(DB_FILE)) fs.rmSync(DB_FILE);
 });
 
@@ -44,35 +57,41 @@ const DEFAULT_SETTINGS = {
   relocateHydratedImports: true,
 };
 
-test('loadDatabase: creates a default db when none exists', () => {
+test('loadDatabase: yields a fully-defaulted db when the store is empty (no eager write needed)', () => {
   const db = loadDatabase();
   assert.deepEqual(db.folders, []);
   assert.deepEqual(db.folderSettings, {});
   assert.deepEqual(db.progress, {});
   assert.deepEqual(db.metadata, {});
+  assert.deepEqual(db.liked, []);
+  assert.deepEqual(db.deleteTombstones, {});
+  assert.deepEqual(db.viewCounts, {});
   assert.deepEqual(db.settings, DEFAULT_SETTINGS, 'fresh db gets defaulted settings');
-  assert.ok(fs.existsSync(DB_FILE), 'db.json is written to disk');
+  assert.ok(fs.existsSync(SQLITE_FILE), 'filetube.db exists from the adapter open');
+  // v1.42: defaults are NOT eagerly persisted (the pre-v1.42 initial-create
+  // write is subsumed by the adapter) — the first real save persists them.
+  assert.deepEqual(readPersistedDatabase(process.env.DATA_DIR), {}, 'no rows until a real save');
 });
 
-test('loadDatabase: backfills folderSettings for older databases', () => {
-  fs.writeFileSync(DB_FILE, JSON.stringify({ folders: ['/x'], progress: {}, metadata: {} }));
+test('loadDatabase: backfills folderSettings when the persisted set lacks it', () => {
+  saveDatabase({ folders: ['/x'], progress: {}, metadata: {} });
   const db = loadDatabase();
   assert.deepEqual(db.folderSettings, {}, 'missing folderSettings is backfilled');
   assert.deepEqual(db.folders, ['/x']);
 });
 
-test('loadDatabase: recovers from a corrupt db.json instead of throwing', () => {
+test('v1.42 migration-path: a corrupt db.json sitting beside an ACTIVE filetube.db is ignored, never read', () => {
+  // Pre-v1.42, loadDatabase parsed db.json every call and a corrupt file
+  // triggered reset-to-fresh recovery. Post-migration, db.json is a frozen
+  // legacy artifact: once filetube.db exists it is never consulted, so even
+  // garbage in it cannot perturb a load. (Corrupt db.json at FIRST boot —
+  // before filetube.db exists — aborts the import instead; that leg lives in
+  // test/unit/db-sqlite-adapter.test.js per AC9.)
+  saveDatabase({ folders: ['/real'], folderSettings: {}, progress: {}, metadata: {} });
   fs.writeFileSync(DB_FILE, '{ this is not valid json ');
   const db = loadDatabase();
-  assert.deepEqual(db, {
-    folders: [],
-    folderSettings: {},
-    progress: {},
-    metadata: {},
-    liked: [], // v1.30 C2: liked-item membership, backfilled like every other top-level key
-    deleteTombstones: {}, // v1.41.3: deletion tombstones, backfilled like every other top-level key
-    settings: DEFAULT_SETTINGS,
-  });
+  assert.deepEqual(db.folders, ['/real'], 'load comes from SQLite; the corrupt legacy file is inert');
+  assert.equal(fs.readFileSync(DB_FILE, 'utf8'), '{ this is not valid json ', 'db.json untouched');
 });
 
 test('saveDatabase + loadDatabase: round-trips data faithfully', () => {
@@ -83,51 +102,42 @@ test('saveDatabase + loadDatabase: round-trips data faithfully', () => {
     metadata: { abc: { id: 'abc', title: 'Test' } },
     liked: ['abc'],
     deleteTombstones: {}, // v1.41.3: backfilled like every other top-level key
+    viewCounts: {}, // v1.42: backfilled like every other top-level key
     settings: DEFAULT_SETTINGS,
   };
   saveDatabase(original);
   assert.deepEqual(loadDatabase(), original);
 });
 
-test('loadDatabase: old db.json with no settings key gets all seven defaults, no data loss', () => {
-  const legacy = {
+test('loadDatabase: a persisted set with no settings key gets all defaults, no data loss', () => {
+  saveDatabase({
     folders: ['/media/movies'],
     folderSettings: { '/media/movies': { name: 'Movies', hidden: false } },
     progress: { abc: { timestamp: 42, duration: 100 } },
     metadata: { abc: { id: 'abc', title: 'Test' } },
-  };
-  fs.writeFileSync(DB_FILE, JSON.stringify(legacy));
+  });
   const db = loadDatabase();
-  assert.deepEqual(db.settings, DEFAULT_SETTINGS, 'all seven settings defaulted');
-  assert.deepEqual(db.folders, legacy.folders, 'folders preserved');
-  assert.deepEqual(db.folderSettings, legacy.folderSettings, 'folderSettings preserved');
-  assert.deepEqual(db.progress, legacy.progress, 'progress preserved');
-  assert.deepEqual(db.metadata, legacy.metadata, 'metadata preserved');
+  assert.deepEqual(db.settings, DEFAULT_SETTINGS, 'all settings defaulted');
+  assert.deepEqual(db.folders, ['/media/movies'], 'folders preserved');
+  assert.deepEqual(db.folderSettings, { '/media/movies': { name: 'Movies', hidden: false } }, 'folderSettings preserved');
+  assert.deepEqual(db.progress, { abc: { timestamp: 42, duration: 100 } }, 'progress preserved');
+  assert.deepEqual(db.metadata, { abc: { id: 'abc', title: 'Test' } }, 'metadata preserved');
 });
 
 test('loadDatabase: defaults pruneMissing to true and scanIntervalMinutes to 30', () => {
-  fs.writeFileSync(DB_FILE, JSON.stringify({ folders: [], progress: {}, metadata: {} }));
+  saveDatabase({ folders: [], progress: {}, metadata: {} });
   const db = loadDatabase();
   assert.equal(db.settings.pruneMissing, true);
   assert.equal(db.settings.scanIntervalMinutes, 30);
 });
 
 test('loadDatabase: a partial settings object keeps its set keys and fills the rest', () => {
-  fs.writeFileSync(
-    DB_FILE,
-    JSON.stringify({ folders: [], progress: {}, metadata: {}, settings: { cacheMaxAgeDays: 7 } })
-  );
+  saveDatabase({ folders: [], progress: {}, metadata: {}, settings: { cacheMaxAgeDays: 7 } });
   const db = loadDatabase();
   assert.equal(db.settings.cacheMaxAgeDays, 7, 'explicitly-set key is preserved');
   assert.equal(db.settings.scanIntervalMinutes, 30, 'unset key defaulted');
   assert.equal(db.settings.pruneMissing, true, 'unset key defaulted');
   assert.equal(db.settings.cacheMaxBytes, null, 'unset key defaulted');
-});
-
-test('loadDatabase: corrupt db.json recovery path also returns a settings-bearing db', () => {
-  fs.writeFileSync(DB_FILE, '{ not json at all');
-  const db = loadDatabase();
-  assert.deepEqual(db.settings, DEFAULT_SETTINGS, 'corrupt recovery still yields defaulted settings');
 });
 
 test('saveDatabase + loadDatabase: a metadata lastServedAt survives a round-trip', () => {
@@ -143,14 +153,23 @@ test('saveDatabase + loadDatabase: a metadata lastServedAt survives a round-trip
   assert.equal(db.metadata.abc.lastServedAt, 1735689600000, 'lastServedAt is preserved unchanged');
 });
 
-// ---- [UNIT] Atomic write: saveDatabase is write-temp-then-rename -----------
+// ---- [UNIT] Atomic write: saveDatabase is ONE SQLite transaction ----------
 
-// Any leftover `${DB_FILE}.<pid>.<seq>.tmp` file in DATA_DIR after a save.
-function orphanTmpFiles() {
-  return fs.readdirSync(process.env.DATA_DIR).filter((name) => name.startsWith('db.json.') && name.endsWith('.tmp'));
+// The persisted shape drops EMPTY doc_kv namespaces (zero rows — the
+// documented AC1 normalization; loadDatabase's backfills restore them), so
+// persisted-state deep-equals compare against this transform of the input.
+function persistedShape(db) {
+  const out = {};
+  for (const [key, value] of Object.entries(db)) {
+    if (value && typeof value === 'object' && !Array.isArray(value)
+      && Object.keys(value).length === 0
+      && ['metadata', 'progress', 'deleteTombstones', 'viewCounts'].includes(key)) continue;
+    out[key] = value;
+  }
+  return out;
 }
 
-test('saveDatabase: a successful save yields valid, complete JSON and leaves no orphan *.tmp file', () => {
+test('saveDatabase: a successful save persists the complete state (verified via a second connection)', () => {
   const db = {
     folders: ['/media/movies'],
     folderSettings: {},
@@ -159,63 +178,62 @@ test('saveDatabase: a successful save yields valid, complete JSON and leaves no 
     settings: DEFAULT_SETTINGS,
   };
   saveDatabase(db);
-
-  const onDisk = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
-  assert.deepEqual(onDisk, db, 'a successful save produces valid, complete JSON');
-  assert.deepEqual(orphanTmpFiles(), [], 'no leftover temp file after a successful save');
+  assert.deepEqual(readPersistedDatabase(process.env.DATA_DIR), persistedShape(db), 'a successful save is fully readable via an independent connection');
 });
 
-test('saveDatabase: a forced write failure leaves the prior db.json intact, no orphan *.tmp remains, and the error is RETHROWN', () => {
+test('saveDatabase: a pre-transaction failure (unknown namespace) leaves the prior state intact and RETHROWS', () => {
   const original = { folders: ['/keep'], folderSettings: {}, progress: {}, metadata: {}, settings: DEFAULT_SETTINGS };
   saveDatabase(original);
-  const before = fs.readFileSync(DB_FILE, 'utf8');
 
-  // Simulate an interrupted write (e.g. disk full/IO error) at the temp-file
-  // write step -- stub the fd-based write fs.writeFileSync uses internally.
-  const realWriteFileSync = fs.writeFileSync;
-  fs.writeFileSync = () => { throw new Error('simulated disk write failure'); };
-  try {
-    assert.throws(
-      () => saveDatabase({ folders: ['/never-committed'], folderSettings: {}, progress: {}, metadata: {}, settings: DEFAULT_SETTINGS }),
-      /simulated disk write failure/,
-      'saveDatabase must PROPAGATE (rethrow) a write failure, not swallow it as a false success'
-    );
-  } finally {
-    fs.writeFileSync = realWriteFileSync;
-  }
-
-  assert.equal(
-    fs.readFileSync(DB_FILE, 'utf8'), before,
-    'db.json must be byte-identical to its pre-failure content -- never torn/partially written'
+  // The unknown-key persistence lock fires before any row is touched — a
+  // namespace the schema map doesn't know must fail LOUDLY, never be
+  // silently dropped by the diff (the persist-gate class).
+  assert.throws(
+    () => saveDatabase({ ...original, folders: ['/never-committed'], mysteryNamespace: {} }),
+    /unknown top-level db key 'mysteryNamespace'/,
+    'saveDatabase must PROPAGATE (rethrow), not swallow a false success'
   );
-  assert.deepEqual(orphanTmpFiles(), [], 'the failed write\'s temp file must be cleaned up, not left as an orphan');
+
+  assert.deepEqual(
+    readPersistedDatabase(process.env.DATA_DIR), persistedShape(original),
+    'the persisted state must be exactly the pre-failure commit'
+  );
 });
 
-test('saveDatabase: a forced rename failure leaves the prior db.json intact, no orphan *.tmp remains, and the error is RETHROWN', () => {
-  const original = { folders: ['/keep2'], folderSettings: {}, progress: {}, metadata: {}, settings: DEFAULT_SETTINGS };
+test('saveDatabase: a serialization failure aborts with NOTHING persisted — prior state intact, error RETHROWN', () => {
+  // (True MID-transaction rollback — a failure after some rows of the same
+  // save are already written — is covered at the adapter level in
+  // test/unit/db-sqlite-adapter.test.js, where the insert statement can be
+  // stubbed. Through the public seam, the reachable failure is a value
+  // JSON.stringify cannot serialize; it must abort the save with zero rows
+  // touched. NOTE: a plain `undefined` value is NOT a failure — it is
+  // silently dropped, exactly as JSON.stringify dropped it from db.json
+  // pre-v1.42.)
+  const original = { folders: ['/keep2'], folderSettings: {}, progress: {}, metadata: { ok: { id: 'ok' } }, settings: DEFAULT_SETTINGS };
   saveDatabase(original);
-  const before = fs.readFileSync(DB_FILE, 'utf8');
 
-  // Simulate a failure at the atomic-rename step itself (e.g. an exotic
-  // cross-device edge case) -- the temp file was already written, so this
-  // exercises the cleanup path specifically.
-  const realRenameSync = fs.renameSync;
-  fs.renameSync = () => { throw new Error('simulated rename failure'); };
-  try {
-    assert.throws(
-      () => saveDatabase({ folders: ['/never-committed-2'], folderSettings: {}, progress: {}, metadata: {}, settings: DEFAULT_SETTINGS }),
-      /simulated rename failure/,
-      'saveDatabase must PROPAGATE (rethrow) a rename failure, not swallow it as a false success'
-    );
-  } finally {
-    fs.renameSync = realRenameSync;
-  }
-
-  assert.equal(
-    fs.readFileSync(DB_FILE, 'utf8'), before,
-    'db.json must be byte-identical to its pre-failure content when only the rename step fails'
+  const circular = { id: 'poison' };
+  circular.self = circular;
+  const poisoned = {
+    ...original,
+    folders: ['/never-committed-2'],
+    metadata: { ...original.metadata, poison: circular },
+  };
+  assert.throws(
+    () => saveDatabase(poisoned),
+    /circular/i,
+    'the serialization failure must propagate'
   );
-  assert.deepEqual(orphanTmpFiles(), [], 'the temp file written before the failed rename must be cleaned up');
+
+  assert.deepEqual(
+    readPersistedDatabase(process.env.DATA_DIR), persistedShape(original),
+    'nothing from the failed save persisted'
+  );
+
+  // And the failed save must not have advanced the diff snapshot: the same
+  // change saved cleanly afterwards still lands.
+  saveDatabase({ ...original, folders: ['/after-recovery'] });
+  assert.deepEqual(readPersistedDatabase(process.env.DATA_DIR).folders, ['/after-recovery']);
 });
 
 // ---- [UNIT] Serialization correctness: updateDatabase(mutatorFn) -----------
@@ -274,25 +292,26 @@ test('updateDatabase: a throwing mutator rejects only its own promise; the chain
   );
 });
 
-test('updateDatabase: a saveDatabase disk failure REJECTS the call (no false success), and the chain still processes the next write', async () => {
+test('updateDatabase: a saveDatabase failure REJECTS the call (no false success), and the chain still processes the next write', async () => {
   saveDatabase({ folders: ['/before-failure'], folderSettings: {}, progress: {}, metadata: {}, settings: DEFAULT_SETTINGS });
 
-  const realWriteFileSync = fs.writeFileSync;
-  fs.writeFileSync = () => { throw new Error('simulated disk write failure'); };
-  let failing;
-  try {
-    failing = updateDatabase((db) => { db.folders = ['/never-committed']; return true; });
-    await assert.rejects(
-      failing, /simulated disk write failure/,
-      'a disk-write failure inside saveDatabase must make updateDatabase REJECT, not resolve a false success'
-    );
-  } finally {
-    fs.writeFileSync = realWriteFileSync;
-  }
+  // Same serialization poison as the saveDatabase abort test above — the
+  // rejection must surface through updateDatabase's promise.
+  const failing = updateDatabase((db) => {
+    db.folders = ['/never-committed'];
+    const circular = { id: 'poison' };
+    circular.self = circular;
+    db.metadata.poison = circular;
+    return true;
+  });
+  await assert.rejects(
+    failing, /circular/i,
+    'a write failure inside saveDatabase must make updateDatabase REJECT, not resolve a false success'
+  );
 
   assert.deepEqual(
     loadDatabase().folders, ['/before-failure'],
-    'db.json must be unchanged after the rejected write -- no false-success/silent data loss'
+    'the store must be unchanged after the rejected write -- no false-success/silent data loss'
   );
 
   // The chain must not be wedged by the failed write -- the next enqueued
@@ -304,7 +323,7 @@ test('updateDatabase: a saveDatabase disk failure REJECTS the call (no false suc
 // ---- [UNIT] loadDatabase backfill: ALL top-level keys, not just folderSettings/settings ----
 
 test('loadDatabase: backfills ALL top-level keys (folders/progress/metadata), not just folderSettings/settings', () => {
-  fs.writeFileSync(DB_FILE, JSON.stringify({ folderSettings: { '/x': { name: 'X', hidden: false } } }));
+  saveDatabase({ folderSettings: { '/x': { name: 'X', hidden: false } } });
   const db = loadDatabase();
   assert.deepEqual(db.folders, [], 'missing folders backfilled to []');
   assert.deepEqual(db.progress, {}, 'missing progress backfilled to {}');
@@ -313,25 +332,30 @@ test('loadDatabase: backfills ALL top-level keys (folders/progress/metadata), no
   assert.deepEqual(db.settings, DEFAULT_SETTINGS);
 });
 
-test('loadDatabase: a partial db.json missing metadata/progress lets a mutator write into them without throwing', async () => {
-  fs.writeFileSync(DB_FILE, JSON.stringify({ folders: ['/x'] }));
+test('loadDatabase: a partial persisted set missing metadata/progress lets a mutator write into them without throwing', async () => {
+  saveDatabase({ folders: ['/x'] });
   await assert.doesNotReject(
     updateDatabase((db) => {
       db.metadata['new-id'] = { id: 'new-id' };
       db.progress['new-id'] = { timestamp: 0 };
       return true;
     }),
-    'a partial (missing metadata/progress) db.json must not throw a TypeError in a mutator'
+    'a partial persisted set (missing metadata/progress) must not throw a TypeError in a mutator'
   );
   const after = loadDatabase();
   assert.equal(after.metadata['new-id'].id, 'new-id');
   assert.equal(after.progress['new-id'].timestamp, 0);
 });
 
-// ---- [UNIT] startup sweep: orphaned db.json.*.tmp -------------------------
+// ---- [UNIT] startup sweep: orphaned db.json.*.tmp (LEGACY, pre-v1.42) ------
 
-test('cleanupOrphanDbTmp: removes only db.json.*.tmp files, leaves db.json and unrelated files alone', () => {
+test('cleanupOrphanDbTmp: removes only db.json.*.tmp files, leaves db.json/filetube.db and unrelated files alone', () => {
+  // The sweep survives v1.42 for one reason: an upgrade from a CRASHED
+  // pre-SQLite instance can leave `db.json.<pid>.<seq>.tmp` orphans in
+  // DATA_DIR. The legacy db.json itself (a decoy here) and the live
+  // filetube.db must never be touched.
   saveDatabase({ folders: [], folderSettings: {}, progress: {}, metadata: {}, settings: DEFAULT_SETTINGS });
+  fs.writeFileSync(DB_FILE, '{"legacy": true}');
   const orphan1 = path.join(process.env.DATA_DIR, 'db.json.12345.0.tmp');
   const orphan2 = path.join(process.env.DATA_DIR, 'db.json.6789.3.tmp');
   const unrelated = path.join(process.env.DATA_DIR, 'not-a-db-temp.txt');
@@ -345,7 +369,8 @@ test('cleanupOrphanDbTmp: removes only db.json.*.tmp files, leaves db.json and u
   assert.ok(!fs.existsSync(orphan1));
   assert.ok(!fs.existsSync(orphan2));
   assert.ok(fs.existsSync(unrelated), 'unrelated files must never be touched');
-  assert.ok(fs.existsSync(DB_FILE), 'db.json itself must never be removed by the sweep');
+  assert.ok(fs.existsSync(DB_FILE), 'the legacy db.json must never be removed by the sweep (parallel-run contract)');
+  assert.ok(fs.existsSync(SQLITE_FILE), 'filetube.db must never be touched by the sweep');
   fs.rmSync(unrelated);
 });
 
@@ -354,6 +379,16 @@ test('cleanupOrphanDbTmp: an unreadable/missing directory is a safe no-op (retur
     const removed = cleanupOrphanDbTmp(path.join(process.env.DATA_DIR, 'does-not-exist'));
     assert.equal(removed, 0);
   });
+});
+
+// ---- [UNIT] AC7: the Node-floor predicate (22.13 = first unflagged node:sqlite)
+
+test('nodeVersionSupported: the 22.13 boundary is exact (AC7)', () => {
+  assert.equal(nodeVersionSupported('20.11.0'), false, 'Node 20 refused');
+  assert.equal(nodeVersionSupported('22.12.9'), false, 'below the sqlite floor refused');
+  assert.equal(nodeVersionSupported('22.13.0'), true, 'the floor itself boots');
+  assert.equal(nodeVersionSupported('22.23.1'), true, 'project Node 22 boots');
+  assert.equal(nodeVersionSupported('24.14.0'), true, 'project Node 24 boots');
 });
 
 test('reconcileTranscode: audio items never carry a transcode status', () => {

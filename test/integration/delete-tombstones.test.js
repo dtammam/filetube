@@ -24,11 +24,11 @@ const fs = require('node:fs');
 const path = require('node:path');
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-tomb-'));
 const DATA_DIR = process.env.DATA_DIR;
-const DB_FILE = path.join(DATA_DIR, 'db.json');
 
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
-const { app, scanDirectories, saveDatabase, getMediaId } = require('../../server');
+const { app, scanDirectories, saveDatabase, getMediaId, __resetDatabaseForTests } = require('../../server');
+const { readPersistedDatabase } = require('../../lib/db/sqlite');
 
 const isRoot = typeof process.getuid === 'function' && process.getuid() === 0;
 const rootSkip = isRoot ? 'unlink perms are not enforceable as root' : false;
@@ -61,7 +61,13 @@ function writeDb(db) {
 }
 
 function readDb() {
-  return JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+  // v1.42: persisted-state reads go through the sanctioned helper. Empty
+  // doc_kv namespaces assemble as absent — backfill the two this suite
+  // asserts against so its expectations keep reading naturally.
+  const db = readPersistedDatabase(DATA_DIR);
+  if (!db.metadata) db.metadata = {};
+  if (!db.deleteTombstones) db.deleteTombstones = {};
+  return db;
 }
 
 function seedLibraryWithVideo(libDir, fileName) {
@@ -183,8 +189,8 @@ function backdate(filePath, deletedAt) {
   fs.utimesSync(filePath, t, t);
 }
 
-beforeEach(() => {
-  if (fs.existsSync(DB_FILE)) fs.rmSync(DB_FILE);
+beforeEach(async () => {
+  await __resetDatabaseForTests();
 });
 
 // v1.41.13 (gate W4): the persist checkpoint under the ACTUAL six-strike
@@ -232,11 +238,17 @@ test('an UNVERIFIED delete (file absent at delete time) mints a tombstone; a VER
   assert.strictEqual(typeof db.deleteTombstones[un.id].deletedAt, 'number');
 
   const ok = seedLibraryWithVideo(libDir, 'verified.mp4');
+  // v1.42 (gate W3): record a view first, so the delete's viewCounts
+  // cleanup has something real to reap.
+  await fetch(`${base}/api/videos/${ok.id}/view`, { method: 'POST' });
+  assert.strictEqual(readDb().viewCounts[ok.id], 1, 'precondition: view recorded');
   const res = await fetch(`${base}/api/videos/${ok.id}`, { method: 'DELETE' });
   assert.strictEqual((await res.json()).success, true);
   assert.ok(!fs.existsSync(ok.filePath), 'file really unlinked');
   db = readDb();
   assert.strictEqual(db.deleteTombstones[ok.id], undefined, 'verified unlink minted NO tombstone');
+  assert.strictEqual((db.viewCounts || {})[ok.id], undefined,
+    'v1.42: the extracted view counter is reaped with its item (no orphan row, no stale-count resurrection on a same-path re-add)');
 });
 
 test('HEADLINE (the resurrect bug): a file surviving its unverified "successful" delete is removed by the next scan, not re-indexed', async () => {

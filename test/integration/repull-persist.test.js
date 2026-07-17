@@ -17,14 +17,26 @@ process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-repull-pe
 delete process.env.FILETUBE_YTDLP_ENABLED;
 delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
 const DATA_DIR = process.env.DATA_DIR;
-const DB_FILE = path.join(DATA_DIR, 'db.json');
 
 const { test, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert');
 const {
   getMediaId, loadDatabase, saveDatabase, updateDatabase, recordRepulledItemMeta, enumerateRepullableItems,
 } = require('../../server');
+const { readPersistedDatabase } = require('../../lib/db/sqlite');
 const ytdlp = require('../../lib/ytdlp');
+
+// v1.42: persisted-state assertions go through the sanctioned SQLite read
+// helper (a second, read-only connection). An EMPTY doc_kv namespace persists
+// as zero rows (absent); backfill the ones this file dereferences so
+// `dbAfter.progress[id]`-style reads stay valid.
+function readDb() {
+  const db = readPersistedDatabase(DATA_DIR);
+  for (const ns of ['metadata', 'progress']) {
+    if (!db[ns]) db[ns] = {};
+  }
+  return db;
+}
 
 function baseSettings() {
   return { scanIntervalMinutes: 0, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 0, defaultView: '', autoplayNext: false };
@@ -85,7 +97,7 @@ test('recordRepulledItemMeta sets releaseDate (superseding a prior weaker value)
   );
   assert.equal(result, true);
 
-  const dbAfter = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+  const dbAfter = readDb();
   const item = dbAfter.metadata[id];
   assert.equal(item.releaseDate, 1_700_000_000_000, 'releaseDate must be SUPERSEDED, not gap-filled');
   assert.equal(item.channelAvatarUrl, 'https://example.com/avatar.jpg');
@@ -124,7 +136,7 @@ test('recordRepulledItemMeta detects hasSubtitles=true when a sidecar exists on 
   const result = await recordRepulledItemMeta({ loadDatabase, updateDatabase, getMediaId }, id, { filePath });
   assert.equal(result, true);
 
-  const dbAfter = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+  const dbAfter = readDb();
   assert.equal(dbAfter.metadata[id].hasSubtitles, true, 'a sidecar written by the subs pass must be detected immediately');
 });
 
@@ -152,7 +164,7 @@ test('a missing releaseDate/channelAvatarUrl in meta leaves those fields untouch
   const result = await recordRepulledItemMeta({ loadDatabase, updateDatabase, getMediaId }, id, { filePath, markComplete: true });
   assert.equal(result, true);
 
-  const dbAfter = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+  const dbAfter = readDb();
   const item = dbAfter.metadata[id];
   assert.equal(item.releaseDate, 555, 'an absent meta.releaseDate must leave the existing value untouched');
   assert.equal(item.channelAvatarUrl, 'https://example.com/existing-avatar.jpg', 'an absent meta.channelAvatarUrl must leave the existing value untouched');
@@ -189,7 +201,7 @@ test('recordRepulledItemMeta with markComplete:false updates releaseDate/channel
   );
   assert.equal(result, true, 'the mutator still writes the metadata fields -- only the marker is withheld');
 
-  const dbAfter = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+  const dbAfter = readDb();
   const item = dbAfter.metadata[id];
   assert.equal(item.releaseDate, 1_700_000_000_000, 'releaseDate must still be persisted even when markComplete is false');
   assert.equal(item.channelAvatarUrl, 'https://example.com/avatar.jpg', 'channelAvatarUrl must still be persisted even when markComplete is false');
@@ -219,7 +231,7 @@ test('recordRepulledItemMeta with markComplete absent (not passed) behaves the s
   const result = await recordRepulledItemMeta({ loadDatabase, updateDatabase, getMediaId }, id, { filePath });
   assert.equal(result, true);
 
-  const dbAfter = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+  const dbAfter = readDb();
   assert.equal(dbAfter.metadata[id].metadataRepulledAt, undefined, 'an absent markComplete must default to NOT writing the marker (the same safe default as false)');
 });
 
@@ -250,7 +262,7 @@ test('recordRepulledItemMeta with markComplete:false never CLEARS an existing me
     { releaseDate: 1_700_000_000_000, filePath, markComplete: false },
   );
 
-  const dbAfter = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+  const dbAfter = readDb();
   assert.equal(dbAfter.metadata[id].metadataRepulledAt, priorMarker, 'a markComplete:false call must never clear/overwrite a pre-existing marker');
 });
 
@@ -263,15 +275,15 @@ test('recordRepulledItemMeta on a non-existent mediaId is a safe no-op', async (
     settings: baseSettings(),
   });
 
-  const before = fs.readFileSync(DB_FILE, 'utf8');
+  const before = readDb();
   const result = await recordRepulledItemMeta(
     { loadDatabase, updateDatabase, getMediaId },
     'deadbeef00112233445566778899aabb',
     { releaseDate: 123, channelAvatarUrl: 'https://example.com/x.jpg', filePath: '/nonexistent/path.mp4' },
   );
   assert.equal(result, false);
-  const after = fs.readFileSync(DB_FILE, 'utf8');
-  assert.equal(after, before, 'a missing mediaId must never write to disk');
+  const after = readDb();
+  assert.deepStrictEqual(after, before, 'a missing mediaId must never write to disk');
 });
 
 test('recordRepulledItemMeta stores a known epoch-ms releaseDate exactly, with no mutation', async () => {
@@ -296,7 +308,7 @@ test('recordRepulledItemMeta stores a known epoch-ms releaseDate exactly, with n
 
   await recordRepulledItemMeta({ loadDatabase, updateDatabase, getMediaId }, id, { releaseDate: exactEpochMs, filePath });
 
-  const dbAfter = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+  const dbAfter = readDb();
   assert.equal(dbAfter.metadata[id].releaseDate, exactEpochMs, 'the epoch-ms value must be stored exactly, byte-for-byte');
 });
 
@@ -561,7 +573,7 @@ test('recordRepulledItemMeta persists a sanitized sourceTitle (emoji intact) and
   );
   assert.equal(result, true);
 
-  const item = JSON.parse(fs.readFileSync(DB_FILE, 'utf8')).metadata[id];
+  const item = readDb().metadata[id];
   assert.equal(item.sourceTitle, 'Real Title 🎵 With Emoji', 'control chars stripped + trimmed, emoji SURVIVE (sanitizeCapturedTitle)');
   assert.equal(item.title, 'Real Title 🎵 With Emoji', 'the display title is superseded by the real title');
   assert.equal(item.youtubeId, 'ttl12345678');
@@ -593,7 +605,7 @@ test('recordRepulledItemMeta rejects an unsafe youtubeId and an empty-after-sani
     { filePath, sourceTitle: '\x00\x1f  ', youtubeId: 'not-an-id-at-all!!' },
   );
 
-  const item = JSON.parse(fs.readFileSync(DB_FILE, 'utf8')).metadata[id];
+  const item = readDb().metadata[id];
   assert.equal(item.youtubeId, 'grd12345678', 'an isSafeVideoId-failing value must never overwrite a good one');
   assert.equal(item.sourceTitle, 'Existing Good Title', 'an empty-after-sanitize title must never clobber a good one');
   assert.equal(item.title, 'Guarded Video', 'the display title stays untouched too');
@@ -654,7 +666,7 @@ test('recordRepulledItemMeta hydrates an identity-less (MeTube-imported) item wi
     );
     assert.equal(ok, true);
 
-    const item = JSON.parse(fs.readFileSync(DB_FILE, 'utf8')).metadata[id];
+    const item = readDb().metadata[id];
     assert.equal(item.channelUrl, HYDRATED_CHANNEL.channelUrl, 'the Subscribe button needs channelUrl (deriveChannelIdentity)');
     assert.equal(item.channelHandleUrl, HYDRATED_CHANNEL.channelHandleUrl);
     assert.equal(item.channelId, HYDRATED_CHANNEL.channelId);
@@ -683,7 +695,7 @@ test('(NEVER-OVERWRITE, AC17) recordRepulledItemMeta never re-points an item tha
       { filePath, channel: { ...HYDRATED_CHANNEL }, markComplete: true },
     );
 
-    const item = JSON.parse(fs.readFileSync(DB_FILE, 'utf8')).metadata[id];
+    const item = readDb().metadata[id];
     assert.equal(item.channelUrl, 'https://www.youtube.com/@OriginalChannel', 'an existing channelUrl is NEVER overwritten by a reheat');
     assert.equal(item.channelId, 'UC0000000000000000000000');
     assert.equal(item.channelName, 'Original Channel');
@@ -710,7 +722,7 @@ test('(NEVER-OVERWRITE, AC17) an item already attributed to the SAME channel get
       { filePath, channel: { ...HYDRATED_CHANNEL }, markComplete: true },
     );
 
-    const item = JSON.parse(fs.readFileSync(DB_FILE, 'utf8')).metadata[id];
+    const item = readDb().metadata[id];
     assert.equal(item.channelId, HYDRATED_CHANNEL.channelId, 'a genuine gap on the SAME channel is filled');
     assert.equal(item.channelHandleUrl, HYDRATED_CHANNEL.channelHandleUrl);
     assert.equal(item.channelName, 'Stale But Mine', 'an EXISTING name is still never overwritten (gap-fill, not refresh)');
@@ -733,7 +745,7 @@ test('recordRepulledItemMeta: an absent meta.channel leaves an item\'s identity 
       { filePath, releaseDate: 1_700_000_000_000, markComplete: true },
     );
 
-    const item = JSON.parse(fs.readFileSync(DB_FILE, 'utf8')).metadata[id];
+    const item = readDb().metadata[id];
     assert.equal(item.channelUrl, undefined);
     assert.equal(item.channelName, undefined);
     assert.equal(item.releaseDate, 1_700_000_000_000, 'the rest of the re-pull still lands');
@@ -756,7 +768,7 @@ test('recordRepulledItemMeta: a malformed meta.channel (no channelUrl) is inert 
         id,
         { filePath, channel: bad },
       );
-      const item = JSON.parse(fs.readFileSync(DB_FILE, 'utf8')).metadata[id];
+      const item = readDb().metadata[id];
       assert.equal(item.channelUrl, undefined, `channel=${JSON.stringify(bad)} must write no channelUrl`);
       assert.equal(item.channelName, undefined, `channel=${JSON.stringify(bad)} must never write a name without a URL (no half-formed identity)`);
     }
@@ -788,7 +800,7 @@ test('(NEVER-OVERWRITE) an item attributed to a DIFFERENT channel is not given t
       { filePath, channel: { ...HYDRATED_CHANNEL }, channelAvatarUrl: 'https://yt3.googleusercontent.com/rick.jpg', markComplete: true },
     );
 
-    const item = JSON.parse(fs.readFileSync(DB_FILE, 'utf8')).metadata[id];
+    const item = readDb().metadata[id];
     assert.equal(item.channelUrl, 'https://www.youtube.com/@OriginalChannel');
     assert.equal(item.channelAvatarUrl, 'https://yt3.googleusercontent.com/original.jpg',
       'a declined identity must never leave its AVATAR behind (channel A\'s name over channel B\'s face)');
@@ -819,7 +831,7 @@ test('(SAME-CHANNEL by channelId) a folder-backfilled item carrying the HANDLE u
       { filePath, channel: { ...HYDRATED_CHANNEL }, channelAvatarUrl: 'https://yt3.googleusercontent.com/rick.jpg', markComplete: true },
     );
 
-    const item = JSON.parse(fs.readFileSync(DB_FILE, 'utf8')).metadata[id];
+    const item = readDb().metadata[id];
     assert.equal(item.channelName, 'Rick Astley', 'the missing name is filled -- the two URLs are different FORMS of one channel');
     assert.equal(item.channelHandleUrl, HYDRATED_CHANNEL.channelHandleUrl);
     assert.equal(item.channelAvatarUrl, 'https://yt3.googleusercontent.com/rick.jpg', 'and its avatar is genuinely this item\'s own');
@@ -846,7 +858,7 @@ test('(SAME-CHANNEL by channelId) a DIFFERENT channelId is still declined even w
       { filePath, channel: { ...HYDRATED_CHANNEL }, channelAvatarUrl: 'https://yt3.googleusercontent.com/rick.jpg', markComplete: true },
     );
 
-    const item = JSON.parse(fs.readFileSync(DB_FILE, 'utf8')).metadata[id];
+    const item = readDb().metadata[id];
     assert.equal(item.channelId, 'UC9999999999999999999999');
     assert.equal(item.channelName, undefined, 'a different channel never lends its name');
     assert.equal(item.channelAvatarUrl, undefined, 'nor its avatar');
@@ -869,7 +881,7 @@ test('an item with NO channel identity at all still accepts an avatar (the pre-e
       { filePath, channelAvatarUrl: 'https://yt3.googleusercontent.com/solo.jpg', markComplete: true },
     );
 
-    const item = JSON.parse(fs.readFileSync(DB_FILE, 'utf8')).metadata[id];
+    const item = readDb().metadata[id];
     assert.equal(item.channelAvatarUrl, 'https://yt3.googleusercontent.com/solo.jpg');
   } finally {
     fs.rmSync(libDir, { recursive: true, force: true });

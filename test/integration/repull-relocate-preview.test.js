@@ -24,7 +24,6 @@ process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-reloc-pre
 delete process.env.FILETUBE_YTDLP_ENABLED;
 delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
 const DATA_DIR = process.env.DATA_DIR;
-const DB_FILE = path.join(DATA_DIR, 'db.json');
 const THUMBNAIL_DIR = path.join(DATA_DIR, '.thumbnails');
 
 const cp = require('child_process');
@@ -41,6 +40,7 @@ const {
   relocateHydratedImportIntoChannelFolder, enumerateRepullableItems,
   __getLoadDatabaseCallCount,
 } = require('../../server');
+const { readPersistedDatabase } = require('../../lib/db/sqlite');
 const ytdlp = require('../../lib/ytdlp');
 
 const VIDEO_ID = 'dQw4w9WgXcQ';
@@ -96,18 +96,23 @@ function seedDb({ item = {}, dbOverrides = {}, writeFile = true } = {}) {
   saveDatabase({
     folders: [libraryDir], folderSettings: {}, progress: {},
     metadata: { [id]: record }, liked: [], deleteTombstones: {},
+    // v1.42: pre-SQLite, saveDatabase was a whole-file replace, so a seed
+    // implicitly wiped any ytdlp state a previous test left behind. The
+    // diff-save keeps an ABSENT namespace's rows, so the seed now clears it
+    // explicitly (present-but-empty deletes stale rows) -- overridable below.
+    ytdlp: { allowMembersOnly: false, subscriptions: [], downloadMeta: {}, pins: [], channelAvatars: {} },
     settings: baseSettings(dbOverrides.settings), ...dbOverrides,
   });
   return { filePath, id };
 }
 
-// ---- 1. NO write, NO spawn, db.json byte-identical -------------------------
+// ---- 1. NO write, NO spawn, the persisted state identical ------------------
 
-test('a preview MOVES nothing, WRITES nothing, and SPAWNS nothing -- db.json is byte-identical afterward', async () => {
+test('a preview MOVES nothing, WRITES nothing, and SPAWNS nothing -- the persisted db is identical afterward', async () => {
   const config = ytdlp.parseYtdlpConfig();
   const { filePath } = seedDb();
 
-  const before = fs.readFileSync(DB_FILE); // raw bytes
+  const before = readPersistedDatabase(DATA_DIR); // via an independent read-only connection
 
   // Spy every child_process spawn primitive -- a preview must create NO process.
   const spawnCalls = { n: 0 };
@@ -129,7 +134,7 @@ test('a preview MOVES nothing, WRITES nothing, and SPAWNS nothing -- db.json is 
 
   assert.equal(spawnCalls.n, 0, 'a preview must never spawn a child process');
   assert.ok(fs.existsSync(filePath), 'the source file must be untouched');
-  assert.deepEqual(fs.readFileSync(DB_FILE), before, 'db.json must be byte-identical after a preview (no write of any kind)');
+  assert.deepEqual(readPersistedDatabase(DATA_DIR), before, 'the persisted db must be identical after a preview (no write of any kind)');
 });
 
 // ---- 2. ANTI-DRIFT: preview decision == executor behavior ------------------

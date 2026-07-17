@@ -11,13 +11,13 @@ const os = require('node:os');
 const fs = require('node:fs');
 const path = require('node:path');
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-test-'));
-const DB_FILE = path.join(process.env.DATA_DIR, 'db.json');
 process.env.FILETUBE_YTDLP_ENABLED = 'true';
 process.env.FILETUBE_YTDLP_POLL_MINUTES = '0'; // manual-only: no real timer during tests
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
 const { app, currentYtdlpPollTimer, loadDatabase, updateDatabase } = require('../../server');
+const { readPersistedDatabase } = require('../../lib/db/sqlite');
 const store = require('../../lib/ytdlp/store');
 
 let server;
@@ -73,8 +73,9 @@ test('POST /api/subscriptions add -> GET list shows it -> DELETE removes it (rou
   assert.equal(list.length, 1);
   assert.equal(list[0].id, created.id);
 
-  // Persistence goes through db.json only -- no second config/state file.
-  const raw = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+  // Persistence goes through the single persisted store only (v1.42: SQLite,
+  // read via an independent connection) -- no second config/state file.
+  const raw = readPersistedDatabase(process.env.DATA_DIR);
   assert.ok(raw.ytdlp);
   assert.equal(raw.ytdlp.subscriptions.length, 1);
   assert.equal(raw.ytdlp.subscriptions[0].id, created.id);

@@ -13,11 +13,11 @@ const fs = require('node:fs');
 const path = require('node:path');
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-stats-'));
 const DATA_DIR = process.env.DATA_DIR;
-const DB_FILE = path.join(DATA_DIR, 'db.json');
 
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
-const { app, saveDatabase } = require('../../server');
+const { app, saveDatabase, __resetDatabaseForTests } = require('../../server');
+const { readPersistedDatabase } = require('../../lib/db/sqlite');
 
 let server;
 let base;
@@ -34,8 +34,8 @@ after(async () => {
   await new Promise((resolve) => server.close(resolve));
 });
 
-beforeEach(() => {
-  if (fs.existsSync(DB_FILE)) fs.rmSync(DB_FILE);
+beforeEach(async () => {
+  await __resetDatabaseForTests();
 });
 
 // v1.30 A3 (in-memory DB read cache): seed via the exported `saveDatabase()`
@@ -97,16 +97,51 @@ test('POST /api/videos/:id/view: increments from an absent viewCount field (the 
   const body = await res.json();
   assert.deepEqual(body, { success: true, viewCount: 1 });
 
-  const db = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
-  assert.equal(db.metadata.v1.viewCount, 1);
+  // v1.42: the counter lands in the extracted `viewCounts` namespace, never
+  // on the item (the clobber-prone embedded field — exec plan finding #8).
+  const db = readPersistedDatabase(DATA_DIR);
+  assert.equal(db.viewCounts.v1, 1);
+  assert.equal(db.metadata.v1.viewCount, undefined, 'item stays viewCount-free');
 });
 
 test('POST /api/videos/:id/view: increments an existing viewCount by exactly 1 per call', async () => {
   writeDb({ metadata: { v1: seedItem('v1', { viewCount: 4 }) } });
   const res1 = await fetch(`${base}/api/videos/v1/view`, { method: 'POST' });
-  assert.equal((await res1.json()).viewCount, 5);
+  assert.equal((await res1.json()).viewCount, 5, 'legacy embedded count is the starting floor');
   const res2 = await fetch(`${base}/api/videos/v1/view`, { method: 'POST' });
   assert.equal((await res2.json()).viewCount, 6);
+
+  // The legacy item field is frozen in place and superseded — never mutated,
+  // never deleted (the thumbnail-backfill lesson: a default is not a reason
+  // to rewrite records).
+  const db = readPersistedDatabase(DATA_DIR);
+  assert.equal(db.viewCounts.v1, 6);
+  assert.equal(db.metadata.v1.viewCount, 4, 'legacy field untouched');
+});
+
+test('v1.42 regression: a recorded view SURVIVES a scan-style metadata rebuild (the mid-scan clobber class)', async () => {
+  // The exact failure this extraction exists to kill: the scan's changed-file
+  // re-init and Phase-2 merge both rebuild `db.metadata` items WITHOUT
+  // carrying `viewCount` forward, so a view recorded mid-scan was silently
+  // reverted. With the counter in its own namespace, a wholesale item
+  // replacement cannot touch it.
+  writeDb({ metadata: { v1: seedItem('v1') } });
+  await fetch(`${base}/api/videos/v1/view`, { method: 'POST' });
+  await fetch(`${base}/api/videos/v1/view`, { method: 'POST' });
+
+  // Simulate the scan clobber: replace the item wholesale (fresh probe shape,
+  // no view-related fields), exactly what a changed-file re-init does.
+  const { updateDatabase } = require('../../server');
+  await updateDatabase((db) => {
+    db.metadata.v1 = seedItem('v1', { size: 2222 }); // rebuilt from disk, no viewCount
+  });
+
+  const res = await fetch(`${base}/api/stats`);
+  const body = await res.json();
+  assert.deepEqual(body.mostWatched, [{ id: 'v1', title: 'v1', folderName: 'Movies', viewCount: 2 }],
+    'the count survives the rebuild');
+  const viewRes = await fetch(`${base}/api/videos/v1/view`, { method: 'POST' });
+  assert.equal((await viewRes.json()).viewCount, 3, 'and keeps incrementing from the surviving value');
 });
 
 test('POST /api/videos/:id/view: 404s for an id not in db.metadata, without creating one', async () => {
@@ -114,6 +149,8 @@ test('POST /api/videos/:id/view: 404s for an id not in db.metadata, without crea
   const res = await fetch(`${base}/api/videos/does-not-exist/view`, { method: 'POST' });
   assert.equal(res.status, 404);
 
-  const db = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
-  assert.deepEqual(db.metadata, {});
+  // Empty metadata assembles as absent (the documented empty-namespace
+  // normalization) — either way, no entry was created.
+  const db = readPersistedDatabase(DATA_DIR);
+  assert.deepEqual(db.metadata || {}, {});
 });

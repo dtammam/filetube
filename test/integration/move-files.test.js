@@ -13,7 +13,6 @@ const fs = require('node:fs');
 const path = require('node:path');
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-move-'));
 const DATA_DIR = process.env.DATA_DIR;
-const DB_FILE = path.join(DATA_DIR, 'db.json');
 const THUMBNAIL_DIR = path.join(DATA_DIR, '.thumbnails');
 
 const { test, before, after } = require('node:test');
@@ -21,6 +20,20 @@ const assert = require('node:assert');
 const {
   app, getMediaId, loadDatabase, saveDatabase, updateDatabase, moveItemToFolder, transcodedPath,
 } = require('../../server');
+const { readPersistedDatabase } = require('../../lib/db/sqlite');
+
+// v1.42: seeds go through the exported saveDatabase (the adapter opened at
+// require time, so a raw db.json write would be dead); persisted-state
+// assertions go through the sanctioned SQLite read helper. An EMPTY doc_kv
+// namespace persists as zero rows (absent); backfill the ones this file
+// dereferences so `dbAfter.progress[id]`-style reads stay valid.
+function readDb() {
+  const db = readPersistedDatabase(DATA_DIR);
+  for (const ns of ['metadata', 'progress']) {
+    if (!db[ns]) db[ns] = {};
+  }
+  return db;
+}
 
 let server;
 let base;
@@ -42,7 +55,7 @@ function baseSettings() {
 }
 
 function seedItem({ id, filePath, folders, progress }) {
-  fs.writeFileSync(DB_FILE, JSON.stringify({
+  saveDatabase({
     folders,
     folderSettings: {},
     progress: progress || {},
@@ -54,7 +67,7 @@ function seedItem({ id, filePath, folders, progress }) {
       },
     },
     settings: baseSettings(),
-  }, null, 2), 'utf8');
+  });
 }
 
 test('POST /api/videos/:id/move: happy path re-keys metadata/progress and renames the thumbnail sidecar', async () => {
@@ -86,7 +99,7 @@ test('POST /api/videos/:id/move: happy path re-keys metadata/progress and rename
   assert.ok(!fs.existsSync(filePath), 'the file must be gone from its old location');
   assert.ok(fs.existsSync(newPath), 'the file must exist at the new location');
 
-  const dbAfter = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+  const dbAfter = readDb();
   assert.ok(!dbAfter.metadata[oldId], 'the OLD id must no longer be present');
   assert.ok(dbAfter.metadata[newId], 'the NEW (path-derived) id must be present');
   assert.equal(dbAfter.metadata[newId].filePath, newPath);
@@ -97,6 +110,44 @@ test('POST /api/videos/:id/move: happy path re-keys metadata/progress and rename
 
   assert.ok(!fs.existsSync(thumbPath), 'the old thumbnail path must be gone');
   assert.ok(fs.existsSync(path.join(THUMBNAIL_DIR, `${newId}.jpg`)), 'the thumbnail must be re-keyed to the new id');
+});
+
+// v1.42 gate CRITICAL (adversarial seat, runnable repro): the extracted
+// `viewCounts` namespace is id-keyed exactly like progress/liked and MUST
+// follow the re-key — the T3 extraction landed without it, so every move
+// zeroed the moved item's view count and orphaned the old row (the v1.41.6
+// liked-drop class, striking the very field the extraction protects). All
+// three movers (the /move route, the boot one-off migrator, reheat
+// relocation) share moveItemToFolder's single re-key mutator, so this one
+// lock covers them all.
+test('POST /api/videos/:id/move: the VIEW COUNT survives the re-key (no zeroed count, no orphaned old row)', async () => {
+  const srcDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-move-vc-src-'));
+  const dstDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-move-vc-dst-'));
+  const filePath = path.join(srcDir, 'counted.mp4');
+  fs.writeFileSync(filePath, 'clip-bytes');
+  const oldId = getMediaId(filePath);
+  const newId = getMediaId(path.join(dstDir, 'counted.mp4'));
+
+  seedItem({ id: oldId, filePath, folders: [srcDir, dstDir] });
+  // Record real views through the real endpoint (not a seeded field).
+  await fetch(`${base}/api/videos/${oldId}/view`, { method: 'POST' });
+  await fetch(`${base}/api/videos/${oldId}/view`, { method: 'POST' });
+  assert.equal(readDb().viewCounts[oldId], 2, 'precondition: two views recorded');
+
+  const res = await fetch(`${base}/api/videos/${oldId}/move`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ targetFolder: dstDir }),
+  });
+  assert.equal(res.status, 200);
+
+  const dbAfter = readDb();
+  assert.equal(dbAfter.viewCounts[newId], 2, 'the count rides the re-key to the new id');
+  assert.equal(dbAfter.viewCounts[oldId], undefined, 'no orphaned row under the dead id');
+
+  // And it keeps counting from the surviving value.
+  const view = await fetch(`${base}/api/videos/${newId}/view`, { method: 'POST' });
+  assert.equal((await view.json()).viewCount, 3);
 });
 
 // ---- T16 completion follow-up (v1.24 UX Round): the REAL yt-dlp subtitle
@@ -184,13 +235,13 @@ test('POST /api/videos/:id/move: a target outside every configured folder is rej
   assert.ok(fs.existsSync(filePath), 'the source file must be untouched');
   assert.equal(fs.readdirSync(outsideDir).length, 0, 'nothing was ever written into the disallowed target');
 
-  const dbAfter = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+  const dbAfter = readDb();
   assert.ok(dbAfter.metadata[id], 'the db entry must be completely untouched');
   assert.equal(dbAfter.metadata[id].filePath, filePath);
 });
 
 test('POST /api/videos/:id/move: 404 for an unknown id, no filesystem side effects', async () => {
-  fs.writeFileSync(DB_FILE, JSON.stringify({ folders: [], folderSettings: {}, progress: {}, metadata: {}, settings: baseSettings() }, null, 2));
+  saveDatabase({ folders: [], folderSettings: {}, progress: {}, metadata: {}, settings: baseSettings() });
   const res = await fetch(`${base}/api/videos/does-not-exist/move`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -258,7 +309,7 @@ test('moveItemToFolder: EXDEV on the exclusive link falls back to an exclusive (
   assert.ok(fs.existsSync(newPath), 'the copy must land at the destination');
   assert.equal(fs.readFileSync(newPath, 'utf8'), 'clip-bytes');
 
-  const dbAfter = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+  const dbAfter = readDb();
   assert.ok(!dbAfter.metadata[oldId]);
   assert.ok(dbAfter.metadata[newId]);
   assert.equal(dbAfter.metadata[newId].filePath, newPath);
@@ -291,7 +342,7 @@ test('moveItemToFolder: TOCTOU race -- two moves that both pass the existsSync f
   const newPath = path.join(dstDir, 'clip.mp4');
   const newId1 = getMediaId(newPath);
 
-  fs.writeFileSync(DB_FILE, JSON.stringify({
+  saveDatabase({
     folders: [srcDir1, srcDir2, dstDir],
     folderSettings: {},
     progress: {},
@@ -306,7 +357,7 @@ test('moveItemToFolder: TOCTOU race -- two moves that both pass the existsSync f
       },
     },
     settings: baseSettings(),
-  }, null, 2), 'utf8');
+  });
 
   // Simulates BOTH racers having already passed the "does it exist?"
   // fast-path (the actual filesystem may or may not agree by the time each
@@ -330,7 +381,7 @@ test('moveItemToFolder: TOCTOU race -- two moves that both pass the existsSync f
   assert.ok(fs.existsSync(file2), 'the losing mover\'s source file must still exist, untouched');
   assert.equal(fs.readFileSync(file2, 'utf8'), 'second-mover-bytes');
 
-  const dbAfter = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+  const dbAfter = readDb();
   assert.ok(dbAfter.metadata[newId1], 'the winning mover\'s new id must be recorded');
   assert.ok(dbAfter.metadata[id2], 'the losing mover\'s db entry must be untouched (still under its old id/path)');
   assert.equal(dbAfter.metadata[id2].filePath, file2);
@@ -439,7 +490,7 @@ test('moveItemToFolder: the RE-KEY mutator THROWING after the FS move already su
   //     the next scan would index it as a SECOND copy of the same video.
   assert.ok(fs.existsSync(filePath), 'THE SOURCE MUST SURVIVE a failed db write -- it is unlinked only after a COMMITTED re-key');
   assert.ok(!fs.existsSync(newPath), 'and the destination must be rolled back -- otherwise the next scan indexes it as a duplicate item');
-  const dbAfter = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+  const dbAfter = readDb();
   assert.equal(dbAfter.metadata[oldId].filePath, filePath, 'the db still points at the file that is really there');
   assert.equal(Object.keys(dbAfter.metadata).length, 1, 'exactly one item -- the pre-move state is exactly restored');
 });
@@ -475,7 +526,7 @@ test('v1.41.6 REGRESSION: a LIKED item keeps its Like across a move (db.liked is
   });
   assert.equal(res.status, 200);
 
-  const dbAfter = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+  const dbAfter = readDb();
   assert.deepStrictEqual(dbAfter.liked, ['other-id', newId], 'the Like must survive the move under the NEW id, in place');
 });
 

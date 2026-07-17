@@ -12,7 +12,6 @@ const fs = require('node:fs');
 const path = require('node:path');
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-bg-audio-'));
 const DATA_DIR = process.env.DATA_DIR;
-const DB_FILE = path.join(DATA_DIR, 'db.json');
 
 const { test } = require('node:test');
 const assert = require('node:assert');
@@ -25,7 +24,9 @@ const {
   clearAudioStatus,
   healStaleAudioReady,
   saveDatabase,
+  __getSaveDatabaseCallCount,
 } = require('../../server');
+const { readPersistedDatabase } = require('../../lib/db/sqlite');
 
 // v1.30 A3 (in-memory DB read cache): seed via the exported `saveDatabase()`
 // (an established test primitive, see CONTRIBUTING.md) rather than a raw
@@ -37,7 +38,10 @@ function writeDb(db) {
 }
 
 function readDb() {
-  return JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+  // v1.42: the sanctioned persisted-state read (independent connection).
+  const db = readPersistedDatabase(DATA_DIR);
+  if (!db.metadata) db.metadata = {};
+  return db;
 }
 
 // ---- audioPath (pure) -------------------------------------------------
@@ -121,13 +125,14 @@ test('setAudioStatus: a no-op write (status unchanged) never touches the file (n
     folders: [], folderSettings: {}, progress: {},
     metadata: { [id]: { id, audioStatus: 'ready' } },
   });
-  const before = fs.statSync(DB_FILE).mtimeMs;
+  const before = __getSaveDatabaseCallCount();
   await setAudioStatus(id, 'ready');
-  // Give the filesystem a moment in case an unwanted write did land -- this
-  // just confirms the CONTENT is unchanged either way (the real guarantee).
+  // v1.42: the "never touches the file" claim is asserted via the save call
+  // count (the mtime proxy died with db.json) -- a no-op mutator returns
+  // false and saveDatabase is never invoked.
   const db = readDb();
   assert.equal(db.metadata[id].audioStatus, 'ready');
-  assert.ok(fs.statSync(DB_FILE).mtimeMs >= before);
+  assert.equal(__getSaveDatabaseCallCount(), before, 'a no-op status write never calls saveDatabase');
 });
 
 test('setAudioStatus: a missing metadata entry is a safe no-op (never throws, never resurrects the id)', async () => {

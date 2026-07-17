@@ -23,7 +23,6 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-outcome-'));
-const DB_FILE = path.join(process.env.DATA_DIR, 'db.json');
 const RUNLOG_FILE = path.join(process.env.DATA_DIR, 'ytdlp-runs.jsonl');
 process.env.FILETUBE_YTDLP_ENABLED = 'true';
 process.env.FILETUBE_YTDLP_POLL_MINUTES = '0'; // manual-only: no real timer during tests
@@ -33,6 +32,7 @@ const assert = require('node:assert');
 const {
   app, loadDatabase, updateDatabase, scanDirectories, getMediaId,
 } = require('../../server');
+const { readPersistedDatabase } = require('../../lib/db/sqlite');
 const ytdlp = require('../../lib/ytdlp');
 const run = require('../../lib/ytdlp/run');
 const store = require('../../lib/ytdlp/store');
@@ -110,8 +110,15 @@ function readRunlogLines() {
     .map((line) => JSON.parse(line));
 }
 
+// v1.42: persisted-state reads go through the sanctioned SQLite helper (a
+// second, read-only connection -- never the live in-memory state, exactly the
+// "read off disk" posture these ACs demand). An empty `ytdlp.downloadMeta`
+// persists as zero rows (absent), hence the backfill.
 function readPersistedDb() {
-  return JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+  const db = readPersistedDatabase(process.env.DATA_DIR);
+  if (!db.ytdlp) db.ytdlp = {};
+  if (!db.ytdlp.downloadMeta) db.ytdlp.downloadMeta = {};
+  return db;
 }
 
 // ---- AC1.2/1.3: the real failure reason persists in lastStatus, and -------

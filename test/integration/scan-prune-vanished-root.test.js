@@ -13,13 +13,13 @@ const fs = require('node:fs');
 const path = require('node:path');
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-vanished-root-'));
 const DATA_DIR = process.env.DATA_DIR;
-const DB_FILE = path.join(DATA_DIR, 'db.json');
 const THUMBNAIL_DIR = path.join(DATA_DIR, '.thumbnails');
 const TRANSCODE_DIR = path.join(DATA_DIR, 'transcoded');
 
 const { test, beforeEach } = require('node:test');
 const assert = require('node:assert');
-const { scanDirectories, getMediaId, saveDatabase } = require('../../server');
+const { scanDirectories, getMediaId, saveDatabase, __resetDatabaseForTests } = require('../../server');
+const { readPersistedDatabase } = require('../../lib/db/sqlite');
 
 function baseSettings(overrides) {
   return {
@@ -36,7 +36,7 @@ function writeDb(db) {
 }
 
 function readDb() {
-  return JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+  return readPersistedDatabase(process.env.DATA_DIR);
 }
 
 function seedEntry(id, filePath, root) {
@@ -47,8 +47,8 @@ function seedEntry(id, filePath, root) {
   };
 }
 
-beforeEach(() => {
-  if (fs.existsSync(DB_FILE)) fs.rmSync(DB_FILE);
+beforeEach(async () => {
+  await __resetDatabaseForTests();
   for (const dir of [THUMBNAIL_DIR, TRANSCODE_DIR]) {
     fs.mkdirSync(dir, { recursive: true });
     for (const name of fs.readdirSync(dir)) fs.rmSync(path.join(dir, name));
@@ -134,7 +134,9 @@ test('an individual deletion (sibling survives) still prunes normally -- the sig
 
   const db = readDb();
   assert.ok(!db.metadata[goneId], 'an individually-deleted file with a surviving sibling must still prune');
-  assert.ok(!db.progress[goneId], 'its progress goes with it, as before');
+  // v1.42 persisted shape: an emptied `progress` namespace assembles as ABSENT
+  // (zero rows), so guard the container before probing the key.
+  assert.ok(!(db.progress && db.progress[goneId]), 'its progress goes with it, as before');
 });
 
 test('pruneMissing=false composes: a vanished root is retained there too (the guard is toggle-independent)', async () => {

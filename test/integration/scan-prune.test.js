@@ -8,13 +8,13 @@ const fs = require('node:fs');
 const path = require('node:path');
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-scan-prune-'));
 const DATA_DIR = process.env.DATA_DIR;
-const DB_FILE = path.join(DATA_DIR, 'db.json');
 const THUMBNAIL_DIR = path.join(DATA_DIR, '.thumbnails');
 const TRANSCODE_DIR = path.join(DATA_DIR, 'transcoded');
 
 const { test, beforeEach } = require('node:test');
 const assert = require('node:assert');
-const { scanDirectories, getMediaId, recordServed, saveDatabase } = require('../../server');
+const { scanDirectories, getMediaId, recordServed, saveDatabase, __resetDatabaseForTests } = require('../../server');
+const { readPersistedDatabase } = require('../../lib/db/sqlite');
 
 function baseSettings(overrides) {
   return {
@@ -34,13 +34,13 @@ function writeDb(db) {
 }
 
 function readDb() {
-  return JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+  return readPersistedDatabase(process.env.DATA_DIR);
 }
 
-beforeEach(() => {
-  // Start every test from a fresh db.json and empty sidecar dirs so
+beforeEach(async () => {
+  // Start every test from a fresh persisted store and empty sidecar dirs so
   // prune/cleanup assertions aren't polluted across cases.
-  if (fs.existsSync(DB_FILE)) fs.rmSync(DB_FILE);
+  await __resetDatabaseForTests();
   for (const dir of [THUMBNAIL_DIR, TRANSCODE_DIR]) {
     fs.mkdirSync(dir, { recursive: true });
     for (const name of fs.readdirSync(dir)) fs.rmSync(path.join(dir, name));
@@ -126,6 +126,8 @@ test('(b) pruneMissing=true + present root + individually-gone file: pruned, sid
     folders: [presentRoot],
     folderSettings: {},
     progress: { [id]: { position: 42 } },
+    // v1.42 (gate W3): a recorded view count must prune WITH its item.
+    viewCounts: { [id]: 7 },
     metadata: {
       [id]: {
         id, name: 'gone.mp4', title: 'gone', filePath, folderName: path.basename(presentRoot),
@@ -140,7 +142,11 @@ test('(b) pruneMissing=true + present root + individually-gone file: pruned, sid
 
   const db = readDb();
   assert.ok(!db.metadata[id], 'an individually-deleted file under a present root should be pruned when pruneMissing is on');
-  assert.ok(!db.progress[id], 'watch progress for a pruned entry should be removed');
+  // v1.42 persisted shape: an emptied `progress` namespace assembles as ABSENT
+  // (zero rows), so guard the container before probing the key.
+  assert.ok(!(db.progress && db.progress[id]), 'watch progress for a pruned entry should be removed');
+  assert.ok(!(db.viewCounts && db.viewCounts[id]),
+    'v1.42: the extracted view counter prunes with its item (no orphan row, no stale-count resurrection)');
   assert.ok(!fs.existsSync(path.join(THUMBNAIL_DIR, `${id}.jpg`)), 'thumbnail sidecar should be deleted on prune');
   assert.ok(!fs.existsSync(path.join(TRANSCODE_DIR, `${id}.mp4`)), 'transcode sidecar should be deleted on prune');
 });

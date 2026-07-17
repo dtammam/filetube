@@ -19,6 +19,7 @@ const {
   app, loadDatabase, updateDatabase, getMediaId, scanBooks,
   flushPendingBookProgress, effectiveBookProgress,
 } = require('../../server');
+const { readPersistedDatabase } = require('../../lib/db/sqlite');
 const { buildEpub } = require('../helpers/build-zip');
 
 let server;
@@ -138,7 +139,6 @@ test('T5: POST /api/books/:id/cover -- magic-sniffed, no-clobber, pageCount ride
 });
 
 test('T6: progress pings coalesce (N pings -> ONE write), read-your-writes before flush, locator validation per format', async () => {
-  const before = fs.statSync(path.join(process.env.DATA_DIR, 'db.json')).mtimeMs;
   for (let i = 1; i <= 5; i++) {
     const res = await postJson(`/api/books/${epubId}/progress`, {
       locator: { kind: 'epub', cfi: `epubcfi(/6/${i}!/4/2)`, spineIndex: 0, blockIndex: i },
@@ -155,7 +155,10 @@ test('T6: progress pings coalesce (N pings -> ONE write), read-your-writes befor
   await flushPendingBookProgress();
   const persisted = loadDatabase().books.progress[epubId];
   assert.equal(persisted.percent, 50, 'exactly the LAST ping persisted');
-  assert.ok(fs.statSync(path.join(process.env.DATA_DIR, 'db.json')).mtimeMs >= before);
+  // v1.42: the old db.json-mtime "a write happened" proxy is replaced by a
+  // direct persisted-state read over an independent connection.
+  assert.equal(readPersistedDatabase(process.env.DATA_DIR).books.progress[epubId].percent, 50,
+    'the flush is durably persisted (independent read-only connection)');
 
   // Wrong-kind and malformed locators 400.
   assert.equal((await postJson(`/api/books/${epubId}/progress`, { locator: { kind: 'pdf', page: 3 }, percent: 10 })).status, 400);

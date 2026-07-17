@@ -31,7 +31,6 @@ process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-repull-re
 delete process.env.FILETUBE_YTDLP_ENABLED;
 delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
 const DATA_DIR = process.env.DATA_DIR;
-const DB_FILE = path.join(DATA_DIR, 'db.json');
 const THUMBNAIL_DIR = path.join(DATA_DIR, '.thumbnails');
 
 const cp = require('child_process');
@@ -66,6 +65,7 @@ const {
   relocateHydratedImportIntoChannelFolder, resolveRelocationTitle, transcodedPath,
   flushPendingProgress,
 } = require('../../server');
+const { readPersistedDatabase } = require('../../lib/db/sqlite');
 const ytdlp = require('../../lib/ytdlp');
 const ytdlpArgs = require('../../lib/ytdlp/args');
 
@@ -104,8 +104,16 @@ afterEach(() => {
   fs.rmSync(downloadDir, { recursive: true, force: true });
 });
 
+// v1.42: persisted-state reads go through the sanctioned SQLite helper (a
+// second, read-only connection). An EMPTY doc_kv namespace persists as zero
+// rows (absent); backfill the ones this file dereferences so
+// `db.progress[id]`/`db.deleteTombstones[id]`-style reads stay valid.
 function readDb() {
-  return JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+  const db = readPersistedDatabase(DATA_DIR);
+  for (const ns of ['metadata', 'progress', 'deleteTombstones']) {
+    if (!db[ns]) db[ns] = {};
+  }
+  return db;
 }
 
 // A hydrated MeTube import, exactly as v1.41.5's reheat leaves it: in a plain
@@ -134,6 +142,11 @@ function seedHydratedImport(overrides = {}, dbOverrides = {}) {
     metadata: { [id]: item },
     liked: [],
     deleteTombstones: {},
+    // v1.42: pre-SQLite, saveDatabase was a whole-file replace, so a seed
+    // implicitly wiped any ytdlp state a previous test left behind. The
+    // diff-save keeps an ABSENT namespace's rows, so the seed now clears it
+    // explicitly (present-but-empty deletes stale rows) -- overridable below.
+    ytdlp: { allowMembersOnly: false, subscriptions: [], downloadMeta: {}, pins: [], channelAvatars: {} },
     settings: baseSettings(),
     ...dbOverrides,
   });

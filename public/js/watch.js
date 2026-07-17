@@ -676,9 +676,10 @@ if (typeof module !== 'undefined' && module.exports) {
     }
 
     // C2 (v1.24 UX Round, Wave 3, T10 follow-up): fires the view-count ping
-    // (`POST /api/videos/:id/view`, added by T10 -- increments
-    // `db.metadata[id].viewCount` by exactly 1) exactly ONCE per watch-page
-    // open. `viewPinged` (declared above, alongside `mediaData`) is a
+    // (`POST /api/videos/:id/view`, added by T10 -- since v1.42 it
+    // increments `db.viewCounts[id]` by exactly 1; the counter was extracted
+    // OUT of the metadata item, where the scan could clobber it) exactly
+    // ONCE per watch-page open. `viewPinged` (declared above, alongside `mediaData`) is a
     // one-shot flag scoped to THIS view instance, fresh on every init() --
     // mirrors how setupPinButton/setupMoveButton etc. guard their own
     // once-per-open setup work, so a stray second call (there isn't one

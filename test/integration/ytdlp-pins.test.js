@@ -37,7 +37,7 @@ process.env.FILETUBE_YTDLP_DOWNLOAD_DIR = downloadDir;
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
 const express = require('express');
-const { app, loadDatabase, updateDatabase, getMediaId } = require('../../server');
+const { app, loadDatabase, updateDatabase, getMediaId, __resetDatabaseForTests } = require('../../server');
 const ytdlp = require('../../lib/ytdlp');
 const store = require('../../lib/ytdlp/store');
 const args = require('../../lib/ytdlp/args');
@@ -61,7 +61,11 @@ after(async () => {
 });
 
 beforeEach(async () => {
-  await updateDatabase((db) => { db.folders = []; db.folderSettings = {}; db.ytdlp = undefined; return true; });
+  // v1.42: the between-test reset. Pre-SQLite this was a mutator zeroing
+  // folders/folderSettings and dropping db.ytdlp -- but the diff-save treats
+  // `ytdlp: undefined` as "namespace not loaded" and KEEPS its rows, so the
+  // sanctioned full reset is the faithful replacement.
+  await __resetDatabaseForTests();
 });
 
 test('POST a pin -> GET /api/subscriptions/pins returns it', async () => {

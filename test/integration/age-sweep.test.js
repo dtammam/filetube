@@ -10,7 +10,6 @@ const fs = require('node:fs');
 const path = require('node:path');
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-age-sweep-'));
 const DATA_DIR = process.env.DATA_DIR;
-const DB_FILE = path.join(DATA_DIR, 'db.json');
 const TRANSCODE_DIR = path.join(DATA_DIR, 'transcoded');
 
 const { test, beforeEach, before, after } = require('node:test');
@@ -22,7 +21,10 @@ const {
   clearPersistedServedAt,
   evictTranscodeCache,
   saveDatabase,
+  __resetDatabaseForTests,
+  __getLoadDatabaseCallCount,
 } = require('../../server');
+const { readPersistedDatabase } = require('../../lib/db/sqlite');
 
 // Mirrors server.js's RECENT_STREAM_MS (10 minutes) -- not exported since it's
 // an internal constant, so the throttle test needs its own copy to simulate
@@ -46,8 +48,10 @@ function writeDb(db) {
   saveDatabase(db);
 }
 
+// v1.42: persisted-state reads go through the sanctioned second-connection
+// helper (SQLite replaced db.json).
 function readDb() {
-  return JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+  return readPersistedDatabase(DATA_DIR);
 }
 
 // Drop a dummy transcoded MP4 (no FFmpeg needed) with a controlled atime.
@@ -76,10 +80,11 @@ after(async () => {
   await new Promise((resolve) => server.close(resolve));
 });
 
-beforeEach(() => {
-  // Start every test from a fresh db.json and an empty TRANSCODE_DIR so
-  // sweep/eviction assertions aren't polluted across cases.
-  if (fs.existsSync(DB_FILE)) fs.rmSync(DB_FILE);
+beforeEach(async () => {
+  // Start every test from a fresh persisted store and an empty TRANSCODE_DIR
+  // so sweep/eviction assertions aren't polluted across cases (v1.42: an
+  // OPEN SQLite database cannot be rm'd out from under its connection).
+  await __resetDatabaseForTests();
   fs.mkdirSync(TRANSCODE_DIR, { recursive: true });
   for (const name of fs.readdirSync(TRANSCODE_DIR)) fs.rmSync(path.join(TRANSCODE_DIR, name));
 });
@@ -255,25 +260,23 @@ test('recordServed (E, headline): a within-window call short-circuits on the in-
   });
 
   await recordServed(id); // first call for this id: no map entry yet -> loadDatabase + persists once
-  assert.ok(fs.existsSync(DB_FILE), 'first call persists to db.json');
   const persisted = readDb().metadata[id].lastServedAt;
-  assert.equal(typeof persisted, 'number');
+  assert.equal(typeof persisted, 'number', 'first call persists a lastServedAt');
 
-  // Delete db.json entirely. If the throttled path did ANY loadDatabase, it
-  // would recreate an empty db.json (loadDatabase writes a fresh DB when the
-  // file is missing) -- so "db.json stays absent" is direct proof no disk
-  // read happened.
-  fs.rmSync(DB_FILE);
-
+  // v1.42: "db.json stays absent" can no longer witness the no-read claim
+  // (the open SQLite file always exists). The sanctioned observable is the
+  // loadDatabase call counter (__getLoadDatabaseCallCount, the same
+  // accessor AC3.3's O(1)-loads claim uses): a throttled call must not
+  // load the database AT ALL.
+  const loadsBefore = __getLoadDatabaseCallCount();
   await recordServed(id); // still within RECENT_STREAM_MS -> map lookup only, no loadDatabase
-  assert.ok(!fs.existsSync(DB_FILE), 'a throttled call must NOT read/recreate db.json (no hot-path disk read)');
+  assert.equal(__getLoadDatabaseCallCount(), loadsBefore, 'a throttled call must NOT read the database (no hot-path disk read)');
 
   // Once the map entry ages out (simulated here rather than waiting 10 real
-  // minutes), the next call is due again and DOES read (and, since the file
-  // is absent, recreate) the database.
+  // minutes), the next call is due again and DOES read the database.
   clearPersistedServedAt(id);
   await recordServed(id);
-  assert.ok(fs.existsSync(DB_FILE), 'an out-of-window/due call reads (and recreates) db.json');
+  assert.ok(__getLoadDatabaseCallCount() > loadsBefore, 'an out-of-window/due call reads the database again');
 });
 
 test('recordServed (E): empty map on boot -- the first serve per fresh id persists exactly once', async () => {
@@ -304,7 +307,9 @@ test('recordServed (C): a non-existent id never inserts a persistedServedAt entr
   // Simulate a serve/transcode-completion recordServed racing a concurrent
   // delete: the entry doesn't exist (yet, or anymore) when recordServed fires.
   await recordServed(staleId);
-  assert.equal(readDb().metadata[staleId], undefined, 'a missing entry must never be created/resurrected by recordServed');
+  // v1.42 persisted shape: an empty metadata namespace assembles as ABSENT,
+  // so guard the container -- the claim (no entry was created) is unchanged.
+  assert.equal(readDb().metadata?.[staleId], undefined, 'a missing entry must never be created/resurrected by recordServed');
 
   // The id now legitimately appears (e.g. re-added by a scan) with a STALE
   // on-disk lastServedAt that is due for an update. If the earlier no-op call
@@ -312,6 +317,7 @@ test('recordServed (C): a non-existent id never inserts a persistedServedAt entr
   // call would incorrectly short-circuit on that bogus throttle-map hit and
   // skip the due update -- proving the leak by its suppression effect.
   const db = readDb();
+  db.metadata = db.metadata || {}; // absent while empty (v1.42 persisted shape)
   const staleTimestamp = Date.now() - RECENT_STREAM_MS - 1000;
   db.metadata[staleId] = { id: staleId, lastServedAt: staleTimestamp };
   writeDb(db);

@@ -25,20 +25,31 @@ const fs = require('node:fs');
 const path = require('node:path');
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-cksum-'));
 const DATA_DIR = process.env.DATA_DIR;
-const DB_FILE = path.join(DATA_DIR, 'db.json');
 
 const { test } = require('node:test');
 const assert = require('node:assert');
 const {
-  getMediaId, loadDatabase, updateDatabase, moveItemToFolder,
+  getMediaId, loadDatabase, saveDatabase, updateDatabase, moveItemToFolder,
 } = require('../../server');
+const { readPersistedDatabase } = require('../../lib/db/sqlite');
+
+// v1.42: persisted-state assertions go through the sanctioned SQLite read
+// helper (a second, read-only connection). An empty metadata namespace
+// persists as zero rows (absent), hence the backfill.
+function readDb() {
+  const db = readPersistedDatabase(DATA_DIR);
+  if (!db.metadata) db.metadata = {};
+  return db;
+}
 
 function baseSettings() {
   return { scanIntervalMinutes: 0, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 0, defaultView: '', autoplayNext: false };
 }
 
+// v1.42: the seed goes through the exported saveDatabase (the adapter opened
+// at require time, so a raw db.json write would be dead).
 function seedItem({ id, filePath, folders }) {
-  fs.writeFileSync(DB_FILE, JSON.stringify({
+  saveDatabase({
     folders,
     folderSettings: {},
     progress: {},
@@ -52,7 +63,7 @@ function seedItem({ id, filePath, folders }) {
     liked: [],
     deleteTombstones: {},
     settings: baseSettings(),
-  }, null, 2), 'utf8');
+  });
 }
 
 // An fs facade that forces the EXDEV/copy branch (linkSync always throws EXDEV
@@ -107,7 +118,7 @@ test('moveItemToFolder EXDEV: a checksum MATCH completes the move normally (sour
   assert.equal(fs.readFileSync(newPath, 'utf8'), 'the-real-video-bytes', 'the destination holds the intact bytes');
   assert.equal(counter.reads, 2, 'the EXDEV path hashes BOTH the source and the destination (2 read streams)');
 
-  const dbAfter = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+  const dbAfter = readDb();
   assert.ok(!dbAfter.metadata[oldId] && dbAfter.metadata[newId], 'the db must be re-keyed onto the new path');
 });
 
@@ -137,7 +148,7 @@ test('moveItemToFolder EXDEV: a checksum MISMATCH (same size, corrupt bytes) lea
   assert.ok(!fs.existsSync(newPath), 'the corrupt destination copy must be removed');
 
   // The db entry must be untouched too -- the re-key mutator never ran.
-  const dbAfter = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+  const dbAfter = readDb();
   assert.ok(dbAfter.metadata[oldId], 'the item must still be indexed under its ORIGINAL id/path');
   assert.equal(dbAfter.metadata[oldId].filePath, filePath);
 });

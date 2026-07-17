@@ -7,7 +7,6 @@ const os = require('node:os');
 const fs = require('node:fs');
 const path = require('node:path');
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-test-'));
-const DB_FILE = path.join(process.env.DATA_DIR, 'db.json');
 
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
@@ -21,6 +20,7 @@ const {
   saveDatabase,
   getMediaId,
   transcodedPath,
+  __resetDatabaseForTests,
 } = require('../../server');
 
 let server;
@@ -59,11 +59,12 @@ after(async () => {
 });
 
 beforeEach(async () => {
-  // Start each test from a clean, idle scan state and a fresh db.json so
-  // settings-driven assertions (armScanTimer) aren't polluted across tests.
+  // Start each test from a clean, idle scan state and a fresh persisted
+  // store so settings-driven assertions (armScanTimer) aren't polluted
+  // across tests.
   scanState.scanning = false;
   scanState.rescanRequested = false;
-  if (fs.existsSync(DB_FILE)) fs.rmSync(DB_FILE);
+  await __resetDatabaseForTests();
   // A budget-exhausted drain (FR3.4's sustained-demand test included) can
   // leave a deferred rescan armed (tech-debt #3's fix, below). Fire it
   // directly -- rather than merely clearTimeout-ing it, which would leave

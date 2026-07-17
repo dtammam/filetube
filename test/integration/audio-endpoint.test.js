@@ -16,11 +16,11 @@ const os = require('node:os');
 const fs = require('node:fs');
 const path = require('node:path');
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-audio-endpoint-'));
-const DB_FILE = path.join(process.env.DATA_DIR, 'db.json');
 
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
-const { app, audioPath, TRANSCODE_DIR, saveDatabase } = require('../../server');
+const { app, audioPath, TRANSCODE_DIR, saveDatabase, __resetDatabaseForTests } = require('../../server');
+const { readPersistedDatabase } = require('../../lib/db/sqlite');
 
 let server;
 let base;
@@ -48,12 +48,15 @@ function writeDb(db) {
   saveDatabase(db);
 }
 
+// v1.42: persisted-state reads go through the sanctioned second-connection
+// helper (SQLite replaced db.json).
 function readDb() {
-  return JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+  return readPersistedDatabase(process.env.DATA_DIR);
 }
 
-beforeEach(() => {
-  if (fs.existsSync(DB_FILE)) fs.rmSync(DB_FILE);
+beforeEach(async () => {
+  // v1.42: SQLite replaced db.json; the sanctioned between-test reset.
+  await __resetDatabaseForTests();
   for (const name of fs.readdirSync(TRANSCODE_DIR)) fs.rmSync(path.join(TRANSCODE_DIR, name), { force: true });
 });
 

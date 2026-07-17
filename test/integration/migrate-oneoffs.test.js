@@ -18,16 +18,29 @@ process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-migrate-o
 delete process.env.FILETUBE_YTDLP_ENABLED;
 delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
 const DATA_DIR = process.env.DATA_DIR;
-const DB_FILE = path.join(DATA_DIR, 'db.json');
 const THUMBNAIL_DIR = path.join(DATA_DIR, '.thumbnails');
 
 const { test, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert');
 const {
-  getMediaId, loadDatabase, updateDatabase, scanDirectories, migrateOneOffsIntoChannelFolders,
+  getMediaId, loadDatabase, saveDatabase, updateDatabase, scanDirectories, migrateOneOffsIntoChannelFolders,
 } = require('../../server');
+const { readPersistedDatabase } = require('../../lib/db/sqlite');
 const ytdlp = require('../../lib/ytdlp');
 const ytdlpArgs = require('../../lib/ytdlp/args');
+
+// v1.42: seeds go through the exported saveDatabase (the adapter opened at
+// require time, so a raw db.json write would be dead); persisted-state
+// assertions go through the sanctioned SQLite read helper. An EMPTY doc_kv
+// namespace persists as zero rows (absent); backfill the ones this file
+// dereferences so `dbAfter.progress[id]`-style reads stay valid.
+function readDb() {
+  const db = readPersistedDatabase(DATA_DIR);
+  for (const ns of ['metadata', 'progress']) {
+    if (!db[ns]) db[ns] = {};
+  }
+  return db;
+}
 
 function baseSettings() {
   return { scanIntervalMinutes: 0, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 0, defaultView: '', autoplayNext: false };
@@ -63,7 +76,7 @@ test('HEADLINE: a flat one-off with a captured channelName is moved into resolve
   const subPath = path.join(downloadDir, 'Some Video [abc12345678].en.vtt');
   fs.writeFileSync(subPath, 'WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nHi\n');
 
-  fs.writeFileSync(DB_FILE, JSON.stringify({
+  saveDatabase({
     folders: [],
     folderSettings: {},
     progress: { [oldId]: { timestamp: 55, duration: 300, updatedAt: '2026-07-01T00:00:00.000Z' } },
@@ -76,7 +89,7 @@ test('HEADLINE: a flat one-off with a captured channelName is moved into resolve
       },
     },
     settings: baseSettings(),
-  }, null, 2), 'utf8');
+  });
 
   const summary = await migrateOneOffsIntoChannelFolders({ loadDatabase, updateDatabase, getMediaId }, config);
   assert.equal(summary.moved, 1);
@@ -85,7 +98,7 @@ test('HEADLINE: a flat one-off with a captured channelName is moved into resolve
   assert.ok(!fs.existsSync(filePath), 'the old flat path must be gone');
   assert.ok(fs.existsSync(newPath), 'the file must now live under its resolved channel folder');
 
-  const dbAfter = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+  const dbAfter = readDb();
   assert.ok(!dbAfter.metadata[oldId], 'the OLD id must no longer be present');
   assert.ok(dbAfter.metadata[newId], 'the NEW (path-derived) id must be present');
   assert.equal(dbAfter.metadata[newId].filePath, newPath);
@@ -104,7 +117,7 @@ test('HEADLINE: a flat one-off with a captured channelName is moved into resolve
   // migration ran. A false delete+new-add would prune progress[newId] and
   // resurrect nothing useful; a correct reuse fast-path leaves it untouched.
   await scanDirectories();
-  const finalDb = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+  const finalDb = readDb();
   assert.deepStrictEqual(finalDb.progress[newId], { timestamp: 55, duration: 300, updatedAt: '2026-07-01T00:00:00.000Z' }, 'watch progress under the new id must be byte-identical after a scan');
   assert.ok(finalDb.metadata[newId], 'the new-path id must still be present after the scan');
   assert.ok(!finalDb.metadata[oldId], 'the OLD id must never be resurrected by the scan');
@@ -117,7 +130,7 @@ test('idempotent: a second migration run moves nothing', async () => {
   fs.writeFileSync(filePath, 'bytes');
   const oldId = getMediaId(filePath);
 
-  fs.writeFileSync(DB_FILE, JSON.stringify({
+  saveDatabase({
     folders: [],
     folderSettings: {},
     progress: {},
@@ -130,7 +143,7 @@ test('idempotent: a second migration run moves nothing', async () => {
       },
     },
     settings: baseSettings(),
-  }, null, 2), 'utf8');
+  });
 
   const first = await migrateOneOffsIntoChannelFolders({ loadDatabase, updateDatabase, getMediaId }, config);
   assert.equal(first.moved, 1);
@@ -150,7 +163,7 @@ test('an item already sitting in its resolved channel folder is skipped (no move
   fs.writeFileSync(filePath, 'bytes');
   const id = getMediaId(filePath);
 
-  fs.writeFileSync(DB_FILE, JSON.stringify({
+  saveDatabase({
     folders: [],
     folderSettings: {},
     progress: {},
@@ -163,14 +176,14 @@ test('an item already sitting in its resolved channel folder is skipped (no move
       },
     },
     settings: baseSettings(),
-  }, null, 2), 'utf8');
+  });
 
   const summary = await migrateOneOffsIntoChannelFolders({ loadDatabase, updateDatabase, getMediaId }, config);
   assert.equal(summary.moved, 0);
   assert.equal(summary.skipped, 1);
   assert.equal(summary.errors, 0);
 
-  const dbAfter = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+  const dbAfter = readDb();
   assert.equal(dbAfter.metadata[id].filePath, filePath, 'the item must be completely untouched');
   assert.ok(fs.existsSync(filePath));
 });
@@ -181,7 +194,7 @@ test('an item with NO captured channel identity is left untouched', async () => 
   fs.writeFileSync(filePath, 'bytes');
   const id = getMediaId(filePath);
 
-  fs.writeFileSync(DB_FILE, JSON.stringify({
+  saveDatabase({
     folders: [],
     folderSettings: {},
     progress: {},
@@ -193,7 +206,7 @@ test('an item with NO captured channel identity is left untouched', async () => 
       },
     },
     settings: baseSettings(),
-  }, null, 2), 'utf8');
+  });
 
   const summary = await migrateOneOffsIntoChannelFolders({ loadDatabase, updateDatabase, getMediaId }, config);
   assert.equal(summary.moved, 0);
@@ -201,7 +214,7 @@ test('an item with NO captured channel identity is left untouched', async () => 
   assert.equal(summary.errors, 0);
   assert.ok(fs.existsSync(filePath), 'the file must stay exactly where it was');
 
-  const dbAfter = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+  const dbAfter = readDb();
   assert.equal(dbAfter.metadata[id].filePath, filePath);
 });
 
@@ -213,7 +226,7 @@ test('a non-ytdlp library file (outside the download root) is never touched, eve
     fs.writeFileSync(filePath, 'bytes');
     const id = getMediaId(filePath);
 
-    fs.writeFileSync(DB_FILE, JSON.stringify({
+    saveDatabase({
       folders: [libDir],
       folderSettings: {},
       progress: {},
@@ -226,14 +239,14 @@ test('a non-ytdlp library file (outside the download root) is never touched, eve
         },
       },
       settings: baseSettings(),
-    }, null, 2), 'utf8');
+    });
 
     const summary = await migrateOneOffsIntoChannelFolders({ loadDatabase, updateDatabase, getMediaId }, config);
     assert.equal(summary.moved, 0);
     assert.equal(summary.errors, 0);
     assert.ok(fs.existsSync(filePath), 'a regular library file must never be relocated by this migration');
 
-    const dbAfter = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+    const dbAfter = readDb();
     assert.equal(dbAfter.metadata[id].filePath, filePath);
   } finally {
     fs.rmSync(libDir, { recursive: true, force: true });
@@ -249,7 +262,7 @@ test('migration is a no-op when the yt-dlp module is disabled: no db change, no 
   fs.writeFileSync(filePath, 'bytes');
   const id = getMediaId(filePath);
 
-  fs.writeFileSync(DB_FILE, JSON.stringify({
+  saveDatabase({
     folders: [],
     folderSettings: {},
     progress: {},
@@ -262,12 +275,12 @@ test('migration is a no-op when the yt-dlp module is disabled: no db change, no 
       },
     },
     settings: baseSettings(),
-  }, null, 2), 'utf8');
+  });
 
   const summary = await migrateOneOffsIntoChannelFolders({ loadDatabase, updateDatabase, getMediaId }, config);
   assert.deepStrictEqual(summary, { moved: 0, skipped: 0, errors: 0, collisions: 0 });
 
-  const dbAfter = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+  const dbAfter = readDb();
   assert.equal(dbAfter.metadata[id].filePath, filePath, 'the item must be untouched when the module is disabled');
   assert.ok(fs.existsSync(filePath));
 });
@@ -288,7 +301,7 @@ test('GATE-FIX ADVERSARIAL SCENARIO: an item already foldered under a subscripti
   fs.writeFileSync(filePath, 'bytes');
   const id = getMediaId(filePath);
 
-  fs.writeFileSync(DB_FILE, JSON.stringify({
+  saveDatabase({
     folders: [],
     folderSettings: {},
     progress: {},
@@ -305,7 +318,7 @@ test('GATE-FIX ADVERSARIAL SCENARIO: an item already foldered under a subscripti
       },
     },
     settings: baseSettings(),
-  }, null, 2), 'utf8');
+  });
 
   const summary = await migrateOneOffsIntoChannelFolders({ loadDatabase, updateDatabase, getMediaId }, config);
   assert.equal(summary.moved, 0, 'a subscription-style-foldered item must never be relocated by this migration');
@@ -314,7 +327,7 @@ test('GATE-FIX ADVERSARIAL SCENARIO: an item already foldered under a subscripti
   assert.equal(summary.collisions, 0);
 
   assert.ok(fs.existsSync(filePath), 'the file must stay exactly where the subscription download path put it');
-  const dbAfter = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+  const dbAfter = readDb();
   assert.equal(dbAfter.metadata[id].filePath, filePath, 'the item must be completely untouched');
 
   const realChannelDir = ytdlpArgs.resolveChannelDir(config, { name: 'Real Channel Official' });
@@ -333,7 +346,7 @@ test('a flat one-off sitting in the legacy pre-T3 "One-Off" folder with a captur
   const newPath = path.join(targetDir, path.basename(filePath));
   const newId = getMediaId(newPath);
 
-  fs.writeFileSync(DB_FILE, JSON.stringify({
+  saveDatabase({
     folders: [],
     folderSettings: {},
     progress: {},
@@ -346,7 +359,7 @@ test('a flat one-off sitting in the legacy pre-T3 "One-Off" folder with a captur
       },
     },
     settings: baseSettings(),
-  }, null, 2), 'utf8');
+  });
 
   const first = await migrateOneOffsIntoChannelFolders({ loadDatabase, updateDatabase, getMediaId }, config);
   assert.equal(first.moved, 1, 'a legacy flat "One-Off"-foldered item with a captured channel must be moved');
@@ -360,7 +373,7 @@ test('a flat one-off sitting in the legacy pre-T3 "One-Off" folder with a captur
   assert.equal(second.errors, 0);
   assert.ok(second.skipped >= 1);
 
-  const dbAfter = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+  const dbAfter = readDb();
   assert.ok(dbAfter.metadata[newId], 'the new (path-derived) id must be present after both runs');
   assert.ok(!dbAfter.metadata[oldId], 'the old id must not be resurrected');
 });
@@ -385,7 +398,7 @@ test('a same-basename collision loser is skipped/counted separately (not `errors
   const targetDir = ytdlpArgs.resolveChannelDir(config, { name: 'Collision Channel' });
   const targetPath = path.join(targetDir, 'clash.mp4');
 
-  fs.writeFileSync(DB_FILE, JSON.stringify({
+  saveDatabase({
     folders: [],
     folderSettings: {},
     progress: {},
@@ -404,7 +417,7 @@ test('a same-basename collision loser is skipped/counted separately (not `errors
       },
     },
     settings: baseSettings(),
-  }, null, 2), 'utf8');
+  });
 
   const errorCalls = [];
   const warnCalls = [];
