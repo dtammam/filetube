@@ -4418,7 +4418,37 @@ async function scanDirRecursive(rootFolder, dirPath, results, unreadable, yieldS
 }
 
 // Middleware
-app.use(express.json());
+//
+// v1.43.1 (A1, Dean's prod restore 413): the global JSON parser SKIPS
+// /api/admin/restore. The global express.json() keeps body-parser's default
+// 100 kb cap, and because it runs before every route, it used to throw
+// entity.too.large for any real backup bundle (~MBs of metadata + accounts
+// + logo b64) BEFORE the restore route's own route-scoped parser was ever
+// reached — that route's larger limit had been dead code since v1.42, and
+// the tiny test fixture masked it. Excluding the path here (rather than
+// raising the global cap) does two jobs:
+//   1. the restore route's route-scoped express.json({limit}) becomes the
+//      ONE parser that owns that body, restoring its limit's meaning;
+//   2. the AUTH GATE below runs before any multi-MB parse happens, so the
+//      large-body allowance is confined to authenticated admins — a global
+//      32mb cap would hand every unauthenticated caller a pre-auth memory
+//      amplifier on every JSON route.
+// Matching is on the normalized path (case-folded, trailing slashes
+// stripped) because Express's default router matches routes
+// case-INsensitively and tolerates trailing slashes — a skip keyed on the
+// exact string would let `/api/admin/restore/` reach the route through the
+// global 100 kb parser again, resurrecting the dead-limit bug for that
+// spelling.
+const globalJsonParser = express.json();
+const RESTORE_ROUTE_PATH = '/api/admin/restore';
+function isRestorePath(reqPath) {
+  return typeof reqPath === 'string'
+    && reqPath.replace(/\/+$/, '').toLowerCase() === RESTORE_ROUTE_PATH;
+}
+app.use((req, res, next) => {
+  if (isRestorePath(req.path)) return next();
+  return globalJsonParser(req, res, next);
+});
 // v1.28.0 (iOS Shortcuts robustness): without this, a malformed JSON body
 // (e.g. a Shortcut that mis-serializes its own payload) makes `express.json()`
 // throw, and Express's DEFAULT error handler renders that as an HTML stack
@@ -6210,9 +6240,21 @@ function validateBackupBundle(bundle) {
 }
 
 // Route-scoped body limit: the default express.json() cap (100 kb) cannot
-// carry a real bundle (175 KB of state + up to 2 MB of logo b64) — same
-// route-scoped-parser posture as the logo upload's express.raw.
-app.post('/api/admin/restore', express.json({ limit: '16mb' }), async (req, res) => {
+// carry a real bundle — same route-scoped-parser posture as the logo
+// upload's express.raw. This parser is only ALIVE because the global
+// express.json() explicitly skips this path (see the middleware comment at
+// its registration): before v1.43.1 the global 100 kb parser threw first
+// and this limit was dead code, 413-ing every real-world restore.
+//
+// 32mb (Dean-approved, v1.43.1 intake): his prod bundle is ~2943 metadata
+// items (~1.5–2 KB each ≈ 4–6 MB) + per-user state + up to two logo
+// variants at ~2.7 MB base64 each ≈ ~12 MB realistic worst case; 32mb
+// leaves ~2.5× headroom for library growth. Parsing happens strictly AFTER
+// the auth gate has authenticated the caller (an unauthenticated POST is
+// 401'd before any body is read); requireAdmin then narrows the handler
+// itself to admins. So the multi-MB parse is reachable only by
+// authenticated household accounts, never pre-auth.
+app.post('/api/admin/restore', express.json({ limit: '32mb' }), async (req, res) => {
   if (!requireAdmin(req, res)) return;
   const bundle = req.body;
   const problem = validateBackupBundle(bundle);
@@ -6287,6 +6329,21 @@ app.post('/api/admin/restore', express.json({ limit: '16mb' }), async (req, res)
     if (restoredSelf) issueSessionCookie(res, req, restoredSelf);
   }
   res.json({ success: true, restoredNamespaces: Object.keys(dbPart), usersRestored: restoresUsers ? bundle.users.length : 0 });
+}, (err, req, res, next) => {
+  // Route-scoped 4-arg (error-handling) middleware, the lib/ytdlp
+  // POST /api/ytdlp/download precedent: the global body-parser error
+  // middleware near the top of the file can NEVER catch an error raised by
+  // this route's own express.json() — Express only walks its error stack
+  // FORWARD from where the error was raised (see lib/bodyParserErrors.js's
+  // block comment), and that middleware is registered before this route
+  // exists. Without this trailing handler, a bundle over the 32mb cap (or
+  // malformed JSON) would render Express's default HTML stack page instead
+  // of the clean JSON error contract every other body-parse failure honors.
+  const mapped = formatBodyParserError(err);
+  if (mapped) {
+    return res.status(mapped.status).json(mapped.body);
+  }
+  return next(err);
 });
 
 // API: Read the Automation & Storage settings for Settings-page prefill.
