@@ -136,6 +136,28 @@ const { adapter: dbAdapter } = sqliteDb.openAdapter(DATA_DIR, {
   log: (line) => console.log(line),
 });
 
+// ---- v1.42: the beta safe-mode lever (exec plan AC8, owner-approved) --------
+// FILETUBE_READ_ONLY_MEDIA=1 turns the parallel-run operational rules ("no
+// deletes, no moves, no downloads from the beta") from remembered into
+// enforced: every operation that mutates SHARED state (media dirs, yt-dlp
+// sidecar files) refuses with an honest 403, the scan's tombstone-retry
+// unlink is disarmed (an imported prod tombstone must never reap a live
+// shared file — design review F1), and the boot one-off migrator is skipped.
+// Per-DATA_DIR instance state (caches, thumbnails, settings, likes,
+// progress, backup/restore, the custom logo) stays fully live.
+const READ_ONLY_MEDIA = process.env.FILETUBE_READ_ONLY_MEDIA === '1';
+if (READ_ONLY_MEDIA) {
+  console.log('[safe-mode] FILETUBE_READ_ONLY_MEDIA=1 — this instance will not delete, move, download, reheat, or skip-list any media. Reads, playback, likes, progress, and settings work normally.');
+}
+function refuseIfReadOnlyMedia(res) {
+  if (!READ_ONLY_MEDIA) return false;
+  res.status(403).json({
+    error: 'read-only media mode: this instance runs with FILETUBE_READ_ONLY_MEDIA=1 (parallel-run beta protection) — media deletes and moves are disabled here. Run them from the primary instance instead.',
+    readOnlyMedia: true,
+  });
+  return true;
+}
+
 if (!fs.existsSync(THUMBNAIL_DIR)) {
   fs.mkdirSync(THUMBNAIL_DIR, { recursive: true });
 }
@@ -3178,6 +3200,23 @@ async function runScanDirectories() {
       }
     }
     if (tombstone && typeof tombstone.deletedAt === 'number') {
+      // v1.42 safe-mode lever (design review F1 — CRITICAL): under
+      // FILETUBE_READ_ONLY_MEDIA the scan must never act on a tombstone
+      // match. The destroy scenario this blocks: the beta imports prod's
+      // db.json INCLUDING a pending tombstone; prod's own scan later retires
+      // its copy and the user re-downloads the video (yt-dlp --mtime
+      // back-dates the fresh file, so the mtime<=deletedAt guard passes);
+      // the beta's automatic boot scan then matches the imported tombstone
+      // against prod's LIVE shared file and unlinks it. Here: no unlink, no
+      // sidecar sweep, the tombstone stays UN-consumed (it is prod's to
+      // retire), and the file is not indexed (it is, per the beta's own
+      // imported state, a deleted file).
+      if (READ_ONLY_MEDIA) {
+        console.log(`Scan: read-only media mode — leaving tombstone-matched file on disk, unindexed, tombstone kept: ${filePath}`);
+        scanState.processed++;
+        await maybeYieldScan(yieldState);
+        continue;
+      }
       // v1.41.10: remembered so the delete-pending branch below can restore it
       // -- its un-consume makes this file's net db effect zero, and leaving
       // dbChanged forced-true would rewrite db.json on every scan for as long
@@ -6215,6 +6254,7 @@ function resolveOnDiskPath(filePath) {
 
 // API: Delete video/audio file
 app.delete('/api/videos/:id', async (req, res) => {
+  if (refuseIfReadOnlyMedia(res)) return; // v1.42 safe-mode lever (AC8)
   // v1.30 A3: a PURE read to look up `item` -- never mutated here, and the
   // actual persisted mutation below goes through its own `updateDatabase`
   // call (which loads a fresh copy inside the lock), so this is safe on the
@@ -7425,6 +7465,7 @@ function rekeyInFlightState(oldId, newId, oldPath, newPath) {
 // it. T19 (Wave 7, B2 Phase 2) calls `moveItemToFolder` directly for its own
 // physical-reconcile move, without going through this route.
 app.post('/api/videos/:id/move', async (req, res) => {
+  if (refuseIfReadOnlyMedia(res)) return; // v1.42 safe-mode lever (AC8)
   const targetFolder = req.body && req.body.targetFolder;
   let result;
   try {
@@ -9620,7 +9661,14 @@ if (require.main === module) {
   (async () => {
     const ytdlpStartupConfig = ytdlp.parseYtdlpConfig();
     try {
-      await migrateOneOffsIntoChannelFolders({ loadDatabase, updateDatabase, getMediaId }, ytdlpStartupConfig);
+      if (READ_ONLY_MEDIA) {
+        // v1.42 safe-mode lever: the one-off migrator MOVES files inside the
+        // shared download root — an automatic file-mover has no business
+        // running from the beta instance (design review F10b).
+        console.log('[safe-mode] boot one-off migration skipped — FILETUBE_READ_ONLY_MEDIA=1.');
+      } else {
+        await migrateOneOffsIntoChannelFolders({ loadDatabase, updateDatabase, getMediaId }, ytdlpStartupConfig);
+      }
     } catch (err) {
       // Never let a migration bug block startup -- log and continue exactly
       // like every other best-effort startup step above (cleanupOrphanTmp/
