@@ -224,6 +224,9 @@ function loadDatabase() {
       // written by DELETE /api/videos/:id, consumed by the scan (see the
       // tombstone block in the scan's per-file loop for the full contract).
       deleteTombstones: {},
+      // v1.42: per-id watch counters, extracted OUT of `db.metadata` items
+      // (see the view endpoint's comment).
+      viewCounts: {},
       settings: withDefaultSettings()
     };
     try {
@@ -253,12 +256,16 @@ function loadDatabase() {
     if (!Array.isArray(db.liked)) db.liked = [];
     // v1.41.3: backfill `deleteTombstones` like every other top-level key.
     if (!db.deleteTombstones || typeof db.deleteTombstones !== 'object' || Array.isArray(db.deleteTombstones)) db.deleteTombstones = {};
+    // v1.42: backfill `viewCounts` — the extracted per-id watch counters
+    // (see the view endpoint's own comment for why this lives OUTSIDE
+    // `db.metadata` items).
+    if (!db.viewCounts || typeof db.viewCounts !== 'object' || Array.isArray(db.viewCounts)) db.viewCounts = {};
     db.settings = withDefaultSettings(db.settings); // backfill for older databases
     return db;
   } catch (err) {
     console.error('Error reading db.json, resetting database:', err);
     // Every code path out of loadDatabase must hand back a settings-bearing DB.
-    return { folders: [], folderSettings: {}, progress: {}, metadata: {}, liked: [], deleteTombstones: {}, settings: withDefaultSettings() };
+    return { folders: [], folderSettings: {}, progress: {}, metadata: {}, liked: [], deleteTombstones: {}, viewCounts: {}, settings: withDefaultSettings() };
   }
 }
 
@@ -8440,7 +8447,9 @@ app.get('/api/stats', (req, res) => {
   // isn't installed (ytdlp not enabled -> null; TTS not available).
   const ytdlpEnabled = ytdlp.isEnabled(ytdlp.parseYtdlpConfig());
   res.json({
-    ...stats.computeLibraryStats(db.metadata),
+    // v1.42: overlay the extracted `viewCounts` namespace onto the items so
+    // mostWatched keeps working — see effectiveViewCount's comment.
+    ...stats.computeLibraryStats(withEffectiveViewCounts(db)),
     books: stats.computeBookStats(books.items, books.audio),
     system: {
       version: APP_VERSION,
@@ -8490,6 +8499,38 @@ app.get('/api/duplicates.csv', (req, res) => {
 // `viewCount` field yet, treated as zero here rather than ever triggering a
 // re-processing/re-scan pass to "fill it in" (the thumbnail-backfill-
 // regression lesson: a field default is not a reason to reprocess).
+// v1.42: the counter lives in `db.viewCounts[id]`, NOT on the metadata item.
+// `viewCount` was the one non-rebuildable field embedded in the rebuildable
+// `metadata` namespace, and in place it was demonstrably clobber-prone: the
+// scan's changed-file re-init and Phase-2 merge both drop it, so a view
+// recorded mid-scan was silently reverted (the 5-strike persist-gate class;
+// exec plan v1.42, design finding #8). A legacy embedded `item.viewCount`
+// (pre-v1.42 db.json that hasn't been imported/extracted) is honored as the
+// STARTING value the first time the id is counted or read — the item field
+// itself is left frozen in place and simply superseded (never mutated, never
+// "backfilled": the thumbnail-backfill lesson).
+function effectiveViewCount(db, id) {
+  const fromNs = db.viewCounts ? db.viewCounts[id] : undefined;
+  if (typeof fromNs === 'number' && Number.isFinite(fromNs) && fromNs >= 0) return fromNs;
+  const item = db.metadata ? db.metadata[id] : undefined;
+  const legacy = item ? item.viewCount : undefined;
+  return (typeof legacy === 'number' && Number.isFinite(legacy) && legacy >= 0) ? legacy : 0;
+}
+
+// Read-side overlay for the stats page: a NEW metadata map whose items carry
+// their effective view count (ns first, legacy floor second), so lib/stats
+// stays a pure item-shape consumer. Copies are deliberate — readers must
+// never mutate `getCachedDatabase()`'s object (the read-cache contract).
+function withEffectiveViewCounts(db) {
+  const out = {};
+  for (const id of Object.keys(db.metadata || {})) {
+    const { viewCount: _legacy, ...rest } = db.metadata[id];
+    const effective = effectiveViewCount(db, id);
+    out[id] = effective > 0 ? { ...rest, viewCount: effective } : rest;
+  }
+  return out;
+}
+
 app.post('/api/videos/:id/view', async (req, res) => {
   let notFound = false;
   let viewCount = 0;
@@ -8500,9 +8541,8 @@ app.post('/api/videos/:id/view', async (req, res) => {
         notFound = true;
         return false;
       }
-      const current = (typeof item.viewCount === 'number' && Number.isFinite(item.viewCount) && item.viewCount >= 0) ? item.viewCount : 0;
-      item.viewCount = current + 1;
-      viewCount = item.viewCount;
+      viewCount = effectiveViewCount(db, req.params.id) + 1;
+      db.viewCounts[req.params.id] = viewCount;
       return true;
     });
   } catch (err) {
