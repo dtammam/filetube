@@ -6185,3 +6185,176 @@ body.ft-css-fullscreen .bottom-nav {
   color: var(--accent-color, #cc0000);
   border-color: var(--accent-color, #cc0000);
 }
+
+/* ============================================================================
+   v1.43 auth: the /login + /welcome sign-in card.
+   Entirely token-driven, so it inherits every era + light/dark automatically
+   (2005 boxy Verdana box with square corners; 2009 glossy; 2014 flat; 2021
+   clean rounded card) — the "period YouTube sign-in" feel emerges per era.
+   Everything is scoped under .login-page so nothing collides with the app.
+   ========================================================================== */
+.login-page {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: calc(var(--density) * 2);
+  padding: calc(var(--density) * 3) var(--density);
+  background: var(--bg-color);
+  color: var(--text-primary);
+  font-family: var(--font-family);
+}
+.login-card {
+  width: 100%;
+  max-width: 380px;
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  padding: calc(var(--density) * 4) calc(var(--density) * 3.5);
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--density) * 2.5);
+}
+.login-brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: calc(var(--density) * 0.75);
+  text-align: center;
+}
+/* The FileTube wordmark, scaled up from the header .logo/.tube treatment. */
+.login-wordmark {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--logo-font);
+  font-size: var(--fs-5xl);
+  font-weight: bold;
+  letter-spacing: -1px;
+  color: var(--text-primary);
+  line-height: 1;
+}
+.login-wordmark .tube {
+  background: var(--yt-red);
+  color: #fff;
+  padding: 3px 9px;
+  border-radius: var(--radius);
+  margin-left: 3px;
+  font-weight: 900;
+}
+.login-wordmark .login-logo-img {
+  max-height: 56px;
+  max-width: 260px;
+  width: auto;
+  object-fit: contain;
+}
+/* Custom-logo (white-label) swap, mirroring the header's own
+   html.ft-custom-logo pattern (server-stamped pre-paint by sendShellHtml, so
+   no flash): when a custom logo is configured, hide the text wordmark and
+   show the mode-aware banner image (light/dark variant set by login.js). The
+   min-height reserves the slot so there is no layout jump while the (usually
+   HTTP-cached) image lands. login.js clears the flag on a 404/decode error,
+   self-healing back to the text wordmark. */
+.login-logo-img[hidden] { display: none; }
+.ft-custom-logo .login-wordmark { min-height: 56px; }
+.ft-custom-logo .login-wordmark-text { display: none; }
+.ft-custom-logo .login-logo-img { display: block; }
+.login-tagline {
+  font-size: var(--fs-md);
+  color: var(--text-secondary);
+  text-wrap: balance;
+}
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--density) * 1.75);
+}
+.login-field {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--density) * 0.5);
+}
+.login-field label {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.login-field input {
+  font-family: var(--font-family);
+  font-size: var(--fs-input-min); /* >=16px: the iOS-zoom-on-focus floor */
+  color: var(--text-primary);
+  background: var(--bg-color);
+  border: 1px solid var(--border-dark);
+  border-radius: var(--radius);
+  padding: calc(var(--density) * 1.25) calc(var(--density) * 1.5);
+  width: 100%;
+}
+.login-field input:focus {
+  outline: 2px solid var(--yt-red);
+  outline-offset: 1px;
+  border-color: var(--yt-red);
+}
+.login-submit {
+  font-family: var(--font-family);
+  font-size: var(--fs-lg);
+  font-weight: 700;
+  color: #fff;
+  background: var(--yt-red);
+  border: 1px solid var(--yt-red-dark, var(--yt-red));
+  border-radius: var(--radius);
+  padding: calc(var(--density) * 1.4) var(--density);
+  cursor: pointer;
+  margin-top: calc(var(--density) * 0.5);
+  transition: filter 0.12s ease;
+}
+.login-submit:hover { filter: brightness(1.08); }
+.login-submit:active { filter: brightness(0.94); }
+.login-submit:disabled { opacity: 0.6; cursor: default; filter: none; }
+.login-submit:focus-visible { outline: 3px solid var(--text-link); outline-offset: 2px; }
+/* The error region is always present for aria-live; it only shows when filled. */
+.login-error {
+  min-height: 0;
+  font-size: var(--fs-sm);
+  color: var(--yt-red);
+  text-align: center;
+}
+.login-error:empty { display: none; }
+.login-foot {
+  font-size: var(--fs-xs);
+  color: var(--text-secondary);
+  text-align: center;
+  text-wrap: balance;
+}
+/* The signature FileTube flourish: pick the era right from the login screen. */
+.login-era-switch {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--density) * 0.75);
+  flex-wrap: wrap;
+  justify-content: center;
+  font-size: var(--fs-xs);
+  color: var(--text-secondary);
+}
+.login-era-switch button {
+  font-family: var(--font-family);
+  font-size: var(--fs-xs);
+  color: var(--text-secondary);
+  background: var(--btn-bg, var(--bg-secondary));
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  padding: 4px 9px;
+  cursor: pointer;
+}
+.login-era-switch button[aria-pressed="true"] {
+  color: #fff;
+  background: var(--yt-red);
+  border-color: var(--yt-red);
+  font-weight: 700;
+}
+@media (prefers-reduced-motion: reduce) {
+  .login-submit { transition: none; }
+}
