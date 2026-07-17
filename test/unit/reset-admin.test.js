@@ -80,6 +80,11 @@ test('zero users: creates <username> as an enabled admin (repair path), password
   assert.equal(user.disabled, false);
   assert.ok((await authCrypto.verifyPassword('brand-new-pass', hash)).ok);
   assert.match(res.stdout, /does NOT adopt pre-auth/i, 'the no-adoption caveat is stated to the operator');
+  // QA delta nit: the create path mints a fresh tv=0 row — nothing was
+  // bumped, no sessions existed, so the invalidation line must NOT print
+  // (a tool that lies about what it revoked is worse than one that says
+  // nothing).
+  assert.doesNotMatch(res.stdout, /session.*INVALID/i, 'no session-invalidation claim on a fresh create');
 });
 
 test('existing user: resets the password AND bumps token_version (instant revocation contract)', async () => {
