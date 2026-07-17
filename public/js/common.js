@@ -92,6 +92,7 @@ function toggleTheme() {
   // Function declaration below in this same file (hoisted); no-ops cleanly
   // when no custom logo is configured.
   applyCustomLogoIfSet();
+  mirrorUserSetting({ theme: mode }); // v1.43: cross-device seed
 }
 
 // Setup-page Appearance picker: changes era only, keeps the current mode.
@@ -105,6 +106,55 @@ function setTheme(era) {
   let pref = null;
   try { pref = localStorage.getItem('ft-icons'); } catch (_) { /* fall through to default */ }
   applyIconSet(pref);
+  mirrorUserSetting({ era });
+}
+
+// ---- v1.43: per-user display-pref mirror ----------------------------------
+// localStorage stays the device-local, pre-paint source of truth (the inline
+// FOUC <head> script depends on it); the server-side user record is only the
+// CROSS-DEVICE seed. Writes are fire-and-forget from the explicit
+// user-change sites (era picker, mode toggle, icon picker) -- never from
+// boot re-applies -- and a failure (offline, signed-out shell) is silently
+// fine: the device still has its local pref.
+function mirrorUserSetting(patch) {
+  try {
+    fetch('/api/me/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    }).catch(() => { /* mirror is best-effort */ });
+  } catch (_) { /* fetch unavailable (tests/old browser) -- local pref stands */ }
+}
+
+// Boot-time pull: ONLY keys this device has never chosen locally are seeded
+// from the user record (a fresh phone inherits the desktop's era/theme/icons
+// on first sign-in; a device with local prefs is never overridden).
+async function pullMirroredDisplayPrefs() {
+  let hasEra = null, hasMode = null, hasIcons = null;
+  try {
+    hasEra = localStorage.getItem('ft-era');
+    hasMode = localStorage.getItem('ft-mode');
+    hasIcons = localStorage.getItem('ft-icons');
+  } catch (_) { return; /* no storage -> nothing to seed into */ }
+  if (hasEra && hasMode && hasIcons) return; // fully chosen locally
+  let me = null;
+  try {
+    const r = await fetch('/api/auth/me');
+    if (!r.ok) return; // signed-out shell (login/welcome) or auth failure
+    me = await r.json();
+  } catch (_) { return; }
+  const s = (me && me.settings) || {};
+  const era = !hasEra && THEME_ERAS.includes(s.era) ? s.era : null;
+  const mode = !hasMode && THEME_MODES.includes(s.theme) ? s.theme : null;
+  if (era || mode) {
+    const d = document.documentElement;
+    applyTheme(era || d.getAttribute('data-theme') || DEFAULT_ERA,
+      mode || d.getAttribute('data-mode') || DEFAULT_MODE);
+    applyCustomLogoIfSet();
+  }
+  if (!hasIcons && (s.icons === 'auto' || ICON_SETS.includes(s.icons))) {
+    applyIconSet(s.icons); // persists the pref + re-resolves against the era
+  }
 }
 
 // ---- F1: deterministic avatar fallback (v1.24.0, T3; identicon glyph C3/T12) -
@@ -244,6 +294,9 @@ function applyIconSet(storedSetPref) {
 // Setup-page Icons picker entry (no Save step), mirrors setTheme().
 function setIconSet(storedSetPref) {
   applyIconSet(storedSetPref);
+  if (storedSetPref === 'auto' || ICON_SETS.includes(storedSetPref)) {
+    mirrorUserSetting({ icons: storedSetPref }); // v1.43: cross-device seed
+  }
 }
 
 // DOMContentLoaded: read the stored pref and apply against the loaded era.
@@ -5953,6 +6006,10 @@ if (typeof document !== 'undefined') {
 document.addEventListener('DOMContentLoaded', () => {
   initTheme();
   initIconSet();   // reads ft-icons + the just-applied data-theme
+  // v1.43: seed any locally-unchosen display prefs from the signed-in
+  // user's record (async, after the local-first paint above -- a device
+  // with local prefs is never overridden; a signed-out shell no-ops).
+  pullMirroredDisplayPrefs();
 
   // v1.27.2 (SW removal): actively unregister any service worker a previous
   // FileTube version installed -- see unregisterStaleServiceWorkers' own

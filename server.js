@@ -4571,10 +4571,49 @@ app.post('/api/auth/logout', (req, res) => {
   return res.json({ success: true });
 });
 
-// GET /api/auth/me — the current user (gated). Powers the nav chip + client
-// "am I logged in / am I admin" checks.
+// GET /api/auth/me — the current user (gated). Powers the Settings Account
+// chip + client "am I logged in / am I admin" checks. `settings` is the
+// user's mirrored display prefs (settings_json) — the device-sync source a
+// FRESH device pulls from before localStorage has anything (locked intake
+// #6: localStorage stays the immediate, device-local source of truth).
 app.get('/api/auth/me', (req, res) => {
-  return res.json({ user: publicUser(req.user) });
+  return res.json({ user: publicUser(req.user), settings: parseUserSettings(req.user) });
+});
+
+function parseUserSettings(user) {
+  try {
+    const parsed = JSON.parse(user.settingsJson || '{}');
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+// POST /api/me/settings — mirror a display pref (theme/era/icons) onto the
+// user record. Fire-and-forget from the client pickers; localStorage stays
+// the device-local fast path, this is only the cross-device seed. Keys are
+// allowlisted and values bounded — settings_json must never become an
+// arbitrary client-writable blob.
+const MIRRORED_SETTING_KEYS = new Set(['theme', 'era', 'icons']);
+app.post('/api/me/settings', (req, res) => {
+  const body = req.body || {};
+  const merged = parseUserSettings(req.user);
+  for (const key of Object.keys(body)) {
+    if (!MIRRORED_SETTING_KEYS.has(key)) {
+      return res.status(400).json({ error: `unknown setting '${key}'` });
+    }
+    const value = body[key];
+    if (value === null) {
+      delete merged[key]; // explicit null clears the mirror (pref reset)
+      continue;
+    }
+    if (typeof value !== 'string' || !/^[A-Za-z0-9_-]{1,32}$/.test(value)) {
+      return res.status(400).json({ error: `invalid value for '${key}'` });
+    }
+    merged[key] = value;
+  }
+  userStore.setSettingsJson(req.user.id, merged);
+  return res.json({ success: true, settings: merged });
 });
 
 // Test-only: mint a genuine session cookie for tests (see the export comment).
@@ -4606,6 +4645,156 @@ function publicUser(u) {
     role: u.role, canManageSubscriptions: u.canManageSubscriptions,
   };
 }
+
+// ---- v1.43 chunk 4c: admin user management ---------------------------------
+// Everything below is admin-only (the gate already guarantees a signed-in
+// req.user; these add the role check). Response shapes reuse publicUser /
+// listUsers' projection — a password hash can never ride any of them.
+
+function requireAdmin(req, res) {
+  if (!req.user || req.user.role !== 'admin') {
+    res.status(403).json({ error: 'Only an admin can manage users.' });
+    return false;
+  }
+  return true;
+}
+
+// The self-lockout guard for user management: refuse any change that would
+// leave the instance with ZERO enabled admins (disable/demote/delete of the
+// last one). Instant revocation (token_version bumps) makes such a mistake
+// unrecoverable from the UI — there would be nobody left who can undo it.
+function wouldRemoveLastAdmin(targetId, change) {
+  const target = userStore.getById(targetId);
+  if (!target) return false; // 404s elsewhere
+  const isEnabledAdmin = target.role === 'admin' && !target.disabled;
+  if (!isEnabledAdmin) return false;
+  const enabledAdmins = userStore.listUsers().filter((u) => u.role === 'admin' && !u.disabled);
+  if (enabledAdmins.length > 1) return false;
+  return change === 'disable' || change === 'demote' || change === 'delete';
+}
+
+const USERNAME_RULE_MESSAGE = 'Username can use letters, numbers, and . _ - (up to 64 characters).';
+const PASSWORD_RULE_MESSAGE = 'Use a password of at least 8 characters.';
+
+app.get('/api/users', (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  res.json({ users: userStore.listUsers() });
+});
+
+app.post('/api/users', async (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  const body = req.body || {};
+  const username = typeof body.username === 'string' ? body.username.trim() : '';
+  const displayName = typeof body.displayName === 'string' ? body.displayName.trim() : '';
+  const password = typeof body.password === 'string' ? body.password : '';
+  const role = body.role === 'admin' ? 'admin' : 'member';
+  const canManageSubscriptions = body.canManageSubscriptions === true;
+  if (!userStore.validateUsername(username)) return res.status(400).json({ error: USERNAME_RULE_MESSAGE });
+  if (password.length < 8) return res.status(400).json({ error: PASSWORD_RULE_MESSAGE });
+  if (userStore.getByUsername(username)) return res.status(409).json({ error: 'That username is already taken.' });
+  try {
+    const passwordHash = await authCrypto.hashPassword(password); // async: off the event loop
+    // The UNIQUE(username COLLATE NOCASE) constraint is the race backstop
+    // behind the friendly pre-check above.
+    const user = userStore.createUser({ username, displayName, passwordHash, role, canManageSubscriptions }, new Date().toISOString());
+    return res.status(201).json({ success: true, user: publicUser(user) });
+  } catch (err) {
+    if (String(err.message || '').includes('UNIQUE')) {
+      return res.status(409).json({ error: 'That username is already taken.' });
+    }
+    console.error('Error creating user:', err);
+    return res.status(500).json({ error: `Could not create the user: ${err.message}` });
+  }
+});
+
+// Shared target resolution: integer id, existing row.
+function resolveTargetUser(req, res) {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) {
+    res.status(400).json({ error: 'invalid user id' });
+    return null;
+  }
+  const target = userStore.getById(id);
+  if (!target) {
+    res.status(404).json({ error: 'No such user.' });
+    return null;
+  }
+  return target;
+}
+
+app.post('/api/users/:id/password', async (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  const target = resolveTargetUser(req, res);
+  if (!target) return;
+  const password = req.body && typeof req.body.password === 'string' ? req.body.password : '';
+  if (password.length < 8) return res.status(400).json({ error: PASSWORD_RULE_MESSAGE });
+  try {
+    const passwordHash = await authCrypto.hashPassword(password);
+    userStore.updatePassword(target.id, passwordHash); // bumps token_version -> every session revoked
+    // Resetting YOUR OWN password revokes your own cookie too — reissue it
+    // so the admin doing the reset is not bounced to /login mid-task.
+    if (target.id === req.user.id) {
+      issueSessionCookie(res, req, userStore.getById(target.id));
+    }
+    return res.json({ success: true });
+  } catch (err) {
+    console.error('Error resetting password:', err);
+    return res.status(500).json({ error: `Could not reset the password: ${err.message}` });
+  }
+});
+
+app.post('/api/users/:id/disabled', (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  const target = resolveTargetUser(req, res);
+  if (!target) return;
+  const disabled = req.body && req.body.disabled === true;
+  if (disabled && target.id === req.user.id) {
+    return res.status(409).json({ error: 'You cannot disable your own account.' });
+  }
+  if (disabled && wouldRemoveLastAdmin(target.id, 'disable')) {
+    return res.status(409).json({ error: 'That is the last enabled admin - disable is refused so the instance cannot lock itself out.' });
+  }
+  userStore.setDisabled(target.id, disabled); // bumps token_version -> instant revocation on disable
+  return res.json({ success: true, user: publicUser(userStore.getById(target.id)) });
+});
+
+app.post('/api/users/:id/role', (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  const target = resolveTargetUser(req, res);
+  if (!target) return;
+  const role = req.body && req.body.role;
+  if (role !== 'admin' && role !== 'member') return res.status(400).json({ error: "role must be 'admin' or 'member'" });
+  if (role === 'member' && wouldRemoveLastAdmin(target.id, 'demote')) {
+    return res.status(409).json({ error: 'That is the last enabled admin - demotion is refused so the instance cannot lock itself out.' });
+  }
+  userStore.setRole(target.id, role);
+  return res.json({ success: true, user: publicUser(userStore.getById(target.id)) });
+});
+
+app.post('/api/users/:id/subscriptions-flag', (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  const target = resolveTargetUser(req, res);
+  if (!target) return;
+  userStore.setCanManageSubscriptions(target.id, req.body && req.body.canManageSubscriptions === true);
+  return res.json({ success: true, user: publicUser(userStore.getById(target.id)) });
+});
+
+app.delete('/api/users/:id', (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  const target = resolveTargetUser(req, res);
+  if (!target) return;
+  if (target.id === req.user.id) {
+    return res.status(409).json({ error: 'You cannot delete your own account.' });
+  }
+  if (wouldRemoveLastAdmin(target.id, 'delete')) {
+    return res.status(409).json({ error: 'That is the last enabled admin - deletion is refused so the instance cannot lock itself out.' });
+  }
+  // Hard delete: ON DELETE CASCADE clears the per-user state; AUTOINCREMENT
+  // guarantees the id is never reused, so any still-valid cookie for it can
+  // never inherit a future account (design-delta SUGGESTION-6).
+  userStore.deleteUser(target.id);
+  return res.json({ success: true });
+});
 // v1.41.18 (Dean): kill the header logo FOUC at the SOURCE. The header shells
 // are static HTML, so the "FileTube" text wordmark always painted before
 // common.js could swap in a configured custom logo -- a flash on every refresh.

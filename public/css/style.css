@@ -2145,6 +2145,7 @@ header {
 }
 
 .form-group input[type="text"],
+.form-group input[type="password"],
 .form-group input[type="number"] {
   width: 100%;
   padding: 10px 12px;
@@ -6357,4 +6358,52 @@ body.ft-css-fullscreen .bottom-nav {
 }
 @media (prefers-reduced-motion: reduce) {
   .login-submit { transition: none; }
+}
+
+/* ---- v1.43: Settings Account + Users (chunk 4c) --------------------------
+   Markup lives inside setup.html's #view-root; styles here per the v1.41.8
+   SPA-swap lesson (never page-local <head> styles). */
+.account-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+#account-chip {
+  font-size: var(--fs-md);
+  color: var(--text-primary);
+  font-weight: bold;
+}
+.users-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 24px;
+}
+.users-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  background: var(--bg-primary);
+}
+.users-row-who {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.users-row-meta {
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+}
+.users-row-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
 }

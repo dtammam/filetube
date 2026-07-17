@@ -416,6 +416,62 @@
           <small id="cache-cap-error" class="field-error"></small>
         </div>
       </div>
+
+      <!-- v1.43: Account (everyone) - who you are + sign out. Markup lives
+           INSIDE #view-root and styles in style.css (the v1.41.8 SPA-swap
+           lesson). -->
+      <div class="setup-box" id="account-box">
+        <h2>Account</h2>
+        <div class="account-row">
+          <span id="account-chip" aria-live="polite">Loading your account...</span>
+          <button class="btn" id="logout-btn">Sign out</button>
+        </div>
+      </div>
+
+      <!-- v1.43: Users (admin only - revealed by setup.js after /api/auth/me
+           confirms the role; the server enforces it regardless). -->
+      <div class="setup-box" id="users-box" hidden>
+        <h2>Users</h2>
+        <p>
+          Accounts for your family and friends. Everyone signed in sees the same library for now -
+          per-person library limits arrive in a later release. Each person gets their own watch
+          progress, likes, reading positions, and pinned channels.
+        </p>
+        <div id="users-list" class="users-list" aria-live="polite"></div>
+
+        <h3>Add a user</h3>
+        <div class="users-add-form">
+          <div class="form-group">
+            <label for="new-user-username">Username</label>
+            <input type="text" id="new-user-username" autocomplete="off" />
+          </div>
+          <div class="form-group">
+            <label for="new-user-displayname">Display name (optional)</label>
+            <input type="text" id="new-user-displayname" autocomplete="off" />
+          </div>
+          <div class="form-group">
+            <label for="new-user-password">Password</label>
+            <input type="password" id="new-user-password" autocomplete="new-password" />
+          </div>
+          <div class="form-group">
+            <label for="new-user-role">Role</label>
+            <select id="new-user-role" class="setup-select">
+              <option value="member" selected>Member</option>
+              <option value="admin">Admin</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label style="display:flex; align-items:center; gap:8px; font-weight:normal;">
+              <input type="checkbox" id="new-user-subs-flag" />
+              Can manage channel subscriptions
+            </label>
+          </div>
+          <div class="account-row">
+            <button class="btn btn-primary" id="add-user-btn">Add user</button>
+            <small id="add-user-error" class="field-error" role="alert" aria-live="polite"></small>
+          </div>
+        </div>
+      </div>
       </div>
     </main>
   </div>
