@@ -5635,6 +5635,14 @@ function validateBackupBundle(bundle) {
   for (const key of Object.keys(bundle)) {
     if (!known.has(key)) return `unknown bundle key '${key}' — refusing a lossy restore (was this exported by a newer FileTube?)`;
   }
+  // Container namespaces must be objects when present (delta-round
+  // residual): catching a malformed shape HERE means a 400 before the wipe
+  // even starts, rather than a mid-populate rollback.
+  for (const container of ['books', 'ytdlp']) {
+    if (bundle[container] !== undefined && (typeof bundle[container] !== 'object' || bundle[container] === null || Array.isArray(bundle[container]))) {
+      return `bundle key '${container}' must be an object`;
+    }
+  }
   if (bundle.customLogo !== undefined) {
     if (typeof bundle.customLogo !== 'object' || bundle.customLogo === null || Array.isArray(bundle.customLogo)) return 'customLogo must be an object';
     for (const variant of Object.keys(bundle.customLogo)) {
@@ -5673,11 +5681,20 @@ app.post('/api/admin/restore', express.json({ limit: '16mb' }), async (req, res)
 
   try {
     await replacePersistedState((handles) => {
-      // Logo bytes FIRST, inside the exclusive section, before the SQLite
-      // COMMIT carries the mime keys (design review F6). tmp+rename per
-      // variant; a variant the bundle lacks has its stale .bin removed. A
-      // crash between file writes and commit leaves new bytes under the old
-      // mime key for one boot — bounded, cosmetic, disclosed.
+      // Import FIRST (delta-round residual, adversarial seat): any import
+      // refusal/throw must roll back with the FILESYSTEM untouched — the
+      // original ordering destroyed the old logo bytes before the import
+      // ran, so a failed restore's "rolled back" response lied about the
+      // logo. One classification, two callers (boot import + restore): the
+      // same strict importer maps namespaces to rows; 'bundle' mode reads
+      // viewCounts first-class.
+      sqliteDb.importParsedJson(dbPart, handles, { source: 'bundle' });
+      // Logo bytes LAST — still inside the exclusive section, still BEFORE
+      // the COMMIT that carries the mime keys (design review F6's ordering
+      // holds: a crash between these file ops and the commit leaves new
+      // bytes under the old mime key for one boot — bounded, cosmetic,
+      // disclosed). tmp+rename per variant; a variant the bundle lacks has
+      // its stale .bin removed.
       for (const variant of ['light', 'dark']) {
         const entry = bundle.customLogo ? bundle.customLogo[variant] : undefined;
         const finalPath = customLogoPath(variant);
@@ -5690,10 +5707,6 @@ app.post('/api/admin/restore', express.json({ limit: '16mb' }), async (req, res)
           try { fs.unlinkSync(finalPath); } catch { /* no stale variant -- fine */ }
         }
       }
-      // One classification, two callers (boot import + restore): the same
-      // strict importer maps namespaces to rows; 'bundle' mode reads
-      // viewCounts first-class.
-      sqliteDb.importParsedJson(dbPart, handles, { source: 'bundle' });
     });
   } catch (err) {
     console.error('Error restoring backup bundle:', err);

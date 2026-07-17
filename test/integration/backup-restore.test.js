@@ -207,15 +207,33 @@ test('W4: a wipe/restore landing MID-SCAN aborts the scan\'s stale merge — the
   fs.rmSync(libDir, { recursive: true, force: true });
 });
 
-test('a restore that fails mid-populate ROLLS BACK completely (prior state intact, 500 surfaces)', async () => {
+test('a restore that fails mid-populate ROLLS BACK completely — db state AND the logo bytes both intact, 500 surfaces', async () => {
   saveDatabase(fullState());
+  // A real logo on disk, so the delta-round residual is exercised: a failed
+  // restore must NOT have destroyed the previous logo before the import ran.
+  const up = await fetch(`${base}/api/settings/logo`, {
+    method: 'POST', headers: { 'Content-Type': 'image/png' }, body: PNG_BYTES,
+  });
+  assert.equal(up.status, 200);
   const beforeSnap = readPersistedDatabase(DATA_DIR);
 
   const bundle = await getBackup();
-  bundle.books = 'not-an-object'; // importParsedJson throws inside the exclusive section
+  // Passes validateBackupBundle (books IS an object) but fails INSIDE the
+  // exclusive section: books.items is not a per-key map, so importParsedJson
+  // refuses mid-populate — after the wipe, before the logo file ops.
+  bundle.books = { items: 'not-a-map' };
   const res = await postRestore(bundle);
   assert.equal(res.status, 500);
   assert.match((await res.json()).error, /rolled back/);
 
   assert.deepEqual(readPersistedDatabase(DATA_DIR), beforeSnap, 'wipe + partial populate fully rolled back');
+  const served = await fetch(`${base}/logo`);
+  assert.equal(served.status, 200, 'the previous logo still serves');
+  assert.equal(Buffer.from(await served.arrayBuffer()).compare(PNG_BYTES), 0,
+    'logo bytes untouched by the failed restore — the rollback message tells the truth about the filesystem too');
+
+  // A malformed container SHAPE is caught even earlier: 400 at validation,
+  // before the wipe starts.
+  assert.equal((await postRestore({ ...bundle, books: 'not-an-object' })).status, 400);
+  assert.equal((await postRestore({ ...bundle, books: [] })).status, 400);
 });
