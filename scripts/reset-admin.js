@@ -48,7 +48,10 @@ const authCrypto = require('../lib/auth/crypto');
 const createUserStore = require('../lib/auth/store');
 const sqliteDb = require('../lib/db/sqlite');
 
-const MIN_PASSWORD_LENGTH = 8; // must track server.js's API floor exactly
+// The API's own floor, shared from the auth-crypto module (QA gate
+// suggestion) — the recovery tool can never drift weaker or stricter than
+// the live password routes.
+const { MIN_PASSWORD_LENGTH } = authCrypto;
 
 function usageExit(msg) {
   if (msg) console.error(`reset-admin: ${msg}\n`);
@@ -188,6 +191,8 @@ async function main() {
       }
       console.log(`Created '${created.username}' as an enabled ADMIN (id ${created.id}) — the instance was user-less.`);
       console.log('Note: unlike first-boot /welcome, recovery does NOT adopt pre-auth watch history into the new account.');
+      // No session-invalidation line here (adversarial-seat nit): a fresh row
+      // starts at tv=0 — nothing was bumped and no sessions existed to kill.
     } else {
       store.updatePassword(existing.id, passwordHash);
       if (existing.disabled && flags.has('--enable')) {
@@ -198,8 +203,8 @@ async function main() {
       if (existing.role !== 'admin') {
         console.log('Role left untouched — this tool never promotes. Promote via the admin Users UI if needed.');
       }
+      console.log('Every existing session for this user is now INVALID (token_version bumped). A running server picks this up on its next request — no restart needed.');
     }
-    console.log('Every existing session for this user is now INVALID (token_version bumped). A running server picks this up on its next request — no restart needed.');
   } catch (err) {
     if (err && /SQLITE_BUSY|database is locked/i.test(String(err.message))) {
       console.error('reset-admin: the database is locked (non-WAL journal + a busy server?). Stop the FileTube server and re-run.');

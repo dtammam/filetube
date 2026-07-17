@@ -94,3 +94,10 @@
 - **Fix direction:** mirror skip()'s liveMode branch — compute the absolute target and route through `startLiveStream(target, true)`.
 - **Severity:** Low. QA-seat observation at the v1.41.12 delta-2, explicitly out of that diff's scope; filed rather than drive-by-fixed.
 - **Source:** v1.41.12 two-reviewer gate (QA seat, delta-2 note).
+
+## #41 — login rate limiter buckets per (ip, username); XFF-trusting deployments must sanitize the header (v1.43.1 health review)
+- **What:** `rateKey` (server.js) buckets login attempts per `(ip, lowercased-username)`. Two accepted residuals, both flagged by the v1.43.1 gate's Group C pass: (1) an attacker spraying MANY usernames from one IP never accumulates a bucket (per-username enumeration is unthrottled); (2) with `FILETUBE_TRUST_PROXY=1` the first X-Forwarded-For hop is trusted, so a proxy that does not overwrite inbound XFF lets a client mint a fresh bucket per attempt. Bounded: the limiter is defense-in-depth by design — the real login cost is the async scrypt verify — and the family-LAN/NPM deployment (which does sanitize XFF) is the documented posture. A source comment at `rateKey` now states the proxy requirement.
+- **Fix direction:** v1.44's planned rate-limit hardening — add a per-IP total-attempt ceiling across usernames, and consider honoring only a configured trusted-proxy hop count.
+- **Revisit trigger:** the v1.44 RBAC/rate-limit wave (already scoped in the multiuser tranche plan), or any move to expose the instance beyond the household proxy.
+- **Severity:** Low.
+- **Source:** v1.43.1 two-reviewer gate (QA + adversarial seats, suggestions).

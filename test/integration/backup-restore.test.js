@@ -473,6 +473,46 @@ test('v1.43.1 A1: a prod-scale bundle (well over the global parser 100 kb cap) r
   assert.equal(db.metadata.bulk2999.title, big.metadata.bulk2999.title, 'deep content survived the round-trip');
 });
 
+test('v1.43.1 A1 (QA gate WARNING): a bundle just UNDER the 32mb cap restores — the suite pins the cap value itself', async () => {
+  // The first prod-scale test (~1MB) proves the 100kb global cap is bypassed
+  // but would stay green if the route limit silently regressed to the old
+  // dead '16mb' (a merge-conflict revert is the realistic failure). This
+  // bundle is ~28MB on the wire: over every plausible regression value,
+  // under the real cap — only the true 32mb limit passes it.
+  const big = fullState();
+  const pad = 'x'.repeat(9800);
+  for (let i = 0; i < 2900; i++) {
+    const id = `cap${i}`;
+    big.metadata[id] = {
+      id, name: `cap-${i}.mp4`, title: `Cap probe ${i} ${pad}`, type: 'video',
+      ext: '.mp4', filePath: `/media/videos/cap/cap-${i}.mp4`, duration: 60, folderName: 'Videos',
+    };
+  }
+  saveDatabase(big);
+  const bundle = await getBackup();
+  const wireBytes = Buffer.byteLength(JSON.stringify(bundle));
+  assert.ok(wireBytes > 24 * 1024 * 1024 && wireBytes < 32 * 1024 * 1024,
+    `fixture must sit between every plausible regression value and the cap (got ${wireBytes} bytes)`);
+  const res = await postRestore(bundle);
+  assert.equal(res.status, 200, `a near-cap restore must parse (got ${res.status})`);
+  assert.equal(loadDatabase().metadata.cap2899.name, 'cap-2899.mp4');
+});
+
+test('v1.43.1 A1 (adversarial WARNING-1): a MEMBER posting an oversized body gets 403 BEFORE the parse — 403, never 413', async () => {
+  // The requireAdmin middleware sits AHEAD of the route-scoped 32mb parser:
+  // a non-admin must be refused without the server buffering/parsing their
+  // multi-MB body. A 413 here would mean the parser ran first — the exact
+  // member-reachable CPU/memory amplifier the fix exists to prevent.
+  const { __mintTestSession } = require('../../server');
+  const member = __mintTestSession({ username: 'bulkmember', role: 'member' });
+  const res = await fetch(`${base}/api/admin/restore`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Cookie: member.cookie },
+    body: `{"metadata":"${'x'.repeat(40 * 1024 * 1024)}"}`, // over the cap: parse-first would 413
+  });
+  assert.equal(res.status, 403, 'admin check answers before the parser ever runs');
+});
+
 test('v1.43.1 A1: a bundle OVER the 32mb cap gets a clean JSON 413 from the ROUTE-scoped error middleware (never an HTML error page)', async () => {
   // Content-Length past the limit makes body-parser refuse up front — no
   // need to build a valid bundle, the parse dies before validation runs.

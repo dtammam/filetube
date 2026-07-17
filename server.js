@@ -4445,8 +4445,16 @@ function isRestorePath(reqPath) {
   return typeof reqPath === 'string'
     && reqPath.replace(/\/+$/, '').toLowerCase() === RESTORE_ROUTE_PATH;
 }
+// Method-scoped to POST (the only verb registered on that path — exec-plan
+// consistency, adversarial-seat NOTE-5): a GET/PUT there 404s with its body
+// unread either way; scoping the skip keeps this predicate exactly as narrow
+// as the route it exists for. Verified against express/path-to-regexp
+// source: both this middleware's req.path and the router match the same raw
+// undecoded pathname, and the router's non-strict case-insensitive regexp
+// accepts exactly the spellings the normalized compare accepts — no spelling
+// reaches the route through the wrong parser in either direction.
 app.use((req, res, next) => {
-  if (isRestorePath(req.path)) return next();
+  if (req.method === 'POST' && isRestorePath(req.path)) return next();
   return globalJsonParser(req, res, next);
 });
 // v1.28.0 (iOS Shortcuts robustness): without this, a malformed JSON body
@@ -4520,6 +4528,13 @@ function issueSessionCookie(res, req, user) {
 function clearSessionCookie(res) {
   res.setHeader('Set-Cookie', authGateLib.serializeCookie(AUTH_COOKIE_NAME, '', { expired: true }));
 }
+// NOTE (v1.43.1 health review): with FILETUBE_TRUST_PROXY=1 the first
+// X-Forwarded-For hop is trusted as the client ip — the fronting proxy MUST
+// overwrite/sanitize inbound XFF (NPM's default proxy headers do), or a
+// client can rotate the header to mint a fresh rate bucket per attempt. The
+// limiter is defense-in-depth (async scrypt is the real login cost); the
+// per-(ip,username) bucket shape itself is revisited in v1.44's rate-limit
+// hardening (tech-debt tracker).
 function rateKey(req, username) {
   const ip = (TRUST_PROXY && typeof req.headers['x-forwarded-for'] === 'string'
     ? req.headers['x-forwarded-for'].split(',')[0].trim()
@@ -4539,7 +4554,7 @@ app.post('/api/auth/setup', async (req, res) => {
   const limit = loginRateLimiter.take(rateKey(req, username));
   if (!limit.allowed) return res.status(429).json({ error: 'too many attempts', retryAfterSec: limit.retryAfterSec });
   if (!userStore.validateUsername(username)) return res.status(400).json({ error: 'Username can use letters, numbers, and . _ - (up to 64 characters).' });
-  if (password.length < 8) return res.status(400).json({ error: 'Use a password of at least 8 characters.' });
+  if (password.length < authCrypto.MIN_PASSWORD_LENGTH) return res.status(400).json({ error: PASSWORD_RULE_MESSAGE });
   try {
     const passwordHash = await authCrypto.hashPassword(password); // async: off the event loop
     // Read the pre-auth global state to adopt (once, before the tx).
@@ -4706,7 +4721,7 @@ function wouldRemoveLastAdmin(targetId, change) {
 }
 
 const USERNAME_RULE_MESSAGE = 'Username can use letters, numbers, and . _ - (up to 64 characters).';
-const PASSWORD_RULE_MESSAGE = 'Use a password of at least 8 characters.';
+const PASSWORD_RULE_MESSAGE = `Use a password of at least ${authCrypto.MIN_PASSWORD_LENGTH} characters.`;
 
 app.get('/api/users', (req, res) => {
   if (!requireAdmin(req, res)) return;
@@ -4722,7 +4737,7 @@ app.post('/api/users', async (req, res) => {
   const role = body.role === 'admin' ? 'admin' : 'member';
   const canManageSubscriptions = body.canManageSubscriptions === true;
   if (!userStore.validateUsername(username)) return res.status(400).json({ error: USERNAME_RULE_MESSAGE });
-  if (password.length < 8) return res.status(400).json({ error: PASSWORD_RULE_MESSAGE });
+  if (password.length < authCrypto.MIN_PASSWORD_LENGTH) return res.status(400).json({ error: PASSWORD_RULE_MESSAGE });
   if (userStore.getByUsername(username)) return res.status(409).json({ error: 'That username is already taken.' });
   try {
     const passwordHash = await authCrypto.hashPassword(password); // async: off the event loop
@@ -4759,7 +4774,7 @@ app.post('/api/users/:id/password', async (req, res) => {
   const target = resolveTargetUser(req, res);
   if (!target) return;
   const password = req.body && typeof req.body.password === 'string' ? req.body.password : '';
-  if (password.length < 8) return res.status(400).json({ error: PASSWORD_RULE_MESSAGE });
+  if (password.length < authCrypto.MIN_PASSWORD_LENGTH) return res.status(400).json({ error: PASSWORD_RULE_MESSAGE });
   try {
     const passwordHash = await authCrypto.hashPassword(password);
     userStore.updatePassword(target.id, passwordHash); // bumps token_version -> every session revoked
@@ -6249,13 +6264,18 @@ function validateBackupBundle(bundle) {
 // 32mb (Dean-approved, v1.43.1 intake): his prod bundle is ~2943 metadata
 // items (~1.5–2 KB each ≈ 4–6 MB) + per-user state + up to two logo
 // variants at ~2.7 MB base64 each ≈ ~12 MB realistic worst case; 32mb
-// leaves ~2.5× headroom for library growth. Parsing happens strictly AFTER
-// the auth gate has authenticated the caller (an unauthenticated POST is
-// 401'd before any body is read); requireAdmin then narrows the handler
-// itself to admins. So the multi-MB parse is reachable only by
-// authenticated household accounts, never pre-auth.
-app.post('/api/admin/restore', express.json({ limit: '32mb' }), async (req, res) => {
+// leaves ~2.5× headroom for library growth. The chain order is the security
+// posture (adversarial-seat WARNING-1): the auth gate 401s unauthenticated
+// callers before any body is read, and the requireAdmin middleware BELOW
+// runs before the parser, so a non-admin MEMBER is 403'd without the server
+// ever buffering or JSON.parsing a multi-MB body — the big parse is
+// reachable by ADMINS only, exactly what the exec plan promised (parsing
+// first would have handed any household account a 32mb CPU/memory
+// amplifier).
+app.post('/api/admin/restore', (req, res, next) => {
   if (!requireAdmin(req, res)) return;
+  next();
+}, express.json({ limit: '32mb' }), async (req, res) => {
   const bundle = req.body;
   const problem = validateBackupBundle(bundle);
   if (problem) return res.status(400).json({ error: problem });
