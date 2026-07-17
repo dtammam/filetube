@@ -97,6 +97,41 @@ Navigate to [http://localhost:3000](http://localhost:3000) (or the port you conf
 
 Open the **Settings** gear icon in the top right, add your container paths (e.g. `/media/movies`), and click **Save & Scan Library**.
 
+### Accounts & signing in (v1.43+)
+
+FileTube is account-walled: the first boot takes you to a one-time **/welcome**
+page to create the admin account (your existing watch progress, likes, book
+positions, and pins are adopted into it). Add household members from
+**Settings → Users**; each account keeps its own watch progress, likes,
+reading positions, and pins. Sessions are signed cookies that survive
+restarts; changing a user's password (or disabling them) signs out all of
+their sessions instantly.
+
+Useful environment variables (all optional):
+
+- `FILETUBE_SESSION_SECRET` — pin the cookie-signing secret (otherwise one is
+  minted and stored in the data dir).
+- `FILETUBE_TRUST_PROXY=1` — set when running behind a reverse proxy that
+  terminates HTTPS (e.g. Nginx Proxy Manager) so cookies are marked Secure.
+  Your proxy must overwrite the `X-Forwarded-For` header (NPM does).
+- `FILETUBE_API_TOKEN` — a bearer token that lets an iOS Shortcut post
+  one-off downloads without a browser session.
+
+**Forgot the admin password?** There is deliberately no in-app reset. Run the
+recovery script as whoever operates the box (it works with the server
+running or stopped):
+
+```bash
+# inside the container (or on the host with DATA_DIR set):
+docker exec -it -e FILETUBE_NEW_PASSWORD='new-password-here' filetube \
+  node scripts/reset-admin.js yourusername
+```
+
+It resets the password (signing out every session for that user), can
+bootstrap a first admin if the users table is somehow empty, never promotes
+a non-admin, and requires an explicit `--enable` flag to also re-enable a
+disabled account.
+
 ### Automation & Storage
 
 The **Settings → Automation & Storage** box controls the two things the

@@ -217,3 +217,31 @@ test('gate: no cookie on a page request → redirect to /login; on an API → 40
   const rApi = fakeRes(); g(fakeReq({ path: '/api/videos', accept: 'application/json' }), rApi, () => {});
   assert.equal(rApi._status, 401);
 });
+
+// ---- v1.43.1 gate fix (adversarial WARNING-2): hostile cookie headers ------
+
+test('parseCookies NEVER throws on a malformed %-sequence — the bad value stays raw, siblings still parse', () => {
+  // decodeURIComponent throws URIError on '%zz'; unguarded, one corrupt
+  // cookie value (ANY cookie on the header, not just ours) 500'd every
+  // request through the gate — the global body-parser error middleware is
+  // registered BEFORE the gate and can never catch it (forward-only error
+  // stack). The contract here matches crypto.js's verifySession: no throw on
+  // hostile input, ever.
+  let parsed;
+  assert.doesNotThrow(() => { parsed = gate.parseCookies('ft_session_abc=%zz; b=ok%20x'); });
+  assert.equal(parsed.ft_session_abc, '%zz', 'non-decodable value kept RAW (fails HMAC downstream = clean deny)');
+  assert.equal(parsed.b, 'ok x', 'a valid sibling cookie still decodes');
+});
+
+test('gate: a request carrying a malformed cookie is DENIED cleanly (401/redirect), never a 500', () => {
+  const g = gate.createAuthGate({ store: fakeStore({ count: 1, user: null }), secret: authCrypto.generateSecret(), cookieName: 'ft_session_abc' });
+  // API shape → 401 with the gate's authRequired flag.
+  const apiRes = fakeRes();
+  assert.doesNotThrow(() => g(fakeReq({ path: '/api/videos', accept: 'application/json', cookie: 'ft_session_abc=%zz' }), apiRes, () => { throw new Error('must not authenticate'); }));
+  assert.equal(apiRes._status, 401);
+  assert.equal(apiRes._json && apiRes._json.authRequired, true);
+  // Page shape → login redirect.
+  const pageRes = fakeRes();
+  assert.doesNotThrow(() => g(fakeReq({ path: '/', accept: 'text/html', cookie: 'x=%E0%A4%A; ft_session_abc=%zz' }), pageRes, () => { throw new Error('must not authenticate'); }));
+  assert.ok(pageRes._redirect && /\/login/.test(pageRes._redirect.to), 'fail-closed to /login, not a raw 500');
+});

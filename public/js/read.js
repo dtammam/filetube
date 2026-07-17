@@ -831,6 +831,17 @@ if (typeof module !== 'undefined' && module.exports) {
     if (tapPrev) tapPrev.addEventListener('click', () => adapter && adapter.prev(), { signal });
     if (tapNext) tapNext.addEventListener('click', () => adapter && adapter.next(), { signal });
     document.addEventListener('keydown', (event) => {
+      // v1.43.1 B3: never page-flip while the user is TYPING (header search,
+      // any modal input) -- this handler previously had no guard at all: an
+      // arrow key pressed mid-word in the search box silently flipped the
+      // book underneath. Deliberately NARROWER than player.js's shortcut
+      // guard (which also skips BUTTON/A): Space/Enter activate a focused
+      // button, so the player must stand down there -- arrows don't, and
+      // page-flipping should keep working while e.g. the Listen button holds
+      // focus. Typing surfaces only.
+      const el = document.activeElement;
+      const tag = (el && el.tagName) || '';
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(tag) || (el && el.isContentEditable)) return;
       if (event.key === 'ArrowRight') { if (adapter) adapter.next(); }
       if (event.key === 'ArrowLeft') { if (adapter) adapter.prev(); }
     }, { signal });

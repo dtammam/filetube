@@ -4418,7 +4418,45 @@ async function scanDirRecursive(rootFolder, dirPath, results, unreadable, yieldS
 }
 
 // Middleware
-app.use(express.json());
+//
+// v1.43.1 (A1, Dean's prod restore 413): the global JSON parser SKIPS
+// /api/admin/restore. The global express.json() keeps body-parser's default
+// 100 kb cap, and because it runs before every route, it used to throw
+// entity.too.large for any real backup bundle (~MBs of metadata + accounts
+// + logo b64) BEFORE the restore route's own route-scoped parser was ever
+// reached — that route's larger limit had been dead code since v1.42, and
+// the tiny test fixture masked it. Excluding the path here (rather than
+// raising the global cap) does two jobs:
+//   1. the restore route's route-scoped express.json({limit}) becomes the
+//      ONE parser that owns that body, restoring its limit's meaning;
+//   2. the AUTH GATE below runs before any multi-MB parse happens, so the
+//      large-body allowance is confined to authenticated admins — a global
+//      32mb cap would hand every unauthenticated caller a pre-auth memory
+//      amplifier on every JSON route.
+// Matching is on the normalized path (case-folded, trailing slashes
+// stripped) because Express's default router matches routes
+// case-INsensitively and tolerates trailing slashes — a skip keyed on the
+// exact string would let `/api/admin/restore/` reach the route through the
+// global 100 kb parser again, resurrecting the dead-limit bug for that
+// spelling.
+const globalJsonParser = express.json();
+const RESTORE_ROUTE_PATH = '/api/admin/restore';
+function isRestorePath(reqPath) {
+  return typeof reqPath === 'string'
+    && reqPath.replace(/\/+$/, '').toLowerCase() === RESTORE_ROUTE_PATH;
+}
+// Method-scoped to POST (the only verb registered on that path — exec-plan
+// consistency, adversarial-seat NOTE-5): a GET/PUT there 404s with its body
+// unread either way; scoping the skip keeps this predicate exactly as narrow
+// as the route it exists for. Verified against express/path-to-regexp
+// source: both this middleware's req.path and the router match the same raw
+// undecoded pathname, and the router's non-strict case-insensitive regexp
+// accepts exactly the spellings the normalized compare accepts — no spelling
+// reaches the route through the wrong parser in either direction.
+app.use((req, res, next) => {
+  if (req.method === 'POST' && isRestorePath(req.path)) return next();
+  return globalJsonParser(req, res, next);
+});
 // v1.28.0 (iOS Shortcuts robustness): without this, a malformed JSON body
 // (e.g. a Shortcut that mis-serializes its own payload) makes `express.json()`
 // throw, and Express's DEFAULT error handler renders that as an HTML stack
@@ -4490,6 +4528,13 @@ function issueSessionCookie(res, req, user) {
 function clearSessionCookie(res) {
   res.setHeader('Set-Cookie', authGateLib.serializeCookie(AUTH_COOKIE_NAME, '', { expired: true }));
 }
+// NOTE (v1.43.1 health review): with FILETUBE_TRUST_PROXY=1 the first
+// X-Forwarded-For hop is trusted as the client ip — the fronting proxy MUST
+// overwrite/sanitize inbound XFF (NPM's default proxy headers do), or a
+// client can rotate the header to mint a fresh rate bucket per attempt. The
+// limiter is defense-in-depth (async scrypt is the real login cost); the
+// per-(ip,username) bucket shape itself is revisited in v1.44's rate-limit
+// hardening (tech-debt tracker).
 function rateKey(req, username) {
   const ip = (TRUST_PROXY && typeof req.headers['x-forwarded-for'] === 'string'
     ? req.headers['x-forwarded-for'].split(',')[0].trim()
@@ -4509,7 +4554,7 @@ app.post('/api/auth/setup', async (req, res) => {
   const limit = loginRateLimiter.take(rateKey(req, username));
   if (!limit.allowed) return res.status(429).json({ error: 'too many attempts', retryAfterSec: limit.retryAfterSec });
   if (!userStore.validateUsername(username)) return res.status(400).json({ error: 'Username can use letters, numbers, and . _ - (up to 64 characters).' });
-  if (password.length < 8) return res.status(400).json({ error: 'Use a password of at least 8 characters.' });
+  if (password.length < authCrypto.MIN_PASSWORD_LENGTH) return res.status(400).json({ error: PASSWORD_RULE_MESSAGE });
   try {
     const passwordHash = await authCrypto.hashPassword(password); // async: off the event loop
     // Read the pre-auth global state to adopt (once, before the tx).
@@ -4676,7 +4721,7 @@ function wouldRemoveLastAdmin(targetId, change) {
 }
 
 const USERNAME_RULE_MESSAGE = 'Username can use letters, numbers, and . _ - (up to 64 characters).';
-const PASSWORD_RULE_MESSAGE = 'Use a password of at least 8 characters.';
+const PASSWORD_RULE_MESSAGE = `Use a password of at least ${authCrypto.MIN_PASSWORD_LENGTH} characters.`;
 
 app.get('/api/users', (req, res) => {
   if (!requireAdmin(req, res)) return;
@@ -4692,7 +4737,7 @@ app.post('/api/users', async (req, res) => {
   const role = body.role === 'admin' ? 'admin' : 'member';
   const canManageSubscriptions = body.canManageSubscriptions === true;
   if (!userStore.validateUsername(username)) return res.status(400).json({ error: USERNAME_RULE_MESSAGE });
-  if (password.length < 8) return res.status(400).json({ error: PASSWORD_RULE_MESSAGE });
+  if (password.length < authCrypto.MIN_PASSWORD_LENGTH) return res.status(400).json({ error: PASSWORD_RULE_MESSAGE });
   if (userStore.getByUsername(username)) return res.status(409).json({ error: 'That username is already taken.' });
   try {
     const passwordHash = await authCrypto.hashPassword(password); // async: off the event loop
@@ -4729,7 +4774,7 @@ app.post('/api/users/:id/password', async (req, res) => {
   const target = resolveTargetUser(req, res);
   if (!target) return;
   const password = req.body && typeof req.body.password === 'string' ? req.body.password : '';
-  if (password.length < 8) return res.status(400).json({ error: PASSWORD_RULE_MESSAGE });
+  if (password.length < authCrypto.MIN_PASSWORD_LENGTH) return res.status(400).json({ error: PASSWORD_RULE_MESSAGE });
   try {
     const passwordHash = await authCrypto.hashPassword(password);
     userStore.updatePassword(target.id, passwordHash); // bumps token_version -> every session revoked
@@ -6210,10 +6255,27 @@ function validateBackupBundle(bundle) {
 }
 
 // Route-scoped body limit: the default express.json() cap (100 kb) cannot
-// carry a real bundle (175 KB of state + up to 2 MB of logo b64) — same
-// route-scoped-parser posture as the logo upload's express.raw.
-app.post('/api/admin/restore', express.json({ limit: '16mb' }), async (req, res) => {
+// carry a real bundle — same route-scoped-parser posture as the logo
+// upload's express.raw. This parser is only ALIVE because the global
+// express.json() explicitly skips this path (see the middleware comment at
+// its registration): before v1.43.1 the global 100 kb parser threw first
+// and this limit was dead code, 413-ing every real-world restore.
+//
+// 32mb (Dean-approved, v1.43.1 intake): his prod bundle is ~2943 metadata
+// items (~1.5–2 KB each ≈ 4–6 MB) + per-user state + up to two logo
+// variants at ~2.7 MB base64 each ≈ ~12 MB realistic worst case; 32mb
+// leaves ~2.5× headroom for library growth. The chain order is the security
+// posture (adversarial-seat WARNING-1): the auth gate 401s unauthenticated
+// callers before any body is read, and the requireAdmin middleware BELOW
+// runs before the parser, so a non-admin MEMBER is 403'd without the server
+// ever buffering or JSON.parsing a multi-MB body — the big parse is
+// reachable by ADMINS only, exactly what the exec plan promised (parsing
+// first would have handed any household account a 32mb CPU/memory
+// amplifier).
+app.post('/api/admin/restore', (req, res, next) => {
   if (!requireAdmin(req, res)) return;
+  next();
+}, express.json({ limit: '32mb' }), async (req, res) => {
   const bundle = req.body;
   const problem = validateBackupBundle(bundle);
   if (problem) return res.status(400).json({ error: problem });
@@ -6287,6 +6349,21 @@ app.post('/api/admin/restore', express.json({ limit: '16mb' }), async (req, res)
     if (restoredSelf) issueSessionCookie(res, req, restoredSelf);
   }
   res.json({ success: true, restoredNamespaces: Object.keys(dbPart), usersRestored: restoresUsers ? bundle.users.length : 0 });
+}, (err, req, res, next) => {
+  // Route-scoped 4-arg (error-handling) middleware, the lib/ytdlp
+  // POST /api/ytdlp/download precedent: the global body-parser error
+  // middleware near the top of the file can NEVER catch an error raised by
+  // this route's own express.json() — Express only walks its error stack
+  // FORWARD from where the error was raised (see lib/bodyParserErrors.js's
+  // block comment), and that middleware is registered before this route
+  // exists. Without this trailing handler, a bundle over the 32mb cap (or
+  // malformed JSON) would render Express's default HTML stack page instead
+  // of the clean JSON error contract every other body-parse failure honors.
+  const mapped = formatBodyParserError(err);
+  if (mapped) {
+    return res.status(mapped.status).json(mapped.body);
+  }
+  return next(err);
 });
 
 // API: Read the Automation & Storage settings for Settings-page prefill.

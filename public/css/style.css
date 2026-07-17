@@ -6207,14 +6207,16 @@ body.ft-css-fullscreen .bottom-nav {
   color: var(--text-primary);
   font-family: var(--font-family);
 }
+/* v1.43.1 B1 (Dean: "feels constrained"): de-boxed. The original bordered/
+   shadowed card (background/border/border-radius/box-shadow, 380px) made the
+   form read as a cramped panel; the form now sits open on the page —
+   .login-page's own padding provides the edge gutters, so the horizontal
+   padding went too. The inputs carry the "distinct well" job the card used
+   to do — see .login-field input's --bg-secondary note below. */
 .login-card {
   width: 100%;
-  max-width: 380px;
-  background: var(--card-bg);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-lg);
-  padding: calc(var(--density) * 4) calc(var(--density) * 3.5);
+  max-width: 420px;
+  padding: calc(var(--density) * 4) 0;
   display: flex;
   flex-direction: column;
   gap: calc(var(--density) * 2.5);
@@ -6288,7 +6290,11 @@ body.ft-css-fullscreen .bottom-nav {
   font-family: var(--font-family);
   font-size: var(--fs-input-min); /* >=16px: the iOS-zoom-on-focus floor */
   color: var(--text-primary);
-  background: var(--bg-color);
+  /* v1.43.1 B1: --bg-secondary, not --bg-color. With the card chrome gone
+     the page behind the inputs IS --bg-color — inputs sharing it would
+     dissolve into the page (worst in dark mode). The secondary tone keeps
+     each field a legible, distinct well without the card. */
+  background: var(--bg-secondary);
   border: 1px solid var(--border-dark);
   border-radius: var(--radius);
   padding: calc(var(--density) * 1.25) calc(var(--density) * 1.5);

@@ -423,3 +423,119 @@ test('CRITICAL-1: an id-reassigning restore invalidates a THIRD PARTY\'s live co
   // The operator, by contrast, got a reissued cookie and stays signed in.
   assert.ok(res.headers.get('set-cookie'), 'the operator is reissued a valid cookie against the restored row');
 });
+
+// ---- v1.43.1 A1: the dead route-scoped limit / global-parser 413 -----------
+//
+// Root cause (Dean's prod restore failing with 413): the GLOBAL
+// express.json() (default 100 kb) ran before the restore route, so any
+// real-world bundle died there and the route's own larger limit was DEAD
+// code. Every fixture above is a few KB, which is exactly why the regression
+// stayed invisible: these tests exist so a bundle at REAL prod scale (and
+// past it) exercises the actual parser topology, never just the happy-size
+// path.
+
+// fullState() plus enough realistic metadata rows to push the serialized
+// bundle well past the global parser's 100 kb cap (Dean's prod bundle is
+// ~2943 items; this builds a comparable map).
+function prodScaleState(itemCount) {
+  const state = fullState();
+  for (let i = 0; i < itemCount; i++) {
+    const id = `bulk${i}`;
+    state.metadata[id] = {
+      id,
+      name: `bulk-${i}.mp4`,
+      title: `Bulk clip ${i} — a realistically long yt-dlp style title so each row carries real-world weight`,
+      type: 'video',
+      ext: '.mp4',
+      filePath: `/media/videos/bulk/channel-${i % 40}/bulk-${i}.mp4`,
+      duration: 3600,
+      folderName: 'Videos',
+    };
+    state.viewCounts[id] = i % 7;
+  }
+  return state;
+}
+
+test('v1.43.1 A1: a prod-scale bundle (well over the global parser 100 kb cap) round-trips — the 32mb route-scoped limit is ALIVE', async () => {
+  const big = prodScaleState(3000);
+  saveDatabase(big);
+  const bundle = await getBackup();
+  const wireBytes = Buffer.byteLength(JSON.stringify(bundle));
+  assert.ok(wireBytes > 150 * 1024,
+    `precondition: the fixture must dwarf the global 100 kb cap or this test proves nothing (got ${wireBytes} bytes)`);
+
+  saveDatabase(fullState()); // wipe down to the small state, then restore the big one
+  const res = await postRestore(bundle);
+  assert.equal(res.status, 200,
+    `a real-scale restore must not 413 (got ${res.status}: ${await res.text().catch(() => '')})`);
+  const db = loadDatabase();
+  assert.equal(Object.keys(db.metadata).length, Object.keys(big.metadata).length, 'every metadata row landed');
+  assert.equal(db.metadata.bulk2999.title, big.metadata.bulk2999.title, 'deep content survived the round-trip');
+});
+
+test('v1.43.1 A1 (QA gate WARNING): a bundle just UNDER the 32mb cap restores — the suite pins the cap value itself', async () => {
+  // The first prod-scale test (~1MB) proves the 100kb global cap is bypassed
+  // but would stay green if the route limit silently regressed to the old
+  // dead '16mb' (a merge-conflict revert is the realistic failure). This
+  // bundle is ~28MB on the wire: over every plausible regression value,
+  // under the real cap — only the true 32mb limit passes it.
+  const big = fullState();
+  const pad = 'x'.repeat(9800);
+  for (let i = 0; i < 2900; i++) {
+    const id = `cap${i}`;
+    big.metadata[id] = {
+      id, name: `cap-${i}.mp4`, title: `Cap probe ${i} ${pad}`, type: 'video',
+      ext: '.mp4', filePath: `/media/videos/cap/cap-${i}.mp4`, duration: 60, folderName: 'Videos',
+    };
+  }
+  saveDatabase(big);
+  const bundle = await getBackup();
+  const wireBytes = Buffer.byteLength(JSON.stringify(bundle));
+  assert.ok(wireBytes > 24 * 1024 * 1024 && wireBytes < 32 * 1024 * 1024,
+    `fixture must sit between every plausible regression value and the cap (got ${wireBytes} bytes)`);
+  const res = await postRestore(bundle);
+  assert.equal(res.status, 200, `a near-cap restore must parse (got ${res.status})`);
+  assert.equal(loadDatabase().metadata.cap2899.name, 'cap-2899.mp4');
+});
+
+test('v1.43.1 A1 (adversarial WARNING-1): a MEMBER posting an oversized body gets 403 BEFORE the parse — 403, never 413', async () => {
+  // The requireAdmin middleware sits AHEAD of the route-scoped 32mb parser:
+  // a non-admin must be refused without the server buffering/parsing their
+  // multi-MB body. A 413 here would mean the parser ran first — the exact
+  // member-reachable CPU/memory amplifier the fix exists to prevent.
+  const { __mintTestSession } = require('../../server');
+  const member = __mintTestSession({ username: 'bulkmember', role: 'member' });
+  const res = await fetch(`${base}/api/admin/restore`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Cookie: member.cookie },
+    body: `{"metadata":"${'x'.repeat(40 * 1024 * 1024)}"}`, // over the cap: parse-first would 413
+  });
+  assert.equal(res.status, 403, 'admin check answers before the parser ever runs');
+});
+
+test('v1.43.1 A1: a bundle OVER the 32mb cap gets a clean JSON 413 from the ROUTE-scoped error middleware (never an HTML error page)', async () => {
+  // Content-Length past the limit makes body-parser refuse up front — no
+  // need to build a valid bundle, the parse dies before validation runs.
+  const oversized = `{"metadata":"${'x'.repeat(33 * 1024 * 1024)}"}`;
+  const res = await fetch(`${base}/api/admin/restore`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: oversized,
+  });
+  assert.equal(res.status, 413);
+  // .json() throwing here would mean Express's default HTML error page — the
+  // exact contract violation the route-scoped 4-arg middleware exists to
+  // prevent (the global mapping middleware can never see this route's error).
+  assert.deepEqual(await res.json(), { error: 'request body too large' });
+});
+
+test('v1.43.1 A1: an UNAUTHENTICATED oversized POST is 401d by the gate — the multi-MB parse allowance is never reachable pre-auth', async () => {
+  const res = await fetch(`${base}/api/admin/restore`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Cookie: '' },
+    body: `{"metadata":"${'x'.repeat(200 * 1024)}"}`,
+  });
+  assert.equal(res.status, 401, 'the gate must answer before any body handling');
+  const body = await res.json();
+  assert.equal(body.authRequired, true, 'this is the GATE 401 (authRequired flag), not a handler 401');
+});
