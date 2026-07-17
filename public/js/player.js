@@ -814,6 +814,44 @@ function buildCaptionOverlayText(rawCueTexts) {
   return lines.join('\n');
 }
 
+// ---- v1.43.1 B2: chapters-menu height clamp (pure math) --------------------
+// The chapters popup opens UPWARD from the control bar inside #player-wrapper,
+// which is overflow:hidden and (mobile portrait) max-height-capped at 45vh —
+// while the menu's own stylesheet cap is 50vh there. Anything taller than the
+// space between the bar's top and the wrapper's visible top edge renders its
+// FIRST rows into the clipped band above the wrapper: the menu's inner
+// scroll can never reach them (they sit at the box's top, which is the part
+// being clipped), so on-device the top chapters were only glimpsable while an
+// iOS rubber-band overstretch dragged the list content down (Dean's exact
+// symptom; css-fullscreen releases the cap, which is why fullscreen "fixed"
+// it). Pure resolver for the live measurement (the v1.37.2 measure-don't-
+// guess lesson): given the bar's viewport top, the wrapper's viewport top and
+// the menu's rendered height, return the px max-height to inline — or null
+// when the rendered menu already fits (the stylesheet's vh cap stays
+// authoritative in that case; desktop keeps its 45vh exactly).
+//   - clipTop clamps at 0: a page-scrolled wrapper whose top edge is above
+//     the viewport clips at the VIEWPORT, not at its own off-screen edge.
+//   - GAP is the menu's own `bottom: calc(100% + 6px)` anchor gap; INSET
+//     keeps a small breathing margin below the clip edge.
+//   - The floor keeps a pathological geometry (a tiny wrapper) usable-ish
+//     instead of clamping the menu to a sliver; a floored menu may still
+//     clip a little top — strictly better than the unclamped status quo.
+var CHAPTERS_MENU_ANCHOR_GAP = 6;
+var CHAPTERS_MENU_CLIP_INSET = 8;
+var CHAPTERS_MENU_MIN_HEIGHT = 96;
+function resolveChaptersMenuMaxHeight(geom) {
+  if (!geom) return null;
+  var barTop = geom.barTop;
+  var clipTop = geom.clipTop;
+  var menuHeight = geom.menuHeight;
+  if (typeof barTop !== 'number' || !isFinite(barTop)) return null;
+  if (typeof clipTop !== 'number' || !isFinite(clipTop)) return null;
+  if (typeof menuHeight !== 'number' || !isFinite(menuHeight) || menuHeight <= 0) return null;
+  var avail = Math.floor(barTop - CHAPTERS_MENU_ANCHOR_GAP - Math.max(clipTop, 0) - CHAPTERS_MENU_CLIP_INSET);
+  if (menuHeight <= avail) return null; // already fits — leave the CSS cap in charge
+  return Math.max(avail, CHAPTERS_MENU_MIN_HEIGHT);
+}
+
 // Guarded so requiring this file in Node (for unit tests) never touches
 // `window`/`document` -- mirrors common.js's own `if (typeof window ...)`
 // runtime guard immediately below.
@@ -854,6 +892,8 @@ if (typeof module !== 'undefined' && module.exports) {
     mediaAspectOrientationMismatch,
     stripVttCueTags,
     buildCaptionOverlayText,
+    // v1.43.1 B2: chapters-menu clip clamp -- see resolveChaptersMenuMaxHeight.
+    resolveChaptersMenuMaxHeight,
   };
 }
 
@@ -4260,6 +4300,9 @@ if (typeof module !== 'undefined' && module.exports) {
       edit.textContent = currentChapters.length > 0 ? 'Edit chapters…' : 'Add chapters…';
       edit.addEventListener('click', openChaptersEditorFromMenu);
       chaptersMenu.appendChild(edit);
+      // v1.43.1 B2: a rebuild while OPEN (Loop arm/disarm re-renders rows)
+      // re-measures; hidden rebuilds no-op inside the clamp's own guard.
+      clampChaptersMenuHeight();
     }
     // Exposed to setupForMedia (which runs outside this wiring closure).
     applyChaptersForMedia = function (data) {
@@ -4285,6 +4328,26 @@ if (typeof module !== 'undefined' && module.exports) {
       if (chaptersBtn) chaptersBtn.style.display = 'none';
       if (host) host.classList.remove('has-chapters');
     };
+    // v1.43.1 B2 (Dean: top chapters unreachable on mobile): live half of
+    // resolveChaptersMenuMaxHeight (see its comment block for the geometry).
+    // Measures ONLY while the menu is visible ([hidden] is display:none, so
+    // rects are all 0 and the resolver correctly no-ops); clears any previous
+    // clamp first so the CSS vh cap governs whenever the content fits. The
+    // inline max-height is the one style JS owns here — everything else about
+    // the menu stays stylesheet-driven.
+    function clampChaptersMenuHeight() {
+      if (!chaptersMenu || chaptersMenu.hidden || !playerControls || !host) return;
+      chaptersMenu.style.maxHeight = '';
+      var clamp = resolveChaptersMenuMaxHeight({
+        barTop: playerControls.getBoundingClientRect().top,
+        clipTop: host.getBoundingClientRect().top,
+        menuHeight: chaptersMenu.getBoundingClientRect().height,
+      });
+      if (clamp !== null) chaptersMenu.style.maxHeight = clamp + 'px';
+    }
+    // Rotation/keyboard/viewport changes re-run the measurement while open
+    // (hidden → the guard above makes this free).
+    window.addEventListener('resize', clampChaptersMenuHeight);
     if (chaptersBtn) {
       chaptersBtn.addEventListener('click', function (e) {
         e.stopPropagation();
@@ -4296,6 +4359,10 @@ if (typeof module !== 'undefined' && module.exports) {
         // menu builder, so the menu re-derives truth each time it appears.
         if (opening) buildChaptersMenu();
         chaptersMenu.hidden = !opening;
+        // v1.43.1 B2: clamp AFTER unhiding — the measurement needs rendered
+        // geometry, and a rebuild-while-open (Loop toggles) re-clamps via
+        // the buildChaptersMenu tail call below.
+        if (opening) clampChaptersMenuHeight();
         chaptersBtn.setAttribute('aria-expanded', opening ? 'true' : 'false');
       });
     }
