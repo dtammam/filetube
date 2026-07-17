@@ -93,14 +93,19 @@ async function postRestore(bundle) {
   });
 }
 
-test('AC6: backup -> wipe -> restore -> deep-equal (every namespace round-trips, users reserved empty)', async () => {
+test('AC6: backup -> wipe -> restore -> deep-equal (every namespace round-trips; v1.43: users ride the bundle)', async () => {
   saveDatabase(fullState());
   const beforeState = loadDatabase();
 
   const bundle = await getBackup();
   assert.equal(bundle.schema, 'filetube-backup-v1');
   assert.ok(bundle.exportedAt && bundle.appVersion);
-  assert.deepEqual(bundle.users, [], 'users section reserved from day one');
+  // v1.43: the bundle carries the full account set (the suite's admin at
+  // minimum), hashes included.
+  assert.ok(Array.isArray(bundle.users) && bundle.users.length >= 1);
+  const bundledAdmin = bundle.users.find((u) => u.username === auth.user.username);
+  assert.ok(bundledAdmin, 'the acting admin rides the bundle');
+  assert.equal(typeof bundledAdmin.passwordHash, 'string', 'account restore needs the hash');
   assert.deepEqual(bundle.viewCounts, { vid1: 9 }, 'viewCounts is a first-class bundle namespace');
 
   await __resetDatabaseForTests(); // the wipe
@@ -145,7 +150,18 @@ test('logo bytes round-trip: upload -> backup -> delete -> restore brings back b
 
 test('F5 coherency: a progress ping staged BEFORE the restore never lands after it, and a zero-write read serves restored data', async () => {
   saveDatabase(fullState());
-  // Stage (do not flush) a ping.
+  // A COMMITTED per-user position rides the bundle (v1.43 chunk 4d)...
+  const committed = await fetch(`${base}/api/progress`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id: 'vid1', timestamp: 42, duration: 100 }),
+  });
+  assert.equal(committed.status, 200);
+  await flushPendingProgress();
+  const bundle = await getBackup();
+  assert.equal(bundle.users.find((u) => u.username === auth.user.username).progress.vid1.timestamp, 42,
+    'precondition: the committed position rides the bundle');
+
+  // ...then a NEWER ping is staged (never flushed) before the restore fires.
   const ping = await fetch(`${base}/api/progress`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ id: 'vid1', timestamp: 77, duration: 100 }),
@@ -154,23 +170,18 @@ test('F5 coherency: a progress ping staged BEFORE the restore never lands after 
   const pendingKey = pendingProgressKey(auth.user.id, 'vid1');
   assert.ok(pendingProgress.has(pendingKey), 'precondition: ping staged');
 
-  const bundle = await getBackup();
   const res = await postRestore(bundle);
   assert.equal(res.status, 200);
   assert.ok(!pendingProgress.has(pendingKey), 'the restore cleared the staged ping');
 
-  // v1.43 (chunk 4b): watch positions read from the per-user rows now, and a
-  // v1.42-format bundle carries only the FROZEN pre-auth `progress` record --
-  // so the post-restore read contract is "the stale ping is gone", not "the
-  // doc-table value shows through". (The chunk-4 backup rework carries
-  // per-user state in the bundle and restores THIS assertion to a positive
-  // read of the restored per-user position.)
+  // Zero intervening writes: the very next read serves the RESTORED per-user
+  // position (the original v1.42 F5 contract, now at the per-user layer).
   const read = await fetch(`${base}/api/progress/vid1`);
-  assert.equal((await read.json()).timestamp, 0, 'the pre-restore ping never shows -- and no fallback to the frozen doc-table record');
+  assert.equal((await read.json()).timestamp, 42, 'restored position, not the stale ping');
 
   // Even an explicit flush now must not land the pre-restore ping.
   await flushPendingProgress();
-  assert.equal(userStore.getOneProgress(auth.user.id, 'vid1'), null, 'the pre-restore ping never lands in user_progress');
+  assert.equal(userStore.getOneProgress(auth.user.id, 'vid1').timestamp, 42, 'the pre-restore ping never lands over the restored position');
   assert.equal(loadDatabase().progress.vid1.timestamp, 42, 'the frozen doc-table record is exactly what the bundle restored -- untouched by any flush');
 });
 
@@ -180,10 +191,12 @@ test('validation refuses: wrong schema, unknown bundle key, non-empty users, ove
 
   assert.equal((await postRestore({ ...good, schema: 'filetube-backup-v99' })).status, 400);
   assert.equal((await postRestore({ ...good, mysteryKey: 1 })).status, 400);
+  // v1.43: users restore for real now -- but a malformed entry still refuses
+  // the WHOLE bundle up front (no lossy/partial account restore).
   const withUsers = { ...good, users: [{ username: 'admin' }] };
   const resUsers = await postRestore(withUsers);
   assert.equal(resUsers.status, 400);
-  assert.match((await resUsers.json()).error, /users arrive in v1.43/, 'a v1.43 bundle is refused loudly, never lossily');
+  assert.match((await resUsers.json()).error, /id must be a positive integer/, 'a malformed users entry is refused loudly, never lossily');
   assert.equal((await postRestore({ ...good, customLogo: { light: { mime: 'image/svg+xml', b64: 'AA==' } } })).status, 400, 'mime outside the allowlist refused');
   assert.equal((await postRestore({ ...good, customLogo: { blue: { mime: 'image/png', b64: 'AA==' } } })).status, 400, 'unknown variant refused');
   const spoofed = await postRestore({ ...good, customLogo: { light: { mime: 'image/png', b64: Buffer.from('<svg>not a png</svg>').toString('base64') } } });
@@ -248,4 +261,111 @@ test('a restore that fails mid-populate ROLLS BACK completely — db state AND t
   // before the wipe starts.
   assert.equal((await postRestore({ ...bundle, books: 'not-an-object' })).status, 400);
   assert.equal((await postRestore({ ...bundle, books: [] })).status, 400);
+});
+
+// ---- v1.43 chunk 4d: admin-only, users in the bundle, self-lockout guard ----
+
+test('v1.43: backup and restore are ADMIN-ONLY (a member gets 403 on both)', async () => {
+  const { __mintTestSession } = require('../../server');
+  const member = __mintTestSession({ username: 'backupmember', role: 'member' });
+  assert.equal((await fetch(`${base}/api/admin/backup`, { headers: { Cookie: member.cookie } })).status, 403);
+  const res = await fetch(`${base}/api/admin/restore`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Cookie: member.cookie },
+    body: JSON.stringify({ schema: 'filetube-backup-v1' }),
+  });
+  assert.equal(res.status, 403);
+});
+
+test('v1.43: the session secret NEVER rides the bundle (secrets do not ride bundles)', async () => {
+  saveDatabase(fullState());
+  const bundle = await getBackup();
+  const secretBytes = fs.readFileSync(path.join(DATA_DIR, 'session-secret'), 'utf8').trim();
+  const serialized = JSON.stringify(bundle);
+  assert.ok(secretBytes.length > 0, 'precondition: a session secret exists');
+  assert.ok(!serialized.includes(secretBytes), 'the secret value must not appear anywhere in the bundle');
+  assert.ok(!Object.keys(bundle).some((k) => /secret/i.test(k)), 'no secret-shaped bundle key');
+});
+
+test('v1.43: user accounts + per-user state round-trip through backup -> wipe -> restore, atomically with the doc tables', async () => {
+  saveDatabase(fullState());
+  const { __mintTestSession } = require('../../server');
+  const extra = __mintTestSession({ username: 'roundtripper', role: 'member' });
+  userStore.setProgress(extra.user.id, 'vid1', { timestamp: 33, duration: 100, updatedAt: '2026-07-17T00:00:00.000Z' });
+  userStore.addLiked(extra.user.id, 'vid1', '2026-07-17T00:00:00.000Z');
+  userStore.setBookProgress(extra.user.id, 'bk1', { locator: { kind: 'epub', cfi: 'y' }, percent: 60, updatedAt: '2026-07-17T00:00:00.000Z' });
+  userStore.setChannelPin(extra.user.id, { id: 'cp1', channelDir: '/d/chan', label: 'Chan', pinnedAt: 't', order: 0 });
+
+  const bundle = await getBackup();
+  const bundledExtra = bundle.users.find((u) => u.username === 'roundtripper');
+  assert.ok(bundledExtra, 'the second account rides the bundle');
+  assert.equal(bundledExtra.progress.vid1.timestamp, 33);
+  assert.deepEqual(bundledExtra.liked.map((l) => l.mediaId), ['vid1']);
+
+  // Wipe EVERYTHING (docs + users) to prove the restore rebuilds both.
+  await __resetDatabaseForTests();
+  const { __clearUsersForTests, __mintTestSession: remint } = require('../../server');
+  __clearUsersForTests();
+  // The acting admin must exist to authenticate the restore call -- recreate
+  // it (fresh id; the restore matches by USERNAME and replaces it wholesale).
+  const fresh = remint();
+  assert.equal(userStore.countUsers(), 1, 'precondition: only the freshly-minted admin exists');
+
+  const res = await fetch(`${base}/api/admin/restore`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Cookie: fresh.cookie },
+    body: JSON.stringify(bundle),
+  });
+  assert.equal(res.status, 200);
+  assert.equal((await res.json()).usersRestored, bundle.users.length);
+  assert.ok(res.headers.get('set-cookie'), 'the restoring admin gets a reissued cookie against the RESTORED row');
+
+  const restored = userStore.getByUsername('roundtripper');
+  assert.ok(restored, 'the second account came back');
+  assert.equal(userStore.getOneProgress(restored.id, 'vid1').timestamp, 33, 'their watch position came back');
+  assert.deepEqual(userStore.getLiked(restored.id), ['vid1'], 'their like came back');
+  assert.equal(userStore.getOneBookProgress(restored.id, 'bk1').percent, 60, 'their reading position came back');
+  assert.equal(userStore.getChannelPins(restored.id)[0].id, 'cp1', 'their channel pin came back');
+  assert.equal(loadDatabase().metadata.vid1.title, 'Clip', 'the doc tables restored in the same transaction');
+});
+
+test('v1.43 self-lockout guard: a bundle that lacks the restoring admin (as an enabled admin) is refused whole, nothing changes', async () => {
+  saveDatabase(fullState());
+  const before = await getBackup();
+  const usersBefore = userStore.listUsers().map((u) => u.username).sort();
+
+  // A hostile/stale bundle whose only account is someone else.
+  const foreign = {
+    ...before,
+    users: [{
+      id: 1, username: 'notyou', displayName: 'Not You', passwordHash: 'scrypt$32768$8$1$aa$bb',
+      role: 'admin', canManageSubscriptions: true, settingsJson: '{}', tokenVersion: 0, disabled: false,
+      createdAt: '2026-01-01T00:00:00.000Z',
+    }],
+  };
+  const res = await postRestore(foreign);
+  assert.equal(res.status, 409);
+  assert.match((await res.json()).error, /lock you out/);
+  assert.deepEqual(userStore.listUsers().map((u) => u.username).sort(), usersBefore, 'the account set is untouched');
+
+  // Same refusal when the restoring admin IS present but disabled or demoted.
+  const me = userStore.getByUsername('testadmin');
+  const demoted = { ...foreign, users: [{ ...foreign.users[0], id: 2 }, { id: me.id, username: 'testadmin', passwordHash: 'scrypt$32768$8$1$aa$bb', role: 'member', canManageSubscriptions: false, settingsJson: '{}', tokenVersion: 0, disabled: false, createdAt: '2026-01-01T00:00:00.000Z' }] };
+  assert.equal((await postRestore(demoted)).status, 409, 'present-but-member is still a lockout');
+  const disabledSelf = { ...foreign, users: [{ ...foreign.users[0], id: 2 }, { id: me.id, username: 'testadmin', passwordHash: 'scrypt$32768$8$1$aa$bb', role: 'admin', canManageSubscriptions: true, settingsJson: '{}', tokenVersion: 0, disabled: true, createdAt: '2026-01-01T00:00:00.000Z' }] };
+  assert.equal((await postRestore(disabledSelf)).status, 409, 'present-but-disabled is still a lockout');
+});
+
+test('v1.43: a v1.42-format bundle (users absent or empty) restores the docs and leaves the CURRENT accounts untouched', async () => {
+  saveDatabase(fullState());
+  const bundle = await getBackup();
+  delete bundle.users; // the v1.42 shape
+  const usersBefore = userStore.listUsers().map((u) => u.username).sort();
+
+  const res = await postRestore(bundle);
+  assert.equal(res.status, 200);
+  assert.equal((await res.json()).usersRestored, 0);
+  assert.deepEqual(userStore.listUsers().map((u) => u.username).sort(), usersBefore,
+    'a bundle without accounts must never wipe the instance\'s accounts');
+  assert.equal(loadDatabase().metadata.vid1.title, 'Clip', 'the doc restore still ran');
 });

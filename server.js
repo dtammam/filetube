@@ -6068,13 +6068,18 @@ app.delete('/api/settings/logo', async (req, res) => {
 // node:sqlite backup() API is deliberately unused (empirically unsafe under
 // concurrent writes — see lib/db/sqlite.js's header).
 //
-// v1.42 trust model: these endpoints are as open as the rest of the API (no
-// auth exists yet) — DISCLOSED in the release notes; v1.43 makes them
-// admin-only and adds the self-lockout guard.
+// v1.43: both endpoints are ADMIN-ONLY (the v1.42 open posture was a
+// disclosed one-release gap), the bundle carries the full `users` set
+// (password hashes included — the Settings UI flags the file sensitive),
+// and restore holds the self-lockout guard: the RESTORING admin must exist
+// in the bundle as an enabled admin, or the restore is refused whole. The
+// session secret is NEVER part of a bundle (secrets don't ride bundles —
+// per-instance cookie isolation depends on secrets differing).
 const BACKUP_SCHEMA = 'filetube-backup-v1';
 const BACKUP_NAMESPACE_KEYS = ['folders', 'folderSettings', 'progress', 'metadata', 'liked', 'deleteTombstones', 'viewCounts', 'settings', 'books', 'ytdlp'];
 
 app.get('/api/admin/backup', async (req, res) => {
+  if (!requireAdmin(req, res)) return;
   try {
     let bundle;
     // A read-only pass enqueued as a mutator that skips its save: the chain
@@ -6097,7 +6102,10 @@ app.get('/api/admin/backup', async (req, res) => {
           }
         }
       }
-      bundle.users = []; // reserved (v1.43 populates; format fixed from day one)
+      // v1.43: the full account set, hashes and per-user state included —
+      // enqueued on the same chained tick as the doc snapshot, so the two
+      // halves describe one moment.
+      bundle.users = userStore.exportUsersForBackup();
       return false; // read-only pass — never save
     });
     res.setHeader('Content-Disposition', contentDispositionAttachment(`filetube-backup-${new Date().toISOString().slice(0, 10)}.json`));
@@ -6114,8 +6122,34 @@ app.get('/api/admin/backup', async (req, res) => {
 function validateBackupBundle(bundle) {
   if (!bundle || typeof bundle !== 'object' || Array.isArray(bundle)) return 'bundle must be a JSON object';
   if (bundle.schema !== BACKUP_SCHEMA) return `unsupported schema '${bundle.schema}' (expected ${BACKUP_SCHEMA})`;
-  if (bundle.users !== undefined && (!Array.isArray(bundle.users) || bundle.users.length > 0)) {
-    return 'bundle contains user accounts; this FileTube version cannot restore them (users arrive in v1.43) — refusing a lossy restore';
+  // v1.43: a users array restores fully. Field-level validation up front —
+  // any bad entry refuses the WHOLE bundle before the wipe starts (the
+  // no-lossy-restore posture). An absent/empty users array is the v1.42
+  // format: legal, and the restore leaves the CURRENT accounts untouched
+  // (wiping users on a bundle that carries none would lock the instance out).
+  if (bundle.users !== undefined) {
+    if (!Array.isArray(bundle.users)) return 'users must be an array';
+    const seenIds = new Set();
+    const seenNames = new Set();
+    for (let i = 0; i < bundle.users.length; i++) {
+      const u = bundle.users[i];
+      const where = `users[${i}]`;
+      if (!u || typeof u !== 'object') return `${where}: must be an object`;
+      if (!Number.isInteger(u.id) || u.id <= 0) return `${where}: id must be a positive integer`;
+      if (seenIds.has(u.id)) return `${where}: duplicate user id ${u.id}`;
+      seenIds.add(u.id);
+      if (typeof u.username !== 'string' || !userStore.validateUsername(u.username)) return `${where}: invalid username`;
+      const nameKey = u.username.trim().toLowerCase();
+      if (seenNames.has(nameKey)) return `${where}: duplicate username '${u.username}'`;
+      seenNames.add(nameKey);
+      if (typeof u.passwordHash !== 'string' || u.passwordHash === '') return `${where}: missing password hash`;
+      if (u.role !== 'admin' && u.role !== 'member') return `${where}: role must be 'admin' or 'member'`;
+      for (const [field, kind] of [['progress', 'object'], ['bookProgress', 'object'], ['liked', 'array'], ['bookPins', 'array'], ['channelPins', 'array']]) {
+        if (u[field] === undefined) continue;
+        const ok = kind === 'array' ? Array.isArray(u[field]) : (typeof u[field] === 'object' && u[field] !== null && !Array.isArray(u[field]));
+        if (!ok) return `${where}: ${field} must be an ${kind}`;
+      }
+    }
   }
   const known = new Set([...BACKUP_NAMESPACE_KEYS, 'schema', 'exportedAt', 'appVersion', 'customLogo', 'users']);
   for (const key of Object.keys(bundle)) {
@@ -6156,9 +6190,26 @@ function validateBackupBundle(bundle) {
 // carry a real bundle (175 KB of state + up to 2 MB of logo b64) — same
 // route-scoped-parser posture as the logo upload's express.raw.
 app.post('/api/admin/restore', express.json({ limit: '16mb' }), async (req, res) => {
+  if (!requireAdmin(req, res)) return;
   const bundle = req.body;
   const problem = validateBackupBundle(bundle);
   if (problem) return res.status(400).json({ error: problem });
+
+  // Self-lockout guard (exec plan, locked answer 7): when the bundle
+  // replaces the user set, the admin PERFORMING the restore must exist in
+  // it as an ENABLED ADMIN — matched by username (ids may differ across
+  // instances), refused whole otherwise. Without this, one restore of a
+  // stale/foreign bundle locks the instance's only operator out the moment
+  // the wipe commits.
+  const restoresUsers = Array.isArray(bundle.users) && bundle.users.length > 0;
+  if (restoresUsers) {
+    const self = bundle.users.find((u) => u.username.trim().toLowerCase() === req.user.username.toLowerCase());
+    if (!self || self.role !== 'admin' || self.disabled) {
+      return res.status(409).json({
+        error: `This bundle does not contain '${req.user.username}' as an enabled admin - restoring it would lock you out, so it is refused. Restore from an account that exists in the bundle as an admin.`,
+      });
+    }
+  }
 
   const dbPart = {};
   for (const key of BACKUP_NAMESPACE_KEYS) {
@@ -6193,12 +6244,26 @@ app.post('/api/admin/restore', express.json({ limit: '16mb' }), async (req, res)
           try { fs.unlinkSync(finalPath); } catch { /* no stale variant -- fine */ }
         }
       }
+      // v1.43: replace the user set INSIDE the same open transaction — the
+      // account restore commits (or rolls back) atomically with the doc
+      // tables. A bundle without users (v1.42 format) keeps the current
+      // accounts untouched.
+      if (restoresUsers) {
+        userStore.replaceAllUsersRaw(bundle.users);
+      }
     });
   } catch (err) {
     console.error('Error restoring backup bundle:', err);
     return res.status(500).json({ error: `Restore failed and was rolled back: ${err.message}` });
   }
-  res.json({ success: true, restoredNamespaces: Object.keys(dbPart) });
+  // The restore replaced the restoring admin's own row (possibly with a
+  // different id/token_version than their live cookie carries) — reissue
+  // the cookie against the RESTORED row so the operator stays signed in.
+  if (restoresUsers) {
+    const restoredSelf = userStore.getByUsername(req.user.username);
+    if (restoredSelf) issueSessionCookie(res, req, restoredSelf);
+  }
+  res.json({ success: true, restoredNamespaces: Object.keys(dbPart), usersRestored: restoresUsers ? bundle.users.length : 0 });
 });
 
 // API: Read the Automation & Storage settings for Settings-page prefill.

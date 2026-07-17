@@ -1222,7 +1222,52 @@ async function initAccountSection(signal) {
     if (usersBox) usersBox.hidden = false;
     wireAddUserForm(signal, me.user);
     loadUsersList(signal, me.user);
+    const backupBox = document.getElementById('backup-box');
+    if (backupBox) backupBox.hidden = false;
+    wireRestoreControls(signal);
   }
+}
+
+// v1.43: restore-from-file. Reads the picked JSON, confirms (a restore
+// REPLACES config + accounts), POSTs, and surfaces the server's honest
+// error text verbatim (the self-lockout refusal in particular).
+function wireRestoreControls(signal) {
+  const btn = document.getElementById('restore-btn');
+  const fileInput = document.getElementById('restore-file-input');
+  const statusEl = document.getElementById('restore-status');
+  if (!btn || !fileInput) return;
+  btn.addEventListener('click', async () => {
+    setFieldError(statusEl, null);
+    const file = fileInput.files && fileInput.files[0];
+    if (!file) {
+      setFieldError(statusEl, 'Pick a backup file first.');
+      return;
+    }
+    let bundle;
+    try {
+      bundle = JSON.parse(await file.text());
+    } catch (_) {
+      setFieldError(statusEl, 'That file is not valid JSON.');
+      return;
+    }
+    if (!window.confirm('Restore this backup? It replaces this FileTube\'s configuration and accounts with the backup\'s contents.')) return;
+    try {
+      const r = await fetch('/api/admin/restore', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(bundle),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        setFieldError(statusEl, data.error || 'Restore failed.');
+        return;
+      }
+      window.alert('Restore complete. The page will reload.');
+      window.location.reload();
+    } catch (_) {
+      setFieldError(statusEl, 'Restore failed (network error).');
+    }
+  }, { signal });
 }
 
 async function loadUsersList(signal, me) {
