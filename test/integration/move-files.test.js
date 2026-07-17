@@ -112,6 +112,44 @@ test('POST /api/videos/:id/move: happy path re-keys metadata/progress and rename
   assert.ok(fs.existsSync(path.join(THUMBNAIL_DIR, `${newId}.jpg`)), 'the thumbnail must be re-keyed to the new id');
 });
 
+// v1.42 gate CRITICAL (adversarial seat, runnable repro): the extracted
+// `viewCounts` namespace is id-keyed exactly like progress/liked and MUST
+// follow the re-key — the T3 extraction landed without it, so every move
+// zeroed the moved item's view count and orphaned the old row (the v1.41.6
+// liked-drop class, striking the very field the extraction protects). All
+// three movers (the /move route, the boot one-off migrator, reheat
+// relocation) share moveItemToFolder's single re-key mutator, so this one
+// lock covers them all.
+test('POST /api/videos/:id/move: the VIEW COUNT survives the re-key (no zeroed count, no orphaned old row)', async () => {
+  const srcDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-move-vc-src-'));
+  const dstDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-move-vc-dst-'));
+  const filePath = path.join(srcDir, 'counted.mp4');
+  fs.writeFileSync(filePath, 'clip-bytes');
+  const oldId = getMediaId(filePath);
+  const newId = getMediaId(path.join(dstDir, 'counted.mp4'));
+
+  seedItem({ id: oldId, filePath, folders: [srcDir, dstDir] });
+  // Record real views through the real endpoint (not a seeded field).
+  await fetch(`${base}/api/videos/${oldId}/view`, { method: 'POST' });
+  await fetch(`${base}/api/videos/${oldId}/view`, { method: 'POST' });
+  assert.equal(readDb().viewCounts[oldId], 2, 'precondition: two views recorded');
+
+  const res = await fetch(`${base}/api/videos/${oldId}/move`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ targetFolder: dstDir }),
+  });
+  assert.equal(res.status, 200);
+
+  const dbAfter = readDb();
+  assert.equal(dbAfter.viewCounts[newId], 2, 'the count rides the re-key to the new id');
+  assert.equal(dbAfter.viewCounts[oldId], undefined, 'no orphaned row under the dead id');
+
+  // And it keeps counting from the surviving value.
+  const view = await fetch(`${base}/api/videos/${newId}/view`, { method: 'POST' });
+  assert.equal((await view.json()).viewCount, 3);
+});
+
 // ---- T16 completion follow-up (v1.24 UX Round): the REAL yt-dlp subtitle
 // sidecar shape (`<base>.<lang>.vtt`, e.g. "Title [id].en.vtt" per
 // OUTPUT_TEMPLATE) must migrate alongside the media file, not just the

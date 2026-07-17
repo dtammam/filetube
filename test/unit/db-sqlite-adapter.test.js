@@ -236,6 +236,94 @@ test('save: a MID-TRANSACTION statement failure rolls back every row of that sav
   }
 });
 
+test('save: SPACED keys round-trip and delete correctly; NUL-bearing keys are REFUSED (the snapshot-separator lock)', () => {
+  // Two lessons locked at once:
+  // 1. Universal downloadMeta keys are '<extractor> <id>' — WITH a space. A
+  //    space-separated snapshot key truncated these in the delete-sweep
+  //    (wrong row targeted; the real row survived on disk and RESURRECTED on
+  //    the next load). The separator is U+0000 now — spaced keys must
+  //    round-trip and delete exactly.
+  // 2. node:sqlite TRUNCATES bound TEXT at an embedded U+0000 (verified
+  //    empirically: a NUL-bearing key persisted truncated), so such a key
+  //    would be silently corrupted — the adapter must REFUSE it loudly.
+  const a = new SqliteAdapter(dbPath(), { log: () => {} });
+  try {
+    a.save({
+      folders: [],
+      ytdlp: {
+        allowMembersOnly: false, subscriptions: [], pins: [], channelAvatars: {},
+        downloadMeta: { 'reddit abc123': { universal: true }, plain: { p: 1 } },
+      },
+    });
+    assert.deepStrictEqual(
+      Object.keys(readPersistedDatabase(dir).ytdlp.downloadMeta).sort(),
+      ['plain', 'reddit abc123'],
+      'the spaced key persisted as its own distinct row'
+    );
+
+    const db = a.load();
+    delete db.ytdlp.downloadMeta['reddit abc123'];
+    const stats = a.save(db);
+    assert.deepStrictEqual(stats, { rowsWritten: 0, rowsDeleted: 1 });
+    assert.deepStrictEqual(Object.keys(readPersistedDatabase(dir).ytdlp.downloadMeta), ['plain'],
+      'exactly the right row deleted — no truncated-key mistargeting');
+    assert.deepStrictEqual(Object.keys(a.load().ytdlp.downloadMeta), ['plain'],
+      'and the next load agrees (no resurrect)');
+
+    // NUL-bearing key (escape sequence, per the source-hygiene lock):
+    // refused loudly, nothing persisted from the save.
+    const db2 = a.load();
+    db2.ytdlp.downloadMeta['evil\u0000key'] = { h: 1 };
+    assert.throws(() => a.save(db2), /contains U\+0000.*truncates TEXT at NUL/s);
+    assert.deepStrictEqual(Object.keys(readPersistedDatabase(dir).ytdlp.downloadMeta), ['plain'],
+      'the refused save persisted nothing');
+  } finally {
+    a.close();
+  }
+});
+
+test('a __proto__ row key round-trips as INERT OWN DATA — no prototype pollution, no silent row loss (gate CRITICAL)', () => {
+  // JSON.parse materializes '__proto__' as an own key; plain-assignment
+  // assembly would turn it into a prototype WRITE (row vanishes from
+  // Object.keys; misses on the namespace return planted fields). Assembly
+  // uses defineProperty, so it stays plain data.
+  // Splice the hostile key into the JSON TEXT directly — JSON.stringify
+  // would drop a '__proto__' own-key from an ordinary object, but
+  // JSON.parse (the import's reader) happily materializes one.
+  const fixture = fullFixture();
+  fs.writeFileSync(
+    jsonPath(),
+    JSON.stringify(fixture).replace('"metadata":{', '"metadata":{"__proto__":{"id":"planted","polluted":true},'),
+    'utf8'
+  );
+  importDbJson(jsonPath(), dbPath(), { log: () => {} });
+
+  const db = readPersistedDatabase(dir);
+  assert.ok(Object.prototype.hasOwnProperty.call(db.metadata, '__proto__'), 'the hostile key survives as an OWN key (no silent loss)');
+  assert.equal(db.metadata['__proto__'].id, 'planted', 'readable as plain data');
+  assert.equal(Object.getPrototypeOf(db.metadata).polluted, undefined, 'namespace prototype NOT polluted');
+  assert.equal(({}).polluted, undefined, 'global Object.prototype NOT polluted');
+  assert.equal(db.metadata.someMissingId, undefined, 'a miss returns undefined, never planted fields');
+
+  // And the adapter's own load() (the app path) is equally safe.
+  const a = new SqliteAdapter(dbPath(), { log: () => {} });
+  try {
+    const loaded = a.load();
+    assert.ok(Object.prototype.hasOwnProperty.call(loaded.metadata, '__proto__'));
+    assert.equal(({}).polluted, undefined, 'still clean after load()');
+  } finally {
+    a.close();
+  }
+});
+
+test('import: a db.json with a NUL-bearing key is refused loudly, creating nothing (no silent key corruption)', () => {
+  const fixture = fullFixture();
+  fixture.metadata['bad\u0000id'] = { id: 'bad' };
+  fs.writeFileSync(jsonPath(), JSON.stringify(fixture), 'utf8');
+  assert.throws(() => importDbJson(jsonPath(), dbPath(), { log: () => {} }), /contains U\+0000/);
+  assert.ok(!fs.existsSync(dbPath()), 'no filetube.db after the refusal — the next boot retries against a fixed file');
+});
+
 test('save: an undefined value is dropped silently — matching JSON.stringify\'s legacy db.json semantics', () => {
   // Pre-v1.42, JSON.stringify(db) simply OMITTED keys whose value was
   // undefined; the diff-save preserves that exact behavior (stringify yields

@@ -26,6 +26,7 @@ const {
   reconcileTranscode,
   cleanupOrphanDbTmp,
   __resetDatabaseForTests,
+  nodeVersionSupported,
 } = require('../../server');
 const { readPersistedDatabase } = require('../../lib/db/sqlite');
 
@@ -378,6 +379,16 @@ test('cleanupOrphanDbTmp: an unreadable/missing directory is a safe no-op (retur
     const removed = cleanupOrphanDbTmp(path.join(process.env.DATA_DIR, 'does-not-exist'));
     assert.equal(removed, 0);
   });
+});
+
+// ---- [UNIT] AC7: the Node-floor predicate (22.13 = first unflagged node:sqlite)
+
+test('nodeVersionSupported: the 22.13 boundary is exact (AC7)', () => {
+  assert.equal(nodeVersionSupported('20.11.0'), false, 'Node 20 refused');
+  assert.equal(nodeVersionSupported('22.12.9'), false, 'below the sqlite floor refused');
+  assert.equal(nodeVersionSupported('22.13.0'), true, 'the floor itself boots');
+  assert.equal(nodeVersionSupported('22.23.1'), true, 'project Node 22 boots');
+  assert.equal(nodeVersionSupported('24.14.0'), true, 'project Node 24 boots');
 });
 
 test('reconcileTranscode: audio items never carry a transcode status', () => {

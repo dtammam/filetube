@@ -16,7 +16,9 @@ const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
 const {
   app, saveDatabase, loadDatabase, pendingProgress, flushPendingProgress,
+  scanDirectories,
   __resetDatabaseForTests,
+  __getPersistedStateEpoch,
 } = require('../../server');
 const { readPersistedDatabase } = require('../../lib/db/sqlite');
 
@@ -172,10 +174,37 @@ test('validation refuses: wrong schema, unknown bundle key, non-empty users, ove
   assert.match((await resUsers.json()).error, /users arrive in v1.43/, 'a v1.43 bundle is refused loudly, never lossily');
   assert.equal((await postRestore({ ...good, customLogo: { light: { mime: 'image/svg+xml', b64: 'AA==' } } })).status, 400, 'mime outside the allowlist refused');
   assert.equal((await postRestore({ ...good, customLogo: { blue: { mime: 'image/png', b64: 'AA==' } } })).status, 400, 'unknown variant refused');
+  const spoofed = await postRestore({ ...good, customLogo: { light: { mime: 'image/png', b64: Buffer.from('<svg>not a png</svg>').toString('base64') } } });
+  assert.equal(spoofed.status, 400, 'a false mime claim over non-matching bytes is refused (magic-byte sniff, same bar as the upload route)');
+  assert.match((await spoofed.json()).error, /magic-byte/);
 
   // Nothing above may have modified state.
   assert.deepEqual(readPersistedDatabase(DATA_DIR).folders, ['/media/videos'], 'state untouched by refused restores');
   assert.deepEqual(readPersistedDatabase(DATA_DIR).metadata.vid1.title, 'Clip', 'metadata untouched by refused restores');
+});
+
+test('W4: a wipe/restore landing MID-SCAN aborts the scan\'s stale merge — the replaced state survives', async () => {
+  // The race the design-delta gate flagged: the scan's Phase-1 walk runs
+  // OUTSIDE the write lock; if a restore wipes-and-replaces between the walk
+  // and the final merge, mergeScannedMetadata (authoritative for membership)
+  // would overwrite the restored library with the scan's pre-restore view.
+  // The epoch guard makes the merge refuse instead. Ordering here is
+  // DETERMINISTIC, not timing-based: the wipe is enqueued on the write chain
+  // in the same tick scanDirectories starts its (await-laden) walk, so it
+  // always commits before the scan's final mutator reaches the chain.
+  const libDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-w4-lib-'));
+  fs.writeFileSync(path.join(libDir, 'walker.mp4'), 'bytes-the-scan-would-index');
+  saveDatabase({ ...fullState(), folders: [libDir] });
+
+  const epochBefore = __getPersistedStateEpoch();
+  const scanPromise = scanDirectories();     // Phase-1 walk starts (async)
+  await __resetDatabaseForTests();           // the wipe — enqueued FIRST on the chain
+  await scanPromise;                         // scan's final merge must self-discard
+
+  assert.equal(__getPersistedStateEpoch(), epochBefore + 1, 'the wipe bumped the epoch');
+  assert.deepEqual(readPersistedDatabase(DATA_DIR), {},
+    'the scan\'s stale merge was DISCARDED — it did not resurrect pre-wipe state or index the walked file over the wipe');
+  fs.rmSync(libDir, { recursive: true, force: true });
 });
 
 test('a restore that fails mid-populate ROLLS BACK completely (prior state intact, 500 surfaces)', async () => {

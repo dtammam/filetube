@@ -77,12 +77,13 @@ const stats = require('./lib/stats');
 // require so an old Node fails with THIS message instead of a cryptic
 // module-not-found deep in a require chain. The Docker image (node:22-alpine)
 // already satisfies it.
-{
-  const [major, minor] = process.versions.node.split('.').map(Number);
-  if (major < 22 || (major === 22 && minor < 13)) {
-    console.error(`FATAL: FileTube v1.42+ requires Node >= 22.13 (found ${process.versions.node}). The SQLite persistence layer is built on the node:sqlite builtin. Upgrade Node (the official Docker image already ships Node 22).`);
-    process.exit(1);
-  }
+function nodeVersionSupported(version) {
+  const [major, minor] = String(version).split('.').map(Number);
+  return major > 22 || (major === 22 && minor >= 13);
+}
+if (!nodeVersionSupported(process.versions.node)) {
+  console.error(`FATAL: FileTube v1.42+ requires Node >= 22.13 (found ${process.versions.node}). The SQLite persistence layer is built on the node:sqlite builtin. Upgrade Node (the official Docker image already ships Node 22).`);
+  process.exit(1);
 }
 // v1.42: the SQLite persistence adapter — the ONLY module that touches
 // node:sqlite (source-locked). server.js owns the seam (loadDatabase/
@@ -553,9 +554,18 @@ function guardAgainstMutation(value) {
 //      with zero intervening writes.
 // Enqueued on the write chain so it can never interleave with a mutator's
 // load-mutate-save tick.
+// v1.42 (gate W4): monotonic counter of wipe-and-replace events. A scan
+// captures it at Phase-1 time and its final merge refuses to commit across a
+// bump — the walk's snapshot describes a database that no longer exists.
+let persistedStateEpoch = 0;
+function __getPersistedStateEpoch() {
+  return persistedStateEpoch;
+}
+
 function replacePersistedState(populateFn) {
   const run = dbWriteChain.then(() => {
     dbAdapter.exclusiveReplace(populateFn || (() => {}));
+    persistedStateEpoch++;
     pendingProgress.clear();
     if (progressFlushTimer) {
       clearTimeout(progressFlushTimer);
@@ -2988,6 +2998,10 @@ async function runScanDirectories() {
   // leaving this on a genuinely fresh disk read keeps the T1/T2 scan-cache
   // interaction boundary unchanged from this task.
   const db = loadDatabase();
+  // v1.42 (gate W4): remember which persisted-state EPOCH this scan's
+  // Phase-1 snapshot belongs to — the final merge refuses to commit against
+  // a different one (see the guard at the top of the final mutator below).
+  const scanEpochAtStart = persistedStateEpoch;
   // Merge in the yt-dlp module's own scan root (C3+C7 + D1 reframe + E1 fix,
   // T4 fix rounds #2/#3): `extraScanRoots(ytdlpConfig)` returns
   // `[path.resolve(downloadDir)]` when **`isEnabled(config)` OR
@@ -3756,6 +3770,21 @@ async function runScanDirectories() {
   // updateDatabase call. Phase 1 above (the FFmpeg-awaiting extraction loop)
   // never holds this lock -- writes stay unblocked for the whole scan.
   await updateDatabase(fresh => {
+    // v1.42 (gate W4): if a RESTORE (or the tests' reset) wiped-and-replaced
+    // the persisted state while this scan was walking, every decision below
+    // -- phase1Ids, newMetadata, prunable -- was computed against a snapshot
+    // of a database that no longer exists. mergeScannedMetadata is
+    // authoritative for membership, so committing it would overwrite the
+    // just-restored library with the pre-restore view (and drop restored
+    // items whose files the walk never saw). Abandon the merge instead; the
+    // next scan (periodic, or a manual "Scan now") rebuilds against the
+    // restored state. The epoch is bumped inside replacePersistedState's
+    // exclusive chain step, and this mutator runs on the same chain, so the
+    // comparison can never race.
+    if (scanEpochAtStart !== persistedStateEpoch) {
+      console.log('Scan: a restore/wipe replaced the persisted state mid-scan — discarding this scan\'s merge (stale snapshot). The next scan rebuilds against the restored state.');
+      return false;
+    }
     // Backfill each item's configured root folder (for hidden-folder filtering) and
     // reconcile transcode state for browser-incompatible videos (queues jobs as needed).
     for (const item of Object.values(newMetadata)) {
@@ -4138,6 +4167,11 @@ async function runScanDirectories() {
     fresh.metadata = mergeScannedMetadata(fresh.metadata, newMetadata);
     for (const id of prunable) {
       delete fresh.progress[id]; // apply prune to the FRESH progress map
+      // v1.42 (gate W3): the extracted view counter prunes with its item,
+      // for the same two reasons as the delete route's cleanup — unbounded
+      // growth under churn, and a stale count resurrecting onto a future
+      // re-add of the same path (same md5 id).
+      if (fresh.viewCounts) delete fresh.viewCounts[id];
       // Also drop the write-throttle map entry (FR3.2): without this, a
       // pruned id's persistedServedAt entry lingers forever (unbounded growth
       // under churn) and can suppress lastServedAt persistence if the same id
@@ -5612,6 +5646,13 @@ function validateBackupBundle(bundle) {
       if (typeof entry.b64 !== 'string' || Buffer.byteLength(entry.b64, 'base64') > CUSTOM_LOGO_MAX_BYTES) {
         return `customLogo.${variant}: missing bytes or larger than ${CUSTOM_LOGO_MAX_BYTES} bytes`;
       }
+      // QA-gate WARNING: the upload route sniffs magic bytes as well as the
+      // Content-Type; restore is a second write path to the SAME resource
+      // and must hold the same bar — a false mime claim over arbitrary
+      // bytes is refused, not planted on disk.
+      if (!CUSTOM_LOGO_TYPES[entry.mime](Buffer.from(entry.b64, 'base64'))) {
+        return `customLogo.${variant}: the bytes do not match the declared ${entry.mime} (magic-byte check failed)`;
+      }
     }
   }
   return null;
@@ -6566,6 +6607,11 @@ app.delete('/api/videos/:id', async (req, res) => {
     await updateDatabase(freshDb => {
       delete freshDb.metadata[item.id];
       delete freshDb.progress[item.id];
+      // v1.42 (gate W3): the extracted per-id view counter goes with its
+      // item — leaving it would grow the namespace unboundedly under churn
+      // AND resurrect a stale count onto a future re-add of the same path
+      // (same md5 id). Same reasoning as clearPersistedServedAt in the prune.
+      if (freshDb.viewCounts) delete freshDb.viewCounts[item.id];
       // v1.41.3: mint the deletion tombstone (tech-debt #32/#35a) in the SAME
       // mutator that removes the entry -- but ONLY for an UNVERIFIED
       // conclusion (see unlinkVerified's declaration): a false "already gone"
@@ -7228,6 +7274,21 @@ async function moveItemToFolder(deps, id, targetFolder, opts = {}) {
         if (likedIndex !== -1) freshDb.liked[likedIndex] = newId;
       }
 
+      // v1.42: `viewCounts` is id-keyed exactly like `progress`/`liked` and
+      // has to follow the re-key too. It did not, for the few hours between
+      // the T3 extraction and this gate round -- the adversarial seat proved
+      // (runnable repro) that a move zeroed the moved item's view count and
+      // orphaned the old row: the SAME v1.41.6 liked-drop class, striking
+      // the one field this release extracted specifically to protect. The
+      // import strips the legacy embedded `item.viewCount`, so post-move
+      // there is no fallback floor -- without this carry the count is gone.
+      // Every new id-keyed namespace MUST be added to this mutator (and to
+      // the delete/prune cleanups); the move-files suite locks this one.
+      if (freshDb.viewCounts && Object.prototype.hasOwnProperty.call(freshDb.viewCounts, oldId)) {
+        freshDb.viewCounts[newId] = freshDb.viewCounts[oldId];
+        delete freshDb.viewCounts[oldId];
+      }
+
       // NOTE (gate fix round 3, QA sub-note): the three MODULE-LEVEL maps this
       // move also has to re-key -- `pendingProgress`, `persistedServedAt`,
       // `recentlyServed` -- are deliberately NOT touched inside this mutator.
@@ -7574,6 +7635,17 @@ app.post('/api/videos/:id/move', async (req, res) => {
 // @returns {Promise<{moved: number, skipped: number, errors: number, collisions: number}>}
 async function migrateOneOffsIntoChannelFolders(deps, config) {
   const summary = { moved: 0, skipped: 0, errors: 0, collisions: 0 };
+
+  // v1.42 safe-mode lever (AC8 / design review F10b): an automatic
+  // file-mover has no business running from a read-only-media instance —
+  // the beta shares prod's download root, and moving prod's files is
+  // exactly what the lever exists to prevent. Guarded HERE (not only at
+  // the boot call site) so the refusal is testable and holds for any
+  // future caller.
+  if (READ_ONLY_MEDIA) {
+    console.log('[safe-mode] one-off migration skipped — FILETUBE_READ_ONLY_MEDIA=1.');
+    return summary;
+  }
 
   // Disabled-module no-op (mirrors every other yt-dlp entry point's own
   // gate): never reads db.metadata, never resolves a channel dir, never
@@ -9674,14 +9746,10 @@ if (require.main === module) {
   (async () => {
     const ytdlpStartupConfig = ytdlp.parseYtdlpConfig();
     try {
-      if (READ_ONLY_MEDIA) {
-        // v1.42 safe-mode lever: the one-off migrator MOVES files inside the
-        // shared download root — an automatic file-mover has no business
-        // running from the beta instance (design review F10b).
-        console.log('[safe-mode] boot one-off migration skipped — FILETUBE_READ_ONLY_MEDIA=1.');
-      } else {
-        await migrateOneOffsIntoChannelFolders({ loadDatabase, updateDatabase, getMediaId }, ytdlpStartupConfig);
-      }
+      // The safe-mode skip lives INSIDE migrateOneOffsIntoChannelFolders
+      // (guarded at the function, not the call site, so it is testable and
+      // covers any future caller — QA-gate warning, v1.42).
+      await migrateOneOffsIntoChannelFolders({ loadDatabase, updateDatabase, getMediaId }, ytdlpStartupConfig);
     } catch (err) {
       // Never let a migration bug block startup -- log and continue exactly
       // like every other best-effort startup step above (cleanupOrphanTmp/
@@ -9818,6 +9886,11 @@ module.exports = {
   replacePersistedState,
   __resetDatabaseForTests,
   __failNextSaveForTests,
+  __getPersistedStateEpoch,
+  // v1.42 AC7: the Node-floor predicate, exported so the boot check's
+  // boundary (22.13 = first unflagged node:sqlite) is testable without
+  // spawning per-version binaries.
+  nodeVersionSupported,
   // v1.30 A3 (in-memory DB read cache): re-exported so tests can exercise the
   // cache directly and assert AC3.3's O(1)-loads claim (mirrors every other
   // DB-layer primitive's own testing contract above).

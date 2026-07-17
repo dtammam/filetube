@@ -133,6 +133,44 @@ test('AC8 scan leg (review F1): a tombstone-matched file survives the scan — n
   assert.equal((db.metadata || {})[id], undefined, 'the file is NOT indexed (per the imported state it is deleted)');
 });
 
+test('AC8: the scheduled poll tick is a logged NO-OP under the flag (runPoll never invoked)', () => {
+  const ytdlpModule = require('../../lib/ytdlp/index');
+  // Deps that would throw loudly if the tick did ANY real work — the
+  // read-only branch must return before touching them.
+  const poisonDeps = new Proxy({}, { get() { throw new Error('scheduledPollTick touched deps under FILETUBE_READ_ONLY_MEDIA'); } });
+  const lines = [];
+  const realLog = console.log;
+  console.log = (...args) => lines.push(args.join(' '));
+  try {
+    const config = require('../../lib/ytdlp/config').parseYtdlpConfig(process.env);
+    assert.equal(config.readOnlyMedia, true, 'precondition: env parsed into config');
+    ytdlpModule.scheduledPollTick(poisonDeps, config); // must not throw
+    ytdlpModule.scheduledPollTick(poisonDeps, config); // and logs only ONCE per process
+  } finally {
+    console.log = realLog;
+  }
+  const skipLines = lines.filter((l) => l.includes('scheduled polls are DISABLED'));
+  assert.equal(skipLines.length <= 1, true, 'the skip line logs at most once per process (no per-tick noise)');
+  assert.ok(lines.length === 0 || skipLines.length === 1, 'when anything logged, it is the once-per-process skip line');
+});
+
+test('AC8: the boot one-off migrator is a logged no-op under the flag (no db read, no file moves)', async () => {
+  const { migrateOneOffsIntoChannelFolders } = require('../../server');
+  // Poison deps again: the guard must return BEFORE any db access.
+  const poisonDeps = new Proxy({}, { get() { throw new Error('migrateOneOffsIntoChannelFolders touched deps under FILETUBE_READ_ONLY_MEDIA'); } });
+  const lines = [];
+  const realLog = console.log;
+  console.log = (...args) => lines.push(args.join(' '));
+  let summary;
+  try {
+    summary = await migrateOneOffsIntoChannelFolders(poisonDeps, { enabled: true });
+  } finally {
+    console.log = realLog;
+  }
+  assert.deepEqual(summary, { moved: 0, skipped: 0, errors: 0, collisions: 0 });
+  assert.ok(lines.some((l) => l.includes('one-off migration skipped')), 'the skip is logged');
+});
+
 test('per-instance operations stay fully live: likes, progress, settings', async () => {
   const { id } = seedVideo('still-usable [eeeeeeeeeee].mp4');
 

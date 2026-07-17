@@ -238,11 +238,17 @@ test('an UNVERIFIED delete (file absent at delete time) mints a tombstone; a VER
   assert.strictEqual(typeof db.deleteTombstones[un.id].deletedAt, 'number');
 
   const ok = seedLibraryWithVideo(libDir, 'verified.mp4');
+  // v1.42 (gate W3): record a view first, so the delete's viewCounts
+  // cleanup has something real to reap.
+  await fetch(`${base}/api/videos/${ok.id}/view`, { method: 'POST' });
+  assert.strictEqual(readDb().viewCounts[ok.id], 1, 'precondition: view recorded');
   const res = await fetch(`${base}/api/videos/${ok.id}`, { method: 'DELETE' });
   assert.strictEqual((await res.json()).success, true);
   assert.ok(!fs.existsSync(ok.filePath), 'file really unlinked');
   db = readDb();
   assert.strictEqual(db.deleteTombstones[ok.id], undefined, 'verified unlink minted NO tombstone');
+  assert.strictEqual((db.viewCounts || {})[ok.id], undefined,
+    'v1.42: the extracted view counter is reaped with its item (no orphan row, no stale-count resurrection on a same-path re-add)');
 });
 
 test('HEADLINE (the resurrect bug): a file surviving its unverified "successful" delete is removed by the next scan, not re-indexed', async () => {

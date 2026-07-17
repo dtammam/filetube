@@ -126,6 +126,8 @@ test('(b) pruneMissing=true + present root + individually-gone file: pruned, sid
     folders: [presentRoot],
     folderSettings: {},
     progress: { [id]: { position: 42 } },
+    // v1.42 (gate W3): a recorded view count must prune WITH its item.
+    viewCounts: { [id]: 7 },
     metadata: {
       [id]: {
         id, name: 'gone.mp4', title: 'gone', filePath, folderName: path.basename(presentRoot),
@@ -143,6 +145,8 @@ test('(b) pruneMissing=true + present root + individually-gone file: pruned, sid
   // v1.42 persisted shape: an emptied `progress` namespace assembles as ABSENT
   // (zero rows), so guard the container before probing the key.
   assert.ok(!(db.progress && db.progress[id]), 'watch progress for a pruned entry should be removed');
+  assert.ok(!(db.viewCounts && db.viewCounts[id]),
+    'v1.42: the extracted view counter prunes with its item (no orphan row, no stale-count resurrection)');
   assert.ok(!fs.existsSync(path.join(THUMBNAIL_DIR, `${id}.jpg`)), 'thumbnail sidecar should be deleted on prune');
   assert.ok(!fs.existsSync(path.join(TRANSCODE_DIR, `${id}.mp4`)), 'transcode sidecar should be deleted on prune');
 });

@@ -57,6 +57,30 @@ test('node:sqlite is required ONLY by lib/db/sqlite.js', () => {
     `node:sqlite required outside the adapter: ${offenders.join(', ')} — all SQLite API touches belong in lib/db/sqlite.js (exec plan locked intake #1)`);
 });
 
+test('no RAW control bytes in server-side source (the v1.37.5 lesson, institutionalized)', () => {
+  // Raw control bytes (NUL etc.) in source render INVISIBLY in editors and
+  // diffs, trip binary sniffers (ugrep silently skipped lib/db/sqlite.js
+  // while it carried raw U+0000 separators — empty grep looked like "no
+  // matches"), and copy-paste as landmines. Control characters belong in
+  // source only as ESCAPE SEQUENCES ('\\u0000'). Tab and newline are the
+  // only raw control bytes allowed.
+  const files = [];
+  for (const root of SCAN_ROOTS) walk(root, files);
+  const offenders = [];
+  for (const rel of files) {
+    const buf = fs.readFileSync(path.join(ROOT, rel));
+    for (let i = 0; i < buf.length; i++) {
+      const b = buf[i];
+      if (b < 0x20 && b !== 0x09 && b !== 0x0a && b !== 0x0d) {
+        offenders.push(`${rel} (byte 0x${b.toString(16)} at offset ${i})`);
+        break;
+      }
+    }
+  }
+  assert.deepStrictEqual(offenders, [],
+    `raw control bytes in source: ${offenders.join(', ')} — write them as escape sequences instead`);
+});
+
 test('no third-party sqlite driver is required anywhere', () => {
   const files = [];
   for (const root of SCAN_ROOTS) walk(root, files);
