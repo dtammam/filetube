@@ -527,3 +527,33 @@ test('flushPendingProgress is a safe no-op (no write) when nothing is pending', 
   assert.equal(__getSaveDatabaseCallCount(), beforeSaves, 'an empty flush must never issue a doc-table write');
   assert.equal(__getProgressFlushWriteCount(), beforeFlushes, 'an empty flush must never issue a batch transaction');
 });
+
+// ---- v1.43 hardening: hostile prototype-shaped ids ------------------------
+// The v1.42 gate's __proto__ row-key lesson, applied to the NEW per-user
+// write gates: a plain `db.metadata[id]` truthiness probe lets
+// '__proto__'/'constructor' through via Object.prototype inheritance, and
+// v1.43 persists these client-supplied ids into relational rows.
+
+test('a prototype-shaped id ("__proto__"/"constructor") 404s at POST /api/progress and never mints a row', async () => {
+  saveDatabase({
+    folders: [], folderSettings: {}, progress: {},
+    metadata: { realVid: { id: 'realVid', title: 'Clip', duration: 100 } },
+    settings: baseSettings(),
+  });
+  for (const hostile of ['__proto__', 'constructor', 'hasOwnProperty']) {
+    const res = await postProgress(hostile, 10, 100);
+    assert.equal(res.status, 404, `'${hostile}' must not pass the existence check via prototype inheritance`);
+    assert.ok(!pendingProgress.has(pendingProgressKey(uid, hostile)), 'never staged');
+  }
+  await flushPendingProgress();
+  assert.equal(userStore.getOneProgress(uid, '__proto__'), null, 'no row minted');
+
+  // Belt-and-braces at the read layer: even a row smuggled in below the
+  // route (e.g. via a crafted restore bundle) lands as a PLAIN key on a
+  // null-prototype map -- never a prototype write.
+  userStore.setProgress(uid, '__proto__', { timestamp: 1, duration: 2, updatedAt: new Date().toISOString() });
+  const map = userStore.getProgress(uid);
+  assert.equal(Object.getPrototypeOf(map), null, 'the accumulator is null-prototype');
+  assert.equal(map['__proto__'].timestamp, 1, 'the hostile key is an ordinary own property');
+  userStore.__clearUserStateForTests();
+});

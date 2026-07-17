@@ -725,7 +725,9 @@ function flushPendingProgress() {
   const snapshot = [...pendingProgress.values()];
   pendingProgress.clear();
   return updateDatabase(db => {
-    const rows = snapshot.filter(entry => db.metadata[entry.mediaId]);
+    // OWN-property guard (v1.42 __proto__ lesson) -- same reasoning as the
+    // POST route's staging check; the flush is the last gate before a row.
+    const rows = snapshot.filter(entry => Object.prototype.hasOwnProperty.call(db.metadata, entry.mediaId));
     if (rows.length > 0) {
       userStore.setProgressBatch(rows);
       progressFlushWriteCount++;
@@ -5414,8 +5416,9 @@ function flushPendingBookProgress() {
   return updateDatabase((db) => {
     const ns = booksStore.readBooks(db);
     // Same deleted-between-ping-and-flush guard as the media coalescer: a
-    // flush must never resurrect progress for a pruned book.
-    const rows = snapshot.filter((entry) => ns.items[entry.bookId]);
+    // flush must never resurrect progress for a pruned book. OWN-property
+    // (the v1.42 __proto__ lesson), same as the media flush above.
+    const rows = snapshot.filter((entry) => Object.prototype.hasOwnProperty.call(ns.items, entry.bookId));
     if (rows.length > 0) {
       userStore.setBookProgressBatch(rows);
       bookProgressFlushWriteCount++;
@@ -5784,7 +5787,9 @@ app.get('/books', (req, res) => {
 
 app.post('/api/books/:id/progress', (req, res) => {
   const ns = booksStore.readBooks(getCachedDatabase());
-  const item = ns.items[req.params.id];
+  // OWN-property check (v1.42 __proto__ lesson): this id persists into
+  // user_book_progress -- see POST /api/progress's identical guard.
+  const item = Object.prototype.hasOwnProperty.call(ns.items, req.params.id) ? ns.items[req.params.id] : undefined;
   if (!item) return res.status(404).json({ error: 'Book not found' });
   const { locator, percent } = req.body || {};
   if (!locator || typeof locator !== 'object' || locator.kind !== item.format) {
@@ -6663,7 +6668,11 @@ app.post('/api/progress', (req, res) => {
     return res.status(400).json({ error: 'id and numeric timestamp are required' });
   }
   const db = getCachedDatabase(); // v1.30 A3: hot GET reader (existence check only)
-  const item = db.metadata[id];
+  // OWN-property check (v1.42 __proto__ row-key lesson): a plain truthiness
+  // probe lets id='__proto__'/'constructor' pass via Object.prototype
+  // inheritance, and v1.43 persists this client-supplied id into
+  // user_progress -- a stored junk-key row minted by any signed-in user.
+  const item = Object.prototype.hasOwnProperty.call(db.metadata, id) ? db.metadata[id] : undefined;
   if (!item) {
     return res.status(404).json({ error: 'Media not found' });
   }
@@ -7301,7 +7310,9 @@ app.delete('/api/videos/:id', async (req, res) => {
 // `DELETE /api/videos/:id`'s own existence-check-then-mutate shape.
 app.post('/api/liked/:id', (req, res) => {
   const db = getCachedDatabase(); // v1.30 A3: hot GET reader (existence check only)
-  const item = db.metadata[req.params.id];
+  // OWN-property check (v1.42 __proto__ lesson): this id persists into
+  // user_liked -- see POST /api/progress's identical guard.
+  const item = Object.prototype.hasOwnProperty.call(db.metadata, req.params.id) ? db.metadata[req.params.id] : undefined;
   if (!item) {
     return res.status(404).json({ error: 'Media file not found' });
   }
