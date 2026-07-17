@@ -5487,6 +5487,128 @@ app.delete('/api/settings/logo', async (req, res) => {
   return res.json({ ok: true });
 });
 
+// ---- v1.42: instance backup / restore ---------------------------------------
+// The migrator and this machinery are one system (exec plan): the bundle is a
+// schema-versioned JSON snapshot of EVERY persisted namespace plus the custom
+// logo bytes (base64 — "restore-able config" includes the logo, drift
+// correction #3), with `users: []` reserved so the v1.43 format is additive.
+// SELECT-assembly rides the write chain (single-threaded consistency); the
+// node:sqlite backup() API is deliberately unused (empirically unsafe under
+// concurrent writes — see lib/db/sqlite.js's header).
+//
+// v1.42 trust model: these endpoints are as open as the rest of the API (no
+// auth exists yet) — DISCLOSED in the release notes; v1.43 makes them
+// admin-only and adds the self-lockout guard.
+const BACKUP_SCHEMA = 'filetube-backup-v1';
+const BACKUP_NAMESPACE_KEYS = ['folders', 'folderSettings', 'progress', 'metadata', 'liked', 'deleteTombstones', 'viewCounts', 'settings', 'books', 'ytdlp'];
+
+app.get('/api/admin/backup', async (req, res) => {
+  try {
+    let bundle;
+    // A read-only pass enqueued as a mutator that skips its save: the chain
+    // guarantees no writer's tick interleaves with the snapshot.
+    await updateDatabase((db) => {
+      bundle = { schema: BACKUP_SCHEMA, exportedAt: new Date().toISOString(), appVersion: APP_VERSION };
+      for (const key of BACKUP_NAMESPACE_KEYS) {
+        if (db[key] !== undefined) bundle[key] = db[key];
+      }
+      bundle.customLogo = {};
+      for (const variant of ['light', 'dark']) {
+        const mime = db.settings ? db.settings[customLogoMimeKey(variant)] : undefined;
+        if (typeof mime === 'string' && mime) {
+          try {
+            bundle.customLogo[variant] = { mime, b64: fs.readFileSync(customLogoPath(variant)).toString('base64') };
+          } catch (err) {
+            // A mime key with no readable bytes is served-state damage worth
+            // surfacing, not silently exporting half a logo.
+            console.error(`Backup: customLogo ${variant} mime is set but the bytes are unreadable:`, err.message);
+          }
+        }
+      }
+      bundle.users = []; // reserved (v1.43 populates; format fixed from day one)
+      return false; // read-only pass — never save
+    });
+    res.setHeader('Content-Disposition', contentDispositionAttachment(`filetube-backup-${new Date().toISOString().slice(0, 10)}.json`));
+    res.json(bundle);
+  } catch (err) {
+    console.error('Error building backup bundle:', err);
+    res.status(500).json({ error: `Could not build backup: ${err.message}` });
+  }
+});
+
+// Validation is strict and field-level: an unknown top-level key or a users
+// array this version cannot restore REFUSES the whole bundle (never a lossy
+// partial restore — the same posture as the boot importer).
+function validateBackupBundle(bundle) {
+  if (!bundle || typeof bundle !== 'object' || Array.isArray(bundle)) return 'bundle must be a JSON object';
+  if (bundle.schema !== BACKUP_SCHEMA) return `unsupported schema '${bundle.schema}' (expected ${BACKUP_SCHEMA})`;
+  if (bundle.users !== undefined && (!Array.isArray(bundle.users) || bundle.users.length > 0)) {
+    return 'bundle contains user accounts; this FileTube version cannot restore them (users arrive in v1.43) — refusing a lossy restore';
+  }
+  const known = new Set([...BACKUP_NAMESPACE_KEYS, 'schema', 'exportedAt', 'appVersion', 'customLogo', 'users']);
+  for (const key of Object.keys(bundle)) {
+    if (!known.has(key)) return `unknown bundle key '${key}' — refusing a lossy restore (was this exported by a newer FileTube?)`;
+  }
+  if (bundle.customLogo !== undefined) {
+    if (typeof bundle.customLogo !== 'object' || bundle.customLogo === null || Array.isArray(bundle.customLogo)) return 'customLogo must be an object';
+    for (const variant of Object.keys(bundle.customLogo)) {
+      if (variant !== 'light' && variant !== 'dark') return `unknown customLogo variant '${variant}'`;
+      const entry = bundle.customLogo[variant];
+      if (!entry || typeof entry.mime !== 'string' || !Object.prototype.hasOwnProperty.call(CUSTOM_LOGO_TYPES, entry.mime)) {
+        return `customLogo.${variant}: unsupported or missing mime`;
+      }
+      if (typeof entry.b64 !== 'string' || Buffer.byteLength(entry.b64, 'base64') > CUSTOM_LOGO_MAX_BYTES) {
+        return `customLogo.${variant}: missing bytes or larger than ${CUSTOM_LOGO_MAX_BYTES} bytes`;
+      }
+    }
+  }
+  return null;
+}
+
+// Route-scoped body limit: the default express.json() cap (100 kb) cannot
+// carry a real bundle (175 KB of state + up to 2 MB of logo b64) — same
+// route-scoped-parser posture as the logo upload's express.raw.
+app.post('/api/admin/restore', express.json({ limit: '16mb' }), async (req, res) => {
+  const bundle = req.body;
+  const problem = validateBackupBundle(bundle);
+  if (problem) return res.status(400).json({ error: problem });
+
+  const dbPart = {};
+  for (const key of BACKUP_NAMESPACE_KEYS) {
+    if (bundle[key] !== undefined) dbPart[key] = bundle[key];
+  }
+
+  try {
+    await replacePersistedState((handles) => {
+      // Logo bytes FIRST, inside the exclusive section, before the SQLite
+      // COMMIT carries the mime keys (design review F6). tmp+rename per
+      // variant; a variant the bundle lacks has its stale .bin removed. A
+      // crash between file writes and commit leaves new bytes under the old
+      // mime key for one boot — bounded, cosmetic, disclosed.
+      for (const variant of ['light', 'dark']) {
+        const entry = bundle.customLogo ? bundle.customLogo[variant] : undefined;
+        const finalPath = customLogoPath(variant);
+        if (entry) {
+          const bytes = Buffer.from(entry.b64, 'base64');
+          const tmp = `${finalPath}.restore.tmp`;
+          fs.writeFileSync(tmp, bytes);
+          fs.renameSync(tmp, finalPath);
+        } else {
+          try { fs.unlinkSync(finalPath); } catch { /* no stale variant -- fine */ }
+        }
+      }
+      // One classification, two callers (boot import + restore): the same
+      // strict importer maps namespaces to rows; 'bundle' mode reads
+      // viewCounts first-class.
+      sqliteDb.importParsedJson(dbPart, handles, { source: 'bundle' });
+    });
+  } catch (err) {
+    console.error('Error restoring backup bundle:', err);
+    return res.status(500).json({ error: `Restore failed and was rolled back: ${err.message}` });
+  }
+  res.json({ success: true, restoredNamespaces: Object.keys(dbPart) });
+});
+
 // API: Read the Automation & Storage settings for Settings-page prefill.
 app.get('/api/settings', (req, res) => {
   const db = getCachedDatabase(); // v1.30 A3: hot GET reader
