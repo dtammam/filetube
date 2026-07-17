@@ -150,6 +150,32 @@ const { adapter: dbAdapter } = sqliteDb.openAdapter(DATA_DIR, {
   log: (line) => console.log(line),
 });
 
+// ---- v1.43: auth (users + sessions) ----------------------------------------
+// The gate itself is installed as ONE app.use below (after the body-parser
+// error handler, before the shell catch-all — see the auth-gate block).
+// Everything cryptographic lives in lib/auth/crypto.js; accounts in
+// lib/auth/store.js; the middleware/allowlist/limiter in lib/auth/gate.js.
+const authCrypto = require('./lib/auth/crypto');
+const createUserStore = require('./lib/auth/store');
+const authGateLib = require('./lib/auth/gate');
+const userStore = createUserStore(dbAdapter);
+// Fail-closed at boot: a short/placeholder secret throws here (before listen).
+const SESSION_SECRET = authGateLib.resolveSessionSecret(DATA_DIR, process.env, (line) => console.log(line));
+const AUTH_COOKIE_NAME = authGateLib.cookieNameFor(DATA_DIR);
+const TRUST_PROXY = process.env.FILETUBE_TRUST_PROXY === '1';
+const loginRateLimiter = authGateLib.createRateLimiter();
+// The Shortcut API token (intake #1): when set, POST /api/ytdlp/download
+// accepts it via header as an alternative to a session cookie. Unset =
+// mechanism off (that endpoint is cookie-gated like everything else).
+const API_TOKEN = (typeof process.env.FILETUBE_API_TOKEN === 'string' && process.env.FILETUBE_API_TOKEN.length > 0)
+  ? process.env.FILETUBE_API_TOKEN : null;
+if (TRUST_PROXY) {
+  console.log('[auth] FILETUBE_TRUST_PROXY=1 — X-Forwarded-Proto is trusted; the session cookie gets Secure on https requests (required for a TLS-terminating reverse proxy).');
+}
+if (API_TOKEN) {
+  console.log('[auth] FILETUBE_API_TOKEN is set — the one-off download endpoint (POST /api/ytdlp/download) accepts it via the X-FileTube-Token header for the iOS Shortcut.');
+}
+
 // ---- v1.42: the beta safe-mode lever (exec plan AC8, owner-approved) --------
 // FILETUBE_READ_ONLY_MEDIA=1 turns the parallel-run operational rules ("no
 // deletes, no moves, no downloads from the beta") from remembered into
@@ -588,7 +614,16 @@ function replacePersistedState(populateFn) {
 // deleting an OPEN SQLite database out from under its connection is not a
 // thing, so tests call this instead.
 function __resetDatabaseForTests() {
+  // v1.43: deliberately does NOT clear the user tables. Pre-auth suites mint
+  // ONE admin in before() (via the auth test helper) to authenticate through
+  // the gate; that admin must survive each case's reset so its session cookie
+  // stays valid all suite. Only the auth-flow suite, which tests the
+  // zero-users funnel, wipes users — via __clearUsersForTests below.
   return replacePersistedState(null);
+}
+// Test-only: wipe users (the auth-flow suite's zero-users precondition).
+function __clearUsersForTests() {
+  try { userStore.__clearAllUsersForTests(); } catch (_) { /* users table absent in an odd harness */ }
 }
 
 // ---- Progress-write coalescer (v1.30 A4, AC4.1-AC4.3) ----------------------
@@ -4361,6 +4396,161 @@ app.use((err, req, res, next) => {
   }
   return next(err);
 });
+
+// ---- v1.43: the auth gate + auth routes ------------------------------------
+// ONE app.use, installed HERE (after express.json + the body-parser error
+// handler, BEFORE the shell catch-all + static + all ytdlp routes at the
+// bottom), so it covers every route, static asset, and byte stream by
+// default (design + drift #1). The allowlist lets the login surface through;
+// everything else needs a valid session (or funnels to /welcome when no
+// users exist yet). Pages redirect to /login; APIs 401.
+//
+// Test bypass: the SECURITY of the gate is proven by lib/auth's own unit
+// suites (crypto/store/gate, 50+ tests) and by dedicated integration tests
+// (auth-flow) that exercise the REAL gate end-to-end. For every OTHER
+// integration test — which predates auth and asserts route behavior, not
+// auth — the gate is bypassed via a helper that seeds a test session, so
+// those suites keep testing what they test. The bypass is NOT an env flag
+// (an env that disables auth is a prod foot-gun); it is the presence of a
+// valid session cookie, exactly like a real browser. See
+// test/helpers/auth.js.
+const authGate = authGateLib.createAuthGate({
+  store: userStore,
+  secret: SESSION_SECRET,
+  cookieName: AUTH_COOKIE_NAME,
+  trustProxy: TRUST_PROXY,
+});
+app.use(authGate);
+
+// Set/clear the session cookie for a user id (+ current tv).
+function issueSessionCookie(res, req, user) {
+  const token = authCrypto.signSession({ uid: user.id, tv: user.tokenVersion }, SESSION_SECRET);
+  res.setHeader('Set-Cookie', authGateLib.serializeCookie(AUTH_COOKIE_NAME, token, {
+    maxAgeSeconds: authCrypto.SESSION_SECONDS_DEFAULT,
+    secure: authGateLib.requestIsHttps(req, TRUST_PROXY),
+  }));
+}
+function clearSessionCookie(res) {
+  res.setHeader('Set-Cookie', authGateLib.serializeCookie(AUTH_COOKIE_NAME, '', { expired: true }));
+}
+function rateKey(req, username) {
+  const ip = (TRUST_PROXY && typeof req.headers['x-forwarded-for'] === 'string'
+    ? req.headers['x-forwarded-for'].split(',')[0].trim()
+    : (req.socket && req.socket.remoteAddress)) || 'unknown';
+  return `${ip}|${String(username || '').toLowerCase()}`;
+}
+
+// POST /api/auth/setup — one-time create-admin. Allowlisted ONLY while zero
+// users exist (the gate 409s it otherwise). Adopts the pre-auth global
+// state into the new admin (design-delta WARNING-4: hash async FIRST, then
+// the count-guarded insert + adoption in one synchronous transaction).
+app.post('/api/auth/setup', async (req, res) => {
+  const body = req.body || {};
+  const username = typeof body.username === 'string' ? body.username.trim() : '';
+  const displayName = typeof body.displayName === 'string' ? body.displayName.trim() : '';
+  const password = typeof body.password === 'string' ? body.password : '';
+  const limit = loginRateLimiter.take(rateKey(req, username));
+  if (!limit.allowed) return res.status(429).json({ error: 'too many attempts', retryAfterSec: limit.retryAfterSec });
+  if (!userStore.validateUsername(username)) return res.status(400).json({ error: 'Username can use letters, numbers, and . _ - (up to 64 characters).' });
+  if (password.length < 8) return res.status(400).json({ error: 'Use a password of at least 8 characters.' });
+  try {
+    const passwordHash = await authCrypto.hashPassword(password); // async: off the event loop
+    // Read the pre-auth global state to adopt (once, before the tx).
+    const db = getCachedDatabase();
+    const books = booksStore.readBooks(db);
+    const ytd = (db.ytdlp && typeof db.ytdlp === 'object') ? db.ytdlp : {};
+    const adoption = {
+      progress: db.progress || {},
+      liked: Array.isArray(db.liked) ? db.liked : [],
+      bookProgress: books.progress || {},
+      bookPins: Array.isArray(books.pins) ? books.pins : [],
+      channelPins: Array.isArray(ytd.pins) ? ytd.pins : [],
+    };
+    const admin = userStore.createFirstAdmin({ username, displayName, passwordHash }, adoption, new Date().toISOString());
+    if (!admin) return res.status(409).json({ error: 'setup already complete' });
+    loginRateLimiter.refund(rateKey(req, username));
+    issueSessionCookie(res, req, admin);
+    return res.json({ success: true, user: publicUser(admin) });
+  } catch (err) {
+    console.error('Error in /api/auth/setup:', err);
+    return res.status(500).json({ error: `Could not create the admin account: ${err.message}` });
+  }
+});
+
+// POST /api/auth/login — verify credentials, set the session cookie. Honest
+// timing: always run a hash (a dummy for an unknown user) so a missing
+// username doesn't return faster than a wrong password (user-enumeration
+// timing guard).
+const DUMMY_HASH = 'scrypt$32768$8$1$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
+app.post('/api/auth/login', async (req, res) => {
+  const body = req.body || {};
+  const username = typeof body.username === 'string' ? body.username.trim() : '';
+  const password = typeof body.password === 'string' ? body.password : '';
+  const key = rateKey(req, username);
+  const limit = loginRateLimiter.take(key);
+  if (!limit.allowed) return res.status(429).json({ error: 'too many attempts', retryAfterSec: limit.retryAfterSec });
+  try {
+    const user = username ? userStore.getByUsername(username) : null;
+    const hash = user ? userStore.getPasswordHash(user.id) : DUMMY_HASH;
+    const result = await authCrypto.verifyPassword(password, hash || DUMMY_HASH);
+    if (!user || user.disabled || !result.ok) {
+      return res.status(401).json({ error: 'That username or password is not right.' });
+    }
+    // Params-upgrade-on-login: re-hash at current cost if the stored hash lags.
+    if (result.needsRehash) {
+      try { userStore.updatePassword(user.id, await authCrypto.hashPassword(password)); } catch (_) { /* non-fatal */ }
+    }
+    const fresh = userStore.getById(user.id); // pick up any tv bump from the rehash
+    loginRateLimiter.refund(key);
+    issueSessionCookie(res, req, fresh);
+    return res.json({ success: true, user: publicUser(fresh) });
+  } catch (err) {
+    console.error('Error in /api/auth/login:', err);
+    return res.status(500).json({ error: `Sign-in failed: ${err.message}` });
+  }
+});
+
+// POST /api/auth/logout — clear the cookie (gated: you must be signed in).
+app.post('/api/auth/logout', (req, res) => {
+  clearSessionCookie(res);
+  return res.json({ success: true });
+});
+
+// GET /api/auth/me — the current user (gated). Powers the nav chip + client
+// "am I logged in / am I admin" checks.
+app.get('/api/auth/me', (req, res) => {
+  return res.json({ user: publicUser(req.user) });
+});
+
+// Test-only: mint a genuine session cookie for tests (see the export comment).
+function __mintTestSession(opts = {}) {
+  const username = opts.username || 'testadmin';
+  let user = userStore.getByUsername(username);
+  if (!user) {
+    if (userStore.countUsers() === 0) {
+      user = userStore.createFirstAdmin(
+        { username, displayName: username, passwordHash: 'scrypt$32768$8$1$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' },
+        null, new Date().toISOString()
+      );
+    } else {
+      user = userStore.createUser(
+        { username, displayName: username, passwordHash: 'scrypt$32768$8$1$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA', role: opts.role || 'admin', canManageSubscriptions: true },
+        new Date().toISOString()
+      );
+    }
+  }
+  const token = authCrypto.signSession({ uid: user.id, tv: user.tokenVersion }, SESSION_SECRET);
+  return { cookie: `${AUTH_COOKIE_NAME}=${encodeURIComponent(token)}`, user: publicUser(user), cookieName: AUTH_COOKIE_NAME, token };
+}
+
+// The safe public projection of a user row (never the password hash).
+function publicUser(u) {
+  if (!u) return null;
+  return {
+    id: u.id, username: u.username, displayName: u.displayName,
+    role: u.role, canManageSubscriptions: u.canManageSubscriptions,
+  };
+}
 // v1.41.18 (Dean): kill the header logo FOUC at the SOURCE. The header shells
 // are static HTML, so the "FileTube" text wordmark always painted before
 // common.js could swap in a configured custom logo -- a flash on every refresh.
@@ -4373,10 +4563,15 @@ app.use((err, req, res, next) => {
 // this is always current, needs no bootstrap, and depends on nothing
 // client-side. Only full-page loads/refreshes hit this; in-app SPA nav keeps
 // the header, so there is no FOUC there to fix.
-const FOUC_SHELL_FILES = new Set(['index.html', 'watch.html', 'stats.html', 'setup.html', 'read.html', 'books.html']);
+const FOUC_SHELL_FILES = new Set(['index.html', 'watch.html', 'stats.html', 'setup.html', 'read.html', 'books.html', 'login.html', 'welcome.html']);
 function shellHtmlForRequestPath(p) {
   if (p === '/' || p === '/index.html') return 'index.html';
   if (p === '/books' || p === '/books.html') return 'books.html';
+  // v1.43 auth: the pretty routes /login and /welcome serve their shells (the
+  // gate above lets them through the allowlist; here they get the same
+  // custom-logo/no-cache treatment as every other shell).
+  if (p === '/login') return 'login.html';
+  if (p === '/welcome') return 'welcome.html';
   const bare = p.startsWith('/') ? p.slice(1) : p;
   return FOUC_SHELL_FILES.has(bare) ? bare : null;
 }
@@ -9900,6 +10095,16 @@ module.exports = {
   __resetDatabaseForTests,
   __failNextSaveForTests,
   __getPersistedStateEpoch,
+  // v1.43: test-only session minting. Creates an admin if none exists and
+  // returns a valid session cookie header value, so pre-auth integration
+  // suites authenticate through the REAL gate (the gate's security is proven
+  // by lib/auth's unit suites + the auth-flow integration test; other suites
+  // just need to be logged in to test what they test). NOT an auth bypass —
+  // it produces a genuine cookie exactly like a browser login would.
+  __mintTestSession,
+  __clearUsersForTests,
+  userStore,
+  AUTH_COOKIE_NAME,
   // v1.42 AC7: the Node-floor predicate, exported so the boot check's
   // boundary (22.13 = first unflagged node:sqlite) is testable without
   // spawning per-version binaries.
