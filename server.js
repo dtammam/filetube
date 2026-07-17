@@ -614,12 +614,18 @@ function replacePersistedState(populateFn) {
 // deleting an OPEN SQLite database out from under its connection is not a
 // thing, so tests call this instead.
 function __resetDatabaseForTests() {
-  // v1.43: deliberately does NOT clear the user tables. Pre-auth suites mint
-  // ONE admin in before() (via the auth test helper) to authenticate through
-  // the gate; that admin must survive each case's reset so its session cookie
-  // stays valid all suite. Only the auth-flow suite, which tests the
-  // zero-users funnel, wipes users — via __clearUsersForTests below.
-  return replacePersistedState(null);
+  // v1.43: deliberately does NOT clear the `users` table itself. Pre-auth
+  // suites mint ONE admin in before() (via the auth test helper) to
+  // authenticate through the gate; that admin must survive each case's reset
+  // so its session cookie stays valid all suite. Only the auth-flow suite,
+  // which tests the zero-users funnel, wipes users — via __clearUsersForTests
+  // below. Per-user STATE (progress/liked/pins), however, IS wiped — chunk 4b
+  // moved it out of the doc tables the exclusiveReplace covers, and a case's
+  // watch positions must not bleed into the next (the pre-4b reset semantics,
+  // restored for the new home).
+  return replacePersistedState(null).then(() => {
+    try { userStore.__clearUserStateForTests(); } catch (_) { /* user tables absent in an odd harness */ }
+  });
 }
 // Test-only: wipe users (the auth-flow suite's zero-users precondition).
 function __clearUsersForTests() {
@@ -635,13 +641,28 @@ function __clearUsersForTests() {
 // calling `updateDatabase` directly. `pendingProgress` is a staging area: a
 // ping is recorded here and the request returns immediately; a single
 // debounce timer covers the whole batch window, so N pings (against the
-// same or different ids) inside one window collapse into ONE whole-file
-// atomic write (AC4.1). Nothing else ever routes through this Map --
+// same or different ids) inside one window collapse into ONE durable write
+// (AC4.1). Nothing else ever routes through this Map --
 // `DELETE /api/videos/:id`, `POST /api/config`, `POST /api/settings`, and
 // the scan's final merge all still call `updateDatabase` directly, exactly
 // once per invocation (AC4.2); see each of their own call sites, unchanged
 // by this section.
+//
+// v1.43 (per-user scoping): watch positions belong to a USER now, so the
+// staging key is `<userId>:<mediaId>` (userId is an integer, mediaId is hex
+// -- ':' can't collide) and each entry carries `{userId, mediaId, value}`.
+// The flush upserts the batch into the relational `user_progress` table via
+// `userStore.setProgressBatch` (ONE SQLite transaction per window -- the
+// AC4.1 contract survives the move) instead of mutating the doc-table
+// `db.progress` namespace, which is retained untouched as the frozen
+// pre-auth record the exec plan's adoption section describes. The cutover
+// is total: no reader falls back to `db.progress` (a read-through fallback
+// after adoption is the divergence bug farm design finding #6 warned
+// about).
 const pendingProgress = new Map();
+function pendingProgressKey(userId, mediaId) {
+  return `${userId}:${mediaId}`;
+}
 
 // Batch window in ms -- the production default (5000) matches the design's
 // tunable bound (a realistic ~4s ping cadence needs a >=5s window for a
@@ -671,31 +692,46 @@ function currentProgressFlushTimer() {
 }
 
 // Snapshot-and-clear every queued ping, then persist the whole batch as ONE
-// atomic `updateDatabase` write -- covers the full window in a single
-// write+fsync no matter how many ids/pings it holds. The
-// `if (db.metadata[id])` guard drops an id that was deleted (via
-// `DELETE /api/videos/:id`) between its ping and this flush, so a flush can
-// never resurrect a metadata entry the operator already removed. A no-op
-// (nothing pending -- e.g. the shutdown handler firing with an empty batch)
-// skips `updateDatabase` entirely, never an empty write. Shared by the
+// durable write -- covers the full window in a single SQLite transaction no
+// matter how many users/ids/pings it holds. The `db.metadata[mediaId]`
+// guard drops an id that was deleted (via `DELETE /api/videos/:id`) between
+// its ping and this flush, so a flush can never resurrect state for a
+// removed item. A no-op (nothing pending -- e.g. the shutdown handler
+// firing with an empty batch) skips the write chain entirely. Shared by the
 // debounce timer (`armProgressFlushTimerIfNeeded`, below) AND the shutdown
 // handlers (registered under `require.main === module`, near
 // `app.listen`), and directly exported so tests can trigger a flush
 // deterministically instead of waiting out `PROGRESS_FLUSH_MS`.
+//
+// v1.43: the batch upserts into `user_progress` (userStore.setProgressBatch,
+// one transaction) instead of the doc-table `db.progress`. It still rides
+// `updateDatabase`'s write chain -- with a mutator that returns `false`
+// (no doc-table save) -- for two load-bearing reasons: (1) the mutator's
+// fresh in-lock `db` is what makes the deleted-between-ping-and-flush guard
+// race-free, and (2) chain ordering preserves the v1.42 F5 restore
+// contract (a flush enqueued before a wipe-and-replace lands before it or
+// not at all -- `replacePersistedState` clears this Map inside its own
+// chained step, exactly as before).
+let progressFlushWriteCount = 0;
+function __getProgressFlushWriteCount() {
+  return progressFlushWriteCount;
+}
 function flushPendingProgress() {
   if (progressFlushTimer) {
     clearTimeout(progressFlushTimer);
     progressFlushTimer = null;
   }
   if (pendingProgress.size === 0) return Promise.resolve(false);
-  const snapshot = new Map(pendingProgress);
+  const snapshot = [...pendingProgress.values()];
   pendingProgress.clear();
   return updateDatabase(db => {
-    for (const [id, value] of snapshot) {
-      if (db.metadata[id]) db.progress[id] = value;
+    const rows = snapshot.filter(entry => db.metadata[entry.mediaId]);
+    if (rows.length > 0) {
+      userStore.setProgressBatch(rows);
+      progressFlushWriteCount++;
     }
-    return true;
-  }).catch(err => {
+    return false; // per-user rows only -- never a doc-table write from a flush
+  }).then(() => true).catch(err => {
     // A failed flush must never crash the process or wedge a future flush --
     // `updateDatabase`'s own chain already survives a rejected mutator/save
     // (see its comment above); this just logs so the failure stays visible.
@@ -717,13 +753,18 @@ function armProgressFlushTimerIfNeeded() {
 
 // Read-your-writes overlay (keeps A3's "cache is never mutated in place"
 // invariant intact): a just-posted, not-yet-flushed position lives ONLY in
-// `pendingProgress` until the next flush commits it into `db.progress` -- so
-// every progress READER checks the overlay first, making a client's own
-// just-saved position visible immediately without ever writing into the
-// shared `getCachedDatabase()` object. Falls through to the cache's
-// (as-of-last-flush) value when nothing is pending for `id`.
-function effectiveProgress(id) {
-  return pendingProgress.get(id) ?? getCachedDatabase().progress[id];
+// `pendingProgress` until the next flush commits it -- so every progress
+// READER checks the overlay first, making a client's own just-saved
+// position visible immediately. Falls through to the user's committed
+// `user_progress` row (a warm prepared-statement point SELECT -- the
+// design-delta SUGGESTION-6 no-full-reparse contract) when nothing is
+// pending. NEVER consults the frozen pre-auth `db.progress` record: the
+// adoption cutover is total (design finding #6 -- a read-through fallback
+// is the divergence bug farm).
+function effectiveProgress(userId, id) {
+  const pending = pendingProgress.get(pendingProgressKey(userId, id));
+  if (pending) return pending.value;
+  return userStore.getOneProgress(userId, id) || undefined;
 }
 
 // Media extensions
@@ -4217,6 +4258,19 @@ async function runScanDirectories() {
   });
   if (dbChanged) console.log('Database synced successfully.');
 
+  // v1.43: mirror the mutator's `fresh.progress`/`fresh.viewCounts` prune
+  // onto the per-user rows (user_progress/user_liked -- id-keyed carriers,
+  // the v1.41.6 class), AFTER the doc commit for the same rolled-back-write
+  // reason rekeyInFlightState documents. One transaction for the whole
+  // prunable set.
+  if (prunable.size > 0) {
+    try {
+      userStore.removeMediaState([...prunable]);
+    } catch (err) {
+      console.error('Scan: failed to prune per-user progress/liked for removed items (continuing):', err && err.message);
+    }
+  }
+
   // v1.35 (preExtractAudio): fire the collected sidecar extractions now that
   // the final save has landed (see the collector's comment above for why not
   // mid-scan). queueAudioExtract is idempotent (queue-de-duped, skips when
@@ -6182,7 +6236,7 @@ app.get('/api/videos', (req, res) => {
   // (read-your-writes). Doing this AFTER slicing (not over the full filtered
   // list) keeps the per-request cost bounded to the page size.
   const items = page.map(item => {
-    const progress = effectiveProgress(item.id) || { timestamp: 0, duration: 0 };
+    const progress = effectiveProgress(req.user.id, item.id) || { timestamp: 0, duration: 0 };
     return {
       ...item,
       progress: progress.timestamp,
@@ -6206,7 +6260,8 @@ app.get('/api/videos/:id', (req, res) => {
   }
 
   // v1.30 A4: overlay any not-yet-flushed `pendingProgress` entry (read-your-writes).
-  const progress = effectiveProgress(item.id) || { timestamp: 0 };
+  // v1.43: scoped to the signed-in user.
+  const progress = effectiveProgress(req.user.id, item.id) || { timestamp: 0 };
   // v1.25 QoL bugfix: serve-time fallback for the watch page's uploader
   // avatar. `item.channelAvatarUrl` (a persisted, item-level capture) stays
   // authoritative when present; only when it is EMPTY does this look up the
@@ -6278,8 +6333,10 @@ app.get('/api/videos/:id', (req, res) => {
 
 // API: Get watch progress -- v1.30 A4: overlay any not-yet-flushed
 // `pendingProgress` entry (read-your-writes); see `effectiveProgress` above.
+// v1.43: scoped to the signed-in user (`req.user` is set by the auth gate on
+// every non-allowlisted route).
 app.get('/api/progress/:id', (req, res) => {
-  const progress = effectiveProgress(req.params.id) || { timestamp: 0 };
+  const progress = effectiveProgress(req.user.id, req.params.id) || { timestamp: 0 };
   res.json(progress);
 });
 
@@ -6305,10 +6362,14 @@ app.post('/api/progress', (req, res) => {
   if (!item) {
     return res.status(404).json({ error: 'Media not found' });
   }
-  pendingProgress.set(id, {
-    timestamp,
-    duration: duration || item.duration || 0,
-    updatedAt: new Date().toISOString()
+  pendingProgress.set(pendingProgressKey(req.user.id, id), {
+    userId: req.user.id,
+    mediaId: id,
+    value: {
+      timestamp,
+      duration: duration || item.duration || 0,
+      updatedAt: new Date().toISOString()
+    }
   });
   armProgressFlushTimerIfNeeded();
   res.json({ success: true });
@@ -6887,6 +6948,21 @@ app.delete('/api/videos/:id', async (req, res) => {
     return res.status(500).json({ error: `File deleted from disk but failed to update database: ${err.message}` });
   }
 
+  // v1.43: the per-user rows (user_progress/user_liked) are id-keyed carriers
+  // exactly like db.progress/db.viewCounts above, and go with the item for
+  // the same two reasons (unbounded growth under churn; stale state
+  // resurrecting onto a future re-add of the same path = same md5 id).
+  // AFTER the doc-table commit (the rekeyInFlightState posture): a rolled-
+  // back delete must never have already destroyed users' positions. A crash
+  // in this tiny window leaves orphan rows whose only effect is that a
+  // re-add of the exact same path resumes where users left off -- benign,
+  // and the flush guard never writes new rows for a metadata-less id.
+  try {
+    userStore.removeMediaState(item.id);
+  } catch (err) {
+    console.error(`Delete: failed to remove per-user progress/liked for ${item.id} (continuing):`, err.message);
+  }
+
   if (fileRemainsOnDisk) {
     return res.json({
       success: true,
@@ -6974,7 +7050,7 @@ app.get('/api/liked', (req, res) => {
   const page = sorted.slice(offset, offset + limit);
 
   const items = page.map(item => {
-    const progress = effectiveProgress(item.id) || { timestamp: 0, duration: 0 };
+    const progress = effectiveProgress(req.user.id, item.id) || { timestamp: 0, duration: 0 };
     return {
       ...item,
       liked: true, // every item in this listing is, by construction, a liked member
@@ -7727,11 +7803,29 @@ async function moveItemToFolder(deps, id, targetFolder, opts = {}) {
  *    comment documents) while the new id has no entry at all.
  *  - `recentlyServed`: PATH-keyed live-watch protection, so a file that was being
  *    streamed keeps its cache-eviction protection at its new path.
+ *  - v1.43: the relational `user_progress`/`user_liked` rows (not process
+ *    memory, but the same after-the-commit ordering argument applies -- see
+ *    the inline comment).
  */
 function rekeyInFlightState(oldId, newId, oldPath, newPath) {
-  if (pendingProgress.has(oldId)) {
-    pendingProgress.set(newId, pendingProgress.get(oldId));
-    pendingProgress.delete(oldId);
+  // v1.43: pendingProgress is keyed `<userId>:<mediaId>` -- carry EVERY
+  // user's staged position for the moved item, not just one entry.
+  for (const [key, entry] of [...pendingProgress]) {
+    if (entry.mediaId === oldId) {
+      pendingProgress.delete(key);
+      pendingProgress.set(pendingProgressKey(entry.userId, newId), { ...entry, mediaId: newId });
+    }
+  }
+  // The COMMITTED per-user rows follow the same post-commit posture as the
+  // maps here: re-keying them inside the mutator would leave the relational
+  // rows pointing at a `newId` the rolled-back doc tables never learned
+  // about. `UPDATE OR REPLACE`, so a collision with an already-re-keyed row
+  // can't throw. (user_liked rides along -- the v1.41.6 lesson says every
+  // id-keyed carrier moves in the SAME commit as the namespace it mirrors.)
+  try {
+    userStore.rekeyMediaState(oldId, newId);
+  } catch (err) {
+    console.error(`Move: failed to re-key per-user progress/liked for ${oldId} -> ${newId}:`, err.message);
   }
   const servedAt = persistedServedAt.get(oldId);
   clearPersistedServedAt(oldId);
@@ -10122,10 +10216,16 @@ module.exports = {
   // comment (above `pendingProgress`, near `getCachedDatabase`) for what it
   // does.
   pendingProgress,
+  pendingProgressKey,
   PROGRESS_FLUSH_MS,
   effectiveProgress,
   flushPendingProgress,
   currentProgressFlushTimer,
+  // v1.43 (per-user coalescer): the flush no longer writes the doc tables, so
+  // AC4.1's write-amplification claim is asserted against this counter (one
+  // increment per committed user_progress batch transaction) instead of
+  // __getSaveDatabaseCallCount.
+  __getProgressFlushWriteCount,
   __getSaveDatabaseCallCount,
   reconcileTranscode,
   parseFfprobeTags,

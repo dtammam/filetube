@@ -15,23 +15,26 @@ const DATA_DIR = process.env.DATA_DIR;
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
 const {
-  app, saveDatabase, loadDatabase, pendingProgress, flushPendingProgress,
+  app, saveDatabase, loadDatabase, pendingProgress, pendingProgressKey,
+  flushPendingProgress,
   scanDirectories,
   __resetDatabaseForTests,
   __getPersistedStateEpoch,
+  userStore,
 } = require('../../server');
 const { authenticateFetch } = require('../helpers/auth');
 const { readPersistedDatabase } = require('../../lib/db/sqlite');
 
 let server;
 let base;
+let auth;
 
 before(async () => {
   await new Promise((resolve) => {
     server = app.listen(0, '127.0.0.1', resolve);
   });
   base = `http://127.0.0.1:${server.address().port}`;
-  authenticateFetch(server, base); // v1.43: auth through the real gate
+  auth = authenticateFetch(server, base); // v1.43: auth through the real gate
 });
 
 after(async () => {
@@ -148,20 +151,27 @@ test('F5 coherency: a progress ping staged BEFORE the restore never lands after 
     body: JSON.stringify({ id: 'vid1', timestamp: 77, duration: 100 }),
   });
   assert.equal(ping.status, 200);
-  assert.ok(pendingProgress.has('vid1'), 'precondition: ping staged');
+  const pendingKey = pendingProgressKey(auth.user.id, 'vid1');
+  assert.ok(pendingProgress.has(pendingKey), 'precondition: ping staged');
 
   const bundle = await getBackup();
   const res = await postRestore(bundle);
   assert.equal(res.status, 200);
-  assert.ok(!pendingProgress.has('vid1'), 'the restore cleared the staged ping');
+  assert.ok(!pendingProgress.has(pendingKey), 'the restore cleared the staged ping');
 
-  // Zero intervening writes: the very next read serves restored data.
+  // v1.43 (chunk 4b): watch positions read from the per-user rows now, and a
+  // v1.42-format bundle carries only the FROZEN pre-auth `progress` record --
+  // so the post-restore read contract is "the stale ping is gone", not "the
+  // doc-table value shows through". (The chunk-4 backup rework carries
+  // per-user state in the bundle and restores THIS assertion to a positive
+  // read of the restored per-user position.)
   const read = await fetch(`${base}/api/progress/vid1`);
-  assert.equal((await read.json()).timestamp, 42, 'restored position, not the stale ping');
+  assert.equal((await read.json()).timestamp, 0, 'the pre-restore ping never shows -- and no fallback to the frozen doc-table record');
 
   // Even an explicit flush now must not land the pre-restore ping.
   await flushPendingProgress();
-  assert.equal(loadDatabase().progress.vid1.timestamp, 42, 'the pre-restore ping never lands');
+  assert.equal(userStore.getOneProgress(auth.user.id, 'vid1'), null, 'the pre-restore ping never lands in user_progress');
+  assert.equal(loadDatabase().progress.vid1.timestamp, 42, 'the frozen doc-table record is exactly what the bundle restored -- untouched by any flush');
 });
 
 test('validation refuses: wrong schema, unknown bundle key, non-empty users, oversized/invalid logo', async () => {

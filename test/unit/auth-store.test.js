@@ -128,3 +128,69 @@ test('two users have fully independent per-user state', () => {
   assert.deepEqual(store.getLiked(a.id), ['shared'], 'admin adopted the pre-auth like; b did not');
   assert.deepEqual(store.getLiked(b.id), ['b-only'], 'b has only its own');
 });
+
+// ---- v1.43 chunk 4b: batch flush + media-id lifecycle helpers ---------------
+
+test('setProgressBatch commits many users x many ids in one transaction; a throw mid-batch rolls the WHOLE batch back', () => {
+  const a = store.createFirstAdmin({ username: 'a', displayName: 'A', passwordHash: 'h' }, null, ISO);
+  const b = store.createUser({ username: 'b', displayName: 'B', passwordHash: 'h', role: 'member' }, ISO);
+  store.setProgressBatch([
+    { userId: a.id, mediaId: 'v1', value: { timestamp: 1, duration: 10, updatedAt: ISO } },
+    { userId: a.id, mediaId: 'v2', value: { timestamp: 2, duration: 10, updatedAt: ISO } },
+    { userId: b.id, mediaId: 'v1', value: { timestamp: 9, duration: 10, updatedAt: ISO } },
+  ]);
+  assert.equal(store.getOneProgress(a.id, 'v1').timestamp, 1);
+  assert.equal(store.getOneProgress(a.id, 'v2').timestamp, 2);
+  assert.equal(store.getOneProgress(b.id, 'v1').timestamp, 9);
+
+  // Atomicity: a batch whose LAST row violates the FK (unknown user id)
+  // must land nothing at all.
+  assert.throws(() => store.setProgressBatch([
+    { userId: a.id, mediaId: 'v3', value: { timestamp: 3, duration: 10, updatedAt: ISO } },
+    { userId: 999999, mediaId: 'v3', value: { timestamp: 4, duration: 10, updatedAt: ISO } },
+  ]));
+  assert.equal(store.getOneProgress(a.id, 'v3'), null, 'the failed batch rolled back whole');
+});
+
+test('removeMediaState deletes EVERY user\'s progress + liked rows for the media id, and nothing else', () => {
+  const a = store.createFirstAdmin({ username: 'a', displayName: 'A', passwordHash: 'h' }, null, ISO);
+  const b = store.createUser({ username: 'b', displayName: 'B', passwordHash: 'h', role: 'member' }, ISO);
+  for (const u of [a, b]) {
+    store.setProgress(u.id, 'doomed', { timestamp: 5, duration: 10, updatedAt: ISO });
+    store.setProgress(u.id, 'keeper', { timestamp: 6, duration: 10, updatedAt: ISO });
+    store.addLiked(u.id, 'doomed', ISO);
+    store.addLiked(u.id, 'keeper', ISO);
+  }
+  store.removeMediaState(['doomed']);
+  for (const u of [a, b]) {
+    assert.equal(store.getOneProgress(u.id, 'doomed'), null);
+    assert.equal(store.getOneProgress(u.id, 'keeper').timestamp, 6);
+    assert.deepEqual(store.getLiked(u.id), ['keeper']);
+  }
+});
+
+test('rekeyMediaState carries EVERY user\'s rows old->new; an existing new-id row is replaced, not thrown on', () => {
+  const a = store.createFirstAdmin({ username: 'a', displayName: 'A', passwordHash: 'h' }, null, ISO);
+  const b = store.createUser({ username: 'b', displayName: 'B', passwordHash: 'h', role: 'member' }, ISO);
+  store.setProgress(a.id, 'old', { timestamp: 11, duration: 10, updatedAt: ISO });
+  store.setProgress(b.id, 'old', { timestamp: 22, duration: 10, updatedAt: ISO });
+  store.addLiked(a.id, 'old', ISO);
+  // b already has a row under the NEW id (an in-flight ping landed first) --
+  // the re-key must not throw on the PK collision (UPDATE OR REPLACE).
+  store.setProgress(b.id, 'new', { timestamp: 99, duration: 10, updatedAt: ISO });
+
+  store.rekeyMediaState('old', 'new');
+  assert.equal(store.getOneProgress(a.id, 'old'), null);
+  assert.equal(store.getOneProgress(b.id, 'old'), null);
+  assert.equal(store.getOneProgress(a.id, 'new').timestamp, 11);
+  assert.equal(typeof store.getOneProgress(b.id, 'new').timestamp, 'number', 'b keeps exactly one row under the new id');
+  assert.deepEqual(store.getLiked(a.id), ['new'], 'the Like followed the re-key');
+});
+
+test('__clearUserStateForTests wipes per-user STATE but keeps the users (session cookies stay valid across a test reset)', () => {
+  const a = store.createFirstAdmin({ username: 'a', displayName: 'A', passwordHash: 'h' }, { liked: ['x'], progress: { v: { timestamp: 1, duration: 2 } } }, ISO);
+  store.__clearUserStateForTests();
+  assert.equal(store.countUsers(), 1, 'the user survives');
+  assert.deepEqual(store.getLiked(a.id), []);
+  assert.equal(store.getOneProgress(a.id, 'v'), null);
+});

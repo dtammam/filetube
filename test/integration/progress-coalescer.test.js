@@ -8,13 +8,23 @@
 //   AC4.2 (positive: every REAL mutation -- DELETE /api/videos/:id,
 //          POST /api/config, POST /api/settings, the scan's final merge --
 //          stays exactly 1:1 write-per-invocation, unbatched; a torn-write
-//          round-trip confirms the on-disk file is never left half-written)
-//   AC4.3 (converse: a crash relative to a flush leaves db.json parseable,
+//          round-trip confirms the on-disk store is never left half-written)
+//   AC4.3 (converse: a crash relative to a flush leaves the store intact,
 //          loses at most one PROGRESS_FLUSH_MS window, and never touches
 //          anything but watch position)
 //   Read-your-writes: a just-posted position is visible immediately, on all
 //   three overlay surfaces, BEFORE the flush fires.
 //   Preserved semantics: 400/404 on POST /api/progress still hold.
+//
+// v1.43 (chunk 4b, per-user scoping): watch positions live in the relational
+// `user_progress` table keyed by (user_id, media_id) -- NOT in the doc-table
+// `db.progress`, which is retained only as the frozen pre-auth record the
+// adoption design describes. This suite's persistence assertions therefore
+// read through `userStore` (and the frozen-record/no-doc-write claims are
+// asserted explicitly). The flush's write-amplification contract survives:
+// one batch window = ONE SQLite transaction, counted by
+// `__getProgressFlushWriteCount` (the doc-table saveDatabase counter must
+// NOT move on a flush at all).
 //
 // `PROGRESS_FLUSH_MS` is shrunk via env (see server.js's own comment above
 // the constant) BEFORE requiring server.js, so the batching burst test can
@@ -37,24 +47,30 @@ const {
   scanDirectories,
   getMediaId,
   pendingProgress,
+  pendingProgressKey,
   PROGRESS_FLUSH_MS,
   flushPendingProgress,
   currentProgressFlushTimer,
   __getSaveDatabaseCallCount,
+  __getProgressFlushWriteCount,
   __failNextSaveForTests,
+  __mintTestSession,
+  userStore,
 } = require('../../server');
 const { authenticateFetch } = require('../helpers/auth');
 const { readPersistedDatabase } = require('../../lib/db/sqlite');
 
 let server;
 let base;
+let uid; // the authenticated test admin's user id -- per-user rows key on it
 
 before(async () => {
   await new Promise((resolve) => {
     server = app.listen(0, '127.0.0.1', resolve);
   });
   base = `http://127.0.0.1:${server.address().port}`;
-  authenticateFetch(server, base); // v1.43: auth through the real gate
+  const auth = authenticateFetch(server, base); // v1.43: auth through the real gate
+  uid = auth.user.id;
 });
 
 after(async () => {
@@ -101,26 +117,28 @@ test('POST /api/progress still returns 404 for an unknown media id, and never st
   assert.equal(pendingProgress.size, before, 'a 404 must never stage a ping for a nonexistent id');
 });
 
-// ---- No per-ping updateDatabase ----------------------------------------
+// ---- No per-ping write ----------------------------------------------------
 
-test('POST /api/progress performs NO synchronous write -- saveDatabase call count is unchanged immediately after the response', async () => {
+test('POST /api/progress performs NO synchronous write -- neither doc-table saves nor user_progress batches move immediately after the response', async () => {
   saveDatabase({
     folders: [], folderSettings: {}, progress: {},
     metadata: { vidNoWrite: { id: 'vidNoWrite', title: 'Clip', duration: 100 } },
     settings: baseSettings(),
   });
-  const before = __getSaveDatabaseCallCount();
+  const beforeSaves = __getSaveDatabaseCallCount();
+  const beforeFlushes = __getProgressFlushWriteCount();
   const res = await postProgress('vidNoWrite', 12, 100);
   assert.equal(res.status, 200);
   assert.equal((await res.json()).success, true);
-  assert.equal(__getSaveDatabaseCallCount(), before, 'a single ping must not trigger any saveDatabase call');
-  assert.ok(pendingProgress.has('vidNoWrite'), 'the ping must be staged in the coalescer');
+  assert.equal(__getSaveDatabaseCallCount(), beforeSaves, 'a single ping must not trigger any doc-table save');
+  assert.equal(__getProgressFlushWriteCount(), beforeFlushes, 'a single ping must not trigger a user_progress batch write');
+  assert.ok(pendingProgress.has(pendingProgressKey(uid, 'vidNoWrite')), 'the ping must be staged in the coalescer under the USER\'s key');
   assert.ok(currentProgressFlushTimer(), 'a debounce timer must be armed after the first ping');
 });
 
 // ---- Preserved stored shape + duration fallback ------------------------
 
-test('the flushed value keeps the exact pre-A4 stored shape and duration-fallback precedence', async () => {
+test('the flushed value keeps the exact pre-A4 stored shape and duration-fallback precedence, in the user\'s own row', async () => {
   saveDatabase({
     folders: [], folderSettings: {}, progress: {},
     metadata: { vidShape: { id: 'vidShape', title: 'Clip', duration: 42 } },
@@ -129,21 +147,25 @@ test('the flushed value keeps the exact pre-A4 stored shape and duration-fallbac
   // No duration on the ping -- must fall back to metadata.duration (42), not 0.
   await postProgress('vidShape', 20);
   await flushPendingProgress();
-  const onDisk = loadDatabase().progress.vidShape;
-  assert.equal(onDisk.timestamp, 20);
-  assert.equal(onDisk.duration, 42, 'missing duration on the ping falls back to metadata.duration');
-  assert.equal(typeof onDisk.updatedAt, 'string');
-  assert.ok(!Number.isNaN(Date.parse(onDisk.updatedAt)), 'updatedAt must be a valid ISO timestamp');
+  const row = userStore.getOneProgress(uid, 'vidShape');
+  assert.ok(row, 'the flush must land in user_progress');
+  assert.equal(row.timestamp, 20);
+  assert.equal(row.duration, 42, 'missing duration on the ping falls back to metadata.duration');
+  assert.equal(typeof row.updatedAt, 'string');
+  assert.ok(!Number.isNaN(Date.parse(row.updatedAt)), 'updatedAt must be a valid ISO timestamp');
+  // v1.43 frozen-record contract: the doc-table progress namespace is a
+  // pre-auth record -- the flush must NEVER write it.
+  assert.equal(loadDatabase().progress.vidShape, undefined, 'db.progress is frozen -- per-user flushes never write the doc tables');
 });
 
-test('the flush guard skips an id deleted between its ping and the flush (never resurrects a removed metadata entry)', async () => {
+test('the flush guard skips an id deleted between its ping and the flush (never resurrects state for a removed item)', async () => {
   saveDatabase({
     folders: [], folderSettings: {}, progress: {},
     metadata: { vidDeletedBeforeFlush: { id: 'vidDeletedBeforeFlush', title: 'Clip', duration: 10 } },
     settings: baseSettings(),
   });
   await postProgress('vidDeletedBeforeFlush', 5, 10);
-  assert.ok(pendingProgress.has('vidDeletedBeforeFlush'));
+  assert.ok(pendingProgress.has(pendingProgressKey(uid, 'vidDeletedBeforeFlush')));
 
   // Simulate the id being removed (e.g. DELETE /api/videos/:id) before the
   // flush fires -- directly against the on-disk db, mirroring what a real
@@ -153,7 +175,7 @@ test('the flush guard skips an id deleted between its ping and the flush (never 
   saveDatabase(db);
 
   await flushPendingProgress();
-  assert.equal(loadDatabase().progress.vidDeletedBeforeFlush, undefined, 'a flush must never resurrect a deleted metadata entry');
+  assert.equal(userStore.getOneProgress(uid, 'vidDeletedBeforeFlush'), null, 'a flush must never write a row for a deleted metadata entry');
 });
 
 // ---- Read-your-writes overlay -------------------------------------------
@@ -165,8 +187,8 @@ test('read-your-writes: GET /api/progress/:id sees a just-posted position BEFORE
     settings: baseSettings(),
   });
   await postProgress('vidOverlay1', 33, 100);
-  // Deliberately NOT flushed yet -- on-disk db.progress must still be empty.
-  assert.equal(loadDatabase().progress.vidOverlay1, undefined, 'precondition: nothing persisted to disk yet');
+  // Deliberately NOT flushed yet -- the committed row must not exist.
+  assert.equal(userStore.getOneProgress(uid, 'vidOverlay1'), null, 'precondition: nothing persisted yet');
 
   const res = await fetch(`${base}/api/progress/vidOverlay1`);
   const json = await res.json();
@@ -216,8 +238,9 @@ test('read-your-writes overlay never mutates the shared cache object in place', 
   });
   await postProgress('vidNoMutate', 60, 100);
   // Read the overlay a couple of times (each read surface), then confirm the
-  // CACHE's own progress map is still untouched -- only pendingProgress (and,
-  // after an explicit flush, a freshly-loaded db) ever carries the value.
+  // CACHE's own (frozen) progress map is still untouched -- only
+  // pendingProgress (and, after an explicit flush, the user_progress table)
+  // ever carries the value.
   await fetch(`${base}/api/progress/vidNoMutate`);
   await fetch(`${base}/api/videos/vidNoMutate`);
   const { getCachedDatabase } = require('../../server');
@@ -227,16 +250,63 @@ test('read-your-writes overlay never mutates the shared cache object in place', 
   );
 });
 
+// ---- v1.43: per-user isolation --------------------------------------------
+
+test('per-user isolation: two users\' positions on the SAME media never touch each other, pending or committed', async () => {
+  saveDatabase({
+    folders: [], folderSettings: {}, progress: {},
+    metadata: { vidTwoUsers: { id: 'vidTwoUsers', title: 'Clip', duration: 100 } },
+    settings: baseSettings(),
+  });
+  const second = __mintTestSession({ username: 'seconduser' });
+
+  // Admin (patched fetch) pings 10; the second user pings 90 with an explicit
+  // Cookie (the auth helper respects an explicit Cookie header).
+  await postProgress('vidTwoUsers', 10, 100);
+  const res = await fetch(`${base}/api/progress`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Cookie: second.cookie },
+    body: JSON.stringify({ id: 'vidTwoUsers', timestamp: 90, duration: 100 }),
+  });
+  assert.equal(res.status, 200);
+
+  // Pending overlay is already per-user.
+  const adminView = await (await fetch(`${base}/api/progress/vidTwoUsers`)).json();
+  const secondView = await (await fetch(`${base}/api/progress/vidTwoUsers`, { headers: { Cookie: second.cookie } })).json();
+  assert.equal(adminView.timestamp, 10, 'the admin sees their own pending position');
+  assert.equal(secondView.timestamp, 90, 'the second user sees THEIR pending position, not the admin\'s');
+
+  // And so are the committed rows.
+  await flushPendingProgress();
+  assert.equal(userStore.getOneProgress(uid, 'vidTwoUsers').timestamp, 10);
+  assert.equal(userStore.getOneProgress(second.user.id, 'vidTwoUsers').timestamp, 90);
+});
+
+test('per-user isolation: a user with no position sees zero even when ANOTHER user has watched the item', async () => {
+  saveDatabase({
+    folders: [], folderSettings: {}, progress: {},
+    metadata: { vidOnlyAdmin: { id: 'vidOnlyAdmin', title: 'Clip', duration: 100 } },
+    settings: baseSettings(),
+  });
+  await postProgress('vidOnlyAdmin', 55, 100);
+  await flushPendingProgress();
+
+  const fresh = __mintTestSession({ username: 'freshuser' });
+  const view = await (await fetch(`${base}/api/progress/vidOnlyAdmin`, { headers: { Cookie: fresh.cookie } })).json();
+  assert.equal(view.timestamp, 0, 'no per-user row and no fallback to any other user\'s (or the frozen global) position');
+});
+
 // ---- AC4.1: batched writes ------------------------------------------------
 
-test('AC4.1: a burst of N rapid pings against the same id collapses into <= N/5 whole-file writes, tied to the PROGRESS_FLUSH_MS window', async () => {
+test('AC4.1: a burst of N rapid pings against the same id collapses into <= N/5 batch transactions, tied to the PROGRESS_FLUSH_MS window', async () => {
   saveDatabase({
     folders: [], folderSettings: {}, progress: {},
     metadata: { vidBurst: { id: 'vidBurst', title: 'Clip', duration: 1000 } },
     settings: baseSettings(),
   });
 
-  const before = __getSaveDatabaseCallCount();
+  const beforeFlushes = __getProgressFlushWriteCount();
+  const beforeSaves = __getSaveDatabaseCallCount();
   const PING_COUNT = 20;
   // Real cadence proportionally scaled to PROGRESS_FLUSH_MS (mirrors the
   // production ~4s-ping-vs-5s-window ratio): a ping roughly every
@@ -249,16 +319,17 @@ test('AC4.1: a burst of N rapid pings against the same id collapses into <= N/5 
   // Let the last-armed timer actually fire and flush.
   await flushPendingProgress();
 
-  const writes = __getSaveDatabaseCallCount() - before;
+  const writes = __getProgressFlushWriteCount() - beforeFlushes;
   assert.ok(
     writes <= PING_COUNT / 5,
-    `expected <= ${PING_COUNT / 5} whole-file writes for ${PING_COUNT} pings (>= 5:1 reduction), saw ${writes}`
+    `expected <= ${PING_COUNT / 5} batch transactions for ${PING_COUNT} pings (>= 5:1 reduction), saw ${writes}`
   );
   assert.ok(writes >= 1, 'the burst must still eventually persist at least once');
-  assert.equal(loadDatabase().progress.vidBurst.timestamp, PING_COUNT - 1, 'the LAST-WINS value must be what is persisted');
+  assert.equal(__getSaveDatabaseCallCount(), beforeSaves, 'progress flushes never touch the doc tables at all');
+  assert.equal(userStore.getOneProgress(uid, 'vidBurst').timestamp, PING_COUNT - 1, 'the LAST-WINS value must be what is persisted');
 });
 
-test('AC4.1: many pings against DIFFERENT ids inside one window still collapse into a single write', async () => {
+test('AC4.1: many pings against DIFFERENT ids inside one window still collapse into a single batch transaction', async () => {
   saveDatabase({
     folders: [], folderSettings: {}, progress: {},
     metadata: {
@@ -268,16 +339,15 @@ test('AC4.1: many pings against DIFFERENT ids inside one window still collapse i
     },
     settings: baseSettings(),
   });
-  const before = __getSaveDatabaseCallCount();
+  const beforeFlushes = __getProgressFlushWriteCount();
   await postProgress('multiA', 1, 10);
   await postProgress('multiB', 2, 10);
   await postProgress('multiC', 3, 10);
   await flushPendingProgress();
-  assert.equal(__getSaveDatabaseCallCount() - before, 1, 'three different ids pinged inside one window must still be ONE write');
-  const db = loadDatabase();
-  assert.equal(db.progress.multiA.timestamp, 1);
-  assert.equal(db.progress.multiB.timestamp, 2);
-  assert.equal(db.progress.multiC.timestamp, 3);
+  assert.equal(__getProgressFlushWriteCount() - beforeFlushes, 1, 'three different ids pinged inside one window must still be ONE batch transaction');
+  assert.equal(userStore.getOneProgress(uid, 'multiA').timestamp, 1);
+  assert.equal(userStore.getOneProgress(uid, 'multiB').timestamp, 2);
+  assert.equal(userStore.getOneProgress(uid, 'multiC').timestamp, 3);
 });
 
 // ---- AC4.2 (positive): real mutations stay 1:1, unbatched ----------------
@@ -380,7 +450,7 @@ test('AC4.2: a simulated crash mid-write during POST /api/config never tears the
 
 // ---- AC4.3 (converse): bounded, progress-only relaxation ------------------
 
-test('AC4.3: a crash simulated at an arbitrary point relative to a flush leaves db.json parseable, and the lost data is bounded to <= one flush window of watch position only', async () => {
+test('AC4.3: a crash simulated at an arbitrary point relative to a flush leaves the store intact, and the lost data is bounded to <= one flush window of watch position only', async () => {
   saveDatabase({
     folders: ['/untouched-folder'], folderSettings: {}, progress: {},
     metadata: {
@@ -394,20 +464,20 @@ test('AC4.3: a crash simulated at an arbitrary point relative to a flush leaves 
   // A ping is staged (queued, not yet flushed) -- exactly the window AC4.3
   // describes as "an arbitrary point relative to a flush".
   await postProgress('vidCrash', 42, 100);
-  assert.ok(pendingProgress.has('vidCrash'));
+  assert.ok(pendingProgress.has(pendingProgressKey(uid, 'vidCrash')));
 
   // Simulate a hard crash (SIGKILL-equivalent): the write never even starts --
   // the persisted store is whatever it was BEFORE this ping was staged.
   const onCrash = readPersistedDatabase(process.env.DATA_DIR);
-  assert.deepEqual(onCrash, before, 'the persisted store is untouched by an unflushed pending ping -- never torn');
+  assert.deepEqual(onCrash, before, 'the persisted doc-table state is untouched by an unflushed pending ping -- never torn');
 
-  assert.equal((onCrash.progress || {}).vidCrash, undefined, 'the lost data is bounded to the unflushed watch position only');
+  assert.equal(userStore.getOneProgress(uid, 'vidCrash'), null, 'the lost data is bounded to the unflushed watch position only');
   assert.deepEqual(onCrash.folders, ['/untouched-folder'], 'folders/metadata/settings are NEVER at risk from the progress coalescer');
   assert.ok(onCrash.metadata.vidCrash, 'metadata itself (unlike progress) is never at risk');
   assert.ok(onCrash.metadata.vidUnrelated, 'an unrelated item is completely unaffected');
 });
 
-test('AC4.3: after a normal flush (not a crash), the position IS durable on disk and parses correctly', async () => {
+test('AC4.3: after a normal flush (not a crash), the position IS durable in the user\'s row and parses correctly', async () => {
   saveDatabase({
     folders: [], folderSettings: {}, progress: {},
     metadata: { vidDurable: { id: 'vidDurable', title: 'Clip', duration: 100 } },
@@ -415,8 +485,7 @@ test('AC4.3: after a normal flush (not a crash), the position IS durable on disk
   });
   await postProgress('vidDurable', 88, 100);
   await flushPendingProgress();
-  const onDisk = readPersistedDatabase(process.env.DATA_DIR);
-  assert.equal(onDisk.progress.vidDurable.timestamp, 88);
+  assert.equal(userStore.getOneProgress(uid, 'vidDurable').timestamp, 88);
 });
 
 // ---- Shutdown flush primitive (AC4.3) -------------------------------------
@@ -428,7 +497,7 @@ test('AC4.3: after a normal flush (not a crash), the position IS durable on disk
 // block's own comment). What IS always exercised here, directly, is the
 // exact primitive those handlers call.
 
-test('shutdown flush primitive: flushPendingProgress persists every staged id in one atomic write and clears the queue', async () => {
+test('shutdown flush primitive: flushPendingProgress persists every staged id in one batch transaction and clears the queue', async () => {
   saveDatabase({
     folders: [], folderSettings: {}, progress: {},
     metadata: {
@@ -441,19 +510,20 @@ test('shutdown flush primitive: flushPendingProgress persists every staged id in
   await postProgress('shutdownB', 4, 10);
   assert.equal(pendingProgress.size, 2);
 
-  const before = __getSaveDatabaseCallCount();
+  const before = __getProgressFlushWriteCount();
   await flushPendingProgress();
-  assert.equal(__getSaveDatabaseCallCount() - before, 1, 'the shutdown-style flush persists the whole queue in ONE write');
+  assert.equal(__getProgressFlushWriteCount() - before, 1, 'the shutdown-style flush persists the whole queue in ONE batch transaction');
   assert.equal(pendingProgress.size, 0, 'the queue is cleared once flushed');
 
-  const db = loadDatabase();
-  assert.equal(db.progress.shutdownA.timestamp, 3);
-  assert.equal(db.progress.shutdownB.timestamp, 4);
+  assert.equal(userStore.getOneProgress(uid, 'shutdownA').timestamp, 3);
+  assert.equal(userStore.getOneProgress(uid, 'shutdownB').timestamp, 4);
 });
 
 test('flushPendingProgress is a safe no-op (no write) when nothing is pending', async () => {
-  const before = __getSaveDatabaseCallCount();
+  const beforeSaves = __getSaveDatabaseCallCount();
+  const beforeFlushes = __getProgressFlushWriteCount();
   const result = await flushPendingProgress();
-  assert.equal(result, false, 'an empty flush must skip updateDatabase entirely');
-  assert.equal(__getSaveDatabaseCallCount(), before, 'an empty flush must never issue a whole-file write');
+  assert.equal(result, false, 'an empty flush must skip the write chain entirely');
+  assert.equal(__getSaveDatabaseCallCount(), beforeSaves, 'an empty flush must never issue a doc-table write');
+  assert.equal(__getProgressFlushWriteCount(), beforeFlushes, 'an empty flush must never issue a batch transaction');
 });

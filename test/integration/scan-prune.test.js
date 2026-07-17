@@ -13,7 +13,7 @@ const TRANSCODE_DIR = path.join(DATA_DIR, 'transcoded');
 
 const { test, beforeEach } = require('node:test');
 const assert = require('node:assert');
-const { scanDirectories, getMediaId, recordServed, saveDatabase, __resetDatabaseForTests } = require('../../server');
+const { scanDirectories, getMediaId, recordServed, saveDatabase, __resetDatabaseForTests, __mintTestSession, userStore } = require('../../server');
 const { readPersistedDatabase } = require('../../lib/db/sqlite');
 
 function baseSettings(overrides) {
@@ -138,6 +138,16 @@ test('(b) pruneMissing=true + present root + individually-gone file: pruned, sid
     settings: baseSettings({ pruneMissing: true }),
   });
 
+  // v1.43 (chunk 4b): per-user rows are id-keyed carriers and must prune WITH
+  // the item (no stale-position resurrection onto a future re-add of the same
+  // path = same md5 id). Seed a position + a Like for the pruned id and a
+  // position for the KEEPER (which must survive untouched).
+  const keeperId = getMediaId(keeperPath);
+  const u = __mintTestSession({ username: 'pruneuser' }).user;
+  userStore.setProgress(u.id, id, { timestamp: 5, duration: 10, updatedAt: new Date().toISOString() });
+  userStore.addLiked(u.id, id, new Date().toISOString());
+  userStore.setProgress(u.id, keeperId, { timestamp: 3, duration: 10, updatedAt: new Date().toISOString() });
+
   await scanDirectories();
 
   const db = readDb();
@@ -147,6 +157,9 @@ test('(b) pruneMissing=true + present root + individually-gone file: pruned, sid
   assert.ok(!(db.progress && db.progress[id]), 'watch progress for a pruned entry should be removed');
   assert.ok(!(db.viewCounts && db.viewCounts[id]),
     'v1.42: the extracted view counter prunes with its item (no orphan row, no stale-count resurrection)');
+  assert.equal(userStore.getOneProgress(u.id, id), null, 'v1.43: the per-user position prunes with its item');
+  assert.deepStrictEqual(userStore.getLiked(u.id), [], 'v1.43: the per-user Like prunes with its item');
+  assert.equal(userStore.getOneProgress(u.id, keeperId).timestamp, 3, 'the surviving sibling\'s per-user position is untouched');
   assert.ok(!fs.existsSync(path.join(THUMBNAIL_DIR, `${id}.jpg`)), 'thumbnail sidecar should be deleted on prune');
   assert.ok(!fs.existsSync(path.join(TRANSCODE_DIR, `${id}.mp4`)), 'transcode sidecar should be deleted on prune');
 });

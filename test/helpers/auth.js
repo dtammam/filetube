@@ -13,10 +13,12 @@
 
 // Patch global.fetch so any request whose URL starts with `base` gets the
 // session cookie header (unless the caller already set a Cookie, e.g. an
-// auth-negative test). Returns { cookie, user, restore }.
+// auth-negative test). Returns { cookie, user, restore } -- `user` is the
+// minted account (v1.43 chunk 4b: per-user suites key their
+// progress/liked/pin assertions by `user.id`).
 function authenticateFetch(server, base) {
   const { __mintTestSession } = require('../../server');
-  const { cookie } = __mintTestSession();
+  const { cookie, user } = __mintTestSession();
   const realFetch = global.fetch;
   global.fetch = function (url, opts) {
     const u = typeof url === 'string' ? url : (url && url.url) || '';
@@ -32,6 +34,7 @@ function authenticateFetch(server, base) {
   };
   return {
     cookie,
+    user,
     restore() { global.fetch = realFetch; },
   };
 }

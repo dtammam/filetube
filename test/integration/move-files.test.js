@@ -114,6 +114,45 @@ test('POST /api/videos/:id/move: happy path re-keys metadata/progress and rename
   assert.ok(fs.existsSync(path.join(THUMBNAIL_DIR, `${newId}.jpg`)), 'the thumbnail must be re-keyed to the new id');
 });
 
+// v1.43 (chunk 4b): the per-user rows are id-keyed carriers exactly like
+// db.progress/db.liked/db.viewCounts were -- the v1.41.6 liked-drop class,
+// which this repo has now paid for SEVEN times, says every new id-keyed
+// namespace joins the move re-key in the same release that creates it. All
+// movers share moveItemToFolder + rekeyInFlightState, so this single lock
+// covers the route, the boot one-off migrator, and reheat relocation.
+test('POST /api/videos/:id/move: PER-USER progress and liked rows follow the re-key (multi-user, no orphaned old rows)', async () => {
+  const srcDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-move-pu-src-'));
+  const dstDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-move-pu-dst-'));
+  const filePath = path.join(srcDir, 'peruser.mp4');
+  fs.writeFileSync(filePath, 'clip-bytes');
+  const oldId = getMediaId(filePath);
+  const newId = getMediaId(path.join(dstDir, 'peruser.mp4'));
+
+  seedItem({ id: oldId, filePath, folders: [srcDir, dstDir] });
+
+  // TWO users with state on the item -- the re-key must carry them BOTH.
+  const { __mintTestSession, userStore } = require('../../server');
+  const u1 = __mintTestSession().user; // the suite's admin
+  const u2 = __mintTestSession({ username: 'mover2' }).user;
+  userStore.setProgress(u1.id, oldId, { timestamp: 42, duration: 10, updatedAt: new Date().toISOString() });
+  userStore.setProgress(u2.id, oldId, { timestamp: 7, duration: 10, updatedAt: new Date().toISOString() });
+  userStore.addLiked(u2.id, oldId, new Date().toISOString());
+
+  const res = await fetch(`${base}/api/videos/${oldId}/move`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ targetFolder: dstDir }),
+  });
+  assert.equal(res.status, 200);
+
+  assert.equal(userStore.getOneProgress(u1.id, oldId), null, 'no orphaned old-id row (user 1)');
+  assert.equal(userStore.getOneProgress(u2.id, oldId), null, 'no orphaned old-id row (user 2)');
+  assert.equal(userStore.getOneProgress(u1.id, newId).timestamp, 42, 'user 1\'s position survives under the new id');
+  assert.equal(userStore.getOneProgress(u2.id, newId).timestamp, 7, 'user 2\'s position survives under the new id');
+  assert.deepStrictEqual(userStore.getLiked(u2.id), [newId], 'user 2\'s Like follows the re-key');
+  assert.deepStrictEqual(userStore.getLiked(u1.id), [], 'user 1 (who never liked it) gains nothing');
+});
+
 // v1.42 gate CRITICAL (adversarial seat, runnable repro): the extracted
 // `viewCounts` namespace is id-keyed exactly like progress/liked and MUST
 // follow the re-key — the T3 extraction landed without it, so every move
