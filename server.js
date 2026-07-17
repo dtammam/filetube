@@ -4419,6 +4419,7 @@ const authGate = authGateLib.createAuthGate({
   secret: SESSION_SECRET,
   cookieName: AUTH_COOKIE_NAME,
   trustProxy: TRUST_PROXY,
+  apiToken: API_TOKEN, // the Shortcut token for POST /api/ytdlp/download
 });
 app.use(authGate);
 

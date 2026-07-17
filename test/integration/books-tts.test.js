@@ -52,6 +52,7 @@ process.env.FILETUBE_TTS_DEFER_POLL_MS = '100'; // fast defer re-check for the T
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
 const { app, updateDatabase, loadDatabase, scanBooks, reconcileTtsCacheAtBoot } = require('../../server');
+const { authenticateFetch } = require('../helpers/auth');
 const booksStore = require('../../lib/books/store');
 const ytdlp = require('../../lib/ytdlp');
 const { buildEpub } = require('../helpers/build-zip');
@@ -82,6 +83,7 @@ before(async () => {
 
   await new Promise((resolve) => { server = app.listen(0, '127.0.0.1', resolve); });
   base = `http://127.0.0.1:${server.address().port}`;
+  authenticateFetch(server, base); // v1.43: auth through the real gate
   // Let the async engine-availability probe settle.
   await new Promise((r) => setTimeout(r, 150));
 });

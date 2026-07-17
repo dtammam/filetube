@@ -65,6 +65,7 @@ const {
   relocateHydratedImportIntoChannelFolder, resolveRelocationTitle, transcodedPath,
   flushPendingProgress,
 } = require('../../server');
+const { authenticateFetch } = require('../helpers/auth');
 const { readPersistedDatabase } = require('../../lib/db/sqlite');
 const ytdlp = require('../../lib/ytdlp');
 const ytdlpArgs = require('../../lib/ytdlp/args');
@@ -856,6 +857,7 @@ test('a file that is being WATCHED (served within RECENT_STREAM_MS) is not moved
   const server = app.listen(0, '127.0.0.1');
   await new Promise((r) => server.once('listening', r));
   const base = `http://127.0.0.1:${server.address().port}`;
+  authenticateFetch(server, base); // v1.43: auth through the real gate
   try {
     // Stream it (this is what marks the path live-watched).
     const res = await fetch(`${base}/video/${id}`, { headers: { Range: 'bytes=0-3' } });
@@ -880,6 +882,7 @@ test('watch progress posted just before a move is NOT lost: pendingProgress is r
   const server = app.listen(0, '127.0.0.1');
   await new Promise((r) => server.once('listening', r));
   const base = `http://127.0.0.1:${server.address().port}`;
+  authenticateFetch(server, base); // v1.43: auth through the real gate
   try {
     // A ping lands in the debounced pendingProgress staging map (NOT yet in db).
     const posted = await fetch(`${base}/api/progress`, {
@@ -1059,6 +1062,7 @@ test('a failed db re-key does not leave the in-flight progress ping stranded on 
   const server = app.listen(0, '127.0.0.1');
   await new Promise((r) => server.once('listening', r));
   const base = `http://127.0.0.1:${server.address().port}`;
+  authenticateFetch(server, base); // v1.43: auth through the real gate
   try {
     await fetch(`${base}/api/progress`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },

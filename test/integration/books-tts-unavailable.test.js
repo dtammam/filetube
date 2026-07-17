@@ -16,6 +16,7 @@ delete process.env.FILETUBE_TTS_PIPER_MODEL;
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
 const { app } = require('../../server');
+const { authenticateFetch } = require('../helpers/auth');
 
 let server;
 let base;
@@ -23,6 +24,7 @@ let base;
 before(async () => {
   await new Promise((resolve) => { server = app.listen(0, '127.0.0.1', resolve); });
   base = `http://127.0.0.1:${server.address().port}`;
+  authenticateFetch(server, base); // v1.43: auth through the real gate
   await new Promise((r) => setTimeout(r, 100)); // let the (failing) engine probe settle
 });
 

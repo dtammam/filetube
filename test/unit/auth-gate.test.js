@@ -190,6 +190,26 @@ test('gate: a valid session sets req.user and calls next; a revoked (tv-bumped) 
   assert.equal(res3._status, 401, 'disabled user denied');
 });
 
+test('gate: the API token is an ALTERNATIVE auth for POST /api/ytdlp/download only', () => {
+  const g = gate.createAuthGate({ store: fakeStore({ count: 1, user: null }), secret: 's'.repeat(40), cookieName: 'c', apiToken: 'shortcut-secret-token' });
+  // Valid token header on the download endpoint -> allowed (no cookie needed).
+  let nexted = false;
+  g({ method: 'POST', path: '/api/ytdlp/download', url: '/api/ytdlp/download', originalUrl: '/api/ytdlp/download', headers: { 'x-filetube-token': 'shortcut-secret-token' } }, fakeRes(), () => { nexted = true; });
+  assert.equal(nexted, true, 'valid token allows the download endpoint');
+  // Wrong token PRESENT -> 401 (not a fall-through).
+  const rWrong = fakeRes();
+  g({ method: 'POST', path: '/api/ytdlp/download', url: '/api/ytdlp/download', originalUrl: '/api/ytdlp/download', headers: { 'x-filetube-token': 'wrong' } }, rWrong, () => {});
+  assert.equal(rWrong._status, 401, 'wrong token 401s');
+  // The token does NOT unlock any OTHER endpoint.
+  const rOther = fakeRes();
+  g({ method: 'POST', path: '/api/config', url: '/api/config', originalUrl: '/api/config', headers: { 'x-filetube-token': 'shortcut-secret-token' } }, rOther, () => {});
+  assert.equal(rOther._status, 401, 'the token is scoped to the download endpoint only');
+  // Absent token header on the download endpoint -> falls through to cookie auth (401 without a session).
+  const rNoTok = fakeRes();
+  g({ method: 'POST', path: '/api/ytdlp/download', url: '/api/ytdlp/download', originalUrl: '/api/ytdlp/download', headers: {} }, rNoTok, () => {});
+  assert.equal(rNoTok._status, 401, 'no token + no cookie -> 401 (not open)');
+});
+
 test('gate: no cookie on a page request → redirect to /login; on an API → 401', () => {
   const g = gate.createAuthGate({ store: fakeStore({ count: 1, user: null }), secret: 's'.repeat(40), cookieName: 'c' });
   const rPage = fakeRes(); g(fakeReq({ path: '/' }), rPage, () => {});

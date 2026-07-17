@@ -22,6 +22,7 @@ const {
   transcodedPath,
   __resetDatabaseForTests,
 } = require('../../server');
+const { authenticateFetch } = require('../helpers/auth');
 
 let server;
 let base;
@@ -49,6 +50,7 @@ before(async () => {
     server = app.listen(0, '127.0.0.1', resolve);
   });
   base = `http://127.0.0.1:${server.address().port}`;
+  authenticateFetch(server, base); // v1.43: auth through the real gate
 });
 
 after(async () => {

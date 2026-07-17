@@ -16,6 +16,7 @@ process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-del-unico
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
 const { app, updateDatabase, loadDatabase, getMediaId } = require('../../server');
+const { authenticateFetch } = require('../helpers/auth');
 
 // Force the two normalization forms explicitly (never trust the source
 // file's own on-disk normalization, which an editor can silently unify).
@@ -31,6 +32,7 @@ before(async () => {
   fs.mkdirSync(libDir, { recursive: true });
   await new Promise((resolve) => { server = app.listen(0, '127.0.0.1', resolve); });
   base = `http://127.0.0.1:${server.address().port}`;
+  authenticateFetch(server, base); // v1.43: auth through the real gate
 });
 
 after(async () => {

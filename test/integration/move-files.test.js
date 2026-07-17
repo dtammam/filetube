@@ -20,6 +20,7 @@ const assert = require('node:assert');
 const {
   app, getMediaId, loadDatabase, saveDatabase, updateDatabase, moveItemToFolder, transcodedPath,
 } = require('../../server');
+const { authenticateFetch } = require('../helpers/auth');
 const { readPersistedDatabase } = require('../../lib/db/sqlite');
 
 // v1.42: seeds go through the exported saveDatabase (the adapter opened at
@@ -43,6 +44,7 @@ before(async () => {
     server = app.listen(0, '127.0.0.1', resolve);
   });
   base = `http://127.0.0.1:${server.address().port}`;
+  authenticateFetch(server, base); // v1.43: auth through the real gate
 });
 
 after(async () => {

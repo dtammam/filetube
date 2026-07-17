@@ -19,6 +19,7 @@ const {
   app, loadDatabase, updateDatabase, getMediaId, scanBooks,
   flushPendingBookProgress, effectiveBookProgress,
 } = require('../../server');
+const { authenticateFetch } = require('../helpers/auth');
 const { readPersistedDatabase } = require('../../lib/db/sqlite');
 const { buildEpub } = require('../helpers/build-zip');
 
@@ -47,6 +48,7 @@ before(async () => {
     server = app.listen(0, '127.0.0.1', resolve);
   });
   base = `http://127.0.0.1:${server.address().port}`;
+  authenticateFetch(server, base); // v1.43: auth through the real gate
 });
 
 after(async () => {

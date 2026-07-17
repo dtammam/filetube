@@ -31,6 +31,7 @@ const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
 const express = require('express');
 const { app, scanDirectories, loadDatabase, updateDatabase } = require('../../server');
+const { authenticateFetch } = require('../helpers/auth');
 const ytdlp = require('../../lib/ytdlp');
 const argsMod = require('../../lib/ytdlp/args');
 
@@ -42,6 +43,7 @@ before(async () => {
     server = app.listen(0, '127.0.0.1', resolve);
   });
   base = `http://127.0.0.1:${server.address().port}`;
+  authenticateFetch(server, base); // v1.43: auth through the real gate
 });
 
 after(async () => {
