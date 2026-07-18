@@ -13,7 +13,7 @@ process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-musicapi-
 
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
-const { app, updateDatabase, ALBUMART_DIR, userStore } = require('../../server');
+const { app, updateDatabase, ALBUMART_DIR, userStore, audioPath } = require('../../server');
 const musicStore = require('../../lib/music/store');
 const { authenticateFetch } = require('../helpers/auth');
 
@@ -154,6 +154,31 @@ test('T6: GET /albumart/:id serves the real art if present, else an SVG placehol
   res = await get(`/albumart/${t1.id}`);
   assert.equal(res.status, 200);
   assert.match(res.headers.get('content-type'), /jpeg|jpg/);
+});
+
+test('T7: an ALAC track with no cached rendition answers 503 transcoding; a native track streams; a present rendition is served', async () => {
+  await seedLibrary();
+  // Add an ALAC track (probed codec 'alac') with no rendition yet.
+  const alacFull = path.join(libRoot, 'Floyd/Wall/03 Alac.m4a');
+  fs.writeFileSync(alacFull, 'ALACBYTES');
+  const alacId = require('crypto').createHash('md5').update(alacFull).digest('hex');
+  await updateDatabase((db) => {
+    const ns = musicStore.ensureMusic(db);
+    ns.tracks[alacId] = { id: alacId, filePath: alacFull, rootFolder: libRoot, ext: '.m4a', title: 'Alac', artist: 'Pink Floyd', album: 'The Wall', albumArtKey: 'z'.repeat(32), codec: 'alac', durationSec: 100, addedAt: '2026-01-01T00:00:00Z' };
+    return true;
+  });
+  // No rendition on disk -> 503 (CI has no ffmpeg, so the enqueue is a no-op
+  // and it STAYS 503 — the correct "would transcode" signal).
+  let r = await get(`/track/${alacId}`);
+  assert.equal(r.status, 503);
+  assert.equal((await r.json()).error, 'transcoding');
+
+  // Simulate a finished rendition (audioPath = TRANSCODE_DIR/<id>.m4a) -> served.
+  fs.mkdirSync(path.dirname(audioPath(alacId)), { recursive: true });
+  fs.writeFileSync(audioPath(alacId), 'RENDITION');
+  r = await get(`/track/${alacId}`);
+  assert.equal(r.status, 200);
+  assert.equal(r.headers.get('content-type'), 'audio/mp4', 'rendition served as m4a');
 });
 
 test('T6: resume pointer round-trips per user', async () => {

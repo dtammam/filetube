@@ -6080,6 +6080,69 @@ const MUSIC_CONTENT_TYPES = {
   '.wav': 'audio/wav',
 };
 
+// v1.44 T7: the ALAC transcode gate. CONSERVATIVE, positive-identification
+// only — only a probed `alac` codec transcodes; a null/unknown/absent codec
+// (probe failed or ffmpeg absent) NEVER flags a file (the "degrade safely"
+// contract — a false transcode would be worse than a direct stream that the
+// browser might handle). Everything else (mp3/aac/flac/pcm) streams natively.
+function musicCodecNeedsTranscode(codec) {
+  return typeof codec === 'string' && codec.toLowerCase() === 'alac';
+}
+
+// A tiny, MUSIC-OWNED transcode queue (never the video audio-extract queue,
+// which writes db.metadata[id].audioStatus — a music id would pollute the
+// video namespace). Renditions land at audioPath(id) so they share the
+// TRANSCODE_DIR cache management (LRU eviction, tmp cleanup, age sweep) for
+// free; readiness is tracked by FILE EXISTENCE alone (no db write on the hot
+// path). Reuses buildAudioExtractArgs (-vn AAC/160k m4a) — for an ALAC source
+// `-vn` also drops any embedded cover-art video stream, exactly right.
+const musicTranscodeQueue = [];
+let musicTranscodeBusy = false;
+function queueMusicTranscode(id, srcPath) {
+  if (!ffmpegAvailable) return;
+  if (musicTranscodeQueue.some((job) => job.id === id)) return; // already queued
+  musicTranscodeQueue.push({ id, srcPath });
+  processMusicTranscodeQueue();
+}
+function processMusicTranscodeQueue() {
+  if (musicTranscodeBusy || musicTranscodeQueue.length === 0) return;
+  const { id, srcPath } = musicTranscodeQueue.shift();
+  if (!fs.existsSync(srcPath)) { processMusicTranscodeQueue(); return; }
+  const outPath = audioPath(id);
+  if (fs.existsSync(outPath)) { processMusicTranscodeQueue(); return; }
+  musicTranscodeBusy = true;
+  const tmpPath = `${outPath}.tmp.m4a`;
+  let proc;
+  try {
+    proc = spawn('ffmpeg', buildAudioExtractArgs(srcPath, tmpPath));
+  } catch (e) {
+    console.error(`music: failed to start ALAC transcode for ${srcPath}:`, e.message);
+    musicTranscodeBusy = false;
+    processMusicTranscodeQueue();
+    return;
+  }
+  proc.stderr.on('data', () => { /* drain */ });
+  proc.on('error', (e) => {
+    console.error(`music: ALAC transcode process error for ${srcPath}:`, e.message);
+    try { fs.unlinkSync(tmpPath); } catch (_) { /* best-effort */ }
+    musicTranscodeBusy = false;
+    processMusicTranscodeQueue();
+  });
+  proc.on('close', (code) => {
+    musicTranscodeBusy = false;
+    if (code === 0) {
+      try { fs.renameSync(tmpPath, outPath); } catch (e) {
+        console.error(`music: could not finalize ALAC rendition for ${srcPath}:`, e.message);
+        try { fs.unlinkSync(tmpPath); } catch (_) { /* best-effort */ }
+      }
+    } else {
+      console.error(`music: ALAC transcode failed (exit ${code}) for ${srcPath}`);
+      try { fs.unlinkSync(tmpPath); } catch (_) { /* best-effort */ }
+    }
+    processMusicTranscodeQueue();
+  });
+}
+
 // Square album-art placeholder (album/artist text, escaped exactly like the
 // bookcover placeholder -- a hostile tag must never become markup). Glyph-free
 // (no emoji): a simple record-styled square.
@@ -6204,6 +6267,11 @@ async function runMusicScan() {
     for (const ext of ['.jpg', '.png']) {
       try { fs.unlinkSync(path.join(ALBUMART_DIR, `${key}${ext}`)); } catch (_) { /* best-effort */ }
     }
+  }
+  // A pruned track's cached ALAC rendition (audioPath) is regenerable, but
+  // shed it now so a re-added same-name file doesn't serve a stale rendition.
+  for (const id of prunedIds) {
+    try { fs.unlinkSync(audioPath(id)); } catch (_) { /* best-effort / absent */ }
   }
 }
 
@@ -6431,12 +6499,24 @@ app.get('/api/music/:id', (req, res) => {
   res.json(publicTrackListItem(track, req.user.id, likedSet, progressMap));
 });
 
-// Range-streamed audio (native containers; the ALAC transcode gate is T7).
+// Range-streamed audio. Native containers stream directly; a probed-ALAC
+// track is served from its cached AAC rendition, transcoding on demand (the
+// AVI->MP4 precedent, audio flavor) and answering 503 until the rendition is
+// ready (the client retries).
 app.get('/track/:id', (req, res) => {
   const ns = musicStore.readMusic(getCachedDatabase());
   const track = ns.tracks[req.params.id];
   if (!track || typeof track.filePath !== 'string') return res.status(404).json({ error: 'no such track' });
   if (!fs.existsSync(track.filePath)) return res.status(404).json({ error: 'file missing' });
+  if (musicCodecNeedsTranscode(track.codec)) {
+    const rendition = audioPath(track.id);
+    if (fs.existsSync(rendition)) {
+      sendRangeable(req, res, rendition, 'audio/mp4');
+      return;
+    }
+    queueMusicTranscode(track.id, track.filePath);
+    return res.status(503).json({ error: 'transcoding', codec: track.codec });
+  }
   const contentType = MUSIC_CONTENT_TYPES[track.ext] || 'application/octet-stream';
   sendRangeable(req, res, track.filePath, contentType);
 });
@@ -11048,6 +11128,7 @@ module.exports = {
   currentMusicScanState,
   ALBUMART_DIR,
   albumArtExists,
+  musicCodecNeedsTranscode,
   flushPendingBookProgress,
   currentBookProgressFlushTimer,
   effectiveBookProgress,
