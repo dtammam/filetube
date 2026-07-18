@@ -6457,6 +6457,57 @@ body.ft-css-fullscreen .bottom-nav {
 .music-crumb[hidden] { display: none !important; }
 .music-crumb-label { font-size: var(--fs-lg); font-weight: 600; color: var(--text-primary); }
 
+/* v1.44.2 (Spotify feel): the collapsing / sticky album+artist drill header.
+   At rest: big art + title + artist + meta + Play/Shuffle. As the tracklist
+   scrolls, the IntersectionObserver (public/js/music.js) toggles `.collapsed`
+   on `.music-drill` -> the big header hides and the slim sticky bar reveals.
+   `--music-sticky-top` is set by JS to the MEASURED fixed-header height
+   (measure, don't guess — the v1.37.2/v1.43.1 scar). Same mechanism on desktop;
+   the header just has more room. */
+.music-drill-header { display: flex; flex-direction: column; gap: 12px; margin-bottom: 12px; }
+.music-drill-back { align-self: flex-start; }
+.music-drill-heading { display: flex; gap: 16px; align-items: flex-end; min-width: 0; }
+.music-drill-art {
+  width: 180px;
+  height: 180px;
+  border-radius: 8px;
+  object-fit: cover;
+  background: var(--thumbnail-bg, #222);
+  box-shadow: var(--shadow-lg);
+  flex-shrink: 0;
+}
+.music-drill-info { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.music-drill-title { margin: 0; font-size: var(--fs-2xl); font-weight: 700; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; }
+.music-drill-artist { font-size: var(--fs-lg); color: var(--text-primary); }
+.music-drill-meta { font-size: var(--fs-sm); color: var(--text-secondary); }
+.music-drill-actions { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+
+.music-drill-sticky {
+  position: sticky;
+  top: var(--music-sticky-top, 56px);
+  z-index: 30;
+  display: none;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 6px;
+  margin-bottom: 8px;
+  background: var(--bg-color);
+  border-bottom: 1px solid var(--border-color);
+}
+.music-drill.collapsed .music-drill-sticky { display: flex; }
+.music-drill.collapsed .music-drill-header { display: none; }
+.music-sticky-back { flex-shrink: 0; }
+.music-sticky-thumb { width: 36px; height: 36px; border-radius: 4px; object-fit: cover; background: var(--thumbnail-bg, #222); flex-shrink: 0; }
+.music-sticky-title { flex: 1; min-width: 0; font-size: var(--fs-base); font-weight: 600; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.music-sticky-play { flex-shrink: 0; }
+.music-drill-sentinel { width: 100%; height: 1px; }
+
+@media (max-width: 600px) {
+  .music-drill-heading { flex-direction: column; align-items: flex-start; }
+  .music-drill-art { width: 48vw; height: 48vw; max-width: 220px; max-height: 220px; }
+  .music-drill-title { font-size: var(--fs-xl); }
+}
+
 .music-card-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
@@ -6526,7 +6577,8 @@ body.ft-css-fullscreen .bottom-nav {
   cursor: pointer;
 }
 .music-song-row:hover { background: var(--bg-secondary); }
-.music-song-thumb { width: 44px; height: 44px; border-radius: 4px; object-fit: cover; background: var(--thumbnail-bg, #222); flex-shrink: 0; }
+.music-song-thumb-wrap { position: relative; flex-shrink: 0; width: 44px; height: 44px; }
+.music-song-thumb { width: 44px; height: 44px; border-radius: 4px; object-fit: cover; background: var(--thumbnail-bg, #222); display: block; }
 .music-song-main { display: flex; flex-direction: column; min-width: 0; flex: 1; }
 .music-song-title { font-size: var(--fs-base); color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .music-song-sub { font-size: var(--fs-sm); color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -6544,8 +6596,62 @@ body.ft-css-fullscreen .bottom-nav {
 }
 .music-like-btn.liked { color: var(--yt-red); }
 
-.music-player-slot { margin-bottom: 16px; }
-.music-player-slot[hidden] { display: none !important; }
+/* v1.44.2 (Spotify feel): the currently-playing row. Accent + a CSS equalizer
+   glyph (3 animated bars) overlaid on the thumb — NEVER an emoji codepoint
+   (iOS forces blue emoji). Driven by applyPlayingHighlight() toggling
+   `.playing` on the row whose data-id == the playing track id. */
+.music-song-row.playing {
+  background: var(--bg-secondary);
+  box-shadow: inset 3px 0 0 0 var(--yt-red);
+}
+.music-song-row.playing .music-song-title { color: var(--yt-red); font-weight: 600; }
+/* The eq overlays the thumb (dimmed via a scrim) only while playing. */
+.music-eq {
+  position: absolute;
+  inset: 0;
+  display: none;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 2px;
+  padding-bottom: 8px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.45);
+}
+.music-song-row.playing .music-eq { display: flex; }
+.music-eq i {
+  width: 3px;
+  height: 6px;
+  background: #fff;
+  border-radius: 1px;
+  animation: music-eq-bar 0.9s ease-in-out infinite;
+}
+.music-eq i:nth-child(2) { animation-delay: 0.3s; }
+.music-eq i:nth-child(3) { animation-delay: 0.6s; }
+@keyframes music-eq-bar {
+  0%, 100% { height: 5px; }
+  50% { height: 16px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .music-eq i { animation: none; height: 11px; }
+}
+
+/* v1.44.2: the "Playing from <Album>" context line (a full-width subtle
+   button; taps drill into the playing track's album). */
+.music-nowplaying {
+  display: block;
+  width: 100%;
+  text-align: left;
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--fs-sm);
+  padding: 4px 2px 10px;
+  cursor: pointer;
+}
+.music-nowplaying:hover { color: var(--text-primary); }
+.music-nowplaying[hidden] { display: none !important; }
+
 .music-empty { color: var(--text-secondary); padding: 24px 0; }
 .music-empty[hidden] { display: none !important; }
 
