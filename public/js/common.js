@@ -2728,6 +2728,17 @@ function shouldDockOnTransition(fromView, toView) {
   return (fromView === 'watch' || fromView === 'read' || fromView === 'music') && typeof toView === 'string' && toView !== fromView;
 }
 
+// tech-debt #46: is this navigation a no-op — a request to go EXACTLY where we
+// already are (same path + query)? Tapping the already-active nav item, or the
+// docked mini-player's return while already on /music, would otherwise tear
+// down and rebuild #view-root — stranding a FULL-mounted player that the
+// incoming init() doesn't re-adopt (music/read), and needlessly re-fetching +
+// re-initing every other view. Standard SPA behavior is to no-op the active
+// link. Pure so the router test can exercise it without a live location.
+function isSameLocationNav(currentPathAndSearch, targetPathAndSearch) {
+  return typeof targetPathAndSearch === 'string' && currentPathAndSearch === targetPathAndSearch;
+}
+
 // Guarded so requiring this file in Node (for unit tests) never touches
 // `window`/`document`. Everything in this block is the actual router RUNTIME
 // (registry storage, fetch/swap, click/popstate wiring) -- the pure helpers
@@ -3148,6 +3159,15 @@ if (typeof window !== 'undefined') {
     const view = deriveRouteView(parsed.pathname);
     if (!view) {
       window.location.assign(url);
+      return Promise.resolve();
+    }
+    // tech-debt #46: no-op a same-URL in-app navigation (the active nav item, or
+    // the docked-player return while already here). Skips the #view-root
+    // teardown/rebuild that strands a FULL-mounted player and re-fetches for
+    // nothing. popstate keeps its own path (back/forward to the same URL still
+    // reattaches). `opts.reload` is an escape hatch (unused today).
+    if (!opts.reload
+      && isSameLocationNav(window.location.pathname + window.location.search, parsed.pathname + parsed.search)) {
       return Promise.resolve();
     }
     recordScrollForCurrentState();
@@ -6335,7 +6355,7 @@ if (typeof module !== 'undefined' && module.exports) {
     injectOneOffDownloadButtonIfEnabled,
     showToast, nextArmState,
     deriveRouteView, shouldInterceptLinkClick, buildHistoryState, parseHistoryState,
-    shouldDockOnTransition, toPathAndQuery, isStaleNavGeneration,
+    shouldDockOnTransition, isSameLocationNav, toPathAndQuery, isStaleNavGeneration,
     canonicalizeChannelUrl, channelIdentityMatches, resolveFileChannelIdentity,
     shouldShowSubscribeButton, decideSubscribeButtonState,
     buildSubscribeRequestBody, buildSubscribeModal,

@@ -9,6 +9,8 @@
 // for the actual smooth-no-reload swap behavior.
 const { test } = require('node:test');
 const assert = require('node:assert');
+const fs = require('node:fs');
+const path = require('node:path');
 const {
   deriveRouteView,
   shouldInterceptLinkClick,
@@ -16,7 +18,10 @@ const {
   parseHistoryState,
   toPathAndQuery,
   isStaleNavGeneration,
+  isSameLocationNav,
 } = require('../../public/js/common.js');
+
+const COMMON_JS = fs.readFileSync(path.join(__dirname, '../../public/js/common.js'), 'utf8');
 
 // ---- deriveRouteView -------------------------------------------------------
 
@@ -168,4 +173,38 @@ test('isStaleNavGeneration: a sequence of quick navigations only leaves the LATE
 
 test('isStaleNavGeneration: generation 0 (never bumped) vs itself is not stale', () => {
   assert.strictEqual(isStaleNavGeneration(0, 0), false);
+});
+
+// ---- isSameLocationNav (tech-debt #46 same-URL nav no-op) -------------------
+
+test('isSameLocationNav: identical path+query is a no-op', () => {
+  assert.strictEqual(isSameLocationNav('/music', '/music'), true);
+  assert.strictEqual(isSameLocationNav('/music?filter=liked', '/music?filter=liked'), true);
+});
+
+test('isSameLocationNav: a different query or path is NOT a no-op (real navigation)', () => {
+  assert.strictEqual(isSameLocationNav('/music', '/music?play=abc'), false, 'a continue-listening deep-link still navigates');
+  assert.strictEqual(isSameLocationNav('/music?play=abc', '/music'), false);
+  assert.strictEqual(isSameLocationNav('/', '/music'), false);
+  assert.strictEqual(isSameLocationNav('/read', '/music'), false);
+});
+
+test('isSameLocationNav: a non-string target is never a no-op (fail open to a real nav)', () => {
+  assert.strictEqual(isSameLocationNav('/music', null), false);
+  assert.strictEqual(isSameLocationNav('/music', undefined), false);
+});
+
+test('v1.44.2 SOURCE-LOCK (#46): navigate() no-ops a same-URL nav, but ONLY after deriveRouteView + before pushState/swap; popstate is exempt', () => {
+  const navBody = COMMON_JS.slice(COMMON_JS.indexOf('function navigate('), COMMON_JS.indexOf('function handleDocumentClick'));
+  assert.match(navBody, /isSameLocationNav\(/, 'navigate() consults the same-URL guard');
+  // The guard must sit AFTER the unknown-route fallback (so an unknown route
+  // still hard-navigates) and BEFORE the generation bump / fetch.
+  assert.ok(navBody.indexOf('deriveRouteView(parsed.pathname)') < navBody.indexOf('isSameLocationNav('),
+    'the guard runs after route derivation');
+  assert.ok(navBody.indexOf('isSameLocationNav(') < navBody.indexOf('++navGeneration'),
+    'the guard short-circuits before the navigation generation bump / fetch');
+  // popstate must NOT adopt the guard (back/forward to the same URL still works).
+  const popBody = COMMON_JS.slice(COMMON_JS.indexOf('function handlePopState'));
+  assert.doesNotMatch(popBody.slice(0, popBody.indexOf('function ', 5)), /isSameLocationNav\(/,
+    'handlePopState keeps its own path — the guard is navigate()-only');
 });

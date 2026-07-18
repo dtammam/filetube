@@ -128,12 +128,10 @@
 - **Severity:** Very low. Non-blocking SUGGESTION.
 - **Source:** v1.44 two-reviewer gate (QA seat, SUGGESTION).
 
-## #46 — v1.44.1 music: a plain music→music router nav briefly strands the FULL player (parity with /read)
+## #46 — v1.44.1 music: a plain music→music router nav briefly strands the FULL player (parity with /read) — ✅ RESOLVED v1.44.2
 - **What:** while a track plays FULL on /music, tapping the "Music" nav item AGAIN fires a `music→music` #view-root swap. `shouldDockOnTransition` is false for same-view, so the host isn't docked; the old #player-slot (with the host inside) is removed, and music.js `init()` does not re-adopt a loaded track (unlike watch.js). The player vanishes from the page (no in-slot, no docked mini-player, no reachable pause) while audio KEEPS PLAYING; it self-heals (reappears docked) on the next nav to a DIFFERENT view.
-- **Not a regression:** `music→music` was always false; the identical strand exists on the shipped `/read` view (`read→read`). Audio never stops; self-heals.
-- **Fix direction:** either a same-URL no-op guard in `navigate()` (benefits home/watch/read/music uniformly — the cleaner fix) or mirror watch.js's re-adopt in `music.js init()` (`if (player.currentId) reparent into #player-slot`, preserving docked-vs-FULL state). Prefer the nav guard.
-- **Severity:** Low. Disclosed at the v1.44.1 slim gate (adversarial seat, WARNING) — tracked, not blocked (parity with /read).
-- **Source:** v1.44.1 slim gate.
+- **Fix (v1.44.2):** the cleaner of the two directions — a same-URL no-op guard in `navigate()` (`isSameLocationNav`): a navigation to the exact current path+query short-circuits before the #view-root teardown/rebuild, so tapping the active nav item never strands the player and never re-fetches for nothing. Benefits home/watch/read/music uniformly — **the identical `/read` strand is fixed too.** popstate keeps its own path (back/forward to the same URL still reattaches). `opts.reload` is an escape hatch. Pure helper + router SOURCE-LOCK tests. Also, v1.44.2's play→dock means the common music case now docks OUTSIDE #view-root, so it no longer strands even without the guard; the guard covers the FULL-expanded case + /read + the wasted re-fetch.
+- **Source:** v1.44.1 slim gate; resolved v1.44.2 (Music "Spotify feel").
 
 ## #47 — v1.44.1 music: the resume pointer (user_music_state) is written but its consumer is a future "resume last session" feature
 - **What:** every play writes user_music_state (last track + queue ctx + position) via setMusicState. The "Continue listening" home-row cards DELIBERATELY do NOT consume it — they play the specific TAPPED track from the recent-listening list (fixing the v1.44.1 wrong-song bug where deferring to the pointer's last-played queue played the wrong song). So the pointer is currently written-but-unread.
