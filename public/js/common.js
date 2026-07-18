@@ -1640,54 +1640,64 @@ function shouldInjectBooksNav(payload) {
   return Boolean(payload && Array.isArray(payload.folders) && payload.folders.length > 0);
 }
 
-// Idempotent + defensive, mirroring injectSubscriptionsNavLinkIfEnabled.
+// v1.44 music gate (mirrors shouldInjectBooksNav exactly -- gate on CONTENT,
+// folders.length, since /api/music/config always exists).
+function shouldInjectMusicNav(payload) {
+  return Boolean(payload && Array.isArray(payload.folders) && payload.folders.length > 0);
+}
+
+// v1.44 IA rework: Books + Music are LIBRARY-section entries, NOT bottom-nav
+// items (Dean: the bottom-nav loses Books; Books+Music live in the Library
+// section alongside the folder-playlists, and in the mobile Playlists sheet).
+// This shared helper injects ONE sidebar entry into the Library section, just
+// above #sidebar-folders-list. Deterministic order regardless of which config
+// probe resolves first: Music anchors before an existing Books entry, so the
+// visual order is always Music, Books, then folders.
+function injectLibraryNavEntry(key, href, label, iconClass) {
+  if (document.querySelector('[data-nav-sidebar="' + key + '"]')) return; // idempotent
+  const foldersList = document.getElementById('sidebar-folders-list');
+  if (!foldersList) return;
+  const link = document.createElement('a');
+  link.href = href;
+  link.className = 'sidebar-item sidebar-library-entry';
+  link.setAttribute('data-nav-sidebar', key);
+  const icon = document.createElement('i');
+  icon.className = iconClass;
+  link.appendChild(icon);
+  link.appendChild(document.createTextNode(' ' + label));
+  const anchor = (key === 'music')
+    ? (document.querySelector('[data-nav-sidebar="books"]') || foldersList)
+    : foldersList;
+  anchor.insertAdjacentElement('beforebegin', link);
+  if (activeNavItem(window.location.pathname, window.location.search) === key) {
+    link.classList.add('active');
+  }
+}
+
+// Idempotent + defensive, mirroring injectSubscriptionsNavLinkIfEnabled. Books
+// now injects ONLY a Library-section sidebar entry (no bottom-nav item -- the
+// v1.44 IA change); the Playlists sheet gets its Books/Music entries from
+// renderPlaylistsSheet.
 function injectBooksNavLinkIfEnabled() {
   if (typeof document === 'undefined' || typeof fetch === 'undefined') return;
-  // v1.37.0 gate fix (QA W6): the guard covers BOTH injected links -- the
-  // bottom-nav one (data-nav) AND the sidebar one (data-nav-sidebar), so a
-  // page without a #bottom-nav can never double-inject the sidebar link.
-  if (document.querySelector('[data-nav="books"]') || document.querySelector('[data-nav-sidebar="books"]')) return;
-
+  if (document.querySelector('[data-nav-sidebar="books"]')) return;
   fetch('/api/books/config')
     .then((res) => (res.ok ? res.json() : null))
     .then((payload) => {
       if (!shouldInjectBooksNav(payload)) return; // books-less -- inject nothing
-      if (document.querySelector('[data-nav="books"]')) return; // raced a second call
+      injectLibraryNavEntry('books', '/books', 'Books', 'icon-folder');
+    })
+    .catch(() => { /* network/parse failure -- fail closed, inject nothing */ });
+}
 
-      // Sidebar entry, right after Library Settings (the subscriptions
-      // link's own anchor -- whichever injected first, they stack there).
-      const settingsSidebarLink = document.querySelector('a.sidebar-item[href="/setup.html"]');
-      if (settingsSidebarLink && settingsSidebarLink.parentElement) {
-        const sidebarLink = document.createElement('a');
-        sidebarLink.href = '/books';
-        sidebarLink.className = 'sidebar-item';
-        sidebarLink.setAttribute('data-nav-sidebar', 'books');
-        const sidebarIcon = document.createElement('i');
-        sidebarIcon.className = 'icon-folder';
-        sidebarLink.appendChild(sidebarIcon);
-        sidebarLink.appendChild(document.createTextNode(' Books'));
-        settingsSidebarLink.insertAdjacentElement('afterend', sidebarLink);
-      }
-
-      // Bottom-nav entry (mobile app shell).
-      const settingsNavItem = document.querySelector('#bottom-nav [data-nav="settings"]');
-      if (settingsNavItem && settingsNavItem.parentElement) {
-        const navLink = document.createElement('a');
-        navLink.href = '/books';
-        navLink.className = 'bottom-nav-item';
-        navLink.setAttribute('data-nav', 'books');
-        const navIcon = document.createElement('i');
-        navIcon.className = 'icon-folder';
-        const navLabel = document.createElement('span');
-        navLabel.className = 'bottom-nav-label';
-        navLabel.textContent = 'Books';
-        navLink.appendChild(navIcon);
-        navLink.appendChild(navLabel);
-        settingsNavItem.insertAdjacentElement('afterend', navLink);
-        if (activeNavItem(window.location.pathname, window.location.search) === 'books') {
-          navLink.classList.add('active');
-        }
-      }
+function injectMusicNavLinkIfEnabled() {
+  if (typeof document === 'undefined' || typeof fetch === 'undefined') return;
+  if (document.querySelector('[data-nav-sidebar="music"]')) return;
+  fetch('/api/music/config')
+    .then((res) => (res.ok ? res.json() : null))
+    .then((payload) => {
+      if (!shouldInjectMusicNav(payload)) return; // music-less -- inject nothing
+      injectLibraryNavEntry('music', '/music', 'Music', 'icon-play');
     })
     .catch(() => { /* network/parse failure -- fail closed, inject nothing */ });
 }
@@ -3232,22 +3242,40 @@ if (typeof window !== 'undefined') {
 // the sidebar today). `hiddenFromSidebar` (v1.14.0 item 3) DOES affect this
 // list -- it's the mobile equivalent of the left sidebar, so a folder hidden
 // from one is hidden from both (via visibleSidebarFolders()).
+// v1.44 IA: the mobile Playlists sheet also surfaces the Music + Books library
+// sections (mirrors the sidebar's Library section). Gated on the same injected
+// sidebar entries so the sheet and sidebar can never disagree -- if Music/Books
+// is enabled (its sidebar entry was injected), the sheet shows it too.
+function libraryEntriesHtml() {
+  let html = '';
+  if (typeof document !== 'undefined') {
+    if (document.querySelector('[data-nav-sidebar="music"]')) {
+      html += '<a href="/music" class="sidebar-item"><i class="icon-play"></i> Music</a>';
+    }
+    if (document.querySelector('[data-nav-sidebar="books"]')) {
+      html += '<a href="/books" class="sidebar-item"><i class="icon-folder"></i> Books</a>';
+    }
+  }
+  return html;
+}
+
 function renderPlaylistsSheet(folders, folderSettings) {
   const list = document.getElementById('playlists-sheet-list');
   if (!list) return;
   const settings = folderSettings || {};
   const visible = visibleSidebarFolders(folders, settings);
+  const libEntries = libraryEntriesHtml();
   // v1.32 (Dean): the built-in Liked playlist entry -- fixed, first, static
   // markup. v1.33.1: no longer inlined here -- applied through the SAME
   // count-gated applyLikedSidebarEntry helper every sidebar surface now
   // uses (visible iff at least one liked video exists), so the sheet and
   // the sidebars can never disagree.
   if (visible.length === 0) {
-    list.innerHTML = '<div class="sidebar-item">No folders configured.</div>';
+    list.innerHTML = libEntries + '<div class="sidebar-item">No folders configured.</div>';
     applyLikedSidebarEntry(list);
     return;
   }
-  list.innerHTML = visible.map((f) => {
+  list.innerHTML = libEntries + visible.map((f) => {
     const base = f.split(/[\\/]/).pop() || f;
     const label = (settings[f] && settings[f].name) || base;
     return '<a href="/?root=' + encodeURIComponent(f) +
@@ -6104,6 +6132,8 @@ document.addEventListener('DOMContentLoaded', () => {
   injectSubscriptionsNavLinkIfEnabled();
   // v1.37.0 books: same boot-time probe-gated injection.
   injectBooksNavLinkIfEnabled();
+  // v1.44 music: same probe-gated Library-section injection.
+  injectMusicNavLinkIfEnabled();
 
   // v1.15.0 item 3: one-off download header button + modal, gated by the
   // SAME capability probe pattern -- runs on every page for the same reason
@@ -6192,6 +6222,7 @@ if (typeof module !== 'undefined' && module.exports) {
     resolveAudioArtUrl,
     shouldInjectSubscriptionsNav,
     shouldInjectBooksNav,
+    shouldInjectMusicNav,
     pinDeleteEndpoint,
     fisherYatesShuffle, sortItems, shouldShowShuffleButton,
     deriveOrderedIds, computeNeighbors, parentFolder,
