@@ -12,7 +12,7 @@ const {
   toItemList, computeCounts, computeTotalDuration, computeTotalSize,
   computeBreakdownByFolder, computeBreakdownByChannel, computeBreakdownByType,
   findLongest, findShortest, findNewest, findMostWatched, computeLibraryStats,
-  DEFAULT_MOST_WATCHED_LIMIT,
+  DEFAULT_MOST_WATCHED_LIMIT, computeInventory,
 } = require('../../lib/stats');
 
 function item(overrides) {
@@ -218,4 +218,44 @@ test('computeLibraryStats: a missing/malformed metadata argument fails safe inst
   assert.doesNotThrow(() => computeLibraryStats(undefined));
   assert.doesNotThrow(() => computeLibraryStats(null));
   assert.equal(computeLibraryStats(null).count.total, 0);
+});
+
+// ---- v1.44.3: library inventory (namespace counts) --------------------------
+
+test('computeInventory: counts each namespace (objects by key count, arrays by length)', () => {
+  const inv = computeInventory({
+    metadata: { a: {}, b: {}, c: {} },
+    progress: { a: 1, b: 2 },
+    viewCounts: { a: 5 },
+    liked: ['x', 'y', 'z', 'w'],          // db.liked is an ARRAY
+    deleteTombstones: {},
+    folders: ['/media/a', '/media/b'],
+    books: { items: { b1: {}, b2: {} }, progress: { b1: {} }, audio: { b1: {} } },
+    music: { tracks: { t1: {}, t2: {}, t3: {} }, folders: ['/music'] },
+    users: 2,
+  });
+  assert.deepStrictEqual(inv, {
+    videos: 3,
+    watchProgress: 2,
+    viewCounts: 1,
+    liked: 4,
+    deleteTombstones: 0,
+    scanFolders: 2,
+    books: { items: 2, progress: 1, narrationAudio: 1 },
+    music: { tracks: 3, folders: 1 },
+    users: 2,
+  });
+});
+
+test('computeInventory: tolerant of missing/malformed input (all zeros, never throws)', () => {
+  const inv = computeInventory();
+  assert.deepStrictEqual(inv, {
+    videos: 0, watchProgress: 0, viewCounts: 0, liked: 0, deleteTombstones: 0, scanFolders: 0,
+    books: { items: 0, progress: 0, narrationAudio: 0 },
+    music: { tracks: 0, folders: 0 },
+    users: 0,
+  });
+  // A non-integer `users` (e.g. accidentally passed the object) falls back to a size count.
+  assert.strictEqual(computeInventory({ users: { u1: {}, u2: {} } }).users, 2);
+  assert.strictEqual(computeInventory({ metadata: 'nope', liked: 42 }).videos, 0);
 });
