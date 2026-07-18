@@ -2735,6 +2735,9 @@ function shouldDockOnTransition(fromView, toView) {
 // incoming init() doesn't re-adopt (music/read), and needlessly re-fetching +
 // re-initing every other view. Standard SPA behavior is to no-op the active
 // link. Pure so the router test can exercise it without a live location.
+// NOTE: compares pathname+search only — the hash is intentionally ignored (no
+// caller does hash-anchored navigate() today; the router doesn't route on hash).
+// If a future in-page anchor nav is added, revisit so it isn't silently no-op'd.
 function isSameLocationNav(currentPathAndSearch, targetPathAndSearch) {
   return typeof targetPathAndSearch === 'string' && currentPathAndSearch === targetPathAndSearch;
 }

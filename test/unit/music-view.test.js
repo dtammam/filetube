@@ -182,3 +182,13 @@ test('v1.44.2 SOURCE-LOCK: the now-playing record is module-scoped (survives the
   // It must cross-check the live player id (not just trust the stale record).
   assert.match(MUSIC_JS, /deriveNowPlayingLabel\(nowPlaying, currentId\)/, 'the DOM update consults the live player currentId');
 });
+
+test('v1.44.2 SOURCE-LOCK (gate S1): closing the player clears the stale row highlight + "Playing from" line', () => {
+  // The dock × (close) doesn't notify the view; music.js listens on the shared
+  // media element's `emptied` and clears ONLY when nothing ended up loaded
+  // (deferred a frame so a new load's teardown doesn't spuriously clear).
+  assert.match(MUSIC_JS, /addEventListener\('emptied'/, 'listens for the media element emptying (a close/teardown)');
+  assert.match(MUSIC_JS, /requestAnimationFrame/, 'defers one frame so a load-transition teardown does not clear');
+  const emptiedBody = MUSIC_JS.slice(MUSIC_JS.indexOf("addEventListener('emptied'"));
+  assert.match(emptiedBody.slice(0, 400), /if \(!cur\) \{ playingId = null; nowPlaying = null;/, 'clears both indicators only when nothing is loaded');
+});
