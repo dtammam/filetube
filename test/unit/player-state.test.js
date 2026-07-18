@@ -59,6 +59,13 @@ test('shouldDockOnTransition: v1.39.0 -- leaving read (book narration FULL host)
   assert.strictEqual(shouldDockOnTransition('read', 'read'), false); // same-book/chapter reload adopts, no dock
 });
 
+test('shouldDockOnTransition: v1.44 -- leaving music (a track mounts FULL there) docks so the mini-player survives tapping Home; music->music does not', () => {
+  assert.strictEqual(shouldDockOnTransition('music', 'home'), true);
+  assert.strictEqual(shouldDockOnTransition('music', 'watch'), true);
+  assert.strictEqual(shouldDockOnTransition('music', 'settings'), true);
+  assert.strictEqual(shouldDockOnTransition('music', 'music'), false); // an in-page re-play adopts, no dock
+});
+
 test('shouldDockOnTransition: an unknown/null toView (progressive-enhancement boot has no "from") never docks', () => {
   assert.strictEqual(shouldDockOnTransition('watch', null), false);
   assert.strictEqual(shouldDockOnTransition(null, 'home'), false);
@@ -69,6 +76,7 @@ test('shouldDockOnTransition: player.js and common.js expose the identical decis
     ['watch', 'home'], ['watch', 'watch'], ['home', 'watch'], ['watch', 'setup'],
     ['watch', 'subscriptions'], ['setup', 'home'], ['watch', null], [null, 'watch'],
     ['read', 'home'], ['read', 'read'], ['read', 'watch'], ['books', 'read'],
+    ['music', 'home'], ['music', 'music'], ['music', 'watch'], ['home', 'music'],
   ];
   for (const [from, to] of cases) {
     assert.strictEqual(shouldDockOnTransition(from, to), routerShouldDockOnTransition(from, to));

@@ -125,11 +125,13 @@ function isAdoptLoad(currentId, requestedId, state) {
 // state, not a pure function of the two view names, so it stays in `dock()`.
 function shouldDockOnTransition(fromView, toView) {
   // v1.39.0: 'read' joins 'watch' as a view that hosts the FULL player (book
-  // narration mounts FULL into the reader's #player-slot). Leaving EITHER for a
-  // different view docks the persistent host into the shell #player-dock so
-  // playback survives the #view-root swap; staying in the same view (watch->watch
-  // / read->read) adopts instead of docking.
-  return (fromView === 'watch' || fromView === 'read') && typeof toView === 'string' && toView !== fromView;
+  // narration mounts FULL into the reader's #player-slot). v1.44: 'music' joins
+  // them (a track mounts FULL into /music's #player-slot). Leaving ANY of these
+  // for a different view docks the persistent host into the shell #player-dock
+  // so playback survives the #view-root swap (Dean: tapping Home while a track
+  // plays keeps the mini-player going); staying in the same view adopts instead
+  // of docking. MUST match common.js's copy.
+  return (fromView === 'watch' || fromView === 'read' || fromView === 'music') && typeof toView === 'string' && toView !== fromView;
 }
 
 // The FULL/DOCKED/CLOSED transition a NAVIGATION (not a direct dock [x]/tap
