@@ -1347,6 +1347,14 @@ function encodeListContext(ctx) {
   if (!ctx || typeof ctx !== 'object') return '';
   var out = {};
   if (ctx.src === 'liked') out.src = 'liked';
+  // v1.44 music: a music queue carries src:'music' plus the music-only scope
+  // keys (album/artist/filter) so next/prev/autoplay re-fetch the same list.
+  if (ctx.src === 'music') {
+    out.src = 'music';
+    if (ctx.album) out.album = String(ctx.album);
+    if (ctx.artist) out.artist = String(ctx.artist);
+    if (ctx.filter) out.filter = String(ctx.filter);
+  }
   if (ctx.sort) out.sort = String(ctx.sort);
   if (ctx.seed !== undefined && ctx.seed !== null && ctx.seed !== '') out.seed = String(ctx.seed);
   if (ctx.search) out.search = String(ctx.search);
@@ -1383,6 +1391,16 @@ function buildContextListUrl(ctx, fullLimit) {
   if (c.format) params.push('format=' + encodeURIComponent(c.format));
   if (c.seed !== undefined && c.seed !== null && c.seed !== '') params.push('seed=' + encodeURIComponent(c.seed));
   params.push('limit=' + fullLimit);
+  // v1.44 music: a music queue re-fetches /api/music in the SAME browsed order
+  // (album/artist/liked/search + sort/seed). The response order IS the queue
+  // (used verbatim, never re-sorted) -- the v1.40 ctx contract. `album`/
+  // `artist`/`filter` are music-only ctx keys.
+  if (c.src === 'music') {
+    if (c.album) params.push('album=' + encodeURIComponent(c.album));
+    if (c.artist) params.push('artist=' + encodeURIComponent(c.artist));
+    if (c.filter) params.push('filter=' + encodeURIComponent(c.filter));
+    return '/api/music?' + params.join('&');
+  }
   var endpoint = c.src === 'liked' ? '/api/liked' : '/api/videos';
   return endpoint + '?' + params.join('&');
 }

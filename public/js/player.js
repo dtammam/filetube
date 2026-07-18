@@ -393,6 +393,22 @@ function shouldShowResumeOverlay(ctx) {
   return savedProgress > 0 && savedProgress >= threshold && !autoplayAdvance;
 }
 
+// v1.44 music SMART RESUME (the >10-min rule, ONE pure helper). A music track
+// restarts from the TOP by default -- a song is meant to be heard whole -- but
+// a LONG track (a mix, DJ set, or long-form piece) resumes mid-track like a
+// video. `ctx.durationSeconds` is the track's own duration; the threshold
+// defaults to 600s (10 min). Returns true iff the track should resume at its
+// saved position rather than restart. A missing/NaN duration -> restart (the
+// safe default: a song we can't size is treated as a song, not a mix).
+var MUSIC_MIDTRACK_RESUME_THRESHOLD_SECONDS = 600;
+function shouldResumeMidTrack(ctx) {
+  var dur = Number(ctx && ctx.durationSeconds);
+  var threshold = Number(ctx && ctx.thresholdSeconds);
+  if (!isFinite(threshold) || threshold <= 0) threshold = MUSIC_MIDTRACK_RESUME_THRESHOLD_SECONDS;
+  if (!isFinite(dur) || dur <= 0) return false;
+  return dur > threshold;
+}
+
 // D3 (v1.24.0, T13): pure decision for what to do with a genuine resume
 // decision (one `shouldShowResumeOverlay` above has already said "yes, ask")
 // given where the persistent player host currently is. Problem: the docked
@@ -869,6 +885,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // pause->visibilitychange bridge -- see its own comment.
     isFreshPrePauseCandidate,
     shouldShowResumeOverlay,
+    shouldResumeMidTrack,
     resolveResumeThreshold,
     resolveDockedResumeAction,
     resolveDockTransitionResumeAction,
@@ -1503,10 +1520,14 @@ if (typeof module !== 'undefined' && module.exports) {
       // v1.38.0: prefer an explicit artUrl (a book cover) for the lock-screen
       // artwork -- the resolveAudioArtUrl precedent, retargeted for TTS.
       var art = (currentData && typeof currentData.artUrl === 'string' && currentData.artUrl) ? currentData.artUrl : ('/thumbnail/' + id);
+      // v1.44 music: a track carries a real album tag for the lock screen;
+      // everything else keeps the "FileTube" album label. artist is already
+      // the channelName arg (the caller passes the track artist for music).
+      var albumLabel = (currentData && typeof currentData.album === 'string' && currentData.album) ? currentData.album : 'FileTube';
       navigator.mediaSession.metadata = new MediaMetadata({
         title: title || 'FileTube',
         artist: channelName || '',
-        album: 'FileTube',
+        album: albumLabel,
         artwork: [
           { src: art, sizes: '256x256', type: 'image/jpeg' },
           { src: art, sizes: '512x512', type: 'image/jpeg' },

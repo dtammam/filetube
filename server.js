@@ -612,6 +612,11 @@ function replacePersistedState(populateFn) {
       clearTimeout(bookProgressFlushTimer);
       bookProgressFlushTimer = null;
     }
+    pendingMusicProgress.clear();
+    if (musicProgressFlushTimer) {
+      clearTimeout(musicProgressFlushTimer);
+      musicProgressFlushTimer = null;
+    }
     dbCache = null;
     dbCacheValid = false;
   });
@@ -4888,6 +4893,9 @@ function dropPendingProgressForUser(userId) {
   for (const [key, entry] of [...pendingBookProgress]) {
     if (entry.userId === userId) pendingBookProgress.delete(key);
   }
+  for (const [key, entry] of [...pendingMusicProgress]) {
+    if (entry.userId === userId) pendingMusicProgress.delete(key);
+  }
 }
 // v1.41.18 (Dean): kill the header logo FOUC at the SOURCE. The header shells
 // are static HTML, so the "FileTube" text wordmark always painted before
@@ -6374,6 +6382,58 @@ app.get('/api/music/scan-status', (req, res) => {
   res.json(musicScanState);
 });
 
+// ---- Music: per-user progress coalescer (T8) --------------------------------
+//
+// A DEDICATED coalescer (never the video/book ones): the video flush filters
+// on db.metadata and the book flush on db.books.items, but music ids live in
+// db.music.tracks. Same >=5:1 write-amp contract (one transaction per flush
+// window), same FK-poison guard (userStore.setMusicProgressBatch filters
+// deleted users before the txn), same deleted-track guard (a flush must never
+// resurrect progress for a pruned track). Staging key is `<userId>:<trackId>`
+// (pendingProgressKey, shared).
+const pendingMusicProgress = new Map();
+let musicProgressFlushTimer = null;
+let musicProgressFlushWriteCount = 0;
+function __getMusicProgressFlushWriteCount() {
+  return musicProgressFlushWriteCount;
+}
+function currentMusicProgressFlushTimer() {
+  return musicProgressFlushTimer;
+}
+function flushPendingMusicProgress() {
+  if (musicProgressFlushTimer) {
+    clearTimeout(musicProgressFlushTimer);
+    musicProgressFlushTimer = null;
+  }
+  if (pendingMusicProgress.size === 0) return Promise.resolve(false);
+  const snapshot = [...pendingMusicProgress.values()];
+  pendingMusicProgress.clear();
+  return updateDatabase((db) => {
+    const ns = musicStore.readMusic(db);
+    // Deleted-between-ping-and-flush guard (OWN-property, the __proto__ lesson):
+    // never resurrect progress for a pruned track.
+    const rows = snapshot.filter((entry) => Object.prototype.hasOwnProperty.call(ns.tracks, entry.trackId));
+    if (rows.length > 0) {
+      userStore.setMusicProgressBatch(rows);
+      musicProgressFlushWriteCount++;
+    }
+    return false; // per-user rows only -- never a doc-table write from a flush
+  }).then(() => true).catch((err) => {
+    console.error('Error flushing batched music progress:', err);
+  });
+}
+function armMusicProgressFlushTimerIfNeeded() {
+  if (musicProgressFlushTimer) return;
+  musicProgressFlushTimer = setTimeout(flushPendingMusicProgress, PROGRESS_FLUSH_MS);
+  musicProgressFlushTimer.unref();
+}
+// Read-your-writes overlay: pending first, then the committed user_music_progress row.
+function effectiveMusicProgress(userId, id) {
+  const pending = pendingMusicProgress.get(pendingProgressKey(userId, id));
+  if (pending) return pending.value;
+  return userStore.getOneMusicProgress(userId, id);
+}
+
 // ---- Music: read APIs + track/art serving (T6) ------------------------------
 
 // The public list-item shape for a track: the track record plus this user's
@@ -6488,6 +6548,27 @@ app.post('/api/music/resume', (req, res) => {
   const queueCtx = body.queueCtx === undefined ? null : body.queueCtx;
   userStore.setMusicState(req.user.id, { lastTrackId, queueCtx, position, updatedAt: new Date().toISOString() });
   res.json({ ok: true });
+});
+
+// Per-track progress ping -> staged into the music coalescer (no disk I/O on
+// the request path). Static 'progress' segment declared BEFORE /api/music/:id.
+app.post('/api/music/progress', (req, res) => {
+  const body = req.body || {};
+  const id = typeof body.id === 'string' ? body.id : '';
+  if (!id) return res.status(400).json({ error: 'id required' });
+  const position = Number.isFinite(Number(body.position)) ? Number(body.position) : 0;
+  const duration = Number.isFinite(Number(body.duration)) ? Number(body.duration) : 0;
+  pendingMusicProgress.set(pendingProgressKey(req.user.id, id), {
+    userId: req.user.id,
+    trackId: id,
+    value: { position, duration, updatedAt: new Date().toISOString() },
+  });
+  armMusicProgressFlushTimerIfNeeded();
+  res.json({ ok: true });
+});
+
+app.get('/api/music/progress/:id', (req, res) => {
+  res.json(effectiveMusicProgress(req.user.id, req.params.id) || { position: 0, duration: 0, updatedAt: null });
 });
 
 app.get('/api/music/:id', (req, res) => {
@@ -10982,7 +11063,7 @@ if (require.main === module) {
   const flushProgressOnExit = (exitAfter) => () => {
     // v1.37.0 books: both coalescers flush on every graceful-exit path --
     // the book flush shares the media flush's exact loss-bound contract.
-    Promise.allSettled([flushPendingProgress(), flushPendingBookProgress()]).then(() => {
+    Promise.allSettled([flushPendingProgress(), flushPendingBookProgress(), flushPendingMusicProgress()]).then(() => {
       if (exitAfter) process.exit(0);
     });
   };
@@ -11129,6 +11210,10 @@ module.exports = {
   ALBUMART_DIR,
   albumArtExists,
   musicCodecNeedsTranscode,
+  flushPendingMusicProgress,
+  currentMusicProgressFlushTimer,
+  effectiveMusicProgress,
+  __getMusicProgressFlushWriteCount,
   flushPendingBookProgress,
   currentBookProgressFlushTimer,
   effectiveBookProgress,

@@ -13,7 +13,10 @@ process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-musicapi-
 
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
-const { app, updateDatabase, ALBUMART_DIR, userStore, audioPath } = require('../../server');
+const {
+  app, updateDatabase, ALBUMART_DIR, userStore, audioPath,
+  flushPendingMusicProgress, effectiveMusicProgress, __getMusicProgressFlushWriteCount,
+} = require('../../server');
 const musicStore = require('../../lib/music/store');
 const { authenticateFetch } = require('../helpers/auth');
 
@@ -188,4 +191,31 @@ test('T6: resume pointer round-trips per user', async () => {
   assert.equal(data.lastTrackId, t1.id);
   assert.equal(data.position, 42);
   assert.deepEqual(data.queueCtx, { src: 'music', album: 'x' });
+});
+
+test('T8: POST /api/music/progress stages (read-your-writes), coalesces many pings into ONE flush write, drops a deleted track', async () => {
+  const { t1, t2 } = await seedLibrary();
+  const before = __getMusicProgressFlushWriteCount();
+
+  // Several pings across two tracks -> read-your-writes overlay before any flush.
+  await postJson('/api/music/progress', { id: t1.id, position: 10, duration: 200 });
+  await postJson('/api/music/progress', { id: t1.id, position: 25, duration: 200 });
+  await postJson('/api/music/progress', { id: t2.id, position: 5, duration: 200 });
+  assert.equal(effectiveMusicProgress(user.id, t1.id).position, 25, 'read-your-writes: latest pending value');
+  // GET route reflects it too.
+  assert.equal((await (await get(`/api/music/progress/${t1.id}`)).json()).position, 25);
+
+  // One flush window commits all staged rows in a single write pass.
+  await flushPendingMusicProgress();
+  assert.equal(__getMusicProgressFlushWriteCount(), before + 1, '>=5:1 write-amp: N pings -> 1 flush write');
+  assert.equal(userStore.getOneMusicProgress(user.id, t1.id).position, 25, 'committed');
+  assert.equal(userStore.getOneMusicProgress(user.id, t2.id).position, 5);
+
+  // A ping for a track deleted between ping and flush is dropped, not resurrected.
+  await postJson('/api/music/progress', { id: t1.id, position: 99, duration: 200 });
+  await updateDatabase((db) => { delete musicStore.ensureMusic(db).tracks[t1.id]; return true; });
+  await flushPendingMusicProgress();
+  // t1's committed position stays at the last pre-delete flush (25), never 99.
+  const after = userStore.getOneMusicProgress(user.id, t1.id);
+  assert.ok(after === null || after.position === 25, 'deleted-track ping did not resurrect/overwrite');
 });
