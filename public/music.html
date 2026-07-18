@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Music - FileTube</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
+  <link rel="icon" type="image/png" sizes="512x512" href="/icons/icon-512.png">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="theme-color" content="#cc0000">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="FileTube">
+  <link rel="preload" href="/fonts/roboto.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/css/style.css">
+  <script>
+    /* FOUC guard -- set era+mode+icons on <html> BEFORE first paint (mirror of
+       resolveTheme()/resolveIconSet() in /js/common.js; keep in sync). Same
+       block every shell carries. */
+    (function () {
+      var d = document.documentElement;
+      try {
+        var eras = ['2005', '2009', '2014', '2021'];
+        var modes = ['light', 'dark'];
+        var e = localStorage.getItem('ft-era');
+        var m = localStorage.getItem('ft-mode');
+        var legacy = localStorage.getItem('theme');
+        var era = eras.indexOf(e) >= 0 ? e : '2021';
+        var mode = modes.indexOf(m) >= 0 ? m
+          : (e == null && m == null && (legacy === 'dark' || legacy === 'light')) ? legacy
+          : 'light';
+        d.setAttribute('data-theme', era);
+        d.setAttribute('data-mode', mode);
+        var iconSets = ['outlined', 'rounded', 'filled', 'emoji'];
+        var iconAutoMap = { '2005': 'emoji', '2009': 'emoji', '2014': 'filled', '2021': 'rounded' };
+        var storedIcons = localStorage.getItem('ft-icons');
+        var iconSet = iconSets.indexOf(storedIcons) >= 0 ? storedIcons
+          : storedIcons === 'auto' ? iconAutoMap[era]
+          : 'outlined';
+        d.setAttribute('data-icons', iconSet);
+        if (localStorage.getItem('ft-custom-logo') === '1') d.classList.add('ft-custom-logo');
+      } catch (_) {
+        d.setAttribute('data-theme', '2021');
+        d.setAttribute('data-mode', 'light');
+        d.setAttribute('data-icons', 'outlined');
+      }
+    })();
+  </script>
+</head>
+<body>
+  <header>
+    <div class="header-left">
+      <button class="menu-toggle" id="menu-toggle" aria-label="Open menu"><i class="icon-menu"></i></button>
+      <a href="/" class="logo">File<span class="tube">Tube</span></a>
+    </div>
+    <div class="header-search">
+      <div class="search-form">
+        <input type="text" id="search-input" class="search-input" placeholder="Search your files..." />
+        <button id="search-btn" class="search-btn">Search</button>
+      </div>
+    </div>
+    <div class="header-right">
+      <button class="theme-toggle" id="theme-toggle-btn" aria-label="Toggle light or dark mode"><i class="icon-moon"></i></button>
+    </div>
+  </header>
+
+  <div class="app-container">
+    <aside class="sidebar" id="sidebar">
+      <nav class="sidebar-section">
+        <a href="/" class="sidebar-item">
+          <i class="icon-home"></i> Home
+        </a>
+        <a href="/setup.html" class="sidebar-item">
+          <i class="icon-cog"></i> Library Settings
+        </a>
+        <!-- Subscriptions + Books + Music sidebar links are injected by
+             public/js/common.js's capability probes -- never hardcoded. -->
+      </nav>
+      <div class="sidebar-section">
+        <div class="sidebar-section-title">Playlists (Folders)</div>
+        <div id="sidebar-folders-list"><!-- Populated dynamically --></div>
+      </div>
+    </aside>
+
+    <main class="main-content" id="main-content">
+      <div id="view-root" data-view="music">
+        <div class="music-toolbar">
+          <h2>Music</h2>
+          <div class="music-toolbar-actions">
+            <select id="music-sort-select" class="btn btn-sm" aria-label="Sort music">
+              <option value="newest">Recently added</option>
+              <option value="title-asc">Title A-Z</option>
+              <option value="title-desc">Title Z-A</option>
+              <option value="artist-asc">Artist</option>
+              <option value="album-asc">Album</option>
+              <option value="duration-desc">Longest</option>
+            </select>
+            <button class="btn btn-sm" id="music-shuffle-btn" type="button" title="Shuffle all">
+              <i class="icon-shuffle"></i> Shuffle
+            </button>
+            <button class="btn btn-sm" id="music-scan-btn" type="button" title="Scan music folders now">
+              <i class="icon-refresh"></i> Scan
+            </button>
+          </div>
+        </div>
+
+        <!-- The persistent player mounts here (FULL) while a track plays; it
+             reparents to the dock on in-app navigation (the watch-page idiom). -->
+        <div id="player-slot" class="music-player-slot" hidden></div>
+
+        <div class="music-tabs" id="music-tabs" role="tablist">
+          <button type="button" class="music-tab active" data-tab="albums" role="tab">Albums</button>
+          <button type="button" class="music-tab" data-tab="artists" role="tab">Artists</button>
+          <button type="button" class="music-tab" data-tab="songs" role="tab">Songs</button>
+          <button type="button" class="music-tab" data-tab="liked" role="tab">Liked</button>
+        </div>
+
+        <!-- Drill-in breadcrumb (album/artist view); hidden on the top tabs. -->
+        <div class="music-crumb" id="music-crumb" hidden></div>
+
+        <!-- Album/artist grids OR a song list render into this host. -->
+        <div id="music-content"></div>
+        <div class="music-empty" id="music-empty" hidden>
+          No music yet. Add a music folder in <a href="/setup.html">Library Settings</a>, drop MP3/M4A/FLAC/WAV files in it, and scan.
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <nav class="bottom-nav" id="bottom-nav" aria-label="Primary">
+    <a href="/" class="bottom-nav-item" data-nav="home">
+      <i class="icon-home"></i>
+      <span class="bottom-nav-label">Home</span>
+    </a>
+    <button type="button" class="bottom-nav-item" data-nav="playlists" id="nav-playlists-btn">
+      <i class="icon-folder"></i>
+      <span class="bottom-nav-label">Playlists</span>
+    </button>
+    <button type="button" class="bottom-nav-item" data-nav="theme" id="nav-theme-toggle">
+      <i class="icon-moon"></i>
+      <span class="bottom-nav-label">Dark</span>
+    </button>
+    <a href="/setup.html" class="bottom-nav-item" data-nav="settings">
+      <i class="icon-cog"></i>
+      <span class="bottom-nav-label">Settings</span>
+    </a>
+  </nav>
+
+  <div class="playlists-sheet-backdrop" id="playlists-backdrop" hidden></div>
+  <aside class="playlists-sheet" id="playlists-sheet" hidden aria-label="Playlists">
+    <div class="playlists-sheet-header">
+      <span>Playlists</span>
+      <button type="button" class="playlists-sheet-close" id="playlists-close" aria-label="Close">&times;</button>
+    </div>
+    <div class="playlists-sheet-list" id="playlists-sheet-list"></div>
+  </aside>
+
+  <script src="/js/common.js"></script>
+  <script src="/js/main.js"></script>
+  <script src="/js/watch.js"></script>
+  <script src="/js/setup.js"></script>
+  <script src="/js/player.js"></script>
+  <script src="/js/music.js"></script>
+</body>
+</html>

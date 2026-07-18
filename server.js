@@ -4909,10 +4909,11 @@ function dropPendingProgressForUser(userId) {
 // this is always current, needs no bootstrap, and depends on nothing
 // client-side. Only full-page loads/refreshes hit this; in-app SPA nav keeps
 // the header, so there is no FOUC there to fix.
-const FOUC_SHELL_FILES = new Set(['index.html', 'watch.html', 'stats.html', 'setup.html', 'read.html', 'books.html', 'login.html', 'welcome.html']);
+const FOUC_SHELL_FILES = new Set(['index.html', 'watch.html', 'stats.html', 'setup.html', 'read.html', 'books.html', 'music.html', 'login.html', 'welcome.html']);
 function shellHtmlForRequestPath(p) {
   if (p === '/' || p === '/index.html') return 'index.html';
   if (p === '/books' || p === '/books.html') return 'books.html';
+  if (p === '/music' || p === '/music.html') return 'music.html';
   // v1.43 auth: the pretty routes /login and /welcome serve their shells (the
   // gate above lets them through the allowlist; here they get the same
   // custom-logo/no-cache treatment as every other shell).
@@ -5904,6 +5905,10 @@ app.post('/api/books/pins/reorder', (req, res) => {
 
 // The clean /books URL (express.static already serves /books.html; this
 // mirrors the ytdlp module's own /subscriptions sendFile).
+app.get('/music', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'music.html'));
+});
+
 app.get('/books', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'books.html'));
 });
@@ -6556,7 +6561,10 @@ app.post('/api/music/progress', (req, res) => {
   const body = req.body || {};
   const id = typeof body.id === 'string' ? body.id : '';
   if (!id) return res.status(400).json({ error: 'id required' });
-  const position = Number.isFinite(Number(body.position)) ? Number(body.position) : 0;
+  // Accept `position` (music-native) OR `timestamp` (the shared player's wire
+  // shape, so player.js needs only an endpoint override, not a body change).
+  const raw = body.position !== undefined ? body.position : body.timestamp;
+  const position = Number.isFinite(Number(raw)) ? Number(raw) : 0;
   const duration = Number.isFinite(Number(body.duration)) ? Number(body.duration) : 0;
   pendingMusicProgress.set(pendingProgressKey(req.user.id, id), {
     userId: req.user.id,
@@ -6568,7 +6576,10 @@ app.post('/api/music/progress', (req, res) => {
 });
 
 app.get('/api/music/progress/:id', (req, res) => {
-  res.json(effectiveMusicProgress(req.user.id, req.params.id) || { position: 0, duration: 0, updatedAt: null });
+  const p = effectiveMusicProgress(req.user.id, req.params.id) || { position: 0, duration: 0, updatedAt: null };
+  // Surface BOTH keys: `position` (music-native) and `timestamp` (the alias the
+  // shared player reads) so either consumer works.
+  res.json({ position: p.position || 0, timestamp: p.position || 0, duration: p.duration || 0, updatedAt: p.updatedAt || null });
 });
 
 app.get('/api/music/:id', (req, res) => {

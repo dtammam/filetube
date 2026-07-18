@@ -1551,6 +1551,8 @@ function activeNavItem(pathname, search) {
   // Books nav item lit, like watch keeps no item lit but books is a
   // browsable section.
   if (pathname === '/books' || pathname === '/books.html' || pathname === '/read.html') return 'books';
+  // v1.44 music: same posture (link injected only when >=1 music folder set).
+  if (pathname === '/music' || pathname === '/music.html') return 'music';
   if (pathname === '/' || pathname === '/index.html') return 'home';
   return null;
 }
@@ -2548,6 +2550,9 @@ function deriveRouteView(pathname) {
   // book cards, so a books-less install never navigates here.
   if (pathname === '/books' || pathname === '/books.html') return 'books';
   if (pathname === '/read.html') return 'read';
+  // v1.44 music: same unconditional-mapping posture -- the Music nav link is
+  // only injected when >=1 music folder is configured.
+  if (pathname === '/music' || pathname === '/music.html') return 'music';
   return null;
 }
 
@@ -2773,7 +2778,7 @@ if (typeof window !== 'undefined') {
     const sidebar = document.getElementById('sidebar');
     if (sidebar) {
       sidebar.querySelectorAll('.sidebar-item.active').forEach((el) => el.classList.remove('active'));
-      const hrefByNavKey = { home: '/', settings: '/setup.html', subscriptions: '/subscriptions', books: '/books' };
+      const hrefByNavKey = { home: '/', settings: '/setup.html', subscriptions: '/subscriptions', books: '/books', music: '/music' };
       const href = key ? hrefByNavKey[key] : null;
       const match = href && sidebar.querySelector('a.sidebar-item[href="' + href + '"]');
       if (match) match.classList.add('active');
@@ -2817,6 +2822,7 @@ if (typeof window !== 'undefined') {
     subscriptions: '/js/subscriptions.js',
     books: '/js/books.js',
     read: '/js/read.js',
+    music: '/js/music.js',
   };
 
   function ensureViewScriptLoaded(view) {

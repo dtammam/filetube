@@ -6413,3 +6413,138 @@ body.ft-css-fullscreen .bottom-nav {
   gap: 6px;
   flex-wrap: wrap;
 }
+
+/* v1.44 Music page -- era/mode tokens only (type sizes via --fs-* tokens
+   only, per the type-scale lock), glyphs via icon-* masks never emoji,
+   [hidden] enforced. All markup lives inside #view-root, styles here (the
+   v1.41.8 SPA lesson: page-local <head> styles are lost on in-app nav). */
+.music-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.music-toolbar h2 { margin: 0; }
+.music-toolbar-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.music-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--border-color);
+  margin-bottom: 16px;
+  overflow-x: auto;
+}
+.music-tab {
+  appearance: none;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 10px 14px;
+  font-size: var(--fs-base);
+  white-space: nowrap;
+}
+.music-tab.active {
+  color: var(--text-primary);
+  border-bottom-color: var(--yt-red);
+  font-weight: 600;
+}
+
+.music-crumb { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.music-crumb[hidden] { display: none !important; }
+.music-crumb-label { font-size: var(--fs-lg); font-weight: 600; color: var(--text-primary); }
+
+.music-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 16px;
+}
+.music-album-card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 4px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+}
+.music-album-art {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  border-radius: 6px;
+  background: var(--thumbnail-bg, #222);
+  display: block;
+}
+.music-album-title {
+  font-size: var(--fs-base);
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.music-album-artist,
+.music-album-count {
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.music-artist-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
+.music-artist-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 16px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+  cursor: pointer;
+  text-align: left;
+  color: inherit;
+  min-width: 0;
+}
+.music-artist-name { font-size: var(--fs-base); font-weight: 600; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.music-artist-meta { font-size: var(--fs-sm); color: var(--text-secondary); }
+
+.music-song-list { display: flex; flex-direction: column; }
+.music-song-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.music-song-row:hover { background: var(--bg-secondary); }
+.music-song-thumb { width: 44px; height: 44px; border-radius: 4px; object-fit: cover; background: var(--thumbnail-bg, #222); flex-shrink: 0; }
+.music-song-main { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.music-song-title { font-size: var(--fs-base); color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.music-song-sub { font-size: var(--fs-sm); color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.music-song-duration { font-size: var(--fs-sm); color: var(--text-secondary); flex-shrink: 0; font-variant-numeric: tabular-nums; }
+.music-like-btn {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+.music-like-btn.liked { color: var(--yt-red); }
+
+.music-player-slot { margin-bottom: 16px; }
+.music-player-slot[hidden] { display: none !important; }
+.music-empty { color: var(--text-secondary); padding: 24px 0; }
+.music-empty[hidden] { display: none !important; }

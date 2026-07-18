@@ -2858,6 +2858,23 @@ if (typeof module !== 'undefined' && module.exports) {
       else mediaPlayer.play().catch(function () {});
       return;
     }
+    // v1.44 music: read from the music coalescer and apply the SMART-RESUME
+    // rule instead of the video resume-overlay -- a song restarts from the top,
+    // a >10-min track resumes mid-track. No "Resume at…" prompt for music.
+    var progressReadBase = (currentData && typeof currentData.progressEndpoint === 'string' && currentData.progressEndpoint) || '/api/progress';
+    if (currentData && currentData.resumeMode === 'music') {
+      fetch(progressReadBase + '/' + id)
+        .then(function (res) { return res.json(); })
+        .then(function (data) {
+          if (gen !== loadGeneration) return;
+          savedProgress = data.timestamp || data.position || 0;
+          var resume = savedProgress > 0 && shouldResumeMidTrack({ durationSeconds: currentData.duration });
+          if (resume) resumeDirectly(savedProgress);
+          else { savedProgress = 0; mediaPlayer.play().catch(function () {}); }
+        })
+        .catch(function () { mediaPlayer.play().catch(function () {}); });
+      return;
+    }
     fetch('/api/progress/' + id)
       .then(function (res) { return res.json(); })
       .then(function (data) {
@@ -2966,7 +2983,12 @@ if (typeof module !== 'undefined' && module.exports) {
       }),
     };
     if (opts && opts.keepalive) fetchOpts.keepalive = true;
-    fetch('/api/progress', fetchOpts).catch(function (e) {
+    // v1.44 music: a music track's progress belongs to the music coalescer
+    // (/api/music/progress -> db.music.tracks), not the video coalescer. The
+    // override is set only for music items; video/audio-library items keep the
+    // default. The music route accepts the same {id,timestamp,duration} body.
+    var progressEndpoint = (currentData && typeof currentData.progressEndpoint === 'string' && currentData.progressEndpoint) || '/api/progress';
+    fetch(progressEndpoint, fetchOpts).catch(function (e) {
       console.error('Error auto-saving progress:', e);
     });
   }
@@ -3061,6 +3083,14 @@ if (typeof module !== 'undefined' && module.exports) {
     if (isLoopEnabled()) return;
     var endedId = currentId;
     if (!endedId) return;
+    // v1.44 music: a music track advances through the CLIENT queue via the
+    // registered trackNav handler (staying on /music), never the video
+    // autoplay path (which navigates to /watch.html and consults the global
+    // autoplayNext setting). Music autoplays through its queue by default.
+    if (currentData && currentData.autoAdvanceViaTrackNav) {
+      if (trackNavHandlers && typeof trackNavHandlers.onNext === 'function') trackNavHandlers.onNext();
+      return;
+    }
     fetch('/api/settings')
       .then(function (res) { return res.ok ? res.json() : null; })
       .then(function (settings) {
