@@ -50,6 +50,13 @@ test('T10 SOURCE-LOCK: Books + Music are Library-section entries; NEITHER inject
   assert.ok(src.includes('href="/books" class="sidebar-item"'), 'the Playlists sheet lists Books when enabled');
 });
 
+test('v1.44.1 SOURCE-LOCK: music.html carries the persistent player dock + host template (a track mounts + docks there)', () => {
+  const html = fs.readFileSync(path.join(__dirname, '../../public/music.html'), 'utf8');
+  assert.ok(html.includes('id="player-dock"'), 'music.html needs #player-dock so the mini-player can reparent on nav-away');
+  assert.ok(html.includes('id="player-host-template"'), 'music.html needs the host template so a DIRECT /music load can mount the player');
+  assert.ok(html.includes('id="media-player"'), 'the template carries the media element');
+});
+
 test('T10 SOURCE-LOCK: the sidebar section title is now "Library" in every shell', () => {
   const shells = ['index.html', 'watch.html', 'stats.html', 'setup.html', 'books.html', 'music.html', 'read.html'];
   for (const shell of shells) {

@@ -161,6 +161,78 @@
     <div class="playlists-sheet-list" id="playlists-sheet-list"></div>
   </aside>
 
+  <!-- Persistent player dock + host template (FR-1, T1/T2). Both live
+       OUTSIDE #view-root so in-app navigation never tears them down. The
+       template is cloned ONCE, ever, by the persistent player controller
+       (public/js/player.js) into a single live #player-host, reparented
+       between the watch view's #player-slot (FULL) and #player-dock (DOCKED)
+       here. #player-dock stays [hidden] (zero visible chrome, no layout
+       shift) unless a video is actively loaded AND the user has navigated
+       away from its watch page -- see player.js's dock()/expand()/close(). -->
+  <div id="player-dock" hidden></div>
+  <template id="player-host-template">
+    <div class="player-container" id="player-wrapper">
+      <div id="audio-bg-art" class="audio-bg-art"></div>
+      <div id="art-play-glyph" class="art-play-glyph" aria-hidden="true"></div>
+      <div id="resume-overlay" class="resume-overlay" style="display: none;">
+        <h3>Resume Playback?</h3>
+        <p>You watched this media up to <span id="resume-time-str">0:00</span>. Would you like to resume from there?</p>
+        <div class="resume-actions">
+          <button class="btn" id="resume-no-btn">Start from beginning</button>
+          <button class="btn btn-primary" id="resume-yes-btn">Resume</button>
+        </div>
+      </div>
+      <div id="transcode-overlay" class="resume-overlay" style="display: none;">
+        <div class="transcode-spinner" id="transcode-spinner"></div>
+        <h3 id="transcode-title">Preparing this video&hellip;</h3>
+        <p id="transcode-message">FileTube is converting this file to a browser-friendly format. This only happens once &mdash; it'll start playing automatically when it's ready.</p>
+      </div>
+      <video id="media-player" preload="metadata" playsinline webkit-playsinline x5-playsinline style="display: none;">
+        <track id="cc-track" kind="captions" srclang="en" label="English">
+        Your browser does not support HTML5 video player.
+      </video>
+      <div id="speed-badge" class="speed-badge" style="display: none;">2× ▶▶</div>
+      <div id="skip-controls" class="skip-controls" style="display: none;">
+        <button type="button" class="skip-btn skip-back" id="skip-back-btn" aria-label="Rewind 15 seconds">
+          <span class="skip-arrow">«</span><span class="skip-num">15</span>
+        </button>
+        <button type="button" class="skip-btn skip-forward" id="skip-fwd-btn" aria-label="Forward 15 seconds">
+          <span class="skip-num">15</span><span class="skip-arrow">»</span>
+        </button>
+        <div class="skip-ripple skip-ripple-left" id="skip-ripple-left">« 15s</div>
+        <div class="skip-ripple skip-ripple-right" id="skip-ripple-right">15s »</div>
+      </div>
+      <div id="audio-visualizer" class="audio-player-visual" style="display: none;">
+        <div class="audio-vinyl" id="vinyl-disc"></div>
+        <div class="audio-title" id="audio-visual-title">Audio Track Title</div>
+        <div class="audio-subtitle" id="audio-visual-folder">Playlist Folder</div>
+      </div>
+      <div id="player-controls" class="player-controls">
+        <button type="button" id="pp-btn" class="pc-btn pp-btn" aria-label="Play" aria-pressed="false">
+          <span class="pp-icon-play" aria-hidden="true"></span>
+          <span class="pp-icon-pause" aria-hidden="true"></span>
+        </button>
+        <span id="time-cur" class="pc-time">0:00</span>
+        <input type="range" id="seek-bar" class="pc-range pc-seek" min="0" max="1" step="0.001" value="0" aria-label="Seek">
+        <span id="time-dur" class="pc-time">0:00</span>
+        <button type="button" id="mute-btn" class="pc-btn mute-btn" aria-label="Mute" aria-pressed="false">
+          <span class="mute-icon-on" aria-hidden="true"></span>
+          <span class="mute-icon-off" aria-hidden="true"></span>
+        </button>
+        <input type="range" id="vol-bar" class="pc-range pc-vol" min="0" max="1" step="0.01" value="1" aria-label="Volume">
+        <button type="button" id="speed-btn" class="pc-btn speed-btn" aria-label="Playback speed">1×</button>
+        <button type="button" id="fs-btn" class="pc-btn fs-btn" aria-label="Fullscreen">⛶</button>
+        <button type="button" id="pip-btn" class="pc-btn pip-btn" aria-label="Picture in picture">⧉</button>
+        <button type="button" id="cc-btn" class="pc-btn cc-btn" aria-label="Toggle captions" aria-pressed="false" style="display: none;">CC</button>
+        <!-- v1.34 T3 (Dean): chapter picker -- hidden until a media item is
+             loaded (player.js applyChaptersForMedia). "Ch" text glyph, same
+             convention as CC (the chrome-emoji list is off-limits). -->
+        <button type="button" id="chapters-btn" class="pc-btn chapters-btn" aria-label="Chapters" aria-expanded="false" style="display: none;">Ch</button>
+        <div id="chapters-menu" class="chapters-menu" hidden></div>
+      </div>
+    </div>
+  </template>
+
   <script src="/js/common.js"></script>
   <script src="/js/main.js"></script>
   <script src="/js/watch.js"></script>

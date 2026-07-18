@@ -127,3 +127,22 @@
 - **Fix direction:** hoist the book-root + music-root reads to a single `loadDatabase()` before the loop, if this route is ever touched again.
 - **Severity:** Very low. Non-blocking SUGGESTION.
 - **Source:** v1.44 two-reviewer gate (QA seat, SUGGESTION).
+
+## #46 — v1.44.1 music: a plain music→music router nav briefly strands the FULL player (parity with /read)
+- **What:** while a track plays FULL on /music, tapping the "Music" nav item AGAIN fires a `music→music` #view-root swap. `shouldDockOnTransition` is false for same-view, so the host isn't docked; the old #player-slot (with the host inside) is removed, and music.js `init()` does not re-adopt a loaded track (unlike watch.js). The player vanishes from the page (no in-slot, no docked mini-player, no reachable pause) while audio KEEPS PLAYING; it self-heals (reappears docked) on the next nav to a DIFFERENT view.
+- **Not a regression:** `music→music` was always false; the identical strand exists on the shipped `/read` view (`read→read`). Audio never stops; self-heals.
+- **Fix direction:** either a same-URL no-op guard in `navigate()` (benefits home/watch/read/music uniformly — the cleaner fix) or mirror watch.js's re-adopt in `music.js init()` (`if (player.currentId) reparent into #player-slot`, preserving docked-vs-FULL state). Prefer the nav guard.
+- **Severity:** Low. Disclosed at the v1.44.1 slim gate (adversarial seat, WARNING) — tracked, not blocked (parity with /read).
+- **Source:** v1.44.1 slim gate.
+
+## #47 — v1.44.1 music: the resume pointer (user_music_state) is written but its consumer is a future "resume last session" feature
+- **What:** every play writes user_music_state (last track + queue ctx + position) via setMusicState. The "Continue listening" home-row cards DELIBERATELY do NOT consume it — they play the specific TAPPED track from the recent-listening list (fixing the v1.44.1 wrong-song bug where deferring to the pointer's last-played queue played the wrong song). So the pointer is currently written-but-unread.
+- **Fix direction:** wire a non-intrusive "resume where you left off" on a FRESH /music open (no ?play) — a subtle "Resume <track>" chip that loads the pointer's exact queue at its saved position. The infrastructure (the pointer + smart-resume) already exists.
+- **Severity:** None (harmless retained infrastructure, not a bug). Per-track smart-resume still works for any played track via /api/music/progress.
+- **Source:** v1.44.1 (folding the Bug-A fix; reconciles the v1.44.0 gate's "consume the pointer" note).
+
+## #48 — v1.44.1 music: albums/artists views request the full set (limit=10000) rather than infinite-scroll
+- **What:** the /api/music/albums and /api/music/artists endpoints paginate (offset/limit, default 60), but the client requests limit=10000 to show everything (the v1.44.1 fix for Bug B — the default 60 hid most albums/artists). At a genuinely huge library (many thousands of albums) that's a large one-shot JSON + DOM render.
+- **Fix direction:** infinite-scroll / "load more" against the existing offset/limit API (the endpoints already support it), or virtualized rendering.
+- **Severity:** Low. Fine at Dean's real library size; the endpoints are already paginated server-side.
+- **Source:** v1.44.1 (Bug-B fix follow-up).
