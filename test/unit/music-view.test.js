@@ -10,7 +10,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const {
   escapeMusicHtml, formatTrackDuration, buildAlbumCardHtml, buildArtistCardHtml, buildSongRowHtml,
-  drillYear, drillAlbumCount, buildDrillHeaderHtml, buildStickyBarHtml,
+  drillYear, drillAlbumCount, buildDrillHeaderHtml, buildStickyBarHtml, deriveNowPlayingLabel,
 } = require('../../public/js/music.js');
 
 const MUSIC_JS = fs.readFileSync(path.join(__dirname, '../../public/js/music.js'), 'utf8');
@@ -162,4 +162,23 @@ test('v1.44.2 SOURCE-LOCK: the playing-row highlight tracks the player id and re
   // renderSongList re-applies it (a fresh list must re-highlight the playing row).
   const renderBody = MUSIC_JS.slice(MUSIC_JS.indexOf('function renderSongList'), MUSIC_JS.indexOf('function applyPlayingHighlight'));
   assert.match(renderBody, /applyPlayingHighlight\(\)/, 'renderSongList re-applies the highlight');
+});
+
+// ---- v1.44.2 "Playing from <Album>" line -----------------------------------
+
+test('v1.44.2: deriveNowPlayingLabel shows the album only when the music track IS the current player item', () => {
+  const np = { id: 't1', album: 'Kid A', albumKey: 'k' };
+  assert.strictEqual(deriveNowPlayingLabel(np, 't1'), 'Playing from Kid A');
+  assert.strictEqual(deriveNowPlayingLabel(np, 'other'), '', 'a different current id (a video/book playing) hides it');
+  assert.strictEqual(deriveNowPlayingLabel(np, null), '', 'nothing playing -> hidden');
+  assert.strictEqual(deriveNowPlayingLabel({ id: 't1', album: '' }, 't1'), '', 'no album -> hidden');
+  assert.strictEqual(deriveNowPlayingLabel(null, 't1'), '', 'no now-playing record -> hidden');
+});
+
+test('v1.44.2 SOURCE-LOCK: the now-playing record is module-scoped (survives the SPA swap) and re-evaluated on render', () => {
+  // Module-scoped (declared in the IIFE, not init) so a nav BACK re-derives it.
+  assert.match(MUSIC_JS, /\/\/ v1\.44\.2:[^]*?var nowPlaying = null;/, 'nowPlaying is module-scoped');
+  assert.match(MUSIC_JS, /updateNowPlaying\(\)/, 'render/loadTrack refresh the line');
+  // It must cross-check the live player id (not just trust the stale record).
+  assert.match(MUSIC_JS, /deriveNowPlayingLabel\(nowPlaying, currentId\)/, 'the DOM update consults the live player currentId');
 });

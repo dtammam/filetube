@@ -125,6 +125,11 @@
         <!-- Drill-in breadcrumb (album/artist view); hidden on the top tabs. -->
         <div class="music-crumb" id="music-crumb" hidden></div>
 
+        <!-- v1.44.2: "Playing from <Album>" context line — a sibling of
+             #music-content (survives its re-renders) that reflects the currently
+             playing music track and drills into its album on tap. -->
+        <button type="button" class="music-nowplaying" id="music-nowplaying" hidden></button>
+
         <!-- Album/artist grids OR a song list render into this host. -->
         <div id="music-content"></div>
         <div class="music-empty" id="music-empty" hidden>

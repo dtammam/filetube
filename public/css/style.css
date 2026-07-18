@@ -6635,6 +6635,23 @@ body.ft-css-fullscreen .bottom-nav {
   .music-eq i { animation: none; height: 11px; }
 }
 
+/* v1.44.2: the "Playing from <Album>" context line (a full-width subtle
+   button; taps drill into the playing track's album). */
+.music-nowplaying {
+  display: block;
+  width: 100%;
+  text-align: left;
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--fs-sm);
+  padding: 4px 2px 10px;
+  cursor: pointer;
+}
+.music-nowplaying:hover { color: var(--text-primary); }
+.music-nowplaying[hidden] { display: none !important; }
+
 .music-empty { color: var(--text-secondary); padding: 24px 0; }
 .music-empty[hidden] { display: none !important; }
 

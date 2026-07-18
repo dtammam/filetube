@@ -6481,6 +6481,10 @@ function publicTrackListItem(track, userId, likedSet, progressMap) {
     genre: track.genre,
     ext: track.ext,
     folderName: track.folderName,
+    // v1.44.2: the composite album grouping key (derived, not stored) — the
+    // client needs it to drill into a track's album from the "Playing from
+    // <Album>" line (the album/artist drill filters on this exact key).
+    albumKey: musicStore.albumKeyFor(track),
     albumArtKey: track.albumArtKey,
     hasArt: !!(track.albumArtKey && albumArtExists(track.albumArtKey)),
     // Gate QA-CRITICAL: the client keys its transcode-prewarm poll off this,

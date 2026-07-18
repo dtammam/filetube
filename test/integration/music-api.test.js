@@ -72,6 +72,10 @@ test('T6: GET /api/music lists tracks (paginated), search + album filter + sort 
   assert.equal(data.total, 3);
   assert.equal(data.items.length, 3);
   assert.ok(!('filePath' in data.items[0]), 'filePath is NOT surfaced (path scrub)');
+  // v1.44.2: the composite albumKey is surfaced so the client can drill into a
+  // track's album (the "Playing from <Album>" line + the drill filter).
+  assert.ok(data.items.every((i) => typeof i.albumKey === 'string' && i.albumKey.length > 0),
+    'every song item carries a non-empty album grouping key');
 
   // search
   data = await (await get('/api/music?search=pigs')).json();
@@ -82,6 +86,7 @@ test('T6: GET /api/music lists tracks (paginated), search + album filter + sort 
   const albumKey = musicStore.albumKeyFor(t1);
   data = await (await get(`/api/music?album=${encodeURIComponent(albumKey)}`)).json();
   assert.deepEqual(data.items.map((i) => i.title), ['Mother', 'Hey You'], 'album order');
+  assert.ok(data.items.every((i) => i.albumKey === albumKey), 'album-filtered items carry that exact albumKey (drill round-trip)');
 
   // pagination
   data = await (await get('/api/music?limit=1&offset=0&sort=title-asc')).json();
