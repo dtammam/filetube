@@ -231,12 +231,16 @@ if (typeof module !== 'undefined' && module.exports) {
           await loadSongs({});
           renderSongList();
         } else if (tab === 'albums') {
-          var a = await fetchJson('/api/music/albums' + (search ? '?search=' + encodeURIComponent(search) : ''));
+          // limit=10000 (MAX_LIMIT): the endpoints paginate with a DEFAULT of
+          // 60, so without an explicit high limit only ~60 albums/artists
+          // would render (the Songs tab already passes a high limit). Proper
+          // infinite-scroll is tech-debt; for now request the full set.
+          var a = await fetchJson('/api/music/albums?limit=10000' + (search ? '&search=' + encodeURIComponent(search) : ''));
           var albums = Array.isArray(a.items) ? a.items : [];
           content.innerHTML = '<div class="music-card-grid">' + albums.map(buildAlbumCardHtml).join('') + '</div>';
           if (emptyNote) emptyNote.hidden = albums.length > 0;
         } else if (tab === 'artists') {
-          var ar = await fetchJson('/api/music/artists' + (search ? '?search=' + encodeURIComponent(search) : ''));
+          var ar = await fetchJson('/api/music/artists?limit=10000' + (search ? '&search=' + encodeURIComponent(search) : ''));
           var artists = Array.isArray(ar.items) ? ar.items : [];
           content.innerHTML = '<div class="music-card-grid music-artist-grid">' + artists.map(buildArtistCardHtml).join('') + '</div>';
           if (emptyNote) emptyNote.hidden = artists.length > 0;
@@ -376,31 +380,42 @@ if (typeof module !== 'undefined' && module.exports) {
       loadTrack(item, i);
     }
 
-    // Gate QA-WARNING: consume the per-user resume pointer. A "Continue
-    // listening" card lands here as /music?play=<trackId>; rebuild that track's
-    // QUEUE from the stored queue context and play it (the player's music
-    // smart-resume applies the saved position for a >10-min track).
-    async function resumeFromPointer(trackId) {
-      let st = null;
-      try { st = await fetchJson('/api/music/resume'); } catch (_) { st = null; }
-      const ctx = (st && st.queueCtx && typeof st.queueCtx === 'object') ? st.queueCtx : { src: 'music' };
+    // A "Continue listening" card lands here as /music?play=<trackId> and must
+    // play THAT specific track (the earlier bug: it deferred to the resume
+    // POINTER's last-played queue, so tapping any card but the single most-
+    // recent one played the wrong song). The recently-played list is the
+    // natural queue and, by construction, always contains the tapped track;
+    // play it there (the player's music smart-resume applies the saved
+    // position). Falls back to a solo queue if the track isn't in the recent
+    // list (an edge — e.g. it aged out).
+    async function playTrackFromContinue(trackId) {
+      tab = 'songs';
       drill = null;
-      if (ctx.album) drill = { type: 'album', key: ctx.album, label: 'Album' };
-      else if (ctx.artist) { drill = { type: 'artist', key: ctx.artist, label: ctx.artist }; }
-      else if (ctx.filter === 'liked') tab = 'liked';
-      else tab = 'songs';
-      if (ctx.search) search = ctx.search;
-      if (sortSelect && ctx.sort) sortSelect.value = ctx.sort;
-      await render(); // populates `queue` for the resolved view
+      search = '';
+      queueCtx = { src: 'music', filter: 'recent-listening' };
+      queueCtxEncoded = (window.encodeListContext ? window.encodeListContext(queueCtx) : '');
+      try {
+        const data = await fetchJson('/api/music?filter=recent-listening&limit=200');
+        queue = Array.isArray(data.items) ? data.items : [];
+      } catch (_) { queue = []; }
+      setActiveTab(); // keep the tab-strip highlight consistent with tab='songs'
+      if (crumb) { crumb.hidden = false; crumb.textContent = 'Recently played'; }
+      renderSongList();
       let idx = queue.findIndex((t) => t.id === trackId);
-      if (idx < 0 && st && st.lastTrackId) idx = queue.findIndex((t) => t.id === st.lastTrackId);
-      if (idx >= 0) playAt(idx);
+      if (idx >= 0) { playAt(idx); return; }
+      // Edge: the tapped track isn't in the recent list — play it solo so the
+      // right song still plays.
+      try {
+        const t = await fetchJson('/api/music/' + encodeURIComponent(trackId));
+        if (t && t.id) { queue = [t]; renderSongList(); playAt(0); return; }
+      } catch (_) { /* fall through to a normal render */ }
+      await render();
     }
 
     const playParam = urlParams.get('play');
     if (playParam) {
-      resumeFromPointer(playParam).catch((err) => {
-        console.error('Music: resume failed', err);
+      playTrackFromContinue(playParam).catch((err) => {
+        console.error('Music: continue-listening play failed', err);
         render().catch(() => {});
       });
     } else {

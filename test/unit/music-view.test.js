@@ -6,9 +6,26 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert');
+const fs = require('node:fs');
+const path = require('node:path');
 const {
   escapeMusicHtml, formatTrackDuration, buildAlbumCardHtml, buildArtistCardHtml, buildSongRowHtml,
 } = require('../../public/js/music.js');
+
+const MUSIC_JS = fs.readFileSync(path.join(__dirname, '../../public/js/music.js'), 'utf8');
+
+test('v1.44.1 SOURCE-LOCK (Bug B): albums/artists are fetched with an explicit high limit (the endpoints default-cap at 60)', () => {
+  assert.match(MUSIC_JS, /\/api\/music\/albums\?limit=10000/, 'albums fetch must pass a high limit or only ~60 show');
+  assert.match(MUSIC_JS, /\/api\/music\/artists\?limit=10000/, 'artists fetch must pass a high limit');
+});
+
+test('v1.44.1 SOURCE-LOCK (Bug A): a Continue-listening tap plays the TAPPED track from the recent list, not the resume pointer\'s last track', () => {
+  // The fixed handler resolves the play id from the recent-listening queue and
+  // never falls back to the pointer's lastTrackId (which caused the wrong-song bug).
+  assert.match(MUSIC_JS, /playTrackFromContinue/, 'the continue-listening handler exists');
+  assert.match(MUSIC_JS, /filter=recent-listening&limit=200/, 'it builds the queue from the recent-listening list');
+  assert.doesNotMatch(MUSIC_JS, /st\.lastTrackId/, 'it must NOT fall back to the pointer last track (the wrong-song bug)');
+});
 
 test('T9: escapeMusicHtml neutralizes markup; null/undefined -> empty', () => {
   assert.equal(escapeMusicHtml('<b>&"\''), '&lt;b&gt;&amp;&quot;&#039;');
