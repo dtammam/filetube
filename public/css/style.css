@@ -6548,3 +6548,16 @@ body.ft-css-fullscreen .bottom-nav {
 .music-player-slot[hidden] { display: none !important; }
 .music-empty { color: var(--text-secondary); padding: 24px 0; }
 .music-empty[hidden] { display: none !important; }
+
+/* v1.44 "Continue listening" home row -- reuses the books-home-row scroller;
+   the album-art cover is SQUARE (not the 2:3 book cover) and adds an artist
+   subline. */
+.music-row-cover { aspect-ratio: 1 / 1 !important; }
+.music-row-artist {
+  display: block;
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

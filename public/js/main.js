@@ -136,6 +136,43 @@ function buildBooksHomeSectionHtml(items, heading, seeAllHref) {
   `;
 }
 
+// v1.44: the "Continue listening" music row — a compact album-art tile linking
+// to /music (the queue picks up from the resume pointer). Reuses the books-row
+// scroller styling; empty items = empty string (music-less home stays
+// byte-identical).
+function buildMusicRowCardHtml(item) {
+  return `
+    <a class="book-row-card music-row-card" href="/music" title="${escapeBookRowHtml(item.title)}">
+      <span class="book-row-cover music-row-cover"><img src="/albumart/${encodeURIComponent(item.id)}" alt="" loading="lazy" /></span>
+      <span class="book-row-title">${escapeBookRowHtml(item.title)}</span>
+      <span class="music-row-artist">${escapeBookRowHtml(item.artist || '')}</span>
+    </a>
+  `;
+}
+
+function buildMusicHomeSectionHtml(items, heading, seeAllHref) {
+  if (!Array.isArray(items) || items.length === 0) return '';
+  const seeAll = seeAllHref ? `<a class="books-row-seeall" href="${escapeBookRowHtml(seeAllHref)}">See all</a>` : '';
+  return `
+    <section class="books-home-row music-home-row">
+      <div class="books-home-row-header"><h3>${escapeBookRowHtml(heading)}</h3>${seeAll}</div>
+      <div class="books-home-row-scroller">${items.map(buildMusicRowCardHtml).join('')}</div>
+    </section>
+  `;
+}
+
+// Home-row visibility toggles (device-local display prefs, like the sort/
+// resume prefs). Default ON. Pure so the Settings UI + the home render read
+// the SAME decision.
+function homeRowEnabled(key) {
+  try {
+    const v = localStorage.getItem(key);
+    return v === null ? true : v !== '0';
+  } catch (_) {
+    return true;
+  }
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     buildCardDownloadHref,
@@ -143,6 +180,9 @@ if (typeof module !== 'undefined' && module.exports) {
     buildSkeletonGrid,
     buildBookRowCardHtml,
     buildBooksHomeSectionHtml,
+    buildMusicRowCardHtml,
+    buildMusicHomeSectionHtml,
+    homeRowEnabled,
   };
 }
 
@@ -1188,12 +1228,28 @@ if (typeof module !== 'undefined' && module.exports) {
       videoGrid.insertAdjacentElement('beforebegin', booksRowHost);
       const bareHome = !searchQuery && !folderFilter && !rootFilter && !likedFilter;
       if (bareHome) {
-        fetch('/api/books?filter=reading&limit=10')
-          .then((r) => (r.ok ? r.json() : { items: [] }))
-          .then((data) => {
-            booksRowHost.innerHTML = buildBooksHomeSectionHtml(data.items, 'Continue reading', '/books');
-          })
-          .catch(() => { booksRowHost.innerHTML = ''; });
+        // v1.44: a music "Continue listening" host sits ABOVE the books one.
+        // Both rows are individually toggleable (device-local pref, default
+        // ON); a music-less/books-less install (or a hidden row) renders
+        // NOTHING, keeping the home page byte-identical.
+        const musicRowHost = document.createElement('div');
+        booksRowHost.insertAdjacentElement('beforebegin', musicRowHost);
+        if (homeRowEnabled('ft-home-continue-listening')) {
+          fetch('/api/music?filter=recent-listening&limit=10')
+            .then((r) => (r.ok ? r.json() : { items: [] }))
+            .then((data) => {
+              musicRowHost.innerHTML = buildMusicHomeSectionHtml(data.items, 'Continue listening', '/music');
+            })
+            .catch(() => { musicRowHost.innerHTML = ''; });
+        }
+        if (homeRowEnabled('ft-home-continue-reading')) {
+          fetch('/api/books?filter=reading&limit=10')
+            .then((r) => (r.ok ? r.json() : { items: [] }))
+            .then((data) => {
+              booksRowHost.innerHTML = buildBooksHomeSectionHtml(data.items, 'Continue reading', '/books');
+            })
+            .catch(() => { booksRowHost.innerHTML = ''; });
+        }
       } else if (searchQuery) {
         fetch('/api/books?search=' + encodeURIComponent(searchQuery) + '&limit=12')
           .then((r) => (r.ok ? r.json() : { items: [] }))

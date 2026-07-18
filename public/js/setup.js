@@ -561,6 +561,27 @@ function loadDebugLifecycleControl() {
   check.checked = raw === '1';
 }
 
+// v1.44: home-row toggle prefill/wire (device-local, default ON -- stored '0'
+// = off). Mirrors main.js's homeRowEnabled so the Settings UI and the home
+// render never disagree.
+function loadHomeRowControl(id, key) {
+  const check = document.getElementById(id);
+  if (!check) return;
+  let raw = null;
+  try { raw = localStorage.getItem(key); } catch (_) { /* storage disabled -- default on */ }
+  check.checked = raw !== '0';
+}
+function wireHomeRowToggle(id, key, signal) {
+  const check = document.getElementById(id);
+  if (!check) return;
+  check.addEventListener('change', (e) => {
+    try {
+      if (e.target.checked) localStorage.removeItem(key);
+      else localStorage.setItem(key, '0');
+    } catch (_) { /* storage disabled/full -- best-effort only */ }
+  }, { signal });
+}
+
 // GET /api/settings on load: populate all four controls, plus the
 // size-cap placeholder from effectiveCacheMaxBytes (the env-var/5GB
 // default that applies whenever no UI override is persisted).
@@ -1232,6 +1253,12 @@ function wireStaticControls(signal) {
     }, { signal });
   }
 
+  // v1.44: home-page resume-row toggles (device-local, default ON). Keys match
+  // main.js's homeRowEnabled (`!== '0'` = on): checked -> clear (default on),
+  // unchecked -> '0'.
+  wireHomeRowToggle('home-continue-listening-check', 'ft-home-continue-listening', signal);
+  wireHomeRowToggle('home-continue-reading-check', 'ft-home-continue-reading', signal);
+
   // Size-cap input: 'change' (fires on blur/Enter, not per keystroke) is a
   // natural debounce for a free-typed number field. Blank -> null ("use the
   // default"); a non-empty value that isn't a valid positive number is
@@ -1535,6 +1562,8 @@ function init(root) {
   renderIconPicker();
   loadResumeThresholdControl();
   loadDebugLifecycleControl();
+  loadHomeRowControl('home-continue-listening-check', 'ft-home-continue-listening');
+  loadHomeRowControl('home-continue-reading-check', 'ft-home-continue-reading');
 
   loadAutomationSettings();
   loadCacheSize();
