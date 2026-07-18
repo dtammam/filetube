@@ -1624,6 +1624,8 @@ function injectSubscriptionsNavLinkIfEnabled() {
         if (activeNavItem(window.location.pathname, window.location.search) === 'subscriptions') {
           navLink.classList.add('active');
         }
+        // v1.44 T12: re-apply the user's bar layout now that this item exists.
+        applyBottomNavCustomization();
       }
     })
     .catch(() => { /* network/parse failure -- fail closed, inject nothing */ });
@@ -1700,6 +1702,82 @@ function injectMusicNavLinkIfEnabled() {
       injectLibraryNavEntry('music', '/music', 'Music', 'icon-play');
     })
     .catch(() => { /* network/parse failure -- fail closed, inject nothing */ });
+}
+
+// ---- v1.44 T12: customizable bottom-bar -------------------------------------
+//
+// The user reorders/hides the OPTIONAL bottom-nav items (home stays first,
+// settings stays last -- both un-hideable anchors). Config is device-local
+// (localStorage 'ft-bottomnav' = {hidden:[ids], order:[ids]}), consistent with
+// intake #6 (localStorage is the immediate source of truth); a cross-device
+// server mirror is a disclosed fast-follow. A hidden item is only hidden if it
+// EXISTS (an item toggled on but whose module is disabled simply never
+// appears -- the module gate always wins).
+const BOTTOM_NAV_FIXED_FIRST = 'home';
+const BOTTOM_NAV_FIXED_LAST = 'settings';
+// The optional items a user may reorder/hide (must carry a data-nav id).
+const BOTTOM_NAV_OPTIONAL = ['playlists', 'subscriptions', 'oneoff-download', 'theme'];
+
+// Pure: given the bottom-nav item ids ACTUALLY present in the DOM and the
+// user's config, return the final visible order (home first, settings last,
+// hidden optionals dropped) plus the list of present-but-hidden ids. Unit-
+// tested without a DOM.
+function resolveBottomNavLayout(presentIds, config) {
+  const present = Array.isArray(presentIds) ? presentIds.slice() : [];
+  const cfg = (config && typeof config === 'object') ? config : {};
+  const hidden = new Set(Array.isArray(cfg.hidden) ? cfg.hidden : []);
+  const order = Array.isArray(cfg.order) ? cfg.order : [];
+  const middle = present.filter((id) => id !== BOTTOM_NAV_FIXED_FIRST && id !== BOTTOM_NAV_FIXED_LAST);
+  const seen = new Set();
+  const ordered = [];
+  order.forEach((id) => { if (middle.indexOf(id) >= 0 && !seen.has(id)) { ordered.push(id); seen.add(id); } });
+  middle.forEach((id) => { if (!seen.has(id)) { ordered.push(id); seen.add(id); } });
+  const visible = [];
+  if (present.indexOf(BOTTOM_NAV_FIXED_FIRST) >= 0) visible.push(BOTTOM_NAV_FIXED_FIRST);
+  ordered.forEach((id) => { if (!hidden.has(id)) visible.push(id); });
+  if (present.indexOf(BOTTOM_NAV_FIXED_LAST) >= 0) visible.push(BOTTOM_NAV_FIXED_LAST);
+  return { visible, hiddenPresent: ordered.filter((id) => hidden.has(id)) };
+}
+
+function readBottomNavConfig() {
+  try {
+    const raw = localStorage.getItem('ft-bottomnav');
+    if (!raw) return { hidden: [], order: [] };
+    const parsed = JSON.parse(raw);
+    return {
+      hidden: Array.isArray(parsed && parsed.hidden) ? parsed.hidden : [],
+      order: Array.isArray(parsed && parsed.order) ? parsed.order : [],
+    };
+  } catch (_) {
+    return { hidden: [], order: [] };
+  }
+}
+
+function writeBottomNavConfig(config) {
+  try { localStorage.setItem('ft-bottomnav', JSON.stringify(config || { hidden: [], order: [] })); } catch (_) { /* storage disabled */ }
+}
+
+// Reorder + hide the live #bottom-nav per the config. Idempotent; safe to call
+// repeatedly (each async nav injector calls it after inserting its item).
+function applyBottomNavCustomization() {
+  if (typeof document === 'undefined') return;
+  const nav = document.getElementById('bottom-nav');
+  if (!nav) return;
+  const items = Array.prototype.slice.call(nav.querySelectorAll('.bottom-nav-item'));
+  const byId = {};
+  const presentIds = [];
+  items.forEach((el) => {
+    const id = el.getAttribute('data-nav');
+    if (!id) return;
+    byId[id] = el;
+    presentIds.push(id);
+  });
+  const layout = resolveBottomNavLayout(presentIds, readBottomNavConfig());
+  const visibleSet = new Set(layout.visible);
+  presentIds.forEach((id) => { if (byId[id]) byId[id].hidden = !visibleSet.has(id); });
+  // Reorder: appendChild moves each element to the end, so appending in the
+  // resolved order re-sorts the bar without recreating any node.
+  layout.visible.forEach((id) => { if (byId[id]) nav.appendChild(byId[id]); });
 }
 
 // ---- v1.15.0 item 3: one-off download header button + compact modal -------
@@ -2499,6 +2577,8 @@ function injectOneOffDownloadButtonIfEnabled() {
         settingsNavItem.insertAdjacentElement('afterend', navBtn);
 
         navBtn.addEventListener('click', openModal);
+        // v1.44 T12: re-apply the user's bar layout now that Download exists.
+        applyBottomNavCustomization();
       }
 
       // Esc closes the modal while it is open -- backdrop-click and the [x]
@@ -3233,6 +3313,11 @@ if (typeof window !== 'undefined') {
   window.FileTube.registerView = registerView;
   window.FileTube.navigate = navigate;
   window.FileTube.bootRouter = bootRouter;
+  // v1.44 T12: the Settings bottom-bar editor drives these.
+  window.FileTube.applyBottomNavCustomization = applyBottomNavCustomization;
+  window.FileTube.readBottomNavConfig = readBottomNavConfig;
+  window.FileTube.writeBottomNavConfig = writeBottomNavConfig;
+  window.FileTube.BOTTOM_NAV_OPTIONAL = BOTTOM_NAV_OPTIONAL;
 }
 
 // Renders the Playlists sheet's folder list — functionally equivalent to the
@@ -6134,6 +6219,9 @@ document.addEventListener('DOMContentLoaded', () => {
   injectBooksNavLinkIfEnabled();
   // v1.44 music: same probe-gated Library-section injection.
   injectMusicNavLinkIfEnabled();
+  // v1.44 T12: apply the user's bottom-bar layout to the STATIC items now; the
+  // async injectors (subscriptions/download) re-apply after inserting theirs.
+  applyBottomNavCustomization();
 
   // v1.15.0 item 3: one-off download header button + modal, gated by the
   // SAME capability probe pattern -- runs on every page for the same reason
@@ -6223,6 +6311,7 @@ if (typeof module !== 'undefined' && module.exports) {
     shouldInjectSubscriptionsNav,
     shouldInjectBooksNav,
     shouldInjectMusicNav,
+    resolveBottomNavLayout,
     pinDeleteEndpoint,
     fisherYatesShuffle, sortItems, shouldShowShuffleButton,
     deriveOrderedIds, computeNeighbors, parentFolder,

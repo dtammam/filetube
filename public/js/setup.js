@@ -582,6 +582,73 @@ function wireHomeRowToggle(id, key, signal) {
   }, { signal });
 }
 
+// v1.44 T12: the customizable bottom-bar editor. Lists the optional items
+// (labels below), each with a Show toggle + up/down reorder, driving the
+// device-local config through common.js's exposed helpers. applyBottomNav-
+// Customization re-renders the live bar immediately.
+const BOTTOMBAR_LABELS = { playlists: 'Playlists', subscriptions: 'Subscriptions', 'oneoff-download': 'Download', theme: 'Light / Dark' };
+function renderBottomBarEditor(signal) {
+  const host = document.getElementById('bottombar-editor');
+  const FT = typeof window !== 'undefined' ? window.FileTube : null;
+  if (!host || !FT || !FT.readBottomNavConfig) return;
+  const optional = FT.BOTTOM_NAV_OPTIONAL || [];
+  const cfg = FT.readBottomNavConfig();
+  const hidden = new Set(Array.isArray(cfg.hidden) ? cfg.hidden : []);
+  const order = Array.isArray(cfg.order) ? cfg.order : [];
+  // Config order first, then any unlisted optionals in their default order.
+  const seen = new Set();
+  const items = [];
+  order.forEach((id) => { if (optional.indexOf(id) >= 0 && !seen.has(id)) { items.push(id); seen.add(id); } });
+  optional.forEach((id) => { if (!seen.has(id)) { items.push(id); seen.add(id); } });
+
+  host.innerHTML = '';
+  items.forEach((id, index) => {
+    const row = document.createElement('div');
+    row.className = 'bottombar-editor-row';
+    const up = document.createElement('button');
+    up.type = 'button'; up.className = 'bottombar-editor-btn'; up.innerHTML = '&uarr;';
+    up.title = 'Move up'; up.disabled = index === 0;
+    const down = document.createElement('button');
+    down.type = 'button'; down.className = 'bottombar-editor-btn'; down.innerHTML = '&darr;';
+    down.title = 'Move down'; down.disabled = index === items.length - 1;
+    const label = document.createElement('span');
+    label.className = 'bottombar-editor-label';
+    label.textContent = BOTTOMBAR_LABELS[id] || id;
+    const toggle = document.createElement('label');
+    toggle.style.cssText = 'display:flex; align-items:center; gap:6px; font-weight:normal;';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox'; cb.checked = !hidden.has(id);
+    toggle.appendChild(cb);
+    toggle.appendChild(document.createTextNode('Show'));
+
+    cb.addEventListener('change', () => {
+      const c = FT.readBottomNavConfig();
+      const h = new Set(Array.isArray(c.hidden) ? c.hidden : []);
+      if (cb.checked) h.delete(id); else h.add(id);
+      c.hidden = Array.from(h);
+      FT.writeBottomNavConfig(c);
+      if (FT.applyBottomNavCustomization) FT.applyBottomNavCustomization();
+    }, { signal });
+    up.addEventListener('click', () => moveBottomBarItem(items, index, index - 1, signal), { signal });
+    down.addEventListener('click', () => moveBottomBarItem(items, index, index + 1, signal), { signal });
+
+    row.appendChild(up); row.appendChild(down); row.appendChild(label); row.appendChild(toggle);
+    host.appendChild(row);
+  });
+}
+function moveBottomBarItem(items, from, to, signal) {
+  if (to < 0 || to >= items.length) return;
+  const FT = window.FileTube;
+  const arr = items.slice();
+  const [moved] = arr.splice(from, 1);
+  arr.splice(to, 0, moved);
+  const c = FT.readBottomNavConfig();
+  c.order = arr;
+  FT.writeBottomNavConfig(c);
+  if (FT.applyBottomNavCustomization) FT.applyBottomNavCustomization();
+  renderBottomBarEditor(signal);
+}
+
 // GET /api/settings on load: populate all four controls, plus the
 // size-cap placeholder from effectiveCacheMaxBytes (the env-var/5GB
 // default that applies whenever no UI override is persisted).
@@ -1564,6 +1631,7 @@ function init(root) {
   loadDebugLifecycleControl();
   loadHomeRowControl('home-continue-listening-check', 'ft-home-continue-listening');
   loadHomeRowControl('home-continue-reading-check', 'ft-home-continue-reading');
+  renderBottomBarEditor(controller.signal); // v1.44 T12 bottom-bar editor
 
   loadAutomationSettings();
   loadCacheSize();
