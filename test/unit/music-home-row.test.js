@@ -31,6 +31,11 @@ test('T11: buildMusicRowCardHtml escapes title + carries the album art', () => {
   assert.match(html, /albumart\/a%22b/);
 });
 
+test('T11 (gate note): the Continue-listening CARD deep-links /music?play=<id> so the resume pointer is consumed', () => {
+  const html = main.buildMusicRowCardHtml({ id: 'trk9', title: 'Song', artist: 'A' });
+  assert.match(html, /href="\/music\?play=trk9"/, 'the card resumes the specific track, not the generic /music');
+});
+
 test('T11: homeRowEnabled defaults ON; only an explicit "0" disables', () => {
   const store = {};
   global.localStorage = {

@@ -344,10 +344,15 @@ if (typeof module !== 'undefined' && module.exports) {
       setStatus('Preparing “' + item.title + '”…');
       function poll() {
         if (gen !== playGen) return; // a newer tap superseded this one
-        fetch('/track/' + item.id, { method: 'HEAD' })
+        // A 1-byte ranged GET (not HEAD): when the rendition is READY the route
+        // answers 206 having read a single byte; a HEAD would run the whole
+        // file through sendRangeable's stream (no body sent, but the full disk
+        // read still happens). While transcoding it's a small 503 JSON.
+        fetch('/track/' + item.id, { headers: { Range: 'bytes=0-0' } })
           .then(function (res) {
+            if (res.body && res.body.cancel) { try { res.body.cancel(); } catch (_) { /* ignore */ } }
             if (gen !== playGen) return;
-            if (res.status === 200) { setStatus(''); loadTrack(item, i); return; }
+            if (res.ok) { setStatus(''); loadTrack(item, i); return; } // 200/206 -> ready
             attempts += 1;
             if (attempts >= MAX_ATTEMPTS) { setStatus('Could not prepare this track. Try again shortly.'); return; }
             setTimeout(poll, 1500);

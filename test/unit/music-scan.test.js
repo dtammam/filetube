@@ -72,7 +72,13 @@ test('T4: selectOrphanedArtKeys — a key is orphaned ONLY when no surviving tra
   assert.deepEqual(scan.selectOrphanedArtKeys([], surviving), []);
 });
 
-test('GATE ADV-1: walkMusicRoot records an unreadable dir; selectPrunableTrackIds protects tracks UNDER it', () => {
+test('GATE ADV-1: walkMusicRoot records an unreadable dir; selectPrunableTrackIds protects tracks UNDER it', (t) => {
+  // chmod 000 is a no-op for a root process (a root Docker CI user), which
+  // would make this assert the wrong thing — skip rather than false-signal.
+  if (typeof process.getuid === 'function' && process.getuid() === 0) {
+    t.skip('running as root: chmod 000 does not deny access');
+    return;
+  }
   const store = require('../../lib/music/store');
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-eacces-'));
   try {
