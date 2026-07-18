@@ -138,10 +138,10 @@ function resolveWatchEntryReparentAction(currentId, requestedId, state) {
   return 'defer';
 }
 
-// ---- G1: Zak Goldin weighted mock-commenter + comment-bank selection ------
+// ---- G1: Polite and Unhinged weighted mock-commenter + comment-bank selection ------
 // (v1.24.0, T4). Pure/DOM-free, hoisted to module scope (like the pure
 // helpers above) so node:test can exercise both the flat commentBank
-// selection AND the new weighted Zak Goldin layer directly, without a
+// selection AND the new weighted Polite and Unhinged layer directly, without a
 // browser.
 
 // MOCK_COMMENT_BANK was previously a `const commentBank` declared INSIDE
@@ -228,21 +228,21 @@ const MOCK_COMMENT_BANK = [
   { author: 'the_lag_is_gone', text: 'the buffering wheel walked so this could run', timeStr: '11 months ago' },
 
   // Friends
-  { author: 'Joe Dowden', text: 'cool. touch grass.', timeStr: '2 days ago' },
-  { author: 'Joe Dowden', text: 'you spent HOW long on this. the outdoors is free, you know.', timeStr: '5 days ago' },
-  { author: 'Joe Dowden', text: 'please tell me a human wrote this and not some chatbot', timeStr: '1 week ago' },
-  { author: 'Joe Dowden', text: 'impressive, i guess. the sun still exists though.', timeStr: '3 days ago' },
-  { author: 'Joe Dowden', text: 'neat. go outside.', timeStr: '4 days ago' },
-  { author: 'Jesahel Vallejo', text: 'lil b really built his own youtube 😤', timeStr: '2 days ago' },
-  { author: 'Jesahel Vallejo', text: 'clean work lil b. anyway i got the Lakers +4 tonight', timeStr: '5 days ago' },
-  { author: 'Jesahel Vallejo', text: 'lil b i\'m 3 legs into a 5 leg parlay and STILL watching this', timeStr: '1 week ago' },
-  { author: 'Jesahel Vallejo', text: '10/10 lil b. hits better than cashing a same-game parlay', timeStr: '3 days ago' },
-  { author: 'Jesahel Vallejo', text: 'solid lil b. might put the whole bankroll on this app', timeStr: '4 days ago' },
-  { author: 'Jesse Torres', text: 'nice work. consider a service worker for offline playback next.', timeStr: '2 days ago' },
-  { author: 'Jesse Torres', text: 'solid. i\'d add rate limiting on the transcode endpoint though.', timeStr: '5 days ago' },
-  { author: 'Jesse Torres', text: 'clean. throw some integration tests on the scan logic.', timeStr: '1 week ago' },
-  { author: 'Jesse Torres', text: 'good stuff. debounce the progress saves to cut disk writes.', timeStr: '3 days ago' },
-  { author: 'Jesse Torres', text: 'works well. extract that transcode queue into its own module.', timeStr: '4 days ago' },
+  { author: 'Maligned Mentor', text: 'cool. touch grass.', timeStr: '2 days ago' },
+  { author: 'Maligned Mentor', text: 'you spent HOW long on this. the outdoors is free, you know.', timeStr: '5 days ago' },
+  { author: 'Maligned Mentor', text: 'please tell me a human wrote this and not some chatbot', timeStr: '1 week ago' },
+  { author: 'Maligned Mentor', text: 'impressive, i guess. the sun still exists though.', timeStr: '3 days ago' },
+  { author: 'Maligned Mentor', text: 'neat. go outside.', timeStr: '4 days ago' },
+  { author: 'Betting Bug', text: 'lil b really built his own youtube 😤', timeStr: '2 days ago' },
+  { author: 'Betting Bug', text: 'clean work lil b. anyway i got the Lakers +4 tonight', timeStr: '5 days ago' },
+  { author: 'Betting Bug', text: 'lil b i\'m 3 legs into a 5 leg parlay and STILL watching this', timeStr: '1 week ago' },
+  { author: 'Betting Bug', text: '10/10 lil b. hits better than cashing a same-game parlay', timeStr: '3 days ago' },
+  { author: 'Betting Bug', text: 'solid lil b. might put the whole bankroll on this app', timeStr: '4 days ago' },
+  { author: 'Feedback Friend', text: 'nice work. consider a service worker for offline playback next.', timeStr: '2 days ago' },
+  { author: 'Feedback Friend', text: 'solid. i\'d add rate limiting on the transcode endpoint though.', timeStr: '5 days ago' },
+  { author: 'Feedback Friend', text: 'clean. throw some integration tests on the scan logic.', timeStr: '1 week ago' },
+  { author: 'Feedback Friend', text: 'good stuff. debounce the progress saves to cut disk writes.', timeStr: '3 days ago' },
+  { author: 'Feedback Friend', text: 'works well. extract that transcode queue into its own module.', timeStr: '4 days ago' },
   { author: 'TFR', text: 'solid. now boot up Derby Owner\'s Club and let\'s run a few races 🐎', timeStr: '2 days ago' },
   { author: 'TFR', text: 'good but it needs more Derby Owner\'s Club if we\'re being honest', timeStr: '5 days ago' },
   { author: 'TFR', text: '10/10 would watch between DOC sessions', timeStr: '1 week ago' },
@@ -254,37 +254,37 @@ const MOCK_COMMENT_BANK = [
   { author: 'Ray Tammam', text: 'impressive. anyway you still owe me for lunch.', timeStr: '1 week ago' },
   { author: 'Ray Tammam', text: 'cool app. still only the second funniest person in the family though.', timeStr: '3 days ago' },
   { author: 'Ray Tammam', text: 'so THIS is what "im busy" meant', timeStr: '4 days ago' },
-  { author: 'Marcy Tammam', text: 'babe it is 2am. the server will still be here tomorrow.', timeStr: '2 hours ago' },
-  { author: 'Marcy Tammam', text: 'very impressive. now do the dishes you promised 😘', timeStr: '1 day ago' },
-  { author: 'Marcy Tammam', text: '10/10 but you STILL haven\'t watched the Calico Critters episode with me', timeStr: '3 days ago' },
-  { author: 'Marcy Tammam', text: 'cute. the Calico Critters have a nicer house than we do though 🐰', timeStr: '5 days ago' },
-  { author: 'Marcy Tammam', text: 'you named a git branch instead of taking out the trash didn\'t you', timeStr: '4 days ago' },
-  { author: 'Marcy Tammam', text: 'love it honey. putting it on the shelf next to my Calico Critters 💕', timeStr: '1 week ago' },
-  { author: 'Zouhir Tammam', text: 'Very thorough assessment son. I wish I was next to you to help you with all these projects. Love you.', timeStr: '2 days ago' },
-  { author: 'Zouhir Tammam', text: 'Excellent work my son. So very proud of you. Love you.', timeStr: '5 days ago' },
-  { author: 'Zouhir Tammam', text: 'This is wonderful. You were always so talented. Call me and show me how it works. Love you son.', timeStr: '1 week ago' },
-  { author: 'Zouhir Tammam', text: 'Beautiful project son. I wish I could sit beside you and build these with you. Love you.', timeStr: '3 days ago' },
+  { author: 'My Wife', text: 'babe it is 2am. the server will still be here tomorrow.', timeStr: '2 hours ago' },
+  { author: 'My Wife', text: 'very impressive. now do the dishes you promised 😘', timeStr: '1 day ago' },
+  { author: 'My Wife', text: '10/10 but you STILL haven\'t watched the Calico Critters episode with me', timeStr: '3 days ago' },
+  { author: 'My Wife', text: 'cute. the Calico Critters have a nicer house than we do though 🐰', timeStr: '5 days ago' },
+  { author: 'My Wife', text: 'you named a git branch instead of taking out the trash didn\'t you', timeStr: '4 days ago' },
+  { author: 'My Wife', text: 'love it honey. putting it on the shelf next to my Calico Critters 💕', timeStr: '1 week ago' },
+  { author: 'Proud Dad', text: 'Very thorough assessment son. I wish I was next to you to help you with all these projects. Love you.', timeStr: '2 days ago' },
+  { author: 'Proud Dad', text: 'Excellent work my son. So very proud of you. Love you.', timeStr: '5 days ago' },
+  { author: 'Proud Dad', text: 'This is wonderful. You were always so talented. Call me and show me how it works. Love you son.', timeStr: '1 week ago' },
+  { author: 'Proud Dad', text: 'Beautiful project son. I wish I could sit beside you and build these with you. Love you.', timeStr: '3 days ago' },
 
   // Daisy 💛 (she's 5)
-  { author: 'Daisy Tammam', text: 'hi daddy i luv u 💖', timeStr: '2 hours ago' },
-  { author: 'Daisy Tammam', text: 'dis is the BEST vidyo EVER!!!', timeStr: '1 day ago' },
-  { author: 'Daisy Tammam', text: 'daddy ur so smart!!!', timeStr: '3 hours ago' },
-  { author: 'Daisy Tammam', text: 'i wach it a HUNDRED times 🥰', timeStr: '5 hours ago' },
-  { author: 'Daisy Tammam', text: 'can we hav ice cream after pleez 🍦', timeStr: '4 days ago' },
-  { author: 'Daisy Tammam', text: 'i luv u dad to the moon 🌙', timeStr: 'just now' },
-  { author: 'Daisy Tammam', text: 'my daddy maded dis!!!', timeStr: '2 days ago' },
-  { author: 'Daisy Tammam', text: 'SO GOOD i clapd 👏', timeStr: '6 hours ago' },
-  { author: 'Daisy Tammam', text: 'daddy is the best on the hole erf', timeStr: '1 day ago' },
-  { author: 'Daisy Tammam', text: 'i drawed u a picsher 🎨', timeStr: '3 days ago' },
-  { author: 'Daisy Tammam', text: 'yaaay daddy!!! 🎉', timeStr: '5 days ago' },
-  { author: 'Daisy Tammam', text: 'wach wif me daddy pleeez', timeStr: '1 week ago' }
+  { author: 'Loving Daughter', text: 'hi daddy i luv u 💖', timeStr: '2 hours ago' },
+  { author: 'Loving Daughter', text: 'dis is the BEST vidyo EVER!!!', timeStr: '1 day ago' },
+  { author: 'Loving Daughter', text: 'daddy ur so smart!!!', timeStr: '3 hours ago' },
+  { author: 'Loving Daughter', text: 'i wach it a HUNDRED times 🥰', timeStr: '5 hours ago' },
+  { author: 'Loving Daughter', text: 'can we hav ice cream after pleez 🍦', timeStr: '4 days ago' },
+  { author: 'Loving Daughter', text: 'i luv u dad to the moon 🌙', timeStr: 'just now' },
+  { author: 'Loving Daughter', text: 'my daddy maded dis!!!', timeStr: '2 days ago' },
+  { author: 'Loving Daughter', text: 'SO GOOD i clapd 👏', timeStr: '6 hours ago' },
+  { author: 'Loving Daughter', text: 'daddy is the best on the hole erf', timeStr: '1 day ago' },
+  { author: 'Loving Daughter', text: 'i drawed u a picsher 🎨', timeStr: '3 days ago' },
+  { author: 'Loving Daughter', text: 'yaaay daddy!!! 🎉', timeStr: '5 days ago' },
+  { author: 'Loving Daughter', text: 'wach wif me daddy pleeez', timeStr: '1 week ago' }
 ];
 
 // selectDeterministicComments: the ORIGINAL flat, unweighted, deterministic
 // selection mechanism (byte-for-byte unchanged from pre-v1.24.0) -- `seed +
 // i*7 % bank.length`, skipping already-used indices. Pure: the SAME
 // (mediaId, bank, count) always returns the SAME ordered comment list. G1
-// layers Zak Goldin on TOP of this in buildMockComments() below WITHOUT
+// layers Polite and Unhinged on TOP of this in buildMockComments() below WITHOUT
 // modifying this function's own selection at all -- which is exactly what
 // preserves its existing per-mediaId determinism guarantee for the rest of
 // commentBank (exec-plan G1 acceptance criterion).
@@ -310,7 +310,7 @@ function selectDeterministicComments(mediaId, bank, count) {
 // helper -- deliberately NOT imported from common.js's own (unexported)
 // `hashAvatarSeed`, since this task owns only watch.js. Never used for
 // anything security-sensitive.
-function hashZakGoldinSeed(str) {
+function hashPersonaSeed(str) {
   let hash = 5381;
   const safe = String(str || '');
   for (let i = 0; i < safe.length; i++) {
@@ -319,14 +319,14 @@ function hashZakGoldinSeed(str) {
   return Math.abs(hash);
 }
 
-const ZAK_GOLDIN_AUTHOR = 'Zak Goldin';
+const PERSONA_AUTHOR = 'Polite and Unhinged';
 
-// Zak Goldin's own timeStr pool -- picked deterministically per mediaId,
+// Polite and Unhinged's own timeStr pool -- picked deterministically per mediaId,
 // same spirit as the rest of commentBank's fixed timeStr values.
-const ZAK_GOLDIN_TIME_STRINGS = ['3 days ago', '1 week ago', '5 hours ago', '2 months ago', '6 days ago', 'just now'];
+const PERSONA_TIME_STRINGS = ['3 days ago', '1 week ago', '5 hours ago', '2 months ago', '6 days ago', 'just now'];
 
 // 87% of the time: a normal, tasteful, on-brand retro-comment-section reply.
-const ZAK_GOLDIN_POLITE_COMMENTS = [
+const PERSONA_POLITE_COMMENTS = [
   'Really enjoyed this, thanks for putting it up!',
   'Great quality upload, appreciate the effort that went into this.',
   'This made my afternoon a little better, thank you.',
@@ -339,7 +339,7 @@ const ZAK_GOLDIN_POLITE_COMMENTS = [
 
 // 10% of the time: over-the-top ENERGY -- silly and enthusiastic, never
 // mean-spirited, never at anyone's expense.
-const ZAK_GOLDIN_UNHINGED_COMMENTS = [
+const PERSONA_UNHINGED_COMMENTS = [
   'I WATCHED THIS SEVEN TIMES BEFORE BREAKFAST AND I REGRET NOTHING',
   'screaming crying throwing my remote this is TOO good',
   'renamed my home wifi in honor of this upload, the whole street can see it now',
@@ -352,60 +352,60 @@ const ZAK_GOLDIN_UNHINGED_COMMENTS = [
 // the video happens to be -- `{title}` is substituted with the current
 // video's title (falling back to a generic "this video" phrase when the
 // title is blank/missing, so it never renders a literal "undefined").
-const ZAK_GOLDIN_CONSPIRACY_TEMPLATES = [
+const PERSONA_CONSPIRACY_TEMPLATES = [
   'wake up people, {title} was clearly uploaded at this exact time for a reason and none of you are asking why',
   'if you play {title} backwards you can hear the buffering wheel counting down to something',
   'coincidence that {title} exists at all? I THINK NOT. do your own research',
   '{title} is obviously a signal to the pigeons. I\'ve said too much'
 ];
 
-// pickZakGoldinCategory: which bucket a given mediaId lands in. 87/10/3 is a
+// pickPersonaCategory: which bucket a given mediaId lands in. 87/10/3 is a
 // LITERAL 0-99 range split (87 + 10 + 3 = 100), so the weighting is exact
 // over a large deterministic sample, not a random approximation.
-function pickZakGoldinCategory(mediaId) {
-  const bucket = hashZakGoldinSeed(String(mediaId || '') + '::zak-goldin-category') % 100;
+function pickPersonaCategory(mediaId) {
+  const bucket = hashPersonaSeed(String(mediaId || '') + '::persona-category') % 100;
   if (bucket < 87) return 'polite';
   if (bucket < 97) return 'unhinged';
   return 'conspiracy';
 }
 
-function zakGoldinCommentPool(category) {
-  if (category === 'unhinged') return ZAK_GOLDIN_UNHINGED_COMMENTS;
-  if (category === 'conspiracy') return ZAK_GOLDIN_CONSPIRACY_TEMPLATES;
-  return ZAK_GOLDIN_POLITE_COMMENTS;
+function personaCommentPool(category) {
+  if (category === 'unhinged') return PERSONA_UNHINGED_COMMENTS;
+  if (category === 'conspiracy') return PERSONA_CONSPIRACY_TEMPLATES;
+  return PERSONA_POLITE_COMMENTS;
 }
 
-// buildZakGoldinComment: the full Zak Goldin persona comment {author, text,
+// buildPersonaComment: the full Polite and Unhinged persona comment {author, text,
 // timeStr} for a given (mediaId, videoTitle). Pure and fully deterministic --
-// the SAME video always gets the SAME Zak Goldin comment, in the SAME
+// the SAME video always gets the SAME Polite and Unhinged comment, in the SAME
 // weighted category, on every load.
-function buildZakGoldinComment(mediaId, videoTitle) {
+function buildPersonaComment(mediaId, videoTitle) {
   const safeMediaId = String(mediaId || '');
-  const category = pickZakGoldinCategory(safeMediaId);
-  const pool = zakGoldinCommentPool(category);
-  const textIdx = hashZakGoldinSeed(safeMediaId + '::zak-goldin-text::' + category) % pool.length;
-  const timeIdx = hashZakGoldinSeed(safeMediaId + '::zak-goldin-time') % ZAK_GOLDIN_TIME_STRINGS.length;
+  const category = pickPersonaCategory(safeMediaId);
+  const pool = personaCommentPool(category);
+  const textIdx = hashPersonaSeed(safeMediaId + '::persona-text::' + category) % pool.length;
+  const timeIdx = hashPersonaSeed(safeMediaId + '::persona-time') % PERSONA_TIME_STRINGS.length;
   const safeTitle = typeof videoTitle === 'string' && videoTitle.trim() !== '' ? videoTitle.trim() : 'this video';
   const text = pool[textIdx].split('{title}').join(safeTitle);
-  return { author: ZAK_GOLDIN_AUTHOR, text, timeStr: ZAK_GOLDIN_TIME_STRINGS[timeIdx] };
+  return { author: PERSONA_AUTHOR, text, timeStr: PERSONA_TIME_STRINGS[timeIdx] };
 }
 
 // buildMockComments: getMockInitialComments()'s pure core -- the ORIGINAL
 // flat selection (selectDeterministicComments, untouched above) PLUS one Zak
 // Goldin comment (G1) spliced in at a deterministic position. Because the
-// base selection is computed FIRST and independently, layering Zak Goldin on
+// base selection is computed FIRST and independently, layering Polite and Unhinged on
 // top never changes which (or how many) of the rest of commentBank's entries
-// get picked, or their relative order -- only where among them Zak Goldin's
+// get picked, or their relative order -- only where among them Polite and Unhinged's
 // own comment lands.
 function buildMockComments(mediaId, bank, count, videoTitle) {
   const base = selectDeterministicComments(mediaId, bank, count);
-  const zakComment = buildZakGoldinComment(mediaId, videoTitle);
+  const personaComment = buildPersonaComment(mediaId, videoTitle);
   const insertAt = base.length > 0
-    ? hashZakGoldinSeed(String(mediaId || '') + '::zak-goldin-slot') % (base.length + 1)
+    ? hashPersonaSeed(String(mediaId || '') + '::persona-slot') % (base.length + 1)
     : 0;
-  const withZak = base.slice();
-  withZak.splice(insertAt, 0, zakComment);
-  return withZak;
+  const withPersona = base.slice();
+  withPersona.splice(insertAt, 0, personaComment);
+  return withPersona;
 }
 
 if (typeof module !== 'undefined' && module.exports) {
@@ -418,9 +418,9 @@ if (typeof module !== 'undefined' && module.exports) {
     resolveWatchEntryReparentAction,
     MOCK_COMMENT_BANK,
     selectDeterministicComments,
-    hashZakGoldinSeed,
-    pickZakGoldinCategory,
-    buildZakGoldinComment,
+    hashPersonaSeed,
+    pickPersonaCategory,
+    buildPersonaComment,
     buildMockComments,
   };
 }
@@ -1635,7 +1635,7 @@ if (typeof module !== 'undefined' && module.exports) {
     }, { signal });
 
     // Prepopulated mock retro comments. G1 (v1.24.0, T4): now layers in
-    // exactly one weighted "Zak Goldin" persona comment per video (87%
+    // exactly one weighted "Polite and Unhinged" persona comment per video (87%
     // polite / 10% unhinged / 3% conspiracy-about-the-video) on top of the
     // existing flat commentBank selection -- see MOCK_COMMENT_BANK/
     // selectDeterministicComments/buildMockComments at module scope (top of
