@@ -6806,7 +6806,7 @@ app.delete('/api/settings/logo', async (req, res) => {
 // session secret is NEVER part of a bundle (secrets don't ride bundles —
 // per-instance cookie isolation depends on secrets differing).
 const BACKUP_SCHEMA = 'filetube-backup-v1';
-const BACKUP_NAMESPACE_KEYS = ['folders', 'folderSettings', 'progress', 'metadata', 'liked', 'deleteTombstones', 'viewCounts', 'settings', 'books', 'ytdlp'];
+const BACKUP_NAMESPACE_KEYS = ['folders', 'folderSettings', 'progress', 'metadata', 'liked', 'deleteTombstones', 'viewCounts', 'settings', 'books', 'music', 'ytdlp'];
 
 app.get('/api/admin/backup', async (req, res) => {
   if (!requireAdmin(req, res)) return;
@@ -6874,10 +6874,18 @@ function validateBackupBundle(bundle) {
       seenNames.add(nameKey);
       if (typeof u.passwordHash !== 'string' || u.passwordHash === '') return `${where}: missing password hash`;
       if (u.role !== 'admin' && u.role !== 'member') return `${where}: role must be 'admin' or 'member'`;
-      for (const [field, kind] of [['progress', 'object'], ['bookProgress', 'object'], ['liked', 'array'], ['bookPins', 'array'], ['channelPins', 'array']]) {
+      for (const [field, kind] of [['progress', 'object'], ['bookProgress', 'object'], ['liked', 'array'], ['bookPins', 'array'], ['channelPins', 'array'],
+        // v1.44 music per-user state (the SEVENTH-strike carrier).
+        ['musicLiked', 'array'], ['musicProgress', 'object']]) {
         if (u[field] === undefined) continue;
         const ok = kind === 'array' ? Array.isArray(u[field]) : (typeof u[field] === 'object' && u[field] !== null && !Array.isArray(u[field]));
         if (!ok) return `${where}: ${field} must be an ${kind}`;
+      }
+      // musicState is a single object OR null (no resume pointer) -- validated
+      // separately since the loop above rejects null for its object fields.
+      if (u.musicState !== undefined && u.musicState !== null
+        && (typeof u.musicState !== 'object' || Array.isArray(u.musicState))) {
+        return `${where}: musicState must be an object or null`;
       }
     }
   }
@@ -6888,7 +6896,7 @@ function validateBackupBundle(bundle) {
   // Container namespaces must be objects when present (delta-round
   // residual): catching a malformed shape HERE means a 400 before the wipe
   // even starts, rather than a mid-populate rollback.
-  for (const container of ['books', 'ytdlp']) {
+  for (const container of ['books', 'music', 'ytdlp']) {
     if (bundle[container] !== undefined && (typeof bundle[container] !== 'object' || bundle[container] === null || Array.isArray(bundle[container]))) {
       return `bundle key '${container}' must be an object`;
     }
@@ -6926,7 +6934,18 @@ function validateBackupBundle(bundle) {
 // 32mb (Dean-approved, v1.43.1 intake): his prod bundle is ~2943 metadata
 // items (~1.5–2 KB each ≈ 4–6 MB) + per-user state + up to two logo
 // variants at ~2.7 MB base64 each ≈ ~12 MB realistic worst case; 32mb
-// leaves ~2.5× headroom for library growth. The chain order is the security
+// leaves ~2.5× headroom for library growth.
+// v1.44 RECOMPUTE (music added to the bundle): a music track record is small
+// (~0.3–0.5 KB of tags/paths); even a large library of ~30,000 tracks is
+// ~9–15 MB, plus per-user music state (liked ids + a per-track position map;
+// a heavy listener at ~30k positions ≈ a few MB). Worst realistic case now:
+// ~6 MB video metadata + ~15 MB music + ~12 MB two logos + a few MB per-user
+// ≈ ~33–35 MB for an EXTREME (30k-video + 30k-track + dual-logo) instance,
+// which would exceed 32mb. Dean's real instance is far under this, and the
+// cap is Dean-approved as-is for v1.44; a library that large is the documented
+// trigger to raise it (tech-debt: revisit the cap when metadata+music+logos
+// approach ~28 MB). The near-cap positive test below pins the current value so
+// a silent regression to a smaller limit fails loudly. The chain order is the security
 // posture (adversarial-seat WARNING-1): the auth gate 401s unauthenticated
 // callers before any body is read, and the requireAdmin middleware BELOW
 // runs before the parser, so a non-admin MEMBER is 403'd without the server
