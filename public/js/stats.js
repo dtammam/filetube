@@ -382,6 +382,34 @@ function renderAbout(root, system) {
   root.appendChild(links);
 }
 
+// v1.44.3 (Dean): the "Under the hood" inventory -- one label/value row per
+// persisted namespace count (server payload `inventory`, from
+// stats.computeInventory). textContent only, same idioms as the rest of the
+// page; formatCount gives the thousands separators.
+function renderInventory(root, inventory) {
+  clearChildren(root);
+  const inv = inventory || {};
+  const books = inv.books || {};
+  const music = inv.music || {};
+  const rows = [
+    ['Videos & audio', inv.videos],
+    ['Watch positions', inv.watchProgress],
+    ['View counts', inv.viewCounts],
+    ['Liked items', inv.liked],
+    ['Delete tombstones', inv.deleteTombstones],
+    ['Scan folders', inv.scanFolders],
+    ['Books', books.items],
+    ['Reading positions', books.progress],
+    ['Books with narration', books.narrationAudio],
+    ['Music tracks', music.tracks],
+    ['Music folders', music.folders],
+    ['User accounts', inv.users],
+  ];
+  for (const [label, value] of rows) {
+    root.appendChild(buildAboutRow(label, document.createTextNode(formatCount(Number(value) || 0))));
+  }
+}
+
 function renderStatsDashboard(statsData) {
   const glanceRoot = document.getElementById('stats-glance-grid');
   const byTypeRoot = document.getElementById('stats-by-type');
@@ -391,6 +419,7 @@ function renderStatsDashboard(statsData) {
   const mostWatchedRoot = document.getElementById('stats-most-watched-list');
   const booksRoot = document.getElementById('stats-books-grid');
   const booksFolderRoot = document.getElementById('stats-books-folder-list');
+  const inventoryRoot = document.getElementById('stats-inventory-list');
   const aboutRoot = document.getElementById('stats-about');
 
   if (glanceRoot) renderGlanceTiles(glanceRoot, statsData);
@@ -405,6 +434,7 @@ function renderStatsDashboard(statsData) {
   if (mostWatchedRoot) renderMostWatched(mostWatchedRoot, statsData.mostWatched);
   if (booksRoot) renderBookTiles(booksRoot, statsData.books);
   if (booksFolderRoot) renderBookFolders(booksFolderRoot, statsData.books);
+  if (inventoryRoot) renderInventory(inventoryRoot, statsData.inventory);
   if (aboutRoot) renderAbout(aboutRoot, statsData.system);
 }
 

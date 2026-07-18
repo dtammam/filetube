@@ -1,11 +1,11 @@
 'use strict';
 
-// [UNIT] v1.24.0 "UX Round" G1 (Zak Goldin mock commenter), T4,
+// [UNIT] v1.24.0 "UX Round" G1 (Polite and Unhinged mock commenter), T4,
 // `public/js/watch.js`. The pool selection mechanism
 // (getMockInitialComments()'s commentBank pick) was a flat, UNWEIGHTED
 // deterministic `seed + i*7 % length` before this change -- G1 layers a NEW,
 // separate, WEIGHTED (87% polite / 10% unhinged / 3% conspiracy-about-the-
-// video) "Zak Goldin" persona comment on top of it, without disturbing the
+// video) "Polite and Unhinged" persona comment on top of it, without disturbing the
 // existing selection for the rest of commentBank. All helpers under test are
 // pure/DOM-free, hoisted to module scope in watch.js specifically so they
 // can be exercised here without a browser.
@@ -14,9 +14,9 @@ const assert = require('node:assert');
 const {
   MOCK_COMMENT_BANK,
   selectDeterministicComments,
-  hashZakGoldinSeed,
-  pickZakGoldinCategory,
-  buildZakGoldinComment,
+  hashPersonaSeed,
+  pickPersonaCategory,
+  buildPersonaComment,
   buildMockComments,
 } = require('../../public/js/watch.js');
 
@@ -71,37 +71,37 @@ test('selectDeterministicComments: an empty bank returns an empty list, never th
   assert.deepStrictEqual(selectDeterministicComments('any-id', [], 10), []);
 });
 
-// ---- hashZakGoldinSeed (the local pure hash powering the weighted picker) ----
+// ---- hashPersonaSeed (the local pure hash powering the weighted picker) ----
 
-test('hashZakGoldinSeed: deterministic -- the same string always hashes to the same value', () => {
-  assert.strictEqual(hashZakGoldinSeed('hello world'), hashZakGoldinSeed('hello world'));
+test('hashPersonaSeed: deterministic -- the same string always hashes to the same value', () => {
+  assert.strictEqual(hashPersonaSeed('hello world'), hashPersonaSeed('hello world'));
 });
 
-test('hashZakGoldinSeed: always returns a non-negative integer', () => {
+test('hashPersonaSeed: always returns a non-negative integer', () => {
   for (const s of ['', 'a', 'a very long media id string with lots of characters', '🎬video🎬']) {
-    const h = hashZakGoldinSeed(s);
+    const h = hashPersonaSeed(s);
     assert.ok(Number.isInteger(h) && h >= 0, `hash of "${s}" was ${h}`);
   }
 });
 
-// ---- pickZakGoldinCategory: the 87/10/3 weighted distribution ----
+// ---- pickPersonaCategory: the 87/10/3 weighted distribution ----
 
-test('pickZakGoldinCategory: only ever returns one of the three defined categories', () => {
+test('pickPersonaCategory: only ever returns one of the three defined categories', () => {
   for (let i = 0; i < 500; i++) {
-    const cat = pickZakGoldinCategory('media-' + i);
+    const cat = pickPersonaCategory('media-' + i);
     assert.ok(['polite', 'unhinged', 'conspiracy'].includes(cat), `unexpected category: ${cat}`);
   }
 });
 
-test('pickZakGoldinCategory: deterministic -- the same mediaId always lands in the same category', () => {
-  assert.strictEqual(pickZakGoldinCategory('some-fixed-id'), pickZakGoldinCategory('some-fixed-id'));
+test('pickPersonaCategory: deterministic -- the same mediaId always lands in the same category', () => {
+  assert.strictEqual(pickPersonaCategory('some-fixed-id'), pickPersonaCategory('some-fixed-id'));
 });
 
-test('pickZakGoldinCategory: hits the 87% polite / 10% unhinged / 3% conspiracy distribution over a large deterministic sample', () => {
+test('pickPersonaCategory: hits the 87% polite / 10% unhinged / 3% conspiracy distribution over a large deterministic sample', () => {
   const N = 20000;
   const counts = { polite: 0, unhinged: 0, conspiracy: 0 };
   for (let i = 0; i < N; i++) {
-    counts[pickZakGoldinCategory('media-id-' + i)]++;
+    counts[pickPersonaCategory('media-id-' + i)]++;
   }
   const pct = {
     polite: (counts.polite / N) * 100,
@@ -116,49 +116,49 @@ test('pickZakGoldinCategory: hits the 87% polite / 10% unhinged / 3% conspiracy 
   assert.ok(Math.abs(pct.conspiracy - 3) <= 2, `conspiracy ${pct.conspiracy}% not within 2pts of 3%`);
 });
 
-// ---- buildZakGoldinComment ----
+// ---- buildPersonaComment ----
 
-test('buildZakGoldinComment: always authored by "Zak Goldin"', () => {
+test('buildPersonaComment: always authored by "Polite and Unhinged"', () => {
   for (let i = 0; i < 20; i++) {
-    assert.strictEqual(buildZakGoldinComment('vid-' + i, 'Some Title').author, 'Zak Goldin');
+    assert.strictEqual(buildPersonaComment('vid-' + i, 'Some Title').author, 'Polite and Unhinged');
   }
 });
 
-test('buildZakGoldinComment: deterministic -- the same (mediaId, videoTitle) always returns the same comment', () => {
-  const a = buildZakGoldinComment('media-42', 'Retro Gaming Highlights');
-  const b = buildZakGoldinComment('media-42', 'Retro Gaming Highlights');
+test('buildPersonaComment: deterministic -- the same (mediaId, videoTitle) always returns the same comment', () => {
+  const a = buildPersonaComment('media-42', 'Retro Gaming Highlights');
+  const b = buildPersonaComment('media-42', 'Retro Gaming Highlights');
   assert.deepStrictEqual(a, b);
 });
 
-test('buildZakGoldinComment: a conspiracy-category comment substitutes the actual video title', () => {
+test('buildPersonaComment: a conspiracy-category comment substitutes the actual video title', () => {
   // Find a mediaId that deterministically lands in the conspiracy bucket.
   let conspiracyId = null;
   for (let i = 0; i < 2000 && !conspiracyId; i++) {
-    if (pickZakGoldinCategory('search-' + i) === 'conspiracy') conspiracyId = 'search-' + i;
+    if (pickPersonaCategory('search-' + i) === 'conspiracy') conspiracyId = 'search-' + i;
   }
   assert.ok(conspiracyId, 'expected to find at least one conspiracy-bucket id within 2000 tries');
-  const comment = buildZakGoldinComment(conspiracyId, 'Definitely Real Documentary');
+  const comment = buildPersonaComment(conspiracyId, 'Definitely Real Documentary');
   assert.ok(comment.text.includes('Definitely Real Documentary'), `expected title in conspiracy text: ${comment.text}`);
   assert.ok(!comment.text.includes('{title}'), 'the {title} placeholder must never leak into rendered text');
 });
 
-test('buildZakGoldinComment: a blank/missing video title falls back to "this video", never renders "undefined"', () => {
+test('buildPersonaComment: a blank/missing video title falls back to "this video", never renders "undefined"', () => {
   let conspiracyId = null;
   for (let i = 0; i < 2000 && !conspiracyId; i++) {
-    if (pickZakGoldinCategory('blank-title-' + i) === 'conspiracy') conspiracyId = 'blank-title-' + i;
+    if (pickPersonaCategory('blank-title-' + i) === 'conspiracy') conspiracyId = 'blank-title-' + i;
   }
   assert.ok(conspiracyId, 'expected to find at least one conspiracy-bucket id within 2000 tries');
   for (const badTitle of [undefined, null, '', '   ']) {
-    const comment = buildZakGoldinComment(conspiracyId, badTitle);
+    const comment = buildPersonaComment(conspiracyId, badTitle);
     assert.ok(comment.text.includes('this video'), `expected fallback phrase, got: ${comment.text}`);
     assert.ok(!/undefined/.test(comment.text));
   }
 });
 
-test('buildZakGoldinComment: text is never empty and never contains real profanity/targeting (tasteful-tone smoke check)', () => {
+test('buildPersonaComment: text is never empty and never contains real profanity/targeting (tasteful-tone smoke check)', () => {
   const bannedSubstrings = ['fuck', 'shit', 'bitch', 'idiot', 'stupid', 'kill yourself'];
   for (let i = 0; i < 300; i++) {
-    const { text } = buildZakGoldinComment('tone-check-' + i, 'A Video Title');
+    const { text } = buildPersonaComment('tone-check-' + i, 'A Video Title');
     assert.ok(text && text.trim().length > 0, `empty comment text for tone-check-${i}`);
     const lower = text.toLowerCase();
     for (const bad of bannedSubstrings) {
@@ -169,11 +169,11 @@ test('buildZakGoldinComment: text is never empty and never contains real profani
 
 // ---- buildMockComments: the full G1 layering ----
 
-test('buildMockComments: inserts exactly one Zak Goldin comment among the base selection', () => {
+test('buildMockComments: inserts exactly one Polite and Unhinged comment among the base selection', () => {
   const result = buildMockComments('media-99', MOCK_COMMENT_BANK, 8, 'A Great Video');
-  const zakEntries = result.filter((c) => c.author === 'Zak Goldin');
-  assert.strictEqual(zakEntries.length, 1);
-  assert.strictEqual(result.length, 9); // 8 base + 1 Zak Goldin
+  const personaEntries = result.filter((c) => c.author === 'Polite and Unhinged');
+  assert.strictEqual(personaEntries.length, 1);
+  assert.strictEqual(result.length, 9); // 8 base + 1 Polite and Unhinged
 });
 
 test('buildMockComments: preserves the REST of commentBank\'s selection exactly as selectDeterministicComments would produce it (determinism guarantee, exec-plan G1 AC)', () => {
@@ -182,22 +182,22 @@ test('buildMockComments: preserves the REST of commentBank\'s selection exactly 
     const bank = MOCK_COMMENT_BANK;
     const count = 6;
     const base = selectDeterministicComments(mediaId, bank, count);
-    const withZak = buildMockComments(mediaId, bank, count, 'Some Title');
-    const nonZak = withZak.filter((c) => c.author !== 'Zak Goldin');
-    assert.deepStrictEqual(nonZak, base, `non-Zak entries diverged from selectDeterministicComments for ${mediaId}`);
+    const withPersona = buildMockComments(mediaId, bank, count, 'Some Title');
+    const nonPersona = withPersona.filter((c) => c.author !== 'Polite and Unhinged');
+    assert.deepStrictEqual(nonPersona, base, `non-persona entries diverged from selectDeterministicComments for ${mediaId}`);
   }
 });
 
-test('buildMockComments: deterministic -- the same inputs always produce the same full list, including Zak Goldin\'s position', () => {
+test('buildMockComments: deterministic -- the same inputs always produce the same full list, including Polite and Unhinged\'s position', () => {
   const a = buildMockComments('media-77', MOCK_COMMENT_BANK, 10, 'Title Here');
   const b = buildMockComments('media-77', MOCK_COMMENT_BANK, 10, 'Title Here');
   assert.deepStrictEqual(a, b);
 });
 
-test('buildMockComments: still works when the base selection is empty (count 0) -- Zak Goldin is inserted at index 0', () => {
+test('buildMockComments: still works when the base selection is empty (count 0) -- Polite and Unhinged is inserted at index 0', () => {
   const result = buildMockComments('media-empty-base', MOCK_COMMENT_BANK, 0, 'Title');
   assert.strictEqual(result.length, 1);
-  assert.strictEqual(result[0].author, 'Zak Goldin');
+  assert.strictEqual(result[0].author, 'Polite and Unhinged');
 });
 
 // ---- MOCK_COMMENT_BANK: sanity check on the hoisted pool itself ----
@@ -210,6 +210,6 @@ test('MOCK_COMMENT_BANK: every entry has a non-empty author, text, and timeStr',
   }
 });
 
-test('MOCK_COMMENT_BANK: contains no entry authored "Zak Goldin" (Zak Goldin is a distinct persona layered on top, not a flat pool entry)', () => {
-  assert.ok(!MOCK_COMMENT_BANK.some((c) => c.author === 'Zak Goldin'));
+test('MOCK_COMMENT_BANK: contains no entry authored "Polite and Unhinged" (Polite and Unhinged is a distinct persona layered on top, not a flat pool entry)', () => {
+  assert.ok(!MOCK_COMMENT_BANK.some((c) => c.author === 'Polite and Unhinged'));
 });

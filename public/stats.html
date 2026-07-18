@@ -217,6 +217,17 @@
         </div>
       </div>
 
+      <!-- v1.44.3 (Dean): "under the hood" -- a plain count of every persisted
+           namespace (the same things the backup bundle carries), so the page
+           answers "what is actually in my database". -->
+      <div class="setup-box">
+        <h2>Under the hood</h2>
+        <p>A count of everything FileTube has stored -- the same namespaces your backup carries.</p>
+        <div class="folder-list-builder" id="stats-inventory-list">
+          <!-- Populated dynamically by /js/stats.js -->
+        </div>
+      </div>
+
       <!-- v1.41.0 (Dean): the About/version hub -- FileTube + yt-dlp + TTS
            versions and GitHub links, all in one place. Rows hide themselves
            when a component isn't installed. -->

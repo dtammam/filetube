@@ -70,6 +70,11 @@ test('GET /api/stats: returns live-computed counts/totals for the current librar
   assert.deepEqual(body.count, { total: 2, video: 1, audio: 1 });
   assert.equal(body.totalDurationSeconds, 800);
   assert.equal(body.totalSizeBytes, 6000);
+  // v1.44.3: the "Under the hood" inventory reflects the persisted namespaces.
+  assert.equal(body.inventory.videos, 2, 'inventory counts the library items (db.metadata)');
+  assert.ok(body.inventory.books && typeof body.inventory.books.items === 'number', 'books sub-counts present');
+  assert.ok(body.inventory.music && typeof body.inventory.music.tracks === 'number', 'music sub-counts present');
+  assert.ok(Number.isInteger(body.inventory.users) && body.inventory.users >= 1, 'a user account count (the minted session user)');
 });
 
 test('GET /api/stats: an empty library returns zeroed stats, not a 500', async () => {

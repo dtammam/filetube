@@ -363,6 +363,16 @@ header {
   z-index: 1000;
 }
 
+/* v1.44.3: immersive reader. The /read view is a full-page reading surface, so
+   the shell header (logo + search — wasted space while reading; the reader has
+   its own topbar with Back/Contents/Aa) is hidden and its top clearance is
+   reclaimed. `reader-immersive` is set on <html> by read.html's FOUC script
+   pre-paint (direct load) and toggled by read.js init()/destroy() across in-app
+   navigation. The reader sizes its own height by MEASURING the reclaimed offset
+   (read.js sizeReader), so no reader-chassis height override is needed here. */
+html.reader-immersive header { display: none; }
+html.reader-immersive .app-container { padding-top: 0; }
+
 .header-left {
   display: flex;
   align-items: center;

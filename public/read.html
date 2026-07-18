@@ -28,6 +28,11 @@
        resolveTheme()/resolveIconSet() in /js/common.js -- keep them in sync. */
     (function () {
       var d = document.documentElement;
+      // v1.44.3: immersive reader — hide the shell header pre-paint on a direct
+      // /read load. Set BEFORE the localStorage reads below so a storage throw
+      // (private mode) can't skip it into the catch (gate suggestion). read.js
+      // init()/destroy() toggle it across in-app navigation.
+      d.classList.add('reader-immersive');
       try {
         var eras = ['2005', '2009', '2014', '2021'];
         var modes = ['light', 'dark'];

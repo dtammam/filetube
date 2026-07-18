@@ -10218,11 +10218,25 @@ app.get('/api/stats', (req, res) => {
   // moved here from the Subscriptions page; rows the client hides when a thing
   // isn't installed (ytdlp not enabled -> null; TTS not available).
   const ytdlpEnabled = ytdlp.isEnabled(ytdlp.parseYtdlpConfig());
+  const music = musicStore.readMusic(db);
   res.json({
     // v1.42: overlay the extracted `viewCounts` namespace onto the items so
     // mostWatched keeps working — see effectiveViewCount's comment.
     ...stats.computeLibraryStats(withEffectiveViewCounts(db)),
     books: stats.computeBookStats(books.items, books.audio),
+    // v1.44.3 (Dean): the "what's in my database" inventory — a plain count of
+    // each persisted namespace (mirrors what the backup bundle carries).
+    inventory: stats.computeInventory({
+      metadata: db.metadata,
+      progress: db.progress,
+      viewCounts: db.viewCounts,
+      liked: db.liked,
+      deleteTombstones: db.deleteTombstones,
+      folders: db.folders,
+      books: { items: books.items, progress: books.progress, audio: books.audio },
+      music: { tracks: music.tracks, folders: music.folders },
+      users: userStore.countUsers(),
+    }),
     system: {
       version: APP_VERSION,
       repoUrl: REPO_URL,
