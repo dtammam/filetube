@@ -5260,6 +5260,29 @@ if (typeof module !== 'undefined' && module.exports) {
     mountInSlot(slotEl);
   }
 
+  // v1.44.2 (Music "Spotify feel"): mount a FRESH load straight into the
+  // shell's #player-dock (the corner mini-player) instead of FULL into a
+  // #player-slot -- the dock-targeted twin of mountInSlot(). Used by /music's
+  // play->dock flow so tapping a song plays in the mini-player while the album
+  // header + tracklist stay on screen (browse-while-playing), rather than the
+  // FULL player expanding at the top of the view and pushing the header down.
+  // Mounting DIRECTLY here (vs. mountInSlot then dock()) avoids reparenting the
+  // media element twice -- an iOS-sensitive op. Mirrors dock()'s reparent tail;
+  // it deliberately omits dock()'s resume-overlay handling, which never applies
+  // to a fresh music load (music decides resume silently -- no "Resume at…"
+  // prompt; see handleResumePlayback's resumeMode==='music' branch).
+  function mountInDock() {
+    var dockEl = document.getElementById('player-dock');
+    if (!host || !dockEl) return;
+    ensureDockChrome(dockEl);
+    var wasPlaying = mediaPlayer && !mediaPlayer.paused;
+    if (host.parentNode !== dockEl) dockEl.appendChild(host);
+    dockEl.hidden = false;
+    state = STATE_DOCKED;
+    applyControlsMode(); // reverts to the compact custom bar for this DOCKED mount (mirrors dock())
+    if (wasPlaying && mediaPlayer.paused) mediaPlayer.play().catch(function () {});
+  }
+
   function ensureDockChrome(dockEl) {
     if (dockChromeReady) return;
     if (!dockEl) return;
@@ -5277,7 +5300,11 @@ if (typeof module !== 'undefined' && module.exports) {
       if (state !== STATE_DOCKED || !currentId) return;
       // v1.38.3: a book-TTS item carries an explicit reader href -- tapping the
       // mini bar returns to THAT reader, not /watch.html?v=<bookId> (which is
-      // a video route and would 404 for a book id).
+      // a video route and would 404 for a book id). v1.44.2: a music track
+      // likewise carries readerHref='/music' -- `readerHref` is the generic
+      // "where does tapping the dock return" href; without it a music track id
+      // would hit the video route and 404. On /music the same-URL nav guard
+      // (common.js navigate) makes this a benign no-op (you are already there).
       var url = (currentData && typeof currentData.readerHref === 'string' && currentData.readerHref)
         ? currentData.readerHref
         : '/watch.html?v=' + encodeURIComponent(currentId);
@@ -5417,7 +5444,9 @@ if (typeof module !== 'undefined' && module.exports) {
       // current navigation: a context-less re-open clears it to the folder
       // fallback. Skipped only when data carries no browseCtx field at all.
       if (data && typeof data.browseCtx === 'string' && currentData) currentData.browseCtx = data.browseCtx;
-      expand(options.slot);
+      // v1.44.2: a re-tap of the SAME track from /music's play->dock flow docks
+      // (adopt = reparent only, no restart) rather than expanding FULL.
+      if (options.dock) dock(); else expand(options.slot);
       return true;
     }
     // Bug-fix (v1.17.0 two-reviewer gate, FR-4b leak): capture+reset the
@@ -5432,7 +5461,9 @@ if (typeof module !== 'undefined' && module.exports) {
     teardownMediaState();
     currentId = id;
     currentData = data || {};
-    mountInSlot(options.slot);
+    // v1.44.2: `dock:true` mounts straight into the corner mini-player (the
+    // /music play->dock flow); otherwise FULL into the given #player-slot.
+    if (options.dock) mountInDock(); else mountInSlot(options.slot);
     setupForMedia(id, currentData);
     return true;
   }
