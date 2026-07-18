@@ -141,8 +141,10 @@ function buildBooksHomeSectionHtml(items, heading, seeAllHref) {
 // scroller styling; empty items = empty string (music-less home stays
 // byte-identical).
 function buildMusicRowCardHtml(item) {
+  // Deep-link to the specific track so /music resumes it (consuming the
+  // per-user resume pointer), mirroring the books row's /read.html?b=<id>.
   return `
-    <a class="book-row-card music-row-card" href="/music" title="${escapeBookRowHtml(item.title)}">
+    <a class="book-row-card music-row-card" href="/music?play=${encodeURIComponent(item.id)}" title="${escapeBookRowHtml(item.title)}">
       <span class="book-row-cover music-row-cover"><img src="/albumart/${encodeURIComponent(item.id)}" alt="" loading="lazy" /></span>
       <span class="book-row-title">${escapeBookRowHtml(item.title)}</span>
       <span class="music-row-artist">${escapeBookRowHtml(item.artist || '')}</span>

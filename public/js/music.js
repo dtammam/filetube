@@ -120,6 +120,7 @@ if (typeof module !== 'undefined' && module.exports) {
     var queue = [];
     var queueCtx = null;
     var queueCtxEncoded = '';
+    var urlParams = new URLSearchParams(window.location.search);
 
     if (sortSelect) {
       sortSelect.value = readPref(SORT_KEY, 'newest');
@@ -292,9 +293,15 @@ if (typeof module !== 'undefined' && module.exports) {
       }).catch(function () {});
     }
 
-    function playAt(i) {
-      if (i < 0 || i >= queue.length || !window.FileTube || !window.FileTube.player) return;
-      var item = queue[i];
+    var statusEl = root.querySelector('#music-status');
+    function setStatus(msg) {
+      if (!statusEl) return;
+      if (msg) { statusEl.textContent = msg; statusEl.hidden = false; }
+      else { statusEl.textContent = ''; statusEl.hidden = true; }
+    }
+    var playGen = 0; // guards against a stale prewarm poll clobbering a newer tap
+
+    function loadTrack(item, i) {
       var data = {
         type: 'audio',
         title: item.title,
@@ -325,10 +332,78 @@ if (typeof module !== 'undefined' && module.exports) {
       }).catch(function () {});
     }
 
-    render().catch(function (err) {
-      console.error('Music: initial render failed', err);
-      if (emptyNote) emptyNote.hidden = false;
-    });
+    // Gate QA-CRITICAL: an ALAC track streams from a rendition that transcodes
+    // ON DEMAND — /track/:id answers 503 until it's ready. The shared player's
+    // audio path has no 503 retry, so a music item that needsTranscode is
+    // PRE-WARMED here (poll until the route stops 503-ing) before we hand it to
+    // the player; otherwise the first play would silently fail. Native formats
+    // (needsTranscode false) skip this entirely — zero added latency.
+    function prewarmThenLoad(item, i, gen) {
+      var attempts = 0;
+      var MAX_ATTEMPTS = 40; // ~60s at 1.5s spacing
+      setStatus('Preparing “' + item.title + '”…');
+      function poll() {
+        if (gen !== playGen) return; // a newer tap superseded this one
+        fetch('/track/' + item.id, { method: 'HEAD' })
+          .then(function (res) {
+            if (gen !== playGen) return;
+            if (res.status === 200) { setStatus(''); loadTrack(item, i); return; }
+            attempts += 1;
+            if (attempts >= MAX_ATTEMPTS) { setStatus('Could not prepare this track. Try again shortly.'); return; }
+            setTimeout(poll, 1500);
+          })
+          .catch(function () {
+            if (gen !== playGen) return;
+            attempts += 1;
+            if (attempts >= MAX_ATTEMPTS) { setStatus('Could not prepare this track.'); return; }
+            setTimeout(poll, 1500);
+          });
+      }
+      poll();
+    }
+
+    function playAt(i) {
+      if (i < 0 || i >= queue.length || !window.FileTube || !window.FileTube.player) return;
+      var item = queue[i];
+      playGen += 1;
+      if (item.needsTranscode) { prewarmThenLoad(item, i, playGen); return; }
+      setStatus('');
+      loadTrack(item, i);
+    }
+
+    // Gate QA-WARNING: consume the per-user resume pointer. A "Continue
+    // listening" card lands here as /music?play=<trackId>; rebuild that track's
+    // QUEUE from the stored queue context and play it (the player's music
+    // smart-resume applies the saved position for a >10-min track).
+    async function resumeFromPointer(trackId) {
+      let st = null;
+      try { st = await fetchJson('/api/music/resume'); } catch (_) { st = null; }
+      const ctx = (st && st.queueCtx && typeof st.queueCtx === 'object') ? st.queueCtx : { src: 'music' };
+      drill = null;
+      if (ctx.album) drill = { type: 'album', key: ctx.album, label: 'Album' };
+      else if (ctx.artist) { drill = { type: 'artist', key: ctx.artist, label: ctx.artist }; }
+      else if (ctx.filter === 'liked') tab = 'liked';
+      else tab = 'songs';
+      if (ctx.search) search = ctx.search;
+      if (sortSelect && ctx.sort) sortSelect.value = ctx.sort;
+      await render(); // populates `queue` for the resolved view
+      let idx = queue.findIndex((t) => t.id === trackId);
+      if (idx < 0 && st && st.lastTrackId) idx = queue.findIndex((t) => t.id === st.lastTrackId);
+      if (idx >= 0) playAt(idx);
+    }
+
+    const playParam = urlParams.get('play');
+    if (playParam) {
+      resumeFromPointer(playParam).catch((err) => {
+        console.error('Music: resume failed', err);
+        render().catch(() => {});
+      });
+    } else {
+      render().catch(function (err) {
+        console.error('Music: initial render failed', err);
+        if (emptyNote) emptyNote.hidden = false;
+      });
+    }
   }
 
   function destroy() {

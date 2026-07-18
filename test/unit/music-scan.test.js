@@ -72,6 +72,38 @@ test('T4: selectOrphanedArtKeys — a key is orphaned ONLY when no surviving tra
   assert.deepEqual(scan.selectOrphanedArtKeys([], surviving), []);
 });
 
+test('GATE ADV-1: walkMusicRoot records an unreadable dir; selectPrunableTrackIds protects tracks UNDER it', () => {
+  const store = require('../../lib/music/store');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-eacces-'));
+  try {
+    fs.mkdirSync(path.join(root, 'Readable'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'Readable/ok.flac'), 'x');
+    const locked = path.join(root, 'Locked');
+    fs.mkdirSync(locked, { recursive: true });
+    fs.writeFileSync(path.join(locked, 'hidden.flac'), 'x');
+    fs.chmodSync(locked, 0o000);
+
+    const erroredDirs = [];
+    const found = scan.walkMusicRoot(root, erroredDirs).map((p) => path.basename(p));
+    // The locked dir errored and is recorded; only the readable file surfaced.
+    assert.ok(erroredDirs.includes(locked), 'the unreadable dir is recorded');
+    assert.deepEqual(found, ['ok.flac']);
+
+    // A previously-indexed track UNDER the locked dir is NOT prunable this pass
+    // (its file is still on disk; the dir was merely unreadable).
+    const tracks = {
+      alive: { id: 'alive', rootFolder: root, filePath: path.join(root, 'Readable/ok.flac') },
+      hidden: { id: 'hidden', rootFolder: root, filePath: path.join(locked, 'hidden.flac') },
+      gone: { id: 'gone', rootFolder: root, filePath: path.join(root, 'Readable/deleted.flac') },
+    };
+    const prunable = store.selectPrunableTrackIds(tracks, new Set(['alive']), { missingRoots: new Set(), pruneMissing: true, erroredDirs });
+    assert.deepEqual(prunable, ['gone'], 'the errored-subtree track is protected; a genuinely-deleted track still prunes');
+  } finally {
+    try { fs.chmodSync(path.join(root, 'Locked'), 0o755); } catch (_) { /* best-effort */ }
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('T4: albumArtKeyFor is a stable md5 of the album grouping key (same album -> same key)', () => {
   const t1 = { artist: 'A', album: 'X' };
   const t2 = { artist: 'A', album: 'X' };

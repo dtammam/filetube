@@ -122,6 +122,35 @@ test('T6: liked toggle is per-user; filter=liked reflects it; unknown track 404s
   assert.equal(r.status, 404, 'liking an unknown track 404s');
 });
 
+test('GATE ADV-2: track-existence guards use hasOwnProperty — a __proto__/constructor id 404s and writes NO junk liked row', async () => {
+  await seedLibrary();
+  for (const evil of ['__proto__', 'constructor', 'toString', 'hasOwnProperty']) {
+    const r = await postJson('/api/music/liked/' + encodeURIComponent(evil));
+    assert.equal(r.status, 404, `${evil} must not pass the existence check`);
+  }
+  // No junk row landed for this user.
+  const liked = (await (await get('/api/music/liked')).json()).trackIds;
+  assert.ok(!liked.some((id) => ['__proto__', 'constructor', 'toString', 'hasOwnProperty'].includes(id)), 'no prototype-key liked row persisted');
+  // The detail + stream routes also 404 on a prototype key (no prototype read).
+  assert.equal((await get('/api/music/__proto__')).status, 404);
+  assert.equal((await get('/track/__proto__')).status, 404);
+});
+
+test('GATE QA-CRITICAL: the track list item surfaces needsTranscode so the client can pre-warm an ALAC rendition', async () => {
+  await seedLibrary();
+  const alacFull = path.join(libRoot, 'Floyd/Wall/09 Alac.m4a');
+  fs.writeFileSync(alacFull, 'X');
+  const alacId = require('crypto').createHash('md5').update(alacFull).digest('hex');
+  await updateDatabase((db) => {
+    const ns = musicStore.ensureMusic(db);
+    ns.tracks[alacId] = { id: alacId, filePath: alacFull, rootFolder: libRoot, ext: '.m4a', title: 'Alac', artist: 'Pink Floyd', album: 'The Wall', albumArtKey: 'z'.repeat(32), codec: 'alac', durationSec: 100, addedAt: '2026-01-01T00:00:00Z' };
+    ns.tracks.natTest = { id: 'natTest', filePath: path.join(libRoot, 'n.flac'), rootFolder: libRoot, ext: '.flac', title: 'Nat', artist: 'A', album: 'B', albumArtKey: 'y'.repeat(32), codec: 'flac', durationSec: 100, addedAt: '2026-01-01T00:00:00Z' };
+    return true;
+  });
+  assert.equal((await (await get(`/api/music/${alacId}`)).json()).needsTranscode, true, 'ALAC -> needsTranscode true');
+  assert.equal((await (await get('/api/music/natTest')).json()).needsTranscode, false, 'FLAC -> needsTranscode false');
+});
+
 test('T6: GET /api/music/:id returns the track (with liked+progress); unknown 404s', async () => {
   const { t1 } = await seedLibrary();
   userStore.setMusicProgress(user.id, t1.id, { position: 55, duration: 200, updatedAt: '2026-02-02T00:00:00Z' });

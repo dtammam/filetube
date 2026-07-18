@@ -976,10 +976,18 @@ function evictTranscodeCache(maxBytes, justProducedPath) {
   // explicit user intent wins over the pin. They still COUNT toward the
   // displayed cache size (honest accounting).
   const pinAudioSidecars = !!(getCachedDatabase().settings || {}).preExtractAudio;
+  // Gate QA-WARNING: the preExtractAudio pin protects VIDEO background-audio
+  // sidecars only -- a music ALAC rendition (also `<id>.m4a` in TRANSCODE_DIR,
+  // shared by design) must NOT be pinned, or a large ALAC library would grow
+  // eviction-immune. A sidecar's id is a db.metadata (video) id; a rendition's
+  // id is a db.music.tracks id, so metadata membership discriminates the two.
+  const pinnableVideoMeta = pinAudioSidecars ? (getCachedDatabase().metadata || {}) : null;
+  const isPinnedSidecar = (name) => pinAudioSidecars && name.endsWith('.m4a')
+    && Object.prototype.hasOwnProperty.call(pinnableVideoMeta, name.slice(0, -'.m4a'.length));
   const files = [];
   for (const name of entries) {
     if (!isCompletedTranscode(name)) continue;
-    if (pinAudioSidecars && name.endsWith('.m4a')) continue;
+    if (isPinnedSidecar(name)) continue;
     const p = path.join(TRANSCODE_DIR, name);
     try {
       const st = fs.statSync(p);
@@ -1080,10 +1088,13 @@ function sweepAgedTranscodes(now) {
   // v1.35 (preExtractAudio): same sidecar pin as evictTranscodeCache -- see
   // its comment there.
   const pinAudioSidecars = !!(db.settings || {}).preExtractAudio;
+  // Same video-only sidecar scoping as evictTranscodeCache (music ALAC
+  // renditions must stay evictable) -- see that comment.
+  const pinnableVideoMeta = pinAudioSidecars ? (db.metadata || {}) : null;
   const files = [];
   for (const name of entries) {
     if (!isCompletedTranscode(name)) continue;
-    if (pinAudioSidecars && name.endsWith('.m4a')) continue;
+    if (pinAudioSidecars && name.endsWith('.m4a') && Object.prototype.hasOwnProperty.call(pinnableVideoMeta, name.slice(0, -'.m4a'.length))) continue;
     const p = path.join(TRANSCODE_DIR, name);
     try {
       const st = fs.statSync(p);
@@ -4883,9 +4894,9 @@ app.delete('/api/users/:id', (req, res) => {
   return res.json({ success: true });
 });
 
-// Remove every staged (not-yet-flushed) progress/book-progress ping owned by
-// a user id, across both coalescers — called when a user is deleted so a
-// vanished user_id never reaches a flush batch (gate WARNING-1).
+// Remove every staged (not-yet-flushed) progress/book-progress/music ping owned
+// by a user id, across all THREE coalescers — called when a user is deleted so
+// a vanished user_id never reaches a flush batch (gate WARNING-1).
 function dropPendingProgressForUser(userId) {
   for (const [key, entry] of [...pendingProgress]) {
     if (entry.userId === userId) pendingProgress.delete(key);
@@ -6212,7 +6223,7 @@ async function runMusicScan() {
   const ns = musicStore.ensureMusic(db);
   const folders = ns.folders.slice();
   if (folders.length === 0 && Object.keys(ns.tracks).length === 0) return; // music-less: total no-op
-  const { tracks, survivingIds, missingRoots } = await musicScan.collectTracks(folders, ns.tracks, { getMediaId, probe: probeMusicTrack });
+  const { tracks, survivingIds, missingRoots, erroredDirs } = await musicScan.collectTracks(folders, ns.tracks, { getMediaId, probe: probeMusicTrack });
   for (const root of missingRoots) {
     console.warn(`music: configured folder is missing/unmounted -- nothing under it will be pruned: ${root}`);
   }
@@ -6237,7 +6248,7 @@ async function runMusicScan() {
         console.warn(`music: root ${root} exists but scanned EMPTY while the library has tracks under it -- treating as unmounted, pruning nothing beneath it`);
       }
     }
-    const prunable = new Set(musicStore.selectPrunableTrackIds(freshNs.tracks, survivingIds, { missingRoots: effectiveMissingRoots, pruneMissing }));
+    const prunable = new Set(musicStore.selectPrunableTrackIds(freshNs.tracks, survivingIds, { missingRoots: effectiveMissingRoots, pruneMissing, erroredDirs }));
     const next = {};
     for (const [id, t] of Object.entries(tracks)) next[id] = t;
     for (const [id, t] of Object.entries(freshNs.tracks)) {
@@ -6441,6 +6452,16 @@ function effectiveMusicProgress(userId, id) {
 
 // ---- Music: read APIs + track/art serving (T6) ------------------------------
 
+// OWN-property track lookup (gate ADV-WARNING-2): a bare `tracks[id]` treats
+// inherited Object.prototype keys ('__proto__'/'constructor'/'toString') as
+// existing tracks, so a crafted id would pass every route's existence check
+// and write a junk per-user row that then rides the backup. Every music route
+// resolves a track through this, mirroring the video like route's
+// hasOwnProperty guard and the coalescer's own deleted-track filter.
+function ownTrack(tracks, id) {
+  return Object.prototype.hasOwnProperty.call(tracks, id) ? tracks[id] : undefined;
+}
+
 // The public list-item shape for a track: the track record plus this user's
 // liked flag and resume position (per-user, keyed by req.user.id -- never the
 // frozen doc record). filePath is deliberately NOT surfaced (path scrub).
@@ -6462,6 +6483,10 @@ function publicTrackListItem(track, userId, likedSet, progressMap) {
     folderName: track.folderName,
     albumArtKey: track.albumArtKey,
     hasArt: !!(track.albumArtKey && albumArtExists(track.albumArtKey)),
+    // Gate QA-CRITICAL: the client keys its transcode-prewarm poll off this,
+    // so an ALAC track's first play waits for the rendition instead of
+    // silently failing on the /track/:id 503.
+    needsTranscode: musicCodecNeedsTranscode(track.codec),
     liked,
     progress: prog ? { position: prog.position, duration: prog.duration, updatedAt: prog.updatedAt } : null,
   };
@@ -6508,11 +6533,15 @@ app.get('/api/music/albums', (req, res) => {
   let list = Object.values(ns.tracks);
   const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
   if (search) list = list.filter((t) => musicQuery.matchesSearch(t, search));
-  const albums = musicQuery.groupAlbums(list).map((a) => ({
-    ...a,
-    hasArt: !!(a.albumArtKey && albumArtExists(a.albumArtKey)),
-  }));
-  res.json({ items: albums, total: albums.length });
+  // Gate QA-WARNING/ADV-SUGGESTION: paginate (the design-for-scale target) and
+  // DROP the per-row albumArtExists fs.existsSync — the client always requests
+  // /albumart/:artId, which serves the real file or an SVG placeholder, so
+  // hasArt was an unused N-stat-per-request event-loop tax at scale.
+  const albums = musicQuery.groupAlbums(list);
+  const total = albums.length;
+  const offset = videoQuery.normalizeOffset(req.query.offset);
+  const limit = videoQuery.normalizeLimit(req.query.limit);
+  res.json({ items: albums.slice(offset, offset + limit), total, offset, limit });
 });
 
 app.get('/api/music/artists', (req, res) => {
@@ -6521,7 +6550,10 @@ app.get('/api/music/artists', (req, res) => {
   const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
   if (search) list = list.filter((t) => musicQuery.matchesSearch(t, search));
   const artists = musicQuery.groupArtists(list);
-  res.json({ items: artists, total: artists.length });
+  const total = artists.length;
+  const offset = videoQuery.normalizeOffset(req.query.offset);
+  const limit = videoQuery.normalizeLimit(req.query.limit);
+  res.json({ items: artists.slice(offset, offset + limit), total, offset, limit });
 });
 
 // Per-user liked songs (static segment -- declared BEFORE /api/music/:id).
@@ -6531,7 +6563,7 @@ app.get('/api/music/liked', (req, res) => {
 
 app.post('/api/music/liked/:id', (req, res) => {
   const ns = musicStore.readMusic(getCachedDatabase());
-  if (!ns.tracks[req.params.id]) return res.status(404).json({ error: 'no such track' });
+  if (!ownTrack(ns.tracks, req.params.id)) return res.status(404).json({ error: 'no such track' });
   userStore.addMusicLiked(req.user.id, req.params.id, new Date().toISOString());
   res.json({ liked: true });
 });
@@ -6584,7 +6616,7 @@ app.get('/api/music/progress/:id', (req, res) => {
 
 app.get('/api/music/:id', (req, res) => {
   const ns = musicStore.readMusic(getCachedDatabase());
-  const track = ns.tracks[req.params.id];
+  const track = ownTrack(ns.tracks, req.params.id);
   if (!track) return res.status(404).json({ error: 'no such track' });
   const likedSet = new Set(userStore.getMusicLiked(req.user.id));
   const progressMap = userStore.getMusicProgress(req.user.id);
@@ -6597,7 +6629,7 @@ app.get('/api/music/:id', (req, res) => {
 // ready (the client retries).
 app.get('/track/:id', (req, res) => {
   const ns = musicStore.readMusic(getCachedDatabase());
-  const track = ns.tracks[req.params.id];
+  const track = ownTrack(ns.tracks, req.params.id);
   if (!track || typeof track.filePath !== 'string') return res.status(404).json({ error: 'no such track' });
   if (!fs.existsSync(track.filePath)) return res.status(404).json({ error: 'file missing' });
   if (musicCodecNeedsTranscode(track.codec)) {
@@ -6617,7 +6649,7 @@ app.get('/track/:id', (req, res) => {
 // placeholder (mirrors /bookcover/:id).
 app.get('/albumart/:id', (req, res) => {
   const ns = musicStore.readMusic(getCachedDatabase());
-  const track = ns.tracks[req.params.id];
+  const track = ownTrack(ns.tracks, req.params.id);
   const key = track && typeof track.albumArtKey === 'string' ? track.albumArtKey : null;
   if (key) {
     for (const ext of ['.jpg', '.png']) {

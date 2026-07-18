@@ -110,6 +110,9 @@
         <!-- The persistent player mounts here (FULL) while a track plays; it
              reparents to the dock on in-app navigation (the watch-page idiom). -->
         <div id="player-slot" class="music-player-slot" hidden></div>
+        <!-- Transient status (e.g. "Preparing track…" while an ALAC rendition
+             transcodes on demand). -->
+        <div id="music-status" class="music-status" role="status" hidden></div>
 
         <div class="music-tabs" id="music-tabs" role="tablist">
           <button type="button" class="music-tab active" data-tab="albums" role="tab">Albums</button>

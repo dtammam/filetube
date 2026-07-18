@@ -100,6 +100,7 @@ test('T2: removeMusicState sheds EVERY user\'s liked + progress for the track AN
   assert.equal(store.getOneMusicProgress(a.id, 'doomed'), null, 'a: doomed progress shed');
   assert.equal(store.getOneMusicProgress(b.id, 'keep').position, 9, 'b: keep progress intact');
   assert.equal(store.getMusicState(a.id).lastTrackId, null, 'a: dangling resume pointer nulled');
+  assert.equal(store.getMusicState(a.id).queueCtx, null, 'a: the stale queue context is nulled too (no lastTrackId:null + stale ctx)');
   assert.equal(store.getMusicState(b.id).lastTrackId, 'keep', 'b: resume pointer to a surviving track untouched');
 });
 
