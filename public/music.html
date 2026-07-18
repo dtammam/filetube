@@ -107,9 +107,10 @@
           </div>
         </div>
 
-        <!-- The persistent player mounts here (FULL) while a track plays; it
-             reparents to the dock on in-app navigation (the watch-page idiom). -->
-        <div id="player-slot" class="music-player-slot" hidden></div>
+        <!-- v1.44.2: tapping a song plays in the DOCKED mini-player (#player-dock,
+             in the shell below), NOT a FULL in-view player — the album header +
+             tracklist stay on screen (browse-while-playing). No #player-slot here.
+             The playing row highlights instead (public/js/music.js). -->
         <!-- Transient status (e.g. "Preparing track…" while an ALAC rendition
              transcodes on demand). -->
         <div id="music-status" class="music-status" role="status" hidden></div>

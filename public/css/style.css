@@ -6526,7 +6526,8 @@ body.ft-css-fullscreen .bottom-nav {
   cursor: pointer;
 }
 .music-song-row:hover { background: var(--bg-secondary); }
-.music-song-thumb { width: 44px; height: 44px; border-radius: 4px; object-fit: cover; background: var(--thumbnail-bg, #222); flex-shrink: 0; }
+.music-song-thumb-wrap { position: relative; flex-shrink: 0; width: 44px; height: 44px; }
+.music-song-thumb { width: 44px; height: 44px; border-radius: 4px; object-fit: cover; background: var(--thumbnail-bg, #222); display: block; }
 .music-song-main { display: flex; flex-direction: column; min-width: 0; flex: 1; }
 .music-song-title { font-size: var(--fs-base); color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .music-song-sub { font-size: var(--fs-sm); color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -6544,8 +6545,45 @@ body.ft-css-fullscreen .bottom-nav {
 }
 .music-like-btn.liked { color: var(--yt-red); }
 
-.music-player-slot { margin-bottom: 16px; }
-.music-player-slot[hidden] { display: none !important; }
+/* v1.44.2 (Spotify feel): the currently-playing row. Accent + a CSS equalizer
+   glyph (3 animated bars) overlaid on the thumb — NEVER an emoji codepoint
+   (iOS forces blue emoji). Driven by applyPlayingHighlight() toggling
+   `.playing` on the row whose data-id == the playing track id. */
+.music-song-row.playing {
+  background: var(--bg-secondary);
+  box-shadow: inset 3px 0 0 0 var(--yt-red);
+}
+.music-song-row.playing .music-song-title { color: var(--yt-red); font-weight: 600; }
+/* The eq overlays the thumb (dimmed via a scrim) only while playing. */
+.music-eq {
+  position: absolute;
+  inset: 0;
+  display: none;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 2px;
+  padding-bottom: 8px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.45);
+}
+.music-song-row.playing .music-eq { display: flex; }
+.music-eq i {
+  width: 3px;
+  height: 6px;
+  background: #fff;
+  border-radius: 1px;
+  animation: music-eq-bar 0.9s ease-in-out infinite;
+}
+.music-eq i:nth-child(2) { animation-delay: 0.3s; }
+.music-eq i:nth-child(3) { animation-delay: 0.6s; }
+@keyframes music-eq-bar {
+  0%, 100% { height: 5px; }
+  50% { height: 16px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .music-eq i { animation: none; height: 11px; }
+}
+
 .music-empty { color: var(--text-secondary); padding: 24px 0; }
 .music-empty[hidden] { display: none !important; }
 

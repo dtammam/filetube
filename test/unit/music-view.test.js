@@ -71,3 +71,29 @@ test('T9: buildSongRowHtml unliked has no liked class', () => {
   assert.doesNotMatch(html, /music-like-btn liked/);
   assert.doesNotMatch(html, /music-song-duration">[^<]+</, 'zero duration -> empty duration cell');
 });
+
+// ---- v1.44.2 (Spotify feel) -------------------------------------------------
+
+test('v1.44.2: buildSongRowHtml carries the CSS equalizer glyph (3 bars, NEVER an emoji)', () => {
+  const html = buildSongRowHtml({ id: 't3', title: 'Three', artist: 'A', album: 'X', durationSec: 60, liked: false }, 1);
+  assert.match(html, /class="music-eq" aria-hidden="true"><i><\/i><i><\/i><i><\/i>/, 'three eq bars drawn in markup+CSS');
+  // The eq must be pure markup — no emoji codepoint anywhere in a row (iOS
+  // forces blue emoji; the type-scale/glyph lock forbids emoji glyphs).
+  assert.doesNotMatch(html, /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u, 'no emoji codepoint in a song row');
+});
+
+test('v1.44.2 SOURCE-LOCK: loadTrack plays in the DOCK (not a FULL slot) and sets a /music dock-return', () => {
+  assert.match(MUSIC_JS, /window\.FileTube\.player\.load\(item\.id, data, \{ dock: true \}\)/,
+    'a tap must load into the docked mini-player, not a FULL #player-slot');
+  assert.match(MUSIC_JS, /readerHref: '\/music'/, 'a music track carries a /music dock-return href (else the dock tap 404s on the video route)');
+  assert.doesNotMatch(MUSIC_JS, /player-slot/, 'no FULL in-view player-slot mount remains for /music');
+});
+
+test('v1.44.2 SOURCE-LOCK: the playing-row highlight tracks the player id and re-applies after render + init', () => {
+  assert.match(MUSIC_JS, /player\.currentId\) \|\| null/, 'playingId is seeded from the persistent player on init (survives the view swap)');
+  assert.match(MUSIC_JS, /function applyPlayingHighlight/, 'a dedicated highlight pass exists');
+  assert.match(MUSIC_JS, /classList\.toggle\('playing'/, 'it toggles .playing by matching data-id');
+  // renderSongList re-applies it (a fresh list must re-highlight the playing row).
+  const renderBody = MUSIC_JS.slice(MUSIC_JS.indexOf('function renderSongList'), MUSIC_JS.indexOf('function applyPlayingHighlight'));
+  assert.match(renderBody, /applyPlayingHighlight\(\)/, 'renderSongList re-applies the highlight');
+});

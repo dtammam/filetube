@@ -56,12 +56,19 @@ function buildArtistCardHtml(artist) {
 
 // A song row (index button, thumb, title/artist, duration, like toggle). The
 // row's data-index drives playAt(); the like button is a nested control.
+// v1.44.2: every row carries a CSS equalizer glyph (3 animated bars, NEVER an
+// emoji codepoint — iOS forces blue emoji) overlaid on the thumb; it is
+// display:none unless the row is `.playing` (the highlight that tracks the
+// currently-playing track id — see applyPlayingHighlight).
 function buildSongRowHtml(item, index) {
   var dur = formatTrackDuration(item.durationSec);
   var liked = !!item.liked;
   return '' +
     '<div class="music-song-row" data-index="' + index + '" data-id="' + escapeMusicHtml(item.id) + '">' +
+    '<span class="music-song-thumb-wrap">' +
     '<img class="music-song-thumb" src="/albumart/' + encodeURIComponent(item.id) + '" alt="" loading="lazy" />' +
+    '<span class="music-eq" aria-hidden="true"><i></i><i></i><i></i></span>' +
+    '</span>' +
     '<span class="music-song-main">' +
     '<span class="music-song-title" title="' + escapeMusicHtml(item.title) + '">' + escapeMusicHtml(item.title) + '</span>' +
     '<span class="music-song-sub">' + escapeMusicHtml(item.artist || '') + (item.album ? ' · ' + escapeMusicHtml(item.album) : '') + '</span>' +
@@ -109,8 +116,13 @@ if (typeof module !== 'undefined' && module.exports) {
     var sortSelect = root.querySelector('#music-sort-select');
     var shuffleBtn = root.querySelector('#music-shuffle-btn');
     var scanBtn = root.querySelector('#music-scan-btn');
-    var playerSlot = root.querySelector('#player-slot');
     if (!content) return;
+
+    // The id of the currently-playing track (drives the playing-row highlight).
+    // Seeded from the persistent player so a nav BACK into /music while a track
+    // is still playing re-highlights the right row (the player outlives the
+    // #view-root swap; music.js is re-init'd fresh each time).
+    var playingId = (window.FileTube && window.FileTube.player && window.FileTube.player.currentId) || null;
 
     // View state: the active top tab, an optional drill (album/artist), the
     // current search, and the live play QUEUE (the exact list on screen).
@@ -206,6 +218,18 @@ if (typeof module !== 'undefined' && module.exports) {
     function renderSongList() {
       content.innerHTML = '<div class="music-song-list">' + queue.map(buildSongRowHtml).join('') + '</div>';
       if (emptyNote) emptyNote.hidden = queue.length > 0;
+      applyPlayingHighlight();
+    }
+
+    // Toggle `.playing` (accent + equalizer glyph) on the row whose track id
+    // matches the currently-playing track. A pure DOM pass, NOT a re-render, so
+    // it can run cheaply on every advance and after every list build. Called
+    // from playAt (every tap / on-page prev-next / lock-screen next routes
+    // through it), after renderSongList, and once at init.
+    function applyPlayingHighlight() {
+      content.querySelectorAll('.music-song-row').forEach(function (r) {
+        r.classList.toggle('playing', !!playingId && r.getAttribute('data-id') === playingId);
+      });
     }
 
     async function render() {
@@ -319,9 +343,17 @@ if (typeof module !== 'undefined' && module.exports) {
         resumeMode: 'music',
         autoAdvanceViaTrackNav: true,
         browseCtx: queueCtxEncoded,
+        // v1.44.2: tapping the docked mini-player returns to /music (the generic
+        // dock-return href — without it a track id hits the video /watch route
+        // and 404s). On /music the same-URL nav guard makes it a benign no-op.
+        readerHref: '/music',
       };
-      if (playerSlot) playerSlot.hidden = false;
-      window.FileTube.player.load(item.id, data, { slot: playerSlot });
+      // v1.44.2 (Spotify feel): play in the DOCKED mini-player, not FULL at the
+      // top — the album header + tracklist stay on screen (browse-while-playing)
+      // and the tapped row highlights. dock:true mounts straight into #player-dock.
+      playingId = item.id;
+      applyPlayingHighlight();
+      window.FileTube.player.load(item.id, data, { dock: true });
       if (typeof window.FileTube.player.setTrackNav === 'function') {
         window.FileTube.player.setTrackNav({
           onPrev: i > 0 ? function () { playAt(i - 1); } : undefined,
