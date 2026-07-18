@@ -10,6 +10,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const {
   escapeMusicHtml, formatTrackDuration, buildAlbumCardHtml, buildArtistCardHtml, buildSongRowHtml,
+  drillYear, drillAlbumCount, buildDrillHeaderHtml, buildStickyBarHtml,
 } = require('../../public/js/music.js');
 
 const MUSIC_JS = fs.readFileSync(path.join(__dirname, '../../public/js/music.js'), 'utf8');
@@ -87,6 +88,71 @@ test('v1.44.2 SOURCE-LOCK: loadTrack plays in the DOCK (not a FULL slot) and set
     'a tap must load into the docked mini-player, not a FULL #player-slot');
   assert.match(MUSIC_JS, /readerHref: '\/music'/, 'a music track carries a /music dock-return href (else the dock tap 404s on the video route)');
   assert.doesNotMatch(MUSIC_JS, /player-slot/, 'no FULL in-view player-slot mount remains for /music');
+});
+
+// ---- v1.44.2 collapsing drill header ---------------------------------------
+
+test('v1.44.2: drillYear returns the MIN non-null Integer year (matches groupAlbums), null when none', () => {
+  assert.strictEqual(drillYear([{ year: 2003 }, { year: 1999 }, { year: null }]), 1999);
+  assert.strictEqual(drillYear([{ year: null }, { title: 'x' }]), null);
+  assert.strictEqual(drillYear([{ year: 2020.5 }]), null, 'non-integer year ignored');
+});
+
+test('v1.44.2: drillAlbumCount counts distinct albums, blank as one bucket, __proto__-safe', () => {
+  assert.strictEqual(drillAlbumCount([{ album: 'A' }, { album: 'A' }, { album: 'B' }]), 2);
+  assert.strictEqual(drillAlbumCount([{ album: '' }, {}]), 1, 'blank/missing album = one bucket');
+  assert.strictEqual(drillAlbumCount([{ album: '__proto__' }, { album: 'A' }]), 2, 'a "__proto__" album cannot poison the count');
+});
+
+test('v1.44.2: buildDrillHeaderHtml (album) shows art, escaped title/artist, year·count, Play+Shuffle+Back', () => {
+  const tracks = [
+    { id: 't1', album: 'Kid A', albumArtist: 'Radio"head', artist: 'x', year: 2000 },
+    { id: 't2', album: 'Kid A', artist: 'x', year: 2000 },
+  ];
+  const html = buildDrillHeaderHtml({ type: 'album', label: 'Kid A' }, tracks);
+  assert.match(html, /\/albumart\/t1/, 'art from the first track');
+  assert.match(html, /music-drill-title[^>]*>Kid A</);
+  assert.match(html, /Radio&quot;head/, 'albumArtist escaped + preferred over artist');
+  assert.match(html, /2000 · 2 tracks/);
+  assert.match(html, /music-drill-play/);
+  assert.match(html, /music-drill-shuffle/);
+  assert.match(html, /music-drill-back/);
+});
+
+test('v1.44.2: buildDrillHeaderHtml (artist) shows album·track counts, no artist subline', () => {
+  const tracks = [{ id: 'a1', album: 'One', artist: 'Boards' }, { id: 'a2', album: 'Two', artist: 'Boards' }];
+  const html = buildDrillHeaderHtml({ type: 'artist', label: 'Boards' }, tracks);
+  assert.match(html, /2 albums · 2 tracks/);
+  assert.doesNotMatch(html, /music-drill-artist/, 'artist drill has no artist subline');
+});
+
+test('v1.44.2: buildDrillHeaderHtml tolerates an empty track list (no throw, generic labels)', () => {
+  const html = buildDrillHeaderHtml({ type: 'album', label: 'Empty' }, []);
+  assert.match(html, /Empty/);
+  assert.match(html, /0 tracks/);
+});
+
+test('v1.44.2: buildStickyBarHtml is the slim collapsed bar (thumb + escaped title + Back + Play)', () => {
+  const html = buildStickyBarHtml({ type: 'album', label: 'A<b>' }, [{ id: 's1' }]);
+  assert.match(html, /music-drill-sticky/);
+  assert.match(html, /\/albumart\/s1/);
+  assert.match(html, /A&lt;b&gt;/, 'title escaped');
+  assert.match(html, /music-drill-back/);
+  assert.match(html, /music-drill-play/);
+});
+
+test('v1.44.2 SOURCE-LOCK: the collapse observer is disconnected in destroy() AND before every re-render (SPA-swap leak guard)', () => {
+  // destroy() must disconnect (leaving /music mid-drill can't leak an observer
+  // on a detached sentinel).
+  const destroyBody = MUSIC_JS.slice(MUSIC_JS.indexOf('function destroy'));
+  assert.match(destroyBody, /disconnectStickyObserver\(\)/, 'destroy() disconnects the observer');
+  // render() must disconnect before rebuilding #music-content (the old sentinel
+  // is about to be orphaned).
+  const renderBody = MUSIC_JS.slice(MUSIC_JS.indexOf('async function render'), MUSIC_JS.indexOf('interaction: drill-in'));
+  assert.match(renderBody, /disconnectStickyObserver\(\)/, 'render() disconnects any prior observer');
+  // The observer measures the fixed header (no per-frame scroll math).
+  assert.match(MUSIC_JS, /new IntersectionObserver/, 'uses IntersectionObserver, not a scroll listener');
+  assert.doesNotMatch(MUSIC_JS, /addEventListener\('scroll'/, 'no per-frame scroll handler for the collapse');
 });
 
 test('v1.44.2 SOURCE-LOCK: the playing-row highlight tracks the player id and re-applies after render + init', () => {
