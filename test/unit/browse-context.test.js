@@ -32,6 +32,26 @@ test('encodeListContext: round-trips a full videos context through decode', () =
   assert.ok(!('folder' in back), 'empty fields are dropped');
 });
 
+test('v1.44 music: encodeListContext preserves src="music" + album/artist/filter; buildContextListUrl hits /api/music in order', () => {
+  const ctx = { src: 'music', album: 'k1', sort: 'album-order', seed: 7 };
+  const back = decodeListContext(encodeListContext(ctx));
+  assert.strictEqual(back.src, 'music');
+  assert.strictEqual(back.album, 'k1');
+  assert.strictEqual(back.sort, 'album-order');
+  const url = buildContextListUrl(back, 5000);
+  assert.ok(url.startsWith('/api/music?'), 'music ctx targets /api/music');
+  assert.match(url, /album=k1/);
+  assert.match(url, /sort=album-order/);
+  assert.match(url, /limit=5000/);
+
+  // artist + filter variants
+  const artistUrl = buildContextListUrl({ src: 'music', artist: 'Pink Floyd' }, 100);
+  assert.match(artistUrl, /^\/api\/music\?/);
+  assert.match(artistUrl, /artist=Pink%20Floyd/);
+  const likedUrl = buildContextListUrl({ src: 'music', filter: 'liked' }, 100);
+  assert.match(likedUrl, /filter=liked/);
+});
+
 test('encodeListContext: only src="liked" survives; any other src is treated as the default library', () => {
   assert.match(decodeListContext(encodeListContext({ src: 'liked', sort: 'newest' })).src || '', /liked/);
   const notLiked = decodeListContext(encodeListContext({ src: 'videos', sort: 'newest' }));

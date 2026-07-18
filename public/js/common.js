@@ -1347,6 +1347,14 @@ function encodeListContext(ctx) {
   if (!ctx || typeof ctx !== 'object') return '';
   var out = {};
   if (ctx.src === 'liked') out.src = 'liked';
+  // v1.44 music: a music queue carries src:'music' plus the music-only scope
+  // keys (album/artist/filter) so next/prev/autoplay re-fetch the same list.
+  if (ctx.src === 'music') {
+    out.src = 'music';
+    if (ctx.album) out.album = String(ctx.album);
+    if (ctx.artist) out.artist = String(ctx.artist);
+    if (ctx.filter) out.filter = String(ctx.filter);
+  }
   if (ctx.sort) out.sort = String(ctx.sort);
   if (ctx.seed !== undefined && ctx.seed !== null && ctx.seed !== '') out.seed = String(ctx.seed);
   if (ctx.search) out.search = String(ctx.search);
@@ -1383,6 +1391,16 @@ function buildContextListUrl(ctx, fullLimit) {
   if (c.format) params.push('format=' + encodeURIComponent(c.format));
   if (c.seed !== undefined && c.seed !== null && c.seed !== '') params.push('seed=' + encodeURIComponent(c.seed));
   params.push('limit=' + fullLimit);
+  // v1.44 music: a music queue re-fetches /api/music in the SAME browsed order
+  // (album/artist/liked/search + sort/seed). The response order IS the queue
+  // (used verbatim, never re-sorted) -- the v1.40 ctx contract. `album`/
+  // `artist`/`filter` are music-only ctx keys.
+  if (c.src === 'music') {
+    if (c.album) params.push('album=' + encodeURIComponent(c.album));
+    if (c.artist) params.push('artist=' + encodeURIComponent(c.artist));
+    if (c.filter) params.push('filter=' + encodeURIComponent(c.filter));
+    return '/api/music?' + params.join('&');
+  }
   var endpoint = c.src === 'liked' ? '/api/liked' : '/api/videos';
   return endpoint + '?' + params.join('&');
 }
@@ -1533,6 +1551,8 @@ function activeNavItem(pathname, search) {
   // Books nav item lit, like watch keeps no item lit but books is a
   // browsable section.
   if (pathname === '/books' || pathname === '/books.html' || pathname === '/read.html') return 'books';
+  // v1.44 music: same posture (link injected only when >=1 music folder set).
+  if (pathname === '/music' || pathname === '/music.html') return 'music';
   if (pathname === '/' || pathname === '/index.html') return 'home';
   return null;
 }
@@ -1604,6 +1624,8 @@ function injectSubscriptionsNavLinkIfEnabled() {
         if (activeNavItem(window.location.pathname, window.location.search) === 'subscriptions') {
           navLink.classList.add('active');
         }
+        // v1.44 T12: re-apply the user's bar layout now that this item exists.
+        applyBottomNavCustomization();
       }
     })
     .catch(() => { /* network/parse failure -- fail closed, inject nothing */ });
@@ -1620,56 +1642,142 @@ function shouldInjectBooksNav(payload) {
   return Boolean(payload && Array.isArray(payload.folders) && payload.folders.length > 0);
 }
 
-// Idempotent + defensive, mirroring injectSubscriptionsNavLinkIfEnabled.
+// v1.44 music gate (mirrors shouldInjectBooksNav exactly -- gate on CONTENT,
+// folders.length, since /api/music/config always exists).
+function shouldInjectMusicNav(payload) {
+  return Boolean(payload && Array.isArray(payload.folders) && payload.folders.length > 0);
+}
+
+// v1.44 IA rework: Books + Music are LIBRARY-section entries, NOT bottom-nav
+// items (Dean: the bottom-nav loses Books; Books+Music live in the Library
+// section alongside the folder-playlists, and in the mobile Playlists sheet).
+// This shared helper injects ONE sidebar entry into the Library section, just
+// above #sidebar-folders-list. Deterministic order regardless of which config
+// probe resolves first: Music anchors before an existing Books entry, so the
+// visual order is always Music, Books, then folders.
+function injectLibraryNavEntry(key, href, label, iconClass) {
+  if (document.querySelector('[data-nav-sidebar="' + key + '"]')) return; // idempotent
+  const foldersList = document.getElementById('sidebar-folders-list');
+  if (!foldersList) return;
+  const link = document.createElement('a');
+  link.href = href;
+  link.className = 'sidebar-item sidebar-library-entry';
+  link.setAttribute('data-nav-sidebar', key);
+  const icon = document.createElement('i');
+  icon.className = iconClass;
+  link.appendChild(icon);
+  link.appendChild(document.createTextNode(' ' + label));
+  const anchor = (key === 'music')
+    ? (document.querySelector('[data-nav-sidebar="books"]') || foldersList)
+    : foldersList;
+  anchor.insertAdjacentElement('beforebegin', link);
+  if (activeNavItem(window.location.pathname, window.location.search) === key) {
+    link.classList.add('active');
+  }
+}
+
+// Idempotent + defensive, mirroring injectSubscriptionsNavLinkIfEnabled. Books
+// now injects ONLY a Library-section sidebar entry (no bottom-nav item -- the
+// v1.44 IA change); the Playlists sheet gets its Books/Music entries from
+// renderPlaylistsSheet.
 function injectBooksNavLinkIfEnabled() {
   if (typeof document === 'undefined' || typeof fetch === 'undefined') return;
-  // v1.37.0 gate fix (QA W6): the guard covers BOTH injected links -- the
-  // bottom-nav one (data-nav) AND the sidebar one (data-nav-sidebar), so a
-  // page without a #bottom-nav can never double-inject the sidebar link.
-  if (document.querySelector('[data-nav="books"]') || document.querySelector('[data-nav-sidebar="books"]')) return;
-
+  if (document.querySelector('[data-nav-sidebar="books"]')) return;
   fetch('/api/books/config')
     .then((res) => (res.ok ? res.json() : null))
     .then((payload) => {
       if (!shouldInjectBooksNav(payload)) return; // books-less -- inject nothing
-      if (document.querySelector('[data-nav="books"]')) return; // raced a second call
-
-      // Sidebar entry, right after Library Settings (the subscriptions
-      // link's own anchor -- whichever injected first, they stack there).
-      const settingsSidebarLink = document.querySelector('a.sidebar-item[href="/setup.html"]');
-      if (settingsSidebarLink && settingsSidebarLink.parentElement) {
-        const sidebarLink = document.createElement('a');
-        sidebarLink.href = '/books';
-        sidebarLink.className = 'sidebar-item';
-        sidebarLink.setAttribute('data-nav-sidebar', 'books');
-        const sidebarIcon = document.createElement('i');
-        sidebarIcon.className = 'icon-folder';
-        sidebarLink.appendChild(sidebarIcon);
-        sidebarLink.appendChild(document.createTextNode(' Books'));
-        settingsSidebarLink.insertAdjacentElement('afterend', sidebarLink);
-      }
-
-      // Bottom-nav entry (mobile app shell).
-      const settingsNavItem = document.querySelector('#bottom-nav [data-nav="settings"]');
-      if (settingsNavItem && settingsNavItem.parentElement) {
-        const navLink = document.createElement('a');
-        navLink.href = '/books';
-        navLink.className = 'bottom-nav-item';
-        navLink.setAttribute('data-nav', 'books');
-        const navIcon = document.createElement('i');
-        navIcon.className = 'icon-folder';
-        const navLabel = document.createElement('span');
-        navLabel.className = 'bottom-nav-label';
-        navLabel.textContent = 'Books';
-        navLink.appendChild(navIcon);
-        navLink.appendChild(navLabel);
-        settingsNavItem.insertAdjacentElement('afterend', navLink);
-        if (activeNavItem(window.location.pathname, window.location.search) === 'books') {
-          navLink.classList.add('active');
-        }
-      }
+      injectLibraryNavEntry('books', '/books', 'Books', 'icon-folder');
     })
     .catch(() => { /* network/parse failure -- fail closed, inject nothing */ });
+}
+
+function injectMusicNavLinkIfEnabled() {
+  if (typeof document === 'undefined' || typeof fetch === 'undefined') return;
+  if (document.querySelector('[data-nav-sidebar="music"]')) return;
+  fetch('/api/music/config')
+    .then((res) => (res.ok ? res.json() : null))
+    .then((payload) => {
+      if (!shouldInjectMusicNav(payload)) return; // music-less -- inject nothing
+      injectLibraryNavEntry('music', '/music', 'Music', 'icon-play');
+    })
+    .catch(() => { /* network/parse failure -- fail closed, inject nothing */ });
+}
+
+// ---- v1.44 T12: customizable bottom-bar -------------------------------------
+//
+// The user reorders/hides the OPTIONAL bottom-nav items (home stays first,
+// settings stays last -- both un-hideable anchors). Config is device-local
+// (localStorage 'ft-bottomnav' = {hidden:[ids], order:[ids]}), consistent with
+// intake #6 (localStorage is the immediate source of truth); a cross-device
+// server mirror is a disclosed fast-follow. A hidden item is only hidden if it
+// EXISTS (an item toggled on but whose module is disabled simply never
+// appears -- the module gate always wins).
+const BOTTOM_NAV_FIXED_FIRST = 'home';
+const BOTTOM_NAV_FIXED_LAST = 'settings';
+// The optional items a user may reorder/hide (must carry a data-nav id).
+const BOTTOM_NAV_OPTIONAL = ['playlists', 'subscriptions', 'oneoff-download', 'theme'];
+
+// Pure: given the bottom-nav item ids ACTUALLY present in the DOM and the
+// user's config, return the final visible order (home first, settings last,
+// hidden optionals dropped) plus the list of present-but-hidden ids. Unit-
+// tested without a DOM.
+function resolveBottomNavLayout(presentIds, config) {
+  const present = Array.isArray(presentIds) ? presentIds.slice() : [];
+  const cfg = (config && typeof config === 'object') ? config : {};
+  const hidden = new Set(Array.isArray(cfg.hidden) ? cfg.hidden : []);
+  const order = Array.isArray(cfg.order) ? cfg.order : [];
+  const middle = present.filter((id) => id !== BOTTOM_NAV_FIXED_FIRST && id !== BOTTOM_NAV_FIXED_LAST);
+  const seen = new Set();
+  const ordered = [];
+  order.forEach((id) => { if (middle.indexOf(id) >= 0 && !seen.has(id)) { ordered.push(id); seen.add(id); } });
+  middle.forEach((id) => { if (!seen.has(id)) { ordered.push(id); seen.add(id); } });
+  const visible = [];
+  if (present.indexOf(BOTTOM_NAV_FIXED_FIRST) >= 0) visible.push(BOTTOM_NAV_FIXED_FIRST);
+  ordered.forEach((id) => { if (!hidden.has(id)) visible.push(id); });
+  if (present.indexOf(BOTTOM_NAV_FIXED_LAST) >= 0) visible.push(BOTTOM_NAV_FIXED_LAST);
+  return { visible, hiddenPresent: ordered.filter((id) => hidden.has(id)) };
+}
+
+function readBottomNavConfig() {
+  try {
+    const raw = localStorage.getItem('ft-bottomnav');
+    if (!raw) return { hidden: [], order: [] };
+    const parsed = JSON.parse(raw);
+    return {
+      hidden: Array.isArray(parsed && parsed.hidden) ? parsed.hidden : [],
+      order: Array.isArray(parsed && parsed.order) ? parsed.order : [],
+    };
+  } catch (_) {
+    return { hidden: [], order: [] };
+  }
+}
+
+function writeBottomNavConfig(config) {
+  try { localStorage.setItem('ft-bottomnav', JSON.stringify(config || { hidden: [], order: [] })); } catch (_) { /* storage disabled */ }
+}
+
+// Reorder + hide the live #bottom-nav per the config. Idempotent; safe to call
+// repeatedly (each async nav injector calls it after inserting its item).
+function applyBottomNavCustomization() {
+  if (typeof document === 'undefined') return;
+  const nav = document.getElementById('bottom-nav');
+  if (!nav) return;
+  const items = Array.prototype.slice.call(nav.querySelectorAll('.bottom-nav-item'));
+  const byId = {};
+  const presentIds = [];
+  items.forEach((el) => {
+    const id = el.getAttribute('data-nav');
+    if (!id) return;
+    byId[id] = el;
+    presentIds.push(id);
+  });
+  const layout = resolveBottomNavLayout(presentIds, readBottomNavConfig());
+  const visibleSet = new Set(layout.visible);
+  presentIds.forEach((id) => { if (byId[id]) byId[id].hidden = !visibleSet.has(id); });
+  // Reorder: appendChild moves each element to the end, so appending in the
+  // resolved order re-sorts the bar without recreating any node.
+  layout.visible.forEach((id) => { if (byId[id]) nav.appendChild(byId[id]); });
 }
 
 // ---- v1.15.0 item 3: one-off download header button + compact modal -------
@@ -2469,6 +2577,8 @@ function injectOneOffDownloadButtonIfEnabled() {
         settingsNavItem.insertAdjacentElement('afterend', navBtn);
 
         navBtn.addEventListener('click', openModal);
+        // v1.44 T12: re-apply the user's bar layout now that Download exists.
+        applyBottomNavCustomization();
       }
 
       // Esc closes the modal while it is open -- backdrop-click and the [x]
@@ -2530,6 +2640,9 @@ function deriveRouteView(pathname) {
   // book cards, so a books-less install never navigates here.
   if (pathname === '/books' || pathname === '/books.html') return 'books';
   if (pathname === '/read.html') return 'read';
+  // v1.44 music: same unconditional-mapping posture -- the Music nav link is
+  // only injected when >=1 music folder is configured.
+  if (pathname === '/music' || pathname === '/music.html') return 'music';
   return null;
 }
 
@@ -2755,7 +2868,7 @@ if (typeof window !== 'undefined') {
     const sidebar = document.getElementById('sidebar');
     if (sidebar) {
       sidebar.querySelectorAll('.sidebar-item.active').forEach((el) => el.classList.remove('active'));
-      const hrefByNavKey = { home: '/', settings: '/setup.html', subscriptions: '/subscriptions', books: '/books' };
+      const hrefByNavKey = { home: '/', settings: '/setup.html', subscriptions: '/subscriptions', books: '/books', music: '/music' };
       const href = key ? hrefByNavKey[key] : null;
       const match = href && sidebar.querySelector('a.sidebar-item[href="' + href + '"]');
       if (match) match.classList.add('active');
@@ -2799,6 +2912,7 @@ if (typeof window !== 'undefined') {
     subscriptions: '/js/subscriptions.js',
     books: '/js/books.js',
     read: '/js/read.js',
+    music: '/js/music.js',
   };
 
   function ensureViewScriptLoaded(view) {
@@ -3199,6 +3313,11 @@ if (typeof window !== 'undefined') {
   window.FileTube.registerView = registerView;
   window.FileTube.navigate = navigate;
   window.FileTube.bootRouter = bootRouter;
+  // v1.44 T12: the Settings bottom-bar editor drives these.
+  window.FileTube.applyBottomNavCustomization = applyBottomNavCustomization;
+  window.FileTube.readBottomNavConfig = readBottomNavConfig;
+  window.FileTube.writeBottomNavConfig = writeBottomNavConfig;
+  window.FileTube.BOTTOM_NAV_OPTIONAL = BOTTOM_NAV_OPTIONAL;
 }
 
 // Renders the Playlists sheet's folder list — functionally equivalent to the
@@ -3208,22 +3327,40 @@ if (typeof window !== 'undefined') {
 // the sidebar today). `hiddenFromSidebar` (v1.14.0 item 3) DOES affect this
 // list -- it's the mobile equivalent of the left sidebar, so a folder hidden
 // from one is hidden from both (via visibleSidebarFolders()).
+// v1.44 IA: the mobile Playlists sheet also surfaces the Music + Books library
+// sections (mirrors the sidebar's Library section). Gated on the same injected
+// sidebar entries so the sheet and sidebar can never disagree -- if Music/Books
+// is enabled (its sidebar entry was injected), the sheet shows it too.
+function libraryEntriesHtml() {
+  let html = '';
+  if (typeof document !== 'undefined') {
+    if (document.querySelector('[data-nav-sidebar="music"]')) {
+      html += '<a href="/music" class="sidebar-item"><i class="icon-play"></i> Music</a>';
+    }
+    if (document.querySelector('[data-nav-sidebar="books"]')) {
+      html += '<a href="/books" class="sidebar-item"><i class="icon-folder"></i> Books</a>';
+    }
+  }
+  return html;
+}
+
 function renderPlaylistsSheet(folders, folderSettings) {
   const list = document.getElementById('playlists-sheet-list');
   if (!list) return;
   const settings = folderSettings || {};
   const visible = visibleSidebarFolders(folders, settings);
+  const libEntries = libraryEntriesHtml();
   // v1.32 (Dean): the built-in Liked playlist entry -- fixed, first, static
   // markup. v1.33.1: no longer inlined here -- applied through the SAME
   // count-gated applyLikedSidebarEntry helper every sidebar surface now
   // uses (visible iff at least one liked video exists), so the sheet and
   // the sidebars can never disagree.
   if (visible.length === 0) {
-    list.innerHTML = '<div class="sidebar-item">No folders configured.</div>';
+    list.innerHTML = libEntries + '<div class="sidebar-item">No folders configured.</div>';
     applyLikedSidebarEntry(list);
     return;
   }
-  list.innerHTML = visible.map((f) => {
+  list.innerHTML = libEntries + visible.map((f) => {
     const base = f.split(/[\\/]/).pop() || f;
     const label = (settings[f] && settings[f].name) || base;
     return '<a href="/?root=' + encodeURIComponent(f) +
@@ -6080,6 +6217,11 @@ document.addEventListener('DOMContentLoaded', () => {
   injectSubscriptionsNavLinkIfEnabled();
   // v1.37.0 books: same boot-time probe-gated injection.
   injectBooksNavLinkIfEnabled();
+  // v1.44 music: same probe-gated Library-section injection.
+  injectMusicNavLinkIfEnabled();
+  // v1.44 T12: apply the user's bottom-bar layout to the STATIC items now; the
+  // async injectors (subscriptions/download) re-apply after inserting theirs.
+  applyBottomNavCustomization();
 
   // v1.15.0 item 3: one-off download header button + modal, gated by the
   // SAME capability probe pattern -- runs on every page for the same reason
@@ -6168,6 +6310,8 @@ if (typeof module !== 'undefined' && module.exports) {
     resolveAudioArtUrl,
     shouldInjectSubscriptionsNav,
     shouldInjectBooksNav,
+    shouldInjectMusicNav,
+    resolveBottomNavLayout,
     pinDeleteEndpoint,
     fisherYatesShuffle, sortItems, shouldShowShuffleButton,
     deriveOrderedIds, computeNeighbors, parentFolder,

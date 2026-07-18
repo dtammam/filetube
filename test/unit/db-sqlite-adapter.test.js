@@ -69,6 +69,11 @@ function fullFixture() {
       settings: {},
       audio: { bk1: { 0: { status: 'ready', key: 'k0' } } },
     },
+    music: {
+      folders: ['/media/tunes'],
+      tracks: { trk1: { id: 'trk1', title: 'Song One', artist: 'A', album: 'Debut', filePath: '/media/tunes/A/Debut/01 Song One.flac', rootFolder: '/media/tunes' } },
+      settings: {},
+    },
     ytdlp: {
       allowMembersOnly: false,
       subscriptions: [{ id: 'sub1', channelUrl: 'https://youtube.com/@x', name: 'X', paused: false }],
@@ -83,11 +88,13 @@ test('fresh open creates the full v1 schema with empty user tables', () => {
   const a = new SqliteAdapter(dbPath(), { log: () => {} });
   try {
     assert.deepStrictEqual(a.load(), {}, 'fresh DB assembles to an empty object');
-    for (const table of ['users', 'user_progress', 'user_liked', 'user_book_progress', 'user_book_pins', 'user_channel_pins']) {
+    for (const table of ['users', 'user_progress', 'user_liked', 'user_book_progress', 'user_book_pins', 'user_channel_pins',
+      // v1.44 schema v3: the three per-user music tables, born empty.
+      'user_music_liked', 'user_music_progress', 'user_music_state']) {
       const { c } = a.sql.prepare(`SELECT COUNT(*) AS c FROM ${table}`).get();
       assert.strictEqual(c, 0, `${table} exists and is empty (born-complete schema, exec plan)`);
     }
-    assert.strictEqual(a.sql.prepare('PRAGMA user_version').get().user_version, 2);
+    assert.strictEqual(a.sql.prepare('PRAGMA user_version').get().user_version, 3);
     // v1.43 schema v2: users.id is AUTOINCREMENT (never reuses a reaped id —
     // design-delta SUGGESTION-6). sqlite_autoindex/sqlite_sequence presence
     // is the fingerprint.
@@ -198,6 +205,7 @@ test('unknown keys throw instead of being silently dropped (top-level and contai
   try {
     assert.throws(() => a.save({ folders: [], mystery: {} }), /unknown top-level db key 'mystery'/);
     assert.throws(() => a.save({ ytdlp: { tombstones: {} } }), /unknown db key 'ytdlp\.tombstones'/);
+    assert.throws(() => a.save({ music: { playlists: {} } }), /unknown db key 'music\.playlists'/);
   } finally {
     a.close();
   }

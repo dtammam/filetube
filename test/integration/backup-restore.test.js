@@ -79,6 +79,12 @@ function fullState() {
       progress: { bk1: { locator: { kind: 'epub', cfi: 'x' }, percent: 40, updatedAt: 't' } },
       pins: [], settings: {}, audio: {},
     },
+    // v1.44: the music namespace rides the bundle (the SEVENTH-strike carrier).
+    music: {
+      folders: ['/media/music'],
+      tracks: { trk1: { id: 'trk1', title: 'Song', artist: 'A', album: 'Debut', filePath: '/media/music/A/Debut/01 Song.flac', rootFolder: '/media/music', ext: '.flac', albumArtKey: 'a'.repeat(32) } },
+      settings: {},
+    },
     ytdlp: {
       allowMembersOnly: false,
       subscriptions: [{ id: 'sub1', channelUrl: 'https://youtube.com/@x', name: 'X', paused: false }],
@@ -309,6 +315,10 @@ test('v1.43: user accounts + per-user state round-trip through backup -> wipe ->
   userStore.addLiked(extra.user.id, 'vid1', '2026-07-17T00:00:00.000Z');
   userStore.setBookProgress(extra.user.id, 'bk1', { locator: { kind: 'epub', cfi: 'y' }, percent: 60, updatedAt: '2026-07-17T00:00:00.000Z' });
   userStore.setChannelPin(extra.user.id, { id: 'cp1', channelDir: '/d/chan', label: 'Chan', pinnedAt: 't', order: 0 });
+  // v1.44 music per-user state (the SEVENTH-strike carrier rides the bundle).
+  userStore.addMusicLiked(extra.user.id, 'trk1', '2026-07-17T00:00:00.000Z');
+  userStore.setMusicProgress(extra.user.id, 'trk1', { position: 88, duration: 200, updatedAt: '2026-07-17T00:00:00.000Z' });
+  userStore.setMusicState(extra.user.id, { lastTrackId: 'trk1', queueCtx: { src: 'music', album: 'k' }, position: 88, updatedAt: '2026-07-17T00:00:00.000Z' });
 
   const bundle = await getBackup();
   const bundledExtra = bundle.users.find((u) => u.username === 'roundtripper');
@@ -340,7 +350,12 @@ test('v1.43: user accounts + per-user state round-trip through backup -> wipe ->
   assert.deepEqual(userStore.getLiked(restored.id), ['vid1'], 'their like came back');
   assert.equal(userStore.getOneBookProgress(restored.id, 'bk1').percent, 60, 'their reading position came back');
   assert.equal(userStore.getChannelPins(restored.id)[0].id, 'cp1', 'their channel pin came back');
+  // v1.44: their music state came back too.
+  assert.deepEqual(userStore.getMusicLiked(restored.id), ['trk1'], 'their music like came back');
+  assert.equal(userStore.getOneMusicProgress(restored.id, 'trk1').position, 88, 'their music position came back');
+  assert.equal(userStore.getMusicState(restored.id).lastTrackId, 'trk1', 'their resume pointer came back');
   assert.equal(loadDatabase().metadata.vid1.title, 'Clip', 'the doc tables restored in the same transaction');
+  assert.equal(loadDatabase().music.tracks.trk1.title, 'Song', 'the music namespace restored in the same transaction');
 });
 
 test('v1.43 self-lockout guard: a bundle that lacks the restoring admin (as an enabled admin) is refused whole, nothing changes', async () => {
@@ -496,6 +511,33 @@ test('v1.43.1 A1 (QA gate WARNING): a bundle just UNDER the 32mb cap restores �
   const res = await postRestore(bundle);
   assert.equal(res.status, 200, `a near-cap restore must parse (got ${res.status})`);
   assert.equal(loadDatabase().metadata.cap2899.name, 'cap-2899.mp4');
+});
+
+test('v1.44 T13: a large MUSIC library rides the bundle NEAR the cap and round-trips (music counts toward + is pinned by the 32mb limit)', async () => {
+  // Gate ADV-SUGGESTION: sit the MUSIC-only payload between every plausible
+  // regression value (e.g. a revert to 16mb) and the real cap, so this test
+  // actually pins the cap for the music path — not merely "under 32mb". A
+  // music track record built almost entirely of music tags proves music
+  // metadata itself, not video metadata, drives the bytes.
+  const big = fullState();
+  const pad = 'y'.repeat(900);
+  for (let i = 0; i < 24000; i++) {
+    const id = `mtrk${i}`;
+    big.music.tracks[id] = {
+      id, title: `Track ${i} ${pad}`, artist: `Artist ${i % 500}`, album: `Album ${i % 1200}`,
+      albumArtist: `Artist ${i % 500}`, genre: 'Rock', filePath: `/media/music/A${i % 500}/Alb${i % 1200}/${i}.flac`,
+      rootFolder: '/media/music', ext: '.flac', albumArtKey: 'b'.repeat(32), durationSec: 200, year: 2001,
+    };
+  }
+  saveDatabase(big);
+  const bundle = await getBackup();
+  const wireBytes = Buffer.byteLength(JSON.stringify(bundle));
+  assert.ok(wireBytes > 24 * 1024 * 1024 && wireBytes < 32 * 1024 * 1024,
+    `the music payload must sit between every plausible regression value and the 32mb cap (got ${wireBytes} bytes)`);
+  const res = await postRestore(bundle);
+  assert.equal(res.status, 200, `a large-music restore must parse (got ${res.status})`);
+  assert.equal(Object.keys(loadDatabase().music.tracks).length, 24001, 'every music row landed (24000 + the fullState seed)');
+  assert.equal(loadDatabase().music.tracks.mtrk23999.artist, 'Artist 499', 'deep music content survived the round-trip');
 });
 
 test('v1.43.1 A1 (adversarial WARNING-1): a MEMBER posting an oversized body gets 403 BEFORE the parse — 403, never 413', async () => {

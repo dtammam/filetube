@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <title>Books - FileTube</title>
+  <title>Music - FileTube</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
   <link rel="icon" type="image/png" sizes="512x512" href="/icons/icon-512.png">
@@ -16,16 +16,10 @@
   <meta name="apple-mobile-web-app-title" content="FileTube">
   <link rel="preload" href="/fonts/roboto.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/css/style.css">
-  <!-- v1.37.1 hotfix: this page's styles moved to /css/style.css -- the
-       SPA router swaps only #view-root, so page-local <head> styles were
-       LOST on in-app navigation (the reader rendered unstyled when opened
-       from the Books page). Shared stylesheet = styled on every path. -->
   <script>
-    /* v1.41.17 (Dean): FOUC guard -- set era+mode+icons (and suppress the text
-       logo when a custom one is configured) on <html> BEFORE first paint. This
-       page was MISSING the guard the other shells carry, so a dark-mode / retro-
-       era visitor flashed the default light/2021 theme on refresh. Mirror of
-       resolveTheme()/resolveIconSet() in /js/common.js -- keep them in sync. */
+    /* FOUC guard -- set era+mode+icons on <html> BEFORE first paint (mirror of
+       resolveTheme()/resolveIconSet() in /js/common.js; keep in sync). Same
+       block every shell carries. */
     (function () {
       var d = document.documentElement;
       try {
@@ -82,51 +76,58 @@
         <a href="/setup.html" class="sidebar-item">
           <i class="icon-cog"></i> Library Settings
         </a>
-        <!-- Subscriptions + Books sidebar links are injected by
-             public/js/common.js's capability probes -- never hardcoded, so
-             this shell behaves identically to every other page's. -->
+        <!-- Subscriptions + Books + Music sidebar links are injected by
+             public/js/common.js's capability probes -- never hardcoded. -->
       </nav>
       <div class="sidebar-section">
         <div class="sidebar-section-title">Library</div>
-        <div id="sidebar-folders-list">
-          <!-- Populated dynamically -->
-        </div>
+        <div id="sidebar-folders-list"><!-- Populated dynamically --></div>
       </div>
     </aside>
 
     <main class="main-content" id="main-content">
-      <!-- Per-view content boundary (FR-1, T1): the router swaps ONLY this
-           node on in-app navigation -- see index.html's matching comment. -->
-      <div id="view-root" data-view="books">
-        <div class="books-toolbar">
-          <h2>Books</h2>
-          <div>
-            <select id="books-sort-select" class="btn btn-sm" aria-label="Sort books">
-              <option value="recent">Recently added</option>
+      <div id="view-root" data-view="music">
+        <div class="music-toolbar">
+          <h2>Music</h2>
+          <div class="music-toolbar-actions">
+            <select id="music-sort-select" class="btn btn-sm" aria-label="Sort music">
+              <option value="newest">Recently added</option>
               <option value="title-asc">Title A-Z</option>
               <option value="title-desc">Title Z-A</option>
-              <option value="author">Author</option>
-              <option value="recent-progress">Recently read</option>
+              <option value="artist-asc">Artist</option>
+              <option value="album-asc">Album</option>
+              <option value="duration-desc">Longest</option>
             </select>
-            <button class="btn btn-sm" id="books-scan-btn" type="button" title="Scan book folders now">
+            <button class="btn btn-sm" id="music-shuffle-btn" type="button" title="Shuffle all">
+              <i class="icon-shuffle"></i> Shuffle
+            </button>
+            <button class="btn btn-sm" id="music-scan-btn" type="button" title="Scan music folders now">
               <i class="icon-refresh"></i> Scan
             </button>
           </div>
         </div>
 
-        <div class="books-shelf-chips" id="books-shelf-chips"><!-- folder chips + pin toggles --></div>
+        <!-- The persistent player mounts here (FULL) while a track plays; it
+             reparents to the dock on in-app navigation (the watch-page idiom). -->
+        <div id="player-slot" class="music-player-slot" hidden></div>
+        <!-- Transient status (e.g. "Preparing track…" while an ALAC rendition
+             transcodes on demand). -->
+        <div id="music-status" class="music-status" role="status" hidden></div>
 
-        <div id="books-continue-section" hidden>
-          <h3 class="books-section-title">Continue reading</h3>
-          <div class="books-grid" id="books-continue-grid"></div>
-          <h3 class="books-section-title">All books</h3>
+        <div class="music-tabs" id="music-tabs" role="tablist">
+          <button type="button" class="music-tab active" data-tab="albums" role="tab">Albums</button>
+          <button type="button" class="music-tab" data-tab="artists" role="tab">Artists</button>
+          <button type="button" class="music-tab" data-tab="songs" role="tab">Songs</button>
+          <button type="button" class="music-tab" data-tab="liked" role="tab">Liked</button>
         </div>
 
-        <div class="books-grid" id="books-grid">
-          <!-- Populated by /js/books.js -->
-        </div>
-        <div class="books-empty" id="books-empty" hidden>
-          No books yet. Add a book folder in <a href="/setup.html">Library Settings</a>, drop EPUB or PDF files in it, and scan.
+        <!-- Drill-in breadcrumb (album/artist view); hidden on the top tabs. -->
+        <div class="music-crumb" id="music-crumb" hidden></div>
+
+        <!-- Album/artist grids OR a song list render into this host. -->
+        <div id="music-content"></div>
+        <div class="music-empty" id="music-empty" hidden>
+          No music yet. Add a music folder in <a href="/setup.html">Library Settings</a>, drop MP3/M4A/FLAC/WAV files in it, and scan.
         </div>
       </div>
     </main>
@@ -149,7 +150,6 @@
       <i class="icon-cog"></i>
       <span class="bottom-nav-label">Settings</span>
     </a>
-    <!-- Subscriptions/Books bottom-nav items are injected by common.js. -->
   </nav>
 
   <div class="playlists-sheet-backdrop" id="playlists-backdrop" hidden></div>
@@ -161,16 +161,11 @@
     <div class="playlists-sheet-list" id="playlists-sheet-list"></div>
   </aside>
 
-  <!-- Core view scripts on every shell (FR-1, T1 -- see index.html's
-       matching comment); books.js is loaded directly here because a hard
-       load/deep link of THIS page needs it immediately (progressive
-       enhancement), while every OTHER shell lazy-loads it via
-       common.js's ensureViewScriptLoaded on first in-app navigation. -->
   <script src="/js/common.js"></script>
   <script src="/js/main.js"></script>
   <script src="/js/watch.js"></script>
   <script src="/js/setup.js"></script>
   <script src="/js/player.js"></script>
-  <script src="/js/books.js"></script>
+  <script src="/js/music.js"></script>
 </body>
 </html>

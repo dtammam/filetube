@@ -56,3 +56,28 @@ test('parseFfprobeTags: an all-whitelisted-tags-present payload surfaces every o
     assert.ok(key in out, `expected ${key} to be present when every whitelisted tag is supplied`);
   }
 });
+
+// v1.44 music: the new canonical music tags + their alias spellings.
+test('parseFfprobeTags: surfaces the canonical music tags albumartist/track/disc', () => {
+  const out = parseFfprobeTags({ format: { tags: { albumartist: 'VA', track: '3/12', disc: '1/2' } } });
+  assert.equal(out.albumartist, 'VA');
+  assert.equal(out.track, '3/12');
+  assert.equal(out.disc, '1/2');
+});
+
+test('parseFfprobeTags: folds album_artist/tracknumber/discnumber aliases into the canonical keys', () => {
+  const out = parseFfprobeTags({ format: { tags: { album_artist: 'Alias VA', tracknumber: '7', discnumber: '2' } } });
+  assert.equal(out.albumartist, 'Alias VA', 'album_artist folds into albumartist');
+  assert.equal(out.track, '7', 'tracknumber folds into track');
+  assert.equal(out.disc, '2', 'discnumber folds into disc');
+});
+
+test('parseFfprobeTags: the canonical tag WINS over its alias when both are present', () => {
+  const out = parseFfprobeTags({ format: { tags: { albumartist: 'Canonical', album_artist: 'Alias' } } });
+  assert.equal(out.albumartist, 'Canonical');
+});
+
+test('parseFfprobeTags: "album artist" (space spelling) also folds into albumartist', () => {
+  const out = parseFfprobeTags({ format: { tags: { 'album artist': 'Spaced VA' } } });
+  assert.equal(out.albumartist, 'Spaced VA');
+});

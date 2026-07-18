@@ -60,6 +60,10 @@ const { isYtdlpIntermediate } = require('./lib/ytdlpIntermediates');
 // requiring them has no side effects (the ytdlp direct-require posture).
 const booksStore = require('./lib/books/store');
 const booksScan = require('./lib/books/scan');
+// v1.44 music library: same direct-require namespace-owner posture as books.
+const musicStore = require('./lib/music/store');
+const musicScan = require('./lib/music/scan');
+const musicQuery = require('./lib/music/query');
 // v1.38.0 TTS "Listen from Here": pure leaf helpers (env-config parse, engine
 // argv builders, chapter chunker). Same direct-require posture as the store.
 const booksTtsConfig = require('./lib/books/tts-config');
@@ -116,6 +120,12 @@ const THUMBNAIL_DIR = path.join(DATA_DIR, '.thumbnails');
 // so the media scan's thumbnail unlink loop can never touch a book cover
 // and the book scanner's cover pruning can never touch a video thumbnail.
 const BOOKCOVER_DIR = path.join(DATA_DIR, '.bookcovers');
+// v1.44 music: album art lives in a MUSIC-OWNED dir (same isolation rule as
+// .bookcovers) -- keyed by album (md5 of the album grouping key), NOT by track
+// id, so all tracks of an album share one art file. The music scan's prune is
+// the ONLY writer that unlinks here, and only when an album's LAST track is
+// pruned; no cross-module unlink can ever touch it.
+const ALBUMART_DIR = path.join(DATA_DIR, '.albumart');
 // v1.38.0 TTS: per-chapter synthesized audio cache (<key>.m4a + <key>.blocks.json),
 // a sibling of the thumbnail/cover caches. Created on demand by the worker.
 const TTS_CACHE_DIR = path.join(DATA_DIR, 'tts-cache');
@@ -602,6 +612,11 @@ function replacePersistedState(populateFn) {
       clearTimeout(bookProgressFlushTimer);
       bookProgressFlushTimer = null;
     }
+    pendingMusicProgress.clear();
+    if (musicProgressFlushTimer) {
+      clearTimeout(musicProgressFlushTimer);
+      musicProgressFlushTimer = null;
+    }
     dbCache = null;
     dbCacheValid = false;
   });
@@ -961,10 +976,18 @@ function evictTranscodeCache(maxBytes, justProducedPath) {
   // explicit user intent wins over the pin. They still COUNT toward the
   // displayed cache size (honest accounting).
   const pinAudioSidecars = !!(getCachedDatabase().settings || {}).preExtractAudio;
+  // Gate QA-WARNING: the preExtractAudio pin protects VIDEO background-audio
+  // sidecars only -- a music ALAC rendition (also `<id>.m4a` in TRANSCODE_DIR,
+  // shared by design) must NOT be pinned, or a large ALAC library would grow
+  // eviction-immune. A sidecar's id is a db.metadata (video) id; a rendition's
+  // id is a db.music.tracks id, so metadata membership discriminates the two.
+  const pinnableVideoMeta = pinAudioSidecars ? (getCachedDatabase().metadata || {}) : null;
+  const isPinnedSidecar = (name) => pinAudioSidecars && name.endsWith('.m4a')
+    && Object.prototype.hasOwnProperty.call(pinnableVideoMeta, name.slice(0, -'.m4a'.length));
   const files = [];
   for (const name of entries) {
     if (!isCompletedTranscode(name)) continue;
-    if (pinAudioSidecars && name.endsWith('.m4a')) continue;
+    if (isPinnedSidecar(name)) continue;
     const p = path.join(TRANSCODE_DIR, name);
     try {
       const st = fs.statSync(p);
@@ -1065,10 +1088,13 @@ function sweepAgedTranscodes(now) {
   // v1.35 (preExtractAudio): same sidecar pin as evictTranscodeCache -- see
   // its comment there.
   const pinAudioSidecars = !!(db.settings || {}).preExtractAudio;
+  // Same video-only sidecar scoping as evictTranscodeCache (music ALAC
+  // renditions must stay evictable) -- see that comment.
+  const pinnableVideoMeta = pinAudioSidecars ? (db.metadata || {}) : null;
   const files = [];
   for (const name of entries) {
     if (!isCompletedTranscode(name)) continue;
-    if (pinAudioSidecars && name.endsWith('.m4a')) continue;
+    if (pinAudioSidecars && name.endsWith('.m4a') && Object.prototype.hasOwnProperty.call(pinnableVideoMeta, name.slice(0, -'.m4a'.length))) continue;
     const p = path.join(TRANSCODE_DIR, name);
     try {
       const st = fs.statSync(p);
@@ -2191,6 +2217,10 @@ function reconcileTranscode(item) {
 const EMBEDDED_TAG_WHITELIST = [
   'title', 'artist', 'album', 'date', 'genre', 'composer',
   'description', 'comment', 'show', 'copyright',
+  // v1.44 music: album grouping + track ordering. `albumartist`/`track`/`disc`
+  // are the canonical ffmpeg tag names; common aliases (album_artist,
+  // tracknumber, discnumber) are folded in by the post-processing below.
+  'albumartist', 'track', 'disc',
 ];
 function parseFfprobeTags(input) {
   let j = input;
@@ -2211,6 +2241,19 @@ function parseFfprobeTags(input) {
   }
   // "year" is a common alias for date (ID3 etc.) — fall back to it.
   if (!out.date && lower.year) out.date = lower.year;
+  // v1.44 music: fold common alias spellings into the canonical keys (the
+  // whitelist only copies exact matches, so these aliases need explicit
+  // fallbacks). `album_artist`/`album artist` (ffmpeg/ID3 TPE2),
+  // `tracknumber`/`track_number`, `discnumber`/`disc_number`.
+  if (!out.albumartist && (lower.album_artist || lower['album artist'])) {
+    out.albumartist = lower.album_artist || lower['album artist'];
+  }
+  if (!out.track && (lower.tracknumber || lower.track_number)) {
+    out.track = lower.tracknumber || lower.track_number;
+  }
+  if (!out.disc && (lower.discnumber || lower.disc_number)) {
+    out.disc = lower.discnumber || lower.disc_number;
+  }
   // description and comment are frequently identical — dedup (case-insensitive).
   if (out.description && out.comment && out.description.toLowerCase() === out.comment.toLowerCase()) {
     delete out.comment;
@@ -4311,6 +4354,8 @@ function armScanTimer() {
       // v1.37.0 books: piggyback on the media interval (exec plan §2) --
       // no second timer, and a books-less install no-ops.
       scanBooks().catch(console.error);
+      // v1.44 music: same piggyback slot; a music-less install no-ops.
+      scanMusic().catch(console.error);
     }, ms).unref();
   }
   return scanTimer;
@@ -4849,15 +4894,18 @@ app.delete('/api/users/:id', (req, res) => {
   return res.json({ success: true });
 });
 
-// Remove every staged (not-yet-flushed) progress/book-progress ping owned by
-// a user id, across both coalescers — called when a user is deleted so a
-// vanished user_id never reaches a flush batch (gate WARNING-1).
+// Remove every staged (not-yet-flushed) progress/book-progress/music ping owned
+// by a user id, across all THREE coalescers — called when a user is deleted so
+// a vanished user_id never reaches a flush batch (gate WARNING-1).
 function dropPendingProgressForUser(userId) {
   for (const [key, entry] of [...pendingProgress]) {
     if (entry.userId === userId) pendingProgress.delete(key);
   }
   for (const [key, entry] of [...pendingBookProgress]) {
     if (entry.userId === userId) pendingBookProgress.delete(key);
+  }
+  for (const [key, entry] of [...pendingMusicProgress]) {
+    if (entry.userId === userId) pendingMusicProgress.delete(key);
   }
 }
 // v1.41.18 (Dean): kill the header logo FOUC at the SOURCE. The header shells
@@ -4872,10 +4920,11 @@ function dropPendingProgressForUser(userId) {
 // this is always current, needs no bootstrap, and depends on nothing
 // client-side. Only full-page loads/refreshes hit this; in-app SPA nav keeps
 // the header, so there is no FOUC there to fix.
-const FOUC_SHELL_FILES = new Set(['index.html', 'watch.html', 'stats.html', 'setup.html', 'read.html', 'books.html', 'login.html', 'welcome.html']);
+const FOUC_SHELL_FILES = new Set(['index.html', 'watch.html', 'stats.html', 'setup.html', 'read.html', 'books.html', 'music.html', 'login.html', 'welcome.html']);
 function shellHtmlForRequestPath(p) {
   if (p === '/' || p === '/index.html') return 'index.html';
   if (p === '/books' || p === '/books.html') return 'books.html';
+  if (p === '/music' || p === '/music.html') return 'music.html';
   // v1.43 auth: the pretty routes /login and /welcome serve their shells (the
   // gate above lets them through the allowlist; here they get the same
   // custom-logo/no-cache treatment as every other shell).
@@ -5101,6 +5150,17 @@ app.post('/api/config', async (req, res) => {
       const resolvedBookRoot = path.resolve(bookRoot);
       if (resolved === resolvedBookRoot || ytdlpArgs.isPathUnder(resolved, resolvedBookRoot) || ytdlpArgs.isPathUnder(resolvedBookRoot, resolved)) {
         return res.status(400).json({ error: `Media folder overlaps a book folder: ${trimmed} <-> ${bookRoot}` });
+      }
+    }
+    // v1.44 music: the reciprocal of POST /api/music/config's own three-way
+    // guard -- a media folder may not equal/contain/live inside a MUSIC root
+    // either, so ownership stays order-independent (whichever config saves
+    // second is the one that catches the overlap).
+    const musicRoots = musicStore.readMusic(loadDatabase()).folders;
+    for (const musicRoot of musicRoots) {
+      const resolvedMusicRoot = path.resolve(musicRoot);
+      if (resolved === resolvedMusicRoot || ytdlpArgs.isPathUnder(resolved, resolvedMusicRoot) || ytdlpArgs.isPathUnder(resolvedMusicRoot, resolved)) {
+        return res.status(400).json({ error: `Media folder overlaps a music folder: ${trimmed} <-> ${musicRoot}` });
       }
     }
     validFolders.push(trimmed);
@@ -5399,11 +5459,23 @@ app.post('/api/books/config', async (req, res) => {
   // HARD INVARIANT (exec plan §2): book roots may never overlap media roots
   // in EITHER direction -- a file must have exactly one owner, or the two
   // scanners' prune/merge semantics fight over it.
-  const mediaFolders = (getCachedDatabase().folders || []).map((f) => path.resolve(f));
+  const cachedForBooks = getCachedDatabase();
+  const mediaFolders = (cachedForBooks.folders || []).map((f) => path.resolve(f));
   for (const bookRoot of resolved) {
     for (const mediaRoot of mediaFolders) {
       if (bookRoot === mediaRoot || ytdlpArgs.isPathUnder(bookRoot, mediaRoot) || ytdlpArgs.isPathUnder(mediaRoot, bookRoot)) {
         return res.status(400).json({ error: `Book folder overlaps a media folder: ${bookRoot} <-> ${mediaRoot}` });
+      }
+    }
+  }
+  // v1.44 music: reciprocal of the music-config guard -- a book root may not
+  // overlap a MUSIC root either (both directions), so the three collections
+  // stay mutually disjoint regardless of save order.
+  const musicFoldersForBooks = (musicStore.readMusic(cachedForBooks).folders || []).map((f) => path.resolve(f));
+  for (const bookRoot of resolved) {
+    for (const musicRoot of musicFoldersForBooks) {
+      if (bookRoot === musicRoot || ytdlpArgs.isPathUnder(bookRoot, musicRoot) || ytdlpArgs.isPathUnder(musicRoot, bookRoot)) {
+        return res.status(400).json({ error: `Book folder overlaps a music folder: ${bookRoot} <-> ${musicRoot}` });
       }
     }
   }
@@ -5844,6 +5916,10 @@ app.post('/api/books/pins/reorder', (req, res) => {
 
 // The clean /books URL (express.static already serves /books.html; this
 // mirrors the ytdlp module's own /subscriptions sendFile).
+app.get('/music', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'music.html'));
+});
+
 app.get('/books', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'books.html'));
 });
@@ -5970,6 +6046,624 @@ function settingsResponse(settings) {
     customLogoDark: typeof settings.customLogoDarkMime === 'string' && settings.customLogoDarkMime !== ''
   };
 }
+
+// ---- Music library (v1.44) --------------------------------------------------
+//
+// The music library's server half: its OWN folder config (`db.music.folders`
+// -- never db.folders/db.books.folders), its own scanner with the media/books
+// mount-loss discipline, album art under ALBUMART_DIR, and per-user liked/
+// progress/resume through userStore. Everything degrades to a no-op on a
+// music-less install (zero folders = zero scans = zero db writes). Full
+// design: docs/exec-plans/active/v1.44-music-library.md.
+
+let musicScanState = { scanning: false, lastScan: null, rescanRequested: false };
+let deferredMusicRescanTimer = null;
+
+function currentMusicScanState() {
+  return musicScanState;
+}
+
+// The injected ffprobe probe (server-side spawn; lib/music/scan.js stays
+// CI-testable by never spawning itself). One probe yields the tags, the audio
+// codec (for the ALAC transcode gate, T7), the duration, and whether the file
+// carries an embedded cover picture. Degrade-safe: null on ffmpeg-unavailable
+// or any probe/parse error (the file still indexes by path-convention).
+function probeMusicTrack(filePath) {
+  return new Promise((resolve) => {
+    if (!ffmpegAvailable) { resolve(null); return; }
+    execFile('ffprobe', buildFfprobeArgs(filePath), { maxBuffer: 16 * 1024 * 1024 }, (err, stdout) => {
+      if (err || !stdout) { resolve(null); return; }
+      let parsed;
+      try { parsed = JSON.parse(stdout); } catch (_) { resolve(null); return; }
+      let tags = {};
+      let streams = {};
+      try { tags = parseFfprobeTags(parsed); } catch (_) { tags = {}; }
+      try { streams = parseFfprobeStreams(parsed); } catch (_) { streams = {}; }
+      let durationSec = 0;
+      const d = parsed && parsed.format && Number(parsed.format.duration);
+      if (Number.isFinite(d) && d > 0) durationSec = d;
+      const strs = parsed && Array.isArray(parsed.streams) ? parsed.streams : [];
+      const hasEmbeddedArt = strs.some((s) => s && s.disposition && s.disposition.attached_pic === 1);
+      resolve({ tags, durationSec, codec: streams.audioCodec || null, hasEmbeddedArt });
+    });
+  });
+}
+
+function albumArtExists(albumArtKey) {
+  return fs.existsSync(path.join(ALBUMART_DIR, `${albumArtKey}.jpg`))
+    || fs.existsSync(path.join(ALBUMART_DIR, `${albumArtKey}.png`));
+}
+
+// Content types for the /track/:id stream. FLAC/WAV play natively in modern
+// browsers (verify on-device); ALAC (usually in .m4a) rides the T7 transcode.
+const MUSIC_CONTENT_TYPES = {
+  '.mp3': 'audio/mpeg',
+  '.m4a': 'audio/mp4',
+  '.aac': 'audio/aac',
+  '.flac': 'audio/flac',
+  '.wav': 'audio/wav',
+};
+
+// v1.44 T7: the ALAC transcode gate. CONSERVATIVE, positive-identification
+// only — only a probed `alac` codec transcodes; a null/unknown/absent codec
+// (probe failed or ffmpeg absent) NEVER flags a file (the "degrade safely"
+// contract — a false transcode would be worse than a direct stream that the
+// browser might handle). Everything else (mp3/aac/flac/pcm) streams natively.
+function musicCodecNeedsTranscode(codec) {
+  return typeof codec === 'string' && codec.toLowerCase() === 'alac';
+}
+
+// A tiny, MUSIC-OWNED transcode queue (never the video audio-extract queue,
+// which writes db.metadata[id].audioStatus — a music id would pollute the
+// video namespace). Renditions land at audioPath(id) so they share the
+// TRANSCODE_DIR cache management (LRU eviction, tmp cleanup, age sweep) for
+// free; readiness is tracked by FILE EXISTENCE alone (no db write on the hot
+// path). Reuses buildAudioExtractArgs (-vn AAC/160k m4a) — for an ALAC source
+// `-vn` also drops any embedded cover-art video stream, exactly right.
+const musicTranscodeQueue = [];
+let musicTranscodeBusy = false;
+function queueMusicTranscode(id, srcPath) {
+  if (!ffmpegAvailable) return;
+  if (musicTranscodeQueue.some((job) => job.id === id)) return; // already queued
+  musicTranscodeQueue.push({ id, srcPath });
+  processMusicTranscodeQueue();
+}
+function processMusicTranscodeQueue() {
+  if (musicTranscodeBusy || musicTranscodeQueue.length === 0) return;
+  const { id, srcPath } = musicTranscodeQueue.shift();
+  if (!fs.existsSync(srcPath)) { processMusicTranscodeQueue(); return; }
+  const outPath = audioPath(id);
+  if (fs.existsSync(outPath)) { processMusicTranscodeQueue(); return; }
+  musicTranscodeBusy = true;
+  const tmpPath = `${outPath}.tmp.m4a`;
+  let proc;
+  try {
+    proc = spawn('ffmpeg', buildAudioExtractArgs(srcPath, tmpPath));
+  } catch (e) {
+    console.error(`music: failed to start ALAC transcode for ${srcPath}:`, e.message);
+    musicTranscodeBusy = false;
+    processMusicTranscodeQueue();
+    return;
+  }
+  proc.stderr.on('data', () => { /* drain */ });
+  proc.on('error', (e) => {
+    console.error(`music: ALAC transcode process error for ${srcPath}:`, e.message);
+    try { fs.unlinkSync(tmpPath); } catch (_) { /* best-effort */ }
+    musicTranscodeBusy = false;
+    processMusicTranscodeQueue();
+  });
+  proc.on('close', (code) => {
+    musicTranscodeBusy = false;
+    if (code === 0) {
+      try { fs.renameSync(tmpPath, outPath); } catch (e) {
+        console.error(`music: could not finalize ALAC rendition for ${srcPath}:`, e.message);
+        try { fs.unlinkSync(tmpPath); } catch (_) { /* best-effort */ }
+      }
+    } else {
+      console.error(`music: ALAC transcode failed (exit ${code}) for ${srcPath}`);
+      try { fs.unlinkSync(tmpPath); } catch (_) { /* best-effort */ }
+    }
+    processMusicTranscodeQueue();
+  });
+}
+
+// Square album-art placeholder (album/artist text, escaped exactly like the
+// bookcover placeholder -- a hostile tag must never become markup). Glyph-free
+// (no emoji): a simple record-styled square.
+function musicArtPlaceholderSvg(track) {
+  const album = String((track && track.album) || 'Music');
+  const artist = String((track && track.artist) || '');
+  const clip = (s, n) => (s.length > n ? `${s.substring(0, n - 2)}...` : s);
+  return `
+    <svg width="240" height="240" viewBox="0 0 240 240" xmlns="http://www.w3.org/2000/svg">
+      <rect width="240" height="240" fill="#3a3f58"/>
+      <circle cx="120" cy="108" r="52" fill="none" stroke="#8890b5" stroke-width="2"/>
+      <circle cx="120" cy="108" r="10" fill="#8890b5"/>
+      <text x="120" y="196" font-family="Arial, sans-serif" font-size="15" fill="#e8e8f0" text-anchor="middle" font-weight="bold">${escapeHtml(clip(album, 22))}</text>
+      <text x="120" y="216" font-family="Arial, sans-serif" font-size="11" fill="#aab" text-anchor="middle">${escapeHtml(clip(artist, 26))}</text>
+    </svg>
+  `;
+}
+
+// Resolve one album's art (best-effort, idempotent, never throws): embedded
+// attached-pic via ffmpeg (re-encoded to a consistent .jpg), else a sidecar
+// cover.jpg/folder.jpg/front.* copied verbatim. Skips entirely if the album
+// already has an art file.
+async function extractAlbumArt(job) {
+  if (!job || typeof job.albumArtKey !== 'string') return;
+  const jpgPath = path.join(ALBUMART_DIR, `${job.albumArtKey}.jpg`);
+  const pngPath = path.join(ALBUMART_DIR, `${job.albumArtKey}.png`);
+  if (fs.existsSync(jpgPath) || fs.existsSync(pngPath)) return; // idempotent
+  try { fs.mkdirSync(ALBUMART_DIR, { recursive: true }); } catch (_) { /* best-effort */ }
+  if (job.hasEmbeddedArt && ffmpegAvailable) {
+    const tmp = `${jpgPath}.tmp.jpg`;
+    const ok = await new Promise((resolve) => {
+      execFile('ffmpeg', ['-v', 'error', '-i', job.sourceFilePath, '-an', '-map', '0:v:0', '-frames:v', '1', '-c:v', 'mjpeg', '-y', tmp], { maxBuffer: 16 * 1024 * 1024 }, (err) => resolve(!err));
+    });
+    if (ok) {
+      try { fs.renameSync(tmp, jpgPath); return; } catch (_) { /* fall through to sidecar */ }
+    }
+    try { fs.unlinkSync(tmp); } catch (_) { /* best-effort */ }
+  }
+  const sidecar = musicScan.findSidecarArt(job.dir);
+  if (sidecar) {
+    const dest = path.extname(sidecar).toLowerCase() === '.png' ? pngPath : jpgPath;
+    const tmp = `${dest}.tmp`;
+    try {
+      fs.copyFileSync(sidecar, tmp);
+      fs.renameSync(tmp, dest);
+    } catch (_) {
+      try { fs.unlinkSync(tmp); } catch (_) { /* best-effort */ }
+    }
+  }
+}
+
+async function runMusicScan() {
+  const db = loadDatabase();
+  const ns = musicStore.ensureMusic(db);
+  const folders = ns.folders.slice();
+  if (folders.length === 0 && Object.keys(ns.tracks).length === 0) return; // music-less: total no-op
+  const { tracks, survivingIds, missingRoots, erroredDirs } = await musicScan.collectTracks(folders, ns.tracks, { getMediaId, probe: probeMusicTrack });
+  for (const root of missingRoots) {
+    console.warn(`music: configured folder is missing/unmounted -- nothing under it will be pruned: ${root}`);
+  }
+
+  const pruneMissing = !!(db.settings && db.settings.pruneMissing);
+  const prunedIds = [];
+  const prunedRecords = [];
+  let finalTracks = tracks;
+  await updateDatabase((fresh) => {
+    const freshNs = musicStore.ensureMusic(fresh);
+    // The books/media Option-C mount-loss guard, applied to music: a root
+    // whose directory still exists but yielded ZERO files this pass while the
+    // library previously had tracks under it is the unmounted-share signature
+    // -- treat as VANISHED (prune nothing beneath it), never a bulk deletion.
+    const effectiveMissingRoots = new Set(missingRoots);
+    for (const root of folders) {
+      if (effectiveMissingRoots.has(root)) continue;
+      const hadTracks = Object.values(freshNs.tracks).some((t) => t && t.rootFolder === root);
+      const hasSurvivors = Object.values(tracks).some((t) => t && t.rootFolder === root);
+      if (hadTracks && !hasSurvivors) {
+        effectiveMissingRoots.add(root);
+        console.warn(`music: root ${root} exists but scanned EMPTY while the library has tracks under it -- treating as unmounted, pruning nothing beneath it`);
+      }
+    }
+    const prunable = new Set(musicStore.selectPrunableTrackIds(freshNs.tracks, survivingIds, { missingRoots: effectiveMissingRoots, pruneMissing, erroredDirs }));
+    const next = {};
+    for (const [id, t] of Object.entries(tracks)) next[id] = t;
+    for (const [id, t] of Object.entries(freshNs.tracks)) {
+      if (next[id]) continue;
+      if (prunable.has(id)) {
+        prunedIds.push(id);
+        prunedRecords.push(t); // captured for the orphaned-art sweep
+        continue;
+      }
+      next[id] = t; // non-surviving but protected (mount-loss / pruneMissing off)
+    }
+    freshNs.tracks = next;
+    finalTracks = next;
+    return true;
+  });
+
+  // Per-user music state is track-id-keyed -- pruned tracks shed liked/progress
+  // and null any resume pointer that referenced them (post-commit, the
+  // removeMediaState posture; one transaction).
+  if (prunedIds.length > 0) {
+    try {
+      userStore.removeMusicState(prunedIds);
+    } catch (err) {
+      console.error('music: failed to prune per-user music state (continuing):', err && err.message);
+    }
+  }
+
+  // Album art for surviving albums that still lack an art file (best-effort).
+  try {
+    for (const job of musicScan.selectAlbumArtJobs(finalTracks, albumArtExists)) {
+      await extractAlbumArt(job);
+    }
+  } catch (err) {
+    console.error('music: album-art extraction pass failed (continuing):', err && err.message);
+  }
+
+  // Orphaned album art: unlink ONLY when an album's LAST track was pruned
+  // (selectOrphanedArtKeys excludes any key a surviving track still references).
+  for (const key of musicScan.selectOrphanedArtKeys(prunedRecords, finalTracks)) {
+    for (const ext of ['.jpg', '.png']) {
+      try { fs.unlinkSync(path.join(ALBUMART_DIR, `${key}${ext}`)); } catch (_) { /* best-effort */ }
+    }
+  }
+  // A pruned track's cached ALAC rendition (audioPath) is regenerable, but
+  // shed it now so a re-added same-name file doesn't serve a stale rendition.
+  for (const id of prunedIds) {
+    try { fs.unlinkSync(audioPath(id)); } catch (_) { /* best-effort / absent */ }
+  }
+}
+
+// Overlap/coalescing guard -- the scanBooks discipline verbatim (a scan
+// requested mid-scan runs exactly one follow-up pass, never a concurrent
+// second walker; a rescan requested during the final pass arms one deferred,
+// unref'd, single-guarded re-entry).
+async function scanMusic() {
+  if (musicScanState.scanning) {
+    musicScanState.rescanRequested = true;
+    return;
+  }
+  musicScanState.scanning = true;
+  try {
+    let followups = 0;
+    do {
+      musicScanState.rescanRequested = false;
+      await runMusicScan();
+      followups++;
+    } while (musicScanState.rescanRequested && followups <= MAX_RESCAN_FOLLOWUPS);
+  } catch (err) {
+    console.error('music: scan failed:', err);
+  } finally {
+    const stillPending = musicScanState.rescanRequested;
+    musicScanState.scanning = false;
+    musicScanState.lastScan = new Date().toISOString();
+    if (stillPending && !deferredMusicRescanTimer) {
+      deferredMusicRescanTimer = setTimeout(() => {
+        deferredMusicRescanTimer = null;
+        scanMusic().catch(console.error);
+      }, 5000);
+      deferredMusicRescanTimer.unref();
+    }
+  }
+}
+
+app.get('/api/music/config', (req, res) => {
+  res.json({ folders: musicStore.readMusic(getCachedDatabase()).folders });
+});
+
+app.post('/api/music/config', async (req, res) => {
+  const { folders } = req.body || {};
+  if (!Array.isArray(folders) || !folders.every((f) => typeof f === 'string' && f.trim() !== '')) {
+    return res.status(400).json({ error: 'folders must be an array of non-empty strings' });
+  }
+  const resolved = [];
+  const seen = new Set();
+  for (const raw of folders) {
+    const folder = path.resolve(raw.trim());
+    if (!fs.existsSync(folder) || !fs.statSync(folder).isDirectory()) {
+      return res.status(400).json({ error: `Folder does not exist: ${folder}` });
+    }
+    if (seen.has(folder)) continue;
+    seen.add(folder);
+    resolved.push(folder);
+  }
+  // HARD INVARIANT (exec plan §4.4): music roots may never overlap media roots
+  // OR book roots, in EITHER direction -- a file must have exactly one owner,
+  // or the scanners' prune/merge semantics fight over it. Three-way check; the
+  // reciprocal clauses in the media/book config routes (T5) close the other
+  // direction so ownership is order-independent.
+  const cached = getCachedDatabase();
+  const mediaFolders = (cached.folders || []).map((f) => path.resolve(f));
+  const bookFolders = (booksStore.readBooks(cached).folders || []).map((f) => path.resolve(f));
+  for (const musicRoot of resolved) {
+    for (const mediaRoot of mediaFolders) {
+      if (musicRoot === mediaRoot || ytdlpArgs.isPathUnder(musicRoot, mediaRoot) || ytdlpArgs.isPathUnder(mediaRoot, musicRoot)) {
+        return res.status(400).json({ error: `Music folder overlaps a media folder: ${musicRoot} <-> ${mediaRoot}` });
+      }
+    }
+    for (const bookRoot of bookFolders) {
+      if (musicRoot === bookRoot || ytdlpArgs.isPathUnder(musicRoot, bookRoot) || ytdlpArgs.isPathUnder(bookRoot, musicRoot)) {
+        return res.status(400).json({ error: `Music folder overlaps a book folder: ${musicRoot} <-> ${bookRoot}` });
+      }
+    }
+  }
+  try {
+    await updateDatabase((db) => {
+      musicStore.ensureMusic(db).folders = resolved;
+      return true;
+    });
+  } catch (err) {
+    return res.status(500).json({ error: `Could not save music folders: ${err.message}` });
+  }
+  res.json({ folders: resolved });
+  scanMusic().catch(console.error);
+});
+
+app.post('/api/music/scan', (req, res) => {
+  const alreadyInProgress = musicScanState.scanning;
+  if (alreadyInProgress) {
+    musicScanState.rescanRequested = true;
+  } else {
+    scanMusic().catch(console.error);
+  }
+  res.status(202).json({ scanning: true, alreadyInProgress });
+});
+
+app.get('/api/music/scan-status', (req, res) => {
+  res.json(musicScanState);
+});
+
+// ---- Music: per-user progress coalescer (T8) --------------------------------
+//
+// A DEDICATED coalescer (never the video/book ones): the video flush filters
+// on db.metadata and the book flush on db.books.items, but music ids live in
+// db.music.tracks. Same >=5:1 write-amp contract (one transaction per flush
+// window), same FK-poison guard (userStore.setMusicProgressBatch filters
+// deleted users before the txn), same deleted-track guard (a flush must never
+// resurrect progress for a pruned track). Staging key is `<userId>:<trackId>`
+// (pendingProgressKey, shared).
+const pendingMusicProgress = new Map();
+let musicProgressFlushTimer = null;
+let musicProgressFlushWriteCount = 0;
+function __getMusicProgressFlushWriteCount() {
+  return musicProgressFlushWriteCount;
+}
+function currentMusicProgressFlushTimer() {
+  return musicProgressFlushTimer;
+}
+function flushPendingMusicProgress() {
+  if (musicProgressFlushTimer) {
+    clearTimeout(musicProgressFlushTimer);
+    musicProgressFlushTimer = null;
+  }
+  if (pendingMusicProgress.size === 0) return Promise.resolve(false);
+  const snapshot = [...pendingMusicProgress.values()];
+  pendingMusicProgress.clear();
+  return updateDatabase((db) => {
+    const ns = musicStore.readMusic(db);
+    // Deleted-between-ping-and-flush guard (OWN-property, the __proto__ lesson):
+    // never resurrect progress for a pruned track.
+    const rows = snapshot.filter((entry) => Object.prototype.hasOwnProperty.call(ns.tracks, entry.trackId));
+    if (rows.length > 0) {
+      userStore.setMusicProgressBatch(rows);
+      musicProgressFlushWriteCount++;
+    }
+    return false; // per-user rows only -- never a doc-table write from a flush
+  }).then(() => true).catch((err) => {
+    console.error('Error flushing batched music progress:', err);
+  });
+}
+function armMusicProgressFlushTimerIfNeeded() {
+  if (musicProgressFlushTimer) return;
+  musicProgressFlushTimer = setTimeout(flushPendingMusicProgress, PROGRESS_FLUSH_MS);
+  musicProgressFlushTimer.unref();
+}
+// Read-your-writes overlay: pending first, then the committed user_music_progress row.
+function effectiveMusicProgress(userId, id) {
+  const pending = pendingMusicProgress.get(pendingProgressKey(userId, id));
+  if (pending) return pending.value;
+  return userStore.getOneMusicProgress(userId, id);
+}
+
+// ---- Music: read APIs + track/art serving (T6) ------------------------------
+
+// OWN-property track lookup (gate ADV-WARNING-2): a bare `tracks[id]` treats
+// inherited Object.prototype keys ('__proto__'/'constructor'/'toString') as
+// existing tracks, so a crafted id would pass every route's existence check
+// and write a junk per-user row that then rides the backup. Every music route
+// resolves a track through this, mirroring the video like route's
+// hasOwnProperty guard and the coalescer's own deleted-track filter.
+function ownTrack(tracks, id) {
+  return Object.prototype.hasOwnProperty.call(tracks, id) ? tracks[id] : undefined;
+}
+
+// The public list-item shape for a track: the track record plus this user's
+// liked flag and resume position (per-user, keyed by req.user.id -- never the
+// frozen doc record). filePath is deliberately NOT surfaced (path scrub).
+function publicTrackListItem(track, userId, likedSet, progressMap) {
+  const liked = likedSet ? likedSet.has(track.id) : false;
+  const prog = progressMap ? progressMap[track.id] : null;
+  return {
+    id: track.id,
+    title: track.title,
+    artist: track.artist,
+    album: track.album,
+    albumArtist: track.albumArtist,
+    trackNo: track.trackNo,
+    discNo: track.discNo,
+    durationSec: track.durationSec,
+    year: track.year,
+    genre: track.genre,
+    ext: track.ext,
+    folderName: track.folderName,
+    albumArtKey: track.albumArtKey,
+    hasArt: !!(track.albumArtKey && albumArtExists(track.albumArtKey)),
+    // Gate QA-CRITICAL: the client keys its transcode-prewarm poll off this,
+    // so an ALAC track's first play waits for the rendition instead of
+    // silently failing on the /track/:id 503.
+    needsTranscode: musicCodecNeedsTranscode(track.codec),
+    liked,
+    progress: prog ? { position: prog.position, duration: prog.duration, updatedAt: prog.updatedAt } : null,
+  };
+}
+
+app.get('/api/music', (req, res) => {
+  const ns = musicStore.readMusic(getCachedDatabase());
+  let list = Object.values(ns.tracks);
+  const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
+  const album = typeof req.query.album === 'string' ? req.query.album : '';
+  const artist = typeof req.query.artist === 'string' ? req.query.artist : '';
+  const root = typeof req.query.root === 'string' ? req.query.root : '';
+  if (search) list = list.filter((t) => musicQuery.matchesSearch(t, search));
+  if (album) list = list.filter((t) => musicQuery.matchesAlbum(t, album));
+  if (artist) list = list.filter((t) => musicQuery.matchesArtist(t, artist));
+  if (root) list = list.filter((t) => musicQuery.matchesRoot(t, root));
+
+  const likedSet = new Set(userStore.getMusicLiked(req.user.id));
+  if (req.query.filter === 'liked') list = list.filter((t) => likedSet.has(t.id));
+  const progressMap = userStore.getMusicProgress(req.user.id);
+  if (req.query.filter === 'recent-listening') {
+    // The "Continue listening" surface: tracks with a saved position, most
+    // recently updated first.
+    list = list.filter((t) => progressMap[t.id] && Number(progressMap[t.id].position) > 0);
+    list.sort((a, b) => String((progressMap[b.id] || {}).updatedAt || '').localeCompare(String((progressMap[a.id] || {}).updatedAt || '')));
+  } else {
+    // Default sort: album/artist context implies album order; otherwise the
+    // requested sort (newest default). seed drives a reproducible shuffle.
+    const defaultSort = (album || artist) ? 'album-order' : 'newest';
+    const sortKey = typeof req.query.sort === 'string' && req.query.sort ? req.query.sort : defaultSort;
+    const rng = sortKey === 'random' ? videoQuery.createSeededRng(videoQuery.normalizeSeed(req.query.seed)) : undefined;
+    list = musicQuery.sortTracks(list, sortKey, rng);
+  }
+
+  const total = list.length;
+  const offset = videoQuery.normalizeOffset(req.query.offset);
+  const limit = videoQuery.normalizeLimit(req.query.limit);
+  const items = list.slice(offset, offset + limit).map((t) => publicTrackListItem(t, req.user.id, likedSet, progressMap));
+  res.json({ items, total, offset, limit });
+});
+
+app.get('/api/music/albums', (req, res) => {
+  const ns = musicStore.readMusic(getCachedDatabase());
+  let list = Object.values(ns.tracks);
+  const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
+  if (search) list = list.filter((t) => musicQuery.matchesSearch(t, search));
+  // Gate QA-WARNING/ADV-SUGGESTION: paginate (the design-for-scale target) and
+  // DROP the per-row albumArtExists fs.existsSync — the client always requests
+  // /albumart/:artId, which serves the real file or an SVG placeholder, so
+  // hasArt was an unused N-stat-per-request event-loop tax at scale.
+  const albums = musicQuery.groupAlbums(list);
+  const total = albums.length;
+  const offset = videoQuery.normalizeOffset(req.query.offset);
+  const limit = videoQuery.normalizeLimit(req.query.limit);
+  res.json({ items: albums.slice(offset, offset + limit), total, offset, limit });
+});
+
+app.get('/api/music/artists', (req, res) => {
+  const ns = musicStore.readMusic(getCachedDatabase());
+  let list = Object.values(ns.tracks);
+  const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
+  if (search) list = list.filter((t) => musicQuery.matchesSearch(t, search));
+  const artists = musicQuery.groupArtists(list);
+  const total = artists.length;
+  const offset = videoQuery.normalizeOffset(req.query.offset);
+  const limit = videoQuery.normalizeLimit(req.query.limit);
+  res.json({ items: artists.slice(offset, offset + limit), total, offset, limit });
+});
+
+// Per-user liked songs (static segment -- declared BEFORE /api/music/:id).
+app.get('/api/music/liked', (req, res) => {
+  res.json({ trackIds: userStore.getMusicLiked(req.user.id) });
+});
+
+app.post('/api/music/liked/:id', (req, res) => {
+  const ns = musicStore.readMusic(getCachedDatabase());
+  if (!ownTrack(ns.tracks, req.params.id)) return res.status(404).json({ error: 'no such track' });
+  userStore.addMusicLiked(req.user.id, req.params.id, new Date().toISOString());
+  res.json({ liked: true });
+});
+
+app.delete('/api/music/liked/:id', (req, res) => {
+  userStore.removeMusicLiked(req.user.id, req.params.id);
+  res.json({ liked: false });
+});
+
+// The per-user resume pointer (Continue-listening / app-relaunch resume).
+app.get('/api/music/resume', (req, res) => {
+  res.json(userStore.getMusicState(req.user.id) || { lastTrackId: null, queueCtx: null, position: null });
+});
+
+app.post('/api/music/resume', (req, res) => {
+  const body = req.body || {};
+  const lastTrackId = typeof body.lastTrackId === 'string' ? body.lastTrackId : null;
+  const position = Number.isFinite(Number(body.position)) ? Number(body.position) : 0;
+  const queueCtx = body.queueCtx === undefined ? null : body.queueCtx;
+  userStore.setMusicState(req.user.id, { lastTrackId, queueCtx, position, updatedAt: new Date().toISOString() });
+  res.json({ ok: true });
+});
+
+// Per-track progress ping -> staged into the music coalescer (no disk I/O on
+// the request path). Static 'progress' segment declared BEFORE /api/music/:id.
+app.post('/api/music/progress', (req, res) => {
+  const body = req.body || {};
+  const id = typeof body.id === 'string' ? body.id : '';
+  if (!id) return res.status(400).json({ error: 'id required' });
+  // Accept `position` (music-native) OR `timestamp` (the shared player's wire
+  // shape, so player.js needs only an endpoint override, not a body change).
+  const raw = body.position !== undefined ? body.position : body.timestamp;
+  const position = Number.isFinite(Number(raw)) ? Number(raw) : 0;
+  const duration = Number.isFinite(Number(body.duration)) ? Number(body.duration) : 0;
+  pendingMusicProgress.set(pendingProgressKey(req.user.id, id), {
+    userId: req.user.id,
+    trackId: id,
+    value: { position, duration, updatedAt: new Date().toISOString() },
+  });
+  armMusicProgressFlushTimerIfNeeded();
+  res.json({ ok: true });
+});
+
+app.get('/api/music/progress/:id', (req, res) => {
+  const p = effectiveMusicProgress(req.user.id, req.params.id) || { position: 0, duration: 0, updatedAt: null };
+  // Surface BOTH keys: `position` (music-native) and `timestamp` (the alias the
+  // shared player reads) so either consumer works.
+  res.json({ position: p.position || 0, timestamp: p.position || 0, duration: p.duration || 0, updatedAt: p.updatedAt || null });
+});
+
+app.get('/api/music/:id', (req, res) => {
+  const ns = musicStore.readMusic(getCachedDatabase());
+  const track = ownTrack(ns.tracks, req.params.id);
+  if (!track) return res.status(404).json({ error: 'no such track' });
+  const likedSet = new Set(userStore.getMusicLiked(req.user.id));
+  const progressMap = userStore.getMusicProgress(req.user.id);
+  res.json(publicTrackListItem(track, req.user.id, likedSet, progressMap));
+});
+
+// Range-streamed audio. Native containers stream directly; a probed-ALAC
+// track is served from its cached AAC rendition, transcoding on demand (the
+// AVI->MP4 precedent, audio flavor) and answering 503 until the rendition is
+// ready (the client retries).
+app.get('/track/:id', (req, res) => {
+  const ns = musicStore.readMusic(getCachedDatabase());
+  const track = ownTrack(ns.tracks, req.params.id);
+  if (!track || typeof track.filePath !== 'string') return res.status(404).json({ error: 'no such track' });
+  if (!fs.existsSync(track.filePath)) return res.status(404).json({ error: 'file missing' });
+  if (musicCodecNeedsTranscode(track.codec)) {
+    const rendition = audioPath(track.id);
+    if (fs.existsSync(rendition)) {
+      sendRangeable(req, res, rendition, 'audio/mp4');
+      return;
+    }
+    queueMusicTranscode(track.id, track.filePath);
+    return res.status(503).json({ error: 'transcoding', codec: track.codec });
+  }
+  const contentType = MUSIC_CONTENT_TYPES[track.ext] || 'application/octet-stream';
+  sendRangeable(req, res, track.filePath, contentType);
+});
+
+// Album art by TRACK id -> its album's art file, else an escaped SVG
+// placeholder (mirrors /bookcover/:id).
+app.get('/albumart/:id', (req, res) => {
+  const ns = musicStore.readMusic(getCachedDatabase());
+  const track = ownTrack(ns.tracks, req.params.id);
+  const key = track && typeof track.albumArtKey === 'string' ? track.albumArtKey : null;
+  if (key) {
+    for (const ext of ['.jpg', '.png']) {
+      const p = path.join(ALBUMART_DIR, `${key}${ext}`);
+      if (fs.existsSync(p)) {
+        res.set('Cache-Control', 'public, max-age=86400');
+        return res.sendFile(p);
+      }
+    }
+  }
+  res.set('Content-Type', 'image/svg+xml');
+  res.set('Cache-Control', 'public, max-age=3600');
+  res.send(musicArtPlaceholderSvg(track));
+});
 
 // ---- v1.32: replaceable header logo ("white-label") -------------------------
 //
@@ -6144,7 +6838,7 @@ app.delete('/api/settings/logo', async (req, res) => {
 // session secret is NEVER part of a bundle (secrets don't ride bundles —
 // per-instance cookie isolation depends on secrets differing).
 const BACKUP_SCHEMA = 'filetube-backup-v1';
-const BACKUP_NAMESPACE_KEYS = ['folders', 'folderSettings', 'progress', 'metadata', 'liked', 'deleteTombstones', 'viewCounts', 'settings', 'books', 'ytdlp'];
+const BACKUP_NAMESPACE_KEYS = ['folders', 'folderSettings', 'progress', 'metadata', 'liked', 'deleteTombstones', 'viewCounts', 'settings', 'books', 'music', 'ytdlp'];
 
 app.get('/api/admin/backup', async (req, res) => {
   if (!requireAdmin(req, res)) return;
@@ -6212,10 +6906,18 @@ function validateBackupBundle(bundle) {
       seenNames.add(nameKey);
       if (typeof u.passwordHash !== 'string' || u.passwordHash === '') return `${where}: missing password hash`;
       if (u.role !== 'admin' && u.role !== 'member') return `${where}: role must be 'admin' or 'member'`;
-      for (const [field, kind] of [['progress', 'object'], ['bookProgress', 'object'], ['liked', 'array'], ['bookPins', 'array'], ['channelPins', 'array']]) {
+      for (const [field, kind] of [['progress', 'object'], ['bookProgress', 'object'], ['liked', 'array'], ['bookPins', 'array'], ['channelPins', 'array'],
+        // v1.44 music per-user state (the SEVENTH-strike carrier).
+        ['musicLiked', 'array'], ['musicProgress', 'object']]) {
         if (u[field] === undefined) continue;
         const ok = kind === 'array' ? Array.isArray(u[field]) : (typeof u[field] === 'object' && u[field] !== null && !Array.isArray(u[field]));
         if (!ok) return `${where}: ${field} must be an ${kind}`;
+      }
+      // musicState is a single object OR null (no resume pointer) -- validated
+      // separately since the loop above rejects null for its object fields.
+      if (u.musicState !== undefined && u.musicState !== null
+        && (typeof u.musicState !== 'object' || Array.isArray(u.musicState))) {
+        return `${where}: musicState must be an object or null`;
       }
     }
   }
@@ -6226,7 +6928,7 @@ function validateBackupBundle(bundle) {
   // Container namespaces must be objects when present (delta-round
   // residual): catching a malformed shape HERE means a 400 before the wipe
   // even starts, rather than a mid-populate rollback.
-  for (const container of ['books', 'ytdlp']) {
+  for (const container of ['books', 'music', 'ytdlp']) {
     if (bundle[container] !== undefined && (typeof bundle[container] !== 'object' || bundle[container] === null || Array.isArray(bundle[container]))) {
       return `bundle key '${container}' must be an object`;
     }
@@ -6264,7 +6966,18 @@ function validateBackupBundle(bundle) {
 // 32mb (Dean-approved, v1.43.1 intake): his prod bundle is ~2943 metadata
 // items (~1.5–2 KB each ≈ 4–6 MB) + per-user state + up to two logo
 // variants at ~2.7 MB base64 each ≈ ~12 MB realistic worst case; 32mb
-// leaves ~2.5× headroom for library growth. The chain order is the security
+// leaves ~2.5× headroom for library growth.
+// v1.44 RECOMPUTE (music added to the bundle): a music track record is small
+// (~0.3–0.5 KB of tags/paths); even a large library of ~30,000 tracks is
+// ~9–15 MB, plus per-user music state (liked ids + a per-track position map;
+// a heavy listener at ~30k positions ≈ a few MB). Worst realistic case now:
+// ~6 MB video metadata + ~15 MB music + ~12 MB two logos + a few MB per-user
+// ≈ ~33–35 MB for an EXTREME (30k-video + 30k-track + dual-logo) instance,
+// which would exceed 32mb. Dean's real instance is far under this, and the
+// cap is Dean-approved as-is for v1.44; a library that large is the documented
+// trigger to raise it (tech-debt: revisit the cap when metadata+music+logos
+// approach ~28 MB). The near-cap positive test below pins the current value so
+// a silent regression to a smaller limit fails loudly. The chain order is the security
 // posture (adversarial-seat WARNING-1): the auth gate 401s unauthenticated
 // callers before any body is read, and the requireAdmin middleware BELOW
 // runs before the parser, so a non-admin MEMBER is 403'd without the server
@@ -10412,7 +11125,7 @@ if (require.main === module) {
   const flushProgressOnExit = (exitAfter) => () => {
     // v1.37.0 books: both coalescers flush on every graceful-exit path --
     // the book flush shares the media flush's exact loss-bound contract.
-    Promise.allSettled([flushPendingProgress(), flushPendingBookProgress()]).then(() => {
+    Promise.allSettled([flushPendingProgress(), flushPendingBookProgress(), flushPendingMusicProgress()]).then(() => {
       if (exitAfter) process.exit(0);
     });
   };
@@ -10512,6 +11225,8 @@ if (require.main === module) {
         // v1.37.0 books: the boot book-scan rides the same deferred slot --
         // a books-less install makes this a pure no-op (zero folders).
         scanBooks().catch(console.error);
+        // v1.44 music: same deferred boot slot; music-less = pure no-op.
+        scanMusic().catch(console.error);
       });
     });
   })();
@@ -10548,6 +11263,19 @@ module.exports = {
   reconcileTtsCacheAtBoot,
   currentBookScanState,
   BOOKCOVER_DIR,
+  // v1.44 music: scanner + state accessor + art dir + probe/art helpers,
+  // exported for the music integration tests (same posture as scanBooks/
+  // BOOKCOVER_DIR). probeMusicTrack/extractAlbumArt are injected in tests via
+  // stubs where ffmpeg is absent.
+  scanMusic,
+  currentMusicScanState,
+  ALBUMART_DIR,
+  albumArtExists,
+  musicCodecNeedsTranscode,
+  flushPendingMusicProgress,
+  currentMusicProgressFlushTimer,
+  effectiveMusicProgress,
+  __getMusicProgressFlushWriteCount,
   flushPendingBookProgress,
   currentBookProgressFlushTimer,
   effectiveBookProgress,

@@ -117,39 +117,42 @@ test('setting OFF: no scan-time extraction happens at all (lazy-on-first-watch b
   }
 });
 
-test('pinning: while ON, .m4a sidecars survive the size-cap eviction and the age sweep; OFF restores normal eviction', () => {
+test('pinning: while ON, a VIDEO .m4a sidecar survives eviction/age-sweep, a MUSIC .m4a rendition does NOT; OFF restores normal eviction', () => {
   const TRANSCODE_DIR = path.dirname(audioPath('pin-probe'));
   fs.mkdirSync(TRANSCODE_DIR, { recursive: true });
-  const m4a = path.join(TRANSCODE_DIR, 'pinned1111.m4a');
+  const m4a = path.join(TRANSCODE_DIR, 'pinned1111.m4a'); // id IS a db.metadata video -> a real sidecar
+  const musicM4a = path.join(TRANSCODE_DIR, 'musicrend99.m4a'); // id is a MUSIC track -> a rendition, NOT pinned
   const mp4 = path.join(TRANSCODE_DIR, 'evictme222.mp4');
   const seed = () => {
-    fs.writeFileSync(m4a, Buffer.alloc(4000));
-    fs.writeFileSync(mp4, Buffer.alloc(4000));
+    for (const f of [m4a, musicM4a, mp4]) fs.writeFileSync(f, Buffer.alloc(4000));
     const old = Date.now() - 90 * 24 * 60 * 60 * 1000;
-    fs.utimesSync(m4a, old / 1000, old / 1000);
-    fs.utimesSync(mp4, old / 1000, old / 1000);
+    for (const f of [m4a, musicM4a, mp4]) fs.utimesSync(f, old / 1000, old / 1000);
   };
-
-  // ON: the mp4 is evictable, the m4a is pinned.
-  saveDatabase({
-    folders: [], folderSettings: {}, progress: {}, metadata: {},
-    settings: baseSettings({ preExtractAudio: true, cacheMaxAgeDays: 1 }),
+  // Gate QA-WARNING: the pin protects VIDEO sidecars only — a sidecar's id is a
+  // db.metadata id; a music ALAC rendition's id is a db.music.tracks id (never
+  // in metadata), so it stays evictable even with the setting ON.
+  const withVideo = (extra) => ({
+    folders: [], folderSettings: {}, progress: {},
+    metadata: { pinned1111: { id: 'pinned1111', type: 'video', ext: '.mp4', title: 'V' } },
+    settings: baseSettings(extra),
   });
+
+  // ON: the video sidecar is pinned; the mp4 AND the music rendition evict.
+  saveDatabase(withVideo({ preExtractAudio: true, cacheMaxAgeDays: 1 }));
   seed();
   evictTranscodeCache(1000); // cap far below the combined size
-  assert.ok(fs.existsSync(m4a), 'size-cap eviction must skip a pinned sidecar');
+  assert.ok(fs.existsSync(m4a), 'size-cap eviction must skip a pinned VIDEO sidecar');
+  assert.ok(!fs.existsSync(musicM4a), 'a MUSIC rendition is NOT pinned — it evicts normally');
   assert.ok(!fs.existsSync(mp4), 'the mp4 is still evicted normally');
   seed();
   sweepAgedTranscodes(Date.now());
-  assert.ok(fs.existsSync(m4a), 'the age sweep must skip a pinned sidecar');
+  assert.ok(fs.existsSync(m4a), 'the age sweep must skip a pinned VIDEO sidecar');
+  assert.ok(!fs.existsSync(musicM4a), 'the aged MUSIC rendition still sweeps');
   assert.ok(!fs.existsSync(mp4), 'the aged mp4 still sweeps');
 
-  // OFF: the m4a becomes an ordinary cache entry again.
-  saveDatabase({
-    folders: [], folderSettings: {}, progress: {}, metadata: {},
-    settings: baseSettings({ preExtractAudio: false, cacheMaxAgeDays: 1 }),
-  });
+  // OFF: the video sidecar becomes an ordinary cache entry again.
+  saveDatabase(withVideo({ preExtractAudio: false, cacheMaxAgeDays: 1 }));
   seed();
   sweepAgedTranscodes(Date.now());
-  assert.ok(!fs.existsSync(m4a), 'turning the setting OFF un-pins (normal age sweep applies)');
+  assert.ok(!fs.existsSync(m4a), 'turning the setting OFF un-pins the video sidecar (normal age sweep applies)');
 });

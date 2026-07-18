@@ -101,3 +101,29 @@
 - **Revisit trigger:** the v1.44 RBAC/rate-limit wave (already scoped in the multiuser tranche plan), or any move to expose the instance beyond the household proxy.
 - **Severity:** Low.
 - **Source:** v1.43.1 two-reviewer gate (QA + adversarial seats, suggestions).
+
+## #42 — v1.44 music: bottom-bar layout + home-row toggles are localStorage-only (no cross-device server mirror)
+- **What:** the customizable bottom-bar config (`ft-bottomnav`) and the two "Continue reading/listening" home-row toggles are stored device-local in localStorage, consistent with locked intake #6 ("localStorage stays the immediate device-local source of truth"). The v1.44 exec plan §4.12/§4.13 had specified these as per-user, server-authoritative settings mirrored to `settings_json` (like theme/era/icons). They are NOT mirrored: `MIRRORED_SETTING_KEYS` (server.js) only accepts bounded string values, and widening it to an array/object config is its own gate-worthy data path.
+- **Effect:** two household members sharing one browser see the same bar/home-row prefs (no per-user separation despite the account system), and a fresh device/reinstall starts at defaults. Consistent with every OTHER display pref (resume threshold, debug, sorts — all localStorage-only); only theme/era/icons mirror today.
+- **Fix direction:** extend `/api/me/settings` (and `MIRRORED_SETTING_KEYS`) to accept a validated `bottomNav` object + the two boolean flags, mirror to `settings_json`, and hydrate from `GET /api/auth/me` on a fresh device (the theme-mirror precedent). Its own small gated change.
+- **Severity:** Low. Disclosed at the v1.44 gate (QA seat, WARNING) — surfaced to Dean explicitly for agree-to-defer vs implement.
+- **Source:** v1.44 two-reviewer gate (QA seat).
+
+## #43 — v1.44 music: rekeyMusicState has no caller (no move-a-track feature yet)
+- **What:** `lib/auth/store.js:rekeyMusicState` (carry a track's per-user liked/progress/resume-pointer old→new id) is fully implemented + unit-tested but currently UNCALLED — v1.44 shipped no music-equivalent of `moveItemToFolder`/`rekeyMediaState`. It was built proactively as the same-commit id-keyed carrier discipline (a future move-track feature must not silently drop per-user music state).
+- **Fix direction:** wire it at the move-track call site when that feature lands; the helper already exists, so re-discovery isn't needed.
+- **Severity:** None (dead code, not a bug). Filed so the helper is remembered.
+- **Source:** v1.44 two-reviewer gate (QA seat, SUGGESTION).
+
+## #44 — v1.44 music: the 32mb restore cap can be exceeded by an EXTREME combined library (documented)
+- **What:** the recomputed cap-headroom math (server.js) shows an extreme ~30k-video + ~30k-track + dual-custom-logo instance can produce a backup bundle of ~33-35MB, which would 413 on its OWN restore (the route parser caps at 32mb). Dean-approved as-is for v1.44 (his real instance is far under this).
+- **Fix direction:** raise the cap (Dean-approved value) when metadata+music+logos approach ~28MB, or stream/chunk the restore body. The near-cap backup test pins the current value so a silent regression fails.
+- **Revisit trigger:** a real bundle approaching ~28MB on the wire.
+- **Severity:** Low. Disclosed at the v1.44 gate (adversarial seat, SUGGESTION).
+- **Source:** v1.44 two-reviewer gate (adversarial seat).
+
+## #45 — v1.44 music: media/book config reciprocal overlap loops re-read loadDatabase() per submitted folder
+- **What:** the media-config and books-config reciprocal overlap checks read `loadDatabase()` (a full read) inside the per-submitted-folder loop, once for the book-root check and now again for the music-root check. Pre-existing pattern from the books wave; the music addition doubles the per-folder redundant reads. Negligible at typical folder counts (a handful).
+- **Fix direction:** hoist the book-root + music-root reads to a single `loadDatabase()` before the loop, if this route is ever touched again.
+- **Severity:** Very low. Non-blocking SUGGESTION.
+- **Source:** v1.44 two-reviewer gate (QA seat, SUGGESTION).

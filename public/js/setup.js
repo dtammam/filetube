@@ -26,6 +26,8 @@ let loadedDefaultView = null; // null until the /api/settings fetch resolves
 // v1.38.0 Part A: book folders — an unordered set of paths (no per-folder
 // display/hide/reorder), wired to the existing /api/books/config routes.
 let bookFolders = [];
+// v1.44: music folders — same unordered-set shape as book folders.
+let musicFolders = [];
 let controller = null;
 // C4 remediation (v1.16.0): tracks pollScanStatus's one-shot post-scan
 // redirect timer so destroy() can clear it outright (belt-and-suspenders on
@@ -559,6 +561,94 @@ function loadDebugLifecycleControl() {
   check.checked = raw === '1';
 }
 
+// v1.44: home-row toggle prefill/wire (device-local, default ON -- stored '0'
+// = off). Mirrors main.js's homeRowEnabled so the Settings UI and the home
+// render never disagree.
+function loadHomeRowControl(id, key) {
+  const check = document.getElementById(id);
+  if (!check) return;
+  let raw = null;
+  try { raw = localStorage.getItem(key); } catch (_) { /* storage disabled -- default on */ }
+  check.checked = raw !== '0';
+}
+function wireHomeRowToggle(id, key, signal) {
+  const check = document.getElementById(id);
+  if (!check) return;
+  check.addEventListener('change', (e) => {
+    try {
+      if (e.target.checked) localStorage.removeItem(key);
+      else localStorage.setItem(key, '0');
+    } catch (_) { /* storage disabled/full -- best-effort only */ }
+  }, { signal });
+}
+
+// v1.44 T12: the customizable bottom-bar editor. Lists the optional items
+// (labels below), each with a Show toggle + up/down reorder, driving the
+// device-local config through common.js's exposed helpers. applyBottomNav-
+// Customization re-renders the live bar immediately.
+const BOTTOMBAR_LABELS = { playlists: 'Playlists', subscriptions: 'Subscriptions', 'oneoff-download': 'Download', theme: 'Light / Dark' };
+function renderBottomBarEditor(signal) {
+  const host = document.getElementById('bottombar-editor');
+  const FT = typeof window !== 'undefined' ? window.FileTube : null;
+  if (!host || !FT || !FT.readBottomNavConfig) return;
+  const optional = FT.BOTTOM_NAV_OPTIONAL || [];
+  const cfg = FT.readBottomNavConfig();
+  const hidden = new Set(Array.isArray(cfg.hidden) ? cfg.hidden : []);
+  const order = Array.isArray(cfg.order) ? cfg.order : [];
+  // Config order first, then any unlisted optionals in their default order.
+  const seen = new Set();
+  const items = [];
+  order.forEach((id) => { if (optional.indexOf(id) >= 0 && !seen.has(id)) { items.push(id); seen.add(id); } });
+  optional.forEach((id) => { if (!seen.has(id)) { items.push(id); seen.add(id); } });
+
+  host.innerHTML = '';
+  items.forEach((id, index) => {
+    const row = document.createElement('div');
+    row.className = 'bottombar-editor-row';
+    const up = document.createElement('button');
+    up.type = 'button'; up.className = 'bottombar-editor-btn'; up.innerHTML = '&uarr;';
+    up.title = 'Move up'; up.disabled = index === 0;
+    const down = document.createElement('button');
+    down.type = 'button'; down.className = 'bottombar-editor-btn'; down.innerHTML = '&darr;';
+    down.title = 'Move down'; down.disabled = index === items.length - 1;
+    const label = document.createElement('span');
+    label.className = 'bottombar-editor-label';
+    label.textContent = BOTTOMBAR_LABELS[id] || id;
+    const toggle = document.createElement('label');
+    toggle.style.cssText = 'display:flex; align-items:center; gap:6px; font-weight:normal;';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox'; cb.checked = !hidden.has(id);
+    toggle.appendChild(cb);
+    toggle.appendChild(document.createTextNode('Show'));
+
+    cb.addEventListener('change', () => {
+      const c = FT.readBottomNavConfig();
+      const h = new Set(Array.isArray(c.hidden) ? c.hidden : []);
+      if (cb.checked) h.delete(id); else h.add(id);
+      c.hidden = Array.from(h);
+      FT.writeBottomNavConfig(c);
+      if (FT.applyBottomNavCustomization) FT.applyBottomNavCustomization();
+    }, { signal });
+    up.addEventListener('click', () => moveBottomBarItem(items, index, index - 1, signal), { signal });
+    down.addEventListener('click', () => moveBottomBarItem(items, index, index + 1, signal), { signal });
+
+    row.appendChild(up); row.appendChild(down); row.appendChild(label); row.appendChild(toggle);
+    host.appendChild(row);
+  });
+}
+function moveBottomBarItem(items, from, to, signal) {
+  if (to < 0 || to >= items.length) return;
+  const FT = window.FileTube;
+  const arr = items.slice();
+  const [moved] = arr.splice(from, 1);
+  arr.splice(to, 0, moved);
+  const c = FT.readBottomNavConfig();
+  c.order = arr;
+  FT.writeBottomNavConfig(c);
+  if (FT.applyBottomNavCustomization) FT.applyBottomNavCustomization();
+  renderBottomBarEditor(signal);
+}
+
 // GET /api/settings on load: populate all four controls, plus the
 // size-cap placeholder from effectiveCacheMaxBytes (the env-var/5GB
 // default that applies whenever no UI override is persisted).
@@ -927,6 +1017,131 @@ function wireBookFolderControls(signal) {
   }
 }
 
+// ---- v1.44 music folders (mirrors the book-folder controls verbatim) --------
+
+function renderMusicFolders() {
+  const container = document.getElementById('music-folders-builder-list');
+  if (!container) return;
+  container.innerHTML = '';
+  if (musicFolders.length === 0) {
+    container.innerHTML = '<div class="empty-folders-msg">No music folders configured yet. Add one above.</div>';
+    return;
+  }
+  musicFolders.forEach((folder, index) => {
+    const row = document.createElement('div');
+    row.className = 'folder-item-row';
+    const pathWrap = document.createElement('div');
+    pathWrap.style.cssText = 'flex:1; min-width:0;';
+    const pathText = document.createElement('div');
+    pathText.className = 'folder-path-text';
+    pathText.title = folder;
+    pathText.textContent = folder;
+    pathWrap.appendChild(pathText);
+    row.appendChild(pathWrap);
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'remove-folder-btn';
+    removeBtn.title = 'Remove folder';
+    removeBtn.textContent = '×';
+    removeBtn.addEventListener('click', () => {
+      musicFolders.splice(index, 1);
+      renderMusicFolders();
+    }, { signal: controller.signal });
+    row.appendChild(removeBtn);
+    container.appendChild(row);
+  });
+}
+
+async function loadMusicConfig() {
+  try {
+    const r = await fetch('/api/music/config');
+    if (!r.ok) return; // music disabled / no folders -> leave the empty state
+    const data = await r.json();
+    musicFolders = Array.isArray(data.folders) ? data.folders.slice() : [];
+    renderMusicFolders();
+  } catch (err) {
+    console.error('Failed to load music folders:', err);
+  }
+}
+
+function pollMusicScanStatus() {
+  const status = document.getElementById('music-scan-status');
+  fetch('/api/music/scan-status')
+    .then((r) => r.json())
+    .then((s) => {
+      if (!status) return;
+      if (s && s.scanning) {
+        status.textContent = 'Scanning music…';
+        status.style.color = 'var(--text-primary)';
+        setTimeout(pollMusicScanStatus, 1000);
+      } else {
+        status.textContent = s && s.lastScan ? 'Music scanned.' : 'Idle.';
+        status.style.color = 'var(--text-secondary)';
+      }
+    })
+    .catch(() => {});
+}
+
+function wireMusicFolderControls(signal) {
+  const addBtn = document.getElementById('add-music-folder-btn');
+  const input = document.getElementById('new-music-folder-path');
+  if (addBtn && input) {
+    const add = () => {
+      const v = input.value.trim();
+      if (!v) return;
+      if (musicFolders.includes(v)) { alert('This music folder is already added.'); return; }
+      musicFolders.push(v);
+      renderMusicFolders();
+      input.value = '';
+    };
+    addBtn.addEventListener('click', add, { signal });
+    input.addEventListener('keypress', (e) => { if (e.key === 'Enter') add(); }, { signal });
+  }
+
+  const saveBtn = document.getElementById('save-music-config-btn');
+  const status = document.getElementById('music-scan-status');
+  if (saveBtn) {
+    saveBtn.addEventListener('click', async () => {
+      if (status) { status.textContent = 'Saving…'; status.style.color = 'var(--text-primary)'; }
+      try {
+        const r = await fetch('/api/music/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ folders: musicFolders }),
+        });
+        const data = await r.json().catch(() => ({}));
+        if (r.ok) {
+          musicFolders = Array.isArray(data.folders) ? data.folders.slice() : musicFolders;
+          renderMusicFolders();
+          if (status) status.textContent = 'Saved — scanning music…';
+          pollMusicScanStatus();
+        } else if (status) {
+          // Surface the server's readable error (existence / media-or-book overlap).
+          status.textContent = (data && data.error) || 'Could not save music folders.';
+          status.style.color = 'var(--yt-red)';
+        }
+      } catch (err) {
+        if (status) { status.textContent = 'Could not save music folders.'; status.style.color = 'var(--yt-red)'; }
+        console.error('Save music folders failed:', err);
+      }
+    }, { signal });
+  }
+
+  const scanBtn = document.getElementById('scan-music-btn');
+  if (scanBtn) {
+    scanBtn.addEventListener('click', async () => {
+      scanBtn.disabled = true;
+      try {
+        await fetch('/api/music/scan', { method: 'POST' });
+        pollMusicScanStatus();
+      } catch (err) {
+        console.error('Music scan failed to start:', err);
+      } finally {
+        scanBtn.disabled = false;
+      }
+    }, { signal });
+  }
+}
+
 function wireStaticControls(signal) {
   const addFolderBtn = document.getElementById('add-folder-btn');
   const newFolderPathInput = document.getElementById('new-folder-path');
@@ -1104,6 +1319,12 @@ function wireStaticControls(signal) {
       } catch (_) { /* storage disabled/full -- best-effort only */ }
     }, { signal });
   }
+
+  // v1.44: home-page resume-row toggles (device-local, default ON). Keys match
+  // main.js's homeRowEnabled (`!== '0'` = on): checked -> clear (default on),
+  // unchecked -> '0'.
+  wireHomeRowToggle('home-continue-listening-check', 'ft-home-continue-listening', signal);
+  wireHomeRowToggle('home-continue-reading-check', 'ft-home-continue-reading', signal);
 
   // Size-cap input: 'change' (fires on blur/Enter, not per keystroke) is a
   // natural debounce for a free-typed number field. Blank -> null ("use the
@@ -1403,10 +1624,14 @@ function init(root) {
 
   wireStaticControls(controller.signal);
   wireBookFolderControls(controller.signal); // v1.38.0 Part A
+  wireMusicFolderControls(controller.signal); // v1.44 music
   renderThemePicker();
   renderIconPicker();
   loadResumeThresholdControl();
   loadDebugLifecycleControl();
+  loadHomeRowControl('home-continue-listening-check', 'ft-home-continue-listening');
+  loadHomeRowControl('home-continue-reading-check', 'ft-home-continue-reading');
+  renderBottomBarEditor(controller.signal); // v1.44 T12 bottom-bar editor
 
   loadAutomationSettings();
   loadCacheSize();
@@ -1431,6 +1656,7 @@ function init(root) {
   // Start
   loadConfig();
   loadBookConfig(); // v1.38.0 Part A: populate the book-folders list
+  loadMusicConfig(); // v1.44: populate the music-folders list
 }
 
 function destroy() {
