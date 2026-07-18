@@ -18,12 +18,14 @@ const path = require('node:path');
 const ROOT = path.join(__dirname, '..', '..');
 const ALLOWED = path.join('lib', 'db', 'sqlite.js');
 
-// Server-side source roots. Deliberately excludes test/ (tests may use the
-// adapter's own exports but a test requiring node:sqlite directly would
-// bypass the one-module rule too — so tests ARE included) and public/
-// (client code can't require node builtins anyway, but scanning it is
-// cheap and keeps the rule simple).
-const SCAN_ROOTS = ['server.js', 'lib', 'scripts', 'test'];
+// Source roots. Includes test/ (a test requiring node:sqlite directly would
+// bypass the one-module rule too) AND public/ client source — the latter can't
+// require node builtins, but the RAW-control-byte lock below MUST cover it (a
+// v1.44.2 gate caught a raw NUL in public/js/music.js that this lock had missed
+// because public/ was excluded). Vendored third-party libs (public/vendor/*,
+// eslint-ignored, e.g. minified jszip which legitimately carries control bytes)
+// are skipped by `walk` — the lock governs OUR source, not shipped minified deps.
+const SCAN_ROOTS = ['server.js', 'lib', 'scripts', 'test', 'public'];
 
 // Strip // line-comments and block-comments so a comment MENTIONING a
 // require (e.g. "does NOT require('node:sqlite')") can't trip the match —
@@ -45,7 +47,10 @@ function walk(entry, out) {
     return;
   }
   for (const child of fs.readdirSync(full)) {
-    if (child === 'node_modules' || child.startsWith('.')) continue;
+    // Skip node_modules, dotfiles, and vendored third-party libs (public/vendor/*
+    // — eslint-ignored; minified deps legitimately carry control bytes and are
+    // not OUR source for any of these locks).
+    if (child === 'node_modules' || child === 'vendor' || child.startsWith('.')) continue;
     walk(path.join(entry, child), out);
   }
 }
