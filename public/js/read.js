@@ -702,6 +702,13 @@ if (typeof module !== 'undefined' && module.exports) {
     const pane = root.querySelector('#reader-pane');
     const content = root.querySelector('#reader-content');
     if (!pane || !content) return;
+    // v1.44.3: immersive reading — hide the shell header (logo+search is wasted
+    // space while reading; the reader has its own topbar with Back/Contents/Aa).
+    // Added HERE, BEFORE sizeReader() measures the chassis offset below, so the
+    // reading area is sized against the reclaimed full-height viewport. On a
+    // direct /read load read.html's FOUC script already set it pre-paint;
+    // destroy() removes it so the header returns on nav-away. Idempotent.
+    document.documentElement.classList.add('reader-immersive');
 
     // v1.37.2 (Dean's report: topbar buttons lost on desktop; unusable
     // sizing on mobile): the CSS-var height guess was wrong on both form
@@ -904,6 +911,8 @@ if (typeof module !== 'undefined' && module.exports) {
     listenBusy = false;
     const player = window.FileTube && window.FileTube.player;
     if (player && typeof player.setTrackNav === 'function') player.setTrackNav(null);
+    // v1.44.3: leaving the reader — restore the shell header (see init()).
+    document.documentElement.classList.remove('reader-immersive');
   }
 
   if (window.FileTube && typeof window.FileTube.registerView === 'function') {
