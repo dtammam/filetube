@@ -60,6 +60,9 @@ const { isYtdlpIntermediate } = require('./lib/ytdlpIntermediates');
 // requiring them has no side effects (the ytdlp direct-require posture).
 const booksStore = require('./lib/books/store');
 const booksScan = require('./lib/books/scan');
+// v1.44 music library: same direct-require namespace-owner posture as books.
+const musicStore = require('./lib/music/store');
+const musicScan = require('./lib/music/scan');
 // v1.38.0 TTS "Listen from Here": pure leaf helpers (env-config parse, engine
 // argv builders, chapter chunker). Same direct-require posture as the store.
 const booksTtsConfig = require('./lib/books/tts-config');
@@ -116,6 +119,12 @@ const THUMBNAIL_DIR = path.join(DATA_DIR, '.thumbnails');
 // so the media scan's thumbnail unlink loop can never touch a book cover
 // and the book scanner's cover pruning can never touch a video thumbnail.
 const BOOKCOVER_DIR = path.join(DATA_DIR, '.bookcovers');
+// v1.44 music: album art lives in a MUSIC-OWNED dir (same isolation rule as
+// .bookcovers) -- keyed by album (md5 of the album grouping key), NOT by track
+// id, so all tracks of an album share one art file. The music scan's prune is
+// the ONLY writer that unlinks here, and only when an album's LAST track is
+// pruned; no cross-module unlink can ever touch it.
+const ALBUMART_DIR = path.join(DATA_DIR, '.albumart');
 // v1.38.0 TTS: per-chapter synthesized audio cache (<key>.m4a + <key>.blocks.json),
 // a sibling of the thumbnail/cover caches. Created on demand by the worker.
 const TTS_CACHE_DIR = path.join(DATA_DIR, 'tts-cache');
@@ -4328,6 +4337,8 @@ function armScanTimer() {
       // v1.37.0 books: piggyback on the media interval (exec plan §2) --
       // no second timer, and a books-less install no-ops.
       scanBooks().catch(console.error);
+      // v1.44 music: same piggyback slot; a music-less install no-ops.
+      scanMusic().catch(console.error);
     }, ms).unref();
   }
   return scanTimer;
@@ -5987,6 +5998,261 @@ function settingsResponse(settings) {
     customLogoDark: typeof settings.customLogoDarkMime === 'string' && settings.customLogoDarkMime !== ''
   };
 }
+
+// ---- Music library (v1.44) --------------------------------------------------
+//
+// The music library's server half: its OWN folder config (`db.music.folders`
+// -- never db.folders/db.books.folders), its own scanner with the media/books
+// mount-loss discipline, album art under ALBUMART_DIR, and per-user liked/
+// progress/resume through userStore. Everything degrades to a no-op on a
+// music-less install (zero folders = zero scans = zero db writes). Full
+// design: docs/exec-plans/active/v1.44-music-library.md.
+
+let musicScanState = { scanning: false, lastScan: null, rescanRequested: false };
+let deferredMusicRescanTimer = null;
+
+function currentMusicScanState() {
+  return musicScanState;
+}
+
+// The injected ffprobe probe (server-side spawn; lib/music/scan.js stays
+// CI-testable by never spawning itself). One probe yields the tags, the audio
+// codec (for the ALAC transcode gate, T7), the duration, and whether the file
+// carries an embedded cover picture. Degrade-safe: null on ffmpeg-unavailable
+// or any probe/parse error (the file still indexes by path-convention).
+function probeMusicTrack(filePath) {
+  return new Promise((resolve) => {
+    if (!ffmpegAvailable) { resolve(null); return; }
+    execFile('ffprobe', buildFfprobeArgs(filePath), { maxBuffer: 16 * 1024 * 1024 }, (err, stdout) => {
+      if (err || !stdout) { resolve(null); return; }
+      let parsed;
+      try { parsed = JSON.parse(stdout); } catch (_) { resolve(null); return; }
+      let tags = {};
+      let streams = {};
+      try { tags = parseFfprobeTags(parsed); } catch (_) { tags = {}; }
+      try { streams = parseFfprobeStreams(parsed); } catch (_) { streams = {}; }
+      let durationSec = 0;
+      const d = parsed && parsed.format && Number(parsed.format.duration);
+      if (Number.isFinite(d) && d > 0) durationSec = d;
+      const strs = parsed && Array.isArray(parsed.streams) ? parsed.streams : [];
+      const hasEmbeddedArt = strs.some((s) => s && s.disposition && s.disposition.attached_pic === 1);
+      resolve({ tags, durationSec, codec: streams.audioCodec || null, hasEmbeddedArt });
+    });
+  });
+}
+
+function albumArtExists(albumArtKey) {
+  return fs.existsSync(path.join(ALBUMART_DIR, `${albumArtKey}.jpg`))
+    || fs.existsSync(path.join(ALBUMART_DIR, `${albumArtKey}.png`));
+}
+
+// Resolve one album's art (best-effort, idempotent, never throws): embedded
+// attached-pic via ffmpeg (re-encoded to a consistent .jpg), else a sidecar
+// cover.jpg/folder.jpg/front.* copied verbatim. Skips entirely if the album
+// already has an art file.
+async function extractAlbumArt(job) {
+  if (!job || typeof job.albumArtKey !== 'string') return;
+  const jpgPath = path.join(ALBUMART_DIR, `${job.albumArtKey}.jpg`);
+  const pngPath = path.join(ALBUMART_DIR, `${job.albumArtKey}.png`);
+  if (fs.existsSync(jpgPath) || fs.existsSync(pngPath)) return; // idempotent
+  try { fs.mkdirSync(ALBUMART_DIR, { recursive: true }); } catch (_) { /* best-effort */ }
+  if (job.hasEmbeddedArt && ffmpegAvailable) {
+    const tmp = `${jpgPath}.tmp.jpg`;
+    const ok = await new Promise((resolve) => {
+      execFile('ffmpeg', ['-v', 'error', '-i', job.sourceFilePath, '-an', '-map', '0:v:0', '-frames:v', '1', '-c:v', 'mjpeg', '-y', tmp], { maxBuffer: 16 * 1024 * 1024 }, (err) => resolve(!err));
+    });
+    if (ok) {
+      try { fs.renameSync(tmp, jpgPath); return; } catch (_) { /* fall through to sidecar */ }
+    }
+    try { fs.unlinkSync(tmp); } catch (_) { /* best-effort */ }
+  }
+  const sidecar = musicScan.findSidecarArt(job.dir);
+  if (sidecar) {
+    const dest = path.extname(sidecar).toLowerCase() === '.png' ? pngPath : jpgPath;
+    const tmp = `${dest}.tmp`;
+    try {
+      fs.copyFileSync(sidecar, tmp);
+      fs.renameSync(tmp, dest);
+    } catch (_) {
+      try { fs.unlinkSync(tmp); } catch (_) { /* best-effort */ }
+    }
+  }
+}
+
+async function runMusicScan() {
+  const db = loadDatabase();
+  const ns = musicStore.ensureMusic(db);
+  const folders = ns.folders.slice();
+  if (folders.length === 0 && Object.keys(ns.tracks).length === 0) return; // music-less: total no-op
+  const { tracks, survivingIds, missingRoots } = await musicScan.collectTracks(folders, ns.tracks, { getMediaId, probe: probeMusicTrack });
+  for (const root of missingRoots) {
+    console.warn(`music: configured folder is missing/unmounted -- nothing under it will be pruned: ${root}`);
+  }
+
+  const pruneMissing = !!(db.settings && db.settings.pruneMissing);
+  const prunedIds = [];
+  const prunedRecords = [];
+  let finalTracks = tracks;
+  await updateDatabase((fresh) => {
+    const freshNs = musicStore.ensureMusic(fresh);
+    // The books/media Option-C mount-loss guard, applied to music: a root
+    // whose directory still exists but yielded ZERO files this pass while the
+    // library previously had tracks under it is the unmounted-share signature
+    // -- treat as VANISHED (prune nothing beneath it), never a bulk deletion.
+    const effectiveMissingRoots = new Set(missingRoots);
+    for (const root of folders) {
+      if (effectiveMissingRoots.has(root)) continue;
+      const hadTracks = Object.values(freshNs.tracks).some((t) => t && t.rootFolder === root);
+      const hasSurvivors = Object.values(tracks).some((t) => t && t.rootFolder === root);
+      if (hadTracks && !hasSurvivors) {
+        effectiveMissingRoots.add(root);
+        console.warn(`music: root ${root} exists but scanned EMPTY while the library has tracks under it -- treating as unmounted, pruning nothing beneath it`);
+      }
+    }
+    const prunable = new Set(musicStore.selectPrunableTrackIds(freshNs.tracks, survivingIds, { missingRoots: effectiveMissingRoots, pruneMissing }));
+    const next = {};
+    for (const [id, t] of Object.entries(tracks)) next[id] = t;
+    for (const [id, t] of Object.entries(freshNs.tracks)) {
+      if (next[id]) continue;
+      if (prunable.has(id)) {
+        prunedIds.push(id);
+        prunedRecords.push(t); // captured for the orphaned-art sweep
+        continue;
+      }
+      next[id] = t; // non-surviving but protected (mount-loss / pruneMissing off)
+    }
+    freshNs.tracks = next;
+    finalTracks = next;
+    return true;
+  });
+
+  // Per-user music state is track-id-keyed -- pruned tracks shed liked/progress
+  // and null any resume pointer that referenced them (post-commit, the
+  // removeMediaState posture; one transaction).
+  if (prunedIds.length > 0) {
+    try {
+      userStore.removeMusicState(prunedIds);
+    } catch (err) {
+      console.error('music: failed to prune per-user music state (continuing):', err && err.message);
+    }
+  }
+
+  // Album art for surviving albums that still lack an art file (best-effort).
+  try {
+    for (const job of musicScan.selectAlbumArtJobs(finalTracks, albumArtExists)) {
+      await extractAlbumArt(job);
+    }
+  } catch (err) {
+    console.error('music: album-art extraction pass failed (continuing):', err && err.message);
+  }
+
+  // Orphaned album art: unlink ONLY when an album's LAST track was pruned
+  // (selectOrphanedArtKeys excludes any key a surviving track still references).
+  for (const key of musicScan.selectOrphanedArtKeys(prunedRecords, finalTracks)) {
+    for (const ext of ['.jpg', '.png']) {
+      try { fs.unlinkSync(path.join(ALBUMART_DIR, `${key}${ext}`)); } catch (_) { /* best-effort */ }
+    }
+  }
+}
+
+// Overlap/coalescing guard -- the scanBooks discipline verbatim (a scan
+// requested mid-scan runs exactly one follow-up pass, never a concurrent
+// second walker; a rescan requested during the final pass arms one deferred,
+// unref'd, single-guarded re-entry).
+async function scanMusic() {
+  if (musicScanState.scanning) {
+    musicScanState.rescanRequested = true;
+    return;
+  }
+  musicScanState.scanning = true;
+  try {
+    let followups = 0;
+    do {
+      musicScanState.rescanRequested = false;
+      await runMusicScan();
+      followups++;
+    } while (musicScanState.rescanRequested && followups <= MAX_RESCAN_FOLLOWUPS);
+  } catch (err) {
+    console.error('music: scan failed:', err);
+  } finally {
+    const stillPending = musicScanState.rescanRequested;
+    musicScanState.scanning = false;
+    musicScanState.lastScan = new Date().toISOString();
+    if (stillPending && !deferredMusicRescanTimer) {
+      deferredMusicRescanTimer = setTimeout(() => {
+        deferredMusicRescanTimer = null;
+        scanMusic().catch(console.error);
+      }, 5000);
+      deferredMusicRescanTimer.unref();
+    }
+  }
+}
+
+app.get('/api/music/config', (req, res) => {
+  res.json({ folders: musicStore.readMusic(getCachedDatabase()).folders });
+});
+
+app.post('/api/music/config', async (req, res) => {
+  const { folders } = req.body || {};
+  if (!Array.isArray(folders) || !folders.every((f) => typeof f === 'string' && f.trim() !== '')) {
+    return res.status(400).json({ error: 'folders must be an array of non-empty strings' });
+  }
+  const resolved = [];
+  const seen = new Set();
+  for (const raw of folders) {
+    const folder = path.resolve(raw.trim());
+    if (!fs.existsSync(folder) || !fs.statSync(folder).isDirectory()) {
+      return res.status(400).json({ error: `Folder does not exist: ${folder}` });
+    }
+    if (seen.has(folder)) continue;
+    seen.add(folder);
+    resolved.push(folder);
+  }
+  // HARD INVARIANT (exec plan §4.4): music roots may never overlap media roots
+  // OR book roots, in EITHER direction -- a file must have exactly one owner,
+  // or the scanners' prune/merge semantics fight over it. Three-way check; the
+  // reciprocal clauses in the media/book config routes (T5) close the other
+  // direction so ownership is order-independent.
+  const cached = getCachedDatabase();
+  const mediaFolders = (cached.folders || []).map((f) => path.resolve(f));
+  const bookFolders = (booksStore.readBooks(cached).folders || []).map((f) => path.resolve(f));
+  for (const musicRoot of resolved) {
+    for (const mediaRoot of mediaFolders) {
+      if (musicRoot === mediaRoot || ytdlpArgs.isPathUnder(musicRoot, mediaRoot) || ytdlpArgs.isPathUnder(mediaRoot, musicRoot)) {
+        return res.status(400).json({ error: `Music folder overlaps a media folder: ${musicRoot} <-> ${mediaRoot}` });
+      }
+    }
+    for (const bookRoot of bookFolders) {
+      if (musicRoot === bookRoot || ytdlpArgs.isPathUnder(musicRoot, bookRoot) || ytdlpArgs.isPathUnder(bookRoot, musicRoot)) {
+        return res.status(400).json({ error: `Music folder overlaps a book folder: ${musicRoot} <-> ${bookRoot}` });
+      }
+    }
+  }
+  try {
+    await updateDatabase((db) => {
+      musicStore.ensureMusic(db).folders = resolved;
+      return true;
+    });
+  } catch (err) {
+    return res.status(500).json({ error: `Could not save music folders: ${err.message}` });
+  }
+  res.json({ folders: resolved });
+  scanMusic().catch(console.error);
+});
+
+app.post('/api/music/scan', (req, res) => {
+  const alreadyInProgress = musicScanState.scanning;
+  if (alreadyInProgress) {
+    musicScanState.rescanRequested = true;
+  } else {
+    scanMusic().catch(console.error);
+  }
+  res.status(202).json({ scanning: true, alreadyInProgress });
+});
+
+app.get('/api/music/scan-status', (req, res) => {
+  res.json(musicScanState);
+});
 
 // ---- v1.32: replaceable header logo ("white-label") -------------------------
 //
@@ -10529,6 +10795,8 @@ if (require.main === module) {
         // v1.37.0 books: the boot book-scan rides the same deferred slot --
         // a books-less install makes this a pure no-op (zero folders).
         scanBooks().catch(console.error);
+        // v1.44 music: same deferred boot slot; music-less = pure no-op.
+        scanMusic().catch(console.error);
       });
     });
   })();
@@ -10565,6 +10833,14 @@ module.exports = {
   reconcileTtsCacheAtBoot,
   currentBookScanState,
   BOOKCOVER_DIR,
+  // v1.44 music: scanner + state accessor + art dir + probe/art helpers,
+  // exported for the music integration tests (same posture as scanBooks/
+  // BOOKCOVER_DIR). probeMusicTrack/extractAlbumArt are injected in tests via
+  // stubs where ffmpeg is absent.
+  scanMusic,
+  currentMusicScanState,
+  ALBUMART_DIR,
+  albumArtExists,
   flushPendingBookProgress,
   currentBookProgressFlushTimer,
   effectiveBookProgress,
