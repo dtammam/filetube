@@ -80,9 +80,14 @@
 
 ## Shipped
 
+### v1.44.4 — Cleanup follow-up: genericized the last two comment names (2026-07-18)
+
+- **Finished the mock-comment name genericization.** The two names v1.44.3 left pending Dean's call are now generic labels too, matching their content: the Derby-Owner's-Club/horse-racing commenter became **"Derby Owner's Club fanatic"**, and the teasing-brother commenter became **"Ball Busting Brother"**. Comment text is unchanged; only the author labels. A whole-tree, line-joined scan (the v1.44.3 lesson — a line-oriented grep misses wrapped/section-comment names) confirms no real personal name remains anywhere in tracked source.
+- **Suites:** Node 22 **4575/4575**; Node 24 **4575/4575** (0 failures). Lint 0 errors. **Docker publish is Dean's.**
+
 ### v1.44.3 — Cleanup: genericized comment names, immersive reader, "Under the hood" stats, README refresh (2026-07-18)
 
-- **Genericized the personal names in the mock comment bank.** The real people used as mock-comment authors / the weighted persona commenter are now generic labels (Maligned Mentor, Betting Bug, Feedback Friend, My Wife, Loving Daughter, Proud Dad, and the "Polite and Unhinged" persona) with behavior byte-unchanged. Full genericization: the persona's code identifiers, internal hash-salt strings, and its test file were renamed too, so the real names appear nowhere in tracked source. (Two names not in the rename list — "TFR" and "Ray Tammam" — were left as-is, pending Dean's call.)
+- **Genericized the personal names in the mock comment bank.** The real people used as mock-comment authors / the weighted persona commenter are now generic labels (Maligned Mentor, Betting Bug, Feedback Friend, My Wife, Loving Daughter, Proud Dad, and the "Polite and Unhinged" persona) with behavior byte-unchanged. Full genericization: the persona's code identifiers, internal hash-salt strings, and its test file were renamed too, so the real names appear nowhere in tracked source. (Two further names in the bank were genericized in the v1.44.4 follow-up.)
 - **Immersive reader — a fuller reading page.** The /read view now hides the shell header (the FileTube logo + search box, wasted space while reading; the reader has its own topbar with Back / Contents / Aa) and reclaims its top space. It's set pre-paint on a direct load (no header flash) and toggled across in-app navigation; the reader re-measures its own height into the reclaimed viewport.
 - **"Under the hood" library inventory on the Stats page.** A plain count of every persisted namespace — the same things the backup bundle carries: videos & audio, watch positions, view counts, liked items, delete tombstones, scan folders, books / reading positions / narrated books, music tracks & folders, and user accounts.
 - **README refresh.** Added the Music and Books libraries to the feature list + a short "Books & music libraries" setup note; fixed a stale fact (the database is `filetube.db`, not `db.json`, since v1.42); and replaced every em-dash and en-dash (51 total) with plain hyphens.
