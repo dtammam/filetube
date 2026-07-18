@@ -63,6 +63,7 @@ const booksScan = require('./lib/books/scan');
 // v1.44 music library: same direct-require namespace-owner posture as books.
 const musicStore = require('./lib/music/store');
 const musicScan = require('./lib/music/scan');
+const musicQuery = require('./lib/music/query');
 // v1.38.0 TTS "Listen from Here": pure leaf helpers (env-config parse, engine
 // argv builders, chapter chunker). Same direct-require posture as the store.
 const booksTtsConfig = require('./lib/books/tts-config');
@@ -6069,6 +6070,34 @@ function albumArtExists(albumArtKey) {
     || fs.existsSync(path.join(ALBUMART_DIR, `${albumArtKey}.png`));
 }
 
+// Content types for the /track/:id stream. FLAC/WAV play natively in modern
+// browsers (verify on-device); ALAC (usually in .m4a) rides the T7 transcode.
+const MUSIC_CONTENT_TYPES = {
+  '.mp3': 'audio/mpeg',
+  '.m4a': 'audio/mp4',
+  '.aac': 'audio/aac',
+  '.flac': 'audio/flac',
+  '.wav': 'audio/wav',
+};
+
+// Square album-art placeholder (album/artist text, escaped exactly like the
+// bookcover placeholder -- a hostile tag must never become markup). Glyph-free
+// (no emoji): a simple record-styled square.
+function musicArtPlaceholderSvg(track) {
+  const album = String((track && track.album) || 'Music');
+  const artist = String((track && track.artist) || '');
+  const clip = (s, n) => (s.length > n ? `${s.substring(0, n - 2)}...` : s);
+  return `
+    <svg width="240" height="240" viewBox="0 0 240 240" xmlns="http://www.w3.org/2000/svg">
+      <rect width="240" height="240" fill="#3a3f58"/>
+      <circle cx="120" cy="108" r="52" fill="none" stroke="#8890b5" stroke-width="2"/>
+      <circle cx="120" cy="108" r="10" fill="#8890b5"/>
+      <text x="120" y="196" font-family="Arial, sans-serif" font-size="15" fill="#e8e8f0" text-anchor="middle" font-weight="bold">${escapeHtml(clip(album, 22))}</text>
+      <text x="120" y="216" font-family="Arial, sans-serif" font-size="11" fill="#aab" text-anchor="middle">${escapeHtml(clip(artist, 26))}</text>
+    </svg>
+  `;
+}
+
 // Resolve one album's art (best-effort, idempotent, never throws): embedded
 // attached-pic via ffmpeg (re-encoded to a consistent .jpg), else a sidecar
 // cover.jpg/folder.jpg/front.* copied verbatim. Skips entirely if the album
@@ -6275,6 +6304,161 @@ app.post('/api/music/scan', (req, res) => {
 
 app.get('/api/music/scan-status', (req, res) => {
   res.json(musicScanState);
+});
+
+// ---- Music: read APIs + track/art serving (T6) ------------------------------
+
+// The public list-item shape for a track: the track record plus this user's
+// liked flag and resume position (per-user, keyed by req.user.id -- never the
+// frozen doc record). filePath is deliberately NOT surfaced (path scrub).
+function publicTrackListItem(track, userId, likedSet, progressMap) {
+  const liked = likedSet ? likedSet.has(track.id) : false;
+  const prog = progressMap ? progressMap[track.id] : null;
+  return {
+    id: track.id,
+    title: track.title,
+    artist: track.artist,
+    album: track.album,
+    albumArtist: track.albumArtist,
+    trackNo: track.trackNo,
+    discNo: track.discNo,
+    durationSec: track.durationSec,
+    year: track.year,
+    genre: track.genre,
+    ext: track.ext,
+    folderName: track.folderName,
+    albumArtKey: track.albumArtKey,
+    hasArt: !!(track.albumArtKey && albumArtExists(track.albumArtKey)),
+    liked,
+    progress: prog ? { position: prog.position, duration: prog.duration, updatedAt: prog.updatedAt } : null,
+  };
+}
+
+app.get('/api/music', (req, res) => {
+  const ns = musicStore.readMusic(getCachedDatabase());
+  let list = Object.values(ns.tracks);
+  const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
+  const album = typeof req.query.album === 'string' ? req.query.album : '';
+  const artist = typeof req.query.artist === 'string' ? req.query.artist : '';
+  const root = typeof req.query.root === 'string' ? req.query.root : '';
+  if (search) list = list.filter((t) => musicQuery.matchesSearch(t, search));
+  if (album) list = list.filter((t) => musicQuery.matchesAlbum(t, album));
+  if (artist) list = list.filter((t) => musicQuery.matchesArtist(t, artist));
+  if (root) list = list.filter((t) => musicQuery.matchesRoot(t, root));
+
+  const likedSet = new Set(userStore.getMusicLiked(req.user.id));
+  if (req.query.filter === 'liked') list = list.filter((t) => likedSet.has(t.id));
+  const progressMap = userStore.getMusicProgress(req.user.id);
+  if (req.query.filter === 'recent-listening') {
+    // The "Continue listening" surface: tracks with a saved position, most
+    // recently updated first.
+    list = list.filter((t) => progressMap[t.id] && Number(progressMap[t.id].position) > 0);
+    list.sort((a, b) => String((progressMap[b.id] || {}).updatedAt || '').localeCompare(String((progressMap[a.id] || {}).updatedAt || '')));
+  } else {
+    // Default sort: album/artist context implies album order; otherwise the
+    // requested sort (newest default). seed drives a reproducible shuffle.
+    const defaultSort = (album || artist) ? 'album-order' : 'newest';
+    const sortKey = typeof req.query.sort === 'string' && req.query.sort ? req.query.sort : defaultSort;
+    const rng = sortKey === 'random' ? videoQuery.createSeededRng(videoQuery.normalizeSeed(req.query.seed)) : undefined;
+    list = musicQuery.sortTracks(list, sortKey, rng);
+  }
+
+  const total = list.length;
+  const offset = videoQuery.normalizeOffset(req.query.offset);
+  const limit = videoQuery.normalizeLimit(req.query.limit);
+  const items = list.slice(offset, offset + limit).map((t) => publicTrackListItem(t, req.user.id, likedSet, progressMap));
+  res.json({ items, total, offset, limit });
+});
+
+app.get('/api/music/albums', (req, res) => {
+  const ns = musicStore.readMusic(getCachedDatabase());
+  let list = Object.values(ns.tracks);
+  const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
+  if (search) list = list.filter((t) => musicQuery.matchesSearch(t, search));
+  const albums = musicQuery.groupAlbums(list).map((a) => ({
+    ...a,
+    hasArt: !!(a.albumArtKey && albumArtExists(a.albumArtKey)),
+  }));
+  res.json({ items: albums, total: albums.length });
+});
+
+app.get('/api/music/artists', (req, res) => {
+  const ns = musicStore.readMusic(getCachedDatabase());
+  let list = Object.values(ns.tracks);
+  const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
+  if (search) list = list.filter((t) => musicQuery.matchesSearch(t, search));
+  const artists = musicQuery.groupArtists(list);
+  res.json({ items: artists, total: artists.length });
+});
+
+// Per-user liked songs (static segment -- declared BEFORE /api/music/:id).
+app.get('/api/music/liked', (req, res) => {
+  res.json({ trackIds: userStore.getMusicLiked(req.user.id) });
+});
+
+app.post('/api/music/liked/:id', (req, res) => {
+  const ns = musicStore.readMusic(getCachedDatabase());
+  if (!ns.tracks[req.params.id]) return res.status(404).json({ error: 'no such track' });
+  userStore.addMusicLiked(req.user.id, req.params.id, new Date().toISOString());
+  res.json({ liked: true });
+});
+
+app.delete('/api/music/liked/:id', (req, res) => {
+  userStore.removeMusicLiked(req.user.id, req.params.id);
+  res.json({ liked: false });
+});
+
+// The per-user resume pointer (Continue-listening / app-relaunch resume).
+app.get('/api/music/resume', (req, res) => {
+  res.json(userStore.getMusicState(req.user.id) || { lastTrackId: null, queueCtx: null, position: null });
+});
+
+app.post('/api/music/resume', (req, res) => {
+  const body = req.body || {};
+  const lastTrackId = typeof body.lastTrackId === 'string' ? body.lastTrackId : null;
+  const position = Number.isFinite(Number(body.position)) ? Number(body.position) : 0;
+  const queueCtx = body.queueCtx === undefined ? null : body.queueCtx;
+  userStore.setMusicState(req.user.id, { lastTrackId, queueCtx, position, updatedAt: new Date().toISOString() });
+  res.json({ ok: true });
+});
+
+app.get('/api/music/:id', (req, res) => {
+  const ns = musicStore.readMusic(getCachedDatabase());
+  const track = ns.tracks[req.params.id];
+  if (!track) return res.status(404).json({ error: 'no such track' });
+  const likedSet = new Set(userStore.getMusicLiked(req.user.id));
+  const progressMap = userStore.getMusicProgress(req.user.id);
+  res.json(publicTrackListItem(track, req.user.id, likedSet, progressMap));
+});
+
+// Range-streamed audio (native containers; the ALAC transcode gate is T7).
+app.get('/track/:id', (req, res) => {
+  const ns = musicStore.readMusic(getCachedDatabase());
+  const track = ns.tracks[req.params.id];
+  if (!track || typeof track.filePath !== 'string') return res.status(404).json({ error: 'no such track' });
+  if (!fs.existsSync(track.filePath)) return res.status(404).json({ error: 'file missing' });
+  const contentType = MUSIC_CONTENT_TYPES[track.ext] || 'application/octet-stream';
+  sendRangeable(req, res, track.filePath, contentType);
+});
+
+// Album art by TRACK id -> its album's art file, else an escaped SVG
+// placeholder (mirrors /bookcover/:id).
+app.get('/albumart/:id', (req, res) => {
+  const ns = musicStore.readMusic(getCachedDatabase());
+  const track = ns.tracks[req.params.id];
+  const key = track && typeof track.albumArtKey === 'string' ? track.albumArtKey : null;
+  if (key) {
+    for (const ext of ['.jpg', '.png']) {
+      const p = path.join(ALBUMART_DIR, `${key}${ext}`);
+      if (fs.existsSync(p)) {
+        res.set('Cache-Control', 'public, max-age=86400');
+        return res.sendFile(p);
+      }
+    }
+  }
+  res.set('Content-Type', 'image/svg+xml');
+  res.set('Cache-Control', 'public, max-age=3600');
+  res.send(musicArtPlaceholderSvg(track));
 });
 
 // ---- v1.32: replaceable header logo ("white-label") -------------------------
