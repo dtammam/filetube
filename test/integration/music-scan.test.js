@@ -247,6 +247,34 @@ test('T4: music config REFUSES overlap with a media folder or a book folder (thr
   await updateDatabase((db) => { require('../../lib/books/store').ensureBooks(db).folders = []; return true; });
 });
 
+test('T5: RECIPROCAL overlap guards — media-config AND book-config reject a folder overlapping a MUSIC root', async () => {
+  writeTrack('A/Album/01 One.flac');
+  const res = await setFolders([libRoot]);
+  assert.equal(res.status, 200, 'music folder configured');
+
+  // media-config (POST /api/config) must reject a media folder that overlaps
+  // the music root (both directions).
+  let r = await postJson('/api/config', { folders: [libRoot] });
+  assert.equal(r.status, 400, 'media folder EQUAL to a music root rejected');
+  assert.match((await r.json()).error, /overlaps a music folder/);
+  const sub = path.join(libRoot, 'A');
+  r = await postJson('/api/config', { folders: [sub] });
+  assert.equal(r.status, 400, 'media folder UNDER a music root rejected');
+  r = await postJson('/api/config', { folders: [path.dirname(libRoot)] });
+  assert.equal(r.status, 400, 'media folder ABOVE a music root rejected');
+
+  // book-config (POST /api/books/config) must reject a book folder overlapping
+  // the music root too.
+  r = await postJson('/api/books/config', { folders: [libRoot] });
+  assert.equal(r.status, 400, 'book folder EQUAL to a music root rejected');
+  assert.match((await r.json()).error, /overlaps a music folder/);
+  r = await postJson('/api/books/config', { folders: [sub] });
+  assert.equal(r.status, 400, 'book folder UNDER a music root rejected');
+
+  // Cleanup: leave media/book config empty for the next test file.
+  await updateDatabase((db) => { db.folders = []; require('../../lib/books/store').ensureBooks(db).folders = []; return true; });
+});
+
 test('T4: pure selectAlbumArtJobs/selectOrphanedArtKeys wired via the scan lib match the server behaviour', () => {
   // A light guard that the lib exports the server relies on stay in shape.
   assert.equal(typeof musicScanLib.selectAlbumArtJobs, 'function');

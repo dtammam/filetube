@@ -5131,6 +5131,17 @@ app.post('/api/config', async (req, res) => {
         return res.status(400).json({ error: `Media folder overlaps a book folder: ${trimmed} <-> ${bookRoot}` });
       }
     }
+    // v1.44 music: the reciprocal of POST /api/music/config's own three-way
+    // guard -- a media folder may not equal/contain/live inside a MUSIC root
+    // either, so ownership stays order-independent (whichever config saves
+    // second is the one that catches the overlap).
+    const musicRoots = musicStore.readMusic(loadDatabase()).folders;
+    for (const musicRoot of musicRoots) {
+      const resolvedMusicRoot = path.resolve(musicRoot);
+      if (resolved === resolvedMusicRoot || ytdlpArgs.isPathUnder(resolved, resolvedMusicRoot) || ytdlpArgs.isPathUnder(resolvedMusicRoot, resolved)) {
+        return res.status(400).json({ error: `Media folder overlaps a music folder: ${trimmed} <-> ${musicRoot}` });
+      }
+    }
     validFolders.push(trimmed);
     originalByResolved.set(resolved, trimmed); // QW2
   }
@@ -5427,11 +5438,23 @@ app.post('/api/books/config', async (req, res) => {
   // HARD INVARIANT (exec plan §2): book roots may never overlap media roots
   // in EITHER direction -- a file must have exactly one owner, or the two
   // scanners' prune/merge semantics fight over it.
-  const mediaFolders = (getCachedDatabase().folders || []).map((f) => path.resolve(f));
+  const cachedForBooks = getCachedDatabase();
+  const mediaFolders = (cachedForBooks.folders || []).map((f) => path.resolve(f));
   for (const bookRoot of resolved) {
     for (const mediaRoot of mediaFolders) {
       if (bookRoot === mediaRoot || ytdlpArgs.isPathUnder(bookRoot, mediaRoot) || ytdlpArgs.isPathUnder(mediaRoot, bookRoot)) {
         return res.status(400).json({ error: `Book folder overlaps a media folder: ${bookRoot} <-> ${mediaRoot}` });
+      }
+    }
+  }
+  // v1.44 music: reciprocal of the music-config guard -- a book root may not
+  // overlap a MUSIC root either (both directions), so the three collections
+  // stay mutually disjoint regardless of save order.
+  const musicFoldersForBooks = (musicStore.readMusic(cachedForBooks).folders || []).map((f) => path.resolve(f));
+  for (const bookRoot of resolved) {
+    for (const musicRoot of musicFoldersForBooks) {
+      if (bookRoot === musicRoot || ytdlpArgs.isPathUnder(bookRoot, musicRoot) || ytdlpArgs.isPathUnder(musicRoot, bookRoot)) {
+        return res.status(400).json({ error: `Book folder overlaps a music folder: ${bookRoot} <-> ${musicRoot}` });
       }
     }
   }
