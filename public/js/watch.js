@@ -265,7 +265,7 @@ const MOCK_COMMENT_BANK = [
   { author: 'Proud Dad', text: 'This is wonderful. You were always so talented. Call me and show me how it works. Love you son.', timeStr: '1 week ago' },
   { author: 'Proud Dad', text: 'Beautiful project son. I wish I could sit beside you and build these with you. Love you.', timeStr: '3 days ago' },
 
-  // Daisy 💛 (she's 5)
+  // Loving Daughter
   { author: 'Loving Daughter', text: 'hi daddy i luv u 💖', timeStr: '2 hours ago' },
   { author: 'Loving Daughter', text: 'dis is the BEST vidyo EVER!!!', timeStr: '1 day ago' },
   { author: 'Loving Daughter', text: 'daddy ur so smart!!!', timeStr: '3 hours ago' },
@@ -391,8 +391,8 @@ function buildPersonaComment(mediaId, videoTitle) {
 }
 
 // buildMockComments: getMockInitialComments()'s pure core -- the ORIGINAL
-// flat selection (selectDeterministicComments, untouched above) PLUS one Zak
-// Goldin comment (G1) spliced in at a deterministic position. Because the
+// flat selection (selectDeterministicComments, untouched above) PLUS one
+// Polite and Unhinged comment (G1) spliced in at a deterministic position. Because the
 // base selection is computed FIRST and independently, layering Polite and Unhinged on
 // top never changes which (or how many) of the rest of commentBank's entries
 // get picked, or their relative order -- only where among them Polite and Unhinged's

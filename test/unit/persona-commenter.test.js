@@ -171,8 +171,8 @@ test('buildPersonaComment: text is never empty and never contains real profanity
 
 test('buildMockComments: inserts exactly one Polite and Unhinged comment among the base selection', () => {
   const result = buildMockComments('media-99', MOCK_COMMENT_BANK, 8, 'A Great Video');
-  const zakEntries = result.filter((c) => c.author === 'Polite and Unhinged');
-  assert.strictEqual(zakEntries.length, 1);
+  const personaEntries = result.filter((c) => c.author === 'Polite and Unhinged');
+  assert.strictEqual(personaEntries.length, 1);
   assert.strictEqual(result.length, 9); // 8 base + 1 Polite and Unhinged
 });
 
@@ -182,9 +182,9 @@ test('buildMockComments: preserves the REST of commentBank\'s selection exactly 
     const bank = MOCK_COMMENT_BANK;
     const count = 6;
     const base = selectDeterministicComments(mediaId, bank, count);
-    const withZak = buildMockComments(mediaId, bank, count, 'Some Title');
-    const nonZak = withZak.filter((c) => c.author !== 'Polite and Unhinged');
-    assert.deepStrictEqual(nonZak, base, `non-Zak entries diverged from selectDeterministicComments for ${mediaId}`);
+    const withPersona = buildMockComments(mediaId, bank, count, 'Some Title');
+    const nonPersona = withPersona.filter((c) => c.author !== 'Polite and Unhinged');
+    assert.deepStrictEqual(nonPersona, base, `non-persona entries diverged from selectDeterministicComments for ${mediaId}`);
   }
 });
 

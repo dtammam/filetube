@@ -28,6 +28,11 @@
        resolveTheme()/resolveIconSet() in /js/common.js -- keep them in sync. */
     (function () {
       var d = document.documentElement;
+      // v1.44.3: immersive reader — hide the shell header pre-paint on a direct
+      // /read load. Set BEFORE the localStorage reads below so a storage throw
+      // (private mode) can't skip it into the catch (gate suggestion). read.js
+      // init()/destroy() toggle it across in-app navigation.
+      d.classList.add('reader-immersive');
       try {
         var eras = ['2005', '2009', '2014', '2021'];
         var modes = ['light', 'dark'];
@@ -48,12 +53,6 @@
           : 'outlined';
         d.setAttribute('data-icons', iconSet);
         if (localStorage.getItem('ft-custom-logo') === '1') d.classList.add('ft-custom-logo');
-        // v1.44.3: the reader is an immersive, full-page reading surface -- hide
-        // the shell header (logo+search: wasted space while reading) BEFORE first
-        // paint on a direct /read load, so the reader fills the screen with no
-        // header flash. read.js's init()/destroy() toggle the same class across
-        // in-app navigation (the shell header returns when you leave the reader).
-        d.classList.add('reader-immersive');
       } catch (_) {
         d.setAttribute('data-theme', '2021');
         d.setAttribute('data-mode', 'light');
