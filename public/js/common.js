@@ -2780,9 +2780,17 @@ function nextHistoryDepth(currentState, isReplace) {
 // history/location.
 function resolveHomeButtonAction(depth, currentPathAndSearch) {
   const d = (typeof depth === 'number' && depth >= 0) ? Math.floor(depth) : 0;
-  if (d > 0) return 'back';
+  // v1.45.0 gate-fix (C1): the home ROOT is the TOP of the walk — being there
+  // means there is nothing above to pop to, so Home is always a no-op there,
+  // checked BEFORE depth. This makes it impossible for a home entry that was
+  // (for any reason — e.g. a go-home push) stamped at depth>0 to resolve to
+  // 'back' and ping-pong into the page it was reached from. A filtered/folder
+  // home ('/?root=', '/?search=') is NOT the root — it's a real level and still
+  // pops.
   const atHome = currentPathAndSearch === '/' || currentPathAndSearch === '/index.html';
-  return atHome ? 'noop' : 'go-home';
+  if (atHome) return 'noop';
+  if (d > 0) return 'back';
+  return 'go-home';
 }
 
 // v1.45.0 (T2): is a click target the home ROOT (`/` or `/index.html` with no
@@ -3236,6 +3244,19 @@ if (typeof window !== 'undefined') {
     // navigate()/popstate fetch immediately becomes stale.
     const gen = ++navGeneration;
 
+    // v1.45.0 gate-fix (C1): a PUSH to the home ROOT ('/' with no query) is the
+    // TOP of the walk — always depth 0, never current+1. Every go-home path
+    // funnels through here (goHomeControl's depth-0 branch AND the programmatic
+    // navigate('/') in watch.js/setup.js after an action); without this reset
+    // they would stamp home at depth+1, leaving the next Home tap to resolve to
+    // 'back'. A filtered/folder home ('/?root=', '/?search=') keeps incrementing
+    // — it's a genuine level. A replace keeps the current entry's depth (it adds
+    // no level). NB: this alone would fix C1; resolveHomeButtonAction's
+    // atHome-first check is the belt-and-suspenders second layer.
+    const desiredDepth = (!opts.replace && isHomeRootTarget(parsed.pathname, parsed.search))
+      ? 0
+      : nextHistoryDepth(window.history.state, opts.replace);
+
     // FR-4 (T4): a cache hit skips the fetch entirely -- only a
     // byte-identical home URL counts as "returning" (see the homeViewCache
     // module comment above); a different home filter/search/sort URL falls
@@ -3247,7 +3268,7 @@ if (typeof window !== 'undefined') {
       // Update the URL BEFORE reattaching the cached node (see the ordering
       // comment above `navigate` — restoreHomeFromCache's `updateActiveNavHighlight`
       // call must observe the target URL, not the outgoing one).
-      const state = buildHistoryState('home', parsed.href, cached.scrollY, nextHistoryDepth(window.history.state, opts.replace));
+      const state = buildHistoryState('home', parsed.href, cached.scrollY, desiredDepth);
       if (opts.replace) window.history.replaceState(state, '', parsed.href);
       else window.history.pushState(state, '', parsed.href);
       restoreHomeFromCache(cached, targetUrl, cached.scrollY);
@@ -3268,7 +3289,7 @@ if (typeof window !== 'undefined') {
         // `navigate`) -- the winning (non-stale) navigation pushes/replaces
         // exactly once, then swaps exactly once, so `window.location` is
         // already correct when the incoming view's `init()` reads it.
-        const state = buildHistoryState(view, parsed.href, 0, nextHistoryDepth(window.history.state, opts.replace));
+        const state = buildHistoryState(view, parsed.href, 0, desiredDepth);
         if (opts.replace) window.history.replaceState(state, '', parsed.href);
         else window.history.pushState(state, '', parsed.href);
         swapToView(view, fragment.root, fragment.title, 0, targetUrl);
@@ -3281,15 +3302,19 @@ if (typeof window !== 'undefined') {
   }
 
   // v1.45.0 (T2): the Home control's incremental-pop coalescing guard. Set when
-  // goHomeControl issues a history.back(); cleared by the resulting popstate
+  // goHomeControl issues a history.back(); cleared ONLY by the resulting popstate
   // (handlePopState). A second Home tap while pending is ignored, so a fast
   // double-tap can never fire back() twice off the SAME (not-yet-updated)
-  // window.history.state and pop two levels / past the app. `homeBackDeadline`
-  // is a wedge-safety: if a popstate somehow never arrives, the guard self-lifts
-  // after 2s rather than freezing the Home button forever. (Date.now() here is
-  // browser app code — unrelated to the workflow-script restriction.)
+  // window.history.state and pop two levels / past the app.
+  // gate-fix (W1): the guard is EVENT-bounded, never time-bounded. An earlier
+  // wall-clock deadline could lift mid-jank (a heavy grid re-render/scroll-
+  // restore on a low-end phone blocking the main thread >2s) and let a second
+  // back() through — exiting to the referrer. It cannot wedge instead: goHome-
+  // Control only issues back() when depth>0, and depth rises only on this
+  // router's own pushes (floored at the boot seed), so there is always a real
+  // in-app entry behind us — history.back() therefore always traverses and
+  // always fires the popstate that clears this flag.
   let homeBackPending = false;
-  let homeBackDeadline = 0;
 
   // v1.45.0 (T2): the Home affordance (header logo / sidebar Home / bottom-nav
   // Home) walks UP one in-app level per tap, restoring where the user was —
@@ -3300,13 +3325,12 @@ if (typeof window !== 'undefined') {
   // behind us (a deep-link entry, depth 0, that isn't already home) do we push
   // a fresh '/' so Home is always reachable.
   function goHomeControl() {
-    if (homeBackPending && Date.now() < homeBackDeadline) return; // a prior pop is still settling — coalesce
+    if (homeBackPending) return; // a prior Home-back is still settling — coalesce until its popstate clears the guard
     const state = window.history.state;
     const depth = (state && typeof state.depth === 'number') ? state.depth : 0;
     const action = resolveHomeButtonAction(depth, window.location.pathname + window.location.search);
     if (action === 'back') {
       homeBackPending = true;
-      homeBackDeadline = Date.now() + 2000;
       window.history.back();
     } else if (action === 'go-home') {
       navigate('/');

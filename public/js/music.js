@@ -375,6 +375,11 @@ if (typeof module !== 'undefined' && module.exports) {
     }
     window.addEventListener('resize', scheduleStickyRemeasure, { signal });
     window.addEventListener('orientationchange', scheduleStickyRemeasure, { signal });
+    // gate-fix (S2): also cancel any pending debounce timer when the view is torn
+    // down (SPA #view-root swap -> controller.abort()), so nothing lingers past
+    // destroy(). (The isConnected guard already makes a stray fire harmless; this
+    // is the tidier belt-and-suspenders.)
+    signal.addEventListener('abort', function () { clearTimeout(stickyRemeasureTimer); });
 
     // ---- data + render ------------------------------------------------------
 

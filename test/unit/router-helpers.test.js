@@ -249,12 +249,17 @@ test('nextHistoryDepth: a missing/garbage current state reads as depth 0', () =>
 // that walk. depth>0 pops (history.back, restoring scroll); depth 0 either
 // no-ops (already home) or navigates to '/' (a deep-link entry that isn't home).
 
-test('resolveHomeButtonAction: any in-app depth pops one level (back)', () => {
+test('resolveHomeButtonAction: an in-app depth on a NON-home entry pops one level (back)', () => {
   assert.strictEqual(resolveHomeButtonAction(1, '/watch.html?v=abc'), 'back');
-  assert.strictEqual(resolveHomeButtonAction(3, '/?root=Movies'), 'back');
-  // Even sitting ON a home URL, if there is an in-app level behind us we pop to
-  // it (walk the actual path) rather than jumping — that's the whole point.
-  assert.strictEqual(resolveHomeButtonAction(2, '/'), 'back');
+  assert.strictEqual(resolveHomeButtonAction(3, '/?root=Movies'), 'back', 'a filtered/folder home is a real level, not the root');
+});
+
+test('resolveHomeButtonAction: the home ROOT is ALWAYS a no-op, even if the entry was stamped depth>0 (gate-fix C1)', () => {
+  // The atHome check runs BEFORE depth: home is the top of the walk, so Home
+  // there never pops. This is the belt-and-suspenders that makes a mis-stamped
+  // home entry unable to ping-pong back into the page it was reached from.
+  assert.strictEqual(resolveHomeButtonAction(2, '/'), 'noop');
+  assert.strictEqual(resolveHomeButtonAction(5, '/index.html'), 'noop');
 });
 
 test('resolveHomeButtonAction: depth 0 while already at the home root is a no-op', () => {
@@ -303,9 +308,13 @@ test('SOURCE-LOCK (T2): handleDocumentClick routes the Home root through goHomeC
     'goHomeControl short-circuits before the generic navigate');
 });
 
-test('SOURCE-LOCK (T2): goHomeControl coalesces re-entrant taps and only history.back()s on a real in-app depth', () => {
+test('SOURCE-LOCK (T2 + W1): goHomeControl coalesces re-entrant taps with an EVENT-based guard (no wall-clock)', () => {
   const fnBody = COMMON_JS.slice(COMMON_JS.indexOf('function goHomeControl'), COMMON_JS.indexOf('function handleDocumentClick'));
-  assert.match(fnBody, /homeBackPending && Date\.now\(\) < homeBackDeadline/, 'coalescing guard on re-entry');
+  assert.match(fnBody, /if \(homeBackPending\) return/, 'coalescing guard on re-entry, purely on the pending flag');
+  // gate-fix W1: NO wall-clock deadline — a time-bounded guard could lift mid-jank
+  // and let a second back() exit the app.
+  assert.doesNotMatch(fnBody, /Date\.now\(\)/, 'the guard must not be time-bounded');
+  assert.doesNotMatch(fnBody, /homeBackDeadline/, 'the deadline is gone');
   assert.match(fnBody, /resolveHomeButtonAction\(depth,/, 'delegates the decision to the pure helper');
   assert.match(fnBody, /window\.history\.back\(\)/, 'the back branch pops via history.back');
   // The back branch must arm the pending guard before calling back().
@@ -328,8 +337,15 @@ test('SOURCE-LOCK (T2): recordScrollForCurrentState PRESERVES depth when it rewr
     'scroll-record carries depth through');
 });
 
-test('SOURCE-LOCK (T2): both navigate() pushState/replaceState sites compute depth via nextHistoryDepth', () => {
+test('SOURCE-LOCK (T2 + C1): navigate() computes one desiredDepth that resets a home-root PUSH to 0, and both state builds use it', () => {
   const navBody = COMMON_JS.slice(COMMON_JS.indexOf('function navigate('), COMMON_JS.indexOf('function handleDocumentClick'));
-  const matches = navBody.match(/nextHistoryDepth\(window\.history\.state, opts\.replace\)/g) || [];
-  assert.strictEqual(matches.length, 2, 'both the cache-hit and fetch-path state builds compute depth');
+  // The home-root reset: a non-replace push to the home root is depth 0, else
+  // the usual increment. This is what stops every go-home (button + the
+  // programmatic navigate('/') in watch/setup) from stamping home at depth+1.
+  assert.match(navBody, /const desiredDepth = \(!opts\.replace && isHomeRootTarget\(parsed\.pathname, parsed\.search\)\)\s*\?\s*0\s*:\s*nextHistoryDepth\(window\.history\.state, opts\.replace\)/,
+    'desiredDepth resets a home-root push to 0');
+  // Both the cache-hit and fetch-path state builds must consume desiredDepth
+  // (not recompute a raw increment that would miss the reset).
+  const builds = navBody.match(/buildHistoryState\([^)]*, desiredDepth\)/g) || [];
+  assert.strictEqual(builds.length, 2, 'both state builds use the shared desiredDepth');
 });

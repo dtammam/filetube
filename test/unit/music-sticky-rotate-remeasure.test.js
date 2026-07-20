@@ -31,6 +31,11 @@ test('T3: a trailing debounce timer firing after destroy() is guarded by isConne
     'the debounced body only re-wires while the view content is still connected');
 });
 
+test('T3 (gate S2): the pending debounce timer is also cleared on the abort (SPA teardown)', () => {
+  assert.match(MUSIC_JS, /signal\.addEventListener\('abort', function \(\) \{ clearTimeout\(stickyRemeasureTimer\); \}\)/,
+    'destroy() -> controller.abort() cancels any pending re-measure timer');
+});
+
 test('T3: the re-measure listeners sit INSIDE init (where `signal` exists), not module scope', () => {
   const initStart = MUSIC_JS.indexOf('function init(root)');
   const destroyStart = MUSIC_JS.indexOf('function destroy()');
