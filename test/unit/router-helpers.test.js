@@ -19,6 +19,9 @@ const {
   toPathAndQuery,
   isStaleNavGeneration,
   isSameLocationNav,
+  nextHistoryDepth,
+  resolveHomeButtonAction,
+  isHomeRootTarget,
 } = require('../../public/js/common.js');
 
 const COMMON_JS = fs.readFileSync(path.join(__dirname, '../../public/js/common.js'), 'utf8');
@@ -85,31 +88,42 @@ test('shouldInterceptLinkClick: a same-origin link to an unknown route (view=nul
 
 // ---- buildHistoryState / parseHistoryState ---------------------------------
 
-test('buildHistoryState: builds the {view, url, scrollY} shape, defaulting scrollY to 0', () => {
-  assert.deepStrictEqual(buildHistoryState('watch', '/watch.html?v=abc', undefined), { view: 'watch', url: '/watch.html?v=abc', scrollY: 0 });
+test('buildHistoryState: builds the {view, url, scrollY, depth} shape, defaulting scrollY + depth to 0', () => {
+  assert.deepStrictEqual(buildHistoryState('watch', '/watch.html?v=abc', undefined), { view: 'watch', url: '/watch.html?v=abc', scrollY: 0, depth: 0 });
 });
 
 test('buildHistoryState: preserves a valid non-negative scrollY', () => {
-  assert.deepStrictEqual(buildHistoryState('home', '/', 240), { view: 'home', url: '/', scrollY: 240 });
+  assert.deepStrictEqual(buildHistoryState('home', '/', 240), { view: 'home', url: '/', scrollY: 240, depth: 0 });
 });
 
 test('buildHistoryState: a negative scrollY falls back to 0', () => {
-  assert.deepStrictEqual(buildHistoryState('home', '/', -5), { view: 'home', url: '/', scrollY: 0 });
+  assert.deepStrictEqual(buildHistoryState('home', '/', -5), { view: 'home', url: '/', scrollY: 0, depth: 0 });
 });
 
-test('parseHistoryState: a well-formed state round-trips through buildHistoryState', () => {
+test('buildHistoryState: preserves a valid depth (v1.45.0 T2) and floors/guards a bad one', () => {
+  assert.deepStrictEqual(buildHistoryState('home', '/?root=Movies', 0, 3), { view: 'home', url: '/?root=Movies', scrollY: 0, depth: 3 });
+  assert.strictEqual(buildHistoryState('home', '/', 0, -2).depth, 0, 'a negative depth falls back to 0');
+  assert.strictEqual(buildHistoryState('home', '/', 0, 2.7).depth, 2, 'a fractional depth is floored');
+});
+
+test('parseHistoryState: a well-formed state round-trips (depth included, defaulting to 0)', () => {
   const state = { view: 'setup', url: '/setup.html', scrollY: 120 };
-  assert.deepStrictEqual(parseHistoryState(state, { pathname: '/setup.html', search: '' }), state);
+  assert.deepStrictEqual(parseHistoryState(state, { pathname: '/setup.html', search: '' }), { ...state, depth: 0 });
+});
+
+test('parseHistoryState: carries a non-zero depth through (v1.45.0 T2)', () => {
+  const state = { view: 'watch', url: '/watch.html?v=abc', scrollY: 0, depth: 2 };
+  assert.deepStrictEqual(parseHistoryState(state, { pathname: '/watch.html', search: '?v=abc' }), state);
 });
 
 test('parseHistoryState: a null state (first entry, before any pushState) derives fresh state from the current location', () => {
   const result = parseHistoryState(null, { pathname: '/watch.html', search: '?v=xyz' });
-  assert.deepStrictEqual(result, { view: 'watch', url: '/watch.html?v=xyz', scrollY: 0 });
+  assert.deepStrictEqual(result, { view: 'watch', url: '/watch.html?v=xyz', scrollY: 0, depth: 0 });
 });
 
 test('parseHistoryState: a state with no "view" string falls back to deriving from location', () => {
   const result = parseHistoryState({ some: 'garbage' }, { pathname: '/', search: '' });
-  assert.deepStrictEqual(result, { view: 'home', url: '/', scrollY: 0 });
+  assert.deepStrictEqual(result, { view: 'home', url: '/', scrollY: 0, depth: 0 });
 });
 
 test('parseHistoryState: an unknown-route fallback location yields a null view', () => {
@@ -207,4 +221,115 @@ test('v1.44.2 SOURCE-LOCK (#46): navigate() no-ops a same-URL nav, but ONLY afte
   const popBody = COMMON_JS.slice(COMMON_JS.indexOf('function handlePopState'));
   assert.doesNotMatch(popBody.slice(0, popBody.indexOf('function ', 5)), /isSameLocationNav\(/,
     'handlePopState keeps its own path — the guard is navigate()-only');
+});
+
+// ---- nextHistoryDepth (v1.45.0 T2) -----------------------------------------
+
+test('nextHistoryDepth: a pushState adds one in-app level (current + 1)', () => {
+  assert.strictEqual(nextHistoryDepth({ depth: 0 }, false), 1);
+  assert.strictEqual(nextHistoryDepth({ depth: 3 }, false), 4);
+});
+
+test('nextHistoryDepth: a replaceState keeps the current entry depth (adds no level)', () => {
+  assert.strictEqual(nextHistoryDepth({ depth: 0 }, true), 0);
+  assert.strictEqual(nextHistoryDepth({ depth: 3 }, true), 3);
+});
+
+test('nextHistoryDepth: a missing/garbage current state reads as depth 0', () => {
+  assert.strictEqual(nextHistoryDepth(null, false), 1);
+  assert.strictEqual(nextHistoryDepth(undefined, false), 1);
+  assert.strictEqual(nextHistoryDepth({}, false), 1);
+  assert.strictEqual(nextHistoryDepth({ depth: -5 }, false), 1, 'a negative depth floors to 0 before +1');
+  assert.strictEqual(nextHistoryDepth({ depth: 2.9 }, false), 3, 'a fractional depth is floored before +1');
+});
+
+// ---- resolveHomeButtonAction (v1.45.0 T2) ----------------------------------
+//
+// Dean's model: Home walks UP one in-app level per tap; "home" is the top of
+// that walk. depth>0 pops (history.back, restoring scroll); depth 0 either
+// no-ops (already home) or navigates to '/' (a deep-link entry that isn't home).
+
+test('resolveHomeButtonAction: any in-app depth pops one level (back)', () => {
+  assert.strictEqual(resolveHomeButtonAction(1, '/watch.html?v=abc'), 'back');
+  assert.strictEqual(resolveHomeButtonAction(3, '/?root=Movies'), 'back');
+  // Even sitting ON a home URL, if there is an in-app level behind us we pop to
+  // it (walk the actual path) rather than jumping — that's the whole point.
+  assert.strictEqual(resolveHomeButtonAction(2, '/'), 'back');
+});
+
+test('resolveHomeButtonAction: depth 0 while already at the home root is a no-op', () => {
+  assert.strictEqual(resolveHomeButtonAction(0, '/'), 'noop');
+  assert.strictEqual(resolveHomeButtonAction(0, '/index.html'), 'noop');
+});
+
+test('resolveHomeButtonAction: depth 0 on a deep-link entry that ISN\'T home navigates to /', () => {
+  assert.strictEqual(resolveHomeButtonAction(0, '/watch.html?v=abc'), 'go-home');
+  assert.strictEqual(resolveHomeButtonAction(0, '/?root=Movies'), 'go-home', 'a directly deep-linked folder has no history behind it');
+  assert.strictEqual(resolveHomeButtonAction(0, '/music'), 'go-home');
+});
+
+test('resolveHomeButtonAction: a missing/garbage depth reads as 0 (fail toward reachable home, never an errant back)', () => {
+  assert.strictEqual(resolveHomeButtonAction(undefined, '/'), 'noop');
+  assert.strictEqual(resolveHomeButtonAction(undefined, '/watch.html'), 'go-home');
+  assert.strictEqual(resolveHomeButtonAction(-4, '/watch.html'), 'go-home');
+});
+
+// ---- isHomeRootTarget (v1.45.0 T2) -----------------------------------------
+
+test('isHomeRootTarget: the home root (/ or /index.html, no query) is a Home affordance', () => {
+  assert.strictEqual(isHomeRootTarget('/', ''), true);
+  assert.strictEqual(isHomeRootTarget('/index.html', ''), true);
+});
+
+test('isHomeRootTarget: a /?root=<folder> drill is NOT the Home root (ordinary forward nav)', () => {
+  assert.strictEqual(isHomeRootTarget('/', '?root=Movies'), false);
+  assert.strictEqual(isHomeRootTarget('/', '?search=foo'), false);
+});
+
+test('isHomeRootTarget: other routes are never the Home root', () => {
+  assert.strictEqual(isHomeRootTarget('/watch.html', ''), false);
+  assert.strictEqual(isHomeRootTarget('/music', ''), false);
+  assert.strictEqual(isHomeRootTarget('/setup.html', ''), false);
+});
+
+// ---- v1.45.0 T2 SOURCE-LOCKS: incremental-pop Home runtime wiring -----------
+
+test('SOURCE-LOCK (T2): handleDocumentClick routes the Home root through goHomeControl, not navigate()', () => {
+  const clickBody = COMMON_JS.slice(COMMON_JS.indexOf('function handleDocumentClick'), COMMON_JS.indexOf('function handlePopState'));
+  assert.match(clickBody, /isHomeRootTarget\(target\.pathname, target\.search\)/, 'the Home-root check gates the branch');
+  assert.match(clickBody, /goHomeControl\(\)/, 'a Home-root click calls goHomeControl');
+  // The Home branch must return BEFORE the generic navigate(target.href).
+  assert.ok(clickBody.indexOf('goHomeControl()') < clickBody.indexOf('navigate(target.href)'),
+    'goHomeControl short-circuits before the generic navigate');
+});
+
+test('SOURCE-LOCK (T2): goHomeControl coalesces re-entrant taps and only history.back()s on a real in-app depth', () => {
+  const fnBody = COMMON_JS.slice(COMMON_JS.indexOf('function goHomeControl'), COMMON_JS.indexOf('function handleDocumentClick'));
+  assert.match(fnBody, /homeBackPending && Date\.now\(\) < homeBackDeadline/, 'coalescing guard on re-entry');
+  assert.match(fnBody, /resolveHomeButtonAction\(depth,/, 'delegates the decision to the pure helper');
+  assert.match(fnBody, /window\.history\.back\(\)/, 'the back branch pops via history.back');
+  // The back branch must arm the pending guard before calling back().
+  assert.ok(fnBody.indexOf('homeBackPending = true') < fnBody.indexOf('window.history.back()'),
+    'the guard is armed before back() so a synchronous second tap is coalesced');
+});
+
+test('SOURCE-LOCK (T2): handlePopState clears the Home-back guard (so the NEXT tap can pop again)', () => {
+  const popBody = COMMON_JS.slice(COMMON_JS.indexOf('function handlePopState'));
+  const firstFn = popBody.slice(0, popBody.indexOf('document.addEventListener'));
+  assert.match(firstFn, /homeBackPending = false/, 'popstate releases the coalescing guard');
+});
+
+test('SOURCE-LOCK (T2): recordScrollForCurrentState PRESERVES depth when it rewrites the entry for scroll', () => {
+  const fnBody = COMMON_JS.slice(COMMON_JS.indexOf('function recordScrollForCurrentState'), COMMON_JS.indexOf('function extractViewFragment'));
+  // The 4th arg to buildHistoryState here must be the entry's own depth, not a
+  // literal 0 (a replace-in-place keeps the level — dropping it would let a
+  // scrolled-then-returned-to entry lose its pop level).
+  assert.match(fnBody, /buildHistoryState\(\s*window\.history\.state\.view,\s*window\.history\.state\.url,\s*window\.scrollY,\s*window\.history\.state\.depth\)/,
+    'scroll-record carries depth through');
+});
+
+test('SOURCE-LOCK (T2): both navigate() pushState/replaceState sites compute depth via nextHistoryDepth', () => {
+  const navBody = COMMON_JS.slice(COMMON_JS.indexOf('function navigate('), COMMON_JS.indexOf('function handleDocumentClick'));
+  const matches = navBody.match(/nextHistoryDepth\(window\.history\.state, opts\.replace\)/g) || [];
+  assert.strictEqual(matches.length, 2, 'both the cache-hit and fetch-path state builds compute depth');
 });
