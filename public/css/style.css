@@ -706,6 +706,27 @@ html.reader-immersive .app-container { padding-top: 0; }
   gap: 12px;
 }
 
+/* v1.45.0 T1 (Dean): pin the home filter/action bar so the sort control +
+   All/Videos/Audio + Shuffle + Rescan stay reachable at any scroll depth ("I
+   want to press shuffle again" without scrolling back up). Home-scoped:
+   `#library-content` and this `.section-title` exist only on the home view
+   (other views use `.books-section-title`/`.sidebar-section-title`), so no
+   other view's heading is affected. Solid background so grid rows scroll
+   cleanly UNDER the bar (the row is otherwise transparent); z-index 20 sits
+   above the grid cards (z-index 2) yet below the sort-menu popover (z-index
+   30 — a DESCENDANT of this bar, so it still overlays the grid) and below the
+   player dock / modals. `top` clears the fixed 56px header; the taller mobile
+   header (`--mobile-header-h`) is handled in the max-width:768px block below.
+   NB: sticky relies on no scroll-container ancestor — `html{overflow-x:clip}`
+   (not `hidden`) does NOT establish one, so the viewport stays the sticky
+   reference; verify on iOS Safari/PWA (Dean's probe). */
+#library-content .section-title {
+  position: sticky;
+  top: 56px;
+  z-index: 20;
+  background-color: var(--bg-color);
+}
+
 .section-actions {
   display: flex;
   align-items: center;
@@ -3523,6 +3544,13 @@ a.sub-row-channel-link:focus-visible {
      wrapping alone. */
   .section-title {
     flex-wrap: wrap;
+  }
+
+  /* v1.45.0 T1: the mobile header is taller than the desktop 56px, so the
+     pinned home filter bar must clear `--mobile-header-h` instead. Home-scoped
+     to match the sticky rule's specificity (only #library-content is sticky). */
+  #library-content .section-title {
+    top: var(--mobile-header-h);
   }
 
   .section-actions {
