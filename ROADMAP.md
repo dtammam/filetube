@@ -80,6 +80,15 @@
 
 ## Shipped
 
+### v1.45.1 — Sticky filter bar: flush-pin (kill the scroll jump) (2026-07-20)
+
+Dean's on-device pass of v1.45.0 surfaced two sticky-bar quirks:
+
+- **(A — FIXED) the scroll "jump".** The bar pinned at `top` = header height but naturally rested one `.main-content` top-padding lower (24px desktop / 16px mobile), so it slid up that padding on the first scroll before pinning — a visible shift, with the gap restored on rubber-band. Fix: the standard flush-sticky recipe — pull the box up by the content padding (`margin-top`) and give it back as inner `padding-top`, so the border-box rests exactly on the sticky line (zero pre-stick travel, no jump). Slim adversarial gate verified the box math against the CSS spec (provably zero-travel) and cleared the negative-margin/sticky recipe as safe (no iOS quirk in this block-ancestor chain).
+- **(B — PARTIAL / best-effort) "cards covered by the filter after Home".** The pre-stick misalignment made a card peek awkwardly under the bar after an incremental-pop Home restored a scrolled position — that misalignment is now gone. **But the underlying behavior — an opaque sticky bar covering content you've scrolled past — is inherent to `position: sticky`, and the flush-pin's taller box actually occludes ~24px MORE below the stuck bar (16px mobile), not less.** Restoring to an exact scroll position correctly shows what you left; there's no clean alignment fix for "content under the stuck bar." **Dean's on-device pass judges B specifically** — if the residual occlusion still reads wrong, the real lever is a more compact mobile bar (a future design decision), not a margin tweak.
+- **Known cosmetic (disclosed):** first-run only (zero folders configured, `#welcome-message` shown), the bar's `-24px` margin collapses with the welcome box's `20px` bottom margin to −4px, so the opaque bar clips ~4px into that empty margin. Negligible (empty margin region, first-run only); not fixed.
+- **Suites:** Node 22 **4603/4603**; Node 24 **4603/4603**. Lint 0 errors. Slim adversarial gate APPROVE. **Docker publish is Dean's.**
+
 ### v1.45.0 — UX refinement (cheap-and-safe tranche): sticky filter bar, incremental-pop Home, music rotate fix (2026-07-20)
 
 The first, no-data-loss tranche of Dean's UX push, deliberately decomposed from the umbrella "make the UX first-class" into a sequenced train ordered by risk. Three shipped; the risky/undiagnosable items parked and framed (see "Parked" below).
