@@ -48,6 +48,10 @@ summary,
   --radius-lg: 12px;
   --density: 8px;
   --shadow: 0 1px 2px rgba(0,0,0,0.1);
+  /* v1.45.0 T1: the offset the sticky home filter bar pins at — the fixed
+     header height. 56px on desktop; overridden to --mobile-header-h in the
+     max-width:768px :root below (the mobile header is taller). */
+  --sticky-bar-top: 56px;
   --shadow-lg: 0 4px 12px rgba(0,0,0,0.25);
   --yt-red: #cc0000;
   --yt-red-dark: #990000;
@@ -704,6 +708,27 @@ html.reader-immersive .app-container { padding-top: 0; }
   justify-content: space-between;
   align-items: center;
   gap: 12px;
+}
+
+/* v1.45.0 T1 (Dean): pin the home filter/action bar so the sort control +
+   All/Videos/Audio + Shuffle + Rescan stay reachable at any scroll depth ("I
+   want to press shuffle again" without scrolling back up). Home-scoped:
+   `#library-content` and this `.section-title` exist only on the home view
+   (other views use `.books-section-title`/`.sidebar-section-title`), so no
+   other view's heading is affected. Solid background so grid rows scroll
+   cleanly UNDER the bar (the row is otherwise transparent); z-index 20 sits
+   above the grid cards (z-index 2) yet below the sort-menu popover (z-index
+   30 — a DESCENDANT of this bar, so it still overlays the grid) and below the
+   player dock / modals. `top` clears the fixed 56px header; the taller mobile
+   header (`--mobile-header-h`) is handled in the max-width:768px block below.
+   NB: sticky relies on no scroll-container ancestor — `html{overflow-x:clip}`
+   (not `hidden`) does NOT establish one, so the viewport stays the sticky
+   reference; verify on iOS Safari/PWA (Dean's probe). */
+#library-content .section-title {
+  position: sticky;
+  top: var(--sticky-bar-top);
+  z-index: 20;
+  background-color: var(--bg-color);
 }
 
 .section-actions {
@@ -3146,6 +3171,8 @@ a.sub-row-channel-link:focus-visible {
   :root {
     --mobile-header-h: calc(96px + env(safe-area-inset-top));
     --mobile-bottom-nav-h: calc(72px + env(safe-area-inset-bottom));
+    /* v1.45.0 T1: the sticky home filter bar clears the taller mobile header. */
+    --sticky-bar-top: var(--mobile-header-h);
   }
 
   /* v1.26.2 polish fix (Dean punchlist, systemic version): every prior

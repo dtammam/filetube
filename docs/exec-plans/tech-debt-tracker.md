@@ -145,3 +145,10 @@
 - **Fix direction:** infinite-scroll / "load more" against the existing offset/limit API (the endpoints already support it), or virtualized rendering.
 - **Severity:** Low. Fine at Dean's real library size; the endpoints are already paginated server-side.
 - **Source:** v1.44.1 (Bug-B fix follow-up).
+
+## #49 — v1.45.0 T2: navigate() resets depth to 0 only on a home-root PUSH, not a replace (latent — no caller today)
+- **What:** the incremental-pop Home depth reset in `navigate()` (`desiredDepth`) stamps a home-root push (`/` / `/index.html`, no query) at depth 0. A hypothetical future `navigate('/', { replace: true })` would fall through to `nextHistoryDepth(state, true)` and KEEP the current (possibly non-zero) depth rather than reset. No call site does a replace-INTO the home root today (verified by grep: all four programmatic `navigate('/')` in watch.js/setup.js + goHomeControl are plain pushes), so this is NOT a live bug.
+- **Why it's inert even if it happened:** `resolveHomeButtonAction` checks `atHome` FIRST → `noop` (the belt-and-suspenders C1 layer), so a home entry stamped at depth>0 still never resolves to `back`/ping-pong. The only consumer of depth at a home URL is a Home tap, which no-ops before depth is read.
+- **Revisit trigger:** if a `navigate('/', { replace: true })` (or any replace-to-home-root) call site is ever added, decide whether the reset should also cover replace (change the `!opts.replace &&` guard).
+- **Severity:** None (latent, defense-in-depth already covers it). Non-blocking note from the v1.45.0 QA gate seat.
+- **Source:** v1.45.0 full two-reviewer gate (QA seat, non-blocking latent note).

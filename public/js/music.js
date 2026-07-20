@@ -356,6 +356,31 @@ if (typeof module !== 'undefined' && module.exports) {
       }, { signal });
     }
 
+    // v1.45.0 T3: the drill sticky-header offset (--music-sticky-top) + collapse
+    // threshold are measured ONCE per render from the fixed header's height —
+    // but that height differs between orientations (mobile ~96px vs 56px), so a
+    // portrait->landscape->portrait rotate would otherwise leave the sticky bar
+    // parked at a stale offset until the next render(). Re-measure on rotate/
+    // resize by re-running wireStickyObserver (it disconnects + re-measures +
+    // recreates the observer, and no-ops when we're not on a drill). Debounced
+    // so a resize storm coalesces. Registered with the init AbortController
+    // `signal`, so the SPA #view-root swap (destroy -> controller.abort()) tears
+    // it down; the isConnected guard covers a trailing timer firing after that.
+    var stickyRemeasureTimer = null;
+    function scheduleStickyRemeasure() {
+      clearTimeout(stickyRemeasureTimer);
+      stickyRemeasureTimer = setTimeout(function () {
+        if (content && content.isConnected) wireStickyObserver();
+      }, 150);
+    }
+    window.addEventListener('resize', scheduleStickyRemeasure, { signal });
+    window.addEventListener('orientationchange', scheduleStickyRemeasure, { signal });
+    // gate-fix (S2): also cancel any pending debounce timer when the view is torn
+    // down (SPA #view-root swap -> controller.abort()), so nothing lingers past
+    // destroy(). (The isConnected guard already makes a stray fire harmless; this
+    // is the tidier belt-and-suspenders.)
+    signal.addEventListener('abort', function () { clearTimeout(stickyRemeasureTimer); });
+
     // ---- data + render ------------------------------------------------------
 
     function musicUrl(params) {

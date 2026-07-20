@@ -2662,8 +2662,19 @@ function shouldInterceptLinkClick({ button, metaKey, ctrlKey, shiftKey, altKey, 
 // The `history.pushState`/`history.state` shape, in one place so the router
 // and its `popstate` handler always agree on the fields. `scrollY` defaults
 // to 0 (a fresh in-app navigation starts at the top, like a real page load).
-function buildHistoryState(view, url, scrollY) {
-  return { view, url: String(url), scrollY: (typeof scrollY === 'number' && scrollY >= 0) ? scrollY : 0 };
+function buildHistoryState(view, url, scrollY, depth) {
+  return {
+    view,
+    url: String(url),
+    scrollY: (typeof scrollY === 'number' && scrollY >= 0) ? scrollY : 0,
+    // v1.45.0 (T2): how many in-app history entries sit BEHIND this one. Seeded
+    // 0 at bootRouter; each pushState sets current+1, each replaceState keeps
+    // current (see nextHistoryDepth). It is the Home control's proof that there
+    // is an in-app level to pop to via history.back(): depth>0 can NEVER walk
+    // back past the session's first stamped entry to an external referrer,
+    // because depth only ever rises on this router's OWN pushState calls.
+    depth: (typeof depth === 'number' && depth >= 0) ? Math.floor(depth) : 0,
+  };
 }
 
 // Defensive parse of `event.state` (a `popstate` can fire with a `null` state
@@ -2672,11 +2683,14 @@ function buildHistoryState(view, url, scrollY) {
 // CURRENT location so `popstate` never throws on a state-less entry.
 function parseHistoryState(state, fallbackLocation) {
   if (state && typeof state === 'object' && typeof state.view === 'string') {
-    return buildHistoryState(state.view, state.url, state.scrollY);
+    // v1.45.0 (T2): carry `depth` through so a popstate back to this entry
+    // (and any later replaceState that rebuilds it — recordScrollForCurrentState)
+    // preserves the in-app depth the Home control reads.
+    return buildHistoryState(state.view, state.url, state.scrollY, state.depth);
   }
   const loc = (fallbackLocation && typeof fallbackLocation === 'object') ? fallbackLocation : {};
   const view = deriveRouteView(loc.pathname || '');
-  return buildHistoryState(view, (loc.pathname || '') + (loc.search || ''), 0);
+  return buildHistoryState(view, (loc.pathname || '') + (loc.search || ''), 0, 0);
 }
 
 // FR-4 (T4): normalizes an absolute OR relative URL/href string down to its
@@ -2740,6 +2754,53 @@ function shouldDockOnTransition(fromView, toView) {
 // If a future in-page anchor nav is added, revisit so it isn't silently no-op'd.
 function isSameLocationNav(currentPathAndSearch, targetPathAndSearch) {
   return typeof targetPathAndSearch === 'string' && currentPathAndSearch === targetPathAndSearch;
+}
+
+// v1.45.0 (T2): the depth the NEXT history entry should carry. A pushState adds
+// one in-app level behind the new entry (current + 1); a replaceState keeps the
+// current entry's own depth (it replaces in place, adding no level). `current`
+// is the state being pushed/replaced FROM (window.history.state at call time);
+// a missing/garbage depth reads as 0. Pure — exported for node:test.
+function nextHistoryDepth(currentState, isReplace) {
+  const cur = (currentState && typeof currentState.depth === 'number' && currentState.depth >= 0)
+    ? Math.floor(currentState.depth) : 0;
+  return isReplace ? cur : cur + 1;
+}
+
+// v1.45.0 (T2): what the Home control should do, given the CURRENT entry's
+// in-app `depth` and where we are now. Dean's model: Home walks UP one in-app
+// level per tap, restoring the scroll/view left at each level; "home" is simply
+// the top of that walk.
+//   - depth > 0            -> 'back'   (pop one level via history.back(), which
+//                                        reuses the router's popstate restore)
+//   - depth 0, not at home -> 'go-home' (a deep-link entry with no in-app history
+//                                        behind it — navigate('/') to reach home)
+//   - depth 0, at home     -> 'noop'   (already at the session-root home)
+// Pure — exported for node:test so every branch is covered without a live
+// history/location.
+function resolveHomeButtonAction(depth, currentPathAndSearch) {
+  const d = (typeof depth === 'number' && depth >= 0) ? Math.floor(depth) : 0;
+  // v1.45.0 gate-fix (C1): the home ROOT is the TOP of the walk — being there
+  // means there is nothing above to pop to, so Home is always a no-op there,
+  // checked BEFORE depth. This makes it impossible for a home entry that was
+  // (for any reason — e.g. a go-home push) stamped at depth>0 to resolve to
+  // 'back' and ping-pong into the page it was reached from. A filtered/folder
+  // home ('/?root=', '/?search=') is NOT the root — it's a real level and still
+  // pops.
+  const atHome = currentPathAndSearch === '/' || currentPathAndSearch === '/index.html';
+  if (atHome) return 'noop';
+  if (d > 0) return 'back';
+  return 'go-home';
+}
+
+// v1.45.0 (T2): is a click target the home ROOT (`/` or `/index.html` with no
+// query) — i.e. a Home affordance (header logo / sidebar Home / bottom-nav
+// Home), which routes through the incremental-pop goHomeControl — versus a
+// `/?root=<folder>` drill, which is an ordinary forward navigation? Pure —
+// exported for node:test.
+function isHomeRootTarget(pathname, search) {
+  const isRootPath = pathname === '/' || pathname === '/index.html';
+  return isRootPath && (!search || search === '');
 }
 
 // Guarded so requiring this file in Node (for unit tests) never touches
@@ -2815,7 +2876,10 @@ if (typeof window !== 'undefined') {
   // pushed.
   function recordScrollForCurrentState() {
     if (!window.history.state) return;
-    const updated = buildHistoryState(window.history.state.view, window.history.state.url, window.scrollY);
+    // v1.45.0 (T2): preserve `depth` when rewriting this entry for scroll —
+    // it's a replace-in-place, so the entry keeps its own in-app depth.
+    const updated = buildHistoryState(
+      window.history.state.view, window.history.state.url, window.scrollY, window.history.state.depth);
     window.history.replaceState(updated, '');
   }
 
@@ -3180,6 +3244,19 @@ if (typeof window !== 'undefined') {
     // navigate()/popstate fetch immediately becomes stale.
     const gen = ++navGeneration;
 
+    // v1.45.0 gate-fix (C1): a PUSH to the home ROOT ('/' with no query) is the
+    // TOP of the walk — always depth 0, never current+1. Every go-home path
+    // funnels through here (goHomeControl's depth-0 branch AND the programmatic
+    // navigate('/') in watch.js/setup.js after an action); without this reset
+    // they would stamp home at depth+1, leaving the next Home tap to resolve to
+    // 'back'. A filtered/folder home ('/?root=', '/?search=') keeps incrementing
+    // — it's a genuine level. A replace keeps the current entry's depth (it adds
+    // no level). NB: this alone would fix C1; resolveHomeButtonAction's
+    // atHome-first check is the belt-and-suspenders second layer.
+    const desiredDepth = (!opts.replace && isHomeRootTarget(parsed.pathname, parsed.search))
+      ? 0
+      : nextHistoryDepth(window.history.state, opts.replace);
+
     // FR-4 (T4): a cache hit skips the fetch entirely -- only a
     // byte-identical home URL counts as "returning" (see the homeViewCache
     // module comment above); a different home filter/search/sort URL falls
@@ -3191,7 +3268,7 @@ if (typeof window !== 'undefined') {
       // Update the URL BEFORE reattaching the cached node (see the ordering
       // comment above `navigate` — restoreHomeFromCache's `updateActiveNavHighlight`
       // call must observe the target URL, not the outgoing one).
-      const state = buildHistoryState('home', parsed.href, cached.scrollY);
+      const state = buildHistoryState('home', parsed.href, cached.scrollY, desiredDepth);
       if (opts.replace) window.history.replaceState(state, '', parsed.href);
       else window.history.pushState(state, '', parsed.href);
       restoreHomeFromCache(cached, targetUrl, cached.scrollY);
@@ -3212,7 +3289,7 @@ if (typeof window !== 'undefined') {
         // `navigate`) -- the winning (non-stale) navigation pushes/replaces
         // exactly once, then swaps exactly once, so `window.location` is
         // already correct when the incoming view's `init()` reads it.
-        const state = buildHistoryState(view, parsed.href, 0);
+        const state = buildHistoryState(view, parsed.href, 0, desiredDepth);
         if (opts.replace) window.history.replaceState(state, '', parsed.href);
         else window.history.pushState(state, '', parsed.href);
         swapToView(view, fragment.root, fragment.title, 0, targetUrl);
@@ -3222,6 +3299,43 @@ if (typeof window !== 'undefined') {
         console.error('SPA navigation failed; falling back to a full page load:', err);
         window.location.assign(url);
       });
+  }
+
+  // v1.45.0 (T2): the Home control's incremental-pop coalescing guard. Set when
+  // goHomeControl issues a history.back(); cleared ONLY by the resulting popstate
+  // (handlePopState). A second Home tap while pending is ignored, so a fast
+  // double-tap can never fire back() twice off the SAME (not-yet-updated)
+  // window.history.state and pop two levels / past the app.
+  // gate-fix (W1): the guard is EVENT-bounded, never time-bounded. An earlier
+  // wall-clock deadline could lift mid-jank (a heavy grid re-render/scroll-
+  // restore on a low-end phone blocking the main thread >2s) and let a second
+  // back() through — exiting to the referrer. It cannot wedge instead: goHome-
+  // Control only issues back() when depth>0, and depth rises only on this
+  // router's own pushes (floored at the boot seed), so there is always a real
+  // in-app entry behind us — history.back() therefore always traverses and
+  // always fires the popstate that clears this flag.
+  let homeBackPending = false;
+
+  // v1.45.0 (T2): the Home affordance (header logo / sidebar Home / bottom-nav
+  // Home) walks UP one in-app level per tap, restoring where the user was —
+  // NOT a jump to a fresh top-of-feed. history.back() is the mechanism: it
+  // reuses the router's existing popstate path, which already restores the
+  // recorded scrollY (recordScrollForCurrentState) and re-swaps the prior view
+  // (handlePopState / restoreHomeFromCache). Only when there is no in-app level
+  // behind us (a deep-link entry, depth 0, that isn't already home) do we push
+  // a fresh '/' so Home is always reachable.
+  function goHomeControl() {
+    if (homeBackPending) return; // a prior Home-back is still settling — coalesce until its popstate clears the guard
+    const state = window.history.state;
+    const depth = (state && typeof state.depth === 'number') ? state.depth : 0;
+    const action = resolveHomeButtonAction(depth, window.location.pathname + window.location.search);
+    if (action === 'back') {
+      homeBackPending = true;
+      window.history.back();
+    } else if (action === 'go-home') {
+      navigate('/');
+    }
+    // 'noop': already at the session-root home — do nothing.
   }
 
   function handleDocumentClick(event) {
@@ -3247,6 +3361,13 @@ if (typeof window !== 'undefined') {
     });
     if (!shouldIntercept) return;
     event.preventDefault();
+    // v1.45.0 (T2): a click on a Home affordance (the home ROOT `/` — NOT a
+    // `/?root=<folder>` drill, which is an ordinary forward nav) routes through
+    // the incremental-pop Home control instead of a fresh navigate().
+    if (isHomeRootTarget(target.pathname, target.search)) {
+      goHomeControl();
+      return;
+    }
     navigate(target.href);
   }
 
@@ -3255,6 +3376,11 @@ if (typeof window !== 'undefined') {
   // history itself (the entry already exists) -- restores the scrollY that
   // was recorded for it when the user originally navigated away.
   function handlePopState(event) {
+    // v1.45.0 (T2): a popstate means the browser moved to another entry — clear
+    // the Home-control coalescing guard so the next Home tap reads the now-current
+    // depth and can pop again (this fires for BOTH a goHomeControl history.back()
+    // and a plain browser back/forward, which is correct — either way we've moved).
+    homeBackPending = false;
     const state = parseHistoryState(event.state, window.location);
     if (!state.view) return; // an unknown route — the browser has already navigated there natively
 
@@ -3317,7 +3443,10 @@ if (typeof window !== 'undefined') {
     const root = getViewRoot();
     if (!view || !root) return; // not a known route, or this page has no shell yet
     if (!window.history.state) {
-      window.history.replaceState(buildHistoryState(view, window.location.pathname + window.location.search, 0), '');
+      // v1.45.0 (T2): the session's first stamped entry is depth 0 — the floor
+      // the Home control's history.back() can never cross (see buildHistoryState).
+      // An existing state (a reload, or a back INTO the app) keeps its own depth.
+      window.history.replaceState(buildHistoryState(view, window.location.pathname + window.location.search, 0, 0), '');
     }
     currentViewName = view;
     currentViewUrl = window.location.pathname + window.location.search; // FR-4 (T4): keep in lockstep with currentViewName
@@ -6359,6 +6488,8 @@ if (typeof module !== 'undefined' && module.exports) {
     showToast, nextArmState,
     deriveRouteView, shouldInterceptLinkClick, buildHistoryState, parseHistoryState,
     shouldDockOnTransition, isSameLocationNav, toPathAndQuery, isStaleNavGeneration,
+    // v1.45.0 (T2): incremental-pop Home helpers.
+    nextHistoryDepth, resolveHomeButtonAction, isHomeRootTarget,
     canonicalizeChannelUrl, channelIdentityMatches, resolveFileChannelIdentity,
     shouldShowSubscribeButton, decideSubscribeButtonState,
     buildSubscribeRequestBody, buildSubscribeModal,
