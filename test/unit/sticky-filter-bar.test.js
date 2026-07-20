@@ -51,6 +51,11 @@ test('the mobile flush-pin pull-up matches the 16px mobile content padding (not 
   // the bar pins 8px off on phones.
   const re = /#library-content \.section-title\s*\{[^}]*margin-top:\s*-16px;[^}]*padding-top:\s*16px/;
   assert.match(css, re, 'mobile pull-up/give-back is 16px');
+  // Sanity-tie to the actual mobile `.main-content` padding (16px), matching the
+  // desktop half's rigor — if that ever changes, the mobile pull-up must too or
+  // the bar pins off. The mobile `.main-content` rule (inside the 768px block)
+  // sets `padding: 16px`; the desktop one is `padding: 24px` (won't match here).
+  assert.match(css, /\.main-content\s*\{[^}]*padding:\s*16px/, 'mobile .main-content padding is the 16px this pull-up cancels');
 });
 
 test('--sticky-bar-top is the desktop header height and is overridden to the taller mobile header', () => {
