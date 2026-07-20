@@ -729,6 +729,18 @@ html.reader-immersive .app-container { padding-top: 0; }
   top: var(--sticky-bar-top);
   z-index: 20;
   background-color: var(--bg-color);
+  /* v1.45.1 (Dean on-device): pin FLUSH under the header with NO pre-stick
+     "jump". The bar naturally rests one `.main-content` top-padding below the
+     header (24px desktop / 16px mobile), so with `top` == header height it slid
+     up that padding before pinning — a visible shift, and the 16px misalignment
+     made a card peek awkwardly under the bar after an incremental-pop Home
+     restored a scrolled position. Pull the box up by that padding and give it
+     back as inner padding-top: the border-box now rests exactly on the sticky
+     line (zero travel, no jump), the heading stays visually put, and the opaque
+     top fills the former gap so nothing peeks under the fixed header. Mobile's
+     smaller 16px padding is overridden in the max-width:768px block. */
+  margin-top: -24px;
+  padding-top: 24px;
 }
 
 .section-actions {
@@ -3550,6 +3562,14 @@ a.sub-row-channel-link:focus-visible {
      wrapping alone. */
   .section-title {
     flex-wrap: wrap;
+  }
+
+  /* v1.45.1: mobile `.main-content` padding is 16px (not the desktop 24px), so
+     the flush-pin pull-up/give-back must match it — else the bar would pin 8px
+     off. Home-scoped to match the base sticky rule's specificity. */
+  #library-content .section-title {
+    margin-top: -16px;
+    padding-top: 16px;
   }
 
   .section-actions {

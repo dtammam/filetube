@@ -33,6 +33,26 @@ test('the home filter bar is sticky and HOME-SCOPED (not the bare .section-title
   assert.match(body, /z-index:\s*20/, 'z-index 20: above cards, below the sort-menu/dock');
 });
 
+test('the bar pins FLUSH with zero pre-stick jump: pull-up == give-back == the desktop content padding (v1.45.1)', () => {
+  // The margin-top pull-up and the padding-top give-back must be equal and equal
+  // to `.main-content`'s desktop top padding (24px), or the bar pins off-position.
+  const body = ruleBody('#library-content .section-title');
+  assert.match(body, /margin-top:\s*-24px/, 'pull the box up by the 24px desktop content padding');
+  assert.match(body, /padding-top:\s*24px/, 'give it back as inner padding so the heading stays put');
+  // Sanity-tie to the actual .main-content desktop padding so this stays honest
+  // if that padding ever changes.
+  const mc = ruleBody('.main-content');
+  assert.match(mc, /padding:\s*24px/, '.main-content desktop padding is the 24px this pull-up cancels');
+});
+
+test('the mobile flush-pin pull-up matches the 16px mobile content padding (not the desktop 24px)', () => {
+  // A separate #library-content .section-title rule inside the mobile block must
+  // override margin-top/padding-top to 16px (mobile .main-content padding), else
+  // the bar pins 8px off on phones.
+  const re = /#library-content \.section-title\s*\{[^}]*margin-top:\s*-16px;[^}]*padding-top:\s*16px/;
+  assert.match(css, re, 'mobile pull-up/give-back is 16px');
+});
+
 test('--sticky-bar-top is the desktop header height and is overridden to the taller mobile header', () => {
   // Base :root default = desktop 56px header.
   assert.match(css, /--sticky-bar-top:\s*56px/, 'base var is the 56px desktop header');
