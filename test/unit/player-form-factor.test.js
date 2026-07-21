@@ -106,9 +106,13 @@ test('isDesktopClassPlatform: matches Windows (navigator.platform Win32/Win64 an
   assert.strictEqual(isDesktopClassPlatform('Windows'), true);
 });
 
-test('isDesktopClassPlatform: matches Chrome OS ("Chrome OS" / "CrOS")', () => {
+test('isDesktopClassPlatform: matches the userAgentData Chrome OS value ("Chrome OS")', () => {
+  // The REAL signal: navigator.userAgentData.platform === "Chrome OS".
   assert.strictEqual(isDesktopClassPlatform('Chrome OS'), true);
-  assert.strictEqual(isDesktopClassPlatform('CrOS x86_64'), true);
+  // NOTE: Chrome OS navigator.platform is "Linux x86_64" (NOT "CrOS") — the
+  // "CrOS" token is UA-string-only — so a Chromebook on http (no userAgentData)
+  // falls back to mobile via the mobile-string assertions below. The /cros/ arm
+  // is a defensive belt for the UA-CH value only.
 });
 
 test('isDesktopClassPlatform: NEVER matches a mobile-device platform string (the safety invariant)', () => {

@@ -644,9 +644,18 @@ function resolveMobileFormFactor(signals) {
 }
 
 // v1.45.5 (Dean, Surface): is `platform` a DESKTOP-CLASS OS whose touchscreen
-// devices are laptops (→ desktop UI), not phones/tablets? Matches Windows
-// (`navigator.platform` "Win32"/"Win64"; `navigator.userAgentData.platform`
-// "Windows") and Chrome OS ("Chrome OS"/"CrOS"). Deliberately does NOT match:
+// devices are laptops (→ desktop UI), not phones/tablets? Matches:
+//   - Windows: `navigator.platform` "Win32"/"Win64" AND
+//     `navigator.userAgentData.platform` "Windows" — so it fires on plain http
+//     (via navigator.platform) too, which is the common self-hosted case and
+//     the actual target (Dean's Surface).
+//   - Chrome OS: only `navigator.userAgentData.platform` "Chrome OS". NOTE:
+//     Chrome OS `navigator.platform` is "Linux x86_64" (the "CrOS" token lives
+//     only in the UA STRING, never navigator.platform), so the `/cros/` arm is a
+//     defensive belt for the UA-CH value only. A touch Chromebook on plain http
+//     (no userAgentData) therefore falls back to mobile — fail-safe, and not the
+//     target device.
+// Deliberately does NOT match:
 //   - "Mac"/"MacIntel": iPadOS Safari masquerades as MacIntel, so matching Mac
 //     would wrongly declassify a BARE iPad to desktop. A real Mac has no
 //     touchscreen (never primaryTouch) and is already desktop via its fine
