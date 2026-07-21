@@ -664,10 +664,26 @@ html.reader-immersive .app-container { padding-top: 0; }
 /* v1.24.0 (C2/C3): library item-count badge + format toggle. The toggle
    buttons already inherit .btn/.btn-sm; this adds the group layout, the
    active-state highlight, and the muted count badge. Era tokens only. */
+/* v1.45.2 (#4): name + count are one shrinkable flex item so the count sits
+   directly beside the folder name (as "(N items)") instead of floating in the
+   space-between centre. min-width:0 lets a long folder name ellipsize rather
+   than push the actions off the row. */
+.section-heading {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;      /* shrinkable so the actions keep their space on the row */
+  flex: 0 1 auto;
+}
+/* v1.45.2 (#4): parenthesize the count in CSS (presentation, not data — the
+   formatItemCountLabel string + its test stay "N items"). */
+.library-item-count::before { content: "("; }
+.library-item-count::after { content: ")"; }
+
 .library-item-count {
   font-size: var(--fs-sm);
   color: var(--text-secondary);
-  margin-left: 8px;
+  margin-left: 0;
   font-weight: normal;
 }
 .format-toggle {
@@ -3572,19 +3588,29 @@ a.sub-row-channel-link:focus-visible {
     padding-top: 16px;
   }
 
+  /* v1.45.2 (#3, Dean): the mobile filter row on ONE clean line. The heading +
+     count take row 1 (.section-title still wraps); .section-actions is its own
+     full-width row 2 that no longer wraps to two lines — the Shuffle/Rescan
+     labels are hidden so those buttons are icon-only and everything fits. This
+     REVISITS v1.23 (which showed the words because icon-only "read as just an
+     emoji"): with the item count moved beside the name (#4) freeing the row and
+     the buttons evenly distributed, one glyph line reads cleaner than a wrapped
+     two-line cluster. Meaning is preserved via each button's title/aria-label,
+     and desktop keeps its labels (there's room). */
   .section-actions {
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     width: 100%;
+    justify-content: space-between;
+    gap: 8px;
   }
-
-  /* v1.23 (Dean): show the button WORDS on phones -- icon-only was reading as
-     "just an emoji" for Shuffle. `.section-actions` is `width: 100%` +
-     `flex-wrap` (above), so the labelled buttons wrap onto their own line
-     instead of overflowing the viewport (the original icon-only reason is no
-     longer needed now that the row wraps). */
   .section-actions .btn {
     justify-content: center;
-    min-width: 44px; /* comfortable mobile tap target even for the short-label buttons */
+    min-width: 44px; /* comfortable mobile tap target */
+  }
+  /* Icon-only on phones: hide the Shuffle/Rescan word labels (the sort button's
+     own current-value label stays, ellipsizing via .sort-select-btn if long). */
+  .section-actions .btn .btn-label {
+    display: none;
   }
 
   /* v1.19.0 FR-6: search reuses this same home view/heading (main.js sets

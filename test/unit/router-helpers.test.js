@@ -322,6 +322,28 @@ test('SOURCE-LOCK (T2 + W1): goHomeControl coalesces re-entrant taps with an EVE
     'the guard is armed before back() so a synchronous second tap is coalesced');
 });
 
+test('SOURCE-LOCK (#1a): the header LOGO routes to goHomeToTop (jump to top), other Home affordances to goHomeControl (walk back)', () => {
+  const clickBody = COMMON_JS.slice(COMMON_JS.indexOf('function handleDocumentClick'), COMMON_JS.indexOf('function handlePopState'));
+  assert.match(clickBody, /anchor\.classList\.contains\('logo'\)\s*\)\s*goHomeToTop\(\)/, 'a .logo click jumps to the top of home');
+  assert.match(clickBody, /else goHomeControl\(\)/, 'non-logo Home affordances keep the incremental walk-back');
+});
+
+test('SOURCE-LOCK (#1a): goHomeToTop scrolls to top when already home, else navigates to a fresh top-of-home', () => {
+  const fnBody = COMMON_JS.slice(COMMON_JS.indexOf('function goHomeToTop'), COMMON_JS.indexOf('function handleDocumentClick'));
+  assert.match(fnBody, /if \(homeBackPending\) return/, 'coalesces with a still-settling walk-back (gate suggestion)');
+  assert.match(fnBody, /isHomeRootTarget\(window\.location\.pathname, window\.location\.search\)/, 'checks whether already at the home root');
+  assert.match(fnBody, /window\.scrollTo\(0, 0\)/, 'already-home path just scrolls to the top');
+  assert.match(fnBody, /navigate\('\/', \{ top: true \}\)/, 'elsewhere navigates to a fresh top-of-home');
+});
+
+test('SOURCE-LOCK (#1a): navigate()\'s home cache-hit honours opts.top (scrollY 0), else the cached scroll', () => {
+  const navBody = COMMON_JS.slice(COMMON_JS.indexOf('function navigate('), COMMON_JS.indexOf('function handleDocumentClick'));
+  assert.match(navBody, /const restoreScroll = opts\.top \? 0 : cached\.scrollY/, 'top forces scrollY 0 on a cache hit');
+  // The forced scroll must flow into BOTH the pushed state and the restore call.
+  assert.match(navBody, /buildHistoryState\('home', parsed\.href, restoreScroll, desiredDepth\)/, 'state uses restoreScroll');
+  assert.match(navBody, /restoreHomeFromCache\(cached, targetUrl, restoreScroll\)/, 'restore uses restoreScroll');
+});
+
 test('SOURCE-LOCK (T2): handlePopState clears the Home-back guard (so the NEXT tap can pop again)', () => {
   const popBody = COMMON_JS.slice(COMMON_JS.indexOf('function handlePopState'));
   const firstFn = popBody.slice(0, popBody.indexOf('document.addEventListener'));

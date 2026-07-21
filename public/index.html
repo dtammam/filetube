@@ -144,7 +144,13 @@
       <div id="library-content">
         <!-- Videos Section -->
         <div class="section-title">
-          <span id="videos-section-header">Recently Added</span>
+          <!-- v1.45.2 (#4): name + item-count are ONE flex item (.section-heading)
+               so `.section-title`'s justify-content:space-between puts the whole
+               heading group left and .section-actions right -- previously the
+               count was a 3rd space-between child and got pushed to the visual
+               centre on desktop. renderItemCountBadge inserts #library-item-count
+               as #videos-section-header's next sibling, i.e. INSIDE this wrapper. -->
+          <span class="section-heading"><span id="videos-section-header">Recently Added</span></span>
           <div class="section-actions">
             <!-- v1.41.2 (Dean): a custom button-styled sort dropdown, NOT a
                  native <select>. A <select> under 16px triggers iOS's
