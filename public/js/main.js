@@ -78,7 +78,7 @@ function buildSkeletonGrid(n) {
   for (let i = 0; i < count; i++) {
     html += `
       <div class="video-card skeleton-card" aria-hidden="true">
-        <div class="thumbnail-container skeleton-shimmer"></div>
+        <div class="card-media"><div class="thumbnail-container skeleton-shimmer"></div></div>
         <div class="video-info">
           <div class="skeleton-line skeleton-line-title skeleton-shimmer"></div>
           <div class="skeleton-line skeleton-line-meta skeleton-shimmer"></div>

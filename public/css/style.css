@@ -1098,7 +1098,8 @@ html.reader-immersive .app-container { padding-top: 0; }
 }
 .video-grid.list-view .video-card {
   flex-direction: row;
-  align-items: stretch;
+  align-items: center; /* v1.45.6 gate SUGGESTION: center the small thumbnail against
+                          the title/meta so a tall row shows no blank gap below it. */
 }
 .video-grid.list-view .card-media {
   width: 168px;
@@ -3659,7 +3660,8 @@ a.sub-row-channel-link:focus-visible {
     flex-wrap: nowrap;
     width: 100%;
     justify-content: space-between;
-    gap: 6px;
+    gap: 4px; /* v1.45.6: tightened from 6px to absorb the added view-mode button
+                 on the one-line row (Dean: "move them slightly closer"). */
   }
   /* v1.45.3 (#3): the previous swing forced EVERY button (incl. the 3 format
      pills) to 44px and kept the sort's text label, so the nowrap row overflowed

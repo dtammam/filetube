@@ -80,6 +80,16 @@
 
 ## Shipped
 
+### v1.45.6 — Library view preferences: per-page sort + card/list view (2026-07-20)
+
+Two display-preference features for the library toolbar (Dean), no data-loss surface.
+
+- **Per-page sort (behind a Settings toggle, default off).** Sort persisted *globally* before (one key for every page). New **"Remember sort per folder"** toggle (a per-device client flag): when on, each folder / the Liked playlist / the home page keeps its own sort order; a pinned page sort outranks the server default sort. Off → the single-global-sort behaviour is byte-unchanged.
+- **Card / Compact-list view toggle.** A new icon-only button in the filter bar flips between the card grid (default) and a **compact list** — the same cards reflowed (CSS-only) into dense rows (small thumbnail left, title + meta right) so more fit per screen. Persists per-device. Two new grid/list glyphs.
+- **Slim adversarial gate APPROVE.** Verified the sort precedence, the off-path preservation, and the prototype-pollution guards are sound. Folded in its two cosmetic WARNINGs: the loading-skeleton now carries the `.card-media` wrapper (so list-view skeletons don't reflow), and the list-view thumbnail is vertically centred (no blank gap); tightened the mobile action-row gap to absorb the extra button.
+- **Disclosed (SUGGESTIONs, accepted):** the *same* folder reached via a bare-load default vs an explicit `?root=` keys to two different sort slots ('home' vs 'root:X') — a minor per-page-sort quirk. And the extra toolbar button makes the one-line **mobile** row tighter — **Dean's probe:** on a narrow phone (~360px) with the sort set to "Feeling lucky" (shuffle button visible), confirm nothing clips; if it does, we compact the row further.
+- **Suites:** Node 22 **4632/4632**; Node 24 **4632/4632** (the recurring `GET /thumbnail/:id` fs-timing flake seen once, passes on re-run — disclosed). **Docker publish is Dean's.**
+
 ### v1.45.5 — The REAL Surface fix (desktop-class OS signal) + honest custom-player label (2026-07-20)
 
 v1.45.4's `any-pointer: fine` signal **did not fix Dean's Surface** — his on-device console showed Chromium there reports `pointer:coarse, hover:none, any-pointer:fine=false, any-hover=false, width=1341`: **media-query-identical to a phone.** No pointer/hover query sees the trackpad, so only the viewport width and the OS differ.
