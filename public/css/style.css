@@ -3313,6 +3313,15 @@ a.sub-row-channel-link:focus-visible {
     padding: 16px;
     padding-bottom: var(--mobile-bottom-nav-h);
   }
+  /* v1.45.7 (Dean): tame the iOS elastic top-of-page rubber-band on phones —
+     scrolling back to the top no longer springs/bounces. Phone viewport only
+     (this mobile block), so the Mac/Surface trackpad overscroll is untouched.
+     `overscroll-behavior` has no partial setting, so this removes the bounce
+     rather than softening it (iOS 16+; older iOS ignores it, keeping the bounce
+     — no harm). Nested scrollers (sidebar/modals) default to their own behavior. */
+  html, body {
+    overscroll-behavior-y: none;
+  }
   header {
     padding: 0 8px;
   }
