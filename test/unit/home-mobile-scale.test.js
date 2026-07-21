@@ -80,17 +80,23 @@ test('mobile: .section-title wraps so the heading and the actions row are never 
   assert.match(body, /\.section-title\s*\{[^}]*flex-wrap:\s*wrap/);
 });
 
-test('mobile: .section-actions wraps and takes the full row width beneath the heading', () => {
+test('mobile (v1.45.2 #3): .section-actions is its own full-width row but NO LONGER wraps to two lines', () => {
   const body = mobileBlock();
-  assert.match(body, /\.section-actions\s*\{[^}]*flex-wrap:\s*wrap[^}]*width:\s*100%/);
+  // Reverses the v1.23 wrap: the actions take the full width beneath the heading
+  // (width:100%) but stay on ONE line (nowrap) now that the buttons are icon-only.
+  assert.match(body, /\.section-actions\s*\{[^}]*flex-wrap:\s*nowrap[^}]*width:\s*100%/);
 });
 
-test('mobile: the Shuffle again / Rescan Files button WORDS are shown, not collapsed to icon-only (v1.23: Shuffle must not read as just an emoji)', () => {
+test('mobile (v1.45.2 #3, REVISITS v1.23): Shuffle/Rescan WORD labels are hidden so the row fits one glyph line', () => {
   const body = mobileBlock();
-  assert.doesNotMatch(
+  // v1.23 showed the words (icon-only "read as just an emoji") by wrapping the
+  // row. v1.45.2 moves the item count beside the name (#4), frees the row, and
+  // goes icon-only to fit ONE clean line. Meaning is preserved via each button's
+  // title/aria-label (asserted above), and DESKTOP keeps its labels.
+  assert.match(
     body,
-    /\.section-actions \.btn-label\s*\{[^}]*display:\s*none/,
-    'section-actions button labels must NOT be hidden on mobile -- the row wraps (width:100% + flex-wrap) so the words fit'
+    /\.section-actions \.btn \.btn-label\s*\{[^}]*display:\s*none/,
+    'section-actions button word-labels ARE hidden on mobile now (icon-only, one row)'
   );
 });
 

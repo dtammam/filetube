@@ -13,6 +13,31 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
+const html = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'index.html'), 'utf8');
+
+// ---- v1.45.2 (#3/#4): filter-bar cleanup -----------------------------------
+
+test('#4: name + count are grouped in .section-heading so the count sits beside the name, not centred', () => {
+  // The heading span must be wrapped so `.section-title`'s space-between has TWO
+  // flex items (heading-group + actions), not three (which centred the count).
+  assert.match(html, /<span class="section-heading"><span id="videos-section-header">/,
+    'the folder-name header is wrapped in .section-heading');
+  assert.match(css, /\.section-heading\s*\{[^}]*display:\s*inline-flex/, '.section-heading groups name + count on one flex item');
+});
+
+test('#4: the item count is parenthesized in CSS (data string stays "N items")', () => {
+  assert.match(css, /\.library-item-count::before\s*\{\s*content:\s*"\("/, 'open paren');
+  assert.match(css, /\.library-item-count::after\s*\{\s*content:\s*"\)"/, 'close paren');
+});
+
+test('#3: on mobile the action row is ONE line (nowrap) with icon-only buttons (labels hidden)', () => {
+  // Inside the max-width:768px block, .section-actions must nowrap and the
+  // .btn-label spans must be hidden (glyph-only, revisiting v1.23's mobile labels).
+  // These two declarations exist ONLY in the mobile block (desktop .section-actions
+  // has no flex-wrap and never hides labels), so a bare match is unambiguous.
+  assert.match(css, /\.section-actions\s*\{[^}]*flex-wrap:\s*nowrap/, '.section-actions is nowrap on mobile');
+  assert.match(css, /\.section-actions \.btn \.btn-label\s*\{\s*display:\s*none/, 'Shuffle/Rescan labels are hidden on mobile');
+});
 
 // The base (desktop) sticky rule.
 function ruleBody(selectorLiteral) {

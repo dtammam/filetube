@@ -3265,13 +3265,17 @@ if (typeof window !== 'undefined') {
     const targetUrl = parsed.pathname + parsed.search;
     if (view === 'home' && homeViewCache && homeViewCache.url === targetUrl) {
       const cached = homeViewCache;
+      // v1.45.2 (#1a): `opts.top` forces the top of home (scrollY 0) even on a
+      // cache hit — the header-logo "jump home" wants a fresh top-of-home, not
+      // the scroll position the cached node was left at.
+      const restoreScroll = opts.top ? 0 : cached.scrollY;
       // Update the URL BEFORE reattaching the cached node (see the ordering
       // comment above `navigate` — restoreHomeFromCache's `updateActiveNavHighlight`
       // call must observe the target URL, not the outgoing one).
-      const state = buildHistoryState('home', parsed.href, cached.scrollY, desiredDepth);
+      const state = buildHistoryState('home', parsed.href, restoreScroll, desiredDepth);
       if (opts.replace) window.history.replaceState(state, '', parsed.href);
       else window.history.pushState(state, '', parsed.href);
-      restoreHomeFromCache(cached, targetUrl, cached.scrollY);
+      restoreHomeFromCache(cached, targetUrl, restoreScroll);
       return Promise.resolve();
     }
 
@@ -3338,6 +3342,20 @@ if (typeof window !== 'undefined') {
     // 'noop': already at the session-root home — do nothing.
   }
 
+  // v1.45.2 (#1a): the header LOGO is the "escape hatch" straight to the top of
+  // home — the classic logo->home convention — distinct from the incremental
+  // walk-back that the bottom-nav / sidebar Home affordances do (goHomeControl).
+  // Already at the home root: just scroll to the top (a fresh navigate('/')
+  // there would be a same-URL no-op and NOT scroll). Elsewhere: navigate to a
+  // fresh top-of-home ({ top: true } so even a cache hit lands at scrollY 0).
+  function goHomeToTop() {
+    if (isHomeRootTarget(window.location.pathname, window.location.search)) {
+      window.scrollTo(0, 0);
+      return;
+    }
+    navigate('/', { top: true });
+  }
+
   function handleDocumentClick(event) {
     const anchor = event.target && typeof event.target.closest === 'function' ? event.target.closest('a[href]') : null;
     if (!anchor) return;
@@ -3364,8 +3382,11 @@ if (typeof window !== 'undefined') {
     // v1.45.0 (T2): a click on a Home affordance (the home ROOT `/` — NOT a
     // `/?root=<folder>` drill, which is an ordinary forward nav) routes through
     // the incremental-pop Home control instead of a fresh navigate().
+    // v1.45.2 (#1a): the header logo is the exception — it jumps straight to the
+    // TOP of home (goHomeToTop) rather than walking back one level.
     if (isHomeRootTarget(target.pathname, target.search)) {
-      goHomeControl();
+      if (anchor.classList.contains('logo')) goHomeToTop();
+      else goHomeControl();
       return;
     }
     navigate(target.href);
