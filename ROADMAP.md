@@ -80,6 +80,15 @@
 
 ## Shipped
 
+### v1.45.5 — The REAL Surface fix (desktop-class OS signal) + honest custom-player label (2026-07-20)
+
+v1.45.4's `any-pointer: fine` signal **did not fix Dean's Surface** — his on-device console showed Chromium there reports `pointer:coarse, hover:none, any-pointer:fine=false, any-hover=false, width=1341`: **media-query-identical to a phone.** No pointer/hover query sees the trackpad, so only the viewport width and the OS differ.
+
+- **Fix (Dean's pick, "Option B"):** add a **desktop-class-OS** signal. `isDesktopClassPlatform` matches **Windows** (`navigator.platform` "Win32"/"Win64" — works on plain http/LAN — and `userAgentData.platform` "Windows") and **Chrome OS** (`userAgentData.platform` "Chrome OS" only). It **deliberately never matches** a string a phone/tablet reports: not "Mac" (iPadOS masquerades as MacIntel), not bare "Linux" (Android is "Linux armv8l"). A Windows/CrOS touch device → desktop-class laptop → desktop. **Bare iPads, iPhones, Android phones/tablets stay mobile.** The v1.45.4 `any-pointer` path stays as a second signal for hybrids that *do* expose a fine pointer. Gate verified the safety invariant against the UA-CH spec enum: no live mobile device is wrongly declassified.
+- **Honest settings label:** the custom-player toggle said "for mobile video" / "native iOS video controls" — inaccurate (it applies to any touch-layout device, Android included, and does nothing on a desktop-classified touchscreen laptop). Relabelled to "Use custom player controls on touch devices," dropped the iOS-specificity, and it now states plainly that desktops (incl. touchscreen laptops) always use FileTube's controls. Behaviour unchanged.
+- **DISCLOSED scope:** a **keyboardless Windows tablet** (e.g. a Surface Pro in tablet mode) now also classifies as desktop (Windows + touch) and gets the desktop video UI — within the accepted "a Windows touch device is desktop-class" direction. **Chrome OS is best-effort:** caught only via `userAgentData` (secure context); a touch Chromebook on plain http falls back to mobile (fail-safe).
+- **Suites:** Node 22 **4621/4621**; Node 24 **4621/4621** (the recurring `GET /thumbnail/:id` fs-timing flake, passes isolated). Adversarial gate APPROVE (safety invariant sound; corrected a Chrome-OS comment/test accuracy point it caught). **Docker publish is Dean's. Acceptance = Dean's on-device console on the real Surface: `navigator.platform` "Win32" → now classifies desktop; custom player + desktop controls with the flag OFF.**
+
 ### v1.45.4 — Touchscreen hybrid laptops (Surface) classified as desktop (2026-07-20)
 
 Dean on a **Surface Laptop Studio** was getting the native browser video player and the full mobile UI treatment instead of the desktop custom player. Root cause: `isMobileFormFactor()` keyed on the *primary* pointer (`pointer: coarse` + `hover: none`), and a touchscreen hybrid reports a **touch primary** even though it's driven with a trackpad — so it read as a phone. The pre-existing "touch laptop → desktop" safeguard only worked when the primary reported hover-capable, which a touch-primary device defeats.

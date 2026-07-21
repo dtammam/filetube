@@ -621,20 +621,52 @@ function resolveMobileFormFactor(signals) {
     return !!opts.narrowViewport; // unsupported media query -- fall back to width
   }
   var primaryTouch = !!(opts.coarsePointer && opts.noHover);
-  // v1.45.4 (Dean, Surface Laptop Studio): a touchscreen HYBRID laptop reports a
-  // touch PRIMARY pointer (coarse + hover:none), so `primaryTouch` is true even
-  // though it's really driven with a trackpad. The prior `coarse && noHover`
-  // check only declassified a touch laptop whose PRIMARY pointer reported
-  // hover-capable — a Surface-type device whose primary is touch defeats it.
-  // `any-pointer: fine` asks whether ANY device (not just the primary) is a
-  // precise pointer — true for the trackpad/mouse — so it catches the hybrid
-  // the primary-only `hover` check missed. Gated on a laptop-sized viewport
-  // (!narrowViewport) so a stylus PHONE (any-pointer:fine via an S-Pen, but a
-  // narrow screen) stays MOBILE: only a precise pointer AND room declassifies
-  // to desktop. `anyPointerFine` undefined (query unsupported on an old engine)
-  // is falsy here, so those engines keep the exact prior behaviour.
-  var hasDesktopPointerAndRoom = !!(opts.anyPointerFine && !opts.narrowViewport);
-  return primaryTouch && !hasDesktopPointerAndRoom;
+  // A touchscreen HYBRID laptop reports a touch PRIMARY pointer (coarse +
+  // hover:none), so `primaryTouch` is true even though it's driven with a
+  // trackpad. Two independent desktop signals override that:
+  //   (a) v1.45.5 (Dean, Surface Laptop Studio): the device's OS is a
+  //       desktop-class one (Windows / Chrome OS). Chromium on such a touch
+  //       laptop reports NO fine pointer AND NO hover — media-query-identical to
+  //       a phone (confirmed on Dean's Surface: any-pointer:fine=false), so the
+  //       pointer signals alone CANNOT catch it; the OS is the only reliable
+  //       tell. See `isDesktopClassPlatform` for why it's Win/CrOS only (never
+  //       Mac — iPadOS masquerades as MacIntel — nor bare Linux — Android
+  //       reports it). A real Mac/Linux desktop already reads desktop via its
+  //       fine pointer, so it never needs this branch.
+  //   (b) v1.45.4: a precise pointer exists ANYWHERE (`any-pointer: fine` — a
+  //       trackpad/mouse) on a laptop-sized viewport. Gated on `!narrowViewport`
+  //       so a stylus PHONE (any-pointer:fine via an S-Pen, but a narrow screen)
+  //       stays MOBILE.
+  // Signals undefined (query/API unsupported on an old engine) are falsy here,
+  // so those engines keep the exact prior `coarse && noHover` behaviour.
+  var hasDesktopSignal = !!opts.desktopPlatform || !!(opts.anyPointerFine && !opts.narrowViewport);
+  return primaryTouch && !hasDesktopSignal;
+}
+
+// v1.45.5 (Dean, Surface): is `platform` a DESKTOP-CLASS OS whose touchscreen
+// devices are laptops (→ desktop UI), not phones/tablets? Matches:
+//   - Windows: `navigator.platform` "Win32"/"Win64" AND
+//     `navigator.userAgentData.platform` "Windows" — so it fires on plain http
+//     (via navigator.platform) too, which is the common self-hosted case and
+//     the actual target (Dean's Surface).
+//   - Chrome OS: only `navigator.userAgentData.platform` "Chrome OS". NOTE:
+//     Chrome OS `navigator.platform` is "Linux x86_64" (the "CrOS" token lives
+//     only in the UA STRING, never navigator.platform), so the `/cros/` arm is a
+//     defensive belt for the UA-CH value only. A touch Chromebook on plain http
+//     (no userAgentData) therefore falls back to mobile — fail-safe, and not the
+//     target device.
+// Deliberately does NOT match:
+//   - "Mac"/"MacIntel": iPadOS Safari masquerades as MacIntel, so matching Mac
+//     would wrongly declassify a BARE iPad to desktop. A real Mac has no
+//     touchscreen (never primaryTouch) and is already desktop via its fine
+//     pointer, so it never needs this.
+//   - bare "Linux": Android's `navigator.platform` is "Linux armv8l", so
+//     matching Linux would wrongly declassify Android PHONES. A Linux desktop is
+//     already desktop via its fine pointer.
+// Pure — exported for node:test so every platform string is covered.
+function isDesktopClassPlatform(platform) {
+  if (typeof platform !== 'string' || !platform) return false;
+  return /win/i.test(platform) || /cros|chrome os/i.test(platform);
 }
 
 // ---- FR-7 (TF, v1.22.0): loop/repeat pure decision helper ------------------
@@ -912,6 +944,7 @@ if (typeof module !== 'undefined' && module.exports) {
     classifyTapGesture,
     shouldArtSingleTapAct,
     resolveMobileFormFactor,
+    isDesktopClassPlatform,
     resolveEndedAction,
     // v1.41.12: chapter-loop bounds resolver -- see resolveChapterLoopBounds.
     resolveChapterLoopBounds,
@@ -1198,10 +1231,18 @@ if (typeof module !== 'undefined' && module.exports) {
   }
 
   function isMobileFormFactor() {
+    // v1.45.5: prefer the modern client-hint platform (secure-context only),
+    // fall back to navigator.platform — which works on plain http/LAN, the
+    // common self-hosted case, so the Windows/CrOS signal isn't lost there.
+    var uaData = navigator.userAgentData;
+    var platform = (uaData && typeof uaData.platform === 'string' && uaData.platform)
+      || (typeof navigator.platform === 'string' && navigator.platform)
+      || '';
     return resolveMobileFormFactor({
       coarsePointer: matchMediaBool('(pointer: coarse)'),
       noHover: matchMediaBool('(hover: none)'),
       anyPointerFine: matchMediaBool('(any-pointer: fine)'), // v1.45.4: a trackpad/mouse anywhere => desktop hybrid
+      desktopPlatform: isDesktopClassPlatform(platform), // v1.45.5: Windows/CrOS touch device => desktop-class laptop
       narrowViewport: window.matchMedia('(max-width: 768px)').matches,
     });
   }
