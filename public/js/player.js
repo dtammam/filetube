@@ -620,7 +620,21 @@ function resolveMobileFormFactor(signals) {
   if (opts.coarsePointer === undefined || opts.noHover === undefined) {
     return !!opts.narrowViewport; // unsupported media query -- fall back to width
   }
-  return !!(opts.coarsePointer && opts.noHover);
+  var primaryTouch = !!(opts.coarsePointer && opts.noHover);
+  // v1.45.4 (Dean, Surface Laptop Studio): a touchscreen HYBRID laptop reports a
+  // touch PRIMARY pointer (coarse + hover:none), so `primaryTouch` is true even
+  // though it's really driven with a trackpad. The prior `coarse && noHover`
+  // check only declassified a touch laptop whose PRIMARY pointer reported
+  // hover-capable — a Surface-type device whose primary is touch defeats it.
+  // `any-pointer: fine` asks whether ANY device (not just the primary) is a
+  // precise pointer — true for the trackpad/mouse — so it catches the hybrid
+  // the primary-only `hover` check missed. Gated on a laptop-sized viewport
+  // (!narrowViewport) so a stylus PHONE (any-pointer:fine via an S-Pen, but a
+  // narrow screen) stays MOBILE: only a precise pointer AND room declassifies
+  // to desktop. `anyPointerFine` undefined (query unsupported on an old engine)
+  // is falsy here, so those engines keep the exact prior behaviour.
+  var hasDesktopPointerAndRoom = !!(opts.anyPointerFine && !opts.narrowViewport);
+  return primaryTouch && !hasDesktopPointerAndRoom;
 }
 
 // ---- FR-7 (TF, v1.22.0): loop/repeat pure decision helper ------------------
@@ -1187,6 +1201,7 @@ if (typeof module !== 'undefined' && module.exports) {
     return resolveMobileFormFactor({
       coarsePointer: matchMediaBool('(pointer: coarse)'),
       noHover: matchMediaBool('(hover: none)'),
+      anyPointerFine: matchMediaBool('(any-pointer: fine)'), // v1.45.4: a trackpad/mouse anywhere => desktop hybrid
       narrowViewport: window.matchMedia('(max-width: 768px)').matches,
     });
   }
@@ -1218,6 +1233,11 @@ if (typeof module !== 'undefined' && module.exports) {
   // points, AFTER `state`/`currentData` are assigned for this transition --
   // never from a `matchMedia` change-listener (AC7: capability is stable
   // across orientation/resize, so re-deriving live is unnecessary).
+  // v1.45.4 caveat: the added `any-pointer: fine` signal CAN change at runtime
+  // when a mouse/trackpad is connected/disconnected (unlike pointer/hover). It
+  // is intentionally left latched here like the others -- re-derived at the next
+  // mount/dock/state-transition, not on peripheral connect -- so a mid-session
+  // mouse attach won't flip an already-mounted player until the next transition.
   function applyControlsMode() {
     if (!host || !mediaPlayer) return;
     // v1.34.2: the CSS faux-fullscreen only makes sense in the FULL state --

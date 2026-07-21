@@ -66,6 +66,48 @@ test('resolveMobileFormFactor: a touchscreen laptop (touch AND a trackpad, hover
   assert.strictEqual(resolveMobileFormFactor({ coarsePointer: true, noHover: false, narrowViewport: false }), false);
 });
 
+// v1.45.4 (Dean, Surface Laptop Studio): a hybrid whose PRIMARY pointer is touch
+// reports coarse + hover:none (so the primary-only check above would call it
+// mobile), but it has a trackpad — any-pointer:fine — on a laptop-sized screen.
+test('resolveMobileFormFactor: a Surface-type touch laptop (touch PRIMARY but a trackpad + wide screen) is DESKTOP', () => {
+  assert.strictEqual(
+    resolveMobileFormFactor({ coarsePointer: true, noHover: true, anyPointerFine: true, narrowViewport: false }),
+    false,
+  );
+});
+
+// v1.45.4 DISCLOSED collateral: an iPad (>768px) with a Magic Keyboard trackpad
+// or a mouse reports the SAME signals as the Surface (iPadOS keeps the primary
+// touch-friendly but flips any-pointer:fine true — WebKit r268086), so it is
+// indistinguishable from a Windows touch laptop and is now DESKTOP too. There is
+// no media-query way to fix the Surface without this. A BARE iPad (no pointer)
+// reports any-pointer:fine false and stays mobile (the touch-only cases below).
+test('resolveMobileFormFactor: an iPad WITH a trackpad/mouse (wide + any-pointer:fine) is DESKTOP — disclosed Surface-rule collateral', () => {
+  assert.strictEqual(
+    resolveMobileFormFactor({ coarsePointer: true, noHover: true, anyPointerFine: true, narrowViewport: false }),
+    false,
+  );
+});
+
+// The guard that keeps phones mobile: a stylus phone (S-Pen => any-pointer:fine)
+// on a NARROW screen must NOT be declassified — only a precise pointer AND room.
+test('resolveMobileFormFactor: a stylus PHONE (any-pointer:fine via an S-Pen, but narrow) stays MOBILE', () => {
+  assert.strictEqual(
+    resolveMobileFormFactor({ coarsePointer: true, noHover: true, anyPointerFine: true, narrowViewport: true }),
+    true,
+  );
+});
+
+test('resolveMobileFormFactor: a touch-only phone (no fine pointer anywhere) stays MOBILE regardless of width', () => {
+  assert.strictEqual(resolveMobileFormFactor({ coarsePointer: true, noHover: true, anyPointerFine: false, narrowViewport: true }), true);
+  assert.strictEqual(resolveMobileFormFactor({ coarsePointer: true, noHover: true, anyPointerFine: false, narrowViewport: false }), true, 'a big touch-only tablet is still mobile');
+});
+
+test('resolveMobileFormFactor: anyPointerFine undefined (query unsupported) keeps the exact prior coarse&&noHover behaviour', () => {
+  assert.strictEqual(resolveMobileFormFactor({ coarsePointer: true, noHover: true, anyPointerFine: undefined, narrowViewport: false }), true);
+  assert.strictEqual(resolveMobileFormFactor({ coarsePointer: true, noHover: true, narrowViewport: false }), true, 'omitted entirely == undefined == prior behaviour');
+});
+
 test('resolveMobileFormFactor: the width fallback is used ONLY when coarsePointer/noHover are undefined (unsupported media queries)', () => {
   assert.strictEqual(resolveMobileFormFactor({ coarsePointer: undefined, noHover: undefined, narrowViewport: true }), true);
   assert.strictEqual(resolveMobileFormFactor({ coarsePointer: undefined, noHover: undefined, narrowViewport: false }), false);
