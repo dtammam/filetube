@@ -1098,7 +1098,11 @@ if (typeof module !== 'undefined' && module.exports) {
     // below). This generalizes the v1.29 BUG-2 reload-never contract to scan
     // completion: this path must NEVER call `window.location.reload()` or
     // trigger any other full-page navigation.
-    rescanBtn.addEventListener('click', async () => {
+    // v1.45.8: extracted so BOTH the Rescan button AND pull-to-refresh (below)
+    // trigger the identical scan. The `disabled` guard makes a second trigger
+    // (a pull while the button already says "Scanning...") a no-op.
+    async function runRescan() {
+      if (rescanBtn.disabled) return; // already scanning -- don't double-fire
       rescanBtn.innerHTML = '<i class="icon-refresh"></i> <span class="btn-label">Scanning...</span>';
       rescanBtn.disabled = true;
       try {
@@ -1123,7 +1127,57 @@ if (typeof module !== 'undefined' && module.exports) {
         rescanBtn.innerHTML = '<i class="icon-refresh"></i> <span class="btn-label">Rescan</span>';
         rescanBtn.disabled = false;
       }
-    }, { signal });
+    }
+    rescanBtn.addEventListener('click', runRescan, { signal });
+
+    // v1.45.8 (Dean): pull-to-refresh → rescan. Native-feeling on iOS by RIDING
+    // the elastic top overscroll (we never preventDefault, so normal scrolling
+    // + the iOS bounce are untouched — a deliberate contrast to the custom
+    // mobile-video gesture layer that fought the OS). At the very top
+    // (scrollY <= 0) a downward drag past PULL_REFRESH_THRESHOLD_PX arms it; on
+    // release we fire runRescan(). A fixed indicator fades/rotates with the
+    // pull. Touch-only by nature (touchstart never fires under a mouse), so it's
+    // wired unconditionally and is simply inert on non-touch desktops.
+    const PULL_REFRESH_THRESHOLD_PX = 70;
+    const ptrIndicator = document.createElement('div');
+    ptrIndicator.className = 'ptr-indicator';
+    ptrIndicator.setAttribute('aria-hidden', 'true');
+    ptrIndicator.innerHTML = '<i class="icon-refresh"></i>';
+    root.appendChild(ptrIndicator);
+    let ptrStartY = null;   // non-null only while a pull that began AT THE TOP is live
+    let ptrArmed = false;
+    function ptrReset() {
+      ptrStartY = null;
+      ptrArmed = false;
+      ptrIndicator.classList.remove('visible', 'ready');
+      ptrIndicator.style.removeProperty('--ptr-pull');
+    }
+    window.addEventListener('touchstart', (e) => {
+      // Only a single-finger drag that begins at the very top is a pull.
+      if (window.scrollY > 0 || rescanBtn.disabled || !e.touches || e.touches.length !== 1) { ptrStartY = null; return; }
+      ptrStartY = e.touches[0].clientY;
+      ptrArmed = false;
+    }, { signal, passive: true });
+    window.addEventListener('touchmove', (e) => {
+      if (ptrStartY === null || !e.touches || e.touches.length !== 1) return;
+      // A pull is only valid while still pinned at the top; any real upward
+      // scroll (scrollY > 0) cancels it so a normal scroll never shows the UI.
+      if (window.scrollY > 0) { ptrReset(); return; }
+      const pull = e.touches[0].clientY - ptrStartY;
+      if (pull <= 0) { ptrIndicator.classList.remove('visible', 'ready'); return; }
+      const phase = pullRefreshState(pull, PULL_REFRESH_THRESHOLD_PX);
+      ptrArmed = phase === 'ready';
+      ptrIndicator.classList.add('visible');
+      ptrIndicator.classList.toggle('ready', ptrArmed);
+      // Clamp the visual travel so the glyph eases toward the threshold.
+      ptrIndicator.style.setProperty('--ptr-pull', String(Math.min(pull, PULL_REFRESH_THRESHOLD_PX * 1.5)));
+    }, { signal, passive: true });
+    function ptrEnd() {
+      if (ptrStartY !== null && ptrArmed) runRescan();
+      ptrReset();
+    }
+    window.addEventListener('touchend', ptrEnd, { signal, passive: true });
+    window.addEventListener('touchcancel', ptrEnd, { signal, passive: true });
 
     // Non-redirecting `/api/scan-status` poller for the rescan button --
     // mirrors setup.js's `pollAutomationScanStatus()` shape/cadence (fetch ->

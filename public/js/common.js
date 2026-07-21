@@ -1216,6 +1216,17 @@ function setStoredViewMode(mode) {
   return normalized;
 }
 
+// v1.45.8 (Dean): pull-to-refresh phase from the current pull distance (px) and
+// the arm threshold. 'idle' (no downward pull), 'pulling' (below threshold),
+// 'ready' (>= threshold → releasing triggers the rescan). Pure — exported for
+// node:test; a non-number / non-positive threshold fails safe (idle / 70px).
+function pullRefreshState(pullPx, thresholdPx) {
+  const px = typeof pullPx === 'number' ? pullPx : 0;
+  const t = (typeof thresholdPx === 'number' && thresholdPx > 0) ? thresholdPx : 70;
+  if (px <= 0) return 'idle';
+  return px >= t ? 'ready' : 'pulling';
+}
+
 // v1.45.6 (Dean): PER-PAGE SORT. A CLIENT toggle (like ft-debug-lifecycle) that,
 // when on, remembers a separate sort per library page instead of one global
 // `filetube_sort`. Default OFF — the global path is byte-unchanged when off.
@@ -6618,6 +6629,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.45.6 (Dean): library view-mode + per-page-sort helpers.
     getStoredViewMode, setStoredViewMode,
     isPerPageSortEnabled, setPerPageSortEnabled, pageSortKey, getPerPageSort, setPerPageSort,
+    pullRefreshState,
     FORMAT_FILTER_MODES, buildFormatToggleControl, renderFormatToggle,
     deriveAvatar, resolveAvatarSource, AVATAR_PALETTE,
     // v1.24.1 (B1 fast-follow): relocated "Re-pull this channel now" widget.
