@@ -243,6 +243,7 @@ if (typeof module !== 'undefined' && module.exports) {
     const sortLabel = root.querySelector('#sort-select-label');
     const sortMenu = root.querySelector('#sort-menu');
     const shuffleAgainBtn = root.querySelector('#shuffle-again-btn');
+    const viewModeBtn = root.querySelector('#view-mode-btn'); // v1.45.6: card/list toggle
     // C2/C3 (v1.24.0, T3-WIRE): the shared "actions" row that already holds
     // the sort <select>/shuffle/rescan controls -- the format toggle mounts
     // into it too (renderFormatToggle inserts itself as the FIRST child, so
@@ -335,6 +336,44 @@ if (typeof module !== 'undefined' && module.exports) {
     // construction (a liked view ignores folder/root/search server-side).
     const likedFilter = urlParams.get('liked') === '1';
 
+    // v1.45.6 (Dean): PER-PAGE SORT. When the client toggle is on, this page
+    // (folder / Liked / home) remembers its OWN sort — resolve it here, overriding
+    // the global pick read above; it falls back to that global pick/default when
+    // this page has none yet. Keyed by the AS-PARSED scope (a bare load that later
+    // resolves a defaultView folder uses the 'home' key — acceptable). Off by
+    // default → this whole block is inert and the global path is byte-unchanged.
+    const perPageSortActive = isPerPageSortEnabled();
+    const sortPageKeyValue = pageSortKey({ root: rootFilter, liked: likedFilter });
+    let sortPinnedByPage = false;
+    if (perPageSortActive) {
+      const pageSort = getPerPageSort(sortPageKeyValue);
+      if (pageSort) { currentSort = pageSort; sortPinnedByPage = true; }
+    }
+
+    // v1.45.6 (Dean): apply the stored card/list VIEW MODE to the grid + toggle
+    // button. The `.list-view` class rides on the persistent #video-grid element,
+    // so it survives every innerHTML re-render/append — apply once here.
+    function applyViewMode(mode) {
+      const m = mode === 'list' ? 'list' : 'card';
+      videoGrid.classList.toggle('list-view', m === 'list');
+      if (viewModeBtn) {
+        const targetIsList = m === 'card'; // in card mode, a click switches TO list
+        const icon = viewModeBtn.querySelector('i');
+        if (icon) icon.className = targetIsList ? 'icon-list' : 'icon-grid';
+        const label = targetIsList ? 'Switch to list view' : 'Switch to card view';
+        viewModeBtn.title = label;
+        viewModeBtn.setAttribute('aria-label', label);
+      }
+    }
+    applyViewMode(getStoredViewMode());
+    if (viewModeBtn) {
+      viewModeBtn.addEventListener('click', () => {
+        const next = getStoredViewMode() === 'list' ? 'card' : 'list';
+        setStoredViewMode(next);
+        applyViewMode(next);
+      }, { signal });
+    }
+
     if (searchQuery) {
       if (searchInput) searchInput.value = searchQuery;
       videosHeader.textContent = `Search Results for "${searchQuery}"`;
@@ -395,7 +434,9 @@ if (typeof module !== 'undefined' && module.exports) {
               // clobber a deep link to the Liked playlist.
               rootFilter = resolveDefaultView(rootFilter, searchQuery, folderFilter, settingsData.defaultView, folders);
             }
-            if (!storedSortPick && typeof settingsData.defaultSort === 'string' && settingsData.defaultSort !== '') {
+            if (!storedSortPick && !sortPinnedByPage && typeof settingsData.defaultSort === 'string' && settingsData.defaultSort !== '') {
+              // v1.45.6: a per-page sort pinned for THIS page (above) outranks the
+              // server defaultSort — don't clobber it.
               currentSort = settingsData.defaultSort;
               applySortLabel(currentSort);
             }
@@ -983,7 +1024,10 @@ if (typeof module !== 'undefined' && module.exports) {
       closeSortMenu(returnFocus);
       if (!value || value === currentSort) return;
       currentSort = value;
-      localStorage.setItem('filetube_sort', currentSort);
+      // v1.45.6 (Dean): when per-page sort is on, persist to THIS page's slot;
+      // otherwise the global key (today's behavior). Same key used to read at init.
+      if (perPageSortActive) setPerPageSort(sortPageKeyValue, currentSort);
+      else localStorage.setItem('filetube_sort', currentSort);
       applySortLabel(currentSort);
       updateShuffleButtonVisibility();
       resetAndReload();

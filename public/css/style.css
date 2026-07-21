@@ -711,6 +711,12 @@ html.reader-immersive .app-container { padding-top: 0; }
   min-width: 104px;
   justify-content: center;
 }
+/* v1.45.6: the view-mode toggle is an icon-only mode switch (not a labelled
+   action), so it's a compact square rather than matching the 104px buttons. */
+#view-mode-btn {
+  min-width: 40px;
+  justify-content: center;
+}
 
 .sidebar-item.drag-over-after {
   box-shadow: inset 0 -2px 0 0 var(--yt-red);
@@ -865,6 +871,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   gap: 20px;
   margin-bottom: 30px;
 }
+
 
 /* Video Card (YouTube Retro Style) */
 .video-card {
@@ -1075,6 +1082,36 @@ html.reader-immersive .app-container { padding-top: 0; }
 
 .video-info {
   padding: var(--density) 4px;
+}
+
+/* v1.45.6 (Dean): compact LIST view — a CSS-only reflow of the SAME cards into
+   dense rows (small thumbnail left, title+meta right), so more items fit per
+   screen. Toggled by adding `.list-view` to #video-grid (see main.js). The card
+   overlays (delete/like/download) stay put — .card-media keeps position:relative
+   and just gets a fixed width. Placed AFTER the base .video-card/.card-media/
+   .video-info rules so it's a clean modifier layer. The phone thumbnail-width
+   override lives in the main max-width:768px block (search "list-view"). */
+.video-grid.list-view {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.video-grid.list-view .video-card {
+  flex-direction: row;
+  align-items: stretch;
+}
+.video-grid.list-view .card-media {
+  width: 168px;
+  flex-shrink: 0;
+}
+.video-grid.list-view .video-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  padding: 6px 12px;
 }
 
 .video-title {
@@ -3011,6 +3048,8 @@ a.sub-row-channel-link:focus-visible {
 .icon-refresh,
 .icon-arrow-up,
 .icon-arrow-down,
+.icon-grid,
+.icon-list,
 .icon-heart,
 .icon-download,
 .icon-shuffle {
@@ -3042,6 +3081,9 @@ a.sub-row-channel-link:focus-visible {
    chrome icon above -- replaces the old fixed "\2B07" unicode glyph (removed
    below the @supports guard). */
 .icon-download { -webkit-mask-image: url(/assets/icons/download.svg); mask-image: url(/assets/icons/download.svg); }
+/* v1.45.6 (Dean): card/list view-mode toggle glyphs (Material grid_view / view_list). */
+.icon-grid { -webkit-mask-image: url(/assets/icons/grid_view.svg); mask-image: url(/assets/icons/grid_view.svg); }
+.icon-list { -webkit-mask-image: url(/assets/icons/view_list.svg); mask-image: url(/assets/icons/view_list.svg); }
 /* v1.40.0: Like heart for the card corner control. A real SVG mask painted in
    currentColor like every other .icon-* (NOT the U+2665 codepoint, which iOS
    force-renders as the red-heart emoji). Only the base/outlined mask is added;
@@ -3064,7 +3106,7 @@ a.sub-row-channel-link:focus-visible {
 @supports (mask-image: url("#")) or (-webkit-mask-image: url("#")) {
   .icon-home, .icon-folder, .icon-cog, .icon-delete, .icon-moon, .icon-sun,
   .icon-menu, .icon-search, .icon-play, .icon-refresh, .icon-arrow-up, .icon-arrow-down,
-  .icon-heart, .icon-download, .icon-shuffle {
+  .icon-grid, .icon-list, .icon-heart, .icon-download, .icon-shuffle {
     background-color: currentColor;
   }
 }
@@ -3673,6 +3715,13 @@ a.sub-row-channel-link:focus-visible {
   .video-grid {
     grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
     gap: 12px;
+  }
+
+  /* v1.45.6 (Dean): narrower list-view thumbnail on phones so the title/meta
+     keep room. In the main mobile block (never a standalone @media) so the
+     source-lock helpers that grab "the mobile block" aren't fooled. */
+  .video-grid.list-view .card-media {
+    width: 120px;
   }
 
   .video-title {
