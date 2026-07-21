@@ -1115,6 +1115,46 @@ html.reader-immersive .app-container { padding-top: 0; }
   padding: 6px 12px;
 }
 
+/* v1.45.8 (Dean): pull-to-refresh indicator. Fixed just under the header (mobile
+   header height where defined, else the 56px desktop header). Hidden until a
+   top-pull adds .visible (see main.js); the refresh glyph rotates with the pull
+   distance (--ptr-pull, a raw px number), and .ready (past the threshold) snaps
+   it to a full turn + the accent colour. Touch-only in practice, so it's inert
+   on non-touch. z-index 40: above the grid + sticky bar (20), below dock/modals. */
+.ptr-indicator {
+  position: fixed;
+  top: calc(var(--mobile-header-h, 56px) + 8px);
+  left: 50%;
+  z-index: 40;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background-color: var(--card-bg);
+  box-shadow: var(--shadow);
+  color: var(--text-secondary);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-50%) translateY(-12px) scale(0.9);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+.ptr-indicator.visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(calc(var(--ptr-pull, 0) * 0.25px)) scale(1);
+}
+.ptr-indicator .icon-refresh {
+  transition: transform 0.08s linear;
+  transform: rotate(calc(var(--ptr-pull, 0) * 2.6deg));
+}
+.ptr-indicator.ready {
+  color: var(--yt-red);
+}
+.ptr-indicator.ready .icon-refresh {
+  transform: rotate(180deg);
+}
+
 .video-title {
   font-size: var(--fs-base);
   font-weight: bold;
@@ -3312,15 +3352,6 @@ a.sub-row-channel-link:focus-visible {
     margin-left: 0;
     padding: 16px;
     padding-bottom: var(--mobile-bottom-nav-h);
-  }
-  /* v1.45.7 (Dean): tame the iOS elastic top-of-page rubber-band on phones —
-     scrolling back to the top no longer springs/bounces. Phone viewport only
-     (this mobile block), so the Mac/Surface trackpad overscroll is untouched.
-     `overscroll-behavior` has no partial setting, so this removes the bounce
-     rather than softening it (iOS 16+; older iOS ignores it, keeping the bounce
-     — no harm). Nested scrollers (sidebar/modals) default to their own behavior. */
-  html, body {
-    overscroll-behavior-y: none;
   }
   header {
     padding: 0 8px;
