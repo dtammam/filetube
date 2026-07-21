@@ -80,6 +80,16 @@
 
 ## Shipped
 
+### v1.45.2 — Filter-bar cleanup + logo jumps to home-top (2026-07-20)
+
+Dean's on-device follow-ups after v1.45.0/.1:
+
+- **(#4) item count beside the folder name.** It had been a *third* flex child in the `space-between` `.section-title`, so on desktop it floated to the visual centre. Now the name + count are one flex item (`.section-heading`) and the count reads as **"(N items)"** right beside the name (parens via CSS, the data string is unchanged). This also frees the row on mobile.
+- **(#3) one clean filter line on mobile.** `.section-actions` no longer wraps to two lines — it's a single full-width row and the Shuffle/Rescan word-labels are hidden (icon-only), so it fits one evenly-distributed line. **This revisits v1.23** (which showed the words because icon-only "read as just an emoji"): now the count is out of the row and each button keeps its `title`/`aria-label`, and **desktop keeps its labels**. Gate verified the mobile width budget fits a ~320px phone with no overflow (the sort button's value ellipsizes).
+- **(#1a) the header logo jumps straight to the top of home.** Distinct from the bottom-nav/sidebar Home, which keep the v1.45.0 incremental walk-back. Classic logo→home convention: an escape hatch to the top, while Home stays your omni-back. Coalesces with a still-settling walk-back so the two affordances can't race.
+- **Suites:** Node 22 **4609/4609**; Node 24 **4609/4609**. Slim adversarial gate APPROVE (one narrow cross-affordance race hardened). **Docker publish is Dean's.**
+- **Still open (framed, not built):** **#1b** — Home should skip video-watches and return to the *library* context a video was launched from (its own design + full gate, next). **#2** — desktop tab-switch audio bug: with the experimental "background audio for video" ON it *stutters*, OFF it *stops entirely* (breaking the desktop cross-tab-playback contract) — a real playback regression to root-cause next.
+
 ### v1.45.1 — Sticky filter bar: flush-pin (kill the scroll jump) (2026-07-20)
 
 Dean's on-device pass of v1.45.0 surfaced two sticky-bar quirks:

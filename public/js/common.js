@@ -3349,6 +3349,12 @@ if (typeof window !== 'undefined') {
   // there would be a same-URL no-op and NOT scroll). Elsewhere: navigate to a
   // fresh top-of-home ({ top: true } so even a cache hit lands at scrollY 0).
   function goHomeToTop() {
+    // gate SUGGESTION (v1.45.2): if a bottom-nav/sidebar Home walk-back is still
+    // settling (its history.back() queued, popstate not yet fired), don't race
+    // it — a fresh navigate('/') here would be popped off by that pending back().
+    // Can't exit the app either way, but coalescing keeps the two affordances
+    // from fighting. Cleared by the same popstate that clears goHomeControl.
+    if (homeBackPending) return;
     if (isHomeRootTarget(window.location.pathname, window.location.search)) {
       window.scrollTo(0, 0);
       return;

@@ -330,6 +330,7 @@ test('SOURCE-LOCK (#1a): the header LOGO routes to goHomeToTop (jump to top), ot
 
 test('SOURCE-LOCK (#1a): goHomeToTop scrolls to top when already home, else navigates to a fresh top-of-home', () => {
   const fnBody = COMMON_JS.slice(COMMON_JS.indexOf('function goHomeToTop'), COMMON_JS.indexOf('function handleDocumentClick'));
+  assert.match(fnBody, /if \(homeBackPending\) return/, 'coalesces with a still-settling walk-back (gate suggestion)');
   assert.match(fnBody, /isHomeRootTarget\(window\.location\.pathname, window\.location\.search\)/, 'checks whether already at the home root');
   assert.match(fnBody, /window\.scrollTo\(0, 0\)/, 'already-home path just scrolls to the top');
   assert.match(fnBody, /navigate\('\/', \{ top: true \}\)/, 'elsewhere navigates to a fresh top-of-home');
