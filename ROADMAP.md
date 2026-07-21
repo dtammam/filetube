@@ -80,6 +80,14 @@
 
 ## Shipped
 
+### v1.45.8 — Pull-to-refresh → rescan (revert v1.45.7) (2026-07-20)
+
+v1.45.7's `overscroll-behavior:none` read "too un-iOS" (it removed the bounce Dean likes) → **reverted**. In its place, Dean's idea: **pull down from the top to rescan the library.** At the very top, a one-finger drag past ~70px arms it; release fires the same rescan as the toolbar button (extracted `runRescan()`, guarded so a pull while already scanning is a no-op). A fixed indicator fades/rotates with the pull.
+
+- **Native-feeling by design:** the touch listeners are `passive` and never `preventDefault`, so they *ride* the native scroll + iOS bounce — normal scrolling is untouched (a deliberate contrast to the abandoned custom-video gesture layer that fought the OS). Touch-only by nature (inert under a mouse).
+- **Full two-reviewer-style slim gate, APPROVE after one fix round.** It caught a **CRITICAL**: the `window` touch listeners aren't torn down when Home is *cached* (the SPA retains the node without calling `destroy()`), so a pull on `/music` etc. silently fired a library rescan with no feedback. Fixed by gating the whole pull path on `ptrIndicator.isConnected` (the cached Home node is detached). Plus a **WARNING**: dragging back above the start now disarms (no rescan on release). The teardown test that missed the leak was rewritten with real teeth.
+- **Suites:** Node 22 **4641/4641**; Node 24 **4641/4641**. **Docker publish is Dean's.** On-device arbiter: the pull feel + iOS fixed-indicator behavior during the bounce.
+
 ### v1.45.7 — Tame the iOS top-of-page rubber-band on phones (2026-07-20)
 
 Dean on-device: scrolling back to the top on the phone had a pronounced elastic rubber-band + spring settle. Added `overscroll-behavior-y: none` to `html, body` **inside the phone (max-width:768px) block only** — so the Mac/Surface trackpad overscroll is untouched. Note: `overscroll-behavior` has no partial setting, so this *removes* the elastic bounce rather than softening it (iOS 16+; older iOS ignores it harmlessly); if it reads too rigid on-device, revert or switch to `contain` in one line. Nested scrollers (sidebar/modals) keep their own behavior. Pure CSS, mobile-only — shipped straight to Dean's device as the arbiter (no formal gate; the CSS-blind gate can't render it). Dual-Node **4632/4632**. **Docker publish is Dean's.**

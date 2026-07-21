@@ -53,16 +53,27 @@ test('PTR: a pull is only recognized at the very top (scrollY <= 0) and cancels 
 });
 
 test('PTR: releasing while armed triggers the SAME rescan as the button, guarded against double-fire', () => {
-  assert.match(PTR, /if \(ptrStartY !== null && ptrArmed\) runRescan\(\)/, 'release-while-armed runs the rescan');
+  assert.match(PTR, /if \(ptrStartY !== null && ptrArmed && ptrIndicator\.isConnected\) runRescan\(\)/, 'release-while-armed (and Home live) runs the rescan');
   assert.match(MAIN, /async function runRescan\(\)/, 'the rescan is a shared function');
   assert.match(MAIN, /if \(rescanBtn\.disabled\) return;/, 'runRescan no-ops if a scan is already running');
   assert.match(MAIN, /rescanBtn\.addEventListener\('click', runRescan/, 'the button reuses the same function');
   assert.match(PTR, /pullRefreshState\(pull, PULL_REFRESH_THRESHOLD_PX\)/, 'arms via the pure phase helper');
 });
 
-test('PTR: the touch listeners are signal-scoped (torn down on the SPA #view-root swap)', () => {
+test('PTR (gate CRITICAL fix): the pull path is INERT while Home is cached — guarded by ptrIndicator.isConnected', () => {
+  // The window touch listeners are NOT torn down when Home is cached
+  // (homeViewCache skips destroy()), so AbortController alone is insufficient —
+  // the real guard is that the indicator (a child of the detached cached
+  // #view-root) is not connected. Without this, a pull on /music fired a rescan.
+  assert.match(PTR, /!ptrIndicator\.isConnected/, 'touchstart bails when Home is not the live (connected) view');
+  assert.match(PTR, /ptrArmed && ptrIndicator\.isConnected\) runRescan\(\)/, 'release re-checks isConnected before the rescan');
+  // Still signal-scoped so a FRESH home init never stacks a second listener set.
   const listeners = (PTR.match(/window\.addEventListener\('touch\w+',[\s\S]*?\{ signal[^}]*\}\)/g) || []);
-  assert.ok(listeners.length >= 4, 'touchstart/move/end/cancel all AbortController-scoped (got ' + listeners.length + ')');
+  assert.ok(listeners.length >= 4, 'touchstart/move/end/cancel all signal-scoped (got ' + listeners.length + ')');
+});
+
+test('PTR (gate WARNING fix): dragging back to/above the start point DISARMS (no rescan on release)', () => {
+  assert.match(PTR, /if \(pull <= 0\) \{ ptrArmed = false;/, 'the pull<=0 branch clears ptrArmed');
 });
 
 test('PTR: the indicator element + its CSS exist', () => {

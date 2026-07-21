@@ -1153,8 +1153,15 @@ if (typeof module !== 'undefined' && module.exports) {
       ptrIndicator.style.removeProperty('--ptr-pull');
     }
     window.addEventListener('touchstart', (e) => {
-      // Only a single-finger drag that begins at the very top is a pull.
-      if (window.scrollY > 0 || rescanBtn.disabled || !e.touches || e.touches.length !== 1) { ptrStartY = null; return; }
+      // Only a single-finger drag that begins at the very top is a pull. The
+      // `ptrIndicator.isConnected` guard is the load-bearing one (gate CRITICAL):
+      // these listeners live on `window`, and leaving Home CACHES the view node
+      // WITHOUT calling destroy() (homeViewCache contract) — so they stay bound
+      // while the user is on /music etc. When Home is cached its #view-root (and
+      // this indicator, a child of it) is detached → isConnected is false → the
+      // whole pull path is inert off-Home, so a pull elsewhere can't fire a
+      // rescan. When Home is the live view it's reconnected and active again.
+      if (window.scrollY > 0 || rescanBtn.disabled || !ptrIndicator.isConnected || !e.touches || e.touches.length !== 1) { ptrStartY = null; return; }
       ptrStartY = e.touches[0].clientY;
       ptrArmed = false;
     }, { signal, passive: true });
@@ -1164,7 +1171,10 @@ if (typeof module !== 'undefined' && module.exports) {
       // scroll (scrollY > 0) cancels it so a normal scroll never shows the UI.
       if (window.scrollY > 0) { ptrReset(); return; }
       const pull = e.touches[0].clientY - ptrStartY;
-      if (pull <= 0) { ptrIndicator.classList.remove('visible', 'ready'); return; }
+      // Dragged back to/above the start → DISARM (gate WARNING: else a release
+      // here still ran the rescan) and hide, but keep tracking in case the
+      // finger pulls down again in the same gesture.
+      if (pull <= 0) { ptrArmed = false; ptrIndicator.classList.remove('visible', 'ready'); return; }
       const phase = pullRefreshState(pull, PULL_REFRESH_THRESHOLD_PX);
       ptrArmed = phase === 'ready';
       ptrIndicator.classList.add('visible');
@@ -1173,7 +1183,8 @@ if (typeof module !== 'undefined' && module.exports) {
       ptrIndicator.style.setProperty('--ptr-pull', String(Math.min(pull, PULL_REFRESH_THRESHOLD_PX * 1.5)));
     }, { signal, passive: true });
     function ptrEnd() {
-      if (ptrStartY !== null && ptrArmed) runRescan();
+      // isConnected re-checked defensively (Home must be the live view to rescan).
+      if (ptrStartY !== null && ptrArmed && ptrIndicator.isConnected) runRescan();
       ptrReset();
     }
     window.addEventListener('touchend', ptrEnd, { signal, passive: true });
