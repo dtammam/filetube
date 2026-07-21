@@ -80,6 +80,10 @@
 
 ## Shipped
 
+### v1.45.7 — Tame the iOS top-of-page rubber-band on phones (2026-07-20)
+
+Dean on-device: scrolling back to the top on the phone had a pronounced elastic rubber-band + spring settle. Added `overscroll-behavior-y: none` to `html, body` **inside the phone (max-width:768px) block only** — so the Mac/Surface trackpad overscroll is untouched. Note: `overscroll-behavior` has no partial setting, so this *removes* the elastic bounce rather than softening it (iOS 16+; older iOS ignores it harmlessly); if it reads too rigid on-device, revert or switch to `contain` in one line. Nested scrollers (sidebar/modals) keep their own behavior. Pure CSS, mobile-only — shipped straight to Dean's device as the arbiter (no formal gate; the CSS-blind gate can't render it). Dual-Node **4632/4632**. **Docker publish is Dean's.**
+
 ### v1.45.6 — Library view preferences: per-page sort + card/list view (2026-07-20)
 
 Two display-preference features for the library toolbar (Dean), no data-loss surface.
