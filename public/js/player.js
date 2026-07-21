@@ -1233,6 +1233,11 @@ if (typeof module !== 'undefined' && module.exports) {
   // points, AFTER `state`/`currentData` are assigned for this transition --
   // never from a `matchMedia` change-listener (AC7: capability is stable
   // across orientation/resize, so re-deriving live is unnecessary).
+  // v1.45.4 caveat: the added `any-pointer: fine` signal CAN change at runtime
+  // when a mouse/trackpad is connected/disconnected (unlike pointer/hover). It
+  // is intentionally left latched here like the others -- re-derived at the next
+  // mount/dock/state-transition, not on peripheral connect -- so a mid-session
+  // mouse attach won't flip an already-mounted player until the next transition.
   function applyControlsMode() {
     if (!host || !mediaPlayer) return;
     // v1.34.2: the CSS faux-fullscreen only makes sense in the FULL state --

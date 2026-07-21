@@ -80,6 +80,14 @@
 
 ## Shipped
 
+### v1.45.4 — Touchscreen hybrid laptops (Surface) classified as desktop (2026-07-20)
+
+Dean on a **Surface Laptop Studio** was getting the native browser video player and the full mobile UI treatment instead of the desktop custom player. Root cause: `isMobileFormFactor()` keyed on the *primary* pointer (`pointer: coarse` + `hover: none`), and a touchscreen hybrid reports a **touch primary** even though it's driven with a trackpad — so it read as a phone. The pre-existing "touch laptop → desktop" safeguard only worked when the primary reported hover-capable, which a touch-primary device defeats.
+
+- **Fix:** also consult `any-pointer: fine` — "is there a precise pointer (trackpad/mouse) *anywhere*, not just the primary?" — gated on a laptop-sized viewport. So a touch laptop + trackpad on a wide screen is **desktop**, while a touch-only phone, or a stylus phone (S-Pen → `any-pointer: fine`) on a **narrow** screen, stays **mobile**. `any-pointer` unsupported (old engine) reproduces the exact prior behaviour. This corrects the **whole** mobile treatment on such devices (native controls, touch-target sizing, hidden volume, tap-to-toggle, background-audio sidecar), not just the player.
+- **DISCLOSED behaviour change (Dean confirmed, accepted):** the same rule necessarily reclassifies **an iPad (or any tablet > 768px) *with a mouse/trackpad attached*** to **desktop** (it was mobile) — iPadOS reports the identical signals to the Surface (touch-primary + `any-pointer: fine`, per WebKit r268086), so there is **no media-query way to separate them**. Consequence: a pointer-attached iPad gets the custom player and loses the iOS native fullscreen→lock-screen background-audio chain *while the pointer is connected*. **Bare iPad / iPhone / all touch-only phones are unchanged (stay mobile).** A Galaxy Z Fold unfolded + active S-Pen is a theoretical wide+fine edge that could flip; negligible population.
+- **Suites:** Node 22 **4614/4614**; Node 24 **4614/4614** (one pre-existing `GET /thumbnail/:id` filesystem-timing flake observed once under full-suite load, passes in isolation and on re-run — disclosed, not promoted). Adversarial gate APPROVE (conditioned on the disclosure above, now written). **Docker publish is Dean's.** Real-device confirmation on the Surface (and ideally an iPad-with-Magic-Keyboard spot-check) is Dean's arbiter.
+
 ### v1.45.3 — Filter-bar sizing fix (desktop equal buttons + un-mangle mobile) (2026-07-20)
 
 Dean's on-device pass of v1.45.2: #4 and #1a landed perfectly; #3 needed another swing.

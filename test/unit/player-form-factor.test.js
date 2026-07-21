@@ -76,6 +76,19 @@ test('resolveMobileFormFactor: a Surface-type touch laptop (touch PRIMARY but a 
   );
 });
 
+// v1.45.4 DISCLOSED collateral: an iPad (>768px) with a Magic Keyboard trackpad
+// or a mouse reports the SAME signals as the Surface (iPadOS keeps the primary
+// touch-friendly but flips any-pointer:fine true — WebKit r268086), so it is
+// indistinguishable from a Windows touch laptop and is now DESKTOP too. There is
+// no media-query way to fix the Surface without this. A BARE iPad (no pointer)
+// reports any-pointer:fine false and stays mobile (the touch-only cases below).
+test('resolveMobileFormFactor: an iPad WITH a trackpad/mouse (wide + any-pointer:fine) is DESKTOP — disclosed Surface-rule collateral', () => {
+  assert.strictEqual(
+    resolveMobileFormFactor({ coarsePointer: true, noHover: true, anyPointerFine: true, narrowViewport: false }),
+    false,
+  );
+});
+
 // The guard that keeps phones mobile: a stylus phone (S-Pen => any-pointer:fine)
 // on a NARROW screen must NOT be declassified — only a precise pointer AND room.
 test('resolveMobileFormFactor: a stylus PHONE (any-pointer:fine via an S-Pen, but narrow) stays MOBILE', () => {
