@@ -1201,6 +1201,68 @@ function setStoredFormatFilter(mode) {
   return normalized;
 }
 
+// v1.45.6 (Dean): library card/list VIEW-MODE preference — per-device, mirrors
+// the format-toggle persistence exactly. Default 'card' (today's grid).
+const VIEW_MODE_STORAGE_KEY = 'ft-view-mode';
+const VIEW_MODES = ['card', 'list'];
+function getStoredViewMode() {
+  let v = null;
+  try { v = localStorage.getItem(VIEW_MODE_STORAGE_KEY); } catch (_) { /* storage disabled */ }
+  return VIEW_MODES.includes(v) ? v : 'card';
+}
+function setStoredViewMode(mode) {
+  const normalized = VIEW_MODES.includes(mode) ? mode : 'card';
+  try { localStorage.setItem(VIEW_MODE_STORAGE_KEY, normalized); } catch (_) { /* storage disabled */ }
+  return normalized;
+}
+
+// v1.45.6 (Dean): PER-PAGE SORT. A CLIENT toggle (like ft-debug-lifecycle) that,
+// when on, remembers a separate sort per library page instead of one global
+// `filetube_sort`. Default OFF — the global path is byte-unchanged when off.
+const PER_PAGE_SORT_FLAG_KEY = 'ft-per-page-sort';
+const PER_PAGE_SORT_MAP_KEY = 'ft-sort-by-page';
+function isPerPageSortEnabled() {
+  try { return localStorage.getItem(PER_PAGE_SORT_FLAG_KEY) === '1'; } catch (_) { return false; }
+}
+function setPerPageSortEnabled(on) {
+  try { localStorage.setItem(PER_PAGE_SORT_FLAG_KEY, on ? '1' : '0'); } catch (_) { /* storage disabled */ }
+  return !!on;
+}
+// Pure: the stable per-page memory key from the library scope params. Folder
+// (root) wins, then the Liked playlist, else a fixed 'home' for the base
+// library. Search is transient — it inherits the scope it was launched under
+// (root/liked/home), never its own per-query key. The 'root:' prefix means a
+// folder literally named "__proto__"/"liked"/"home" can never collide with the
+// reserved keys. Exported for node:test.
+function pageSortKey(params) {
+  const p = params || {};
+  if (p.root) return 'root:' + String(p.root);
+  if (p.liked) return 'liked';
+  return 'home';
+}
+function getPerPageSort(key) {
+  let raw = null;
+  try { raw = localStorage.getItem(PER_PAGE_SORT_MAP_KEY); } catch (_) { return null; }
+  if (!raw) return null;
+  try {
+    const map = JSON.parse(raw);
+    if (map && typeof map === 'object' && Object.prototype.hasOwnProperty.call(map, key) && typeof map[key] === 'string') {
+      return map[key];
+    }
+  } catch (_) { /* corrupt map -- ignore, fall back to the global sort */ }
+  return null;
+}
+function setPerPageSort(key, sort) {
+  let map = {};
+  try {
+    const raw = localStorage.getItem(PER_PAGE_SORT_MAP_KEY);
+    if (raw) { const parsed = JSON.parse(raw); if (parsed && typeof parsed === 'object') map = parsed; }
+  } catch (_) { map = {}; }
+  if (key === '__proto__') return; // never write the one key that could pollute the prototype
+  map[key] = String(sort);
+  try { localStorage.setItem(PER_PAGE_SORT_MAP_KEY, JSON.stringify(map)); } catch (_) { /* storage disabled */ }
+}
+
 // Pure: partitions `list` down to just the video items, just the audio
 // items, or the whole list unchanged ('both', or any unrecognized/missing
 // mode -- fails safe to showing everything rather than silently hiding
@@ -6553,6 +6615,9 @@ if (typeof module !== 'undefined' && module.exports) {
     // case (folded into sortItems above), F1 avatar fallback.
     countItems, formatItemCountLabel, renderItemCountBadge,
     getStoredFormatFilter, setStoredFormatFilter, filterByMediaType,
+    // v1.45.6 (Dean): library view-mode + per-page-sort helpers.
+    getStoredViewMode, setStoredViewMode,
+    isPerPageSortEnabled, setPerPageSortEnabled, pageSortKey, getPerPageSort, setPerPageSort,
     FORMAT_FILTER_MODES, buildFormatToggleControl, renderFormatToggle,
     deriveAvatar, resolveAvatarSource, AVATAR_PALETTE,
     // v1.24.1 (B1 fast-follow): relocated "Re-pull this channel now" widget.

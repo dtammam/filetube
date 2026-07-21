@@ -1320,6 +1320,18 @@ function wireStaticControls(signal) {
     }, { signal });
   }
 
+  // v1.45.6 (Dean): per-page sort — a CLIENT toggle (localStorage), like the
+  // debug-lifecycle overlay above. Prefill from + persist via the common.js
+  // helpers (isPerPageSortEnabled/setPerPageSortEnabled) so the storage key
+  // lives in exactly one place.
+  const perPageSortCheck = document.getElementById('per-page-sort-check');
+  if (perPageSortCheck) {
+    perPageSortCheck.checked = isPerPageSortEnabled();
+    perPageSortCheck.addEventListener('change', (e) => {
+      setPerPageSortEnabled(e.target.checked);
+    }, { signal });
+  }
+
   // v1.44: home-page resume-row toggles (device-local, default ON). Keys match
   // main.js's homeRowEnabled (`!== '0'` = on): checked -> clear (default on),
   // unchecked -> '0'.
