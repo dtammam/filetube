@@ -80,6 +80,14 @@
 
 ## Shipped
 
+### v1.45.3 — Filter-bar sizing fix (desktop equal buttons + un-mangle mobile) (2026-07-20)
+
+Dean's on-device pass of v1.45.2: #4 and #1a landed perfectly; #3 needed another swing.
+
+- **Desktop:** the buttons are now equal-sized — the All/Videos/Audio pills are uniform width, and the sort dropdown / Shuffle / Rescan share a width, so Rescan no longer dwarfs the rest ("a hobble of things through time").
+- **Mobile (bug fix):** the v1.45.2 swing was **mangled** — a blanket `min-width:44px` forced even the three format pills wide and the sort kept its text label, so the `nowrap` row overflowed the viewport and Rescan spilled off the edge (the gate's width math had assumed the sort would shrink; it didn't, and a CSS-blind gate can't catch that — Dean's device is the arbiter for layout). Fixed the width budget: format pills go compact, and **all** word-labels are hidden (Shuffle/Rescan *and* the sort's current-value label, leaving a compact caret), so the row genuinely fits one clean line.
+- **Suites:** Node 22 **4610/4610**; Node 24 **4610/4610**. Shipped straight to Dean's device (no formal gate — pure-CSS layout the gate can't render; it approved the v1.45.2 swing that broke on-device). **Docker publish is Dean's.**
+
 ### v1.45.2 — Filter-bar cleanup + logo jumps to home-top (2026-07-20)
 
 Dean's on-device follow-ups after v1.45.0/.1:

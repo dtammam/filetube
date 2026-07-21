@@ -100,13 +100,24 @@ test('mobile (v1.45.2 #3, REVISITS v1.23): Shuffle/Rescan WORD labels are hidden
   );
 });
 
-test('mobile: .section-actions buttons keep a comfortable minimum tap-target width', () => {
+test('mobile (v1.45.3): the icon action buttons keep a comfortable minimum tap-target width', () => {
   const body = mobileBlock();
-  const rule = /\.section-actions \.btn\s*\{([^}]*)\}/.exec(body);
-  assert.ok(rule, 'expected a mobile .section-actions .btn rule');
+  // v1.45.3 targets the three icon buttons by id (not a blanket .section-actions
+  // .btn, which had forced the format pills wide and overflowed the row).
+  const rule = /#sort-select-btn,\s*#shuffle-again-btn,\s*#rescan-library-btn\s*\{([^}]*)\}/.exec(body);
+  assert.ok(rule, 'expected a mobile min-width rule on the icon action buttons');
   const minWidthMatch = /min-width:\s*(\d+)px/.exec(rule[1]);
   assert.ok(minWidthMatch, 'expected a min-width on the icon-only mobile buttons');
   assert.ok(Number(minWidthMatch[1]) >= 32, 'tap target should be at least 32px');
+});
+
+test('mobile (v1.45.3): the fit budget — format pills compact + sort label hidden so the nowrap row cannot overflow', () => {
+  const body = mobileBlock();
+  // The format pills must drop the desktop 58px min-width (compact) and the
+  // sort's current-value label must be hidden (caret only) — the two things
+  // whose absence overflowed the row in the v1.45.2 swing.
+  assert.match(body, /\.section-actions \.format-toggle-btn\s*\{[^}]*min-width:\s*0/, 'format pills go compact on mobile');
+  assert.match(body, /#sort-select-label\s*\{[^}]*display:\s*none/, 'the sort value-label is hidden on mobile (caret only)');
 });
 
 test('mobile: .video-grid uses a tighter column minimum + gap than the desktop 210px/20px so more than one card is comfortably visible', () => {

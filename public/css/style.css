@@ -696,6 +696,22 @@ html.reader-immersive .app-container { padding-top: 0; }
   font-weight: 600;
 }
 
+/* v1.45.3 (#3, Dean): equal-sized action buttons so the toolbar reads as one
+   clean set instead of "a hobble of things through time". The All/Videos/Audio
+   pills are uniform width; the sort dropdown, Shuffle and Rescan share a width
+   so Rescan no longer dwarfs the rest. (Mobile compacts these — see the
+   max-width:768px block.) */
+.format-toggle-btn {
+  min-width: 58px;
+  justify-content: center;
+}
+#sort-select-btn,
+#shuffle-again-btn,
+#rescan-library-btn {
+  min-width: 104px;
+  justify-content: center;
+}
+
 .sidebar-item.drag-over-after {
   box-shadow: inset 0 -2px 0 0 var(--yt-red);
 }
@@ -3601,15 +3617,27 @@ a.sub-row-channel-link:focus-visible {
     flex-wrap: nowrap;
     width: 100%;
     justify-content: space-between;
-    gap: 8px;
+    gap: 6px;
   }
-  .section-actions .btn {
-    justify-content: center;
-    min-width: 44px; /* comfortable mobile tap target */
+  /* v1.45.3 (#3): the previous swing forced EVERY button (incl. the 3 format
+     pills) to 44px and kept the sort's text label, so the nowrap row overflowed
+     the viewport (Rescan spilled off the edge) — "mangled". Fix the width budget:
+     the All/Videos/Audio pills go compact (min-width:0, overriding the desktop
+     58px), and ALL word-labels are hidden — Shuffle/Rescan (.btn-label) AND the
+     sort's current-value label — leaving the sort as a compact caret. The three
+     icon action buttons keep a 40px tap target and override the desktop 104px. */
+  .section-actions .format-toggle-btn {
+    min-width: 0;
   }
-  /* Icon-only on phones: hide the Shuffle/Rescan word labels (the sort button's
-     own current-value label stays, ellipsizing via .sort-select-btn if long). */
+  #sort-select-btn,
+  #shuffle-again-btn,
+  #rescan-library-btn {
+    min-width: 40px;
+  }
   .section-actions .btn .btn-label {
+    display: none;
+  }
+  #sort-select-label {
     display: none;
   }
 
