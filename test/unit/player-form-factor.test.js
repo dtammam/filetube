@@ -42,7 +42,7 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
-const { resolveMobileFormFactor } = require('../../public/js/player.js');
+const { resolveMobileFormFactor, isDesktopClassPlatform } = require('../../public/js/player.js');
 
 // ---- resolveMobileFormFactor (AC1) -------------------------------------------
 
@@ -74,6 +74,58 @@ test('resolveMobileFormFactor: a Surface-type touch laptop (touch PRIMARY but a 
     resolveMobileFormFactor({ coarsePointer: true, noHover: true, anyPointerFine: true, narrowViewport: false }),
     false,
   );
+});
+
+// v1.45.5 (Dean, Surface Laptop Studio — the REAL fix): Chromium on a Windows
+// touch laptop reports coarse + hover:none + any-pointer:fine=FALSE + any-hover
+// =FALSE (media-query-identical to a phone; confirmed on Dean's device), so the
+// v1.45.4 any-pointer signal can't catch it. The OS is the only reliable tell.
+test('resolveMobileFormFactor: a Windows touch laptop (no fine pointer reported, but desktopPlatform) is DESKTOP', () => {
+  assert.strictEqual(
+    resolveMobileFormFactor({ coarsePointer: true, noHover: true, anyPointerFine: false, desktopPlatform: true, narrowViewport: false }),
+    false,
+  );
+});
+
+// The desktopPlatform signal must NOT rescue a real phone/tablet: those never
+// report a desktop-class platform (see isDesktopClassPlatform).
+test('resolveMobileFormFactor: a phone (no fine pointer, NOT a desktop platform) stays MOBILE even though coarse+noHover', () => {
+  assert.strictEqual(
+    resolveMobileFormFactor({ coarsePointer: true, noHover: true, anyPointerFine: false, desktopPlatform: false, narrowViewport: true }),
+    true,
+  );
+});
+
+// ---- isDesktopClassPlatform (v1.45.5) --------------------------------------
+// The safety-critical part: match Windows/Chrome OS, NEVER a string a phone/
+// tablet reports (Android => "Linux armv8l"/"Android"; iPadOS => "MacIntel").
+
+test('isDesktopClassPlatform: matches Windows (navigator.platform Win32/Win64 and userAgentData "Windows")', () => {
+  assert.strictEqual(isDesktopClassPlatform('Win32'), true);
+  assert.strictEqual(isDesktopClassPlatform('Win64'), true);
+  assert.strictEqual(isDesktopClassPlatform('Windows'), true);
+});
+
+test('isDesktopClassPlatform: matches Chrome OS ("Chrome OS" / "CrOS")', () => {
+  assert.strictEqual(isDesktopClassPlatform('Chrome OS'), true);
+  assert.strictEqual(isDesktopClassPlatform('CrOS x86_64'), true);
+});
+
+test('isDesktopClassPlatform: NEVER matches a mobile-device platform string (the safety invariant)', () => {
+  assert.strictEqual(isDesktopClassPlatform('Linux armv8l'), false, 'Android navigator.platform must NOT read as desktop');
+  assert.strictEqual(isDesktopClassPlatform('Android'), false, 'Android userAgentData must NOT read as desktop');
+  assert.strictEqual(isDesktopClassPlatform('iPhone'), false);
+  assert.strictEqual(isDesktopClassPlatform('iPad'), false);
+  assert.strictEqual(isDesktopClassPlatform('MacIntel'), false, 'iPadOS masquerades as MacIntel — must NOT read as desktop');
+  assert.strictEqual(isDesktopClassPlatform('macOS'), false, 'a real Mac is desktop via its fine pointer, never via this');
+  assert.strictEqual(isDesktopClassPlatform('Linux x86_64'), false, 'a Linux desktop is desktop via its fine pointer, and this shares Android\'s string family');
+});
+
+test('isDesktopClassPlatform: empty/garbage/non-string is false (fail toward the pointer logic)', () => {
+  assert.strictEqual(isDesktopClassPlatform(''), false);
+  assert.strictEqual(isDesktopClassPlatform(undefined), false);
+  assert.strictEqual(isDesktopClassPlatform(null), false);
+  assert.strictEqual(isDesktopClassPlatform(42), false);
 });
 
 // v1.45.4 DISCLOSED collateral: an iPad (>768px) with a Magic Keyboard trackpad
