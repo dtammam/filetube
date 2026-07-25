@@ -7,12 +7,16 @@
         <LoginScreen id="loginScreen" visible="false" />
         <GridScreen id="gridScreen" visible="false" />
         <Video id="videoPlayer" translation="[0,0]" width="1920" height="1080" visible="false" />
-        <!-- Shown over the (black) video surface for audio-only items; sits
-             above the player but clear of the trickplay bar at the bottom. -->
+        <!-- Now-playing screen for audio-only items, over the black video
+             surface: the thumbnail doubles as a full-screen ambient backdrop
+             under a dark wash, with a large sharp art card on top. Bottom
+             ~200px stays clear for the trickplay bar. -->
         <Group id="audioOverlay" visible="false">
-            <Poster id="audioArt" width="480" height="270" translation="[720,230]" loadWidth="480" loadHeight="270" loadDisplayMode="scaleToZoom" />
-            <Label id="audioTitle" translation="[160,540]" width="1600" horizAlign="center" font="font:MediumBoldSystemFont" color="0xF1F1F1FF" />
-            <Label id="audioBadge" translation="[160,606]" width="1600" horizAlign="center" font="font:SmallestSystemFont" color="0x9A9A9AFF" text="Audio playback" />
+            <Poster id="audioBackdrop" width="1920" height="1080" translation="[0,0]" loadWidth="960" loadHeight="540" loadDisplayMode="scaleToZoom" />
+            <Rectangle id="audioScrim" width="1920" height="1080" translation="[0,0]" color="0x0A0A0ADD" />
+            <Poster id="audioArt" width="920" height="518" translation="[500,110]" loadWidth="920" loadHeight="518" loadDisplayMode="scaleToZoom" />
+            <Label id="audioTitle" translation="[160,668]" width="1600" horizAlign="center" font="font:LargeBoldSystemFont" color="0xF1F1F1FF" />
+            <Label id="audioBadge" translation="[160,748]" width="1600" horizAlign="center" font="font:SmallSystemFont" color="0x9A9A9AFF" text="AUDIO" />
         </Group>
     </children>
 </component>

@@ -15,6 +15,16 @@ sub init()
     m.roots = []
     m.currentRoot = ""
     m.currentRootName = "All videos"
+    m.currentSearch = ""
+end sub
+
+sub updateHint()
+    if m.roots.Count() > 1
+        m.libHint.text = "LEFT: libraries · UP: search"
+    else
+        m.libHint.text = "UP: search"
+    end if
+    m.libHint.visible = true
 end sub
 
 sub onTakeFocus()
@@ -31,6 +41,8 @@ sub onBegin()
     ' session expired; close it so focus and visibility agree.
     if m.folderMenu.visible then closeFolderMenu()
     if m.roots.Count() = 0 then fetchConfig()
+    m.currentSearch = ""
+    updateHint()
     resetAndLoad()
     m.grid.SetFocus(true)
 end sub
@@ -61,7 +73,7 @@ sub onConfigResult()
     m.roots = [{ name: "All videos", root: "" }]
     m.roots.Append(result.roots)
     ' A picker with only "All videos" in it is noise; need 2+ real choices.
-    m.libHint.visible = (m.roots.Count() > 1)
+    updateHint()
 end sub
 
 sub openFolderMenu()
@@ -89,8 +101,31 @@ sub onFolderSelected()
     if index < 0 or index >= m.roots.Count() then return
     m.currentRoot = m.roots[index].root
     m.currentRootName = m.roots[index].name
+    m.currentSearch = ""
     closeFolderMenu()
     resetAndLoad()
+end sub
+
+' ---- search ---------------------------------------------------------------
+
+sub openSearch()
+    kb = CreateObject("roSGNode", "KeyboardDialog")
+    kb.title = "Search videos"
+    kb.text = m.currentSearch
+    kb.buttons = ["Search", "Cancel"]
+    kb.ObserveField("buttonSelected", "onSearchKeyboard")
+    m.searchKb = kb
+    m.top.GetScene().dialog = kb
+end sub
+
+sub onSearchKeyboard()
+    if m.searchKb = invalid then return
+    if m.searchKb.buttonSelected = 0
+        m.currentSearch = m.searchKb.text.Trim()
+        resetAndLoad()
+    end if
+    m.searchKb.close = true
+    m.searchKb = invalid
 end sub
 
 function onKeyEvent(key as string, press as boolean) as boolean
@@ -104,6 +139,10 @@ function onKeyEvent(key as string, press as boolean) as boolean
     end if
     if key = "left" and m.roots.Count() > 1
         openFolderMenu()
+        return true
+    end if
+    if key = "up"
+        openSearch()
         return true
     end if
     return false
@@ -120,6 +159,7 @@ sub fetchPage(offset as integer)
     m.task.offset = offset
     m.task.limit = m.pageSize
     m.task.root = m.currentRoot
+    m.task.search = m.currentSearch
     m.task.ObserveField("result", "onPageResult")
     m.task.control = "RUN"
 end sub
@@ -151,7 +191,14 @@ sub onPageResult()
     end for
 
     shown = m.contentRoot.GetChildCount()
-    m.countLabel.text = m.currentRootName + " · " + shown.ToStr() + " of " + m.total.ToStr() + " · newest first"
+    scope = m.currentRootName
+    if m.currentSearch <> ""
+        scope = scope + " · " + Chr(34) + m.currentSearch + Chr(34)
+        m.emptyLabel.text = "No matches for " + Chr(34) + m.currentSearch + Chr(34) + "."
+    else
+        m.emptyLabel.text = "No videos found in the library."
+    end if
+    m.countLabel.text = scope + " · " + shown.ToStr() + " of " + m.total.ToStr() + " · newest first"
     m.emptyLabel.visible = (m.total = 0)
 end sub
 

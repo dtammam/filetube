@@ -7,6 +7,7 @@ sub init()
     m.gridScreen = m.top.FindNode("gridScreen")
     m.video = m.top.FindNode("videoPlayer")
     m.audioOverlay = m.top.FindNode("audioOverlay")
+    m.audioBackdrop = m.top.FindNode("audioBackdrop")
     m.audioArt = m.top.FindNode("audioArt")
     m.audioTitle = m.top.FindNode("audioTitle")
     m.pendingSeekPos = invalid
@@ -156,6 +157,7 @@ sub onItemSelected()
     ' Audio files play through the same Video node but the surface is black;
     ' float the thumbnail and title so it reads as intentional playback.
     if item.ftMediaType = "audio"
+        m.audioBackdrop.uri = item.HDPosterUrl
         m.audioArt.uri = item.HDPosterUrl
         m.audioTitle.text = item.title
         m.audioOverlay.visible = true
@@ -214,6 +216,7 @@ sub stopPlayback()
     m.video.content = invalid
     m.audioOverlay.visible = false
     m.audioArt.uri = ""
+    m.audioBackdrop.uri = ""
     m.gridScreen.visible = true
     m.gridScreen.takeFocus = true
 end sub

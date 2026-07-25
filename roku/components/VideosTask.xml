@@ -7,6 +7,8 @@
         <field id="limit" type="integer" value="60" />
         <!-- Optional library root path; empty = whole library. -->
         <field id="root" type="string" />
+        <!-- Optional substring search; empty = no filter. -->
+        <field id="search" type="string" />
         <!-- { ok, items, total, offset, error, code } -->
         <field id="result" type="assocarray" />
     </interface>

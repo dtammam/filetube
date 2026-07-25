@@ -12,6 +12,9 @@ sub taskMain()
     if m.top.root <> ""
         url = url + "&root=" + xfer.Escape(m.top.root)
     end if
+    if m.top.search <> ""
+        url = url + "&search=" + xfer.Escape(m.top.search)
+    end if
     xfer.SetUrl(url)
     xfer.SetCertificatesFile("common:/certs/ca-bundle.crt")
     xfer.AddHeader("Cookie", m.top.cookie)
