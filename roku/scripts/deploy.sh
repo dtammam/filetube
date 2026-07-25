@@ -22,7 +22,7 @@ if [[ "${1:-}" == "--package-only" ]]; then
   exit 0
 fi
 
-: "${ROKU_IP:?Set ROKU_IP to your Roku's LAN IP (Settings > Network > About)}"
+: "${ROKU_IP:?Set ROKU_IP to the Roku LAN IP (Settings > Network > About)}"
 : "${ROKU_DEV_PASSWORD:?Set ROKU_DEV_PASSWORD to your Roku dev-mode password}"
 
 # Send the running channel home first; installs fail while a channel is active.
