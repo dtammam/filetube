@@ -127,6 +127,16 @@ sub onItemSelected()
         content.streamFormat = streamFormatForExt(item.ftExt)
     end if
 
+    ' Sidecar captions: the server serves WebVTT (converting .srt on the fly),
+    ' which the Video node takes natively. Toggle via * > Closed Captions.
+    if item.ftHasSubtitles
+        content.SubtitleTracks = [{
+            Language: "en",
+            Description: "Captions",
+            TrackName: m.state.serverUrl + "/api/subtitles/" + item.ftId
+        }]
+    end if
+
     ' Resume where the web player left off (server already tracks progress).
     m.pendingSeekPos = invalid
     if item.ftProgress >= 30

@@ -53,6 +53,11 @@ Press `Ctrl+]` then `quit` to leave. SceneGraph warnings appear on port 8089.
   audio containers (`.ogg`, `.flac`, `.wav`) may not play on all Roku models.
 - **Resume is read-only**: playback starts where the web player left off, but
   the channel does not report watch progress back to the server.
+- **Captions**: items with a subtitle sidecar (`hasSubtitles`) expose a
+  captions track — toggle with the * (Options) button > Closed Captions.
+- **Phone videos may play sideways**: Roku's Video node ignores the MP4
+  rotation flag that browsers honor. The fix is server-side (bake rotation
+  into the transcoded rendition) and is planned for the v1.47 release.
 - `https://` addresses use the Roku's built-in CA bundle — a self-signed
   certificate will not work; use plain `http://` on the LAN instead.
 - Password characters may be visible on screen while typing (Roku keyboard).

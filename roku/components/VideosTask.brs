@@ -56,6 +56,7 @@ sub taskMain()
             progress: it.progress,
             needsTranscode: it.needsTranscode = true,
             hasThumbnail: it.hasThumbnail = true,
+            hasSubtitles: it.hasSubtitles = true,
             ext: it.ext
         }
         if entry.title = invalid or entry.title = "" then entry.title = it.name

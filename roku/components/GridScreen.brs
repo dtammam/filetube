@@ -72,6 +72,7 @@ function buildContentNode(item as object) as object
         ftDuration: 0.0,
         ftProgress: 0.0,
         ftNeedsTranscode: false,
+        ftHasSubtitles: false,
         ftExt: ""
     })
     if item.id <> invalid then node.ftId = item.id
@@ -83,6 +84,7 @@ function buildContentNode(item as object) as object
     end if
     if item.progress <> invalid then node.ftProgress = item.progress
     node.ftNeedsTranscode = (item.needsTranscode = true)
+    node.ftHasSubtitles = (item.hasSubtitles = true)
     if item.hasThumbnail = true and item.id <> invalid
         node.HDPosterUrl = m.top.serverUrl + "/thumbnail/" + item.id
     end if

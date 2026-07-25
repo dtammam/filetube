@@ -1,9 +1,13 @@
 ' Shared helpers: registry persistence, URL normalization, formatting.
 
+' Registry keys are all-lowercase ON PURPOSE: BrightScript lowercases AA keys
+' set via literals/dot notation, while the Roku registry is case-sensitive.
+' A mixed-case key here writes as "serverurl" but reads as "serverUrl" — the
+' on-device bug where the server address never persisted across launches.
 function FT_RegistryRead() as object
     sec = CreateObject("roRegistrySection", "FileTube")
     state = {}
-    for each key in ["serverUrl", "cookie", "username"]
+    for each key in ["serverurl", "cookie", "username"]
         if sec.Exists(key)
             state[key] = sec.Read(key)
         else
@@ -16,7 +20,7 @@ end function
 sub FT_RegistryWrite(state as object)
     sec = CreateObject("roRegistrySection", "FileTube")
     for each key in state
-        sec.Write(key, state[key])
+        sec.Write(LCase(key), state[key])
     end for
     sec.Flush()
 end sub
