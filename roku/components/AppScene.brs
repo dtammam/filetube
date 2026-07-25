@@ -10,10 +10,25 @@ sub init()
     m.audioBackdrop = m.top.FindNode("audioBackdrop")
     m.audioArt = m.top.FindNode("audioArt")
     m.audioTitle = m.top.FindNode("audioTitle")
+    m.playbackMenuGroup = m.top.FindNode("playbackMenuGroup")
+    m.playbackMenuTitle = m.top.FindNode("playbackMenuTitle")
+    m.playbackMenu = m.top.FindNode("playbackMenu")
+    m.playbackMenu.ObserveField("itemSelected", "onPlaybackMenuSelected")
+
     m.pendingSeekPos = invalid
     m.playingExt = ""
     m.playingCodecs = ""
     m.gating = false
+
+    ' v1.47 playback state: the queue is the grid's own ContentNode (it keeps
+    ' growing as pages load), plus persisted loop/autoplay preferences.
+    m.queue = invalid
+    m.queueIndex = -1
+    m.currentItem = invalid
+    m.chapters = []
+    m.chaptersItemId = ""
+    m.menuMode = "main"
+    m.menuActions = []
 
     m.loginScreen.ObserveField("credentials", "onCredentials")
     m.gridScreen.ObserveField("selectedItem", "onItemSelected")
@@ -22,6 +37,10 @@ sub init()
     m.video.ObserveField("state", "onVideoState")
 
     m.state = FT_RegistryRead()
+    m.loopMode = "off"
+    if m.state.loopmode = "this" or m.state.loopmode = "all" then m.loopMode = m.state.loopmode
+    m.autoplay = (m.state.autoplay = "1")
+
     if m.state.serverUrl <> "" and m.state.cookie <> ""
         showStatus("Connecting to FileTube…")
         runAuth("validate")
@@ -109,10 +128,16 @@ end sub
 
 sub onAuthExpired()
     if not m.gridScreen.authExpired then return
-    ' Gate W4: a stale task's 401 can land while a playback gate is mid-poll;
-    ' without this, a later gate success would start playback OVER the login
-    ' screen (videoPlayer draws above it) with a dead cookie.
+    ' Gate W4 (v1.46): a stale task's 401 can land while a playback gate is
+    ' mid-poll; a later gate success must not start playback OVER the login
+    ' screen with a dead cookie.
     if m.gating then cancelPlaybackGate()
+    ' Gate C2 (v1.47): the ensureLoaded prefetch means a 401 can now land
+    ' MID-PLAYBACK -- tear the playback surface down too, or live video
+    ' keeps playing over the login screen with a dead cookie.
+    if m.playbackMenuGroup.visible then closePlaybackMenu()
+    stopPlaybackSurface()
+    m.pendingContent = invalid
     FT_RegistryClearSession()
     m.state.cookie = ""
     m.gridScreen.visible = false
@@ -120,14 +145,93 @@ sub onAuthExpired()
     showDialog("Signed out", "Your session expired. Please sign in again.")
 end sub
 
-' ---- playback -------------------------------------------------------------
+' ---- selection, resume prompt, queue --------------------------------------
 
 sub onItemSelected()
-    ' Gate W4: the grid is hidden but still FOCUSED while "Preparing…" shows,
-    ' so a second OK press would re-enter here and orphan the running gate.
+    ' Gate W4 (v1.46): the grid is hidden but still FOCUSED while
+    ' "Preparing…" shows, so a second OK press would re-enter here.
     if m.gating then return
     item = m.gridScreen.selectedItem
     if item = invalid or item.ftId = "" then return
+    ' Capture the queue + index the grid set just before selectedItem fired.
+    m.queue = m.gridScreen.queue
+    playIndex(m.gridScreen.selectedIndex, true, false)
+end sub
+
+' Start (or advance to) queue position i. Returns true when playback (or its
+' resume prompt) actually started -- advanceAfterFinish uses the false case
+' to land on the grid instead of a dead frame (gate S6).
+'   allowPrompt: explicit user selection -> offer Resume/Start over.
+'   fromStart:   loop replays -> never auto-resume (a near-end resume
+'                would re-finish instantly and spin the loop).
+function playIndex(index as integer, allowPrompt as boolean, fromStart as boolean) as boolean
+    if m.queue = invalid then return false
+    if index < 0 or index >= m.queue.GetChildCount() then return false
+    item = m.queue.GetChild(index)
+    if item = invalid or item.ftId = "" then return false
+    m.queueIndex = index
+    m.currentItem = item
+
+    resumePos = invalid
+    if not fromStart and item.ftProgress >= 30
+        if item.ftDuration <= 0 or item.ftProgress < 0.95 * item.ftDuration
+            resumePos = item.ftProgress
+        end if
+    end if
+
+    if allowPrompt and resumePos <> invalid
+        openResumeDialog(item, resumePos)
+        return true
+    end if
+    m.pendingSeekPos = resumePos
+    startPlaybackFlow(item)
+    return true
+end function
+
+sub openResumeDialog(item as object, resumePos as float)
+    m.resumeItem = item
+    m.resumePos = resumePos
+    dialog = CreateObject("roSGNode", "Dialog")
+    dialog.title = item.title
+    dialog.buttons = ["Resume from " + FT_FormatDuration(resumePos), "Start from beginning"]
+    dialog.ObserveField("buttonSelected", "onResumeButton")
+    dialog.ObserveField("wasClosed", "onResumeClosed")
+    m.resumeDialog = dialog
+    m.top.dialog = dialog
+end sub
+
+' Gate S1: a back-dismissed resume dialog fires no buttonSelected; clear the
+' dangling refs so nothing stale survives. Fires after onResumeButton too --
+' the invalid guard makes that a no-op.
+sub onResumeClosed()
+    if m.resumeDialog = invalid then return
+    m.resumeDialog.UnobserveField("buttonSelected")
+    m.resumeDialog = invalid
+    m.resumeItem = invalid
+end sub
+
+sub onResumeButton()
+    if m.resumeDialog = invalid then return
+    choice = m.resumeDialog.buttonSelected
+    m.resumeDialog.close = true
+    m.resumeDialog = invalid
+    if choice = 0
+        m.pendingSeekPos = m.resumePos
+    else
+        m.pendingSeekPos = invalid
+    end if
+    startPlaybackFlow(m.resumeItem)
+    m.resumeItem = invalid
+end sub
+
+' ---- playback -------------------------------------------------------------
+
+sub startPlaybackFlow(item as object)
+    ' Advancing while something is on screen (menu next/prev, autoplay after
+    ' an error dialog, etc.): tear the old playback down first so the gate's
+    ' "Preparing…" status renders over the scene, not under a live video.
+    if m.playbackMenuGroup.visible then closePlaybackMenu()
+    if m.video.visible then stopPlaybackSurface()
 
     content = CreateObject("roSGNode", "ContentNode")
     content.url = m.state.serverUrl + "/video/" + item.ftId
@@ -139,16 +243,15 @@ sub onItemSelected()
     end if
     content.title = item.title
     ' Items flagged needsTranscode are served as a cached MP4 rendition
-    ' regardless of their original container (e.g. an MKV with AC-3 audio),
-    ' so the extension must not drive the demuxer choice for them.
+    ' regardless of their original container, so the extension must not
+    ' drive the demuxer choice for them.
     if item.ftNeedsTranscode
         content.streamFormat = "mp4"
     else
         content.streamFormat = streamFormatForExt(item.ftExt)
     end if
-
-    ' Sidecar captions: the server serves WebVTT (converting .srt on the fly),
-    ' which the Video node takes natively. Toggle via * > Closed Captions.
+    ' Sidecar captions: the server serves WebVTT (converting .srt on the
+    ' fly), which the Video node takes natively. Toggle via * > CC.
     if item.ftHasSubtitles
         content.SubtitleTracks = [{
             Language: "en",
@@ -157,13 +260,6 @@ sub onItemSelected()
         }]
     end if
 
-    ' Resume where the web player left off (server already tracks progress).
-    m.pendingSeekPos = invalid
-    if item.ftProgress >= 30
-        if item.ftDuration <= 0 or item.ftProgress < 0.95 * item.ftDuration
-            m.pendingSeekPos = item.ftProgress
-        end if
-    end if
     m.playingNeedsTranscode = item.ftNeedsTranscode
     m.playingExt = item.ftExt
     m.playingCodecs = item.ftCodecs
@@ -180,9 +276,10 @@ sub onItemSelected()
 
     m.pendingContent = content
     m.gridScreen.visible = false
-    ' Seamless start: video items are pre-flighted so a rendition/transcode
-    ' being built server-side shows "Preparing…" and auto-starts when ready,
-    ' instead of erroring and needing a second press. Audio plays direct.
+    ' Binge prefetch: make sure the NEXT queue position is loaded before
+    ' this one finishes, so autoplay never starves at the page boundary.
+    m.gridScreen.ensureLoaded = m.queueIndex + 1
+
     if item.ftMediaType = "audio"
         beginPlayback()
     else
@@ -192,6 +289,7 @@ end sub
 
 sub beginPlayback()
     m.statusLabel.visible = false
+    m.video.control = "stop"
     m.video.content = m.pendingContent
     m.video.visible = true
     m.video.SetFocus(true)
@@ -200,6 +298,7 @@ end sub
 
 sub beginPlaybackGate(url as string)
     m.gating = true
+    m.gridScreen.gateActive = true ' gate W7: mute the hidden grid's keys
     showStatus("Preparing… (first play of some videos takes a minute)")
     m.gateTask = CreateObject("roSGNode", "PlaybackGateTask")
     m.gateTask.url = url
@@ -209,13 +308,13 @@ sub beginPlaybackGate(url as string)
 end sub
 
 sub onGateResult()
-    ' Stale-fire guard (gate CRITICAL): cancelPlaybackGate UNOBSERVES the old
-    ' task before dropping it, so the only node that can reach this callback
-    ' is the CURRENT m.gateTask -- a canceled task's late completion can
-    ' never hijack a newer gate. The invalid check is belt-and-braces.
+    ' Stale-fire guard (v1.46 gate CRITICAL): cancelPlaybackGate UNOBSERVES
+    ' the old task before dropping it, so the only node that can reach this
+    ' callback is the CURRENT m.gateTask.
     if not m.gating then return
     if m.gateTask = invalid then return
     m.gating = false
+    m.gridScreen.gateActive = false
     result = m.gateTask.result
     m.gateTask.UnobserveField("result")
     m.gateTask = invalid
@@ -234,6 +333,7 @@ end sub
 
 sub cancelPlaybackGate()
     m.gating = false
+    m.gridScreen.gateActive = false
     if m.gateTask <> invalid
         ' Unobserve BEFORE stop: task termination is asynchronous, and a
         ' still-observed field set by the dying thread would fire
@@ -261,7 +361,7 @@ sub onVideoState()
             m.pendingSeekPos = invalid
         end if
     else if state = "finished"
-        stopPlayback()
+        advanceAfterFinish()
     else if state = "error"
         message = "Playback failed."
         if m.video.errorMsg <> invalid and m.video.errorMsg <> ""
@@ -289,23 +389,206 @@ sub onVideoState()
     end if
 end sub
 
-sub stopPlayback()
+' v1.47: end-of-item routing — loop-this replays from zero, autoplay/loop-all
+' advance (wrapping only on loop-all), anything else lands back on the grid.
+sub advanceAfterFinish()
+    if m.loopMode = "this"
+        if playIndex(m.queueIndex, false, true) then return
+        stopPlayback()
+        return
+    end if
+    count = 0
+    if m.queue <> invalid then count = m.queue.GetChildCount()
+    nextIndex = m.queueIndex + 1
+    if nextIndex < count and (m.autoplay or m.loopMode = "all")
+        if playIndex(nextIndex, false, false) then return
+    end if
+    ' Gate W3: the loop-all WRAP starts from zero too -- Roku never writes
+    ' progress back, so resuming lap 2 at week-old positions (or at 90% of
+    ' a single-item queue, replaying only the tail forever) is the same
+    ' spin the loop-this fromStart flag exists to prevent.
+    if m.loopMode = "all" and count > 0
+        if playIndex(0, false, true) then return
+    end if
+    stopPlayback()
+end sub
+
+' Tear down the playback surface WITHOUT returning focus/visibility to the
+' grid — used when another item starts immediately (next/prev/autoplay).
+sub stopPlaybackSurface()
     m.video.control = "stop"
     m.video.visible = false
     m.video.content = invalid
     m.audioOverlay.visible = false
     m.audioArt.uri = ""
     m.audioBackdrop.uri = ""
+end sub
+
+sub stopPlayback()
+    stopPlaybackSurface()
+    if m.playbackMenuGroup.visible then closePlaybackMenu()
     m.gridScreen.visible = true
     m.gridScreen.takeFocus = true
 end sub
 
+' ---- playback menu (v1.47) -------------------------------------------------
+
+sub openPlaybackMenu()
+    m.menuMode = "main"
+    buildPlaybackMenuRows()
+    m.playbackMenu.jumpToItem = 0 ' gate S2: fresh menu, fresh focus
+    m.playbackMenuGroup.visible = true
+    m.playbackMenu.SetFocus(true)
+    ' Chapters are only on the details endpoint; fetch once per item, lazily.
+    if m.currentItem <> invalid and m.chaptersItemId <> m.currentItem.ftId
+        ' Gate W1: unobserve-before-replace, same discipline as the gate task
+        ' -- a superseded fetch must never fire into the new one's callback.
+        if m.detailsTask <> invalid then m.detailsTask.UnobserveField("result")
+        m.detailsTask = CreateObject("roSGNode", "DetailsTask")
+        m.detailsTask.serverUrl = m.state.serverUrl
+        m.detailsTask.cookie = m.state.cookie
+        m.detailsTask.itemId = m.currentItem.ftId
+        m.detailsTask.ObserveField("result", "onDetailsResult")
+        m.detailsTask.control = "RUN"
+    end if
+end sub
+
+sub onDetailsResult()
+    if m.detailsTask = invalid then return
+    result = m.detailsTask.result
+    ' Unset assocarray task fields default to {} -- wait for the real result.
+    if result = invalid or not result.DoesExist("ok") then return
+    m.detailsTask.UnobserveField("result")
+    m.detailsTask = invalid
+    if m.currentItem = invalid or result.itemId <> m.currentItem.ftId then return
+    m.chaptersItemId = result.itemId
+    m.chapters = []
+    if result.ok = true and type(result.chapters) = "roArray" then m.chapters = result.chapters
+    ' A Chapters… row may have just become available while the menu is open.
+    if m.playbackMenuGroup.visible and m.menuMode = "main" then buildPlaybackMenuRows()
+end sub
+
+sub buildPlaybackMenuRows()
+    m.playbackMenuTitle.text = "Playback"
+    m.menuActions = []
+    count = 0
+    if m.queue <> invalid then count = m.queue.GetChildCount()
+    if m.queueIndex >= 0 and m.queueIndex + 1 < count
+        m.menuActions.Push({ kind: "next", label: "Next:  " + m.queue.GetChild(m.queueIndex + 1).title })
+    end if
+    if m.queueIndex > 0
+        m.menuActions.Push({ kind: "prev", label: "Previous:  " + m.queue.GetChild(m.queueIndex - 1).title })
+    end if
+    if m.currentItem <> invalid and m.chaptersItemId = m.currentItem.ftId and m.chapters.Count() > 0
+        m.menuActions.Push({ kind: "chapters", label: "Chapters…  (" + m.chapters.Count().ToStr() + ")" })
+    end if
+    m.menuActions.Push({ kind: "loop", label: "Loop:  " + loopLabel() })
+    autoplayText = "Off"
+    if m.autoplay then autoplayText = "On"
+    m.menuActions.Push({ kind: "autoplay", label: "Autoplay next:  " + autoplayText })
+    m.menuActions.Push({ kind: "restart", label: "Restart from beginning" })
+
+    focused = m.playbackMenu.itemFocused
+    content = CreateObject("roSGNode", "ContentNode")
+    for each action in m.menuActions
+        row = content.CreateChild("ContentNode")
+        row.title = action.label
+    end for
+    m.playbackMenu.content = content
+    if focused > 0 and focused < m.menuActions.Count() then m.playbackMenu.jumpToItem = focused
+end sub
+
+function loopLabel() as string
+    if m.loopMode = "this" then return "This video"
+    if m.loopMode = "all" then return "All"
+    return "Off"
+end function
+
+sub showChapterRows()
+    m.menuMode = "chapters"
+    m.playbackMenuTitle.text = "Chapters"
+    content = CreateObject("roSGNode", "ContentNode")
+    for each ch in m.chapters
+        row = content.CreateChild("ContentNode")
+        ts = FT_FormatDuration(ch.start)
+        if ts = "" then ts = "0:00" ' gate S5: a chapter AT zero still shows a time
+        row.title = ts + "   " + ch.title
+    end for
+    m.playbackMenu.content = content
+end sub
+
+sub onPlaybackMenuSelected()
+    index = m.playbackMenu.itemSelected
+    if m.menuMode = "chapters"
+        if index >= 0 and index < m.chapters.Count()
+            target = m.chapters[index].start
+            closePlaybackMenu()
+            m.video.seek = target
+        end if
+        return
+    end if
+    if index < 0 or index >= m.menuActions.Count() then return
+    kind = m.menuActions[index].kind
+    if kind = "next"
+        playIndex(m.queueIndex + 1, false, false)
+    else if kind = "prev"
+        playIndex(m.queueIndex - 1, false, false)
+    else if kind = "chapters"
+        showChapterRows()
+    else if kind = "loop"
+        if m.loopMode = "off"
+            m.loopMode = "this"
+        else if m.loopMode = "this"
+            m.loopMode = "all"
+        else
+            m.loopMode = "off"
+        end if
+        FT_RegistryWrite({ loopmode: m.loopMode })
+        buildPlaybackMenuRows()
+    else if kind = "autoplay"
+        m.autoplay = not m.autoplay
+        flag = "0"
+        if m.autoplay then flag = "1"
+        FT_RegistryWrite({ autoplay: flag })
+        buildPlaybackMenuRows()
+    else if kind = "restart"
+        closePlaybackMenu()
+        m.video.seek = 0
+    end if
+end sub
+
+sub closePlaybackMenu()
+    m.playbackMenuGroup.visible = false
+    m.menuMode = "main"
+    if m.video.visible then m.video.SetFocus(true)
+end sub
+
+' ---- keys ------------------------------------------------------------------
+
 function onKeyEvent(key as string, press as boolean) as boolean
-    if press and key = "back" and m.gating
+    if not press then return false
+    if key = "back" and m.gating
         cancelPlaybackGate()
         return true
     end if
-    if press and key = "back" and m.video.visible
+    if m.playbackMenuGroup.visible
+        if key = "back"
+            if m.menuMode = "chapters"
+                m.menuMode = "main"
+                buildPlaybackMenuRows()
+                m.playbackMenuTitle.text = "Playback"
+            else
+                closePlaybackMenu()
+            end if
+            return true
+        end if
+        return false
+    end if
+    if key = "down" and m.video.visible
+        openPlaybackMenu()
+        return true
+    end if
+    if key = "back" and m.video.visible
         stopPlayback()
         return true
     end if

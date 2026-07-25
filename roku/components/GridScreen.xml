@@ -5,8 +5,21 @@
         <field id="cookie" type="string" />
         <!-- Setting begin=true (re)loads the library from page zero. -->
         <field id="begin" type="boolean" alwaysNotify="true" onChange="onBegin" />
-        <!-- Item the user picked; AppScene observes this to start playback. -->
+        <!-- Item the user picked; AppScene observes this to start playback.
+             selectedIndex/queue are set BEFORE selectedItem fires so the
+             observer reads a coherent trio: queue is the grid's own
+             ContentNode (it keeps growing as pages append, so playback's
+             next/autoplay sees new items for free). -->
         <field id="selectedItem" type="node" />
+        <field id="selectedIndex" type="integer" value="-1" />
+        <field id="queue" type="node" />
+        <!-- Playback prefetch: AppScene sets the index it will need next;
+             the grid loads another page when that nears the loaded tail. -->
+        <field id="ensureLoaded" type="integer" alwaysNotify="true" onChange="onEnsureLoaded" />
+        <!-- Gate W7 (v1.47): while AppScene's playback gate shows
+             "Preparing…", the hidden grid keeps focus -- swallow its keys
+             (except Back, which must bubble up to cancel the gate). -->
+        <field id="gateActive" type="boolean" value="false" />
         <!-- Non-empty when a page fetch failed; AppScene shows the dialog. -->
         <field id="loadError" type="string" alwaysNotify="true" />
         <!-- True when the server said our session is no longer valid. -->

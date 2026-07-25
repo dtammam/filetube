@@ -7,7 +7,7 @@
 function FT_RegistryRead() as object
     sec = CreateObject("roRegistrySection", "FileTube")
     state = {}
-    for each key in ["serverurl", "cookie", "username"]
+    for each key in ["serverurl", "cookie", "username", "filtermode", "loopmode", "autoplay"]
         if sec.Exists(key)
             state[key] = sec.Read(key)
         else

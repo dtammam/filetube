@@ -2,10 +2,17 @@
 
 A minimal sideloadable Roku channel for [FileTube](../README.md): sign in,
 browse the video library as a poster grid (newest first), press OK to play.
-Press **Left** on the grid to pick a library root ("Libraries"); press **Up**
-to search. Audio files get a full-screen now-playing view (ambient backdrop +
-art card + title). Uses only FileTube's existing API — no server-side changes
-required.
+**Grid controls:** **Left** = Libraries picker (library roots + a Channels
+view with avatar tiles — pick a channel to browse just its content; Back
+climbs back out). **Up** = search. **Right** (at a row's right edge) or
+**\*** (anywhere) = cycle the media filter All → Video → Audio (persisted).
+
+**During playback:** **Down** opens the playback menu — Next / Previous /
+Chapters (when the file has them) / Loop (Off · This video · All) /
+Autoplay next (persisted) / Restart from beginning. Selecting an item with
+watch progress asks Resume-or-start-over; autoplay-advanced items resume
+silently. Audio files get a full-screen now-playing view (ambient backdrop +
+art card + title) with the native controls in the bottom band.
 
 ## One-time Roku setup (dev mode)
 

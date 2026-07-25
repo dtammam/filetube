@@ -34,5 +34,14 @@
             <Label id="audioTitle" translation="[160,668]" width="1600" horizAlign="center" font="font:LargeBoldSystemFont" color="0xF1F1F1FF" />
             <Label id="audioBadge" translation="[160,748]" width="1600" horizAlign="center" font="font:SmallSystemFont" color="0x9A9A9AFF" text="AUDIO" />
         </Group>
+
+        <!-- v1.47 playback menu (Down during playback): next/prev, chapters,
+             loop, autoplay, restart. Declared LAST so it renders above the
+             video, its OSD, and the audio now-playing view. -->
+        <Group id="playbackMenuGroup" visible="false">
+            <Rectangle width="1920" height="1080" translation="[0,0]" color="0x000000C8" />
+            <Label id="playbackMenuTitle" translation="[120,90]" font="font:MediumBoldSystemFont" color="0xF1F1F1FF" text="Playback" />
+            <LabelList id="playbackMenu" translation="[120,170]" itemSize="[900,64]" itemSpacing="[0,4]" />
+        </Group>
     </children>
 </component>

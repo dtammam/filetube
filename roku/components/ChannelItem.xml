@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="ChannelItem" extends="Group">
+    <interface>
+        <field id="itemContent" type="node" onChange="onContentChange" />
+    </interface>
+    <script type="text/brightscript" uri="pkg:/components/ChannelItem.brs" />
+    <children>
+        <!-- Generated-avatar fallback (colored tile + initial), always drawn;
+             a successfully-loaded real avatar simply covers it. -->
+        <Rectangle id="tileBg" width="336" height="189" color="0x2A2A2AFF" />
+        <Label id="initialLabel" width="336" height="189" horizAlign="center" vertAlign="center" font="font:LargeBoldSystemFont" color="0xFFFFFFFF" />
+        <Poster id="avatar" width="336" height="189" loadWidth="336" loadHeight="189" loadDisplayMode="scaleToZoom" />
+        <Label id="nameLabel" translation="[0,196]" width="336" font="font:SmallestSystemFont" color="0xF1F1F1FF" />
+        <Label id="countLabel" translation="[0,224]" width="336" font="font:SmallestSystemFont" color="0x9A9A9AFF" />
+    </children>
+</component>

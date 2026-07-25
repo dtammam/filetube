@@ -15,6 +15,12 @@ sub taskMain()
     if m.top.search <> ""
         url = url + "&search=" + xfer.Escape(m.top.search)
     end if
+    if m.top.format = "video" or m.top.format = "audio"
+        url = url + "&format=" + m.top.format
+    end if
+    if m.top.folder <> ""
+        url = url + "&folder=" + xfer.Escape(m.top.folder)
+    end if
     xfer.SetUrl(url)
     xfer.SetCertificatesFile("common:/certs/ca-bundle.crt")
     xfer.AddHeader("Cookie", m.top.cookie)
