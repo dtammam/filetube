@@ -1,15 +1,16 @@
 sub init()
-    m.top.functionName = "run"
+    m.top.functionName = "taskMain"
 end sub
 
 ' GET /api/videos?sort=newest — one page of the library, newest first.
-sub run()
+sub taskMain()
     port = CreateObject("roMessagePort")
     xfer = CreateObject("roUrlTransfer")
     xfer.SetMessagePort(port)
     url = m.top.serverUrl + "/api/videos?sort=newest"
     url = url + "&limit=" + m.top.limit.ToStr() + "&offset=" + m.top.offset.ToStr()
     xfer.SetUrl(url)
+    xfer.SetCertificatesFile("common:/certs/ca-bundle.crt")
     xfer.AddHeader("Cookie", m.top.cookie)
     xfer.RetainBodyOnError(true)
 
@@ -40,7 +41,7 @@ sub run()
     end if
 
     parsed = ParseJson(ev.GetString())
-    if parsed = invalid or parsed.items = invalid
+    if type(parsed) <> "roAssociativeArray" or type(parsed.items) <> "roArray"
         m.top.result = { ok: false, error: "The server sent an unreadable library response." }
         return
     end if

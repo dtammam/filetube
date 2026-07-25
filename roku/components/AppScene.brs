@@ -80,8 +80,10 @@ end sub
 sub enterLibrary()
     ' One header at scene level: Poster thumbnails and the Video node inherit
     ' the nearest ancestor's HttpAgent, so every request carries the session.
-    m.top.AddHeader("Cookie", m.state.cookie)
-    m.video.AddHeader("Cookie", m.state.cookie)
+    ' SetHeaders (not AddHeader) so an in-app re-login REPLACES the cookie
+    ' instead of stacking a second Cookie header on the same agent.
+    m.top.SetHeaders({ Cookie: m.state.cookie })
+    m.video.SetHeaders({ Cookie: m.state.cookie })
 
     m.statusLabel.visible = false
     m.loginScreen.visible = false
@@ -116,7 +118,14 @@ sub onItemSelected()
     content = CreateObject("roSGNode", "ContentNode")
     content.url = m.state.serverUrl + "/video/" + item.ftId
     content.title = item.title
-    content.streamFormat = streamFormatForExt(item.ftExt)
+    ' Items flagged needsTranscode are served as a cached MP4 rendition
+    ' regardless of their original container (e.g. an MKV with AC-3 audio),
+    ' so the extension must not drive the demuxer choice for them.
+    if item.ftNeedsTranscode
+        content.streamFormat = "mp4"
+    else
+        content.streamFormat = streamFormatForExt(item.ftExt)
+    end if
 
     ' Resume where the web player left off (server already tracks progress).
     m.pendingSeekPos = invalid
@@ -167,7 +176,7 @@ sub stopPlayback()
     m.video.visible = false
     m.video.content = invalid
     m.gridScreen.visible = true
-    m.gridScreen.FindNode("grid").SetFocus(true)
+    m.gridScreen.takeFocus = true
 end sub
 
 function onKeyEvent(key as string, press as boolean) as boolean

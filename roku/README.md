@@ -53,6 +53,8 @@ Press `Ctrl+]` then `quit` to leave. SceneGraph warnings appear on port 8089.
   audio containers (`.ogg`, `.flac`, `.wav`) may not play on all Roku models.
 - **Resume is read-only**: playback starts where the web player left off, but
   the channel does not report watch progress back to the server.
+- `https://` addresses use the Roku's built-in CA bundle — a self-signed
+  certificate will not work; use plain `http://` on the LAN instead.
 - Password characters may be visible on screen while typing (Roku keyboard).
 - Sessions can't be refreshed remotely — re-entering the password on the TV
   once every 30 days is the trade-off for keeping the server untouched.

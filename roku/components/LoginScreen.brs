@@ -70,7 +70,11 @@ end sub
 sub onKeyboardButton()
     if m.kb = invalid then return
     if m.kb.buttonSelected = 0
-        m.form[m.editingField] = m.kb.text.Trim()
+        value = m.kb.text
+        ' Server/username pick up stray spaces from the on-screen keyboard;
+        ' passwords may legitimately contain them, so leave those alone.
+        if m.editingField <> "password" then value = value.Trim()
+        m.form[m.editingField] = value
         refreshMenu()
     end if
     m.kb.close = true

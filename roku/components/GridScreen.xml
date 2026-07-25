@@ -8,9 +8,10 @@
         <!-- Item the user picked; AppScene observes this to start playback. -->
         <field id="selectedItem" type="node" />
         <!-- Non-empty when a page fetch failed; AppScene shows the dialog. -->
-        <field id="loadError" type="string" />
+        <field id="loadError" type="string" alwaysNotify="true" />
         <!-- True when the server said our session is no longer valid. -->
-        <field id="authExpired" type="boolean" value="false" />
+        <field id="authExpired" type="boolean" value="false" alwaysNotify="true" />
+        <field id="takeFocus" type="boolean" alwaysNotify="true" onChange="onTakeFocus" />
     </interface>
     <script type="text/brightscript" uri="pkg:/components/GridScreen.brs" />
     <script type="text/brightscript" uri="pkg:/source/utils.brs" />

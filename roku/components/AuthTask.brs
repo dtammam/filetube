@@ -1,8 +1,8 @@
 sub init()
-    m.top.functionName = "run"
+    m.top.functionName = "taskMain"
 end sub
 
-sub run()
+sub taskMain()
     if m.top.mode = "login"
         m.top.result = doLogin()
     else
@@ -17,6 +17,7 @@ function doLogin() as object
     xfer = CreateObject("roUrlTransfer")
     xfer.SetMessagePort(port)
     xfer.SetUrl(m.top.serverUrl + "/api/auth/login")
+    xfer.SetCertificatesFile("common:/certs/ca-bundle.crt")
     xfer.AddHeader("Content-Type", "application/json")
     xfer.RetainBodyOnError(true)
     xfer.EnableCookies()
@@ -46,6 +47,7 @@ function doValidate() as object
     xfer = CreateObject("roUrlTransfer")
     xfer.SetMessagePort(port)
     xfer.SetUrl(m.top.serverUrl + "/api/auth/me")
+    xfer.SetCertificatesFile("common:/certs/ca-bundle.crt")
     xfer.AddHeader("Cookie", m.top.cookie)
     xfer.RetainBodyOnError(true)
 
@@ -83,10 +85,11 @@ function waitForUrlEvent(port as object, xfer as object, timeoutMs as integer) a
 end function
 
 function httpErrorMessage(code as integer, bodyText as dynamic) as string
-    ' FileTube error bodies are JSON: { "error": "..." }
+    ' FileTube error bodies are JSON: { "error": "..." } — but a typo'd port
+    ' can reach some other LAN service, so trust nothing about the shape.
     if bodyText <> invalid and bodyText <> ""
         parsed = ParseJson(bodyText)
-        if parsed <> invalid and parsed.error <> invalid and parsed.error <> ""
+        if type(parsed) = "roAssociativeArray" and GetInterface(parsed.error, "ifString") <> invalid and parsed.error <> ""
             return parsed.error
         end if
     end if

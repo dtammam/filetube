@@ -9,6 +9,10 @@ sub init()
     m.loading = false
 end sub
 
+sub onTakeFocus()
+    m.grid.SetFocus(true)
+end sub
+
 sub onBegin()
     if not m.top.begin then return
     m.total = 0
@@ -34,9 +38,12 @@ sub fetchPage(offset as integer)
 end sub
 
 sub onPageResult()
-    m.loading = false
+    ' A stale task's observer can fire after a begin-reset; the current task's
+    ' result lacks the "ok" key until it completes (unset assocarray fields
+    ' default to {}), so this guard keeps the fetch gate closed until then.
     result = m.task.result
-    if result = invalid then return
+    if result = invalid or not result.DoesExist("ok") then return
+    m.loading = false
 
     if result.ok <> true
         if result.code <> invalid and result.code = 401
