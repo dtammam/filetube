@@ -165,12 +165,22 @@ function buildContentNode(item as object) as object
         ftNeedsTranscode: false,
         ftHasSubtitles: false,
         ftMediaType: "",
-        ftExt: ""
+        ftExt: "",
+        ftCodecs: ""
     })
     if item.id <> invalid then node.ftId = item.id
     if item.title <> invalid then node.title = item.title
     if item.ext <> invalid then node.ftExt = LCase(item.ext)
     if GetInterface(item.mediaType, "ifString") <> invalid then node.ftMediaType = item.mediaType
+    ' Codec fields exist only where the ffprobe scan recorded them; their
+    ' absence is itself diagnostic (legacy-imported item, never probed).
+    codecs = ""
+    if GetInterface(item.videoCodec, "ifString") <> invalid then codecs = item.videoCodec
+    if GetInterface(item.audioCodec, "ifString") <> invalid
+        if codecs <> "" then codecs = codecs + "/"
+        codecs = codecs + item.audioCodec
+    end if
+    node.ftCodecs = codecs
     if item.duration <> invalid
         node.ftDuration = item.duration
         node.ftDurationText = FT_FormatDuration(item.duration)

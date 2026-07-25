@@ -11,6 +11,7 @@ sub init()
     m.audioTitle = m.top.FindNode("audioTitle")
     m.pendingSeekPos = invalid
     m.playingExt = ""
+    m.playingCodecs = ""
 
     m.loginScreen.ObserveField("credentials", "onCredentials")
     m.gridScreen.ObserveField("selectedItem", "onItemSelected")
@@ -150,6 +151,7 @@ sub onItemSelected()
     end if
     m.playingNeedsTranscode = item.ftNeedsTranscode
     m.playingExt = item.ftExt
+    m.playingCodecs = item.ftCodecs
 
     ' Audio files play through the same Video node but the surface is black;
     ' float the thumbnail and title so it reads as intentional playback.
@@ -186,10 +188,17 @@ sub onVideoState()
         if m.video.errorMsg <> invalid and m.video.errorMsg <> ""
             message = message + " (" + m.video.errorMsg + ")"
         end if
-        ' Surface the file type so incompatibilities can be diagnosed from
-        ' the TV itself (e.g. Roku's picky MKV demuxer, WebM/VP9 models).
+        ' Surface the file type and codecs so incompatibilities can be
+        ' diagnosed from the TV itself; "codecs unrecorded" marks an item
+        ' the ffprobe scan never probed (legacy import).
         if m.playingExt <> ""
-            message = message + " [file type: " + m.playingExt + "]"
+            detail = m.playingExt
+            if m.playingCodecs <> ""
+                detail = detail + " " + m.playingCodecs
+            else
+                detail = detail + " codecs unrecorded"
+            end if
+            message = message + " [" + detail + "]"
         end if
         if m.playingNeedsTranscode
             message = message + " This file is being converted for streaming on the server — give it a minute or two and try again."

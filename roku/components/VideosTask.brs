@@ -61,7 +61,9 @@ sub taskMain()
             hasThumbnail: it.hasThumbnail = true,
             hasSubtitles: it.hasSubtitles = true,
             mediaType: it.type,
-            ext: it.ext
+            ext: it.ext,
+            videoCodec: it.videoCodec,
+            audioCodec: it.audioCodec
         }
         if entry.title = invalid or entry.title = "" then entry.title = it.name
         items.Push(entry)
