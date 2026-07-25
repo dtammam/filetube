@@ -61,8 +61,12 @@ Press `Ctrl+]` then `quit` to leave. SceneGraph warnings appear on port 8089.
   server builds that rendition lazily — the first attempt can fail with a
   "being converted" message; wait a minute and try again. WebM/VP9 and unusual
   audio containers (`.ogg`, `.flac`, `.wav`) may not play on all Roku models.
-- **Resume is read-only**: playback starts where the web player left off, but
-  the channel does not report watch progress back to the server.
+- **Watch progress syncs both ways** (v1.47.1): the channel pings the same
+  /api/progress endpoint the web player uses (every 30s + on stop; a
+  finished video records as completed, matching the web). Exiting straight
+  to the Roku home screen mid-video can lose the last ~30s of progress. The screen no longer dims
+  during audio playback (`disable_screensaver`); the TV panel's own sleep
+  timer is outside channel control.
 - **Captions**: items with a subtitle sidecar (`hasSubtitles`) expose a
   captions track — toggle with the * (Options) button > Closed Captions.
 - **Phone videos may play sideways**: Roku's Video node ignores the MP4

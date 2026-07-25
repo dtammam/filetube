@@ -7,6 +7,8 @@
         <LoginScreen id="loginScreen" visible="false" />
         <GridScreen id="gridScreen" visible="false" />
         <Video id="videoPlayer" translation="[0,0]" width="1920" height="1080" visible="false" />
+        <!-- v1.47.1: watch-progress write-back heartbeat (30s while playing). -->
+        <Timer id="progressTimer" repeat="true" duration="30" />
 
         <!-- Now-playing screen for audio-only items, over the black video
              plane. Declared AFTER the Video node (its graphics must draw on

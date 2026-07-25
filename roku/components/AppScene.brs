@@ -14,6 +14,9 @@ sub init()
     m.playbackMenuTitle = m.top.FindNode("playbackMenuTitle")
     m.playbackMenu = m.top.FindNode("playbackMenu")
     m.playbackMenu.ObserveField("itemSelected", "onPlaybackMenuSelected")
+    m.progressTimer = m.top.FindNode("progressTimer")
+    m.progressTimer.ObserveField("fire", "onProgressTick")
+    m.prewarmedForId = "" ' one prewarm per played item, never a cascade
 
     m.pendingSeekPos = invalid
     m.playingExt = ""
@@ -294,6 +297,79 @@ sub beginPlayback()
     m.video.visible = true
     m.video.SetFocus(true)
     m.video.control = "play"
+    ' Gate C1 (v1.47.1): progress pings attribute to a SNAPSHOT of the item
+    ' whose bytes are on the surface -- playIndex moves m.currentItem to the
+    ' NEXT item before the old surface tears down, and pinging via
+    ' m.currentItem wrote video A's position onto video B's id.
+    m.playingItem = m.currentItem
+    m.playingFinished = false
+    m.progressTimer.control = "start"
+end sub
+
+' ---- watch-progress write-back (v1.47.1) -----------------------------------
+
+sub onProgressTick()
+    sendProgressPing()
+end sub
+
+' Fire-and-forget: the web player's own POST /api/progress ping, so resume
+' stays in sync across TV/web/phone. Also refreshes the in-queue node's
+' ftProgress, keeping THIS session's resume prompts fresh mid-binge.
+sub sendProgressPing()
+    if m.playingItem = invalid or m.playingItem.ftId = "" then return
+    if m.playingFinished then return ' completion already wrote 0 (gate W1)
+    if not m.video.visible then return
+    position = m.video.position
+    if position < 5 then return ' nothing meaningful to record yet
+    postProgress(m.playingItem, position)
+    m.playingItem.ftProgress = position
+end sub
+
+' Gate W1: the web's completion contract is a one-shot progress-0 write --
+' without it, a video finished on the TV would offer "Resume at 59:58" on
+' the phone. Mirrors public/js/player.js's 'ended' cascade.
+sub sendProgressComplete()
+    if m.playingItem = invalid or m.playingItem.ftId = "" then return
+    postProgress(m.playingItem, 0)
+    m.playingItem.ftProgress = 0
+    m.playingFinished = true
+end sub
+
+sub postProgress(item as object, position as float)
+    task = CreateObject("roSGNode", "ProgressTask")
+    task.serverUrl = m.state.serverUrl
+    task.cookie = m.state.cookie
+    task.itemId = item.ftId
+    task.position = position
+    task.duration = item.ftDuration
+    task.control = "RUN"
+    m.progressTask = task ' hold a ref so the task isn't collected mid-run
+end sub
+
+' Pre-warm EXACTLY the next queue item (video only) with one silent request:
+' its ?compat=roku rendition builds while this one plays, so autoplay/Next
+' is usually instant. Guarded to once per played item -- item N+2 is never
+' touched until N+1 actually plays (Dean's no-cascade constraint).
+sub prewarmNext()
+    if m.currentItem = invalid or m.prewarmedForId = m.currentItem.ftId then return
+    if m.queue = invalid then return
+    nextIndex = m.queueIndex + 1
+    if nextIndex >= m.queue.GetChildCount() then return
+    nextItem = m.queue.GetChild(nextIndex)
+    if nextItem = invalid or nextItem.ftId = "" then return
+    ' Guard AFTER a target resolves (gate S1): consuming it on a not-yet-
+    ' loaded page boundary would permanently skip that item's warm.
+    m.prewarmedForId = m.currentItem.ftId
+    if nextItem.ftMediaType = "audio" then return ' audio never has renditions
+    ' Gate W2: a needsTranscode next item would answer the probe by queueing
+    ' a FULL browser transcode -- heavier processing than "warm a rendition"
+    ' should ever trigger uninvited. Those keep the on-demand slow path.
+    if nextItem.ftNeedsTranscode then return
+    task = CreateObject("roSGNode", "PrewarmTask")
+    task.url = m.state.serverUrl + "/video/" + nextItem.ftId + "?compat=roku"
+    task.cookie = m.state.cookie
+    task.control = "RUN"
+    m.prewarmTask = task ' ref only so it isn't collected mid-run
 end sub
 
 sub beginPlaybackGate(url as string)
@@ -360,7 +436,9 @@ sub onVideoState()
             m.video.seek = m.pendingSeekPos
             m.pendingSeekPos = invalid
         end if
+        prewarmNext() ' once per item; no-op on later playing transitions
     else if state = "finished"
+        sendProgressComplete() ' gate W1: completion = progress 0, web parity
         advanceAfterFinish()
     else if state = "error"
         message = "Playback failed."
@@ -416,6 +494,12 @@ end sub
 ' Tear down the playback surface WITHOUT returning focus/visibility to the
 ' grid — used when another item starts immediately (next/prev/autoplay).
 sub stopPlaybackSurface()
+    ' Final progress ping BEFORE teardown, while video.position is still
+    ' real -- attributed to m.playingItem (the SNAPSHOT of what actually
+    ' played, gate C1) and skipped after a finish (completion wrote 0).
+    sendProgressPing()
+    m.playingItem = invalid
+    m.progressTimer.control = "stop"
     m.video.control = "stop"
     m.video.visible = false
     m.video.content = invalid

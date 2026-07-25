@@ -36,7 +36,9 @@ sub onTakeFocus()
 end sub
 
 sub updateHint()
-    parts = "UP search · RIGHT/* filter"
+    ' Dean on-device: "RIGHT/*" clipped and looked bad -- the hint names only
+    ' * (Right still works at a row edge, just undocumented on screen).
+    parts = "UP search · * filter"
     if m.roots.Count() > 0
         parts = "LEFT libraries · " + parts
     end if

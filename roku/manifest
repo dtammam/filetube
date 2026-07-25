@@ -1,7 +1,13 @@
 title=FileTube
 major_version=1
-minor_version=1
+minor_version=2
 build_version=0
+
+# Keep the screen alive while FileTube is the active channel: Roku only
+# suppresses its screensaver while VIDEO frames render, so the static audio
+# now-playing view (and idle grid browsing) would otherwise dim mid-song.
+# The TV panel's own sleep timer / CEC power-down is outside channel control.
+disable_screensaver=1
 
 mm_icon_focus_fhd=pkg:/images/icon_focus_fhd.png
 mm_icon_focus_hd=pkg:/images/icon_focus_hd.png

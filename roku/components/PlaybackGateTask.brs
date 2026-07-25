@@ -41,7 +41,7 @@ sub taskMain()
             m.top.result = { ok: false, error: "The server is still preparing this video. Give it a few minutes and try again." }
             return
         end if
-        sleep(2000)
+        sleep(1000) ' v1.47.1: 2s -> 1s, shaves up to a second off every start
     end while
 end sub
 

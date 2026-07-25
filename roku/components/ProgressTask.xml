@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="ProgressTask" extends="Task">
+    <interface>
+        <field id="serverUrl" type="string" />
+        <field id="cookie" type="string" />
+        <field id="itemId" type="string" />
+        <field id="position" type="float" />
+        <field id="duration" type="float" />
+    </interface>
+    <script type="text/brightscript" uri="pkg:/components/ProgressTask.brs" />
+</component>
