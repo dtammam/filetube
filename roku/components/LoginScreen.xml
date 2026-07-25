@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="LoginScreen" extends="Group">
+    <interface>
+        <!-- Set when the user picks "Sign in" with all fields filled:
+             { serverUrl, username, password } -->
+        <field id="credentials" type="assocarray" />
+        <field id="takeFocus" type="boolean" alwaysNotify="true" onChange="onTakeFocus" />
+    </interface>
+    <script type="text/brightscript" uri="pkg:/components/LoginScreen.brs" />
+    <script type="text/brightscript" uri="pkg:/source/utils.brs" />
+    <children>
+        <Poster id="logo" uri="pkg:/images/icon_focus_hd.png" width="336" height="210" translation="[792,110]" />
+        <Label id="titleLabel" text="Sign in to FileTube" font="font:MediumBoldSystemFont" color="0xF1F1F1FF" translation="[0,360]" width="1920" horizAlign="center" />
+        <Label id="hintLabel" text="Server, username, and password are all required." font="font:SmallestSystemFont" color="0xE05A4EFF" translation="[0,420]" width="1920" horizAlign="center" visible="false" />
+        <LabelList
+            id="menu"
+            translation="[610,470]"
+            itemSize="[700,64]"
+            itemSpacing="[0,8]"
+            textHorizAlign="center" />
+    </children>
+</component>

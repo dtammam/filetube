@@ -108,6 +108,7 @@ const subtitles = require('./lib/subtitles');
 // sortItems/filterByMediaType -- see lib/videoQuery.js's header comment and
 // `GET /api/videos` below for the paginated, server-authoritative pipeline.
 const videoQuery = require('./lib/videoQuery');
+const rokuCompatLib = require('./lib/rokuCompat'); // v1.46: pure verdict/args logic
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -141,6 +142,19 @@ function resolveTranscodeDir(env, dataDir) {
 }
 // Browser-incompatible containers (e.g. AVI) are pre-transcoded to MP4 here on scan.
 const TRANSCODE_DIR = resolveTranscodeDir(process.env, DATA_DIR);
+
+// v1.46 Roku compatibility renditions: ON-REQUEST, CACHE-ONLY copies served
+// exclusively to `?compat=roku` requests (the Roku channel). Never mutates a
+// library file; deleting this directory loses nothing but rebuild time.
+// Deliberately SEPARATE from TRANSCODE_DIR: renditions are keyed by source
+// size+mtime (sidecar JSON), a stronger invalidation contract than the
+// id-only transcode cache, and their lifecycle must never entangle with the
+// scan-reconciled transcodeStatus machinery.
+function resolveRokuCompatDir(env, dataDir) {
+  const raw = env && env.ROKU_COMPAT_DIR;
+  return raw ? path.resolve(raw) : path.join(dataDir, 'roku-compat');
+}
+const ROKU_COMPAT_DIR = resolveRokuCompatDir(process.env, DATA_DIR);
 
 // Create directories if they don't exist
 if (!fs.existsSync(DATA_DIR)) {
@@ -222,6 +236,14 @@ try {
   fs.accessSync(TRANSCODE_DIR, fs.constants.W_OK);
 } catch (e) {
   console.error(`Transcode cache directory is not writable: ${TRANSCODE_DIR} (${e.message}). On-demand transcoding will fail until this is fixed.`);
+}
+if (!fs.existsSync(ROKU_COMPAT_DIR)) {
+  fs.mkdirSync(ROKU_COMPAT_DIR, { recursive: true });
+}
+try {
+  fs.accessSync(ROKU_COMPAT_DIR, fs.constants.W_OK);
+} catch (e) {
+  console.error(`Roku-compat cache directory is not writable: ${ROKU_COMPAT_DIR} (${e.message}). Roku compatibility renditions will fail until this is fixed.`);
 }
 
 // Default automation/cache-housekeeping settings. `0` means "Off" for
@@ -836,6 +858,10 @@ function parseCacheCap(raw) {
   return n;
 }
 const TRANSCODE_CACHE_MAX_BYTES = parseCacheCap(process.env.TRANSCODE_CACHE_MAX_BYTES);
+// v1.46: the roku-compat rendition cache gets its OWN cap (same default,
+// same parse rules) -- 'strip' remuxes are near-source-sized, so sharing the
+// transcode cap would let Roku renditions starve browser-compat transcodes.
+const ROKU_COMPAT_CACHE_MAX_BYTES = parseCacheCap(process.env.ROKU_COMPAT_CACHE_MAX_BYTES);
 
 // ---- Opt-in higher CRF (item 7, v1.15.0) ----
 // x264 CRF: lower = higher quality/larger files, higher = smaller files/lower
@@ -1012,6 +1038,199 @@ function evictTranscodeCache(maxBytes, justProducedPath) {
       // leaves `transcodeStatus` untouched (scan-lazy reconciliation).
       if (p.endsWith('.m4a')) clearAudioStatus(path.basename(p, '.m4a'));
     }
+    catch (e) { console.error(`Failed to evict ${p}:`, e.message); }
+  }
+  return removed;
+}
+
+// ---- Roku compatibility renditions (v1.46) ----
+// On-request, cache-only fixes for the two file classes Roku's hardware
+// rejects but browsers play fine: embedded cover-art image tracks ('strip',
+// lossless remux) and rotation-flagged phone videos ('rotate', re-encode
+// that bakes the pixels upright). Decision rules and ffmpeg argv live in
+// lib/rokuCompat.js (pure, unit-tested); this block owns the impure parts:
+// the lazy per-request probe, the sidecar cache (verdict + source
+// size/mtime signature -- the invalidation the id-keyed transcode cache
+// lacks), a single-worker build queue whose in-flight id IS deduped (unlike
+// queueTranscode's pending-only check), and LRU cap eviction. Fail-open
+// everywhere: any probe/stat/build problem serves the ORIGINAL file --
+// a broken compat layer must never block playback that used to work.
+
+function rokuCompatRenditionPath(id) {
+  return path.join(ROKU_COMPAT_DIR, `${id}.mp4`);
+}
+function rokuCompatSidecarPath(id) {
+  return path.join(ROKU_COMPAT_DIR, `${id}.json`);
+}
+
+const rokuCompatQueue = [];
+let rokuCompatBusyId = null; // id of the job ffmpeg is running RIGHT NOW
+const rokuCompatProbing = new Set(); // ids with an ffprobe in flight
+
+// The rendition cache dir must never live inside a scanned library root, or
+// the scan would index renditions as media (the v1.41.6 seam class). Config
+// folders can change at runtime, so this is checked per-request (cheap pure
+// prefix test), not just at boot; when violated the feature disables itself
+// (originals still serve) and logs once.
+let rokuCompatBlockLogged = false;
+function rokuCompatBlocked() {
+  const blocked = rokuCompatLib.isInsideAnyRoot(ROKU_COMPAT_DIR, configuredLibraryRoots(getCachedDatabase()), path);
+  if (blocked && !rokuCompatBlockLogged) {
+    rokuCompatBlockLogged = true;
+    console.error(`Roku-compat cache directory ${ROKU_COMPAT_DIR} is inside a configured media folder -- compatibility renditions are DISABLED (the scan would index renditions as media). Move it with ROKU_COMPAT_DIR.`);
+  }
+  return blocked;
+}
+
+// Sidecar reads treat any parse failure as "no verdict yet" -- which is also
+// why writes are a plain writeFileSync (no tmp+rename): a torn write from a
+// crash self-heals as a re-probe on the next request.
+function readRokuCompatSidecar(id) {
+  try { return JSON.parse(fs.readFileSync(rokuCompatSidecarPath(id), 'utf8')); }
+  catch (_) { return null; }
+}
+function writeRokuCompatSidecar(id, meta) {
+  try { fs.writeFileSync(rokuCompatSidecarPath(id), JSON.stringify(meta)); }
+  catch (e) { console.error(`roku-compat: failed to persist sidecar for ${id}:`, e.message); }
+}
+
+function probeForRokuCompat(filePath) {
+  return new Promise((resolve, reject) => {
+    execFile('ffprobe', buildFfprobeArgs(filePath), { maxBuffer: 16 * 1024 * 1024 }, (err, stdout) => {
+      if (err) reject(err); else resolve(stdout);
+    });
+  });
+}
+
+// The route's one entry point: -> { state: 'clean'|'ready'|'building'|'failed', path? }
+// 'clean'    serve the original (also every error path -- fail-open).
+// 'ready'    serve the cached rendition at .path.
+// 'building' 503 {error:'transcoding'} (same retry contract as transcodes).
+// 'failed'   a build broke; serve the original so the client shows its
+//            honest playback error instead of looping on 503s. A replaced
+//            source (new size/mtime) resets failed and re-probes.
+// The probe runs INLINE (await, ~100-300ms) rather than 503-first: every
+// Roku play carries ?compat=roku and most verdicts are 'clean', so a
+// 503-per-first-play would surface a bogus error dialog on every new video.
+async function resolveRokuCompat(item) {
+  try {
+    if (!ffmpegAvailable || rokuCompatBlocked()) return { state: 'clean' };
+    // Gate C1 (adversarial seat): renditions are MP4-FAMILY SOURCES ONLY.
+    // The Roku channel picks its demuxer from the ORIGINAL extension
+    // (streamFormat "mkv" for .mkv), so handing it MP4 rendition bytes for a
+    // matroska source would break files that play fine today (matroska
+    // attachments aren't tracks -- Roku ignores embedded art there). Both
+    // confirmed broken classes (yt-dlp cover-art MP4s, rotated phone
+    // recordings) are MP4-family; cover-art/rotated MKVs stay untouched, a
+    // DISCLOSED limitation rather than silent breakage.
+    const sourceExt = String(item.ext || '').toLowerCase();
+    if (sourceExt !== '.mp4' && sourceExt !== '.m4v' && sourceExt !== '.mov') return { state: 'clean' };
+    const stat = await fs.promises.stat(item.filePath);
+    const renditionPath = rokuCompatRenditionPath(item.id);
+    let meta = readRokuCompatSidecar(item.id);
+    if (!meta || !rokuCompatLib.signatureMatches(meta.source, stat)) {
+      // Concurrent first-touch: one request probes, the rest 503-retry.
+      if (rokuCompatProbing.has(item.id) || rokuCompatBusyId === item.id) return { state: 'building' };
+      rokuCompatProbing.add(item.id);
+      let stdout;
+      try { stdout = await probeForRokuCompat(item.filePath); }
+      finally { rokuCompatProbing.delete(item.id); }
+      const { verdict } = rokuCompatLib.rokuCompatVerdict(stdout);
+      meta = { source: rokuCompatLib.sourceSignature(stat), verdict, renditionReady: false, failed: false };
+      // A rendition built from an OLDER source must never survive the
+      // signature change -- drop it before the new verdict is persisted.
+      try { fs.unlinkSync(renditionPath); } catch (_) { /* none existed */ }
+      writeRokuCompatSidecar(item.id, meta);
+    }
+    if (meta.verdict === 'clean') return { state: 'clean' };
+    if (meta.renditionReady && fs.existsSync(renditionPath)) return { state: 'ready', path: renditionPath };
+    if (meta.failed) return { state: 'failed' };
+    queueRokuCompatBuild(item.id, item.filePath, meta);
+    return { state: 'building' };
+  } catch (err) {
+    console.error(`roku-compat: resolve failed for ${item.id}:`, err.message);
+    return { state: 'clean' };
+  }
+}
+
+function queueRokuCompatBuild(id, srcPath, meta) {
+  if (rokuCompatBusyId === id) return;
+  if (rokuCompatQueue.some(job => job.id === id)) return;
+  rokuCompatQueue.push({ id, srcPath, verdict: meta.verdict, source: meta.source });
+  processRokuCompatQueue();
+}
+
+function processRokuCompatQueue() {
+  if (rokuCompatBusyId !== null || rokuCompatQueue.length === 0) return;
+  const job = rokuCompatQueue.shift();
+  rokuCompatBusyId = job.id;
+  const renditionPath = rokuCompatRenditionPath(job.id);
+  const tmpPath = `${renditionPath}.tmp.mp4`; // same suffix convention as the transcode queue -> cleanupOrphanTmp sweeps it
+  const args = job.verdict === 'rotate'
+    ? rokuCompatLib.buildRotateArgs(job.srcPath, tmpPath, TRANSCODE_CRF)
+    : rokuCompatLib.buildStripArgs(job.srcPath, tmpPath);
+
+  // Gate W1: Node documents that 'close' "may or may not" fire after
+  // 'error' on the same spawn -- an unguarded double finish() would null
+  // rokuCompatBusyId twice and kick the queue into overlapping workers.
+  let settled = false;
+  const finish = (ok) => {
+    if (settled) return;
+    settled = true;
+    if (ok) {
+      try { fs.renameSync(tmpPath, renditionPath); } catch (e) { console.error(`roku-compat: finalize failed for ${job.id}:`, e.message); ok = false; }
+    }
+    if (!ok) { try { fs.unlinkSync(tmpPath); } catch (_) { /* nothing to clean */ } }
+    // Only update the sidecar if it still describes THIS job's source -- a
+    // replaced-mid-build file has already been re-probed under a new
+    // signature and must not have its fresh sidecar clobbered.
+    const meta = readRokuCompatSidecar(job.id);
+    if (meta && rokuCompatLib.signatureMatches(job.source, meta.source)) {
+      writeRokuCompatSidecar(job.id, { ...meta, renditionReady: ok, failed: !ok });
+    }
+    rokuCompatBusyId = null;
+    if (ok) evictRokuCompatCache(renditionPath);
+    processRokuCompatQueue();
+  };
+
+  let proc;
+  // stdio ignored: nothing parses compat-build progress, and an unread
+  // stderr pipe can fill and stall ffmpeg on chatty encodes.
+  try { proc = spawn('ffmpeg', args, { stdio: 'ignore' }); }
+  catch (e) { console.error(`roku-compat: spawn failed for ${job.id}:`, e.message); finish(false); return; }
+  proc.on('error', (e) => { console.error(`roku-compat: ffmpeg error for ${job.id}:`, e.message); finish(false); });
+  proc.on('close', (code) => {
+    let ok = code === 0 && fs.existsSync(tmpPath);
+    if (ok) {
+      // Paranoia: the source may have been replaced while ffmpeg ran; a
+      // rendition of vanished bytes must not be published under the old key.
+      try { ok = rokuCompatLib.signatureMatches(job.source, fs.statSync(job.srcPath)); }
+      catch (_) { ok = false; }
+    }
+    finish(ok);
+  });
+}
+
+// LRU cap eviction, mirroring evictTranscodeCache's protections (in-flight
+// tmp writes, recently-served, just-produced). Sidecars are tiny and kept:
+// an evicted rendition self-heals as a probe-free rebuild on next request.
+function evictRokuCompatCache(justProducedPath) {
+  let entries;
+  try { entries = fs.readdirSync(ROKU_COMPAT_DIR); } catch (_) { return 0; }
+  const files = [];
+  for (const name of entries) {
+    if (!name.endsWith('.mp4') || isInFlightTranscode(name)) continue;
+    const p = path.join(ROKU_COMPAT_DIR, name);
+    try {
+      const st = fs.statSync(p);
+      files.push({ path: p, size: st.size, atimeMs: st.atimeMs || st.mtimeMs });
+    } catch (_) { /* vanished between readdir and stat */ }
+  }
+  const protectedPaths = activeProtectedPaths(Date.now());
+  if (justProducedPath) protectedPaths.add(justProducedPath);
+  let removed = 0;
+  for (const p of selectEvictions(files, ROKU_COMPAT_CACHE_MAX_BYTES, protectedPaths)) {
+    try { fs.unlinkSync(p); removed++; console.log(`Evicted from roku-compat cache: ${p}`); }
     catch (e) { console.error(`Failed to evict ${p}:`, e.message); }
   }
   return removed;
@@ -7196,7 +7415,9 @@ app.post('/api/settings', async (req, res) => {
 app.get('/api/cache/size', (req, res) => {
   const db = getCachedDatabase(); // v1.30 A3: pure read on a request/serve path
   res.json({
-    bytes: transcodeCacheSize(TRANSCODE_DIR),
+    // v1.46 (gate W2): honest accounting includes the roku-compat rendition
+    // cache -- "Clear cache now" (below) sweeps it too.
+    bytes: transcodeCacheSize(TRANSCODE_DIR) + transcodeCacheSize(ROKU_COMPAT_DIR),
     effectiveCacheMaxBytes: effectiveCacheCap(db.settings)
   });
 });
@@ -7236,6 +7457,29 @@ app.post('/api/cache/clear', (req, res) => {
       if (name.endsWith('.m4a')) clearAudioStatus(path.basename(name, '.m4a'));
     } catch (e) {
       console.error(`Failed to clear cached transcode ${p}:`, e.message);
+    }
+  }
+  // v1.46 (gate W2): also purge roku-compat renditions + verdict sidecars --
+  // the size endpoint above counts this dir, so a clear must sweep it or the
+  // UI would claim to have freed bytes it didn't. Same protections as the
+  // transcode loop: skip in-flight tmp writes and actively-watched files
+  // (an actively-watched rendition keeps its sidecar so the pair stays
+  // coherent; everything rebuilds on demand).
+  let rokuFiles;
+  try { rokuFiles = fs.readdirSync(ROKU_COMPAT_DIR); } catch (_) { rokuFiles = []; }
+  for (const name of rokuFiles) {
+    if (isInFlightTranscode(name)) continue;
+    const p = path.join(ROKU_COMPAT_DIR, name);
+    if (name.endsWith('.mp4') && protectedPaths.has(p)) continue;
+    if (name.endsWith('.json') && protectedPaths.has(path.join(ROKU_COMPAT_DIR, `${name.slice(0, -'.json'.length)}.mp4`))) continue;
+    try {
+      const st = fs.statSync(p);
+      if (st.isDirectory()) continue;
+      fs.unlinkSync(p);
+      removed++;
+      freedBytes += st.size;
+    } catch (e) {
+      console.error(`Failed to clear roku-compat rendition ${p}:`, e.message);
     }
   }
   // v1.38.0: also purge the TTS audio cache (nuke-all, like the transcode side
@@ -10532,6 +10776,11 @@ app.get('/thumbnail/:id', (req, res) => {
   const thumbPath = path.join(THUMBNAIL_DIR, `${req.params.id}.jpg`);
 
   if (item && item.hasThumbnail && fs.existsSync(thumbPath)) {
+    // v1.46: real thumbnails are content-addressed by media id and only
+    // change on a rescan -- let clients (the Roku grid especially) cache
+    // them for a day instead of re-fetching on every scroll-back. `private`
+    // because everything behind the auth wall is per-instance content.
+    res.setHeader('Cache-Control', 'private, max-age=86400');
     return res.sendFile(thumbPath);
   }
 
@@ -10807,7 +11056,10 @@ function sendRangeable(req, res, filePath, contentType, onServe) {
 }
 
 // Media streaming endpoint supporting Range requests (highly important for HTML5 seeking/skipping)
-app.get('/video/:id', (req, res) => {
+// v1.46: async solely for the awaited roku-compat resolve below; every other
+// path through this handler is the same synchronous flow it always was.
+app.get('/video/:id', async (req, res) => {
+  try {
   const db = getCachedDatabase(); // v1.30 A3: hot GET reader
   const item = db.metadata[req.params.id];
   if (!item) {
@@ -10846,6 +11098,27 @@ app.get('/video/:id', (req, res) => {
     }
   }
 
+  // v1.46 Roku compatibility renditions: `?compat=roku` (sent only by the
+  // Roku channel, and only for video items) may swap in a CACHED rendition --
+  // a lossless remux dropping embedded cover-art tracks, or a rotation-baking
+  // re-encode -- because Roku's hardware rejects both classes while browsers
+  // play them fine. Guards: never for downloads (canonical bytes), never for
+  // audio items, and only when `filePath` is still the ORIGINAL (a
+  // needsTranscode item's cached transcode is already Roku-safe H.264/AAC).
+  // 'clean' AND 'failed' both fall through to the original: clean is the
+  // common case; failed means the build broke, and the original at least
+  // yields the client's honest playback error instead of a 503 loop.
+  let servingRokuCompat = false;
+  if (!isDownload && req.query.compat === 'roku' && item.type === 'video' && filePath === item.filePath) {
+    const compat = await resolveRokuCompat(item);
+    if (compat.state === 'ready') {
+      filePath = compat.path;
+      servingRokuCompat = true;
+    } else if (compat.state === 'building') {
+      return res.status(503).json({ error: 'transcoding', status: 'processing' });
+    }
+  }
+
   // v1.27.0: this existence check (-> 404, byte-identical message) is kept
   // HERE, in the exact same place it always was, rather than folded into
   // `sendRangeable` below -- so this route's observable behavior (including
@@ -10862,7 +11135,7 @@ app.get('/video/:id', (req, res) => {
   // for a download request -- `isDownload` skips the branch above that's the
   // only place `filePath` is ever set to `transcodedPath(item.id)`.)
   const servingCachedTranscode = filePath === transcodedPath(item.id);
-  const contentType = servingCachedTranscode ? 'video/mp4' : (mime.lookup(filePath) || (item.type === 'audio' ? 'audio/mpeg' : 'video/mp4'));
+  const contentType = (servingCachedTranscode || servingRokuCompat) ? 'video/mp4' : (mime.lookup(filePath) || (item.type === 'audio' ? 'audio/mpeg' : 'video/mp4'));
 
   if (isDownload) {
     res.setHeader('Content-Disposition', contentDispositionAttachment(item.title, item.ext));
@@ -10891,7 +11164,23 @@ app.get('/video/:id', (req, res) => {
       markServed(filePath);
       recordServed(item.id);
     }
+    // v1.46: a roku-compat rendition being watched is protected from its
+    // cache's LRU eviction the same way (activeProtectedPaths reads this
+    // map). recordServed is NOT called -- that timestamp feeds the transcode
+    // cache's age sweep, which never enumerates ROKU_COMPAT_DIR.
+    if (servingRokuCompat) {
+      markServed(filePath);
+    }
   });
+  } catch (err) {
+    // v1.46 (gate W2): Express 4 never observes a rejected async handler.
+    // Without this catch, any synchronous throw that used to become a 500
+    // (e.g. sendRangeable's statSync racing an eviction unlink) would now be
+    // a logged unhandledRejection plus a socket that hangs until client
+    // timeout -- for EVERY caller, compat or not.
+    console.error(`GET /video/${req.params.id} failed:`, err && err.message);
+    if (!res.headersSent) res.status(500).json({ error: 'internal error' });
+  }
 });
 
 // GET /audio/:id (v1.27.0, background-audio-for-video, EXPERIMENTAL): serves
@@ -11153,7 +11442,7 @@ if (require.main === module) {
 
   // Transcode-cache hygiene on startup: drop any orphaned *.tmp.mp4 left by a
   // killed transcode, then enforce the size cap.
-  const orphans = cleanupOrphanTmp(TRANSCODE_DIR);
+  const orphans = cleanupOrphanTmp(TRANSCODE_DIR) + cleanupOrphanTmp(ROKU_COMPAT_DIR);
   if (orphans) console.log(`Cleaned up ${orphans} orphaned transcode temp file(s).`);
   // Same idea for db.json's own atomic-write temp files: a SIGKILL/OOM
   // between saveDatabase's openSync(tmp) and its rename can leave an orphan
@@ -11171,6 +11460,9 @@ if (require.main === module) {
   // added benefit of pre-warming the cache before `app.listen` below, so the
   // very first request already hits a warm cache.
   evictTranscodeCache(effectiveCacheCap(getCachedDatabase().settings));
+  // v1.46 (gate W3): the roku-compat cache honors a LOWERED cap at boot too,
+  // not only after the next successful build.
+  evictRokuCompatCache();
 
   // T4 (v1.25 QoL) + the scan/timer sequence below are wrapped in a single
   // async IIFE (this file is CommonJS -- no top-level `await`) so the

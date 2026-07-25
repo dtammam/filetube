@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="AppScene" extends="Scene">
+    <script type="text/brightscript" uri="pkg:/components/AppScene.brs" />
+    <script type="text/brightscript" uri="pkg:/source/utils.brs" />
+    <children>
+        <Label id="statusLabel" translation="[0,500]" width="1920" horizAlign="center" font="font:MediumSystemFont" color="0x9A9A9AFF" visible="false" />
+        <LoginScreen id="loginScreen" visible="false" />
+        <GridScreen id="gridScreen" visible="false" />
+        <Video id="videoPlayer" translation="[0,0]" width="1920" height="1080" visible="false" />
+
+        <!-- Now-playing screen for audio-only items, over the black video
+             plane. Declared AFTER the Video node (its graphics must draw on
+             top of the video's punch-through window -- declaring it before
+             renders nothing but black, on-device-proven). The native
+             trickplay OSD is ALSO the video's graphics, so the backdrop and
+             scrim deliberately stop at y=840: the bottom band stays
+             uncovered and the media controls render there in the clear. The
+             art card, shadow, and text never reach that band. -->
+        <Group id="audioOverlay" visible="false">
+
+            <!-- 1. The Background Glow: We keep the big image... -->
+            <Poster id="audioBackdrop" width="1920" height="840" translation="[0,0]" loadWidth="960" loadHeight="540" loadDisplayMode="scaleToZoom" />
+
+            <!-- 2. The Heavy Wash: ...and cover it with an 85% dark overlay (D9) to turn it into a moody gradient. -->
+            <Rectangle id="audioScrim" width="1920" height="840" translation="[0,0]" color="0x0A0A0AD9" />
+
+            <!-- 3. The Sleek Drop Shadow: A black box slightly offset (shifted down 20px) behind the main art -->
+            <Rectangle id="artShadow" width="920" height="518" translation="[500,130]" color="0x00000099" />
+
+            <!-- 4. The Main Art: Crisp and sitting on top of the shadow -->
+            <Poster id="audioArt" width="920" height="518" translation="[500,110]" loadWidth="920" loadHeight="518" loadDisplayMode="scaleToZoom" />
+
+            <!-- 5. Crisp Text: Pops perfectly against the dark background glow -->
+            <Label id="audioTitle" translation="[160,668]" width="1600" horizAlign="center" font="font:LargeBoldSystemFont" color="0xF1F1F1FF" />
+            <Label id="audioBadge" translation="[160,748]" width="1600" horizAlign="center" font="font:SmallSystemFont" color="0x9A9A9AFF" text="AUDIO" />
+        </Group>
+    </children>
+</component>
