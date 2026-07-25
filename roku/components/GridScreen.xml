@@ -17,7 +17,7 @@
     <script type="text/brightscript" uri="pkg:/source/utils.brs" />
     <children>
         <Label id="headerLabel" translation="[64,40]" font="font:MediumBoldSystemFont" color="0xF1F1F1FF" text="FileTube" />
-        <Label id="libHint" translation="[1420,56]" width="436" horizAlign="right" font="font:SmallestSystemFont" color="0x9A9A9AFF" text="press &#9664; for libraries" visible="false" />
+        <Label id="libHint" translation="[1420,56]" width="436" horizAlign="right" font="font:SmallestSystemFont" color="0x9A9A9AFF" text="press LEFT for libraries" visible="false" />
         <Label id="countLabel" translation="[64,92]" font="font:SmallestSystemFont" color="0x9A9A9AFF" />
         <Label id="emptyLabel" translation="[64,300]" font="font:MediumSystemFont" color="0x9A9A9AFF" text="No videos found in the library." visible="false" />
         <MarkupGrid
