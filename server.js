@@ -1128,7 +1128,10 @@ async function resolveRokuCompat(item) {
     const stat = await fs.promises.stat(item.filePath);
     const renditionPath = rokuCompatRenditionPath(item.id);
     let meta = readRokuCompatSidecar(item.id);
-    if (!meta || !rokuCompatLib.signatureMatches(meta.source, stat)) {
+    // Re-probe when the source moved (size/mtime) OR when the verdict RULES
+    // changed since this sidecar was written (v mismatch) -- the latter
+    // auto-heals a file cached 'clean' by an older, narrower rule set.
+    if (!meta || meta.v !== rokuCompatLib.VERDICT_VERSION || !rokuCompatLib.signatureMatches(meta.source, stat)) {
       // Concurrent first-touch: one request probes, the rest 503-retry.
       if (rokuCompatProbing.has(item.id) || rokuCompatBusyId === item.id) return { state: 'building' };
       rokuCompatProbing.add(item.id);
@@ -1136,7 +1139,7 @@ async function resolveRokuCompat(item) {
       try { stdout = await probeForRokuCompat(item.filePath); }
       finally { rokuCompatProbing.delete(item.id); }
       const { verdict } = rokuCompatLib.rokuCompatVerdict(stdout);
-      meta = { source: rokuCompatLib.sourceSignature(stat), verdict, renditionReady: false, failed: false };
+      meta = { v: rokuCompatLib.VERDICT_VERSION, source: rokuCompatLib.sourceSignature(stat), verdict, renditionReady: false, failed: false };
       // A rendition built from an OLDER source must never survive the
       // signature change -- drop it before the new verdict is persisted.
       try { fs.unlinkSync(renditionPath); } catch (_) { /* none existed */ }

@@ -41,6 +41,45 @@ test('verdict: embedded cover-art track -> strip', () => {
   assert.equal(out.attachedPicCount, 1);
 });
 
+// Dean's ACTUAL failing file (ffprobe on-device 2026-07-25): the yt-dlp
+// thumbnail is a second video stream WITHOUT the attached_pic flag, plus a
+// bin_data track. v1.46.0 mis-verdicted this 'clean'; v1.46.1 must strip.
+const UNFLAGGED_THUMB_MP4 = {
+  streams: [
+    { index: 0, codec_type: 'video', codec_name: 'h264', disposition: { attached_pic: 0 } },
+    { index: 1, codec_type: 'audio', codec_name: 'aac', disposition: { attached_pic: 0 } },
+    { index: 2, codec_type: 'video', codec_name: 'png', disposition: { attached_pic: 0 } },
+    { index: 3, codec_type: 'data', codec_name: 'bin_data', disposition: { attached_pic: 0 } },
+  ],
+};
+
+test('verdict: UNFLAGGED second video stream (Dean\'s yt-dlp file) -> strip', () => {
+  const out = rokuCompatVerdict(UNFLAGGED_THUMB_MP4);
+  assert.equal(out.verdict, 'strip');
+});
+
+test('verdict: a lone stray data stream (single real video) -> strip', () => {
+  const out = rokuCompatVerdict({
+    streams: [
+      { codec_type: 'video', codec_name: 'h264', disposition: { attached_pic: 0 } },
+      { codec_type: 'audio', codec_name: 'aac' },
+      { codec_type: 'data', codec_name: 'bin_data' },
+    ],
+  });
+  assert.equal(out.verdict, 'strip');
+});
+
+test('verdict: an embedded SUBTITLE alone does not force a strip (Roku handles mov_text; captions are sidecar)', () => {
+  const out = rokuCompatVerdict({
+    streams: [
+      { codec_type: 'video', codec_name: 'h264', disposition: { attached_pic: 0 } },
+      { codec_type: 'audio', codec_name: 'aac' },
+      { codec_type: 'subtitle', codec_name: 'mov_text' },
+    ],
+  });
+  assert.equal(out.verdict, 'clean');
+});
+
 test('verdict: clean h264/aac mp4 -> clean', () => {
   const out = rokuCompatVerdict({
     streams: [
