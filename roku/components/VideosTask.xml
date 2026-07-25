@@ -5,6 +5,8 @@
         <field id="cookie" type="string" />
         <field id="offset" type="integer" />
         <field id="limit" type="integer" value="60" />
+        <!-- Optional library root path; empty = whole library. -->
+        <field id="root" type="string" />
         <!-- { ok, items, total, offset, error, code } -->
         <field id="result" type="assocarray" />
     </interface>

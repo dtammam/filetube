@@ -17,6 +17,7 @@
     <script type="text/brightscript" uri="pkg:/source/utils.brs" />
     <children>
         <Label id="headerLabel" translation="[64,40]" font="font:MediumBoldSystemFont" color="0xF1F1F1FF" text="FileTube" />
+        <Label id="libHint" translation="[1420,56]" width="436" horizAlign="right" font="font:SmallestSystemFont" color="0x9A9A9AFF" text="press &#9664; for libraries" visible="false" />
         <Label id="countLabel" translation="[64,92]" font="font:SmallestSystemFont" color="0x9A9A9AFF" />
         <Label id="emptyLabel" translation="[64,300]" font="font:MediumSystemFont" color="0x9A9A9AFF" text="No videos found in the library." visible="false" />
         <MarkupGrid
@@ -28,5 +29,9 @@
             numColumns="5"
             numRows="3"
             vertFocusAnimationStyle="floatingFocus" />
+        <!-- Libraries picker: opened with Left from the grid. -->
+        <Rectangle id="folderScrim" translation="[0,0]" width="1920" height="1080" color="0x000000C8" visible="false" />
+        <Label id="folderTitle" translation="[64,120]" font="font:MediumBoldSystemFont" color="0xF1F1F1FF" text="Libraries" visible="false" />
+        <LabelList id="folderMenu" translation="[64,200]" itemSize="[640,64]" itemSpacing="[0,4]" visible="false" />
     </children>
 </component>

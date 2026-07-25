@@ -2,7 +2,9 @@
 
 A minimal sideloadable Roku channel for [FileTube](../README.md): sign in,
 browse the video library as a poster grid (newest first), press OK to play.
-Uses only FileTube's existing API — no server-side changes required.
+Press **◀ (Left)** on the grid to pick a library root ("Libraries"). Audio
+files play with the thumbnail and title floated over the player. Uses only
+FileTube's existing API — no server-side changes required.
 
 ## One-time Roku setup (dev mode)
 

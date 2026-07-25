@@ -9,6 +9,9 @@ sub taskMain()
     xfer.SetMessagePort(port)
     url = m.top.serverUrl + "/api/videos?sort=newest"
     url = url + "&limit=" + m.top.limit.ToStr() + "&offset=" + m.top.offset.ToStr()
+    if m.top.root <> ""
+        url = url + "&root=" + xfer.Escape(m.top.root)
+    end if
     xfer.SetUrl(url)
     xfer.SetCertificatesFile("common:/certs/ca-bundle.crt")
     xfer.AddHeader("Cookie", m.top.cookie)
@@ -57,6 +60,7 @@ sub taskMain()
             needsTranscode: it.needsTranscode = true,
             hasThumbnail: it.hasThumbnail = true,
             hasSubtitles: it.hasSubtitles = true,
+            mediaType: it.type,
             ext: it.ext
         }
         if entry.title = invalid or entry.title = "" then entry.title = it.name

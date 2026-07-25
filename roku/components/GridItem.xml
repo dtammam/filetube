@@ -6,7 +6,9 @@
     <script type="text/brightscript" uri="pkg:/components/GridItem.brs" />
     <children>
         <Rectangle id="posterBg" width="336" height="189" color="0x2A2A2AFF" />
-        <Poster id="poster" width="336" height="189" loadDisplayMode="scaleToZoom" />
+        <!-- loadWidth/loadHeight decode the JPEG at display size: less texture
+             memory, fewer evictions, faster scroll-back re-renders. -->
+        <Poster id="poster" width="336" height="189" loadWidth="336" loadHeight="189" loadDisplayMode="scaleToZoom" />
         <Label id="titleLabel" translation="[0,196]" width="336" font="font:SmallestSystemFont" color="0xF1F1F1FF" />
         <Label id="durLabel" translation="[0,224]" width="336" font="font:SmallestSystemFont" color="0x9A9A9AFF" />
     </children>

@@ -6,7 +6,11 @@ sub init()
     m.loginScreen = m.top.FindNode("loginScreen")
     m.gridScreen = m.top.FindNode("gridScreen")
     m.video = m.top.FindNode("videoPlayer")
+    m.audioOverlay = m.top.FindNode("audioOverlay")
+    m.audioArt = m.top.FindNode("audioArt")
+    m.audioTitle = m.top.FindNode("audioTitle")
     m.pendingSeekPos = invalid
+    m.playingExt = ""
 
     m.loginScreen.ObserveField("credentials", "onCredentials")
     m.gridScreen.ObserveField("selectedItem", "onItemSelected")
@@ -145,6 +149,15 @@ sub onItemSelected()
         end if
     end if
     m.playingNeedsTranscode = item.ftNeedsTranscode
+    m.playingExt = item.ftExt
+
+    ' Audio files play through the same Video node but the surface is black;
+    ' float the thumbnail and title so it reads as intentional playback.
+    if item.ftMediaType = "audio"
+        m.audioArt.uri = item.HDPosterUrl
+        m.audioTitle.text = item.title
+        m.audioOverlay.visible = true
+    end if
 
     m.gridScreen.visible = false
     m.video.content = content
@@ -173,6 +186,11 @@ sub onVideoState()
         if m.video.errorMsg <> invalid and m.video.errorMsg <> ""
             message = message + " (" + m.video.errorMsg + ")"
         end if
+        ' Surface the file type so incompatibilities can be diagnosed from
+        ' the TV itself (e.g. Roku's picky MKV demuxer, WebM/VP9 models).
+        if m.playingExt <> ""
+            message = message + " [file type: " + m.playingExt + "]"
+        end if
         if m.playingNeedsTranscode
             message = message + " This file is being converted for streaming on the server — give it a minute or two and try again."
         end if
@@ -185,6 +203,8 @@ sub stopPlayback()
     m.video.control = "stop"
     m.video.visible = false
     m.video.content = invalid
+    m.audioOverlay.visible = false
+    m.audioArt.uri = ""
     m.gridScreen.visible = true
     m.gridScreen.takeFocus = true
 end sub

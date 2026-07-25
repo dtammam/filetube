@@ -7,5 +7,12 @@
         <LoginScreen id="loginScreen" visible="false" />
         <GridScreen id="gridScreen" visible="false" />
         <Video id="videoPlayer" translation="[0,0]" width="1920" height="1080" visible="false" />
+        <!-- Shown over the (black) video surface for audio-only items; sits
+             above the player but clear of the trickplay bar at the bottom. -->
+        <Group id="audioOverlay" visible="false">
+            <Poster id="audioArt" width="480" height="270" translation="[720,230]" loadWidth="480" loadHeight="270" loadDisplayMode="scaleToZoom" />
+            <Label id="audioTitle" translation="[160,540]" width="1600" horizAlign="center" font="font:MediumBoldSystemFont" color="0xF1F1F1FF" />
+            <Label id="audioBadge" translation="[160,606]" width="1600" horizAlign="center" font="font:SmallestSystemFont" color="0x9A9A9AFF" text="Audio playback" />
+        </Group>
     </children>
 </component>

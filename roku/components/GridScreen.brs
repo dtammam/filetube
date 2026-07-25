@@ -2,19 +2,40 @@ sub init()
     m.grid = m.top.FindNode("grid")
     m.countLabel = m.top.FindNode("countLabel")
     m.emptyLabel = m.top.FindNode("emptyLabel")
+    m.libHint = m.top.FindNode("libHint")
+    m.folderScrim = m.top.FindNode("folderScrim")
+    m.folderTitle = m.top.FindNode("folderTitle")
+    m.folderMenu = m.top.FindNode("folderMenu")
     m.grid.ObserveField("itemSelected", "onItemSelected")
     m.grid.ObserveField("itemFocused", "onItemFocused")
+    m.folderMenu.ObserveField("itemSelected", "onFolderSelected")
     m.pageSize = 60
     m.total = 0
     m.loading = false
+    m.roots = []
+    m.currentRoot = ""
+    m.currentRootName = "All videos"
 end sub
 
 sub onTakeFocus()
-    m.grid.SetFocus(true)
+    if m.folderMenu.visible
+        m.folderMenu.SetFocus(true)
+    else
+        m.grid.SetFocus(true)
+    end if
 end sub
 
 sub onBegin()
     if not m.top.begin then return
+    ' A re-login can land here with the picker still open from before the
+    ' session expired; close it so focus and visibility agree.
+    if m.folderMenu.visible then closeFolderMenu()
+    if m.roots.Count() = 0 then fetchConfig()
+    resetAndLoad()
+    m.grid.SetFocus(true)
+end sub
+
+sub resetAndLoad()
     m.total = 0
     m.loading = false
     m.emptyLabel.visible = false
@@ -22,8 +43,73 @@ sub onBegin()
     m.contentRoot = CreateObject("roSGNode", "ContentNode")
     m.grid.content = m.contentRoot
     fetchPage(0)
+end sub
+
+' ---- libraries picker -----------------------------------------------------
+
+sub fetchConfig()
+    m.configTask = CreateObject("roSGNode", "ConfigTask")
+    m.configTask.serverUrl = m.top.serverUrl
+    m.configTask.cookie = m.top.cookie
+    m.configTask.ObserveField("result", "onConfigResult")
+    m.configTask.control = "RUN"
+end sub
+
+sub onConfigResult()
+    result = m.configTask.result
+    if result = invalid or result.ok <> true or type(result.roots) <> "roArray" then return
+    m.roots = [{ name: "All videos", root: "" }]
+    m.roots.Append(result.roots)
+    ' A picker with only "All videos" in it is noise; need 2+ real choices.
+    m.libHint.visible = (m.roots.Count() > 1)
+end sub
+
+sub openFolderMenu()
+    content = CreateObject("roSGNode", "ContentNode")
+    for each entry in m.roots
+        row = content.CreateChild("ContentNode")
+        row.title = entry.name
+    end for
+    m.folderMenu.content = content
+    m.folderScrim.visible = true
+    m.folderTitle.visible = true
+    m.folderMenu.visible = true
+    m.folderMenu.SetFocus(true)
+end sub
+
+sub closeFolderMenu()
+    m.folderScrim.visible = false
+    m.folderTitle.visible = false
+    m.folderMenu.visible = false
     m.grid.SetFocus(true)
 end sub
+
+sub onFolderSelected()
+    index = m.folderMenu.itemSelected
+    if index < 0 or index >= m.roots.Count() then return
+    m.currentRoot = m.roots[index].root
+    m.currentRootName = m.roots[index].name
+    closeFolderMenu()
+    resetAndLoad()
+end sub
+
+function onKeyEvent(key as string, press as boolean) as boolean
+    if not press then return false
+    if m.folderMenu.visible
+        if key = "back" or key = "left"
+            closeFolderMenu()
+            return true
+        end if
+        return false
+    end if
+    if key = "left" and m.roots.Count() > 1
+        openFolderMenu()
+        return true
+    end if
+    return false
+end function
+
+' ---- library pages --------------------------------------------------------
 
 sub fetchPage(offset as integer)
     if m.loading then return
@@ -33,6 +119,7 @@ sub fetchPage(offset as integer)
     m.task.cookie = m.top.cookie
     m.task.offset = offset
     m.task.limit = m.pageSize
+    m.task.root = m.currentRoot
     m.task.ObserveField("result", "onPageResult")
     m.task.control = "RUN"
 end sub
@@ -54,13 +141,17 @@ sub onPageResult()
         return
     end if
 
+    ' Root-switching makes stale observers a real sequence: only append a
+    ' page that starts exactly where the loaded content currently ends.
+    if result.offset <> m.contentRoot.GetChildCount() then return
+
     m.total = result.total
     for each item in result.items
         m.contentRoot.AppendChild(buildContentNode(item))
     end for
 
     shown = m.contentRoot.GetChildCount()
-    m.countLabel.text = shown.ToStr() + " of " + m.total.ToStr() + " videos · newest first"
+    m.countLabel.text = m.currentRootName + " · " + shown.ToStr() + " of " + m.total.ToStr() + " · newest first"
     m.emptyLabel.visible = (m.total = 0)
 end sub
 
@@ -73,11 +164,13 @@ function buildContentNode(item as object) as object
         ftProgress: 0.0,
         ftNeedsTranscode: false,
         ftHasSubtitles: false,
+        ftMediaType: "",
         ftExt: ""
     })
     if item.id <> invalid then node.ftId = item.id
     if item.title <> invalid then node.title = item.title
     if item.ext <> invalid then node.ftExt = LCase(item.ext)
+    if GetInterface(item.mediaType, "ifString") <> invalid then node.ftMediaType = item.mediaType
     if item.duration <> invalid
         node.ftDuration = item.duration
         node.ftDurationText = FT_FormatDuration(item.duration)
