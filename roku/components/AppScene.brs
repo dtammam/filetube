@@ -123,6 +123,12 @@ sub onItemSelected()
 
     content = CreateObject("roSGNode", "ContentNode")
     content.url = m.state.serverUrl + "/video/" + item.ftId
+    ' v1.46: ask the server for the Roku-safe rendition of video items --
+    ' cover-art-stripped remux / rotation-baked re-encode when needed,
+    ' the original bytes otherwise. Audio items skip it (server would too).
+    if item.ftMediaType <> "audio"
+        content.url = content.url + "?compat=roku"
+    end if
     content.title = item.title
     ' Items flagged needsTranscode are served as a cached MP4 rendition
     ' regardless of their original container (e.g. an MKV with AC-3 audio),
@@ -153,6 +159,7 @@ sub onItemSelected()
     m.playingNeedsTranscode = item.ftNeedsTranscode
     m.playingExt = item.ftExt
     m.playingCodecs = item.ftCodecs
+    m.playingIsVideo = (item.ftMediaType <> "audio")
 
     ' Audio files play through the same Video node but the surface is black;
     ' float the thumbnail and title so it reads as intentional playback.
@@ -204,6 +211,8 @@ sub onVideoState()
         end if
         if m.playingNeedsTranscode
             message = message + " This file is being converted for streaming on the server — give it a minute or two and try again."
+        else if m.playingIsVideo
+            message = message + " If the server is preparing a Roku-friendly copy, trying again in a moment usually works."
         end if
         stopPlayback()
         showDialog("Playback", message)
