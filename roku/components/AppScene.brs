@@ -13,6 +13,7 @@ sub init()
     m.pendingSeekPos = invalid
     m.playingExt = ""
     m.playingCodecs = ""
+    m.gating = false
 
     m.loginScreen.ObserveField("credentials", "onCredentials")
     m.gridScreen.ObserveField("selectedItem", "onItemSelected")
@@ -170,11 +171,64 @@ sub onItemSelected()
         m.audioOverlay.visible = true
     end if
 
+    m.pendingContent = content
     m.gridScreen.visible = false
-    m.video.content = content
+    ' Seamless start: video items are pre-flighted so a rendition/transcode
+    ' being built server-side shows "Preparing…" and auto-starts when ready,
+    ' instead of erroring and needing a second press. Audio plays direct.
+    if item.ftMediaType = "audio"
+        beginPlayback()
+    else
+        beginPlaybackGate(content.url)
+    end if
+end sub
+
+sub beginPlayback()
+    m.statusLabel.visible = false
+    m.video.content = m.pendingContent
     m.video.visible = true
     m.video.SetFocus(true)
     m.video.control = "play"
+end sub
+
+sub beginPlaybackGate(url as string)
+    m.gating = true
+    showStatus("Preparing… (first play of some videos takes a minute)")
+    m.gateTask = CreateObject("roSGNode", "PlaybackGateTask")
+    m.gateTask.url = url
+    m.gateTask.cookie = m.state.cookie
+    m.gateTask.ObserveField("result", "onGateResult")
+    m.gateTask.control = "RUN"
+end sub
+
+sub onGateResult()
+    if not m.gating then return
+    m.gating = false
+    result = invalid
+    if m.gateTask <> invalid then result = m.gateTask.result
+    m.gateTask = invalid
+    if result <> invalid and result.ok = true
+        beginPlayback()
+        return
+    end if
+    m.statusLabel.visible = false
+    m.audioOverlay.visible = false
+    m.gridScreen.visible = true
+    m.gridScreen.takeFocus = true
+    message = "Playback failed."
+    if result <> invalid and result.error <> invalid and result.error <> "" then message = result.error
+    showDialog("Playback", message)
+end sub
+
+sub cancelPlaybackGate()
+    m.gating = false
+    if m.gateTask <> invalid
+        m.gateTask.control = "STOP"
+        m.gateTask = invalid
+    end if
+    m.statusLabel.visible = false
+    m.gridScreen.visible = true
+    m.gridScreen.takeFocus = true
 end sub
 
 function streamFormatForExt(ext as string) as string
@@ -231,6 +285,10 @@ sub stopPlayback()
 end sub
 
 function onKeyEvent(key as string, press as boolean) as boolean
+    if press and key = "back" and m.gating
+        cancelPlaybackGate()
+        return true
+    end if
     if press and key = "back" and m.video.visible
         stopPlayback()
         return true
