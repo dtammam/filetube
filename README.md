@@ -5,10 +5,10 @@
   <img src="assets/images/filetube-banner-black.png" alt="FileTube" width="440">
 </picture>
 
-**Broadcast yourself — your files.**
+**Broadcast yourself - your files.**
 
 A lightweight, self-hosted media server with a nostalgic, classic-YouTube interface.
-Your videos, music, and books — on every screen in the house, and nowhere else.
+Your videos, music, and books - on every screen in the house, and nowhere else.
 
 [![CI](https://github.com/dtammam/filetube/actions/workflows/ci.yml/badge.svg)](https://github.com/dtammam/filetube/actions/workflows/ci.yml)
 [![Publish Docker Image](https://github.com/dtammam/filetube/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/dtammam/filetube/actions/workflows/docker-publish.yml)
@@ -23,7 +23,7 @@ Your videos, music, and books — on every screen in the house, and nowhere else
 ---
 
 FileTube scans your local media folders and serves them through a web app that
-looks and feels like the YouTube you remember — pick your era (2005, 2009,
+looks and feels like the YouTube you remember - pick your era (2005, 2009,
 2014, or 2021), light or dark. It runs on your own server or LAN with a single
 container, streams to desktop, phone (PWA), and Roku, and keeps watch
 progress, likes, and reading positions per account, synced across devices.
@@ -34,7 +34,7 @@ Your data never leaves your network.
 **Old-era light theme on desktop:**
 
 <p align="center">
-  <img src="assets/images/lightExampleOldEra-HomeView-Desktop.png" alt="Home view — classic light theme on desktop" width="840">
+  <img src="assets/images/lightExampleOldEra-HomeView-Desktop.png" alt="Home view - classic light theme on desktop" width="840">
 </p>
 
 <p align="center">
@@ -59,32 +59,32 @@ Your data never leaves your network.
 
 ### Watch
 
-- **Classic YouTube experience** — grid home, uploader channels, star ratings, mock comments, and four era themes (2005 / 2009 / 2014 / 2021) with matching icon sets, plus light/dark mode.
-- **A real player, not a `<video>` tag** — app-owned blocky controls, keyboard shortcuts (J/K/L, 0–9, speed, loop, and more), press-and-hold 2×, chapters, and inline playback on iOS.
-- **Keep browsing while you watch** — the player docks to a mini-player as you navigate; theatre mode, Picture-in-Picture, prev/next, and optional autoplay.
-- **Smart resume, synced everywhere** — progress saves continuously and follows you across desktop, phone, and TV.
-- **Plays what browsers won't** — AVI, HEVC, VP9, AC-3 and friends transcode on demand to H.264/AAC MP4, so everything plays on an iPhone too.
+- **Classic YouTube experience** - grid home, uploader channels, star ratings, mock comments, and four era themes (2005 / 2009 / 2014 / 2021) with matching icon sets, plus light/dark mode.
+- **A real player, not a `<video>` tag** - app-owned blocky controls, keyboard shortcuts (J/K/L, 0–9, speed, loop, and more), press-and-hold 2×, chapters, and inline playback on iOS.
+- **Keep browsing while you watch** - the player docks to a mini-player as you navigate; theatre mode, Picture-in-Picture, prev/next, and optional autoplay.
+- **Smart resume, synced everywhere** - progress saves continuously and follows you across desktop, phone, and TV.
+- **Plays what browsers won't** - AVI, HEVC, VP9, AC-3 and friends transcode on demand to H.264/AAC MP4, so everything plays on an iPhone too.
 
 ### Listen & read
 
-- **First-class music library** — Albums / Artists / Songs / Liked with album art, shuffle, search and sort, and an art-forward phone-first now-playing view. ALAC transcodes on demand.
-- **Books library + reader** — EPUB and PDF in the browser: paginated reader, table of contents, paper/sepia/night themes, per-account positions.
-- **"Listen from Here" (TTS)** — have book chapters read aloud (lock-screen friendly); works out of the box, upgradeable to a natural [Piper](https://github.com/OHF-Voice/piper1-gpl) voice.
+- **First-class music library** - Albums / Artists / Songs / Liked with album art, shuffle, search and sort, and an art-forward phone-first now-playing view. ALAC transcodes on demand.
+- **Books library + reader** - EPUB and PDF in the browser: paginated reader, table of contents, paper/sepia/night themes, per-account positions.
+- **"Listen from Here" (TTS)** - have book chapters read aloud (lock-screen friendly); works out of the box, upgradeable to a natural [Piper](https://github.com/OHF-Voice/piper1-gpl) voice.
 
 ### Run your library
 
-- **Multi-account** — an auth wall with per-user progress, likes, pins, and reading positions; admin user management; full backup/restore.
-- **Auto-scan with safe pruning** — rescans on an interval; removes entries only for files that are truly gone (an unmounted share is never treated as a deletion).
-- **Auto thumbnails** — FFmpeg extracts video frames and audio cover art; caches are size-capped and age-swept.
-- **Optional YouTube subscriptions (yt-dlp)** — off by default. Subscribe to channels, auto-download new videos into your library, with per-channel quality/length/Shorts controls and one-shot URL downloads. [Full guide →](docs/CONFIGURATION.md#optional-youtube-subscriptions-yt-dlp)
-- **PWA install** — add it to your phone or desktop home screen like a native app.
+- **Multi-account** - an auth wall with per-user progress, likes, pins, and reading positions; admin user management; full backup/restore.
+- **Auto-scan with safe pruning** - rescans on an interval; removes entries only for files that are truly gone (an unmounted share is never treated as a deletion).
+- **Auto thumbnails** - FFmpeg extracts video frames and audio cover art; caches are size-capped and age-swept.
+- **Optional YouTube subscriptions (yt-dlp)** - off by default. Subscribe to channels, auto-download new videos into your library, with per-channel quality/length/Shorts controls and one-shot URL downloads. [Full guide →](docs/CONFIGURATION.md#optional-youtube-subscriptions-yt-dlp)
+- **PWA install** - add it to your phone or desktop home screen like a native app.
 
 ## 📺 On your TV: the Roku channel
 
 FileTube ships a native, sideloadable [Roku channel](roku/README.md): sign in
 once, browse your library as a poster grid with search, library and channel
 pickers (with avatars), and play with resume, captions, chapters, loop, and
-autoplay — watch progress syncs with the web app both ways. The server
+autoplay - watch progress syncs with the web app both ways. The server
 transparently fixes Roku-hostile files (embedded thumbnail tracks, rotated
 phone videos) with cache-only renditions that never touch your originals.
 Setup and deploy: [roku/README.md](roku/README.md).
@@ -132,7 +132,7 @@ get their **own** folder boxes in Settings (the three sets must not overlap).
 | `FILETUBE_IMAGE_TAG` | Behavior |
 |-----|----------|
 | `latest` | Newest **release** (recommended) |
-| `1.4.2` | Pinned exactly — never moves |
+| `1.4.2` | Pinned exactly - never moves |
 | `1.4` / `1` | Latest within that line |
 | `edge` | Newest `main` commit |
 
@@ -145,10 +145,10 @@ at `latest`. Full tag scheme: [docs/RELEASING.md](docs/RELEASING.md).
 
 ## Configuration
 
-Everything beyond the basics — accounts and admin recovery, automation and
+Everything beyond the basics - accounts and admin recovery, automation and
 cache tuning, transcode/Roku cache env vars, the SQLite database and
 migration notes, YouTube subscriptions, cookies for members-only content,
-and text-to-speech — lives in the
+and text-to-speech - lives in the
 **[configuration reference](docs/CONFIGURATION.md)**. The defaults are sane;
 you can run FileTube without reading it.
 
