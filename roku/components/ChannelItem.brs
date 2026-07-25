@@ -4,12 +4,15 @@ sub init()
     m.avatar = m.top.FindNode("avatar")
     m.nameLabel = m.top.FindNode("nameLabel")
     m.countLabel = m.top.FindNode("countLabel")
-    ' SECURITY: channel avatars are REMOTE URLs (yt CDN). This Poster gets
-    ' its own node-level HttpAgent (created by setting any header) so it
-    ' never inherits the scene agent's FileTube session cookie -- the
-    ' cookie must not leak to third-party hosts. GridItem's posters keep
-    ' the inherited agent because /thumbnail/:id NEEDS the cookie.
-    m.avatar.AddHeader("Accept", "image/*")
+    ' SECURITY (gate C1): channel avatars are REMOTE URLs (yt CDN). Per the
+    ' roHttpAgent docs, ifHttpAgent calls on a node do NOT mint a local
+    ' agent -- isolation requires an EXPLICIT new roHttpAgent assigned via
+    ' setHttpAgent. Without it this Poster would inherit the scene agent
+    ' and send the FileTube session cookie to third-party hosts. GridItem's
+    ' posters keep the inherited agent because /thumbnail/:id NEEDS it.
+    agent = CreateObject("roHttpAgent")
+    agent.AddHeader("Accept", "image/*")
+    m.avatar.setHttpAgent(agent)
 end sub
 
 sub onContentChange()
@@ -24,7 +27,10 @@ sub onContentChange()
     else
         m.initialLabel.text = "?"
     end if
-    m.avatar.uri = content.HDPosterUrl ' "" when no avatar: fallback shows
+    ' Gate W6: the avatar rides a CUSTOM field, never HDPosterUrl -- so no
+    ' scene-agent consumer (e.g. GridItem, if a firmware ignored the
+    ' itemComponentName swap) can ever fetch the remote URL with the cookie.
+    m.avatar.uri = content.ftAvatarUrl ' "" when no avatar: fallback shows
 end sub
 
 ' Deterministic tile color from the channel name (mirrors the web UI's

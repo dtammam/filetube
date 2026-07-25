@@ -34,19 +34,25 @@ function item(root, folder, name, extra = {}) {
   };
 }
 
+let hiddenRoot;
+
 before(async () => {
   mediaDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-chan-media-'));
   otherRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-chan-other-'));
+  hiddenRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-chan-hidden-'));
   const items = [
     item(mediaDir, 'planetclue', 'a.mp4', { channelName: 'Planet Clue', channelAvatarUrl: 'https://example.test/pc.jpg', addedAt: 2000 }),
     item(mediaDir, 'planetclue', 'b.mp4', { channelName: 'Planet Clue', channelAvatarUrl: 'https://example.test/pc.jpg' }),
     item(mediaDir, 'homemovies', 'c.mp4'), // no channelName/avatar: falls back to folder name
     item(otherRoot, 'elsewhere', 'd.mp4', { channelName: 'Elsewhere TV' }),
+    item(hiddenRoot, 'secretstuff', 'e.mp4', { channelName: 'Secret Stuff' }),
   ];
   const metadata = {};
   for (const it of items) metadata[it.id] = it;
   saveDatabase({
-    folders: [mediaDir, otherRoot], folderSettings: {}, progress: {}, metadata,
+    folders: [mediaDir, otherRoot, hiddenRoot],
+    folderSettings: { [hiddenRoot]: { name: 'Hidden', hidden: true, order: 0 } },
+    progress: {}, metadata,
     settings: { scanIntervalMinutes: 0, pruneMissing: false, cacheMaxBytes: null, cacheMaxAgeDays: 30 },
   });
   await new Promise((resolve) => { server = app.listen(0, '127.0.0.1', resolve); });
@@ -80,6 +86,21 @@ test('?root= scopes to one configured library root', async () => {
   const res = await fetch(`${base}/api/channels?root=${encodeURIComponent(mediaDir)}`);
   const { channels } = await res.json();
   assert.deepEqual(channels.map(c => c.folder).sort(), ['homemovies', 'planetclue']);
+});
+
+test('hidden roots are excluded from the default listing but reachable when asked for explicitly (gate W4)', async () => {
+  const all = await (await fetch(`${base}/api/channels`)).json();
+  assert.equal(all.channels.some(c => c.folder === 'secretstuff'), false, 'hidden-root channel must not surface by default');
+  const explicit = await (await fetch(`${base}/api/channels?root=${encodeURIComponent(hiddenRoot)}`)).json();
+  assert.deepEqual(explicit.channels.map(c => c.folder), ['secretstuff']);
+});
+
+test('unknown ?root= yields an empty list, and prefix-sibling roots do not leak (gate W5)', async () => {
+  const unknown = await (await fetch(`${base}/api/channels?root=${encodeURIComponent('/nope/never')}`)).json();
+  assert.deepEqual(unknown.channels, []);
+  // A root that is a string-prefix of another path must not match it.
+  const sibling = await (await fetch(`${base}/api/channels?root=${encodeURIComponent(mediaDir.slice(0, -1))}`)).json();
+  assert.equal(sibling.channels.some(c => c.folder === 'planetclue'), false);
 });
 
 test('is behind the auth gate', async () => {

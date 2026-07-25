@@ -141,6 +141,9 @@ end sub
 ' ---- channels view --------------------------------------------------------
 
 sub fetchChannels()
+    ' Gate W2: unobserve-before-replace (the v1.46 task discipline) so a
+    ' superseded fetch can never fire into the new one's callback.
+    if m.channelsTask <> invalid then m.channelsTask.UnobserveField("result")
     m.channelsTask = CreateObject("roSGNode", "ChannelsTask")
     m.channelsTask.serverUrl = m.top.serverUrl
     m.channelsTask.cookie = m.top.cookie
@@ -161,14 +164,21 @@ sub onChannelsResult()
         end if
         return
     end if
+    ' Gate W2: a stale task's late fire (view re-entered while a fetch was in
+    ' flight) must not double-append -- a channels contentRoot is built fresh
+    ' per resetAndLoad, so any existing children mean this result is stale.
+    if m.contentRoot.GetChildCount() > 0 then return
     m.channels = result.channels
     for each ch in m.channels
         node = CreateObject("roSGNode", "ContentNode")
-        node.AddFields({ ftDurationText: "", ftFolder: "" })
+        ' Gate W6: avatar in a CUSTOM field only, never HDPosterUrl (see
+        ' ChannelItem.brs -- keeps the remote URL away from any
+        ' scene-agent-inheriting Poster).
+        node.AddFields({ ftDurationText: "", ftFolder: "", ftAvatarUrl: "" })
         node.title = ch.name
         node.ftFolder = ch.folder
         node.ftDurationText = ch.count.ToStr() + " items"
-        if ch.avatarUrl <> "" then node.HDPosterUrl = ch.avatarUrl
+        if ch.avatarUrl <> "" then node.ftAvatarUrl = ch.avatarUrl
         m.contentRoot.AppendChild(node)
     end for
     m.countLabel.text = "Channels · " + m.channels.Count().ToStr() + " in " + m.currentRootName
@@ -223,6 +233,10 @@ end function
 
 function onKeyEvent(key as string, press as boolean) as boolean
     if not press then return false
+    ' Gate W7: hidden-but-focused during "Preparing…" -- swallow everything
+    ' except Back (which bubbles to AppScene's gate cancel). Without this,
+    ' Left/Up/Right during the gate drive an invisible UI.
+    if m.top.gateActive then return (key <> "back")
     if m.folderMenu.visible
         if key = "back" or key = "left"
             closeFolderMenu()
@@ -240,8 +254,10 @@ function onKeyEvent(key as string, press as boolean) as boolean
     end if
     ' RIGHT reaches here only at a row's right edge (the grid consumes inner
     ' presses); * (options) works from anywhere -- both cycle the filter.
+    ' Gate S7: a filter change is invisible from the channels view, so it's
+    ' a no-op there rather than a silent persisted surprise.
     if key = "right" or key = "options"
-        cycleFilter()
+        if m.viewMode = "videos" then cycleFilter()
         return true
     end if
     if key = "back"

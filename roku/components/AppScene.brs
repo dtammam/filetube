@@ -132,6 +132,12 @@ sub onAuthExpired()
     ' mid-poll; a later gate success must not start playback OVER the login
     ' screen with a dead cookie.
     if m.gating then cancelPlaybackGate()
+    ' Gate C2 (v1.47): the ensureLoaded prefetch means a 401 can now land
+    ' MID-PLAYBACK -- tear the playback surface down too, or live video
+    ' keeps playing over the login screen with a dead cookie.
+    if m.playbackMenuGroup.visible then closePlaybackMenu()
+    stopPlaybackSurface()
+    m.pendingContent = invalid
     FT_RegistryClearSession()
     m.state.cookie = ""
     m.gridScreen.visible = false
@@ -152,15 +158,17 @@ sub onItemSelected()
     playIndex(m.gridScreen.selectedIndex, true, false)
 end sub
 
-' Start (or advance to) queue position i.
+' Start (or advance to) queue position i. Returns true when playback (or its
+' resume prompt) actually started -- advanceAfterFinish uses the false case
+' to land on the grid instead of a dead frame (gate S6).
 '   allowPrompt: explicit user selection -> offer Resume/Start over.
-'   fromStart:   loop-this replay -> never auto-resume (a near-end resume
+'   fromStart:   loop replays -> never auto-resume (a near-end resume
 '                would re-finish instantly and spin the loop).
-sub playIndex(index as integer, allowPrompt as boolean, fromStart as boolean)
-    if m.queue = invalid then return
-    if index < 0 or index >= m.queue.GetChildCount() then return
+function playIndex(index as integer, allowPrompt as boolean, fromStart as boolean) as boolean
+    if m.queue = invalid then return false
+    if index < 0 or index >= m.queue.GetChildCount() then return false
     item = m.queue.GetChild(index)
-    if item = invalid or item.ftId = "" then return
+    if item = invalid or item.ftId = "" then return false
     m.queueIndex = index
     m.currentItem = item
 
@@ -173,11 +181,12 @@ sub playIndex(index as integer, allowPrompt as boolean, fromStart as boolean)
 
     if allowPrompt and resumePos <> invalid
         openResumeDialog(item, resumePos)
-        return
+        return true
     end if
     m.pendingSeekPos = resumePos
     startPlaybackFlow(item)
-end sub
+    return true
+end function
 
 sub openResumeDialog(item as object, resumePos as float)
     m.resumeItem = item
@@ -186,8 +195,19 @@ sub openResumeDialog(item as object, resumePos as float)
     dialog.title = item.title
     dialog.buttons = ["Resume from " + FT_FormatDuration(resumePos), "Start from beginning"]
     dialog.ObserveField("buttonSelected", "onResumeButton")
+    dialog.ObserveField("wasClosed", "onResumeClosed")
     m.resumeDialog = dialog
     m.top.dialog = dialog
+end sub
+
+' Gate S1: a back-dismissed resume dialog fires no buttonSelected; clear the
+' dangling refs so nothing stale survives. Fires after onResumeButton too --
+' the invalid guard makes that a no-op.
+sub onResumeClosed()
+    if m.resumeDialog = invalid then return
+    m.resumeDialog.UnobserveField("buttonSelected")
+    m.resumeDialog = invalid
+    m.resumeItem = invalid
 end sub
 
 sub onResumeButton()
@@ -278,6 +298,7 @@ end sub
 
 sub beginPlaybackGate(url as string)
     m.gating = true
+    m.gridScreen.gateActive = true ' gate W7: mute the hidden grid's keys
     showStatus("Preparing… (first play of some videos takes a minute)")
     m.gateTask = CreateObject("roSGNode", "PlaybackGateTask")
     m.gateTask.url = url
@@ -293,6 +314,7 @@ sub onGateResult()
     if not m.gating then return
     if m.gateTask = invalid then return
     m.gating = false
+    m.gridScreen.gateActive = false
     result = m.gateTask.result
     m.gateTask.UnobserveField("result")
     m.gateTask = invalid
@@ -311,6 +333,7 @@ end sub
 
 sub cancelPlaybackGate()
     m.gating = false
+    m.gridScreen.gateActive = false
     if m.gateTask <> invalid
         ' Unobserve BEFORE stop: task termination is asynchronous, and a
         ' still-observed field set by the dying thread would fire
@@ -370,19 +393,22 @@ end sub
 ' advance (wrapping only on loop-all), anything else lands back on the grid.
 sub advanceAfterFinish()
     if m.loopMode = "this"
-        playIndex(m.queueIndex, false, true)
+        if playIndex(m.queueIndex, false, true) then return
+        stopPlayback()
         return
     end if
     count = 0
     if m.queue <> invalid then count = m.queue.GetChildCount()
     nextIndex = m.queueIndex + 1
     if nextIndex < count and (m.autoplay or m.loopMode = "all")
-        playIndex(nextIndex, false, false)
-        return
+        if playIndex(nextIndex, false, false) then return
     end if
+    ' Gate W3: the loop-all WRAP starts from zero too -- Roku never writes
+    ' progress back, so resuming lap 2 at week-old positions (or at 90% of
+    ' a single-item queue, replaying only the tail forever) is the same
+    ' spin the loop-this fromStart flag exists to prevent.
     if m.loopMode = "all" and count > 0
-        playIndex(0, false, false)
-        return
+        if playIndex(0, false, true) then return
     end if
     stopPlayback()
 end sub
@@ -410,10 +436,14 @@ end sub
 sub openPlaybackMenu()
     m.menuMode = "main"
     buildPlaybackMenuRows()
+    m.playbackMenu.jumpToItem = 0 ' gate S2: fresh menu, fresh focus
     m.playbackMenuGroup.visible = true
     m.playbackMenu.SetFocus(true)
     ' Chapters are only on the details endpoint; fetch once per item, lazily.
     if m.currentItem <> invalid and m.chaptersItemId <> m.currentItem.ftId
+        ' Gate W1: unobserve-before-replace, same discipline as the gate task
+        ' -- a superseded fetch must never fire into the new one's callback.
+        if m.detailsTask <> invalid then m.detailsTask.UnobserveField("result")
         m.detailsTask = CreateObject("roSGNode", "DetailsTask")
         m.detailsTask.serverUrl = m.state.serverUrl
         m.detailsTask.cookie = m.state.cookie
@@ -426,7 +456,9 @@ end sub
 sub onDetailsResult()
     if m.detailsTask = invalid then return
     result = m.detailsTask.result
-    if result = invalid then return
+    ' Unset assocarray task fields default to {} -- wait for the real result.
+    if result = invalid or not result.DoesExist("ok") then return
+    m.detailsTask.UnobserveField("result")
     m.detailsTask = invalid
     if m.currentItem = invalid or result.itemId <> m.currentItem.ftId then return
     m.chaptersItemId = result.itemId
@@ -478,7 +510,9 @@ sub showChapterRows()
     content = CreateObject("roSGNode", "ContentNode")
     for each ch in m.chapters
         row = content.CreateChild("ContentNode")
-        row.title = FT_FormatDuration(ch.start) + "   " + ch.title
+        ts = FT_FormatDuration(ch.start)
+        if ts = "" then ts = "0:00" ' gate S5: a chapter AT zero still shows a time
+        row.title = ts + "   " + ch.title
     end for
     m.playbackMenu.content = content
 end sub
