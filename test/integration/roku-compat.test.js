@@ -35,6 +35,10 @@ if [[ "$src" == *coverart* ]]; then
   echo '{"streams":[{"codec_type":"video","codec_name":"h264","disposition":{"attached_pic":0}},{"codec_type":"audio","codec_name":"aac"},{"codec_type":"video","codec_name":"png","disposition":{"attached_pic":1}}]}'
   exit 0
 fi
+if [[ "$src" == *unflagged* ]]; then
+  echo '{"streams":[{"index":0,"codec_type":"video","codec_name":"h264","disposition":{"attached_pic":0}},{"index":1,"codec_type":"audio","codec_name":"aac"},{"index":2,"codec_type":"video","codec_name":"png","disposition":{"attached_pic":0}},{"index":3,"codec_type":"data","codec_name":"bin_data"}]}'
+  exit 0
+fi
 if [[ "$src" == *rotated* ]]; then
   echo '{"streams":[{"codec_type":"video","codec_name":"h264","side_data_list":[{"rotation":-90}],"disposition":{"attached_pic":0}},{"codec_type":"audio","codec_name":"aac"}]}'
   exit 0
@@ -208,6 +212,42 @@ test('MKV sources are NEVER rendered (gate C1): MP4 bytes under a "mkv" streamFo
   assert.equal(await res.text(), 'original-bytes-for-coverart-matroska.mkv');
   assert.equal(fs.existsSync(path.join(COMPAT_DIR, `${item.id}.mp4`)), false, 'no rendition');
   assert.equal(fs.existsSync(path.join(COMPAT_DIR, `${item.id}.json`)), false, 'not even probed');
+});
+
+test('UNFLAGGED embedded thumbnail (Dean\'s real file class) is stripped, not served raw', async () => {
+  const item = seedItem('unflagged-thumb.mp4');
+  seedDb([item]);
+  const first = await fetch(`${base}/video/${item.id}?compat=roku`);
+  assert.equal(first.status, 503, 'a second unflagged video stream must trigger a build, not serve the original');
+  await first.arrayBuffer();
+  const served = await pollCompat(item.id);
+  assert.equal(served.status, 200);
+  assert.equal((await served.arrayBuffer()).byteLength, 4096, 'the remuxed rendition, not the original');
+  const argv = fs.readFileSync(ffmpegLog, 'utf8').trim().split('\n').pop();
+  assert.match(argv, /-map 0:V:0/);
+  assert.match(argv, /-c copy/);
+});
+
+test('verdict-version bump re-probes a sidecar cached by an older rule set', async () => {
+  const item = seedItem('unflagged-stale.mp4');
+  seedDb([item]);
+  // Simulate a v1.46.0 sidecar: this file's class was mis-verdicted 'clean',
+  // no `v` field, signature matching the current source.
+  const stat = fs.statSync(item.filePath);
+  fs.mkdirSync(COMPAT_DIR, { recursive: true });
+  fs.writeFileSync(path.join(COMPAT_DIR, `${item.id}.json`), JSON.stringify({
+    source: { size: stat.size, mtimeMs: stat.mtimeMs },
+    verdict: 'clean', renditionReady: false, failed: false,
+  }));
+  // Under v2 rules the stale 'clean' must NOT be trusted -> re-probe -> strip.
+  const first = await fetch(`${base}/video/${item.id}?compat=roku`);
+  assert.equal(first.status, 503, 'stale pre-version sidecar must be re-probed, not trusted');
+  await first.arrayBuffer();
+  const served = await pollCompat(item.id);
+  assert.equal(served.status, 200);
+  const sidecar = JSON.parse(fs.readFileSync(path.join(COMPAT_DIR, `${item.id}.json`), 'utf8'));
+  assert.equal(sidecar.v, 2, 'sidecar is rewritten with the current verdict version');
+  assert.equal(sidecar.verdict, 'strip');
 });
 
 test('probe failure fails OPEN: the original serves with no 503 loop', async () => {
