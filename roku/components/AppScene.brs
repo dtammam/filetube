@@ -123,6 +123,9 @@ end sub
 ' ---- playback -------------------------------------------------------------
 
 sub onItemSelected()
+    ' Gate W4: the grid is hidden but still FOCUSED while "Preparing…" shows,
+    ' so a second OK press would re-enter here and orphan the running gate.
+    if m.gating then return
     item = m.gridScreen.selectedItem
     if item = invalid or item.ftId = "" then return
 
@@ -214,6 +217,7 @@ sub onGateResult()
     if m.gateTask = invalid then return
     m.gating = false
     result = m.gateTask.result
+    m.gateTask.UnobserveField("result")
     m.gateTask = invalid
     if result <> invalid and result.ok = true
         beginPlayback()

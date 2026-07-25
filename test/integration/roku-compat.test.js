@@ -200,6 +200,16 @@ test('replaced-in-place source: signature mismatch discards the stale rendition 
   assert.equal((await reserved.arrayBuffer()).byteLength, 4096);
 });
 
+test('MKV sources are NEVER rendered (gate C1): MP4 bytes under a "mkv" streamFormat would break files that play today', async () => {
+  const item = seedItem('coverart-matroska.mkv', { ext: '.mkv' });
+  seedDb([item]);
+  const res = await fetch(`${base}/video/${item.id}?compat=roku`);
+  assert.equal(res.status, 200);
+  assert.equal(await res.text(), 'original-bytes-for-coverart-matroska.mkv');
+  assert.equal(fs.existsSync(path.join(COMPAT_DIR, `${item.id}.mp4`)), false, 'no rendition');
+  assert.equal(fs.existsSync(path.join(COMPAT_DIR, `${item.id}.json`)), false, 'not even probed');
+});
+
 test('probe failure fails OPEN: the original serves with no 503 loop', async () => {
   const item = seedItem('probefail-video.mp4');
   seedDb([item]);

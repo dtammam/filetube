@@ -12,7 +12,8 @@ sub taskMain()
     clock = CreateObject("roTimespan")
     deadlineMs = 10 * 60 * 1000 ' rotate re-encodes of long videos take minutes
     while true
-        code = probeOnce()
+        probe = probeOnce()
+        code = probe.code
         if code = 200 or code = 206
             m.top.result = { ok: true }
             return
@@ -29,6 +30,13 @@ sub taskMain()
             end if
             return
         end if
+        ' Gate W3: a permanently-failed conversion 503s FOREVER with
+        ' status "failed" -- terminal, not "keep waiting". Without this a
+        ' broken file meant ten minutes of "Preparing..." before a lie.
+        if probe.status = "failed"
+            m.top.result = { ok: false, error: "The server could not convert this file for streaming (its last attempt failed)." }
+            return
+        end if
         if clock.TotalMilliseconds() > deadlineMs
             m.top.result = { ok: false, error: "The server is still preparing this video. Give it a few minutes and try again." }
             return
@@ -37,9 +45,10 @@ sub taskMain()
     end while
 end sub
 
-' One cheap readiness check: a 2-byte Range GET. Ready files answer 206 (or
-' 200), an in-flight rendition/transcode answers 503.
-function probeOnce() as integer
+' One cheap readiness check: a 2-byte Range GET -> { code, status }. Ready
+' files answer 206 (or 200); an in-flight rendition/transcode answers 503
+' whose JSON body carries the transcode status ("failed" = terminal).
+function probeOnce() as object
     port = CreateObject("roMessagePort")
     xfer = CreateObject("roUrlTransfer")
     xfer.SetMessagePort(port)
@@ -48,12 +57,22 @@ function probeOnce() as integer
     xfer.AddHeader("Cookie", m.top.cookie)
     xfer.AddHeader("Range", "bytes=0-1")
     xfer.RetainBodyOnError(true)
-    if not xfer.AsyncGetToString() then return -1
+    if not xfer.AsyncGetToString() then return { code: -1, status: "" }
     clock = CreateObject("roTimespan")
     while clock.TotalMilliseconds() < 15000
         ev = wait(1000, port)
-        if type(ev) = "roUrlEvent" then return ev.GetResponseCode()
+        if type(ev) = "roUrlEvent"
+            status = ""
+            body = ev.GetString()
+            if body <> invalid and body <> ""
+                parsed = ParseJson(body)
+                if type(parsed) = "roAssociativeArray" and GetInterface(parsed.status, "ifString") <> invalid
+                    status = parsed.status
+                end if
+            end if
+            return { code: ev.GetResponseCode(), status: status }
+        end if
     end while
     xfer.AsyncCancel()
-    return -1
+    return { code: -1, status: "" }
 end function

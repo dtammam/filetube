@@ -164,3 +164,9 @@
 - **Fix direction:** extend the stub harness with a controllable fake child_process for queue-level unit tests.
 - **Severity:** Low; both paths are small and code-reviewed, but untested code rots.
 - **Source:** v1.46 gate (QA seat suggestion 2), logged rather than shipped silent.
+
+## #52 — v1.46 roku-compat: lifecycle residuals (age sweep, deleted items, oversize single file, root-added-later, mtime-preserving replace)
+- **What (adversarial seat S1–S5, disclosed not silent):** (1) the age-retention sweep doesn't cover ROKU_COMPAT_DIR (size cap + boot eviction + "Clear cache now" do); (2) renditions/sidecars of DELETED library items linger until cap pressure; (3) a single rendition larger than the cap sits above it indefinitely (same class as the transcode cache); (4) rokuCompatBlocked() disables the feature when the cache dir lands inside a NEWLY-ADDED library root but doesn't quarantine renditions built before — the next scan would index them as media (TRANSCODE_DIR has NO such guard at all, pre-existing); (5) the size+mtime signature misses mtime-preserving in-place replacement (linkSync/rsync -t — the v1.41.6/9 pattern) → stale rendition until any real mtime/size change; (6) per-id probe dedupe only — N distinct first-touches spawn N parallel ffprobes, and probe-fail files re-probe per request (fail-open by design).
+- **Fix direction:** fold ROKU_COMPAT_DIR into sweepAgedTranscodes' enumeration; a scan-time orphan reaper keyed on db.metadata membership; a probe-failure cooldown; consider content-hash signatures if (5) ever bites in practice.
+- **Severity:** Low — single-client cache, self-healing, cap-bounded; every item is disclosure-grade rather than data-risk.
+- **Source:** v1.46 full two-reviewer gate (adversarial seat suggestions).

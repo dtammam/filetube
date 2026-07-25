@@ -1115,6 +1115,16 @@ function probeForRokuCompat(filePath) {
 async function resolveRokuCompat(item) {
   try {
     if (!ffmpegAvailable || rokuCompatBlocked()) return { state: 'clean' };
+    // Gate C1 (adversarial seat): renditions are MP4-FAMILY SOURCES ONLY.
+    // The Roku channel picks its demuxer from the ORIGINAL extension
+    // (streamFormat "mkv" for .mkv), so handing it MP4 rendition bytes for a
+    // matroska source would break files that play fine today (matroska
+    // attachments aren't tracks -- Roku ignores embedded art there). Both
+    // confirmed broken classes (yt-dlp cover-art MP4s, rotated phone
+    // recordings) are MP4-family; cover-art/rotated MKVs stay untouched, a
+    // DISCLOSED limitation rather than silent breakage.
+    const sourceExt = String(item.ext || '').toLowerCase();
+    if (sourceExt !== '.mp4' && sourceExt !== '.m4v' && sourceExt !== '.mov') return { state: 'clean' };
     const stat = await fs.promises.stat(item.filePath);
     const renditionPath = rokuCompatRenditionPath(item.id);
     let meta = readRokuCompatSidecar(item.id);
@@ -11049,6 +11059,7 @@ function sendRangeable(req, res, filePath, contentType, onServe) {
 // v1.46: async solely for the awaited roku-compat resolve below; every other
 // path through this handler is the same synchronous flow it always was.
 app.get('/video/:id', async (req, res) => {
+  try {
   const db = getCachedDatabase(); // v1.30 A3: hot GET reader
   const item = db.metadata[req.params.id];
   if (!item) {
@@ -11161,6 +11172,15 @@ app.get('/video/:id', async (req, res) => {
       markServed(filePath);
     }
   });
+  } catch (err) {
+    // v1.46 (gate W2): Express 4 never observes a rejected async handler.
+    // Without this catch, any synchronous throw that used to become a 500
+    // (e.g. sendRangeable's statSync racing an eviction unlink) would now be
+    // a logged unhandledRejection plus a socket that hangs until client
+    // timeout -- for EVERY caller, compat or not.
+    console.error(`GET /video/${req.params.id} failed:`, err && err.message);
+    if (!res.headersSent) res.status(500).json({ error: 'internal error' });
+  }
 });
 
 // GET /audio/:id (v1.27.0, background-audio-for-video, EXPERIMENTAL): serves
