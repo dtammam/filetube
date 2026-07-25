@@ -1,0 +1,207 @@
+sub init()
+    m.top.backgroundUri = ""
+    m.top.backgroundColor = "0x141414FF"
+
+    m.statusLabel = m.top.FindNode("statusLabel")
+    m.loginScreen = m.top.FindNode("loginScreen")
+    m.gridScreen = m.top.FindNode("gridScreen")
+    m.video = m.top.FindNode("videoPlayer")
+    m.pendingSeekPos = invalid
+
+    m.loginScreen.ObserveField("credentials", "onCredentials")
+    m.gridScreen.ObserveField("selectedItem", "onItemSelected")
+    m.gridScreen.ObserveField("loadError", "onGridLoadError")
+    m.gridScreen.ObserveField("authExpired", "onAuthExpired")
+    m.video.ObserveField("state", "onVideoState")
+
+    m.state = FT_RegistryRead()
+    if m.state.serverUrl <> "" and m.state.cookie <> ""
+        showStatus("Connecting to FileTube…")
+        runAuth("validate")
+    else
+        showLogin()
+    end if
+end sub
+
+' ---- auth -----------------------------------------------------------------
+
+sub runAuth(mode as string)
+    m.authMode = mode
+    m.authTask = CreateObject("roSGNode", "AuthTask")
+    m.authTask.mode = mode
+    m.authTask.serverUrl = m.state.serverUrl
+    if mode = "login"
+        m.authTask.username = m.state.username
+        m.authTask.password = m.pendingPassword
+    else
+        m.authTask.cookie = m.state.cookie
+    end if
+    m.authTask.ObserveField("result", "onAuthResult")
+    m.authTask.control = "RUN"
+end sub
+
+sub onCredentials()
+    creds = m.loginScreen.credentials
+    if creds = invalid then return
+    m.state.serverUrl = creds.serverUrl
+    m.state.username = creds.username
+    m.pendingPassword = creds.password
+    m.loginScreen.visible = false
+    showStatus("Signing in…")
+    runAuth("login")
+end sub
+
+sub onAuthResult()
+    result = m.authTask.result
+    if result = invalid then return
+    m.pendingPassword = ""
+
+    if result.ok = true
+        if m.authMode = "login"
+            m.state.cookie = result.cookie
+            FT_RegistryWrite({ serverUrl: m.state.serverUrl, username: m.state.username, cookie: m.state.cookie })
+        end if
+        enterLibrary()
+        return
+    end if
+
+    ' Validate failed: expired/revoked session goes quietly back to login;
+    ' anything else (server down, DNS) gets an explanation first.
+    if m.authMode = "validate" and result.code <> invalid and result.code = 401
+        FT_RegistryClearSession()
+        m.state.cookie = ""
+        showLogin()
+        return
+    end if
+    showLogin()
+    showDialog("Sign-in problem", result.error)
+end sub
+
+sub enterLibrary()
+    ' One header at scene level: Poster thumbnails and the Video node inherit
+    ' the nearest ancestor's HttpAgent, so every request carries the session.
+    m.top.AddHeader("Cookie", m.state.cookie)
+    m.video.AddHeader("Cookie", m.state.cookie)
+
+    m.statusLabel.visible = false
+    m.loginScreen.visible = false
+    m.gridScreen.serverUrl = m.state.serverUrl
+    m.gridScreen.cookie = m.state.cookie
+    m.gridScreen.visible = true
+    m.gridScreen.begin = true
+end sub
+
+' ---- library --------------------------------------------------------------
+
+sub onGridLoadError()
+    if m.gridScreen.loadError = "" then return
+    showDialog("Library error", m.gridScreen.loadError)
+end sub
+
+sub onAuthExpired()
+    if not m.gridScreen.authExpired then return
+    FT_RegistryClearSession()
+    m.state.cookie = ""
+    m.gridScreen.visible = false
+    showLogin()
+    showDialog("Signed out", "Your session expired. Please sign in again.")
+end sub
+
+' ---- playback -------------------------------------------------------------
+
+sub onItemSelected()
+    item = m.gridScreen.selectedItem
+    if item = invalid or item.ftId = "" then return
+
+    content = CreateObject("roSGNode", "ContentNode")
+    content.url = m.state.serverUrl + "/video/" + item.ftId
+    content.title = item.title
+    content.streamFormat = streamFormatForExt(item.ftExt)
+
+    ' Resume where the web player left off (server already tracks progress).
+    m.pendingSeekPos = invalid
+    if item.ftProgress >= 30
+        if item.ftDuration <= 0 or item.ftProgress < 0.95 * item.ftDuration
+            m.pendingSeekPos = item.ftProgress
+        end if
+    end if
+    m.playingNeedsTranscode = item.ftNeedsTranscode
+
+    m.gridScreen.visible = false
+    m.video.content = content
+    m.video.visible = true
+    m.video.SetFocus(true)
+    m.video.control = "play"
+end sub
+
+function streamFormatForExt(ext as string) as string
+    if ext = ".mkv" then return "mkv"
+    if ext = ".mp3" then return "mp3"
+    return "mp4"
+end function
+
+sub onVideoState()
+    state = m.video.state
+    if state = "playing"
+        if m.pendingSeekPos <> invalid
+            m.video.seek = m.pendingSeekPos
+            m.pendingSeekPos = invalid
+        end if
+    else if state = "finished"
+        stopPlayback()
+    else if state = "error"
+        message = "Playback failed."
+        if m.video.errorMsg <> invalid and m.video.errorMsg <> ""
+            message = message + " (" + m.video.errorMsg + ")"
+        end if
+        if m.playingNeedsTranscode
+            message = message + " This file is being converted for streaming on the server — give it a minute or two and try again."
+        end if
+        stopPlayback()
+        showDialog("Playback", message)
+    end if
+end sub
+
+sub stopPlayback()
+    m.video.control = "stop"
+    m.video.visible = false
+    m.video.content = invalid
+    m.gridScreen.visible = true
+    m.gridScreen.FindNode("grid").SetFocus(true)
+end sub
+
+function onKeyEvent(key as string, press as boolean) as boolean
+    if press and key = "back" and m.video.visible
+        stopPlayback()
+        return true
+    end if
+    return false
+end function
+
+' ---- helpers --------------------------------------------------------------
+
+sub showLogin()
+    m.statusLabel.visible = false
+    m.loginScreen.visible = true
+    m.loginScreen.takeFocus = true
+end sub
+
+sub showStatus(text as string)
+    m.statusLabel.text = text
+    m.statusLabel.visible = true
+end sub
+
+sub showDialog(title as string, message as string)
+    dialog = CreateObject("roSGNode", "Dialog")
+    dialog.title = title
+    dialog.message = message
+    dialog.buttons = ["OK"]
+    dialog.ObserveField("buttonSelected", "onDialogButton")
+    m.dialog = dialog
+    m.top.dialog = dialog
+end sub
+
+sub onDialogButton()
+    if m.dialog <> invalid then m.dialog.close = true
+    m.dialog = invalid
+end sub

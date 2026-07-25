@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="AuthTask" extends="Task">
+    <interface>
+        <!-- "login" posts credentials; "validate" checks the stored cookie. -->
+        <field id="mode" type="string" />
+        <field id="serverUrl" type="string" />
+        <field id="username" type="string" />
+        <field id="password" type="string" />
+        <field id="cookie" type="string" />
+        <!-- { ok, cookie, error, code } -->
+        <field id="result" type="assocarray" />
+    </interface>
+    <script type="text/brightscript" uri="pkg:/components/AuthTask.brs" />
+</component>

@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="GridScreen" extends="Group">
+    <interface>
+        <field id="serverUrl" type="string" />
+        <field id="cookie" type="string" />
+        <!-- Setting begin=true (re)loads the library from page zero. -->
+        <field id="begin" type="boolean" alwaysNotify="true" onChange="onBegin" />
+        <!-- Item the user picked; AppScene observes this to start playback. -->
+        <field id="selectedItem" type="node" />
+        <!-- Non-empty when a page fetch failed; AppScene shows the dialog. -->
+        <field id="loadError" type="string" />
+        <!-- True when the server said our session is no longer valid. -->
+        <field id="authExpired" type="boolean" value="false" />
+    </interface>
+    <script type="text/brightscript" uri="pkg:/components/GridScreen.brs" />
+    <script type="text/brightscript" uri="pkg:/source/utils.brs" />
+    <children>
+        <Label id="headerLabel" translation="[64,40]" font="font:MediumBoldSystemFont" color="0xF1F1F1FF" text="FileTube" />
+        <Label id="countLabel" translation="[64,92]" font="font:SmallestSystemFont" color="0x9A9A9AFF" />
+        <Label id="emptyLabel" translation="[64,300]" font="font:MediumSystemFont" color="0x9A9A9AFF" text="No videos found in the library." visible="false" />
+        <MarkupGrid
+            id="grid"
+            translation="[64,140]"
+            itemComponentName="GridItem"
+            itemSize="[336,252]"
+            itemSpacing="[24,28]"
+            numColumns="5"
+            numRows="3"
+            vertFocusAnimationStyle="floatingFocus" />
+    </children>
+</component>

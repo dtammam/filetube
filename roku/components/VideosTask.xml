@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="VideosTask" extends="Task">
+    <interface>
+        <field id="serverUrl" type="string" />
+        <field id="cookie" type="string" />
+        <field id="offset" type="integer" />
+        <field id="limit" type="integer" value="60" />
+        <!-- { ok, items, total, offset, error, code } -->
+        <field id="result" type="assocarray" />
+    </interface>
+    <script type="text/brightscript" uri="pkg:/components/VideosTask.brs" />
+</component>
