@@ -178,6 +178,8 @@ to today's behavior with no config changes needed):
 | Variable | Default | What it does |
 |----------|---------|---------------|
 | `TRANSCODE_DIR` | `<DATA_DIR>/transcoded` | Where the on-demand transcoded MP4 cache is written. Point it at a different disk/mount if you want the cache off your main data volume (e.g. faster local storage, or a large external/NFS share). The directory is created on boot if missing; the existing size-cap eviction and age-retention sweep both key off this same directory. |
+| `ROKU_COMPAT_DIR` | `<DATA_DIR>/roku-compat` | Where Roku compatibility renditions are cached (v1.46: `?compat=roku` remuxes/rotation bakes for the Roku channel). Must NOT live inside a configured media folder — the feature disables itself if it does. Safe to delete at any time; renditions rebuild on demand. |
+| `ROKU_COMPAT_CACHE_MAX_BYTES` | `5368709120` (5 GB) | Size cap for the roku-compat rendition cache (LRU eviction, enforced at boot and after each build). Counted by the Settings cache-size display and swept by "Clear cache now". |
 | `TRANSCODE_CRF` | `23` | The x264 CRF (quality) used for both on-demand transcode paths (cached and live). Lower = higher quality/larger files, higher = smaller files/lower quality. Valid range is `1`-`51`; anything unset/invalid/out of range falls back to `23` (a warning is logged, the server never crashes). Opt-in only - the default is unchanged. |
 
 ### The database (v1.42+: SQLite) and upgrading from v1.41 or earlier

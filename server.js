@@ -1160,7 +1160,13 @@ function processRokuCompatQueue() {
     ? rokuCompatLib.buildRotateArgs(job.srcPath, tmpPath, TRANSCODE_CRF)
     : rokuCompatLib.buildStripArgs(job.srcPath, tmpPath);
 
+  // Gate W1: Node documents that 'close' "may or may not" fire after
+  // 'error' on the same spawn -- an unguarded double finish() would null
+  // rokuCompatBusyId twice and kick the queue into overlapping workers.
+  let settled = false;
   const finish = (ok) => {
+    if (settled) return;
+    settled = true;
     if (ok) {
       try { fs.renameSync(tmpPath, renditionPath); } catch (e) { console.error(`roku-compat: finalize failed for ${job.id}:`, e.message); ok = false; }
     }
@@ -7399,7 +7405,9 @@ app.post('/api/settings', async (req, res) => {
 app.get('/api/cache/size', (req, res) => {
   const db = getCachedDatabase(); // v1.30 A3: pure read on a request/serve path
   res.json({
-    bytes: transcodeCacheSize(TRANSCODE_DIR),
+    // v1.46 (gate W2): honest accounting includes the roku-compat rendition
+    // cache -- "Clear cache now" (below) sweeps it too.
+    bytes: transcodeCacheSize(TRANSCODE_DIR) + transcodeCacheSize(ROKU_COMPAT_DIR),
     effectiveCacheMaxBytes: effectiveCacheCap(db.settings)
   });
 });
@@ -7439,6 +7447,29 @@ app.post('/api/cache/clear', (req, res) => {
       if (name.endsWith('.m4a')) clearAudioStatus(path.basename(name, '.m4a'));
     } catch (e) {
       console.error(`Failed to clear cached transcode ${p}:`, e.message);
+    }
+  }
+  // v1.46 (gate W2): also purge roku-compat renditions + verdict sidecars --
+  // the size endpoint above counts this dir, so a clear must sweep it or the
+  // UI would claim to have freed bytes it didn't. Same protections as the
+  // transcode loop: skip in-flight tmp writes and actively-watched files
+  // (an actively-watched rendition keeps its sidecar so the pair stays
+  // coherent; everything rebuilds on demand).
+  let rokuFiles;
+  try { rokuFiles = fs.readdirSync(ROKU_COMPAT_DIR); } catch (_) { rokuFiles = []; }
+  for (const name of rokuFiles) {
+    if (isInFlightTranscode(name)) continue;
+    const p = path.join(ROKU_COMPAT_DIR, name);
+    if (name.endsWith('.mp4') && protectedPaths.has(p)) continue;
+    if (name.endsWith('.json') && protectedPaths.has(path.join(ROKU_COMPAT_DIR, `${name.slice(0, -'.json'.length)}.mp4`))) continue;
+    try {
+      const st = fs.statSync(p);
+      if (st.isDirectory()) continue;
+      fs.unlinkSync(p);
+      removed++;
+      freedBytes += st.size;
+    } catch (e) {
+      console.error(`Failed to clear roku-compat rendition ${p}:`, e.message);
     }
   }
   // v1.38.0: also purge the TTS audio cache (nuke-all, like the transcode side
@@ -11409,6 +11440,9 @@ if (require.main === module) {
   // added benefit of pre-warming the cache before `app.listen` below, so the
   // very first request already hits a warm cache.
   evictTranscodeCache(effectiveCacheCap(getCachedDatabase().settings));
+  // v1.46 (gate W3): the roku-compat cache honors a LOWERED cap at boot too,
+  // not only after the next successful build.
+  evictRokuCompatCache();
 
   // T4 (v1.25 QoL) + the scan/timer sequence below are wrapped in a single
   // async IIFE (this file is CommonJS -- no top-level `await`) so the

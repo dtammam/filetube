@@ -109,6 +109,10 @@ end sub
 
 sub onAuthExpired()
     if not m.gridScreen.authExpired then return
+    ' Gate W4: a stale task's 401 can land while a playback gate is mid-poll;
+    ' without this, a later gate success would start playback OVER the login
+    ' screen (videoPlayer draws above it) with a dead cookie.
+    if m.gating then cancelPlaybackGate()
     FT_RegistryClearSession()
     m.state.cookie = ""
     m.gridScreen.visible = false
@@ -202,10 +206,14 @@ sub beginPlaybackGate(url as string)
 end sub
 
 sub onGateResult()
+    ' Stale-fire guard (gate CRITICAL): cancelPlaybackGate UNOBSERVES the old
+    ' task before dropping it, so the only node that can reach this callback
+    ' is the CURRENT m.gateTask -- a canceled task's late completion can
+    ' never hijack a newer gate. The invalid check is belt-and-braces.
     if not m.gating then return
+    if m.gateTask = invalid then return
     m.gating = false
-    result = invalid
-    if m.gateTask <> invalid then result = m.gateTask.result
+    result = m.gateTask.result
     m.gateTask = invalid
     if result <> invalid and result.ok = true
         beginPlayback()
@@ -223,6 +231,10 @@ end sub
 sub cancelPlaybackGate()
     m.gating = false
     if m.gateTask <> invalid
+        ' Unobserve BEFORE stop: task termination is asynchronous, and a
+        ' still-observed field set by the dying thread would fire
+        ' onGateResult against whatever task the pointer holds by then.
+        m.gateTask.UnobserveField("result")
         m.gateTask.control = "STOP"
         m.gateTask = invalid
     end if
