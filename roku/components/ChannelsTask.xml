@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="ChannelsTask" extends="Task">
+    <interface>
+        <field id="serverUrl" type="string" />
+        <field id="cookie" type="string" />
+        <!-- Optional library root path to scope by; empty = whole library. -->
+        <field id="root" type="string" />
+        <!-- { ok, channels: [{folder, name, avatarUrl, count}], code, error } -->
+        <field id="result" type="assocarray" />
+    </interface>
+    <script type="text/brightscript" uri="pkg:/components/ChannelsTask.brs" />
+</component>

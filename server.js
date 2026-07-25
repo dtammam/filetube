@@ -7619,6 +7619,37 @@ app.get('/api/videos', (req, res) => {
   res.json({ items, total, offset, limit });
 });
 
+// v1.47 (Roku playback wave): the channel list the TV's Channels view needs.
+// A "channel" is an item's immediate parent folder (`folderName` -- the same
+// identity `GET /api/videos?folder=` filters by); display name and avatar
+// come from the scan's channelName/channelAvatarUrl when present. Optional
+// `?root=<configured root path>` scopes to one library root (same identity
+// as `?root=` on /api/videos). Pure read over the hot cache -- grouping a
+// few thousand items is microseconds; no new persistence, no writes.
+app.get('/api/channels', (req, res) => {
+  const db = getCachedDatabase(); // v1.30 A3: hot GET reader
+  const rootFilter = typeof req.query.root === 'string' && req.query.root !== '' ? req.query.root : null;
+  const groups = new Map(); // folderName -> { folder, name, avatarUrl, count, latestAddedAt }
+  for (const id of Object.keys(db.metadata || {})) {
+    const item = db.metadata[id];
+    if (!item || !item.folderName) continue;
+    if (rootFilter && item.rootFolder !== rootFilter) continue;
+    let g = groups.get(item.folderName);
+    if (!g) {
+      g = { folder: item.folderName, name: item.folderName, avatarUrl: null, count: 0, latestAddedAt: 0 };
+      groups.set(item.folderName, g);
+    }
+    g.count++;
+    // First non-empty wins for name/avatar: every item of a channel folder
+    // carries the same scan-captured values, so "first" is not a lottery.
+    if (g.name === g.folder && typeof item.channelName === 'string' && item.channelName !== '') g.name = item.channelName;
+    if (!g.avatarUrl && typeof item.channelAvatarUrl === 'string' && item.channelAvatarUrl !== '') g.avatarUrl = item.channelAvatarUrl;
+    if (typeof item.addedAt === 'number' && item.addedAt > g.latestAddedAt) g.latestAddedAt = item.addedAt;
+  }
+  const channels = [...groups.values()].sort((a, b) => a.name.toLowerCase() < b.name.toLowerCase() ? -1 : 1);
+  res.json({ channels });
+});
+
 // API: Get details for single video/audio
 app.get('/api/videos/:id', (req, res) => {
   const db = getCachedDatabase(); // v1.30 A3: hot GET reader

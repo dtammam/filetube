@@ -9,6 +9,10 @@
         <field id="root" type="string" />
         <!-- Optional substring search; empty = no filter. -->
         <field id="search" type="string" />
+        <!-- Optional media-type filter: "" (all) | "video" | "audio". -->
+        <field id="format" type="string" />
+        <!-- Optional channel filter (immediate-parent folderName). -->
+        <field id="folder" type="string" />
         <!-- { ok, items, total, offset, error, code } -->
         <field id="result" type="assocarray" />
     </interface>
