@@ -17,6 +17,10 @@ sub init()
     m.progressTimer = m.top.FindNode("progressTimer")
     m.progressTimer.ObserveField("fire", "onProgressTick")
     m.prewarmedForId = "" ' one prewarm per played item, never a cascade
+    ' v1.47.2: in-session progress overlay, id -> seconds. Kept HERE and never
+    ' written onto the item's ContentNode -- see progressFor().
+    m.sessionProgress = {}
+    m.resumeDialog = invalid
 
     m.pendingSeekPos = invalid
     m.playingExt = ""
@@ -114,6 +118,12 @@ sub enterLibrary()
     m.top.SetHeaders({ Cookie: m.state.cookie })
     m.video.SetHeaders({ Cookie: m.state.cookie })
 
+    ' Session-local progress is PER SIGNED-IN USER: a re-login (possibly as
+    ' someone else on the same TV) must not inherit the previous account's
+    ' positions, which progressFor would prefer over the server's own and
+    ' the next ping would then persist onto the new account.
+    m.sessionProgress = {}
+
     m.statusLabel.visible = false
     m.loginScreen.visible = false
     m.gridScreen.serverUrl = m.state.serverUrl
@@ -154,6 +164,11 @@ sub onItemSelected()
     ' Gate W4 (v1.46): the grid is hidden but still FOCUSED while
     ' "Preparing…" shows, so a second OK press would re-enter here.
     if m.gating then return
+    ' v1.47.2: a selection can ONLY be a real OK press while the grid is on
+    ' screen. Anything arriving during playback (or while the resume dialog
+    ' is up) is a spurious re-fire, and acting on it restarted the video
+    ' mid-watch. Ignore by construction, whatever the source.
+    if m.video.visible or m.resumeDialog <> invalid then return
     item = m.gridScreen.selectedItem
     if item = invalid or item.ftId = "" then return
     ' Capture the queue + index the grid set just before selectedItem fired.
@@ -176,12 +191,17 @@ function playIndex(index as integer, allowPrompt as boolean, fromStart as boolea
     m.currentItem = item
 
     resumePos = invalid
-    if not fromStart and item.ftProgress >= 30
-        if item.ftDuration <= 0 or item.ftProgress < 0.95 * item.ftDuration
-            resumePos = item.ftProgress
+    savedPos = progressFor(item)
+    if not fromStart and savedPos >= 30
+        if item.ftDuration <= 0 or savedPos < 0.95 * item.ftDuration
+            resumePos = savedPos
         end if
     end if
 
+    ' The prompt belongs to STARTING something. It cannot re-appear during
+    ' playback because onItemSelected refuses selections while the video is
+    ' on screen -- a per-item "asked already" flag would add nothing here and
+    ' would silently auto-resume an item whose prompt was back-dismissed.
     if allowPrompt and resumePos <> invalid
         openResumeDialog(item, resumePos)
         return true
@@ -313,8 +333,23 @@ sub onProgressTick()
 end sub
 
 ' Fire-and-forget: the web player's own POST /api/progress ping, so resume
-' stays in sync across TV/web/phone. Also refreshes the in-queue node's
-' ftProgress, keeping THIS session's resume prompts fresh mid-binge.
+' stays in sync across TV/web/phone, plus a session-local record so THIS
+' session's resume prompts stay fresh mid-binge.
+'
+' v1.47.2 (Dean on-device: the video restarted every 30s, forever): the
+' in-session position lives in a plain AA keyed by id -- NEVER on the item's
+' ContentNode. Those nodes are live children of the grid's content AND the
+' very node held in the observed `selectedItem` field, so mutating one
+' notifies that field's observers (an ArrayGrid content rebuild is a
+' plausible second path -- hence the guard in GridScreen too). This scene
+' read the notification as a fresh OK press and re-entered playback, resume
+' prompt included, on every ping.
+function progressFor(item as object) as float
+    if item = invalid or item.ftId = "" then return 0.0
+    if m.sessionProgress.DoesExist(item.ftId) then return m.sessionProgress[item.ftId]
+    return item.ftProgress
+end function
+
 sub sendProgressPing()
     if m.playingItem = invalid or m.playingItem.ftId = "" then return
     if m.playingFinished then return ' completion already wrote 0 (gate W1)
@@ -322,7 +357,7 @@ sub sendProgressPing()
     position = m.video.position
     if position < 5 then return ' nothing meaningful to record yet
     postProgress(m.playingItem, position)
-    m.playingItem.ftProgress = position
+    m.sessionProgress[m.playingItem.ftId] = position
 end sub
 
 ' Gate W1: the web's completion contract is a one-shot progress-0 write --
@@ -331,7 +366,7 @@ end sub
 sub sendProgressComplete()
     if m.playingItem = invalid or m.playingItem.ftId = "" then return
     postProgress(m.playingItem, 0)
-    m.playingItem.ftProgress = 0
+    m.sessionProgress[m.playingItem.ftId] = 0.0
     m.playingFinished = true
 end sub
 
@@ -481,10 +516,11 @@ sub advanceAfterFinish()
     if nextIndex < count and (m.autoplay or m.loopMode = "all")
         if playIndex(nextIndex, false, false) then return
     end if
-    ' Gate W3: the loop-all WRAP starts from zero too -- Roku never writes
-    ' progress back, so resuming lap 2 at week-old positions (or at 90% of
-    ' a single-item queue, replaying only the tail forever) is the same
-    ' spin the loop-this fromStart flag exists to prevent.
+    ' Gate W3: the loop-all WRAP starts from zero too. A STALE near-end
+    ' position (watched to 94% in some earlier session, so no completion-0
+    ' was ever written) would re-finish instantly on the wrap and spin the
+    ' loop -- the same reason loop-this passes fromStart. Items finished in
+    ' THIS session are already 0 via sendProgressComplete.
     if m.loopMode = "all" and count > 0
         if playIndex(0, false, true) then return
     end if

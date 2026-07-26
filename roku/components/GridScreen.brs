@@ -381,6 +381,12 @@ function buildContentNode(item as object) as object
 end function
 
 sub onItemSelected()
+    ' v1.47.2 defense in depth: a selection cannot be a real OK press while
+    ' the grid is off screen, so never propagate one. (The v1.47.1 restart
+    ' loop reached AppScene through the observed selectedItem NODE being
+    ' mutated; layer 1 removed that write, this closes the path itself --
+    ' including page appends into the attached content during playback.)
+    if not m.top.visible or m.top.gateActive then return
     index = m.grid.itemSelected
     if m.contentRoot = invalid or index < 0 or index >= m.contentRoot.GetChildCount() then return
     if m.viewMode = "channels"
