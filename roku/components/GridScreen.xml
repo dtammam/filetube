@@ -9,9 +9,20 @@
              selectedIndex/queue are set BEFORE selectedItem fires so the
              observer reads a coherent trio: queue is the grid's own
              ContentNode (it keeps growing as pages append, so playback's
-             next/autoplay sees new items for free). -->
-        <field id="selectedItem" type="node" />
-        <field id="selectedIndex" type="integer" value="-1" />
+             next/autoplay sees new items for free).
+
+             v1.47.3: alwaysNotify is LOAD-BEARING on selectedItem. Fields
+             notify only on CHANGE, and re-picking the item you just watched
+             assigns the SAME node reference -- so the observer never ran and
+             the tile appeared dead until you selected something else
+             (Dean on-device). Same one-shot-field class as loadError /
+             authExpired. It also un-sticks a tile whose resume prompt was
+             back-dismissed. selectedIndex is NOT observed by anyone today
+             (AppScene reads it as a plain value inside the selectedItem
+             callback); it carries alwaysNotify defensively, so a future
+             direct observer starts out correct. -->
+        <field id="selectedItem" type="node" alwaysNotify="true" />
+        <field id="selectedIndex" type="integer" value="-1" alwaysNotify="true" />
         <field id="queue" type="node" />
         <!-- Playback prefetch: AppScene sets the index it will need next;
              the grid loads another page when that nears the loaded tail. -->
