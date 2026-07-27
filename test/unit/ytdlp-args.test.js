@@ -361,6 +361,67 @@ test('buildYtdlpDownloadArgs: the subtitle grab flags are fixed literals, never 
   assert.equal(args.SHORTS_MATCH_FILTER, 'original_url!*=/shorts/', 'sanity: this file\'s established fixed-literal posture is unchanged');
 });
 
+// ---- v1.47.4 item 1 (L2): opts.skipSubtitles ------------------------------
+//
+// The containment half of the subtitle fix. yt-dlp writes subtitles BEFORE it
+// downloads media (YoutubeDL.py:3392 vs 3536) and raises DownloadError on a
+// subtitle error under our effective ignoreerrors='only_download'
+// (YoutubeDL.py:4498-4501), so any subtitle-side failure costs the whole video.
+// `skipSubtitles: true` is what the one retry in run.js's `runDownload` uses to
+// land the media file even when the captions genuinely cannot be fetched.
+
+const SUBTITLE_FLAGS = ['--write-subs', '--write-auto-subs', '--sub-langs', '--sub-format', '--convert-subs'];
+
+test('buildYtdlpDownloadArgs: opts.skipSubtitles omits EVERY subtitle flag (and its value)', () => {
+  const config = makeConfig();
+  const result = args.buildYtdlpDownloadArgs(baseSub({ format: 'video' }), config, ['vid1'], { skipSubtitles: true });
+  for (const flag of SUBTITLE_FLAGS) {
+    assert.ok(!result.includes(flag), `${flag} must be absent when skipSubtitles is set`);
+  }
+  // The values must go with their flags -- a stranded 'en.*'/'vtt' would become
+  // a positional URL argument, which is far worse than a stray flag.
+  assert.ok(!result.includes('en.*'), 'the sub-langs VALUE must not be stranded in argv');
+  const sepIdx = result.indexOf('--');
+  assert.deepEqual(result.slice(sepIdx + 1), ['https://www.youtube.com/watch?v=vid1'],
+    'exactly the intended target must follow "--", never a stranded subtitle value');
+});
+
+test('buildYtdlpDownloadArgs: skipSubtitles changes ONLY the subtitle flags -- everything else is byte-identical', () => {
+  const config = makeConfig();
+  const sub = baseSub({ format: 'video' });
+  const withSubs = args.buildYtdlpDownloadArgs(sub, config, ['vid1']);
+  const withoutSubs = args.buildYtdlpDownloadArgs(sub, config, ['vid1'], { skipSubtitles: true });
+  // Removing exactly the 8-element subtitle group from the normal argv must
+  // reproduce the skipSubtitles argv exactly. This is what proves the flag is a
+  // pure subtraction and cannot quietly alter format/output/archive behavior.
+  const expected = withSubs.filter((el, i) => {
+    const group = withSubs.slice(i - 1, i + 1);
+    return !(SUBTITLE_FLAGS.includes(el) || SUBTITLE_FLAGS.includes(group[0]));
+  });
+  assert.deepEqual(withoutSubs, expected);
+});
+
+test('buildYtdlpDownloadArgs: skipSubtitles fails CLOSED -- only a strict `true` strips captions', () => {
+  const config = makeConfig();
+  // A bare/forged/partial opts object (or a truthy-but-not-true value from a
+  // future caller) must never silently strip captions from every download.
+  for (const notTrue of [undefined, null, false, 0, '', 'true', 1, {}]) {
+    const result = args.buildYtdlpDownloadArgs(baseSub(), config, ['vid1'], { skipSubtitles: notTrue });
+    assert.ok(
+      result.includes('--write-subs'),
+      `skipSubtitles=${JSON.stringify(notTrue)} must keep subtitles (fail closed)`,
+    );
+  }
+  // Omitting opts entirely is the pre-v1.47.4 behavior, unchanged.
+  assert.ok(args.buildYtdlpDownloadArgs(baseSub(), config, ['vid1']).includes('--write-subs'));
+});
+
+test('buildYtdlpDownloadArgs: skipSubtitles does NOT drop skip=translated_subs (L1 and L2 are independent layers)', () => {
+  const config = makeConfig();
+  const result = args.buildYtdlpDownloadArgs(baseSub(), config, ['vid1'], { skipSubtitles: true });
+  assert.equal(result[result.indexOf('--extractor-args') + 1], 'youtube:skip=translated_subs');
+});
+
 // ---- C1: per-survivor watch-URL targeting (structural download scoping) --
 
 test('buildYtdlpDownloadArgs: maps multiple targetIds to their own watch?v= URLs, ONE spawn, N positional URLs', () => {
@@ -1261,7 +1322,13 @@ test('buildYtdlpDownloadArgs: default config emits the four pacing flags, in ord
     '--max-sleep-interval', '5',
     '--retries', '5',
   ]);
-  assert.ok(!result.includes('--extractor-args'), 'player_client is unset by default -- flag must be absent');
+  // v1.47.4 item 1: --extractor-args is now emitted UNCONDITIONALLY (it always
+  // carries skip=translated_subs), so its absence is no longer the
+  // player_client-unset signal. The unset signal is that the emitted value
+  // contains NO player_client segment.
+  const extractorIdx = result.indexOf('--extractor-args');
+  assert.ok(extractorIdx >= 0, 'skip=translated_subs makes --extractor-args unconditional');
+  assert.equal(result[extractorIdx + 1], 'youtube:skip=translated_subs');
   const sepIdx = result.indexOf('--');
   assert.ok(noWarningsIdx + 11 <= sepIdx, 'pacing flags must land well before the "--" separator');
 });
@@ -1284,22 +1351,53 @@ test('buildYtdlpDownloadArgs: an out-of-bounds/invalid pacing value on a bare/pa
   assert.equal(result[result.indexOf('--max-sleep-interval') + 1], '5');
 });
 
-test('buildYtdlpDownloadArgs: --extractor-args youtube:player_client=<value> is emitted as two argv elements ONLY when config.playerClient is a set string (R3b.3)', () => {
+test('buildYtdlpDownloadArgs: the player_client segment is present ONLY when config.playerClient is a set string (R3b.3)', () => {
   const withoutClient = args.buildYtdlpDownloadArgs(baseSub(), makeConfig(), ['vid1']);
-  assert.ok(!withoutClient.includes('--extractor-args'));
+  const withoutIdx = withoutClient.indexOf('--extractor-args');
+  assert.ok(withoutIdx >= 0);
+  assert.ok(!withoutClient[withoutIdx + 1].includes('player_client'), 'unset playerClient must contribute no segment');
 
   const withClient = args.buildYtdlpDownloadArgs(baseSub(), makeConfig({ playerClient: 'android,web' }), ['vid1']);
   const idx = withClient.indexOf('--extractor-args');
   assert.ok(idx >= 0);
-  assert.equal(withClient[idx + 1], 'youtube:player_client=android,web');
+  assert.equal(withClient[idx + 1], 'youtube:skip=translated_subs;player_client=android,web');
   // Both are their own array elements -- never concatenated into one token.
   assert.ok(!withClient.some((el) => el.includes('--extractor-argsyoutube')));
+});
+
+// v1.47.4 item 1 -- REGRESSION LOCK, the whole reason skip= and player_client
+// share one argv element. yt-dlp parses --extractor-args with append=False
+// (options.py:1927-1934), so a SECOND `--extractor-args youtube:...` element
+// REPLACES the first instead of merging. Verified against the real parser:
+//   two flags -> {'youtube': {'skip': [...]}}                  (player_client GONE)
+//   one flag  -> {'youtube': {'skip': [...], 'player_client': [...]}}
+// Emitting two would therefore SILENTLY disable the v1.31 bot-check
+// player_client mitigation for every operator who configured it -- nothing
+// would error, downloads would just start failing bot checks again. This test
+// fails the moment anyone "tidies" this back into two separate flags.
+test('buildYtdlpDownloadArgs: skip=translated_subs and player_client share ONE --extractor-args element (a second would silently overwrite the first)', () => {
+  const result = args.buildYtdlpDownloadArgs(baseSub(), makeConfig({ playerClient: 'android' }), ['vid1']);
+  const occurrences = result.filter((el) => el === '--extractor-args').length;
+  assert.equal(occurrences, 1, 'exactly one --extractor-args flag, never two for the same extractor key');
+  const value = result[result.indexOf('--extractor-args') + 1];
+  assert.ok(value.includes('skip=translated_subs'), 'skip must survive');
+  assert.ok(value.includes('player_client=android'), 'player_client must survive alongside it');
+  assert.ok(value.startsWith('youtube:'), 'both settings scoped to the youtube extractor');
+  // Semicolon is the separator yt-dlp splits on; a comma would make the whole
+  // thing one malformed key.
+  assert.equal(value, 'youtube:skip=translated_subs;player_client=android');
 });
 
 test('buildYtdlpDownloadArgs: player_client is omitted when config.playerClient is null/missing/non-string (fail-safe, never a stray flag)', () => {
   for (const bad of [null, undefined, '', 42, {}]) {
     const result = args.buildYtdlpDownloadArgs(baseSub(), makeConfig({ playerClient: bad }), ['vid1']);
-    assert.ok(!result.includes('--extractor-args'), `playerClient=${JSON.stringify(bad)} must omit the flag`);
+    // v1.47.4: the flag itself is now unconditional (skip=translated_subs), so
+    // the fail-safe assertion is that no player_client SEGMENT is contributed.
+    assert.equal(
+      result[result.indexOf('--extractor-args') + 1],
+      'youtube:skip=translated_subs',
+      `playerClient=${JSON.stringify(bad)} must contribute no player_client segment`,
+    );
   }
 });
 
@@ -1324,9 +1422,10 @@ test('GF1 F2: buildYtdlpDownloadArgs REJECTS an invalid playerClient reaching ar
   ];
   for (const hostile of hostileValues) {
     const result = args.buildYtdlpDownloadArgs(baseSub(), makeConfig({ playerClient: hostile }), ['vid1']);
-    assert.ok(
-      !result.includes('--extractor-args'),
-      `playerClient=${JSON.stringify(hostile)} must be rejected at the args.js boundary and omit the flag`,
+    assert.equal(
+      result[result.indexOf('--extractor-args') + 1],
+      'youtube:skip=translated_subs',
+      `playerClient=${JSON.stringify(hostile)} must be rejected at the args.js boundary, leaving only the skip segment`,
     );
     assert.ok(
       !result.some((el) => el.includes(hostile)),
@@ -1339,7 +1438,7 @@ test('GF1 F2: a VALID playerClient still emits the two-element --extractor-args 
   const result = args.buildYtdlpDownloadArgs(baseSub(), makeConfig({ playerClient: 'ios,web' }), ['vid1']);
   const idx = result.indexOf('--extractor-args');
   assert.ok(idx >= 0);
-  assert.equal(result[idx + 1], 'youtube:player_client=ios,web');
+  assert.equal(result[idx + 1], 'youtube:skip=translated_subs;player_client=ios,web');
 });
 
 test('buildYtdlpListArgs: emits ONLY the list-relevant pacing flags (--sleep-requests/--retries) with defaults, omitting sleep-interval/max-sleep-interval/player_client (AC6.1)', () => {
@@ -1395,6 +1494,15 @@ test('AC6.3: buildYtdlpDownloadArgs argv is byte-identical to the pre-T3(b) shap
     '--sleep-interval', '2',
     '--max-sleep-interval', '5',
     '--retries', '5',
+    // v1.47.4 item 1: DELIBERATE lock update. `skip=translated_subs` suppresses
+    // YouTube's synthetic `<target>-<source>` translated caption keys (e.g.
+    // `en-en-US`), which our regex-matched `--sub-langs en.*` would otherwise
+    // pull in; a 429 on that redundant track aborted the ENTIRE video download,
+    // because yt-dlp writes subtitles before it fetches media and raises
+    // DownloadError on a subtitle error. Shares ONE argv element with
+    // player_client because a second --extractor-args for the same extractor
+    // key silently replaces the first (see the dedicated regression test).
+    '--extractor-args', 'youtube:skip=translated_subs',
     // cookiesArgs(config) contributes nothing -- no cookiesFile configured.
     '--print', args.CHANNEL_META_PRINT_TEMPLATE,
     '-o', outputTemplate,
@@ -1458,6 +1566,11 @@ test('resiliencePacingArgs: pure -- never throws for a missing/malformed config,
       '--sleep-interval', '2',
       '--max-sleep-interval', '5',
       '--retries', '5',
+      // v1.47.4 item 1: unconditional, and it must survive even a
+      // bare/malformed config -- a config that fails to parse must still
+      // suppress the translated-caption track that aborts downloads, since
+      // that failure mode has nothing to do with operator configuration.
+      '--extractor-args', 'youtube:skip=translated_subs',
     ]);
     assert.doesNotThrow(() => args.resiliencePacingArgs(bad, { listOnly: true }));
     assert.deepEqual(args.resiliencePacingArgs(bad, { listOnly: true }), ['--socket-timeout', '15', '--sleep-requests', '1', '--retries', '5']);

@@ -385,3 +385,66 @@ test('pickStderrReason: a pathological long / control-char-laden ERROR line yiel
 test('pickStderrReason: trims surrounding whitespace off the selected line', () => {
   assert.equal(pickStderrReason('   ERROR: [youtube] x: padded   \n'), 'ERROR: [youtube] x: padded');
 });
+
+// ---- v1.47.4 item 1 (L2): the subtitle-fallback retry decision -------------
+//
+// Root cause this guards (verified against yt-dlp 2026.07.04 source, not docs):
+// yt-dlp writes subtitles BEFORE it downloads the media (YoutubeDL.py:3392 vs
+// 3536) and raises DownloadError on a subtitle error under our effective
+// ignoreerrors='only_download' (YoutubeDL.py:4498-4501). So a single failed
+// caption fetch -- e.g. the HTTP 429 Dean hit on the redundant `en-en-US`
+// translated track -- aborted the ENTIRE download with no media file written.
+// `runDownload` now retries once with subtitles stripped; this is the pure
+// decision function that gates that retry.
+
+const { shouldRetryWithoutSubtitles } = require('../../lib/ytdlp/run');
+
+const subtitleFailure = { videoId: 'vid1', reason: 'Unable to download video subtitles for \'en-en-US\': HTTP Error 429: Too Many Requests', subtitleOnly: true };
+const structuralFailure = { videoId: 'vid2', reason: 'Video unavailable', subtitleOnly: undefined };
+
+test('shouldRetryWithoutSubtitles: retries a real yt-dlp exit whose failures are subtitle-attributed', () => {
+  assert.equal(shouldRetryWithoutSubtitles({ ok: false, code: 1, itemFailures: [subtitleFailure] }), true);
+});
+
+test('shouldRetryWithoutSubtitles: retries a MIXED batch -- one rescuable subtitle failure is enough', () => {
+  // Deliberately `.some`, not `.every`: in a batch where vid1 died on subtitles
+  // and vid2 is genuinely unavailable, the retry still rescues vid1 while vid2
+  // fails again structurally. Abandoning both would be strictly worse.
+  assert.equal(
+    shouldRetryWithoutSubtitles({ ok: false, code: 1, itemFailures: [structuralFailure, subtitleFailure] }),
+    true,
+  );
+});
+
+test('shouldRetryWithoutSubtitles: never retries a purely structural failure', () => {
+  assert.equal(shouldRetryWithoutSubtitles({ ok: false, code: 1, itemFailures: [structuralFailure] }), false);
+  assert.equal(shouldRetryWithoutSubtitles({ ok: false, code: 1, itemFailures: [] }), false);
+});
+
+test('shouldRetryWithoutSubtitles: never retries a successful download', () => {
+  assert.equal(shouldRetryWithoutSubtitles({ ok: true, code: 0, itemFailures: [subtitleFailure] }), false);
+});
+
+// THE LOAD-BEARING GUARD. `spawnYtdlpDownload` signals our OWN interventions
+// with NON-NUMERIC codes: 'ETIMEDOUT' (absolute ceiling), 'ESTALLED' (idle
+// watchdog), and null (spawn error, or a child we killed -- which is how job
+// CANCELLATION lands here). Retrying any of those would re-spawn work that a
+// user or a watchdog just deliberately stopped, and a cancelled job would
+// resurrect itself. A non-numeric code must never retry regardless of what the
+// stderr happened to contain.
+test('shouldRetryWithoutSubtitles: never retries a cancelled/timed-out/stalled run, even with subtitle failures present', () => {
+  for (const code of ['ETIMEDOUT', 'ESTALLED', null, undefined, '1']) {
+    assert.equal(
+      shouldRetryWithoutSubtitles({ ok: false, code, itemFailures: [subtitleFailure] }),
+      false,
+      `code=${JSON.stringify(code)} is not a genuine yt-dlp exit and must never retry`,
+    );
+  }
+});
+
+test('shouldRetryWithoutSubtitles: never throws on a malformed/partial result', () => {
+  for (const bad of [undefined, null, {}, [], 'a string', 42, { ok: false, code: 1 }, { ok: false, code: 1, itemFailures: null }, { ok: false, code: 1, itemFailures: [null, undefined] }]) {
+    assert.doesNotThrow(() => shouldRetryWithoutSubtitles(bad));
+    assert.equal(shouldRetryWithoutSubtitles(bad), false, `${JSON.stringify(bad)} must fail closed`);
+  }
+});
