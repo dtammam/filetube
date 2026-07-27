@@ -4734,6 +4734,21 @@ if (typeof module !== 'undefined' && module.exports) {
       var el = document.activeElement;
       var tag = (el && el.tagName) || '';
       if (['INPUT', 'TEXTAREA', 'BUTTON', 'SELECT', 'A'].indexOf(tag) !== -1 || (el && el.isContentEditable)) return;
+      // v1.47.8 gate: stand down while the keyboard-shortcuts reference is open.
+      // The BUTTON check above only covers the case where the dialog's close
+      // control still holds focus -- clicking the dialog's TEXT (to scroll a
+      // list that now overflows on a laptop) moves focus to <body>, and every
+      // key then drove the media behind the dialog. Verified: Space paused the
+      // video, ArrowDown dropped the volume while scrolling, and `0` -- pressed
+      // while reading the "0 … 9 Jump to 0% - 90%" row, which is exactly what a
+      // reference invites -- seeked to 0% AND wrote that position to the server
+      // via saveProgressToServer. A help screen must not mutate persisted state.
+      // Mirrors the identical guard in read.js's page-flip handler.
+      // Reached via `window` (not as a bare identifier): `typeof x` on an
+      // undeclared name is runtime-safe but trips eslint's no-undef, and this
+      // file is loaded both in a browser and by node:test.
+      if (typeof window !== 'undefined' && typeof window.isShortcutsModalOpen === 'function'
+        && window.isShortcutsModalOpen()) return;
       if (awaitingTranscode) return;
       // v1.41.11 (Dean): the switch below mirrors YouTube's core shortcut
       // set. Arrow seeks moved from SKIP_SECONDS (15s) to YouTube's 5s --

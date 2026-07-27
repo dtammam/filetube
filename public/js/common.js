@@ -3183,6 +3183,328 @@ function wireTouchTargetDebug() {
   return true;
 }
 
+// ---- v1.47.8: keyboard shortcuts reference (Dean) --------------------------
+//
+// Dean: "Can we make a keyboard shortcuts page/modal? ... We can mirror
+// YouTube's or other modern apps'. Ignore/not display on mobile viewport. Keep
+// it simple."
+//
+// THE ONE RULE THIS FEATURE LIVES OR DIES BY: every row below documents a
+// shortcut that ACTUALLY EXISTS in this codebase. A reference that lists keys
+// which do nothing is worse than no reference at all -- it converts "I don't
+// know the shortcut" into "the app is broken". So this list was written by
+// reading the real handlers (player.js's keydown switch and read.js's), not by
+// copying YouTube's published set, and `keyboard-shortcuts.test.js` asserts
+// every listed key against those handlers so the two cannot drift.
+//
+// Deliberately NOT listed: Esc. It is a modal affordance rather than an app
+// shortcut: the dialogs that handle it (the one-off download modal, the
+// subscribe modal, the expanded cover art, the sort menu, and this one) close
+// on it, while several others (the move modal, the hard-delete confirm, the
+// playlists sheet) do not -- so documenting it in a PLAYBACK reference would
+// invite the question of what it closes and when.
+//
+// Esc is NOT "universal" in this app, and an earlier version of this comment
+// said it was (gate S12(c) -- and I wrongly reported that corrected once
+// already, which is how it survived to a second review). Since v1.47.8 this
+// dialog's own Esc is PRIVILEGED: `wireKeyboardShortcutsHelp` binds in the
+// CAPTURE phase and calls stopImmediatePropagation while the dialog is open,
+// specifically so one Esc cannot also close the subscribe modal, the one-off
+// download modal, and the expanded cover art underneath it. With no dialog
+// open, Esc behaves exactly as it always has.
+const KEYBOARD_SHORTCUT_GROUPS = [
+  {
+    title: 'Playback',
+    items: [
+      { keys: ['K', 'Space'], desc: 'Play / pause' },
+      { keys: ['J'], desc: 'Back 10 seconds' },
+      { keys: ['L'], desc: 'Forward 10 seconds' },
+      { keys: ['←'], desc: 'Back 5 seconds' },
+      { keys: ['→'], desc: 'Forward 5 seconds' },
+      { keys: ['0', '…', '9'], desc: 'Jump to 0% - 90% of the item' },
+      { keys: ['<'], desc: 'Slow down' },
+      { keys: ['>'], desc: 'Speed up' },
+    ],
+  },
+  {
+    title: 'Sound & display',
+    items: [
+      { keys: ['↑'], desc: 'Volume up' },
+      { keys: ['↓'], desc: 'Volume down' },
+      // v1.47.8 gate W4: M exists (player.js `case 'm'`) and was missing here.
+      // YouTube documents it, and omitting it from the group that lists the
+      // volume keys is the most conspicuous possible place to omit it.
+      { keys: ['M'], desc: 'Mute / unmute' },
+      { keys: ['F'], desc: 'Fullscreen (audio: expand the cover art)' },
+      { keys: ['C'], desc: 'Toggle captions (when the item has them)' },
+    ],
+  },
+  {
+    title: 'Moving around',
+    items: [
+      // v1.47.8 gate W8: these drive whatever prev/next the current view
+      // registered -- the next ITEM on a watch page, the next CHAPTER in the
+      // reader -- and a watch page with no prev/next context registers nothing
+      // at all. "Next item" alone was wrong in two of those three cases.
+      { keys: ['Shift', 'N'], desc: 'Next item (next chapter while reading)' },
+      { keys: ['Shift', 'P'], desc: 'Previous item (previous chapter while reading)' },
+      { keys: ['?'], desc: 'Show this list' },
+    ],
+  },
+  {
+    title: 'Reading (books)',
+    items: [
+      { keys: ['←'], desc: 'Previous page' },
+      { keys: ['→'], desc: 'Next page' },
+    ],
+  },
+];
+
+// The width at which this app considers itself "mobile" -- the SAME 768px the
+// stylesheet's phone breakpoint uses. Dean asked for the reference to be absent
+// on mobile, where there is no keyboard to speak of.
+const SHORTCUTS_DESKTOP_QUERY = '(min-width: 769px)';
+
+/**
+ * Pure: is this a desktop-sized viewport? A browser without matchMedia (or one
+ * that throws on it) is treated as desktop -- the reference is informational,
+ * so failing toward "show it" costs a stray dialog at worst, while failing the
+ * other way would silently remove the feature on machines that do have a
+ * keyboard.
+ */
+function isDesktopViewport() {
+  if (typeof window === 'undefined') return false;
+  try {
+    if (typeof window.matchMedia !== 'function') return true;
+    return window.matchMedia(SHORTCUTS_DESKTOP_QUERY).matches;
+  } catch (_) {
+    return true;
+  }
+}
+
+/**
+ * Pure: should this keydown open the shortcuts reference? `?` (Shift+/ on most
+ * layouts) mirrors YouTube. Never while typing, never with a modifier that
+ * would make it a browser/OS command.
+ */
+function shouldOpenShortcuts(e, activeTag, isEditable) {
+  if (!e || e.key !== '?') return false;
+  if (e.ctrlKey || e.metaKey || e.altKey) return false;
+  if (isEditable) return false;
+  return ['INPUT', 'TEXTAREA', 'SELECT'].indexOf(String(activeTag || '').toUpperCase()) === -1;
+}
+
+/**
+ * Build the reference dialog. Reuses the EXISTING `.oneoff-modal-backdrop` /
+ * `.oneoff-modal` classes rather than inventing a second modal treatment.
+ *
+ * What actually keeps this from becoming the v1.17.0 full-viewport touch-eater
+ * is `closeShortcutsModal`'s `backdrop.remove()` -- NOT the
+ * `.oneoff-modal-backdrop[hidden]` rule, which an earlier version of this
+ * comment credited (gate S12). That rule only matters to code that sets
+ * `.hidden`, and this dialog never does; it is irrelevant here.
+ */
+function buildShortcutsModal(doc, handlers) {
+  const d = doc || document;
+  const onClose = handlers && typeof handlers.onClose === 'function' ? handlers.onClose : null;
+
+  const backdrop = d.createElement('div');
+  backdrop.className = 'oneoff-modal-backdrop';
+  backdrop.addEventListener('click', (e) => {
+    if (e && e.target === backdrop && onClose) onClose();
+  });
+
+  const modal = d.createElement('div');
+  modal.className = 'oneoff-modal shortcuts-modal';
+  modal.setAttribute('role', 'dialog');
+  modal.setAttribute('aria-modal', 'true');
+  modal.setAttribute('aria-label', 'Keyboard shortcuts');
+
+  const header = d.createElement('div');
+  header.className = 'oneoff-modal-header';
+  const title = d.createElement('h3');
+  title.textContent = 'Keyboard shortcuts';
+  header.appendChild(title);
+  const closeBtn = d.createElement('button');
+  closeBtn.type = 'button';
+  closeBtn.className = 'oneoff-modal-close';
+  closeBtn.setAttribute('aria-label', 'Close');
+  closeBtn.textContent = '×';
+  if (onClose) closeBtn.addEventListener('click', onClose);
+  header.appendChild(closeBtn);
+  modal.appendChild(header);
+
+  KEYBOARD_SHORTCUT_GROUPS.forEach((group) => {
+    const section = d.createElement('div');
+    section.className = 'shortcuts-group';
+    const heading = d.createElement('div');
+    heading.className = 'shortcuts-group-title';
+    heading.textContent = group.title;
+    section.appendChild(heading);
+
+    group.items.forEach((item) => {
+      const row = d.createElement('div');
+      row.className = 'shortcuts-row';
+      const keysEl = d.createElement('div');
+      keysEl.className = 'shortcuts-keys';
+      item.keys.forEach((key) => {
+        // A separator (the "…" between 0 and 9) is plain text, not a key cap --
+        // rendering it as one would imply a key that does not exist.
+        if (key === '…') {
+          keysEl.appendChild(d.createTextNode(' … '));
+          return;
+        }
+        const kbd = d.createElement('kbd');
+        kbd.textContent = key;
+        keysEl.appendChild(kbd);
+      });
+      row.appendChild(keysEl);
+      const descEl = d.createElement('div');
+      descEl.className = 'shortcuts-desc';
+      descEl.textContent = item.desc;
+      row.appendChild(descEl);
+      section.appendChild(row);
+    });
+    modal.appendChild(section);
+  });
+
+  // v1.47.8 gate CRITICAL 1 + WARNING 3: the original one-liner ("while a video
+  // or track is open and you are not typing in a field") was FALSE in two
+  // common situations, which is the precise failure this feature exists to
+  // avoid -- it would have taught the user the app was broken:
+  //
+  //   1. player.js's handler returns immediately unless `state === STATE_FULL`.
+  //      A track playing in the MINI-PLAYER is docked, so on /music -- a
+  //      first-class library since v1.44 -- every playback key listed above is
+  //      inert while a track is very much "open" and nothing is being typed.
+  //      Same after starting a video and navigating away from /watch.
+  //   2. the handler also bails when a BUTTON, A, INPUT, TEXTAREA or SELECT has
+  //      focus. Clicking any control outside the player (Delete, a sidebar
+  //      link) leaves it focused, so the keys go quiet -- and Space re-fires
+  //      that button instead.
+  //
+  // Both are pre-existing player behavior, not something this dialog
+  // introduced. The dialog's job is to describe them honestly.
+  const note = d.createElement('div');
+  note.className = 'shortcuts-note';
+  note.textContent = 'Playback keys apply to the full player on a watch or reading page - '
+    + 'the mini-player at the bottom does not take keyboard input. They also pause while you '
+    + 'are typing, or while a button or link has focus (click the video to hand focus back).';
+  modal.appendChild(note);
+
+  backdrop.appendChild(modal);
+  return { backdrop, modal, closeBtn };
+}
+
+// The live dialog, or null. Module-level so `?` cannot stack two of them.
+let shortcutsModalState = null;
+
+/**
+ * Is the reference currently on screen? Exposed so OTHER document-level key
+ * handlers can stand down while it is open -- read.js's page-flip arrows in
+ * particular, which deliberately allow BUTTON focus through and would otherwise
+ * turn pages behind the dialog (gate W7). Checks `isConnected` rather than the
+ * bare state so a stranded reference can never wedge those handlers off.
+ */
+function isShortcutsModalOpen() {
+  return Boolean(shortcutsModalState && shortcutsModalState.backdrop.isConnected);
+}
+
+function closeShortcutsModal() {
+  if (!shortcutsModalState) return;
+  // REMOVED from the DOM, not hidden -- the v1.17.0 lesson: a modal backdrop
+  // left in the tree with an author `display` is a full-viewport, invisible
+  // touch/click eater.
+  shortcutsModalState.backdrop.remove();
+  shortcutsModalState = null;
+}
+
+function openShortcutsModal() {
+  if (typeof document === 'undefined' || !document.body) return;
+  // v1.47.8 gate S9: re-check that the tracked backdrop is still IN the
+  // document. If anything ever removed it without going through
+  // closeShortcutsModal, the stale non-null state would make `?` a permanent
+  // no-op for the rest of the session. Nothing does that today -- this is the
+  // v1.45.8 isConnected lesson applied as one line of insurance rather than a
+  // fix for a live bug.
+  if (shortcutsModalState) {
+    if (shortcutsModalState.backdrop.isConnected) return; // genuinely open -- never stack
+    shortcutsModalState = null; // stranded -- recover instead of dying quietly
+  }
+  shortcutsModalState = buildShortcutsModal(document, { onClose: closeShortcutsModal });
+  // v1.47.8 gate S10: while a video is in NATIVE fullscreen, only the
+  // fullscreen element's subtree renders -- appending to body would create an
+  // invisible dialog that then swallows `?` (state set, nothing on screen).
+  // The fullscreen element is the correct host in that case.
+  const host = document.fullscreenElement || document.body;
+  host.appendChild(shortcutsModalState.backdrop);
+  // Focus the close control so Tab/Esc land somewhere sensible and the dialog
+  // is reachable without a mouse -- it is a keyboard feature, after all.
+  if (shortcutsModalState.closeBtn && typeof shortcutsModalState.closeBtn.focus === 'function') {
+    shortcutsModalState.closeBtn.focus();
+  }
+}
+
+/**
+ * Wire the `?` trigger + Esc, once per document. Desktop only, re-checked at
+ * EVENT time rather than at boot: a laptop can be resized (or rotated into a
+ * narrow window) long after load, and a boot-time check would strand whichever
+ * answer it happened to see. Same reasoning as the pinch-zoom suppression.
+ */
+function wireKeyboardShortcutsHelp() {
+  if (typeof document === 'undefined') return;
+  // v1.47.8 gate CRITICAL 2: bound with `capture: true`, and the Escape branch
+  // calls stopImmediatePropagation.
+  //
+  // THE BUG: this app has four independent document-level Escape listeners --
+  // this dialog, the one-off download modal, watch.js's subscribe modal, and
+  // player.js's audio-expand exit. None of them stop propagation, so ONE Escape
+  // fired all of them. Proven: with the shortcuts dialog open, a single Escape
+  // closed the dialog AND the subscribe modal AND the one-off modal AND
+  // collapsed the expanded cover art.
+  //
+  // The worst case is data loss: open the one-off download modal, paste a long
+  // URL, click the modal body (focus leaves the input, so `?` is allowed),
+  // press `?` then Escape -- the download modal closes too and the pasted URL
+  // is gone.
+  //
+  // CAPTURE, not bubble, and the distinction is load-bearing:
+  // stopImmediatePropagation only suppresses listeners that have not run yet,
+  // and listener order on `document` is not ours to control (the one-off
+  // modal's handler is registered inside a fetch().then(), i.e. after boot).
+  // A real key event targets the focused element, so a document CAPTURE
+  // listener provably runs before every bubble listener on document and can
+  // suppress the remainder of the dispatch.
+  //
+  // Scoped tightly: propagation is stopped ONLY when this dialog is actually
+  // open. Escape with no dialog behaves exactly as it always has.
+  // v1.47.8 gate S10 follow-up: appending to `document.fullscreenElement`
+  // parents the backdrop inside `#player-wrapper`, which the player REPARENTS
+  // on every mount/dock. If the dialog outlived fullscreen, a later dock would
+  // drag it into `#player-dock` -- `position: fixed; z-index: 950;
+  // overflow: hidden`, i.e. a stacking context, so the backdrop's 2100 would be
+  // re-resolved inside 950 and paint under toasts. Closing on fullscreen exit
+  // removes the whole scenario rather than reasoning about who wins.
+  document.addEventListener('fullscreenchange', () => {
+    if (!document.fullscreenElement) closeShortcutsModal();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && shortcutsModalState) {
+      e.stopImmediatePropagation();
+      e.preventDefault();
+      closeShortcutsModal();
+      return;
+    }
+    if (!isDesktopViewport()) return;
+    const el = document.activeElement;
+    const tag = (el && el.tagName) || '';
+    const editable = Boolean(el && el.isContentEditable);
+    if (!shouldOpenShortcuts(e, tag, editable)) return;
+    e.preventDefault();
+    openShortcutsModal();
+  }, true);
+}
+
 // Pure decision: should a plain `<a>` click be intercepted for an in-app swap
 // instead of a normal browser navigation? Exported for node:test so every
 // branch (modifier keys, target=_blank, cross-origin, unknown route) is
@@ -7042,6 +7364,10 @@ document.addEventListener('DOMContentLoaded', () => {
   wireShellSingletonDebug();
   // v1.47.4 item 5: same opt-in posture (?debugTouch=1), inert otherwise.
   wireTouchTargetDebug();
+  // v1.47.8: the `?` keyboard-shortcuts reference. Bound on every page (the
+  // shortcuts themselves are app-wide); the desktop check happens at EVENT
+  // time, not here.
+  wireKeyboardShortcutsHelp();
 
   // Optional yt-dlp subscriptions nav-link capability probe (D4, T5). Runs on
   // every page (not just inside the `bottomNav` guard below) since it also
@@ -7176,6 +7502,13 @@ if (typeof module !== 'undefined' && module.exports) {
     describeTouchTarget,
     // v1.47.4 item 6: the pure session-restore decisions.
     isRestorableSessionUrl, shouldRestoreSession, LAST_SESSION_KEY, LAST_SESSION_MAX_AGE_MS,
+    // v1.47.8: the keyboard-shortcuts reference.
+    KEYBOARD_SHORTCUT_GROUPS, shouldOpenShortcuts, buildShortcutsModal,
+    openShortcutsModal, closeShortcutsModal, isDesktopViewport, SHORTCUTS_DESKTOP_QUERY,
+    // Consumed cross-file via `window` (read.js stands its page-flip arrows
+    // down while the dialog is open), so it is exported here too rather than
+    // reading as an unused local.
+    isShortcutsModalOpen,
     shouldDockOnTransition, isSameLocationNav, toPathAndQuery, isStaleNavGeneration,
     // v1.45.0 (T2): incremental-pop Home helpers.
     nextHistoryDepth, resolveHomeButtonAction, isHomeRootTarget,

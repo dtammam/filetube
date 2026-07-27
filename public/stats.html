@@ -146,6 +146,22 @@
         </div>
       </div>
 
+      <!-- v1.47.8: the keyboard-shortcuts reference's discoverable entry point.
+           It lives HERE, on the existing About/inventory hub, rather than being
+           injected into the sidebar of all nine shells -- one static element in
+           one file, so it cannot repeat the nav-injector idempotency class that
+           v1.47.4 had to fix. `?` opens the same dialog from anywhere.
+           `.shortcuts-entry` is display:none at the phone breakpoint (Dean:
+           "Ignore/not display on mobile viewport"). -->
+      <div class="setup-box shortcuts-entry">
+        <h2>Keyboard shortcuts</h2>
+        <p>
+          FileTube mirrors the shortcuts you already know from YouTube -- space to
+          play/pause, J/L to jump, arrows to seek, and so on.
+        </p>
+        <button type="button" class="btn" id="show-shortcuts-btn">Show keyboard shortcuts</button>
+      </div>
+
       <div class="setup-box">
         <h2>By type</h2>
         <div class="theme-picker" id="stats-by-type">
