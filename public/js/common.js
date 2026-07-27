@@ -3811,6 +3811,14 @@ function refreshAllPinSurfaces() {
     // keeps the disabled-module nothing-at-all posture).
     const ytdlpEnabled = Boolean(document.querySelector('[data-nav="subscriptions"]'));
     renderPinnedPlaylists(pins, ytdlpEnabled);
+    // v1.47.4 item 9: keep the sheet's zero-shift cache coherent. Without this,
+    // unpinning something would leave the removed pin in the cache, and the
+    // next open would paint it from cache and then visibly drop it once the
+    // network answered -- reintroducing the exact shift item 9 removes, on the
+    // one flow most likely to trigger it.
+    if (playlistsSheetCache) {
+      playlistsSheetCache = { ...playlistsSheetCache, pins, moduleEnabled: ytdlpEnabled };
+    }
   });
 }
 
@@ -4348,6 +4356,61 @@ function closeOverlayThen(el, openClass, afterClose) {
   el.classList.remove(openClass);
 }
 
+// ---- v1.47.4 item 9 (Dean): the Playlists sheet's late pin shift -----------
+//
+// Dean: "When I open the phone and then click Playlists after about a half a
+// sec all of the pins then load shifting everything up. It's like a FOUC but
+// not exactly."
+//
+// It isn't a FOUC -- it is a layout shift with two stacked causes:
+//
+//   1. SERIALIZED FETCHES. The pins request was chained to run only AFTER
+//      /api/config resolved, so the sheet's content arrived in two waves, one
+//      network round-trip apart. The chaining existed for a real reason (see
+//      below), but the reason was a RENDER-ORDER constraint, not a data
+//      dependency -- the two requests never needed to be sequential.
+//   2. A BOTTOM-ANCHORED SHEET. The sheet is anchored to the bottom of the
+//      viewport, so appending the pinned section grows it UPWARD. That is
+//      exactly Dean's "shifting everything up": each late wave of content
+//      pushes everything already on screen up the screen.
+//
+// The original chaining note, preserved because the constraint it describes is
+// still real: `renderPlaylistsSheet` assigns `list.innerHTML` WHOLESALE, so it
+// would wipe an already-appended pinned section if the pins arrived first.
+// That is now handled by rendering both in ONE ordered pass instead of by
+// delaying the network request.
+//
+// A 404 on the pins endpoint (module disabled) resolves to `[]`, preserving the
+// disabled-module no-op guarantee -- never logs/throws on a 404. And per
+// v1.26.3 (Item 2), `moduleEnabled` is captured from the response's OWN `r.ok`
+// BEFORE the body is read, which is what lets `renderPinnedPlaylists` show
+// "No playlists pinned yet." for a genuine zero-pins case without also showing
+// it when the module is simply disabled (both otherwise resolve to `[]`). A
+// network-level failure leaves it `false` -- the conservative "render nothing".
+
+// Last successfully-rendered sheet payload, so a REOPEN paints its final
+// content synchronously and therefore at its final height -- zero shift in the
+// common case (Dean opens this repeatedly in a session). Null until the first
+// successful load; a stale-but-correct-height render is strictly better than
+// an empty sheet that jumps once the network answers.
+let playlistsSheetCache = null;
+
+// Guards against an out-of-order render when the sheet is closed and reopened
+// while a previous open's fetches are still in flight: only the newest open may
+// paint. Without this, a slow first response could overwrite a newer one.
+let playlistsSheetGeneration = 0;
+
+/**
+ * Render the whole sheet body in ONE ordered pass: folders first (wholesale
+ * innerHTML), pinned section appended after. Doing both together is what makes
+ * the sheet reach its final height in a single layout, which is the entire
+ * point of item 9 -- callers must never render just one half.
+ */
+function renderPlaylistsSheetContent(snapshot) {
+  renderPlaylistsSheet(snapshot.folders, snapshot.folderSettings);
+  renderPinnedPlaylists(snapshot.pins, snapshot.moduleEnabled);
+}
+
 // Lazily fetches /api/config on first open, populates the sheet, then reveals
 // it. Feature-detects its own elements so it's safe to call on any page.
 function openPlaylistsSheet() {
@@ -4356,38 +4419,41 @@ function openPlaylistsSheet() {
   if (!backdrop || !sheet) return;
   openOverlay(backdrop, 'sheet-open');
   openOverlay(sheet, 'sheet-open');
-  // Fetch fresh on every open — /api/config is tiny, and this avoids showing a
-  // stale folder list if the library changed during the session.
-  const foldersRendered = fetch('/api/config')
-    .then((r) => r.json())
-    .then((data) => renderPlaylistsSheet(data.folders || [], data.folderSettings || {}))
-    .catch(() => {
-      const list = document.getElementById('playlists-sheet-list');
-      if (list) list.innerHTML = '<div class="sidebar-item">Failed to load folders.</div>';
-    });
 
-  // v1.21.0 FR-5: pinned channel playlists are a SEPARATE fetch against the
-  // module's own gated store, chained AFTER `foldersRendered` resolves --
-  // `renderPlaylistsSheet` assigns `list.innerHTML` wholesale, which would
-  // otherwise wipe out an already-appended pinned section if this fetch
-  // happened to resolve first. A 404 (module disabled) resolves to `[]`
-  // (treated as "no pins"), preserving the disabled-module no-op guarantee --
-  // this never logs/throws on a 404.
-  //
-  // v1.26.3 (Item 2): `moduleEnabled` is captured from the response's OWN
-  // `r.ok` (true only for a genuine 2xx) BEFORE the body is read, and
-  // threaded through to `renderPinnedPlaylists` -- see that function's own
-  // comment for why this is what lets it show a "No playlists pinned yet."
-  // message for a real zero-pins case without also showing it when the
-  // module is simply disabled (both cases otherwise resolve to the same
-  // empty `[]`). A thrown/network-level failure (the `.catch` below) leaves
-  // `moduleEnabled` at its default (`false`), the same conservative "render
-  // nothing" behavior as before this change.
-  foldersRendered.then(() => {
+  // Paint last-known content SYNCHRONOUSLY, before any await -- the sheet then
+  // animates open already at its final height instead of growing into it.
+  if (playlistsSheetCache) renderPlaylistsSheetContent(playlistsSheetCache);
+
+  const generation = ++playlistsSheetGeneration;
+
+  // Both requests in PARALLEL. Still fetched fresh on every open (/api/config
+  // is tiny) so a library change mid-session is never shown stale -- the change
+  // is that they no longer wait for each other.
+  Promise.all([
+    fetch('/api/config').then((r) => r.json()).catch(() => null),
     fetch('/api/subscriptions/pins')
       .then((r) => Promise.all([r.ok, r.ok ? r.json() : []]))
-      .catch(() => [false, []])
-      .then(([moduleEnabled, pins]) => renderPinnedPlaylists(pins, moduleEnabled));
+      .catch(() => [false, []]),
+  ]).then(([config, [moduleEnabled, pins]]) => {
+    if (generation !== playlistsSheetGeneration) return; // superseded by a newer open
+    if (!config) {
+      // Keep whatever the cache already painted rather than replacing real
+      // content with an error -- only a sheet with nothing in it says so.
+      if (!playlistsSheetCache) {
+        const list = document.getElementById('playlists-sheet-list');
+        if (list) list.innerHTML = '<div class="sidebar-item">Failed to load folders.</div>';
+      }
+      return;
+    }
+    playlistsSheetCache = {
+      folders: config.folders || [],
+      folderSettings: config.folderSettings || {},
+      pins,
+      moduleEnabled,
+    };
+    // One render, one layout. When the payload matches what the cache already
+    // painted above, this is visually a no-op -- which is the zero-shift case.
+    renderPlaylistsSheetContent(playlistsSheetCache);
   });
 }
 
