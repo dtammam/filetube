@@ -3654,12 +3654,19 @@ a.sub-row-channel-link:focus-visible {
      Delete, Move, Like Share row goes a little too far off the right (not
      properly constrained within the bounds)."
 
-     ROOT CAUSE, and it is an era asymmetry rather than a layout accident: the
-     four eras share an IDENTICAL type scale (every --fs-* token is the same),
-     and differ only in --font-family. 2005 is the sole era on **Verdana**,
-     which is roughly 10% wider than the Arial (2009) and Roboto (2014/2021)
-     the other three use. Same tokens, same padding, wider glyphs -- so the
-     button group's intrinsic width grows in exactly one era.
+     ROOT CAUSE -- corrected at the v1.47.5 gate, which disproved the first
+     version of this comment. The DOMINANT cause is not the era at all: this
+     group has grown from 3 buttons to 5 (watch.html ships Download + Delete;
+     watch.js appends Move, Like and Share). At a 360px viewport that is
+     5 x ~60px + 4 x 8px gap ~= 332px against ~328px available, so it overflows
+     in Roboto too -- Verdana merely makes it visible first.
+
+     The era ASYMMETRY is real but secondary, and narrower than first claimed:
+     the four eras share an identical type scale (no era redefines --fs-*), but
+     they do NOT otherwise differ "only in font family" -- each also sets its own
+     --density (2005: 4px, 2009: 6px, 2014: 10px, 2021: 8px), which drives
+     padding/gap. 2005 is the sole era on Verdana (~10% wider than Arial/Roboto),
+     and it also has the TIGHTEST density, which partially counteracts it.
 
      `.watch-action-btns` is `flex-wrap: nowrap` (base rule) so Download/Delete/
      Move can never split across rows. That is a fine PREFERENCE and a bad
@@ -3674,13 +3681,26 @@ a.sub-row-channel-link:focus-visible {
      button added to the group. Worst case is a second line; the current worst
      case is content off-screen and unreachable, which is strictly worse.
 
-     Desktop is untouched (there is room there, and the nowrap preference still
-     holds), so the v1.25.4 "Move must not orphan" intent survives everywhere it
-     was actually about. */
+     WHAT THIS DELIBERATELY GIVES UP (gate correction -- the first version of
+     this comment claimed the opposite, and was wrong): v1.25.4's "Move must not
+     land on an orphaned line" was EXCLUSIVELY a phone fix -- its rule lives
+     inside this very @media block. So this reverses that guarantee on phones,
+     which is the right trade (content off-screen and unreachable is strictly
+     worse than a second line) but is a reversal, not a preservation. Desktop
+     keeps nowrap because there is room there. Disclosed in ROADMAP.
+
+     It also moves AWAY from the v1.25.5 iOS shrink-to-fit regression rather
+     than toward it: wrapping REDUCES the row's min-content width, and that
+     regression was caused by min-content exceeding the viewport. */
   .watch-action-btns {
     flex-wrap: wrap;
     max-width: 100%;
     min-width: 0;
+    /* The one lever v1.25.4's mobile block never pulled: the group's own gap.
+       Tightening it buys back ~16px across five buttons, so the common case
+       still fits one line in most eras and the wrap stays a genuine last
+       resort rather than the normal state. */
+    gap: 4px;
   }
 
   /* ---- v1.13.0 item 6: mobile-portrait polish for the Setup (Library ------

@@ -167,6 +167,12 @@ test('STICKINESS FIX: navigating Home CLEARS the pointer rather than leaving the
   // explanatory comment rather than the code, and failed on correct code.
   assert.match(body, /removeItem\(LAST_SESSION_KEY\);\s*return;/,
     'the clear must immediately precede the early return, or the pointer survives');
+  // v1.47.5 gate: the CLEAR is gated on standalone so a browser TAB sharing
+  // storage with an installed app (Android/desktop Chrome) cannot wipe a resume
+  // the PWA legitimately stored. Recording stays ungated -- storing where you
+  // are is harmless from either surface; destroying the other's pointer is not.
+  assert.match(body, /if \(isStandaloneDisplay\(\)\) window\.localStorage\.removeItem/,
+    'only the installed app surface may clear the pointer');
 });
 
 // ---- v1.47.4 gate delta (adversarial WARNING 3): real origin check ---------
