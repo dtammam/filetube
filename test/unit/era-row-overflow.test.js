@@ -131,3 +131,60 @@ test('the fix is font-independent -- no era-scoped override was used to paper ov
   assert.doesNotMatch(CSS, /\[data-theme="\d{4}"\][^{]*\.watch-actions \.btn/,
     'nor as a per-era button-size special case');
 });
+
+// ---- v1.47.6: labels hidden at phone widths (Dean's follow-up) -------------
+//
+// After v1.47.5 the row was CONTAINED but Share still dropped to a second line
+// in Original (Verdana) and Classic (Arial), while Flat/Modern (Roboto) fit --
+// an exact font-width ordering, confirming the row was only marginally over
+// budget. Five labelled buttons cannot fit a ~328px content box in a wide font;
+// five glyphs fit any font with room to spare. Same treatment `.section-actions`
+// already uses (v1.45.3), so this is the established pattern here.
+
+test('the five action labels are hidden at the phone breakpoint (glyphs remain)', () => {
+  const mobile = CSS.slice(CSS.indexOf('@media (max-width: 768px)'));
+  assert.match(mobile, /\.watch-action-btns \.btn \.btn-label \{\s*display: none;\s*\}/,
+    'the words must be dropped at phone widths -- padding tuning cannot recover ~60px');
+});
+
+test('wrapping is RETAINED as the safety net, not replaced by the label hiding', () => {
+  // Hiding labels makes overflow unlikely; flex-wrap makes it impossible. If a
+  // future change re-adds a sixth button, the wrap is what still saves it.
+  const rule = CSS.slice(CSS.lastIndexOf('.watch-action-btns {'));
+  assert.match(rule.slice(0, rule.indexOf('}')), /flex-wrap: wrap/,
+    'the structural guarantee must survive the aesthetic fix');
+});
+
+test('every label-bearing action button also carries a GLYPH (or hiding it empties the button)', () => {
+  const WATCH_JS = fs.readFileSync(path.join(__dirname, '../../public/js/watch.js'), 'utf8');
+  const HTML = fs.readFileSync(path.join(__dirname, '../../public/watch.html'), 'utf8');
+  // Download + Delete ship in markup with their icons.
+  const group = HTML.slice(HTML.indexOf('<div class="watch-action-btns">'));
+  const groupHtml = group.slice(0, group.indexOf('</div>'));
+  assert.match(groupHtml, /icon-download[\s\S]*?btn-label">Download/);
+  assert.match(groupHtml, /icon-delete[\s\S]*?btn-label">Delete/);
+  // Move/Like/Share are appended by watch.js -- each needs an icon, because a
+  // hidden label on an icon-less button renders as a blank tap target.
+  for (const [icon, label] of [['icon-folder', 'Move'], ['icon-heart', 'Like'], ['icon-share', 'Share']]) {
+    assert.ok(WATCH_JS.includes(`'${icon}'`), `${label} must carry the ${icon} glyph`);
+  }
+});
+
+test('the Like button no longer uses a unicode heart (v1.38 lesson: glyphs in CSS, never emoji)', () => {
+  const WATCH_JS = fs.readFileSync(path.join(__dirname, '../../public/js/watch.js'), 'utf8');
+  // iOS renders emoji codepoints inconsistently, and .icon-heart has existed
+  // since v1.40 -- the old "there is no heart glyph" comment was long stale.
+  assert.ok(!WATCH_JS.includes('Liked ♥'), 'the unicode heart must be gone from the Like label');
+});
+
+test('the share glyph asset exists and is mapped (base dir, like heart.svg)', () => {
+  const svg = path.join(__dirname, '../../public/assets/icons/share.svg');
+  assert.ok(fs.existsSync(svg), 'share.svg must exist');
+  assert.match(fs.readFileSync(svg, 'utf8'), /^<svg[^>]*viewBox="0 -960 960 960"/,
+    'must match the icon set\'s established viewBox');
+  assert.match(CSS, /\.icon-share \{[^}]*mask-image: url\(\/assets\/icons\/share\.svg\)/);
+  // Per-set overrides are enumerated individually, so a base-only icon falls
+  // back correctly in every set -- exactly how .icon-heart already behaves.
+  assert.doesNotMatch(CSS, /\[data-icons="[a-z]+"\] \.icon-share/,
+    'no per-set override is needed (or wanted) for a base-only glyph');
+});

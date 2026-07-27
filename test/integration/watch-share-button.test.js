@@ -126,6 +126,15 @@ async function settle(times) {
   for (let i = 0; i < (times || 10); i++) await flush();
 }
 
+// v1.47.6: the Share button is now `<i class="icon-share"> <span class="btn-label">`
+// so the phone breakpoint can hide the WORD and keep the glyph. The transient
+// "Copied!" feedback therefore writes to the label span -- writing the button's
+// own textContent (as it did before) would destroy the icon.
+function shareLabel(btn) {
+  const label = btn && btn.querySelector('.btn-label');
+  return label ? label.textContent : null;
+}
+
 test('watch page: the Share button mounts inside .watch-action-btns when the item carries a watchUrl', async () => {
   const { fetchImpl } = makeWatchFetchStub(true);
   const { dom } = await loadWatchWithFetchStub(fetchImpl);
@@ -138,7 +147,8 @@ test('watch page: the Share button mounts inside .watch-action-btns when the ite
       document.querySelector('.watch-action-btns').contains(shareBtn),
       'expected the Share button to live inside .watch-action-btns, alongside Download/Delete/Move/Like'
     );
-    assert.strictEqual(shareBtn.textContent, 'Share');
+    assert.strictEqual(shareLabel(shareBtn), 'Share');
+    assert.ok(shareBtn.querySelector('i.icon-share'), 'the glyph must accompany the hideable label');
   } finally {
     dom.window.close();
   }
@@ -179,7 +189,7 @@ test('watch page: clicking Share calls navigator.share with the ORIGINAL YouTube
     assert.strictEqual(shareCalls[0].title, 'A Shareable Video 🎵');
     assert.strictEqual(shareCalls[0].url, WATCH_URL);
     assert.strictEqual(Object.keys(shareCalls[0]).length, 2, 'exactly {title, url} -- nothing else leaks into the sheet');
-    assert.strictEqual(shareBtn.textContent, 'Share', 'the native-sheet path never rewrites the label');
+    assert.strictEqual(shareLabel(shareBtn), 'Share', 'the native-sheet path never rewrites the label');
   } finally {
     dom.window.close();
   }
@@ -211,7 +221,8 @@ test('watch page: without navigator.share, clicking Share copies the link to the
     await settle();
 
     assert.deepStrictEqual(writes, [WATCH_URL]);
-    assert.strictEqual(shareBtn.textContent, 'Copied!', 'transient feedback after the clipboard write resolves');
+    assert.strictEqual(shareLabel(shareBtn), 'Copied!', 'transient feedback after the clipboard write resolves');
+    assert.ok(shareBtn.querySelector('i.icon-share'), 'the Copied! feedback must NOT wipe the icon (textContent= would)');
   } finally {
     dom.window.close();
   }

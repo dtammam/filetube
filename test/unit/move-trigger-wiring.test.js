@@ -78,7 +78,16 @@ test('watch.js: the Move button carries an .icon-folder glyph (built via DOM met
   const body = setupMatch[0];
   assert.match(body, /moveIcon\.className = 'icon-folder';/);
   assert.match(body, /moveBtn\.appendChild\(moveIcon\)/);
-  assert.match(body, /moveBtn\.appendChild\(document\.createTextNode\(' Move'\)\)/);
+  // v1.47.6: the word moved from a bare text node into a `.btn-label` span so
+  // the phone breakpoint can hide it while keeping the glyph (CSS cannot target
+  // a bare text node, which is why this row could not go icon-only before).
+  assert.match(body, /moveLabel\.className = 'btn-label';/);
+  assert.match(body, /moveLabel\.textContent = 'Move';/);
+  assert.match(body, /moveBtn\.appendChild\(moveLabel\)/);
+  // The glyph must still be appended BEFORE the label, or hiding the label
+  // would leave the icon trailing a stray space.
+  assert.ok(body.indexOf('moveBtn.appendChild(moveIcon)') < body.indexOf('moveBtn.appendChild(moveLabel)'),
+    'the icon must precede the label');
   assert.match(body, /moveBtn\.setAttribute\('aria-label', 'Move to another folder'\);/);
   assert.doesNotMatch(body, /moveBtn\.innerHTML/, 'the Move button markup should be built via DOM methods, not innerHTML');
 });

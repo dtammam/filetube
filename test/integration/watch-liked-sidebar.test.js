@@ -157,7 +157,11 @@ test('watch page: UNLIKING the last liked video removes the sidebar entry live (
     assert.ok(document.querySelector('.sidebar-item-liked'), 'sanity: entry present while one like exists');
 
     const likeBtn = document.getElementById('like-media-btn');
-    assert.ok(likeBtn && likeBtn.textContent.indexOf('Liked') === 0, 'sanity: the button reflects the liked state');
+    // v1.47.6: the button is now `<i class="icon-heart"> <span class="btn-label">`,
+    // so its own textContent carries a leading separator space. Read the label
+    // span -- an index-0 check on the button would be asserting whitespace.
+    const likeBtnLabel = likeBtn && likeBtn.querySelector('.btn-label');
+    assert.ok(likeBtnLabel && likeBtnLabel.textContent === 'Liked', 'sanity: the button reflects the liked state');
     likeBtn.dispatchEvent(new dom.window.Event('click', { bubbles: true })); // unlike -> total drops to 0
     await settle(20);
 
