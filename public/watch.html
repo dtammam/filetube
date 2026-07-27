@@ -270,7 +270,19 @@
             <div class="description-meta">
               Added <span id="added-date-text">unknown date</span> &bull; File Size: <span id="file-size-text">0 MB</span> &bull; Type: <span id="file-type-text">—</span>
             </div>
-            <div class="description-text" id="description-paragraph">
+            <!-- v1.48 item 1 (Dean, "full description of the video pulled").
+                 The video's OWN description now leads this box and is the
+                 element the "Show more" button governs. It carries
+                 `.description-text` (the collapsed `-webkit-line-clamp`) so the
+                 clamp applies to the DESCRIPTION rather than, as before, to the
+                 self-hosting boilerplate below it -- which is what made the old
+                 toggle expand three lines of static text and nothing else.
+                 Populated by watch.js from the embedded `description` tag;
+                 stays empty (and, via `.video-description:empty`, out of the
+                 layout entirely) for files carrying no description, so an
+                 ordinary local file's box looks exactly as it did pre-v1.48. -->
+            <div class="description-text video-description" id="video-description"></div>
+            <div class="description-fileinfo">
               File Path: <span id="file-path-text" class="file-path">/loading...</span>
               <br><br>
               This file is self-hosted on your network. Playback progress is automatically saved to your FileTube server, allowing you to resume playing this video or audio clip at any time.

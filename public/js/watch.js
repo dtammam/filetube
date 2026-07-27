@@ -408,8 +408,42 @@ function buildMockComments(mediaId, bank, count, videoTitle) {
   return withPersona;
 }
 
+// ---- v1.48 item 1: the video description shown in the description box ------
+// Dean: "Can we have the full description of the video pulled. Right now it's
+// truncated. We should add this to reheat so full descriptions can be
+// displayed."
+//
+// It turned out to need NO reheat/backfill work, so this is deliberately a pure
+// render-side decision and nothing else. The full text has always been present
+// end to end: yt-dlp writes it into the media file itself via `--embed-metadata`
+// (lib/ytdlp/args.js), server.js's ffprobe probe reads format tags under a 16MB
+// maxBuffer raised specifically so long descriptions cannot overflow it, and
+// `parseFfprobeTags` whitelists `description` while only trimming whitespace.
+// The ONLY truncation in the whole path was cosmetic and client-side: the
+// description appeared solely as one row of the "Embedded info" block, cut to
+// 400 characters by `renderEmbeddedTags`'s `clip`.
+//
+// Returns the description to display, or '' for "show nothing" (which the
+// `.video-description:empty` CSS rule turns into "occupy no space at all").
+//
+// The title-equality guard is NOT incidental. For non-YouTube ("universal")
+// downloads the item's title IS its description, written by
+// UNIVERSAL_OUTPUT_TEMPLATE's `%(title).100s` (v1.41.16-18) -- so rendering the
+// description for those items would print the title twice, once truncated to
+// 100 characters and once in full. Compared case-insensitively on trimmed text
+// because the filename-derived title has been through path sanitization while
+// the embedded tag has not.
+function resolveDisplayDescription(tags, title) {
+  const raw = tags && typeof tags.description === 'string' ? tags.description.trim() : '';
+  if (raw === '') return '';
+  const t = typeof title === 'string' ? title.trim().toLowerCase() : '';
+  if (t !== '' && raw.toLowerCase() === t) return '';
+  return raw;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
+    resolveDisplayDescription,
     nextTheaterState,
     isTheaterModeActive,
     theaterModeStorageValue,
@@ -515,7 +549,11 @@ if (typeof module !== 'undefined' && module.exports) {
     const fileTypeText = root.querySelector('#file-type-text');
     const filePathText = root.querySelector('#file-path-text');
 
-    const descriptionParagraph = root.querySelector('#description-paragraph');
+    // v1.48 item 1: the collapse/"Show more" mechanism now governs the VIDEO'S
+    // DESCRIPTION (#video-description), not the static self-hosting boilerplate
+    // (#description-paragraph) it used to expand. The name is kept because
+    // every reference below means "the thing Show more expands".
+    const descriptionParagraph = root.querySelector('#video-description');
     const expandDescBtn = root.querySelector('#expand-desc-btn');
 
     const commentCountBadge = root.querySelector('#comment-count-badge');
@@ -878,6 +916,7 @@ if (typeof module !== 'undefined' && module.exports) {
         downloadBtn.setAttribute('download', `${mediaData.title || 'download'}${mediaData.ext || ''}`);
       }
 
+      renderVideoDescription(mediaData.tags);
       renderEmbeddedTags(mediaData.tags);
       // Measure once the (async) Roboto webfont has loaded, so line wrapping — and
       // thus the overflow check — reflects the final font, not the fallback.
@@ -888,12 +927,29 @@ if (typeof module !== 'undefined' && module.exports) {
       }
     }
 
+    // v1.48 item 1: write the video's own description into the box. `textContent`
+    // (never innerHTML) because this is attacker-influenced text read straight out
+    // of a downloaded file's metadata tags -- and setting it to '' is what makes
+    // `.video-description:empty` collapse the element for files with none.
+    function renderVideoDescription(tags) {
+      if (!descriptionParagraph) return;
+      descriptionParagraph.textContent = resolveDisplayDescription(tags, mediaData && mediaData.title);
+    }
+
     // Only offer "Show more" when the description overflows by a meaningful amount;
     // otherwise show it in full. Avoids the silly toggle that hid a single line.
     function setupDescriptionToggle() {
       if (!descriptionParagraph || !expandDescBtn) return;
       descriptionParagraph.classList.remove('expanded');
       expandDescBtn.textContent = 'Show more';
+      // v1.48 item 1: with no description there is nothing to expand -- the
+      // element is `display: none` via `:empty`, so its scrollHeight/clientHeight
+      // are both 0 and the overflow test below would otherwise leave a "Show
+      // more" button sitting under an empty box.
+      if (descriptionParagraph.textContent === '') {
+        expandDescBtn.style.display = 'none';
+        return;
+      }
       const lh = parseFloat(getComputedStyle(descriptionParagraph).lineHeight) || 18;
       const hidden = descriptionParagraph.scrollHeight - descriptionParagraph.clientHeight;
       if (hidden <= lh * 1.5) {
@@ -912,10 +968,18 @@ if (typeof module !== 'undefined' && module.exports) {
       if (!el) return;
       const title = (mediaData.title || '').toLowerCase();
       // Skip title/artist (shown elsewhere) and any tag whose value just repeats the
-      // title. Cap very long values so a huge embedded description can't blow out layout.
+      // title. Cap very long values so a huge embedded tag can't blow out layout.
+      //
+      // v1.48 item 1: `description` is skipped here too -- it now has its own
+      // full-text home at the top of this box (renderVideoDescription above), and
+      // leaving it in would print it a SECOND time, still clipped to 400
+      // characters, directly underneath the untruncated copy. This 400-char clip
+      // deliberately survives for every OTHER tag: it exists to stop a huge
+      // embedded lyrics/comment tag from blowing out the layout, and that guard is
+      // still wanted for values with no expand affordance of their own.
       const clip = v => v.length > 400 ? v.slice(0, 400) + '…' : v;
       const entries = Object.entries(tags || {}).filter(([k, v]) =>
-        k !== 'title' && k !== 'artist' && String(v).toLowerCase() !== title);
+        k !== 'title' && k !== 'artist' && k !== 'description' && String(v).toLowerCase() !== title);
       if (!entries.length) { el.style.display = 'none'; return; }
       const label = k => k.charAt(0).toUpperCase() + k.slice(1);
       el.innerHTML = '<div class="embedded-tags-title">Embedded info</div>' +
