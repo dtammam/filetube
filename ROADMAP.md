@@ -80,6 +80,20 @@
 
 ## Shipped
 
+### v1.47.6 - the watch action row goes icon-only on phones (2026-07-27)
+
+Dean, on v1.47.5: the row was contained, but *"Original era, Classic era have the Share button go a line under. Flat and Modern do not. Everything else good."*
+
+That era split is the diagnosis: Original is Verdana, Classic is Arial, Flat and Modern are Roboto - an exact font-width ordering, confirming the row was only **marginally** over budget. Five labelled buttons cannot fit a ~328px content box in a wide font; five glyphs fit any font with room to spare. So rather than tune padding until it happens to fit one typeface, the **words are dropped at phone widths and the glyphs kept** - which removes the class rather than the current instance. This is the same treatment `.section-actions` has used since v1.45.3, so it is the established pattern here rather than a new idea. Meaning is preserved: all five buttons already carry `title` **and** `aria-label`, and desktop keeps its labels.
+
+Three of the five buttons could not be made icon-only before, which is why this had not been done: their labels were **bare text nodes** (CSS cannot target those), and Like/Share were built with `textContent =`, which wipes any child element. All five now use `<i class="icon-*"> <span class="btn-label">`.
+
+- **Fixed a long-stale claim in the process:** the Like button used a plain unicode heart (`Liked ♥`) because its comment said *"there is no dedicated heart/like glyph in the icon-set"*. That was true when written, but `.icon-heart` has existed since **v1.40** - so the comment had been false for six minor versions. It now uses the real glyph, which also honours this repo's v1.38 lesson (*draw glyphs in CSS, never emoji codepoints* - iOS renders them inconsistently). Liked state is still carried by `btn-primary` + `aria-pressed`, so nothing depends on the hidden word.
+- **New asset:** `share.svg`, base-directory only. The per-icon-set overrides are enumerated individually, so a base-only glyph falls back correctly in every set - exactly how `heart.svg` already behaves.
+- **Share's "Copied!" feedback survives:** it now writes to the label span rather than the button's `textContent` (which would have destroyed the icon), and a toast was added as a belt-and-braces path. That branch is the *desktop* fallback anyway - mobile has `navigator.share` and returns to the native sheet before reaching it.
+- **Wrapping from v1.47.5 is deliberately RETAINED** as the safety net: hiding labels makes overflow unlikely, `flex-wrap` makes it impossible. If a sixth button is ever added, the wrap is what still saves it.
+- Node 22: 4816/4816. Node 24: 4816/4816. Dean's device is the arbiter.
+
 ### v1.47.5 - Dean's v1.47.4 on-device follow-ups (2026-07-27)
 
 Two fixes from Dean's device pass on v1.47.4. He confirmed items 2, 3 and 4 of that wave working; these close the two he flagged.

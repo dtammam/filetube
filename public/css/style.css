@@ -3144,6 +3144,7 @@ a.sub-row-channel-link:focus-visible {
 .icon-grid,
 .icon-list,
 .icon-heart,
+.icon-share,
 .icon-download,
 .icon-shuffle {
   display: inline-block;
@@ -3183,6 +3184,11 @@ a.sub-row-channel-link:focus-visible {
    the rounded/filled/emoji sets fall back to this, same as any un-overridden
    icon. */
 .icon-heart { -webkit-mask-image: url(/assets/icons/heart.svg); mask-image: url(/assets/icons/heart.svg); }
+/* v1.47.6: the Share glyph. Base-directory only, exactly like `heart.svg` --
+   the per-icon-set overrides below are enumerated individually, so an icon
+   without a set-specific variant simply falls back to this one in every set
+   (that is already how the heart behaves, and it is deliberate, not a gap). */
+.icon-share { -webkit-mask-image: url(/assets/icons/share.svg); mask-image: url(/assets/icons/share.svg); }
 /* "Shuffle again" (v1.15.1) originally shipped as a fixed ::before unicode
    glyph outside the icon-set system, which meant it rendered as a raw emoji
    (U+1F500) even in non-emoji/modern themes -- unlike every other .icon-*
@@ -3701,6 +3707,29 @@ a.sub-row-channel-link:focus-visible {
        still fits one line in most eras and the wrap stays a genuine last
        resort rather than the normal state. */
     gap: 4px;
+  }
+
+  /* v1.47.6 (Dean, on-device follow-up to v1.47.5): with wrapping in place the
+     row was CONTAINED, but Share still dropped to a second line in Original
+     (Verdana) and Classic (Arial) while Flat/Modern (Roboto) fit -- an exact
+     font-width ordering, and confirmation that the row was only marginally
+     over budget.
+
+     Rather than tune padding until it happens to fit one font, drop the WORDS
+     at phone widths and keep the glyphs. Five labelled buttons cannot fit a
+     ~328px content box in a wide font; five glyphs fit any font with room to
+     spare, so this removes the whole class rather than the current instance.
+
+     This is the SAME treatment `.section-actions` already uses one breakpoint
+     down (v1.45.3), for the same reason -- so it is the established pattern
+     here, not a new idea. Meaning is preserved: every one of these five buttons
+     already carries both `title` and `aria-label`, so screen readers and
+     tooltips are unaffected, and desktop keeps its labels (there is room).
+
+     Wrapping above is retained deliberately as the SAFETY NET: this rule makes
+     overflow unlikely, `flex-wrap` makes it impossible. */
+  .watch-action-btns .btn .btn-label {
+    display: none;
   }
 
   /* ---- v1.13.0 item 6: mobile-portrait polish for the Setup (Library ------

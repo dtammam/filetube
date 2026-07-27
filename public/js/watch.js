@@ -1687,7 +1687,13 @@ if (typeof module !== 'undefined' && module.exports) {
         const moveIcon = document.createElement('i');
         moveIcon.className = 'icon-folder';
         moveBtn.appendChild(moveIcon);
-        moveBtn.appendChild(document.createTextNode(' Move'));
+        // v1.47.6: `.btn-label` rather than a bare text node, so the phone
+        // breakpoint can hide the word and leave the glyph (see style.css).
+        const moveLabel = document.createElement('span');
+        moveLabel.className = 'btn-label';
+        moveLabel.textContent = 'Move';
+        moveBtn.appendChild(document.createTextNode(' '));
+        moveBtn.appendChild(moveLabel);
         const btnGroup = watchActions.querySelector('.watch-action-btns');
         (btnGroup || watchActions).appendChild(moveBtn);
         moveBtn.addEventListener('click', handleMoveClick, { signal });
@@ -1702,9 +1708,27 @@ if (typeof module !== 'undefined' && module.exports) {
     // there is no dedicated heart/like glyph in the icon-set either, so this
     // uses a plain unicode heart in the text label, exactly like `pinBtn`'s
     // own "Pinned ★" uses a plain unicode star).
+    // v1.47.6: rebuilt as icon + `.btn-label` instead of `textContent`.
+    //   - `textContent =` wiped every child, so the button could never hold a
+    //     glyph or a hideable label at all.
+    //   - the unicode heart is gone. This repo's own v1.38 lesson is "draw
+    //     glyphs in CSS, never emoji codepoints" (iOS renders them
+    //     inconsistently), and `.icon-heart` HAS existed since v1.40 -- the
+    //     comment above claiming "there is no dedicated heart/like glyph in the
+    //     icon-set" was true when written and has been stale ever since.
+    //   - with the label hidden at phone widths, liked state is still carried
+    //     by `btn-primary` and `aria-pressed`, so nothing depends on the word.
     function applyLikeButtonLabel(liked) {
       if (!likeBtn) return;
-      likeBtn.textContent = liked ? 'Liked ♥' : 'Like';
+      likeBtn.replaceChildren();
+      const icon = document.createElement('i');
+      icon.className = 'icon-heart';
+      const label = document.createElement('span');
+      label.className = 'btn-label';
+      label.textContent = liked ? 'Liked' : 'Like';
+      likeBtn.appendChild(icon);
+      likeBtn.appendChild(document.createTextNode(' '));
+      likeBtn.appendChild(label);
       likeBtn.setAttribute('aria-pressed', liked ? 'true' : 'false');
       likeBtn.classList.toggle('btn-primary', !liked);
     }
@@ -1787,10 +1811,27 @@ if (typeof module !== 'undefined' && module.exports) {
         navigator.clipboard.writeText(url)
           .then(() => {
             if (!shareBtn) return;
-            shareBtn.textContent = 'Copied!';
+            // v1.47.6: write to the `.btn-label` span, NOT the button's own
+            // textContent -- that would wipe the icon element added alongside
+            // it. Falls back to the button itself if the span is somehow
+            // absent, so the feedback can never silently disappear.
+            //
+            // Note this branch is the DESKTOP fallback: mobile has
+            // `navigator.share` and returns above, so hiding the label at phone
+            // widths does not cost anyone this confirmation. On the rare mobile
+            // browser with no share sheet, the label is hidden and the
+            // clipboard write still succeeds -- the toast below covers it.
+            const label = shareBtn.querySelector('.btn-label') || shareBtn;
+            label.textContent = 'Copied!';
+            if (typeof window !== 'undefined' && typeof window.showToast === 'function') {
+              window.showToast('Link copied');
+            }
             if (shareBtnResetTimer) clearTimeout(shareBtnResetTimer);
             shareBtnResetTimer = setTimeout(() => {
-              if (shareBtn) shareBtn.textContent = 'Share';
+              if (shareBtn) {
+                const resetTarget = shareBtn.querySelector('.btn-label') || shareBtn;
+                resetTarget.textContent = 'Share';
+              }
               shareBtnResetTimer = null;
             }, 1500);
           })
@@ -1828,7 +1869,18 @@ if (typeof module !== 'undefined' && module.exports) {
         (btnGroup || watchActions).appendChild(shareBtn);
         shareBtn.addEventListener('click', handleShareClick, { signal });
       }
-      shareBtn.textContent = 'Share';
+      // v1.47.6: icon + hideable label, rebuilt each time so a pending
+      // "Copied!" state is reset on re-render. `replaceChildren` first, because
+      // this runs on every media load and must not accumulate children.
+      shareBtn.replaceChildren();
+      const shareIcon = document.createElement('i');
+      shareIcon.className = 'icon-share';
+      const shareLabel = document.createElement('span');
+      shareLabel.className = 'btn-label';
+      shareLabel.textContent = 'Share';
+      shareBtn.appendChild(shareIcon);
+      shareBtn.appendChild(document.createTextNode(' '));
+      shareBtn.appendChild(shareLabel);
     }
 
     // Opens the shared `showMoveModal` (common.js) with the CURRENT item +

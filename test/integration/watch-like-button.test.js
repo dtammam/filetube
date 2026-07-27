@@ -135,6 +135,23 @@ async function settle(times) {
   for (let i = 0; i < (times || 10); i++) await flush();
 }
 
+// v1.47.6: the Like button is now `<i class="icon-heart"> <span class="btn-label">`
+// rather than a bare text node, so the phone breakpoint can hide the WORD and
+// keep the glyph. These assertions therefore read the label span. The unicode
+// heart is gone deliberately -- this repo's v1.38 lesson is "draw glyphs in CSS,
+// never emoji codepoints" (iOS renders them inconsistently), and `.icon-heart`
+// has existed since v1.40.
+function likeLabel(btn) {
+  const label = btn && btn.querySelector('.btn-label');
+  return label ? label.textContent : null;
+}
+
+// The glyph must accompany the label, or hiding the label at phone widths would
+// leave an EMPTY button -- the specific regression this shape exists to prevent.
+function likeHasIcon(btn) {
+  return Boolean(btn && btn.querySelector('i.icon-heart'));
+}
+
 test('watch page: the Like button reflects the initial NOT-liked membership state', async () => {
   const { fetchImpl } = makeWatchFetchStub(false);
   const { dom } = await loadWatchWithFetchStub(fetchImpl);
@@ -147,7 +164,8 @@ test('watch page: the Like button reflects the initial NOT-liked membership stat
       document.querySelector('.watch-action-btns').contains(likeBtn),
       'expected the Like button to live inside .watch-action-btns, alongside Download/Delete/Move'
     );
-    assert.strictEqual(likeBtn.textContent, 'Like');
+    assert.strictEqual(likeLabel(likeBtn), 'Like');
+    assert.ok(likeHasIcon(likeBtn), 'the glyph must survive alongside the hideable label');
     assert.strictEqual(likeBtn.getAttribute('aria-pressed'), 'false');
     assert.ok(likeBtn.classList.contains('btn-primary'), 'not-yet-liked must be the actionable (primary) state');
   } finally {
@@ -163,7 +181,7 @@ test('watch page: the Like button reflects the initial ALREADY-liked membership 
     const { document } = dom.window;
     const likeBtn = document.getElementById('like-media-btn');
     assert.ok(likeBtn, 'expected a #like-media-btn to be mounted');
-    assert.strictEqual(likeBtn.textContent, 'Liked ♥');
+    assert.strictEqual(likeLabel(likeBtn), 'Liked');
     assert.strictEqual(likeBtn.getAttribute('aria-pressed'), 'true');
     assert.ok(!likeBtn.classList.contains('btn-primary'), 'already-liked must be the neutral (settled) state');
   } finally {
@@ -178,14 +196,15 @@ test('watch page: clicking Like toggles via POST then DELETE /api/liked/:id, re-
     await settle();
     const { document } = dom.window;
     const likeBtn = document.getElementById('like-media-btn');
-    assert.strictEqual(likeBtn.textContent, 'Like');
+    assert.strictEqual(likeLabel(likeBtn), 'Like');
+    assert.ok(likeHasIcon(likeBtn), 'the glyph must survive alongside the hideable label');
 
     likeBtn.dispatchEvent(new dom.window.Event('click', { bubbles: true }));
     await settle();
 
     assert.strictEqual(calls.length, 1);
     assert.deepStrictEqual(calls[0], { url: `/api/liked/${MEDIA_ID}`, method: 'POST' });
-    assert.strictEqual(likeBtn.textContent, 'Liked ♥', 'expected the button to flip to liked AFTER the POST resolved');
+    assert.strictEqual(likeLabel(likeBtn), 'Liked', 'expected the button to flip to liked AFTER the POST resolved');
     assert.strictEqual(likeBtn.getAttribute('aria-pressed'), 'true');
     assert.ok(!likeBtn.classList.contains('btn-primary'));
 
@@ -194,7 +213,7 @@ test('watch page: clicking Like toggles via POST then DELETE /api/liked/:id, re-
 
     assert.strictEqual(calls.length, 2);
     assert.deepStrictEqual(calls[1], { url: `/api/liked/${MEDIA_ID}`, method: 'DELETE' });
-    assert.strictEqual(likeBtn.textContent, 'Like', 'expected the button to flip back to not-liked AFTER the DELETE resolved');
+    assert.strictEqual(likeLabel(likeBtn), 'Like', 'expected the button to flip back to not-liked AFTER the DELETE resolved');
     assert.strictEqual(likeBtn.getAttribute('aria-pressed'), 'false');
     assert.ok(likeBtn.classList.contains('btn-primary'));
   } finally {
