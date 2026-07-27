@@ -187,12 +187,26 @@ test('the re-init carry-forward ALONE preserves a count when the Phase-2 gap-fil
   // DELTA GATE FIX (adversarial W-D1). Isolates server.js:4014-4018, which the
   // test above cannot reach because the Phase-2 gap-fill masks it.
   //
-  // The construction: while the scan is awaiting a probe (forced by a brand-new
-  // file), a concurrent writer STRIPS the count off the live db row. At merge
-  // time the gap-fill's source (`freshItem`) therefore has nothing to offer, so
-  // the only thing that can still carry the value is the scan's own re-init
+  // The construction: a concurrent writer STRIPS the count off the live db row,
+  // so at merge time the gap-fill's source (`freshItem`) has nothing to offer
+  // and the only thing that can still carry the value is the scan's own re-init
   // carry-forward, which read it from the Phase-1 snapshot taken before the
   // strip. Delete the carry-forward and this test fails; that is the point.
+  //
+  // PRECONDITION, AND IT IS EXACT (delta gate fix, adversarial W-E1). The strip's
+  // `updateDatabase` MUST be enqueued in the SAME SYNCHRONOUS TURN as
+  // `scanDirectories()`, so it takes the save lock ahead of the scan's Phase-2
+  // acquisition. That ordering is guaranteed by event-loop semantics rather than
+  // by timing -- the reviewer measured 30/30 green including under 2x CPU
+  // oversubscription, and separately measured that inserting even a 1ms delay
+  // makes the strip the LAST writer, which deletes the fields from the final
+  // state and fails this test.
+  //
+  // So: DO NOT introduce an `await` between the two calls below -- not a log, not
+  // a helper wrapper, not `await Promise.resolve()`. There is no timing window to
+  // widen; there is an ordering requirement to preserve. The failure mode is a
+  // false FAILURE (production fine, test red), which is the safe direction, but
+  // it would still block a release.
   const filePath = path.join(downloadDir, 'Carry Forward Only [ooooooooooo].mp4');
   fs.writeFileSync(filePath, 'original bytes');
 

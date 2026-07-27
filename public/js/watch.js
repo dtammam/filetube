@@ -451,8 +451,16 @@ const MAX_DISPLAY_DESCRIPTION = 50000;
 function resolveDisplayDescription(tags, title) {
   const raw = tags && typeof tags.description === 'string' ? tags.description.trim() : '';
   if (raw === '') return '';
-  const t = typeof title === 'string' ? title.trim().toLowerCase() : '';
-  if (t !== '' && raw.toLowerCase() === t) return '';
+  // DELTA GATE FIX (adversarial S-E2): the length bound is applied BEFORE the
+  // title-equality compare. `raw.toLowerCase()` copies the entire string, so on
+  // a multi-MB tag the compare cost more than the cut did -- and it is provably
+  // pointless there, because a description longer than MAX_DISPLAY_DESCRIPTION
+  // cannot equal a title that is itself length-capped far below it.
+  //
+  // Deliberately NOT a `raw.length === t.length` pre-check instead: lowercasing
+  // can CHANGE length (U+0130 'İ' lowercases to two UTF-16 units), so a length
+  // pre-check would false-negative on exotic Unicode and start printing a
+  // duplicated title for exactly the universal-lane items the guard protects.
   // DELTA GATE FIX (adversarial W-D2): a UTF-16 unit slice with ONE boundary
   // repair, NOT `[...raw].slice().join('')`. The spread was measured
   // materialising the entire input as an array of per-code-point strings BEFORE
@@ -471,13 +479,22 @@ function resolveDisplayDescription(tags, title) {
     if (lastUnit >= 0xD800 && lastUnit <= 0xDBFF) cut = cut.slice(0, -1);
     return cut + '…';
   }
+  // The universal-lane guard, now reached only for strings at or under the
+  // bound. For non-YouTube downloads the item's TITLE is its description
+  // (UNIVERSAL_OUTPUT_TEMPLATE's `%(title).100s`, v1.41.16-18), so without this
+  // those items print the same text twice, once cut to 100 chars and once in
+  // full. Equality, deliberately NOT prefix: real descriptions routinely open by
+  // restating the title, and suppressing those would hide what Dean asked for.
+  const t = typeof title === 'string' ? title.trim().toLowerCase() : '';
+  if (t !== '' && raw.toLowerCase() === t) return '';
   return raw;
 }
 
 // ---- v1.48 item 4: retire mock commenters left over in localStorage --------
 // Dean: "I have some files that had some old commenters that are outdated I'd
-// like all to show the proper modern ones", naming Daisy Tammam, Ray Tammam and
-// Zak Goldin.
+// like all to show the proper modern ones." (The specific names are deliberately
+// not reproduced here -- v1.44.3/v1.44.4 removed them from this repo and the
+// migration below is name-agnostic, so nothing needs them written down.)
 //
 // This is NOT a code defect and grepping for those names finds nothing: a
 // line-joined whole-tree scan confirms the source carries no real names, and
