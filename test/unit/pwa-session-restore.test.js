@@ -142,3 +142,48 @@ test('recording the pointer can never break a navigation (best-effort storage)',
   assert.match(body, /catch \(_\)/);
   assert.match(body, /isRestorableSessionUrl\(url\)/, 'home-root is never recorded as a resume point');
 });
+
+// ---- v1.47.4 gate delta (adversarial WARNING 3): real origin check ---------
+//
+// The original guard was `startsWith('/')` + `!startsWith('//')`, with a comment
+// claiming "same-origin, path-only". That is NOT an origin check. Browsers
+// normalize backslashes to forward slashes for special schemes, so
+// `new URL('/\evil.com', origin).origin === 'https://evil.com'` -- it passes
+// both string tests and then navigates OFF-ORIGIN via location.replace.
+// Only reachable via hand-edited/injected localStorage, so this is hardening
+// rather than a live exploit chain, but an open redirect out of the app is not
+// something to leave standing on a technicality.
+
+const ORIGIN = 'https://filetube.local';
+
+test('OPEN-REDIRECT LOCK: a backslash-smuggled host is refused', () => {
+  // The exact bypass. `startsWith('//')` does not catch it; only resolving
+  // through the real URL parser and comparing ORIGIN does.
+  assert.equal(new URL('/\\evil.com', ORIGIN).origin, 'https://evil.com',
+    'sanity: the browser really does resolve this off-origin');
+  assert.equal(isRestorableSessionUrl('/\\evil.com', ORIGIN), false);
+  assert.equal(isRestorableSessionUrl('/\\\\evil.com', ORIGIN), false);
+  assert.equal(isRestorableSessionUrl('/\\/evil.com', ORIGIN), false);
+});
+
+test('OPEN-REDIRECT LOCK: every other off-origin shape stays refused', () => {
+  for (const bad of ['//evil.com', 'https://evil.com/', 'http://evil.com', 'javascript:alert(1)', '\\\\evil.com']) {
+    assert.equal(isRestorableSessionUrl(bad, ORIGIN), false, `${bad} must be refused`);
+  }
+});
+
+test('the origin check does not break legitimate in-app routes', () => {
+  for (const good of ['/watch.html?id=abc', '/music', '/books', '/read.html?b=1&p=2']) {
+    assert.equal(isRestorableSessionUrl(good, ORIGIN), true, `${good} must still restore`);
+  }
+  // Home-root is excluded on the NORMALIZED path, so an encoding trick cannot
+  // smuggle a home-root restore past a raw string comparison.
+  assert.equal(isRestorableSessionUrl('/', ORIGIN), false);
+  assert.equal(isRestorableSessionUrl('/index.html', ORIGIN), false);
+});
+
+test('shouldRestoreSession threads the origin through to the URL check', () => {
+  const stored = { url: '/\\evil.com', ts: NOW - 1000 };
+  assert.equal(shouldRestoreSession(stored, '/', NOW, true, ORIGIN), false,
+    'the off-origin pointer must be refused at the decision layer too');
+});

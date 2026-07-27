@@ -242,3 +242,23 @@ test('subtitleFallback is preserved so a caption-less-but-downloaded item reads 
   // silently upgrade a real failure into a partial success.
   assert.equal(rows.filter((r) => r.subtitleFallback === true).length, 1);
 });
+
+// ---- v1.47.4 gate delta (adversarial SUGGESTION): honest return count ------
+
+test('recordFailures reports what SURVIVED the cap, not what it was handed', () => {
+  // The return value used to be `normalized.length`, which lied whenever a
+  // batch pushed the file past its cap: handing it 1500 against a 1000 cap
+  // claimed 1500 while 1000 were on disk. A caller reporting that to a user
+  // would overstate what was kept.
+  const dir = tmpDir();
+  const over = faillog.YTDLP_FAILLOG_MAX_ENTRIES + 500;
+  const claimed = faillog.recordFailures(dir, Array.from({ length: over }, (_, i) => failure({ videoId: `v${i}` })));
+  assert.equal(claimed, faillog.YTDLP_FAILLOG_MAX_ENTRIES, 'the count must match the cap, not the input size');
+  assert.equal(faillog.readFailures(dir).length, claimed, 'claimed count == what is actually readable');
+});
+
+test('recordFailures still reports the exact count for an ordinary under-cap batch', () => {
+  const dir = tmpDir();
+  assert.equal(faillog.recordFailures(dir, [failure(), failure(), failure()]), 3);
+  assert.equal(faillog.readFailures(dir).length, 3);
+});

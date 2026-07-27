@@ -2877,18 +2877,41 @@ const LAST_SESSION_MAX_AGE_MS = 6 * 60 * 60 * 1000;
  * Pure: is this a route worth restoring to? Home-root is deliberately excluded
  * -- restoring Home to Home is a no-op that would only risk a redirect loop.
  */
-function isRestorableSessionUrl(url) {
+function isRestorableSessionUrl(url, origin) {
   if (typeof url !== 'string' || url === '') return false;
-  if (!url.startsWith('/')) return false;      // same-origin, path-only
-  if (url.startsWith('//')) return false;      // protocol-relative -> off-origin
-  return url !== '/' && url !== '/index.html';
+  if (!url.startsWith('/')) return false;
+  // v1.47.4 gate WARNING (adversarial seat): a `startsWith('/')` +
+  // `!startsWith('//')` pair is NOT an origin check, and the comment that
+  // claimed it was is now gone. Browsers normalize backslashes to forward
+  // slashes for special schemes, so:
+  //
+  //   new URL('/\\evil.com', 'https://filetube.local').origin === 'https://evil.com'
+  //
+  // passes both of those string tests and then navigates OFF-ORIGIN via
+  // `location.replace`. Only reachable by hand-editing/injecting localStorage,
+  // so this is hardening rather than a live exploit chain -- but an open
+  // redirect out of the app is not something to leave standing on a technicality.
+  //
+  // Resolved through the SAME parser the browser uses, and compared by ORIGIN.
+  const base = origin || (typeof window !== 'undefined' && window.location ? window.location.origin : 'http://localhost');
+  let resolved;
+  try {
+    resolved = new URL(url, base);
+  } catch (_) {
+    return false; // unparseable -- never restore
+  }
+  if (resolved.origin !== base) return false;
+  // Home-root is excluded on the NORMALIZED path, so no encoding trick can
+  // smuggle a home-root restore past the string comparison either.
+  const pathAndSearch = resolved.pathname + resolved.search;
+  return pathAndSearch !== '/' && pathAndSearch !== '/index.html';
 }
 
 /**
  * Pure: should a cold start restore `stored`? Split out from all storage/DOM
  * access so every branch is directly testable.
  */
-function shouldRestoreSession(stored, currentPath, nowMs, isStandalone) {
+function shouldRestoreSession(stored, currentPath, nowMs, isStandalone, origin) {
   // 1. Only inside an installed PWA. A browser tab has its own history and
   //    restoring under it would be an unwanted redirect.
   if (!isStandalone) return false;
@@ -2896,7 +2919,7 @@ function shouldRestoreSession(stored, currentPath, nowMs, isStandalone) {
   //    never a deep link or an in-app navigation.
   if (currentPath !== '/' && currentPath !== '/index.html') return false;
   if (!stored || typeof stored !== 'object') return false;
-  if (!isRestorableSessionUrl(stored.url)) return false;
+  if (!isRestorableSessionUrl(stored.url, origin)) return false;
   // 3. Recent enough to be a resumption rather than a fresh intent.
   const ts = typeof stored.ts === 'number' ? stored.ts : NaN;
   if (!Number.isFinite(ts)) return false;
@@ -2945,7 +2968,7 @@ function maybeRestoreLastSession() {
     } catch (_) {
       return false; // corrupt/hand-edited value -- ignore, never throw
     }
-    if (!shouldRestoreSession(stored, window.location.pathname, Date.now(), isStandalone)) return false;
+    if (!shouldRestoreSession(stored, window.location.pathname, Date.now(), isStandalone, window.location.origin)) return false;
     // 4. Never restore onto the page we are already on (belt to
     //    isRestorableSessionUrl's suspenders -- no redirect loop is possible).
     if (stored.url === window.location.pathname + window.location.search) return false;
@@ -4136,6 +4159,21 @@ function refreshAllPinSurfaces() {
     if (playlistsSheetCache) {
       playlistsSheetCache = { ...playlistsSheetCache, pins, moduleEnabled: ytdlpEnabled };
     }
+    // v1.47.4 gate WARNING (adversarial seat) -- THE DELETE-RESURRECT SHAPE.
+    // The sheet paints its cache SYNCHRONOUSLY on open, so an unpin is
+    // clickable while that open's own fetches are still in flight:
+    //   t=0    open; cache paints; config+pins requests start; generation = N
+    //   t=50   user unpins; this function DELETEs, refetches, rewrites the cache
+    //   t=400  the ORIGINAL open's Promise.all resolves with pins read at t=0
+    //          (still containing the pin). generation is still N, so its guard
+    //          passes, it overwrites the cache and re-renders.
+    // The just-unpinned pin REAPPEARS, and the poisoned cache repaints it on
+    // every later open until some fresh fetch happens to win. Server state was
+    // always correct, so no data was lost -- but it is the resurrect shape, on
+    // the very flow item 9 was built for.
+    // Bumping the generation invalidates any open still in flight, so a
+    // response that predates this unpin can no longer paint.
+    playlistsSheetGeneration += 1;
   });
 }
 
