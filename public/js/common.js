@@ -2846,6 +2846,116 @@ function wirePinchZoomSuppression() {
   document.addEventListener('gesturechange', suppress, { passive: false });
 }
 
+// ---- v1.47.4 item 6: make an iOS PWA eviction cost only the relaunch tap ---
+//
+// Dean asked to "harden and isolate the PWA features from other PWA apps",
+// having noticed that closing a DIFFERENT PWA can kill this one while it plays
+// in the background. Reframed at intake, and he agreed: iOS exposes NO
+// cross-app isolation control. A backgrounded standalone PWA is a WebKit
+// process subject to jetsam, and closing another PWA can trigger the sweep that
+// reaps ours. "Never killed" is not deliverable and is not claimed here.
+//
+// The agreed acceptance instead: A KILL COSTS NOTHING BUT THE RELAUNCH TAP.
+// Playback POSITION already survives (it is persisted server-side per user, and
+// the player already offers its resume prompt). What did not survive was WHERE
+// YOU WERE: a relaunch always landed on the manifest's `start_url` (`/`), so a
+// kill mid-episode dumped you back at the home grid to find your place again.
+//
+// This records the current route and restores it on a COLD START, under four
+// deliberately narrow conditions (see maybeRestoreLastSession) so it can never
+// hijack a deliberate fresh open.
+
+const LAST_SESSION_KEY = 'ft-last-session';
+
+// How stale a pointer may be and still be worth restoring. An eviction is
+// followed by a relaunch in minutes-to-hours (you come back to what you were
+// listening to), whereas opening the app the NEXT DAY is a fresh intent that
+// should land on Home. 6h separates those two cases without needing to guess.
+const LAST_SESSION_MAX_AGE_MS = 6 * 60 * 60 * 1000;
+
+/**
+ * Pure: is this a route worth restoring to? Home-root is deliberately excluded
+ * -- restoring Home to Home is a no-op that would only risk a redirect loop.
+ */
+function isRestorableSessionUrl(url) {
+  if (typeof url !== 'string' || url === '') return false;
+  if (!url.startsWith('/')) return false;      // same-origin, path-only
+  if (url.startsWith('//')) return false;      // protocol-relative -> off-origin
+  return url !== '/' && url !== '/index.html';
+}
+
+/**
+ * Pure: should a cold start restore `stored`? Split out from all storage/DOM
+ * access so every branch is directly testable.
+ */
+function shouldRestoreSession(stored, currentPath, nowMs, isStandalone) {
+  // 1. Only inside an installed PWA. A browser tab has its own history and
+  //    restoring under it would be an unwanted redirect.
+  if (!isStandalone) return false;
+  // 2. Only when landing on the bare start_url -- i.e. genuinely a cold launch,
+  //    never a deep link or an in-app navigation.
+  if (currentPath !== '/' && currentPath !== '/index.html') return false;
+  if (!stored || typeof stored !== 'object') return false;
+  if (!isRestorableSessionUrl(stored.url)) return false;
+  // 3. Recent enough to be a resumption rather than a fresh intent.
+  const ts = typeof stored.ts === 'number' ? stored.ts : NaN;
+  if (!Number.isFinite(ts)) return false;
+  const age = nowMs - ts;
+  // A future-dated pointer (clock change, edited storage) is not trusted.
+  if (age < 0 || age > LAST_SESSION_MAX_AGE_MS) return false;
+  return true;
+}
+
+/**
+ * Record the current route as the resume point. Called from
+ * `updateActiveNavHighlight`, which already runs after every view change and is
+ * already location-driven -- the same reasoning as the zoom policy above, and
+ * the same reason it cannot drift out of sync with the router.
+ *
+ * localStorage is best-effort: Safari can throw on write in private mode or
+ * when the quota is exhausted, and a resume convenience must never break a
+ * navigation.
+ */
+function recordLastSession() {
+  try {
+    if (typeof window === 'undefined' || !window.localStorage) return;
+    const url = window.location.pathname + window.location.search;
+    if (!isRestorableSessionUrl(url)) return;
+    window.localStorage.setItem(LAST_SESSION_KEY, JSON.stringify({ url, ts: Date.now() }));
+  } catch (_) { /* private mode / quota / disabled storage -- never fatal */ }
+}
+
+/**
+ * On a cold PWA start, jump back to where the user was. Uses
+ * `location.replace`, NOT a push: the synthetic entry must not sit in history
+ * where Back would bounce the user between Home and the restored page.
+ *
+ * @returns {boolean} whether a restore was performed (for tests/callers)
+ */
+function maybeRestoreLastSession() {
+  try {
+    if (typeof window === 'undefined' || !window.localStorage) return false;
+    const isStandalone = Boolean(
+      (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
+      || window.navigator.standalone === true,
+    );
+    let stored = null;
+    try {
+      stored = JSON.parse(window.localStorage.getItem(LAST_SESSION_KEY) || 'null');
+    } catch (_) {
+      return false; // corrupt/hand-edited value -- ignore, never throw
+    }
+    if (!shouldRestoreSession(stored, window.location.pathname, Date.now(), isStandalone)) return false;
+    // 4. Never restore onto the page we are already on (belt to
+    //    isRestorableSessionUrl's suspenders -- no redirect loop is possible).
+    if (stored.url === window.location.pathname + window.location.search) return false;
+    window.location.replace(stored.url);
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
 // ---- v1.47.4 item 4: shell singleton invariant (?debugUI=1) ----------------
 //
 // Dean: "on mobile at times if I go back and forth between pages ... certain
@@ -3306,6 +3416,10 @@ if (typeof window !== 'undefined') {
     // `currentViewName = ...` assignments call it) and it is location-driven, so
     // it cannot disagree with the router. See applyZoomPolicy's doc comment.
     applyZoomPolicy();
+    // v1.47.4 item 6: same rationale as the zoom policy -- this call site
+    // already runs after every view change and is location-driven, so the
+    // resume pointer cannot drift out of sync with the router.
+    recordLastSession();
     const key = activeNavItem(window.location.pathname, window.location.search);
     const bottomNav = document.getElementById('bottom-nav');
     if (bottomNav) {
@@ -6826,6 +6940,14 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // v1.47.4 item 6: a cold PWA start restores where the user was, so an iOS
+  // eviction costs only the relaunch tap. Checked BEFORE the view-building work
+  // below (nav injection, the router, the library fetch) because a restore is a
+  // `location.replace` -- everything after this point would be built only to be
+  // thrown away. In every non-restoring case (the overwhelming majority) this
+  // costs a single localStorage read and returns false.
+  if (maybeRestoreLastSession()) return;
+
   // v1.47.4 item 2: pinch/double-tap zoom suppression. Both calls run on EVERY
   // page, deliberately outside the router: `bootRouter` bails early on a
   // non-route shell (login/welcome), which would otherwise leave exactly the
@@ -6973,6 +7095,8 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.47.4 item 5: the touch-target describer (the overlay instrument's
     // pure half).
     describeTouchTarget,
+    // v1.47.4 item 6: the pure session-restore decisions.
+    isRestorableSessionUrl, shouldRestoreSession, LAST_SESSION_KEY, LAST_SESSION_MAX_AGE_MS,
     shouldDockOnTransition, isSameLocationNav, toPathAndQuery, isStaleNavGeneration,
     // v1.45.0 (T2): incremental-pop Home helpers.
     nextHistoryDepth, resolveHomeButtonAction, isHomeRootTarget,
