@@ -103,6 +103,8 @@ module.exports = [
         resolveAudioArtUrl: 'readonly',
         resolveChannelName: 'readonly',
         resolveTheme: 'readonly',
+        // v1.48 item 2: real day-of view counts (wraps getMockViews as fallback).
+        resolveViewCountLabel: 'readonly',
         setTheme: 'readonly',
         showConfirmModal: 'readonly',
         // FR-3 (T2): the toast helper (watch.js's post-delete success +

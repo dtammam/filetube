@@ -408,8 +408,165 @@ function buildMockComments(mediaId, bank, count, videoTitle) {
   return withPersona;
 }
 
+// ---- v1.48 item 1: the video description shown in the description box ------
+// Dean: "Can we have the full description of the video pulled. Right now it's
+// truncated. We should add this to reheat so full descriptions can be
+// displayed."
+//
+// It turned out to need NO reheat/backfill work, so this is deliberately a pure
+// render-side decision and nothing else. The full text has always been present
+// end to end: yt-dlp writes it into the media file itself via `--embed-metadata`
+// (lib/ytdlp/args.js), server.js's ffprobe probe reads format tags under a 16MB
+// maxBuffer raised specifically so long descriptions cannot overflow it, and
+// `parseFfprobeTags` whitelists `description` while only trimming whitespace.
+// The ONLY truncation in the whole path was cosmetic and client-side: the
+// description appeared solely as one row of the "Embedded info" block, cut to
+// 400 characters by `renderEmbeddedTags`'s `clip`.
+//
+// Returns the description to display, or '' for "show nothing" (which the
+// `.video-description:empty` CSS rule turns into "occupy no space at all").
+//
+// The title-equality guard is NOT incidental. For non-YouTube ("universal")
+// downloads the item's title IS its description, written by
+// UNIVERSAL_OUTPUT_TEMPLATE's `%(title).100s` (v1.41.16-18) -- so rendering the
+// description for those items would print the title twice, once truncated to
+// 100 characters and once in full. Compared case-insensitively on trimmed text
+// because the filename-derived title has been through path sanitization while
+// the embedded tag has not.
+// GATE FIX (adversarial WARNING W3): the displayed text is BOUNDED. Nothing
+// upstream caps it -- `parseFfprobeTags` only trims, so the real ceiling was
+// ffprobe's 16MB maxBuffer -- and before v1.48 nothing rendered past 400 chars
+// anyway. Now the whole string goes into a `-webkit-line-clamp` box with
+// `overflow-wrap: anywhere` (a break opportunity at EVERY character) and
+// `setupDescriptionToggle` immediately reads `scrollHeight`, forcing a
+// synchronous full-text layout. Multi-hundred-KB descriptions are ordinary on
+// YouTube (auto-generated tracklists, link dumps), so the worst case was a
+// browser hang on an attacker-influenced field.
+//
+// 50k characters is far above any real description (YouTube's own limit is
+// 5000) while turning "unbounded" into a chosen number. This is an availability
+// bound only; XSS was never in play (textContent, never innerHTML).
+const MAX_DISPLAY_DESCRIPTION = 50000;
+
+function resolveDisplayDescription(tags, title) {
+  const raw = tags && typeof tags.description === 'string' ? tags.description.trim() : '';
+  if (raw === '') return '';
+  // DELTA GATE FIX (adversarial S-E2): the length bound is applied BEFORE the
+  // title-equality compare. `raw.toLowerCase()` copies the entire string, so on
+  // a multi-MB tag the compare cost more than the cut did -- and it is provably
+  // pointless there, because a description longer than MAX_DISPLAY_DESCRIPTION
+  // cannot equal a title that is itself length-capped far below it.
+  //
+  // Deliberately NOT a `raw.length === t.length` pre-check instead: lowercasing
+  // can CHANGE length (U+0130 'İ' lowercases to two UTF-16 units), so a length
+  // pre-check would false-negative on exotic Unicode and start printing a
+  // duplicated title for exactly the universal-lane items the guard protects.
+  // DELTA GATE FIX (adversarial W-D2): a UTF-16 unit slice with ONE boundary
+  // repair, NOT `[...raw].slice().join('')`. The spread was measured
+  // materialising the entire input as an array of per-code-point strings BEFORE
+  // cutting -- 213ms and 95MB of heap on a 16MB tag -- which re-imported the
+  // main-thread spike this bound exists to remove. This form is O(MAX) instead
+  // of O(input), and the units-vs-code-points mismatch also made the effective
+  // bound 2x looser than the constant claimed for astral text.
+  //
+  // It still cannot split a surrogate pair: if the cut lands between a HIGH
+  // surrogate (U+D800-U+DBFF) and its low half, that dangling high surrogate is
+  // dropped. A cut immediately AFTER a complete pair leaves a low surrogate as
+  // the last unit, which is already valid and must not be touched.
+  if (raw.length > MAX_DISPLAY_DESCRIPTION) {
+    let cut = raw.slice(0, MAX_DISPLAY_DESCRIPTION);
+    const lastUnit = cut.charCodeAt(cut.length - 1);
+    if (lastUnit >= 0xD800 && lastUnit <= 0xDBFF) cut = cut.slice(0, -1);
+    return cut + '…';
+  }
+  // The universal-lane guard, now reached only for strings at or under the
+  // bound. For non-YouTube downloads the item's TITLE is its description
+  // (UNIVERSAL_OUTPUT_TEMPLATE's `%(title).100s`, v1.41.16-18), so without this
+  // those items print the same text twice, once cut to 100 chars and once in
+  // full. Equality, deliberately NOT prefix: real descriptions routinely open by
+  // restating the title, and suppressing those would hide what Dean asked for.
+  const t = typeof title === 'string' ? title.trim().toLowerCase() : '';
+  if (t !== '' && raw.toLowerCase() === t) return '';
+  return raw;
+}
+
+// ---- v1.48 item 4: retire mock commenters left over in localStorage --------
+// Dean: "I have some files that had some old commenters that are outdated I'd
+// like all to show the proper modern ones." (The specific names are deliberately
+// not reproduced here -- v1.44.3/v1.44.4 removed them from this repo and the
+// migration below is name-agnostic, so nothing needs them written down.)
+//
+// This is NOT a code defect and grepping for those names finds nothing: a
+// line-joined whole-tree scan confirms the source carries no real names, and
+// MOCK_COMMENT_BANK was genericised back in v1.44.3/v1.44.4. The stale names
+// live in the BROWSER. `loadComments` writes each video's generated comments to
+// `comments_<mediaId>` on its FIRST view and, before this change, never looked
+// at them again -- so every video Dean opened before v1.44.3 has the old bank
+// frozen in localStorage forever, on every device he ever opened it on. That is
+// exactly why only "some files" show them.
+//
+// THIS PATH CAN DESTROY USER DATA, which is why it is a reconciliation and not
+// a reset. Dean's OWN posted comments live in the very same array (author
+// 'You', unshifted to the front by the Comment button), so versioning the
+// storage key -- the obvious one-line fix -- would silently delete every real
+// comment he has ever written. Instead: keep every 'You' comment in its
+// original order, drop only entries whose author no longer exists in the
+// current bank, and regenerate the mock remainder deterministically.
+//
+// `makeFreshMock` is a FACTORY, not a value, so a video whose stored comments
+// are already current costs nothing (no regeneration, no rewrite, no
+// localStorage churn on every watch-page load).
+const USER_COMMENT_AUTHOR = 'You';
+const MOCK_COMMENT_AUTHORS = new Set(MOCK_COMMENT_BANK.map((c) => c.author));
+
+// Is this author one the CURRENT bank can still produce? The persona author is
+// included: it is generated by buildPersonaComment rather than listed in the
+// bank, so omitting it here would make every persona comment look stale and
+// force a pointless regeneration on every load.
+function isCurrentCommentAuthor(author) {
+  return typeof author === 'string' &&
+    (MOCK_COMMENT_AUTHORS.has(author) || author === PERSONA_AUTHOR);
+}
+
+function reconcileStoredComments(stored, makeFreshMock) {
+  const fresh = () => {
+    const generated = typeof makeFreshMock === 'function' ? makeFreshMock() : null;
+    return Array.isArray(generated) ? generated : [];
+  };
+  // Corrupt/non-array storage (hand-edited, or a truncated write) -- rebuild
+  // rather than throw. There is nothing to preserve in a value that is not a list.
+  if (!Array.isArray(stored)) return { comments: fresh(), changed: true };
+
+  const usable = (c) => !!c && typeof c === 'object';
+  // GATE FIX (adversarial SUGGESTION S7): the user-author test is trimmed and
+  // case-insensitive. The Comment button only ever writes the exact literal
+  // 'You', so this is theoretical -- but this is a data-DESTROYING path, and a
+  // comparison that can only ever KEEP more costs nothing. (A homoglyph such as
+  // Cyrillic 'Уou' still will not match, which is correct: it was never written
+  // by the Comment button.)
+  const isUserAuthored = (c) => typeof c.author === 'string' &&
+    c.author.trim().toLowerCase() === USER_COMMENT_AUTHOR.toLowerCase();
+  const isStale = (c) => !usable(c) ||
+    (!isUserAuthored(c) && !isCurrentCommentAuthor(c.author));
+
+  // The common case by far: nothing stale, so return the stored array
+  // UNTOUCHED and report no change (the caller then skips the write entirely).
+  if (!stored.some(isStale)) return { comments: stored, changed: false };
+
+  // Dean's own comments survive, in their original relative order and still at
+  // the front -- which is where the Comment button puts them.
+  const mine = stored.filter((c) => usable(c) && isUserAuthored(c));
+  return { comments: [...mine, ...fresh()], changed: true };
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
+    resolveDisplayDescription,
+    MAX_DISPLAY_DESCRIPTION,
+    isCurrentCommentAuthor,
+    reconcileStoredComments,
+    USER_COMMENT_AUTHOR,
+    PERSONA_AUTHOR,
     nextTheaterState,
     isTheaterModeActive,
     theaterModeStorageValue,
@@ -515,7 +672,12 @@ if (typeof module !== 'undefined' && module.exports) {
     const fileTypeText = root.querySelector('#file-type-text');
     const filePathText = root.querySelector('#file-path-text');
 
-    const descriptionParagraph = root.querySelector('#description-paragraph');
+    // v1.48 item 1: the collapse/"Show more" mechanism now governs the VIDEO'S
+    // DESCRIPTION (#video-description). It used to expand the static
+    // self-hosting boilerplate, which is now the unnamed `.description-fileinfo`
+    // block below it and is never clamped. The variable name is kept because
+    // every reference below means "the thing Show more expands".
+    const descriptionParagraph = root.querySelector('#video-description');
     const expandDescBtn = root.querySelector('#expand-desc-btn');
 
     const commentCountBadge = root.querySelector('#comment-count-badge');
@@ -842,7 +1004,7 @@ if (typeof module !== 'undefined' && module.exports) {
       mediaTitle.textContent = mediaData.title;
       document.title = `${mediaData.title} - FileTube`;
 
-      viewsCount.textContent = getMockViews(mediaData.id, mediaData.size);
+      viewsCount.textContent = resolveViewCountLabel({ ...mediaData, id: mediaId }, { detailed: true });
       // F1: channelAvatarUrl is always null/absent today (C6/T11 populate it
       // in Wave 3) -- resolveAvatarSource gracefully falls back to the
       // generated avatar until then.
@@ -878,6 +1040,7 @@ if (typeof module !== 'undefined' && module.exports) {
         downloadBtn.setAttribute('download', `${mediaData.title || 'download'}${mediaData.ext || ''}`);
       }
 
+      renderVideoDescription(mediaData.tags);
       renderEmbeddedTags(mediaData.tags);
       // Measure once the (async) Roboto webfont has loaded, so line wrapping — and
       // thus the overflow check — reflects the final font, not the fallback.
@@ -888,12 +1051,29 @@ if (typeof module !== 'undefined' && module.exports) {
       }
     }
 
+    // v1.48 item 1: write the video's own description into the box. `textContent`
+    // (never innerHTML) because this is attacker-influenced text read straight out
+    // of a downloaded file's metadata tags -- and setting it to '' is what makes
+    // `.video-description:empty` collapse the element for files with none.
+    function renderVideoDescription(tags) {
+      if (!descriptionParagraph) return;
+      descriptionParagraph.textContent = resolveDisplayDescription(tags, mediaData && mediaData.title);
+    }
+
     // Only offer "Show more" when the description overflows by a meaningful amount;
     // otherwise show it in full. Avoids the silly toggle that hid a single line.
     function setupDescriptionToggle() {
       if (!descriptionParagraph || !expandDescBtn) return;
       descriptionParagraph.classList.remove('expanded');
       expandDescBtn.textContent = 'Show more';
+      // v1.48 item 1: with no description there is nothing to expand -- the
+      // element is `display: none` via `:empty`, so its scrollHeight/clientHeight
+      // are both 0 and the overflow test below would otherwise leave a "Show
+      // more" button sitting under an empty box.
+      if (descriptionParagraph.textContent === '') {
+        expandDescBtn.style.display = 'none';
+        return;
+      }
       const lh = parseFloat(getComputedStyle(descriptionParagraph).lineHeight) || 18;
       const hidden = descriptionParagraph.scrollHeight - descriptionParagraph.clientHeight;
       if (hidden <= lh * 1.5) {
@@ -912,10 +1092,18 @@ if (typeof module !== 'undefined' && module.exports) {
       if (!el) return;
       const title = (mediaData.title || '').toLowerCase();
       // Skip title/artist (shown elsewhere) and any tag whose value just repeats the
-      // title. Cap very long values so a huge embedded description can't blow out layout.
+      // title. Cap very long values so a huge embedded tag can't blow out layout.
+      //
+      // v1.48 item 1: `description` is skipped here too -- it now has its own
+      // full-text home at the top of this box (renderVideoDescription above), and
+      // leaving it in would print it a SECOND time, still clipped to 400
+      // characters, directly underneath the untruncated copy. This 400-char clip
+      // deliberately survives for every OTHER tag: it exists to stop a huge
+      // embedded lyrics/comment tag from blowing out the layout, and that guard is
+      // still wanted for values with no expand affordance of their own.
       const clip = v => v.length > 400 ? v.slice(0, 400) + '…' : v;
       const entries = Object.entries(tags || {}).filter(([k, v]) =>
-        k !== 'title' && k !== 'artist' && String(v).toLowerCase() !== title);
+        k !== 'title' && k !== 'artist' && k !== 'description' && String(v).toLowerCase() !== title);
       if (!entries.length) { el.style.display = 'none'; return; }
       const label = k => k.charAt(0).toUpperCase() + k.slice(1);
       el.innerHTML = '<div class="embedded-tags-title">Embedded info</div>' +
@@ -957,7 +1145,7 @@ if (typeof module !== 'undefined' && module.exports) {
         relatedContainer.innerHTML = related.map(item => {
           const durationStr = item.duration > 0 ? formatDuration(item.duration) : (item.type === 'audio' ? 'Audio' : '');
           const durationBadge = durationStr ? `<div class="duration-badge">${durationStr}</div>` : '';
-          const views = getMockViews(item.id, item.size);
+          const views = resolveViewCountLabel(item);
 
           return `
             <a href="/watch.html?v=${item.id}" class="related-card">
@@ -1533,7 +1721,20 @@ if (typeof module !== 'undefined' && module.exports) {
       try {
         const localComments = localStorage.getItem(savedCommentsKey);
         if (localComments) {
-          comments = JSON.parse(localComments);
+          // v1.48 item 4: reconcile against the CURRENT bank before rendering.
+          // Videos first opened before v1.44.3 still hold the pre-genericisation
+          // commenter names in localStorage; nothing ever re-read them. Dean's
+          // own 'You' comments are preserved -- see reconcileStoredComments.
+          const reconciled = reconcileStoredComments(
+            JSON.parse(localComments),
+            getMockInitialComments
+          );
+          comments = reconciled.comments;
+          // Written back ONLY when something actually changed, so an
+          // already-current video does no localStorage write on every load.
+          if (reconciled.changed) {
+            localStorage.setItem(savedCommentsKey, JSON.stringify(comments));
+          }
         } else {
           // Prepopulate with a few classic YouTube comments to keep the aesthetic alive!
           comments = getMockInitialComments();

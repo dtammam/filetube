@@ -80,6 +80,33 @@
 
 ## Shipped
 
+### v1.48.0 - metadata + UX wave: full descriptions, real view counts, related 20 (2026-07-27)
+
+Dean's six-item wave. Five shipped; **item 6 (a suspected duplicate file after a one-off download) he withdrew** - he could not reproduce a duplicate and asked not to conflate it with anything else. No duplicate-detection and no reaper work was done, which is the right outcome: this repo shipped a file-destroyer of that class once already (v1.41.6).
+
+**Two of the six diagnoses inverted the plan before any code was written.**
+
+- **Full descriptions needed NO reheat work at all.** The brief assumed a capture gap. The full text was always in the file (`--embed-metadata`), always read (ffprobe's 16MB buffer, raised for exactly this), always stored untruncated. The truncation was a 400-character `clip` in the *watch page's* "Embedded info" block - and worse, the description box **never rendered the description at all**: it is static self-hosting boilerplate, and the `-webkit-line-clamp` sat on *that*, so "Show more" had been expanding three lines of static text since it shipped. The clamp now lives on the description.
+- **Outdated mock commenters were not a code bug.** A line-joined whole-tree scan found zero retired names in source. They were frozen in **Dean's browser localStorage**, written on each video's first view before v1.44.3 and never re-read - which is exactly why only *some* files showed them, and why no server-side fix could ever have worked. The migration keeps every comment Dean posted himself (they live in the same array) and purges by absence from the current bank, so it is name-agnostic rather than a list of nine strings.
+
+**Real view counts** are captured from yt-dlp at download and re-snapshotted on reheat; they were previously 100% fabricated from a hash of the media id. The watch page labels them honestly - **"1.2M views when downloaded"**, or "as of \<date\>" once a reheat has refreshed them. Fake stars stay, per Dean. **Related items: 10 -> 20**, with the honest caveat that on a small library the extra slots are filled from the most-recent tail, not from genuine matches. **Appearance moved to the top of Library settings.**
+
+**The gate ran four rounds and found more than the implementation did.** What it caught:
+
+- **The field name would have corrupted the stats page.** `item.viewCount` was already taken - the legacy pre-v1.42 *local watch counter*, still honored as a floor by `effectiveViewCount`. A freshly-downloaded video would have reported ~12 million local plays. The field is `sourceViewCount`; no bare `viewCount` survives anywhere in the bridge.
+- **The "when downloaded" label was false after a reheat.** The capture date was written by five paths and read by none, while the label was hardcoded - so the instant the re-heatable feature Dean asked for fired, the page asserted the wrong provenance. The qualifier is now derived from the stored date.
+- **Six write paths had no test that would fail if the wiring broke** - including the reheat itself. Every test was a pure unit test. Closed with 18 integration tests and then mutation-verified rather than asserted; the adversarial seat re-ran an 11-mutant battery and confirmed each kill independently.
+- **A test that named a branch it never reached.** The "re-init carry-forward" test passed with that branch deleted - the Phase-2 gap-fill masked it. Same class as the headline finding, in subtler form. Fixed by correcting the false comment *and* adding a test that isolates the branch.
+- **A reheat could overwrite a good count with a degraded one** (a bot-check fallback reporting 0 landing over a captured 1.67 billion). Guarded, with the honest limit recorded: YouTube does audit and purge views, so this delays a genuine downward correction. Tech-debt **#60**.
+- **The description bound re-imported the cost it removed** (213ms / 95MB of heap on a 16MB tag) and an out-of-range capture date rendered literal "as of Invalid Date".
+- **Applying a reviewer suggestion, I deleted a load-bearing guard outright** and caught it by reading the file back rather than trusting the edit. Reported in the commit; the unit suite did not catch it, because every fixture is short.
+- **All three of us leaked private names while arguing for de-identification** - the adversarial seat printed all nine into its report, and I put three into a test file, the exec plan and a source comment. All stripped.
+- **One reviewer prescription refused:** seeding the stale-name fixture from the full retired set would have re-committed nine real names, undoing v1.44.3/v1.44.4. Both seats agreed the name-agnostic property is strictly stronger.
+
+- **Known gap, shipping disclosed:** items 1 and 4 rest on **DOM wiring that `node:test` cannot exercise**. Mutation-proved across rounds: restoring the original description bug, deleting the render call, and bypassing the comment migration all leave the suite green. The pure helpers are well covered; the wiring is not, and rests on Dean's device pass.
+- **The known thumbnail flake (tech-debt #53) bit during the gate** on both Node versions and was independently reproduced by the reviewer, which corroborates that #57's unidentified CI failure is just #53.
+- Node 22: 4910/4910. Node 24: 4910/4910. Lint 0 errors. Dean's device is the arbiter.
+
 ### v1.47.8 - keyboard shortcuts reference (2026-07-27)
 
 Dean: *"Can we make a keyboard shortcuts page/modal? ... mirror YouTube's or other modern apps'. Ignore/not display on mobile viewport. Keep it simple."*

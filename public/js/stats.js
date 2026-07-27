@@ -215,7 +215,13 @@ function renderMostWatched(root, mostWatched) {
     labelEl.textContent = `${index + 1}. ${entry.title}`;
     labelEl.style.cssText = 'overflow:hidden; text-overflow:ellipsis; white-space:nowrap;';
     const valueEl = document.createElement('span');
-    valueEl.textContent = `${formatCount(entry.viewCount)} views`;
+    // v1.48 gate fix (adversarial WARNING W6): "plays", not "views". This is the
+    // LOCAL watch counter (db.viewCounts -- how many times it was played here),
+    // while cards and the watch page now render the video's SOURCE view count
+    // under the word "views". Same word for two unrelated numbers meant one file
+    // could read "1,672,000,000 views" on its card and "3 views" in Most
+    // watched.
+    valueEl.textContent = `${formatCount(entry.viewCount)} plays`;
     valueEl.style.cssText = 'color:var(--text-secondary); font-size:12px; flex-shrink:0;';
     row.appendChild(labelEl);
     row.appendChild(valueEl);

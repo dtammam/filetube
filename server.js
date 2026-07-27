@@ -2425,6 +2425,46 @@ function reconcileTranscode(item) {
   return before !== item.transcodeStatus;
 }
 
+// v1.48 item 2: carry a captured day-of view count from a consumed downloadMeta
+// bridge entry onto the library item. ONE writer for all three consume sites
+// (universal, the D1a proxy-host YouTube recovery, and the plain YouTube
+// bracket path) -- the v1.41.4 lesson was a seat that forgot to CALL the shared
+// helper, so there is exactly one to call and it is called from every site.
+//
+// THE FIELD IS `sourceViewCount`, NOT `viewCount`, AND THAT IS LOAD-BEARING.
+// `item.viewCount` is ALREADY TAKEN, with completely different semantics: it is
+// the legacy pre-v1.42 LOCAL watch counter, and `effectiveViewCount` (below)
+// still honors a leftover embedded `item.viewCount` as the starting value for
+// how many times DEAN has played that file. Writing a YouTube view count into
+// that name would have been read straight back as a local play count -- a
+// freshly-downloaded video would have reported ~12 million local watches on the
+// stats page, and `withEffectiveViewCounts` would have propagated it. The two
+// numbers are unrelated and must never share a key. `sourceViewCount` also
+// matches the existing `sourceTitle`/`sourceId`/`sourceExtractor` convention
+// for "this value came from the SOURCE, not from us".
+//
+// The count and its capture date are written as a UNIT, and only when the count
+// itself survives re-validation: an item must never end up with a number and no
+// date (the UI would have to invent one for the "when downloaded" label) or a
+// date with no number. The date falls back to now only when the bridge entry
+// carried no usable `capturedAt` of its own.
+//
+// `consumed.sourceViewCount` has already crossed `store.parseCapturedViewCount` at
+// the read boundary; the `typeof`/`Number.isInteger` re-check here is the same
+// re-validate-at-the-write-boundary posture every sibling field above uses.
+function applyCapturedViewCount(item, consumed, nowMs = Date.now()) {
+  if (!item || !consumed) return false;
+  const views = consumed.sourceViewCount;
+  if (typeof views !== 'number' || !Number.isInteger(views) || views < 0) return false;
+  const capturedAt = consumed.sourceViewCountCapturedAt;
+  item.sourceViewCount = views;
+  item.sourceViewCountCapturedAt =
+    (typeof capturedAt === 'number' && Number.isFinite(capturedAt) && capturedAt > 0)
+      ? capturedAt
+      : nowMs;
+  return true;
+}
+
 // Pure: pull a small, normalized set of embedded metadata tags from ffprobe
 // output (accepts the parsed object OR the raw stdout string). Whitelisted so we
 // never surface junk; returns {} on anything malformed. Unit-tested — ffprobe
@@ -3961,6 +4001,21 @@ async function runScanDirectories() {
         if (typeof existing.metadataRepulledAt === 'number') {
           newMetadata[id].metadataRepulledAt = existing.metadataRepulledAt;
         }
+        // v1.48 item 2: the captured view count + its capture date carry
+        // forward too -- the persist-gate/stale-snapshot bug class's checkpoint
+        // for THIS wave's new fields (this repo has been bitten by that class
+        // in v1.32, v1.33, v1.34 and v1.41.5). A view count cannot be
+        // re-derived from anything on disk: it came from a network capture at a
+        // moment in time, so a changed file (same path, new size -- Dean
+        // re-encodes something) would otherwise permanently revert the item to
+        // a FABRICATED mock count with no way back short of a manual reheat.
+        // Carried as a UNIT, and only when both halves are present, so the pair
+        // can never be split into a count with a wrong date.
+        if (typeof existing.sourceViewCount === 'number' && Number.isInteger(existing.sourceViewCount) && existing.sourceViewCount >= 0 &&
+            typeof existing.sourceViewCountCapturedAt === 'number' && Number.isFinite(existing.sourceViewCountCapturedAt)) {
+          newMetadata[id].sourceViewCount = existing.sourceViewCount;
+          newMetadata[id].sourceViewCountCapturedAt = existing.sourceViewCountCapturedAt;
+        }
         // v1.34 T3: MANUAL chapters are user data with no probe source --
         // a changed file must never lose them (embedded `chapters` refresh
         // naturally from this branch's own probe).
@@ -4215,6 +4270,16 @@ async function runScanDirectories() {
             if (Array.isArray(freshItem.chapters)) {
               item.chapters = freshItem.chapters;
             }
+            // v1.48 item 2: a reheat that completed mid-scan re-snapshotted the
+            // view count -- adopt it, or this scan's older Phase-1 snapshot
+            // would write the PREVIOUS count back over the fresher one and
+            // silently undo the refresh Dean triggered. Adopted as a unit with
+            // its date, matching how it is written everywhere else.
+            if (typeof freshItem.sourceViewCount === 'number' && Number.isInteger(freshItem.sourceViewCount) && freshItem.sourceViewCount >= 0 &&
+                typeof freshItem.sourceViewCountCapturedAt === 'number' && Number.isFinite(freshItem.sourceViewCountCapturedAt)) {
+              item.sourceViewCount = freshItem.sourceViewCount;
+              item.sourceViewCountCapturedAt = freshItem.sourceViewCountCapturedAt;
+            }
           }
           // v1.34 T3: MANUAL chapters are written ONLY by the editor
           // endpoint -- the scan never touches the field -- so the fresh
@@ -4238,6 +4303,17 @@ async function runScanDirectories() {
           }
           if (item.metadataRepulledAt === undefined && typeof freshItem.metadataRepulledAt === 'number') {
             item.metadataRepulledAt = freshItem.metadataRepulledAt;
+          }
+          // v1.48 item 2: the PARTIAL-reheat companion to the adoption above --
+          // same gap-fill posture as sourceTitle/youtubeId/chapters. A reheat
+          // that populated a view count for the first time but did not advance
+          // the completion marker would otherwise be lost to the snapshot, and
+          // the item would keep rendering a fabricated count.
+          if (item.sourceViewCount === undefined &&
+              typeof freshItem.sourceViewCount === 'number' && Number.isInteger(freshItem.sourceViewCount) && freshItem.sourceViewCount >= 0 &&
+              typeof freshItem.sourceViewCountCapturedAt === 'number' && Number.isFinite(freshItem.sourceViewCountCapturedAt)) {
+            item.sourceViewCount = freshItem.sourceViewCount;
+            item.sourceViewCountCapturedAt = freshItem.sourceViewCountCapturedAt;
           }
           // v1.34 gate fix (adversarial CRITICAL -- the class's companion
           // strike): a PARTIAL mid-scan reheat (markComplete false, marker
@@ -4330,6 +4406,7 @@ async function runScanDirectories() {
               item.sourceTitle = consumedU.sourceTitle;
               item.title = consumedU.sourceTitle;
             }
+            applyCapturedViewCount(item, consumedU);
             dbChanged = true;
           } else if (!item.sourceId) {
             // No capture bridged (older download, or already consumed) AND the
@@ -4364,6 +4441,7 @@ async function runScanDirectories() {
               if (consumedYt.channelAvatarUrl) item.channelAvatarUrl = consumedYt.channelAvatarUrl;
               if (typeof consumedYt.releaseDate === 'number' && Number.isFinite(consumedYt.releaseDate)) item.releaseDate = consumedYt.releaseDate;
               if (typeof consumedYt.sourceTitle === 'string' && consumedYt.sourceTitle !== '') { item.sourceTitle = consumedYt.sourceTitle; item.title = consumedYt.sourceTitle; }
+              applyCapturedViewCount(item, consumedYt);
               dbChanged = true;
             }
           }
@@ -4406,6 +4484,7 @@ async function runScanDirectories() {
             if (typeof consumed.channelAvatarUrl === 'string' && consumed.channelAvatarUrl !== '') {
               item.channelAvatarUrl = consumed.channelAvatarUrl;
             }
+            applyCapturedViewCount(item, consumed);
             dbChanged = true;
           }
         }
@@ -10392,6 +10471,49 @@ async function recordRepulledItemMeta(deps, mediaId, meta, nowMs = Date.now()) {
     if (typeof m.releaseDate === 'number' && Number.isFinite(m.releaseDate)) {
       item.releaseDate = m.releaseDate; // SUPERSEDE, not gap-fill
     }
+    // v1.48 item 2 (Dean: "have it re-heatable if pulled later"): the
+    // re-snapshotted view count, SUPERSEDING the stored one -- re-snapshotting
+    // IS the feature, so a reheat deliberately replaces an older count rather
+    // than gap-filling. Re-validated at this write boundary through the same
+    // standalone validator the capture path used, never trusted from the
+    // caller. `viewCountCapturedAt` is stamped from `nowMs` (this function's
+    // already-injected clock, never a fresh Date.now()) and is what lets the UI
+    // say "when downloaded" honestly instead of implying a live number; the two
+    // fields are written as a UNIT so a count can never carry a stale date.
+    // NOTE the field name: `sourceViewCount`, never `viewCount` -- see
+    // `applyCapturedViewCount` for why that collision would have corrupted the
+    // legacy local watch counter.
+    // GATE FIX (adversarial WARNING W1): MONOTONICITY GUARD. A reheat
+    // supersedes, so without this any value clearing the validator -- including
+    // 0 -- replaced a good count. A LOWER number from a reheat is nearly always
+    // a degraded read rather than news: a bot-check/age-gate client fallback
+    // reporting "0", a members-only or premiere state, a re-upload behind the
+    // same id. Refusing those keeps the better-sourced number instead of
+    // writing "0 views" over a captured 1.67 billion.
+    //
+    // HONEST LIMIT (adversarial SUGGESTION S-D2): "monotonically non-decreasing"
+    // is an approximation, not a law -- YouTube does audit and purge bot views,
+    // which legitimately lowers a count. This policy therefore delays a genuine
+    // downward correction until the real number climbs back past the stored
+    // high-water mark, and it applies to `force` reheats too. That trade is
+    // deliberate and recorded in docs/exec-plans/tech-debt-tracker.md #60 with
+    // its revisit trigger: a count that is slightly stale-HIGH and self-heals
+    // beats one that is visibly wrong because a degraded read destroyed good
+    // data on the user's own click.
+    //
+    // The guard applies ONLY to the supersede-an-existing-value case; a FIRST
+    // capture of 0 is legitimate (a brand-new upload) and still lands. The date
+    // is only re-stamped when the count is actually accepted, so a refused
+    // reheat cannot leave a stale count wearing a fresh date.
+    const repulledViews = ytdlp.parseCapturedViewCount(m.sourceViewCount);
+    if (repulledViews !== null) {
+      const stored = item.sourceViewCount;
+      const hasStored = typeof stored === 'number' && Number.isInteger(stored) && stored >= 0;
+      if (!hasStored || repulledViews >= stored) {
+        item.sourceViewCount = repulledViews;
+        item.sourceViewCountCapturedAt = nowMs;
+      }
+    }
     // v1.41.5 (MeTube-import hydration): the channel identity the network
     // metadata pass discovered -- NEVER-OVERWRITE (AC17 posture), see this
     // function's doc comment. `m.channel` has already crossed
@@ -11732,6 +11854,9 @@ module.exports = {
   __getSaveDatabaseCallCount,
   reconcileTranscode,
   parseFfprobeTags,
+  // v1.48 gate fix (adversarial SUGGESTION S1): exported for direct testing,
+  // mirroring parseFfprobeTags/reconcileTranscode's own testability posture.
+  applyCapturedViewCount,
   parseFfprobeStreams,
   codecNeedsTranscode,
   probeCodecsOnly,

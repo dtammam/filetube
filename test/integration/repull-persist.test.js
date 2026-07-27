@@ -887,3 +887,149 @@ test('an item with NO channel identity at all still accepts an avatar (the pre-e
     fs.rmSync(libDir, { recursive: true, force: true });
   }
 });
+
+// ---- v1.48 item 2: the reheat's view-count re-snapshot ---------------------
+//
+// GATE FIX (adversarial CRITICAL C1): this write path had NO test at all.
+// Turning `if (repulledViews !== null)` into `if (false)` in
+// `recordRepulledItemMeta` left the whole suite green -- meaning "have it
+// re-heatable if pulled later", the half of Dean's ask the exec plan calls
+// "the feature", was shipping unprovable.
+
+function seedItemWith(extra) {
+  const filePath = path.join(downloadDir, 'Reheatable [xyz12345678].mp4');
+  fs.writeFileSync(filePath, 'video-bytes');
+  const id = getMediaId(filePath);
+  writeDb({
+    folders: [],
+    folderSettings: {},
+    progress: {},
+    metadata: {
+      [id]: {
+        id, name: path.basename(filePath), title: 'Reheatable', filePath,
+        folderName: path.basename(downloadDir), size: 11, ext: '.mp4', type: 'video',
+        addedAt: Date.now(), duration: 300, hasThumbnail: false, artist: '',
+        ...extra,
+      },
+    },
+    settings: baseSettings(),
+  });
+  return { filePath, id };
+}
+
+test('v1.48: a reheat RE-SNAPSHOTS sourceViewCount and stamps sourceViewCountCapturedAt from the injected clock', async () => {
+  const { filePath, id } = seedItemWith({});
+  const nowMs = 1_800_000_000_000;
+
+  const result = await recordRepulledItemMeta(
+    { loadDatabase, updateDatabase, getMediaId },
+    id,
+    { sourceViewCount: 1_672_000_000, filePath, markComplete: true },
+    nowMs,
+  );
+  assert.equal(result, true);
+
+  const item = readDb().metadata[id];
+  assert.equal(item.sourceViewCount, 1_672_000_000, 'the reheat actually wrote the count');
+  assert.equal(item.sourceViewCountCapturedAt, nowMs, 'dated from the injected clock, not a fresh Date.now()');
+  // The collision guard, at the reheat boundary this time.
+  assert.equal(item.viewCount, undefined, 'the legacy LOCAL watch counter is never touched');
+});
+
+test('v1.48: a reheat SUPERSEDES a lower stored count (re-snapshotting is the feature)', async () => {
+  const { filePath, id } = seedItemWith({ sourceViewCount: 100, sourceViewCountCapturedAt: 1_000 });
+
+  await recordRepulledItemMeta(
+    { loadDatabase, updateDatabase, getMediaId },
+    id,
+    { sourceViewCount: 5_000, filePath, markComplete: true },
+    1_800_000_000_000,
+  );
+
+  const item = readDb().metadata[id];
+  assert.equal(item.sourceViewCount, 5_000, 'a genuinely higher count replaces the old one');
+  assert.equal(item.sourceViewCountCapturedAt, 1_800_000_000_000, 'and carries the NEW capture date');
+});
+
+test('v1.48 (W1): a reheat REFUSES to overwrite a good count with a lower/degraded one', async () => {
+  // A source view count is monotonically non-decreasing for a fixed id, so a
+  // lower number is a degraded read (bot-check fallback reporting 0, a
+  // members-only/premiere state), never news. Without this, one bad reheat
+  // wrote "0 views" over a captured 1.67 billion.
+  const { filePath, id } = seedItemWith({ sourceViewCount: 1_672_000_000, sourceViewCountCapturedAt: 1_000 });
+
+  await recordRepulledItemMeta(
+    { loadDatabase, updateDatabase, getMediaId },
+    id,
+    { sourceViewCount: 0, filePath, markComplete: true },
+    1_800_000_000_000,
+  );
+
+  const item = readDb().metadata[id];
+  assert.equal(item.sourceViewCount, 1_672_000_000, 'the better-sourced count survives');
+  assert.equal(item.sourceViewCountCapturedAt, 1_000,
+    'and its ORIGINAL date survives too -- a refused count must never wear a fresh date');
+});
+
+test('v1.48 (W1): a FIRST capture of 0 is still legitimate and lands', async () => {
+  // The guard must only ever apply to superseding an existing value; a
+  // brand-new upload genuinely has 0 views.
+  const { filePath, id } = seedItemWith({});
+
+  await recordRepulledItemMeta(
+    { loadDatabase, updateDatabase, getMediaId },
+    id,
+    { sourceViewCount: 0, filePath, markComplete: true },
+    1_800_000_000_000,
+  );
+
+  const item = readDb().metadata[id];
+  assert.equal(item.sourceViewCount, 0, 'a real 0 on first capture is stored');
+  assert.equal(item.sourceViewCountCapturedAt, 1_800_000_000_000);
+});
+
+test('v1.48: an equal count re-stamps the date (a confirmed-unchanged snapshot is still a fresh reading)', async () => {
+  const { filePath, id } = seedItemWith({ sourceViewCount: 777, sourceViewCountCapturedAt: 1_000 });
+
+  await recordRepulledItemMeta(
+    { loadDatabase, updateDatabase, getMediaId },
+    id,
+    { sourceViewCount: 777, filePath, markComplete: true },
+    1_800_000_000_000,
+  );
+
+  const item = readDb().metadata[id];
+  assert.equal(item.sourceViewCount, 777);
+  assert.equal(item.sourceViewCountCapturedAt, 1_800_000_000_000, 're-confirmed at a new time');
+});
+
+test('v1.48: a reheat that yielded NO view count leaves an existing one untouched', async () => {
+  // A network pass that failed must never destroy a previously captured count.
+  const { filePath, id } = seedItemWith({ sourceViewCount: 4_242, sourceViewCountCapturedAt: 1_000 });
+
+  await recordRepulledItemMeta(
+    { loadDatabase, updateDatabase, getMediaId },
+    id,
+    { filePath, markComplete: true }, // no viewCount key at all
+    1_800_000_000_000,
+  );
+
+  const item = readDb().metadata[id];
+  assert.equal(item.sourceViewCount, 4_242, 'preserved');
+  assert.equal(item.sourceViewCountCapturedAt, 1_000, 'with its original date');
+});
+
+test('v1.48: an INVALID reheat view count is rejected and leaves no orphan date', async () => {
+  const { filePath, id } = seedItemWith({});
+
+  await recordRepulledItemMeta(
+    { loadDatabase, updateDatabase, getMediaId },
+    id,
+    { sourceViewCount: -5, filePath, markComplete: true },
+    1_800_000_000_000,
+  );
+
+  const item = readDb().metadata[id];
+  assert.equal(item.sourceViewCount, undefined);
+  assert.equal(item.sourceViewCountCapturedAt, undefined, 'no date without a count');
+});

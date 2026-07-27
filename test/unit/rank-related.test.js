@@ -2,7 +2,15 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { tokenize, rankRelated } = require('../../public/js/common.js');
+const { tokenize, rankRelated, RESULT_COUNT } = require('../../public/js/common.js');
+
+// v1.48 item 3: the cap moved 10 -> 20. The behavioural tests below assert
+// against the EXPORTED constant (never a re-typed literal, which would let the
+// test stay green while the shipped value drifted); this one test deliberately
+// pins the value itself, so changing the cap is always a conscious edit here.
+test('rankRelated: RESULT_COUNT is 20', () => {
+  assert.equal(RESULT_COUNT, 20);
+});
 
 test('tokenize + rankRelated: exported for Node (require-safe)', () => {
   assert.equal(typeof tokenize, 'function');
@@ -92,20 +100,28 @@ test('rankRelated: pads with most-recent items when fewer than SIMILAR_FLOOR are
   const similar1 = { id: 'sim1', title: 'Zephyr Part Two', filePath: '/lib/zephyr2.mp4', folderName: 'F', addedAt: 50 };
   const similar2 = { id: 'sim2', title: 'Zephyr Remix', filePath: '/lib/zephyr3.mp4', folderName: 'F', addedAt: 40 };
 
+  // Enough unrelated items that the cap actually BINDS (one more candidate than
+  // RESULT_COUNT), so this still exercises truncation rather than "returned
+  // everything there was" -- which is what it would silently decay into if the
+  // fixture stayed pinned at 9 while the cap moved.
+  const unrelatedCount = RESULT_COUNT; // + 2 similar = RESULT_COUNT + 1 candidates
   const unrelated = [];
-  for (let i = 0; i < 9; i++) {
+  for (let i = 0; i < unrelatedCount; i++) {
     unrelated.push({ id: 'unr' + i, title: 'Something Else Entirely ' + i, filePath: '/lib/other' + i + '.mp4', folderName: 'Other', addedAt: 100 + i });
   }
 
   const allItems = [current, similar1, similar2, ...unrelated];
   const result = rankRelated(current, allItems);
 
-  assert.equal(result.length, 10, 'never empty, capped at RESULT_COUNT (10)');
+  assert.equal(result.length, RESULT_COUNT, 'never empty, capped at RESULT_COUNT');
   // Similar items must appear first (score > 0), most-recent-unrelated fills the rest.
   assert.deepEqual(result.slice(0, 2).map((i) => i.id), ['sim1', 'sim2']);
-  // The most recent unrelated items (addedAt DESC) should fill the remaining 8 slots.
-  const recentIds = result.slice(2).map((i) => i.id);
-  assert.deepEqual(recentIds, ['unr8', 'unr7', 'unr6', 'unr5', 'unr4', 'unr3', 'unr2', 'unr1']);
+  // The most recent unrelated items (addedAt DESC) fill every remaining slot;
+  // the OLDEST unrelated item ('unr0') is the one squeezed out by the cap.
+  const expectedRecent = [];
+  for (let i = unrelatedCount - 1; i >= unrelatedCount - (RESULT_COUNT - 2); i--) expectedRecent.push('unr' + i);
+  assert.deepEqual(result.slice(2).map((i) => i.id), expectedRecent);
+  assert.ok(!result.some((i) => i.id === 'unr0'), 'oldest unrelated item is the one dropped by the cap');
 });
 
 // ---- tokenization: stopwords + short tokens are not similarity signals ----
@@ -218,16 +234,16 @@ test('rankRelated: items missing tags/artist/folderName/filePath do not throw an
   });
   assert.ok(!result.some((i) => i.id === 'cur'), 'self-exclusion preserved');
   assert.ok(result.length > 0, 'never-empty guarantee preserved');
-  assert.ok(result.length <= 10);
+  assert.ok(result.length <= RESULT_COUNT);
 });
 
-test('rankRelated: result length is capped at RESULT_COUNT (10) even with a large library', () => {
+test('rankRelated: result length is capped at RESULT_COUNT even with a large library', () => {
   const current = { id: 'cur', title: 'Popular Keyword', addedAt: 10000 };
   const items = [current];
-  for (let i = 0; i < 25; i++) {
+  for (let i = 0; i < RESULT_COUNT + 5; i++) {
     items.push({ id: 'item' + i, title: 'Popular Keyword Variant ' + i, filePath: '/lib/f' + i + '.mp4', folderName: 'F', addedAt: 1000 - i });
   }
 
   const result = rankRelated(current, items);
-  assert.equal(result.length, 10);
+  assert.equal(result.length, RESULT_COUNT);
 });

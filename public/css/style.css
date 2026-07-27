@@ -2150,6 +2150,45 @@ html.reader-immersive .app-container { padding-top: 0; }
   overflow: visible;
 }
 
+/* v1.48 item 1: the video's own description, leading the description box.
+   It also carries `.description-text` above, which supplies the collapsed
+   `-webkit-line-clamp: 5` and the `.expanded` escape hatch -- so the SAME
+   collapse mechanism that already existed now applies to the description
+   instead of to the boilerplate.
+
+   `pre-wrap` overrides `.description-text`'s `white-space: normal` because a
+   real description is multi-line and its blank lines carry meaning; normal
+   would collapse the whole thing onto one run. There is deliberately NO
+   character cap anywhere in this path: the full text is in the DOM, and
+   "Show more" reveals all of it.
+
+   `:empty` (set by watch.js, which writes '' when a file has no description)
+   takes the element and its separator rule out of the layout entirely, so an
+   ordinary local file's box looks exactly as it did before v1.48. It must stay
+   AFTER the base rule to win, and uses `display: none` rather than a height of
+   0 so the separator border cannot show through. */
+.video-description {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.video-description:empty {
+  display: none;
+}
+
+/* The self-hosting boilerplate + file path. Same typography as the description
+   but deliberately NOT clamped: it is three short lines that never needed a
+   "Show more", and clamping it would hide the tail of a long file path with no
+   way to reveal it now that the toggle governs the description instead. */
+.description-fileinfo {
+  white-space: normal;
+  word-break: break-word;
+  font-size: var(--fs-base);
+}
+
 .expand-description-btn {
   background: none;
   border: none;

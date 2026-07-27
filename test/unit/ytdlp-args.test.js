@@ -1201,7 +1201,7 @@ test('buildYtdlpDownloadArgs: includes the fixed "--print after_move:FTCHMETA...
     // v1.33 T3: field-selector grew `title` (emoji-preserving display
     // titles) -- same fixed-literal posture, bounded downstream by
     // store.sanitizeCapturedTitle.
-    'after_move:FTCHMETA %(.{id,title,channel_url,channel_id,uploader_url,channel,upload_date,release_date})j',
+    'after_move:FTCHMETA %(.{id,title,channel_url,channel_id,uploader_url,channel,upload_date,release_date,view_count})j',
   );
 });
 
@@ -1289,7 +1289,7 @@ test('CHANNEL_META_PRINT_TEMPLATE: the fields live INSIDE the single .{...}j sel
   const percentOpenCount = (args.CHANNEL_META_PRINT_TEMPLATE.match(/%\(/g) || []).length;
   assert.equal(percentOpenCount, 1, 'expected exactly one %( -- everything selected must ride the single JSON-escaped .{...}j conversion');
   // v1.33 T3: `title` joined the same single selector.
-  assert.ok(args.CHANNEL_META_PRINT_TEMPLATE.includes('.{id,title,channel_url,channel_id,uploader_url,channel,upload_date,release_date})j'));
+  assert.ok(args.CHANNEL_META_PRINT_TEMPLATE.includes('.{id,title,channel_url,channel_id,uploader_url,channel,upload_date,release_date,view_count})j'));
 });
 
 test('CHANNEL_META_PRINT_TEMPLATE: still a fixed literal -- byte-identical regardless of sub/config content (new fields did not reopen per-sub interpolation)', () => {
