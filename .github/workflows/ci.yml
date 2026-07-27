@@ -30,5 +30,29 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      # v1.47.8: the output is teed to a file and uploaded on failure.
+      #
+      # WHY: CI failed on `main` (run 338) and PASSED on a commit with a
+      # BYTE-IDENTICAL tree (run 339) -- so the suite has an intermittent test.
+      # Diagnosing it needed the job log, and `GET .../jobs/:id/logs` requires
+      # ADMIN rights, so the one person who could read it was the one person not
+      # looking. An artifact is readable by anyone who can see the run, so the
+      # next occurrence identifies itself instead of costing a round-trip.
+      #
+      # `set -o pipefail` is load-bearing: GitHub's default shell is `bash -e`
+      # WITHOUT pipefail, so `npm test | tee` would exit with tee's status (0)
+      # and a failing suite would report GREEN. That would be strictly worse
+      # than the problem this step exists to solve.
       - name: Test
-        run: npm test
+        shell: bash
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee test-output.txt
+
+      - name: Upload test output (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-output
+          path: test-output.txt
+          retention-days: 14
