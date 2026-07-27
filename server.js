@@ -2449,14 +2449,14 @@ function reconcileTranscode(item) {
 // date with no number. The date falls back to now only when the bridge entry
 // carried no usable `capturedAt` of its own.
 //
-// `consumed.viewCount` has already crossed `store.parseCapturedViewCount` at
+// `consumed.sourceViewCount` has already crossed `store.parseCapturedViewCount` at
 // the read boundary; the `typeof`/`Number.isInteger` re-check here is the same
 // re-validate-at-the-write-boundary posture every sibling field above uses.
 function applyCapturedViewCount(item, consumed, nowMs = Date.now()) {
   if (!item || !consumed) return false;
-  const views = consumed.viewCount;
+  const views = consumed.sourceViewCount;
   if (typeof views !== 'number' || !Number.isInteger(views) || views < 0) return false;
-  const capturedAt = consumed.viewCountCapturedAt;
+  const capturedAt = consumed.sourceViewCountCapturedAt;
   item.sourceViewCount = views;
   item.sourceViewCountCapturedAt =
     (typeof capturedAt === 'number' && Number.isFinite(capturedAt) && capturedAt > 0)
@@ -10483,10 +10483,27 @@ async function recordRepulledItemMeta(deps, mediaId, meta, nowMs = Date.now()) {
     // NOTE the field name: `sourceViewCount`, never `viewCount` -- see
     // `applyCapturedViewCount` for why that collision would have corrupted the
     // legacy local watch counter.
-    const repulledViews = ytdlp.parseCapturedViewCount(m.viewCount);
+    // GATE FIX (adversarial WARNING W1): MONOTONICITY GUARD. A reheat
+    // supersedes, so without this any value clearing the validator -- including
+    // 0 -- replaced a good count. A view count for a fixed video id is
+    // monotonically non-decreasing at the source, so a reheat returning a LOWER
+    // number is by construction a degraded read, never news: a bot-check/
+    // age-gate client fallback reporting "0", a members-only or premiere state,
+    // a re-upload behind the same id. Refusing those keeps the better-sourced
+    // number instead of writing "0 views" over a captured 1.67 billion.
+    //
+    // The guard applies ONLY to the supersede-an-existing-value case; a FIRST
+    // capture of 0 is legitimate (a brand-new upload) and still lands. The date
+    // is only re-stamped when the count is actually accepted, so a refused
+    // reheat cannot leave a stale count wearing a fresh date.
+    const repulledViews = ytdlp.parseCapturedViewCount(m.sourceViewCount);
     if (repulledViews !== null) {
-      item.sourceViewCount = repulledViews;
-      item.sourceViewCountCapturedAt = nowMs;
+      const stored = item.sourceViewCount;
+      const hasStored = typeof stored === 'number' && Number.isInteger(stored) && stored >= 0;
+      if (!hasStored || repulledViews >= stored) {
+        item.sourceViewCount = repulledViews;
+        item.sourceViewCountCapturedAt = nowMs;
+      }
     }
     // v1.41.5 (MeTube-import hydration): the channel identity the network
     // metadata pass discovered -- NEVER-OVERWRITE (AC17 posture), see this
@@ -11828,6 +11845,9 @@ module.exports = {
   __getSaveDatabaseCallCount,
   reconcileTranscode,
   parseFfprobeTags,
+  // v1.48 gate fix (adversarial SUGGESTION S1): exported for direct testing,
+  // mirroring parseFfprobeTags/reconcileTranscode's own testability posture.
+  applyCapturedViewCount,
   parseFfprobeStreams,
   codecNeedsTranscode,
   probeCodecsOnly,

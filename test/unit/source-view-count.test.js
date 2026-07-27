@@ -78,9 +78,47 @@ test('resolveViewCountLabel: renders a captured count, plainly, on a card', () =
   assert.ok(!label.includes('when downloaded'), 'cards have no room for the qualifier');
 });
 
-test('resolveViewCountLabel: the watch page dates the number', () => {
-  const label = resolveViewCountLabel({ id: 'abc123', size: 100, sourceViewCount: 1234567 }, { detailed: true });
+// ---- the provenance qualifier (adversarial CRITICAL C2) --------------------
+// The qualifier is DERIVED from sourceViewCountCapturedAt, not hardcoded. It
+// used to always read "when downloaded" while nothing read the stored date, so
+// a reheat-refreshed count asserted a provenance that was false.
+
+test('resolveViewCountLabel: says "when downloaded" when the capture IS the download', () => {
+  const addedAt = Date.UTC(2026, 0, 15, 12, 0, 0);
+  const label = resolveViewCountLabel(
+    { id: 'abc123', size: 100, sourceViewCount: 1234567, addedAt, sourceViewCountCapturedAt: addedAt + 30_000 },
+    { detailed: true }
+  );
   assert.equal(label, (1234567).toLocaleString() + ' views when downloaded');
+});
+
+test('resolveViewCountLabel: a REHEATED count is dated instead of claiming "when downloaded"', () => {
+  // THE C2 REGRESSION. Refreshed six months after download: the old hardcoded
+  // label stated a falsehood at exactly the moment Dean's feature fired.
+  const addedAt = Date.UTC(2026, 0, 15, 12, 0, 0);
+  const label = resolveViewCountLabel(
+    { id: 'abc123', size: 100, sourceViewCount: 9_000_000, addedAt, sourceViewCountCapturedAt: Date.UTC(2026, 6, 20, 9, 0, 0) },
+    { detailed: true }
+  );
+  assert.ok(!label.includes('when downloaded'), 'must NOT claim download provenance for a reheat');
+  assert.ok(label.startsWith((9_000_000).toLocaleString() + ' views as of '), `got: ${label}`);
+  assert.ok(label.includes('2026'), 'the capture date is actually rendered');
+});
+
+test('resolveViewCountLabel: a count with NO capture date makes no provenance claim at all', () => {
+  const label = resolveViewCountLabel(
+    { id: 'abc123', size: 100, sourceViewCount: 42, addedAt: Date.UTC(2026, 0, 15) },
+    { detailed: true }
+  );
+  assert.equal(label, '42 views', 'no qualifier invented from nothing');
+});
+
+test('resolveViewCountLabel: the capture date is never rendered on a CARD', () => {
+  const addedAt = Date.UTC(2026, 0, 15, 12, 0, 0);
+  const label = resolveViewCountLabel(
+    { id: 'abc123', size: 100, sourceViewCount: 500, addedAt, sourceViewCountCapturedAt: Date.UTC(2026, 6, 20) }
+  );
+  assert.equal(label, '500 views', 'cards stay bare regardless of provenance');
 });
 
 test('resolveViewCountLabel: 0 captured views is REAL and never falls back to the mock', () => {

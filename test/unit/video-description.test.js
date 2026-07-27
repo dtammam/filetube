@@ -11,20 +11,49 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { resolveDisplayDescription } = require('../../public/js/watch.js');
+const { resolveDisplayDescription, MAX_DISPLAY_DESCRIPTION } = require('../../public/js/watch.js');
 
 test('resolveDisplayDescription: exported for Node (require-safe)', () => {
   assert.equal(typeof resolveDisplayDescription, 'function');
 });
 
-test('resolveDisplayDescription: returns the description verbatim, with NO length cap', () => {
-  // Deliberately far past the old 400-char clip that caused Dean's report, and
-  // past any round number a future "sensible cap" might reintroduce.
+test('resolveDisplayDescription: returns a real-world description verbatim', () => {
+  // Deliberately far past the old 400-char clip that caused Dean's report (and
+  // past YouTube's own 5000-char description limit), so a future "sensible cap"
+  // cannot silently reintroduce the truncation this item existed to remove.
   const long = 'A'.repeat(12000);
   const out = resolveDisplayDescription({ description: long }, 'Some Video Title');
-  assert.equal(out.length, 12000, 'full text survives -- no truncation anywhere in this path');
+  assert.equal(out.length, 12000, 'a genuinely long description survives in full');
   assert.equal(out, long);
-  assert.ok(!out.includes('…'), 'never appends an ellipsis');
+  assert.ok(!out.includes('…'), 'no ellipsis anywhere near real-world lengths');
+});
+
+// GATE FIX (adversarial WARNING W3): there IS an outer availability bound, far
+// above any real description. Unbounded text hit a -webkit-line-clamp box with
+// overflow-wrap:anywhere plus a synchronous scrollHeight read, on an
+// attacker-influenced field whose only real ceiling was ffprobe's 16MB buffer.
+test('resolveDisplayDescription: bounds an absurdly long description', () => {
+  const huge = 'B'.repeat(MAX_DISPLAY_DESCRIPTION + 5000);
+  const out = resolveDisplayDescription({ description: huge }, 'T');
+  assert.equal(out.length, MAX_DISPLAY_DESCRIPTION + 1, 'bounded, plus the ellipsis');
+  assert.ok(out.endsWith('…'), 'and marked as cut rather than silently ending mid-sentence');
+});
+
+test('resolveDisplayDescription: exactly at the bound is NOT truncated', () => {
+  const exact = 'C'.repeat(MAX_DISPLAY_DESCRIPTION);
+  const out = resolveDisplayDescription({ description: exact }, 'T');
+  assert.equal(out, exact);
+  assert.ok(!out.includes('…'));
+});
+
+test('resolveDisplayDescription: truncation never splits an astral-plane codepoint', () => {
+  // Emoji outside the BMP are surrogate PAIRS in UTF-16; a `slice` on units
+  // would cut one in half and render U+FFFD. The cut is on code points.
+  const emoji = '🎵';
+  const out = resolveDisplayDescription({ description: emoji.repeat(MAX_DISPLAY_DESCRIPTION) }, 'T');
+  assert.ok(!out.includes('�'), 'no replacement character from a halved surrogate pair');
+  const body = out.slice(0, -1); // drop the ellipsis
+  assert.equal([...body].every((cp) => cp === emoji), true, 'every surviving code point is intact');
 });
 
 test('resolveDisplayDescription: preserves interior newlines and blank lines', () => {

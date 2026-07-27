@@ -1631,12 +1631,32 @@ function getMockViews(mediaId, sizeBytes) {
 //
 // `detailed` is the watch page, which has room to say WHEN the number is from.
 // A captured count is a snapshot that drifts from reality the moment it is
-// taken, and labelling it "when downloaded" is what keeps it honest instead of
-// quietly implying a live figure. Cards pass `detailed: false` -- there is no
-// room for the qualifier there, and a real-but-dated number is still strictly
-// more truthful than the hash of a media id.
+// taken, so the qualifier is what keeps it honest instead of quietly implying a
+// live figure. Cards pass `detailed: false` -- there is no room for the
+// qualifier there, and a real-but-dated number is still strictly more truthful
+// than the hash of a media id.
+//
+// GATE FIX (adversarial CRITICAL C2): the qualifier is DERIVED from
+// `sourceViewCountCapturedAt`, not hardcoded. It previously always read "when
+// downloaded" while nothing ever read the stored date -- so the moment a reheat
+// re-snapshotted a count (the half of the feature Dean actually asked for), the
+// page asserted a provenance that was false. A count refreshed months later now
+// says "as of <date>" instead. That also stops the capture date being write-only
+// state, which was the other half of the finding.
+//
+// The download-vs-reheat test is a time window, because a download capture and
+// the scan that indexes the file are the same event seconds apart, while a
+// reheat is days or months later. 24h is deliberately generous: being wrong here
+// only ever picks the vaguer-but-still-true wording.
 //
 // Pure and side-effect free so the same item renders identically everywhere.
+const DOWNLOAD_CAPTURE_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+function formatViewCountCaptureDate(ms) {
+  const d = new Date(ms);
+  return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
 function resolveViewCountLabel(item, opts) {
   const detailed = !!(opts && opts.detailed);
   const raw = item ? item.sourceViewCount : undefined;
@@ -1647,7 +1667,21 @@ function resolveViewCountLabel(item, opts) {
     return getMockViews((item && item.id) || '', (item && item.size) || 0);
   }
   const base = `${raw.toLocaleString()} view${raw === 1 ? '' : 's'}`;
-  return detailed ? `${base} when downloaded` : base;
+  if (!detailed) return base;
+
+  const capturedAt = item.sourceViewCountCapturedAt;
+  if (typeof capturedAt !== 'number' || !Number.isFinite(capturedAt) || capturedAt <= 0) {
+    // A count with no capture date cannot be dated, so it makes NO provenance
+    // claim at all rather than guessing one. `applyCapturedViewCount` writes the
+    // pair as a unit, so this is defensive only.
+    return base;
+  }
+  const addedAt = item.addedAt;
+  const capturedAtDownload = typeof addedAt === 'number' && Number.isFinite(addedAt) &&
+    Math.abs(capturedAt - addedAt) <= DOWNLOAD_CAPTURE_WINDOW_MS;
+  return capturedAtDownload
+    ? `${base} when downloaded`
+    : `${base} as of ${formatViewCountCaptureDate(capturedAt)}`;
 }
 
 // ---- Mobile app shell: bottom nav / Playlists sheet -----------------------

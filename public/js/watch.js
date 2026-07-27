@@ -433,11 +433,33 @@ function buildMockComments(mediaId, bank, count, videoTitle) {
 // 100 characters and once in full. Compared case-insensitively on trimmed text
 // because the filename-derived title has been through path sanitization while
 // the embedded tag has not.
+// GATE FIX (adversarial WARNING W3): the displayed text is BOUNDED. Nothing
+// upstream caps it -- `parseFfprobeTags` only trims, so the real ceiling was
+// ffprobe's 16MB maxBuffer -- and before v1.48 nothing rendered past 400 chars
+// anyway. Now the whole string goes into a `-webkit-line-clamp` box with
+// `overflow-wrap: anywhere` (a break opportunity at EVERY character) and
+// `setupDescriptionToggle` immediately reads `scrollHeight`, forcing a
+// synchronous full-text layout. Multi-hundred-KB descriptions are ordinary on
+// YouTube (auto-generated tracklists, link dumps), so the worst case was a
+// browser hang on an attacker-influenced field.
+//
+// 50k characters is far above any real description (YouTube's own limit is
+// 5000) while turning "unbounded" into a chosen number. This is an availability
+// bound only; XSS was never in play (textContent, never innerHTML).
+const MAX_DISPLAY_DESCRIPTION = 50000;
+
 function resolveDisplayDescription(tags, title) {
   const raw = tags && typeof tags.description === 'string' ? tags.description.trim() : '';
   if (raw === '') return '';
   const t = typeof title === 'string' ? title.trim().toLowerCase() : '';
   if (t !== '' && raw.toLowerCase() === t) return '';
+  // Cut on a CODE POINT boundary (spread, never slice on UTF-16 units) so a
+  // multi-byte sequence or an astral-plane emoji's surrogate pair can never be
+  // halved into a replacement character -- the same discipline
+  // `truncateToBytes` uses server-side.
+  if (raw.length > MAX_DISPLAY_DESCRIPTION) {
+    return [...raw].slice(0, MAX_DISPLAY_DESCRIPTION).join('') + '…';
+  }
   return raw;
 }
 
@@ -488,8 +510,16 @@ function reconcileStoredComments(stored, makeFreshMock) {
   if (!Array.isArray(stored)) return { comments: fresh(), changed: true };
 
   const usable = (c) => !!c && typeof c === 'object';
+  // GATE FIX (adversarial SUGGESTION S7): the user-author test is trimmed and
+  // case-insensitive. The Comment button only ever writes the exact literal
+  // 'You', so this is theoretical -- but this is a data-DESTROYING path, and a
+  // comparison that can only ever KEEP more costs nothing. (A homoglyph such as
+  // Cyrillic 'Уou' still will not match, which is correct: it was never written
+  // by the Comment button.)
+  const isUserAuthored = (c) => typeof c.author === 'string' &&
+    c.author.trim().toLowerCase() === USER_COMMENT_AUTHOR.toLowerCase();
   const isStale = (c) => !usable(c) ||
-    (c.author !== USER_COMMENT_AUTHOR && !isCurrentCommentAuthor(c.author));
+    (!isUserAuthored(c) && !isCurrentCommentAuthor(c.author));
 
   // The common case by far: nothing stale, so return the stored array
   // UNTOUCHED and report no change (the caller then skips the write entirely).
@@ -497,13 +527,14 @@ function reconcileStoredComments(stored, makeFreshMock) {
 
   // Dean's own comments survive, in their original relative order and still at
   // the front -- which is where the Comment button puts them.
-  const mine = stored.filter((c) => usable(c) && c.author === USER_COMMENT_AUTHOR);
+  const mine = stored.filter((c) => usable(c) && isUserAuthored(c));
   return { comments: [...mine, ...fresh()], changed: true };
 }
 
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     resolveDisplayDescription,
+    MAX_DISPLAY_DESCRIPTION,
     isCurrentCommentAuthor,
     reconcileStoredComments,
     USER_COMMENT_AUTHOR,
@@ -614,8 +645,9 @@ if (typeof module !== 'undefined' && module.exports) {
     const filePathText = root.querySelector('#file-path-text');
 
     // v1.48 item 1: the collapse/"Show more" mechanism now governs the VIDEO'S
-    // DESCRIPTION (#video-description), not the static self-hosting boilerplate
-    // (#description-paragraph) it used to expand. The name is kept because
+    // DESCRIPTION (#video-description). It used to expand the static
+    // self-hosting boilerplate, which is now the unnamed `.description-fileinfo`
+    // block below it and is never clamped. The variable name is kept because
     // every reference below means "the thing Show more expands".
     const descriptionParagraph = root.querySelector('#video-description');
     const expandDescBtn = root.querySelector('#expand-desc-btn');

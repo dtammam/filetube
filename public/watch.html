@@ -282,6 +282,15 @@
                  layout entirely) for files carrying no description, so an
                  ordinary local file's box looks exactly as it did pre-v1.48. -->
             <div class="description-text video-description" id="video-description"></div>
+            <!-- GATE FIX (adversarial WARNING W2): "Show more" sits IMMEDIATELY
+                 after the element it expands. It used to be the last child of
+                 this box, which was coherent while the clamped element was the
+                 boilerplate -- but now the clamp is on the description above, so
+                 leaving the button at the bottom put the file-path block AND the
+                 whole Embedded-info table (up to ~12 rows for an mp3) between an
+                 ellipsis and its only control, reading as an affordance for
+                 Embedded info instead. -->
+            <button class="expand-description-btn" id="expand-desc-btn">Show more</button>
             <div class="description-fileinfo">
               File Path: <span id="file-path-text" class="file-path">/loading...</span>
               <br><br>
@@ -289,7 +298,6 @@
             </div>
             <!-- Additive: embedded file metadata (populated by watch.js; hidden if none) -->
             <div id="embedded-tags" class="embedded-tags" style="display: none;"></div>
-            <button class="expand-description-btn" id="expand-desc-btn">Show more</button>
           </div>
 
           <!-- Comments Section -->
