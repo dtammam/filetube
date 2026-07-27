@@ -449,6 +449,19 @@ function renderStatsError() {
 }
 
 function init() {
+  // v1.47.8: the keyboard-shortcuts entry point. `openShortcutsModal` is a
+  // common.js global (classic scripts, common.js loads first), reached via
+  // `window` so this file still require()s cleanly in node:test. Wired before
+  // the stats fetch so the button works even if /api/stats is slow or fails --
+  // a shortcuts reference has no business depending on library statistics.
+  const shortcutsBtn = document.getElementById('show-shortcuts-btn');
+  if (shortcutsBtn) {
+    shortcutsBtn.addEventListener('click', () => {
+      const open = (typeof window !== 'undefined') ? window.openShortcutsModal : undefined;
+      if (typeof open === 'function') open();
+    });
+  }
+
   fetch('/api/stats')
     .then((res) => {
       if (!res.ok) throw new Error(`GET /api/stats failed (${res.status})`);

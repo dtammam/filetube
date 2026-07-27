@@ -7029,3 +7029,94 @@ body.ft-css-fullscreen .bottom-nav {
   line-height: 1;
 }
 .bottombar-editor-row .bottombar-editor-btn:disabled { opacity: 0.4; cursor: default; }
+
+/* ---- v1.47.8: keyboard-shortcuts reference (Dean) --------------------------
+   Deliberately thin: the dialog reuses `.oneoff-modal-backdrop`/`.oneoff-modal`
+   wholesale (chrome, scroll cap), so only the list itself needs styling.
+
+   No new tokens -- every value below is an EXISTING token. Note the precision
+   (gate S12 corrected an earlier claim here): the COLOUR/surface tokens
+   (--btn-bg, --border-dark, --text-*, --radius, --shadow, --mono-font) are
+   genuinely per-era, so those do theme per era; the --fs-* type scale is
+   defined once globally and is NOT per-era. "All four eras theme it for free"
+   was true of the surfaces, not of the type.
+
+   Slightly wider than the one-off modal because a two-column key/description
+   list reads badly when the keys wrap. */
+.shortcuts-modal {
+  max-width: 560px;
+}
+
+.shortcuts-group {
+  margin-top: 14px;
+}
+
+.shortcuts-group-title {
+  font-size: var(--fs-sm);
+  font-weight: bold;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 6px;
+}
+
+/* Key column is fixed-ish so the descriptions line up into a readable column;
+   `align-items: baseline` keeps a multi-cap combo (Shift + N) sitting on the
+   same line as its text. */
+.shortcuts-row {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 4px 0;
+}
+
+.shortcuts-keys {
+  flex: 0 0 132px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.shortcuts-desc {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--text-primary);
+  font-size: var(--fs-sm);
+}
+
+/* A physical key cap. `--btn-bg`/`--border-dark` mean 2005 gets a hard-edged
+   beveled look and 2021 a soft one, straight from the era tokens. */
+.shortcuts-modal kbd {
+  display: inline-block;
+  min-width: 1.6em;
+  padding: 2px 6px;
+  text-align: center;
+  font-family: var(--mono-font);
+  font-size: var(--fs-xs);
+  line-height: 1.5;
+  color: var(--text-primary);
+  background-color: var(--btn-bg);
+  border: 1px solid var(--border-dark);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.shortcuts-note {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-dark);
+  color: var(--text-secondary);
+  font-size: var(--fs-xs);
+}
+
+/* Dean: "Ignore/not display on mobile viewport." The `?` trigger is already
+   gated in JS at event time; this hides the ENTRY POINT on the Stats page so a
+   phone is never offered a keyboard reference it cannot use. Both halves are
+   needed -- JS alone would leave a dead button, CSS alone would leave the key
+   live on a narrow window. */
+@media (max-width: 768px) {
+  .shortcuts-entry {
+    display: none;
+  }
+}

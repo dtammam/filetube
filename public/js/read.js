@@ -849,6 +849,16 @@ if (typeof module !== 'undefined' && module.exports) {
       const el = document.activeElement;
       const tag = (el && el.tagName) || '';
       if (['INPUT', 'TEXTAREA', 'SELECT'].includes(tag) || (el && el.isContentEditable)) return;
+      // v1.47.8 gate W7: never flip pages while the keyboard-shortcuts dialog
+      // is open. That dialog focuses its close BUTTON, and the guard above
+      // deliberately allows BUTTON through (so arrows keep working while e.g.
+      // Listen holds focus) -- so without this, scanning the shortcut list with
+      // the arrow keys silently turned the book behind it and lost the reader's
+      // place. Checked via `window` so this file still require()s in node:test.
+      const shortcutsOpen = (typeof window !== 'undefined')
+        && typeof window.isShortcutsModalOpen === 'function'
+        && window.isShortcutsModalOpen();
+      if (shortcutsOpen) return;
       if (event.key === 'ArrowRight') { if (adapter) adapter.next(); }
       if (event.key === 'ArrowLeft') { if (adapter) adapter.prev(); }
     }, { signal });

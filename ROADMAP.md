@@ -80,6 +80,26 @@
 
 ## Shipped
 
+### v1.47.8 - keyboard shortcuts reference (2026-07-27)
+
+Dean: *"Can we make a keyboard shortcuts page/modal? ... mirror YouTube's or other modern apps'. Ignore/not display on mobile viewport. Keep it simple."*
+
+`?` opens a dialog listing the shortcuts, from anywhere. Esc or a backdrop click closes it. There is also a **Keyboard shortcuts** button on the Stats/About page, because `?` alone is a secret handshake - one static element on one page rather than an injection into nine shells' sidebars, deliberately sidestepping the nav-injector idempotency class v1.47.4 had to fix.
+
+**The rule the feature lives or dies by: every row documents a shortcut that actually exists.** The list was written by reading `player.js`'s keydown switch and `read.js`'s handler, not by copying YouTube's published set - a reference listing dead keys converts *"I don't know the shortcut"* into *"the app is broken"*. A drift-lock test asserts the list against those handlers.
+
+**The gate took three rounds and was right every time.** What it caught:
+
+- **CRITICAL: none of the documented playback keys work on `/music`.** The player's handler returns unless it is in `STATE_FULL`, and music always loads docked - as does any video once you navigate away from `/watch`. My note ("works while a track is open and you are not typing") was false on an entire library. Fixed by telling the truth rather than changing player behavior: making the mini-player keyboard-controllable is a real behavior change, well outside "keep it simple".
+- **CRITICAL: one Escape closed up to four things at once.** Four independent document-level Escape handlers, none stopping propagation. Worst case: paste a URL into the download modal, click its body, press `?` then Esc - the download modal closes too and **the pasted URL is gone**. Fixed with capture-phase binding + `stopImmediatePropagation`, scoped to fire only while the dialog is open (Esc with no dialog is byte-identical to before, verified).
+- **The player drove the media behind the open dialog** - including `0` seeking to 0% **and writing that position to the server**, pressed while reading the "0 … 9 Jump to 0%-90%" row. A help screen must not mutate persisted state.
+- **`M` (mute) existed and was undocumented**; `Shift+N/P` is "next chapter" in the reader, not "next item"; the reader flipped pages behind the open dialog, losing your place.
+- **The drift lock was decorative.** Mutation-proved: changing `skip(-5)` to `skip(-15)` left the dialog saying "Back 5 seconds" with every test green - and **v1.41.11 changed exactly that number**, so the lock would have shipped a lying dialog through that release. Two further false passes survived my first repair (a dead `←` read the *next* branch's seek amount; a brand-new undocumented shortcut was invisible because only the filter, not the universe, came from the handler). The lock now catches all five of the reviewer's mutations plus four of five new ones.
+- **Four false comments**, one of which I wrongly reported as corrected and which then needed a third revision. Recorded honestly in the code itself.
+
+- **Deferred, disclosed:** tech-debt **#58** (arrows double-fire in the reader while narration plays - pre-existing, but this dialog raises its visibility) and **#59** (no focus trap - the concrete harms were fixed directly; the remainder is cosmetic).
+- Node 22: 4838/4838. Node 24: 4838/4838. Dean's device is the arbiter.
+
 ### v1.47.7 - hotfix: the Share glyph was invisible (2026-07-27)
 
 Dean, immediately after v1.47.6: *"Download, Trash, move, Like are clear but the last one is a blank box."*
