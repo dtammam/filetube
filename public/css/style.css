@@ -3205,7 +3205,7 @@ a.sub-row-channel-link:focus-visible {
 @supports (mask-image: url("#")) or (-webkit-mask-image: url("#")) {
   .icon-home, .icon-folder, .icon-cog, .icon-delete, .icon-moon, .icon-sun,
   .icon-menu, .icon-search, .icon-play, .icon-refresh, .icon-arrow-up, .icon-arrow-down,
-  .icon-grid, .icon-list, .icon-heart, .icon-download, .icon-shuffle {
+  .icon-grid, .icon-list, .icon-heart, .icon-share, .icon-download, .icon-shuffle {
     background-color: currentColor;
   }
 }
