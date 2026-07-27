@@ -119,6 +119,36 @@ test('reconcileStoredComments: a user comment is never dropped even if its text 
   assert.ok(!comments.some((c) => c.author === 'Firstname Lastname'));
 });
 
+// DELTA GATE FIX (adversarial W-D3): the trimmed/case-insensitive user-author
+// compare had NO test -- reverting it to a strict `===` left the suite green, so
+// a tidy-up could silently re-narrow a data-PRESERVATION guard. The Comment
+// button only ever writes the exact literal, so these variants are defensive;
+// but this is a data-destroying path and the widening only ever keeps MORE.
+test('reconcileStoredComments: preserves a user comment whose author varies in case or whitespace', () => {
+  const stored = [
+    { author: 'You', text: 'exact', timeStr: 'just now' },
+    { author: 'you', text: 'lowercase', timeStr: 'just now' },
+    { author: ' YOU ', text: 'padded upper', timeStr: 'just now' },
+    { author: 'yOu', text: 'mixed', timeStr: 'just now' },
+    { author: 'Firstname Lastname', text: 'stale', timeStr: '1 day ago' },
+  ];
+  const { comments, changed } = reconcileStoredComments(stored, makeFresh);
+  assert.equal(changed, true, 'the stale entry still forces a rebuild');
+  assert.deepEqual(
+    comments.filter((c) => /^\s*you\s*$/i.test(String(c.author))).map((c) => c.text),
+    ['exact', 'lowercase', 'padded upper', 'mixed'],
+    'every case/whitespace variant of the user author is kept, in order'
+  );
+});
+
+test('reconcileStoredComments: a homoglyph author is NOT treated as the user (correctly purged)', () => {
+  // Cyrillic 'У' + "ou" -- never written by the Comment button, so it is not a
+  // real user comment and must not be granted preservation.
+  const stored = [{ author: 'Уou', text: 'homoglyph', timeStr: '1 day ago' }];
+  const { comments } = reconcileStoredComments(stored, makeFresh);
+  assert.ok(!comments.some((c) => c.text === 'homoglyph'), 'purged, not preserved');
+});
+
 // ---- the purge itself ------------------------------------------------------
 
 test('reconcileStoredComments: removes every retired real name', () => {

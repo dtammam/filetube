@@ -164,7 +164,7 @@ test('parseChannelMetaLine: parses a well-formed FTCHMETA JSON line (legacy YouT
     uploader: null,
     filePath: null,
     // v1.48 item 2: a payload with no `view_count` yields null (absent).
-    viewCount: null,
+    sourceViewCount: null,
   });
 });
 
@@ -175,28 +175,28 @@ test('parseChannelMetaLine: parses a well-formed FTCHMETA JSON line (legacy YouT
 // feature while every other test stayed green.
 test('parseChannelMetaLine: a NUMERIC view_count survives (never nulled by the string-only presence check)', () => {
   const line = `FTCHMETA ${JSON.stringify({ id: 'dQw4w9WgXcQ', view_count: 1672000000 })}`;
-  assert.equal(parseChannelMetaLine(line).viewCount, 1672000000);
+  assert.equal(parseChannelMetaLine(line).sourceViewCount, 1672000000);
 });
 
 test('parseChannelMetaLine: a ZERO view_count survives as 0, never collapsed to null', () => {
   // A brand-new upload genuinely has 0 views; a truthiness check would drop it.
   const line = `FTCHMETA ${JSON.stringify({ id: 'dQw4w9WgXcQ', view_count: 0 })}`;
-  assert.equal(parseChannelMetaLine(line).viewCount, 0);
+  assert.equal(parseChannelMetaLine(line).sourceViewCount, 0);
 });
 
 test('parseChannelMetaLine: a STRING view_count is tolerated and passed through raw', () => {
   // Bounded downstream by store.parseCapturedViewCount, not here.
   const line = `FTCHMETA ${JSON.stringify({ id: 'dQw4w9WgXcQ', view_count: '4200' })}`;
-  assert.equal(parseChannelMetaLine(line).viewCount, '4200');
+  assert.equal(parseChannelMetaLine(line).sourceViewCount, '4200');
 });
 
 test('parseChannelMetaLine: an absent/NA/non-finite view_count normalizes to null', () => {
   const na = `FTCHMETA ${JSON.stringify({ id: 'v1', view_count: 'NA' })}`;
-  assert.equal(parseChannelMetaLine(na).viewCount, null);
+  assert.equal(parseChannelMetaLine(na).sourceViewCount, null);
   const empty = `FTCHMETA ${JSON.stringify({ id: 'v1', view_count: '' })}`;
-  assert.equal(parseChannelMetaLine(empty).viewCount, null);
+  assert.equal(parseChannelMetaLine(empty).sourceViewCount, null);
   const nul = `FTCHMETA ${JSON.stringify({ id: 'v1', view_count: null })}`;
-  assert.equal(parseChannelMetaLine(nul).viewCount, null);
+  assert.equal(parseChannelMetaLine(nul).sourceViewCount, null);
 });
 
 test('parseChannelMetaLine: a UNIVERSAL-lane line carries source/uploader/filePath (v1.41.13)', () => {
@@ -256,7 +256,7 @@ test('parseChannelMetaLine: yt-dlp\'s JSON `null` (unavailable field), an empty 
     source: null,
     uploader: null,
     filePath: null,
-    viewCount: null,
+    sourceViewCount: null,
   });
 });
 

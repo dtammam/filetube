@@ -1670,7 +1670,14 @@ function resolveViewCountLabel(item, opts) {
   if (!detailed) return base;
 
   const capturedAt = item.sourceViewCountCapturedAt;
-  if (typeof capturedAt !== 'number' || !Number.isFinite(capturedAt) || capturedAt <= 0) {
+  // `MAX_TIME_VALUE` (adversarial SUGGESTION S-D1): beyond ECMAScript's
+  // +-8.64e15 ms range `new Date(ms)` is an Invalid Date, and this rendered
+  // "1,672,000,000 views as of Invalid Date". Only reachable from a restored or
+  // hand-edited database, but the guard already validated finite-and-positive
+  // and stopped one comparison short of correct.
+  const MAX_TIME_VALUE = 8.64e15;
+  if (typeof capturedAt !== 'number' || !Number.isFinite(capturedAt) || capturedAt <= 0 ||
+      capturedAt > MAX_TIME_VALUE) {
     // A count with no capture date cannot be dated, so it makes NO provenance
     // claim at all rather than guessing one. `applyCapturedViewCount` writes the
     // pair as a unit, so this is defensive only.

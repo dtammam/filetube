@@ -10485,12 +10485,21 @@ async function recordRepulledItemMeta(deps, mediaId, meta, nowMs = Date.now()) {
     // legacy local watch counter.
     // GATE FIX (adversarial WARNING W1): MONOTONICITY GUARD. A reheat
     // supersedes, so without this any value clearing the validator -- including
-    // 0 -- replaced a good count. A view count for a fixed video id is
-    // monotonically non-decreasing at the source, so a reheat returning a LOWER
-    // number is by construction a degraded read, never news: a bot-check/
-    // age-gate client fallback reporting "0", a members-only or premiere state,
-    // a re-upload behind the same id. Refusing those keeps the better-sourced
-    // number instead of writing "0 views" over a captured 1.67 billion.
+    // 0 -- replaced a good count. A LOWER number from a reheat is nearly always
+    // a degraded read rather than news: a bot-check/age-gate client fallback
+    // reporting "0", a members-only or premiere state, a re-upload behind the
+    // same id. Refusing those keeps the better-sourced number instead of
+    // writing "0 views" over a captured 1.67 billion.
+    //
+    // HONEST LIMIT (adversarial SUGGESTION S-D2): "monotonically non-decreasing"
+    // is an approximation, not a law -- YouTube does audit and purge bot views,
+    // which legitimately lowers a count. This policy therefore delays a genuine
+    // downward correction until the real number climbs back past the stored
+    // high-water mark, and it applies to `force` reheats too. That trade is
+    // deliberate and recorded in docs/exec-plans/tech-debt-tracker.md #60 with
+    // its revisit trigger: a count that is slightly stale-HIGH and self-heals
+    // beats one that is visibly wrong because a degraded read destroyed good
+    // data on the user's own click.
     //
     // The guard applies ONLY to the supersede-an-existing-value case; a FIRST
     // capture of 0 is legitimate (a brand-new upload) and still lands. The date

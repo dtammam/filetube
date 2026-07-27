@@ -453,12 +453,23 @@ function resolveDisplayDescription(tags, title) {
   if (raw === '') return '';
   const t = typeof title === 'string' ? title.trim().toLowerCase() : '';
   if (t !== '' && raw.toLowerCase() === t) return '';
-  // Cut on a CODE POINT boundary (spread, never slice on UTF-16 units) so a
-  // multi-byte sequence or an astral-plane emoji's surrogate pair can never be
-  // halved into a replacement character -- the same discipline
-  // `truncateToBytes` uses server-side.
+  // DELTA GATE FIX (adversarial W-D2): a UTF-16 unit slice with ONE boundary
+  // repair, NOT `[...raw].slice().join('')`. The spread was measured
+  // materialising the entire input as an array of per-code-point strings BEFORE
+  // cutting -- 213ms and 95MB of heap on a 16MB tag -- which re-imported the
+  // main-thread spike this bound exists to remove. This form is O(MAX) instead
+  // of O(input), and the units-vs-code-points mismatch also made the effective
+  // bound 2x looser than the constant claimed for astral text.
+  //
+  // It still cannot split a surrogate pair: if the cut lands between a HIGH
+  // surrogate (U+D800-U+DBFF) and its low half, that dangling high surrogate is
+  // dropped. A cut immediately AFTER a complete pair leaves a low surrogate as
+  // the last unit, which is already valid and must not be touched.
   if (raw.length > MAX_DISPLAY_DESCRIPTION) {
-    return [...raw].slice(0, MAX_DISPLAY_DESCRIPTION).join('') + '…';
+    let cut = raw.slice(0, MAX_DISPLAY_DESCRIPTION);
+    const lastUnit = cut.charCodeAt(cut.length - 1);
+    if (lastUnit >= 0xD800 && lastUnit <= 0xDBFF) cut = cut.slice(0, -1);
+    return cut + '…';
   }
   return raw;
 }

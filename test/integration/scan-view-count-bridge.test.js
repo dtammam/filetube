@@ -143,12 +143,20 @@ test('a captured count survives an UNCHANGED rescan (reuse fast path)', () => wi
   assert.equal(item.sourceViewCountCapturedAt, CAPTURED_AT, 'and still correctly dated');
 }));
 
-test('a captured count survives a CHANGED file (the re-init carry-forward)', () => withYtdlpEnv(async () => {
+test('a captured count survives a CHANGED file (re-init carry-forward OR the Phase-2 gap-fill)', () => withYtdlpEnv(async () => {
   // The headline persist-gate case. A view count cannot be re-derived from
   // anything on disk -- it came from a network capture at a moment in time --
-  // so if the changed-file re-init branch drops it, re-encoding a file silently
-  // reverts that item to a fabricated mock count with no way back short of a
-  // manual reheat.
+  // so if a re-encoded file loses it, that item silently reverts to a
+  // fabricated mock count with no way back short of a manual reheat.
+  //
+  // HONEST SCOPE (delta gate fix, adversarial W-D1): this test asserts the
+  // OUTCOME, and on a plain changed-file rescan the value is actually restored
+  // by the Phase-2 partial-reheat gap-fill, NOT by the re-init carry-forward at
+  // server.js:4014-4018 -- the two guards mutually mask, and deleting either
+  // one alone leaves this test green. The carry-forward is isolated by the
+  // NEXT test. This comment used to claim it covered the re-init branch, which
+  // was false, and a false claim in a test comment is exactly what the wave's
+  // headline finding was about.
   const filePath = path.join(downloadDir, 'Re-encoded [ggggggggggg].mp4');
   fs.writeFileSync(filePath, 'original bytes');
 
@@ -171,8 +179,58 @@ test('a captured count survives a CHANGED file (the re-init carry-forward)', () 
 
   await scanDirectories();
   const item = loadDatabase().metadata[id];
-  assert.equal(item.sourceViewCount, 987654, 'carried forward through the re-init branch');
+  assert.equal(item.sourceViewCount, 987654, 'the count survives a re-encode');
   assert.equal(item.sourceViewCountCapturedAt, CAPTURED_AT, 'with its original capture date, not a fresh one');
+}));
+
+test('the re-init carry-forward ALONE preserves a count when the Phase-2 gap-fill cannot', () => withYtdlpEnv(async () => {
+  // DELTA GATE FIX (adversarial W-D1). Isolates server.js:4014-4018, which the
+  // test above cannot reach because the Phase-2 gap-fill masks it.
+  //
+  // The construction: while the scan is awaiting a probe (forced by a brand-new
+  // file), a concurrent writer STRIPS the count off the live db row. At merge
+  // time the gap-fill's source (`freshItem`) therefore has nothing to offer, so
+  // the only thing that can still carry the value is the scan's own re-init
+  // carry-forward, which read it from the Phase-1 snapshot taken before the
+  // strip. Delete the carry-forward and this test fails; that is the point.
+  const filePath = path.join(downloadDir, 'Carry Forward Only [ooooooooooo].mp4');
+  fs.writeFileSync(filePath, 'original bytes');
+
+  await updateDatabase((db) => {
+    const ns = store.ensureYtdlp(db);
+    ns.downloadMeta.ooooooooooo = {
+      channelUrl: 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw',
+      sourceViewCount: 424242,
+      capturedAt: CAPTURED_AT,
+    };
+  });
+
+  await scanDirectories();
+  const id = getMediaId(filePath);
+  assert.equal(loadDatabase().metadata[id].sourceViewCount, 424242, 'precondition: the bridge fired');
+
+  // Same path, NEW size -> the next scan rebuilds this item via the re-init
+  // branch. A brand-new sibling file gives that scan an async probe to await.
+  fs.writeFileSync(filePath, 'a completely different, much longer set of bytes than before');
+  fs.writeFileSync(path.join(downloadDir, 'Yield Sibling [ppppppppppp].mp4'), 'new-video-bytes');
+
+  const scanPromise = scanDirectories();
+  const stripPromise = updateDatabase((db) => {
+    const live = db.metadata[id];
+    if (live) {
+      delete live.sourceViewCount;
+      delete live.sourceViewCountCapturedAt;
+    }
+    return true;
+  });
+
+  await Promise.all([scanPromise, stripPromise]);
+
+  const item = loadDatabase().metadata[id];
+  assert.equal(item.sourceViewCount, 424242,
+    'the re-init carry-forward supplied it -- the gap-fill had nothing to supply');
+  assert.equal(item.sourceViewCountCapturedAt, CAPTURED_AT,
+    'and the ORIGINAL capture date came with it');
 }));
 
 test('an item with NO capture never gains a sourceViewCount (the mock fallback stays the render-side default)', () => withYtdlpEnv(async () => {
