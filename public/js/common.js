@@ -832,7 +832,14 @@ function resolveAudioArtUrl(item) {
 // loadRelatedFiles(). Named constants below are the score weights + the
 // fallback/result-size guarantees.
 
-const RESULT_COUNT = 10;   // matches today's slice(0, 10)
+// v1.48 item 3 (Dean): raised 10 -> 20 so the related list runs to roughly the
+// length of the comment list beside it. NOTE the honest trade-off: rankRelated
+// concatenates similar + recent and slices (see the SIMILAR_FLOOR note below),
+// so on a small library the extra 10 slots are filled from the most-recent tail
+// rather than from genuinely-similar items. That padding already happened at
+// 10; this doubles how much of it is visible, which is the accepted cost of
+// matching the comment-column length.
+const RESULT_COUNT = 20;
 // "Genuinely similar" guarantee point: whenever fewer than 6 candidates clear
 // score > 0, the shortfall is filled from the most-recent tail (today's exact
 // fallback behavior). NOTE: there is no literal `if (similar.length <
