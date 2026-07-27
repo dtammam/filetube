@@ -1650,16 +1650,42 @@ function shouldInjectSubscriptionsNav(response) {
   return Boolean(response && response.ok === true);
 }
 
+/**
+ * v1.47.4 item 4: has the Subscriptions nav ALREADY been injected, on EITHER
+ * of its two surfaces?
+ *
+ * The pre-fix guard tested only `[data-nav="subscriptions"]`, which exists
+ * solely on the BOTTOM-NAV entry. On a shell with no `#bottom-nav` that entry
+ * is never created, so the guard was permanently false and every call appended
+ * another SIDEBAR link. Checking both markers is what makes the injector
+ * genuinely idempotent rather than idempotent-only-on-pages-with-a-bottom-nav.
+ *
+ * Both markers are checked (not just the sidebar one) so a page that has only
+ * a bottom nav is equally covered.
+ */
+function subscriptionsNavAlreadyInjected() {
+  return Boolean(
+    document.querySelector('[data-nav="subscriptions"]')
+    || document.querySelector('[data-nav-sidebar="subscriptions"]'),
+  );
+}
+
 // Idempotent (checks for an existing injected link first) and defensive --
 // missing sidebar/bottom-nav elements (a page that doesn't have them) are
 // simply skipped, never thrown on.
 function injectSubscriptionsNavLinkIfEnabled() {
   if (typeof document === 'undefined' || typeof fetch === 'undefined') return;
-  if (document.querySelector('[data-nav="subscriptions"]')) return; // already injected
+  if (subscriptionsNavAlreadyInjected()) return; // already injected
 
   fetch('/api/subscriptions/health')
     .then((res) => {
       if (!shouldInjectSubscriptionsNav(res)) return; // disabled (404) -- inject nothing
+      // v1.47.4 item 4: RE-CHECK after the await. The guard at the top runs
+      // BEFORE this fetch, so two overlapping calls both passed it and both
+      // injected -- the classic async double-inject window. Every injector in
+      // this file had the same hole; each now re-checks here, where the DOM
+      // write actually happens.
+      if (subscriptionsNavAlreadyInjected()) return;
 
       // Sidebar entry, inserted right after the existing "Library Settings"
       // link so it reads as a sibling settings-adjacent surface.
@@ -1668,6 +1694,13 @@ function injectSubscriptionsNavLinkIfEnabled() {
         const sidebarLink = document.createElement('a');
         sidebarLink.href = '/subscriptions';
         sidebarLink.className = 'sidebar-item';
+        // v1.47.4 item 4 (tech-debt #33a, the real defect): this element used
+        // to carry NO marker at all. The guard only ever matched the
+        // BOTTOM-NAV entry's `data-nav`, so on any shell WITHOUT a #bottom-nav
+        // the bottom-nav entry was never created, the guard could therefore
+        // never become true, and every single call appended another sidebar
+        // link. Marking the sidebar entry is what actually closes that loop.
+        sidebarLink.setAttribute('data-nav-sidebar', 'subscriptions');
         const sidebarIcon = document.createElement('i');
         sidebarIcon.className = 'icon-refresh';
         sidebarLink.appendChild(sidebarIcon);
@@ -1760,6 +1793,9 @@ function injectBooksNavLinkIfEnabled() {
     .then((res) => (res.ok ? res.json() : null))
     .then((payload) => {
       if (!shouldInjectBooksNav(payload)) return; // books-less -- inject nothing
+      // v1.47.4 item 4: `injectLibraryNavEntry` re-checks its own marker before
+      // writing, which closes this injector's async double-inject window at the
+      // DOM-write site (see that function).
       injectLibraryNavEntry('books', '/books', 'Books', 'icon-folder');
     })
     .catch(() => { /* network/parse failure -- fail closed, inject nothing */ });
@@ -2479,6 +2515,10 @@ function injectOneOffDownloadButtonIfEnabled() {
   fetch('/api/subscriptions/health')
     .then((res) => {
       if (!shouldInjectOneOffButton(res)) return; // disabled (404) -- inject nothing
+      // v1.47.4 item 4: RE-CHECK after the await, using the SAME predicate as
+      // the pre-fetch guard above. Without it, two overlapping calls both pass
+      // the pre-fetch check and both build a header button + modal.
+      if (document.getElementById('ytdlp-oneoff-btn') || document.querySelector('[data-nav="oneoff-download"]')) return;
 
       const headerRight = document.querySelector('.header-right');
       // v1.15.1 FIX 4: the desktop header button lives inside `.header-right`,
@@ -2804,6 +2844,169 @@ function wirePinchZoomSuppression() {
   };
   document.addEventListener('gesturestart', suppress, { passive: false });
   document.addEventListener('gesturechange', suppress, { passive: false });
+}
+
+// ---- v1.47.4 item 4: shell singleton invariant (?debugUI=1) ----------------
+//
+// Dean: "on mobile at times if I go back and forth between pages ... certain
+// icons do not properly show or glitch out and duplicate (think the top bar).
+// It's odd and annoying and only resolved by switching pages entirely."
+//
+// HONEST SCOPE. The idempotency defects fixed above are real and provable, but
+// they do NOT yet explain a TOP-BAR symptom during in-app navigation: those
+// injectors run once at DOMContentLoaded, not per view swap, and the header
+// markup is static. Dean's report is intermittent and he cannot capture it. So
+// rather than guess at a fix, this makes the next occurrence REPORT ITSELF.
+//
+// Opt-in via `?debugUI=1` and completely inert otherwise -- no timers, no
+// listeners, no cost on a normal load. It checks the shell elements that must
+// be unique and logs any that are not, with a MutationObserver so a duplicate
+// appearing later (the actual reported behavior: mid-session, after several
+// navigations) is caught at the moment it appears rather than only at boot.
+//
+// "Only resolved by switching pages entirely" is consistent with a duplicated
+// or orphaned SHELL node, since a hard load rebuilds the document from
+// scratch -- which is exactly what this instrument is aimed at.
+
+// Selectors for elements the shell must contain AT MOST ONE of. Deliberately
+// limited to persistent shell chrome (never #view-root contents, which are
+// legitimately rebuilt on every swap).
+const SHELL_SINGLETON_SELECTORS = [
+  'header',
+  '#bottom-nav',
+  '#menu-toggle',
+  '#theme-toggle-btn',
+  '#search-input',
+  '#ytdlp-oneoff-btn',
+  '#playlists-sheet',
+  '#playlists-backdrop',
+  '[data-nav="subscriptions"]',
+  '[data-nav-sidebar="subscriptions"]',
+  '[data-nav-sidebar="books"]',
+  '[data-nav-sidebar="music"]',
+  '.header-right',
+  '.ptr-indicator',
+];
+
+/**
+ * Pure: given a counting function, return the selectors that are duplicated.
+ * Split out from the DOM/observer wiring so it is directly unit-testable.
+ */
+function findDuplicateShellSingletons(countFn, selectors) {
+  const list = Array.isArray(selectors) ? selectors : SHELL_SINGLETON_SELECTORS;
+  const dupes = [];
+  for (const selector of list) {
+    let count = 0;
+    try {
+      count = countFn(selector);
+    } catch (_) {
+      continue; // a selector this document can't evaluate is not a finding
+    }
+    if (typeof count === 'number' && count > 1) dupes.push({ selector, count });
+  }
+  return dupes;
+}
+
+/**
+ * Wire the invariant when `?debugUI=1` is present. Returns false (and does
+ * nothing at all) otherwise -- this must never cost anything on a normal load.
+ */
+function wireShellSingletonDebug() {
+  if (typeof document === 'undefined' || typeof window === 'undefined') return false;
+  let enabled = false;
+  try {
+    enabled = new URLSearchParams(window.location.search || '').get('debugUI') === '1';
+  } catch (_) {
+    return false;
+  }
+  if (!enabled) return false;
+
+  const report = (when) => {
+    const dupes = findDuplicateShellSingletons((sel) => document.querySelectorAll(sel).length);
+    if (dupes.length === 0) return;
+    // console.warn (not error) so it never trips an error-reporting path; the
+    // point is a breadcrumb Dean can screenshot, not an exception.
+    console.warn('[debugUI] duplicated shell singleton(s) ' + when + ':',
+      dupes.map((d) => `${d.selector} x${d.count}`).join(', '));
+  };
+
+  report('at boot');
+  try {
+    const observer = new MutationObserver(() => report('after a DOM change'));
+    observer.observe(document.body, { childList: true, subtree: true });
+  } catch (_) {
+    // No MutationObserver (or no body yet) -- the boot-time check above still
+    // ran, so degrade rather than throw.
+  }
+  return true;
+}
+
+// ---- v1.47.4 item 5: touch-eating overlay instrument (?debugTouch=1) -------
+//
+// Dean: "Sometimes, video input disappears on mobile and requires a force close
+// of the PWA for it to return/behave normally." (Clarified: touch input on the
+// player stops responding.)
+//
+// The leading hypothesis has direct precedent IN THIS REPO. The v1.17.0 T5 fix
+// records it exactly: `.oneoff-modal-backdrop` set `display: flex` with no
+// `[hidden]` override, so `backdrop.hidden = true` left a full-viewport
+// `z-index: 2100` overlay PAINTED AND EATING EVERY TOUCH. The page looked
+// normal and was completely dead to input -- precisely Dean's description.
+//
+// Since the recurrence is intermittent and uncapturable, this reports the
+// answer instead of guessing at it: on each touch it names the element that
+// ACTUALLY received the point. If an invisible overlay is swallowing input,
+// that element will be the overlay rather than the control the user aimed at,
+// and the culprit identifies itself by class in one tap.
+//
+// Opt-in via `?debugTouch=1`; a completely inert no-op otherwise. The listener
+// is PASSIVE, so it cannot itself alter touch behavior while diagnosing it.
+
+/**
+ * Pure: describe an element compactly enough to identify it in a log line.
+ * Never throws on a null/foreign node.
+ */
+function describeTouchTarget(el) {
+  if (!el || typeof el !== 'object') return '(none)';
+  const tag = typeof el.tagName === 'string' ? el.tagName.toLowerCase() : '?';
+  const id = typeof el.id === 'string' && el.id !== '' ? '#' + el.id : '';
+  const cls = (typeof el.className === 'string' && el.className.trim() !== '')
+    ? '.' + el.className.trim().split(/\s+/).join('.')
+    : '';
+  return tag + id + cls;
+}
+
+/**
+ * Wire the touch-target logger when `?debugTouch=1` is present. Returns false
+ * and does nothing otherwise.
+ */
+function wireTouchTargetDebug() {
+  if (typeof document === 'undefined' || typeof window === 'undefined') return false;
+  let enabled = false;
+  try {
+    enabled = new URLSearchParams(window.location.search || '').get('debugTouch') === '1';
+  } catch (_) {
+    return false;
+  }
+  if (!enabled) return false;
+
+  document.addEventListener('touchstart', (e) => {
+    try {
+      const t = e.touches && e.touches[0];
+      if (!t) return;
+      // `elementFromPoint` is the whole point: it reports what the BROWSER
+      // would hand the touch to, which is not necessarily `e.target` and is
+      // exactly where a transparent overlay reveals itself.
+      const atPoint = document.elementFromPoint(t.clientX, t.clientY);
+      const line = `[debugTouch] point=${describeTouchTarget(atPoint)} target=${describeTouchTarget(e.target)}`;
+      // Flag the specific smoking gun: the touch landed on something that is
+      // NOT what the user aimed at, which is the overlay-eating-input shape.
+      console.warn(atPoint !== e.target ? line + '  <-- MISMATCH (possible overlay)' : line);
+    } catch (_) {
+      // Never let the diagnostic interfere with real input handling.
+    }
+  }, { passive: true, capture: true });
+  return true;
 }
 
 // Pure decision: should a plain `<a>` click be intercepted for an in-app swap
@@ -6632,6 +6835,13 @@ document.addEventListener('DOMContentLoaded', () => {
   wirePinchZoomSuppression();
   applyZoomPolicy();
 
+  // v1.47.4 item 4: opt-in only (?debugUI=1); a completely inert no-op on a
+  // normal load. See wireShellSingletonDebug for why this ships as an
+  // instrument rather than a claimed fix.
+  wireShellSingletonDebug();
+  // v1.47.4 item 5: same opt-in posture (?debugTouch=1), inert otherwise.
+  wireTouchTargetDebug();
+
   // Optional yt-dlp subscriptions nav-link capability probe (D4, T5). Runs on
   // every page (not just inside the `bottomNav` guard below) since it also
   // injects a sidebar link on pages that have one but no bottom nav.
@@ -6758,6 +6968,11 @@ if (typeof module !== 'undefined' && module.exports) {
     // selects between, exported so tests assert the reader carve-out against the
     // real values rather than hardcoded duplicates.
     pinchZoomAllowedForView, ZOOM_ALLOWED_VIEW, VIEWPORT_ZOOM_LOCKED, VIEWPORT_ZOOM_FREE,
+    // v1.47.4 item 4: injector idempotency + the shell singleton invariant.
+    subscriptionsNavAlreadyInjected, findDuplicateShellSingletons, SHELL_SINGLETON_SELECTORS,
+    // v1.47.4 item 5: the touch-target describer (the overlay instrument's
+    // pure half).
+    describeTouchTarget,
     shouldDockOnTransition, isSameLocationNav, toPathAndQuery, isStaleNavGeneration,
     // v1.45.0 (T2): incremental-pop Home helpers.
     nextHistoryDepth, resolveHomeButtonAction, isHomeRootTarget,
