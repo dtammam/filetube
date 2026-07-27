@@ -3650,6 +3650,39 @@ a.sub-row-channel-link:focus-visible {
     font-size: var(--fs-xs);
   }
 
+  /* v1.47.5 (Dean, on-device): "if I go to the earliest era the Download,
+     Delete, Move, Like Share row goes a little too far off the right (not
+     properly constrained within the bounds)."
+
+     ROOT CAUSE, and it is an era asymmetry rather than a layout accident: the
+     four eras share an IDENTICAL type scale (every --fs-* token is the same),
+     and differ only in --font-family. 2005 is the sole era on **Verdana**,
+     which is roughly 10% wider than the Arial (2009) and Roboto (2014/2021)
+     the other three use. Same tokens, same padding, wider glyphs -- so the
+     button group's intrinsic width grows in exactly one era.
+
+     `.watch-action-btns` is `flex-wrap: nowrap` (base rule) so Download/Delete/
+     Move can never split across rows. That is a fine PREFERENCE and a bad
+     GUARANTEE: a nowrap flex row's min-content width is the SUM of its items,
+     so once the sum exceeds the viewport the row simply overflows to the right.
+     No amount of per-era padding tuning fixes that class -- it just moves the
+     font size at which it breaks, and would rot the next time a font changes.
+
+     The fix is structural and font-independent: allow wrapping at the phone
+     breakpoint ONLY. A wrapping row's min-content width is its WIDEST SINGLE
+     ITEM, so it can never exceed the viewport for any era, any font, any future
+     button added to the group. Worst case is a second line; the current worst
+     case is content off-screen and unreachable, which is strictly worse.
+
+     Desktop is untouched (there is room there, and the nowrap preference still
+     holds), so the v1.25.4 "Move must not orphan" intent survives everywhere it
+     was actually about. */
+  .watch-action-btns {
+    flex-wrap: wrap;
+    max-width: 100%;
+    min-width: 0;
+  }
+
   /* ---- v1.13.0 item 6: mobile-portrait polish for the Setup (Library ------
      Settings) page and the /subscriptions page. Comfortable spacing/
      wrapping for rows and controls, and larger tap targets, without
