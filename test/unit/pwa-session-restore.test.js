@@ -143,6 +143,38 @@ test('recording the pointer can never break a navigation (best-effort storage)',
   assert.match(body, /isRestorableSessionUrl\(url\)/, 'home-root is never recorded as a resume point');
 });
 
+// ---- v1.47.5 (Dean, on-device): the pointer must represent POSITION --------
+//
+// Dean: "if I am on a video and then go home and then force-close, it brings
+// the video back ... it's almost a little too sticky. If it's to work it should
+// actually represent the position."
+//
+// Root cause: recordLastSession `return`ed on a non-restorable URL instead of
+// clearing, so navigating Home left the LAST VIDEO stored forever. The pointer
+// meant "the last restorable page you ever visited", which is not a position.
+
+test('STICKINESS FIX: navigating Home CLEARS the pointer rather than leaving the last video', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const COMMON = fs.readFileSync(path.join(__dirname, '../../public/js/common.js'), 'utf8');
+  const fn = COMMON.slice(COMMON.indexOf('function recordLastSession()'));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  assert.match(body, /removeItem\(LAST_SESSION_KEY\)/,
+    'a non-restorable location must CLEAR the pointer, not skip the write');
+  // The specific regression: a bare `return` here is what made it sticky. Match
+  // the STATEMENT SEQUENCE directly -- an earlier version of this assertion
+  // compared indexOf('return'), which matched the word inside this branch's own
+  // explanatory comment rather than the code, and failed on correct code.
+  assert.match(body, /removeItem\(LAST_SESSION_KEY\);\s*return;/,
+    'the clear must immediately precede the early return, or the pointer survives');
+  // v1.47.5 gate: the CLEAR is gated on standalone so a browser TAB sharing
+  // storage with an installed app (Android/desktop Chrome) cannot wipe a resume
+  // the PWA legitimately stored. Recording stays ungated -- storing where you
+  // are is harmless from either surface; destroying the other's pointer is not.
+  assert.match(body, /if \(isStandaloneDisplay\(\)\) window\.localStorage\.removeItem/,
+    'only the installed app surface may clear the pointer');
+});
+
 // ---- v1.47.4 gate delta (adversarial WARNING 3): real origin check ---------
 //
 // The original guard was `startsWith('/')` + `!startsWith('//')`, with a comment

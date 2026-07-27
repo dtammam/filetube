@@ -2939,11 +2939,52 @@ function shouldRestoreSession(stored, currentPath, nowMs, isStandalone, origin) 
  * when the quota is exhausted, and a resume convenience must never break a
  * navigation.
  */
+/**
+ * Is this an INSTALLED app surface (not a browser tab)? Extracted in v1.47.5 so
+ * `recordLastSession`'s clear and `maybeRestoreLastSession` share one
+ * definition rather than each hand-rolling the check.
+ */
+function isStandaloneDisplay() {
+  if (typeof window === 'undefined') return false;
+  try {
+    return Boolean(
+      (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
+      || window.navigator.standalone === true,
+    );
+  } catch (_) {
+    return false;
+  }
+}
+
 function recordLastSession() {
   try {
     if (typeof window === 'undefined' || !window.localStorage) return;
     const url = window.location.pathname + window.location.search;
-    if (!isRestorableSessionUrl(url)) return;
+    if (!isRestorableSessionUrl(url)) {
+      // v1.47.5 (Dean, on-device): CLEAR, don't skip. This used to `return`
+      // here, so navigating Home left the LAST VIDEO as the stored pointer --
+      // and a force-quit from Home then reopened that video. Dean: "it's almost
+      // a little too sticky ... If it's to work it should actually represent
+      // the position."
+      //
+      // Skipping made the pointer mean "the last restorable page you ever
+      // visited", which is not a position. Clearing makes it mean "where you
+      // actually are", so deliberately leaving a video (going Home) is
+      // remembered as leaving it. Home is the one place that is both a real
+      // position AND has nothing to restore, so it is expressed as an absent
+      // pointer rather than a stored one.
+      //
+      // GATED ON STANDALONE (v1.47.5 gate suggestion): only the installed PWA
+      // may express its own position. Where storage is SHARED between a browser
+      // tab and an installed app (Android/desktop Chrome -- not iOS, where a
+      // home-screen app gets its own container), an ordinary tab landing on `/`
+      // would otherwise wipe a resume the PWA had legitimately stored, and the
+      // next PWA launch would come up blank. Recording (below) stays ungated:
+      // storing where you are is harmless from either surface; DESTROYING the
+      // other surface's pointer is not.
+      if (isStandaloneDisplay()) window.localStorage.removeItem(LAST_SESSION_KEY);
+      return;
+    }
     window.localStorage.setItem(LAST_SESSION_KEY, JSON.stringify({ url, ts: Date.now() }));
   } catch (_) { /* private mode / quota / disabled storage -- never fatal */ }
 }
@@ -2958,10 +2999,10 @@ function recordLastSession() {
 function maybeRestoreLastSession() {
   try {
     if (typeof window === 'undefined' || !window.localStorage) return false;
-    const isStandalone = Boolean(
-      (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
-      || window.navigator.standalone === true,
-    );
+    // v1.47.5: shared with recordLastSession's clear -- one definition of "this
+    // is the installed app", so the restore and the clear can never disagree
+    // about which surface owns the pointer.
+    const isStandalone = isStandaloneDisplay();
     let stored = null;
     try {
       stored = JSON.parse(window.localStorage.getItem(LAST_SESSION_KEY) || 'null');
