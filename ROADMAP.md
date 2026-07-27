@@ -80,6 +80,17 @@
 
 ## Shipped
 
+### v1.47.7 - hotfix: the Share glyph was invisible (2026-07-27)
+
+Dean, immediately after v1.47.6: *"Download, Trash, move, Like are clear but the last one is a blank box."*
+
+A mask-icon needs **two** enumerated selector lists in `style.css` - the sizing/mask block, and the `@supports` block that paints `background-color: currentColor`. `.icon-share` was added to the first and missed in the second, so it had a mask but no colour to cut: an invisible 1em box. The `@supports` gate exists deliberately (its own comment says it stops a failed/404 mask rendering as a solid square), which is exactly why a missing entry fails silently rather than loudly.
+
+This is the repo's recurring **"enumerate every writer"** class (v1.41.4) in a new costume: I added the icon to one list and not the other, and nothing checked. So the fix is not just the one line - `icon-assets.test.js` now enforces **parity across the whole class**: every icon declaring a `mask-image` must also appear in the fill guard, so the next icon added cannot repeat this. Negative-controlled (removing the entry fails two tests).
+
+- Also relaxed a v1.40 lock that pinned the fill guard's exact neighbour sequence (`.icon-heart, .icon-download, .icon-shuffle`). Inserting any new icon into that list broke it - an over-specified assertion that failed on correct changes while still not catching the case that matters (an icon *missing* from the list). It now asserts membership; the new class-wide parity test covers the rest.
+- Node 22: 4818/4818. Node 24: 4818/4818.
+
 ### v1.47.6 - the watch action row goes icon-only on phones (2026-07-27)
 
 Dean, on v1.47.5: the row was contained, but *"Original era, Classic era have the Share button go a line under. Flat and Modern do not. Everything else good."*

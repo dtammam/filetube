@@ -25,7 +25,16 @@ test('assets: heart.svg exists and is a valid single-path <svg>', () => {
 
 test('style.css: .icon-heart is in the base chrome-icon sizing group, the @supports fill guard, and maps to heart.svg', () => {
   assert.match(css, /\.icon-heart,[\s\S]*?\.icon-shuffle\s*\{[\s\S]*?mask-repeat:\s*no-repeat;/, 'heart in the shared sizing/mask group');
-  assert.match(css, /@supports[\s\S]*?\.icon-heart,\s*\.icon-download,\s*\.icon-shuffle\s*\{\s*background-color:\s*currentColor;/, 'heart in the currentColor fill guard');
+  // v1.47.6: asserts MEMBERSHIP of the fill guard, not the exact neighbour
+  // sequence. The original pinned `.icon-heart, .icon-download, .icon-shuffle`
+  // literally, so simply inserting another icon into the list broke it -- an
+  // over-specified lock that fails on correct changes while still not catching
+  // the thing that matters (an icon MISSING from the list). The class-wide
+  // parity check in icon-assets.test.js now covers that for every icon.
+  const supportsIdx = css.indexOf('@supports (mask-image: url("#"))');
+  assert.notEqual(supportsIdx, -1, 'expected the @supports fill guard');
+  const fillGuard = css.slice(supportsIdx, css.indexOf('background-color: currentColor', supportsIdx));
+  assert.ok(fillGuard.includes('.icon-heart'), 'heart in the currentColor fill guard');
   assert.match(css, /\.icon-heart\s*\{\s*-webkit-mask-image:\s*url\(\/assets\/icons\/heart\.svg\);/, 'heart maps to its SVG mask');
 });
 

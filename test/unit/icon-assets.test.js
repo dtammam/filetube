@@ -86,3 +86,49 @@ test('icon assets: no replaced chrome emoji remains in markup/JS', () => {
     }
   }
 });
+
+// ---- v1.47.6 hotfix: mask-image WITHOUT a fill renders nothing -------------
+//
+// Dean, on-device: the new Share button was "a blank box" while the other four
+// glyphs rendered correctly. Cause: a mask-icon needs TWO enumerated selector
+// lists in style.css -- the sizing/mask block AND the `@supports` block that
+// paints `background-color: currentColor`. `.icon-share` was added to the first
+// and missed in the second, so it had a mask but no colour to cut: invisible.
+//
+// That is this repo's recurring "enumerate every writer" class (v1.41.4). This
+// test kills the CLASS rather than the instance: every icon with a mask-image
+// must also be in the fill list, so the next icon added cannot repeat it.
+
+const styleCssForFillParity = fs.readFileSync(
+  path.join(__dirname, '../../public/css/style.css'), 'utf8');
+
+test('PARITY: every mask-image icon is also in the @supports currentColor fill list', () => {
+  // Base (non-set-scoped) mask declarations, e.g. `.icon-share { -webkit-mask-image: ... }`
+  const masked = new Set(
+    [...styleCssForFillParity.matchAll(/^\.(icon-[a-z-]+) \{ -webkit-mask-image:/gm)]
+      .map((m) => m[1]),
+  );
+  assert.ok(masked.size >= 5, `expected to find mask-icon declarations (found ${masked.size})`);
+
+  const supportsIdx = styleCssForFillParity.indexOf('@supports (mask-image: url("#"))');
+  assert.notEqual(supportsIdx, -1, 'expected the @supports fill block');
+  const block = styleCssForFillParity.slice(supportsIdx, styleCssForFillParity.indexOf('}', styleCssForFillParity.indexOf('background-color: currentColor', supportsIdx)));
+
+  const missing = [...masked].filter((cls) => !block.includes(`.${cls}`));
+  assert.deepEqual(missing, [],
+    `these icons declare a mask but are never painted, so they render INVISIBLE: ${missing.join(', ')}`);
+});
+
+test('the share glyph is fully wired (mask + fill + sizing), matching .icon-heart', () => {
+  // .icon-heart is the closest precedent: base-directory svg, no per-set
+  // override, three enumerated entries. Share must match it exactly.
+  for (const cls of ['icon-heart', 'icon-share']) {
+    assert.match(styleCssForFillParity, new RegExp(`^\\.${cls} \\{ -webkit-mask-image:`, 'm'), `${cls} mask`);
+    assert.match(styleCssForFillParity, new RegExp(`\\.${cls},`), `${cls} sizing list`);
+    assert.match(styleCssForFillParity, new RegExp(`\\.${cls}[,)]`), `${cls} referenced in a selector list`);
+  }
+  const supportsIdx = styleCssForFillParity.indexOf('@supports (mask-image: url("#"))');
+  const fillBlock = styleCssForFillParity.slice(supportsIdx, supportsIdx + 600);
+  assert.ok(fillBlock.includes('.icon-share'), 'share must be painted, or it is an invisible box');
+  assert.ok(fillBlock.includes('.icon-heart'), 'sanity: heart is painted (the precedent)');
+});
