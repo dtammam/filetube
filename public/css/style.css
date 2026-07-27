@@ -342,6 +342,27 @@ body {
   transition: background-color 0.2s, color 0.2s;
 }
 
+/* v1.47.4 item 2 (Dean: "fully disable pinch-to-zoom ... easy to zoom in
+   accidentally and is just a janky experience"). This is lever 2 of three --
+   `manipulation` is specifically what kills DOUBLE-TAP zoom, the most common
+   accidental trigger while tapping controls. It still permits panning/scrolling,
+   so it costs nothing in normal use. Pinch itself is handled by the
+   `gesturestart`/`gesturechange` suppression in common.js (WebKit ignores the
+   viewport meta), and the meta handles Android.
+
+   `data-view` is stamped onto <body> by applyZoomPolicy() on every view change.
+   The reader is Dean's explicit and exclusive carve-out: zooming a PDF/book page
+   is a feature there, so it opts back into the browser default. Keyed off the
+   route rather than a per-shell class because /read.html is an SPA route -- the
+   document belongs to whichever shell loaded first, so only the live route is a
+   trustworthy signal. */
+body {
+  touch-action: manipulation;
+}
+body[data-view="read"] {
+  touch-action: auto;
+}
+
 a {
   color: var(--text-link);
   text-decoration: none;
@@ -1153,6 +1174,37 @@ html.reader-immersive .app-container { padding-top: 0; }
 }
 .ptr-indicator.ready .icon-refresh {
   transform: rotate(180deg);
+}
+
+/* v1.47.4 item 3 (Dean): the indicator used to vanish the instant the finger
+   lifted, while the rescan it had just triggered ran on invisibly -- the only
+   remaining "Scanning..." affordance was the Rescan BUTTON, which on mobile is
+   usually scrolled off-screen. `.refreshing` is the released-and-working state:
+   it survives the release, pins at a fixed offset (no longer following
+   --ptr-pull, which is meaningless once there is no finger), and spins until
+   the scan poller reports completion.
+
+   Deliberately overrides `.visible`'s transform rather than relying on class
+   order, so the pin holds regardless of which classes are present. */
+.ptr-indicator.refreshing {
+  opacity: 1;
+  transform: translateX(-50%) translateY(6px) scale(1);
+  color: var(--yt-red);
+}
+.ptr-indicator.refreshing .icon-refresh {
+  /* The pull-tracking rotate transition would otherwise fight the spin. */
+  transition: none;
+  animation: spin 0.9s linear infinite;
+}
+
+/* Same posture as the skeleton shimmer above: the spin is decorative motion,
+   so reduced-motion users get a static red glyph instead. The indicator still
+   stays VISIBLE for the whole scan -- that is the actual information being
+   conveyed here, and it must not depend on the animation. */
+@media (prefers-reduced-motion: reduce) {
+  .ptr-indicator.refreshing .icon-refresh {
+    animation: none;
+  }
 }
 
 .video-title {

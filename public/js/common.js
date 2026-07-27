@@ -2719,6 +2719,93 @@ function deriveRouteView(pathname) {
   return null;
 }
 
+// ---- v1.47.4 item 2 (Dean): kill accidental pinch/double-tap zoom ----------
+//
+// Dean: "I want to fully disable pinch-to-zoom on iOS/Mobile viewport. It's easy
+// to zoom in accidentally and is just a janky experience." Carve-out, his words:
+// the reader ("explicitly and exclusively") keeps zoom, because zooming a PDF or
+// a book page is a genuine feature there, not an accident.
+//
+// WHY THIS IS ROUTE-DRIVEN AND NOT A PER-SHELL <meta>/<body> FLAG: /read.html is
+// an SPA route (see deriveRouteView above), so a book opened from the Books grid
+// is an in-app #view-root swap -- the document, its <meta viewport>, and any
+// boot-time body attribute all belong to whichever shell loaded FIRST. A static
+// per-shell carve-out would therefore hand the reader whatever policy the
+// previous page happened to have. The policy has to be re-evaluated on every
+// view change, from the live URL.
+//
+// THREE LEVERS, because no single one covers both zoom gestures on iOS:
+//   1. `user-scalable=no, maximum-scale=1` -- honored by Android/Chrome. iOS
+//      Safari has deliberately IGNORED it since iOS 10, so it is necessary but
+//      nowhere near sufficient, which is why levers 2 and 3 exist.
+//   2. `touch-action: manipulation` (CSS, keyed off the same body attribute) --
+//      this is what actually kills DOUBLE-TAP zoom, the most common accidental
+//      trigger while tapping controls.
+//   3. `gesturestart`/`gesturechange` preventDefault -- the WebKit-specific
+//      pinch lever, and the only thing that reliably stops pinch in an iOS PWA.
+//
+// Text scaling is untouched by all three: this suppresses GESTURE zoom only, so
+// a user who has set a larger OS/browser text size keeps it. That is deliberate
+// -- taking that away would be an accessibility regression, not a polish fix.
+const ZOOM_ALLOWED_VIEW = 'read';
+const VIEWPORT_ZOOM_LOCKED = 'width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no';
+const VIEWPORT_ZOOM_FREE = 'width=device-width, initial-scale=1.0, viewport-fit=cover';
+
+/**
+ * Pure: may this route pinch/double-tap zoom? Only the reader. An unknown route
+ * (null) is treated as a normal app surface, i.e. suppressed -- fail-safe in the
+ * direction of Dean's actual complaint rather than leaving stray surfaces zoomy.
+ */
+function pinchZoomAllowedForView(view) {
+  return view === ZOOM_ALLOWED_VIEW;
+}
+
+/**
+ * Re-evaluate the zoom policy for the CURRENT url and reflect it onto the
+ * document (viewport meta + a `data-view` body attribute the CSS keys off).
+ * Idempotent and defensive: safe to call on every view change, and a document
+ * missing <body>/<meta name="viewport"> is simply skipped, never thrown on.
+ *
+ * Called from `updateActiveNavHighlight`, which is ALREADY invoked immediately
+ * after every one of the three `currentViewName = ...` assignments AND is itself
+ * driven by `window.location` rather than by passed-in state. Piggybacking there
+ * is deliberate: this repo has a recurring "the bug is the seat that forgot to
+ * CALL the shared helper" class (v1.41.4), so a policy that rides an existing,
+ * already-universal call site cannot drift out of sync with the router.
+ */
+function applyZoomPolicy() {
+  if (typeof document === 'undefined' || !document.body) return;
+  const view = deriveRouteView(window.location.pathname || '');
+  const allowed = pinchZoomAllowedForView(view);
+  // The CSS hook (lever 2). Stamped as the raw view name rather than a boolean
+  // so other route-scoped styling can reuse it without a second attribute.
+  document.body.setAttribute('data-view', view || '');
+  const meta = document.querySelector('meta[name="viewport"]');
+  if (meta) meta.setAttribute('content', allowed ? VIEWPORT_ZOOM_FREE : VIEWPORT_ZOOM_LOCKED);
+}
+
+/**
+ * Bind the WebKit pinch lever (3) ONCE, at boot. Deliberately NOT an
+ * enable/disable pair: the handler re-reads the live route at EVENT time, so
+ * there is no listener lifecycle to keep in sync with navigation and no way for
+ * a missed teardown to leave the reader un-zoomable (or the app zoomy). Bound on
+ * `document` with `passive: false` because a passive listener cannot
+ * preventDefault, which is the entire point.
+ *
+ * `gestureend` is deliberately NOT bound: preventing start+change already
+ * suppresses the zoom, and leaving end alone keeps WebKit's own gesture
+ * bookkeeping intact.
+ */
+function wirePinchZoomSuppression() {
+  if (typeof document === 'undefined') return;
+  const suppress = (e) => {
+    if (pinchZoomAllowedForView(deriveRouteView(window.location.pathname || ''))) return;
+    e.preventDefault();
+  };
+  document.addEventListener('gesturestart', suppress, { passive: false });
+  document.addEventListener('gesturechange', suppress, { passive: false });
+}
+
 // Pure decision: should a plain `<a>` click be intercepted for an in-app swap
 // instead of a normal browser navigation? Exported for node:test so every
 // branch (modifier keys, target=_blank, cross-origin, unknown route) is
@@ -3011,6 +3098,11 @@ if (typeof window !== 'undefined') {
   // in-app navigation can change the URL without a fresh document, it must be
   // re-run after every swap too.
   function updateActiveNavHighlight() {
+    // v1.47.4 item 2: the zoom policy rides this call site because it is the one
+    // place already guaranteed to run after EVERY view change (all three
+    // `currentViewName = ...` assignments call it) and it is location-driven, so
+    // it cannot disagree with the router. See applyZoomPolicy's doc comment.
+    applyZoomPolicy();
     const key = activeNavItem(window.location.pathname, window.location.search);
     const bottomNav = document.getElementById('bottom-nav');
     if (bottomNav) {
@@ -6465,6 +6557,15 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // v1.47.4 item 2: pinch/double-tap zoom suppression. Both calls run on EVERY
+  // page, deliberately outside the router: `bootRouter` bails early on a
+  // non-route shell (login/welcome), which would otherwise leave exactly the
+  // pages a user first lands on still zoomy. `wirePinchZoomSuppression` binds
+  // once for the document's lifetime; `applyZoomPolicy` seeds the initial state
+  // that later view changes re-evaluate via updateActiveNavHighlight.
+  wirePinchZoomSuppression();
+  applyZoomPolicy();
+
   // Optional yt-dlp subscriptions nav-link capability probe (D4, T5). Runs on
   // every page (not just inside the `bottomNav` guard below) since it also
   // injects a sidebar link on pages that have one but no bottom nav.
@@ -6587,6 +6688,10 @@ if (typeof module !== 'undefined' && module.exports) {
     injectOneOffDownloadButtonIfEnabled,
     showToast, nextArmState,
     deriveRouteView, shouldInterceptLinkClick, buildHistoryState, parseHistoryState,
+    // v1.47.4 item 2: the pure zoom-policy decision + the viewport contents it
+    // selects between, exported so tests assert the reader carve-out against the
+    // real values rather than hardcoded duplicates.
+    pinchZoomAllowedForView, ZOOM_ALLOWED_VIEW, VIEWPORT_ZOOM_LOCKED, VIEWPORT_ZOOM_FREE,
     shouldDockOnTransition, isSameLocationNav, toPathAndQuery, isStaleNavGeneration,
     // v1.45.0 (T2): incremental-pop Home helpers.
     nextHistoryDepth, resolveHomeButtonAction, isHomeRootTarget,

@@ -53,11 +53,65 @@ test('PTR: a pull is only recognized at the very top (scrollY <= 0) and cancels 
 });
 
 test('PTR: releasing while armed triggers the SAME rescan as the button, guarded against double-fire', () => {
-  assert.match(PTR, /if \(ptrStartY !== null && ptrArmed && ptrIndicator\.isConnected\) runRescan\(\)/, 'release-while-armed (and Home live) runs the rescan');
-  assert.match(MAIN, /async function runRescan\(\)/, 'the rescan is a shared function');
-  assert.match(MAIN, /if \(rescanBtn\.disabled\) return;/, 'runRescan no-ops if a scan is already running');
-  assert.match(MAIN, /rescanBtn\.addEventListener\('click', runRescan/, 'the button reuses the same function');
+  // v1.47.4 item 3: the release now passes `{ fromPull: true }` so the
+  // indicator can enter its released-and-working state; it is still the SAME
+  // shared runRescan the button calls.
+  assert.match(PTR, /if \(ptrStartY !== null && ptrArmed && ptrIndicator\.isConnected\) runRescan\(\{ fromPull: true \}\)/, 'release-while-armed (and Home live) runs the rescan');
+  assert.match(MAIN, /async function runRescan\(opts\)/, 'the rescan is a shared function');
+  assert.match(MAIN, /if \(rescanBtn\.disabled\) \{/, 'runRescan still no-ops the SCAN if one is already running');
+  assert.match(MAIN, /rescanBtn\.addEventListener\('click', \(\) => runRescan\(\)/, 'the button reuses the same function');
+  // Wrapped, not passed bare: a bare listener would deliver the click Event as
+  // `opts`, so `fromPull` would be read off a DOM event.
+  assert.doesNotMatch(MAIN, /addEventListener\('click', runRescan\b/, 'the click Event must never arrive as opts');
   assert.match(PTR, /pullRefreshState\(pull, PULL_REFRESH_THRESHOLD_PX\)/, 'arms via the pure phase helper');
+});
+
+// ---- v1.47.4 item 3: the indicator survives finger-release -----------------
+//
+// Dean: "if one pulls down from the top and initiates a rescan, the icon stays
+// until the rescan is complete. Right now it goes away early." It went away
+// early because ptrEnd() called runRescan() and then ptrReset(), which stripped
+// the `visible` class immediately -- leaving the scan running with no on-screen
+// affordance at all (the Rescan BUTTON's "Scanning..." label is typically
+// scrolled off-screen on mobile).
+
+test('PTR item 3: the released-and-working state is driven by the SCAN POLLER, not by finger-release', () => {
+  // Raised on release...
+  assert.match(MAIN, /function ptrBeginRefreshing\(\)/, 'a begin-refreshing helper exists');
+  assert.match(MAIN, /ptrIndicator\.classList\.add\('refreshing'\)/, 'release raises the refreshing state');
+  // ...and cleared ONLY where the scan is genuinely known to be over.
+  assert.match(MAIN, /function ptrEndRefreshing\(\)/, 'an end-refreshing helper exists');
+  const poller = MAIN.slice(MAIN.indexOf('function pollRescanStatus'));
+  assert.match(poller, /__filetubeRefreshLibrary[\s\S]*?ptrEndRefreshing\(\)/,
+    'the poller clears it only after the scan completes AND the grid is refreshed');
+});
+
+test('PTR item 3: ptrReset (finger-release) must NOT clear the refreshing state', () => {
+  // This is the actual bug. ptrEnd() calls runRescan() and then ptrReset(); if
+  // ptrReset stripped `refreshing` too, the indicator would die on release
+  // exactly as before and the fix would silently regress.
+  const reset = MAIN.slice(MAIN.indexOf('function ptrReset()'), MAIN.indexOf('function ptrReset()') + 320);
+  assert.match(reset, /classList\.remove\('visible', 'ready'\)/, 'it drops the pull-tracking classes');
+  assert.doesNotMatch(reset, /refreshing/, 'it must never drop the refreshing state');
+});
+
+test('PTR item 3: every path where the scan never starts brings the indicator back down', () => {
+  // A raised indicator with no poller behind it would spin forever. Both
+  // early-return paths in runRescan (non-ok response, network throw) must clear.
+  const runRescanBody = MAIN.slice(MAIN.indexOf('async function runRescan(opts)'), MAIN.indexOf("rescanBtn.addEventListener('click'"));
+  const clears = (runRescanBody.match(/ptrEndRefreshing\(\)/g) || []).length;
+  assert.ok(clears >= 2, `both failure paths must clear the indicator (found ${clears})`);
+});
+
+test('PTR item 3: the refreshing CSS keeps it visible and respects reduced-motion', () => {
+  assert.match(CSS, /\.ptr-indicator\.refreshing \{/, 'refreshing-state CSS exists');
+  assert.match(CSS, /\.ptr-indicator\.refreshing \{[^}]*opacity: 1/, 'it stays visible after release');
+  assert.match(CSS, /\.ptr-indicator\.refreshing \.icon-refresh \{[^}]*animation: spin/, 'it spins while working');
+  // The spin is decorative; the VISIBILITY is the information. Reduced-motion
+  // must drop only the animation.
+  const reduced = CSS.slice(CSS.indexOf('@media (prefers-reduced-motion: reduce) {\n  .ptr-indicator.refreshing'));
+  assert.match(reduced, /animation: none/, 'reduced-motion drops the spin');
+  assert.doesNotMatch(reduced.slice(0, 200), /opacity: 0|display: none/, 'reduced-motion must NOT hide the indicator');
 });
 
 test('PTR (gate CRITICAL fix): the pull path is INERT while Home is cached — guarded by ptrIndicator.isConnected', () => {
@@ -66,7 +120,7 @@ test('PTR (gate CRITICAL fix): the pull path is INERT while Home is cached — g
   // the real guard is that the indicator (a child of the detached cached
   // #view-root) is not connected. Without this, a pull on /music fired a rescan.
   assert.match(PTR, /!ptrIndicator\.isConnected/, 'touchstart bails when Home is not the live (connected) view');
-  assert.match(PTR, /ptrArmed && ptrIndicator\.isConnected\) runRescan\(\)/, 'release re-checks isConnected before the rescan');
+  assert.match(PTR, /ptrArmed && ptrIndicator\.isConnected\) runRescan\(\{ fromPull: true \}\)/, 'release re-checks isConnected before the rescan');
   // Still signal-scoped so a FRESH home init never stacks a second listener set.
   const listeners = (PTR.match(/window\.addEventListener\('touch\w+',[\s\S]*?\{ signal[^}]*\}\)/g) || []);
   assert.ok(listeners.length >= 4, 'touchstart/move/end/cancel all signal-scoped (got ' + listeners.length + ')');
