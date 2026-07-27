@@ -880,7 +880,7 @@ if (typeof module !== 'undefined' && module.exports) {
       mediaTitle.textContent = mediaData.title;
       document.title = `${mediaData.title} - FileTube`;
 
-      viewsCount.textContent = getMockViews(mediaData.id, mediaData.size);
+      viewsCount.textContent = resolveViewCountLabel({ ...mediaData, id: mediaId }, { detailed: true });
       // F1: channelAvatarUrl is always null/absent today (C6/T11 populate it
       // in Wave 3) -- resolveAvatarSource gracefully falls back to the
       // generated avatar until then.
@@ -1021,7 +1021,7 @@ if (typeof module !== 'undefined' && module.exports) {
         relatedContainer.innerHTML = related.map(item => {
           const durationStr = item.duration > 0 ? formatDuration(item.duration) : (item.type === 'audio' ? 'Audio' : '');
           const durationBadge = durationStr ? `<div class="duration-badge">${durationStr}</div>` : '';
-          const views = getMockViews(item.id, item.size);
+          const views = resolveViewCountLabel(item);
 
           return `
             <a href="/watch.html?v=${item.id}" class="related-card">

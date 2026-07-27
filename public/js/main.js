@@ -636,7 +636,7 @@ if (typeof module !== 'undefined' && module.exports) {
     }
 
     function buildCardHtml(item) {
-      const views = getMockViews(item.id, item.size);
+      const views = resolveViewCountLabel(item);
       const relativeTime = formatRelativeTime(item.addedAt);
       // v1.40.0 (Dean, superseding the v1.36.2 `list=liked`-only carry): carry
       // the FULL browse context into the watch page so prev/next walks THIS

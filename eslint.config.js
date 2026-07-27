@@ -99,6 +99,8 @@ module.exports = [
         getMockSubCount: 'readonly',
         getMockViews: 'readonly',
         getStarRating: 'readonly',
+        // v1.48 item 2: real day-of view counts (wraps getMockViews as fallback).
+        resolveViewCountLabel: 'readonly',
         rankRelated: 'readonly',
         resolveAudioArtUrl: 'readonly',
         resolveChannelName: 'readonly',

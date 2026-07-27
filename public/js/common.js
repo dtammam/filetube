@@ -1612,6 +1612,44 @@ function getMockViews(mediaId, sizeBytes) {
   return count.toLocaleString() + ' views';
 }
 
+// ---- v1.48 item 2: real, day-of view counts --------------------------------
+//
+// Dean: "Can we have the view counts taken from the content the day of. And
+// have it re-heatable if pulled later. We can still have fake stars."
+//
+// Reads `item.sourceViewCount` -- the count yt-dlp captured from the SOURCE at
+// download (or at the last reheat). NOT `item.viewCount`, which is the legacy
+// local watch counter and an entirely different number (see server.js's
+// `applyCapturedViewCount` for the collision this name avoids).
+//
+// Falls back to `getMockViews` when an item has no captured count, which is
+// every item downloaded before v1.48 and every file that never came from
+// yt-dlp at all. That fallback is deliberate: a library that suddenly showed
+// "0 views" on everything old would look broken, and Dean explicitly kept the
+// fake stars, so a fabricated number remains the house style where no real one
+// exists.
+//
+// `detailed` is the watch page, which has room to say WHEN the number is from.
+// A captured count is a snapshot that drifts from reality the moment it is
+// taken, and labelling it "when downloaded" is what keeps it honest instead of
+// quietly implying a live figure. Cards pass `detailed: false` -- there is no
+// room for the qualifier there, and a real-but-dated number is still strictly
+// more truthful than the hash of a media id.
+//
+// Pure and side-effect free so the same item renders identically everywhere.
+function resolveViewCountLabel(item, opts) {
+  const detailed = !!(opts && opts.detailed);
+  const raw = item ? item.sourceViewCount : undefined;
+  // `Number.isInteger` rather than a truthiness test: 0 is a real view count
+  // (a brand-new upload), and `count && ...` would fall it back to a fabricated
+  // number that is guaranteed to be wrong.
+  if (!Number.isInteger(raw) || raw < 0) {
+    return getMockViews((item && item.id) || '', (item && item.size) || 0);
+  }
+  const base = `${raw.toLocaleString()} view${raw === 1 ? '' : 's'}`;
+  return detailed ? `${base} when downloaded` : base;
+}
+
 // ---- Mobile app shell: bottom nav / Playlists sheet -----------------------
 
 // Pure: which bottom-nav item should be marked active for the current route.
@@ -7472,6 +7510,8 @@ if (typeof module !== 'undefined' && module.exports) {
     resolveIconSet, ICON_SET_REGISTRY, ICON_SETS,
     gbToBytes, bytesToGb,
     tokenize, rankRelated, RESULT_COUNT, SIMILAR_FLOOR,
+    // v1.48 item 2: real day-of view counts (falls back to the mock).
+    resolveViewCountLabel, getMockViews,
     resolveAudioArtUrl,
     shouldInjectSubscriptionsNav,
     shouldInjectBooksNav,
