@@ -1650,16 +1650,42 @@ function shouldInjectSubscriptionsNav(response) {
   return Boolean(response && response.ok === true);
 }
 
+/**
+ * v1.47.4 item 4: has the Subscriptions nav ALREADY been injected, on EITHER
+ * of its two surfaces?
+ *
+ * The pre-fix guard tested only `[data-nav="subscriptions"]`, which exists
+ * solely on the BOTTOM-NAV entry. On a shell with no `#bottom-nav` that entry
+ * is never created, so the guard was permanently false and every call appended
+ * another SIDEBAR link. Checking both markers is what makes the injector
+ * genuinely idempotent rather than idempotent-only-on-pages-with-a-bottom-nav.
+ *
+ * Both markers are checked (not just the sidebar one) so a page that has only
+ * a bottom nav is equally covered.
+ */
+function subscriptionsNavAlreadyInjected() {
+  return Boolean(
+    document.querySelector('[data-nav="subscriptions"]')
+    || document.querySelector('[data-nav-sidebar="subscriptions"]'),
+  );
+}
+
 // Idempotent (checks for an existing injected link first) and defensive --
 // missing sidebar/bottom-nav elements (a page that doesn't have them) are
 // simply skipped, never thrown on.
 function injectSubscriptionsNavLinkIfEnabled() {
   if (typeof document === 'undefined' || typeof fetch === 'undefined') return;
-  if (document.querySelector('[data-nav="subscriptions"]')) return; // already injected
+  if (subscriptionsNavAlreadyInjected()) return; // already injected
 
   fetch('/api/subscriptions/health')
     .then((res) => {
       if (!shouldInjectSubscriptionsNav(res)) return; // disabled (404) -- inject nothing
+      // v1.47.4 item 4: RE-CHECK after the await. The guard at the top runs
+      // BEFORE this fetch, so two overlapping calls both passed it and both
+      // injected -- the classic async double-inject window. Every injector in
+      // this file had the same hole; each now re-checks here, where the DOM
+      // write actually happens.
+      if (subscriptionsNavAlreadyInjected()) return;
 
       // Sidebar entry, inserted right after the existing "Library Settings"
       // link so it reads as a sibling settings-adjacent surface.
@@ -1668,6 +1694,13 @@ function injectSubscriptionsNavLinkIfEnabled() {
         const sidebarLink = document.createElement('a');
         sidebarLink.href = '/subscriptions';
         sidebarLink.className = 'sidebar-item';
+        // v1.47.4 item 4 (tech-debt #33a, the real defect): this element used
+        // to carry NO marker at all. The guard only ever matched the
+        // BOTTOM-NAV entry's `data-nav`, so on any shell WITHOUT a #bottom-nav
+        // the bottom-nav entry was never created, the guard could therefore
+        // never become true, and every single call appended another sidebar
+        // link. Marking the sidebar entry is what actually closes that loop.
+        sidebarLink.setAttribute('data-nav-sidebar', 'subscriptions');
         const sidebarIcon = document.createElement('i');
         sidebarIcon.className = 'icon-refresh';
         sidebarLink.appendChild(sidebarIcon);
@@ -1760,6 +1793,9 @@ function injectBooksNavLinkIfEnabled() {
     .then((res) => (res.ok ? res.json() : null))
     .then((payload) => {
       if (!shouldInjectBooksNav(payload)) return; // books-less -- inject nothing
+      // v1.47.4 item 4: `injectLibraryNavEntry` re-checks its own marker before
+      // writing, which closes this injector's async double-inject window at the
+      // DOM-write site (see that function).
       injectLibraryNavEntry('books', '/books', 'Books', 'icon-folder');
     })
     .catch(() => { /* network/parse failure -- fail closed, inject nothing */ });
@@ -2479,6 +2515,10 @@ function injectOneOffDownloadButtonIfEnabled() {
   fetch('/api/subscriptions/health')
     .then((res) => {
       if (!shouldInjectOneOffButton(res)) return; // disabled (404) -- inject nothing
+      // v1.47.4 item 4: RE-CHECK after the await, using the SAME predicate as
+      // the pre-fetch guard above. Without it, two overlapping calls both pass
+      // the pre-fetch check and both build a header button + modal.
+      if (document.getElementById('ytdlp-oneoff-btn') || document.querySelector('[data-nav="oneoff-download"]')) return;
 
       const headerRight = document.querySelector('.header-right');
       // v1.15.1 FIX 4: the desktop header button lives inside `.header-right`,
@@ -2717,6 +2757,389 @@ function deriveRouteView(pathname) {
   // only injected when >=1 music folder is configured.
   if (pathname === '/music' || pathname === '/music.html') return 'music';
   return null;
+}
+
+// ---- v1.47.4 item 2 (Dean): kill accidental pinch/double-tap zoom ----------
+//
+// Dean: "I want to fully disable pinch-to-zoom on iOS/Mobile viewport. It's easy
+// to zoom in accidentally and is just a janky experience." Carve-out, his words:
+// the reader ("explicitly and exclusively") keeps zoom, because zooming a PDF or
+// a book page is a genuine feature there, not an accident.
+//
+// WHY THIS IS ROUTE-DRIVEN AND NOT A PER-SHELL <meta>/<body> FLAG: /read.html is
+// an SPA route (see deriveRouteView above), so a book opened from the Books grid
+// is an in-app #view-root swap -- the document, its <meta viewport>, and any
+// boot-time body attribute all belong to whichever shell loaded FIRST. A static
+// per-shell carve-out would therefore hand the reader whatever policy the
+// previous page happened to have. The policy has to be re-evaluated on every
+// view change, from the live URL.
+//
+// THREE LEVERS, because no single one covers both zoom gestures on iOS:
+//   1. `user-scalable=no, maximum-scale=1` -- honored by Android/Chrome. iOS
+//      Safari has deliberately IGNORED it since iOS 10, so it is necessary but
+//      nowhere near sufficient, which is why levers 2 and 3 exist.
+//   2. `touch-action: manipulation` (CSS, keyed off the same body attribute) --
+//      this is what actually kills DOUBLE-TAP zoom, the most common accidental
+//      trigger while tapping controls.
+//   3. `gesturestart`/`gesturechange` preventDefault -- the WebKit-specific
+//      pinch lever, and the only thing that reliably stops pinch in an iOS PWA.
+//
+// Text scaling is untouched by all three: this suppresses GESTURE zoom only, so
+// a user who has set a larger OS/browser text size keeps it. That is deliberate
+// -- taking that away would be an accessibility regression, not a polish fix.
+const ZOOM_ALLOWED_VIEW = 'read';
+const VIEWPORT_ZOOM_LOCKED = 'width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no';
+const VIEWPORT_ZOOM_FREE = 'width=device-width, initial-scale=1.0, viewport-fit=cover';
+
+/**
+ * Pure: may this route pinch/double-tap zoom? Only the reader. An unknown route
+ * (null) is treated as a normal app surface, i.e. suppressed -- fail-safe in the
+ * direction of Dean's actual complaint rather than leaving stray surfaces zoomy.
+ */
+function pinchZoomAllowedForView(view) {
+  return view === ZOOM_ALLOWED_VIEW;
+}
+
+/**
+ * Re-evaluate the zoom policy for the CURRENT url and reflect it onto the
+ * document (viewport meta + a `data-view` body attribute the CSS keys off).
+ * Idempotent and defensive: safe to call on every view change, and a document
+ * missing <body>/<meta name="viewport"> is simply skipped, never thrown on.
+ *
+ * Called from `updateActiveNavHighlight`, which is ALREADY invoked immediately
+ * after every one of the three `currentViewName = ...` assignments AND is itself
+ * driven by `window.location` rather than by passed-in state. Piggybacking there
+ * is deliberate: this repo has a recurring "the bug is the seat that forgot to
+ * CALL the shared helper" class (v1.41.4), so a policy that rides an existing,
+ * already-universal call site cannot drift out of sync with the router.
+ */
+function applyZoomPolicy() {
+  if (typeof document === 'undefined' || !document.body) return;
+  const view = deriveRouteView(window.location.pathname || '');
+  const allowed = pinchZoomAllowedForView(view);
+  // The CSS hook (lever 2). Stamped as the raw view name rather than a boolean
+  // so other route-scoped styling can reuse it without a second attribute.
+  document.body.setAttribute('data-view', view || '');
+  const meta = document.querySelector('meta[name="viewport"]');
+  if (meta) meta.setAttribute('content', allowed ? VIEWPORT_ZOOM_FREE : VIEWPORT_ZOOM_LOCKED);
+}
+
+/**
+ * Bind the WebKit pinch lever (3) ONCE, at boot. Deliberately NOT an
+ * enable/disable pair: the handler re-reads the live route at EVENT time, so
+ * there is no listener lifecycle to keep in sync with navigation and no way for
+ * a missed teardown to leave the reader un-zoomable (or the app zoomy). Bound on
+ * `document` with `passive: false` because a passive listener cannot
+ * preventDefault, which is the entire point.
+ *
+ * `gestureend` is deliberately NOT bound: preventing start+change already
+ * suppresses the zoom, and leaving end alone keeps WebKit's own gesture
+ * bookkeeping intact.
+ */
+function wirePinchZoomSuppression() {
+  if (typeof document === 'undefined') return;
+  const suppress = (e) => {
+    if (pinchZoomAllowedForView(deriveRouteView(window.location.pathname || ''))) return;
+    e.preventDefault();
+  };
+  document.addEventListener('gesturestart', suppress, { passive: false });
+  document.addEventListener('gesturechange', suppress, { passive: false });
+}
+
+// ---- v1.47.4 item 6: make an iOS PWA eviction cost only the relaunch tap ---
+//
+// Dean asked to "harden and isolate the PWA features from other PWA apps",
+// having noticed that closing a DIFFERENT PWA can kill this one while it plays
+// in the background. Reframed at intake, and he agreed: iOS exposes NO
+// cross-app isolation control. A backgrounded standalone PWA is a WebKit
+// process subject to jetsam, and closing another PWA can trigger the sweep that
+// reaps ours. "Never killed" is not deliverable and is not claimed here.
+//
+// The agreed acceptance instead: A KILL COSTS NOTHING BUT THE RELAUNCH TAP.
+// Playback POSITION already survives (it is persisted server-side per user, and
+// the player already offers its resume prompt). What did not survive was WHERE
+// YOU WERE: a relaunch always landed on the manifest's `start_url` (`/`), so a
+// kill mid-episode dumped you back at the home grid to find your place again.
+//
+// This records the current route and restores it on a COLD START, under four
+// deliberately narrow conditions (see maybeRestoreLastSession) so it can never
+// hijack a deliberate fresh open.
+
+const LAST_SESSION_KEY = 'ft-last-session';
+
+// How stale a pointer may be and still be worth restoring. An eviction is
+// followed by a relaunch in minutes-to-hours (you come back to what you were
+// listening to), whereas opening the app the NEXT DAY is a fresh intent that
+// should land on Home. 6h separates those two cases without needing to guess.
+const LAST_SESSION_MAX_AGE_MS = 6 * 60 * 60 * 1000;
+
+/**
+ * Pure: is this a route worth restoring to? Home-root is deliberately excluded
+ * -- restoring Home to Home is a no-op that would only risk a redirect loop.
+ */
+function isRestorableSessionUrl(url, origin) {
+  if (typeof url !== 'string' || url === '') return false;
+  if (!url.startsWith('/')) return false;
+  // v1.47.4 gate WARNING (adversarial seat): a `startsWith('/')` +
+  // `!startsWith('//')` pair is NOT an origin check, and the comment that
+  // claimed it was is now gone. Browsers normalize backslashes to forward
+  // slashes for special schemes, so:
+  //
+  //   new URL('/\\evil.com', 'https://filetube.local').origin === 'https://evil.com'
+  //
+  // passes both of those string tests and then navigates OFF-ORIGIN via
+  // `location.replace`. Only reachable by hand-editing/injecting localStorage,
+  // so this is hardening rather than a live exploit chain -- but an open
+  // redirect out of the app is not something to leave standing on a technicality.
+  //
+  // Resolved through the SAME parser the browser uses, and compared by ORIGIN.
+  const base = origin || (typeof window !== 'undefined' && window.location ? window.location.origin : 'http://localhost');
+  let resolved;
+  try {
+    resolved = new URL(url, base);
+  } catch (_) {
+    return false; // unparseable -- never restore
+  }
+  if (resolved.origin !== base) return false;
+  // Home-root is excluded on the NORMALIZED path, so no encoding trick can
+  // smuggle a home-root restore past the string comparison either.
+  const pathAndSearch = resolved.pathname + resolved.search;
+  return pathAndSearch !== '/' && pathAndSearch !== '/index.html';
+}
+
+/**
+ * Pure: should a cold start restore `stored`? Split out from all storage/DOM
+ * access so every branch is directly testable.
+ */
+function shouldRestoreSession(stored, currentPath, nowMs, isStandalone, origin) {
+  // 1. Only inside an installed PWA. A browser tab has its own history and
+  //    restoring under it would be an unwanted redirect.
+  if (!isStandalone) return false;
+  // 2. Only when landing on the bare start_url -- i.e. genuinely a cold launch,
+  //    never a deep link or an in-app navigation.
+  if (currentPath !== '/' && currentPath !== '/index.html') return false;
+  if (!stored || typeof stored !== 'object') return false;
+  if (!isRestorableSessionUrl(stored.url, origin)) return false;
+  // 3. Recent enough to be a resumption rather than a fresh intent.
+  const ts = typeof stored.ts === 'number' ? stored.ts : NaN;
+  if (!Number.isFinite(ts)) return false;
+  const age = nowMs - ts;
+  // A future-dated pointer (clock change, edited storage) is not trusted.
+  if (age < 0 || age > LAST_SESSION_MAX_AGE_MS) return false;
+  return true;
+}
+
+/**
+ * Record the current route as the resume point. Called from
+ * `updateActiveNavHighlight`, which already runs after every view change and is
+ * already location-driven -- the same reasoning as the zoom policy above, and
+ * the same reason it cannot drift out of sync with the router.
+ *
+ * localStorage is best-effort: Safari can throw on write in private mode or
+ * when the quota is exhausted, and a resume convenience must never break a
+ * navigation.
+ */
+function recordLastSession() {
+  try {
+    if (typeof window === 'undefined' || !window.localStorage) return;
+    const url = window.location.pathname + window.location.search;
+    if (!isRestorableSessionUrl(url)) return;
+    window.localStorage.setItem(LAST_SESSION_KEY, JSON.stringify({ url, ts: Date.now() }));
+  } catch (_) { /* private mode / quota / disabled storage -- never fatal */ }
+}
+
+/**
+ * On a cold PWA start, jump back to where the user was. Uses
+ * `location.replace`, NOT a push: the synthetic entry must not sit in history
+ * where Back would bounce the user between Home and the restored page.
+ *
+ * @returns {boolean} whether a restore was performed (for tests/callers)
+ */
+function maybeRestoreLastSession() {
+  try {
+    if (typeof window === 'undefined' || !window.localStorage) return false;
+    const isStandalone = Boolean(
+      (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
+      || window.navigator.standalone === true,
+    );
+    let stored = null;
+    try {
+      stored = JSON.parse(window.localStorage.getItem(LAST_SESSION_KEY) || 'null');
+    } catch (_) {
+      return false; // corrupt/hand-edited value -- ignore, never throw
+    }
+    if (!shouldRestoreSession(stored, window.location.pathname, Date.now(), isStandalone, window.location.origin)) return false;
+    // 4. Never restore onto the page we are already on (belt to
+    //    isRestorableSessionUrl's suspenders -- no redirect loop is possible).
+    if (stored.url === window.location.pathname + window.location.search) return false;
+    window.location.replace(stored.url);
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+// ---- v1.47.4 item 4: shell singleton invariant (?debugUI=1) ----------------
+//
+// Dean: "on mobile at times if I go back and forth between pages ... certain
+// icons do not properly show or glitch out and duplicate (think the top bar).
+// It's odd and annoying and only resolved by switching pages entirely."
+//
+// HONEST SCOPE. The idempotency defects fixed above are real and provable, but
+// they do NOT yet explain a TOP-BAR symptom during in-app navigation: those
+// injectors run once at DOMContentLoaded, not per view swap, and the header
+// markup is static. Dean's report is intermittent and he cannot capture it. So
+// rather than guess at a fix, this makes the next occurrence REPORT ITSELF.
+//
+// Opt-in via `?debugUI=1` and completely inert otherwise -- no timers, no
+// listeners, no cost on a normal load. It checks the shell elements that must
+// be unique and logs any that are not, with a MutationObserver so a duplicate
+// appearing later (the actual reported behavior: mid-session, after several
+// navigations) is caught at the moment it appears rather than only at boot.
+//
+// "Only resolved by switching pages entirely" is consistent with a duplicated
+// or orphaned SHELL node, since a hard load rebuilds the document from
+// scratch -- which is exactly what this instrument is aimed at.
+
+// Selectors for elements the shell must contain AT MOST ONE of. Deliberately
+// limited to persistent shell chrome (never #view-root contents, which are
+// legitimately rebuilt on every swap).
+const SHELL_SINGLETON_SELECTORS = [
+  'header',
+  '#bottom-nav',
+  '#menu-toggle',
+  '#theme-toggle-btn',
+  '#search-input',
+  '#ytdlp-oneoff-btn',
+  '#playlists-sheet',
+  '#playlists-backdrop',
+  '[data-nav="subscriptions"]',
+  '[data-nav-sidebar="subscriptions"]',
+  '[data-nav-sidebar="books"]',
+  '[data-nav-sidebar="music"]',
+  '.header-right',
+  '.ptr-indicator',
+];
+
+/**
+ * Pure: given a counting function, return the selectors that are duplicated.
+ * Split out from the DOM/observer wiring so it is directly unit-testable.
+ */
+function findDuplicateShellSingletons(countFn, selectors) {
+  const list = Array.isArray(selectors) ? selectors : SHELL_SINGLETON_SELECTORS;
+  const dupes = [];
+  for (const selector of list) {
+    let count = 0;
+    try {
+      count = countFn(selector);
+    } catch (_) {
+      continue; // a selector this document can't evaluate is not a finding
+    }
+    if (typeof count === 'number' && count > 1) dupes.push({ selector, count });
+  }
+  return dupes;
+}
+
+/**
+ * Wire the invariant when `?debugUI=1` is present. Returns false (and does
+ * nothing at all) otherwise -- this must never cost anything on a normal load.
+ */
+function wireShellSingletonDebug() {
+  if (typeof document === 'undefined' || typeof window === 'undefined') return false;
+  let enabled = false;
+  try {
+    enabled = new URLSearchParams(window.location.search || '').get('debugUI') === '1';
+  } catch (_) {
+    return false;
+  }
+  if (!enabled) return false;
+
+  const report = (when) => {
+    const dupes = findDuplicateShellSingletons((sel) => document.querySelectorAll(sel).length);
+    if (dupes.length === 0) return;
+    // console.warn (not error) so it never trips an error-reporting path; the
+    // point is a breadcrumb Dean can screenshot, not an exception.
+    console.warn('[debugUI] duplicated shell singleton(s) ' + when + ':',
+      dupes.map((d) => `${d.selector} x${d.count}`).join(', '));
+  };
+
+  report('at boot');
+  try {
+    const observer = new MutationObserver(() => report('after a DOM change'));
+    observer.observe(document.body, { childList: true, subtree: true });
+  } catch (_) {
+    // No MutationObserver (or no body yet) -- the boot-time check above still
+    // ran, so degrade rather than throw.
+  }
+  return true;
+}
+
+// ---- v1.47.4 item 5: touch-eating overlay instrument (?debugTouch=1) -------
+//
+// Dean: "Sometimes, video input disappears on mobile and requires a force close
+// of the PWA for it to return/behave normally." (Clarified: touch input on the
+// player stops responding.)
+//
+// The leading hypothesis has direct precedent IN THIS REPO. The v1.17.0 T5 fix
+// records it exactly: `.oneoff-modal-backdrop` set `display: flex` with no
+// `[hidden]` override, so `backdrop.hidden = true` left a full-viewport
+// `z-index: 2100` overlay PAINTED AND EATING EVERY TOUCH. The page looked
+// normal and was completely dead to input -- precisely Dean's description.
+//
+// Since the recurrence is intermittent and uncapturable, this reports the
+// answer instead of guessing at it: on each touch it names the element that
+// ACTUALLY received the point. If an invisible overlay is swallowing input,
+// that element will be the overlay rather than the control the user aimed at,
+// and the culprit identifies itself by class in one tap.
+//
+// Opt-in via `?debugTouch=1`; a completely inert no-op otherwise. The listener
+// is PASSIVE, so it cannot itself alter touch behavior while diagnosing it.
+
+/**
+ * Pure: describe an element compactly enough to identify it in a log line.
+ * Never throws on a null/foreign node.
+ */
+function describeTouchTarget(el) {
+  if (!el || typeof el !== 'object') return '(none)';
+  const tag = typeof el.tagName === 'string' ? el.tagName.toLowerCase() : '?';
+  const id = typeof el.id === 'string' && el.id !== '' ? '#' + el.id : '';
+  const cls = (typeof el.className === 'string' && el.className.trim() !== '')
+    ? '.' + el.className.trim().split(/\s+/).join('.')
+    : '';
+  return tag + id + cls;
+}
+
+/**
+ * Wire the touch-target logger when `?debugTouch=1` is present. Returns false
+ * and does nothing otherwise.
+ */
+function wireTouchTargetDebug() {
+  if (typeof document === 'undefined' || typeof window === 'undefined') return false;
+  let enabled = false;
+  try {
+    enabled = new URLSearchParams(window.location.search || '').get('debugTouch') === '1';
+  } catch (_) {
+    return false;
+  }
+  if (!enabled) return false;
+
+  document.addEventListener('touchstart', (e) => {
+    try {
+      const t = e.touches && e.touches[0];
+      if (!t) return;
+      // `elementFromPoint` is the whole point: it reports what the BROWSER
+      // would hand the touch to, which is not necessarily `e.target` and is
+      // exactly where a transparent overlay reveals itself.
+      const atPoint = document.elementFromPoint(t.clientX, t.clientY);
+      const line = `[debugTouch] point=${describeTouchTarget(atPoint)} target=${describeTouchTarget(e.target)}`;
+      // Flag the specific smoking gun: the touch landed on something that is
+      // NOT what the user aimed at, which is the overlay-eating-input shape.
+      console.warn(atPoint !== e.target ? line + '  <-- MISMATCH (possible overlay)' : line);
+    } catch (_) {
+      // Never let the diagnostic interfere with real input handling.
+    }
+  }, { passive: true, capture: true });
+  return true;
 }
 
 // Pure decision: should a plain `<a>` click be intercepted for an in-app swap
@@ -3011,6 +3434,15 @@ if (typeof window !== 'undefined') {
   // in-app navigation can change the URL without a fresh document, it must be
   // re-run after every swap too.
   function updateActiveNavHighlight() {
+    // v1.47.4 item 2: the zoom policy rides this call site because it is the one
+    // place already guaranteed to run after EVERY view change (all three
+    // `currentViewName = ...` assignments call it) and it is location-driven, so
+    // it cannot disagree with the router. See applyZoomPolicy's doc comment.
+    applyZoomPolicy();
+    // v1.47.4 item 6: same rationale as the zoom policy -- this call site
+    // already runs after every view change and is location-driven, so the
+    // resume pointer cannot drift out of sync with the router.
+    recordLastSession();
     const key = activeNavItem(window.location.pathname, window.location.search);
     const bottomNav = document.getElementById('bottom-nav');
     if (bottomNav) {
@@ -3719,6 +4151,29 @@ function refreshAllPinSurfaces() {
     // keeps the disabled-module nothing-at-all posture).
     const ytdlpEnabled = Boolean(document.querySelector('[data-nav="subscriptions"]'));
     renderPinnedPlaylists(pins, ytdlpEnabled);
+    // v1.47.4 item 9: keep the sheet's zero-shift cache coherent. Without this,
+    // unpinning something would leave the removed pin in the cache, and the
+    // next open would paint it from cache and then visibly drop it once the
+    // network answered -- reintroducing the exact shift item 9 removes, on the
+    // one flow most likely to trigger it.
+    if (playlistsSheetCache) {
+      playlistsSheetCache = { ...playlistsSheetCache, pins, moduleEnabled: ytdlpEnabled };
+    }
+    // v1.47.4 gate WARNING (adversarial seat) -- THE DELETE-RESURRECT SHAPE.
+    // The sheet paints its cache SYNCHRONOUSLY on open, so an unpin is
+    // clickable while that open's own fetches are still in flight:
+    //   t=0    open; cache paints; config+pins requests start; generation = N
+    //   t=50   user unpins; this function DELETEs, refetches, rewrites the cache
+    //   t=400  the ORIGINAL open's Promise.all resolves with pins read at t=0
+    //          (still containing the pin). generation is still N, so its guard
+    //          passes, it overwrites the cache and re-renders.
+    // The just-unpinned pin REAPPEARS, and the poisoned cache repaints it on
+    // every later open until some fresh fetch happens to win. Server state was
+    // always correct, so no data was lost -- but it is the resurrect shape, on
+    // the very flow item 9 was built for.
+    // Bumping the generation invalidates any open still in flight, so a
+    // response that predates this unpin can no longer paint.
+    playlistsSheetGeneration += 1;
   });
 }
 
@@ -4256,6 +4711,61 @@ function closeOverlayThen(el, openClass, afterClose) {
   el.classList.remove(openClass);
 }
 
+// ---- v1.47.4 item 9 (Dean): the Playlists sheet's late pin shift -----------
+//
+// Dean: "When I open the phone and then click Playlists after about a half a
+// sec all of the pins then load shifting everything up. It's like a FOUC but
+// not exactly."
+//
+// It isn't a FOUC -- it is a layout shift with two stacked causes:
+//
+//   1. SERIALIZED FETCHES. The pins request was chained to run only AFTER
+//      /api/config resolved, so the sheet's content arrived in two waves, one
+//      network round-trip apart. The chaining existed for a real reason (see
+//      below), but the reason was a RENDER-ORDER constraint, not a data
+//      dependency -- the two requests never needed to be sequential.
+//   2. A BOTTOM-ANCHORED SHEET. The sheet is anchored to the bottom of the
+//      viewport, so appending the pinned section grows it UPWARD. That is
+//      exactly Dean's "shifting everything up": each late wave of content
+//      pushes everything already on screen up the screen.
+//
+// The original chaining note, preserved because the constraint it describes is
+// still real: `renderPlaylistsSheet` assigns `list.innerHTML` WHOLESALE, so it
+// would wipe an already-appended pinned section if the pins arrived first.
+// That is now handled by rendering both in ONE ordered pass instead of by
+// delaying the network request.
+//
+// A 404 on the pins endpoint (module disabled) resolves to `[]`, preserving the
+// disabled-module no-op guarantee -- never logs/throws on a 404. And per
+// v1.26.3 (Item 2), `moduleEnabled` is captured from the response's OWN `r.ok`
+// BEFORE the body is read, which is what lets `renderPinnedPlaylists` show
+// "No playlists pinned yet." for a genuine zero-pins case without also showing
+// it when the module is simply disabled (both otherwise resolve to `[]`). A
+// network-level failure leaves it `false` -- the conservative "render nothing".
+
+// Last successfully-rendered sheet payload, so a REOPEN paints its final
+// content synchronously and therefore at its final height -- zero shift in the
+// common case (Dean opens this repeatedly in a session). Null until the first
+// successful load; a stale-but-correct-height render is strictly better than
+// an empty sheet that jumps once the network answers.
+let playlistsSheetCache = null;
+
+// Guards against an out-of-order render when the sheet is closed and reopened
+// while a previous open's fetches are still in flight: only the newest open may
+// paint. Without this, a slow first response could overwrite a newer one.
+let playlistsSheetGeneration = 0;
+
+/**
+ * Render the whole sheet body in ONE ordered pass: folders first (wholesale
+ * innerHTML), pinned section appended after. Doing both together is what makes
+ * the sheet reach its final height in a single layout, which is the entire
+ * point of item 9 -- callers must never render just one half.
+ */
+function renderPlaylistsSheetContent(snapshot) {
+  renderPlaylistsSheet(snapshot.folders, snapshot.folderSettings);
+  renderPinnedPlaylists(snapshot.pins, snapshot.moduleEnabled);
+}
+
 // Lazily fetches /api/config on first open, populates the sheet, then reveals
 // it. Feature-detects its own elements so it's safe to call on any page.
 function openPlaylistsSheet() {
@@ -4264,38 +4774,41 @@ function openPlaylistsSheet() {
   if (!backdrop || !sheet) return;
   openOverlay(backdrop, 'sheet-open');
   openOverlay(sheet, 'sheet-open');
-  // Fetch fresh on every open — /api/config is tiny, and this avoids showing a
-  // stale folder list if the library changed during the session.
-  const foldersRendered = fetch('/api/config')
-    .then((r) => r.json())
-    .then((data) => renderPlaylistsSheet(data.folders || [], data.folderSettings || {}))
-    .catch(() => {
-      const list = document.getElementById('playlists-sheet-list');
-      if (list) list.innerHTML = '<div class="sidebar-item">Failed to load folders.</div>';
-    });
 
-  // v1.21.0 FR-5: pinned channel playlists are a SEPARATE fetch against the
-  // module's own gated store, chained AFTER `foldersRendered` resolves --
-  // `renderPlaylistsSheet` assigns `list.innerHTML` wholesale, which would
-  // otherwise wipe out an already-appended pinned section if this fetch
-  // happened to resolve first. A 404 (module disabled) resolves to `[]`
-  // (treated as "no pins"), preserving the disabled-module no-op guarantee --
-  // this never logs/throws on a 404.
-  //
-  // v1.26.3 (Item 2): `moduleEnabled` is captured from the response's OWN
-  // `r.ok` (true only for a genuine 2xx) BEFORE the body is read, and
-  // threaded through to `renderPinnedPlaylists` -- see that function's own
-  // comment for why this is what lets it show a "No playlists pinned yet."
-  // message for a real zero-pins case without also showing it when the
-  // module is simply disabled (both cases otherwise resolve to the same
-  // empty `[]`). A thrown/network-level failure (the `.catch` below) leaves
-  // `moduleEnabled` at its default (`false`), the same conservative "render
-  // nothing" behavior as before this change.
-  foldersRendered.then(() => {
+  // Paint last-known content SYNCHRONOUSLY, before any await -- the sheet then
+  // animates open already at its final height instead of growing into it.
+  if (playlistsSheetCache) renderPlaylistsSheetContent(playlistsSheetCache);
+
+  const generation = ++playlistsSheetGeneration;
+
+  // Both requests in PARALLEL. Still fetched fresh on every open (/api/config
+  // is tiny) so a library change mid-session is never shown stale -- the change
+  // is that they no longer wait for each other.
+  Promise.all([
+    fetch('/api/config').then((r) => r.json()).catch(() => null),
     fetch('/api/subscriptions/pins')
       .then((r) => Promise.all([r.ok, r.ok ? r.json() : []]))
-      .catch(() => [false, []])
-      .then(([moduleEnabled, pins]) => renderPinnedPlaylists(pins, moduleEnabled));
+      .catch(() => [false, []]),
+  ]).then(([config, [moduleEnabled, pins]]) => {
+    if (generation !== playlistsSheetGeneration) return; // superseded by a newer open
+    if (!config) {
+      // Keep whatever the cache already painted rather than replacing real
+      // content with an error -- only a sheet with nothing in it says so.
+      if (!playlistsSheetCache) {
+        const list = document.getElementById('playlists-sheet-list');
+        if (list) list.innerHTML = '<div class="sidebar-item">Failed to load folders.</div>';
+      }
+      return;
+    }
+    playlistsSheetCache = {
+      folders: config.folders || [],
+      folderSettings: config.folderSettings || {},
+      pins,
+      moduleEnabled,
+    };
+    // One render, one layout. When the payload matches what the cache already
+    // painted above, this is visually a no-op -- which is the zero-shift case.
+    renderPlaylistsSheetContent(playlistsSheetCache);
   });
 }
 
@@ -6465,6 +6978,30 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // v1.47.4 item 6: a cold PWA start restores where the user was, so an iOS
+  // eviction costs only the relaunch tap. Checked BEFORE the view-building work
+  // below (nav injection, the router, the library fetch) because a restore is a
+  // `location.replace` -- everything after this point would be built only to be
+  // thrown away. In every non-restoring case (the overwhelming majority) this
+  // costs a single localStorage read and returns false.
+  if (maybeRestoreLastSession()) return;
+
+  // v1.47.4 item 2: pinch/double-tap zoom suppression. Both calls run on EVERY
+  // page, deliberately outside the router: `bootRouter` bails early on a
+  // non-route shell (login/welcome), which would otherwise leave exactly the
+  // pages a user first lands on still zoomy. `wirePinchZoomSuppression` binds
+  // once for the document's lifetime; `applyZoomPolicy` seeds the initial state
+  // that later view changes re-evaluate via updateActiveNavHighlight.
+  wirePinchZoomSuppression();
+  applyZoomPolicy();
+
+  // v1.47.4 item 4: opt-in only (?debugUI=1); a completely inert no-op on a
+  // normal load. See wireShellSingletonDebug for why this ships as an
+  // instrument rather than a claimed fix.
+  wireShellSingletonDebug();
+  // v1.47.4 item 5: same opt-in posture (?debugTouch=1), inert otherwise.
+  wireTouchTargetDebug();
+
   // Optional yt-dlp subscriptions nav-link capability probe (D4, T5). Runs on
   // every page (not just inside the `bottomNav` guard below) since it also
   // injects a sidebar link on pages that have one but no bottom nav.
@@ -6587,6 +7124,17 @@ if (typeof module !== 'undefined' && module.exports) {
     injectOneOffDownloadButtonIfEnabled,
     showToast, nextArmState,
     deriveRouteView, shouldInterceptLinkClick, buildHistoryState, parseHistoryState,
+    // v1.47.4 item 2: the pure zoom-policy decision + the viewport contents it
+    // selects between, exported so tests assert the reader carve-out against the
+    // real values rather than hardcoded duplicates.
+    pinchZoomAllowedForView, ZOOM_ALLOWED_VIEW, VIEWPORT_ZOOM_LOCKED, VIEWPORT_ZOOM_FREE,
+    // v1.47.4 item 4: injector idempotency + the shell singleton invariant.
+    subscriptionsNavAlreadyInjected, findDuplicateShellSingletons, SHELL_SINGLETON_SELECTORS,
+    // v1.47.4 item 5: the touch-target describer (the overlay instrument's
+    // pure half).
+    describeTouchTarget,
+    // v1.47.4 item 6: the pure session-restore decisions.
+    isRestorableSessionUrl, shouldRestoreSession, LAST_SESSION_KEY, LAST_SESSION_MAX_AGE_MS,
     shouldDockOnTransition, isSameLocationNav, toPathAndQuery, isStaleNavGeneration,
     // v1.45.0 (T2): incremental-pop Home helpers.
     nextHistoryDepth, resolveHomeButtonAction, isHomeRootTarget,

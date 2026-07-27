@@ -2577,6 +2577,44 @@ if (typeof module !== 'undefined' && module.exports) {
   document.addEventListener('resume', function () { recordLifecycleEvent('resume', {}); });
   window.addEventListener('pageshow', function () { recordLifecycleEvent('pageshow', {}); });
 
+  // ---- v1.47.4 item 5: gesture-latch safety net on backgrounding ------------
+  //
+  // Dean: "Sometimes, video input disappears on mobile and requires a force
+  // close of the PWA for it to return/behave normally." (Clarified at intake:
+  // touch input on the player stops responding.)
+  //
+  // The hold-to-2x gesture arms `holdTimer` on touchstart and latches
+  // `holdActive` in engageHold; both are cleared only by touchend/touchcancel.
+  // iOS does NOT reliably deliver either when a PWA is backgrounded mid-gesture
+  // (and the touchend handler returns early while inNativeControlsMode(), never
+  // reaching its release path at all). A latch that outlives the gesture that
+  // created it is consistent with "only a force-quit fixes it".
+  //
+  // `resetTransientPlaybackUi` is the SAME reset dock()/close() already use --
+  // reused rather than reimplemented so there is one definition of "put the
+  // gesture layer back to rest". It is idempotent and safe to call when nothing
+  // is armed (clearTimeout of null, and releaseHold no-ops unless latched), so
+  // firing it on every backgrounding costs nothing.
+  //
+  // HONEST SCOPE: this is defensive hardening for a mechanism that COULD
+  // produce Dean's symptom, not a reproduction of it. His report is
+  // intermittent and uncapturable; `?debugTouch=1` (common.js) is the half
+  // aimed at identifying the actual culprit if this is not it.
+  function resetGestureLatchesOnBackground(reason) {
+    try {
+      resetTransientPlaybackUi();
+      recordLifecycleEvent('gestureReset', { detail: reason });
+    } catch (_) {
+      // A safety net that can itself throw would be worse than none -- it runs
+      // on the unload path, where an exception can strand other teardown.
+    }
+  }
+  window.addEventListener('pagehide', function () { resetGestureLatchesOnBackground('pagehide'); });
+  document.addEventListener('freeze', function () { resetGestureLatchesOnBackground('freeze'); });
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'hidden') resetGestureLatchesOnBackground('hidden');
+  });
+
   // ---- skip (+-15s), ripple, hold-to-2x, dbl-tap ------------------------------
 
   function skip(delta) {

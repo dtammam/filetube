@@ -248,3 +248,77 @@ test('v1.36.2: computeDownloadOutcome -- ok:false with zero failures of ANY kind
     { outcome: 'error', succeeded: 0, failed: 2 },
   );
 });
+
+// ---- v1.47.4 gate delta (adversarial seat): sidecar tokens are LANG-TAGGED --
+//
+// The strict set originally used bare `\.vtt\b|\.srt\b`, and the comment around
+// it claimed a hostile title "cannot forge a match". The adversarial seat
+// disproved that with ordinary creator-controlled text -- "How to make .srt
+// files" is a normal YouTube genre, not a contrived attack. Requiring a
+// language tag before the extension matches the shape our OWN sidecars have
+// (args.js emits --sub-langs en.* --convert-subs vtt, so files land as
+// `Title [id].en.vtt`), while prose mentioning ".srt" does not.
+//
+// Dropping the extensions entirely was the alternative, and was rejected: the
+// --convert-subs postprocessing failure has no source literal of its own, so
+// losing it would make a caption-conversion error blocking again -- reviving
+// the very complaint v1.36.2 answers.
+
+const { parseItemFailureLine: parseFailureLineForSpoofTests } = require('../../lib/ytdlp/failures');
+
+function isSubtitleOnly(line, knownIds) {
+  const parsed = parseFailureLineForSpoofTests(line, knownIds || []);
+  return Boolean(parsed && parsed.subtitleOnly === true);
+}
+
+test('ANTI-SPOOF: creator-controlled text mentioning a subtitle extension cannot forge a match', () => {
+  // Both of these are REAL failures. Misclassifying them means
+  // computeDownloadOutcome discounts them, and a broken download reports as a
+  // success -- the failure mode this wave refused --ignore-errors for.
+  assert.equal(
+    isSubtitleOnly('ERROR: [youtube] abc: Video unavailable: My Video About .srt Files', ['abc']),
+    false,
+    'a title mentioning ".srt" must not turn an unavailable video into a subtitle failure',
+  );
+  assert.equal(
+    isSubtitleOnly('ERROR: Postprocessing: Conversion failed for "My .srt Guide.mp4"'),
+    false,
+    'a title mentioning ".srt" must not turn a conversion failure into a subtitle failure',
+  );
+  assert.equal(
+    isSubtitleOnly('ERROR: [youtube] abc: Merging failed for video How To Add Subtitles To Your Videos', ['abc']),
+    false,
+    'the bare-noun spoof stays closed',
+  );
+});
+
+test('the genuine subtitle shapes yt-dlp can emit are all still detected', () => {
+  // The complete ERROR-producing inventory, swept from yt-dlp source. Anything
+  // missing here degrades to BLOCKING, which is the safe direction (a real
+  // failure stays a real failure) -- but a genuine subtitle failure that stops
+  // being discounted revives the "transcripts must be non-blocking" complaint.
+  const genuine = [
+    "ERROR: Unable to download video subtitles for 'en-en-US': HTTP Error 429: Too Many Requests",
+    'ERROR: Cannot write video subtitles file /downloads/Ch/Title.en.vtt',
+    'ERROR: Postprocessing: Error opening output file /downloads/Ch/Title.en.vtt',
+    'ERROR: Postprocessing: Error opening output file /downloads/Ch/Title.en-US.vtt',
+    'ERROR: Postprocessing: ffmpeg exited with code 1 while writing Title.eng.srt',
+  ];
+  for (const line of genuine) {
+    assert.equal(isSubtitleOnly(line), true, `must stay subtitle-only: ${line}`);
+  }
+});
+
+test('HONEST RESIDUAL: reproducing a full source literal DOES still forge (documented, bounded)', () => {
+  // Recorded as a test rather than left as a comment claim, because the
+  // previous comment asserted forgery was impossible and that was wrong. This
+  // is contrived rather than incidental, and its cost is bounded: one wasted
+  // retry spawn plus lost per-item attribution. Accounting is protected
+  // separately by computeDownloadOutcome's completedCount corroboration guard,
+  // so it can never manufacture a phantom success.
+  assert.equal(
+    isSubtitleOnly('ERROR: [youtube] abc: Unable to download video subtitles for fun', ['abc']),
+    true,
+    'documenting the real residual rather than claiming it away',
+  );
+});

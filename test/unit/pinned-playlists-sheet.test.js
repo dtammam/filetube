@@ -212,9 +212,33 @@ test('renderPinnedPlaylists: idempotent -- a second call replaces the prior sect
 // a real "enabled but zero pins" response (v1.26.3, Item 2). ----------------
 
 test('openPlaylistsSheet derives moduleEnabled from r.ok and threads it into renderPinnedPlaylists', () => {
-  const re = /fetch\('\/api\/subscriptions\/pins'\)[\s\S]{0,300}?renderPinnedPlaylists\(pins, moduleEnabled\)/;
-  assert.match(commonJsSrc, re, 'expected openPlaylistsSheet to call renderPinnedPlaylists(pins, moduleEnabled)');
-  const openFn = /function openPlaylistsSheet\(\)[\s\S]*?\n\}/.exec(commonJsSrc);
-  assert.ok(openFn);
-  assert.match(openFn[0], /r\.ok/, 'moduleEnabled must be derived from the response\'s own r.ok');
+  // v1.47.4 item 9 restructured this: the pins fetch is now issued CONCURRENTLY
+  // with /api/config (it used to be chained behind it, which cost a round-trip
+  // and made the sheet grow upward in two waves), and the render moved into the
+  // shared single-pass `renderPlaylistsSheetContent`. The INVARIANT this test
+  // exists for is unchanged and still asserted end to end below: moduleEnabled
+  // originates from the response's own r.ok and reaches renderPinnedPlaylists.
+  const openFn = /function openPlaylistsSheet\(\)[\s\S]*?\n\}\n/.exec(commonJsSrc);
+  assert.ok(openFn, 'expected to find openPlaylistsSheet');
+
+  // 1. Derived from the response's OWN r.ok (a genuine 2xx) BEFORE the body is
+  //    read -- never inferred from the resolved body, which a 404 and a real
+  //    empty list would make indistinguishable.
+  assert.match(
+    openFn[0],
+    /fetch\('\/api\/subscriptions\/pins'\)[\s\S]{0,300}?Promise\.all\(\[r\.ok, r\.ok \? r\.json\(\) : \[\]\]\)/,
+    'moduleEnabled must be derived from the response\'s own r.ok',
+  );
+  // 2. ...and carried, unmodified, into the rendered snapshot.
+  assert.match(openFn[0], /moduleEnabled,/, 'moduleEnabled must reach the render snapshot');
+  assert.match(openFn[0], /renderPlaylistsSheetContent\(playlistsSheetCache\)/);
+
+  // 3. ...where the single-pass renderer hands it to renderPinnedPlaylists.
+  const renderFn = /function renderPlaylistsSheetContent\([\s\S]*?\n\}/.exec(commonJsSrc);
+  assert.ok(renderFn, 'expected to find renderPlaylistsSheetContent');
+  assert.match(
+    renderFn[0],
+    /renderPinnedPlaylists\(snapshot\.pins, snapshot\.moduleEnabled\)/,
+    'the module-enabled flag must still gate the pinned section\'s empty state',
+  );
 });

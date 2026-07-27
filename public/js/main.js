@@ -1101,8 +1101,37 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.45.8: extracted so BOTH the Rescan button AND pull-to-refresh (below)
     // trigger the identical scan. The `disabled` guard makes a second trigger
     // (a pull while the button already says "Scanning...") a no-op.
-    async function runRescan() {
-      if (rescanBtn.disabled) return; // already scanning -- don't double-fire
+    // v1.47.4 item 3 (Dean): the pull indicator's released-and-working state.
+    // Declared before runRescan because runRescan drives them; the indicator
+    // element itself is created further below, so these are only ever CALLED
+    // later (after that assignment), never at definition time.
+    function ptrBeginRefreshing() {
+      if (!ptrIndicator || !ptrIndicator.isConnected) return;
+      ptrIndicator.classList.add('refreshing');
+      ptrIndicator.classList.remove('visible', 'ready');
+      ptrIndicator.style.removeProperty('--ptr-pull');
+    }
+    function ptrEndRefreshing() {
+      if (!ptrIndicator) return;
+      ptrIndicator.classList.remove('refreshing');
+    }
+
+    // `fromPull` is passed ONLY by the pull gesture. The Rescan button keeps
+    // its own "Scanning..." label as its affordance and deliberately does not
+    // raise the pull indicator (the button is right there, on-screen, saying
+    // it). Note the button is wired through a wrapper below rather than
+    // directly, so a click Event can never arrive here as `opts`.
+    async function runRescan(opts) {
+      const fromPull = Boolean(opts && opts.fromPull === true);
+      if (rescanBtn.disabled) {
+        // A scan is already in flight (button-initiated, or an earlier pull).
+        // The pull is a no-op for the SCAN itself, but the user still pulled
+        // and deserves feedback -- and the in-flight poller below already owns
+        // clearing this, so showing it here cannot strand the indicator.
+        if (fromPull) ptrBeginRefreshing();
+        return; // already scanning -- don't double-fire
+      }
+      if (fromPull) ptrBeginRefreshing();
       rescanBtn.innerHTML = '<i class="icon-refresh"></i> <span class="btn-label">Scanning...</span>';
       rescanBtn.disabled = true;
       try {
@@ -1118,6 +1147,9 @@ if (typeof module !== 'undefined' && module.exports) {
           // title/aria-label).
           rescanBtn.innerHTML = '<i class="icon-refresh"></i> <span class="btn-label">Rescan</span>';
           rescanBtn.disabled = false;
+          // The scan never started, so nothing will ever poll it to completion
+          // -- the indicator must come down here or it spins forever.
+          ptrEndRefreshing();
           return;
         }
         pollRescanStatus();
@@ -1126,9 +1158,13 @@ if (typeof module !== 'undefined' && module.exports) {
         alert('Network error trigger scanner.');
         rescanBtn.innerHTML = '<i class="icon-refresh"></i> <span class="btn-label">Rescan</span>';
         rescanBtn.disabled = false;
+        ptrEndRefreshing(); // same reasoning as the !res.ok path above
       }
     }
-    rescanBtn.addEventListener('click', runRescan, { signal });
+    // Wrapped rather than passed directly: as a bare listener the click Event
+    // would arrive as `opts`, and a future `opts.fromPull`-adjacent field could
+    // start reading properties off a DOM event.
+    rescanBtn.addEventListener('click', () => runRescan(), { signal });
 
     // v1.45.8 (Dean): pull-to-refresh → rescan. Native-feeling on iOS by RIDING
     // the elastic top overscroll (we never preventDefault, so normal scrolling
@@ -1184,7 +1220,13 @@ if (typeof module !== 'undefined' && module.exports) {
     }, { signal, passive: true });
     function ptrEnd() {
       // isConnected re-checked defensively (Home must be the live view to rescan).
-      if (ptrStartY !== null && ptrArmed && ptrIndicator.isConnected) runRescan();
+      // v1.47.4 item 3: `fromPull` hands the indicator over to the
+      // released-and-working state, and the ptrReset() below deliberately does
+      // NOT clear `.refreshing` -- it only drops the pull-tracking classes
+      // (`visible`/`ready`) and the now-meaningless --ptr-pull travel. That
+      // hand-off is what keeps the spinner up for the whole scan instead of
+      // dying the instant the finger lifts.
+      if (ptrStartY !== null && ptrArmed && ptrIndicator.isConnected) runRescan({ fromPull: true });
       ptrReset();
     }
     window.addEventListener('touchend', ptrEnd, { signal, passive: true });
@@ -1215,6 +1257,11 @@ if (typeof module !== 'undefined' && module.exports) {
           }
           rescanBtn.innerHTML = '<i class="icon-refresh"></i> <span class="btn-label">Rescan</span>';
           rescanBtn.disabled = false;
+          // v1.47.4 item 3: the scan is genuinely finished AND the grid has been
+          // refreshed above, so this is the honest moment to drop the pull
+          // indicator -- not finger-release. Ordered after the refresh so the
+          // spinner never comes down while stale rows are still on screen.
+          ptrEndRefreshing();
         })
         .catch(() => {
           // Transient fetch failure while polling -- retry rather than

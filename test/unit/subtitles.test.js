@@ -310,3 +310,96 @@ test('findSubtitleSidecar: with no dirCache argument, behavior is unchanged -- e
 
   assert.equal(impl.readdirCalls(), 2, 'omitting dirCache must preserve the pre-v1.30 byte-identical, non-memoized behavior');
 });
+
+// ---- v1.47.4: yt-dlp's `-orig` marker must not beat a real language tag ----
+//
+// Found while investigating Dean's "unknown language" report. yt-dlp mints
+// `<lang>-orig` (extractor/youtube/_video.py:4294) for YouTube's auto-caption
+// in the video's ORIGINAL spoken language. A real download of an English video
+// lands THREE English sidecars -- verified live against a real extraction:
+//
+//   ...en.vtt   ...en-US.vtt   ...en-orig.vtt
+//
+// `langVttRe` accepts `en-orig` as `<2-3 letters>-<subtag>`, and the tie-break
+// was plain alphabetical by filename -- where "en-orig" sorts BEFORE "en-US".
+// So with no bare `en` present we served YouTube's raw original-language
+// variant over the human-authored regional track.
+
+const { pickPreferredLangMatch, isOriginalLangMarker } = require('../../lib/subtitles');
+
+const YTDLP_TRIPLE = ['My Video [abc123].mp4', 'My Video [abc123].en-orig.vtt', 'My Video [abc123].en-US.vtt'];
+
+test('isOriginalLangMarker: recognizes the -orig suffix, case-insensitively, and nothing else', () => {
+  for (const lang of ['en-orig', 'es-orig', 'EN-ORIG', 'pt-BR-orig']) {
+    assert.equal(isOriginalLangMarker(lang), true, `${lang} is an -orig marker`);
+  }
+  // Real language tags must never be misread as markers -- especially not
+  // anything merely CONTAINING "orig".
+  for (const lang of ['en', 'en-US', 'orig', 'en-original', 'ori', undefined, null, 42]) {
+    assert.equal(isOriginalLangMarker(lang), false, `${JSON.stringify(lang)} is not an -orig marker`);
+  }
+});
+
+test('THE FIX: a real regional tag beats -orig even though "en-orig" sorts first alphabetically', () => {
+  const dir = '/media/lib';
+  const filePath = `${dir}/My Video [abc123].mp4`;
+  const impl = fakeFs(new Map([[dir, YTDLP_TRIPLE]]));
+  assert.deepEqual(
+    findSubtitleSidecar(filePath, impl),
+    { path: `${dir}/My Video [abc123].en-US.vtt`, format: 'vtt' },
+    'the human-authored en-US track must win over YouTube\'s raw original-language variant',
+  );
+});
+
+test('an -orig sidecar is DEMOTED, not excluded -- it still wins when it is the only one', () => {
+  const dir = '/media/lib';
+  const filePath = `${dir}/My Video [abc123].mp4`;
+  const impl = fakeFs(new Map([[dir, ['My Video [abc123].mp4', 'My Video [abc123].en-orig.vtt']]]));
+  // Serving a real caption file beats serving none; the fix is about
+  // PREFERENCE, not about rejecting the track.
+  assert.deepEqual(
+    findSubtitleSidecar(filePath, impl),
+    { path: `${dir}/My Video [abc123].en-orig.vtt`, format: 'vtt' },
+  );
+});
+
+test('an exact bare `en` still outranks everything, including -orig (pre-existing rule unchanged)', () => {
+  const dir = '/media/lib';
+  const filePath = `${dir}/My Video [abc123].mp4`;
+  const impl = fakeFs(new Map([[dir, [...YTDLP_TRIPLE, 'My Video [abc123].en.vtt']]]));
+  assert.deepEqual(
+    findSubtitleSidecar(filePath, impl),
+    { path: `${dir}/My Video [abc123].en.vtt`, format: 'vtt' },
+  );
+});
+
+// THE DUPLICATION LOCK. This winner rule used to be copy-pasted into BOTH the
+// cached (dirCache) and no-cache paths, so a fix applied to one silently left
+// the other wrong -- this repo's recurring "the seat that forgot to CALL the
+// shared helper" class (v1.41.4). Both paths must now agree on every input.
+test('the cached (dirCache) and no-cache paths resolve the SAME winner', () => {
+  const dir = '/media/lib';
+  const filePath = `${dir}/My Video [abc123].mp4`;
+  for (const entries of [
+    YTDLP_TRIPLE,
+    [...YTDLP_TRIPLE, 'My Video [abc123].en.vtt'],
+    ['My Video [abc123].mp4', 'My Video [abc123].en-orig.vtt'],
+    ['My Video [abc123].mp4', 'My Video [abc123].es.vtt', 'My Video [abc123].en-orig.vtt'],
+  ]) {
+    const noCache = findSubtitleSidecar(filePath, fakeFs(new Map([[dir, entries]])), undefined);
+    const cached = findSubtitleSidecar(filePath, fakeFs(new Map([[dir, entries]])), new Map());
+    assert.deepEqual(cached, noCache, `paths disagreed for ${JSON.stringify(entries)}`);
+  }
+});
+
+test('pickPreferredLangMatch: stable alphabetical order is preserved among non-orig tags', () => {
+  // The determinism guarantee the original rule existed for must survive: the
+  // winner may never depend on readdirSync's unspecified ordering.
+  const matches = [
+    { name: 'v.fr.vtt', lang: 'fr' },
+    { name: 'v.de.vtt', lang: 'de' },
+    { name: 'v.es.vtt', lang: 'es' },
+  ];
+  assert.equal(pickPreferredLangMatch(matches).name, 'v.de.vtt');
+  assert.equal(pickPreferredLangMatch(matches.slice().reverse()).name, 'v.de.vtt');
+});
