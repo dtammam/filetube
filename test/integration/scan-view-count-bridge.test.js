@@ -91,6 +91,40 @@ test('bridge (YouTube lane): a seeded downloadMeta viewCount lands on the item a
     'the legacy local watch counter is NOT where a source view count goes');
 }));
 
+test('v1.54: the FOLLOWER count rides both lanes as a unit with its capture date', () => withYtdlpEnv(async () => {
+  const filePath = path.join(downloadDir, 'Follower Video [ffffffffff2].mp4');
+  fs.writeFileSync(filePath, 'not a real video');
+  await updateDatabase((db) => {
+    const ns = store.ensureYtdlp(db);
+    ns.downloadMeta.ffffffffff2 = {
+      channelUrl: 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw',
+      channelName: 'Fôllowed Channel',
+      sourceViewCount: 100,
+      sourceFollowerCount: 24000,
+      capturedAt: CAPTURED_AT,
+    };
+  });
+  const uBase = 'Follower Universal [Vimeo=424242].mp4';
+  const uPath = path.join(downloadDir, uBase);
+  fs.writeFileSync(uPath, 'not a real video');
+  await updateDatabase((db) => {
+    const ns = store.ensureYtdlp(db);
+    ns.downloadMeta[uBase] = {
+      universal: true, sourceExtractor: 'Vimeo', sourceId: '424242',
+      channelName: 'Fôllowed Studio', sourceFollowerCount: 313, capturedAt: CAPTURED_AT,
+    };
+  });
+
+  await scanDirectories();
+
+  const yt = loadDatabase().metadata[getMediaId(filePath)];
+  assert.equal(yt.sourceFollowerCount, 24000, 'YouTube lane captured through the real scan');
+  assert.equal(yt.sourceFollowerCountCapturedAt, CAPTURED_AT, 'unit-paired with the capture moment, never scan time');
+  const u = loadDatabase().metadata[getMediaId(uPath)];
+  assert.equal(u.sourceFollowerCount, 313, 'universal lane too');
+  assert.equal(u.sourceFollowerCountCapturedAt, CAPTURED_AT);
+}));
+
 test('bridge (universal lane): a composite-keyed capture lands on the item too', () => withYtdlpEnv(async () => {
   const base = 'A Vimeo Film [Vimeo=76979871].mp4';
   const filePath = path.join(downloadDir, base);

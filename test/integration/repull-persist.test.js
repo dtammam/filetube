@@ -143,6 +143,22 @@ test('v1.51 gate (QA W2): a reheat through the PRODUCTION writer creates NO noti
     'a metadata reheat is NOT a new download -- the feed must not grow (exec-plan decision 1)');
 });
 
+test('v1.54: a reheat SUPERSEDES the follower count in BOTH directions -- deliberately no monotonicity guard', async () => {
+  const filePath = path.join(downloadDir, 'Follower Reheat [ffffffffff3].mp4');
+  fs.writeFileSync(filePath, 'video-bytes');
+  const id = getMediaId(filePath);
+  writeDb({
+    folders: [], folderSettings: {}, progress: {},
+    metadata: { [id]: { id, name: path.basename(filePath), title: 'F', filePath, folderName: path.basename(downloadDir), size: 11, ext: '.mp4', type: 'video', addedAt: Date.now(), duration: 10, hasThumbnail: false, artist: '', sourceFollowerCount: 24000, sourceFollowerCountCapturedAt: 1_700_000_000_000 } },
+    settings: baseSettings(),
+  });
+  const nowMs = 1_800_000_000_000;
+  await recordRepulledItemMeta({ loadDatabase, updateDatabase, getMediaId }, id, { sourceFollowerCount: 12000, filePath, markComplete: true }, nowMs);
+  const after = readDb().metadata[id];
+  assert.equal(after.sourceFollowerCount, 12000, 'a LOWER count lands -- subscriber counts legitimately fall (unlike the view-count guard)');
+  assert.equal(after.sourceFollowerCountCapturedAt, nowMs, 're-stamped as a unit');
+});
+
 test('recordRepulledItemMeta detects hasSubtitles=true when a sidecar exists on disk', async () => {
   const filePath = path.join(downloadDir, 'Captioned Video [cap12345678].mp4');
   fs.writeFileSync(filePath, 'video-bytes');

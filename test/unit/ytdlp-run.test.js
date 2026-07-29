@@ -165,6 +165,7 @@ test('parseChannelMetaLine: parses a well-formed FTCHMETA JSON line (legacy YouT
     filePath: null,
     // v1.48 item 2: a payload with no `view_count` yields null (absent).
     sourceViewCount: null,
+    sourceFollowerCount: null,
   });
 });
 
@@ -257,6 +258,7 @@ test('parseChannelMetaLine: yt-dlp\'s JSON `null` (unavailable field), an empty 
     uploader: null,
     filePath: null,
     sourceViewCount: null,
+    sourceFollowerCount: null,
   });
 });
 
