@@ -149,7 +149,11 @@ test('style.css: the watch toggle gets its own full-width mobile row (order + wi
   const mobileRow = /\.section-actions \.watch-toggle \{[^}]*\}/.exec(css);
   assert.ok(mobileRow, 'expected the mobile .section-actions .watch-toggle rule');
   assert.match(mobileRow[0], /order:\s*10/, 'forced last so it never shares the v1.45 one-glyph-line row');
-  assert.match(mobileRow[0], /width:\s*100%/, 'full-width -> wraps to its own line');
+  // v1.50.4: hard width:100% relaxed to a 70% grow-basis -- still can never
+  // fit the fully-budgeted row 1 (still wraps, still anchors row 2), but
+  // leaves room for the order-11 Re-pull button to share row 2 on
+  // subscribed-channel views instead of orphaning a middle row.
+  assert.match(mobileRow[0], /flex:\s*1 1 70%/, '70% grow-basis: fills row 2 alone, shares it with Re-pull');
   // The wrap that makes the second row possible must exist on the mobile
   // .section-actions rule (v1.50 relaxed the v1.45.2 nowrap).
   const actionsRule = /\.section-actions \{\n[^}]*flex-wrap:\s*wrap/.exec(css);

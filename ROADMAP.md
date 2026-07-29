@@ -80,6 +80,12 @@
 
 ## Shipped
 
+### v1.50.4 - Re-pull joins the watch row on mobile (2026-07-29)
+
+The Re-pull button (subscribed-channel folder views) appended to the sticky toolbar with no flex order, so on phones it landed in the one-glyph-line's zero-slack budget and wrapped onto an orphaned middle row. It now carries `order: 11` and the watch group's wrap trigger relaxed from a hard `width: 100%` to a 70% grow-basis - the group still can never fit the always-full row 1 (the gate verified the flex math: joining would need a ≥1046px container inside a ≤768px query), so it still anchors row 2, but Re-pull now shares that row beside it. Alone, the group fills row 2 exactly as before.
+
+Slim gate APPROVE, both mutations bitten by the updated locks, exhaustive writer sweep found no other orderless toolbar joiner. **Probe item (gate WARNING, CSS-blind-gate class):** on ≤360px phones in a subscribed-channel folder view the "Watching" pill label may overflow its borders by a few px - metrics-estimated, device is the arbiter; the contingent fix is a small mobile font/padding trim on the watch pills. The #53/#57 thumbnail flake fired once in the implementer's first full run (green on re-run, tracked). Dual-Node green: 5071/5071 on v22.23.1 and v24.14.0.
+
 ### v1.50.3 - speed picker with sub-1x rates + D dark/light shortcut (2026-07-29)
 
 **Playback speed goes YouTube-complete.** The rate list widens to `0.25 - 2x` (old stored preferences are a strict subset - every one survives), and with eight rates a blind click-cycle would mean up to seven clicks through unwanted speeds, so the speed button now opens a **picker** built on the chapters-menu popup the bar already had (era theming, outside-tap dismissal, and lifecycle closes inherited for free; `1x` is labeled `Normal`, YouTube's spelling). Selection routes through the same single apply path as the `<`/`>` keys, which now genuinely slow below 1x, clamped at 0.25. The retired blind cycle is removed with a lock.

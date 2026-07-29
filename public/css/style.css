@@ -3997,12 +3997,25 @@ a.sub-row-channel-link:focus-visible {
                  on the one-line row (Dean: "move them slightly closer"). */
   }
   /* v1.50: the watched-state group is the sticky bar's own second line on
-     phones — forced last (order) and full-width (flex-basis wrap trigger),
-     with its four pills sharing the line evenly. Keeping it OFF the v1.45
-     one-glyph-line row is what preserves that row's hard-won width budget. */
+     phones — forced last (order), with its four pills sharing the line
+     evenly. Keeping it OFF the v1.45 one-glyph-line row is what preserves
+     that row's hard-won width budget.
+
+     v1.50.4 (Dean: "the repull button goes onto a middle row"): the wrap
+     trigger relaxes from a hard width:100% to flex-basis 70% — the group
+     still can never fit the always-fully-budgeted row 1, so it still wraps
+     and still anchors row 2, but it now GROWS instead of hard-filling:
+     alone (home) it fills row 2 exactly as before; on a subscribed
+     channel's folder view the Re-pull button (order 11, glyph-only on
+     phones) shares row 2 beside it instead of orphaning onto a middle row
+     between the glyph line and the watch group (it had no order, so it
+     landed in row 1's zero-slack budget and wrapped alone). */
   .section-actions .watch-toggle {
     order: 10;
-    width: 100%;
+    flex: 1 1 70%;
+  }
+  .section-actions #sub-repull-channel-btn {
+    order: 11;
   }
   .section-actions .watch-toggle .format-toggle-btn {
     flex: 1 1 0;
