@@ -80,6 +80,14 @@
 
 ## Shipped
 
+### v1.50.5 - YouTube-ish mobile control row: fullscreen in the corner (2026-07-29)
+
+The mobile bar's button row ran in raw DOM order, leaving fullscreen mid-row. It now reads like YouTube: transport on the left (play, mute, volume), the settings cluster pushed right (speed, CC, chapters, PiP), fullscreen anchored in the far corner. Pure flex `order` + one auto margin inside the existing mobile block - no heights, no padding, no wrapping, no DOM changes, so the two-row layout's trap history stays sealed by construction. The push margin lives on the always-rendered speed button, never the hidable CC button. Bonus: the right-anchored speed/chapters popups now open directly above their own buttons.
+
+**What the gate caught:** the reader's now-playing bar mounts the same `#player-slot`, so the new 2-id order rules leaked in and flex-sorted the play button behind the scrub row on a book's mobile bar - the "second surface mounts the same slot" class. Fixed with an id-specificity reset of all eight buttons in the reader block (all eight, so a future unhide can't resurrect the leak), and the reviewer's mutant that survived the original lock (orders escaping the media query) now bites after the lock was scoped to the mobile block. Delta round: 4/4 mutants killed, APPROVE.
+
+Probe: watch bar = play/mute left, cluster right, fullscreen corner (CC/chapters appear between speed and fullscreen on captioned/chaptered items); a book's now-playing bar should look byte-identical to before. Dual-Node green: 5073/5073 on v22.23.1 and v24.14.0 (the #53 flake fired once in a background run, green isolated + on re-run).
+
 ### v1.50.4 - Re-pull joins the watch row on mobile (2026-07-29)
 
 The Re-pull button (subscribed-channel folder views) appended to the sticky toolbar with no flex order, so on phones it landed in the one-glyph-line's zero-slack budget and wrapped onto an orphaned middle row. It now carries `order: 11` and the watch group's wrap trigger relaxed from a hard `width: 100%` to a 70% grow-basis - the group still can never fit the always-full row 1 (the gate verified the flex math: joining would need a ≥1046px container inside a ≤768px query), so it still anchors row 2, but Re-pull now shares that row beside it. Alone, the group fills row 2 exactly as before.
