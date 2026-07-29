@@ -7435,7 +7435,7 @@ app.post('/api/settings', async (req, res) => {
   // (resolveDefaultView in public/js/common.js), so this route never needs
   // to reject a since-removed folder path.
   if ('defaultView' in body && typeof body.defaultView !== 'string') {
-    return res.status(400).json({ error: 'defaultView must be a string (folder path, or empty for Most Recent)' });
+    return res.status(400).json({ error: 'defaultView must be a string (folder path, or empty for Most recent)' });
   }
   // v1.34: the default home sort -- allowlisted to exactly the sort keys the
   // library dropdown offers (public/index.html #sort-select / videoQuery's

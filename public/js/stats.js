@@ -324,7 +324,7 @@ function renderBookFolders(root, books) {
   if (groups.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'theme-card-blurb';
-    empty.textContent = 'No books yet — add a book folder in Library Settings.';
+    empty.textContent = 'No books yet — add a book folder in Library settings.';
     root.appendChild(empty);
     return;
   }

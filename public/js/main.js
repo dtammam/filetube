@@ -376,7 +376,7 @@ if (typeof module !== 'undefined' && module.exports) {
 
     if (searchQuery) {
       if (searchInput) searchInput.value = searchQuery;
-      videosHeader.textContent = `Search Results for "${searchQuery}"`;
+      videosHeader.textContent = `Search results for "${searchQuery}"`;
     } else if (likedFilter) {
       videosHeader.textContent = 'Playlist: Liked';
     } else if (folderFilter) {
@@ -415,14 +415,14 @@ if (typeof module !== 'undefined' && module.exports) {
         // at all) apply the configured default view -- an explicit deep link
         // always wins (resolveDefaultView only ever changes rootFilter when
         // none of the three params were present), and a stored default folder
-        // that no longer exists falls back to Most Recent. Only fetched on a
+        // that no longer exists falls back to Most recent. Only fetched on a
         // bare load -- a deep-link visit never pays for this extra request.
         // A network/parse failure here must never block the rest of the page.
         // v1.34: the settings fetch now serves TWO defaults -- the item-4
         // default view (bare loads only, unchanged) and the new defaultSort
         // (any load where this browser has no explicit dropdown pick). One
         // fetch covers both; a failure blocks neither (view falls back to
-        // Most Recent, sort keeps the provisional 'release-date').
+        // Most recent, sort keeps the provisional 'release-date').
         const bareLoad = !searchQuery && !folderFilter && !rootFilter && !likedFilter;
         if (bareLoad || !storedSortPick) {
           try {

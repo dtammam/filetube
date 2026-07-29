@@ -44,6 +44,12 @@ summary,
   --font-family: 'Roboto', 'Helvetica Neue', system-ui, Arial, sans-serif;
   --logo-font: 'Roboto', "Arial Black", Gadget, sans-serif;
   --mono-font: monospace;
+  /* v1.50.2 gate S2: the heading tokens honor the same contract -- an
+     invalid/missing era must resolve to the full 2021 look, headings
+     included, not a bold/normal hybrid from the var() fallbacks. */
+  --heading-font: 'YouTube Sans', 'Roboto', 'Helvetica Neue', system-ui, Arial, sans-serif;
+  --heading-weight: 500;
+  --heading-tracking: -0.01em;
   --radius: 4px;
   --radius-lg: 12px;
   --density: 8px;
@@ -103,6 +109,18 @@ summary,
   --font-family: 'Roboto', 'Helvetica Neue', system-ui, Arial, sans-serif;
   --logo-font: 'Roboto', "Arial Black", Gadget, sans-serif;
   --mono-font: monospace;
+  /* v1.50.2 (Dean, font pass): modern YouTube titles are YouTube Sans at
+     MEDIUM weight. YouTube Sans is a proprietary commissioned face with no
+     open license, so it can never be BUNDLED (Roboto is Apache-licensed;
+     that's the difference) -- but naming it FIRST in the stack ships zero
+     files and breaks no license: browsers use it only when it's installed
+     locally on that machine, and everyone else gets medium Roboto with a
+     hair of negative tracking, the honest approximation (bundled
+     roboto.woff2 is a VARIABLE font, 100-900, so 500 renders genuinely).
+     Weight/tracking/family only -- sizes and spacing untouched. */
+  --heading-font: 'YouTube Sans', 'Roboto', 'Helvetica Neue', system-ui, Arial, sans-serif;
+  --heading-weight: 500;
+  --heading-tracking: -0.01em;
   --radius: 4px;
   --radius-lg: 12px;
   --density: 8px;
@@ -150,9 +168,17 @@ summary,
 
 /* ---- 2005 Original: system Verdana, sharp 0px, plain B/W, blue links ---- */
 [data-theme="2005"] {
+  /* v1.50.2 gate C1: :root now defines --heading-font (the safe-default
+     contract), and custom properties INHERIT -- without a per-era
+     override the var() fallback in the title rules is dead and every
+     era would render 2021's Roboto/YouTube Sans titles. Re-point the
+     heading family at this era's own body stack. */
+  --heading-font: var(--font-family);
   --font-family: Verdana, Arial, Helvetica, sans-serif;
   --logo-font: "Arial Black", Arial, sans-serif;
   --mono-font: "Courier New", monospace;
+  --heading-weight: bold;
+  --heading-tracking: normal;
   --radius: 0;
   --radius-lg: 0;
   --density: 4px;               /* dense */
@@ -198,9 +224,17 @@ summary,
 
 /* ---- 2009 Classic: Arial, ~2px, warm grays, red/gray chrome ---- */
 [data-theme="2009"] {
+  /* v1.50.2 gate C1: :root now defines --heading-font (the safe-default
+     contract), and custom properties INHERIT -- without a per-era
+     override the var() fallback in the title rules is dead and every
+     era would render 2021's Roboto/YouTube Sans titles. Re-point the
+     heading family at this era's own body stack. */
+  --heading-font: var(--font-family);
   --font-family: Arial, Helvetica, sans-serif;
   --logo-font: Arial, Helvetica, sans-serif;
   --mono-font: "Courier New", monospace;
+  --heading-weight: bold;
+  --heading-tracking: normal;
   --radius: 2px;
   --radius-lg: 2px;
   --density: 6px;
@@ -244,11 +278,24 @@ summary,
   --star-gray: #4a453e;
 }
 
-/* ---- 2014 Flat: Roboto, ~2px, flat white, brighter red, airy ---- */
+/* ---- 2014 Flat: Arial (era-accurate), ~2px, flat white, brighter red, airy ---- */
 [data-theme="2014"] {
-  --font-family: 'Roboto', Arial, sans-serif;
-  --logo-font: 'Roboto', Arial, sans-serif;
+  /* v1.50.2 gate C1: :root now defines --heading-font (the safe-default
+     contract), and custom properties INHERIT -- without a per-era
+     override the var() fallback in the title rules is dead and every
+     era would render 2021's Roboto/YouTube Sans titles. Re-point the
+     heading family at this era's own body stack. */
+  --heading-font: var(--font-family);
+  /* v1.50.2 (Dean, font pass): Roboto was WRONG for this era -- the real
+     2012-2016 (pre-Polymer) YouTube desktop site was Arial; Roboto only
+     took the site over with the 2017 Material redesign. Roboto here read
+     as "2017 wearing a 2014 layout". Arial/Helvetica metrics are close
+     enough that no spacing rules change. */
+  --font-family: Arial, Helvetica, sans-serif;
+  --logo-font: Arial, Helvetica, sans-serif;
   --mono-font: monospace;
+  --heading-weight: bold;
+  --heading-tracking: normal;
   --radius: 2px;
   --radius-lg: 2px;
   --density: 10px;             /* airier */
@@ -766,7 +813,15 @@ html.reader-immersive .app-container { padding-top: 0; }
 /* Home Page Specifics */
 .section-title {
   font-size: var(--fs-2xl);
-  font-weight: bold;
+  /* v1.50.2 (Dean, font pass): title surfaces are era-token driven -- 2021
+     goes medium/tighter (YouTube Sans locally when installed, else medium
+     Roboto); every other era resolves to the same bold/normal this always
+     was. The var() fallbacks keep any era that doesn't define the tokens
+     byte-identical to before. Applied to the three title surfaces only
+     (.section-title/.video-title/.watch-title); body text untouched. */
+  font-family: var(--heading-font, var(--font-family));
+  font-weight: var(--heading-weight, bold);
+  letter-spacing: var(--heading-tracking, normal);
   margin-bottom: 16px;
   border-bottom: 1px solid var(--border-color);
   padding-bottom: 8px;
@@ -1227,7 +1282,9 @@ html.reader-immersive .app-container { padding-top: 0; }
 
 .video-title {
   font-size: var(--fs-base);
-  font-weight: bold;
+  font-family: var(--heading-font, var(--font-family));
+  font-weight: var(--heading-weight, bold);
+  letter-spacing: var(--heading-tracking, normal);
   line-height: 1.3;
   margin-bottom: 4px;
   max-height: 34px;
@@ -1980,7 +2037,9 @@ html.reader-immersive .app-container { padding-top: 0; }
 /* Video Information Layout */
 .watch-title {
   font-size: var(--fs-2xl);
-  font-weight: bold;
+  font-family: var(--heading-font, var(--font-family));
+  font-weight: var(--heading-weight, bold);
+  letter-spacing: var(--heading-tracking, normal);
   margin-bottom: 12px;
   word-break: break-word;
 }

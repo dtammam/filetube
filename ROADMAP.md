@@ -80,6 +80,18 @@
 
 ## Shipped
 
+### v1.50.2 - typography pass: era-accurate fonts + sentence case (2026-07-29)
+
+Dean: "the newest Modern and Flat don't feel like YouTube text wise" - and the diagnosis was that we were historically wrong, not stylistically off:
+
+**2014 Flat is now Arial.** The real 2012-2016 pre-Polymer YouTube desktop was Arial; Roboto only took the site with the 2017 Material redesign, so Roboto-in-2014 read as "2017 wearing a 2014 layout." **2021 Modern titles are now medium-weight** (real modern YouTube titles are YouTube Sans at medium, not bold) with slight negative tracking, via three new era tokens (`--heading-font/-weight/-tracking`) consumed by exactly the three title surfaces - test-locked at exactly three. **YouTube Sans itself cannot be bundled** (proprietary commissioned face, no open license - Roboto ships because it's Apache-licensed), but the 2021 heading stack names it FIRST: zero files distributed, and a locally-installed copy wins automatically. Spacing-safe by construction: weight/family/tracking only, no sizes or padding, and the historically fragile rows have been wrap-protected since v1.50.1.
+
+**Sentence case app-wide** (the Material/modern-YouTube standard the sort dropdown already used): 24+ Title Case phrases converted across every shell, the yt-dlp module's own served view, and the JS writers of the same strings - "Library settings", "Resume playback?", "Recently added", the whole settings page. Proper nouns and the mock commenters untouched. A substring no-straggler sweep over both shell directories locks it.
+
+**What the slim gate caught - three rounds, and round 2 was the one that mattered.** Round 1: the sweep had missed the yt-dlp module's own served shell entirely (and the test was structurally blind to it); my own sed ordering had shipped half-converted hybrids ("Save Book folders"); a JS writer repainted the converted heading in Title Case on every search. Round 2 (CRITICAL): my fix for a round-1 suggestion - putting the heading tokens in `:root` - silently regressed every non-2021 era's titles back to Roboto through custom-property inheritance (the var() fallback goes dead once the property is defined up-tree), with the suite green throughout; the reviewer also mutation-proved the no-straggler lock couldn't see the sidebar's icon-sibling markup shape. Both fixed with mutation-verified locks; round 3 APPROVE.
+
+Dual-Node green: 5064/5064 on v22.23.1 and v24.14.0.
+
 ### v1.50.1 - on-device polish: squeeze-zone wrap, dimmed download chip, chapters root-caused (2026-07-29)
 
 Dean's first v1.50 on-device pass ("It's beautiful!") came back with three small items, shipped same day under the slim gate:
