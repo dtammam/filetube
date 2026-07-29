@@ -80,6 +80,16 @@
 
 ## Shipped
 
+### v1.50.3 - speed picker with sub-1x rates + D dark/light shortcut (2026-07-29)
+
+**Playback speed goes YouTube-complete.** The rate list widens to `0.25 - 2x` (old stored preferences are a strict subset - every one survives), and with eight rates a blind click-cycle would mean up to seven clicks through unwanted speeds, so the speed button now opens a **picker** built on the chapters-menu popup the bar already had (era theming, outside-tap dismissal, and lifecycle closes inherited for free; `1x` is labeled `Normal`, YouTube's spelling). Selection routes through the same single apply path as the `<`/`>` keys, which now genuinely slow below 1x, clamped at 0.25. The retired blind cycle is removed with a lock.
+
+**`D` toggles dark/light** on any page (desktop, same gating as `?`) through the exact same `toggleTheme()` path as the header moon/sun button, documented in the shortcuts reference with a statement-anchored drift lock.
+
+**What the slim gate caught - the CRITICAL was the headline feature eating itself.** The picker shared the popup class inside the same `overflow:hidden` 45vh-capped wrapper but not the v1.43.1 height clamp - on mobile portrait its TOP rows (0.25/0.5/0.75x, the very rates this release adds) rendered into the clipped band, unreachable, with no keyboard fallback on a phone. The clamp is now shared by both popups (one measurement function), applied on open and on rotate. Also: a Back-button dock (popstate - no click, so no outside-close) left the picker invisibly open and resurrected it stale on re-expand (dock() now dismisses both popups); the new D drift lock was **dead against the exact regression it documented** - its `toggleTheme()` match was satisfied by an explanatory comment, proven by a surviving deleted-call mutant (comments now stripped, statement-anchored); three stale comments including one claiming wrap behavior the code never had; the iOS touchstart dismissal belt and proper `role="menu"` ARIA joined from suggestions. Delta round: **all 8 mutants killed**, APPROVE.
+
+Dual-Node green: 5071/5071 on v22.23.1 and v24.14.0.
+
 ### v1.50.2 - typography pass: era-accurate fonts + sentence case (2026-07-29)
 
 Dean: "the newest Modern and Flat don't feel like YouTube text wise" - and the diagnosis was that we were historically wrong, not stylistically off:
