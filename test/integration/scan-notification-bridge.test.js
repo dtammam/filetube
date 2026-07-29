@@ -80,6 +80,7 @@ const CAPTURED_AT = Date.UTC(2026, 5, 1, 12, 0, 0);
 test('one-shot seeding: newest 30 yt-dlp-provenance items land as read+seen history; the stamp blocks a second run', async () => {
   let provenanceIds = [];
   let mockOnlyId;
+  let futureId;
   await updateDatabase((db) => {
     if (!db.metadata) db.metadata = {};
     provenanceIds.push(indexedFixture(db, 'Prövenance YT.mp4', { youtubeId: 'aaaaaaaaaaa' }));
@@ -92,6 +93,12 @@ test('one-shot seeding: newest 30 yt-dlp-provenance items land as read+seen hist
     // Provenance but a rotten addedAt: excluded from seeding, never crashes it.
     const badId = indexedFixture(db, 'Bad AddedAt.mp4', { youtubeId: 'aaaaaaaaaaa' });
     db.metadata[badId].addedAt = 'not-a-number';
+    // Gate round 2 (adversarial, repro'd): a FUTURE addedAt (rsync -t clock
+    // skew) must be clamped at seeding or the day-one badge is nonzero and
+    // mark-seen-proof.
+    futureId = indexedFixture(db, 'Future Clöck.mp4', { youtubeId: 'aaaaaaaaaaa' });
+    db.metadata[futureId].addedAt = Date.now() + 6 * 60 * 60 * 1000;
+    provenanceIds.push(futureId);
   });
 
   const seedNow = Date.now();
@@ -105,7 +112,10 @@ test('one-shot seeding: newest 30 yt-dlp-provenance items land as read+seen hist
   assert.ok(items.every((i) => i.unread === false), 'seeded history carries no dots');
   assert.ok(!items.some((i) => i.mediaId === mockOnlyId), 'a non-provenance file never seeds');
   assert.ok(items.every((i) => provenanceIds.includes(i.mediaId)), 'only provenance items seeded');
-  assert.equal(userStore.countUnseenNotifications(admin.id), 0, 'badge 0 after seeding');
+  const futureRow = items.find((i) => i.mediaId === futureId);
+  assert.ok(futureRow, 'the future-clock item seeds (newest by sort)');
+  assert.ok(futureRow.createdAt <= seedNow, 'but its timestamp is CLAMPED to the seed moment');
+  assert.equal(userStore.countUnseenNotifications(admin.id), 0, 'badge 0 after seeding -- even with a future file clock in the top 30');
 
   assert.equal(await seedNotificationHistoryOnce(Date.now()), 0, 'the stamp makes seeding once-ever');
   assert.equal(userStore.countNotifications(), 30, 'no duplicates from the second call');

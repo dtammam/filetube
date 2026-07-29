@@ -2529,7 +2529,12 @@ async function seedNotificationHistoryOnce(nowMs = Date.now()) {
       .filter((it) => typeof it.addedAt === 'number' && Number.isFinite(it.addedAt) && it.addedAt > 0)
       .sort((a, b) => b.addedAt - a.addedAt)
       .slice(0, NOTIFICATION_SEED_COUNT);
-    seeded = userStore.seedNotifications(candidates.map((it) => ({ mediaId: it.id, createdAt: it.addedAt })), nowMs);
+    // GATE ROUND 2 (adversarial, repro'd): clamp to nowMs. addedAt can sit in
+    // the FUTURE (rsync -t from a clock-skewed machine onto a btime-less
+    // filesystem), and a seeded row newer than the seed-time last_seen_at is
+    // a day-one badge that mark-seen cannot zero until wall clock catches
+    // up. Past rows keep their real ordering; future ones collapse to "now".
+    seeded = userStore.seedNotifications(candidates.map((it) => ({ mediaId: it.id, createdAt: Math.min(it.addedAt, nowMs) })), nowMs);
   }
   await updateDatabase((fresh) => {
     if (!fresh.settings) fresh.settings = {};
@@ -7679,7 +7684,12 @@ app.get('/api/notifications', (req, res) => {
   const rows = [];
   const phantomMediaIds = [];
   for (const row of items) {
-    const item = metadata[row.mediaId];
+    // Own-property lookup (gate round 2, adversarial): a feed row whose
+    // mediaId is a prototype key ('constructor', ...) -- reachable only via
+    // a crafted admin bundle -- must read as ABSENT, not as a truthy
+    // inherited junk item that the phantom-prune below would then skip
+    // forever (the v1.42 __proto__ row-key lesson).
+    const item = Object.prototype.hasOwnProperty.call(metadata, row.mediaId) ? metadata[row.mediaId] : undefined;
     if (!item) {
       // GATE FIX (adversarial W3): a feed row whose item is GONE (a delete
       // whose removeMediaState call failed and was caught-and-continued, or

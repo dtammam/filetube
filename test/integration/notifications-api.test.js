@@ -104,17 +104,23 @@ test('the three-way visibility gate: module off, zero subs, and toggle off each 
 
 test('panel payload: rows join the CURRENT item (title/channel/type/thumbnail), phantom media filtered, badge counts', async () => {
   await armFeature();
-  userStore.recordNotifications([{ mediaId: 'gone-mediä', createdAt: T0 + 4 }]);
+  userStore.recordNotifications([
+    { mediaId: 'gone-mediä', createdAt: T0 + 4 },
+    // Gate round 2 (adversarial): a prototype-key mediaId must read as
+    // ABSENT in the join (own-property lookup), then prune like any phantom
+    // -- never render as a truthy inherited junk row.
+    { mediaId: 'constructor', createdAt: T0 + 6 },
+  ]);
 
   const badge = await (await fetch(`${base}/api/notifications/badge`)).json();
-  assert.equal(badge.count, 3, 'all three rows are unseen (feed-level), including the phantom');
+  assert.equal(badge.count, 4, 'all four rows are unseen (feed-level), including both phantoms');
 
   const { items, unseenCount } = await (await fetch(`${base}/api/notifications`)).json();
-  assert.deepEqual(items.map((i) => i.mediaId), ['mediä-2', 'mediä-1'], 'newest first; the phantom row is filtered by the join net');
-  // Gate fix (adversarial W3): the join net doesn't just filter the phantom
-  // -- it PRUNES it, so this same response's unseenCount (and every badge
+  assert.deepEqual(items.map((i) => i.mediaId), ['mediä-2', 'mediä-1'], 'newest first; BOTH phantoms (missing item + prototype key) filtered by the join net');
+  // Gate fix (adversarial W3): the join net doesn't just filter phantoms
+  // -- it PRUNES them, so this same response's unseenCount (and every badge
   // fetch after) agrees with the panel.
-  assert.equal(unseenCount, 2, 'unseenCount excludes the pruned phantom');
+  assert.equal(unseenCount, 2, 'unseenCount excludes the pruned phantoms');
   assert.equal((await (await fetch(`${base}/api/notifications/badge`)).json()).count, 2, 'the badge self-healed');
   const video = items.find((i) => i.mediaId === 'mediä-1');
   assert.equal(video.title, 'Clïp One');
