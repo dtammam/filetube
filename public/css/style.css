@@ -3185,7 +3185,8 @@ a.sub-row-channel-link:focus-visible {
 .icon-heart,
 .icon-share,
 .icon-download,
-.icon-shuffle {
+.icon-shuffle,
+.icon-flame {
   display: inline-block;
   width: 1em;
   height: 1em;
@@ -3237,6 +3238,16 @@ a.sub-row-channel-link:focus-visible {
    still renders U+1F500 there, same as before -- only non-emoji themes
    changed. */
 .icon-shuffle { -webkit-mask-image: url(/assets/icons/shuffle.svg); mask-image: url(/assets/icons/shuffle.svg); }
+/* v1.49 (Dean): the per-video "reheat" flame. Base directory only, like
+   `heart.svg`/`share.svg` -- the per-icon-set blocks below enumerate their
+   members individually, so an icon with no set-specific variant falls back to
+   this one in every set (deliberate, not a gap). A real SVG mask painted in
+   currentColor, NEVER the U+1F525 codepoint: this repo's v1.38 lesson is that
+   emoji codepoints render inconsistently on iOS, which is exactly why the
+   Shuffle and Like glyphs were converted away from them. Unlike every other
+   file in that directory this one is FileTube's own drawing, not a Material
+   asset -- see public/assets/icons/README.md. */
+.icon-flame { -webkit-mask-image: url(/assets/icons/flame.svg); mask-image: url(/assets/icons/flame.svg); }
 
 /* Paint the icon fill only where CSS masks are supported, so a browser without
    mask support (or a failed/404 mask) renders nothing instead of a solid
@@ -3244,7 +3255,8 @@ a.sub-row-channel-link:focus-visible {
 @supports (mask-image: url("#")) or (-webkit-mask-image: url("#")) {
   .icon-home, .icon-folder, .icon-cog, .icon-delete, .icon-moon, .icon-sun,
   .icon-menu, .icon-search, .icon-play, .icon-refresh, .icon-arrow-up, .icon-arrow-down,
-  .icon-grid, .icon-list, .icon-heart, .icon-share, .icon-download, .icon-shuffle {
+  .icon-grid, .icon-list, .icon-heart, .icon-share, .icon-download, .icon-shuffle,
+  .icon-flame {
     background-color: currentColor;
   }
 }

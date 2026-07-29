@@ -5309,7 +5309,14 @@ function updateNavThemeItem() {
 //      added at all under `prefers-reduced-motion: reduce` -- either would
 //      make `:not(.modal-open)` match (and so block clicks on) the dialog
 //      while it's still legitimately open, not just while it's closing.
-function showConfirmModal(title, bodyText, onConfirm) {
+// v1.49: `labels` is OPTIONAL and additive -- `{confirm, cancel}` override the
+// generic wording for a dialog where the specific verb is the whole point ("Move
+// it" / "Leave it where it is" reads as a decision; "Confirm" / "Cancel" reads
+// as a formality, and this dialog gates an irreversible file move). Absent or
+// partial => the existing literals, so every pre-v1.49 call site renders exactly
+// as before. Labels are set via `textContent` below, never interpolated into the
+// `innerHTML` template above -- a caller-supplied string must not become markup.
+function showConfirmModal(title, bodyText, onConfirm, labels) {
   const modalBackdrop = document.createElement('div');
   modalBackdrop.className = 'modal-backdrop';
 
@@ -5329,6 +5336,12 @@ function showConfirmModal(title, bodyText, onConfirm) {
 
   const cancelBtn = document.getElementById('modal-cancel-btn');
   const confirmBtn = document.getElementById('modal-confirm-btn');
+
+  // v1.49: optional label overrides, applied via textContent (see above).
+  if (labels && typeof labels === 'object') {
+    if (typeof labels.confirm === 'string' && labels.confirm !== '') confirmBtn.textContent = labels.confirm;
+    if (typeof labels.cancel === 'string' && labels.cancel !== '') cancelBtn.textContent = labels.cancel;
+  }
 
   // F2: flips exactly once -- see the doc comment above this function.
   let settled = false;

@@ -585,6 +585,24 @@ if (typeof module !== 'undefined' && module.exports) {
 (function () {
   let controller = null;
 
+  // v1.49: is the yt-dlp module enabled on this install? Latched at the IIFE
+  // scope, NOT per view instance, so navigating between watch pages costs one
+  // health probe for the whole tab session -- the same
+  // probe-once-then-reconcile posture as common.js's
+  // `probeAndReconcileRepullButton`. `null` = not probed yet.
+  let reheatModuleEnabled = null;
+  let reheatHealthProbe = null; // in-flight promise, shared by concurrent callers
+
+  function probeReheatModule() {
+    if (reheatModuleEnabled !== null) return Promise.resolve(reheatModuleEnabled);
+    if (reheatHealthProbe) return reheatHealthProbe;
+    reheatHealthProbe = fetch('/api/subscriptions/health')
+      .then((res) => { reheatModuleEnabled = res.ok; return reheatModuleEnabled; })
+      .catch(() => { reheatModuleEnabled = false; return false; })
+      .finally(() => { reheatHealthProbe = null; });
+    return reheatHealthProbe;
+  }
+
   // v1.30.0 T7 (A5): `GET /api/videos` is now PAGINATED (server-authoritative,
   // default page size 60 -- see server.js's T6). `loadRelatedFiles()` and
   // `setupPrevNext()` (below) both need the FULL matching set to rank/order
@@ -786,6 +804,16 @@ if (typeof module !== 'undefined' && module.exports) {
     // the clipboard fallback below; tracked so a rapid double-tap never
     // stacks two timers (the second tap clears the first).
     let shareBtnResetTimer = null;
+    // v1.49 (Dean): the per-video "reheat" control -- the runtime-created
+    // control itself (fresh per view instance, like `moveBtn`/`likeBtn`/
+    // `shareBtn` above), plus the poll handle for the background job it
+    // starts. The poll handle is tracked so leaving the page mid-reheat can
+    // stop it: this is an SPA, the view instance is torn down on navigation,
+    // and an un-cleared interval would keep polling (and keep holding a
+    // reference to a dead view's DOM) for the life of the tab. See the
+    // v1.41.11 lesson about async-registered handlers outliving their view.
+    let reheatBtn = null;
+    let reheatPollTimer = null;
     // FIX C (two-reviewer-gate follow-up): the FR-2-derived display name,
     // computed once in initWatch() via the SAME resolveChannelName() call
     // that drives the on-page uploader display, cached here so the Subscribe
@@ -909,6 +937,11 @@ if (typeof module !== 'undefined' && module.exports) {
         // 3d. v1.33 T2: mount the "Share" button when the server derived an
         // original YouTube link for this item (`mediaData.watchUrl`).
         setupShareButton();
+
+        // 3e. v1.49 (Dean): mount the per-video "Reheat" button. Gated on a
+        // latched yt-dlp health probe, so this is at most one extra request
+        // per tab session, and none at all once the answer is known.
+        setupReheatButton();
 
         // 4. Mount/play this media in the persistent player controller. This
         // is idempotent -- if the controller already has this exact id loaded
@@ -2082,6 +2115,270 @@ if (typeof module !== 'undefined' && module.exports) {
       shareBtn.appendChild(shareIcon);
       shareBtn.appendChild(document.createTextNode(' '));
       shareBtn.appendChild(shareLabel);
+    }
+
+    // ---- v1.49 (Dean): per-video reheat --------------------------------------
+    //
+    // "The ability to, on a specific video, force a reheat." The library-wide
+    // Reheat lives on the Subscriptions page and is all-or-nothing; this is the
+    // same work scoped to the item you are looking at -- refresh the channel
+    // identity, the real title, the view count, chapters and subtitles for THIS
+    // video, and then offer to file it under its channel.
+    //
+    // Mounted as a sibling of Download/Delete/Move/Like/Share inside
+    // `.watch-action-btns` -- the SAME nowrap sub-group, the SAME `.btn` class
+    // and the SAME icon + `.btn-label` shape as the other five, so it is the
+    // same size as its neighbours and inherits the phone breakpoint's
+    // label-hiding for free (Dean: "same size as the rest, maintain on the one
+    // width"). No new button CSS is added; that is the point.
+    //
+    // Gated on the latched module health probe (see `probeReheatModule`): an
+    // install running without yt-dlp has no reheat to offer and gets no button.
+    function setupReheatButton() {
+      const watchActions = root.querySelector('.watch-actions');
+      if (!watchActions || !mediaData) return;
+      probeReheatModule().then((enabled) => {
+        // The probe is async, so by the time it resolves this view may already
+        // have been torn down (SPA navigation) -- the abort signal is the
+        // staleness truth this file uses everywhere else for exactly this.
+        if (signal.aborted) return;
+        if (!enabled) {
+          if (reheatBtn) { reheatBtn.remove(); reheatBtn = null; }
+          return;
+        }
+        if (reheatBtn) return; // idempotent: a second media load must not duplicate it
+        reheatBtn = document.createElement('button');
+        reheatBtn.type = 'button';
+        reheatBtn.id = 'reheat-media-btn';
+        reheatBtn.className = 'btn';
+        reheatBtn.title = 'Reheat: re-fetch this video’s channel, title, view count and subtitles';
+        reheatBtn.setAttribute('aria-label', 'Reheat this video’s metadata');
+        const icon = document.createElement('i');
+        icon.className = 'icon-flame';
+        const label = document.createElement('span');
+        label.className = 'btn-label';
+        label.textContent = 'Reheat';
+        reheatBtn.appendChild(icon);
+        reheatBtn.appendChild(document.createTextNode(' '));
+        reheatBtn.appendChild(label);
+        const btnGroup = watchActions.querySelector('.watch-action-btns');
+        (btnGroup || watchActions).appendChild(reheatBtn);
+        reheatBtn.addEventListener('click', handleReheatClick, { signal });
+      });
+    }
+
+    function setReheatBusy(busy) {
+      if (!reheatBtn) return;
+      reheatBtn.disabled = busy;
+      reheatBtn.setAttribute('aria-busy', busy ? 'true' : 'false');
+    }
+
+    function stopReheatPoll() {
+      if (reheatPollTimer) {
+        clearInterval(reheatPollTimer);
+        reheatPollTimer = null;
+      }
+    }
+
+    // The server answers 202 and does the work in the background (one network
+    // fetch, serialized behind whatever else the shared yt-dlp queue is doing),
+    // so the result arrives via the SAME `GET /api/subscriptions/status`
+    // snapshot the download chip already polls -- no second progress mechanism.
+    function handleReheatClick() {
+      if (!mediaData || !reheatBtn || reheatBtn.disabled) return;
+      const id = mediaData.id;
+      setReheatBusy(true);
+      fetch(`/api/ytdlp/repull-metadata/item/${encodeURIComponent(id)}`, { method: 'POST' })
+        .then((res) => res.json().catch(() => ({})).then((body) => ({ status: res.status, body })))
+        .then(({ status, body }) => {
+          if (status === 202) {
+            showToast('Reheating…');
+            pollReheat(id);
+            return;
+          }
+          setReheatBusy(false);
+          if (status === 409) { showToast('A reheat is already running.'); return; }
+          if (status === 404) { showToast('This video has no source to reheat from.'); return; }
+          if (status === 403) { showToast('Read-only mode: reheat is disabled on this instance.'); return; }
+          showToast((body && body.error) || 'Reheat could not be started.');
+        })
+        .catch(() => {
+          setReheatBusy(false);
+          showToast('Reheat could not be started.');
+        });
+    }
+
+    function pollReheat(id) {
+      stopReheatPoll();
+      let elapsed = 0;
+      const everyMs = 1000;
+      // A per-video reheat is one yt-dlp fetch, but it queues behind whatever
+      // the shared FIFO gate is already running (a large download, a
+      // subscription poll), so the ceiling is generous. Timing out here only
+      // stops the POLL -- the job itself runs to completion server-side and its
+      // result is still visible in the download status chip.
+      const ceilingMs = 5 * 60 * 1000;
+      reheatPollTimer = setInterval(() => {
+        elapsed += everyMs;
+        if (elapsed >= ceilingMs) {
+          stopReheatPoll();
+          setReheatBusy(false);
+          showToast('Reheat is taking a while; check the activity chip.');
+          return;
+        }
+        fetch('/api/subscriptions/status')
+          .then((res) => (res.ok ? res.json() : null))
+          .then((snapshot) => {
+            if (signal.aborted) { stopReheatPoll(); return; }
+            const entry = snapshot && snapshot.oneShots && snapshot.oneShots['repull-metadata-item'];
+            if (!entry || entry.state === 'running' || entry.state === 'queued') return;
+            // Guard against reading a TERMINAL entry left over from a PREVIOUS
+            // video's reheat BEFORE deciding this poll is finished: the one-shot
+            // key is fixed and TTL-pruned only after minutes, so a stale `done`
+            // entry is genuinely reachable. Checked here rather than after
+            // `stopReheatPoll()` on purpose -- stopping first would abandon the
+            // poll on someone else's result and silently never report ours.
+            if (entry.mediaId && entry.mediaId !== id) return;
+            stopReheatPoll();
+            setReheatBusy(false);
+            if (entry.state === 'error') { showToast('Reheat failed.'); return; }
+            showToast(describeReheat(entry));
+            // Re-render from the server rather than patching fields by hand --
+            // the reheat can change the title, channel, view count, chapters
+            // and subtitle availability at once, and reloadMedia() is the one
+            // path that already knows how to render all of them consistently.
+            reloadMediaAfterReheat(id);
+            if (entry.relocation && entry.relocation.available) offerRelocation(id, entry.relocation);
+          })
+          .catch(() => { /* a transient poll failure is not fatal -- try again next tick */ });
+      }, everyMs);
+      // An un-cleared interval would outlive this view instance and keep
+      // polling (and keep a dead view's closure alive) for the life of the tab.
+      signal.addEventListener('abort', stopReheatPoll, { once: true });
+    }
+
+    // Honest, specific feedback: say what actually changed, and say plainly when
+    // nothing did. `networkRan === false` is the "this is a home video" case --
+    // reporting a cheerful success there would be a lie about work that never
+    // happened (intake decision 3).
+    function describeReheat(entry) {
+      // Branch on the job's OWN outcome field, never on `state`: `state` is the
+      // lifecycle marker and reads 'done' for a job that finished having failed
+      // its item. Getting this backwards would report success for work that did
+      // not happen -- the exact failure mode this repo's honesty norms exist for.
+      if (entry.outcome === 'failed') {
+        return 'Reheat did not complete. Some metadata may have been saved; try again.';
+      }
+      if (entry.networkRan === false) return 'No YouTube source found for this video, so there was nothing to refresh.';
+      const before = entry.before || {};
+      const after = entry.after || {};
+      const parts = [];
+      if (after.channelName && after.channelName !== before.channelName) parts.push(`channel: ${after.channelName}`);
+      if (after.title && after.title !== before.title) parts.push('title updated');
+      if (typeof after.sourceViewCount === 'number' && after.sourceViewCount !== before.sourceViewCount) {
+        parts.push(`views: ${formatCount(before.sourceViewCount)} → ${formatCount(after.sourceViewCount)}`);
+      }
+      if (after.hasSubtitles && !before.hasSubtitles) parts.push('subtitles added');
+      if (after.chapterCount !== before.chapterCount) parts.push(`chapters: ${after.chapterCount}`);
+      if (after.releaseDate && after.releaseDate !== before.releaseDate) parts.push('release date updated');
+      if (parts.length === 0) return 'Reheated. Everything was already up to date.';
+      return `Reheated. ${parts.join(', ')}.`;
+    }
+
+    function formatCount(n) {
+      return (typeof n === 'number' && Number.isFinite(n)) ? n.toLocaleString() : 'unknown';
+    }
+
+    // Re-render this page from the server after a reheat. A reheat can change
+    // the title, the channel (name AND avatar), the view count, the release
+    // date, the chapter list and subtitle availability -- all at once -- so
+    // re-fetching the item and running the SAME `populateMetadata` the initial
+    // load uses is both simpler and safer than hand-patching six fields into
+    // the DOM and hoping the list stays in sync with what the reheat can write.
+    //
+    // Deliberately does NOT touch the player: the file itself is untouched by a
+    // metadata reheat (nothing moves here -- see the confirm flow for the half
+    // that does), so interrupting playback would be a regression, not a refresh.
+    function reloadMediaAfterReheat(id) {
+      fetch(`/api/videos/${encodeURIComponent(id)}`)
+        .then((res) => (res.ok ? res.json() : null))
+        .then((fresh) => {
+          if (!fresh || signal.aborted) return;
+          mediaData = fresh;
+          const channelName = resolveChannelName(mediaData, folderSettings);
+          currentChannelName = channelName;
+          populateMetadata(channelName);
+        })
+        .catch(() => { /* the toast already reported the outcome; a failed re-render is cosmetic */ });
+    }
+
+    // The confirm step for the IRREVERSIBLE half. Dean has no media backup, so
+    // this states the destination and HOW the bytes move (a hard link copies
+    // nothing; a cross-filesystem move is a real copy, then the original is
+    // removed after a checksum match) before he commits to anything.
+    //
+    // Built at runtime and appended to document.body via the shared
+    // `showConfirmModal` -- deliberately NOT markup added to watch.html. The
+    // v1.41.7 relocation-preview modal shipped broken for exactly that reason:
+    // its markup lived outside `#view-root`, which the SPA router is the only
+    // thing it swaps, so in-app navigation never mounted it (tech-debt #34).
+    function offerRelocation(id, relocation) {
+      const dest = relocation.destinationPath || '';
+      const isCopy = relocation.transfer === 'copy';
+      const size = (typeof relocation.sizeBytes === 'number' && relocation.sizeBytes > 0)
+        ? ` (${formatFileSizeSafe(relocation.sizeBytes)})`
+        : '';
+      const how = isCopy
+        ? `Copied across filesystems${size}, then the original is removed after a checksum match.`
+        : (relocation.transfer === 'hardlink'
+          ? 'Hard link on the same filesystem — no data is copied.'
+          : 'The transfer method is decided at move time.');
+      showConfirmModal(
+        'File this video under its channel?',
+        `${escapeHtmlText(dest)}<br><br>${escapeHtmlText(how)}`,
+        () => {
+          fetch(`/api/ytdlp/repull-metadata/item/${encodeURIComponent(id)}/relocate`, { method: 'POST' })
+            .then((res) => res.json().catch(() => ({})))
+            .then((body) => {
+              if (body && body.status === 'moved') {
+                showToast(body.archived === false
+                  ? 'Moved, but it is not in the download archive — a subscription poll may re-download it.'
+                  : 'Moved into its channel folder.');
+                // The move re-keyed this item (the id is a hash of the path),
+                // so this page is now holding a dead id. Same pre-navigate step
+                // the Move flow uses: stop the player BEFORE navigating, or it
+                // keeps Range-requesting a resource that no longer resolves.
+                if (window.FileTube && window.FileTube.player) window.FileTube.player.close();
+                const nextId = body.newId;
+                const target = nextId ? `/watch/${encodeURIComponent(nextId)}` : '/';
+                if (window.FileTube && typeof window.FileTube.navigate === 'function') window.FileTube.navigate(target);
+                else window.location.href = target;
+                return;
+              }
+              showToast(`Not moved: ${(body && body.reason) || 'not a candidate'}.`);
+            })
+            .catch(() => showToast('The move could not be started.'));
+        },
+        { confirm: 'Move it', cancel: 'Leave it where it is' },
+      );
+    }
+
+    // `showConfirmModal` interpolates its body with innerHTML, and both strings
+    // above are filesystem-derived (a path, a channel-named folder). Escaped
+    // here rather than trusted -- a filename is attacker-influenced input on a
+    // server that scans whatever folders it is pointed at.
+    function escapeHtmlText(s) {
+      return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function formatFileSizeSafe(bytes) {
+      if (typeof formatFileSize === 'function') return formatFileSize(bytes);
+      return `${Math.round(bytes / (1024 * 1024))} MB`;
     }
 
     // Opens the shared `showMoveModal` (common.js) with the CURRENT item +

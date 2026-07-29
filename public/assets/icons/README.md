@@ -41,6 +41,26 @@ Apache-2.0 permits redistribution; these files are included unmodified.
 | `download.svg` | `download` | `.icon-download` |
 | `shuffle.svg` | `shuffle` | `.icon-shuffle` |
 
+## FileTube original — `flame.svg`
+
+`flame.svg` is the one file in this directory that is **not** a Google
+Material asset. It backs `.icon-flame`, the per-video "reheat" control added
+in v1.49, and it was drawn for FileTube because the reheat is a
+FileTube-specific concept with no Material counterpart worth borrowing.
+
+- Origin: **FileTube original**, drawn to match the bundled Material geometry
+  (24×24, `viewBox="0 -960 960 960"`, single `currentColor` path, outlined
+  look via an `evenodd` inner cutout).
+- License: same as the rest of this repository.
+- It is **not** attributed to Google and must not be listed in the Material
+  tables above.
+
+Like `heart.svg` and `share.svg` it lives at the top level only, with no
+per-icon-set variants — the `rounded`/`filled`/`emoji` blocks in `style.css`
+enumerate their members individually, so an icon without a set-specific entry
+falls back to this base asset in every set. That is the established behaviour
+for those two icons and is deliberate here too.
+
 ## Material Symbols (Rounded) — `rounded`
 
 Fourteen SVG icons from the same Material Symbols family, Rounded style — a
