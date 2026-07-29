@@ -597,7 +597,12 @@ if (typeof module !== 'undefined' && module.exports) {
     if (reheatModuleEnabled !== null) return Promise.resolve(reheatModuleEnabled);
     if (reheatHealthProbe) return reheatHealthProbe;
     reheatHealthProbe = fetch('/api/subscriptions/health')
-      .then((res) => { reheatModuleEnabled = res.ok; return reheatModuleEnabled; })
+      .then((res) => {
+        reheatModuleEnabled = res.ok;
+        // v1.53: the fresh answer refreshes the capability cache.
+        writeCapabilityCache({ moduleEnabled: res.ok });
+        return reheatModuleEnabled;
+      })
       .catch(() => { reheatModuleEnabled = false; return false; })
       .finally(() => { reheatHealthProbe = null; });
     return reheatHealthProbe;
@@ -762,6 +767,9 @@ if (typeof module !== 'undefined' && module.exports) {
     // guarantee -- this never logs/throws on a 404. Read-only: never writes
     // db.folders/folderSettings.
     // v1.37.0: channel pins + book-shelf pins, one merged sidebar section.
+    // v1.53: paint the pinned section from the capability cache in frame one;
+    // the real fetch below replaces it wholesale (reconcile-by-rebuild).
+    primePinnedSidebarFromCache();
     fetchAllPins().then((pins) => renderPinnedSidebar(pins));
 
     // Parse media ID
@@ -830,6 +838,9 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.41.11 lesson about async-registered handlers outliving their view.
     let reheatBtn = null;
     let reheatPollTimer = null;
+    // v1.53: the manual-attribution control (fresh per view instance, like
+    // moveBtn/likeBtn/reheatBtn above).
+    let attributeBtn = null;
     // v1.49 gate fix (adversarial WARNING 2): the dismiss handle for an open
     // relocation confirm, so navigating away closes it instead of leaving a
     // "move this file" dialog for the PREVIOUS video on screen.
@@ -1036,6 +1047,10 @@ if (typeof module !== 'undefined' && module.exports) {
         // latched yt-dlp health probe, so this is at most one extra request
         // per tab session, and none at all once the answer is known.
         setupReheatButton();
+
+        // 3f. v1.53 (Dean): mount the "Attribute..." control for genuinely
+        // unattributed items (absent otherwise -- the AC15 posture).
+        setupAttributeButton();
 
         // 4. Mount/play this media in the persistent player controller. This
         // is idempotent -- if the controller already has this exact id loaded
@@ -1832,6 +1847,18 @@ if (typeof module !== 'undefined' && module.exports) {
 
     async function setupSubscribeButton() {
       if (!subscribeBtn) return;
+      // v1.53 capability cache: OPTIMISTIC RENDER ONLY (no click wiring, no
+      // currentSubState commit -- the real probe below owns both and
+      // reconciles by removing/relabeling on resolution). This is what makes
+      // Subscribed appear in frame one on a refresh instead of a beat later.
+      const cachedCap = readCapabilityCache();
+      if (cachedCap && cachedCap.moduleEnabled === true && Array.isArray(cachedCap.subs)) {
+        const optimistic = decideSubscribeButtonState(mediaData, cachedCap.subs, true);
+        if (optimistic.visible) {
+          subscribeBtn.hidden = false;
+          applySubscribeButtonLabel(optimistic.subscribed);
+        }
+      }
       let moduleEnabled = false;
       let subs = [];
       try {
@@ -1841,6 +1868,8 @@ if (typeof module !== 'undefined' && module.exports) {
           const subsRes = await fetch('/api/subscriptions');
           subs = subsRes.ok ? await subsRes.json().catch(() => []) : [];
         }
+        // v1.53: the fresh answers refresh the cache for the next boot.
+        writeCapabilityCache({ moduleEnabled, subs: scrubSubsForCache(subs) });
         currentSubState = decideSubscribeButtonState(mediaData, subs, moduleEnabled);
       } catch (e) {
         console.error('Error resolving subscribe button state:', e);
@@ -2084,6 +2113,109 @@ if (typeof module !== 'undefined' && module.exports) {
     // createTextNode (not innerHTML) to match the rest of this file's DOM
     // conventions. `aria-label`/`title` stay fully descriptive even though
     // the visible label is the same short "Move" as before.
+    // v1.53 (Dean): "Attribute..." -- the manual escape hatch for items no
+    // reheat can ever attribute (dead/renamed channels, MeTube imports).
+    // Structurally ABSENT unless the item is genuinely unattributed
+    // (resolveFileChannelIdentity null -- the same predicate every other
+    // surface uses), the setupMoveButton runtime-control pattern.
+    function setupAttributeButton() {
+      const watchActions = root.querySelector('.watch-actions');
+      if (!watchActions || !mediaData) return;
+      const attributed = resolveFileChannelIdentity(mediaData) !== null;
+      if (attributed) {
+        if (attributeBtn) { attributeBtn.remove(); attributeBtn = null; }
+        return;
+      }
+      if (attributeBtn) return;
+      attributeBtn = document.createElement('button');
+      attributeBtn.type = 'button';
+      attributeBtn.id = 'attribute-media-btn';
+      attributeBtn.className = 'btn';
+      attributeBtn.title = 'Attribute to a channel';
+      attributeBtn.setAttribute('aria-label', 'Attribute to a channel');
+      const icon = document.createElement('i');
+      icon.className = 'icon-user';
+      attributeBtn.appendChild(icon);
+      const label = document.createElement('span');
+      label.className = 'btn-label';
+      label.textContent = 'Attribute';
+      attributeBtn.appendChild(document.createTextNode(' '));
+      attributeBtn.appendChild(label);
+      const btnGroup = watchActions.querySelector('.watch-action-btns');
+      (btnGroup || watchActions).appendChild(attributeBtn);
+      attributeBtn.addEventListener('click', handleAttributeClick, { signal });
+    }
+
+    async function handleAttributeClick() {
+      let targets = [];
+      try {
+        const res = await fetch('/api/attribution-targets', { signal });
+        const body = await res.json();
+        targets = Array.isArray(body.targets) ? body.targets : [];
+      } catch (_) { /* picker opens with its own empty state */ }
+      // Gate W6: hold the dismiss handle -- navigating away must never leave
+      // a body-mounted picker over the next view with a stale mediaId.
+      const picker = showAttributionPicker(targets, { title: 'Attribute this video to' }, (target) => {
+        fetch(`/api/videos/${encodeURIComponent(mediaId)}/attribute-channel`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ target }),
+        })
+          .then((res) => (res.ok ? res.json() : res.json().then((b) => Promise.reject(new Error(b.error || 'attribution failed')))))
+          .then((body) => {
+            // Repaint the uploader panel from the new identity (the painter
+            // is idempotent) and stand the button down.
+            mediaData.channelUrl = target.channelUrl;
+            mediaData.channelName = target.channelName;
+            mediaData.channelAvatarUrl = target.channelAvatarUrl || '';
+            mediaData.channelAttributedManually = true;
+            currentChannelName = resolveChannelName(mediaData, folderSettings);
+            paintMetadata(mediaData, currentChannelName);
+            setupAttributeButton();
+            showToast(`Attributed to ${target.channelName}.`);
+            const reloc = body && body.relocation;
+            if (reloc && reloc.available && reloc.destinationDir) {
+              offerAttributionMove(reloc.destinationDir, target.channelName);
+            }
+          })
+          .catch((err) => showToast(err && err.message ? err.message : 'Attribution failed.'));
+      });
+      if (picker && picker.dismiss) {
+        signal.addEventListener('abort', picker.dismiss, { once: true });
+      }
+    }
+
+    // The physical move, through the EXISTING move endpoint -- explicit
+    // confirm, player closed first (the offerRelocation posture), navigate
+    // to the re-keyed id on success.
+    function offerAttributionMove(destinationDir, channelLabel) {
+      showConfirmModal(
+        'File under the channel folder?',
+        `Move this file into <strong>${escapeHtmlText(channelLabel)}</strong>'s folder?<br><small>${escapeHtmlText(destinationDir)}</small>`,
+        () => {
+          window.FileTube.player.close();
+          fetch(`/api/videos/${encodeURIComponent(mediaId)}/move`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ targetFolder: destinationDir }),
+          })
+            .then((res) => res.json().then((b) => ({ ok: res.ok, b })))
+            .then(({ ok, b }) => {
+              if (ok && b && b.id) {
+                showToast('Moved into the channel folder.');
+                if (window.FileTube && typeof window.FileTube.navigate === 'function') {
+                  window.FileTube.navigate('/watch.html?v=' + encodeURIComponent(b.id));
+                }
+              } else {
+                showToast((b && b.error) || 'Move failed - the file was attributed but not moved.');
+              }
+            })
+            .catch(() => showToast('Move failed - the file was attributed but not moved.'));
+        },
+        { confirm: 'Move file', cancel: 'Keep it here' }
+      );
+    }
+
     function setupMoveButton() {
       const watchActions = root.querySelector('.watch-actions');
       if (!watchActions || !mediaData) return;
@@ -2313,15 +2445,7 @@ if (typeof module !== 'undefined' && module.exports) {
     function setupReheatButton() {
       const watchActions = root.querySelector('.watch-actions');
       if (!watchActions || !mediaData) return;
-      probeReheatModule().then((enabled) => {
-        // The probe is async, so by the time it resolves this view may already
-        // have been torn down (SPA navigation) -- the abort signal is the
-        // staleness truth this file uses everywhere else for exactly this.
-        if (signal.aborted) return;
-        if (!enabled) {
-          if (reheatBtn) { reheatBtn.remove(); reheatBtn = null; }
-          return;
-        }
+      const mountReheatBtn = () => {
         if (reheatBtn) return; // idempotent: a second media load must not duplicate it
         reheatBtn = document.createElement('button');
         reheatBtn.type = 'button';
@@ -2340,6 +2464,24 @@ if (typeof module !== 'undefined' && module.exports) {
         const btnGroup = watchActions.querySelector('.watch-action-btns');
         (btnGroup || watchActions).appendChild(reheatBtn);
         reheatBtn.addEventListener('click', handleReheatClick, { signal });
+      };
+      // v1.53 capability cache: OPTIMISTIC mount from the last known answer
+      // (frame-one on refresh). The REAL probe below is the reconciler -- its
+      // !enabled branch removes an optimistically-mounted button, so a
+      // module revoked since the cache was written corrects after ~1 RTT
+      // (the disclosed window).
+      const cachedCap = readCapabilityCache();
+      if (cachedCap && cachedCap.moduleEnabled === true) mountReheatBtn();
+      probeReheatModule().then((enabled) => {
+        // The probe is async, so by the time it resolves this view may already
+        // have been torn down (SPA navigation) -- the abort signal is the
+        // staleness truth this file uses everywhere else for exactly this.
+        if (signal.aborted) return;
+        if (!enabled) {
+          if (reheatBtn) { reheatBtn.remove(); reheatBtn = null; }
+          return;
+        }
+        mountReheatBtn();
       });
     }
 
@@ -2462,6 +2604,13 @@ if (typeof module !== 'undefined' && module.exports) {
       const before = entry.before || {};
       const after = entry.after || {};
       const parts = [];
+      // v1.53 (Dean's decision 3): a manual attribution that DECLINED a
+      // conflicting network identity is named specifically -- PREPENDED
+      // (gate round S1: an early return swallowed the same run's real
+      // title/views/chapters updates), never silent.
+      if (entry.attributionConflict && entry.attributionConflict.kept) {
+        parts.push(`kept your manual attribution (${entry.attributionConflict.kept}); the source now reports ${entry.attributionConflict.discovered}`);
+      }
       if (after.channelName && after.channelName !== before.channelName) parts.push(`channel: ${after.channelName}`);
       if (after.title && after.title !== before.title) parts.push('title updated');
       if (typeof after.sourceViewCount === 'number' && after.sourceViewCount !== before.sourceViewCount) {

@@ -102,6 +102,13 @@ module.exports = [
         // (common.js).
         deriveWatchPaintPlan: 'readonly',
         isFullWatchSeedItem: 'readonly',
+        // v1.53: the shared attribution picker (common.js).
+        showAttributionPicker: 'readonly',
+        // v1.53: the capability cache (common.js).
+        readCapabilityCache: 'readonly',
+        writeCapabilityCache: 'readonly',
+        scrubSubsForCache: 'readonly',
+        primePinnedSidebarFromCache: 'readonly',
         getStarRating: 'readonly',
         rankRelated: 'readonly',
         resolveAudioArtUrl: 'readonly',

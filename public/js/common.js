@@ -1847,18 +1847,40 @@ function injectSubscriptionsNavLinkIfEnabled() {
   if (typeof document === 'undefined' || typeof fetch === 'undefined') return;
   if (subscriptionsNavAlreadyInjected()) return; // already injected
 
+  // v1.53 gate QA-W1: optimistic inject from the capability cache (the
+  // idempotency guard makes the later real-path inject a no-op); the real
+  // probe below reconciles -- a revoked module REMOVES the optimistic links.
+  const cachedCap = readCapabilityCache();
+  if (cachedCap && cachedCap.moduleEnabled === true && !subscriptionsNavAlreadyInjected()) {
+    injectSubscriptionsNavNodes();
+  }
+
   fetch('/api/subscriptions/health')
     .then((res) => {
-      if (!shouldInjectSubscriptionsNav(res)) return; // disabled (404) -- inject nothing
+      writeCapabilityCache({ moduleEnabled: res.ok === true });
+      if (!shouldInjectSubscriptionsNav(res)) {
+        // Reconcile an optimistic inject against a revoked module.
+        const sidebarLink = document.querySelector('[data-nav-sidebar="subscriptions"]');
+        if (sidebarLink) sidebarLink.remove();
+        const navLink = document.querySelector('#bottom-nav [data-nav="subscriptions"]');
+        if (navLink) navLink.remove();
+        return; // disabled (404) -- inject nothing
+      }
       // v1.47.4 item 4: RE-CHECK after the await. The guard at the top runs
       // BEFORE this fetch, so two overlapping calls both passed it and both
-      // injected -- the classic async double-inject window. Every injector in
-      // this file had the same hole; each now re-checks here, where the DOM
-      // write actually happens.
+      // injected -- the classic async double-inject window (and v1.53's
+      // optimistic cache inject makes this re-check newly load-bearing).
       if (subscriptionsNavAlreadyInjected()) return;
+      injectSubscriptionsNavNodes();
+    })
+    .catch(() => { /* network/parse failure -- fail closed, inject nothing */ });
+}
 
-      // Sidebar entry, inserted right after the existing "Library settings"
-      // link so it reads as a sibling settings-adjacent surface.
+// The actual DOM builders, shared by the optimistic (cache) and confirmed
+// (probe) paths -- v1.53 extraction, byte-identical markup to pre-v1.53.
+function injectSubscriptionsNavNodes() {
+  // Sidebar entry, inserted right after the existing "Library settings"
+  // link so it reads as a sibling settings-adjacent surface.
       const settingsSidebarLink = document.querySelector('a.sidebar-item[href="/setup.html"]');
       if (settingsSidebarLink && settingsSidebarLink.parentElement) {
         const sidebarLink = document.createElement('a');
@@ -1903,8 +1925,6 @@ function injectSubscriptionsNavLinkIfEnabled() {
         // v1.44 T12: re-apply the user's bar layout now that this item exists.
         applyBottomNavCustomization();
       }
-    })
-    .catch(() => { /* network/parse failure -- fail closed, inject nothing */ });
 }
 
 // ---- v1.52 instant watch: the seed-from-card stash --------------------------
@@ -1991,6 +2011,203 @@ function isFullWatchSeedItem(item) {
     && typeof item.type === 'string'
     && typeof item.size === 'number'
     && typeof item.filePath === 'string';
+}
+
+// ---- v1.53: the capability cache (sessionStorage) ---------------------------
+//
+// Dean's refresh-beat fix: the Reheat/Subscribe/pinned controls depend on
+// capability answers (module health, subscription list, pins) that three
+// independent per-tab latches used to re-fetch on every refresh. The cache
+// makes the LAST KNOWN answers survive a refresh for an OPTIMISTIC first
+// render; every existing probe still runs and reconciles (both button flows
+// already remove/rebuild wholesale on resolution), so a revoked capability
+// corrects after ~1 RTT -- the stale window Dean explicitly accepted.
+// sessionStorage, NOT localStorage (tab-scoped, dies with the tab) and NO
+// service worker (unregisterStaleServiceWorkers actively sheds them by
+// policy). Every read crosses `sanitizeCapabilityCache` -- an untrusted
+// string with an allowlisting scrub (own-key, primitive-only), a TTL, and a
+// future-ts rejection. Every access is try/catch (private mode).
+const CAP_CACHE_KEY = 'ft-cap-cache-v1';
+const CAP_CACHE_TTL_MS = 5 * 60 * 1000;
+
+// Pure + exported for node:test. Flat own-key primitive scrub per entry so a
+// crafted payload can never smuggle objects/prototype keys into renderers.
+function sanitizeCapabilityCache(parsed, nowMs) {
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+  if (typeof parsed.ts !== 'number' || !Number.isFinite(parsed.ts)) return null;
+  if (nowMs - parsed.ts > CAP_CACHE_TTL_MS) return null;
+  if (parsed.ts > nowMs + 60 * 1000) return null; // a future clock is a lie
+  const scrubFlat = (o) => {
+    const r = {};
+    for (const k of Object.keys(o)) {
+      const v = o[k];
+      if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') r[k] = v;
+    }
+    return r;
+  };
+  const out = { ts: parsed.ts };
+  if (typeof parsed.moduleEnabled === 'boolean') out.moduleEnabled = parsed.moduleEnabled;
+  if (Array.isArray(parsed.subs)) {
+    out.subs = parsed.subs
+      .filter((s) => s && typeof s === 'object' && !Array.isArray(s) && typeof s.channelUrl === 'string' && s.channelUrl !== '')
+      .map(scrubFlat);
+  }
+  if (Array.isArray(parsed.pins)) {
+    out.pins = parsed.pins
+      .filter((p) => p && typeof p === 'object' && !Array.isArray(p))
+      .map(scrubFlat);
+  }
+  return out;
+}
+
+function readCapabilityCache(nowMs) {
+  let raw = null;
+  try { raw = sessionStorage.getItem(CAP_CACHE_KEY); } catch (_) { return null; /* storage disabled */ }
+  if (!raw) return null;
+  let parsed = null;
+  try { parsed = JSON.parse(raw); } catch (_) { return null; }
+  return sanitizeCapabilityCache(parsed, typeof nowMs === 'number' ? nowMs : Date.now());
+}
+
+function writeCapabilityCache(patch) {
+  try {
+    const now = Date.now();
+    const existing = readCapabilityCache(now) || {};
+    const merged = { ...existing, ...patch, ts: now };
+    sessionStorage.setItem(CAP_CACHE_KEY, JSON.stringify(merged));
+  } catch (_) { /* storage disabled -- the probes still work uncached */ }
+}
+
+// The write-side sub scrub: exactly what the Subscribe/pin decisions need.
+function scrubSubsForCache(subs) {
+  return (Array.isArray(subs) ? subs : [])
+    .filter((s) => s && typeof s.channelUrl === 'string' && s.channelUrl !== '')
+    .map((s) => ({
+      id: typeof s.id === 'string' ? s.id : '',
+      channelUrl: s.channelUrl,
+      ...(typeof s.channelId === 'string' ? { channelId: s.channelId } : {}),
+      ...(typeof s.channelHandleUrl === 'string' ? { channelHandleUrl: s.channelHandleUrl } : {}),
+      ...(typeof s.channelDir === 'string' ? { channelDir: s.channelDir } : {}),
+      ...(typeof s.name === 'string' ? { name: s.name } : {}),
+    }));
+}
+
+// Optimistic pinned-sidebar paint from the cache -- the real fetchAllPins()
+// pass replaces it wholesale (renderPinnedSidebar rebuilds from scratch).
+function primePinnedSidebarFromCache() {
+  const cached = readCapabilityCache();
+  if (cached && Array.isArray(cached.pins) && cached.pins.length > 0) {
+    renderPinnedSidebar(cached.pins);
+  }
+}
+
+// ---- v1.53: the attribution picker ------------------------------------------
+//
+// One modal, two callers (watch page single-item, folder-view bulk) -- the
+// v1.41.7 one-shared-decision-function posture. createElement/textContent
+// ONLY (target names are server-sanitized but the discipline is absolute).
+// Reuses the .modal-backdrop/.modal-content STYLE classes; behavior is fully
+// self-managed here (the v1.50.3 lesson: a shared class never implies shared
+// JS). Returns nothing; tears itself down on pick/cancel/Escape/backdrop.
+function showAttributionPicker(targets, opts, onPick) {
+  if (typeof document === 'undefined') return null;
+  const o = opts || {};
+  const backdrop = document.createElement('div');
+  backdrop.className = 'modal-backdrop attr-picker-backdrop';
+  const modal = document.createElement('div');
+  modal.className = 'modal-content attr-picker';
+  const heading = document.createElement('h3');
+  heading.textContent = o.title || 'Attribute to channel';
+  modal.appendChild(heading);
+
+  let relocateCheck = null;
+  if (o.showRelocate) {
+    const label = document.createElement('label');
+    label.className = 'attr-picker-relocate';
+    relocateCheck = document.createElement('input');
+    relocateCheck.type = 'checkbox';
+    relocateCheck.checked = true;
+    label.appendChild(relocateCheck);
+    label.appendChild(document.createTextNode(" Also move the files into the channel's folder"));
+    modal.appendChild(label);
+  }
+
+  const list = document.createElement('div');
+  list.className = 'attr-picker-list';
+  const teardown = () => {
+    document.removeEventListener('keydown', onKey, true);
+    // Gate C1 sibling-fix: animate out through the shared overlay helper,
+    // then remove -- mirroring every other .modal-backdrop creator.
+    closeOverlayThen(backdrop, 'modal-open', () => backdrop.remove());
+  };
+  const onKey = (e) => {
+    if (e.key !== 'Escape') return;
+    e.stopImmediatePropagation();
+    teardown();
+  };
+  for (const t of (Array.isArray(targets) ? targets : [])) {
+    if (!t || typeof t.channelUrl !== 'string' || typeof t.channelName !== 'string') continue;
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'attr-picker-row';
+    const avatar = document.createElement('span');
+    avatar.className = 'attr-picker-avatar';
+    const source = resolveAvatarSource(t.channelName, t.channelAvatarUrl || '');
+    if (source.type === 'url') {
+      const img = document.createElement('img');
+      img.src = source.url;
+      img.alt = '';
+      img.loading = 'lazy';
+      avatar.appendChild(img);
+    } else {
+      avatar.textContent = source.glyph;
+      avatar.style.backgroundColor = source.color;
+    }
+    row.appendChild(avatar);
+    const name = document.createElement('span');
+    name.className = 'attr-picker-name';
+    name.textContent = t.channelName;
+    row.appendChild(name);
+    const tag = document.createElement('span');
+    tag.className = 'attr-picker-source';
+    tag.textContent = t.source === 'subscription' ? 'Subscribed' : 'In library';
+    row.appendChild(tag);
+    row.addEventListener('click', () => {
+      const relocate = relocateCheck ? relocateCheck.checked === true : false;
+      teardown();
+      if (typeof onPick === 'function') onPick(t, { relocate });
+    });
+    list.appendChild(row);
+  }
+  if (!list.firstChild) {
+    const empty = document.createElement('div');
+    empty.className = 'attr-picker-empty';
+    empty.textContent = 'No channels to attribute to yet - subscribe to a channel first.';
+    list.appendChild(empty);
+  }
+  modal.appendChild(list);
+
+  const cancel = document.createElement('button');
+  cancel.type = 'button';
+  cancel.className = 'btn attr-picker-cancel';
+  cancel.textContent = 'Cancel';
+  cancel.addEventListener('click', teardown);
+  modal.appendChild(cancel);
+
+  backdrop.appendChild(modal);
+  backdrop.addEventListener('click', (e) => { if (e.target === backdrop) teardown(); });
+  document.addEventListener('keydown', onKey, true);
+  document.body.appendChild(backdrop);
+  // GATE C1 (adversarial, repro'd): without the shared reveal helper the
+  // backdrop sat at the .modal-backdrop base opacity of ZERO -- an invisible
+  // full-viewport click-eater whose invisible rows could fire a blind bulk
+  // move. Every .modal-backdrop creator calls openOverlay; this one was the
+  // sole exception (the v1.50.3 class: a shared CSS class never implies the
+  // sibling's JS reveal).
+  openOverlay(backdrop, 'modal-open');
+  // Gate W6: the picker is body-mounted, so SPA navigation never sweeps it.
+  // Callers hold this handle and wire it to their view teardown.
+  return { dismiss: teardown };
 }
 
 // ---- v1.51: the notification bell ------------------------------------------
@@ -5065,10 +5282,16 @@ function fetchAllPins() {
   // derivePinnedPlaylistEntries' locked shape; the renderers read it off
   // the parallel validPins view exactly like `id`.
   return Promise.all([safeJson('/api/subscriptions/pins'), safeJson('/api/books/pins')])
-    .then(([channelPins, bookPins]) => [
-      ...(Array.isArray(channelPins) ? channelPins : []).map((p) => ({ ...p, pinSource: 'channel' })),
-      ...(Array.isArray(bookPins) ? bookPins : []).map((p) => ({ ...p, pinSource: 'books' })),
-    ]);
+    .then(([channelPins, bookPins]) => {
+      const pins = [
+        ...(Array.isArray(channelPins) ? channelPins : []).map((p) => ({ ...p, pinSource: 'channel' })),
+        ...(Array.isArray(bookPins) ? bookPins : []).map((p) => ({ ...p, pinSource: 'books' })),
+      ];
+      // v1.53: the capability cache's pins half -- the next refresh paints
+      // the pinned sidebar optimistically from this (primePinnedSidebarFromCache).
+      writeCapabilityCache({ pins });
+      return pins;
+    });
 }
 
 // v1.37.0 (Dean's orphaned-pin report): the per-row UNPIN control. Before
@@ -7880,9 +8103,24 @@ function reconcileRepullButton() {
 function probeAndReconcileRepullButton() {
   if (typeof document === 'undefined' || typeof fetch === 'undefined') return;
   if (!repullHealthChecked) {
+    // v1.53 gate QA-W1: the capability cache seeds an OPTIMISTIC reconcile
+    // (frame-one Re-pull button on refresh) while the REAL probe still runs
+    // and re-reconciles -- the latch stays network-authoritative, so a
+    // revoked module corrects after ~1 RTT (reconcileRepullButton's own
+    // disabled path removes the button).
+    const cachedCap = readCapabilityCache();
+    if (cachedCap && cachedCap.moduleEnabled === true) {
+      repullModuleEnabled = true;
+      reconcileRepullButton();
+    }
     fetch('/api/subscriptions/health')
-      .then((res) => { repullHealthChecked = true; repullModuleEnabled = res.ok; reconcileRepullButton(); })
-      .catch(() => { repullHealthChecked = true; repullModuleEnabled = false; });
+      .then((res) => {
+        repullHealthChecked = true;
+        repullModuleEnabled = res.ok;
+        writeCapabilityCache({ moduleEnabled: res.ok });
+        reconcileRepullButton();
+      })
+      .catch(() => { repullHealthChecked = true; repullModuleEnabled = false; reconcileRepullButton(); });
     return;
   }
   reconcileRepullButton();
@@ -8237,5 +8475,9 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.52: the instant-watch seed stash (single-entry, id-matched, aged) +
     // the pure paint-plan builder the watch painter applies verbatim.
     stashWatchSeed, consumeWatchSeed, deriveWatchPaintPlan, isFullWatchSeedItem,
+    // v1.53: the shared attribution picker (DOM thin-shell; wiring-locked).
+    showAttributionPicker,
+    // v1.53: the capability cache's pure gate + accessors.
+    sanitizeCapabilityCache, readCapabilityCache, writeCapabilityCache, scrubSubsForCache,
   };
 }

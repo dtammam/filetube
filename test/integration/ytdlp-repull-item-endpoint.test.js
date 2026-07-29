@@ -186,6 +186,43 @@ test('202 {started, mediaId}, then the shared per-item pass runs and persists wi
   }
 });
 
+test('v1.53 gate (M14-M16): an attributionConflict set at the persist boundary rides the one-shot, and the next run RESETS it', async () => {
+  const deps = makeFakeDeps();
+  let conflictThisRun = true;
+  deps.recordRepulledItemMeta = async (d, mediaId, meta) => {
+    // The production write side sets this OUT-FIELD when a manual
+    // attribution declines a conflicting network identity (server.js) --
+    // the fake reproduces the contract so every hop from persist to
+    // one-shot is runtime-bound (the mutation audit proved all three hops
+    // were deletable with the suite green).
+    if (conflictThisRun) meta.attributionConflict = { kept: 'Mänual Channel', discovered: 'Nétwork Channel' };
+    return true;
+  };
+  run.repullItemMetaAndSubs = async () => ({ sourceTitle: 'T', wroteSubs: false });
+
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    assert.equal((await fetch(itemUrl(base), { method: 'POST' })).status, 202);
+    await flush();
+    let entry = itemEntry();
+    assert.equal(entry.state, 'done');
+    assert.deepEqual(entry.attributionConflict, { kept: 'Mänual Channel', discovered: 'Nétwork Channel' },
+      'the conflict reached the one-shot (M14: reheatOneItem return; M16: terminal stamp)');
+
+    // Second run with NO conflict: the `running` write must RESET the field
+    // (setOneShot MERGES -- M15), so a stale conflict can never ride a new
+    // run's entry.
+    conflictThisRun = false;
+    assert.equal((await fetch(itemUrl(base), { method: 'POST' })).status, 202);
+    await flush();
+    entry = itemEntry();
+    assert.equal(entry.state, 'done');
+    assert.equal(entry.attributionConflict, null, 'a conflict-free run carries null, never the previous run\'s conflict');
+  } finally {
+    await close();
+  }
+});
+
 test('the activity entry carries a BEFORE/AFTER diff read back from the database, not from what the pass intended', async () => {
   // The AFTER snapshot must come from a fresh read: recordRepulledItemMeta's
   // own guards can decline a value the pass produced, and a diff built from

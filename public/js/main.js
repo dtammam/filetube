@@ -559,6 +559,132 @@ if (typeof module !== 'undefined' && module.exports) {
       // v1.50: the watched-state group mounts AFTER the format toggle (its
       // renderer inserts directly behind #library-format-toggle).
       renderWatchToggle(sectionActions, getStoredWatchFilter(), () => resetAndReload());
+      // v1.53 (Dean): the bulk-attribution control for folder views.
+      ensureAttributeFolderButton(sectionActions);
+    }
+
+    // v1.53: "Attribute folder..." -- shown ONLY on a ?root= folder view
+    // with at least one genuinely UNATTRIBUTED item (channelUrl empty, the
+    // single predicate every surface uses -- never resolveChannelName,
+    // which always fabricates a label). Container-scoped de-dupe (the
+    // doubled-toggle-row lesson); explicit order: 12 in the phone block
+    // (the v1.50.4 orphan-row lesson -- repull owns 11).
+    function ensureAttributeFolderButton(actionsEl) {
+      if (!actionsEl) return;
+      const existing = actionsEl.querySelector('#attribute-folder-btn');
+      const eligible = Boolean(rootFilter) &&
+        currentItems.some((it) => it && (typeof it.channelUrl !== 'string' || it.channelUrl === ''));
+      if (!eligible) {
+        if (existing) existing.remove();
+        return;
+      }
+      if (existing) return;
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.id = 'attribute-folder-btn';
+      btn.className = 'btn';
+      btn.title = 'Attribute unattributed videos in this folder to a channel';
+      btn.setAttribute('aria-label', 'Attribute unattributed videos in this folder to a channel');
+      const icon = document.createElement('i');
+      icon.className = 'icon-user';
+      btn.appendChild(icon);
+      const label = document.createElement('span');
+      label.className = 'btn-label';
+      label.textContent = 'Attribute folder';
+      btn.appendChild(document.createTextNode(' '));
+      btn.appendChild(label);
+      btn.addEventListener('click', async () => {
+        let targets = [];
+        try {
+          const res = await fetch('/api/attribution-targets');
+          const body = await res.json();
+          targets = Array.isArray(body.targets) ? body.targets : [];
+        } catch (_) { /* picker shows its own empty state */ }
+        // Gate C3 (adversarial): NOTHING moves before the user confirms REAL
+        // server-computed numbers -- preview first (write-free), then a
+        // count-and-destination confirm, then execute. Gate W6: the picker
+        // handle dies with the view.
+        const picker = showAttributionPicker(targets, { title: 'Attribute this folder to', showRelocate: true }, (target, opts) => {
+          const relocate = opts.relocate === true;
+          fetch('/api/videos/attribute-channel-bulk', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ root: rootFilter, target, relocate, preview: true }),
+          })
+            .then((res) => res.json().then((b) => ({ ok: res.ok, b })))
+            .then(({ ok, b }) => {
+              if (!ok) { showToast((b && b.error) || 'Bulk attribution failed.'); return; }
+              const total = (b.matched || 0) + (b.resuming || 0);
+              if (total === 0) { showToast('Nothing to attribute in this folder.'); return; }
+              const moveLine = relocate && b.relocatable
+                ? `<br>${escapeHtml(String(total))} file(s) will MOVE to:<br><small>${escapeHtml(b.destinationDir || '')}</small>`
+                : (relocate ? '<br><small>Files will not move: ' + escapeHtml(b.relocateSkipped || 'destination unavailable') + '</small>' : '');
+              showConfirmModal(
+                'Attribute this folder?',
+                `Attribute <strong>${escapeHtml(String(b.matched || 0))}</strong> video(s) to <strong>${escapeHtml(target.channelName)}</strong>` +
+                (b.resuming ? ` (and finish moving ${escapeHtml(String(b.resuming))} from an earlier run)` : '') + moveLine,
+                () => executeBulkAttribution(target, relocate),
+                { confirm: relocate && b.relocatable ? 'Attribute and move' : 'Attribute', cancel: 'Cancel' }
+              );
+            })
+            .catch(() => showToast('Bulk attribution failed.'));
+        });
+        if (picker && picker.dismiss) signal.addEventListener('abort', picker.dismiss, { once: true });
+      }, { signal });
+      actionsEl.appendChild(btn);
+    }
+
+    // Gate W1 (adversarial): the mover's progress cannot render on the
+    // download chip (unknown kind/states there) -- the FOLDER VIEW polls the
+    // one-shot itself and reports the full honest summary: moved,
+    // collisions, already-there, failed, cancelled.
+    function executeBulkAttribution(target, relocate) {
+      fetch('/api/videos/attribute-channel-bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ root: rootFilter, target, relocate }),
+      })
+        .then((res) => res.json().then((b) => ({ status: res.status, b })))
+        .then(({ status, b }) => {
+          if (status === 409) { showToast('A bulk attribution is already running.'); return; }
+          if (status !== 200 && status !== 202) { showToast((b && b.error) || 'Bulk attribution failed.'); return; }
+          if (!b.relocating) {
+            showToast(b.relocateSkipped
+              ? `Attributed ${b.attributed} video(s) to ${target.channelName} (files not moved: ${b.relocateSkipped}).`
+              : `Attributed ${b.attributed} video(s) to ${target.channelName}.`);
+            resetAndReload();
+            return;
+          }
+          showToast(`Attributed ${b.attributed} video(s) to ${target.channelName}; moving ${b.total} file(s)…`);
+          pollBulkAttribution(target.channelName);
+        })
+        .catch(() => showToast('Bulk attribution failed.'));
+    }
+
+    function pollBulkAttribution(channelLabel) {
+      const startedAt = Date.now();
+      const timer = setInterval(() => {
+        if (Date.now() - startedAt > 10 * 60 * 1000) { clearInterval(timer); return; }
+        fetch('/api/subscriptions/status')
+          .then((res) => (res.ok ? res.json() : null))
+          .then((snap) => {
+            const entry = snap && snap.oneShots && snap.oneShots['attribute-bulk'];
+            if (!entry) return;
+            if (entry.state !== 'done' && entry.state !== 'error') return;
+            clearInterval(timer);
+            if (entry.state === 'error') { showToast('Bulk move crashed partway - re-run to resume the rest.'); resetAndReload(); return; }
+            const bits = [`moved ${entry.moved || 0}`];
+            if (entry.alreadyThere) bits.push(`${entry.alreadyThere} already in place`);
+            if (entry.collisions) bits.push(`${entry.collisions} name collision(s) skipped`);
+            if (entry.failed) bits.push(`${entry.failed} failed`);
+            showToast(`${channelLabel}: ${bits.join(', ')}${entry.cancelled ? ' (cancelled - re-run to resume)' : ''}.`);
+            resetAndReload();
+          })
+          .catch(() => { /* transient -- keep polling */ });
+      }, 1500);
+      // The view's abort signal stops the poll on navigation (v1.41.11
+      // async-handler staleness lesson).
+      signal.addEventListener('abort', () => clearInterval(timer), { once: true });
     }
 
     // The shared "reset to a fresh page 0" path for every control that used
@@ -595,6 +721,11 @@ if (typeof module !== 'undefined' && module.exports) {
         currentTotal = typeof data.total === 'number' ? data.total : currentTotal;
         currentItems = currentItems.concat(items);
         renderMediaGridPage(items, { append: true });
+        // v1.53 gate QA-C1: bulk-attribution eligibility was decided off
+        // page 0 (60 items) and never revisited -- a folder whose
+        // unattributed orphans sort past the first page silently never
+        // showed the button. Every appended page re-checks.
+        ensureAttributeFolderButton(root.querySelector('.section-actions'));
       } catch (err) {
         console.error('Failed to load the next library page:', err);
       } finally {
@@ -1402,6 +1533,9 @@ if (typeof module !== 'undefined' && module.exports) {
     // guarantee -- this never logs/throws on a 404. Read-only: never writes
     // db.folders/folderSettings.
     // v1.37.0: channel pins + book-shelf pins, one merged sidebar section.
+    // v1.53: paint the pinned section from the capability cache in frame one;
+    // the real fetch below replaces it wholesale (reconcile-by-rebuild).
+    primePinnedSidebarFromCache();
     fetchAllPins().then((pins) => renderPinnedSidebar(pins));
 
     // v1.37.0 T10 (books): the home book surfaces. BARE home view -> a

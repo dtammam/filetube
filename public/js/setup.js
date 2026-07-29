@@ -1448,6 +1448,10 @@ async function initAccountSection(signal) {
     try {
       await fetch('/api/auth/logout', { method: 'POST' });
     } catch (_) { /* the redirect below lands on /login either way */ }
+    // v1.53 gate W4: pins in the capability cache are PER-USER -- a logout
+    // must not let the next login in this tab paint the previous user's
+    // pinned channels for a frame.
+    try { sessionStorage.removeItem('ft-cap-cache-v1'); } catch (_) { /* storage disabled */ }
     window.location.href = '/login';
   }, { signal });
 
