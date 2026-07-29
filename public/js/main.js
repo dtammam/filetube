@@ -231,10 +231,12 @@ if (typeof module !== 'undefined' && module.exports) {
     // handler navigates -- a bubble listener on the GRID fires first
     // (target -> root order). The watch view consumes it and paints
     // synchronously, so the metadata never flashes placeholders. Bound
-    // through this view's own { signal } (the v1.45 leak discipline);
-    // `isConnected` guards the cached-home case where destroy() was skipped.
+    // through this view's own { signal } (the v1.45 leak discipline) -- and
+    // ONLY that: a detached #video-grid cannot receive real clicks, and the
+    // cache's stale-orphan branches abort before a second instance ever
+    // binds, so no isConnected belt is needed here (gate QA S4: a guard
+    // with no reachable false branch is the v1.49 dead-guard class).
     videoGrid.addEventListener('click', (e) => {
-      if (!videoGrid.isConnected) return;
       const cardLink = e.target && e.target.closest && e.target.closest('a[href*="/watch.html?v="]');
       if (!cardLink) return;
       let id = null;

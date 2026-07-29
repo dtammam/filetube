@@ -915,19 +915,27 @@ if (typeof module !== 'undefined' && module.exports) {
 
     // v1.52 T2: a FULL seed on a genuine new load ('defer' -- neither adopt
     // nor reparent applied) starts the real media NOW, two round trips
-    // before hydration. List data carries everything the player needs
-    // (type/needsTranscode/transcodeStatus for the stream decision,
-    // width/height for the aspect reservation, hasThumbnail for the poster,
-    // progress for resume) EXCEPT the server-resolved chapters --
-    // initWatch() hands those in through the id-guarded applyLateDetail
-    // seam, never a second load. Partial seeds (bell rows) skip this: no
-    // type means no stream decision, so they keep the reserved cold frame
-    // until hydration's own load.
+    // before hydration. List data carries everything the player needs for
+    // the stream decision (type/needsTranscode/transcodeStatus), the aspect
+    // reservation (width/height) and the poster (hasThumbnail). Resume is
+    // unaffected either way -- the player always fetches /api/progress/:id
+    // itself (gate QA W3: the seed's progress field plays no part).
+    //
+    // CHAPTERS ARE DELIBERATELY STRIPPED (gate C2): the list record carries
+    // the RAW `chapters`/`chaptersManual` sets, and handing them to the
+    // player would bypass the server's manual > embedded > description
+    // precedence (resolveItemChapters, detail route only) -- painting junk
+    // embedded chapters an operator manually overrode. applyLateDetail at
+    // hydration is the ONLY chapters writer on this path. Partial seeds
+    // (bell rows) skip pre-load entirely: no type, no stream decision.
     let seedPreloaded = false;
     if (entryReparentAction === 'defer' && watchSeed && isFullWatchSeedItem(watchSeed.item)) {
+      const seedItemForLoad = { ...watchSeed.item };
+      delete seedItemForLoad.chapters;
+      delete seedItemForLoad.chaptersManual;
       seedPreloaded = window.FileTube.player.load(
         mediaId,
-        { ...watchSeed.item, channelName: currentChannelName, browseCtx: rawBrowseCtx },
+        { ...seedItemForLoad, channelName: currentChannelName, browseCtx: rawBrowseCtx },
         { slot: playerSlot }
       ) === true;
     }
@@ -1064,13 +1072,23 @@ if (typeof module !== 'undefined' && module.exports) {
 
       } catch (err) {
         console.error(err);
+        // v1.52 gate W1: a seeded pre-load may already be STREAMING a file
+        // whose detail fetch just said is gone -- a playing/erroring video
+        // above a fatal "file not found" box contradicts itself. Stand the
+        // player down before showing the error.
+        if (seedPreloaded) {
+          try { window.FileTube.player.close(); } catch (_) { /* best-effort */ }
+        }
         showFatalViewError(root);
         if (mediaTitle) {
           mediaTitle.textContent = 'Error loading file details';
           mediaTitle.style.color = 'var(--yt-red)';
-          // v1.52: error text must not render on a shimmering skeleton bar.
-          mediaTitle.classList.remove('skeleton-shimmer', 'skel-title');
         }
+        // v1.52 gate W1: the error state must not leave ANY field shimmering
+        // forever (pre-fix only the title's skeleton was stripped).
+        root.querySelectorAll('.skeleton-shimmer').forEach((el) => el.classList.remove('skeleton-shimmer'));
+        const descSkelErr = root.querySelector('#video-desc-skel');
+        if (descSkelErr) descSkelErr.hidden = true;
       }
     }
 
@@ -1852,8 +1870,10 @@ if (typeof module !== 'undefined' && module.exports) {
         ? '&ctx=' + encodeURIComponent(rawBrowseCtx)
         : (listContext ? '&list=' + encodeURIComponent(listContext) : '');
       const url = '/watch.html?v=' + encodeURIComponent(id) + ctxSuffix;
-      // v1.52 instant watch: prev/next (and autoplay's shared path) seed the
-      // next view when the item is in this view's lookup.
+      // v1.52 instant watch: prev/next (and the keyboard shortcuts, which
+      // share this function) seed the next view when the item is in this
+      // view's lookup. Autoplay-advance seeds separately in player.js's own
+      // 'ended' cascade (gate C1) -- it never routes through here.
       const seedItem = watchSeedLookup.get(id);
       if (seedItem && window.FileTube && window.FileTube.stashWatchSeed) {
         window.FileTube.stashWatchSeed(seedItem, { folderSettings });

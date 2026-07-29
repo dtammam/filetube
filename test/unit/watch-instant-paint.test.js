@@ -82,8 +82,22 @@ test('deriveWatchPaintPlan: a full item yields every field, strings identical to
   assert.equal(plan.typeLabel, 'MKV');
   assert.equal(plan.filePath, FULL_ITEM.filePath);
   assert.equal(plan.isFullItem, true);
-  // Determinism across pre-paint and hydration: same input, same strings.
-  assert.deepEqual(plan, deriveWatchPaintPlan(FULL_ITEM, 'Zephyr Chännel'));
+  // Determinism across pre-paint and hydration, tested for REAL (gate QA
+  // S5 -- the old same-object-twice assert was tautological): a LIST-shaped
+  // record and a DETAIL-shaped record (same base + the detail-only fields
+  // the :id route adds) must produce byte-identical plans, or hydration
+  // visibly rewrites the seeded paint.
+  const detailShaped = {
+    ...FULL_ITEM,
+    watchUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+    chapters: [{ startTime: 0, title: 'Résolved Chapter' }],
+    chaptersSource: 'manual',
+    transcodeProgress: 41,
+    liked: true,
+    progress: { timestamp: 99 },
+  };
+  assert.deepEqual(deriveWatchPaintPlan(detailShaped, 'Zephyr Chännel'), plan,
+    'detail-only fields must not change any painted string');
 });
 
 test('deriveWatchPaintPlan: a PARTIAL seed (bell-row shape) plans only what it carries', () => {
@@ -140,6 +154,53 @@ test('LOCK: #player-slot reserves a 16/9 frame while empty (the zero-height jump
   const rule = css.slice(idx, css.indexOf('}', idx));
   assert.match(rule, /aspect-ratio: 16 \/ 9/, 'reserved at the default aspect');
   assert.match(rule, /margin-bottom: 16px/, 'same outer geometry as .player-container');
+});
+
+// ---- wiring locks (gate ADV W2) ---------------------------------------------
+//
+// The adversarial seat's mutation audit proved ZERO tests failed when any of
+// the new call sites was deleted. There is no browser harness here, so these
+// are SOURCE LOCKS -- presence, not binding, and labeled as such -- but they
+// are comment-stripped (the v1.50.3 lesson: a lock satisfied by a comment is
+// worse than no lock) and statement-anchored, so deleting the call, not just
+// mentioning it, is what they detect. Dean's device probes remain the
+// behavior gate.
+
+function strippedSource(rel) {
+  return fs.readFileSync(path.join(__dirname, '..', '..', rel), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/(^|[^:])\/\/.*$/gm, '$1');
+}
+
+test('LOCK (wiring): watch.js consumes the seed, pre-paints, pre-loads, and lands late chapters', () => {
+  const src = strippedSource('public/js/watch.js');
+  assert.match(src, /window\.FileTube\.consumeWatchSeed\(mediaId\)/, 'seed consume call deleted');
+  assert.match(src, /paintMetadata\(watchSeed\.item, seededChannelName\)/, 'synchronous pre-paint call deleted');
+  assert.match(src, /isFullWatchSeedItem\(watchSeed\.item\)/, 'pre-load gate deleted');
+  assert.match(src, /delete seedItemForLoad\.chapters;/, 'raw-chapters strip deleted (gate C2 -- unresolved sets must never reach the player)');
+  assert.match(src, /delete seedItemForLoad\.chaptersManual;/, 'raw-chaptersManual strip deleted (gate C2)');
+  assert.match(src, /applyLateDetail\(mediaId, mediaData\)/, 'late-chapters seam call deleted');
+  assert.ok(src.indexOf('consumeWatchSeed(mediaId)') < src.indexOf('async function initWatch'),
+    'the pre-paint runs at init, before the network -- not inside hydration');
+});
+
+test('LOCK (wiring): every enumerated seed writer stashes before navigating', () => {
+  const main = strippedSource('public/js/main.js');
+  assert.match(main, /window\.FileTube\.stashWatchSeed\(item, \{ folderSettings \}\)/, 'grid writer deleted');
+  const watch = strippedSource('public/js/watch.js');
+  assert.equal((watch.match(/stashWatchSeed\(/g) || []).length >= 2, true,
+    'related-card + navigateToWatch (prev/next/keyboard) writers deleted');
+  const player = strippedSource('public/js/player.js');
+  assert.match(player, /stashWatchSeed\(nextItem\)/, 'autoplay-advance writer deleted (gate C1)');
+  assert.match(player, /stashWatchSeed\(Object\.assign\(\{\}, currentData, \{ id: currentId \}\)\)/, 'dock-return writer deleted (gate C1)');
+  const common = strippedSource('public/js/common.js');
+  assert.match(common, /stashWatchSeed\(\{\s*id: m\.mediaId,/, 'bell-row partial writer deleted');
+});
+
+test('LOCK (wiring): the video branch sets the thumbnail poster; teardown strips it', () => {
+  const player = strippedSource('public/js/player.js');
+  assert.match(player, /mediaPlayer\.poster = '\/thumbnail\/' \+ encodeURIComponent\(id\)/, 'video poster set deleted');
+  assert.match(player, /removeAttribute\('poster'\)/, 'teardown poster strip deleted');
 });
 
 // ---- the literal lock -------------------------------------------------------

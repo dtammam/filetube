@@ -7632,7 +7632,12 @@ body.ft-css-fullscreen .bottom-nav {
    show this; cold/partial paths hold it until hydration. Cold PORTRAIT
    items correct 16/9 -> portrait when data lands (disclosed residual --
    only the no-seed path). */
-#player-slot:empty {
+/* Scoped to the WATCH layout (gate S1): read.html's reader bar carries the
+   same #player-slot id, provably never empty-while-visible today -- but the
+   id-specificity rule would beat the reader's own classes if that ever
+   changed (the v1.50.5 same-slot lesson), so the reservation names its one
+   intended surface. */
+.watch-container #player-slot:empty {
   display: block;
   width: 100%;
   aspect-ratio: 16 / 9;
@@ -7646,7 +7651,7 @@ body.ft-css-fullscreen .bottom-nav {
   /* Mirror the mobile portrait height cap the mounted player gets
      (.player-container max-height: 45vh) so the reserved frame and the
      real frame agree on phones. */
-  #player-slot:empty {
+  .watch-container #player-slot:empty {
     max-height: 45vh;
   }
 }

@@ -3296,6 +3296,19 @@ if (typeof module !== 'undefined' && module.exports) {
             var neighbors = computeNeighbors(orderedIds, endedId);
             if (!neighbors.nextId) return; // end of the order -- no wrap, no-op
             if (window.FileTube && typeof window.FileTube.navigate === 'function') {
+              // v1.52 gate C1 (both seats): the next item's FULL record is in
+              // hand -- seed the next watch view so the most passive hop in
+              // the app (autoplay advance) paints instantly instead of taking
+              // the cold-skeleton path. No folderSettings here (the player has
+              // none); a folder-display-name mapping difference is corrected
+              // at hydration, disclosed in the exec plan.
+              if (typeof window.FileTube.stashWatchSeed === 'function') {
+                var nextItem = null;
+                for (var vi = 0; vi < videos.length; vi++) {
+                  if (videos[vi] && videos[vi].id === neighbors.nextId) { nextItem = videos[vi]; break; }
+                }
+                if (nextItem) window.FileTube.stashWatchSeed(nextItem);
+              }
               // FR-4b (T3): arm the one-shot flag IMMEDIATELY before
               // navigating -- consumed by the next video's own
               // handleResumePlayback (via shouldShowResumeOverlay) to skip
@@ -5148,8 +5161,8 @@ if (typeof module !== 'undefined' && module.exports) {
       // neutral BEFORE setupForMedia assigns the new source, so the
       // OUTGOING item's image never lingers/flashes during the transition
       // (stale poster + FOUC on Next). `removeAttribute('poster')` clears
-      // the audio branch's `/thumbnail/<prevId>` poster (setupForMedia only
-      // ever sets `.poster` for audio); `removeAttribute('src')` + `load()`
+      // BOTH poster writers -- the audio branch's artUrl/thumbnail poster
+      // and (v1.52) the video branch's thumbnail poster; `removeAttribute('src')` + `load()`
       // drops the previous video's last-decoded frame, resetting the
       // element to the media-empty state, which paints nothing -- revealing
       // the existing `#000` `.player-container` background beneath (the
@@ -5590,6 +5603,15 @@ if (typeof module !== 'undefined' && module.exports) {
       var url = (currentData && typeof currentData.readerHref === 'string' && currentData.readerHref)
         ? currentData.readerHref
         : '/watch.html?v=' + encodeURIComponent(currentId);
+      // v1.52 gate C1 (both seats): seed the watch metadata from the
+      // player's own in-memory data -- the video adopts instantly on this
+      // path, and pre-fix the TEXT below it sat in skeletons for two round
+      // trips while the media audibly played. Watch route only (a
+      // readerHref return goes to the reader/music surfaces, not watch).
+      if (!(currentData && currentData.readerHref) && currentData
+        && window.FileTube && typeof window.FileTube.stashWatchSeed === 'function') {
+        window.FileTube.stashWatchSeed(Object.assign({}, currentData, { id: currentId }));
+      }
       if (window.FileTube && typeof window.FileTube.navigate === 'function') window.FileTube.navigate(url);
       else window.location.href = url;
     });
