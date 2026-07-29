@@ -1173,14 +1173,17 @@ function formatItemCountLabel(count) {
 // view's own header text is frequently reassigned via `.textContent` on
 // every render (main.js's `videosHeader.textContent = ...`), which would
 // silently wipe a child node. Mirrors `renderPinnedSidebar`'s
-// sibling-insertion reasoning (below) and its idempotent
-// remove-then-reuse-by-id posture. No-ops safely when `headerEl` has no
-// parent yet (defensive; never throws).
+// sibling-insertion reasoning (below). The de-dupe lookup MUST be scoped to
+// `headerEl`'s own parent, never `document.getElementById`: the home view can
+// be re-rendered while DETACHED (homeViewCache keeps the node alive with no
+// destroy(), and a background `__filetubeRefreshLibrary` re-renders it there).
+// A document-wide lookup can't see the detached tree (-> double-append on
+// reattach) and, worse, could find-and-remove the LIVE page's badge instead.
+// No-ops safely when `headerEl` has no parent yet (defensive; never throws).
 function renderItemCountBadge(headerEl, list) {
   if (!headerEl || !headerEl.parentNode) return;
-  let badge = document.getElementById('library-item-count');
-  if (!badge || badge.parentNode !== headerEl.parentNode) {
-    if (badge && badge.parentNode) badge.parentNode.removeChild(badge);
+  let badge = headerEl.parentNode.querySelector('#library-item-count');
+  if (!badge) {
     badge = document.createElement('span');
     badge.id = 'library-item-count';
     badge.className = 'library-item-count';
@@ -1340,11 +1343,17 @@ function buildFormatToggleControl(currentMode, onChange) {
 
 // Idempotently mounts the format-toggle control as the FIRST child of
 // `actionsEl` (e.g. `.section-actions`, ahead of the sort <select>) -- any
-// prior instance is removed first, so repeated calls (e.g. once per render)
-// never accumulate duplicates. No-ops safely when `actionsEl` is absent.
+// prior instance IN THAT CONTAINER is removed first, so repeated calls (e.g.
+// once per render) never accumulate duplicates. The lookup MUST be scoped to
+// `actionsEl`, never `document.getElementById`: this can run against the
+// DETACHED cached home view (homeViewCache + a background
+// `__filetubeRefreshLibrary` while another view is live), where a
+// document-wide lookup finds nothing (-> a second toggle appended, the
+// "doubled All/Videos/Audio row" bug) or finds the LIVE page's toggle and
+// removes it. No-ops safely when `actionsEl` is absent.
 function renderFormatToggle(actionsEl, currentMode, onChange) {
   if (!actionsEl) return;
-  const existing = document.getElementById('library-format-toggle');
+  const existing = actionsEl.querySelector('#library-format-toggle');
   if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
   const control = buildFormatToggleControl(currentMode, onChange);
   actionsEl.insertBefore(control, actionsEl.firstChild);
