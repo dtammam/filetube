@@ -188,6 +188,26 @@ test('moving media re-keys the latch row (id-keyed carrier)', async () => {
   assert.deepEqual(userStore.getWatchedIds(session.user.id), ['v1-moved']);
 });
 
+test('v1.50 gate hardening: a string-typed duration is normalized at staging -- bucket, watchState, and latch all agree', async () => {
+  // Adversarial-seat repro: duration "100" used to coerce through the latch
+  // division while filterByWatchState's strict number check excluded the
+  // same un-flushed entry from its bucket (watchState said watching, the
+  // watching bucket said []). Normalizing once at staging gives every
+  // reader one numeric value.
+  writeDb({ metadata: { v1: seedItem('v1', { duration: 100 }) } });
+  await postProgress('v1', 40, '100'); // hostile: string duration, mid-progress
+
+  const { ids, body } = await fetchIds('watch=watching');
+  assert.deepEqual(ids, ['v1'], 'the un-flushed string-duration ping lands in the watching bucket');
+  assert.equal(body.items[0].watchState, 'watching', 'watchState agrees with the bucket');
+  assert.deepEqual(userStore.getWatchedIds(session.user.id), [], 'no latch at 40%');
+
+  // The latch path uses the same normalized value: 95/100 (item-duration
+  // fallback, never string coercion) latches legitimately.
+  await postProgress('v1', 95, '100');
+  assert.deepEqual(userStore.getWatchedIds(session.user.id), ['v1']);
+});
+
 // KEEP THIS TEST LAST: the users-carrying restore bumps every token_version
 // (the v1.43 CRITICAL-1 floor), killing the suite's patched-fetch cookie --
 // every assertion after the restore goes through userStore directly, but any

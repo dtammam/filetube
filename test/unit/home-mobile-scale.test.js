@@ -114,7 +114,7 @@ test('mobile (v1.45.3): the icon action buttons keep a comfortable minimum tap-t
   assert.ok(Number(minWidthMatch[1]) >= 32, 'tap target should be at least 32px');
 });
 
-test('mobile (v1.45.3): the fit budget — format pills compact + sort label hidden so the nowrap row cannot overflow', () => {
+test('mobile (v1.45.3, title updated v1.50): the fit budget — format pills compact + sort label hidden so the glyph line fits its width budget', () => {
   const body = mobileBlock();
   // The format pills must drop the desktop 58px min-width (compact) and the
   // sort's current-value label must be hidden (caret only) — the two things

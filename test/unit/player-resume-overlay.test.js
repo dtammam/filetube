@@ -204,3 +204,27 @@ test('resolveResumeShortcutAction: never throws on a missing/garbage context', (
   assert.strictEqual(resolveResumeShortcutAction(null), 'none');
   assert.strictEqual(resolveResumeShortcutAction({ overlayVisible: true, key: { bogus: 1 } }), 'none');
 });
+
+// ---- v1.50 gate (QA WARNING): close() must reset the overlay visibility ----
+// Delete / Move / relocate all call window.FileTube.player.close() from
+// OUTSIDE the player chrome, reachable while the "Resume Playback?" prompt
+// is open. close() detaches the host but the module-level resumeOverlay ref
+// lives on -- and the R/S shortcut listener keys its visibility check off
+// `resumeOverlay.style.display`. Without the reset, bare r/s anywhere on the
+// page keeps firing clicks at the torn-down player until the next genuine
+// load(). Source-text lock (no DOM harness in this codebase; the same
+// pattern as the dock()-transition handling this mirrors).
+
+test('close() resets the resume overlay display, exactly as dock() does on its transition', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const src = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'player.js'), 'utf8');
+  const start = src.indexOf('function close() {');
+  assert.notEqual(start, -1, 'expected close() in player.js');
+  // Bounded to close()'s own body: it ends where the next top-level function
+  // in the IIFE begins.
+  const end = src.indexOf('\n  function ', start + 10);
+  const body = src.slice(start, end === -1 ? src.length : end)
+    .split('\n').filter((line) => !/^\s*\/\//.test(line)).join('\n');
+  assert.match(body, /resumeOverlay\.style\.display = 'none'/, 'close() must hide the resume overlay so the R/S listener can never fire against a closed player');
+});

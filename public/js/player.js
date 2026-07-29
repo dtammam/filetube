@@ -5560,6 +5560,15 @@ if (typeof module !== 'undefined' && module.exports) {
     // art single-tap toggle so it can never fire on the (about to be
     // detached) persistent element after close().
     cancelPendingArtTap();
+    // v1.50 gate (QA WARNING): reset the resume overlay's visibility here,
+    // exactly as dock() already does on its own transition. Without this, a
+    // close() while the "Resume Playback?" prompt is open (Delete / Move /
+    // relocate all call close() from outside the player chrome) leaves
+    // `resumeOverlay.style.display === 'flex'` on the DETACHED host forever
+    // -- and the R/S shortcut listener keys its visibility check off exactly
+    // that, so bare r/s anywhere on the page would keep firing clicks at a
+    // torn-down player until the next genuine load().
+    if (resumeOverlay) resumeOverlay.style.display = 'none';
     exitAudioExpand(); // FR-1 (T1, v1.22.2, AC5): never leave a closed player's host expanded for a future re-open
     // FIX D (player-hardening round, hygiene): clear the native-controls
     // marker + attribute here too, mirroring teardownMediaState()'s identical

@@ -7882,12 +7882,25 @@ app.post('/api/progress', (req, res) => {
   if (!item) {
     return res.status(404).json({ error: 'Media not found' });
   }
+  // v1.50 gate (adversarial WARNING): normalize `duration` ONCE, up front,
+  // with the same finite-number-or-fallback posture the flush's num() has
+  // always applied. Before this, a crafted string duration ("100") was
+  // truthy enough to ride the staging fallback and coerce through the latch
+  // division, while filterByWatchState's strict number check excluded the
+  // same un-flushed entry from its bucket -- three readers, two answers.
+  // Now every reader (latch, watch buckets, flush, progress overlay) sees
+  // one numeric value. For every numeric-duration caller (the real client
+  // sends video.duration) this is byte-identical to the old
+  // `duration || item.duration || 0`.
+  const effDuration = (typeof duration === 'number' && Number.isFinite(duration) && duration > 0)
+    ? duration
+    : (item.duration || 0);
   pendingProgress.set(pendingProgressKey(req.user.id, id), {
     userId: req.user.id,
     mediaId: id,
     value: {
       timestamp,
-      duration: duration || item.duration || 0,
+      duration: effDuration,
       updatedAt: new Date().toISOString()
     }
   });
@@ -7901,7 +7914,6 @@ app.post('/api/progress', (req, res) => {
   // the one durable-write exception to this handler's "no disk I/O" rule,
   // and it is bounded: one indexed point SELECT per ping while past the
   // threshold, one tiny INSERT ever (markWatched is check-then-insert).
-  const effDuration = duration || item.duration || 0;
   if (effDuration > 0 && (timestamp / effDuration) * 100 >= videoQuery.WATCHED_PCT) {
     userStore.markWatched(req.user.id, id, new Date().toISOString());
   }
