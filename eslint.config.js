@@ -98,6 +98,8 @@ module.exports = [
         getCommentCount: 'readonly',
         getMockSubCount: 'readonly',
         getMockViews: 'readonly',
+        // v1.52: the instant-watch pure paint-plan builder (common.js).
+        deriveWatchPaintPlan: 'readonly',
         getStarRating: 'readonly',
         rankRelated: 'readonly',
         resolveAudioArtUrl: 'readonly',

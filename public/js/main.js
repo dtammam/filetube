@@ -225,6 +225,25 @@ if (typeof module !== 'undefined' && module.exports) {
     const videoGrid = root.querySelector('#video-grid');
     const welcomeMessage = root.querySelector('#welcome-message');
     const libraryContent = root.querySelector('#library-content');
+
+    // v1.52 instant watch: stash the tapped card's in-memory item (plus this
+    // view's folderSettings) immediately before the document-level anchor
+    // handler navigates -- a bubble listener on the GRID fires first
+    // (target -> root order). The watch view consumes it and paints
+    // synchronously, so the metadata never flashes placeholders. Bound
+    // through this view's own { signal } (the v1.45 leak discipline);
+    // `isConnected` guards the cached-home case where destroy() was skipped.
+    videoGrid.addEventListener('click', (e) => {
+      if (!videoGrid.isConnected) return;
+      const cardLink = e.target && e.target.closest && e.target.closest('a[href*="/watch.html?v="]');
+      if (!cardLink) return;
+      let id = null;
+      try { id = new URL(cardLink.href, window.location.origin).searchParams.get('v'); } catch { /* malformed href -- no seed */ }
+      const item = id ? currentItems.find((it) => it && it.id === id) : null;
+      if (item && window.FileTube && window.FileTube.stashWatchSeed) {
+        window.FileTube.stashWatchSeed(item, { folderSettings });
+      }
+    }, { signal });
     // #sidebar-folders-list/#search-input live in the PERSISTENT shell
     // (outside #view-root), not this view's own root. The search box's
     // click/keypress LISTENERS are now shell-owned (bound once at boot by

@@ -736,6 +736,22 @@ if (typeof module !== 'undefined' && module.exports) {
     const sidebarFoldersList = document.getElementById('sidebar-folders-list');
     const relatedContainer = root.querySelector('#related-files-container');
 
+    // v1.52 instant watch: related-card hops seed the next watch view (the
+    // main.js grid pattern -- bubble fires before the document-level anchor
+    // handler; items come from this view's own list fetches).
+    if (relatedContainer) {
+      relatedContainer.addEventListener('click', (e) => {
+        const cardLink = e.target && e.target.closest && e.target.closest('a[href*="/watch.html?v="]');
+        if (!cardLink) return;
+        let id = null;
+        try { id = new URL(cardLink.href, window.location.origin).searchParams.get('v'); } catch { /* no seed */ }
+        const item = id ? watchSeedLookup.get(id) : null;
+        if (item && window.FileTube && window.FileTube.stashWatchSeed) {
+          window.FileTube.stashWatchSeed(item, { folderSettings });
+        }
+      }, { signal });
+    }
+
     // v1.22.0 FR-5 (AC32-AC38): desktop-sidebar channel pins -- a SEPARATE
     // fetch against the module's own gated pin store, independent of
     // initWatch()'s own folder-list fetch/render below: renderPinnedSidebar
@@ -828,6 +844,32 @@ if (typeof module !== 'undefined' && module.exports) {
     // refactor of that DOM node's rendering can no longer silently break the
     // modal's pre-fill.
     let currentChannelName = '';
+    // v1.52 instant watch: id -> full list item, populated by the view's own
+    // list fetches (related + prev/next) so THEIR outbound hops can stash a
+    // seed too. Fresh per view instance like every state above.
+    const watchSeedLookup = new Map();
+
+    // v1.52 instant watch: consume the seed the click surface stashed and
+    // paint SYNCHRONOUSLY -- same frame as the SPA swap, so the common path
+    // (tapping a card in-app) never shows a placeholder frame. Partial seeds
+    // (bell rows) paint what they carry; the markup skeletons cover the rest
+    // until hydration. initWatch()'s detail fetch below re-runs the same
+    // painter with authoritative data.
+    const watchSeed = (window.FileTube && window.FileTube.consumeWatchSeed)
+      ? window.FileTube.consumeWatchSeed(mediaId)
+      : null;
+    if (watchSeed) {
+      if (watchSeed.folderSettings) folderSettings = watchSeed.folderSettings;
+      const seededChannelName = resolveChannelName(watchSeed.item, folderSettings);
+      currentChannelName = seededChannelName;
+      paintMetadata(watchSeed.item, seededChannelName);
+    }
+    // Stars, rating text, and the mock comments derive from the media ID
+    // alone -- they were only ever gated behind two round trips by CALL
+    // ORDER, never by data. Render unconditionally at init so they exist in
+    // frame one on every path (their old initWatch() call sites are gone).
+    renderStarRating();
+    loadComments();
 
     // W1 remediation (v1.16.0): for the DOCKED -> FULL "adopt" path (tapping
     // the docked mini-player while the SAME video is already loaded),
@@ -969,11 +1011,8 @@ if (typeof module !== 'undefined' && module.exports) {
         // 5. Load related sidebar
         loadRelatedFiles();
 
-        // 6. Load comments
-        loadComments();
-
-        // 7. Render the deterministic (read-only) star rating
-        renderStarRating();
+        // (Comments + star rating render at init() now -- v1.52: they are
+        // id-only and belong to frame one, not to the data round trips.)
 
         // 8. Prev/Next (FR-2, T3): derive this video's position in the
         // current home sort order and wire the controls.
@@ -998,6 +1037,8 @@ if (typeof module !== 'undefined' && module.exports) {
         if (mediaTitle) {
           mediaTitle.textContent = 'Error loading file details';
           mediaTitle.style.color = 'var(--yt-red)';
+          // v1.52: error text must not render on a shimmering skeleton bar.
+          mediaTitle.classList.remove('skeleton-shimmer', 'skel-title');
         }
       }
     }
@@ -1037,66 +1078,91 @@ if (typeof module !== 'undefined' && module.exports) {
       el.textContent = source.glyph;
     }
 
-    // Populate metadata to DOM. `channelName` is precomputed by initWatch()
-    // (shared with the persistent player's Media Session setup — see there).
-    function populateMetadata(channelName) {
-      mediaTitle.textContent = mediaData.title;
-      document.title = `${mediaData.title} - FileTube`;
+    // v1.52 instant watch: the ONE metadata painter, callable from the seed
+    // pre-paint (init, synchronous) AND from initWatch()'s hydration -- so
+    // the two can never disagree on how a field renders. Every field write
+    // is GUARDED on the value being present: a partial seed (bell rows)
+    // paints only what it carries, leaving the markup skeletons for the
+    // rest, and hydration fills in behind it. Painting a field strips its
+    // skeleton class. `isFullItem` (list/detail records always carry size +
+    // filePath; partial seeds never do) gates the description block, where
+    // "tags absent" legitimately means "this file HAS none" only on a full
+    // record.
+    function paintMetadata(item, channelName) {
+      // The PURE plan (common.js deriveWatchPaintPlan) decides which fields
+      // render and as what strings; this applier writes the plan verbatim --
+      // seed pre-paint and hydration repaint cannot disagree by construction.
+      const plan = deriveWatchPaintPlan(item, channelName);
+      if (!plan) return;
+      const paintText = (el, value) => {
+        if (!el || value === undefined) return;
+        el.textContent = value;
+        el.classList.remove('skeleton-shimmer');
+      };
+      if (plan.title !== undefined) {
+        paintText(mediaTitle, plan.title);
+        document.title = `${plan.title} - FileTube`;
+      }
+      paintText(viewsCount, plan.viewsLabel);
+      if (plan.channelName !== undefined) {
+        applyAvatarToElement(uploaderAvatar, plan.channelName, plan.channelAvatarUrl);
+        uploaderAvatar.classList.remove('skeleton-shimmer');
+        paintText(uploaderChannelName, plan.channelName);
+        // Creator/uploader name links to THIS item's folder content view
+        // (/?root=<folder>). Re-set (or cleared) every paint so the
+        // SPA-reused node never keeps a stale href from the previous item.
+        if (plan.filePath !== undefined) {
+          const uploaderLinkHref = resolveUploaderLinkHref({ filePath: plan.filePath });
+          if (uploaderLinkHref) uploaderChannelName.href = uploaderLinkHref;
+          else uploaderChannelName.removeAttribute('href');
+        }
+        paintText(uploaderSubsCount, plan.subsLabel);
+      }
+      paintText(addedDateText, plan.dateLabel);
+      paintText(fileSizeText, plan.sizeLabel);
+      paintText(fileTypeText, plan.typeLabel);
+      paintText(filePathText, plan.filePath);
 
-      viewsCount.textContent = resolveViewCountLabel({ ...mediaData, id: mediaId }, { detailed: true });
-      // F1: channelAvatarUrl is always null/absent today (C6/T11 populate it
-      // in Wave 3) -- resolveAvatarSource gracefully falls back to the
-      // generated avatar until then.
-      applyAvatarToElement(uploaderAvatar, channelName, mediaData.channelAvatarUrl);
-      uploaderChannelName.textContent = channelName;
-      // Creator/uploader name links to THIS item's folder content view
-      // (/?root=<folder>) -- routed by the shell's global anchor handler like a
-      // sidebar-folder link. Re-set (or cleared) every load so the SPA-reused
-      // node never keeps a stale href from the previous item.
-      const uploaderLinkHref = resolveUploaderLinkHref({ filePath: mediaData.filePath });
-      if (uploaderLinkHref) uploaderChannelName.href = uploaderLinkHref;
-      else uploaderChannelName.removeAttribute('href');
-      uploaderSubsCount.textContent = `${getMockSubCount(channelName)} subscribers`;
-
-      addedDateText.textContent = formatRelativeTime(mediaData.addedAt);
-      fileSizeText.textContent = formatFileSize(mediaData.size);
-      // File type from the extension (e.g. ".mp4" -> "MP4")
-      fileTypeText.textContent = (mediaData.ext || '').replace('.', '').toUpperCase() || 'Unknown';
-      filePathText.textContent = mediaData.filePath;
-
-      // FR-3 (v1.19.0): wire the Download button per media load -- the SPA
-      // reuses this same anchor node across in-app navigations, so both
-      // attributes are re-set every time populateMetadata() runs (never left
-      // stale from a previous item). The actual save is authoritative on the
-      // server's `Content-Disposition: attachment` header (works for both
-      // audio and video, and for a needsTranscode item it downloads the
-      // ORIGINAL file, never the transcode -- see server.js); the anchor's
-      // `download` attribute here is just a belt-and-suspenders filename hint
-      // for browsers that honor it (mainly desktop -- iOS Safari 13+ relies
-      // on the Content-Disposition header instead, per the design note).
+      // FR-3 (v1.19.0): wire the Download button per paint -- the SPA reuses
+      // this anchor node, so both attributes are re-set (never left stale
+      // from a previous item). The save is authoritative on the server's
+      // Content-Disposition header; the `download` attribute is a filename
+      // hint for browsers that honor it.
       if (downloadBtn) {
-        downloadBtn.href = `/video/${encodeURIComponent(mediaData.id)}?download=1`;
-        downloadBtn.setAttribute('download', `${mediaData.title || 'download'}${mediaData.ext || ''}`);
+        downloadBtn.href = `/video/${encodeURIComponent(plan.id)}?download=1`;
+        downloadBtn.setAttribute('download', `${item.title || 'download'}${item.ext || ''}`);
       }
 
-      renderVideoDescription(mediaData.tags);
-      renderEmbeddedTags(mediaData.tags);
-      // Measure once the (async) Roboto webfont has loaded, so line wrapping — and
-      // thus the overflow check — reflects the final font, not the fallback.
-      if (document.fonts && document.fonts.ready) {
-        document.fonts.ready.then(setupDescriptionToggle);
-      } else {
-        setupDescriptionToggle();
+      if (plan.isFullItem) {
+        renderVideoDescription(item.tags, item.title);
+        renderEmbeddedTags(item.tags, item.title);
+        // Measure once the (async) webfont has loaded, so line wrapping --
+        // and thus the overflow check -- reflects the final font.
+        if (document.fonts && document.fonts.ready) {
+          document.fonts.ready.then(setupDescriptionToggle);
+        } else {
+          setupDescriptionToggle();
+        }
       }
+    }
+
+    // Hydration entry, unchanged contract for initWatch(): paints from the
+    // resolved mediaData.
+    function populateMetadata(channelName) {
+      paintMetadata(mediaData, channelName);
     }
 
     // v1.48 item 1: write the video's own description into the box. `textContent`
     // (never innerHTML) because this is attacker-influenced text read straight out
     // of a downloaded file's metadata tags -- and setting it to '' is what makes
     // `.video-description:empty` collapse the element for files with none.
-    function renderVideoDescription(tags) {
+    function renderVideoDescription(tags, title) {
       if (!descriptionParagraph) return;
-      descriptionParagraph.textContent = resolveDisplayDescription(tags, mediaData && mediaData.title);
+      descriptionParagraph.textContent = resolveDisplayDescription(tags, title);
+      // v1.52: the cold-load skeleton lines under the description collapse
+      // the moment a real (possibly empty) description is painted.
+      const descSkel = root.querySelector('#video-desc-skel');
+      if (descSkel) descSkel.hidden = true;
     }
 
     // Only offer "Show more" when the description overflows by a meaningful amount;
@@ -1126,10 +1192,10 @@ if (typeof module !== 'undefined' && module.exports) {
     // Additive: render any embedded file metadata (title/artist are shown elsewhere
     // so they're skipped) under the file-path block. Shows nothing if there are no
     // usable tags — the existing UI is untouched in that case.
-    function renderEmbeddedTags(tags) {
+    function renderEmbeddedTags(tags, itemTitle) {
       const el = root.querySelector('#embedded-tags');
       if (!el) return;
-      const title = (mediaData.title || '').toLowerCase();
+      const title = (itemTitle || '').toLowerCase();
       // Skip title/artist (shown elsewhere) and any tag whose value just repeats the
       // title. Cap very long values so a huge embedded tag can't blow out layout.
       //
@@ -1170,11 +1236,18 @@ if (typeof module !== 'undefined' && module.exports) {
         const res = await fetch(`/api/videos?limit=${FULL_LIST_QUERY_LIMIT}`);
         const data = await res.json();
         const allFiles = Array.isArray(data.items) ? data.items : [];
+        // v1.52: every fetched item can seed an outbound hop.
+        for (const it of allFiles) { if (it && it.id) watchSeedLookup.set(it.id, it); }
 
         // Fuzzy-similar ranking (title/filename token overlap, shared folder,
         // shared channel/artist), falling back to most-recent when thin. See
         // docs/exec-plans/active/2026-07-05-audio-art-and-related.md ("Feature 2").
         const related = rankRelated({ ...mediaData, id: mediaId }, allFiles);
+
+        // v1.52: the header appears together with its content (never over an
+        // empty list).
+        const relatedHeader = root.querySelector('#related-header');
+        if (relatedHeader) relatedHeader.hidden = false;
 
         if (related.length === 0) {
           relatedContainer.innerHTML = '<div style="color: var(--text-secondary); font-style: italic;">No other files found.</div>';
@@ -1203,6 +1276,8 @@ if (typeof module !== 'undefined' && module.exports) {
 
       } catch (e) {
         console.error('Error loading related files:', e);
+        const relatedHeader = root.querySelector('#related-header');
+        if (relatedHeader) relatedHeader.hidden = false;
         relatedContainer.innerHTML = '<div style="color: var(--yt-red);">Error loading related files.</div>';
       }
     }
@@ -1260,6 +1335,8 @@ if (typeof module !== 'undefined' && module.exports) {
           const res = await fetch(buildContextListUrl(browseCtx, FULL_LIST_QUERY_LIMIT));
           const data = await res.json();
           const allFiles = Array.isArray(data.items) ? data.items : [];
+          // v1.52: prev/next hops seed from these items (navigateToWatch).
+          for (const it of allFiles) { if (it && it.id) watchSeedLookup.set(it.id, it); }
           orderedIds = allFiles.map((it) => it && it.id);
         } else {
           const folder = parentFolder(mediaData && mediaData.filePath);
@@ -1269,6 +1346,8 @@ if (typeof module !== 'undefined' && module.exports) {
           const res = await fetch(`${baseUrl}${separator}limit=${FULL_LIST_QUERY_LIMIT}`);
           const data = await res.json();
           const allFiles = Array.isArray(data.items) ? data.items : [];
+          // v1.52: prev/next hops seed from these items (navigateToWatch).
+          for (const it of allFiles) { if (it && it.id) watchSeedLookup.set(it.id, it); }
           // v1.34: same precedence as the home grid (main.js) -- explicit
           // per-browser pick > the defaultSort setting > 'release-date' (the
           // server default). Keeps prev/next stepping through the SAME order
@@ -1730,6 +1809,12 @@ if (typeof module !== 'undefined' && module.exports) {
         ? '&ctx=' + encodeURIComponent(rawBrowseCtx)
         : (listContext ? '&list=' + encodeURIComponent(listContext) : '');
       const url = '/watch.html?v=' + encodeURIComponent(id) + ctxSuffix;
+      // v1.52 instant watch: prev/next (and autoplay's shared path) seed the
+      // next view when the item is in this view's lookup.
+      const seedItem = watchSeedLookup.get(id);
+      if (seedItem && window.FileTube && window.FileTube.stashWatchSeed) {
+        window.FileTube.stashWatchSeed(seedItem, { folderSettings });
+      }
       if (window.FileTube && typeof window.FileTube.navigate === 'function') {
         window.FileTube.navigate(url);
       } else {

@@ -1907,6 +1907,79 @@ function injectSubscriptionsNavLinkIfEnabled() {
     .catch(() => { /* network/parse failure -- fail closed, inject nothing */ });
 }
 
+// ---- v1.52 instant watch: the seed-from-card stash --------------------------
+//
+// The tapped card already holds everything the watch page's above-the-fold
+// metadata renders (recon-verified field-by-field: the list endpoint returns
+// the FULL metadata record). A click surface stashes its in-memory item here
+// immediately before navigating; watch's init() consumes it and paints
+// SYNCHRONOUSLY during the SPA swap -- zero placeholder frames on the common
+// path. Single-entry and in-memory only (the homeViewCache posture): a real
+// page load starts null, so deep links take the skeleton path. Consumed on
+// read; rejected on id mismatch (a stash that raced a different navigation
+// must never paint the wrong video's data) and after 10s (a stash whose
+// navigation never happened). Top-level (not router-closure) so the bell
+// rows below and node:test can both reach it; exposed on window.FileTube for
+// main.js/watch.js/player.js writers.
+//
+// PARTIAL seeds are legal (the notification bell rows carry only
+// title/channel/thumbnail): the painter paints what is present and leaves
+// skeletons for the rest -- `item.id` is the only required field.
+const WATCH_SEED_MAX_AGE_MS = 10 * 1000;
+let watchSeedEntry = null;
+
+function stashWatchSeed(item, extras) {
+  if (!item || typeof item.id !== 'string' || item.id === '') return false;
+  watchSeedEntry = {
+    item,
+    folderSettings: (extras && extras.folderSettings) || null,
+    ts: Date.now(),
+  };
+  return true;
+}
+
+function consumeWatchSeed(mediaId) {
+  const s = watchSeedEntry;
+  watchSeedEntry = null; // single-shot regardless of outcome
+  if (!s || !mediaId || s.item.id !== mediaId) return null;
+  if (Date.now() - s.ts > WATCH_SEED_MAX_AGE_MS) return null;
+  return s;
+}
+
+// v1.52 instant watch: the PURE half of the watch metadata painter -- which
+// fields can render from this item, and as what strings. The DOM applier in
+// watch.js consumes this plan verbatim, so the seed pre-paint and the
+// hydration repaint literally cannot disagree on a rendered value. Every
+// field is GUARDED on its inputs being present: a partial seed (bell rows)
+// yields a partial plan and the markup skeletons cover the rest. The views
+// label needs a captured count OR the size the mock hashes -- a defaulted
+// size would render a DIFFERENT mock number than hydration recomputes (a
+// visible rewrite, the class this wave exists to kill). `isFullItem` (list/
+// detail records always carry size + filePath, partial seeds never do)
+// gates description rendering, where "tags absent" means "has none" only on
+// a full record. Exported for node:test at divergent fixture spellings.
+function deriveWatchPaintPlan(item, channelName) {
+  if (!item || typeof item.id !== 'string' || item.id === '') return null;
+  const plan = { id: item.id };
+  plan.isFullItem = typeof item.size === 'number' && typeof item.filePath === 'string';
+  if (typeof item.title === 'string' && item.title !== '') plan.title = item.title;
+  if (Number.isInteger(item.sourceViewCount) || typeof item.size === 'number') {
+    plan.viewsLabel = resolveViewCountLabel({ ...item, id: item.id }, { detailed: true });
+  }
+  if (typeof channelName === 'string' && channelName !== '') {
+    plan.channelName = channelName;
+    plan.channelAvatarUrl = typeof item.channelAvatarUrl === 'string' ? item.channelAvatarUrl : '';
+    plan.subsLabel = `${getMockSubCount(channelName)} subscribers`;
+  }
+  if (typeof item.addedAt === 'number') plan.dateLabel = formatRelativeTime(item.addedAt);
+  if (typeof item.size === 'number') plan.sizeLabel = formatFileSize(item.size);
+  if (typeof item.ext === 'string') {
+    plan.typeLabel = (item.ext || '').replace('.', '').toUpperCase() || 'Unknown';
+  }
+  if (typeof item.filePath === 'string') plan.filePath = item.filePath;
+  return plan;
+}
+
 // ---- v1.51: the notification bell ------------------------------------------
 //
 // YouTube-style bell in the header's top-right, on every shell that has the
@@ -2105,6 +2178,16 @@ function injectNotificationBellIfEnabled() {
           dot.className = 'notif-row-dot';
           a.appendChild(dot);
           a.addEventListener('click', () => {
+            // v1.52: partial seed -- the row model has title/channel/avatar/
+            // thumbnail in hand; the watch painter fills these in frame one
+            // and skeletons the rest until hydration.
+            stashWatchSeed({
+              id: m.mediaId,
+              title: m.title,
+              channelName: m.channelLabel === 'Library' ? '' : m.channelLabel,
+              channelAvatarUrl: m.channelAvatarUrl,
+              hasThumbnail: Boolean(m.thumbnailUrl),
+            });
             // Fire-and-forget mark-read; keepalive survives a full-load nav
             // (stats et al). The SPA router handles the actual navigation.
             fetch('/api/notifications/read', {
@@ -4877,6 +4960,9 @@ if (typeof window !== 'undefined') {
   window.FileTube.registerView = registerView;
   window.FileTube.navigate = navigate;
   window.FileTube.bootRouter = bootRouter;
+  // v1.52 instant watch: click surfaces stash, watch's init consumes.
+  window.FileTube.stashWatchSeed = stashWatchSeed;
+  window.FileTube.consumeWatchSeed = consumeWatchSeed;
   // v1.44 T12: the Settings bottom-bar editor drives these.
   window.FileTube.applyBottomNavCustomization = applyBottomNavCustomization;
   window.FileTube.readBottomNavConfig = readBottomNavConfig;
@@ -8135,5 +8221,8 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.51: the notification bell's pure decisions (the DOM injector is the
     // usual untested-by-necessity thin shell around them).
     shouldInjectNotificationBell, formatNotificationBadge, buildNotificationRowModel,
+    // v1.52: the instant-watch seed stash (single-entry, id-matched, aged) +
+    // the pure paint-plan builder the watch painter applies verbatim.
+    stashWatchSeed, consumeWatchSeed, deriveWatchPaintPlan,
   };
 }
