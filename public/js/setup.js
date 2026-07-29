@@ -676,6 +676,10 @@ async function loadAutomationSettings() {
     // the server's own default.
     const relocateHydratedCheck = document.getElementById('relocate-hydrated-check');
     if (relocateHydratedCheck) relocateHydratedCheck.checked = s.relocateHydratedImports !== false;
+    // v1.51: the notification bell's instance toggle -- default-on, so the
+    // prefill mirrors relocateHydratedImports' `!== false` posture.
+    const notificationsEnabledCheck = document.getElementById('notifications-enabled-check');
+    if (notificationsEnabledCheck) notificationsEnabledCheck.checked = s.notificationsEnabled !== false;
     // v1.34 T4: custom-vs-native mobile video controls, OFF (native) by default.
     const mobileCustomPlayerCheck = document.getElementById('mobile-custom-player-check');
     if (mobileCustomPlayerCheck) mobileCustomPlayerCheck.checked = !!s.mobileCustomPlayer;
@@ -1228,6 +1232,15 @@ function wireStaticControls(signal) {
     relocateHydratedCheck.addEventListener('change', (e) => {
       saveAutomationSetting('relocateHydratedImports', e.target.checked,
         document.getElementById('relocate-hydrated-error'));
+    }, { signal });
+  }
+
+  // v1.51: notification-bell toggle -- same pattern as relocateHydratedImports.
+  const notificationsEnabledCheck = document.getElementById('notifications-enabled-check');
+  if (notificationsEnabledCheck) {
+    notificationsEnabledCheck.addEventListener('change', (e) => {
+      saveAutomationSetting('notificationsEnabled', e.target.checked,
+        document.getElementById('notifications-enabled-error'));
     }, { signal });
   }
 
