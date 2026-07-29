@@ -93,7 +93,11 @@ test('watch.js: the Move button carries an .icon-folder glyph (built via DOM met
 });
 
 test('watch.js: the folders list is READ from the SAME GET /api/config fetch initWatch() already makes for the sidebar -- no second /api/config call', () => {
-  const configFetchCount = (watchJs.match(/fetch\('\/api\/config'\)/g) || []).length;
+  // v1.52 gate round 2: the fetch now carries the view's abort signal
+  // (`fetch('/api/config', { signal })`) so a dead view's continuation can
+  // never touch the live player -- the lock keeps its intent (exactly ONE
+  // config fetch, no duplicates) with the argument list matched loosely.
+  const configFetchCount = (watchJs.match(/fetch\('\/api\/config'/g) || []).length;
   assert.strictEqual(configFetchCount, 1, 'expected exactly one GET /api/config fetch in watch.js');
   assert.match(watchJs, /currentFolders = configData\.folders \|\| \[\];/);
 });

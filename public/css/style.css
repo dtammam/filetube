@@ -2156,7 +2156,11 @@ html.reader-immersive .app-container { padding-top: 0; }
 .uploader-avatar {
   width: 48px;
   height: 48px;
-  background-color: var(--yt-red);
+  /* v1.52: neutral until painted -- the old hardcoded --yt-red square with a
+     literal "F" was one of the placeholder flashes. The painter always sets
+     an explicit backgroundColor (generated branch) or clears it behind an
+     <img> (url branch), so this base tone only ever shows pre-paint. */
+  background-color: var(--bg-secondary);
   color: white;
   border-radius: var(--radius);
   display: flex;
@@ -7564,6 +7568,94 @@ body.ft-css-fullscreen .bottom-nav {
    phone is never offered a keyboard reference it cannot use. Both halves are
    needed -- JS alone would leave a dead button, CSS alone would leave the key
    live on a narrow window. */
+/* ---- v1.52 instant watch: watch-page text skeletons -----------------------
+   Sizing lives on COMPOUND selectors (.skeleton-shimmer.skel-*) so the
+   painter only ever removes the ONE shimmer class and the forced dimensions
+   vanish with it -- painted text keeps its natural layout classes. Tokens
+   only (--bg-secondary via .skeleton-shimmer), so every era skin inherits.
+   The reduced-motion carve-out at the .skeleton-shimmer definition already
+   covers these. */
+
+.skeleton-shimmer.skel-title {
+  display: block;
+  height: 26px;
+  width: 70%;
+  max-width: 480px;
+  border-radius: 4px;
+}
+
+.skeleton-shimmer.skel-w60,
+.skeleton-shimmer.skel-w120,
+.skeleton-shimmer.skel-w140,
+.skeleton-shimmer.skel-w200 {
+  display: inline-block;
+  vertical-align: middle;
+  height: 13px;
+  border-radius: 4px;
+}
+
+.skeleton-shimmer.skel-w60 { width: 60px; }
+.skeleton-shimmer.skel-w120 { width: 120px; }
+.skeleton-shimmer.skel-w140 { width: 140px; }
+.skeleton-shimmer.skel-w200 { width: 220px; }
+
+/* The subscriber badge is a bordered chip -- an empty chip reads as broken,
+   so it simply does not exist until painted. */
+.uploader-subs:empty {
+  display: none;
+}
+
+/* Cold-load description skeleton lines (hidden by the first real paint). */
+.watch-desc-skel[hidden] {
+  display: none;
+}
+
+.watch-desc-skel .skel-line {
+  height: 12px;
+  width: 90%;
+  margin: 8px 0;
+  border-radius: 4px;
+}
+
+.watch-desc-skel .skel-line.short {
+  width: 55%;
+}
+
+/* v1.52 T2: the reserved player frame. #player-slot is otherwise an empty,
+   ZERO-HEIGHT div until player.load() mounts the host -- the page's tallest
+   element used to appear in one jump after the network round trips,
+   shoving everything below it down. While empty, the slot reserves the
+   default 16/9 box with the same outer geometry as .player-container
+   (style.css ~1476), in the same #000 the player letterboxes with -- so
+   the mount swaps content INSIDE an identical frame instead of creating
+   one. Seeded full loads mount the real player in frame one and never
+   show this; cold/partial paths hold it until hydration. Cold PORTRAIT
+   items correct 16/9 -> portrait when data lands (disclosed residual --
+   only the no-seed path). */
+/* Scoped to the WATCH layout (gate S1): read.html's reader bar carries the
+   same #player-slot id, provably never empty-while-visible today -- but the
+   id-specificity rule would beat the reader's own classes if that ever
+   changed (the v1.50.5 same-slot lesson), so the reservation names its one
+   intended surface. */
+.watch-container #player-slot:empty {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: #000;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  margin-bottom: 16px;
+}
+
+@media (max-width: 768px) {
+  /* Mirror the mobile portrait height cap the mounted player gets
+     (.player-container max-height: 45vh) so the reserved frame and the
+     real frame agree on phones. */
+  .watch-container #player-slot:empty {
+    max-height: 45vh;
+  }
+}
+
 /* ---- v1.51: the notification bell ---------------------------------------
    Bell button lives inside .header-right (desktop) and an absolutely-
    positioned top-right slot on mobile (the mobile header hides

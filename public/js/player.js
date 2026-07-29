@@ -3296,6 +3296,19 @@ if (typeof module !== 'undefined' && module.exports) {
             var neighbors = computeNeighbors(orderedIds, endedId);
             if (!neighbors.nextId) return; // end of the order -- no wrap, no-op
             if (window.FileTube && typeof window.FileTube.navigate === 'function') {
+              // v1.52 gate C1 (both seats): the next item's FULL record is in
+              // hand -- seed the next watch view so the most passive hop in
+              // the app (autoplay advance) paints instantly instead of taking
+              // the cold-skeleton path. No folderSettings here (the player has
+              // none); a folder-display-name mapping difference is corrected
+              // at hydration, disclosed in the exec plan.
+              if (typeof window.FileTube.stashWatchSeed === 'function') {
+                var nextItem = null;
+                for (var vi = 0; vi < videos.length; vi++) {
+                  if (videos[vi] && videos[vi].id === neighbors.nextId) { nextItem = videos[vi]; break; }
+                }
+                if (nextItem) window.FileTube.stashWatchSeed(nextItem);
+              }
               // FR-4b (T3): arm the one-shot flag IMMEDIATELY before
               // navigating -- consumed by the next video's own
               // handleResumePlayback (via shouldShowResumeOverlay) to skip
@@ -5148,8 +5161,8 @@ if (typeof module !== 'undefined' && module.exports) {
       // neutral BEFORE setupForMedia assigns the new source, so the
       // OUTGOING item's image never lingers/flashes during the transition
       // (stale poster + FOUC on Next). `removeAttribute('poster')` clears
-      // the audio branch's `/thumbnail/<prevId>` poster (setupForMedia only
-      // ever sets `.poster` for audio); `removeAttribute('src')` + `load()`
+      // BOTH poster writers -- the audio branch's artUrl/thumbnail poster
+      // and (v1.52) the video branch's thumbnail poster; `removeAttribute('src')` + `load()`
       // drops the previous video's last-decoded frame, resetting the
       // element to the media-empty state, which paints nothing -- revealing
       // the existing `#000` `.player-container` background beneath (the
@@ -5486,6 +5499,16 @@ if (typeof module !== 'undefined' && module.exports) {
       mediaPlayer.style.display = 'block';
       if (skipControls) skipControls.style.display = 'block';
 
+      // v1.52 instant watch: the item's thumbnail as the video poster --
+      // the frame shows a real image the instant the (aspect-reserved)
+      // player mounts instead of a black box until first-frame decode.
+      // Audio keeps its own artUrl poster branch above; teardown already
+      // strips `poster` on every unload (see teardownMediaState), so a
+      // thumbnail can never bleed onto the next item.
+      if (data.hasThumbnail === true) {
+        mediaPlayer.poster = '/thumbnail/' + encodeURIComponent(id);
+      }
+
       if (data.needsTranscode) {
         if (!isMobileViewport()) {
           liveMode = true;
@@ -5580,6 +5603,15 @@ if (typeof module !== 'undefined' && module.exports) {
       var url = (currentData && typeof currentData.readerHref === 'string' && currentData.readerHref)
         ? currentData.readerHref
         : '/watch.html?v=' + encodeURIComponent(currentId);
+      // v1.52 gate C1 (both seats): seed the watch metadata from the
+      // player's own in-memory data -- the video adopts instantly on this
+      // path, and pre-fix the TEXT below it sat in skeletons for two round
+      // trips while the media audibly played. Watch route only (a
+      // readerHref return goes to the reader/music surfaces, not watch).
+      if (!(currentData && currentData.readerHref) && currentData
+        && window.FileTube && typeof window.FileTube.stashWatchSeed === 'function') {
+        window.FileTube.stashWatchSeed(Object.assign({}, currentData, { id: currentId }));
+      }
       if (window.FileTube && typeof window.FileTube.navigate === 'function') window.FileTube.navigate(url);
       else window.location.href = url;
     });
@@ -5764,6 +5796,20 @@ if (typeof module !== 'undefined' && module.exports) {
     getState: function () { return state; },
     isLoopEnabled: isLoopEnabled, // FR-7 (TF, v1.22.0) -- watch.js's setupLoopToggle reads/writes through these
     setLoop: setLoop,
+    // v1.52 instant watch: the late-detail seam. A seeded pre-load starts
+    // the real media two round trips early from LIST data, which carries
+    // everything EXCEPT the server-resolved chapters (manual > embedded >
+    // description precedence lives in server.js resolveItemChapters).
+    // Hydration hands them in here; a genuine (non-preloaded) load never
+    // needs this (its load data already carried them). Id-guarded so a
+    // stale hydration for a since-navigated-away video can never write
+    // chapters onto the wrong media -- and it must NEVER touch src/
+    // currentTime (that is the whole point of not re-calling load()).
+    applyLateDetail: function (id, data) {
+      if (!id || id !== currentId || !data) return false;
+      if (Array.isArray(data.chapters)) applyChaptersForMedia(data);
+      return true;
+    },
   };
   Object.defineProperty(api, 'currentId', {
     enumerable: true,

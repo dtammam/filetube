@@ -72,11 +72,18 @@ test('resolveWatchEntryReparentAction: nothing currently loaded (null currentId)
 
 // ---- Runtime wiring: the mechanism actually fixes what it claims ----------
 
-test('init(): the reparent branch calls window.FileTube.player.expand(playerSlot) -- a pure reparent, matching the adopt path\'s own player.expand call, never player.load (no restart of the OLD video)', () => {
+test('init(): the reparent branch calls window.FileTube.player.expand(playerSlot) -- a pure reparent -- EXCEPT when a full seed pre-load supersedes it (v1.52 gate round 2)', () => {
+  // v1.52 gate round 2 (adversarial W-B): the eager expand is now gated on
+  // `!canSeedPreload` -- when the tapped card's full seed is about to
+  // genuinely LOAD the new video in the same synchronous frame, keeping the
+  // OLD video playing under the NEW video's painted title was an
+  // audio/metadata mismatch. The lock keeps its original intent for the
+  // no-seed case (pure reparent, never a load of the OLD video) and now
+  // also pins the carve-out condition.
   assert.match(
     watchJs,
-    /entryReparentAction === 'reparent'\) \{[\s\S]{0,700}?window\.FileTube\.player\.expand\(playerSlot\);/,
-    'expected the reparent branch to call window.FileTube.player.expand(playerSlot)'
+    /entryReparentAction === 'reparent' && !canSeedPreload\) \{[\s\S]{0,900}?window\.FileTube\.player\.expand\(playerSlot\);/,
+    'expected the reparent branch (no-seed case) to call window.FileTube.player.expand(playerSlot)'
   );
 });
 

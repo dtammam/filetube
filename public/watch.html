@@ -187,11 +187,17 @@
           </div>
 
           <!-- Video Details -->
-          <h1 class="watch-title" id="media-title">Loading title...</h1>
+          <!-- v1.52 instant watch: NO literal placeholder text anywhere in
+               this view (test-locked, and the lock counts comments too --
+               anything in this fragment is re-parsed and shippable on every
+               SPA hop). Every field is painted synchronously from the click
+               surface's seed (common path) or wears a neutral skeleton until
+               hydration (cold loads). -->
+          <h1 class="watch-title skeleton-shimmer skel-title" id="media-title"></h1>
           
           <div class="watch-action-bar">
             <div>
-              <span class="views-count" id="views-count">0 views</span>
+              <span class="views-count skeleton-shimmer skel-w120" id="views-count"></span>
             </div>
             
             <div class="watch-actions">
@@ -242,7 +248,7 @@
           <!-- Uploader details -->
           <div class="uploader-info-panel">
             <div class="uploader-profile">
-              <div class="uploader-avatar" id="uploader-avatar-letter">F</div>
+              <div class="uploader-avatar skeleton-shimmer" id="uploader-avatar-letter"></div>
               <div>
                 <!-- v1.22.0 FR-3 (AC23-27): a real <a>, not a <div> -- no
                      default `href` so, with the module off or no resolvable
@@ -251,8 +257,8 @@
                      setupSubscribeButton() once the module-enabled probe
                      resolves; `.textContent` is set by populateMetadata()
                      exactly as before (unchanged, XSS-safe). -->
-                <a class="uploader-channel-link" id="uploader-channel-name">Folder uploader</a>
-                <div class="uploader-subs" id="uploader-subs-count">10.5K subscribers</div>
+                <a class="uploader-channel-link skeleton-shimmer skel-w140" id="uploader-channel-name"></a>
+                <div class="uploader-subs" id="uploader-subs-count"></div>
               </div>
             </div>
             <div>
@@ -268,7 +274,7 @@
           <!-- Description Box -->
           <div class="description-container">
             <div class="description-meta">
-              Added <span id="added-date-text">unknown date</span> &bull; File Size: <span id="file-size-text">0 MB</span> &bull; Type: <span id="file-type-text">—</span>
+              Added <span id="added-date-text" class="skeleton-shimmer skel-w60"></span> &bull; File Size: <span id="file-size-text" class="skeleton-shimmer skel-w60"></span> &bull; Type: <span id="file-type-text" class="skeleton-shimmer skel-w60"></span>
             </div>
             <!-- v1.48 item 1 (Dean, "full description of the video pulled").
                  The video's OWN description now leads this box and is the
@@ -282,6 +288,12 @@
                  layout entirely) for files carrying no description, so an
                  ordinary local file's box looks exactly as it did pre-v1.48. -->
             <div class="description-text video-description" id="video-description"></div>
+            <!-- v1.52: cold-load description skeleton; hidden by the first real
+                 renderVideoDescription paint (seeded paints hide it in frame one). -->
+            <div id="video-desc-skel" class="watch-desc-skel" aria-hidden="true">
+              <div class="skeleton-shimmer skel-line"></div>
+              <div class="skeleton-shimmer skel-line short"></div>
+            </div>
             <!-- GATE FIX (adversarial WARNING W2): "Show more" sits IMMEDIATELY
                  after the element it expands. It used to be the last child of
                  this box, which was coherent while the clamped element was the
@@ -290,9 +302,11 @@
                  whole Embedded-info table (up to ~12 rows for an mp3) between an
                  ellipsis and its only control, reading as an affordance for
                  Embedded info instead. -->
-            <button class="expand-description-btn" id="expand-desc-btn">Show more</button>
+            <!-- v1.52: hidden until setupDescriptionToggle measures a real overflow --
+                 a "Show more" under an empty box was one of the flash literals. -->
+            <button class="expand-description-btn" id="expand-desc-btn" style="display: none;">Show more</button>
             <div class="description-fileinfo">
-              File Path: <span id="file-path-text" class="file-path">/loading...</span>
+              File Path: <span id="file-path-text" class="file-path skeleton-shimmer skel-w200"></span>
               <br><br>
               This file is self-hosted on your network. Playback progress is automatically saved to your FileTube server, allowing you to resume playing this video or audio clip at any time.
             </div>
@@ -318,7 +332,10 @@
 
         <!-- Right Sidebar (Playlist / Related) -->
         <div class="watch-sidebar">
-          <div class="related-header">Related files</div>
+          <!-- v1.52: hidden until rows exist -- a lone header over an empty
+               list was part of the growing-sidebar shift. Unhidden by
+               loadRelatedFiles() on both its success and error paths. -->
+          <div class="related-header" id="related-header" hidden>Related files</div>
           <div class="related-list" id="related-files-container">
             <!-- Dynamic related cards -->
           </div>
