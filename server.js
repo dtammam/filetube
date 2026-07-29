@@ -302,7 +302,15 @@ const DEFAULT_SETTINGS = {
   // library left physically where it is can say so. The relocation is the
   // ONLY setting here that MOVES USER FILES, so every eligibility rule around
   // it is deliberately conservative (see relocateHydratedImportIntoChannelFolder).
-  relocateHydratedImports: true
+  relocateHydratedImports: true,
+  // v1.51 (Dean): the notification bell's instance-wide kill switch. ON by
+  // default. When OFF the bell endpoints answer 404 (so no client ever
+  // injects the bell), but the feed still ACCUMULATES server-side --
+  // flipping it back on must not leave a gap in history (exec-plan
+  // decision 8). NOTE: `notificationsSeededAt` (the one-shot seeding stamp)
+  // also lives in db.settings but is deliberately NOT here or in KNOWN_KEYS
+  // -- it is internal bookkeeping, never a user-settable value.
+  notificationsEnabled: true
 };
 
 // Per-key merge so a partial/older `settings` object keeps whatever keys it
@@ -2465,6 +2473,77 @@ function applyCapturedViewCount(item, consumed, nowMs = Date.now()) {
   return true;
 }
 
+// v1.51 notification bell: ONE collector for all three downloadMeta consume
+// sites (the v1.41.4 lesson is a seat that forgot to CALL the shared helper,
+// so there is exactly one to call and every site calls it). Only ever invoked
+// right after a consume SUCCEEDED inside the scan's Phase-2 mutator — that is
+// the load-bearing scoping: a consume fires only for a freshly-indexed file
+// under the yt-dlp download roots whose bridge entry still existed, so
+// reheats, re-encodes, hand-dropped files and plain re-scans can never
+// notify. createdAt is the CONSUME moment (nowMs), NOT item.addedAt.
+//
+// GATE FIX (adversarial W1, repro'd): addedAt is the file's birthtime, and
+// on yt-dlp's single-format path that is the moment the `.part` download
+// STARTED (the rename preserves the inode's btime) -- so a long download
+// finishing after Dean opened the bell was born already-seen (badge never
+// increments), a Clear mid-download hid it forever, and with 200 newer rows
+// it was evicted inside its own insert transaction. A birthtime AHEAD of
+// the server clock (NAS mount skew) was worse: a badge that mark-seen could
+// not zero until wall-clock caught up. The watermark algebra is strictly
+// `created_at > last_seen_at`, so the only value that is always correct on
+// both sides of "now" is the moment the event actually entered the feed --
+// the v1.50 lesson: normalize a client-supplied number ONCE at the staging
+// boundary. Seeding (seedNotificationHistoryOnce) deliberately still uses
+// addedAt: history ORDERING is what matters there and every seeded row is
+// born read+seen, so the algebra never touches it.
+//
+// De-dups by mediaId because ONE item can legitimately hit two consume
+// sites in one pass (universal + the D1a proxy-host YouTube recovery).
+function collectDownloadNotification(pending, item, nowMs = Date.now()) {
+  if (!Array.isArray(pending) || !item || typeof item.id !== 'string' || item.id === '') return false;
+  if (pending.some((p) => p.mediaId === item.id)) return false;
+  pending.push({ mediaId: item.id, createdAt: nowMs });
+  return true;
+}
+
+// v1.51 notification bell, exec-plan decision 4: one-shot upgrade seeding.
+// The first boot after the upgrade pre-populates the feed with the newest
+// yt-dlp-provenance items as ALREADY-SEEN, ALREADY-READ history (panel full,
+// badge 0, no dots), then stamps `settings.notificationsSeededAt` so it can
+// never run twice. The stamp is written even when there was nothing (or no
+// need) to seed — a restored instance whose feed already has rows must not
+// get a second seeding on its next boot. Provenance = youtubeId OR
+// sourceExtractor OR channelUrl: anything the yt-dlp pipeline ever
+// identified, which deliberately includes MeTube-era hydrated imports.
+const NOTIFICATION_SEED_COUNT = 30;
+async function seedNotificationHistoryOnce(nowMs = Date.now()) {
+  const db = loadDatabase();
+  if (db.settings && db.settings.notificationsSeededAt !== undefined) return 0;
+  let seeded = 0;
+  if (userStore.countNotifications() === 0) {
+    const candidates = Object.values(db.metadata || {})
+      .filter((it) => it && (
+        (typeof it.youtubeId === 'string' && it.youtubeId !== '') ||
+        (typeof it.sourceExtractor === 'string' && it.sourceExtractor !== '') ||
+        (typeof it.channelUrl === 'string' && it.channelUrl !== '')))
+      .filter((it) => typeof it.addedAt === 'number' && Number.isFinite(it.addedAt) && it.addedAt > 0)
+      .sort((a, b) => b.addedAt - a.addedAt)
+      .slice(0, NOTIFICATION_SEED_COUNT);
+    // GATE ROUND 2 (adversarial, repro'd): clamp to nowMs. addedAt can sit in
+    // the FUTURE (rsync -t from a clock-skewed machine onto a btime-less
+    // filesystem), and a seeded row newer than the seed-time last_seen_at is
+    // a day-one badge that mark-seen cannot zero until wall clock catches
+    // up. Past rows keep their real ordering; future ones collapse to "now".
+    seeded = userStore.seedNotifications(candidates.map((it) => ({ mediaId: it.id, createdAt: Math.min(it.addedAt, nowMs) })), nowMs);
+  }
+  await updateDatabase((fresh) => {
+    if (!fresh.settings) fresh.settings = {};
+    if (fresh.settings.notificationsSeededAt !== undefined) return false;
+    fresh.settings.notificationsSeededAt = nowMs;
+  });
+  return seeded;
+}
+
 // Pure: pull a small, normalized set of embedded metadata tags from ffprobe
 // output (accepts the parsed object OR the raw stdout string). Whitelisted so we
 // never surface junk; returns {} on anything malformed. Unit-tested — ffprobe
@@ -4149,6 +4228,13 @@ async function runScanDirectories() {
     }
   }
 
+  // v1.51 notification bell: download events collected INSIDE the mutator
+  // (by collectDownloadNotification, at the three consume sites), inserted
+  // into SQLite AFTER the doc commit below. The array only ever fills past
+  // the stale-epoch guard, and every fill site also sets dbChanged, so a
+  // discarded or unsaved merge can never have notified.
+  const pendingNotifications = [];
+
   // Re-read-merge-on-save, now formalized as ONE serialized updateDatabase
   // mutator: the scan holds its own Phase-1 `db` snapshot across many awaited
   // extractMetadataAndThumbnail calls, so writing it back directly would
@@ -4407,6 +4493,7 @@ async function runScanDirectories() {
               item.title = consumedU.sourceTitle;
             }
             applyCapturedViewCount(item, consumedU);
+            collectDownloadNotification(pendingNotifications, item);
             dbChanged = true;
           } else if (!item.sourceId) {
             // No capture bridged (older download, or already consumed) AND the
@@ -4442,6 +4529,7 @@ async function runScanDirectories() {
               if (typeof consumedYt.releaseDate === 'number' && Number.isFinite(consumedYt.releaseDate)) item.releaseDate = consumedYt.releaseDate;
               if (typeof consumedYt.sourceTitle === 'string' && consumedYt.sourceTitle !== '') { item.sourceTitle = consumedYt.sourceTitle; item.title = consumedYt.sourceTitle; }
               applyCapturedViewCount(item, consumedYt);
+              collectDownloadNotification(pendingNotifications, item);
               dbChanged = true;
             }
           }
@@ -4485,6 +4573,7 @@ async function runScanDirectories() {
               item.channelAvatarUrl = consumed.channelAvatarUrl;
             }
             applyCapturedViewCount(item, consumed);
+            collectDownloadNotification(pendingNotifications, item);
             dbChanged = true;
           }
         }
@@ -4614,6 +4703,19 @@ async function runScanDirectories() {
       userStore.removeMediaState([...prunable]);
     } catch (err) {
       console.error('Scan: failed to prune per-user progress/liked for removed items (continuing):', err && err.message);
+    }
+  }
+
+  // v1.51: the download notifications collected inside the mutator land AFTER
+  // the doc commit, for the same rolled-back-write reason as the per-user
+  // prune above — a doc save that failed must not have already notified about
+  // items the library never adopted. Best-effort: the item itself is indexed
+  // either way, a lost notification is cosmetic.
+  if (pendingNotifications.length > 0) {
+    try {
+      userStore.recordNotifications(pendingNotifications);
+    } catch (err) {
+      console.error('Scan: failed to record download notifications (continuing):', err && err.message);
     }
   }
 
@@ -6335,6 +6437,8 @@ function settingsResponse(settings) {
     // v1.41.6: relocate hydrated imports into their channel folder (see
     // DEFAULT_SETTINGS) -- ON by default.
     relocateHydratedImports: settings.relocateHydratedImports,
+    // v1.51: the notification bell's instance-wide toggle (see DEFAULT_SETTINGS).
+    notificationsEnabled: settings.notificationsEnabled,
     effectiveCacheMaxBytes: effectiveCacheCap(settings),
     // v1.32 (custom logo): READ-ONLY here -- managed exclusively by the
     // dedicated POST/DELETE /api/settings/logo routes below (never via the
@@ -7173,6 +7277,9 @@ app.get('/api/admin/backup', async (req, res) => {
       // enqueued on the same chained tick as the doc snapshot, so the two
       // halves describe one moment.
       bundle.users = userStore.exportUsersForBackup();
+      // v1.51: the GLOBAL notification feed (each user's seen/read state
+      // rides their own users[] entry above, keyed by media id).
+      bundle.notifications = userStore.exportNotificationsForBackup();
       return false; // read-only pass — never save
     });
     res.setHeader('Content-Disposition', contentDispositionAttachment(`filetube-backup-${new Date().toISOString().slice(0, 10)}.json`));
@@ -7215,7 +7322,9 @@ function validateBackupBundle(bundle) {
         // v1.44 music per-user state (the SEVENTH-strike carrier).
         ['musicLiked', 'array'], ['musicProgress', 'object'],
         // v1.50 watched latch (absent in pre-v1.50 bundles -- legal).
-        ['watched', 'array']]) {
+        ['watched', 'array'],
+        // v1.51 notification reads (absent in pre-v1.51 bundles -- legal).
+        ['notificationReads', 'array']]) {
         if (u[field] === undefined) continue;
         const ok = kind === 'array' ? Array.isArray(u[field]) : (typeof u[field] === 'object' && u[field] !== null && !Array.isArray(u[field]));
         if (!ok) return `${where}: ${field} must be an ${kind}`;
@@ -7226,9 +7335,35 @@ function validateBackupBundle(bundle) {
         && (typeof u.musicState !== 'object' || Array.isArray(u.musicState))) {
         return `${where}: musicState must be an object or null`;
       }
+      // v1.51: notificationState is an object OR the explicit null that means
+      // "this user never touched the panel" (the null-vs-absent distinction
+      // is load-bearing — see replaceAllUsersRaw's three-shape restore).
+      if (u.notificationState !== undefined && u.notificationState !== null
+        && (typeof u.notificationState !== 'object' || Array.isArray(u.notificationState))) {
+        return `${where}: notificationState must be an object or null`;
+      }
     }
   }
-  const known = new Set([...BACKUP_NAMESPACE_KEYS, 'schema', 'exportedAt', 'appVersion', 'customLogo', 'users']);
+  // v1.51: the global feed rides the bundle top-level (absent pre-v1.51).
+  // GATE FIX (adversarial S1): field-level validation up front, matching the
+  // users array's refuse-whole posture -- a duplicate mediaId previously
+  // passed validation and died on the UNIQUE constraint mid-restore (the
+  // transaction rolled back whole, but as an opaque 500 instead of a clean
+  // 400 naming the defect).
+  if (bundle.notifications !== undefined) {
+    if (!Array.isArray(bundle.notifications)) return 'notifications must be an array';
+    const seenMediaIds = new Set();
+    for (let i = 0; i < bundle.notifications.length; i++) {
+      const n = bundle.notifications[i];
+      const where = `notifications[${i}]`;
+      if (!n || typeof n !== 'object' || Array.isArray(n)) return `${where}: must be an object`;
+      if (typeof n.mediaId !== 'string' || n.mediaId === '') return `${where}: missing mediaId`;
+      if (typeof n.createdAt !== 'number' || !Number.isFinite(n.createdAt) || n.createdAt <= 0) return `${where}: createdAt must be a positive number`;
+      if (seenMediaIds.has(n.mediaId)) return `${where}: duplicate mediaId '${n.mediaId}'`;
+      seenMediaIds.add(n.mediaId);
+    }
+  }
+  const known = new Set([...BACKUP_NAMESPACE_KEYS, 'schema', 'exportedAt', 'appVersion', 'customLogo', 'users', 'notifications']);
   for (const key of Object.keys(bundle)) {
     if (!known.has(key)) return `unknown bundle key '${key}' — refusing a lossy restore (was this exported by a newer FileTube?)`;
   }
@@ -7353,6 +7488,14 @@ app.post('/api/admin/restore', (req, res, next) => {
       // account restore commits (or rolls back) atomically with the doc
       // tables. A bundle without users (v1.42 format) keeps the current
       // accounts untouched.
+      // v1.51: the notification feed restores BEFORE the users, inside the
+      // same exclusive section, so each restored user's media-keyed reads can
+      // resolve their feed ids. A pre-v1.51 bundle (key absent) leaves this
+      // instance's existing feed untouched — replaceAllUsersRaw then defaults
+      // those users' watermarks to the restore moment.
+      if (bundle.notifications !== undefined) {
+        userStore.replaceAllNotificationsRaw(bundle.notifications);
+      }
       if (restoresUsers) {
         userStore.replaceAllUsersRaw(bundle.users);
       }
@@ -7405,7 +7548,7 @@ app.post('/api/settings', async (req, res) => {
   // test/integration/settings-cache-api.test.js's full-shape assertion, both
   // updated in the same commit): `relocateHydratedImports` joins the set --
   // the reheat's "move a hydrated import into its channel folder" lever.
-  const KNOWN_KEYS = ['scanIntervalMinutes', 'pruneMissing', 'cacheMaxBytes', 'cacheMaxAgeDays', 'defaultView', 'autoplayNext', 'backgroundAudioForVideo', 'defaultSort', 'mobileCustomPlayer', 'preExtractAudio', 'relocateHydratedImports'];
+  const KNOWN_KEYS = ['scanIntervalMinutes', 'pruneMissing', 'cacheMaxBytes', 'cacheMaxAgeDays', 'defaultView', 'autoplayNext', 'backgroundAudioForVideo', 'defaultSort', 'mobileCustomPlayer', 'preExtractAudio', 'relocateHydratedImports', 'notificationsEnabled'];
   for (const key of Object.keys(body)) {
     if (!KNOWN_KEYS.includes(key)) {
       return res.status(400).json({ error: `unknown settings key: ${key}` });
@@ -7465,6 +7608,10 @@ app.post('/api/settings', async (req, res) => {
   if ('backgroundAudioForVideo' in body && typeof body.backgroundAudioForVideo !== 'boolean') {
     return res.status(400).json({ error: 'backgroundAudioForVideo must be a boolean' });
   }
+  // v1.51: notificationsEnabled -- boolean, mirrors pruneMissing exactly.
+  if ('notificationsEnabled' in body && typeof body.notificationsEnabled !== 'boolean') {
+    return res.status(400).json({ error: 'notificationsEnabled must be a boolean' });
+  }
 
   // All provided keys validated -- safe to merge and persist. `prevInterval`
   // and the merged `saved` settings are captured via closure from INSIDE the
@@ -7493,6 +7640,126 @@ app.post('/api/settings', async (req, res) => {
   // scan indefinitely if settings are saved more often than the interval.
   if (saved.scanIntervalMinutes !== prevInterval) armScanTimer();
   res.json(settingsResponse(saved));
+});
+
+// ---- v1.51: the notification bell -----------------------------------------
+//
+// Visibility rule (exec-plan decision 9): yt-dlp module enabled AND at least
+// one subscription AND the instance-wide settings toggle on. Disabled means
+// 404 on every bell endpoint -- the client's boot probe (its first badge
+// fetch) then injects nothing, the same fail-closed 2xx-probe posture as the
+// subscriptions nav link. GENERATION is deliberately not gated here (the
+// feed keeps accumulating while the bell is off -- decision 8); this gate is
+// about what a browser can see.
+function notificationsFeatureEnabled(db) {
+  if (!ytdlp.isEnabled(ytdlp.parseYtdlpConfig())) return false;
+  const subs = db && db.ytdlp && Array.isArray(db.ytdlp.subscriptions) ? db.ytdlp.subscriptions : [];
+  if (subs.length < 1) return false;
+  return !(db && db.settings && db.settings.notificationsEnabled === false);
+}
+
+// The badge count. Doubles as the client's boot probe, so it is the ONE
+// endpoint that must stay cheap: two point queries against the cache.
+app.get('/api/notifications/badge', (req, res) => {
+  const db = getCachedDatabase(); // hot poll reader (60s cadence per client)
+  if (!notificationsFeatureEnabled(db)) return res.status(404).json({ error: 'notifications disabled' });
+  res.json({ count: userStore.countUnseenNotifications(req.user.id) });
+});
+
+// The panel list: feed rows joined against the CURRENT library item (title/
+// channel/thumbnail are never denormalized into the feed -- the item is the
+// source of truth and prune-on-delete keeps the join target alive). A row
+// whose item vanished mid-flight (delete committed, scan prune still
+// pending) is filtered here as the defensive net.
+app.get('/api/notifications', (req, res) => {
+  const db = getCachedDatabase();
+  if (!notificationsFeatureEnabled(db)) return res.status(404).json({ error: 'notifications disabled' });
+  const { items } = userStore.listNotifications(req.user.id);
+  const metadata = db.metadata || {};
+  // One deep-cloned ytdlp namespace for the whole request (NOT per row) --
+  // the same cache-coherency dance GET /api/videos/:id documents: the
+  // avatar fallback's ensureYtdlp backfills IN PLACE, and the shared cache
+  // object must never be mutated.
+  let dbForAvatarLookup = null;
+  const rows = [];
+  const phantomMediaIds = [];
+  for (const row of items) {
+    // Own-property lookup (gate round 2, adversarial): a feed row whose
+    // mediaId is a prototype key ('constructor', ...) -- reachable only via
+    // a crafted admin bundle -- must read as ABSENT, not as a truthy
+    // inherited junk item that the phantom-prune below would then skip
+    // forever (the v1.42 __proto__ row-key lesson).
+    const item = Object.prototype.hasOwnProperty.call(metadata, row.mediaId) ? metadata[row.mediaId] : undefined;
+    if (!item) {
+      // GATE FIX (adversarial W3): a feed row whose item is GONE (a delete
+      // whose removeMediaState call failed and was caught-and-continued, or
+      // a restored feed referencing since-deleted media) is not just
+      // filtered from this response -- it is collected and pruned below, so
+      // the badge (which counts feed rows without a metadata join) stops
+      // disagreeing with the panel after the first open. removeMediaState
+      // is the existing carrier-scrub; reusing it keeps ONE deleter.
+      phantomMediaIds.push(row.mediaId);
+      continue;
+    }
+    let channelAvatarUrl = typeof item.channelAvatarUrl === 'string' ? item.channelAvatarUrl : '';
+    if (channelAvatarUrl === '') {
+      if (!dbForAvatarLookup) {
+        dbForAvatarLookup = { ...db, ytdlp: db.ytdlp ? JSON.parse(JSON.stringify(db.ytdlp)) : undefined };
+      }
+      channelAvatarUrl = ytdlp.resolveItemChannelAvatarUrl(dbForAvatarLookup, item) || '';
+    }
+    rows.push({
+      id: row.id,
+      mediaId: row.mediaId,
+      createdAt: row.createdAt,
+      unread: row.unread,
+      title: item.title || item.name || '',
+      channelName: typeof item.channelName === 'string' ? item.channelName : '',
+      folderName: typeof item.folderName === 'string' ? item.folderName : '',
+      channelAvatarUrl,
+      hasThumbnail: item.hasThumbnail === true,
+      type: item.type === 'audio' ? 'audio' : 'video',
+    });
+  }
+  if (phantomMediaIds.length > 0) {
+    try {
+      userStore.removeMediaState(phantomMediaIds);
+    } catch (err) {
+      console.error('Notifications: failed to prune phantom feed rows (continuing):', err && err.message);
+    }
+  }
+  res.json({ items: rows, unseenCount: userStore.countUnseenNotifications(req.user.id) });
+});
+
+// Opening the panel zeroes the NUMBER badge (two-tier semantics, decision 3:
+// per-row dots survive until tapped).
+app.post('/api/notifications/seen', (req, res) => {
+  const db = getCachedDatabase();
+  if (!notificationsFeatureEnabled(db)) return res.status(404).json({ error: 'notifications disabled' });
+  userStore.markNotificationsSeen(req.user.id, Date.now());
+  res.json({ success: true });
+});
+
+// Tapping a row drops its dot. A phantom id (evicted/pruned/fabricated) is a
+// 400, never a silently-banked read.
+app.post('/api/notifications/read', (req, res) => {
+  const db = getCachedDatabase();
+  if (!notificationsFeatureEnabled(db)) return res.status(404).json({ error: 'notifications disabled' });
+  const id = req.body ? req.body.id : undefined;
+  if (!Number.isInteger(id) || !userStore.markNotificationRead(req.user.id, id, Date.now())) {
+    return res.status(400).json({ error: 'invalid notification id' });
+  }
+  res.json({ success: true });
+});
+
+// Clear-all: empties THIS user's panel view and zeroes their badge. The feed
+// rows themselves survive for every other user (per-user watermark, never a
+// global delete).
+app.post('/api/notifications/clear', (req, res) => {
+  const db = getCachedDatabase();
+  if (!notificationsFeatureEnabled(db)) return res.status(404).json({ error: 'notifications disabled' });
+  userStore.clearNotifications(req.user.id, Date.now());
+  res.json({ success: true });
 });
 
 // API: Current transcode-cache size on disk, for the Settings-page display.
@@ -11880,6 +12147,15 @@ if (require.main === module) {
       console.error('yt-dlp one-off migration failed unexpectedly (continuing startup):', err && err.message);
     }
 
+    // v1.51: one-shot notification-history seeding (exec-plan decision 4).
+    // Best-effort like every startup step here — a seeding failure must
+    // never block boot, and the un-stamped flag simply retries next boot.
+    try {
+      await seedNotificationHistoryOnce();
+    } catch (err) {
+      console.error('Notification-history seeding failed (continuing startup):', err && err.message);
+    }
+
     // Arm the periodic re-scan timer per the persisted scanIntervalMinutes
     // preference (default 30 minutes; armScanTimer arms no timer at all when
     // the preference is Off). Lives here, not at module top-level, so
@@ -12068,6 +12344,10 @@ module.exports = {
   // v1.48 gate fix (adversarial SUGGESTION S1): exported for direct testing,
   // mirroring parseFfprobeTags/reconcileTranscode's own testability posture.
   applyCapturedViewCount,
+  // v1.51 notification bell (unit/integration surface; userStore is already
+  // exported above).
+  collectDownloadNotification,
+  seedNotificationHistoryOnce,
   parseFfprobeStreams,
   codecNeedsTranscode,
   probeCodecsOnly,

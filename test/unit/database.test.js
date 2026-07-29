@@ -55,6 +55,10 @@ const DEFAULT_SETTINGS = {
   // because relocating a hydrated MeTube import into its channel folder IS the
   // feature -- the toggle exists to turn it OFF. See server.js DEFAULT_SETTINGS.
   relocateHydratedImports: true,
+  // v1.51 DELIBERATE key-set change: the notification bell's instance-wide
+  // kill switch. ON by default (the bell is the feature; the toggle is
+  // Dean's explicit off-lever). See server.js DEFAULT_SETTINGS.
+  notificationsEnabled: true,
 };
 
 test('loadDatabase: yields a fully-defaulted db when the store is empty (no eager write needed)', () => {

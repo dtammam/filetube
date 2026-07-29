@@ -137,6 +137,13 @@ test('POST /api/videos/:id/move: PER-USER progress and liked rows follow the re-
   userStore.setProgress(u1.id, oldId, { timestamp: 42, duration: 10, updatedAt: new Date().toISOString() });
   userStore.setProgress(u2.id, oldId, { timestamp: 7, duration: 10, updatedAt: new Date().toISOString() });
   userStore.addLiked(u2.id, oldId, new Date().toISOString());
+  // v1.51 gate (QA W2): the notification feed is the EIGHTH id-keyed
+  // carrier -- prove the real HTTP move re-keys it end-to-end, with a
+  // tapped read surviving (reads key by notification id, untouched here).
+  userStore.recordNotifications([{ mediaId: oldId, createdAt: Date.now() }]);
+  const notifRowBefore = userStore.listNotifications(u2.id).items.find((i) => i.mediaId === oldId);
+  assert.ok(notifRowBefore, 'precondition: feed row exists under the old id');
+  userStore.markNotificationRead(u2.id, notifRowBefore.id, Date.now());
 
   const res = await fetch(`${base}/api/videos/${oldId}/move`, {
     method: 'POST',
@@ -151,6 +158,16 @@ test('POST /api/videos/:id/move: PER-USER progress and liked rows follow the re-
   assert.equal(userStore.getOneProgress(u2.id, newId).timestamp, 7, 'user 2\'s position survives under the new id');
   assert.deepStrictEqual(userStore.getLiked(u2.id), [newId], 'user 2\'s Like follows the re-key');
   assert.deepStrictEqual(userStore.getLiked(u1.id), [], 'user 1 (who never liked it) gains nothing');
+  // v1.51 gate (QA W2): the notification followed the move -- same id-keyed
+  // carrier discipline as progress/liked/watched above.
+  const u2Notifs = userStore.listNotifications(u2.id).items;
+  assert.ok(!u2Notifs.some((i) => i.mediaId === oldId), 'no feed row survives under the old id');
+  const moved = u2Notifs.find((i) => i.mediaId === newId);
+  assert.ok(moved, 'the feed row followed the re-key');
+  assert.equal(moved.id, notifRowBefore.id, 'notification id stable across the move');
+  assert.equal(moved.unread, false, "user 2's tapped read survived the move");
+  assert.equal(userStore.listNotifications(u1.id).items.find((i) => i.mediaId === newId).unread, true,
+    "user 1 (who never tapped it) keeps their dot");
 });
 
 // v1.42 gate CRITICAL (adversarial seat, runnable repro): the extracted

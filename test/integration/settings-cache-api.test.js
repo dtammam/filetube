@@ -86,7 +86,7 @@ beforeEach(async () => {
 
 // ---- GET /api/settings -----------------------------------------------------
 
-test('GET /api/settings returns the 14-field shape with backfilled defaults on a fresh DB', async () => {
+test('GET /api/settings returns the 15-field shape with backfilled defaults on a fresh DB', async () => {
   const res = await fetch(`${base}/api/settings`);
   assert.equal(res.status, 200);
   const json = await res.json();
@@ -111,6 +111,10 @@ test('GET /api/settings returns the 14-field shape with backfilled defaults on a
     // exists so an operator can turn it OFF and keep their library physically
     // where it is. Mirrored in test/unit/database.test.js's DEFAULT_SETTINGS.
     relocateHydratedImports: true,
+    // v1.51 DELIBERATE key-set change (this full-shape deep-equal is the
+    // settings-API LOCK): the notification bell's instance-wide toggle, ON
+    // by default. Mirrored in test/unit/database.test.js's DEFAULT_SETTINGS.
+    notificationsEnabled: true,
   });
 });
 

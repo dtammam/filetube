@@ -21,8 +21,27 @@ const TRANSCODE_DIR = path.join(DATA_DIR, 'transcoded');
 
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
-const { app, saveDatabase, getMediaId } = require('../../server');
+const { app, saveDatabase, getMediaId, scanState } = require('../../server');
 const { authenticateFetch } = require('../helpers/auth');
+
+// v1.51 (tech-debt #53, the repo's most-observed flake): POST /api/config
+// kicks a FIRE-AND-FORGET background scan (server.js ~5635), and
+// mergeScannedMetadata is membership-authoritative -- so a scan still
+// walking mediaDir when a LATER test seeds an item + saveDatabase()s can
+// merge that item straight back out of the cache, and GET /thumbnail/:id
+// then serves the SVG placeholder instead of the seeded .jpg. That is the
+// exact recorded failure ("image/svg+xml instead of image/jpeg"), and it is
+// INTRA-file interference (config test -> thumbnail test), which is why it
+// could also fail in isolation. Deterministic drain, the scan-api.test.js
+// pattern: poll the exported scanState until the kicked scan (and any
+// coalesced follow-up) fully settles.
+async function waitForScanIdle(maxWaitMs = 10000) {
+  const start = Date.now();
+  while ((scanState.scanning || scanState.rescanRequested) && Date.now() - start < maxWaitMs) {
+    await new Promise((r) => setTimeout(r, 25));
+  }
+  assert.equal(scanState.scanning, false, 'background scan must settle before the next test');
+}
 
 let server;
 let base;
@@ -65,7 +84,9 @@ after(async () => {
   fs.rmSync(mediaDir, { recursive: true, force: true });
 });
 
-beforeEach(() => {
+beforeEach(async () => {
+  // #53: never let a previous test's kicked scan bleed into this one.
+  await waitForScanIdle();
   for (const dir of [THUMBNAIL_DIR, TRANSCODE_DIR]) {
     fs.mkdirSync(dir, { recursive: true });
     for (const name of fs.readdirSync(dir)) fs.rmSync(path.join(dir, name), { recursive: true, force: true });

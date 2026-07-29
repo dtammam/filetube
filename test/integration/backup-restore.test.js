@@ -358,6 +358,109 @@ test('v1.43: user accounts + per-user state round-trip through backup -> wipe ->
   assert.equal(loadDatabase().music.tracks.trk1.title, 'Song', 'the music namespace restored in the same transaction');
 });
 
+test('v1.51: the notification feed + per-user seen/read state round-trip through backup -> wipe -> restore (EIGHTH carrier)', async () => {
+  saveDatabase(fullState());
+  const { __mintTestSession } = require('../../server');
+  const extra = __mintTestSession({ username: 'belltripper', role: 'member' });
+  // Times anchor AFTER the account's creation moment (rows that predate an
+  // account are deliberately dot-suppressed and badge-silent -- the
+  // account-clock semantics this suite must not fight).
+  const T = Date.parse(userStore.getById(extra.user.id).createdAt) + 2;
+  userStore.recordNotifications([
+    { mediaId: 'vid1', createdAt: T },
+    { mediaId: 'vid2', createdAt: T + 2 },
+  ]);
+  const topRow = userStore.listNotifications(extra.user.id).items[0]; // vid2 (newest)
+  userStore.markNotificationsSeen(extra.user.id, T + 4);
+  userStore.markNotificationRead(extra.user.id, topRow.id, T + 4);
+
+  const bundle = await getBackup();
+  assert.deepEqual(bundle.notifications.map((n) => n.mediaId), ['vid1', 'vid2'], 'the global feed rides the bundle');
+  const bundled = bundle.users.find((u) => u.username === 'belltripper');
+  assert.equal(bundled.notificationState.lastSeenAt, T + 4, 'the watermark rides the bundle');
+  assert.deepEqual(bundled.notificationReads, [{ mediaId: 'vid2', readAt: T + 4 }], 'reads ride keyed by MEDIA id');
+
+  await __resetDatabaseForTests();
+  const { __clearUsersForTests: clearUsers, __mintTestSession: remint } = require('../../server');
+  clearUsers();
+  const fresh = remint();
+  const res = await fetch(`${base}/api/admin/restore`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Cookie: fresh.cookie },
+    body: JSON.stringify(bundle),
+  });
+  assert.equal(res.status, 200);
+
+  const restored = userStore.getByUsername('belltripper');
+  const list = userStore.listNotifications(restored.id);
+  assert.deepEqual(list.items.map((i) => i.mediaId), ['vid2', 'vid1'], 'feed restored, order intact');
+  assert.equal(list.items.find((i) => i.mediaId === 'vid2').unread, false, 'the read resolved back through its media id');
+  assert.equal(list.items.find((i) => i.mediaId === 'vid1').unread, true, 'the unread row stayed unread');
+  assert.equal(userStore.countUnseenNotifications(restored.id), 0, 'the seen watermark restored verbatim');
+});
+
+test('v1.51 gate fix (QA W1): a feed-only bundle (notifications, NO users) restores the feed WITHOUT destroying existing users\' reads', async () => {
+  saveDatabase(fullState());
+  const { __mintTestSession } = require('../../server');
+  const keeper = __mintTestSession({ username: 'dotkeeper', role: 'member' });
+  // Post-account times (see the round-trip test above for why).
+  const T = Date.parse(userStore.getById(keeper.user.id).createdAt) + 2;
+  userStore.recordNotifications([
+    { mediaId: 'vid1', createdAt: T },
+    { mediaId: 'vid2', createdAt: T + 2 },
+  ]);
+  const tapped = userStore.listNotifications(keeper.user.id).items.find((i) => i.mediaId === 'vid1');
+  userStore.markNotificationRead(keeper.user.id, tapped.id, T + 4);
+
+  // A hand-trimmed, feed-only bundle: legal per validateBackupBundle (users
+  // absent = the v1.42 shape, accounts untouched).
+  const res = await fetch(`${base}/api/admin/restore`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      schema: 'filetube-backup-v1',
+      notifications: [
+        { mediaId: 'vid1', createdAt: T },
+        { mediaId: 'vid2', createdAt: T + 2 },
+        { mediaId: 'vid9', createdAt: T + 6 },
+      ],
+    }),
+  });
+  assert.equal(res.status, 200);
+
+  const items = userStore.listNotifications(keeper.user.id).items;
+  assert.equal(items.length, 3, 'the restored feed landed');
+  assert.equal(items.find((i) => i.mediaId === 'vid1').unread, false,
+    'the already-tapped dot did NOT resurrect (reads re-keyed through media ids across the id regeneration)');
+  assert.equal(items.find((i) => i.mediaId === 'vid2').unread, true, 'the untapped row stayed dotted');
+});
+
+test('v1.51 gate fix (adversarial S1): a bundle with a duplicate notification mediaId is a clean 400, not a mid-restore 500', async () => {
+  saveDatabase(fullState());
+  const before = await getBackup();
+  const res = await fetch(`${base}/api/admin/restore`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      ...before,
+      notifications: [
+        { mediaId: 'dupe-mé', createdAt: 1752600000000 },
+        { mediaId: 'dupe-mé', createdAt: 1752600100000 },
+      ],
+    }),
+  });
+  assert.equal(res.status, 400, 'refused at validation, before the wipe starts');
+  assert.match((await res.json()).error, /duplicate mediaId/);
+  // And garbage entry shapes are named field-level, same refuse-whole posture.
+  const res2 = await fetch(`${base}/api/admin/restore`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...before, notifications: [{ mediaId: '', createdAt: 5 }] }),
+  });
+  assert.equal(res2.status, 400);
+  assert.match((await res2.json()).error, /missing mediaId/);
+});
+
 test('v1.43 self-lockout guard: a bundle that lacks the restoring admin (as an enabled admin) is refused whole, nothing changes', async () => {
   saveDatabase(fullState());
   const before = await getBackup();

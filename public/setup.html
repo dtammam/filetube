@@ -361,6 +361,18 @@
           <small id="relocate-hydrated-error" class="field-error"></small>
         </div>
 
+        <!-- v1.51 (Dean): the notification bell's instance-wide toggle. -->
+        <div class="form-group">
+          <label style="display:flex; align-items:center; gap:8px; font-weight:normal;">
+            <input type="checkbox" id="notifications-enabled-check" />
+            Show download notifications (bell)
+          </label>
+          <small style="color: var(--text-secondary); margin-top:4px; display:block;">
+            Adds a notification bell to the top-right corner that counts new subscription and one-off downloads, YouTube-style — tap one to watch it. The bell appears once at least one subscription exists. Turning this off hides the bell for everyone on this server; downloads are still tracked in the background, so turning it back on shows the full history with no gap. On by default.
+          </small>
+          <small id="notifications-enabled-error" class="field-error"></small>
+        </div>
+
         <!-- v1.34 T4 (Dean): custom-vs-native mobile video controls. -->
         <div class="form-group">
           <label style="display:flex; align-items:center; gap:8px; font-weight:normal;">

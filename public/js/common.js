@@ -1907,6 +1907,321 @@ function injectSubscriptionsNavLinkIfEnabled() {
     .catch(() => { /* network/parse failure -- fail closed, inject nothing */ });
 }
 
+// ---- v1.51: the notification bell ------------------------------------------
+//
+// YouTube-style bell in the header's top-right, on every shell that has the
+// shared header (login/welcome have none and are pre-auth anyway). Injected
+// here (not in per-shell markup) so all 8 shells get it from ONE code path.
+// Capability probe = the first GET /api/notifications/badge: the server 404s
+// unless yt-dlp is enabled AND >=1 subscription exists AND the instance
+// toggle is on, so a disabled install renders byte-identical chrome (the
+// same fail-closed posture as the subscriptions nav link above).
+//
+// Two-tier semantics (Dean, exec-plan decision 3): opening the panel zeroes
+// the NUMBER badge (server-persisted mark-seen); each row keeps its dot
+// until tapped (mark-read); Clear all empties the panel server-side for
+// THIS user only.
+//
+// Pure decisions extracted for node:test (no DOM), same division as every
+// injector in this file.
+
+function shouldInjectNotificationBell(response) {
+  return Boolean(response && response.ok === true);
+}
+
+// The badge label: '' means "render no bubble at all" (never a literal '0').
+// Capped at 20+ like the real thing -- past that the number is noise.
+function formatNotificationBadge(count) {
+  if (!Number.isInteger(count) || count <= 0) return '';
+  return count > 20 ? '20+' : String(count);
+}
+
+// Server panel row -> everything the DOM renderer needs. The channel label
+// falls back to folderName (the resolveChannelName posture: a captured
+// channelName wins, a bare folder-derived name is better than blank). Media
+// ids are md5 hex, so the href is built raw exactly like main.js's card
+// builder (percent-encode at ONE URL layer -- and that layer is not here).
+function buildNotificationRowModel(row) {
+  if (!row || typeof row.mediaId !== 'string' || row.mediaId === '') return null;
+  const channelName = typeof row.channelName === 'string' ? row.channelName.trim() : '';
+  const folderName = typeof row.folderName === 'string' ? row.folderName.trim() : '';
+  return {
+    id: row.id,
+    mediaId: row.mediaId,
+    href: `/watch.html?v=${row.mediaId}`,
+    title: typeof row.title === 'string' ? row.title : '',
+    channelLabel: channelName || folderName || 'Library',
+    channelAvatarUrl: typeof row.channelAvatarUrl === 'string' ? row.channelAvatarUrl : '',
+    thumbnailUrl: row.hasThumbnail === true ? `/thumbnail/${row.mediaId}` : null,
+    timeLabel: formatRelativeTime(row.createdAt),
+    unread: row.unread === true,
+  };
+}
+
+function notificationBellAlreadyInjected() {
+  return Boolean(document.getElementById('notif-bell-btn'));
+}
+
+function injectNotificationBellIfEnabled() {
+  if (typeof document === 'undefined' || typeof fetch === 'undefined') return;
+  if (notificationBellAlreadyInjected()) return;
+  const headerRight = document.querySelector('.header-right');
+  if (!headerRight) return; // shell without a header (login/welcome)
+
+  fetch('/api/notifications/badge')
+    .then((res) => {
+      if (!shouldInjectNotificationBell(res)) return null;
+      return res.json().then((body) => ({ count: body && Number.isInteger(body.count) ? body.count : 0 }));
+    })
+    .then((probe) => {
+      if (!probe) return;
+      if (notificationBellAlreadyInjected()) return; // async double-inject window
+
+      // ---- bell button + badge bubble (createElement/textContent only) ----
+      const bellBtn = document.createElement('button');
+      bellBtn.id = 'notif-bell-btn';
+      bellBtn.className = 'notif-bell-btn';
+      bellBtn.setAttribute('aria-label', 'Notifications');
+      bellBtn.setAttribute('aria-haspopup', 'true');
+      bellBtn.setAttribute('aria-expanded', 'false');
+      // Inline SVG (currentColor) rather than an icon-font class: the era
+      // icon sets have no bell glyph, and adding one per set is a bigger
+      // change than the bell warrants. viewBox path = a plain outline bell.
+      const svgNs = 'http://www.w3.org/2000/svg';
+      const svg = document.createElementNS(svgNs, 'svg');
+      svg.setAttribute('viewBox', '0 0 24 24');
+      svg.setAttribute('width', '22');
+      svg.setAttribute('height', '22');
+      svg.setAttribute('aria-hidden', 'true');
+      const bellPath = document.createElementNS(svgNs, 'path');
+      bellPath.setAttribute('d', 'M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z');
+      bellPath.setAttribute('fill', 'currentColor');
+      svg.appendChild(bellPath);
+      bellBtn.appendChild(svg);
+      const badge = document.createElement('span');
+      badge.id = 'notif-bell-badge';
+      badge.className = 'notif-bell-badge';
+      badge.hidden = true;
+      bellBtn.appendChild(badge);
+      headerRight.insertBefore(bellBtn, headerRight.firstChild);
+
+      // ---- panel + (mobile) backdrop, body-mounted like the one-off modal --
+      const backdrop = document.createElement('div');
+      backdrop.id = 'notif-panel-backdrop';
+      backdrop.className = 'notif-panel-backdrop';
+      backdrop.hidden = true;
+      const panel = document.createElement('div');
+      panel.id = 'notif-panel';
+      panel.className = 'notif-panel';
+      panel.hidden = true;
+      panel.setAttribute('role', 'dialog');
+      panel.setAttribute('aria-label', 'Notifications');
+      const head = document.createElement('div');
+      head.className = 'notif-panel-header';
+      const heading = document.createElement('span');
+      heading.textContent = 'Notifications';
+      const clearBtn = document.createElement('button');
+      clearBtn.id = 'notif-clear-btn';
+      clearBtn.className = 'notif-clear-btn';
+      clearBtn.textContent = 'Clear all';
+      head.appendChild(heading);
+      head.appendChild(clearBtn);
+      panel.appendChild(head);
+      const list = document.createElement('div');
+      list.id = 'notif-panel-list';
+      list.className = 'notif-panel-list';
+      panel.appendChild(list);
+      document.body.appendChild(backdrop);
+      document.body.appendChild(panel);
+
+      const setBadge = (count) => {
+        const label = formatNotificationBadge(count);
+        badge.textContent = label;
+        badge.hidden = label === '';
+      };
+      setBadge(probe.count);
+
+      const renderEmpty = (text) => {
+        list.textContent = '';
+        const empty = document.createElement('div');
+        empty.className = 'notif-empty';
+        empty.textContent = text;
+        list.appendChild(empty);
+      };
+
+      const renderRows = (rows) => {
+        list.textContent = '';
+        const models = rows.map(buildNotificationRowModel).filter(Boolean);
+        if (models.length === 0) {
+          renderEmpty('No notifications yet. New downloads land here.');
+          return;
+        }
+        for (const m of models) {
+          const a = document.createElement('a');
+          a.className = m.unread ? 'notif-row notif-row-unread' : 'notif-row';
+          a.href = m.href;
+          // Avatar: captured URL wins, else the generated first-letter tile
+          // (the resolveAvatarSource precedence, applied with the same
+          // createElement discipline as watch.js's applyAvatarToElement).
+          const avatarHolder = document.createElement('span');
+          avatarHolder.className = 'notif-row-avatar';
+          const source = resolveAvatarSource(m.channelLabel, m.channelAvatarUrl);
+          if (source.type === 'url') {
+            const img = document.createElement('img');
+            img.src = source.url;
+            img.alt = '';
+            img.loading = 'lazy';
+            avatarHolder.appendChild(img);
+          } else {
+            avatarHolder.textContent = source.glyph;
+            avatarHolder.style.backgroundColor = source.color;
+            avatarHolder.classList.add('notif-row-avatar-generated');
+          }
+          a.appendChild(avatarHolder);
+          const text = document.createElement('span');
+          text.className = 'notif-row-text';
+          const channel = document.createElement('span');
+          channel.className = 'notif-row-channel';
+          channel.textContent = m.channelLabel;
+          const title = document.createElement('span');
+          title.className = 'notif-row-title';
+          title.textContent = m.title;
+          const time = document.createElement('span');
+          time.className = 'notif-row-time';
+          time.textContent = m.timeLabel;
+          text.appendChild(channel);
+          text.appendChild(title);
+          text.appendChild(time);
+          a.appendChild(text);
+          if (m.thumbnailUrl) {
+            const thumb = document.createElement('img');
+            thumb.className = 'notif-row-thumb';
+            thumb.src = m.thumbnailUrl;
+            thumb.alt = '';
+            thumb.loading = 'lazy';
+            a.appendChild(thumb);
+          }
+          const dot = document.createElement('span');
+          dot.className = 'notif-row-dot';
+          a.appendChild(dot);
+          a.addEventListener('click', () => {
+            // Fire-and-forget mark-read; keepalive survives a full-load nav
+            // (stats et al). The SPA router handles the actual navigation.
+            fetch('/api/notifications/read', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ id: m.id }),
+              keepalive: true,
+            }).catch(() => { /* cosmetic -- the dot returns next open */ });
+            a.classList.remove('notif-row-unread');
+            closePanel();
+          });
+          list.appendChild(a);
+        }
+      };
+
+      const openPanel = () => {
+        if (!panel.hidden) return;
+        bellBtn.setAttribute('aria-expanded', 'true');
+        openOverlay(backdrop, 'notif-open');
+        openOverlay(panel, 'notif-open');
+        renderEmpty('Loading…');
+        fetch('/api/notifications')
+          .then((res) => (res.ok ? res.json() : Promise.reject(new Error('unavailable'))))
+          .then((body) => {
+            renderRows(Array.isArray(body.items) ? body.items : []);
+            // Opening the panel = seen (two-tier decision 3): number badge
+            // zeroes now; the per-row dots just rendered stay until tapped.
+            setBadge(0);
+            return fetch('/api/notifications/seen', { method: 'POST' });
+          })
+          .catch(() => renderEmpty('Could not load notifications.'));
+      };
+      const closePanel = () => {
+        if (panel.hidden) return;
+        bellBtn.setAttribute('aria-expanded', 'false');
+        closeOverlayThen(backdrop, 'notif-open', () => { backdrop.hidden = true; });
+        closeOverlayThen(panel, 'notif-open', () => { panel.hidden = true; });
+      };
+
+      bellBtn.addEventListener('click', () => {
+        if (panel.hidden) openPanel();
+        else closePanel();
+      });
+      clearBtn.addEventListener('click', () => {
+        fetch('/api/notifications/clear', { method: 'POST' })
+          .then(() => {
+            renderEmpty('No notifications yet. New downloads land here.');
+            setBadge(0);
+          })
+          .catch(() => { /* panel keeps its rows; next open re-syncs */ });
+      });
+      backdrop.addEventListener('click', closePanel);
+
+      // Outside-close on click + pointerdown + touchstart (iOS does not
+      // synthesize `click` on the gesture layer -- the player-menu lesson,
+      // public/js/player.js). Cheap no-op while closed.
+      const closeOnOutside = (e) => {
+        if (panel.hidden) return;
+        if (panel.contains(e.target) || bellBtn.contains(e.target)) return;
+        closePanel();
+      };
+      document.addEventListener('click', closeOnOutside);
+      document.addEventListener('pointerdown', closeOnOutside);
+      document.addEventListener('touchstart', closeOnOutside, { passive: true });
+      // Escape on the CAPTURE phase (the shortcuts-modal posture: immune to
+      // listener-registration order), stopped so page-level Escape handlers
+      // (subscribe modal, sort menu) don't also fire underneath.
+      document.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape' || panel.hidden) return;
+        e.stopImmediatePropagation();
+        closePanel();
+      }, true);
+
+      // ---- badge poll: 60s cadence, hidden-tab skip, resume on return -----
+      // (the download-chip poller's shape, simplified: the badge has no
+      // active-download fast path worth a variable cadence).
+      const NOTIF_BADGE_POLL_MS = 60 * 1000;
+      let pollTimer = null;
+      let stopped = false;
+      const pollOnce = () => {
+        if (stopped) return;
+        if (document.hidden) { schedule(); return; }
+        fetch('/api/notifications/badge')
+          .then((res) => {
+            if (res.status === 404) {
+              // Feature disabled mid-session (toggle off / last sub removed):
+              // stand the bell down entirely; a reload re-probes.
+              stopped = true;
+              closePanel();
+              bellBtn.hidden = true;
+              return null;
+            }
+            return res.ok ? res.json() : null;
+          })
+          .then((body) => {
+            if (body && Number.isInteger(body.count) && panel.hidden) setBadge(body.count);
+            schedule();
+          })
+          .catch(() => schedule());
+      };
+      const schedule = () => {
+        if (stopped) return;
+        if (pollTimer) clearTimeout(pollTimer);
+        pollTimer = setTimeout(pollOnce, NOTIF_BADGE_POLL_MS);
+      };
+      schedule();
+      const resume = () => {
+        if (stopped || document.hidden) return;
+        if (pollTimer) clearTimeout(pollTimer);
+        pollTimer = setTimeout(pollOnce, 1000);
+      };
+      document.addEventListener('visibilitychange', resume);
+      window.addEventListener('pageshow', resume);
+    })
+    .catch(() => { /* network failure -- fail closed, inject nothing */ });
+}
+
 // ---- v1.37.0 books nav-link injection (the D4 posture, books-gated) --------
 //
 // The Books link exists only when the operator has configured >=1 book
@@ -7631,6 +7946,10 @@ document.addEventListener('DOMContentLoaded', () => {
   // as the two injections above.
   injectDownloadStatusChip();
 
+  // v1.51: the notification bell (top-right, every shared-header shell),
+  // gated by its own capability probe exactly like the injections above.
+  injectNotificationBellIfEnabled();
+
   // v1.32 (Dean, "white-label"): swap the text logo for the user-uploaded
   // image when one is configured -- runs on every page (shared header).
   applyCustomLogoIfSet();
@@ -7813,5 +8132,8 @@ if (typeof module !== 'undefined' && module.exports) {
     showConfirmModal,
     // v1.26.3 (Item 2/3): shared empty-state / error-state card builders.
     buildEmptyStateHtml, buildErrorStateHtml,
+    // v1.51: the notification bell's pure decisions (the DOM injector is the
+    // usual untested-by-necessity thin shell around them).
+    shouldInjectNotificationBell, formatNotificationBadge, buildNotificationRowModel,
   };
 }
