@@ -80,6 +80,18 @@
 
 ## Shipped
 
+### v1.50.1 - on-device polish: squeeze-zone wrap, dimmed download chip, chapters root-caused (2026-07-29)
+
+Dean's first v1.50 on-device pass ("It's beautiful!") came back with three small items, shipped same day under the slim gate:
+
+**Landscape-phone toolbar overlap** - exactly the squeeze zone the v1.50 adversarial seat flagged for probing: a phone held horizontally is wider than 768px, gets the DESKTOP layout, and with the new watch group the non-shrinking actions row overflowed onto a folder-view heading ("yt-dlp" hidden behind the All button). The home sticky bar now wraps - wide desktop is unchanged; squeezed widths drop the actions to their own line.
+
+**Collapsed download chip dimmed** - the bottom-left chip (pulsing dot, nothing more until clicked) now sits at 55% opacity so it doesn't obscure content; full opacity on hover/keyboard focus/expanded. **The gate caught the exemption that matters:** the ERROR state (the "needs attention" dark-red dot) is never dimmed - on touch there is no hover to rescue a faded attention affordance. Both the rule and the class-to-element bindings are mutation-locked.
+
+**Chapters as "Unknown language" - root-caused, honestly deferred (tech-debt #61).** The label is iOS's native player rendering the EMBEDDED chapter track that `--embed-chapters` has ffmpeg's mov muxer create, tagged `und`. FileTube's own chapters menu and the `srclang="en"` caption track are unaffected. No ffmpeg on the dev box to verify a safe lever, a blanket `-metadata:s` would mis-tag non-English media, and existing files are never mutated - so the fix direction is recorded for a box that can verify it, not shipped blind.
+
+Dual-Node green: 5057/5057 on v22.23.1 and v24.14.0. The #53/#57 thumbnail flake fired twice across the gate's six full-suite runs - still pre-existing and untouched, but now the most-observed open flake; its isolated-DATA_DIR fix is queued as next-wave work.
+
 ### v1.50.0 - UI wave: watched filter, era player skins, and six fixes/asks (2026-07-29)
 
 Dean's six-item intake plus one mid-wave ask, all in one branch:
