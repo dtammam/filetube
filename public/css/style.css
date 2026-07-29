@@ -3790,6 +3790,18 @@ a.sub-row-channel-link:focus-visible {
     display: none;
   }
 
+  /* v1.50 (Dean: "Reheat shifted the whole row down on mobile. Makes me
+     sad."): Reheat made the glyph group SIX buttons, and with the "N / 5"
+     text beside the stars the .watch-actions row's two members no longer
+     share one line -- the wrap safety net above kicked in and pushed the
+     buttons to a second row. Drop the NUMBER at phone widths and keep the
+     stars: the rating text is the cosmetic hash value (getStarRating), so
+     nothing informational is lost, and the width it frees puts stars +
+     six glyphs back on one line. Desktop keeps the number (there is room). */
+  .star-rating .rating-count {
+    display: none;
+  }
+
   /* ---- v1.13.0 item 6: mobile-portrait polish for the Setup (Library ------
      Settings) page and the /subscriptions page. Comfortable spacing/
      wrapping for rows and controls, and larger tap targets, without
