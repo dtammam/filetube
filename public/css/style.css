@@ -807,6 +807,17 @@ html.reader-immersive .app-container { padding-top: 0; }
      smaller 16px padding is overridden in the max-width:768px block. */
   margin-top: -24px;
   padding-top: 24px;
+  /* v1.50.1 (Dean, on-device, first v1.50 probe hit): the 769-1100px squeeze
+     zone -- a PHONE HELD HORIZONTALLY is wider than 768px, so it gets this
+     DESKTOP layout, and with the v1.50 watch group the actions row no longer
+     fits beside a folder-view heading ("yt-dlp" hidden behind the All
+     button). `.section-actions` is flex-shrink: 0 (deliberate -- pills must
+     not crush), so the row overflowed onto the heading. Let the bar WRAP:
+     wide desktop stays one line exactly as before (wrap only engages when
+     the two members genuinely cannot share it); squeezed widths drop the
+     actions to their own line below the heading. Home-scoped, same as the
+     sticky behavior itself. */
+  flex-wrap: wrap;
 }
 
 .section-actions {
@@ -5900,6 +5911,24 @@ body.ft-css-fullscreen .bottom-nav {
 .dl-status-chip-summary:hover,
 .dl-status-chip-summary:focus-visible {
   color: var(--yt-red);
+}
+
+/* v1.50.1 (Dean): the COLLAPSED chip is just a pulsing dot in a solid box --
+   it conveys "something is happening" but shows nothing more until clicked,
+   so it shouldn't sit at full opacity over content. Dim it while collapsed;
+   restore full opacity on hover/keyboard focus and whenever the panel is
+   expanded (the summary is the expanded panel's header -- dimming it there
+   would read as disabled). Opacity, not a translucent background: the
+   whole chip (border, dot, text) fades as one, in every era x mode, with
+   zero new color tokens. */
+.dl-status-chip-summary {
+  opacity: 0.55;
+  transition: opacity 0.15s ease;
+}
+#dl-status-chip:hover .dl-status-chip-summary,
+.dl-status-chip-summary:focus-visible,
+.dl-status-chip-expanded .dl-status-chip-summary {
+  opacity: 1;
 }
 
 .dl-status-chip-dot {

@@ -121,3 +121,16 @@ test('NEITHER the desktop NOR the mobile bare .section-title rule is made sticky
   }
   assert.ok(checked >= 2, 'expected to check both the desktop and mobile bare .section-title rules (found ' + checked + ')');
 });
+
+// ---- v1.50.1 (Dean, first v1.50 on-device probe hit) -----------------------
+// A phone held horizontally is wider than 768px -> DESKTOP layout, and with
+// the v1.50 watch group the flex-shrink:0 actions row overflowed onto a
+// folder-view heading ("yt-dlp" hidden behind the All button). The sticky
+// bar now wraps: wide desktop stays one line (wrap engages only when the
+// members genuinely cannot share it); squeezed widths drop the actions to
+// their own line.
+
+test('v1.50.1: the home sticky bar wraps so the actions row can never overlap the heading in the 769-1100px squeeze zone', () => {
+  const body = ruleBody('#library-content .section-title');
+  assert.match(body, /flex-wrap:\s*wrap/, 'the home sticky bar must be allowed to wrap');
+});

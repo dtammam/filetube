@@ -1136,3 +1136,19 @@ t32('v1.32 gate fix: a stale/absent failureKind on the client side always lands 
     a32.equal(common32.chipItemLifecycle(item.state, item.failureKind), 'sticky');
   }
 });
+
+// ---- v1.50.1 (Dean): collapsed-chip transparency ---------------------------
+// The collapsed chip is just a pulsing dot in a solid box -- "something is
+// happening", nothing more until clicked -- so it must not sit at full
+// opacity over content. Dimmed while collapsed; full opacity on hover,
+// keyboard focus, and while the panel is expanded (the summary doubles as
+// the expanded panel's header, where dimming would read as disabled).
+
+test('v1.50.1: the collapsed chip summary is dimmed, and restored on hover/focus/expanded', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
+  assert.match(css, /\.dl-status-chip-summary\s*\{[^}]*opacity:\s*0\.55/, 'collapsed summary dimmed');
+  const restore = /#dl-status-chip:hover \.dl-status-chip-summary,\s*\.dl-status-chip-summary:focus-visible,\s*\.dl-status-chip-expanded \.dl-status-chip-summary\s*\{[^}]*opacity:\s*1/;
+  assert.match(css, restore, 'hover, focus-visible, and the expanded state all restore full opacity');
+});
