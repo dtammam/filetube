@@ -7213,7 +7213,9 @@ function validateBackupBundle(bundle) {
       if (u.role !== 'admin' && u.role !== 'member') return `${where}: role must be 'admin' or 'member'`;
       for (const [field, kind] of [['progress', 'object'], ['bookProgress', 'object'], ['liked', 'array'], ['bookPins', 'array'], ['channelPins', 'array'],
         // v1.44 music per-user state (the SEVENTH-strike carrier).
-        ['musicLiked', 'array'], ['musicProgress', 'object']]) {
+        ['musicLiked', 'array'], ['musicProgress', 'object'],
+        // v1.50 watched latch (absent in pre-v1.50 bundles -- legal).
+        ['watched', 'array']]) {
         if (u[field] === undefined) continue;
         const ok = kind === 'array' ? Array.isArray(u[field]) : (typeof u[field] === 'object' && u[field] !== null && !Array.isArray(u[field]));
         if (!ok) return `${where}: ${field} must be an ${kind}`;
@@ -7622,6 +7624,7 @@ app.get('/api/videos', (req, res) => {
   const rootFilter = req.query.root || ''; // a configured folder path — matches everything under it (recursive)
   const sort = typeof req.query.sort === 'string' ? req.query.sort : 'newest';
   const format = req.query.format; // videoQuery.filterByFormat already treats anything but 'video'/'audio' as 'both'
+  const watch = videoQuery.normalizeWatchFilter(req.query.watch); // v1.50: all|new|watching|watched
   const limit = videoQuery.normalizeLimit(req.query.limit);
   const offset = videoQuery.normalizeOffset(req.query.offset);
   const seed = videoQuery.normalizeSeed(req.query.seed);
@@ -7661,6 +7664,21 @@ app.get('/api/videos', (req, res) => {
   // replacement for the client's local filterByMediaType.
   list = videoQuery.filterByFormat(list, format);
 
+  // v1.50: per-user watched-state filter. Must run BEFORE total/sort/slice
+  // (a page-local filter would break pagination), and must see the same
+  // read-your-writes view `effectiveProgress` gives single-item readers --
+  // so the user's committed progress rows (ONE query, not per-item) get any
+  // not-yet-flushed pendingProgress entries overlaid before filtering.
+  // `watchedSet` is fetched once and reused by the page overlay below.
+  const watchedSet = new Set(userStore.getWatchedIds(req.user.id));
+  if (watch !== 'all') {
+    const progressMap = userStore.getProgress(req.user.id);
+    for (const entry of pendingProgress.values()) {
+      if (entry.userId === req.user.id) progressMap[entry.mediaId] = entry.value;
+    }
+    list = videoQuery.filterByWatchState(list, watch, progressMap, watchedSet);
+  }
+
   // `total` is the full filtered length, BEFORE slicing to a page — this is
   // what makes AC3.2's "page(sort,filter) == sort(filter(full)).slice(...)"
   // property hold, and what lets the client know when it has reached the end.
@@ -7684,14 +7702,18 @@ app.get('/api/videos', (req, res) => {
   const likedSet = new Set(userStore.getLiked(req.user.id));
   const items = page.map(item => {
     const progress = effectiveProgress(req.user.id, item.id) || { timestamp: 0, duration: 0 };
+    const progressPercent = progress.duration > 0 ? (progress.timestamp / progress.duration) * 100 : 0;
     return {
       ...item,
       progress: progress.timestamp,
-      progressPercent: progress.duration > 0 ? (progress.timestamp / progress.duration) * 100 : 0,
+      progressPercent,
       // v1.40.0: per-item liked flag so the grid can render each card's Like
       // control in its correct initial state (same derivation as the single
       // GET /api/videos/:id route and the by-construction flag on /api/liked).
-      liked: likedSet.has(item.id)
+      liked: likedSet.has(item.id),
+      // v1.50: server-derived so the client never re-implements the
+      // thresholds (one authority for what "watched" means).
+      watchState: videoQuery.deriveWatchState(progressPercent, watchedSet.has(item.id))
     };
   });
 
@@ -7870,6 +7892,19 @@ app.post('/api/progress', (req, res) => {
     }
   });
   armProgressFlushTimerIfNeeded();
+  // v1.50 watched latch: the first ping that crosses WATCHED_PCT marks the
+  // item watched for this user, STICKY (a later loop-restart/rewatch ping
+  // near 0 never clears it -- that's what keeps a looping video from
+  // un-watching itself). Checked on the ping, NOT the coalesced flush: the
+  // flush only keeps the LAST value of the window, so a cross-then-restart
+  // inside one window would otherwise lose the crossing entirely. This is
+  // the one durable-write exception to this handler's "no disk I/O" rule,
+  // and it is bounded: one indexed point SELECT per ping while past the
+  // threshold, one tiny INSERT ever (markWatched is check-then-insert).
+  const effDuration = duration || item.duration || 0;
+  if (effDuration > 0 && (timestamp / effDuration) * 100 >= videoQuery.WATCHED_PCT) {
+    userStore.markWatched(req.user.id, id, new Date().toISOString());
+  }
   res.json({ success: true });
 });
 

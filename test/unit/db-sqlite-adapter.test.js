@@ -90,11 +90,13 @@ test('fresh open creates the full v1 schema with empty user tables', () => {
     assert.deepStrictEqual(a.load(), {}, 'fresh DB assembles to an empty object');
     for (const table of ['users', 'user_progress', 'user_liked', 'user_book_progress', 'user_book_pins', 'user_channel_pins',
       // v1.44 schema v3: the three per-user music tables, born empty.
-      'user_music_liked', 'user_music_progress', 'user_music_state']) {
+      'user_music_liked', 'user_music_progress', 'user_music_state',
+      // v1.50 schema v4: the per-user watched latch, born empty.
+      'user_watched']) {
       const { c } = a.sql.prepare(`SELECT COUNT(*) AS c FROM ${table}`).get();
       assert.strictEqual(c, 0, `${table} exists and is empty (born-complete schema, exec plan)`);
     }
-    assert.strictEqual(a.sql.prepare('PRAGMA user_version').get().user_version, 3);
+    assert.strictEqual(a.sql.prepare('PRAGMA user_version').get().user_version, 4);
     // v1.43 schema v2: users.id is AUTOINCREMENT (never reuses a reaped id —
     // design-delta SUGGESTION-6). sqlite_autoindex/sqlite_sequence presence
     // is the fingerprint.
@@ -104,6 +106,34 @@ test('fresh open creates the full v1 schema with empty user tables', () => {
     a.close();
   }
 });
+
+test('v3 -> v4 upgrade: an existing populated schema gains the empty user_watched table and loses nothing', () => {
+  // Simulate a v1.44-v1.49 instance: full schema, then rewind the version
+  // stamp and drop the v4 table, as if v4 never ran.
+  const a = new SqliteAdapter(dbPath(), { log: () => {} });
+  a.save(fullFixtureForUpgrade());
+  a.sql.exec('DROP TABLE user_watched');
+  a.sql.exec('PRAGMA user_version = 3');
+  a.close();
+
+  const b = new SqliteAdapter(dbPath(), { log: () => {} });
+  try {
+    assert.strictEqual(b.sql.prepare('PRAGMA user_version').get().user_version, 4, 'forward-only migration ran');
+    assert.strictEqual(b.sql.prepare('SELECT COUNT(*) AS c FROM user_watched').get().c, 0, 'latch table born empty');
+    assert.deepStrictEqual(b.load(), fullFixtureForUpgrade(), 'every pre-existing namespace survives the migration untouched');
+  } finally {
+    b.close();
+  }
+});
+
+// The round-trip fixture minus the importer-transform fields (same shape the
+// round-trip test below saves).
+function fullFixtureForUpgrade() {
+  const db = fullFixture();
+  delete db.metadata.vid1.viewCount;
+  delete db.metadata.vid3.viewCount;
+  return db;
+}
 
 test('save/load round-trip preserves every namespace across a re-open', () => {
   const a = new SqliteAdapter(dbPath(), { log: () => {} });
