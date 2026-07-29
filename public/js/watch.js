@@ -895,6 +895,9 @@ if (typeof module !== 'undefined' && module.exports) {
       mediaId,
       window.FileTube.player.getState()
     );
+    // Gate round 2 (adversarial W-B): whether a full seed will pre-load,
+    // decided ONCE -- it changes what the 'reparent' branch below should do.
+    const canSeedPreload = Boolean(watchSeed && isFullWatchSeedItem(watchSeed.item));
     if (entryReparentAction === 'adopt') {
       // v1.40.0: carry the CURRENT browse context on the early adopt-mount too,
       // so re-opening a docked video from a new list view refreshes autoplay's
@@ -902,24 +905,33 @@ if (typeof module !== 'undefined' && module.exports) {
       // otherwise ignored on adopt.
       const mountedEarly = window.FileTube.player.load(mediaId, { browseCtx: rawBrowseCtx }, { slot: playerSlot });
       if (!mountedEarly) showFatalViewError(root);
-    } else if (entryReparentAction === 'reparent') {
+    } else if (entryReparentAction === 'reparent' && !canSeedPreload) {
       // Eagerly reparent the STILL-loaded previous video's host into THIS
       // view's #player-slot right now -- a pure reparent (`expand` ==
       // `mountInSlot`), never touching src/currentTime -- so it never goes
       // dark/detached while initWatch() below awaits its two fetches.
       // `player.load(mediaId, mediaData, ...)` further down in initWatch()
       // still performs the real teardown + new-media load once mediaData
-      // resolves, completely unchanged.
+      // resolves, completely unchanged. Gate round 2 (W-B): SKIPPED when a
+      // full seed is about to pre-load the NEW video right below -- keeping
+      // the old one playing under the new video's already-painted metadata
+      // was a title/audio mismatch window, and the pre-load's own
+      // teardown+mount supersedes the eager reparent entirely.
       window.FileTube.player.expand(playerSlot);
     }
 
-    // v1.52 T2: a FULL seed on a genuine new load ('defer' -- neither adopt
-    // nor reparent applied) starts the real media NOW, two round trips
-    // before hydration. List data carries everything the player needs for
-    // the stream decision (type/needsTranscode/transcodeStatus), the aspect
-    // reservation (width/height) and the poster (hasThumbnail). Resume is
-    // unaffected either way -- the player always fetches /api/progress/:id
-    // itself (gate QA W3: the seed's progress field plays no part).
+    // v1.52 T2 (+ gate round 2 W-B): a FULL seed starts the real media NOW,
+    // two round trips before hydration -- on 'defer' (nothing loaded) AND on
+    // 'reparent' (a DIFFERENT video still playing from the previous view):
+    // the seed IS the requested video, which voids the reparent's
+    // keep-alive rationale -- pre-wave that window showed neutral
+    // placeholders over the old video, but a seeded paint asserts the NEW
+    // title, so the audio/metadata must switch together. List data carries
+    // everything the player needs for the stream decision
+    // (type/needsTranscode/transcodeStatus), the aspect reservation
+    // (width/height) and the poster (hasThumbnail). Resume is unaffected
+    // either way -- the player always fetches /api/progress/:id itself
+    // (gate QA W3: the seed's progress field plays no part).
     //
     // CHAPTERS ARE DELIBERATELY STRIPPED (gate C2): the list record carries
     // the RAW `chapters`/`chaptersManual` sets, and handing them to the
@@ -929,7 +941,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // hydration is the ONLY chapters writer on this path. Partial seeds
     // (bell rows) skip pre-load entirely: no type, no stream decision.
     let seedPreloaded = false;
-    if (entryReparentAction === 'defer' && watchSeed && isFullWatchSeedItem(watchSeed.item)) {
+    if ((entryReparentAction === 'defer' || entryReparentAction === 'reparent') && canSeedPreload) {
       const seedItemForLoad = { ...watchSeed.item };
       delete seedItemForLoad.chapters;
       delete seedItemForLoad.chaptersManual;
@@ -974,9 +986,12 @@ if (typeof module !== 'undefined' && module.exports) {
         // detail fetch run in PARALLEL -- they were strictly serial for no
         // reason, which was a full extra round trip on every cold open (the
         // recon-measured chain). One RTT saved for every path, seeded or not.
+        // Gate round 2 (adversarial W-A): both fetches carry this view's
+        // abort signal, so navigating away cancels them instead of leaving
+        // an abandoned view's continuations to run against the LIVE player.
         const [configRes, mediaRes] = await Promise.all([
-          fetch('/api/config'),
-          fetch(`/api/videos/${mediaId}`),
+          fetch('/api/config', { signal }),
+          fetch(`/api/videos/${mediaId}`, { signal }),
         ]);
         const configData = await configRes.json();
         folderSettings = configData.folderSettings || {};
@@ -1071,6 +1086,13 @@ if (typeof module !== 'undefined' && module.exports) {
         setupSubscribeButton();
 
       } catch (err) {
+        // Gate round 2 (adversarial W-A, the fix-round-fix-regresses class):
+        // a DEAD view's catch must never touch the live player or the DOM.
+        // Without this, a seeded tap -> navigate-away -> dock -> late fetch
+        // failure ran this closure's close() against whatever is playing
+        // NOW. The view's AbortController is the staleness truth (the same
+        // idiom the prev/next handlers use).
+        if (signal.aborted) return;
         console.error(err);
         // v1.52 gate W1: a seeded pre-load may already be STREAMING a file
         // whose detail fetch just said is gone -- a playing/erroring video
