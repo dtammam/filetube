@@ -1033,3 +1033,62 @@ test('v1.48: an INVALID reheat view count is rejected and leaves no orphan date'
   assert.equal(item.sourceViewCount, undefined);
   assert.equal(item.sourceViewCountCapturedAt, undefined, 'no date without a count');
 });
+
+// ---- v1.49: the per-video force's opt-in view-count decrease ---------------
+//
+// Decision 2 of the per-video reheat intake. The monotonicity guard above is
+// right for the unattended library batch and wrong for one human forcing one
+// item, so it becomes opt-out -- but ONLY through this explicit flag, and the
+// flag must never reach the batch. See `recordRepulledItemMeta`'s own comment.
+
+test('v1.49: allowViewCountDecrease lets an explicit per-video force write a LOWER count', async () => {
+  const { filePath, id } = seedItemWith({ sourceViewCount: 1_672_000_000, sourceViewCountCapturedAt: 1_000 });
+
+  await recordRepulledItemMeta(
+    { loadDatabase, updateDatabase, getMediaId },
+    id,
+    { sourceViewCount: 42, filePath, markComplete: true, allowViewCountDecrease: true },
+    1_800_000_000_000,
+  );
+
+  const item = readDb().metadata[id];
+  assert.equal(item.sourceViewCount, 42, 'the human-forced downward correction lands');
+  assert.equal(item.sourceViewCountCapturedAt, 1_800_000_000_000,
+    'and carries the new capture date -- an accepted count is always freshly dated');
+});
+
+test('v1.49: the guard still holds when allowViewCountDecrease is absent, false, or merely truthy-looking', async () => {
+  // The flag is checked with `=== true` precisely so a stray/coerced value
+  // (a JSON string, a 1, an object) can never retire the batch's guard.
+  for (const flag of [undefined, false, 'true', 1, {}]) {
+    const { filePath, id } = seedItemWith({ sourceViewCount: 5_000, sourceViewCountCapturedAt: 1_000 });
+
+    await recordRepulledItemMeta(
+      { loadDatabase, updateDatabase, getMediaId },
+      id,
+      { sourceViewCount: 3, filePath, markComplete: true, allowViewCountDecrease: flag },
+      1_800_000_000_000,
+    );
+
+    const item = readDb().metadata[id];
+    assert.equal(item.sourceViewCount, 5_000, `the good count survives with allowViewCountDecrease=${JSON.stringify(flag)}`);
+    assert.equal(item.sourceViewCountCapturedAt, 1_000, 'and keeps its original date');
+  }
+});
+
+test('v1.49: allowViewCountDecrease does NOT weaken the validator -- an invalid count is still refused', async () => {
+  // The escape hatch is about DIRECTION only. A value that cannot be a view
+  // count at all is still rejected, and still leaves no orphan date behind.
+  const { filePath, id } = seedItemWith({ sourceViewCount: 900, sourceViewCountCapturedAt: 1_000 });
+
+  await recordRepulledItemMeta(
+    { loadDatabase, updateDatabase, getMediaId },
+    id,
+    { sourceViewCount: -5, filePath, markComplete: true, allowViewCountDecrease: true },
+    1_800_000_000_000,
+  );
+
+  const item = readDb().metadata[id];
+  assert.equal(item.sourceViewCount, 900, 'the stored count is untouched by an invalid input');
+  assert.equal(item.sourceViewCountCapturedAt, 1_000, 'and keeps its original date');
+});

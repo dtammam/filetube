@@ -10454,7 +10454,10 @@ function enumerateRepullableItems(db, config) {
  *
  * @param {{loadDatabase?: Function, updateDatabase: Function, getMediaId?: Function}} deps
  * @param {string} mediaId
- * @param {{releaseDate?: number, channelAvatarUrl?: string, channel?: {channelUrl: string, channelHandleUrl?: string, channelId?: string, channelName?: string}, filePath: string, markComplete?: boolean}} meta
+ * @param {{releaseDate?: number, channelAvatarUrl?: string, channel?: {channelUrl: string, channelHandleUrl?: string, channelId?: string, channelName?: string}, filePath: string, markComplete?: boolean, allowViewCountDecrease?: boolean}} meta
+ *   `allowViewCountDecrease` (v1.49): opt OUT of the view-count monotonicity
+ *   guard for THIS call only -- see the guard's own comment below. Passed
+ *   solely by the per-video force reheat; absent/false everywhere else.
  * @param {number} [nowMs] injectable clock, for deterministic tests (mirrors store.js's own `nowMs=Date.now()` pattern)
  * @returns {Promise<boolean>} resolves `true` if the item was updated, `false` on a safe no-op
  */
@@ -10505,11 +10508,24 @@ async function recordRepulledItemMeta(deps, mediaId, meta, nowMs = Date.now()) {
     // capture of 0 is legitimate (a brand-new upload) and still lands. The date
     // is only re-stamped when the count is actually accepted, so a refused
     // reheat cannot leave a stale count wearing a fresh date.
+    //
+    // v1.49 (Dean, per-video reheat decision 2): `m.allowViewCountDecrease`
+    // is the ONE documented escape hatch, and it is passed ONLY by the
+    // explicit single-video force (`POST /api/ytdlp/repull-metadata/item/:id`).
+    // The reasoning that makes a blanket guard right for the BATCH is exactly
+    // what makes it wrong there: the batch refuses a decrease because it
+    // cannot tell a degraded read from news across thousands of unattended
+    // items, whereas a per-video force is one human, looking at one item,
+    // asking for this specific number to be re-fetched -- and today the guard
+    // makes that click silently do nothing in the case most likely to prompt
+    // it. Blast radius is one row, and pressing it again re-fetches.
+    // DEFAULTS OFF (`=== true`): the batch's behaviour is byte-identical to
+    // v1.48, and tech-debt #60 stays open against the batch.
     const repulledViews = ytdlp.parseCapturedViewCount(m.sourceViewCount);
     if (repulledViews !== null) {
       const stored = item.sourceViewCount;
       const hasStored = typeof stored === 'number' && Number.isInteger(stored) && stored >= 0;
-      if (!hasStored || repulledViews >= stored) {
+      if (!hasStored || repulledViews >= stored || m.allowViewCountDecrease === true) {
         item.sourceViewCount = repulledViews;
         item.sourceViewCountCapturedAt = nowMs;
       }
@@ -11553,6 +11569,15 @@ ytdlp.registerRoutes(app, {
   // injected like every other server-owned primitive. It is READ-ONLY -- it
   // never writes db.json, moves a file, or spawns anything.
   previewImportRelocations: buildImportRelocationPreview,
+  // v1.49 (Dean's per-video reheat): the SAME shared decision function the
+  // executor and the library-wide preview already call, now needed for ONE
+  // item -- the per-video route proposes the move to the user (destination +
+  // hard-link-vs-copy) and only then, on their confirm, calls
+  // `relocateHydratedImport` above. Handing the route this function rather
+  // than letting it re-derive "would it move, and to where?" is what keeps
+  // the confirm dialog from ever describing a move different to the one that
+  // actually happens (the v1.41.7 anti-drift contract).
+  planImportRelocation,
   // v1.33 T1: the reheat batch's LOCAL tags probe (cheap ffprobe, no
   // network) -- server.js owns ffmpeg/ffprobe, so the yt-dlp module gets it
   // deps-injected like every other server-owned primitive above.

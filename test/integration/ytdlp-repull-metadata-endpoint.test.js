@@ -659,6 +659,20 @@ test('structural lock: enumerateRepullableItems/recordRepulledItemMeta/runRepull
   const callSites = src.match(/(?<!function )runRepullMetadataBatch\(/g) || [];
   assert.equal(callSites.length, 1, 'runRepullMetadataBatch must be called from exactly one place (the POST /api/ytdlp/repull-metadata route handler)');
 
+  // v1.49: the per-video reheat's worker is held to the IDENTICAL discipline.
+  // It is a second deliberate, user-pressed trigger -- not a second automatic
+  // one -- so it gets its own exactly-one-call-site lock rather than being
+  // waved through by the counts below.
+  const itemCallSites = src.match(/(?<!function )runSingleItemReheat\(/g) || [];
+  assert.equal(itemCallSites.length, 1, 'runSingleItemReheat must be called from exactly one place (the POST /api/ytdlp/repull-metadata/item/:mediaId route handler)');
+
+  // v1.49: `reheatOneItem` is the extracted per-item metadata pass that the
+  // batch and the per-video worker SHARE (the anti-drift seam). Exactly two
+  // call sites, one per worker -- a third would mean someone has wired the
+  // reheat into a path that is neither.
+  const sharedItemCallSites = src.match(/(?<!function )reheatOneItem\(/g) || [];
+  assert.equal(sharedItemCallSites.length, 2, 'reheatOneItem must be called from exactly two places (runRepullMetadataBatch and runSingleItemReheat)');
+
   // FIX 2 (QA hardening): the `autoRunFnNames` allowlist below is
   // hand-maintained -- it only catches a stray call from a function someone
   // remembered to ADD to the list. These two GLOBAL, allowlist-independent
@@ -672,8 +686,15 @@ test('structural lock: enumerateRepullableItems/recordRepulledItemMeta/runRepull
   // `typeof deps.NAME !== 'function'` guard (no `(` immediately follows the
   // name there), or a mention inside a comment/doc-string (also no `(`
   // immediately after).
+  // v1.49: TWO call sites now, both of them user-pressed route handlers -- the
+  // library-wide `POST /api/ytdlp/repull-metadata` and the per-video
+  // `POST /api/ytdlp/repull-metadata/item/:mediaId`. The per-video route calls
+  // the SAME enumerator (filtering its result to one id) rather than carrying a
+  // private copy of "is this item reheatable", which is why the count moved
+  // instead of a second eligibility predicate appearing. A THIRD call site must
+  // still fail this test.
   const enumerateCallSites = src.match(/(?<!function )enumerateRepullableItems\(/g) || [];
-  assert.equal(enumerateCallSites.length, 1, 'enumerateRepullableItems must be called from exactly one place in lib/ytdlp/index.js (the POST /api/ytdlp/repull-metadata route handler) -- a second call site anywhere in this file must fail this test');
+  assert.equal(enumerateCallSites.length, 2, 'enumerateRepullableItems must be called from exactly two places in lib/ytdlp/index.js (the library-wide and per-video reheat route handlers) -- a third call site anywhere in this file must fail this test');
 
   const recordCallSites = src.match(/(?<!function )recordRepulledItemMeta\(/g) || [];
   assert.equal(recordCallSites.length, 1, 'recordRepulledItemMeta must be called from exactly one place in lib/ytdlp/index.js (inside runRepullMetadataBatch) -- a second call site anywhere in this file must fail this test');
@@ -715,6 +736,11 @@ test('structural lock: enumerateRepullableItems/recordRepulledItemMeta/runRepull
     assert.ok(!body.includes('enumerateRepullableItems'), `${fnName} must never call enumerateRepullableItems (no auto-run)`);
     assert.ok(!body.includes('recordRepulledItemMeta'), `${fnName} must never call recordRepulledItemMeta (no auto-run)`);
     assert.ok(!body.includes('repullMetadataInProgress = true'), `${fnName} must never flip the reheat's in-progress latch (no auto-run)`);
+    // v1.49: the per-video worker and the shared per-item pass are covered by
+    // the same allowlist sweep -- an auto-run path could otherwise reach the
+    // exact same network+write behaviour through the new entry points.
+    assert.ok(!body.includes('runSingleItemReheat'), `${fnName} must never call runSingleItemReheat (no auto-run)`);
+    assert.ok(!body.includes('reheatOneItem'), `${fnName} must never call reheatOneItem (no auto-run)`);
   }
 });
 
