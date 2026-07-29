@@ -31,7 +31,7 @@ const {
   seekCommitTarget,
   classifyTapGesture,
   shouldArtSingleTapAct,
-  nextPlaybackRate,
+  buildSpeedMenuModel,
   shouldDesktopVideoTapToggle,
 } = require('../../public/js/player.js');
 
@@ -185,25 +185,34 @@ test('shouldArtSingleTapAct: never acts with no onSingleTap at all (the video su
   assert.strictEqual(shouldArtSingleTapAct('full', null), false);
 });
 
-// ---- nextPlaybackRate (FR-4, v1.22.1) ----------------------------------------
+// ---- buildSpeedMenuModel (v1.50.3, item A -- replaces the retired cycle) ----
 
-test('nextPlaybackRate: steps forward through the fixed rate cycle', () => {
-  assert.strictEqual(nextPlaybackRate(1), 1.25);
-  assert.strictEqual(nextPlaybackRate(1.25), 1.5);
-  assert.strictEqual(nextPlaybackRate(1.5), 1.75);
-  assert.strictEqual(nextPlaybackRate(1.75), 2);
+test('buildSpeedMenuModel: eight rows, slowest-to-fastest, the YouTube set (0.25-2x)', () => {
+  const model = buildSpeedMenuModel(1);
+  assert.deepStrictEqual(model.map((r) => r.rate), [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]);
 });
 
-test('nextPlaybackRate: wraps from the fastest rate back to the slowest', () => {
-  assert.strictEqual(nextPlaybackRate(2), 1);
+test('buildSpeedMenuModel: 1x is labeled "Normal" (YouTube\'s spelling); every other row is "N×"', () => {
+  const model = buildSpeedMenuModel(1);
+  assert.deepStrictEqual(model.map((r) => r.label), ['0.25×', '0.5×', '0.75×', 'Normal', '1.25×', '1.5×', '1.75×', '2×']);
 });
 
-test('nextPlaybackRate: an unrecognized/foreign current rate degrades to the first rate in the cycle, never throws', () => {
-  assert.strictEqual(nextPlaybackRate(3), 1);
-  assert.strictEqual(nextPlaybackRate(0), 1);
-  assert.strictEqual(nextPlaybackRate(undefined), 1);
-  assert.strictEqual(nextPlaybackRate(null), 1);
-  assert.strictEqual(nextPlaybackRate(NaN), 1);
+test('buildSpeedMenuModel: exactly ONE active row, matching the current rate', () => {
+  for (const rate of [0.25, 0.75, 1, 2]) {
+    const model = buildSpeedMenuModel(rate);
+    assert.deepStrictEqual(model.filter((r) => r.active).map((r) => r.rate), [rate]);
+  }
+});
+
+test('buildSpeedMenuModel: an unrecognized/foreign current rate marks NORMAL active (never a surprise quarter-speed default), never throws', () => {
+  for (const garbage of [3, 0, undefined, null, NaN]) {
+    const model = buildSpeedMenuModel(garbage);
+    assert.deepStrictEqual(model.filter((r) => r.active).map((r) => r.rate), [1]);
+  }
+});
+
+test('nextPlaybackRate is no longer exported -- the blind cycle was retired with its only caller (the picker replaced it)', () => {
+  assert.strictEqual(require('../../public/js/player.js').nextPlaybackRate, undefined);
 });
 
 // ---- shouldDesktopVideoTapToggle (FR-5, v1.22.1) -----------------------------
@@ -238,7 +247,10 @@ test('shouldDesktopVideoTapToggle: does NOT act while DOCKED or CLOSED, even on 
 
 const PLAYER_JS = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'player.js'), 'utf8');
 const initPlaybackRateMatch = /function initPlaybackRate\(\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);
-const speedBtnClickMatch = /speedBtn\.addEventListener\(\s*['"]click['"],\s*function \(\) \{([\s\S]*?)\n {6}\}\);/.exec(PLAYER_JS);
+// v1.50.3: the click handler takes the event arg now (stopPropagation for
+// the picker's outside-close), and selection happens in the MENU rows -- the
+// FIX 1 trio lock follows the apply path there (see the updated test below).
+const speedBtnClickMatch = /speedBtn\.addEventListener\(\s*['"]click['"],\s*function \(e\) \{([\s\S]*?)\n {6}\}\);/.exec(PLAYER_JS);
 const engageHoldMatch = /function engageHold\(\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);
 const releaseHoldMatch = /function releaseHold\(\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);
 
@@ -255,14 +267,17 @@ test('FIX 1: initPlaybackRate() sets defaultPlaybackRate alongside playbackRate 
   assert.match(body, /mediaPlayer\.defaultPlaybackRate\s*=\s*rate\s*;/);
 });
 
-test('FIX 1: the #speed-btn click handler sets defaultPlaybackRate alongside playbackRate -- a manually-chosen rate must also survive every future load()', () => {
+test('FIX 1: every rate-setting path routes through applyPlaybackRate, which sets defaultPlaybackRate alongside playbackRate', () => {
   // v1.41.11: the trio (playbackRate + defaultPlaybackRate + label/persist)
-  // moved from the click handler into the shared applyPlaybackRate() so the
-  // new </> keyboard shortcuts can never diverge from the button. The lock
-  // follows: the click handler must route through applyPlaybackRate, and
-  // applyPlaybackRate must still carry FIX 1's defaultPlaybackRate write.
+  // moved into the shared applyPlaybackRate() so the </> shortcuts can never
+  // diverge from the button. v1.50.3: the button opens the PICKER; the
+  // rate-setting click moved to the menu rows (applyPlaybackRate(row.rate))
+  // plus a defensive fallback in the button for a shell missing #speed-menu.
+  // The lock follows: both call sites route through applyPlaybackRate, and
+  // applyPlaybackRate still carries FIX 1's defaultPlaybackRate write.
   const body = speedBtnClickMatch[1];
-  assert.match(body, /applyPlaybackRate\(nextPlaybackRate\(mediaPlayer\.playbackRate\)\)/);
+  assert.match(body, /applyPlaybackRate\(stepPlaybackRateClamped\(mediaPlayer\.playbackRate, 1\)\)/, 'the no-menu fallback still routes through the shared apply path');
+  assert.match(PLAYER_JS, /applyPlaybackRate\(row\.rate\)/, 'picker selection routes through the shared apply path');
   const applyMatch = /function applyPlaybackRate\(rate\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);
   assert.ok(applyMatch, 'expected to find applyPlaybackRate()\'s source body in player.js');
   assert.match(applyMatch[1], /mediaPlayer\.playbackRate\s*=\s*rate\s*;/);
@@ -293,23 +308,27 @@ test('FIX 1: releaseHold() (transient hold-2x restore) sets ONLY playbackRate, n
 
 const { stepPlaybackRateClamped } = require('../../public/js/player.js');
 
-test('stepPlaybackRateClamped: steps down through the rate list ('<' key)', () => {
+test('stepPlaybackRateClamped: steps down through the rate list (\'<\' key) -- v1.50.3: continues BELOW 1x', () => {
   assert.strictEqual(stepPlaybackRateClamped(2, -1), 1.75);
   assert.strictEqual(stepPlaybackRateClamped(1.75, -1), 1.5);
   assert.strictEqual(stepPlaybackRateClamped(1.5, -1), 1.25);
   assert.strictEqual(stepPlaybackRateClamped(1.25, -1), 1);
+  assert.strictEqual(stepPlaybackRateClamped(1, -1), 0.75, 'v1.50.3: < at normal now genuinely slows down');
+  assert.strictEqual(stepPlaybackRateClamped(0.75, -1), 0.5);
+  assert.strictEqual(stepPlaybackRateClamped(0.5, -1), 0.25);
 });
 
-test('stepPlaybackRateClamped: CLAMPS at both ends -- no wrap-around intent inversion (gate W4)', () => {
-  assert.strictEqual(stepPlaybackRateClamped(1, -1), 1, "'<' at minimum speed is a no-op, never a jump to 2x");
+test('stepPlaybackRateClamped: CLAMPS at both ends -- no wrap-around intent inversion (gate W4; the floor is now 0.25)', () => {
+  assert.strictEqual(stepPlaybackRateClamped(0.25, -1), 0.25, "'<' at minimum speed is a no-op, never a jump to 2x");
   assert.strictEqual(stepPlaybackRateClamped(2, 1), 2, "'>' at maximum speed is a no-op");
 });
 
-test('stepPlaybackRateClamped: steps up ('>' key) and degrades a foreign rate to the first rate', () => {
+test('stepPlaybackRateClamped: steps up (\'>\' key); a foreign rate degrades to NORMAL-adjacent steps, never a quarter-speed surprise (v1.50.3)', () => {
   assert.strictEqual(stepPlaybackRateClamped(1, 1), 1.25);
-  assert.strictEqual(stepPlaybackRateClamped(3, -1), 1);
-  assert.strictEqual(stepPlaybackRateClamped(undefined, 1), 1);
-  assert.strictEqual(stepPlaybackRateClamped(NaN, -1), 1);
+  assert.strictEqual(stepPlaybackRateClamped(0.25, 1), 0.5);
+  assert.strictEqual(stepPlaybackRateClamped(3, -1), 0.75, 'unrecognized rate stepping slower lands one below normal');
+  assert.strictEqual(stepPlaybackRateClamped(undefined, 1), 1.25, 'unrecognized rate stepping faster lands one above normal');
+  assert.strictEqual(stepPlaybackRateClamped(NaN, -1), 0.75);
 });
 
 test('v1.41.11 source-lock: the FULL-only keydown switch carries the YouTube set', () => {

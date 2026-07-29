@@ -752,37 +752,44 @@ function resolveChapterLoopBounds(chapters, index, duration) {
 }
 
 // ---- FR-4 (T1, v1.22.1): persistent playback-speed pure helper ------------
-// The fixed cycle of rates `#speed-btn` steps through on every click/tap:
-// 1x -> 1.25x -> 1.5x -> 1.75x -> 2x -> 1x (wraps). Kept as a MODULE-LEVEL
-// constant (not a function-local literal) so the live click handler below
-// and this pure helper always agree on the exact same list.
-var PLAYBACK_RATES = [1, 1.25, 1.5, 1.75, 2];
+// v1.50.3 (Dean, item A): slower-than-1x joins the list -- 0.25/0.5/0.75,
+// the YouTube set. The list stays a MODULE-LEVEL constant so the speed MENU
+// (v1.50.3 -- #speed-btn now opens a picker instead of blind-cycling eight
+// rates), the </> shortcuts, and loadStoredPlaybackRate's validation always
+// agree on the exact same list. Old persisted values are a strict subset,
+// so every stored preference survives the widening.
+var PLAYBACK_RATES = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
 
-// Given the CURRENTLY active rate, returns the NEXT rate in the cycle above.
-// An unrecognized `current` (e.g. the element's default `1` read before any
-// `#speed-btn` interaction has ever happened, or a stale/foreign value) is
-// treated the same as "start of the cycle" -- returns the FIRST rate, never
-// throws or produces `NaN`/`undefined`. Deliberately a pure lookup (no DOM),
-// per the "pure helpers first" split every other decision in this file uses
-// -- the live handler (`wireHostListeners`, below) is a thin mirror that
-// calls this then sets `mediaPlayer.playbackRate` + the button's label.
-function nextPlaybackRate(current) {
-  var idx = PLAYBACK_RATES.indexOf(current);
-  if (idx === -1) return PLAYBACK_RATES[0];
-  return PLAYBACK_RATES[(idx + 1) % PLAYBACK_RATES.length];
+// v1.50.3 (Dean, item A): the blind cycle (`nextPlaybackRate`, v1.22.1) is
+// RETIRED -- with eight rates, click-to-cycle means up to seven clicks
+// through speeds you don't want, so #speed-btn now opens a PICKER (the
+// YouTube pattern), built on the chapters-menu popup this bar already has.
+// This pure model is the picker's single source of truth: one row per rate,
+// 1x labeled 'Normal' (YouTube's own spelling), the active row derived from
+// the CURRENT rate with the same unrecognized-degrades-to-normal posture
+// the </> stepper uses (never a surprise quarter-speed default).
+function buildSpeedMenuModel(currentRate) {
+  var active = PLAYBACK_RATES.indexOf(currentRate) !== -1 ? currentRate : 1;
+  return PLAYBACK_RATES.map(function (rate) {
+    return { rate: rate, label: rate === 1 ? 'Normal' : rate + '×', active: rate === active };
+  });
 }
 
 // v1.41.11 (Dean: YouTube-style shortcuts): the </> keys step the rate list
 // WITHOUT wrapping -- YouTube clamps at both ends ('<' at minimum speed is a
 // no-op), and a wrap is an intent inversion for a directional key: '<' at 1x
 // meaning "jump to 2x" is the opposite of "slow down" (adversarial-gate W4,
-// this release). The single #speed-btn keeps its wrapping nextPlaybackRate
-// cycle above -- a one-direction button NEEDS the wrap to reach every rate.
-// Same pure-lookup contract: an unrecognized current rate degrades to the
-// first rate, never throws. `dir` is +1 (faster) or -1 (slower).
+// that release). v1.50.3: every rate is now reachable through the PICKER
+// (buildSpeedMenuModel above), so nothing needs a wrap anymore; '<' at 1x
+// genuinely slows down (0.75 -> 0.5 -> 0.25, clamped at the floor).
+// Pure-lookup contract: an unrecognized current rate degrades to NORMAL-
+// adjacent steps (one below/above 1x), never throws. `dir` is +1/-1.
 function stepPlaybackRateClamped(current, dir) {
   var idx = PLAYBACK_RATES.indexOf(current);
-  if (idx === -1) return PLAYBACK_RATES[0];
+  // v1.50.3: same normal-not-list-head degradation as nextPlaybackRate --
+  // an unrecognized rate stepping "slower" lands at 0.75 (one below normal),
+  // stepping "faster" at 1.25, never a surprise jump to 0.25.
+  if (idx === -1) idx = PLAYBACK_RATES.indexOf(1);
   var stepped = Math.min(PLAYBACK_RATES.length - 1, Math.max(0, idx + dir));
   return PLAYBACK_RATES[stepped];
 }
@@ -990,7 +997,10 @@ if (typeof module !== 'undefined' && module.exports) {
     resolveEndedAction,
     // v1.41.12: chapter-loop bounds resolver -- see resolveChapterLoopBounds.
     resolveChapterLoopBounds,
-    nextPlaybackRate,
+    // v1.50.3: the speed PICKER's pure row model (nextPlaybackRate -- the
+    // retired blind cycle -- is gone with its only caller; see
+    // buildSpeedMenuModel's header).
+    buildSpeedMenuModel,
     // v1.41.11: the </> shortcuts' clamped step -- see stepPlaybackRateClamped.
     stepPlaybackRateClamped,
     shouldDesktopVideoTapToggle,
@@ -1046,6 +1056,8 @@ if (typeof module !== 'undefined' && module.exports) {
   // FR-4 (T1, v1.22.1): persistent playback-speed cycle button, queried/
   // wired once alongside the rest of the custom bar above.
   var speedBtn;
+  // v1.50.3: the speed PICKER popup (#speed-menu) -- chapters-menu pattern.
+  var speedMenu;
 
   // A6 (T16, v1.24 UX Round, Wave 5): the ONE approved player-controls
   // exception -- the CC (captions) toggle button + the <track> element it
@@ -1486,6 +1498,7 @@ if (typeof module !== 'undefined' && module.exports) {
     fsBtn = host.querySelector('#fs-btn');
     pipBtn = host.querySelector('#pip-btn');
     speedBtn = host.querySelector('#speed-btn');
+    speedMenu = host.querySelector('#speed-menu');
     ccBtn = host.querySelector('#cc-btn');
     ccTrack = host.querySelector('#cc-track');
     chaptersBtn = host.querySelector('#chapters-btn');
@@ -4180,18 +4193,54 @@ if (typeof module !== 'undefined' && module.exports) {
       }, { passive: false });
     }
 
-    // FR-4 (T1, v1.22.1): the persistent speed cycle button -- placed
-    // immediately before `#fs-btn` in the markup (see the four shells'
-    // `#player-host-template`), wired here alongside the rest of the custom
-    // bar. Pure `nextPlaybackRate` decides the next rate; this is a thin
-    // mirror that applies it + updates the label + persists it. Also sets
-    // `defaultPlaybackRate` (FIX 1, v1.22.1 gate round -- see the block
-    // comment above `loadStoredPlaybackRate`) so the chosen rate survives
-    // every subsequent `load()`, not just the current item.
+    // FR-4 (T1, v1.22.1) / v1.50.3 (Dean, item A): the persistent speed
+    // button -- placed immediately before `#fs-btn` in the markup (see the
+    // shells' `#player-host-template`). Since v1.50.3 it opens a PICKER
+    // (#speed-menu, the chapters-menu popup pattern) instead of blind-
+    // cycling: pure buildSpeedMenuModel supplies the rows; selection routes
+    // through the SAME applyPlaybackRate the </> shortcuts use, so the
+    // defaultPlaybackRate/label/persist trio can never diverge (FIX 1,
+    // v1.22.1 gate round -- see loadStoredPlaybackRate's block comment).
+    function buildSpeedMenu() {
+      if (!speedMenu) return;
+      speedMenu.setAttribute('role', 'menu');
+      speedMenu.setAttribute('aria-label', 'Playback speed');
+      while (speedMenu.firstChild) speedMenu.removeChild(speedMenu.firstChild);
+      var model = buildSpeedMenuModel(mediaPlayer ? mediaPlayer.playbackRate : 1);
+      model.forEach(function (row) {
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'chapters-menu-item speed-menu-item' + (row.active ? ' active' : '');
+        btn.setAttribute('role', 'menuitemradio'); // container gets role="menu" below (gate S2 -- no orphaned menuitemradio)
+        btn.setAttribute('aria-checked', row.active ? 'true' : 'false');
+        btn.textContent = row.label; // textContent only, never innerHTML
+        btn.addEventListener('click', function () {
+          applyPlaybackRate(row.rate);
+          closeSpeedMenu();
+        });
+        speedMenu.appendChild(btn);
+      });
+    }
     if (speedBtn) {
-      speedBtn.addEventListener('click', function () {
-        if (!mediaPlayer) return;
-        applyPlaybackRate(nextPlaybackRate(mediaPlayer.playbackRate));
+      speedBtn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        if (!speedMenu) {
+          // Defensive only (the parity test locks #speed-menu into all
+          // seven shells): a shell somehow missing it degrades to a
+          // step-faster button, CLAMPED at 2x -- a one-way ratchet, not the
+          // old wrap; degraded but alive beats a dead button (gate W3
+          // corrected this comment: the earlier version claimed a wrap the
+          // code never had).
+          if (mediaPlayer) applyPlaybackRate(stepPlaybackRateClamped(mediaPlayer.playbackRate, 1));
+          return;
+        }
+        var opening = speedMenu.hidden;
+        if (opening) buildSpeedMenu(); // rebuild on every open -- the </> keys move the rate while closed
+        speedMenu.hidden = !opening;
+        // v1.50.3 gate C1: clamp AFTER unhiding (measurement needs rendered
+        // geometry) -- same ordering contract as the chapters open path.
+        if (opening) clampBarMenuHeight(speedMenu);
+        speedBtn.setAttribute('aria-expanded', opening ? 'true' : 'false');
       });
     }
 
@@ -4362,6 +4411,18 @@ if (typeof module !== 'undefined' && module.exports) {
     function closeChaptersMenu() {
       if (chaptersMenu) chaptersMenu.hidden = true;
       if (chaptersBtn) chaptersBtn.setAttribute('aria-expanded', 'false');
+      // v1.50.3 (comment corrected in the gate round): every CALLER of this
+      // function (teardown via resetChaptersUi, outside taps, play/pause/
+      // seek, menu row actions) must dismiss the speed picker for the
+      // identical reasons -- one call covers both bar popups here. The ONE
+      // site that does NOT route through this function is dock(), which
+      // INLINES the equivalent statements against the module-level refs for
+      // both menus (see its own comment) -- change one, change both.
+      closeSpeedMenu();
+    }
+    function closeSpeedMenu() {
+      if (speedMenu) speedMenu.hidden = true;
+      if (speedBtn) speedBtn.setAttribute('aria-expanded', 'false');
     }
     // v1.41.12: arm (or move) the chapter loop. Bounds come from the pure
     // resolveChapterLoopBounds -- duration prefers the live element's
@@ -4548,19 +4609,27 @@ if (typeof module !== 'undefined' && module.exports) {
     // clamp first so the CSS vh cap governs whenever the content fits. The
     // inline max-height is the one style JS owns here — everything else about
     // the menu stays stylesheet-driven.
-    function clampChaptersMenuHeight() {
-      if (!chaptersMenu || chaptersMenu.hidden || !playerControls || !host) return;
-      chaptersMenu.style.maxHeight = '';
+    // v1.50.3 gate C1: parametrized -- the SPEED picker shares the popup
+    // class (50vh mobile cap) inside the SAME overflow:hidden 45vh-capped
+    // wrapper, so without this clamp its TOP rows (0.25x/0.5x/0.75x -- the
+    // very rates v1.50.3 adds) rendered into the clipped band on mobile
+    // portrait, unreachable by the menu's own scroll. The v1.43.1 class,
+    // exactly; one measurement function now serves both bar popups.
+    function clampBarMenuHeight(menu) {
+      if (!menu || menu.hidden || !playerControls || !host) return;
+      menu.style.maxHeight = '';
       var clamp = resolveChaptersMenuMaxHeight({
         barTop: playerControls.getBoundingClientRect().top,
         clipTop: host.getBoundingClientRect().top,
-        menuHeight: chaptersMenu.getBoundingClientRect().height,
+        menuHeight: menu.getBoundingClientRect().height,
       });
-      if (clamp !== null) chaptersMenu.style.maxHeight = clamp + 'px';
+      if (clamp !== null) menu.style.maxHeight = clamp + 'px';
     }
+    function clampChaptersMenuHeight() { clampBarMenuHeight(chaptersMenu); }
     // Rotation/keyboard/viewport changes re-run the measurement while open
-    // (hidden → the guard above makes this free).
+    // (hidden → the guard above makes this free). Both popups covered.
     window.addEventListener('resize', clampChaptersMenuHeight);
+    window.addEventListener('resize', function () { clampBarMenuHeight(speedMenu); });
     if (chaptersBtn) {
       chaptersBtn.addEventListener('click', function (e) {
         e.stopPropagation();
@@ -4594,6 +4663,17 @@ if (typeof module !== 'undefined' && module.exports) {
       };
       document.addEventListener('click', closeChaptersMenuOnOutside);
       document.addEventListener('pointerdown', closeChaptersMenuOnOutside);
+      // v1.50.3: identical outside-close for the speed picker -- same
+      // click+pointerdown pair for the same iOS reasons above. Note the
+      // guard is the SPEED menu's own open state; the shared
+      // closeChaptersMenu() lifecycle path already dismisses both.
+      var closeSpeedMenuOnOutside = function (e) {
+        if (!speedMenu || speedMenu.hidden) return;
+        if (speedMenu.contains(e.target) || (speedBtn && speedBtn.contains(e.target))) return;
+        closeSpeedMenu();
+      };
+      document.addEventListener('click', closeSpeedMenuOnOutside);
+      document.addEventListener('pointerdown', closeSpeedMenuOnOutside);
       // v1.34.5 (Dean round 5): iOS AUTO-ENTERS the native fullscreen player
       // when a playing inline video rotates to landscape (a Safari behavior,
       // playsinline notwithstanding) -- in CUSTOM mode that hijacks the
@@ -4614,7 +4694,12 @@ if (typeof module !== 'undefined' && module.exports) {
       // WebKit quirk eats pointer/click synthesis, and any play/pause/seek
       // interaction closes the menu regardless of where the tap landed.
       document.addEventListener('touchstart', closeChaptersMenuOnOutside, { passive: true });
+      // v1.50.3 gate S1: the same iOS belt for the speed picker -- the
+      // chapters touchstart handler guards on ITS menu's open state, so it
+      // can never close a speed-only-open picker.
+      document.addEventListener('touchstart', closeSpeedMenuOnOutside, { passive: true });
       if (mediaPlayer) {
+        // closeChaptersMenu dismisses BOTH bar popups (see its comment).
         mediaPlayer.addEventListener('play', closeChaptersMenu);
         mediaPlayer.addEventListener('pause', closeChaptersMenu);
         mediaPlayer.addEventListener('seeking', closeChaptersMenu);
@@ -5534,6 +5619,12 @@ if (typeof module !== 'undefined' && module.exports) {
     // two statements against the module-level element refs.)
     if (chaptersMenu) chaptersMenu.hidden = true;
     if (chaptersBtn) chaptersBtn.setAttribute('aria-expanded', 'false');
+    // v1.50.3 gate W1: the speed picker gets the same treatment -- a Back-
+    // button dock (popstate, no click, so no outside-close) left it
+    // invisibly open under `#player-dock .chapters-menu { display:none }`
+    // and resurrected it stale on re-expand.
+    if (speedMenu) speedMenu.hidden = true;
+    if (speedBtn) speedBtn.setAttribute('aria-expanded', 'false');
     if (host.parentNode !== dockEl) dockEl.appendChild(host);
     dockEl.hidden = false;
     state = STATE_DOCKED;

@@ -160,7 +160,9 @@ test('BIDIRECTIONAL: the reference documents every player shortcut, and no other
   // R/S live OUTSIDE the main switch by design (the switch early-returns on
   // a focused BUTTON, the exact post-overlay-render state) -- they are
   // accounted for here and drift-locked against their OWN listener below.
-  const accountedFor = new Set([...Object.values(CAP_FOR_CASE), 'Shift', '0', '9', '\u2026', '?', 'R', 'S']);
+  // D (v1.50.3 dark/light) is GLOBAL (any page, not just the player) and
+  // lives in common.js's capture-phase handler -- drift-locked below too.
+  const accountedFor = new Set([...Object.values(CAP_FOR_CASE), 'Shift', '0', '9', '\u2026', '?', 'R', 'S', 'D']);
   const invented = [...documented].filter((k) => !accountedFor.has(k));
   assert.deepEqual(invented, [], `advertised but unaccounted for: ${invented}`);
 });
@@ -182,6 +184,31 @@ test('DRIFT LOCK: the documented R/S resume keys are really handled (their own l
   const wiring = PLAYER.slice(start, start + 800);
   assert.match(wiring, /resumeYesBtn\.click\(\)/, 'R must route through the real Resume button');
   assert.match(wiring, /resumeNoBtn\.click\(\)/, 'S must route through the real Start-over button');
+});
+
+test('DRIFT LOCK: the documented D dark/light key is really handled (pure decision + the shared toggleTheme path)', () => {
+  const { shouldToggleThemeKey } = require('../../public/js/common.js');
+  assert.equal(shouldToggleThemeKey({ key: 'd' }, '', false), true);
+  assert.equal(shouldToggleThemeKey({ key: 'D' }, '', false), true);
+  assert.equal(shouldToggleThemeKey({ key: 'd', metaKey: true }, '', false), false, 'Cmd+D stays the browser bookmark');
+  assert.equal(shouldToggleThemeKey({ key: 'd', ctrlKey: true }, '', false), false);
+  assert.equal(shouldToggleThemeKey({ key: 'd' }, 'INPUT', false), false, 'never while typing');
+  assert.equal(shouldToggleThemeKey({ key: 'd' }, '', true), false, 'never in contentEditable');
+  assert.equal(shouldToggleThemeKey({ key: 'x' }, '', false), false);
+  assert.equal(shouldToggleThemeKey(null, '', false), false, 'never throws on a malformed event');
+
+  // ...and the wiring routes through the SAME toggleTheme() the header
+  // moon/sun button uses -- one shared path, never a second theme writer.
+  const wireStart = COMMON.indexOf('function wireKeyboardShortcutsHelp');
+  const wireEnd = COMMON.indexOf('\nfunction ', wireStart + 10);
+  // Gate W2: strip comments first -- the literal `toggleTheme()` also lives
+  // in the explanatory comment, so an un-stripped match is presence-in-a-
+  // comment, not binding (the reviewer's deleted-call mutant SURVIVED the
+  // earlier spelling of this lock).
+  const body = COMMON.slice(wireStart, wireEnd)
+    .split('\n').filter((line) => !/^\s*\/\//.test(line)).join('\n');
+  assert.match(body, /shouldToggleThemeKey\(e, tag, editable\)/, 'the capture handler consults the pure decision');
+  assert.match(body, /^\s*toggleTheme\(\);$/m, 'the verdict routes through the shared toggleTheme() as a real statement');
 });
 
 // ---- SEMANTIC locks (gate W5: existence is not enough) ---------------------
