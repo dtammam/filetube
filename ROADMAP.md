@@ -80,6 +80,28 @@
 
 ## Shipped
 
+### v1.50.0 - UI wave: watched filter, era player skins, and six fixes/asks (2026-07-29)
+
+Dean's six-item intake plus one mid-wave ask, all in one branch:
+
+**Watched-state filter.** The home sticky bar gains a second segmented group, `All | New | Watching | Watched`, next to All/Videos/Audio - server-side (`?watch=` on both `/api/videos` AND `/api/liked`; pagination makes a client-side filter wrong across pages), per-user, with every item carrying a server-derived `watchState`. "Watched" is backed by a **sticky completion latch** (new `user_watched` table, schema v4, additive) set the first time a progress ping crosses 90% - so a looping or rewatched-from-the-start video never un-watches itself (Dean's intake flag). The latch is a full id-keyed carrier from birth: delete/prune, move re-key, backup/restore, and the test reset all carry it in the same commit that created it. **Disclosed inherent:** an autoplay chain latches each video that genuinely plays to the end - played to completion = watched.
+
+**Era player skins.** The custom control bar now visually represents each era - same controls, same spacing, same geometry to the pixel: the base bar IS the 2005 blocky Winamp bevel; 2009 gets glossy gradient chrome matching the site's own glass buttons; 2014 goes flat with borderless ghost buttons, the era's brighter red, and a red dot scrubber; 2021 goes flat + round + crisp (circular hovers, thin pill tracks, YouTube's round red scrubber). Two hard rules, both test-locked: era rules are visual-only (never bar geometry - the mobile two-row layout's trap history stays sealed) and token/rgba-only (no hardcoded hex, so every skin is correct in both light and dark with zero mode-scoped rules).
+
+**The doubled All/Videos/Audio row - root-caused and fixed.** The de-dupe lookup was `document.getElementById`, which cannot see the DETACHED cached home view (`homeViewCache` skips destroy; a background refresh re-renders the cached instance when a download finishes while you're off Home) - so a second toggle was appended and reattached doubled until a hard refresh. Both toolbar renderers (and the "(N items)" badge, same latent bug) now scope their lookups to the container; regression tests simulate the detached double-append AND the inverse live-row-steal hazard.
+
+**Mobile watch row un-wrapped.** Reheat made the glyph group six buttons and pushed the whole row down (the v1.47.5 wrap safety net firing, "makes me sad"). The cosmetic "N / 5" number hides at phone widths, stars stay, desktop keeps both.
+
+**Resume-prompt keyboard shortcuts.** `R` = Resume, `S` = Start over, live only while the prompt is showing, routed through the real buttons' `.click()` so keyboard and mouse can never diverge; documented in the `?` reference with the bidirectional drift lock extended to cover them.
+
+**Phone landscape bounded.** Landscape non-fullscreen had NO height cap (every prior cap was portrait-scoped) - a full-width 16:9 box plus the control strip, taller than the screen. The picture now letterboxes to fit under the header; and rotate-to-fullscreen requires the media to actually be PLAYING (it used to yank a paused player fullscreen). Rotate-while-playing immersion is untouched.
+
+**Subscriber badge (mid-wave ask).** The watch page's subscriber count is now the classic-YouTube boxed-count badge - an era-token chip, square in 2005/2009, rounded in 2021.
+
+**What the gate caught (full two-reviewer gate - the new table is user data).** QA: `close()` never reset the resume overlay's visibility, so after Delete/Move/relocate closed the player mid-prompt, the new R/S keys kept firing clicks at a torn-down player (fixed, mirroring dock(); mutation-locked). Adversarial: a crafted string `duration` coerced through the latch division while the filter's strict number check disagreed - three readers, two answers (fixed: duration normalized once at staging; the exact repro is now an integration test). The adversarial seat's data-destruction pass - real v3→v4 upgrade repro built from actual v1.49 code, crash-mid-migration replay, downgrade round-trip, hostile `__proto__`/NUL restore bundles, FK race analysis on the hot path, full carrier sweep - found nothing; all five of its mutations were killed by shipped tests.
+
+**Known gaps (disclosed):** iOS Safari < 16.4 drops the landscape cap selector (`:not(:fullscreen)`) - those devices keep pre-v1.50 uncapped landscape, fail-safe. The mobile watch action row's nowrap guarantee is now wrap-on-overflow (strictly better than clipping, but a behavior the old contract forbade - on-device probe item). The pre-existing thumbnail-cache flake (#53/#57) fired once in each seat's full-suite runs, untouched by this branch, re-corroborated in the tracker. Dual-Node green: 5054/5054 on v22.23.1 and v24.14.0.
+
 ### v1.49.0 - per-video reheat: force a reheat on one video from the watch page (2026-07-29)
 
 Dean asked to force a reheat on a **specific** video rather than the whole library: check whether it is a YouTube video, associate it with its channel, refresh the view count, all of it, one video at a time. The library-wide Reheat is all-or-nothing, and a non-force run skips everything already marked, so there was no way to refresh a single item.

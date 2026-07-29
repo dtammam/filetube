@@ -104,6 +104,58 @@ test('main.js: fetchLibraryPage0 never assigns innerHTML directly for the C2/C3 
   assert.doesNotMatch(body, /\.innerHTML\s*=/);
 });
 
+// ---- v1.50 T3: watched-state toggle wiring ---------------------------------
+
+test('buildVideosApiUrl: forwards the watched-state filter to the server (pagination makes a client-side filter wrong)', () => {
+  const fnMatch = /function buildVideosApiUrl\(offset\) \{([\s\S]*?)\n {4}\}/.exec(mainJs);
+  const body = fnMatch[1];
+  assert.match(body, /watch=\$\{encodeURIComponent\(getStoredWatchFilter\(\)\)\}/, 'expected the watch param to be forwarded to the server');
+});
+
+test('fetchLibraryPage0: mounts the watch toggle AFTER renderFormatToggle (its renderer anchors behind #library-format-toggle)', () => {
+  const fnMatch = /async function fetchLibraryPage0\(\) \{([\s\S]*?)\n {4}\}/.exec(mainJs);
+  const body = fnMatch[1];
+  assert.match(
+    body,
+    /renderWatchToggle\(sectionActions,\s*getStoredWatchFilter\(\),\s*\(\)\s*=>\s*resetAndReload\(\)\)/,
+    'expected renderWatchToggle mounted with the live stored mode and a reset-to-page-0 onChange'
+  );
+  assert.ok(
+    body.indexOf('renderFormatToggle(') < body.indexOf('renderWatchToggle('),
+    'renderWatchToggle must run after renderFormatToggle -- it inserts relative to the format toggle'
+  );
+});
+
+test('common.js: BOTH toolbar toggles + the count badge de-dupe via container-scoped lookups, never document.getElementById (the doubled-row bug class)', () => {
+  const commonJs = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'common.js'), 'utf8');
+  for (const [fnName, controlId] of [
+    ['renderFormatToggle', 'library-format-toggle'],
+    ['renderWatchToggle', 'library-watch-toggle'],
+  ]) {
+    const fnMatch = new RegExp(`function ${fnName}\\(actionsEl[\\s\\S]*?\\n\\}`).exec(commonJs);
+    assert.ok(fnMatch, `expected to find ${fnName} in common.js`);
+    assert.match(fnMatch[0], new RegExp(`actionsEl\\.querySelector\\('#${controlId}'\\)`), `${fnName} must scope its de-dupe to actionsEl`);
+    assert.doesNotMatch(fnMatch[0], /document\.getElementById/, `${fnName} must not use a document-wide lookup (cannot see the detached cached home view)`);
+  }
+  const badgeMatch = /function renderItemCountBadge\(headerEl[\s\S]*?\n\}/.exec(commonJs);
+  assert.ok(badgeMatch, 'expected to find renderItemCountBadge in common.js');
+  assert.match(badgeMatch[0], /headerEl\.parentNode\.querySelector\('#library-item-count'\)/);
+  assert.doesNotMatch(badgeMatch[0], /document\.getElementById/);
+});
+
+test('style.css: the watch toggle gets its own full-width mobile row (order + width) and text-sized desktop pills', () => {
+  const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
+  assert.match(css, /\.watch-toggle \.format-toggle-btn \{[^}]*min-width:\s*0/, 'desktop: watch pills size to their text (4 labels at 58px would overflow the toolbar)');
+  const mobileRow = /\.section-actions \.watch-toggle \{[^}]*\}/.exec(css);
+  assert.ok(mobileRow, 'expected the mobile .section-actions .watch-toggle rule');
+  assert.match(mobileRow[0], /order:\s*10/, 'forced last so it never shares the v1.45 one-glyph-line row');
+  assert.match(mobileRow[0], /width:\s*100%/, 'full-width -> wraps to its own line');
+  // The wrap that makes the second row possible must exist on the mobile
+  // .section-actions rule (v1.50 relaxed the v1.45.2 nowrap).
+  const actionsRule = /\.section-actions \{\n[^}]*flex-wrap:\s*wrap/.exec(css);
+  assert.ok(actionsRule, 'mobile .section-actions must be flex-wrap: wrap for the second row to exist');
+});
+
 // ---- index.html: C5 release-date sort option ---------------------------------
 
 // v1.41.2: the sort control is a custom .btn dropdown (#sort-menu with

@@ -502,6 +502,10 @@ if (typeof module !== 'undefined' && module.exports) {
       if (rootFilter) queryParams.push(`root=${encodeURIComponent(rootFilter)}`);
       queryParams.push(`sort=${encodeURIComponent(currentSort)}`);
       queryParams.push(`format=${encodeURIComponent(getStoredFormatFilter())}`);
+      // v1.50: watched-state filter -- server-authoritative like format
+      // (pagination would break under a client-side filter). Honored by
+      // BOTH endpoints below (the v1.32 format-toggle parity posture).
+      queryParams.push(`watch=${encodeURIComponent(getStoredWatchFilter())}`);
       queryParams.push(`limit=${HOME_PAGE_LIMIT}`);
       queryParams.push(`offset=${offset}`);
       queryParams.push(`seed=${currentSeed}`);
@@ -531,6 +535,9 @@ if (typeof module !== 'undefined' && module.exports) {
       renderMediaGridPage(currentItems, { append: false });
       updateItemCountBadge();
       renderFormatToggle(sectionActions, getStoredFormatFilter(), () => resetAndReload());
+      // v1.50: the watched-state group mounts AFTER the format toggle (its
+      // renderer inserts directly behind #library-format-toggle).
+      renderWatchToggle(sectionActions, getStoredWatchFilter(), () => resetAndReload());
     }
 
     // The shared "reset to a fresh page 0" path for every control that used

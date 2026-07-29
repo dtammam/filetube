@@ -80,11 +80,14 @@ test('mobile: .section-title wraps so the heading and the actions row are never 
   assert.match(body, /\.section-title\s*\{[^}]*flex-wrap:\s*wrap/);
 });
 
-test('mobile (v1.45.2 #3): .section-actions is its own full-width row but NO LONGER wraps to two lines', () => {
+test('mobile (v1.45.2 #3, v1.50 update): .section-actions wraps ONLY for the watch group\'s own row; the glyph line itself is unchanged', () => {
   const body = mobileBlock();
-  // Reverses the v1.23 wrap: the actions take the full width beneath the heading
-  // (width:100%) but stay on ONE line (nowrap) now that the buttons are icon-only.
-  assert.match(body, /\.section-actions\s*\{[^}]*flex-wrap:\s*nowrap[^}]*width:\s*100%/);
+  // v1.45.2 reversed the v1.23 wrap (one glyph line, icon-only). v1.50
+  // relaxes nowrap -> wrap SOLELY so the watched-state group -- forced last
+  // (order) and full-width -- takes a second row of its own; every v1.45
+  // one-line member still shares the original line and its width budget.
+  assert.match(body, /\.section-actions\s*\{[^}]*flex-wrap:\s*wrap[^}]*width:\s*100%/);
+  assert.match(body, /\.section-actions \.watch-toggle\s*\{[^}]*order:\s*10[^}]*width:\s*100%/, 'the watch group is the only wrapping member');
 });
 
 test('mobile (v1.45.2 #3, REVISITS v1.23): Shuffle/Rescan WORD labels are hidden so the row fits one glyph line', () => {
@@ -111,7 +114,7 @@ test('mobile (v1.45.3): the icon action buttons keep a comfortable minimum tap-t
   assert.ok(Number(minWidthMatch[1]) >= 32, 'tap target should be at least 32px');
 });
 
-test('mobile (v1.45.3): the fit budget — format pills compact + sort label hidden so the nowrap row cannot overflow', () => {
+test('mobile (v1.45.3, title updated v1.50): the fit budget — format pills compact + sort label hidden so the glyph line fits its width budget', () => {
   const body = mobileBlock();
   // The format pills must drop the desktop 58px min-width (compact) and the
   // sort's current-value label must be hidden (caret only) — the two things

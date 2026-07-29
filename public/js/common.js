@@ -1173,14 +1173,17 @@ function formatItemCountLabel(count) {
 // view's own header text is frequently reassigned via `.textContent` on
 // every render (main.js's `videosHeader.textContent = ...`), which would
 // silently wipe a child node. Mirrors `renderPinnedSidebar`'s
-// sibling-insertion reasoning (below) and its idempotent
-// remove-then-reuse-by-id posture. No-ops safely when `headerEl` has no
-// parent yet (defensive; never throws).
+// sibling-insertion reasoning (below). The de-dupe lookup MUST be scoped to
+// `headerEl`'s own parent, never `document.getElementById`: the home view can
+// be re-rendered while DETACHED (homeViewCache keeps the node alive with no
+// destroy(), and a background `__filetubeRefreshLibrary` re-renders it there).
+// A document-wide lookup can't see the detached tree (-> double-append on
+// reattach) and, worse, could find-and-remove the LIVE page's badge instead.
+// No-ops safely when `headerEl` has no parent yet (defensive; never throws).
 function renderItemCountBadge(headerEl, list) {
   if (!headerEl || !headerEl.parentNode) return;
-  let badge = document.getElementById('library-item-count');
-  if (!badge || badge.parentNode !== headerEl.parentNode) {
-    if (badge && badge.parentNode) badge.parentNode.removeChild(badge);
+  let badge = headerEl.parentNode.querySelector('#library-item-count');
+  if (!badge) {
     badge = document.createElement('span');
     badge.id = 'library-item-count';
     badge.className = 'library-item-count';
@@ -1340,14 +1343,95 @@ function buildFormatToggleControl(currentMode, onChange) {
 
 // Idempotently mounts the format-toggle control as the FIRST child of
 // `actionsEl` (e.g. `.section-actions`, ahead of the sort <select>) -- any
-// prior instance is removed first, so repeated calls (e.g. once per render)
-// never accumulate duplicates. No-ops safely when `actionsEl` is absent.
+// prior instance IN THAT CONTAINER is removed first, so repeated calls (e.g.
+// once per render) never accumulate duplicates. The lookup MUST be scoped to
+// `actionsEl`, never `document.getElementById`: this can run against the
+// DETACHED cached home view (homeViewCache + a background
+// `__filetubeRefreshLibrary` while another view is live), where a
+// document-wide lookup finds nothing (-> a second toggle appended, the
+// "doubled All/Videos/Audio row" bug) or finds the LIVE page's toggle and
+// removes it. No-ops safely when `actionsEl` is absent.
 function renderFormatToggle(actionsEl, currentMode, onChange) {
   if (!actionsEl) return;
-  const existing = document.getElementById('library-format-toggle');
+  const existing = actionsEl.querySelector('#library-format-toggle');
   if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
   const control = buildFormatToggleControl(currentMode, onChange);
   actionsEl.insertBefore(control, actionsEl.firstChild);
+}
+
+// ---- v1.50: watched-state filter toggle ------------------------------------
+//
+// The home page's second segmented group: `All | New | Watching | Watched`.
+// Deliberately a sibling of the format toggle in every way -- same component
+// classes (`.format-toggle`/`.format-toggle-btn`, plus `.watch-toggle` for
+// layout-only overrides), same localStorage persistence pattern, same
+// onChange contract, and the SAME container-scoped de-dupe posture (born
+// with the fix for the doubled-row bug -- see renderFormatToggle above).
+// The value rides `GET /api/videos?watch=`; the SERVER derives watched
+// state (progress thresholds + the sticky completion latch) -- the client
+// never re-implements the thresholds.
+
+const WATCH_FILTER_STORAGE_KEY = 'filetube_watch';
+const WATCH_TOGGLE_MODES = ['all', 'new', 'watching', 'watched'];
+
+function getStoredWatchFilter() {
+  let stored = null;
+  try { stored = localStorage.getItem(WATCH_FILTER_STORAGE_KEY); } catch (_) { /* storage disabled -- fall back to default */ }
+  return WATCH_TOGGLE_MODES.includes(stored) ? stored : 'all';
+}
+
+function setStoredWatchFilter(mode) {
+  const normalized = WATCH_TOGGLE_MODES.includes(mode) ? mode : 'all';
+  try { localStorage.setItem(WATCH_FILTER_STORAGE_KEY, normalized); } catch (_) { /* storage disabled -- best effort */ }
+  return normalized;
+}
+
+const WATCH_TOGGLE_OPTIONS = [
+  { mode: 'all', label: 'All' },
+  { mode: 'new', label: 'New' },
+  { mode: 'watching', label: 'Watching' },
+  { mode: 'watched', label: 'Watched' },
+];
+
+// Builds a fresh watched-state toggle control -- createElement + textContent
+// only, mirroring buildFormatToggleControl exactly.
+function buildWatchToggleControl(currentMode, onChange) {
+  const active = WATCH_TOGGLE_MODES.includes(currentMode) ? currentMode : 'all';
+  const container = document.createElement('div');
+  container.className = 'format-toggle watch-toggle';
+  container.id = 'library-watch-toggle';
+  WATCH_TOGGLE_OPTIONS.forEach((opt) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn btn-sm format-toggle-btn' + (opt.mode === active ? ' active' : '');
+    btn.dataset.watchMode = opt.mode;
+    btn.setAttribute('aria-pressed', opt.mode === active ? 'true' : 'false');
+    btn.appendChild(document.createTextNode(opt.label));
+    btn.addEventListener('click', () => {
+      const normalized = setStoredWatchFilter(opt.mode);
+      Array.prototype.forEach.call(container.querySelectorAll('.format-toggle-btn'), (b) => {
+        const isActive = b.dataset.watchMode === normalized;
+        b.classList.toggle('active', isActive);
+        b.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+      });
+      if (typeof onChange === 'function') onChange(normalized);
+    });
+    container.appendChild(btn);
+  });
+  return container;
+}
+
+// Idempotently mounts the watched toggle DIRECTLY AFTER the format toggle
+// (falling back to first child when the format toggle isn't mounted yet).
+// Container-scoped de-dupe -- never document.getElementById -- for exactly
+// the detached-homeViewCache reasons documented on renderFormatToggle.
+function renderWatchToggle(actionsEl, currentMode, onChange) {
+  if (!actionsEl) return;
+  const existing = actionsEl.querySelector('#library-watch-toggle');
+  if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
+  const control = buildWatchToggleControl(currentMode, onChange);
+  const formatToggle = actionsEl.querySelector('#library-format-toggle');
+  actionsEl.insertBefore(control, formatToggle ? formatToggle.nextSibling : actionsEl.firstChild);
 }
 
 // ---- Prev/next derived-order helpers (FR-2, T3) ----------------------------
@@ -3310,6 +3394,11 @@ const KEYBOARD_SHORTCUT_GROUPS = [
       { keys: ['0', '…', '9'], desc: 'Jump to 0% - 90% of the item' },
       { keys: ['<'], desc: 'Slow down' },
       { keys: ['>'], desc: 'Speed up' },
+      // v1.50: only live while the "Resume Playback?" prompt is showing --
+      // the desc says so, keeping the reference's one rule ("every listed
+      // key ACTUALLY works") honest about the scoping.
+      { keys: ['R'], desc: 'Resume (while the Resume prompt is showing)' },
+      { keys: ['S'], desc: 'Start over (while the Resume prompt is showing)' },
     ],
   },
   {
@@ -7680,6 +7769,9 @@ if (typeof module !== 'undefined' && module.exports) {
     isPerPageSortEnabled, setPerPageSortEnabled, pageSortKey, getPerPageSort, setPerPageSort,
     pullRefreshState,
     FORMAT_FILTER_MODES, buildFormatToggleControl, renderFormatToggle,
+    // v1.50: the watched-state filter toggle (the format toggle's sibling).
+    WATCH_TOGGLE_MODES, getStoredWatchFilter, setStoredWatchFilter,
+    buildWatchToggleControl, renderWatchToggle,
     deriveAvatar, resolveAvatarSource, AVATAR_PALETTE,
     // v1.24.1 (B1 fast-follow): relocated "Re-pull this channel now" widget.
     REPULL_BTN_ID, findRepullSubscriptionForRoot, shouldShowRepullButton,

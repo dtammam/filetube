@@ -78,7 +78,12 @@ test('wiring: onOrientationChange no longer references the removed resumeAfterFs
 
 test('wiring: onOrientationChange still enters native fullscreen on portrait->landscape, guarded against double-enter', () => {
   const body = onOrientationChangeMatch[1];
-  assert.match(body, /landscape && !inNativeFullscreen\(\)/, 'expected the enter branch to stay guarded so an already-fullscreen video is never re-entered');
+  // v1.50 (item 6): the guard moved INTO shouldAutoFullscreenOnRotate --
+  // `landscape` and `inFullscreen: inNativeFullscreen()` are its inputs and
+  // the helper's own unit tests above prove the double-enter refusal; this
+  // wiring lock now asserts the call site feeds it the real signals.
+  assert.match(body, /shouldAutoFullscreenOnRotate\(\{/, 'expected the enter branch to route through the pure guard helper');
+  assert.match(body, /inFullscreen:\s*inNativeFullscreen\(\)/, 'expected the double-enter guard signal to be fed from inNativeFullscreen()');
   assert.match(body, /enterFullscreen\(\)/, 'expected the portrait->landscape branch to still call enterFullscreen()');
 });
 
@@ -91,4 +96,38 @@ test('wiring: onFsChange no longer contains the resumeAfterFsExit/play() re-asse
   const body = stripLineComments(onFsChangeMatch[1]);
   assert.ok(!/resumeAfterFsExit/.test(body), 'expected resumeAfterFsExit to be fully removed from onFsChange');
   assert.ok(!/mediaPlayer\.play\(\)/.test(body), 'expected onFsChange to no longer re-assert play() -- iOS rejects a programmatic play() without a fresh user gesture');
+});
+
+// ---- v1.50 (Dean, item 6): auto-fullscreen requires PLAYING ----------------
+// Rotating a phone with a paused/idle FULL player used to yank it fullscreen
+// (no paused guard at all); it now falls through to the bounded landscape
+// layout in style.css. Rotating WHILE PLAYING keeps the immersive behavior.
+
+test('shouldAutoFullscreenOnRotate: landscape + not-fullscreen + playing is the ONLY yes', () => {
+  const { shouldAutoFullscreenOnRotate } = playerExports;
+  assert.strictEqual(shouldAutoFullscreenOnRotate({ landscape: true, inFullscreen: false, playing: true }), true);
+  assert.strictEqual(shouldAutoFullscreenOnRotate({ landscape: true, inFullscreen: false, playing: false }), false, 'paused/idle rotation stays bounded inline');
+  assert.strictEqual(shouldAutoFullscreenOnRotate({ landscape: true, inFullscreen: true, playing: true }), false, 'already fullscreen -- no double-enter');
+  assert.strictEqual(shouldAutoFullscreenOnRotate({ landscape: false, inFullscreen: false, playing: true }), false, 'portrait never auto-enters');
+  assert.strictEqual(shouldAutoFullscreenOnRotate(), false, 'missing context fails safe to no');
+  assert.strictEqual(shouldAutoFullscreenOnRotate(null), false);
+});
+
+test('wiring: onOrientationChange routes its enter decision through shouldAutoFullscreenOnRotate with a real playing signal', () => {
+  const body = stripLineComments(onOrientationChangeMatch[1]);
+  assert.match(body, /shouldAutoFullscreenOnRotate\(\{/, 'the decision must go through the pure helper');
+  assert.match(body, /playing:\s*!!\(mediaPlayer && !mediaPlayer\.paused && !mediaPlayer\.ended\)/, 'playing = not paused and not ended, from the live element');
+  assert.match(body, /inFullscreen:\s*inNativeFullscreen\(\)/, 'the double-enter guard survives inside the helper context');
+});
+
+test('CSS: phone landscape non-fullscreen caps the media element height (picture + strip + header fit the viewport)', () => {
+  const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
+  const landscapeStart = css.indexOf('@media (max-width: 768px) and (orientation: landscape)');
+  assert.notEqual(landscapeStart, -1, 'expected the phone-landscape media block');
+  const block = css.slice(landscapeStart, css.indexOf('/* v1.13.0 item 2', landscapeStart));
+  assert.match(
+    block,
+    /#player-slot #player-wrapper:not\(\.audio-expanded\):not\(\.css-fullscreen\):not\(:fullscreen\) #media-player\s*\{[^}]*max-height:\s*calc\(100vh - var\(--mobile-header-h, 96px\) - 96px\)/,
+    'expected the landscape cap, scoped to the FULL slot and excluding both fullscreen modes'
+  );
 });

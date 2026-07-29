@@ -21,6 +21,8 @@ const {
   countItems, formatItemCountLabel, renderItemCountBadge,
   filterByMediaType, getStoredFormatFilter, setStoredFormatFilter,
   FORMAT_FILTER_MODES, buildFormatToggleControl, renderFormatToggle,
+  WATCH_TOGGLE_MODES, getStoredWatchFilter, setStoredWatchFilter,
+  buildWatchToggleControl, renderWatchToggle,
 } = require('../../public/js/common.js');
 
 // ---- countItems / formatItemCountLabel (pure, no DOM) ----------------------
@@ -218,21 +220,28 @@ class FakeNode {
     };
   }
 
-  // Minimal single-class selector support -- sufficient for
-  // buildFormatToggleControl's own `.format-toggle-btn` lookup.
+  // Minimal selector support: a single `.class` or `#id` selector --
+  // sufficient for buildFormatToggleControl's own `.format-toggle-btn`
+  // lookup and the SCOPED `#library-format-toggle`/`#library-item-count`
+  // de-dupe lookups in renderFormatToggle/renderItemCountBadge.
   querySelectorAll(selector) {
-    const cls = String(selector).replace('.', '');
+    const s = String(selector);
+    const matches = s.startsWith('#')
+      ? (node) => node.id === s.slice(1)
+      : (node) => node.className && node.className.split(' ').filter(Boolean).includes(s.replace('.', ''));
     const results = [];
     const walk = (node) => {
       if (!Array.isArray(node.children)) return; // a createTextNode leaf has no .children
       node.children.forEach((child) => {
-        if (child.className && child.className.split(' ').filter(Boolean).includes(cls)) results.push(child);
+        if (matches(child)) results.push(child);
         walk(child);
       });
     };
     walk(this);
     return results;
   }
+
+  querySelector(selector) { return this.querySelectorAll(selector)[0] || null; }
 }
 
 function makeFakeDoc(registry) {
@@ -308,17 +317,54 @@ test('renderFormatToggle: mounts as the FIRST child of actionsEl', () => {
 });
 
 test('renderFormatToggle: idempotent -- a second call removes the prior control rather than duplicating it', () => {
-  const registry = {};
-  global.document = makeFakeDoc(registry);
+  global.document = makeFakeDoc({});
   const actions = new FakeNode('div');
 
   renderFormatToggle(actions, 'both');
   const firstControl = actions.children[0];
-  registry['library-format-toggle'] = firstControl;
 
   renderFormatToggle(actions, 'video');
   assert.strictEqual(actions.children.length, 1, 'still exactly one toggle control, never a duplicate');
   assert.notStrictEqual(actions.children[0], firstControl);
+  delete global.document;
+});
+
+// ---- v1.50 T1 regression: the "doubled All/Videos/Audio row" bug -----------
+// homeViewCache keeps the home view alive DETACHED (no destroy()), and a
+// background `__filetubeRefreshLibrary` can re-render it there while another
+// view is live. The old document.getElementById de-dupe could not see the
+// detached tree (-> double-append on reattach) and could find-and-remove the
+// LIVE page's control instead. The fix scopes every de-dupe lookup to the
+// container that is being rendered into. These tests simulate exactly that:
+// `document.getElementById` deliberately CANNOT see the detached nodes.
+
+test('renderFormatToggle: re-render against a DETACHED cached view never doubles the toggle (the v1.50 doubled-row bug)', () => {
+  // getElementById never finds anything -- exactly the detached-cache case.
+  global.document = makeFakeDoc({});
+  const detachedActions = new FakeNode('div');
+
+  renderFormatToggle(detachedActions, 'both');
+  renderFormatToggle(detachedActions, 'both'); // background refresh while off Home
+
+  const toggles = detachedActions.children.filter((c) => c.id === 'library-format-toggle');
+  assert.strictEqual(toggles.length, 1, 'exactly one toggle after a detached re-render, never two');
+  delete global.document;
+});
+
+test('renderFormatToggle: a detached re-render never steals/removes the LIVE page\'s toggle', () => {
+  const registry = {};
+  global.document = makeFakeDoc(registry);
+  const liveActions = new FakeNode('div');
+  renderFormatToggle(liveActions, 'both');
+  const liveToggle = liveActions.children[0];
+  registry['library-format-toggle'] = liveToggle; // the live one IS document-visible
+
+  const detachedActions = new FakeNode('div');
+  renderFormatToggle(detachedActions, 'video');
+
+  assert.strictEqual(liveActions.children[0], liveToggle, 'live toggle untouched');
+  assert.strictEqual(liveToggle.parentNode, liveActions);
+  assert.strictEqual(detachedActions.children.filter((c) => c.id === 'library-format-toggle').length, 1);
   delete global.document;
 });
 
@@ -346,15 +392,13 @@ test('renderItemCountBadge: inserts a sibling badge right after headerEl with th
 });
 
 test('renderItemCountBadge: a second call updates the SAME badge in place (idempotent, never duplicates)', () => {
-  const registry = {};
-  global.document = makeFakeDoc(registry);
+  global.document = makeFakeDoc({});
   const section = new FakeNode('div');
   const header = new FakeNode('span');
   section.appendChild(header);
 
   renderItemCountBadge(header, [{ id: 1 }]);
   const firstBadge = section.children[1];
-  registry['library-item-count'] = firstBadge;
 
   renderItemCountBadge(header, [{ id: 1 }, { id: 2 }, { id: 3 }]);
 
@@ -364,10 +408,142 @@ test('renderItemCountBadge: a second call updates the SAME badge in place (idemp
   delete global.document;
 });
 
+test('renderItemCountBadge: re-render against a DETACHED cached view never doubles the badge (same class as the doubled-row bug)', () => {
+  global.document = makeFakeDoc({}); // getElementById never finds anything
+  const section = new FakeNode('div');
+  const header = new FakeNode('span');
+  section.appendChild(header);
+
+  renderItemCountBadge(header, [{ id: 1 }]);
+  renderItemCountBadge(header, [{ id: 1 }, { id: 2 }]); // background refresh while detached
+
+  const badges = section.children.filter((c) => c.id === 'library-item-count');
+  assert.strictEqual(badges.length, 1, 'exactly one badge, never two');
+  assert.strictEqual(badges[0].textContent, '2 items');
+  delete global.document;
+});
+
+test('renderItemCountBadge: a detached re-render never steals/removes the LIVE page\'s badge', () => {
+  const registry = {};
+  global.document = makeFakeDoc(registry);
+  const liveSection = new FakeNode('div');
+  const liveHeader = new FakeNode('span');
+  liveSection.appendChild(liveHeader);
+  renderItemCountBadge(liveHeader, [{ id: 1 }]);
+  const liveBadge = liveSection.children[1];
+  registry['library-item-count'] = liveBadge; // the live one IS document-visible
+
+  const detachedSection = new FakeNode('div');
+  const detachedHeader = new FakeNode('span');
+  detachedSection.appendChild(detachedHeader);
+  renderItemCountBadge(detachedHeader, [{ id: 1 }, { id: 2 }]);
+
+  assert.strictEqual(liveSection.children[1], liveBadge, 'live badge untouched');
+  assert.strictEqual(liveBadge.parentNode, liveSection);
+  assert.strictEqual(detachedSection.children.filter((c) => c.id === 'library-item-count').length, 1);
+  delete global.document;
+});
+
 test('renderItemCountBadge: no-ops safely when headerEl is missing/unattached', () => {
   global.document = makeFakeDoc({});
   assert.doesNotThrow(() => renderItemCountBadge(null, []));
   const detached = new FakeNode('span'); // no parentNode
   assert.doesNotThrow(() => renderItemCountBadge(detached, []));
+  delete global.document;
+});
+
+// ---- v1.50 T3: the watched-state toggle (the format toggle's sibling) ------
+// Mirrors the format-toggle coverage above 1:1 -- same component, different
+// axis -- plus the mount-position contract (directly after the format
+// toggle) and the born-with-the-fix detached-cache posture.
+
+test('getStoredWatchFilter: unset/corrupt/unavailable storage all fail safe to "all"', () => {
+  global.localStorage = makeFakeLocalStorage();
+  assert.strictEqual(getStoredWatchFilter(), 'all');
+  delete global.localStorage;
+  global.localStorage = { getItem: () => 'nonsense', setItem: () => {} };
+  assert.strictEqual(getStoredWatchFilter(), 'all');
+  delete global.localStorage;
+  assert.doesNotThrow(() => getStoredWatchFilter()); // no localStorage at all
+  assert.strictEqual(getStoredWatchFilter(), 'all');
+});
+
+test('getStoredWatchFilter/setStoredWatchFilter: round-trips every valid mode; invalid normalizes to "all"', () => {
+  global.localStorage = makeFakeLocalStorage();
+  for (const mode of WATCH_TOGGLE_MODES) {
+    setStoredWatchFilter(mode);
+    assert.strictEqual(getStoredWatchFilter(), mode);
+  }
+  assert.strictEqual(setStoredWatchFilter('garbage'), 'all');
+  assert.strictEqual(getStoredWatchFilter(), 'all');
+  delete global.localStorage;
+});
+
+test('WATCH_TOGGLE_MODES: exactly the 4 modes, matching the server\'s WATCH_FILTER_MODES contract', () => {
+  assert.deepStrictEqual(WATCH_TOGGLE_MODES, ['all', 'new', 'watching', 'watched']);
+});
+
+test('buildWatchToggleControl: 4 buttons (All/New/Watching/Watched), current mode active/aria-pressed, format-toggle component classes', () => {
+  global.document = makeFakeDoc({});
+  const control = buildWatchToggleControl('watching');
+  assert.strictEqual(control.id, 'library-watch-toggle');
+  assert.ok(control.className.includes('format-toggle'), 'reuses the format-toggle component styling');
+  assert.ok(control.className.includes('watch-toggle'), 'carries the layout-override class');
+  assert.strictEqual(control.children.length, 4);
+  const labels = control.children.map((b) => b.textContent || (b.children[0] && b.children[0].textContent));
+  assert.deepStrictEqual(labels, ['All', 'New', 'Watching', 'Watched']);
+  const pressed = control.children.map((b) => b.getAttribute('aria-pressed'));
+  assert.deepStrictEqual(pressed, ['false', 'false', 'true', 'false']);
+  delete global.document;
+});
+
+test('buildWatchToggleControl: clicking persists the mode, flips active/aria-pressed, and invokes onChange', () => {
+  global.document = makeFakeDoc({});
+  global.localStorage = makeFakeLocalStorage();
+  let changedTo = null;
+  const control = buildWatchToggleControl('all', (mode) => { changedTo = mode; });
+  const newBtn = control.children[1];
+
+  newBtn.click();
+
+  assert.strictEqual(changedTo, 'new');
+  assert.strictEqual(getStoredWatchFilter(), 'new');
+  assert.ok(newBtn.classList.contains('active'));
+  assert.strictEqual(control.children[0].getAttribute('aria-pressed'), 'false', 'the previously-active "All" is deactivated');
+  delete global.document;
+  delete global.localStorage;
+});
+
+test('renderWatchToggle: mounts DIRECTLY AFTER the format toggle; falls back to first child without one', () => {
+  global.document = makeFakeDoc({});
+  const actions = new FakeNode('div');
+  const sortBtn = new FakeNode('button');
+  actions.appendChild(sortBtn);
+  renderFormatToggle(actions, 'both');
+
+  renderWatchToggle(actions, 'all');
+
+  assert.strictEqual(actions.children[0].id, 'library-format-toggle');
+  assert.strictEqual(actions.children[1].id, 'library-watch-toggle');
+  assert.strictEqual(actions.children[2], sortBtn);
+
+  const bare = new FakeNode('div');
+  const other = new FakeNode('button');
+  bare.appendChild(other);
+  renderWatchToggle(bare, 'all');
+  assert.strictEqual(bare.children[0].id, 'library-watch-toggle', 'no format toggle -> first child');
+  delete global.document;
+});
+
+test('renderWatchToggle: idempotent + detached-cache safe (the doubled-row class, from birth)', () => {
+  global.document = makeFakeDoc({}); // getElementById never finds anything -- the detached case
+  const actions = new FakeNode('div');
+
+  renderWatchToggle(actions, 'all');
+  renderWatchToggle(actions, 'watched'); // background refresh while detached
+
+  const toggles = actions.children.filter((c) => c.id === 'library-watch-toggle');
+  assert.strictEqual(toggles.length, 1, 'exactly one watch toggle, never two');
+  assert.doesNotThrow(() => renderWatchToggle(null, 'all'), 'no-ops safely without a container');
   delete global.document;
 });

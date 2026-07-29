@@ -191,3 +191,30 @@ test('watch.html: .star-rating is a sibling of .watch-action-btns inside .watch-
   const btnGroupOpenTag = html.indexOf('<div class="watch-action-btns">', watchActionsIdx);
   assert.ok(btnGroupOpenTag !== -1 && btnGroupOpenTag > starIdx, '.watch-action-btns must open after .star-rating, confirming sibling order, not nesting');
 });
+
+// ---- v1.50 T4: the Reheat-row reflow fix -----------------------------------
+// Reheat (v1.49) made the glyph group six buttons; with the "N / 5" text
+// beside the stars, the outer .watch-actions row's two members stopped
+// sharing one line on phones (the wrap safety net fired -- by design, but
+// sad). The fix drops the cosmetic NUMBER at phone widths and keeps the
+// stars; desktop keeps both.
+
+test('mobile: the "N / 5" rating text is hidden at phone widths (stars stay)', () => {
+  // The `.star-rating .rating-count` selector spelling exists ONLY in the
+  // v1.50 mobile rule (the base rule is bare `.rating-count`), so matching
+  // it directly is unambiguous. Confirm it sits inside a media region by
+  // requiring at least one `@media (max-width: 768px)` opener before it.
+  const ruleMatch = /\.star-rating \.rating-count\s*\{\s*display:\s*none;?\s*\}/.exec(css);
+  assert.ok(ruleMatch, 'expected the .star-rating .rating-count { display: none } rule');
+  const before = css.slice(0, ruleMatch.index);
+  assert.ok(before.lastIndexOf('@media (max-width: 768px)') !== -1, 'the hide must live under a mobile media query');
+  // The stars themselves must never be hidden anywhere.
+  assert.doesNotMatch(css, /\.star-rating\s*\{[^{}]*display:\s*none/, 'the stars themselves must never be hidden');
+});
+
+test('desktop: the base .rating-count rule still renders the number (the hide is mobile-scoped)', () => {
+  const base = /\n\.rating-count \{([\s\S]*?)\}/.exec(css);
+  assert.ok(base, 'expected the base .rating-count rule');
+  assert.match(base[1], /white-space:\s*nowrap/, 'the base rule survives (desktop keeps the number)');
+  assert.doesNotMatch(base[1], /display:\s*none/, 'no base-scope hide');
+});

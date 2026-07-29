@@ -726,6 +726,13 @@ html.reader-immersive .app-container { padding-top: 0; }
   min-width: 58px;
   justify-content: center;
 }
+/* v1.50: the watched-state group ("All | New | Watching | Watched") reuses the
+   format-toggle component wholesale; only the width budget differs -- four
+   labels (one of them "Watching") at the uniform 58px would push the desktop
+   toolbar toward overflow, so its pills size to their text instead. */
+.watch-toggle .format-toggle-btn {
+  min-width: 0;
+}
 #sort-select-btn,
 #shuffle-again-btn,
 #rescan-library-btn {
@@ -2112,10 +2119,22 @@ html.reader-immersive .app-container { padding-top: 0; }
   text-decoration: underline;
 }
 
+/* v1.50 (Dean, mid-wave ask): the subscriber count reads as a BADGE now --
+   the classic-YouTube boxed-count treatment -- instead of a bare text line.
+   Everything comes from the existing era tokens (btn surface, border,
+   radius), so it is square/beveled in 2005/2009 and rounded in 2021, and
+   correct in both data-mode palettes, with zero new tokens. The count text
+   itself (mock, deterministic -- getMockSubCount) is unchanged. */
 .uploader-subs {
+  display: inline-block;
   font-size: var(--fs-xs);
   color: var(--text-secondary);
-  margin-top: 2px;
+  margin-top: 3px;
+  padding: 1px 7px;
+  background-color: var(--btn-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  line-height: 1.5;
 }
 
 /* Description Box */
@@ -3783,6 +3802,18 @@ a.sub-row-channel-link:focus-visible {
     display: none;
   }
 
+  /* v1.50 (Dean: "Reheat shifted the whole row down on mobile. Makes me
+     sad."): Reheat made the glyph group SIX buttons, and with the "N / 5"
+     text beside the stars the .watch-actions row's two members no longer
+     share one line -- the wrap safety net above kicked in and pushed the
+     buttons to a second row. Drop the NUMBER at phone widths and keep the
+     stars: the rating text is the cosmetic hash value (getStarRating), so
+     nothing informational is lost, and the width it frees puts stars +
+     six glyphs back on one line. Desktop keeps the number (there is room). */
+  .star-rating .rating-count {
+    display: none;
+  }
+
   /* ---- v1.13.0 item 6: mobile-portrait polish for the Setup (Library ------
      Settings) page and the /subscriptions page. Comfortable spacing/
      wrapping for rows and controls, and larger tap targets, without
@@ -3880,13 +3911,31 @@ a.sub-row-channel-link:focus-visible {
      emoji"): with the item count moved beside the name (#4) freeing the row and
      the buttons evenly distributed, one glyph line reads cleaner than a wrapped
      two-line cluster. Meaning is preserved via each button's title/aria-label,
-     and desktop keeps its labels (there's room). */
+     and desktop keeps its labels (there's room).
+
+     v1.50: `nowrap` relaxed to `wrap` ONLY so the new watched-state group can
+     take its own full-width row below (its width:100% + order rules — next
+     block). The original one-clean-line contract for the format pills +
+     sort/shuffle/rescan/view buttons still holds exactly as long as that set
+     fits the viewport, which is the SAME budget v1.45.3 tuned; nothing was
+     added to that line (the watch group never shares it, by construction). */
   .section-actions {
-    flex-wrap: nowrap;
+    flex-wrap: wrap;
     width: 100%;
     justify-content: space-between;
     gap: 4px; /* v1.45.6: tightened from 6px to absorb the added view-mode button
                  on the one-line row (Dean: "move them slightly closer"). */
+  }
+  /* v1.50: the watched-state group is the sticky bar's own second line on
+     phones — forced last (order) and full-width (flex-basis wrap trigger),
+     with its four pills sharing the line evenly. Keeping it OFF the v1.45
+     one-glyph-line row is what preserves that row's hard-won width budget. */
+  .section-actions .watch-toggle {
+    order: 10;
+    width: 100%;
+  }
+  .section-actions .watch-toggle .format-toggle-btn {
+    flex: 1 1 0;
   }
   /* v1.45.3 (#3): the previous swing forced EVERY button (incl. the 3 format
      pills) to 44px and kept the sort's text label, so the nowrap row overflowed
@@ -4032,6 +4081,32 @@ a.sub-row-channel-link:focus-visible {
 @media (max-width: 768px) and (orientation: landscape) {
   .bottom-nav { display: none; }
   .main-content { padding-bottom: env(safe-area-inset-bottom); }
+
+  /* v1.50 (Dean, item 6): bound the NON-fullscreen player in phone landscape.
+     Until now every height cap was portrait-scoped (the v1.13 comment below
+     says landscape was left "completely unaffected"), so a landscape watch
+     page at rest was a full-viewport-width 16:9 box (~475px tall on a 390px-
+     tall phone) + the 80px control strip -- taller than the screen. Cap the
+     MEDIA ELEMENT's height so picture + strip + the fixed mobile header
+     (--mobile-header-h, set in the <=768px block and live here too) fit the
+     viewport; `width: 100%` + the global `object-fit: contain` pillarbox the
+     picture inside the shorter box. The wrapper (aspect-ratio: auto, height
+     from content) and the strip follow automatically. The 96px reserve =
+     the 80px two-row strip + 16px breathing room.
+
+     Deliberately excluded, so "rotate while playing" immersion is untouched:
+     - `.css-fullscreen` (the faux-fullscreen overlay releases every sizing
+       constraint -- v1.34.3 -- and a 3-ID cap here would out-rank it);
+     - `:fullscreen` (native element fullscreen restores `height: 100%`,
+       which max-height would override);
+     - the DOCK (this is #player-slot-scoped) and `.audio-expanded`.
+     iOS native video fullscreen (webkitEnterFullscreen) renders in the
+     system player, untouched by any of this. */
+  #player-slot #player-wrapper:not(.audio-expanded):not(.css-fullscreen):not(:fullscreen) #media-player {
+    max-height: calc(100vh - var(--mobile-header-h, 96px) - 96px);
+  }
+  /* Audio's cover-art layer fills the wrapper (absolute inset), which now
+     tracks the capped element height -- nothing extra needed for audio. */
 }
 
 /* v1.13.0 item 2: cap the player on a PHONE IN PORTRAIT so it no longer
@@ -4075,17 +4150,24 @@ a.sub-row-channel-link:focus-visible {
 }
 
 /* === v1.21 FR-2: player controls / audio-mode ===============================
-   Custom blocky app-owned control bar that replaces the native
-   <audio>/<video controls> bar (unstyleable -- the pure-white-in-dark-mode +
-   rounded/derpy look, per docs/ui-research-2026-07.md #4). Drives BOTH audio
-   and video (one shared #media-player). Every color below comes from the
-   existing era CSS custom properties (:root / [data-theme] blocks at the top
-   of this file) so light/dark + all four eras "just work" with zero new
-   tokens (AC7); every corner is hard `border-radius: 0` (not `var(--radius)`)
-   so the bar reads as deliberately blocky/beveled in EVERY era, including
-   2021/2014/2009, which otherwise round most other chrome (AC8). `color-
-   scheme: dark light` on the wrapper lets any remaining native form-control
-   chrome (e.g. focus rings) pick a sane light/dark default too. */
+   Custom app-owned control bar that replaces the native <audio>/<video
+   controls> bar (unstyleable -- the pure-white-in-dark-mode + rounded/derpy
+   look, per docs/ui-research-2026-07.md #4). Drives BOTH audio and video
+   (one shared #media-player). Every color below comes from the existing era
+   CSS custom properties (:root / [data-theme] blocks at the top of this
+   file) so light/dark + all four eras "just work" with zero new tokens (AC7).
+
+   v1.50 (Dean): the bar is now ERA-SKINNED. The BASE rules in this section
+   are the 2005 Original skin (the blocky Winamp bevel this bar shipped with
+   -- hard border-radius: 0, outset bevels; the original v1.21 AC8 "blocky in
+   every era" contract is superseded by Dean's explicit ask). The 2009/2014/
+   2021 overrides live in the clearly-marked block after the seek/vol fill
+   rules below, and are STRICTLY visual: colors, gradients, radii, thumb
+   shapes -- never bar height, padding, gap, flex order, or any other
+   geometry (the mobile two-row layout has a long trap history; see the
+   max-width:768px rules below). `color-scheme: dark light` on the wrapper
+   lets any remaining native form-control chrome (e.g. focus rings) pick a
+   sane light/dark default too. */
 
 #player-wrapper {
   color-scheme: dark light;
@@ -4319,6 +4401,167 @@ a.sub-row-channel-link:focus-visible {
   background-image:
     repeating-linear-gradient(to right, rgba(0, 0, 0, 0.12) 0 2px, transparent 2px 4px),
     linear-gradient(to right, var(--yt-red) 0%, var(--yt-red) var(--vol-fill, 100%), var(--btn-bg) var(--vol-fill, 100%), var(--btn-bg) 100%);
+}
+
+/* === v1.50 (Dean): era player skins ========================================
+   The base rules above ARE the 2005 Original skin. Each era below re-skins
+   the SAME bar in that era's real YouTube-player visual language:
+     2009 Classic -- glossy gradient chrome (the era's glass-button look,
+                     matching the site's own [data-theme="2009"] .btn gloss);
+     2014 Flat    -- flat material: no bevels, no gradients, borderless
+                     ghost buttons, the era's brighter red, red dot scrubber;
+     2021 Modern  -- flat + round + crisp: circular hover on buttons, pill
+                     tracks, thin seek line, YouTube's round red scrubber.
+   HARD RULES (locked by test/unit/era-player-skins.test.js):
+   - visual-only: never height/padding/gap/order on .player-controls -- the
+     bar's geometry (40px desktop / two-row 80px mobile / 26px docked) is
+     identical in every era;
+   - every color is an era TOKEN or an rgba() overlay over one, never a
+     hardcoded palette hex -- that is what makes each skin correct in BOTH
+     data-mode palettes with zero mode-scoped rules here;
+   - 2005 has no block at all: the base IS its skin, byte-unchanged. */
+
+/* ---- 2009 Classic: glossy chrome ---------------------------------------- */
+[data-theme="2009"] .player-controls {
+  border-top: 1px solid var(--border-dark);
+  background-image: linear-gradient(to bottom, rgba(255, 255, 255, 0.25), rgba(0, 0, 0, 0.10));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45);
+}
+[data-theme="2009"] .pc-btn {
+  border-radius: 2px;
+  background-image: linear-gradient(to bottom, rgba(255, 255, 255, 0.35), rgba(0, 0, 0, 0.08));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+[data-theme="2009"] .pc-btn:active {
+  background-image: linear-gradient(to top, rgba(255, 255, 255, 0.25), rgba(0, 0, 0, 0.12));
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.25);
+}
+[data-theme="2009"] .pc-range::-webkit-slider-thumb {
+  border-radius: 2px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+[data-theme="2009"] .pc-range::-moz-range-thumb {
+  border-radius: 2px;
+}
+/* Glossy red fill; the Winamp stripe texture is a 2005 flourish -- gone. */
+[data-theme="2009"] #seek-bar::-webkit-slider-runnable-track {
+  background-image:
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.35), rgba(255, 255, 255, 0) 55%),
+    linear-gradient(to right, var(--yt-red) 0%, var(--yt-red) var(--seek-fill, 0%), var(--btn-bg) var(--seek-fill, 0%), var(--btn-bg) 100%);
+}
+[data-theme="2009"] #vol-bar::-webkit-slider-runnable-track {
+  background-image:
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.35), rgba(255, 255, 255, 0) 55%),
+    linear-gradient(to right, var(--yt-red) 0%, var(--yt-red) var(--vol-fill, 100%), var(--btn-bg) var(--vol-fill, 100%), var(--btn-bg) 100%);
+}
+
+/* ---- 2014 Flat: material, no chrome -------------------------------------- */
+[data-theme="2014"] .player-controls {
+  border-top: 1px solid var(--border-color);
+  box-shadow: none;
+}
+[data-theme="2014"] .pc-btn {
+  border: none;
+  border-radius: 2px;
+  background-color: transparent;
+  box-shadow: none;
+}
+[data-theme="2014"] .pc-btn:hover {
+  background-color: var(--btn-hover);
+}
+[data-theme="2014"] .pc-btn:active {
+  background-color: var(--btn-bg);
+  box-shadow: none;
+}
+[data-theme="2014"] .pc-range::-webkit-slider-runnable-track {
+  border: none;
+  box-shadow: none;
+}
+[data-theme="2014"] .pc-range::-moz-range-track {
+  border: none;
+}
+/* The era's red dot scrubber (12px circle on the 6px track: (12-6)/2 = -3px
+   to center; the base -5px was tuned for the 16px bordered rectangle). */
+[data-theme="2014"] .pc-range::-webkit-slider-thumb {
+  width: 12px;
+  height: 12px;
+  margin-top: -3px;
+  border: none;
+  border-radius: 50%;
+  background-color: var(--yt-red);
+  box-shadow: none;
+}
+[data-theme="2014"] .pc-range::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border: none;
+  border-radius: 50%;
+  background-color: var(--yt-red);
+}
+[data-theme="2014"] #seek-bar::-webkit-slider-runnable-track {
+  background-image: linear-gradient(to right, var(--yt-red) 0%, var(--yt-red) var(--seek-fill, 0%), var(--btn-bg) var(--seek-fill, 0%), var(--btn-bg) 100%);
+}
+[data-theme="2014"] #vol-bar::-webkit-slider-runnable-track {
+  background-image: linear-gradient(to right, var(--yt-red) 0%, var(--yt-red) var(--vol-fill, 100%), var(--btn-bg) var(--vol-fill, 100%), var(--btn-bg) 100%);
+}
+
+/* ---- 2021 Modern: flat + round + crisp ------------------------------------ */
+[data-theme="2021"] .player-controls {
+  border-top: 1px solid var(--border-color);
+  box-shadow: none;
+}
+[data-theme="2021"] .pc-btn {
+  border: none;
+  border-radius: 50%;
+  background-color: transparent;
+  box-shadow: none;
+}
+[data-theme="2021"] .pc-btn:hover {
+  background-color: var(--btn-hover);
+}
+[data-theme="2021"] .pc-btn:active {
+  background-color: var(--btn-bg);
+  box-shadow: none;
+}
+/* Thin pill tracks (4px inside the SAME 16px input hit area -- the input's
+   own height/flex are untouched, so layout is identical) + the round red
+   scrubber. Thumb centering: (12-4)/2 = -4px. */
+[data-theme="2021"] .pc-range::-webkit-slider-runnable-track {
+  height: 4px;
+  border: none;
+  border-radius: 999px;
+  box-shadow: none;
+}
+[data-theme="2021"] .pc-range::-moz-range-track {
+  height: 4px;
+  border: none;
+  border-radius: 999px;
+}
+[data-theme="2021"] .pc-range::-moz-range-progress {
+  height: 4px;
+  border-radius: 999px;
+}
+[data-theme="2021"] .pc-range::-webkit-slider-thumb {
+  width: 12px;
+  height: 12px;
+  margin-top: -4px;
+  border: none;
+  border-radius: 50%;
+  background-color: var(--yt-red);
+  box-shadow: none;
+}
+[data-theme="2021"] .pc-range::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border: none;
+  border-radius: 50%;
+  background-color: var(--yt-red);
+}
+[data-theme="2021"] #seek-bar::-webkit-slider-runnable-track {
+  background-image: linear-gradient(to right, var(--yt-red) 0%, var(--yt-red) var(--seek-fill, 0%), var(--btn-bg) var(--seek-fill, 0%), var(--btn-bg) 100%);
+}
+[data-theme="2021"] #vol-bar::-webkit-slider-runnable-track {
+  background-image: linear-gradient(to right, var(--yt-red) 0%, var(--yt-red) var(--vol-fill, 100%), var(--btn-bg) var(--vol-fill, 100%), var(--btn-bg) 100%);
 }
 
 /* ---- docked mini-player: compact bar (play/pause + seek only) ------------ */

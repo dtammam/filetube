@@ -467,6 +467,44 @@ function resolveDockTransitionResumeAction(ctx) {
   return opts.resumeOverlayVisible ? 'dismiss-and-auto-resume' : 'none';
 }
 
+// v1.50 (Dean): keyboard shortcuts for the Resume prompt -- `R` = Resume,
+// `S` = Start from the beginning, active ONLY while `#resume-overlay` is
+// actually showing. Pure decision table (exported for node:test); the DOM
+// listener routes the verdict through the REAL buttons' .click() so the
+// keyboard path and the click path can never diverge (the v1.41.7 "one
+// shared decision function" doctrine -- liveMode branching, progress save,
+// overlay dismissal all live in exactly one place, the click handlers).
+// Deliberately NOT folded into the main FULL-only shortcut switch: that
+// switch early-returns on a focused BUTTON, which is precisely the state
+// after the overlay's own buttons render (same reasoning as the
+// audio-expand Escape listener). No Escape binding here -- "dismiss" is
+// ambiguous between the two choices, so Escape stays unbound on this
+// overlay by design.
+function resolveResumeShortcutAction(ctx) {
+  var opts = ctx || {};
+  if (!opts.overlayVisible) return 'none';
+  if (opts.hasModifier) return 'none';
+  if (opts.isTypingContext) return 'none';
+  var key = String(opts.key || '');
+  if (key === 'r' || key === 'R') return 'resume';
+  if (key === 's' || key === 'S') return 'restart';
+  return 'none';
+}
+
+// v1.50 (Dean, item 6): the rotate-to-landscape auto-fullscreen now requires
+// the media to actually be PLAYING. Before this, `onOrientationChange` fired
+// enterFullscreen() on ANY landscape rotation while the player was FULL --
+// even paused, even before a first play -- which fought the new bounded
+// landscape layout: rotating a phone to read the page sideways yanked a
+// paused player fullscreen. Rotating while playing keeps the immersive
+// auto-fullscreen exactly as before; the caller's `state !== STATE_FULL`
+// guard (a DOCKED mini-player never yanks fullscreen) stays where it is.
+// Pure + exported for node:test.
+function shouldAutoFullscreenOnRotate(ctx) {
+  var opts = ctx || {};
+  return !!(opts.landscape && !opts.inFullscreen && opts.playing);
+}
+
 // Bug-fix (v1.17.0 two-reviewer gate, FR-4b leak): pure helper for the
 // "capture-then-reset" step every NEW (non-adopt) load must perform on the
 // one-shot `autoplayAdvancePending` flag, at load START -- not deferred to
@@ -937,6 +975,10 @@ if (typeof module !== 'undefined' && module.exports) {
     resolveResumeThreshold,
     resolveDockedResumeAction,
     resolveDockTransitionResumeAction,
+    // v1.50: the Resume prompt's R/S keyboard decision table.
+    resolveResumeShortcutAction,
+    // v1.50 item 6: rotate-to-landscape auto-fullscreen requires playing.
+    shouldAutoFullscreenOnRotate,
     captureAutoplayAdvanceForLoad,
     clampVolume,
     seekCommitTarget,
@@ -4694,7 +4736,15 @@ if (typeof module !== 'undefined' && module.exports) {
       if (state !== STATE_FULL) return; // FULL-only shortcut/gesture surface
       var landscape = mql.matches;
       try {
-        if (landscape && !inNativeFullscreen()) {
+        // v1.50 (Dean, item 6): `playing` joins the decision -- see
+        // shouldAutoFullscreenOnRotate's header. A paused/idle rotation now
+        // falls through to the bounded landscape layout (style.css) instead
+        // of being yanked fullscreen.
+        if (shouldAutoFullscreenOnRotate({
+          landscape: landscape,
+          inFullscreen: inNativeFullscreen(),
+          playing: !!(mediaPlayer && !mediaPlayer.paused && !mediaPlayer.ended),
+        })) {
           autoFullscreen = true;
           // FR-2 (T2, v1.21.0): retargeted through enterFullscreen() --
           // still iOS-native on iOS (webkitEnterFullscreen, no promise),
@@ -4874,6 +4924,29 @@ if (typeof module !== 'undefined' && module.exports) {
       if (state !== STATE_FULL) return;
       if (!host || !host.classList.contains('audio-expanded')) return;
       if (e.key === 'Escape' || e.key === 'Esc') exitAudioExpand();
+    });
+
+    // ---- v1.50 (Dean): R / S while the Resume prompt is showing ------------
+    // Separate listener for the same focused-BUTTON reason as the Escape one
+    // above -- see resolveResumeShortcutAction's header for the full design.
+    // The shortcuts-help dialog guard mirrors the main switch's own: keys
+    // pressed while the `?` reference is open must never act behind it.
+    document.addEventListener('keydown', function (e) {
+      if (typeof window.isShortcutsModalOpen === 'function' && window.isShortcutsModalOpen()) return;
+      var active = document.activeElement;
+      var tag = active && active.tagName ? String(active.tagName).toUpperCase() : '';
+      var action = resolveResumeShortcutAction({
+        key: e.key,
+        // Same visibility spelling as resolveDockTransitionResumeAction's
+        // call site: the overlay carries an inline display style from birth.
+        overlayVisible: !!(resumeOverlay && resumeOverlay.style.display !== 'none'),
+        hasModifier: !!(e.ctrlKey || e.metaKey || e.altKey),
+        isTypingContext: !!(active && (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || active.isContentEditable)),
+      });
+      if (action === 'none') return;
+      e.preventDefault();
+      if (action === 'resume' && resumeYesBtn) resumeYesBtn.click();
+      else if (action === 'restart' && resumeNoBtn) resumeNoBtn.click();
     });
   }
 
@@ -5487,6 +5560,15 @@ if (typeof module !== 'undefined' && module.exports) {
     // art single-tap toggle so it can never fire on the (about to be
     // detached) persistent element after close().
     cancelPendingArtTap();
+    // v1.50 gate (QA WARNING): reset the resume overlay's visibility here,
+    // exactly as dock() already does on its own transition. Without this, a
+    // close() while the "Resume Playback?" prompt is open (Delete / Move /
+    // relocate all call close() from outside the player chrome) leaves
+    // `resumeOverlay.style.display === 'flex'` on the DETACHED host forever
+    // -- and the R/S shortcut listener keys its visibility check off exactly
+    // that, so bare r/s anywhere on the page would keep firing clicks at a
+    // torn-down player until the next genuine load().
+    if (resumeOverlay) resumeOverlay.style.display = 'none';
     exitAudioExpand(); // FR-1 (T1, v1.22.2, AC5): never leave a closed player's host expanded for a future re-open
     // FIX D (player-hardening round, hygiene): clear the native-controls
     // marker + attribute here too, mirroring teardownMediaState()'s identical
