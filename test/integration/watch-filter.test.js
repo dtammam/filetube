@@ -147,6 +147,28 @@ test('a ping BELOW the threshold never latches; duration fallback to the item\'s
   assert.deepEqual(userStore.getWatchedIds(session.user.id), ['v1'], 'latched via item-duration fallback');
 });
 
+test('GET /api/liked honors ?watch= too (the v1.32 format-toggle parity posture) and carries watchState', async () => {
+  writeDb({ metadata: { fresh: seedItem('fresh'), done: seedItem('done') } });
+  for (const id of ['fresh', 'done']) {
+    const res = await fetch(`${base}/api/liked/${id}`, { method: 'POST' });
+    assert.equal(res.status, 200);
+  }
+  await postProgress('done', 95, 100);
+  await flushPendingProgress();
+
+  const likedNew = await fetch(`${base}/api/liked?watch=new`);
+  assert.equal(likedNew.status, 200);
+  const newBody = await likedNew.json();
+  assert.deepEqual(newBody.items.map((i) => i.id), ['fresh']);
+  assert.equal(newBody.total, 1);
+  assert.equal(newBody.items[0].watchState, 'new');
+
+  const likedWatched = await fetch(`${base}/api/liked?watch=watched`);
+  const watchedBody = await likedWatched.json();
+  assert.deepEqual(watchedBody.items.map((i) => i.id), ['done']);
+  assert.equal(watchedBody.items[0].watchState, 'watched');
+});
+
 test('deleting media removes the latch row with the other per-user state (id-keyed carrier)', async () => {
   // Through the store carrier directly (the DELETE route funnels here) --
   // proves user_watched joined removeMediaState.

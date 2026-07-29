@@ -21,6 +21,8 @@ const {
   countItems, formatItemCountLabel, renderItemCountBadge,
   filterByMediaType, getStoredFormatFilter, setStoredFormatFilter,
   FORMAT_FILTER_MODES, buildFormatToggleControl, renderFormatToggle,
+  WATCH_TOGGLE_MODES, getStoredWatchFilter, setStoredWatchFilter,
+  buildWatchToggleControl, renderWatchToggle,
 } = require('../../public/js/common.js');
 
 // ---- countItems / formatItemCountLabel (pure, no DOM) ----------------------
@@ -447,5 +449,101 @@ test('renderItemCountBadge: no-ops safely when headerEl is missing/unattached', 
   assert.doesNotThrow(() => renderItemCountBadge(null, []));
   const detached = new FakeNode('span'); // no parentNode
   assert.doesNotThrow(() => renderItemCountBadge(detached, []));
+  delete global.document;
+});
+
+// ---- v1.50 T3: the watched-state toggle (the format toggle's sibling) ------
+// Mirrors the format-toggle coverage above 1:1 -- same component, different
+// axis -- plus the mount-position contract (directly after the format
+// toggle) and the born-with-the-fix detached-cache posture.
+
+test('getStoredWatchFilter: unset/corrupt/unavailable storage all fail safe to "all"', () => {
+  global.localStorage = makeFakeLocalStorage();
+  assert.strictEqual(getStoredWatchFilter(), 'all');
+  delete global.localStorage;
+  global.localStorage = { getItem: () => 'nonsense', setItem: () => {} };
+  assert.strictEqual(getStoredWatchFilter(), 'all');
+  delete global.localStorage;
+  assert.doesNotThrow(() => getStoredWatchFilter()); // no localStorage at all
+  assert.strictEqual(getStoredWatchFilter(), 'all');
+});
+
+test('getStoredWatchFilter/setStoredWatchFilter: round-trips every valid mode; invalid normalizes to "all"', () => {
+  global.localStorage = makeFakeLocalStorage();
+  for (const mode of WATCH_TOGGLE_MODES) {
+    setStoredWatchFilter(mode);
+    assert.strictEqual(getStoredWatchFilter(), mode);
+  }
+  assert.strictEqual(setStoredWatchFilter('garbage'), 'all');
+  assert.strictEqual(getStoredWatchFilter(), 'all');
+  delete global.localStorage;
+});
+
+test('WATCH_TOGGLE_MODES: exactly the 4 modes, matching the server\'s WATCH_FILTER_MODES contract', () => {
+  assert.deepStrictEqual(WATCH_TOGGLE_MODES, ['all', 'new', 'watching', 'watched']);
+});
+
+test('buildWatchToggleControl: 4 buttons (All/New/Watching/Watched), current mode active/aria-pressed, format-toggle component classes', () => {
+  global.document = makeFakeDoc({});
+  const control = buildWatchToggleControl('watching');
+  assert.strictEqual(control.id, 'library-watch-toggle');
+  assert.ok(control.className.includes('format-toggle'), 'reuses the format-toggle component styling');
+  assert.ok(control.className.includes('watch-toggle'), 'carries the layout-override class');
+  assert.strictEqual(control.children.length, 4);
+  const labels = control.children.map((b) => b.textContent || (b.children[0] && b.children[0].textContent));
+  assert.deepStrictEqual(labels, ['All', 'New', 'Watching', 'Watched']);
+  const pressed = control.children.map((b) => b.getAttribute('aria-pressed'));
+  assert.deepStrictEqual(pressed, ['false', 'false', 'true', 'false']);
+  delete global.document;
+});
+
+test('buildWatchToggleControl: clicking persists the mode, flips active/aria-pressed, and invokes onChange', () => {
+  global.document = makeFakeDoc({});
+  global.localStorage = makeFakeLocalStorage();
+  let changedTo = null;
+  const control = buildWatchToggleControl('all', (mode) => { changedTo = mode; });
+  const newBtn = control.children[1];
+
+  newBtn.click();
+
+  assert.strictEqual(changedTo, 'new');
+  assert.strictEqual(getStoredWatchFilter(), 'new');
+  assert.ok(newBtn.classList.contains('active'));
+  assert.strictEqual(control.children[0].getAttribute('aria-pressed'), 'false', 'the previously-active "All" is deactivated');
+  delete global.document;
+  delete global.localStorage;
+});
+
+test('renderWatchToggle: mounts DIRECTLY AFTER the format toggle; falls back to first child without one', () => {
+  global.document = makeFakeDoc({});
+  const actions = new FakeNode('div');
+  const sortBtn = new FakeNode('button');
+  actions.appendChild(sortBtn);
+  renderFormatToggle(actions, 'both');
+
+  renderWatchToggle(actions, 'all');
+
+  assert.strictEqual(actions.children[0].id, 'library-format-toggle');
+  assert.strictEqual(actions.children[1].id, 'library-watch-toggle');
+  assert.strictEqual(actions.children[2], sortBtn);
+
+  const bare = new FakeNode('div');
+  const other = new FakeNode('button');
+  bare.appendChild(other);
+  renderWatchToggle(bare, 'all');
+  assert.strictEqual(bare.children[0].id, 'library-watch-toggle', 'no format toggle -> first child');
+  delete global.document;
+});
+
+test('renderWatchToggle: idempotent + detached-cache safe (the doubled-row class, from birth)', () => {
+  global.document = makeFakeDoc({}); // getElementById never finds anything -- the detached case
+  const actions = new FakeNode('div');
+
+  renderWatchToggle(actions, 'all');
+  renderWatchToggle(actions, 'watched'); // background refresh while detached
+
+  const toggles = actions.children.filter((c) => c.id === 'library-watch-toggle');
+  assert.strictEqual(toggles.length, 1, 'exactly one watch toggle, never two');
+  assert.doesNotThrow(() => renderWatchToggle(null, 'all'), 'no-ops safely without a container');
   delete global.document;
 });

@@ -726,6 +726,13 @@ html.reader-immersive .app-container { padding-top: 0; }
   min-width: 58px;
   justify-content: center;
 }
+/* v1.50: the watched-state group ("All | New | Watching | Watched") reuses the
+   format-toggle component wholesale; only the width budget differs -- four
+   labels (one of them "Watching") at the uniform 58px would push the desktop
+   toolbar toward overflow, so its pills size to their text instead. */
+.watch-toggle .format-toggle-btn {
+  min-width: 0;
+}
 #sort-select-btn,
 #shuffle-again-btn,
 #rescan-library-btn {
@@ -3880,13 +3887,31 @@ a.sub-row-channel-link:focus-visible {
      emoji"): with the item count moved beside the name (#4) freeing the row and
      the buttons evenly distributed, one glyph line reads cleaner than a wrapped
      two-line cluster. Meaning is preserved via each button's title/aria-label,
-     and desktop keeps its labels (there's room). */
+     and desktop keeps its labels (there's room).
+
+     v1.50: `nowrap` relaxed to `wrap` ONLY so the new watched-state group can
+     take its own full-width row below (its width:100% + order rules — next
+     block). The original one-clean-line contract for the format pills +
+     sort/shuffle/rescan/view buttons still holds exactly as long as that set
+     fits the viewport, which is the SAME budget v1.45.3 tuned; nothing was
+     added to that line (the watch group never shares it, by construction). */
   .section-actions {
-    flex-wrap: nowrap;
+    flex-wrap: wrap;
     width: 100%;
     justify-content: space-between;
     gap: 4px; /* v1.45.6: tightened from 6px to absorb the added view-mode button
                  on the one-line row (Dean: "move them slightly closer"). */
+  }
+  /* v1.50: the watched-state group is the sticky bar's own second line on
+     phones — forced last (order) and full-width (flex-basis wrap trigger),
+     with its four pills sharing the line evenly. Keeping it OFF the v1.45
+     one-glyph-line row is what preserves that row's hard-won width budget. */
+  .section-actions .watch-toggle {
+    order: 10;
+    width: 100%;
+  }
+  .section-actions .watch-toggle .format-toggle-btn {
+    flex: 1 1 0;
   }
   /* v1.45.3 (#3): the previous swing forced EVERY button (incl. the 3 format
      pills) to 44px and kept the sort's text label, so the nowrap row overflowed

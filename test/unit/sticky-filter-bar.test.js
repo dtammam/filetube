@@ -30,12 +30,17 @@ test('#4: the item count is parenthesized in CSS (data string stays "N items")',
   assert.match(css, /\.library-item-count::after\s*\{\s*content:\s*"\)"/, 'close paren');
 });
 
-test('#3: on mobile the action row is ONE line (nowrap) with icon-only buttons (labels hidden)', () => {
-  // Inside the max-width:768px block, .section-actions must nowrap and the
-  // .btn-label spans must be hidden (glyph-only, revisiting v1.23's mobile labels).
-  // These two declarations exist ONLY in the mobile block (desktop .section-actions
-  // has no flex-wrap and never hides labels), so a bare match is unambiguous.
-  assert.match(css, /\.section-actions\s*\{[^}]*flex-wrap:\s*nowrap/, '.section-actions is nowrap on mobile');
+test('#3: on mobile the action row keeps its one-glyph-line contract; wrap exists ONLY for the watch group\'s own second row', () => {
+  // v1.45.2 made .section-actions nowrap (one clean line, icon-only). v1.50
+  // relaxed nowrap -> wrap SOLELY so the watched-state group can take a
+  // full-width second row -- the original line's members are unchanged and
+  // the watch group is forced off it (order + width:100%), so the v1.45
+  // width budget still holds. These declarations exist only in the mobile
+  // block (desktop .section-actions has no flex-wrap and never hides
+  // labels), so a bare match is unambiguous.
+  assert.match(css, /\.section-actions\s*\{[^}]*flex-wrap:\s*wrap/, '.section-actions wraps on mobile (v1.50: watch-group second row)');
+  assert.match(css, /\.section-actions \.watch-toggle\s*\{[^}]*order:\s*10/, 'the watch group is forced OFF the one-glyph line');
+  assert.match(css, /\.section-actions \.watch-toggle\s*\{[^}]*width:\s*100%/, 'the watch group is its own full-width row');
   assert.match(css, /\.section-actions \.btn \.btn-label\s*\{\s*display:\s*none/, 'Shuffle/Rescan labels are hidden on mobile');
 });
 

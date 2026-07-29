@@ -1359,6 +1359,81 @@ function renderFormatToggle(actionsEl, currentMode, onChange) {
   actionsEl.insertBefore(control, actionsEl.firstChild);
 }
 
+// ---- v1.50: watched-state filter toggle ------------------------------------
+//
+// The home page's second segmented group: `All | New | Watching | Watched`.
+// Deliberately a sibling of the format toggle in every way -- same component
+// classes (`.format-toggle`/`.format-toggle-btn`, plus `.watch-toggle` for
+// layout-only overrides), same localStorage persistence pattern, same
+// onChange contract, and the SAME container-scoped de-dupe posture (born
+// with the fix for the doubled-row bug -- see renderFormatToggle above).
+// The value rides `GET /api/videos?watch=`; the SERVER derives watched
+// state (progress thresholds + the sticky completion latch) -- the client
+// never re-implements the thresholds.
+
+const WATCH_FILTER_STORAGE_KEY = 'filetube_watch';
+const WATCH_TOGGLE_MODES = ['all', 'new', 'watching', 'watched'];
+
+function getStoredWatchFilter() {
+  let stored = null;
+  try { stored = localStorage.getItem(WATCH_FILTER_STORAGE_KEY); } catch (_) { /* storage disabled -- fall back to default */ }
+  return WATCH_TOGGLE_MODES.includes(stored) ? stored : 'all';
+}
+
+function setStoredWatchFilter(mode) {
+  const normalized = WATCH_TOGGLE_MODES.includes(mode) ? mode : 'all';
+  try { localStorage.setItem(WATCH_FILTER_STORAGE_KEY, normalized); } catch (_) { /* storage disabled -- best effort */ }
+  return normalized;
+}
+
+const WATCH_TOGGLE_OPTIONS = [
+  { mode: 'all', label: 'All' },
+  { mode: 'new', label: 'New' },
+  { mode: 'watching', label: 'Watching' },
+  { mode: 'watched', label: 'Watched' },
+];
+
+// Builds a fresh watched-state toggle control -- createElement + textContent
+// only, mirroring buildFormatToggleControl exactly.
+function buildWatchToggleControl(currentMode, onChange) {
+  const active = WATCH_TOGGLE_MODES.includes(currentMode) ? currentMode : 'all';
+  const container = document.createElement('div');
+  container.className = 'format-toggle watch-toggle';
+  container.id = 'library-watch-toggle';
+  WATCH_TOGGLE_OPTIONS.forEach((opt) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn btn-sm format-toggle-btn' + (opt.mode === active ? ' active' : '');
+    btn.dataset.watchMode = opt.mode;
+    btn.setAttribute('aria-pressed', opt.mode === active ? 'true' : 'false');
+    btn.appendChild(document.createTextNode(opt.label));
+    btn.addEventListener('click', () => {
+      const normalized = setStoredWatchFilter(opt.mode);
+      Array.prototype.forEach.call(container.querySelectorAll('.format-toggle-btn'), (b) => {
+        const isActive = b.dataset.watchMode === normalized;
+        b.classList.toggle('active', isActive);
+        b.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+      });
+      if (typeof onChange === 'function') onChange(normalized);
+    });
+    container.appendChild(btn);
+  });
+  return container;
+}
+
+// Idempotently mounts the watched toggle DIRECTLY AFTER the format toggle
+// (falling back to first child when the format toggle isn't mounted yet).
+// Container-scoped de-dupe -- never document.getElementById -- for exactly
+// the detached-homeViewCache reasons documented on renderFormatToggle.
+function renderWatchToggle(actionsEl, currentMode, onChange) {
+  if (!actionsEl) return;
+  const existing = actionsEl.querySelector('#library-watch-toggle');
+  if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
+  const control = buildWatchToggleControl(currentMode, onChange);
+  const formatToggle = actionsEl.querySelector('#library-format-toggle');
+  actionsEl.insertBefore(control, formatToggle ? formatToggle.nextSibling : actionsEl.firstChild);
+}
+
 // ---- Prev/next derived-order helpers (FR-2, T3) ----------------------------
 //
 // The watch page's Prev/Next controls (public/js/watch.js) and the persistent
@@ -7689,6 +7764,9 @@ if (typeof module !== 'undefined' && module.exports) {
     isPerPageSortEnabled, setPerPageSortEnabled, pageSortKey, getPerPageSort, setPerPageSort,
     pullRefreshState,
     FORMAT_FILTER_MODES, buildFormatToggleControl, renderFormatToggle,
+    // v1.50: the watched-state filter toggle (the format toggle's sibling).
+    WATCH_TOGGLE_MODES, getStoredWatchFilter, setStoredWatchFilter,
+    buildWatchToggleControl, renderWatchToggle,
     deriveAvatar, resolveAvatarSource, AVATAR_PALETTE,
     // v1.24.1 (B1 fast-follow): relocated "Re-pull this channel now" widget.
     REPULL_BTN_ID, findRepullSubscriptionForRoot, shouldShowRepullButton,

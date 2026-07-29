@@ -8570,8 +8570,22 @@ app.get('/api/liked', (req, res) => {
     list = videoQuery.filterByFormat(list, req.query.format);
   }
 
-  // `total` is the full liked-set length (after format filtering), BEFORE
-  // slicing to a page -- same contract as GET /api/videos's own `total`.
+  // v1.50: honor the watched-state toggle too, for exactly the v1.32 reason
+  // above -- the home toolbar (which now carries the watch group) fronts
+  // BOTH endpoints, and a visible control that silently no-ops in one of
+  // the two views is the worse behavior. Same derivation as /api/videos.
+  const watch = videoQuery.normalizeWatchFilter(req.query.watch);
+  const watchedSet = new Set(userStore.getWatchedIds(req.user.id));
+  if (watch !== 'all') {
+    const progressMap = userStore.getProgress(req.user.id);
+    for (const entry of pendingProgress.values()) {
+      if (entry.userId === req.user.id) progressMap[entry.mediaId] = entry.value;
+    }
+    list = videoQuery.filterByWatchState(list, watch, progressMap, watchedSet);
+  }
+
+  // `total` is the full liked-set length (after format/watch filtering),
+  // BEFORE slicing to a page -- same contract as GET /api/videos's `total`.
   const total = list.length;
 
   const rng = sort === 'random' && seed !== undefined ? videoQuery.createSeededRng(seed) : undefined;
@@ -8580,11 +8594,14 @@ app.get('/api/liked', (req, res) => {
 
   const items = page.map(item => {
     const progress = effectiveProgress(req.user.id, item.id) || { timestamp: 0, duration: 0 };
+    const progressPercent = progress.duration > 0 ? (progress.timestamp / progress.duration) * 100 : 0;
     return {
       ...item,
       liked: true, // every item in this listing is, by construction, a liked member
       progress: progress.timestamp,
-      progressPercent: progress.duration > 0 ? (progress.timestamp / progress.duration) * 100 : 0
+      progressPercent,
+      // v1.50: same server-derived state as /api/videos (one authority).
+      watchState: videoQuery.deriveWatchState(progressPercent, watchedSet.has(item.id))
     };
   });
 
