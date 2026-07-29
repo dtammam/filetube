@@ -1136,3 +1136,34 @@ t32('v1.32 gate fix: a stale/absent failureKind on the client side always lands 
     a32.equal(common32.chipItemLifecycle(item.state, item.failureKind), 'sticky');
   }
 });
+
+// ---- v1.50.1 (Dean): collapsed-chip transparency ---------------------------
+// The collapsed chip is just a pulsing dot in a solid box -- "something is
+// happening", nothing more until clicked -- so it must not sit at full
+// opacity over content. Dimmed while collapsed; full opacity on hover,
+// keyboard focus, and while the panel is expanded (the summary doubles as
+// the expanded panel's header, where dimming would read as disabled).
+
+test('v1.50.1: the collapsed chip summary is dimmed, and restored on hover/focus/expanded', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
+  assert.match(css, /\.dl-status-chip-summary\s*\{[^}]*opacity:\s*0\.55/, 'collapsed summary dimmed');
+  const restore = /#dl-status-chip:hover \.dl-status-chip-summary,\s*\.dl-status-chip-summary:focus-visible,\s*\.dl-status-chip-expanded \.dl-status-chip-summary\s*\{[^}]*opacity:\s*1/;
+  assert.match(css, restore, 'hover, focus-visible, and the expanded state all restore full opacity');
+  // v1.50.1 slim-gate WARNING: the ERROR state must be exempt from the dim
+  // entirely -- a sticky unacknowledged failure is an attention affordance,
+  // and touch devices have no hover to rescue it.
+  assert.match(css, /\.dl-status-chip-has-error \.dl-status-chip-summary\s*\{[^}]*opacity:\s*1/, 'the error state is never dimmed');
+});
+
+test('v1.50.1 (slim-gate suggestion): the expanded/error classes the CSS keys off are really toggled on the chip ELEMENT that ancestors the summary', () => {
+  // The repo's recurring "presence, not binding" class: the CSS restore legs
+  // above are only live if common.js applies these classes to #dl-status-chip
+  // itself (the summary's ancestor). Lock the binding, not just the rule.
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const common = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'common.js'), 'utf8');
+  assert.match(common, /chip\.classList\.toggle\('dl-status-chip-expanded'/, 'expanded is toggled on the chip element');
+  assert.match(common, /chip\.classList\.toggle\('dl-status-chip-has-error'/, 'has-error is toggled on the chip element');
+});
