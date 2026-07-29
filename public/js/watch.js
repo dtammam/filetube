@@ -2153,7 +2153,9 @@ if (typeof module !== 'undefined' && module.exports) {
         const body = await res.json();
         targets = Array.isArray(body.targets) ? body.targets : [];
       } catch (_) { /* picker opens with its own empty state */ }
-      showAttributionPicker(targets, { title: 'Attribute this video to' }, (target) => {
+      // Gate W6: hold the dismiss handle -- navigating away must never leave
+      // a body-mounted picker over the next view with a stale mediaId.
+      const picker = showAttributionPicker(targets, { title: 'Attribute this video to' }, (target) => {
         fetch(`/api/videos/${encodeURIComponent(mediaId)}/attribute-channel`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -2178,6 +2180,9 @@ if (typeof module !== 'undefined' && module.exports) {
           })
           .catch((err) => showToast(err && err.message ? err.message : 'Attribution failed.'));
       });
+      if (picker && picker.dismiss) {
+        signal.addEventListener('abort', picker.dismiss, { once: true });
+      }
     }
 
     // The physical move, through the EXISTING move endpoint -- explicit
@@ -2596,16 +2601,16 @@ if (typeof module !== 'undefined' && module.exports) {
         return 'Reheat did not complete. Some metadata may have been saved; try again.';
       }
       if (entry.networkRan === false) return 'No YouTube source found for this video, so there was nothing to refresh.';
-      // v1.53 (Dean's decision 3): a manual attribution that DECLINED a
-      // conflicting network identity is named specifically -- without this
-      // branch the diff below is empty and toasts "everything was already
-      // up to date", which is actively false.
-      if (entry.attributionConflict && entry.attributionConflict.kept) {
-        return `Kept your manual attribution (${entry.attributionConflict.kept}); the source now reports ${entry.attributionConflict.discovered}.`;
-      }
       const before = entry.before || {};
       const after = entry.after || {};
       const parts = [];
+      // v1.53 (Dean's decision 3): a manual attribution that DECLINED a
+      // conflicting network identity is named specifically -- PREPENDED
+      // (gate round S1: an early return swallowed the same run's real
+      // title/views/chapters updates), never silent.
+      if (entry.attributionConflict && entry.attributionConflict.kept) {
+        parts.push(`kept your manual attribution (${entry.attributionConflict.kept}); the source now reports ${entry.attributionConflict.discovered}`);
+      }
       if (after.channelName && after.channelName !== before.channelName) parts.push(`channel: ${after.channelName}`);
       if (after.title && after.title !== before.title) parts.push('title updated');
       if (typeof after.sourceViewCount === 'number' && after.sourceViewCount !== before.sourceViewCount) {

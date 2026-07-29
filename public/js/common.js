@@ -1847,18 +1847,40 @@ function injectSubscriptionsNavLinkIfEnabled() {
   if (typeof document === 'undefined' || typeof fetch === 'undefined') return;
   if (subscriptionsNavAlreadyInjected()) return; // already injected
 
+  // v1.53 gate QA-W1: optimistic inject from the capability cache (the
+  // idempotency guard makes the later real-path inject a no-op); the real
+  // probe below reconciles -- a revoked module REMOVES the optimistic links.
+  const cachedCap = readCapabilityCache();
+  if (cachedCap && cachedCap.moduleEnabled === true && !subscriptionsNavAlreadyInjected()) {
+    injectSubscriptionsNavNodes();
+  }
+
   fetch('/api/subscriptions/health')
     .then((res) => {
-      if (!shouldInjectSubscriptionsNav(res)) return; // disabled (404) -- inject nothing
+      writeCapabilityCache({ moduleEnabled: res.ok === true });
+      if (!shouldInjectSubscriptionsNav(res)) {
+        // Reconcile an optimistic inject against a revoked module.
+        const sidebarLink = document.querySelector('[data-nav-sidebar="subscriptions"]');
+        if (sidebarLink) sidebarLink.remove();
+        const navLink = document.querySelector('#bottom-nav [data-nav="subscriptions"]');
+        if (navLink) navLink.remove();
+        return; // disabled (404) -- inject nothing
+      }
       // v1.47.4 item 4: RE-CHECK after the await. The guard at the top runs
       // BEFORE this fetch, so two overlapping calls both passed it and both
-      // injected -- the classic async double-inject window. Every injector in
-      // this file had the same hole; each now re-checks here, where the DOM
-      // write actually happens.
+      // injected -- the classic async double-inject window (and v1.53's
+      // optimistic cache inject makes this re-check newly load-bearing).
       if (subscriptionsNavAlreadyInjected()) return;
+      injectSubscriptionsNavNodes();
+    })
+    .catch(() => { /* network/parse failure -- fail closed, inject nothing */ });
+}
 
-      // Sidebar entry, inserted right after the existing "Library settings"
-      // link so it reads as a sibling settings-adjacent surface.
+// The actual DOM builders, shared by the optimistic (cache) and confirmed
+// (probe) paths -- v1.53 extraction, byte-identical markup to pre-v1.53.
+function injectSubscriptionsNavNodes() {
+  // Sidebar entry, inserted right after the existing "Library settings"
+  // link so it reads as a sibling settings-adjacent surface.
       const settingsSidebarLink = document.querySelector('a.sidebar-item[href="/setup.html"]');
       if (settingsSidebarLink && settingsSidebarLink.parentElement) {
         const sidebarLink = document.createElement('a');
@@ -1903,8 +1925,6 @@ function injectSubscriptionsNavLinkIfEnabled() {
         // v1.44 T12: re-apply the user's bar layout now that this item exists.
         applyBottomNavCustomization();
       }
-    })
-    .catch(() => { /* network/parse failure -- fail closed, inject nothing */ });
 }
 
 // ---- v1.52 instant watch: the seed-from-card stash --------------------------
@@ -2090,7 +2110,7 @@ function primePinnedSidebarFromCache() {
 // self-managed here (the v1.50.3 lesson: a shared class never implies shared
 // JS). Returns nothing; tears itself down on pick/cancel/Escape/backdrop.
 function showAttributionPicker(targets, opts, onPick) {
-  if (typeof document === 'undefined') return;
+  if (typeof document === 'undefined') return null;
   const o = opts || {};
   const backdrop = document.createElement('div');
   backdrop.className = 'modal-backdrop attr-picker-backdrop';
@@ -2116,7 +2136,9 @@ function showAttributionPicker(targets, opts, onPick) {
   list.className = 'attr-picker-list';
   const teardown = () => {
     document.removeEventListener('keydown', onKey, true);
-    backdrop.remove();
+    // Gate C1 sibling-fix: animate out through the shared overlay helper,
+    // then remove -- mirroring every other .modal-backdrop creator.
+    closeOverlayThen(backdrop, 'modal-open', () => backdrop.remove());
   };
   const onKey = (e) => {
     if (e.key !== 'Escape') return;
@@ -2176,6 +2198,16 @@ function showAttributionPicker(targets, opts, onPick) {
   backdrop.addEventListener('click', (e) => { if (e.target === backdrop) teardown(); });
   document.addEventListener('keydown', onKey, true);
   document.body.appendChild(backdrop);
+  // GATE C1 (adversarial, repro'd): without the shared reveal helper the
+  // backdrop sat at the .modal-backdrop base opacity of ZERO -- an invisible
+  // full-viewport click-eater whose invisible rows could fire a blind bulk
+  // move. Every .modal-backdrop creator calls openOverlay; this one was the
+  // sole exception (the v1.50.3 class: a shared CSS class never implies the
+  // sibling's JS reveal).
+  openOverlay(backdrop, 'modal-open');
+  // Gate W6: the picker is body-mounted, so SPA navigation never sweeps it.
+  // Callers hold this handle and wire it to their view teardown.
+  return { dismiss: teardown };
 }
 
 // ---- v1.51: the notification bell ------------------------------------------
@@ -8071,9 +8103,24 @@ function reconcileRepullButton() {
 function probeAndReconcileRepullButton() {
   if (typeof document === 'undefined' || typeof fetch === 'undefined') return;
   if (!repullHealthChecked) {
+    // v1.53 gate QA-W1: the capability cache seeds an OPTIMISTIC reconcile
+    // (frame-one Re-pull button on refresh) while the REAL probe still runs
+    // and re-reconciles -- the latch stays network-authoritative, so a
+    // revoked module corrects after ~1 RTT (reconcileRepullButton's own
+    // disabled path removes the button).
+    const cachedCap = readCapabilityCache();
+    if (cachedCap && cachedCap.moduleEnabled === true) {
+      repullModuleEnabled = true;
+      reconcileRepullButton();
+    }
     fetch('/api/subscriptions/health')
-      .then((res) => { repullHealthChecked = true; repullModuleEnabled = res.ok; reconcileRepullButton(); })
-      .catch(() => { repullHealthChecked = true; repullModuleEnabled = false; });
+      .then((res) => {
+        repullHealthChecked = true;
+        repullModuleEnabled = res.ok;
+        writeCapabilityCache({ moduleEnabled: res.ok });
+        reconcileRepullButton();
+      })
+      .catch(() => { repullHealthChecked = true; repullModuleEnabled = false; reconcileRepullButton(); });
     return;
   }
   reconcileRepullButton();

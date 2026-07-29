@@ -70,4 +70,14 @@ test('LOCK (wiring): the probes WRITE the cache and the render sites READ it opt
   assert.match(main, /primePinnedSidebarFromCache\(\);/, 'main pinned priming deleted');
   // The no-service-worker constraint stays load-bearing.
   assert.match(common, /unregisterStaleServiceWorkers/, 'the SW shedding function must survive this wave');
+  // Gate QA-W1: the two remaining latches the exec plan promised are wired.
+  assert.match(common, /if \(cachedCap && cachedCap\.moduleEnabled === true\) \{\s*repullModuleEnabled = true;/, 'repull-button optimistic seed deleted');
+  assert.match(common, /injectSubscriptionsNavNodes\(\);/, 'nav-link shared builders deleted');
+  assert.equal((common.match(/writeCapabilityCache\(\{ moduleEnabled/g) || []).length >= 2, true, 'a common.js health probe (repull/nav) stopped writing the cache');
+  assert.equal((watch.match(/writeCapabilityCache\(\{ moduleEnabled/g) || []).length >= 2, true, 'a watch.js health probe (reheat/subscribe) stopped writing the cache');
+  // Gate W4: per-user pins must not leak across a same-tab user change.
+  const setup = stripped('public/js/setup.js');
+  assert.match(setup, /sessionStorage\.removeItem\('ft-cap-cache-v1'\)/, 'the logout cache clear was deleted');
+  const login = stripped('public/js/login.js');
+  assert.match(login, /sessionStorage\.removeItem\('ft-cap-cache-v1'\)/, 'the login cache clear was deleted (covers crash-logouts)');
 });

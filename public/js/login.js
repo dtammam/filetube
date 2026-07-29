@@ -109,6 +109,10 @@
       if (res.ok) {
         // Server set the session cookie; go to the library (or the page the
         // user was headed to, if the server passed a safe `next`).
+        // v1.53 gate W4: a fresh login clears any previous user's capability
+        // cache in this tab (covers crash-logouts that never ran the setup
+        // page's own clear -- every login flows through here).
+        try { sessionStorage.removeItem('ft-cap-cache-v1'); } catch (_) { /* storage disabled */ }
         window.location.assign(safeNext());
         return;
       }

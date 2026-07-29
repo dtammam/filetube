@@ -11569,64 +11569,132 @@ app.post('/api/videos/:id/attribute-channel', async (req, res) => {
   res.json({ success: true, result, relocation });
 });
 
-// Bulk: every UNATTRIBUTED item under `root` gets the target identity in ONE
-// mutator; `relocate: true` then moves each through the same collision-safe
-// mover the single-item flow uses, in the BACKGROUND, with progress on the
-// activity one-shot surface (the repull-metadata 202 shape). Attributed
-// items are never touched (bulk narrows, it never re-points).
+// Bulk manual attribution. GATE ROUND 1 REBUILD (adversarial C2/C3, the
+// data-destruction findings): the selector `root` is now CONFINED to the
+// configured library roots (equal-or-under -- the computeMoveTarget
+// posture; an unconfined ancestor path swept and FLATTENED the reviewer's
+// entire fixture library in one request), the operation runs behind a
+// SINGLE-FLIGHT latch with a cancel endpoint (the repull-metadata shape the
+// exec plan specified), `preview: true` answers counts WITHOUT writing (the
+// v1.41.7 see-before-you-move posture -- the client confirms with real
+// numbers), and a re-run RESUMES: items already manually attributed to THIS
+// target but not yet living in its folder join the move set, so a crash
+// mid-loop is recoverable by pressing the button again (W2).
+let attributeBulkInProgress = false;
+let attributeBulkCancelled = false;
+const ATTRIBUTE_BULK_ONESHOT_KEY = 'attribute-bulk';
+
+// `root` must sit at-or-under a CONFIGURED library root. Same resolve+sep
+// discipline as computeMoveTarget; trailing separators normalized first
+// (gate S3: a trailing slash silently matched nothing).
+function confineBulkRoot(db, rawRoot) {
+  if (typeof rawRoot !== 'string' || rawRoot === '') return null;
+  let root = path.resolve(rawRoot);
+  const allowed = configuredLibraryRoots(db).map((r) => path.resolve(r));
+  const ok = allowed.some((r) => root === r || root.startsWith(r + path.sep));
+  return ok ? root : null;
+}
+
 app.post('/api/videos/attribute-channel-bulk', async (req, res) => {
-  if (refuseIfReadOnlyMedia(res)) return;
   const body = req.body || {};
-  const root = typeof body.root === 'string' ? body.root : '';
-  if (root === '') return res.status(400).json({ error: 'root is required' });
+  const preview = body.preview === true;
+  const relocate = body.relocate === true;
+  // Read-only media refuses FILE MOVES only (gate S2/QA-S1: a metadata-only
+  // bulk attribute is the same kind of write the single endpoint allows).
+  if (relocate && !preview && refuseIfReadOnlyMedia(res)) return;
+  const db0 = getCachedDatabase();
+  const root = confineBulkRoot(db0, body.root);
+  if (!root) return res.status(400).json({ error: 'root must be a configured library folder (or a folder inside one)' });
   const check = sanitizeAttributionTarget(body.target);
   if (!check.ok) return res.status(400).json({ error: check.error });
   const identity = check.identity;
-  const relocate = body.relocate === true;
+
+  const proposal = proposeAttributionMove(db0, { filePath: path.join(root, '_probe_') }, identity);
+  const destinationDir = proposal.available ? proposal.destinationDir : null;
+
+  // The selector, shared by preview and execute: unattributed items under
+  // root (to attribute+move), plus -- resume, W2 -- items ALREADY manually
+  // attributed to THIS target that are not yet in its folder.
+  const selectWork = (db) => {
+    const toAttribute = [];
+    const toResume = [];
+    for (const item of Object.values(db.metadata || {})) {
+      if (!item || typeof item.filePath !== 'string') continue;
+      if (!matchRootFolder(item.filePath, [root])) continue;
+      const unattributed = !(typeof item.channelUrl === 'string' && item.channelUrl !== '');
+      if (unattributed) { toAttribute.push(item.id); continue; }
+      if (item.channelAttributedManually === true && item.channelUrl === identity.channelUrl
+        && destinationDir && path.dirname(item.filePath) !== destinationDir) {
+        toResume.push(item.id);
+      }
+    }
+    return { toAttribute, toResume };
+  };
+
+  if (preview) {
+    const { toAttribute, toResume } = selectWork(db0);
+    return res.json({
+      preview: true,
+      matched: toAttribute.length,
+      resuming: toResume.length,
+      destinationDir,
+      relocatable: Boolean(destinationDir),
+      ...(destinationDir ? {} : { relocateSkipped: proposal.reason }),
+    });
+  }
+
+  if (attributeBulkInProgress) {
+    return res.status(409).json({ error: 'A bulk attribution is already running.', alreadyRunning: true });
+  }
+  attributeBulkInProgress = true;
+  attributeBulkCancelled = false;
 
   const matchedIds = [];
+  let resumeIds = [];
   try {
     await updateDatabase(db => {
-      for (const item of Object.values(db.metadata || {})) {
-        if (!item || typeof item.filePath !== 'string') continue;
-        if (!matchRootFolder(item.filePath, [root])) continue;
-        if (typeof item.channelUrl === 'string' && item.channelUrl !== '') continue; // attributed -- never re-point in bulk
-        if (applyManualAttribution(item, identity, false) === 'attributed') matchedIds.push(item.id);
+      const { toAttribute, toResume } = selectWork(db);
+      resumeIds = toResume;
+      for (const id of toAttribute) {
+        if (applyManualAttribution(db.metadata[id], identity, false) === 'attributed') matchedIds.push(id);
       }
       return matchedIds.length > 0;
     });
   } catch (err) {
+    attributeBulkInProgress = false;
     console.error('Bulk attribution failed:', err);
     return res.status(500).json({ error: `Bulk attribution failed: ${err.message}` });
   }
-  if (!relocate || matchedIds.length === 0) {
-    return res.json({ success: true, attributed: matchedIds.length, relocating: false });
+
+  const moveIds = relocate && destinationDir ? [...matchedIds, ...resumeIds] : [];
+  if (moveIds.length === 0) {
+    attributeBulkInProgress = false;
+    return res.json({
+      success: true, attributed: matchedIds.length, resuming: resumeIds.length, relocating: false,
+      ...(relocate && !destinationDir ? { relocateSkipped: proposal.reason } : {}),
+    });
   }
 
-  // Background mover: per-item moveItemToFolder, 409 collisions counted
-  // separately from errors (the migrateOneOffsIntoChannelFolders posture),
-  // progress on the shared one-shot surface the activity chip already polls.
   const ytdlpActivity = require('./lib/ytdlp/activity');
-  const ONE_SHOT_KEY = 'attribute-bulk';
-  const dbNow = getCachedDatabase();
-  const proposal = proposeAttributionMove(dbNow, { filePath: path.join(root, '_probe_') }, identity);
-  if (!proposal.available) {
-    return res.json({ success: true, attributed: matchedIds.length, relocating: false, relocateSkipped: proposal.reason });
-  }
-  const destinationDir = proposal.destinationDir;
-  ytdlpActivity.setOneShot(ONE_SHOT_KEY, {
-    kind: 'attribute-bulk', state: 'running', total: matchedIds.length,
-    done: 0, moved: 0, collisions: 0, failed: 0, current: null,
+  ytdlpActivity.setOneShot(ATTRIBUTE_BULK_ONESHOT_KEY, {
+    kind: 'attribute-bulk', state: 'running', total: moveIds.length,
+    done: 0, moved: 0, collisions: 0, alreadyThere: 0, failed: 0, cancelled: false, current: null,
   });
-  res.status(202).json({ success: true, attributed: matchedIds.length, relocating: true, total: matchedIds.length });
+  res.status(202).json({ success: true, attributed: matchedIds.length, resuming: resumeIds.length, relocating: true, total: moveIds.length });
   (async () => {
-    let moved = 0; let collisions = 0; let failed = 0; let done = 0;
-    for (const id of matchedIds) {
+    let moved = 0; let collisions = 0; let failed = 0; let alreadyThere = 0; let done = 0;
+    for (const id of moveIds) {
+      if (attributeBulkCancelled) break; // cooperative cancel (gate C3)
       try {
-        // moveItemToFolder RETURNS {ok, status, error} for expected
-        // failures (it never throws them) -- 409 collisions counted
-        // separately from errors, the migrateOneOffsIntoChannelFolders
-        // posture: a name clash is a fact about the library, not a fault.
+        // Gate S4: an item already in the destination is a resumed no-op,
+        // never a phantom failure.
+        const current = loadDatabase().metadata[id];
+        if (!current) { done++; continue; }
+        if (path.dirname(current.filePath) === destinationDir) {
+          alreadyThere++; done++;
+          ytdlpActivity.setOneShot(ATTRIBUTE_BULK_ONESHOT_KEY, { done, moved, collisions, alreadyThere, failed });
+          continue;
+        }
         const result = await moveItemToFolder({ loadDatabase, updateDatabase, getMediaId }, id, destinationDir, {});
         if (result && result.ok) moved++;
         else if (result && result.status === 409) collisions++;
@@ -11636,13 +11704,27 @@ app.post('/api/videos/attribute-channel-bulk', async (req, res) => {
         console.error(`Bulk attribution move threw for ${id}:`, err && err.message);
       }
       done++;
-      ytdlpActivity.setOneShot(ONE_SHOT_KEY, { done, moved, collisions, failed });
+      ytdlpActivity.setOneShot(ATTRIBUTE_BULK_ONESHOT_KEY, { done, moved, collisions, alreadyThere, failed });
     }
-    ytdlpActivity.setOneShot(ONE_SHOT_KEY, { state: 'done', current: null });
+    ytdlpActivity.setOneShot(ATTRIBUTE_BULK_ONESHOT_KEY, {
+      state: 'done', current: null, cancelled: attributeBulkCancelled === true,
+    });
+    attributeBulkInProgress = false;
   })().catch((err) => {
     console.error('Bulk attribution mover crashed:', err);
-    ytdlpActivity.setOneShot(ONE_SHOT_KEY, { state: 'error' });
+    const ytdlpActivity2 = require('./lib/ytdlp/activity');
+    ytdlpActivity2.setOneShot(ATTRIBUTE_BULK_ONESHOT_KEY, { state: 'error' });
+    attributeBulkInProgress = false;
   });
+});
+
+// Cooperative cancel (gate C3) -- the running loop checks the latch between
+// items; already-moved files stay moved (honest: a cancel is "stop", never
+// "undo"), and the resume selector makes a later re-run finish the rest.
+app.post('/api/videos/attribute-channel-bulk/cancel', (req, res) => {
+  if (!attributeBulkInProgress) return res.json({ cancelled: false, running: false });
+  attributeBulkCancelled = true;
+  res.json({ cancelled: true, running: true });
 });
 
 // API: Serve a subtitle track for a media item (A6, v1.24 UX Round, Wave 5).

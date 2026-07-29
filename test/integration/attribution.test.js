@@ -171,6 +171,96 @@ test('manual wins over the consume bridge: a fresh capture cannot re-point a man
   }
 });
 
+test('gate round (M2/M3/M5): the UNIVERSAL and D1a consume lanes + the avatar write all decline a manual attribution', async () => {
+  process.env.FILETUBE_YTDLP_ENABLED = 'true';
+  process.env.FILETUBE_YTDLP_DOWNLOAD_DIR = downloadDir;
+  try {
+    // Universal lane (M2): channelName guard.
+    const uBase = 'Ünivers Video [Vimeo=8675309].mp4';
+    const uPath = seedFile(downloadDir, uBase);
+    const uItem = baseItem(uPath);
+    await updateDatabase((db) => { db.metadata[uItem.id] = uItem; });
+    assert.equal((await postAttribute(uItem.id, { target: TARGET })).status, 200);
+    await updateDatabase((db) => {
+      const ns = store.ensureYtdlp(db);
+      ns.downloadMeta[uBase] = { universal: true, sourceExtractor: 'Vimeo', sourceId: '8675309', channelName: 'Vïmeo Studio', capturedAt: Date.UTC(2026, 5, 2) };
+    });
+    fs.appendFileSync(uPath, 'grew');
+
+    // D1a proxy-host lane (M3+M5): full identity + avatar guards.
+    const dBase = 'Prôxy Video [Youtube=ccccccccccc].mp4';
+    const dPath = seedFile(downloadDir, dBase);
+    const dItem = baseItem(dPath);
+    await updateDatabase((db) => { db.metadata[dItem.id] = dItem; });
+    assert.equal((await postAttribute(dItem.id, { target: TARGET })).status, 200);
+    await updateDatabase((db) => {
+      const ns = store.ensureYtdlp(db);
+      ns.downloadMeta.ccccccccccc = {
+        channelUrl: 'https://www.youtube.com/channel/UCbbbbbbbbbbbbbbbbbbbbbb',
+        channelName: 'Prôxy Channel',
+        channelThumbnail: 'https://yt3.example/proxy.jpg',
+        capturedAt: Date.UTC(2026, 5, 2),
+      };
+    });
+    fs.appendFileSync(dPath, 'grew');
+
+    await scanDirectories();
+    await waitForScanIdle();
+
+    const uAfter = loadDatabase().metadata[uItem.id];
+    assert.equal(uAfter.channelName, 'Résurrected Chännel', 'universal capture channelName declined (M2)');
+    assert.equal(uAfter.sourceExtractor, 'Vimeo', 'non-identity universal facts still land');
+    const dAfter = loadDatabase().metadata[dItem.id];
+    assert.equal(dAfter.channelUrl, TARGET.channelUrl, 'D1a identity declined (M3)');
+    assert.equal(dAfter.channelAvatarUrl, TARGET.channelAvatarUrl, 'D1a avatar declined (M5)');
+  } finally {
+    delete process.env.FILETUBE_YTDLP_ENABLED;
+    delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
+  }
+});
+
+test('gate round: bulk root CONFINEMENT (C2) + preview (C3) + relocateSkipped when the module is off (M17)', async () => {
+  // An unconfined ancestor of the library roots swept the reviewer's entire
+  // fixture library into one channel folder -- the exact request now 400s.
+  const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-attrib-outside-'));
+  const sweep = await fetch(`${base}/api/videos/attribute-channel-bulk`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ root: path.dirname(mediaDir), target: TARGET, relocate: true }),
+  });
+  assert.equal(sweep.status, 400, 'an ancestor-of-roots selector is refused');
+  assert.equal((await fetch(`${base}/api/videos/attribute-channel-bulk`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ root: outside, target: TARGET }),
+  })).status, 400, 'a path outside every library root is refused');
+  fs.rmSync(outside, { recursive: true, force: true });
+
+  // Preview: counts without writing.
+  const pvDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-attrib-pv-'));
+  const f1 = seedFile(pvDir, 'Prevïew One.mp4');
+  const it1 = baseItem(f1);
+  await updateDatabase((db) => {
+    db.metadata[it1.id] = it1;
+    if (!db.folders.includes(pvDir)) db.folders.push(pvDir);
+  });
+  const pv = await (await fetch(`${base}/api/videos/attribute-channel-bulk`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ root: pvDir, target: TARGET, relocate: true, preview: true }),
+  })).json();
+  assert.equal(pv.preview, true);
+  assert.equal(pv.matched, 1);
+  assert.equal(loadDatabase().metadata[it1.id].channelAttributedManually, undefined, 'preview wrote NOTHING');
+
+  // M17: module off -> attribute succeeds, relocation honestly skipped.
+  const run = await (await fetch(`${base}/api/videos/attribute-channel-bulk`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ root: pvDir, target: TARGET, relocate: true }),
+  })).json();
+  assert.equal(run.attributed, 1);
+  assert.equal(run.relocating, false);
+  assert.equal(run.relocateSkipped, 'module-disabled', 'the skip reason is NAMED, never silent');
+  fs.rmSync(pvDir, { recursive: true, force: true });
+});
+
 test('reheat conflict (decision 3): manual kept, conflict REPORTED via the out-field; same-channel gap-fill declines manual items', async () => {
   const filePath = seedFile(mediaDir, 'Cönflict Video.mp4');
   const item = baseItem(filePath);
