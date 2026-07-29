@@ -269,12 +269,17 @@ test('AC12: the v1.22/v1.22.1 FR-1 section introduces no hardcoded color values 
 test('v1.50.5: mobile row 2 is ordered transport-left / cluster-right with fullscreen in the far corner', () => {
   const fs = require('node:fs');
   const path = require('node:path');
-  const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
+  // Gate W1/W2: scoped to the MOBILE media block (the file's own
+  // mobileMediaBlock, like the neighboring tests) and anchored to
+  // line-start -- a whole-file unanchored regex would stay green if the
+  // orders moved OUTSIDE the media query (desktop regression) and would
+  // mis-bind the reader's longer 4-part reset selectors.
   const orderOf = (id) => {
-    const m = new RegExp(`#player-slot \\.player-controls #${id} \\{[^}]*order:\\s*(\\d+)`).exec(css);
-    assert.ok(m, `expected a mobile order for #${id}`);
+    const m = new RegExp(`(?:^|\\n)\\s*#player-slot \\.player-controls #${id} \\{[^}]*order:\\s*(\\d+)`).exec(mobileMediaBlock);
+    assert.ok(m, `expected a MOBILE-scoped order for #${id}`);
     return Number(m[1]);
   };
+  const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
   const orders = ['pp-btn', 'mute-btn', 'vol-bar', 'speed-btn', 'cc-btn', 'chapters-btn', 'pip-btn', 'fs-btn'].map(orderOf);
   assert.deepStrictEqual([...orders].sort((a, b) => a - b), orders, 'row 2 runs play, mute, vol, then the right cluster, in order');
   assert.strictEqual(Math.max(...orders), orderOf('fs-btn'), 'fullscreen is the far-right corner -- the YouTube signature');
@@ -283,4 +288,21 @@ test('v1.50.5: mobile row 2 is ordered transport-left / cluster-right with fulls
   assert.match(css, /#player-slot \.player-controls #speed-btn \{[^}]*margin-left:\s*auto/);
   const ccRule = /#player-slot \.player-controls #cc-btn \{([^}]*)\}/.exec(css);
   assert.doesNotMatch(ccRule[1], /margin-left/, 'the auto margin must never sit on the hidable CC button');
+});
+
+test('v1.50.5 gate C1 lock: the reader now-playing bar resets ALL EIGHT button orders with id-specificity', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
+  // The reader mounts #player-slot, so the watch bar's 2-id order rules
+  // apply there too; the reset must name every button (a future unhide
+  // must not resurrect the leak) at >= specificity (id selectors, never a
+  // class reset that loses 1-id-vs-2-id).
+  for (const id of ['pp-btn', 'mute-btn', 'vol-bar', 'speed-btn', 'cc-btn', 'chapters-btn', 'pip-btn', 'fs-btn']) {
+    assert.match(css, new RegExp(`\\.reader-nowplaying #player-slot \\.player-controls #${id}[,\\s]`), `reader reset covers #${id}`);
+  }
+  const resetRule = /\.reader-nowplaying #player-slot \.player-controls #fs-btn \{([^}]*)\}/.exec(css);
+  assert.ok(resetRule, 'expected the reader reset rule block');
+  assert.match(resetRule[1], /order:\s*0/);
+  assert.match(resetRule[1], /margin-left:\s*0/, 'the speed auto-margin is neutralized in the reader bar too');
 });

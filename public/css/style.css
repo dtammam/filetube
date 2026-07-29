@@ -6828,6 +6828,24 @@ body.ft-css-fullscreen .bottom-nav {
   .reader-nowplaying #player-slot .player-controls .pc-seek {
     order: 0; /* undo the scrub-lift; one inline row again */
   }
+  /* v1.50.5 gate CRITICAL 1: the watch bar's YouTube-ish row-2 orders
+     (above, #player-slot-scoped) LEAK into this bar -- the reader mounts
+     #player-slot too -- and flex-sorted the play button behind the scrub
+     row ([0:00][seek][3:45][>][1x]). Reset ALL EIGHT buttons, not just the
+     two visible today (a future unhide must not resurrect the leak), with
+     ID selectors: a class reset (1 id) LOSES to the order rules' 2-id
+     specificity. 2 ids + 2 classes beats 2 ids + 1 class. */
+  .reader-nowplaying #player-slot .player-controls #pp-btn,
+  .reader-nowplaying #player-slot .player-controls #mute-btn,
+  .reader-nowplaying #player-slot .player-controls #vol-bar,
+  .reader-nowplaying #player-slot .player-controls #speed-btn,
+  .reader-nowplaying #player-slot .player-controls #cc-btn,
+  .reader-nowplaying #player-slot .player-controls #chapters-btn,
+  .reader-nowplaying #player-slot .player-controls #pip-btn,
+  .reader-nowplaying #player-slot .player-controls #fs-btn {
+    order: 0;
+    margin-left: 0;
+  }
   /* NB: the reader chassis height that keeps the reading-% bar visible above
      this bar is set by read.js's sizeReader() (it MEASURES the bar's real
      height on both form factors) -- not by a CSS px/% guess, which never
