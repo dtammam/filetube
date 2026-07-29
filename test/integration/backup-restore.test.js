@@ -358,6 +358,43 @@ test('v1.43: user accounts + per-user state round-trip through backup -> wipe ->
   assert.equal(loadDatabase().music.tracks.trk1.title, 'Song', 'the music namespace restored in the same transaction');
 });
 
+test('v1.51: the notification feed + per-user seen/read state round-trip through backup -> wipe -> restore (EIGHTH carrier)', async () => {
+  saveDatabase(fullState());
+  const { __mintTestSession } = require('../../server');
+  const extra = __mintTestSession({ username: 'belltripper', role: 'member' });
+  userStore.recordNotifications([
+    { mediaId: 'vid1', createdAt: 1752600000000 },
+    { mediaId: 'vid2', createdAt: 1752600100000 },
+  ]);
+  const topRow = userStore.listNotifications(extra.user.id).items[0]; // vid2 (newest)
+  userStore.markNotificationsSeen(extra.user.id, 1752600200000);
+  userStore.markNotificationRead(extra.user.id, topRow.id, 1752600200000);
+
+  const bundle = await getBackup();
+  assert.deepEqual(bundle.notifications.map((n) => n.mediaId), ['vid1', 'vid2'], 'the global feed rides the bundle');
+  const bundled = bundle.users.find((u) => u.username === 'belltripper');
+  assert.equal(bundled.notificationState.lastSeenAt, 1752600200000, 'the watermark rides the bundle');
+  assert.deepEqual(bundled.notificationReads, [{ mediaId: 'vid2', readAt: 1752600200000 }], 'reads ride keyed by MEDIA id');
+
+  await __resetDatabaseForTests();
+  const { __clearUsersForTests: clearUsers, __mintTestSession: remint } = require('../../server');
+  clearUsers();
+  const fresh = remint();
+  const res = await fetch(`${base}/api/admin/restore`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Cookie: fresh.cookie },
+    body: JSON.stringify(bundle),
+  });
+  assert.equal(res.status, 200);
+
+  const restored = userStore.getByUsername('belltripper');
+  const list = userStore.listNotifications(restored.id);
+  assert.deepEqual(list.items.map((i) => i.mediaId), ['vid2', 'vid1'], 'feed restored, order intact');
+  assert.equal(list.items.find((i) => i.mediaId === 'vid2').unread, false, 'the read resolved back through its media id');
+  assert.equal(list.items.find((i) => i.mediaId === 'vid1').unread, true, 'the unread row stayed unread');
+  assert.equal(userStore.countUnseenNotifications(restored.id), 0, 'the seen watermark restored verbatim');
+});
+
 test('v1.43 self-lockout guard: a bundle that lacks the restoring admin (as an enabled admin) is refused whole, nothing changes', async () => {
   saveDatabase(fullState());
   const before = await getBackup();

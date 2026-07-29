@@ -2465,6 +2465,60 @@ function applyCapturedViewCount(item, consumed, nowMs = Date.now()) {
   return true;
 }
 
+// v1.51 notification bell: ONE collector for all three downloadMeta consume
+// sites (the v1.41.4 lesson is a seat that forgot to CALL the shared helper,
+// so there is exactly one to call and every site calls it). Only ever invoked
+// right after a consume SUCCEEDED inside the scan's Phase-2 mutator — that is
+// the load-bearing scoping: a consume fires only for a freshly-indexed file
+// under the yt-dlp download roots whose bridge entry still existed, so
+// reheats, re-encodes, hand-dropped files and plain re-scans can never
+// notify. createdAt is the item's addedAt (file birthtime == the download's
+// completion moment); a missing/invalid addedAt falls to nowMs rather than
+// dropping the event. De-dups by mediaId because ONE item can legitimately
+// hit two consume sites in one pass (universal + the D1a proxy-host YouTube
+// recovery).
+function collectDownloadNotification(pending, item, nowMs = Date.now()) {
+  if (!Array.isArray(pending) || !item || typeof item.id !== 'string' || item.id === '') return false;
+  if (pending.some((p) => p.mediaId === item.id)) return false;
+  const addedAt = item.addedAt;
+  const createdAt = (typeof addedAt === 'number' && Number.isFinite(addedAt) && addedAt > 0) ? addedAt : nowMs;
+  pending.push({ mediaId: item.id, createdAt });
+  return true;
+}
+
+// v1.51 notification bell, exec-plan decision 4: one-shot upgrade seeding.
+// The first boot after the upgrade pre-populates the feed with the newest
+// yt-dlp-provenance items as ALREADY-SEEN, ALREADY-READ history (panel full,
+// badge 0, no dots), then stamps `settings.notificationsSeededAt` so it can
+// never run twice. The stamp is written even when there was nothing (or no
+// need) to seed — a restored instance whose feed already has rows must not
+// get a second seeding on its next boot. Provenance = youtubeId OR
+// sourceExtractor OR channelUrl: anything the yt-dlp pipeline ever
+// identified, which deliberately includes MeTube-era hydrated imports.
+const NOTIFICATION_SEED_COUNT = 30;
+async function seedNotificationHistoryOnce(nowMs = Date.now()) {
+  const db = loadDatabase();
+  if (db.settings && db.settings.notificationsSeededAt !== undefined) return 0;
+  let seeded = 0;
+  if (userStore.countNotifications() === 0) {
+    const candidates = Object.values(db.metadata || {})
+      .filter((it) => it && (
+        (typeof it.youtubeId === 'string' && it.youtubeId !== '') ||
+        (typeof it.sourceExtractor === 'string' && it.sourceExtractor !== '') ||
+        (typeof it.channelUrl === 'string' && it.channelUrl !== '')))
+      .filter((it) => typeof it.addedAt === 'number' && Number.isFinite(it.addedAt) && it.addedAt > 0)
+      .sort((a, b) => b.addedAt - a.addedAt)
+      .slice(0, NOTIFICATION_SEED_COUNT);
+    seeded = userStore.seedNotifications(candidates.map((it) => ({ mediaId: it.id, createdAt: it.addedAt })), nowMs);
+  }
+  await updateDatabase((fresh) => {
+    if (!fresh.settings) fresh.settings = {};
+    if (fresh.settings.notificationsSeededAt !== undefined) return false;
+    fresh.settings.notificationsSeededAt = nowMs;
+  });
+  return seeded;
+}
+
 // Pure: pull a small, normalized set of embedded metadata tags from ffprobe
 // output (accepts the parsed object OR the raw stdout string). Whitelisted so we
 // never surface junk; returns {} on anything malformed. Unit-tested — ffprobe
@@ -4149,6 +4203,13 @@ async function runScanDirectories() {
     }
   }
 
+  // v1.51 notification bell: download events collected INSIDE the mutator
+  // (by collectDownloadNotification, at the three consume sites), inserted
+  // into SQLite AFTER the doc commit below. The array only ever fills past
+  // the stale-epoch guard, and every fill site also sets dbChanged, so a
+  // discarded or unsaved merge can never have notified.
+  const pendingNotifications = [];
+
   // Re-read-merge-on-save, now formalized as ONE serialized updateDatabase
   // mutator: the scan holds its own Phase-1 `db` snapshot across many awaited
   // extractMetadataAndThumbnail calls, so writing it back directly would
@@ -4407,6 +4468,7 @@ async function runScanDirectories() {
               item.title = consumedU.sourceTitle;
             }
             applyCapturedViewCount(item, consumedU);
+            collectDownloadNotification(pendingNotifications, item);
             dbChanged = true;
           } else if (!item.sourceId) {
             // No capture bridged (older download, or already consumed) AND the
@@ -4442,6 +4504,7 @@ async function runScanDirectories() {
               if (typeof consumedYt.releaseDate === 'number' && Number.isFinite(consumedYt.releaseDate)) item.releaseDate = consumedYt.releaseDate;
               if (typeof consumedYt.sourceTitle === 'string' && consumedYt.sourceTitle !== '') { item.sourceTitle = consumedYt.sourceTitle; item.title = consumedYt.sourceTitle; }
               applyCapturedViewCount(item, consumedYt);
+              collectDownloadNotification(pendingNotifications, item);
               dbChanged = true;
             }
           }
@@ -4485,6 +4548,7 @@ async function runScanDirectories() {
               item.channelAvatarUrl = consumed.channelAvatarUrl;
             }
             applyCapturedViewCount(item, consumed);
+            collectDownloadNotification(pendingNotifications, item);
             dbChanged = true;
           }
         }
@@ -4614,6 +4678,19 @@ async function runScanDirectories() {
       userStore.removeMediaState([...prunable]);
     } catch (err) {
       console.error('Scan: failed to prune per-user progress/liked for removed items (continuing):', err && err.message);
+    }
+  }
+
+  // v1.51: the download notifications collected inside the mutator land AFTER
+  // the doc commit, for the same rolled-back-write reason as the per-user
+  // prune above — a doc save that failed must not have already notified about
+  // items the library never adopted. Best-effort: the item itself is indexed
+  // either way, a lost notification is cosmetic.
+  if (pendingNotifications.length > 0) {
+    try {
+      userStore.recordNotifications(pendingNotifications);
+    } catch (err) {
+      console.error('Scan: failed to record download notifications (continuing):', err && err.message);
     }
   }
 
@@ -7173,6 +7250,9 @@ app.get('/api/admin/backup', async (req, res) => {
       // enqueued on the same chained tick as the doc snapshot, so the two
       // halves describe one moment.
       bundle.users = userStore.exportUsersForBackup();
+      // v1.51: the GLOBAL notification feed (each user's seen/read state
+      // rides their own users[] entry above, keyed by media id).
+      bundle.notifications = userStore.exportNotificationsForBackup();
       return false; // read-only pass — never save
     });
     res.setHeader('Content-Disposition', contentDispositionAttachment(`filetube-backup-${new Date().toISOString().slice(0, 10)}.json`));
@@ -7215,7 +7295,9 @@ function validateBackupBundle(bundle) {
         // v1.44 music per-user state (the SEVENTH-strike carrier).
         ['musicLiked', 'array'], ['musicProgress', 'object'],
         // v1.50 watched latch (absent in pre-v1.50 bundles -- legal).
-        ['watched', 'array']]) {
+        ['watched', 'array'],
+        // v1.51 notification reads (absent in pre-v1.51 bundles -- legal).
+        ['notificationReads', 'array']]) {
         if (u[field] === undefined) continue;
         const ok = kind === 'array' ? Array.isArray(u[field]) : (typeof u[field] === 'object' && u[field] !== null && !Array.isArray(u[field]));
         if (!ok) return `${where}: ${field} must be an ${kind}`;
@@ -7226,9 +7308,20 @@ function validateBackupBundle(bundle) {
         && (typeof u.musicState !== 'object' || Array.isArray(u.musicState))) {
         return `${where}: musicState must be an object or null`;
       }
+      // v1.51: notificationState is an object OR the explicit null that means
+      // "this user never touched the panel" (the null-vs-absent distinction
+      // is load-bearing — see replaceAllUsersRaw's three-shape restore).
+      if (u.notificationState !== undefined && u.notificationState !== null
+        && (typeof u.notificationState !== 'object' || Array.isArray(u.notificationState))) {
+        return `${where}: notificationState must be an object or null`;
+      }
     }
   }
-  const known = new Set([...BACKUP_NAMESPACE_KEYS, 'schema', 'exportedAt', 'appVersion', 'customLogo', 'users']);
+  // v1.51: the global feed rides the bundle top-level (absent pre-v1.51).
+  if (bundle.notifications !== undefined && !Array.isArray(bundle.notifications)) {
+    return 'notifications must be an array';
+  }
+  const known = new Set([...BACKUP_NAMESPACE_KEYS, 'schema', 'exportedAt', 'appVersion', 'customLogo', 'users', 'notifications']);
   for (const key of Object.keys(bundle)) {
     if (!known.has(key)) return `unknown bundle key '${key}' — refusing a lossy restore (was this exported by a newer FileTube?)`;
   }
@@ -7353,6 +7446,14 @@ app.post('/api/admin/restore', (req, res, next) => {
       // account restore commits (or rolls back) atomically with the doc
       // tables. A bundle without users (v1.42 format) keeps the current
       // accounts untouched.
+      // v1.51: the notification feed restores BEFORE the users, inside the
+      // same exclusive section, so each restored user's media-keyed reads can
+      // resolve their feed ids. A pre-v1.51 bundle (key absent) leaves this
+      // instance's existing feed untouched — replaceAllUsersRaw then defaults
+      // those users' watermarks to the restore moment.
+      if (bundle.notifications !== undefined) {
+        userStore.replaceAllNotificationsRaw(bundle.notifications);
+      }
       if (restoresUsers) {
         userStore.replaceAllUsersRaw(bundle.users);
       }
@@ -11880,6 +11981,15 @@ if (require.main === module) {
       console.error('yt-dlp one-off migration failed unexpectedly (continuing startup):', err && err.message);
     }
 
+    // v1.51: one-shot notification-history seeding (exec-plan decision 4).
+    // Best-effort like every startup step here — a seeding failure must
+    // never block boot, and the un-stamped flag simply retries next boot.
+    try {
+      await seedNotificationHistoryOnce();
+    } catch (err) {
+      console.error('Notification-history seeding failed (continuing startup):', err && err.message);
+    }
+
     // Arm the periodic re-scan timer per the persisted scanIntervalMinutes
     // preference (default 30 minutes; armScanTimer arms no timer at all when
     // the preference is Off). Lives here, not at module top-level, so
@@ -12068,6 +12178,10 @@ module.exports = {
   // v1.48 gate fix (adversarial SUGGESTION S1): exported for direct testing,
   // mirroring parseFfprobeTags/reconcileTranscode's own testability posture.
   applyCapturedViewCount,
+  // v1.51 notification bell (unit/integration surface; userStore is already
+  // exported above).
+  collectDownloadNotification,
+  seedNotificationHistoryOnce,
   parseFfprobeStreams,
   codecNeedsTranscode,
   probeCodecsOnly,
