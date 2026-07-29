@@ -5930,6 +5930,14 @@ body.ft-css-fullscreen .bottom-nav {
 .dl-status-chip-expanded .dl-status-chip-summary {
   opacity: 1;
 }
+/* v1.50.1 slim-gate WARNING: the ERROR state is exempt from the dim -- the
+   static dark-red dot exists to read as "needs attention" (see the
+   -has-error rules below), and on touch devices there is no hover to
+   rescue a 55%-opacity attention affordance. Unobtrusive is for the
+   healthy/active state only. */
+.dl-status-chip-has-error .dl-status-chip-summary {
+  opacity: 1;
+}
 
 .dl-status-chip-dot {
   flex-shrink: 0;
