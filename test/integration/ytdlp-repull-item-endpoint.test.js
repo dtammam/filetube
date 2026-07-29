@@ -776,3 +776,31 @@ test('v1.49 gate fix: omitting expect ENTIRELY is still supported (the batch/pre
     await close();
   }
 });
+
+test('v1.49 gate fix (QA S2): an honest echo of sizeBytes:null is accepted, not 400d', async () => {
+  // planImportRelocation legitimately yields sizeBytes: null when its statSync
+  // loses a TOCTOU race with its own existsSync. A client faithfully echoing
+  // back the proposal it was SHOWN must not be refused for reporting what it
+  // was given; the size comparison simply degrades to not-compared.
+  const deps = makeFakeDeps();
+  let seen = null;
+  deps.relocateHydratedImport = async (d, config, mediaId, opts) => {
+    seen = opts;
+    return { status: 'moved', newId: 'n', newPath: '/p', archived: true };
+  };
+
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    const res = await fetch(`${itemUrl(base)}/relocate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ expect: { currentPath: '/a', destinationPath: '/b', transfer: 'unknown', sizeBytes: null } }),
+    });
+    assert.equal(res.status, 200);
+    assert.equal(seen.expect.sizeBytes, undefined,
+      'an unmeasurable size is not forwarded, so the executor skips that comparison instead of failing it');
+    assert.equal(seen.expect.transfer, 'unknown', "...while 'unknown' IS a real planner value and is still bound");
+  } finally {
+    await close();
+  }
+});
