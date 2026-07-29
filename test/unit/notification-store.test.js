@@ -216,9 +216,79 @@ test('seedNotifications: history lands read+seen for every EXISTING user; later 
     assert.ok(items.every((i) => i.unread === false), 'no dots on seeded history');
   }
   // A user created AFTER seeding has no state row; their created_at default
-  // must still not badge the seeded history.
+  // must still not badge the seeded history -- and (gate fix, adversarial
+  // S2) the rows must not wear dots either: history that predates the
+  // account cannot be "new to them".
   const late = store.createUser({ username: 'late', displayName: 'L', passwordHash: 'h', role: 'member' }, new Date(seededAt + HOUR).toISOString());
   assert.equal(store.countUnseenNotifications(late.id), 0);
+  const lateItems = store.listNotifications(late.id).items;
+  assert.equal(lateItems.length, 2, 'the history itself is visible to them');
+  assert.ok(lateItems.every((i) => i.unread === false), 'but none of it is dotted');
+});
+
+test('account-age dot suppression: pre-account rows never dot, post-account rows still do', () => {
+  const a = mkAdmin();
+  store.recordNotifications([{ mediaId: 'before-b', createdAt: ACCOUNT_MS + 1 * HOUR }]);
+  const b = store.createUser({ username: 'B', displayName: 'B', passwordHash: 'h', role: 'member' }, new Date(ACCOUNT_MS + 2 * HOUR).toISOString());
+  store.recordNotifications([{ mediaId: 'after-b', createdAt: ACCOUNT_MS + 3 * HOUR }]);
+  const bItems = store.listNotifications(b.id).items;
+  assert.equal(bItems.find((i) => i.mediaId === 'before-b').unread, false, 'predates the account -> no dot');
+  assert.equal(bItems.find((i) => i.mediaId === 'after-b').unread, true, 'genuinely new to them -> dot');
+  // The original user (older than both rows) keeps both dots.
+  assert.ok(store.listNotifications(a.id).items.every((i) => i.unread === true));
+});
+
+test('gate fix (QA S1/adversarial W2): a re-key onto an id that ALREADY has a feed row leaves no orphaned reads', () => {
+  const u = mkAdmin();
+  store.recordNotifications([
+    { mediaId: 'mover', createdAt: ACCOUNT_MS + 1 * HOUR },
+    { mediaId: 'occupant', createdAt: ACCOUNT_MS + 2 * HOUR },
+  ]);
+  const occupantRow = store.listNotifications(u.id).items.find((i) => i.mediaId === 'occupant');
+  store.markNotificationRead(u.id, occupantRow.id, ACCOUNT_MS + 3 * HOUR);
+  store.rekeyMediaState('mover', 'occupant');
+  const items = store.listNotifications(u.id).items;
+  assert.equal(items.length, 1, 'one row survives the collision');
+  assert.equal(items[0].mediaId, 'occupant');
+  assert.equal(items[0].createdAt, ACCOUNT_MS + 1 * HOUR, 'the MOVED row is the survivor (the occupant was scrubbed)');
+  assert.equal(adapter.sql.prepare('SELECT COUNT(*) AS c FROM user_notification_reads').get().c, 0,
+    "the scrubbed occupant's read went with it -- no orphans");
+});
+
+test('gate fix (QA W1): a feed-only replace preserves EXISTING users\' reads across the id regeneration', () => {
+  const u = mkAdmin();
+  store.recordNotifications([
+    { mediaId: 'kept-read', createdAt: ACCOUNT_MS + 1 * HOUR },
+    { mediaId: 'kept-unread', createdAt: ACCOUNT_MS + 2 * HOUR },
+  ]);
+  store.markNotificationRead(u.id, store.listNotifications(u.id).items.find((i) => i.mediaId === 'kept-read').id, ACCOUNT_MS + 3 * HOUR);
+
+  // A feed-only restore (no users replace follows -- the QA W1 shape).
+  adapter.begin();
+  store.replaceAllNotificationsRaw([
+    { mediaId: 'kept-read', createdAt: ACCOUNT_MS + 1 * HOUR },
+    { mediaId: 'kept-unread', createdAt: ACCOUNT_MS + 2 * HOUR },
+    { mediaId: 'brand-new', createdAt: ACCOUNT_MS + 4 * HOUR },
+  ]);
+  adapter.commit();
+
+  const items = store.listNotifications(u.id).items;
+  assert.equal(items.find((i) => i.mediaId === 'kept-read').unread, false, 'the tapped dot did NOT resurrect');
+  assert.equal(items.find((i) => i.mediaId === 'kept-unread').unread, true);
+  assert.equal(items.find((i) => i.mediaId === 'brand-new').unread, true);
+});
+
+test('gate fix (adversarial W3): replaceAllNotificationsRaw enforces the 200 cap, newest kept', () => {
+  const rows = [];
+  for (let i = 0; i < 240; i++) rows.push({ mediaId: `flood-${i}`, createdAt: ACCOUNT_MS + i * 1000 });
+  adapter.begin();
+  store.replaceAllNotificationsRaw(rows);
+  adapter.commit();
+  assert.equal(store.countNotifications(), 200);
+  const u = mkAdmin();
+  const items = store.listNotifications(u.id).items;
+  assert.equal(items[0].mediaId, 'flood-239', 'newest survived');
+  assert.ok(!items.some((i) => i.mediaId === 'flood-39'), 'oldest 40 dropped');
 });
 
 test('backup round-trip: feed + per-user state/reads survive; the three bundle shapes restore differently', () => {

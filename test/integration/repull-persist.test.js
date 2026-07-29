@@ -112,6 +112,37 @@ test('recordRepulledItemMeta sets releaseDate (superseding a prior weaker value)
   assert.equal(Object.keys(dbAfter.metadata).length, 1, 'no duplicate/ghost entry from a re-key');
 });
 
+test('v1.51 gate (QA W2): a reheat through the PRODUCTION writer creates NO notification row', async () => {
+  const filePath = path.join(downloadDir, 'Reheated Video [rhrhrhrhrh1].mp4');
+  fs.writeFileSync(filePath, 'video-bytes');
+  const id = getMediaId(filePath);
+  writeDb({
+    folders: [],
+    folderSettings: {},
+    progress: {},
+    metadata: {
+      [id]: {
+        id, name: path.basename(filePath), title: 'Reheated Video', filePath,
+        folderName: path.basename(downloadDir), size: 11, ext: '.mp4', type: 'video',
+        addedAt: Date.now(), duration: 300, hasThumbnail: false, artist: '',
+      },
+    },
+    settings: baseSettings(),
+  });
+  const { userStore } = require('../../server');
+  const before = userStore.countNotifications();
+
+  const result = await recordRepulledItemMeta(
+    { loadDatabase, updateDatabase, getMediaId },
+    id,
+    { releaseDate: 1_700_000_000_000, sourceTitle: 'Reheated Title', sourceViewCount: 12345, channelAvatarUrl: 'https://example.com/a.jpg', filePath, markComplete: true },
+    1_800_000_000_000,
+  );
+  assert.equal(result, true, 'the reheat itself landed');
+  assert.equal(userStore.countNotifications(), before,
+    'a metadata reheat is NOT a new download -- the feed must not grow (exec-plan decision 1)');
+});
+
 test('recordRepulledItemMeta detects hasSubtitles=true when a sidecar exists on disk', async () => {
   const filePath = path.join(downloadDir, 'Captioned Video [cap12345678].mp4');
   fs.writeFileSync(filePath, 'video-bytes');

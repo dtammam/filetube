@@ -2480,17 +2480,29 @@ function applyCapturedViewCount(item, consumed, nowMs = Date.now()) {
 // the load-bearing scoping: a consume fires only for a freshly-indexed file
 // under the yt-dlp download roots whose bridge entry still existed, so
 // reheats, re-encodes, hand-dropped files and plain re-scans can never
-// notify. createdAt is the item's addedAt (file birthtime == the download's
-// completion moment); a missing/invalid addedAt falls to nowMs rather than
-// dropping the event. De-dups by mediaId because ONE item can legitimately
-// hit two consume sites in one pass (universal + the D1a proxy-host YouTube
-// recovery).
+// notify. createdAt is the CONSUME moment (nowMs), NOT item.addedAt.
+//
+// GATE FIX (adversarial W1, repro'd): addedAt is the file's birthtime, and
+// on yt-dlp's single-format path that is the moment the `.part` download
+// STARTED (the rename preserves the inode's btime) -- so a long download
+// finishing after Dean opened the bell was born already-seen (badge never
+// increments), a Clear mid-download hid it forever, and with 200 newer rows
+// it was evicted inside its own insert transaction. A birthtime AHEAD of
+// the server clock (NAS mount skew) was worse: a badge that mark-seen could
+// not zero until wall-clock caught up. The watermark algebra is strictly
+// `created_at > last_seen_at`, so the only value that is always correct on
+// both sides of "now" is the moment the event actually entered the feed --
+// the v1.50 lesson: normalize a client-supplied number ONCE at the staging
+// boundary. Seeding (seedNotificationHistoryOnce) deliberately still uses
+// addedAt: history ORDERING is what matters there and every seeded row is
+// born read+seen, so the algebra never touches it.
+//
+// De-dups by mediaId because ONE item can legitimately hit two consume
+// sites in one pass (universal + the D1a proxy-host YouTube recovery).
 function collectDownloadNotification(pending, item, nowMs = Date.now()) {
   if (!Array.isArray(pending) || !item || typeof item.id !== 'string' || item.id === '') return false;
   if (pending.some((p) => p.mediaId === item.id)) return false;
-  const addedAt = item.addedAt;
-  const createdAt = (typeof addedAt === 'number' && Number.isFinite(addedAt) && addedAt > 0) ? addedAt : nowMs;
-  pending.push({ mediaId: item.id, createdAt });
+  pending.push({ mediaId: item.id, createdAt: nowMs });
   return true;
 }
 
@@ -7328,8 +7340,23 @@ function validateBackupBundle(bundle) {
     }
   }
   // v1.51: the global feed rides the bundle top-level (absent pre-v1.51).
-  if (bundle.notifications !== undefined && !Array.isArray(bundle.notifications)) {
-    return 'notifications must be an array';
+  // GATE FIX (adversarial S1): field-level validation up front, matching the
+  // users array's refuse-whole posture -- a duplicate mediaId previously
+  // passed validation and died on the UNIQUE constraint mid-restore (the
+  // transaction rolled back whole, but as an opaque 500 instead of a clean
+  // 400 naming the defect).
+  if (bundle.notifications !== undefined) {
+    if (!Array.isArray(bundle.notifications)) return 'notifications must be an array';
+    const seenMediaIds = new Set();
+    for (let i = 0; i < bundle.notifications.length; i++) {
+      const n = bundle.notifications[i];
+      const where = `notifications[${i}]`;
+      if (!n || typeof n !== 'object' || Array.isArray(n)) return `${where}: must be an object`;
+      if (typeof n.mediaId !== 'string' || n.mediaId === '') return `${where}: missing mediaId`;
+      if (typeof n.createdAt !== 'number' || !Number.isFinite(n.createdAt) || n.createdAt <= 0) return `${where}: createdAt must be a positive number`;
+      if (seenMediaIds.has(n.mediaId)) return `${where}: duplicate mediaId '${n.mediaId}'`;
+      seenMediaIds.add(n.mediaId);
+    }
   }
   const known = new Set([...BACKUP_NAMESPACE_KEYS, 'schema', 'exportedAt', 'appVersion', 'customLogo', 'users', 'notifications']);
   for (const key of Object.keys(bundle)) {
@@ -7650,9 +7677,20 @@ app.get('/api/notifications', (req, res) => {
   // object must never be mutated.
   let dbForAvatarLookup = null;
   const rows = [];
+  const phantomMediaIds = [];
   for (const row of items) {
     const item = metadata[row.mediaId];
-    if (!item) continue;
+    if (!item) {
+      // GATE FIX (adversarial W3): a feed row whose item is GONE (a delete
+      // whose removeMediaState call failed and was caught-and-continued, or
+      // a restored feed referencing since-deleted media) is not just
+      // filtered from this response -- it is collected and pruned below, so
+      // the badge (which counts feed rows without a metadata join) stops
+      // disagreeing with the panel after the first open. removeMediaState
+      // is the existing carrier-scrub; reusing it keeps ONE deleter.
+      phantomMediaIds.push(row.mediaId);
+      continue;
+    }
     let channelAvatarUrl = typeof item.channelAvatarUrl === 'string' ? item.channelAvatarUrl : '';
     if (channelAvatarUrl === '') {
       if (!dbForAvatarLookup) {
@@ -7672,6 +7710,13 @@ app.get('/api/notifications', (req, res) => {
       hasThumbnail: item.hasThumbnail === true,
       type: item.type === 'audio' ? 'audio' : 'video',
     });
+  }
+  if (phantomMediaIds.length > 0) {
+    try {
+      userStore.removeMediaState(phantomMediaIds);
+    } catch (err) {
+      console.error('Notifications: failed to prune phantom feed rows (continuing):', err && err.message);
+    }
   }
   res.json({ items: rows, unseenCount: userStore.countUnseenNotifications(req.user.id) });
 });

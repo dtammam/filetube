@@ -111,9 +111,14 @@ test('one-shot seeding: newest 30 yt-dlp-provenance items land as read+seen hist
   assert.equal(userStore.countNotifications(), 30, 'no duplicates from the second call');
 });
 
-test('bridge (YouTube lane): a consumed download notifies, dated by the file birthtime, and badges the user', () => withYtdlpEnv(async () => {
+test('bridge (YouTube lane): a consumed download notifies, dated by the CONSUME moment, and badges the user', () => withYtdlpEnv(async () => {
   const filePath = path.join(downloadDir, 'Fresh Download [nnnnnnnnnnn].mp4');
   fs.writeFileSync(filePath, 'not a real video');
+  // Gate fix (adversarial W1): backdate the file's timestamps hard -- the
+  // .part-rename birthtime failure shape. The notification must be dated by
+  // the consume moment, NOT this stale birthtime, or it is born pre-seen.
+  const staleMs = Date.now() - 45 * 60 * 1000;
+  fs.utimesSync(filePath, staleMs / 1000, staleMs / 1000);
   await updateDatabase((db) => {
     const ns = store.ensureYtdlp(db);
     ns.downloadMeta.nnnnnnnnnnn = {
@@ -123,16 +128,18 @@ test('bridge (YouTube lane): a consumed download notifies, dated by the file bir
     };
   });
 
+  const beforeScan = Date.now();
   await scanDirectories();
+  const afterScan = Date.now();
 
   const id = getMediaId(filePath);
-  const item = loadDatabase().metadata[id];
   const { items } = userStore.listNotifications(admin.id);
   const row = items.find((i) => i.mediaId === id);
   assert.ok(row, 'the consumed download produced a notification through the real scan');
-  assert.equal(row.createdAt, Math.floor(item.addedAt), 'dated by the file birthtime (download completion), not scan/insert time');
+  assert.ok(row.createdAt >= beforeScan && row.createdAt <= afterScan,
+    `dated by the consume moment (got ${row.createdAt}, scan window ${beforeScan}..${afterScan}) -- never the file birthtime, which lies on the .part-rename path`);
   assert.equal(row.unread, true, 'a real download arrives as a dotted row');
-  assert.equal(userStore.countUnseenNotifications(admin.id), 1, 'and it badges');
+  assert.equal(userStore.countUnseenNotifications(admin.id), 1, 'and it badges even though the file birthtime predates every watermark');
 }));
 
 test('bridge (universal lane): a composite-keyed consume notifies too', () => withYtdlpEnv(async () => {

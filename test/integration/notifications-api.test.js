@@ -110,8 +110,12 @@ test('panel payload: rows join the CURRENT item (title/channel/type/thumbnail), 
   assert.equal(badge.count, 3, 'all three rows are unseen (feed-level), including the phantom');
 
   const { items, unseenCount } = await (await fetch(`${base}/api/notifications`)).json();
-  assert.equal(unseenCount, 3);
   assert.deepEqual(items.map((i) => i.mediaId), ['mediä-2', 'mediä-1'], 'newest first; the phantom row is filtered by the join net');
+  // Gate fix (adversarial W3): the join net doesn't just filter the phantom
+  // -- it PRUNES it, so this same response's unseenCount (and every badge
+  // fetch after) agrees with the panel.
+  assert.equal(unseenCount, 2, 'unseenCount excludes the pruned phantom');
+  assert.equal((await (await fetch(`${base}/api/notifications/badge`)).json()).count, 2, 'the badge self-healed');
   const video = items.find((i) => i.mediaId === 'mediä-1');
   assert.equal(video.title, 'Clïp One');
   assert.equal(video.channelName, 'Söme Channel');
@@ -169,10 +173,11 @@ test('per-user isolation over HTTP: one user clearing never touches the other se
   assert.equal((await (await fetch(`${base}/api/notifications`)).json()).items.length, 0, 'admin panel empty');
   const otherView = await (await asOther('/api/notifications')).json();
   assert.equal(otherView.items.length, 2, "the other user's panel is untouched");
-  assert.ok(otherView.items.every((i) => i.unread === true), 'and their dots survive too');
-  // (No badge assert for the second user: their account postdates the feed
-  // rows, so the created_at default correctly reads 0 -- badge isolation is
-  // proven at the store layer in test/unit/notification-store.test.js.)
+  // The second user's account POSTDATES the feed rows, so the account-age
+  // rule correctly suppresses their dots and badge (pre-account history is
+  // never "new to them") -- dot/badge isolation for a pre-existing user is
+  // proven at the store layer in test/unit/notification-store.test.js.
+  assert.ok(otherView.items.every((i) => i.unread === false), 'pre-account rows carry no dots for a newer account');
 });
 
 test('the settings toggle round-trips through POST /api/settings and gates the bell live', async () => {
