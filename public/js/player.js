@@ -5562,7 +5562,7 @@ if (typeof module !== 'undefined' && module.exports) {
     cancelPendingArtTap();
     // v1.50 gate (QA WARNING): reset the resume overlay's visibility here,
     // exactly as dock() already does on its own transition. Without this, a
-    // close() while the "Resume Playback?" prompt is open (Delete / Move /
+    // close() while the "Resume playback?" prompt is open (Delete / Move /
     // relocate all call close() from outside the player chrome) leaves
     // `resumeOverlay.style.display === 'flex'` on the DETACHED host forever
     // -- and the R/S shortcut listener keys its visibility check off exactly

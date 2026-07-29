@@ -2602,7 +2602,7 @@ if (typeof module !== 'undefined' && module.exports) {
       if (isYtdlpManagedItem(mediaData)) {
         // yt-dlp-managed -- existing, byte-unchanged confirm flow (AC47).
         showConfirmModal(
-          'Confirm Permanent Deletion',
+          'Confirm permanent deletion',
           `Are you sure you want to permanently delete <strong>${escapeHtml(mediaData.title)}</strong>?<br><br><span style="color:var(--yt-red); font-weight:bold;">Warning: This will delete the actual file from your computer's disk:</span><br><code style="word-break:break-all; font-size:11px;">${escapeHtml(mediaData.filePath)}</code>`,
           performMediaDelete
         );

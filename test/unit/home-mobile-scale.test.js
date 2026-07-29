@@ -58,7 +58,8 @@ function mobileBlock() {
 }
 
 test('index.html: the sort-row heading, sort-select, and Shuffle/Rescan buttons share .section-title/.section-actions', () => {
-  assert.match(html, /<span id="videos-section-header">Recently Added<\/span>/);
+  // v1.50.2: sentence case app-wide (Dean's capitalization pass).
+  assert.match(html, /<span id="videos-section-header">Recently added<\/span>/);
   assert.match(html, /<div class="section-actions">/);
   assert.match(html, /id="sort-dropdown"/); // v1.41.2: custom .btn dropdown (was a native <select id="sort-select">)
   assert.match(html, /id="shuffle-again-btn"/);

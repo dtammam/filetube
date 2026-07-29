@@ -313,7 +313,7 @@ function renderSidebarFolders(folders, settings = {}) {
 }
 
 // ---- Default landing view (v1.14.0 item 4) -----------------------------
-// Populates the "Most Recent" + one-per-configured-folder <select> and,
+// Populates the "Most recent" + one-per-configured-folder <select> and,
 // once known, applies the currently saved db.settings.defaultView value.
 // Called from BOTH loadConfig() (once configuredFolders/folderSettings
 // are known) and loadAutomationSettings() (once the saved value is
@@ -322,7 +322,7 @@ function renderSidebarFolders(folders, settings = {}) {
 function populateDefaultViewSelect() {
   const select = document.getElementById('default-view-select');
   if (!select) return;
-  const options = ['<option value="">Most Recent</option>'].concat(
+  const options = ['<option value="">Most recent</option>'].concat(
     configuredFolders.map(f => {
       const base = f.split(/[\\/]/).pop() || f;
       const label = (folderSettings[f] && folderSettings[f].name) || base;
@@ -1196,7 +1196,7 @@ function wireStaticControls(signal) {
   }
 
   // Default view (v1.14.0 item 4): saves the selected folder path (or ''
-  // for "Most Recent") the same way as every other automation setting.
+  // for "Most recent") the same way as every other automation setting.
   const defaultViewSelect = document.getElementById('default-view-select');
   if (defaultViewSelect) {
     defaultViewSelect.addEventListener('change', (e) => {

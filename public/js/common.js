@@ -1669,7 +1669,7 @@ function isSyntheticFolder(dir, syntheticFolders) {
 // the stored folder still exists among the currently configured `folders`.
 // A deep link (any of searchQuery/folderFilter/rootFilter already set)
 // always wins and returns `rootFilter` unchanged; a stored default that no
-// longer exists falls back to `rootFilter` (i.e. Most Recent) rather than
+// longer exists falls back to `rootFilter` (i.e. Most recent) rather than
 // throwing or partially applying. Exported for node:test.
 function resolveDefaultView(rootFilter, searchQuery, folderFilter, defaultView, folders) {
   const isBareLoad = !searchQuery && !folderFilter && !rootFilter;
@@ -1857,7 +1857,7 @@ function injectSubscriptionsNavLinkIfEnabled() {
       // write actually happens.
       if (subscriptionsNavAlreadyInjected()) return;
 
-      // Sidebar entry, inserted right after the existing "Library Settings"
+      // Sidebar entry, inserted right after the existing "Library settings"
       // link so it reads as a sibling settings-adjacent surface.
       const settingsSidebarLink = document.querySelector('a.sidebar-item[href="/setup.html"]');
       if (settingsSidebarLink && settingsSidebarLink.parentElement) {
@@ -3394,7 +3394,7 @@ const KEYBOARD_SHORTCUT_GROUPS = [
       { keys: ['0', '…', '9'], desc: 'Jump to 0% - 90% of the item' },
       { keys: ['<'], desc: 'Slow down' },
       { keys: ['>'], desc: 'Speed up' },
-      // v1.50: only live while the "Resume Playback?" prompt is showing --
+      // v1.50: only live while the "Resume playback?" prompt is showing --
       // the desc says so, keeping the reference's one rule ("every listed
       // key ACTUALLY works") honest about the scoping.
       { keys: ['R'], desc: 'Resume (while the Resume prompt is showing)' },
@@ -5613,7 +5613,7 @@ function showHardDeleteModal(item, onConfirm, doc) {
   const deleteBtn = d.createElement('button');
   deleteBtn.type = 'button';
   deleteBtn.className = 'hard-delete-modal-confirm-btn';
-  deleteBtn.textContent = 'Delete Permanently';
+  deleteBtn.textContent = 'Delete permanently';
   deleteBtn.disabled = true;
   deleteBtn.addEventListener('click', () => {
     if (deleteBtn.disabled) return; // belt-and-suspenders -- a disabled button shouldn't fire, but never trust that alone
