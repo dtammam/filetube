@@ -376,7 +376,7 @@ if (typeof module !== 'undefined' && module.exports) {
 
     if (searchQuery) {
       if (searchInput) searchInput.value = searchQuery;
-      videosHeader.textContent = `Search Results for "${searchQuery}"`;
+      videosHeader.textContent = `Search results for "${searchQuery}"`;
     } else if (likedFilter) {
       videosHeader.textContent = 'Playlist: Liked';
     } else if (folderFilter) {

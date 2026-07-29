@@ -53,8 +53,12 @@ test('the three title surfaces consume the tokens with safe fallbacks -- and ONL
     assert.match(m[1], /font-weight:\s*var\(--heading-weight, bold\)/, `${selector} falls back to the historical bold`);
     assert.match(m[1], /letter-spacing:\s*var\(--heading-tracking, normal\)/, `${selector} falls back to normal tracking`);
   }
-  const consumers = css.match(/var\(--heading-weight/g) || [];
-  assert.strictEqual(consumers.length, 3, 'exactly the three title surfaces consume the heading tokens -- a fourth needs its own review');
+  // Gate S3: count all three tokens, not just weight -- a rogue family-only
+  // or tracking-only consumer must trip this too.
+  for (const token of ['--heading-font', '--heading-weight', '--heading-tracking']) {
+    const consumers = css.match(new RegExp(`var\\(${token}`, 'g')) || [];
+    assert.strictEqual(consumers.length, 3, `exactly the three title surfaces consume ${token} -- a fourth needs its own review`);
+  }
 });
 
 test('no Roboto @font-face change: the bundled variable font (100-900) is what makes weight 500 genuine', () => {
@@ -68,11 +72,31 @@ test('sentence-case pass: none of the converted Title Case phrases survive in an
     'Audio Track Title', 'Add Folder', 'Configured Directories', 'Scan Books Now',
     'Scan Music Now', 'Save Book Folders', 'Save Music Folders',
   ];
-  const shells = fs.readdirSync(path.join(__dirname, '..', '..', 'public')).filter((f) => f.endsWith('.html'));
-  for (const shell of shells) {
-    const html = fs.readFileSync(path.join(__dirname, '..', '..', 'public', shell), 'utf8');
-    for (const phrase of CONVERTED) {
-      assert.ok(!html.includes('>' + phrase + '<'), `${shell} still renders "${phrase}" -- the sentence-case pass must hold everywhere`);
+  // Gate W1: "everywhere" includes the yt-dlp module's OWN served shell
+  // (lib/ytdlp/views/) -- the first sweep missed it entirely and this test
+  // was structurally blind to it.
+  const shellDirs = [
+    path.join(__dirname, '..', '..', 'public'),
+    path.join(__dirname, '..', '..', 'lib', 'ytdlp', 'views'),
+  ];
+  for (const dir of shellDirs) {
+    for (const shell of fs.readdirSync(dir).filter((f) => f.endsWith('.html'))) {
+      const html = fs.readFileSync(path.join(dir, shell), 'utf8');
+      for (const phrase of CONVERTED) {
+        assert.ok(!html.includes('>' + phrase + '<'), `${shell} still renders "${phrase}" -- the sentence-case pass must hold everywhere`);
+      }
     }
   }
+  // Gate W2: the sweep's own sed-ordering bug left half-converted hybrids
+  // ("Save Book folders") that the old-spelling-absent check can't see --
+  // lock the CORRECT spellings present on the settings page.
+  const setup = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'setup.html'), 'utf8');
+  assert.ok(setup.includes('>Save book folders<'), 'setup.html must render "Save book folders"');
+  assert.ok(setup.includes('>Save music folders<'), 'setup.html must render "Save music folders"');
+  assert.ok(!/[>]Save (Book|Music) folders[<]/.test(setup), 'no half-converted hybrids');
+  // Gate W3: the JS writer that repaints the converted heading must write
+  // sentence case too.
+  const mainJs = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'main.js'), 'utf8');
+  assert.ok(mainJs.includes('Search results for'), 'the search heading writer uses sentence case');
+  assert.ok(!mainJs.includes('Search Results for'), 'no Title Case search heading');
 });

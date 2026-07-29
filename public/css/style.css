@@ -44,6 +44,12 @@ summary,
   --font-family: 'Roboto', 'Helvetica Neue', system-ui, Arial, sans-serif;
   --logo-font: 'Roboto', "Arial Black", Gadget, sans-serif;
   --mono-font: monospace;
+  /* v1.50.2 gate S2: the heading tokens honor the same contract -- an
+     invalid/missing era must resolve to the full 2021 look, headings
+     included, not a bold/normal hybrid from the var() fallbacks. */
+  --heading-font: 'YouTube Sans', 'Roboto', 'Helvetica Neue', system-ui, Arial, sans-serif;
+  --heading-weight: 500;
+  --heading-tracking: -0.01em;
   --radius: 4px;
   --radius-lg: 12px;
   --density: 8px;
