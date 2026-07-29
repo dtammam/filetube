@@ -913,6 +913,25 @@ if (typeof module !== 'undefined' && module.exports) {
       window.FileTube.player.expand(playerSlot);
     }
 
+    // v1.52 T2: a FULL seed on a genuine new load ('defer' -- neither adopt
+    // nor reparent applied) starts the real media NOW, two round trips
+    // before hydration. List data carries everything the player needs
+    // (type/needsTranscode/transcodeStatus for the stream decision,
+    // width/height for the aspect reservation, hasThumbnail for the poster,
+    // progress for resume) EXCEPT the server-resolved chapters --
+    // initWatch() hands those in through the id-guarded applyLateDetail
+    // seam, never a second load. Partial seeds (bell rows) skip this: no
+    // type means no stream decision, so they keep the reserved cold frame
+    // until hydration's own load.
+    let seedPreloaded = false;
+    if (entryReparentAction === 'defer' && watchSeed && isFullWatchSeedItem(watchSeed.item)) {
+      seedPreloaded = window.FileTube.player.load(
+        mediaId,
+        { ...watchSeed.item, channelName: currentChannelName, browseCtx: rawBrowseCtx },
+        { slot: playerSlot }
+      ) === true;
+    }
+
     // C2 (v1.24 UX Round, Wave 3, T10 follow-up): fires the view-count ping
     // (`POST /api/videos/:id/view`, added by T10 -- since v1.42 it
     // increments `db.viewCounts[id]` by exactly 1; the counter was extracted
@@ -1006,6 +1025,14 @@ if (typeof module !== 'undefined' && module.exports) {
         const mounted = window.FileTube.player.load(mediaId, { ...mediaData, channelName, browseCtx: rawBrowseCtx }, { slot: playerSlot });
         if (!mounted) {
           showFatalViewError(root);
+        }
+        // v1.52: a seeded pre-load ran on LIST data; hand the
+        // server-resolved chapters (the one detail-only field the player
+        // renders) through the id-guarded late seam -- never a second load,
+        // never a src/currentTime touch. (The load() just above was the
+        // adopt/no-op path for this case.)
+        if (seedPreloaded) {
+          window.FileTube.player.applyLateDetail(mediaId, mediaData);
         }
 
         // 5. Load related sidebar

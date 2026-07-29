@@ -5486,6 +5486,16 @@ if (typeof module !== 'undefined' && module.exports) {
       mediaPlayer.style.display = 'block';
       if (skipControls) skipControls.style.display = 'block';
 
+      // v1.52 instant watch: the item's thumbnail as the video poster --
+      // the frame shows a real image the instant the (aspect-reserved)
+      // player mounts instead of a black box until first-frame decode.
+      // Audio keeps its own artUrl poster branch above; teardown already
+      // strips `poster` on every unload (see teardownMediaState), so a
+      // thumbnail can never bleed onto the next item.
+      if (data.hasThumbnail === true) {
+        mediaPlayer.poster = '/thumbnail/' + encodeURIComponent(id);
+      }
+
       if (data.needsTranscode) {
         if (!isMobileViewport()) {
           liveMode = true;
@@ -5764,6 +5774,20 @@ if (typeof module !== 'undefined' && module.exports) {
     getState: function () { return state; },
     isLoopEnabled: isLoopEnabled, // FR-7 (TF, v1.22.0) -- watch.js's setupLoopToggle reads/writes through these
     setLoop: setLoop,
+    // v1.52 instant watch: the late-detail seam. A seeded pre-load starts
+    // the real media two round trips early from LIST data, which carries
+    // everything EXCEPT the server-resolved chapters (manual > embedded >
+    // description precedence lives in server.js resolveItemChapters).
+    // Hydration hands them in here; a genuine (non-preloaded) load never
+    // needs this (its load data already carried them). Id-guarded so a
+    // stale hydration for a since-navigated-away video can never write
+    // chapters onto the wrong media -- and it must NEVER touch src/
+    // currentTime (that is the whole point of not re-calling load()).
+    applyLateDetail: function (id, data) {
+      if (!id || id !== currentId || !data) return false;
+      if (Array.isArray(data.chapters)) applyChaptersForMedia(data);
+      return true;
+    },
   };
   Object.defineProperty(api, 'currentId', {
     enumerable: true,

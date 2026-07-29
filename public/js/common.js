@@ -1980,6 +1980,19 @@ function deriveWatchPaintPlan(item, channelName) {
   return plan;
 }
 
+// v1.52 T2: can this seed item drive a full player PRE-LOAD (start the real
+// media before hydration)? Needs the stream-decision fields a list record
+// always carries and a partial (bell-row) seed never does: `type` picks the
+// element/branch, and size+filePath mark a full record (the same marker the
+// paint plan uses). Pure; exported for node:test.
+function isFullWatchSeedItem(item) {
+  return Boolean(item)
+    && typeof item.id === 'string' && item.id !== ''
+    && typeof item.type === 'string'
+    && typeof item.size === 'number'
+    && typeof item.filePath === 'string';
+}
+
 // ---- v1.51: the notification bell ------------------------------------------
 //
 // YouTube-style bell in the header's top-right, on every shell that has the
@@ -8223,6 +8236,6 @@ if (typeof module !== 'undefined' && module.exports) {
     shouldInjectNotificationBell, formatNotificationBadge, buildNotificationRowModel,
     // v1.52: the instant-watch seed stash (single-entry, id-matched, aged) +
     // the pure paint-plan builder the watch painter applies verbatim.
-    stashWatchSeed, consumeWatchSeed, deriveWatchPaintPlan,
+    stashWatchSeed, consumeWatchSeed, deriveWatchPaintPlan, isFullWatchSeedItem,
   };
 }

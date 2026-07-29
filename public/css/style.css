@@ -7621,6 +7621,36 @@ body.ft-css-fullscreen .bottom-nav {
   width: 55%;
 }
 
+/* v1.52 T2: the reserved player frame. #player-slot is otherwise an empty,
+   ZERO-HEIGHT div until player.load() mounts the host -- the page's tallest
+   element used to appear in one jump after the network round trips,
+   shoving everything below it down. While empty, the slot reserves the
+   default 16/9 box with the same outer geometry as .player-container
+   (style.css ~1476), in the same #000 the player letterboxes with -- so
+   the mount swaps content INSIDE an identical frame instead of creating
+   one. Seeded full loads mount the real player in frame one and never
+   show this; cold/partial paths hold it until hydration. Cold PORTRAIT
+   items correct 16/9 -> portrait when data lands (disclosed residual --
+   only the no-seed path). */
+#player-slot:empty {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: #000;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  margin-bottom: 16px;
+}
+
+@media (max-width: 768px) {
+  /* Mirror the mobile portrait height cap the mounted player gets
+     (.player-container max-height: 45vh) so the reserved frame and the
+     real frame agree on phones. */
+  #player-slot:empty {
+    max-height: 45vh;
+  }
+}
+
 /* ---- v1.51: the notification bell ---------------------------------------
    Bell button lives inside .header-right (desktop) and an absolutely-
    positioned top-right slot on mobile (the mobile header hides

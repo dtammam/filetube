@@ -18,7 +18,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 const {
-  stashWatchSeed, consumeWatchSeed, deriveWatchPaintPlan,
+  stashWatchSeed, consumeWatchSeed, deriveWatchPaintPlan, isFullWatchSeedItem,
 } = require('../../public/js/common.js');
 
 const FULL_ITEM = {
@@ -118,6 +118,28 @@ test('deriveWatchPaintPlan: no id, no plan; empty channel name plans no uploader
   const plan = deriveWatchPaintPlan({ id: 'a1b2c3d4e5f6', title: 'x' }, '');
   assert.equal(plan.channelName, undefined);
   assert.equal(plan.subsLabel, undefined);
+});
+
+// ---- the pre-load gate ------------------------------------------------------
+
+test('isFullWatchSeedItem: only a full list record (type + size + filePath) may drive a player pre-load', () => {
+  assert.equal(isFullWatchSeedItem({ ...FULL_ITEM, type: 'video' }), true);
+  assert.equal(isFullWatchSeedItem({ ...FULL_ITEM, type: 'audio' }), true);
+  assert.equal(isFullWatchSeedItem(FULL_ITEM), false, 'no type -> no stream decision -> no pre-load');
+  assert.equal(isFullWatchSeedItem({ id: 'a1b2c3d4e5f6', title: 'Bëll Row', type: 'video' }), false, 'a partial (bell) seed never pre-loads');
+  assert.equal(isFullWatchSeedItem(null), false);
+  assert.equal(isFullWatchSeedItem({ ...FULL_ITEM, type: 'video', id: '' }), false);
+});
+
+// ---- the reserved-frame CSS lock --------------------------------------------
+
+test('LOCK: #player-slot reserves a 16/9 frame while empty (the zero-height jump killer)', () => {
+  const css = fs.readFileSync(path.join(__dirname, '../../public/css/style.css'), 'utf8');
+  const idx = css.indexOf('#player-slot:empty');
+  assert.ok(idx !== -1, 'the empty-slot reservation rule exists');
+  const rule = css.slice(idx, css.indexOf('}', idx));
+  assert.match(rule, /aspect-ratio: 16 \/ 9/, 'reserved at the default aspect');
+  assert.match(rule, /margin-bottom: 16px/, 'same outer geometry as .player-container');
 });
 
 // ---- the literal lock -------------------------------------------------------
