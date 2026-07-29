@@ -814,6 +814,12 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.41.11 lesson about async-registered handlers outliving their view.
     let reheatBtn = null;
     let reheatPollTimer = null;
+    // v1.49 gate fix (adversarial WARNING 2): the dismiss handle for an open
+    // relocation confirm, so navigating away closes it instead of leaving a
+    // "move this file" dialog for the PREVIOUS video on screen.
+    let relocationDismiss = null;
+    // One abort registration per view instance (see pollReheat's own comment).
+    let reheatAbortHooked = false;
     // FIX C (two-reviewer-gate follow-up): the FR-2-derived display name,
     // computed once in initWatch() via the SAME resolveChannelName() call
     // that drives the on-page uploader display, cached here so the Subscribe
@@ -2217,7 +2223,13 @@ if (typeof module !== 'undefined' && module.exports) {
       // subscription poll), so the ceiling is generous. Timing out here only
       // stops the POLL -- the job itself runs to completion server-side and its
       // result is still visible in the download status chip.
-      const ceilingMs = 5 * 60 * 1000;
+      //
+      // GATE FIX (adversarial SUGGESTION 2): deliberately SHORTER than
+      // activity.js's ONESHOT_TTL_MS (5 minutes). At exactly the TTL, a job
+      // finishing near the ceiling could have its terminal entry pruned in the
+      // same window this gives up in -- so the toast would say "check the
+      // activity chip" and the chip would be empty.
+      const ceilingMs = 4 * 60 * 1000;
       reheatPollTimer = setInterval(() => {
         elapsed += everyMs;
         if (elapsed >= ceilingMs) {
@@ -2254,7 +2266,14 @@ if (typeof module !== 'undefined' && module.exports) {
       }, everyMs);
       // An un-cleared interval would outlive this view instance and keep
       // polling (and keep a dead view's closure alive) for the life of the tab.
-      signal.addEventListener('abort', stopReheatPoll, { once: true });
+      // GATE FIX (adversarial SUGGESTION 3): registered ONCE per view instance
+      // rather than once per click -- `stopReheatPoll` reads the current timer
+      // from the closure, so one registration covers every poll this view ever
+      // starts, and repeated clicks stop accumulating listeners.
+      if (!reheatAbortHooked) {
+        reheatAbortHooked = true;
+        signal.addEventListener('abort', stopReheatPoll, { once: true });
+      }
     }
 
     // Honest, specific feedback: say what actually changed, and say plainly when
@@ -2279,7 +2298,13 @@ if (typeof module !== 'undefined' && module.exports) {
         parts.push(`views: ${formatCount(before.sourceViewCount)} → ${formatCount(after.sourceViewCount)}`);
       }
       if (after.hasSubtitles && !before.hasSubtitles) parts.push('subtitles added');
-      if (after.chapterCount !== before.chapterCount) parts.push(`chapters: ${after.chapterCount}`);
+      // GATE FIX (adversarial SUGGESTION 1): the type check is load-bearing.
+      // `after` is `{}` when the server's post-run database re-read threw (it
+      // logs and continues), and `undefined !== 0` is true -- which toasted the
+      // literal string "chapters: undefined".
+      if (typeof after.chapterCount === 'number' && after.chapterCount !== before.chapterCount) {
+        parts.push(`chapters: ${after.chapterCount}`);
+      }
       if (after.releaseDate && after.releaseDate !== before.releaseDate) parts.push('release date updated');
       if (parts.length === 0) return 'Reheated. Everything was already up to date.';
       return `Reheated. ${parts.join(', ')}.`;
@@ -2323,6 +2348,13 @@ if (typeof module !== 'undefined' && module.exports) {
     // its markup lived outside `#view-root`, which the SPA router is the only
     // thing it swaps, so in-app navigation never mounted it (tech-debt #34).
     function offerRelocation(id, relocation) {
+      // GATE FIX (adversarial CRITICAL 2, second half): never open on top of
+      // another confirm dialog. The id-collision itself is fixed in
+      // showConfirmModal, but two stacked, individually-undismissable modals is
+      // still a broken screen -- and this is the only caller that can fire
+      // without the user having just clicked something.
+      if (document.querySelector('.modal-backdrop')) return;
+
       const dest = relocation.destinationPath || '';
       const isCopy = relocation.transfer === 'copy';
       const size = (typeof relocation.sizeBytes === 'number' && relocation.sizeBytes > 0)
@@ -2333,26 +2365,58 @@ if (typeof module !== 'undefined' && module.exports) {
         : (relocation.transfer === 'hardlink'
           ? 'Hard link on the same filesystem — no data is copied.'
           : 'The transfer method is decided at move time.');
-      showConfirmModal(
+      const dismiss = showConfirmModal(
         'File this video under its channel?',
         `${escapeHtmlText(dest)}<br><br>${escapeHtmlText(how)}`,
         () => {
-          fetch(`/api/ytdlp/repull-metadata/item/${encodeURIComponent(id)}/relocate`, { method: 'POST' })
-            .then((res) => res.json().catch(() => ({})))
-            .then((body) => {
+          if (relocationDismiss) { signal.removeEventListener('abort', relocationDismiss); relocationDismiss = null; }
+          // GATE FIX (adversarial CRITICAL 1): stop the player BEFORE the move,
+          // not just before the navigate. The server now allows relocating a
+          // recently-watched file for this attended path (see
+          // `allowRecentlyWatched`), so this client is the one that must not be
+          // left Range-requesting a path that is about to stop existing.
+          if (window.FileTube && window.FileTube.player) window.FileTube.player.close();
+          fetch(`/api/ytdlp/repull-metadata/item/${encodeURIComponent(id)}/relocate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            // GATE FIX (adversarial CRITICAL 3): echo back the exact move the
+            // user was shown. Subscribing to the channel from this very page --
+            // which is the reheat's own headline outcome -- changes the
+            // destination folder, so "the plan is still legal" is not the same
+            // question as "the plan is still the one you approved".
+            body: JSON.stringify({
+              expect: { currentPath: relocation.currentPath, destinationPath: relocation.destinationPath },
+            }),
+          })
+            .then((res) => res.json().catch(() => ({})).then((body) => ({ status: res.status, body })))
+            .then(({ status, body }) => {
               if (body && body.status === 'moved') {
                 showToast(body.archived === false
                   ? 'Moved, but it is not in the download archive — a subscription poll may re-download it.'
                   : 'Moved into its channel folder.');
-                // The move re-keyed this item (the id is a hash of the path),
-                // so this page is now holding a dead id. Same pre-navigate step
-                // the Move flow uses: stop the player BEFORE navigating, or it
-                // keeps Range-requesting a resource that no longer resolves.
-                if (window.FileTube && window.FileTube.player) window.FileTube.player.close();
+                // The move re-keyed this item (the id is a hash of the path), so
+                // this page is holding a dead id.
                 const nextId = body.newId;
                 const target = nextId ? `/watch/${encodeURIComponent(nextId)}` : '/';
                 if (window.FileTube && typeof window.FileTube.navigate === 'function') window.FileTube.navigate(target);
                 else window.location.href = target;
+                return;
+              }
+              // The destination changed under us -- re-ask about the move that
+              // is actually on the table now rather than reporting a failure.
+              if (status === 409 && body && body.status === 'stale' && body.relocation) {
+                showToast('The destination changed — check the new one.');
+                offerRelocation(id, body.relocation);
+                return;
+              }
+              if (status === 409) { showToast('Something else is running; try again in a moment.'); return; }
+              if (status === 403) { showToast('Read-only mode: moving files is disabled on this instance.'); return; }
+              if (status === 503) { showToast('Moving is unavailable on this install.'); return; }
+              // An integrity FAILURE must not read like a benign skip. A
+              // cross-device checksum mismatch and "you already have this video
+              // in that folder" are not the same news about an irreplaceable file.
+              if (body && (body.failed || body.status === 'failed')) {
+                showToast(`The move FAILED and was rolled back: ${(body && body.reason) || 'unknown reason'}`);
                 return;
               }
               showToast(`Not moved: ${(body && body.reason) || 'not a candidate'}.`);
@@ -2361,6 +2425,16 @@ if (typeof module !== 'undefined' && module.exports) {
         },
         { confirm: 'Move it', cancel: 'Leave it where it is' },
       );
+
+      // GATE FIX (adversarial WARNING 2): this dialog lives on document.body,
+      // which the SPA router never swaps -- without this it survives onto the
+      // NEXT video's page, still showing the previous video's destination, and
+      // "Move it" would move a file the user is no longer looking at.
+      if (typeof dismiss === 'function') {
+        if (relocationDismiss) signal.removeEventListener('abort', relocationDismiss);
+        relocationDismiss = dismiss;
+        signal.addEventListener('abort', relocationDismiss, { once: true });
+      }
     }
 
     // `showConfirmModal` interpolates its body with innerHTML, and both strings

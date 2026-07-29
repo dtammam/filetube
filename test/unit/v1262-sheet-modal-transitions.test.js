@@ -322,6 +322,17 @@ function withFakeDocumentForConfirmModal(fn) {
       const el = new AnimatableFakeElement();
       el.tagName = String(tag).toUpperCase();
       el.parentNode = null;
+      // v1.49 gate fix (adversarial CRITICAL 2): showConfirmModal now resolves
+      // its buttons with `modalBackdrop.querySelector('#id')` instead of
+      // `document.getElementById('#id')`, because the document-wide lookup
+      // returned the FIRST match and so re-bound an ALREADY-OPEN modal's buttons
+      // the moment a second modal was created. This fake therefore has to model
+      // a PER-ELEMENT id registry as well as the document-wide one: the buttons
+      // are the same instances in both, so the assertions below (which fetch via
+      // `fakeDoc.getElementById`) are unchanged and still exercise the real
+      // objects the production code wired.
+      const ownById = new Map();
+      el.querySelector = (sel) => ownById.get(String(sel).replace(/^#/, '')) || null;
       Object.defineProperty(el, 'innerHTML', {
         set(html) {
           const idRe = /id="([\w-]+)"/g;
@@ -330,6 +341,7 @@ function withFakeDocumentForConfirmModal(fn) {
             const btn = new FakeButton();
             btn.id = m[1];
             byId.set(m[1], btn);
+            ownById.set(m[1], btn);
           }
         },
       });

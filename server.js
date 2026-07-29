@@ -9664,7 +9664,7 @@ function classifyMetadataEffect(item) {
 // This does NOT weaken anti-drift: only the db SOURCE differs, never the decision
 // logic -- and a point-in-time snapshot is exactly right for a point-in-time
 // preview.
-function planImportRelocation(deps, config, mediaId, dbSnapshot) {
+function planImportRelocation(deps, config, mediaId, dbSnapshot, opts) {
   const d = deps || {};
   const loadDb = d.loadDatabase;
   const updateDb = d.updateDatabase;
@@ -9727,7 +9727,33 @@ function planImportRelocation(deps, config, mediaId, dbSnapshot) {
 
   // DON'T MOVE WHAT SOMEONE IS WATCHING (the id is a hash of the PATH; a move
   // re-keys it out from under a mid-playback client).
-  if (activeProtectedPaths(Date.now()).has(item.filePath)) {
+  //
+  // v1.49 GATE FIX (adversarial CRITICAL 1) -- `opts.allowRecentlyWatched`.
+  // This clause silently made the per-video reheat's relocation half DEAD CODE.
+  // The watch page streams the video on mount (`preload="metadata"`), which
+  // calls `markServed(item.filePath)` on every serve, and the watch page is the
+  // ONLY entry point for the per-video reheat -- so by the time the button is
+  // clickable the item is protected for the next ten minutes, the proposal
+  // always came back 'recently-watched', and the confirm dialog could never
+  // open. Proven with a repro; the repo's OWN v1.41.6 test
+  // (test/integration/repull-relocate.test.js) already asserted this exact
+  // behaviour, and this feature was built on top of it anyway.
+  //
+  // Why lifting it is CORRECT here and nowhere else: the clause protects a
+  // mid-playback client from having its id re-keyed away, which is a session
+  // integrity concern, not a data-loss one. Two facts settle it:
+  //   1. `POST /api/videos/:id/move` -- the Move button sitting right next to
+  //      Reheat on the same page -- has NO such guard and never has. Moving the
+  //      file you are watching is already accepted behaviour; only this path
+  //      forbade it.
+  //   2. The per-video confirm closes the player BEFORE navigating to `newId`
+  //      (public/js/watch.js), so the one client that could be harmed is the
+  //      one that asked for the move, and it is already handled.
+  // DEFAULTS OFF: the BATCH keeps the clause absolute, because it is unattended
+  // and may hit a file some OTHER user is streaming right now (v1.43 made this
+  // multi-user), and so does the whole-library preview.
+  if (!(opts && opts.allowRecentlyWatched === true)
+    && activeProtectedPaths(Date.now()).has(item.filePath)) {
     return skipWithItem('recently-watched');
   }
 
@@ -9885,7 +9911,7 @@ function planImportRelocation(deps, config, mediaId, dbSnapshot) {
 // @returns {Promise<{status: 'moved'|'skipped'|'failed', reason: string, newId?: string, newPath?: string, archived?: boolean}>}
 //   never throws for an anticipated failure; `status` is what the reheat batch
 //   counts.
-async function relocateHydratedImportIntoChannelFolder(deps, config, mediaId) {
+async function relocateHydratedImportIntoChannelFolder(deps, config, mediaId, opts) {
   const d = deps || {};
   const loadDb = d.loadDatabase;
   const updateDb = d.updateDatabase;
@@ -9898,7 +9924,11 @@ async function relocateHydratedImportIntoChannelFolder(deps, config, mediaId) {
   // plan's result onto its `{status, reason}` contract and, for a `move`, does
   // the WRITES (the channelId backfill + `moveItemToFolder` + archive append)
   // that the pure decision deliberately does not.
-  const plan = planImportRelocation(deps, config, mediaId);
+  // v1.49 (per-video confirm): `opts` carries `allowRecentlyWatched` (see the
+  // clause's own comment in planImportRelocation) and `expect` (the
+  // proposal-binding check below). Absent for the batch, which keeps every
+  // v1.41.6 posture byte-for-byte.
+  const plan = planImportRelocation(deps, config, mediaId, null, opts);
   if (plan.action !== 'move') {
     // `channel-dir-unresolvable` is the ONE non-move outcome that is a hard
     // FAILURE (an unconfinable/misconfigured download root), not a skip -- the
@@ -9908,6 +9938,44 @@ async function relocateHydratedImportIntoChannelFolder(deps, config, mediaId) {
       return { status: 'failed', reason: plan.failReason || plan.reason };
     }
     return { status: 'skipped', reason: plan.reason };
+  }
+
+  // v1.49 GATE FIX (adversarial CRITICAL 3): PROPOSAL BINDING.
+  //
+  // Re-running the decision proves the move is LEGAL. It does not prove it is
+  // THE MOVE THE USER APPROVED -- and those came apart in at least three
+  // reachable ways, all of them between the dialog opening and the confirm
+  // click:
+  //   (a) The user SUBSCRIBES to the channel. Giving the watch page a working
+  //       Subscribe button is the point of the reheat, so this is the LIKELY
+  //       case, not the exotic one -- and `resolveChannelDirForChannel` then
+  //       resolves the subscription's own folder instead of the channel-name
+  //       one, so the file lands somewhere the user never saw.
+  //   (b) A concurrent library reheat rewrites `sourceTitle`, so
+  //       `resolveRelocationTitle` changes the destination FILENAME.
+  //   (c) The id is `md5(filePath)` with no salt: if the item is moved or
+  //       deleted and another file later occupies that exact path, a scan mints
+  //       an entry under the SAME id -- and a stale open dialog would relocate a
+  //       completely different video.
+  //
+  // So the caller echoes back what it showed, and a disagreement is refused
+  // rather than resolved in the user's absence. `expect` absent (the batch, the
+  // preview) => this check is skipped entirely and behaviour is unchanged.
+  if (opts && opts.expect && typeof opts.expect === 'object') {
+    const e = opts.expect;
+    if (e.currentPath !== plan.currentPath || e.destinationPath !== plan.destinationPath) {
+      return {
+        status: 'stale',
+        reason: 'proposal-stale',
+        // The FRESH plan, so the caller can re-ask about the move that is
+        // actually on the table now instead of silently doing a different one.
+        currentPath: plan.currentPath,
+        destinationPath: plan.destinationPath,
+        transfer: plan.transfer,
+        sameDevice: plan.sameDevice,
+        sizeBytes: plan.sizeBytes,
+      };
+    }
   }
 
   const { destinationDir: targetDir, newBaseName, youtubeId } = plan;

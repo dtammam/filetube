@@ -5334,8 +5334,18 @@ function showConfirmModal(title, bodyText, onConfirm, labels) {
   document.body.appendChild(modalBackdrop);
   openOverlay(modalBackdrop, 'modal-open');
 
-  const cancelBtn = document.getElementById('modal-cancel-btn');
-  const confirmBtn = document.getElementById('modal-confirm-btn');
+  // v1.49 GATE FIX (adversarial CRITICAL 2): resolved from THIS backdrop, not
+  // from the document. `document.getElementById` returns the FIRST match in
+  // document order, and both ids are baked into every instance's markup -- so
+  // the moment two confirm modals coexist, the second instance silently
+  // re-labels and re-binds the FIRST one's buttons, and the first modal's
+  // existing handler fires alongside the new one. That was impossible before
+  // v1.49 (every call site was synchronous from a click) and became reachable
+  // the instant a background poll could open one: a reheat completing while a
+  // DELETE confirmation is open turned the delete dialog's button into "Move
+  // it" and fired BOTH actions on one click.
+  const cancelBtn = modalBackdrop.querySelector('#modal-cancel-btn');
+  const confirmBtn = modalBackdrop.querySelector('#modal-confirm-btn');
 
   // v1.49: optional label overrides, applied via textContent (see above).
   if (labels && typeof labels === 'object') {
@@ -5369,6 +5379,22 @@ function showConfirmModal(title, bodyText, onConfirm, labels) {
     teardown();
     onConfirm();
   });
+
+  // v1.49 GATE FIX (adversarial WARNING 2): a dismiss handle for the CALLER.
+  // This modal lives on `document.body`, which the SPA router never swaps (it
+  // only replaces `#view-root`), so nothing about navigating away closes it --
+  // an open "move this file" dialog for video A survives onto video B's page,
+  // still showing A's destination. A view that opens one from an async callback
+  // must be able to close it on teardown. Idempotent, and a no-op once the user
+  // has already answered, so it can be called unconditionally from an abort
+  // handler. Returning a value is additive: every pre-v1.49 call site ignores it.
+  return function dismiss() {
+    if (settled) return;
+    settled = true;
+    cancelBtn.disabled = true;
+    confirmBtn.disabled = true;
+    teardown();
+  };
 }
 
 // ---- FR-7 (v1.21.0, T6): extra-deliberate delete for local files ----------

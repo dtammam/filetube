@@ -217,3 +217,101 @@ test('a video with no YouTube source is reported honestly, not as a success', ()
   assert.ok(/already up to date/i.test(body),
     'a reheat that changed nothing must say that too, rather than implying it did work');
 });
+
+// ---- v1.49 gate fixes (adversarial seat) -----------------------------------
+
+test('CRITICAL 2: showConfirmModal resolves its buttons from ITS OWN backdrop, never document-wide', () => {
+  const body = functionBody(commonJs, 'showConfirmModal');
+  assert.ok(/modalBackdrop\.querySelector\('#modal-confirm-btn'\)/.test(body),
+    'document.getElementById returns the FIRST match, so a second modal re-binds the first one\'s buttons');
+  assert.ok(/modalBackdrop\.querySelector\('#modal-cancel-btn'\)/.test(body));
+  assert.ok(!/document\.getElementById\('modal-(confirm|cancel)-btn'\)/.test(body),
+    'no document-wide lookup may remain');
+});
+
+test('CRITICAL 2: the relocation offer refuses to open on top of another modal', () => {
+  const body = functionBody(watchJs, 'offerRelocation');
+  assert.ok(/document\.querySelector\('\.modal-backdrop'\)/.test(body),
+    'this is the only confirm that can open without the user having just clicked something');
+});
+
+test('CRITICAL 1: the per-video proposal and confirm pass allowRecentlyWatched; nothing else does', () => {
+  const ytdlpIndex = fs.readFileSync(path.join(ROOT, 'lib', 'ytdlp', 'index.js'), 'utf8');
+  const serverJs = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
+
+  // The watch page streams the video on mount, so without this the proposal is
+  // always 'recently-watched' and the whole relocation half is unreachable.
+  assert.equal((ytdlpIndex.match(/allowRecentlyWatched: true/g) || []).length, 2,
+    'exactly two: the per-video proposal and the per-video confirm');
+  // ...and the guard is still OFF by default, so the unattended batch and the
+  // whole-library preview keep refusing to move a file someone is streaming.
+  assert.ok(/!\(opts && opts\.allowRecentlyWatched === true\)/.test(serverJs),
+    'the clause must default to ON (i.e. only an explicit === true lifts it)');
+  assert.ok(!/allowRecentlyWatched/.test(functionBody(ytdlpIndex, 'runRepullMetadataBatch')),
+    'the library batch must never lift the guard');
+});
+
+test('CRITICAL 1: the player is closed BEFORE the move is requested, not just before the navigate', () => {
+  const body = functionBody(watchJs, 'offerRelocation');
+  const closeIdx = body.indexOf('player.close()');
+  const postIdx = body.indexOf('/relocate');
+  assert.ok(closeIdx > 0 && postIdx > closeIdx,
+    'the server now permits moving a recently-watched file here, so this client must stop reading it first');
+});
+
+test('CRITICAL 3: the confirm echoes back the exact move it displayed, and the server refuses a mismatch', () => {
+  const body = functionBody(watchJs, 'offerRelocation');
+  assert.ok(/expect: \{ currentPath: relocation\.currentPath, destinationPath: relocation\.destinationPath \}/.test(body),
+    'subscribing to the channel from this page changes the destination folder -- "still legal" is not "still what you approved"');
+  assert.ok(/status === 409 && body && body\.status === 'stale'/.test(body),
+    'a stale proposal must re-ask, not fail and not silently proceed');
+
+  const serverJs = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
+  const relocBody = functionBody(serverJs, 'relocateHydratedImportIntoChannelFolder');
+  assert.ok(/status: 'stale'/.test(relocBody), 'the executor is what refuses -- not the route');
+  assert.ok(/e\.currentPath !== plan\.currentPath \|\| e\.destinationPath !== plan\.destinationPath/.test(relocBody),
+    'both ends of the move are bound, not just the destination');
+});
+
+test('WARNING 2: an open relocation confirm is dismissed when the view is torn down', () => {
+  const offer = functionBody(watchJs, 'offerRelocation');
+  assert.ok(/signal\.addEventListener\('abort', relocationDismiss/.test(offer),
+    'this modal lives on document.body, which the SPA router never swaps');
+  const modal = functionBody(commonJs, 'showConfirmModal');
+  assert.ok(/return function dismiss\(\)/.test(modal), 'showConfirmModal must hand back a dismiss handle');
+  assert.ok(/if \(settled\) return;/.test(modal.slice(modal.indexOf('return function dismiss'))),
+    'and dismissing after the user already answered must be a no-op');
+});
+
+test('WARNING 3: a failed move reads as a FAILURE, and 409/403/503 do not print a false reason', () => {
+  const body = functionBody(watchJs, 'offerRelocation');
+  assert.ok(/body\.failed \|\| body\.status === 'failed'/.test(body),
+    'a cross-device checksum mismatch must not read like "you have two copies of this video"');
+  assert.ok(/FAILED and was rolled back/.test(body), 'and must say so plainly');
+  for (const code of ['409', '403', '503']) {
+    assert.ok(new RegExp(`status === ${code}`).test(body),
+      `${code} carries no 'reason' field, so it needs its own message rather than "not a candidate"`);
+  }
+});
+
+test('SUGGESTION 1: a null AFTER snapshot cannot toast "chapters: undefined"', () => {
+  const body = functionBody(watchJs, 'describeReheat');
+  assert.ok(/typeof after\.chapterCount === 'number'/.test(body));
+});
+
+test('SUGGESTION 2: the poll ceiling is shorter than the activity TTL that prunes the result', () => {
+  const activityJs = fs.readFileSync(path.join(ROOT, 'lib', 'ytdlp', 'activity.js'), 'utf8');
+  const ttl = /ONESHOT_TTL_MS\s*=\s*(\d+)\s*\*\s*(\d+)\s*\*\s*(\d+)/.exec(activityJs);
+  assert.ok(ttl, 'expected ONESHOT_TTL_MS in lib/ytdlp/activity.js');
+  const ttlMs = Number(ttl[1]) * Number(ttl[2]) * Number(ttl[3]);
+  const ceiling = /const ceilingMs = (\d+) \* (\d+) \* (\d+);/.exec(functionBody(watchJs, 'pollReheat'));
+  assert.ok(ceiling, 'expected a poll ceiling');
+  const ceilingMs = Number(ceiling[1]) * Number(ceiling[2]) * Number(ceiling[3]);
+  assert.ok(ceilingMs < ttlMs,
+    `the poll must give up BEFORE the result it points the user at is pruned (ceiling ${ceilingMs} vs TTL ${ttlMs})`);
+});
+
+test('SUGGESTION 3: the poll registers its abort listener once per view, not once per click', () => {
+  const body = functionBody(watchJs, 'pollReheat');
+  assert.ok(/if \(!reheatAbortHooked\)/.test(body));
+});

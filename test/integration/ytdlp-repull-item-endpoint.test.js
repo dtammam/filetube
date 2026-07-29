@@ -440,7 +440,10 @@ test('a skipped relocation is reported with its reason and is NOT an error (two 
   try {
     const res = await fetch(`${itemUrl(base)}/relocate`, { method: 'POST' });
     assert.equal(res.status, 200);
-    assert.deepEqual(await res.json(), { status: 'skipped', reason: 'destination-occupied' });
+    // v1.49 gate fix (adversarial WARNING 3): `failed` rides along so the client
+    // can tell an integrity FAILURE (a cross-device checksum mismatch on an
+    // irreplaceable file) apart from a benign skip. A skip is `failed: false`.
+    assert.deepEqual(await res.json(), { status: 'skipped', failed: false, reason: 'destination-occupied' });
   } finally {
     await close();
   }
