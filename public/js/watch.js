@@ -597,7 +597,12 @@ if (typeof module !== 'undefined' && module.exports) {
     if (reheatModuleEnabled !== null) return Promise.resolve(reheatModuleEnabled);
     if (reheatHealthProbe) return reheatHealthProbe;
     reheatHealthProbe = fetch('/api/subscriptions/health')
-      .then((res) => { reheatModuleEnabled = res.ok; return reheatModuleEnabled; })
+      .then((res) => {
+        reheatModuleEnabled = res.ok;
+        // v1.53: the fresh answer refreshes the capability cache.
+        writeCapabilityCache({ moduleEnabled: res.ok });
+        return reheatModuleEnabled;
+      })
       .catch(() => { reheatModuleEnabled = false; return false; })
       .finally(() => { reheatHealthProbe = null; });
     return reheatHealthProbe;
@@ -762,6 +767,9 @@ if (typeof module !== 'undefined' && module.exports) {
     // guarantee -- this never logs/throws on a 404. Read-only: never writes
     // db.folders/folderSettings.
     // v1.37.0: channel pins + book-shelf pins, one merged sidebar section.
+    // v1.53: paint the pinned section from the capability cache in frame one;
+    // the real fetch below replaces it wholesale (reconcile-by-rebuild).
+    primePinnedSidebarFromCache();
     fetchAllPins().then((pins) => renderPinnedSidebar(pins));
 
     // Parse media ID
@@ -1839,6 +1847,18 @@ if (typeof module !== 'undefined' && module.exports) {
 
     async function setupSubscribeButton() {
       if (!subscribeBtn) return;
+      // v1.53 capability cache: OPTIMISTIC RENDER ONLY (no click wiring, no
+      // currentSubState commit -- the real probe below owns both and
+      // reconciles by removing/relabeling on resolution). This is what makes
+      // Subscribed appear in frame one on a refresh instead of a beat later.
+      const cachedCap = readCapabilityCache();
+      if (cachedCap && cachedCap.moduleEnabled === true && Array.isArray(cachedCap.subs)) {
+        const optimistic = decideSubscribeButtonState(mediaData, cachedCap.subs, true);
+        if (optimistic.visible) {
+          subscribeBtn.hidden = false;
+          applySubscribeButtonLabel(optimistic.subscribed);
+        }
+      }
       let moduleEnabled = false;
       let subs = [];
       try {
@@ -1848,6 +1868,8 @@ if (typeof module !== 'undefined' && module.exports) {
           const subsRes = await fetch('/api/subscriptions');
           subs = subsRes.ok ? await subsRes.json().catch(() => []) : [];
         }
+        // v1.53: the fresh answers refresh the cache for the next boot.
+        writeCapabilityCache({ moduleEnabled, subs: scrubSubsForCache(subs) });
         currentSubState = decideSubscribeButtonState(mediaData, subs, moduleEnabled);
       } catch (e) {
         console.error('Error resolving subscribe button state:', e);
@@ -2418,15 +2440,7 @@ if (typeof module !== 'undefined' && module.exports) {
     function setupReheatButton() {
       const watchActions = root.querySelector('.watch-actions');
       if (!watchActions || !mediaData) return;
-      probeReheatModule().then((enabled) => {
-        // The probe is async, so by the time it resolves this view may already
-        // have been torn down (SPA navigation) -- the abort signal is the
-        // staleness truth this file uses everywhere else for exactly this.
-        if (signal.aborted) return;
-        if (!enabled) {
-          if (reheatBtn) { reheatBtn.remove(); reheatBtn = null; }
-          return;
-        }
+      const mountReheatBtn = () => {
         if (reheatBtn) return; // idempotent: a second media load must not duplicate it
         reheatBtn = document.createElement('button');
         reheatBtn.type = 'button';
@@ -2445,6 +2459,24 @@ if (typeof module !== 'undefined' && module.exports) {
         const btnGroup = watchActions.querySelector('.watch-action-btns');
         (btnGroup || watchActions).appendChild(reheatBtn);
         reheatBtn.addEventListener('click', handleReheatClick, { signal });
+      };
+      // v1.53 capability cache: OPTIMISTIC mount from the last known answer
+      // (frame-one on refresh). The REAL probe below is the reconciler -- its
+      // !enabled branch removes an optimistically-mounted button, so a
+      // module revoked since the cache was written corrects after ~1 RTT
+      // (the disclosed window).
+      const cachedCap = readCapabilityCache();
+      if (cachedCap && cachedCap.moduleEnabled === true) mountReheatBtn();
+      probeReheatModule().then((enabled) => {
+        // The probe is async, so by the time it resolves this view may already
+        // have been torn down (SPA navigation) -- the abort signal is the
+        // staleness truth this file uses everywhere else for exactly this.
+        if (signal.aborted) return;
+        if (!enabled) {
+          if (reheatBtn) { reheatBtn.remove(); reheatBtn = null; }
+          return;
+        }
+        mountReheatBtn();
       });
     }
 

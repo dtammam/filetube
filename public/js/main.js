@@ -1465,6 +1465,9 @@ if (typeof module !== 'undefined' && module.exports) {
     // guarantee -- this never logs/throws on a 404. Read-only: never writes
     // db.folders/folderSettings.
     // v1.37.0: channel pins + book-shelf pins, one merged sidebar section.
+    // v1.53: paint the pinned section from the capability cache in frame one;
+    // the real fetch below replaces it wholesale (reconcile-by-rebuild).
+    primePinnedSidebarFromCache();
     fetchAllPins().then((pins) => renderPinnedSidebar(pins));
 
     // v1.37.0 T10 (books): the home book surfaces. BARE home view -> a

@@ -1993,6 +1993,94 @@ function isFullWatchSeedItem(item) {
     && typeof item.filePath === 'string';
 }
 
+// ---- v1.53: the capability cache (sessionStorage) ---------------------------
+//
+// Dean's refresh-beat fix: the Reheat/Subscribe/pinned controls depend on
+// capability answers (module health, subscription list, pins) that three
+// independent per-tab latches used to re-fetch on every refresh. The cache
+// makes the LAST KNOWN answers survive a refresh for an OPTIMISTIC first
+// render; every existing probe still runs and reconciles (both button flows
+// already remove/rebuild wholesale on resolution), so a revoked capability
+// corrects after ~1 RTT -- the stale window Dean explicitly accepted.
+// sessionStorage, NOT localStorage (tab-scoped, dies with the tab) and NO
+// service worker (unregisterStaleServiceWorkers actively sheds them by
+// policy). Every read crosses `sanitizeCapabilityCache` -- an untrusted
+// string with an allowlisting scrub (own-key, primitive-only), a TTL, and a
+// future-ts rejection. Every access is try/catch (private mode).
+const CAP_CACHE_KEY = 'ft-cap-cache-v1';
+const CAP_CACHE_TTL_MS = 5 * 60 * 1000;
+
+// Pure + exported for node:test. Flat own-key primitive scrub per entry so a
+// crafted payload can never smuggle objects/prototype keys into renderers.
+function sanitizeCapabilityCache(parsed, nowMs) {
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+  if (typeof parsed.ts !== 'number' || !Number.isFinite(parsed.ts)) return null;
+  if (nowMs - parsed.ts > CAP_CACHE_TTL_MS) return null;
+  if (parsed.ts > nowMs + 60 * 1000) return null; // a future clock is a lie
+  const scrubFlat = (o) => {
+    const r = {};
+    for (const k of Object.keys(o)) {
+      const v = o[k];
+      if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') r[k] = v;
+    }
+    return r;
+  };
+  const out = { ts: parsed.ts };
+  if (typeof parsed.moduleEnabled === 'boolean') out.moduleEnabled = parsed.moduleEnabled;
+  if (Array.isArray(parsed.subs)) {
+    out.subs = parsed.subs
+      .filter((s) => s && typeof s === 'object' && !Array.isArray(s) && typeof s.channelUrl === 'string' && s.channelUrl !== '')
+      .map(scrubFlat);
+  }
+  if (Array.isArray(parsed.pins)) {
+    out.pins = parsed.pins
+      .filter((p) => p && typeof p === 'object' && !Array.isArray(p))
+      .map(scrubFlat);
+  }
+  return out;
+}
+
+function readCapabilityCache(nowMs) {
+  let raw = null;
+  try { raw = sessionStorage.getItem(CAP_CACHE_KEY); } catch (_) { return null; /* storage disabled */ }
+  if (!raw) return null;
+  let parsed = null;
+  try { parsed = JSON.parse(raw); } catch (_) { return null; }
+  return sanitizeCapabilityCache(parsed, typeof nowMs === 'number' ? nowMs : Date.now());
+}
+
+function writeCapabilityCache(patch) {
+  try {
+    const now = Date.now();
+    const existing = readCapabilityCache(now) || {};
+    const merged = { ...existing, ...patch, ts: now };
+    sessionStorage.setItem(CAP_CACHE_KEY, JSON.stringify(merged));
+  } catch (_) { /* storage disabled -- the probes still work uncached */ }
+}
+
+// The write-side sub scrub: exactly what the Subscribe/pin decisions need.
+function scrubSubsForCache(subs) {
+  return (Array.isArray(subs) ? subs : [])
+    .filter((s) => s && typeof s.channelUrl === 'string' && s.channelUrl !== '')
+    .map((s) => ({
+      id: typeof s.id === 'string' ? s.id : '',
+      channelUrl: s.channelUrl,
+      ...(typeof s.channelId === 'string' ? { channelId: s.channelId } : {}),
+      ...(typeof s.channelHandleUrl === 'string' ? { channelHandleUrl: s.channelHandleUrl } : {}),
+      ...(typeof s.channelDir === 'string' ? { channelDir: s.channelDir } : {}),
+      ...(typeof s.name === 'string' ? { name: s.name } : {}),
+    }));
+}
+
+// Optimistic pinned-sidebar paint from the cache -- the real fetchAllPins()
+// pass replaces it wholesale (renderPinnedSidebar rebuilds from scratch).
+function primePinnedSidebarFromCache() {
+  const cached = readCapabilityCache();
+  if (cached && Array.isArray(cached.pins) && cached.pins.length > 0) {
+    renderPinnedSidebar(cached.pins);
+  }
+}
+
 // ---- v1.53: the attribution picker ------------------------------------------
 //
 // One modal, two callers (watch page single-item, folder-view bulk) -- the
@@ -5162,10 +5250,16 @@ function fetchAllPins() {
   // derivePinnedPlaylistEntries' locked shape; the renderers read it off
   // the parallel validPins view exactly like `id`.
   return Promise.all([safeJson('/api/subscriptions/pins'), safeJson('/api/books/pins')])
-    .then(([channelPins, bookPins]) => [
-      ...(Array.isArray(channelPins) ? channelPins : []).map((p) => ({ ...p, pinSource: 'channel' })),
-      ...(Array.isArray(bookPins) ? bookPins : []).map((p) => ({ ...p, pinSource: 'books' })),
-    ]);
+    .then(([channelPins, bookPins]) => {
+      const pins = [
+        ...(Array.isArray(channelPins) ? channelPins : []).map((p) => ({ ...p, pinSource: 'channel' })),
+        ...(Array.isArray(bookPins) ? bookPins : []).map((p) => ({ ...p, pinSource: 'books' })),
+      ];
+      // v1.53: the capability cache's pins half -- the next refresh paints
+      // the pinned sidebar optimistically from this (primePinnedSidebarFromCache).
+      writeCapabilityCache({ pins });
+      return pins;
+    });
 }
 
 // v1.37.0 (Dean's orphaned-pin report): the per-row UNPIN control. Before
@@ -8336,5 +8430,7 @@ if (typeof module !== 'undefined' && module.exports) {
     stashWatchSeed, consumeWatchSeed, deriveWatchPaintPlan, isFullWatchSeedItem,
     // v1.53: the shared attribution picker (DOM thin-shell; wiring-locked).
     showAttributionPicker,
+    // v1.53: the capability cache's pure gate + accessors.
+    sanitizeCapabilityCache, readCapabilityCache, writeCapabilityCache, scrubSubsForCache,
   };
 }
