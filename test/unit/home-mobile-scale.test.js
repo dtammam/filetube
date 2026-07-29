@@ -88,7 +88,10 @@ test('mobile (v1.45.2 #3, v1.50 update): .section-actions wraps ONLY for the wat
   // (order) and full-width -- takes a second row of its own; every v1.45
   // one-line member still shares the original line and its width budget.
   assert.match(body, /\.section-actions\s*\{[^}]*flex-wrap:\s*wrap[^}]*width:\s*100%/);
-  assert.match(body, /\.section-actions \.watch-toggle\s*\{[^}]*order:\s*10[^}]*width:\s*100%/, 'the watch group is the only wrapping member');
+  // v1.50.4: the wrap trigger is flex-basis 70% now (grows to fill row 2
+  // alone; leaves room for the order-11 Re-pull button beside it on
+  // subscribed-channel views -- no more orphaned middle row).
+  assert.match(body, /\.section-actions \.watch-toggle\s*\{[^}]*order:\s*10[^}]*flex:\s*1 1 70%/, 'the watch group anchors row 2 via order + a 70% basis');
 });
 
 test('mobile (v1.45.2 #3, REVISITS v1.23): Shuffle/Rescan WORD labels are hidden so the row fits one glyph line', () => {

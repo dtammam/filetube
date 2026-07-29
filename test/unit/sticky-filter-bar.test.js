@@ -40,7 +40,8 @@ test('#3: on mobile the action row keeps its one-glyph-line contract; wrap exist
   // labels), so a bare match is unambiguous.
   assert.match(css, /\.section-actions\s*\{[^}]*flex-wrap:\s*wrap/, '.section-actions wraps on mobile (v1.50: watch-group second row)');
   assert.match(css, /\.section-actions \.watch-toggle\s*\{[^}]*order:\s*10/, 'the watch group is forced OFF the one-glyph line');
-  assert.match(css, /\.section-actions \.watch-toggle\s*\{[^}]*width:\s*100%/, 'the watch group is its own full-width row');
+  assert.match(css, /\.section-actions \.watch-toggle\s*\{[^}]*flex:\s*1 1 70%/, 'v1.50.4: grows to fill row 2 alone, leaves room for Re-pull beside it');
+  assert.match(css, /\.section-actions #sub-repull-channel-btn\s*\{[^}]*order:\s*11/, 'v1.50.4: Re-pull joins row 2, never orphans a middle row');
   assert.match(css, /\.section-actions \.btn \.btn-label\s*\{\s*display:\s*none/, 'Shuffle/Rescan labels are hidden on mobile');
 });
 
