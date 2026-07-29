@@ -697,7 +697,10 @@ test('structural lock: enumerateRepullableItems/recordRepulledItemMeta/runRepull
   assert.equal(enumerateCallSites.length, 2, 'enumerateRepullableItems must be called from exactly two places in lib/ytdlp/index.js (the library-wide and per-video reheat route handlers) -- a third call site anywhere in this file must fail this test');
 
   const recordCallSites = src.match(/(?<!function )recordRepulledItemMeta\(/g) || [];
-  assert.equal(recordCallSites.length, 1, 'recordRepulledItemMeta must be called from exactly one place in lib/ytdlp/index.js (inside runRepullMetadataBatch) -- a second call site anywhere in this file must fail this test');
+  // v1.49: the one call site moved INTO `reheatOneItem` (the extracted per-item
+  // pass both workers share). The count is unchanged and still exactly 1 --
+  // which is the point: two workers, still one writer.
+  assert.equal(recordCallSites.length, 1, 'recordRepulledItemMeta must be called from exactly one place in lib/ytdlp/index.js (inside reheatOneItem, the pass shared by runRepullMetadataBatch and runSingleItemReheat) -- a second call site anywhere in this file must fail this test');
 
   // Every automatic/timer/boot-driven code path must never mention the
   // reheat batch runner or either deps-bridged seam, anywhere in its own

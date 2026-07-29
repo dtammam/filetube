@@ -586,3 +586,152 @@ test('the running entry does not leak the PREVIOUS video\'s result (setOneShot m
     await close();
   }
 });
+
+// ---- THE ANTI-DRIFT LOCK ---------------------------------------------------
+//
+// v1.49 gate fix (QA WARNING): the plan called for this and the implementation
+// shipped without it. `reheatOneItem` is the per-item metadata pass EXTRACTED so
+// the library batch and the per-video route cannot diverge -- but every other
+// test in this file and its sibling asserts each path INDEPENDENTLY, which locks
+// each path's behaviour without ever locking that they AGREE. This drives one
+// identical item through both routes with identical stubs and diffs the payload
+// that actually reaches the single database writer.
+//
+// The one permitted difference is `allowViewCountDecrease` (intake decision 2),
+// and it is asserted to be the ONLY one rather than merely excluded -- a
+// deletion-based comparison would silently absorb any NEW field a future fork
+// added to one path and not the other.
+
+test('anti-drift: the library batch and the per-video route persist IDENTICAL metadata for the same item, differing ONLY in allowViewCountDecrease', async () => {
+  const NETWORK_RESULT = {
+    sourceTitle: 'Real Title',
+    sourceViewCount: 4242,
+    releaseDate: 1700000000000,
+    chapters: [{ startTime: 0, title: 'Intro' }],
+    channel: { channelUrl: 'https://www.youtube.com/channel/UCaaaaaaaaaaaaaaaaaaaaaa', channelId: 'UCaaaaaaaaaaaaaaaaaaaaaa', channelName: 'Chan' },
+    wroteSubs: true,
+  };
+
+  async function capture(trigger) {
+    ytdlp.resetRepullMetadataStateForTests();
+    activity.resetForTests();
+    const deps = makeFakeDeps();
+    let captured = null;
+    deps.recordRepulledItemMeta = async (d, mediaId, meta) => { captured = { mediaId, meta }; return true; };
+    // Probed identically on both paths: a channel avatar is part of the payload.
+    run.probeChannelAvatar = async () => ({ avatarUrl: 'https://example.com/a.jpg', channelId: 'UCaaaaaaaaaaaaaaaaaaaaaa' });
+    run.repullItemMetaAndSubs = async () => ({ ...NETWORK_RESULT });
+
+    const { base, close } = await startTestApp(deps, enabledConfig());
+    try {
+      await trigger(base);
+      await flush(60);
+    } finally {
+      await close();
+    }
+    return captured;
+  }
+
+  const viaBatch = await capture((base) => fetch(`${base}/api/ytdlp/repull-metadata`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ force: true }),
+  }));
+  const viaItem = await capture((base) => fetch(itemUrl(base), { method: 'POST' }));
+
+  assert.ok(viaBatch && viaItem, 'both paths must have reached the database writer');
+  assert.equal(viaBatch.mediaId, viaItem.mediaId, 'both must write to the same item');
+
+  // Every key present on either side, compared field by field.
+  const keys = new Set([...Object.keys(viaBatch.meta), ...Object.keys(viaItem.meta)]);
+  const differing = [];
+  for (const key of keys) {
+    const a = JSON.stringify(viaBatch.meta[key]);
+    const b = JSON.stringify(viaItem.meta[key]);
+    if (a !== b) differing.push({ key, batch: viaBatch.meta[key], item: viaItem.meta[key] });
+  }
+
+  assert.deepEqual(
+    differing.map((d) => d.key).sort(),
+    ['allowViewCountDecrease'],
+    `the ONLY permitted divergence is allowViewCountDecrease; found: ${JSON.stringify(differing)}`,
+  );
+  assert.equal(viaBatch.meta.allowViewCountDecrease, false, 'the batch keeps the v1.48 monotonicity guard');
+  assert.equal(viaItem.meta.allowViewCountDecrease, true, 'the explicit per-video force overrides it');
+
+  // And the payload is not vacuously equal -- it really did carry the work.
+  assert.equal(viaItem.meta.sourceTitle, 'Real Title');
+  assert.equal(viaItem.meta.sourceViewCount, 4242);
+  assert.equal(viaItem.meta.markComplete, true);
+  assert.equal(viaItem.meta.channel.channelId, 'UCaaaaaaaaaaaaaaaaaaaaaa');
+});
+
+test('v1.49 gate fix: the relocate route HOLDS the shared latch for the duration -- a reheat cannot start mid-move', async () => {
+  // The route always CHECKED the latch; until the gate caught it, it never HELD
+  // one, so "409 both ways" was only true in the direction the earlier test
+  // exercised. A library batch starting while this relocation is mid-copy
+  // resolves safely today only because of machinery this feature does not own.
+  const deps = makeFakeDeps();
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  deps.relocateHydratedImport = async () => { await gate; return { status: 'moved', newId: 'n', newPath: '/p', archived: true }; };
+
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    const moving = fetch(`${itemUrl(base)}/relocate`, { method: 'POST' });
+    await flush(10);
+
+    assert.equal((await fetch(itemUrl(base), { method: 'POST' })).status, 409,
+      'a per-video reheat must not start while a move is in flight');
+    assert.equal((await fetch(`${base}/api/ytdlp/repull-metadata`, { method: 'POST' })).status, 409,
+      'and neither must a library-wide batch');
+    assert.equal((await fetch(`${itemUrl(base)}/relocate`, { method: 'POST' })).status, 409,
+      'nor a second move of the same file');
+
+    release();
+    assert.equal((await moving).status, 200);
+    await flush(10);
+
+    // ...and the latch is RELEASED afterwards, or the feature would wedge.
+    assert.equal((await fetch(itemUrl(base), { method: 'POST' })).status, 202);
+    await flush();
+  } finally {
+    release();
+    await flush();
+    await close();
+  }
+});
+
+test('v1.49 gate fix: a relocation that THROWS still releases the latch (a wedged latch would disable every reheat route)', async () => {
+  const deps = makeFakeDeps();
+  deps.relocateHydratedImport = async () => { throw new Error('disk fell over'); };
+
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    assert.equal((await fetch(`${itemUrl(base)}/relocate`, { method: 'POST' })).status, 500);
+    assert.equal((await fetch(itemUrl(base), { method: 'POST' })).status, 202,
+      'the finally must have released the latch');
+    await flush();
+  } finally {
+    await close();
+  }
+});
+
+test('v1.49 gate fix: cancel stays honest during a relocation -- it cannot abandon a move mid-copy', async () => {
+  const deps = makeFakeDeps();
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  deps.relocateHydratedImport = async () => { await gate; return { status: 'moved', newId: 'n' }; };
+
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    const moving = fetch(`${itemUrl(base)}/relocate`, { method: 'POST' });
+    await flush(10);
+    const res = await fetch(`${base}/api/ytdlp/repull-metadata/cancel`, { method: 'POST' });
+    assert.deepEqual(await res.json(), { cancelled: false, reason: 'relocating' });
+    release();
+    await moving;
+  } finally {
+    release();
+    await flush();
+    await close();
+  }
+});
