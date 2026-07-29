@@ -1993,6 +1993,103 @@ function isFullWatchSeedItem(item) {
     && typeof item.filePath === 'string';
 }
 
+// ---- v1.53: the attribution picker ------------------------------------------
+//
+// One modal, two callers (watch page single-item, folder-view bulk) -- the
+// v1.41.7 one-shared-decision-function posture. createElement/textContent
+// ONLY (target names are server-sanitized but the discipline is absolute).
+// Reuses the .modal-backdrop/.modal-content STYLE classes; behavior is fully
+// self-managed here (the v1.50.3 lesson: a shared class never implies shared
+// JS). Returns nothing; tears itself down on pick/cancel/Escape/backdrop.
+function showAttributionPicker(targets, opts, onPick) {
+  if (typeof document === 'undefined') return;
+  const o = opts || {};
+  const backdrop = document.createElement('div');
+  backdrop.className = 'modal-backdrop attr-picker-backdrop';
+  const modal = document.createElement('div');
+  modal.className = 'modal-content attr-picker';
+  const heading = document.createElement('h3');
+  heading.textContent = o.title || 'Attribute to channel';
+  modal.appendChild(heading);
+
+  let relocateCheck = null;
+  if (o.showRelocate) {
+    const label = document.createElement('label');
+    label.className = 'attr-picker-relocate';
+    relocateCheck = document.createElement('input');
+    relocateCheck.type = 'checkbox';
+    relocateCheck.checked = true;
+    label.appendChild(relocateCheck);
+    label.appendChild(document.createTextNode(" Also move the files into the channel's folder"));
+    modal.appendChild(label);
+  }
+
+  const list = document.createElement('div');
+  list.className = 'attr-picker-list';
+  const teardown = () => {
+    document.removeEventListener('keydown', onKey, true);
+    backdrop.remove();
+  };
+  const onKey = (e) => {
+    if (e.key !== 'Escape') return;
+    e.stopImmediatePropagation();
+    teardown();
+  };
+  for (const t of (Array.isArray(targets) ? targets : [])) {
+    if (!t || typeof t.channelUrl !== 'string' || typeof t.channelName !== 'string') continue;
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'attr-picker-row';
+    const avatar = document.createElement('span');
+    avatar.className = 'attr-picker-avatar';
+    const source = resolveAvatarSource(t.channelName, t.channelAvatarUrl || '');
+    if (source.type === 'url') {
+      const img = document.createElement('img');
+      img.src = source.url;
+      img.alt = '';
+      img.loading = 'lazy';
+      avatar.appendChild(img);
+    } else {
+      avatar.textContent = source.glyph;
+      avatar.style.backgroundColor = source.color;
+    }
+    row.appendChild(avatar);
+    const name = document.createElement('span');
+    name.className = 'attr-picker-name';
+    name.textContent = t.channelName;
+    row.appendChild(name);
+    const tag = document.createElement('span');
+    tag.className = 'attr-picker-source';
+    tag.textContent = t.source === 'subscription' ? 'Subscribed' : 'In library';
+    row.appendChild(tag);
+    row.addEventListener('click', () => {
+      const relocate = relocateCheck ? relocateCheck.checked === true : false;
+      teardown();
+      if (typeof onPick === 'function') onPick(t, { relocate });
+    });
+    list.appendChild(row);
+  }
+  if (!list.firstChild) {
+    const empty = document.createElement('div');
+    empty.className = 'attr-picker-empty';
+    empty.textContent = 'No channels to attribute to yet - subscribe to a channel first.';
+    list.appendChild(empty);
+  }
+  modal.appendChild(list);
+
+  const cancel = document.createElement('button');
+  cancel.type = 'button';
+  cancel.className = 'btn attr-picker-cancel';
+  cancel.textContent = 'Cancel';
+  cancel.addEventListener('click', teardown);
+  modal.appendChild(cancel);
+
+  backdrop.appendChild(modal);
+  backdrop.addEventListener('click', (e) => { if (e.target === backdrop) teardown(); });
+  document.addEventListener('keydown', onKey, true);
+  document.body.appendChild(backdrop);
+}
+
 // ---- v1.51: the notification bell ------------------------------------------
 //
 // YouTube-style bell in the header's top-right, on every shell that has the
@@ -8237,5 +8334,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.52: the instant-watch seed stash (single-entry, id-matched, aged) +
     // the pure paint-plan builder the watch painter applies verbatim.
     stashWatchSeed, consumeWatchSeed, deriveWatchPaintPlan, isFullWatchSeedItem,
+    // v1.53: the shared attribution picker (DOM thin-shell; wiring-locked).
+    showAttributionPicker,
   };
 }

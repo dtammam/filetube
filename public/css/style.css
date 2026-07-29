@@ -4021,6 +4021,12 @@ a.sub-row-channel-link:focus-visible {
   .section-actions #sub-repull-channel-btn {
     order: 11;
   }
+
+  /* v1.53: the bulk-attribution button joins row 2 beside Re-pull -- an
+     explicit order (the v1.50.4 orphan-row lesson; repull owns 11). */
+  .section-actions #attribute-folder-btn {
+    order: 12;
+  }
   .section-actions .watch-toggle .format-toggle-btn {
     flex: 1 1 0;
   }
@@ -7654,6 +7660,89 @@ body.ft-css-fullscreen .bottom-nav {
   .watch-container #player-slot:empty {
     max-height: 45vh;
   }
+}
+
+/* ---- v1.53: the attribution picker ------------------------------------- */
+
+.attr-picker-list {
+  max-height: 50vh;
+  overflow-y: auto;
+  margin: 12px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.attr-picker-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: none;
+  border: none;
+  border-radius: var(--radius);
+  color: var(--text-primary);
+  cursor: pointer;
+  text-align: left;
+  font-size: var(--fs-md);
+}
+
+.attr-picker-row:hover {
+  background-color: var(--bg-secondary);
+}
+
+.attr-picker-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  overflow: hidden;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  font-weight: 600;
+  font-size: var(--fs-base);
+  background-color: var(--bg-secondary);
+}
+
+.attr-picker-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.attr-picker-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attr-picker-source {
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.attr-picker-relocate {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--fs-base);
+  margin-top: 8px;
+}
+
+.attr-picker-empty {
+  padding: 16px;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: var(--fs-sm);
+}
+
+.attr-picker-cancel {
+  margin-top: 4px;
 }
 
 /* ---- v1.51: the notification bell ---------------------------------------

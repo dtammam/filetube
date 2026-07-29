@@ -559,6 +559,69 @@ if (typeof module !== 'undefined' && module.exports) {
       // v1.50: the watched-state group mounts AFTER the format toggle (its
       // renderer inserts directly behind #library-format-toggle).
       renderWatchToggle(sectionActions, getStoredWatchFilter(), () => resetAndReload());
+      // v1.53 (Dean): the bulk-attribution control for folder views.
+      ensureAttributeFolderButton(sectionActions);
+    }
+
+    // v1.53: "Attribute folder..." -- shown ONLY on a ?root= folder view
+    // with at least one genuinely UNATTRIBUTED item (channelUrl empty, the
+    // single predicate every surface uses -- never resolveChannelName,
+    // which always fabricates a label). Container-scoped de-dupe (the
+    // doubled-toggle-row lesson); explicit order: 12 in the phone block
+    // (the v1.50.4 orphan-row lesson -- repull owns 11).
+    function ensureAttributeFolderButton(actionsEl) {
+      if (!actionsEl) return;
+      const existing = actionsEl.querySelector('#attribute-folder-btn');
+      const eligible = Boolean(rootFilter) &&
+        currentItems.some((it) => it && (typeof it.channelUrl !== 'string' || it.channelUrl === ''));
+      if (!eligible) {
+        if (existing) existing.remove();
+        return;
+      }
+      if (existing) return;
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.id = 'attribute-folder-btn';
+      btn.className = 'btn';
+      btn.title = 'Attribute unattributed videos in this folder to a channel';
+      btn.setAttribute('aria-label', 'Attribute unattributed videos in this folder to a channel');
+      const icon = document.createElement('i');
+      icon.className = 'icon-user';
+      btn.appendChild(icon);
+      const label = document.createElement('span');
+      label.className = 'btn-label';
+      label.textContent = 'Attribute folder';
+      btn.appendChild(document.createTextNode(' '));
+      btn.appendChild(label);
+      btn.addEventListener('click', async () => {
+        let targets = [];
+        try {
+          const res = await fetch('/api/attribution-targets');
+          const body = await res.json();
+          targets = Array.isArray(body.targets) ? body.targets : [];
+        } catch (_) { /* picker shows its own empty state */ }
+        showAttributionPicker(targets, { title: 'Attribute this folder to', showRelocate: true }, (target, opts) => {
+          fetch('/api/videos/attribute-channel-bulk', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ root: rootFilter, target, relocate: opts.relocate === true }),
+          })
+            .then((res) => res.json().then((b) => ({ ok: res.ok, b })))
+            .then(({ ok, b }) => {
+              if (!ok) { showToast((b && b.error) || 'Bulk attribution failed.'); return; }
+              if (b.relocating) {
+                showToast(`Attributed ${b.attributed} videos to ${target.channelName}; moving files - watch the activity chip.`);
+              } else if (b.relocateSkipped) {
+                showToast(`Attributed ${b.attributed} videos to ${target.channelName} (files not moved: ${b.relocateSkipped}).`);
+              } else {
+                showToast(`Attributed ${b.attributed} videos to ${target.channelName}.`);
+              }
+              resetAndReload();
+            })
+            .catch(() => showToast('Bulk attribution failed.'));
+        });
+      }, { signal });
+      actionsEl.appendChild(btn);
     }
 
     // The shared "reset to a fresh page 0" path for every control that used

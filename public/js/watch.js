@@ -830,6 +830,9 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.41.11 lesson about async-registered handlers outliving their view.
     let reheatBtn = null;
     let reheatPollTimer = null;
+    // v1.53: the manual-attribution control (fresh per view instance, like
+    // moveBtn/likeBtn/reheatBtn above).
+    let attributeBtn = null;
     // v1.49 gate fix (adversarial WARNING 2): the dismiss handle for an open
     // relocation confirm, so navigating away closes it instead of leaving a
     // "move this file" dialog for the PREVIOUS video on screen.
@@ -1036,6 +1039,10 @@ if (typeof module !== 'undefined' && module.exports) {
         // latched yt-dlp health probe, so this is at most one extra request
         // per tab session, and none at all once the answer is known.
         setupReheatButton();
+
+        // 3f. v1.53 (Dean): mount the "Attribute..." control for genuinely
+        // unattributed items (absent otherwise -- the AC15 posture).
+        setupAttributeButton();
 
         // 4. Mount/play this media in the persistent player controller. This
         // is idempotent -- if the controller already has this exact id loaded
@@ -2084,6 +2091,104 @@ if (typeof module !== 'undefined' && module.exports) {
     // createTextNode (not innerHTML) to match the rest of this file's DOM
     // conventions. `aria-label`/`title` stay fully descriptive even though
     // the visible label is the same short "Move" as before.
+    // v1.53 (Dean): "Attribute..." -- the manual escape hatch for items no
+    // reheat can ever attribute (dead/renamed channels, MeTube imports).
+    // Structurally ABSENT unless the item is genuinely unattributed
+    // (resolveFileChannelIdentity null -- the same predicate every other
+    // surface uses), the setupMoveButton runtime-control pattern.
+    function setupAttributeButton() {
+      const watchActions = root.querySelector('.watch-actions');
+      if (!watchActions || !mediaData) return;
+      const attributed = resolveFileChannelIdentity(mediaData) !== null;
+      if (attributed) {
+        if (attributeBtn) { attributeBtn.remove(); attributeBtn = null; }
+        return;
+      }
+      if (attributeBtn) return;
+      attributeBtn = document.createElement('button');
+      attributeBtn.type = 'button';
+      attributeBtn.id = 'attribute-media-btn';
+      attributeBtn.className = 'btn';
+      attributeBtn.title = 'Attribute to a channel';
+      attributeBtn.setAttribute('aria-label', 'Attribute to a channel');
+      const icon = document.createElement('i');
+      icon.className = 'icon-user';
+      attributeBtn.appendChild(icon);
+      const label = document.createElement('span');
+      label.className = 'btn-label';
+      label.textContent = 'Attribute';
+      attributeBtn.appendChild(document.createTextNode(' '));
+      attributeBtn.appendChild(label);
+      const btnGroup = watchActions.querySelector('.watch-action-btns');
+      (btnGroup || watchActions).appendChild(attributeBtn);
+      attributeBtn.addEventListener('click', handleAttributeClick, { signal });
+    }
+
+    async function handleAttributeClick() {
+      let targets = [];
+      try {
+        const res = await fetch('/api/attribution-targets', { signal });
+        const body = await res.json();
+        targets = Array.isArray(body.targets) ? body.targets : [];
+      } catch (_) { /* picker opens with its own empty state */ }
+      showAttributionPicker(targets, { title: 'Attribute this video to' }, (target) => {
+        fetch(`/api/videos/${encodeURIComponent(mediaId)}/attribute-channel`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ target }),
+        })
+          .then((res) => (res.ok ? res.json() : res.json().then((b) => Promise.reject(new Error(b.error || 'attribution failed')))))
+          .then((body) => {
+            // Repaint the uploader panel from the new identity (the painter
+            // is idempotent) and stand the button down.
+            mediaData.channelUrl = target.channelUrl;
+            mediaData.channelName = target.channelName;
+            mediaData.channelAvatarUrl = target.channelAvatarUrl || '';
+            mediaData.channelAttributedManually = true;
+            currentChannelName = resolveChannelName(mediaData, folderSettings);
+            paintMetadata(mediaData, currentChannelName);
+            setupAttributeButton();
+            showToast(`Attributed to ${target.channelName}.`);
+            const reloc = body && body.relocation;
+            if (reloc && reloc.available && reloc.destinationDir) {
+              offerAttributionMove(reloc.destinationDir, target.channelName);
+            }
+          })
+          .catch((err) => showToast(err && err.message ? err.message : 'Attribution failed.'));
+      });
+    }
+
+    // The physical move, through the EXISTING move endpoint -- explicit
+    // confirm, player closed first (the offerRelocation posture), navigate
+    // to the re-keyed id on success.
+    function offerAttributionMove(destinationDir, channelLabel) {
+      showConfirmModal(
+        'File under the channel folder?',
+        `Move this file into <strong>${escapeHtmlText(channelLabel)}</strong>'s folder?<br><small>${escapeHtmlText(destinationDir)}</small>`,
+        () => {
+          window.FileTube.player.close();
+          fetch(`/api/videos/${encodeURIComponent(mediaId)}/move`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ targetFolder: destinationDir }),
+          })
+            .then((res) => res.json().then((b) => ({ ok: res.ok, b })))
+            .then(({ ok, b }) => {
+              if (ok && b && b.id) {
+                showToast('Moved into the channel folder.');
+                if (window.FileTube && typeof window.FileTube.navigate === 'function') {
+                  window.FileTube.navigate('/watch.html?v=' + encodeURIComponent(b.id));
+                }
+              } else {
+                showToast((b && b.error) || 'Move failed - the file was attributed but not moved.');
+              }
+            })
+            .catch(() => showToast('Move failed - the file was attributed but not moved.'));
+        },
+        { confirm: 'Move file', cancel: 'Keep it here' }
+      );
+    }
+
     function setupMoveButton() {
       const watchActions = root.querySelector('.watch-actions');
       if (!watchActions || !mediaData) return;
@@ -2459,6 +2564,13 @@ if (typeof module !== 'undefined' && module.exports) {
         return 'Reheat did not complete. Some metadata may have been saved; try again.';
       }
       if (entry.networkRan === false) return 'No YouTube source found for this video, so there was nothing to refresh.';
+      // v1.53 (Dean's decision 3): a manual attribution that DECLINED a
+      // conflicting network identity is named specifically -- without this
+      // branch the diff below is empty and toasts "everything was already
+      // up to date", which is actively false.
+      if (entry.attributionConflict && entry.attributionConflict.kept) {
+        return `Kept your manual attribution (${entry.attributionConflict.kept}); the source now reports ${entry.attributionConflict.discovered}.`;
+      }
       const before = entry.before || {};
       const after = entry.after || {};
       const parts = [];

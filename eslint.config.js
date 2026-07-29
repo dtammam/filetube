@@ -102,6 +102,8 @@ module.exports = [
         // (common.js).
         deriveWatchPaintPlan: 'readonly',
         isFullWatchSeedItem: 'readonly',
+        // v1.53: the shared attribution picker (common.js).
+        showAttributionPicker: 'readonly',
         getStarRating: 'readonly',
         rankRelated: 'readonly',
         resolveAudioArtUrl: 'readonly',
