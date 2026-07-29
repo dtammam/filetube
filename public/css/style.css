@@ -4150,17 +4150,24 @@ a.sub-row-channel-link:focus-visible {
 }
 
 /* === v1.21 FR-2: player controls / audio-mode ===============================
-   Custom blocky app-owned control bar that replaces the native
-   <audio>/<video controls> bar (unstyleable -- the pure-white-in-dark-mode +
-   rounded/derpy look, per docs/ui-research-2026-07.md #4). Drives BOTH audio
-   and video (one shared #media-player). Every color below comes from the
-   existing era CSS custom properties (:root / [data-theme] blocks at the top
-   of this file) so light/dark + all four eras "just work" with zero new
-   tokens (AC7); every corner is hard `border-radius: 0` (not `var(--radius)`)
-   so the bar reads as deliberately blocky/beveled in EVERY era, including
-   2021/2014/2009, which otherwise round most other chrome (AC8). `color-
-   scheme: dark light` on the wrapper lets any remaining native form-control
-   chrome (e.g. focus rings) pick a sane light/dark default too. */
+   Custom app-owned control bar that replaces the native <audio>/<video
+   controls> bar (unstyleable -- the pure-white-in-dark-mode + rounded/derpy
+   look, per docs/ui-research-2026-07.md #4). Drives BOTH audio and video
+   (one shared #media-player). Every color below comes from the existing era
+   CSS custom properties (:root / [data-theme] blocks at the top of this
+   file) so light/dark + all four eras "just work" with zero new tokens (AC7).
+
+   v1.50 (Dean): the bar is now ERA-SKINNED. The BASE rules in this section
+   are the 2005 Original skin (the blocky Winamp bevel this bar shipped with
+   -- hard border-radius: 0, outset bevels; the original v1.21 AC8 "blocky in
+   every era" contract is superseded by Dean's explicit ask). The 2009/2014/
+   2021 overrides live in the clearly-marked block after the seek/vol fill
+   rules below, and are STRICTLY visual: colors, gradients, radii, thumb
+   shapes -- never bar height, padding, gap, flex order, or any other
+   geometry (the mobile two-row layout has a long trap history; see the
+   max-width:768px rules below). `color-scheme: dark light` on the wrapper
+   lets any remaining native form-control chrome (e.g. focus rings) pick a
+   sane light/dark default too. */
 
 #player-wrapper {
   color-scheme: dark light;
@@ -4394,6 +4401,167 @@ a.sub-row-channel-link:focus-visible {
   background-image:
     repeating-linear-gradient(to right, rgba(0, 0, 0, 0.12) 0 2px, transparent 2px 4px),
     linear-gradient(to right, var(--yt-red) 0%, var(--yt-red) var(--vol-fill, 100%), var(--btn-bg) var(--vol-fill, 100%), var(--btn-bg) 100%);
+}
+
+/* === v1.50 (Dean): era player skins ========================================
+   The base rules above ARE the 2005 Original skin. Each era below re-skins
+   the SAME bar in that era's real YouTube-player visual language:
+     2009 Classic -- glossy gradient chrome (the era's glass-button look,
+                     matching the site's own [data-theme="2009"] .btn gloss);
+     2014 Flat    -- flat material: no bevels, no gradients, borderless
+                     ghost buttons, the era's brighter red, red dot scrubber;
+     2021 Modern  -- flat + round + crisp: circular hover on buttons, pill
+                     tracks, thin seek line, YouTube's round red scrubber.
+   HARD RULES (locked by test/unit/era-player-skins.test.js):
+   - visual-only: never height/padding/gap/order on .player-controls -- the
+     bar's geometry (40px desktop / two-row 80px mobile / 26px docked) is
+     identical in every era;
+   - every color is an era TOKEN or an rgba() overlay over one, never a
+     hardcoded palette hex -- that is what makes each skin correct in BOTH
+     data-mode palettes with zero mode-scoped rules here;
+   - 2005 has no block at all: the base IS its skin, byte-unchanged. */
+
+/* ---- 2009 Classic: glossy chrome ---------------------------------------- */
+[data-theme="2009"] .player-controls {
+  border-top: 1px solid var(--border-dark);
+  background-image: linear-gradient(to bottom, rgba(255, 255, 255, 0.25), rgba(0, 0, 0, 0.10));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45);
+}
+[data-theme="2009"] .pc-btn {
+  border-radius: 2px;
+  background-image: linear-gradient(to bottom, rgba(255, 255, 255, 0.35), rgba(0, 0, 0, 0.08));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+[data-theme="2009"] .pc-btn:active {
+  background-image: linear-gradient(to top, rgba(255, 255, 255, 0.25), rgba(0, 0, 0, 0.12));
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.25);
+}
+[data-theme="2009"] .pc-range::-webkit-slider-thumb {
+  border-radius: 2px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+[data-theme="2009"] .pc-range::-moz-range-thumb {
+  border-radius: 2px;
+}
+/* Glossy red fill; the Winamp stripe texture is a 2005 flourish -- gone. */
+[data-theme="2009"] #seek-bar::-webkit-slider-runnable-track {
+  background-image:
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.35), rgba(255, 255, 255, 0) 55%),
+    linear-gradient(to right, var(--yt-red) 0%, var(--yt-red) var(--seek-fill, 0%), var(--btn-bg) var(--seek-fill, 0%), var(--btn-bg) 100%);
+}
+[data-theme="2009"] #vol-bar::-webkit-slider-runnable-track {
+  background-image:
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.35), rgba(255, 255, 255, 0) 55%),
+    linear-gradient(to right, var(--yt-red) 0%, var(--yt-red) var(--vol-fill, 100%), var(--btn-bg) var(--vol-fill, 100%), var(--btn-bg) 100%);
+}
+
+/* ---- 2014 Flat: material, no chrome -------------------------------------- */
+[data-theme="2014"] .player-controls {
+  border-top: 1px solid var(--border-color);
+  box-shadow: none;
+}
+[data-theme="2014"] .pc-btn {
+  border: none;
+  border-radius: 2px;
+  background-color: transparent;
+  box-shadow: none;
+}
+[data-theme="2014"] .pc-btn:hover {
+  background-color: var(--btn-hover);
+}
+[data-theme="2014"] .pc-btn:active {
+  background-color: var(--btn-bg);
+  box-shadow: none;
+}
+[data-theme="2014"] .pc-range::-webkit-slider-runnable-track {
+  border: none;
+  box-shadow: none;
+}
+[data-theme="2014"] .pc-range::-moz-range-track {
+  border: none;
+}
+/* The era's red dot scrubber (12px circle on the 6px track: (12-6)/2 = -3px
+   to center; the base -5px was tuned for the 16px bordered rectangle). */
+[data-theme="2014"] .pc-range::-webkit-slider-thumb {
+  width: 12px;
+  height: 12px;
+  margin-top: -3px;
+  border: none;
+  border-radius: 50%;
+  background-color: var(--yt-red);
+  box-shadow: none;
+}
+[data-theme="2014"] .pc-range::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border: none;
+  border-radius: 50%;
+  background-color: var(--yt-red);
+}
+[data-theme="2014"] #seek-bar::-webkit-slider-runnable-track {
+  background-image: linear-gradient(to right, var(--yt-red) 0%, var(--yt-red) var(--seek-fill, 0%), var(--btn-bg) var(--seek-fill, 0%), var(--btn-bg) 100%);
+}
+[data-theme="2014"] #vol-bar::-webkit-slider-runnable-track {
+  background-image: linear-gradient(to right, var(--yt-red) 0%, var(--yt-red) var(--vol-fill, 100%), var(--btn-bg) var(--vol-fill, 100%), var(--btn-bg) 100%);
+}
+
+/* ---- 2021 Modern: flat + round + crisp ------------------------------------ */
+[data-theme="2021"] .player-controls {
+  border-top: 1px solid var(--border-color);
+  box-shadow: none;
+}
+[data-theme="2021"] .pc-btn {
+  border: none;
+  border-radius: 50%;
+  background-color: transparent;
+  box-shadow: none;
+}
+[data-theme="2021"] .pc-btn:hover {
+  background-color: var(--btn-hover);
+}
+[data-theme="2021"] .pc-btn:active {
+  background-color: var(--btn-bg);
+  box-shadow: none;
+}
+/* Thin pill tracks (4px inside the SAME 16px input hit area -- the input's
+   own height/flex are untouched, so layout is identical) + the round red
+   scrubber. Thumb centering: (12-4)/2 = -4px. */
+[data-theme="2021"] .pc-range::-webkit-slider-runnable-track {
+  height: 4px;
+  border: none;
+  border-radius: 999px;
+  box-shadow: none;
+}
+[data-theme="2021"] .pc-range::-moz-range-track {
+  height: 4px;
+  border: none;
+  border-radius: 999px;
+}
+[data-theme="2021"] .pc-range::-moz-range-progress {
+  height: 4px;
+  border-radius: 999px;
+}
+[data-theme="2021"] .pc-range::-webkit-slider-thumb {
+  width: 12px;
+  height: 12px;
+  margin-top: -4px;
+  border: none;
+  border-radius: 50%;
+  background-color: var(--yt-red);
+  box-shadow: none;
+}
+[data-theme="2021"] .pc-range::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border: none;
+  border-radius: 50%;
+  background-color: var(--yt-red);
+}
+[data-theme="2021"] #seek-bar::-webkit-slider-runnable-track {
+  background-image: linear-gradient(to right, var(--yt-red) 0%, var(--yt-red) var(--seek-fill, 0%), var(--btn-bg) var(--seek-fill, 0%), var(--btn-bg) 100%);
+}
+[data-theme="2021"] #vol-bar::-webkit-slider-runnable-track {
+  background-image: linear-gradient(to right, var(--yt-red) 0%, var(--yt-red) var(--vol-fill, 100%), var(--btn-bg) var(--vol-fill, 100%), var(--btn-bg) 100%);
 }
 
 /* ---- docked mini-player: compact bar (play/pause + seek only) ------------ */
