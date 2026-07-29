@@ -4128,6 +4128,14 @@ async function runScanDirectories() {
         if (typeof existing.channelAvatarUrl === 'string' && existing.channelAvatarUrl !== '') {
           newMetadata[id].channelAvatarUrl = existing.channelAvatarUrl;
         }
+        // v1.53 (manual attribution): the STICKY flag carries with the
+        // identity it protects -- the persist-gate checkpoint for this
+        // wave's new field (seventh-strike class). Dropping the flag while
+        // keeping the identity would silently re-arm the reheat/consume
+        // writers to overwrite what Dean set by hand.
+        if (existing.channelAttributedManually === true) {
+          newMetadata[id].channelAttributedManually = true;
+        }
         // v1.41.13 (universal one-offs): the non-YouTube source identity carries
         // forward with the rest -- the persist-gate checkpoint for the two new
         // fields (the six-strike class). A universal item CAN re-derive
@@ -4449,6 +4457,32 @@ async function runScanDirectories() {
             item.sourceExtractor = freshItem.sourceExtractor;
             if (freshItem.sourceId) item.sourceId = freshItem.sourceId;
           }
+          // v1.53 (manual attribution): the chaptersManual posture -- the
+          // flag is written ONLY by the attribute endpoint, never the scan,
+          // so the fresh in-lock value (present OR absent) is at least as
+          // new as this scan's Phase-1 snapshot. Mirror it unconditionally,
+          // INCLUDING clears. When manually attributed, adopt the identity
+          // UNIT from fresh too (the flag and the identity it protects must
+          // never desynchronize across a scan); on a mid-scan CLEAR, drop
+          // the identity unit with the flag or the merge resurrects exactly
+          // what the user just cleared.
+          if (freshItem.channelAttributedManually === true) {
+            item.channelAttributedManually = true;
+            if (typeof freshItem.channelUrl === 'string' && freshItem.channelUrl !== '') item.channelUrl = freshItem.channelUrl;
+            if (typeof freshItem.channelName === 'string' && freshItem.channelName !== '') item.channelName = freshItem.channelName;
+            if (freshItem.channelHandleUrl) item.channelHandleUrl = freshItem.channelHandleUrl; else delete item.channelHandleUrl;
+            if (freshItem.channelId) item.channelId = freshItem.channelId; else delete item.channelId;
+            if (freshItem.channelAvatarUrl) item.channelAvatarUrl = freshItem.channelAvatarUrl; else delete item.channelAvatarUrl;
+          } else {
+            if (item.channelAttributedManually === true) {
+              delete item.channelUrl;
+              delete item.channelHandleUrl;
+              delete item.channelId;
+              delete item.channelName;
+              delete item.channelAvatarUrl;
+            }
+            delete item.channelAttributedManually;
+          }
         }
       }
 
@@ -4484,7 +4518,9 @@ async function runScanDirectories() {
           if (consumedU) {
             item.sourceExtractor = consumedU.sourceExtractor;
             item.sourceId = consumedU.sourceId;
-            if (consumedU.channelName) item.channelName = consumedU.channelName;
+            // v1.53: a MANUAL attribution outranks a capture (Dean set it by
+            // hand; manual wins forever, exec-plan decision 3).
+            if (consumedU.channelName && !item.channelAttributedManually) item.channelName = consumedU.channelName;
             if (typeof consumedU.releaseDate === 'number' && Number.isFinite(consumedU.releaseDate)) {
               item.releaseDate = consumedU.releaseDate;
             }
@@ -4521,11 +4557,16 @@ async function runScanDirectories() {
             item.youtubeId = mediaRef.id;
             const consumedYt = ytdlp.consumeDownloadChannelMeta(fresh, mediaRef.id);
             if (consumedYt) {
-              item.channelUrl = consumedYt.channelUrl;
-              if (consumedYt.channelHandleUrl) item.channelHandleUrl = consumedYt.channelHandleUrl;
-              if (consumedYt.channelId) item.channelId = consumedYt.channelId;
-              if (consumedYt.channelName) item.channelName = consumedYt.channelName;
-              if (consumedYt.channelAvatarUrl) item.channelAvatarUrl = consumedYt.channelAvatarUrl;
+              // v1.53: identity written as a UNIT only when no MANUAL
+              // attribution holds it (manual wins forever, decision 3); the
+              // non-identity fields below (dates/title/views) always apply.
+              if (!item.channelAttributedManually) {
+                item.channelUrl = consumedYt.channelUrl;
+                if (consumedYt.channelHandleUrl) item.channelHandleUrl = consumedYt.channelHandleUrl;
+                if (consumedYt.channelId) item.channelId = consumedYt.channelId;
+                if (consumedYt.channelName) item.channelName = consumedYt.channelName;
+                if (consumedYt.channelAvatarUrl) item.channelAvatarUrl = consumedYt.channelAvatarUrl;
+              }
               if (typeof consumedYt.releaseDate === 'number' && Number.isFinite(consumedYt.releaseDate)) item.releaseDate = consumedYt.releaseDate;
               if (typeof consumedYt.sourceTitle === 'string' && consumedYt.sourceTitle !== '') { item.sourceTitle = consumedYt.sourceTitle; item.title = consumedYt.sourceTitle; }
               applyCapturedViewCount(item, consumedYt);
@@ -4542,10 +4583,13 @@ async function runScanDirectories() {
           item.youtubeId = videoId;
           const consumed = ytdlp.consumeDownloadChannelMeta(fresh, videoId);
           if (consumed) {
-            item.channelUrl = consumed.channelUrl;
-            if (consumed.channelHandleUrl) item.channelHandleUrl = consumed.channelHandleUrl;
-            if (consumed.channelId) item.channelId = consumed.channelId;
-            if (consumed.channelName) item.channelName = consumed.channelName;
+            // v1.53: same manual-wins unit guard as the D1a site above.
+            if (!item.channelAttributedManually) {
+              item.channelUrl = consumed.channelUrl;
+              if (consumed.channelHandleUrl) item.channelHandleUrl = consumed.channelHandleUrl;
+              if (consumed.channelId) item.channelId = consumed.channelId;
+              if (consumed.channelName) item.channelName = consumed.channelName;
+            }
             // C5-local/C5-ytdlp (T5 write path, wired end-to-end by T11 in
             // Wave 3): a yt-dlp-captured `upload_date`/`release_date` is
             // authoritative and supersedes the local-scan fallback (embedded
@@ -4568,8 +4612,9 @@ async function runScanDirectories() {
             // C6 (T11, Wave 3): `consumeDownloadChannelMeta` re-validates the
             // captured avatar via `sanitizeChannelAvatarUrl` before returning
             // it -- carry it onto the item exactly like the identity fields
-            // above.
-            if (typeof consumed.channelAvatarUrl === 'string' && consumed.channelAvatarUrl !== '') {
+            // above. v1.53: part of the identity unit, so the manual guard
+            // covers it too.
+            if (typeof consumed.channelAvatarUrl === 'string' && consumed.channelAvatarUrl !== '' && !item.channelAttributedManually) {
               item.channelAvatarUrl = consumed.channelAvatarUrl;
             }
             applyCapturedViewCount(item, consumed);
@@ -4598,7 +4643,11 @@ async function runScanDirectories() {
       // file the periodic auto-scan indexed before its downloadMeta was
       // written simply picks up its identity from its own folder on the
       // very next scan.
-      if (!item.channelUrl && matchRootFolder(item.filePath, ytdlpDownloadRoots)) {
+      // v1.53: `!item.channelUrl` already makes this safe against a manual
+      // attribution TODAY (manual writes set channelUrl) -- the explicit flag
+      // check makes the invariant survive any future manual shape that
+      // doesn't (a name-only attribution, a cleared-URL edge).
+      if (!item.channelUrl && !item.channelAttributedManually && matchRootFolder(item.filePath, ytdlpDownloadRoots)) {
         const backfilled = ytdlp.backfillChannelIdentityFromFolder(fresh, item, ytdlpConfig);
         if (backfilled) {
           item.channelUrl = backfilled.channelUrl;
@@ -11012,6 +11061,21 @@ async function recordRepulledItemMeta(deps, mediaId, meta, nowMs = Date.now()) {
     // other channel's face stapled onto it (channel A's name over channel B's
     // avatar on the watch page).
     const attributable = !!c && (!item.channelUrl || sameChannel);
+    // v1.53 (manual attribution, Dean's decision 3): a MANUAL attribution
+    // that disagrees with the freshly-resolved network identity is KEPT --
+    // and REPORTED, never silently. The `attributable` guard above already
+    // declines the write (manual sets channelUrl, so attributable collapses
+    // to sameChannel); what was missing is the signal. The conflict is
+    // written onto the caller-owned `m` (the deps-bridge style) so
+    // runSingleItemReheat can stamp it on the activity one-shot -- without
+    // it, describeReheat toasts "everything was already up to date", which
+    // is actively false.
+    if (item.channelAttributedManually === true && c && item.channelUrl && !sameChannel) {
+      m.attributionConflict = {
+        kept: typeof item.channelName === 'string' && item.channelName !== '' ? item.channelName : item.channelUrl,
+        discovered: typeof c.channelName === 'string' && c.channelName !== '' ? c.channelName : c.channelUrl,
+      };
+    }
     if (c && typeof c.channelUrl === 'string' && c.channelUrl !== '' && attributable) {
       if (!item.channelUrl) {
         // A genuine gap -- exactly Dean's MeTube imports (a folder name is all
@@ -11021,13 +11085,16 @@ async function recordRepulledItemMeta(deps, mediaId, meta, nowMs = Date.now()) {
         if (typeof c.channelHandleUrl === 'string' && c.channelHandleUrl !== '') item.channelHandleUrl = c.channelHandleUrl;
         if (typeof c.channelId === 'string' && c.channelId !== '') item.channelId = c.channelId;
         if (typeof c.channelName === 'string' && c.channelName !== '') item.channelName = c.channelName;
-      } else {
+      } else if (!item.channelAttributedManually) {
         // Already attributed to this SAME channel -- fill genuine per-field
         // gaps only (e.g. a folder-backfilled item that got a handle URL but
         // no channelId), never re-point or rewrite what is already there. The
         // existing `channelUrl` is deliberately NOT normalized to the
         // canonical form: rewriting it is an overwrite, not a gap-fill, and
         // every consumer already joins on channelId/handle alike.
+        // v1.53: a MANUALLY-attributed item is excluded even from same-
+        // channel gap-fill -- what Dean wrote by hand is exactly what he
+        // sees, and the network adds nothing to it uninvited.
         if (!item.channelHandleUrl && typeof c.channelHandleUrl === 'string' && c.channelHandleUrl !== '') item.channelHandleUrl = c.channelHandleUrl;
         if (!item.channelId && typeof c.channelId === 'string' && c.channelId !== '') item.channelId = c.channelId;
         if (!item.channelName && typeof c.channelName === 'string' && c.channelName !== '') item.channelName = c.channelName;
@@ -11038,7 +11105,10 @@ async function recordRepulledItemMeta(deps, mediaId, meta, nowMs = Date.now()) {
     // no `m.channel` at all (no identity was discovered this run) can still
     // take an avatar -- that is the pre-existing, item-scoped contract, and
     // there is no other channel it could belong to.
-    if (typeof m.channelAvatarUrl === 'string' && m.channelAvatarUrl !== '' && (!c || attributable)) {
+    if (typeof m.channelAvatarUrl === 'string' && m.channelAvatarUrl !== '' && (!c || attributable) && !item.channelAttributedManually) {
+      // v1.53: the manual guard joins the avatar gate -- a manual
+      // attribution's avatar (or deliberate lack of one) is part of the
+      // hand-set unit.
       item.channelAvatarUrl = m.channelAvatarUrl;
     }
     // v1.33 T3: the re-pulled REAL title (network `--dump-json` or the local
@@ -11341,6 +11411,238 @@ app.post('/api/videos/:id/chapters', async (req, res) => {
   }
   if (notFound) return res.status(404).json({ error: 'Media file not found' });
   res.json({ success: true, ...resolved });
+});
+
+// ---- v1.53: manual channel attribution -------------------------------------
+//
+// Dean's escape hatch for the class the reheat machinery structurally cannot
+// solve: a renamed/dead channel means no network re-pull will ever attribute
+// a MeTube-era import. The identity is written as a UNIT with the STICKY
+// `channelAttributedManually` flag (manual wins forever, decision 3 -- every
+// automatic identity writer now checks it), and the endpoint returns a
+// relocation PROPOSAL only; the physical move is the client's explicit
+// confirm through the EXISTING move endpoint (never a silent file move).
+
+// The picker's data: subscriptions + distinct identity groups already in the
+// library (covers dead channels whose earlier downloads were attributed at
+// capture time). Deduped by channelId when both sides know one, else by
+// channelUrl. Read-only over the cache.
+app.get('/api/attribution-targets', (req, res) => {
+  const db = getCachedDatabase();
+  const byUrl = new Map();
+  const seenChannelIds = new Set();
+  const addTarget = (t) => {
+    if (byUrl.has(t.channelUrl)) {
+      const existing = byUrl.get(t.channelUrl);
+      if (!existing.channelAvatarUrl && t.channelAvatarUrl) existing.channelAvatarUrl = t.channelAvatarUrl;
+      return;
+    }
+    if (t.channelId && seenChannelIds.has(t.channelId)) return; // same channel, other URL form
+    byUrl.set(t.channelUrl, t);
+    if (t.channelId) seenChannelIds.add(t.channelId);
+  };
+  const subs = (db.ytdlp && Array.isArray(db.ytdlp.subscriptions)) ? db.ytdlp.subscriptions : [];
+  for (const sub of subs) {
+    if (!sub || typeof sub.channelUrl !== 'string' || sub.channelUrl === '') continue;
+    addTarget({
+      channelUrl: sub.channelUrl,
+      channelName: (typeof sub.name === 'string' && sub.name !== '') ? sub.name : sub.channelUrl,
+      ...(typeof sub.channelId === 'string' && sub.channelId !== '' ? { channelId: sub.channelId } : {}),
+      ...(typeof sub.channelHandleUrl === 'string' && sub.channelHandleUrl !== '' ? { channelHandleUrl: sub.channelHandleUrl } : {}),
+      ...(typeof sub.channelAvatarUrl === 'string' && sub.channelAvatarUrl !== '' ? { channelAvatarUrl: sub.channelAvatarUrl } : {}),
+      source: 'subscription',
+    });
+  }
+  for (const item of Object.values(db.metadata || {})) {
+    if (!item || typeof item.channelUrl !== 'string' || item.channelUrl === '') continue;
+    addTarget({
+      channelUrl: item.channelUrl,
+      channelName: (typeof item.channelName === 'string' && item.channelName !== '') ? item.channelName : (item.folderName || item.channelUrl),
+      ...(typeof item.channelId === 'string' && item.channelId !== '' ? { channelId: item.channelId } : {}),
+      ...(typeof item.channelHandleUrl === 'string' && item.channelHandleUrl !== '' ? { channelHandleUrl: item.channelHandleUrl } : {}),
+      ...(typeof item.channelAvatarUrl === 'string' && item.channelAvatarUrl !== '' ? { channelAvatarUrl: item.channelAvatarUrl } : {}),
+      source: 'library',
+    });
+  }
+  const targets = [...byUrl.values()].sort((a, b) => a.channelName.toLowerCase().localeCompare(b.channelName.toLowerCase()));
+  res.json({ targets });
+});
+
+// Validate an attribution target's identity at the write boundary through
+// the SAME single gates the capture path uses. Returns {ok, identity|error}.
+function sanitizeAttributionTarget(t) {
+  if (!t || typeof t !== 'object' || Array.isArray(t)) return { ok: false, error: 'target must be an object (or pass clear: true)' };
+  const check = validateChannelUrl(t.channelUrl);
+  if (!check.ok) return { ok: false, error: 'target.channelUrl is not a valid channel URL' };
+  // eslint-disable-next-line no-control-regex
+  const name = typeof t.channelName === 'string' ? t.channelName.replace(/[\x00-\x1f\x7f]/g, '').trim().slice(0, 200) : '';
+  if (name === '') return { ok: false, error: 'target.channelName is required' };
+  const identity = { channelUrl: check.url, channelName: name };
+  if (typeof t.channelId === 'string' && ytdlp.CHANNEL_ID_PATTERN.test(t.channelId)) identity.channelId = t.channelId;
+  if (typeof t.channelHandleUrl === 'string') {
+    const handle = validateChannelUrl(t.channelHandleUrl);
+    if (handle.ok && handle.url !== identity.channelUrl) identity.channelHandleUrl = handle.url;
+  }
+  const avatar = ytdlp.sanitizeChannelAvatarUrl(t.channelAvatarUrl);
+  if (avatar) identity.channelAvatarUrl = avatar;
+  return { ok: true, identity };
+}
+
+// Applies one manual attribution (or clear) to an item INSIDE a running
+// mutator. Shared by the single and bulk endpoints -- the v1.41.4 one-helper
+// discipline. Returns 'attributed' | 'cleared' | 'not-manual' | 'missing'.
+function applyManualAttribution(item, identity, clearing) {
+  if (!item) return 'missing';
+  if (clearing) {
+    // Only a MANUAL attribution may be cleared -- clearing capture-derived
+    // identity would destroy real data behind one keystroke.
+    if (item.channelAttributedManually !== true) return 'not-manual';
+    delete item.channelAttributedManually;
+    delete item.channelUrl;
+    delete item.channelHandleUrl;
+    delete item.channelId;
+    delete item.channelName;
+    delete item.channelAvatarUrl;
+    return 'cleared';
+  }
+  item.channelUrl = identity.channelUrl;
+  item.channelName = identity.channelName;
+  if (identity.channelId) item.channelId = identity.channelId; else delete item.channelId;
+  if (identity.channelHandleUrl) item.channelHandleUrl = identity.channelHandleUrl; else delete item.channelHandleUrl;
+  if (identity.channelAvatarUrl) item.channelAvatarUrl = identity.channelAvatarUrl; else delete item.channelAvatarUrl;
+  item.channelAttributedManually = true;
+  return 'attributed';
+}
+
+// The relocation PROPOSAL for a manual attribution: destination dir only,
+// no file touched. Deliberately NOT planImportRelocation (which hard-
+// requires a youtubeId these items lack and skips files already under the
+// download root -- Dean's exact case); the move itself is the existing
+// POST /api/videos/:id/move, which is collision-409-safe and re-keys all
+// per-user state.
+function proposeAttributionMove(db, item, identity) {
+  const config = ytdlp.parseYtdlpConfig();
+  if (!ytdlp.isEnabled(config)) return { available: false, reason: 'module-disabled' };
+  try {
+    // The SAME cache-coherency dance GET /api/videos/:id documents:
+    // resolveChannelDirForChannel -> ensureYtdlp backfills IN PLACE, and the
+    // shared getCachedDatabase() object must never be mutated (the test
+    // runner's throwing Proxy is the enforcement).
+    const dbForLookup = { ...db, ytdlp: db.ytdlp ? JSON.parse(JSON.stringify(db.ytdlp)) : undefined };
+    const destinationDir = ytdlp.resolveChannelDirForChannel(dbForLookup, config, identity);
+    if (!destinationDir) return { available: false, reason: 'channel-dir-unresolvable' };
+    if (path.dirname(item.filePath) === destinationDir) return { available: false, reason: 'already-there' };
+    return { available: true, destinationDir };
+  } catch (err) {
+    console.error('Attribution: channel dir unresolvable:', err && err.message);
+    return { available: false, reason: 'channel-dir-unresolvable' };
+  }
+}
+
+app.post('/api/videos/:id/attribute-channel', async (req, res) => {
+  const body = req.body || {};
+  const clearing = body.clear === true;
+  let identity = null;
+  if (!clearing) {
+    const check = sanitizeAttributionTarget(body.target);
+    if (!check.ok) return res.status(400).json({ error: check.error });
+    identity = check.identity;
+  }
+  let result = null;
+  try {
+    await updateDatabase(db => {
+      result = applyManualAttribution(db.metadata[req.params.id], identity, clearing);
+      return result === 'attributed' || result === 'cleared';
+    });
+  } catch (err) {
+    console.error(`Error attributing ${req.params.id}:`, err);
+    return res.status(500).json({ error: `Could not attribute: ${err.message}` });
+  }
+  if (result === 'missing') return res.status(404).json({ error: 'Media file not found' });
+  if (result === 'not-manual') return res.status(400).json({ error: 'Only a manual attribution can be cleared.' });
+  let relocation = { available: false, reason: 'cleared' };
+  if (result === 'attributed') {
+    const db = getCachedDatabase();
+    const item = db.metadata[req.params.id];
+    relocation = item ? proposeAttributionMove(db, item, identity) : { available: false, reason: 'item-gone' };
+  }
+  res.json({ success: true, result, relocation });
+});
+
+// Bulk: every UNATTRIBUTED item under `root` gets the target identity in ONE
+// mutator; `relocate: true` then moves each through the same collision-safe
+// mover the single-item flow uses, in the BACKGROUND, with progress on the
+// activity one-shot surface (the repull-metadata 202 shape). Attributed
+// items are never touched (bulk narrows, it never re-points).
+app.post('/api/videos/attribute-channel-bulk', async (req, res) => {
+  if (refuseIfReadOnlyMedia(res)) return;
+  const body = req.body || {};
+  const root = typeof body.root === 'string' ? body.root : '';
+  if (root === '') return res.status(400).json({ error: 'root is required' });
+  const check = sanitizeAttributionTarget(body.target);
+  if (!check.ok) return res.status(400).json({ error: check.error });
+  const identity = check.identity;
+  const relocate = body.relocate === true;
+
+  const matchedIds = [];
+  try {
+    await updateDatabase(db => {
+      for (const item of Object.values(db.metadata || {})) {
+        if (!item || typeof item.filePath !== 'string') continue;
+        if (!matchRootFolder(item.filePath, [root])) continue;
+        if (typeof item.channelUrl === 'string' && item.channelUrl !== '') continue; // attributed -- never re-point in bulk
+        if (applyManualAttribution(item, identity, false) === 'attributed') matchedIds.push(item.id);
+      }
+      return matchedIds.length > 0;
+    });
+  } catch (err) {
+    console.error('Bulk attribution failed:', err);
+    return res.status(500).json({ error: `Bulk attribution failed: ${err.message}` });
+  }
+  if (!relocate || matchedIds.length === 0) {
+    return res.json({ success: true, attributed: matchedIds.length, relocating: false });
+  }
+
+  // Background mover: per-item moveItemToFolder, 409 collisions counted
+  // separately from errors (the migrateOneOffsIntoChannelFolders posture),
+  // progress on the shared one-shot surface the activity chip already polls.
+  const ytdlpActivity = require('./lib/ytdlp/activity');
+  const ONE_SHOT_KEY = 'attribute-bulk';
+  const dbNow = getCachedDatabase();
+  const proposal = proposeAttributionMove(dbNow, { filePath: path.join(root, '_probe_') }, identity);
+  if (!proposal.available) {
+    return res.json({ success: true, attributed: matchedIds.length, relocating: false, relocateSkipped: proposal.reason });
+  }
+  const destinationDir = proposal.destinationDir;
+  ytdlpActivity.setOneShot(ONE_SHOT_KEY, {
+    kind: 'attribute-bulk', state: 'running', total: matchedIds.length,
+    done: 0, moved: 0, collisions: 0, failed: 0, current: null,
+  });
+  res.status(202).json({ success: true, attributed: matchedIds.length, relocating: true, total: matchedIds.length });
+  (async () => {
+    let moved = 0; let collisions = 0; let failed = 0; let done = 0;
+    for (const id of matchedIds) {
+      try {
+        // moveItemToFolder RETURNS {ok, status, error} for expected
+        // failures (it never throws them) -- 409 collisions counted
+        // separately from errors, the migrateOneOffsIntoChannelFolders
+        // posture: a name clash is a fact about the library, not a fault.
+        const result = await moveItemToFolder({ loadDatabase, updateDatabase, getMediaId }, id, destinationDir, {});
+        if (result && result.ok) moved++;
+        else if (result && result.status === 409) collisions++;
+        else { failed++; console.error(`Bulk attribution move failed for ${id}:`, result && result.error); }
+      } catch (err) {
+        failed++;
+        console.error(`Bulk attribution move threw for ${id}:`, err && err.message);
+      }
+      done++;
+      ytdlpActivity.setOneShot(ONE_SHOT_KEY, { done, moved, collisions, failed });
+    }
+    ytdlpActivity.setOneShot(ONE_SHOT_KEY, { state: 'done', current: null });
+  })().catch((err) => {
+    console.error('Bulk attribution mover crashed:', err);
+    ytdlpActivity.setOneShot(ONE_SHOT_KEY, { state: 'error' });
+  });
 });
 
 // API: Serve a subtitle track for a media item (A6, v1.24 UX Round, Wave 5).
