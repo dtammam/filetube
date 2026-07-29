@@ -738,3 +738,41 @@ test('v1.49 gate fix: cancel stays honest during a relocation -- it cannot aband
     await close();
   }
 });
+
+test('v1.49 gate fix: a PARTIAL expect is refused with 400, never silently degraded to a weaker binding', async () => {
+  // "Be kind to an older caller" was a false justification: `expect` and
+  // `transfer` shipped in the same unreleased wave, so no deployed client knows
+  // this route but not that field. The only thing that would ever send a
+  // partial object is a client refactor that dropped one -- this repo's
+  // most-repeated bug class -- and silent degradation is how that survives a
+  // release.
+  const deps = makeFakeDeps();
+  let relocated = 0;
+  deps.relocateHydratedImport = async () => { relocated += 1; return { status: 'moved', newId: 'n' }; };
+
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    const res = await fetch(`${itemUrl(base)}/relocate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ expect: { currentPath: '/a', destinationPath: '/b' } }), // transfer + sizeBytes missing
+    });
+    assert.equal(res.status, 400);
+    assert.equal(relocated, 0, 'and nothing was moved on the strength of a half-checked expectation');
+  } finally {
+    await close();
+  }
+});
+
+test('v1.49 gate fix: omitting expect ENTIRELY is still supported (the batch/preview escape hatch)', async () => {
+  const deps = makeFakeDeps();
+  deps.relocateHydratedImport = async () => ({ status: 'moved', newId: 'n', newPath: '/p', archived: true });
+
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    const res = await fetch(`${itemUrl(base)}/relocate`, { method: 'POST' });
+    assert.equal(res.status, 200, 'no expect at all is a supported caller shape, unlike a partial one');
+  } finally {
+    await close();
+  }
+});

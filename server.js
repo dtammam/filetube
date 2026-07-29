@@ -9270,6 +9270,26 @@ async function moveItemToFolder(deps, id, targetFolder, opts = {}) {
   // would silently destroy it -- the very loss the carry exists to prevent.
   rekeyInFlightState(oldId, mutatorResult, oldPath, newPath);
 
+  // v1.49 GATE FIX (adversarial WARNING 6): close our own read streams on the
+  // source BEFORE unlinking it -- the same thing `DELETE /api/videos/:id` has
+  // done since v1.41.10, for the same reason. An unlink issued while this
+  // process still holds an fd is the DELETE_PENDING trap on SMB/CIFS: the
+  // dirent survives, and on the cross-device path that leftover is a FULL
+  // DUPLICATE of an irreplaceable file sitting in a scanned library root, which
+  // the next scan indexes as a second item. The delete route's tombstone net
+  // does not cover this path.
+  //
+  // This was previously unreachable here only by accident: `planImportRelocation`'s
+  // `recently-watched` clause meant a file this process had been streaming was
+  // never relocated. v1.49 lifts that clause for the attended per-video confirm,
+  // and the watch page streams the video on mount -- so the correlation went
+  // from incidental to GUARANTEED. Bounded (3s) and never throws; on timeout the
+  // unlink proceeds exactly as it did before.
+  //
+  // Deliberately also fixes `POST /api/videos/:id/move`, which shares this
+  // function and has always had the same exposure.
+  await destroyMediaStreams(oldPath);
+
   // Only now is the source directory entry removed. A failure here is a stray
   // leftover, never data loss (the db and the bytes already agree) -- log and
   // continue, exactly as before.
@@ -9746,9 +9766,16 @@ function planImportRelocation(deps, config, mediaId, dbSnapshot, opts) {
   //      Reheat on the same page -- has NO such guard and never has. Moving the
   //      file you are watching is already accepted behaviour; only this path
   //      forbade it.
-  //   2. The per-video confirm closes the player BEFORE navigating to `newId`
-  //      (public/js/watch.js), so the one client that could be harmed is the
-  //      one that asked for the move, and it is already handled.
+  //   2. The per-video confirm closes ITS OWN player before requesting the move
+  //      (public/js/watch.js), so the client that asked for it is handled.
+  //      DISCLOSED, not claimed away (gate fix, adversarial WARNING 7): this set
+  //      is global and path-keyed, with no notion of WHOSE stream marked it, so
+  //      in a multi-user install (v1.43) another user streaming the same item
+  //      DOES take a session break -- their player keeps requesting an id that
+  //      no longer resolves. That is the identical break `POST
+  //      /api/videos/:id/move` already imposes on them today, from the same
+  //      page, which is what makes it acceptable here -- not the false claim
+  //      that only the requester can be affected.
   // DEFAULTS OFF: the BATCH keeps the clause absolute, because it is unattended
   // and may hit a file some OTHER user is streaming right now (v1.43 made this
   // multi-user), and so does the whole-library preview.
@@ -9961,9 +9988,34 @@ async function relocateHydratedImportIntoChannelFolder(deps, config, mediaId, op
   // So the caller echoes back what it showed, and a disagreement is refused
   // rather than resolved in the user's absence. `expect` absent (the batch, the
   // preview) => this check is skipped entirely and behaviour is unchanged.
+  //
+  // GATE FIX (adversarial WARNING 5): `transfer` and `sizeBytes` are bound too,
+  // not just the two paths. `transfer` is the load-bearing one -- it is the
+  // sentence the dialog puts in front of the user ("Hard link on the same
+  // filesystem, no data is copied" vs "Copied across filesystems, then the
+  // original is removed after a checksum match"), i.e. the fact intake decision
+  // 1 required the dialog to state. And it can flip with BOTH path strings
+  // byte-identical: `classifyTransfer` measures the device of
+  // `nearestExistingDir(destinationDir)`, and the channel directory usually does
+  // not exist yet at propose time, so it measures an ANCESTOR. If the real
+  // channel dir appears on a different device in between (a bind mount, a NAS
+  // volume, a subscription poll creating it), the user consented to a hard link
+  // and gets a copy-then-delete of an irreplaceable file. `sizeBytes` is bound
+  // for the same reason at lower stakes: it is what the user judges "do I have
+  // room, how long will this take" on, and a file swapped at the same path
+  // changes it while both paths match.
+  //
+  // The `typeof` guards below are DEFENCE IN DEPTH, not an accommodation: the
+  // HTTP route refuses a partial `expect` with a 400 before ever reaching here
+  // (see its own comment for why "be kind to an older caller" was a false
+  // justification -- there is no such caller). A direct in-process caller that
+  // hands over a partial object still gets the paths bound rather than nothing.
   if (opts && opts.expect && typeof opts.expect === 'object') {
     const e = opts.expect;
-    if (e.currentPath !== plan.currentPath || e.destinationPath !== plan.destinationPath) {
+    const transferChanged = typeof e.transfer === 'string' && e.transfer !== plan.transfer;
+    const sizeChanged = typeof e.sizeBytes === 'number' && e.sizeBytes !== plan.sizeBytes;
+    if (e.currentPath !== plan.currentPath || e.destinationPath !== plan.destinationPath
+      || transferChanged || sizeChanged) {
       return {
         status: 'stale',
         reason: 'proposal-stale',

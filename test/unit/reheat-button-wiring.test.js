@@ -231,8 +231,8 @@ test('CRITICAL 2: showConfirmModal resolves its buttons from ITS OWN backdrop, n
 
 test('CRITICAL 2: the relocation offer refuses to open on top of another modal', () => {
   const body = functionBody(watchJs, 'offerRelocation');
-  assert.ok(/document\.querySelector\('\.modal-backdrop'\)/.test(body),
-    'this is the only confirm that can open without the user having just clicked something');
+  assert.ok(/document\.querySelector\('\.modal-backdrop:not\(\.modal-closing\)'\)/.test(body),
+    'this is the only confirm that can open without the user having just clicked something (and see CRITICAL 4 for why the :not is load-bearing)');
 });
 
 test('CRITICAL 1: the per-video proposal and confirm pass allowRecentlyWatched; nothing else does', () => {
@@ -261,7 +261,7 @@ test('CRITICAL 1: the player is closed BEFORE the move is requested, not just be
 
 test('CRITICAL 3: the confirm echoes back the exact move it displayed, and the server refuses a mismatch', () => {
   const body = functionBody(watchJs, 'offerRelocation');
-  assert.ok(/expect: \{ currentPath: relocation\.currentPath, destinationPath: relocation\.destinationPath \}/.test(body),
+  assert.ok(/currentPath: relocation\.currentPath/.test(body) && /destinationPath: relocation\.destinationPath/.test(body),
     'subscribing to the channel from this page changes the destination folder -- "still legal" is not "still what you approved"');
   assert.ok(/status === 409 && body && body\.status === 'stale'/.test(body),
     'a stale proposal must re-ask, not fail and not silently proceed');
@@ -314,4 +314,186 @@ test('SUGGESTION 2: the poll ceiling is shorter than the activity TTL that prune
 test('SUGGESTION 3: the poll registers its abort listener once per view, not once per click', () => {
   const body = functionBody(watchJs, 'pollReheat');
   assert.ok(/if \(!reheatAbortHooked\)/.test(body));
+});
+
+// ---- v1.49 gate round 2 (adversarial CRITICAL 4 + WARNINGs 5-7) ------------
+
+test('CRITICAL 4: the re-ask guard excludes a CLOSING backdrop, or the stale-proposal path can never open', () => {
+  const body = functionBody(watchJs, 'offerRelocation');
+  assert.ok(/\.modal-backdrop:not\(\.modal-closing\)/.test(body),
+    'showConfirmModal tears down BEFORE onConfirm and leaves the node up for the ~200ms fade, so a bare .modal-backdrop always matched the dialog that triggered the re-ask');
+  assert.ok(!/querySelector\('\.modal-backdrop'\)/.test(body),
+    'the bare selector must not remain anywhere in this function');
+});
+
+test('CRITICAL 4 (second half): a suppressed offer is announced, never silently dropped', () => {
+  const body = functionBody(watchJs, 'offerRelocation');
+  const guardIdx = body.indexOf(':not(.modal-closing)');
+  const toastIdx = body.indexOf('showToast', guardIdx);
+  const returnIdx = body.indexOf('return;', guardIdx);
+  assert.ok(toastIdx > guardIdx && toastIdx < returnIdx,
+    'the guard must toast before returning -- a second silent way for the offer to never appear is the bug this release already fixed once');
+});
+
+// The runtime property the source-locks above CANNOT see (this repo's own v1.44
+// lesson: a source-lock proves PRESENCE, not runtime BINDING). This drives the
+// REAL showConfirmModal against a fake DOM and asserts that at the moment
+// onConfirm runs -- which is when the re-ask fires -- the backdrop that is still
+// attached is marked .modal-closing, i.e. the corrected selector genuinely skips
+// it and the bare one genuinely would not have.
+test('CRITICAL 4 (runtime): when onConfirm fires, the old backdrop is still ATTACHED and carries .modal-closing', () => {
+  const vm = require('node:vm');
+  const src = fs.readFileSync(path.join(ROOT, 'public', 'js', 'common.js'), 'utf8');
+
+  const attached = [];
+  function FakeClassList() { this._set = new Set(); }
+  FakeClassList.prototype.add = function (c) { this._set.add(c); };
+  FakeClassList.prototype.remove = function (c) { this._set.delete(c); };
+  FakeClassList.prototype.contains = function (c) { return this._set.has(c); };
+
+  function makeEl() {
+    const own = new Map();
+    const el = {
+      classList: new FakeClassList(),
+      _listeners: {},
+      parentNode: null,
+      style: {},
+      addEventListener(t, fn) { (el._listeners[t] = el._listeners[t] || []).push(fn); },
+      removeEventListener() {},
+      querySelector: (sel) => own.get(String(sel).replace(/^#/, '')) || null,
+      appendChild: () => {},
+    };
+    Object.defineProperty(el, 'innerHTML', {
+      set(html) {
+        const re = /id="([\w-]+)"/g;
+        let m;
+        while ((m = re.exec(html))) {
+          own.set(m[1], {
+            id: m[1], disabled: false, _listeners: {},
+            addEventListener(t, fn) { (this._listeners[t] = this._listeners[t] || []).push(fn); },
+            click() { (this._listeners.click || []).slice().forEach((f) => f({ target: this })); },
+          });
+        }
+      },
+    });
+    return el;
+  }
+
+  const doc = {
+    createElement: makeEl,
+    body: {
+      appendChild: (el) => { attached.push(el); el.parentNode = doc.body; return el; },
+      removeChild: (el) => {
+        const i = attached.indexOf(el);
+        if (i >= 0) attached.splice(i, 1);
+        el.parentNode = null;
+      },
+    },
+    getElementById: () => null,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    // The production guard's own query, evaluated against what is attached NOW.
+    querySelector: (sel) => {
+      const wantsLive = /:not\(\.modal-closing\)/.test(sel);
+      return attached.find((el) => !wantsLive || !el.classList.contains('modal-closing')) || null;
+    },
+  };
+
+  const sandbox = {
+    document: doc,
+    window: { matchMedia: () => ({ matches: false }), addEventListener: () => {}, removeEventListener: () => {} },
+    setTimeout: () => 0,
+    clearTimeout: () => {},
+    WeakMap,
+    Set,
+    Map,
+    console,
+    module: { exports: {} },
+  };
+  sandbox.globalThis = sandbox;
+  vm.createContext(sandbox);
+  vm.runInContext(src, sandbox, { filename: 'common.js' });
+
+  const showConfirmModal = sandbox.module.exports.showConfirmModal;
+  assert.equal(typeof showConfirmModal, 'function', 'common.js must export showConfirmModal for this test');
+
+  let sawBare = null;
+  let sawLive = null;
+  showConfirmModal('t', 'b', () => {
+    // This is exactly the instant offerRelocation's re-entrant call happens.
+    sawBare = doc.querySelector('.modal-backdrop');
+    sawLive = doc.querySelector('.modal-backdrop:not(.modal-closing)');
+  });
+  attached[0].querySelector('#modal-confirm-btn').click();
+
+  assert.ok(sawBare, 'the bare selector matches the still-fading backdrop -- this is what made the re-ask unreachable');
+  assert.equal(sawLive, null, 'the corrected selector correctly sees NO live dialog, so the re-ask can open');
+});
+
+test('WARNING 5: the confirm binds the TRANSFER METHOD and size, not just the two paths', () => {
+  const body = functionBody(watchJs, 'offerRelocation');
+  assert.ok(/transfer: relocation\.transfer/.test(body),
+    'hard-link-vs-copy is the safety sentence the dialog shows, and it can flip with both paths unchanged');
+  assert.ok(/sizeBytes: relocation\.sizeBytes/.test(body));
+
+  const serverJs = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
+  const relocBody = functionBody(serverJs, 'relocateHydratedImportIntoChannelFolder');
+  assert.ok(/e\.transfer !== plan\.transfer/.test(relocBody), 'and the executor compares it');
+  assert.ok(/e\.sizeBytes !== plan\.sizeBytes/.test(relocBody));
+});
+
+test('WARNING 6: the relocation closes our own read streams before unlinking the source', () => {
+  const serverJs = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
+  const body = functionBody(serverJs, 'moveItemToFolder');
+  const destroyIdx = body.indexOf('await destroyMediaStreams(oldPath)');
+  const unlinkIdx = body.indexOf('fsImpl.unlinkSync(oldPath)');
+  assert.ok(destroyIdx > 0, 'an unlink with our own fd still open is the v1.41.10 DELETE_PENDING trap');
+  assert.ok(unlinkIdx > destroyIdx, 'and it must come BEFORE the unlink');
+});
+
+test('WARNING 7: the retired-guard rationale discloses the multi-user break instead of denying it', () => {
+  const serverJs = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
+  const clause = serverJs.slice(serverJs.indexOf('v1.49 GATE FIX (adversarial CRITICAL 1)'), serverJs.indexOf("return skipWithItem('recently-watched')"));
+  assert.ok(/multi-user|another user/i.test(clause),
+    'the set is global and path-keyed, so a concurrent viewer IS affected -- the comment must say so');
+  assert.ok(!/the one client that could be harmed/.test(serverJs),
+    'the false claim must be gone');
+});
+
+test('SUGGESTION 4: playback is restored when no move happened', () => {
+  const body = functionBody(watchJs, 'offerRelocation');
+  const closeIdx = body.indexOf('player.close()');
+  const reloadIdx = body.indexOf('player.load(');
+  assert.ok(reloadIdx > closeIdx, 'the pre-emptive close must be undone on every non-move path');
+  const movedReturn = body.indexOf('return;', body.indexOf("body.status === 'moved'"));
+  assert.ok(reloadIdx > movedReturn,
+    'and only AFTER the moved path has returned -- restoring playback on a file that just moved would re-request a dead id');
+
+  // The field this restore is most likely to drop, and did drop in its first
+  // cut: `player.close()` nulls `currentData`, so this re-load takes the full
+  // new-load path and the adopt branch's browseCtx carry-forward never runs.
+  // Without it, autoplay-at-end and the player's next/prev silently revert to
+  // the folder default instead of the list the user launched from (v1.36.2).
+  const call = body.slice(reloadIdx, body.indexOf('{ slot: playerSlot }', reloadIdx));
+  assert.ok(/browseCtx: rawBrowseCtx/.test(call),
+    'the restore must carry browseCtx, exactly like the other two player.load call sites in this file');
+});
+
+test('SUGGESTION 4: every player.load call site in watch.js passes browseCtx (no odd one out)', () => {
+  // A whole-file invariant rather than a single-call assertion: the launch
+  // context is only preserved if EVERY re-entry carries it, and this wave
+  // proved a new call site is exactly how one goes missing.
+  const calls = [];
+  let from = 0;
+  for (;;) {
+    const i = watchJs.indexOf('player.load(', from);
+    if (i < 0) break;
+    const end = watchJs.indexOf('{ slot: playerSlot }', i);
+    if (end > i) calls.push(watchJs.slice(i, end));
+    from = i + 1;
+  }
+  assert.ok(calls.length >= 3, `expected at least 3 player.load call sites, found ${calls.length}`);
+  calls.forEach((c, i) => {
+    assert.ok(/browseCtx/.test(c), `player.load call site #${i + 1} drops browseCtx`);
+  });
 });

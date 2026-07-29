@@ -2353,7 +2353,29 @@ if (typeof module !== 'undefined' && module.exports) {
       // showConfirmModal, but two stacked, individually-undismissable modals is
       // still a broken screen -- and this is the only caller that can fire
       // without the user having just clicked something.
-      if (document.querySelector('.modal-backdrop')) return;
+      //
+      // GATE FIX (adversarial CRITICAL 4): `:not(.modal-closing)` is
+      // LOAD-BEARING, and without it this whole function's stale-proposal
+      // re-ask was itself dead code. `showConfirmModal`'s teardown adds
+      // `.modal-closing` synchronously but leaves the node in `document.body`
+      // for the ~200ms opacity transition, and it runs teardown BEFORE
+      // `onConfirm` -- so the re-entrant call below (triggered by a 409 that
+      // comes back in single-digit milliseconds: one db read, no I/O, no
+      // spawn) always matched the still-fading backdrop of the dialog that
+      // triggered it, and returned. The user saw "the destination changed" and
+      // then nothing, ever. It would have worked only under
+      // `prefers-reduced-motion`, where the node is removed synchronously.
+      // `.modal-closing` exists (v1.26.2) precisely to mean "on its way out,
+      // not interactive", so this asks the right question: is a LIVE dialog up?
+      if (document.querySelector('.modal-backdrop:not(.modal-closing)')) {
+        // Second half of the same finding: do not drop the offer in silence.
+        // A genuinely open dialog (the Delete confirm, say) would otherwise
+        // make the relocation offer vanish with no toast and no retry -- a
+        // second quiet way for "the offer never appears", which is exactly the
+        // bug this release already had to fix once.
+        showToast('This video can also be filed under its channel — press Reheat again when you are done here.');
+        return;
+      }
 
       const dest = relocation.destinationPath || '';
       const isCopy = relocation.transfer === 'copy';
@@ -2384,8 +2406,18 @@ if (typeof module !== 'undefined' && module.exports) {
             // which is the reheat's own headline outcome -- changes the
             // destination folder, so "the plan is still legal" is not the same
             // question as "the plan is still the one you approved".
+            // GATE FIX (adversarial WARNING 5): `transfer` rides along because
+            // it is the SAFETY SENTENCE this dialog just showed -- hard link vs
+            // copy-then-delete-the-original -- and it can flip with both paths
+            // unchanged (see the executor's own comment). `sizeBytes` is what
+            // the user judged "do I have room" on.
             body: JSON.stringify({
-              expect: { currentPath: relocation.currentPath, destinationPath: relocation.destinationPath },
+              expect: {
+                currentPath: relocation.currentPath,
+                destinationPath: relocation.destinationPath,
+                transfer: relocation.transfer,
+                sizeBytes: relocation.sizeBytes,
+              },
             }),
           })
             .then((res) => res.json().catch(() => ({})).then((body) => ({ status: res.status, body })))
@@ -2401,6 +2433,34 @@ if (typeof module !== 'undefined' && module.exports) {
                 if (window.FileTube && typeof window.FileTube.navigate === 'function') window.FileTube.navigate(target);
                 else window.location.href = target;
                 return;
+              }
+              // GATE FIX (adversarial SUGGESTION 4): NO MOVE HAPPENED, so the
+              // pre-emptive `player.close()` above cost the user their playback
+              // for nothing. Every path below this point is a non-move, so
+              // playback is restored once, here, before any of them report.
+              // `load` is idempotent for an id it already holds, so this is a
+              // resume rather than a restart.
+              if (window.FileTube && window.FileTube.player && mediaData && !signal.aborted) {
+                try {
+                  // `browseCtx` is LOAD-BEARING and was dropped here in the
+                  // first cut of this restore (gate fix, adversarial Q4).
+                  // `player.close()` nulls `currentData`, so this re-load takes
+                  // the full new-load path and the adopt branch's browseCtx
+                  // carry-forward never runs -- leaving `advanceRawCtx` empty,
+                  // which silently reverts autoplay-at-end and the player's
+                  // own next/prev to the FOLDER default instead of the list the
+                  // user actually launched from (a shuffled home grid, a search,
+                  // Liked). That is the v1.36.2 launch-context property, undone
+                  // by one missing field on a re-issued call: this repo's
+                  // most-repeated bug class, in a line added to fix something
+                  // else. Matches the other two `player.load` call sites in this
+                  // file exactly.
+                  window.FileTube.player.load(
+                    mediaData.id,
+                    { ...mediaData, channelName: currentChannelName, browseCtx: rawBrowseCtx },
+                    { slot: playerSlot },
+                  );
+                } catch (_) { /* a failed resume must never swallow the message below */ }
               }
               // The destination changed under us -- re-ask about the move that
               // is actually on the table now rather than reporting a failure.
