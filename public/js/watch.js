@@ -962,15 +962,19 @@ if (typeof module !== 'undefined' && module.exports) {
     // Initialize page
     async function initWatch() {
       try {
-        // 1. Get configurations for sidebar
-        const configRes = await fetch('/api/config');
+        // 1+2. v1.52 T3: config (sidebar + folderSettings) and the media
+        // detail fetch run in PARALLEL -- they were strictly serial for no
+        // reason, which was a full extra round trip on every cold open (the
+        // recon-measured chain). One RTT saved for every path, seeded or not.
+        const [configRes, mediaRes] = await Promise.all([
+          fetch('/api/config'),
+          fetch(`/api/videos/${mediaId}`),
+        ]);
         const configData = await configRes.json();
         folderSettings = configData.folderSettings || {};
         currentFolders = configData.folders || [];
         renderSidebarFolders(configData.folders || [], folderSettings);
 
-        // 2. Fetch media details
-        const mediaRes = await fetch(`/api/videos/${mediaId}`);
         if (!mediaRes.ok) {
           throw new Error('Media file not found');
         }
@@ -1132,7 +1136,19 @@ if (typeof module !== 'undefined' && module.exports) {
       }
       paintText(viewsCount, plan.viewsLabel);
       if (plan.channelName !== undefined) {
-        applyAvatarToElement(uploaderAvatar, plan.channelName, plan.channelAvatarUrl);
+        // v1.52 T3 hydration discipline: applyAvatarToElement fully RESETS
+        // the node (recreates the <img>), so re-running it with identical
+        // inputs at hydration would flicker the already-painted avatar. The
+        // key diff makes a repaint happen ONLY when the rendered source
+        // actually changes -- which is exactly the one legitimate upgrade
+        // (seed had no URL, hydration resolved the yt-dlp subscription
+        // fallback). The fragment is fresh-parsed per navigation, so the
+        // dataset key can never carry over from a previous item.
+        const avatarKey = `${plan.channelName}|${plan.channelAvatarUrl}`;
+        if (uploaderAvatar && uploaderAvatar.dataset.ftAvatarKey !== avatarKey) {
+          applyAvatarToElement(uploaderAvatar, plan.channelName, plan.channelAvatarUrl);
+          uploaderAvatar.dataset.ftAvatarKey = avatarKey;
+        }
         uploaderAvatar.classList.remove('skeleton-shimmer');
         paintText(uploaderChannelName, plan.channelName);
         // Creator/uploader name links to THIS item's folder content view
