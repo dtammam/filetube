@@ -302,7 +302,15 @@ const DEFAULT_SETTINGS = {
   // library left physically where it is can say so. The relocation is the
   // ONLY setting here that MOVES USER FILES, so every eligibility rule around
   // it is deliberately conservative (see relocateHydratedImportIntoChannelFolder).
-  relocateHydratedImports: true
+  relocateHydratedImports: true,
+  // v1.51 (Dean): the notification bell's instance-wide kill switch. ON by
+  // default. When OFF the bell endpoints answer 404 (so no client ever
+  // injects the bell), but the feed still ACCUMULATES server-side --
+  // flipping it back on must not leave a gap in history (exec-plan
+  // decision 8). NOTE: `notificationsSeededAt` (the one-shot seeding stamp)
+  // also lives in db.settings but is deliberately NOT here or in KNOWN_KEYS
+  // -- it is internal bookkeeping, never a user-settable value.
+  notificationsEnabled: true
 };
 
 // Per-key merge so a partial/older `settings` object keeps whatever keys it
@@ -6412,6 +6420,8 @@ function settingsResponse(settings) {
     // v1.41.6: relocate hydrated imports into their channel folder (see
     // DEFAULT_SETTINGS) -- ON by default.
     relocateHydratedImports: settings.relocateHydratedImports,
+    // v1.51: the notification bell's instance-wide toggle (see DEFAULT_SETTINGS).
+    notificationsEnabled: settings.notificationsEnabled,
     effectiveCacheMaxBytes: effectiveCacheCap(settings),
     // v1.32 (custom logo): READ-ONLY here -- managed exclusively by the
     // dedicated POST/DELETE /api/settings/logo routes below (never via the
@@ -7506,7 +7516,7 @@ app.post('/api/settings', async (req, res) => {
   // test/integration/settings-cache-api.test.js's full-shape assertion, both
   // updated in the same commit): `relocateHydratedImports` joins the set --
   // the reheat's "move a hydrated import into its channel folder" lever.
-  const KNOWN_KEYS = ['scanIntervalMinutes', 'pruneMissing', 'cacheMaxBytes', 'cacheMaxAgeDays', 'defaultView', 'autoplayNext', 'backgroundAudioForVideo', 'defaultSort', 'mobileCustomPlayer', 'preExtractAudio', 'relocateHydratedImports'];
+  const KNOWN_KEYS = ['scanIntervalMinutes', 'pruneMissing', 'cacheMaxBytes', 'cacheMaxAgeDays', 'defaultView', 'autoplayNext', 'backgroundAudioForVideo', 'defaultSort', 'mobileCustomPlayer', 'preExtractAudio', 'relocateHydratedImports', 'notificationsEnabled'];
   for (const key of Object.keys(body)) {
     if (!KNOWN_KEYS.includes(key)) {
       return res.status(400).json({ error: `unknown settings key: ${key}` });
@@ -7566,6 +7576,10 @@ app.post('/api/settings', async (req, res) => {
   if ('backgroundAudioForVideo' in body && typeof body.backgroundAudioForVideo !== 'boolean') {
     return res.status(400).json({ error: 'backgroundAudioForVideo must be a boolean' });
   }
+  // v1.51: notificationsEnabled -- boolean, mirrors pruneMissing exactly.
+  if ('notificationsEnabled' in body && typeof body.notificationsEnabled !== 'boolean') {
+    return res.status(400).json({ error: 'notificationsEnabled must be a boolean' });
+  }
 
   // All provided keys validated -- safe to merge and persist. `prevInterval`
   // and the merged `saved` settings are captured via closure from INSIDE the
@@ -7594,6 +7608,103 @@ app.post('/api/settings', async (req, res) => {
   // scan indefinitely if settings are saved more often than the interval.
   if (saved.scanIntervalMinutes !== prevInterval) armScanTimer();
   res.json(settingsResponse(saved));
+});
+
+// ---- v1.51: the notification bell -----------------------------------------
+//
+// Visibility rule (exec-plan decision 9): yt-dlp module enabled AND at least
+// one subscription AND the instance-wide settings toggle on. Disabled means
+// 404 on every bell endpoint -- the client's boot probe (its first badge
+// fetch) then injects nothing, the same fail-closed 2xx-probe posture as the
+// subscriptions nav link. GENERATION is deliberately not gated here (the
+// feed keeps accumulating while the bell is off -- decision 8); this gate is
+// about what a browser can see.
+function notificationsFeatureEnabled(db) {
+  if (!ytdlp.isEnabled(ytdlp.parseYtdlpConfig())) return false;
+  const subs = db && db.ytdlp && Array.isArray(db.ytdlp.subscriptions) ? db.ytdlp.subscriptions : [];
+  if (subs.length < 1) return false;
+  return !(db && db.settings && db.settings.notificationsEnabled === false);
+}
+
+// The badge count. Doubles as the client's boot probe, so it is the ONE
+// endpoint that must stay cheap: two point queries against the cache.
+app.get('/api/notifications/badge', (req, res) => {
+  const db = getCachedDatabase(); // hot poll reader (60s cadence per client)
+  if (!notificationsFeatureEnabled(db)) return res.status(404).json({ error: 'notifications disabled' });
+  res.json({ count: userStore.countUnseenNotifications(req.user.id) });
+});
+
+// The panel list: feed rows joined against the CURRENT library item (title/
+// channel/thumbnail are never denormalized into the feed -- the item is the
+// source of truth and prune-on-delete keeps the join target alive). A row
+// whose item vanished mid-flight (delete committed, scan prune still
+// pending) is filtered here as the defensive net.
+app.get('/api/notifications', (req, res) => {
+  const db = getCachedDatabase();
+  if (!notificationsFeatureEnabled(db)) return res.status(404).json({ error: 'notifications disabled' });
+  const { items } = userStore.listNotifications(req.user.id);
+  const metadata = db.metadata || {};
+  // One deep-cloned ytdlp namespace for the whole request (NOT per row) --
+  // the same cache-coherency dance GET /api/videos/:id documents: the
+  // avatar fallback's ensureYtdlp backfills IN PLACE, and the shared cache
+  // object must never be mutated.
+  let dbForAvatarLookup = null;
+  const rows = [];
+  for (const row of items) {
+    const item = metadata[row.mediaId];
+    if (!item) continue;
+    let channelAvatarUrl = typeof item.channelAvatarUrl === 'string' ? item.channelAvatarUrl : '';
+    if (channelAvatarUrl === '') {
+      if (!dbForAvatarLookup) {
+        dbForAvatarLookup = { ...db, ytdlp: db.ytdlp ? JSON.parse(JSON.stringify(db.ytdlp)) : undefined };
+      }
+      channelAvatarUrl = ytdlp.resolveItemChannelAvatarUrl(dbForAvatarLookup, item) || '';
+    }
+    rows.push({
+      id: row.id,
+      mediaId: row.mediaId,
+      createdAt: row.createdAt,
+      unread: row.unread,
+      title: item.title || item.name || '',
+      channelName: typeof item.channelName === 'string' ? item.channelName : '',
+      folderName: typeof item.folderName === 'string' ? item.folderName : '',
+      channelAvatarUrl,
+      hasThumbnail: item.hasThumbnail === true,
+      type: item.type === 'audio' ? 'audio' : 'video',
+    });
+  }
+  res.json({ items: rows, unseenCount: userStore.countUnseenNotifications(req.user.id) });
+});
+
+// Opening the panel zeroes the NUMBER badge (two-tier semantics, decision 3:
+// per-row dots survive until tapped).
+app.post('/api/notifications/seen', (req, res) => {
+  const db = getCachedDatabase();
+  if (!notificationsFeatureEnabled(db)) return res.status(404).json({ error: 'notifications disabled' });
+  userStore.markNotificationsSeen(req.user.id, Date.now());
+  res.json({ success: true });
+});
+
+// Tapping a row drops its dot. A phantom id (evicted/pruned/fabricated) is a
+// 400, never a silently-banked read.
+app.post('/api/notifications/read', (req, res) => {
+  const db = getCachedDatabase();
+  if (!notificationsFeatureEnabled(db)) return res.status(404).json({ error: 'notifications disabled' });
+  const id = req.body ? req.body.id : undefined;
+  if (!Number.isInteger(id) || !userStore.markNotificationRead(req.user.id, id, Date.now())) {
+    return res.status(400).json({ error: 'invalid notification id' });
+  }
+  res.json({ success: true });
+});
+
+// Clear-all: empties THIS user's panel view and zeroes their badge. The feed
+// rows themselves survive for every other user (per-user watermark, never a
+// global delete).
+app.post('/api/notifications/clear', (req, res) => {
+  const db = getCachedDatabase();
+  if (!notificationsFeatureEnabled(db)) return res.status(404).json({ error: 'notifications disabled' });
+  userStore.clearNotifications(req.user.id, Date.now());
+  res.json({ success: true });
 });
 
 // API: Current transcode-cache size on disk, for the Settings-page display.
