@@ -110,6 +110,21 @@ test('every yt-dlp shared-state route refuses: repull-all, repull-one, skip, one
   await expectRefused(await fetch(`${base}/api/ytdlp/repull-metadata`, { method: 'POST' }));
 });
 
+// v1.49 gate fix (QA WARNING): the per-video reheat added two more shared-state
+// routes, and the sweep above is the ONLY automated lock that a route calls
+// `refuseIfReadOnlyMedia` at all. Both were correct on arrival; without an entry
+// here a future refactor that drops or reorders that guard ships silently until
+// the next full gate -- and the second of these two MOVES A FILE, which is
+// precisely what safe mode exists to prevent on a parallel-run instance.
+test('v1.49: the per-video reheat and its relocation confirm refuse too, and the file is untouched', async () => {
+  const { filePath, id } = seedVideo('per-video [eeeeeeeeeee].mp4');
+
+  await expectRefused(await fetch(`${base}/api/ytdlp/repull-metadata/item/${id}`, { method: 'POST' }));
+  await expectRefused(await fetch(`${base}/api/ytdlp/repull-metadata/item/${id}/relocate`, { method: 'POST' }));
+
+  assert.ok(fs.existsSync(filePath), 'the relocation confirm must not move the file in read-only media mode');
+});
+
 test('AC8 scan leg (review F1): a tombstone-matched file survives the scan — not unlinked, not indexed, tombstone kept', async () => {
   // The exact imported-prod-tombstone shape: the file exists on disk with an
   // mtime OLDER than deletedAt (yt-dlp --mtime back-dates fresh downloads,

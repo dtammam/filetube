@@ -61,11 +61,23 @@ test('style.css: .icon-shuffle is a real SVG mask (currentColor), not a fixed un
 });
 
 test('style.css: .icon-shuffle is included in the base chrome-icon group (sizing) and the @supports currentColor fill guard', () => {
-  const chromeGroupMatch = /\.icon-home,[\s\S]*?\.icon-download,\s*\.icon-shuffle\s*\{[\s\S]*?mask-repeat:\s*no-repeat;[\s\S]*?\}/.exec(css);
-  assert.ok(chromeGroupMatch, 'expected .icon-shuffle in the shared chrome-icon sizing/mask-repeat group');
+  // v1.49: asserts MEMBERSHIP of both groups rather than pinning
+  // `.icon-shuffle` as their LAST member. The original regexes required the
+  // selector list to END `..., .icon-download, .icon-shuffle {`, so adding any
+  // new icon after it failed this test on a correct change -- the same
+  // over-specification card-like.test.js already diagnosed and fixed for the
+  // fill guard in v1.47.6 (see its own comment). What actually matters is that
+  // `.icon-shuffle` is IN each list; an icon missing from one renders at the
+  // wrong box size or as nothing at all, and that is what these now check.
+  const sizingStart = css.indexOf('.icon-home,');
+  assert.notEqual(sizingStart, -1, 'expected the shared chrome-icon sizing group');
+  const sizingGroup = css.slice(sizingStart, css.indexOf('mask-repeat:', sizingStart));
+  assert.ok(sizingGroup.includes('.icon-shuffle'), 'expected .icon-shuffle in the shared chrome-icon sizing/mask-repeat group');
 
-  const supportsMatch = /@supports[\s\S]*?\.icon-download,\s*\.icon-shuffle\s*\{\s*background-color:\s*currentColor;/.exec(css);
-  assert.ok(supportsMatch, 'expected .icon-shuffle in the @supports currentColor fill guard');
+  const supportsIdx = css.indexOf('@supports (mask-image: url("#"))');
+  assert.notEqual(supportsIdx, -1, 'expected the @supports fill guard');
+  const fillGuard = css.slice(supportsIdx, css.indexOf('background-color: currentColor', supportsIdx));
+  assert.ok(fillGuard.includes('.icon-shuffle'), 'expected .icon-shuffle in the @supports currentColor fill guard');
 });
 
 test('style.css: .icon-shuffle gets a themed mask in the rounded and filled icon sets too', () => {

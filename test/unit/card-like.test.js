@@ -24,7 +24,15 @@ test('assets: heart.svg exists and is a valid single-path <svg>', () => {
 });
 
 test('style.css: .icon-heart is in the base chrome-icon sizing group, the @supports fill guard, and maps to heart.svg', () => {
-  assert.match(css, /\.icon-heart,[\s\S]*?\.icon-shuffle\s*\{[\s\S]*?mask-repeat:\s*no-repeat;/, 'heart in the shared sizing/mask group');
+  // v1.49: membership, not neighbour sequence -- the same correction this test
+  // already applied to the fill guard below in v1.47.6. The old regex required
+  // the sizing group's selector list to run from `.icon-heart` to a TERMINAL
+  // `.icon-shuffle {`, so appending any new icon to that list (v1.49 added
+  // `.icon-flame`) failed the test on a correct change.
+  const sizingStart = css.indexOf('.icon-home,');
+  assert.notEqual(sizingStart, -1, 'expected the shared chrome-icon sizing group');
+  const sizingGroup = css.slice(sizingStart, css.indexOf('mask-repeat:', sizingStart));
+  assert.ok(sizingGroup.includes('.icon-heart'), 'heart in the shared sizing/mask group');
   // v1.47.6: asserts MEMBERSHIP of the fill guard, not the exact neighbour
   // sequence. The original pinned `.icon-heart, .icon-download, .icon-shuffle`
   // literally, so simply inserting another icon into the list broke it -- an

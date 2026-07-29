@@ -9270,6 +9270,26 @@ async function moveItemToFolder(deps, id, targetFolder, opts = {}) {
   // would silently destroy it -- the very loss the carry exists to prevent.
   rekeyInFlightState(oldId, mutatorResult, oldPath, newPath);
 
+  // v1.49 GATE FIX (adversarial WARNING 6): close our own read streams on the
+  // source BEFORE unlinking it -- the same thing `DELETE /api/videos/:id` has
+  // done since v1.41.10, for the same reason. An unlink issued while this
+  // process still holds an fd is the DELETE_PENDING trap on SMB/CIFS: the
+  // dirent survives, and on the cross-device path that leftover is a FULL
+  // DUPLICATE of an irreplaceable file sitting in a scanned library root, which
+  // the next scan indexes as a second item. The delete route's tombstone net
+  // does not cover this path.
+  //
+  // This was previously unreachable here only by accident: `planImportRelocation`'s
+  // `recently-watched` clause meant a file this process had been streaming was
+  // never relocated. v1.49 lifts that clause for the attended per-video confirm,
+  // and the watch page streams the video on mount -- so the correlation went
+  // from incidental to GUARANTEED. Bounded (3s) and never throws; on timeout the
+  // unlink proceeds exactly as it did before.
+  //
+  // Deliberately also fixes `POST /api/videos/:id/move`, which shares this
+  // function and has always had the same exposure.
+  await destroyMediaStreams(oldPath);
+
   // Only now is the source directory entry removed. A failure here is a stray
   // leftover, never data loss (the db and the bytes already agree) -- log and
   // continue, exactly as before.
@@ -9664,7 +9684,7 @@ function classifyMetadataEffect(item) {
 // This does NOT weaken anti-drift: only the db SOURCE differs, never the decision
 // logic -- and a point-in-time snapshot is exactly right for a point-in-time
 // preview.
-function planImportRelocation(deps, config, mediaId, dbSnapshot) {
+function planImportRelocation(deps, config, mediaId, dbSnapshot, opts) {
   const d = deps || {};
   const loadDb = d.loadDatabase;
   const updateDb = d.updateDatabase;
@@ -9727,7 +9747,40 @@ function planImportRelocation(deps, config, mediaId, dbSnapshot) {
 
   // DON'T MOVE WHAT SOMEONE IS WATCHING (the id is a hash of the PATH; a move
   // re-keys it out from under a mid-playback client).
-  if (activeProtectedPaths(Date.now()).has(item.filePath)) {
+  //
+  // v1.49 GATE FIX (adversarial CRITICAL 1) -- `opts.allowRecentlyWatched`.
+  // This clause silently made the per-video reheat's relocation half DEAD CODE.
+  // The watch page streams the video on mount (`preload="metadata"`), which
+  // calls `markServed(item.filePath)` on every serve, and the watch page is the
+  // ONLY entry point for the per-video reheat -- so by the time the button is
+  // clickable the item is protected for the next ten minutes, the proposal
+  // always came back 'recently-watched', and the confirm dialog could never
+  // open. Proven with a repro; the repo's OWN v1.41.6 test
+  // (test/integration/repull-relocate.test.js) already asserted this exact
+  // behaviour, and this feature was built on top of it anyway.
+  //
+  // Why lifting it is CORRECT here and nowhere else: the clause protects a
+  // mid-playback client from having its id re-keyed away, which is a session
+  // integrity concern, not a data-loss one. Two facts settle it:
+  //   1. `POST /api/videos/:id/move` -- the Move button sitting right next to
+  //      Reheat on the same page -- has NO such guard and never has. Moving the
+  //      file you are watching is already accepted behaviour; only this path
+  //      forbade it.
+  //   2. The per-video confirm closes ITS OWN player before requesting the move
+  //      (public/js/watch.js), so the client that asked for it is handled.
+  //      DISCLOSED, not claimed away (gate fix, adversarial WARNING 7): this set
+  //      is global and path-keyed, with no notion of WHOSE stream marked it, so
+  //      in a multi-user install (v1.43) another user streaming the same item
+  //      DOES take a session break -- their player keeps requesting an id that
+  //      no longer resolves. That is the identical break `POST
+  //      /api/videos/:id/move` already imposes on them today, from the same
+  //      page, which is what makes it acceptable here -- not the false claim
+  //      that only the requester can be affected.
+  // DEFAULTS OFF: the BATCH keeps the clause absolute, because it is unattended
+  // and may hit a file some OTHER user is streaming right now (v1.43 made this
+  // multi-user), and so does the whole-library preview.
+  if (!(opts && opts.allowRecentlyWatched === true)
+    && activeProtectedPaths(Date.now()).has(item.filePath)) {
     return skipWithItem('recently-watched');
   }
 
@@ -9885,7 +9938,7 @@ function planImportRelocation(deps, config, mediaId, dbSnapshot) {
 // @returns {Promise<{status: 'moved'|'skipped'|'failed', reason: string, newId?: string, newPath?: string, archived?: boolean}>}
 //   never throws for an anticipated failure; `status` is what the reheat batch
 //   counts.
-async function relocateHydratedImportIntoChannelFolder(deps, config, mediaId) {
+async function relocateHydratedImportIntoChannelFolder(deps, config, mediaId, opts) {
   const d = deps || {};
   const loadDb = d.loadDatabase;
   const updateDb = d.updateDatabase;
@@ -9898,7 +9951,11 @@ async function relocateHydratedImportIntoChannelFolder(deps, config, mediaId) {
   // plan's result onto its `{status, reason}` contract and, for a `move`, does
   // the WRITES (the channelId backfill + `moveItemToFolder` + archive append)
   // that the pure decision deliberately does not.
-  const plan = planImportRelocation(deps, config, mediaId);
+  // v1.49 (per-video confirm): `opts` carries `allowRecentlyWatched` (see the
+  // clause's own comment in planImportRelocation) and `expect` (the
+  // proposal-binding check below). Absent for the batch, which keeps every
+  // v1.41.6 posture byte-for-byte.
+  const plan = planImportRelocation(deps, config, mediaId, null, opts);
   if (plan.action !== 'move') {
     // `channel-dir-unresolvable` is the ONE non-move outcome that is a hard
     // FAILURE (an unconfinable/misconfigured download root), not a skip -- the
@@ -9908,6 +9965,69 @@ async function relocateHydratedImportIntoChannelFolder(deps, config, mediaId) {
       return { status: 'failed', reason: plan.failReason || plan.reason };
     }
     return { status: 'skipped', reason: plan.reason };
+  }
+
+  // v1.49 GATE FIX (adversarial CRITICAL 3): PROPOSAL BINDING.
+  //
+  // Re-running the decision proves the move is LEGAL. It does not prove it is
+  // THE MOVE THE USER APPROVED -- and those came apart in at least three
+  // reachable ways, all of them between the dialog opening and the confirm
+  // click:
+  //   (a) The user SUBSCRIBES to the channel. Giving the watch page a working
+  //       Subscribe button is the point of the reheat, so this is the LIKELY
+  //       case, not the exotic one -- and `resolveChannelDirForChannel` then
+  //       resolves the subscription's own folder instead of the channel-name
+  //       one, so the file lands somewhere the user never saw.
+  //   (b) A concurrent library reheat rewrites `sourceTitle`, so
+  //       `resolveRelocationTitle` changes the destination FILENAME.
+  //   (c) The id is `md5(filePath)` with no salt: if the item is moved or
+  //       deleted and another file later occupies that exact path, a scan mints
+  //       an entry under the SAME id -- and a stale open dialog would relocate a
+  //       completely different video.
+  //
+  // So the caller echoes back what it showed, and a disagreement is refused
+  // rather than resolved in the user's absence. `expect` absent (the batch, the
+  // preview) => this check is skipped entirely and behaviour is unchanged.
+  //
+  // GATE FIX (adversarial WARNING 5): `transfer` and `sizeBytes` are bound too,
+  // not just the two paths. `transfer` is the load-bearing one -- it is the
+  // sentence the dialog puts in front of the user ("Hard link on the same
+  // filesystem, no data is copied" vs "Copied across filesystems, then the
+  // original is removed after a checksum match"), i.e. the fact intake decision
+  // 1 required the dialog to state. And it can flip with BOTH path strings
+  // byte-identical: `classifyTransfer` measures the device of
+  // `nearestExistingDir(destinationDir)`, and the channel directory usually does
+  // not exist yet at propose time, so it measures an ANCESTOR. If the real
+  // channel dir appears on a different device in between (a bind mount, a NAS
+  // volume, a subscription poll creating it), the user consented to a hard link
+  // and gets a copy-then-delete of an irreplaceable file. `sizeBytes` is bound
+  // for the same reason at lower stakes: it is what the user judges "do I have
+  // room, how long will this take" on, and a file swapped at the same path
+  // changes it while both paths match.
+  //
+  // The `typeof` guards below are DEFENCE IN DEPTH, not an accommodation: the
+  // HTTP route refuses a partial `expect` with a 400 before ever reaching here
+  // (see its own comment for why "be kind to an older caller" was a false
+  // justification -- there is no such caller). A direct in-process caller that
+  // hands over a partial object still gets the paths bound rather than nothing.
+  if (opts && opts.expect && typeof opts.expect === 'object') {
+    const e = opts.expect;
+    const transferChanged = typeof e.transfer === 'string' && e.transfer !== plan.transfer;
+    const sizeChanged = typeof e.sizeBytes === 'number' && e.sizeBytes !== plan.sizeBytes;
+    if (e.currentPath !== plan.currentPath || e.destinationPath !== plan.destinationPath
+      || transferChanged || sizeChanged) {
+      return {
+        status: 'stale',
+        reason: 'proposal-stale',
+        // The FRESH plan, so the caller can re-ask about the move that is
+        // actually on the table now instead of silently doing a different one.
+        currentPath: plan.currentPath,
+        destinationPath: plan.destinationPath,
+        transfer: plan.transfer,
+        sameDevice: plan.sameDevice,
+        sizeBytes: plan.sizeBytes,
+      };
+    }
   }
 
   const { destinationDir: targetDir, newBaseName, youtubeId } = plan;
@@ -10454,7 +10574,10 @@ function enumerateRepullableItems(db, config) {
  *
  * @param {{loadDatabase?: Function, updateDatabase: Function, getMediaId?: Function}} deps
  * @param {string} mediaId
- * @param {{releaseDate?: number, channelAvatarUrl?: string, channel?: {channelUrl: string, channelHandleUrl?: string, channelId?: string, channelName?: string}, filePath: string, markComplete?: boolean}} meta
+ * @param {{releaseDate?: number, channelAvatarUrl?: string, channel?: {channelUrl: string, channelHandleUrl?: string, channelId?: string, channelName?: string}, filePath: string, markComplete?: boolean, allowViewCountDecrease?: boolean}} meta
+ *   `allowViewCountDecrease` (v1.49): opt OUT of the view-count monotonicity
+ *   guard for THIS call only -- see the guard's own comment below. Passed
+ *   solely by the per-video force reheat; absent/false everywhere else.
  * @param {number} [nowMs] injectable clock, for deterministic tests (mirrors store.js's own `nowMs=Date.now()` pattern)
  * @returns {Promise<boolean>} resolves `true` if the item was updated, `false` on a safe no-op
  */
@@ -10505,11 +10628,24 @@ async function recordRepulledItemMeta(deps, mediaId, meta, nowMs = Date.now()) {
     // capture of 0 is legitimate (a brand-new upload) and still lands. The date
     // is only re-stamped when the count is actually accepted, so a refused
     // reheat cannot leave a stale count wearing a fresh date.
+    //
+    // v1.49 (Dean, per-video reheat decision 2): `m.allowViewCountDecrease`
+    // is the ONE documented escape hatch, and it is passed ONLY by the
+    // explicit single-video force (`POST /api/ytdlp/repull-metadata/item/:id`).
+    // The reasoning that makes a blanket guard right for the BATCH is exactly
+    // what makes it wrong there: the batch refuses a decrease because it
+    // cannot tell a degraded read from news across thousands of unattended
+    // items, whereas a per-video force is one human, looking at one item,
+    // asking for this specific number to be re-fetched -- and today the guard
+    // makes that click silently do nothing in the case most likely to prompt
+    // it. Blast radius is one row, and pressing it again re-fetches.
+    // DEFAULTS OFF (`=== true`): the batch's behaviour is byte-identical to
+    // v1.48, and tech-debt #60 stays open against the batch.
     const repulledViews = ytdlp.parseCapturedViewCount(m.sourceViewCount);
     if (repulledViews !== null) {
       const stored = item.sourceViewCount;
       const hasStored = typeof stored === 'number' && Number.isInteger(stored) && stored >= 0;
-      if (!hasStored || repulledViews >= stored) {
+      if (!hasStored || repulledViews >= stored || m.allowViewCountDecrease === true) {
         item.sourceViewCount = repulledViews;
         item.sourceViewCountCapturedAt = nowMs;
       }
@@ -11553,6 +11689,15 @@ ytdlp.registerRoutes(app, {
   // injected like every other server-owned primitive. It is READ-ONLY -- it
   // never writes db.json, moves a file, or spawns anything.
   previewImportRelocations: buildImportRelocationPreview,
+  // v1.49 (Dean's per-video reheat): the SAME shared decision function the
+  // executor and the library-wide preview already call, now needed for ONE
+  // item -- the per-video route proposes the move to the user (destination +
+  // hard-link-vs-copy) and only then, on their confirm, calls
+  // `relocateHydratedImport` above. Handing the route this function rather
+  // than letting it re-derive "would it move, and to where?" is what keeps
+  // the confirm dialog from ever describing a move different to the one that
+  // actually happens (the v1.41.7 anti-drift contract).
+  planImportRelocation,
   // v1.33 T1: the reheat batch's LOCAL tags probe (cheap ffprobe, no
   // network) -- server.js owns ffmpeg/ffprobe, so the yt-dlp module gets it
   // deps-injected like every other server-owned primitive above.

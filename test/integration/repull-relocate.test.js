@@ -63,6 +63,7 @@ const assert = require('node:assert');
 const {
   app, getMediaId, loadDatabase, saveDatabase, updateDatabase, scanDirectories,
   relocateHydratedImportIntoChannelFolder, resolveRelocationTitle, transcodedPath,
+  planImportRelocation, activeMediaStreams,
   flushPendingProgress, userStore,
 } = require('../../server');
 const { authenticateFetch } = require('../helpers/auth');
@@ -1103,4 +1104,238 @@ test('a failed db re-key does not leave the in-flight progress ping stranded on 
     server.closeAllConnections?.();
     await new Promise((r) => server.close(r));
   }
+});
+
+// ---- v1.49 gate fix (adversarial CRITICAL 1 + 3): the attended per-video path -
+//
+// The `recently-watched` clause above is correct for the unattended batch and
+// silently made the v1.49 per-video relocation DEAD CODE: the watch page streams
+// the video on mount, which marks the file live-watched for ten minutes, and the
+// watch page is the only entry point. These tests use the REAL
+// `planImportRelocation`/`relocateHydratedImportIntoChannelFolder` -- the
+// per-video route's own suite stubs the planner, which is exactly why its 4949
+// green tests never noticed the feature's headline half could not run.
+
+test('v1.49: with allowRecentlyWatched, a file being watched IS a relocation candidate -- otherwise the per-video confirm can never appear', async () => {
+  const config = ytdlp.parseYtdlpConfig();
+  const { filePath, id } = seedHydratedImport();
+
+  const server = app.listen(0, '127.0.0.1');
+  await new Promise((r) => server.once('listening', r));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  authenticateFetch(server, base);
+  try {
+    // Exactly what the watch page does on mount (preload="metadata").
+    await (await fetch(`${base}/video/${id}`, { headers: { Range: 'bytes=0-3' } })).arrayBuffer();
+
+    // The batch's view is UNCHANGED: still protected.
+    const batchPlan = planImportRelocation(DEPS, config, id);
+    assert.equal(batchPlan.action, 'skip');
+    assert.equal(batchPlan.reason, 'recently-watched',
+      'the unattended batch must still refuse to move what someone is streaming');
+
+    // The attended per-video view: a real candidate.
+    const itemPlan = planImportRelocation(DEPS, config, id, null, { allowRecentlyWatched: true });
+    assert.equal(itemPlan.action, 'move', 'the per-video proposal must be reachable from the watch page');
+    assert.equal(itemPlan.destinationPath, expectedTarget(config));
+    assert.ok(fs.existsSync(filePath), 'planning moved nothing');
+  } finally {
+    server.closeAllConnections?.();
+    await new Promise((r) => server.close(r));
+  }
+});
+
+test('v1.49: the confirm actually moves a recently-watched file when the user approved it', async () => {
+  const config = ytdlp.parseYtdlpConfig();
+  const { filePath, id } = seedHydratedImport();
+
+  const server = app.listen(0, '127.0.0.1');
+  await new Promise((r) => server.once('listening', r));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  authenticateFetch(server, base);
+  try {
+    await (await fetch(`${base}/video/${id}`, { headers: { Range: 'bytes=0-3' } })).arrayBuffer();
+
+    const relocation = await relocateHydratedImportIntoChannelFolder(DEPS, config, id, { allowRecentlyWatched: true });
+    assert.equal(relocation.status, 'moved');
+    assert.equal(relocation.newPath, expectedTarget(config));
+    assert.ok(!fs.existsSync(filePath), 'the source is gone');
+    assert.ok(fs.existsSync(expectedTarget(config)), 'and the file is in its channel folder');
+  } finally {
+    server.closeAllConnections?.();
+    await new Promise((r) => server.close(r));
+  }
+});
+
+test('v1.49 (CRITICAL 3): a confirm whose expected DESTINATION no longer matches is refused as stale -- the file is untouched', async () => {
+  const config = ytdlp.parseYtdlpConfig();
+  const { filePath, id } = seedHydratedImport();
+
+  const relocation = await relocateHydratedImportIntoChannelFolder(DEPS, config, id, {
+    expect: { currentPath: filePath, destinationPath: '/somewhere/the/user/never/saw.mp4' },
+  });
+
+  assert.equal(relocation.status, 'stale');
+  assert.equal(relocation.reason, 'proposal-stale');
+  assert.equal(relocation.destinationPath, expectedTarget(config),
+    'and it reports the destination that is ACTUALLY on the table now, so the client can re-ask');
+  assert.ok(fs.existsSync(filePath), 'the file the user did not approve moving stays exactly where it is');
+  assert.equal(readDb().metadata[id].filePath, filePath, 'and its db entry is untouched');
+});
+
+test('v1.49 (CRITICAL 3): a confirm whose expected SOURCE no longer matches is refused as stale', async () => {
+  // The id is md5(filePath) with no salt: a path can be reoccupied by a
+  // different file and mint the same id, at which point a stale open dialog
+  // would relocate a completely different video.
+  const config = ytdlp.parseYtdlpConfig();
+  const { filePath, id } = seedHydratedImport();
+
+  const relocation = await relocateHydratedImportIntoChannelFolder(DEPS, config, id, {
+    expect: { currentPath: '/some/other/file/the/user/approved.mp4', destinationPath: expectedTarget(config) },
+  });
+
+  assert.equal(relocation.status, 'stale');
+  assert.ok(fs.existsSync(filePath), 'untouched');
+});
+
+test('v1.49 (CRITICAL 3): a matching expectation proceeds normally', async () => {
+  const config = ytdlp.parseYtdlpConfig();
+  const { filePath, id } = seedHydratedImport();
+
+  const relocation = await relocateHydratedImportIntoChannelFolder(DEPS, config, id, {
+    expect: { currentPath: filePath, destinationPath: expectedTarget(config) },
+  });
+
+  assert.equal(relocation.status, 'moved');
+  assert.ok(fs.existsSync(expectedTarget(config)));
+});
+
+test('v1.49: the batch path passes NO opts, so both new levers stay off for it', async () => {
+  // Belt and braces on the two escape hatches this release added to a function
+  // that moves user files: absent opts must behave exactly as v1.41.6 did.
+  const config = ytdlp.parseYtdlpConfig();
+  const { filePath, id } = seedHydratedImport();
+
+  const server = app.listen(0, '127.0.0.1');
+  await new Promise((r) => server.once('listening', r));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  authenticateFetch(server, base);
+  try {
+    await (await fetch(`${base}/video/${id}`, { headers: { Range: 'bytes=0-3' } })).arrayBuffer();
+    const relocation = await relocateHydratedImportIntoChannelFolder(DEPS, config, id);
+    assert.equal(relocation.status, 'skipped');
+    assert.equal(relocation.reason, 'recently-watched');
+    assert.ok(fs.existsSync(filePath));
+  } finally {
+    server.closeAllConnections?.();
+    await new Promise((r) => server.close(r));
+  }
+});
+
+// ---- v1.49 gate round 3 (QA seat: lock the two new safety branches) ---------
+
+test('v1.49 (W6): a LIVE read stream on the source is destroyed BEFORE the unlink -- not left to strand an fd', async () => {
+  // The DELETE route has awaited `destroyMediaStreams` since v1.41.10 (the
+  // DELETE_PENDING incident: ~180 stranded fds on three production files);
+  // `moveItemToFolder` never did. Lifting `recently-watched` for the attended
+  // per-video confirm made the "we are streaming the file we are moving"
+  // correlation CERTAIN rather than incidental, so this is now a real path.
+  //
+  // Mirrors test/integration/stream-leak-delete-pending.test.js's registration
+  // pattern: a raw http.get paused after its first chunk leaves a genuine
+  // registered read stream open. Registry emptiness IS fd closure - entries
+  // only leave on the stream's own 'close' event, which fs streams emit after
+  // the underlying fd has closed.
+  const http = require('node:http');
+  const config = ytdlp.parseYtdlpConfig();
+  const { filePath, id } = seedHydratedImport();
+  // Big enough that the response cannot complete before we pause it.
+  fs.writeFileSync(filePath, Buffer.alloc(6 * 1024 * 1024, 7));
+
+  const server = app.listen(0, '127.0.0.1');
+  await new Promise((r) => server.once('listening', r));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const { cookie } = authenticateFetch(server, base);
+  try {
+    const { res } = await new Promise((resolve, reject) => {
+      const req = http.get(`${base}/video/${id}`, { headers: { Cookie: cookie } }, (response) => {
+        response.once('data', () => { response.pause(); resolve({ res: response }); });
+        response.on('error', () => {});
+      });
+      req.on('error', reject);
+    });
+    assert.ok(activeMediaStreams.has(filePath), 'precondition: a live playback stream is registered on the source');
+
+    const relocation = await relocateHydratedImportIntoChannelFolder(DEPS, config, id, { allowRecentlyWatched: true });
+
+    assert.equal(relocation.status, 'moved');
+    assert.ok(!activeMediaStreams.has(filePath),
+      'the move must destroy our own read stream on the source -- an unlink with the fd still open is the DELETE_PENDING trap');
+    assert.ok(!fs.existsSync(filePath), 'and the source dirent is gone, not left behind as a duplicate');
+    assert.ok(fs.existsSync(relocation.newPath), 'while the file itself is safely in its channel folder');
+    res.destroy();
+  } finally {
+    server.closeAllConnections?.();
+    await new Promise((r) => server.close(r));
+  }
+});
+
+test('v1.49 (W5): a stale TRANSFER METHOD is refused even when both paths still match', async () => {
+  // The dialog's safety sentence -- "hard link, no data is copied" vs "copied
+  // across filesystems, original removed after a checksum match" -- can flip
+  // with both path strings byte-identical, because classifyTransfer measures
+  // the device of the nearest EXISTING ancestor and the channel dir usually
+  // does not exist yet at propose time. Binding the paths alone would let the
+  // user consent to a hard link and get a copy-then-delete.
+  const config = ytdlp.parseYtdlpConfig();
+  const { filePath, id } = seedHydratedImport();
+  const plan = planImportRelocation(DEPS, config, id);
+  assert.equal(plan.action, 'move', 'precondition');
+
+  const relocation = await relocateHydratedImportIntoChannelFolder(DEPS, config, id, {
+    expect: {
+      currentPath: plan.currentPath,
+      destinationPath: plan.destinationPath, // both paths MATCH
+      transfer: plan.transfer === 'copy' ? 'hardlink' : 'copy', // only this differs
+      sizeBytes: plan.sizeBytes,
+    },
+  });
+
+  assert.equal(relocation.status, 'stale', 'a changed transfer method voids the consent even with identical paths');
+  assert.ok(fs.existsSync(filePath), 'and the file is untouched');
+});
+
+test('v1.49 (W5): a stale SIZE is refused even when both paths still match', async () => {
+  const config = ytdlp.parseYtdlpConfig();
+  const { filePath, id } = seedHydratedImport();
+  const plan = planImportRelocation(DEPS, config, id);
+
+  const relocation = await relocateHydratedImportIntoChannelFolder(DEPS, config, id, {
+    expect: {
+      currentPath: plan.currentPath,
+      destinationPath: plan.destinationPath,
+      transfer: plan.transfer,
+      sizeBytes: plan.sizeBytes + 1, // the file the user was told about is not this file
+    },
+  });
+
+  assert.equal(relocation.status, 'stale');
+  assert.ok(fs.existsSync(filePath), 'untouched');
+});
+
+test('v1.49 (W5): a fully matching four-field expectation still proceeds', async () => {
+  const config = ytdlp.parseYtdlpConfig();
+  const { id } = seedHydratedImport();
+  const plan = planImportRelocation(DEPS, config, id);
+
+  const relocation = await relocateHydratedImportIntoChannelFolder(DEPS, config, id, {
+    expect: {
+      currentPath: plan.currentPath,
+      destinationPath: plan.destinationPath,
+      transfer: plan.transfer,
+      sizeBytes: plan.sizeBytes,
+    },
+  });
+
+  assert.equal(relocation.status, 'moved', 'binding four fields must not make a legitimate move impossible');
 });
