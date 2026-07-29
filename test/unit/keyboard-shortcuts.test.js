@@ -201,9 +201,14 @@ test('DRIFT LOCK: the documented D dark/light key is really handled (pure decisi
   // moon/sun button uses -- one shared path, never a second theme writer.
   const wireStart = COMMON.indexOf('function wireKeyboardShortcutsHelp');
   const wireEnd = COMMON.indexOf('\nfunction ', wireStart + 10);
-  const body = COMMON.slice(wireStart, wireEnd);
+  // Gate W2: strip comments first -- the literal `toggleTheme()` also lives
+  // in the explanatory comment, so an un-stripped match is presence-in-a-
+  // comment, not binding (the reviewer's deleted-call mutant SURVIVED the
+  // earlier spelling of this lock).
+  const body = COMMON.slice(wireStart, wireEnd)
+    .split('\n').filter((line) => !/^\s*\/\//.test(line)).join('\n');
   assert.match(body, /shouldToggleThemeKey\(e, tag, editable\)/, 'the capture handler consults the pure decision');
-  assert.match(body, /toggleTheme\(\)/, 'the verdict routes through the shared toggleTheme()');
+  assert.match(body, /^\s*toggleTheme\(\);$/m, 'the verdict routes through the shared toggleTheme() as a real statement');
 });
 
 // ---- SEMANTIC locks (gate W5: existence is not enough) ---------------------

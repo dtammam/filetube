@@ -81,15 +81,18 @@ function stripLineComments(src) {
   return src.split('\n').map((l) => l.replace(/\/\/.*$/, '')).join('\n');
 }
 
-test('clampChaptersMenuHeight measures real rects and applies the resolver result as an inline max-height', () => {
-  const m = /function clampChaptersMenuHeight\(\) \{([\s\S]*?)\n {4}\}/.exec(PLAYER_JS);
-  assert.ok(m, 'clampChaptersMenuHeight exists');
+test('the shared clampBarMenuHeight measures real rects and applies the resolver result as an inline max-height (v1.50.3: parametrized for BOTH bar popups)', () => {
+  const m = /function clampBarMenuHeight\(menu\) \{([\s\S]*?)\n {4}\}/.exec(PLAYER_JS);
+  assert.ok(m, 'clampBarMenuHeight exists');
   const body = stripLineComments(m[1]);
-  assert.match(body, /chaptersMenu\.hidden/, 'no-ops while hidden (rects are 0)');
+  assert.match(body, /menu\.hidden/, 'no-ops while hidden (rects are 0)');
   assert.match(body, /playerControls\.getBoundingClientRect\(\)\.top/, 'measures the bar, never guesses');
   assert.match(body, /host\.getBoundingClientRect\(\)\.top/, 'measures the clipping wrapper');
   assert.match(body, /style\.maxHeight = ''/, 'clears the previous clamp so the CSS cap can win again');
   assert.match(body, /resolveChaptersMenuMaxHeight\(/, 'delegates the math to the pure resolver');
+  // The chapters path routes through the SAME shared function -- one
+  // measurement, two popups, no divergence.
+  assert.match(stripLineComments(PLAYER_JS), /function clampChaptersMenuHeight\(\) \{ clampBarMenuHeight\(chaptersMenu\); \}/);
 });
 
 test('the clamp runs on open (after unhide), on rebuild-while-open, and on resize', () => {
