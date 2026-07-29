@@ -491,6 +491,20 @@ function resolveResumeShortcutAction(ctx) {
   return 'none';
 }
 
+// v1.50 (Dean, item 6): the rotate-to-landscape auto-fullscreen now requires
+// the media to actually be PLAYING. Before this, `onOrientationChange` fired
+// enterFullscreen() on ANY landscape rotation while the player was FULL --
+// even paused, even before a first play -- which fought the new bounded
+// landscape layout: rotating a phone to read the page sideways yanked a
+// paused player fullscreen. Rotating while playing keeps the immersive
+// auto-fullscreen exactly as before; the caller's `state !== STATE_FULL`
+// guard (a DOCKED mini-player never yanks fullscreen) stays where it is.
+// Pure + exported for node:test.
+function shouldAutoFullscreenOnRotate(ctx) {
+  var opts = ctx || {};
+  return !!(opts.landscape && !opts.inFullscreen && opts.playing);
+}
+
 // Bug-fix (v1.17.0 two-reviewer gate, FR-4b leak): pure helper for the
 // "capture-then-reset" step every NEW (non-adopt) load must perform on the
 // one-shot `autoplayAdvancePending` flag, at load START -- not deferred to
@@ -963,6 +977,8 @@ if (typeof module !== 'undefined' && module.exports) {
     resolveDockTransitionResumeAction,
     // v1.50: the Resume prompt's R/S keyboard decision table.
     resolveResumeShortcutAction,
+    // v1.50 item 6: rotate-to-landscape auto-fullscreen requires playing.
+    shouldAutoFullscreenOnRotate,
     captureAutoplayAdvanceForLoad,
     clampVolume,
     seekCommitTarget,
@@ -4720,7 +4736,15 @@ if (typeof module !== 'undefined' && module.exports) {
       if (state !== STATE_FULL) return; // FULL-only shortcut/gesture surface
       var landscape = mql.matches;
       try {
-        if (landscape && !inNativeFullscreen()) {
+        // v1.50 (Dean, item 6): `playing` joins the decision -- see
+        // shouldAutoFullscreenOnRotate's header. A paused/idle rotation now
+        // falls through to the bounded landscape layout (style.css) instead
+        // of being yanked fullscreen.
+        if (shouldAutoFullscreenOnRotate({
+          landscape: landscape,
+          inFullscreen: inNativeFullscreen(),
+          playing: !!(mediaPlayer && !mediaPlayer.paused && !mediaPlayer.ended),
+        })) {
           autoFullscreen = true;
           // FR-2 (T2, v1.21.0): retargeted through enterFullscreen() --
           // still iOS-native on iOS (webkitEnterFullscreen, no promise),

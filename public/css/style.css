@@ -4069,6 +4069,32 @@ a.sub-row-channel-link:focus-visible {
 @media (max-width: 768px) and (orientation: landscape) {
   .bottom-nav { display: none; }
   .main-content { padding-bottom: env(safe-area-inset-bottom); }
+
+  /* v1.50 (Dean, item 6): bound the NON-fullscreen player in phone landscape.
+     Until now every height cap was portrait-scoped (the v1.13 comment below
+     says landscape was left "completely unaffected"), so a landscape watch
+     page at rest was a full-viewport-width 16:9 box (~475px tall on a 390px-
+     tall phone) + the 80px control strip -- taller than the screen. Cap the
+     MEDIA ELEMENT's height so picture + strip + the fixed mobile header
+     (--mobile-header-h, set in the <=768px block and live here too) fit the
+     viewport; `width: 100%` + the global `object-fit: contain` pillarbox the
+     picture inside the shorter box. The wrapper (aspect-ratio: auto, height
+     from content) and the strip follow automatically. The 96px reserve =
+     the 80px two-row strip + 16px breathing room.
+
+     Deliberately excluded, so "rotate while playing" immersion is untouched:
+     - `.css-fullscreen` (the faux-fullscreen overlay releases every sizing
+       constraint -- v1.34.3 -- and a 3-ID cap here would out-rank it);
+     - `:fullscreen` (native element fullscreen restores `height: 100%`,
+       which max-height would override);
+     - the DOCK (this is #player-slot-scoped) and `.audio-expanded`.
+     iOS native video fullscreen (webkitEnterFullscreen) renders in the
+     system player, untouched by any of this. */
+  #player-slot #player-wrapper:not(.audio-expanded):not(.css-fullscreen):not(:fullscreen) #media-player {
+    max-height: calc(100vh - var(--mobile-header-h, 96px) - 96px);
+  }
+  /* Audio's cover-art layer fills the wrapper (absolute inset), which now
+     tracks the capped element height -- nothing extra needed for audio. */
 }
 
 /* v1.13.0 item 2: cap the player on a PHONE IN PORTRAIT so it no longer
