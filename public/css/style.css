@@ -4994,6 +4994,17 @@ body.ft-css-fullscreen .bottom-nav {
 .chapters-menu-item:hover {
   background: var(--hover-bg, rgba(128, 128, 128, 0.15));
 }
+/* v1.50.3: the speed picker reuses the chapters popup wholesale; only the
+   width budget differs (eight short labels need no 220px) and the active
+   rate gets the accent treatment. Era/mode correctness rides the shared
+   class's tokens for free. */
+.speed-menu {
+  min-width: 120px;
+}
+.speed-menu-item.active {
+  font-weight: 600;
+  color: var(--yt-red);
+}
 .chapters-menu-time {
   color: var(--text-secondary);
   font-variant-numeric: tabular-nums;

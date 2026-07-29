@@ -3412,6 +3412,8 @@ const KEYBOARD_SHORTCUT_GROUPS = [
       { keys: ['M'], desc: 'Mute / unmute' },
       { keys: ['F'], desc: 'Fullscreen (audio: expand the cover art)' },
       { keys: ['C'], desc: 'Toggle captions (when the item has them)' },
+      // v1.50.3: same job as the header moon/sun button, any page, desktop.
+      { keys: ['D'], desc: 'Toggle dark / light mode' },
     ],
   },
   {
@@ -3674,10 +3676,33 @@ function wireKeyboardShortcutsHelp() {
     const el = document.activeElement;
     const tag = (el && el.tagName) || '';
     const editable = Boolean(el && el.isContentEditable);
+    // v1.50.3 (Dean, item B): D toggles dark/light -- mode only, exactly the
+    // header moon/sun button's job, through the SAME toggleTheme() so the
+    // two affordances can never diverge on persistence/mirroring. Allowed
+    // while the shortcuts dialog is open (watching the theme flip behind the
+    // reference is harmless and kind of the point). Same typing/modifier
+    // guards as `?`, same desktop gating (the check above covers both).
+    if (shouldToggleThemeKey(e, tag, editable)) {
+      e.preventDefault();
+      toggleTheme();
+      return;
+    }
     if (!shouldOpenShortcuts(e, tag, editable)) return;
     e.preventDefault();
     openShortcutsModal();
   }, true);
+}
+
+/**
+ * Pure: should this keydown flip dark/light mode? `d`/`D`, no modifiers
+ * (Cmd+D stays the browser bookmark), never while typing -- mirrors
+ * shouldOpenShortcuts' contract exactly. Exported for node:test.
+ */
+function shouldToggleThemeKey(e, activeTag, isEditable) {
+  if (!e || (e.key !== 'd' && e.key !== 'D')) return false;
+  if (e.ctrlKey || e.metaKey || e.altKey) return false;
+  if (isEditable) return false;
+  return ['INPUT', 'TEXTAREA', 'SELECT'].indexOf(String(activeTag || '').toUpperCase()) === -1;
 }
 
 // Pure decision: should a plain `<a>` click be intercepted for an in-app swap
@@ -7720,6 +7745,8 @@ if (typeof module !== 'undefined' && module.exports) {
     isRestorableSessionUrl, shouldRestoreSession, LAST_SESSION_KEY, LAST_SESSION_MAX_AGE_MS,
     // v1.47.8: the keyboard-shortcuts reference.
     KEYBOARD_SHORTCUT_GROUPS, shouldOpenShortcuts, buildShortcutsModal,
+    // v1.50.3: the D dark/light toggle's pure decision.
+    shouldToggleThemeKey,
     openShortcutsModal, closeShortcutsModal, isDesktopViewport, SHORTCUTS_DESKTOP_QUERY,
     // Consumed cross-file via `window` (read.js stands its page-flip arrows
     // down while the dialog is open), so it is exported here too rather than

@@ -47,3 +47,38 @@ test('speed-btn parity: exactly one #speed-btn per shell (no accidental duplicat
     assert.strictEqual(matches.length, 1, `${shellPath} should have exactly one #speed-btn, found ${matches.length}`);
   }
 });
+
+// ---- v1.50.3 (Dean, item A): the speed PICKER (#speed-menu) ----------------
+// The button now opens a picker instead of blind-cycling eight rates. The
+// popup div must ride the SAME template in every shell that carries the
+// player host (all seven, not just this file's original four -- the picker
+// works wherever the docked player can expand).
+
+const ALL_TEMPLATE_SHELLS = [
+  path.join(ROOT, 'public', 'index.html'),
+  path.join(ROOT, 'public', 'setup.html'),
+  path.join(ROOT, 'public', 'watch.html'),
+  path.join(ROOT, 'public', 'music.html'),
+  path.join(ROOT, 'public', 'read.html'),
+  path.join(ROOT, 'public', 'stats.html'),
+  path.join(ROOT, 'lib', 'ytdlp', 'views', 'subscriptions.html'),
+];
+const SPEED_MENU_MARKUP = '<div id="speed-menu" class="chapters-menu speed-menu" hidden></div>';
+
+test('speed-menu parity: every player-host shell carries the byte-identical #speed-menu popup', () => {
+  for (const shellPath of ALL_TEMPLATE_SHELLS) {
+    const html = fs.readFileSync(shellPath, 'utf8');
+    assert.ok(html.includes(SPEED_MENU_MARKUP), `${shellPath} is missing the #speed-menu popup`);
+  }
+});
+
+test('speed-menu wiring: the button toggles the picker, selection routes through applyPlaybackRate, and the shared close path covers it', () => {
+  const playerJs = fs.readFileSync(path.join(ROOT, 'public', 'js', 'player.js'), 'utf8');
+  assert.match(playerJs, /function buildSpeedMenu\(\)/, 'the DOM builder exists');
+  assert.match(playerJs, /buildSpeedMenuModel\(mediaPlayer \? mediaPlayer\.playbackRate : 1\)/, 'rows come from the pure model fed the LIVE rate');
+  assert.match(playerJs, /applyPlaybackRate\(row\.rate\)/, 'selection routes through the ONE apply path the </> keys use');
+  const closeChapters = /function closeChaptersMenu\(\) \{[\s\S]*?\n {4}\}/.exec(playerJs);
+  assert.ok(closeChapters, 'expected closeChaptersMenu');
+  assert.match(closeChapters[0], /closeSpeedMenu\(\)/, 'every lifecycle site that dismisses chapters dismisses the speed picker too');
+  assert.match(playerJs, /closeSpeedMenuOnOutside/, 'the picker has its own outside-close (click+pointerdown)');
+});
