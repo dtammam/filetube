@@ -2119,10 +2119,22 @@ html.reader-immersive .app-container { padding-top: 0; }
   text-decoration: underline;
 }
 
+/* v1.50 (Dean, mid-wave ask): the subscriber count reads as a BADGE now --
+   the classic-YouTube boxed-count treatment -- instead of a bare text line.
+   Everything comes from the existing era tokens (btn surface, border,
+   radius), so it is square/beveled in 2005/2009 and rounded in 2021, and
+   correct in both data-mode palettes, with zero new tokens. The count text
+   itself (mock, deterministic -- getMockSubCount) is unchanged. */
 .uploader-subs {
+  display: inline-block;
   font-size: var(--fs-xs);
   color: var(--text-secondary);
-  margin-top: 2px;
+  margin-top: 3px;
+  padding: 1px 7px;
+  background-color: var(--btn-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  line-height: 1.5;
 }
 
 /* Description Box */
