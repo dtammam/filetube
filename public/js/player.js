@@ -467,6 +467,30 @@ function resolveDockTransitionResumeAction(ctx) {
   return opts.resumeOverlayVisible ? 'dismiss-and-auto-resume' : 'none';
 }
 
+// v1.50 (Dean): keyboard shortcuts for the Resume prompt -- `R` = Resume,
+// `S` = Start from the beginning, active ONLY while `#resume-overlay` is
+// actually showing. Pure decision table (exported for node:test); the DOM
+// listener routes the verdict through the REAL buttons' .click() so the
+// keyboard path and the click path can never diverge (the v1.41.7 "one
+// shared decision function" doctrine -- liveMode branching, progress save,
+// overlay dismissal all live in exactly one place, the click handlers).
+// Deliberately NOT folded into the main FULL-only shortcut switch: that
+// switch early-returns on a focused BUTTON, which is precisely the state
+// after the overlay's own buttons render (same reasoning as the
+// audio-expand Escape listener). No Escape binding here -- "dismiss" is
+// ambiguous between the two choices, so Escape stays unbound on this
+// overlay by design.
+function resolveResumeShortcutAction(ctx) {
+  var opts = ctx || {};
+  if (!opts.overlayVisible) return 'none';
+  if (opts.hasModifier) return 'none';
+  if (opts.isTypingContext) return 'none';
+  var key = String(opts.key || '');
+  if (key === 'r' || key === 'R') return 'resume';
+  if (key === 's' || key === 'S') return 'restart';
+  return 'none';
+}
+
 // Bug-fix (v1.17.0 two-reviewer gate, FR-4b leak): pure helper for the
 // "capture-then-reset" step every NEW (non-adopt) load must perform on the
 // one-shot `autoplayAdvancePending` flag, at load START -- not deferred to
@@ -937,6 +961,8 @@ if (typeof module !== 'undefined' && module.exports) {
     resolveResumeThreshold,
     resolveDockedResumeAction,
     resolveDockTransitionResumeAction,
+    // v1.50: the Resume prompt's R/S keyboard decision table.
+    resolveResumeShortcutAction,
     captureAutoplayAdvanceForLoad,
     clampVolume,
     seekCommitTarget,
@@ -4874,6 +4900,29 @@ if (typeof module !== 'undefined' && module.exports) {
       if (state !== STATE_FULL) return;
       if (!host || !host.classList.contains('audio-expanded')) return;
       if (e.key === 'Escape' || e.key === 'Esc') exitAudioExpand();
+    });
+
+    // ---- v1.50 (Dean): R / S while the Resume prompt is showing ------------
+    // Separate listener for the same focused-BUTTON reason as the Escape one
+    // above -- see resolveResumeShortcutAction's header for the full design.
+    // The shortcuts-help dialog guard mirrors the main switch's own: keys
+    // pressed while the `?` reference is open must never act behind it.
+    document.addEventListener('keydown', function (e) {
+      if (typeof window.isShortcutsModalOpen === 'function' && window.isShortcutsModalOpen()) return;
+      var active = document.activeElement;
+      var tag = active && active.tagName ? String(active.tagName).toUpperCase() : '';
+      var action = resolveResumeShortcutAction({
+        key: e.key,
+        // Same visibility spelling as resolveDockTransitionResumeAction's
+        // call site: the overlay carries an inline display style from birth.
+        overlayVisible: !!(resumeOverlay && resumeOverlay.style.display !== 'none'),
+        hasModifier: !!(e.ctrlKey || e.metaKey || e.altKey),
+        isTypingContext: !!(active && (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || active.isContentEditable)),
+      });
+      if (action === 'none') return;
+      e.preventDefault();
+      if (action === 'resume' && resumeYesBtn) resumeYesBtn.click();
+      else if (action === 'restart' && resumeNoBtn) resumeNoBtn.click();
     });
   }
 

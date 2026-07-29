@@ -3394,6 +3394,11 @@ const KEYBOARD_SHORTCUT_GROUPS = [
       { keys: ['0', '…', '9'], desc: 'Jump to 0% - 90% of the item' },
       { keys: ['<'], desc: 'Slow down' },
       { keys: ['>'], desc: 'Speed up' },
+      // v1.50: only live while the "Resume Playback?" prompt is showing --
+      // the desc says so, keeping the reference's one rule ("every listed
+      // key ACTUALLY works") honest about the scoping.
+      { keys: ['R'], desc: 'Resume (while the Resume prompt is showing)' },
+      { keys: ['S'], desc: 'Start over (while the Resume prompt is showing)' },
     ],
   },
   {

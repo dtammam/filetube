@@ -168,3 +168,39 @@ test('captureAutoplayAdvanceForLoad + shouldShowResumeOverlay: simulates the fix
   assert.strictEqual(loadBCapture.value, false);
   assert.strictEqual(shouldShowResumeOverlay({ savedProgress: 90, autoplayAdvance: loadBCapture.value }), true);
 });
+
+// ---- v1.50 T5: resolveResumeShortcutAction (the R/S decision table) --------
+// The listener routes verdicts through the REAL buttons' .click(), so this
+// pure table is the whole keyboard-specific surface: key mapping, visibility
+// gate, modifier gate, typing gate.
+
+const { resolveResumeShortcutAction } = require('../../public/js/player.js');
+
+test('resolveResumeShortcutAction: r/R resume, s/S restart -- only while the overlay is visible', () => {
+  for (const key of ['r', 'R']) {
+    assert.strictEqual(resolveResumeShortcutAction({ key, overlayVisible: true }), 'resume');
+    assert.strictEqual(resolveResumeShortcutAction({ key, overlayVisible: false }), 'none');
+  }
+  for (const key of ['s', 'S']) {
+    assert.strictEqual(resolveResumeShortcutAction({ key, overlayVisible: true }), 'restart');
+    assert.strictEqual(resolveResumeShortcutAction({ key, overlayVisible: false }), 'none');
+  }
+});
+
+test('resolveResumeShortcutAction: any other key is none, even with the overlay up', () => {
+  for (const key of ['k', ' ', 'Escape', 'Enter', 'f', '5', 'ArrowLeft', '']) {
+    assert.strictEqual(resolveResumeShortcutAction({ key, overlayVisible: true }), 'none');
+  }
+});
+
+test('resolveResumeShortcutAction: modifier combos and typing contexts never fire (browser/OS combos like Ctrl+R stay untouched)', () => {
+  assert.strictEqual(resolveResumeShortcutAction({ key: 'r', overlayVisible: true, hasModifier: true }), 'none');
+  assert.strictEqual(resolveResumeShortcutAction({ key: 's', overlayVisible: true, hasModifier: true }), 'none');
+  assert.strictEqual(resolveResumeShortcutAction({ key: 'r', overlayVisible: true, isTypingContext: true }), 'none');
+});
+
+test('resolveResumeShortcutAction: never throws on a missing/garbage context', () => {
+  assert.strictEqual(resolveResumeShortcutAction(), 'none');
+  assert.strictEqual(resolveResumeShortcutAction(null), 'none');
+  assert.strictEqual(resolveResumeShortcutAction({ overlayVisible: true, key: { bogus: 1 } }), 'none');
+});
