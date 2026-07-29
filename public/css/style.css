@@ -4722,6 +4722,23 @@ a.sub-row-channel-link:focus-visible {
     flex-basis: 100%;
     height: 0;
   }
+  /* v1.50.5 (Dean): YouTube-ish row 2 -- transport on the LEFT (play,
+     mute, volume), the settings-ish cluster pushed to the RIGHT with
+     fullscreen anchored in the far corner, YouTube's signature position.
+     PURE flex `order` + one auto margin: no height/padding/wrap/DOM
+     change, so the two-row trap history stays sealed. The auto margin
+     lives on #speed-btn (always rendered) rather than #cc-btn (hidden
+     until captions exist -- a hidden element's margin splits nothing).
+     Side effect that helps: the speed/chapters popups anchor at the
+     bar's right edge, so they now open directly above their buttons. */
+  #player-slot .player-controls #pp-btn { order: 1; }
+  #player-slot .player-controls #mute-btn { order: 2; }
+  #player-slot .player-controls #vol-bar { order: 3; }
+  #player-slot .player-controls #speed-btn { order: 5; margin-left: auto; }
+  #player-slot .player-controls #cc-btn { order: 6; }
+  #player-slot .player-controls #chapters-btn { order: 7; }
+  #player-slot .player-controls #pip-btn { order: 8; }
+  #player-slot .player-controls #fs-btn { order: 9; }
   #player-slot .player-controls .pc-seek {
     flex: 1 1 auto;
     min-width: 0;
