@@ -168,6 +168,12 @@ summary,
 
 /* ---- 2005 Original: system Verdana, sharp 0px, plain B/W, blue links ---- */
 [data-theme="2005"] {
+  /* v1.50.2 gate C1: :root now defines --heading-font (the safe-default
+     contract), and custom properties INHERIT -- without a per-era
+     override the var() fallback in the title rules is dead and every
+     era would render 2021's Roboto/YouTube Sans titles. Re-point the
+     heading family at this era's own body stack. */
+  --heading-font: var(--font-family);
   --font-family: Verdana, Arial, Helvetica, sans-serif;
   --logo-font: "Arial Black", Arial, sans-serif;
   --mono-font: "Courier New", monospace;
@@ -218,6 +224,12 @@ summary,
 
 /* ---- 2009 Classic: Arial, ~2px, warm grays, red/gray chrome ---- */
 [data-theme="2009"] {
+  /* v1.50.2 gate C1: :root now defines --heading-font (the safe-default
+     contract), and custom properties INHERIT -- without a per-era
+     override the var() fallback in the title rules is dead and every
+     era would render 2021's Roboto/YouTube Sans titles. Re-point the
+     heading family at this era's own body stack. */
+  --heading-font: var(--font-family);
   --font-family: Arial, Helvetica, sans-serif;
   --logo-font: Arial, Helvetica, sans-serif;
   --mono-font: "Courier New", monospace;
@@ -268,6 +280,12 @@ summary,
 
 /* ---- 2014 Flat: Arial (era-accurate), ~2px, flat white, brighter red, airy ---- */
 [data-theme="2014"] {
+  /* v1.50.2 gate C1: :root now defines --heading-font (the safe-default
+     contract), and custom properties INHERIT -- without a per-era
+     override the var() fallback in the title rules is dead and every
+     era would render 2021's Roboto/YouTube Sans titles. Re-point the
+     heading family at this era's own body stack. */
+  --heading-font: var(--font-family);
   /* v1.50.2 (Dean, font pass): Roboto was WRONG for this era -- the real
      2012-2016 (pre-Polymer) YouTube desktop site was Arial; Roboto only
      took the site over with the 2017 Material redesign. Roboto here read

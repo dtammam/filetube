@@ -45,6 +45,15 @@ test('every era defines --heading-weight; non-2021 eras stay bold/normal (byte-i
   }
 });
 
+test('gate C1 lock: every non-2021 era OVERRIDES --heading-font to its own stack -- :root\'s 2021 default INHERITS otherwise (custom properties ignore the var() fallback once defined up-tree)', () => {
+  for (const era of ['2005', '2009', '2014']) {
+    const block = eraBlock(era);
+    assert.match(block, /--heading-font:\s*var\(--font-family\)/, `${era} must re-point the heading family at its own body stack`);
+    const headingFontLine = /--heading-font:[^;]*/.exec(block)[0];
+    assert.doesNotMatch(headingFontLine, /Roboto|YouTube Sans/, `${era} heading font must name neither Roboto nor YouTube Sans literally`);
+  }
+});
+
 test('the three title surfaces consume the tokens with safe fallbacks -- and ONLY those three (body text untouched)', () => {
   for (const selector of ['.section-title', '.video-title', '.watch-title']) {
     const m = new RegExp(`\\n\\${selector} \\{([\\s\\S]*?)\\}`).exec(css);
@@ -83,7 +92,11 @@ test('sentence-case pass: none of the converted Title Case phrases survive in an
     for (const shell of fs.readdirSync(dir).filter((f) => f.endsWith('.html'))) {
       const html = fs.readFileSync(path.join(dir, shell), 'utf8');
       for (const phrase of CONVERTED) {
-        assert.ok(!html.includes('>' + phrase + '<'), `${shell} still renders "${phrase}" -- the sentence-case pass must hold everywhere`);
+        // Gate W4: plain substring, not '>phrase<' -- the sidebar's
+        // '<i class="icon-cog"></i> Library Settings\n</a>' shape (icon
+        // sibling + whitespace) let a reverted phrase survive the enclosed
+        // check. The sweeps converted comments too, so substring is safe.
+        assert.ok(!html.includes(phrase), `${shell} still contains "${phrase}" -- the sentence-case pass must hold everywhere`);
       }
     }
   }
