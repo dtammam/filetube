@@ -214,7 +214,10 @@ test('v1.22.1 FR-4: #speed-btn has its own rule reusing .pc-btn sizing/theming (
 });
 
 test('v1.22.1 FR-4: mobile #speed-btn keeps a >=44px touch-target floor via min-width (not a clipping fixed width)', () => {
-  const rule = /#speed-btn\s*\{([^}]*)\}/.exec(mobileMediaBlock);
+  // v1.50.5: anchored to the BARE rule -- the new row-2 order rule
+  // (#player-slot .player-controls #speed-btn) also ends in `#speed-btn {`
+  // and shadowed the loose match.
+  const rule = /(?:^|\n)\s*#speed-btn\s*\{([^}]*)\}/.exec(mobileMediaBlock);
   assert.ok(rule, 'expected a mobile-scoped #speed-btn rule inside the @media block immediately preceding the v1.22/v1.22.1 FR-1 section');
   const minWidthMatch = /min-width:\s*(\d+(?:\.\d+)?)px/.exec(rule[1]);
   assert.ok(minWidthMatch, 'expected a `min-width: <n>px` declaration');
@@ -256,4 +259,50 @@ test('AC12: the v1.22/v1.22.1 FR-1 section introduces no hardcoded color values 
   const body = sectionMatch[0];
   assert.ok(!/#[0-9a-fA-F]{3,8}\b/.test(body), 'no hex colors expected in the v1.22/v1.22.1 FR-1 section');
   assert.ok(!/rgba?\(/.test(body), 'no rgb()/rgba() colors expected in the v1.22/v1.22.1 FR-1 section');
+});
+
+// ---- v1.50.5 (Dean): YouTube-ish mobile row 2 ------------------------------
+// Transport left, settings cluster right, fullscreen in the far corner --
+// pure flex order + one auto margin inside the mobile block; the two-row
+// geometry (80px, structural ::after break) is untouched by construction.
+
+test('v1.50.5: mobile row 2 is ordered transport-left / cluster-right with fullscreen in the far corner', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  // Gate W1/W2: scoped to the MOBILE media block (the file's own
+  // mobileMediaBlock, like the neighboring tests) and anchored to
+  // line-start -- a whole-file unanchored regex would stay green if the
+  // orders moved OUTSIDE the media query (desktop regression) and would
+  // mis-bind the reader's longer 4-part reset selectors.
+  const orderOf = (id) => {
+    const m = new RegExp(`(?:^|\\n)\\s*#player-slot \\.player-controls #${id} \\{[^}]*order:\\s*(\\d+)`).exec(mobileMediaBlock);
+    assert.ok(m, `expected a MOBILE-scoped order for #${id}`);
+    return Number(m[1]);
+  };
+  const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
+  const orders = ['pp-btn', 'mute-btn', 'vol-bar', 'speed-btn', 'cc-btn', 'chapters-btn', 'pip-btn', 'fs-btn'].map(orderOf);
+  assert.deepStrictEqual([...orders].sort((a, b) => a - b), orders, 'row 2 runs play, mute, vol, then the right cluster, in order');
+  assert.strictEqual(Math.max(...orders), orderOf('fs-btn'), 'fullscreen is the far-right corner -- the YouTube signature');
+  // The push lives on the ALWAYS-RENDERED speed button, not the sometimes-
+  // hidden CC button (a hidden element's auto margin splits nothing).
+  assert.match(css, /#player-slot \.player-controls #speed-btn \{[^}]*margin-left:\s*auto/);
+  const ccRule = /#player-slot \.player-controls #cc-btn \{([^}]*)\}/.exec(css);
+  assert.doesNotMatch(ccRule[1], /margin-left/, 'the auto margin must never sit on the hidable CC button');
+});
+
+test('v1.50.5 gate C1 lock: the reader now-playing bar resets ALL EIGHT button orders with id-specificity', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
+  // The reader mounts #player-slot, so the watch bar's 2-id order rules
+  // apply there too; the reset must name every button (a future unhide
+  // must not resurrect the leak) at >= specificity (id selectors, never a
+  // class reset that loses 1-id-vs-2-id).
+  for (const id of ['pp-btn', 'mute-btn', 'vol-bar', 'speed-btn', 'cc-btn', 'chapters-btn', 'pip-btn', 'fs-btn']) {
+    assert.match(css, new RegExp(`\\.reader-nowplaying #player-slot \\.player-controls #${id}[,\\s]`), `reader reset covers #${id}`);
+  }
+  const resetRule = /\.reader-nowplaying #player-slot \.player-controls #fs-btn \{([^}]*)\}/.exec(css);
+  assert.ok(resetRule, 'expected the reader reset rule block');
+  assert.match(resetRule[1], /order:\s*0/);
+  assert.match(resetRule[1], /margin-left:\s*0/, 'the speed auto-margin is neutralized in the reader bar too');
 });

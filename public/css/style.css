@@ -4722,6 +4722,23 @@ a.sub-row-channel-link:focus-visible {
     flex-basis: 100%;
     height: 0;
   }
+  /* v1.50.5 (Dean): YouTube-ish row 2 -- transport on the LEFT (play,
+     mute, volume), the settings-ish cluster pushed to the RIGHT with
+     fullscreen anchored in the far corner, YouTube's signature position.
+     PURE flex `order` + one auto margin: no height/padding/wrap/DOM
+     change, so the two-row trap history stays sealed. The auto margin
+     lives on #speed-btn (always rendered) rather than #cc-btn (hidden
+     until captions exist -- a hidden element's margin splits nothing).
+     Side effect that helps: the speed/chapters popups anchor at the
+     bar's right edge, so they now open directly above their buttons. */
+  #player-slot .player-controls #pp-btn { order: 1; }
+  #player-slot .player-controls #mute-btn { order: 2; }
+  #player-slot .player-controls #vol-bar { order: 3; }
+  #player-slot .player-controls #speed-btn { order: 5; margin-left: auto; }
+  #player-slot .player-controls #cc-btn { order: 6; }
+  #player-slot .player-controls #chapters-btn { order: 7; }
+  #player-slot .player-controls #pip-btn { order: 8; }
+  #player-slot .player-controls #fs-btn { order: 9; }
   #player-slot .player-controls .pc-seek {
     flex: 1 1 auto;
     min-width: 0;
@@ -6810,6 +6827,24 @@ body.ft-css-fullscreen .bottom-nav {
   .reader-nowplaying #player-slot .player-controls .pc-time,
   .reader-nowplaying #player-slot .player-controls .pc-seek {
     order: 0; /* undo the scrub-lift; one inline row again */
+  }
+  /* v1.50.5 gate CRITICAL 1: the watch bar's YouTube-ish row-2 orders
+     (above, #player-slot-scoped) LEAK into this bar -- the reader mounts
+     #player-slot too -- and flex-sorted the play button behind the scrub
+     row ([0:00][seek][3:45][>][1x]). Reset ALL EIGHT buttons, not just the
+     two visible today (a future unhide must not resurrect the leak), with
+     ID selectors: a class reset (1 id) LOSES to the order rules' 2-id
+     specificity. 2 ids + 2 classes beats 2 ids + 1 class. */
+  .reader-nowplaying #player-slot .player-controls #pp-btn,
+  .reader-nowplaying #player-slot .player-controls #mute-btn,
+  .reader-nowplaying #player-slot .player-controls #vol-bar,
+  .reader-nowplaying #player-slot .player-controls #speed-btn,
+  .reader-nowplaying #player-slot .player-controls #cc-btn,
+  .reader-nowplaying #player-slot .player-controls #chapters-btn,
+  .reader-nowplaying #player-slot .player-controls #pip-btn,
+  .reader-nowplaying #player-slot .player-controls #fs-btn {
+    order: 0;
+    margin-left: 0;
   }
   /* NB: the reader chassis height that keeps the reading-% bar visible above
      this bar is set by read.js's sizeReader() (it MEASURES the bar's real
