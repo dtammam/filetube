@@ -7889,9 +7889,11 @@ app.post('/api/progress', (req, res) => {
   // division, while filterByWatchState's strict number check excluded the
   // same un-flushed entry from its bucket -- three readers, two answers.
   // Now every reader (latch, watch buckets, flush, progress overlay) sees
-  // one numeric value. For every numeric-duration caller (the real client
-  // sends video.duration) this is byte-identical to the old
-  // `duration || item.duration || 0`.
+  // one numeric value. For every POSITIVE-FINITE numeric-duration caller
+  // (the real client sends video.duration) this is byte-identical to the
+  // old `duration || item.duration || 0`; a negative/Infinity/NaN numeric
+  // duration now falls back to the item's real duration instead of staging
+  // garbage (gate delta precision -- an improvement, not a preservation).
   const effDuration = (typeof duration === 'number' && Number.isFinite(duration) && duration > 0)
     ? duration
     : (item.duration || 0);
