@@ -152,6 +152,10 @@ test('manual wins over the consume bridge: a fresh capture cannot re-point a man
       ns.downloadMeta.bbbbbbbbbbb = {
         channelUrl: 'https://www.youtube.com/channel/UCaaaaaaaaaaaaaaaaaaaaaa',
         channelName: 'Nétwork Channel',
+        // Gate round 2 (M5): the D1b lane's STANDALONE avatar write is only
+        // reachable when the capture carries a thumbnail -- without this the
+        // avatar guard was tested in name only (the reviewer's re-audit).
+        channelThumbnail: 'https://yt3.example/network-face.jpg',
         sourceViewCount: 777,
         capturedAt: Date.UTC(2026, 5, 1),
       };
@@ -163,6 +167,8 @@ test('manual wins over the consume bridge: a fresh capture cannot re-point a man
     const after = loadDatabase().metadata[item.id];
     assert.equal(after.channelUrl, TARGET.channelUrl, 'manual identity KEPT against a fresh capture');
     assert.equal(after.channelName, 'Résurrected Chännel');
+    assert.equal(after.channelAvatarUrl, TARGET.channelAvatarUrl,
+      'the D1b standalone avatar write declined the captured thumbnail (M5 -- the name-over-wrong-face chimera)');
     assert.equal(after.channelAttributedManually, true);
     assert.equal(after.sourceViewCount, 777, 'non-identity capture facts still land');
   } finally {
@@ -259,6 +265,78 @@ test('gate round: bulk root CONFINEMENT (C2) + preview (C3) + relocateSkipped wh
   assert.equal(run.relocating, false);
   assert.equal(run.relocateSkipped, 'module-disabled', 'the skip reason is NAMED, never silent');
   fs.rmSync(pvDir, { recursive: true, force: true });
+});
+
+test('gate round 2 (M21/M24-half): the single-flight latch 409s a second bulk; cancel answers honestly when nothing runs', async () => {
+  const { __setAttributeBulkInProgressForTests } = require('../../server');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-attrib-latch-'));
+  await updateDatabase((db) => { if (!db.folders.includes(dir)) db.folders.push(dir); });
+  try {
+    __setAttributeBulkInProgressForTests(true);
+    const res = await fetch(`${base}/api/videos/attribute-channel-bulk`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ root: dir, target: TARGET, relocate: false }),
+    });
+    assert.equal(res.status, 409, 'a second bulk while one runs is refused (single-flight)');
+    assert.equal((await res.json()).alreadyRunning, true);
+  } finally {
+    __setAttributeBulkInProgressForTests(false);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+  const cancelIdle = await (await fetch(`${base}/api/videos/attribute-channel-bulk/cancel`, { method: 'POST' })).json();
+  assert.deepEqual(cancelIdle, { cancelled: false, running: false }, 'cancel never claims to have cancelled work that was not running');
+});
+
+test('gate round 2 (M23): a re-run RESUMES - an attributed-but-unmoved item is counted and moved', async () => {
+  process.env.FILETUBE_YTDLP_ENABLED = 'true';
+  process.env.FILETUBE_YTDLP_DOWNLOAD_DIR = downloadDir;
+  try {
+    const resumeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-attrib-resume-'));
+    const fp = seedFile(resumeDir, 'Strandéd After Crash.mp4');
+    // The crash shape: attributed to TARGET (flag set), file still outside
+    // the channel folder -- exactly what a mid-loop restart leaves behind.
+    const it = baseItem(fp, { ...{
+      channelUrl: TARGET.channelUrl, channelName: TARGET.channelName,
+      channelId: TARGET.channelId, channelAttributedManually: true,
+    } });
+    await updateDatabase((db) => {
+      db.metadata[it.id] = it;
+      if (!db.folders.includes(resumeDir)) db.folders.push(resumeDir);
+      const ns = store.ensureYtdlp(db);
+      if (!ns.subscriptions.some((s) => s.channelUrl === TARGET.channelUrl)) {
+        ns.subscriptions.push({ id: 'subRez2', channelUrl: TARGET.channelUrl, channelId: TARGET.channelId, name: 'Résurrected Chännel', order: 10 });
+      }
+    });
+
+    const pv = await (await fetch(`${base}/api/videos/attribute-channel-bulk`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ root: resumeDir, target: TARGET, relocate: true, preview: true }),
+    })).json();
+    assert.equal(pv.resuming, 1, 'the preview names the stranded item as resumable');
+
+    const run = await (await fetch(`${base}/api/videos/attribute-channel-bulk`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ root: resumeDir, target: TARGET, relocate: true }),
+    })).json();
+    assert.equal(run.resuming, 1);
+    assert.equal(run.relocating, true);
+
+    const start = Date.now();
+    let entry = null;
+    while (Date.now() - start < 10000) {
+      entry = activity.getSnapshot().oneShots && activity.getSnapshot().oneShots['attribute-bulk'];
+      if (entry && (entry.state === 'done' || entry.state === 'error')) break;
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    assert.equal(entry.state, 'done');
+    assert.equal(entry.moved, 1, 'the stranded file finished its move on the re-run');
+    const moved = Object.values(loadDatabase().metadata).find((x) => x && x.name === 'Strandéd After Crash.mp4');
+    assert.ok(!moved.filePath.startsWith(resumeDir), 'physically out of the stranded location');
+    fs.rmSync(resumeDir, { recursive: true, force: true });
+  } finally {
+    delete process.env.FILETUBE_YTDLP_ENABLED;
+    delete process.env.FILETUBE_YTDLP_DOWNLOAD_DIR;
+  }
 });
 
 test('reheat conflict (decision 3): manual kept, conflict REPORTED via the out-field; same-channel gap-fill declines manual items', async () => {

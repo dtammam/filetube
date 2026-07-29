@@ -203,6 +203,32 @@ test('enabled: responds 202 with {started:true, eligible, ineligible}; the backg
   }
 });
 
+test('v1.53 gate round 2 (M25): a kept-but-conflicting manual attribution is COUNTED on the batch one-shot', async () => {
+  const deps = makeFakeDeps();
+  const itemA = makeItem({ videoId: 'aaaaaaaaaaa' });
+  const itemB = makeItem({ videoId: 'bbbbbbbbbbb' });
+  deps.enumerateRepullableItems = () => ({ items: [itemA, itemB], eligible: 2, ineligible: 0 });
+  run.repullItemMetaAndSubs = async () => ({ sourceTitle: 'T', wroteSubs: true });
+  deps.recordRepulledItemMeta = async (d, mediaId, meta) => {
+    // The production write side sets this out-field when a MANUAL
+    // attribution declines a conflicting network identity -- one of the two
+    // items conflicts, the other does not.
+    if (mediaId === itemA.mediaId) meta.attributionConflict = { kept: 'Mänual A', discovered: 'Nétwork X' };
+    return true;
+  };
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    assert.equal((await fetch(`${base}/api/ytdlp/repull-metadata`, { method: 'POST' })).status, 202);
+    await flush(30);
+    const entry = getReheatEntry();
+    assert.equal(entry.state, 'done');
+    assert.equal(entry.attributionConflicts, 1,
+      'decision 3 on the BATCH path: N kept conflicts must never be silently swallowed');
+  } finally {
+    await close();
+  }
+});
+
 // ---- Idempotent skip + force ------------------------------------------------
 
 test('an alreadyRepulled item is skipped (counted skipped) by default; ?force=1 re-includes it', async () => {

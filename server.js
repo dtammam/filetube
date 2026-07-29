@@ -12732,6 +12732,10 @@ module.exports = {
   // exported above).
   collectDownloadNotification,
   seedNotificationHistoryOnce,
+  // v1.53 gate round 2 (M21): deterministic single-flight testing -- the
+  // latch is module state, and a real stalled-mover race is untestable
+  // without it. Test-only, the __-prefix convention.
+  __setAttributeBulkInProgressForTests(v) { attributeBulkInProgress = v === true; },
   parseFfprobeStreams,
   codecNeedsTranscode,
   probeCodecsOnly,
