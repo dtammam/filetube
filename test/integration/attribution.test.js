@@ -155,7 +155,7 @@ test('manual wins over the consume bridge: a fresh capture cannot re-point a man
         // Gate round 2 (M5): the D1b lane's STANDALONE avatar write is only
         // reachable when the capture carries a thumbnail -- without this the
         // avatar guard was tested in name only (the reviewer's re-audit).
-        channelThumbnail: 'https://yt3.example/network-face.jpg',
+        channelAvatarUrl: 'https://yt3.example/network-face.jpg',
         sourceViewCount: 777,
         capturedAt: Date.UTC(2026, 5, 1),
       };
@@ -204,7 +204,7 @@ test('gate round (M2/M3/M5): the UNIVERSAL and D1a consume lanes + the avatar wr
       ns.downloadMeta.ccccccccccc = {
         channelUrl: 'https://www.youtube.com/channel/UCbbbbbbbbbbbbbbbbbbbbbb',
         channelName: 'Prôxy Channel',
-        channelThumbnail: 'https://yt3.example/proxy.jpg',
+        channelAvatarUrl: 'https://yt3.example/proxy.jpg',
         capturedAt: Date.UTC(2026, 5, 2),
       };
     });
