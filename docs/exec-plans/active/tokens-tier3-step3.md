@@ -11,8 +11,10 @@ execution. Execution happens on a FRESH branch off merged main.
 The original 3a-3g assignment lived in a session that has since been
 compacted; three anchors survive in repo artifacts (tools/capture/
 scenes.js manual-scene notes): **3a carries the toast padding 18->16,
-3c carries the scrim consolidation (.85->.8 toast, .75->.8 resume),
-3d carries the elevation shadows (.5/.6->.45)**. The letter map below
+3c the scrim consolidation, 3d the elevation shadows (.5/.6->.45)**.
+(The anchor notes' scrim VALUES were themselves half-wrong and are
+corrected in this tranche: the toast has no scrim at all, and the
+resume overlay is .85->.8, not .75->.8.) The letter map below
 honors those anchors and re-pins the rest; THIS document is now the
 authoritative assignment. One census discrepancy surfaced during
 reconstruction is flagged as Open Question 1 (radius) rather than
@@ -58,15 +60,17 @@ Row counts are the LEDGER's (census complete, ledger-check CLEAN):
 | 3b | B1 mixed shorthands + exact adoptions | members adopt in place incl. the gap declarations Tier 2 skipped wholesale; plus .ptr-indicator --size-control (extra-census) | 26 | none (differ must report EQUIVALENT) |
 | 3c | scrims + overlay chrome | drift alphas -> --scrim/--scrim-heavy (12 + 5 holds, OQ5), the .skip-btn:hover exact adoption, 11 zero-delta --on-overlay adoptions | 29 | YES - enumerated |
 | 3d | shadow elevation | 5 sites -> --shadow-modal (notif-panel alpha 0.25->0.45 is the visible risk); 1 no-action | 6 | YES - enumerated |
-| 3e | motion | 15 sites -> --dur-fast/--dur-slow + 1 hold (OQ2 covers the eleven-site 0.2s cluster); ease-out/linear easings STAY literal - no token covers them | 17 | timing feel only - invisible to frozen captures |
+| 3e | motion | 16 sites -> --dur-fast/--dur-slow + 1 hold (the 0.2s cluster = 13 declarations across 11 rows, OQ2; the hold is the ptr-indicator, OQ9); ease-out/linear easings STAY literal - no token covers them | 17 | timing feel only - invisible to frozen captures |
 | 3f | JS-surface adoptions | 24 sites in stats/watch/setup cssText + inline styles; one visible delta (stats 14->12) | 24 | one enumerated |
 | 3g | line-height band | 3 drift + 6 exact + 2 holds (OQ6) | 11 | YES - enumerated |
 
 Radius occupies NO letter (Open Question 1). If Dean rules radius into
 Step 3, it becomes 3h rather than displacing a pinned letter. The
-remaining 149 ledger rows are the no-action census (Tier 4 residue,
-protected, geometry, layout constants) - every linter site appears
-exactly once, which is what lets ledger-check demand a bijection.
+remaining 110 ledger rows are the no-action census (Tier 4 residue,
+protected, geometry, layout constants; 298 total minus the 188 batch
+rows above, of which one - 3d's SHADOW-OTHER - is itself no-action) -
+every linter site appears exactly once, which is what lets
+ledger-check demand a bijection.
 
 ## The ledger (the Step 3 contract data)
 
@@ -88,8 +92,13 @@ governed declaration turns the checker red. Deliberately NOT in
    commit's parent and HEAD - the delta enumeration must match the
    batch ledger EXACTLY (zero-delta batches must report EQUIVALENT
    across all 9 era x mode contexts); run `npm run ledger:check`
-   against the updated ledger (adopted rows move to a "done" marker);
-   full unit suite green.
+   against the updated ledger; full unit suite green. Done-marking
+   (gate finding): fully-tokenized rows are STRUCK (~~file:line~~);
+   rows whose edit leaves a residual raw member on the line (the
+   ledger marks them PARTIAL ADOPTION - 1516, 2308, 7246) are instead
+   REPLACED with a residual row carrying the new declaration text,
+   because the site legitimately stays in the linter's report and a
+   struck row would leave ledger-check red.
 3. After 3g: full-span differ run, both-Node full suites, assemble the
    Stop B packet (below), STOP for Dean's review.
 4. Rejections at Stop B flip per-site (ledger row edit + single-site
@@ -127,10 +136,11 @@ called out in its ledger row), the notif-panel shadow near-doubling
    alongside R7 (where radius tokens can be designed properly);
    scene 24-r7-radii already baselines it. Alternative: rule it in as
    3h with values-only consolidation at Stop B.
-2. **The 0.2s motion cluster (13 sites).** 0.2s is a tie between
-   --dur-fast 0.15s and --dur-slow 0.25s. The tie-down rule says 0.15s
-   (snappier). RECOMMENDATION: 0.15s default with per-site flips at
-   Stop B; the ledger marks all 13 as the judgment cluster.
+2. **The 0.2s motion cluster (13 declarations across 11 sites - body
+   and .skip-btn each carry two).** 0.2s is a tie between --dur-fast
+   0.15s and --dur-slow 0.25s. The tie-down rule says 0.15s (snappier).
+   RECOMMENDATION: 0.15s default with per-site flips at Stop B; the
+   ledger marks every one as the judgment cluster.
 3. **Letter map confirmation.** Given the reconstruction note above,
    confirm the batch letter map (or reassign - only 3a/3c/3d are
    anchored by repo artifacts).
@@ -167,3 +177,11 @@ called out in its ledger row), the notif-panel shadow near-doubling
    rgba(0,0,0,0.72). The protection is unaffected; the documented
    value is stale and gets corrected in the 3c commit, not before (the
    stand-down covers style.css entirely).
+9. **Two glyph/gesture holds, both recommend EXEMPT (gate finding: they
+   mapped to no OQ).** (a) .pp-icon-pause margin-right 7px (3a) - its
+   comment documents an optical-centering offset against the shadow
+   bar; a 1px shift breaks the optical pairing (same family as the
+   Stop A Batch C glyph exempts). (b) .ptr-indicator .icon-refresh
+   0.08s linear (3e) - continuous pull-gesture tracking, not a UI
+   transition; snapping to 0.15s near-doubles the lag behind the
+   finger.

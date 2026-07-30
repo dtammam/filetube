@@ -11,7 +11,13 @@ Conventions: HOLD-RATIFY / HOLD-EXEMPT-REC rows make NO change until
 Dean's ruling (see the exec plan's open questions); scenes named in notes
 are the Stop B witnesses; "on-device judgment" = transient state no scene
 captures - listed in the Stop B packet instead. On adoption, strike the
-first cell (`~~file:line~~`) so ledger-check ignores the completed row.
+first cell (`~~file:line~~`) so ledger-check ignores the completed row -
+EXCEPT rows marked PARTIAL ADOPTION (1516, 2308, 7246): their edit leaves
+a residual raw member on the line, so the site legitimately stays in the
+linter's report; REPLACE those rows with the residual declaration text
+instead of striking, or ledger-check goes red on a correct edit. Decl
+cells must never contain a raw `|` (it would truncate the parsed decl -
+failure is loud, not silent, but keep them out).
 
 ## 3a - B2 spacing drift consolidation (visible deltas, enumerated)
 
@@ -22,14 +28,14 @@ first cell (`~~file:line~~`) so ledger-check ignores the completed row.
 | public/css/style.css:1477 | .skeleton-row | `padding: 10px 14px` | B2-DRIFT | padding: var(--space-5) var(--space-6) | 14px->12px | transient loading state - no scene; on-device judgment |
 | public/css/style.css:1781 | .art-play-glyph.art-play-glyph-playing::before | `margin-right: 9px` | B2-DRIFT | margin-right: var(--space-4) | 9px->8px | playing-state glyph offset - no scene; on-device judgment |
 | public/css/style.css:2046 | .watch-prevnext-btn | `padding: 6px 14px` | B2-DRIFT | padding: var(--space-3) var(--space-6) | 14px->12px | scene 05; 6px exact tokenized too |
-| public/css/style.css:2308 | .uploader-subs | `padding: 1px 7px` | B2-DRIFT | padding: 1px var(--space-3) | 7px->6px | scene 05; 1px hairline non-scale stays |
+| public/css/style.css:2308 | .uploader-subs | `padding: 1px 7px` | B2-DRIFT | padding: 1px var(--space-3) | 7px->6px | scene 05; 1px hairline non-scale stays; PARTIAL ADOPTION - replace row, do not strike |
 | public/css/style.css:2666 | .btn-busy::after | `margin-left: 7px` | B2-DRIFT | margin-left: var(--space-3) | 7px->6px | transient busy state - no scene; on-device judgment |
 | public/css/style.css:2893 | .sub-row | `padding: 10px 14px` | B2-DRIFT | padding: var(--space-5) var(--space-6) | 14px->12px | scene 11; 10px exact tokenized too |
 | public/css/style.css:3274 | .toast | `padding: 10px 18px` | B2-DRIFT | padding: var(--space-5) var(--space-8) | 18px->16px | scene 13-toast GATE-BLOCKER (3a only - the toast has NO scrim; scenes.js note corrected); 10px exact tokenized too |
 | public/css/style.css:3342 | .oneoff-modal-header | `margin-bottom: 14px` | B2-DRIFT | margin-bottom: var(--space-6) | 14px->12px | scene 01 |
 | public/css/style.css:3846 | .search-input | `padding: 7px 10px` | B2-DRIFT | padding: var(--space-3) var(--space-5) | 7px->6px | scene 06 (header); 10px exact tokenized too |
 | public/css/style.css:4626 | .pp-icon-pause | `margin-right: 7px` | HOLD-EXEMPT-REC | - | (7px->6px if taken) | RECOMMEND EXEMPT: comment documents optical-centering against the shadow bar - glyph-art class, same family as Stop A Batch C exempts |
-| public/css/style.css:5417 | .chapters-menu-item | `padding: 12px 14px` | B2-DRIFT | padding: var(--space-6) var(--space-6) | 14px->12px | chapters MENU has no scene (26-chapters-menu proposed); 12px exact tokenized too |
+| public/css/style.css:5417 | .chapters-menu-item | `padding: 12px 14px` | B2-DRIFT | padding: var(--space-6) var(--space-6) | 14px->12px | chapters MENU has no scene (27-chapters-menu proposed - id 26 is taken by the playlists sheet); 12px exact tokenized too |
 | public/css/style.css:5436 | .chapters-menu-loop | `padding: 12px 14px` | B2-DRIFT | padding: var(--space-6) var(--space-6) | 14px->12px | pairs with 5417 |
 | public/css/style.css:6170 | .hard-delete-modal-path | `margin-bottom: 14px` | B2-DRIFT | margin-bottom: var(--space-6) | 14px->12px | scene 21 |
 | public/css/style.css:6671 | .books-home-row | `margin-bottom: 18px` | B2-DRIFT | margin-bottom: var(--space-8) | 18px->16px | scene 15 |
@@ -104,7 +110,7 @@ first cell (`~~file:line~~`) so ledger-check ignores the completed row.
 |---|---|---|---|---|---|---|
 | public/css/style.css:799 | .sidebar-item | `padding: var(--density) 24px` | B1-MIXED | padding: var(--density) var(--space-12) | none |  |
 | public/css/style.css:1279 | .video-info | `padding: var(--density) 4px` | B1-MIXED | padding: var(--density) var(--space-2) | none |  |
-| public/css/style.css:1516 | .empty-state, .error-state | `padding: 40px 20px` | B1-MIXED | padding: 40px var(--space-10) | none | 40px non-scale stays |
+| public/css/style.css:1516 | .empty-state, .error-state | `padding: 40px 20px` | B1-MIXED | padding: 40px var(--space-10) | none | 40px non-scale stays; PARTIAL ADOPTION - replace row on execution, do not strike |
 | public/css/style.css:1964 | .embedded-tag | `margin: 2px 0` | B1-MIXED | margin: var(--space-1) 0 | none |  |
 | public/css/style.css:2554 | .setup-box | `margin: 32px auto` | B1-MIXED | margin: var(--space-16) auto | none |  |
 | public/css/style.css:3927 | header (mobile) | `padding: calc(8px + env(safe-area-inset-top)) 8px 8px` | B1-MIXED | padding: calc(var(--space-4) + env(safe-area-inset-top)) var(--space-4) var(--space-4) | none |  |
@@ -117,7 +123,7 @@ first cell (`~~file:line~~`) so ledger-check ignores the completed row.
 | public/css/style.css:7015 | .reader-nowplaying | `padding: 6px 10px calc(6px + env(safe-area-inset-bottom))` | B1-MIXED | padding: var(--space-3) var(--space-5) calc(var(--space-3) + env(safe-area-inset-bottom)) | none |  |
 | public/css/style.css:7021 | .reader-np-info | `gap: 8px` | EXACT-ADOPT | gap: var(--space-4) | none | gap declarations were skipped wholesale by Tier 2 |
 | public/css/style.css:7031 | .reader-np-transport | `gap: 8px` | EXACT-ADOPT | gap: var(--space-4) | none |  |
-| public/css/style.css:7246 | .reloc-preview-badge | `padding: 1px 6px` | B1-MIXED | padding: 1px var(--space-3) | none | 1px hairline stays |
+| public/css/style.css:7246 | .reloc-preview-badge | `padding: 1px 6px` | B1-MIXED | padding: 1px var(--space-3) | none | 1px hairline stays; PARTIAL ADOPTION - replace row, do not strike |
 | public/css/style.css:7496 | .music-toolbar-actions | `gap: 8px` | EXACT-ADOPT | gap: var(--space-4) | none |  |
 | public/css/style.css:7522 | .music-crumb | `gap: 10px` | EXACT-ADOPT | gap: var(--space-5) | none | single-line rule, two governed decls |
 | public/css/style.css:7522 | .music-crumb | `margin-bottom: 12px` | EXACT-ADOPT | margin-bottom: var(--space-6) | none |  |
@@ -153,7 +159,7 @@ first cell (`~~file:line~~`) so ledger-check ignores the completed row.
 | public/css/style.css:2010 | .skip-ripple | `color: #fff` | ON-OVERLAY-ADOPT | color: var(--on-overlay) | none |  |
 | public/css/style.css:3181 | .modal-backdrop | `background-color: rgba(0,0,0,0.5)` | SCRIM-DRIFT | background-color: var(--scrim) | 0.5->0.55 | scene 21 (confirm step) + any modal |
 | public/css/style.css:3301 | .oneoff-modal-backdrop | `background-color: rgba(0, 0, 0, 0.5)` | SCRIM-DRIFT | background-color: var(--scrim) | 0.5->0.55 | scene 01 |
-| public/css/style.css:3974 | .playlists-sheet-backdrop:not([hidden]) | `background: rgba(0, 0, 0, 0.5)` | SCRIM-DRIFT | background: var(--scrim) | 0.5->0.55 | playlists sheet has no scene - on-device judgment (phone) |
+| public/css/style.css:3974 | .playlists-sheet-backdrop:not([hidden]) | `background: rgba(0, 0, 0, 0.5)` | SCRIM-DRIFT | background: var(--scrim) | 0.5->0.55 | scene 26-playlists-sheet (phone; coverage-audit addition) |
 | public/css/style.css:5235 | .css-fullscreen .player-controls | `background: rgba(0, 0, 0, 0.75)` | SCRIM-DRIFT | background: var(--scrim-heavy) | 0.75->0.8 | fullscreen state - on-device judgment |
 | public/css/style.css:5488 | .cc-overlay-text | `color: #fff` | ON-OVERLAY-ADOPT | color: var(--on-overlay) | none | amendment protects the BACKGROUND only; adjacency noted |
 | public/css/style.css:5791 | .sub-sheet-backdrop | `background: rgba(0, 0, 0, 0.5)` | SCRIM-DRIFT | background: var(--scrim) | 0.5->0.55 | scene 12 |
@@ -169,7 +175,7 @@ first cell (`~~file:line~~`) so ledger-check ignores the completed row.
 |---|---|---|---|---|---|---|
 | public/css/style.css:1813 | .audio-artwork | `box-shadow: 0 8px 24px rgba(0,0,0,0.5)` | SHADOW-ELEVATION | box-shadow: var(--shadow-modal) | alpha 0.5->0.45 | scene 10-audio-expanded GATE-BLOCKER; geometry exact match; decorative-depth semantics flagged |
 | public/css/style.css:1825 | .audio-vinyl | `box-shadow: 0 8px 24px rgba(0,0,0,0.6)` | SHADOW-ELEVATION | box-shadow: var(--shadow-modal) | alpha 0.6->0.45 | scene 10-audio-expanded GATE-BLOCKER; sibling staging (0.6 vs 0.5) collapses - flagged |
-| public/css/style.css:5283 | .chapters-menu | `box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35)` | SHADOW-ELEVATION | box-shadow: var(--shadow-modal) | y 4->8px, blur 14->24px, alpha 0.35->0.45 | every component drifts - visibly heavier; chapters menu has no scene (26 proposed) |
+| public/css/style.css:5283 | .chapters-menu | `box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35)` | SHADOW-ELEVATION | box-shadow: var(--shadow-modal) | y 4->8px, blur 14->24px, alpha 0.35->0.45 | every component drifts - visibly heavier; chapters menu has no scene (27-chapters-menu proposed) |
 | public/css/style.css:6910 | #reader-pane.pdf-scroll canvas | `box-shadow: 0 1px 6px rgba(0,0,0,0.35)` | SHADOW-OTHER | - | - | paper-page ambient shadow on PDF content, not UI elevation - no action |
 | public/css/style.css:7184 | .reloc-preview-panel | `box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4)` | SHADOW-ELEVATION | box-shadow: var(--shadow-modal) | y 4->8px, alpha 0.4->0.45 | scene 18 |
 | public/css/style.css:8115 | .notif-panel | `box-shadow: 0 4px 24px rgba(0, 0, 0, 0.25)` | SHADOW-ELEVATION | box-shadow: var(--shadow-modal) | y 4->8px, alpha 0.25->0.45 (near-double) | scene 12b desktop - the visible risk in this batch |
@@ -308,7 +314,7 @@ first cell (`~~file:line~~`) so ledger-check ignores the completed row.
 | public/css/style.css:6918 | .reader-bottombar | `border-top: 1px solid var(--border-color, #444)` | DEAD-FALLBACK | - | - |  |
 | public/css/style.css:6924 | .reader-progress-track | `border-radius: 3px` | RADIUS-GEOMETRY | - | - | half of 6px track height - never a token |
 | public/css/style.css:6925 | .reader-progress-track | `background: var(--border-color, #444)` | DEAD-FALLBACK | - | - |  |
-| public/css/style.css:6931 | .reader-progress-fill | `background: var(--accent, #cc0000)` | TIER4-GHOST-RED | var(--yt-red) at Tier 4 | 2014 era only | scene 14 is 2021-only - reader 2014 shot on-device or extend p3 |
+| public/css/style.css:6931 | .reader-progress-fill | `background: var(--accent, #cc0000)` | TIER4-GHOST-RED | var(--yt-red) at Tier 4 | 2014 era only | scene 23d-ghost-red-reader (coverage-audit addition) |
 | public/css/style.css:6941 | .reader-drawer | `background: var(--card-bg, #1c1c22)` | DEAD-FALLBACK | - | - | #1c1c22 fallback matches no era value - proof it never renders |
 | public/css/style.css:6942 | .reader-drawer | `border-left: 1px solid var(--border-color, #444)` | DEAD-FALLBACK | - | - |  |
 | public/css/style.css:6955 | .reader-toc-item | `border-bottom: 1px solid var(--border-color, #333)` | DEAD-FALLBACK | - | - | #333 spelling variant |

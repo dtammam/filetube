@@ -18,7 +18,10 @@
  * Ledger row contract (all tables in the ledger file): cell 1 `file:line`,
  * cell 3 the declaration exactly as the linter reports it (`prop: value`).
  * Rows whose first cell does not match file:line syntax are ignored, so
- * table headers and prose survive. Backticks in cells are stripped.
+ * table headers, prose, and struck done-rows (~~file:line~~) all survive.
+ * Backticks in cells are stripped. A raw `|` inside a decl cell would
+ * truncate the parsed decl - failure mode is a LOUD stale+unledgered
+ * pair, never a silent pass, but keep pipes out of cells regardless.
  */
 
 const fs = require('node:fs');

@@ -94,6 +94,16 @@ test('parseLedger: a row with too few cells or a non-site first cell contributes
   assert.deepStrictEqual(parseLedger('| just | two |\n| not-a-site | x | padding: 4px |'), []);
 });
 
+test('parseLedger: a struck first cell (~~file:line~~) hides the row - the done-marking convention', () => {
+  // The Step 3 protocol strikes adopted rows; the checker must stop
+  // seeing them or every completed batch turns the gate red.
+  const md = [
+    '| ~~public/css/style.css:10~~ | .done | padding: var(--space-4) | B2-DRIFT | - | done |',
+    '| public/css/style.css:11 | .live | padding: 18px | B2-DRIFT | x | 18px->16px |',
+  ].join('\n');
+  assert.deepStrictEqual(parseLedger(md), [{ key: 'public/css/style.css:11', decl: 'padding: 18px' }]);
+});
+
 test('collectSites: keys carry file AND line; two same-file sites stay distinct', () => {
   // Kills the mutant that drops the line number from the key - with it,
   // every multi-hit file collapses into bogus DUPLICATEs at runtime.
