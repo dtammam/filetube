@@ -1,0 +1,104 @@
+# Design tokens Phase 1 - verification record
+
+Branch tokens/phase-1, 2026-07-30. Commits: reconciliation (869a28d),
+token layer (fedb28d), exemptions (a15ddca), report-only lint (ef60bbf),
+Tier 1 (38b6215), this record.
+
+## Screenshot regression: NOT POSSIBLE in this environment - substituted
+
+The Phase 1 spec requires before/after screenshots (4 eras x light/dark,
+desktop + 768px) with pixel-diff. **No browser exists in the dev
+environment** (no chromium/firefox binary; verified before starting), so
+no screenshots were captured. Per the halt-and-report rule this is
+reported, not rationalized around; Dean's device pass or any machine with
+a browser can still capture them from the two trees (baseline = commit
+ef60bbf, after = 38b6215).
+
+Substitute evidence, STRONGER than pixel-diff for the CSS half (it proves
+equivalence at every viewport/era/mode simultaneously, not at sampled
+screenshots):
+
+- **Computed-equivalence diff** (scratchpad script `equivalence.py`,
+  regenerable): parse both trees' style.css into declaration streams,
+  resolve every Tier-1 substitution back to its literal (var(--fw-bold)
+  and `bold` -> 700, --fw-semibold -> 600, --fw-black -> 900, the four
+  --fs-* substitutions, 3-digit hex -> 6-digit), strip comments and the
+  known additive blocks. Result: **EQUIVALENT - 3,155 declarations
+  byte-identical**; subscriptions.html (style block + inline attrs)
+  EQUIVALENT; each of the three new classes byte-matches the JS inline
+  styles it replaced.
+- **Specificity audit** for the three JS class moves (inline styles used
+  to win everything): no later or higher-specificity rule sets the moved
+  properties for those elements; `.btn-sm` carries no declarations
+  anywhere (vestigial).
+- **Full test suite**: 5192/5192 on Node v22.23.1 and v24.14.0 at
+  38b6215 (one deliberate lock update: pinned-avatar-css asserted the
+  SPELLING `font-weight: bold`, now asserts `var(--fw-bold)`).
+
+Two verifier defects were found and fixed DURING verification (the
+substring `bold` matching inside `semibold`; a one-line-rule skip latch
+eating the following rule) - both produced false DIFFERs, both fixed
+before the EQUIVALENT verdict above; no real delta was ever observed.
+
+KNOWN VERIFIER BLIND SPOTS (slim-gate W1, proven by the reviewer via
+mutation): the script skips ALL custom-property DEFINITIONS (a mutated
+token value passes silently - its var() table is hard-coded, decoupled
+from :root) and never compares SELECTORS (a renamed selector passes).
+For THIS branch both holes were closed by the reviewer's independent
+audit: every --* definition line is byte-identical between the two
+trees, and the full Tier 1 CSS diff was enumerated line-by-line (weight
+substitutions, three hex shortenings, three additive class rules -
+nothing else). DO NOT reuse this script for Tier 2+ without adding
+definition-value and selector comparison.
+
+## Tier 1 exclusions (halt-and-report; audit zero-delta claims that failed)
+
+1. **#cc0000 -> var(--yt-red): EXCLUDED.** The 2014 era block overrides
+   `--yt-red: #e62117` - the substitution would change every affected
+   surface in that era. Worse, every rule-level `#cc0000` (8 CSS sites +
+   stats.js:342) is actually a fallback in `var(--accent, #cc0000)` /
+   `var(--accent-color, #cc0000)` - and `--accent`/`--accent-color` are
+   defined NOWHERE: phantom token names whose fallbacks are the live
+   values. Needs a Tier 2+ decision: define the phantoms, or migrate to
+   --yt-red accepting the 2014-era delta (arguably era-consistency
+   repair, same class as R7).
+2. **monospace -> var(--mono-font): EXCLUDED.** 2005/2009 define
+   `--mono-font: "Courier New", monospace`; the chapters-editor textarea
+   would change font in those eras. Same Tier 2+ decision shape.
+3. **gold -> var(--star-gold): VACUOUS.** The harvest's single `gold` hit
+   was comment prose (its JS scanner does not strip comments - harvest
+   tooling limitation, now documented). No code site exists. Note the
+   claim was doubly wrong: keyword gold is #ffd700, --star-gold is
+   #ffcc00 (#ffc107 in 2014) - never zero-delta.
+
+## Lint burn-down - corrected baselines
+
+Commit ef60bbf published baseline **641**. The linter's selector tracking
+had a bug (single-line selectors - nearly all of them - pushed empty
+strings, silently disabling the @font-face/@keyframes and era-scope
+exclusions; caught via the `font-weight: 100 900` @font-face false
+positive). Fixed in this commit. Corrected numbers, fixed parser on both
+trees:
+
+| | baseline (ef60bbf tree) | after Tier 1 (38b6215) |
+|---|---|---|
+| spacing | 407 | 408 (+1: the repull padding moved from JS into CSS - now visible to the burn-down, deliberate) |
+| font-weight | 74 | **0** |
+| color | 57 | 57 |
+| border-radius | 25 | 25 (R7-deferred bucket) |
+| motion | 30 | 30 |
+| z-index | 17 | 17 |
+| line-height | 11 | 11 |
+| shadow | 6 | 6 |
+| font-size | 1 | **0** |
+| **TOTAL** | **628** | **554** |
+
+## Adjacent findings (flagged, not touched, per spec)
+
+- stats.js cssText carries four more `font-size:12px` (lines ~166-274)
+  that the harvest undercounted - its JS scanner matched `.style.X=` and
+  `setProperty` but not `cssText`. Tier 2 candidates.
+- `.btn-sm` is a styling-free class across the entire codebase.
+- The audit's existing-token census gains two GHOST names: `--accent`
+  and `--accent-color` are consumed (as fallback carriers) but never
+  defined.

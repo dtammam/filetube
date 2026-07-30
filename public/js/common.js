@@ -744,9 +744,9 @@ function buildSubscribeModal(doc, opts, handlers) {
   modal.appendChild(cutoffDateInput);
 
   const cutoffDateHint = d.createElement('div');
-  cutoffDateHint.style.fontSize = '12px';
-  cutoffDateHint.style.color = 'var(--text-secondary)';
-  cutoffDateHint.style.margin = '-6px 0 10px';
+  // Tokens Phase 1 Tier 1: the JS-applied style triplet moved to the
+  // .oneoff-modal-hint class (style.css) - font-size rides var(--fs-sm).
+  cutoffDateHint.className = 'oneoff-modal-hint';
   cutoffDateHint.textContent = 'Default: yesterday — only new videos going forward. Set an earlier date to pull history.';
   modal.appendChild(cutoffDateHint);
 
@@ -8285,10 +8285,10 @@ function ensureRepullButton(sub) {
   } else {
     btn = document.createElement('button');
     btn.type = 'button';
-    btn.className = 'btn btn-sm';
+    // Tokens Phase 1 Tier 1: font-size/padding moved to .repull-btn-compact
+    // (style.css) - font-size rides var(--fs-xs).
+    btn.className = 'btn btn-sm repull-btn-compact';
     btn.id = REPULL_BTN_ID;
-    btn.style.fontSize = '11px';
-    btn.style.padding = '4px 8px';
     btn.title = 'Re-pull this channel now';
     btn.setAttribute('aria-label', 'Re-pull this channel now');
     const icon = document.createElement('i');

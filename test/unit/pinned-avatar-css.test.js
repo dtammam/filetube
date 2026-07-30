@@ -63,7 +63,10 @@ test('.pinned-avatar-generated: centers its single-letter glyph at the fixed siz
   assert.match(rule[1], /display:\s*inline-flex;/);
   assert.match(rule[1], /align-items:\s*center;/);
   assert.match(rule[1], /justify-content:\s*center;/);
-  assert.match(rule[1], /font-weight:\s*bold;/);
+  // Tokens Phase 1 Tier 1 (DELIBERATE lock update): `bold` became
+  // var(--fw-bold), which is 700 == bold - same rendered weight, one
+  // spelling system-wide.
+  assert.match(rule[1], /font-weight:\s*var\(--fw-bold\);/);
 });
 
 test('.pinned-avatar-generated: does not hardcode background-color (left to the JS-set inline style per entry)', () => {

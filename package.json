@@ -8,7 +8,8 @@
     "dev": "node server.js",
     "test": "node --test test/*/*.test.js",
     "test:unit": "node --test test/unit/*.test.js",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "lint:css": "node scripts/css-token-lint.js"
   },
   "dependencies": {
     "dotenv": "^16.4.5",
