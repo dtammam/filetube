@@ -127,3 +127,64 @@ setup.html logo buttons) and 12 times in tests. Per the spec's rule
 ("referenced anywhere -> leave and flag"), it stays. Removing it would be
 behavior-neutral but a 53-site churn for zero rendering value - a Tier 3+
 housekeeping decision if ever. Flagged; not removed.
+
+## Tier 2 verification + remaining-work census (commit 7)
+
+Adoption span 6f4b971 -> HEAD. Full-span differ verdict: across all 9
+era x mode contexts, the ONLY delta is the enumerated .stats-meta-text
+class addition (2 declarations, correct per-mode resolution visible:
+#666666 light / #aaaaaa dark) - every substitution is invisible to
+resolution, which is the definition of the zero-delta pass. Per-commit
+differ runs were EQUIVALENT x9 at every step.
+
+Burn-down (v4 linter, authoritative): 611 at Tier 2 start -> **271**
+after Tier 2. By category (start -> end): spacing 427 -> 107,
+color 89 -> 86, font-weight 3 -> 0, motion 30 -> 17,
+border-radius 28 -> 27, z-index 17 -> 17, line-height 11 -> 11,
+shadow 6 -> 6. (The old v2-era category table above is superseded;
+89 was the true v4 color start - the v2 table's 57/62 predates the
+fallback-visibility fix.)
+
+Corrections made during Tier 2, on the record: the stats.js hidden
+cssText sites were FIVE, not four; the spec's premise that cssText is
+in the linter's coverage was false (linter scope is CSS-only by its
+Phase 1 contract) - visibility proven by direct scan instead, and
+"extend the metric to JS style surfaces?" is a Tier 3 scope decision.
+Commit 3's message was amended pre-push after inverting the two scrim
+counts.
+
+### Census of the remaining 271 (the Tier 3 prompt's input)
+
+- TIER 3 (consolidation/near-values): spacing drift band
+  (7/9/14/18/28px and friends) ~55; the 25 flagged MIXED shorthands
+  (a scale member beside auto/calc/--density/a Tier 3 value); motion
+  0.2s x13 + micro-band (0.08/0.1/0.12/0.3s) 4; scrim near-alphas
+  (.5/.6/.75/.85 minus the protected cc floor); the 6-member shadow
+  elevation band; radius drift band (3/6/8/14/27px); line-height band
+  (1.3/1.35 vs tokens); one adoption-tooling gap (.skip-btn:hover
+  mid-line scrim). Also flagged-not-made: two font-weight:bold cssText
+  literals in stats.js; the JS-metric scope decision.
+- TIER 4 (era/judgment, behind per-era screenshots): the 9 ghost
+  --accent sites (ruling: migrate to --yt-red, never define the
+  ghosts); monospace -> --mono-font; R7 raw radii (2/4px x15). These
+  are the bulk of the color-category residue.
+- AMBIGUOUS-FLAGGED (Tier 3 scoping input): 26 offset sites
+  (top/right/bottom/left carrying scale values - geometry vs rhythm
+  judgment per site); 4 glyph/text-geometry sizing sites reverted by
+  judgment during commit 2 (.art-play-glyph::before, .related-title
+  max-height, .transcode-spinner, .ptr-indicator).
+- DELIBERATELY OUT OF SCOPE (not residue): era-scoped skin rules
+  (incl. the three [data-theme="2021"] slider-track 999px pills -
+  same posture as the bevel stack: era skin stays literal);
+  z-index 900+ ladder values (Tier 3 R11 re-ladder behind the co-open
+  enumeration); the 17 z + 11 line-height + letterbox/exempt classes
+  carried as annotated.
+
+### Lock-architecture note
+
+Eleven pre-existing CSS spelling locks (touch targets, grids, sticky
+bar, chapters, modal) now resolve --space-*/--size-* spellings back to
+px before asserting (per-file rs/rt helpers), with the NEW
+token-scale-lock.test.js as the single byte-exact value authority for
+all 38 tokens (single-definition-enforced, so era overrides can never
+silently detach the spelling locks from reality).
