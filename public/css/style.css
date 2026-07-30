@@ -2624,6 +2624,19 @@ html.reader-immersive .app-container { padding-top: 0; }
   grid-auto-flow: column;
   grid-auto-columns: minmax(160px, 240px);
 }
+/* Gate round 2 (adversarial W7, found verifying their own W3 fix): column
+   auto-flow gives a two-button footer a HARD 328px min-content inside a
+   flex-shrink:0 item -- it overflows the card on essentially every phone
+   (~256-326px of inner width). Below 520px the cluster flows as ROWS: one
+   intrinsic-width implicit column, each button full-width in it -- equal
+   widths held, nothing clipped, and no dependence on a definite width (the
+   auto-fit-repeats-once trap cannot re-enter). */
+@media (max-width: 520px) {
+  .action-footer .action-bar {
+    grid-auto-flow: row;
+    grid-auto-columns: auto;
+  }
+}
 
 .folder-list-builder {
   border: 1px solid var(--border-color);
