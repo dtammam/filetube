@@ -455,6 +455,12 @@ function renderStatsError() {
 }
 
 function init() {
+  // v1.55 Track D: persistence for the collapsible section cards. Same
+  // window-guarded reach as openShortcutsModal below (node:test requires
+  // this file without common.js).
+  const wireCollapse = (typeof window !== 'undefined') ? window.wireCollapsibleSections : undefined;
+  if (typeof wireCollapse === 'function') wireCollapse('stats');
+
   // v1.47.8: the keyboard-shortcuts entry point. `openShortcutsModal` is a
   // common.js global (classic scripts, common.js loads first), reached via
   // `window` so this file still require()s cleanly in node:test. Wired before

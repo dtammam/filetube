@@ -54,14 +54,21 @@
       gap: 10px;
       margin-bottom: 12px;
     }
+    /* v1.55 (gate S1): a header row whose heading moved into the details
+       summary holds only its controls -- keep them right-aligned, where
+       they sat beside the old h2. */
+    .sub-list-header-end {
+      justify-content: flex-end;
+    }
     .sub-list-header h2 {
       margin: 0;
     }
+    /* v1.55 Track B: layout now comes from the sitewide .action-bar grid
+       (style.css) -- equal-width buttons, whole-column wrap, in-cell
+       Cancel swaps. This page-local block keeps only the header-flex
+       sizing so the bar takes the full row under the h2. */
     .sub-list-header-actions {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      flex-wrap: wrap;
+      flex: 1 1 100%;
     }
     /* v1.26.2 polish fix (Dean punchlist #5): dedicated full-width row for
        the three status spans (see the markup comment above this row) --
@@ -87,9 +94,10 @@
       line-height: 1.25;
       min-height: 15px;
     }
+    /* v1.55 Track C: font-size/color now come from the sitewide
+       .action-status class (style.css) -- this page-local rule keeps only
+       the multi-span row spacing. */
     .sub-repull-status {
-      font-size: 12px;
-      color: var(--text-secondary);
       margin-right: 10px;
     }
     .sub-repull-status:empty {
@@ -233,9 +241,12 @@
            FR-4 channel link + a single trailing kebab/gear opening an
            in-shell settings bottom-sheet, built entirely in JS -- see that
            file's buildSettingsSheet). -->
-      <div class="setup-box">
+      <!-- v1.55 Track D (Dean: "not just a subscriptions pane"): the whole
+           section is a collapsible details card now; open by default, state
+           remembered per browser (wireCollapsibleSections). -->
+      <details class="setup-box sub-collapsible" id="sub-list-details" data-collapse-key="subscriptions-list" open>
+        <summary>Your subscriptions</summary>
         <div class="sub-list-header">
-          <h2>Your subscriptions</h2>
           <!-- v1.24.0 T6 (A5): "check all subscriptions now" -- moved up
                here from the collapsed "+ Add a subscription" disclosure
                below (same ids, same wiring in /js/subscriptions.js; only the
@@ -243,7 +254,17 @@
                scrolling or expanding anything, on both desktop and mobile.
                Calls the EXISTING POST /api/subscriptions/repull unchanged --
                no new backend route. -->
-          <div class="sub-list-header-actions">
+          <!-- v1.55 Track B: the four actions live on ONE equal-width grid
+               (.action-bar); each cancellable trigger shares an
+               .action-bar-cell with its Cancel, which SWAPS IN PLACE while
+               the batch runs (applyReheatStateToControls /
+               applyRefreshAvatarsStateToControls hide the trigger) -- no
+               more popping a fifth button into the row. Cells are spans,
+               not divs, so the v1262 status-relocation lock (which captures
+               up to the first closing div) still sees the whole block.
+               (No apostrophes in this comment: the t6 route-lock literal
+               scanner pairs quote characters across prose.) -->
+          <div class="sub-list-header-actions action-bar">
             <button class="btn btn-primary btn-sm" id="sub-repull-all-btn" type="button">
               <i class="icon-refresh"></i> Check all subscriptions now
             </button>
@@ -258,7 +279,6 @@
                  Progress/terminal state ride the SAME ~2.5s
                  GET /api/subscriptions/status poll this page already runs --
                  see lib/ytdlp/client/subscriptions.js's applyReheatStateToControls. -->
-            <button class="btn btn-sm" id="sub-reheat-cancel-btn" type="button" hidden>Cancel</button>
             <!-- v1.41.7 (Dean has NO media backup): a DRY-RUN "Preview changes"
                  button sitting right beside Reheat. It POSTs
                  /api/ytdlp/repull-metadata/preview (read-only: moves nothing,
@@ -272,10 +292,13 @@
                     title="See exactly which files a reheat would move — and which get copied across filesystems — without moving anything">
               <i class="icon-refresh"></i> Preview changes
             </button>
-            <button class="btn btn-sm" id="sub-reheat-btn" type="button"
-                    title="Re-fetch channel, title, date, chapters and subtitles for videos already in your library — including imported/MeTube ones">
-              <i class="icon-refresh"></i> Reheat metadata &amp; channels
-            </button>
+            <span class="action-bar-cell">
+              <button class="btn btn-sm" id="sub-reheat-btn" type="button"
+                      title="Re-fetch channel, title, date, chapters and subtitles for videos already in your library — including imported/MeTube ones">
+                <i class="icon-refresh"></i> Reheat metadata &amp; channels
+              </button>
+              <button class="btn btn-sm" id="sub-reheat-cancel-btn" type="button" hidden>Cancel</button>
+            </span>
             <!-- v1.25.5 QoL follow-up (channel avatars, round 2): triggers a
                  bulk re-probe of EVERY subscription's channel avatar (POST
                  /api/ytdlp/refresh-avatars), distinct from the Reheat button
@@ -286,10 +309,12 @@
                  runs -- see
                  lib/ytdlp/client/subscriptions.js's
                  applyRefreshAvatarsStateToControls. -->
-            <button class="btn btn-sm" id="sub-refresh-avatars-cancel-btn" type="button" hidden>Cancel</button>
-            <button class="btn btn-sm" id="sub-refresh-avatars-btn" type="button">
-              <i class="icon-refresh"></i> Refresh avatars
-            </button>
+            <span class="action-bar-cell">
+              <button class="btn btn-sm" id="sub-refresh-avatars-btn" type="button">
+                <i class="icon-refresh"></i> Refresh avatars
+              </button>
+              <button class="btn btn-sm" id="sub-refresh-avatars-cancel-btn" type="button" hidden>Cancel</button>
+            </span>
           </div>
           <!-- v1.26.2 polish fix (Dean punchlist #5): the three status spans
                below used to live INSIDE .sub-list-header-actions (the
@@ -304,17 +329,17 @@
                <style> block below) means populate/clear only ever changes
                this row's text, never the buttons' layout. -->
           <div class="sub-list-header-status">
-            <span id="sub-repull-status" class="sub-repull-status" aria-live="polite"></span>
-            <span id="sub-reheat-status" class="sub-repull-status" aria-live="polite"></span>
-            <span id="sub-refresh-avatars-status" class="sub-repull-status" aria-live="polite"></span>
+            <span id="sub-repull-status" class="sub-repull-status action-status" aria-live="polite"></span>
+            <span id="sub-reheat-status" class="sub-repull-status action-status" aria-live="polite"></span>
+            <span id="sub-refresh-avatars-status" class="sub-repull-status action-status" aria-live="polite"></span>
           </div>
         </div>
         <div id="sub-list-container" class="sub-list">
           <!-- Populated dynamically by /js/subscriptions.js -->
         </div>
-      </div>
+      </details>
 
-      <details class="setup-box sub-collapsible" id="sub-add-details">
+      <details class="setup-box sub-collapsible" id="sub-add-details" data-collapse-key="add-subscription">
         <summary>+ Add a subscription</summary>
         <p>
           Automatically download new videos from YouTube channels you subscribe
@@ -395,7 +420,7 @@
 
       </details>
 
-      <details class="setup-box sub-collapsible" id="oneshot-details">
+      <details class="setup-box sub-collapsible" id="oneshot-details" data-collapse-key="one-off-download">
         <summary>One-off download</summary>
         <p>
           Download a single YouTube video once -- no subscription is created.
@@ -435,7 +460,10 @@
             <button class="btn btn-primary" id="oneshot-download-btn" type="button">Download</button>
           </div>
           <small id="oneshot-error" class="field-error"></small>
-          <small id="oneshot-status" style="color:var(--text-secondary); display:block; margin-top:4px;" aria-live="polite"></small>
+          <!-- v1.55 Track C: the ad-hoc inline style becomes the shared
+               .action-status treatment (block here via its own wrapper
+               display). -->
+          <small id="oneshot-status" class="action-status" style="display:block; margin-top:4px;" aria-live="polite"></small>
         </div>
         <div id="oneshot-list-container" class="folder-list-builder">
           <!-- Populated dynamically by /js/subscriptions.js from GET /api/subscriptions/status's oneShots -->

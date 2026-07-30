@@ -2926,6 +2926,77 @@ function buildOneOffDownloadBody(url, format, quality, filetype, folder) {
  * error/stderr), but this function makes no assumption about that -- it
  * treats them as arbitrary strings either way.
  */
+// ---- v1.55 Track C: ONE busy/status feedback system ------------------------
+//
+// Dean: "when I click it and it starts doing stuff, the text is already
+// plain underneath it... a more unified system for that type of thing
+// across the settings pages." Before this, the management pages had SIX
+// divergent status treatments (bare spans, bold inline-styled spans, a
+// success message rendered in .field-error red, ad-hoc <small>s). These two
+// helpers + the .action-status/.btn-busy CSS are now the single system:
+// every management-page action renders its feedback through them.
+
+/**
+ * Pure DOM (no fetch): set a status element's text and tone in one call.
+ * `kind`: 'busy' (secondary tone + inline spinner), 'error' (error tone),
+ * anything else/omitted = idle (plain secondary tone). Passing `text: null`
+ * updates ONLY the tone classes and leaves the existing text alone -- the
+ * applyReheatStateToControls family deliberately preserves a summary line
+ * when there is no fresh progress text, and this keeps that behavior while
+ * still clearing a stale spinner. Never innerHTML.
+ */
+function setActionStatus(el, text, kind) {
+  if (!el) return;
+  if (text !== null && text !== undefined) el.textContent = text;
+  el.classList.toggle('action-status-busy', kind === 'busy');
+  el.classList.toggle('action-status-error', kind === 'error');
+}
+
+/**
+ * Pure DOM: one busy treatment for action buttons -- disabled + the
+ * .btn-busy class (in-button spinner via CSS, label preserved). Idempotent
+ * both ways; callers that used to write `btn.disabled = running` directly
+ * call this instead so the visual state can never desync from the
+ * disabled state.
+ */
+function setButtonBusy(btn, busy) {
+  if (!btn) return;
+  btn.disabled = busy === true;
+  btn.classList.toggle('btn-busy', busy === true);
+}
+
+// ---- v1.55 Track D: collapsible management sections -------------------------
+//
+// Dean: "the ability to collapse the other sections... most of the things
+// that are super long or could be." Every collapsible section is a native
+// `<details data-collapse-key="...">` (the pattern the add-subscription/
+// one-off disclosures established in v1.21); this wires PERSISTENCE on top:
+// open/closed remembered per section per page in localStorage
+// (`ft-collapse:<page>:<key>`) -- the same per-browser posture as the
+// bottom-bar prefs (tech-debt #42), disclosed the same way.
+//
+// Idempotent per element (data-collapse-wired guard), so pages that MOUNT
+// sections dynamically (the subscriptions history/failure cards) call this
+// again after mounting and only the new nodes get wired. Deliberately never
+// touches `hidden`: capability-gating (users/backup boxes) stays orthogonal
+// to collapse state.
+function wireCollapsibleSections(pageKey, root, signal) {
+  const scope = root || (typeof document !== 'undefined' ? document : null);
+  if (!scope || typeof scope.querySelectorAll !== 'function') return;
+  scope.querySelectorAll('details[data-collapse-key]').forEach((el) => {
+    if (el.dataset && el.dataset.collapseWired === '1') return;
+    if (el.dataset) el.dataset.collapseWired = '1';
+    const key = 'ft-collapse:' + pageKey + ':' + el.getAttribute('data-collapse-key');
+    let saved = null;
+    try { saved = localStorage.getItem(key); } catch (_) { /* private mode etc. */ }
+    if (saved === 'closed') el.open = false;
+    else if (saved === 'open') el.open = true;
+    el.addEventListener('toggle', () => {
+      try { localStorage.setItem(key, el.open ? 'open' : 'closed'); } catch (_) { /* best-effort */ }
+    }, signal ? { signal } : undefined);
+  });
+}
+
 function formatOneOffStatusText(entry) {
   if (!entry || typeof entry !== 'object') return null;
   const state = entry.state;
@@ -3193,13 +3264,17 @@ function buildOneOffModal(doc, handlers) {
   let currentEntry = null;
   const retryBtn = d.createElement('button');
   retryBtn.type = 'button';
-  retryBtn.className = 'btn btn-sm oneoff-modal-retry';
+  // v1.55 Track B (Dean: "this weird little retry button on the left, and
+  // then boom... big download button. The retry just looks off"): Retry and
+  // Download now share ONE .action-bar row (equal-width cells) instead of a
+  // small stray button floating above a big primary. Same lifecycle: Retry
+  // exists only while the entry is in its error state (setStatus below).
+  retryBtn.className = 'btn oneoff-modal-retry';
   retryBtn.textContent = 'Retry';
   retryBtn.hidden = true;
   retryBtn.addEventListener('click', () => {
     if (typeof h.onRetry === 'function') h.onRetry(currentEntry);
   });
-  modal.appendChild(retryBtn);
 
   const downloadBtn = d.createElement('button');
   downloadBtn.type = 'button';
@@ -3214,7 +3289,11 @@ function buildOneOffModal(doc, handlers) {
     const body = buildOneOffDownloadBody(url, formatSelect.value, qualitySelect.value, filetypeSelect.value, folderInput.value);
     if (typeof h.onDownload === 'function') h.onDownload(body);
   });
-  modal.appendChild(downloadBtn);
+  const actionsRow = d.createElement('div');
+  actionsRow.className = 'action-bar oneoff-modal-actions';
+  actionsRow.appendChild(retryBtn);
+  actionsRow.appendChild(downloadBtn);
+  modal.appendChild(actionsRow);
 
   // Renders a live-status entry (or clears the line when `null`/no entry) --
   // `textContent` only, never `innerHTML`, no matter what `entry.title`/
@@ -7074,9 +7153,88 @@ function chipItemLifecycle(state, failureKind) {
  * subscription is surfaced via `statusText` below (`formatOneOffStatusText`
  * already renders "title -- N of M -- X%" for any entry with those fields,
  * subscription or one-shot alike) -- no separate field needed here.
+ *
+ * v1.55 (Dean: "reheats, repulls... it just shows one off download. That
+ * should be clearer"): BATCH-ACTIVITY entries ride the same `oneShots`
+ * namespace under fixed ids, and every producer already stamps a `kind`
+ * field (lib/ytdlp/index.js: 'repull'/'repull-item'/'refresh-avatars';
+ * server.js: 'attribute-bulk'). Before this, they all fell through the
+ * one-shot naming chain to the literal "One-off download" with statusText
+ * "running" (the raw state). Now: a recognized `entry.kind` names the row by
+ * OPERATION, its progress comes from the batch counters (done+skipped+failed
+ * of total -- a real determinate bar, not the fake-0% class), and the row is
+ * never `retryable` (the chip's Retry fires the ONE-SHOT retry route, which
+ * has no meaning for a batch id -- Dismiss remains). Unrecognized kinds fall
+ * through unchanged, so a future producer degrades to the old generic label
+ * rather than breaking.
  */
+const ACTIVITY_CHIP_LABELS = {
+  'repull': 'Reheating library',
+  'repull-item': 'Reheating video',
+  'refresh-avatars': 'Refreshing avatars',
+  'attribute-bulk': 'Attributing videos',
+};
+
+// Pure: statusText for a batch-activity chip row. Position is PROCESSED
+// count (done+skipped+failed -- successes alone would undercount progress on
+// a skip-heavy reheat), " -- " joined with the current item label when the
+// producer streams one, and attribute-bulk's `moved` tally (its most
+// meaningful live number). Terminal states mirror formatOneOffStatusText's
+// wording exactly so the two row families read alike.
+function formatActivityStatusText(entry) {
+  if (!entry || typeof entry !== 'object') return null;
+  const state = entry.state;
+  const num = (v) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : 0);
+  if (state === 'running') {
+    const total = num(entry.total);
+    const processed = num(entry.done) + num(entry.skipped) + num(entry.failed);
+    const parts = [];
+    if (total > 1) parts.push(Math.min(processed, total) + ' of ' + total);
+    const current = typeof entry.current === 'string' && entry.current.trim() !== '' ? entry.current.trim() : null;
+    if (current) parts.push(current);
+    if (entry.kind === 'attribute-bulk' && num(entry.moved) > 0) parts.push(num(entry.moved) + ' moved');
+    return parts.length > 0 ? parts.join(' — ') : 'Running…';
+  }
+  if (state === 'done') return 'Done';
+  if (state === 'error') return typeof entry.error === 'string' && entry.error.trim() !== '' ? entry.error : 'error';
+  if (state === 'cancelled') return 'Cancelled';
+  return null;
+}
+
 function buildDownloadChipItem(kind, id, entry) {
   if (!id || !entry || typeof entry !== 'object') return null;
+  const activityKind = kind === 'oneshot' && typeof entry.kind === 'string'
+    && Object.prototype.hasOwnProperty.call(ACTIVITY_CHIP_LABELS, entry.kind)
+    ? entry.kind : null;
+  if (activityKind) {
+    const state = typeof entry.state === 'string' ? entry.state : 'running';
+    const num = (v) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : 0);
+    const total = num(entry.total);
+    const processed = num(entry.done) + num(entry.skipped) + num(entry.failed);
+    return {
+      key: kind + ':' + id,
+      id,
+      kind,
+      activityKind,
+      name: ACTIVITY_CHIP_LABELS[activityKind],
+      // A batch's bar is its own real progress: processed/total. A batch
+      // with no meaningful total (absent, or a single-item reheat) shows NO
+      // bar at all (see downloadChipItemShowsPercent) -- its statusText
+      // carries the story; never a fake 0% or a dead indeterminate flag.
+      percent: total > 1 ? Math.max(0, Math.min(100, Math.round((processed / total) * 100))) : 0,
+      // The bar-visibility gate (downloadChipItemShowsPercent) needs to know
+      // whether a determinate processed/total basis exists at all.
+      activityBar: total > 1,
+      state,
+      phase: null,
+      indeterminate: false,
+      failureKind: null,
+      statusText: formatActivityStatusText(entry) || state,
+      // NEVER retryable: Retry fires the one-shot retry route, meaningless
+      // (and wrong) for a fixed batch id. Errors keep Dismiss only.
+      retryable: false,
+    };
+  }
   const state = typeof entry.state === 'string' ? entry.state : 'queued';
   const percent = typeof entry.percent === 'number' && Number.isFinite(entry.percent)
     ? Math.max(0, Math.min(100, Math.round(entry.percent)))
@@ -7133,6 +7291,11 @@ function buildDownloadChipItem(kind, id, entry) {
  */
 function downloadChipItemShowsPercent(item) {
   if (!item || typeof item !== 'object') return false;
+  // v1.55: a batch-activity row shows its bar only while RUNNING with a
+  // determinate processed/total basis (activityBar -- total > 1). A batch
+  // with no total (or a single-item reheat) shows no bar at all rather than
+  // a fake 0%, and a terminal batch's statusText already says what happened.
+  if (item.activityKind) return item.state === 'running' && item.activityBar === true;
   if (item.kind !== 'subscription') return true;
   return item.state === 'downloading';
 }
@@ -7175,7 +7338,10 @@ function buildDownloadChipFailureLines(state, rawEntry) {
 }
 
 /**
- * Pure aggregate reducer (AC54-AC56, REFRAMED v1.24.9 -- see the header
+ * Aggregate reducer (AC54-AC56, REFRAMED v1.24.9; v1.55: no longer fully
+ * pure -- it deliberately prunes the caller's live dismissedKeys Set when an
+ * item is observed active again, see the W4 comment at the mutation site --
+ * see the header
  * comment above): given the RAW `{subscriptions, oneShots}` snapshot
  * `GET /api/subscriptions/status` returns and the CURRENT set of
  * user-dismissed item keys, returns `{count, hasError, items}` --
@@ -7221,6 +7387,15 @@ function reduceDownloadChipState(snapshot, dismissedKeys) {
     // an active download -- never contributes to the chip at all.
     if (item.kind === 'subscription' && (item.state === 'queued' || item.state === 'listing')) return false;
     const lifecycle = chipItemLifecycle(item.state, item.failureKind);
+    // v1.55 gate round 1 (adversarial W4): an item observed ACTIVE again
+    // clears its dismissal. Batch activities live under FIXED ids
+    // (repull-metadata etc.), so without this, dismissing one errored
+    // reheat swallowed every LATER reheat's terminal outcome for the rest
+    // of the page lifetime (the reviewer's runnable repro); subscription
+    // ids shared the same latent class. Only meaningful when the caller
+    // passes its own live Set (the chip does) -- the defensive array copy
+    // path prunes a throwaway.
+    if (lifecycle === 'active') dismissed.delete(item.key);
     if (lifecycle === 'auto-dismiss') return false;
     if (lifecycle === 'sticky') return !dismissed.has(item.key);
     return true;
@@ -7272,26 +7447,53 @@ function reduceDownloadChipState(snapshot, dismissedKeys) {
 function formatDownloadChipSummary(state) {
   if (!state || !Array.isArray(state.items) || state.items.length === 0) return '';
   const downloading = state.items.filter((item) => item.state === 'downloading');
-  if (downloading.length === 0) {
-    const errorCount = state.items.filter((item) => item.state === 'error').length;
+  // v1.55: RUNNING batch activities (reheats, avatar refreshes,
+  // attribution -- see ACTIVITY_CHIP_LABELS) are first-class in the
+  // collapsed line now, not invisible-until-error. A single one headlines
+  // by name exactly like a single download does. (Worded to dodge the
+  // ytdlp-t6 route-lock's literal scanner, which cannot tell prose from
+  // code -- the same reason its allowlist exists.)
+  const running = state.items.filter((item) => item.activityKind && item.state === 'running');
+  if (downloading.length === 0 && running.length === 0) {
+    const errored = state.items.filter((item) => item.state === 'error');
     const cancelledCount = state.items.filter((item) => item.state === 'cancelled').length;
+    const errorCount = errored.length;
     if (errorCount === 0 && cancelledCount === 0) return '';
     if (cancelledCount === 0) {
-      return errorCount + (errorCount === 1 ? ' download failed' : ' downloads failed');
+      // "download failed" was a lie when the failed thing was a reheat --
+      // wording follows what actually failed.
+      const allActivities = errored.every((item) => item.activityKind);
+      const noun = allActivities
+        ? (errorCount === 1 ? ' task failed' : ' tasks failed')
+        : (errored.some((item) => item.activityKind)
+          ? ' failed'
+          : (errorCount === 1 ? ' download failed' : ' downloads failed'));
+      return errorCount + noun;
     }
     if (errorCount === 0) {
       return cancelledCount + ' stopped';
     }
     return errorCount + ' failed · ' + cancelledCount + ' stopped';
   }
+  const parts = [];
   if (downloading.length === 1) {
     const item = downloading[0];
     const hasNameAndStatus = typeof item.name === 'string' && item.name.trim() !== ''
       && typeof item.statusText === 'string' && item.statusText.trim() !== '';
-    if (hasNameAndStatus) return item.name + ' — ' + item.statusText;
+    parts.push(hasNameAndStatus ? item.name + ' — ' + item.statusText : '1 downloading (' + item.percent + '%)');
+  } else if (downloading.length > 1) {
+    const avg = Math.round(downloading.reduce((sum, item) => sum + item.percent, 0) / downloading.length);
+    parts.push(downloading.length + ' downloading (' + avg + '%)');
   }
-  const avg = Math.round(downloading.reduce((sum, item) => sum + item.percent, 0) / downloading.length);
-  return downloading.length + ' downloading (' + avg + '%)';
+  if (running.length === 1) {
+    const act = running[0];
+    parts.push(typeof act.statusText === 'string' && act.statusText.trim() !== '' && act.statusText !== 'Running…'
+      ? act.name + ' — ' + act.statusText
+      : act.name);
+  } else if (running.length > 1) {
+    parts.push(running.length + ' tasks running');
+  }
+  return parts.join(' · ');
 }
 
 /**
@@ -7613,7 +7815,11 @@ function updateDownloadChipItemRow(doc, row, item, rawEntry) {
   els.failuresWrap.hidden = failureLines.length === 0;
 
   els.actions.hidden = !(item.state === 'error' || item.state === 'cancelled');
-  els.retryBtn.hidden = item.state !== 'error';
+  // v1.55: gate on the item's own `retryable` (previously a write-only field
+  // -- this row checked `state` directly, which would have offered a Retry
+  // on an errored BATCH row and fired the one-shot retry route against a
+  // fixed batch id). Downloads keep retryable === (state === 'error').
+  els.retryBtn.hidden = item.retryable !== true;
 }
 
 /**
@@ -8468,6 +8674,8 @@ if (typeof module !== 'undefined' && module.exports) {
     showMoveModal, requestMoveItem,
     nextDownloadChipPollDelay, buildOneShotRetryBody, chipItemLifecycle,
     buildDownloadChipItem, reduceDownloadChipState, formatDownloadChipSummary,
+    ACTIVITY_CHIP_LABELS, formatActivityStatusText,
+    setActionStatus, setButtonBusy, wireCollapsibleSections,
     shouldShowDownloadChipOnPath, injectDownloadStatusChip,
     // v1.29.0 T8: the pure done-edge detector + the in-place library-refresh
     // hook invoker, exported for direct node:test coverage (no DOM/timers).

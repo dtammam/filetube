@@ -357,14 +357,14 @@ function pollScanStatus(statusText) {
       if (s.scanning) {
         let msg = `Scanning library… ${s.fileCount} file(s) found so far`;
         if (s.transcoding > 0) msg += ` Converting ${s.transcoding} file(s) in the background${transcodeNamesSuffix(s)}`;
-        statusText.textContent = msg;
-        statusText.style.color = 'var(--text-primary)';
+        // v1.55 Track C: the shared feedback system replaces the ad-hoc
+        // style.color juggling everywhere in this file.
+        setActionStatus(statusText, msg, 'busy');
         setTimeout(() => pollScanStatus(statusText), 1000);
       } else {
         let msg = `Scan complete — ${s.fileCount} file(s) across ${s.folderCount} folder(s).`;
         if (s.transcoding > 0) msg += ` Converting ${s.transcoding} file(s) in the background${transcodeNamesSuffix(s)}`;
-        statusText.textContent = msg;
-        statusText.style.color = 'green';
+        setActionStatus(statusText, msg);
         // C4 remediation (v1.16.0): re-check `signal.aborted` INSIDE the
         // timeout callback, not just before arming it -- the user can
         // navigate away in-app during this 1.8s window (this view's own
@@ -734,7 +734,7 @@ function updateLogoControls(hasLight, hasDark) {
   const statusEl = document.getElementById('logo-status');
   if (lightReset) lightReset.hidden = !logoVariantState.light;
   if (darkReset) darkReset.hidden = !logoVariantState.dark;
-  if (statusEl) statusEl.textContent = describeLogoState();
+  setActionStatus(statusEl, describeLogoState());
 }
 
 // Wires ONE variant's upload/reset pair against the variant-scoped routes
@@ -755,14 +755,14 @@ function wireLogoVariantControls(variant, inputId, uploadId, resetId) {
     fileInput.value = ''; // allow re-selecting the same file later
     if (!file) return;
     if (!LOGO_ALLOWED_TYPES.includes(file.type)) {
-      if (statusEl) statusEl.textContent = 'Logo must be a PNG, JPEG, or WebP image.';
+      setActionStatus(statusEl, 'Logo must be a PNG, JPEG, or WebP image.', 'error');
       return;
     }
     if (file.size > 1024 * 1024) {
-      if (statusEl) statusEl.textContent = 'Logo is too large (max 1 MB).';
+      setActionStatus(statusEl, 'Logo is too large (max 1 MB).', 'error');
       return;
     }
-    if (statusEl) statusEl.textContent = 'Uploading…';
+    setActionStatus(statusEl, 'Uploading…', 'busy');
     try {
       const r = await fetch('/api/settings/logo' + routeSuffix, {
         method: 'POST',
@@ -771,7 +771,7 @@ function wireLogoVariantControls(variant, inputId, uploadId, resetId) {
       });
       const body = await r.json().catch(() => ({}));
       if (!r.ok) {
-        if (statusEl) statusEl.textContent = body.error || 'Upload failed.';
+        setActionStatus(statusEl, body.error || 'Upload failed.', 'error');
         return;
       }
       updateLogoControls(
@@ -784,7 +784,7 @@ function wireLogoVariantControls(variant, inputId, uploadId, resetId) {
       // logo must bypass the src-equality short-circuit and cache-bust.
       if (typeof applyCustomLogoIfSet === 'function') applyCustomLogoIfSet(true);
     } catch (err) {
-      if (statusEl) statusEl.textContent = 'Upload failed (network error).';
+      setActionStatus(statusEl, 'Upload failed (network error).', 'error');
     }
   });
 
@@ -792,7 +792,7 @@ function wireLogoVariantControls(variant, inputId, uploadId, resetId) {
     try {
       const r = await fetch('/api/settings/logo' + routeSuffix, { method: 'DELETE' });
       if (!r.ok) {
-        if (statusEl) statusEl.textContent = 'Could not reset the logo.';
+        setActionStatus(statusEl, 'Could not reset the logo.', 'error');
         return;
       }
       updateLogoControls(
@@ -833,10 +833,10 @@ function renderScanStatusLine(s) {
   const el = document.getElementById('automation-scan-status');
   if (!el) return;
   if (s.scanning) {
-    el.textContent = `Scanning library… ${s.fileCount} file(s) found so far`;
+    setActionStatus(el, `Scanning library… ${s.fileCount} file(s) found so far`, 'busy');
   } else {
     const last = s.lastScan ? formatRelativeTime(new Date(s.lastScan).getTime()) : 'never';
-    el.textContent = `Last scanned: ${last}`;
+    setActionStatus(el, `Last scanned: ${last}`);
   }
 }
 
@@ -858,7 +858,7 @@ function pollAutomationScanStatus() {
       if (s.scanning) {
         setTimeout(pollAutomationScanStatus, 1000);
       } else {
-        if (btn) btn.disabled = false;
+        setButtonBusy(btn, false);
         loadCacheSize();
       }
     })
@@ -879,8 +879,7 @@ async function loadScanStatusLine() {
     const s = await r.json();
     renderScanStatusLine(s);
     if (s.scanning) {
-      const btn = document.getElementById('scan-now-btn');
-      if (btn) btn.disabled = true;
+      setButtonBusy(document.getElementById('scan-now-btn'), true);
       pollAutomationScanStatus();
     }
   } catch (err) {
@@ -947,12 +946,10 @@ function pollBookScanStatus() {
     .then((s) => {
       if (!status) return;
       if (s && s.scanning) {
-        status.textContent = 'Scanning books…';
-        status.style.color = 'var(--text-primary)';
+        setActionStatus(status, 'Scanning books…', 'busy');
         setTimeout(pollBookScanStatus, 1000);
       } else {
-        status.textContent = s && s.lastScan ? 'Books scanned.' : 'Idle.';
-        status.style.color = 'var(--text-secondary)';
+        setActionStatus(status, s && s.lastScan ? 'Books scanned.' : 'Idle.');
       }
     })
     .catch(() => {});
@@ -978,7 +975,7 @@ function wireBookFolderControls(signal) {
   const status = document.getElementById('book-scan-status');
   if (saveBtn) {
     saveBtn.addEventListener('click', async () => {
-      if (status) { status.textContent = 'Saving…'; status.style.color = 'var(--text-primary)'; }
+      setActionStatus(status, 'Saving…', 'busy');
       try {
         const r = await fetch('/api/books/config', {
           method: 'POST',
@@ -991,15 +988,14 @@ function wireBookFolderControls(signal) {
           // and reflect that it already kicked a scan.
           bookFolders = Array.isArray(data.folders) ? data.folders.slice() : bookFolders;
           renderBookFolders();
-          if (status) status.textContent = 'Saved — scanning books…';
+          setActionStatus(status, 'Saved — scanning books…', 'busy');
           pollBookScanStatus();
-        } else if (status) {
+        } else {
           // Surface the server's readable error (existence / media-overlap).
-          status.textContent = (data && data.error) || 'Could not save book folders.';
-          status.style.color = 'var(--yt-red)';
+          setActionStatus(status, (data && data.error) || 'Could not save book folders.', 'error');
         }
       } catch (err) {
-        if (status) { status.textContent = 'Could not save book folders.'; status.style.color = 'var(--yt-red)'; }
+        setActionStatus(status, 'Could not save book folders.', 'error');
         console.error('Save book folders failed:', err);
       }
     }, { signal });
@@ -1008,14 +1004,14 @@ function wireBookFolderControls(signal) {
   const scanBtn = document.getElementById('scan-books-btn');
   if (scanBtn) {
     scanBtn.addEventListener('click', async () => {
-      scanBtn.disabled = true;
+      setButtonBusy(scanBtn, true);
       try {
         await fetch('/api/books/scan', { method: 'POST' });
         pollBookScanStatus();
       } catch (err) {
         console.error('Book scan failed to start:', err);
       } finally {
-        scanBtn.disabled = false;
+        setButtonBusy(scanBtn, false);
       }
     }, { signal });
   }
@@ -1074,12 +1070,10 @@ function pollMusicScanStatus() {
     .then((s) => {
       if (!status) return;
       if (s && s.scanning) {
-        status.textContent = 'Scanning music…';
-        status.style.color = 'var(--text-primary)';
+        setActionStatus(status, 'Scanning music…', 'busy');
         setTimeout(pollMusicScanStatus, 1000);
       } else {
-        status.textContent = s && s.lastScan ? 'Music scanned.' : 'Idle.';
-        status.style.color = 'var(--text-secondary)';
+        setActionStatus(status, s && s.lastScan ? 'Music scanned.' : 'Idle.');
       }
     })
     .catch(() => {});
@@ -1105,7 +1099,7 @@ function wireMusicFolderControls(signal) {
   const status = document.getElementById('music-scan-status');
   if (saveBtn) {
     saveBtn.addEventListener('click', async () => {
-      if (status) { status.textContent = 'Saving…'; status.style.color = 'var(--text-primary)'; }
+      setActionStatus(status, 'Saving…', 'busy');
       try {
         const r = await fetch('/api/music/config', {
           method: 'POST',
@@ -1116,15 +1110,14 @@ function wireMusicFolderControls(signal) {
         if (r.ok) {
           musicFolders = Array.isArray(data.folders) ? data.folders.slice() : musicFolders;
           renderMusicFolders();
-          if (status) status.textContent = 'Saved — scanning music…';
+          setActionStatus(status, 'Saved — scanning music…', 'busy');
           pollMusicScanStatus();
-        } else if (status) {
+        } else {
           // Surface the server's readable error (existence / media-or-book overlap).
-          status.textContent = (data && data.error) || 'Could not save music folders.';
-          status.style.color = 'var(--yt-red)';
+          setActionStatus(status, (data && data.error) || 'Could not save music folders.', 'error');
         }
       } catch (err) {
-        if (status) { status.textContent = 'Could not save music folders.'; status.style.color = 'var(--yt-red)'; }
+        setActionStatus(status, 'Could not save music folders.', 'error');
         console.error('Save music folders failed:', err);
       }
     }, { signal });
@@ -1133,14 +1126,14 @@ function wireMusicFolderControls(signal) {
   const scanBtn = document.getElementById('scan-music-btn');
   if (scanBtn) {
     scanBtn.addEventListener('click', async () => {
-      scanBtn.disabled = true;
+      setButtonBusy(scanBtn, true);
       try {
         await fetch('/api/music/scan', { method: 'POST' });
         pollMusicScanStatus();
       } catch (err) {
         console.error('Music scan failed to start:', err);
       } finally {
-        scanBtn.disabled = false;
+        setButtonBusy(scanBtn, false);
       }
     }, { signal });
   }
@@ -1172,8 +1165,7 @@ function wireStaticControls(signal) {
     saveConfigBtn.addEventListener('click', async () => {
       const statusText = document.getElementById('scan-status');
       if (!statusText) return;
-      statusText.textContent = 'Saving configuration…';
-      statusText.style.color = 'var(--text-primary)';
+      setActionStatus(statusText, 'Saving configuration…', 'busy');
 
       try {
         const response = await fetch('/api/config', {
@@ -1188,12 +1180,10 @@ function wireStaticControls(signal) {
           // The scan runs in the background — poll it so the user sees real progress.
           pollScanStatus(statusText);
         } else {
-          statusText.textContent = 'Error: ' + data.error;
-          statusText.style.color = 'var(--yt-red)';
+          setActionStatus(statusText, 'Error: ' + data.error, 'error');
         }
       } catch (err) {
-        statusText.textContent = 'Error saving configuration.';
-        statusText.style.color = 'var(--yt-red)';
+        setActionStatus(statusText, 'Error saving configuration.', 'error');
         console.error(err);
       }
     }, { signal });
@@ -1378,7 +1368,7 @@ function wireStaticControls(signal) {
   const scanNowBtn = document.getElementById('scan-now-btn');
   if (scanNowBtn) {
     scanNowBtn.addEventListener('click', async () => {
-      scanNowBtn.disabled = true;
+      setButtonBusy(scanNowBtn, true);
       try {
         const r = await fetch('/api/scan', { method: 'POST' });
         if (r.status === 409) {
@@ -1391,11 +1381,11 @@ function wireStaticControls(signal) {
         if (data.success) {
           pollAutomationScanStatus();
         } else {
-          scanNowBtn.disabled = false;
+          setButtonBusy(scanNowBtn, false);
           console.error('Scan failed to start:', data.error);
         }
       } catch (err) {
-        scanNowBtn.disabled = false;
+        setButtonBusy(scanNowBtn, false);
         console.error('Failed to start scan:', err);
       }
     }, { signal });
@@ -1409,7 +1399,7 @@ function wireStaticControls(signal) {
         'This deletes all cached transcoded files. They will be regenerated automatically the next time they\'re watched.',
         async () => {
           const original = clearCacheBtn.textContent;
-          clearCacheBtn.disabled = true;
+          setButtonBusy(clearCacheBtn, true);
           clearCacheBtn.textContent = 'Clearing…';
           try {
             const r = await fetch('/api/cache/clear', { method: 'POST' });
@@ -1422,7 +1412,7 @@ function wireStaticControls(signal) {
           } catch (err) {
             console.error('Failed to clear cache:', err);
           } finally {
-            clearCacheBtn.disabled = false;
+            setButtonBusy(clearCacheBtn, false);
             clearCacheBtn.textContent = original;
           }
         }
@@ -1651,6 +1641,9 @@ function init(root) {
   syntheticFolders = [];
   loadedDefaultView = null;
 
+  // v1.55 Track D: per-section collapse persistence (details toggles).
+  // Scoped to the view root (QA S1) with a document fallback.
+  wireCollapsibleSections('setup', root || document, controller.signal);
   wireStaticControls(controller.signal);
   wireBookFolderControls(controller.signal); // v1.38.0 Part A
   wireMusicFolderControls(controller.signal); // v1.44 music

@@ -2517,6 +2517,127 @@ html.reader-immersive .app-container { padding-top: 0; }
   display: none;
 }
 
+/* ---- v1.55 Track C: the ONE action-status treatment ----------------------
+   Every management-page action (reheat/avatars/re-pull/scan/save/restore/
+   one-off) renders its feedback through setActionStatus/setButtonBusy
+   (common.js) into these classes -- replacing six divergent ad-hoc styles.
+   Line-height/min-height reserve the line box up front so populate/clear
+   never shifts the controls above it (the v1.26.2 lesson, now systemic). */
+.action-status {
+  /* inline-block, not block: the subscriptions header keeps its three
+     status spans on ONE reserved row (only one is ever populated); block
+     would stack three empty min-height boxes. Containers that want a
+     full-width line get it from their own layout. */
+  display: inline-block;
+  font-size: var(--fs-xs);
+  color: var(--text-secondary);
+  line-height: 1.25;
+  min-height: 15px;
+}
+.action-status-error {
+  color: var(--yt-red);
+}
+.action-status-busy::before {
+  content: '';
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 6px;
+  vertical-align: -1px;
+  border: 2px solid var(--border-color);
+  border-top-color: var(--text-secondary);
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+}
+/* In-button busy: keep the label, add a trailing spinner. The muted look
+   comes from the :disabled rule below (there was NO generic disabled-button
+   treatment before this -- each page's buttons just went unresponsive with
+   no visual change; part of the same unification). */
+.btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.btn-busy::after {
+  content: '';
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-left: 7px;
+  vertical-align: -1px;
+  border: 2px solid var(--border-color);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .action-status-busy::before,
+  .btn-busy::after {
+    animation: none;
+  }
+}
+
+/* ---- v1.55 Track B: the equal-width action bar ---------------------------
+   Dean: "the buttons... different sizes. It's not clean" + "apply it on all
+   the pages". One grid: every button the same width, wrapping whole-columns
+   on narrow screens. A trigger and its Cancel share one .action-bar-cell so
+   the swap never reflows the row (the appliers hide the trigger while its
+   Cancel is shown). Era tokens come from .btn itself -- this only owns
+   layout. */
+.action-bar {
+  display: grid;
+  /* Capped columns, not 1fr: with auto-fit, a lone button in a wide box
+     would otherwise stretch to the full row. 160-240px tracks stay equal
+     to each other, wrap whole-columns on narrow screens, and behave in
+     auto-width containers (the footer clusters) too. */
+  grid-template-columns: repeat(auto-fit, minmax(160px, 240px));
+  gap: 8px;
+  align-items: stretch;
+}
+.action-bar > .btn,
+.action-bar-cell > .btn {
+  width: 100%;
+}
+.action-bar-cell {
+  display: block;
+}
+/* The management-box footer row: status line left, an .action-bar cluster
+   right. Replaces per-box inline flex styles (setup.html had three
+   byte-identical copies). */
+.action-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 24px;
+  border-top: 1px solid var(--border-color);
+  padding-top: 16px;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.action-footer .action-bar {
+  flex-shrink: 0;
+  /* Gate round 1 (adversarial W3): inside a flex item with INDEFINITE
+     width, the grid spec computes auto-fit with ONE repetition -- the
+     Books/Music footer pairs would stack vertically. Explicit column
+     auto-flow sizes each button its own capped track side by side and
+     never depends on a definite container width. */
+  grid-template-columns: none;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(160px, 240px);
+}
+/* Gate round 2 (adversarial W7, found verifying their own W3 fix): column
+   auto-flow gives a two-button footer a HARD 328px min-content inside a
+   flex-shrink:0 item -- it overflows the card on essentially every phone
+   (~256-326px of inner width). Below 520px the cluster flows as ROWS: one
+   intrinsic-width implicit column, each button full-width in it -- equal
+   widths held, nothing clipped, and no dependence on a definite width (the
+   auto-fit-repeats-once trap cannot re-enter). */
+@media (max-width: 520px) {
+  .action-footer .action-bar {
+    grid-auto-flow: row;
+    grid-auto-columns: auto;
+  }
+}
+
 .folder-list-builder {
   border: 1px solid var(--border-color);
   background-color: var(--bg-color);
@@ -3192,11 +3313,26 @@ a.sub-row-channel-link:focus-visible {
 /* v1.15.1 FIX 5: a clear, full-width primary call-to-action reads better in
    this narrow modal than the small inline-flex `.btn` default used
    everywhere else (header/setup buttons, which sit alongside other controls
-   and should stay compact). */
+   and should stay compact). v1.55 gate round 1 (QA W1): the sitewide
+   .action-bar caps columns at 240px, which shrank this button to barely
+   half the modal -- the modal's own action row overrides to fluid 1fr
+   columns, so a lone Download spans edge to edge again (auto-fit collapses
+   the hidden Retry's track) and an errored state splits into two equal
+   cells (Retry | Download). */
+.oneoff-modal-actions {
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  /* Gate round 1 (adversarial W6b): the top offset lives on the ROW, and
+     every button in it fills its cell -- Retry and Download can never sit
+     2px misaligned in the shared stretched row. */
+  margin-top: 2px;
+}
+.oneoff-modal-actions .btn {
+  width: 100%;
+  justify-content: center;
+}
 .oneoff-modal .btn-primary {
   width: 100%;
   justify-content: center;
-  margin-top: 2px;
 }
 
 /* v1.20.0 FR-1 (T3): the watch-page Subscribe modal's READ-ONLY channel

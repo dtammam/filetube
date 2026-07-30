@@ -131,8 +131,8 @@
            change; the folder configuration below it is set-once. Moving the
            box is a pure markup reorder -- every control inside is wired by id
            from public/js/setup.js, never by document order. -->
-      <div class="setup-box">
-        <h2>Appearance</h2>
+      <details class="setup-box sub-collapsible" data-collapse-key="appearance" open>
+        <summary>Appearance</summary>
         <p>Pick the YouTube era FileTube dresses up as. Light / dark is the
            theme-toggle button in the header.</p>
         <div class="theme-picker" id="theme-picker"><!-- rendered by JS --></div>
@@ -149,23 +149,31 @@
            (PNG/JPEG/WebP, max 1&nbsp;MB — it is scaled to fit the header).
            You can upload a separate logo per light/dark mode; with only one
            uploaded, it is used for both.</p>
+        <!-- v1.55 gate round 1 (adversarial W5): the upload/remove pairs
+             join the action-bar grid the exec plan promised - the hidden
+             Remove button now occupies a capped equal cell when it appears
+             instead of popping in at intrinsic width. -->
         <div class="form-group">
-          <label>Light-mode logo</label><br>
+          <label>Light-mode logo</label>
           <input type="file" id="logo-file-input" accept="image/png,image/jpeg,image/webp" style="display:none;">
-          <button type="button" class="btn btn-sm" id="logo-upload-btn">Upload light logo…</button>
-          <button type="button" class="btn btn-sm" id="logo-reset-btn" hidden>Remove light logo</button>
+          <div class="action-bar">
+            <button type="button" class="btn btn-sm" id="logo-upload-btn">Upload light logo…</button>
+            <button type="button" class="btn btn-sm" id="logo-reset-btn" hidden>Remove light logo</button>
+          </div>
         </div>
         <div class="form-group">
-          <label>Dark-mode logo</label><br>
+          <label>Dark-mode logo</label>
           <input type="file" id="logo-file-input-dark" accept="image/png,image/jpeg,image/webp" style="display:none;">
-          <button type="button" class="btn btn-sm" id="logo-upload-btn-dark">Upload dark logo…</button>
-          <button type="button" class="btn btn-sm" id="logo-reset-btn-dark" hidden>Remove dark logo</button>
+          <div class="action-bar">
+            <button type="button" class="btn btn-sm" id="logo-upload-btn-dark">Upload dark logo…</button>
+            <button type="button" class="btn btn-sm" id="logo-reset-btn-dark" hidden>Remove dark logo</button>
+          </div>
         </div>
-        <div id="logo-status" class="sub-row-meta" style="margin-top:6px;"></div>
-      </div>
+        <div id="logo-status" class="action-status" style="margin-top:6px;" aria-live="polite"></div>
+      </details>
 
-      <div class="setup-box">
-        <h2>FileTube Setup & Configuration</h2>
+      <details class="setup-box sub-collapsible" data-collapse-key="video-folders" open>
+        <summary>FileTube Setup & Configuration</summary>
         <p>
           Configure the local directories where your media (videos and audio files) are stored.
           Each directory will appear as a playlist (or channel) in the sidebar. FileTube scans these folders recursively.
@@ -190,18 +198,22 @@
           </div>
         </div>
 
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 24px; border-top: 1px solid var(--border-color); padding-top: 16px; flex-wrap: wrap; gap: 10px;">
-          <span id="scan-status" style="font-weight: bold; color: var(--text-secondary);"></span>
-          <button class="btn btn-primary" id="save-config-btn" style="padding: 10px 20px; font-size: 13px;">Save & Scan Library</button>
+        <!-- v1.55 Track B/C: shared footer row + the ONE status treatment
+             (setup.js writes it via setActionStatus). -->
+        <div class="action-footer">
+          <span id="scan-status" class="action-status"></span>
+          <div class="action-bar">
+            <button class="btn btn-primary" id="save-config-btn">Save & Scan Library</button>
+          </div>
         </div>
-      </div>
+      </details>
 
       <!-- v1.38.0 (Part A): book folders. Mirrors the media-folders box above,
            wired to the existing GET/POST /api/books/config + POST /api/books/scan
            (config was API-only since v1.37.0 -- this closes that gap). Book roots
            are an unordered set with no per-folder display/hide/reorder. -->
-      <div class="setup-box">
-        <h2>Book folders</h2>
+      <details class="setup-box sub-collapsible" data-collapse-key="book-folders" open>
+        <summary>Book folders</summary>
         <p>
           Directories where your EPUB and PDF books live. They appear in the Books library.
           Book folders may not overlap your media folders (the server rejects an overlap).
@@ -225,21 +237,21 @@
           </div>
         </div>
 
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 24px; border-top: 1px solid var(--border-color); padding-top: 16px; flex-wrap: wrap; gap: 10px;">
-          <span id="book-scan-status" style="font-weight: bold; color: var(--text-secondary);"></span>
-          <div style="display: flex; gap: 10px; flex-shrink: 0;">
+        <div class="action-footer">
+          <span id="book-scan-status" class="action-status"></span>
+          <div class="action-bar">
             <button class="btn" id="scan-books-btn">Scan books now</button>
-            <button class="btn btn-primary" id="save-book-config-btn" style="padding: 10px 20px; font-size: 13px;">Save book folders</button>
+            <button class="btn btn-primary" id="save-book-config-btn">Save book folders</button>
           </div>
         </div>
-      </div>
+      </details>
 
       <!-- v1.44 music folders. Mirrors the book-folders box, wired to
            GET/POST /api/music/config + POST /api/music/scan. Music roots are an
            unordered set. The server rejects any overlap with media OR book
            folders (three-way, both directions). -->
-      <div class="setup-box">
-        <h2>Music folders</h2>
+      <details class="setup-box sub-collapsible" data-collapse-key="music-folders" open>
+        <summary>Music folders</summary>
         <p>
           Directories where your music lives (MP3, M4A/AAC, FLAC, WAV). They appear in the Music library.
           Music folders may not overlap your media or book folders (the server rejects an overlap).
@@ -263,17 +275,17 @@
           </div>
         </div>
 
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 24px; border-top: 1px solid var(--border-color); padding-top: 16px; flex-wrap: wrap; gap: 10px;">
-          <span id="music-scan-status" style="font-weight: bold; color: var(--text-secondary);"></span>
-          <div style="display: flex; gap: 10px; flex-shrink: 0;">
+        <div class="action-footer">
+          <span id="music-scan-status" class="action-status"></span>
+          <div class="action-bar">
             <button class="btn" id="scan-music-btn">Scan music now</button>
-            <button class="btn btn-primary" id="save-music-config-btn" style="padding: 10px 20px; font-size: 13px;">Save music folders</button>
+            <button class="btn btn-primary" id="save-music-config-btn">Save music folders</button>
           </div>
         </div>
-      </div>
+      </details>
 
-      <div class="setup-box">
-        <h2>Automation & Storage</h2>
+      <details class="setup-box sub-collapsible" data-collapse-key="automation-storage" open>
+        <summary>Automation & Storage</summary>
         <p>
           Control how often FileTube rescans your library and how the on-demand
           transcode cache is kept in check.
@@ -470,9 +482,11 @@
           <small id="prune-missing-error" class="field-error"></small>
         </div>
 
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 24px; border-top: 1px solid var(--border-color); padding-top: 16px; flex-wrap: wrap; gap: 10px;">
-          <span id="automation-scan-status" style="font-weight: bold; color: var(--text-secondary);" aria-live="polite">Last scanned: loading…</span>
-          <button class="btn" id="scan-now-btn">Scan now</button>
+        <div class="action-footer">
+          <span id="automation-scan-status" class="action-status" aria-live="polite">Last scanned: loading…</span>
+          <div class="action-bar">
+            <button class="btn" id="scan-now-btn">Scan now</button>
+          </div>
         </div>
 
         <h3 style="margin-top:28px;">Transcode cache</h3>
@@ -505,23 +519,23 @@
           </small>
           <small id="cache-cap-error" class="field-error"></small>
         </div>
-      </div>
+      </details>
 
       <!-- v1.43: Account (everyone) - who you are + sign out. Markup lives
            INSIDE #view-root and styles in style.css (the v1.41.8 SPA-swap
            lesson). -->
-      <div class="setup-box" id="account-box">
-        <h2>Account</h2>
+      <details class="setup-box sub-collapsible" id="account-box" data-collapse-key="account" open>
+        <summary>Account</summary>
         <div class="account-row">
           <span id="account-chip" aria-live="polite">Loading your account...</span>
           <button class="btn" id="logout-btn">Sign out</button>
         </div>
-      </div>
+      </details>
 
       <!-- v1.43: Users (admin only - revealed by setup.js after /api/auth/me
            confirms the role; the server enforces it regardless). -->
-      <div class="setup-box" id="users-box" hidden>
-        <h2>Users</h2>
+      <details class="setup-box sub-collapsible" id="users-box" hidden data-collapse-key="users" open>
+        <summary>Users</summary>
         <p>
           Accounts for your family and friends. Everyone signed in sees the same library for now -
           per-person library limits arrive in a later release. Each person gets their own watch
@@ -561,13 +575,13 @@
             <small id="add-user-error" class="field-error" role="alert" aria-live="polite"></small>
           </div>
         </div>
-      </div>
+      </details>
 
       <!-- v1.43: instance backup/restore (admin only - revealed with the
            Users box). The bundle now includes user accounts, so the download
            is flagged sensitive. -->
-      <div class="setup-box" id="backup-box" hidden>
-        <h2>Backup &amp; Restore</h2>
+      <details class="setup-box sub-collapsible" id="backup-box" hidden data-collapse-key="backup-restore" open>
+        <summary>Backup &amp; Restore</summary>
         <p>
           Downloads a snapshot of this FileTube's configuration and everyone's personal state -
           folders, settings, watch progress, likes, reading positions, pins, view counts, and
@@ -593,7 +607,7 @@
             restore can never lock you out.
           </small>
         </div>
-      </div>
+      </details>
       </div>
     </main>
   </div>
