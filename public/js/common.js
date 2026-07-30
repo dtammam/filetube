@@ -1739,12 +1739,20 @@ const DOWNLOAD_CAPTURE_WINDOW_MS = 24 * 60 * 60 * 1000;
 function formatViewCountCaptureDate(ms) {
   // v1.54 (Dean, approved with the subscriber-count spec): ISO YYYY-MM-DD --
   // "I like that date format" -- replacing the locale short form.
-  return new Date(ms).toISOString().slice(0, 10);
+  // Gate round 1 (adversarial S1): LOCAL date fields, not toISOString (UTC)
+  // -- an evening capture must not be labeled with tomorrow's date.
+  const d = new Date(ms);
+  const pad = (x) => String(x).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
 // v1.54: YouTube-style compact count -- 999 -> "999", 1234 -> "1.2K",
 // 24000 -> "24K", 1200000 -> "1.2M". One decimal only under 10 of a unit,
-// trailing ".0" stripped. Pure; exported for node:test.
+// trailing ".0" stripped. Gate round 1 (adversarial S2): FLOORS like YouTube
+// (24,600 -> "24K", never "25K") -- which also makes the unit boundary
+// impossible to overshoot (999,500 floors to "999K", never "1000K"). The
+// epsilon absorbs binary-float dust (4.3e6/1e6*10 can land a hair under 43)
+// so a decimal is never floored one tenth low. Pure; exported for node:test.
 function formatCompactCount(n) {
   if (!Number.isInteger(n) || n < 0) return '0';
   if (n < 1000) return String(n);
@@ -1752,7 +1760,9 @@ function formatCompactCount(n) {
   for (const [div, suffix] of units) {
     if (n >= div) {
       const v = n / div;
-      const text = v < 10 ? (Math.round(v * 10) / 10).toFixed(1).replace(/\.0$/, '') : String(Math.round(v));
+      const text = v < 10
+        ? (Math.floor(v * 10 + 1e-9) / 10).toFixed(1).replace(/\.0$/, '')
+        : String(Math.floor(v + 1e-9));
       return text + suffix;
     }
   }

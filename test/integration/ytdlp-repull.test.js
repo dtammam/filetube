@@ -358,6 +358,41 @@ test('repullItemMetaAndSubs: a well-formed Pass A JSON produces releaseDate (epo
   assert.equal(result.wroteSubs, true);
 });
 
+// v1.54 gate round 1 W1: the reheat lane's follower-count capture, end to end
+// through Pass A's real JSON parse (run.js), never a hand-fed field. A NUMBER
+// is what yt-dlp actually emits; 0 is a real count; a bogus negative must be
+// dropped by the shared validator without costing any other field.
+test('repullItemMetaAndSubs Pass A: a numeric channel_follower_count lands as sourceFollowerCount; 0 survives; a negative is dropped field-level', async () => {
+  const cases = [
+    { raw: 4560000, expected: 4560000 },
+    { raw: 0, expected: 0 },
+    { raw: -5, expected: undefined },
+  ];
+  for (const { raw, expected } of cases) {
+    const root = makeDownloadRoot();
+    const mediaFilePath = path.join(root, 'My Video [dQw4w9WgXcQ].mp4');
+    fs.writeFileSync(mediaFilePath, 'not a real video');
+    const spawnChild = stubSpawn();
+    // capturedSpawnCalls only resets per-TEST (beforeEach) -- offset each
+    // loop iteration past the prior ones' Pass A/Pass B spawns.
+    const base = capturedSpawnCalls.length;
+    const resultPromise = run.repullItemMetaAndSubs(WATCH_URL, mediaFilePath, { downloadDir: root, cookiesFile: null });
+    const passAChild = spawnChild(base);
+    passAChild.stdout.emit('data', Buffer.from(JSON.stringify({ ...VALID_META_JSON, channel_follower_count: raw })));
+    passAChild.emit('close', 0, null);
+    await flush();
+    const passBChild = spawnChild(base + 1);
+    passBChild.emit('close', 0, null);
+    const result = await resultPromise;
+    if (expected === undefined) {
+      assert.equal(Object.prototype.hasOwnProperty.call(result, 'sourceFollowerCount'), false, `follower ${raw}: an invalid count must be ABSENT, never present-as-null`);
+      assert.equal(result.releaseDate, Date.UTC(2023, 0, 20), 'a bad follower count must never cost the release date (independent-validator posture)');
+    } else {
+      assert.equal(result.sourceFollowerCount, expected, `follower ${raw} must survive Pass A's real parse`);
+    }
+  }
+});
+
 test('repullItemMetaAndSubs: a valid release_date is preserved even when the channel URL is MISSING (the sanitizeCapturedChannelMeta regression this independent wiring fixes)', async () => {
   const root = makeDownloadRoot();
   const mediaFilePath = path.join(root, 'My Video [dQw4w9WgXcQ].mp4');

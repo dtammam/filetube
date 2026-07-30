@@ -160,6 +160,7 @@ test('a captured count survives an UNCHANGED rescan (reuse fast path)', () => wi
     ns.downloadMeta.fffffffffff = {
       channelUrl: 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw',
       sourceViewCount: 555,
+      sourceFollowerCount: 66000,
       capturedAt: CAPTURED_AT,
     };
   });
@@ -175,6 +176,9 @@ test('a captured count survives an UNCHANGED rescan (reuse fast path)', () => wi
   const item = loadDatabase().metadata[id];
   assert.equal(item.sourceViewCount, 555, 'still there after a rescan');
   assert.equal(item.sourceViewCountCapturedAt, CAPTURED_AT, 'and still correctly dated');
+  // v1.54 gate round 1 W2: the follower pair rides the same cell.
+  assert.equal(item.sourceFollowerCount, 66000, 'the follower count survives the rescan too');
+  assert.equal(item.sourceFollowerCountCapturedAt, CAPTURED_AT);
 }));
 
 test('a captured count survives a CHANGED file (re-init carry-forward OR the Phase-2 gap-fill)', () => withYtdlpEnv(async () => {
@@ -199,6 +203,7 @@ test('a captured count survives a CHANGED file (re-init carry-forward OR the Pha
     ns.downloadMeta.ggggggggggg = {
       channelUrl: 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw',
       sourceViewCount: 987654,
+      sourceFollowerCount: 24000,
       capturedAt: CAPTURED_AT,
     };
   });
@@ -215,6 +220,9 @@ test('a captured count survives a CHANGED file (re-init carry-forward OR the Pha
   const item = loadDatabase().metadata[id];
   assert.equal(item.sourceViewCount, 987654, 'the count survives a re-encode');
   assert.equal(item.sourceViewCountCapturedAt, CAPTURED_AT, 'with its original capture date, not a fresh one');
+  // v1.54 gate round 1 W2: the follower pair must survive the same re-encode.
+  assert.equal(item.sourceFollowerCount, 24000, 'the follower count survives a re-encode');
+  assert.equal(item.sourceFollowerCountCapturedAt, CAPTURED_AT);
 }));
 
 test('the re-init carry-forward ALONE preserves a count when the Phase-2 gap-fill cannot', () => withYtdlpEnv(async () => {
@@ -249,6 +257,7 @@ test('the re-init carry-forward ALONE preserves a count when the Phase-2 gap-fil
     ns.downloadMeta.ooooooooooo = {
       channelUrl: 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw',
       sourceViewCount: 424242,
+      sourceFollowerCount: 313313,
       capturedAt: CAPTURED_AT,
     };
   });
@@ -268,6 +277,8 @@ test('the re-init carry-forward ALONE preserves a count when the Phase-2 gap-fil
     if (live) {
       delete live.sourceViewCount;
       delete live.sourceViewCountCapturedAt;
+      delete live.sourceFollowerCount;
+      delete live.sourceFollowerCountCapturedAt;
     }
     return true;
   });
@@ -279,6 +290,11 @@ test('the re-init carry-forward ALONE preserves a count when the Phase-2 gap-fil
     'the re-init carry-forward supplied it -- the gap-fill had nothing to supply');
   assert.equal(item.sourceViewCountCapturedAt, CAPTURED_AT,
     'and the ORIGINAL capture date came with it');
+  // v1.54 gate round 1 W2: the follower carry-forward branch, isolated the
+  // same way -- delete server.js's follower re-init carry pair and this fails.
+  assert.equal(item.sourceFollowerCount, 313313,
+    'the follower re-init carry-forward supplied it too');
+  assert.equal(item.sourceFollowerCountCapturedAt, CAPTURED_AT);
 }));
 
 test('an item with NO capture never gains a sourceViewCount (the mock fallback stays the render-side default)', () => withYtdlpEnv(async () => {
@@ -361,6 +377,7 @@ test('D1a proxy-host lane: a [Youtube=<id>]-bracketed file still receives its ca
       channelUrl: 'https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw',
       channelName: 'Proxied Channel',
       sourceViewCount: 31337,
+      sourceFollowerCount: 777000,
       capturedAt: CAPTURED_AT,
     };
   });
@@ -371,6 +388,10 @@ test('D1a proxy-host lane: a [Youtube=<id>]-bracketed file still receives its ca
   assert.equal(item.youtubeId, 'jjjjjjjjjjj', 'precondition: the D1a recovery ran');
   assert.equal(item.sourceViewCount, 31337, 'and it carried the view count too');
   assert.equal(item.sourceViewCountCapturedAt, CAPTURED_AT);
+  // v1.54 gate round 1 (adversarial W1): this apply site was the one
+  // follower-count mutation survivor -- deleting it left the suite green.
+  assert.equal(item.sourceFollowerCount, 777000, 'the D1a lane carries the follower count too');
+  assert.equal(item.sourceFollowerCountCapturedAt, CAPTURED_AT);
 }));
 
 test('Phase-2 adoption: a reheat-written count landing MID-SCAN survives the final merge', () => withYtdlpEnv(async () => {
@@ -397,6 +418,7 @@ test('Phase-2 adoption: a reheat-written count landing MID-SCAN survives the fin
       tags: {}, needsTranscode: false, videoCodec: 'h264', audioCodec: 'aac',
       releaseDate: 1000, rootFolder: downloadDir, youtubeId: 'lllllllllll',
       sourceViewCount: 100, sourceViewCountCapturedAt: 1000,
+      sourceFollowerCount: 200, sourceFollowerCountCapturedAt: 1000,
     };
     return true;
   });
@@ -405,7 +427,7 @@ test('Phase-2 adoption: a reheat-written count landing MID-SCAN survives the fin
   const reheatPromise = recordRepulledItemMeta(
     { loadDatabase, updateDatabase, getMediaId },
     reheatId,
-    { filePath: reheatPath, sourceViewCount: 9_000_000, markComplete: true },
+    { filePath: reheatPath, sourceViewCount: 9_000_000, sourceFollowerCount: 12_000, markComplete: true },
     1_800_000_000_000,
   );
 
@@ -415,6 +437,10 @@ test('Phase-2 adoption: a reheat-written count landing MID-SCAN survives the fin
   assert.equal(item.sourceViewCount, 9_000_000,
     'the mid-scan reheat count must survive the final merge, not revert to 100');
   assert.equal(item.sourceViewCountCapturedAt, 1_800_000_000_000, 'with its fresh date');
+  // v1.54 gate round 1 W2: the follower completed-adoption pair, same merge.
+  assert.equal(item.sourceFollowerCount, 12_000,
+    'the mid-scan reheat FOLLOWER count must survive the final merge, not revert to 200');
+  assert.equal(item.sourceFollowerCountCapturedAt, 1_800_000_000_000);
 }));
 
 test('Phase-2 gap-fill: a PARTIAL mid-scan reheat that first populated a count is not lost to the snapshot', () => withYtdlpEnv(async () => {
@@ -438,7 +464,8 @@ test('Phase-2 gap-fill: a PARTIAL mid-scan reheat that first populated a count i
       type: 'video', addedAt: 1700000000000, duration: 30, hasThumbnail: false, artist: '',
       tags: {}, needsTranscode: false, videoCodec: 'h264', audioCodec: 'aac',
       releaseDate: 1000, rootFolder: downloadDir, youtubeId: 'nnnnnnnnnnn',
-      // NO sourceViewCount at all -- this reheat is its first.
+      // NO sourceViewCount (and no sourceFollowerCount) at all -- this
+      // reheat is its first.
     };
     return true;
   });
@@ -447,7 +474,7 @@ test('Phase-2 gap-fill: a PARTIAL mid-scan reheat that first populated a count i
   const reheatPromise = recordRepulledItemMeta(
     { loadDatabase, updateDatabase, getMediaId },
     partialId,
-    { filePath: partialPath, sourceViewCount: 555_000, markComplete: false }, // PARTIAL: marker withheld
+    { filePath: partialPath, sourceViewCount: 555_000, sourceFollowerCount: 44_000, markComplete: false }, // PARTIAL: marker withheld
     1_800_000_000_000,
   );
 
@@ -457,4 +484,8 @@ test('Phase-2 gap-fill: a PARTIAL mid-scan reheat that first populated a count i
   assert.equal(item.sourceViewCount, 555_000,
     'a first-ever count from a PARTIAL reheat must survive the merge');
   assert.equal(item.sourceViewCountCapturedAt, 1_800_000_000_000);
+  // v1.54 gate round 1 W2: the follower gap-fill pair, same merge.
+  assert.equal(item.sourceFollowerCount, 44_000,
+    'a first-ever FOLLOWER count from a PARTIAL reheat must survive the merge');
+  assert.equal(item.sourceFollowerCountCapturedAt, 1_800_000_000_000);
 }));

@@ -67,6 +67,13 @@ test('LOCK (wiring): the probes WRITE the cache and the render sites READ it opt
   // cache at hydration, plus a FRAME-ONE call from the seed path, with
   // write-through at all three mutations so the cache stays seconds-fresh.
   assert.match(watch, /applySubscribeAndPinState\(mediaData, cachedCap\.moduleEnabled, cachedCap\.subs \|\| \[\], cachedChannelPins\(cachedCap\)\)/, 'cached-first subscribe+pin render deleted');
+  // Gate v1.54 round 1 CRITICAL: removal must never be terminal. The applier
+  // may see a stale visible:false (poisoned 5-min cache) before the confirmed
+  // visible:true -- it must RE-MOUNT the removed button, and its entry guard
+  // must not bail on !isConnected (which would silently discard the confirmed
+  // answer for the rest of the view).
+  assert.match(watch, /if \(!subscribeBtn\.isConnected\) \{\s*if \(!subscribeBtnContainer\) return;\s*subscribeBtnContainer\.insertBefore\(subscribeBtn, subscribeBtnContainer\.firstChild\);/, 'the visible:true re-mount was deleted (removal became terminal again)');
+  assert.doesNotMatch(watch, /if \(!subscribeBtn \|\| !subscribeBtn\.isConnected \|\| !item\) return;/, 'the terminal !isConnected entry guard returned -- a stale cached removal would permanently eat the confirmed answer');
   assert.match(watch, /applySubscribeAndPinState\(watchSeed\.item, capAtInit\.moduleEnabled/, 'the FRAME-ONE seed-path render deleted (the FOUC returns)');
   assert.match(watch, /Promise\.all\(\[fetch\('\/api\/subscriptions'\), fetch\('\/api\/subscriptions\/pins'\)\]\)/, 'the parallel subs+pins fetch deleted (Pin pops a round trip late again)');
   // Statement-anchored (comments are stripped): reheat-probe + confirmed

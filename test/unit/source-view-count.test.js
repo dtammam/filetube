@@ -70,6 +70,45 @@ test('parseCapturedViewCount: enforces the plausibility ceiling', () => {
   assert.equal(parseCapturedViewCount(15_000_000_000), 15_000_000_000);
 });
 
+// ---- the follower-count validator (v1.54, gate round 1 adversarial W3) ----
+// The plan calls parseCapturedFollowerCount "parseCapturedViewCount's exact
+// posture"; before these tests that claim was unproven -- the reviewer
+// deleted its integer/negative/ceiling checks and the whole suite stayed
+// green. Every bound is now bound directly.
+
+const { parseCapturedFollowerCount, MAX_PLAUSIBLE_FOLLOWER_COUNT } = store;
+
+test('parseCapturedFollowerCount: accepts non-negative integers and numeric strings', () => {
+  assert.equal(parseCapturedFollowerCount(0), 0, 'a brand-new channel genuinely has 0 subscribers');
+  assert.equal(parseCapturedFollowerCount(24000), 24000);
+  assert.equal(parseCapturedFollowerCount('24000'), 24000);
+  assert.equal(parseCapturedFollowerCount(' 313 '), 313);
+});
+
+test('parseCapturedFollowerCount: rejects non-integers, negatives, junk, NaN/Infinity', () => {
+  assert.equal(parseCapturedFollowerCount(1.5), null, 'a fractional subscriber count is never real');
+  assert.equal(parseCapturedFollowerCount(-1), null);
+  assert.equal(parseCapturedFollowerCount('-7'), null);
+  assert.equal(parseCapturedFollowerCount('24K'), null, "yt-dlp emits the parsed number, never the display string -- if the raw string leaks it must die here");
+  assert.equal(parseCapturedFollowerCount('NA'), null);
+  assert.equal(parseCapturedFollowerCount(''), null);
+  assert.equal(parseCapturedFollowerCount(null), null);
+  assert.equal(parseCapturedFollowerCount(undefined), null);
+  assert.equal(parseCapturedFollowerCount(NaN), null);
+  assert.equal(parseCapturedFollowerCount(Infinity), null);
+  assert.equal(parseCapturedFollowerCount('Infinity'), null);
+  assert.equal(parseCapturedFollowerCount({}), null);
+  assert.equal(parseCapturedFollowerCount(true), null);
+});
+
+test('parseCapturedFollowerCount: enforces the 1e12 plausibility ceiling', () => {
+  assert.equal(parseCapturedFollowerCount(MAX_PLAUSIBLE_FOLLOWER_COUNT), MAX_PLAUSIBLE_FOLLOWER_COUNT);
+  assert.equal(parseCapturedFollowerCount(MAX_PLAUSIBLE_FOLLOWER_COUNT + 1), null);
+  assert.equal(parseCapturedFollowerCount(1e13), null);
+  // The most-subscribed channel ever is ~4e8 -- comfortably inside.
+  assert.equal(parseCapturedFollowerCount(400_000_000), 400_000_000);
+});
+
 // ---- render-side resolution ------------------------------------------------
 
 test('resolveViewCountLabel: renders a captured count, plainly, on a card', () => {
