@@ -1,190 +1,128 @@
-# Tokens Tier 3 Step 3 - consolidation batches 3a-3g (exec plan)
+# Tokens Tier 3 Step 3 - consolidation batches (exec plan, rulings applied)
 
-STATUS: **GATE HOLDS.** Zero declaration edits of any kind (including
-certified-zero-delta B1 adoptions) until Dean's baseline confirmation
-message arrives (paths/date/device/pre-existing anomalies). This plan,
-the ledger, and the tooling exist so that message turns Step 3 into pure
-execution. Execution happens on a FRESH branch off merged main.
+STATUS: **GATE HOLDS.** Zero declaration edits of any kind until Dean's
+baseline confirmation message arrives (paths/date/device/pre-existing
+anomalies). All design questions are RESOLVED (rulings below) - that
+message is now the ONLY thing between this plan and execution, which
+happens on a FRESH branch off merged main.
 
-## Provenance of the batch letters (honest reconstruction note)
+## Provenance: the ORIGINAL letters, recovered
 
-The original 3a-3g assignment lived in a session that has since been
-compacted; three anchors survive in repo artifacts (tools/capture/
-scenes.js manual-scene notes): **3a carries the toast padding 18->16,
-3c the scrim consolidation, 3d the elevation shadows (.5/.6->.45)**.
-(The anchor notes' scrim VALUES were themselves half-wrong and are
-corrected in this tranche: the toast has no scrim at all, and the
-resume overlay is .85->.8, not .75->.8.) The letter map below
-honors those anchors and re-pins the rest; THIS document is now the
-authoritative assignment. One census discrepancy surfaced during
-reconstruction is flagged as Open Question 1 (radius) rather than
-silently resolved.
+The first version of this plan re-pinned the 3a-3g letters from three
+surviving anchors after the originating session was compacted. Dean
+ruled "review old context - don't guess": the original enumeration was
+then RECOVERED VERBATIM from the prior session's transcript
+(~/.claude/projects/.../a56a0487-*.jsonl). This plan now carries the
+recovered letters; the interim re-pinned map is void. Recovery also
+surfaced: A+B1 zero-delta work was an OPENER, not a lettered batch;
+3b was control sizing (R3), which the interim map had dropped entirely
+(width/height are ungoverned, so the linter census never saw it); the
+original audit's toast-scrim/.75-resume beliefs were wrong at source
+(scenes.js corrections stand); and the JS-surface scope postdates the
+original plan, so it takes the new letter 3h.
 
-## Standing rulings this plan executes (do not relitigate)
+## Rulings received (Dean, 2026-07-30 - all questions CLOSED)
 
-- Stop Point A (recorded in design-token-phase1-verification.md):
-  Batch A = all 26 flagged offsets EXEMPT as positional geometry.
-  Batch B1 = member+keyword/env mixed shorthands adopt their scale
-  members in place, differ-certified zero-delta. Batch B2 = drift
-  members consolidate with ledger entries, 28->24 default, per-site
-  rejection flips (e.g. 28->32) at Stop B without reopening batches.
-  Batch C = exempt .art-play-glyph::before, .related-title max-height,
-  .transcode-spinner; ADOPT --size-control for .ptr-indicator.
-- cc-overlay text background rgba(0,0,0,0.85) is PROTECTED forever
-  (amendment c). It appears in no batch.
-- Amendment (b): zero radius consumer changes until per-era screenshots
-  exist and each surface is individually approved.
-- Z re-ladder is TIER 4, gated on z-ladder-coopen-enumeration.md plus
-  baselines - its 17 sites are census-only here.
-- JS-metric scope (post-Tier-2 ruling 1): cssText / el.style /
-  setProperty surfaces are in scope; player.js positional excluded.
+1. Radius drift: **RESTORED into Step 3 as 3g** (Q1 "restore",
+   superseding the same-morning Tier-4 answer given against the
+   incomplete reconstruction). 6/8/14px -> a NEW token
+   `--radius-lg: 12px` (the 39th contract name, era-invariant, defined
+   in the 3g commit); 3px -> 2/4 per-site. R7's era-varying raw 2/4px
+   sites remain Tier 4 untouched, per the original.
+2. Motion: 0.2s cluster (13 declarations / 11 sites) -> --dur-fast
+   0.15s ("faster"); micro-band 0.08-0.12 ALSO -> 0.15 (Q2, overriding
+   the original 0.1s-literal prescription). Per-site flips stay open
+   at Stop B.
+3. Letter map: recovered original (above) - confirmed by recovery
+   rather than memory.
+4. Offsets: all 49 exempt (extends the Stop A ruling's 26 to the 23
+   structural others of the same class).
+5. Scrims: (a) duration-badge 0.85->0.8 APPROVED; (b) hard-delete 0.65,
+   (c)(d) book progress tracks, (e) music-eq wash all EXEMPT (annotated
+   in 3c).
+6. Line-height: body 1.4 and cc-overlay 1.35 both EXEMPT (annotated in
+   3f).
+7. --thumbnail-bg phantom family: DEFINE the token (Tier 4 work; unlike
+   --accent there is no era-value trap). Dead var() fallbacks: Tier 4
+   cleanup.
+8. cc amendment comment says 0.85, live value is 0.72: FIX THE COMMENT,
+   rides the 3c commit.
+9. .pp-icon-pause optical margin and .ptr-indicator 0.08s gesture
+   tracking: both EXEMPT (annotated in 3a / 3e).
 
-## The consolidation rule (one rule, every batch)
+## Standing rulings this plan executes (unchanged)
 
-Default mapping = NEAREST scale member; ties round DOWN. This single
-rule reproduces every ruling already anchored: 18->16, 28->24 (tie),
-7->6 (tie), 9->8 (tie), 14->12 (tie), 30->32 (strictly nearest);
-scrims .5->.55, .6->.55, .75->.8, .85->.8; shadows alpha .5/.6->.45;
-motion 0.2s->0.15s (tie, see Open Question 2), 0.3s->0.25s,
-0.08/0.1/0.12s->0.15s; line-height 1.3/1.35->1.25, 1.4->1.5. Every
-individual mapping is enumerated per-site in the ledger regardless -
-the rule predicts, the ledger DECIDES, Stop B approves.
+- Stop A: Batch A offsets exempt; B1 members adopt in place zero-delta;
+  B2 drift consolidates with ledgers, 28->24 default, per-site Stop B
+  flips; Batch C three glyph exempts + .ptr-indicator adopts
+  --size-control.
+- cc-overlay text background is PROTECTED forever (amendment c; its
+  true value is 0.72, see ruling 8). Z re-ladder is Tier 4 (co-open
+  enumeration doc). JS-metric v5 scope per the post-Tier-2 ruling.
+- Consolidation rule everywhere: nearest scale member, ties round down;
+  the ledger enumerates every site regardless - the rule predicts, the
+  ledger decides, Stop B approves.
 
-## Batch letter map
+## Batch map (recovered original + 3h; ledger row counts)
 
-Row counts are the LEDGER's (census complete, ledger-check CLEAN):
+| commit | batch | scope | ledger rows |
+|---|---|---|---|
+| opener | A + B1 + exact adoptions | 49 offset token-exempt annotations; zero-delta member/gap adoptions (differ must report EQUIVALENT) | in 3a + annex |
+| 3a | Spacing drift (R1+R2) | drift -> nearest member; mixed-shorthand members consolidate here too; 1 ruled exempt | 75 (26 delta + 26 zero-delta + 49 annex - opener rows land with 3a) |
+| 3b | Control sizing (R3) | 40 -> --size-touch(44)/--size-control(36) per-site; 30/34 -> --size-control-sm(32). NO ledger rows - width/height are ungoverned; site sweep at execution, per-site dispositions into the Stop B packet. Only R3 fragments survive of the original audit ("34px x2 -> 32"); the sweep is the authority. | 0 (extra-census) |
+| 3c | Scrims + on-overlay chrome | 13 drift + 1 exact + 11 zero-delta adoptions + 4 ruled exempts; cc comment fix (ruling 8) | 29 |
+| 3d | Shadow elevation | 5 -> --shadow-modal (notif-panel 0.25->0.45 is the visible risk) + 1 no-action | 6 |
+| 3e | Motion | 16 -> --dur-fast/--dur-slow per rulings; 1 ruled exempt; ease-out/linear stay literal | 17 |
+| 3f | Line-height | 3 drift -> --lh-tight + 6 exact adoptions + 2 ruled exempts | 11 |
+| 3g | Radius drift (R8, restored) | 7 sites -> --radius-lg (NEW token, defined here); 3 sites 3px -> 2/4 per-site | 10 |
+| 3h | JS surfaces | 24 adoptions (one visible delta: stats 14->12) | 24 |
 
-| commit | batch | scope | rows | visual delta |
-|---|---|---|---|---|
-| 3a | B2 spacing drift | drift values -> nearest member (25 changes + 1 hold); plus the offset `token-exempt` annotations (49 rows, OQ4) | 26+49 | YES - enumerated |
-| 3b | B1 mixed shorthands + exact adoptions | members adopt in place incl. the gap declarations Tier 2 skipped wholesale; plus .ptr-indicator --size-control (extra-census) | 26 | none (differ must report EQUIVALENT) |
-| 3c | scrims + overlay chrome | drift alphas -> --scrim/--scrim-heavy (12 + 5 holds, OQ5), the .skip-btn:hover exact adoption, 11 zero-delta --on-overlay adoptions | 29 | YES - enumerated |
-| 3d | shadow elevation | 5 sites -> --shadow-modal (notif-panel alpha 0.25->0.45 is the visible risk); 1 no-action | 6 | YES - enumerated |
-| 3e | motion | 16 sites -> --dur-fast/--dur-slow + 1 hold (the 0.2s cluster = 13 declarations across 11 rows, OQ2; the hold is the ptr-indicator, OQ9); ease-out/linear easings STAY literal - no token covers them | 17 | timing feel only - invisible to frozen captures |
-| 3f | JS-surface adoptions | 24 sites in stats/watch/setup cssText + inline styles; one visible delta (stats 14->12) | 24 | one enumerated |
-| 3g | line-height band | 3 drift + 6 exact + 2 holds (OQ6) | 11 | YES - enumerated |
-
-Radius occupies NO letter (Open Question 1). If Dean rules radius into
-Step 3, it becomes 3h rather than displacing a pinned letter. The
-remaining 110 ledger rows are the no-action census (Tier 4 residue,
-protected, geometry, layout constants; 298 total minus the 188 batch
-rows above, of which one - 3d's SHADOW-OTHER - is itself no-action) -
-every linter site appears exactly once, which is what lets
-ledger-check demand a bijection.
-
-## The ledger (the Step 3 contract data)
-
-`docs/exec-plans/active/tokens-tier3-step3-ledger.md` - a COMPLETE
-census: every site `npm run lint:css` reports appears in exactly one
-row (action batches AND no-action buckets), with the declaration text
-byte-exact as the linter sees it. Bound to reality by
-`npm run ledger:check` (scripts/ledger-check.js, fixture-tested +
-mutation-verified): any tree change that moves, edits, or adds a
-governed declaration turns the checker red. Deliberately NOT in
-`npm test` - drift blocks STEP 3, not unrelated releases.
+Census remainder: 110 - 10 restored to 3g + 9 ruled-exempt rows now
+shown inside their batch sections = 91 no-action census rows. The
+ledger's totals table is the authority; ledger-check enforces the
+298-row bijection either way.
 
 ## Execution protocol (when the gate opens)
 
-1. Fresh branch off main. Run `npm run ledger:check` - must be CLEAN
-   before anything else; if red, re-verify the affected rows first.
-2. One commit per batch, 3a-3g order. Per commit: apply ONLY that
-   batch's ledger rows; run scripts/css-equivalence-diff.js between the
-   commit's parent and HEAD - the delta enumeration must match the
-   batch ledger EXACTLY (zero-delta batches must report EQUIVALENT
-   across all 9 era x mode contexts); run `npm run ledger:check`
-   against the updated ledger; full unit suite green. Done-marking
-   (gate finding): fully-tokenized rows are STRUCK (~~file:line~~);
-   rows whose edit leaves the site in the linter's report (the ledger
-   marks them PARTIAL ADOPTION - six rows: 1516, 2308, 7246 keep a
-   raw member; 5231, 5673, 6917 keep an env(..., 0px) fallback whose
-   0px survives the linter's var() strip - set verified by running
-   every after-value through the real linter, delta-gate finding 7)
-   are instead REPLACED with a residual row carrying the new
-   declaration text, because a struck row would leave ledger-check
-   red on a correct edit.
-3. After 3g: full-span differ run, both-Node full suites, assemble the
-   Stop B packet (below), STOP for Dean's review.
-4. Rejections at Stop B flip per-site (ledger row edit + single-site
+1. Fresh branch off main; `npm run ledger:check` must be CLEAN first.
+2. Opener commit (A annotations + B1/exact zero-delta adoptions) -
+   differ must report EQUIVALENT across all 9 era x mode contexts.
+3. One commit per batch, 3a-3h order (3b's sweep produces its site
+   table before its commit; --radius-lg defined in 3g). Per commit:
+   apply only that batch's rows; differ delta-enumeration must match
+   the batch ledger exactly; `npm run ledger:check` green against the
+   updated ledger; full unit suite green. Done-marking: strike
+   fully-tokenized rows; REPLACE the six PARTIAL ADOPTION rows (1516,
+   2308, 7246 keep a raw member; 5231, 5673, 6917 keep an env(...,0px)
+   fallback the linter still flags) with their residual declarations.
+4. After 3h: full-span differ, both-Node full suites, assemble the
+   Stop B packet, STOP for Dean.
+5. Stop B rejections flip per-site (ledger row edit + single-site
    commit), never by reopening a batch.
 
-## Stop B review packet (skeleton - assembled after 3g)
+## Stop B review packet (skeleton - assembled after 3h)
 
-Per affected scene: the batch commits that touch it and what to look
-for. LEDGER-TOUCHED manual scenes (Dean's before-shots are the
-gate-blockers) - VALUES CORRECTED during ledger authoring against
-style.css: **13-toast** (3a padding 18->16 ONLY - the toast has NO
-scrim; its background is themed var(--bg-sidebar)), **04-resume**
-(3c .85->.8, not the .75 previously claimed), **10-audio-expanded**
-(3d elevation .5/.6->.45). Automated scenes get before/after capture
-runs + compare.js report ranked by magnitude; the coverage audit added
-scenes 25-login and 26-playlists-sheet for ledgered surfaces that had
-none. Transient states no scene can hold (skeleton rows, busy
-spinners, speed-badge press, fullscreen controls, dock close,
-music-eq playing wash, shortcuts modal, chapters menu without a
-chaptered fixture) are enumerated in their ledger rows as "on-device
-judgment" - Dean approves those deltas live at Stop B rather than by
-pixel compare. Standing what-to-look-for flags: cc-adjacent scrims
-(the protected background must be untouched - witness shot), any
-shrunk touch target (3a reduces paddings - every such surface is
-called out in its ledger row), the notif-panel shadow near-doubling
-(3d), the 0.2s->0.15s timing feel (3e).
+Gate-blocking manual before-shots (values source-verified):
+**13-toast** (3a padding 18->16 only - no scrim exists), **04-resume**
+(3c .85->.8), **10-audio-expanded** (3d shadows .5/.6->.45).
+Automated scenes: before/after capture runs + compare.js ranked
+report; coverage-audit scenes 25-login, 26-playlists-sheet,
+23d-ghost-red-reader are in the manifest. Transient states with no
+scene (skeleton rows, busy spinner, speed-badge press, fullscreen
+controls, dock close, shortcuts modal, chapters menu without a
+chaptered fixture - proposed scene id 27) are enumerated in their
+ledger rows as on-device judgment. What-to-look-for flags: the
+protected cc background untouched (witness shot); any shrunk touch
+target from 3a paddings AND every 3b control-size change (34->32
+shrinks two book-shelf chips; 40->44 grows player-adjacent targets);
+the **8->12 album rounding** (3g - the original packet's flag,
+restored); reloc panel 6->12 rounding; notif-panel shadow
+near-doubling (3d); the 0.2s->0.15s timing feel (3e).
 
-## Open questions for Dean (answer any time before the gate opens)
+## Contract note
 
-1. **Radius drift band (3/6/8/14/27px, 27 sites total in category).**
-   The Tier 2 census listed it under Tier 3, but no radius scale tokens
-   exist (only --radius-full) and amendment (b) defers all radius
-   consumer changes behind per-era screenshots with per-surface
-   approval. RECOMMENDATION: move the whole radius category to Tier 4
-   alongside R7 (where radius tokens can be designed properly);
-   scene 24-r7-radii already baselines it. Alternative: rule it in as
-   3h with values-only consolidation at Stop B.
-2. **The 0.2s motion cluster (13 declarations across 11 sites - body
-   and .skip-btn each carry two).** 0.2s is a tie between --dur-fast
-   0.15s and --dur-slow 0.25s. The tie-down rule says 0.15s (snappier).
-   RECOMMENDATION: 0.15s default with per-site flips at Stop B; the
-   ledger marks every one as the judgment cluster.
-3. **Letter map confirmation.** Given the reconstruction note above,
-   confirm the batch letter map (or reassign - only 3a/3c/3d are
-   anchored by repo artifacts).
-4. **Offset exemptions: 49 found vs 26 ruled.** Stop A exempted "all 26
-   flagged offsets"; the full census finds 49 offset-property sites -
-   the extra 23 are the same class, only MORE structural (calc chains,
-   56px header mirrors) and were simply never flagged for a ruling.
-   RECOMMENDATION: exempt all 49 under the Batch A rationale; the annex
-   table enumerates them.
-5. **Five scrim holds.** (a) .duration-badge 0.85 sits over arbitrary
-   thumbnail art - the same legibility argument as the protected cc
-   floor; ratify 0.85->0.8 or extend the cc carve-out. (b) hard-delete
-   backdrop 0.65 - non-enumerated alpha between both tokens; heavier
-   dim on the destructive modal may be intentional (recommend keep ->
-   exempt, or 0.55 if uniformity wins). (c)+(d) the two book
-   progress-track 0.5 washes - tracks, not scrims; the video
-   counterpart uses white 0.3 (recommend exempt as component art).
-   (e) .music-eq 0.45 wash - non-enumerated; darkening tiny playing-art
-   is visible (recommend exempt).
-6. **Two line-height holds, both recommend EXEMPT.** body 1.4 (global
-   base - deliberate site-wide tuning; a change reflows everything) and
-   .cc-overlay-text 1.35 (caption legibility surface adjacent to the
-   protected background).
-7. **NEW phantom-token family: --thumbnail-bg.** Defined nowhere,
-   consumed at 6 sites via var(--thumbnail-bg, #222) - exactly the
-   --accent class. Needs a Tier 4 disposition (define it, or collapse
-   to a real token/literal); also 13 DEAD var() fallbacks on
-   --border-color/--card-bg/--bg-color (all actually defined
-   everywhere, so the literals never paint) are Tier 4 fallback
-   cleanup. Recorded in the Tier 4 design plan.
-8. **Comment-accuracy finding (fix rides 3c).** The cc-overlay
-   amendment comment in style.css (and the v1.1 contract) says the
-   protected background is rgba(0,0,0,0.85); the LIVE value is
-   rgba(0,0,0,0.72). The protection is unaffected; the documented
-   value is stale and gets corrected in the 3c commit, not before (the
-   stand-down covers style.css entirely).
-9. **Two glyph/gesture holds, both recommend EXEMPT (gate finding: they
-   mapped to no OQ).** (a) .pp-icon-pause margin-right 7px (3a) - its
-   comment documents an optical-centering offset against the shadow
-   bar; a 1px shift breaks the optical pairing (same family as the
-   Stop A Batch C glyph exempts). (b) .ptr-indicator .icon-refresh
-   0.08s linear (3e) - continuous pull-gesture tracking, not a UI
-   transition; snapping to 0.15s near-doubles the lag behind the
-   finger.
+`--radius-lg: 12px` joins the token contract as name 39 (ruling 1),
+defined in the 3g commit, era-invariant (every 3g site is outside
+era-scoped rules by linter construction - the original plan's
+era-invariance guard holds). Recorded here until the audit v1.1 doc
+gains its Step 3 addendum at execution time.

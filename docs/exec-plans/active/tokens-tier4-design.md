@@ -42,14 +42,16 @@ Dean's judgment on the two preserved deliberate inversions
 (hard-delete above toast; audio-expanded below modals). No screenshot
 delta expected in any single-surface scene.
 
-## T4-4: radius (R7 + the drift band, per Step 3 Open Question 1)
+## T4-4: radius - R7 raw sites only (SCOPE REDUCED by Dean's Q1 ruling)
 
-Blocked on a radius token PROPOSAL (no scale tokens exist - only
---radius-full). Design stop point: propose the scale from the observed
-census (the Step 3 ledger's radius rows: R7-RAW 2/4px, drift band
-3/6/8/14/27px, pill 999px, geometry 50%), get per-surface approval
-against scene 24-r7-radii (2005/2009) + P1 shots, per amendment (b).
-No values proposed here - the census comes first.
+The non-era drift band moved back to Step 3 as batch 3g per the
+recovered original plan (6/8/14 -> --radius-lg:12px, 3 -> 2/4
+per-site). What remains Tier 4: the eleven era-varying R7 raw 4px
+sites (candidate: adopt var(--radius), which the 2005/2009 eras
+override to 0/2 - surfaces get SQUARER in old eras, the classic
+era-consistency repair) and the six geometry radii (never tokens).
+Per-surface approval against scene 24-r7-radii + P1 shots, per
+amendment (b).
 
 ## T4-5: UX questions riding along (Dean rulings wanted, no code)
 
@@ -61,10 +63,11 @@ No values proposed here - the census comes first.
 ## T4-6: phantom + dead fallback cleanup (NEW, from the ledger census)
 
 - **--thumbnail-bg**: consumed at 6 sites via var(--thumbnail-bg, #222),
-  defined NOWHERE - the same phantom class as --accent. Disposition
-  needed: define it (it is arguably a real semantic - media placeholder
-  surface) or collapse the fallbacks. Unlike --accent there is no
-  era-value trap: #222 equals --overlay-surface only coincidentally.
+  defined NOWHERE - the same phantom class as --accent. **RULED
+  (Dean, 2026-07-30): DEFINE IT** - a real semantic (media placeholder
+  surface) with no era-value trap; #222 equals --overlay-surface only
+  coincidentally. Defining at :root with the fallback's value is
+  zero-delta by construction; executes in this tier.
 - **13 dead var() fallbacks** on --border-color/--card-bg/--bg-color:
   those tokens ARE defined at :root and in every era block, so the
   literal fallbacks never paint (one is #1c1c22, matching no era value -
