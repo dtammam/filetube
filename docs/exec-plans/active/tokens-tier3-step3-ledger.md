@@ -12,7 +12,9 @@ Dean's ruling (see the exec plan's open questions); scenes named in notes
 are the Stop B witnesses; "on-device judgment" = transient state no scene
 captures - listed in the Stop B packet instead. On adoption, strike the
 first cell (`~~file:line~~`) so ledger-check ignores the completed row -
-EXCEPT rows marked PARTIAL ADOPTION (1516, 2308, 7246): their edit leaves
+EXCEPT rows marked PARTIAL ADOPTION (1516, 2308, 7246, 5231, 5673, 6917;
+the last three because an env(..., 0px) fallback survives the linter's
+var() strip): their edit leaves
 a residual raw member on the line, so the site legitimately stays in the
 linter's report; REPLACE those rows with the residual declaration text
 instead of striking, or ledger-check goes red on a correct edit. Decl
@@ -34,7 +36,7 @@ failure is loud, not silent, but keep them out).
 | public/css/style.css:3274 | .toast | `padding: 10px 18px` | B2-DRIFT | padding: var(--space-5) var(--space-8) | 18px->16px | scene 13-toast GATE-BLOCKER (3a only - the toast has NO scrim; scenes.js note corrected); 10px exact tokenized too |
 | public/css/style.css:3342 | .oneoff-modal-header | `margin-bottom: 14px` | B2-DRIFT | margin-bottom: var(--space-6) | 14px->12px | scene 01 |
 | public/css/style.css:3846 | .search-input | `padding: 7px 10px` | B2-DRIFT | padding: var(--space-3) var(--space-5) | 7px->6px | scene 06 (header); 10px exact tokenized too |
-| public/css/style.css:4626 | .pp-icon-pause | `margin-right: 7px` | HOLD-EXEMPT-REC | - | (7px->6px if taken) | RECOMMEND EXEMPT: comment documents optical-centering against the shadow bar - glyph-art class, same family as Stop A Batch C exempts |
+| public/css/style.css:4626 | .pp-icon-pause | `margin-right: 7px` | HOLD-EXEMPT-REC | - | (7px->6px if taken) | RECOMMEND EXEMPT (plan OQ9): comment documents optical-centering against the shadow bar - glyph-art class, same family as Stop A Batch C exempts |
 | public/css/style.css:5417 | .chapters-menu-item | `padding: 12px 14px` | B2-DRIFT | padding: var(--space-6) var(--space-6) | 14px->12px | chapters MENU has no scene (27-chapters-menu proposed - id 26 is taken by the playlists sheet); 12px exact tokenized too |
 | public/css/style.css:5436 | .chapters-menu-loop | `padding: 12px 14px` | B2-DRIFT | padding: var(--space-6) var(--space-6) | 14px->12px | pairs with 5417 |
 | public/css/style.css:6170 | .hard-delete-modal-path | `margin-bottom: 14px` | B2-DRIFT | margin-bottom: var(--space-6) | 14px->12px | scene 21 |
@@ -115,10 +117,10 @@ failure is loud, not silent, but keep them out).
 | public/css/style.css:2554 | .setup-box | `margin: 32px auto` | B1-MIXED | margin: var(--space-16) auto | none |  |
 | public/css/style.css:3927 | header (mobile) | `padding: calc(8px + env(safe-area-inset-top)) 8px 8px` | B1-MIXED | padding: calc(var(--space-4) + env(safe-area-inset-top)) var(--space-4) var(--space-4) | none |  |
 | public/css/style.css:4167 | .setup-box (mobile) | `margin: 20px auto` | B1-MIXED | margin: var(--space-10) auto | none |  |
-| public/css/style.css:5231 | #player-wrapper.css-fullscreen .player-controls | `padding-bottom: calc(4px + env(safe-area-inset-bottom, 0px))` | B1-MIXED | padding-bottom: calc(var(--space-2) + env(safe-area-inset-bottom, 0px)) | none | single-value calc, member inside calc |
-| public/css/style.css:5673 | .audio-expanded .player-controls | `padding-bottom: calc(4px + env(safe-area-inset-bottom, 0px))` | B1-MIXED | padding-bottom: calc(var(--space-2) + env(safe-area-inset-bottom, 0px)) | none | single-value calc |
+| public/css/style.css:5231 | #player-wrapper.css-fullscreen .player-controls | `padding-bottom: calc(4px + env(safe-area-inset-bottom, 0px))` | B1-MIXED | padding-bottom: calc(var(--space-2) + env(safe-area-inset-bottom, 0px)) | none | single-value calc, member inside calc; PARTIAL ADOPTION - env(...,0px) fallback keeps the site flagged; replace row, do not strike |
+| public/css/style.css:5673 | .audio-expanded .player-controls | `padding-bottom: calc(4px + env(safe-area-inset-bottom, 0px))` | B1-MIXED | padding-bottom: calc(var(--space-2) + env(safe-area-inset-bottom, 0px)) | none | single-value calc; PARTIAL ADOPTION - env(...,0px) fallback keeps the site flagged; replace row, do not strike |
 | public/css/style.css:6907 | #reader-pane.pdf-scroll canvas | `margin: 8px auto` | B1-MIXED | margin: var(--space-4) auto | none |  |
-| public/css/style.css:6917 | .reader-bottombar | `padding: 6px 10px calc(6px + env(safe-area-inset-bottom, 0px))` | B1-MIXED | padding: var(--space-3) var(--space-5) calc(var(--space-3) + env(safe-area-inset-bottom, 0px)) | none |  |
+| public/css/style.css:6917 | .reader-bottombar | `padding: 6px 10px calc(6px + env(safe-area-inset-bottom, 0px))` | B1-MIXED | padding: var(--space-3) var(--space-5) calc(var(--space-3) + env(safe-area-inset-bottom, 0px)) | none | PARTIAL ADOPTION - env(...,0px) fallback keeps the site flagged; replace row, do not strike |
 | public/css/style.css:6950 | .reader-drawer h3 | `margin: 4px 0 10px` | B1-MIXED | margin: var(--space-2) 0 var(--space-5) | none |  |
 | public/css/style.css:7015 | .reader-nowplaying | `padding: 6px 10px calc(6px + env(safe-area-inset-bottom))` | B1-MIXED | padding: var(--space-3) var(--space-5) calc(var(--space-3) + env(safe-area-inset-bottom)) | none |  |
 | public/css/style.css:7021 | .reader-np-info | `gap: 8px` | EXACT-ADOPT | gap: var(--space-4) | none | gap declarations were skipped wholesale by Tier 2 |
@@ -188,7 +190,7 @@ failure is loud, not silent, but keep them out).
 | public/css/style.css:700 | .btn | `transition: background-color var(--dur-fast) var(--ease-ui), border-colo` | MOTION-DRIFT | transform member -> var(--dur-fast) | 0.1->0.15 | 3 of 4 members already tokenized; press feedback |
 | public/css/style.css:773 | .sidebar | `transition: transform 0.2s` | MOTION-DRIFT | transform var(--dur-fast) | 0.2->0.15 | 0.2 TIE; MUST flip with .main-content:907 or drawer/content desync |
 | public/css/style.css:907 | .main-content | `transition: margin-left 0.2s` | MOTION-DRIFT | margin-left var(--dur-fast) | 0.2->0.15 | 0.2 TIE; pair of 773 |
-| public/css/style.css:1343 | .ptr-indicator .icon-refresh | `transition: transform 0.08s linear` | HOLD-EXEMPT-REC | - | (0.08->0.15 = near-double lag if taken) | RECOMMEND EXEMPT: continuous pull-gesture tracking, not a UI transition; +0.07s lags the finger |
+| public/css/style.css:1343 | .ptr-indicator .icon-refresh | `transition: transform 0.08s linear` | HOLD-EXEMPT-REC | - | (0.08->0.15 = near-double lag if taken) | RECOMMEND EXEMPT (plan OQ9): continuous pull-gesture tracking, not a UI transition; +0.07s lags the finger |
 | public/css/style.css:1983 | .skip-btn | `transition: opacity 0.2s var(--ease-ui), transform var(--dur-fast) var(-` | MOTION-DRIFT | opacity var(--dur-fast) var(--ease-ui), background var(--dur-fast) var(--ease-ui) | 0.2->0.15 x2 | 0.2 TIE; transform member already tokenized |
 | public/css/style.css:2055 | .watch-prevnext-btn | `transition: background-color var(--dur-fast) var(--ease-ui), border-colo` | MOTION-DRIFT | transform member -> var(--dur-fast) | 0.1->0.15 | same shape as .btn:700 |
 | public/css/style.css:2202 | .star | `transition: color 0.1s` | MOTION-DRIFT | color var(--dur-fast) | 0.1->0.15 | rating-star hover |

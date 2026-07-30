@@ -94,11 +94,14 @@ governed declaration turns the checker red. Deliberately NOT in
    across all 9 era x mode contexts); run `npm run ledger:check`
    against the updated ledger; full unit suite green. Done-marking
    (gate finding): fully-tokenized rows are STRUCK (~~file:line~~);
-   rows whose edit leaves a residual raw member on the line (the
-   ledger marks them PARTIAL ADOPTION - 1516, 2308, 7246) are instead
-   REPLACED with a residual row carrying the new declaration text,
-   because the site legitimately stays in the linter's report and a
-   struck row would leave ledger-check red.
+   rows whose edit leaves the site in the linter's report (the ledger
+   marks them PARTIAL ADOPTION - six rows: 1516, 2308, 7246 keep a
+   raw member; 5231, 5673, 6917 keep an env(..., 0px) fallback whose
+   0px survives the linter's var() strip - set verified by running
+   every after-value through the real linter, delta-gate finding 7)
+   are instead REPLACED with a residual row carrying the new
+   declaration text, because a struck row would leave ledger-check
+   red on a correct edit.
 3. After 3g: full-span differ run, both-Node full suites, assemble the
    Stop B packet (below), STOP for Dean's review.
 4. Rejections at Stop B flip per-site (ledger row edit + single-site
