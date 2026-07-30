@@ -350,7 +350,9 @@ test('MOBILE: the trigger is desktop-gated at EVENT time, not at boot', () => {
 });
 
 test('MOBILE: the Stats entry point is hidden at the phone breakpoint', () => {
-  assert.match(STATS_HTML, /class="setup-box shortcuts-entry"/);
+  // v1.55 Track D (DELIBERATE lock update): the box gained sub-collapsible
+  // between the two anchor classes -- match the list openly.
+  assert.match(STATS_HTML, /class="setup-box[^"]*shortcuts-entry"/);
   assert.match(STATS_HTML, /id="show-shortcuts-btn"/);
   const mobile = CSS.slice(CSS.lastIndexOf('@media (max-width: 768px)'));
   assert.match(mobile, /\.shortcuts-entry \{\s*display: none;\s*\}/,

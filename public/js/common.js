@@ -2965,6 +2965,38 @@ function setButtonBusy(btn, busy) {
   btn.classList.toggle('btn-busy', busy === true);
 }
 
+// ---- v1.55 Track D: collapsible management sections -------------------------
+//
+// Dean: "the ability to collapse the other sections... most of the things
+// that are super long or could be." Every collapsible section is a native
+// `<details data-collapse-key="...">` (the pattern the add-subscription/
+// one-off disclosures established in v1.21); this wires PERSISTENCE on top:
+// open/closed remembered per section per page in localStorage
+// (`ft-collapse:<page>:<key>`) -- the same per-browser posture as the
+// bottom-bar prefs (tech-debt #42), disclosed the same way.
+//
+// Idempotent per element (data-collapse-wired guard), so pages that MOUNT
+// sections dynamically (the subscriptions history/failure cards) call this
+// again after mounting and only the new nodes get wired. Deliberately never
+// touches `hidden`: capability-gating (users/backup boxes) stays orthogonal
+// to collapse state.
+function wireCollapsibleSections(pageKey, root, signal) {
+  const scope = root || (typeof document !== 'undefined' ? document : null);
+  if (!scope || typeof scope.querySelectorAll !== 'function') return;
+  scope.querySelectorAll('details[data-collapse-key]').forEach((el) => {
+    if (el.dataset && el.dataset.collapseWired === '1') return;
+    if (el.dataset) el.dataset.collapseWired = '1';
+    const key = 'ft-collapse:' + pageKey + ':' + el.getAttribute('data-collapse-key');
+    let saved = null;
+    try { saved = localStorage.getItem(key); } catch (_) { /* private mode etc. */ }
+    if (saved === 'closed') el.open = false;
+    else if (saved === 'open') el.open = true;
+    el.addEventListener('toggle', () => {
+      try { localStorage.setItem(key, el.open ? 'open' : 'closed'); } catch (_) { /* best-effort */ }
+    }, signal ? { signal } : undefined);
+  });
+}
+
 function formatOneOffStatusText(entry) {
   if (!entry || typeof entry !== 'object') return null;
   const state = entry.state;
@@ -8631,7 +8663,7 @@ if (typeof module !== 'undefined' && module.exports) {
     nextDownloadChipPollDelay, buildOneShotRetryBody, chipItemLifecycle,
     buildDownloadChipItem, reduceDownloadChipState, formatDownloadChipSummary,
     ACTIVITY_CHIP_LABELS, formatActivityStatusText,
-    setActionStatus, setButtonBusy,
+    setActionStatus, setButtonBusy, wireCollapsibleSections,
     shouldShowDownloadChipOnPath, injectDownloadStatusChip,
     // v1.29.0 T8: the pure done-edge detector + the in-place library-refresh
     // hook invoker, exported for direct node:test coverage (no DOM/timers).

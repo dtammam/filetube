@@ -154,13 +154,21 @@ test('createFailureListElement: an ACTIVE FILTER never reads as a clean bill of 
 
 // ---- createFailureSectionElement -------------------------------------------
 
-test('createFailureSectionElement: reuses the existing section/list classes (zero new CSS)', () => {
+test('createFailureSectionElement: a collapsible details card reusing the existing section/list classes', () => {
+  // v1.55 Track D (DELIBERATE lock update): details/summary now, with the
+  // persistence key; open by default so the layout matches yesterday until
+  // the user collapses it. The filter/clear controls live in the body row,
+  // never inside the summary (they would toggle the disclosure).
   const d = doc();
   const { section, list } = createFailureSectionElement(d, {});
-  assert.equal(section.className, 'setup-box');
+  assert.equal(section.tagName, 'DETAILS');
+  assert.equal(section.className, 'setup-box sub-collapsible');
+  assert.equal(section.open, true);
+  assert.equal(section.getAttribute('data-collapse-key'), 'download-failures');
   assert.equal(list.className, 'sub-list');
-  assert.ok(section.querySelector('.sub-list-header h2'));
-  assert.match(section.querySelector('h2').textContent, /Download failures/);
+  assert.match(section.querySelector('summary').textContent, /Download failures/);
+  assert.ok(section.querySelector('.sub-list-header select'), 'controls stay in the body header row');
+  assert.equal(section.querySelector('summary select'), null, 'no controls inside the summary');
 });
 
 test('createFailureSectionElement: the filter offers exactly the supported sources and defaults to all', () => {

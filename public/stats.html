@@ -135,8 +135,8 @@
            router's own bootRouter() no-ops harmlessly on an unrecognized
            route, and stats.js runs its own plain DOMContentLoaded boot. -->
       <div id="view-root" data-view="stats">
-      <div class="setup-box">
-        <h2>Fun stats</h2>
+      <details class="setup-box sub-collapsible" data-collapse-key="fun-stats" open>
+        <summary>Fun stats</summary>
         <p>
           A quick, always-fresh snapshot of your library -- computed live from
           what's actually on disk right now.
@@ -144,7 +144,7 @@
         <div class="theme-picker" id="stats-glance-grid">
           <!-- Populated dynamically by /js/stats.js -->
         </div>
-      </div>
+      </details>
 
       <!-- v1.47.8: the keyboard-shortcuts reference's discoverable entry point.
            It lives HERE, on the existing About/inventory hub, rather than being
@@ -153,8 +153,8 @@
            v1.47.4 had to fix. `?` opens the same dialog from anywhere.
            `.shortcuts-entry` is display:none at the phone breakpoint (Dean:
            "Ignore/not display on mobile viewport"). -->
-      <div class="setup-box shortcuts-entry">
-        <h2>Keyboard shortcuts</h2>
+      <details class="setup-box sub-collapsible shortcuts-entry" data-collapse-key="keyboard-shortcuts" open>
+        <summary>Keyboard shortcuts</summary>
         <p>
           FileTube mirrors the shortcuts you already know from YouTube -- space to
           play/pause, J/L to jump, arrows to seek, and so on.
@@ -165,38 +165,38 @@
         <div class="action-bar">
           <button type="button" class="btn" id="show-shortcuts-btn">Show keyboard shortcuts</button>
         </div>
-      </div>
+      </details>
 
-      <div class="setup-box">
-        <h2>By type</h2>
+      <details class="setup-box sub-collapsible" data-collapse-key="by-type" open>
+        <summary>By type</summary>
         <div class="theme-picker" id="stats-by-type">
           <!-- Populated dynamically by /js/stats.js -->
         </div>
-      </div>
+      </details>
 
-      <div class="setup-box">
-        <h2>By folder</h2>
+      <details class="setup-box sub-collapsible" data-collapse-key="by-folder" open>
+        <summary>By folder</summary>
         <div class="folder-list-builder" id="stats-folder-list">
           <!-- Populated dynamically by /js/stats.js -->
         </div>
-      </div>
+      </details>
 
-      <div class="setup-box">
-        <h2>By channel</h2>
+      <details class="setup-box sub-collapsible" data-collapse-key="by-channel" open>
+        <summary>By channel</summary>
         <div class="folder-list-builder" id="stats-channel-list">
           <!-- Populated dynamically by /js/stats.js -->
         </div>
-      </div>
+      </details>
 
-      <div class="setup-box">
-        <h2>Records</h2>
+      <details class="setup-box sub-collapsible" data-collapse-key="records" open>
+        <summary>Records</summary>
         <div class="theme-picker" id="stats-records-grid">
           <!-- Populated dynamically by /js/stats.js -->
         </div>
-      </div>
+      </details>
 
-      <div class="setup-box">
-        <h2>Most watched</h2>
+      <details class="setup-box sub-collapsible" data-collapse-key="most-watched" open>
+        <summary>Most watched</summary>
         <p>
           Counted once per watch-page open -- not every progress save, so a
           long rewatch of the same video doesn't inflate its count.
@@ -204,27 +204,27 @@
         <div class="folder-list-builder" id="stats-most-watched-list">
           <!-- Populated dynamically by /js/stats.js -->
         </div>
-      </div>
+      </details>
 
       <!-- v1.41.0 (Dean): books are part of the same library -- inventory them
            here too (count, size, EPUB/PDF split, how many have TTS narration,
            and a per-folder breakdown). -->
-      <div class="setup-box">
-        <h2>Books</h2>
+      <details class="setup-box sub-collapsible" data-collapse-key="books" open>
+        <summary>Books</summary>
         <div class="theme-picker" id="stats-books-grid">
           <!-- Populated dynamically by /js/stats.js -->
         </div>
         <div class="folder-list-builder" id="stats-books-folder-list" style="margin-top:12px;">
           <!-- Populated dynamically by /js/stats.js -->
         </div>
-      </div>
+      </details>
 
       <!-- v1.41.11 (Dean): duplicates report -- same-filename groups plus
            same-videoid/different-filename groups, straight from the library
            index. READ-ONLY (no delete buttons here, by explicit decision);
            the CSV link downloads the full flat report for offline cleanup. -->
-      <div class="setup-box">
-        <h2>Duplicates</h2>
+      <details class="setup-box sub-collapsible" data-collapse-key="duplicates" open>
+        <summary>Duplicates</summary>
         <p>
           Files that share an exact filename, or the same YouTube video under
           different filenames -- candidates for reclaiming storage. Video-id
@@ -236,28 +236,28 @@
         <div class="folder-list-builder" id="stats-duplicates-list">
           <!-- Populated dynamically by /js/stats.js -->
         </div>
-      </div>
+      </details>
 
       <!-- v1.44.3 (Dean): "under the hood" -- a plain count of every persisted
            namespace (the same things the backup bundle carries), so the page
            answers "what is actually in my database". -->
-      <div class="setup-box">
-        <h2>Under the hood</h2>
+      <details class="setup-box sub-collapsible" data-collapse-key="under-the-hood" open>
+        <summary>Under the hood</summary>
         <p>A count of everything FileTube has stored -- the same namespaces your backup carries.</p>
         <div class="folder-list-builder" id="stats-inventory-list">
           <!-- Populated dynamically by /js/stats.js -->
         </div>
-      </div>
+      </details>
 
       <!-- v1.41.0 (Dean): the About/version hub -- FileTube + yt-dlp + TTS
            versions and GitHub links, all in one place. Rows hide themselves
            when a component isn't installed. -->
-      <div class="setup-box">
-        <h2>About FileTube</h2>
+      <details class="setup-box sub-collapsible" data-collapse-key="about-filetube" open>
+        <summary>About FileTube</summary>
         <div class="folder-list-builder" id="stats-about">
           <!-- Populated dynamically by /js/stats.js -->
         </div>
-      </div>
+      </details>
       </div>
     </main>
   </div>

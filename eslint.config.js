@@ -91,7 +91,7 @@ module.exports = [
     // v1.55: lib/ytdlp/client/subscriptions.js joined the consumers - it now
     // reads the shared action-status system (via typeof-guarded wrappers, so
     // Node `require`s of the file still work without common.js).
-    files: ['public/js/main.js', 'public/js/watch.js', 'public/js/setup.js', 'public/js/player.js', 'public/js/books.js', 'public/js/read.js', 'lib/ytdlp/client/subscriptions.js'],
+    files: ['public/js/main.js', 'public/js/watch.js', 'public/js/setup.js', 'public/js/player.js', 'public/js/books.js', 'public/js/read.js', 'public/js/stats.js', 'lib/ytdlp/client/subscriptions.js'],
     languageOptions: {
       globals: {
         clampPositionState: 'readonly',
@@ -120,9 +120,11 @@ module.exports = [
         // v1.48 item 2: real day-of view counts (wraps getMockViews as fallback).
         resolveViewCountLabel: 'readonly',
         setTheme: 'readonly',
-        // v1.55 Track C: the ONE busy/status feedback system (common.js).
+        // v1.55 Track C/D: the ONE busy/status feedback system + collapsible
+        // section persistence (common.js).
         setActionStatus: 'readonly',
         setButtonBusy: 'readonly',
+        wireCollapsibleSections: 'readonly',
         showConfirmModal: 'readonly',
         // FR-3 (T2): the toast helper (watch.js's post-delete success +
         // main.js's card trash-can outcomes) and the card trash-can's pure

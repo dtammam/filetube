@@ -1641,6 +1641,8 @@ function init(root) {
   syntheticFolders = [];
   loadedDefaultView = null;
 
+  // v1.55 Track D: per-section collapse persistence (details toggles).
+  wireCollapsibleSections('setup', document, controller.signal);
   wireStaticControls(controller.signal);
   wireBookFolderControls(controller.signal); // v1.38.0 Part A
   wireMusicFolderControls(controller.signal); // v1.44 music

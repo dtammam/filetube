@@ -235,9 +235,12 @@
            FR-4 channel link + a single trailing kebab/gear opening an
            in-shell settings bottom-sheet, built entirely in JS -- see that
            file's buildSettingsSheet). -->
-      <div class="setup-box">
+      <!-- v1.55 Track D (Dean: "not just a subscriptions pane"): the whole
+           section is a collapsible details card now; open by default, state
+           remembered per browser (wireCollapsibleSections). -->
+      <details class="setup-box sub-collapsible" id="sub-list-details" data-collapse-key="subscriptions-list" open>
+        <summary>Your subscriptions</summary>
         <div class="sub-list-header">
-          <h2>Your subscriptions</h2>
           <!-- v1.24.0 T6 (A5): "check all subscriptions now" -- moved up
                here from the collapsed "+ Add a subscription" disclosure
                below (same ids, same wiring in /js/subscriptions.js; only the
@@ -328,9 +331,9 @@
         <div id="sub-list-container" class="sub-list">
           <!-- Populated dynamically by /js/subscriptions.js -->
         </div>
-      </div>
+      </details>
 
-      <details class="setup-box sub-collapsible" id="sub-add-details">
+      <details class="setup-box sub-collapsible" id="sub-add-details" data-collapse-key="add-subscription">
         <summary>+ Add a subscription</summary>
         <p>
           Automatically download new videos from YouTube channels you subscribe
@@ -411,7 +414,7 @@
 
       </details>
 
-      <details class="setup-box sub-collapsible" id="oneshot-details">
+      <details class="setup-box sub-collapsible" id="oneshot-details" data-collapse-key="one-off-download">
         <summary>One-off download</summary>
         <p>
           Download a single YouTube video once -- no subscription is created.

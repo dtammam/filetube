@@ -104,7 +104,10 @@ test('the /subscriptions page and the Setup page share the same .setup-box/.form
     'utf8'
   );
   for (const cls of ['setup-box', 'form-group', 'folder-list-builder']) {
-    assert.ok(setupHtml.includes(`class="${cls}"`), `setup.html must use .${cls}`);
-    assert.ok(subsHtml.includes(`class="${cls}"`), `subscriptions.html must use .${cls}`);
+    // v1.55 Track D (DELIBERATE lock update): prefix match -- the setup-box
+    // class now co-occurs with sub-collapsible on the details cards; the
+    // shared-selector intent is unchanged.
+    assert.ok(setupHtml.includes(`class="${cls}`), `setup.html must use .${cls}`);
+    assert.ok(subsHtml.includes(`class="${cls}`), `subscriptions.html must use .${cls}`);
   }
 });

@@ -101,7 +101,9 @@ test('B1: public/index.html no longer contains its own inline copy of the widget
 // ---- A5: relocated, prominent "check all subscriptions now" control -------
 
 test('A5: #sub-repull-all-btn is no longer nested inside the collapsed "+ Add a subscription" <details> disclosure', () => {
-  const detailsMatch = /<details class="setup-box sub-collapsible" id="sub-add-details">[\s\S]*?<\/details>/.exec(subsHtml);
+  // v1.55 Track D (DELIBERATE lock update): the disclosure gained a
+  // data-collapse-key attribute for persistence -- match attrs openly.
+  const detailsMatch = /<details class="setup-box sub-collapsible" id="sub-add-details"[^>]*>[\s\S]*?<\/details>/.exec(subsHtml);
   assert.ok(detailsMatch, 'expected the sub-add-details disclosure to still exist');
   assert.ok(
     !detailsMatch[0].includes('sub-repull-all-btn'),
@@ -117,9 +119,14 @@ test('A5: #sub-repull-all-btn and #sub-repull-status exist exactly once, both ou
 });
 
 test('A5: the relocated control sits directly under the "Your subscriptions" heading, inside .sub-list-header', () => {
+  // v1.55 Track D (DELIBERATE lock update): the section is a collapsible
+  // details card now -- the heading is its <summary>, and the control still
+  // sits in the header row directly under it. A5's "reachable without
+  // expanding" evolves: the card defaults OPEN; only a user's own persisted
+  // collapse hides it, which is that user's explicit choice.
   assert.match(
     subsHtml,
-    /<div class="sub-list-header">\s*<h2>Your subscriptions<\/h2>[\s\S]*?id="sub-repull-all-btn"[\s\S]*?<\/div>\s*<div id="sub-list-container"/
+    /<summary>Your subscriptions<\/summary>\s*<div class="sub-list-header">[\s\S]*?id="sub-repull-all-btn"[\s\S]*?<div id="sub-list-container"/
   );
 });
 

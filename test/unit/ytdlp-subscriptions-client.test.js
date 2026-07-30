@@ -179,6 +179,12 @@ class FakeElement {
     this.attributes[name] = value;
   }
 
+  // v1.55 Track D test support: the collapsible-section assertions read the
+  // persistence key back off the built node.
+  getAttribute(name) {
+    return Object.prototype.hasOwnProperty.call(this.attributes, name) ? this.attributes[name] : null;
+  }
+
   addEventListener(type, handler) {
     (this._listeners[type] = this._listeners[type] || []).push(handler);
   }
@@ -1698,13 +1704,18 @@ test('createHistoryListElement: an empty/missing entries array renders a single 
   assert.strictEqual(malformed.children[0].textContent, 'No download history yet.');
 });
 
-test('createHistorySectionElement: builds a heading + an empty .sub-list ready for rows, reusing existing classes only', () => {
+test('createHistorySectionElement: builds a collapsible details card + an empty .sub-list ready for rows', () => {
+  // v1.55 Track D (DELIBERATE lock update): the section is a <details>
+  // disclosure now (summary = heading, persistence key, open by default --
+  // yesterday's layout until the user collapses it).
   const { section, list } = createHistorySectionElement(fakeDoc);
-  assert.strictEqual(section.className, 'setup-box');
-  const header = section.children.find((el) => el.className === 'sub-list-header');
-  assert.ok(header, 'expected a .sub-list-header child');
-  const heading = header.children.find((el) => el.tagName === 'H2');
-  assert.strictEqual(heading.textContent, 'Download history');
+  assert.strictEqual(section.className, 'setup-box sub-collapsible');
+  assert.strictEqual(section.tagName, 'DETAILS');
+  assert.strictEqual(section.open, true, 'defaults OPEN - the collapse is opt-in');
+  assert.strictEqual(section.getAttribute('data-collapse-key'), 'download-history');
+  const summary = section.children.find((el) => el.tagName === 'SUMMARY');
+  assert.ok(summary, 'expected a summary heading');
+  assert.strictEqual(summary.textContent, 'Download history');
   assert.strictEqual(list.className, 'sub-list');
   assert.strictEqual(list.children.length, 0);
   assert.ok(section.children.includes(list), 'the list node must already be mounted inside the section');
