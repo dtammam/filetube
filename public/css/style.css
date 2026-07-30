@@ -565,7 +565,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   display: flex;
   align-items: center;
   font-size: var(--fs-4xl);
-  font-weight: bold;
+  font-weight: var(--fw-bold);
   letter-spacing: -1px; /* token-exempt: era display styling */
   font-family: var(--logo-font);
   color: var(--text-primary);
@@ -584,11 +584,11 @@ html.reader-immersive .app-container { padding-top: 0; }
 
 .logo span.tube {
   background-color: var(--yt-red);
-  color: #ffffff;
+  color: #fff;
   padding: 2px 6px;
   border-radius: var(--radius);
   margin-left: 2px;
-  font-weight: 900;
+  font-weight: var(--fw-black);
 }
 
 /* v1.32 (custom logo): the uploaded image is bounded to the text logo's own
@@ -641,7 +641,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   padding: 0 16px;
   cursor: pointer;
   font-size: var(--fs-base);
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
   flex-shrink: 0;      /* keep the "Search" label from being clipped */
   white-space: nowrap;
   transition: background-color 0.15s ease;
@@ -688,7 +688,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   color: var(--text-primary);
   padding: 6px 12px;
   border-radius: var(--radius);
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
   letter-spacing: 0.2px; /* token-exempt: era display styling */
   cursor: pointer;
   font-size: var(--fs-sm);
@@ -786,7 +786,7 @@ html.reader-immersive .app-container { padding-top: 0; }
 .sidebar-section-title {
   padding: 6px 24px;
   font-size: var(--fs-xs);
-  font-weight: bold;
+  font-weight: var(--fw-bold);
   color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.5px; /* token-exempt: era display styling */
@@ -806,7 +806,7 @@ html.reader-immersive .app-container { padding-top: 0; }
 .sidebar-item:hover, .sidebar-item.active {
   background-color: var(--bg-secondary);
   text-decoration: none;
-  font-weight: bold;
+  font-weight: var(--fw-bold);
 }
 
 .sidebar-item i {
@@ -862,7 +862,7 @@ html.reader-immersive .app-container { padding-top: 0; }
 .format-toggle-btn.active {
   background-color: var(--btn-hover);
   border-color: var(--yt-red);
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
 }
 
 /* v1.45.3 (#3, Dean): equal-sized action buttons so the toolbar reads as one
@@ -1045,7 +1045,7 @@ html.reader-immersive .app-container { padding-top: 0; }
 }
 .sort-menu li.active {
   color: var(--yt-red);
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
 }
 
 /* v1.26.2 polish fix (Dean punchlist #5): #rescan-library-btn's label swaps
@@ -1124,7 +1124,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   color: white;
   padding: 2px 4px;
   font-size: var(--fs-xs);
-  font-weight: bold;
+  font-weight: var(--fw-bold);
   border-radius: var(--radius);
 }
 
@@ -1167,7 +1167,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   color: #fff;
   cursor: pointer;
   font-size: var(--fs-xs);
-  font-weight: bold;
+  font-weight: var(--fw-bold);
   line-height: 1; /* token-exempt: glyph centering */
   opacity: 0.85;
   transition: opacity 0.15s ease, background-color 0.15s ease;
@@ -1537,7 +1537,7 @@ html.reader-immersive .app-container { padding-top: 0; }
 
 .error-state-message {
   color: var(--yt-red);
-  font-weight: bold;
+  font-weight: var(--fw-bold);
 }
 
 .error-state-retry {
@@ -1852,7 +1852,7 @@ html.reader-immersive .app-container { padding-top: 0; }
 
 .audio-title {
   font-size: var(--fs-xl);
-  font-weight: bold;
+  font-weight: var(--fw-bold);
   margin-bottom: 4px;
   max-width: 80%;
   text-overflow: ellipsis;
@@ -1862,7 +1862,7 @@ html.reader-immersive .app-container { padding-top: 0; }
 
 .audio-subtitle {
   font-size: var(--fs-base);
-  color: #aaaaaa;
+  color: #aaa;
 }
 
 /* Resume Playback Overlay */
@@ -1890,7 +1890,7 @@ html.reader-immersive .app-container { padding-top: 0; }
 
 .resume-overlay p {
   margin-bottom: 16px;
-  color: #cccccc;
+  color: #ccc;
 }
 
 .resume-actions {
@@ -1933,7 +1933,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   padding: 4px 12px;
   border-radius: 14px;
   font-size: var(--fs-base);
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
   letter-spacing: 0.5px; /* token-exempt: era display styling */
   z-index: 20; /* token-exempt: local stacking */
   pointer-events: none;
@@ -1947,7 +1947,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   font-size: var(--fs-base);
 }
 .embedded-tags-title {
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
   margin-bottom: 4px;
   color: var(--text-secondary);
   text-transform: uppercase;
@@ -1962,7 +1962,7 @@ html.reader-immersive .app-container { padding-top: 0; }
    Capping the value length (watch.js clip()) doesn't help an unbroken token;
    this does. */
 .embedded-tag { margin: 2px 0; overflow-wrap: anywhere; }
-.embedded-tag-key { color: var(--text-secondary); font-weight: 600; }
+.embedded-tag-key { color: var(--text-secondary); font-weight: var(--fw-semibold); }
 
 .skip-btn {
   position: absolute;
@@ -1977,7 +1977,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   border-radius: 27px; /* token-exempt: era skin art */
   background: rgba(0, 0, 0, 0.55);
   color: #fff;
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
   cursor: pointer;
   opacity: 0;
   transition: opacity 0.2s ease, transform 0.15s ease, background 0.2s ease;
@@ -2009,7 +2009,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   justify-content: center;
   color: #fff;
   font-size: var(--fs-2xl);
-  font-weight: 700;
+  font-weight: var(--fw-bold);
   background: rgba(255, 255, 255, 0.14);
   opacity: 0;
   pointer-events: none;
@@ -2045,7 +2045,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   color: var(--text-primary);
   padding: 6px 14px;
   border-radius: calc(var(--radius) + 1px);
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
   letter-spacing: 0.2px; /* token-exempt: era display styling */
   font-size: var(--fs-sm);
   cursor: pointer;
@@ -2076,7 +2076,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-weight: bold;
+  font-weight: var(--fw-bold);
   font-size: var(--fs-sm);
   color: var(--text-primary);
   cursor: pointer;
@@ -2158,7 +2158,7 @@ html.reader-immersive .app-container { padding-top: 0; }
 
 .views-count {
   font-size: var(--fs-xl);
-  font-weight: bold;
+  font-weight: var(--fw-bold);
   color: var(--text-primary);
 }
 
@@ -2268,13 +2268,13 @@ html.reader-immersive .app-container { padding-top: 0; }
   align-items: center;
   justify-content: center;
   font-size: var(--fs-3xl);
-  font-weight: bold;
+  font-weight: var(--fw-bold);
   text-transform: uppercase;
 }
 
 .uploader-name {
   font-size: var(--fs-md);
-  font-weight: bold;
+  font-weight: var(--fw-bold);
   color: var(--text-primary);
 }
 
@@ -2284,7 +2284,7 @@ html.reader-immersive .app-container { padding-top: 0; }
    discreet hover underline keeps it discoverable as clickable. */
 .uploader-channel-link {
   font-size: var(--fs-md);
-  font-weight: bold;
+  font-weight: var(--fw-bold);
   color: var(--text-primary);
   text-decoration: none;
   cursor: pointer;
@@ -2322,7 +2322,7 @@ html.reader-immersive .app-container { padding-top: 0; }
 }
 
 .description-meta {
-  font-weight: bold;
+  font-weight: var(--fw-bold);
   margin-bottom: 8px;
   font-size: var(--fs-sm);
 }
@@ -2388,7 +2388,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   border: none;
   color: var(--text-link);
   font-size: var(--fs-sm);
-  font-weight: bold;
+  font-weight: var(--fw-bold);
   cursor: pointer;
   margin-top: 8px;
   padding: 4px 0;
@@ -2404,7 +2404,7 @@ html.reader-immersive .app-container { padding-top: 0; }
 
 .comments-header {
   font-size: var(--fs-lg);
-  font-weight: bold;
+  font-weight: var(--fw-bold);
   margin-bottom: 16px;
 }
 
@@ -2448,7 +2448,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   display: flex;
   align-items: center;
   justify-content: center;
-  font-weight: bold;
+  font-weight: var(--fw-bold);
   font-size: var(--fs-xl);
   color: var(--text-secondary);
 }
@@ -2462,7 +2462,7 @@ html.reader-immersive .app-container { padding-top: 0; }
 }
 
 .comment-author-name {
-  font-weight: bold;
+  font-weight: var(--fw-bold);
   font-size: var(--fs-sm);
   margin-right: 8px;
 }
@@ -2479,7 +2479,7 @@ html.reader-immersive .app-container { padding-top: 0; }
 /* Sidebar Playlist Items (Watch page) */
 .related-header {
   font-size: var(--fs-md);
-  font-weight: bold;
+  font-weight: var(--fw-bold);
   margin-bottom: 12px;
 }
 
@@ -2517,7 +2517,7 @@ html.reader-immersive .app-container { padding-top: 0; }
 
 .related-title {
   font-size: var(--fs-sm);
-  font-weight: bold;
+  font-weight: var(--fw-bold);
   color: var(--text-primary);
   line-height: 1.3;
   max-height: 32px;
@@ -2561,7 +2561,7 @@ html.reader-immersive .app-container { padding-top: 0; }
 
 .setup-box h2 {
   font-size: var(--fs-4xl);
-  font-weight: bold;
+  font-weight: var(--fw-bold);
   margin-bottom: 16px;
   border-bottom: 1px solid var(--border-color);
   padding-bottom: 12px;
@@ -2581,7 +2581,7 @@ html.reader-immersive .app-container { padding-top: 0; }
 
 .form-group label {
   display: block;
-  font-weight: bold;
+  font-weight: var(--fw-bold);
   margin-bottom: 10px;
   font-size: var(--fs-base);
 }
@@ -2841,7 +2841,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   border: none;
   color: var(--yt-red);
   cursor: pointer;
-  font-weight: bold;
+  font-weight: var(--fw-bold);
   font-size: var(--fs-xl);
 }
 
@@ -2953,7 +2953,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   display: flex;
   align-items: center;
   justify-content: center;
-  font-weight: bold;
+  font-weight: var(--fw-bold);
   font-size: var(--fs-lg);
   color: var(--text-primary);
   background-color: var(--bg-color);
@@ -2987,7 +2987,7 @@ html.reader-immersive .app-container { padding-top: 0; }
 .sub-row-name {
   font-family: var(--font-family);
   font-size: var(--fs-base);
-  font-weight: bold;
+  font-weight: var(--fw-bold);
   overflow-wrap: break-word;
   word-break: break-word;
 }
@@ -3154,9 +3154,12 @@ a.sub-row-channel-link:focus-visible {
 .theme-card.active { border-color: var(--yt-red); border-width: 2px; }
 .theme-swatch { display: flex; height: 20px; border-radius: var(--radius); overflow: hidden; }
 .theme-swatch span { flex: 1; }
-.theme-card-name { font-weight: bold; font-size: var(--fs-base); }
+.theme-card-name { font-weight: var(--fw-bold); font-size: var(--fs-base); }
 .theme-card-year { color: var(--text-secondary); font-weight: normal; }
 .theme-card-blurb { font-size: var(--fs-xs); color: var(--text-secondary); }
+/* Tokens Phase 1 Tier 1: the stats glance-tile value, moved out of
+   JS-applied styles (buildStatTile). 22px == var(--fs-4xl). */
+.stat-tile-value { font-size: var(--fs-4xl); }
 
 /* Modal dialog custom styling */
 .modal-backdrop {
@@ -3219,7 +3222,7 @@ a.sub-row-channel-link:focus-visible {
 
 .modal-title {
   font-size: var(--fs-xl);
-  font-weight: bold;
+  font-weight: var(--fw-bold);
   margin-bottom: 12px;
   color: var(--text-primary);
 }
@@ -3331,7 +3334,7 @@ a.sub-row-channel-link:focus-visible {
 
 .oneoff-modal-title {
   font-size: var(--fs-xl);
-  font-weight: bold;
+  font-weight: var(--fw-bold);
   color: var(--text-primary);
 }
 
@@ -3408,6 +3411,24 @@ a.sub-row-channel-link:focus-visible {
    `setStatus`) needs no override here -- unlike `.oneoff-modal-backdrop`,
    this track is never `display: flex`, so the native `[hidden] { display:
    none }` UA rule already applies. */
+/* Tokens Phase 1 Tier 1: the subscribe-modal cutoff hint, moved out of
+   JS-applied styles (buildOneOffModal). Values identical to the old inline
+   triplet; the negative margin is a pull-up against the field above. */
+.oneoff-modal-hint {
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+  margin: -6px 0 10px; /* token-exempt: positional */
+}
+
+/* Tokens Phase 1 Tier 1: the injected per-channel Re-pull button, moved out
+   of JS-applied styles (probe injection in common.js). 11px == var(--fs-xs);
+   the padding literal is a deliberate burn-down entry (spacing adoption is
+   Tier 2). */
+.repull-btn-compact {
+  font-size: var(--fs-xs);
+  padding: 4px 8px;
+}
+
 .oneoff-modal-progress {
   margin-bottom: 10px;
 }
@@ -3452,7 +3473,7 @@ a.sub-row-channel-link:focus-visible {
 }
 
 .subscribe-modal-identity-name {
-  font-weight: bold;
+  font-weight: var(--fw-bold);
   color: var(--text-primary);
   font-size: var(--fs-base);
 }
@@ -3980,7 +4001,7 @@ a.sub-row-channel-link:focus-visible {
     align-items: center;
     justify-content: space-between;
     padding: 12px 16px;
-    font-weight: bold;
+    font-weight: var(--fw-bold);
     color: var(--text-primary);
     border-bottom: 1px solid var(--border-color);
   }
@@ -5280,7 +5301,7 @@ body.ft-css-fullscreen .bottom-nav {
   min-width: 120px;
 }
 .speed-menu-item.active {
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
   color: var(--yt-red);
 }
 .chapters-menu-time {
@@ -5345,7 +5366,7 @@ body.ft-css-fullscreen .bottom-nav {
 }
 .chapters-menu-loop.active {
   color: var(--yt-red);
-  font-weight: bold;
+  font-weight: var(--fw-bold);
 }
 /* Bar-level armed signal: the Ch button tints while a chapter loop is on, so
    the state is visible with the menu closed. */
@@ -5725,7 +5746,7 @@ body.ft-css-fullscreen .bottom-nav {
    the sole open/close affordance. */
 .sub-collapsible > summary {
   font-size: var(--fs-4xl);
-  font-weight: bold;
+  font-weight: var(--fw-bold);
   color: var(--yt-red);
   cursor: pointer;
   padding-bottom: 12px;
@@ -5812,7 +5833,7 @@ body.ft-css-fullscreen .bottom-nav {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-weight: bold;
+  font-weight: var(--fw-bold);
   font-size: var(--fs-xl);
   color: var(--text-primary);
   background-color: var(--bg-color);
@@ -5842,7 +5863,7 @@ body.ft-css-fullscreen .bottom-nav {
 .sub-sheet-name {
   font-family: var(--font-family);
   font-size: var(--fs-lg);
-  font-weight: bold;
+  font-weight: var(--fw-bold);
   overflow-wrap: break-word;
   word-break: break-word;
 }
@@ -6055,7 +6076,7 @@ body.ft-css-fullscreen .bottom-nav {
   align-items: center;
   justify-content: center;
   font-size: var(--fs-xs);
-  font-weight: bold;
+  font-weight: var(--fw-bold);
   color: #fff;
   line-height: 1; /* token-exempt: glyph centering */
   text-transform: uppercase;
@@ -6107,14 +6128,14 @@ body.ft-css-fullscreen .bottom-nav {
 
 .hard-delete-modal-title {
   font-size: var(--fs-xl);
-  font-weight: bold;
+  font-weight: var(--fw-bold);
   color: var(--yt-red);
   margin-bottom: 10px;
 }
 
 .hard-delete-modal-warning {
   font-size: var(--fs-base);
-  font-weight: bold;
+  font-weight: var(--fw-bold);
   color: var(--yt-red);
   background-color: var(--btn-bg);
   border: 1px solid var(--yt-red);
@@ -6125,7 +6146,7 @@ body.ft-css-fullscreen .bottom-nav {
 
 .hard-delete-modal-filename {
   font-size: var(--fs-base);
-  font-weight: bold;
+  font-weight: var(--fw-bold);
   color: var(--text-primary);
   word-break: break-word;
   margin-bottom: 4px;
@@ -6144,7 +6165,7 @@ body.ft-css-fullscreen .bottom-nav {
   gap: 8px;
   margin-bottom: 16px;
   font-size: var(--fs-base);
-  font-weight: bold;
+  font-weight: var(--fw-bold);
   color: var(--text-primary);
   cursor: pointer;
 }
@@ -6174,9 +6195,9 @@ body.ft-css-fullscreen .bottom-nav {
   border: 1px solid var(--yt-red);
   border-radius: calc(var(--radius) + 1px);
   background-color: var(--yt-red);
-  color: #ffffff;
+  color: #fff;
   font-size: var(--fs-base);
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
   cursor: pointer;
   transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, opacity 0.15s ease;
 }
@@ -6252,7 +6273,7 @@ body.ft-css-fullscreen .bottom-nav {
   box-shadow: var(--shadow-lg);
   font-family: inherit;
   font-size: var(--fs-base);
-  font-weight: bold;
+  font-weight: var(--fw-bold);
   cursor: pointer;
   max-width: 100%;
 }
@@ -6349,7 +6370,7 @@ body.ft-css-fullscreen .bottom-nav {
   justify-content: space-between;
   gap: 8px;
   font-size: var(--fs-sm);
-  font-weight: bold;
+  font-weight: var(--fw-bold);
   color: var(--text-primary);
 }
 
@@ -6508,7 +6529,7 @@ body.ft-css-fullscreen .bottom-nav {
   padding: 4px 8px;
   font-family: inherit;
   font-size: var(--fs-xs);
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
   border-radius: calc(var(--radius) + 1px);
   cursor: pointer;
   transition: background-color 0.15s ease;
@@ -6517,7 +6538,7 @@ body.ft-css-fullscreen .bottom-nav {
 .dl-status-chip-retry-btn {
   background-color: var(--yt-red);
   border: 1px solid var(--yt-red-dark);
-  color: #ffffff;
+  color: #fff;
 }
 
 .dl-status-chip-dismiss-btn {
@@ -6765,7 +6786,7 @@ body.ft-css-fullscreen .bottom-nav {
     }
     .book-title {
       margin-top: 6px;
-      font-weight: bold;
+      font-weight: var(--fw-bold);
       font-size: var(--fs-base);
       overflow: hidden;
       display: -webkit-box;
@@ -6845,7 +6866,7 @@ body.ft-css-fullscreen .bottom-nav {
     .reader-title {
       flex: 1 1 auto;
       min-width: 0;
-      font-weight: bold;
+      font-weight: var(--fw-bold);
       font-size: var(--fs-md);
       overflow: hidden;
       text-overflow: ellipsis;
@@ -6962,7 +6983,7 @@ body.ft-css-fullscreen .bottom-nav {
        so the whole reading area is one big tap target when iOS blocks autoplay. */
     .reader-status.reader-status-tap {
       cursor: pointer;
-      font-weight: 700;
+      font-weight: var(--fw-bold);
       opacity: 1;
     }
 
@@ -7158,7 +7179,7 @@ body.ft-css-fullscreen .bottom-nav {
   gap: 10px;
   padding: 12px 16px;
   border-bottom: 1px solid var(--border-color, #ccc);
-  font-weight: bold;
+  font-weight: var(--fw-bold);
 }
 .reloc-preview-close {
   background: none;
@@ -7176,7 +7197,7 @@ body.ft-css-fullscreen .bottom-nav {
 }
 .reloc-preview-summary .reloc-copy-warning {
   color: var(--accent-color, #cc0000);
-  font-weight: bold;
+  font-weight: var(--fw-bold);
 }
 /* v1.41.7 gate fix (HONESTY 2): the best-effort-prediction + checksum-safety
    disclosure. Muted, smaller, but always present under the summary. */
@@ -7191,7 +7212,7 @@ body.ft-css-fullscreen .bottom-nav {
   overflow-y: auto;
 }
 .reloc-preview-group-title {
-  font-weight: bold;
+  font-weight: var(--fw-bold);
   margin: 14px 0 6px;
 }
 .reloc-preview-row {
@@ -7201,7 +7222,7 @@ body.ft-css-fullscreen .bottom-nav {
   word-break: break-word;
 }
 .reloc-preview-row-title {
-  font-weight: bold;
+  font-weight: var(--fw-bold);
 }
 .reloc-preview-row-detail {
   color: var(--text-secondary);
@@ -7210,7 +7231,7 @@ body.ft-css-fullscreen .bottom-nav {
 .reloc-preview-badge {
   display: inline-block;
   font-size: var(--fs-xs);
-  font-weight: bold;
+  font-weight: var(--fw-bold);
   padding: 1px 6px;
   border-radius: 3px;
   margin-left: 6px;
@@ -7268,7 +7289,7 @@ body.ft-css-fullscreen .bottom-nav {
   align-items: center;
   font-family: var(--logo-font);
   font-size: var(--fs-5xl);
-  font-weight: bold;
+  font-weight: var(--fw-bold);
   letter-spacing: -1px; /* token-exempt: era display styling */
   color: var(--text-primary);
   line-height: 1; /* token-exempt: glyph centering */
@@ -7279,7 +7300,7 @@ body.ft-css-fullscreen .bottom-nav {
   padding: 3px 9px;
   border-radius: var(--radius);
   margin-left: 3px; /* token-exempt: optical nudge */
-  font-weight: 900;
+  font-weight: var(--fw-black);
 }
 .login-wordmark .login-logo-img {
   max-height: 56px;
@@ -7315,7 +7336,7 @@ body.ft-css-fullscreen .bottom-nav {
 }
 .login-field label {
   font-size: var(--fs-sm);
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
   color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.04em; /* token-exempt: era display styling */
@@ -7342,7 +7363,7 @@ body.ft-css-fullscreen .bottom-nav {
 .login-submit {
   font-family: var(--font-family);
   font-size: var(--fs-lg);
-  font-weight: 700;
+  font-weight: var(--fw-bold);
   color: #fff;
   background: var(--yt-red);
   border: 1px solid var(--yt-red-dark, var(--yt-red));
@@ -7394,7 +7415,7 @@ body.ft-css-fullscreen .bottom-nav {
   color: #fff;
   background: var(--yt-red);
   border-color: var(--yt-red);
-  font-weight: 700;
+  font-weight: var(--fw-bold);
 }
 @media (prefers-reduced-motion: reduce) {
   .login-submit { transition: none; }
@@ -7413,7 +7434,7 @@ body.ft-css-fullscreen .bottom-nav {
 #account-chip {
   font-size: var(--fs-md);
   color: var(--text-primary);
-  font-weight: bold;
+  font-weight: var(--fw-bold);
 }
 .users-list {
   display: flex;
@@ -7484,12 +7505,12 @@ body.ft-css-fullscreen .bottom-nav {
 .music-tab.active {
   color: var(--text-primary);
   border-bottom-color: var(--yt-red);
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
 }
 
 .music-crumb { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
 .music-crumb[hidden] { display: none !important; }
-.music-crumb-label { font-size: var(--fs-lg); font-weight: 600; color: var(--text-primary); }
+.music-crumb-label { font-size: var(--fs-lg); font-weight: var(--fw-semibold); color: var(--text-primary); }
 
 /* v1.44.2 (Spotify feel): the collapsing / sticky album+artist drill header.
    At rest: big art + title + artist + meta + Play/Shuffle. As the tracklist
@@ -7511,7 +7532,7 @@ body.ft-css-fullscreen .bottom-nav {
   flex-shrink: 0;
 }
 .music-drill-info { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-.music-drill-title { margin: 0; font-size: var(--fs-2xl); font-weight: 700; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; }
+.music-drill-title { margin: 0; font-size: var(--fs-2xl); font-weight: var(--fw-bold); color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; }
 .music-drill-artist { font-size: var(--fs-lg); color: var(--text-primary); }
 .music-drill-meta { font-size: var(--fs-sm); color: var(--text-secondary); }
 .music-drill-actions { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
@@ -7532,7 +7553,7 @@ body.ft-css-fullscreen .bottom-nav {
 .music-drill.collapsed .music-drill-header { display: none; }
 .music-sticky-back { flex-shrink: 0; }
 .music-sticky-thumb { width: 36px; height: 36px; border-radius: 4px; object-fit: cover; background: var(--thumbnail-bg, #222); flex-shrink: 0; }
-.music-sticky-title { flex: 1; min-width: 0; font-size: var(--fs-base); font-weight: 600; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.music-sticky-title { flex: 1; min-width: 0; font-size: var(--fs-base); font-weight: var(--fw-semibold); color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .music-sticky-play { flex-shrink: 0; }
 .music-drill-sentinel { width: 100%; height: 1px; }
 
@@ -7570,7 +7591,7 @@ body.ft-css-fullscreen .bottom-nav {
 }
 .music-album-title {
   font-size: var(--fs-base);
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
   color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
@@ -7599,7 +7620,7 @@ body.ft-css-fullscreen .bottom-nav {
   color: inherit;
   min-width: 0;
 }
-.music-artist-name { font-size: var(--fs-base); font-weight: 600; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.music-artist-name { font-size: var(--fs-base); font-weight: var(--fw-semibold); color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .music-artist-meta { font-size: var(--fs-sm); color: var(--text-secondary); }
 
 .music-song-list { display: flex; flex-direction: column; }
@@ -7639,7 +7660,7 @@ body.ft-css-fullscreen .bottom-nav {
   background: var(--bg-secondary);
   box-shadow: inset 3px 0 0 0 var(--yt-red);
 }
-.music-song-row.playing .music-song-title { color: var(--yt-red); font-weight: 600; }
+.music-song-row.playing .music-song-title { color: var(--yt-red); font-weight: var(--fw-semibold); }
 /* The eq overlays the thumb (dimmed via a scrim) only while playing. */
 .music-eq {
   position: absolute;
@@ -7752,7 +7773,7 @@ body.ft-css-fullscreen .bottom-nav {
 
 .shortcuts-group-title {
   font-size: var(--fs-sm);
-  font-weight: bold;
+  font-weight: var(--fw-bold);
   color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.04em; /* token-exempt: era display styling */
@@ -7965,8 +7986,8 @@ body.ft-css-fullscreen .bottom-nav {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #ffffff;
-  font-weight: 600;
+  color: #fff;
+  font-weight: var(--fw-semibold);
   font-size: var(--fs-base);
   background-color: var(--bg-secondary);
 }
@@ -8047,10 +8068,10 @@ body.ft-css-fullscreen .bottom-nav {
   padding: 0 4px;
   border-radius: 8px;
   background: var(--yt-red);
-  color: #ffffff;
+  color: #fff;
   font-size: var(--fs-xs);
   line-height: 16px; /* token-exempt: positional */
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
   text-align: center;
   box-sizing: border-box;
   pointer-events: none;
@@ -8097,7 +8118,7 @@ body.ft-css-fullscreen .bottom-nav {
   align-items: center;
   justify-content: space-between;
   padding: 12px 16px;
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
   border-bottom: 1px solid var(--bg-secondary);
   position: sticky;
   top: 0;
@@ -8109,7 +8130,7 @@ body.ft-css-fullscreen .bottom-nav {
   border: none;
   color: var(--yt-red);
   font-size: var(--fs-sm);
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
   cursor: pointer;
   padding: 4px 6px;
   border-radius: 4px;
@@ -8150,8 +8171,8 @@ body.ft-css-fullscreen .bottom-nav {
 }
 
 .notif-row-avatar-generated {
-  color: #ffffff;
-  font-weight: 600;
+  color: #fff;
+  font-weight: var(--fw-semibold);
   font-size: var(--fs-md);
 }
 

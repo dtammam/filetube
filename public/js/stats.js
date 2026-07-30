@@ -132,8 +132,9 @@ function buildStatTile(value, caption) {
   const tile = document.createElement('div');
   tile.className = 'theme-card';
   const valueEl = document.createElement('div');
-  valueEl.className = 'theme-card-name';
-  valueEl.style.fontSize = '22px';
+  // Tokens Phase 1 Tier 1: the JS-applied 22px moved to .stat-tile-value
+  // (style.css) - font-size rides var(--fs-4xl).
+  valueEl.className = 'theme-card-name stat-tile-value';
   valueEl.textContent = value;
   const captionEl = document.createElement('div');
   captionEl.className = 'theme-card-blurb';
