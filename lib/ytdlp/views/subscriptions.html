@@ -254,7 +254,7 @@
                scrolling or expanding anything, on both desktop and mobile.
                Calls the EXISTING POST /api/subscriptions/repull unchanged --
                no new backend route. -->
-          <!-- v1.55 Track B: the four actions live on ONE equal-width grid
+          <!-- v1.55 Track B: the actions live on ONE equal-width grid
                (.action-bar); each cancellable trigger shares an
                .action-bar-cell with its Cancel, which SWAPS IN PLACE while
                the batch runs (applyReheatStateToControls /
@@ -315,6 +315,25 @@
               </button>
               <button class="btn btn-sm" id="sub-refresh-avatars-cancel-btn" type="button" hidden>Cancel</button>
             </span>
+            <!-- v1.56 (Dean): triggers a bulk re-probe of EVERY distinct
+                 channel with content in the library -- subscriptions AND
+                 one-off-downloaded channels alike -- and fans the fresh
+                 subscriber count out to every video of that channel
+                 (POST /api/ytdlp/reheat-sub-counts). One cheap
+                 channel-level probe per channel, never per-video; distinct
+                 from the Reheat button above (per-video metadata dumps) and
+                 from Refresh avatars (same unit of work, different value).
+                 Progress/terminal state ride the SAME ~2.5s
+                 GET /api/subscriptions/status poll this page already runs --
+                 see lib/ytdlp/client/subscriptions.js
+                 applyReheatSubsStateToControls. -->
+            <span class="action-bar-cell">
+              <button class="btn btn-sm" id="sub-reheat-subs-btn" type="button"
+                      title="Re-fetch every channel current subscriber count and update all its videos">
+                <i class="icon-refresh"></i> Reheat sub counts
+              </button>
+              <button class="btn btn-sm" id="sub-reheat-subs-cancel-btn" type="button" hidden>Cancel</button>
+            </span>
           </div>
           <!-- v1.26.2 polish fix (Dean punchlist #5): the three status spans
                below used to live INSIDE .sub-list-header-actions (the
@@ -332,6 +351,7 @@
             <span id="sub-repull-status" class="sub-repull-status action-status" aria-live="polite"></span>
             <span id="sub-reheat-status" class="sub-repull-status action-status" aria-live="polite"></span>
             <span id="sub-refresh-avatars-status" class="sub-repull-status action-status" aria-live="polite"></span>
+            <span id="sub-reheat-subs-status" class="sub-repull-status action-status" aria-live="polite"></span>
           </div>
         </div>
         <div id="sub-list-container" class="sub-list">

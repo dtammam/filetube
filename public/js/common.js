@@ -7173,6 +7173,9 @@ const ACTIVITY_CHIP_LABELS = {
   'repull-item': 'Reheating video',
   'refresh-avatars': 'Refreshing avatars',
   'attribute-bulk': 'Attributing videos',
+  // v1.56: the bulk subscriber-count reheat batch (lib/ytdlp/index.js's
+  // runReheatSubsBatch stamps kind 'reheat-subs').
+  'reheat-subs': 'Reheating sub counts',
 };
 
 // Pure: statusText for a batch-activity chip row. Position is PROCESSED
