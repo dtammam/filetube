@@ -85,6 +85,18 @@ header: 768px phone (mirrored in JS by SHORTCUTS_DESKTOP_QUERY
 '(min-width: 769px)', which is test-locked - change both or neither),
 1024px tablet, and the three deliberate small thresholds per amendment (a).
 
+## Addendum (Phase 1 execution findings - see
+design-token-phase1-verification.md for full detail)
+
+- Tier 1 shipped THREE of its six items smaller than approved: the
+  #cc0000, monospace and gold substitutions were excluded as
+  not-zero-delta (era-varying token values; one vacuous harvest hit).
+- Two GHOST token names exist: `--accent` and `--accent-color` are
+  consumed as var() fallback carriers at 9 sites but never defined.
+  A Tier 2+ decision item.
+- The lint baseline is 628 (not the 641 first published - linter parser
+  fix), 554 after Tier 1.
+
 ## Phase/tier map (unchanged from approval)
 
 - Phase 1 (this): reconcile, token file (additive, no consumers), the

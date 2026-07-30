@@ -87,16 +87,24 @@ function lintCss(text, fname, lineOffset, out) {
     const open = s.indexOf('/*');
     if (open !== -1) { s = s.slice(0, open); inComment = true; }
 
-    // brace tracking (line-based; style.css is one-decl-per-line formatted)
-    for (const ch of s) {
+    // brace tracking (line-based; style.css is one-decl-per-line formatted).
+    // The selector for a `{` is everything pending from prior lines PLUS the
+    // current line's text before the brace (v1 dropped the same-line part,
+    // which silently disabled the @font-face/@keyframes and era-scope
+    // exclusions - caught by the font-weight:100 900 false positive).
+    let cursor = 0;
+    for (let ci = 0; ci < s.length; ci++) {
+      const ch = s[ci];
       if (ch === '{') {
-        const sel = (pendingSelector + ' ').trim();
+        const sel = (pendingSelector + ' ' + s.slice(cursor, ci)).trim();
         const at = sel.startsWith('@') ? sel.split(/[\s(]/)[0] : null;
         selStack.push({ selector: sel, at });
         pendingSelector = '';
+        cursor = ci + 1;
       } else if (ch === '}') {
         selStack.pop();
         pendingSelector = '';
+        cursor = ci + 1;
       }
     }
     const beforeBrace = s.includes('{') ? s.slice(0, s.indexOf('{')) : null;
