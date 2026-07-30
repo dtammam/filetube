@@ -2576,6 +2576,47 @@ html.reader-immersive .app-container { padding-top: 0; }
   }
 }
 
+/* ---- v1.55 Track B: the equal-width action bar ---------------------------
+   Dean: "the buttons... different sizes. It's not clean" + "apply it on all
+   the pages". One grid: every button the same width, wrapping whole-columns
+   on narrow screens. A trigger and its Cancel share one .action-bar-cell so
+   the swap never reflows the row (the appliers hide the trigger while its
+   Cancel is shown). Era tokens come from .btn itself -- this only owns
+   layout. */
+.action-bar {
+  display: grid;
+  /* Capped columns, not 1fr: with auto-fit, a lone button in a wide box
+     would otherwise stretch to the full row. 160-240px tracks stay equal
+     to each other, wrap whole-columns on narrow screens, and behave in
+     auto-width containers (the footer clusters) too. */
+  grid-template-columns: repeat(auto-fit, minmax(160px, 240px));
+  gap: 8px;
+  align-items: stretch;
+}
+.action-bar > .btn,
+.action-bar-cell > .btn {
+  width: 100%;
+}
+.action-bar-cell {
+  display: block;
+}
+/* The management-box footer row: status line left, an .action-bar cluster
+   right. Replaces per-box inline flex styles (setup.html had three
+   byte-identical copies). */
+.action-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 24px;
+  border-top: 1px solid var(--border-color);
+  padding-top: 16px;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.action-footer .action-bar {
+  flex-shrink: 0;
+}
+
 .folder-list-builder {
   border: 1px solid var(--border-color);
   background-color: var(--bg-color);

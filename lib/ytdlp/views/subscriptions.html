@@ -57,11 +57,12 @@
     .sub-list-header h2 {
       margin: 0;
     }
+    /* v1.55 Track B: layout now comes from the sitewide .action-bar grid
+       (style.css) -- equal-width buttons, whole-column wrap, in-cell
+       Cancel swaps. This page-local block keeps only the header-flex
+       sizing so the bar takes the full row under the h2. */
     .sub-list-header-actions {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      flex-wrap: wrap;
+      flex: 1 1 100%;
     }
     /* v1.26.2 polish fix (Dean punchlist #5): dedicated full-width row for
        the three status spans (see the markup comment above this row) --
@@ -244,7 +245,17 @@
                scrolling or expanding anything, on both desktop and mobile.
                Calls the EXISTING POST /api/subscriptions/repull unchanged --
                no new backend route. -->
-          <div class="sub-list-header-actions">
+          <!-- v1.55 Track B: the four actions live on ONE equal-width grid
+               (.action-bar); each cancellable trigger shares an
+               .action-bar-cell with its Cancel, which SWAPS IN PLACE while
+               the batch runs (applyReheatStateToControls /
+               applyRefreshAvatarsStateToControls hide the trigger) -- no
+               more popping a fifth button into the row. Cells are spans,
+               not divs, so the v1262 status-relocation lock (which captures
+               up to the first closing div) still sees the whole block.
+               (No apostrophes in this comment: the t6 route-lock literal
+               scanner pairs quote characters across prose.) -->
+          <div class="sub-list-header-actions action-bar">
             <button class="btn btn-primary btn-sm" id="sub-repull-all-btn" type="button">
               <i class="icon-refresh"></i> Check all subscriptions now
             </button>
@@ -259,7 +270,6 @@
                  Progress/terminal state ride the SAME ~2.5s
                  GET /api/subscriptions/status poll this page already runs --
                  see lib/ytdlp/client/subscriptions.js's applyReheatStateToControls. -->
-            <button class="btn btn-sm" id="sub-reheat-cancel-btn" type="button" hidden>Cancel</button>
             <!-- v1.41.7 (Dean has NO media backup): a DRY-RUN "Preview changes"
                  button sitting right beside Reheat. It POSTs
                  /api/ytdlp/repull-metadata/preview (read-only: moves nothing,
@@ -273,10 +283,13 @@
                     title="See exactly which files a reheat would move — and which get copied across filesystems — without moving anything">
               <i class="icon-refresh"></i> Preview changes
             </button>
-            <button class="btn btn-sm" id="sub-reheat-btn" type="button"
-                    title="Re-fetch channel, title, date, chapters and subtitles for videos already in your library — including imported/MeTube ones">
-              <i class="icon-refresh"></i> Reheat metadata &amp; channels
-            </button>
+            <span class="action-bar-cell">
+              <button class="btn btn-sm" id="sub-reheat-btn" type="button"
+                      title="Re-fetch channel, title, date, chapters and subtitles for videos already in your library — including imported/MeTube ones">
+                <i class="icon-refresh"></i> Reheat metadata &amp; channels
+              </button>
+              <button class="btn btn-sm" id="sub-reheat-cancel-btn" type="button" hidden>Cancel</button>
+            </span>
             <!-- v1.25.5 QoL follow-up (channel avatars, round 2): triggers a
                  bulk re-probe of EVERY subscription's channel avatar (POST
                  /api/ytdlp/refresh-avatars), distinct from the Reheat button
@@ -287,10 +300,12 @@
                  runs -- see
                  lib/ytdlp/client/subscriptions.js's
                  applyRefreshAvatarsStateToControls. -->
-            <button class="btn btn-sm" id="sub-refresh-avatars-cancel-btn" type="button" hidden>Cancel</button>
-            <button class="btn btn-sm" id="sub-refresh-avatars-btn" type="button">
-              <i class="icon-refresh"></i> Refresh avatars
-            </button>
+            <span class="action-bar-cell">
+              <button class="btn btn-sm" id="sub-refresh-avatars-btn" type="button">
+                <i class="icon-refresh"></i> Refresh avatars
+              </button>
+              <button class="btn btn-sm" id="sub-refresh-avatars-cancel-btn" type="button" hidden>Cancel</button>
+            </span>
           </div>
           <!-- v1.26.2 polish fix (Dean punchlist #5): the three status spans
                below used to live INSIDE .sub-list-header-actions (the

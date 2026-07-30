@@ -54,7 +54,9 @@ test('no other .sub-* selector still uses --mono-font (only the intentional path
 // ---- Item 2: Reheat/Rescan "trailing line" artifact -------------------------
 
 test('subscriptions.html: the three status spans moved OUT of .sub-list-header-actions into a dedicated .sub-list-header-status row', () => {
-  const actionsBlock = /<div class="sub-list-header-actions">([\s\S]*?)<\/div>/.exec(subsHtml);
+  // v1.55 Track B (DELIBERATE lock update): the div gained the sitewide
+  // action-bar class -- match the class list openly, keep the capture shape.
+  const actionsBlock = /<div class="sub-list-header-actions[^"]*">([\s\S]*?)<\/div>/.exec(subsHtml);
   assert.ok(actionsBlock, 'expected a .sub-list-header-actions block');
   assert.ok(!/id="sub-repull-status"/.test(actionsBlock[1]), 'sub-repull-status must no longer live inside .sub-list-header-actions');
   assert.ok(!/id="sub-reheat-status"/.test(actionsBlock[1]), 'sub-reheat-status must no longer live inside .sub-list-header-actions');

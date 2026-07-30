@@ -3232,13 +3232,17 @@ function buildOneOffModal(doc, handlers) {
   let currentEntry = null;
   const retryBtn = d.createElement('button');
   retryBtn.type = 'button';
-  retryBtn.className = 'btn btn-sm oneoff-modal-retry';
+  // v1.55 Track B (Dean: "this weird little retry button on the left, and
+  // then boom... big download button. The retry just looks off"): Retry and
+  // Download now share ONE .action-bar row (equal-width cells) instead of a
+  // small stray button floating above a big primary. Same lifecycle: Retry
+  // exists only while the entry is in its error state (setStatus below).
+  retryBtn.className = 'btn oneoff-modal-retry';
   retryBtn.textContent = 'Retry';
   retryBtn.hidden = true;
   retryBtn.addEventListener('click', () => {
     if (typeof h.onRetry === 'function') h.onRetry(currentEntry);
   });
-  modal.appendChild(retryBtn);
 
   const downloadBtn = d.createElement('button');
   downloadBtn.type = 'button';
@@ -3253,7 +3257,11 @@ function buildOneOffModal(doc, handlers) {
     const body = buildOneOffDownloadBody(url, formatSelect.value, qualitySelect.value, filetypeSelect.value, folderInput.value);
     if (typeof h.onDownload === 'function') h.onDownload(body);
   });
-  modal.appendChild(downloadBtn);
+  const actionsRow = d.createElement('div');
+  actionsRow.className = 'action-bar oneoff-modal-actions';
+  actionsRow.appendChild(retryBtn);
+  actionsRow.appendChild(downloadBtn);
+  modal.appendChild(actionsRow);
 
   // Renders a live-status entry (or clears the line when `null`/no entry) --
   // `textContent` only, never `innerHTML`, no matter what `entry.title`/

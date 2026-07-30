@@ -161,7 +161,7 @@
           <button type="button" class="btn btn-sm" id="logo-upload-btn-dark">Upload dark logo…</button>
           <button type="button" class="btn btn-sm" id="logo-reset-btn-dark" hidden>Remove dark logo</button>
         </div>
-        <div id="logo-status" class="sub-row-meta" style="margin-top:6px;"></div>
+        <div id="logo-status" class="action-status" style="margin-top:6px;" aria-live="polite"></div>
       </div>
 
       <div class="setup-box">
@@ -190,9 +190,13 @@
           </div>
         </div>
 
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 24px; border-top: 1px solid var(--border-color); padding-top: 16px; flex-wrap: wrap; gap: 10px;">
-          <span id="scan-status" style="font-weight: bold; color: var(--text-secondary);"></span>
-          <button class="btn btn-primary" id="save-config-btn" style="padding: 10px 20px; font-size: 13px;">Save & Scan Library</button>
+        <!-- v1.55 Track B/C: shared footer row + the ONE status treatment
+             (setup.js writes it via setActionStatus). -->
+        <div class="action-footer">
+          <span id="scan-status" class="action-status" aria-live="polite"></span>
+          <div class="action-bar">
+            <button class="btn btn-primary" id="save-config-btn">Save & Scan Library</button>
+          </div>
         </div>
       </div>
 
@@ -225,11 +229,11 @@
           </div>
         </div>
 
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 24px; border-top: 1px solid var(--border-color); padding-top: 16px; flex-wrap: wrap; gap: 10px;">
-          <span id="book-scan-status" style="font-weight: bold; color: var(--text-secondary);"></span>
-          <div style="display: flex; gap: 10px; flex-shrink: 0;">
+        <div class="action-footer">
+          <span id="book-scan-status" class="action-status" aria-live="polite"></span>
+          <div class="action-bar">
             <button class="btn" id="scan-books-btn">Scan books now</button>
-            <button class="btn btn-primary" id="save-book-config-btn" style="padding: 10px 20px; font-size: 13px;">Save book folders</button>
+            <button class="btn btn-primary" id="save-book-config-btn">Save book folders</button>
           </div>
         </div>
       </div>
@@ -263,11 +267,11 @@
           </div>
         </div>
 
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 24px; border-top: 1px solid var(--border-color); padding-top: 16px; flex-wrap: wrap; gap: 10px;">
-          <span id="music-scan-status" style="font-weight: bold; color: var(--text-secondary);"></span>
-          <div style="display: flex; gap: 10px; flex-shrink: 0;">
+        <div class="action-footer">
+          <span id="music-scan-status" class="action-status" aria-live="polite"></span>
+          <div class="action-bar">
             <button class="btn" id="scan-music-btn">Scan music now</button>
-            <button class="btn btn-primary" id="save-music-config-btn" style="padding: 10px 20px; font-size: 13px;">Save music folders</button>
+            <button class="btn btn-primary" id="save-music-config-btn">Save music folders</button>
           </div>
         </div>
       </div>
@@ -470,9 +474,11 @@
           <small id="prune-missing-error" class="field-error"></small>
         </div>
 
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 24px; border-top: 1px solid var(--border-color); padding-top: 16px; flex-wrap: wrap; gap: 10px;">
-          <span id="automation-scan-status" style="font-weight: bold; color: var(--text-secondary);" aria-live="polite">Last scanned: loading…</span>
-          <button class="btn" id="scan-now-btn">Scan now</button>
+        <div class="action-footer">
+          <span id="automation-scan-status" class="action-status" aria-live="polite">Last scanned: loading…</span>
+          <div class="action-bar">
+            <button class="btn" id="scan-now-btn">Scan now</button>
+          </div>
         </div>
 
         <h3 style="margin-top:28px;">Transcode cache</h3>

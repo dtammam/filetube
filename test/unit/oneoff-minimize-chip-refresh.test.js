@@ -187,9 +187,14 @@ async function bootOpenAndFillUrl({ doc, headerRight }, url) {
   assert.ok(backdrop, 'expected the modal backdrop appended to document.body on open');
   const modal = backdrop.children.find((c) => c.className === 'oneoff-modal');
   assert.ok(modal, 'expected the inner .oneoff-modal dialog');
-  const urlInput = modal.children[1]; // header, urlInput, row, folderInput, statusEl, progressTrack, retryBtn, downloadBtn
+  const urlInput = modal.children[1]; // header, urlInput, row, folderInput, statusEl, progressTrack, actionsRow(Retry+Download)
   urlInput.value = url;
-  const downloadBtn = modal.children.find((c) => c.className === 'btn btn-primary');
+  // v1.55 Track B (DELIBERATE harness update): Retry+Download moved into one
+  // .action-bar row (the stray floating Retry was Dean's complaint) -- the
+  // Download button is now inside that row, not a direct modal child.
+  const actionsRow = modal.children.find((c) => c.className === 'action-bar oneoff-modal-actions');
+  assert.ok(actionsRow, 'expected the shared Retry+Download action row');
+  const downloadBtn = actionsRow.children.find((c) => c.className === 'btn btn-primary');
   assert.ok(downloadBtn, 'expected the Download button');
   const statusEl = modal.children.find((c) => c.className === 'oneoff-modal-status');
   assert.ok(statusEl, 'expected the status line element');
