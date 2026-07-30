@@ -1,9 +1,12 @@
 'use strict';
 // P1 scene lint (2026-07-30 hardening): capture scenes are read-only by
 // contract - they never actuate destructive controls. Scene 21 drove the
-// home delete flow and destroyed 8 real files; this lint makes that class
-// unrepresentable. It scans the STRUCTURED scene data (not source text),
-// so comments and notes can mention deletion freely - only actions count.
+// home delete flow and destroyed 8 real files; this lint makes the NAMED
+// class unrepresentable (a lexical scan cannot catch a positional or
+// data-attribute selector aimed at a destructive control - the runtime
+// request-policy guard is the actual no-mutation guarantee; this lint is
+// the early tripwire). It scans the STRUCTURED scene data (not source
+// text), so comments and notes can mention deletion freely.
 
 const { test } = require('node:test');
 const assert = require('node:assert');
@@ -40,7 +43,9 @@ test('the retired hard-delete scene stays retired AND marked destructive in the 
 });
 
 test('every action tuple is a known op (no vocabulary drift past the lint)', () => {
-  const KNOWN = new Set(['wait', 'click', 'hover', 'scrollTo', 'setViewportWidth', 'evalJs', 'goto']);
+  // Exactly the ops capture.js's dispatcher implements - advertising an
+  // unimplemented op here would let a scene silently no-op (gate finding).
+  const KNOWN = new Set(['wait', 'click', 'hover', 'scrollTo', 'setViewportWidth', 'evalJs']);
   for (const scene of allScenes) {
     for (const [op] of scene.actions) {
       assert.ok(KNOWN.has(op), `${scene.id}: unknown op '${op}' - extend the lint before extending the vocabulary`);

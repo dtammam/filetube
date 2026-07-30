@@ -5066,25 +5066,45 @@ app.use(authGate);
 //    method, path, status, user. Middleware placement covers every
 //    destructive route, present and future, by construction (no per-route
 //    wiring to forget).
-// 2) FILETUBE_READONLY=1: a TOTAL mutating-request refusal for instances
-//    that exist to be photographed or paralleled. Deliberately distinct
-//    from FILETUBE_READ_ONLY_MEDIA (the v1.42 beta lever, which by design
-//    keeps likes/progress/settings writable): this one rejects EVERY
-//    mutating verb except the session POSTs (login/logout) and the
-//    relocation dry-run preview, which is read-only by server contract.
-//    Read per-request so tests can toggle it without a re-require.
+// 2) FILETUBE_READONLY=1: refuse every mutating VERB for instances that
+//    exist to be photographed or paralleled. Deliberately distinct from
+//    FILETUBE_READ_ONLY_MEDIA (the v1.42 beta lever, which by design
+//    keeps likes/progress/settings writable): this one rejects all
+//    POST/PUT/PATCH/DELETE except the session POSTs (login/logout/first-
+//    run setup) and the relocation dry-run preview, which is read-only by
+//    server contract. HONEST LIMIT (gate finding): verb-only enforcement
+//    cannot stop the media-serving GETs from writing to the transcode/
+//    rendition CACHE (queueTranscode/queueAudioExtract/roku remux) -
+//    cache-only and self-healing, disclosed in docs/CONFIGURATION.md and
+//    tech-debt #65. Read per-request so tests toggle without a re-require.
 const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 const READONLY_ALLOWED_POSTS = new Set([
   '/api/auth/login',
   '/api/auth/logout',
+  // First-run provisioning: the auth gate already allowlists setup pre-auth
+  // (and 409s it once users exist) - without this, a fresh zero-user
+  // instance under FILETUBE_READONLY could never create its first admin
+  // (gate finding).
+  '/api/auth/setup',
   '/api/ytdlp/repull-metadata/preview',
 ]);
 app.use((req, res, next) => {
   if (!MUTATING_METHODS.has(req.method)) return next();
-  res.on('finish', () => {
-    const who = (req.user && (req.user.username || req.user.name || req.user.id)) || 'unauthenticated';
-    console.log(`[audit] ${req.method} ${req.path} ${res.statusCode} user=${who}`);
-  });
+  // 'finish' AND 'close', once-guarded: a client that tears the socket down
+  // mid-request (fire-and-forget fetch, a capture context closing) never
+  // fires 'finish', and the mutation may still have completed inside the
+  // route - exactly the shape the audit exists to catch (gate CRITICAL-2).
+  // originalUrl, not path: ?removeAnyway=true is a materially different
+  // destructive operation from a bare DELETE and must not log identically.
+  let audited = false;
+  const emit = () => {
+    if (audited) return;
+    audited = true;
+    const who = (req.user && (req.user.username || req.user.name || req.user.id)) || req.auditActor || 'unauthenticated';
+    console.log(`[audit] ${new Date().toISOString()} ${req.method} ${req.originalUrl} ${res.statusCode} user=${who}`);
+  };
+  res.on('finish', emit);
+  res.on('close', emit);
   return next();
 });
 app.use((req, res, next) => {
@@ -5097,7 +5117,7 @@ app.use((req, res, next) => {
   });
 });
 if (process.env.FILETUBE_READONLY === '1') {
-  console.log('[read-only] FILETUBE_READONLY=1 - this instance rejects ALL mutating requests except login/logout and the relocation dry-run preview.');
+  console.log('[read-only] FILETUBE_READONLY=1 - every mutating VERB is rejected except login/logout/setup and the relocation dry-run preview. (Media-serving GETs may still write to the transcode cache - see docs/CONFIGURATION.md.)');
 }
 
 // Set/clear the session cookie for a user id (+ current tv).
@@ -12774,6 +12794,9 @@ module.exports = {
   app,
   needsTranscode,
   transcodedPath,
+  // 2026-07-30 hardening: exported so the capture harness's request policy
+  // can assert its allowlist stays a subset of this one (twin contracts).
+  READONLY_ALLOWED_POSTS,
   // v1.41.10: the live media read-stream registry (leaked-fd/DELETE_PENDING
   // fix) + the delete route's parent-dir post-verify -- exported for direct
   // test coverage (see activeMediaStreams' header for the incident).
