@@ -19,7 +19,25 @@ const OUT = arg('--out', `captures-${new Date().toISOString().slice(0, 10)}`);
 const ONLY = arg('--only', '') ? arg('--only', '').split(',') : null;
 const FIXTURE_VIDEO = arg('--fixture-video', '');
 const FIXTURE_BOOK = arg('--fixture-book', '');
-const LOGIN = arg('--login', process.env.CAPTURE_LOGIN || ''); // user:pass - the app's auth wall (v1.43)
+// Credentials (Dean's ruling 3): NEVER on argv - shell history and the
+// process table leak it. FILETUBE_CAPTURE_AUTH=user:pass, or an
+// interactive hidden prompt. No CLI fallback exists on purpose.
+const LOGIN = process.env.FILETUBE_CAPTURE_AUTH || '';
+async function promptLogin() {
+  const readline = require('node:readline');
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  const q = (t, mute) => new Promise((res) => {
+    if (mute) {
+      process.stdout.write(t);
+      const rl2 = readline.createInterface({ input: process.stdin, output: undefined, terminal: true });
+      rl2.question('', (a) => { rl2.close(); process.stdout.write('\n'); res(a); });
+    } else rl.question(t, res);
+  });
+  const user = await q('capture login user: ');
+  const pass = await q('capture login password (hidden): ', true);
+  rl.close();
+  return user + ':' + pass;
+}
 
 const FREEZE_CSS = `*,*::before,*::after{transition:none!important;animation-play-state:paused!important;animation-delay:-0.01s!important;caret-color:transparent!important}`;
 
@@ -64,8 +82,9 @@ async function runScene(browser, scene, era, mode, vpName, record) {
     manualScenes: notAutomatable, captured: [], failed: [] };
   const browser = await chromium.launch();
   // Auth: log in once, persist storageState for every scene context.
-  if (LOGIN) {
-    const [user, pass] = LOGIN.split(':');
+  const loginPair = LOGIN || (process.stdin.isTTY ? await promptLogin() : '');
+  if (loginPair) {
+    const [user, pass] = loginPair.split(':');
     const ctx = await browser.newContext();
     const page = await ctx.newPage();
     await page.goto(BASE + '/login.html', { waitUntil: 'networkidle' });

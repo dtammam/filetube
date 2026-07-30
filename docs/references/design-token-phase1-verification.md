@@ -221,3 +221,20 @@ silently detach the spelling locks from reality).
 - Step 3 remains blocked until Dean's baseline screenshot location +
   P1/P2 capture confirmation arrive. The strict reading applies: no
   declaration edits of any kind (including zero-delta A/B1) until then.
+
+## Pre-capture rulings (Dean)
+
+1. PLAYWRIGHT ACCEPTED as delivered: isolated tools/capture package,
+   zero root-lockfile impact, zero advisories - meets the bar stylelint
+   failed.
+2. Frozen end-state ENDORSED as the baseline posture; the manifest's
+   mid-fade spec is SUPERSEDED (manifest + scenes.js updated so no
+   future run resurrects it).
+3. Credentials moved off argv: FILETUBE_CAPTURE_AUTH env var or hidden
+   interactive prompt; the CLI flag was REMOVED, not kept as fallback.
+   Session state remains memory-only, never written to run records.
+4. Manual scenes split (grep-verified against 3a-3g): LEDGER-TOUCHED
+   gate-blockers = 13-toast, 04-resume, 10-audio-expanded. Dean's other
+   guesses corrected: 03-cc is the protected carve-out (witness shot
+   recommended, not required); 11b-reheat-running and 02-playing-frame
+   are untouched by any ledger.

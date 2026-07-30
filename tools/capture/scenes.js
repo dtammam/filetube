@@ -56,15 +56,26 @@ const p3 = [
   { id: '24-r7-radii', path: '/', eras: [['2005', 'light'], ['2009', 'light']], actions: [['wait', '.video-card']] },
 ];
 
+// Manual-scene classes (Dean's ruling 4), verified against the 3a-3g
+// ledger targets by grep, not guess:
+// LEDGER-TOUCHED (gate-blocking; Dean's BEFORE-shots required pre-Step 3):
+//   13-toast (3a padding 18->16 AND 3c scrim .85->.8), 04-resume (3c
+//   .75->.8), 10-audio-expanded (3d elevation shadows .5/.6->.45).
+// JUDGMENT-ONLY (does NOT block the gate) - corrections to Dean's guesses:
+//   03-cc is the PROTECTED carve-out (no ledger touches it; a before-shot
+//   is still recommended as the protection witness, not required);
+//   11b-reheat-running: zero 14px/0.2s/scrim/shadow targets in the chip
+//   region (grep-verified); 02-playing frame: its skip-hover 0.8 is an
+//   EXACT-value adoption (zero delta).
 const notAutomatable = [
-  { id: '02-watch-playing', why: 'real playback frame - video pixels are codec/device-dependent even seeked+paused; TRUE-DEVICE MANUAL' },
-  { id: '03-cc-overlay', why: 'needs the designated bright test asset + caption track playing; caption line pixels depend on media - MANUAL (the 0.85 legibility floor is a judgment surface anyway)' },
-  { id: '04-resume-overlay', why: 'needs per-user progress state >threshold on the fixture video; automatable ONLY if the env seeds progress - falls to manual unless Dean seeds it' },
-  { id: '10-audio-expanded', why: 'audio playback + expand gesture; vinyl spin frozen is fine but artwork/media pixels are env media - MANUAL' },
-  { id: '11b-reheat-running', why: 'live server batch state (chip mid-run, Cancel swapped) - inherently transient; MANUAL' },
-  { id: '13-toast', why: 'requires a mutating action (pin toggle) against live data; MANUAL to avoid state churn in baselines' },
-  { id: '19-2005-pass', why: 'covered by p2EraSpotChecks above - automated' },
-  { id: '20-768-boundary', why: 'covered by 17b/17c width steps for setup; home/watch boundary shots automated via setViewportWidth in the matrix runner' },
+  { id: '02-watch-playing', cls: 'JUDGMENT-ONLY', why: 'real playback frame - video pixels are codec/device-dependent even seeked+paused; TRUE-DEVICE MANUAL' },
+  { id: '03-cc-overlay', cls: 'JUDGMENT-ONLY (protection witness recommended)', why: 'needs the designated bright test asset + caption track playing; caption line pixels depend on media - MANUAL (the 0.85 legibility floor is a judgment surface anyway)' },
+  { id: '04-resume-overlay', cls: 'LEDGER-TOUCHED (gate-blocking)', why: 'needs per-user progress state >threshold on the fixture video; automatable ONLY if the env seeds progress - falls to manual unless Dean seeds it' },
+  { id: '10-audio-expanded', cls: 'LEDGER-TOUCHED (gate-blocking)', why: 'audio playback + expand gesture; vinyl spin frozen is fine but artwork/media pixels are env media - MANUAL' },
+  { id: '11b-reheat-running', cls: 'JUDGMENT-ONLY', why: 'live server batch state (chip mid-run, Cancel swapped) - inherently transient; MANUAL' },
+  { id: '13-toast', cls: 'LEDGER-TOUCHED (gate-blocking)', why: 'requires a mutating action (pin toggle) against live data; MANUAL to avoid state churn in baselines' },
+  { id: '19-2005-pass', cls: 'automated', why: 'covered by p2EraSpotChecks above - automated' },
+  { id: '20-768-boundary', cls: 'automated', why: 'covered by 17b/17c width steps for setup; home/watch boundary shots automated via setViewportWidth in the matrix runner' },
 ];
 
 module.exports = { VIEWPORTS, ERAS_P1, scenes, p2EraSpotChecks, p3, notAutomatable };

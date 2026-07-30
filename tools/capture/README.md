@@ -1,5 +1,11 @@
 # Capture harness (Tier 3 baselines / Stop B compare)
 
+AUTHORITATIVE manifest = scenes.js (the original prose manifest's
+mid-fade spec is SUPERSEDED by frozen end-state per Dean's ruling -
+endorsed, not a deviation; no future run should resurrect it).
+Manual scenes carry cls markers: LEDGER-TOUCHED (gate-blocking
+before-shots: 13-toast, 04-resume, 10-audio-expanded) vs JUDGMENT-ONLY.
+
 Isolated package: Playwright and its tree NEVER enter the app's root
 package-lock (`npm ci` for FileTube is unaffected). Install here only:
 
