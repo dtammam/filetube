@@ -35,3 +35,8 @@ Manual scenes (not automatable deterministically - Dean's device list):
 02 playing-frame, 03 cc-over-bright (legibility judgment), 04 resume
 overlay (unless progress seeded), 10 audio-expanded, 11b reheat-running,
 13 toast. Recorded per-run in run-record.json.
+
+Ledger coverage-audit additions (2026-07-30): 25-login, 26-playlists-
+sheet (phone-only via the new per-scene `viewports` field), 23d-ghost-
+red-reader. Gate-blocker VALUE corrections live in scenes.js's manual-
+scene comment (toast is 3a-only; resume is .85->.8).

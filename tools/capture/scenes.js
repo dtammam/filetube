@@ -43,6 +43,13 @@ const scenes = [
   { id: '21-hard-delete', path: '/', actions: [['wait', '.video-card'], ['hover', '.video-card'],
     ['click', '.card-delete-btn'], ['click', '.card-delete-confirm'], ['wait', '.hard-delete-modal-backdrop:not([hidden])']],
     note: 'CANCEL after shot - driver presses Escape; deletes nothing without confirm', p: 'P2' },
+  // Added by the Step 3 ledger coverage audit (2026-07-30): these surfaces
+  // carry ledgered deltas but had no scene.
+  { id: '25-login', path: '/login', actions: [['wait', '.login-submit']],
+    note: 'pre-auth page - ledger 3a touches the wordmark pill + era-switch chips; reachable without credentials' },
+  { id: '26-playlists-sheet', path: '/', viewports: ['phone'], actions: [
+    ['wait', '#nav-playlists-btn'], ['click', '#nav-playlists-btn'], ['wait', '.playlists-sheet:not([hidden])']],
+    note: 'phone-only bottom-nav sheet - ledger 3c touches its backdrop scrim (0.5->0.55)' },
 ];
 
 const p2EraSpotChecks = { eras: [['2005', 'light']], sceneIds: ['06-home-grid', '05-watch-cold', '11-subs-top'], viewport: 'desktop' };
@@ -53,14 +60,24 @@ const p3 = [
   { id: '23-ghost-red-books', path: '/books.html', eras: [['2014', 'light']], actions: [['wait', '.book-progress-fill,.books-shelf-chip']] },
   { id: '23b-ghost-red-reloc', path: '/subscriptions', eras: [['2014', 'light']], actions: [['wait', '#sub-reheat-preview-btn'], ['click', '#sub-reheat-preview-btn'], ['wait', '.reloc-preview-panel']] },
   { id: '23c-ghost-red-stats', path: '/stats.html', eras: [['2014', 'light']], actions: [['wait', '.stat-tile-value'], ['scrollTo', 'footer,.stats-meta-text']] },
+  { id: '23d-ghost-red-reader', path: '/read.html?id=FIXTURE_BOOK', eras: [['2014', 'light']], actions: [['wait', '.reader-topbar']],
+    note: 'reader progress fill is the 9th ghost-red surface (coverage-audit addition); progress state comes from the fixture book' },
   { id: '24-r7-radii', path: '/', eras: [['2005', 'light'], ['2009', 'light']], actions: [['wait', '.video-card']] },
 ];
 
-// Manual-scene classes (Dean's ruling 4), verified against the 3a-3g
-// ledger targets by grep, not guess:
+// Manual-scene classes (Dean's ruling 4). VALUE CORRECTIONS 2026-07-30,
+// re-verified against style.css during ledger authoring:
 // LEDGER-TOUCHED (gate-blocking; Dean's BEFORE-shots required pre-Step 3):
-//   13-toast (3a padding 18->16 AND 3c scrim .85->.8), 04-resume (3c
-//   .75->.8), 10-audio-expanded (3d elevation shadows .5/.6->.45).
+//   13-toast (3a padding 18->16 ONLY - the toast has NO scrim, its
+//   background is themed var(--bg-sidebar); the earlier ".85->.8" claim
+//   was wrong), 04-resume (3c .85->.8 - the earlier ".75" was wrong; the
+//   .75 sites are the speed-badge and fullscreen controls),
+//   10-audio-expanded (3d elevation shadows .5/.6->.45).
+// COVERAGE GAP (found by the ledger census): the chapters MENU
+//   (3a paddings 14->12 + 3d shadow, style.css 5283/5417/5436) has no
+//   scene and needs chapters on the fixture video - a manual before-shot
+//   is RECOMMENDED if the fixture has chapters; otherwise it is a Stop B
+//   on-device judgment item, Dean's call.
 // JUDGMENT-ONLY (does NOT block the gate) - corrections to Dean's guesses:
 //   03-cc is the PROTECTED carve-out (no ledger touches it; a before-shot
 //   is still recommended as the protection witness, not required);

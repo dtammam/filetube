@@ -99,7 +99,9 @@ async function runScene(browser, scene, era, mode, vpName, record) {
   for (const scene of scenes) {
     if (ONLY && !ONLY.some((o) => scene.id.startsWith(o))) continue;
     for (const [era, mode] of ERAS_P1) {
-      for (const vpName of Object.keys(VIEWPORTS)) await runScene(browser, scene, era, mode, vpName, record);
+      // scene.viewports restricts the matrix (e.g. phone-only sheets that
+      // have no desktop rendering); default remains every viewport.
+      for (const vpName of (scene.viewports || Object.keys(VIEWPORTS))) await runScene(browser, scene, era, mode, vpName, record);
     }
   }
   for (const [era, mode] of p2EraSpotChecks.eras) {
