@@ -39,4 +39,6 @@ overlay (unless progress seeded), 10 audio-expanded, 11b reheat-running,
 Ledger coverage-audit additions (2026-07-30): 25-login, 26-playlists-
 sheet (phone-only via the new per-scene `viewports` field), 23d-ghost-
 red-reader. Gate-blocker VALUE corrections live in scenes.js's manual-
-scene comment (toast is 3a-only; resume is .85->.8).
+scene comment (toast is 3a-only; resume is .85->.8). Ruling-B
+additions: 24b-24e photograph the seven era-varying --radius-lg
+adoption surfaces in 2005/2009 (music lib + drill, books, reloc).

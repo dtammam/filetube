@@ -63,6 +63,17 @@ const p3 = [
   { id: '23d-ghost-red-reader', path: '/read.html?id=FIXTURE_BOOK', eras: [['2014', 'light']], actions: [['wait', '.reader-topbar']],
     note: 'reader progress fill is the 9th ghost-red surface (coverage-audit addition); progress state comes from the fixture book' },
   { id: '24-r7-radii', path: '/', eras: [['2005', 'light'], ['2009', 'light']], actions: [['wait', '.video-card']] },
+  // 24b-24e: witnesses for 3g ruling B (2026-07-30) - the seven 6/8/14px
+  // radius sites adopt the era-VARYING --radius-lg (0 in 2005, 2px in
+  // 2009), so their surfaces need before-shots in those eras, not just P1.
+  { id: '24b-r8-music-lib', path: '/music.html', eras: [['2005', 'light'], ['2009', 'light']],
+    actions: [['wait', '.music-album-art,.music-tab']] },
+  { id: '24c-r8-music-drill', path: '/music.html', eras: [['2005', 'light'], ['2009', 'light']],
+    actions: [['wait', '.music-album-art'], ['click', '.music-album-art'], ['wait', '.music-drill-sticky']] },
+  { id: '24d-r8-books', path: '/books.html', eras: [['2005', 'light'], ['2009', 'light']],
+    actions: [['wait', '.books-shelf-chip,.book-row-cover']] },
+  { id: '24e-r8-reloc', path: '/subscriptions', eras: [['2005', 'light'], ['2009', 'light']],
+    actions: [['wait', '#sub-reheat-preview-btn'], ['click', '#sub-reheat-preview-btn'], ['wait', '.reloc-preview-panel']] },
 ];
 
 // Manual-scene classes (Dean's ruling 4). VALUE CORRECTIONS 2026-07-30,

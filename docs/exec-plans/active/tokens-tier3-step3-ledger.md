@@ -223,20 +223,20 @@ silent, but keep them out).
 | public/css/style.css:7828 | .shortcuts-modal kbd | `line-height: 1.5` | LH-EXACT | line-height: var(--lh-relaxed) | none |  |
 | public/css/style.css:8209 | .notif-row-title | `line-height: 1.3` | LH-DRIFT | line-height: var(--lh-tight) | 1.3->1.25 | scene 12b |
 
-## 3g - radius drift (PARTIALLY REOPENED by gate CRITICAL): the 3px -> 2/4 per-site literal trio stands; the seven 6/8/14px sites are REOPENED - the interim claim that --radius-lg would be a NEW era-invariant token was FALSE (it exists, era-varying, with consumers) and Dean must re-rule
+## 3g - radius drift (R8; Dean RULING B 2026-07-30): the seven 6/8/14px sites adopt the EXISTING era-varying --radius-lg (12px in 2021 / 0 in 2005 / 2px in 2009+2014) with per-era deltas enumerated per row - the only deliberately era-VARYING batch, witnessed by the 24b-24e era scenes; the 3px -> 2/4 per-site literal trio is era-invariant
 
 | file:line | selector / JS context | declaration (linter-exact) | bucket | proposed after | delta | notes |
 |---|---|---|---|---|---|---|
-| public/css/style.css:1934 | .speed-badge | `border-radius: 14px` | G-RADIUS-REOPENED | - | - | REOPENED - gate CRITICAL: --radius-lg already EXISTS era-varying (12px root / 0 in 2005 / 2px in 2009+2014) with live consumers; adoption is NOT era-invariant. Dean re-rules: Tier 4 with R7, per-era-enumerated adoption, or a genuinely new invariant token |
+| public/css/style.css:1934 | .speed-badge | `border-radius: 14px` | G-RADIUS-DRIFT | border-radius: var(--radius-lg) | 14px -> 12px (2021) / 0 (2005) / 2px (2009+2014) | RULED B (2026-07-30): era-varying adoption, per-era deltas enumerated; press-hold state - on-device judgment in every era |
 | public/css/style.css:6735 | .pinned-unpin-btn | `border-radius: 3px` | G-RADIUS-DRIFT | border-radius: 2px | 3px->2px (per-site, tie-down; Stop B flip to 4px open) | scene 11 |
-| public/css/style.css:6826 | .books-shelf-chip | `border-radius: 14px` | G-RADIUS-REOPENED | - | - | REOPENED - gate CRITICAL: --radius-lg already EXISTS era-varying (12px root / 0 in 2005 / 2px in 2009+2014) with live consumers; adoption is NOT era-invariant. Dean re-rules: Tier 4 with R7, per-era-enumerated adoption, or a genuinely new invariant token |
+| public/css/style.css:6826 | .books-shelf-chip | `border-radius: 14px` | G-RADIUS-DRIFT | border-radius: var(--radius-lg) | 14px -> 12px (2021) / 0 (2005) / 2px (2009+2014) | RULED B (2026-07-30): era-varying adoption, per-era deltas enumerated; scenes 15 + 24d-r8-books (2005/2009) |
 | public/css/style.css:7023 | .reader-np-cover | `border-radius: 3px` | G-RADIUS-DRIFT | border-radius: 4px | 3px->4px (per-site: joins the 4px thumb family) | scene 14 |
-| public/css/style.css:7178 | .reloc-preview-panel | `border-radius: 6px` | G-RADIUS-REOPENED | - | - | REOPENED - gate CRITICAL: --radius-lg already EXISTS era-varying (12px root / 0 in 2005 / 2px in 2009+2014) with live consumers; adoption is NOT era-invariant. Dean re-rules: Tier 4 with R7, per-era-enumerated adoption, or a genuinely new invariant token |
+| public/css/style.css:7178 | .reloc-preview-panel | `border-radius: 6px` | G-RADIUS-DRIFT | border-radius: var(--radius-lg) | 6px -> 12px (2021) / 0 (2005) / 2px (2009+2014) | RULED B (2026-07-30): era-varying adoption, per-era deltas enumerated; scenes 18 + 24e-r8-reloc (2005/2009); largest 2021 delta in the batch |
 | public/css/style.css:7247 | .reloc-preview-badge | `border-radius: 3px` | G-RADIUS-DRIFT | border-radius: 2px | 3px->2px (per-site, tie-down) | scene 18 |
-| public/css/style.css:7539 | .music-drill-art | `border-radius: 8px` | G-RADIUS-REOPENED | - | - | REOPENED - gate CRITICAL: --radius-lg already EXISTS era-varying (12px root / 0 in 2005 / 2px in 2009+2014) with live consumers; adoption is NOT era-invariant. Dean re-rules: Tier 4 with R7, per-era-enumerated adoption, or a genuinely new invariant token |
-| public/css/style.css:7599 | .music-album-art | `border-radius: 6px` | G-RADIUS-REOPENED | - | - | REOPENED - gate CRITICAL: --radius-lg already EXISTS era-varying (12px root / 0 in 2005 / 2px in 2009+2014) with live consumers; adoption is NOT era-invariant. Dean re-rules: Tier 4 with R7, per-era-enumerated adoption, or a genuinely new invariant token |
-| public/css/style.css:7627 | .music-artist-card | `border-radius: 8px` | G-RADIUS-REOPENED | - | - | REOPENED - gate CRITICAL: --radius-lg already EXISTS era-varying (12px root / 0 in 2005 / 2px in 2009+2014) with live consumers; adoption is NOT era-invariant. Dean re-rules: Tier 4 with R7, per-era-enumerated adoption, or a genuinely new invariant token |
-| public/css/style.css:7643 | .music-song-row | `border-radius: 6px` | G-RADIUS-REOPENED | - | - | REOPENED - gate CRITICAL: --radius-lg already EXISTS era-varying (12px root / 0 in 2005 / 2px in 2009+2014) with live consumers; adoption is NOT era-invariant. Dean re-rules: Tier 4 with R7, per-era-enumerated adoption, or a genuinely new invariant token |
+| public/css/style.css:7539 | .music-drill-art | `border-radius: 8px` | G-RADIUS-DRIFT | border-radius: var(--radius-lg) | 8px -> 12px (2021) / 0 (2005) / 2px (2009+2014) | RULED B (2026-07-30): era-varying adoption, per-era deltas enumerated; scenes 09 + 24c-r8-music-drill (2005/2009); the original 8->12 album-rounding Stop B flag |
+| public/css/style.css:7599 | .music-album-art | `border-radius: 6px` | G-RADIUS-DRIFT | border-radius: var(--radius-lg) | 6px -> 12px (2021) / 0 (2005) / 2px (2009+2014) | RULED B (2026-07-30): era-varying adoption, per-era deltas enumerated; scenes 08 + 24b-r8-music-lib (2005/2009) |
+| public/css/style.css:7627 | .music-artist-card | `border-radius: 8px` | G-RADIUS-DRIFT | border-radius: var(--radius-lg) | 8px -> 12px (2021) / 0 (2005) / 2px (2009+2014) | RULED B (2026-07-30): era-varying adoption, per-era deltas enumerated; artists tab - on-device judgment in era contexts |
+| public/css/style.css:7643 | .music-song-row | `border-radius: 6px` | G-RADIUS-DRIFT | border-radius: var(--radius-lg) | 6px -> 12px (2021) / 0 (2005) / 2px (2009+2014) | RULED B (2026-07-30): era-varying adoption, per-era deltas enumerated; scenes 09 + 24c-r8-music-drill (2005/2009) |
 
 ## 3h - JS-surface adoptions (v5 scope; post-original addition, hence the new letter)
 
@@ -383,8 +383,7 @@ silent, but keep them out).
 | DEAD-FALLBACK | 13 |
 | EXACT-ADOPT | 11 |
 | FW-JS-ADOPT | 5 |
-| G-RADIUS-DRIFT | 3 |
-| G-RADIUS-REOPENED | 7 |
+| G-RADIUS-DRIFT | 10 |
 | JS-ADOPT | 18 |
 | JS-DRIFT | 1 |
 | LAYOUT-CONSTANT | 6 |

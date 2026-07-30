@@ -23,21 +23,20 @@ original plan, so it takes the new letter 3h.
 
 ## Rulings received (Dean, 2026-07-30 - all questions CLOSED)
 
-1. Radius drift: Q1 "restore" brought it back as 3g - but the ruling is
-   **PARTIALLY REOPENED by a gate CRITICAL**: the plan's premise that
-   `--radius-lg` would be a NEW era-invariant token was FALSE.
-   `--radius-lg` already exists in the era theme layer (:root 12px,
-   2005 era 0, 2009/2014 2px) with live consumers (video frame, dock
-   chrome). Adopting it at the seven 6/8/14px sites is therefore an
-   ERA-VARYING change (square corners in 2005) that the recovered
-   original's own era-invariance guard would demote to Tier 4. What
-   stands: the 3px -> 2/4 per-site literal trio (era-invariant).
-   What awaits Dean's re-ruling for the seven sites: (A) Tier 4 with
-   R7, where era-varying adoption is the era-consistency repair behind
-   per-era screenshots - RECOMMENDED, it is what the original's guard
-   clause dictates; (B) adopt era-varying --radius-lg in Step 3 with
-   per-era deltas enumerated per context; (C) mint a genuinely new
-   invariant token. R7's raw 2/4px sites remain Tier 4 regardless.
+1. Radius drift - **RULED B (Dean, 2026-07-30, after the gate CRITICAL
+   corrected the premise)**: the seven 6/8/14px sites STAY in Step 3
+   and adopt the EXISTING era-varying `--radius-lg` (:root/2021 12px,
+   2005 0, 2009/2014 2px; live video-frame/dock consumers), with
+   per-era deltas enumerated per ledger row. This is the one
+   deliberately era-VARYING batch - a ruled exception to the recovered
+   original's era-invariance guard, chosen with the era values on the
+   table. Witnesses: the P1 scenes plus new era scenes 24b-24e
+   (2005/2009); speed-badge and artist-card era states are on-device
+   judgment. The 3px -> 2/4 per-site literal trio is era-invariant and
+   unchanged. R7's raw 2/4px sites remain Tier 4. History for the
+   audit trail: Q1 "restore" was given against a false "new
+   era-invariant token" premise; the gate caught it; B is the informed
+   re-ruling.
 2. Motion: 0.2s cluster (13 declarations / 11 sites) -> --dur-fast
    0.15s ("faster"); micro-band 0.08-0.12 ALSO -> 0.15 (Q2, overriding
    the original 0.1s-literal prescription). Per-site flips stay open
@@ -83,7 +82,7 @@ original plan, so it takes the new letter 3h.
 | 3d | Shadow elevation | 5 -> --shadow-modal (notif-panel 0.25->0.45 is the visible risk) + 1 no-action | 6 |
 | 3e | Motion | 16 -> --dur-fast/--dur-slow per rulings; 1 ruled exempt; ease-out/linear stay literal | 17 |
 | 3f | Line-height | 3 drift -> --lh-tight + 6 exact adoptions + 2 ruled exempts | 11 |
-| 3g | Radius drift (R8, PARTIALLY REOPENED) | 3 sites 3px -> 2/4 per-site stand; 7 sites REOPENED pending Dean's radius re-ruling (ruling 1) | 10 |
+| 3g | Radius drift (R8, ruling B) | 7 sites adopt era-varying --radius-lg with per-era deltas (12px 2021 / 0 2005 / 2px 2009+2014); 3 sites 3px -> 2/4 per-site (era-invariant) | 10 |
 | 3h | JS surfaces | 24 adoptions (one visible delta: stats 14->12) | 24 |
 
 Census remainder: 100 no-action census rows (the prior 110 minus the
@@ -117,10 +116,12 @@ player.js positional geometry.
 1. Fresh branch off main; `npm run ledger:check` must be CLEAN first.
 2. Opener commit (A annotations + B1/exact zero-delta adoptions) -
    differ must report EQUIVALENT across all 9 era x mode contexts.
-3. One commit per batch, 3a-3h order (3b's sweep produces its site
-   table before its commit; --radius-lg defined in 3g). Per commit:
-   apply only that batch's rows; differ delta-enumeration must match
-   the batch ledger exactly; `npm run ledger:check` green against the
+3. One commit per batch, 3a-3h order (3b's table is above; 3g defines
+   nothing - --radius-lg already exists). Per commit: apply only that
+   batch's rows; differ delta-enumeration must match the batch ledger
+   exactly - for 3g that means PER-CONTEXT: the 2005/2009/2014
+   contexts must show exactly the per-era resolutions the 3g rows
+   enumerate, not the 2021 values; `npm run ledger:check` green against the
    updated ledger; full unit suite green. Done-marking: strike
    fully-tokenized rows; REPLACE the six PARTIAL ADOPTION rows (1516,
    2308, 7246 keep a raw member; 5231, 5673, 6917 keep an env(...,0px)
