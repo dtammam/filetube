@@ -1737,8 +1737,53 @@ function getMockViews(mediaId, sizeBytes) {
 const DOWNLOAD_CAPTURE_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 function formatViewCountCaptureDate(ms) {
+  // v1.54 (Dean, approved with the subscriber-count spec): ISO YYYY-MM-DD --
+  // "I like that date format" -- replacing the locale short form.
+  // Gate round 1 (adversarial S1): LOCAL date fields, not toISOString (UTC)
+  // -- an evening capture must not be labeled with tomorrow's date.
   const d = new Date(ms);
-  return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+  const pad = (x) => String(x).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+// v1.54: YouTube-style compact count -- 999 -> "999", 1234 -> "1.2K",
+// 24000 -> "24K", 1200000 -> "1.2M". One decimal only under 10 of a unit,
+// trailing ".0" stripped. Gate round 1 (adversarial S2): FLOORS like YouTube
+// (24,600 -> "24K", never "25K") -- which also makes the unit boundary
+// impossible to overshoot (999,500 floors to "999K", never "1000K"). The
+// epsilon absorbs binary-float dust (4.3e6/1e6*10 can land a hair under 43)
+// so a decimal is never floored one tenth low. Pure; exported for node:test.
+function formatCompactCount(n) {
+  if (!Number.isInteger(n) || n < 0) return '0';
+  if (n < 1000) return String(n);
+  const units = [[1e9, 'B'], [1e6, 'M'], [1e3, 'K']];
+  for (const [div, suffix] of units) {
+    if (n >= div) {
+      const v = n / div;
+      const text = v < 10
+        ? (Math.floor(v * 10 + 1e-9) / 10).toFixed(1).replace(/\.0$/, '')
+        : String(Math.floor(v + 1e-9));
+      return text + suffix;
+    }
+  }
+  return String(n);
+}
+
+// v1.54 (Dean's real subscriber counts): the ONE subscriber-label resolver --
+// a captured count renders compact + "as of YYYY-MM-DD" (a snapshot label,
+// honest about its date, the resolveViewCountLabel posture); no capture ->
+// the deterministic mock, unchanged (Dean kept the fake-numbers house style
+// where no real one exists). Pure; consumed by deriveWatchPaintPlan so the
+// seed pre-paint and hydration cannot disagree.
+function resolveSubscriberLabel(item, channelName) {
+  const n = item ? item.sourceFollowerCount : undefined;
+  if (Number.isInteger(n) && n >= 0) {
+    const capturedAt = item.sourceFollowerCountCapturedAt;
+    const MAX_TIME_VALUE = 8.64e15;
+    const dated = typeof capturedAt === 'number' && Number.isFinite(capturedAt) && capturedAt > 0 && capturedAt <= MAX_TIME_VALUE;
+    return `${formatCompactCount(n)} subscribers` + (dated ? ` as of ${formatViewCountCaptureDate(capturedAt)}` : '');
+  }
+  return `${getMockSubCount(channelName)} subscribers`;
 }
 
 function resolveViewCountLabel(item, opts) {
@@ -1989,7 +2034,8 @@ function deriveWatchPaintPlan(item, channelName) {
   if (typeof channelName === 'string' && channelName !== '') {
     plan.channelName = channelName;
     plan.channelAvatarUrl = typeof item.channelAvatarUrl === 'string' ? item.channelAvatarUrl : '';
-    plan.subsLabel = `${getMockSubCount(channelName)} subscribers`;
+    // v1.54: real captured count when present, mock fallback otherwise.
+    plan.subsLabel = resolveSubscriberLabel(item, channelName);
   }
   if (typeof item.addedAt === 'number') plan.dateLabel = formatRelativeTime(item.addedAt);
   if (typeof item.size === 'number') plan.sizeLabel = formatFileSize(item.size);
@@ -8475,6 +8521,8 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.52: the instant-watch seed stash (single-entry, id-matched, aged) +
     // the pure paint-plan builder the watch painter applies verbatim.
     stashWatchSeed, consumeWatchSeed, deriveWatchPaintPlan, isFullWatchSeedItem,
+    // v1.54: subscriber-label pure helpers.
+    formatCompactCount, resolveSubscriberLabel, formatViewCountCaptureDate,
     // v1.53: the shared attribution picker (DOM thin-shell; wiring-locked).
     showAttributionPicker,
     // v1.53: the capability cache's pure gate + accessors.

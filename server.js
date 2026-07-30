@@ -2473,6 +2473,24 @@ function applyCapturedViewCount(item, consumed, nowMs = Date.now()) {
   return true;
 }
 
+// v1.54 (Dean's real subscriber counts): the follower-count sibling of
+// applyCapturedViewCount above -- ONE writer for all three consume sites
+// (the v1.41.4 discipline), the count and its capture moment written as a
+// UNIT. Field is `sourceFollowerCount` (collision-grepped clean; the v1.48
+// name-already-taken lesson).
+function applyCapturedFollowerCount(item, consumed, nowMs = Date.now()) {
+  if (!item || !consumed) return false;
+  const followers = consumed.sourceFollowerCount;
+  if (typeof followers !== 'number' || !Number.isInteger(followers) || followers < 0) return false;
+  const capturedAt = consumed.sourceFollowerCountCapturedAt;
+  item.sourceFollowerCount = followers;
+  item.sourceFollowerCountCapturedAt =
+    (typeof capturedAt === 'number' && Number.isFinite(capturedAt) && capturedAt > 0)
+      ? capturedAt
+      : nowMs;
+  return true;
+}
+
 // v1.51 notification bell: ONE collector for all three downloadMeta consume
 // sites (the v1.41.4 lesson is a seat that forgot to CALL the shared helper,
 // so there is exactly one to call and every site calls it). Only ever invoked
@@ -4095,6 +4113,13 @@ async function runScanDirectories() {
           newMetadata[id].sourceViewCount = existing.sourceViewCount;
           newMetadata[id].sourceViewCountCapturedAt = existing.sourceViewCountCapturedAt;
         }
+        // v1.54: the follower count carries as a unit too (same persist-gate
+        // checkpoint -- it cannot be re-derived from disk).
+        if (typeof existing.sourceFollowerCount === 'number' && Number.isInteger(existing.sourceFollowerCount) && existing.sourceFollowerCount >= 0 &&
+            typeof existing.sourceFollowerCountCapturedAt === 'number' && Number.isFinite(existing.sourceFollowerCountCapturedAt)) {
+          newMetadata[id].sourceFollowerCount = existing.sourceFollowerCount;
+          newMetadata[id].sourceFollowerCountCapturedAt = existing.sourceFollowerCountCapturedAt;
+        }
         // v1.34 T3: MANUAL chapters are user data with no probe source --
         // a changed file must never lose them (embedded `chapters` refresh
         // naturally from this branch's own probe).
@@ -4374,6 +4399,13 @@ async function runScanDirectories() {
               item.sourceViewCount = freshItem.sourceViewCount;
               item.sourceViewCountCapturedAt = freshItem.sourceViewCountCapturedAt;
             }
+            // v1.54: the reheat-refreshed follower count rides the same
+            // completed-mid-scan adoption.
+            if (typeof freshItem.sourceFollowerCount === 'number' && Number.isInteger(freshItem.sourceFollowerCount) && freshItem.sourceFollowerCount >= 0 &&
+                typeof freshItem.sourceFollowerCountCapturedAt === 'number' && Number.isFinite(freshItem.sourceFollowerCountCapturedAt)) {
+              item.sourceFollowerCount = freshItem.sourceFollowerCount;
+              item.sourceFollowerCountCapturedAt = freshItem.sourceFollowerCountCapturedAt;
+            }
           }
           // v1.34 T3: MANUAL chapters are written ONLY by the editor
           // endpoint -- the scan never touches the field -- so the fresh
@@ -4408,6 +4440,13 @@ async function runScanDirectories() {
               typeof freshItem.sourceViewCountCapturedAt === 'number' && Number.isFinite(freshItem.sourceViewCountCapturedAt)) {
             item.sourceViewCount = freshItem.sourceViewCount;
             item.sourceViewCountCapturedAt = freshItem.sourceViewCountCapturedAt;
+          }
+          // v1.54: the partial-reheat companion for the follower count.
+          if (item.sourceFollowerCount === undefined &&
+              typeof freshItem.sourceFollowerCount === 'number' && Number.isInteger(freshItem.sourceFollowerCount) && freshItem.sourceFollowerCount >= 0 &&
+              typeof freshItem.sourceFollowerCountCapturedAt === 'number' && Number.isFinite(freshItem.sourceFollowerCountCapturedAt)) {
+            item.sourceFollowerCount = freshItem.sourceFollowerCount;
+            item.sourceFollowerCountCapturedAt = freshItem.sourceFollowerCountCapturedAt;
           }
           // v1.34 gate fix (adversarial CRITICAL -- the class's companion
           // strike): a PARTIAL mid-scan reheat (markComplete false, marker
@@ -4529,6 +4568,7 @@ async function runScanDirectories() {
               item.title = consumedU.sourceTitle;
             }
             applyCapturedViewCount(item, consumedU);
+            applyCapturedFollowerCount(item, consumedU);
             collectDownloadNotification(pendingNotifications, item);
             dbChanged = true;
           } else if (!item.sourceId) {
@@ -4570,6 +4610,7 @@ async function runScanDirectories() {
               if (typeof consumedYt.releaseDate === 'number' && Number.isFinite(consumedYt.releaseDate)) item.releaseDate = consumedYt.releaseDate;
               if (typeof consumedYt.sourceTitle === 'string' && consumedYt.sourceTitle !== '') { item.sourceTitle = consumedYt.sourceTitle; item.title = consumedYt.sourceTitle; }
               applyCapturedViewCount(item, consumedYt);
+              applyCapturedFollowerCount(item, consumedYt);
               collectDownloadNotification(pendingNotifications, item);
               dbChanged = true;
             }
@@ -4618,6 +4659,7 @@ async function runScanDirectories() {
               item.channelAvatarUrl = consumed.channelAvatarUrl;
             }
             applyCapturedViewCount(item, consumed);
+            applyCapturedFollowerCount(item, consumed);
             collectDownloadNotification(pendingNotifications, item);
             dbChanged = true;
           }
@@ -11031,6 +11073,15 @@ async function recordRepulledItemMeta(deps, mediaId, meta, nowMs = Date.now()) {
         item.sourceViewCount = repulledViews;
         item.sourceViewCountCapturedAt = nowMs;
       }
+    }
+    // v1.54: the follower count SUPERSEDES unconditionally -- deliberately NO
+    // monotonicity guard (unlike views): subscriber counts legitimately fall,
+    // a reheat is a deliberate refresh, and the label carries its own "as of"
+    // date. Decided + disclosed in the v1.54 exec plan.
+    const repulledFollowers = ytdlp.parseCapturedFollowerCount(m.sourceFollowerCount);
+    if (repulledFollowers !== null) {
+      item.sourceFollowerCount = repulledFollowers;
+      item.sourceFollowerCountCapturedAt = nowMs;
     }
     // v1.41.5 (MeTube-import hydration): the channel identity the network
     // metadata pass discovered -- NEVER-OVERWRITE (AC17 posture), see this

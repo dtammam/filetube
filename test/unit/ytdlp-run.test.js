@@ -165,6 +165,7 @@ test('parseChannelMetaLine: parses a well-formed FTCHMETA JSON line (legacy YouT
     filePath: null,
     // v1.48 item 2: a payload with no `view_count` yields null (absent).
     sourceViewCount: null,
+    sourceFollowerCount: null,
   });
 });
 
@@ -197,6 +198,33 @@ test('parseChannelMetaLine: an absent/NA/non-finite view_count normalizes to nul
   assert.equal(parseChannelMetaLine(empty).sourceViewCount, null);
   const nul = `FTCHMETA ${JSON.stringify({ id: 'v1', view_count: null })}`;
   assert.equal(parseChannelMetaLine(nul).sourceViewCount, null);
+});
+
+// v1.54 gate round 1 W1: the follower-count twin of the view_count quartet
+// above. yt-dlp reports `channel_follower_count` as a JSON NUMBER -- routing
+// it through the string-only `present()` helper would null every real count
+// and ship the feature dead on arrival (the exact v1.47.4 class), with every
+// other test green.
+test('parseChannelMetaLine: a NUMERIC channel_follower_count survives (the presentNumeric lane, never present)', () => {
+  const line = `FTCHMETA ${JSON.stringify({ id: 'dQw4w9WgXcQ', channel_follower_count: 4560000 })}`;
+  assert.equal(parseChannelMetaLine(line).sourceFollowerCount, 4560000);
+});
+
+test('parseChannelMetaLine: a ZERO channel_follower_count survives as 0 (a brand-new channel really has 0)', () => {
+  const line = `FTCHMETA ${JSON.stringify({ id: 'dQw4w9WgXcQ', channel_follower_count: 0 })}`;
+  assert.equal(parseChannelMetaLine(line).sourceFollowerCount, 0);
+});
+
+test('parseChannelMetaLine: a STRING channel_follower_count is tolerated raw (bounded downstream by parseCapturedFollowerCount)', () => {
+  const line = `FTCHMETA ${JSON.stringify({ id: 'dQw4w9WgXcQ', channel_follower_count: '24000' })}`;
+  assert.equal(parseChannelMetaLine(line).sourceFollowerCount, '24000');
+});
+
+test('parseChannelMetaLine: an absent/NA/null channel_follower_count normalizes to null', () => {
+  const na = `FTCHMETA ${JSON.stringify({ id: 'v1', channel_follower_count: 'NA' })}`;
+  assert.equal(parseChannelMetaLine(na).sourceFollowerCount, null);
+  const nul = `FTCHMETA ${JSON.stringify({ id: 'v1', channel_follower_count: null })}`;
+  assert.equal(parseChannelMetaLine(nul).sourceFollowerCount, null);
 });
 
 test('parseChannelMetaLine: a UNIVERSAL-lane line carries source/uploader/filePath (v1.41.13)', () => {
@@ -257,6 +285,7 @@ test('parseChannelMetaLine: yt-dlp\'s JSON `null` (unavailable field), an empty 
     uploader: null,
     filePath: null,
     sourceViewCount: null,
+    sourceFollowerCount: null,
   });
 });
 

@@ -882,6 +882,13 @@ if (typeof module !== 'undefined' && module.exports) {
     renderStarRating();
     loadComments();
 
+    // (v1.54 A1's frame-one Subscribe/Pin seed render moved BELOW the
+    // applier's own `let` declarations -- gate round 1, adversarial C1: from
+    // here it threw a TDZ ReferenceError on `currentSubState` and the
+    // router's catch swallowed it, killing the rest of init. The browser
+    // paints only after init returns, so any synchronous position in this
+    // body is equally "frame one".)
+
     // W1 remediation (v1.16.0): for the DOCKED -> FULL "adopt" path (tapping
     // the docked mini-player while the SAME video is already loaded),
     // reparent the existing host + re-assert `play()` as EARLY as possible --
@@ -1702,6 +1709,26 @@ if (typeof module !== 'undefined' && module.exports) {
                 closeSubscribeModal();
                 currentSubState = { ...currentSubState, subscribed: true, subId: data.id };
                 applySubscribeButtonLabel(true);
+                // v1.54 A2 write-through: the cache learns the new
+                // subscription NOW, so the next page render never flashes
+                // the stale "Subscribe" (the reported FOUC's root cause).
+                const capAfterSub = readCapabilityCache();
+                // Gate round 1 (adversarial S3; comment corrected round 2 --
+                // both seats): carry channelId too when the identity has one
+                // -- inert for matching today (the matcher reads only
+                // sub.channelUrl) but shape-parity with the real row.
+                // channelHandleUrl is deliberately omitted because no real
+                // subscription record carries it (it is a db.metadata/
+                // downloadMeta field), NOT because the scrub drops it -- the
+                // scrub would actually keep it.
+                const identity = currentSubState.identity || {};
+                writeCapabilityCache({
+                  subs: scrubSubsForCache([...((capAfterSub && capAfterSub.subs) || []),
+                    {
+                      id: data.id, channelUrl: identity.channelUrl || '', name: currentChannelName,
+                      ...(identity.channelId ? { channelId: identity.channelId } : {}),
+                    }]),
+                });
               })
               .catch(() => {
                 if (subscribeModalState) subscribeModalState.setError('Network error -- could not subscribe.');
@@ -1723,8 +1750,14 @@ if (typeof module !== 'undefined' && module.exports) {
       fetch(`/api/subscriptions/${encodeURIComponent(subId)}`, { method: 'DELETE' })
         .then((r) => {
           if (!r.ok) return;
+          const removedSubId = subId;
           currentSubState = { ...currentSubState, subscribed: false, subId: null };
           applySubscribeButtonLabel(false);
+          // v1.54 A2 write-through (the unsubscribe mirror).
+          const capAfterUnsub = readCapabilityCache();
+          if (capAfterUnsub && Array.isArray(capAfterUnsub.subs)) {
+            writeCapabilityCache({ subs: capAfterUnsub.subs.filter((sub) => sub && sub.id !== removedSubId) });
+          }
         })
         .catch((e) => console.error('Error unsubscribing:', e));
     }
@@ -1783,6 +1816,23 @@ if (typeof module !== 'undefined' && module.exports) {
             const data = await res.json().catch(() => ({}));
             currentPinState = { ...currentPinState, pinned: true, pinId: (data && data.id) || null };
           }
+          // v1.54 A2 write-through: keep the cached pins truthful so the
+          // next render (and the pinned sidebar prime) match reality.
+          // Merge-only: when cache.pins was never populated we must NOT
+          // synthesize a one-entry array (the sidebar prime would render
+          // just this pin, dropping the user's others) -- refreshPinnedSidebar
+          // in the .finally below always runs fetchAllPins, whose merged
+          // writeCapabilityCache({ pins }) backfills authoritatively one
+          // round trip later either way.
+          const capAfterPin = readCapabilityCache();
+          if (capAfterPin && Array.isArray(capAfterPin.pins)) {
+            const others = capAfterPin.pins.filter((p) => !(p && p.pinSource === 'channel' && p.channelDir === currentPinState.channelDir));
+            writeCapabilityCache({
+              pins: currentPinState.pinned
+                ? [...others, { id: currentPinState.pinId || '', channelDir: currentPinState.channelDir, label: currentPinState.label, pinSource: 'channel' }]
+                : others,
+            });
+          }
         })
         .catch((err) => console.error('Pin toggle failed (network error):', err))
         .finally(() => {
@@ -1806,33 +1856,63 @@ if (typeof module !== 'undefined' && module.exports) {
     // new trust boundary). Visible under the SAME gate as the Subscribe
     // button (`currentSubState.visible` -- module enabled AND a resolvable
     // channel identity), per the AC's "when it has channel identity."
-    async function setupPinButton(subs) {
-      if (!subscribeBtnContainer) return;
+    // v1.54 A1 (Dean's FOUC report): ONE synchronous state applier for
+    // Subscribe AND Pin, fed either CACHED answers (frame-one on a seeded
+    // nav; hydration-instant otherwise) or CONFIRMED answers when the real
+    // fetches resolve -- the same render path both times, so a warm-cache
+    // page never pops. Click handlers wire exactly once per view instance.
+    let subscribeClickWired = false;
+    function applySubscribeAndPinState(item, moduleEnabled, subs, channelPins, confirmed) {
+      if (!subscribeBtn || !item) return;
+      currentSubState = decideSubscribeButtonState(item, subs, moduleEnabled);
       if (!currentSubState.visible) {
-        if (pinBtn) { pinBtn.remove(); pinBtn = null; }
+        // Gate v1.54 round 1 (QA CRITICAL + adversarial W4): only a CONFIRMED
+        // answer may remove ("absent, not merely disabled/greyed", AC15 --
+        // the settled state is unchanged). A CACHED answer may be a stale
+        // moduleEnabled:false poisoned by one transient health blip (5-min
+        // TTL) -- it merely hides, so the confirmed visible:true moments
+        // later can still show the controls.
+        if (confirmed) {
+          subscribeBtn.remove();
+          if (pinBtn) { pinBtn.remove(); pinBtn = null; }
+        } else {
+          subscribeBtn.hidden = true;
+          if (pinBtn) pinBtn.hidden = true;
+        }
         return;
       }
+      // Belt-and-braces for the same finding: removal must never be terminal.
+      // Re-mount into the container captured before any removal (see
+      // subscribeBtnContainer above); first-child keeps Subscribe before Pin.
+      if (!subscribeBtn.isConnected) {
+        if (!subscribeBtnContainer) return;
+        subscribeBtnContainer.insertBefore(subscribeBtn, subscribeBtnContainer.firstChild);
+      }
+      subscribeBtn.hidden = false;
+      if (pinBtn) pinBtn.hidden = false;
+      applySubscribeButtonLabel(currentSubState.subscribed);
+      if (!subscribeClickWired) {
+        subscribeClickWired = true;
+        subscribeBtn.addEventListener('click', () => {
+          if (currentSubState.subscribed) handleUnsubscribe();
+          else openSubscribeModal();
+        }, { signal });
+      }
+      // B3: the pin button, from the SAME answer set -- no serial second
+      // fetch (the pre-v1.54 pin pop was exactly that extra round trip).
+      if (!subscribeBtnContainer) return;
       const matchedSub = currentSubState.subscribed && Array.isArray(subs)
-        ? subs.find((s) => s && s.id === currentSubState.subId)
+        ? subs.find((sub) => sub && sub.id === currentSubState.subId)
         : null;
       const channelDir = (matchedSub && typeof matchedSub.channelDir === 'string' && matchedSub.channelDir !== '')
         ? matchedSub.channelDir
-        : resolveChannelDirFromFilePath(mediaData && mediaData.filePath);
+        : resolveChannelDirFromFilePath(item.filePath);
       if (!channelDir) {
         if (pinBtn) { pinBtn.remove(); pinBtn = null; }
         return;
       }
-      let pinned = false;
-      let pinId = null;
-      try {
-        const pinsRes = await fetch('/api/subscriptions/pins');
-        const pins = pinsRes.ok ? await pinsRes.json().catch(() => []) : [];
-        const existing = Array.isArray(pins) ? pins.find((p) => p && p.channelDir === channelDir) : null;
-        if (existing) { pinned = true; pinId = existing.id; }
-      } catch (e) {
-        console.error('Error loading pin state:', e);
-      }
-      currentPinState = { channelDir, label: currentChannelName, pinned, pinId };
+      const existingPin = Array.isArray(channelPins) ? channelPins.find((p) => p && p.channelDir === channelDir) : null;
+      currentPinState = { channelDir, label: currentChannelName, pinned: Boolean(existingPin), pinId: existingPin ? existingPin.id : null };
       if (!pinBtn) {
         pinBtn = document.createElement('button');
         pinBtn.type = 'button';
@@ -1842,61 +1922,67 @@ if (typeof module !== 'undefined' && module.exports) {
         subscribeBtnContainer.appendChild(pinBtn);
         pinBtn.addEventListener('click', handleTogglePin, { signal });
       }
-      applyPinButtonLabel(pinned);
+      applyPinButtonLabel(currentPinState.pinned);
+    }
+
+    // Cached channel pins from the capability cache (fetchAllPins owns the
+    // MERGED pins write; we only ever read the channel-tagged half here).
+    function cachedChannelPins(cap) {
+      return (cap && Array.isArray(cap.pins)) ? cap.pins.filter((p) => p && p.pinSource === 'channel') : [];
+    }
+
+    // v1.54 A1: a FULL seed + warm capability cache renders Subscribe AND
+    // Pin in FRAME ONE (the seed item is metadata-shaped; the decision needs
+    // only channelUrl). Hydration re-applies from confirmed answers -- a
+    // no-op when nothing changed. This block lives HERE, below every `let`
+    // the applier assigns (gate round 1, adversarial C1: called from init's
+    // top -- 800 lines before those declarations -- it threw a TDZ
+    // ReferenceError that the router's catch swallowed, killing everything
+    // after it in init on every warm-cache navigation). The browser paints
+    // only after init returns, so this is still frame one.
+    if (watchSeed && isFullWatchSeedItem(watchSeed.item)) {
+      const capAtInit = readCapabilityCache();
+      if (capAtInit && typeof capAtInit.moduleEnabled === 'boolean') {
+        applySubscribeAndPinState(watchSeed.item, capAtInit.moduleEnabled, capAtInit.subs || [], cachedChannelPins(capAtInit));
+      }
     }
 
     async function setupSubscribeButton() {
       if (!subscribeBtn) return;
-      // v1.53 capability cache: OPTIMISTIC RENDER ONLY (no click wiring, no
-      // currentSubState commit -- the real probe below owns both and
-      // reconciles by removing/relabeling on resolution). This is what makes
-      // Subscribed appear in frame one on a refresh instead of a beat later.
+      // v1.54 A1: CACHED-STATE-FIRST -- full render + wiring from the warm
+      // cache, synchronously; the confirmed pass below re-applies and only
+      // changes pixels when an answer actually differs (write-through on
+      // every mutation keeps the cache seconds-fresh, so the old
+      // Subscribe->Subscribed flash is gone except cross-device, disclosed).
       const cachedCap = readCapabilityCache();
-      if (cachedCap && cachedCap.moduleEnabled === true && Array.isArray(cachedCap.subs)) {
-        const optimistic = decideSubscribeButtonState(mediaData, cachedCap.subs, true);
-        if (optimistic.visible) {
-          subscribeBtn.hidden = false;
-          applySubscribeButtonLabel(optimistic.subscribed);
-        }
+      if (cachedCap && typeof cachedCap.moduleEnabled === 'boolean') {
+        applySubscribeAndPinState(mediaData, cachedCap.moduleEnabled, cachedCap.subs || [], cachedChannelPins(cachedCap));
       }
       let moduleEnabled = false;
       let subs = [];
+      let channelPins = [];
       try {
         const healthRes = await fetch('/api/subscriptions/health');
         moduleEnabled = healthRes.ok;
         if (moduleEnabled) {
-          const subsRes = await fetch('/api/subscriptions');
+          // Subs and pins in PARALLEL -- the pin's serial fetch was the
+          // second half of the pop Dean reported.
+          const [subsRes, pinsRes] = await Promise.all([fetch('/api/subscriptions'), fetch('/api/subscriptions/pins')]);
           subs = subsRes.ok ? await subsRes.json().catch(() => []) : [];
+          channelPins = pinsRes.ok ? await pinsRes.json().catch(() => []) : [];
         }
-        // v1.53: the fresh answers refresh the cache for the next boot.
+        // v1.53/v1.54: the fresh answers refresh the cache (pins stay owned
+        // by fetchAllPins' merged write -- never clobbered from here).
         writeCapabilityCache({ moduleEnabled, subs: scrubSubsForCache(subs) });
-        currentSubState = decideSubscribeButtonState(mediaData, subs, moduleEnabled);
       } catch (e) {
         console.error('Error resolving subscribe button state:', e);
         moduleEnabled = false;
         subs = [];
-        currentSubState = { visible: false, subscribed: false, subId: null, identity: null };
+        channelPins = [];
       }
-
-      // (The creator-name link's href is wired in populateMetadata now -- it
-      // points at the item's folder content view, /?root=<folder>, independent
-      // of the yt-dlp module. See resolveUploaderLinkHref.)
-
-      if (!currentSubState.visible) {
-        subscribeBtn.remove(); // absent, not merely disabled/greyed (AC15)
-        if (pinBtn) { pinBtn.remove(); pinBtn = null; } // B3: same gate, same fate
-        return;
-      }
-      subscribeBtn.hidden = false;
-      applySubscribeButtonLabel(currentSubState.subscribed);
-      subscribeBtn.addEventListener('click', () => {
-        if (currentSubState.subscribed) handleUnsubscribe();
-        else openSubscribeModal();
-      }, { signal });
-
-      // B3 (v1.24.0, T6): set up (or tear down) the pin button using the
-      // SAME subs/identity probe this function just resolved.
-      setupPinButton(subs);
+      if (signal.aborted) return;
+      // `true` = CONFIRMED: this is the only caller allowed to remove.
+      applySubscribeAndPinState(mediaData, moduleEnabled, subs, Array.isArray(channelPins) ? channelPins : [], true);
     }
 
     // Esc closes the subscribe modal while it's open -- backdrop-tap and the

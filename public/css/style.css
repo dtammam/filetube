@@ -7611,6 +7611,30 @@ body.ft-css-fullscreen .bottom-nav {
   display: none;
 }
 
+/* v1.54 (Dean's bug 2): the subs chip must never push the Subscribe/Pin
+   buttons down a row -- with REAL counts the label lengthens ("1.2M
+   subscribers as of 2026-07-29"), so it ellipsizes inside a bounded chip
+   instead of growing the row. Device probe: narrow phone, real count. */
+.uploader-subs {
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Gate round 1 (adversarial W5): at phone widths ~200px remain for the chip
+   and the ellipsis eats from the tail -- exactly the as-of date, which is
+   the feature. Wrap to a second line instead; the Subscribe/Pin buttons are
+   a separate flex child, so a taller chip never pushes them down a row. */
+@media (max-width: 480px) {
+  .uploader-subs {
+    max-width: 100%;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+  }
+}
+
 /* Cold-load description skeleton lines (hidden by the first real paint). */
 .watch-desc-skel[hidden] {
   display: none;
