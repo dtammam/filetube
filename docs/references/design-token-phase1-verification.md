@@ -117,3 +117,13 @@ trees:
 - The audit's existing-token census gains two GHOST names: `--accent`
   and `--accent-color` are consumed (as fallback carriers) but never
   defined.
+
+## Tier 2 commit 6 - .btn-sm disposition: LEAVE AND FLAG
+
+Reference check (documented per the Tier 2 spec): `.btn-sm` carries ZERO
+style declarations anywhere, but is referenced 41 times as a class name in
+markup/JS (subscriptions.html buttons, common.js injected controls,
+setup.html logo buttons) and 12 times in tests. Per the spec's rule
+("referenced anywhere -> leave and flag"), it stays. Removing it would be
+behavior-neutral but a 53-site churn for zero rendering value - a Tier 3+
+housekeeping decision if ever. Flagged; not removed.
