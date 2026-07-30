@@ -188,3 +188,16 @@ px before asserting (per-file rs/rt helpers), with the NEW
 token-scale-lock.test.js as the single byte-exact value authority for
 all 38 tokens (single-definition-enforced, so era overrides can never
 silently detach the spelling locks from reality).
+
+## Post-Tier-2 rulings (Dean, at merge approval)
+
+1. JS-METRIC SCOPE: APPROVED - at Tier 3 start the linter extends to
+   JS-applied style surfaces (cssText strings, el.style assignments,
+   setProperty), EXCLUDING player.js positional geometry per the audit
+   classification. One deliberate rebaseline with the usual
+   correction-history entry (it will be v5). The two font-weight:bold
+   cssText literals in stats.js land in scope with it.
+2. Tier 3 is NOT authorized until Dean's device-pass baseline
+   screenshots exist (captured from merged main; capture manifest
+   delivered separately) and the Tier 3 prompt arrives. No refactoring
+   in the interim.
