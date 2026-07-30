@@ -55,9 +55,14 @@ async function runScene(browser, scene, era, mode, vpName, record) {
     await page.addStyleTag({ content: FREEZE_CSS });
     for (const [op, target] of scene.actions) {
       if (op === 'wait') await page.waitForSelector(target.split(',')[0] + (target.includes(',') ? ', ' + target.split(',').slice(1).join(',') : ''), { timeout: 12000 });
-      else if (op === 'click') await page.click(target.includes(',') ? target.split(',')[0] : target, { timeout: 8000 });
+      // Full selector LISTS pass through: Playwright resolves CSS unions
+      // natively (the login click below has always relied on this). The old
+      // split(',')[0] silently DROPPED every fallback selector - bucket-E of
+      // the 2026-07-30 baseline run (2014 stats has no <footer>, and the
+      // .stats-meta-text fallback never got a chance).
+      else if (op === 'click') await page.click(target, { timeout: 8000 });
       else if (op === 'hover') { if (vpName === 'desktop' || !scene.hoverDesktopOnly) await page.hover(target); }
-      else if (op === 'scrollTo') await page.locator(target.split(',')[0]).first().scrollIntoViewIfNeeded();
+      else if (op === 'scrollTo') await page.locator(target).first().scrollIntoViewIfNeeded();
       else if (op === 'setViewportWidth') await page.setViewportSize({ width: Number(target), height: vp.height });
       else if (op === 'evalJs') await page.evaluate(target);
     }

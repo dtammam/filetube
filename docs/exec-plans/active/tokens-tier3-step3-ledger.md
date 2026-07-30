@@ -56,7 +56,7 @@ silent, but keep them out).
 | public/css/style.css:5417 | .chapters-menu-item | `padding: 12px 14px` | B2-DRIFT | padding: var(--space-6) var(--space-6) | 14px->12px | chapters MENU has no scene (27-chapters-menu proposed - id 26 is taken by the playlists sheet); 12px exact tokenized too |
 | public/css/style.css:5436 | .chapters-menu-loop | `padding: 12px 14px` | B2-DRIFT | padding: var(--space-6) var(--space-6) | 14px->12px | pairs with 5417 |
 | public/css/style.css:5673 | .audio-expanded .player-controls | `padding-bottom: calc(4px + env(safe-area-inset-bottom, 0px))` | B1-MIXED | padding-bottom: calc(var(--space-2) + env(safe-area-inset-bottom, 0px)) | none | single-value calc; PARTIAL ADOPTION - env(...,0px) fallback keeps the site flagged; replace row, do not strike |
-| public/css/style.css:6170 | .hard-delete-modal-path | `margin-bottom: 14px` | B2-DRIFT | margin-bottom: var(--space-6) | 14px->12px | scene 21 |
+| public/css/style.css:6170 | .hard-delete-modal-path | `margin-bottom: 14px` | B2-DRIFT | margin-bottom: var(--space-6) | 14px->12px | manual 21 shot only - throwaway/non-managed item (automation removed: managed two-tap deletes with NO modal) |
 | public/css/style.css:6671 | .books-home-row | `margin-bottom: 18px` | B2-DRIFT | margin-bottom: var(--space-8) | 18px->16px | scene 15 |
 | public/css/style.css:6818 | .books-shelf-chips | `margin-bottom: 14px` | B2-DRIFT | margin-bottom: var(--space-6) | 14px->12px | scene 15 |
 | public/css/style.css:6848 | .books-section-title | `margin: 18px 0 10px` | B2-DRIFT | margin: var(--space-8) 0 var(--space-5) | 18px->16px | scene 15; 10px exact tokenized too; 0 stays |
@@ -162,7 +162,7 @@ silent, but keep them out).
 | public/css/style.css:1979 | .skip-btn | `color: #fff` | ON-OVERLAY-ADOPT | color: var(--on-overlay) | none | bg already var(--scrim) |
 | public/css/style.css:1998 | .skip-btn:hover | `background: rgba(0, 0, 0, 0.8)` | SCRIM-EXACT | background: var(--scrim-heavy) | none | the known mid-line adoption-tooling gap |
 | public/css/style.css:2010 | .skip-ripple | `color: #fff` | ON-OVERLAY-ADOPT | color: var(--on-overlay) | none |  |
-| public/css/style.css:3181 | .modal-backdrop | `background-color: rgba(0,0,0,0.5)` | SCRIM-DRIFT | background-color: var(--scrim) | 0.5->0.55 | scene 21 (confirm step) + any modal |
+| public/css/style.css:3181 | .modal-backdrop | `background-color: rgba(0,0,0,0.5)` | SCRIM-DRIFT | background-color: var(--scrim) | 0.5->0.55 | any confirm-modal surface (scene 21 is now MANUAL-only after the delete-flow incident) |
 | public/css/style.css:3301 | .oneoff-modal-backdrop | `background-color: rgba(0, 0, 0, 0.5)` | SCRIM-DRIFT | background-color: var(--scrim) | 0.5->0.55 | scene 01 |
 | public/css/style.css:3974 | .playlists-sheet-backdrop:not([hidden]) | `background: rgba(0, 0, 0, 0.5)` | SCRIM-DRIFT | background: var(--scrim) | 0.5->0.55 | scene 26-playlists-sheet (phone; coverage-audit addition) |
 | public/css/style.css:5235 | .css-fullscreen .player-controls | `background: rgba(0, 0, 0, 0.75)` | SCRIM-DRIFT | background: var(--scrim-heavy) | 0.75->0.8 | fullscreen state - on-device judgment |

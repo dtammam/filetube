@@ -17,9 +17,12 @@ const VIEWPORTS = { desktop: { width: 1280, height: 800 }, phone: { width: 390, 
 const ERAS_P1 = [['2021', 'light'], ['2021', 'dark']];
 
 const scenes = [
-  { id: '01-watch-modal', path: '/watch.html?v=FIXTURE_VIDEO', actions: [
+  { id: '01-watch-modal', path: '/watch.html?v=FIXTURE_VIDEO', viewports: ['desktop'], actions: [
     ['wait', '#media-title'], ['click', '#ytdlp-oneoff-btn'], ['wait', '.oneoff-modal']],
-    note: 'modal at frozen end-state (supersedes mid-fade - deterministic)' },
+    note: 'modal at frozen end-state (supersedes mid-fade - deterministic). Desktop-only: on phone the header button is not clickable (bucket-D fix) - 01b covers phone via the bottom-nav entry.' },
+  { id: '01b-watch-modal-phone', path: '/watch.html?v=FIXTURE_VIDEO', viewports: ['phone'], actions: [
+    ['wait', '#media-title'], ['click', '[data-nav="oneoff-download"]'], ['wait', '.oneoff-modal']],
+    note: 'phone one-off modal via the mobile bottom-nav Download entry (common.js injects it next to Settings)' },
   { id: '05-watch-cold', path: '/watch.html?v=FIXTURE_VIDEO', actions: [
     ['wait', '#media-title'], ['scrollTo', '.video-description']] },
   { id: '06-home-grid', path: '/', actions: [['wait', '.video-card'], ['hover', '.video-card']],
@@ -27,12 +30,13 @@ const scenes = [
   { id: '07-home-sort', path: '/', actions: [['wait', '.video-card'], ['scrollTo', '.section-title'],
     ['click', '.sort-select-btn'], ['wait', '.sort-menu']] },
   { id: '08-music-lib', path: '/music.html', actions: [['wait', '.music-album-art,.music-tab']] },
-  { id: '09-music-drill', path: '/music.html', actions: [['wait', '.music-album-art'], ['click', '.music-album-art'], ['wait', '.music-drill-sticky']] },
+  { id: '09-music-drill', path: '/music.html', actions: [['wait', '.music-album-art'], ['click', '.music-album-art'], ['wait', '.music-drill-art']],
+    note: 'EXPANDED drill (art + song rows - the 3g radius witnesses). The old .music-drill-sticky wait could never pass: the sticky is display:none until a scroll-driven .collapsed toggle, and .collapsed HIDES the header/art - the two states are exclusive. Collapsed-sticky state = on-device judgment (Tier 4 sticky-thumb surface).' },
   { id: '11-subs-top', path: '/subscriptions', actions: [['wait', '.sub-list-header-actions']] },
   { id: '12-subs-sheet', path: '/subscriptions', actions: [['wait', '.sub-row-kebab'], ['click', '.sub-row-kebab'], ['wait', '.sub-sheet-backdrop:not([hidden])']] },
   { id: '12b-notif-panel', path: '/', actions: [['wait', '#notif-bell-btn'], ['click', '#notif-bell-btn'], ['wait', '.notif-panel']] },
   { id: '14-reader', path: '/read.html?id=FIXTURE_BOOK', actions: [['wait', '.reader-topbar']] },
-  { id: '15-books', path: '/books.html', actions: [['wait', '.books-shelf-chip,.book-row-cover']] },
+  { id: '15-books', path: '/books.html', actions: [['wait', '.books-shelf-chip,.book-cover-link']], note: '.book-cover-link is what books.js renders per book; .book-row-cover was a HOME-page class (bucket-B fix). Shelf chips still need registered book roots - a 3a+3g witness, see the handoff question.' },
   { id: '16-stats', path: '/stats.html', actions: [['wait', '.stat-tile-value']] },
   { id: '17-setup-a', path: '/setup.html', actions: [['wait', '.action-footer']] },
   { id: '17b-setup-footer-wide', path: '/setup.html', actions: [['wait', '.action-footer'], ['setViewportWidth', 700], ['scrollTo', '.action-footer']] },
@@ -40,9 +44,12 @@ const scenes = [
   { id: '18-reloc-preview', path: '/subscriptions', actions: [
     ['wait', '#sub-reheat-preview-btn'], ['click', '#sub-reheat-preview-btn'], ['wait', '.reloc-preview-panel']],
     note: 'needs a library with >=1 relocatable item or shows the empty preview - still a stable frame' },
-  { id: '21-hard-delete', path: '/', actions: [['wait', '.video-card'], ['hover', '.video-card'],
-    ['click', '.card-delete-btn'], ['click', '.card-delete-confirm'], ['wait', '.hard-delete-modal-backdrop:not([hidden])']],
-    note: 'CANCEL after shot - driver presses Escape; deletes nothing without confirm', p: 'P2' },
+  // 21-hard-delete REMOVED from automation (2026-07-30, baseline-run incident):
+  // the "deletes nothing without confirm" premise was FALSE for yt-dlp-managed
+  // cards - main.js's two-tap flow calls DELETE /api/videos/:id DIRECTLY for
+  // them (no modal; the modal is the NON-managed path only), so this scene
+  // could really delete the first home card. It is now manual-only, against a
+  // throwaway/non-managed item. See notAutomatable.
   // Added by the Step 3 ledger coverage audit (2026-07-30): these surfaces
   // carry ledgered deltas but had no scene.
   { id: '25-login', path: '/login', actions: [['wait', '.login-submit']],
@@ -69,9 +76,9 @@ const p3 = [
   { id: '24b-r8-music-lib', path: '/music.html', eras: [['2005', 'light'], ['2009', 'light']],
     actions: [['wait', '.music-album-art,.music-tab']] },
   { id: '24c-r8-music-drill', path: '/music.html', eras: [['2005', 'light'], ['2009', 'light']],
-    actions: [['wait', '.music-album-art'], ['click', '.music-album-art'], ['wait', '.music-drill-sticky']] },
+    actions: [['wait', '.music-album-art'], ['click', '.music-album-art'], ['wait', '.music-drill-art']] },
   { id: '24d-r8-books', path: '/books.html', eras: [['2005', 'light'], ['2009', 'light']],
-    actions: [['wait', '.books-shelf-chip,.book-row-cover']] },
+    actions: [['wait', '.books-shelf-chip,.book-cover-link']] },
   { id: '24e-r8-reloc', path: '/subscriptions', eras: [['2005', 'light'], ['2009', 'light']],
     actions: [['wait', '#sub-reheat-preview-btn'], ['click', '#sub-reheat-preview-btn'], ['wait', '.reloc-preview-panel']] },
 ];
@@ -102,6 +109,7 @@ const notAutomatable = [
   { id: '10-audio-expanded', cls: 'LEDGER-TOUCHED (gate-blocking)', why: 'audio playback + expand gesture; vinyl spin frozen is fine but artwork/media pixels are env media - MANUAL' },
   { id: '11b-reheat-running', cls: 'JUDGMENT-ONLY', why: 'live server batch state (chip mid-run, Cancel swapped) - inherently transient; MANUAL' },
   { id: '13-toast', cls: 'LEDGER-TOUCHED (gate-blocking)', why: 'requires a mutating action (pin toggle) against live data; MANUAL to avoid state churn in baselines' },
+  { id: '21-hard-delete', cls: 'MANUAL-ONLY (DESTRUCTIVE-ADJACENT)', why: 'automation REMOVED 2026-07-30: for yt-dlp-managed cards the two-tap delete calls DELETE /api/videos/:id with NO modal - the old scene could really delete the first home card (and its baseline-run failures are consistent with deletions having happened). Manual shot against a throwaway or non-managed item ONLY; ledger surfaces: hard-delete-modal-path margin (3a), backdrop 0.65 (ruled exempt).' },
   { id: '19-2005-pass', cls: 'automated', why: 'covered by p2EraSpotChecks above - automated' },
   { id: '20-768-boundary', cls: 'automated', why: 'covered by 17b/17c width steps for setup; home/watch boundary shots automated via setViewportWidth in the matrix runner' },
 ];

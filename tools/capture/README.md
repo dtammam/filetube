@@ -42,3 +42,13 @@ red-reader. Gate-blocker VALUE corrections live in scenes.js's manual-
 scene comment (toast is 3a-only; resume is .85->.8). Ruling-B
 additions: 24b-24e photograph the seven era-varying --radius-lg
 adoption surfaces in 2005/2009 (music lib + drill, books, reloc).
+
+Baseline-run fixes (2026-07-30, cutecontainer run, 19 deterministic
+failures): 09/24c wait on the EXPANDED drill (.music-drill-art - the
+sticky is unreachable without scrolling and hides the header when
+shown); 15/24d wait on .book-cover-link (what books.js renders);
+01 is desktop-only with new 01b driving the phone bottom-nav entry;
+scrollTo/click pass full selector unions (the split dropped
+fallbacks). **21-hard-delete is REMOVED from automation: for
+yt-dlp-managed cards the two-tap flow deletes with NO modal - manual
+only, throwaway/non-managed items only.**
