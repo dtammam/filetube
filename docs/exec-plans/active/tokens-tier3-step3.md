@@ -67,9 +67,9 @@ original plan, so it takes the new letter 3h.
 
 | commit | batch | scope | ledger rows |
 |---|---|---|---|
-| opener | A + B1 + exact adoptions | 49 offset token-exempt annotations; zero-delta member/gap adoptions (differ must report EQUIVALENT) | in 3a + annex |
-| 3a | Spacing drift (R1+R2) | drift -> nearest member; mixed-shorthand members consolidate here too; 1 ruled exempt | 75 (26 delta + 26 zero-delta + 49 annex - opener rows land with 3a) |
-| 3b | Control sizing (R3) | 40 -> --size-touch(44)/--size-control(36) per-site; 30/34 -> --size-control-sm(32). NO ledger rows - width/height are ungoverned; site sweep at execution, per-site dispositions into the Stop B packet. Only R3 fragments survive of the original audit ("34px x2 -> 32"); the sweep is the authority. | 0 (extra-census) |
+| opener | A + B1 + exact adoptions | 49 offset token-exempt annotations + 26 zero-delta member/gap adoptions (differ must report EQUIVALENT) | 75 (49 annex + 26 of 3a's zero-delta rows) |
+| 3a | Spacing drift (R1+R2) | drift -> nearest member; the mixed-shorthand members consolidate here too (they EXECUTE in the opener; they are LEDGERED under 3a per the original "consolidate here too") | 52 in the 3a section (26 delta + 25 zero-delta + 1 ruled exempt) + the 49-row annex = 101 ledgered |
+| 3b | Control sizing (R3) | 40 -> --size-touch(44)/--size-control(36) per-site; 30/34 -> --size-control-sm(32). NO ledger rows - width/height are ungoverned; the sweep is DONE (table below). | 0 (extra-census, table below) |
 | 3c | Scrims + on-overlay chrome | 13 drift + 1 exact + 11 zero-delta adoptions + 4 ruled exempts; cc comment fix (ruling 8) | 29 |
 | 3d | Shadow elevation | 5 -> --shadow-modal (notif-panel 0.25->0.45 is the visible risk) + 1 no-action | 6 |
 | 3e | Motion | 16 -> --dur-fast/--dur-slow per rulings; 1 ruled exempt; ease-out/linear stay literal | 17 |
@@ -77,10 +77,29 @@ original plan, so it takes the new letter 3h.
 | 3g | Radius drift (R8, restored) | 7 sites -> --radius-lg (NEW token, defined here); 3 sites 3px -> 2/4 per-site | 10 |
 | 3h | JS surfaces | 24 adoptions (one visible delta: stats 14->12) | 24 |
 
-Census remainder: 110 - 10 restored to 3g + 9 ruled-exempt rows now
-shown inside their batch sections = 91 no-action census rows. The
-ledger's totals table is the authority; ledger-check enforces the
-298-row bijection either way.
+Census remainder: 100 no-action census rows (the prior 110 minus the
+10 radius rows restored to 3g; the 9 ruled-exempt rows were already
+inside batch sections and move nothing - gate finding, second
+correction of this arithmetic). The ledger's totals table is the
+authority; ledger-check enforces the 298-row bijection either way.
+
+## 3b site table (R3 sweep DONE 2026-07-30; `R3` prefix keeps these out of ledger-check's bijection)
+
+| site | selector | current | proposed | delta | notes |
+|---|---|---|---|---|---|
+| R3 style.css:893 | #view-mode-btn | min-width: 40px | min-width: var(--size-touch) | 40->44 | R3's touch-improve case; header width budget is the Stop B judgment |
+| R3 style.css:4316 | #sort-select-btn, #shuffle-again-btn, #rescan-library-btn (mobile) | min-width: 40px | EXEMPT | - | RECOMMEND EXEMPT: the comment above the rule documents 44px CAUSING the v1.50.4 mobile overflow ("mangled" row) - 40px IS the fix; re-widening re-breaks it |
+| R3 style.css:2090 | .watch-autoplay-switch | width: 34px | width: var(--size-control-sm) | 34->32 | COUPLED: the checked knob is hardcoded translateX(16px) at line 2130 - must become 14px in the SAME edit or the ON knob sits 2px short of flush |
+| R3 style.css:4573-4574 | .pc-btn | width/height: 30px | var(--size-control-sm) | 30->32 | player control buttons - R3's 30->32 case; fits inside the 40px strip untouched |
+| R3 style.css:5724 | #speed-btn | min-width: 30px | min-width: var(--size-control-sm) | 30->32 | pairs with .pc-btn |
+| R3 style.css:4548/5229/5671/7090 | .player-controls height/min-height | 40px | EXEMPT | - | RECOMMEND EXEMPT: the strip height is a layout SYSTEM paired with the reserve constants (5104=40, 5143=80=2x40, 5146=44 mobile, 5172=26 dock) - resizing it is a geometry wave, not a control resize; revisit as its own item if ever |
+
+Out of scope (art/media geometry, not controls): 1838 .audio-vinyl::after
+30px, 5842 .sub-sheet-avatar 40px, 8218 .notif-row-thumb 40px. Honesty
+note: the original audit fragment said "34px (x2) -> 32"; today's tree
+has exactly ONE 34px site (2090) across style.css, subscriptions.html
+and non-player JS - the second predates Tier 2 or lived in excluded
+player.js positional geometry.
 
 ## Execution protocol (when the gate opens)
 
