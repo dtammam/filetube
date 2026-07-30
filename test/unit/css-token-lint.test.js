@@ -103,3 +103,35 @@ test('report-only contract: the CLI always exits 0 (locked by source, asserted b
   assert.match(res, /TOTAL \d+/);
   // execFileSync throws on nonzero exit - reaching here IS the assertion.
 });
+
+// ---- Tier 3 Step 0: the JS-surface scanners (v5) ---------------------------
+const { lintJs } = require('../../scripts/css-token-lint.js');
+function lintj(js, fname) {
+  const out = [];
+  lintJs(js, fname || 'fixture.js', out);
+  return out;
+}
+
+test('v5: cssText strings are scanned per-declaration (the class that hid five stats.js sizes and two weights)', () => {
+  const out = lintj("el.style.cssText = 'color:var(--x); font-size:12px; font-weight:bold; flex-shrink:0;';");
+  assert.deepEqual(out.map((v) => v.cat).sort(), ['font-size', 'font-weight']);
+});
+
+test('v5: camelCase .style assignments and setProperty are scanned', () => {
+  assert.equal(lintj("el.style.fontSize = '13px';")[0].cat, 'font-size');
+  assert.equal(lintj("el.style.setProperty('margin-top', '14px');")[0].cat, 'spacing');
+});
+
+test('v5: player.js positional geometry is excluded; its governed colors still count', () => {
+  const js = "el.style.left = '12px'; el.style.width = '44px'; el.style.color = '#abc123';";
+  assert.deepEqual(lintj(js, 'public/js/player.js').map((v) => v.cat), ['color']);
+  // width stays ungoverned EVERYWHERE (layout geometry, the audit's design
+  // call) - so the non-player file sees left (spacing) + color only.
+  assert.equal(lintj(js, 'public/js/watch.js').length, 2, 'the same code in any other file is governed minus width');
+});
+
+test('v5: JS token-exempt comments and var()-only values are honored; fallback literals stay visible', () => {
+  assert.equal(lintj("el.style.margin = '8px'; // token-exempt: positional").length, 0);
+  assert.equal(lintj("el.style.color = 'var(--yt-red)';").length, 0);
+  assert.equal(lintj("el.style.color = 'var(--accent, #cc0000)';")[0].cat, 'color');
+});

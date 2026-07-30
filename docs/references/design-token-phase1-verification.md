@@ -83,6 +83,8 @@ numbers below this note are SUPERSEDED - kept for the audit trail):
 | v3 (Tier 2 Step 1) | 661 | 580 | ONE-LINE RULES were never linted - 26 hidden literals (found by the new fixture suite) |
 | v4 (Tier 2 Step 1, authoritative) | **692** | **611** | var() FALLBACK literals now survive the strip - Dean's ruling requires the 9 ghost-token sites visible as Tier 4 residue; also surfaces 3 vacuous `var(--heading-weight, bold)` fallback spellings (Tier 2 cleanup candidates - the Tier 1 "zero weight literals" claim was true for DIRECT declarations and stands as written) |
 
+| v5 (Tier 3 Step 0, authoritative) | n/a (JS surfaces did not exist pre-Tier-1 in the metric) | **298** at Tier 3 start | JS-applied style surfaces join the scope per the post-Tier-2 ruling: cssText strings, el.style assignments, setProperty (player.js positional geometry excluded per the audit classification). +27 over the CSS-only 271: 19 spacing, 3 color (incl. the stats.js ghost-red fallback), 5 font-weight (the two stats.js bold cssText literals + three more the JS scan surfaced). Fixture-covered before publication. |
+
 The v4 semantics are locked by test/unit/css-token-lint.test.js (in CI via
 npm run test:unit), including one regression fixture per hole above.
 
@@ -201,3 +203,38 @@ silently detach the spelling locks from reality).
    screenshots exist (captured from merged main; capture manifest
    delivered separately) and the Tier 3 prompt arrives. No refactoring
    in the interim.
+
+## Tier 3 Stop Point A rulings (Dean, 2026-07-30 - the Step 3 contract)
+
+- Batch A APPROVED: all 26 flagged offsets exempt as positional geometry.
+- Batch B1 APPROVED: member+keyword/env mixed shorthands adopt their
+  scale members in place, differ-certified zero-delta.
+- Batch B2 APPROVED: drift members consolidate per 3a with ledger
+  entries, 28->24 as the default. PRE-AGREED REJECTION PATH: any site
+  Dean rejects at Stop B flips per-site (e.g. 28->32) by itself without
+  reopening the batch.
+- Batch C APPROVED: exempts for .art-play-glyph::before (glyph art),
+  .related-title max-height (text clamp), .transcode-spinner (glyph
+  art); ADOPT --size-control for .ptr-indicator.
+- Corner chip / reloc backdrop: deferred to Tier 4 as surfaced; no
+  action this tranche.
+- Step 3 remains blocked until Dean's baseline screenshot location +
+  P1/P2 capture confirmation arrive. The strict reading applies: no
+  declaration edits of any kind (including zero-delta A/B1) until then.
+
+## Pre-capture rulings (Dean)
+
+1. PLAYWRIGHT ACCEPTED as delivered: isolated tools/capture package,
+   zero root-lockfile impact, zero advisories - meets the bar stylelint
+   failed.
+2. Frozen end-state ENDORSED as the baseline posture; the manifest's
+   mid-fade spec is SUPERSEDED (manifest + scenes.js updated so no
+   future run resurrects it).
+3. Credentials moved off argv: FILETUBE_CAPTURE_AUTH env var or hidden
+   interactive prompt; the CLI flag was REMOVED, not kept as fallback.
+   Session state remains memory-only, never written to run records.
+4. Manual scenes split (grep-verified against 3a-3g): LEDGER-TOUCHED
+   gate-blockers = 13-toast, 04-resume, 10-audio-expanded. Dean's other
+   guesses corrected: 03-cc is the protected carve-out (witness shot
+   recommended, not required); 11b-reheat-running and 02-playing-frame
+   are untouched by any ledger.

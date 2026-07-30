@@ -1,0 +1,12 @@
+{
+  "name": "filetube-capture-tools",
+  "private": true,
+  "description": "Tier 3 baseline capture harness (isolated from the app's dependency tree on purpose - see README.md)",
+  "scripts": {
+    "capture": "node capture.js",
+    "compare": "node compare.js"
+  },
+  "devDependencies": {
+    "playwright": "^1.49.0"
+  }
+}
