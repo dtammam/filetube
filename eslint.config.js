@@ -84,6 +84,13 @@ module.exports = [
     },
   },
 
+  // Tier 3: the isolated capture harness (tools/capture) is plain Node -
+  // same globals as the server/scripts side.
+  {
+    files: ['tools/**/*.js'],
+    languageOptions: { globals: { ...globals.node } },
+  },
+
   // common.js is loaded first and exposes these helpers as globals. Declare them
   // only for the CONSUMER scripts (not common.js itself, which defines them —
   // declaring them there would trip no-redeclare).
