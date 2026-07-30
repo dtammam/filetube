@@ -3412,8 +3412,9 @@ a.sub-row-channel-link:focus-visible {
    this track is never `display: flex`, so the native `[hidden] { display:
    none }` UA rule already applies. */
 /* Tokens Phase 1 Tier 1: the subscribe-modal cutoff hint, moved out of
-   JS-applied styles (buildOneOffModal). Values identical to the old inline
-   triplet; the negative margin is a pull-up against the field above. */
+   JS-applied styles (buildSubscribeModal - slim-gate W2 corrected the
+   builder name). Values identical to the old inline triplet; the negative
+   margin is a pull-up against the field above. */
 .oneoff-modal-hint {
   font-size: var(--fs-sm);
   color: var(--text-secondary);

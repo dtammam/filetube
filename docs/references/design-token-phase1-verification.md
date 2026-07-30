@@ -40,6 +40,17 @@ substring `bold` matching inside `semibold`; a one-line-rule skip latch
 eating the following rule) - both produced false DIFFERs, both fixed
 before the EQUIVALENT verdict above; no real delta was ever observed.
 
+KNOWN VERIFIER BLIND SPOTS (slim-gate W1, proven by the reviewer via
+mutation): the script skips ALL custom-property DEFINITIONS (a mutated
+token value passes silently - its var() table is hard-coded, decoupled
+from :root) and never compares SELECTORS (a renamed selector passes).
+For THIS branch both holes were closed by the reviewer's independent
+audit: every --* definition line is byte-identical between the two
+trees, and the full Tier 1 CSS diff was enumerated line-by-line (weight
+substitutions, three hex shortenings, three additive class rules -
+nothing else). DO NOT reuse this script for Tier 2+ without adding
+definition-value and selector comparison.
+
 ## Tier 1 exclusions (halt-and-report; audit zero-delta claims that failed)
 
 1. **#cc0000 -> var(--yt-red): EXCLUDED.** The 2014 era block overrides
