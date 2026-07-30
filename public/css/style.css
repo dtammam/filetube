@@ -104,6 +104,107 @@ summary,
   --fs-5xl: 32px;
 }
 
+/* ==== Design-token layer, Phase 1 (docs/references/design-token-audit-v1.1.md)
+   The 38-name contract, additive on top of the era/mode layer above. These
+   are MODE-INVARIANT tokens (one :root definition, no era overrides) - the
+   era palette above stays the authority for everything themed. No consumers
+   are migrated in this commit; adoption happens per approved tier.
+
+   BREAKPOINT CONSTANTS (documented, not tokens - CSS custom properties
+   cannot drive @media, and this repo is vanilla CSS with no build step):
+     768px  - THE phone breakpoint (17 queries). Mirrored in JS by
+              SHORTCUTS_DESKTOP_QUERY '(min-width: 769px)', which is
+              TEST-LOCKED (keyboard-shortcuts.test.js): change both or
+              neither.
+     1024px - tablet grid threshold.
+     480px / 520px / 600px - three DELIBERATE small thresholds, kept per
+              audit amendment (a): v1.54 subs-chip wrap, v1.55 footer
+              row-flow (gate W7), music grid. Each carries an origin
+              comment at its query. Do not consolidate. */
+:root {
+  /* Spacing - base-4 grid with 2px half-steps (audit: the 4-family carries
+     ~70% of 865 uses; 6px x68 and 10px x71 are entrenched half-steps whose
+     removal would visibly shift ~139 sites). Names are multiples of the
+     2px base so half-steps can retire later without renaming. Plain 0 is
+     written literally, never tokenized. */
+  --space-1: 2px;
+  --space-2: 4px;
+  --space-3: 6px;
+  --space-4: 8px;
+  --space-5: 10px;
+  --space-6: 12px;
+  --space-8: 16px;
+  --space-10: 20px;
+  --space-12: 24px;
+  --space-16: 32px;
+
+  /* Sizing - control-chrome heights only (audit 2.2). 44px is the iOS
+     touch-target floor and already consistent at x20. Layout geometry
+     (panel widths, vh caps) stays literal by design. */
+  --size-touch: 44px;
+  --size-control: 36px;
+  --size-control-sm: 32px;
+
+  /* Overlay color set - the mode-invariant DARK chrome (player, reader,
+     backdrops) that previously used raw grays (audit 2.3). The era palette
+     is untouched: these tokens are for surfaces that deliberately look the
+     same in every era and mode. AMENDMENT (c), recorded here so it is
+     never lost: when scrim consolidation happens (Tier 2), the cc-overlay
+     TEXT BACKGROUND keeps its own rgba(0,0,0,0.85) - it is a LEGIBILITY
+     floor over arbitrary video, not a style surface, and must not adopt
+     --scrim-heavy. */
+  --overlay-surface: #222;
+  --overlay-border: #444;
+  --on-overlay: #fff;
+  --on-overlay-muted: #ccc;
+  --scrim: rgba(0, 0, 0, 0.55);
+  --scrim-heavy: rgba(0, 0, 0, 0.8);
+
+  /* Type weights + line heights (audit 2.4). `bold` and `700` were two
+     spellings of ONE rendered weight (x55 combined) - --fw-bold is the
+     single spelling. `normal`/400 stays literal (the default needs no
+     token). line-height: 1 stays literal (glyph centering, not prose). */
+  --fw-semibold: 600;
+  --fw-bold: 700;
+  --fw-black: 900;
+  --lh-tight: 1.25;
+  --lh-relaxed: 1.5;
+
+  /* Radius - pills only. Circles stay 50% (geometry, not style); the
+     era-varying corner radii remain --radius/--radius-lg above. NOTE:
+     audit R7 (raw px radii -> var(--radius)) is DEFERRED per amendment
+     (b) - no radius consumer changes without per-era screenshots. */
+  --radius-full: 999px;
+
+  /* Shadow - the one panel-elevation token the 6-member drift band (24px
+     blurs at .25-.6 alphas) converges into at Tier 2+. Era bevel/gloss
+     insets are skin art and stay literal (token-exempt). */
+  --shadow-modal: 0 8px 24px rgba(0, 0, 0, 0.45);
+
+  /* Motion (audit 2.7). Bespoke animation choreography (spin 0.9s, vinyl
+     6s, eq 1.4s, ripple, shimmer) stays literal; these govern UI
+     transitions only. */
+  --dur-fast: 0.15s;
+  --dur-slow: 0.25s;
+  --ease-ui: ease;
+
+  /* Z-index ladder (audit 2.8). NAMES ONLY in Phase 1 - no component is
+     re-laddered until the co-open enumeration (R11, Tier 3). Convention:
+     a backdrop/content pair derives with calc(var(--z-X) - 1) /
+     calc(var(--z-X) + 1); new raw numbers above the local 0-40 band are
+     never added. The local band (in-component stacking contexts) stays
+     literal by design. */
+  --z-nav: 900;
+  --z-chip: 940;
+  --z-dock: 950;
+  --z-header: 1000;
+  --z-player-max: 1100;
+  --z-sheet: 1500;
+  --z-panel: 1600;
+  --z-modal: 2000;
+  --z-top: 2200;
+}
+
 /* ---- 2021 Modern: today's shipped look, verbatim (structural + light palette) ---- */
 [data-theme="2021"] {
   --font-family: 'Roboto', 'Helvetica Neue', system-ui, Arial, sans-serif;
@@ -2631,6 +2732,7 @@ html.reader-immersive .app-container { padding-top: 0; }
    intrinsic-width implicit column, each button full-width in it -- equal
    widths held, nothing clipped, and no dependence on a definite width (the
    auto-fit-repeats-once trap cannot re-enter). */
+/* breakpoint 520px - deliberate (audit amendment a): v1.55 gate W7 footer action-bar row-flow. */
 @media (max-width: 520px) {
   .action-footer .action-bar {
     grid-auto-flow: row;
@@ -5849,6 +5951,7 @@ body.ft-css-fullscreen .bottom-nav {
    The already-shipped `aspect-ratio: 16/9`/`object-fit: cover` thumbnail
    treatment (line ~568) is unaffected by a column-count-only change, so
    cards stay uniform with or without a thumbnail (AC40/AC43). */
+/* breakpoint 480px - deliberate (audit amendment a): small-phone card grid (AC40/AC43). */
 @media (max-width: 480px) {
   .video-grid {
     grid-template-columns: repeat(2, 1fr);
@@ -7433,6 +7536,7 @@ body.ft-css-fullscreen .bottom-nav {
 .music-sticky-play { flex-shrink: 0; }
 .music-drill-sentinel { width: 100%; height: 1px; }
 
+/* breakpoint 600px - deliberate (audit amendment a): music grid column drop. */
 @media (max-width: 600px) {
   .music-drill-heading { flex-direction: column; align-items: flex-start; }
   .music-drill-art { width: 48vw; height: 48vw; max-width: 220px; max-height: 220px; }
@@ -7762,6 +7866,7 @@ body.ft-css-fullscreen .bottom-nav {
    and the ellipsis eats from the tail -- exactly the as-of date, which is
    the feature. Wrap to a second line instead; the Subscribe/Pin buttons are
    a separate flex child, so a taller chip never pushes them down a row. */
+/* breakpoint 480px - deliberate (audit amendment a): v1.54 subs-chip two-line wrap. */
 @media (max-width: 480px) {
   .uploader-subs {
     max-width: 100%;
