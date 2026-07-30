@@ -644,7 +644,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   font-weight: var(--fw-semibold);
   flex-shrink: 0;      /* keep the "Search" label from being clipped */
   white-space: nowrap;
-  transition: background-color 0.15s ease;
+  transition: background-color var(--dur-fast) var(--ease-ui);
 }
 
 .search-btn:hover {
@@ -697,7 +697,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   gap: var(--space-3);
   text-decoration: none; /* .btn is used on <a> too (e.g. #download-media-btn) -- keep it button-like, never underlined */
   box-shadow: var(--shadow);
-  transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
+  transition: background-color var(--dur-fast) var(--ease-ui), border-color var(--dur-fast) var(--ease-ui), transform 0.1s var(--ease-ui), box-shadow var(--dur-fast) var(--ease-ui);
 }
 
 /* The 2005 era-theme underlines all <a>; an <a class="btn"> is a button, not a link -- keep it clean. */
@@ -1170,7 +1170,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   font-weight: var(--fw-bold);
   line-height: 1; /* token-exempt: glyph centering */
   opacity: 0.85;
-  transition: opacity 0.15s ease, background-color 0.15s ease;
+  transition: opacity var(--dur-fast) var(--ease-ui), background-color var(--dur-fast) var(--ease-ui);
 }
 
 .card-delete-btn:hover,
@@ -1221,7 +1221,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   color: #fff;
   cursor: pointer;
   opacity: 0.85;
-  transition: opacity 0.15s ease, background-color 0.15s ease;
+  transition: opacity var(--dur-fast) var(--ease-ui), background-color var(--dur-fast) var(--ease-ui);
 }
 
 .card-download-btn:hover,
@@ -1257,7 +1257,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   color: #fff;
   cursor: pointer;
   opacity: 0.85;
-  transition: opacity 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+  transition: opacity var(--dur-fast) var(--ease-ui), background-color var(--dur-fast) var(--ease-ui), color var(--dur-fast) var(--ease-ui);
 }
 
 .card-like-btn:hover,
@@ -1333,7 +1333,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   opacity: 0;
   pointer-events: none;
   transform: translateX(-50%) translateY(-12px) scale(0.9);
-  transition: opacity 0.15s ease, transform 0.15s ease;
+  transition: opacity var(--dur-fast) var(--ease-ui), transform var(--dur-fast) var(--ease-ui);
 }
 .ptr-indicator.visible {
   opacity: 1;
@@ -1480,8 +1480,8 @@ html.reader-immersive .app-container { padding-top: 0; }
 
 .skeleton-row-avatar {
   flex-shrink: 0;
-  width: 36px;
-  height: 36px;
+  width: var(--size-control);
+  height: var(--size-control);
   border-radius: var(--radius);
 }
 
@@ -1980,7 +1980,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   font-weight: var(--fw-semibold);
   cursor: pointer;
   opacity: 0;
-  transition: opacity 0.2s ease, transform 0.15s ease, background 0.2s ease;
+  transition: opacity 0.2s var(--ease-ui), transform var(--dur-fast) var(--ease-ui), background 0.2s var(--ease-ui);
   pointer-events: none; /* invisible buttons must not catch clicks */
   -webkit-tap-highlight-color: transparent;
 }
@@ -2052,7 +2052,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+  transition: background-color var(--dur-fast) var(--ease-ui), border-color var(--dur-fast) var(--ease-ui), transform 0.1s var(--ease-ui);
 }
 
 .watch-prevnext-btn:hover:not(:disabled) {
@@ -2106,8 +2106,8 @@ html.reader-immersive .app-container { padding-top: 0; }
   position: absolute;
   inset: 0;
   background-color: var(--border-dark);
-  border-radius: 999px;
-  transition: background-color 0.15s ease;
+  border-radius: var(--radius-full);
+  transition: background-color var(--dur-fast) var(--ease-ui);
 }
 
 .watch-autoplay-thumb {
@@ -2118,7 +2118,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   height: 14px;
   background-color: #fff;
   border-radius: 50%;
-  transition: transform 0.15s ease;
+  transition: transform var(--dur-fast) var(--ease-ui);
   box-shadow: var(--shadow);
 }
 
@@ -2441,8 +2441,8 @@ html.reader-immersive .app-container { padding-top: 0; }
 }
 
 .comment-avatar {
-  width: 36px;
-  height: 36px;
+  width: var(--size-control);
+  height: var(--size-control);
   background-color: var(--border-dark);
   border-radius: var(--radius);
   display: flex;
@@ -2948,8 +2948,8 @@ html.reader-immersive .app-container { padding-top: 0; }
    in this file (e.g. .drag-handle's era styling), era tokens only. */
 .sub-row-avatar {
   flex-shrink: 0;
-  width: 36px;
-  height: 36px;
+  width: var(--size-control);
+  height: var(--size-control);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3110,8 +3110,8 @@ a.sub-row-channel-link:focus-visible {
    2009 eras), beveled border matching .sub-row-avatar. */
 .sub-row-kebab {
   flex-shrink: 0;
-  width: 32px;
-  height: 32px;
+  width: var(--size-control-sm);
+  height: var(--size-control-sm);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3267,7 +3267,7 @@ a.sub-row-channel-link:focus-visible {
   font-size: var(--fs-base);
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.25s ease, transform 0.25s ease;
+  transition: opacity var(--dur-slow) var(--ease-ui), transform var(--dur-slow) var(--ease-ui);
 }
 
 .toast.toast-visible {
@@ -4169,7 +4169,7 @@ a.sub-row-channel-link:focus-visible {
   .setup-box .setup-select,
   .setup-box input[type="text"],
   .setup-box input[type="number"] {
-    min-height: 44px;
+    min-height: var(--size-touch);
   }
 
   /* v1.25.4 polish (on-device iOS PWA): same 16px-floor fix as the one-off/
@@ -4402,7 +4402,7 @@ a.sub-row-channel-link:focus-visible {
   .oneoff-modal-field,
   .oneoff-modal-row select,
   .oneoff-modal .btn-primary {
-    min-height: 44px;
+    min-height: var(--size-touch);
   }
 
   /* v1.25.4 polish (on-device iOS PWA): focusing a form control whose
@@ -4424,7 +4424,7 @@ a.sub-row-channel-link:focus-visible {
   /* v1.20.0 FR-1 (T3): same comfortable tap-target floor for the subscribe
      modal's skip-Shorts checkbox row. */
   .subscribe-modal-checkbox-row {
-    min-height: 44px;
+    min-height: var(--size-touch);
   }
 }
 
@@ -4547,7 +4547,7 @@ a.sub-row-channel-link:focus-visible {
   font-family: var(--mono-font);
   font-size: var(--fs-xs);
   color: var(--text-secondary);
-  min-width: 36px;
+  min-width: var(--size-control);
   text-align: center;
   flex-shrink: 0;
   user-select: none;
@@ -4959,7 +4959,7 @@ a.sub-row-channel-link:focus-visible {
 
 @media (max-width: 768px) {
   .player-controls {
-    height: 44px; /* comfortable >=44px touch target row, matching the existing mobile tap-target convention elsewhere in this file */
+    height: var(--size-touch); /* comfortable >=44px touch target row, matching the existing mobile tap-target convention elsewhere in this file */
   }
   /* v1.34.1 (Dean's on-device pass): TWO-ROW mobile bar. One 44px row could
      not hold play + times + seek + speed/fs/pip/CC/Ch -- the seek bar
@@ -5020,15 +5020,15 @@ a.sub-row-channel-link:focus-visible {
     line-height: 30px; /* token-exempt: positional */
   }
   .pc-btn {
-    width: 44px;
-    height: 44px;
+    width: var(--size-touch);
+    height: var(--size-touch);
   }
   /* #speed-btn keeps its auto width (see the FR-4 rule below) even on
      mobile, but the touch-target FLOOR still needs to hit >=44px like every
      other .pc-btn here -- min-width (not a fixed width) lets a longer label
      grow past 44px instead of clipping. */
   #speed-btn {
-    min-width: 44px;
+    min-width: var(--size-touch);
   }
 }
 
@@ -5327,7 +5327,7 @@ body.ft-css-fullscreen .bottom-nav {
   line-height: 1; /* token-exempt: glyph centering */
   padding: var(--space-2) var(--space-5);
   cursor: pointer;
-  min-height: 32px;
+  min-height: var(--size-control-sm);
 }
 .chapters-menu-edit {
   border-top: 1px solid var(--border-dark);
@@ -5360,7 +5360,7 @@ body.ft-css-fullscreen .bottom-nav {
   align-self: stretch;
   display: flex;
   align-items: center;
-  min-height: 32px;
+  min-height: var(--size-control-sm);
 }
 .chapters-menu-loop:hover {
   background: var(--hover-bg, rgba(128, 128, 128, 0.15)); /* token-exempt: theme-neutral fallback */
@@ -5405,7 +5405,7 @@ body.ft-css-fullscreen .bottom-nav {
   }
   .chapters-menu-item {
     padding: 12px 14px;
-    min-height: 44px;
+    min-height: var(--size-touch);
     /* Wrap long titles (base rule nowrap-ellipsizes them into uselessness at
        phone width), capped at 2 lines via the line-clamp box. */
     white-space: normal;
@@ -5416,13 +5416,13 @@ body.ft-css-fullscreen .bottom-nav {
     overflow: hidden;
   }
   .chapters-menu-close {
-    min-width: 44px;
-    min-height: 44px;
+    min-width: var(--size-touch);
+    min-height: var(--size-touch);
   }
   /* v1.41.12: the per-row Loop toggle keeps a real tap target on phones. */
   .chapters-menu-loop {
-    min-width: 44px;
-    min-height: 44px;
+    min-width: var(--size-touch);
+    min-height: var(--size-touch);
     padding: 12px 14px;
   }
 }
@@ -6004,8 +6004,8 @@ body.ft-css-fullscreen .bottom-nav {
         "left-nav Pinned list with a star icon" retro translation. */
 .sub-row-pin {
   flex-shrink: 0;
-  width: 32px;
-  height: 32px;
+  width: var(--size-control-sm);
+  height: var(--size-control-sm);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -6200,7 +6200,7 @@ body.ft-css-fullscreen .bottom-nav {
   font-size: var(--fs-base);
   font-weight: var(--fw-semibold);
   cursor: pointer;
-  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, opacity 0.15s ease;
+  transition: background-color var(--dur-fast) var(--ease-ui), border-color var(--dur-fast) var(--ease-ui), color var(--dur-fast) var(--ease-ui), opacity var(--dur-fast) var(--ease-ui);
 }
 
 .hard-delete-modal-confirm-btn:disabled {
@@ -6221,7 +6221,7 @@ body.ft-css-fullscreen .bottom-nav {
   .hard-delete-modal-checkbox-row,
   .hard-delete-modal-actions .btn,
   .hard-delete-modal-confirm-btn {
-    min-height: 44px;
+    min-height: var(--size-touch);
   }
 }
 
@@ -6294,7 +6294,7 @@ body.ft-css-fullscreen .bottom-nav {
    zero new color tokens. */
 .dl-status-chip-summary {
   opacity: 0.55;
-  transition: opacity 0.15s ease;
+  transition: opacity var(--dur-fast) var(--ease-ui);
 }
 #dl-status-chip:hover .dl-status-chip-summary,
 .dl-status-chip-summary:focus-visible,
@@ -6533,7 +6533,7 @@ body.ft-css-fullscreen .bottom-nav {
   font-weight: var(--fw-semibold);
   border-radius: calc(var(--radius) + 1px);
   cursor: pointer;
-  transition: background-color 0.15s ease;
+  transition: background-color var(--dur-fast) var(--ease-ui);
 }
 
 .dl-status-chip-retry-btn {
@@ -7090,7 +7090,7 @@ body.ft-css-fullscreen .bottom-nav {
      above (padding-bottom:0), which fixes both form factors. */
   .reader-nowplaying #player-slot .player-controls {
     flex-wrap: nowrap;
-    height: 44px;
+    height: var(--size-touch);
   }
   .reader-nowplaying #player-slot .player-controls::after {
     content: none; /* drop the forced scrub/buttons row break */
@@ -7372,7 +7372,7 @@ body.ft-css-fullscreen .bottom-nav {
   padding: calc(var(--density) * 1.4) var(--density);
   cursor: pointer;
   margin-top: calc(var(--density) * 0.5);
-  transition: filter 0.12s ease;
+  transition: filter 0.12s var(--ease-ui);
 }
 .login-submit:hover { filter: brightness(1.08); }
 .login-submit:active { filter: brightness(0.94); }
@@ -7745,8 +7745,8 @@ body.ft-css-fullscreen .bottom-nav {
   color: var(--text-primary);
   border-radius: var(--radius);
   cursor: pointer;
-  width: 32px;
-  height: 32px;
+  width: var(--size-control-sm);
+  height: var(--size-control-sm);
   line-height: 1; /* token-exempt: glyph centering */
 }
 .bottombar-editor-row .bottombar-editor-btn:disabled { opacity: 0.4; cursor: default; }
@@ -8106,7 +8106,7 @@ body.ft-css-fullscreen .bottom-nav {
   z-index: 1600;
   opacity: 0;
   transform: translateY(-6px);
-  transition: opacity 0.15s ease, transform 0.15s ease;
+  transition: opacity var(--dur-fast) var(--ease-ui), transform var(--dur-fast) var(--ease-ui);
 }
 
 .notif-panel.notif-open {
@@ -8155,8 +8155,8 @@ body.ft-css-fullscreen .bottom-nav {
 }
 
 .notif-row-avatar {
-  width: 32px;
-  height: 32px;
+  width: var(--size-control-sm);
+  height: var(--size-control-sm);
   border-radius: 50%;
   overflow: hidden;
   flex-shrink: 0;
@@ -8254,7 +8254,7 @@ body.ft-css-fullscreen .bottom-nav {
     background: rgba(0, 0, 0, 0.5);
     z-index: 1599;
     opacity: 0;
-    transition: opacity 0.2s ease;
+    transition: opacity 0.2s var(--ease-ui);
   }
 
   .notif-panel-backdrop.notif-open {
@@ -8272,7 +8272,7 @@ body.ft-css-fullscreen .bottom-nav {
     border-radius: var(--radius-lg) var(--radius-lg) 0 0;
     padding-bottom: env(safe-area-inset-bottom);
     transform: translateY(100%);
-    transition: transform 0.25s ease;
+    transition: transform var(--dur-slow) var(--ease-ui);
   }
 
   .notif-panel.notif-open {

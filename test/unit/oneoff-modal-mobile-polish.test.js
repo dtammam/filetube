@@ -22,6 +22,12 @@
 //   injectable `triggerLibraryRescanAndRefresh` helper.
 
 const { test } = require('node:test');
+
+// Tier 2 (DELIBERATE lock updates): control sizes became --size-* tokens;
+// values resolved back before asserting. Token VALUES are pinned by
+// test/unit/token-scale-lock.test.js.
+const SIZE_TOKENS = { '--size-touch': '44px', '--size-control': '36px', '--size-control-sm': '32px' };
+const rt = (s) => String(s).replace(/var\((--size-[\w-]+)\)/g, (_, n) => SIZE_TOKENS[n] || _);
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -271,7 +277,7 @@ test('FIX 5 (mobile): the modal itself is near-full-width with tighter padding, 
 
   const minHeightRule = /\.oneoff-modal-field,\s*\n?\s*\.oneoff-modal-row select,\s*\n?\s*\.oneoff-modal \.btn-primary\s*\{([^}]*)\}/.exec(body);
   assert.ok(minHeightRule, 'expected a grouped mobile min-height rule covering the URL field, the selects, and the Download button');
-  const minHeightMatch = /min-height:\s*(\d+)px/.exec(minHeightRule[1]);
+  const minHeightMatch = /min-height:\s*(\d+)px/.exec(rt(minHeightRule[1]));
   assert.ok(minHeightMatch, 'expected an explicit min-height');
   assert.ok(Number(minHeightMatch[1]) >= 44, 'tap targets should be at least 44px, matching the existing Setup/Subscriptions mobile polish');
 });

@@ -14,7 +14,8 @@ const { test } = require('node:test');
 // before asserting. The token VALUES themselves are pinned byte-exactly by
 // test/unit/token-scale-lock.test.js (the single value authority).
 const SPACE_TOKENS = { '--space-1': '2px', '--space-2': '4px', '--space-3': '6px', '--space-4': '8px', '--space-5': '10px', '--space-6': '12px', '--space-8': '16px', '--space-10': '20px', '--space-12': '24px', '--space-16': '32px' };
-const rs = (s) => String(s).replace(/var\((--space-\d+)\)/g, (_, n) => SPACE_TOKENS[n] || _);
+const SIZE_TOKENS = { '--size-touch': '44px', '--size-control': '36px', '--size-control-sm': '32px' };
+const rs = (s) => String(s).replace(/var\((--space-\d+|--size-[\w-]+)\)/g, (_, n) => SPACE_TOKENS[n] || SIZE_TOKENS[n] || _);
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -52,7 +53,7 @@ test('mobile: a media query gives .setup-box comfortable controls (min-height ta
   const body = block[1];
   assert.match(body, /\.setup-box\s*\{/, 'the mobile block must adjust .setup-box spacing');
   assert.match(
-    body,
+    rs(body),
     /\.setup-box \.btn,[\s\S]*?\.setup-box \.setup-select,[\s\S]*?min-height:\s*\d+px/,
     'the mobile block must set a comfortable min-height tap target for Setup/.subscriptions controls, scoped to .setup-box'
   );
