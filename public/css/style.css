@@ -921,7 +921,7 @@ html.reader-immersive .app-container { padding-top: 0; }
      byte-identical to before. Applied to the three title surfaces only
      (.section-title/.video-title/.watch-title); body text untouched. */
   font-family: var(--heading-font, var(--font-family));
-  font-weight: var(--heading-weight, bold);
+  font-weight: var(--heading-weight, var(--fw-bold));
   letter-spacing: var(--heading-tracking, normal);
   margin-bottom: var(--space-8);
   border-bottom: 1px solid var(--border-color);
@@ -1384,7 +1384,7 @@ html.reader-immersive .app-container { padding-top: 0; }
 .video-title {
   font-size: var(--fs-base);
   font-family: var(--heading-font, var(--font-family));
-  font-weight: var(--heading-weight, bold);
+  font-weight: var(--heading-weight, var(--fw-bold));
   letter-spacing: var(--heading-tracking, normal);
   line-height: 1.3;
   margin-bottom: var(--space-2);
@@ -2139,7 +2139,7 @@ html.reader-immersive .app-container { padding-top: 0; }
 .watch-title {
   font-size: var(--fs-2xl);
   font-family: var(--heading-font, var(--font-family));
-  font-weight: var(--heading-weight, bold);
+  font-weight: var(--heading-weight, var(--fw-bold));
   letter-spacing: var(--heading-tracking, normal);
   margin-bottom: var(--space-6);
   word-break: break-word;

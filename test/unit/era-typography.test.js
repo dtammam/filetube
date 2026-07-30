@@ -59,7 +59,10 @@ test('the three title surfaces consume the tokens with safe fallbacks -- and ONL
     const m = new RegExp(`\\n\\${selector} \\{([\\s\\S]*?)\\}`).exec(css);
     assert.ok(m, `expected the base ${selector} rule`);
     assert.match(m[1], /font-family:\s*var\(--heading-font, var\(--font-family\)\)/, `${selector} heading family token`);
-    assert.match(m[1], /font-weight:\s*var\(--heading-weight, bold\)/, `${selector} falls back to the historical bold`);
+    // Tier 2 commit 4 (DELIBERATE lock update): the vacuous fallback is now
+    // spelled var(--fw-bold) - same resolved weight (700 == bold, pinned by
+    // the token-scale lock), one weight spelling system-wide.
+    assert.match(m[1], /font-weight:\s*var\(--heading-weight, var\(--fw-bold\)\)/, `${selector} falls back to the historical bold via the token`);
     assert.match(m[1], /letter-spacing:\s*var\(--heading-tracking, normal\)/, `${selector} falls back to normal tracking`);
   }
   // Gate S3: count all three tokens, not just weight -- a rogue family-only
