@@ -51,8 +51,8 @@
       justify-content: space-between;
       align-items: center;
       flex-wrap: wrap;
-      gap: 10px;
-      margin-bottom: 12px;
+      gap: var(--space-5);
+      margin-bottom: var(--space-6);
     }
     /* v1.55 (gate S1): a header row whose heading moved into the details
        summary holds only its controls -- keep them right-aligned, where
@@ -98,7 +98,7 @@
        .action-status class (style.css) -- this page-local rule keeps only
        the multi-span row spacing. */
     .sub-repull-status {
-      margin-right: 10px;
+      margin-right: var(--space-5);
     }
     .sub-repull-status:empty {
       margin-right: 0;
@@ -141,7 +141,7 @@
     .sub-row-failures {
       font-size: var(--fs-sm);
       color: var(--text-secondary);
-      margin-top: 2px;
+      margin-top: var(--space-1);
     }
   </style>
   <script>

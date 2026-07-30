@@ -8,6 +8,13 @@
 // classes (`.setup-box`, `.folder-item-row`) were widened/loosened rather
 // than left untouched.
 const { test } = require('node:test');
+
+// Tier 2 (DELIBERATE lock updates): spacing literals became --space-* tokens;
+// these locks pin VALUES, so extracted rule text is resolved back to px
+// before asserting. The token VALUES themselves are pinned byte-exactly by
+// test/unit/token-scale-lock.test.js (the single value authority).
+const SPACE_TOKENS = { '--space-1': '2px', '--space-2': '4px', '--space-3': '6px', '--space-4': '8px', '--space-5': '10px', '--space-6': '12px', '--space-8': '16px', '--space-10': '20px', '--space-12': '24px', '--space-16': '32px' };
+const rs = (s) => String(s).replace(/var\((--space-\d+)\)/g, (_, n) => SPACE_TOKENS[n] || _);
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -30,7 +37,7 @@ test('desktop: .setup-box is wider than the pre-fix 650px (both Setup and /subsc
 test('desktop: .form-group and .folder-item-row carry more breathing room than the pre-fix values', () => {
   const formGroupRule = /\.form-group\s*\{([^}]*)\}/.exec(css);
   assert.ok(formGroupRule, 'expected a .form-group rule');
-  const marginMatch = /margin-bottom:\s*(\d+)px/.exec(formGroupRule[1]);
+  const marginMatch = /margin-bottom:\s*(\d+)px/.exec(rs(formGroupRule[1]));
   assert.ok(marginMatch && Number(marginMatch[1]) > 20, '.form-group margin-bottom must be increased beyond the cramped 20px it shipped with');
 
   const folderRowRule = /\.folder-item-row\s*\{([^}]*)\}/.exec(css);
@@ -87,7 +94,7 @@ test('v1.21.0 FR-3: #sub-list-container no longer carries a scoped max-height ov
   const sharedRule = /\.folder-list-builder\s*\{([^}]*)\}/.exec(css);
   assert.ok(sharedRule, 'expected the shared .folder-list-builder rule');
   assert.match(sharedRule[1], /max-height:\s*240px/, 'the shared class default must be unchanged -- #folders-builder-list and #oneshot-list-container must not grow');
-  assert.match(sharedRule[1], /padding:\s*12px/, 'the shared class padding must be unchanged');
+  assert.match(rs(sharedRule[1]), /padding:\s*12px/, 'the shared class padding must be unchanged');
 
   const scopedRule = /#sub-list-container\s*\{([^}]*)\}/.exec(css);
   assert.ok(!scopedRule, '#sub-list-container must no longer carry its own rule block -- AC24 replaces the v1.19.0 FR-2a "bigger box" override with .sub-list\'s uncapped container instead');

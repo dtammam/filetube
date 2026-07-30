@@ -6,6 +6,13 @@
 // (b) the video-card grid read large/zoomed on a phone. Visual correctness is
 // Dean's on-device call; these are the mechanical CSS/markup-presence guards.
 const { test } = require('node:test');
+
+// Tier 2 (DELIBERATE lock updates): spacing literals became --space-* tokens;
+// these locks pin VALUES, so extracted rule text is resolved back to px
+// before asserting. The token VALUES themselves are pinned byte-exactly by
+// test/unit/token-scale-lock.test.js (the single value authority).
+const SPACE_TOKENS = { '--space-1': '2px', '--space-2': '4px', '--space-3': '6px', '--space-4': '8px', '--space-5': '10px', '--space-6': '12px', '--space-8': '16px', '--space-10': '20px', '--space-12': '24px', '--space-16': '32px' };
+const rs = (s) => String(s).replace(/var\((--space-\d+)\)/g, (_, n) => SPACE_TOKENS[n] || _);
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -134,7 +141,7 @@ test('mobile: .video-grid uses a tighter column minimum + gap than the desktop 2
   const minWidthMatch = /minmax\((\d+)px/.exec(rule[1]);
   assert.ok(minWidthMatch, 'expected a minmax(...) column definition');
   assert.ok(Number(minWidthMatch[1]) < 210, 'mobile column minimum must be tighter than the desktop 210px');
-  const gapMatch = /gap:\s*(\d+)px/.exec(rule[1]);
+  const gapMatch = /gap:\s*(\d+)px/.exec(rs(rule[1]));
   assert.ok(gapMatch, 'expected an explicit gap');
   assert.ok(Number(gapMatch[1]) < 20, 'mobile gap must be tighter than the desktop 20px');
 });
@@ -183,7 +190,7 @@ test('mobile (<=480px): the .video-grid gap stays tight (< the 768px block\'s 12
   const phoneBlockRe = /@media \(max-width: 480px\) \{([\s\S]*?)\n\}\n/;
   const block = phoneBlockRe.exec(css);
   const rule = /\.video-grid\s*\{([^}]*)\}/.exec(block[1]);
-  const gapMatch = /gap:\s*(\d+)px/.exec(rule[1]);
+  const gapMatch = /gap:\s*(\d+)px/.exec(rs(rule[1]));
   assert.ok(gapMatch, 'expected an explicit gap in the 480px .video-grid rule');
   assert.ok(Number(gapMatch[1]) <= 12, 'the 480px gap should be no larger than the 768px block\'s 12px');
 });
@@ -193,14 +200,14 @@ test('the existing 768px .video-grid rule (minmax(140px,1fr)/12px gap) stays byt
   const rule = /\.video-grid\s*\{([^}]*)\}/.exec(body);
   assert.ok(rule, 'expected the pre-existing mobile .video-grid rule inside the 768px block');
   assert.match(rule[1], /grid-template-columns:\s*repeat\(auto-fill,\s*minmax\(140px,\s*1fr\)\)/);
-  assert.match(rule[1], /gap:\s*12px/);
+  assert.match(rs(rule[1]), /gap:\s*12px/);
 });
 
 test('desktop: the base .video-grid/.section-actions rules are untouched (210px/20px, no flex-wrap)', () => {
   const gridRule = /(?:^|\n)\.video-grid\s*\{([^}]*)\}/.exec(css);
   assert.ok(gridRule, 'expected the base .video-grid rule');
   assert.match(gridRule[1], /minmax\(210px,\s*1fr\)/);
-  assert.match(gridRule[1], /gap:\s*20px/);
+  assert.match(rs(gridRule[1]), /gap:\s*20px/);
 
   const actionsRule = /(?:^|\n)\.section-actions\s*\{([^}]*)\}/.exec(css);
   assert.ok(actionsRule, 'expected the base .section-actions rule');
