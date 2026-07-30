@@ -83,6 +83,8 @@ numbers below this note are SUPERSEDED - kept for the audit trail):
 | v3 (Tier 2 Step 1) | 661 | 580 | ONE-LINE RULES were never linted - 26 hidden literals (found by the new fixture suite) |
 | v4 (Tier 2 Step 1, authoritative) | **692** | **611** | var() FALLBACK literals now survive the strip - Dean's ruling requires the 9 ghost-token sites visible as Tier 4 residue; also surfaces 3 vacuous `var(--heading-weight, bold)` fallback spellings (Tier 2 cleanup candidates - the Tier 1 "zero weight literals" claim was true for DIRECT declarations and stands as written) |
 
+| v5 (Tier 3 Step 0, authoritative) | n/a (JS surfaces did not exist pre-Tier-1 in the metric) | **298** at Tier 3 start | JS-applied style surfaces join the scope per the post-Tier-2 ruling: cssText strings, el.style assignments, setProperty (player.js positional geometry excluded per the audit classification). +27 over the CSS-only 271: 19 spacing, 3 color (incl. the stats.js ghost-red fallback), 5 font-weight (the two stats.js bold cssText literals + three more the JS scan surfaced). Fixture-covered before publication. |
+
 The v4 semantics are locked by test/unit/css-token-lint.test.js (in CI via
 npm run test:unit), including one regression fixture per hole above.
 
