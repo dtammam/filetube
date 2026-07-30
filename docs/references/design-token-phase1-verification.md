@@ -203,3 +203,21 @@ silently detach the spelling locks from reality).
    screenshots exist (captured from merged main; capture manifest
    delivered separately) and the Tier 3 prompt arrives. No refactoring
    in the interim.
+
+## Tier 3 Stop Point A rulings (Dean, 2026-07-30 - the Step 3 contract)
+
+- Batch A APPROVED: all 26 flagged offsets exempt as positional geometry.
+- Batch B1 APPROVED: member+keyword/env mixed shorthands adopt their
+  scale members in place, differ-certified zero-delta.
+- Batch B2 APPROVED: drift members consolidate per 3a with ledger
+  entries, 28->24 as the default. PRE-AGREED REJECTION PATH: any site
+  Dean rejects at Stop B flips per-site (e.g. 28->32) by itself without
+  reopening the batch.
+- Batch C APPROVED: exempts for .art-play-glyph::before (glyph art),
+  .related-title max-height (text clamp), .transcode-spinner (glyph
+  art); ADOPT --size-control for .ptr-indicator.
+- Corner chip / reloc backdrop: deferred to Tier 4 as surfaced; no
+  action this tranche.
+- Step 3 remains blocked until Dean's baseline screenshot location +
+  P1/P2 capture confirmation arrive. The strict reading applies: no
+  declaration edits of any kind (including zero-delta A/B1) until then.
