@@ -11268,7 +11268,10 @@ async function recordChannelFollowerCountFanout(deps, target, probed, nowMs = Da
 
   let updated = 0;
   await d.updateDatabase((db) => {
-    updated = 0; // reset per pass -- updateDatabase may retry the mutator
+    // Defensive reset: updateDatabase runs the mutator exactly ONCE (no
+    // retry path exists -- gate fix, the original comment here claimed
+    // otherwise), but a count computed inside the closure belongs inside it.
+    updated = 0;
     for (const item of Object.values(db.metadata || {})) {
       if (!item) continue;
       const itemId = str(item.channelId);

@@ -263,6 +263,38 @@ test('a target with no channelUrl is counted skipped, never probed, and the fan-
   }
 });
 
+test('two targets resolving to the SAME probed channelId fan out only ONCE (gate S2: pre-first-poll handle-vs-canonical double enumeration must not double-count itemsUpdated)', async () => {
+  const deps = makeFakeDeps({}, () => 4);
+  const config = enabledConfig();
+  // The repro'd enumeration shape: a subscription knowing only its handle
+  // URL (channelId still unpopulated, pre-first-poll)...
+  await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@name', format: 'video' });
+  // ...plus an item for the SAME channel under its canonical URL + id --
+  // the collector's idless-target upgrade keys on URL equality, so these
+  // yield TWO targets for one real channel.
+  const db = deps.loadDatabase();
+  db.metadata = {
+    vid1: { id: 'vid1', channelId: 'UCsamechannelidxxxxxxxxx', channelUrl: 'https://www.youtube.com/channel/UCsamechannelidxxxxxxxxx' },
+  };
+
+  run.probeChannelFollowerCount = async (channelUrl) => ({ followerCount: 99, channelId: 'UCsamechannelidxxxxxxxxx', channelUrl });
+
+  const { base, close } = await startTestApp(deps, config);
+  try {
+    const res = await fetch(`${base}/api/ytdlp/reheat-sub-counts`, { method: 'POST' });
+    assert.deepEqual(await res.json(), { started: true, total: 2 }, 'the enumeration double-counts this shape (inherited from refresh-avatars, tech-debt tracked)');
+    await flush(30);
+
+    assert.equal(deps.fanoutCalls.length, 1, 'the SECOND target resolving to the same probed channelId must skip the duplicate fan-out');
+    const entry = getReheatSubsEntry();
+    assert.equal(entry.done, 2, 'both targets were genuinely probed and are fresh -- both count done');
+    assert.equal(entry.itemsUpdated, 4, 'itemsUpdated must stay an honest count of DISTINCT stamped videos (4, not 8)');
+    assert.equal(entry.state, 'done');
+  } finally {
+    await close();
+  }
+});
+
 // ---- Failure resilience ----------------------------------------------------
 
 test('a null probe result (no usable count -- e.g. a non-YouTube extractor) is counted failed; the fan-out NEVER runs for it; the batch continues', async () => {
