@@ -1616,6 +1616,7 @@ test('runDownload: a captured FTCHMETA line is parsed onto result.channelMeta an
     filePath: null,
     // v1.48 item 2: absent from this payload -> normalized null.
     sourceViewCount: null,
+    sourceFollowerCount: null,
   });
   // The FTCHMETA line must never be misinterpreted as a progress patch --
   // only the one real progress line above produced an onProgress call.

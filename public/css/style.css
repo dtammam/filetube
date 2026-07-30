@@ -7611,6 +7611,17 @@ body.ft-css-fullscreen .bottom-nav {
   display: none;
 }
 
+/* v1.54 (Dean's bug 2): the subs chip must never push the Subscribe/Pin
+   buttons down a row -- with REAL counts the label lengthens ("1.2M
+   subscribers as of 2026-07-29"), so it ellipsizes inside a bounded chip
+   instead of growing the row. Device probe: narrow phone, real count. */
+.uploader-subs {
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* Cold-load description skeleton lines (hidden by the first real paint). */
 .watch-desc-skel[hidden] {
   display: none;
