@@ -20,11 +20,11 @@ const {
   reduceDownloadChipState,
 } = require('../../public/js/common.js');
 
-// The four fixed batch ids/kinds the servers emit today (lib/ytdlp/index.js:
-// repull/repull-item/refresh-avatars; server.js: attribute-bulk).
+// The five fixed batch ids/kinds the servers emit today (lib/ytdlp/index.js:
+// repull/repull-item/refresh-avatars/reheat-subs; server.js: attribute-bulk).
 test('every known activity kind maps to an operation label, never "One-off download"', () => {
   assert.deepEqual(Object.keys(ACTIVITY_CHIP_LABELS).sort(),
-    ['attribute-bulk', 'refresh-avatars', 'repull', 'repull-item']);
+    ['attribute-bulk', 'refresh-avatars', 'reheat-subs', 'repull', 'repull-item']);
   const item = buildDownloadChipItem('oneshot', 'repull-metadata', {
     kind: 'repull', state: 'running', total: 200, done: 10, skipped: 1, failed: 1, current: 'Some Video',
   });
@@ -33,6 +33,8 @@ test('every known activity kind maps to an operation label, never "One-off downl
   assert.equal(buildDownloadChipItem('oneshot', 'repull-metadata-item', { kind: 'repull-item', state: 'running', total: 1, current: 'T' }).name, 'Reheating video');
   assert.equal(buildDownloadChipItem('oneshot', 'refresh-avatars', { kind: 'refresh-avatars', state: 'running', total: 5 }).name, 'Refreshing avatars');
   assert.equal(buildDownloadChipItem('oneshot', 'attribute-bulk', { kind: 'attribute-bulk', state: 'running', total: 30, done: 2 }).name, 'Attributing videos');
+  // v1.56: the bulk subscriber-count reheat batch.
+  assert.equal(buildDownloadChipItem('oneshot', 'reheat-subs', { kind: 'reheat-subs', state: 'running', total: 8, done: 2 }).name, 'Reheating sub counts');
 });
 
 test('an UNKNOWN kind falls through to the old one-shot naming - a future producer degrades, never breaks', () => {

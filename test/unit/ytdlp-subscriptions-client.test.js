@@ -94,6 +94,13 @@ const {
   applyRefreshAvatarsStateToControls,
   triggerRefreshAvatars,
   triggerRefreshAvatarsCancel,
+  // v1.56 (Dean's bulk subscriber-count reheat): "Reheat sub counts" UI.
+  REHEAT_SUBS_ACTIVITY_ID,
+  formatReheatSubsSummary,
+  formatReheatSubsProgressText,
+  applyReheatSubsStateToControls,
+  triggerReheatSubs,
+  triggerReheatSubsCancel,
   // C5 (v1.30.0, T12): the shared avatar-precedence render helper.
   applySubAvatar,
   // v1.29.0 T9 (R4.1-R4.4): durable download-history section -- pure
@@ -3358,4 +3365,227 @@ t31test('v1.32: formatHistoryFailuresLine falls back to the run-level reason whe
   });
   t31assert.ok(withItems.includes('blocked'));
   t31assert.ok(!withItems.includes('list pass'), 'reason fallback only when item lines are empty');
+});
+
+// ---- v1.56 (Dean's bulk subscriber-count reheat): "Reheat sub counts" -----
+// UI trio + markup. Mirrors the refresh-avatars block above test-for-test
+// (same 202-summary/LiveEntry-progress/DOM-applier/fetch-trigger contract),
+// plus the itemsUpdated videos tally that block has no equivalent of.
+
+test('formatReheatSubsSummary: positive totals render channel counts (plural/singular); 0 renders the explicit nothing message; garbage clamps', () => {
+  assert.strictEqual(formatReheatSubsSummary(5), 'Reheating subscriber counts for 5 channels…');
+  assert.strictEqual(formatReheatSubsSummary(1), 'Reheating subscriber counts for 1 channel…');
+  assert.strictEqual(formatReheatSubsSummary(0), 'No channels to reheat subscriber counts for.');
+  for (const bad of [undefined, null, NaN, -3, 'five', {}]) {
+    const result = formatReheatSubsSummary(bad);
+    assert.ok(!result.includes('undefined'), `formatReheatSubsSummary(${bad}) leaked "undefined": ${result}`);
+    assert.ok(!result.includes('NaN'), `formatReheatSubsSummary(${bad}) leaked "NaN": ${result}`);
+  }
+});
+
+test('formatReheatSubsProgressText: "running" renders channels done/total, and omits itemsUpdated/skipped/failed/current when zero/absent', () => {
+  assert.strictEqual(
+    formatReheatSubsProgressText({ state: 'running', total: 10, done: 3, skipped: 0, failed: 0, itemsUpdated: 0, current: null }),
+    'Reheating sub counts: 3 of 10 channels done'
+  );
+});
+
+test('formatReheatSubsProgressText: "running" appends the videos-updated tally, skipped/failed, and the current channel when present', () => {
+  assert.strictEqual(
+    formatReheatSubsProgressText({ state: 'running', total: 10, done: 3, skipped: 2, failed: 1, itemsUpdated: 41, current: 'UCabc' }),
+    'Reheating sub counts: 3 of 10 channels done · 41 videos updated · 2 skipped · 1 failed · current: UCabc'
+  );
+});
+
+test('formatReheatSubsProgressText: "done" always says how many videos were updated (0 included -- the honest outcome), skipped/failed only when non-zero', () => {
+  assert.strictEqual(
+    formatReheatSubsProgressText({ state: 'done', total: 10, done: 7, skipped: 2, failed: 1, itemsUpdated: 120 }),
+    'Sub-count reheat done: 7 of 10 channels refreshed · 120 videos updated · 2 skipped · 1 failed'
+  );
+  assert.strictEqual(
+    formatReheatSubsProgressText({ state: 'done', total: 5, done: 5, skipped: 0, failed: 0, itemsUpdated: 1 }),
+    'Sub-count reheat done: 5 of 5 channels refreshed · 1 video updated'
+  );
+  assert.strictEqual(
+    formatReheatSubsProgressText({ state: 'done', total: 2, done: 2, skipped: 0, failed: 0, itemsUpdated: 0 }),
+    'Sub-count reheat done: 2 of 2 channels refreshed · 0 videos updated'
+  );
+});
+
+test('formatReheatSubsProgressText: "cancelled"/"error" terminal wording; missing/idle entries render ""', () => {
+  assert.strictEqual(
+    formatReheatSubsProgressText({ state: 'cancelled', total: 10, done: 4 }),
+    'Sub-count reheat cancelled — 4 of 10 channels refreshed before stopping'
+  );
+  assert.strictEqual(formatReheatSubsProgressText({ state: 'error' }), 'Sub-count reheat failed unexpectedly.');
+  assert.strictEqual(formatReheatSubsProgressText(undefined), '');
+  assert.strictEqual(formatReheatSubsProgressText(null), '');
+  assert.strictEqual(formatReheatSubsProgressText({}), '');
+  assert.strictEqual(formatReheatSubsProgressText({ state: 'idle' }), '');
+});
+
+test('applyReheatSubsStateToControls: "running" disables the button, swaps in Cancel (Track B in-cell swap), renders progress', () => {
+  const button = new FakeElement('button');
+  const status = new FakeElement('span');
+  const cancelButton = new FakeElement('button');
+  cancelButton.hidden = true;
+  const elements = { button, status, cancelButton };
+
+  applyReheatSubsStateToControls(elements, { state: 'running', total: 10, done: 4, skipped: 0, failed: 0, itemsUpdated: 0 });
+
+  assert.strictEqual(button.disabled, true);
+  assert.strictEqual(button.hidden, true, 'Track B: the trigger hides while its Cancel is shown');
+  assert.strictEqual(cancelButton.hidden, false);
+  assert.strictEqual(status.textContent, 'Reheating sub counts: 4 of 10 channels done');
+});
+
+test('applyReheatSubsStateToControls: a terminal ("done") entry re-enables/re-shows the button and re-hides Cancel', () => {
+  const button = new FakeElement('button');
+  button.disabled = true;
+  button.hidden = true;
+  const status = new FakeElement('span');
+  const cancelButton = new FakeElement('button');
+  cancelButton.hidden = false;
+  const elements = { button, status, cancelButton };
+
+  applyReheatSubsStateToControls(elements, { state: 'done', total: 10, done: 10, skipped: 0, failed: 0, itemsUpdated: 55 });
+
+  assert.strictEqual(button.disabled, false);
+  assert.strictEqual(button.hidden, false);
+  assert.strictEqual(cancelButton.hidden, true);
+  assert.strictEqual(status.textContent, 'Sub-count reheat done: 10 of 10 channels refreshed · 55 videos updated');
+});
+
+test('applyReheatSubsStateToControls: a missing entry re-enables the button, hides Cancel, and leaves prior status text alone; malformed elements never throw', () => {
+  const button = new FakeElement('button');
+  button.disabled = true;
+  const status = new FakeElement('span');
+  status.textContent = 'Reheating subscriber counts for 5 channels…';
+  const cancelButton = new FakeElement('button');
+  cancelButton.hidden = false;
+  const elements = { button, status, cancelButton };
+
+  applyReheatSubsStateToControls(elements, undefined);
+
+  assert.strictEqual(button.disabled, false, 'no live batch -- the button must not stay stuck disabled');
+  assert.strictEqual(cancelButton.hidden, true);
+  assert.strictEqual(status.textContent, 'Reheating subscriber counts for 5 channels…', 'the prior 202 summary must not be blanked by an idle poll tick');
+
+  assert.doesNotThrow(() => applyReheatSubsStateToControls(null, { state: 'running' }));
+  assert.doesNotThrow(() => applyReheatSubsStateToControls({}, { state: 'running' }));
+  assert.doesNotThrow(() => applyReheatSubsStateToControls({ button: new FakeElement('button') }, { state: 'running' }));
+});
+
+test('triggerReheatSubs: POSTs /api/ytdlp/reheat-sub-counts, disables immediately, renders the 202 summary, stays disabled (poll reconciles)', async () => {
+  const button = new FakeElement('button');
+  const status = new FakeElement('span');
+  const elements = { button, status, cancelButton: new FakeElement('button') };
+  const calls = [];
+  const fetchImpl = (url, opts) => {
+    calls.push([url, opts]);
+    return Promise.resolve(fakeJsonResponse(true, 202, { started: true, total: 5 }));
+  };
+
+  triggerReheatSubs(elements, fetchImpl);
+  assert.strictEqual(button.disabled, true, 'must disable immediately, before the response even arrives');
+  await flushMicrotasks();
+
+  assert.strictEqual(calls.length, 1);
+  assert.strictEqual(calls[0][0], '/api/ytdlp/reheat-sub-counts');
+  assert.strictEqual(calls[0][1].method, 'POST');
+  assert.strictEqual(status.textContent, formatReheatSubsSummary(5));
+  assert.strictEqual(button.disabled, true, 'stays disabled after a successful 202 -- the poll re-enables it once terminal');
+});
+
+test('triggerReheatSubs: 409 alreadyRunning is "already in progress" (never a failure); 500 and network errors re-enable for retry', async () => {
+  {
+    const elements = { button: new FakeElement('button'), status: new FakeElement('span'), cancelButton: new FakeElement('button') };
+    triggerReheatSubs(elements, () => Promise.resolve(fakeJsonResponse(false, 409, { started: false, alreadyRunning: true })));
+    await flushMicrotasks();
+    assert.strictEqual(elements.status.textContent, 'A sub-count reheat is already in progress.');
+  }
+  {
+    const elements = { button: new FakeElement('button'), status: new FakeElement('span'), cancelButton: new FakeElement('button') };
+    triggerReheatSubs(elements, () => Promise.resolve(fakeJsonResponse(false, 500, {})));
+    await flushMicrotasks();
+    assert.strictEqual(elements.status.textContent, 'Could not start the sub-count reheat.');
+    assert.strictEqual(elements.button.disabled, false, 'must re-enable so the user can retry');
+  }
+  {
+    const elements = { button: new FakeElement('button'), status: new FakeElement('span'), cancelButton: new FakeElement('button') };
+    triggerReheatSubs(elements, () => Promise.reject(new Error('offline')));
+    await flushMicrotasks();
+    assert.strictEqual(elements.status.textContent, 'Could not start the sub-count reheat (network error).');
+    assert.strictEqual(elements.button.disabled, false);
+  }
+});
+
+test('triggerReheatSubs: a missing elements object is a safe no-op (never throws, never calls fetch)', () => {
+  let called = false;
+  const fetchImpl = () => { called = true; return Promise.resolve(fakeJsonResponse(true, 202, {})); };
+  assert.doesNotThrow(() => triggerReheatSubs(null, fetchImpl));
+  assert.strictEqual(called, false);
+});
+
+test('triggerReheatSubsCancel: POSTs the cancel endpoint, double-click-guards the Cancel control, re-enables after settle (success or network failure)', async () => {
+  const status = new FakeElement('span');
+  const cancelButton = new FakeElement('button');
+  cancelButton.hidden = false;
+  const elements = { button: new FakeElement('button'), status, cancelButton };
+  const calls = [];
+  const fetchImpl = (url, opts) => {
+    calls.push([url, opts]);
+    return Promise.resolve(fakeJsonResponse(true, 200, { cancelled: true }));
+  };
+
+  triggerReheatSubsCancel(elements, fetchImpl);
+  assert.strictEqual(cancelButton.disabled, true, 'disabled immediately to guard against a double-click');
+  await flushMicrotasks();
+
+  assert.strictEqual(calls.length, 1);
+  assert.strictEqual(calls[0][0], '/api/ytdlp/reheat-sub-counts/cancel');
+  assert.strictEqual(calls[0][1].method, 'POST');
+  assert.strictEqual(status.textContent, 'Cancelling sub-count reheat…');
+  assert.strictEqual(cancelButton.disabled, false, 're-enabled once the request settles');
+
+  const failingElements = { button: new FakeElement('button'), status: new FakeElement('span'), cancelButton: new FakeElement('button') };
+  triggerReheatSubsCancel(failingElements, () => Promise.reject(new Error('offline')));
+  await flushMicrotasks();
+  assert.strictEqual(failingElements.cancelButton.disabled, false);
+});
+
+test('REHEAT_SUBS_ACTIVITY_ID matches the server module and its own fixed one-shot id', () => {
+  assert.strictEqual(REHEAT_SUBS_ACTIVITY_ID, 'reheat-subs');
+  assert.strictEqual(REHEAT_SUBS_ACTIVITY_ID, require('../../lib/ytdlp').REHEAT_SUBS_ACTIVITY_ID,
+    'the client literal must track the server constant -- the poll looks the entry up by this exact key');
+});
+
+test('subscriptions.html: #sub-reheat-subs-btn exists exactly once (own .action-bar-cell span), with icon glyph and the "Reheat sub counts" label', () => {
+  const matches = SUBS_HTML.match(/id="sub-reheat-subs-btn"/g) || [];
+  assert.strictEqual(matches.length, 1, 'expected #sub-reheat-subs-btn to appear exactly once');
+  const btnMatch = /<button[^>]*id="sub-reheat-subs-btn"[^>]*>([\s\S]*?)<\/button>/.exec(SUBS_HTML);
+  assert.ok(btnMatch, 'expected a well-formed <button id="sub-reheat-subs-btn"> element');
+  assert.match(btnMatch[1], /<i class="icon-[a-z-]+"><\/i>/, 'expected an icon glyph inside the button');
+  assert.match(btnMatch[1], /Reheat sub counts/, 'expected the short "Reheat sub counts" label');
+  // The v1.55 Track B cell contract: the trigger and its Cancel share ONE
+  // .action-bar-cell SPAN (a div would break the v1262 status-relocation
+  // literal scanner, which captures up to the first closing div).
+  const cellMatch = /<span class="action-bar-cell">\s*<button[^>]*id="sub-reheat-subs-btn"[\s\S]*?id="sub-reheat-subs-cancel-btn"[\s\S]*?<\/span>/.exec(SUBS_HTML);
+  assert.ok(cellMatch, 'the trigger and its Cancel must share one .action-bar-cell span');
+});
+
+test('subscriptions.html: #sub-reheat-subs-cancel-btn exists exactly once and starts hidden; the status span sits in the reserved status row', () => {
+  const matches = SUBS_HTML.match(/id="sub-reheat-subs-cancel-btn"/g) || [];
+  assert.strictEqual(matches.length, 1);
+  const btnMatch = /<button[^>]*id="sub-reheat-subs-cancel-btn"[^>]*>/.exec(SUBS_HTML);
+  assert.ok(btnMatch);
+  assert.match(btnMatch[0], /\bhidden\b/, 'the Cancel control must start hidden -- only shown while a reheat is running');
+
+  const statusMatches = SUBS_HTML.match(/id="sub-reheat-subs-status"/g) || [];
+  assert.strictEqual(statusMatches.length, 1, 'expected exactly one status span');
+  const statusRow = /<div class="sub-list-header-status">([\s\S]*?)<\/div>/.exec(SUBS_HTML);
+  assert.ok(statusRow, 'expected the reserved status row');
+  assert.match(statusRow[1], /id="sub-reheat-subs-status"/, 'the status span must live in the reserved row (v1.26.2: growing status text must never re-wrap the button row)');
+  const statusSpanMatch = /<span id="sub-reheat-subs-status"[^>]*>/.exec(SUBS_HTML);
+  assert.match(statusSpanMatch[0], /aria-live="polite"/, 'status updates must announce politely');
 });
