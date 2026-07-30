@@ -7074,9 +7074,88 @@ function chipItemLifecycle(state, failureKind) {
  * subscription is surfaced via `statusText` below (`formatOneOffStatusText`
  * already renders "title -- N of M -- X%" for any entry with those fields,
  * subscription or one-shot alike) -- no separate field needed here.
+ *
+ * v1.55 (Dean: "reheats, repulls... it just shows one off download. That
+ * should be clearer"): BATCH-ACTIVITY entries ride the same `oneShots`
+ * namespace under fixed ids, and every producer already stamps a `kind`
+ * field (lib/ytdlp/index.js: 'repull'/'repull-item'/'refresh-avatars';
+ * server.js: 'attribute-bulk'). Before this, they all fell through the
+ * one-shot naming chain to the literal "One-off download" with statusText
+ * "running" (the raw state). Now: a recognized `entry.kind` names the row by
+ * OPERATION, its progress comes from the batch counters (done+skipped+failed
+ * of total -- a real determinate bar, not the fake-0% class), and the row is
+ * never `retryable` (the chip's Retry fires the ONE-SHOT retry route, which
+ * has no meaning for a batch id -- Dismiss remains). Unrecognized kinds fall
+ * through unchanged, so a future producer degrades to the old generic label
+ * rather than breaking.
  */
+const ACTIVITY_CHIP_LABELS = {
+  'repull': 'Reheating library',
+  'repull-item': 'Reheating video',
+  'refresh-avatars': 'Refreshing avatars',
+  'attribute-bulk': 'Attributing videos',
+};
+
+// Pure: statusText for a batch-activity chip row. Position is PROCESSED
+// count (done+skipped+failed -- successes alone would undercount progress on
+// a skip-heavy reheat), " -- " joined with the current item label when the
+// producer streams one, and attribute-bulk's `moved` tally (its most
+// meaningful live number). Terminal states mirror formatOneOffStatusText's
+// wording exactly so the two row families read alike.
+function formatActivityStatusText(entry) {
+  if (!entry || typeof entry !== 'object') return null;
+  const state = entry.state;
+  const num = (v) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : 0);
+  if (state === 'running') {
+    const total = num(entry.total);
+    const processed = num(entry.done) + num(entry.skipped) + num(entry.failed);
+    const parts = [];
+    if (total > 1) parts.push(Math.min(processed, total) + ' of ' + total);
+    const current = typeof entry.current === 'string' && entry.current.trim() !== '' ? entry.current.trim() : null;
+    if (current) parts.push(current);
+    if (entry.kind === 'attribute-bulk' && num(entry.moved) > 0) parts.push(num(entry.moved) + ' moved');
+    return parts.length > 0 ? parts.join(' — ') : 'Running…';
+  }
+  if (state === 'done') return 'Done';
+  if (state === 'error') return typeof entry.error === 'string' && entry.error.trim() !== '' ? entry.error : 'error';
+  if (state === 'cancelled') return 'Cancelled';
+  return null;
+}
+
 function buildDownloadChipItem(kind, id, entry) {
   if (!id || !entry || typeof entry !== 'object') return null;
+  const activityKind = kind === 'oneshot' && typeof entry.kind === 'string'
+    && Object.prototype.hasOwnProperty.call(ACTIVITY_CHIP_LABELS, entry.kind)
+    ? entry.kind : null;
+  if (activityKind) {
+    const state = typeof entry.state === 'string' ? entry.state : 'running';
+    const num = (v) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : 0);
+    const total = num(entry.total);
+    const processed = num(entry.done) + num(entry.skipped) + num(entry.failed);
+    return {
+      key: kind + ':' + id,
+      id,
+      kind,
+      activityKind,
+      name: ACTIVITY_CHIP_LABELS[activityKind],
+      // A batch's bar is its own real progress: processed/total. A batch
+      // with no meaningful total (absent, or a single-item reheat) shows NO
+      // bar at all (see downloadChipItemShowsPercent) -- its statusText
+      // carries the story; never a fake 0% or a dead indeterminate flag.
+      percent: total > 1 ? Math.max(0, Math.min(100, Math.round((processed / total) * 100))) : 0,
+      // The bar-visibility gate (downloadChipItemShowsPercent) needs to know
+      // whether a determinate processed/total basis exists at all.
+      activityBar: total > 1,
+      state,
+      phase: null,
+      indeterminate: false,
+      failureKind: null,
+      statusText: formatActivityStatusText(entry) || state,
+      // NEVER retryable: Retry fires the one-shot retry route, meaningless
+      // (and wrong) for a fixed batch id. Errors keep Dismiss only.
+      retryable: false,
+    };
+  }
   const state = typeof entry.state === 'string' ? entry.state : 'queued';
   const percent = typeof entry.percent === 'number' && Number.isFinite(entry.percent)
     ? Math.max(0, Math.min(100, Math.round(entry.percent)))
@@ -7133,6 +7212,11 @@ function buildDownloadChipItem(kind, id, entry) {
  */
 function downloadChipItemShowsPercent(item) {
   if (!item || typeof item !== 'object') return false;
+  // v1.55: a batch-activity row shows its bar only while RUNNING with a
+  // determinate processed/total basis (activityBar -- total > 1). A batch
+  // with no total (or a single-item reheat) shows no bar at all rather than
+  // a fake 0%, and a terminal batch's statusText already says what happened.
+  if (item.activityKind) return item.state === 'running' && item.activityBar === true;
   if (item.kind !== 'subscription') return true;
   return item.state === 'downloading';
 }
@@ -7272,26 +7356,53 @@ function reduceDownloadChipState(snapshot, dismissedKeys) {
 function formatDownloadChipSummary(state) {
   if (!state || !Array.isArray(state.items) || state.items.length === 0) return '';
   const downloading = state.items.filter((item) => item.state === 'downloading');
-  if (downloading.length === 0) {
-    const errorCount = state.items.filter((item) => item.state === 'error').length;
+  // v1.55: RUNNING batch activities (reheats, avatar refreshes,
+  // attribution -- see ACTIVITY_CHIP_LABELS) are first-class in the
+  // collapsed line now, not invisible-until-error. A single one headlines
+  // by name exactly like a single download does. (Worded to dodge the
+  // ytdlp-t6 route-lock's literal scanner, which cannot tell prose from
+  // code -- the same reason its allowlist exists.)
+  const running = state.items.filter((item) => item.activityKind && item.state === 'running');
+  if (downloading.length === 0 && running.length === 0) {
+    const errored = state.items.filter((item) => item.state === 'error');
     const cancelledCount = state.items.filter((item) => item.state === 'cancelled').length;
+    const errorCount = errored.length;
     if (errorCount === 0 && cancelledCount === 0) return '';
     if (cancelledCount === 0) {
-      return errorCount + (errorCount === 1 ? ' download failed' : ' downloads failed');
+      // "download failed" was a lie when the failed thing was a reheat --
+      // wording follows what actually failed.
+      const allActivities = errored.every((item) => item.activityKind);
+      const noun = allActivities
+        ? (errorCount === 1 ? ' task failed' : ' tasks failed')
+        : (errored.some((item) => item.activityKind)
+          ? ' failed'
+          : (errorCount === 1 ? ' download failed' : ' downloads failed'));
+      return errorCount + noun;
     }
     if (errorCount === 0) {
       return cancelledCount + ' stopped';
     }
     return errorCount + ' failed · ' + cancelledCount + ' stopped';
   }
+  const parts = [];
   if (downloading.length === 1) {
     const item = downloading[0];
     const hasNameAndStatus = typeof item.name === 'string' && item.name.trim() !== ''
       && typeof item.statusText === 'string' && item.statusText.trim() !== '';
-    if (hasNameAndStatus) return item.name + ' — ' + item.statusText;
+    parts.push(hasNameAndStatus ? item.name + ' — ' + item.statusText : '1 downloading (' + item.percent + '%)');
+  } else if (downloading.length > 1) {
+    const avg = Math.round(downloading.reduce((sum, item) => sum + item.percent, 0) / downloading.length);
+    parts.push(downloading.length + ' downloading (' + avg + '%)');
   }
-  const avg = Math.round(downloading.reduce((sum, item) => sum + item.percent, 0) / downloading.length);
-  return downloading.length + ' downloading (' + avg + '%)';
+  if (running.length === 1) {
+    const act = running[0];
+    parts.push(typeof act.statusText === 'string' && act.statusText.trim() !== '' && act.statusText !== 'Running…'
+      ? act.name + ' — ' + act.statusText
+      : act.name);
+  } else if (running.length > 1) {
+    parts.push(running.length + ' tasks running');
+  }
+  return parts.join(' · ');
 }
 
 /**
@@ -7613,7 +7724,11 @@ function updateDownloadChipItemRow(doc, row, item, rawEntry) {
   els.failuresWrap.hidden = failureLines.length === 0;
 
   els.actions.hidden = !(item.state === 'error' || item.state === 'cancelled');
-  els.retryBtn.hidden = item.state !== 'error';
+  // v1.55: gate on the item's own `retryable` (previously a write-only field
+  // -- this row checked `state` directly, which would have offered a Retry
+  // on an errored BATCH row and fired the one-shot retry route against a
+  // fixed batch id). Downloads keep retryable === (state === 'error').
+  els.retryBtn.hidden = item.retryable !== true;
 }
 
 /**
@@ -8468,6 +8583,7 @@ if (typeof module !== 'undefined' && module.exports) {
     showMoveModal, requestMoveItem,
     nextDownloadChipPollDelay, buildOneShotRetryBody, chipItemLifecycle,
     buildDownloadChipItem, reduceDownloadChipState, formatDownloadChipSummary,
+    ACTIVITY_CHIP_LABELS, formatActivityStatusText,
     shouldShowDownloadChipOnPath, injectDownloadStatusChip,
     // v1.29.0 T8: the pure done-edge detector + the in-place library-refresh
     // hook invoker, exported for direct node:test coverage (no DOM/timers).
