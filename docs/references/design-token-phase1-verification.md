@@ -73,6 +73,21 @@ definition-value and selector comparison.
 
 ## Lint burn-down - corrected baselines
 
+TIER 2 STEP 1 UPDATE (the fixture suite found two more linter holes; the
+numbers below this note are SUPERSEDED - kept for the audit trail):
+
+| linter version | baseline (ef60bbf) | after Tier 1 | what changed |
+|---|---|---|---|
+| v1 (shipped w/ commit 4) | 641 | - | published, then found buggy |
+| v2 (Phase 1 commit 6) | 628 | 554 | parser fix: same-line selectors re-enabled at-rule/era exclusions |
+| v3 (Tier 2 Step 1) | 661 | 580 | ONE-LINE RULES were never linted - 26 hidden literals (found by the new fixture suite) |
+| v4 (Tier 2 Step 1, authoritative) | **692** | **611** | var() FALLBACK literals now survive the strip - Dean's ruling requires the 9 ghost-token sites visible as Tier 4 residue; also surfaces 3 vacuous `var(--heading-weight, bold)` fallback spellings (Tier 2 cleanup candidates - the Tier 1 "zero weight literals" claim was true for DIRECT declarations and stands as written) |
+
+The v4 semantics are locked by test/unit/css-token-lint.test.js (in CI via
+npm run test:unit), including one regression fixture per hole above.
+
+## Lint burn-down - corrected baselines (SUPERSEDED - see table above)
+
 Commit ef60bbf published baseline **641**. The linter's selector tracking
 had a bug (single-line selectors - nearly all of them - pushed empty
 strings, silently disabling the @font-face/@keyframes and era-scope
@@ -102,3 +117,87 @@ trees:
 - The audit's existing-token census gains two GHOST names: `--accent`
   and `--accent-color` are consumed (as fallback carriers) but never
   defined.
+
+## Tier 2 commit 6 - .btn-sm disposition: LEAVE AND FLAG
+
+Reference check (documented per the Tier 2 spec): `.btn-sm` carries ZERO
+style declarations anywhere, but is referenced 41 times as a class name in
+markup/JS (subscriptions.html buttons, common.js injected controls,
+setup.html logo buttons) and 12 times in tests. Per the spec's rule
+("referenced anywhere -> leave and flag"), it stays. Removing it would be
+behavior-neutral but a 53-site churn for zero rendering value - a Tier 3+
+housekeeping decision if ever. Flagged; not removed.
+
+## Tier 2 verification + remaining-work census (commit 7)
+
+Adoption span 6f4b971 -> HEAD. Full-span differ verdict: across all 9
+era x mode contexts, the ONLY delta is the enumerated .stats-meta-text
+class addition (2 declarations, correct per-mode resolution visible:
+#666666 light / #aaaaaa dark) - every substitution is invisible to
+resolution, which is the definition of the zero-delta pass. Per-commit
+differ runs were EQUIVALENT x9 at every step.
+
+Burn-down (v4 linter, authoritative): 611 at Tier 2 start -> **271**
+after Tier 2. By category (start -> end): spacing 427 -> 107,
+color 89 -> 86, font-weight 3 -> 0, motion 30 -> 17,
+border-radius 28 -> 27, z-index 17 -> 17, line-height 11 -> 11,
+shadow 6 -> 6. (The old v2-era category table above is superseded;
+89 was the true v4 color start - the v2 table's 57/62 predates the
+fallback-visibility fix.)
+
+Corrections made during Tier 2, on the record: the stats.js hidden
+cssText sites were FIVE, not four; the spec's premise that cssText is
+in the linter's coverage was false (linter scope is CSS-only by its
+Phase 1 contract) - visibility proven by direct scan instead, and
+"extend the metric to JS style surfaces?" is a Tier 3 scope decision.
+Commit 3's message was amended pre-push after inverting the two scrim
+counts.
+
+### Census of the remaining 271 (the Tier 3 prompt's input)
+
+- TIER 3 (consolidation/near-values): spacing drift band
+  (7/9/14/18/28px and friends) ~55; the 25 flagged MIXED shorthands
+  (a scale member beside auto/calc/--density/a Tier 3 value); motion
+  0.2s x13 + micro-band (0.08/0.1/0.12/0.3s) 4; scrim near-alphas
+  (.5/.6/.75/.85 minus the protected cc floor); the 6-member shadow
+  elevation band; radius drift band (3/6/8/14/27px); line-height band
+  (1.3/1.35 vs tokens); one adoption-tooling gap (.skip-btn:hover
+  mid-line scrim). Also flagged-not-made: two font-weight:bold cssText
+  literals in stats.js; the JS-metric scope decision.
+- TIER 4 (era/judgment, behind per-era screenshots): the 9 ghost
+  --accent sites (ruling: migrate to --yt-red, never define the
+  ghosts); monospace -> --mono-font; R7 raw radii (2/4px x15). These
+  are the bulk of the color-category residue.
+- AMBIGUOUS-FLAGGED (Tier 3 scoping input): 26 offset sites
+  (top/right/bottom/left carrying scale values - geometry vs rhythm
+  judgment per site); 4 glyph/text-geometry sizing sites reverted by
+  judgment during commit 2 (.art-play-glyph::before, .related-title
+  max-height, .transcode-spinner, .ptr-indicator).
+- DELIBERATELY OUT OF SCOPE (not residue): era-scoped skin rules
+  (incl. the three [data-theme="2021"] slider-track 999px pills -
+  same posture as the bevel stack: era skin stays literal);
+  z-index 900+ ladder values (Tier 3 R11 re-ladder behind the co-open
+  enumeration); the 17 z + 11 line-height + letterbox/exempt classes
+  carried as annotated.
+
+### Lock-architecture note
+
+Eleven pre-existing CSS spelling locks (touch targets, grids, sticky
+bar, chapters, modal) now resolve --space-*/--size-* spellings back to
+px before asserting (per-file rs/rt helpers), with the NEW
+token-scale-lock.test.js as the single byte-exact value authority for
+all 38 tokens (single-definition-enforced, so era overrides can never
+silently detach the spelling locks from reality).
+
+## Post-Tier-2 rulings (Dean, at merge approval)
+
+1. JS-METRIC SCOPE: APPROVED - at Tier 3 start the linter extends to
+   JS-applied style surfaces (cssText strings, el.style assignments,
+   setProperty), EXCLUDING player.js positional geometry per the audit
+   classification. One deliberate rebaseline with the usual
+   correction-history entry (it will be v5). The two font-weight:bold
+   cssText literals in stats.js land in scope with it.
+2. Tier 3 is NOT authorized until Dean's device-pass baseline
+   screenshots exist (captured from merged main; capture manifest
+   delivered separately) and the Tier 3 prompt arrives. No refactoring
+   in the interim.

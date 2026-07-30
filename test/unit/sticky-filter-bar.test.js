@@ -8,6 +8,13 @@
 // background + z-index that keep grid rows from showing through / overlapping,
 // and clears the taller mobile header.
 const { test } = require('node:test');
+
+// Tier 2 (DELIBERATE lock updates): spacing literals became --space-* tokens;
+// these locks pin VALUES, so extracted rule text is resolved back to px
+// before asserting. The token VALUES themselves are pinned byte-exactly by
+// test/unit/token-scale-lock.test.js (the single value authority).
+const SPACE_TOKENS = { '--space-1': '2px', '--space-2': '4px', '--space-3': '6px', '--space-4': '8px', '--space-5': '10px', '--space-6': '12px', '--space-8': '16px', '--space-10': '20px', '--space-12': '24px', '--space-16': '32px' };
+const rs = (s) => String(s).replace(/var\((--space-\d+)\)/g, (_, n) => SPACE_TOKENS[n] || _);
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -69,11 +76,11 @@ test('the bar pins FLUSH with zero pre-stick jump: pull-up == give-back == the d
   // to `.main-content`'s desktop top padding (24px), or the bar pins off-position.
   const body = ruleBody('#library-content .section-title');
   assert.match(body, /margin-top:\s*-24px/, 'pull the box up by the 24px desktop content padding');
-  assert.match(body, /padding-top:\s*24px/, 'give it back as inner padding so the heading stays put');
+  assert.match(rs(body), /padding-top:\s*24px/, 'give it back as inner padding so the heading stays put');
   // Sanity-tie to the actual .main-content desktop padding so this stays honest
   // if that padding ever changes.
   const mc = ruleBody('.main-content');
-  assert.match(mc, /padding:\s*24px/, '.main-content desktop padding is the 24px this pull-up cancels');
+  assert.match(rs(mc), /padding:\s*24px/, '.main-content desktop padding is the 24px this pull-up cancels');
 });
 
 test('the mobile flush-pin pull-up matches the 16px mobile content padding (not the desktop 24px)', () => {
@@ -81,12 +88,12 @@ test('the mobile flush-pin pull-up matches the 16px mobile content padding (not 
   // override margin-top/padding-top to 16px (mobile .main-content padding), else
   // the bar pins 8px off on phones.
   const re = /#library-content \.section-title\s*\{[^}]*margin-top:\s*-16px;[^}]*padding-top:\s*16px/;
-  assert.match(css, re, 'mobile pull-up/give-back is 16px');
+  assert.match(rs(css), re, 'mobile pull-up/give-back is 16px');
   // Sanity-tie to the actual mobile `.main-content` padding (16px), matching the
   // desktop half's rigor — if that ever changes, the mobile pull-up must too or
   // the bar pins off. The mobile `.main-content` rule (inside the 768px block)
   // sets `padding: 16px`; the desktop one is `padding: 24px` (won't match here).
-  assert.match(css, /\.main-content\s*\{[^}]*padding:\s*16px/, 'mobile .main-content padding is the 16px this pull-up cancels');
+  assert.match(rs(css), /\.main-content\s*\{[^}]*padding:\s*16px/, 'mobile .main-content padding is the 16px this pull-up cancels');
 });
 
 test('--sticky-bar-top is the desktop header height and is overridden to the taller mobile header', () => {

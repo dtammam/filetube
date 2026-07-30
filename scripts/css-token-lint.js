@@ -87,11 +87,53 @@ function lintCss(text, fname, lineOffset, out) {
     const open = s.indexOf('/*');
     if (open !== -1) { s = s.slice(0, open); inComment = true; }
 
-    // brace tracking (line-based; style.css is one-decl-per-line formatted).
-    // The selector for a `{` is everything pending from prior lines PLUS the
-    // current line's text before the brace (v1 dropped the same-line part,
-    // which silently disabled the @font-face/@keyframes and era-scope
-    // exclusions - caught by the font-weight:100 900 false positive).
+    // Segment-based scan: split the line at braces, tracking the selector
+    // stack, and lint EVERY declaration segment - including declarations on
+    // the same line as their rule's braces. (v1 dropped the same-line
+    // selector part, silently disabling the at-rule/era exclusions - caught
+    // by the font-weight:100 900 false positive. v2 skipped any line
+    // containing a brace, silently exempting ONE-LINE RULES entirely -
+    // caught by this script's own fixture suite, Tier 2 Step 1.)
+    const checkDecls = (segment) => {
+      for (const m of segment.matchAll(/([\w-]+|--[\w-]+)\s*:\s*([^;{}]+)(;|$)/g)) {
+        if (selStack.length === 0) continue; // stray text outside any rule
+        lintDecl(m[1], m[2].trim());
+      }
+    };
+    const lintDecl = (rawProp, value) => {
+      const prop = rawProp.toLowerCase();
+      if (prop.startsWith('--')) return; // token definition layer
+      if (exempt) return; // audit-KEEP directive
+      const inOpaque = selStack.some((f) => f.at === '@keyframes' || f.at === '@font-face');
+      if (inOpaque) return;
+      const nearest = [...selStack].reverse().find((f) => !f.at);
+      if (nearest && DEF_SELECTOR.test(nearest.selector)) return; // era/def layer
+      // var() strips, but FALLBACKS survive the strip: var(--ghost, #cc0000)
+      // renders its fallback literal, and Dean's Tier 4 ruling keeps those
+      // 9 ghost-token sites visible in the burn-down. Iterate for nesting.
+      let bare = value;
+      for (let n = 0; n < 4; n++) {
+        const next = bare
+          .replace(/var\(\s*--[\w-]+\s*\)/g, '')
+          .replace(/var\(\s*--[\w-]+\s*,\s*([^()]*)\)/g, '$1');
+        if (next === bare) break;
+        bare = next;
+      }
+      bare = bare.trim();
+      if (bare === '' || /^(transparent|currentColor|inherit|none|auto|normal|unset|initial|0|100%|50%)$/i.test(bare)) return;
+      const hit = (cat) => out.push({ cat, file: fname, line: lineNo, prop, value: value.slice(0, 60) });
+      if (prop === 'z-index') { if (G['z-index'].test(bare)) hit('z-index'); return; }
+      if (prop === 'font-weight') { if (G['font-weight'].test(bare)) hit('font-weight'); return; }
+      if (prop === 'font-size') { if (G['font-size'].test(bare)) hit('font-size'); return; }
+      if (prop === 'line-height') { if (G['line-height'].test(bare)) hit('line-height'); return; }
+      if (prop === 'letter-spacing') { if (G['letter-spacing'].test(bare)) hit('letter-spacing'); return; }
+      if (prop === 'box-shadow' || prop === 'text-shadow') { if (G.shadow.test(bare)) hit('shadow'); return; }
+      if (MOTION_PROP.test(prop)) { if (G.motion.test(bare)) hit('motion'); return; }
+      if (RADIUS_PROP.test(prop)) { if (G['border-radius'].test(bare)) hit('border-radius'); return; }
+      if (SPACING_PROP.test(prop)) { if (G.spacing.test(bare)) hit('spacing'); return; }
+      if (G.color.test(bare)) hit('color');
+    };
+
     let cursor = 0;
     for (let ci = 0; ci < s.length; ci++) {
       const ch = s[ci];
@@ -102,46 +144,26 @@ function lintCss(text, fname, lineOffset, out) {
         pendingSelector = '';
         cursor = ci + 1;
       } else if (ch === '}') {
+        checkDecls(s.slice(cursor, ci));
         selStack.pop();
         pendingSelector = '';
         cursor = ci + 1;
       }
     }
-    const beforeBrace = s.includes('{') ? s.slice(0, s.indexOf('{')) : null;
-    if (beforeBrace !== null) { /* selector consumed above */ }
-    else if (!s.includes('}') && !s.includes(':')) pendingSelector += ' ' + s.trim();
-
-    // find the declaration on this line (code part only)
-    const m = /([\w-]+)\s*:\s*([^;{}]+);/.exec(s);
-    if (!m) { if (!s.includes('{')) pendingSelector = s.includes('}') ? '' : pendingSelector; continue; }
-    if (s.includes('{')) continue; // selector line, any colon is a pseudo
-    const prop = m[1].toLowerCase();
-    const value = m[2].trim();
-
-    if (prop.startsWith('--')) continue; // token definition layer
-    if (exempt) continue; // audit-KEEP directive
-    const inKeyframes = selStack.some((f) => f.at === '@keyframes' || f.at === '@font-face');
-    if (inKeyframes) continue;
-    const nearest = [...selStack].reverse().find((f) => !f.at);
-    if (nearest && DEF_SELECTOR.test(nearest.selector)) continue; // era/def layer
-    const bare = value.replace(/var\([^)]*\)/g, '').trim();
-    if (bare === '' || /^(transparent|currentColor|inherit|none|auto|normal|unset|initial|0|100%|50%)$/i.test(bare)) continue;
-
-    const hit = (cat) => out.push({ cat, file: fname, line: lineNo, prop, value: value.slice(0, 60) });
-
-    if (prop === 'z-index') { if (G['z-index'].test(bare)) hit('z-index'); continue; }
-    if (prop === 'font-weight') { if (G['font-weight'].test(bare)) hit('font-weight'); continue; }
-    if (prop === 'font-size') { if (G['font-size'].test(bare)) hit('font-size'); continue; }
-    if (prop === 'line-height') { if (G['line-height'].test(bare)) hit('line-height'); continue; }
-    if (prop === 'letter-spacing') { if (G['letter-spacing'].test(bare)) hit('letter-spacing'); continue; }
-    if (prop === 'box-shadow' || prop === 'text-shadow') { if (G.shadow.test(bare)) hit('shadow'); continue; }
-    if (MOTION_PROP.test(prop)) { if (G.motion.test(bare)) hit('motion'); continue; }
-    if (RADIUS_PROP.test(prop)) { if (G['border-radius'].test(bare)) hit('border-radius'); continue; }
-    if (SPACING_PROP.test(prop)) { if (G.spacing.test(bare)) hit('spacing'); continue; }
-    if (G.color.test(bare)) hit('color');
+    const tail = s.slice(cursor);
+    if (selStack.length > 0) checkDecls(tail);
+    else if (tail.trim() && !tail.includes(':')) pendingSelector += ' ' + tail.trim();
+    else if (tail.trim() && tail.includes(':') && !/;/.test(tail)) pendingSelector += ' ' + tail.trim();
   }
 }
 
+module.exports = { lintCss, RULE_CONFIG };
+
+/* eslint-disable no-inner-declarations */
+if (require.main === module) {
+  main();
+}
+function main() {
 const out = [];
 lintCss(fs.readFileSync(path.join(REPO, 'public/css/style.css'), 'utf8'), 'public/css/style.css', 0, out);
 const subsHtml = fs.readFileSync(path.join(REPO, 'lib/ytdlp/views/subscriptions.html'), 'utf8');
@@ -163,3 +185,4 @@ if (process.argv.includes('--verbose')) {
   for (const v of out) console.log(`    ${v.file}:${v.line}  ${v.prop}: ${v.value}  [${v.cat}]`);
 }
 process.exit(0);
+}

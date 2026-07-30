@@ -27,6 +27,13 @@
 // viewport-width independent, so it can't reintroduce the iOS zoom bug no
 // matter how narrow the screen gets.
 const { test } = require('node:test');
+
+// Tier 2 (DELIBERATE lock updates): spacing literals became --space-* tokens;
+// these locks pin VALUES, so extracted rule text is resolved back to px
+// before asserting. The token VALUES themselves are pinned byte-exactly by
+// test/unit/token-scale-lock.test.js (the single value authority).
+const SPACE_TOKENS = { '--space-1': '2px', '--space-2': '4px', '--space-3': '6px', '--space-4': '8px', '--space-5': '10px', '--space-6': '12px', '--space-8': '16px', '--space-10': '20px', '--space-12': '24px', '--space-16': '32px' };
+const rs = (s) => String(s).replace(/var\((--space-\d+)\)/g, (_, n) => SPACE_TOKENS[n] || _);
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -101,13 +108,13 @@ test('style.css: the watch-action-bar mobile block exists (sanity check for the 
 test('style.css: .watch-actions gets a tightened gap on mobile (scoped to the watch-action-bar mobile block)', () => {
   const rule = /\.watch-actions\s*\{([^}]*)\}/.exec(mobileBlock);
   assert.ok(rule, 'expected a mobile-scoped .watch-actions rule');
-  assert.match(rule[1], /gap:\s*\d+px;/);
+  assert.match(rs(rule[1]), /gap:\s*\d+px;/);
 });
 
 test('style.css: .watch-actions .btn is tightened (padding + font-size) on mobile so Download/Delete/Move fit on one row', () => {
   const rule = /\.watch-actions \.btn\s*\{([^}]*)\}/.exec(mobileBlock);
   assert.ok(rule, 'expected a mobile-scoped .watch-actions .btn rule');
-  assert.match(rule[1], /padding:\s*[\d.]+px\s+[\d.]+px;/);
+  assert.match(rs(rule[1]), /padding:\s*[\d.]+px\s+[\d.]+px;/);
   const fontMatch = /font-size:\s*([^;]+);/.exec(rule[1]);
   assert.ok(fontMatch, 'expected a font-size declaration');
   const px = resolveFontSizePx(fontMatch[1]);

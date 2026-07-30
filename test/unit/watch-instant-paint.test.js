@@ -14,6 +14,13 @@
 // Divergent fixture spellings throughout (v1.41.9).
 
 const { test } = require('node:test');
+
+// Tier 2 (DELIBERATE lock updates): spacing literals became --space-* tokens;
+// these locks pin VALUES, so extracted rule text is resolved back to px
+// before asserting. The token VALUES themselves are pinned byte-exactly by
+// test/unit/token-scale-lock.test.js (the single value authority).
+const SPACE_TOKENS = { '--space-1': '2px', '--space-2': '4px', '--space-3': '6px', '--space-4': '8px', '--space-5': '10px', '--space-6': '12px', '--space-8': '16px', '--space-10': '20px', '--space-12': '24px', '--space-16': '32px' };
+const rs = (s) => String(s).replace(/var\((--space-\d+)\)/g, (_, n) => SPACE_TOKENS[n] || _);
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -153,7 +160,7 @@ test('LOCK: #player-slot reserves a 16/9 frame while empty (the zero-height jump
   assert.ok(idx !== -1, 'the empty-slot reservation rule exists');
   const rule = css.slice(idx, css.indexOf('}', idx));
   assert.match(rule, /aspect-ratio: 16 \/ 9/, 'reserved at the default aspect');
-  assert.match(rule, /margin-bottom: 16px/, 'same outer geometry as .player-container');
+  assert.match(rs(rule), /margin-bottom: 16px/, 'same outer geometry as .player-container');
 });
 
 // ---- wiring locks (gate ADV W2) ---------------------------------------------

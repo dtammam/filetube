@@ -8,6 +8,12 @@
 // would strand that whole session without a chapters UI). Plus source-lock
 // guards on the player wiring and the drag-scrub CSS half.
 const { test } = require('node:test');
+
+// Tier 2 (DELIBERATE lock updates): control sizes became --size-* tokens;
+// values resolved back before asserting. Token VALUES are pinned by
+// test/unit/token-scale-lock.test.js.
+const SIZE_TOKENS = { '--size-touch': '44px', '--size-control': '36px', '--size-control-sm': '32px' };
+const rt = (s) => String(s).replace(/var\((--size-[\w-]+)\)/g, (_, n) => SIZE_TOKENS[n] || _);
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -192,7 +198,7 @@ test('v1.41.11: mobile chapters menu spans the player width with 44px tap target
   const block = css.slice(start, start + 1600);
   assert.match(block, /@media \(max-width: 768px\) \{[\s\S]*?\.chapters-menu \{[\s\S]*?left: 8px;[\s\S]*?right: 8px;[\s\S]*?max-width: none;/,
     'the popup spans the player width at the mobile breakpoint (no more 220px strip)');
-  assert.match(block, /\.chapters-menu-item \{[\s\S]*?min-height: 44px;[\s\S]*?white-space: normal;[\s\S]*?-webkit-line-clamp: 2;/,
+  assert.match(rt(block), /\.chapters-menu-item \{[\s\S]*?min-height: 44px;[\s\S]*?white-space: normal;[\s\S]*?-webkit-line-clamp: 2;/,
     'rows are real tap targets and titles wrap to two lines instead of ellipsizing');
 });
 
@@ -292,7 +298,7 @@ test('v1.41.12 source-lock: per-row Loop toggle in the menu + styles present (wo
   const css = fs.readFileSync(path.join(ROOT, 'public', 'css', 'style.css'), 'utf8');
   assert.match(css, /\.chapters-menu-row \{\s*display: flex;/, 'row layout');
   assert.match(css, /#chapters-btn\.chapter-looping \{/, 'bar-level armed indicator');
-  assert.match(css, /\.chapters-menu-loop \{[\s\S]*?min-height: 44px;/, 'mobile tap target for the toggle');
+  assert.match(rt(css), /\.chapters-menu-loop \{[\s\S]*?min-height: 44px;/, 'mobile tap target for the toggle');
 });
 
 // ---- v1.41.12 gate fix round: locks for the round-1 findings ----------------

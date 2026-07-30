@@ -532,7 +532,7 @@ header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 16px;
+  padding: 0 var(--space-8);
   z-index: 1000;
 }
 
@@ -549,7 +549,7 @@ html.reader-immersive .app-container { padding-top: 0; }
 .header-left {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: var(--space-8);
 }
 
 .menu-toggle {
@@ -558,7 +558,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   color: var(--text-primary);
   font-size: var(--fs-3xl);
   cursor: pointer;
-  padding: 4px;
+  padding: var(--space-2);
 }
 
 .logo {
@@ -585,9 +585,9 @@ html.reader-immersive .app-container { padding-top: 0; }
 .logo span.tube {
   background-color: var(--yt-red);
   color: #fff;
-  padding: 2px 6px;
+  padding: var(--space-1) var(--space-3);
   border-radius: var(--radius);
-  margin-left: 2px;
+  margin-left: var(--space-1);
   font-weight: var(--fw-black);
 }
 
@@ -609,7 +609,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   max-width: 600px;
   flex: 1 1 auto;
   min-width: 0; /* allow the search box to shrink instead of overflowing the header on mobile */
-  margin: 0 16px;
+  margin: 0 var(--space-8);
 }
 
 .search-form {
@@ -626,7 +626,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   flex: 1;
   min-width: 0; /* critical: lets the input shrink below its default intrinsic width */
   border: none;
-  padding: 8px 12px;
+  padding: var(--space-4) var(--space-6);
   font-size: var(--fs-md);
   background-color: var(--bg-color);
   color: var(--text-primary);
@@ -638,13 +638,13 @@ html.reader-immersive .app-container { padding-top: 0; }
   border: none;
   border-left: 1px solid var(--border-dark);
   color: var(--text-primary);
-  padding: 0 16px;
+  padding: 0 var(--space-8);
   cursor: pointer;
   font-size: var(--fs-base);
   font-weight: var(--fw-semibold);
   flex-shrink: 0;      /* keep the "Search" label from being clipped */
   white-space: nowrap;
-  transition: background-color 0.15s ease;
+  transition: background-color var(--dur-fast) var(--ease-ui);
 }
 
 .search-btn:hover {
@@ -654,7 +654,7 @@ html.reader-immersive .app-container { padding-top: 0; }
 .header-right {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-6);
 }
 
 /* v1.24 FR F2: elegance polish -- a touch more breathing room (12px->14px
@@ -686,7 +686,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   background-color: var(--btn-bg);
   border: 1px solid var(--border-dark);
   color: var(--text-primary);
-  padding: 6px 12px;
+  padding: var(--space-3) var(--space-6);
   border-radius: var(--radius);
   font-weight: var(--fw-semibold);
   letter-spacing: 0.2px; /* token-exempt: era display styling */
@@ -694,10 +694,10 @@ html.reader-immersive .app-container { padding-top: 0; }
   font-size: var(--fs-sm);
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-3);
   text-decoration: none; /* .btn is used on <a> too (e.g. #download-media-btn) -- keep it button-like, never underlined */
   box-shadow: var(--shadow);
-  transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
+  transition: background-color var(--dur-fast) var(--ease-ui), border-color var(--dur-fast) var(--ease-ui), transform 0.1s var(--ease-ui), box-shadow var(--dur-fast) var(--ease-ui);
 }
 
 /* The 2005 era-theme underlines all <a>; an <a class="btn"> is a button, not a link -- keep it clean. */
@@ -740,7 +740,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   color: var(--text-primary);
   font-size: var(--fs-2xl);
   cursor: pointer;
-  padding: 6px;
+  padding: var(--space-3);
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -763,7 +763,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   width: 230px;
   background-color: var(--bg-sidebar);
   border-right: 1px solid var(--border-color);
-  padding: 12px 0;
+  padding: var(--space-6) 0;
   position: fixed;
   top: 56px;
   bottom: 0;
@@ -779,12 +779,12 @@ html.reader-immersive .app-container { padding-top: 0; }
 
 .sidebar-section {
   border-bottom: 1px solid var(--border-color);
-  padding-bottom: 8px;
-  margin-bottom: 8px;
+  padding-bottom: var(--space-4);
+  margin-bottom: var(--space-4);
 }
 
 .sidebar-section-title {
-  padding: 6px 24px;
+  padding: var(--space-3) var(--space-12);
   font-size: var(--fs-xs);
   font-weight: var(--fw-bold);
   color: var(--text-secondary);
@@ -795,7 +795,7 @@ html.reader-immersive .app-container { padding-top: 0; }
 .sidebar-item {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-6);
   padding: var(--density) 24px;
   color: var(--text-primary);
   text-decoration: none;
@@ -840,7 +840,7 @@ html.reader-immersive .app-container { padding-top: 0; }
 .section-heading {
   display: inline-flex;
   align-items: baseline;
-  gap: 6px;
+  gap: var(--space-3);
   min-width: 0;      /* shrinkable so the actions keep their space on the row */
   flex: 0 1 auto;
 }
@@ -857,7 +857,7 @@ html.reader-immersive .app-container { padding-top: 0; }
 }
 .format-toggle {
   display: inline-flex;
-  gap: 4px;
+  gap: var(--space-2);
 }
 .format-toggle-btn.active {
   background-color: var(--btn-hover);
@@ -902,7 +902,7 @@ html.reader-immersive .app-container { padding-top: 0; }
 .main-content {
   flex: 1;
   margin-left: 230px;
-  padding: 24px;
+  padding: var(--space-12);
   background-color: var(--bg-color);
   transition: margin-left 0.2s;
 }
@@ -921,15 +921,15 @@ html.reader-immersive .app-container { padding-top: 0; }
      byte-identical to before. Applied to the three title surfaces only
      (.section-title/.video-title/.watch-title); body text untouched. */
   font-family: var(--heading-font, var(--font-family));
-  font-weight: var(--heading-weight, bold);
+  font-weight: var(--heading-weight, var(--fw-bold));
   letter-spacing: var(--heading-tracking, normal);
-  margin-bottom: 16px;
+  margin-bottom: var(--space-8);
   border-bottom: 1px solid var(--border-color);
-  padding-bottom: 8px;
+  padding-bottom: var(--space-4);
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-6);
 }
 
 /* v1.45.0 T1 (Dean): pin the home filter/action bar so the sort control +
@@ -962,7 +962,7 @@ html.reader-immersive .app-container { padding-top: 0; }
      top fills the former gap so nothing peeks under the fixed header. Mobile's
      smaller 16px padding is overridden in the max-width:768px block. */
   margin-top: -24px; /* token-exempt: positional */
-  padding-top: 24px;
+  padding-top: var(--space-12);
   /* v1.50.1 (Dean, on-device, first v1.50 probe hit): the 769-1100px squeeze
      zone -- a PHONE HELD HORIZONTALLY is wider than 768px, so it gets this
      DESKTOP layout, and with the v1.50 watch group the actions row no longer
@@ -979,7 +979,7 @@ html.reader-immersive .app-container { padding-top: 0; }
 .section-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-4);
   flex-shrink: 0;
   min-width: 0; /* v1.17.0 FR-1: let this flex item (and its children) shrink
                    instead of forcing the row past the viewport width */
@@ -1020,7 +1020,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   left: 0;
   z-index: 30; /* token-exempt: local stacking */ /* above the video grid cards (z-index 2), below the dock/modals */
   margin: 0;
-  padding: 4px;
+  padding: var(--space-2);
   min-width: 100%;
   list-style: none;
   background-color: var(--btn-bg);
@@ -1063,7 +1063,7 @@ html.reader-immersive .app-container { padding-top: 0; }
 .video-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
-  gap: 20px;
+  gap: var(--space-10);
   margin-bottom: 30px;
 }
 
@@ -1122,7 +1122,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   right: 4px;
   background-color: rgba(0,0,0,0.85);
   color: white;
-  padding: 2px 4px;
+  padding: var(--space-1) var(--space-2);
   font-size: var(--fs-xs);
   font-weight: var(--fw-bold);
   border-radius: var(--radius);
@@ -1159,8 +1159,8 @@ html.reader-immersive .app-container { padding-top: 0; }
   z-index: 2; /* token-exempt: local stacking */
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px 6px;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
   border: none;
   border-radius: var(--radius);
   background-color: rgba(0, 0, 0, 0.6);
@@ -1170,7 +1170,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   font-weight: var(--fw-bold);
   line-height: 1; /* token-exempt: glyph centering */
   opacity: 0.85;
-  transition: opacity 0.15s ease, background-color 0.15s ease;
+  transition: opacity var(--dur-fast) var(--ease-ui), background-color var(--dur-fast) var(--ease-ui);
 }
 
 .card-delete-btn:hover,
@@ -1214,14 +1214,14 @@ html.reader-immersive .app-container { padding-top: 0; }
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 4px 6px;
+  padding: var(--space-2) var(--space-3);
   border: none;
   border-radius: var(--radius);
   background-color: rgba(0, 0, 0, 0.6);
   color: #fff;
   cursor: pointer;
   opacity: 0.85;
-  transition: opacity 0.15s ease, background-color 0.15s ease;
+  transition: opacity var(--dur-fast) var(--ease-ui), background-color var(--dur-fast) var(--ease-ui);
 }
 
 .card-download-btn:hover,
@@ -1250,14 +1250,14 @@ html.reader-immersive .app-container { padding-top: 0; }
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 4px 6px;
+  padding: var(--space-2) var(--space-3);
   border: none;
   border-radius: var(--radius);
   background-color: rgba(0, 0, 0, 0.6);
   color: #fff;
   cursor: pointer;
   opacity: 0.85;
-  transition: opacity 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+  transition: opacity var(--dur-fast) var(--ease-ui), background-color var(--dur-fast) var(--ease-ui), color var(--dur-fast) var(--ease-ui);
 }
 
 .card-like-btn:hover,
@@ -1289,7 +1289,7 @@ html.reader-immersive .app-container { padding-top: 0; }
 .video-grid.list-view {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-4);
 }
 .video-grid.list-view .video-card {
   flex-direction: row;
@@ -1306,8 +1306,8 @@ html.reader-immersive .app-container { padding-top: 0; }
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 2px;
-  padding: 6px 12px;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-6);
 }
 
 /* v1.45.8 (Dean): pull-to-refresh indicator. Fixed just under the header (mobile
@@ -1333,7 +1333,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   opacity: 0;
   pointer-events: none;
   transform: translateX(-50%) translateY(-12px) scale(0.9);
-  transition: opacity 0.15s ease, transform 0.15s ease;
+  transition: opacity var(--dur-fast) var(--ease-ui), transform var(--dur-fast) var(--ease-ui);
 }
 .ptr-indicator.visible {
   opacity: 1;
@@ -1384,10 +1384,10 @@ html.reader-immersive .app-container { padding-top: 0; }
 .video-title {
   font-size: var(--fs-base);
   font-family: var(--heading-font, var(--font-family));
-  font-weight: var(--heading-weight, bold);
+  font-weight: var(--heading-weight, var(--fw-bold));
   letter-spacing: var(--heading-tracking, normal);
   line-height: 1.3;
-  margin-bottom: 4px;
+  margin-bottom: var(--space-2);
   max-height: 34px;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -1398,7 +1398,7 @@ html.reader-immersive .app-container { padding-top: 0; }
 .video-uploader {
   font-size: var(--fs-sm);
   color: var(--text-secondary);
-  margin-bottom: 2px;
+  margin-bottom: var(--space-1);
 }
 
 .video-meta {
@@ -1454,7 +1454,7 @@ html.reader-immersive .app-container { padding-top: 0; }
 .skeleton-line {
   height: 11px;
   border-radius: var(--radius);
-  margin-bottom: 6px;
+  margin-bottom: var(--space-3);
 }
 
 .skeleton-line-title {
@@ -1473,15 +1473,15 @@ html.reader-immersive .app-container { padding-top: 0; }
 .skeleton-row {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-6);
   padding: 10px 14px;
   border-bottom: 1px solid var(--border-color);
 }
 
 .skeleton-row-avatar {
   flex-shrink: 0;
-  width: 36px;
-  height: 36px;
+  width: var(--size-control);
+  height: var(--size-control);
   border-radius: var(--radius);
 }
 
@@ -1520,19 +1520,19 @@ html.reader-immersive .app-container { padding-top: 0; }
 .empty-state-icon,
 .error-state-icon {
   font-size: var(--fs-5xl);
-  margin-bottom: 12px;
+  margin-bottom: var(--space-6);
   opacity: 0.6;
 }
 
 .empty-state-message,
 .error-state-message {
   font-size: var(--fs-md);
-  margin: 0 0 4px;
+  margin: 0 0 var(--space-2);
 }
 
 .empty-state-hint {
   font-size: var(--fs-sm);
-  margin: 4px 0 0;
+  margin: var(--space-2) 0 0;
 }
 
 .error-state-message {
@@ -1541,11 +1541,11 @@ html.reader-immersive .app-container { padding-top: 0; }
 }
 
 .error-state-retry {
-  margin-top: 12px;
+  margin-top: var(--space-6);
 }
 
 .empty-state-action {
-  margin-top: 12px;
+  margin-top: var(--space-6);
 }
 
 /* Compact variant for a smaller, non-grid surface (the mobile Playlists
@@ -1554,13 +1554,13 @@ html.reader-immersive .app-container { padding-top: 0; }
    density. */
 .empty-state-inline {
   grid-column: initial;
-  padding: 16px 8px;
+  padding: var(--space-8) var(--space-4);
 }
 
 /* Watch Page Layout */
 .watch-container {
   display: flex;
-  gap: 24px;
+  gap: var(--space-12);
 }
 
 .watch-main {
@@ -1578,7 +1578,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   width: 100%;
   aspect-ratio: 16/9;
   background-color: #000; /* token-exempt: letterbox black */
-  margin-bottom: 16px;
+  margin-bottom: var(--space-8);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
   overflow: hidden;
@@ -1668,7 +1668,7 @@ html.reader-immersive .app-container { padding-top: 0; }
 }
 
 .player-dock-close:hover {
-  background: rgba(0, 0, 0, 0.8);
+  background: var(--scrim-heavy);
 }
 
 @media (max-width: 768px) {
@@ -1803,7 +1803,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   background: radial-gradient(circle, #2c3e50 0%, #0f171e 100%);
   color: white;
   text-align: center;
-  padding: 24px;
+  padding: var(--space-12);
 }
 
 .audio-artwork {
@@ -1811,7 +1811,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   height: 160px;
   border-radius: var(--radius-lg);
   box-shadow: 0 8px 24px rgba(0,0,0,0.5);
-  margin-bottom: 16px;
+  margin-bottom: var(--space-8);
   object-fit: cover;
   border: 2px solid rgba(255,255,255,0.2);
 }
@@ -1823,7 +1823,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   border-radius: 50%;
   border: 6px solid #222; /* token-exempt: era skin art */
   box-shadow: 0 8px 24px rgba(0,0,0,0.6);
-  margin-bottom: 16px;
+  margin-bottom: var(--space-8);
   position: relative;
   animation: spin 6s linear infinite; /* token-exempt: choreography */
   animation-play-state: paused;
@@ -1853,7 +1853,7 @@ html.reader-immersive .app-container { padding-top: 0; }
 .audio-title {
   font-size: var(--fs-xl);
   font-weight: var(--fw-bold);
-  margin-bottom: 4px;
+  margin-bottom: var(--space-2);
   max-width: 80%;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1880,29 +1880,29 @@ html.reader-immersive .app-container { padding-top: 0; }
   z-index: 10; /* token-exempt: local stacking */
   color: white;
   text-align: center;
-  padding: 20px;
+  padding: var(--space-10);
 }
 
 .resume-overlay h3 {
-  margin-bottom: 8px;
+  margin-bottom: var(--space-4);
   font-size: var(--fs-2xl);
 }
 
 .resume-overlay p {
-  margin-bottom: 16px;
+  margin-bottom: var(--space-8);
   color: #ccc;
 }
 
 .resume-actions {
   display: flex;
-  gap: 12px;
+  gap: var(--space-6);
 }
 
 /* "Preparing video" (transcode) spinner */
 .transcode-spinner {
   width: 44px;
   height: 44px;
-  margin-bottom: 16px;
+  margin-bottom: var(--space-8);
   border: 4px solid rgba(255, 255, 255, 0.25);
   border-top-color: var(--yt-red);
   border-radius: 50%;
@@ -1930,7 +1930,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   transform: translateX(-50%);
   background: rgba(0, 0, 0, 0.75);
   color: #fff;
-  padding: 4px 12px;
+  padding: var(--space-2) var(--space-6);
   border-radius: 14px;
   font-size: var(--fs-base);
   font-weight: var(--fw-semibold);
@@ -1941,14 +1941,14 @@ html.reader-immersive .app-container { padding-top: 0; }
 
 /* Embedded file metadata block (additive, under the description) */
 .embedded-tags {
-  margin-top: 12px;
-  padding-top: 10px;
+  margin-top: var(--space-6);
+  padding-top: var(--space-5);
   border-top: 1px solid var(--border-color);
   font-size: var(--fs-base);
 }
 .embedded-tags-title {
   font-weight: var(--fw-semibold);
-  margin-bottom: 4px;
+  margin-bottom: var(--space-2);
   color: var(--text-secondary);
   text-transform: uppercase;
   font-size: var(--fs-xs);
@@ -1970,17 +1970,17 @@ html.reader-immersive .app-container { padding-top: 0; }
   transform: translateY(-50%) scale(0.94);
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: var(--space-1);
   height: 54px;
-  padding: 0 16px;
+  padding: 0 var(--space-8);
   border: none;
   border-radius: 27px; /* token-exempt: era skin art */
-  background: rgba(0, 0, 0, 0.55);
+  background: var(--scrim);
   color: #fff;
   font-weight: var(--fw-semibold);
   cursor: pointer;
   opacity: 0;
-  transition: opacity 0.2s ease, transform 0.15s ease, background 0.2s ease;
+  transition: opacity 0.2s var(--ease-ui), transform var(--dur-fast) var(--ease-ui), background 0.2s var(--ease-ui);
   pointer-events: none; /* invisible buttons must not catch clicks */
   -webkit-tap-highlight-color: transparent;
 }
@@ -2031,8 +2031,8 @@ html.reader-immersive .app-container { padding-top: 0; }
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  margin: 10px 0 4px;
+  gap: var(--space-4);
+  margin: var(--space-5) 0 var(--space-2);
   flex-wrap: wrap; /* v1.24.6: Prev/Autoplay/Loop/Next row must wrap on a narrow phone rather than overflow the viewport (fit-to-width zoom). */
 }
 
@@ -2051,8 +2051,8 @@ html.reader-immersive .app-container { padding-top: 0; }
   cursor: pointer;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+  gap: var(--space-2);
+  transition: background-color var(--dur-fast) var(--ease-ui), border-color var(--dur-fast) var(--ease-ui), transform 0.1s var(--ease-ui);
 }
 
 .watch-prevnext-btn:hover:not(:disabled) {
@@ -2075,7 +2075,7 @@ html.reader-immersive .app-container { padding-top: 0; }
 .watch-autoplay-label {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-3);
   font-weight: var(--fw-bold);
   font-size: var(--fs-sm);
   color: var(--text-primary);
@@ -2106,8 +2106,8 @@ html.reader-immersive .app-container { padding-top: 0; }
   position: absolute;
   inset: 0;
   background-color: var(--border-dark);
-  border-radius: 999px;
-  transition: background-color 0.15s ease;
+  border-radius: var(--radius-full);
+  transition: background-color var(--dur-fast) var(--ease-ui);
 }
 
 .watch-autoplay-thumb {
@@ -2118,7 +2118,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   height: 14px;
   background-color: #fff;
   border-radius: 50%;
-  transition: transform 0.15s ease;
+  transition: transform var(--dur-fast) var(--ease-ui);
   box-shadow: var(--shadow);
 }
 
@@ -2139,9 +2139,9 @@ html.reader-immersive .app-container { padding-top: 0; }
 .watch-title {
   font-size: var(--fs-2xl);
   font-family: var(--heading-font, var(--font-family));
-  font-weight: var(--heading-weight, bold);
+  font-weight: var(--heading-weight, var(--fw-bold));
   letter-spacing: var(--heading-tracking, normal);
-  margin-bottom: 12px;
+  margin-bottom: var(--space-6);
   word-break: break-word;
 }
 
@@ -2149,11 +2149,11 @@ html.reader-immersive .app-container { padding-top: 0; }
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding-bottom: 12px;
+  padding-bottom: var(--space-6);
   border-bottom: 1px solid var(--border-color);
-  margin-bottom: 16px;
+  margin-bottom: var(--space-8);
   flex-wrap: wrap;
-  gap: 12px;
+  gap: var(--space-6);
 }
 
 .views-count {
@@ -2165,7 +2165,7 @@ html.reader-immersive .app-container { padding-top: 0; }
 .watch-actions {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-6);
   flex-wrap: wrap;
   min-width: 0;
 }
@@ -2186,14 +2186,14 @@ html.reader-immersive .app-container { padding-top: 0; }
 .watch-action-btns {
   display: flex;
   flex-wrap: nowrap;
-  gap: 8px;
+  gap: var(--space-4);
 }
 
 /* Star Rating (read-only display) */
 .star-rating {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: var(--space-1);
 }
 
 .star {
@@ -2209,7 +2209,7 @@ html.reader-immersive .app-container { padding-top: 0; }
 .rating-count {
   font-size: var(--fs-xs);
   color: var(--text-secondary);
-  margin-left: 6px;
+  margin-left: var(--space-3);
   /* v1.22.2 FR-3: without wrap protection, "N / 5" (watch.js's
      renderStarRating()) wraps to a second line under a width squeeze in the
      `.watch-actions` row. `white-space: nowrap` keeps the count atomic;
@@ -2228,7 +2228,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   font-size: var(--fs-base);
   letter-spacing: 2px; /* token-exempt: era display styling */
   line-height: 1; /* token-exempt: glyph centering */
-  margin-top: 4px;
+  margin-top: var(--space-2);
 }
 .card-rating .on { color: var(--star-gold); }
 .card-rating .off { color: var(--star-gray); }
@@ -2241,16 +2241,16 @@ html.reader-immersive .app-container { padding-top: 0; }
   background-color: var(--bg-sidebar);
   border: 1px solid var(--border-color);
   border-radius: var(--radius);
-  padding: 12px 16px;
-  margin-bottom: 16px;
+  padding: var(--space-6) var(--space-8);
+  margin-bottom: var(--space-8);
   flex-wrap: wrap;
-  gap: 12px;
+  gap: var(--space-6);
 }
 
 .uploader-profile {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-6);
   min-width: 0;
 }
 
@@ -2317,13 +2317,13 @@ html.reader-immersive .app-container { padding-top: 0; }
   background-color: var(--bg-sidebar);
   border: 1px solid var(--border-color);
   border-radius: var(--radius);
-  padding: 16px;
-  margin-bottom: 24px;
+  padding: var(--space-8);
+  margin-bottom: var(--space-12);
 }
 
 .description-meta {
   font-weight: var(--fw-bold);
-  margin-bottom: 8px;
+  margin-bottom: var(--space-4);
   font-size: var(--fs-sm);
 }
 
@@ -2364,8 +2364,8 @@ html.reader-immersive .app-container { padding-top: 0; }
 .video-description {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  margin-bottom: 12px;
-  padding-bottom: 12px;
+  margin-bottom: var(--space-6);
+  padding-bottom: var(--space-6);
   border-bottom: 1px solid var(--border-color);
 }
 
@@ -2390,35 +2390,35 @@ html.reader-immersive .app-container { padding-top: 0; }
   font-size: var(--fs-sm);
   font-weight: var(--fw-bold);
   cursor: pointer;
-  margin-top: 8px;
-  padding: 4px 0;
+  margin-top: var(--space-4);
+  padding: var(--space-2) 0;
   display: block;
 }
 
 /* Comments Section */
 .comments-section {
-  margin-top: 24px;
+  margin-top: var(--space-12);
   border-top: 1px solid var(--border-color);
-  padding-top: 16px;
+  padding-top: var(--space-8);
 }
 
 .comments-header {
   font-size: var(--fs-lg);
   font-weight: var(--fw-bold);
-  margin-bottom: 16px;
+  margin-bottom: var(--space-8);
 }
 
 .comment-input-area {
   display: flex;
-  gap: 12px;
-  margin-bottom: 20px;
+  gap: var(--space-6);
+  margin-bottom: var(--space-10);
 }
 
 .comment-input-box {
   flex: 1;
   min-width: 0; /* v1.24.6: a flex textarea child must be allowed to shrink below its intrinsic column width, never widen the row past the viewport. */
   border: 1px solid var(--border-dark);
-  padding: 8px;
+  padding: var(--space-4);
   font-size: var(--fs-base);
   background-color: var(--bg-color);
   color: var(--text-primary);
@@ -2430,19 +2430,19 @@ html.reader-immersive .app-container { padding-top: 0; }
 .comment-list {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--space-8);
 }
 
 .comment-item {
   display: flex;
-  gap: 12px;
+  gap: var(--space-6);
   border-bottom: 1px dotted var(--border-color);
-  padding-bottom: 12px;
+  padding-bottom: var(--space-6);
 }
 
 .comment-avatar {
-  width: 36px;
-  height: 36px;
+  width: var(--size-control);
+  height: var(--size-control);
   background-color: var(--border-dark);
   border-radius: var(--radius);
   display: flex;
@@ -2458,13 +2458,13 @@ html.reader-immersive .app-container { padding-top: 0; }
 }
 
 .comment-author-meta {
-  margin-bottom: 4px;
+  margin-bottom: var(--space-2);
 }
 
 .comment-author-name {
   font-weight: var(--fw-bold);
   font-size: var(--fs-sm);
-  margin-right: 8px;
+  margin-right: var(--space-4);
 }
 
 .comment-time {
@@ -2480,18 +2480,18 @@ html.reader-immersive .app-container { padding-top: 0; }
 .related-header {
   font-size: var(--fs-md);
   font-weight: var(--fw-bold);
-  margin-bottom: 12px;
+  margin-bottom: var(--space-6);
 }
 
 .related-list {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--space-6);
 }
 
 .related-card {
   display: flex;
-  gap: 8px;
+  gap: var(--space-4);
   text-decoration: none;
 }
 
@@ -2525,7 +2525,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  margin-bottom: 2px;
+  margin-bottom: var(--space-1);
 }
 
 .related-uploader {
@@ -2555,34 +2555,34 @@ html.reader-immersive .app-container { padding-top: 0; }
   border: 1px solid var(--border-color);
   background-color: var(--bg-sidebar);
   border-radius: var(--radius);
-  padding: 32px;
+  padding: var(--space-16);
   box-shadow: var(--shadow);
 }
 
 .setup-box h2 {
   font-size: var(--fs-4xl);
   font-weight: var(--fw-bold);
-  margin-bottom: 16px;
+  margin-bottom: var(--space-8);
   border-bottom: 1px solid var(--border-color);
-  padding-bottom: 12px;
+  padding-bottom: var(--space-6);
   color: var(--yt-red);
 }
 
 .setup-box p {
   font-size: var(--fs-md);
-  margin-bottom: 20px;
+  margin-bottom: var(--space-10);
   color: var(--text-primary);
   line-height: 1.5;
 }
 
 .form-group {
-  margin-bottom: 24px;
+  margin-bottom: var(--space-12);
 }
 
 .form-group label {
   display: block;
   font-weight: var(--fw-bold);
-  margin-bottom: 10px;
+  margin-bottom: var(--space-5);
   font-size: var(--fs-base);
 }
 
@@ -2590,7 +2590,7 @@ html.reader-immersive .app-container { padding-top: 0; }
 .form-group input[type="password"],
 .form-group input[type="number"] {
   width: 100%;
-  padding: 10px 12px;
+  padding: var(--space-5) var(--space-6);
   border: 1px solid var(--border-dark);
   border-radius: var(--radius);
   font-size: var(--fs-base);
@@ -2602,7 +2602,7 @@ html.reader-immersive .app-container { padding-top: 0; }
 /* Settings <select> controls (Automation & Storage box) — same visual weight
    as the text/number inputs above, sized to content rather than full-width. */
 .setup-select {
-  padding: 10px 12px;
+  padding: var(--space-5) var(--space-6);
   border: 1px solid var(--border-dark);
   border-radius: var(--radius);
   font-size: var(--fs-base);
@@ -2614,7 +2614,7 @@ html.reader-immersive .app-container { padding-top: 0; }
 .field-error {
   color: var(--yt-red);
   font-size: var(--fs-sm);
-  margin-top: 4px;
+  margin-top: var(--space-2);
   display: none;
 }
 
@@ -2643,7 +2643,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   display: inline-block;
   width: 10px;
   height: 10px;
-  margin-right: 6px;
+  margin-right: var(--space-3);
   vertical-align: -1px;
   border: 2px solid var(--border-color);
   border-top-color: var(--text-secondary);
@@ -2691,7 +2691,7 @@ html.reader-immersive .app-container { padding-top: 0; }
      to each other, wrap whole-columns on narrow screens, and behave in
      auto-width containers (the footer clusters) too. */
   grid-template-columns: repeat(auto-fit, minmax(160px, 240px));
-  gap: 8px;
+  gap: var(--space-4);
   align-items: stretch;
 }
 .action-bar > .btn,
@@ -2708,11 +2708,11 @@ html.reader-immersive .app-container { padding-top: 0; }
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-top: 24px;
+  margin-top: var(--space-12);
   border-top: 1px solid var(--border-color);
-  padding-top: 16px;
+  padding-top: var(--space-8);
   flex-wrap: wrap;
-  gap: 10px;
+  gap: var(--space-5);
 }
 .action-footer .action-bar {
   flex-shrink: 0;
@@ -2744,8 +2744,8 @@ html.reader-immersive .app-container { padding-top: 0; }
   border: 1px solid var(--border-color);
   background-color: var(--bg-color);
   border-radius: var(--radius);
-  padding: 12px;
-  margin-bottom: 16px;
+  padding: var(--space-6);
+  margin-bottom: var(--space-8);
   max-height: 240px;
   overflow-y: auto;
 }
@@ -2766,12 +2766,12 @@ html.reader-immersive .app-container { padding-top: 0; }
   flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
+  gap: var(--space-5);
+  padding: var(--space-5) var(--space-6);
   background-color: var(--bg-secondary);
   border: 1px solid var(--border-color);
   border-radius: var(--radius);
-  margin-bottom: 10px;
+  margin-bottom: var(--space-5);
   cursor: grab;
 }
 
@@ -2817,7 +2817,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   font-size: var(--fs-sm);
   word-break: break-all;
   flex: 1;
-  margin-right: 12px;
+  margin-right: var(--space-6);
 }
 
 .file-path {
@@ -2858,7 +2858,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   color: var(--text-secondary);
   font-style: italic;
   text-align: center;
-  padding: 12px 0;
+  padding: var(--space-6) 0;
 }
 
 /* v1.13.0 item 1/6 -- the /subscriptions page's OWN row layout, used by
@@ -2889,7 +2889,7 @@ html.reader-immersive .app-container { padding-top: 0; }
 .sub-row {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-6);
   padding: 10px 14px;
   background-color: var(--bg-secondary);
   border-bottom: 1px solid var(--border-color);
@@ -2948,8 +2948,8 @@ html.reader-immersive .app-container { padding-top: 0; }
    in this file (e.g. .drag-handle's era styling), era tokens only. */
 .sub-row-avatar {
   flex-shrink: 0;
-  width: 36px;
-  height: 36px;
+  width: var(--size-control);
+  height: var(--size-control);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3000,7 +3000,7 @@ html.reader-immersive .app-container { padding-top: 0; }
 .sub-row-url {
   font-size: var(--fs-xs);
   color: var(--text-secondary);
-  margin-top: 4px;
+  margin-top: var(--space-2);
   overflow-wrap: break-word;
   word-break: break-word;
 }
@@ -3036,7 +3036,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   display: block;
   font-size: var(--fs-xs);
   color: var(--text-secondary);
-  margin-top: 4px;
+  margin-top: var(--space-2);
   overflow-wrap: break-word;
   word-break: break-word;
   text-decoration: none;
@@ -3050,7 +3050,7 @@ a.sub-row-channel-link:focus-visible {
 
 .sub-row-actions {
   display: flex;
-  gap: 8px;
+  gap: var(--space-4);
   flex-shrink: 0;
   align-items: center;
   flex-wrap: wrap;
@@ -3067,8 +3067,8 @@ a.sub-row-channel-link:focus-visible {
 .sub-row-failure {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-top: 2px;
+  gap: var(--space-4);
+  margin-top: var(--space-1);
 }
 
 .sub-row-failure-text {
@@ -3093,7 +3093,7 @@ a.sub-row-channel-link:focus-visible {
    get an explicit target, not just a full-row pointer affordance). */
 .sub-row-playlist-link {
   display: inline-block;
-  margin-top: 6px;
+  margin-top: var(--space-3);
   font-size: var(--fs-xs);
   color: var(--yt-red);
   text-decoration: none;
@@ -3110,8 +3110,8 @@ a.sub-row-channel-link:focus-visible {
    2009 eras), beveled border matching .sub-row-avatar. */
 .sub-row-kebab {
   flex-shrink: 0;
-  width: 32px;
-  height: 32px;
+  width: var(--size-control-sm);
+  height: var(--size-control-sm);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3137,14 +3137,14 @@ a.sub-row-channel-link:focus-visible {
 .theme-picker {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 12px;
+  gap: var(--space-6);
 }
 .theme-card {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--space-3);
   text-align: left;
-  padding: 12px;
+  padding: var(--space-6);
   background-color: var(--card-bg);
   border: 1px solid var(--border-dark);
   border-radius: var(--radius);
@@ -3160,6 +3160,16 @@ a.sub-row-channel-link:focus-visible {
 /* Tokens Phase 1 Tier 1: the stats glance-tile value, moved out of
    JS-applied styles (buildStatTile). 22px == var(--fs-4xl). */
 .stat-tile-value { font-size: var(--fs-4xl); }
+/* Tier 2 commit 5: the stats meta text lines, extracted from FIVE 12px
+   cssText assignments in stats.js (the Phase 1 census said four - the
+   fifth was the same undercounted-cssText class). Remaining cssText props
+   (flex-shrink, padding-left, ellipsis) stay inline per-site. Comment
+   deliberately avoids the size property-colon-value spelling: the
+   type-scale lock scanner cannot tell prose from code. */
+.stats-meta-text {
+  color: var(--text-secondary);
+  font-size: var(--fs-sm);
+}
 
 /* Modal dialog custom styling */
 .modal-backdrop {
@@ -3208,7 +3218,7 @@ a.sub-row-channel-link:focus-visible {
   border-radius: var(--radius);
   max-width: 400px;
   width: 90%;
-  padding: 20px;
+  padding: var(--space-10);
   box-shadow: var(--shadow-lg);
   /* Subtle scale-in alongside the backdrop's fade above -- same `.modal-open`
      toggle (added to the BACKDROP, so this rule descends from it). */
@@ -3223,20 +3233,20 @@ a.sub-row-channel-link:focus-visible {
 .modal-title {
   font-size: var(--fs-xl);
   font-weight: var(--fw-bold);
-  margin-bottom: 12px;
+  margin-bottom: var(--space-6);
   color: var(--text-primary);
 }
 
 .modal-body {
   font-size: var(--fs-base);
-  margin-bottom: 20px;
+  margin-bottom: var(--space-10);
   color: var(--text-primary);
 }
 
 .modal-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 10px;
+  gap: var(--space-5);
 }
 
 /* v1.17.0 FR-3(a), T2: brief, non-blocking, auto-dismissing notification --
@@ -3267,7 +3277,7 @@ a.sub-row-channel-link:focus-visible {
   font-size: var(--fs-base);
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.25s ease, transform 0.25s ease;
+  transition: opacity var(--dur-slow) var(--ease-ui), transform var(--dur-slow) var(--ease-ui);
 }
 
 .toast.toast-visible {
@@ -3315,7 +3325,7 @@ a.sub-row-channel-link:focus-visible {
   border-radius: var(--radius);
   max-width: 460px;
   width: 92%;
-  padding: 20px;
+  padding: var(--space-10);
   box-shadow: var(--shadow-lg);
   box-sizing: border-box;
   /* v1.15.1 FIX 5: cap the modal's own height and let IT scroll (rather than
@@ -3345,7 +3355,7 @@ a.sub-row-channel-link:focus-visible {
   line-height: 1; /* token-exempt: glyph centering */
   cursor: pointer;
   color: var(--text-secondary);
-  padding: 2px 6px;
+  padding: var(--space-1) var(--space-3);
 }
 
 .oneoff-modal-close:hover {
@@ -3356,8 +3366,8 @@ a.sub-row-channel-link:focus-visible {
   display: block;
   width: 100%;
   box-sizing: border-box;
-  margin-bottom: 10px;
-  padding: 8px 10px;
+  margin-bottom: var(--space-5);
+  padding: var(--space-4) var(--space-5);
   border: 1px solid var(--border-dark);
   border-radius: var(--radius);
   background-color: var(--bg-color);
@@ -3367,9 +3377,9 @@ a.sub-row-channel-link:focus-visible {
 
 .oneoff-modal-row {
   display: flex;
-  gap: 8px;
+  gap: var(--space-4);
   flex-wrap: wrap;
-  margin-bottom: 10px;
+  margin-bottom: var(--space-5);
 }
 
 /* v1.15.1 FIX 5: pre-fix, `min-width: 100px` was narrower than the longest
@@ -3386,7 +3396,7 @@ a.sub-row-channel-link:focus-visible {
   flex: 1 1 150px;
   min-width: 150px;
   box-sizing: border-box;
-  padding: 8px 10px;
+  padding: var(--space-4) var(--space-5);
   border: 1px solid var(--border-dark);
   border-radius: var(--radius);
   background-color: var(--bg-color);
@@ -3397,7 +3407,7 @@ a.sub-row-channel-link:focus-visible {
 .oneoff-modal-status {
   font-size: var(--fs-sm);
   color: var(--text-secondary);
-  margin: 4px 0 12px;
+  margin: var(--space-2) 0 var(--space-6);
   min-height: 16px;
 }
 
@@ -3427,11 +3437,11 @@ a.sub-row-channel-link:focus-visible {
    Tier 2). */
 .repull-btn-compact {
   font-size: var(--fs-xs);
-  padding: 4px 8px;
+  padding: var(--space-2) var(--space-4);
 }
 
 .oneoff-modal-progress {
-  margin-bottom: 10px;
+  margin-bottom: var(--space-5);
 }
 
 /* v1.15.1 FIX 5: a clear, full-width primary call-to-action reads better in
@@ -3448,7 +3458,7 @@ a.sub-row-channel-link:focus-visible {
   /* Gate round 1 (adversarial W6b): the top offset lives on the ROW, and
      every button in it fills its cell -- Retry and Download can never sit
      2px misaligned in the shared stretched row. */
-  margin-top: 2px;
+  margin-top: var(--space-1);
 }
 .oneoff-modal-actions .btn {
   width: 100%;
@@ -3466,8 +3476,8 @@ a.sub-row-channel-link:focus-visible {
    since this content is plain text the user can never edit. Era-theme tokens
    only, no hardcoded colors. */
 .subscribe-modal-identity {
-  margin-bottom: 12px;
-  padding: 8px 10px;
+  margin-bottom: var(--space-6);
+  padding: var(--space-4) var(--space-5);
   border: 1px solid var(--border-dark);
   border-radius: var(--radius);
   background-color: var(--btn-bg);
@@ -3483,7 +3493,7 @@ a.sub-row-channel-link:focus-visible {
   color: var(--text-secondary);
   font-size: var(--fs-xs);
   word-break: break-all;
-  margin-top: 2px;
+  margin-top: var(--space-1);
 }
 
 /* The modal's skip-Shorts checkbox row -- a plain label/checkbox pairing,
@@ -3492,8 +3502,8 @@ a.sub-row-channel-link:focus-visible {
 .subscribe-modal-checkbox-row {
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin-bottom: 10px;
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
   font-size: var(--fs-base);
   color: var(--text-primary);
   cursor: pointer;
@@ -3505,8 +3515,8 @@ a.sub-row-channel-link:focus-visible {
    the one-off modal's single Download CTA). */
 .subscribe-modal-actions {
   display: flex;
-  gap: 8px;
-  margin-top: 2px;
+  gap: var(--space-4);
+  margin-top: var(--space-1);
 }
 
 .subscribe-modal-actions .btn {
@@ -3812,14 +3822,14 @@ a.sub-row-channel-link:focus-visible {
   }
   .main-content {
     margin-left: 0;
-    padding: 16px;
+    padding: var(--space-8);
     padding-bottom: var(--mobile-bottom-nav-h);
   }
   header {
-    padding: 0 8px;
+    padding: 0 var(--space-4);
   }
   .header-left {
-    gap: 8px;
+    gap: var(--space-4);
   }
   .logo {
     font-size: var(--fs-2xl);
@@ -3830,7 +3840,7 @@ a.sub-row-channel-link:focus-visible {
     max-width: 120px;
   }
   .header-search {
-    margin: 0 6px;
+    margin: 0 var(--space-3);
   }
   .search-input {
     padding: 7px 10px;
@@ -3839,10 +3849,10 @@ a.sub-row-channel-link:focus-visible {
     font-size: var(--fs-input-min);
   }
   .search-btn {
-    padding: 0 10px;
+    padding: 0 var(--space-5);
   }
   .header-right {
-    gap: 6px;
+    gap: var(--space-3);
   }
   /* Settings is reachable from the sidebar menu — reclaim header space on phones */
   .header-right .btn {
@@ -3872,8 +3882,8 @@ a.sub-row-channel-link:focus-visible {
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 2px;
-    padding: 8px 0 6px;
+    gap: var(--space-1);
+    padding: var(--space-4) 0 var(--space-3);
     background: none;
     border: none;
     cursor: pointer;
@@ -3915,7 +3925,7 @@ a.sub-row-channel-link:focus-visible {
     height: auto;
     min-height: var(--mobile-header-h);
     padding: calc(8px + env(safe-area-inset-top)) 8px 8px;
-    gap: 6px;
+    gap: var(--space-3);
   }
 
   .app-container {
@@ -4001,7 +4011,7 @@ a.sub-row-channel-link:focus-visible {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 12px 16px;
+    padding: var(--space-6) var(--space-8);
     font-weight: var(--fw-bold);
     color: var(--text-primary);
     border-bottom: 1px solid var(--border-color);
@@ -4051,12 +4061,12 @@ a.sub-row-channel-link:focus-visible {
      lives on the `.watch-action-btns` sub-group (see base rules above),
      which is viewport-width independent -- not on this outer row. */
   .watch-actions {
-    gap: 8px;
+    gap: var(--space-4);
     flex-wrap: wrap;
   }
   .watch-actions .btn {
-    padding: 6px 10px;
-    gap: 4px;
+    padding: var(--space-3) var(--space-5);
+    gap: var(--space-2);
     font-size: var(--fs-xs);
   }
 
@@ -4110,7 +4120,7 @@ a.sub-row-channel-link:focus-visible {
        Tightening it buys back ~16px across five buttons, so the common case
        still fits one line in most eras and the wrap stays a genuine last
        resort rather than the normal state. */
-    gap: 4px;
+    gap: var(--space-2);
   }
 
   /* v1.47.6 (Dean, on-device follow-up to v1.47.5): with wrapping in place the
@@ -4155,11 +4165,11 @@ a.sub-row-channel-link:focus-visible {
      query). */
   .setup-box {
     margin: 20px auto;
-    padding: 20px 16px;
+    padding: var(--space-10) var(--space-8);
   }
 
   .form-group {
-    margin-bottom: 20px;
+    margin-bottom: var(--space-10);
   }
 
   /* Every control a user taps on these two pages gets a comfortable minimum
@@ -4169,7 +4179,7 @@ a.sub-row-channel-link:focus-visible {
   .setup-box .setup-select,
   .setup-box input[type="text"],
   .setup-box input[type="number"] {
-    min-height: 44px;
+    min-height: var(--size-touch);
   }
 
   /* v1.25.4 polish (on-device iOS PWA): same 16px-floor fix as the one-off/
@@ -4194,13 +4204,13 @@ a.sub-row-channel-link:focus-visible {
      width once it wraps onto its own line, rather than sitting cramped next
      to the last select. */
   .setup-box .form-group > div[style*="flex"] {
-    row-gap: 10px;
+    row-gap: var(--space-5);
   }
 
   .folder-item-row {
     flex-direction: column;
     align-items: stretch;
-    gap: 10px;
+    gap: var(--space-5);
   }
 
   .folder-item-row .remove-folder-btn {
@@ -4234,7 +4244,7 @@ a.sub-row-channel-link:focus-visible {
      off. Home-scoped to match the base sticky rule's specificity. */
   #library-content .section-title {
     margin-top: -16px; /* token-exempt: positional */
-    padding-top: 16px;
+    padding-top: var(--space-8);
   }
 
   /* v1.45.2 (#3, Dean): the mobile filter row on ONE clean line. The heading +
@@ -4257,7 +4267,7 @@ a.sub-row-channel-link:focus-visible {
     flex-wrap: wrap;
     width: 100%;
     justify-content: space-between;
-    gap: 4px; /* v1.45.6: tightened from 6px to absorb the added view-mode button
+    gap: var(--space-2); /* v1.45.6: tightened from 6px to absorb the added view-mode button
                  on the one-line row (Dean: "move them slightly closer"). */
   }
   /* v1.50: the watched-state group is the sticky bar's own second line on
@@ -4343,7 +4353,7 @@ a.sub-row-channel-link:focus-visible {
      inside the 768px query) is untouched. */
   .video-grid {
     grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-    gap: 12px;
+    gap: var(--space-6);
   }
 
   /* v1.45.6 (Dean): narrower list-view thumbnail on phones so the title/meta
@@ -4376,7 +4386,7 @@ a.sub-row-channel-link:focus-visible {
      modal with tighter padding so it reads like a native mobile sheet. */
   .oneoff-modal {
     width: 94%;
-    padding: 16px;
+    padding: var(--space-8);
   }
 
   .oneoff-modal-row {
@@ -4402,7 +4412,7 @@ a.sub-row-channel-link:focus-visible {
   .oneoff-modal-field,
   .oneoff-modal-row select,
   .oneoff-modal .btn-primary {
-    min-height: 44px;
+    min-height: var(--size-touch);
   }
 
   /* v1.25.4 polish (on-device iOS PWA): focusing a form control whose
@@ -4424,7 +4434,7 @@ a.sub-row-channel-link:focus-visible {
   /* v1.20.0 FR-1 (T3): same comfortable tap-target floor for the subscribe
      modal's skip-Shorts checkbox row. */
   .subscribe-modal-checkbox-row {
-    min-height: 44px;
+    min-height: var(--size-touch);
   }
 }
 
@@ -4534,9 +4544,9 @@ a.sub-row-channel-link:focus-visible {
   z-index: 8; /* token-exempt: local stacking */ /* above .skip-controls (6), below .resume-overlay/.transcode-overlay (10) -- an overlay fully covers the bar exactly like it already covers skip-controls */
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-3);
   height: 40px;
-  padding: 0 8px;
+  padding: 0 var(--space-4);
   background-color: var(--header-bg);
   border-top: 2px solid var(--border-dark);
   border-radius: 0;
@@ -4547,7 +4557,7 @@ a.sub-row-channel-link:focus-visible {
   font-family: var(--mono-font);
   font-size: var(--fs-xs);
   color: var(--text-secondary);
-  min-width: 36px;
+  min-width: var(--size-control);
   text-align: center;
   flex-shrink: 0;
   user-select: none;
@@ -4605,7 +4615,7 @@ a.sub-row-channel-link:focus-visible {
 .pp-icon-play {
   width: 0;
   height: 0;
-  margin-left: 2px; /* optical-center the triangle inside the square button */
+  margin-left: var(--space-1); /* optical-center the triangle inside the square button */
   border-style: solid;
   border-width: 8px 0 8px 13px;
   border-color: transparent transparent transparent currentColor;
@@ -4927,8 +4937,8 @@ a.sub-row-channel-link:focus-visible {
    the host expands back to FULL. */
 #player-dock .player-controls {
   height: 26px;
-  padding: 0 4px;
-  gap: 4px;
+  padding: 0 var(--space-2);
+  gap: var(--space-2);
 }
 #player-dock .pc-time,
 #player-dock .mute-btn,
@@ -4959,7 +4969,7 @@ a.sub-row-channel-link:focus-visible {
 
 @media (max-width: 768px) {
   .player-controls {
-    height: 44px; /* comfortable >=44px touch target row, matching the existing mobile tap-target convention elsewhere in this file */
+    height: var(--size-touch); /* comfortable >=44px touch target row, matching the existing mobile tap-target convention elsewhere in this file */
   }
   /* v1.34.1 (Dean's on-device pass): TWO-ROW mobile bar. One 44px row could
      not hold play + times + seek + speed/fs/pip/CC/Ch -- the seek bar
@@ -4975,7 +4985,7 @@ a.sub-row-channel-link:focus-visible {
     flex-wrap: wrap;
     height: 80px;
     align-content: center;
-    row-gap: 2px;
+    row-gap: var(--space-1);
   }
   #player-slot .player-controls .pc-time,
   #player-slot .player-controls .pc-seek {
@@ -5020,15 +5030,15 @@ a.sub-row-channel-link:focus-visible {
     line-height: 30px; /* token-exempt: positional */
   }
   .pc-btn {
-    width: 44px;
-    height: 44px;
+    width: var(--size-touch);
+    height: var(--size-touch);
   }
   /* #speed-btn keeps its auto width (see the FR-4 rule below) even on
      mobile, but the touch-target FLOOR still needs to hit >=44px like every
      other .pc-btn here -- min-width (not a fixed width) lets a longer label
      grow past 44px instead of clipping. */
   #speed-btn {
-    min-width: 44px;
+    min-width: var(--size-touch);
   }
 }
 
@@ -5217,7 +5227,7 @@ a.sub-row-channel-link:focus-visible {
 #player-wrapper.css-fullscreen .player-controls {
   height: auto;
   min-height: 40px;
-  padding-top: 4px;
+  padding-top: var(--space-2);
   padding-bottom: calc(4px + env(safe-area-inset-bottom, 0px));
   /* v1.34.5: blend into the fullscreen black instead of the themed bar
      chrome -- the safe-area padding read as a colored band at the bottom
@@ -5274,7 +5284,7 @@ body.ft-css-fullscreen .bottom-nav {
   z-index: 30; /* token-exempt: local stacking */
   display: flex;
   flex-direction: column;
-  padding: 4px 0;
+  padding: var(--space-2) 0;
 }
 .chapters-menu-item {
   display: block;
@@ -5285,7 +5295,7 @@ body.ft-css-fullscreen .bottom-nav {
   color: var(--text-primary);
   font-family: var(--font-family);
   font-size: var(--fs-base);
-  padding: 8px 12px;
+  padding: var(--space-4) var(--space-6);
   cursor: pointer;
   white-space: nowrap;
   overflow: hidden;
@@ -5308,13 +5318,13 @@ body.ft-css-fullscreen .bottom-nav {
 .chapters-menu-time {
   color: var(--text-secondary);
   font-variant-numeric: tabular-nums;
-  margin-right: 4px;
+  margin-right: var(--space-2);
 }
 .chapters-menu-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 6px 8px 6px 12px;
+  padding: var(--space-3) var(--space-4) var(--space-3) var(--space-6);
   border-bottom: 1px solid var(--border-dark);
   color: var(--text-secondary);
   font-size: var(--fs-sm);
@@ -5325,9 +5335,9 @@ body.ft-css-fullscreen .bottom-nav {
   color: var(--text-primary);
   font-size: var(--fs-2xl);
   line-height: 1; /* token-exempt: glyph centering */
-  padding: 4px 10px;
+  padding: var(--space-2) var(--space-5);
   cursor: pointer;
-  min-height: 32px;
+  min-height: var(--size-control-sm);
 }
 .chapters-menu-edit {
   border-top: 1px solid var(--border-dark);
@@ -5353,14 +5363,14 @@ body.ft-css-fullscreen .bottom-nav {
   color: var(--text-secondary);
   font-family: var(--font-family);
   font-size: var(--fs-sm);
-  padding: 8px 12px;
+  padding: var(--space-4) var(--space-6);
   cursor: pointer;
   /* stretch + inner centering (not align-self:center) so the left border
      spans a 2-line-wrapped row's full height (gate nit, v1.41.12) */
   align-self: stretch;
   display: flex;
   align-items: center;
-  min-height: 32px;
+  min-height: var(--size-control-sm);
 }
 .chapters-menu-loop:hover {
   background: var(--hover-bg, rgba(128, 128, 128, 0.15)); /* token-exempt: theme-neutral fallback */
@@ -5382,8 +5392,8 @@ body.ft-css-fullscreen .bottom-nav {
   color: var(--text-primary);
   border: 1px solid var(--border-dark);
   border-radius: var(--radius);
-  padding: 8px;
-  margin-top: 8px;
+  padding: var(--space-4);
+  margin-top: var(--space-4);
   resize: vertical;
 }
 
@@ -5405,7 +5415,7 @@ body.ft-css-fullscreen .bottom-nav {
   }
   .chapters-menu-item {
     padding: 12px 14px;
-    min-height: 44px;
+    min-height: var(--size-touch);
     /* Wrap long titles (base rule nowrap-ellipsizes them into uselessness at
        phone width), capped at 2 lines via the line-clamp box. */
     white-space: normal;
@@ -5416,13 +5426,13 @@ body.ft-css-fullscreen .bottom-nav {
     overflow: hidden;
   }
   .chapters-menu-close {
-    min-width: 44px;
-    min-height: 44px;
+    min-width: var(--size-touch);
+    min-height: var(--size-touch);
   }
   /* v1.41.12: the per-row Loop toggle keeps a real tap target on phones. */
   .chapters-menu-loop {
-    min-width: 44px;
-    min-height: 44px;
+    min-width: var(--size-touch);
+    min-height: var(--size-touch);
     padding: 12px 14px;
   }
 }
@@ -5466,7 +5476,7 @@ body.ft-css-fullscreen .bottom-nav {
   z-index: 9; /* token-exempt: local stacking */
   display: flex;
   justify-content: center;
-  padding: 0 12px;
+  padding: 0 var(--space-6);
   pointer-events: none;
 }
 .cc-overlay[hidden] {
@@ -5479,7 +5489,7 @@ body.ft-css-fullscreen .bottom-nav {
   font-family: var(--font-family);
   font-size: var(--fs-md);
   line-height: 1.35;
-  padding: 4px 10px;
+  padding: var(--space-2) var(--space-5);
   border-radius: 4px;
   text-align: center;
   white-space: pre-line; /* player.js newline-joins multi-line/simultaneous cues -- preserve them */
@@ -5659,7 +5669,7 @@ body.ft-css-fullscreen .bottom-nav {
   bottom: 0;
   height: auto;
   min-height: 40px;
-  padding-top: 4px;
+  padding-top: var(--space-2);
   padding-bottom: calc(4px + env(safe-area-inset-bottom, 0px));
 }
 
@@ -5712,7 +5722,7 @@ body.ft-css-fullscreen .bottom-nav {
 #speed-btn {
   width: auto;
   min-width: 30px;
-  padding: 0 6px;
+  padding: 0 var(--space-3);
   font-size: var(--fs-sm);
 }
 
@@ -5750,12 +5760,12 @@ body.ft-css-fullscreen .bottom-nav {
   font-weight: var(--fw-bold);
   color: var(--yt-red);
   cursor: pointer;
-  padding-bottom: 12px;
+  padding-bottom: var(--space-6);
 }
 
 .sub-collapsible[open] > summary {
   border-bottom: 1px solid var(--border-color);
-  margin-bottom: 16px;
+  margin-bottom: var(--space-8);
 }
 
 .sub-collapsible > summary::-webkit-details-marker,
@@ -5822,8 +5832,8 @@ body.ft-css-fullscreen .bottom-nav {
 .sub-sheet-header {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 16px;
+  gap: var(--space-6);
+  padding: var(--space-8);
   border-bottom: 1px solid var(--border-color);
 }
 
@@ -5872,7 +5882,7 @@ body.ft-css-fullscreen .bottom-nav {
 .sub-sheet-subtext {
   font-size: var(--fs-sm);
   color: var(--text-secondary);
-  margin-top: 2px;
+  margin-top: var(--space-1);
 }
 
 .sub-sheet-close {
@@ -5893,21 +5903,21 @@ body.ft-css-fullscreen .bottom-nav {
 .sub-sheet-body {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  padding: 16px;
+  gap: var(--space-8);
+  padding: var(--space-8);
 }
 
 .sub-sheet-field {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--space-3);
   font-size: var(--fs-sm);
   color: var(--text-secondary);
 }
 
 .sub-sheet-field .setup-select,
 .sub-sheet-field input {
-  padding: 10px;
+  padding: var(--space-5);
   border: 1px solid var(--border-dark);
   border-radius: var(--radius);
   font-size: var(--fs-base);
@@ -5918,7 +5928,7 @@ body.ft-css-fullscreen .bottom-nav {
 .sub-sheet-checkbox-label {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-4);
   font-size: var(--fs-base);
   font-weight: normal;
   color: var(--text-primary);
@@ -5927,8 +5937,8 @@ body.ft-css-fullscreen .bottom-nav {
 .sub-sheet-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
-  padding: 16px;
+  gap: var(--space-5);
+  padding: var(--space-8);
   border-top: 1px solid var(--border-color);
 }
 
@@ -5977,7 +5987,7 @@ body.ft-css-fullscreen .bottom-nav {
 @media (max-width: 480px) {
   .video-grid {
     grid-template-columns: repeat(2, 1fr);
-    gap: 10px;
+    gap: var(--space-5);
   }
 }
 
@@ -6004,8 +6014,8 @@ body.ft-css-fullscreen .bottom-nav {
         "left-nav Pinned list with a star icon" retro translation. */
 .sub-row-pin {
   flex-shrink: 0;
-  width: 32px;
-  height: 32px;
+  width: var(--size-control-sm);
+  height: var(--size-control-sm);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -6040,8 +6050,8 @@ body.ft-css-fullscreen .bottom-nav {
 }
 
 .playlists-pinned-section {
-  margin-top: 8px;
-  padding-top: 8px;
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
   border-top: 1px solid var(--border-color);
 }
 
@@ -6120,7 +6130,7 @@ body.ft-css-fullscreen .bottom-nav {
   border-radius: var(--radius);
   max-width: 420px;
   width: 92%;
-  padding: 20px;
+  padding: var(--space-10);
   box-shadow: var(--shadow-lg);
   box-sizing: border-box;
   max-height: 85vh;
@@ -6131,7 +6141,7 @@ body.ft-css-fullscreen .bottom-nav {
   font-size: var(--fs-xl);
   font-weight: var(--fw-bold);
   color: var(--yt-red);
-  margin-bottom: 10px;
+  margin-bottom: var(--space-5);
 }
 
 .hard-delete-modal-warning {
@@ -6141,8 +6151,8 @@ body.ft-css-fullscreen .bottom-nav {
   background-color: var(--btn-bg);
   border: 1px solid var(--yt-red);
   border-radius: var(--radius);
-  padding: 8px 10px;
-  margin-bottom: 12px;
+  padding: var(--space-4) var(--space-5);
+  margin-bottom: var(--space-6);
 }
 
 .hard-delete-modal-filename {
@@ -6150,7 +6160,7 @@ body.ft-css-fullscreen .bottom-nav {
   font-weight: var(--fw-bold);
   color: var(--text-primary);
   word-break: break-word;
-  margin-bottom: 4px;
+  margin-bottom: var(--space-2);
 }
 
 .hard-delete-modal-path {
@@ -6163,8 +6173,8 @@ body.ft-css-fullscreen .bottom-nav {
 .hard-delete-modal-checkbox-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 16px;
+  gap: var(--space-4);
+  margin-bottom: var(--space-8);
   font-size: var(--fs-base);
   font-weight: var(--fw-bold);
   color: var(--text-primary);
@@ -6173,7 +6183,7 @@ body.ft-css-fullscreen .bottom-nav {
 
 .hard-delete-modal-actions {
   display: flex;
-  gap: 8px;
+  gap: var(--space-4);
   justify-content: flex-end;
 }
 
@@ -6192,7 +6202,7 @@ body.ft-css-fullscreen .bottom-nav {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 8px 16px;
+  padding: var(--space-4) var(--space-8);
   border: 1px solid var(--yt-red);
   border-radius: calc(var(--radius) + 1px);
   background-color: var(--yt-red);
@@ -6200,7 +6210,7 @@ body.ft-css-fullscreen .bottom-nav {
   font-size: var(--fs-base);
   font-weight: var(--fw-semibold);
   cursor: pointer;
-  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, opacity 0.15s ease;
+  transition: background-color var(--dur-fast) var(--ease-ui), border-color var(--dur-fast) var(--ease-ui), color var(--dur-fast) var(--ease-ui), opacity var(--dur-fast) var(--ease-ui);
 }
 
 .hard-delete-modal-confirm-btn:disabled {
@@ -6215,13 +6225,13 @@ body.ft-css-fullscreen .bottom-nav {
 @media (max-width: 768px) {
   .hard-delete-modal {
     width: 94%;
-    padding: 16px;
+    padding: var(--space-8);
   }
 
   .hard-delete-modal-checkbox-row,
   .hard-delete-modal-actions .btn,
   .hard-delete-modal-confirm-btn {
-    min-height: 44px;
+    min-height: var(--size-touch);
   }
 }
 
@@ -6262,8 +6272,8 @@ body.ft-css-fullscreen .bottom-nav {
 .dl-status-chip-summary {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-6);
   background-color: var(--header-bg);
   color: var(--text-primary);
   border-top: 1px solid var(--border-dark);
@@ -6294,7 +6304,7 @@ body.ft-css-fullscreen .bottom-nav {
    zero new color tokens. */
 .dl-status-chip-summary {
   opacity: 0.55;
-  transition: opacity 0.15s ease;
+  transition: opacity var(--dur-fast) var(--ease-ui);
 }
 #dl-status-chip:hover .dl-status-chip-summary,
 .dl-status-chip-summary:focus-visible,
@@ -6338,8 +6348,8 @@ body.ft-css-fullscreen .bottom-nav {
 }
 
 .dl-status-chip-panel {
-  margin-bottom: 6px;
-  padding: 8px;
+  margin-bottom: var(--space-3);
+  padding: var(--space-4);
   max-height: 60vh;
   overflow-y: auto;
   background-color: var(--bg-color);
@@ -6351,7 +6361,7 @@ body.ft-css-fullscreen .bottom-nav {
   box-shadow: var(--shadow-lg);
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-4);
 }
 
 .dl-status-chip-panel[hidden] {
@@ -6359,7 +6369,7 @@ body.ft-css-fullscreen .bottom-nav {
 }
 
 .dl-status-chip-item {
-  padding: 8px;
+  padding: var(--space-4);
   background-color: var(--bg-secondary);
   border: 1px solid var(--border-color);
   border-radius: var(--radius);
@@ -6369,7 +6379,7 @@ body.ft-css-fullscreen .bottom-nav {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--space-4);
   font-size: var(--fs-sm);
   font-weight: var(--fw-bold);
   color: var(--text-primary);
@@ -6391,7 +6401,7 @@ body.ft-css-fullscreen .bottom-nav {
    line ~2989 above) -- the FILLED portion below is the segmented/striped
    part, not this track. */
 .dl-status-chip-progress {
-  margin-top: 6px;
+  margin-top: var(--space-3);
   height: 8px;
   background-color: var(--bg-color);
   border: 1px solid var(--border-dark);
@@ -6488,7 +6498,7 @@ body.ft-css-fullscreen .bottom-nav {
 }
 
 .dl-status-chip-item-status {
-  margin-top: 4px;
+  margin-top: var(--space-2);
   font-size: var(--fs-xs);
   color: var(--text-secondary);
   overflow: hidden;
@@ -6505,7 +6515,7 @@ body.ft-css-fullscreen .bottom-nav {
    the single-line status above) since a batch can carry several failure
    lines, each of which should stay fully readable. */
 .dl-status-chip-item-failures {
-  margin-top: 6px;
+  margin-top: var(--space-3);
 }
 
 .dl-status-chip-item-failure {
@@ -6515,25 +6525,25 @@ body.ft-css-fullscreen .bottom-nav {
 }
 
 .dl-status-chip-item-failure + .dl-status-chip-item-failure {
-  margin-top: 2px;
+  margin-top: var(--space-1);
 }
 
 .dl-status-chip-item-actions {
   display: flex;
-  gap: 6px;
-  margin-top: 6px;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
 }
 
 .dl-status-chip-retry-btn,
 .dl-status-chip-dismiss-btn {
   flex: 1;
-  padding: 4px 8px;
+  padding: var(--space-2) var(--space-4);
   font-family: inherit;
   font-size: var(--fs-xs);
   font-weight: var(--fw-semibold);
   border-radius: calc(var(--radius) + 1px);
   cursor: pointer;
-  transition: background-color 0.15s ease;
+  transition: background-color var(--dur-fast) var(--ease-ui);
 }
 
 .dl-status-chip-retry-btn {
@@ -6605,7 +6615,7 @@ body.ft-css-fullscreen .bottom-nav {
 .watch-nextgroup {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-4);
 }
 
 .watch-theater-btn[aria-pressed="true"] {
@@ -6630,8 +6640,8 @@ body.ft-css-fullscreen .bottom-nav {
    its heading/links/glyph, so no new link/heading/icon styling is needed
    here. */
 #sidebar-pinned-section {
-  margin-top: 8px;
-  padding-top: 8px;
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
   border-top: 1px solid var(--border-color);
 }
 
@@ -6663,16 +6673,16 @@ body.ft-css-fullscreen .bottom-nav {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  margin-bottom: 8px;
+  margin-bottom: var(--space-4);
 }
 .books-home-row-header h3 { margin: 0; font-size: var(--fs-lg); }
 .books-row-seeall { font-size: var(--fs-sm); opacity: 0.8; }
 .books-home-row-scroller {
   display: flex;
-  gap: 12px;
+  gap: var(--space-6);
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
-  padding-bottom: 4px;
+  padding-bottom: var(--space-2);
 }
 .book-row-card {
   flex: 0 0 auto;
@@ -6699,7 +6709,7 @@ body.ft-css-fullscreen .bottom-nav {
 .book-row-progress-fill { height: 100%; background: var(--accent, #cc0000); }
 .book-row-title {
   display: block;
-  margin-top: 4px;
+  margin-top: var(--space-2);
   font-size: var(--fs-xs);
   line-height: 1.25;
   overflow: hidden;
@@ -6721,7 +6731,7 @@ body.ft-css-fullscreen .bottom-nav {
   cursor: pointer;
   font-size: var(--fs-md);
   line-height: 1; /* token-exempt: glyph centering */
-  padding: 2px 6px;
+  padding: var(--space-1) var(--space-3);
   border-radius: 3px;
   flex: 0 0 auto;
 }
@@ -6747,14 +6757,14 @@ body.ft-css-fullscreen .bottom-nav {
       justify-content: space-between;
       align-items: center;
       flex-wrap: wrap;
-      gap: 10px;
-      margin-bottom: 12px;
+      gap: var(--space-5);
+      margin-bottom: var(--space-6);
     }
     .books-toolbar h2 { margin: 0; }
     .books-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-      gap: 16px;
+      gap: var(--space-8);
     }
     .book-card {
       display: flex;
@@ -6786,7 +6796,7 @@ body.ft-css-fullscreen .bottom-nav {
       background: var(--accent, #cc0000);
     }
     .book-title {
-      margin-top: 6px;
+      margin-top: var(--space-3);
       font-weight: var(--fw-bold);
       font-size: var(--fs-base);
       overflow: hidden;
@@ -6804,14 +6814,14 @@ body.ft-css-fullscreen .bottom-nav {
     .books-shelf-chips {
       display: flex;
       flex-wrap: wrap;
-      gap: 8px;
+      gap: var(--space-4);
       margin-bottom: 14px;
     }
     .books-shelf-chip {
       display: inline-flex;
       align-items: center;
-      gap: 6px;
-      padding: 4px 10px;
+      gap: var(--space-3);
+      padding: var(--space-2) var(--space-5);
       border: 1px solid var(--border-color, #444);
       border-radius: 14px;
       font-size: var(--fs-sm);
@@ -6826,13 +6836,13 @@ body.ft-css-fullscreen .bottom-nav {
       cursor: pointer;
       color: inherit;
       opacity: 0.7;
-      padding: 0 2px;
+      padding: 0 var(--space-1);
       font-size: var(--fs-sm);
     }
     .books-shelf-pin-btn.pinned { opacity: 1; }
     .books-empty {
       opacity: 0.75;
-      padding: 24px 0;
+      padding: var(--space-12) 0;
     }
     .books-section-title {
       margin: 18px 0 10px;
@@ -6859,8 +6869,8 @@ body.ft-css-fullscreen .bottom-nav {
       display: flex;
       align-items: center;
       flex-wrap: wrap; /* v1.37.2: buttons wrap to a second row, never clipped */
-      gap: 8px;
-      padding: 6px 8px;
+      gap: var(--space-4);
+      padding: var(--space-3) var(--space-4);
       border-bottom: 1px solid var(--border-color, #444);
       flex: 0 0 auto;
     }
@@ -6903,7 +6913,7 @@ body.ft-css-fullscreen .bottom-nav {
       flex: 0 0 auto;
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: var(--space-5);
       padding: 6px 10px calc(6px + env(safe-area-inset-bottom, 0px));
       border-top: 1px solid var(--border-color, #444);
       font-size: var(--fs-sm);
@@ -6934,7 +6944,7 @@ body.ft-css-fullscreen .bottom-nav {
       z-index: 30; /* token-exempt: local stacking */
       display: flex;
       flex-direction: column;
-      padding: 10px;
+      padding: var(--space-5);
     }
     .reader-drawer[hidden] { display: none !important; }
     .reader-drawer h3 { margin: 4px 0 10px; font-size: var(--fs-md); }
@@ -6954,8 +6964,8 @@ body.ft-css-fullscreen .bottom-nav {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 10px;
-      padding: 8px 0;
+      gap: var(--space-5);
+      padding: var(--space-4) 0;
       font-size: var(--fs-base);
     }
     .reader-tap-nav {
@@ -7001,7 +7011,7 @@ body.ft-css-fullscreen .bottom-nav {
   z-index: 940; /* above .bottom-nav (900), below #player-dock (950)/modals */
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-2);
   padding: 6px 10px calc(6px + env(safe-area-inset-bottom));
   background: var(--header-bg);
   border-top: 1px solid var(--border-color);
@@ -7090,7 +7100,7 @@ body.ft-css-fullscreen .bottom-nav {
      above (padding-bottom:0), which fixes both form factors. */
   .reader-nowplaying #player-slot .player-controls {
     flex-wrap: nowrap;
-    height: 44px;
+    height: var(--size-touch);
   }
   .reader-nowplaying #player-slot .player-controls::after {
     content: none; /* drop the forced scrub/buttons row break */
@@ -7151,12 +7161,12 @@ body.ft-css-fullscreen .bottom-nav {
 .reloc-preview-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.55);
+  background: var(--scrim);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 1000;
-  padding: 16px;
+  padding: var(--space-8);
 }
 .reloc-preview-backdrop[hidden] {
   display: none;
@@ -7177,8 +7187,8 @@ body.ft-css-fullscreen .bottom-nav {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  padding: 12px 16px;
+  gap: var(--space-5);
+  padding: var(--space-6) var(--space-8);
   border-bottom: 1px solid var(--border-color, #ccc);
   font-weight: var(--fw-bold);
 }
@@ -7189,10 +7199,10 @@ body.ft-css-fullscreen .bottom-nav {
   font-size: var(--fs-4xl);
   line-height: 1; /* token-exempt: glyph centering */
   cursor: pointer;
-  padding: 0 4px;
+  padding: 0 var(--space-2);
 }
 .reloc-preview-summary {
-  padding: 12px 16px;
+  padding: var(--space-6) var(--space-8);
   border-bottom: 1px solid var(--border-color, #ccc);
   font-size: var(--fs-base);
 }
@@ -7203,13 +7213,13 @@ body.ft-css-fullscreen .bottom-nav {
 /* v1.41.7 gate fix (HONESTY 2): the best-effort-prediction + checksum-safety
    disclosure. Muted, smaller, but always present under the summary. */
 .reloc-preview-note {
-  margin-top: 8px;
+  margin-top: var(--space-4);
   font-size: var(--fs-sm);
   font-style: italic;
   color: var(--text-secondary);
 }
 .reloc-preview-body {
-  padding: 8px 16px 16px;
+  padding: var(--space-4) var(--space-8) var(--space-8);
   overflow-y: auto;
 }
 .reloc-preview-group-title {
@@ -7217,7 +7227,7 @@ body.ft-css-fullscreen .bottom-nav {
   margin: 14px 0 6px;
 }
 .reloc-preview-row {
-  padding: 8px 0;
+  padding: var(--space-4) 0;
   border-bottom: 1px solid var(--border-color, #eee);
   font-size: var(--fs-base);
   word-break: break-word;
@@ -7235,7 +7245,7 @@ body.ft-css-fullscreen .bottom-nav {
   font-weight: var(--fw-bold);
   padding: 1px 6px;
   border-radius: 3px;
-  margin-left: 6px;
+  margin-left: var(--space-3);
   border: 1px solid var(--border-color, #ccc);
 }
 .reloc-preview-badge.reloc-badge-copy {
@@ -7372,7 +7382,7 @@ body.ft-css-fullscreen .bottom-nav {
   padding: calc(var(--density) * 1.4) var(--density);
   cursor: pointer;
   margin-top: calc(var(--density) * 0.5);
-  transition: filter 0.12s ease;
+  transition: filter 0.12s var(--ease-ui);
 }
 .login-submit:hover { filter: brightness(1.08); }
 .login-submit:active { filter: brightness(0.94); }
@@ -7429,7 +7439,7 @@ body.ft-css-fullscreen .bottom-nav {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--space-6);
   flex-wrap: wrap;
 }
 #account-chip {
@@ -7440,14 +7450,14 @@ body.ft-css-fullscreen .bottom-nav {
 .users-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin-bottom: 24px;
+  gap: var(--space-4);
+  margin-bottom: var(--space-12);
 }
 .users-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: var(--space-5);
   flex-wrap: wrap;
   border: 1px solid var(--border-color);
   border-radius: var(--radius);
@@ -7457,7 +7467,7 @@ body.ft-css-fullscreen .bottom-nav {
 .users-row-who {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-1);
   min-width: 0;
 }
 .users-row-meta {
@@ -7466,7 +7476,7 @@ body.ft-css-fullscreen .bottom-nav {
 }
 .users-row-actions {
   display: flex;
-  gap: 6px;
+  gap: var(--space-3);
   flex-wrap: wrap;
 }
 
@@ -7479,17 +7489,17 @@ body.ft-css-fullscreen .bottom-nav {
   justify-content: space-between;
   align-items: center;
   flex-wrap: wrap;
-  gap: 10px;
-  margin-bottom: 12px;
+  gap: var(--space-5);
+  margin-bottom: var(--space-6);
 }
 .music-toolbar h2 { margin: 0; }
 .music-toolbar-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
 .music-tabs {
   display: flex;
-  gap: 4px;
+  gap: var(--space-2);
   border-bottom: 1px solid var(--border-color);
-  margin-bottom: 16px;
+  margin-bottom: var(--space-8);
   overflow-x: auto;
 }
 .music-tab {
@@ -7544,9 +7554,9 @@ body.ft-css-fullscreen .bottom-nav {
   z-index: 30; /* token-exempt: local stacking */
   display: none;
   align-items: center;
-  gap: 10px;
-  padding: 8px 6px;
-  margin-bottom: 8px;
+  gap: var(--space-5);
+  padding: var(--space-4) var(--space-3);
+  margin-bottom: var(--space-4);
   background: var(--bg-color);
   border-bottom: 1px solid var(--border-color);
 }
@@ -7568,13 +7578,13 @@ body.ft-css-fullscreen .bottom-nav {
 .music-card-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 16px;
+  gap: var(--space-8);
 }
 .music-album-card {
   display: flex;
   flex-direction: column;
   min-width: 0;
-  gap: 4px;
+  gap: var(--space-2);
   padding: 0;
   border: none;
   background: transparent;
@@ -7611,8 +7621,8 @@ body.ft-css-fullscreen .bottom-nav {
 .music-artist-card {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 16px;
+  gap: var(--space-3);
+  padding: var(--space-8);
   border: 1px solid var(--border-color);
   border-radius: 8px;
   background: var(--bg-secondary);
@@ -7628,8 +7638,8 @@ body.ft-css-fullscreen .bottom-nav {
 .music-song-row {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 8px 6px;
+  gap: var(--space-6);
+  padding: var(--space-4) var(--space-3);
   border-radius: 6px;
   cursor: pointer;
 }
@@ -7646,7 +7656,7 @@ body.ft-css-fullscreen .bottom-nav {
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
-  padding: 4px;
+  padding: var(--space-2);
   display: flex;
   align-items: center;
   flex-shrink: 0;
@@ -7669,8 +7679,8 @@ body.ft-css-fullscreen .bottom-nav {
   display: none;
   align-items: flex-end;
   justify-content: center;
-  gap: 2px;
-  padding-bottom: 8px;
+  gap: var(--space-1);
+  padding-bottom: var(--space-4);
   border-radius: 4px;
   background: rgba(0, 0, 0, 0.45);
 }
@@ -7703,7 +7713,7 @@ body.ft-css-fullscreen .bottom-nav {
   background: transparent;
   color: var(--text-secondary);
   font-size: var(--fs-sm);
-  padding: 4px 2px 10px;
+  padding: var(--space-2) var(--space-1) var(--space-5);
   cursor: pointer;
 }
 .music-nowplaying:hover { color: var(--text-primary); }
@@ -7733,8 +7743,8 @@ body.ft-css-fullscreen .bottom-nav {
 .bottombar-editor-row {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 0;
+  gap: var(--space-5);
+  padding: var(--space-4) 0;
   border-bottom: 1px solid var(--border-color);
 }
 .bottombar-editor-row .bottombar-editor-label { flex: 1; color: var(--text-primary); }
@@ -7745,8 +7755,8 @@ body.ft-css-fullscreen .bottom-nav {
   color: var(--text-primary);
   border-radius: var(--radius);
   cursor: pointer;
-  width: 32px;
-  height: 32px;
+  width: var(--size-control-sm);
+  height: var(--size-control-sm);
   line-height: 1; /* token-exempt: glyph centering */
 }
 .bottombar-editor-row .bottombar-editor-btn:disabled { opacity: 0.4; cursor: default; }
@@ -7778,7 +7788,7 @@ body.ft-css-fullscreen .bottom-nav {
   color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.04em; /* token-exempt: era display styling */
-  margin-bottom: 6px;
+  margin-bottom: var(--space-3);
 }
 
 /* Key column is fixed-ish so the descriptions line up into a readable column;
@@ -7787,8 +7797,8 @@ body.ft-css-fullscreen .bottom-nav {
 .shortcuts-row {
   display: flex;
   align-items: baseline;
-  gap: 12px;
-  padding: 4px 0;
+  gap: var(--space-6);
+  padding: var(--space-2) 0;
 }
 
 .shortcuts-keys {
@@ -7796,7 +7806,7 @@ body.ft-css-fullscreen .bottom-nav {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: 4px;
+  gap: var(--space-2);
 }
 
 .shortcuts-desc {
@@ -7811,7 +7821,7 @@ body.ft-css-fullscreen .bottom-nav {
 .shortcuts-modal kbd {
   display: inline-block;
   min-width: 1.6em;
-  padding: 2px 6px;
+  padding: var(--space-1) var(--space-3);
   text-align: center;
   font-family: var(--mono-font);
   font-size: var(--fs-xs);
@@ -7824,8 +7834,8 @@ body.ft-css-fullscreen .bottom-nav {
 }
 
 .shortcuts-note {
-  margin-top: 16px;
-  padding-top: 12px;
+  margin-top: var(--space-8);
+  padding-top: var(--space-6);
   border-top: 1px solid var(--border-dark);
   color: var(--text-secondary);
   font-size: var(--fs-xs);
@@ -7906,7 +7916,7 @@ body.ft-css-fullscreen .bottom-nav {
 .watch-desc-skel .skel-line {
   height: 12px;
   width: 90%;
-  margin: 8px 0;
+  margin: var(--space-4) 0;
   border-radius: 4px;
 }
 
@@ -7937,7 +7947,7 @@ body.ft-css-fullscreen .bottom-nav {
   background: #000; /* token-exempt: letterbox black */
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
-  margin-bottom: 16px;
+  margin-bottom: var(--space-8);
 }
 
 @media (max-width: 768px) {
@@ -7954,17 +7964,17 @@ body.ft-css-fullscreen .bottom-nav {
 .attr-picker-list {
   max-height: 50vh;
   overflow-y: auto;
-  margin: 12px 0;
+  margin: var(--space-6) 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-2);
 }
 
 .attr-picker-row {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 10px;
+  gap: var(--space-5);
+  padding: var(--space-4) var(--space-5);
   background: none;
   border: none;
   border-radius: var(--radius);
@@ -8016,20 +8026,20 @@ body.ft-css-fullscreen .bottom-nav {
 .attr-picker-relocate {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-4);
   font-size: var(--fs-base);
-  margin-top: 8px;
+  margin-top: var(--space-4);
 }
 
 .attr-picker-empty {
-  padding: 16px;
+  padding: var(--space-8);
   text-align: center;
   color: var(--text-secondary);
   font-size: var(--fs-sm);
 }
 
 .attr-picker-cancel {
-  margin-top: 4px;
+  margin-top: var(--space-2);
 }
 
 /* ---- v1.51: the notification bell ---------------------------------------
@@ -8049,7 +8059,7 @@ body.ft-css-fullscreen .bottom-nav {
   border: none;
   color: var(--text-primary);
   cursor: pointer;
-  padding: 6px;
+  padding: var(--space-3);
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -8066,7 +8076,7 @@ body.ft-css-fullscreen .bottom-nav {
   right: -2px; /* token-exempt: positional */
   min-width: 16px;
   height: 16px;
-  padding: 0 4px;
+  padding: 0 var(--space-2);
   border-radius: 8px;
   background: var(--yt-red);
   color: #fff;
@@ -8106,7 +8116,7 @@ body.ft-css-fullscreen .bottom-nav {
   z-index: 1600;
   opacity: 0;
   transform: translateY(-6px);
-  transition: opacity 0.15s ease, transform 0.15s ease;
+  transition: opacity var(--dur-fast) var(--ease-ui), transform var(--dur-fast) var(--ease-ui);
 }
 
 .notif-panel.notif-open {
@@ -8118,7 +8128,7 @@ body.ft-css-fullscreen .bottom-nav {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 16px;
+  padding: var(--space-6) var(--space-8);
   font-weight: var(--fw-semibold);
   border-bottom: 1px solid var(--bg-secondary);
   position: sticky;
@@ -8133,7 +8143,7 @@ body.ft-css-fullscreen .bottom-nav {
   font-size: var(--fs-sm);
   font-weight: var(--fw-semibold);
   cursor: pointer;
-  padding: 4px 6px;
+  padding: var(--space-2) var(--space-3);
   border-radius: 4px;
 }
 
@@ -8144,8 +8154,8 @@ body.ft-css-fullscreen .bottom-nav {
 .notif-row {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 16px;
+  gap: var(--space-5);
+  padding: var(--space-5) var(--space-8);
   color: var(--text-primary);
   text-decoration: none;
 }
@@ -8155,8 +8165,8 @@ body.ft-css-fullscreen .bottom-nav {
 }
 
 .notif-row-avatar {
-  width: 32px;
-  height: 32px;
+  width: var(--size-control-sm);
+  height: var(--size-control-sm);
   border-radius: 50%;
   overflow: hidden;
   flex-shrink: 0;
@@ -8182,7 +8192,7 @@ body.ft-css-fullscreen .bottom-nav {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-1);
 }
 
 .notif-row-channel,
@@ -8254,7 +8264,7 @@ body.ft-css-fullscreen .bottom-nav {
     background: rgba(0, 0, 0, 0.5);
     z-index: 1599;
     opacity: 0;
-    transition: opacity 0.2s ease;
+    transition: opacity 0.2s var(--ease-ui);
   }
 
   .notif-panel-backdrop.notif-open {
@@ -8272,7 +8282,7 @@ body.ft-css-fullscreen .bottom-nav {
     border-radius: var(--radius-lg) var(--radius-lg) 0 0;
     padding-bottom: env(safe-area-inset-bottom);
     transform: translateY(100%);
-    transition: transform 0.25s ease;
+    transition: transform var(--dur-slow) var(--ease-ui);
   }
 
   .notif-panel.notif-open {

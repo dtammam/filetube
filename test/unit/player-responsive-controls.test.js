@@ -24,6 +24,12 @@
 // truth in CSS, per the exec plan's design. Visual feel is Dean's on-device
 // iOS arbiter; this is the mechanical CSS-presence guard.
 const { test } = require('node:test');
+
+// Tier 2 (DELIBERATE lock updates): control sizes became --size-* tokens;
+// values resolved back before asserting. Token VALUES are pinned by
+// test/unit/token-scale-lock.test.js.
+const SIZE_TOKENS = { '--size-touch': '44px', '--size-control': '36px', '--size-control-sm': '32px' };
+const rt = (s) => String(s).replace(/var\((--size-[\w-]+)\)/g, (_, n) => SIZE_TOKENS[n] || _);
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -187,8 +193,8 @@ test('Feature A (v1.26.1): `.native-controls` no longer overrides #media-player\
 test('mobile .pc-btn is 44px square (bumped from the v1.21/v1.22.0 36px) -- comfortable touch target now shared by mobile video too', () => {
   const pcBtnRule = /\.pc-btn\s*\{([^}]*)\}/.exec(mobileMediaBlock);
   assert.ok(pcBtnRule, 'expected a .pc-btn rule inside the mobile @media block immediately preceding the v1.22/v1.22.1 FR-1 section');
-  assert.match(pcBtnRule[1], /width:\s*44px;/);
-  assert.match(pcBtnRule[1], /height:\s*44px;/);
+  assert.match(rt(pcBtnRule[1]), /width:\s*44px;/);
+  assert.match(rt(pcBtnRule[1]), /height:\s*44px;/);
 });
 
 // ---- FIX 2 (v1.22.1 gate round): #speed-btn trimmed from the docked bar ---
@@ -219,7 +225,7 @@ test('v1.22.1 FR-4: mobile #speed-btn keeps a >=44px touch-target floor via min-
   // and shadowed the loose match.
   const rule = /(?:^|\n)\s*#speed-btn\s*\{([^}]*)\}/.exec(mobileMediaBlock);
   assert.ok(rule, 'expected a mobile-scoped #speed-btn rule inside the @media block immediately preceding the v1.22/v1.22.1 FR-1 section');
-  const minWidthMatch = /min-width:\s*(\d+(?:\.\d+)?)px/.exec(rule[1]);
+  const minWidthMatch = /min-width:\s*(\d+(?:\.\d+)?)px/.exec(rt(rule[1]));
   assert.ok(minWidthMatch, 'expected a `min-width: <n>px` declaration');
   assert.ok(Number(minWidthMatch[1]) >= 44, `expected mobile #speed-btn min-width >= 44px (got ${minWidthMatch[1]}px)`);
 });
