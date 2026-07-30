@@ -11209,6 +11209,88 @@ async function recordRepulledItemMeta(deps, mediaId, meta, nowMs = Date.now()) {
   });
 }
 
+/**
+ * v1.56 (Dean's bulk subscriber-count reheat): the ONE fan-out writer that
+ * stamps a channel-level probed follower count onto EVERY library item
+ * attributed to that channel -- the v1.41.4 discipline (one writer, every
+ * site calls it; the batch worker in lib/ytdlp/index.js is its only caller,
+ * deps-injected through the same circular-require-avoiding bridge as
+ * `recordRepulledItemMeta` above).
+ *
+ * MATCH RULE mirrors `recordRepulledItemMeta`'s `sameChannel`: when BOTH the
+ * item and the probe/target know a channelId, the id decides (a canonical
+ * `/channel/UC…` URL and a handle `/@name` URL for the same channel must
+ * match; two different channels behind a coincidentally-equal URL string must
+ * not). URL equality -- against the TARGET's url (what the items themselves
+ * carried at enumeration) and the PROBE's canonical url alike, on both
+ * `channelUrl` and `channelHandleUrl` -- is the fallback when either side has
+ * no id. Items with no channel identity at all never match anything.
+ *
+ * SUPERSEDE UNCONDITIONALLY, count + capture date written as a UNIT -- the
+ * v1.54 decision, unchanged: subscriber counts legitimately fall, a reheat is
+ * a deliberate refresh, and the label carries its own "as of" date. The count
+ * is re-validated at this write boundary through the SAME standalone
+ * validator every other consumer uses (`ytdlp.parseCapturedFollowerCount`),
+ * never trusted from the caller; an invalid count is a no-op that resolves 0
+ * and never touches the database.
+ *
+ * MANUAL ATTRIBUTION (v1.53) is deliberately NOT a barrier here: a manually-
+ * attributed item's IDENTITY is Dean's alone, but the count belongs to the
+ * channel that identity names -- refreshing it rewrites nothing hand-set.
+ *
+ * Resolves the number of items actually stamped. A mutator pass that matches
+ * nothing returns `false` (skips the save entirely) and resolves 0.
+ *
+ * @param {{updateDatabase: Function}} deps
+ * @param {{channelId?: string|null, channelUrl?: string|null}} target the
+ *   enumeration target (`collectDistinctChannelAvatarTargets` shape)
+ * @param {{followerCount: number, channelId?: string|null, channelUrl?: string|null}} probed
+ *   the `probeChannelFollowerCount` result for that target
+ * @param {number} [nowMs] injectable clock (the `recordRepulledItemMeta` pattern)
+ * @returns {Promise<number>} items updated
+ */
+async function recordChannelFollowerCountFanout(deps, target, probed, nowMs = Date.now()) {
+  const d = deps || {};
+  if (typeof d.updateDatabase !== 'function') return 0;
+  const t = target && typeof target === 'object' ? target : {};
+  const p = probed && typeof probed === 'object' ? probed : {};
+  const followers = ytdlp.parseCapturedFollowerCount(p.followerCount);
+  if (followers === null) return 0;
+
+  const str = (v) => (typeof v === 'string' && v !== '' ? v : null);
+  // The probe's channelId (canonical, fresh) and the target's (what the
+  // library already knew) are the SAME channel by construction -- the probe
+  // was run against the target's own URL -- so either id may vouch for a
+  // match.
+  const knownIds = new Set([str(t.channelId), str(p.channelId)].filter(Boolean));
+  const knownUrls = new Set([str(t.channelUrl), str(p.channelUrl)].filter(Boolean));
+  if (knownIds.size === 0 && knownUrls.size === 0) return 0;
+
+  let updated = 0;
+  await d.updateDatabase((db) => {
+    updated = 0; // reset per pass -- updateDatabase may retry the mutator
+    for (const item of Object.values(db.metadata || {})) {
+      if (!item) continue;
+      const itemId = str(item.channelId);
+      let matches;
+      if (itemId && knownIds.size > 0) {
+        matches = knownIds.has(itemId);
+      } else {
+        const itemUrl = str(item.channelUrl);
+        const itemHandle = str(item.channelHandleUrl);
+        matches = (itemUrl !== null && knownUrls.has(itemUrl))
+          || (itemHandle !== null && knownUrls.has(itemHandle));
+      }
+      if (!matches) continue;
+      item.sourceFollowerCount = followers;
+      item.sourceFollowerCountCapturedAt = nowMs;
+      updated += 1;
+    }
+    return updated > 0;
+  });
+  return updated;
+}
+
 // API: Library-wide "fun stats" dashboard (C4, v1.24 UX Round Wave 3).
 // Computed LIVE from `db.metadata` on every request via the pure helpers in
 // `lib/stats.js` -- deliberately no cached aggregate (see that module's
@@ -12428,6 +12510,10 @@ ytdlp.registerRoutes(app, {
   scanDirectories,
   getMediaId,
   recordRepulledItemMeta,
+  // v1.56 (Dean's bulk subscriber-count reheat): the channel->items fan-out
+  // writer -- server.js owns db.metadata, so the module's reheat-subs batch
+  // gets it deps-injected like `recordRepulledItemMeta` above.
+  recordChannelFollowerCountFanout,
   enumerateRepullableItems,
   // v1.43 (chunk 4b): channel pins are per-user (user_channel_pins rows).
   // The pin routes keep lib/ytdlp/store.js's PURE reducers as the single
@@ -12702,6 +12788,9 @@ module.exports = {
   // header comments (above `migrateOneOffsIntoChannelFolders`) for the full
   // deps-bridge wiring contract lib/ytdlp/index.js's `registerRoutes` uses.
   recordRepulledItemMeta,
+  // v1.56: the bulk sub-count reheat's channel->items fan-out writer --
+  // exported for direct test coverage, same posture as recordRepulledItemMeta.
+  recordChannelFollowerCountFanout,
   enumerateRepullableItems,
   // v1.41.6: the reheat's import-relocation (move a hydrated MeTube import into
   // its channel folder + native filename) and the pure title->filename helper it
