@@ -23,12 +23,21 @@ original plan, so it takes the new letter 3h.
 
 ## Rulings received (Dean, 2026-07-30 - all questions CLOSED)
 
-1. Radius drift: **RESTORED into Step 3 as 3g** (Q1 "restore",
-   superseding the same-morning Tier-4 answer given against the
-   incomplete reconstruction). 6/8/14px -> a NEW token
-   `--radius-lg: 12px` (the 39th contract name, era-invariant, defined
-   in the 3g commit); 3px -> 2/4 per-site. R7's era-varying raw 2/4px
-   sites remain Tier 4 untouched, per the original.
+1. Radius drift: Q1 "restore" brought it back as 3g - but the ruling is
+   **PARTIALLY REOPENED by a gate CRITICAL**: the plan's premise that
+   `--radius-lg` would be a NEW era-invariant token was FALSE.
+   `--radius-lg` already exists in the era theme layer (:root 12px,
+   2005 era 0, 2009/2014 2px) with live consumers (video frame, dock
+   chrome). Adopting it at the seven 6/8/14px sites is therefore an
+   ERA-VARYING change (square corners in 2005) that the recovered
+   original's own era-invariance guard would demote to Tier 4. What
+   stands: the 3px -> 2/4 per-site literal trio (era-invariant).
+   What awaits Dean's re-ruling for the seven sites: (A) Tier 4 with
+   R7, where era-varying adoption is the era-consistency repair behind
+   per-era screenshots - RECOMMENDED, it is what the original's guard
+   clause dictates; (B) adopt era-varying --radius-lg in Step 3 with
+   per-era deltas enumerated per context; (C) mint a genuinely new
+   invariant token. R7's raw 2/4px sites remain Tier 4 regardless.
 2. Motion: 0.2s cluster (13 declarations / 11 sites) -> --dur-fast
    0.15s ("faster"); micro-band 0.08-0.12 ALSO -> 0.15 (Q2, overriding
    the original 0.1s-literal prescription). Per-site flips stay open
@@ -68,20 +77,22 @@ original plan, so it takes the new letter 3h.
 | commit | batch | scope | ledger rows |
 |---|---|---|---|
 | opener | A + B1 + exact adoptions | 49 offset token-exempt annotations + 26 zero-delta member/gap adoptions (differ must report EQUIVALENT) | 75 (49 annex + 26 of 3a's zero-delta rows) |
-| 3a | Spacing drift (R1+R2) | drift -> nearest member; the mixed-shorthand members consolidate here too (they EXECUTE in the opener; they are LEDGERED under 3a per the original "consolidate here too") | 52 in the 3a section (26 delta + 25 zero-delta + 1 ruled exempt) + the 49-row annex = 101 ledgered |
+| 3a | Spacing drift (R1+R2) | drift -> nearest member; the mixed-shorthand members consolidate here too (they EXECUTE in the opener; they are LEDGERED under 3a per the original "consolidate here too") | 52 in the 3a section (25 delta + 26 zero-delta + 1 ruled exempt) + the 49-row annex = 101 ledgered |
 | 3b | Control sizing (R3) | 40 -> --size-touch(44)/--size-control(36) per-site; 30/34 -> --size-control-sm(32). NO ledger rows - width/height are ungoverned; the sweep is DONE (table below). | 0 (extra-census, table below) |
 | 3c | Scrims + on-overlay chrome | 13 drift + 1 exact + 11 zero-delta adoptions + 4 ruled exempts; cc comment fix (ruling 8) | 29 |
 | 3d | Shadow elevation | 5 -> --shadow-modal (notif-panel 0.25->0.45 is the visible risk) + 1 no-action | 6 |
 | 3e | Motion | 16 -> --dur-fast/--dur-slow per rulings; 1 ruled exempt; ease-out/linear stay literal | 17 |
 | 3f | Line-height | 3 drift -> --lh-tight + 6 exact adoptions + 2 ruled exempts | 11 |
-| 3g | Radius drift (R8, restored) | 7 sites -> --radius-lg (NEW token, defined here); 3 sites 3px -> 2/4 per-site | 10 |
+| 3g | Radius drift (R8, PARTIALLY REOPENED) | 3 sites 3px -> 2/4 per-site stand; 7 sites REOPENED pending Dean's radius re-ruling (ruling 1) | 10 |
 | 3h | JS surfaces | 24 adoptions (one visible delta: stats 14->12) | 24 |
 
 Census remainder: 100 no-action census rows (the prior 110 minus the
-10 radius rows restored to 3g; the 9 ruled-exempt rows were already
-inside batch sections and move nothing - gate finding, second
-correction of this arithmetic). The ledger's totals table is the
-authority; ledger-check enforces the 298-row bijection either way.
+10 radius rows restored to 3g; the ruled-exempt rows were already
+inside batch sections and move nothing - and there are 8 of them, not
+9: the ninth ex-hold, duration-badge 1123, was APPROVED as drift.
+Gate finding, second correction of this arithmetic). The ledger's
+totals table is the authority; ledger-check enforces the 298-row
+bijection either way.
 
 ## 3b site table (R3 sweep DONE 2026-07-30; `R3` prefix keeps these out of ledger-check's bijection)
 
@@ -138,10 +149,13 @@ the **8->12 album rounding** (3g - the original packet's flag,
 restored); reloc panel 6->12 rounding; notif-panel shadow
 near-doubling (3d); the 0.2s->0.15s timing feel (3e).
 
-## Contract note
+## Contract note (corrected by the gate)
 
-`--radius-lg: 12px` joins the token contract as name 39 (ruling 1),
-defined in the 3g commit, era-invariant (every 3g site is outside
-era-scoped rules by linter construction - the original plan's
-era-invariance guard holds). Recorded here until the audit v1.1 doc
-gains its Step 3 addendum at execution time.
+NO new token joins the contract: `--radius-lg` already exists in the
+era layer (:root 12px; 2005 -> 0; 2009/2014 -> 2px) with live
+consumers. The earlier claim that it would be "name 39, era-invariant"
+was false - and its supporting argument ("every 3g site is outside
+era-scoped rules") checked the consuming rule's location when what
+matters is the token VALUE's era-scoping. Recorded as a standing
+lesson: a token adoption's era-invariance is a property of the token's
+definitions, not of the consumer's position in the file.

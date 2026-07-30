@@ -44,10 +44,13 @@ delta expected in any single-surface scene.
 
 ## T4-4: radius - R7 raw sites only (SCOPE REDUCED by Dean's Q1 ruling)
 
-The non-era drift band moved back to Step 3 as batch 3g per the
-recovered original plan (6/8/14 -> --radius-lg:12px, 3 -> 2/4
-per-site). What remains Tier 4: the eleven era-varying R7 raw 4px
-sites (candidate: adopt var(--radius), which the 2005/2009 eras
+The 3px -> 2/4 literal trio moved back to Step 3 as batch 3g per the
+recovered original plan. The seven 6/8/14px drift sites are in limbo
+pending Dean's radius re-ruling (Step 3 plan, ruling 1): --radius-lg
+turned out to already exist ERA-VARYING (12px/0/2px), so adopting it
+is era-visible work that plausibly belongs HERE with R7, not in
+Step 3. What remains Tier 4 for certain: the eleven era-varying R7
+raw 4px sites (candidate: adopt var(--radius), which the 2005/2009 eras
 override to 0/2 - surfaces get SQUARER in old eras, the classic
 era-consistency repair) and the six geometry radii (never tokens).
 Per-surface approval against scene 24-r7-radii + P1 shots, per

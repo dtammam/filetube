@@ -223,20 +223,20 @@ silent, but keep them out).
 | public/css/style.css:7828 | .shortcuts-modal kbd | `line-height: 1.5` | LH-EXACT | line-height: var(--lh-relaxed) | none |  |
 | public/css/style.css:8209 | .notif-row-title | `line-height: 1.3` | LH-DRIFT | line-height: var(--lh-tight) | 1.3->1.25 | scene 12b |
 
-## 3g - non-era radius drift, RESTORED per the recovered original + Dean Q1 (6/8/14px -> --radius-lg:12px, a NEW 39th token defined in this commit; 3px -> 2/4 per-site)
+## 3g - radius drift (PARTIALLY REOPENED by gate CRITICAL): the 3px -> 2/4 per-site literal trio stands; the seven 6/8/14px sites are REOPENED - the interim claim that --radius-lg would be a NEW era-invariant token was FALSE (it exists, era-varying, with consumers) and Dean must re-rule
 
 | file:line | selector / JS context | declaration (linter-exact) | bucket | proposed after | delta | notes |
 |---|---|---|---|---|---|---|
-| public/css/style.css:1934 | .speed-badge | `border-radius: 14px` | G-RADIUS-DRIFT | border-radius: var(--radius-lg) | 14px->12px | press-hold state - on-device judgment |
+| public/css/style.css:1934 | .speed-badge | `border-radius: 14px` | G-RADIUS-REOPENED | - | - | REOPENED - gate CRITICAL: --radius-lg already EXISTS era-varying (12px root / 0 in 2005 / 2px in 2009+2014) with live consumers; adoption is NOT era-invariant. Dean re-rules: Tier 4 with R7, per-era-enumerated adoption, or a genuinely new invariant token |
 | public/css/style.css:6735 | .pinned-unpin-btn | `border-radius: 3px` | G-RADIUS-DRIFT | border-radius: 2px | 3px->2px (per-site, tie-down; Stop B flip to 4px open) | scene 11 |
-| public/css/style.css:6826 | .books-shelf-chip | `border-radius: 14px` | G-RADIUS-DRIFT | border-radius: var(--radius-lg) | 14px->12px | scene 15 |
+| public/css/style.css:6826 | .books-shelf-chip | `border-radius: 14px` | G-RADIUS-REOPENED | - | - | REOPENED - gate CRITICAL: --radius-lg already EXISTS era-varying (12px root / 0 in 2005 / 2px in 2009+2014) with live consumers; adoption is NOT era-invariant. Dean re-rules: Tier 4 with R7, per-era-enumerated adoption, or a genuinely new invariant token |
 | public/css/style.css:7023 | .reader-np-cover | `border-radius: 3px` | G-RADIUS-DRIFT | border-radius: 4px | 3px->4px (per-site: joins the 4px thumb family) | scene 14 |
-| public/css/style.css:7178 | .reloc-preview-panel | `border-radius: 6px` | G-RADIUS-DRIFT | border-radius: var(--radius-lg) | 6px->12px (largest radius delta in the batch) | scene 18 |
+| public/css/style.css:7178 | .reloc-preview-panel | `border-radius: 6px` | G-RADIUS-REOPENED | - | - | REOPENED - gate CRITICAL: --radius-lg already EXISTS era-varying (12px root / 0 in 2005 / 2px in 2009+2014) with live consumers; adoption is NOT era-invariant. Dean re-rules: Tier 4 with R7, per-era-enumerated adoption, or a genuinely new invariant token |
 | public/css/style.css:7247 | .reloc-preview-badge | `border-radius: 3px` | G-RADIUS-DRIFT | border-radius: 2px | 3px->2px (per-site, tie-down) | scene 18 |
-| public/css/style.css:7539 | .music-drill-art | `border-radius: 8px` | G-RADIUS-DRIFT | border-radius: var(--radius-lg) | 8px->12px | scene 09; the original 8->12 album-rounding Stop B flag |
-| public/css/style.css:7599 | .music-album-art | `border-radius: 6px` | G-RADIUS-DRIFT | border-radius: var(--radius-lg) | 6px->12px | scene 08; album rounding flag |
-| public/css/style.css:7627 | .music-artist-card | `border-radius: 8px` | G-RADIUS-DRIFT | border-radius: var(--radius-lg) | 8px->12px | scene 08 |
-| public/css/style.css:7643 | .music-song-row | `border-radius: 6px` | G-RADIUS-DRIFT | border-radius: var(--radius-lg) | 6px->12px | scene 09 |
+| public/css/style.css:7539 | .music-drill-art | `border-radius: 8px` | G-RADIUS-REOPENED | - | - | REOPENED - gate CRITICAL: --radius-lg already EXISTS era-varying (12px root / 0 in 2005 / 2px in 2009+2014) with live consumers; adoption is NOT era-invariant. Dean re-rules: Tier 4 with R7, per-era-enumerated adoption, or a genuinely new invariant token |
+| public/css/style.css:7599 | .music-album-art | `border-radius: 6px` | G-RADIUS-REOPENED | - | - | REOPENED - gate CRITICAL: --radius-lg already EXISTS era-varying (12px root / 0 in 2005 / 2px in 2009+2014) with live consumers; adoption is NOT era-invariant. Dean re-rules: Tier 4 with R7, per-era-enumerated adoption, or a genuinely new invariant token |
+| public/css/style.css:7627 | .music-artist-card | `border-radius: 8px` | G-RADIUS-REOPENED | - | - | REOPENED - gate CRITICAL: --radius-lg already EXISTS era-varying (12px root / 0 in 2005 / 2px in 2009+2014) with live consumers; adoption is NOT era-invariant. Dean re-rules: Tier 4 with R7, per-era-enumerated adoption, or a genuinely new invariant token |
+| public/css/style.css:7643 | .music-song-row | `border-radius: 6px` | G-RADIUS-REOPENED | - | - | REOPENED - gate CRITICAL: --radius-lg already EXISTS era-varying (12px root / 0 in 2005 / 2px in 2009+2014) with live consumers; adoption is NOT era-invariant. Dean re-rules: Tier 4 with R7, per-era-enumerated adoption, or a genuinely new invariant token |
 
 ## 3h - JS-surface adoptions (v5 scope; post-original addition, hence the new letter)
 
@@ -314,7 +314,7 @@ silent, but keep them out).
 | public/css/style.css:6544 | .dl-status-chip-retry-btn, .dl-status-chip-dismiss-btn | `border-radius: calc(var(--radius) + 1px)` | RADIUS-DERIVED | - | - |  |
 | public/css/style.css:6552 | .dl-status-chip-retry-btn | `color: #fff` | SEMANTIC-RESIDUE | - | - | white-on-brand |
 | public/css/style.css:6698 | .book-row-cover | `border-radius: 4px` | RADIUS-R7-RAW | - | - | 4px |
-| public/css/style.css:6700 | .book-row-cover | `background: var(--thumbnail-bg, #222)` | PHANTOM-THUMBNAIL-BG | - | - | ghost --thumbnail-bg (defined nowhere, #222 fallback paints) - NEW phantom family x6, Tier 4 disposition needed (plan OQ7) |
+| public/css/style.css:6700 | .book-row-cover | `background: var(--thumbnail-bg, #222)` | PHANTOM-THUMBNAIL-BG | - | - | ghost --thumbnail-bg (defined nowhere, #222 fallback paints) - NEW phantom family x6 - RULED (OQ7): DEFINE the token, Tier 4 work |
 | public/css/style.css:6709 | .book-row-progress-fill | `background: var(--accent, #cc0000)` | TIER4-GHOST-RED | var(--yt-red) at Tier 4 | 2014 era: #cc0000->#e62117 | scene 23 |
 | public/css/style.css:6742 | .pinned-unpin-btn.armed | `background: var(--accent, #cc0000)` | TIER4-GHOST-RED | var(--yt-red) at Tier 4 | 2014 era only | armed state - on-device |
 | public/css/style.css:6743 | .pinned-unpin-btn.armed | `color: #fff` | SEMANTIC-RESIDUE | - | - | white-on-brand armed state |
@@ -383,7 +383,8 @@ silent, but keep them out).
 | DEAD-FALLBACK | 13 |
 | EXACT-ADOPT | 11 |
 | FW-JS-ADOPT | 5 |
-| G-RADIUS-DRIFT | 10 |
+| G-RADIUS-DRIFT | 3 |
+| G-RADIUS-REOPENED | 7 |
 | JS-ADOPT | 18 |
 | JS-DRIFT | 1 |
 | LAYOUT-CONSTANT | 6 |
