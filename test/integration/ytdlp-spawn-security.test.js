@@ -1195,6 +1195,155 @@ test('probeChannelAvatar includes --cookies (SAME discipline as probeChannel/run
   assert.equal(argv[idx + 1], cookiesFile);
 });
 
+// ---- v1.56: probeChannelFollowerCount -- the channel-level subscriber-count
+// probe (Dean's bulk reheat). SAME spawn shape/discipline as
+// probeChannelAvatar above (arg-array, `--` separator, no shell:true,
+// PROBE_TIMEOUT_MS, cookiesArgs); its unit of value is
+// `channel_follower_count`, which yt-dlp sets on the PLAYLIST-LEVEL info
+// dict (verified against yt-dlp master's `_extract_metadata_from_tabs`,
+// 2026-07-30), so `--playlist-items 0` carries it without listing videos.
+
+test('probeChannelFollowerCount builds argv (--dump-single-json --playlist-items 0 --no-warnings -- <url>), arg-array, never shell:true, and resolves {followerCount, channelId, channelUrl}', async () => {
+  const spawnChild = stubSpawn();
+  const channelUrl = 'https://www.youtube.com/channel/UCvQ4C0f9_OWRf1uyobwqOwA';
+  const config = { downloadDir: '/tmp/irrelevant-for-this-test', cookiesFile: null };
+  const resultPromise = run.probeChannelFollowerCount(channelUrl, config);
+  const child = spawnChild();
+  child.stdout.emit('data', Buffer.from(JSON.stringify({
+    channel_follower_count: 2470000,
+    channel_id: 'UCvQ4C0f9_OWRf1uyobwqOwA',
+    channel_url: channelUrl,
+    thumbnails: REAL_CHANNEL_THUMBNAILS,
+  })));
+  child.emit('close', 0, null);
+  const result = await resultPromise;
+
+  assert.equal(result.followerCount, 2470000);
+  assert.equal(result.channelId, 'UCvQ4C0f9_OWRf1uyobwqOwA', 'must extract+validate channel_id so the fan-out can match by canonical id');
+  assert.equal(result.channelUrl, channelUrl, 'must extract+re-validate channel_url via url.validateChannelUrl');
+  assert.equal(capturedSpawnCalls.length, 1);
+  const { cmd, argv, opts } = capturedSpawnCalls[0];
+  assert.equal(cmd, 'yt-dlp');
+  assert.ok(Array.isArray(argv), 'argv must be a flat array, never a shell string');
+  assert.notEqual(opts && opts.shell, true, 'shell:true must never be set');
+  assert.ok(argv.includes('--dump-single-json'));
+  const piIdx = argv.indexOf('--playlist-items');
+  assert.ok(piIdx >= 0, '--playlist-items must be present (never enumerates videos)');
+  assert.equal(argv[piIdx + 1], '0');
+  assert.ok(argv.includes('--no-warnings'));
+  const sepIdx = argv.indexOf('--');
+  assert.ok(sepIdx >= 0, 'a bare "--" separator must be present');
+  assert.equal(argv[argv.length - 1], channelUrl, 'the URL must be the LAST argv element (one opaque token, never parsed/split)');
+});
+
+test('probeChannelFollowerCount: a genuine 0 subscriber count is a SUCCESS, never collapsed to null (Number.isInteger posture, not truthiness)', async () => {
+  const spawnChild = stubSpawn();
+  const config = { downloadDir: '/tmp/irrelevant-for-this-test', cookiesFile: null };
+  const resultPromise = run.probeChannelFollowerCount('https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv', config);
+  const child = spawnChild();
+  child.stdout.emit('data', Buffer.from(JSON.stringify({ channel_follower_count: 0 })));
+  child.emit('close', 0, null);
+  const result = await resultPromise;
+  assert.equal(result.followerCount, 0, 'a brand-new channel with 0 subscribers is a real count');
+  assert.equal(result.channelId, null, 'no channel_id in this fixture -- must be null, never throw/omit');
+});
+
+test('probeChannelFollowerCount resolves null when channel_follower_count is absent/negative/non-numeric (non-YouTube extractors report none)', async () => {
+  const config = { downloadDir: '/tmp/irrelevant-for-this-test', cookiesFile: null };
+  for (const dict of [
+    { id: 'no-follower-key', channel_id: 'UCvQ4C0f9_OWRf1uyobwqOwA' },
+    { channel_follower_count: -5 },
+    { channel_follower_count: 'lots' },
+    { channel_follower_count: null },
+  ]) {
+    const spawnChild = stubSpawn();
+    const resultPromise = run.probeChannelFollowerCount('https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv', config);
+    const child = spawnChild();
+    child.stdout.emit('data', Buffer.from(JSON.stringify(dict)));
+    child.emit('close', 0, null);
+    assert.equal(await resultPromise, null, `dict ${JSON.stringify(dict)} must be a total miss`);
+  }
+});
+
+test('probeChannelFollowerCount resolves null (never throws) on non-JSON stdout / non-zero exit / spawn error / synchronous spawn throw', async () => {
+  const config = { downloadDir: '/tmp/irrelevant-for-this-test', cookiesFile: null };
+
+  let spawnChild = stubSpawn();
+  let resultPromise = run.probeChannelFollowerCount('https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv', config);
+  let child = spawnChild();
+  child.stdout.emit('data', Buffer.from('this is not json'));
+  child.emit('close', 0, null);
+  assert.equal(await resultPromise, null);
+
+  spawnChild = stubSpawn();
+  resultPromise = run.probeChannelFollowerCount('https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv', config);
+  child = spawnChild();
+  child.emit('close', 1, null);
+  assert.equal(await resultPromise, null);
+
+  spawnChild = stubSpawn();
+  resultPromise = run.probeChannelFollowerCount('https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv', config);
+  child = spawnChild();
+  child.emit('error', Object.assign(new Error('spawn yt-dlp ENOENT'), { code: 'ENOENT' }));
+  assert.equal(await resultPromise, null);
+
+  cp.spawn = () => { throw new Error('boom'); };
+  assert.equal(await run.probeChannelFollowerCount('https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv', config), null);
+});
+
+test('probeChannelFollowerCount resolves null immediately, without spawning, when channelUrl is missing/not a string', async () => {
+  const spawnChild = stubSpawn();
+  const config = { downloadDir: '/tmp/irrelevant-for-this-test', cookiesFile: null };
+  assert.equal(await run.probeChannelFollowerCount(undefined, config), null);
+  assert.equal(await run.probeChannelFollowerCount(null, config), null);
+  assert.equal(await run.probeChannelFollowerCount('', config), null);
+  assert.equal(capturedSpawnCalls.length, 0, 'an invalid channelUrl must never reach the spawn boundary');
+  void spawnChild;
+});
+
+test('probeChannelFollowerCount uses the dedicated PROBE_TIMEOUT_MS (not DEFAULT_LIST_TIMEOUT_MS)', async () => {
+  const spawnChild = stubSpawn();
+  const originalSetTimeout = global.setTimeout;
+  const capturedDelays = [];
+  global.setTimeout = (fn, delay, ...rest) => {
+    capturedDelays.push(delay);
+    return originalSetTimeout(fn, delay, ...rest);
+  };
+  let result;
+  try {
+    const config = { downloadDir: '/tmp/irrelevant-for-this-test', cookiesFile: null };
+    const resultPromise = run.probeChannelFollowerCount('https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv', config);
+    const child = spawnChild();
+    child.stdout.emit('data', Buffer.from(JSON.stringify({ channel_follower_count: 12345 })));
+    child.emit('close', 0, null);
+    result = await resultPromise;
+  } finally {
+    global.setTimeout = originalSetTimeout;
+  }
+  assert.equal(result.followerCount, 12345);
+  assert.ok(capturedDelays.length >= 1, 'probeChannelFollowerCount must arm a timer');
+  assert.equal(capturedDelays[0], run.PROBE_TIMEOUT_MS, 'the armed delay must be the dedicated probe timeout');
+});
+
+test('probeChannelFollowerCount includes --cookies (SAME discipline as probeChannelAvatar) when a cookies file is configured and present on disk', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-ytdlp-followers-cookies-'));
+  const cookiesFile = path.join(dir, 'cookies.txt');
+  fs.writeFileSync(cookiesFile, 'session=abc123');
+  const config = { downloadDir: '/tmp/irrelevant-for-this-test', cookiesFile };
+
+  const spawnChild = stubSpawn();
+  const resultPromise = run.probeChannelFollowerCount('https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv', config);
+  const child = spawnChild();
+  child.stdout.emit('data', Buffer.from(JSON.stringify({ channel_follower_count: 7 })));
+  child.emit('close', 0, null);
+  await resultPromise;
+
+  const { argv } = capturedSpawnCalls[0];
+  const idx = argv.indexOf('--cookies');
+  assert.ok(idx >= 0, '--cookies must be present when a usable cookies file is configured');
+  assert.equal(argv[idx + 1], cookiesFile);
+});
+
 // ---- T2/FR-E: onProgress threaded through the DOWNLOAD path ----------------
 //
 // yt-dlp writes `--newline` progress to STDOUT during a download (the
