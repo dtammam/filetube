@@ -5088,25 +5088,40 @@ const READONLY_ALLOWED_POSTS = new Set([
   '/api/auth/setup',
   '/api/ytdlp/repull-metadata/preview',
 ]);
-app.use((req, res, next) => {
-  if (!MUTATING_METHODS.has(req.method)) return next();
-  // 'finish' AND 'close', once-guarded: a client that tears the socket down
-  // mid-request (fire-and-forget fetch, a capture context closing) never
-  // fires 'finish', and the mutation may still have completed inside the
-  // route - exactly the shape the audit exists to catch (gate CRITICAL-2).
-  // originalUrl, not path: ?removeAnyway=true is a materially different
-  // destructive operation from a bare DELETE and must not log identically.
-  let audited = false;
-  const emit = () => {
-    if (audited) return;
-    audited = true;
-    const who = (req.user && (req.user.username || req.user.name || req.user.id)) || req.auditActor || 'unauthenticated';
-    console.log(`[audit] ${new Date().toISOString()} ${req.method} ${req.originalUrl} ${res.statusCode} user=${who}`);
+// Extracted as a factory (gate DELTA-B) so a unit test can mount EXACTLY
+// this middleware on a throwaway app with a deferred handler and prove the
+// close-path fires - the in-place integration test raced a synchronous 404
+// against the socket teardown and was vacuously green on the finish path.
+function createMutationAuditMiddleware(log = null) {
+  // log resolves at CALL time, not factory time: a default-parameter
+  // console.log would freeze the reference at require, and the audit
+  // tests' console interceptor (and anything else that wraps logging)
+  // would silently see nothing.
+  return (req, res, next) => {
+    if (!MUTATING_METHODS.has(req.method)) return next();
+    // 'finish' AND 'close', once-guarded: a client that tears the socket
+    // down mid-request (fire-and-forget fetch, a capture context closing)
+    // never fires 'finish', and the mutation may still have completed
+    // inside the route - exactly the shape the audit exists to catch (gate
+    // CRITICAL-2). originalUrl, not path: ?removeAnyway=true is a
+    // materially different destructive operation from a bare DELETE and
+    // must not log identically. 'incomplete' marks a response that never
+    // fully went out (res.statusCode alone would claim a 200 that no
+    // client ever received).
+    let audited = false;
+    const emit = () => {
+      if (audited) return;
+      audited = true;
+      const who = (req.user && (req.user.username || req.user.name || req.user.id)) || req.auditActor || 'unauthenticated';
+      const incomplete = res.writableEnded ? '' : ' incomplete';
+      (log || console.log)(`[audit] ${new Date().toISOString()} ${req.method} ${req.originalUrl} ${res.statusCode}${incomplete} user=${who}`);
+    };
+    res.on('finish', emit);
+    res.on('close', emit);
+    return next();
   };
-  res.on('finish', emit);
-  res.on('close', emit);
-  return next();
-});
+}
+app.use(createMutationAuditMiddleware());
 app.use((req, res, next) => {
   if (process.env.FILETUBE_READONLY !== '1') return next();
   if (!MUTATING_METHODS.has(req.method)) return next();
@@ -12795,8 +12810,11 @@ module.exports = {
   needsTranscode,
   transcodedPath,
   // 2026-07-30 hardening: exported so the capture harness's request policy
-  // can assert its allowlist stays a subset of this one (twin contracts).
+  // can assert its allowlist stays a subset of this one (twin contracts),
+  // and so the audit middleware's close-path is provable with a deferred
+  // handler (gate DELTA-B).
   READONLY_ALLOWED_POSTS,
+  createMutationAuditMiddleware,
   // v1.41.10: the live media read-stream registry (leaked-fd/DELETE_PENDING
   // fix) + the delete route's parent-dir post-verify -- exported for direct
   // test coverage (see activeMediaStreams' header for the incident).

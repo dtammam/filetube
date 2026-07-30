@@ -63,5 +63,11 @@ baselined) and never reach the server; only the login POST and the
 relocation dry-run preview pass, and never via a redirect hop.
 run-record.json carries blockedRequests (unexpected - these FAIL the
 run) and blockedExpected (the app's own fire-and-forget view/progress/
-seen telemetry - recorded, not fatal). Server-side twin:
-FILETUBE_READONLY=1 (see docs/CONFIGURATION.md).
+seen telemetry - recorded, not fatal). Allowlisted POSTs are fetched by
+the guard itself with redirects DISABLED - a redirect out of the
+allowlist is refused, never followed (proven by a real-Chromium test).
+TRADE, disclosed: fulfillment tells the page a blocked mutation
+SUCCEEDED, so a scene that actuates a destructive control can
+screenshot optimistic UI that lies about server state - the exit-1
+alarm on any unexpected block is what marks that frame untrustworthy.
+Server-side twin: FILETUBE_READONLY=1 (see docs/CONFIGURATION.md).

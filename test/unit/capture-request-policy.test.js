@@ -75,14 +75,15 @@ test('unparseable URL on a mutating method never passes', () => {
   assert.strictEqual(requestVerdict('DELETE', '').allow, false);
 });
 
-function mkRoute(method, url, redirectedFrom = null) {
-  const calls = { continued: 0, fulfilled: 0, fulfillArg: null, aborted: 0 };
+function mkRoute(method, url, { redirectedFrom = null, fetchResponse = null } = {}) {
+  const calls = { continued: 0, fulfilled: 0, fulfillArg: null, aborted: 0, fetched: 0, fetchArg: null };
   return {
     calls,
     request: () => ({ method: () => method, url: () => url, redirectedFrom: () => redirectedFrom }),
     continue: () => { calls.continued++; },
     fulfill: (arg) => { calls.fulfilled++; calls.fulfillArg = arg; },
     abort: () => { calls.aborted++; },
+    fetch: (arg) => { calls.fetched++; calls.fetchArg = arg; return Promise.resolve(fetchResponse || { status: () => 200, headers: () => ({}) }); },
   };
 }
 
@@ -96,27 +97,44 @@ test('guardContext: FULFILLS blocked requests with an empty 200 (never aborts - 
   await handler(ok);
   assert.deepStrictEqual([ok.calls.continued, ok.calls.fulfilled], [1, 0]);
 
+  // Allowlisted POST: the guard fetches ITSELF with redirects disabled and
+  // fulfills from the response - route.continue would let the network stack
+  // follow a redirect out of the allowlist unseen (gate DELTA-A).
   const login = mkRoute('POST', `${B}/api/auth/login`);
   await handler(login);
-  assert.deepStrictEqual([login.calls.continued, login.calls.fulfilled], [1, 0]);
+  assert.deepStrictEqual([login.calls.continued, login.calls.fetched, login.calls.fulfilled], [0, 1, 1]);
+  assert.strictEqual(login.calls.fetchArg.maxRedirects, 0);
+  assert.ok(login.calls.fulfillArg.response, 'fulfilled from the guarded fetch response');
+
+  // An allowlisted POST answered with a 3xx is BLOCKED - the redirect is
+  // never followed and the page gets the neutral empty 200.
+  const hop307 = mkRoute('POST', `${B}/api/auth/login`, { fetchResponse: { status: () => 307, headers: () => ({ location: `${B}/api/videos/redirect-destroy` }) } });
+  await handler(hop307);
+  assert.deepStrictEqual([hop307.calls.fetched, hop307.calls.fulfilled], [1, 1]);
+  assert.strictEqual(hop307.calls.fulfillArg.status, 200);
+  assert.ok(!hop307.calls.fulfillArg.response);
 
   const del = mkRoute('DELETE', `${B}/api/videos/xyz`);
   await handler(del);
   assert.deepStrictEqual([del.calls.continued, del.calls.fulfilled, del.calls.aborted], [0, 1, 0]);
   assert.strictEqual(del.calls.fulfillArg.status, 200);
-  assert.strictEqual(blocked.length, 1);
-  assert.strictEqual(blocked[0].expected, false);
+  // blocked so far: [0]=the 307 redirect, [1]=this DELETE.
+  assert.strictEqual(blocked.length, 2);
+  assert.match(blocked[0].reason, /redirect out of allowlisted/);
+  assert.strictEqual(blocked[1].expected, false);
 
   const seen = mkRoute('POST', `${B}/api/notifications/seen`);
   await handler(seen);
   assert.strictEqual(seen.calls.fulfilled, 1);
-  assert.strictEqual(blocked[1].expected, true);
+  assert.strictEqual(blocked[2].expected, true);
 
-  // Redirect hop: an allowlisted POST arriving via a redirect is blocked.
-  const hop = mkRoute('POST', `${B}/api/auth/login`, { url: () => `${B}/somewhere` });
+  // Defense-in-depth: an allowlisted POST whose request object says it
+  // arrived via a redirect is blocked at the verdict layer too.
+  const hop = mkRoute('POST', `${B}/api/auth/login`, { redirectedFrom: { url: () => `${B}/somewhere` } });
   await handler(hop);
   assert.strictEqual(hop.calls.fulfilled, 1);
-  assert.match(blocked[2].reason, /redirected/);
+  assert.ok(!hop.calls.fulfillArg.response);
+  assert.match(blocked[3].reason, /redirected/);
 
   // A throwing recorder must not unblock the guard:
   let handler2;
@@ -149,7 +167,11 @@ test('CALLSITE BINDING (gate CRITICAL-1): capture.js creates contexts ONLY throu
   const src = fs.readFileSync(path.join(__dirname, '../../tools/capture/capture.js'), 'utf8');
   // Strip comments first - a lock satisfied by prose is the v1.50.3 class.
   const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
-  assert.ok(!/\.newContext\s*\(/.test(code), 'bare browser.newContext( found in capture.js - every context MUST go through newGuardedContext');
+  // Remove the factory name, then the SUBSTRING 'newContext' must not
+  // survive anywhere - catches dot access, bracket notation, destructuring
+  // aliases, the lot (gate DELTA-C: /\.newContext\(/ missed brackets).
+  const residue = code.replace(/newGuardedContext/g, '');
+  assert.ok(!/newContext/.test(residue), 'a bare newContext reference survives in capture.js - every context MUST go through newGuardedContext');
   const sites = code.match(/newGuardedContext\s*\(/g) || [];
   assert.ok(sites.length >= 2, `expected the scene AND login contexts to use newGuardedContext (found ${sites.length})`);
 });

@@ -70,16 +70,41 @@ function requestVerdict(method, url, redirected = false) {
 // Installs the guard on a Playwright BrowserContext. `onBlocked` receives
 // { method, url, reason, expected }; blocking is always recorded.
 async function guardContext(ctx, onBlocked) {
-  await ctx.route('**/*', (route) => {
+  await ctx.route('**/*', async (route) => {
     const req = route.request();
+    const method = req.method().toUpperCase();
     const redirected = Boolean(req.redirectedFrom && req.redirectedFrom());
     const verdict = requestVerdict(req.method(), req.url(), redirected);
-    if (verdict.allow) return route.continue();
+    if (verdict.allow) {
+      if (method !== 'POST') return route.continue();
+      // Allowlisted POST: perform the fetch OURSELVES with redirects
+      // disabled. route.continue() lets the network stack follow redirects
+      // internally WITHOUT re-invoking this handler (gate DELTA-A, proven
+      // live: a 307 out of /api/auth/login landed a POST on a mutating
+      // path unrecorded) - so the only sound enforcement is to never let
+      // the stack follow a redirect on our behalf.
+      const resp = await route.fetch({ maxRedirects: 0 });
+      if (resp.status() >= 300 && resp.status() < 400) {
+        const info = {
+          method, url: req.url(), expected: false,
+          reason: `redirect out of allowlisted POST -> ${resp.headers()['location'] || '(no location)'}`,
+        };
+        try { onBlocked(info); } catch { /* recording must never unblock the guard */ }
+        console.error(`  BLOCKED redirect: ${info.reason}`);
+        return route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
+      }
+      return route.fulfill({ response: resp });
+    }
     const info = { method: req.method(), url: req.url(), reason: verdict.reason, expected: Boolean(verdict.expected) };
     try { onBlocked(info); } catch { /* recording must never unblock the guard */ }
     if (!info.expected) console.error(`  BLOCKED mutating request: ${info.method} ${info.url}`);
     // Fulfill, never abort: nothing reaches the server, and the page's
-    // success path runs so the screenshot is not perturbed.
+    // success path runs so the screenshot is not perturbed. TRADE (gate
+    // DELTA-D): the client is told the mutation SUCCEEDED, so a scene that
+    // actuates a destructive control can screenshot optimistic UI (card
+    // removed, success toast) that lies about server state - the run's
+    // exit-1 alarm on any unexpected block is what surfaces that frame as
+    // untrustworthy.
     return route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
   });
 }
@@ -88,9 +113,13 @@ async function guardContext(ctx, onBlocked) {
 // run-record entries (scene id or 'login'); `record` must carry
 // blockedRequests[] and blockedExpected[].
 async function newGuardedContext(browser, opts, record, tag) {
-  // serviceWorkers:'block' is version insurance - Playwright 1.49 routes SW
-  // requests through context.route (verified), but a regression there must
-  // not reopen the hole.
+  // serviceWorkers:'block' is LOAD-BEARING, not insurance: per
+  // playwright-core's own docs (types.d.ts, the route() entries), requests
+  // intercepted by a service worker are structurally INVISIBLE to
+  // context.route - blocking SWs is the only way this guard covers them.
+  // FileTube registers no SW today (common.js only unregisters stale
+  // ones), but Web Push is on the roadmap - this line is what keeps that
+  // future from reopening the hole (QA-gate finding).
   const ctx = await browser.newContext({ ...opts, serviceWorkers: 'block' });
   await guardContext(ctx, (b) => {
     (b.expected ? record.blockedExpected : record.blockedRequests).push({ ...tag, ...b });
