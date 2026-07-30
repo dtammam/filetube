@@ -22,7 +22,7 @@ try {
   ({ chromium } = require('../../tools/capture/node_modules/playwright'));
 } catch { /* not installed here - skip below */ }
 
-test('real Chromium: redirects out of the allowlist never land; DELETEs never reach the server; telemetry classifies as expected', { skip: !chromium && 'tools/capture playwright not installed' }, async () => {
+test('real Chromium: redirects out of the allowlist never land; DELETEs never reach the server; telemetry classifies as expected', { skip: !chromium && 'tools/capture playwright not installed' }, async (t) => {
   const hits = [];
   const srv = http.createServer((req, res) => {
     hits.push(`${req.method} ${req.url}`);
@@ -41,7 +41,9 @@ test('real Chromium: redirects out of the allowlist never land; DELETEs never re
     browser = await chromium.launch();
   } catch (e) {
     srv.close();
-    test.skip?.(`chromium not launchable: ${e.message.slice(0, 60)}`);
+    // Context skip, not module-level test.skip: the latter registers a NEW
+    // skipped test and lets this one pass vacuously (gate nit).
+    t.skip(`chromium not launchable: ${e.message.slice(0, 60)}`);
     return;
   }
   const record = { blockedRequests: [], blockedExpected: [] };
