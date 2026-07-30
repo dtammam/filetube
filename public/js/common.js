@@ -7338,7 +7338,10 @@ function buildDownloadChipFailureLines(state, rawEntry) {
 }
 
 /**
- * Pure aggregate reducer (AC54-AC56, REFRAMED v1.24.9 -- see the header
+ * Aggregate reducer (AC54-AC56, REFRAMED v1.24.9; v1.55: no longer fully
+ * pure -- it deliberately prunes the caller's live dismissedKeys Set when an
+ * item is observed active again, see the W4 comment at the mutation site --
+ * see the header
  * comment above): given the RAW `{subscriptions, oneShots}` snapshot
  * `GET /api/subscriptions/status` returns and the CURRENT set of
  * user-dismissed item keys, returns `{count, hasError, items}` --
