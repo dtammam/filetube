@@ -2926,6 +2926,45 @@ function buildOneOffDownloadBody(url, format, quality, filetype, folder) {
  * error/stderr), but this function makes no assumption about that -- it
  * treats them as arbitrary strings either way.
  */
+// ---- v1.55 Track C: ONE busy/status feedback system ------------------------
+//
+// Dean: "when I click it and it starts doing stuff, the text is already
+// plain underneath it... a more unified system for that type of thing
+// across the settings pages." Before this, the management pages had SIX
+// divergent status treatments (bare spans, bold inline-styled spans, a
+// success message rendered in .field-error red, ad-hoc <small>s). These two
+// helpers + the .action-status/.btn-busy CSS are now the single system:
+// every management-page action renders its feedback through them.
+
+/**
+ * Pure DOM (no fetch): set a status element's text and tone in one call.
+ * `kind`: 'busy' (secondary tone + inline spinner), 'error' (error tone),
+ * anything else/omitted = idle (plain secondary tone). Passing `text: null`
+ * updates ONLY the tone classes and leaves the existing text alone -- the
+ * applyReheatStateToControls family deliberately preserves a summary line
+ * when there is no fresh progress text, and this keeps that behavior while
+ * still clearing a stale spinner. Never innerHTML.
+ */
+function setActionStatus(el, text, kind) {
+  if (!el) return;
+  if (text !== null && text !== undefined) el.textContent = text;
+  el.classList.toggle('action-status-busy', kind === 'busy');
+  el.classList.toggle('action-status-error', kind === 'error');
+}
+
+/**
+ * Pure DOM: one busy treatment for action buttons -- disabled + the
+ * .btn-busy class (in-button spinner via CSS, label preserved). Idempotent
+ * both ways; callers that used to write `btn.disabled = running` directly
+ * call this instead so the visual state can never desync from the
+ * disabled state.
+ */
+function setButtonBusy(btn, busy) {
+  if (!btn) return;
+  btn.disabled = busy === true;
+  btn.classList.toggle('btn-busy', busy === true);
+}
+
 function formatOneOffStatusText(entry) {
   if (!entry || typeof entry !== 'object') return null;
   const state = entry.state;
@@ -8584,6 +8623,7 @@ if (typeof module !== 'undefined' && module.exports) {
     nextDownloadChipPollDelay, buildOneShotRetryBody, chipItemLifecycle,
     buildDownloadChipItem, reduceDownloadChipState, formatDownloadChipSummary,
     ACTIVITY_CHIP_LABELS, formatActivityStatusText,
+    setActionStatus, setButtonBusy,
     shouldShowDownloadChipOnPath, injectDownloadStatusChip,
     // v1.29.0 T8: the pure done-edge detector + the in-place library-refresh
     // hook invoker, exported for direct node:test coverage (no DOM/timers).

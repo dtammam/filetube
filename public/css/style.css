@@ -2517,6 +2517,65 @@ html.reader-immersive .app-container { padding-top: 0; }
   display: none;
 }
 
+/* ---- v1.55 Track C: the ONE action-status treatment ----------------------
+   Every management-page action (reheat/avatars/re-pull/scan/save/restore/
+   one-off) renders its feedback through setActionStatus/setButtonBusy
+   (common.js) into these classes -- replacing six divergent ad-hoc styles.
+   Line-height/min-height reserve the line box up front so populate/clear
+   never shifts the controls above it (the v1.26.2 lesson, now systemic). */
+.action-status {
+  /* inline-block, not block: the subscriptions header keeps its three
+     status spans on ONE reserved row (only one is ever populated); block
+     would stack three empty min-height boxes. Containers that want a
+     full-width line get it from their own layout. */
+  display: inline-block;
+  font-size: var(--fs-xs);
+  color: var(--text-secondary);
+  line-height: 1.25;
+  min-height: 15px;
+}
+.action-status-error {
+  color: var(--yt-red);
+}
+.action-status-busy::before {
+  content: '';
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 6px;
+  vertical-align: -1px;
+  border: 2px solid var(--border-color);
+  border-top-color: var(--text-secondary);
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+}
+/* In-button busy: keep the label, add a trailing spinner. The muted look
+   comes from the :disabled rule below (there was NO generic disabled-button
+   treatment before this -- each page's buttons just went unresponsive with
+   no visual change; part of the same unification). */
+.btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.btn-busy::after {
+  content: '';
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-left: 7px;
+  vertical-align: -1px;
+  border: 2px solid var(--border-color);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .action-status-busy::before,
+  .btn-busy::after {
+    animation: none;
+  }
+}
+
 .folder-list-builder {
   border: 1px solid var(--border-color);
   background-color: var(--bg-color);

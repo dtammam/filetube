@@ -87,9 +87,10 @@
       line-height: 1.25;
       min-height: 15px;
     }
+    /* v1.55 Track C: font-size/color now come from the sitewide
+       .action-status class (style.css) -- this page-local rule keeps only
+       the multi-span row spacing. */
     .sub-repull-status {
-      font-size: 12px;
-      color: var(--text-secondary);
       margin-right: 10px;
     }
     .sub-repull-status:empty {
@@ -304,9 +305,9 @@
                <style> block below) means populate/clear only ever changes
                this row's text, never the buttons' layout. -->
           <div class="sub-list-header-status">
-            <span id="sub-repull-status" class="sub-repull-status" aria-live="polite"></span>
-            <span id="sub-reheat-status" class="sub-repull-status" aria-live="polite"></span>
-            <span id="sub-refresh-avatars-status" class="sub-repull-status" aria-live="polite"></span>
+            <span id="sub-repull-status" class="sub-repull-status action-status" aria-live="polite"></span>
+            <span id="sub-reheat-status" class="sub-repull-status action-status" aria-live="polite"></span>
+            <span id="sub-refresh-avatars-status" class="sub-repull-status action-status" aria-live="polite"></span>
           </div>
         </div>
         <div id="sub-list-container" class="sub-list">
@@ -435,7 +436,10 @@
             <button class="btn btn-primary" id="oneshot-download-btn" type="button">Download</button>
           </div>
           <small id="oneshot-error" class="field-error"></small>
-          <small id="oneshot-status" style="color:var(--text-secondary); display:block; margin-top:4px;" aria-live="polite"></small>
+          <!-- v1.55 Track C: the ad-hoc inline style becomes the shared
+               .action-status treatment (block here via its own wrapper
+               display). -->
+          <small id="oneshot-status" class="action-status" style="display:block; margin-top:4px;" aria-live="polite"></small>
         </div>
         <div id="oneshot-list-container" class="folder-list-builder">
           <!-- Populated dynamically by /js/subscriptions.js from GET /api/subscriptions/status's oneShots -->
