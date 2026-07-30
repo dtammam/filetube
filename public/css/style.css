@@ -1668,7 +1668,7 @@ html.reader-immersive .app-container { padding-top: 0; }
 }
 
 .player-dock-close:hover {
-  background: rgba(0, 0, 0, 0.8);
+  background: var(--scrim-heavy);
 }
 
 @media (max-width: 768px) {
@@ -1975,7 +1975,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   padding: 0 var(--space-8);
   border: none;
   border-radius: 27px; /* token-exempt: era skin art */
-  background: rgba(0, 0, 0, 0.55);
+  background: var(--scrim);
   color: #fff;
   font-weight: var(--fw-semibold);
   cursor: pointer;
@@ -7151,7 +7151,7 @@ body.ft-css-fullscreen .bottom-nav {
 .reloc-preview-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.55);
+  background: var(--scrim);
   display: flex;
   align-items: center;
   justify-content: center;
