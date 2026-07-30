@@ -5056,6 +5056,50 @@ const authGate = authGateLib.createAuthGate({
 });
 app.use(authGate);
 
+// ---- 2026-07-30 capture-safety hardening (P2 + P3-audit) -------------------
+// Incident: a screenshot-harness scene issued real DELETE /api/videos/:id
+// calls against a live library, and the container's silence (no request
+// logging) made it nearly undetectable. Two structural answers, both
+// mounted AFTER the auth gate so req.user is attributable:
+//
+// 1) AUDIT: every mutating request logs one structured line on finish -
+//    method, path, status, user. Middleware placement covers every
+//    destructive route, present and future, by construction (no per-route
+//    wiring to forget).
+// 2) FILETUBE_READONLY=1: a TOTAL mutating-request refusal for instances
+//    that exist to be photographed or paralleled. Deliberately distinct
+//    from FILETUBE_READ_ONLY_MEDIA (the v1.42 beta lever, which by design
+//    keeps likes/progress/settings writable): this one rejects EVERY
+//    mutating verb except the session POSTs (login/logout) and the
+//    relocation dry-run preview, which is read-only by server contract.
+//    Read per-request so tests can toggle it without a re-require.
+const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+const READONLY_ALLOWED_POSTS = new Set([
+  '/api/auth/login',
+  '/api/auth/logout',
+  '/api/ytdlp/repull-metadata/preview',
+]);
+app.use((req, res, next) => {
+  if (!MUTATING_METHODS.has(req.method)) return next();
+  res.on('finish', () => {
+    const who = (req.user && (req.user.username || req.user.name || req.user.id)) || 'unauthenticated';
+    console.log(`[audit] ${req.method} ${req.path} ${res.statusCode} user=${who}`);
+  });
+  return next();
+});
+app.use((req, res, next) => {
+  if (process.env.FILETUBE_READONLY !== '1') return next();
+  if (!MUTATING_METHODS.has(req.method)) return next();
+  if (req.method === 'POST' && READONLY_ALLOWED_POSTS.has(req.path)) return next();
+  return res.status(403).json({
+    error: 'read-only mode: this instance runs with FILETUBE_READONLY=1 - every mutating request is rejected (capture/parallel-run protection).',
+    readOnly: true,
+  });
+});
+if (process.env.FILETUBE_READONLY === '1') {
+  console.log('[read-only] FILETUBE_READONLY=1 - this instance rejects ALL mutating requests except login/logout and the relocation dry-run preview.');
+}
+
 // Set/clear the session cookie for a user id (+ current tv).
 function issueSessionCookie(res, req, user) {
   const token = authCrypto.signSession({ uid: user.id, tv: user.tokenVersion }, SESSION_SECRET);

@@ -11,6 +11,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { VIEWPORTS, ERAS_P1, scenes, p2EraSpotChecks, p3, notAutomatable } = require('./scenes.js');
+const { guardContext } = require('./request-policy.js');
 
 const args = process.argv.slice(2);
 const arg = (name, dflt) => { const i = args.indexOf(name); return i === -1 ? dflt : args[i + 1]; };
@@ -44,6 +45,7 @@ const FREEZE_CSS = `*,*::before,*::after{transition:none!important;animation-pla
 async function runScene(browser, scene, era, mode, vpName, record) {
   const vp = VIEWPORTS[vpName];
   const ctx = await browser.newContext({ viewport: vp, deviceScaleFactor: 2, reducedMotion: 'reduce', storageState: record.storageState });
+  await guardContext(ctx, (b) => record.blockedRequests.push({ scene: scene.id, era, mode, viewport: vpName, ...b }));
   const page = await ctx.newPage();
   const fname = `${scene.id}-${era}-${mode}-${vpName}.png`;
   try {
@@ -69,7 +71,6 @@ async function runScene(browser, scene, era, mode, vpName, record) {
     await page.waitForTimeout(350); // settle fonts/layout post-freeze
     await page.screenshot({ path: path.join(OUT, fname), fullPage: false });
     record.captured.push(fname);
-    if (scene.note && scene.id === '21-hard-delete') await page.keyboard.press('Escape');
   } catch (err) {
     record.failed.push({ scene: fname, error: String(err).slice(0, 200) });
   } finally {
@@ -82,7 +83,7 @@ async function runScene(browser, scene, era, mode, vpName, record) {
   try { ({ chromium } = require('playwright')); }
   catch { console.error('playwright not installed - run: cd tools/capture && npm install && npx playwright install chromium'); process.exit(2); }
   fs.mkdirSync(OUT, { recursive: true });
-  const record = { base: BASE, date: new Date().toISOString(), emulated: true,
+  const record = { base: BASE, date: new Date().toISOString(), emulated: true, blockedRequests: [],
     determinism: 'animations frozen at end-state; DPR 2; era/mode via localStorage; content pinned via --fixture-video/--fixture-book',
     manualScenes: notAutomatable, captured: [], failed: [] };
   const browser = await chromium.launch();
@@ -91,6 +92,7 @@ async function runScene(browser, scene, era, mode, vpName, record) {
   if (loginPair) {
     const [user, pass] = loginPair.split(':');
     const ctx = await browser.newContext();
+    await guardContext(ctx, (b) => record.blockedRequests.push({ scene: 'login', ...b }));
     const page = await ctx.newPage();
     await page.goto(BASE + '/login.html', { waitUntil: 'networkidle' });
     await page.fill('#login-username, input[name="username"], input[type="text"]', user);
@@ -122,7 +124,10 @@ async function runScene(browser, scene, era, mode, vpName, record) {
   await browser.close();
   delete record.storageState; // session cookie never lands in the record
   fs.writeFileSync(path.join(OUT, 'run-record.json'), JSON.stringify(record, null, 1));
-  console.log(`captured ${record.captured.length}, failed ${record.failed.length} -> ${OUT}/`);
+  console.log(`captured ${record.captured.length}, failed ${record.failed.length}, blocked mutating requests ${record.blockedRequests.length} -> ${OUT}/`);
   for (const f of record.failed) console.log('  FAIL', f.scene, f.error);
-  process.exit(record.failed.length ? 1 : 0);
+  for (const b of record.blockedRequests) console.log('  BLOCKED', b.scene, b.method, b.url);
+  // A scene that ATTEMPTS a mutation is a broken scene: the guard makes it
+  // harmless, and this exit makes it impossible to miss.
+  process.exit(record.failed.length || record.blockedRequests.length ? 1 : 0);
 })();
