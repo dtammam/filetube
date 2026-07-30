@@ -3292,7 +3292,15 @@ a.sub-row-channel-link:focus-visible {
 /* v1.15.1 FIX 5: a clear, full-width primary call-to-action reads better in
    this narrow modal than the small inline-flex `.btn` default used
    everywhere else (header/setup buttons, which sit alongside other controls
-   and should stay compact). */
+   and should stay compact). v1.55 gate round 1 (QA W1): the sitewide
+   .action-bar caps columns at 240px, which shrank this button to barely
+   half the modal -- the modal's own action row overrides to fluid 1fr
+   columns, so a lone Download spans edge to edge again (auto-fit collapses
+   the hidden Retry's track) and an errored state splits into two equal
+   cells (Retry | Download). */
+.oneoff-modal-actions {
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+}
 .oneoff-modal .btn-primary {
   width: 100%;
   justify-content: center;

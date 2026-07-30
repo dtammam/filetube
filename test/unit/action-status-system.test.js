@@ -77,13 +77,35 @@ test('applyReheatStateToControls: running drives button-busy AND status-busy; id
     'the spinner MUST stop when the batch ends, even when the text is left alone');
 });
 
-test('applyRefreshAvatarsStateToControls: same contract as the reheat applier', () => {
+// v1.55 gate round 1 (QA W2): the headline Track B mechanic - the Cancel
+// SWAPS IN PLACE of its trigger. Before these assertions, deleting the
+// trigger-hide line passed the whole suite silently.
+test('applyReheatStateToControls: the trigger HIDES while running (Cancel takes its cell) and returns on completion', () => {
+  const elements = { button: fakeEl(), cancelButton: fakeEl(), status: fakeEl() };
+  applyReheatStateToControls(elements, { state: 'running', total: 10, done: 2 });
+  assert.equal(elements.button.hidden, true, 'trigger hidden - Cancel occupies the shared cell');
+  assert.equal(elements.cancelButton.hidden, false);
+  applyReheatStateToControls(elements, { state: 'done', total: 10, done: 10 });
+  assert.equal(elements.button.hidden, false, 'trigger returns when the batch settles');
+  assert.equal(elements.cancelButton.hidden, true);
+});
+
+test('applyReheatStateToControls: a cancel-less elements object never hides its button (repull-all class of caller)', () => {
+  const elements = { button: fakeEl(), status: fakeEl() };
+  applyReheatStateToControls(elements, { state: 'running', total: 10, done: 2 });
+  assert.equal(elements.button.hidden, false, 'no Cancel to swap in - the button must stay visible (busy/disabled only)');
+  assert.equal(elements.button.disabled, true);
+});
+
+test('applyRefreshAvatarsStateToControls: same contract as the reheat applier, in-place swap included', () => {
   const elements = { button: fakeEl(), cancelButton: fakeEl(), status: fakeEl() };
   applyRefreshAvatarsStateToControls(elements, { state: 'running', total: 5 });
   assert.equal(elements.button.classList.contains('btn-busy'), true);
+  assert.equal(elements.button.hidden, true, 'in-place swap on the avatars pair too');
   assert.equal(elements.status.classList.contains('action-status-busy'), true);
   applyRefreshAvatarsStateToControls(elements, undefined);
   assert.equal(elements.button.classList.contains('btn-busy'), false);
+  assert.equal(elements.button.hidden, false);
   assert.equal(elements.status.classList.contains('action-status-busy'), false);
 });
 

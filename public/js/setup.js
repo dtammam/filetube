@@ -1642,7 +1642,8 @@ function init(root) {
   loadedDefaultView = null;
 
   // v1.55 Track D: per-section collapse persistence (details toggles).
-  wireCollapsibleSections('setup', document, controller.signal);
+  // Scoped to the view root (QA S1) with a document fallback.
+  wireCollapsibleSections('setup', root || document, controller.signal);
   wireStaticControls(controller.signal);
   wireBookFolderControls(controller.signal); // v1.38.0 Part A
   wireMusicFolderControls(controller.signal); // v1.44 music

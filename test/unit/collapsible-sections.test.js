@@ -99,12 +99,12 @@ test('LOCK: every management page carries its collapsible cards AND wires persis
   for (const key of ['subscriptions-list', 'add-subscription', 'one-off-download']) {
     assert.ok(subsHtml.includes(`data-collapse-key="${key}"`), `subscriptions.html lost the ${key} card`);
   }
-  assert.match(stripped('public/js/setup.js'), /wireCollapsibleSections\('setup', document, controller\.signal\);/,
+  assert.match(stripped('public/js/setup.js'), /wireCollapsibleSections\('setup', root \|\| document, controller\.signal\);/,
     'setup persistence wiring deleted');
   assert.match(stripped('public/js/stats.js'), /wireCollapse\('stats'\);/,
     'stats persistence wiring deleted');
   const subs = stripped('lib/ytdlp/client/subscriptions.js');
-  assert.match(subs, /wireCollapsibleSections\('subscriptions', document, signal\);/,
+  assert.match(subs, /wireCollapsibleSections\('subscriptions', root \|\| document, signal\);/,
     'subscriptions persistence wiring deleted');
   assert.equal((subs.match(/wireCollapse\(\);/g) || []).length >= 3, true,
     'a dynamic mount (history/failures) stopped re-wiring persistence');

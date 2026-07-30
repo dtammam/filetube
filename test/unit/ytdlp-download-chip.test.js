@@ -868,8 +868,11 @@ test('updateDownloadChipPanel: clicking Retry invokes the SAME handler with the 
 
 // ---- v1.29.0 T6 (R1.3): CONFIRMATION -- the chip's one-shot Retry is -------
 // already reachable in the error state (no new UI needed on this surface;
-// see `els.retryBtn.hidden = item.state !== 'error'` in
-// `updateDownloadChipItemRow` above, and `injectDownloadStatusChip`'s own
+// see `els.retryBtn.hidden = item.retryable !== true` in
+// `updateDownloadChipItemRow` -- v1.55 moved the gate onto the item's own
+// `retryable` field, which for a one-shot is still exactly
+// `state === 'error'`, while an errored BATCH row is never retryable --
+// and `injectDownloadStatusChip`'s own
 // `onRetry` dispatch which calls `retryOneShot(rawEntry, item.key)` for a
 // `kind === 'oneshot'` item). This is a REGRESSION lock, not new coverage of
 // new behavior -- it fails loudly if a future change ever re-narrows the
