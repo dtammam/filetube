@@ -98,7 +98,7 @@ bijection either way.
 | site | selector | current | proposed | delta | notes |
 |---|---|---|---|---|---|
 | R3 style.css:893 | #view-mode-btn | min-width: 40px | min-width: var(--size-touch) | 40->44 | R3's touch-improve case; header width budget is the Stop B judgment |
-| R3 style.css:4316 | #sort-select-btn, #shuffle-again-btn, #rescan-library-btn (mobile) | min-width: 40px | EXEMPT | - | RECOMMEND EXEMPT: the comment above the rule documents 44px CAUSING the v1.50.4 mobile overflow ("mangled" row) - 40px IS the fix; re-widening re-breaks it |
+| R3 style.css:4316 | #sort-select-btn, #shuffle-again-btn, #rescan-library-btn (mobile) | min-width: 40px | EXEMPT | - | RECOMMEND EXEMPT: the comment above the rule documents 44px CAUSING the v1.45.3 mobile overflow ("mangled" row; the adjacent v1.50.4 comment is a different fix) - 40px IS the fix; re-widening re-breaks it |
 | R3 style.css:2090 | .watch-autoplay-switch | width: 34px | width: var(--size-control-sm) | 34->32 | COUPLED: the checked knob is hardcoded translateX(16px) at line 2130 - must become 14px in the SAME edit or the ON knob sits 2px short of flush |
 | R3 style.css:4573-4574 | .pc-btn | width/height: 30px | var(--size-control-sm) | 30->32 | player control buttons - R3's 30->32 case; fits inside the 40px strip untouched |
 | R3 style.css:5724 | #speed-btn | min-width: 30px | min-width: var(--size-control-sm) | 30->32 | pairs with .pc-btn |
