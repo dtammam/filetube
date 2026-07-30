@@ -164,7 +164,8 @@ function buildBreakdownRow(label, group) {
   labelEl.style.cssText = 'font-weight:bold; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;';
   const valueEl = document.createElement('span');
   valueEl.textContent = `${formatCount(group.count)} · ${formatTotalDuration(group.totalDurationSeconds)} · ${formatByteSize(group.totalSizeBytes)}`;
-  valueEl.style.cssText = 'color:var(--text-secondary); font-size:12px; flex-shrink:0;';
+  valueEl.className = 'stats-meta-text';
+  valueEl.style.cssText = 'flex-shrink:0;';
   row.appendChild(labelEl);
   row.appendChild(valueEl);
   return row;
@@ -223,7 +224,8 @@ function renderMostWatched(root, mostWatched) {
     // could read "1,672,000,000 views" on its card and "3 views" in Most
     // watched.
     valueEl.textContent = `${formatCount(entry.viewCount)} plays`;
-    valueEl.style.cssText = 'color:var(--text-secondary); font-size:12px; flex-shrink:0;';
+    valueEl.className = 'stats-meta-text';
+  valueEl.style.cssText = 'flex-shrink:0;';
     row.appendChild(labelEl);
     row.appendChild(valueEl);
     root.appendChild(row);
@@ -266,13 +268,14 @@ function renderDuplicates(root, report) {
       label.style.cssText = 'overflow:hidden; text-overflow:ellipsis; white-space:nowrap;';
       const meta = document.createElement('div');
       meta.textContent = `${formatCount(items.length)} copies · ${formatByteSize(group.totalBytes)} total · ${formatByteSize(group.wastedBytes)} reclaimable (keeping the largest)`;
-      meta.style.cssText = 'color:var(--text-secondary); font-size:12px;';
+      meta.className = 'stats-meta-text';
       row.appendChild(label);
       row.appendChild(meta);
       items.forEach((item) => {
         const pathLine = document.createElement('div');
         pathLine.textContent = `${item.filePath} (${formatByteSize(item.size)})`;
-        pathLine.style.cssText = 'color:var(--text-secondary); font-size:12px; padding-left:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;';
+        pathLine.className = 'stats-meta-text';
+        pathLine.style.cssText = 'padding-left:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;';
         row.appendChild(pathLine);
       });
       root.appendChild(row);
@@ -313,7 +316,8 @@ function buildBookFolderRow(group) {
   labelEl.style.cssText = 'font-weight:bold; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;';
   const valueEl = document.createElement('span');
   valueEl.textContent = `${formatCount(group.count)} · ${formatByteSize(group.totalSizeBytes)}`;
-  valueEl.style.cssText = 'color:var(--text-secondary); font-size:12px; flex-shrink:0;';
+  valueEl.className = 'stats-meta-text';
+  valueEl.style.cssText = 'flex-shrink:0;';
   row.appendChild(labelEl);
   row.appendChild(valueEl);
   return row;

@@ -3160,6 +3160,16 @@ a.sub-row-channel-link:focus-visible {
 /* Tokens Phase 1 Tier 1: the stats glance-tile value, moved out of
    JS-applied styles (buildStatTile). 22px == var(--fs-4xl). */
 .stat-tile-value { font-size: var(--fs-4xl); }
+/* Tier 2 commit 5: the stats meta text lines, extracted from FIVE 12px
+   cssText assignments in stats.js (the Phase 1 census said four - the
+   fifth was the same undercounted-cssText class). Remaining cssText props
+   (flex-shrink, padding-left, ellipsis) stay inline per-site. Comment
+   deliberately avoids the size property-colon-value spelling: the
+   type-scale lock scanner cannot tell prose from code. */
+.stats-meta-text {
+  color: var(--text-secondary);
+  font-size: var(--fs-sm);
+}
 
 /* Modal dialog custom styling */
 .modal-backdrop {
