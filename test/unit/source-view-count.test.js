@@ -102,11 +102,18 @@ test('parseCapturedFollowerCount: rejects non-integers, negatives, junk, NaN/Inf
 });
 
 test('parseCapturedFollowerCount: enforces the 1e12 plausibility ceiling', () => {
-  assert.equal(parseCapturedFollowerCount(MAX_PLAUSIBLE_FOLLOWER_COUNT), MAX_PLAUSIBLE_FOLLOWER_COUNT);
-  assert.equal(parseCapturedFollowerCount(MAX_PLAUSIBLE_FOLLOWER_COUNT + 1), null);
-  assert.equal(parseCapturedFollowerCount(1e13), null);
+  // Gate round 2 (QA CRITICAL): this test shipped VACUOUS -- the constant
+  // was never actually exported, so both boundary asserts compared
+  // null == undefined and passed by loose-equality coercion. The typeof
+  // guard + strictEqual make that failure mode structurally impossible.
+  assert.strictEqual(typeof MAX_PLAUSIBLE_FOLLOWER_COUNT, 'number',
+    'the ceiling must actually be exported -- undefined here greened the boundary asserts by coercion');
+  assert.strictEqual(MAX_PLAUSIBLE_FOLLOWER_COUNT, 1e12);
+  assert.strictEqual(parseCapturedFollowerCount(MAX_PLAUSIBLE_FOLLOWER_COUNT), MAX_PLAUSIBLE_FOLLOWER_COUNT);
+  assert.strictEqual(parseCapturedFollowerCount(MAX_PLAUSIBLE_FOLLOWER_COUNT + 1), null);
+  assert.strictEqual(parseCapturedFollowerCount(1e13), null);
   // The most-subscribed channel ever is ~4e8 -- comfortably inside.
-  assert.equal(parseCapturedFollowerCount(400_000_000), 400_000_000);
+  assert.strictEqual(parseCapturedFollowerCount(400_000_000), 400_000_000);
 });
 
 // ---- render-side resolution ------------------------------------------------

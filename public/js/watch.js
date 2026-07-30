@@ -1713,11 +1713,14 @@ if (typeof module !== 'undefined' && module.exports) {
                 // subscription NOW, so the next page render never flashes
                 // the stale "Subscribe" (the reported FOUC's root cause).
                 const capAfterSub = readCapabilityCache();
-                // Gate round 1 (adversarial S3): carry channelId too when the
-                // identity has one -- inert for matching today (the matcher
-                // reads only sub.channelUrl) but shape-parity with the real
-                // row. channelHandleUrl is NOT a sub-row field and the scrub
-                // would drop it; deliberately omitted.
+                // Gate round 1 (adversarial S3; comment corrected round 2 --
+                // both seats): carry channelId too when the identity has one
+                // -- inert for matching today (the matcher reads only
+                // sub.channelUrl) but shape-parity with the real row.
+                // channelHandleUrl is deliberately omitted because no real
+                // subscription record carries it (it is a db.metadata/
+                // downloadMeta field), NOT because the scrub drops it -- the
+                // scrub would actually keep it.
                 const identity = currentSubState.identity || {};
                 writeCapabilityCache({
                   subs: scrubSubsForCache([...((capAfterSub && capAfterSub.subs) || []),
