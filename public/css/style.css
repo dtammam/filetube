@@ -2615,6 +2615,14 @@ html.reader-immersive .app-container { padding-top: 0; }
 }
 .action-footer .action-bar {
   flex-shrink: 0;
+  /* Gate round 1 (adversarial W3): inside a flex item with INDEFINITE
+     width, the grid spec computes auto-fit with ONE repetition -- the
+     Books/Music footer pairs would stack vertically. Explicit column
+     auto-flow sizes each button its own capped track side by side and
+     never depends on a definite container width. */
+  grid-template-columns: none;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(160px, 240px);
 }
 
 .folder-list-builder {
@@ -3300,11 +3308,18 @@ a.sub-row-channel-link:focus-visible {
    cells (Retry | Download). */
 .oneoff-modal-actions {
   grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  /* Gate round 1 (adversarial W6b): the top offset lives on the ROW, and
+     every button in it fills its cell -- Retry and Download can never sit
+     2px misaligned in the shared stretched row. */
+  margin-top: 2px;
+}
+.oneoff-modal-actions .btn {
+  width: 100%;
+  justify-content: center;
 }
 .oneoff-modal .btn-primary {
   width: 100%;
   justify-content: center;
-  margin-top: 2px;
 }
 
 /* v1.20.0 FR-1 (T3): the watch-page Subscribe modal's READ-ONLY channel

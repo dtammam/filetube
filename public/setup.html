@@ -149,17 +149,25 @@
            (PNG/JPEG/WebP, max 1&nbsp;MB — it is scaled to fit the header).
            You can upload a separate logo per light/dark mode; with only one
            uploaded, it is used for both.</p>
+        <!-- v1.55 gate round 1 (adversarial W5): the upload/remove pairs
+             join the action-bar grid the exec plan promised - the hidden
+             Remove button now occupies a capped equal cell when it appears
+             instead of popping in at intrinsic width. -->
         <div class="form-group">
-          <label>Light-mode logo</label><br>
+          <label>Light-mode logo</label>
           <input type="file" id="logo-file-input" accept="image/png,image/jpeg,image/webp" style="display:none;">
-          <button type="button" class="btn btn-sm" id="logo-upload-btn">Upload light logo…</button>
-          <button type="button" class="btn btn-sm" id="logo-reset-btn" hidden>Remove light logo</button>
+          <div class="action-bar">
+            <button type="button" class="btn btn-sm" id="logo-upload-btn">Upload light logo…</button>
+            <button type="button" class="btn btn-sm" id="logo-reset-btn" hidden>Remove light logo</button>
+          </div>
         </div>
         <div class="form-group">
-          <label>Dark-mode logo</label><br>
+          <label>Dark-mode logo</label>
           <input type="file" id="logo-file-input-dark" accept="image/png,image/jpeg,image/webp" style="display:none;">
-          <button type="button" class="btn btn-sm" id="logo-upload-btn-dark">Upload dark logo…</button>
-          <button type="button" class="btn btn-sm" id="logo-reset-btn-dark" hidden>Remove dark logo</button>
+          <div class="action-bar">
+            <button type="button" class="btn btn-sm" id="logo-upload-btn-dark">Upload dark logo…</button>
+            <button type="button" class="btn btn-sm" id="logo-reset-btn-dark" hidden>Remove dark logo</button>
+          </div>
         </div>
         <div id="logo-status" class="action-status" style="margin-top:6px;" aria-live="polite"></div>
       </details>
@@ -193,7 +201,7 @@
         <!-- v1.55 Track B/C: shared footer row + the ONE status treatment
              (setup.js writes it via setActionStatus). -->
         <div class="action-footer">
-          <span id="scan-status" class="action-status" aria-live="polite"></span>
+          <span id="scan-status" class="action-status"></span>
           <div class="action-bar">
             <button class="btn btn-primary" id="save-config-btn">Save & Scan Library</button>
           </div>
@@ -230,7 +238,7 @@
         </div>
 
         <div class="action-footer">
-          <span id="book-scan-status" class="action-status" aria-live="polite"></span>
+          <span id="book-scan-status" class="action-status"></span>
           <div class="action-bar">
             <button class="btn" id="scan-books-btn">Scan books now</button>
             <button class="btn btn-primary" id="save-book-config-btn">Save book folders</button>
@@ -268,7 +276,7 @@
         </div>
 
         <div class="action-footer">
-          <span id="music-scan-status" class="action-status" aria-live="polite"></span>
+          <span id="music-scan-status" class="action-status"></span>
           <div class="action-bar">
             <button class="btn" id="scan-music-btn">Scan music now</button>
             <button class="btn btn-primary" id="save-music-config-btn">Save music folders</button>

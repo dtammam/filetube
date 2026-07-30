@@ -104,6 +104,22 @@ test('collapsed summary: a download and a running batch co-headline, joined with
   assert.match(summary, / · Refreshing avatars/);
 });
 
+test('a dismissed FIXED-ID batch outcome un-dismisses when the id runs again (adversarial W4)', () => {
+  // Batch activities reuse one id per kind forever. Sequence: reheat errors
+  // -> user dismisses -> a NEW reheat runs -> that run's terminal outcome
+  // must be visible again. Before the prune, the stale dismissal swallowed
+  // every later outcome for the page lifetime.
+  const dismissed = new Set();
+  const errored = { oneShots: { 'repull-metadata': { kind: 'repull', state: 'error', error: 'boom', total: 5 } } };
+  assert.equal(reduceDownloadChipState(errored, dismissed).count, 1, 'first failure visible');
+  dismissed.add('oneshot:repull-metadata'); // the user taps Dismiss
+  assert.equal(reduceDownloadChipState(errored, dismissed).count, 0, 'dismissed - hidden');
+  const runningAgain = { oneShots: { 'repull-metadata': { kind: 'repull', state: 'running', total: 8, done: 1 } } };
+  assert.equal(reduceDownloadChipState(runningAgain, dismissed).count, 1, 'a NEW run is visible');
+  assert.equal(dismissed.has('oneshot:repull-metadata'), false, 'and the stale dismissal is pruned');
+  assert.equal(reduceDownloadChipState(errored, dismissed).count, 1, 'so the second failure is NOT swallowed');
+});
+
 test('collapsed summary: failed batches are "tasks failed", never "downloads failed"', () => {
   const state = reduceDownloadChipState({
     oneShots: { 'repull-metadata': { kind: 'repull', state: 'error', error: 'boom', total: 5 } },

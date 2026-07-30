@@ -878,6 +878,25 @@ test('updateDownloadChipPanel: clicking Retry invokes the SAME handler with the 
 // new behavior -- it fails loudly if a future change ever re-narrows the
 // gate away from a one-shot's error state.
 
+// v1.55 gate round 1 (adversarial W1): the ROW-level binding for the
+// batch-never-retryable rule. The field-level test (activity-chip-labels)
+// proved item.retryable === false; nothing proved the ROW consumed it --
+// reverting the gate to the old `state !== 'error'` check passed the full
+// suite, and under that mutant an errored reheat row offered a Retry whose
+// click builds a null body (batch entries carry no url): a dead button.
+test('v1.55: an errored BATCH row never shows Retry; an errored one-shot still does (row-level binding)', () => {
+  const batchRow = createDownloadChipItemRow(fakeChipDoc, noopHandlers());
+  const batchItem = buildDownloadChipItem('oneshot', 'repull-metadata', { kind: 'repull', state: 'error', error: 'boom', total: 5 });
+  updateDownloadChipItemRow(fakeChipDoc, batchRow, batchItem, { kind: 'repull', state: 'error', error: 'boom' });
+  assert.equal(batchRow.els.retryBtn.hidden, true, 'batch Retry would fire the one-shot retry route against a fixed batch id');
+  assert.equal(batchRow.els.actions.hidden, false, 'Dismiss remains reachable on the errored batch row');
+
+  const dlRow = createDownloadChipItemRow(fakeChipDoc, noopHandlers());
+  const dlItem = buildDownloadChipItem('oneshot', 'job1', { state: 'error', title: 'Vid', error: 'x', url: 'https://youtu.be/abc' });
+  updateDownloadChipItemRow(fakeChipDoc, dlRow, dlItem, { state: 'error', title: 'Vid', error: 'x' });
+  assert.equal(dlRow.els.retryBtn.hidden, false, 'a genuine download error keeps its Retry');
+});
+
 test('T6 R1.3 confirmation: a ONE-SHOT chip item in error state has its Retry button reachable (not hidden), and Retry is hidden for every non-error one-shot state', () => {
   const errorItem = buildDownloadChipItem('oneshot', 'job1', { state: 'error', title: 'Vid', error: 'boom' });
   assert.equal(errorItem.retryable, true);

@@ -7384,6 +7384,15 @@ function reduceDownloadChipState(snapshot, dismissedKeys) {
     // an active download -- never contributes to the chip at all.
     if (item.kind === 'subscription' && (item.state === 'queued' || item.state === 'listing')) return false;
     const lifecycle = chipItemLifecycle(item.state, item.failureKind);
+    // v1.55 gate round 1 (adversarial W4): an item observed ACTIVE again
+    // clears its dismissal. Batch activities live under FIXED ids
+    // (repull-metadata etc.), so without this, dismissing one errored
+    // reheat swallowed every LATER reheat's terminal outcome for the rest
+    // of the page lifetime (the reviewer's runnable repro); subscription
+    // ids shared the same latent class. Only meaningful when the caller
+    // passes its own live Set (the chip does) -- the defensive array copy
+    // path prunes a throwaway.
+    if (lifecycle === 'active') dismissed.delete(item.key);
     if (lifecycle === 'auto-dismiss') return false;
     if (lifecycle === 'sticky') return !dismissed.has(item.key);
     return true;
