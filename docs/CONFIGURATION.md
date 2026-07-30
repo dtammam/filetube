@@ -101,7 +101,8 @@ Two related tools/levers:
 
 | Variable / tool | What it does |
 |-----------------|---------------|
-| `FILETUBE_READ_ONLY_MEDIA=1` | Beta safe mode for a second instance sharing your media folders: deletes, moves, downloads, re-pulls, reheat, and skip-list writes all refuse with a clear error, the scheduled poll is a no-op, and the scan will never remove a media file. Playback, likes, progress, and settings work normally. |
+| `FILETUBE_READ_ONLY_MEDIA=1` | Beta safe mode for a second instance sharing your media folders: deletes, moves, downloads, re-pulls, reheat, and skip-list writes all refuse with a clear error, the scheduled poll is a no-op, and the scan will never remove a media file. Playback, likes, progress, and settings work normally. NOT the same lever as `FILETUBE_READONLY` below - pick by whether user-state writes should keep working. |
+| `FILETUBE_READONLY=1` | TOTAL read-only mode (2026-07-30 capture-safety hardening): every mutating request - including likes, progress, and settings, which `FILETUBE_READ_ONLY_MEDIA` deliberately keeps writable - is refused with 403, except login/logout, first-run setup, and the relocation dry-run preview. For instances that exist to be photographed (screenshot baselines) or otherwise must not change. Caveat: media-serving GETs can still write to the transcode/rendition cache (self-healing, disclosure-grade). |
 | `GET /api/admin/backup` | Downloads a full JSON backup of the instance (library state, settings, custom logo). `POST /api/admin/restore` restores it. In v1.42 these are as open as the rest of the API; v1.43 puts them behind admin auth. |
 
 v1.42 also raises the minimum Node version to **22.13** (the Docker image

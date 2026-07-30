@@ -52,3 +52,22 @@ scrollTo/click pass full selector unions (the split dropped
 fallbacks). **21-hard-delete is REMOVED from automation: for
 yt-dlp-managed cards the two-tap flow deletes with NO modal - manual
 only, throwaway/non-managed items only.**
+
+READ-ONLY ENFORCEMENT (2026-07-30 hardening, after that scene really
+deleted 8 files): every browser context is created through
+request-policy.js's newGuardedContext - the ONLY context factory
+(tested; bare newContext is banned from capture.js by a source lock).
+Mutating requests are FULFILLED with an empty 200 (never aborted -
+aborts fire the page's error paths and corrupt the pixels being
+baselined) and never reach the server; only the login POST and the
+relocation dry-run preview pass, and never via a redirect hop.
+run-record.json carries blockedRequests (unexpected - these FAIL the
+run) and blockedExpected (the app's own fire-and-forget view/progress/
+seen telemetry - recorded, not fatal). Allowlisted POSTs are fetched by
+the guard itself with redirects DISABLED - a redirect out of the
+allowlist is refused, never followed (proven by a real-Chromium test).
+TRADE, disclosed: fulfillment tells the page a blocked mutation
+SUCCEEDED, so a scene that actuates a destructive control can
+screenshot optimistic UI that lies about server state - the exit-1
+alarm on any unexpected block is what marks that frame untrustworthy.
+Server-side twin: FILETUBE_READONLY=1 (see docs/CONFIGURATION.md).

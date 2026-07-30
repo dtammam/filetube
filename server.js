@@ -5056,6 +5056,85 @@ const authGate = authGateLib.createAuthGate({
 });
 app.use(authGate);
 
+// ---- 2026-07-30 capture-safety hardening (P2 + P3-audit) -------------------
+// Incident: a screenshot-harness scene issued real DELETE /api/videos/:id
+// calls against a live library, and the container's silence (no request
+// logging) made it nearly undetectable. Two structural answers, both
+// mounted AFTER the auth gate so req.user is attributable:
+//
+// 1) AUDIT: every mutating request logs one structured line on finish -
+//    method, path, status, user. Middleware placement covers every
+//    destructive route, present and future, by construction (no per-route
+//    wiring to forget).
+// 2) FILETUBE_READONLY=1: refuse every mutating VERB for instances that
+//    exist to be photographed or paralleled. Deliberately distinct from
+//    FILETUBE_READ_ONLY_MEDIA (the v1.42 beta lever, which by design
+//    keeps likes/progress/settings writable): this one rejects all
+//    POST/PUT/PATCH/DELETE except the session POSTs (login/logout/first-
+//    run setup) and the relocation dry-run preview, which is read-only by
+//    server contract. HONEST LIMIT (gate finding): verb-only enforcement
+//    cannot stop the media-serving GETs from writing to the transcode/
+//    rendition CACHE (queueTranscode/queueAudioExtract/roku remux) -
+//    cache-only and self-healing, disclosed in docs/CONFIGURATION.md and
+//    tech-debt #65. Read per-request so tests toggle without a re-require.
+const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+const READONLY_ALLOWED_POSTS = new Set([
+  '/api/auth/login',
+  '/api/auth/logout',
+  // First-run provisioning: the auth gate already allowlists setup pre-auth
+  // (and 409s it once users exist) - without this, a fresh zero-user
+  // instance under FILETUBE_READONLY could never create its first admin
+  // (gate finding).
+  '/api/auth/setup',
+  '/api/ytdlp/repull-metadata/preview',
+]);
+// Extracted as a factory (gate DELTA-B) so a unit test can mount EXACTLY
+// this middleware on a throwaway app with a deferred handler and prove the
+// close-path fires - the in-place integration test raced a synchronous 404
+// against the socket teardown and was vacuously green on the finish path.
+function createMutationAuditMiddleware(log = null) {
+  // log resolves at CALL time, not factory time: a default-parameter
+  // console.log would freeze the reference at require, and the audit
+  // tests' console interceptor (and anything else that wraps logging)
+  // would silently see nothing.
+  return (req, res, next) => {
+    if (!MUTATING_METHODS.has(req.method)) return next();
+    // 'finish' AND 'close', once-guarded: a client that tears the socket
+    // down mid-request (fire-and-forget fetch, a capture context closing)
+    // never fires 'finish', and the mutation may still have completed
+    // inside the route - exactly the shape the audit exists to catch (gate
+    // CRITICAL-2). originalUrl, not path: ?removeAnyway=true is a
+    // materially different destructive operation from a bare DELETE and
+    // must not log identically. 'incomplete' marks a response that never
+    // fully went out (res.statusCode alone would claim a 200 that no
+    // client ever received).
+    let audited = false;
+    const emit = () => {
+      if (audited) return;
+      audited = true;
+      const who = (req.user && (req.user.username || req.user.name || req.user.id)) || req.auditActor || 'unauthenticated';
+      const incomplete = res.writableEnded ? '' : ' incomplete';
+      (log || console.log)(`[audit] ${new Date().toISOString()} ${req.method} ${req.originalUrl} ${res.statusCode}${incomplete} user=${who}`);
+    };
+    res.on('finish', emit);
+    res.on('close', emit);
+    return next();
+  };
+}
+app.use(createMutationAuditMiddleware());
+app.use((req, res, next) => {
+  if (process.env.FILETUBE_READONLY !== '1') return next();
+  if (!MUTATING_METHODS.has(req.method)) return next();
+  if (req.method === 'POST' && READONLY_ALLOWED_POSTS.has(req.path)) return next();
+  return res.status(403).json({
+    error: 'read-only mode: this instance runs with FILETUBE_READONLY=1 - every mutating request is rejected (capture/parallel-run protection).',
+    readOnly: true,
+  });
+});
+if (process.env.FILETUBE_READONLY === '1') {
+  console.log('[read-only] FILETUBE_READONLY=1 - every mutating VERB is rejected except login/logout/setup and the relocation dry-run preview. (Media-serving GETs may still write to the transcode cache - see docs/CONFIGURATION.md.)');
+}
+
 // Set/clear the session cookie for a user id (+ current tv).
 function issueSessionCookie(res, req, user) {
   const token = authCrypto.signSession({ uid: user.id, tv: user.tokenVersion }, SESSION_SECRET);
@@ -12730,6 +12809,12 @@ module.exports = {
   app,
   needsTranscode,
   transcodedPath,
+  // 2026-07-30 hardening: exported so the capture harness's request policy
+  // can assert its allowlist stays a subset of this one (twin contracts),
+  // and so the audit middleware's close-path is provable with a deferred
+  // handler (gate DELTA-B).
+  READONLY_ALLOWED_POSTS,
+  createMutationAuditMiddleware,
   // v1.41.10: the live media read-stream registry (leaked-fd/DELETE_PENDING
   // fix) + the delete route's parent-dir post-verify -- exported for direct
   // test coverage (see activeMediaStreams' header for the incident).

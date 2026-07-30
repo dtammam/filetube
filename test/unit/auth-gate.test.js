@@ -194,8 +194,14 @@ test('gate: the API token is an ALTERNATIVE auth for POST /api/ytdlp/download on
   const g = gate.createAuthGate({ store: fakeStore({ count: 1, user: null }), secret: 's'.repeat(40), cookieName: 'c', apiToken: 'shortcut-secret-token' });
   // Valid token header on the download endpoint -> allowed (no cookie needed).
   let nexted = false;
-  g({ method: 'POST', path: '/api/ytdlp/download', url: '/api/ytdlp/download', originalUrl: '/api/ytdlp/download', headers: { 'x-filetube-token': 'shortcut-secret-token' } }, fakeRes(), () => { nexted = true; });
+  const tokenReq = { method: 'POST', path: '/api/ytdlp/download', url: '/api/ytdlp/download', originalUrl: '/api/ytdlp/download', headers: { 'x-filetube-token': 'shortcut-secret-token' } };
+  g(tokenReq, fakeRes(), () => { nexted = true; });
   assert.equal(nexted, true, 'valid token allows the download endpoint');
+  // 2026-07-30 hardening: the token caller is attributed for the audit log
+  // (previously its mutations logged as 'unauthenticated') - and it must be
+  // a marker, NOT req.user (routes treat token calls as session-less).
+  assert.strictEqual(tokenReq.auditActor, 'api-token');
+  assert.strictEqual(tokenReq.user, undefined);
   // Wrong token PRESENT -> 401 (not a fall-through).
   const rWrong = fakeRes();
   g({ method: 'POST', path: '/api/ytdlp/download', url: '/api/ytdlp/download', originalUrl: '/api/ytdlp/download', headers: { 'x-filetube-token': 'wrong' } }, rWrong, () => {});
