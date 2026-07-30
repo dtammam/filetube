@@ -73,6 +73,21 @@ definition-value and selector comparison.
 
 ## Lint burn-down - corrected baselines
 
+TIER 2 STEP 1 UPDATE (the fixture suite found two more linter holes; the
+numbers below this note are SUPERSEDED - kept for the audit trail):
+
+| linter version | baseline (ef60bbf) | after Tier 1 | what changed |
+|---|---|---|---|
+| v1 (shipped w/ commit 4) | 641 | - | published, then found buggy |
+| v2 (Phase 1 commit 6) | 628 | 554 | parser fix: same-line selectors re-enabled at-rule/era exclusions |
+| v3 (Tier 2 Step 1) | 661 | 580 | ONE-LINE RULES were never linted - 26 hidden literals (found by the new fixture suite) |
+| v4 (Tier 2 Step 1, authoritative) | **692** | **611** | var() FALLBACK literals now survive the strip - Dean's ruling requires the 9 ghost-token sites visible as Tier 4 residue; also surfaces 3 vacuous `var(--heading-weight, bold)` fallback spellings (Tier 2 cleanup candidates - the Tier 1 "zero weight literals" claim was true for DIRECT declarations and stands as written) |
+
+The v4 semantics are locked by test/unit/css-token-lint.test.js (in CI via
+npm run test:unit), including one regression fixture per hole above.
+
+## Lint burn-down - corrected baselines (SUPERSEDED - see table above)
+
 Commit ef60bbf published baseline **641**. The linter's selector tracking
 had a bug (single-line selectors - nearly all of them - pushed empty
 strings, silently disabling the @font-face/@keyframes and era-scope

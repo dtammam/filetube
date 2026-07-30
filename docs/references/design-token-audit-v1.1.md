@@ -97,12 +97,34 @@ design-token-phase1-verification.md for full detail)
 - The lint baseline is 628 (not the 641 first published - linter parser
   fix), 554 after Tier 1.
 
-## Phase/tier map (unchanged from approval)
+## Phase/tier map (CORRECTED by Dean's post-merge rulings, 2026-07-30)
 
-- Phase 1 (this): reconcile, token file (additive, no consumers), the
-  token-exempt convention applied to every audit KEEP, css-lint
-  report-only baseline, Tier 1 zero-delta refactor, verification.
-- Tier 2 (separate approval): consolidations R1/R2/R10 + amended R4.
-- Tier 3 (separate approval): z re-ladder (R11) after co-open enumeration;
-  R3 control heights; R5/R6/R8/R9.
-- R7 radius work: deferred behind per-era screenshots, per amendment (b).
+- Phase 1 (MERGED, 94cd9f2): reconcile, token file, token-exempt
+  convention, css-lint report-only baseline, Tier 1 zero-delta refactor.
+- Tier 2 = the ZERO-DELTA 1:1 ADOPTION pass (spec arrives in its own
+  prompt). Step 0 (before anything else): fix the equivalence differ's
+  two documented holes - it must compare full selector text,
+  declaration order-normalized property/value pairs, AND custom-property
+  definitions, per era x mode resolution, with mutation tests for both
+  holes in its fixture set. Step 1: the css-token-lint script gets its
+  own fixture suite in CI (it is the primary drift metric and does not
+  get to be the least-tested code in the repo). The Tier 2 ban on the
+  unfixed differ stands until those tests pass.
+- Tier 3 = the consolidations (R1/R2/R10 + amended R4), gated on Dean's
+  device-pass screenshots.
+- Tier 4 = the era-consistency tier, behind per-era screenshots:
+  R7 radius work (amendment b), PLUS Dean's rulings on the Phase 1
+  exclusions:
+  - Ghost --accent/--accent-color: NOT defined, ever. End state is the
+    9 sites consuming var(--yt-red) directly - the current 2014-era
+    split (#cc0000 on those 9 surfaces vs #e62117 everywhere tokenized)
+    is the BUG, not the baseline; defining --accent would
+    institutionalize a second non-era-varying red to preserve an
+    accident. Era-visible, so Tier 4; until then the sites stay
+    untouched, unexempted, in the burn-down as Tier 4 residue.
+  - monospace -> var(--mono-font) (.chapters-editor-textarea): TAKEN -
+    browser-default mono in the Courier-defined eras is the same
+    era-inconsistency class. Tier 4, same screenshot gate, same residue
+    handling.
+- Linter ruling: the zero-dependency script STAYS (stylelint's
+  dependency surface is not worth one rule).
