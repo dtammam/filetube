@@ -14,10 +14,13 @@
 //
 // FONT-QUIESCENCE BINDING NOTE: the force-load (M-font1: remove it and
 // the declared face stays 'unloaded' forever - deterministic red) is
-// bound; the fontsPending term in the stability condition is SHADOWED
-// by the in-observation fonts.ready await (a mutant removing it stays
-// green) and is kept as documented defense-in-depth against
-// fonts.ready's replace-on-new-load semantics, not as a bound invariant.
+// bound. TWO font terms are deliberately UNBOUND defense-in-depth, not
+// bound invariants (gate-measured): fontsPending is UNREACHABLE at its
+// sample point in the current ordering (the in-observation fonts.ready
+// await drains 'loading' to zero before the sample - loading=1 before,
+// 0 after, measured), and the fontsKey identity term is the same class.
+// Both exist for the window fonts.ready cannot cover: a face that
+// BEGINS loading between the ready await and the sample/next pass.
 //
 // BINDING: the causally-chained late batches bind the STRUCTURAL
 // mutants - first-stable return (the field-bug shape) dies on the chain
@@ -95,7 +98,7 @@ function slowImageServer() {
     // class the product deliberately accepts.
     res.end(`<html><head><style>@font-face{font-family:'SlowIconFont';src:url('/font/slow') format('woff2')}</style></head><body style="margin:0;width:300px">
       <div class="sub-list-header-status">last check ${'word '.repeat(5 + (reqCount % 2) * 40)}</div>
-      <div style="height:20px">Added <span id="added-date-text">LIVE-${reqCount % 10}</span> &bull; static</div>
+      <div style="height:20px">Added <span id="added-date-text" style="font-variant-numeric:tabular-nums">LIVE-${reqCount % 10}</span> &bull; static</div>
       <div id="grid"></div><div id="grid2"></div><div id="grid3"></div>
       <div style="height:40000px"></div>
       <img id="deep" loading="lazy" src="/img/deep" width="40" height="40">
@@ -176,6 +179,17 @@ test('image-quiescence gate: the lazy race exists without it, dies with it, and 
     assert.strictEqual(settled.stable, true, JSON.stringify(settled));
     assert.strictEqual(settled.total, 21, 'all FOUR chained batches + deep + broken must be present post-settle - a fixed observation cap of N misses the N+1th hop');
     assert.strictEqual(settled.errored, 1, 'the broken image is counted as errored, not pending');
+    // STRUCTURAL BINDING RESTORED (gate FINDING 1): the @font-face stall
+    // stretched early observations enough that a fixed-3-cap or
+    // first-stable mutant reaches total=21 - the total alone stopped
+    // distinguishing them. Convergence is DEFINED by confirming
+    // observations, so bind the count: measured EXACTLY 5 across 6 runs
+    // (3 idle, 3 under full 6-core CPU saturation; elapsed 3932-4006ms)
+    // vs 3 for the fixed cap and 4 for first-stable. Cadence-derived: if
+    // this fails on a materially slower box, re-measure - and re-run the
+    // WHOLE mutant set after ANY fixture-timing change (the lesson this
+    // finding bought).
+    assert.ok(settled.observations >= 5, `expected >=5 confirming observations, got ${settled.observations} - a capped or first-stable loop converges in fewer`);
     assert.ok(elapsed < 10000, `settle took ${elapsed}ms - the broken image is hanging an observation (gate W1)`);
     const deepAfter = await p1.evaluate(() => { const d = document.getElementById('deep'); return d.complete && d.naturalWidth > 0; });
     assert.strictEqual(deepAfter, true, 'the eager flip must fetch the below-fold lazy image');
@@ -267,6 +281,13 @@ test('snapScroll: fractional scroll offsets round to integers even under CSS smo
     await p.setContent('<html style="scroll-behavior:smooth"><body style="margin:0"><div style="height:5000px"></div></body></html>', { waitUntil: 'domcontentloaded' });
     await p.evaluate(() => window.scrollTo({ top: 1234.5, behavior: 'instant' }));
     const before = await p.evaluate(() => window.scrollY);
+    // THE DISPROOF is the non-vacuous property here (gate SUGGESTION-A:
+    // the old integer/no-jump assertions held for a no-op snapScroll):
+    // headless quantizes scroll to integer CSS px at every DPR. The day
+    // this fails, the fractional hypothesis is back in play and
+    // snapScroll stops being belt-and-braces - which is exactly when a
+    // human should look.
+    assert.ok(Number.isInteger(before), `headless no longer quantizes scroll (got ${before}) - the fractional-scroll hypothesis is back in play; snapScroll just became load-bearing`);
     await snapScroll(p);
     const after = await p.evaluate(() => window.scrollY);
     assert.ok(Number.isInteger(after), `snapScroll must land on an integer, got ${after}`);
