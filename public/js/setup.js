@@ -615,7 +615,7 @@ function renderBottomBarEditor(signal) {
     label.className = 'bottombar-editor-label';
     label.textContent = BOTTOMBAR_LABELS[id] || id;
     const toggle = document.createElement('label');
-    toggle.style.cssText = 'display:flex; align-items:center; gap:6px; font-weight:normal;';
+    toggle.style.cssText = 'display:flex; align-items:center; gap:var(--space-3); font-weight:normal;';
     const cb = document.createElement('input');
     cb.type = 'checkbox'; cb.checked = !hidden.has(id);
     toggle.appendChild(cb);

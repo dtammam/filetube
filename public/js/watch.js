@@ -632,10 +632,10 @@ if (typeof module !== 'undefined' && module.exports) {
 
     const box = document.createElement('div');
     box.className = 'watch-view-error';
-    box.style.cssText = 'display:flex;flex-direction:column;justify-content:center;align-items:center;padding:24px 16px;text-align:center;color:var(--text-secondary);';
+    box.style.cssText = 'display:flex;flex-direction:column;justify-content:center;align-items:center;padding:var(--space-12) var(--space-8);text-align:center;color:var(--text-secondary);';
 
     const heading = document.createElement('h3');
-    heading.style.marginBottom = '12px';
+    heading.style.marginBottom = 'var(--space-6)';
     heading.textContent = 'Failed to Load Media';
 
     const message = document.createElement('p');
@@ -644,7 +644,7 @@ if (typeof module !== 'undefined' && module.exports) {
     const backLink = document.createElement('a');
     backLink.href = '/';
     backLink.className = 'btn';
-    backLink.style.marginTop = '16px';
+    backLink.style.marginTop = 'var(--space-8)';
     backLink.textContent = 'Back to Home';
 
     box.appendChild(heading);
@@ -1918,7 +1918,7 @@ if (typeof module !== 'undefined' && module.exports) {
         pinBtn.type = 'button';
         pinBtn.id = 'pin-channel-btn';
         pinBtn.className = 'btn';
-        pinBtn.style.marginLeft = '8px';
+        pinBtn.style.marginLeft = 'var(--space-4)';
         subscribeBtnContainer.appendChild(pinBtn);
         pinBtn.addEventListener('click', handleTogglePin, { signal });
       }
@@ -2126,7 +2126,7 @@ if (typeof module !== 'undefined' && module.exports) {
 
       if (comments.length === 0) {
         const empty = document.createElement('div');
-        empty.style.cssText = 'color: var(--text-secondary); text-align: center; padding: 12px 0;';
+        empty.style.cssText = 'color: var(--text-secondary); text-align: center; padding: var(--space-6) 0;';
         empty.textContent = 'No comments yet. Be the first to comment!';
         commentsContainer.appendChild(empty);
         return;

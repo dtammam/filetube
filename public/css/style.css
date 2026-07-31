@@ -150,7 +150,7 @@ summary,
      is untouched: these tokens are for surfaces that deliberately look the
      same in every era and mode. AMENDMENT (c), recorded here so it is
      never lost: when scrim consolidation happens (Tier 2), the cc-overlay
-     TEXT BACKGROUND keeps its own rgba(0,0,0,0.85) - it is a LEGIBILITY
+     TEXT BACKGROUND keeps its own rgba(0,0,0,0.72) [comment corrected 2026-07-31 per OQ8: this text long claimed 0.85, but 0.72 is what always shipped] - it is a LEGIBILITY
      floor over arbitrary video, not a style surface, and must not adopt
      --scrim-heavy. */
   --overlay-surface: #222;
@@ -486,8 +486,8 @@ body {
   background-color: var(--bg-color);
   color: var(--text-primary);
   font-size: var(--fs-base);
-  line-height: 1.4;
-  transition: background-color 0.2s, color 0.2s;
+  line-height: 1.4; /* token-exempt: global body base - deliberate site-wide tuning (OQ6 ruling) */
+  transition: background-color var(--dur-fast), color var(--dur-fast);
 }
 
 /* v1.47.4 item 2 (Dean: "fully disable pinch-to-zoom ... easy to zoom in
@@ -697,7 +697,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   gap: var(--space-3);
   text-decoration: none; /* .btn is used on <a> too (e.g. #download-media-btn) -- keep it button-like, never underlined */
   box-shadow: var(--shadow);
-  transition: background-color var(--dur-fast) var(--ease-ui), border-color var(--dur-fast) var(--ease-ui), transform 0.1s var(--ease-ui), box-shadow var(--dur-fast) var(--ease-ui);
+  transition: background-color var(--dur-fast) var(--ease-ui), border-color var(--dur-fast) var(--ease-ui), transform var(--dur-fast) var(--ease-ui), box-shadow var(--dur-fast) var(--ease-ui);
 }
 
 /* The 2005 era-theme underlines all <a>; an <a class="btn"> is a button, not a link -- keep it clean. */
@@ -765,12 +765,12 @@ html.reader-immersive .app-container { padding-top: 0; }
   border-right: 1px solid var(--border-color);
   padding: var(--space-6) 0;
   position: fixed;
-  top: 56px;
+  top: 56px; /* token-exempt: positional geometry (Stop A Batch A) */
   bottom: 0;
   left: 0;
   overflow-y: auto;
   z-index: 99; /* token-exempt: local stacking */
-  transition: transform 0.2s;
+  transition: transform var(--dur-fast);
 }
 
 .sidebar.hidden {
@@ -796,7 +796,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   display: flex;
   align-items: center;
   gap: var(--space-6);
-  padding: var(--density) 24px;
+  padding: var(--density) var(--space-12);
   color: var(--text-primary);
   text-decoration: none;
   cursor: pointer;
@@ -890,7 +890,7 @@ html.reader-immersive .app-container { padding-top: 0; }
 /* v1.45.6: the view-mode toggle is an icon-only mode switch (not a labelled
    action), so it's a compact square rather than matching the 104px buttons. */
 #view-mode-btn {
-  min-width: 40px;
+  min-width: var(--size-touch);
   justify-content: center;
 }
 
@@ -904,7 +904,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   margin-left: 230px;
   padding: var(--space-12);
   background-color: var(--bg-color);
-  transition: margin-left 0.2s;
+  transition: margin-left var(--dur-fast);
 }
 
 .main-content.expanded {
@@ -1016,7 +1016,7 @@ html.reader-immersive .app-container { padding-top: 0; }
    grid; `[hidden]` (toggled in main.js) is the single show/hide mechanism. */
 .sort-menu {
   position: absolute;
-  top: calc(100% + 4px);
+  top: calc(100% + 4px); /* token-exempt: positional geometry (Stop A Batch A) */
   left: 0;
   z-index: 30; /* token-exempt: local stacking */ /* above the video grid cards (z-index 2), below the dock/modals */
   margin: 0;
@@ -1032,7 +1032,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   display: none;
 }
 .sort-menu li {
-  padding: 7px 12px;
+  padding: var(--space-3) var(--space-6);
   border-radius: var(--radius);
   font-size: var(--fs-sm);
   color: var(--text-primary);
@@ -1064,7 +1064,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
   gap: var(--space-10);
-  margin-bottom: 30px;
+  margin-bottom: var(--space-16);
 }
 
 
@@ -1118,10 +1118,10 @@ html.reader-immersive .app-container { padding-top: 0; }
 
 .duration-badge {
   position: absolute;
-  bottom: 4px;
-  right: 4px;
-  background-color: rgba(0,0,0,0.85);
-  color: white;
+  bottom: 4px; /* token-exempt: positional geometry (Stop A Batch A) */
+  right: 4px; /* token-exempt: positional geometry (Stop A Batch A) */
+  background-color: var(--scrim-heavy);
+  color: var(--on-overlay);
   padding: var(--space-1) var(--space-2);
   font-size: var(--fs-xs);
   font-weight: var(--fw-bold);
@@ -1154,8 +1154,8 @@ html.reader-immersive .app-container { padding-top: 0; }
    deletes. Era tokens only. */
 .card-delete-btn {
   position: absolute;
-  top: 6px;
-  right: 6px;
+  top: 6px; /* token-exempt: positional geometry (Stop A Batch A) */
+  right: 6px; /* token-exempt: positional geometry (Stop A Batch A) */
   z-index: 2; /* token-exempt: local stacking */
   display: flex;
   align-items: center;
@@ -1163,8 +1163,8 @@ html.reader-immersive .app-container { padding-top: 0; }
   padding: var(--space-2) var(--space-3);
   border: none;
   border-radius: var(--radius);
-  background-color: rgba(0, 0, 0, 0.6);
-  color: #fff;
+  background-color: var(--scrim);
+  color: var(--on-overlay);
   cursor: pointer;
   font-size: var(--fs-xs);
   font-weight: var(--fw-bold);
@@ -1208,8 +1208,8 @@ html.reader-immersive .app-container { padding-top: 0; }
    a download is non-destructive. Era tokens only. */
 .card-download-btn {
   position: absolute;
-  top: 6px;
-  left: 6px;
+  top: 6px; /* token-exempt: positional geometry (Stop A Batch A) */
+  left: 6px; /* token-exempt: positional geometry (Stop A Batch A) */
   z-index: 2; /* token-exempt: local stacking */
   display: flex;
   align-items: center;
@@ -1217,8 +1217,8 @@ html.reader-immersive .app-container { padding-top: 0; }
   padding: var(--space-2) var(--space-3);
   border: none;
   border-radius: var(--radius);
-  background-color: rgba(0, 0, 0, 0.6);
-  color: #fff;
+  background-color: var(--scrim);
+  color: var(--on-overlay);
   cursor: pointer;
   opacity: 0.85;
   transition: opacity var(--dur-fast) var(--ease-ui), background-color var(--dur-fast) var(--ease-ui);
@@ -1244,8 +1244,8 @@ html.reader-immersive .app-container { padding-top: 0; }
    opaque so the state is legible at a glance. Era tokens only. */
 .card-like-btn {
   position: absolute;
-  bottom: 6px;
-  left: 6px;
+  bottom: 6px; /* token-exempt: positional geometry (Stop A Batch A) */
+  left: 6px; /* token-exempt: positional geometry (Stop A Batch A) */
   z-index: 2; /* token-exempt: local stacking */
   display: flex;
   align-items: center;
@@ -1253,8 +1253,8 @@ html.reader-immersive .app-container { padding-top: 0; }
   padding: var(--space-2) var(--space-3);
   border: none;
   border-radius: var(--radius);
-  background-color: rgba(0, 0, 0, 0.6);
-  color: #fff;
+  background-color: var(--scrim);
+  color: var(--on-overlay);
   cursor: pointer;
   opacity: 0.85;
   transition: opacity var(--dur-fast) var(--ease-ui), background-color var(--dur-fast) var(--ease-ui), color var(--dur-fast) var(--ease-ui);
@@ -1276,7 +1276,7 @@ html.reader-immersive .app-container { padding-top: 0; }
 }
 
 .video-info {
-  padding: var(--density) 4px;
+  padding: var(--density) var(--space-2);
 }
 
 /* v1.45.6 (Dean): compact LIST view — a CSS-only reflow of the SAME cards into
@@ -1318,11 +1318,11 @@ html.reader-immersive .app-container { padding-top: 0; }
    on non-touch. z-index 40: above the grid + sticky bar (20), below dock/modals. */
 .ptr-indicator {
   position: fixed;
-  top: calc(var(--mobile-header-h, 56px) + 8px);
+  top: calc(var(--mobile-header-h, 56px) + 8px); /* token-exempt: positional geometry (Stop A Batch A) */
   left: 50%;
   z-index: 40; /* token-exempt: local stacking */
-  width: 36px;
-  height: 36px;
+  width: var(--size-control); /* Stop A Batch C: 36px == --size-control, zero-delta */
+  height: var(--size-control);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1340,7 +1340,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   transform: translateX(-50%) translateY(calc(var(--ptr-pull, 0) * 0.25px)) scale(1);
 }
 .ptr-indicator .icon-refresh {
-  transition: transform 0.08s linear;
+  transition: transform 0.08s linear; /* token-exempt: continuous pull-gesture tracking, not a UI transition (OQ9 ruling) */
   transform: rotate(calc(var(--ptr-pull, 0) * 2.6deg));
 }
 .ptr-indicator.ready {
@@ -1386,7 +1386,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   font-family: var(--heading-font, var(--font-family));
   font-weight: var(--heading-weight, var(--fw-bold));
   letter-spacing: var(--heading-tracking, normal);
-  line-height: 1.3;
+  line-height: var(--lh-tight);
   margin-bottom: var(--space-2);
   max-height: 34px;
   display: -webkit-box;
@@ -1474,7 +1474,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   display: flex;
   align-items: center;
   gap: var(--space-6);
-  padding: 10px 14px;
+  padding: var(--space-5) var(--space-6);
   border-bottom: 1px solid var(--border-color);
 }
 
@@ -1513,7 +1513,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   flex-direction: column;
   align-items: center;
   text-align: center;
-  padding: 40px 20px;
+  padding: 40px var(--space-10);
   color: var(--text-secondary);
 }
 
@@ -1603,8 +1603,8 @@ html.reader-immersive .app-container { padding-top: 0; }
    background matches `.player-container` above (not a themed surface). */
 #player-dock {
   position: fixed;
-  right: 16px;
-  bottom: 16px;
+  right: 16px; /* token-exempt: positional geometry (Stop A Batch A) */
+  bottom: 16px; /* token-exempt: positional geometry (Stop A Batch A) */
   width: 280px;
   z-index: 950; /* above the mobile .bottom-nav (900), below modals/sheets (2000+) */
   box-shadow: var(--shadow-lg);
@@ -1652,8 +1652,8 @@ html.reader-immersive .app-container { padding-top: 0; }
 
 .player-dock-close {
   position: absolute;
-  top: 4px;
-  right: 4px;
+  top: 4px; /* token-exempt: positional geometry (Stop A Batch A) */
+  right: 4px; /* token-exempt: positional geometry (Stop A Batch A) */
   z-index: 5; /* token-exempt: local stacking */
   width: 24px;
   height: 24px;
@@ -1661,8 +1661,8 @@ html.reader-immersive .app-container { padding-top: 0; }
   padding: 0;
   border: none;
   border-radius: 50%;
-  background: rgba(0, 0, 0, 0.6);
-  color: #fff;
+  background: var(--scrim);
+  color: var(--on-overlay);
   font-size: var(--fs-xl);
   cursor: pointer;
 }
@@ -1674,20 +1674,20 @@ html.reader-immersive .app-container { padding-top: 0; }
 @media (max-width: 768px) {
   #player-dock {
     width: 160px;
-    right: 8px;
+    right: 8px; /* token-exempt: positional geometry (Stop A Batch A) */
     /* Clear the fixed .bottom-nav (see its own rule, ~72px incl. safe-area).
        Shares --mobile-bottom-nav-h (defined once, v1.17.0 FR-2) with
        `.main-content`'s padding-bottom so both stay in lockstep across the
        iOS address-bar/home-indicator collapse animation instead of each
        independently re-resolving env(safe-area-inset-bottom). */
-    bottom: calc(var(--mobile-bottom-nav-h) + 8px);
+    bottom: calc(var(--mobile-bottom-nav-h) + 8px); /* token-exempt: positional geometry (Stop A Batch A) */
   }
 
   /* v1.17.0 FR-3(a), T2: clear the fixed mobile .bottom-nav the same way
      #player-dock does above, so the toast never renders underneath/behind
      it. */
   .toast {
-    bottom: calc(var(--mobile-bottom-nav-h) + 12px);
+    bottom: calc(var(--mobile-bottom-nav-h) + 12px); /* token-exempt: positional geometry (Stop A Batch A) */
   }
 }
 
@@ -1778,7 +1778,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   border: none;
   background: rgba(255, 255, 255, 0.92); /* token-exempt: glyph art */
   box-shadow: 18px 0 0 rgba(255, 255, 255, 0.92); /* token-exempt: glyph art */
-  margin-right: 9px;
+  margin-right: var(--space-4);
 }
 
 .art-play-glyph.art-play-glyph-flash {
@@ -1810,7 +1810,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   width: 160px;
   height: 160px;
   border-radius: var(--radius-lg);
-  box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+  box-shadow: var(--shadow-modal);
   margin-bottom: var(--space-8);
   object-fit: cover;
   border: 2px solid rgba(255,255,255,0.2);
@@ -1822,7 +1822,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   background: radial-gradient(circle, #333 10%, #111 40%, #000 70%); /* token-exempt: era skin art */
   border-radius: 50%;
   border: 6px solid #222; /* token-exempt: era skin art */
-  box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+  box-shadow: var(--shadow-modal);
   margin-bottom: var(--space-8);
   position: relative;
   animation: spin 6s linear infinite; /* token-exempt: choreography */
@@ -1872,13 +1872,13 @@ html.reader-immersive .app-container { padding-top: 0; }
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: rgba(0,0,0,0.85);
+  background-color: var(--scrim-heavy);
   display: flex;
   flex-direction: column;
   justify-content: center;
   align-items: center;
   z-index: 10; /* token-exempt: local stacking */
-  color: white;
+  color: var(--on-overlay);
   text-align: center;
   padding: var(--space-10);
 }
@@ -1890,7 +1890,7 @@ html.reader-immersive .app-container { padding-top: 0; }
 
 .resume-overlay p {
   margin-bottom: var(--space-8);
-  color: #ccc;
+  color: var(--on-overlay-muted);
 }
 
 .resume-actions {
@@ -1925,13 +1925,13 @@ html.reader-immersive .app-container { padding-top: 0; }
 /* Press-and-hold-to-2x badge (mobile inline) */
 .speed-badge {
   position: absolute;
-  top: 12px;
+  top: 12px; /* token-exempt: positional geometry (Stop A Batch A) */
   left: 50%;
   transform: translateX(-50%);
-  background: rgba(0, 0, 0, 0.75);
-  color: #fff;
+  background: var(--scrim-heavy);
+  color: var(--on-overlay);
   padding: var(--space-2) var(--space-6);
-  border-radius: 14px;
+  border-radius: var(--radius-lg);
   font-size: var(--fs-base);
   font-weight: var(--fw-semibold);
   letter-spacing: 0.5px; /* token-exempt: era display styling */
@@ -1961,7 +1961,7 @@ html.reader-immersive .app-container { padding-top: 0; }
    mobile" report (only files WITH embedded metadata / long paths hit it).
    Capping the value length (watch.js clip()) doesn't help an unbroken token;
    this does. */
-.embedded-tag { margin: 2px 0; overflow-wrap: anywhere; }
+.embedded-tag { margin: var(--space-1) 0; overflow-wrap: anywhere; }
 .embedded-tag-key { color: var(--text-secondary); font-weight: var(--fw-semibold); }
 
 .skip-btn {
@@ -1976,11 +1976,11 @@ html.reader-immersive .app-container { padding-top: 0; }
   border: none;
   border-radius: 27px; /* token-exempt: era skin art */
   background: var(--scrim);
-  color: #fff;
+  color: var(--on-overlay);
   font-weight: var(--fw-semibold);
   cursor: pointer;
   opacity: 0;
-  transition: opacity 0.2s var(--ease-ui), transform var(--dur-fast) var(--ease-ui), background 0.2s var(--ease-ui);
+  transition: opacity var(--dur-fast) var(--ease-ui), transform var(--dur-fast) var(--ease-ui), background var(--dur-fast) var(--ease-ui);
   pointer-events: none; /* invisible buttons must not catch clicks */
   -webkit-tap-highlight-color: transparent;
 }
@@ -1995,7 +1995,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   opacity: 1;
   pointer-events: auto;
 }
-.skip-btn:hover { background: rgba(0, 0, 0, 0.8); transform: translateY(-50%) scale(1); }
+.skip-btn:hover { background: var(--scrim-heavy); transform: translateY(-50%) scale(1); }
 .skip-btn:active { transform: translateY(-50%) scale(0.9); }
 
 /* Double-tap ripple feedback */
@@ -2007,7 +2007,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #fff;
+  color: var(--on-overlay);
   font-size: var(--fs-2xl);
   font-weight: var(--fw-bold);
   background: rgba(255, 255, 255, 0.14);
@@ -2043,7 +2043,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   background-color: var(--btn-bg);
   border: 1px solid var(--border-dark);
   color: var(--text-primary);
-  padding: 6px 14px;
+  padding: var(--space-3) var(--space-6);
   border-radius: calc(var(--radius) + 1px);
   font-weight: var(--fw-semibold);
   letter-spacing: 0.2px; /* token-exempt: era display styling */
@@ -2052,7 +2052,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  transition: background-color var(--dur-fast) var(--ease-ui), border-color var(--dur-fast) var(--ease-ui), transform 0.1s var(--ease-ui);
+  transition: background-color var(--dur-fast) var(--ease-ui), border-color var(--dur-fast) var(--ease-ui), transform var(--dur-fast) var(--ease-ui);
 }
 
 .watch-prevnext-btn:hover:not(:disabled) {
@@ -2087,7 +2087,7 @@ html.reader-immersive .app-container { padding-top: 0; }
 .watch-autoplay-switch {
   position: relative;
   display: inline-block;
-  width: 34px;
+  width: var(--size-control-sm);
   height: 18px;
   flex-shrink: 0;
 }
@@ -2112,8 +2112,8 @@ html.reader-immersive .app-container { padding-top: 0; }
 
 .watch-autoplay-thumb {
   position: absolute;
-  top: 2px;
-  left: 2px;
+  top: 2px; /* token-exempt: positional geometry (Stop A Batch A) */
+  left: 2px; /* token-exempt: positional geometry (Stop A Batch A) */
   width: 14px;
   height: 14px;
   background-color: #fff;
@@ -2127,7 +2127,7 @@ html.reader-immersive .app-container { padding-top: 0; }
 }
 
 .watch-autoplay-switch input:checked ~ .watch-autoplay-track .watch-autoplay-thumb {
-  transform: translateX(16px);
+  transform: translateX(14px); /* 3b: track 34->32 (--size-control-sm); travel = 32 - 14 knob - 2*2 inset */
 }
 
 .watch-autoplay-switch input:focus-visible ~ .watch-autoplay-track {
@@ -2199,7 +2199,7 @@ html.reader-immersive .app-container { padding-top: 0; }
 .star {
   font-size: var(--fs-3xl);
   color: var(--star-gray);
-  transition: color 0.1s;
+  transition: color var(--dur-fast);
 }
 
 .star.active {
@@ -2305,11 +2305,11 @@ html.reader-immersive .app-container { padding-top: 0; }
   font-size: var(--fs-xs);
   color: var(--text-secondary);
   margin-top: 3px; /* token-exempt: optical nudge */
-  padding: 1px 7px;
+  padding: 1px var(--space-3);
   background-color: var(--btn-bg);
   border: 1px solid var(--border-color);
   border-radius: var(--radius);
-  line-height: 1.5;
+  line-height: var(--lh-relaxed);
 }
 
 /* Description Box */
@@ -2519,7 +2519,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   font-size: var(--fs-sm);
   font-weight: var(--fw-bold);
   color: var(--text-primary);
-  line-height: 1.3;
+  line-height: var(--lh-tight);
   max-height: 32px;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -2551,7 +2551,7 @@ html.reader-immersive .app-container { padding-top: 0; }
    still centering as a comfortably-readable column, not a full-bleed page. */
 .setup-box {
   max-width: 780px;
-  margin: 32px auto;
+  margin: var(--space-16) auto;
   border: 1px solid var(--border-color);
   background-color: var(--bg-sidebar);
   border-radius: var(--radius);
@@ -2572,7 +2572,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   font-size: var(--fs-md);
   margin-bottom: var(--space-10);
   color: var(--text-primary);
-  line-height: 1.5;
+  line-height: var(--lh-relaxed);
 }
 
 .form-group {
@@ -2632,7 +2632,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   display: inline-block;
   font-size: var(--fs-xs);
   color: var(--text-secondary);
-  line-height: 1.25;
+  line-height: var(--lh-tight);
   min-height: 15px;
 }
 .action-status-error {
@@ -2663,7 +2663,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   display: inline-block;
   width: 10px;
   height: 10px;
-  margin-left: 7px;
+  margin-left: var(--space-3);
   vertical-align: -1px;
   border: 2px solid var(--border-color);
   border-top-color: currentColor;
@@ -2890,7 +2890,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   display: flex;
   align-items: center;
   gap: var(--space-6);
-  padding: 10px 14px;
+  padding: var(--space-5) var(--space-6);
   background-color: var(--bg-secondary);
   border-bottom: 1px solid var(--border-color);
 }
@@ -3178,7 +3178,7 @@ a.sub-row-channel-link:focus-visible {
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: rgba(0,0,0,0.5);
+  background-color: var(--scrim);
   display: flex;
   justify-content: center;
   align-items: center;
@@ -3190,7 +3190,7 @@ a.sub-row-channel-link:focus-visible {
      `.modal-open` right after mount / right before teardown, so the fade
      below actually gets a "from" and "to" state to transition between. */
   opacity: 0;
-  transition: opacity 0.2s ease-out;
+  transition: opacity var(--dur-fast) ease-out;
 }
 
 .modal-backdrop.modal-open {
@@ -3223,7 +3223,7 @@ a.sub-row-channel-link:focus-visible {
   /* Subtle scale-in alongside the backdrop's fade above -- same `.modal-open`
      toggle (added to the BACKDROP, so this rule descends from it). */
   transform: scale(0.97);
-  transition: transform 0.2s ease-out;
+  transition: transform var(--dur-fast) ease-out;
 }
 
 .modal-backdrop.modal-open .modal-content {
@@ -3265,13 +3265,13 @@ a.sub-row-channel-link:focus-visible {
      inset on top of the existing 24px breathing room. The `0px` fallback
      keeps this byte-for-byte the same 24px everywhere env() isn't supported
      (older browsers) or the inset is genuinely 0 (no home indicator). */
-  bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  bottom: calc(24px + env(safe-area-inset-bottom, 0px)); /* token-exempt: positional geometry (Stop A Batch A) */
   transform: translateX(-50%) translateY(8px);
   z-index: 2200; /* above the one-off download modal backdrop (2100) */
   max-width: calc(100vw - 32px);
   background-color: var(--bg-sidebar);
   color: var(--text-primary);
-  padding: 10px 18px;
+  padding: var(--space-5) var(--space-8);
   border-radius: var(--radius);
   box-shadow: var(--shadow-lg);
   font-size: var(--fs-base);
@@ -3298,7 +3298,7 @@ a.sub-row-channel-link:focus-visible {
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: rgba(0, 0, 0, 0.5);
+  background-color: var(--scrim);
   display: flex;
   justify-content: center;
   align-items: center;
@@ -3339,7 +3339,7 @@ a.sub-row-channel-link:focus-visible {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 14px;
+  margin-bottom: var(--space-6);
 }
 
 .oneoff-modal-title {
@@ -3843,7 +3843,7 @@ a.sub-row-channel-link:focus-visible {
     margin: 0 var(--space-3);
   }
   .search-input {
-    padding: 7px 10px;
+    padding: var(--space-3) var(--space-5);
     /* v1.25.10: 16px so tapping the search box doesn't trigger iOS's
        focus auto-zoom (same <16px rule fixed for the modal/form inputs in v1.25.4). */
     font-size: var(--fs-input-min);
@@ -3924,7 +3924,7 @@ a.sub-row-channel-link:focus-visible {
     flex-direction: column;
     height: auto;
     min-height: var(--mobile-header-h);
-    padding: calc(8px + env(safe-area-inset-top)) 8px 8px;
+    padding: calc(var(--space-4) + env(safe-area-inset-top)) var(--space-4) var(--space-4);
     gap: var(--space-3);
   }
 
@@ -3971,9 +3971,9 @@ a.sub-row-channel-link:focus-visible {
     position: fixed;
     inset: 0;
     z-index: 1500;
-    background: rgba(0, 0, 0, 0.5);
+    background: var(--scrim);
     opacity: 0;
-    transition: opacity 0.2s ease-out;
+    transition: opacity var(--dur-fast) ease-out;
   }
 
   .playlists-sheet-backdrop:not([hidden]).sheet-open {
@@ -4000,7 +4000,7 @@ a.sub-row-channel-link:focus-visible {
     padding-bottom: env(safe-area-inset-bottom);
     font-family: var(--font-family);
     transform: translateY(100%);
-    transition: transform 0.2s ease-out;
+    transition: transform var(--dur-fast) ease-out;
   }
 
   .playlists-sheet:not([hidden]).sheet-open {
@@ -4164,7 +4164,7 @@ a.sub-row-channel-link:focus-visible {
      touching desktop (these rules only apply inside this max-width:768px
      query). */
   .setup-box {
-    margin: 20px auto;
+    margin: var(--space-10) auto;
     padding: var(--space-10) var(--space-8);
   }
 
@@ -4570,8 +4570,8 @@ a.sub-row-channel-link:focus-visible {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  width: 30px;
-  height: 30px;
+  width: var(--size-control-sm);
+  height: var(--size-control-sm);
   padding: 0;
   border: 1px solid var(--border-dark);
   border-radius: 0;
@@ -4623,7 +4623,7 @@ a.sub-row-channel-link:focus-visible {
 .pp-icon-pause {
   width: 4px;
   height: 15px;
-  margin-right: 7px; /* account for the shadow bar's offset so the pair is optically centered */
+  margin-right: 7px; /* account for the shadow bar's offset so the pair is optically centered */ /* token-exempt: optical-centering glyph offset (OQ9 ruling) */
   background-color: currentColor;
   box-shadow: 7px 0 0 currentColor;
 }
@@ -5132,7 +5132,7 @@ a.sub-row-channel-link:focus-visible {
 }
 
 #player-wrapper.audio-mode:not(.audio-expanded) #audio-bg-art {
-  bottom: 40px;            /* cover art fills the content area, above the bar strip */
+  bottom: 40px;            /* cover art fills the content area, above the bar strip */ /* token-exempt: positional geometry (Stop A Batch A) */
 }
 
 @media (max-width: 768px) {
@@ -5152,10 +5152,10 @@ a.sub-row-channel-link:focus-visible {
     padding-bottom: 0;
   }
   #player-slot #player-wrapper.audio-mode:not(.audio-expanded) #audio-bg-art {
-    bottom: 80px;
+    bottom: 80px; /* token-exempt: positional geometry (Stop A Batch A) */
   }
   #player-wrapper.audio-mode:not(.audio-expanded) #audio-bg-art {
-    bottom: 44px;
+    bottom: 44px; /* token-exempt: positional geometry (Stop A Batch A) */
   }
 }
 
@@ -5172,7 +5172,7 @@ a.sub-row-channel-link:focus-visible {
   padding-bottom: 26px;
 }
 #player-dock #player-wrapper.audio-mode #audio-bg-art {
-  bottom: 26px;
+  bottom: 26px; /* token-exempt: positional geometry (Stop A Batch A) */
 }
 
 /* Feature A (v1.26.1, Shorts player-size jump): the DOCKED mini-player
@@ -5228,11 +5228,11 @@ a.sub-row-channel-link:focus-visible {
   height: auto;
   min-height: 40px;
   padding-top: var(--space-2);
-  padding-bottom: calc(4px + env(safe-area-inset-bottom, 0px));
+  padding-bottom: calc(var(--space-2) + env(safe-area-inset-bottom, 0px));
   /* v1.34.5: blend into the fullscreen black instead of the themed bar
      chrome -- the safe-area padding read as a colored band at the bottom
      ("some at the bottom"). Semi-transparent, the native-player convention. */
-  background: rgba(0, 0, 0, 0.75);
+  background: var(--scrim-heavy);
   border-top: none;
   box-shadow: none;
 }
@@ -5271,8 +5271,8 @@ body.ft-css-fullscreen .bottom-nav {
 }
 .chapters-menu {
   position: absolute;
-  right: 8px;
-  bottom: calc(100% + 6px);
+  right: 8px; /* token-exempt: positional geometry (Stop A Batch A) */
+  bottom: calc(100% + 6px); /* token-exempt: positional geometry (Stop A Batch A) */
   min-width: 220px;
   max-width: 80%;
   max-height: 45vh;
@@ -5280,7 +5280,7 @@ body.ft-css-fullscreen .bottom-nav {
   background: var(--header-bg);
   border: 1px solid var(--border-dark);
   border-radius: var(--radius);
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  box-shadow: var(--shadow-modal);
   z-index: 30; /* token-exempt: local stacking */
   display: flex;
   flex-direction: column;
@@ -5407,14 +5407,14 @@ body.ft-css-fullscreen .bottom-nav {
    the [hidden] display:none !important rule above still wins. */
 @media (max-width: 768px) {
   .chapters-menu {
-    left: 8px;
-    right: 8px;
+    left: 8px; /* token-exempt: positional geometry (Stop A Batch A) */
+    right: 8px; /* token-exempt: positional geometry (Stop A Batch A) */
     min-width: 0;
     max-width: none;
     max-height: 50vh;
   }
   .chapters-menu-item {
-    padding: 12px 14px;
+    padding: var(--space-6) var(--space-6);
     min-height: var(--size-touch);
     /* Wrap long titles (base rule nowrap-ellipsizes them into uselessness at
        phone width), capped at 2 lines via the line-clamp box. */
@@ -5433,7 +5433,7 @@ body.ft-css-fullscreen .bottom-nav {
   .chapters-menu-loop {
     min-width: var(--size-touch);
     min-height: var(--size-touch);
-    padding: 12px 14px;
+    padding: var(--space-6) var(--space-6);
   }
 }
 
@@ -5472,7 +5472,7 @@ body.ft-css-fullscreen .bottom-nav {
   position: absolute;
   left: 0;
   right: 0;
-  bottom: 40px;      /* in-slot, desktop: directly above the 40px control strip */
+  bottom: 40px;      /* in-slot, desktop: directly above the 40px control strip */ /* token-exempt: positional geometry (Stop A Batch A) */
   z-index: 9; /* token-exempt: local stacking */
   display: flex;
   justify-content: center;
@@ -5485,10 +5485,10 @@ body.ft-css-fullscreen .bottom-nav {
 .cc-overlay-text {
   max-width: 92%;
   background: rgba(0, 0, 0, 0.72);
-  color: #fff;
+  color: var(--on-overlay);
   font-family: var(--font-family);
   font-size: var(--fs-md);
-  line-height: 1.35;
+  line-height: 1.35; /* token-exempt: caption legibility spacing, protected-background-adjacent (OQ6 ruling) */
   padding: var(--space-2) var(--space-5);
   border-radius: 4px;
   text-align: center;
@@ -5497,12 +5497,12 @@ body.ft-css-fullscreen .bottom-nav {
 
 @media (max-width: 768px) {
   .cc-overlay {
-    bottom: 44px;    /* matches the 44px mobile control strip */
+    bottom: 44px;    /* matches the 44px mobile control strip */ /* token-exempt: positional geometry (Stop A Batch A) */
   }
 }
 
 #player-dock .cc-overlay {
-  bottom: 26px;      /* matches the trimmed mini-player bar height */
+  bottom: 26px;      /* matches the trimmed mini-player bar height */ /* token-exempt: positional geometry (Stop A Batch A) */
 }
 
 /* FULLSCREEN restore: desktop fullscreen targets the container and keeps the
@@ -5648,7 +5648,7 @@ body.ft-css-fullscreen .bottom-nav {
      the canvas above the bar instead: single-row bar (desktop/landscape
      phones >768px) below; the two-row mobile bar overrides in the 768px
      block further down. */
-  bottom: calc(52px + env(safe-area-inset-bottom, 0px));
+  bottom: calc(52px + env(safe-area-inset-bottom, 0px)); /* token-exempt: positional geometry (Stop A Batch A) */
 }
 
 /* The control bar (and `#fs-btn`, the exit affordance) is `position:
@@ -5670,7 +5670,7 @@ body.ft-css-fullscreen .bottom-nav {
   height: auto;
   min-height: 40px;
   padding-top: var(--space-2);
-  padding-bottom: calc(4px + env(safe-area-inset-bottom, 0px));
+  padding-bottom: calc(var(--space-2) + env(safe-area-inset-bottom, 0px));
 }
 
 /* Feature B (v1.26.1): same safe-area lift as the control bar directly
@@ -5678,17 +5678,17 @@ body.ft-css-fullscreen .bottom-nav {
    so the caption overlay sits directly above the (already safe-area-lifted)
    bar in the expanded full-viewport view, instead of behind/under it. */
 #player-wrapper.audio-mode.audio-expanded .cc-overlay {
-  bottom: calc(56px + env(safe-area-inset-bottom, 0px));
+  bottom: calc(56px + env(safe-area-inset-bottom, 0px)); /* token-exempt: positional geometry (Stop A Batch A) */
 }
 
 @media (max-width: 768px) {
   #player-wrapper.audio-mode.audio-expanded .cc-overlay {
     /* two-row mobile bar (v1.34.1) is ~90px tall in the expanded view */
-    bottom: calc(94px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(94px + env(safe-area-inset-bottom, 0px)); /* token-exempt: positional geometry (Stop A Batch A) */
   }
   /* v1.34.6: the art canvas's above-the-bar cutoff, two-row variant. */
   #player-wrapper.audio-mode.audio-expanded #audio-bg-art {
-    bottom: calc(94px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(94px + env(safe-area-inset-bottom, 0px)); /* token-exempt: positional geometry (Stop A Batch A) */
   }
 }
 
@@ -5721,7 +5721,7 @@ body.ft-css-fullscreen .bottom-nav {
    44px mobile) stays the sole touch-target source of truth. */
 #speed-btn {
   width: auto;
-  min-width: 30px;
+  min-width: var(--size-control-sm);
   padding: 0 var(--space-3);
   font-size: var(--fs-sm);
 }
@@ -5788,7 +5788,7 @@ body.ft-css-fullscreen .bottom-nav {
   position: fixed;
   inset: 0;
   z-index: 1600; /* above the Playlists sheet (1501); below the toast (2200)/generic modal (2000+), which never coexist with this page's own sheet in practice */
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--scrim);
   display: flex;
   align-items: flex-end;
   justify-content: center;
@@ -5799,7 +5799,7 @@ body.ft-css-fullscreen .bottom-nav {
      `openOverlay`/`closeOverlayThen` helpers) -- no prior [hidden] state,
      same posture as the generic `.modal-backdrop` above. */
   opacity: 0;
-  transition: opacity 0.2s ease-out;
+  transition: opacity var(--dur-fast) ease-out;
 }
 
 .sub-sheet-backdrop.sheet-open {
@@ -5822,7 +5822,7 @@ body.ft-css-fullscreen .bottom-nav {
   /* Slide-up on open / slide-down on close -- mirrors `.playlists-sheet`'s
      own translateY(100%) -> .sheet-open's translateY(0) treatment. */
   transform: translateY(100%);
-  transition: transform 0.2s ease-out;
+  transition: transform var(--dur-fast) ease-out;
 }
 
 .sub-sheet.sheet-open {
@@ -6117,7 +6117,7 @@ body.ft-css-fullscreen .bottom-nav {
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: rgba(0, 0, 0, 0.65);
+  background-color: rgba(0, 0, 0, 0.65); /* token-exempt: destructive-modal dim (OQ5b ruling) */
   display: flex;
   justify-content: center;
   align-items: center;
@@ -6167,7 +6167,7 @@ body.ft-css-fullscreen .bottom-nav {
   font-size: var(--fs-xs);
   color: var(--text-secondary);
   word-break: break-all;
-  margin-bottom: 14px;
+  margin-bottom: var(--space-6);
 }
 
 .hard-delete-modal-checkbox-row {
@@ -6252,8 +6252,8 @@ body.ft-css-fullscreen .bottom-nav {
    so every era/light-dark combination stays themed. */
 #dl-status-chip {
   position: fixed;
-  left: 16px;
-  bottom: 16px;
+  left: 16px; /* token-exempt: positional geometry (Stop A Batch A) */
+  bottom: 16px; /* token-exempt: positional geometry (Stop A Batch A) */
   z-index: 940;
   max-width: min(320px, calc(100vw - 32px));
   font-family: var(--font-family);
@@ -6431,7 +6431,7 @@ body.ft-css-fullscreen .bottom-nav {
     transparent 4px,
     transparent 8px
   );
-  transition: width 300ms linear;
+  transition: width var(--dur-slow) linear;
 }
 
 .dl-status-chip-progress-fill-error {
@@ -6570,8 +6570,8 @@ body.ft-css-fullscreen .bottom-nav {
    amount above the bottom-nav. */
 @media (max-width: 768px) {
   #dl-status-chip {
-    left: 8px;
-    bottom: calc(var(--mobile-bottom-nav-h) + 8px);
+    left: 8px; /* token-exempt: positional geometry (Stop A Batch A) */
+    bottom: calc(var(--mobile-bottom-nav-h) + 8px); /* token-exempt: positional geometry (Stop A Batch A) */
     max-width: min(260px, calc(100vw - 16px));
   }
 
@@ -6668,7 +6668,7 @@ body.ft-css-fullscreen .bottom-nav {
    buildBooksHomeSectionHtml). Horizontal scroller of compact portrait
    covers; era tokens only. Renders nothing at all on books-less installs
    (the builder returns '' for an empty list). */
-.books-home-row { margin-bottom: 18px; }
+.books-home-row { margin-bottom: var(--space-8); }
 .books-home-row-header {
   display: flex;
   align-items: baseline;
@@ -6704,14 +6704,14 @@ body.ft-css-fullscreen .bottom-nav {
   position: absolute;
   left: 0; right: 0; bottom: 0;
   height: 3px;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(0, 0, 0, 0.5); /* token-exempt: progress-track component art, not a scrim (OQ5c) */
 }
 .book-row-progress-fill { height: 100%; background: var(--accent, #cc0000); }
 .book-row-title {
   display: block;
   margin-top: var(--space-2);
   font-size: var(--fs-xs);
-  line-height: 1.25;
+  line-height: var(--lh-tight);
   overflow: hidden;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -6732,7 +6732,7 @@ body.ft-css-fullscreen .bottom-nav {
   font-size: var(--fs-md);
   line-height: 1; /* token-exempt: glyph centering */
   padding: var(--space-1) var(--space-3);
-  border-radius: 3px;
+  border-radius: 2px;
   flex: 0 0 auto;
 }
 .sidebar-item .pinned-unpin-btn { float: right; }
@@ -6789,7 +6789,7 @@ body.ft-css-fullscreen .bottom-nav {
       position: absolute;
       left: 0; right: 0; bottom: 0;
       height: 4px;
-      background: rgba(0, 0, 0, 0.5);
+      background: rgba(0, 0, 0, 0.5); /* token-exempt: progress-track component art, not a scrim (OQ5d) */
     }
     .book-progress-fill {
       height: 100%;
@@ -6815,7 +6815,7 @@ body.ft-css-fullscreen .bottom-nav {
       display: flex;
       flex-wrap: wrap;
       gap: var(--space-4);
-      margin-bottom: 14px;
+      margin-bottom: var(--space-6);
     }
     .books-shelf-chip {
       display: inline-flex;
@@ -6823,7 +6823,7 @@ body.ft-css-fullscreen .bottom-nav {
       gap: var(--space-3);
       padding: var(--space-2) var(--space-5);
       border: 1px solid var(--border-color, #444);
-      border-radius: 14px;
+      border-radius: var(--radius-lg);
       font-size: var(--fs-sm);
       cursor: pointer;
       background: none;
@@ -6845,7 +6845,7 @@ body.ft-css-fullscreen .bottom-nav {
       padding: var(--space-12) 0;
     }
     .books-section-title {
-      margin: 18px 0 10px;
+      margin: var(--space-8) 0 var(--space-5);
       font-size: var(--fs-lg);
     }
 
@@ -6904,7 +6904,7 @@ body.ft-css-fullscreen .bottom-nav {
     }
     #reader-pane.pdf-scroll canvas {
       display: block;
-      margin: 8px auto;
+      margin: var(--space-4) auto;
       max-width: 100%;
       height: auto;
       box-shadow: 0 1px 6px rgba(0,0,0,0.35);
@@ -6914,7 +6914,7 @@ body.ft-css-fullscreen .bottom-nav {
       display: flex;
       align-items: center;
       gap: var(--space-5);
-      padding: 6px 10px calc(6px + env(safe-area-inset-bottom, 0px));
+      padding: var(--space-3) var(--space-5) calc(var(--space-3) + env(safe-area-inset-bottom, 0px));
       border-top: 1px solid var(--border-color, #444);
       font-size: var(--fs-sm);
     }
@@ -6947,10 +6947,10 @@ body.ft-css-fullscreen .bottom-nav {
       padding: var(--space-5);
     }
     .reader-drawer[hidden] { display: none !important; }
-    .reader-drawer h3 { margin: 4px 0 10px; font-size: var(--fs-md); }
+    .reader-drawer h3 { margin: var(--space-2) 0 var(--space-5); font-size: var(--fs-md); }
     .reader-toc-item {
       display: block;
-      padding: 7px 4px;
+      padding: var(--space-3) var(--space-2);
       font-size: var(--fs-base);
       border-bottom: 1px solid var(--border-color, #333);
       cursor: pointer;
@@ -7012,15 +7012,15 @@ body.ft-css-fullscreen .bottom-nav {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  padding: 6px 10px calc(6px + env(safe-area-inset-bottom));
+  padding: var(--space-3) var(--space-5) calc(var(--space-3) + env(safe-area-inset-bottom));
   background: var(--header-bg);
   border-top: 1px solid var(--border-color);
   box-shadow: var(--shadow);
 }
 .reader-nowplaying[hidden] { display: none; }
-.reader-np-info { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.reader-np-info { display: flex; align-items: center; gap: var(--space-4); min-width: 0; }
 .reader-np-cover {
-  width: 26px; height: 26px; object-fit: cover; border-radius: 3px;
+  width: 26px; height: 26px; object-fit: cover; border-radius: 4px;
   flex-shrink: 0; background: var(--border-color);
 }
 .reader-np-cover:not([src]) { display: none; }
@@ -7028,7 +7028,7 @@ body.ft-css-fullscreen .bottom-nav {
   font-size: var(--fs-xs); color: var(--text-secondary);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.reader-np-transport { display: flex; align-items: center; gap: 8px; }
+.reader-np-transport { display: flex; align-items: center; gap: var(--space-4); }
 /* Chapter prev/next reuse the app's beveled .pc-btn (like #pp-btn) and draw
    their skip-to-track glyph in CSS -- NOT the U+23EE/U+23ED emoji-presentation
    codepoints iOS renders as blue color emoji. Matches .pp-icon-play's approach
@@ -7044,7 +7044,7 @@ body.ft-css-fullscreen .bottom-nav {
   border-color: transparent transparent transparent currentColor;
 }
 #reader-np-next .reader-np-ico::after {
-  content: ''; position: absolute; top: 0; left: 12px; width: 3px; height: 14px;
+  content: ''; position: absolute; top: 0; left: 12px; width: 3px; height: 14px; /* token-exempt: positional geometry (Stop A Batch A) */
   background: currentColor;
 }
 #reader-np-prev .reader-np-ico::before {
@@ -7053,7 +7053,7 @@ body.ft-css-fullscreen .bottom-nav {
   border-color: transparent currentColor transparent transparent;
 }
 #reader-np-prev .reader-np-ico::after {
-  content: ''; position: absolute; top: 0; right: 12px; width: 3px; height: 14px;
+  content: ''; position: absolute; top: 0; right: 12px; width: 3px; height: 14px; /* token-exempt: positional geometry (Stop A Batch A) */
   background: currentColor;
 }
 .reader-player-slot { flex: 1; min-width: 0; }
@@ -7091,7 +7091,7 @@ body.ft-css-fullscreen .bottom-nav {
 }
 @media (max-width: 768px) {
   /* Sit above the mobile bottom nav (~54px + safe area). */
-  .reader-nowplaying { bottom: calc(54px + env(safe-area-inset-bottom)); }
+  .reader-nowplaying { bottom: calc(54px + env(safe-area-inset-bottom)); } /* token-exempt: positional geometry (Stop A Batch A) */
   /* The mounted host is the app's FULL player, which on mobile expands to a
      TWO-ROW 80px control bar (v1.34.1, `#player-slot .player-controls` above).
      In the reader bar that is NOT the full-screen player -- collapse it back to
@@ -7175,13 +7175,13 @@ body.ft-css-fullscreen .bottom-nav {
   background: var(--card-bg, var(--bg-color, #fff));
   color: var(--text-color);
   border: 1px solid var(--border-color, #ccc);
-  border-radius: 6px;
+  border-radius: var(--radius-lg);
   width: 100%;
   max-width: 720px;
   max-height: 85vh;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--shadow-modal);
 }
 .reloc-preview-header {
   display: flex;
@@ -7224,7 +7224,7 @@ body.ft-css-fullscreen .bottom-nav {
 }
 .reloc-preview-group-title {
   font-weight: var(--fw-bold);
-  margin: 14px 0 6px;
+  margin: var(--space-6) 0 var(--space-3);
 }
 .reloc-preview-row {
   padding: var(--space-4) 0;
@@ -7243,8 +7243,8 @@ body.ft-css-fullscreen .bottom-nav {
   display: inline-block;
   font-size: var(--fs-xs);
   font-weight: var(--fw-bold);
-  padding: 1px 6px;
-  border-radius: 3px;
+  padding: 1px var(--space-3);
+  border-radius: 2px;
   margin-left: var(--space-3);
   border: 1px solid var(--border-color, #ccc);
 }
@@ -7308,7 +7308,7 @@ body.ft-css-fullscreen .bottom-nav {
 .login-wordmark .tube {
   background: var(--yt-red);
   color: #fff;
-  padding: 3px 9px;
+  padding: var(--space-1) var(--space-4);
   border-radius: var(--radius);
   margin-left: 3px; /* token-exempt: optical nudge */
   font-weight: var(--fw-black);
@@ -7382,7 +7382,7 @@ body.ft-css-fullscreen .bottom-nav {
   padding: calc(var(--density) * 1.4) var(--density);
   cursor: pointer;
   margin-top: calc(var(--density) * 0.5);
-  transition: filter 0.12s var(--ease-ui);
+  transition: filter var(--dur-fast) var(--ease-ui);
 }
 .login-submit:hover { filter: brightness(1.08); }
 .login-submit:active { filter: brightness(0.94); }
@@ -7419,7 +7419,7 @@ body.ft-css-fullscreen .bottom-nav {
   background: var(--btn-bg, var(--bg-secondary));
   border: 1px solid var(--border-color);
   border-radius: var(--radius);
-  padding: 4px 9px;
+  padding: var(--space-2) var(--space-4);
   cursor: pointer;
 }
 .login-era-switch button[aria-pressed="true"] {
@@ -7461,7 +7461,7 @@ body.ft-css-fullscreen .bottom-nav {
   flex-wrap: wrap;
   border: 1px solid var(--border-color);
   border-radius: var(--radius);
-  padding: 10px 14px;
+  padding: var(--space-5) var(--space-6);
   background: var(--bg-primary);
 }
 .users-row-who {
@@ -7493,7 +7493,7 @@ body.ft-css-fullscreen .bottom-nav {
   margin-bottom: var(--space-6);
 }
 .music-toolbar h2 { margin: 0; }
-.music-toolbar-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.music-toolbar-actions { display: flex; gap: var(--space-4); flex-wrap: wrap; }
 
 .music-tabs {
   display: flex;
@@ -7509,7 +7509,7 @@ body.ft-css-fullscreen .bottom-nav {
   border-bottom: 2px solid transparent;
   color: var(--text-secondary);
   cursor: pointer;
-  padding: 10px 14px;
+  padding: var(--space-5) var(--space-6);
   font-size: var(--fs-base);
   white-space: nowrap;
 }
@@ -7519,7 +7519,7 @@ body.ft-css-fullscreen .bottom-nav {
   font-weight: var(--fw-semibold);
 }
 
-.music-crumb { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.music-crumb { display: flex; align-items: center; gap: var(--space-5); margin-bottom: var(--space-6); }
 .music-crumb[hidden] { display: none !important; }
 .music-crumb-label { font-size: var(--fs-lg); font-weight: var(--fw-semibold); color: var(--text-primary); }
 
@@ -7530,27 +7530,27 @@ body.ft-css-fullscreen .bottom-nav {
    `--music-sticky-top` is set by JS to the MEASURED fixed-header height
    (measure, don't guess — the v1.37.2/v1.43.1 scar). Same mechanism on desktop;
    the header just has more room. */
-.music-drill-header { display: flex; flex-direction: column; gap: 12px; margin-bottom: 12px; }
+.music-drill-header { display: flex; flex-direction: column; gap: var(--space-6); margin-bottom: var(--space-6); }
 .music-drill-back { align-self: flex-start; }
-.music-drill-heading { display: flex; gap: 16px; align-items: flex-end; min-width: 0; }
+.music-drill-heading { display: flex; gap: var(--space-8); align-items: flex-end; min-width: 0; }
 .music-drill-art {
   width: 180px;
   height: 180px;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   object-fit: cover;
   background: var(--thumbnail-bg, #222);
   box-shadow: var(--shadow-lg);
   flex-shrink: 0;
 }
-.music-drill-info { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.music-drill-info { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }
 .music-drill-title { margin: 0; font-size: var(--fs-2xl); font-weight: var(--fw-bold); color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; }
 .music-drill-artist { font-size: var(--fs-lg); color: var(--text-primary); }
 .music-drill-meta { font-size: var(--fs-sm); color: var(--text-secondary); }
-.music-drill-actions { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+.music-drill-actions { display: flex; gap: var(--space-4); margin-top: var(--space-4); flex-wrap: wrap; }
 
 .music-drill-sticky {
   position: sticky;
-  top: var(--music-sticky-top, 56px);
+  top: var(--music-sticky-top, 56px); /* token-exempt: positional geometry (Stop A Batch A) */
   z-index: 30; /* token-exempt: local stacking */
   display: none;
   align-items: center;
@@ -7596,7 +7596,7 @@ body.ft-css-fullscreen .bottom-nav {
   width: 100%;
   aspect-ratio: 1 / 1;
   object-fit: cover;
-  border-radius: 6px;
+  border-radius: var(--radius-lg);
   background: var(--thumbnail-bg, #222);
   display: block;
 }
@@ -7624,7 +7624,7 @@ body.ft-css-fullscreen .bottom-nav {
   gap: var(--space-3);
   padding: var(--space-8);
   border: 1px solid var(--border-color);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   background: var(--bg-secondary);
   cursor: pointer;
   text-align: left;
@@ -7640,7 +7640,7 @@ body.ft-css-fullscreen .bottom-nav {
   align-items: center;
   gap: var(--space-6);
   padding: var(--space-4) var(--space-3);
-  border-radius: 6px;
+  border-radius: var(--radius-lg);
   cursor: pointer;
 }
 .music-song-row:hover { background: var(--bg-secondary); }
@@ -7682,7 +7682,7 @@ body.ft-css-fullscreen .bottom-nav {
   gap: var(--space-1);
   padding-bottom: var(--space-4);
   border-radius: 4px;
-  background: rgba(0, 0, 0, 0.45);
+  background: rgba(0, 0, 0, 0.45); /* token-exempt: playing-art wash (OQ5e ruling) */
 }
 .music-song-row.playing .music-eq { display: flex; }
 .music-eq i {
@@ -7719,7 +7719,7 @@ body.ft-css-fullscreen .bottom-nav {
 .music-nowplaying:hover { color: var(--text-primary); }
 .music-nowplaying[hidden] { display: none !important; }
 
-.music-empty { color: var(--text-secondary); padding: 24px 0; }
+.music-empty { color: var(--text-secondary); padding: var(--space-12) 0; }
 .music-empty[hidden] { display: none !important; }
 
 /* v1.44 "Continue listening" home row -- reuses the books-home-row scroller;
@@ -7779,7 +7779,7 @@ body.ft-css-fullscreen .bottom-nav {
 }
 
 .shortcuts-group {
-  margin-top: 14px;
+  margin-top: var(--space-6);
 }
 
 .shortcuts-group-title {
@@ -7825,7 +7825,7 @@ body.ft-css-fullscreen .bottom-nav {
   text-align: center;
   font-family: var(--mono-font);
   font-size: var(--fs-xs);
-  line-height: 1.5;
+  line-height: var(--lh-relaxed);
   color: var(--text-primary);
   background-color: var(--btn-bg);
   border: 1px solid var(--border-dark);
@@ -8104,15 +8104,15 @@ body.ft-css-fullscreen .bottom-nav {
 
 .notif-panel {
   position: fixed;
-  top: 64px;
-  right: 16px;
+  top: 64px; /* token-exempt: positional geometry (Stop A Batch A) */
+  right: 16px; /* token-exempt: positional geometry (Stop A Batch A) */
   width: 400px;
   max-width: calc(100vw - 32px);
   max-height: min(70vh, 560px);
   overflow-y: auto;
   background: var(--bg-sidebar);
   border-radius: var(--radius-lg);
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.25);
+  box-shadow: var(--shadow-modal);
   z-index: 1600;
   opacity: 0;
   transform: translateY(-6px);
@@ -8206,7 +8206,7 @@ body.ft-css-fullscreen .bottom-nav {
 
 .notif-row-title {
   font-size: var(--fs-base);
-  line-height: 1.3;
+  line-height: var(--lh-tight);
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -8234,7 +8234,7 @@ body.ft-css-fullscreen .bottom-nav {
 }
 
 .notif-empty {
-  padding: 28px 16px;
+  padding: var(--space-12) var(--space-8);
   text-align: center;
   color: var(--text-secondary);
   font-size: var(--fs-sm);
@@ -8248,8 +8248,8 @@ body.ft-css-fullscreen .bottom-nav {
   header .header-right {
     display: flex;
     position: absolute;
-    top: calc(10px + env(safe-area-inset-top));
-    right: 10px;
+    top: calc(10px + env(safe-area-inset-top)); /* token-exempt: positional geometry (Stop A Batch A) */
+    right: 10px; /* token-exempt: positional geometry (Stop A Batch A) */
     gap: 0;
   }
 
@@ -8261,10 +8261,10 @@ body.ft-css-fullscreen .bottom-nav {
     display: block;
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.5);
+    background: var(--scrim);
     z-index: 1599;
     opacity: 0;
-    transition: opacity 0.2s var(--ease-ui);
+    transition: opacity var(--dur-fast) var(--ease-ui);
   }
 
   .notif-panel-backdrop.notif-open {

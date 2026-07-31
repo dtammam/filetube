@@ -72,5 +72,8 @@ test('.toast bottom offset adds env(safe-area-inset-bottom) on top of the existi
 });
 
 test('the mobile .toast override (clearing the bottom nav) is unchanged by the safe-area fix -- it already routes safe-area-inset-bottom via --mobile-bottom-nav-h', () => {
-  assert.match(css, /\.toast\s*\{\s*bottom:\s*calc\(var\(--mobile-bottom-nav-h\)\s*\+\s*12px\);\s*\}/);
+  // Step 3 opener (2026-07-31): the line now carries a token-exempt
+  // directive comment (positional geometry) - the lock tolerates it; the
+  // DECLARATION is still pinned byte-exactly.
+  assert.match(css, /\.toast\s*\{\s*bottom:\s*calc\(var\(--mobile-bottom-nav-h\)\s*\+\s*12px\);\s*(?:\/\*[^*]*token-exempt[^*]*\*\/\s*)?\}/);
 });

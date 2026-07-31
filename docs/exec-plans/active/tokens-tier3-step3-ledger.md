@@ -33,239 +33,239 @@ silent, but keep them out).
 
 | file:line | selector / JS context | declaration (linter-exact) | bucket | proposed after | delta | notes |
 |---|---|---|---|---|---|---|
-| public/css/style.css:799 | .sidebar-item | `padding: var(--density) 24px` | B1-MIXED | padding: var(--density) var(--space-12) | none |  |
-| public/css/style.css:1035 | .sort-menu li | `padding: 7px 12px` | B2-DRIFT | padding: var(--space-3) var(--space-6) | 7px->6px | scene 07; 12px exact tokenized too |
-| public/css/style.css:1067 | .video-grid | `margin-bottom: 30px` | B2-DRIFT | margin-bottom: var(--space-16) | 30px->32px | scene 06; 32 strictly nearest |
-| public/css/style.css:1279 | .video-info | `padding: var(--density) 4px` | B1-MIXED | padding: var(--density) var(--space-2) | none |  |
-| public/css/style.css:1477 | .skeleton-row | `padding: 10px 14px` | B2-DRIFT | padding: var(--space-5) var(--space-6) | 14px->12px | transient loading state - no scene; on-device judgment |
-| public/css/style.css:1516 | .empty-state, .error-state | `padding: 40px 20px` | B1-MIXED | padding: 40px var(--space-10) | none | 40px non-scale stays; PARTIAL ADOPTION - replace row, do not strike |
-| public/css/style.css:1781 | .art-play-glyph.art-play-glyph-playing::before | `margin-right: 9px` | B2-DRIFT | margin-right: var(--space-4) | 9px->8px | playing-state glyph offset - no scene; on-device judgment |
-| public/css/style.css:1964 | .embedded-tag | `margin: 2px 0` | B1-MIXED | margin: var(--space-1) 0 | none |  |
-| public/css/style.css:2046 | .watch-prevnext-btn | `padding: 6px 14px` | B2-DRIFT | padding: var(--space-3) var(--space-6) | 14px->12px | scene 05; 6px exact tokenized too |
-| public/css/style.css:2308 | .uploader-subs | `padding: 1px 7px` | B2-DRIFT | padding: 1px var(--space-3) | 7px->6px | scene 05; 1px hairline non-scale stays; PARTIAL ADOPTION - replace row, do not strike |
-| public/css/style.css:2554 | .setup-box | `margin: 32px auto` | B1-MIXED | margin: var(--space-16) auto | none |  |
-| public/css/style.css:2666 | .btn-busy::after | `margin-left: 7px` | B2-DRIFT | margin-left: var(--space-3) | 7px->6px | transient busy state - no scene; on-device judgment |
-| public/css/style.css:2893 | .sub-row | `padding: 10px 14px` | B2-DRIFT | padding: var(--space-5) var(--space-6) | 14px->12px | scene 11; 10px exact tokenized too |
-| public/css/style.css:3274 | .toast | `padding: 10px 18px` | B2-DRIFT | padding: var(--space-5) var(--space-8) | 18px->16px | scene 13-toast GATE-BLOCKER (3a only - the toast has NO scrim; scenes.js note corrected); 10px exact tokenized too |
-| public/css/style.css:3342 | .oneoff-modal-header | `margin-bottom: 14px` | B2-DRIFT | margin-bottom: var(--space-6) | 14px->12px | scene 01 |
-| public/css/style.css:3846 | .search-input | `padding: 7px 10px` | B2-DRIFT | padding: var(--space-3) var(--space-5) | 7px->6px | scene 06 (header); 10px exact tokenized too |
-| public/css/style.css:3927 | header (mobile) | `padding: calc(8px + env(safe-area-inset-top)) 8px 8px` | B1-MIXED | padding: calc(var(--space-4) + env(safe-area-inset-top)) var(--space-4) var(--space-4) | none |  |
-| public/css/style.css:4167 | .setup-box (mobile) | `margin: 20px auto` | B1-MIXED | margin: var(--space-10) auto | none |  |
-| public/css/style.css:4626 | .pp-icon-pause | `margin-right: 7px` | RULED-EXEMPT | token-exempt annotation in 3a | - | RULED (OQ9): optical-centering glyph offset stays 7px |
-| public/css/style.css:5231 | #player-wrapper.css-fullscreen .player-controls | `padding-bottom: calc(4px + env(safe-area-inset-bottom, 0px))` | B1-MIXED | padding-bottom: calc(var(--space-2) + env(safe-area-inset-bottom, 0px)) | none | single-value calc; PARTIAL ADOPTION - env(...,0px) fallback keeps the site flagged; replace row, do not strike |
-| public/css/style.css:5417 | .chapters-menu-item | `padding: 12px 14px` | B2-DRIFT | padding: var(--space-6) var(--space-6) | 14px->12px | chapters MENU has no scene (27-chapters-menu proposed - id 26 is taken by the playlists sheet); 12px exact tokenized too |
-| public/css/style.css:5436 | .chapters-menu-loop | `padding: 12px 14px` | B2-DRIFT | padding: var(--space-6) var(--space-6) | 14px->12px | pairs with 5417 |
-| public/css/style.css:5673 | .audio-expanded .player-controls | `padding-bottom: calc(4px + env(safe-area-inset-bottom, 0px))` | B1-MIXED | padding-bottom: calc(var(--space-2) + env(safe-area-inset-bottom, 0px)) | none | single-value calc; PARTIAL ADOPTION - env(...,0px) fallback keeps the site flagged; replace row, do not strike |
-| public/css/style.css:6170 | .hard-delete-modal-path | `margin-bottom: 14px` | B2-DRIFT | margin-bottom: var(--space-6) | 14px->12px | manual 21 shot only - throwaway/non-managed item (automation removed: managed two-tap deletes with NO modal) |
-| public/css/style.css:6671 | .books-home-row | `margin-bottom: 18px` | B2-DRIFT | margin-bottom: var(--space-8) | 18px->16px | scene 15 |
-| public/css/style.css:6818 | .books-shelf-chips | `margin-bottom: 14px` | B2-DRIFT | margin-bottom: var(--space-6) | 14px->12px | scene 15 |
-| public/css/style.css:6848 | .books-section-title | `margin: 18px 0 10px` | B2-DRIFT | margin: var(--space-8) 0 var(--space-5) | 18px->16px | scene 15; 10px exact tokenized too; 0 stays |
-| public/css/style.css:6907 | #reader-pane.pdf-scroll canvas | `margin: 8px auto` | B1-MIXED | margin: var(--space-4) auto | none |  |
-| public/css/style.css:6917 | .reader-bottombar | `padding: 6px 10px calc(6px + env(safe-area-inset-bottom, 0px))` | B1-MIXED | padding: var(--space-3) var(--space-5) calc(var(--space-3) + env(safe-area-inset-bottom, 0px)) | none | PARTIAL ADOPTION - env(...,0px) fallback keeps the site flagged; replace row, do not strike |
-| public/css/style.css:6950 | .reader-drawer h3 | `margin: 4px 0 10px` | B1-MIXED | margin: var(--space-2) 0 var(--space-5) | none |  |
-| public/css/style.css:6953 | .reader-toc-item | `padding: 7px 4px` | B2-DRIFT | padding: var(--space-3) var(--space-2) | 7px->6px | scene 14 (TOC drawer needs open - partial); 4px exact tokenized too |
-| public/css/style.css:7015 | .reader-nowplaying | `padding: 6px 10px calc(6px + env(safe-area-inset-bottom))` | B1-MIXED | padding: var(--space-3) var(--space-5) calc(var(--space-3) + env(safe-area-inset-bottom)) | none |  |
-| public/css/style.css:7021 | .reader-np-info | `gap: 8px` | EXACT-ADOPT | gap: var(--space-4) | none | gap declarations were skipped wholesale by Tier 2 |
-| public/css/style.css:7031 | .reader-np-transport | `gap: 8px` | EXACT-ADOPT | gap: var(--space-4) | none |  |
-| public/css/style.css:7227 | .reloc-preview-group-title | `margin: 14px 0 6px` | B2-DRIFT | margin: var(--space-6) 0 var(--space-3) | 14px->12px | scene 18; 6px exact tokenized too; 0 stays |
-| public/css/style.css:7246 | .reloc-preview-badge | `padding: 1px 6px` | B1-MIXED | padding: 1px var(--space-3) | none | 1px hairline stays; PARTIAL ADOPTION - replace row, do not strike |
-| public/css/style.css:7311 | .login-wordmark .tube | `padding: 3px 9px` | B2-DRIFT | padding: var(--space-1) var(--space-4) | 3px->2px, 9px->8px | scene 25-login (NEW, added this tranche); 3->2 tie rounds down |
-| public/css/style.css:7422 | .login-era-switch button | `padding: 4px 9px` | B2-DRIFT | padding: var(--space-2) var(--space-4) | 9px->8px | scene 25-login; 4px exact tokenized too |
-| public/css/style.css:7464 | .users-row | `padding: 10px 14px` | B2-DRIFT | padding: var(--space-5) var(--space-6) | 14px->12px | scene 17; 10px exact tokenized too |
-| public/css/style.css:7496 | .music-toolbar-actions | `gap: 8px` | EXACT-ADOPT | gap: var(--space-4) | none |  |
-| public/css/style.css:7512 | .music-tab | `padding: 10px 14px` | B2-DRIFT | padding: var(--space-5) var(--space-6) | 14px->12px | scene 08; 10px exact tokenized too |
-| public/css/style.css:7522 | .music-crumb | `gap: 10px` | EXACT-ADOPT | gap: var(--space-5) | none | single-line rule, two governed decls |
-| public/css/style.css:7522 | .music-crumb | `margin-bottom: 12px` | EXACT-ADOPT | margin-bottom: var(--space-6) | none |  |
-| public/css/style.css:7533 | .music-drill-header | `gap: 12px` | EXACT-ADOPT | gap: var(--space-6) | none |  |
-| public/css/style.css:7533 | .music-drill-header | `margin-bottom: 12px` | EXACT-ADOPT | margin-bottom: var(--space-6) | none |  |
-| public/css/style.css:7535 | .music-drill-heading | `gap: 16px` | EXACT-ADOPT | gap: var(--space-8) | none |  |
-| public/css/style.css:7545 | .music-drill-info | `gap: 6px` | EXACT-ADOPT | gap: var(--space-3) | none |  |
-| public/css/style.css:7549 | .music-drill-actions | `gap: 8px` | EXACT-ADOPT | gap: var(--space-4) | none |  |
-| public/css/style.css:7549 | .music-drill-actions | `margin-top: 8px` | EXACT-ADOPT | margin-top: var(--space-4) | none |  |
-| public/css/style.css:7722 | .music-empty | `padding: 24px 0` | B1-MIXED | padding: var(--space-12) 0 | none |  |
-| public/css/style.css:7782 | .shortcuts-group | `margin-top: 14px` | B2-DRIFT | margin-top: var(--space-6) | 14px->12px | shortcuts modal has no scene; on-device judgment (? key, desktop) |
-| public/css/style.css:8237 | .notif-empty | `padding: 28px 16px` | B2-DRIFT | padding: var(--space-12) var(--space-8) | 28px->24px | scene 12b only if the feed is empty - likely on-device judgment; 16px exact tokenized too |
+| ~~public/css/style.css:799~~ | .sidebar-item | `padding: var(--density) 24px` | B1-MIXED | padding: var(--density) var(--space-12) | none | OPENER DONE 2026-07-31 |
+| ~~public/css/style.css:1035~~ | .sort-menu li | `padding: 7px 12px` | B2-DRIFT | padding: var(--space-3) var(--space-6) | 7px->6px | scene 07; 12px exact tokenized too; 3a DONE 2026-07-31 |
+| ~~public/css/style.css:1067~~ | .video-grid | `margin-bottom: 30px` | B2-DRIFT | margin-bottom: var(--space-16) | 30px->32px | scene 06; 32 strictly nearest; 3a DONE 2026-07-31 |
+| ~~public/css/style.css:1279~~ | .video-info | `padding: var(--density) 4px` | B1-MIXED | padding: var(--density) var(--space-2) | none | OPENER DONE 2026-07-31 |
+| ~~public/css/style.css:1477~~ | .skeleton-row | `padding: 10px 14px` | B2-DRIFT | padding: var(--space-5) var(--space-6) | 14px->12px | transient loading state - no scene; on-device judgment; 3a DONE 2026-07-31 |
+| public/css/style.css:1516 | .empty-state, .error-state | `padding: 40px var(--space-10)` | B1-PARTIAL-DONE | padding: 40px var(--space-10) | residual (non-scale member / env fallback) | OPENER DONE 2026-07-31 - adopted members in place; this residual is deliberate and stays in the burn-down |
+| ~~public/css/style.css:1781~~ | .art-play-glyph.art-play-glyph-playing::before | `margin-right: 9px` | B2-DRIFT | margin-right: var(--space-4) | 9px->8px | playing-state glyph offset - no scene; on-device judgment; 3a DONE 2026-07-31 |
+| ~~public/css/style.css:1964~~ | .embedded-tag | `margin: 2px 0` | B1-MIXED | margin: var(--space-1) 0 | none | OPENER DONE 2026-07-31 |
+| ~~public/css/style.css:2046~~ | .watch-prevnext-btn | `padding: 6px 14px` | B2-DRIFT | padding: var(--space-3) var(--space-6) | 14px->12px | scene 05; 6px exact tokenized too; 3a DONE 2026-07-31 |
+| public/css/style.css:2308 | .uploader-subs | `padding: 1px var(--space-3)` | B2-PARTIAL-DONE | padding: 1px var(--space-3) | residual (1px hairline non-scale) | 3a DONE 2026-07-31 - 7px->6px applied; the 1px residual is deliberate and stays in the burn-down |
+| ~~public/css/style.css:2554~~ | .setup-box | `margin: 32px auto` | B1-MIXED | margin: var(--space-16) auto | none | OPENER DONE 2026-07-31 |
+| ~~public/css/style.css:2666~~ | .btn-busy::after | `margin-left: 7px` | B2-DRIFT | margin-left: var(--space-3) | 7px->6px | transient busy state - no scene; on-device judgment; 3a DONE 2026-07-31 |
+| ~~public/css/style.css:2893~~ | .sub-row | `padding: 10px 14px` | B2-DRIFT | padding: var(--space-5) var(--space-6) | 14px->12px | scene 11; 10px exact tokenized too; 3a DONE 2026-07-31 |
+| ~~public/css/style.css:3274~~ | .toast | `padding: 10px 18px` | B2-DRIFT | padding: var(--space-5) var(--space-8) | 18px->16px | scene 13-toast GATE-BLOCKER (3a only - the toast has NO scrim; scenes.js note corrected); 10px exact tokenized too; 3a DONE 2026-07-31 |
+| ~~public/css/style.css:3342~~ | .oneoff-modal-header | `margin-bottom: 14px` | B2-DRIFT | margin-bottom: var(--space-6) | 14px->12px | scene 01; 3a DONE 2026-07-31 |
+| ~~public/css/style.css:3846~~ | .search-input | `padding: 7px 10px` | B2-DRIFT | padding: var(--space-3) var(--space-5) | 7px->6px | scene 06 (header); 10px exact tokenized too; 3a DONE 2026-07-31 |
+| ~~public/css/style.css:3927~~ | header (mobile) | `padding: calc(8px + env(safe-area-inset-top)) 8px 8px` | B1-MIXED | padding: calc(var(--space-4) + env(safe-area-inset-top)) var(--space-4) var(--space-4) | none | OPENER DONE 2026-07-31 |
+| ~~public/css/style.css:4167~~ | .setup-box (mobile) | `margin: 20px auto` | B1-MIXED | margin: var(--space-10) auto | none | OPENER DONE 2026-07-31 |
+| ~~public/css/style.css:4626~~ | .pp-icon-pause | `margin-right: 7px` | RULED-EXEMPT | token-exempt annotation in 3a | - | RULED (OQ9): optical-centering glyph offset stays 7px; 3a DONE 2026-07-31 |
+| public/css/style.css:5231 | #player-wrapper.css-fullscreen .player-controls | `padding-bottom: calc(var(--space-2) + env(safe-area-inset-bottom, 0px))` | B1-PARTIAL-DONE | padding-bottom: calc(var(--space-2) + env(safe-area-inset-bottom, 0px)) | residual (non-scale member / env fallback) | OPENER DONE 2026-07-31 - adopted members in place; this residual is deliberate and stays in the burn-down |
+| ~~public/css/style.css:5417~~ | .chapters-menu-item | `padding: 12px 14px` | B2-DRIFT | padding: var(--space-6) var(--space-6) | 14px->12px | chapters MENU has no scene (27-chapters-menu proposed - id 26 is taken by the playlists sheet); 12px exact tokenized too; 3a DONE 2026-07-31 |
+| ~~public/css/style.css:5436~~ | .chapters-menu-loop | `padding: 12px 14px` | B2-DRIFT | padding: var(--space-6) var(--space-6) | 14px->12px | pairs with 5417; 3a DONE 2026-07-31 |
+| public/css/style.css:5673 | .audio-expanded .player-controls | `padding-bottom: calc(var(--space-2) + env(safe-area-inset-bottom, 0px))` | B1-PARTIAL-DONE | padding-bottom: calc(var(--space-2) + env(safe-area-inset-bottom, 0px)) | residual (non-scale member / env fallback) | OPENER DONE 2026-07-31 - adopted members in place; this residual is deliberate and stays in the burn-down |
+| ~~public/css/style.css:6170~~ | .hard-delete-modal-path | `margin-bottom: 14px` | B2-DRIFT | margin-bottom: var(--space-6) | 14px->12px | manual 21 shot only - throwaway/non-managed item (automation removed: managed two-tap deletes with NO modal); 3a DONE 2026-07-31 |
+| ~~public/css/style.css:6671~~ | .books-home-row | `margin-bottom: 18px` | B2-DRIFT | margin-bottom: var(--space-8) | 18px->16px | scene 15; 3a DONE 2026-07-31 |
+| ~~public/css/style.css:6818~~ | .books-shelf-chips | `margin-bottom: 14px` | B2-DRIFT | margin-bottom: var(--space-6) | 14px->12px | scene 15; 3a DONE 2026-07-31 |
+| ~~public/css/style.css:6848~~ | .books-section-title | `margin: 18px 0 10px` | B2-DRIFT | margin: var(--space-8) 0 var(--space-5) | 18px->16px | scene 15; 10px exact tokenized too; 0 stays; 3a DONE 2026-07-31 |
+| ~~public/css/style.css:6907~~ | #reader-pane.pdf-scroll canvas | `margin: 8px auto` | B1-MIXED | margin: var(--space-4) auto | none | OPENER DONE 2026-07-31 |
+| public/css/style.css:6917 | .reader-bottombar | `padding: var(--space-3) var(--space-5) calc(var(--space-3) + env(safe` | B1-PARTIAL-DONE | padding: var(--space-3) var(--space-5) calc(var(--space-3) + env(safe-area-inset-bottom, 0px)) | residual (non-scale member / env fallback) | OPENER DONE 2026-07-31 - adopted members in place; this residual is deliberate and stays in the burn-down |
+| ~~public/css/style.css:6950~~ | .reader-drawer h3 | `margin: 4px 0 10px` | B1-MIXED | margin: var(--space-2) 0 var(--space-5) | none | OPENER DONE 2026-07-31 |
+| ~~public/css/style.css:6953~~ | .reader-toc-item | `padding: 7px 4px` | B2-DRIFT | padding: var(--space-3) var(--space-2) | 7px->6px | scene 14 (TOC drawer needs open - partial); 4px exact tokenized too; 3a DONE 2026-07-31 |
+| ~~public/css/style.css:7015~~ | .reader-nowplaying | `padding: 6px 10px calc(6px + env(safe-area-inset-bottom))` | B1-MIXED | padding: var(--space-3) var(--space-5) calc(var(--space-3) + env(safe-area-inset-bottom)) | none | OPENER DONE 2026-07-31 |
+| ~~public/css/style.css:7021~~ | .reader-np-info | `gap: 8px` | EXACT-ADOPT | gap: var(--space-4) | none | gap declarations were skipped wholesale by Tier 2; OPENER DONE 2026-07-31 |
+| ~~public/css/style.css:7031~~ | .reader-np-transport | `gap: 8px` | EXACT-ADOPT | gap: var(--space-4) | none | OPENER DONE 2026-07-31 |
+| ~~public/css/style.css:7227~~ | .reloc-preview-group-title | `margin: 14px 0 6px` | B2-DRIFT | margin: var(--space-6) 0 var(--space-3) | 14px->12px | scene 18; 6px exact tokenized too; 0 stays; 3a DONE 2026-07-31 |
+| public/css/style.css:7246 | .reloc-preview-badge | `padding: 1px var(--space-3)` | B1-PARTIAL-DONE | padding: 1px var(--space-3) | residual (1px hairline non-scale) | OPENER DONE 2026-07-31 - adopted the member in place; the 1px hairline residual is deliberate and stays in the burn-down |
+| ~~public/css/style.css:7311~~ | .login-wordmark .tube | `padding: 3px 9px` | B2-DRIFT | padding: var(--space-1) var(--space-4) | 3px->2px, 9px->8px | scene 25-login (NEW, added this tranche); 3->2 tie rounds down; 3a DONE 2026-07-31 |
+| ~~public/css/style.css:7422~~ | .login-era-switch button | `padding: 4px 9px` | B2-DRIFT | padding: var(--space-2) var(--space-4) | 9px->8px | scene 25-login; 4px exact tokenized too; 3a DONE 2026-07-31 |
+| ~~public/css/style.css:7464~~ | .users-row | `padding: 10px 14px` | B2-DRIFT | padding: var(--space-5) var(--space-6) | 14px->12px | scene 17; 10px exact tokenized too; 3a DONE 2026-07-31 |
+| ~~public/css/style.css:7496~~ | .music-toolbar-actions | `gap: 8px` | EXACT-ADOPT | gap: var(--space-4) | none | OPENER DONE 2026-07-31 |
+| ~~public/css/style.css:7512~~ | .music-tab | `padding: 10px 14px` | B2-DRIFT | padding: var(--space-5) var(--space-6) | 14px->12px | scene 08; 10px exact tokenized too; 3a DONE 2026-07-31 |
+| ~~public/css/style.css:7522~~ | .music-crumb | `gap: 10px` | EXACT-ADOPT | gap: var(--space-5) | none | single-line rule, two governed decls; OPENER DONE 2026-07-31 |
+| ~~public/css/style.css:7522~~ | .music-crumb | `margin-bottom: 12px` | EXACT-ADOPT | margin-bottom: var(--space-6) | none | OPENER DONE 2026-07-31 |
+| ~~public/css/style.css:7533~~ | .music-drill-header | `gap: 12px` | EXACT-ADOPT | gap: var(--space-6) | none | OPENER DONE 2026-07-31 |
+| ~~public/css/style.css:7533~~ | .music-drill-header | `margin-bottom: 12px` | EXACT-ADOPT | margin-bottom: var(--space-6) | none | OPENER DONE 2026-07-31 |
+| ~~public/css/style.css:7535~~ | .music-drill-heading | `gap: 16px` | EXACT-ADOPT | gap: var(--space-8) | none | OPENER DONE 2026-07-31 |
+| ~~public/css/style.css:7545~~ | .music-drill-info | `gap: 6px` | EXACT-ADOPT | gap: var(--space-3) | none | OPENER DONE 2026-07-31 |
+| ~~public/css/style.css:7549~~ | .music-drill-actions | `gap: 8px` | EXACT-ADOPT | gap: var(--space-4) | none | OPENER DONE 2026-07-31 |
+| ~~public/css/style.css:7549~~ | .music-drill-actions | `margin-top: 8px` | EXACT-ADOPT | margin-top: var(--space-4) | none | OPENER DONE 2026-07-31 |
+| ~~public/css/style.css:7722~~ | .music-empty | `padding: 24px 0` | B1-MIXED | padding: var(--space-12) 0 | none | OPENER DONE 2026-07-31 |
+| ~~public/css/style.css:7782~~ | .shortcuts-group | `margin-top: 14px` | B2-DRIFT | margin-top: var(--space-6) | 14px->12px | shortcuts modal has no scene; on-device judgment (? key, desktop); 3a DONE 2026-07-31 |
+| ~~public/css/style.css:8237~~ | .notif-empty | `padding: 28px 16px` | B2-DRIFT | padding: var(--space-12) var(--space-8) | 28px->24px | scene 12b only if the feed is empty - likely on-device judgment; 16px exact tokenized too; 3a DONE 2026-07-31 |
 
 ## 3a annex - offset exemptions (token-exempt annotations only, zero value changes; all 49 RULED exempt, OQ4)
 
 | file:line | selector / JS context | declaration (linter-exact) | bucket | proposed after | delta | notes |
 |---|---|---|---|---|---|---|
-| public/css/style.css:768 | .sidebar | `top: 56px` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale) |
-| public/css/style.css:1019 | .sort-menu | `top: calc(100% + 4px)` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale) |
-| public/css/style.css:1121 | .duration-badge | `bottom: 4px` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale) |
-| public/css/style.css:1122 | .duration-badge | `right: 4px` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale) |
-| public/css/style.css:1157 | .card-delete-btn | `top: 6px` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale) |
-| public/css/style.css:1158 | .card-delete-btn | `right: 6px` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale) |
-| public/css/style.css:1211 | .card-download-btn | `top: 6px` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale) |
-| public/css/style.css:1212 | .card-download-btn | `left: 6px` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale) |
-| public/css/style.css:1247 | .card-like-btn | `bottom: 6px` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale) |
-| public/css/style.css:1248 | .card-like-btn | `left: 6px` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale) |
-| public/css/style.css:1321 | .ptr-indicator | `top: calc(var(--mobile-header-h, 56px) + 8px)` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale) |
-| public/css/style.css:1606 | #player-dock | `right: 16px` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale) |
-| public/css/style.css:1607 | #player-dock | `bottom: 16px` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale) |
-| public/css/style.css:1655 | .player-dock-close | `top: 4px` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale) |
-| public/css/style.css:1656 | .player-dock-close | `right: 4px` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale) |
-| public/css/style.css:1677 | #player-dock (mobile) | `right: 8px` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale) |
-| public/css/style.css:1683 | #player-dock (mobile) | `bottom: calc(var(--mobile-bottom-nav-h) + 8px)` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale) |
-| public/css/style.css:1690 | .toast (mobile) | `bottom: calc(var(--mobile-bottom-nav-h) + 12px)` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale) |
-| public/css/style.css:1928 | .speed-badge | `top: 12px` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale) |
-| public/css/style.css:2115 | .watch-autoplay-thumb | `top: 2px` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale) |
-| public/css/style.css:2116 | .watch-autoplay-thumb | `left: 2px` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale) |
-| public/css/style.css:3268 | .toast | `bottom: calc(24px + env(safe-area-inset-bottom, 0px))` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale) |
-| public/css/style.css:5135 | #audio-bg-art (strip reserve) | `bottom: 40px` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale) |
-| public/css/style.css:5155 | #audio-bg-art (dock strip) | `bottom: 80px` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale) |
-| public/css/style.css:5158 | #audio-bg-art (mobile strip) | `bottom: 44px` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale) |
-| public/css/style.css:5175 | #audio-bg-art (dock) | `bottom: 26px` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale) |
-| public/css/style.css:5274 | .chapters-menu | `right: 8px` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale) |
-| public/css/style.css:5275 | .chapters-menu | `bottom: calc(100% + 6px)` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale) |
-| public/css/style.css:5410 | .chapters-menu (mobile) | `left: 8px` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale) |
-| public/css/style.css:5411 | .chapters-menu (mobile) | `right: 8px` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale) |
-| public/css/style.css:5475 | .cc-overlay | `bottom: 40px` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale) |
-| public/css/style.css:5500 | .cc-overlay (mobile) | `bottom: 44px` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale) |
-| public/css/style.css:5505 | #player-dock .cc-overlay | `bottom: 26px` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale) |
-| public/css/style.css:5651 | #audio-bg-art (expanded) | `bottom: calc(52px + env(safe-area-inset-bottom, 0px))` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale) |
-| public/css/style.css:5681 | .cc-overlay (expanded) | `bottom: calc(56px + env(safe-area-inset-bottom, 0px))` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale) |
-| public/css/style.css:5687 | .cc-overlay (expanded mobile) | `bottom: calc(94px + env(safe-area-inset-bottom, 0px))` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale) |
-| public/css/style.css:5691 | #audio-bg-art (expanded mobile) | `bottom: calc(94px + env(safe-area-inset-bottom, 0px))` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale) |
-| public/css/style.css:6255 | #dl-status-chip | `left: 16px` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale) |
-| public/css/style.css:6256 | #dl-status-chip | `bottom: 16px` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale) |
-| public/css/style.css:6573 | #dl-status-chip (mobile) | `left: 8px` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale) |
-| public/css/style.css:6574 | #dl-status-chip (mobile) | `bottom: calc(var(--mobile-bottom-nav-h) + 8px)` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale) |
-| public/css/style.css:7047 | #reader-np-next .reader-np-ico::after | `left: 12px` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale) |
-| public/css/style.css:7056 | #reader-np-prev .reader-np-ico::after | `right: 12px` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale) |
-| public/css/style.css:7094 | .reader-nowplaying (mobile) | `bottom: calc(54px + env(safe-area-inset-bottom))` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale) |
-| public/css/style.css:7553 | .music-drill-sticky | `top: var(--music-sticky-top, 56px)` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale) |
-| public/css/style.css:8107 | .notif-panel | `top: 64px` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale) |
-| public/css/style.css:8108 | .notif-panel | `right: 16px` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale) |
-| public/css/style.css:8251 | header .header-right | `top: calc(10px + env(safe-area-inset-top))` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale) |
-| public/css/style.css:8252 | header .header-right | `right: 10px` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale) |
+| ~~public/css/style.css:768~~ | .sidebar | `top: 56px` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale); OPENER DONE 2026-07-31 |
+| ~~public/css/style.css:1019~~ | .sort-menu | `top: calc(100% + 4px)` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale); OPENER DONE 2026-07-31 |
+| ~~public/css/style.css:1121~~ | .duration-badge | `bottom: 4px` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale); OPENER DONE 2026-07-31 |
+| ~~public/css/style.css:1122~~ | .duration-badge | `right: 4px` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale); OPENER DONE 2026-07-31 |
+| ~~public/css/style.css:1157~~ | .card-delete-btn | `top: 6px` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale); OPENER DONE 2026-07-31 |
+| ~~public/css/style.css:1158~~ | .card-delete-btn | `right: 6px` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale); OPENER DONE 2026-07-31 |
+| ~~public/css/style.css:1211~~ | .card-download-btn | `top: 6px` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale); OPENER DONE 2026-07-31 |
+| ~~public/css/style.css:1212~~ | .card-download-btn | `left: 6px` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale); OPENER DONE 2026-07-31 |
+| ~~public/css/style.css:1247~~ | .card-like-btn | `bottom: 6px` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale); OPENER DONE 2026-07-31 |
+| ~~public/css/style.css:1248~~ | .card-like-btn | `left: 6px` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale); OPENER DONE 2026-07-31 |
+| ~~public/css/style.css:1321~~ | .ptr-indicator | `top: calc(var(--mobile-header-h, 56px) + 8px)` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale); OPENER DONE 2026-07-31 |
+| ~~public/css/style.css:1606~~ | #player-dock | `right: 16px` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale); OPENER DONE 2026-07-31 |
+| ~~public/css/style.css:1607~~ | #player-dock | `bottom: 16px` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale); OPENER DONE 2026-07-31 |
+| ~~public/css/style.css:1655~~ | .player-dock-close | `top: 4px` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale); OPENER DONE 2026-07-31 |
+| ~~public/css/style.css:1656~~ | .player-dock-close | `right: 4px` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale); OPENER DONE 2026-07-31 |
+| ~~public/css/style.css:1677~~ | #player-dock (mobile) | `right: 8px` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale); OPENER DONE 2026-07-31 |
+| ~~public/css/style.css:1683~~ | #player-dock (mobile) | `bottom: calc(var(--mobile-bottom-nav-h) + 8px)` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale); OPENER DONE 2026-07-31 |
+| ~~public/css/style.css:1690~~ | .toast (mobile) | `bottom: calc(var(--mobile-bottom-nav-h) + 12px)` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale); OPENER DONE 2026-07-31 |
+| ~~public/css/style.css:1928~~ | .speed-badge | `top: 12px` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale); OPENER DONE 2026-07-31 |
+| ~~public/css/style.css:2115~~ | .watch-autoplay-thumb | `top: 2px` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale); OPENER DONE 2026-07-31 |
+| ~~public/css/style.css:2116~~ | .watch-autoplay-thumb | `left: 2px` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale); OPENER DONE 2026-07-31 |
+| ~~public/css/style.css:3268~~ | .toast | `bottom: calc(24px + env(safe-area-inset-bottom, 0px))` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale); OPENER DONE 2026-07-31 |
+| ~~public/css/style.css:5135~~ | #audio-bg-art (strip reserve) | `bottom: 40px` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale); OPENER DONE 2026-07-31 |
+| ~~public/css/style.css:5155~~ | #audio-bg-art (dock strip) | `bottom: 80px` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale); OPENER DONE 2026-07-31 |
+| ~~public/css/style.css:5158~~ | #audio-bg-art (mobile strip) | `bottom: 44px` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale); OPENER DONE 2026-07-31 |
+| ~~public/css/style.css:5175~~ | #audio-bg-art (dock) | `bottom: 26px` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale); OPENER DONE 2026-07-31 |
+| ~~public/css/style.css:5274~~ | .chapters-menu | `right: 8px` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale); OPENER DONE 2026-07-31 |
+| ~~public/css/style.css:5275~~ | .chapters-menu | `bottom: calc(100% + 6px)` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale); OPENER DONE 2026-07-31 |
+| ~~public/css/style.css:5410~~ | .chapters-menu (mobile) | `left: 8px` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale); OPENER DONE 2026-07-31 |
+| ~~public/css/style.css:5411~~ | .chapters-menu (mobile) | `right: 8px` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale); OPENER DONE 2026-07-31 |
+| ~~public/css/style.css:5475~~ | .cc-overlay | `bottom: 40px` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale); OPENER DONE 2026-07-31 |
+| ~~public/css/style.css:5500~~ | .cc-overlay (mobile) | `bottom: 44px` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale); OPENER DONE 2026-07-31 |
+| ~~public/css/style.css:5505~~ | #player-dock .cc-overlay | `bottom: 26px` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale); OPENER DONE 2026-07-31 |
+| ~~public/css/style.css:5651~~ | #audio-bg-art (expanded) | `bottom: calc(52px + env(safe-area-inset-bottom, 0px))` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale); OPENER DONE 2026-07-31 |
+| ~~public/css/style.css:5681~~ | .cc-overlay (expanded) | `bottom: calc(56px + env(safe-area-inset-bottom, 0px))` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale); OPENER DONE 2026-07-31 |
+| ~~public/css/style.css:5687~~ | .cc-overlay (expanded mobile) | `bottom: calc(94px + env(safe-area-inset-bottom, 0px))` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale); OPENER DONE 2026-07-31 |
+| ~~public/css/style.css:5691~~ | #audio-bg-art (expanded mobile) | `bottom: calc(94px + env(safe-area-inset-bottom, 0px))` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale); OPENER DONE 2026-07-31 |
+| ~~public/css/style.css:6255~~ | #dl-status-chip | `left: 16px` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale); OPENER DONE 2026-07-31 |
+| ~~public/css/style.css:6256~~ | #dl-status-chip | `bottom: 16px` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale); OPENER DONE 2026-07-31 |
+| ~~public/css/style.css:6573~~ | #dl-status-chip (mobile) | `left: 8px` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale); OPENER DONE 2026-07-31 |
+| ~~public/css/style.css:6574~~ | #dl-status-chip (mobile) | `bottom: calc(var(--mobile-bottom-nav-h) + 8px)` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale); OPENER DONE 2026-07-31 |
+| ~~public/css/style.css:7047~~ | #reader-np-next .reader-np-ico::after | `left: 12px` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale); OPENER DONE 2026-07-31 |
+| ~~public/css/style.css:7056~~ | #reader-np-prev .reader-np-ico::after | `right: 12px` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale); OPENER DONE 2026-07-31 |
+| ~~public/css/style.css:7094~~ | .reader-nowplaying (mobile) | `bottom: calc(54px + env(safe-area-inset-bottom))` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale); OPENER DONE 2026-07-31 |
+| ~~public/css/style.css:7553~~ | .music-drill-sticky | `top: var(--music-sticky-top, 56px)` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale); OPENER DONE 2026-07-31 |
+| ~~public/css/style.css:8107~~ | .notif-panel | `top: 64px` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale); OPENER DONE 2026-07-31 |
+| ~~public/css/style.css:8108~~ | .notif-panel | `right: 16px` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale); OPENER DONE 2026-07-31 |
+| ~~public/css/style.css:8251~~ | header .header-right | `top: calc(10px + env(safe-area-inset-top))` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale); OPENER DONE 2026-07-31 |
+| ~~public/css/style.css:8252~~ | header .header-right | `right: 10px` | A-OFFSET-EXEMPT | token-exempt annotation | - | positional geometry - RULED (OQ4): all 49 exempt (Stop A ruled the 26 flagged; the 23 structural others joined by the same rationale); OPENER DONE 2026-07-31 |
 
 ## 3c - scrim consolidation + on-overlay chrome adoption (OQ5 rulings applied: a approved, b-e exempt)
 
 | file:line | selector / JS context | declaration (linter-exact) | bucket | proposed after | delta | notes |
 |---|---|---|---|---|---|---|
-| public/css/style.css:1123 | .duration-badge | `background-color: rgba(0,0,0,0.85)` | SCRIM-DRIFT | background-color: var(--scrim-heavy) | 0.85->0.8 | RULED 2026-07-30 (OQ5a): approved; scene 06 |
-| public/css/style.css:1124 | .duration-badge | `color: white` | ON-OVERLAY-ADOPT | color: var(--on-overlay) | none | survived Tier 2 via `white` spelling |
-| public/css/style.css:1166 | .card-delete-btn | `background-color: rgba(0, 0, 0, 0.6)` | SCRIM-DRIFT | background-color: var(--scrim) | 0.6->0.55 | scene 06 hover |
-| public/css/style.css:1167 | .card-delete-btn | `color: #fff` | ON-OVERLAY-ADOPT | color: var(--on-overlay) | none |  |
-| public/css/style.css:1220 | .card-download-btn | `background-color: rgba(0, 0, 0, 0.6)` | SCRIM-DRIFT | background-color: var(--scrim) | 0.6->0.55 | scene 06 hover |
-| public/css/style.css:1221 | .card-download-btn | `color: #fff` | ON-OVERLAY-ADOPT | color: var(--on-overlay) | none |  |
-| public/css/style.css:1256 | .card-like-btn | `background-color: rgba(0, 0, 0, 0.6)` | SCRIM-DRIFT | background-color: var(--scrim) | 0.6->0.55 | scene 06 hover |
-| public/css/style.css:1257 | .card-like-btn | `color: #fff` | ON-OVERLAY-ADOPT | color: var(--on-overlay) | none |  |
-| public/css/style.css:1664 | .player-dock-close | `background: rgba(0, 0, 0, 0.6)` | SCRIM-DRIFT | background: var(--scrim) | 0.6->0.55 | dock state - on-device judgment; :hover sibling already var(--scrim-heavy) |
-| public/css/style.css:1665 | .player-dock-close | `color: #fff` | ON-OVERLAY-ADOPT | color: var(--on-overlay) | none |  |
-| public/css/style.css:1875 | .resume-overlay | `background-color: rgba(0,0,0,0.85)` | SCRIM-DRIFT | background-color: var(--scrim-heavy) | 0.85->0.8 | scene 04-resume GATE-BLOCKER (value corrected: .85 not the .75 scenes.js claimed) |
-| public/css/style.css:1881 | .resume-overlay | `color: white` | ON-OVERLAY-ADOPT | color: var(--on-overlay) | none | `white` spelling |
-| public/css/style.css:1893 | .resume-overlay p | `color: #ccc` | ON-OVERLAY-ADOPT | color: var(--on-overlay-muted) | none | #ccc exact |
-| public/css/style.css:1931 | .speed-badge | `background: rgba(0, 0, 0, 0.75)` | SCRIM-DRIFT | background: var(--scrim-heavy) | 0.75->0.8 | press-hold 2x state - on-device judgment |
-| public/css/style.css:1932 | .speed-badge | `color: #fff` | ON-OVERLAY-ADOPT | color: var(--on-overlay) | none |  |
-| public/css/style.css:1979 | .skip-btn | `color: #fff` | ON-OVERLAY-ADOPT | color: var(--on-overlay) | none | bg already var(--scrim) |
-| public/css/style.css:1998 | .skip-btn:hover | `background: rgba(0, 0, 0, 0.8)` | SCRIM-EXACT | background: var(--scrim-heavy) | none | the known mid-line adoption-tooling gap |
-| public/css/style.css:2010 | .skip-ripple | `color: #fff` | ON-OVERLAY-ADOPT | color: var(--on-overlay) | none |  |
-| public/css/style.css:3181 | .modal-backdrop | `background-color: rgba(0,0,0,0.5)` | SCRIM-DRIFT | background-color: var(--scrim) | 0.5->0.55 | any confirm-modal surface (scene 21 is now MANUAL-only after the delete-flow incident) |
-| public/css/style.css:3301 | .oneoff-modal-backdrop | `background-color: rgba(0, 0, 0, 0.5)` | SCRIM-DRIFT | background-color: var(--scrim) | 0.5->0.55 | scene 01 |
-| public/css/style.css:3974 | .playlists-sheet-backdrop:not([hidden]) | `background: rgba(0, 0, 0, 0.5)` | SCRIM-DRIFT | background: var(--scrim) | 0.5->0.55 | scene 26-playlists-sheet (phone; coverage-audit addition) |
-| public/css/style.css:5235 | .css-fullscreen .player-controls | `background: rgba(0, 0, 0, 0.75)` | SCRIM-DRIFT | background: var(--scrim-heavy) | 0.75->0.8 | fullscreen state - on-device judgment |
-| public/css/style.css:5488 | .cc-overlay-text | `color: #fff` | ON-OVERLAY-ADOPT | color: var(--on-overlay) | none | amendment protects the BACKGROUND only; adjacency noted |
-| public/css/style.css:5791 | .sub-sheet-backdrop | `background: rgba(0, 0, 0, 0.5)` | SCRIM-DRIFT | background: var(--scrim) | 0.5->0.55 | scene 12 |
-| public/css/style.css:6120 | .hard-delete-modal-backdrop | `background-color: rgba(0, 0, 0, 0.65)` | RULED-EXEMPT | token-exempt annotation in 3c | - | RULED (OQ5b): keep 0.65 - intentional destructive-modal dim |
-| public/css/style.css:6707 | .book-row-progress | `background: rgba(0, 0, 0, 0.5)` | RULED-EXEMPT | token-exempt annotation in 3c | - | RULED (OQ5c): component art, not a scrim |
-| public/css/style.css:6792 | .book-progress-track | `background: rgba(0, 0, 0, 0.5)` | RULED-EXEMPT | token-exempt annotation in 3c | - | RULED (OQ5d): component art, not a scrim |
-| public/css/style.css:7685 | .music-eq | `background: rgba(0, 0, 0, 0.45)` | RULED-EXEMPT | token-exempt annotation in 3c | - | RULED (OQ5e): playing-art wash stays 0.45 |
-| public/css/style.css:8264 | .notif-panel-backdrop:not([hidden]) | `background: rgba(0, 0, 0, 0.5)` | SCRIM-DRIFT | background: var(--scrim) | 0.5->0.55 | scene 12b phone |
+| ~~public/css/style.css:1123~~ | .duration-badge | `background-color: rgba(0,0,0,0.85)` | SCRIM-DRIFT | background-color: var(--scrim-heavy) | 0.85->0.8 | RULED 2026-07-30 (OQ5a): approved; scene 06; 3c DONE 2026-07-31 |
+| ~~public/css/style.css:1124~~ | .duration-badge | `color: white` | ON-OVERLAY-ADOPT | color: var(--on-overlay) | none | survived Tier 2 via `white` spelling; 3c DONE 2026-07-31 (differ shows a TEXTUAL white->#ffffff pair - keyword canonicalization gap, zero visual delta, r=g=b=255 both sides) |
+| ~~public/css/style.css:1166~~ | .card-delete-btn | `background-color: rgba(0, 0, 0, 0.6)` | SCRIM-DRIFT | background-color: var(--scrim) | 0.6->0.55 | scene 06 hover; 3c DONE 2026-07-31 |
+| ~~public/css/style.css:1167~~ | .card-delete-btn | `color: #fff` | ON-OVERLAY-ADOPT | color: var(--on-overlay) | none | 3c DONE 2026-07-31 |
+| ~~public/css/style.css:1220~~ | .card-download-btn | `background-color: rgba(0, 0, 0, 0.6)` | SCRIM-DRIFT | background-color: var(--scrim) | 0.6->0.55 | scene 06 hover; 3c DONE 2026-07-31 |
+| ~~public/css/style.css:1221~~ | .card-download-btn | `color: #fff` | ON-OVERLAY-ADOPT | color: var(--on-overlay) | none | 3c DONE 2026-07-31 |
+| ~~public/css/style.css:1256~~ | .card-like-btn | `background-color: rgba(0, 0, 0, 0.6)` | SCRIM-DRIFT | background-color: var(--scrim) | 0.6->0.55 | scene 06 hover; 3c DONE 2026-07-31 |
+| ~~public/css/style.css:1257~~ | .card-like-btn | `color: #fff` | ON-OVERLAY-ADOPT | color: var(--on-overlay) | none | 3c DONE 2026-07-31 |
+| ~~public/css/style.css:1664~~ | .player-dock-close | `background: rgba(0, 0, 0, 0.6)` | SCRIM-DRIFT | background: var(--scrim) | 0.6->0.55 | dock state - on-device judgment; :hover sibling already var(--scrim-heavy); 3c DONE 2026-07-31 |
+| ~~public/css/style.css:1665~~ | .player-dock-close | `color: #fff` | ON-OVERLAY-ADOPT | color: var(--on-overlay) | none | 3c DONE 2026-07-31 |
+| ~~public/css/style.css:1875~~ | .resume-overlay | `background-color: rgba(0,0,0,0.85)` | SCRIM-DRIFT | background-color: var(--scrim-heavy) | 0.85->0.8 | scene 04-resume GATE-BLOCKER (value corrected: .85 not the .75 scenes.js claimed); 3c DONE 2026-07-31 |
+| ~~public/css/style.css:1881~~ | .resume-overlay | `color: white` | ON-OVERLAY-ADOPT | color: var(--on-overlay) | none | `white` spelling; 3c DONE 2026-07-31 (differ shows a TEXTUAL white->#ffffff pair - keyword canonicalization gap, zero visual delta, r=g=b=255 both sides) |
+| ~~public/css/style.css:1893~~ | .resume-overlay p | `color: #ccc` | ON-OVERLAY-ADOPT | color: var(--on-overlay-muted) | none | #ccc exact; 3c DONE 2026-07-31 |
+| ~~public/css/style.css:1931~~ | .speed-badge | `background: rgba(0, 0, 0, 0.75)` | SCRIM-DRIFT | background: var(--scrim-heavy) | 0.75->0.8 | press-hold 2x state - on-device judgment; 3c DONE 2026-07-31 |
+| ~~public/css/style.css:1932~~ | .speed-badge | `color: #fff` | ON-OVERLAY-ADOPT | color: var(--on-overlay) | none | 3c DONE 2026-07-31 |
+| ~~public/css/style.css:1979~~ | .skip-btn | `color: #fff` | ON-OVERLAY-ADOPT | color: var(--on-overlay) | none | bg already var(--scrim); 3c DONE 2026-07-31 |
+| ~~public/css/style.css:1998~~ | .skip-btn:hover | `background: rgba(0, 0, 0, 0.8)` | SCRIM-EXACT | background: var(--scrim-heavy) | none | the known mid-line adoption-tooling gap; 3c DONE 2026-07-31 |
+| ~~public/css/style.css:2010~~ | .skip-ripple | `color: #fff` | ON-OVERLAY-ADOPT | color: var(--on-overlay) | none | 3c DONE 2026-07-31 |
+| ~~public/css/style.css:3181~~ | .modal-backdrop | `background-color: rgba(0,0,0,0.5)` | SCRIM-DRIFT | background-color: var(--scrim) | 0.5->0.55 | any confirm-modal surface (scene 21 is now MANUAL-only after the delete-flow incident); 3c DONE 2026-07-31 |
+| ~~public/css/style.css:3301~~ | .oneoff-modal-backdrop | `background-color: rgba(0, 0, 0, 0.5)` | SCRIM-DRIFT | background-color: var(--scrim) | 0.5->0.55 | scene 01; 3c DONE 2026-07-31 |
+| ~~public/css/style.css:3974~~ | .playlists-sheet-backdrop:not([hidden]) | `background: rgba(0, 0, 0, 0.5)` | SCRIM-DRIFT | background: var(--scrim) | 0.5->0.55 | scene 26-playlists-sheet (phone; coverage-audit addition); 3c DONE 2026-07-31 |
+| ~~public/css/style.css:5235~~ | .css-fullscreen .player-controls | `background: rgba(0, 0, 0, 0.75)` | SCRIM-DRIFT | background: var(--scrim-heavy) | 0.75->0.8 | fullscreen state - on-device judgment; 3c DONE 2026-07-31 |
+| ~~public/css/style.css:5488~~ | .cc-overlay-text | `color: #fff` | ON-OVERLAY-ADOPT | color: var(--on-overlay) | none | amendment protects the BACKGROUND only; adjacency noted; 3c DONE 2026-07-31 |
+| ~~public/css/style.css:5791~~ | .sub-sheet-backdrop | `background: rgba(0, 0, 0, 0.5)` | SCRIM-DRIFT | background: var(--scrim) | 0.5->0.55 | scene 12; 3c DONE 2026-07-31 |
+| ~~public/css/style.css:6120~~ | .hard-delete-modal-backdrop | `background-color: rgba(0, 0, 0, 0.65)` | RULED-EXEMPT | token-exempt annotation in 3c | - | RULED (OQ5b): keep 0.65 - intentional destructive-modal dim; 3c DONE 2026-07-31 |
+| ~~public/css/style.css:6707~~ | .book-row-progress | `background: rgba(0, 0, 0, 0.5)` | RULED-EXEMPT | token-exempt annotation in 3c | - | RULED (OQ5c): component art, not a scrim; 3c DONE 2026-07-31 |
+| ~~public/css/style.css:6792~~ | .book-progress-track | `background: rgba(0, 0, 0, 0.5)` | RULED-EXEMPT | token-exempt annotation in 3c | - | RULED (OQ5d): component art, not a scrim; 3c DONE 2026-07-31 |
+| ~~public/css/style.css:7685~~ | .music-eq | `background: rgba(0, 0, 0, 0.45)` | RULED-EXEMPT | token-exempt annotation in 3c | - | RULED (OQ5e): playing-art wash stays 0.45; 3c DONE 2026-07-31 |
+| ~~public/css/style.css:8264~~ | .notif-panel-backdrop:not([hidden]) | `background: rgba(0, 0, 0, 0.5)` | SCRIM-DRIFT | background: var(--scrim) | 0.5->0.55 | scene 12b phone; 3c DONE 2026-07-31 |
 
 ## 3d - shadow elevation consolidation
 
 | file:line | selector / JS context | declaration (linter-exact) | bucket | proposed after | delta | notes |
 |---|---|---|---|---|---|---|
-| public/css/style.css:1813 | .audio-artwork | `box-shadow: 0 8px 24px rgba(0,0,0,0.5)` | SHADOW-ELEVATION | box-shadow: var(--shadow-modal) | alpha 0.5->0.45 | scene 10-audio-expanded GATE-BLOCKER; geometry exact match; decorative-depth semantics flagged |
-| public/css/style.css:1825 | .audio-vinyl | `box-shadow: 0 8px 24px rgba(0,0,0,0.6)` | SHADOW-ELEVATION | box-shadow: var(--shadow-modal) | alpha 0.6->0.45 | scene 10-audio-expanded GATE-BLOCKER; sibling staging (0.6 vs 0.5) collapses - flagged |
-| public/css/style.css:5283 | .chapters-menu | `box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35)` | SHADOW-ELEVATION | box-shadow: var(--shadow-modal) | y 4->8px, blur 14->24px, alpha 0.35->0.45 | every component drifts - visibly heavier; chapters menu has no scene (27-chapters-menu proposed) |
+| ~~public/css/style.css:1813~~ | .audio-artwork | `box-shadow: 0 8px 24px rgba(0,0,0,0.5)` | SHADOW-ELEVATION | box-shadow: var(--shadow-modal) | alpha 0.5->0.45 | scene 10-audio-expanded GATE-BLOCKER; geometry exact match; decorative-depth semantics flagged; 3d DONE 2026-07-31 |
+| ~~public/css/style.css:1825~~ | .audio-vinyl | `box-shadow: 0 8px 24px rgba(0,0,0,0.6)` | SHADOW-ELEVATION | box-shadow: var(--shadow-modal) | alpha 0.6->0.45 | scene 10-audio-expanded GATE-BLOCKER; sibling staging (0.6 vs 0.5) collapses - flagged; 3d DONE 2026-07-31 |
+| ~~public/css/style.css:5283~~ | .chapters-menu | `box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35)` | SHADOW-ELEVATION | box-shadow: var(--shadow-modal) | y 4->8px, blur 14->24px, alpha 0.35->0.45 | every component drifts - visibly heavier; chapters menu has no scene (27-chapters-menu proposed); 3d DONE 2026-07-31 |
 | public/css/style.css:6910 | #reader-pane.pdf-scroll canvas | `box-shadow: 0 1px 6px rgba(0,0,0,0.35)` | SHADOW-OTHER | - | - | paper-page ambient shadow on PDF content, not UI elevation - no action |
-| public/css/style.css:7184 | .reloc-preview-panel | `box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4)` | SHADOW-ELEVATION | box-shadow: var(--shadow-modal) | y 4->8px, alpha 0.4->0.45 | scene 18 |
-| public/css/style.css:8115 | .notif-panel | `box-shadow: 0 4px 24px rgba(0, 0, 0, 0.25)` | SHADOW-ELEVATION | box-shadow: var(--shadow-modal) | y 4->8px, alpha 0.25->0.45 (near-double) | scene 12b desktop - the visible risk in this batch |
+| ~~public/css/style.css:7184~~ | .reloc-preview-panel | `box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4)` | SHADOW-ELEVATION | box-shadow: var(--shadow-modal) | y 4->8px, alpha 0.4->0.45 | scene 18; 3d DONE 2026-07-31 |
+| ~~public/css/style.css:8115~~ | .notif-panel | `box-shadow: 0 4px 24px rgba(0, 0, 0, 0.25)` | SHADOW-ELEVATION | box-shadow: var(--shadow-modal) | y 4->8px, alpha 0.25->0.45 (near-double) | scene 12b desktop - the visible risk in this batch; 3d DONE 2026-07-31 |
 
 ## 3e - motion (0.2s cluster and micro-band both RULED ->0.15; deltas are timing FEEL - invisible to frozen captures; Stop B judges on-device)
 
 | file:line | selector / JS context | declaration (linter-exact) | bucket | proposed after | delta | notes |
 |---|---|---|---|---|---|---|
-| public/css/style.css:490 | body | `transition: background-color 0.2s, color 0.2s` | MOTION-DRIFT | background-color var(--dur-fast), color var(--dur-fast) | 0.2->0.15 x2 | 0.2s cluster RULED ->0.15 (OQ2); theme-swap fade |
-| public/css/style.css:700 | .btn | `transition: background-color var(--dur-fast) var(--ease-ui), border-colo` | MOTION-DRIFT | transform member -> var(--dur-fast) | 0.1->0.15 | 3 of 4 members already tokenized; press feedback; micro-band RULED ->0.15 (Q2 overrides the original 0.1s-literal plan) |
-| public/css/style.css:773 | .sidebar | `transition: transform 0.2s` | MOTION-DRIFT | transform var(--dur-fast) | 0.2->0.15 | 0.2s RULED ->0.15 (OQ2); MUST flip with .main-content:907 or drawer/content desync |
-| public/css/style.css:907 | .main-content | `transition: margin-left 0.2s` | MOTION-DRIFT | margin-left var(--dur-fast) | 0.2->0.15 | 0.2s RULED ->0.15 (OQ2); pair of 773 |
-| public/css/style.css:1343 | .ptr-indicator .icon-refresh | `transition: transform 0.08s linear` | RULED-EXEMPT | token-exempt annotation in 3e | - | RULED (OQ9): pull-gesture tracking stays 0.08s linear |
-| public/css/style.css:1983 | .skip-btn | `transition: opacity 0.2s var(--ease-ui), transform var(--dur-fast) var(-` | MOTION-DRIFT | opacity var(--dur-fast) var(--ease-ui), background var(--dur-fast) var(--ease-ui) | 0.2->0.15 x2 | 0.2s RULED ->0.15 (OQ2); transform member already tokenized |
-| public/css/style.css:2055 | .watch-prevnext-btn | `transition: background-color var(--dur-fast) var(--ease-ui), border-colo` | MOTION-DRIFT | transform member -> var(--dur-fast) | 0.1->0.15 | same shape as .btn:700; micro-band RULED ->0.15 (Q2) |
-| public/css/style.css:2202 | .star | `transition: color 0.1s` | MOTION-DRIFT | color var(--dur-fast) | 0.1->0.15 | rating-star hover; micro-band RULED ->0.15 (Q2) |
-| public/css/style.css:3193 | .modal-backdrop | `transition: opacity 0.2s ease-out` | MOTION-DRIFT | opacity var(--dur-fast) ease-out | 0.2->0.15 | 0.2s RULED ->0.15 (OQ2); ease-out stays literal (no token covers it); pair of 3226 |
-| public/css/style.css:3226 | .modal-content | `transition: transform 0.2s ease-out` | MOTION-DRIFT | transform var(--dur-fast) ease-out | 0.2->0.15 | 0.2s RULED ->0.15 (OQ2); entrance pair of 3193 |
-| public/css/style.css:3976 | .playlists-sheet-backdrop (mobile) | `transition: opacity 0.2s ease-out` | MOTION-DRIFT | opacity var(--dur-fast) ease-out | 0.2->0.15 | 0.2s RULED ->0.15 (OQ2); pair of 4003 |
-| public/css/style.css:4003 | .playlists-sheet (mobile) | `transition: transform 0.2s ease-out` | MOTION-DRIFT | transform var(--dur-fast) ease-out | 0.2->0.15 | 0.2s RULED ->0.15 (OQ2); slide-up pair of 3976 |
-| public/css/style.css:5802 | .sub-sheet-backdrop | `transition: opacity 0.2s ease-out` | MOTION-DRIFT | opacity var(--dur-fast) ease-out | 0.2->0.15 | 0.2s RULED ->0.15 (OQ2); pair of 5825 |
-| public/css/style.css:5825 | .sub-sheet | `transition: transform 0.2s ease-out` | MOTION-DRIFT | transform var(--dur-fast) ease-out | 0.2->0.15 | 0.2s RULED ->0.15 (OQ2); pair of 5802 |
-| public/css/style.css:6434 | .dl-status-chip-progress-fill | `transition: width 300ms linear` | MOTION-DRIFT | width var(--dur-slow) linear | 300ms->0.25s | linear deliberate for progress interpolation - stays literal |
-| public/css/style.css:7385 | .login-submit | `transition: filter 0.12s var(--ease-ui)` | MOTION-DRIFT | filter var(--dur-fast) var(--ease-ui) | 0.12->0.15 | easing already tokenized; micro-band RULED ->0.15 (Q2) |
-| public/css/style.css:8267 | .notif-panel-backdrop (mobile) | `transition: opacity 0.2s var(--ease-ui)` | MOTION-DRIFT | opacity var(--dur-fast) var(--ease-ui) | 0.2->0.15 | 0.2 TIE |
+| ~~public/css/style.css:490~~ | body | `transition: background-color 0.2s, color 0.2s` | MOTION-DRIFT | background-color var(--dur-fast), color var(--dur-fast) | 0.2->0.15 x2 | 0.2s cluster RULED ->0.15 (OQ2); theme-swap fade; 3e DONE 2026-07-31 |
+| ~~public/css/style.css:700~~ | .btn | `transition: background-color var(--dur-fast) var(--ease-ui), border-colo` | MOTION-DRIFT | transform member -> var(--dur-fast) | 0.1->0.15 | 3 of 4 members already tokenized; press feedback; micro-band RULED ->0.15 (Q2 overrides the original 0.1s-literal plan); 3e DONE 2026-07-31 |
+| ~~public/css/style.css:773~~ | .sidebar | `transition: transform 0.2s` | MOTION-DRIFT | transform var(--dur-fast) | 0.2->0.15 | 0.2s RULED ->0.15 (OQ2); MUST flip with .main-content:907 or drawer/content desync; 3e DONE 2026-07-31 |
+| ~~public/css/style.css:907~~ | .main-content | `transition: margin-left 0.2s` | MOTION-DRIFT | margin-left var(--dur-fast) | 0.2->0.15 | 0.2s RULED ->0.15 (OQ2); pair of 773; 3e DONE 2026-07-31 |
+| ~~public/css/style.css:1343~~ | .ptr-indicator .icon-refresh | `transition: transform 0.08s linear` | RULED-EXEMPT | token-exempt annotation in 3e | - | RULED (OQ9): pull-gesture tracking stays 0.08s linear; 3e DONE 2026-07-31 |
+| ~~public/css/style.css:1983~~ | .skip-btn | `transition: opacity 0.2s var(--ease-ui), transform var(--dur-fast) var(-` | MOTION-DRIFT | opacity var(--dur-fast) var(--ease-ui), background var(--dur-fast) var(--ease-ui) | 0.2->0.15 x2 | 0.2s RULED ->0.15 (OQ2); transform member already tokenized; 3e DONE 2026-07-31 |
+| ~~public/css/style.css:2055~~ | .watch-prevnext-btn | `transition: background-color var(--dur-fast) var(--ease-ui), border-colo` | MOTION-DRIFT | transform member -> var(--dur-fast) | 0.1->0.15 | same shape as .btn:700; micro-band RULED ->0.15 (Q2); 3e DONE 2026-07-31 |
+| ~~public/css/style.css:2202~~ | .star | `transition: color 0.1s` | MOTION-DRIFT | color var(--dur-fast) | 0.1->0.15 | rating-star hover; micro-band RULED ->0.15 (Q2); 3e DONE 2026-07-31 |
+| ~~public/css/style.css:3193~~ | .modal-backdrop | `transition: opacity 0.2s ease-out` | MOTION-DRIFT | opacity var(--dur-fast) ease-out | 0.2->0.15 | 0.2s RULED ->0.15 (OQ2); ease-out stays literal (no token covers it); pair of 3226; 3e DONE 2026-07-31 |
+| ~~public/css/style.css:3226~~ | .modal-content | `transition: transform 0.2s ease-out` | MOTION-DRIFT | transform var(--dur-fast) ease-out | 0.2->0.15 | 0.2s RULED ->0.15 (OQ2); entrance pair of 3193; 3e DONE 2026-07-31 |
+| ~~public/css/style.css:3976~~ | .playlists-sheet-backdrop (mobile) | `transition: opacity 0.2s ease-out` | MOTION-DRIFT | opacity var(--dur-fast) ease-out | 0.2->0.15 | 0.2s RULED ->0.15 (OQ2); pair of 4003; 3e DONE 2026-07-31 |
+| ~~public/css/style.css:4003~~ | .playlists-sheet (mobile) | `transition: transform 0.2s ease-out` | MOTION-DRIFT | transform var(--dur-fast) ease-out | 0.2->0.15 | 0.2s RULED ->0.15 (OQ2); slide-up pair of 3976; 3e DONE 2026-07-31 |
+| ~~public/css/style.css:5802~~ | .sub-sheet-backdrop | `transition: opacity 0.2s ease-out` | MOTION-DRIFT | opacity var(--dur-fast) ease-out | 0.2->0.15 | 0.2s RULED ->0.15 (OQ2); pair of 5825; 3e DONE 2026-07-31 |
+| ~~public/css/style.css:5825~~ | .sub-sheet | `transition: transform 0.2s ease-out` | MOTION-DRIFT | transform var(--dur-fast) ease-out | 0.2->0.15 | 0.2s RULED ->0.15 (OQ2); pair of 5802; 3e DONE 2026-07-31 |
+| ~~public/css/style.css:6434~~ | .dl-status-chip-progress-fill | `transition: width 300ms linear` | MOTION-DRIFT | width var(--dur-slow) linear | 300ms->0.25s | linear deliberate for progress interpolation - stays literal; 3e DONE 2026-07-31 |
+| ~~public/css/style.css:7385~~ | .login-submit | `transition: filter 0.12s var(--ease-ui)` | MOTION-DRIFT | filter var(--dur-fast) var(--ease-ui) | 0.12->0.15 | easing already tokenized; micro-band RULED ->0.15 (Q2); 3e DONE 2026-07-31 |
+| ~~public/css/style.css:8267~~ | .notif-panel-backdrop (mobile) | `transition: opacity 0.2s var(--ease-ui)` | MOTION-DRIFT | opacity var(--dur-fast) var(--ease-ui) | 0.2->0.15 | 0.2 TIE; 3e DONE 2026-07-31 |
 
 ## 3f - line-height band (OQ6 rulings applied: body and cc-overlay exempt)
 
 | file:line | selector / JS context | declaration (linter-exact) | bucket | proposed after | delta | notes |
 |---|---|---|---|---|---|---|
-| lib/ytdlp/views/subscriptions.html:94 | .sub-list-header-status (page style) | `line-height: 1.25` | LH-EXACT | line-height: var(--lh-tight) | none | comment arithmetic 12*1.25=15 vs min-height:15px becomes token-coupled - comment must be updated in the same commit |
-| public/css/style.css:489 | body | `line-height: 1.4` | RULED-EXEMPT | token-exempt annotation in 3f | - | RULED (OQ6): global body base stays 1.4 |
-| public/css/style.css:1389 | .video-title | `line-height: 1.3` | LH-DRIFT | line-height: var(--lh-tight) | 1.3->1.25 | scene 06; 2-line clamp height shrinks slightly |
-| public/css/style.css:2312 | .uploader-subs | `line-height: 1.5` | LH-EXACT | line-height: var(--lh-relaxed) | none |  |
-| public/css/style.css:2522 | .related-title | `line-height: 1.3` | LH-DRIFT | line-height: var(--lh-tight) | 1.3->1.25 | scene 05 |
-| public/css/style.css:2575 | .setup-box p | `line-height: 1.5` | LH-EXACT | line-height: var(--lh-relaxed) | none |  |
-| public/css/style.css:2635 | .action-status | `line-height: 1.25` | LH-EXACT | line-height: var(--lh-tight) | none | subscriptions.html:94 pins the same value to match this class |
-| public/css/style.css:5491 | .cc-overlay-text | `line-height: 1.35` | RULED-EXEMPT | token-exempt annotation in 3f | - | RULED (OQ6): caption legibility spacing stays 1.35 |
-| public/css/style.css:6714 | .book-row-title | `line-height: 1.25` | LH-EXACT | line-height: var(--lh-tight) | none |  |
-| public/css/style.css:7828 | .shortcuts-modal kbd | `line-height: 1.5` | LH-EXACT | line-height: var(--lh-relaxed) | none |  |
-| public/css/style.css:8209 | .notif-row-title | `line-height: 1.3` | LH-DRIFT | line-height: var(--lh-tight) | 1.3->1.25 | scene 12b |
+| ~~lib/ytdlp/views/subscriptions.html:94~~ | .sub-list-header-status (page style) | `line-height: 1.25` | LH-EXACT | line-height: var(--lh-tight) | none | comment arithmetic 12*1.25=15 vs min-height:15px becomes token-coupled - comment must be updated in the same commit; 3f DONE 2026-07-31 |
+| ~~public/css/style.css:489~~ | body | `line-height: 1.4` | RULED-EXEMPT | token-exempt annotation in 3f | - | RULED (OQ6): global body base stays 1.4; 3f DONE 2026-07-31 |
+| ~~public/css/style.css:1389~~ | .video-title | `line-height: 1.3` | LH-DRIFT | line-height: var(--lh-tight) | 1.3->1.25 | scene 06; 2-line clamp height shrinks slightly; 3f DONE 2026-07-31 |
+| ~~public/css/style.css:2312~~ | .uploader-subs | `line-height: 1.5` | LH-EXACT | line-height: var(--lh-relaxed) | none | 3f DONE 2026-07-31 |
+| ~~public/css/style.css:2522~~ | .related-title | `line-height: 1.3` | LH-DRIFT | line-height: var(--lh-tight) | 1.3->1.25 | scene 05; 3f DONE 2026-07-31 |
+| ~~public/css/style.css:2575~~ | .setup-box p | `line-height: 1.5` | LH-EXACT | line-height: var(--lh-relaxed) | none | 3f DONE 2026-07-31 |
+| ~~public/css/style.css:2635~~ | .action-status | `line-height: 1.25` | LH-EXACT | line-height: var(--lh-tight) | none | subscriptions.html:94 pins the same value to match this class; 3f DONE 2026-07-31 |
+| ~~public/css/style.css:5491~~ | .cc-overlay-text | `line-height: 1.35` | RULED-EXEMPT | token-exempt annotation in 3f | - | RULED (OQ6): caption legibility spacing stays 1.35; 3f DONE 2026-07-31 |
+| ~~public/css/style.css:6714~~ | .book-row-title | `line-height: 1.25` | LH-EXACT | line-height: var(--lh-tight) | none | 3f DONE 2026-07-31 |
+| ~~public/css/style.css:7828~~ | .shortcuts-modal kbd | `line-height: 1.5` | LH-EXACT | line-height: var(--lh-relaxed) | none | 3f DONE 2026-07-31 |
+| ~~public/css/style.css:8209~~ | .notif-row-title | `line-height: 1.3` | LH-DRIFT | line-height: var(--lh-tight) | 1.3->1.25 | scene 12b; 3f DONE 2026-07-31 |
 
 ## 3g - radius drift (R8; Dean RULING B 2026-07-30): the seven 6/8/14px sites adopt the EXISTING era-varying --radius-lg (12px in 2021 / 0 in 2005 / 2px in 2009+2014) with per-era deltas enumerated per row - the only deliberately era-VARYING batch, witnessed by the 24b-24e era scenes; the 3px -> 2/4 per-site literal trio is era-invariant
 
 | file:line | selector / JS context | declaration (linter-exact) | bucket | proposed after | delta | notes |
 |---|---|---|---|---|---|---|
-| public/css/style.css:1934 | .speed-badge | `border-radius: 14px` | G-RADIUS-DRIFT | border-radius: var(--radius-lg) | 14px -> 12px (2021) / 0 (2005) / 2px (2009+2014) | RULED B (2026-07-30): era-varying adoption, per-era deltas enumerated; press-hold state - on-device judgment in every era |
-| public/css/style.css:6735 | .pinned-unpin-btn | `border-radius: 3px` | G-RADIUS-DRIFT | border-radius: 2px | 3px->2px (per-site, tie-down; Stop B flip to 4px open) | scene 11 |
-| public/css/style.css:6826 | .books-shelf-chip | `border-radius: 14px` | G-RADIUS-DRIFT | border-radius: var(--radius-lg) | 14px -> 12px (2021) / 0 (2005) / 2px (2009+2014) | RULED B (2026-07-30): era-varying adoption, per-era deltas enumerated; scenes 15 + 24d-r8-books (2005/2009) |
-| public/css/style.css:7023 | .reader-np-cover | `border-radius: 3px` | G-RADIUS-DRIFT | border-radius: 4px | 3px->4px (per-site: joins the 4px thumb family) | scene 14 |
-| public/css/style.css:7178 | .reloc-preview-panel | `border-radius: 6px` | G-RADIUS-DRIFT | border-radius: var(--radius-lg) | 6px -> 12px (2021) / 0 (2005) / 2px (2009+2014) | RULED B (2026-07-30): era-varying adoption, per-era deltas enumerated; scenes 18 + 24e-r8-reloc (2005/2009); largest 2021 delta in the batch |
-| public/css/style.css:7247 | .reloc-preview-badge | `border-radius: 3px` | G-RADIUS-DRIFT | border-radius: 2px | 3px->2px (per-site, tie-down) | scene 18 |
-| public/css/style.css:7539 | .music-drill-art | `border-radius: 8px` | G-RADIUS-DRIFT | border-radius: var(--radius-lg) | 8px -> 12px (2021) / 0 (2005) / 2px (2009+2014) | RULED B (2026-07-30): era-varying adoption, per-era deltas enumerated; scenes 09 + 24c-r8-music-drill (2005/2009); the original 8->12 album-rounding Stop B flag |
-| public/css/style.css:7599 | .music-album-art | `border-radius: 6px` | G-RADIUS-DRIFT | border-radius: var(--radius-lg) | 6px -> 12px (2021) / 0 (2005) / 2px (2009+2014) | RULED B (2026-07-30): era-varying adoption, per-era deltas enumerated; scenes 08 + 24b-r8-music-lib (2005/2009) |
-| public/css/style.css:7627 | .music-artist-card | `border-radius: 8px` | G-RADIUS-DRIFT | border-radius: var(--radius-lg) | 8px -> 12px (2021) / 0 (2005) / 2px (2009+2014) | RULED B (2026-07-30): era-varying adoption, per-era deltas enumerated; artists tab - on-device judgment in era contexts |
-| public/css/style.css:7643 | .music-song-row | `border-radius: 6px` | G-RADIUS-DRIFT | border-radius: var(--radius-lg) | 6px -> 12px (2021) / 0 (2005) / 2px (2009+2014) | RULED B (2026-07-30): era-varying adoption, per-era deltas enumerated; scenes 09 + 24c-r8-music-drill (2005/2009) |
+| ~~public/css/style.css:1934~~ | .speed-badge | `border-radius: 14px` | G-RADIUS-DRIFT | border-radius: var(--radius-lg) | 14px -> 12px (2021) / 0 (2005) / 2px (2009+2014) | RULED B (2026-07-30): era-varying adoption, per-era deltas enumerated; press-hold state - on-device judgment in every era; 3g DONE 2026-07-31 (per-era enumeration verified against ruling B) |
+| public/css/style.css:6735 | .pinned-unpin-btn | `border-radius: 2px` | G-RADIUS-DONE-RAW | - | residual raw literal (2/4px - the R7 Tier 4 class) | was 3px; 3g DONE 2026-07-31 - consolidated per-site per ruling B; the result is DELIBERATELY a raw 2/4px literal (no small-radius token exists - that design is Tier 4 R7), so the site stays in the burn-down as R7 population |
+| ~~public/css/style.css:6826~~ | .books-shelf-chip | `border-radius: 14px` | G-RADIUS-DRIFT | border-radius: var(--radius-lg) | 14px -> 12px (2021) / 0 (2005) / 2px (2009+2014) | RULED B (2026-07-30): era-varying adoption, per-era deltas enumerated; scenes 15 + 24d-r8-books (2005/2009); 3g DONE 2026-07-31 (per-era enumeration verified against ruling B) |
+| public/css/style.css:7023 | .reader-np-cover | `border-radius: 4px` | G-RADIUS-DONE-RAW | - | residual raw literal (2/4px - the R7 Tier 4 class) | was 3px; 3g DONE 2026-07-31 - consolidated per-site per ruling B; the result is DELIBERATELY a raw 2/4px literal (no small-radius token exists - that design is Tier 4 R7), so the site stays in the burn-down as R7 population |
+| ~~public/css/style.css:7178~~ | .reloc-preview-panel | `border-radius: 6px` | G-RADIUS-DRIFT | border-radius: var(--radius-lg) | 6px -> 12px (2021) / 0 (2005) / 2px (2009+2014) | RULED B (2026-07-30): era-varying adoption, per-era deltas enumerated; scenes 18 + 24e-r8-reloc (2005/2009); largest 2021 delta in the batch; 3g DONE 2026-07-31 (per-era enumeration verified against ruling B) |
+| public/css/style.css:7247 | .reloc-preview-badge | `border-radius: 2px` | G-RADIUS-DONE-RAW | - | residual raw literal (2/4px - the R7 Tier 4 class) | was 3px; 3g DONE 2026-07-31 - consolidated per-site per ruling B; the result is DELIBERATELY a raw 2/4px literal (no small-radius token exists - that design is Tier 4 R7), so the site stays in the burn-down as R7 population |
+| ~~public/css/style.css:7539~~ | .music-drill-art | `border-radius: 8px` | G-RADIUS-DRIFT | border-radius: var(--radius-lg) | 8px -> 12px (2021) / 0 (2005) / 2px (2009+2014) | RULED B (2026-07-30): era-varying adoption, per-era deltas enumerated; scenes 09 + 24c-r8-music-drill (2005/2009); the original 8->12 album-rounding Stop B flag; 3g DONE 2026-07-31 (per-era enumeration verified against ruling B) |
+| ~~public/css/style.css:7599~~ | .music-album-art | `border-radius: 6px` | G-RADIUS-DRIFT | border-radius: var(--radius-lg) | 6px -> 12px (2021) / 0 (2005) / 2px (2009+2014) | RULED B (2026-07-30): era-varying adoption, per-era deltas enumerated; scenes 08 + 24b-r8-music-lib (2005/2009); 3g DONE 2026-07-31 (per-era enumeration verified against ruling B) |
+| ~~public/css/style.css:7627~~ | .music-artist-card | `border-radius: 8px` | G-RADIUS-DRIFT | border-radius: var(--radius-lg) | 8px -> 12px (2021) / 0 (2005) / 2px (2009+2014) | RULED B (2026-07-30): era-varying adoption, per-era deltas enumerated; artists tab - on-device judgment in era contexts; 3g DONE 2026-07-31 (per-era enumeration verified against ruling B) |
+| ~~public/css/style.css:7643~~ | .music-song-row | `border-radius: 6px` | G-RADIUS-DRIFT | border-radius: var(--radius-lg) | 6px -> 12px (2021) / 0 (2005) / 2px (2009+2014) | RULED B (2026-07-30): era-varying adoption, per-era deltas enumerated; scenes 09 + 24c-r8-music-drill (2005/2009); 3g DONE 2026-07-31 (per-era enumeration verified against ruling B) |
 
 ## 3h - JS-surface adoptions (v5 scope; post-original addition, hence the new letter)
 
 | file:line | selector / JS context | declaration (linter-exact) | bucket | proposed after | delta | notes |
 |---|---|---|---|---|---|---|
-| public/js/setup.js:618 | bottombar-editor toggle label cssText | `gap: 6px` | JS-ADOPT | gap: var(--space-3) | none |  |
-| public/js/stats.js:161 | buildBreakdownRow cssText | `gap: 10px` | JS-ADOPT | gap: var(--space-5) | none |  |
-| public/js/stats.js:161 | buildBreakdownRow cssText | `padding: 8px 4px` | JS-ADOPT | padding: var(--space-4) var(--space-2) | none |  |
-| public/js/stats.js:164 | buildBreakdownRow labelEl cssText | `font-weight: bold` | FW-JS-ADOPT | font-weight:var(--fw-bold) | none (bold==700) |  |
-| public/js/stats.js:215 | mostWatched row cssText | `gap: 10px` | JS-ADOPT | gap: var(--space-5) | none |  |
-| public/js/stats.js:215 | mostWatched row cssText | `padding: 8px 4px` | JS-ADOPT | padding: var(--space-4) var(--space-2) | none |  |
-| public/js/stats.js:260 | duplicates renderSection header cssText | `font-weight: bold` | FW-JS-ADOPT | font-weight:var(--fw-bold) | none (bold==700) |  |
-| public/js/stats.js:260 | duplicates renderSection header cssText | `padding: 10px 4px 4px` | JS-ADOPT | padding: var(--space-5) var(--space-2) var(--space-2) | none |  |
-| public/js/stats.js:265 | duplicates group row cssText | `padding: 8px 4px` | JS-ADOPT | padding: var(--space-4) var(--space-2) | none |  |
-| public/js/stats.js:278 | duplicate item pathLine cssText | `padding-left: 12px` | JS-ADOPT | padding-left: var(--space-6) | none |  |
-| public/js/stats.js:313 | buildBookFolderRow cssText | `gap: 10px` | JS-ADOPT | gap: var(--space-5) | none |  |
-| public/js/stats.js:313 | buildBookFolderRow cssText | `padding: 8px 4px` | JS-ADOPT | padding: var(--space-4) var(--space-2) | none |  |
-| public/js/stats.js:316 | buildBookFolderRow labelEl cssText | `font-weight: bold` | FW-JS-ADOPT | font-weight:var(--fw-bold) | none (bold==700) |  |
-| public/js/stats.js:347 | buildRepoLink cssText | `font-weight: bold` | FW-JS-ADOPT | font-weight:var(--fw-bold) | none (bold==700) | same cssText already consumes a var() today - proven pattern |
-| public/js/stats.js:354 | buildAboutRow row cssText | `gap: 10px` | JS-ADOPT | gap: var(--space-5) | none |  |
-| public/js/stats.js:354 | buildAboutRow row cssText | `padding: 8px 4px` | JS-ADOPT | padding: var(--space-4) var(--space-2) | none |  |
-| public/js/stats.js:357 | buildAboutRow labelEl cssText | `font-weight: bold` | FW-JS-ADOPT | font-weight:var(--fw-bold) | none (bold==700) |  |
-| public/js/stats.js:389 | About GitHub links row cssText | `gap: 16px` | JS-ADOPT | gap: var(--space-8) | none |  |
-| public/js/stats.js:389 | About GitHub links row cssText | `padding: 14px 4px 4px` | JS-DRIFT | padding: var(--space-6) var(--space-2) var(--space-2) | 14px->12px | scene 16 - the one visible JS delta |
-| public/js/watch.js:635 | .watch-view-error cssText | `padding: 24px 16px` | JS-ADOPT | padding: var(--space-12) var(--space-8) | none |  |
-| public/js/watch.js:638 | error heading style.marginBottom | `margin-bottom: 12px` | JS-ADOPT | margin-bottom: var(--space-6) | none |  |
-| public/js/watch.js:647 | error backLink style.marginTop | `margin-top: 16px` | JS-ADOPT | margin-top: var(--space-8) | none |  |
-| public/js/watch.js:1921 | pinBtn.style.marginLeft | `margin-left: 8px` | JS-ADOPT | margin-left: var(--space-4) | none |  |
-| public/js/watch.js:2129 | comments empty-state cssText | `padding: 12px 0` | JS-ADOPT | padding: var(--space-6) 0 | none |  |
+| ~~public/js/setup.js:618~~ | bottombar-editor toggle label cssText | `gap: 6px` | JS-ADOPT | gap: var(--space-3) | none | 3h DONE 2026-07-31 |
+| ~~public/js/stats.js:161~~ | buildBreakdownRow cssText | `gap: 10px` | JS-ADOPT | gap: var(--space-5) | none | 3h DONE 2026-07-31 |
+| ~~public/js/stats.js:161~~ | buildBreakdownRow cssText | `padding: 8px 4px` | JS-ADOPT | padding: var(--space-4) var(--space-2) | none | 3h DONE 2026-07-31 |
+| ~~public/js/stats.js:164~~ | buildBreakdownRow labelEl cssText | `font-weight: bold` | FW-JS-ADOPT | font-weight:var(--fw-bold) | none (bold==700) | 3h DONE 2026-07-31 |
+| ~~public/js/stats.js:215~~ | mostWatched row cssText | `gap: 10px` | JS-ADOPT | gap: var(--space-5) | none | 3h DONE 2026-07-31 |
+| ~~public/js/stats.js:215~~ | mostWatched row cssText | `padding: 8px 4px` | JS-ADOPT | padding: var(--space-4) var(--space-2) | none | 3h DONE 2026-07-31 |
+| ~~public/js/stats.js:260~~ | duplicates renderSection header cssText | `font-weight: bold` | FW-JS-ADOPT | font-weight:var(--fw-bold) | none (bold==700) | 3h DONE 2026-07-31 |
+| ~~public/js/stats.js:260~~ | duplicates renderSection header cssText | `padding: 10px 4px 4px` | JS-ADOPT | padding: var(--space-5) var(--space-2) var(--space-2) | none | 3h DONE 2026-07-31 |
+| ~~public/js/stats.js:265~~ | duplicates group row cssText | `padding: 8px 4px` | JS-ADOPT | padding: var(--space-4) var(--space-2) | none | 3h DONE 2026-07-31 |
+| ~~public/js/stats.js:278~~ | duplicate item pathLine cssText | `padding-left: 12px` | JS-ADOPT | padding-left: var(--space-6) | none | 3h DONE 2026-07-31 |
+| ~~public/js/stats.js:313~~ | buildBookFolderRow cssText | `gap: 10px` | JS-ADOPT | gap: var(--space-5) | none | 3h DONE 2026-07-31 |
+| ~~public/js/stats.js:313~~ | buildBookFolderRow cssText | `padding: 8px 4px` | JS-ADOPT | padding: var(--space-4) var(--space-2) | none | 3h DONE 2026-07-31 |
+| ~~public/js/stats.js:316~~ | buildBookFolderRow labelEl cssText | `font-weight: bold` | FW-JS-ADOPT | font-weight:var(--fw-bold) | none (bold==700) | 3h DONE 2026-07-31 |
+| ~~public/js/stats.js:347~~ | buildRepoLink cssText | `font-weight: bold` | FW-JS-ADOPT | font-weight:var(--fw-bold) | none (bold==700) | same cssText already consumes a var() today - proven pattern; 3h DONE 2026-07-31 |
+| ~~public/js/stats.js:354~~ | buildAboutRow row cssText | `gap: 10px` | JS-ADOPT | gap: var(--space-5) | none | 3h DONE 2026-07-31 |
+| ~~public/js/stats.js:354~~ | buildAboutRow row cssText | `padding: 8px 4px` | JS-ADOPT | padding: var(--space-4) var(--space-2) | none | 3h DONE 2026-07-31 |
+| ~~public/js/stats.js:357~~ | buildAboutRow labelEl cssText | `font-weight: bold` | FW-JS-ADOPT | font-weight:var(--fw-bold) | none (bold==700) | 3h DONE 2026-07-31 |
+| ~~public/js/stats.js:389~~ | About GitHub links row cssText | `gap: 16px` | JS-ADOPT | gap: var(--space-8) | none | 3h DONE 2026-07-31 |
+| ~~public/js/stats.js:389~~ | About GitHub links row cssText | `padding: 14px 4px 4px` | JS-DRIFT | padding: var(--space-6) var(--space-2) var(--space-2) | 14px->12px | scene 16 - the one visible JS delta; 3h DONE 2026-07-31 |
+| ~~public/js/watch.js:635~~ | .watch-view-error cssText | `padding: 24px 16px` | JS-ADOPT | padding: var(--space-12) var(--space-8) | none | 3h DONE 2026-07-31 |
+| ~~public/js/watch.js:638~~ | error heading style.marginBottom | `margin-bottom: 12px` | JS-ADOPT | margin-bottom: var(--space-6) | none | 3h DONE 2026-07-31 |
+| ~~public/js/watch.js:647~~ | error backLink style.marginTop | `margin-top: 16px` | JS-ADOPT | margin-top: var(--space-8) | none | 3h DONE 2026-07-31 |
+| ~~public/js/watch.js:1921~~ | pinBtn.style.marginLeft | `margin-left: 8px` | JS-ADOPT | margin-left: var(--space-4) | none | 3h DONE 2026-07-31 |
+| ~~public/js/watch.js:2129~~ | comments empty-state cssText | `padding: 12px 0` | JS-ADOPT | padding: var(--space-6) 0 | none | 3h DONE 2026-07-31 |
 
 ## No-action census (Tier 4 residue, protected, geometry, layout constants - completeness rows for ledger-check)
 
@@ -410,6 +410,7 @@ Extra-census work items (no linter row, tracked in prose so ledger-check
 stays a bijection): the whole of 3b control sizing (R3: 40->44/36
 per-site, 30/34->32 - site sweep at execution) and .ptr-indicator
 adopting --size-control (Stop A Batch C), both on ungoverned
-width/height properties; the --radius-lg:12px token definition (rides
-the 3g commit); the cc amendment-comment value fix 0.85->0.72 (rides
+width/height properties; the 3g radius batch (which DEFINES
+NOTHING - --radius-lg already existed era-varying; the interim
+'new token' premise was killed by a gate CRITICAL and must stay dead); the cc amendment-comment value fix 0.85->0.72 (rides
 3c, OQ8). The subscriptions.html:94 comment update rides its 3f row.
