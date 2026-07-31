@@ -37,8 +37,9 @@ that only surface on 22 (see the CI workflow).
 
 ## Styling: the design-token system (MANDATORY for any CSS/JS style change)
 
-FileTube's styling runs on a governed design-token system (shipped
-v1.58.0-v1.59.0; contract in `docs/references/design-token-audit-v1.1.md`).
+FileTube's styling runs on a governed design-token system (built up
+across v1.56.0-v1.59.0; contract in
+`docs/references/design-token-audit-v1.1.md`).
 If you touch a color, spacing, radius, z-index, shadow, motion, type, or
 control-size value ANYWHERE (style.css, `<style>` blocks, `el.style.*` /
 `cssText` / `setProperty` in JS), the rules are:
