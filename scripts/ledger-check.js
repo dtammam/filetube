@@ -4,7 +4,9 @@
  * ledger-check - binds the current expected-delta ledger to reality.
  * (Bound Tier 3 Step 3 through 2026-07-31; now binds the Tier 4 ledger.)
  *
- * The ledger (docs/exec-plans/active/tokens-tier4-ledger.md) claims a
+ * The ledger (docs/exec-plans/completed/2026-07-31-tokens-tier4-ledger.md,
+ * path follows the Tier 4 closure; its 54 unstruck rows remain the live
+ * census the ratchet will freeze) claims a
  * complete census: every site the css-token-lint metric reports appears in
  * exactly one ledger row, with the declaration text the linter sees. Any
  * CSS/JS change that lands between ledger authoring and batch execution
@@ -29,7 +31,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const REPO = path.join(__dirname, '..');
-const LEDGER = path.join(REPO, 'docs/exec-plans/active/tokens-tier4-ledger.md');
+const LEDGER = path.join(REPO, 'docs/exec-plans/completed/2026-07-31-tokens-tier4-ledger.md');
 
 function collectSites(root = REPO) {
   // Mirrors css-token-lint's main() collection exactly (same module, same

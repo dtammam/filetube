@@ -1,13 +1,18 @@
 # Tokens Tier 4 - era-consistency design + execution plan
 
-STATUS: EXECUTING (branch tokens/tier4, opened 2026-07-31). Stop B
-closed on Dean's device pass 2026-07-31; Dean ruled at Tier 4 intake:
-code first, screenshots at the Tier 4 Stop (the Step 3 supersession
-pattern - the before-state is frozen in the published v1.58.0 image),
-branch flow stays (no PR switch), T4-5 both keep as-is. Execution
-protocol + batch details in the EXECUTION section at the bottom;
-census + expected deltas in tokens-tier4-ledger.md (bound by
-`npm run ledger:check`).
+STATUS: CLOSED (2026-07-31). Shipped as v1.59.0 (main 2b6da82, tag
+pushed) after the full two-reviewer gate (both seats delta-APPROVE)
+and sequential dual-Node 5321/5321 x2. **The Tier 4 Stop closed the
+same day on Dean's on-device pass: "I've checked and everything just
+seems beautiful" - ZERO rejections**, so all eleven R7 radius
+adoptions stand per-surface approved (amendment b satisfied), and the
+two preserved z inversions + the armed-unpin transient passed
+on-device judgment. Per-site rejection flips were never needed and
+remain trivially available (one line each) if anything surfaces later.
+Intake rulings honored: code first, screenshots at the Stop, branch
+flow, T4-5 both keep as-is. Residue after this tier: burn-down 54
+(enumerated in the ledger), tech-debt #67/#68/#69; the linter ratchet
+(tranche G, gated on #68) is the only remaining token tranche.
 
 ## T4-1: ghost-red retirement - the 9 var(--accent, #cc0000) sites
 
