@@ -486,7 +486,7 @@ body {
   background-color: var(--bg-color);
   color: var(--text-primary);
   font-size: var(--fs-base);
-  line-height: 1.4;
+  line-height: 1.4; /* token-exempt: global body base - deliberate site-wide tuning (OQ6 ruling) */
   transition: background-color var(--dur-fast), color var(--dur-fast);
 }
 
@@ -1386,7 +1386,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   font-family: var(--heading-font, var(--font-family));
   font-weight: var(--heading-weight, var(--fw-bold));
   letter-spacing: var(--heading-tracking, normal);
-  line-height: 1.3;
+  line-height: var(--lh-tight);
   margin-bottom: var(--space-2);
   max-height: 34px;
   display: -webkit-box;
@@ -2309,7 +2309,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   background-color: var(--btn-bg);
   border: 1px solid var(--border-color);
   border-radius: var(--radius);
-  line-height: 1.5;
+  line-height: var(--lh-relaxed);
 }
 
 /* Description Box */
@@ -2519,7 +2519,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   font-size: var(--fs-sm);
   font-weight: var(--fw-bold);
   color: var(--text-primary);
-  line-height: 1.3;
+  line-height: var(--lh-tight);
   max-height: 32px;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -2572,7 +2572,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   font-size: var(--fs-md);
   margin-bottom: var(--space-10);
   color: var(--text-primary);
-  line-height: 1.5;
+  line-height: var(--lh-relaxed);
 }
 
 .form-group {
@@ -2632,7 +2632,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   display: inline-block;
   font-size: var(--fs-xs);
   color: var(--text-secondary);
-  line-height: 1.25;
+  line-height: var(--lh-tight);
   min-height: 15px;
 }
 .action-status-error {
@@ -5488,7 +5488,7 @@ body.ft-css-fullscreen .bottom-nav {
   color: var(--on-overlay);
   font-family: var(--font-family);
   font-size: var(--fs-md);
-  line-height: 1.35;
+  line-height: 1.35; /* token-exempt: caption legibility spacing, protected-background-adjacent (OQ6 ruling) */
   padding: var(--space-2) var(--space-5);
   border-radius: 4px;
   text-align: center;
@@ -6711,7 +6711,7 @@ body.ft-css-fullscreen .bottom-nav {
   display: block;
   margin-top: var(--space-2);
   font-size: var(--fs-xs);
-  line-height: 1.25;
+  line-height: var(--lh-tight);
   overflow: hidden;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -7825,7 +7825,7 @@ body.ft-css-fullscreen .bottom-nav {
   text-align: center;
   font-family: var(--mono-font);
   font-size: var(--fs-xs);
-  line-height: 1.5;
+  line-height: var(--lh-relaxed);
   color: var(--text-primary);
   background-color: var(--btn-bg);
   border: 1px solid var(--border-dark);
@@ -8206,7 +8206,7 @@ body.ft-css-fullscreen .bottom-nav {
 
 .notif-row-title {
   font-size: var(--fs-base);
-  line-height: 1.3;
+  line-height: var(--lh-tight);
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;

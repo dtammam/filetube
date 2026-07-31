@@ -85,13 +85,13 @@
        12px font-size (`.sub-repull-status` below); left at the inherited
        `line-height: 1.4` from `body` (style.css), the rendered line box is
        12 * 1.4 = 16.8px -- taller than the previous 15px reservation. Fixed
-       by declaring `line-height` explicitly HERE (12 * 1.25 = 15, an exact
+       by declaring `line-height` explicitly HERE (12 * var(--lh-tight) [1.25, token-scale-lock authority] = 15, an exact
        match to `min-height`) rather than relying on `body`'s inherited
        value, so this arithmetic holds even if `body`'s line-height ever
        changes. */
     .sub-list-header-status {
       flex-basis: 100%;
-      line-height: 1.25;
+      line-height: var(--lh-tight);
       min-height: 15px;
     }
     /* v1.55 Track C: font-size/color now come from the sitewide

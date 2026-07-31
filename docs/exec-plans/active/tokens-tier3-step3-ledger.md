@@ -211,17 +211,17 @@ silent, but keep them out).
 
 | file:line | selector / JS context | declaration (linter-exact) | bucket | proposed after | delta | notes |
 |---|---|---|---|---|---|---|
-| lib/ytdlp/views/subscriptions.html:94 | .sub-list-header-status (page style) | `line-height: 1.25` | LH-EXACT | line-height: var(--lh-tight) | none | comment arithmetic 12*1.25=15 vs min-height:15px becomes token-coupled - comment must be updated in the same commit |
-| public/css/style.css:489 | body | `line-height: 1.4` | RULED-EXEMPT | token-exempt annotation in 3f | - | RULED (OQ6): global body base stays 1.4 |
-| public/css/style.css:1389 | .video-title | `line-height: 1.3` | LH-DRIFT | line-height: var(--lh-tight) | 1.3->1.25 | scene 06; 2-line clamp height shrinks slightly |
-| public/css/style.css:2312 | .uploader-subs | `line-height: 1.5` | LH-EXACT | line-height: var(--lh-relaxed) | none |  |
-| public/css/style.css:2522 | .related-title | `line-height: 1.3` | LH-DRIFT | line-height: var(--lh-tight) | 1.3->1.25 | scene 05 |
-| public/css/style.css:2575 | .setup-box p | `line-height: 1.5` | LH-EXACT | line-height: var(--lh-relaxed) | none |  |
-| public/css/style.css:2635 | .action-status | `line-height: 1.25` | LH-EXACT | line-height: var(--lh-tight) | none | subscriptions.html:94 pins the same value to match this class |
-| public/css/style.css:5491 | .cc-overlay-text | `line-height: 1.35` | RULED-EXEMPT | token-exempt annotation in 3f | - | RULED (OQ6): caption legibility spacing stays 1.35 |
-| public/css/style.css:6714 | .book-row-title | `line-height: 1.25` | LH-EXACT | line-height: var(--lh-tight) | none |  |
-| public/css/style.css:7828 | .shortcuts-modal kbd | `line-height: 1.5` | LH-EXACT | line-height: var(--lh-relaxed) | none |  |
-| public/css/style.css:8209 | .notif-row-title | `line-height: 1.3` | LH-DRIFT | line-height: var(--lh-tight) | 1.3->1.25 | scene 12b |
+| ~~lib/ytdlp/views/subscriptions.html:94~~ | .sub-list-header-status (page style) | `line-height: 1.25` | LH-EXACT | line-height: var(--lh-tight) | none | comment arithmetic 12*1.25=15 vs min-height:15px becomes token-coupled - comment must be updated in the same commit; 3f DONE 2026-07-31 |
+| ~~public/css/style.css:489~~ | body | `line-height: 1.4` | RULED-EXEMPT | token-exempt annotation in 3f | - | RULED (OQ6): global body base stays 1.4; 3f DONE 2026-07-31 |
+| ~~public/css/style.css:1389~~ | .video-title | `line-height: 1.3` | LH-DRIFT | line-height: var(--lh-tight) | 1.3->1.25 | scene 06; 2-line clamp height shrinks slightly; 3f DONE 2026-07-31 |
+| ~~public/css/style.css:2312~~ | .uploader-subs | `line-height: 1.5` | LH-EXACT | line-height: var(--lh-relaxed) | none | 3f DONE 2026-07-31 |
+| ~~public/css/style.css:2522~~ | .related-title | `line-height: 1.3` | LH-DRIFT | line-height: var(--lh-tight) | 1.3->1.25 | scene 05; 3f DONE 2026-07-31 |
+| ~~public/css/style.css:2575~~ | .setup-box p | `line-height: 1.5` | LH-EXACT | line-height: var(--lh-relaxed) | none | 3f DONE 2026-07-31 |
+| ~~public/css/style.css:2635~~ | .action-status | `line-height: 1.25` | LH-EXACT | line-height: var(--lh-tight) | none | subscriptions.html:94 pins the same value to match this class; 3f DONE 2026-07-31 |
+| ~~public/css/style.css:5491~~ | .cc-overlay-text | `line-height: 1.35` | RULED-EXEMPT | token-exempt annotation in 3f | - | RULED (OQ6): caption legibility spacing stays 1.35; 3f DONE 2026-07-31 |
+| ~~public/css/style.css:6714~~ | .book-row-title | `line-height: 1.25` | LH-EXACT | line-height: var(--lh-tight) | none | 3f DONE 2026-07-31 |
+| ~~public/css/style.css:7828~~ | .shortcuts-modal kbd | `line-height: 1.5` | LH-EXACT | line-height: var(--lh-relaxed) | none | 3f DONE 2026-07-31 |
+| ~~public/css/style.css:8209~~ | .notif-row-title | `line-height: 1.3` | LH-DRIFT | line-height: var(--lh-tight) | 1.3->1.25 | scene 12b; 3f DONE 2026-07-31 |
 
 ## 3g - radius drift (R8; Dean RULING B 2026-07-30): the seven 6/8/14px sites adopt the EXISTING era-varying --radius-lg (12px in 2021 / 0 in 2005 / 2px in 2009+2014) with per-era deltas enumerated per row - the only deliberately era-VARYING batch, witnessed by the 24b-24e era scenes; the 3px -> 2/4 per-site literal trio is era-invariant
 
