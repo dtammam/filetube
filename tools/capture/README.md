@@ -97,3 +97,18 @@ relative-time string that changes LENGTH between runs (9->10 minutes,
 flex-basis:100%). Deliberate: pinning widths would falsify the very
 geometry the baselines witness - chase such a byte diff as a clock
 tick, not a token regression.
+
+BASELINE TARGET (pinned 2026-07-31 after the capture saga): beta
+container, v1.57.0 image, with **ytdlp ENABLED + FILETUBE_READONLY=1**
+(+ FILETUBE_READ_ONLY_MEDIA=1 as belt). Rationale: the "v1.57 CSP"
+that blocked 16 scenes was Express finalhandler's stock 404 page
+(default-src 'none') served because ytdlp-OFF unregistered the
+/subscriptions routes - FileTube sets no CSP; and the other 8 blocked
+scenes waited on UI the disabled module never renders (one-off button,
+notif bell). Enabling the module UNDER FILETUBE_READONLY restores all
+24 scenes' UI with zero mutation risk: readonly 403s every mutating
+verb server-side, READ_ONLY_MEDIA no-ops the scheduled poll, and the
+harness guard never lets a mutation leave the browser anyway. The
+harness additionally sets bypassCSP on every context so no page's CSP
+(the app's future one, or an error page's) can kill style injection -
+safe because the guard, not CSP, is the mutation boundary.
