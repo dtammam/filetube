@@ -1,5 +1,15 @@
 # Tokens Tier 3 Step 3 - consolidation batches (exec plan, rulings applied)
 
+CLOSED: **Dean's on-device pass, 2026-07-31, v1.58.0: "it's all
+excellent. nothing wrong."** - the full probe list (era radius sweep,
+timing feel, the autoplay knob coupling, scrims, shadows, spacing,
+clamps, control sizes) passed with zero rejections. Stop B's purpose
+was Dean's approval of the visible deltas; he gave it directly
+on-device, superseding the formal pixel-compare path. The frozen
+v1.57.0 image + pinned capture profile remain available as the
+BEFORE-baseline for Tier 4's per-era work, where screenshots are still
+the gate (amendment b, ghost-red, mono-font).
+
 STATUS: **EXECUTING (Dean's ruling, 2026-07-31: "stop the capture
 chase... proceed with enforcing the token changes in the meantime").**
 The original gate - baseline before-shots preceding any declaration

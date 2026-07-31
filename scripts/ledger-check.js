@@ -28,7 +28,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const REPO = path.join(__dirname, '..');
-const LEDGER = path.join(REPO, 'docs/exec-plans/active/tokens-tier3-step3-ledger.md');
+const LEDGER = path.join(REPO, 'docs/exec-plans/completed/2026-07-31-tokens-tier3-step3-ledger.md');
 
 function collectSites(root = REPO) {
   // Mirrors css-token-lint's main() collection exactly (same module, same
