@@ -1,10 +1,19 @@
 # Tokens Tier 3 Step 3 - consolidation batches (exec plan, rulings applied)
 
-STATUS: **GATE HOLDS.** Zero declaration edits of any kind until Dean's
-baseline confirmation message arrives (paths/date/device/pre-existing
-anomalies). All design questions are RESOLVED (rulings below) - that
-message is now the ONLY thing between this plan and execution, which
-happens on a FRESH branch off merged main.
+STATUS: **EXECUTING (Dean's ruling, 2026-07-31: "stop the capture
+chase... proceed with enforcing the token changes in the meantime").**
+The original gate - baseline before-shots preceding any declaration
+edit - is SUPERSEDED by a stronger equivalent: the before-state is
+FROZEN in the immutable v1.57.0 image (sha256:4d11c32f..., the pinned
+beta target) plus harness >= the CSP-profile fix, so before-shots
+remain capturable at ANY time, independent of Step 3 landing on main.
+Determinism is field-proven (65/65 captured scenes 0-diff); the 24
+formerly-blocked scenes are restored by the pinned capture profile
+(ytdlp ON + FILETUBE_READONLY=1 - see tools/capture/README.md).
+Stop B still requires the before/after comparison; the ledger's
+per-commit differ discipline is unchanged. Dean's manual gate-blocker
+shots (13-toast, 04-resume, 10-audio-expanded) are still owed before
+Stop B closes - now against the frozen image, not before execution.
 
 ## Provenance: the ORIGINAL letters, recovered
 
