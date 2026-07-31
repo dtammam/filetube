@@ -159,6 +159,25 @@ the **8->12 album rounding** (3g - the original packet's flag,
 restored); reloc panel 6->12 rounding; notif-panel shadow
 near-doubling (3d); the 0.2s->0.15s timing feel (3e).
 
+## Execution correction record (Step 3 gate findings, 2026-07-31)
+
+- BURN-DOWN CHAIN, corrected: 298 -> 228 (opener) -> 203 (3a) -> 174
+  (3c) -> 169 (3d) -> 152 (3e) -> 141 (3f) -> **134 (3g)** -> 110 (3h).
+  3g's COMMIT MESSAGE claims "141 -> 131" - that figure was written
+  expecting -10 before ledger-check taught the -7 reality: the three
+  per-site radius literals (2/4px) REMAIN counted as new R7 raw
+  population. The message is wrong by three; this record is the truth
+  (pushed history stays immutable; corrections ride the record, per the
+  linter-count precedent).
+- Census prose: the no-action census SECTION holds exactly 100 rows
+  (mechanical count); a 101 figure counts 3d's SHADOW-OTHER row, which
+  renders inside the 3d section.
+- Opener commit subject lists ".ptr-indicator" among its work: the
+  EDIT was executed in the opener; the RULING it implements is Stop A
+  Batch C (as the in-CSS comment says). Same change, two documents
+  naming different aspects - recorded so nobody hunts a phantom
+  double-edit.
+
 ## Contract note (corrected by the gate)
 
 NO new token joins the contract: `--radius-lg` already exists in the

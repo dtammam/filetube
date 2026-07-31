@@ -150,7 +150,7 @@ summary,
      is untouched: these tokens are for surfaces that deliberately look the
      same in every era and mode. AMENDMENT (c), recorded here so it is
      never lost: when scrim consolidation happens (Tier 2), the cc-overlay
-     TEXT BACKGROUND keeps its own (value corrected 2026-07-31 per OQ8 - the comment said 0.85, the shipped value was always 0.72) rgba(0,0,0,0.72) - it is a LEGIBILITY
+     TEXT BACKGROUND keeps its own rgba(0,0,0,0.72) [comment corrected 2026-07-31 per OQ8: this text long claimed 0.85, but 0.72 is what always shipped] - it is a LEGIBILITY
      floor over arbitrary video, not a style surface, and must not adopt
      --scrim-heavy. */
   --overlay-surface: #222;
