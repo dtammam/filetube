@@ -9,6 +9,12 @@
 // rewritten and a runlog line lands - observable without any spawn), so
 // under read-only media the file must remain byte-identical and the
 // runlog empty.
+//
+// BINDING HONESTY (gate correction): the REQUEUE gate is bound by these
+// tests; the MIGRATION gate (migrateStaleDownloadDirFromFolders) is
+// gated-but-UNBOUND - binding it needs a stale download-dir folder
+// structure fixture, judged not worth it for a non-download path whose
+// gate mutant only moves folders. One bound, one gated; disclosed.
 
 const { test } = require('node:test');
 const assert = require('node:assert');
