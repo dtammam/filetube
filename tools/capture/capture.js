@@ -78,13 +78,17 @@ async function runScene(browser, scene, era, mode, vpName, record) {
       else if (op === 'setViewportWidth') await page.setViewportSize({ width: Number(target), height: vp.height });
       else if (op === 'evalJs') await page.evaluate(target);
     }
-    // Image quiescence BEFORE the settle floor: networkidle fires before
-    // lazy images even start fetching (the 34/89 determinism failure).
+    // Image quiescence: CONVERGE on a stable, fully-decoded image set
+    // (field round 2: a fixed pass cap exited before the async avatar
+    // render even started - both run-records were clean while avatars
+    // raced the shot). The converged quiet window subsumes the old fixed
+    // 350ms settle floor; the shot follows IMMEDIATELY to minimize the
+    // post-check gap the round-2 failures lived in.
     const imgs = await settlePageImages(page);
-    if (imgs.pending > 0) record.imageWaitPending.push({ scene: fname, pending: imgs.pending, total: imgs.total });
-    await page.waitForTimeout(350); // settle fonts/layout post-freeze
-    // Last-instant recount (gate suggestion): an insertion landing AFTER
-    // the settle passes still races the shot - make it logged, not silent.
+    if (!imgs.stable || imgs.pending > 0) record.imageWaitPending.push({ scene: fname, pending: imgs.pending, total: imgs.total, stable: imgs.stable, observations: imgs.observations });
+    if (imgs.errored > 0) record.erroredImages.push({ scene: fname, errored: imgs.errored, total: imgs.total });
+    // Last-instant recount: anything landing after convergence is logged,
+    // never silent.
     const late = await page.evaluate(() => Array.from(document.images).filter((i) => !i.complete).length);
     if (late > 0) record.imageWaitPending.push({ scene: fname, pending: late, late: true });
     await page.screenshot({ path: path.join(OUT, fname), fullPage: false });
@@ -101,7 +105,7 @@ async function runScene(browser, scene, era, mode, vpName, record) {
   try { ({ chromium } = require('playwright')); }
   catch { console.error('playwright not installed - run: cd tools/capture && npm install && npx playwright install chromium'); process.exit(2); }
   fs.mkdirSync(OUT, { recursive: true });
-  const record = { base: BASE, date: new Date().toISOString(), emulated: true, blockedRequests: [], blockedExpected: [], imageWaitPending: [],
+  const record = { base: BASE, date: new Date().toISOString(), emulated: true, blockedRequests: [], blockedExpected: [], imageWaitPending: [], erroredImages: [],
     determinism: 'animations frozen at end-state; DPR 2; era/mode via localStorage; content pinned via --fixture-video/--fixture-book',
     manualScenes: notAutomatable, captured: [], failed: [] };
   const browser = await chromium.launch();
@@ -142,7 +146,8 @@ async function runScene(browser, scene, era, mode, vpName, record) {
   delete record.storageState; // session cookie never lands in the record
   fs.writeFileSync(path.join(OUT, 'run-record.json'), JSON.stringify(record, null, 1));
   console.log(`captured ${record.captured.length}, failed ${record.failed.length}, unexpected blocked mutations ${record.blockedRequests.length} (expected fire-and-forget blocks: ${record.blockedExpected.length}) -> ${OUT}/`);
-  for (const w of record.imageWaitPending) console.log('  IMAGE-WAIT TIMEOUT', w.scene, `${w.pending}/${w.total} images undecoded - shot may be nondeterministic`);
+  for (const w of record.imageWaitPending) console.log('  IMAGE-WAIT', w.scene, w.late ? `late insertion: ${w.pending} in flight at shot time` : `no convergence in budget (${w.pending}/${w.total} pending) - shot may be nondeterministic`);
+  for (const e of record.erroredImages) console.log('  IMAGE-ERRORED', e.scene, `${e.errored}/${e.total} images errored - deterministic IF the server errors consistently; compare across runs`);
   for (const f of record.failed) console.log('  FAIL', f.scene, f.error);
   for (const b of record.blockedRequests) console.log('  BLOCKED', b.scene, b.method, b.url);
   // An UNEXPECTED mutation attempt is a broken scene: the guard makes it

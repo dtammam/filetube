@@ -11,6 +11,15 @@
 // preserving the layout box.
 //
 // Skips cleanly where the isolated tools/capture package is absent.
+//
+// BINDING HONESTY: the causally-chained late batch binds SET-CONVERGENCE
+// (a fixed pass cap or a first-stable return that races a late render is
+// the field's 32/89 failure), but convergence-vs-first-stable is at
+// bottom a TIMING property - no byte-deterministic fixture can kill
+// every degenerate mutant of the quiet window itself. The chain
+// guarantees the late render lands INSIDE any post-batch-2 quiet window
+// (250ms < quietMs 450), which is as strong as this layer can bind; the
+// field's back-to-back gate is the final arbiter.
 
 const { test } = require('node:test');
 const assert = require('node:assert');
@@ -26,6 +35,7 @@ try {
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==', 'base64');
 
 function slowImageServer() {
+  let reqCount = 0;
   const srv = http.createServer((req, res) => {
     if (req.url === '/img/broken') {
       // Instantly 404s: an already-errored image must fast-path, never
@@ -52,10 +62,15 @@ function slowImageServer() {
     // BELOW-FOLD lazy image behind a 40000px spacer that Chromium will
     // never fetch without the eager flip (gate N6 - the reviewer's own
     // binding fixture).
-    res.end(`<html><body style="margin:0">
-      <div class="sub-list-header-status" style="height:20px">last check: LIVE-TEXT-${Date.now()}</div>
+    // The status text VARIES IN LENGTH per load (word count keyed to
+    // request order) and has NO fixed height: without the one-line clamp
+    // it wraps to a different line count between loads and reflows
+    // everything below - the field's 10.31% failure shape.
+    reqCount++;
+    res.end(`<html><body style="margin:0;width:300px">
+      <div class="sub-list-header-status">last check ${'word '.repeat(5 + (reqCount % 2) * 40)}</div>
       <div style="height:20px">Added <span id="added-date-text">LIVE-${Date.now()}</span> &bull; static</div>
-      <div id="grid"></div><div id="grid2"></div>
+      <div id="grid"></div><div id="grid2"></div><div id="grid3"></div>
       <div style="height:40000px"></div>
       <img id="deep" loading="lazy" src="/img/deep" width="40" height="40">
       <script>
@@ -67,6 +82,19 @@ function slowImageServer() {
         setTimeout(() => {
           document.getElementById('grid2').innerHTML = Array.from({ length: 6 }, (_, i) =>
             '<img loading="lazy" src="/img/b' + i + '" width="40" height="40" style="background:#eee">').join('');
+          // The LATE async render (field round 2), CAUSALLY CHAINED: it
+          // inserts 250ms after batch 2's last image loads - guaranteed
+          // BEFORE any quiet window that started after batch 2 settled
+          // can complete (250 < quietMs), so convergence deterministically
+          // sees it. A wall-clock delay here raced the quiet window and
+          // made this very test flake - the same class it guards against.
+          const imgs2 = document.getElementById('grid2').querySelectorAll('img');
+          imgs2[imgs2.length - 1].addEventListener('load', () => {
+            setTimeout(() => {
+              document.getElementById('grid3').innerHTML = Array.from({ length: 4 }, (_, i) =>
+                '<img loading="lazy" src="/img/c' + i + '" width="40" height="40" style="background:#ddd">').join('');
+            }, 250);
+          }, { once: true });
         }, 1100);
       </script></body></html>`);
   });
@@ -106,9 +134,10 @@ test('image-quiescence gate: the lazy race exists without it, dies with it, and 
     const settled = await settlePageImages(p1);
     const elapsed = Date.now() - t0;
     assert.strictEqual(settled.pending, 0, JSON.stringify(settled));
-    assert.strictEqual(settled.outcome, 'settled');
-    assert.strictEqual(settled.total, 14, 'both batches + deep + broken must all be present post-settle');
-    assert.ok(elapsed < 6000, `settle took ${elapsed}ms - the broken image is hanging a pass (gate W1)`);
+    assert.strictEqual(settled.stable, true, JSON.stringify(settled));
+    assert.strictEqual(settled.total, 18, 'all three batches (incl. the LATE 2100ms render) + deep + broken must be present post-settle - a fixed pass cap misses the late batch');
+    assert.strictEqual(settled.errored, 1, 'the broken image is counted as errored, not pending');
+    assert.ok(elapsed < 10000, `settle took ${elapsed}ms - the broken image is hanging an observation (gate W1)`);
     const deepAfter = await p1.evaluate(() => { const d = document.getElementById('deep'); return d.complete && d.naturalWidth > 0; });
     assert.strictEqual(deepAfter, true, 'the eager flip must fetch the below-fold lazy image');
     await p1.close();
@@ -120,7 +149,7 @@ test('image-quiescence gate: the lazy race exists without it, dies with it, and 
     // by construction.
     await ph.setContent('<img src="' + base + '/img/hang" width="10" height="10">', { waitUntil: 'domcontentloaded' });
     const hung = await settlePageImages(ph, 800);
-    assert.strictEqual(hung.outcome, 'timeout');
+    assert.strictEqual(hung.stable, false);
     assert.ok(hung.pending > 0);
     await ph.close();
 
@@ -128,6 +157,7 @@ test('image-quiescence gate: the lazy race exists without it, dies with it, and 
     // shots (the live-text line is masked by the exact driver CSS; its
     // box must keep its height so layout cannot shift).
     const shots = [];
+    const heights = [];
     for (let i = 0; i < 2; i++) {
       const p = await browser.newPage();
       await p.goto(base + '/', { waitUntil: 'networkidle', timeout: 20000 });
@@ -135,13 +165,16 @@ test('image-quiescence gate: the lazy race exists without it, dies with it, and 
       await p.waitForFunction(() => document.images.length > 1, null, { timeout: 5000 });
       const s = await settlePageImages(p);
       assert.strictEqual(s.pending, 0);
-      assert.strictEqual(s.total, 14);
-      const h = await p.evaluate(() => document.querySelector('.sub-list-header-status').offsetHeight);
-      assert.strictEqual(h, 20, 'mask must preserve the layout box (visibility, not display)');
-      await p.waitForTimeout(100);
+      assert.strictEqual(s.total, 18);
+      heights.push(await p.evaluate(() => document.querySelector('.sub-list-header-status').offsetHeight));
       shots.push(await p.screenshot());
       await p.close();
     }
+    // The clamp must normalize the VARIABLE-LENGTH status to one line in
+    // both loads - without it, the wrap-count difference reflows every
+    // element below (the field's 10.31% shape) and the byte compare
+    // below fails anyway; this assertion just names the mechanism.
+    assert.strictEqual(heights[0], heights[1], `masked status heights differ across loads: ${heights.join(' vs ')}`);
     assert.ok(shots[0].equals(shots[1]), `two gated captures differ (${shots[0].length} vs ${shots[1].length} bytes) - the LIVE-TEXT line or an image raced through`);
   } finally {
     await browser.close();
