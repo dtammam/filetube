@@ -40,10 +40,14 @@ const CONTRACT = {
   '--reader-paper-bg': '#f7f4ec', '--reader-paper-fg': '#1c1c1c',
   '--reader-sepia-bg': '#f0e3c9', '--reader-sepia-fg': '#3a2f20',
   '--reader-night-bg': '#101014', '--reader-night-fg': '#c8c8d0',
+  // Tranche F.5 (Dean's ruling 4): the two structurally-coupled layout
+  // constants - the NARROW amendment to "layout geometry stays literal".
+  '--header-h': '56px',
+  '--sidebar-w': '230px',
 };
 
 test('every new-layer token is defined EXACTLY ONCE with its contract value (mode-invariant by construction)', () => {
-  assert.equal(Object.keys(CONTRACT).length, 45, 'the 38-name contract + --thumbnail-bg (Tier 4) + the six --reader-* names (tranche F.5; --radius-lg predates the layer and lives in the era blocks)');
+  assert.equal(Object.keys(CONTRACT).length, 47, 'the 38-name contract + --thumbnail-bg (Tier 4) + six --reader-* + --header-h/--sidebar-w (tranche F.5; --radius-lg predates the layer and lives in the era blocks)');
   for (const [name, value] of Object.entries(CONTRACT)) {
     const defs = [...css.matchAll(new RegExp(name.replace(/[-]/g, '\\-') + '\\s*:\\s*([^;]+);', 'g'))]
       .map((m) => m[1].trim());
