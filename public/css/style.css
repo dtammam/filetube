@@ -539,7 +539,7 @@ header {
   align-items: center;
   justify-content: space-between;
   padding: 0 var(--space-8);
-  z-index: 1000;
+  z-index: var(--z-header);
 }
 
 /* v1.44.3: immersive reader. The /read view is a full-page reading surface, so
@@ -1612,7 +1612,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   right: 16px; /* token-exempt: positional geometry (Stop A Batch A) */
   bottom: 16px; /* token-exempt: positional geometry (Stop A Batch A) */
   width: 280px;
-  z-index: 950; /* above the mobile .bottom-nav (900), below modals/sheets (2000+) */
+  z-index: var(--z-dock); /* above the mobile .bottom-nav (--z-nav), below modals/sheets (--z-sheet+) */
   box-shadow: var(--shadow-lg);
   border-radius: var(--radius-lg);
   overflow: hidden;
@@ -3188,7 +3188,7 @@ a.sub-row-channel-link:focus-visible {
   display: flex;
   justify-content: center;
   align-items: center;
-  z-index: 2000;
+  z-index: var(--z-modal);
   /* v1.26.2 polish (Dean punchlist -- sheet/modal transitions): this backdrop
      used to teleport in/out (public/js/common.js's showConfirmModal/
      showMoveModal create-and-append / remove() it directly, no prior
@@ -3273,7 +3273,7 @@ a.sub-row-channel-link:focus-visible {
      (older browsers) or the inset is genuinely 0 (no home indicator). */
   bottom: calc(24px + env(safe-area-inset-bottom, 0px)); /* token-exempt: positional geometry (Stop A Batch A) */
   transform: translateX(-50%) translateY(8px);
-  z-index: 2200; /* above the one-off download modal backdrop (2100) */
+  z-index: var(--z-top); /* above the one-off download modal backdrop (--z-modal + 100) */
   max-width: calc(100vw - 32px);
   background-color: var(--bg-sidebar);
   color: var(--text-primary);
@@ -3308,7 +3308,7 @@ a.sub-row-channel-link:focus-visible {
   display: flex;
   justify-content: center;
   align-items: center;
-  z-index: 2100; /* above the generic .modal-backdrop (2000) -- never hidden behind another dialog */
+  z-index: calc(var(--z-modal) + 100); /* above the generic .modal-backdrop (--z-modal) -- never hidden behind another dialog */
 }
 
 /* v1.17.0 FR-6, T5 fix: WITHOUT this override, the `display: flex` above
@@ -3872,7 +3872,7 @@ a.sub-row-channel-link:focus-visible {
     bottom: 0;
     left: 0;
     right: 0;
-    z-index: 900;
+    z-index: var(--z-nav);
     justify-content: space-around;
     align-items: stretch;
     background: var(--header-bg);
@@ -3976,7 +3976,7 @@ a.sub-row-channel-link:focus-visible {
     display: block;
     position: fixed;
     inset: 0;
-    z-index: 1500;
+    z-index: var(--z-sheet);
     background: var(--scrim);
     opacity: 0;
     transition: opacity var(--dur-fast) ease-out;
@@ -3995,7 +3995,7 @@ a.sub-row-channel-link:focus-visible {
     left: 0;
     right: 0;
     bottom: 0;
-    z-index: 1501;
+    z-index: calc(var(--z-sheet) + 1); /* the sheet rides one above its own backdrop (--z-sheet) */
     max-height: 70vh;
     overflow-y: auto;
     background: var(--bg-sidebar);
@@ -5204,7 +5204,7 @@ a.sub-row-channel-link:focus-visible {
 #player-wrapper.css-fullscreen {
   position: fixed;
   inset: 0;
-  z-index: 1500; /* above header (~1000) + .bottom-nav (900), below modals/sheets (2000) so the chapters editor still opens over it */
+  z-index: var(--z-sheet); /* above header (--z-header) + .bottom-nav (--z-nav), below modals (--z-modal) so the chapters editor still opens over it */
   background: #000; /* token-exempt: letterbox black */
   border-radius: 0;
   /* v1.34.3: the mobile-portrait height clamps (45vh/78vh, further down)
@@ -5618,17 +5618,18 @@ body.ft-css-fullscreen .bottom-nav {
    this override the 45vh cap fights `inset: 0`'s implied full-viewport
    height -- on an iPhone in portrait the "fullscreen" overlay would only
    ever fill the TOP 45% of the screen instead of the whole viewport.
-   z-index: 1100 -- high enough to sit above the app chrome it must fully
-   cover while expanded (site header 1000, `#player-dock` 950/940, the
-   mobile `.bottom-nav` 900) but deliberately BELOW every modal/toast tier
-   (`.modal-backdrop` 2000, `.toast` 2200, `.oneoff-modal-backdrop` 2100,
-   `.hard-delete-modal-backdrop` 2250) so an async toast or modal firing
+   z-index: var(--z-player-max) -- high enough to sit above the app chrome
+   it must fully cover while expanded (site header --z-header, `#player-dock`
+   --z-dock, chips --z-chip, the mobile `.bottom-nav` --z-nav) but
+   deliberately BELOW every modal/toast tier (`.modal-backdrop` --z-modal,
+   `.toast` --z-top, the one-off and hard-delete rungs above them -
+   PRESERVED INVERSION, Tier 4 re-ladder) so an async toast or modal firing
    while the audio view is expanded still renders on top and stays visible,
    rather than being buried under the overlay. */
 #player-wrapper.audio-mode.audio-expanded {
   position: fixed;
   inset: 0;
-  z-index: 1100;
+  z-index: var(--z-player-max);
   aspect-ratio: auto;
   max-height: none;
   margin: 0;
@@ -5793,7 +5794,7 @@ body.ft-css-fullscreen .bottom-nav {
 .sub-sheet-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 1600; /* above the Playlists sheet (1501); below the toast (2200)/generic modal (2000+), which never coexist with this page's own sheet in practice */
+  z-index: calc(var(--z-panel) + 1); /* 1601: one above --z-panel, deliberately breaking the old accidental tie with the notif panel (their openers are mutually blocked, so either order is behavior-identical - the tie was DOM-order-dependent fragility, Tier 4 re-ladder); above the Playlists sheet (--z-sheet band); below the toast (--z-top)/generic modal (--z-modal+), which never coexist with this page's own sheet in practice */
   background: var(--scrim);
   display: flex;
   align-items: flex-end;
@@ -6114,9 +6115,12 @@ body.ft-css-fullscreen .bottom-nav {
    button, so deleting an irreplaceable file is a conscious 3rd action, not a
    quick tap-through. Sizing/scroll (`max-height`/`overflow-y`) mirrors the
    v1.19.0 `.oneoff-modal` fix so a short viewport never clips the actions
-   row off-screen; `z-index: 2250` sits above every other overlay in this
-   file (`.modal-backdrop` 2000, `.oneoff-modal-backdrop` 2100, `.toast`
-   2200) so it is NEVER hidden behind another dialog/toast. */
+   row off-screen; `z-index: calc(var(--z-top) + 1)` sits above every other
+   overlay in this file (`.modal-backdrop` --z-modal, `.oneoff-modal-backdrop`
+   --z-modal + 100, `.toast` --z-top) so it is NEVER hidden behind another
+   dialog/toast - the toast-under-hard-delete ordering is DELIBERATE warning
+   primacy (PRESERVED INVERSION, Tier 4 re-ladder: the rung moved 2250 ->
+   2201 but the ordering is identical). */
 .hard-delete-modal-backdrop {
   position: fixed;
   top: 0;
@@ -6127,7 +6131,7 @@ body.ft-css-fullscreen .bottom-nav {
   display: flex;
   justify-content: center;
   align-items: center;
-  z-index: 2250;
+  z-index: calc(var(--z-top) + 1);
 }
 
 .hard-delete-modal {
@@ -6260,7 +6264,7 @@ body.ft-css-fullscreen .bottom-nav {
   position: fixed;
   left: 16px; /* token-exempt: positional geometry (Stop A Batch A) */
   bottom: 16px; /* token-exempt: positional geometry (Stop A Batch A) */
-  z-index: 940;
+  z-index: var(--z-chip);
   max-width: min(320px, calc(100vw - 32px));
   font-family: var(--font-family);
   display: flex;
@@ -7014,7 +7018,7 @@ body.ft-css-fullscreen .bottom-nav {
   left: 0;
   right: 0;
   bottom: 0;
-  z-index: 940; /* above .bottom-nav (900), below #player-dock (950)/modals */
+  z-index: var(--z-chip); /* above .bottom-nav (--z-nav), below #player-dock (--z-dock)/modals */
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
@@ -7171,7 +7175,7 @@ body.ft-css-fullscreen .bottom-nav {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
+  z-index: calc(var(--z-modal) - 100); /* 1900: the preview is modal-grade chrome - its own rung just below the confirm modal (--z-modal), cleanly above the header instead of the old DOM-order-dependent 1000/1000 tie (Tier 4 re-ladder; every surface between the old and new rung is an impossible co-open - the full-cover backdrops block each other's openers) */
   padding: var(--space-8);
 }
 .reloc-preview-backdrop[hidden] {
@@ -8119,7 +8123,7 @@ body.ft-css-fullscreen .bottom-nav {
   background: var(--bg-sidebar);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-modal);
-  z-index: 1600;
+  z-index: var(--z-panel);
   opacity: 0;
   transform: translateY(-6px);
   transition: opacity var(--dur-fast) var(--ease-ui), transform var(--dur-fast) var(--ease-ui);
@@ -8268,7 +8272,7 @@ body.ft-css-fullscreen .bottom-nav {
     position: fixed;
     inset: 0;
     background: var(--scrim);
-    z-index: 1599;
+    z-index: calc(var(--z-panel) - 1); /* backdrop one under its panel */
     opacity: 0;
     transition: opacity var(--dur-fast) var(--ease-ui);
   }

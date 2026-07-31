@@ -84,39 +84,39 @@ Differ notes binding the delta columns below:
 
 | site | selector | decl (linter-exact) | bucket | after | expected delta | notes |
 | ---- | -------- | ------------------- | ------ | ----- | -------------- | ----- |
-| public/css/style.css:542 | header | `z-index: 1000` | Z-LADDER-TIER4 | `z-index: var(--z-header)` | resolved 1000 unchanged | deployed value 1000 |
-| public/css/style.css:1615 | #player-dock | `z-index: 950` | Z-LADDER-TIER4 | `z-index: var(--z-dock)` | resolved 950 unchanged | deployed value 950 |
-| public/css/style.css:3191 | .modal-backdrop | `z-index: 2000` | Z-LADDER-TIER4 | `z-index: var(--z-modal)` | resolved 2000 unchanged | deployed value 2000 |
-| public/css/style.css:3276 | .toast | `z-index: 2200` | Z-LADDER-TIER4 | `z-index: var(--z-top)` | resolved 2200 unchanged | deployed value 2200 |
-| public/css/style.css:3311 | .oneoff-modal-backdrop | `z-index: 2100` | Z-LADDER-TIER4 | `z-index: calc(var(--z-modal) + 100)` | resolved 2100 unchanged | deployed value 2100 |
-| public/css/style.css:3875 | .bottom-nav (mobile) | `z-index: 900` | Z-LADDER-TIER4 | `z-index: var(--z-nav)` | resolved 900 unchanged | deployed value 900 |
-| public/css/style.css:3979 | .playlists-sheet-backdrop (mobile) | `z-index: 1500` | Z-LADDER-TIER4 | `z-index: var(--z-sheet)` | resolved 1500 unchanged | deployed value 1500 |
-| public/css/style.css:3998 | .playlists-sheet (mobile) | `z-index: 1501` | Z-LADDER-TIER4 | `z-index: calc(var(--z-sheet) + 1)` | resolved 1501 unchanged | deployed value 1501 |
-| public/css/style.css:5207 | #player-wrapper.css-fullscreen | `z-index: 1500` | Z-LADDER-TIER4 | `z-index: var(--z-sheet)` | resolved 1500 unchanged | deployed value 1500 |
-| public/css/style.css:5631 | .audio-expanded | `z-index: 1100` | Z-LADDER-TIER4 | `z-index: var(--z-player-max)` | resolved 1100 unchanged | deployed value 1100 |
-| public/css/style.css:5796 | .sub-sheet-backdrop | `z-index: 1600` | Z-LADDER-TIER4 | `z-index: calc(var(--z-panel) + 1)` | MOVE 1600->1601 (notif tie-break) | deployed value 1600 |
-| public/css/style.css:6130 | .hard-delete-modal-backdrop | `z-index: 2250` | Z-LADDER-TIER4 | `z-index: calc(var(--z-top) + 1)` | MOVE 2250->2201 (preserved inversion, enum. prescription) | deployed value 2250 |
-| public/css/style.css:6263 | #dl-status-chip | `z-index: 940` | Z-LADDER-TIER4 | `z-index: var(--z-chip)` | resolved 940 unchanged | deployed value 940 |
-| public/css/style.css:7017 | .reader-nowplaying | `z-index: 940` | Z-LADDER-TIER4 | `z-index: var(--z-chip)` | resolved 940 unchanged | deployed value 940 |
-| public/css/style.css:7174 | .reloc-preview-backdrop | `z-index: 1000` | Z-LADDER-TIER4 | `z-index: calc(var(--z-modal) - 100)` | MOVE 1000->1900 (joins modal band; header tie removed) | deployed value 1000 (ties header - DOM-order dependent) |
-| public/css/style.css:8122 | .notif-panel | `z-index: 1600` | Z-LADDER-TIER4 | `z-index: var(--z-panel)` | resolved 1600 unchanged | deployed value 1600 |
-| public/css/style.css:8271 | .notif-panel-backdrop (mobile) | `z-index: 1599` | Z-LADDER-TIER4 | `z-index: calc(var(--z-panel) - 1)` | resolved 1599 unchanged | deployed value 1599 |
+| ~~public/css/style.css:542~~ | ~~header~~ | ~~`z-index: 1000`~~ | ~~Z-LADDER-TIER4~~ | ~~`z-index: var(--z-header)`~~ | ~~resolved 1000 unchanged~~ | ~~deployed value 1000~~ |
+| ~~public/css/style.css:1615~~ | ~~#player-dock~~ | ~~`z-index: 950`~~ | ~~Z-LADDER-TIER4~~ | ~~`z-index: var(--z-dock)`~~ | ~~resolved 950 unchanged~~ | ~~deployed value 950~~ |
+| ~~public/css/style.css:3191~~ | ~~.modal-backdrop~~ | ~~`z-index: 2000`~~ | ~~Z-LADDER-TIER4~~ | ~~`z-index: var(--z-modal)`~~ | ~~resolved 2000 unchanged~~ | ~~deployed value 2000~~ |
+| ~~public/css/style.css:3276~~ | ~~.toast~~ | ~~`z-index: 2200`~~ | ~~Z-LADDER-TIER4~~ | ~~`z-index: var(--z-top)`~~ | ~~resolved 2200 unchanged~~ | ~~deployed value 2200~~ |
+| ~~public/css/style.css:3311~~ | ~~.oneoff-modal-backdrop~~ | ~~`z-index: 2100`~~ | ~~Z-LADDER-TIER4~~ | ~~`z-index: calc(var(--z-modal) + 100)`~~ | ~~resolved 2100 unchanged~~ | ~~deployed value 2100~~ |
+| ~~public/css/style.css:3875~~ | ~~.bottom-nav (mobile)~~ | ~~`z-index: 900`~~ | ~~Z-LADDER-TIER4~~ | ~~`z-index: var(--z-nav)`~~ | ~~resolved 900 unchanged~~ | ~~deployed value 900~~ |
+| ~~public/css/style.css:3979~~ | ~~.playlists-sheet-backdrop (mobile)~~ | ~~`z-index: 1500`~~ | ~~Z-LADDER-TIER4~~ | ~~`z-index: var(--z-sheet)`~~ | ~~resolved 1500 unchanged~~ | ~~deployed value 1500~~ |
+| ~~public/css/style.css:3998~~ | ~~.playlists-sheet (mobile)~~ | ~~`z-index: 1501`~~ | ~~Z-LADDER-TIER4~~ | ~~`z-index: calc(var(--z-sheet) + 1)`~~ | ~~resolved 1501 unchanged~~ | ~~deployed value 1501~~ |
+| ~~public/css/style.css:5207~~ | ~~#player-wrapper.css-fullscreen~~ | ~~`z-index: 1500`~~ | ~~Z-LADDER-TIER4~~ | ~~`z-index: var(--z-sheet)`~~ | ~~resolved 1500 unchanged~~ | ~~deployed value 1500~~ |
+| ~~public/css/style.css:5631~~ | ~~.audio-expanded~~ | ~~`z-index: 1100`~~ | ~~Z-LADDER-TIER4~~ | ~~`z-index: var(--z-player-max)`~~ | ~~resolved 1100 unchanged~~ | ~~deployed value 1100~~ |
+| ~~public/css/style.css:5796~~ | ~~.sub-sheet-backdrop~~ | ~~`z-index: 1600`~~ | ~~Z-LADDER-TIER4~~ | ~~`z-index: calc(var(--z-panel) + 1)`~~ | ~~MOVE 1600->1601 (notif tie-break)~~ | ~~deployed value 1600~~ |
+| ~~public/css/style.css:6130~~ | ~~.hard-delete-modal-backdrop~~ | ~~`z-index: 2250`~~ | ~~Z-LADDER-TIER4~~ | ~~`z-index: calc(var(--z-top) + 1)`~~ | ~~MOVE 2250->2201 (preserved inversion, enum. prescription)~~ | ~~deployed value 2250~~ |
+| ~~public/css/style.css:6263~~ | ~~#dl-status-chip~~ | ~~`z-index: 940`~~ | ~~Z-LADDER-TIER4~~ | ~~`z-index: var(--z-chip)`~~ | ~~resolved 940 unchanged~~ | ~~deployed value 940~~ |
+| ~~public/css/style.css:7017~~ | ~~.reader-nowplaying~~ | ~~`z-index: 940`~~ | ~~Z-LADDER-TIER4~~ | ~~`z-index: var(--z-chip)`~~ | ~~resolved 940 unchanged~~ | ~~deployed value 940~~ |
+| ~~public/css/style.css:7174~~ | ~~.reloc-preview-backdrop~~ | ~~`z-index: 1000`~~ | ~~Z-LADDER-TIER4~~ | ~~`z-index: calc(var(--z-modal) - 100)`~~ | ~~MOVE 1000->1900 (joins modal band; header tie removed)~~ | ~~deployed value 1000 (ties header - DOM-order dependent)~~ |
+| ~~public/css/style.css:8122~~ | ~~.notif-panel~~ | ~~`z-index: 1600`~~ | ~~Z-LADDER-TIER4~~ | ~~`z-index: var(--z-panel)`~~ | ~~resolved 1600 unchanged~~ | ~~deployed value 1600~~ |
+| ~~public/css/style.css:8271~~ | ~~.notif-panel-backdrop (mobile)~~ | ~~`z-index: 1599`~~ | ~~Z-LADDER-TIER4~~ | ~~`z-index: calc(var(--z-panel) - 1)`~~ | ~~resolved 1599 unchanged~~ | ~~deployed value 1599~~ |
 
 ## Batch 4e - R7 raw 4px radii -> var(--radius) (11 sites) (11 rows)
 
 | site | selector | decl (linter-exact) | bucket | after | expected delta | notes |
 | ---- | -------- | ------------------- | ------ | ----- | -------------- | ----- |
 | public/css/style.css:5499 | .cc-overlay-text | `border-radius: 4px` | RADIUS-R7-RAW | `border-radius: var(--radius)` | 2005 L+D: 4px->0; 2009/2014 L+D: 4px->2px; zero x3 (root/2021) | 4px |
-| public/css/style.css:6704 | .book-row-cover | `border-radius: 4px` | RADIUS-R7-RAW | `border-radius: var(--radius)` | 2005 L+D: 4px->0; 2009/2014 L+D: 4px->2px; zero x3 (root/2021) | 4px |
-| public/css/style.css:6783 | .book-cover-link | `border-radius: 4px` | RADIUS-R7-RAW | `border-radius: var(--radius)` | 2005 L+D: 4px->0; 2009/2014 L+D: 4px->2px; zero x3 (root/2021) | 4px |
-| public/css/style.css:7029 | .music-sticky-thumb | `border-radius: 4px` | RADIUS-R7-RAW | `border-radius: var(--radius)` | 2005 L+D: 4px->0; 2009/2014 L+D: 4px->2px; zero x3 (root/2021) | 4px; mid-line |
-| public/css/style.css:7572 | .music-song-thumb | `border-radius: 4px` | RADIUS-R7-RAW | `border-radius: var(--radius)` | 2005 L+D: 4px->0; 2009/2014 L+D: 4px->2px; zero x3 (root/2021) | 4px; mid-line |
-| public/css/style.css:7654 | .music-eq | `border-radius: 4px` | RADIUS-R7-RAW | `border-radius: var(--radius)` | 2005 L+D: 4px->0; 2009/2014 L+D: 4px->2px; zero x3 (root/2021) | 4px |
-| public/css/style.css:7690 | .skeleton-shimmer.skel-title | `border-radius: 4px` | RADIUS-R7-RAW | `border-radius: var(--radius)` | 2005 L+D: 4px->0; 2009/2014 L+D: 4px->2px; zero x3 (root/2021) | 4px |
-| public/css/style.css:7868 | .skeleton-shimmer.skel-w* | `border-radius: 4px` | RADIUS-R7-RAW | `border-radius: var(--radius)` | 2005 L+D: 4px->0; 2009/2014 L+D: 4px->2px; zero x3 (root/2021) | 4px |
-| public/css/style.css:7878 | .watch-desc-skel .skel-line | `border-radius: 4px` | RADIUS-R7-RAW | `border-radius: var(--radius)` | 2005 L+D: 4px->0; 2009/2014 L+D: 4px->2px; zero x3 (root/2021) | 4px |
-| public/css/style.css:7926 | .notif-clear-btn | `border-radius: 4px` | RADIUS-R7-RAW | `border-radius: var(--radius)` | 2005 L+D: 4px->0; 2009/2014 L+D: 4px->2px; zero x3 (root/2021) | 4px |
-| public/css/style.css:8153 | .notif-row-thumb | `border-radius: 4px` | RADIUS-R7-RAW | `border-radius: var(--radius)` | 2005 L+D: 4px->0; 2009/2014 L+D: 4px->2px; zero x3 (root/2021) | 4px |
+| public/css/style.css:6708 | .book-row-cover | `border-radius: 4px` | RADIUS-R7-RAW | `border-radius: var(--radius)` | 2005 L+D: 4px->0; 2009/2014 L+D: 4px->2px; zero x3 (root/2021) | 4px |
+| public/css/style.css:6787 | .book-cover-link | `border-radius: 4px` | RADIUS-R7-RAW | `border-radius: var(--radius)` | 2005 L+D: 4px->0; 2009/2014 L+D: 4px->2px; zero x3 (root/2021) | 4px |
+| public/css/style.css:7033 | .music-sticky-thumb | `border-radius: 4px` | RADIUS-R7-RAW | `border-radius: var(--radius)` | 2005 L+D: 4px->0; 2009/2014 L+D: 4px->2px; zero x3 (root/2021) | 4px; mid-line |
+| public/css/style.css:7576 | .music-song-thumb | `border-radius: 4px` | RADIUS-R7-RAW | `border-radius: var(--radius)` | 2005 L+D: 4px->0; 2009/2014 L+D: 4px->2px; zero x3 (root/2021) | 4px; mid-line |
+| public/css/style.css:7658 | .music-eq | `border-radius: 4px` | RADIUS-R7-RAW | `border-radius: var(--radius)` | 2005 L+D: 4px->0; 2009/2014 L+D: 4px->2px; zero x3 (root/2021) | 4px |
+| public/css/style.css:7694 | .skeleton-shimmer.skel-title | `border-radius: 4px` | RADIUS-R7-RAW | `border-radius: var(--radius)` | 2005 L+D: 4px->0; 2009/2014 L+D: 4px->2px; zero x3 (root/2021) | 4px |
+| public/css/style.css:7872 | .skeleton-shimmer.skel-w* | `border-radius: 4px` | RADIUS-R7-RAW | `border-radius: var(--radius)` | 2005 L+D: 4px->0; 2009/2014 L+D: 4px->2px; zero x3 (root/2021) | 4px |
+| public/css/style.css:7882 | .watch-desc-skel .skel-line | `border-radius: 4px` | RADIUS-R7-RAW | `border-radius: var(--radius)` | 2005 L+D: 4px->0; 2009/2014 L+D: 4px->2px; zero x3 (root/2021) | 4px |
+| public/css/style.css:7930 | .notif-clear-btn | `border-radius: 4px` | RADIUS-R7-RAW | `border-radius: var(--radius)` | 2005 L+D: 4px->0; 2009/2014 L+D: 4px->2px; zero x3 (root/2021) | 4px |
+| public/css/style.css:8157 | .notif-row-thumb | `border-radius: 4px` | RADIUS-R7-RAW | `border-radius: var(--radius)` | 2005 L+D: 4px->0; 2009/2014 L+D: 4px->2px; zero x3 (root/2021) | 4px |
 
 ## Residual census (NOT this tier - stays in the burn-down, unstruck) (54 rows)
 
@@ -146,33 +146,33 @@ Differ notes binding the delta columns below:
 | public/css/style.css:5178 | #player-dock #player-wrapper | `padding-bottom: 26px` | LAYOUT-CONSTANT | - | - | 26px mini-bar reserve |
 | public/css/style.css:5237 | #player-wrapper.css-fullscreen .player-controls | `padding-bottom: calc(var(--space-2) + env(safe-area-inset-bottom, 0px))` | B1-PARTIAL-DONE | - | - | OPENER DONE 2026-07-31 - adopted members in place; this residual is deliberate and stays in the burn-down |
 | public/css/style.css:5493 | .cc-overlay-text | `background: rgba(0, 0, 0, 0.72)` | CC-PROTECTED | - | - | live value is rgba(0,0,0,0.72), NOT the 0.85 the amendment comment documents - comment-accuracy finding; protection unaffected |
-| public/css/style.css:5679 | .audio-expanded .player-controls | `padding-bottom: calc(var(--space-2) + env(safe-area-inset-bottom, 0px))` | B1-PARTIAL-DONE | - | - | OPENER DONE 2026-07-31 - adopted members in place; this residual is deliberate and stays in the burn-down |
-| public/css/style.css:6050 | .sub-row-pin-active | `color: #e0a800` | NO-TOKEN | - | - | deliberate era-invariant gold pin accent (documented) |
-| public/css/style.css:6097 | .pinned-avatar-generated | `color: #fff` | SEMANTIC-RESIDUE | - | - |  |
-| public/css/style.css:6213 | .hard-delete-modal-confirm-btn | `border-radius: calc(var(--radius) + 1px)` | RADIUS-DERIVED | - | - |  |
-| public/css/style.css:6215 | .hard-delete-modal-confirm-btn | `color: #fff` | SEMANTIC-RESIDUE | - | - | white-on-brand |
-| public/css/style.css:6550 | .dl-status-chip-retry-btn, .dl-status-chip-dismiss-btn | `border-radius: calc(var(--radius) + 1px)` | RADIUS-DERIVED | - | - |  |
-| public/css/style.css:6558 | .dl-status-chip-retry-btn | `color: #fff` | SEMANTIC-RESIDUE | - | - | white-on-brand |
-| public/css/style.css:6741 | .pinned-unpin-btn | `border-radius: 2px` | G-RADIUS-DONE-RAW | - | - | was 3px; 3g DONE 2026-07-31 - consolidated per-site per ruling B; the result is DELIBERATELY a raw 2/4px literal (no small-radius token exists - that design is Tier 4 R7), so the site stays in the burn-down as R7 population |
-| public/css/style.css:6749 | .pinned-unpin-btn.armed | `color: #fff` | SEMANTIC-RESIDUE | - | - | white-on-brand armed state |
-| public/css/style.css:6838 | .books-shelf-chip.active | `color: #fff` | SEMANTIC-RESIDUE | - | - | white-on-brand; mid-line |
-| public/css/style.css:6901 | .reader-content.theme-paper | `background: #f7f4ec` | NO-TOKEN | - | - | user-selected reading theme |
-| public/css/style.css:6902 | .reader-content.theme-sepia | `background: #f0e3c9` | NO-TOKEN | - | - | reading theme |
-| public/css/style.css:6903 | .reader-content.theme-night | `background: #101014` | NO-TOKEN | - | - | reading theme |
-| public/css/style.css:6916 | #reader-pane.pdf-scroll canvas | `box-shadow: 0 1px 6px rgba(0,0,0,0.35)` | SHADOW-OTHER | - | - | paper-page ambient shadow on PDF content, not UI elevation - no action |
-| public/css/style.css:6923 | .reader-bottombar | `padding: var(--space-3) var(--space-5) calc(var(--space-3) + env(safe` | B1-PARTIAL-DONE | - | - | OPENER DONE 2026-07-31 - adopted members in place; this residual is deliberate and stays in the burn-down |
-| public/css/style.css:6930 | .reader-progress-track | `border-radius: 3px` | RADIUS-GEOMETRY | - | - | half of 6px track height - never a token |
-| public/css/style.css:8226 | .reader-np-cover | `border-radius: 4px` | G-RADIUS-DONE-RAW | - | - | was 3px; 3g DONE 2026-07-31 - consolidated per-site per ruling B; the result is DELIBERATELY a raw 2/4px literal (no small-radius token exists - that design is Tier 4 R7), so the site stays in the burn-down as R7 population |
-| public/css/style.css:7252 | .reloc-preview-badge | `padding: 1px var(--space-3)` | B1-PARTIAL-DONE | - | - | OPENER DONE 2026-07-31 - adopted the member in place; the 1px hairline residual is deliberate and stays in the burn-down |
-| public/css/style.css:7253 | .reloc-preview-badge | `border-radius: 2px` | G-RADIUS-DONE-RAW | - | - | was 3px; 3g DONE 2026-07-31 - consolidated per-site per ruling B; the result is DELIBERATELY a raw 2/4px literal (no small-radius token exists - that design is Tier 4 R7), so the site stays in the burn-down as R7 population |
-| public/css/style.css:7316 | .login-wordmark .tube | `color: #fff` | SEMANTIC-RESIDUE | - | - | white-on-brand |
-| public/css/style.css:7384 | .login-submit | `color: #fff` | SEMANTIC-RESIDUE | - | - | white-on-brand |
-| public/css/style.css:7432 | .login-era-switch button[aria-pressed="true"] | `color: #fff` | SEMANTIC-RESIDUE | - | - | white-on-brand |
-| public/css/style.css:7697 | .music-eq i | `background: #fff` | SEMANTIC-RESIDUE | - | - | white EQ glyph-art bar; --on-overlay is a text token - semantic stretch, lean residue |
-| public/css/style.css:7698 | .music-eq i | `border-radius: 1px` | RADIUS-GEOMETRY | - | - | 1px cap on 3px EQ bar |
-| public/css/style.css:8006 | .attr-picker-avatar | `color: #fff` | SEMANTIC-RESIDUE | - | - | glyph over generated avatar color |
-| public/css/style.css:8086 | .notif-bell-badge | `border-radius: 8px` | RADIUS-GEOMETRY | - | - | half of 16px badge height |
-| public/css/style.css:8088 | .notif-bell-badge | `color: #fff` | SEMANTIC-RESIDUE | - | - | white-on-brand |
-| public/css/style.css:8191 | .notif-row-avatar-generated | `color: #fff` | SEMANTIC-RESIDUE | - | - |  |
+| public/css/style.css:5680 | .audio-expanded .player-controls | `padding-bottom: calc(var(--space-2) + env(safe-area-inset-bottom, 0px))` | B1-PARTIAL-DONE | - | - | OPENER DONE 2026-07-31 - adopted members in place; this residual is deliberate and stays in the burn-down |
+| public/css/style.css:6051 | .sub-row-pin-active | `color: #e0a800` | NO-TOKEN | - | - | deliberate era-invariant gold pin accent (documented) |
+| public/css/style.css:6098 | .pinned-avatar-generated | `color: #fff` | SEMANTIC-RESIDUE | - | - |  |
+| public/css/style.css:6217 | .hard-delete-modal-confirm-btn | `border-radius: calc(var(--radius) + 1px)` | RADIUS-DERIVED | - | - |  |
+| public/css/style.css:6219 | .hard-delete-modal-confirm-btn | `color: #fff` | SEMANTIC-RESIDUE | - | - | white-on-brand |
+| public/css/style.css:6554 | .dl-status-chip-retry-btn, .dl-status-chip-dismiss-btn | `border-radius: calc(var(--radius) + 1px)` | RADIUS-DERIVED | - | - |  |
+| public/css/style.css:6562 | .dl-status-chip-retry-btn | `color: #fff` | SEMANTIC-RESIDUE | - | - | white-on-brand |
+| public/css/style.css:6745 | .pinned-unpin-btn | `border-radius: 2px` | G-RADIUS-DONE-RAW | - | - | was 3px; 3g DONE 2026-07-31 - consolidated per-site per ruling B; the result is DELIBERATELY a raw 2/4px literal (no small-radius token exists - that design is Tier 4 R7), so the site stays in the burn-down as R7 population |
+| public/css/style.css:6753 | .pinned-unpin-btn.armed | `color: #fff` | SEMANTIC-RESIDUE | - | - | white-on-brand armed state |
+| public/css/style.css:6842 | .books-shelf-chip.active | `color: #fff` | SEMANTIC-RESIDUE | - | - | white-on-brand; mid-line |
+| public/css/style.css:6905 | .reader-content.theme-paper | `background: #f7f4ec` | NO-TOKEN | - | - | user-selected reading theme |
+| public/css/style.css:6906 | .reader-content.theme-sepia | `background: #f0e3c9` | NO-TOKEN | - | - | reading theme |
+| public/css/style.css:6907 | .reader-content.theme-night | `background: #101014` | NO-TOKEN | - | - | reading theme |
+| public/css/style.css:6920 | #reader-pane.pdf-scroll canvas | `box-shadow: 0 1px 6px rgba(0,0,0,0.35)` | SHADOW-OTHER | - | - | paper-page ambient shadow on PDF content, not UI elevation - no action |
+| public/css/style.css:6927 | .reader-bottombar | `padding: var(--space-3) var(--space-5) calc(var(--space-3) + env(safe` | B1-PARTIAL-DONE | - | - | OPENER DONE 2026-07-31 - adopted members in place; this residual is deliberate and stays in the burn-down |
+| public/css/style.css:6934 | .reader-progress-track | `border-radius: 3px` | RADIUS-GEOMETRY | - | - | half of 6px track height - never a token |
+| public/css/style.css:8230 | .reader-np-cover | `border-radius: 4px` | G-RADIUS-DONE-RAW | - | - | was 3px; 3g DONE 2026-07-31 - consolidated per-site per ruling B; the result is DELIBERATELY a raw 2/4px literal (no small-radius token exists - that design is Tier 4 R7), so the site stays in the burn-down as R7 population |
+| public/css/style.css:7256 | .reloc-preview-badge | `padding: 1px var(--space-3)` | B1-PARTIAL-DONE | - | - | OPENER DONE 2026-07-31 - adopted the member in place; the 1px hairline residual is deliberate and stays in the burn-down |
+| public/css/style.css:7257 | .reloc-preview-badge | `border-radius: 2px` | G-RADIUS-DONE-RAW | - | - | was 3px; 3g DONE 2026-07-31 - consolidated per-site per ruling B; the result is DELIBERATELY a raw 2/4px literal (no small-radius token exists - that design is Tier 4 R7), so the site stays in the burn-down as R7 population |
+| public/css/style.css:7320 | .login-wordmark .tube | `color: #fff` | SEMANTIC-RESIDUE | - | - | white-on-brand |
+| public/css/style.css:7388 | .login-submit | `color: #fff` | SEMANTIC-RESIDUE | - | - | white-on-brand |
+| public/css/style.css:7436 | .login-era-switch button[aria-pressed="true"] | `color: #fff` | SEMANTIC-RESIDUE | - | - | white-on-brand |
+| public/css/style.css:7701 | .music-eq i | `background: #fff` | SEMANTIC-RESIDUE | - | - | white EQ glyph-art bar; --on-overlay is a text token - semantic stretch, lean residue |
+| public/css/style.css:7702 | .music-eq i | `border-radius: 1px` | RADIUS-GEOMETRY | - | - | 1px cap on 3px EQ bar |
+| public/css/style.css:8010 | .attr-picker-avatar | `color: #fff` | SEMANTIC-RESIDUE | - | - | glyph over generated avatar color |
+| public/css/style.css:8090 | .notif-bell-badge | `border-radius: 8px` | RADIUS-GEOMETRY | - | - | half of 16px badge height |
+| public/css/style.css:8092 | .notif-bell-badge | `color: #fff` | SEMANTIC-RESIDUE | - | - | white-on-brand |
+| public/css/style.css:8195 | .notif-row-avatar-generated | `color: #fff` | SEMANTIC-RESIDUE | - | - |  |
 | public/js/watch.js:1170 | applyAvatarToElement generated-avatar | `color: #ffffff` | SEMANTIC-RESIDUE | - | - | mirrors subscriptions.js:1378 |
 | lib/ytdlp/client/subscriptions.js:1378 | renderChannelAvatar generated-avatar | `color: #ffffff` | SEMANTIC-RESIDUE | - | - | white glyph on AVATAR_PALETTE color, deliberately era-invariant |

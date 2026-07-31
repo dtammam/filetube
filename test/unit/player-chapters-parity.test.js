@@ -155,7 +155,9 @@ test('v1.34.3: [hidden] actually hides the chapters menu (the display:flex overr
 // ---- v1.34.4 (Dean round 4): overlay stacking + safe-area bar ---------------
 test('v1.34.4: faux fullscreen outranks header/nav, freezes the page, and the bar grows for the safe area instead of clipping', () => {
   const css = fs.readFileSync(path.join(ROOT, 'public', 'css', 'style.css'), 'utf8');
-  assert.match(css, /#player-wrapper\.css-fullscreen \{[\s\S]*?z-index: 1500;/, 'above header (1000) and .bottom-nav (900), below modals (2000)');
+  // Tier 4 batch 4d (2026-07-31): 1500 -> var(--z-sheet); token-scale-lock
+  // is the byte-exact authority that --z-sheet == 1500.
+  assert.match(css, /#player-wrapper\.css-fullscreen \{[\s\S]*?z-index: var\(--z-sheet\);/, 'above header (--z-header) and .bottom-nav (--z-nav), below modals (--z-modal)');
   assert.match(css, /body\.ft-css-fullscreen \{\s*overflow: hidden;/, 'page scroll frozen (the landscape gap)');
   assert.match(css, /body\.ft-css-fullscreen header,\s*body\.ft-css-fullscreen \.bottom-nav \{\s*visibility: hidden;/, 'chrome explicitly hidden');
   assert.match(css, /#player-wrapper\.css-fullscreen:not\(\.audio-expanded\) \{\s*padding-bottom: 0 !important;/, 'the bar OVERLAYS the picture in faux fullscreen (no strip mismatch)');
