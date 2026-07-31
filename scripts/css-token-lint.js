@@ -27,8 +27,10 @@
  *
  * SCOPE - public/css/style.css and the <style> block in
  * lib/ytdlp/views/subscriptions.html (the two stylesheets the audit
- * harvested). Inline style="" attributes and JS-applied styles are OUTSIDE
- * this linter (tracked by the audit's harvest tooling, not per-commit).
+ * harvested), plus - since v5 (Tier 3) - JS-applied style surfaces
+ * (el.style.X / cssText / setProperty in public/js and lib/ytdlp/client;
+ * player.js positional geometry excluded). Inline style="" HTML attributes
+ * remain OUTSIDE this linter (audit harvest tooling only, not per-commit).
  * width/height are deliberately NOT governed: the audit keeps layout
  * geometry literal by design (only three control-size tokens exist).
  *

@@ -21,7 +21,10 @@ clients (iOS Safari) can play them.
   single-worker transcode queue, and the `/video/:id` streaming endpoint.
 - **`public/`** — static frontend (HTML + CSS + vanilla JS). `public/js/watch.js`
   drives the watch page, including desktop live-transcode playback and the
-  mobile lazy-transcode "preparing…" overlay + polling.
+  mobile lazy-transcode "preparing…" overlay + polling. ALL styling (CSS and
+  JS-applied) runs on the governed design-token system — see the MANDATORY
+  section in `docs/CONTRIBUTING.md` and the contract in
+  `docs/references/design-token-audit-v1.1.md` before changing any style value.
 - **FFmpeg / FFprobe** — external binaries invoked via `child_process.spawn` for
   thumbnails, duration probing, and transcoding to H.264/AAC MP4.
 - **Data directory (`data/`)** — persistent state: `db.json` (metadata),

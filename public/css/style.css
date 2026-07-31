@@ -777,7 +777,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   bottom: 0;
   left: 0;
   overflow-y: auto;
-  z-index: 99; /* token-exempt: local stacking */
+  z-index: 99; /* token-exempt: grandfathered chrome rung - above the 0-40 local band but below every --z-* ladder rung (900+); predates the ladder (amendment d ruled it stays literal). NOT an example to copy: new stacking goes on the ladder or in the 0-40 band */
   transition: transform var(--dur-fast);
 }
 
