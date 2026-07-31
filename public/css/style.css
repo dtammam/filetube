@@ -6712,7 +6712,7 @@ body.ft-css-fullscreen .bottom-nav {
   height: 3px;
   background: rgba(0, 0, 0, 0.5); /* token-exempt: progress-track component art, not a scrim (OQ5c) */
 }
-.book-row-progress-fill { height: 100%; background: var(--accent, #cc0000); }
+.book-row-progress-fill { height: 100%; background: var(--yt-red); }
 .book-row-title {
   display: block;
   margin-top: var(--space-2);
@@ -6745,7 +6745,7 @@ body.ft-css-fullscreen .bottom-nav {
 .pinned-unpin-btn:hover { opacity: 1; }
 .pinned-unpin-btn.armed {
   opacity: 1;
-  background: var(--accent, #cc0000);
+  background: var(--yt-red);
   color: #fff;
   font-size: var(--fs-xs);
 }
@@ -6799,7 +6799,7 @@ body.ft-css-fullscreen .bottom-nav {
     }
     .book-progress-fill {
       height: 100%;
-      background: var(--accent, #cc0000);
+      background: var(--yt-red);
     }
     .book-title {
       margin-top: var(--space-3);
@@ -6835,7 +6835,7 @@ body.ft-css-fullscreen .bottom-nav {
       background: none;
       color: inherit;
     }
-    .books-shelf-chip.active { background: var(--accent, #cc0000); color: #fff; border-color: transparent; }
+    .books-shelf-chip.active { background: var(--yt-red); color: #fff; border-color: transparent; }
     .books-shelf-pin-btn {
       border: none;
       background: none;
@@ -6934,7 +6934,7 @@ body.ft-css-fullscreen .bottom-nav {
     .reader-progress-fill {
       height: 100%;
       width: 0;
-      background: var(--accent, #cc0000);
+      background: var(--yt-red);
     }
     .reader-percent { flex: 0 0 auto; min-width: 42px; text-align: right; opacity: 0.85; }
     /* TOC + settings drawers -- the chapters-menu lessons applied: an
@@ -7213,7 +7213,7 @@ body.ft-css-fullscreen .bottom-nav {
   font-size: var(--fs-base);
 }
 .reloc-preview-summary .reloc-copy-warning {
-  color: var(--accent-color, #cc0000);
+  color: var(--yt-red);
   font-weight: var(--fw-bold);
 }
 /* v1.41.7 gate fix (HONESTY 2): the best-effort-prediction + checksum-safety
@@ -7255,8 +7255,8 @@ body.ft-css-fullscreen .bottom-nav {
   border: 1px solid var(--border-color);
 }
 .reloc-preview-badge.reloc-badge-copy {
-  color: var(--accent-color, #cc0000);
-  border-color: var(--accent-color, #cc0000);
+  color: var(--yt-red);
+  border-color: var(--yt-red);
 }
 
 /* ============================================================================

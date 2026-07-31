@@ -344,7 +344,7 @@ function buildRepoLink(href, text) {
   a.textContent = text;
   a.target = '_blank';
   a.rel = 'noopener noreferrer';
-  a.style.cssText = 'color:var(--accent, #cc0000); text-decoration:none; font-weight:var(--fw-bold);';
+  a.style.cssText = 'color:var(--yt-red); text-decoration:none; font-weight:var(--fw-bold);';
   return a;
 }
 

@@ -70,15 +70,15 @@ Differ notes binding the delta columns below:
 
 | site | selector | decl (linter-exact) | bucket | after | expected delta | notes |
 | ---- | -------- | ------------------- | ------ | ----- | -------------- | ----- |
-| public/css/style.css:6715 | .book-row-progress-fill | `background: var(--accent, #cc0000)` | TIER4-GHOST-RED | `background: var(--yt-red)` | 2014 L+D: #cc0000 -> #e62117; zero x7 elsewhere | scene 23 |
-| public/css/style.css:6748 | .pinned-unpin-btn.armed | `background: var(--accent, #cc0000)` | TIER4-GHOST-RED | `background: var(--yt-red)` | 2014 L+D: #cc0000 -> #e62117; zero x7 elsewhere | armed state - on-device |
-| public/css/style.css:6802 | .book-progress-fill | `background: var(--accent, #cc0000)` | TIER4-GHOST-RED | `background: var(--yt-red)` | 2014 L+D: #cc0000 -> #e62117; zero x7 elsewhere | scene 23 |
-| public/css/style.css:6838 | .books-shelf-chip.active | `background: var(--accent, #cc0000)` | TIER4-GHOST-RED | `background: var(--yt-red)` | 2014 L+D: #cc0000 -> #e62117; zero x7 elsewhere | scene 23; mid-line decl |
-| public/css/style.css:6937 | .reader-progress-fill | `background: var(--accent, #cc0000)` | TIER4-GHOST-RED | `background: var(--yt-red)` | 2014 L+D: #cc0000 -> #e62117; zero x7 elsewhere | scene 23d-ghost-red-reader (coverage-audit addition) |
-| public/css/style.css:7216 | .reloc-copy-warning | `color: var(--accent-color, #cc0000)` | TIER4-GHOST-RED | `color: var(--yt-red)` | 2014 L+D: #cc0000 -> #e62117; zero x7 elsewhere | scene 23b |
-| public/css/style.css:7258 | .reloc-preview-badge.reloc-badge-copy | `color: var(--accent-color, #cc0000)` | TIER4-GHOST-RED | `color: var(--yt-red)` | 2014 L+D: #cc0000 -> #e62117; zero x7 elsewhere | scene 23b |
-| public/css/style.css:7259 | .reloc-preview-badge.reloc-badge-copy | `border-color: var(--accent-color, #cc0000)` | TIER4-GHOST-RED | `border-color: var(--yt-red)` | 2014 L+D: #cc0000 -> #e62117; zero x7 elsewhere | scene 23b |
-| public/js/stats.js:347 | buildRepoLink cssText | `color: var(--accent, #cc0000)` | TIER4-GHOST-RED | `color: var(--yt-red)` | 2014 L+D: #cc0000 -> #e62117; zero x7 elsewhere | scene 23c |
+| ~~public/css/style.css:6715~~ | ~~.book-row-progress-fill~~ | ~~`background: var(--accent, #cc0000)`~~ | ~~TIER4-GHOST-RED~~ | ~~`background: var(--yt-red)`~~ | ~~2014 L+D: #cc0000 -> #e62117; zero x7 elsewhere~~ | ~~scene 23~~ |
+| ~~public/css/style.css:6748~~ | ~~.pinned-unpin-btn.armed~~ | ~~`background: var(--accent, #cc0000)`~~ | ~~TIER4-GHOST-RED~~ | ~~`background: var(--yt-red)`~~ | ~~2014 L+D: #cc0000 -> #e62117; zero x7 elsewhere~~ | ~~armed state - on-device~~ |
+| ~~public/css/style.css:6802~~ | ~~.book-progress-fill~~ | ~~`background: var(--accent, #cc0000)`~~ | ~~TIER4-GHOST-RED~~ | ~~`background: var(--yt-red)`~~ | ~~2014 L+D: #cc0000 -> #e62117; zero x7 elsewhere~~ | ~~scene 23~~ |
+| ~~public/css/style.css:6838~~ | ~~.books-shelf-chip.active~~ | ~~`background: var(--accent, #cc0000)`~~ | ~~TIER4-GHOST-RED~~ | ~~`background: var(--yt-red)`~~ | ~~2014 L+D: #cc0000 -> #e62117; zero x7 elsewhere~~ | ~~scene 23; mid-line decl~~ |
+| ~~public/css/style.css:6937~~ | ~~.reader-progress-fill~~ | ~~`background: var(--accent, #cc0000)`~~ | ~~TIER4-GHOST-RED~~ | ~~`background: var(--yt-red)`~~ | ~~2014 L+D: #cc0000 -> #e62117; zero x7 elsewhere~~ | ~~scene 23d-ghost-red-reader (coverage-audit addition)~~ |
+| ~~public/css/style.css:7216~~ | ~~.reloc-copy-warning~~ | ~~`color: var(--accent-color, #cc0000)`~~ | ~~TIER4-GHOST-RED~~ | ~~`color: var(--yt-red)`~~ | ~~2014 L+D: #cc0000 -> #e62117; zero x7 elsewhere~~ | ~~scene 23b~~ |
+| ~~public/css/style.css:7258~~ | ~~.reloc-preview-badge.reloc-badge-copy~~ | ~~`color: var(--accent-color, #cc0000)`~~ | ~~TIER4-GHOST-RED~~ | ~~`color: var(--yt-red)`~~ | ~~2014 L+D: #cc0000 -> #e62117; zero x7 elsewhere~~ | ~~scene 23b~~ |
+| ~~public/css/style.css:7259~~ | ~~.reloc-preview-badge.reloc-badge-copy~~ | ~~`border-color: var(--accent-color, #cc0000)`~~ | ~~TIER4-GHOST-RED~~ | ~~`border-color: var(--yt-red)`~~ | ~~2014 L+D: #cc0000 -> #e62117; zero x7 elsewhere~~ | ~~scene 23b~~ |
+| ~~public/js/stats.js:347~~ | ~~buildRepoLink cssText~~ | ~~`color: var(--accent, #cc0000)`~~ | ~~TIER4-GHOST-RED~~ | ~~`color: var(--yt-red)`~~ | ~~2014 L+D: #cc0000 -> #e62117; zero x7 elsewhere~~ | ~~scene 23c~~ |
 
 ## Batch 4d - z re-ladder (17 sites) (17 rows)
 
