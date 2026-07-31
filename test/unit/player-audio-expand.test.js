@@ -293,12 +293,20 @@ test('CRITICAL FIX -- CSS overlay rule: max-height: none overrides the mobile-po
   assert.match(overlayRuleMatch[1], /max-height:\s*none\s*;/, 'expected max-height: none, overriding the pre-existing portrait `.player-container { max-height: 45vh }` rule (same node as #player-wrapper)');
 });
 
-test('WARNING FIX -- CSS overlay rule: z-index sits above the app chrome (header 1000 / dock 950 / bottom-nav 900) but below the modal/toast tiers (2000+)', () => {
-  const zMatch = /z-index:\s*(\d+)\s*;/.exec(overlayRuleMatch[1]);
-  assert.ok(zMatch, 'expected a z-index declaration on the overlay rule');
-  const z = Number(zMatch[1]);
-  assert.ok(z > 1000, `expected the overlay z-index (${z}) to sit above the site header (1000)`);
-  assert.ok(z < 2000, `expected the overlay z-index (${z}) to sit below the generic .modal-backdrop tier (2000) so async toasts/modals stay visible`);
+test('WARNING FIX -- CSS overlay rule: z-index sits above the app chrome but below the modal/toast tiers (Tier 4 re-ladder: token spelling + ordering asserted from the ladder definitions)', () => {
+  // Tier 4 batch 4d (2026-07-31): 1100 -> var(--z-player-max). The ordering
+  // semantics stay BOUND, not just spelled: the rung values are read from
+  // the :root ladder definitions (token-scale-lock.test.js is the byte-exact
+  // authority that those definitions carry the contract values).
+  assert.match(overlayRuleMatch[1], /z-index:\s*var\(--z-player-max\)\s*;/,
+    'expected the overlay to ride the --z-player-max rung');
+  const zdef = (name) => {
+    const m = new RegExp(name + ':\\s*(\\d+);').exec(CSS);
+    assert.ok(m, `expected a :root definition for ${name}`);
+    return Number(m[1]);
+  };
+  assert.ok(zdef('--z-player-max') > zdef('--z-header'), 'expected the overlay rung above the site header rung');
+  assert.ok(zdef('--z-player-max') < zdef('--z-modal'), 'expected the overlay rung below the modal tier so async toasts/modals stay visible');
 });
 
 test('WARNING FIX -- CSS overlay rule: position/inset stay full-viewport (unchanged by the max-height/z-index fixes)', () => {

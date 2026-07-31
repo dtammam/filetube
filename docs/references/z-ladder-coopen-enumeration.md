@@ -53,3 +53,17 @@ Recorded because it is exactly the mistake a re-ladder must not make.)
    Dean at Tier 4, default keep.
 4. The re-ladder itself remains Tier 4 work behind this document plus
    Dean's baselines; nothing changed in this tranche.
+
+## Amendment (Tier 4 adversarial gate, 2026-07-31): "impossible" means POINTER-impossible
+
+The I-classifications above rest on full-cover backdrops blocking the
+other surface's opener CLICK. No overlay in this app traps keyboard
+focus or sets `inert` (verified at gate: zero focus-management code on
+the five global overlays; the bell/kebab/bottom-nav are plain focusable
+buttons), so Tab-behind-the-scrim + Enter can co-open any "I" pair.
+Every I above should be read as pointer-impossible. Consequence for the
+executed re-ladder: under a keyboard co-open the Tier 4 ladder paints
+the modal-grade surface (reloc preview) on top and sub-sheet above
+notif - both acceptable orderings; the pre-Tier-4 stack was the
+opposite and equally unplanned. Focus containment is tech-debt #67;
+this doc's matrix is otherwise unchanged.

@@ -72,6 +72,33 @@ test('a var() fallback carrying a literal DOES count (the ghost-token pattern st
   assert.equal(out[0].cat, 'color');
 });
 
+test('v6: z-ladder-relative calc is tokenized; every impostor shape still counts', () => {
+  // The :root comment prescribes backdrop/content rungs as
+  // calc(var(--z-X) +/- N) - the offset is relational, not a raw rung.
+  assert.equal(lint('.x { z-index: calc(var(--z-top) + 1); }').length, 0,
+    'the designed derivation idiom is fully tokenized');
+  assert.equal(lint('.x { z-index: calc(var(--z-modal) - 100); }').length, 0,
+    'offset rungs, either sign');
+  // Impostors - each one is a mutation control on the v6 regex:
+  assert.equal(lint('.x { z-index: calc(2000 + var(--z-x)); }')[0].cat, 'z-index',
+    'raw-number-leading calc is not the idiom');
+  assert.equal(lint('.x { z-index: calc(var(--z-top) + 1 + 1); }')[0].cat, 'z-index',
+    'compound arithmetic is not the idiom');
+  assert.equal(lint('.x { z-index: calc(var(--dur-fast) + 1); }')[0].cat, 'z-index',
+    'a non-ladder var is not the idiom');
+  assert.equal(lint('.x { z-index: calc(var(--z-hack) + 1); }')[0].cat, 'z-index',
+    'an off-contract --z-* name is not the idiom (the nine ladder names are pinned)');
+  assert.equal(lint('.x { z-index: calc(var(--z-top) + 1) 5; }')[0].cat, 'z-index',
+    'trailing content breaks the idiom (kills the $-anchor mutant)');
+  assert.equal(lint('.x { z-index: 0 calc(var(--z-top) + 1); }')[0].cat, 'z-index',
+    'leading content breaks the idiom (kills the ^-anchor mutant)');
+  assert.equal(lint('.x { z-index: 2100; }')[0].cat, 'z-index',
+    'raw rungs still count');
+  // The JS surface shares the idiom check:
+  assert.equal(lintj("el.style.zIndex = 'calc(var(--z-top) + 1)';").length, 0);
+  assert.equal(lintj("el.style.zIndex = '2100';")[0].cat, 'z-index');
+});
+
 test('multi-line rules and selectors spanning lines resolve their scope correctly', () => {
   const out = lint(`
 [data-theme="2009"]

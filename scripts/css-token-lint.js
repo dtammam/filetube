@@ -61,6 +61,15 @@ const RULE_CONFIG = {
 };
 
 const G = RULE_CONFIG['filetube/no-raw-token-values'][1].governed;
+// v6 (Tier 4): the z ladder's designed derivation idiom - the :root comment
+// in style.css prescribes backdrop/content rungs as calc(var(--z-X) +/- N) -
+// is fully tokenized: ONE ladder var, ONE integer offset. Anything else with
+// a digit (raw rungs, raw-number calc arms, non-ladder vars, compound
+// arithmetic) still counts. The NINE ladder names are pinned (adversarial
+// gate S1: an off-contract --z-hack var must not smuggle a rung past the
+// metric); a new ladder name joins the contract, token-scale-lock, AND this
+// alternation together.
+const Z_LADDER_CALC = /^calc\(\s*var\(--z-(nav|chip|dock|header|player-max|sheet|panel|modal|top)\)\s*[+-]\s*\d+\s*\)$/;
 const SPACING_PROP = /^(margin(-\w+)?|padding(-\w+)?|gap|row-gap|column-gap|top|right|bottom|left|inset(-\w+)?)$/;
 const MOTION_PROP = /^(transition(-\w+)?|animation(-\w+)?)$/;
 const RADIUS_PROP = /^border(-\w+)*-radius$/;
@@ -122,7 +131,7 @@ function lintCss(text, fname, lineOffset, out) {
       bare = bare.trim();
       if (bare === '' || /^(transparent|currentColor|inherit|none|auto|normal|unset|initial|0|100%|50%)$/i.test(bare)) return;
       const hit = (cat) => out.push({ cat, file: fname, line: lineNo, prop, value: value.slice(0, 60) });
-      if (prop === 'z-index') { if (G['z-index'].test(bare)) hit('z-index'); return; }
+      if (prop === 'z-index') { if (!Z_LADDER_CALC.test(value.trim()) && G['z-index'].test(bare)) hit('z-index'); return; }
       if (prop === 'font-weight') { if (G['font-weight'].test(bare)) hit('font-weight'); return; }
       if (prop === 'font-size') { if (G['font-size'].test(bare)) hit('font-size'); return; }
       if (prop === 'line-height') { if (G['line-height'].test(bare)) hit('line-height'); return; }
@@ -197,7 +206,7 @@ function jsDecl(prop, value, fname, lineNo, out) {
   bare = bare.trim();
   if (bare === '' || /^(transparent|currentColor|inherit|none|auto|normal|unset|initial|0|100%|50%)$/i.test(bare)) return;
   const hit = (cat) => out.push({ cat, file: fname, line: lineNo, prop, value: value.slice(0, 60) });
-  if (prop === 'z-index') { if (G['z-index'].test(bare)) hit('z-index'); return; }
+  if (prop === 'z-index') { if (!Z_LADDER_CALC.test(value.trim()) && G['z-index'].test(bare)) hit('z-index'); return; }
   if (prop === 'font-weight') { if (G['font-weight'].test(bare)) hit('font-weight'); return; }
   if (prop === 'font-size') { if (G['font-size'].test(bare)) hit('font-size'); return; }
   if (prop === 'line-height') { if (G['line-height'].test(bare)) hit('line-height'); return; }
@@ -235,7 +244,7 @@ for (const dir of ['public/js', 'lib/ytdlp/client']) {
 const byCat = {};
 for (const v of out) byCat[v.cat] = (byCat[v.cat] || 0) + 1;
 console.log('css-token-lint (report-only) - raw literals in governed properties');
-console.log('  scope v5: style.css + subscriptions.html <style> + JS style surfaces (cssText/.style/setProperty; player.js positional excluded); exclusions: era/def layer, @keyframes/@font-face, token-exempt, keywords/var');
+console.log('  scope v6: style.css + subscriptions.html <style> + JS style surfaces (cssText/.style/setProperty; player.js positional excluded); exclusions: era/def layer, @keyframes/@font-face, token-exempt, keywords/var, z-ladder calc');
 for (const [cat, n] of Object.entries(byCat).sort((a, b) => b[1] - a[1])) {
   console.log(`  ${cat.padEnd(16)} ${n}`);
 }

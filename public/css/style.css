@@ -160,6 +160,12 @@ summary,
   --scrim: rgba(0, 0, 0, 0.55);
   --scrim-heavy: rgba(0, 0, 0, 0.8);
 
+  /* Media placeholder surface (Tier 4, Dean's OQ7 ruling: DEFINE). The
+     box behind thumbnails/covers while the image loads. Equals
+     --overlay-surface only coincidentally - a thumbnail placeholder and
+     the player chrome are different semantics and may diverge. */
+  --thumbnail-bg: #222;
+
   /* Type weights + line heights (audit 2.4). `bold` and `700` were two
      spellings of ONE rendered weight (x55 combined) - --fw-bold is the
      single spelling. `normal`/400 stays literal (the default needs no
@@ -172,8 +178,10 @@ summary,
 
   /* Radius - pills only. Circles stay 50% (geometry, not style); the
      era-varying corner radii remain --radius/--radius-lg above. NOTE:
-     audit R7 (raw px radii -> var(--radius)) is DEFERRED per amendment
-     (b) - no radius consumer changes without per-era screenshots. */
+     audit R7 (raw px radii -> var(--radius)) EXECUTED in Tier 4 batch 4e
+     (2026-07-31) at the 11 drift sites; per-surface approval against the
+     era screenshots is pending at the Tier 4 Stop per amendment (b), with
+     per-site rejection flips ready. */
   --radius-full: 999px;
 
   /* Shadow - the one panel-elevation token the 6-member drift band (24px
@@ -533,7 +541,7 @@ header {
   align-items: center;
   justify-content: space-between;
   padding: 0 var(--space-8);
-  z-index: 1000;
+  z-index: var(--z-header);
 }
 
 /* v1.44.3: immersive reader. The /read view is a full-page reading surface, so
@@ -1606,7 +1614,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   right: 16px; /* token-exempt: positional geometry (Stop A Batch A) */
   bottom: 16px; /* token-exempt: positional geometry (Stop A Batch A) */
   width: 280px;
-  z-index: 950; /* above the mobile .bottom-nav (900), below modals/sheets (2000+) */
+  z-index: var(--z-dock); /* above the mobile .bottom-nav (--z-nav), below modals/sheets (--z-sheet+) */
   box-shadow: var(--shadow-lg);
   border-radius: var(--radius-lg);
   overflow: hidden;
@@ -3182,7 +3190,7 @@ a.sub-row-channel-link:focus-visible {
   display: flex;
   justify-content: center;
   align-items: center;
-  z-index: 2000;
+  z-index: var(--z-modal);
   /* v1.26.2 polish (Dean punchlist -- sheet/modal transitions): this backdrop
      used to teleport in/out (public/js/common.js's showConfirmModal/
      showMoveModal create-and-append / remove() it directly, no prior
@@ -3267,7 +3275,7 @@ a.sub-row-channel-link:focus-visible {
      (older browsers) or the inset is genuinely 0 (no home indicator). */
   bottom: calc(24px + env(safe-area-inset-bottom, 0px)); /* token-exempt: positional geometry (Stop A Batch A) */
   transform: translateX(-50%) translateY(8px);
-  z-index: 2200; /* above the one-off download modal backdrop (2100) */
+  z-index: var(--z-top); /* above the one-off download modal backdrop (--z-modal + 100) */
   max-width: calc(100vw - 32px);
   background-color: var(--bg-sidebar);
   color: var(--text-primary);
@@ -3302,7 +3310,7 @@ a.sub-row-channel-link:focus-visible {
   display: flex;
   justify-content: center;
   align-items: center;
-  z-index: 2100; /* above the generic .modal-backdrop (2000) -- never hidden behind another dialog */
+  z-index: calc(var(--z-modal) + 100); /* above the generic .modal-backdrop (--z-modal) -- never hidden behind another dialog */
 }
 
 /* v1.17.0 FR-6, T5 fix: WITHOUT this override, the `display: flex` above
@@ -3866,7 +3874,7 @@ a.sub-row-channel-link:focus-visible {
     bottom: 0;
     left: 0;
     right: 0;
-    z-index: 900;
+    z-index: var(--z-nav);
     justify-content: space-around;
     align-items: stretch;
     background: var(--header-bg);
@@ -3970,7 +3978,7 @@ a.sub-row-channel-link:focus-visible {
     display: block;
     position: fixed;
     inset: 0;
-    z-index: 1500;
+    z-index: var(--z-sheet);
     background: var(--scrim);
     opacity: 0;
     transition: opacity var(--dur-fast) ease-out;
@@ -3989,7 +3997,7 @@ a.sub-row-channel-link:focus-visible {
     left: 0;
     right: 0;
     bottom: 0;
-    z-index: 1501;
+    z-index: calc(var(--z-sheet) + 1); /* the sheet rides one above its own backdrop (--z-sheet) */
     max-height: 70vh;
     overflow-y: auto;
     background: var(--bg-sidebar);
@@ -4757,12 +4765,12 @@ a.sub-row-channel-link:focus-visible {
    sane before the first JS update ever runs. */
 #seek-bar::-webkit-slider-runnable-track {
   background-image:
-    repeating-linear-gradient(to right, rgba(0, 0, 0, 0.12) 0 2px, transparent 2px 4px),
+    repeating-linear-gradient(to right, rgba(0, 0, 0, 0.12) 0 2px, transparent 2px 4px), /* token-exempt: era skin art (the base rules ARE the 2005 skin; adversarial gate 2026-07-31 - the multi-line decl sat in the linter's line-parser blind spot, tech-debt) */
     linear-gradient(to right, var(--yt-red) 0%, var(--yt-red) var(--seek-fill, 0%), var(--btn-bg) var(--seek-fill, 0%), var(--btn-bg) 100%);
 }
 #vol-bar::-webkit-slider-runnable-track {
   background-image:
-    repeating-linear-gradient(to right, rgba(0, 0, 0, 0.12) 0 2px, transparent 2px 4px),
+    repeating-linear-gradient(to right, rgba(0, 0, 0, 0.12) 0 2px, transparent 2px 4px), /* token-exempt: era skin art (the base rules ARE the 2005 skin; adversarial gate 2026-07-31 - linter blind-spot sibling of #seek-bar above) */
     linear-gradient(to right, var(--yt-red) 0%, var(--yt-red) var(--vol-fill, 100%), var(--btn-bg) var(--vol-fill, 100%), var(--btn-bg) 100%);
 }
 
@@ -5198,7 +5206,7 @@ a.sub-row-channel-link:focus-visible {
 #player-wrapper.css-fullscreen {
   position: fixed;
   inset: 0;
-  z-index: 1500; /* above header (~1000) + .bottom-nav (900), below modals/sheets (2000) so the chapters editor still opens over it */
+  z-index: var(--z-sheet); /* above header (--z-header) + .bottom-nav (--z-nav), below modals (--z-modal) so the chapters editor still opens over it */
   background: #000; /* token-exempt: letterbox black */
   border-radius: 0;
   /* v1.34.3: the mobile-portrait height clamps (45vh/78vh, further down)
@@ -5386,7 +5394,7 @@ body.ft-css-fullscreen .bottom-nav {
 }
 .chapters-editor-textarea {
   width: 100%;
-  font-family: monospace;
+  font-family: var(--mono-font);
   font-size: var(--fs-base);
   background: var(--input-bg, var(--header-bg));
   color: var(--text-primary);
@@ -5490,7 +5498,7 @@ body.ft-css-fullscreen .bottom-nav {
   font-size: var(--fs-md);
   line-height: 1.35; /* token-exempt: caption legibility spacing, protected-background-adjacent (OQ6 ruling) */
   padding: var(--space-2) var(--space-5);
-  border-radius: 4px;
+  border-radius: var(--radius);
   text-align: center;
   white-space: pre-line; /* player.js newline-joins multi-line/simultaneous cues -- preserve them */
 }
@@ -5612,17 +5620,18 @@ body.ft-css-fullscreen .bottom-nav {
    this override the 45vh cap fights `inset: 0`'s implied full-viewport
    height -- on an iPhone in portrait the "fullscreen" overlay would only
    ever fill the TOP 45% of the screen instead of the whole viewport.
-   z-index: 1100 -- high enough to sit above the app chrome it must fully
-   cover while expanded (site header 1000, `#player-dock` 950/940, the
-   mobile `.bottom-nav` 900) but deliberately BELOW every modal/toast tier
-   (`.modal-backdrop` 2000, `.toast` 2200, `.oneoff-modal-backdrop` 2100,
-   `.hard-delete-modal-backdrop` 2250) so an async toast or modal firing
+   z-index: var(--z-player-max) -- high enough to sit above the app chrome
+   it must fully cover while expanded (site header --z-header, `#player-dock`
+   --z-dock, chips --z-chip, the mobile `.bottom-nav` --z-nav) but
+   deliberately BELOW every modal/toast tier (`.modal-backdrop` --z-modal,
+   `.toast` --z-top, the one-off and hard-delete rungs above them -
+   PRESERVED INVERSION, Tier 4 re-ladder) so an async toast or modal firing
    while the audio view is expanded still renders on top and stays visible,
    rather than being buried under the overlay. */
 #player-wrapper.audio-mode.audio-expanded {
   position: fixed;
   inset: 0;
-  z-index: 1100;
+  z-index: var(--z-player-max);
   aspect-ratio: auto;
   max-height: none;
   margin: 0;
@@ -5787,7 +5796,7 @@ body.ft-css-fullscreen .bottom-nav {
 .sub-sheet-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 1600; /* above the Playlists sheet (1501); below the toast (2200)/generic modal (2000+), which never coexist with this page's own sheet in practice */
+  z-index: calc(var(--z-panel) + 1); /* 1601: one above --z-panel, deliberately breaking the old accidental tie with the notif panel (their openers are POINTER-blocked by each other's full-cover backdrops; keyboard focus is NOT trapped - pre-existing gap, tech-debt #67 - so a Tab+Enter co-open exists, and either stacking order is acceptable there; the tie itself was DOM-order-dependent fragility, Tier 4 re-ladder); above the Playlists sheet (--z-sheet band); below the toast (--z-top)/generic modal (--z-modal+), which never coexist with this page's own sheet in practice */
   background: var(--scrim);
   display: flex;
   align-items: flex-end;
@@ -6108,9 +6117,12 @@ body.ft-css-fullscreen .bottom-nav {
    button, so deleting an irreplaceable file is a conscious 3rd action, not a
    quick tap-through. Sizing/scroll (`max-height`/`overflow-y`) mirrors the
    v1.19.0 `.oneoff-modal` fix so a short viewport never clips the actions
-   row off-screen; `z-index: 2250` sits above every other overlay in this
-   file (`.modal-backdrop` 2000, `.oneoff-modal-backdrop` 2100, `.toast`
-   2200) so it is NEVER hidden behind another dialog/toast. */
+   row off-screen; `z-index: calc(var(--z-top) + 1)` sits above every other
+   overlay in this file (`.modal-backdrop` --z-modal, `.oneoff-modal-backdrop`
+   --z-modal + 100, `.toast` --z-top) so it is NEVER hidden behind another
+   dialog/toast - the toast-under-hard-delete ordering is DELIBERATE warning
+   primacy (PRESERVED INVERSION, Tier 4 re-ladder: the rung moved 2250 ->
+   2201 but the ordering is identical). */
 .hard-delete-modal-backdrop {
   position: fixed;
   top: 0;
@@ -6121,7 +6133,7 @@ body.ft-css-fullscreen .bottom-nav {
   display: flex;
   justify-content: center;
   align-items: center;
-  z-index: 2250;
+  z-index: calc(var(--z-top) + 1);
 }
 
 .hard-delete-modal {
@@ -6239,9 +6251,9 @@ body.ft-css-fullscreen .bottom-nav {
    T7. App-wide, persistent bottom-LEFT corner chip
    (public/js/common.js's `injectDownloadStatusChip`) -- the OPPOSITE corner
    from `#player-dock` (bottom-right, line ~733 above), so the two can never
-   spatially overlap on any viewport width; `z-index: 940` keeps it (like
-   `#player-dock`'s own 950) above the mobile `.bottom-nav` (900) and below
-   every modal/sheet (2000+). `flex-direction: column-reverse` makes the
+   spatially overlap on any viewport width; `z-index: var(--z-chip)` keeps it
+   (like `#player-dock`'s own --z-dock rung) above the mobile `.bottom-nav`
+   (--z-nav) and below every modal/sheet band. `flex-direction: column-reverse` makes the
    expanded panel render ABOVE the collapsed summary pill in the layout
    (while staying AFTER it in DOM/source order, so the summary button is
    still first in tab order) -- "dock as a slim bottom strip that expands
@@ -6254,7 +6266,7 @@ body.ft-css-fullscreen .bottom-nav {
   position: fixed;
   left: 16px; /* token-exempt: positional geometry (Stop A Batch A) */
   bottom: 16px; /* token-exempt: positional geometry (Stop A Batch A) */
-  z-index: 940;
+  z-index: var(--z-chip);
   max-width: min(320px, calc(100vw - 32px));
   font-family: var(--font-family);
   display: flex;
@@ -6695,9 +6707,9 @@ body.ft-css-fullscreen .bottom-nav {
   position: relative;
   width: 92px;
   height: 138px;
-  border-radius: 4px;
+  border-radius: var(--radius);
   overflow: hidden;
-  background: var(--thumbnail-bg, #222);
+  background: var(--thumbnail-bg);
 }
 .book-row-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .book-row-progress {
@@ -6706,7 +6718,7 @@ body.ft-css-fullscreen .bottom-nav {
   height: 3px;
   background: rgba(0, 0, 0, 0.5); /* token-exempt: progress-track component art, not a scrim (OQ5c) */
 }
-.book-row-progress-fill { height: 100%; background: var(--accent, #cc0000); }
+.book-row-progress-fill { height: 100%; background: var(--yt-red); }
 .book-row-title {
   display: block;
   margin-top: var(--space-2);
@@ -6739,7 +6751,7 @@ body.ft-css-fullscreen .bottom-nav {
 .pinned-unpin-btn:hover { opacity: 1; }
 .pinned-unpin-btn.armed {
   opacity: 1;
-  background: var(--accent, #cc0000);
+  background: var(--yt-red);
   color: #fff;
   font-size: var(--fs-xs);
 }
@@ -6774,9 +6786,9 @@ body.ft-css-fullscreen .bottom-nav {
     .book-cover-link {
       display: block;
       aspect-ratio: 2 / 3;
-      border-radius: 4px;
+      border-radius: var(--radius);
       overflow: hidden;
-      background: var(--thumbnail-bg, #222);
+      background: var(--thumbnail-bg);
       position: relative;
     }
     .book-cover-img {
@@ -6793,7 +6805,7 @@ body.ft-css-fullscreen .bottom-nav {
     }
     .book-progress-fill {
       height: 100%;
-      background: var(--accent, #cc0000);
+      background: var(--yt-red);
     }
     .book-title {
       margin-top: var(--space-3);
@@ -6822,14 +6834,14 @@ body.ft-css-fullscreen .bottom-nav {
       align-items: center;
       gap: var(--space-3);
       padding: var(--space-2) var(--space-5);
-      border: 1px solid var(--border-color, #444);
+      border: 1px solid var(--border-color);
       border-radius: var(--radius-lg);
       font-size: var(--fs-sm);
       cursor: pointer;
       background: none;
       color: inherit;
     }
-    .books-shelf-chip.active { background: var(--accent, #cc0000); color: #fff; border-color: transparent; }
+    .books-shelf-chip.active { background: var(--yt-red); color: #fff; border-color: transparent; }
     .books-shelf-pin-btn {
       border: none;
       background: none;
@@ -6871,7 +6883,7 @@ body.ft-css-fullscreen .bottom-nav {
       flex-wrap: wrap; /* v1.37.2: buttons wrap to a second row, never clipped */
       gap: var(--space-4);
       padding: var(--space-3) var(--space-4);
-      border-bottom: 1px solid var(--border-color, #444);
+      border-bottom: 1px solid var(--border-color);
       flex: 0 0 auto;
     }
     .reader-title {
@@ -6915,20 +6927,20 @@ body.ft-css-fullscreen .bottom-nav {
       align-items: center;
       gap: var(--space-5);
       padding: var(--space-3) var(--space-5) calc(var(--space-3) + env(safe-area-inset-bottom, 0px));
-      border-top: 1px solid var(--border-color, #444);
+      border-top: 1px solid var(--border-color);
       font-size: var(--fs-sm);
     }
     .reader-progress-track {
       flex: 1 1 auto;
       height: 6px;
       border-radius: 3px;
-      background: var(--border-color, #444);
+      background: var(--border-color);
       overflow: hidden;
     }
     .reader-progress-fill {
       height: 100%;
       width: 0;
-      background: var(--accent, #cc0000);
+      background: var(--yt-red);
     }
     .reader-percent { flex: 0 0 auto; min-width: 42px; text-align: right; opacity: 0.85; }
     /* TOC + settings drawers -- the chapters-menu lessons applied: an
@@ -6938,8 +6950,8 @@ body.ft-css-fullscreen .bottom-nav {
       position: absolute;
       top: 0; right: 0; bottom: 0;
       width: min(320px, 85vw);
-      background: var(--card-bg, #1c1c22);
-      border-left: 1px solid var(--border-color, #444);
+      background: var(--card-bg);
+      border-left: 1px solid var(--border-color);
       overflow-y: auto;
       z-index: 30; /* token-exempt: local stacking */
       display: flex;
@@ -6952,7 +6964,7 @@ body.ft-css-fullscreen .bottom-nav {
       display: block;
       padding: var(--space-3) var(--space-2);
       font-size: var(--fs-base);
-      border-bottom: 1px solid var(--border-color, #333);
+      border-bottom: 1px solid var(--border-color);
       cursor: pointer;
       background: none;
       border-left: none; border-right: none; border-top: none;
@@ -7008,7 +7020,7 @@ body.ft-css-fullscreen .bottom-nav {
   left: 0;
   right: 0;
   bottom: 0;
-  z-index: 940; /* above .bottom-nav (900), below #player-dock (950)/modals */
+  z-index: var(--z-chip); /* above .bottom-nav (--z-nav), below #player-dock (--z-dock)/modals */
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
@@ -7165,16 +7177,16 @@ body.ft-css-fullscreen .bottom-nav {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
+  z-index: calc(var(--z-modal) - 100); /* 1900: the preview is modal-grade chrome - its own rung just below the confirm modal (--z-modal), cleanly above the header instead of the old DOM-order-dependent 1000/1000 tie (Tier 4 re-ladder). Every surface between the old and new rung is POINTER-impossible to co-open (the full-cover backdrops block each other's openers); keyboard focus is NOT trapped (pre-existing gap, tech-debt #67), and in a Tab+Enter co-open the modal-grade preview deliberately paints on top */
   padding: var(--space-8);
 }
 .reloc-preview-backdrop[hidden] {
   display: none;
 }
 .reloc-preview-panel {
-  background: var(--card-bg, var(--bg-color, #fff));
+  background: var(--card-bg);
   color: var(--text-color);
-  border: 1px solid var(--border-color, #ccc);
+  border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
   width: 100%;
   max-width: 720px;
@@ -7189,7 +7201,7 @@ body.ft-css-fullscreen .bottom-nav {
   justify-content: space-between;
   gap: var(--space-5);
   padding: var(--space-6) var(--space-8);
-  border-bottom: 1px solid var(--border-color, #ccc);
+  border-bottom: 1px solid var(--border-color);
   font-weight: var(--fw-bold);
 }
 .reloc-preview-close {
@@ -7203,11 +7215,11 @@ body.ft-css-fullscreen .bottom-nav {
 }
 .reloc-preview-summary {
   padding: var(--space-6) var(--space-8);
-  border-bottom: 1px solid var(--border-color, #ccc);
+  border-bottom: 1px solid var(--border-color);
   font-size: var(--fs-base);
 }
 .reloc-preview-summary .reloc-copy-warning {
-  color: var(--accent-color, #cc0000);
+  color: var(--yt-red);
   font-weight: var(--fw-bold);
 }
 /* v1.41.7 gate fix (HONESTY 2): the best-effort-prediction + checksum-safety
@@ -7228,7 +7240,7 @@ body.ft-css-fullscreen .bottom-nav {
 }
 .reloc-preview-row {
   padding: var(--space-4) 0;
-  border-bottom: 1px solid var(--border-color, #eee);
+  border-bottom: 1px solid var(--border-color);
   font-size: var(--fs-base);
   word-break: break-word;
 }
@@ -7246,11 +7258,11 @@ body.ft-css-fullscreen .bottom-nav {
   padding: 1px var(--space-3);
   border-radius: 2px;
   margin-left: var(--space-3);
-  border: 1px solid var(--border-color, #ccc);
+  border: 1px solid var(--border-color);
 }
 .reloc-preview-badge.reloc-badge-copy {
-  color: var(--accent-color, #cc0000);
-  border-color: var(--accent-color, #cc0000);
+  color: var(--yt-red);
+  border-color: var(--yt-red);
 }
 
 /* ============================================================================
@@ -7538,7 +7550,7 @@ body.ft-css-fullscreen .bottom-nav {
   height: 180px;
   border-radius: var(--radius-lg);
   object-fit: cover;
-  background: var(--thumbnail-bg, #222);
+  background: var(--thumbnail-bg);
   box-shadow: var(--shadow-lg);
   flex-shrink: 0;
 }
@@ -7563,7 +7575,7 @@ body.ft-css-fullscreen .bottom-nav {
 .music-drill.collapsed .music-drill-sticky { display: flex; }
 .music-drill.collapsed .music-drill-header { display: none; }
 .music-sticky-back { flex-shrink: 0; }
-.music-sticky-thumb { width: 36px; height: 36px; border-radius: 4px; object-fit: cover; background: var(--thumbnail-bg, #222); flex-shrink: 0; }
+.music-sticky-thumb { width: 36px; height: 36px; border-radius: var(--radius); object-fit: cover; background: var(--thumbnail-bg); flex-shrink: 0; }
 .music-sticky-title { flex: 1; min-width: 0; font-size: var(--fs-base); font-weight: var(--fw-semibold); color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .music-sticky-play { flex-shrink: 0; }
 .music-drill-sentinel { width: 100%; height: 1px; }
@@ -7597,7 +7609,7 @@ body.ft-css-fullscreen .bottom-nav {
   aspect-ratio: 1 / 1;
   object-fit: cover;
   border-radius: var(--radius-lg);
-  background: var(--thumbnail-bg, #222);
+  background: var(--thumbnail-bg);
   display: block;
 }
 .music-album-title {
@@ -7645,7 +7657,7 @@ body.ft-css-fullscreen .bottom-nav {
 }
 .music-song-row:hover { background: var(--bg-secondary); }
 .music-song-thumb-wrap { position: relative; flex-shrink: 0; width: 44px; height: 44px; }
-.music-song-thumb { width: 44px; height: 44px; border-radius: 4px; object-fit: cover; background: var(--thumbnail-bg, #222); display: block; }
+.music-song-thumb { width: 44px; height: 44px; border-radius: var(--radius); object-fit: cover; background: var(--thumbnail-bg); display: block; }
 .music-song-main { display: flex; flex-direction: column; min-width: 0; flex: 1; }
 .music-song-title { font-size: var(--fs-base); color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .music-song-sub { font-size: var(--fs-sm); color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -7681,7 +7693,7 @@ body.ft-css-fullscreen .bottom-nav {
   justify-content: center;
   gap: var(--space-1);
   padding-bottom: var(--space-4);
-  border-radius: 4px;
+  border-radius: var(--radius);
   background: rgba(0, 0, 0, 0.45); /* token-exempt: playing-art wash (OQ5e ruling) */
 }
 .music-song-row.playing .music-eq { display: flex; }
@@ -7859,7 +7871,7 @@ body.ft-css-fullscreen .bottom-nav {
   height: 26px;
   width: 70%;
   max-width: 480px;
-  border-radius: 4px;
+  border-radius: var(--radius);
 }
 
 .skeleton-shimmer.skel-w60,
@@ -7869,7 +7881,7 @@ body.ft-css-fullscreen .bottom-nav {
   display: inline-block;
   vertical-align: middle;
   height: 13px;
-  border-radius: 4px;
+  border-radius: var(--radius);
 }
 
 .skeleton-shimmer.skel-w60 { width: 60px; }
@@ -7917,7 +7929,7 @@ body.ft-css-fullscreen .bottom-nav {
   height: 12px;
   width: 90%;
   margin: var(--space-4) 0;
-  border-radius: 4px;
+  border-radius: var(--radius);
 }
 
 .watch-desc-skel .skel-line.short {
@@ -8113,7 +8125,7 @@ body.ft-css-fullscreen .bottom-nav {
   background: var(--bg-sidebar);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-modal);
-  z-index: 1600;
+  z-index: var(--z-panel);
   opacity: 0;
   transform: translateY(-6px);
   transition: opacity var(--dur-fast) var(--ease-ui), transform var(--dur-fast) var(--ease-ui);
@@ -8144,7 +8156,7 @@ body.ft-css-fullscreen .bottom-nav {
   font-weight: var(--fw-semibold);
   cursor: pointer;
   padding: var(--space-2) var(--space-3);
-  border-radius: 4px;
+  border-radius: var(--radius);
 }
 
 .notif-clear-btn:hover {
@@ -8217,7 +8229,7 @@ body.ft-css-fullscreen .bottom-nav {
   width: 72px;
   height: 40px;
   object-fit: cover;
-  border-radius: 4px;
+  border-radius: var(--radius);
   flex-shrink: 0;
 }
 
@@ -8262,7 +8274,7 @@ body.ft-css-fullscreen .bottom-nav {
     position: fixed;
     inset: 0;
     background: var(--scrim);
-    z-index: 1599;
+    z-index: calc(var(--z-panel) - 1); /* backdrop one under its panel */
     opacity: 0;
     transition: opacity var(--dur-fast) var(--ease-ui);
   }
