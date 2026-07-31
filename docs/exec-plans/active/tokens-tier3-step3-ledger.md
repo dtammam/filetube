@@ -178,12 +178,12 @@ silent, but keep them out).
 
 | file:line | selector / JS context | declaration (linter-exact) | bucket | proposed after | delta | notes |
 |---|---|---|---|---|---|---|
-| public/css/style.css:1813 | .audio-artwork | `box-shadow: 0 8px 24px rgba(0,0,0,0.5)` | SHADOW-ELEVATION | box-shadow: var(--shadow-modal) | alpha 0.5->0.45 | scene 10-audio-expanded GATE-BLOCKER; geometry exact match; decorative-depth semantics flagged |
-| public/css/style.css:1825 | .audio-vinyl | `box-shadow: 0 8px 24px rgba(0,0,0,0.6)` | SHADOW-ELEVATION | box-shadow: var(--shadow-modal) | alpha 0.6->0.45 | scene 10-audio-expanded GATE-BLOCKER; sibling staging (0.6 vs 0.5) collapses - flagged |
-| public/css/style.css:5283 | .chapters-menu | `box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35)` | SHADOW-ELEVATION | box-shadow: var(--shadow-modal) | y 4->8px, blur 14->24px, alpha 0.35->0.45 | every component drifts - visibly heavier; chapters menu has no scene (27-chapters-menu proposed) |
+| ~~public/css/style.css:1813~~ | .audio-artwork | `box-shadow: 0 8px 24px rgba(0,0,0,0.5)` | SHADOW-ELEVATION | box-shadow: var(--shadow-modal) | alpha 0.5->0.45 | scene 10-audio-expanded GATE-BLOCKER; geometry exact match; decorative-depth semantics flagged; 3d DONE 2026-07-31 |
+| ~~public/css/style.css:1825~~ | .audio-vinyl | `box-shadow: 0 8px 24px rgba(0,0,0,0.6)` | SHADOW-ELEVATION | box-shadow: var(--shadow-modal) | alpha 0.6->0.45 | scene 10-audio-expanded GATE-BLOCKER; sibling staging (0.6 vs 0.5) collapses - flagged; 3d DONE 2026-07-31 |
+| ~~public/css/style.css:5283~~ | .chapters-menu | `box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35)` | SHADOW-ELEVATION | box-shadow: var(--shadow-modal) | y 4->8px, blur 14->24px, alpha 0.35->0.45 | every component drifts - visibly heavier; chapters menu has no scene (27-chapters-menu proposed); 3d DONE 2026-07-31 |
 | public/css/style.css:6910 | #reader-pane.pdf-scroll canvas | `box-shadow: 0 1px 6px rgba(0,0,0,0.35)` | SHADOW-OTHER | - | - | paper-page ambient shadow on PDF content, not UI elevation - no action |
-| public/css/style.css:7184 | .reloc-preview-panel | `box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4)` | SHADOW-ELEVATION | box-shadow: var(--shadow-modal) | y 4->8px, alpha 0.4->0.45 | scene 18 |
-| public/css/style.css:8115 | .notif-panel | `box-shadow: 0 4px 24px rgba(0, 0, 0, 0.25)` | SHADOW-ELEVATION | box-shadow: var(--shadow-modal) | y 4->8px, alpha 0.25->0.45 (near-double) | scene 12b desktop - the visible risk in this batch |
+| ~~public/css/style.css:7184~~ | .reloc-preview-panel | `box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4)` | SHADOW-ELEVATION | box-shadow: var(--shadow-modal) | y 4->8px, alpha 0.4->0.45 | scene 18; 3d DONE 2026-07-31 |
+| ~~public/css/style.css:8115~~ | .notif-panel | `box-shadow: 0 4px 24px rgba(0, 0, 0, 0.25)` | SHADOW-ELEVATION | box-shadow: var(--shadow-modal) | y 4->8px, alpha 0.25->0.45 (near-double) | scene 12b desktop - the visible risk in this batch; 3d DONE 2026-07-31 |
 
 ## 3e - motion (0.2s cluster and micro-band both RULED ->0.15; deltas are timing FEEL - invisible to frozen captures; Stop B judges on-device)
 

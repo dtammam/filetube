@@ -1810,7 +1810,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   width: 160px;
   height: 160px;
   border-radius: var(--radius-lg);
-  box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+  box-shadow: var(--shadow-modal);
   margin-bottom: var(--space-8);
   object-fit: cover;
   border: 2px solid rgba(255,255,255,0.2);
@@ -1822,7 +1822,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   background: radial-gradient(circle, #333 10%, #111 40%, #000 70%); /* token-exempt: era skin art */
   border-radius: 50%;
   border: 6px solid #222; /* token-exempt: era skin art */
-  box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+  box-shadow: var(--shadow-modal);
   margin-bottom: var(--space-8);
   position: relative;
   animation: spin 6s linear infinite; /* token-exempt: choreography */
@@ -5280,7 +5280,7 @@ body.ft-css-fullscreen .bottom-nav {
   background: var(--header-bg);
   border: 1px solid var(--border-dark);
   border-radius: var(--radius);
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  box-shadow: var(--shadow-modal);
   z-index: 30; /* token-exempt: local stacking */
   display: flex;
   flex-direction: column;
@@ -7181,7 +7181,7 @@ body.ft-css-fullscreen .bottom-nav {
   max-height: 85vh;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--shadow-modal);
 }
 .reloc-preview-header {
   display: flex;
@@ -8112,7 +8112,7 @@ body.ft-css-fullscreen .bottom-nav {
   overflow-y: auto;
   background: var(--bg-sidebar);
   border-radius: var(--radius-lg);
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.25);
+  box-shadow: var(--shadow-modal);
   z-index: 1600;
   opacity: 0;
   transform: translateY(-6px);
