@@ -105,10 +105,23 @@ that blocked 16 scenes was Express finalhandler's stock 404 page
 (default-src 'none') served because ytdlp-OFF unregistered the
 /subscriptions routes - FileTube sets no CSP; and the other 8 blocked
 scenes waited on UI the disabled module never renders (one-off button,
-notif bell). Enabling the module UNDER FILETUBE_READONLY restores all
-24 scenes' UI with zero mutation risk: readonly 403s every mutating
-verb server-side, READ_ONLY_MEDIA no-ops the scheduled poll, and the
-harness guard never lets a mutation leave the browser anyway. The
+notif bell). Enabling the module UNDER FILETUBE_READONLY +
+FILETUBE_READ_ONLY_MEDIA restores all 24 scenes' UI. Mutation
+coverage, stated precisely (gate finding - the three request-scoped
+protections are all the SAME way, requests): readonly 403s every
+mutating verb server-side, READ_ONLY_MEDIA no-ops the scheduled poll
+AND (since this fix) the BOOT-TIME writers - the pending one-shot
+requeue and the stale-dir migration, which previously ran before any
+request existed and were blind to every request-level guard - and the
+harness guard never lets a mutation leave the browser. Operational
+precondition regardless: verify ytdlp-pending-oneshots.json in the
+target's data dir is empty or absent before trusting a capture window. The
 harness additionally sets bypassCSP on every context so no page's CSP
 (the app's future one, or an error page's) can kill style injection -
-safe because the guard, not CSP, is the mutation boundary.
+safe because the guard, not CSP, is the mutation boundary; MORE than
+safe, in fact: a page CSP blocks mutating fetches inside the browser
+BEFORE they reach the route handler, silently suppressing the
+harness's own blockedRequests audit trail (measured) - bypassCSP
+restores it. Disclosed trade: if FileTube ever ships a real CSP, the
+harness cannot photograph a CSP-induced UI breakage - baselines would
+not represent what users see.
