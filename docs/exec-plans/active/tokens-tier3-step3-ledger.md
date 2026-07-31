@@ -242,30 +242,30 @@ silent, but keep them out).
 
 | file:line | selector / JS context | declaration (linter-exact) | bucket | proposed after | delta | notes |
 |---|---|---|---|---|---|---|
-| public/js/setup.js:618 | bottombar-editor toggle label cssText | `gap: 6px` | JS-ADOPT | gap: var(--space-3) | none |  |
-| public/js/stats.js:161 | buildBreakdownRow cssText | `gap: 10px` | JS-ADOPT | gap: var(--space-5) | none |  |
-| public/js/stats.js:161 | buildBreakdownRow cssText | `padding: 8px 4px` | JS-ADOPT | padding: var(--space-4) var(--space-2) | none |  |
-| public/js/stats.js:164 | buildBreakdownRow labelEl cssText | `font-weight: bold` | FW-JS-ADOPT | font-weight:var(--fw-bold) | none (bold==700) |  |
-| public/js/stats.js:215 | mostWatched row cssText | `gap: 10px` | JS-ADOPT | gap: var(--space-5) | none |  |
-| public/js/stats.js:215 | mostWatched row cssText | `padding: 8px 4px` | JS-ADOPT | padding: var(--space-4) var(--space-2) | none |  |
-| public/js/stats.js:260 | duplicates renderSection header cssText | `font-weight: bold` | FW-JS-ADOPT | font-weight:var(--fw-bold) | none (bold==700) |  |
-| public/js/stats.js:260 | duplicates renderSection header cssText | `padding: 10px 4px 4px` | JS-ADOPT | padding: var(--space-5) var(--space-2) var(--space-2) | none |  |
-| public/js/stats.js:265 | duplicates group row cssText | `padding: 8px 4px` | JS-ADOPT | padding: var(--space-4) var(--space-2) | none |  |
-| public/js/stats.js:278 | duplicate item pathLine cssText | `padding-left: 12px` | JS-ADOPT | padding-left: var(--space-6) | none |  |
-| public/js/stats.js:313 | buildBookFolderRow cssText | `gap: 10px` | JS-ADOPT | gap: var(--space-5) | none |  |
-| public/js/stats.js:313 | buildBookFolderRow cssText | `padding: 8px 4px` | JS-ADOPT | padding: var(--space-4) var(--space-2) | none |  |
-| public/js/stats.js:316 | buildBookFolderRow labelEl cssText | `font-weight: bold` | FW-JS-ADOPT | font-weight:var(--fw-bold) | none (bold==700) |  |
-| public/js/stats.js:347 | buildRepoLink cssText | `font-weight: bold` | FW-JS-ADOPT | font-weight:var(--fw-bold) | none (bold==700) | same cssText already consumes a var() today - proven pattern |
-| public/js/stats.js:354 | buildAboutRow row cssText | `gap: 10px` | JS-ADOPT | gap: var(--space-5) | none |  |
-| public/js/stats.js:354 | buildAboutRow row cssText | `padding: 8px 4px` | JS-ADOPT | padding: var(--space-4) var(--space-2) | none |  |
-| public/js/stats.js:357 | buildAboutRow labelEl cssText | `font-weight: bold` | FW-JS-ADOPT | font-weight:var(--fw-bold) | none (bold==700) |  |
-| public/js/stats.js:389 | About GitHub links row cssText | `gap: 16px` | JS-ADOPT | gap: var(--space-8) | none |  |
-| public/js/stats.js:389 | About GitHub links row cssText | `padding: 14px 4px 4px` | JS-DRIFT | padding: var(--space-6) var(--space-2) var(--space-2) | 14px->12px | scene 16 - the one visible JS delta |
-| public/js/watch.js:635 | .watch-view-error cssText | `padding: 24px 16px` | JS-ADOPT | padding: var(--space-12) var(--space-8) | none |  |
-| public/js/watch.js:638 | error heading style.marginBottom | `margin-bottom: 12px` | JS-ADOPT | margin-bottom: var(--space-6) | none |  |
-| public/js/watch.js:647 | error backLink style.marginTop | `margin-top: 16px` | JS-ADOPT | margin-top: var(--space-8) | none |  |
-| public/js/watch.js:1921 | pinBtn.style.marginLeft | `margin-left: 8px` | JS-ADOPT | margin-left: var(--space-4) | none |  |
-| public/js/watch.js:2129 | comments empty-state cssText | `padding: 12px 0` | JS-ADOPT | padding: var(--space-6) 0 | none |  |
+| ~~public/js/setup.js:618~~ | bottombar-editor toggle label cssText | `gap: 6px` | JS-ADOPT | gap: var(--space-3) | none | 3h DONE 2026-07-31 |
+| ~~public/js/stats.js:161~~ | buildBreakdownRow cssText | `gap: 10px` | JS-ADOPT | gap: var(--space-5) | none | 3h DONE 2026-07-31 |
+| ~~public/js/stats.js:161~~ | buildBreakdownRow cssText | `padding: 8px 4px` | JS-ADOPT | padding: var(--space-4) var(--space-2) | none | 3h DONE 2026-07-31 |
+| ~~public/js/stats.js:164~~ | buildBreakdownRow labelEl cssText | `font-weight: bold` | FW-JS-ADOPT | font-weight:var(--fw-bold) | none (bold==700) | 3h DONE 2026-07-31 |
+| ~~public/js/stats.js:215~~ | mostWatched row cssText | `gap: 10px` | JS-ADOPT | gap: var(--space-5) | none | 3h DONE 2026-07-31 |
+| ~~public/js/stats.js:215~~ | mostWatched row cssText | `padding: 8px 4px` | JS-ADOPT | padding: var(--space-4) var(--space-2) | none | 3h DONE 2026-07-31 |
+| ~~public/js/stats.js:260~~ | duplicates renderSection header cssText | `font-weight: bold` | FW-JS-ADOPT | font-weight:var(--fw-bold) | none (bold==700) | 3h DONE 2026-07-31 |
+| ~~public/js/stats.js:260~~ | duplicates renderSection header cssText | `padding: 10px 4px 4px` | JS-ADOPT | padding: var(--space-5) var(--space-2) var(--space-2) | none | 3h DONE 2026-07-31 |
+| ~~public/js/stats.js:265~~ | duplicates group row cssText | `padding: 8px 4px` | JS-ADOPT | padding: var(--space-4) var(--space-2) | none | 3h DONE 2026-07-31 |
+| ~~public/js/stats.js:278~~ | duplicate item pathLine cssText | `padding-left: 12px` | JS-ADOPT | padding-left: var(--space-6) | none | 3h DONE 2026-07-31 |
+| ~~public/js/stats.js:313~~ | buildBookFolderRow cssText | `gap: 10px` | JS-ADOPT | gap: var(--space-5) | none | 3h DONE 2026-07-31 |
+| ~~public/js/stats.js:313~~ | buildBookFolderRow cssText | `padding: 8px 4px` | JS-ADOPT | padding: var(--space-4) var(--space-2) | none | 3h DONE 2026-07-31 |
+| ~~public/js/stats.js:316~~ | buildBookFolderRow labelEl cssText | `font-weight: bold` | FW-JS-ADOPT | font-weight:var(--fw-bold) | none (bold==700) | 3h DONE 2026-07-31 |
+| ~~public/js/stats.js:347~~ | buildRepoLink cssText | `font-weight: bold` | FW-JS-ADOPT | font-weight:var(--fw-bold) | none (bold==700) | same cssText already consumes a var() today - proven pattern; 3h DONE 2026-07-31 |
+| ~~public/js/stats.js:354~~ | buildAboutRow row cssText | `gap: 10px` | JS-ADOPT | gap: var(--space-5) | none | 3h DONE 2026-07-31 |
+| ~~public/js/stats.js:354~~ | buildAboutRow row cssText | `padding: 8px 4px` | JS-ADOPT | padding: var(--space-4) var(--space-2) | none | 3h DONE 2026-07-31 |
+| ~~public/js/stats.js:357~~ | buildAboutRow labelEl cssText | `font-weight: bold` | FW-JS-ADOPT | font-weight:var(--fw-bold) | none (bold==700) | 3h DONE 2026-07-31 |
+| ~~public/js/stats.js:389~~ | About GitHub links row cssText | `gap: 16px` | JS-ADOPT | gap: var(--space-8) | none | 3h DONE 2026-07-31 |
+| ~~public/js/stats.js:389~~ | About GitHub links row cssText | `padding: 14px 4px 4px` | JS-DRIFT | padding: var(--space-6) var(--space-2) var(--space-2) | 14px->12px | scene 16 - the one visible JS delta; 3h DONE 2026-07-31 |
+| ~~public/js/watch.js:635~~ | .watch-view-error cssText | `padding: 24px 16px` | JS-ADOPT | padding: var(--space-12) var(--space-8) | none | 3h DONE 2026-07-31 |
+| ~~public/js/watch.js:638~~ | error heading style.marginBottom | `margin-bottom: 12px` | JS-ADOPT | margin-bottom: var(--space-6) | none | 3h DONE 2026-07-31 |
+| ~~public/js/watch.js:647~~ | error backLink style.marginTop | `margin-top: 16px` | JS-ADOPT | margin-top: var(--space-8) | none | 3h DONE 2026-07-31 |
+| ~~public/js/watch.js:1921~~ | pinBtn.style.marginLeft | `margin-left: 8px` | JS-ADOPT | margin-left: var(--space-4) | none | 3h DONE 2026-07-31 |
+| ~~public/js/watch.js:2129~~ | comments empty-state cssText | `padding: 12px 0` | JS-ADOPT | padding: var(--space-6) 0 | none | 3h DONE 2026-07-31 |
 
 ## No-action census (Tier 4 residue, protected, geometry, layout constants - completeness rows for ledger-check)
 

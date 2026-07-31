@@ -158,10 +158,10 @@ function renderGlanceTiles(root, statsData) {
 // this app's ad hoc one-off layout tweaks) rather than a new CSS class.
 function buildBreakdownRow(label, group) {
   const row = document.createElement('div');
-  row.style.cssText = 'display:flex; justify-content:space-between; align-items:center; gap:10px; padding:8px 4px; border-bottom:1px solid var(--border-color);';
+  row.style.cssText = 'display:flex; justify-content:space-between; align-items:center; gap:var(--space-5); padding:var(--space-4) var(--space-2); border-bottom:1px solid var(--border-color);';
   const labelEl = document.createElement('span');
   labelEl.textContent = label;
-  labelEl.style.cssText = 'font-weight:bold; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;';
+  labelEl.style.cssText = 'font-weight:var(--fw-bold); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;';
   const valueEl = document.createElement('span');
   valueEl.textContent = `${formatCount(group.count)} · ${formatTotalDuration(group.totalDurationSeconds)} · ${formatByteSize(group.totalSizeBytes)}`;
   valueEl.className = 'stats-meta-text';
@@ -212,7 +212,7 @@ function renderMostWatched(root, mostWatched) {
   }
   mostWatched.forEach((entry, index) => {
     const row = document.createElement('div');
-    row.style.cssText = 'display:flex; justify-content:space-between; align-items:center; gap:10px; padding:8px 4px; border-bottom:1px solid var(--border-color);';
+    row.style.cssText = 'display:flex; justify-content:space-between; align-items:center; gap:var(--space-5); padding:var(--space-4) var(--space-2); border-bottom:1px solid var(--border-color);';
     const labelEl = document.createElement('span');
     labelEl.textContent = `${index + 1}. ${entry.title}`;
     labelEl.style.cssText = 'overflow:hidden; text-overflow:ellipsis; white-space:nowrap;';
@@ -257,12 +257,12 @@ function renderDuplicates(root, report) {
     if (groups.length === 0) return;
     const header = document.createElement('div');
     header.textContent = title;
-    header.style.cssText = 'font-weight:bold; padding:10px 4px 4px;';
+    header.style.cssText = 'font-weight:var(--fw-bold); padding:var(--space-5) var(--space-2) var(--space-2);';
     root.appendChild(header);
     groups.slice(0, DUPLICATE_GROUPS_RENDER_CAP).forEach((group) => {
       const items = Array.isArray(group.items) ? group.items : [];
       const row = document.createElement('div');
-      row.style.cssText = 'padding:8px 4px; border-bottom:1px solid var(--border-color);';
+      row.style.cssText = 'padding:var(--space-4) var(--space-2); border-bottom:1px solid var(--border-color);';
       const label = document.createElement('div');
       label.textContent = keyLabel(group);
       label.style.cssText = 'overflow:hidden; text-overflow:ellipsis; white-space:nowrap;';
@@ -275,7 +275,7 @@ function renderDuplicates(root, report) {
         const pathLine = document.createElement('div');
         pathLine.textContent = `${item.filePath} (${formatByteSize(item.size)})`;
         pathLine.className = 'stats-meta-text';
-        pathLine.style.cssText = 'padding-left:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;';
+        pathLine.style.cssText = 'padding-left:var(--space-6); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;';
         row.appendChild(pathLine);
       });
       root.appendChild(row);
@@ -310,10 +310,10 @@ function renderBookTiles(root, books) {
 // rather than buildBreakdownRow (which shows a duration segment).
 function buildBookFolderRow(group) {
   const row = document.createElement('div');
-  row.style.cssText = 'display:flex; justify-content:space-between; align-items:center; gap:10px; padding:8px 4px; border-bottom:1px solid var(--border-color);';
+  row.style.cssText = 'display:flex; justify-content:space-between; align-items:center; gap:var(--space-5); padding:var(--space-4) var(--space-2); border-bottom:1px solid var(--border-color);';
   const labelEl = document.createElement('span');
   labelEl.textContent = group.folderName;
-  labelEl.style.cssText = 'font-weight:bold; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;';
+  labelEl.style.cssText = 'font-weight:var(--fw-bold); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;';
   const valueEl = document.createElement('span');
   valueEl.textContent = `${formatCount(group.count)} · ${formatByteSize(group.totalSizeBytes)}`;
   valueEl.className = 'stats-meta-text';
@@ -344,17 +344,17 @@ function buildRepoLink(href, text) {
   a.textContent = text;
   a.target = '_blank';
   a.rel = 'noopener noreferrer';
-  a.style.cssText = 'color:var(--accent, #cc0000); text-decoration:none; font-weight:bold;';
+  a.style.cssText = 'color:var(--accent, #cc0000); text-decoration:none; font-weight:var(--fw-bold);';
   return a;
 }
 
 // One "label ..... value" row where the value can be a text node OR a link.
 function buildAboutRow(label, valueNode) {
   const row = document.createElement('div');
-  row.style.cssText = 'display:flex; justify-content:space-between; align-items:center; gap:10px; padding:8px 4px; border-bottom:1px solid var(--border-color);';
+  row.style.cssText = 'display:flex; justify-content:space-between; align-items:center; gap:var(--space-5); padding:var(--space-4) var(--space-2); border-bottom:1px solid var(--border-color);';
   const labelEl = document.createElement('span');
   labelEl.textContent = label;
-  labelEl.style.cssText = 'font-weight:bold;';
+  labelEl.style.cssText = 'font-weight:var(--fw-bold);';
   const valueEl = document.createElement('span');
   valueEl.style.cssText = 'color:var(--text-secondary); flex-shrink:0;';
   valueEl.appendChild(valueNode);
@@ -386,7 +386,7 @@ function renderAbout(root, system) {
 
   // GitHub links.
   const links = document.createElement('div');
-  links.style.cssText = 'display:flex; flex-wrap:wrap; gap:16px; padding:14px 4px 4px;';
+  links.style.cssText = 'display:flex; flex-wrap:wrap; gap:var(--space-8); padding:var(--space-6) var(--space-2) var(--space-2);';
   links.appendChild(buildRepoLink(repoUrl, 'GitHub repository'));
   links.appendChild(buildRepoLink(`${repoUrl}/releases`, 'Releases'));
   links.appendChild(buildRepoLink(`${repoUrl}/issues`, 'Report an issue'));
