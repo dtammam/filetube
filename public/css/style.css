@@ -150,7 +150,7 @@ summary,
      is untouched: these tokens are for surfaces that deliberately look the
      same in every era and mode. AMENDMENT (c), recorded here so it is
      never lost: when scrim consolidation happens (Tier 2), the cc-overlay
-     TEXT BACKGROUND keeps its own rgba(0,0,0,0.85) - it is a LEGIBILITY
+     TEXT BACKGROUND keeps its own (value corrected 2026-07-31 per OQ8 - the comment said 0.85, the shipped value was always 0.72) rgba(0,0,0,0.72) - it is a LEGIBILITY
      floor over arbitrary video, not a style surface, and must not adopt
      --scrim-heavy. */
   --overlay-surface: #222;
@@ -1120,8 +1120,8 @@ html.reader-immersive .app-container { padding-top: 0; }
   position: absolute;
   bottom: 4px; /* token-exempt: positional geometry (Stop A Batch A) */
   right: 4px; /* token-exempt: positional geometry (Stop A Batch A) */
-  background-color: rgba(0,0,0,0.85);
-  color: white;
+  background-color: var(--scrim-heavy);
+  color: var(--on-overlay);
   padding: var(--space-1) var(--space-2);
   font-size: var(--fs-xs);
   font-weight: var(--fw-bold);
@@ -1163,8 +1163,8 @@ html.reader-immersive .app-container { padding-top: 0; }
   padding: var(--space-2) var(--space-3);
   border: none;
   border-radius: var(--radius);
-  background-color: rgba(0, 0, 0, 0.6);
-  color: #fff;
+  background-color: var(--scrim);
+  color: var(--on-overlay);
   cursor: pointer;
   font-size: var(--fs-xs);
   font-weight: var(--fw-bold);
@@ -1217,8 +1217,8 @@ html.reader-immersive .app-container { padding-top: 0; }
   padding: var(--space-2) var(--space-3);
   border: none;
   border-radius: var(--radius);
-  background-color: rgba(0, 0, 0, 0.6);
-  color: #fff;
+  background-color: var(--scrim);
+  color: var(--on-overlay);
   cursor: pointer;
   opacity: 0.85;
   transition: opacity var(--dur-fast) var(--ease-ui), background-color var(--dur-fast) var(--ease-ui);
@@ -1253,8 +1253,8 @@ html.reader-immersive .app-container { padding-top: 0; }
   padding: var(--space-2) var(--space-3);
   border: none;
   border-radius: var(--radius);
-  background-color: rgba(0, 0, 0, 0.6);
-  color: #fff;
+  background-color: var(--scrim);
+  color: var(--on-overlay);
   cursor: pointer;
   opacity: 0.85;
   transition: opacity var(--dur-fast) var(--ease-ui), background-color var(--dur-fast) var(--ease-ui), color var(--dur-fast) var(--ease-ui);
@@ -1661,8 +1661,8 @@ html.reader-immersive .app-container { padding-top: 0; }
   padding: 0;
   border: none;
   border-radius: 50%;
-  background: rgba(0, 0, 0, 0.6);
-  color: #fff;
+  background: var(--scrim);
+  color: var(--on-overlay);
   font-size: var(--fs-xl);
   cursor: pointer;
 }
@@ -1872,13 +1872,13 @@ html.reader-immersive .app-container { padding-top: 0; }
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: rgba(0,0,0,0.85);
+  background-color: var(--scrim-heavy);
   display: flex;
   flex-direction: column;
   justify-content: center;
   align-items: center;
   z-index: 10; /* token-exempt: local stacking */
-  color: white;
+  color: var(--on-overlay);
   text-align: center;
   padding: var(--space-10);
 }
@@ -1890,7 +1890,7 @@ html.reader-immersive .app-container { padding-top: 0; }
 
 .resume-overlay p {
   margin-bottom: var(--space-8);
-  color: #ccc;
+  color: var(--on-overlay-muted);
 }
 
 .resume-actions {
@@ -1928,8 +1928,8 @@ html.reader-immersive .app-container { padding-top: 0; }
   top: 12px; /* token-exempt: positional geometry (Stop A Batch A) */
   left: 50%;
   transform: translateX(-50%);
-  background: rgba(0, 0, 0, 0.75);
-  color: #fff;
+  background: var(--scrim-heavy);
+  color: var(--on-overlay);
   padding: var(--space-2) var(--space-6);
   border-radius: 14px;
   font-size: var(--fs-base);
@@ -1976,7 +1976,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   border: none;
   border-radius: 27px; /* token-exempt: era skin art */
   background: var(--scrim);
-  color: #fff;
+  color: var(--on-overlay);
   font-weight: var(--fw-semibold);
   cursor: pointer;
   opacity: 0;
@@ -1995,7 +1995,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   opacity: 1;
   pointer-events: auto;
 }
-.skip-btn:hover { background: rgba(0, 0, 0, 0.8); transform: translateY(-50%) scale(1); }
+.skip-btn:hover { background: var(--scrim-heavy); transform: translateY(-50%) scale(1); }
 .skip-btn:active { transform: translateY(-50%) scale(0.9); }
 
 /* Double-tap ripple feedback */
@@ -2007,7 +2007,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #fff;
+  color: var(--on-overlay);
   font-size: var(--fs-2xl);
   font-weight: var(--fw-bold);
   background: rgba(255, 255, 255, 0.14);
@@ -3178,7 +3178,7 @@ a.sub-row-channel-link:focus-visible {
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: rgba(0,0,0,0.5);
+  background-color: var(--scrim);
   display: flex;
   justify-content: center;
   align-items: center;
@@ -3298,7 +3298,7 @@ a.sub-row-channel-link:focus-visible {
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: rgba(0, 0, 0, 0.5);
+  background-color: var(--scrim);
   display: flex;
   justify-content: center;
   align-items: center;
@@ -3971,7 +3971,7 @@ a.sub-row-channel-link:focus-visible {
     position: fixed;
     inset: 0;
     z-index: 1500;
-    background: rgba(0, 0, 0, 0.5);
+    background: var(--scrim);
     opacity: 0;
     transition: opacity 0.2s ease-out;
   }
@@ -5232,7 +5232,7 @@ a.sub-row-channel-link:focus-visible {
   /* v1.34.5: blend into the fullscreen black instead of the themed bar
      chrome -- the safe-area padding read as a colored band at the bottom
      ("some at the bottom"). Semi-transparent, the native-player convention. */
-  background: rgba(0, 0, 0, 0.75);
+  background: var(--scrim-heavy);
   border-top: none;
   box-shadow: none;
 }
@@ -5485,7 +5485,7 @@ body.ft-css-fullscreen .bottom-nav {
 .cc-overlay-text {
   max-width: 92%;
   background: rgba(0, 0, 0, 0.72);
-  color: #fff;
+  color: var(--on-overlay);
   font-family: var(--font-family);
   font-size: var(--fs-md);
   line-height: 1.35;
@@ -5788,7 +5788,7 @@ body.ft-css-fullscreen .bottom-nav {
   position: fixed;
   inset: 0;
   z-index: 1600; /* above the Playlists sheet (1501); below the toast (2200)/generic modal (2000+), which never coexist with this page's own sheet in practice */
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--scrim);
   display: flex;
   align-items: flex-end;
   justify-content: center;
@@ -6117,7 +6117,7 @@ body.ft-css-fullscreen .bottom-nav {
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: rgba(0, 0, 0, 0.65);
+  background-color: rgba(0, 0, 0, 0.65); /* token-exempt: destructive-modal dim (OQ5b ruling) */
   display: flex;
   justify-content: center;
   align-items: center;
@@ -6704,7 +6704,7 @@ body.ft-css-fullscreen .bottom-nav {
   position: absolute;
   left: 0; right: 0; bottom: 0;
   height: 3px;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(0, 0, 0, 0.5); /* token-exempt: progress-track component art, not a scrim (OQ5c) */
 }
 .book-row-progress-fill { height: 100%; background: var(--accent, #cc0000); }
 .book-row-title {
@@ -6789,7 +6789,7 @@ body.ft-css-fullscreen .bottom-nav {
       position: absolute;
       left: 0; right: 0; bottom: 0;
       height: 4px;
-      background: rgba(0, 0, 0, 0.5);
+      background: rgba(0, 0, 0, 0.5); /* token-exempt: progress-track component art, not a scrim (OQ5d) */
     }
     .book-progress-fill {
       height: 100%;
@@ -7682,7 +7682,7 @@ body.ft-css-fullscreen .bottom-nav {
   gap: var(--space-1);
   padding-bottom: var(--space-4);
   border-radius: 4px;
-  background: rgba(0, 0, 0, 0.45);
+  background: rgba(0, 0, 0, 0.45); /* token-exempt: playing-art wash (OQ5e ruling) */
 }
 .music-song-row.playing .music-eq { display: flex; }
 .music-eq i {
@@ -8261,7 +8261,7 @@ body.ft-css-fullscreen .bottom-nav {
     display: block;
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.5);
+    background: var(--scrim);
     z-index: 1599;
     opacity: 0;
     transition: opacity 0.2s var(--ease-ui);

@@ -171,7 +171,9 @@ test('v1.34.5: rotating a playing video to landscape in CUSTOM mode bounces out 
   assert.match(playerSrc, /webkitbeginfullscreen', function \(\) \{\s*if \(!isMobileFormFactor\(\) \|\| inNativeControlsMode\(\)\) return;/,
     'native-controls mode keeps the native rotation fullscreen untouched');
   const css = fs.readFileSync(path.join(ROOT, 'public', 'css', 'style.css'), 'utf8');
-  assert.match(css, /#player-wrapper\.css-fullscreen \.player-controls \{[\s\S]*?background: rgba\(0, 0, 0, 0\.75\);/,
+  // Step 3 batch 3c (2026-07-31): .75 joined --scrim-heavy (0.8) per the
+  // ruled scrim consolidation - token-scale-lock is the value authority.
+  assert.match(css, /#player-wrapper\.css-fullscreen \.player-controls \{[\s\S]*?background: var\(--scrim-heavy\);/,
     'the fullscreen bar blends into the black canvas (no themed band at the bottom)');
 });
 

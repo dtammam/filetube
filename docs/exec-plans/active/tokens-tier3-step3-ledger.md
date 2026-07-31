@@ -144,35 +144,35 @@ silent, but keep them out).
 
 | file:line | selector / JS context | declaration (linter-exact) | bucket | proposed after | delta | notes |
 |---|---|---|---|---|---|---|
-| public/css/style.css:1123 | .duration-badge | `background-color: rgba(0,0,0,0.85)` | SCRIM-DRIFT | background-color: var(--scrim-heavy) | 0.85->0.8 | RULED 2026-07-30 (OQ5a): approved; scene 06 |
-| public/css/style.css:1124 | .duration-badge | `color: white` | ON-OVERLAY-ADOPT | color: var(--on-overlay) | none | survived Tier 2 via `white` spelling |
-| public/css/style.css:1166 | .card-delete-btn | `background-color: rgba(0, 0, 0, 0.6)` | SCRIM-DRIFT | background-color: var(--scrim) | 0.6->0.55 | scene 06 hover |
-| public/css/style.css:1167 | .card-delete-btn | `color: #fff` | ON-OVERLAY-ADOPT | color: var(--on-overlay) | none |  |
-| public/css/style.css:1220 | .card-download-btn | `background-color: rgba(0, 0, 0, 0.6)` | SCRIM-DRIFT | background-color: var(--scrim) | 0.6->0.55 | scene 06 hover |
-| public/css/style.css:1221 | .card-download-btn | `color: #fff` | ON-OVERLAY-ADOPT | color: var(--on-overlay) | none |  |
-| public/css/style.css:1256 | .card-like-btn | `background-color: rgba(0, 0, 0, 0.6)` | SCRIM-DRIFT | background-color: var(--scrim) | 0.6->0.55 | scene 06 hover |
-| public/css/style.css:1257 | .card-like-btn | `color: #fff` | ON-OVERLAY-ADOPT | color: var(--on-overlay) | none |  |
-| public/css/style.css:1664 | .player-dock-close | `background: rgba(0, 0, 0, 0.6)` | SCRIM-DRIFT | background: var(--scrim) | 0.6->0.55 | dock state - on-device judgment; :hover sibling already var(--scrim-heavy) |
-| public/css/style.css:1665 | .player-dock-close | `color: #fff` | ON-OVERLAY-ADOPT | color: var(--on-overlay) | none |  |
-| public/css/style.css:1875 | .resume-overlay | `background-color: rgba(0,0,0,0.85)` | SCRIM-DRIFT | background-color: var(--scrim-heavy) | 0.85->0.8 | scene 04-resume GATE-BLOCKER (value corrected: .85 not the .75 scenes.js claimed) |
-| public/css/style.css:1881 | .resume-overlay | `color: white` | ON-OVERLAY-ADOPT | color: var(--on-overlay) | none | `white` spelling |
-| public/css/style.css:1893 | .resume-overlay p | `color: #ccc` | ON-OVERLAY-ADOPT | color: var(--on-overlay-muted) | none | #ccc exact |
-| public/css/style.css:1931 | .speed-badge | `background: rgba(0, 0, 0, 0.75)` | SCRIM-DRIFT | background: var(--scrim-heavy) | 0.75->0.8 | press-hold 2x state - on-device judgment |
-| public/css/style.css:1932 | .speed-badge | `color: #fff` | ON-OVERLAY-ADOPT | color: var(--on-overlay) | none |  |
-| public/css/style.css:1979 | .skip-btn | `color: #fff` | ON-OVERLAY-ADOPT | color: var(--on-overlay) | none | bg already var(--scrim) |
-| public/css/style.css:1998 | .skip-btn:hover | `background: rgba(0, 0, 0, 0.8)` | SCRIM-EXACT | background: var(--scrim-heavy) | none | the known mid-line adoption-tooling gap |
-| public/css/style.css:2010 | .skip-ripple | `color: #fff` | ON-OVERLAY-ADOPT | color: var(--on-overlay) | none |  |
-| public/css/style.css:3181 | .modal-backdrop | `background-color: rgba(0,0,0,0.5)` | SCRIM-DRIFT | background-color: var(--scrim) | 0.5->0.55 | any confirm-modal surface (scene 21 is now MANUAL-only after the delete-flow incident) |
-| public/css/style.css:3301 | .oneoff-modal-backdrop | `background-color: rgba(0, 0, 0, 0.5)` | SCRIM-DRIFT | background-color: var(--scrim) | 0.5->0.55 | scene 01 |
-| public/css/style.css:3974 | .playlists-sheet-backdrop:not([hidden]) | `background: rgba(0, 0, 0, 0.5)` | SCRIM-DRIFT | background: var(--scrim) | 0.5->0.55 | scene 26-playlists-sheet (phone; coverage-audit addition) |
-| public/css/style.css:5235 | .css-fullscreen .player-controls | `background: rgba(0, 0, 0, 0.75)` | SCRIM-DRIFT | background: var(--scrim-heavy) | 0.75->0.8 | fullscreen state - on-device judgment |
-| public/css/style.css:5488 | .cc-overlay-text | `color: #fff` | ON-OVERLAY-ADOPT | color: var(--on-overlay) | none | amendment protects the BACKGROUND only; adjacency noted |
-| public/css/style.css:5791 | .sub-sheet-backdrop | `background: rgba(0, 0, 0, 0.5)` | SCRIM-DRIFT | background: var(--scrim) | 0.5->0.55 | scene 12 |
-| public/css/style.css:6120 | .hard-delete-modal-backdrop | `background-color: rgba(0, 0, 0, 0.65)` | RULED-EXEMPT | token-exempt annotation in 3c | - | RULED (OQ5b): keep 0.65 - intentional destructive-modal dim |
-| public/css/style.css:6707 | .book-row-progress | `background: rgba(0, 0, 0, 0.5)` | RULED-EXEMPT | token-exempt annotation in 3c | - | RULED (OQ5c): component art, not a scrim |
-| public/css/style.css:6792 | .book-progress-track | `background: rgba(0, 0, 0, 0.5)` | RULED-EXEMPT | token-exempt annotation in 3c | - | RULED (OQ5d): component art, not a scrim |
-| public/css/style.css:7685 | .music-eq | `background: rgba(0, 0, 0, 0.45)` | RULED-EXEMPT | token-exempt annotation in 3c | - | RULED (OQ5e): playing-art wash stays 0.45 |
-| public/css/style.css:8264 | .notif-panel-backdrop:not([hidden]) | `background: rgba(0, 0, 0, 0.5)` | SCRIM-DRIFT | background: var(--scrim) | 0.5->0.55 | scene 12b phone |
+| ~~public/css/style.css:1123~~ | .duration-badge | `background-color: rgba(0,0,0,0.85)` | SCRIM-DRIFT | background-color: var(--scrim-heavy) | 0.85->0.8 | RULED 2026-07-30 (OQ5a): approved; scene 06; 3c DONE 2026-07-31 |
+| ~~public/css/style.css:1124~~ | .duration-badge | `color: white` | ON-OVERLAY-ADOPT | color: var(--on-overlay) | none | survived Tier 2 via `white` spelling; 3c DONE 2026-07-31 (differ shows a TEXTUAL white->#ffffff pair - keyword canonicalization gap, zero visual delta, r=g=b=255 both sides) |
+| ~~public/css/style.css:1166~~ | .card-delete-btn | `background-color: rgba(0, 0, 0, 0.6)` | SCRIM-DRIFT | background-color: var(--scrim) | 0.6->0.55 | scene 06 hover; 3c DONE 2026-07-31 |
+| ~~public/css/style.css:1167~~ | .card-delete-btn | `color: #fff` | ON-OVERLAY-ADOPT | color: var(--on-overlay) | none | 3c DONE 2026-07-31 |
+| ~~public/css/style.css:1220~~ | .card-download-btn | `background-color: rgba(0, 0, 0, 0.6)` | SCRIM-DRIFT | background-color: var(--scrim) | 0.6->0.55 | scene 06 hover; 3c DONE 2026-07-31 |
+| ~~public/css/style.css:1221~~ | .card-download-btn | `color: #fff` | ON-OVERLAY-ADOPT | color: var(--on-overlay) | none | 3c DONE 2026-07-31 |
+| ~~public/css/style.css:1256~~ | .card-like-btn | `background-color: rgba(0, 0, 0, 0.6)` | SCRIM-DRIFT | background-color: var(--scrim) | 0.6->0.55 | scene 06 hover; 3c DONE 2026-07-31 |
+| ~~public/css/style.css:1257~~ | .card-like-btn | `color: #fff` | ON-OVERLAY-ADOPT | color: var(--on-overlay) | none | 3c DONE 2026-07-31 |
+| ~~public/css/style.css:1664~~ | .player-dock-close | `background: rgba(0, 0, 0, 0.6)` | SCRIM-DRIFT | background: var(--scrim) | 0.6->0.55 | dock state - on-device judgment; :hover sibling already var(--scrim-heavy); 3c DONE 2026-07-31 |
+| ~~public/css/style.css:1665~~ | .player-dock-close | `color: #fff` | ON-OVERLAY-ADOPT | color: var(--on-overlay) | none | 3c DONE 2026-07-31 |
+| ~~public/css/style.css:1875~~ | .resume-overlay | `background-color: rgba(0,0,0,0.85)` | SCRIM-DRIFT | background-color: var(--scrim-heavy) | 0.85->0.8 | scene 04-resume GATE-BLOCKER (value corrected: .85 not the .75 scenes.js claimed); 3c DONE 2026-07-31 |
+| ~~public/css/style.css:1881~~ | .resume-overlay | `color: white` | ON-OVERLAY-ADOPT | color: var(--on-overlay) | none | `white` spelling; 3c DONE 2026-07-31 (differ shows a TEXTUAL white->#ffffff pair - keyword canonicalization gap, zero visual delta, r=g=b=255 both sides) |
+| ~~public/css/style.css:1893~~ | .resume-overlay p | `color: #ccc` | ON-OVERLAY-ADOPT | color: var(--on-overlay-muted) | none | #ccc exact; 3c DONE 2026-07-31 |
+| ~~public/css/style.css:1931~~ | .speed-badge | `background: rgba(0, 0, 0, 0.75)` | SCRIM-DRIFT | background: var(--scrim-heavy) | 0.75->0.8 | press-hold 2x state - on-device judgment; 3c DONE 2026-07-31 |
+| ~~public/css/style.css:1932~~ | .speed-badge | `color: #fff` | ON-OVERLAY-ADOPT | color: var(--on-overlay) | none | 3c DONE 2026-07-31 |
+| ~~public/css/style.css:1979~~ | .skip-btn | `color: #fff` | ON-OVERLAY-ADOPT | color: var(--on-overlay) | none | bg already var(--scrim); 3c DONE 2026-07-31 |
+| ~~public/css/style.css:1998~~ | .skip-btn:hover | `background: rgba(0, 0, 0, 0.8)` | SCRIM-EXACT | background: var(--scrim-heavy) | none | the known mid-line adoption-tooling gap; 3c DONE 2026-07-31 |
+| ~~public/css/style.css:2010~~ | .skip-ripple | `color: #fff` | ON-OVERLAY-ADOPT | color: var(--on-overlay) | none | 3c DONE 2026-07-31 |
+| ~~public/css/style.css:3181~~ | .modal-backdrop | `background-color: rgba(0,0,0,0.5)` | SCRIM-DRIFT | background-color: var(--scrim) | 0.5->0.55 | any confirm-modal surface (scene 21 is now MANUAL-only after the delete-flow incident); 3c DONE 2026-07-31 |
+| ~~public/css/style.css:3301~~ | .oneoff-modal-backdrop | `background-color: rgba(0, 0, 0, 0.5)` | SCRIM-DRIFT | background-color: var(--scrim) | 0.5->0.55 | scene 01; 3c DONE 2026-07-31 |
+| ~~public/css/style.css:3974~~ | .playlists-sheet-backdrop:not([hidden]) | `background: rgba(0, 0, 0, 0.5)` | SCRIM-DRIFT | background: var(--scrim) | 0.5->0.55 | scene 26-playlists-sheet (phone; coverage-audit addition); 3c DONE 2026-07-31 |
+| ~~public/css/style.css:5235~~ | .css-fullscreen .player-controls | `background: rgba(0, 0, 0, 0.75)` | SCRIM-DRIFT | background: var(--scrim-heavy) | 0.75->0.8 | fullscreen state - on-device judgment; 3c DONE 2026-07-31 |
+| ~~public/css/style.css:5488~~ | .cc-overlay-text | `color: #fff` | ON-OVERLAY-ADOPT | color: var(--on-overlay) | none | amendment protects the BACKGROUND only; adjacency noted; 3c DONE 2026-07-31 |
+| ~~public/css/style.css:5791~~ | .sub-sheet-backdrop | `background: rgba(0, 0, 0, 0.5)` | SCRIM-DRIFT | background: var(--scrim) | 0.5->0.55 | scene 12; 3c DONE 2026-07-31 |
+| ~~public/css/style.css:6120~~ | .hard-delete-modal-backdrop | `background-color: rgba(0, 0, 0, 0.65)` | RULED-EXEMPT | token-exempt annotation in 3c | - | RULED (OQ5b): keep 0.65 - intentional destructive-modal dim; 3c DONE 2026-07-31 |
+| ~~public/css/style.css:6707~~ | .book-row-progress | `background: rgba(0, 0, 0, 0.5)` | RULED-EXEMPT | token-exempt annotation in 3c | - | RULED (OQ5c): component art, not a scrim; 3c DONE 2026-07-31 |
+| ~~public/css/style.css:6792~~ | .book-progress-track | `background: rgba(0, 0, 0, 0.5)` | RULED-EXEMPT | token-exempt annotation in 3c | - | RULED (OQ5d): component art, not a scrim; 3c DONE 2026-07-31 |
+| ~~public/css/style.css:7685~~ | .music-eq | `background: rgba(0, 0, 0, 0.45)` | RULED-EXEMPT | token-exempt annotation in 3c | - | RULED (OQ5e): playing-art wash stays 0.45; 3c DONE 2026-07-31 |
+| ~~public/css/style.css:8264~~ | .notif-panel-backdrop:not([hidden]) | `background: rgba(0, 0, 0, 0.5)` | SCRIM-DRIFT | background: var(--scrim) | 0.5->0.55 | scene 12b phone; 3c DONE 2026-07-31 |
 
 ## 3d - shadow elevation consolidation
 
