@@ -12,6 +12,13 @@
 //
 // Skips cleanly where the isolated tools/capture package is absent.
 //
+// FONT-QUIESCENCE BINDING NOTE: the force-load (M-font1: remove it and
+// the declared face stays 'unloaded' forever - deterministic red) is
+// bound; the fontsPending term in the stability condition is SHADOWED
+// by the in-observation fonts.ready await (a mutant removing it stays
+// green) and is kept as documented defense-in-depth against
+// fonts.ready's replace-on-new-load semantics, not as a bound invariant.
+//
 // BINDING: the causally-chained late batches bind the STRUCTURAL
 // mutants - first-stable return (the field-bug shape) dies on the chain
 // itself, and a fixed N-observation cap (the round-2 regression) dies on
@@ -25,7 +32,10 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
 const http = require('node:http');
-const { settlePageImages, VOLATILE_MASK_CSS } = require('../../tools/capture/settle.js');
+const fs = require('node:fs');
+const path = require('node:path');
+const { settlePageImages, snapScroll, VOLATILE_MASK_CSS } = require('../../tools/capture/settle.js');
+const { diffPair } = require('../../tools/capture/compare.js');
 
 let chromium = null;
 try {
@@ -48,6 +58,14 @@ function slowImageServer() {
       // Never responds - for the timeout-contract test only.
       return;
     }
+    if (req.url === '/font/slow') {
+      // Delayed then 404: a declared-but-unused face stays
+      // status 'unloaded' forever unless the gate FORCES it (the field's
+      // icon-font race, gate-3 residual); after the force it transits
+      // loading -> error, which counts as settled.
+      setTimeout(() => { res.writeHead(404); res.end(); }, 1200);
+      return;
+    }
     if (req.url.startsWith('/img/')) {
       // Fixed delay: long enough that the 350ms settle floor has long
       // passed before these ever arrive.
@@ -68,9 +86,16 @@ function slowImageServer() {
     // it wraps to a different line count between loads and reflows
     // everything below - the field's 10.31% failure shape.
     reqCount++;
-    res.end(`<html><body style="margin:0;width:300px">
+    // The masked span's content VARIES per load (binds the mask - N8)
+    // but at CONSTANT WIDTH (a single tabular digit): tech-debt #66's
+    // ~3% flake was Date.now() in this span - its digit MIX changed the
+    // hidden span's width in a proportional font and shifted the visible
+    // text after it. That is the app's documented-benign width residual,
+    // faithfully reproduced by accident; a fixture must not fail on the
+    // class the product deliberately accepts.
+    res.end(`<html><head><style>@font-face{font-family:'SlowIconFont';src:url('/font/slow') format('woff2')}</style></head><body style="margin:0;width:300px">
       <div class="sub-list-header-status">last check ${'word '.repeat(5 + (reqCount % 2) * 40)}</div>
-      <div style="height:20px">Added <span id="added-date-text">LIVE-${Date.now()}</span> &bull; static</div>
+      <div style="height:20px">Added <span id="added-date-text">LIVE-${reqCount % 10}</span> &bull; static</div>
       <div id="grid"></div><div id="grid2"></div><div id="grid3"></div>
       <div style="height:40000px"></div>
       <img id="deep" loading="lazy" src="/img/deep" width="40" height="40">
@@ -154,6 +179,14 @@ test('image-quiescence gate: the lazy race exists without it, dies with it, and 
     assert.ok(elapsed < 10000, `settle took ${elapsed}ms - the broken image is hanging an observation (gate W1)`);
     const deepAfter = await p1.evaluate(() => { const d = document.getElementById('deep'); return d.complete && d.naturalWidth > 0; });
     assert.strictEqual(deepAfter, true, 'the eager flip must fetch the below-fold lazy image');
+    // Font quiescence (field gate 3): the declared-but-unused face must
+    // have been FORCED and SETTLED - without the force it stays
+    // 'unloaded' forever (deterministic red, no timing involved);
+    // without the wait it would still be 'loading' at return.
+    assert.strictEqual(settled.fontsPending, 0, JSON.stringify(settled));
+    const fontStates = await p1.evaluate(() => Array.from(document.fonts).map((f) => f.status));
+    assert.ok(fontStates.length > 0, 'fixture must declare a font face');
+    assert.ok(fontStates.every((st) => st === 'loaded' || st === 'error'), `every declared face must be settled post-gate, got ${fontStates}`);
     await p1.close();
 
     // Timeout CONTRACT: a genuinely hanging image reports pending>0 and
@@ -189,16 +222,62 @@ test('image-quiescence gate: the lazy race exists without it, dies with it, and 
     // element below (the field's 10.31% shape) and the byte compare
     // below fails anyway; this assertion just names the mechanism.
     assert.strictEqual(heights[0], heights[1], `masked status heights differ across loads: ${heights.join(' vs ')}`);
-    assert.ok(shots[0].equals(shots[1]), `two gated captures differ (${shots[0].length} vs ${shots[1].length} bytes) - the LIVE-TEXT line or an image raced through`);
+    // The pass/fail contract is the FIELD's contract: compare.js's
+    // thresholded, antialiasing-suppressed comparison ("0 with
+    // differences"). Byte-equality was STRICTER than the product gate
+    // and flaked (~3%, tech-debt #66) on what the attributed capture
+    // showed to be a sub-threshold raster wobble the field gate would
+    // suppress. A real race (missing image, shifted layout) is far
+    // above threshold and still fails. On ANY mismatch - even
+    // sub-threshold - both PNGs and the diff bbox are saved so a #66
+    // event costs one look, never another 37 runs.
+    if (!shots[0].equals(shots[1])) {
+      const os = require('node:os');
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'determinism-flake-'));
+      fs.writeFileSync(path.join(dir, 'a.png'), shots[0]);
+      fs.writeFileSync(path.join(dir, 'b.png'), shots[1]);
+      const raw = diffPair(shots[0], shots[1], 0);
+      console.error(`  DETERMINISM BYTE-MISMATCH (sub-threshold or real): ${shots[0].length} vs ${shots[1].length} bytes, raw-changed=${raw.changed} center=${JSON.stringify(raw.center)} saved=${dir}`);
+    }
+    const d = diffPair(shots[0], shots[1], 16);
+    assert.strictEqual(d.changed, 0, `two gated captures differ ABOVE the field threshold (${d.changed} px, ${d.pct.toFixed(3)}%, center=${JSON.stringify(d.center)}) - an image or layout raced through; PNGs saved per the console line above`);
   } finally {
     await browser.close();
     await new Promise((r) => srv.close(r));
   }
 });
 
+test('snapScroll: fractional scroll offsets round to integers even under CSS smooth scrolling (field gate 3: the 17b/17c sub-pixel residual)', { skip: !chromium && 'tools/capture playwright not installed' }, async (t) => {
+  let browser;
+  try {
+    browser = await chromium.launch();
+  } catch (e) {
+    t.skip(`chromium not launchable: ${e.message.slice(0, 60)}`);
+    return;
+  }
+  try {
+    // MEASURED reality: headless Chromium quantizes scroll to integer
+    // CSS pixels even at DPR 2 (scrollTo(1234.5) lands on 1235) - which
+    // DISPROVED the fractional-scroll hypothesis for the field residual
+    // (the icon-font race was the real cause). The snap stays as
+    // belt-and-braces for non-headless drivers; this test pins the two
+    // properties it must always hold: integer result, no content jump.
+    const ctx = await browser.newContext({ deviceScaleFactor: 2, viewport: { width: 400, height: 400 } });
+    const p = await ctx.newPage();
+    await p.setContent('<html style="scroll-behavior:smooth"><body style="margin:0"><div style="height:5000px"></div></body></html>', { waitUntil: 'domcontentloaded' });
+    await p.evaluate(() => window.scrollTo({ top: 1234.5, behavior: 'instant' }));
+    const before = await p.evaluate(() => window.scrollY);
+    await snapScroll(p);
+    const after = await p.evaluate(() => window.scrollY);
+    assert.ok(Number.isInteger(after), `snapScroll must land on an integer, got ${after}`);
+    assert.ok(Math.abs(after - before) <= 1, 'snap must round, never jump content');
+    await ctx.close();
+  } finally {
+    await browser.close();
+  }
+});
+
 test('driver binding: capture.js gates images and injects the mask before every screenshot', () => {
-  const fs = require('node:fs');
-  const path = require('node:path');
   const src = fs.readFileSync(path.join(__dirname, '../../tools/capture/capture.js'), 'utf8');
   const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
   const settleIdx = code.indexOf('settlePageImages(page)');
@@ -213,4 +292,10 @@ test('driver binding: capture.js gates images and injects the mask before every 
   // round-2 diagnostic hole - the !stable guard must gate the record.
   assert.match(code, /!imgs\.stable\s*\|\|\s*imgs\.pending\s*>\s*0/, 'the record condition must include !imgs.stable - a never-converging set with zero in-flight images would otherwise go unrecorded');
   assert.match(code, /record\.erroredImages\.push\(/, 'errored-image counts must be recorded (server nondeterminism diagnosability)');
+  // Field gate 3 (17b/17c): scroll phase is a rasterization variable.
+  const snaps = code.match(/snapScroll\(page\)/g) || [];
+  assert.ok(snaps.length >= 3, `scrollTo, setViewportWidth AND the pre-screenshot path must snap scroll (found ${snaps.length})`);
+  assert.ok(code.indexOf('snapScroll(page)', code.indexOf('imageWaitPending.push({ scene: fname, pending: late')) < code.indexOf('page.screenshot('), 'a snap must sit between the late recount and the screenshot');
+  assert.ok(code.includes('scroll-behavior:auto!important'), 'smooth scrolling must be frozen (mid-glide scrollIntoViewIfNeeded)');
+  assert.ok(code.includes('overflow-anchor:none!important'), 'scroll anchoring must be disabled (resize relayout nondeterminism)');
 });

@@ -12,7 +12,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { VIEWPORTS, ERAS_P1, scenes, p2EraSpotChecks, p3, notAutomatable } = require('./scenes.js');
 const { newGuardedContext } = require('./request-policy.js');
-const { settlePageImages, VOLATILE_MASK_CSS } = require('./settle.js');
+const { settlePageImages, snapScroll, VOLATILE_MASK_CSS } = require('./settle.js');
 
 const args = process.argv.slice(2);
 const arg = (name, dflt) => { const i = args.indexOf(name); return i === -1 ? dflt : args[i + 1]; };
@@ -41,7 +41,11 @@ async function promptLogin() {
   return user + ':' + pass;
 }
 
-const FREEZE_CSS = `*,*::before,*::after{transition:none!important;animation-play-state:paused!important;animation-delay:-0.01s!important;caret-color:transparent!important}`;
+// scroll-behavior:auto - scrollIntoViewIfNeeded during a CSS smooth
+// scroll returns mid-glide; overflow-anchor:none - Chrome's scroll
+// anchoring adjusts scroll on relayout (the setViewportWidth scenes)
+// nondeterministically (field gate 3, the 17b/17c residual).
+const FREEZE_CSS = `*,*::before,*::after{transition:none!important;animation-play-state:paused!important;animation-delay:-0.01s!important;caret-color:transparent!important}html{scroll-behavior:auto!important;overflow-anchor:none!important}`;
 // P1 determinism masking (2026-07-31): VOLATILE_MASK_CSS (from settle.js)
 // hides GENUINELY LIVE text - the subscriptions status line ("last check
 // ... / Downloads since ...") updates on the module's background poll,
@@ -74,8 +78,8 @@ async function runScene(browser, scene, era, mode, vpName, record) {
       // .stats-meta-text fallback never got a chance).
       else if (op === 'click') await page.click(target, { timeout: 8000 });
       else if (op === 'hover') { if (vpName === 'desktop' || !scene.hoverDesktopOnly) await page.hover(target); }
-      else if (op === 'scrollTo') await page.locator(target).first().scrollIntoViewIfNeeded();
-      else if (op === 'setViewportWidth') await page.setViewportSize({ width: Number(target), height: vp.height });
+      else if (op === 'scrollTo') { await page.locator(target).first().scrollIntoViewIfNeeded(); await snapScroll(page); }
+      else if (op === 'setViewportWidth') { await page.setViewportSize({ width: Number(target), height: vp.height }); await snapScroll(page); }
       else if (op === 'evalJs') await page.evaluate(target);
     }
     // Image quiescence: CONVERGE on a stable, fully-decoded image set
@@ -85,12 +89,15 @@ async function runScene(browser, scene, era, mode, vpName, record) {
     // 350ms settle floor; the shot follows IMMEDIATELY to minimize the
     // post-check gap the round-2 failures lived in.
     const imgs = await settlePageImages(page);
-    if (!imgs.stable || imgs.pending > 0) record.imageWaitPending.push({ scene: fname, pending: imgs.pending, total: imgs.total, stable: imgs.stable, observations: imgs.observations });
+    if (!imgs.stable || imgs.pending > 0 || imgs.fontsPending > 0) record.imageWaitPending.push({ scene: fname, pending: imgs.pending, fontsPending: imgs.fontsPending, total: imgs.total, stable: imgs.stable, observations: imgs.observations });
     if (imgs.errored > 0) record.erroredImages.push({ scene: fname, errored: imgs.errored, total: imgs.total });
     // Last-instant recount: anything landing after convergence is logged,
     // never silent.
     const late = await page.evaluate(() => Array.from(document.images).filter((i) => !i.complete).length);
     if (late > 0) record.imageWaitPending.push({ scene: fname, pending: late, late: true });
+    // Every shot leaves at an integer scroll offset - sub-pixel scroll
+    // phase is a rasterization variable, not scene content.
+    await snapScroll(page);
     await page.screenshot({ path: path.join(OUT, fname), fullPage: false });
     record.captured.push(fname);
   } catch (err) {
