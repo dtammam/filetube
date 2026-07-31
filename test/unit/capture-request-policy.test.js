@@ -154,6 +154,7 @@ test('newGuardedContext: creates the context WITH serviceWorkers blocked, instal
   const ctx = await newGuardedContext(browser, { viewport: { width: 1, height: 1 } }, record, { scene: '06-home-grid' });
   assert.strictEqual(ctx, fakeCtx);
   assert.strictEqual(newContextOpts.serviceWorkers, 'block');
+  assert.strictEqual(newContextOpts.bypassCSP, true, 'a screenshot harness must not die on page CSP (Express 404 pages carry default-src none) - safe because the guard, not CSP, is the mutation boundary');
   assert.strictEqual(newContextOpts.viewport.width, 1);
 
   await routeHandler(mkRoute('DELETE', `${B}/api/videos/x`));

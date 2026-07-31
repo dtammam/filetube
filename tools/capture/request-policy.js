@@ -120,7 +120,13 @@ async function newGuardedContext(browser, opts, record, tag) {
   // FileTube registers no SW today (common.js only unregisters stale
   // ones), but Web Push is on the roadmap - this line is what keeps that
   // future from reopening the hole (QA-gate finding).
-  const ctx = await browser.newContext({ ...opts, serviceWorkers: 'block' });
+  // bypassCSP: a SCREENSHOT harness must not die on any page's CSP -
+  // field gate 4's "v1.57 CSP" was Express finalhandler's stock 404 page
+  // (default-src 'none') served because ytdlp-off unregistered the
+  // route; FileTube itself sets no CSP (grepped). Bypassing is safe here
+  // BECAUSE the route guard blocks every mutation regardless - page CSP
+  // is not this harness's security boundary.
+  const ctx = await browser.newContext({ ...opts, serviceWorkers: 'block', bypassCSP: true });
   await guardContext(ctx, (b) => {
     (b.expected ? record.blockedExpected : record.blockedRequests).push({ ...tag, ...b });
   });
