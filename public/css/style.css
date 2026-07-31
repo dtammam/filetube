@@ -5392,7 +5392,7 @@ body.ft-css-fullscreen .bottom-nav {
 }
 .chapters-editor-textarea {
   width: 100%;
-  font-family: monospace;
+  font-family: var(--mono-font);
   font-size: var(--fs-base);
   background: var(--input-bg, var(--header-bg));
   color: var(--text-primary);
