@@ -102,7 +102,7 @@ Gate finding, second correction of this arithmetic). The ledger's
 totals table is the authority; ledger-check enforces the 298-row
 bijection either way.
 
-## 3b site table (R3 sweep DONE 2026-07-30; `R3` prefix keeps these out of ledger-check's bijection)
+## 3b site table (R3 sweep DONE 2026-07-30; batch EXECUTED 2026-07-31 - the differ enumerated exactly the 6 pairs below incl. the coupled knob travel; the two EXEMPT rows stand per their receipts, Stop B ratifies. `R3` prefix keeps these out of ledger-check's bijection)
 
 | site | selector | current | proposed | delta | notes |
 |---|---|---|---|---|---|

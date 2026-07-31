@@ -890,7 +890,7 @@ html.reader-immersive .app-container { padding-top: 0; }
 /* v1.45.6: the view-mode toggle is an icon-only mode switch (not a labelled
    action), so it's a compact square rather than matching the 104px buttons. */
 #view-mode-btn {
-  min-width: 40px;
+  min-width: var(--size-touch);
   justify-content: center;
 }
 
@@ -2087,7 +2087,7 @@ html.reader-immersive .app-container { padding-top: 0; }
 .watch-autoplay-switch {
   position: relative;
   display: inline-block;
-  width: 34px;
+  width: var(--size-control-sm);
   height: 18px;
   flex-shrink: 0;
 }
@@ -2127,7 +2127,7 @@ html.reader-immersive .app-container { padding-top: 0; }
 }
 
 .watch-autoplay-switch input:checked ~ .watch-autoplay-track .watch-autoplay-thumb {
-  transform: translateX(16px);
+  transform: translateX(14px); /* 3b: track 34->32 (--size-control-sm); travel = 32 - 14 knob - 2*2 inset */
 }
 
 .watch-autoplay-switch input:focus-visible ~ .watch-autoplay-track {
@@ -4570,8 +4570,8 @@ a.sub-row-channel-link:focus-visible {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  width: 30px;
-  height: 30px;
+  width: var(--size-control-sm);
+  height: var(--size-control-sm);
   padding: 0;
   border: 1px solid var(--border-dark);
   border-radius: 0;
@@ -5721,7 +5721,7 @@ body.ft-css-fullscreen .bottom-nav {
    44px mobile) stays the sole touch-target source of truth. */
 #speed-btn {
   width: auto;
-  min-width: 30px;
+  min-width: var(--size-control-sm);
   padding: 0 var(--space-3);
   font-size: var(--fs-sm);
 }
