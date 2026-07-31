@@ -54,8 +54,10 @@ control-size value ANYWHERE (style.css, `<style>` blocks, `el.style.*` /
   derive with `calc(var(--z-X) +/- N)`. Never a new raw rung. Local
   in-component stacking (0-40 band) stays literal with a
   `token-exempt: local stacking` comment.
-- **The linter is the drift detector:** `npm run lint:css` (report-only,
-  current census 54). If your change RAISES the total, you have deviated -
+- **The linter is the drift detector:** `npm run lint:css` (report-only;
+  run it for the current census - the number only ever goes DOWN, and a
+  future ratchet will enforce that). If your change RAISES the total, you
+  have deviated -
   either adopt a token or, if the value is genuinely outside the system
   (positional geometry, era skin art, a legibility floor), annotate the line
   `/* token-exempt: <reason> */` and be prepared to defend the reason in

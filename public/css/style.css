@@ -1169,7 +1169,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   left: 0;
   width: 100%;
   height: 4px;
-  background-color: rgba(255, 255, 255, 0.3);
+  background-color: rgba(255, 255, 255, 0.3); /* token-exempt: thumbnail track wash (translucent overlay art, F.5 ruling 5) */
 }
 
 .progress-bar-fill {
@@ -1548,7 +1548,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   flex-direction: column;
   align-items: center;
   text-align: center;
-  padding: 40px var(--space-10);
+  padding: 40px var(--space-10); /* token-exempt: off-scale 40px breathing room, single consumer (F.5 ruling 5 disposition - Dean may overrule) */
   color: var(--text-secondary);
 }
 
@@ -1801,7 +1801,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   border-style: solid;
   border-width: 18px 0 18px 30px;
   border-color: transparent transparent transparent rgba(255, 255, 255, 0.92); /* token-exempt: glyph art */
-  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.6));
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.6)); /* token-exempt: glyph legibility shadow over arbitrary art (F.5 ruling 5) */
 }
 
 .art-play-glyph.art-play-glyph-playing::before {
@@ -1835,7 +1835,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   flex-direction: column;
   justify-content: center;
   align-items: center;
-  background: radial-gradient(circle, #2c3e50 0%, #0f171e 100%);
+  background: radial-gradient(circle, #2c3e50 0%, #0f171e 100%); /* token-exempt: bespoke audio-canvas art (F.5 ruling 5) */
   color: white;
   text-align: center;
   padding: var(--space-12);
@@ -1848,7 +1848,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   box-shadow: var(--shadow-modal);
   margin-bottom: var(--space-8);
   object-fit: cover;
-  border: 2px solid rgba(255,255,255,0.2);
+  border: 2px solid rgba(255,255,255,0.2); /* token-exempt: art-frame hairline over the audio canvas (F.5 ruling 5) */
 }
 
 .audio-vinyl {
@@ -1874,7 +1874,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   height: 30px;
   background-color: var(--yt-red);
   border-radius: 50%;
-  border: 3px solid white;
+  border: 3px solid white; /* token-exempt: vinyl-ring art (F.5 ruling 5) */
 }
 
 .playing .audio-vinyl {
@@ -1897,7 +1897,7 @@ html.reader-immersive .app-container { padding-top: 0; }
 
 .audio-subtitle {
   font-size: var(--fs-base);
-  color: #aaa;
+  color: #aaa; /* token-exempt: audio-canvas muted text - a deliberate step darker than --on-overlay-muted #ccc (F.5 ruling 5) */
 }
 
 /* Resume Playback Overlay */
@@ -1938,7 +1938,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   width: 44px;
   height: 44px;
   margin-bottom: var(--space-8);
-  border: 4px solid rgba(255, 255, 255, 0.25);
+  border: 4px solid rgba(255, 255, 255, 0.25); /* token-exempt: spinner ring over the canvas (F.5 ruling 5) */
   border-top-color: var(--yt-red);
   border-radius: 50%;
   animation: spin 0.9s linear infinite; /* token-exempt: choreography */
@@ -2045,7 +2045,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   color: var(--on-overlay);
   font-size: var(--fs-2xl);
   font-weight: var(--fw-bold);
-  background: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.14); /* token-exempt: skip-ripple wash (F.5 ruling 5) */
   opacity: 0;
   pointer-events: none;
 }
@@ -2340,7 +2340,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   font-size: var(--fs-xs);
   color: var(--text-secondary);
   margin-top: 3px; /* token-exempt: optical nudge */
-  padding: 1px var(--space-3);
+  padding: 1px var(--space-3); /* token-exempt: hairline chip pad, sub-scale (F.5 ruling 5 disposition - Dean may overrule) */
   background-color: var(--btn-bg);
   border: 1px solid var(--border-color);
   border-radius: var(--radius);
@@ -5136,7 +5136,7 @@ a.sub-row-channel-link:focus-visible {
      - desktop/native FULLSCREEN (the bar overlays there by design, AC14). */
 #player-wrapper:not(.audio-expanded) {
   aspect-ratio: auto;      /* height becomes the real content aspect + the bar strip */
-  padding-bottom: 40px;
+  padding-bottom: 40px; /* token-exempt: player-bar reserve, coupled to the JS-measured bar (Dean F.5: reserves stay literal) */
 }
 #player-wrapper:not(.audio-expanded) #media-player {
   /* Feature A (v1.26.1, Shorts player-size jump): the REAL aspect when
@@ -5175,10 +5175,10 @@ a.sub-row-channel-link:focus-visible {
      rules above) -- the reserved strip below the picture/art matches it.
      Docked (26px) and native-controls (strip removed) keep their own rules. */
   #player-slot #player-wrapper:not(.audio-expanded) {
-    padding-bottom: 80px;
+    padding-bottom: 80px; /* token-exempt: player-bar reserve, two-row mobile bar (Dean F.5: reserves stay literal) */
   }
   #player-wrapper:not(.audio-expanded) {
-    padding-bottom: 44px;  /* non-slot fallback (docked wrapper has its own 26px rule below) */
+    padding-bottom: 44px; /* token-exempt: player-bar reserve, mobile single-row bar (Dean F.5: reserves stay literal) */  /* non-slot fallback (docked wrapper has its own 26px rule below) */
   }
   /* Native-controls mode removes the strip entirely -- must outrank the
      2-ID 80px reservation above (its own base rule is only 1 ID and would
@@ -5204,7 +5204,7 @@ a.sub-row-channel-link:focus-visible {
    mini-player always stays a compact 16:9 regardless of `--media-aspect` --
    see that rule's own comment for why. */
 #player-dock #player-wrapper {
-  padding-bottom: 26px;
+  padding-bottom: 26px; /* token-exempt: player-bar reserve, docked bar (Dean F.5: reserves stay literal) */
 }
 #player-dock #player-wrapper.audio-mode #audio-bg-art {
   bottom: 26px; /* token-exempt: positional geometry (Stop A Batch A) */
@@ -5519,7 +5519,7 @@ body.ft-css-fullscreen .bottom-nav {
 }
 .cc-overlay-text {
   max-width: 92%;
-  background: rgba(0, 0, 0, 0.72);
+  background: rgba(0, 0, 0, 0.72); /* token-exempt: cc legibility floor over arbitrary video (amendment c - permanent) */
   color: var(--on-overlay);
   font-family: var(--font-family);
   font-size: var(--fs-md);
@@ -6077,7 +6077,7 @@ body.ft-css-fullscreen .bottom-nav {
    "this is pinned" reads at a glance without depending on the outline-vs-
    filled glyph difference alone. */
 .sub-row-pin-active {
-  color: #e0a800;
+  color: #e0a800; /* token-exempt: the gold pin accent - single-consumer semantic; name it if ever reused (F.5 ruling 5) */
 }
 
 .sub-row-pin-active:hover,
@@ -6771,7 +6771,7 @@ body.ft-css-fullscreen .bottom-nav {
   font-size: var(--fs-md);
   line-height: 1; /* token-exempt: glyph centering */
   padding: var(--space-1) var(--space-3);
-  border-radius: 2px;
+  border-radius: 2px; /* token-exempt: ruling B per-site radius (was 3px; no small-radius token exists by design) */
   flex: 0 0 auto;
 }
 .sidebar-item .pinned-unpin-btn { float: right; }
@@ -6946,7 +6946,7 @@ body.ft-css-fullscreen .bottom-nav {
       margin: var(--space-4) auto;
       max-width: 100%;
       height: auto;
-      box-shadow: 0 1px 6px rgba(0,0,0,0.35);
+      box-shadow: 0 1px 6px rgba(0,0,0,0.35); /* token-exempt: paper-page depth on pdf canvas (F.5 ruling 5) */
     }
     .reader-bottombar {
       flex: 0 0 auto;
@@ -6960,7 +6960,7 @@ body.ft-css-fullscreen .bottom-nav {
     .reader-progress-track {
       flex: 1 1 auto;
       height: 6px;
-      border-radius: 3px;
+      border-radius: 3px; /* token-exempt: geometry - half the 6px track height (F.5 ruling 5) */
       background: var(--border-color);
       overflow: hidden;
     }
@@ -7059,7 +7059,7 @@ body.ft-css-fullscreen .bottom-nav {
 .reader-nowplaying[hidden] { display: none; }
 .reader-np-info { display: flex; align-items: center; gap: var(--space-4); min-width: 0; }
 .reader-np-cover {
-  width: 26px; height: 26px; object-fit: cover; border-radius: 4px;
+  width: 26px; height: 26px; object-fit: cover; border-radius: 4px; /* token-exempt: ruling B per-site radius (was 3px; no small-radius token exists by design) */
   flex-shrink: 0; background: var(--border-color);
 }
 .reader-np-cover:not([src]) { display: none; }
@@ -7282,8 +7282,8 @@ body.ft-css-fullscreen .bottom-nav {
   display: inline-block;
   font-size: var(--fs-xs);
   font-weight: var(--fw-bold);
-  padding: 1px var(--space-3);
-  border-radius: 2px;
+  padding: 1px var(--space-3); /* token-exempt: hairline badge pad, sub-scale (F.5 ruling 5 disposition - Dean may overrule) */
+  border-radius: 2px; /* token-exempt: ruling B per-site radius (was 3px; no small-radius token exists by design) */
   margin-left: var(--space-3);
   border: 1px solid var(--border-color);
 }
@@ -7728,7 +7728,7 @@ body.ft-css-fullscreen .bottom-nav {
   width: 3px;
   height: 6px;
   background: #fff;
-  border-radius: 1px;
+  border-radius: 1px; /* token-exempt: geometry - eq bar tip (F.5 ruling 5) */
   animation: music-eq-bar 0.9s ease-in-out infinite; /* token-exempt: choreography */
 }
 .music-eq i:nth-child(2) { animation-delay: 0.3s; } /* token-exempt: choreography */
@@ -8116,7 +8116,7 @@ body.ft-css-fullscreen .bottom-nav {
   min-width: 16px;
   height: 16px;
   padding: 0 var(--space-2);
-  border-radius: 8px;
+  border-radius: 8px; /* token-exempt: geometry - half the 16px badge height, pill (F.5 ruling 5) */
   background: var(--yt-red);
   color: #fff;
   font-size: var(--fs-xs);
