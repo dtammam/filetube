@@ -12,6 +12,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { VIEWPORTS, ERAS_P1, scenes, p2EraSpotChecks, p3, notAutomatable } = require('./scenes.js');
 const { newGuardedContext } = require('./request-policy.js');
+const { settlePageImages, VOLATILE_MASK_CSS } = require('./settle.js');
 
 const args = process.argv.slice(2);
 const arg = (name, dflt) => { const i = args.indexOf(name); return i === -1 ? dflt : args[i + 1]; };
@@ -41,6 +42,14 @@ async function promptLogin() {
 }
 
 const FREEZE_CSS = `*,*::before,*::after{transition:none!important;animation-play-state:paused!important;animation-delay:-0.01s!important;caret-color:transparent!important}`;
+// P1 determinism masking (2026-07-31): VOLATILE_MASK_CSS (from settle.js)
+// hides GENUINELY LIVE text - the subscriptions status line ("last check
+// ... / Downloads since ...") updates on the module's background poll,
+// and notification rows carry relative timestamps. visibility:hidden
+// (NOT display:none) keeps every layout box - paddings, line-height,
+// radii, the token surfaces - photographing identically while the
+// volatile glyphs vanish. Coverage note: the hidden text itself carries
+// no Step 3 delta; its box geometry still witnesses the ledger rows.
 
 async function runScene(browser, scene, era, mode, vpName, record) {
   const vp = VIEWPORTS[vpName];
@@ -55,7 +64,7 @@ async function runScene(browser, scene, era, mode, vpName, record) {
     }, [era, mode]);
     let url = BASE + scene.path.replace('FIXTURE_VIDEO', FIXTURE_VIDEO).replace('FIXTURE_BOOK', FIXTURE_BOOK);
     await page.goto(url, { waitUntil: 'networkidle', timeout: 20000 });
-    await page.addStyleTag({ content: FREEZE_CSS });
+    await page.addStyleTag({ content: FREEZE_CSS + VOLATILE_MASK_CSS });
     for (const [op, target] of scene.actions) {
       if (op === 'wait') await page.waitForSelector(target.split(',')[0] + (target.includes(',') ? ', ' + target.split(',').slice(1).join(',') : ''), { timeout: 12000 });
       // Full selector LISTS pass through: Playwright resolves CSS unions
@@ -69,6 +78,10 @@ async function runScene(browser, scene, era, mode, vpName, record) {
       else if (op === 'setViewportWidth') await page.setViewportSize({ width: Number(target), height: vp.height });
       else if (op === 'evalJs') await page.evaluate(target);
     }
+    // Image quiescence BEFORE the settle floor: networkidle fires before
+    // lazy images even start fetching (the 34/89 determinism failure).
+    const imgs = await settlePageImages(page);
+    if (imgs.pending > 0) record.imageWaitPending.push({ scene: fname, pending: imgs.pending, total: imgs.total });
     await page.waitForTimeout(350); // settle fonts/layout post-freeze
     await page.screenshot({ path: path.join(OUT, fname), fullPage: false });
     record.captured.push(fname);
@@ -84,7 +97,7 @@ async function runScene(browser, scene, era, mode, vpName, record) {
   try { ({ chromium } = require('playwright')); }
   catch { console.error('playwright not installed - run: cd tools/capture && npm install && npx playwright install chromium'); process.exit(2); }
   fs.mkdirSync(OUT, { recursive: true });
-  const record = { base: BASE, date: new Date().toISOString(), emulated: true, blockedRequests: [], blockedExpected: [],
+  const record = { base: BASE, date: new Date().toISOString(), emulated: true, blockedRequests: [], blockedExpected: [], imageWaitPending: [],
     determinism: 'animations frozen at end-state; DPR 2; era/mode via localStorage; content pinned via --fixture-video/--fixture-book',
     manualScenes: notAutomatable, captured: [], failed: [] };
   const browser = await chromium.launch();
@@ -125,6 +138,7 @@ async function runScene(browser, scene, era, mode, vpName, record) {
   delete record.storageState; // session cookie never lands in the record
   fs.writeFileSync(path.join(OUT, 'run-record.json'), JSON.stringify(record, null, 1));
   console.log(`captured ${record.captured.length}, failed ${record.failed.length}, unexpected blocked mutations ${record.blockedRequests.length} (expected fire-and-forget blocks: ${record.blockedExpected.length}) -> ${OUT}/`);
+  for (const w of record.imageWaitPending) console.log('  IMAGE-WAIT TIMEOUT', w.scene, `${w.pending}/${w.total} images undecoded - shot may be nondeterministic`);
   for (const f of record.failed) console.log('  FAIL', f.scene, f.error);
   for (const b of record.blockedRequests) console.log('  BLOCKED', b.scene, b.method, b.url);
   // An UNEXPECTED mutation attempt is a broken scene: the guard makes it

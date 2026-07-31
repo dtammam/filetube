@@ -85,10 +85,18 @@ module.exports = [
   },
 
   // Tier 3: the isolated capture harness (tools/capture) is plain Node -
-  // same globals as the server/scripts side.
+  // same globals as the server/scripts side. settle.js and the
+  // determinism test additionally embed page.evaluate callbacks that run
+  // IN THE BROWSER (document/window are real there), so they carry
+  // browser globals too - the same dual-context shape Playwright code
+  // always has.
   {
     files: ['tools/**/*.js'],
     languageOptions: { globals: { ...globals.node } },
+  },
+  {
+    files: ['tools/capture/settle.js', 'test/integration/capture-determinism.test.js', 'test/integration/capture-guard-browser.test.js'],
+    languageOptions: { globals: { ...globals.node, ...globals.browser } },
   },
 
   // common.js is loaded first and exposes these helpers as globals. Declare them

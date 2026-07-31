@@ -71,3 +71,17 @@ SUCCEEDED, so a scene that actuates a destructive control can
 screenshot optimistic UI that lies about server state - the exit-1
 alarm on any unexpected block is what marks that frame untrustworthy.
 Server-side twin: FILETUBE_READONLY=1 (see docs/CONFIGURATION.md).
+
+DETERMINISM (2026-07-31, after the field gate failed 34/89): every shot
+now waits for IMAGE QUIESCENCE (settle.js) - lazy images flipped eager
+and every image load+decode awaited, in up-to-three stable passes,
+because networkidle fires before SPA renders insert their images and
+lazy fetches begin; a timeout lands in run-record imageWaitPending as a
+loud nondeterminism warning. GENUINELY LIVE text (the subscriptions
+status line, notification relative timestamps) is masked at capture
+time by VOLATILE_MASK_CSS via visibility:hidden - the layout box (the
+actual token witness) still photographs; only the changing glyphs
+vanish. Both mechanisms are bound by
+test/integration/capture-determinism.test.js, which reproduces the
+post-idle insertion race in real Chromium and requires two gated
+captures to be byte-identical.
