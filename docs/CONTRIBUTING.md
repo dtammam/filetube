@@ -35,6 +35,43 @@ that only surface on 22 (see the CI workflow).
 - Comment the *why*: the codebase favors explanatory comments on non-obvious logic (transcode flow, Range requests, iOS quirks)
 - Keep server logic in `server.js`; keep per-page client logic in `public/js/<page>.js`
 
+## Styling: the design-token system (MANDATORY for any CSS/JS style change)
+
+FileTube's styling runs on a governed design-token system (shipped
+v1.58.0-v1.59.0; contract in `docs/references/design-token-audit-v1.1.md`).
+If you touch a color, spacing, radius, z-index, shadow, motion, type, or
+control-size value ANYWHERE (style.css, `<style>` blocks, `el.style.*` /
+`cssText` / `setProperty` in JS), the rules are:
+
+- **Never write a raw literal in a governed property. Consume a token**
+  (`var(--space-*)`, `var(--yt-red)`, `var(--radius)`, `var(--z-*)`,
+  `var(--scrim)`, `var(--dur-fast)`, ...). The token layer lives at the top
+  of `public/css/style.css` (`:root` + the `[data-theme]` era blocks); many
+  tokens are ERA-VARYING by design - adopting one means your surface follows
+  the eras, which is the point.
+- **z-index:** only the nine `--z-*` ladder names; backdrop/content pairs
+  derive with `calc(var(--z-X) +/- N)`. Never a new raw rung. Local
+  in-component stacking (0-40 band) stays literal with a
+  `token-exempt: local stacking` comment.
+- **The linter is the drift detector:** `npm run lint:css` (report-only,
+  current census 54). If your change RAISES the total, you have deviated -
+  either adopt a token or, if the value is genuinely outside the system
+  (positional geometry, era skin art, a legibility floor), annotate the line
+  `/* token-exempt: <reason> */` and be prepared to defend the reason in
+  review. Silent new literals are review findings; a future ratchet will
+  make them hard failures.
+- **Never define a new token casually:** a new name joins the contract doc,
+  the `:root` layer, AND `test/unit/token-scale-lock.test.js` (the byte-exact
+  value authority) together - see `--thumbnail-bg` (Tier 4) for the pattern.
+  `--accent`/`--accent-color` are ruled NEVER-DEFINE (consume `--yt-red`).
+- **Do not edit token VALUES in passing** - a scale value change re-renders
+  every consumer and fails token-scale-lock loudly; that is a design
+  decision (Dean's), not a refactor.
+- The remaining 54 raw literals are enumerated with reasons in
+  `docs/exec-plans/completed/2026-07-31-tokens-tier4-ledger.md` (bound by
+  `npm run ledger:check`). Breakpoints are documented constants, not tokens;
+  width/height layout geometry is ungoverned by design.
+
 ## File naming
 
 - Lowercase, single-word or hyphenated filenames (`server.js`, `watch.js`, `docker-compose.yml`)
