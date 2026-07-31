@@ -765,7 +765,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   border-right: 1px solid var(--border-color);
   padding: var(--space-6) 0;
   position: fixed;
-  top: 56px;
+  top: 56px; /* token-exempt: positional geometry (Stop A Batch A) */
   bottom: 0;
   left: 0;
   overflow-y: auto;
@@ -796,7 +796,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   display: flex;
   align-items: center;
   gap: var(--space-6);
-  padding: var(--density) 24px;
+  padding: var(--density) var(--space-12);
   color: var(--text-primary);
   text-decoration: none;
   cursor: pointer;
@@ -1016,7 +1016,7 @@ html.reader-immersive .app-container { padding-top: 0; }
    grid; `[hidden]` (toggled in main.js) is the single show/hide mechanism. */
 .sort-menu {
   position: absolute;
-  top: calc(100% + 4px);
+  top: calc(100% + 4px); /* token-exempt: positional geometry (Stop A Batch A) */
   left: 0;
   z-index: 30; /* token-exempt: local stacking */ /* above the video grid cards (z-index 2), below the dock/modals */
   margin: 0;
@@ -1118,8 +1118,8 @@ html.reader-immersive .app-container { padding-top: 0; }
 
 .duration-badge {
   position: absolute;
-  bottom: 4px;
-  right: 4px;
+  bottom: 4px; /* token-exempt: positional geometry (Stop A Batch A) */
+  right: 4px; /* token-exempt: positional geometry (Stop A Batch A) */
   background-color: rgba(0,0,0,0.85);
   color: white;
   padding: var(--space-1) var(--space-2);
@@ -1154,8 +1154,8 @@ html.reader-immersive .app-container { padding-top: 0; }
    deletes. Era tokens only. */
 .card-delete-btn {
   position: absolute;
-  top: 6px;
-  right: 6px;
+  top: 6px; /* token-exempt: positional geometry (Stop A Batch A) */
+  right: 6px; /* token-exempt: positional geometry (Stop A Batch A) */
   z-index: 2; /* token-exempt: local stacking */
   display: flex;
   align-items: center;
@@ -1208,8 +1208,8 @@ html.reader-immersive .app-container { padding-top: 0; }
    a download is non-destructive. Era tokens only. */
 .card-download-btn {
   position: absolute;
-  top: 6px;
-  left: 6px;
+  top: 6px; /* token-exempt: positional geometry (Stop A Batch A) */
+  left: 6px; /* token-exempt: positional geometry (Stop A Batch A) */
   z-index: 2; /* token-exempt: local stacking */
   display: flex;
   align-items: center;
@@ -1244,8 +1244,8 @@ html.reader-immersive .app-container { padding-top: 0; }
    opaque so the state is legible at a glance. Era tokens only. */
 .card-like-btn {
   position: absolute;
-  bottom: 6px;
-  left: 6px;
+  bottom: 6px; /* token-exempt: positional geometry (Stop A Batch A) */
+  left: 6px; /* token-exempt: positional geometry (Stop A Batch A) */
   z-index: 2; /* token-exempt: local stacking */
   display: flex;
   align-items: center;
@@ -1276,7 +1276,7 @@ html.reader-immersive .app-container { padding-top: 0; }
 }
 
 .video-info {
-  padding: var(--density) 4px;
+  padding: var(--density) var(--space-2);
 }
 
 /* v1.45.6 (Dean): compact LIST view — a CSS-only reflow of the SAME cards into
@@ -1318,11 +1318,11 @@ html.reader-immersive .app-container { padding-top: 0; }
    on non-touch. z-index 40: above the grid + sticky bar (20), below dock/modals. */
 .ptr-indicator {
   position: fixed;
-  top: calc(var(--mobile-header-h, 56px) + 8px);
+  top: calc(var(--mobile-header-h, 56px) + 8px); /* token-exempt: positional geometry (Stop A Batch A) */
   left: 50%;
   z-index: 40; /* token-exempt: local stacking */
-  width: 36px;
-  height: 36px;
+  width: var(--size-control); /* Stop A Batch C: 36px == --size-control, zero-delta */
+  height: var(--size-control);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1513,7 +1513,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   flex-direction: column;
   align-items: center;
   text-align: center;
-  padding: 40px 20px;
+  padding: 40px var(--space-10);
   color: var(--text-secondary);
 }
 
@@ -1603,8 +1603,8 @@ html.reader-immersive .app-container { padding-top: 0; }
    background matches `.player-container` above (not a themed surface). */
 #player-dock {
   position: fixed;
-  right: 16px;
-  bottom: 16px;
+  right: 16px; /* token-exempt: positional geometry (Stop A Batch A) */
+  bottom: 16px; /* token-exempt: positional geometry (Stop A Batch A) */
   width: 280px;
   z-index: 950; /* above the mobile .bottom-nav (900), below modals/sheets (2000+) */
   box-shadow: var(--shadow-lg);
@@ -1652,8 +1652,8 @@ html.reader-immersive .app-container { padding-top: 0; }
 
 .player-dock-close {
   position: absolute;
-  top: 4px;
-  right: 4px;
+  top: 4px; /* token-exempt: positional geometry (Stop A Batch A) */
+  right: 4px; /* token-exempt: positional geometry (Stop A Batch A) */
   z-index: 5; /* token-exempt: local stacking */
   width: 24px;
   height: 24px;
@@ -1674,20 +1674,20 @@ html.reader-immersive .app-container { padding-top: 0; }
 @media (max-width: 768px) {
   #player-dock {
     width: 160px;
-    right: 8px;
+    right: 8px; /* token-exempt: positional geometry (Stop A Batch A) */
     /* Clear the fixed .bottom-nav (see its own rule, ~72px incl. safe-area).
        Shares --mobile-bottom-nav-h (defined once, v1.17.0 FR-2) with
        `.main-content`'s padding-bottom so both stay in lockstep across the
        iOS address-bar/home-indicator collapse animation instead of each
        independently re-resolving env(safe-area-inset-bottom). */
-    bottom: calc(var(--mobile-bottom-nav-h) + 8px);
+    bottom: calc(var(--mobile-bottom-nav-h) + 8px); /* token-exempt: positional geometry (Stop A Batch A) */
   }
 
   /* v1.17.0 FR-3(a), T2: clear the fixed mobile .bottom-nav the same way
      #player-dock does above, so the toast never renders underneath/behind
      it. */
   .toast {
-    bottom: calc(var(--mobile-bottom-nav-h) + 12px);
+    bottom: calc(var(--mobile-bottom-nav-h) + 12px); /* token-exempt: positional geometry (Stop A Batch A) */
   }
 }
 
@@ -1925,7 +1925,7 @@ html.reader-immersive .app-container { padding-top: 0; }
 /* Press-and-hold-to-2x badge (mobile inline) */
 .speed-badge {
   position: absolute;
-  top: 12px;
+  top: 12px; /* token-exempt: positional geometry (Stop A Batch A) */
   left: 50%;
   transform: translateX(-50%);
   background: rgba(0, 0, 0, 0.75);
@@ -1961,7 +1961,7 @@ html.reader-immersive .app-container { padding-top: 0; }
    mobile" report (only files WITH embedded metadata / long paths hit it).
    Capping the value length (watch.js clip()) doesn't help an unbroken token;
    this does. */
-.embedded-tag { margin: 2px 0; overflow-wrap: anywhere; }
+.embedded-tag { margin: var(--space-1) 0; overflow-wrap: anywhere; }
 .embedded-tag-key { color: var(--text-secondary); font-weight: var(--fw-semibold); }
 
 .skip-btn {
@@ -2112,8 +2112,8 @@ html.reader-immersive .app-container { padding-top: 0; }
 
 .watch-autoplay-thumb {
   position: absolute;
-  top: 2px;
-  left: 2px;
+  top: 2px; /* token-exempt: positional geometry (Stop A Batch A) */
+  left: 2px; /* token-exempt: positional geometry (Stop A Batch A) */
   width: 14px;
   height: 14px;
   background-color: #fff;
@@ -2551,7 +2551,7 @@ html.reader-immersive .app-container { padding-top: 0; }
    still centering as a comfortably-readable column, not a full-bleed page. */
 .setup-box {
   max-width: 780px;
-  margin: 32px auto;
+  margin: var(--space-16) auto;
   border: 1px solid var(--border-color);
   background-color: var(--bg-sidebar);
   border-radius: var(--radius);
@@ -3265,7 +3265,7 @@ a.sub-row-channel-link:focus-visible {
      inset on top of the existing 24px breathing room. The `0px` fallback
      keeps this byte-for-byte the same 24px everywhere env() isn't supported
      (older browsers) or the inset is genuinely 0 (no home indicator). */
-  bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  bottom: calc(24px + env(safe-area-inset-bottom, 0px)); /* token-exempt: positional geometry (Stop A Batch A) */
   transform: translateX(-50%) translateY(8px);
   z-index: 2200; /* above the one-off download modal backdrop (2100) */
   max-width: calc(100vw - 32px);
@@ -3924,7 +3924,7 @@ a.sub-row-channel-link:focus-visible {
     flex-direction: column;
     height: auto;
     min-height: var(--mobile-header-h);
-    padding: calc(8px + env(safe-area-inset-top)) 8px 8px;
+    padding: calc(var(--space-4) + env(safe-area-inset-top)) var(--space-4) var(--space-4);
     gap: var(--space-3);
   }
 
@@ -4164,7 +4164,7 @@ a.sub-row-channel-link:focus-visible {
      touching desktop (these rules only apply inside this max-width:768px
      query). */
   .setup-box {
-    margin: 20px auto;
+    margin: var(--space-10) auto;
     padding: var(--space-10) var(--space-8);
   }
 
@@ -5132,7 +5132,7 @@ a.sub-row-channel-link:focus-visible {
 }
 
 #player-wrapper.audio-mode:not(.audio-expanded) #audio-bg-art {
-  bottom: 40px;            /* cover art fills the content area, above the bar strip */
+  bottom: 40px;            /* cover art fills the content area, above the bar strip */ /* token-exempt: positional geometry (Stop A Batch A) */
 }
 
 @media (max-width: 768px) {
@@ -5152,10 +5152,10 @@ a.sub-row-channel-link:focus-visible {
     padding-bottom: 0;
   }
   #player-slot #player-wrapper.audio-mode:not(.audio-expanded) #audio-bg-art {
-    bottom: 80px;
+    bottom: 80px; /* token-exempt: positional geometry (Stop A Batch A) */
   }
   #player-wrapper.audio-mode:not(.audio-expanded) #audio-bg-art {
-    bottom: 44px;
+    bottom: 44px; /* token-exempt: positional geometry (Stop A Batch A) */
   }
 }
 
@@ -5172,7 +5172,7 @@ a.sub-row-channel-link:focus-visible {
   padding-bottom: 26px;
 }
 #player-dock #player-wrapper.audio-mode #audio-bg-art {
-  bottom: 26px;
+  bottom: 26px; /* token-exempt: positional geometry (Stop A Batch A) */
 }
 
 /* Feature A (v1.26.1, Shorts player-size jump): the DOCKED mini-player
@@ -5228,7 +5228,7 @@ a.sub-row-channel-link:focus-visible {
   height: auto;
   min-height: 40px;
   padding-top: var(--space-2);
-  padding-bottom: calc(4px + env(safe-area-inset-bottom, 0px));
+  padding-bottom: calc(var(--space-2) + env(safe-area-inset-bottom, 0px));
   /* v1.34.5: blend into the fullscreen black instead of the themed bar
      chrome -- the safe-area padding read as a colored band at the bottom
      ("some at the bottom"). Semi-transparent, the native-player convention. */
@@ -5271,8 +5271,8 @@ body.ft-css-fullscreen .bottom-nav {
 }
 .chapters-menu {
   position: absolute;
-  right: 8px;
-  bottom: calc(100% + 6px);
+  right: 8px; /* token-exempt: positional geometry (Stop A Batch A) */
+  bottom: calc(100% + 6px); /* token-exempt: positional geometry (Stop A Batch A) */
   min-width: 220px;
   max-width: 80%;
   max-height: 45vh;
@@ -5407,8 +5407,8 @@ body.ft-css-fullscreen .bottom-nav {
    the [hidden] display:none !important rule above still wins. */
 @media (max-width: 768px) {
   .chapters-menu {
-    left: 8px;
-    right: 8px;
+    left: 8px; /* token-exempt: positional geometry (Stop A Batch A) */
+    right: 8px; /* token-exempt: positional geometry (Stop A Batch A) */
     min-width: 0;
     max-width: none;
     max-height: 50vh;
@@ -5472,7 +5472,7 @@ body.ft-css-fullscreen .bottom-nav {
   position: absolute;
   left: 0;
   right: 0;
-  bottom: 40px;      /* in-slot, desktop: directly above the 40px control strip */
+  bottom: 40px;      /* in-slot, desktop: directly above the 40px control strip */ /* token-exempt: positional geometry (Stop A Batch A) */
   z-index: 9; /* token-exempt: local stacking */
   display: flex;
   justify-content: center;
@@ -5497,12 +5497,12 @@ body.ft-css-fullscreen .bottom-nav {
 
 @media (max-width: 768px) {
   .cc-overlay {
-    bottom: 44px;    /* matches the 44px mobile control strip */
+    bottom: 44px;    /* matches the 44px mobile control strip */ /* token-exempt: positional geometry (Stop A Batch A) */
   }
 }
 
 #player-dock .cc-overlay {
-  bottom: 26px;      /* matches the trimmed mini-player bar height */
+  bottom: 26px;      /* matches the trimmed mini-player bar height */ /* token-exempt: positional geometry (Stop A Batch A) */
 }
 
 /* FULLSCREEN restore: desktop fullscreen targets the container and keeps the
@@ -5648,7 +5648,7 @@ body.ft-css-fullscreen .bottom-nav {
      the canvas above the bar instead: single-row bar (desktop/landscape
      phones >768px) below; the two-row mobile bar overrides in the 768px
      block further down. */
-  bottom: calc(52px + env(safe-area-inset-bottom, 0px));
+  bottom: calc(52px + env(safe-area-inset-bottom, 0px)); /* token-exempt: positional geometry (Stop A Batch A) */
 }
 
 /* The control bar (and `#fs-btn`, the exit affordance) is `position:
@@ -5670,7 +5670,7 @@ body.ft-css-fullscreen .bottom-nav {
   height: auto;
   min-height: 40px;
   padding-top: var(--space-2);
-  padding-bottom: calc(4px + env(safe-area-inset-bottom, 0px));
+  padding-bottom: calc(var(--space-2) + env(safe-area-inset-bottom, 0px));
 }
 
 /* Feature B (v1.26.1): same safe-area lift as the control bar directly
@@ -5678,17 +5678,17 @@ body.ft-css-fullscreen .bottom-nav {
    so the caption overlay sits directly above the (already safe-area-lifted)
    bar in the expanded full-viewport view, instead of behind/under it. */
 #player-wrapper.audio-mode.audio-expanded .cc-overlay {
-  bottom: calc(56px + env(safe-area-inset-bottom, 0px));
+  bottom: calc(56px + env(safe-area-inset-bottom, 0px)); /* token-exempt: positional geometry (Stop A Batch A) */
 }
 
 @media (max-width: 768px) {
   #player-wrapper.audio-mode.audio-expanded .cc-overlay {
     /* two-row mobile bar (v1.34.1) is ~90px tall in the expanded view */
-    bottom: calc(94px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(94px + env(safe-area-inset-bottom, 0px)); /* token-exempt: positional geometry (Stop A Batch A) */
   }
   /* v1.34.6: the art canvas's above-the-bar cutoff, two-row variant. */
   #player-wrapper.audio-mode.audio-expanded #audio-bg-art {
-    bottom: calc(94px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(94px + env(safe-area-inset-bottom, 0px)); /* token-exempt: positional geometry (Stop A Batch A) */
   }
 }
 
@@ -6252,8 +6252,8 @@ body.ft-css-fullscreen .bottom-nav {
    so every era/light-dark combination stays themed. */
 #dl-status-chip {
   position: fixed;
-  left: 16px;
-  bottom: 16px;
+  left: 16px; /* token-exempt: positional geometry (Stop A Batch A) */
+  bottom: 16px; /* token-exempt: positional geometry (Stop A Batch A) */
   z-index: 940;
   max-width: min(320px, calc(100vw - 32px));
   font-family: var(--font-family);
@@ -6570,8 +6570,8 @@ body.ft-css-fullscreen .bottom-nav {
    amount above the bottom-nav. */
 @media (max-width: 768px) {
   #dl-status-chip {
-    left: 8px;
-    bottom: calc(var(--mobile-bottom-nav-h) + 8px);
+    left: 8px; /* token-exempt: positional geometry (Stop A Batch A) */
+    bottom: calc(var(--mobile-bottom-nav-h) + 8px); /* token-exempt: positional geometry (Stop A Batch A) */
     max-width: min(260px, calc(100vw - 16px));
   }
 
@@ -6904,7 +6904,7 @@ body.ft-css-fullscreen .bottom-nav {
     }
     #reader-pane.pdf-scroll canvas {
       display: block;
-      margin: 8px auto;
+      margin: var(--space-4) auto;
       max-width: 100%;
       height: auto;
       box-shadow: 0 1px 6px rgba(0,0,0,0.35);
@@ -6914,7 +6914,7 @@ body.ft-css-fullscreen .bottom-nav {
       display: flex;
       align-items: center;
       gap: var(--space-5);
-      padding: 6px 10px calc(6px + env(safe-area-inset-bottom, 0px));
+      padding: var(--space-3) var(--space-5) calc(var(--space-3) + env(safe-area-inset-bottom, 0px));
       border-top: 1px solid var(--border-color, #444);
       font-size: var(--fs-sm);
     }
@@ -6947,7 +6947,7 @@ body.ft-css-fullscreen .bottom-nav {
       padding: var(--space-5);
     }
     .reader-drawer[hidden] { display: none !important; }
-    .reader-drawer h3 { margin: 4px 0 10px; font-size: var(--fs-md); }
+    .reader-drawer h3 { margin: var(--space-2) 0 var(--space-5); font-size: var(--fs-md); }
     .reader-toc-item {
       display: block;
       padding: 7px 4px;
@@ -7012,13 +7012,13 @@ body.ft-css-fullscreen .bottom-nav {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  padding: 6px 10px calc(6px + env(safe-area-inset-bottom));
+  padding: var(--space-3) var(--space-5) calc(var(--space-3) + env(safe-area-inset-bottom));
   background: var(--header-bg);
   border-top: 1px solid var(--border-color);
   box-shadow: var(--shadow);
 }
 .reader-nowplaying[hidden] { display: none; }
-.reader-np-info { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.reader-np-info { display: flex; align-items: center; gap: var(--space-4); min-width: 0; }
 .reader-np-cover {
   width: 26px; height: 26px; object-fit: cover; border-radius: 3px;
   flex-shrink: 0; background: var(--border-color);
@@ -7028,7 +7028,7 @@ body.ft-css-fullscreen .bottom-nav {
   font-size: var(--fs-xs); color: var(--text-secondary);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.reader-np-transport { display: flex; align-items: center; gap: 8px; }
+.reader-np-transport { display: flex; align-items: center; gap: var(--space-4); }
 /* Chapter prev/next reuse the app's beveled .pc-btn (like #pp-btn) and draw
    their skip-to-track glyph in CSS -- NOT the U+23EE/U+23ED emoji-presentation
    codepoints iOS renders as blue color emoji. Matches .pp-icon-play's approach
@@ -7044,7 +7044,7 @@ body.ft-css-fullscreen .bottom-nav {
   border-color: transparent transparent transparent currentColor;
 }
 #reader-np-next .reader-np-ico::after {
-  content: ''; position: absolute; top: 0; left: 12px; width: 3px; height: 14px;
+  content: ''; position: absolute; top: 0; left: 12px; width: 3px; height: 14px; /* token-exempt: positional geometry (Stop A Batch A) */
   background: currentColor;
 }
 #reader-np-prev .reader-np-ico::before {
@@ -7053,7 +7053,7 @@ body.ft-css-fullscreen .bottom-nav {
   border-color: transparent currentColor transparent transparent;
 }
 #reader-np-prev .reader-np-ico::after {
-  content: ''; position: absolute; top: 0; right: 12px; width: 3px; height: 14px;
+  content: ''; position: absolute; top: 0; right: 12px; width: 3px; height: 14px; /* token-exempt: positional geometry (Stop A Batch A) */
   background: currentColor;
 }
 .reader-player-slot { flex: 1; min-width: 0; }
@@ -7091,7 +7091,7 @@ body.ft-css-fullscreen .bottom-nav {
 }
 @media (max-width: 768px) {
   /* Sit above the mobile bottom nav (~54px + safe area). */
-  .reader-nowplaying { bottom: calc(54px + env(safe-area-inset-bottom)); }
+  .reader-nowplaying { bottom: calc(54px + env(safe-area-inset-bottom)); } /* token-exempt: positional geometry (Stop A Batch A) */
   /* The mounted host is the app's FULL player, which on mobile expands to a
      TWO-ROW 80px control bar (v1.34.1, `#player-slot .player-controls` above).
      In the reader bar that is NOT the full-screen player -- collapse it back to
@@ -7243,7 +7243,7 @@ body.ft-css-fullscreen .bottom-nav {
   display: inline-block;
   font-size: var(--fs-xs);
   font-weight: var(--fw-bold);
-  padding: 1px 6px;
+  padding: 1px var(--space-3);
   border-radius: 3px;
   margin-left: var(--space-3);
   border: 1px solid var(--border-color, #ccc);
@@ -7493,7 +7493,7 @@ body.ft-css-fullscreen .bottom-nav {
   margin-bottom: var(--space-6);
 }
 .music-toolbar h2 { margin: 0; }
-.music-toolbar-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.music-toolbar-actions { display: flex; gap: var(--space-4); flex-wrap: wrap; }
 
 .music-tabs {
   display: flex;
@@ -7519,7 +7519,7 @@ body.ft-css-fullscreen .bottom-nav {
   font-weight: var(--fw-semibold);
 }
 
-.music-crumb { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.music-crumb { display: flex; align-items: center; gap: var(--space-5); margin-bottom: var(--space-6); }
 .music-crumb[hidden] { display: none !important; }
 .music-crumb-label { font-size: var(--fs-lg); font-weight: var(--fw-semibold); color: var(--text-primary); }
 
@@ -7530,9 +7530,9 @@ body.ft-css-fullscreen .bottom-nav {
    `--music-sticky-top` is set by JS to the MEASURED fixed-header height
    (measure, don't guess — the v1.37.2/v1.43.1 scar). Same mechanism on desktop;
    the header just has more room. */
-.music-drill-header { display: flex; flex-direction: column; gap: 12px; margin-bottom: 12px; }
+.music-drill-header { display: flex; flex-direction: column; gap: var(--space-6); margin-bottom: var(--space-6); }
 .music-drill-back { align-self: flex-start; }
-.music-drill-heading { display: flex; gap: 16px; align-items: flex-end; min-width: 0; }
+.music-drill-heading { display: flex; gap: var(--space-8); align-items: flex-end; min-width: 0; }
 .music-drill-art {
   width: 180px;
   height: 180px;
@@ -7542,15 +7542,15 @@ body.ft-css-fullscreen .bottom-nav {
   box-shadow: var(--shadow-lg);
   flex-shrink: 0;
 }
-.music-drill-info { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.music-drill-info { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }
 .music-drill-title { margin: 0; font-size: var(--fs-2xl); font-weight: var(--fw-bold); color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; }
 .music-drill-artist { font-size: var(--fs-lg); color: var(--text-primary); }
 .music-drill-meta { font-size: var(--fs-sm); color: var(--text-secondary); }
-.music-drill-actions { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+.music-drill-actions { display: flex; gap: var(--space-4); margin-top: var(--space-4); flex-wrap: wrap; }
 
 .music-drill-sticky {
   position: sticky;
-  top: var(--music-sticky-top, 56px);
+  top: var(--music-sticky-top, 56px); /* token-exempt: positional geometry (Stop A Batch A) */
   z-index: 30; /* token-exempt: local stacking */
   display: none;
   align-items: center;
@@ -7719,7 +7719,7 @@ body.ft-css-fullscreen .bottom-nav {
 .music-nowplaying:hover { color: var(--text-primary); }
 .music-nowplaying[hidden] { display: none !important; }
 
-.music-empty { color: var(--text-secondary); padding: 24px 0; }
+.music-empty { color: var(--text-secondary); padding: var(--space-12) 0; }
 .music-empty[hidden] { display: none !important; }
 
 /* v1.44 "Continue listening" home row -- reuses the books-home-row scroller;
@@ -8104,8 +8104,8 @@ body.ft-css-fullscreen .bottom-nav {
 
 .notif-panel {
   position: fixed;
-  top: 64px;
-  right: 16px;
+  top: 64px; /* token-exempt: positional geometry (Stop A Batch A) */
+  right: 16px; /* token-exempt: positional geometry (Stop A Batch A) */
   width: 400px;
   max-width: calc(100vw - 32px);
   max-height: min(70vh, 560px);
@@ -8248,8 +8248,8 @@ body.ft-css-fullscreen .bottom-nav {
   header .header-right {
     display: flex;
     position: absolute;
-    top: calc(10px + env(safe-area-inset-top));
-    right: 10px;
+    top: calc(10px + env(safe-area-inset-top)); /* token-exempt: positional geometry (Stop A Batch A) */
+    right: 10px; /* token-exempt: positional geometry (Stop A Batch A) */
     gap: 0;
   }
 

@@ -312,7 +312,10 @@ test('SUGGESTION FIX -- CSS: the expanded control bar clears the bottom safe-are
   // safe-area allowance lives INSIDE the bar as padding (the old bottom
   // lift left a black gap strip under it).
   assert.match(controlsRuleMatch[1], /bottom:\s*0\s*;/, 'the expanded bar sits flush at the bottom edge');
-  assert.match(controlsRuleMatch[1], /padding-bottom:\s*calc\(4px \+ env\(safe-area-inset-bottom,\s*0px\)\)\s*;/, 'safe-area clearance is internal padding');
+  // Step 3 opener (2026-07-31): the 4px member adopted var(--space-2) -
+  // token-scale-lock.test.js is the byte-exact authority that
+  // --space-2 == 4px, so this spelling lock stays bound to reality.
+  assert.match(controlsRuleMatch[1], /padding-bottom:\s*calc\(var\(--space-2\) \+ env\(safe-area-inset-bottom,\s*0px\)\)\s*;/, 'safe-area clearance is internal padding');
   // The base `.player-controls` rule (unscoped) must stay untouched -- this
   // fix is scoped ONLY to the expanded overlay's bar.
   const baseControlsMatch = /(?:^|\n)\.player-controls\s*\{([^}]*)\}/.exec(CSS);
