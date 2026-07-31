@@ -166,6 +166,20 @@ summary,
      the player chrome are different semantics and may diverge. */
   --thumbnail-bg: #222;
 
+  /* Reading themes (tranche F.5, Dean's ruling 2): the reader's OWN AXIS.
+     Selected by the user's reading-theme preference (.reader-content
+     theme classes + epub.js iframe registration in read.js, which derives
+     these SAME tokens via getComputedStyle - the chapter iframe is a
+     separate document, so var() cannot reach it). NEVER wire these into
+     the light/dark mode tokens or the era blocks: paper stays paper in
+     every era and mode, by ruling. */
+  --reader-paper-bg: #f7f4ec;
+  --reader-paper-fg: #1c1c1c;
+  --reader-sepia-bg: #f0e3c9;
+  --reader-sepia-fg: #3a2f20;
+  --reader-night-bg: #101014;
+  --reader-night-fg: #c8c8d0;
+
   /* Type weights + line heights (audit 2.4). `bold` and `700` were two
      spellings of ONE rendered weight (x55 combined) - --fw-bold is the
      single spelling. `normal`/400 stays literal (the default needs no
@@ -6904,9 +6918,9 @@ body.ft-css-fullscreen .bottom-nav {
     }
     /* Reading-theme surface colors applied to the pane; epub.js's iframe
        body is themed via its own registerTheme hooks in read.js. */
-    .reader-content.theme-paper { background: #f7f4ec; }
-    .reader-content.theme-sepia { background: #f0e3c9; }
-    .reader-content.theme-night { background: #101014; }
+    .reader-content.theme-paper { background: var(--reader-paper-bg); }
+    .reader-content.theme-sepia { background: var(--reader-sepia-bg); }
+    .reader-content.theme-night { background: var(--reader-night-bg); }
     #reader-pane { width: 100%; height: 100%; overflow: hidden; /* v1.37.3: residual chapter overflow clips at the border, never spills */ }
     /* PDF pages render into a scrollable canvas column. */
     #reader-pane.pdf-scroll {

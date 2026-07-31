@@ -459,10 +459,20 @@ if (typeof module !== 'undefined' && module.exports) {
     });
 
     // Reading themes: epub.js injects these into the chapter iframe; the
-    // pane background is handled by the .reader-content theme class.
-    rendition.themes.register('paper', { body: { color: '#1c1c1c', background: '#f7f4ec' } });
-    rendition.themes.register('sepia', { body: { color: '#3a2f20', background: '#f0e3c9' } });
-    rendition.themes.register('night', { body: { color: '#c8c8d0', background: '#101014' } });
+    // pane background is handled by the .reader-content theme class. The
+    // values are the --reader-* tokens (style.css :root, the reader's own
+    // axis) read via getComputedStyle - the iframe is a separate document,
+    // so CSS var() cannot reach it and a literal copy here would be the
+    // two-source divergence tranche F.5 exists to kill. token-scale-lock
+    // pins the token values byte-exactly.
+    const readerToken = (name) => {
+      const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+      if (!v) throw new Error(`reader theme token ${name} missing from :root`);
+      return v;
+    };
+    rendition.themes.register('paper', { body: { color: readerToken('--reader-paper-fg'), background: readerToken('--reader-paper-bg') } });
+    rendition.themes.register('sepia', { body: { color: readerToken('--reader-sepia-fg'), background: readerToken('--reader-sepia-bg') } });
+    rendition.themes.register('night', { body: { color: readerToken('--reader-night-fg'), background: readerToken('--reader-night-bg') } });
 
     function applyPrefs() {
       rendition.themes.select(normalizeReaderTheme(readPref(THEME_KEY, 'paper')));

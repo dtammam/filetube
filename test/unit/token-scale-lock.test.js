@@ -33,10 +33,17 @@ const CONTRACT = {
   // Tier 4 batch 4a (2026-07-31, Dean's OQ7 ruling): the media-placeholder
   // surface, ex-phantom. Joins the contract per the v1.1 addendum.
   '--thumbnail-bg': '#222',
+  // Tranche F.5 (2026-07-31, Dean's ruling 2): the reading themes, the
+  // reader's OWN AXIS - never era- or mode-wired. read.js derives these
+  // same tokens for the epub iframe via getComputedStyle; this map is what
+  // keeps that derivation honest.
+  '--reader-paper-bg': '#f7f4ec', '--reader-paper-fg': '#1c1c1c',
+  '--reader-sepia-bg': '#f0e3c9', '--reader-sepia-fg': '#3a2f20',
+  '--reader-night-bg': '#101014', '--reader-night-fg': '#c8c8d0',
 };
 
 test('every new-layer token is defined EXACTLY ONCE with its contract value (mode-invariant by construction)', () => {
-  assert.equal(Object.keys(CONTRACT).length, 39, 'the 38-name contract + --thumbnail-bg (Tier 4 addendum; --radius-lg predates the layer and lives in the era blocks)');
+  assert.equal(Object.keys(CONTRACT).length, 45, 'the 38-name contract + --thumbnail-bg (Tier 4) + the six --reader-* names (tranche F.5; --radius-lg predates the layer and lives in the era blocks)');
   for (const [name, value] of Object.entries(CONTRACT)) {
     const defs = [...css.matchAll(new RegExp(name.replace(/[-]/g, '\\-') + '\\s*:\\s*([^;]+);', 'g'))]
       .map((m) => m[1].trim());
