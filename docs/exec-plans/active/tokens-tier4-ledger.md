@@ -109,14 +109,14 @@ Differ notes binding the delta columns below:
 | public/css/style.css:5499 | .cc-overlay-text | `border-radius: 4px` | RADIUS-R7-RAW | `border-radius: var(--radius)` | 2005 L+D: 4px->0; 2009/2014 L+D: 4px->2px; zero x3 (root/2021) | 4px |
 | public/css/style.css:6708 | .book-row-cover | `border-radius: 4px` | RADIUS-R7-RAW | `border-radius: var(--radius)` | 2005 L+D: 4px->0; 2009/2014 L+D: 4px->2px; zero x3 (root/2021) | 4px |
 | public/css/style.css:6787 | .book-cover-link | `border-radius: 4px` | RADIUS-R7-RAW | `border-radius: var(--radius)` | 2005 L+D: 4px->0; 2009/2014 L+D: 4px->2px; zero x3 (root/2021) | 4px |
-| public/css/style.css:7033 | .music-sticky-thumb | `border-radius: 4px` | RADIUS-R7-RAW | `border-radius: var(--radius)` | 2005 L+D: 4px->0; 2009/2014 L+D: 4px->2px; zero x3 (root/2021) | 4px; mid-line |
-| public/css/style.css:7576 | .music-song-thumb | `border-radius: 4px` | RADIUS-R7-RAW | `border-radius: var(--radius)` | 2005 L+D: 4px->0; 2009/2014 L+D: 4px->2px; zero x3 (root/2021) | 4px; mid-line |
-| public/css/style.css:7658 | .music-eq | `border-radius: 4px` | RADIUS-R7-RAW | `border-radius: var(--radius)` | 2005 L+D: 4px->0; 2009/2014 L+D: 4px->2px; zero x3 (root/2021) | 4px |
-| public/css/style.css:7694 | .skeleton-shimmer.skel-title | `border-radius: 4px` | RADIUS-R7-RAW | `border-radius: var(--radius)` | 2005 L+D: 4px->0; 2009/2014 L+D: 4px->2px; zero x3 (root/2021) | 4px |
-| public/css/style.css:7872 | .skeleton-shimmer.skel-w* | `border-radius: 4px` | RADIUS-R7-RAW | `border-radius: var(--radius)` | 2005 L+D: 4px->0; 2009/2014 L+D: 4px->2px; zero x3 (root/2021) | 4px |
-| public/css/style.css:7882 | .watch-desc-skel .skel-line | `border-radius: 4px` | RADIUS-R7-RAW | `border-radius: var(--radius)` | 2005 L+D: 4px->0; 2009/2014 L+D: 4px->2px; zero x3 (root/2021) | 4px |
-| public/css/style.css:7930 | .notif-clear-btn | `border-radius: 4px` | RADIUS-R7-RAW | `border-radius: var(--radius)` | 2005 L+D: 4px->0; 2009/2014 L+D: 4px->2px; zero x3 (root/2021) | 4px |
-| public/css/style.css:8157 | .notif-row-thumb | `border-radius: 4px` | RADIUS-R7-RAW | `border-radius: var(--radius)` | 2005 L+D: 4px->0; 2009/2014 L+D: 4px->2px; zero x3 (root/2021) | 4px |
+| public/css/style.css:7576 | .music-sticky-thumb | `border-radius: 4px` | RADIUS-R7-RAW | `border-radius: var(--radius)` | 2005 L+D: 4px->0; 2009/2014 L+D: 4px->2px; zero x3 (root/2021) | 4px; mid-line |
+| public/css/style.css:7658 | .music-song-thumb | `border-radius: 4px` | RADIUS-R7-RAW | `border-radius: var(--radius)` | 2005 L+D: 4px->0; 2009/2014 L+D: 4px->2px; zero x3 (root/2021) | 4px; mid-line |
+| public/css/style.css:7694 | .music-eq | `border-radius: 4px` | RADIUS-R7-RAW | `border-radius: var(--radius)` | 2005 L+D: 4px->0; 2009/2014 L+D: 4px->2px; zero x3 (root/2021) | 4px |
+| public/css/style.css:7872 | .skeleton-shimmer.skel-title | `border-radius: 4px` | RADIUS-R7-RAW | `border-radius: var(--radius)` | 2005 L+D: 4px->0; 2009/2014 L+D: 4px->2px; zero x3 (root/2021) | 4px |
+| public/css/style.css:7882 | .skeleton-shimmer.skel-w* | `border-radius: 4px` | RADIUS-R7-RAW | `border-radius: var(--radius)` | 2005 L+D: 4px->0; 2009/2014 L+D: 4px->2px; zero x3 (root/2021) | 4px |
+| public/css/style.css:7930 | .watch-desc-skel .skel-line | `border-radius: 4px` | RADIUS-R7-RAW | `border-radius: var(--radius)` | 2005 L+D: 4px->0; 2009/2014 L+D: 4px->2px; zero x3 (root/2021) | 4px |
+| public/css/style.css:8157 | .notif-clear-btn | `border-radius: 4px` | RADIUS-R7-RAW | `border-radius: var(--radius)` | 2005 L+D: 4px->0; 2009/2014 L+D: 4px->2px; zero x3 (root/2021) | 4px |
+| public/css/style.css:8230 | .notif-row-thumb | `border-radius: 4px` | RADIUS-R7-RAW | `border-radius: var(--radius)` | 2005 L+D: 4px->0; 2009/2014 L+D: 4px->2px; zero x3 (root/2021) | 4px |
 
 ## Residual census (NOT this tier - stays in the burn-down, unstruck) (54 rows)
 
@@ -162,7 +162,7 @@ Differ notes binding the delta columns below:
 | public/css/style.css:6920 | #reader-pane.pdf-scroll canvas | `box-shadow: 0 1px 6px rgba(0,0,0,0.35)` | SHADOW-OTHER | - | - | paper-page ambient shadow on PDF content, not UI elevation - no action |
 | public/css/style.css:6927 | .reader-bottombar | `padding: var(--space-3) var(--space-5) calc(var(--space-3) + env(safe` | B1-PARTIAL-DONE | - | - | OPENER DONE 2026-07-31 - adopted members in place; this residual is deliberate and stays in the burn-down |
 | public/css/style.css:6934 | .reader-progress-track | `border-radius: 3px` | RADIUS-GEOMETRY | - | - | half of 6px track height - never a token |
-| public/css/style.css:8230 | .reader-np-cover | `border-radius: 4px` | G-RADIUS-DONE-RAW | - | - | was 3px; 3g DONE 2026-07-31 - consolidated per-site per ruling B; the result is DELIBERATELY a raw 2/4px literal (no small-radius token exists - that design is Tier 4 R7), so the site stays in the burn-down as R7 population |
+| public/css/style.css:7033 | .reader-np-cover | `border-radius: 4px` | G-RADIUS-DONE-RAW | - | - | was 3px; 3g DONE 2026-07-31 - consolidated per-site per ruling B; the result is DELIBERATELY a raw 2/4px literal (no small-radius token exists - that design is Tier 4 R7), so the site stays in the burn-down as R7 population |
 | public/css/style.css:7256 | .reloc-preview-badge | `padding: 1px var(--space-3)` | B1-PARTIAL-DONE | - | - | OPENER DONE 2026-07-31 - adopted the member in place; the 1px hairline residual is deliberate and stays in the burn-down |
 | public/css/style.css:7257 | .reloc-preview-badge | `border-radius: 2px` | G-RADIUS-DONE-RAW | - | - | was 3px; 3g DONE 2026-07-31 - consolidated per-site per ruling B; the result is DELIBERATELY a raw 2/4px literal (no small-radius token exists - that design is Tier 4 R7), so the site stays in the burn-down as R7 population |
 | public/css/style.css:7320 | .login-wordmark .tube | `color: #fff` | SEMANTIC-RESIDUE | - | - | white-on-brand |
