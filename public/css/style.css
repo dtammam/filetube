@@ -1931,7 +1931,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   background: var(--scrim-heavy);
   color: var(--on-overlay);
   padding: var(--space-2) var(--space-6);
-  border-radius: 14px;
+  border-radius: var(--radius-lg);
   font-size: var(--fs-base);
   font-weight: var(--fw-semibold);
   letter-spacing: 0.5px; /* token-exempt: era display styling */
@@ -6732,7 +6732,7 @@ body.ft-css-fullscreen .bottom-nav {
   font-size: var(--fs-md);
   line-height: 1; /* token-exempt: glyph centering */
   padding: var(--space-1) var(--space-3);
-  border-radius: 3px;
+  border-radius: 2px;
   flex: 0 0 auto;
 }
 .sidebar-item .pinned-unpin-btn { float: right; }
@@ -6823,7 +6823,7 @@ body.ft-css-fullscreen .bottom-nav {
       gap: var(--space-3);
       padding: var(--space-2) var(--space-5);
       border: 1px solid var(--border-color, #444);
-      border-radius: 14px;
+      border-radius: var(--radius-lg);
       font-size: var(--fs-sm);
       cursor: pointer;
       background: none;
@@ -7020,7 +7020,7 @@ body.ft-css-fullscreen .bottom-nav {
 .reader-nowplaying[hidden] { display: none; }
 .reader-np-info { display: flex; align-items: center; gap: var(--space-4); min-width: 0; }
 .reader-np-cover {
-  width: 26px; height: 26px; object-fit: cover; border-radius: 3px;
+  width: 26px; height: 26px; object-fit: cover; border-radius: 4px;
   flex-shrink: 0; background: var(--border-color);
 }
 .reader-np-cover:not([src]) { display: none; }
@@ -7175,7 +7175,7 @@ body.ft-css-fullscreen .bottom-nav {
   background: var(--card-bg, var(--bg-color, #fff));
   color: var(--text-color);
   border: 1px solid var(--border-color, #ccc);
-  border-radius: 6px;
+  border-radius: var(--radius-lg);
   width: 100%;
   max-width: 720px;
   max-height: 85vh;
@@ -7244,7 +7244,7 @@ body.ft-css-fullscreen .bottom-nav {
   font-size: var(--fs-xs);
   font-weight: var(--fw-bold);
   padding: 1px var(--space-3);
-  border-radius: 3px;
+  border-radius: 2px;
   margin-left: var(--space-3);
   border: 1px solid var(--border-color, #ccc);
 }
@@ -7536,7 +7536,7 @@ body.ft-css-fullscreen .bottom-nav {
 .music-drill-art {
   width: 180px;
   height: 180px;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   object-fit: cover;
   background: var(--thumbnail-bg, #222);
   box-shadow: var(--shadow-lg);
@@ -7596,7 +7596,7 @@ body.ft-css-fullscreen .bottom-nav {
   width: 100%;
   aspect-ratio: 1 / 1;
   object-fit: cover;
-  border-radius: 6px;
+  border-radius: var(--radius-lg);
   background: var(--thumbnail-bg, #222);
   display: block;
 }
@@ -7624,7 +7624,7 @@ body.ft-css-fullscreen .bottom-nav {
   gap: var(--space-3);
   padding: var(--space-8);
   border: 1px solid var(--border-color);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   background: var(--bg-secondary);
   cursor: pointer;
   text-align: left;
@@ -7640,7 +7640,7 @@ body.ft-css-fullscreen .bottom-nav {
   align-items: center;
   gap: var(--space-6);
   padding: var(--space-4) var(--space-3);
-  border-radius: 6px;
+  border-radius: var(--radius-lg);
   cursor: pointer;
 }
 .music-song-row:hover { background: var(--bg-secondary); }
