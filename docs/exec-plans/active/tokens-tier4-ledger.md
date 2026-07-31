@@ -106,17 +106,17 @@ Differ notes binding the delta columns below:
 
 | site | selector | decl (linter-exact) | bucket | after | expected delta | notes |
 | ---- | -------- | ------------------- | ------ | ----- | -------------- | ----- |
-| public/css/style.css:5499 | .cc-overlay-text | `border-radius: 4px` | RADIUS-R7-RAW | `border-radius: var(--radius)` | 2005 L+D: 4px->0; 2009/2014 L+D: 4px->2px; zero x3 (root/2021) | 4px |
-| public/css/style.css:6708 | .book-row-cover | `border-radius: 4px` | RADIUS-R7-RAW | `border-radius: var(--radius)` | 2005 L+D: 4px->0; 2009/2014 L+D: 4px->2px; zero x3 (root/2021) | 4px |
-| public/css/style.css:6787 | .book-cover-link | `border-radius: 4px` | RADIUS-R7-RAW | `border-radius: var(--radius)` | 2005 L+D: 4px->0; 2009/2014 L+D: 4px->2px; zero x3 (root/2021) | 4px |
-| public/css/style.css:7576 | .music-sticky-thumb | `border-radius: 4px` | RADIUS-R7-RAW | `border-radius: var(--radius)` | 2005 L+D: 4px->0; 2009/2014 L+D: 4px->2px; zero x3 (root/2021) | 4px; mid-line |
-| public/css/style.css:7658 | .music-song-thumb | `border-radius: 4px` | RADIUS-R7-RAW | `border-radius: var(--radius)` | 2005 L+D: 4px->0; 2009/2014 L+D: 4px->2px; zero x3 (root/2021) | 4px; mid-line |
-| public/css/style.css:7694 | .music-eq | `border-radius: 4px` | RADIUS-R7-RAW | `border-radius: var(--radius)` | 2005 L+D: 4px->0; 2009/2014 L+D: 4px->2px; zero x3 (root/2021) | 4px |
-| public/css/style.css:7872 | .skeleton-shimmer.skel-title | `border-radius: 4px` | RADIUS-R7-RAW | `border-radius: var(--radius)` | 2005 L+D: 4px->0; 2009/2014 L+D: 4px->2px; zero x3 (root/2021) | 4px |
-| public/css/style.css:7882 | .skeleton-shimmer.skel-w* | `border-radius: 4px` | RADIUS-R7-RAW | `border-radius: var(--radius)` | 2005 L+D: 4px->0; 2009/2014 L+D: 4px->2px; zero x3 (root/2021) | 4px |
-| public/css/style.css:7930 | .watch-desc-skel .skel-line | `border-radius: 4px` | RADIUS-R7-RAW | `border-radius: var(--radius)` | 2005 L+D: 4px->0; 2009/2014 L+D: 4px->2px; zero x3 (root/2021) | 4px |
-| public/css/style.css:8157 | .notif-clear-btn | `border-radius: 4px` | RADIUS-R7-RAW | `border-radius: var(--radius)` | 2005 L+D: 4px->0; 2009/2014 L+D: 4px->2px; zero x3 (root/2021) | 4px |
-| public/css/style.css:8230 | .notif-row-thumb | `border-radius: 4px` | RADIUS-R7-RAW | `border-radius: var(--radius)` | 2005 L+D: 4px->0; 2009/2014 L+D: 4px->2px; zero x3 (root/2021) | 4px |
+| ~~public/css/style.css:5499~~ | ~~.cc-overlay-text~~ | ~~`border-radius: 4px`~~ | ~~RADIUS-R7-RAW~~ | ~~`border-radius: var(--radius)`~~ | ~~2005 L+D: 4px->0; 2009/2014 L+D: 4px->2px; zero x3 (root/2021)~~ | ~~4px~~ |
+| ~~public/css/style.css:6708~~ | ~~.book-row-cover~~ | ~~`border-radius: 4px`~~ | ~~RADIUS-R7-RAW~~ | ~~`border-radius: var(--radius)`~~ | ~~2005 L+D: 4px->0; 2009/2014 L+D: 4px->2px; zero x3 (root/2021)~~ | ~~4px~~ |
+| ~~public/css/style.css:6787~~ | ~~.book-cover-link~~ | ~~`border-radius: 4px`~~ | ~~RADIUS-R7-RAW~~ | ~~`border-radius: var(--radius)`~~ | ~~2005 L+D: 4px->0; 2009/2014 L+D: 4px->2px; zero x3 (root/2021)~~ | ~~4px~~ |
+| ~~public/css/style.css:7576~~ | ~~.music-sticky-thumb~~ | ~~`border-radius: 4px`~~ | ~~RADIUS-R7-RAW~~ | ~~`border-radius: var(--radius)`~~ | ~~2005 L+D: 4px->0; 2009/2014 L+D: 4px->2px; zero x3 (root/2021)~~ | ~~4px; mid-line~~ |
+| ~~public/css/style.css:7658~~ | ~~.music-song-thumb~~ | ~~`border-radius: 4px`~~ | ~~RADIUS-R7-RAW~~ | ~~`border-radius: var(--radius)`~~ | ~~2005 L+D: 4px->0; 2009/2014 L+D: 4px->2px; zero x3 (root/2021)~~ | ~~4px; mid-line~~ |
+| ~~public/css/style.css:7694~~ | ~~.music-eq~~ | ~~`border-radius: 4px`~~ | ~~RADIUS-R7-RAW~~ | ~~`border-radius: var(--radius)`~~ | ~~2005 L+D: 4px->0; 2009/2014 L+D: 4px->2px; zero x3 (root/2021)~~ | ~~4px~~ |
+| ~~public/css/style.css:7872~~ | ~~.skeleton-shimmer.skel-title~~ | ~~`border-radius: 4px`~~ | ~~RADIUS-R7-RAW~~ | ~~`border-radius: var(--radius)`~~ | ~~2005 L+D: 4px->0; 2009/2014 L+D: 4px->2px; zero x3 (root/2021)~~ | ~~4px~~ |
+| ~~public/css/style.css:7882~~ | ~~.skeleton-shimmer.skel-w*~~ | ~~`border-radius: 4px`~~ | ~~RADIUS-R7-RAW~~ | ~~`border-radius: var(--radius)`~~ | ~~2005 L+D: 4px->0; 2009/2014 L+D: 4px->2px; zero x3 (root/2021)~~ | ~~4px~~ |
+| ~~public/css/style.css:7930~~ | ~~.watch-desc-skel .skel-line~~ | ~~`border-radius: 4px`~~ | ~~RADIUS-R7-RAW~~ | ~~`border-radius: var(--radius)`~~ | ~~2005 L+D: 4px->0; 2009/2014 L+D: 4px->2px; zero x3 (root/2021)~~ | ~~4px~~ |
+| ~~public/css/style.css:8157~~ | ~~.notif-clear-btn~~ | ~~`border-radius: 4px`~~ | ~~RADIUS-R7-RAW~~ | ~~`border-radius: var(--radius)`~~ | ~~2005 L+D: 4px->0; 2009/2014 L+D: 4px->2px; zero x3 (root/2021)~~ | ~~4px~~ |
+| ~~public/css/style.css:8230~~ | ~~.notif-row-thumb~~ | ~~`border-radius: 4px`~~ | ~~RADIUS-R7-RAW~~ | ~~`border-radius: var(--radius)`~~ | ~~2005 L+D: 4px->0; 2009/2014 L+D: 4px->2px; zero x3 (root/2021)~~ | ~~4px~~ |
 
 ## Residual census (NOT this tier - stays in the burn-down, unstruck) (54 rows)
 
