@@ -34,46 +34,46 @@ silent, but keep them out).
 | file:line | selector / JS context | declaration (linter-exact) | bucket | proposed after | delta | notes |
 |---|---|---|---|---|---|---|
 | ~~public/css/style.css:799~~ | .sidebar-item | `padding: var(--density) 24px` | B1-MIXED | padding: var(--density) var(--space-12) | none | OPENER DONE 2026-07-31 |
-| public/css/style.css:1035 | .sort-menu li | `padding: 7px 12px` | B2-DRIFT | padding: var(--space-3) var(--space-6) | 7px->6px | scene 07; 12px exact tokenized too |
-| public/css/style.css:1067 | .video-grid | `margin-bottom: 30px` | B2-DRIFT | margin-bottom: var(--space-16) | 30px->32px | scene 06; 32 strictly nearest |
+| ~~public/css/style.css:1035~~ | .sort-menu li | `padding: 7px 12px` | B2-DRIFT | padding: var(--space-3) var(--space-6) | 7px->6px | scene 07; 12px exact tokenized too; 3a DONE 2026-07-31 |
+| ~~public/css/style.css:1067~~ | .video-grid | `margin-bottom: 30px` | B2-DRIFT | margin-bottom: var(--space-16) | 30px->32px | scene 06; 32 strictly nearest; 3a DONE 2026-07-31 |
 | ~~public/css/style.css:1279~~ | .video-info | `padding: var(--density) 4px` | B1-MIXED | padding: var(--density) var(--space-2) | none | OPENER DONE 2026-07-31 |
-| public/css/style.css:1477 | .skeleton-row | `padding: 10px 14px` | B2-DRIFT | padding: var(--space-5) var(--space-6) | 14px->12px | transient loading state - no scene; on-device judgment |
+| ~~public/css/style.css:1477~~ | .skeleton-row | `padding: 10px 14px` | B2-DRIFT | padding: var(--space-5) var(--space-6) | 14px->12px | transient loading state - no scene; on-device judgment; 3a DONE 2026-07-31 |
 | public/css/style.css:1516 | .empty-state, .error-state | `padding: 40px var(--space-10)` | B1-PARTIAL-DONE | padding: 40px var(--space-10) | residual (non-scale member / env fallback) | OPENER DONE 2026-07-31 - adopted members in place; this residual is deliberate and stays in the burn-down |
-| public/css/style.css:1781 | .art-play-glyph.art-play-glyph-playing::before | `margin-right: 9px` | B2-DRIFT | margin-right: var(--space-4) | 9px->8px | playing-state glyph offset - no scene; on-device judgment |
+| ~~public/css/style.css:1781~~ | .art-play-glyph.art-play-glyph-playing::before | `margin-right: 9px` | B2-DRIFT | margin-right: var(--space-4) | 9px->8px | playing-state glyph offset - no scene; on-device judgment; 3a DONE 2026-07-31 |
 | ~~public/css/style.css:1964~~ | .embedded-tag | `margin: 2px 0` | B1-MIXED | margin: var(--space-1) 0 | none | OPENER DONE 2026-07-31 |
-| public/css/style.css:2046 | .watch-prevnext-btn | `padding: 6px 14px` | B2-DRIFT | padding: var(--space-3) var(--space-6) | 14px->12px | scene 05; 6px exact tokenized too |
-| public/css/style.css:2308 | .uploader-subs | `padding: 1px 7px` | B2-DRIFT | padding: 1px var(--space-3) | 7px->6px | scene 05; 1px hairline non-scale stays; PARTIAL ADOPTION - replace row, do not strike |
+| ~~public/css/style.css:2046~~ | .watch-prevnext-btn | `padding: 6px 14px` | B2-DRIFT | padding: var(--space-3) var(--space-6) | 14px->12px | scene 05; 6px exact tokenized too; 3a DONE 2026-07-31 |
+| public/css/style.css:2308 | .uploader-subs | `padding: 1px var(--space-3)` | B2-PARTIAL-DONE | padding: 1px var(--space-3) | residual (1px hairline non-scale) | 3a DONE 2026-07-31 - 7px->6px applied; the 1px residual is deliberate and stays in the burn-down |
 | ~~public/css/style.css:2554~~ | .setup-box | `margin: 32px auto` | B1-MIXED | margin: var(--space-16) auto | none | OPENER DONE 2026-07-31 |
-| public/css/style.css:2666 | .btn-busy::after | `margin-left: 7px` | B2-DRIFT | margin-left: var(--space-3) | 7px->6px | transient busy state - no scene; on-device judgment |
-| public/css/style.css:2893 | .sub-row | `padding: 10px 14px` | B2-DRIFT | padding: var(--space-5) var(--space-6) | 14px->12px | scene 11; 10px exact tokenized too |
-| public/css/style.css:3274 | .toast | `padding: 10px 18px` | B2-DRIFT | padding: var(--space-5) var(--space-8) | 18px->16px | scene 13-toast GATE-BLOCKER (3a only - the toast has NO scrim; scenes.js note corrected); 10px exact tokenized too |
-| public/css/style.css:3342 | .oneoff-modal-header | `margin-bottom: 14px` | B2-DRIFT | margin-bottom: var(--space-6) | 14px->12px | scene 01 |
-| public/css/style.css:3846 | .search-input | `padding: 7px 10px` | B2-DRIFT | padding: var(--space-3) var(--space-5) | 7px->6px | scene 06 (header); 10px exact tokenized too |
+| ~~public/css/style.css:2666~~ | .btn-busy::after | `margin-left: 7px` | B2-DRIFT | margin-left: var(--space-3) | 7px->6px | transient busy state - no scene; on-device judgment; 3a DONE 2026-07-31 |
+| ~~public/css/style.css:2893~~ | .sub-row | `padding: 10px 14px` | B2-DRIFT | padding: var(--space-5) var(--space-6) | 14px->12px | scene 11; 10px exact tokenized too; 3a DONE 2026-07-31 |
+| ~~public/css/style.css:3274~~ | .toast | `padding: 10px 18px` | B2-DRIFT | padding: var(--space-5) var(--space-8) | 18px->16px | scene 13-toast GATE-BLOCKER (3a only - the toast has NO scrim; scenes.js note corrected); 10px exact tokenized too; 3a DONE 2026-07-31 |
+| ~~public/css/style.css:3342~~ | .oneoff-modal-header | `margin-bottom: 14px` | B2-DRIFT | margin-bottom: var(--space-6) | 14px->12px | scene 01; 3a DONE 2026-07-31 |
+| ~~public/css/style.css:3846~~ | .search-input | `padding: 7px 10px` | B2-DRIFT | padding: var(--space-3) var(--space-5) | 7px->6px | scene 06 (header); 10px exact tokenized too; 3a DONE 2026-07-31 |
 | ~~public/css/style.css:3927~~ | header (mobile) | `padding: calc(8px + env(safe-area-inset-top)) 8px 8px` | B1-MIXED | padding: calc(var(--space-4) + env(safe-area-inset-top)) var(--space-4) var(--space-4) | none | OPENER DONE 2026-07-31 |
 | ~~public/css/style.css:4167~~ | .setup-box (mobile) | `margin: 20px auto` | B1-MIXED | margin: var(--space-10) auto | none | OPENER DONE 2026-07-31 |
-| public/css/style.css:4626 | .pp-icon-pause | `margin-right: 7px` | RULED-EXEMPT | token-exempt annotation in 3a | - | RULED (OQ9): optical-centering glyph offset stays 7px |
+| ~~public/css/style.css:4626~~ | .pp-icon-pause | `margin-right: 7px` | RULED-EXEMPT | token-exempt annotation in 3a | - | RULED (OQ9): optical-centering glyph offset stays 7px; 3a DONE 2026-07-31 |
 | public/css/style.css:5231 | #player-wrapper.css-fullscreen .player-controls | `padding-bottom: calc(var(--space-2) + env(safe-area-inset-bottom, 0px))` | B1-PARTIAL-DONE | padding-bottom: calc(var(--space-2) + env(safe-area-inset-bottom, 0px)) | residual (non-scale member / env fallback) | OPENER DONE 2026-07-31 - adopted members in place; this residual is deliberate and stays in the burn-down |
-| public/css/style.css:5417 | .chapters-menu-item | `padding: 12px 14px` | B2-DRIFT | padding: var(--space-6) var(--space-6) | 14px->12px | chapters MENU has no scene (27-chapters-menu proposed - id 26 is taken by the playlists sheet); 12px exact tokenized too |
-| public/css/style.css:5436 | .chapters-menu-loop | `padding: 12px 14px` | B2-DRIFT | padding: var(--space-6) var(--space-6) | 14px->12px | pairs with 5417 |
+| ~~public/css/style.css:5417~~ | .chapters-menu-item | `padding: 12px 14px` | B2-DRIFT | padding: var(--space-6) var(--space-6) | 14px->12px | chapters MENU has no scene (27-chapters-menu proposed - id 26 is taken by the playlists sheet); 12px exact tokenized too; 3a DONE 2026-07-31 |
+| ~~public/css/style.css:5436~~ | .chapters-menu-loop | `padding: 12px 14px` | B2-DRIFT | padding: var(--space-6) var(--space-6) | 14px->12px | pairs with 5417; 3a DONE 2026-07-31 |
 | public/css/style.css:5673 | .audio-expanded .player-controls | `padding-bottom: calc(var(--space-2) + env(safe-area-inset-bottom, 0px))` | B1-PARTIAL-DONE | padding-bottom: calc(var(--space-2) + env(safe-area-inset-bottom, 0px)) | residual (non-scale member / env fallback) | OPENER DONE 2026-07-31 - adopted members in place; this residual is deliberate and stays in the burn-down |
-| public/css/style.css:6170 | .hard-delete-modal-path | `margin-bottom: 14px` | B2-DRIFT | margin-bottom: var(--space-6) | 14px->12px | manual 21 shot only - throwaway/non-managed item (automation removed: managed two-tap deletes with NO modal) |
-| public/css/style.css:6671 | .books-home-row | `margin-bottom: 18px` | B2-DRIFT | margin-bottom: var(--space-8) | 18px->16px | scene 15 |
-| public/css/style.css:6818 | .books-shelf-chips | `margin-bottom: 14px` | B2-DRIFT | margin-bottom: var(--space-6) | 14px->12px | scene 15 |
-| public/css/style.css:6848 | .books-section-title | `margin: 18px 0 10px` | B2-DRIFT | margin: var(--space-8) 0 var(--space-5) | 18px->16px | scene 15; 10px exact tokenized too; 0 stays |
+| ~~public/css/style.css:6170~~ | .hard-delete-modal-path | `margin-bottom: 14px` | B2-DRIFT | margin-bottom: var(--space-6) | 14px->12px | manual 21 shot only - throwaway/non-managed item (automation removed: managed two-tap deletes with NO modal); 3a DONE 2026-07-31 |
+| ~~public/css/style.css:6671~~ | .books-home-row | `margin-bottom: 18px` | B2-DRIFT | margin-bottom: var(--space-8) | 18px->16px | scene 15; 3a DONE 2026-07-31 |
+| ~~public/css/style.css:6818~~ | .books-shelf-chips | `margin-bottom: 14px` | B2-DRIFT | margin-bottom: var(--space-6) | 14px->12px | scene 15; 3a DONE 2026-07-31 |
+| ~~public/css/style.css:6848~~ | .books-section-title | `margin: 18px 0 10px` | B2-DRIFT | margin: var(--space-8) 0 var(--space-5) | 18px->16px | scene 15; 10px exact tokenized too; 0 stays; 3a DONE 2026-07-31 |
 | ~~public/css/style.css:6907~~ | #reader-pane.pdf-scroll canvas | `margin: 8px auto` | B1-MIXED | margin: var(--space-4) auto | none | OPENER DONE 2026-07-31 |
 | public/css/style.css:6917 | .reader-bottombar | `padding: var(--space-3) var(--space-5) calc(var(--space-3) + env(safe` | B1-PARTIAL-DONE | padding: var(--space-3) var(--space-5) calc(var(--space-3) + env(safe-area-inset-bottom, 0px)) | residual (non-scale member / env fallback) | OPENER DONE 2026-07-31 - adopted members in place; this residual is deliberate and stays in the burn-down |
 | ~~public/css/style.css:6950~~ | .reader-drawer h3 | `margin: 4px 0 10px` | B1-MIXED | margin: var(--space-2) 0 var(--space-5) | none | OPENER DONE 2026-07-31 |
-| public/css/style.css:6953 | .reader-toc-item | `padding: 7px 4px` | B2-DRIFT | padding: var(--space-3) var(--space-2) | 7px->6px | scene 14 (TOC drawer needs open - partial); 4px exact tokenized too |
+| ~~public/css/style.css:6953~~ | .reader-toc-item | `padding: 7px 4px` | B2-DRIFT | padding: var(--space-3) var(--space-2) | 7px->6px | scene 14 (TOC drawer needs open - partial); 4px exact tokenized too; 3a DONE 2026-07-31 |
 | ~~public/css/style.css:7015~~ | .reader-nowplaying | `padding: 6px 10px calc(6px + env(safe-area-inset-bottom))` | B1-MIXED | padding: var(--space-3) var(--space-5) calc(var(--space-3) + env(safe-area-inset-bottom)) | none | OPENER DONE 2026-07-31 |
 | ~~public/css/style.css:7021~~ | .reader-np-info | `gap: 8px` | EXACT-ADOPT | gap: var(--space-4) | none | gap declarations were skipped wholesale by Tier 2; OPENER DONE 2026-07-31 |
 | ~~public/css/style.css:7031~~ | .reader-np-transport | `gap: 8px` | EXACT-ADOPT | gap: var(--space-4) | none | OPENER DONE 2026-07-31 |
-| public/css/style.css:7227 | .reloc-preview-group-title | `margin: 14px 0 6px` | B2-DRIFT | margin: var(--space-6) 0 var(--space-3) | 14px->12px | scene 18; 6px exact tokenized too; 0 stays |
+| ~~public/css/style.css:7227~~ | .reloc-preview-group-title | `margin: 14px 0 6px` | B2-DRIFT | margin: var(--space-6) 0 var(--space-3) | 14px->12px | scene 18; 6px exact tokenized too; 0 stays; 3a DONE 2026-07-31 |
 | public/css/style.css:7246 | .reloc-preview-badge | `padding: 1px var(--space-3)` | B1-PARTIAL-DONE | padding: 1px var(--space-3) | residual (1px hairline non-scale) | OPENER DONE 2026-07-31 - adopted the member in place; the 1px hairline residual is deliberate and stays in the burn-down |
-| public/css/style.css:7311 | .login-wordmark .tube | `padding: 3px 9px` | B2-DRIFT | padding: var(--space-1) var(--space-4) | 3px->2px, 9px->8px | scene 25-login (NEW, added this tranche); 3->2 tie rounds down |
-| public/css/style.css:7422 | .login-era-switch button | `padding: 4px 9px` | B2-DRIFT | padding: var(--space-2) var(--space-4) | 9px->8px | scene 25-login; 4px exact tokenized too |
-| public/css/style.css:7464 | .users-row | `padding: 10px 14px` | B2-DRIFT | padding: var(--space-5) var(--space-6) | 14px->12px | scene 17; 10px exact tokenized too |
+| ~~public/css/style.css:7311~~ | .login-wordmark .tube | `padding: 3px 9px` | B2-DRIFT | padding: var(--space-1) var(--space-4) | 3px->2px, 9px->8px | scene 25-login (NEW, added this tranche); 3->2 tie rounds down; 3a DONE 2026-07-31 |
+| ~~public/css/style.css:7422~~ | .login-era-switch button | `padding: 4px 9px` | B2-DRIFT | padding: var(--space-2) var(--space-4) | 9px->8px | scene 25-login; 4px exact tokenized too; 3a DONE 2026-07-31 |
+| ~~public/css/style.css:7464~~ | .users-row | `padding: 10px 14px` | B2-DRIFT | padding: var(--space-5) var(--space-6) | 14px->12px | scene 17; 10px exact tokenized too; 3a DONE 2026-07-31 |
 | ~~public/css/style.css:7496~~ | .music-toolbar-actions | `gap: 8px` | EXACT-ADOPT | gap: var(--space-4) | none | OPENER DONE 2026-07-31 |
-| public/css/style.css:7512 | .music-tab | `padding: 10px 14px` | B2-DRIFT | padding: var(--space-5) var(--space-6) | 14px->12px | scene 08; 10px exact tokenized too |
+| ~~public/css/style.css:7512~~ | .music-tab | `padding: 10px 14px` | B2-DRIFT | padding: var(--space-5) var(--space-6) | 14px->12px | scene 08; 10px exact tokenized too; 3a DONE 2026-07-31 |
 | ~~public/css/style.css:7522~~ | .music-crumb | `gap: 10px` | EXACT-ADOPT | gap: var(--space-5) | none | single-line rule, two governed decls; OPENER DONE 2026-07-31 |
 | ~~public/css/style.css:7522~~ | .music-crumb | `margin-bottom: 12px` | EXACT-ADOPT | margin-bottom: var(--space-6) | none | OPENER DONE 2026-07-31 |
 | ~~public/css/style.css:7533~~ | .music-drill-header | `gap: 12px` | EXACT-ADOPT | gap: var(--space-6) | none | OPENER DONE 2026-07-31 |
@@ -83,8 +83,8 @@ silent, but keep them out).
 | ~~public/css/style.css:7549~~ | .music-drill-actions | `gap: 8px` | EXACT-ADOPT | gap: var(--space-4) | none | OPENER DONE 2026-07-31 |
 | ~~public/css/style.css:7549~~ | .music-drill-actions | `margin-top: 8px` | EXACT-ADOPT | margin-top: var(--space-4) | none | OPENER DONE 2026-07-31 |
 | ~~public/css/style.css:7722~~ | .music-empty | `padding: 24px 0` | B1-MIXED | padding: var(--space-12) 0 | none | OPENER DONE 2026-07-31 |
-| public/css/style.css:7782 | .shortcuts-group | `margin-top: 14px` | B2-DRIFT | margin-top: var(--space-6) | 14px->12px | shortcuts modal has no scene; on-device judgment (? key, desktop) |
-| public/css/style.css:8237 | .notif-empty | `padding: 28px 16px` | B2-DRIFT | padding: var(--space-12) var(--space-8) | 28px->24px | scene 12b only if the feed is empty - likely on-device judgment; 16px exact tokenized too |
+| ~~public/css/style.css:7782~~ | .shortcuts-group | `margin-top: 14px` | B2-DRIFT | margin-top: var(--space-6) | 14px->12px | shortcuts modal has no scene; on-device judgment (? key, desktop); 3a DONE 2026-07-31 |
+| ~~public/css/style.css:8237~~ | .notif-empty | `padding: 28px 16px` | B2-DRIFT | padding: var(--space-12) var(--space-8) | 28px->24px | scene 12b only if the feed is empty - likely on-device judgment; 16px exact tokenized too; 3a DONE 2026-07-31 |
 
 ## 3a annex - offset exemptions (token-exempt annotations only, zero value changes; all 49 RULED exempt, OQ4)
 
