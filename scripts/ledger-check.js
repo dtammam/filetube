@@ -1,14 +1,15 @@
 #!/usr/bin/env node
 'use strict';
 /*
- * ledger-check - binds the Tier 3 Step 3 expected-delta ledger to reality.
+ * ledger-check - binds the current expected-delta ledger to reality.
+ * (Bound Tier 3 Step 3 through 2026-07-31; now binds the Tier 4 ledger.)
  *
- * The ledger (docs/exec-plans/active/tokens-tier3-step3-ledger.md) claims a
+ * The ledger (docs/exec-plans/active/tokens-tier4-ledger.md) claims a
  * complete census: every site the css-token-lint metric reports appears in
  * exactly one ledger row, with the declaration text the linter sees. Any
- * CSS/JS change that lands between ledger authoring and Step 3 execution
+ * CSS/JS change that lands between ledger authoring and batch execution
  * invalidates those claims silently - this script makes the invalidation
- * loud. Run it at Step 3 start and before every 3a-3g commit:
+ * loud. Run it at wave start and before every batch commit:
  *
  *     npm run ledger:check
  *
@@ -28,7 +29,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const REPO = path.join(__dirname, '..');
-const LEDGER = path.join(REPO, 'docs/exec-plans/completed/2026-07-31-tokens-tier3-step3-ledger.md');
+const LEDGER = path.join(REPO, 'docs/exec-plans/active/tokens-tier4-ledger.md');
 
 function collectSites(root = REPO) {
   // Mirrors css-token-lint's main() collection exactly (same module, same
@@ -106,7 +107,7 @@ if (require.main === module) {
     console.log('ledger-check: CLEAN - every linter site has exactly one current ledger row');
     process.exit(0);
   }
-  console.error(`ledger-check: ${problems.length} problem(s) - the ledger no longer matches the tree; re-verify before ANY 3a-3g commit`);
+  console.error(`ledger-check: ${problems.length} problem(s) - the ledger no longer matches the tree; re-verify before ANY batch commit`);
   for (const p of problems) console.error('  ' + p);
   process.exit(1);
 }
