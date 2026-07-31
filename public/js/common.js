@@ -4411,9 +4411,10 @@ function wireKeyboardShortcutsHelp() {
   // v1.47.8 gate S10 follow-up: appending to `document.fullscreenElement`
   // parents the backdrop inside `#player-wrapper`, which the player REPARENTS
   // on every mount/dock. If the dialog outlived fullscreen, a later dock would
-  // drag it into `#player-dock` -- `position: fixed; z-index: 950;
-  // overflow: hidden`, i.e. a stacking context, so the backdrop's 2100 would be
-  // re-resolved inside 950 and paint under toasts. Closing on fullscreen exit
+  // drag it into `#player-dock` -- `position: fixed; z-index: var(--z-dock);
+  // overflow: hidden`, i.e. a stacking context, so the backdrop's modal-band
+  // rung would be re-resolved inside the dock's and paint under toasts.
+  // Closing on fullscreen exit
   // removes the whole scenario rather than reasoning about who wins.
   document.addEventListener('fullscreenchange', () => {
     if (!document.fullscreenElement) closeShortcutsModal();
