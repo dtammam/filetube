@@ -122,57 +122,57 @@ Differ notes binding the delta columns below:
 
 | site | selector | decl (linter-exact) | bucket | after | expected delta | notes |
 | ---- | -------- | ------------------- | ------ | ----- | -------------- | ----- |
-| public/css/style.css:593 | .logo span.tube | `color: #fff` | SEMANTIC-RESIDUE | - | - | white-on-brand wordmark |
-| public/css/style.css:735 | .btn-primary | `color: white` | SEMANTIC-RESIDUE | - | - | white-on-brand |
-| public/css/style.css:763 | .app-container | `padding-top: 56px` | LAYOUT-CONSTANT | - | - | 56px header offset |
-| public/css/style.css:910 | .main-content | `margin-left: 230px` | LAYOUT-CONSTANT | - | - | 230px sidebar width |
-| public/css/style.css:1143 | .progress-bar-container | `background-color: rgba(255, 255, 255, 0.3)` | NO-TOKEN | - | - | translucent WHITE watch-progress track |
-| public/css/style.css:1522 | .empty-state, .error-state | `padding: 40px var(--space-10)` | B1-PARTIAL-DONE | - | - | OPENER DONE 2026-07-31 - adopted members in place; this residual is deliberate and stays in the burn-down |
-| public/css/style.css:1775 | .art-play-glyph::before | `filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.6))` | NO-TOKEN | - | - | drop-shadow() glyph art |
-| public/css/style.css:1809 | .audio-player-visual | `background: radial-gradient(circle, #2c3e50 0%, #0f171e 100%)` | NO-TOKEN | - | - | decorative gradient art |
-| public/css/style.css:1810 | .audio-player-visual | `color: white` | SEMANTIC-RESIDUE | - | - | text on gradient art |
-| public/css/style.css:1822 | .audio-artwork | `border: 2px solid rgba(255,255,255,0.2)` | NO-TOKEN | - | - | artwork border |
-| public/css/style.css:1848 | .audio-vinyl::after | `border: 3px solid white` | NO-TOKEN | - | - | vinyl spindle art |
-| public/css/style.css:1871 | .audio-subtitle | `color: #aaa` | NO-TOKEN | - | - | #aaa on art surface; --on-overlay-muted is #ccc = visible delta, no zero-delta adoption exists |
-| public/css/style.css:1912 | .transcode-spinner | `border: 4px solid rgba(255, 255, 255, 0.25)` | NO-TOKEN | - | - | spinner ring art |
-| public/css/style.css:2019 | .skip-ripple | `background: rgba(255, 255, 255, 0.14)` | NO-TOKEN | - | - | white ripple wash |
-| public/css/style.css:2053 | .watch-prevnext-btn | `border-radius: calc(var(--radius) + 1px)` | RADIUS-DERIVED | - | - | calc(var(--radius) + 1px) nested-corner - already token-derived |
-| public/css/style.css:2125 | .watch-autoplay-thumb | `background-color: #fff` | SEMANTIC-RESIDUE | - | - | toggle knob, form control |
-| public/css/style.css:2271 | .uploader-avatar | `color: white` | SEMANTIC-RESIDUE | - | - | glyph over generated avatar color |
-| public/css/style.css:2314 | .uploader-subs | `padding: 1px var(--space-3)` | B2-PARTIAL-DONE | - | - | 3a DONE 2026-07-31 - 7px->6px applied; the 1px residual is deliberate and stays in the burn-down |
-| public/css/style.css:5110 | #player-wrapper:not(.audio-expanded) | `padding-bottom: 40px` | LAYOUT-CONSTANT | - | - | 40px control-strip reserve |
-| public/css/style.css:5149 | #player-slot #player-wrapper | `padding-bottom: 80px` | LAYOUT-CONSTANT | - | - | 80px two-row strip reserve |
-| public/css/style.css:5152 | #player-wrapper (mobile) | `padding-bottom: 44px` | LAYOUT-CONSTANT | - | - | 44px strip mirror (not a control height context) |
-| public/css/style.css:5178 | #player-dock #player-wrapper | `padding-bottom: 26px` | LAYOUT-CONSTANT | - | - | 26px mini-bar reserve |
-| public/css/style.css:5237 | #player-wrapper.css-fullscreen .player-controls | `padding-bottom: calc(var(--space-2) + env(safe-area-inset-bottom, 0px))` | B1-PARTIAL-DONE | - | - | OPENER DONE 2026-07-31 - adopted members in place; this residual is deliberate and stays in the burn-down |
-| public/css/style.css:5493 | .cc-overlay-text | `background: rgba(0, 0, 0, 0.72)` | CC-PROTECTED | - | - | live value is rgba(0,0,0,0.72), NOT the 0.85 the amendment comment documents - comment-accuracy finding; protection unaffected |
-| public/css/style.css:5680 | .audio-expanded .player-controls | `padding-bottom: calc(var(--space-2) + env(safe-area-inset-bottom, 0px))` | B1-PARTIAL-DONE | - | - | OPENER DONE 2026-07-31 - adopted members in place; this residual is deliberate and stays in the burn-down |
-| public/css/style.css:6051 | .sub-row-pin-active | `color: #e0a800` | NO-TOKEN | - | - | deliberate era-invariant gold pin accent (documented) |
-| public/css/style.css:6098 | .pinned-avatar-generated | `color: #fff` | SEMANTIC-RESIDUE | - | - |  |
-| public/css/style.css:6217 | .hard-delete-modal-confirm-btn | `border-radius: calc(var(--radius) + 1px)` | RADIUS-DERIVED | - | - |  |
-| public/css/style.css:6219 | .hard-delete-modal-confirm-btn | `color: #fff` | SEMANTIC-RESIDUE | - | - | white-on-brand |
-| public/css/style.css:6554 | .dl-status-chip-retry-btn, .dl-status-chip-dismiss-btn | `border-radius: calc(var(--radius) + 1px)` | RADIUS-DERIVED | - | - |  |
-| public/css/style.css:6562 | .dl-status-chip-retry-btn | `color: #fff` | SEMANTIC-RESIDUE | - | - | white-on-brand |
-| public/css/style.css:6745 | .pinned-unpin-btn | `border-radius: 2px` | G-RADIUS-DONE-RAW | - | - | was 3px; 3g DONE 2026-07-31 - consolidated per-site per ruling B; the result is DELIBERATELY a raw 2/4px literal (no small-radius token exists - that design is Tier 4 R7), so the site stays in the burn-down as R7 population |
-| public/css/style.css:6753 | .pinned-unpin-btn.armed | `color: #fff` | SEMANTIC-RESIDUE | - | - | white-on-brand armed state |
-| public/css/style.css:6842 | .books-shelf-chip.active | `color: #fff` | SEMANTIC-RESIDUE | - | - | white-on-brand; mid-line |
-| public/css/style.css:6905 | .reader-content.theme-paper | `background: #f7f4ec` | NO-TOKEN | - | - | user-selected reading theme |
-| public/css/style.css:6906 | .reader-content.theme-sepia | `background: #f0e3c9` | NO-TOKEN | - | - | reading theme |
-| public/css/style.css:6907 | .reader-content.theme-night | `background: #101014` | NO-TOKEN | - | - | reading theme |
-| public/css/style.css:6920 | #reader-pane.pdf-scroll canvas | `box-shadow: 0 1px 6px rgba(0,0,0,0.35)` | SHADOW-OTHER | - | - | paper-page ambient shadow on PDF content, not UI elevation - no action |
-| public/css/style.css:6927 | .reader-bottombar | `padding: var(--space-3) var(--space-5) calc(var(--space-3) + env(safe` | B1-PARTIAL-DONE | - | - | OPENER DONE 2026-07-31 - adopted members in place; this residual is deliberate and stays in the burn-down |
-| public/css/style.css:6934 | .reader-progress-track | `border-radius: 3px` | RADIUS-GEOMETRY | - | - | half of 6px track height - never a token |
-| public/css/style.css:7033 | .reader-np-cover | `border-radius: 4px` | G-RADIUS-DONE-RAW | - | - | was 3px; 3g DONE 2026-07-31 - consolidated per-site per ruling B; the result is DELIBERATELY a raw 2/4px literal (no small-radius token exists - that design is Tier 4 R7), so the site stays in the burn-down as R7 population |
-| public/css/style.css:7256 | .reloc-preview-badge | `padding: 1px var(--space-3)` | B1-PARTIAL-DONE | - | - | OPENER DONE 2026-07-31 - adopted the member in place; the 1px hairline residual is deliberate and stays in the burn-down |
-| public/css/style.css:7257 | .reloc-preview-badge | `border-radius: 2px` | G-RADIUS-DONE-RAW | - | - | was 3px; 3g DONE 2026-07-31 - consolidated per-site per ruling B; the result is DELIBERATELY a raw 2/4px literal (no small-radius token exists - that design is Tier 4 R7), so the site stays in the burn-down as R7 population |
-| public/css/style.css:7320 | .login-wordmark .tube | `color: #fff` | SEMANTIC-RESIDUE | - | - | white-on-brand |
-| public/css/style.css:7388 | .login-submit | `color: #fff` | SEMANTIC-RESIDUE | - | - | white-on-brand |
-| public/css/style.css:7436 | .login-era-switch button[aria-pressed="true"] | `color: #fff` | SEMANTIC-RESIDUE | - | - | white-on-brand |
-| public/css/style.css:7701 | .music-eq i | `background: #fff` | SEMANTIC-RESIDUE | - | - | white EQ glyph-art bar; --on-overlay is a text token - semantic stretch, lean residue |
-| public/css/style.css:7702 | .music-eq i | `border-radius: 1px` | RADIUS-GEOMETRY | - | - | 1px cap on 3px EQ bar |
-| public/css/style.css:8010 | .attr-picker-avatar | `color: #fff` | SEMANTIC-RESIDUE | - | - | glyph over generated avatar color |
-| public/css/style.css:8090 | .notif-bell-badge | `border-radius: 8px` | RADIUS-GEOMETRY | - | - | half of 16px badge height |
-| public/css/style.css:8092 | .notif-bell-badge | `color: #fff` | SEMANTIC-RESIDUE | - | - | white-on-brand |
-| public/css/style.css:8195 | .notif-row-avatar-generated | `color: #fff` | SEMANTIC-RESIDUE | - | - |  |
+| public/css/style.css:595 | .logo span.tube | `color: #fff` | SEMANTIC-RESIDUE | - | - | white-on-brand wordmark |
+| public/css/style.css:737 | .btn-primary | `color: white` | SEMANTIC-RESIDUE | - | - | white-on-brand |
+| public/css/style.css:765 | .app-container | `padding-top: 56px` | LAYOUT-CONSTANT | - | - | 56px header offset |
+| public/css/style.css:912 | .main-content | `margin-left: 230px` | LAYOUT-CONSTANT | - | - | 230px sidebar width |
+| public/css/style.css:1145 | .progress-bar-container | `background-color: rgba(255, 255, 255, 0.3)` | NO-TOKEN | - | - | translucent WHITE watch-progress track |
+| public/css/style.css:1524 | .empty-state, .error-state | `padding: 40px var(--space-10)` | B1-PARTIAL-DONE | - | - | OPENER DONE 2026-07-31 - adopted members in place; this residual is deliberate and stays in the burn-down |
+| public/css/style.css:1777 | .art-play-glyph::before | `filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.6))` | NO-TOKEN | - | - | drop-shadow() glyph art |
+| public/css/style.css:1811 | .audio-player-visual | `background: radial-gradient(circle, #2c3e50 0%, #0f171e 100%)` | NO-TOKEN | - | - | decorative gradient art |
+| public/css/style.css:1812 | .audio-player-visual | `color: white` | SEMANTIC-RESIDUE | - | - | text on gradient art |
+| public/css/style.css:1824 | .audio-artwork | `border: 2px solid rgba(255,255,255,0.2)` | NO-TOKEN | - | - | artwork border |
+| public/css/style.css:1850 | .audio-vinyl::after | `border: 3px solid white` | NO-TOKEN | - | - | vinyl spindle art |
+| public/css/style.css:1873 | .audio-subtitle | `color: #aaa` | NO-TOKEN | - | - | #aaa on art surface; --on-overlay-muted is #ccc = visible delta, no zero-delta adoption exists |
+| public/css/style.css:1914 | .transcode-spinner | `border: 4px solid rgba(255, 255, 255, 0.25)` | NO-TOKEN | - | - | spinner ring art |
+| public/css/style.css:2021 | .skip-ripple | `background: rgba(255, 255, 255, 0.14)` | NO-TOKEN | - | - | white ripple wash |
+| public/css/style.css:2055 | .watch-prevnext-btn | `border-radius: calc(var(--radius) + 1px)` | RADIUS-DERIVED | - | - | calc(var(--radius) + 1px) nested-corner - already token-derived |
+| public/css/style.css:2127 | .watch-autoplay-thumb | `background-color: #fff` | SEMANTIC-RESIDUE | - | - | toggle knob, form control |
+| public/css/style.css:2273 | .uploader-avatar | `color: white` | SEMANTIC-RESIDUE | - | - | glyph over generated avatar color |
+| public/css/style.css:2316 | .uploader-subs | `padding: 1px var(--space-3)` | B2-PARTIAL-DONE | - | - | 3a DONE 2026-07-31 - 7px->6px applied; the 1px residual is deliberate and stays in the burn-down |
+| public/css/style.css:5112 | #player-wrapper:not(.audio-expanded) | `padding-bottom: 40px` | LAYOUT-CONSTANT | - | - | 40px control-strip reserve |
+| public/css/style.css:5151 | #player-slot #player-wrapper | `padding-bottom: 80px` | LAYOUT-CONSTANT | - | - | 80px two-row strip reserve |
+| public/css/style.css:5154 | #player-wrapper (mobile) | `padding-bottom: 44px` | LAYOUT-CONSTANT | - | - | 44px strip mirror (not a control height context) |
+| public/css/style.css:5180 | #player-dock #player-wrapper | `padding-bottom: 26px` | LAYOUT-CONSTANT | - | - | 26px mini-bar reserve |
+| public/css/style.css:5239 | #player-wrapper.css-fullscreen .player-controls | `padding-bottom: calc(var(--space-2) + env(safe-area-inset-bottom, 0px))` | B1-PARTIAL-DONE | - | - | OPENER DONE 2026-07-31 - adopted members in place; this residual is deliberate and stays in the burn-down |
+| public/css/style.css:5495 | .cc-overlay-text | `background: rgba(0, 0, 0, 0.72)` | CC-PROTECTED | - | - | live value is rgba(0,0,0,0.72), NOT the 0.85 the amendment comment documents - comment-accuracy finding; protection unaffected |
+| public/css/style.css:5682 | .audio-expanded .player-controls | `padding-bottom: calc(var(--space-2) + env(safe-area-inset-bottom, 0px))` | B1-PARTIAL-DONE | - | - | OPENER DONE 2026-07-31 - adopted members in place; this residual is deliberate and stays in the burn-down |
+| public/css/style.css:6053 | .sub-row-pin-active | `color: #e0a800` | NO-TOKEN | - | - | deliberate era-invariant gold pin accent (documented) |
+| public/css/style.css:6100 | .pinned-avatar-generated | `color: #fff` | SEMANTIC-RESIDUE | - | - |  |
+| public/css/style.css:6219 | .hard-delete-modal-confirm-btn | `border-radius: calc(var(--radius) + 1px)` | RADIUS-DERIVED | - | - |  |
+| public/css/style.css:6221 | .hard-delete-modal-confirm-btn | `color: #fff` | SEMANTIC-RESIDUE | - | - | white-on-brand |
+| public/css/style.css:6556 | .dl-status-chip-retry-btn, .dl-status-chip-dismiss-btn | `border-radius: calc(var(--radius) + 1px)` | RADIUS-DERIVED | - | - |  |
+| public/css/style.css:6564 | .dl-status-chip-retry-btn | `color: #fff` | SEMANTIC-RESIDUE | - | - | white-on-brand |
+| public/css/style.css:6747 | .pinned-unpin-btn | `border-radius: 2px` | G-RADIUS-DONE-RAW | - | - | was 3px; 3g DONE 2026-07-31 - consolidated per-site per ruling B; the result is DELIBERATELY a raw 2/4px literal (no small-radius token exists - that design is Tier 4 R7), so the site stays in the burn-down as R7 population |
+| public/css/style.css:6755 | .pinned-unpin-btn.armed | `color: #fff` | SEMANTIC-RESIDUE | - | - | white-on-brand armed state |
+| public/css/style.css:6844 | .books-shelf-chip.active | `color: #fff` | SEMANTIC-RESIDUE | - | - | white-on-brand; mid-line |
+| public/css/style.css:6907 | .reader-content.theme-paper | `background: #f7f4ec` | NO-TOKEN | - | - | user-selected reading theme |
+| public/css/style.css:6908 | .reader-content.theme-sepia | `background: #f0e3c9` | NO-TOKEN | - | - | reading theme |
+| public/css/style.css:6909 | .reader-content.theme-night | `background: #101014` | NO-TOKEN | - | - | reading theme |
+| public/css/style.css:6922 | #reader-pane.pdf-scroll canvas | `box-shadow: 0 1px 6px rgba(0,0,0,0.35)` | SHADOW-OTHER | - | - | paper-page ambient shadow on PDF content, not UI elevation - no action |
+| public/css/style.css:6929 | .reader-bottombar | `padding: var(--space-3) var(--space-5) calc(var(--space-3) + env(safe` | B1-PARTIAL-DONE | - | - | OPENER DONE 2026-07-31 - adopted members in place; this residual is deliberate and stays in the burn-down |
+| public/css/style.css:6936 | .reader-progress-track | `border-radius: 3px` | RADIUS-GEOMETRY | - | - | half of 6px track height - never a token |
+| public/css/style.css:7035 | .reader-np-cover | `border-radius: 4px` | G-RADIUS-DONE-RAW | - | - | was 3px; 3g DONE 2026-07-31 - consolidated per-site per ruling B; the result is DELIBERATELY a raw 2/4px literal (no small-radius token exists - that design is Tier 4 R7), so the site stays in the burn-down as R7 population |
+| public/css/style.css:7258 | .reloc-preview-badge | `padding: 1px var(--space-3)` | B1-PARTIAL-DONE | - | - | OPENER DONE 2026-07-31 - adopted the member in place; the 1px hairline residual is deliberate and stays in the burn-down |
+| public/css/style.css:7259 | .reloc-preview-badge | `border-radius: 2px` | G-RADIUS-DONE-RAW | - | - | was 3px; 3g DONE 2026-07-31 - consolidated per-site per ruling B; the result is DELIBERATELY a raw 2/4px literal (no small-radius token exists - that design is Tier 4 R7), so the site stays in the burn-down as R7 population |
+| public/css/style.css:7322 | .login-wordmark .tube | `color: #fff` | SEMANTIC-RESIDUE | - | - | white-on-brand |
+| public/css/style.css:7390 | .login-submit | `color: #fff` | SEMANTIC-RESIDUE | - | - | white-on-brand |
+| public/css/style.css:7438 | .login-era-switch button[aria-pressed="true"] | `color: #fff` | SEMANTIC-RESIDUE | - | - | white-on-brand |
+| public/css/style.css:7703 | .music-eq i | `background: #fff` | SEMANTIC-RESIDUE | - | - | white EQ glyph-art bar; --on-overlay is a text token - semantic stretch, lean residue |
+| public/css/style.css:7704 | .music-eq i | `border-radius: 1px` | RADIUS-GEOMETRY | - | - | 1px cap on 3px EQ bar |
+| public/css/style.css:8012 | .attr-picker-avatar | `color: #fff` | SEMANTIC-RESIDUE | - | - | glyph over generated avatar color |
+| public/css/style.css:8092 | .notif-bell-badge | `border-radius: 8px` | RADIUS-GEOMETRY | - | - | half of 16px badge height |
+| public/css/style.css:8094 | .notif-bell-badge | `color: #fff` | SEMANTIC-RESIDUE | - | - | white-on-brand |
+| public/css/style.css:8197 | .notif-row-avatar-generated | `color: #fff` | SEMANTIC-RESIDUE | - | - |  |
 | public/js/watch.js:1170 | applyAvatarToElement generated-avatar | `color: #ffffff` | SEMANTIC-RESIDUE | - | - | mirrors subscriptions.js:1378 |
-| lib/ytdlp/client/subscriptions.js:1378 | renderChannelAvatar generated-avatar | `color: #ffffff` | SEMANTIC-RESIDUE | - | - | white glyph on AVATAR_PALETTE color, deliberately era-invariant |
+| lib/ytdlp/client/subscriptions.js:1378 | applySubAvatar generated-avatar (selector cell corrected at gate fix round 1 - the Step 3 ledger harvested a function name that never existed in this file; adversarial finding W3) | `color: #ffffff` | SEMANTIC-RESIDUE | - | - | white glyph on AVATAR_PALETTE color, deliberately era-invariant |

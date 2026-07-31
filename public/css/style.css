@@ -178,8 +178,10 @@ summary,
 
   /* Radius - pills only. Circles stay 50% (geometry, not style); the
      era-varying corner radii remain --radius/--radius-lg above. NOTE:
-     audit R7 (raw px radii -> var(--radius)) is DEFERRED per amendment
-     (b) - no radius consumer changes without per-era screenshots. */
+     audit R7 (raw px radii -> var(--radius)) EXECUTED in Tier 4 batch 4e
+     (2026-07-31) at the 11 drift sites; per-surface approval against the
+     era screenshots is pending at the Tier 4 Stop per amendment (b), with
+     per-site rejection flips ready. */
   --radius-full: 999px;
 
   /* Shadow - the one panel-elevation token the 6-member drift band (24px
@@ -4763,12 +4765,12 @@ a.sub-row-channel-link:focus-visible {
    sane before the first JS update ever runs. */
 #seek-bar::-webkit-slider-runnable-track {
   background-image:
-    repeating-linear-gradient(to right, rgba(0, 0, 0, 0.12) 0 2px, transparent 2px 4px),
+    repeating-linear-gradient(to right, rgba(0, 0, 0, 0.12) 0 2px, transparent 2px 4px), /* token-exempt: era skin art (the base rules ARE the 2005 skin; adversarial gate 2026-07-31 - the multi-line decl sat in the linter's line-parser blind spot, tech-debt) */
     linear-gradient(to right, var(--yt-red) 0%, var(--yt-red) var(--seek-fill, 0%), var(--btn-bg) var(--seek-fill, 0%), var(--btn-bg) 100%);
 }
 #vol-bar::-webkit-slider-runnable-track {
   background-image:
-    repeating-linear-gradient(to right, rgba(0, 0, 0, 0.12) 0 2px, transparent 2px 4px),
+    repeating-linear-gradient(to right, rgba(0, 0, 0, 0.12) 0 2px, transparent 2px 4px), /* token-exempt: era skin art (the base rules ARE the 2005 skin; adversarial gate 2026-07-31 - linter blind-spot sibling of #seek-bar above) */
     linear-gradient(to right, var(--yt-red) 0%, var(--yt-red) var(--vol-fill, 100%), var(--btn-bg) var(--vol-fill, 100%), var(--btn-bg) 100%);
 }
 
@@ -5794,7 +5796,7 @@ body.ft-css-fullscreen .bottom-nav {
 .sub-sheet-backdrop {
   position: fixed;
   inset: 0;
-  z-index: calc(var(--z-panel) + 1); /* 1601: one above --z-panel, deliberately breaking the old accidental tie with the notif panel (their openers are mutually blocked, so either order is behavior-identical - the tie was DOM-order-dependent fragility, Tier 4 re-ladder); above the Playlists sheet (--z-sheet band); below the toast (--z-top)/generic modal (--z-modal+), which never coexist with this page's own sheet in practice */
+  z-index: calc(var(--z-panel) + 1); /* 1601: one above --z-panel, deliberately breaking the old accidental tie with the notif panel (their openers are POINTER-blocked by each other's full-cover backdrops; keyboard focus is NOT trapped - pre-existing gap, tech-debt #67 - so a Tab+Enter co-open exists, and either stacking order is acceptable there; the tie itself was DOM-order-dependent fragility, Tier 4 re-ladder); above the Playlists sheet (--z-sheet band); below the toast (--z-top)/generic modal (--z-modal+), which never coexist with this page's own sheet in practice */
   background: var(--scrim);
   display: flex;
   align-items: flex-end;
@@ -6249,9 +6251,9 @@ body.ft-css-fullscreen .bottom-nav {
    T7. App-wide, persistent bottom-LEFT corner chip
    (public/js/common.js's `injectDownloadStatusChip`) -- the OPPOSITE corner
    from `#player-dock` (bottom-right, line ~733 above), so the two can never
-   spatially overlap on any viewport width; `z-index: 940` keeps it (like
-   `#player-dock`'s own 950) above the mobile `.bottom-nav` (900) and below
-   every modal/sheet (2000+). `flex-direction: column-reverse` makes the
+   spatially overlap on any viewport width; `z-index: var(--z-chip)` keeps it
+   (like `#player-dock`'s own --z-dock rung) above the mobile `.bottom-nav`
+   (--z-nav) and below every modal/sheet band. `flex-direction: column-reverse` makes the
    expanded panel render ABOVE the collapsed summary pill in the layout
    (while staying AFTER it in DOM/source order, so the summary button is
    still first in tab order) -- "dock as a slim bottom strip that expands
@@ -7175,7 +7177,7 @@ body.ft-css-fullscreen .bottom-nav {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: calc(var(--z-modal) - 100); /* 1900: the preview is modal-grade chrome - its own rung just below the confirm modal (--z-modal), cleanly above the header instead of the old DOM-order-dependent 1000/1000 tie (Tier 4 re-ladder; every surface between the old and new rung is an impossible co-open - the full-cover backdrops block each other's openers) */
+  z-index: calc(var(--z-modal) - 100); /* 1900: the preview is modal-grade chrome - its own rung just below the confirm modal (--z-modal), cleanly above the header instead of the old DOM-order-dependent 1000/1000 tie (Tier 4 re-ladder). Every surface between the old and new rung is POINTER-impossible to co-open (the full-cover backdrops block each other's openers); keyboard focus is NOT trapped (pre-existing gap, tech-debt #67), and in a Tab+Enter co-open the modal-grade preview deliberately paints on top */
   padding: var(--space-8);
 }
 .reloc-preview-backdrop[hidden] {

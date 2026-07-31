@@ -156,8 +156,18 @@ test('v1.34.3: [hidden] actually hides the chapters menu (the display:flex overr
 test('v1.34.4: faux fullscreen outranks header/nav, freezes the page, and the bar grows for the safe area instead of clipping', () => {
   const css = fs.readFileSync(path.join(ROOT, 'public', 'css', 'style.css'), 'utf8');
   // Tier 4 batch 4d (2026-07-31): 1500 -> var(--z-sheet); token-scale-lock
-  // is the byte-exact authority that --z-sheet == 1500.
-  assert.match(css, /#player-wrapper\.css-fullscreen \{[\s\S]*?z-index: var\(--z-sheet\);/, 'above header (--z-header) and .bottom-nav (--z-nav), below modals (--z-modal)');
+  // is the byte-exact authority that --z-sheet == 1500. Gate fix round 1
+  // (QA S1): the ordering semantics stay BOUND like the audio-expand lock,
+  // not just spelled - rung values re-derived from the ladder definitions.
+  assert.match(css, /#player-wrapper\.css-fullscreen \{[\s\S]*?z-index: var\(--z-sheet\);/, 'the faux-fullscreen overlay rides the --z-sheet rung');
+  const zdef = (name) => {
+    const m = new RegExp(name + ':\\s*(\\d+);').exec(css);
+    assert.ok(m, `expected a :root definition for ${name}`);
+    return Number(m[1]);
+  };
+  assert.ok(zdef('--z-sheet') > zdef('--z-header'), 'above the site header rung');
+  assert.ok(zdef('--z-sheet') > zdef('--z-nav'), 'above the mobile bottom-nav rung');
+  assert.ok(zdef('--z-sheet') < zdef('--z-modal'), 'below the modal tier so the chapters editor still opens over it');
   assert.match(css, /body\.ft-css-fullscreen \{\s*overflow: hidden;/, 'page scroll frozen (the landscape gap)');
   assert.match(css, /body\.ft-css-fullscreen header,\s*body\.ft-css-fullscreen \.bottom-nav \{\s*visibility: hidden;/, 'chrome explicitly hidden');
   assert.match(css, /#player-wrapper\.css-fullscreen:not\(\.audio-expanded\) \{\s*padding-bottom: 0 !important;/, 'the bar OVERLAYS the picture in faux fullscreen (no strip mismatch)');

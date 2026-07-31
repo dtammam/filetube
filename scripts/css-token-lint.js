@@ -65,8 +65,11 @@ const G = RULE_CONFIG['filetube/no-raw-token-values'][1].governed;
 // in style.css prescribes backdrop/content rungs as calc(var(--z-X) +/- N) -
 // is fully tokenized: ONE ladder var, ONE integer offset. Anything else with
 // a digit (raw rungs, raw-number calc arms, non-ladder vars, compound
-// arithmetic) still counts.
-const Z_LADDER_CALC = /^calc\(\s*var\(--z-[\w-]+\)\s*[+-]\s*\d+\s*\)$/;
+// arithmetic) still counts. The NINE ladder names are pinned (adversarial
+// gate S1: an off-contract --z-hack var must not smuggle a rung past the
+// metric); a new ladder name joins the contract, token-scale-lock, AND this
+// alternation together.
+const Z_LADDER_CALC = /^calc\(\s*var\(--z-(nav|chip|dock|header|player-max|sheet|panel|modal|top)\)\s*[+-]\s*\d+\s*\)$/;
 const SPACING_PROP = /^(margin(-\w+)?|padding(-\w+)?|gap|row-gap|column-gap|top|right|bottom|left|inset(-\w+)?)$/;
 const MOTION_PROP = /^(transition(-\w+)?|animation(-\w+)?)$/;
 const RADIUS_PROP = /^border(-\w+)*-radius$/;

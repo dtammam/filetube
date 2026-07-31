@@ -86,6 +86,12 @@ test('v6: z-ladder-relative calc is tokenized; every impostor shape still counts
     'compound arithmetic is not the idiom');
   assert.equal(lint('.x { z-index: calc(var(--dur-fast) + 1); }')[0].cat, 'z-index',
     'a non-ladder var is not the idiom');
+  assert.equal(lint('.x { z-index: calc(var(--z-hack) + 1); }')[0].cat, 'z-index',
+    'an off-contract --z-* name is not the idiom (the nine ladder names are pinned)');
+  assert.equal(lint('.x { z-index: calc(var(--z-top) + 1) 5; }')[0].cat, 'z-index',
+    'trailing content breaks the idiom (kills the $-anchor mutant)');
+  assert.equal(lint('.x { z-index: 0 calc(var(--z-top) + 1); }')[0].cat, 'z-index',
+    'leading content breaks the idiom (kills the ^-anchor mutant)');
   assert.equal(lint('.x { z-index: 2100; }')[0].cat, 'z-index',
     'raw rungs still count');
   // The JS surface shares the idiom check:
