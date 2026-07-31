@@ -189,23 +189,23 @@ silent, but keep them out).
 
 | file:line | selector / JS context | declaration (linter-exact) | bucket | proposed after | delta | notes |
 |---|---|---|---|---|---|---|
-| public/css/style.css:490 | body | `transition: background-color 0.2s, color 0.2s` | MOTION-DRIFT | background-color var(--dur-fast), color var(--dur-fast) | 0.2->0.15 x2 | 0.2s cluster RULED ->0.15 (OQ2); theme-swap fade |
-| public/css/style.css:700 | .btn | `transition: background-color var(--dur-fast) var(--ease-ui), border-colo` | MOTION-DRIFT | transform member -> var(--dur-fast) | 0.1->0.15 | 3 of 4 members already tokenized; press feedback; micro-band RULED ->0.15 (Q2 overrides the original 0.1s-literal plan) |
-| public/css/style.css:773 | .sidebar | `transition: transform 0.2s` | MOTION-DRIFT | transform var(--dur-fast) | 0.2->0.15 | 0.2s RULED ->0.15 (OQ2); MUST flip with .main-content:907 or drawer/content desync |
-| public/css/style.css:907 | .main-content | `transition: margin-left 0.2s` | MOTION-DRIFT | margin-left var(--dur-fast) | 0.2->0.15 | 0.2s RULED ->0.15 (OQ2); pair of 773 |
-| public/css/style.css:1343 | .ptr-indicator .icon-refresh | `transition: transform 0.08s linear` | RULED-EXEMPT | token-exempt annotation in 3e | - | RULED (OQ9): pull-gesture tracking stays 0.08s linear |
-| public/css/style.css:1983 | .skip-btn | `transition: opacity 0.2s var(--ease-ui), transform var(--dur-fast) var(-` | MOTION-DRIFT | opacity var(--dur-fast) var(--ease-ui), background var(--dur-fast) var(--ease-ui) | 0.2->0.15 x2 | 0.2s RULED ->0.15 (OQ2); transform member already tokenized |
-| public/css/style.css:2055 | .watch-prevnext-btn | `transition: background-color var(--dur-fast) var(--ease-ui), border-colo` | MOTION-DRIFT | transform member -> var(--dur-fast) | 0.1->0.15 | same shape as .btn:700; micro-band RULED ->0.15 (Q2) |
-| public/css/style.css:2202 | .star | `transition: color 0.1s` | MOTION-DRIFT | color var(--dur-fast) | 0.1->0.15 | rating-star hover; micro-band RULED ->0.15 (Q2) |
-| public/css/style.css:3193 | .modal-backdrop | `transition: opacity 0.2s ease-out` | MOTION-DRIFT | opacity var(--dur-fast) ease-out | 0.2->0.15 | 0.2s RULED ->0.15 (OQ2); ease-out stays literal (no token covers it); pair of 3226 |
-| public/css/style.css:3226 | .modal-content | `transition: transform 0.2s ease-out` | MOTION-DRIFT | transform var(--dur-fast) ease-out | 0.2->0.15 | 0.2s RULED ->0.15 (OQ2); entrance pair of 3193 |
-| public/css/style.css:3976 | .playlists-sheet-backdrop (mobile) | `transition: opacity 0.2s ease-out` | MOTION-DRIFT | opacity var(--dur-fast) ease-out | 0.2->0.15 | 0.2s RULED ->0.15 (OQ2); pair of 4003 |
-| public/css/style.css:4003 | .playlists-sheet (mobile) | `transition: transform 0.2s ease-out` | MOTION-DRIFT | transform var(--dur-fast) ease-out | 0.2->0.15 | 0.2s RULED ->0.15 (OQ2); slide-up pair of 3976 |
-| public/css/style.css:5802 | .sub-sheet-backdrop | `transition: opacity 0.2s ease-out` | MOTION-DRIFT | opacity var(--dur-fast) ease-out | 0.2->0.15 | 0.2s RULED ->0.15 (OQ2); pair of 5825 |
-| public/css/style.css:5825 | .sub-sheet | `transition: transform 0.2s ease-out` | MOTION-DRIFT | transform var(--dur-fast) ease-out | 0.2->0.15 | 0.2s RULED ->0.15 (OQ2); pair of 5802 |
-| public/css/style.css:6434 | .dl-status-chip-progress-fill | `transition: width 300ms linear` | MOTION-DRIFT | width var(--dur-slow) linear | 300ms->0.25s | linear deliberate for progress interpolation - stays literal |
-| public/css/style.css:7385 | .login-submit | `transition: filter 0.12s var(--ease-ui)` | MOTION-DRIFT | filter var(--dur-fast) var(--ease-ui) | 0.12->0.15 | easing already tokenized; micro-band RULED ->0.15 (Q2) |
-| public/css/style.css:8267 | .notif-panel-backdrop (mobile) | `transition: opacity 0.2s var(--ease-ui)` | MOTION-DRIFT | opacity var(--dur-fast) var(--ease-ui) | 0.2->0.15 | 0.2 TIE |
+| ~~public/css/style.css:490~~ | body | `transition: background-color 0.2s, color 0.2s` | MOTION-DRIFT | background-color var(--dur-fast), color var(--dur-fast) | 0.2->0.15 x2 | 0.2s cluster RULED ->0.15 (OQ2); theme-swap fade; 3e DONE 2026-07-31 |
+| ~~public/css/style.css:700~~ | .btn | `transition: background-color var(--dur-fast) var(--ease-ui), border-colo` | MOTION-DRIFT | transform member -> var(--dur-fast) | 0.1->0.15 | 3 of 4 members already tokenized; press feedback; micro-band RULED ->0.15 (Q2 overrides the original 0.1s-literal plan); 3e DONE 2026-07-31 |
+| ~~public/css/style.css:773~~ | .sidebar | `transition: transform 0.2s` | MOTION-DRIFT | transform var(--dur-fast) | 0.2->0.15 | 0.2s RULED ->0.15 (OQ2); MUST flip with .main-content:907 or drawer/content desync; 3e DONE 2026-07-31 |
+| ~~public/css/style.css:907~~ | .main-content | `transition: margin-left 0.2s` | MOTION-DRIFT | margin-left var(--dur-fast) | 0.2->0.15 | 0.2s RULED ->0.15 (OQ2); pair of 773; 3e DONE 2026-07-31 |
+| ~~public/css/style.css:1343~~ | .ptr-indicator .icon-refresh | `transition: transform 0.08s linear` | RULED-EXEMPT | token-exempt annotation in 3e | - | RULED (OQ9): pull-gesture tracking stays 0.08s linear; 3e DONE 2026-07-31 |
+| ~~public/css/style.css:1983~~ | .skip-btn | `transition: opacity 0.2s var(--ease-ui), transform var(--dur-fast) var(-` | MOTION-DRIFT | opacity var(--dur-fast) var(--ease-ui), background var(--dur-fast) var(--ease-ui) | 0.2->0.15 x2 | 0.2s RULED ->0.15 (OQ2); transform member already tokenized; 3e DONE 2026-07-31 |
+| ~~public/css/style.css:2055~~ | .watch-prevnext-btn | `transition: background-color var(--dur-fast) var(--ease-ui), border-colo` | MOTION-DRIFT | transform member -> var(--dur-fast) | 0.1->0.15 | same shape as .btn:700; micro-band RULED ->0.15 (Q2); 3e DONE 2026-07-31 |
+| ~~public/css/style.css:2202~~ | .star | `transition: color 0.1s` | MOTION-DRIFT | color var(--dur-fast) | 0.1->0.15 | rating-star hover; micro-band RULED ->0.15 (Q2); 3e DONE 2026-07-31 |
+| ~~public/css/style.css:3193~~ | .modal-backdrop | `transition: opacity 0.2s ease-out` | MOTION-DRIFT | opacity var(--dur-fast) ease-out | 0.2->0.15 | 0.2s RULED ->0.15 (OQ2); ease-out stays literal (no token covers it); pair of 3226; 3e DONE 2026-07-31 |
+| ~~public/css/style.css:3226~~ | .modal-content | `transition: transform 0.2s ease-out` | MOTION-DRIFT | transform var(--dur-fast) ease-out | 0.2->0.15 | 0.2s RULED ->0.15 (OQ2); entrance pair of 3193; 3e DONE 2026-07-31 |
+| ~~public/css/style.css:3976~~ | .playlists-sheet-backdrop (mobile) | `transition: opacity 0.2s ease-out` | MOTION-DRIFT | opacity var(--dur-fast) ease-out | 0.2->0.15 | 0.2s RULED ->0.15 (OQ2); pair of 4003; 3e DONE 2026-07-31 |
+| ~~public/css/style.css:4003~~ | .playlists-sheet (mobile) | `transition: transform 0.2s ease-out` | MOTION-DRIFT | transform var(--dur-fast) ease-out | 0.2->0.15 | 0.2s RULED ->0.15 (OQ2); slide-up pair of 3976; 3e DONE 2026-07-31 |
+| ~~public/css/style.css:5802~~ | .sub-sheet-backdrop | `transition: opacity 0.2s ease-out` | MOTION-DRIFT | opacity var(--dur-fast) ease-out | 0.2->0.15 | 0.2s RULED ->0.15 (OQ2); pair of 5825; 3e DONE 2026-07-31 |
+| ~~public/css/style.css:5825~~ | .sub-sheet | `transition: transform 0.2s ease-out` | MOTION-DRIFT | transform var(--dur-fast) ease-out | 0.2->0.15 | 0.2s RULED ->0.15 (OQ2); pair of 5802; 3e DONE 2026-07-31 |
+| ~~public/css/style.css:6434~~ | .dl-status-chip-progress-fill | `transition: width 300ms linear` | MOTION-DRIFT | width var(--dur-slow) linear | 300ms->0.25s | linear deliberate for progress interpolation - stays literal; 3e DONE 2026-07-31 |
+| ~~public/css/style.css:7385~~ | .login-submit | `transition: filter 0.12s var(--ease-ui)` | MOTION-DRIFT | filter var(--dur-fast) var(--ease-ui) | 0.12->0.15 | easing already tokenized; micro-band RULED ->0.15 (Q2); 3e DONE 2026-07-31 |
+| ~~public/css/style.css:8267~~ | .notif-panel-backdrop (mobile) | `transition: opacity 0.2s var(--ease-ui)` | MOTION-DRIFT | opacity var(--dur-fast) var(--ease-ui) | 0.2->0.15 | 0.2 TIE; 3e DONE 2026-07-31 |
 
 ## 3f - line-height band (OQ6 rulings applied: body and cc-overlay exempt)
 

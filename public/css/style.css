@@ -487,7 +487,7 @@ body {
   color: var(--text-primary);
   font-size: var(--fs-base);
   line-height: 1.4;
-  transition: background-color 0.2s, color 0.2s;
+  transition: background-color var(--dur-fast), color var(--dur-fast);
 }
 
 /* v1.47.4 item 2 (Dean: "fully disable pinch-to-zoom ... easy to zoom in
@@ -697,7 +697,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   gap: var(--space-3);
   text-decoration: none; /* .btn is used on <a> too (e.g. #download-media-btn) -- keep it button-like, never underlined */
   box-shadow: var(--shadow);
-  transition: background-color var(--dur-fast) var(--ease-ui), border-color var(--dur-fast) var(--ease-ui), transform 0.1s var(--ease-ui), box-shadow var(--dur-fast) var(--ease-ui);
+  transition: background-color var(--dur-fast) var(--ease-ui), border-color var(--dur-fast) var(--ease-ui), transform var(--dur-fast) var(--ease-ui), box-shadow var(--dur-fast) var(--ease-ui);
 }
 
 /* The 2005 era-theme underlines all <a>; an <a class="btn"> is a button, not a link -- keep it clean. */
@@ -770,7 +770,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   left: 0;
   overflow-y: auto;
   z-index: 99; /* token-exempt: local stacking */
-  transition: transform 0.2s;
+  transition: transform var(--dur-fast);
 }
 
 .sidebar.hidden {
@@ -904,7 +904,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   margin-left: 230px;
   padding: var(--space-12);
   background-color: var(--bg-color);
-  transition: margin-left 0.2s;
+  transition: margin-left var(--dur-fast);
 }
 
 .main-content.expanded {
@@ -1340,7 +1340,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   transform: translateX(-50%) translateY(calc(var(--ptr-pull, 0) * 0.25px)) scale(1);
 }
 .ptr-indicator .icon-refresh {
-  transition: transform 0.08s linear;
+  transition: transform 0.08s linear; /* token-exempt: continuous pull-gesture tracking, not a UI transition (OQ9 ruling) */
   transform: rotate(calc(var(--ptr-pull, 0) * 2.6deg));
 }
 .ptr-indicator.ready {
@@ -1980,7 +1980,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   font-weight: var(--fw-semibold);
   cursor: pointer;
   opacity: 0;
-  transition: opacity 0.2s var(--ease-ui), transform var(--dur-fast) var(--ease-ui), background 0.2s var(--ease-ui);
+  transition: opacity var(--dur-fast) var(--ease-ui), transform var(--dur-fast) var(--ease-ui), background var(--dur-fast) var(--ease-ui);
   pointer-events: none; /* invisible buttons must not catch clicks */
   -webkit-tap-highlight-color: transparent;
 }
@@ -2052,7 +2052,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  transition: background-color var(--dur-fast) var(--ease-ui), border-color var(--dur-fast) var(--ease-ui), transform 0.1s var(--ease-ui);
+  transition: background-color var(--dur-fast) var(--ease-ui), border-color var(--dur-fast) var(--ease-ui), transform var(--dur-fast) var(--ease-ui);
 }
 
 .watch-prevnext-btn:hover:not(:disabled) {
@@ -2199,7 +2199,7 @@ html.reader-immersive .app-container { padding-top: 0; }
 .star {
   font-size: var(--fs-3xl);
   color: var(--star-gray);
-  transition: color 0.1s;
+  transition: color var(--dur-fast);
 }
 
 .star.active {
@@ -3190,7 +3190,7 @@ a.sub-row-channel-link:focus-visible {
      `.modal-open` right after mount / right before teardown, so the fade
      below actually gets a "from" and "to" state to transition between. */
   opacity: 0;
-  transition: opacity 0.2s ease-out;
+  transition: opacity var(--dur-fast) ease-out;
 }
 
 .modal-backdrop.modal-open {
@@ -3223,7 +3223,7 @@ a.sub-row-channel-link:focus-visible {
   /* Subtle scale-in alongside the backdrop's fade above -- same `.modal-open`
      toggle (added to the BACKDROP, so this rule descends from it). */
   transform: scale(0.97);
-  transition: transform 0.2s ease-out;
+  transition: transform var(--dur-fast) ease-out;
 }
 
 .modal-backdrop.modal-open .modal-content {
@@ -3973,7 +3973,7 @@ a.sub-row-channel-link:focus-visible {
     z-index: 1500;
     background: var(--scrim);
     opacity: 0;
-    transition: opacity 0.2s ease-out;
+    transition: opacity var(--dur-fast) ease-out;
   }
 
   .playlists-sheet-backdrop:not([hidden]).sheet-open {
@@ -4000,7 +4000,7 @@ a.sub-row-channel-link:focus-visible {
     padding-bottom: env(safe-area-inset-bottom);
     font-family: var(--font-family);
     transform: translateY(100%);
-    transition: transform 0.2s ease-out;
+    transition: transform var(--dur-fast) ease-out;
   }
 
   .playlists-sheet:not([hidden]).sheet-open {
@@ -5799,7 +5799,7 @@ body.ft-css-fullscreen .bottom-nav {
      `openOverlay`/`closeOverlayThen` helpers) -- no prior [hidden] state,
      same posture as the generic `.modal-backdrop` above. */
   opacity: 0;
-  transition: opacity 0.2s ease-out;
+  transition: opacity var(--dur-fast) ease-out;
 }
 
 .sub-sheet-backdrop.sheet-open {
@@ -5822,7 +5822,7 @@ body.ft-css-fullscreen .bottom-nav {
   /* Slide-up on open / slide-down on close -- mirrors `.playlists-sheet`'s
      own translateY(100%) -> .sheet-open's translateY(0) treatment. */
   transform: translateY(100%);
-  transition: transform 0.2s ease-out;
+  transition: transform var(--dur-fast) ease-out;
 }
 
 .sub-sheet.sheet-open {
@@ -6431,7 +6431,7 @@ body.ft-css-fullscreen .bottom-nav {
     transparent 4px,
     transparent 8px
   );
-  transition: width 300ms linear;
+  transition: width var(--dur-slow) linear;
 }
 
 .dl-status-chip-progress-fill-error {
@@ -7382,7 +7382,7 @@ body.ft-css-fullscreen .bottom-nav {
   padding: calc(var(--density) * 1.4) var(--density);
   cursor: pointer;
   margin-top: calc(var(--density) * 0.5);
-  transition: filter 0.12s var(--ease-ui);
+  transition: filter var(--dur-fast) var(--ease-ui);
 }
 .login-submit:hover { filter: brightness(1.08); }
 .login-submit:active { filter: brightness(0.94); }
@@ -8264,7 +8264,7 @@ body.ft-css-fullscreen .bottom-nav {
     background: var(--scrim);
     z-index: 1599;
     opacity: 0;
-    transition: opacity 0.2s var(--ease-ui);
+    transition: opacity var(--dur-fast) var(--ease-ui);
   }
 
   .notif-panel-backdrop.notif-open {
