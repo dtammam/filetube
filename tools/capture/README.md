@@ -84,4 +84,10 @@ actual token witness) still photographs; only the changing glyphs
 vanish. Both mechanisms are bound by
 test/integration/capture-determinism.test.js, which reproduces the
 post-idle insertion race in real Chromium and requires two gated
-captures to be byte-identical.
+captures to be byte-identical. Known blind spot: the gate sees
+document.images only - CSS background-image loads are invisible to it;
+the app's one dynamic case (the expanded-audio backdrop, player.js
+audioBgArt) is reachable only from manual scene 10, so no automated
+shot depends on it today. A stably-broken image (404 avatar/cover)
+fast-paths: it neither slows the gate nor raises the alarm - it paints
+identically every run.

@@ -27,6 +27,16 @@ const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR
 
 function slowImageServer() {
   const srv = http.createServer((req, res) => {
+    if (req.url === '/img/broken') {
+      // Instantly 404s: an already-errored image must fast-path, never
+      // hang a pass or raise the alarm (gate W1 - a stably-broken image
+      // is perfectly deterministic).
+      res.writeHead(404); res.end(); return;
+    }
+    if (req.url === '/img/hang') {
+      // Never responds - for the timeout-contract test only.
+      return;
+    }
     if (req.url.startsWith('/img/')) {
       // Fixed delay: long enough that the 350ms settle floor has long
       // passed before these ever arrive.
@@ -36,16 +46,27 @@ function slowImageServer() {
     res.writeHead(200, { 'content-type': 'text/html' });
     // The FIELD mechanism, modeled faithfully: the page is quiet at load
     // (networkidle fires on an imageless document), then an SPA-style
-    // render inserts lazy images AFTER idle - which then race any fixed
-    // screenshot delay.
+    // render inserts lazy images AFTER idle in TWO batches (the second
+    // lands while the first is still settling - binds the multi-pass
+    // loop, gate N5), plus one broken image (W1) and one genuinely
+    // BELOW-FOLD lazy image behind a 40000px spacer that Chromium will
+    // never fetch without the eager flip (gate N6 - the reviewer's own
+    // binding fixture).
     res.end(`<html><body style="margin:0">
       <div class="sub-list-header-status" style="height:20px">last check: LIVE-TEXT-${Date.now()}</div>
-      <div id="grid"></div>
+      <div id="grid"></div><div id="grid2"></div>
+      <div style="height:40000px"></div>
+      <img id="deep" loading="lazy" src="/img/deep" width="40" height="40">
       <script>
         setTimeout(() => {
-          document.getElementById('grid').innerHTML = Array.from({ length: 12 }, (_, i) =>
-            '<img loading="lazy" src="/img/' + i + '" width="40" height="40" style="background:#ccc">').join('');
+          document.getElementById('grid').innerHTML = Array.from({ length: 6 }, (_, i) =>
+            '<img loading="lazy" src="/img/' + i + '" width="40" height="40" style="background:#ccc">').join('') +
+            '<img src="/img/broken" width="40" height="40">';
         }, 700);
+        setTimeout(() => {
+          document.getElementById('grid2').innerHTML = Array.from({ length: 6 }, (_, i) =>
+            '<img loading="lazy" src="/img/b' + i + '" width="40" height="40" style="background:#eee">').join('');
+        }, 1100);
       </script></body></html>`);
   });
   return new Promise((r) => srv.listen(0, '127.0.0.1', () => r(srv)));
@@ -69,14 +90,38 @@ test('image-quiescence gate: the lazy race exists without it, dies with it, and 
     // test is vacuous - fix the fixture).
     const p1 = await browser.newPage();
     await p1.goto(base + '/', { waitUntil: 'networkidle', timeout: 20000 });
-    await p1.waitForFunction(() => document.images.length > 0, null, { timeout: 5000 });
-    const before = await p1.evaluate(() => Array.from(document.images).filter((i) => !i.complete || i.naturalWidth === 0).length);
-    assert.ok(before > 0, `expected undecoded post-idle images, got ${before} - the fixture no longer reproduces the race`);
-    // ...and the gate settles them all.
+    await p1.waitForFunction(() => document.images.length > 1, null, { timeout: 5000 });
+    const before = await p1.evaluate(() => Array.from(document.images).filter((i) => !i.complete).length);
+    assert.ok(before > 0, `expected in-flight post-idle images, got ${before} - the fixture no longer reproduces the race`);
+    // The deep below-fold lazy image must NOT have been fetched yet - if
+    // Chromium starts fetching it unflipped, the N6 fixture is dead and
+    // the eager-flip is no longer bound.
+    const deepBefore = await p1.evaluate(() => { const d = document.getElementById('deep'); return { complete: d.complete, w: d.naturalWidth }; });
+    assert.strictEqual(deepBefore.complete && deepBefore.w > 0, false, 'deep lazy image fetched WITHOUT the flip - fixture no longer binds N6');
+    // ...and the gate settles everything - both insertion batches (the
+    // second lands mid-settle: multi-pass), the deep image (eager flip),
+    // and the broken image (fast-path, no hang, no alarm) - FAST.
+    const t0 = Date.now();
     const settled = await settlePageImages(p1);
+    const elapsed = Date.now() - t0;
     assert.strictEqual(settled.pending, 0, JSON.stringify(settled));
     assert.strictEqual(settled.outcome, 'settled');
+    assert.strictEqual(settled.total, 14, 'both batches + deep + broken must all be present post-settle');
+    assert.ok(elapsed < 6000, `settle took ${elapsed}ms - the broken image is hanging a pass (gate W1)`);
+    const deepAfter = await p1.evaluate(() => { const d = document.getElementById('deep'); return d.complete && d.naturalWidth > 0; });
+    assert.strictEqual(deepAfter, true, 'the eager flip must fetch the below-fold lazy image');
     await p1.close();
+
+    // Timeout CONTRACT: a genuinely hanging image reports pending>0 and
+    // outcome timeout within the budget - the alarm the driver records.
+    const ph = await browser.newPage();
+    // domcontentloaded, not load: the hanging image blocks 'load' forever
+    // by construction.
+    await ph.setContent('<img src="' + base + '/img/hang" width="10" height="10">', { waitUntil: 'domcontentloaded' });
+    const hung = await settlePageImages(ph, 800);
+    assert.strictEqual(hung.outcome, 'timeout');
+    assert.ok(hung.pending > 0);
+    await ph.close();
 
     // Arm 2 - determinism: two FRESH loads, gate applied, byte-identical
     // shots (the live-text line is masked by the exact driver CSS; its
@@ -86,10 +131,10 @@ test('image-quiescence gate: the lazy race exists without it, dies with it, and 
       const p = await browser.newPage();
       await p.goto(base + '/', { waitUntil: 'networkidle', timeout: 20000 });
       await p.addStyleTag({ content: VOLATILE_MASK_CSS });
-      await p.waitForFunction(() => document.images.length > 0, null, { timeout: 5000 });
+      await p.waitForFunction(() => document.images.length > 1, null, { timeout: 5000 });
       const s = await settlePageImages(p);
       assert.strictEqual(s.pending, 0);
-      assert.strictEqual(s.total, 12);
+      assert.strictEqual(s.total, 14);
       const h = await p.evaluate(() => document.querySelector('.sub-list-header-status').offsetHeight);
       assert.strictEqual(h, 20, 'mask must preserve the layout box (visibility, not display)');
       await p.waitForTimeout(100);
@@ -113,5 +158,6 @@ test('driver binding: capture.js gates images and injects the mask before every 
   assert.ok(settleIdx > -1, 'capture.js must call settlePageImages');
   assert.ok(shotIdx > settleIdx, 'the image gate must run BEFORE the screenshot');
   assert.ok(code.includes('FREEZE_CSS + VOLATILE_MASK_CSS'), 'the volatile mask must ride the freeze-CSS injection');
-  assert.ok(code.includes('imageWaitPending'), 'a gate timeout must be recorded, not swallowed');
+  const pushes = code.match(/record\.imageWaitPending\.push\(/g) || [];
+  assert.ok(pushes.length >= 2, `gate timeouts AND late insertions must be RECORDED (found ${pushes.length} push sites; presence of the array alone is not binding - gate N3)`);
 });

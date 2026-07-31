@@ -83,6 +83,10 @@ async function runScene(browser, scene, era, mode, vpName, record) {
     const imgs = await settlePageImages(page);
     if (imgs.pending > 0) record.imageWaitPending.push({ scene: fname, pending: imgs.pending, total: imgs.total });
     await page.waitForTimeout(350); // settle fonts/layout post-freeze
+    // Last-instant recount (gate suggestion): an insertion landing AFTER
+    // the settle passes still races the shot - make it logged, not silent.
+    const late = await page.evaluate(() => Array.from(document.images).filter((i) => !i.complete).length);
+    if (late > 0) record.imageWaitPending.push({ scene: fname, pending: late, late: true });
     await page.screenshot({ path: path.join(OUT, fname), fullPage: false });
     record.captured.push(fname);
   } catch (err) {

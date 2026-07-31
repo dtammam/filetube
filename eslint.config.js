@@ -95,7 +95,7 @@ module.exports = [
     languageOptions: { globals: { ...globals.node } },
   },
   {
-    files: ['tools/capture/settle.js', 'test/integration/capture-determinism.test.js', 'test/integration/capture-guard-browser.test.js'],
+    files: ['tools/capture/settle.js', 'tools/capture/capture.js', 'test/integration/capture-determinism.test.js', 'test/integration/capture-guard-browser.test.js'],
     languageOptions: { globals: { ...globals.node, ...globals.browser } },
   },
 
