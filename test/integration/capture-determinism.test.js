@@ -12,14 +12,15 @@
 //
 // Skips cleanly where the isolated tools/capture package is absent.
 //
-// BINDING HONESTY: the causally-chained late batch binds SET-CONVERGENCE
-// (a fixed pass cap or a first-stable return that races a late render is
-// the field's 32/89 failure), but convergence-vs-first-stable is at
-// bottom a TIMING property - no byte-deterministic fixture can kill
-// every degenerate mutant of the quiet window itself. The chain
-// guarantees the late render lands INSIDE any post-batch-2 quiet window
-// (250ms < quietMs 450), which is as strong as this layer can bind; the
-// field's back-to-back gate is the final arbiter.
+// BINDING: the causally-chained late batches bind the STRUCTURAL
+// mutants - first-stable return (the field-bug shape) dies on the chain
+// itself, and a fixed N-observation cap (the round-2 regression) dies on
+// the N+1th hop (the reviewer proved a 3-hop chain lets a 3-cap mutant
+// through; hence four hops). What genuinely remains timing-arbitrated is
+// only the quiet-window DURATION (450 vs 400ms) - the field's
+// back-to-back gate owns that. Each chained hop lands 250ms after the
+// prior batch's last image load, provably inside any quiet window that
+// opened after that batch settled (250 < quietMs 450).
 
 const { test } = require('node:test');
 const assert = require('node:assert');
@@ -93,6 +94,19 @@ function slowImageServer() {
             setTimeout(() => {
               document.getElementById('grid3').innerHTML = Array.from({ length: 4 }, (_, i) =>
                 '<img loading="lazy" src="/img/c' + i + '" width="40" height="40" style="background:#ddd">').join('');
+              // Batch 4, chained one hop deeper (gate FINDING 1): a fixed
+              // N-observation cap is only caught by a chain N+1 deep - the
+              // 3-hop fixture let a fixed-3-cap mutant (the round-2
+              // regression itself) return early with a green suite.
+              const imgs3 = document.getElementById('grid3').querySelectorAll('img');
+              imgs3[imgs3.length - 1].addEventListener('load', () => {
+                setTimeout(() => {
+                  const d = document.createElement('div');
+                  d.innerHTML = Array.from({ length: 3 }, (_, i) =>
+                    '<img loading="lazy" src="/img/d' + i + '" width="40" height="40" style="background:#bbb">').join('');
+                  document.body.insertBefore(d, document.getElementById('grid3').nextSibling);
+                }, 250);
+              }, { once: true });
             }, 250);
           }, { once: true });
         }, 1100);
@@ -135,7 +149,7 @@ test('image-quiescence gate: the lazy race exists without it, dies with it, and 
     const elapsed = Date.now() - t0;
     assert.strictEqual(settled.pending, 0, JSON.stringify(settled));
     assert.strictEqual(settled.stable, true, JSON.stringify(settled));
-    assert.strictEqual(settled.total, 18, 'all three batches (incl. the LATE 2100ms render) + deep + broken must be present post-settle - a fixed pass cap misses the late batch');
+    assert.strictEqual(settled.total, 21, 'all FOUR chained batches + deep + broken must be present post-settle - a fixed observation cap of N misses the N+1th hop');
     assert.strictEqual(settled.errored, 1, 'the broken image is counted as errored, not pending');
     assert.ok(elapsed < 10000, `settle took ${elapsed}ms - the broken image is hanging an observation (gate W1)`);
     const deepAfter = await p1.evaluate(() => { const d = document.getElementById('deep'); return d.complete && d.naturalWidth > 0; });
@@ -165,7 +179,7 @@ test('image-quiescence gate: the lazy race exists without it, dies with it, and 
       await p.waitForFunction(() => document.images.length > 1, null, { timeout: 5000 });
       const s = await settlePageImages(p);
       assert.strictEqual(s.pending, 0);
-      assert.strictEqual(s.total, 18);
+      assert.strictEqual(s.total, 21);
       heights.push(await p.evaluate(() => document.querySelector('.sub-list-header-status').offsetHeight));
       shots.push(await p.screenshot());
       await p.close();
@@ -194,4 +208,9 @@ test('driver binding: capture.js gates images and injects the mask before every 
   assert.ok(code.includes('FREEZE_CSS + VOLATILE_MASK_CSS'), 'the volatile mask must ride the freeze-CSS injection');
   const pushes = code.match(/record\.imageWaitPending\.push\(/g) || [];
   assert.ok(pushes.length >= 2, `gate timeouts AND late insertions must be RECORDED (found ${pushes.length} push sites; presence of the array alone is not binding - gate N3)`);
+  // FINDING 2: a non-converging page with pending===0 at the last
+  // observation (an image set that keeps CHANGING) is exactly the
+  // round-2 diagnostic hole - the !stable guard must gate the record.
+  assert.match(code, /!imgs\.stable\s*\|\|\s*imgs\.pending\s*>\s*0/, 'the record condition must include !imgs.stable - a never-converging set with zero in-flight images would otherwise go unrecorded');
+  assert.match(code, /record\.erroredImages\.push\(/, 'errored-image counts must be recorded (server nondeterminism diagnosability)');
 });
