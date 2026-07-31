@@ -97,6 +97,18 @@ design-token-phase1-verification.md for full detail)
 - The lint baseline is 628 (not the 641 first published - linter parser
   fix), 554 after Tier 1.
 
+## Addendum (Tier 4 execution, 2026-07-31)
+
+- `--thumbnail-bg:#222` DEFINED per Dean's OQ7 ruling (2026-07-30): the
+  media-placeholder surface behind thumbnails/covers, previously a
+  6-site phantom (`var(--thumbnail-bg, #222)` with no definition).
+  Joins the contract as a new name alongside the 38 + `--radius-lg`.
+  Equals `--overlay-surface` coincidentally; distinct semantic, may
+  diverge.
+- The 13 dead var() fallbacks on `--border-color`/`--card-bg` (defined
+  at :root + every era; the literals never painted) are removed - the
+  ghost-token hiding place the Lessons section warned about, closed.
+
 ## Phase/tier map (CORRECTED by Dean's post-merge rulings, 2026-07-30)
 
 - Phase 1 (MERGED, 94cd9f2): reconcile, token file, token-exempt
