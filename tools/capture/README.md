@@ -90,4 +90,10 @@ the app's one dynamic case (the expanded-audio backdrop, player.js
 audioBgArt) is reachable only from manual scene 10, so no automated
 shot depends on it today. A stably-broken image (404 avatar/cover)
 fast-paths: it neither slows the gate nor raises the alarm - it paints
-identically every run.
+identically every run. The mask hides GLYPHS, not width: a
+relative-time string that changes LENGTH between runs (9->10 minutes,
+59min->"1 hour ago") still shifts inline/flex siblings after it
+(#added-date-text, .notif-row-time; the subs status line is immune via
+flex-basis:100%). Deliberate: pinning widths would falsify the very
+geometry the baselines witness - chase such a byte diff as a clock
+tick, not a token regression.

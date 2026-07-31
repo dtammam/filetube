@@ -54,6 +54,7 @@ function slowImageServer() {
     // binding fixture).
     res.end(`<html><body style="margin:0">
       <div class="sub-list-header-status" style="height:20px">last check: LIVE-TEXT-${Date.now()}</div>
+      <div style="height:20px">Added <span id="added-date-text">LIVE-${Date.now()}</span> &bull; static</div>
       <div id="grid"></div><div id="grid2"></div>
       <div style="height:40000px"></div>
       <img id="deep" loading="lazy" src="/img/deep" width="40" height="40">
