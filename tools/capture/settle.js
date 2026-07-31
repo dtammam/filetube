@@ -33,12 +33,20 @@ async function settlePageImages(page, budgetMs = 15000, quietMs = 450) {
   const deadline = Date.now() + budgetMs;
   let prevKey = null;
   let quietSince = 0;
-  let last = { total: 0, pending: 0, errored: 0 };
+  let last = { total: 0, pending: 0, fontsPending: 0, errored: 0 };
   let observations = 0;
   for (;;) {
     const raceMs = Math.min(4000, Math.max(100, deadline - Date.now()));
     const obs = await page.evaluate(async (imgRaceMs) => {
       for (const img of document.querySelectorAll('img[loading="lazy"]')) img.loading = 'eager';
+      // Fonts are the eager-flip's sibling (field gate 3, the 17b/17c
+      // residual that survived three gates): a font face loads lazily on
+      // first USE, and the icon-font consumers (reorder chevrons, header
+      // and nav glyphs) render from async fetches WITH NO IMAGES - so
+      // image-set convergence completes and fonts.ready, sampled before
+      // the trigger, is vacuously resolved. Force every declared face to
+      // start loading NOW; quiescence below then waits for them.
+      try { for (const f of document.fonts) { if (f.status === 'unloaded') f.load().catch(() => {}); } } catch { /* FontFaceSet iteration unavailable - nothing to force */ }
       const imgs = Array.from(document.images);
       await Promise.all(imgs.map((img) => {
         // complete==true covers loaded AND already-errored (naturalWidth
@@ -52,16 +60,26 @@ async function settlePageImages(page, budgetMs = 15000, quietMs = 450) {
       }).map((p) => Promise.race([p, new Promise((r) => setTimeout(r, imgRaceMs))])));
       if (document.fonts && document.fonts.ready) await document.fonts.ready.catch?.(() => {});
       const now = Array.from(document.images);
+      let fontsPending = 0;
+      let fontsKey = '';
+      try {
+        const faces = Array.from(document.fonts);
+        fontsPending = faces.filter((f) => f.status === 'loading').length;
+        // Face-set size joins the identity key: a stylesheet arriving late
+        // (new @font-face) must reset convergence like a new image does.
+        fontsKey = `|fonts:${faces.length}`;
+      } catch { /* no FontFaceSet - fonts cannot pend */ }
       return {
-        key: now.map((i) => i.currentSrc || i.src).join('\n'),
+        key: now.map((i) => i.currentSrc || i.src).join('\n') + fontsKey,
         total: now.length,
         pending: now.filter((i) => !i.complete).length,
+        fontsPending,
         errored: now.filter((i) => i.complete && i.naturalWidth === 0).length,
       };
     }, raceMs);
     observations++;
-    last = { total: obs.total, pending: obs.pending, errored: obs.errored };
-    if (obs.pending === 0 && obs.key === prevKey) {
+    last = { total: obs.total, pending: obs.pending, fontsPending: obs.fontsPending, errored: obs.errored };
+    if (obs.pending === 0 && obs.fontsPending === 0 && obs.key === prevKey) {
       if (quietSince && Date.now() - quietSince >= quietMs) {
         return { ...last, stable: true, observations };
       }
@@ -90,4 +108,20 @@ const VOLATILE_MASK_CSS =
   '.sub-list-header-status,.notif-row-time,#added-date-text{visibility:hidden!important}'
   + '.sub-list-header-status{white-space:nowrap!important;overflow:hidden!important}';
 
-module.exports = { settlePageImages, VOLATILE_MASK_CSS };
+// Belt-and-braces scroll normalization (2026-07-31): probing showed
+// headless Chromium already quantizes scroll to integer CSS pixels
+// (fractional-scroll was the FIRST hypothesis for the 17b/17c residual
+// and was DISPROVEN by measurement - the real cause was the icon-font
+// load race above). The snap stays because it is one cheap evaluate,
+// scrollIntoViewIfNeeded mid-smooth-glide and scroll anchoring on
+// resize remain real variables on non-headless drivers, and the driver
+// CSS freezes both (scroll-behavior:auto, overflow-anchor:none).
+async function snapScroll(page) {
+  await page.evaluate(() => {
+    const x = Math.round(window.scrollX);
+    const y = Math.round(window.scrollY);
+    window.scrollTo({ left: x, top: y, behavior: 'instant' });
+  });
+}
+
+module.exports = { settlePageImages, snapScroll, VOLATILE_MASK_CSS };
