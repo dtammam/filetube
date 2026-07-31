@@ -30,10 +30,13 @@ const CONTRACT = {
   '--z-nav': '900', '--z-chip': '940', '--z-dock': '950', '--z-header': '1000',
   '--z-player-max': '1100', '--z-sheet': '1500', '--z-panel': '1600',
   '--z-modal': '2000', '--z-top': '2200',
+  // Tier 4 batch 4a (2026-07-31, Dean's OQ7 ruling): the media-placeholder
+  // surface, ex-phantom. Joins the contract per the v1.1 addendum.
+  '--thumbnail-bg': '#222',
 };
 
 test('every new-layer token is defined EXACTLY ONCE with its contract value (mode-invariant by construction)', () => {
-  assert.equal(Object.keys(CONTRACT).length, 38, 'the 38-name contract');
+  assert.equal(Object.keys(CONTRACT).length, 39, 'the 38-name contract + --thumbnail-bg (Tier 4 addendum; --radius-lg predates the layer and lives in the era blocks)');
   for (const [name, value] of Object.entries(CONTRACT)) {
     const defs = [...css.matchAll(new RegExp(name.replace(/[-]/g, '\\-') + '\\s*:\\s*([^;]+);', 'g'))]
       .map((m) => m[1].trim());
