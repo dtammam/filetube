@@ -4118,7 +4118,7 @@ function escapeAttr(text) {
 // below them is a thin, untested-by-necessity shell around them, the same
 // posture the rest of this file already uses for its nav-link injection.
 
-// The four routes this app knows about today. Anything else (external links,
+// The SPA routes this app knows about. Anything else (external links,
 // `/thumbnail/*`, downloads, a future route) falls through to a normal
 // browser navigation -- this router never tries to "handle" a path it doesn't
 // recognize, and adding a route here alone does not make it reachable (the

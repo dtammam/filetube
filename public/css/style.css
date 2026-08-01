@@ -8842,6 +8842,7 @@ a.queue-upnext-next:hover {
 .history-confirming.history-remove-btn { color: var(--yt-red); }
 /* The armed Clear-all swaps its label for "Sure?" (single-width control). */
 .history-clear-btn.history-confirming .history-clear-label { display: none; }
+.history-clear-btn.history-confirming { color: var(--yt-red); }
 
 .history-empty {
   color: var(--text-secondary);
