@@ -9210,6 +9210,56 @@ app.delete('/api/history', (req, res) => {
   res.json({ success: true });
 });
 
+// ---- v1.65 trash routes -----------------------------------------------------
+// PER-ITEM ONLY, by construction (the v1.64 route-alias lesson): restore is
+// a POST under the id, purge is DELETE under the id, and NO collection-wide
+// DELETE /api/trash exists at all -- an empty-id form matches no route.
+// GET lists newest-first; items render from the stored metadata snapshot,
+// and /thumbnail/<trashId> works (the sidecar re-keyed with the move).
+app.get('/api/trash', (req, res) => {
+  const db = getCachedDatabase();
+  const retentionDays = Number(db.settings && db.settings.trashRetentionDays);
+  const items = Object.entries(db.trash || {})
+    .map(([tid, rec]) => ({
+      trashId: tid,
+      originalId: rec.originalId,
+      originalPath: rec.originalPath,
+      trashedAt: rec.trashedAt,
+      rootFolder: rec.rootFolder || null,
+      title: (rec.item && (rec.item.title || rec.item.name)) || path.basename(rec.originalPath || ''),
+      name: (rec.item && rec.item.name) || path.basename(rec.originalPath || ''),
+      type: (rec.item && rec.item.type) || 'video',
+      ext: (rec.item && rec.item.ext) || '',
+      size: (rec.item && rec.item.size) || 0,
+      duration: (rec.item && rec.item.duration) || 0,
+      orphaned: !!(rec.item && rec.item.orphanedByDeferredDelete),
+    }))
+    .sort((a, b) => (b.trashedAt || 0) - (a.trashedAt || 0));
+  res.json({
+    items,
+    total: items.length,
+    retentionDays: Number.isFinite(retentionDays) ? retentionDays : null,
+  });
+});
+
+app.post('/api/trash/:id/restore', async (req, res) => {
+  if (refuseIfReadOnlyMedia(res)) return;
+  const result = await restoreTrashItem({ loadDatabase, updateDatabase, getMediaId }, req.params.id);
+  if (!result.ok) {
+    return res.status(result.status).json({ error: result.error, ...(result.code ? { code: result.code } : {}) });
+  }
+  res.json({ success: true, restoredId: result.restoredId, originalPath: result.originalPath });
+});
+
+app.delete('/api/trash/:id', async (req, res) => {
+  if (refuseIfReadOnlyMedia(res)) return;
+  const result = await purgeTrashItem({ loadDatabase, updateDatabase }, req.params.id);
+  if (!result.ok) {
+    return res.status(result.status).json({ error: result.error, ...(result.code ? { code: result.code } : {}) });
+  }
+  res.json({ success: true });
+});
+
 // ---- C1 (v1.24 UX Round, Wave 3): move files between folders + id re-key --
 //
 // LOAD-BEARING GROUNDING FACT (docs/exec-plans/active/2026-07-09-v1.24-ux-round.md
@@ -10391,6 +10441,261 @@ async function trashOrphanFile(filePath, opts = {}) {
     console.error(`Scan: orphan moved to ${trashPath} but the old dirent ${filePath} could not be removed:`, err.message);
   }
   return trashPath;
+}
+
+// restoreTrashItem: the exact reverse of trashItem -- link back to the
+// original path, ONE mutator (db.trash record -> db.metadata + doc-table
+// carries + sidecar renames back), rollback on failure, post-commit
+// rekeyInFlightState (all nine carriers re-link: the restored id IS the
+// pre-trash id, md5 of the same path). Ruling 4's full-fidelity promise
+// lives here.
+//
+// Unlike trashItem, restore DOES inherit the move's mutator-A discipline: it
+// re-occupies a REAL library path, and a deletion tombstone at that path
+// (e.g. the user trashed A, downloaded a new file to the same path, then
+// removeAnyway'd it) would let the scan reap the restored file -- a hard
+// link preserves mtime, so the mtime guard is no defense. The tombstone is
+// retired FIRST, in its own committed mutator, before any FS op.
+async function restoreTrashItem(deps, trashId) {
+  const d = deps || {};
+  const loadDb = d.loadDatabase;
+  const updateDb = d.updateDatabase;
+  const computeId = d.getMediaId;
+  const fsImpl = d.fs || fs;
+  if (typeof loadDb !== 'function' || typeof updateDb !== 'function' || typeof computeId !== 'function') {
+    return { ok: false, status: 500, error: 'restoreTrashItem: missing required deps' };
+  }
+
+  const db = loadDb();
+  const rec = db.trash && Object.prototype.hasOwnProperty.call(db.trash, trashId) ? db.trash[trashId] : null;
+  if (!rec) {
+    return { ok: false, status: 404, error: 'Trash item not found' };
+  }
+  const originalPath = rec.originalPath;
+  const trashPath = rec.trashPath;
+  const originalId = computeId(originalPath);
+
+  if (fsImpl.existsSync(originalPath)) {
+    return { ok: false, status: 409, error: 'A file already exists at the original location -- move or delete it first, then restore again' };
+  }
+  if (!fsImpl.existsSync(trashPath)) {
+    // The bytes vanished out-of-band (manual cleanup inside the trash dir).
+    // The record is KEPT -- purge is the honest way to retire it.
+    return { ok: false, status: 404, error: 'The trashed file is missing on disk -- it can only be purged' };
+  }
+
+  try {
+    await updateDb((freshDb) => {
+      if (!freshDb.deleteTombstones || typeof freshDb.deleteTombstones !== 'object') return false;
+      if (!Object.prototype.hasOwnProperty.call(freshDb.deleteTombstones, originalId)) return false;
+      delete freshDb.deleteTombstones[originalId];
+      return true;
+    });
+  } catch (err) {
+    return { ok: false, status: 500, error: `Could not clear the destination's deletion tombstone: ${err.message}` };
+  }
+
+  try {
+    fsImpl.mkdirSync(path.dirname(originalPath), { recursive: true });
+    fsImpl.linkSync(trashPath, originalPath);
+  } catch (err) {
+    if (err && err.code === 'EEXIST') {
+      return { ok: false, status: 409, error: 'A file already exists at the original location -- move or delete it first, then restore again' };
+    }
+    if (err && err.code === 'ENOENT') {
+      return { ok: false, status: 404, error: 'The trashed file is missing on disk -- it can only be purged' };
+    }
+    if (err && RECOVERABLE_DELETE_CODES.has(err.code)) {
+      return { ok: false, status: 409, code: err.code, error: `Could not restore the file (${err.code})` };
+    }
+    return { ok: false, status: 500, error: `Could not restore the file: ${err.message}` };
+  }
+
+  let mutatorResult;
+  try {
+    mutatorResult = await updateDb((freshDb) => {
+      if (!freshDb.trash || !Object.prototype.hasOwnProperty.call(freshDb.trash, trashId)) return false;
+      const freshRec = freshDb.trash[trashId];
+
+      // Rebuild the metadata entry from the snapshot; id/filePath/name are
+      // recomputed from the ORIGINAL path (originalId is md5(originalPath)
+      // by construction, never trusted from the record). An orphan record
+      // (the deferred-retry's minimal snapshot) restores too; the next scan
+      // enriches it.
+      freshDb.metadata[originalId] = {
+        ...freshRec.item,
+        id: originalId,
+        filePath: originalPath,
+        name: path.basename(originalPath),
+        folderName: path.basename(path.dirname(originalPath)) || freshRec.item.folderName,
+      };
+      delete freshDb.trash[trashId];
+
+      if (Object.prototype.hasOwnProperty.call(freshDb.progress, trashId)) {
+        freshDb.progress[originalId] = freshDb.progress[trashId];
+        delete freshDb.progress[trashId];
+      }
+      if (Array.isArray(freshDb.liked)) {
+        const likedIndex = freshDb.liked.indexOf(trashId);
+        if (likedIndex !== -1) freshDb.liked[likedIndex] = originalId;
+      }
+      if (freshDb.viewCounts && Object.prototype.hasOwnProperty.call(freshDb.viewCounts, trashId)) {
+        freshDb.viewCounts[originalId] = freshDb.viewCounts[trashId];
+        delete freshDb.viewCounts[trashId];
+      }
+      if (freshDb.deleteTombstones && typeof freshDb.deleteTombstones === 'object') {
+        delete freshDb.deleteTombstones[originalId];
+        delete freshDb.deleteTombstones[trashId];
+      }
+
+      try {
+        const trashThumb = path.join(THUMBNAIL_DIR, `${trashId}.jpg`);
+        if (fsImpl.existsSync(trashThumb)) fsImpl.renameSync(trashThumb, path.join(THUMBNAIL_DIR, `${originalId}.jpg`));
+      } catch (thumbErr) {
+        console.error(`Restore: failed to re-key thumbnail for ${trashId} -> ${originalId}:`, thumbErr.message);
+      }
+      try {
+        if (fsImpl.existsSync(transcodedPath(trashId))) fsImpl.renameSync(transcodedPath(trashId), transcodedPath(originalId));
+      } catch (transcodeErr) {
+        console.error(`Restore: failed to re-key transcode sidecar for ${trashId} -> ${originalId}:`, transcodeErr.message);
+      }
+      try {
+        if (fsImpl.existsSync(audioPath(trashId))) fsImpl.renameSync(audioPath(trashId), audioPath(originalId));
+      } catch (audioErr) {
+        console.error(`Restore: failed to re-key background-audio sidecar for ${trashId} -> ${originalId}:`, audioErr.message);
+      }
+
+      // Subtitles: the reverse of trashItem's carry -- sweep the trash dir
+      // for the trash-side basename, restore each under the original one.
+      try {
+        const trashDir = path.dirname(trashPath);
+        const trashBase = path.basename(trashPath, path.extname(trashPath));
+        const origDir = path.dirname(originalPath);
+        const origBase = path.basename(originalPath, path.extname(originalPath));
+        const sidecarSuffix = /^\.(?:[A-Za-z0-9_-]{1,15}\.)?(?:vtt|srt)$/i;
+        for (const name of fsImpl.readdirSync(trashDir)) {
+          if (!name.startsWith(`${trashBase}.`)) continue;
+          const suffix = name.slice(trashBase.length);
+          if (!sidecarSuffix.test(suffix)) continue;
+          try {
+            const to = path.join(origDir, origBase + suffix);
+            if (!fsImpl.existsSync(to)) fsImpl.renameSync(path.join(trashDir, name), to);
+          } catch (_) { /* best-effort */ }
+        }
+      } catch (subErr) {
+        console.error(`Restore: failed to carry subtitle sidecars for ${trashId}:`, subErr.message);
+      }
+
+      return originalId;
+    });
+  } catch (err) {
+    try {
+      fsImpl.unlinkSync(originalPath);
+    } catch (unlinkErr) {
+      console.error(`Restore: the database update failed and the restored copy at ${originalPath} could not be rolled back:`, unlinkErr.message);
+    }
+    return { ok: false, status: 500, error: `The database update failed, so the restore was rolled back (the trash copy is untouched): ${err.message}` };
+  }
+
+  if (mutatorResult === false) {
+    try {
+      fsImpl.unlinkSync(originalPath);
+    } catch (err) {
+      console.error(`Restore: record ${trashId} vanished mid-restore; could not remove the copy at ${originalPath}:`, err.message);
+    }
+    return { ok: false, status: 404, error: 'Trash item was removed before the restore could be recorded' };
+  }
+
+  // All nine carriers re-link to the ORIGINAL id (same path -> same md5).
+  rekeyInFlightState(trashId, originalId, trashPath, originalPath);
+
+  try {
+    fsImpl.unlinkSync(trashPath);
+  } catch (err) {
+    // A leftover in the trash dir is invisible to scans and unreferenced by
+    // any record -- the retention sweep's orphan pass retires it.
+    console.error(`Restore: file restored to ${originalPath} but the trash copy ${trashPath} could not be removed:`, err.message);
+  }
+
+  return { ok: true, trashId, restoredId: originalId, originalPath };
+}
+
+// purgeTrashItem: the ONLY remaining true unlink for library media. Verified
+// destruction of ONE trash record's artifacts: the trash-side file, its
+// three id-keyed sidecars, its subtitle set, its doc-table rows, and every
+// per-user carrier row. Mints NO tombstone (the trash dir is unscanned; a
+// verified conclusion mints nothing).
+async function purgeTrashItem(deps, trashId) {
+  const d = deps || {};
+  const loadDb = d.loadDatabase;
+  const updateDb = d.updateDatabase;
+  const fsImpl = d.fs || fs;
+  if (typeof loadDb !== 'function' || typeof updateDb !== 'function') {
+    return { ok: false, status: 500, error: 'purgeTrashItem: missing required deps' };
+  }
+
+  const db = loadDb();
+  const rec = db.trash && Object.prototype.hasOwnProperty.call(db.trash, trashId) ? db.trash[trashId] : null;
+  if (!rec) {
+    return { ok: false, status: 404, error: 'Trash item not found' };
+  }
+  const trashPath = rec.trashPath;
+
+  try {
+    fsImpl.unlinkSync(trashPath);
+  } catch (err) {
+    if (err && err.code === 'ENOENT') {
+      // Already gone out-of-band -- the desired end state holds; fall
+      // through and retire the record + artifacts.
+    } else if (err && RECOVERABLE_DELETE_CODES.has(err.code)) {
+      // Record KEPT: purge again later (or the retention sweep retries).
+      return { ok: false, status: 409, code: err.code, error: `Could not purge the file (${err.code})` };
+    } else {
+      return { ok: false, status: 500, error: `Could not purge the file: ${err.message}` };
+    }
+  }
+
+  // Id-keyed sidecars + the subtitle set, best-effort.
+  try { const p = path.join(THUMBNAIL_DIR, `${trashId}.jpg`); if (fsImpl.existsSync(p)) fsImpl.unlinkSync(p); } catch (_) { /* best-effort */ }
+  try { if (fsImpl.existsSync(transcodedPath(trashId))) fsImpl.unlinkSync(transcodedPath(trashId)); } catch (_) { /* best-effort */ }
+  try { if (fsImpl.existsSync(audioPath(trashId))) fsImpl.unlinkSync(audioPath(trashId)); } catch (_) { /* best-effort */ }
+  try {
+    const trashDir = path.dirname(trashPath);
+    const trashBase = path.basename(trashPath, path.extname(trashPath));
+    const sidecarSuffix = /^\.(?:[A-Za-z0-9_-]{1,15}\.)?(?:vtt|srt)$/i;
+    for (const name of fsImpl.readdirSync(trashDir)) {
+      if (!name.startsWith(`${trashBase}.`)) continue;
+      if (!sidecarSuffix.test(name.slice(trashBase.length))) continue;
+      try { fsImpl.unlinkSync(path.join(trashDir, name)); } catch (_) { /* best-effort */ }
+    }
+  } catch (_) { /* best-effort -- e.g. the trash dir itself is gone */ }
+
+  try {
+    await updateDb((freshDb) => {
+      if (freshDb.trash) delete freshDb.trash[trashId];
+      delete freshDb.progress[trashId];
+      if (freshDb.viewCounts) delete freshDb.viewCounts[trashId];
+      if (Array.isArray(freshDb.liked)) {
+        const likedIndex = freshDb.liked.indexOf(trashId);
+        if (likedIndex !== -1) freshDb.liked.splice(likedIndex, 1);
+      }
+      if (freshDb.deleteTombstones && typeof freshDb.deleteTombstones === 'object') {
+        delete freshDb.deleteTombstones[trashId];
+      }
+      clearPersistedServedAt(trashId);
+      return true;
+    });
+  } catch (err) {
+    return { ok: false, status: 500, error: `The file was purged but the record could not be removed: ${err.message}` };
+  }
+
+  try {
+    userStore.removeMediaState(trashId);
+  } catch (err) {
+    console.error(`Purge: failed to remove per-user rows for ${trashId} (continuing):`, err.message);
+  }
+
+  return { ok: true, trashId };
 }
 
 // API: Move a video/audio file into another configured library folder (C1).
@@ -13405,6 +13710,8 @@ module.exports = {
   computeMoveTarget,
   moveItemToFolder,
   trashItem,
+  restoreTrashItem,
+  purgeTrashItem,
   configuredLibraryRoots,
   getMediaId,
   // T4 (v1.25 QoL): the one-time flat-one-off-into-channel-folder migration --
