@@ -8627,21 +8627,6 @@ body.ft-css-fullscreen .bottom-nav {
   background-color: var(--scrim-heavy);
 }
 
-.music-queue-btn {
-  background: none;
-  border: none;
-  color: var(--text-secondary);
-  cursor: pointer;
-  padding: var(--space-2);
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-}
-
-.music-queue-btn:hover {
-  color: var(--text-primary);
-}
-
 /* v1.63: the "playing from queue" box (ruling 5) - the uploader block's
    slot on watch, YouTube-playlist-box treatment. */
 .queue-upnext-box {
@@ -8678,4 +8663,17 @@ body.ft-css-fullscreen .bottom-nav {
 
 a.queue-upnext-next:hover {
   text-decoration: underline;
+}
+
+/* v1.63 gate: the toast's optional action button (the add-queue Undo). */
+.toast-action-btn {
+  margin-left: var(--space-5);
+  background: none;
+  border: none;
+  color: var(--yt-red);
+  font-weight: var(--fw-semibold);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  text-transform: uppercase;
+  padding: var(--space-1) var(--space-2);
 }

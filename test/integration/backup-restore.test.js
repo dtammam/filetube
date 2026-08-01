@@ -319,6 +319,13 @@ test('v1.43: user accounts + per-user state round-trip through backup -> wipe ->
   userStore.addMusicLiked(extra.user.id, 'trk1', '2026-07-17T00:00:00.000Z');
   userStore.setMusicProgress(extra.user.id, 'trk1', { position: 88, duration: 200, updatedAt: '2026-07-17T00:00:00.000Z' });
   userStore.setMusicState(extra.user.id, { lastTrackId: 'trk1', queueCtx: { src: 'music', album: 'k' }, position: 88, updatedAt: '2026-07-17T00:00:00.000Z' });
+  // v1.63 playback queue (the NINTH-strike carrier rides the bundle) - gate
+  // W1/M3: this round-trip is what kills the gutted-restore mutant; entries,
+  // ORDER, and the pointer must all survive verbatim.
+  userStore.setQueue(extra.user.id, [
+    { uid: 'qü-1', mediaId: 'vid1' },
+    { uid: 'qü-2', mediaId: 'vid1' },
+  ], 'qü-2', 1753900000000);
 
   const bundle = await getBackup();
   const bundledExtra = bundle.users.find((u) => u.username === 'roundtripper');
@@ -354,6 +361,12 @@ test('v1.43: user accounts + per-user state round-trip through backup -> wipe ->
   assert.deepEqual(userStore.getMusicLiked(restored.id), ['trk1'], 'their music like came back');
   assert.equal(userStore.getOneMusicProgress(restored.id, 'trk1').position, 88, 'their music position came back');
   assert.equal(userStore.getMusicState(restored.id).lastTrackId, 'trk1', 'their resume pointer came back');
+  // v1.63: their queue came back - entries in order, pointer intact (the
+  // duplicate mediaId proves uid identity survives the trip).
+  const restoredQueue = userStore.getQueue(restored.id);
+  assert.deepEqual(restoredQueue.entries, [{ uid: 'qü-1', mediaId: 'vid1' }, { uid: 'qü-2', mediaId: 'vid1' }], 'queue entries + order came back');
+  assert.equal(restoredQueue.pointerUid, 'qü-2', 'the now-playing pointer came back');
+  assert.equal(restoredQueue.updatedAt, 1753900000000, 'updatedAt rides verbatim');
   assert.equal(loadDatabase().metadata.vid1.title, 'Clip', 'the doc tables restored in the same transaction');
   assert.equal(loadDatabase().music.tracks.trk1.title, 'Song', 'the music namespace restored in the same transaction');
 });

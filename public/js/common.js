@@ -2614,8 +2614,8 @@ function formatQueueBadge(count) {
 
 // Server entry ({uid, mediaId, item}) -> row model. Same fallback ladder as
 // the bell rows; `playing` drives the now-playing highlight; `played` dims
-// entries at-or-before the pointer (ruling 6: played items stay, jump-back
-// allowed).
+// entries STRICTLY BEFORE the pointer - the pointer row itself is playing,
+// never played (ruling 6: played items stay, jump-back allowed).
 function buildQueueRowModel(entry, pointerUid) {
   if (!entry || typeof entry.uid !== 'string' || entry.uid === '' || !entry.item) return null;
   const item = entry.item;
@@ -2624,7 +2624,7 @@ function buildQueueRowModel(entry, pointerUid) {
   return {
     uid: entry.uid,
     mediaId: entry.mediaId,
-    href: `/watch.html?v=${entry.mediaId}`,
+    href: `/watch.html?v=${encodeURIComponent(entry.mediaId)}`,
     title: typeof item.title === 'string' ? item.title : (typeof item.name === 'string' ? item.name : ''),
     channelLabel: channelName || folderName || 'Library',
     channelAvatarUrl: typeof item.channelAvatarUrl === 'string' ? item.channelAvatarUrl : '',
@@ -2642,7 +2642,10 @@ function buildQueueRowModels(queue) {
   const entries = (queue && Array.isArray(queue.entries)) ? queue.entries : [];
   const pointerUid = (queue && typeof queue.pointerUid === 'string') ? queue.pointerUid : null;
   const models = [];
-  let beforePointer = Boolean(pointerUid);
+  // Gate S4: a DANGLING pointer (entry vanished) means not-started - dim
+  // nothing (mirrors normalize; unreachable via shapedQueue, closed anyway).
+  const pointerPresent = Boolean(pointerUid) && entries.some((e) => e && e.uid === pointerUid);
+  let beforePointer = pointerPresent;
   for (const e of entries) {
     const m = buildQueueRowModel(e, pointerUid);
     if (m) {
@@ -2679,11 +2682,21 @@ function addToQueue(mediaId, position) {
     .then((res) => (res.ok ? res.json() : res.json().catch(() => ({})).then((b) => Promise.reject(new Error(b.error || 'Could not add to queue')))))
     .then((body) => {
       const entries = body && body.queue && Array.isArray(body.queue.entries) ? body.queue.entries : [];
+      // Ruling 3's Undo: one tap deletes the just-added entry (uid-exact -
+      // safe against duplicates and later edits) and refreshes the chrome.
+      const undo = body && body.added ? {
+        label: 'Undo',
+        onAction: () => {
+          fetch(`/api/queue/items/${body.added.uid}`, { method: 'DELETE' })
+            .then(() => refreshQueueChrome())
+            .catch(() => { /* already gone / offline - the next read syncs */ });
+        },
+      } : undefined;
       if (position === 'next') {
-        showToast('Playing next');
+        showToast('Playing next', undo);
       } else {
         const idx = body && body.added ? entries.findIndex((e) => e.uid === body.added.uid) : -1;
-        showToast(idx >= 0 ? `Queued - ${formatQueuePosition(idx + 1)}` : 'Added to queue');
+        showToast(idx >= 0 ? `Queued - ${formatQueuePosition(idx + 1)}` : 'Added to queue', undo);
       }
       refreshQueueChrome();
       return body ? body.queue : null;
@@ -7291,21 +7304,39 @@ function deleteResultToast(data) {
   return 'File deleted.';
 }
 
-function showToast(msg) {
+function showToast(msg, action) {
   if (typeof document === 'undefined') return;
   const toast = document.createElement('div');
   toast.className = 'toast';
   toast.textContent = msg;
+  // v1.63 (gate: Dean's ruling 3 promised an Undo on the add toast): an
+  // optional single action button - {label, onAction}. Tapping it runs the
+  // action once and dismisses immediately; the auto-dismiss window widens
+  // to give the tap a real chance. createElement/textContent only.
+  let dismissed = false;
+  const dismiss = () => {
+    if (dismissed) return;
+    dismissed = true;
+    toast.classList.remove('toast-visible');
+    setTimeout(() => toast.remove(), 300); // let the fade-out finish first
+  };
+  if (action && typeof action.onAction === 'function' && typeof action.label === 'string') {
+    const btn = document.createElement('button');
+    btn.className = 'toast-action-btn';
+    btn.textContent = action.label;
+    btn.addEventListener('click', () => {
+      dismiss();
+      action.onAction();
+    }, { once: true });
+    toast.appendChild(btn);
+  }
   document.body.appendChild(toast);
   // Next frame so the initial (opacity:0) state is committed before adding
   // .toast-visible -- guarantees the fade-in actually transitions instead of
   // snapping straight to visible.
   const raf = typeof requestAnimationFrame === 'function' ? requestAnimationFrame : (fn) => setTimeout(fn, 0);
   raf(() => toast.classList.add('toast-visible'));
-  setTimeout(() => {
-    toast.classList.remove('toast-visible');
-    setTimeout(() => toast.remove(), 300); // let the fade-out finish first
-  }, 2500);
+  setTimeout(dismiss, action ? 5000 : 2500);
 }
 
 // v1.17.0 FR-3(b): pure arm/disarm reducer for the home/library card

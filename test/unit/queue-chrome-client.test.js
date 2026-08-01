@@ -41,7 +41,9 @@ test('formatQueueBadge: empty at zero/garbage, 20+ cap (the bell convention)', (
 
 test('buildQueueRowModel: field ladder (channelName > folderName > Library), thumb only when hasThumbnail, null on malformed', () => {
   const m = buildQueueRowModel(entry('ä1'), null);
-  assert.equal(m.href, '/watch.html?v=mëdia-ä1');
+  // Gate S6: percent-encode at ONE URL layer - the href carries the
+  // encoded id (the divergent non-ASCII fixture is exactly what proves it).
+  assert.equal(m.href, `/watch.html?v=${encodeURIComponent('mëdia-ä1')}`);
   assert.equal(m.channelLabel, 'Chän ä1');
   assert.equal(m.thumbnailUrl, '/thumbnail/mëdia-ä1');
   const folded = buildQueueRowModel(entry('b2', { channelName: '  ' }), null);
@@ -72,4 +74,28 @@ test('buildQueueRowModels: a DROPPED pointer row (item-less) still ends the play
   const models = buildQueueRowModels(q);
   assert.equal(models.length, 2, 'the item-less row itself drops');
   assert.deepEqual(models.map((m) => m.played), [true, false], 'd1 played, d3 after the (dropped) pointer');
+});
+
+test('formatQueuePosition: ordinals incl. the 11th/12th/13th trap (gate S1)', () => {
+  const { formatQueuePosition } = require('../../public/js/common.js');
+  assert.equal(formatQueuePosition(1), '1st');
+  assert.equal(formatQueuePosition(2), '2nd');
+  assert.equal(formatQueuePosition(3), '3rd');
+  assert.equal(formatQueuePosition(4), '4th');
+  assert.equal(formatQueuePosition(11), '11th');
+  assert.equal(formatQueuePosition(12), '12th');
+  assert.equal(formatQueuePosition(13), '13th');
+  assert.equal(formatQueuePosition(21), '21st');
+  assert.equal(formatQueuePosition(22), '22nd');
+  assert.equal(formatQueuePosition(23), '23rd');
+  assert.equal(formatQueuePosition(111), '111th');
+  assert.equal(formatQueuePosition(0), '');
+  assert.equal(formatQueuePosition('3'), '');
+});
+
+test('buildQueueRowModels: a FULLY-dangling pointer dims nothing (gate S4 - not-started semantics)', () => {
+  const { buildQueueRowModels } = require('../../public/js/common.js');
+  const entry = (uid) => ({ uid, mediaId: 'm-' + uid, item: { title: uid } });
+  const models = buildQueueRowModels({ entries: [entry('g1'), entry('g2')], pointerUid: 'vanished' });
+  assert.ok(models.every((m) => !m.played && !m.playing), 'dangling -> nothing played, nothing playing');
 });

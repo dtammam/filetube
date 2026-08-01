@@ -1434,7 +1434,7 @@ if (typeof module !== 'undefined' && module.exports) {
       const nextLine = document.createElement(next && next.item ? 'a' : 'span');
       nextLine.className = 'queue-upnext-next';
       if (next && next.item) {
-        nextLine.href = `/watch.html?v=${next.mediaId}`;
+        nextLine.href = `/watch.html?v=${encodeURIComponent(next.mediaId)}`;
         nextLine.textContent = `Up next: ${next.item.title || next.item.name || ''}`;
       } else {
         nextLine.textContent = 'Last in queue';
@@ -1512,25 +1512,16 @@ if (typeof module !== 'undefined' && module.exports) {
         }
         const { prevId, nextId } = computeNeighbors(orderedIds, mediaId);
 
-        // v1.63 (Dean ruling 2): the queue OWNS up-next. A waiting queue
-        // entry overrides the context wiring for Next (and Prev while the
-        // queue is engaged); exhausted/empty queues leave the context
-        // behavior byte-identical. The same wiring feeds setTrackNav below,
-        // so media keys / lock screen / docked advancement follow the queue
-        // for free. Failure of this fetch degrades to context behavior -
-        // never a dead button.
-        let queueNextEntry = null;
-        let queuePrevEntry = null;
-        try {
-          const qRes = await fetch('/api/queue');
-          if (qRes.ok) {
-            const q = await qRes.json();
-            queueNextEntry = computeQueueNext(q);
-            queuePrevEntry = computeQueuePrev(q);
-            renderQueueUpNextBox(q, mediaId);
-          }
-        } catch (_) { /* queue unreachable - context behavior stands */ }
-        if (signal.aborted) return; // the await window: this view may be gone (the v1.41.11 staleness truth)
+        // v1.63 (Dean ruling 2, RESTRUCTURED at the gate - adversarial
+        // CRITICAL-1): the queue OWNS up-next, but the context wiring must
+        // arm IMMEDIATELY - the first cut awaited /api/queue before
+        // enabling the buttons, so a HUNG queue response (not just a
+        // rejected one) left Prev/Next dead and media keys unregistered
+        // forever, and the integration tier caught it red. Now: context
+        // handlers arm the moment the folder list resolves (byte-identical
+        // to pre-wave), and the queue fetch UPGRADES the mutable effective
+        // handlers when (if ever) it resolves - the same closures feed the
+        // buttons and setTrackNav, so every surface upgrades together.
         const goQueueEntry = (entry) => {
           // Pointer moves server-side (fire-and-forget - the next queue
           // read re-syncs on failure), seed stashes, normal watch nav.
@@ -1541,16 +1532,34 @@ if (typeof module !== 'undefined' && module.exports) {
           if (entry.item && window.FileTube && typeof window.FileTube.stashWatchSeed === 'function') {
             window.FileTube.stashWatchSeed(entry.item);
           }
-          navigateToWatch(entry.mediaId);
+          navigateToWatch(encodeURIComponent(entry.mediaId));
         };
-        const effNext = queueNextEntry ? () => goQueueEntry(queueNextEntry) : (nextId ? () => navigateToWatch(nextId) : null);
-        const effPrev = queuePrevEntry ? () => goQueueEntry(queuePrevEntry) : (prevId ? () => navigateToWatch(prevId) : null);
+        let effNext = nextId ? () => navigateToWatch(nextId) : null;
+        let effPrev = prevId ? () => navigateToWatch(prevId) : null;
 
         prevBtn.disabled = !effPrev;
         nextBtn.disabled = !effNext;
+        // ONE stable listener per button reading the mutable ref - the
+        // queue upgrade swaps the ref, never re-registers.
+        prevBtn.addEventListener('click', () => { if (effPrev) effPrev(); }, { signal });
+        nextBtn.addEventListener('click', () => { if (effNext) effNext(); }, { signal });
 
-        if (effPrev) prevBtn.addEventListener('click', effPrev, { signal });
-        if (effNext) nextBtn.addEventListener('click', effNext, { signal });
+        fetch('/api/queue')
+          .then((res) => (res.ok ? res.json() : null))
+          .then((q) => {
+            if (!q || signal.aborted) return; // late resolve from a departed view (the v1.41.11 staleness truth)
+            const queueNextEntry = computeQueueNext(q);
+            const queuePrevEntry = computeQueuePrev(q);
+            if (queueNextEntry) effNext = () => goQueueEntry(queueNextEntry);
+            if (queuePrevEntry) effPrev = () => goQueueEntry(queuePrevEntry);
+            prevBtn.disabled = !effPrev;
+            nextBtn.disabled = !effNext;
+            renderQueueUpNextBox(q, mediaId);
+            // Re-register trackNav so per-direction MediaSession availability
+            // tracks the upgraded handlers (same seam, same staleness guard).
+            registerTrackNav();
+          })
+          .catch(() => { /* queue unreachable - context behavior stands, buttons already live */ });
 
         // v1.41.11 (Dean: "play/pause works on my keyboard, but others
         // don't"): register the SAME context-aware neighbors with the
@@ -1572,15 +1581,21 @@ if (typeof module !== 'undefined' && module.exports) {
         // always sees aborted=true here and registers nothing. (read.js's
         // own registration is synchronous and never needed this.)
         if (signal.aborted) return;
-        if (window.FileTube && window.FileTube.player
-            && typeof window.FileTube.player.setTrackNav === 'function' && (effPrev || effNext)) {
-          // v1.63: the SAME queue-aware wiring as the buttons - one truth
-          // for on-page Next, media keys, and the lock screen.
-          window.FileTube.player.setTrackNav({
-            onPrev: effPrev || undefined,
-            onNext: effNext || undefined,
-          });
+        // v1.63: ONE registration function, called immediately with the
+        // context handlers and again on the queue upgrade - the buttons and
+        // this seam read the same mutable effPrev/effNext, so on-page Next,
+        // media keys, and the lock screen can never disagree.
+        function registerTrackNav() {
+          if (signal.aborted) return;
+          if (window.FileTube && window.FileTube.player
+              && typeof window.FileTube.player.setTrackNav === 'function' && (effPrev || effNext)) {
+            window.FileTube.player.setTrackNav({
+              onPrev: effPrev ? () => { if (effPrev) effPrev(); } : undefined,
+              onNext: effNext ? () => { if (effNext) effNext(); } : undefined,
+            });
+          }
         }
+        registerTrackNav();
       } catch (e) {
         console.error('Error deriving prev/next order:', e);
         prevBtn.disabled = true;

@@ -39,8 +39,12 @@ after the ratchet (v1.62.0). Dean's rulings, verbatim scope:
   class).
 - Routes (session-auth'd, per-user): GET /api/queue; POST
   /api/queue/items {mediaId, position: 'end'|'next'}; DELETE
-  /api/queue/items/:uid; PATCH /api/queue {order:[uids]} (reorder);
-  PATCH /api/queue/pointer {uid|null}; DELETE /api/queue (clear).
+  /api/queue/items/:uid; POST /api/queue/reorder {orderedUids} (strict
+  uid bijection, 409 on stale); POST /api/queue/pointer {uid|null};
+  DELETE /api/queue (clear). (Gate W3 correction: the plan first said
+  PATCH for reorder/pointer; POST shipped - the house verb for
+  pin-reorder - and this paragraph is the contract, so it follows the
+  code, recorded rather than silently drifted.)
 
 ## Client architecture (the lesson-loaded part)
 
@@ -107,16 +111,36 @@ AC49 table; queue-first Next/Prev feeds setTrackNav; the up-next box;
 trackNav lock converted). All under the live ratchet - token-clean
 first contact every batch.
 
-DISCLOSED boundaries: the music page's internal track-nav advance keeps
-precedence over the global queue (its client queue is its own machine;
-queued audio plays via the watch page); related-list cards carry no
-add button (kebab-less; the watch verbs cover it); desktop drag-reorder
-is a later nicety (up/down buttons everywhere); no standing queue
-poller (refresh on own actions + tab return - cross-device drift heals
-on next action).
+DISCLOSED boundaries (expanded at the gate): the music page's internal
+track-nav advance keeps precedence over the global queue; MUSIC-LIBRARY
+TRACKS ARE NOT QUEUEABLE THIS WAVE (gate CRITICAL-2: they live in the
+disjoint db.music namespace the watch page cannot play - the music-row
+affordance shipped dead and was PULLED; a future music-queue sub-wave
+is Dean's call); CARDS CARRY "ADD TO QUEUE" ONLY - "Play next" lives on
+the watch page (ruling 3 said both on cards; the fourth corner is the
+last free one, so this is a deviation for Dean's explicit sign-off at
+the Stop); the add-toast Undo IS implemented (ruling 3, closed at the
+gate); related-list cards carry no add button (kebab-less; the watch
+verbs cover it); desktop drag-reorder is a later nicety (up/down
+buttons everywhere); no standing queue poller (refresh on own actions +
+tab return); DELETING/PRUNING the now-playing entry's file leaves a
+dangling pointer -> not-started semantics -> the next advance replays
+from the queue HEAD (the API remove path steps back instead - the
+asymmetry is tech-debt #72, ship-disclosed per both seats).
+
+GATE ROUND 1 RECORD CORRECTION (the honest-record norm): q4/q5 were
+committed with test/integration/watch-fulllist-fetch.test.js RED (the
+pre-commit hook runs the unit tier only) - the adversarial seat found
+the full suite 5358/1 at the branch tip, root-caused to the queue fetch
+GATING button enablement (a hung /api/queue = dead Prev/Next forever).
+Fixed by arming context handlers immediately and upgrading to the
+queue-aware closures on resolve. The execution record's original
+"green at every batch" claim was true only of the unit tier.
 
 ## Dean's on-device probe list (the Stop)
 
+0. SIGN-OFF: cards carry "Add to queue" only ("Play next" = watch
+   page) - ruling 3 deviation, approve or flip.
 1. HEADLINE: the watch action row now holds SEVEN buttons - phone
    widths, every era (the containment wrap + .btn-label collapse are
    the guards; the census lock update is deliberate).
@@ -130,7 +154,10 @@ on next action).
    follow the queue.
 5. Autoplay OFF: ending an item must NOT consume the queue.
 6. Music page: album/list playback advances as before (the global
-   queue must NOT hijack it); a music row's queue button plays that
-   track via the watch page when tapped from the panel.
+   queue must NOT hijack it). NOTE: the music-row queue button was
+   PULLED at the gate (music-library tracks are not watch-playable -
+   see disclosed boundaries); AUDIO FILES IN THE MEDIA LIBRARY queue
+   normally via their cards. Sign-off wanted: is a music-queue
+   sub-wave worth scheduling?
 7. Multi-device: queue on the desktop, open the phone - the icon and
    contents should be there (server-persisted per user).

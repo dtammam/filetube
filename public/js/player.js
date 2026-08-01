@@ -739,7 +739,8 @@ function resolveEndedAction(ctx) {
 // behavior resumes). Pure, exported for node:test; the server reducers
 // stay the semantics authority - this mirrors, never extends.
 function computeQueueNext(queue) {
-  var entries = queue && Array.isArray(queue.entries) ? queue.entries : [];
+  var entries = (queue && Array.isArray(queue.entries) ? queue.entries : [])
+    .filter(function (e) { return e && typeof e.uid === 'string' && e.uid && typeof e.mediaId === 'string' && e.mediaId; }); // gate S4: the server-normalize malformed filter, mirrored
   if (entries.length === 0) return null;
   var pointerUid = queue && typeof queue.pointerUid === 'string' ? queue.pointerUid : null;
   if (!pointerUid) return entries[0] || null;
@@ -3313,9 +3314,9 @@ if (typeof module !== 'undefined' && module.exports) {
                 }
                 recordLifecycleEvent('autoplay:queue-advance', { detail: 'to=' + queueNext.mediaId });
                 autoplayAdvancePending = true;
-                window.FileTube.navigate('/watch.html?v=' + queueNext.mediaId);
+                window.FileTube.navigate('/watch.html?v=' + encodeURIComponent(queueNext.mediaId));
               } else {
-                window.location.href = '/watch.html?v=' + queueNext.mediaId;
+                window.location.href = '/watch.html?v=' + encodeURIComponent(queueNext.mediaId);
               }
               return null; // queue consumed the advance
             }
