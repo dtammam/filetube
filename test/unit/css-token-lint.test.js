@@ -116,6 +116,8 @@ test('v7: radius-calc idiom is tokenized; impostors count; both surfaces share o
   // an idiom allowance).
   assert.equal(lint('.x { border-radius: calc(var(--radius) + 1px) 3px; }')[0].cat, 'border-radius',
     'trailing content breaks the idiom (anchor control)');
+  assert.equal(lint('.x { border-radius: 6px calc(var(--radius) + 1px); }')[0].cat, 'border-radius',
+    'leading content breaks the idiom (kills the ^-anchor mutant the adversarial gate found surviving)');
   assert.equal(lint('.x { border-radius: 4px; }')[0].cat, 'border-radius',
     'raw radii still count');
   // JS surface goes through the SAME classifier - one rule change covers both:
@@ -132,6 +134,10 @@ test('v7: ZERO env() fallbacks are API syntax, not literals; nonzero env fallbac
     'unitless zero fallback too');
   assert.equal(lint('.x { padding-bottom: calc(var(--space-2) + env(safe-area-inset-bottom, 16px)); }')[0].cat, 'spacing',
     'a NONZERO env fallback paints where env() is unsupported - it counts, same class as var fallbacks');
+  assert.equal(lint('.x { padding-bottom: env(safe-area-inset-bottom, 8px); }')[0].cat, 'spacing',
+    'a SINGLE-DIGIT nonzero env fallback counts (kills the 0->digit matcher mutant the adversarial gate found surviving)');
+  assert.equal(lintj("el.style.top = '10px';")[0].cat, 'spacing',
+    'bare positional prop on the JS surface - the old jsDecl alternation, preserved through the unified classifier (QA parity fixture)');
   assert.equal(lintj("el.style.paddingBottom = 'calc(var(--space-2) + env(safe-area-inset-bottom, 0px))';").length, 0,
     'JS surface, same classifier');
 });

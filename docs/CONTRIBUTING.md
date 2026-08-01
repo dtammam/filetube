@@ -70,10 +70,14 @@ control-size value ANYWHERE (style.css, `<style>` blocks, `el.style.*` /
 - **Do not edit token VALUES in passing** - a scale value change re-renders
   every consumer and fails token-scale-lock loudly; that is a design
   decision (Dean's), not a refactor.
-- The remaining 54 raw literals are enumerated with reasons in
+- Every raw literal still in the census is enumerated with its reason in
   `docs/exec-plans/completed/2026-07-31-tokens-tier4-ledger.md` (bound by
-  `npm run ledger:check`). Breakpoints are documented constants, not tokens;
-  width/height layout geometry is ungoverned by design.
+  `npm run ledger:check`); `npm run lint:css` prints the current count -
+  the ledger's unstruck rows and that number are the same set by
+  construction. Breakpoints are documented constants, not tokens;
+  width/height layout geometry is ungoverned by design (two ruled
+  exceptions: `--header-h`/`--sidebar-w`, whose coupled sites are the
+  point).
 
 ## File naming
 

@@ -6901,7 +6901,7 @@ body.ft-css-fullscreen .bottom-nav {
       flex-direction: column;
       /* Fill the viewport below the fixed header; the reader owns its own
          scrolling/pagination inside the content pane. */
-      height: calc(100vh - var(--mobile-header-h, 56px) - env(safe-area-inset-bottom, 0px));
+      height: calc(100vh - var(--mobile-header-h, var(--header-h)) - env(safe-area-inset-bottom, 0px)); /* desktop fallback derives --header-h - the adversarial gate found this 56px copy surviving f5c; a diverged copy here overflows the reader by the delta and clips the bottombar */
       min-height: 320px;
     }
     .reader-topbar {
@@ -7589,7 +7589,7 @@ body.ft-css-fullscreen .bottom-nav {
 
 .music-drill-sticky {
   position: sticky;
-  top: var(--music-sticky-top, 56px); /* token-exempt: positional geometry (Stop A Batch A) */
+  top: var(--music-sticky-top, var(--header-h)); /* token-exempt: positional geometry (Stop A Batch A); music.js measures the real header into --music-sticky-top - the fallback only paints pre-measurement and now derives --header-h instead of carrying a copy */
   z-index: 30; /* token-exempt: local stacking */
   display: none;
   align-items: center;

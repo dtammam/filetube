@@ -41,6 +41,14 @@ Differ notes binding the delta columns below:
   only); it is bound by its census-row strike + scene 23c.
 - --thumbnail-bg define-then-consume resolves identically before/after
   (#222 fallback vs #222 definition): EQUIVALENT x9 by construction.
+- Tranche F.5 (f5c) adds EXACTLY TWO enumerated textual pairs x 9
+  contexts (the 4d calc-pair class): `.sidebar.hidden` and the mobile
+  `.sidebar` transform go translateX(-230px) -> translateX(calc(-1 *
+  var(--sidebar-w))), which the differ resolves to calc(-1 * 230px)
+  but cannot arithmetically evaluate. Value-preserving by arithmetic
+  (-1 x 230px = -230px; --sidebar-w has exactly one definition, no era
+  override - token-scale-lock is the authority). Everything else in
+  F.5 must report EQUIVALENT x9.
 
 ## Batch 4a - --thumbnail-bg define + dead var() fallback cleanup (19 sites, zero-delta) (19 rows)
 
