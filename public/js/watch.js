@@ -1532,7 +1532,10 @@ if (typeof module !== 'undefined' && module.exports) {
           if (entry.item && window.FileTube && typeof window.FileTube.stashWatchSeed === 'function') {
             window.FileTube.stashWatchSeed(entry.item);
           }
-          navigateToWatch(encodeURIComponent(entry.mediaId));
+          // RAW id: navigateToWatch IS the one encoding layer (gate NEW-1 -
+          // the fix round double-encoded here and broke the function's
+          // argument contract vs its context-path caller).
+          navigateToWatch(entry.mediaId);
         };
         let effNext = nextId ? () => navigateToWatch(nextId) : null;
         let effPrev = prevId ? () => navigateToWatch(prevId) : null;

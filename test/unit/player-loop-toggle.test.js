@@ -100,3 +100,14 @@ test('v1.63 computeQueueNext: the client mirror of the server nextEntry contract
   assert.equal(computeQueueNext(null), null);
   assert.equal(computeQueueNext({ entries: [e('a')], pointerUid: 'ghost' }).uid, 'a', 'dangling pointer -> not-started (the server-normalize mirror)');
 });
+
+test('v1.63 gate NEW-2/residual: BOTH mirrors filter malformed entries identically', () => {
+  const assert = require('node:assert');
+  const { computeQueueNext, computeQueuePrev } = require('../../public/js/player.js');
+  const bad = { uid: '', mediaId: 'x' };
+  const a = { uid: 'a', mediaId: 'm-a' };
+  const b = { uid: 'b', mediaId: 'm-b' };
+  assert.equal(computeQueueNext({ entries: [bad, a], pointerUid: null }).uid, 'a', 'Next skips malformed');
+  assert.equal(computeQueuePrev({ entries: [bad, a, b], pointerUid: 'a' }), null, 'Prev never returns a malformed entry (pre-fix it did)');
+  assert.equal(computeQueuePrev({ entries: [a, bad, b], pointerUid: 'b' }).uid, 'a', 'Prev skips over malformed to the real predecessor');
+});

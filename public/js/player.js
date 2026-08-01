@@ -753,7 +753,8 @@ function computeQueueNext(queue) {
 // v1.63: the prevEntry mirror - the entry BEFORE the pointer (queue-aware
 // Prev), null when not engaged / at the front / dangling.
 function computeQueuePrev(queue) {
-  var entries = queue && Array.isArray(queue.entries) ? queue.entries : [];
+  var entries = (queue && Array.isArray(queue.entries) ? queue.entries : [])
+    .filter(function (e) { return e && typeof e.uid === 'string' && e.uid && typeof e.mediaId === 'string' && e.mediaId; }); // gate NEW-2: BOTH mirrors carry the defensive filter, or neither is a defense
   var pointerUid = queue && typeof queue.pointerUid === 'string' ? queue.pointerUid : null;
   if (!pointerUid) return null;
   for (var i = 0; i < entries.length; i++) {

@@ -119,9 +119,10 @@ module.exports = [
     // v1.55: lib/ytdlp/client/subscriptions.js joined the consumers - it now
     // reads the shared action-status system (via typeof-guarded wrappers, so
     // Node `require`s of the file still work without common.js).
-    // v1.63: music.js joins the roster - it now calls a common.js shared
-    // helper (addToQueue) like its siblings.
-    files: ['public/js/main.js', 'public/js/watch.js', 'public/js/setup.js', 'public/js/player.js', 'public/js/books.js', 'public/js/read.js', 'public/js/stats.js', 'public/js/music.js', 'lib/ytdlp/client/subscriptions.js'],
+    // (v1.63 gate NEW-3: music.js briefly joined for addToQueue, then its
+    // affordance was pulled - it consumes nothing from common.js again and
+    // left the roster with the comment that had gone stale.)
+    files: ['public/js/main.js', 'public/js/watch.js', 'public/js/setup.js', 'public/js/player.js', 'public/js/books.js', 'public/js/read.js', 'public/js/stats.js', 'lib/ytdlp/client/subscriptions.js'],
     languageOptions: {
       globals: {
         clampPositionState: 'readonly',
