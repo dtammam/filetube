@@ -10610,6 +10610,37 @@ async function trashOrphanFile(filePath, opts = {}) {
   return trashPath;
 }
 
+// v1.65 gate round 4 (adversarial W1): the ONE authority on "is this trash
+// record restorable where it says it belongs". restoreTrashItem and
+// sweepTrash both consult it -- the sweep's S-2 invariant ("never
+// auto-destroy a record restore would refuse") is only true if both sites
+// ask the SAME question, and the hand-copied version had already diverged
+// (it dropped the absolute/no-dotdot check and the trash-dir gate, so two
+// corrupt shapes were refused by restore yet reaped by the sweep -- the
+// seat measured both).
+//
+// The two shapes the app itself constructs: the destination sits under a
+// configured library root, or under the trash dir's own parent tree (which
+// for an app-created record IS the item's own directory -- the
+// unattributable-file fallback). Residual by design: tech-debt #74.
+function trashRecordPlacement(rec, roots) {
+  const isCleanAbs = (v) => typeof v === 'string' && path.isAbsolute(v) && !v.split(/[\\/]/).includes('..');
+  const isWithin = (child, parent) => {
+    const c = path.resolve(child);
+    const p = path.resolve(parent);
+    return c === p || c.startsWith(p + path.sep);
+  };
+  const trashPath = rec ? rec.trashPath : undefined;
+  const originalPath = rec ? rec.originalPath : undefined;
+  const list = Array.isArray(roots) ? roots.filter((r) => typeof r === 'string' && r !== '') : [];
+  const trashConfined = isCleanAbs(trashPath) && path.basename(path.dirname(trashPath)) === TRASH_DIR_NAME;
+  const destConfined = isCleanAbs(originalPath) && (
+    list.some((r) => isWithin(originalPath, r))
+    || (trashConfined && isWithin(originalPath, path.dirname(path.dirname(trashPath))))
+  );
+  return { trashConfined, destConfined, restorable: trashConfined && destConfined };
+}
+
 // restoreTrashItem: the exact reverse of trashItem -- link back to the
 // original path, ONE mutator (db.trash record -> db.metadata + doc-table
 // carries + sidecar renames back), rollback on failure, post-commit
@@ -10649,38 +10680,8 @@ async function restoreTrashItem(deps, trashId) {
   // parent (the dirname-fallback layout trashItem uses for unattributable
   // files). A malformed record is purge-only (purge retires it without
   // touching the filesystem).
-  const cleanAbs = (v) => typeof v === 'string' && path.isAbsolute(v) && !v.split(/[\\/]/).includes('..');
-  const within = (child, parent) => {
-    const c = path.resolve(child);
-    const p = path.resolve(parent);
-    return c === p || c.startsWith(p + path.sep);
-  };
-  // Gate round 3 (adversarial C1/C2): round 2 additionally required the
-  // trash dir to sit under a CONFIGURED ROOT -- which the app's own
-  // unattributable-file fallback (<dirname(file)>/.filetube-trash, the
-  // spec's design) and any since-removed folder both violate. That turned
-  // legitimate, app-created records into "malformed" un-restorable ones
-  // that the retention sweep then destroyed, and made the instance refuse
-  // its own backup whole. Both measured end-to-end by the seat.
-  //
-  // The rule is now exactly the app's TWO construction shapes: the
-  // destination sits under a configured root, or under the trash dir's own
-  // parent tree (which for an app-created record IS the item's own
-  // directory). trashConfined keeps the structural check only.
-  //
-  // Residual, DISCLOSED (adversarial round-2 N4): a crafted ADMIN bundle
-  // whose record names a trash dir in an unrelated directory can still aim
-  // a restore at that directory's tree -- and only if the attacker can also
-  // place bytes at the named trashPath, which an HTTP caller cannot. That
-  // is a hardening gap on an admin-only surface; refusing the app's own
-  // records to close it was strictly worse (tech-debt #74).
-  const roots = configuredLibraryRoots(db).filter((r) => typeof r === 'string' && r !== '');
-  const trashConfined = cleanAbs(trashPath) && path.basename(path.dirname(trashPath)) === TRASH_DIR_NAME;
-  const destConfined = cleanAbs(originalPath) && (
-    roots.some((r) => within(originalPath, r))
-    || (trashConfined && within(originalPath, path.dirname(path.dirname(trashPath))))
-  );
-  if (!trashConfined || !destConfined) {
+  const placement = trashRecordPlacement(rec, configuredLibraryRoots(db));
+  if (!placement.restorable) {
     return { ok: false, status: 400, error: 'This trash record is malformed and cannot be restored -- purge it instead' };
   }
 
@@ -11002,19 +11003,8 @@ async function sweepTrash(now = Date.now()) {
     // dir's own parent -- e.g. a library folder removed from the config),
     // leave it standing for an EXPLICIT purge instead of silently reaping
     // it in the background.
-    const restorableDest = typeof rec.originalPath === 'string' && typeof rec.trashPath === 'string' && (
-      sweepRoots.some((r) => {
-        const c = path.resolve(rec.originalPath);
-        const p = path.resolve(r);
-        return c === p || c.startsWith(p + path.sep);
-      })
-      || (() => {
-        const c = path.resolve(rec.originalPath);
-        const p = path.resolve(path.dirname(path.dirname(rec.trashPath)));
-        return c === p || c.startsWith(p + path.sep);
-      })()
-    );
-    if (!restorableDest) {
+    // ONE predicate, shared with restoreTrashItem (gate round 4 W1).
+    if (!trashRecordPlacement(rec, sweepRoots).restorable) {
       console.warn(`Trash sweep: ${tid} is past retention but NOT restorable right now (its library folder may be unconfigured) -- keeping it; purge it explicitly to remove it.`);
       continue;
     }

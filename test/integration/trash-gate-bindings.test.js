@@ -620,3 +620,93 @@ test('R3 BIND-n3d: a bundle trash record whose item is not an object is refused 
   assert.match((await res.json()).error, /item must be an object/);
   assert.ok(fs.existsSync(filePath), 'nothing was restored');
 });
+
+// ---- Gate round 4: the last two survivors, bound (zero-residual close) -----
+
+test('R4 BIND-n4e: restore\'s STRUCTURAL trash-dir check is load-bearing -- a record naming a LIVE library file is refused, file untouched', async () => {
+  const { id, filePath } = seedLibrary();
+  const ELSEWHERE = fs.mkdtempSync(path.join(os.tmpdir(), 'ft-trashgate-n4e-'));
+  // trashPath names a live library file that is NOT inside any
+  // .filetube-trash dir; destination is under that file's own parent tree,
+  // so ONLY the structural check can refuse this. Restore ends with an
+  // unconditional unlink(trashPath) -- without the check, the live file
+  // would be hard-linked away and then deleted.
+  await updateDatabase((db) => {
+    db.trash.structural = {
+      originalId: 's', originalPath: path.join(ROOT, 'Chan', 'written-by-restore.mp4'),
+      trashPath: filePath, trashedAt: Date.now(), rootFolder: ROOT, item: { id: 's', title: 'S' },
+    };
+  });
+
+  const res = await restoreTrashItem(deps(), 'structural');
+  assert.equal(res.ok, false);
+  assert.equal(res.status, 400);
+  assert.ok(fs.existsSync(filePath), 'THE binding: the live library file survives');
+  assert.equal(fs.readFileSync(filePath, 'utf8'), 'clip-bytes', 'byte-identical');
+  assert.ok(!fs.existsSync(path.join(ROOT, 'Chan', 'written-by-restore.mp4')), 'nothing was written');
+  assert.ok(loadDatabase().metadata[id], 'the library entry is intact');
+  assert.ok(fs.existsSync(ELSEWHERE));
+});
+
+test('R4 BIND-n4d: the bundle validator refuses a record whose destination is in a THIRD tree (negative binding on the either-shape rule)', async () => {
+  const { filePath } = seedLibrary();
+  const OTHER = fs.mkdtempSync(path.join(os.tmpdir(), 'ft-trashgate-n4d-'));
+  const bundle = {
+    schema: 'filetube-backup-v1',
+    folders: [ROOT],
+    trash: {
+      thirdTree: {
+        originalId: 't', originalPath: path.join(OTHER, 'unrelated', 'x.mp4'),
+        // A legal-looking trash dir, but under neither a bundle folder nor
+        // the destination's own tree.
+        trashPath: path.join(OTHER, 'someplace', TRASH_DIR_NAME, '1-abcdefgh-x.mp4'),
+        trashedAt: 1, rootFolder: null, item: { id: 't' },
+      },
+    },
+  };
+  const res = await fetch(`${base}/api/admin/restore`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(bundle),
+  });
+  assert.equal(res.status, 400);
+  assert.match((await res.json()).error, /bundle's library folders|item's own original location/);
+  assert.ok(fs.existsSync(filePath), 'nothing was restored');
+});
+
+test('R4 W1: ONE predicate -- a record restore refuses is NEVER auto-destroyed by the sweep (the two shapes the hand-copy missed)', async () => {
+  const { id } = seedLibrary();
+  const OUT = fs.mkdtempSync(path.join(os.tmpdir(), 'ft-trashgate-w1-'));
+  fs.mkdirSync(path.join(OUT, TRASH_DIR_NAME), { recursive: true });
+  const bytesA = path.join(OUT, TRASH_DIR_NAME, 'a.mp4');
+  const bytesB = path.join(OUT, 'not-a-trash-dir', 'b.mp4');
+  fs.mkdirSync(path.dirname(bytesB), { recursive: true });
+  fs.writeFileSync(bytesA, 'A-bytes');
+  fs.writeFileSync(bytesB, 'B-bytes');
+
+  await updateDatabase((db) => {
+    // Shape 1: a '..' segment in originalPath -- path.resolve normalizes it
+    // away, so the sweep's hand-copy accepted what restore refuses.
+    db.trash.dotdot = {
+      // A LITERAL '..' segment (path.join would normalize it away here, the
+      // same way path.resolve did inside the sweep's hand-copy).
+      originalId: 'a', originalPath: `${OUT}/sub/../a.mp4`,
+      trashPath: bytesA, trashedAt: Date.now() - 100 * DAY, rootFolder: null, item: { id: 'a' },
+    };
+    // Shape 2: trashPath not inside a trash dir -- the hand-copy never
+    // gated on that at all.
+    db.trash.notrash = {
+      originalId: 'b', originalPath: path.join(OUT, 'not-a-trash-dir', 'b-restored.mp4'),
+      trashPath: bytesB, trashedAt: Date.now() - 100 * DAY, rootFolder: null, item: { id: 'b' },
+    };
+  });
+
+  assert.equal((await restoreTrashItem(deps(), 'dotdot')).status, 400, 'precondition: restore refuses shape 1');
+  assert.equal((await restoreTrashItem(deps(), 'notrash')).status, 400, 'precondition: restore refuses shape 2');
+
+  const purged = await sweepTrash(Date.now());
+  assert.equal(purged, 0, 'THE binding: neither past-retention record was auto-purged');
+  const db = loadDatabase();
+  assert.ok(db.trash.dotdot && db.trash.notrash, 'both records stand, awaiting an explicit purge');
+  assert.ok(fs.existsSync(bytesA), 'shape 1 bytes survive (the hand-copy destroyed these)');
+  assert.ok(fs.existsSync(bytesB), 'shape 2 bytes survive');
+  assert.ok(loadDatabase().metadata[id], 'the live library is untouched');
+});
