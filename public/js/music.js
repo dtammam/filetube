@@ -77,6 +77,11 @@ function buildSongRowHtml(item, index) {
     '<button type="button" class="music-like-btn' + (liked ? ' liked' : '') + '" data-like-id="' + escapeMusicHtml(item.id) + '" title="' + (liked ? 'Unlike' : 'Like') + '" aria-label="' + (liked ? 'Unlike' : 'Like') + '">' +
     '<i class="icon-heart"></i>' +
     '</button>' +
+    // v1.63: add-to-queue per row (ruling 1: audio is queueable). Inline
+    // SVG like every other queue affordance (no icon-font queue glyph).
+    '<button type="button" class="music-queue-btn" data-queue-id="' + escapeMusicHtml(item.id) + '" title="Add to queue" aria-label="Add to queue">' +
+    '<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M3 6h13v2H3V6zm0 4h13v2H3v-2zm0 4h9v2H3v-2zm14-1v6l5-3-5-3z" fill="currentColor"/></svg>' +
+    '</button>' +
     '</div>';
 }
 
@@ -545,6 +550,14 @@ if (typeof module !== 'undefined' && module.exports) {
         e.preventDefault();
         e.stopPropagation();
         toggleLike(likeBtn);
+        return;
+      }
+      // v1.63: add-to-queue (must NOT fall through to the row's playAt).
+      var queueBtn = e.target.closest('.music-queue-btn');
+      if (queueBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        addToQueue(queueBtn.getAttribute('data-queue-id'));
         return;
       }
       var row = e.target.closest('.music-song-row');

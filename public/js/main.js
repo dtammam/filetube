@@ -844,6 +844,9 @@ if (typeof module !== 'undefined' && module.exports) {
             <button type="button" class="card-like-btn${item.liked ? ' liked' : ''}" data-id="${escapeHtml(item.id)}" aria-label="${item.liked ? 'Unlike' : 'Like'}" aria-pressed="${item.liked ? 'true' : 'false'}" title="Like">
               <i class="icon-heart"></i>
             </button>
+            <button type="button" class="card-queue-btn" data-id="${escapeHtml(item.id)}" aria-label="Add to queue" title="Add to queue">
+              <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M3 6h13v2H3V6zm0 4h13v2H3v-2zm0 4h9v2H3v-2zm14-1v6l5-3-5-3z" fill="currentColor"/></svg>
+            </button>
           </div>
           <div class="video-info">
             <a href="${watchHref}" class="video-title" title="${escapeHtml(item.title)}">
@@ -1485,6 +1488,10 @@ if (typeof module !== 'undefined' && module.exports) {
     videoGrid.addEventListener('click', (e) => {
       const likeBtn = e.target.closest('.card-like-btn');
       if (likeBtn) { e.preventDefault(); toggleCardLike(likeBtn); return; }
+      // v1.63: add-to-queue rides the same delegation (common.js addToQueue
+      // is THE one verb - toast + header-chrome refresh included).
+      const cardQueueBtn = e.target.closest('.card-queue-btn');
+      if (cardQueueBtn) { e.preventDefault(); addToQueue(cardQueueBtn.getAttribute('data-id')); return; }
     }, { signal });
 
     videoGrid.addEventListener('click', (e) => {

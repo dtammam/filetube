@@ -8598,3 +8598,46 @@ body.ft-css-fullscreen .bottom-nav {
     transform: translateY(0);
   }
 }
+
+/* v1.63: the add-to-queue affordances (q3). Card button = the fourth
+   corner (download TL, delete TR, like BL, queue BR - same overlay
+   treatment). Music row button mirrors the row's like button. The watch
+   page's two verbs reuse the standard .btn. */
+.card-queue-btn {
+  position: absolute;
+  bottom: 6px; /* token-exempt: positional geometry (the card-corner convention, Stop A Batch A) */
+  right: 6px; /* token-exempt: positional geometry */
+  z-index: 2; /* token-exempt: local stacking */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-2) var(--space-3);
+  border: none;
+  border-radius: var(--radius);
+  background-color: var(--scrim);
+  color: var(--on-overlay);
+  cursor: pointer;
+  opacity: 0.85; /* token-exempt: card-overlay resting opacity (the sibling buttons' exact value) */
+  transition: opacity var(--dur-fast) var(--ease-ui), background-color var(--dur-fast) var(--ease-ui);
+}
+
+.card-queue-btn:hover,
+.card-queue-btn:focus-visible {
+  opacity: 1;
+  background-color: var(--scrim-heavy);
+}
+
+.music-queue-btn {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: var(--space-2);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+.music-queue-btn:hover {
+  color: var(--text-primary);
+}

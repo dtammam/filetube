@@ -2656,6 +2656,41 @@ function buildQueueRowModels(queue) {
   return models;
 }
 
+// Ordinal for the add-toast ("Queued - 4th"). Pure, exported.
+function formatQueuePosition(n) {
+  if (!Number.isInteger(n) || n <= 0) return '';
+  const mod100 = n % 100;
+  if (mod100 >= 11 && mod100 <= 13) return `${n}th`;
+  const mod10 = n % 10;
+  return `${n}${mod10 === 1 ? 'st' : mod10 === 2 ? 'nd' : mod10 === 3 ? 'rd' : 'th'}`;
+}
+
+// THE one add-to-queue verb every affordance calls (cards, watch page,
+// music rows - the every-writer discipline: one helper, no copies).
+// position: 'end' (default) | 'next'. Toasts the outcome and refreshes the
+// header chrome; resolves with the server's shaped queue (or null on error
+// - callers needing more than the toast can inspect it).
+function addToQueue(mediaId, position) {
+  return fetch('/api/queue/items', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mediaId, position: position === 'next' ? 'next' : 'end' }),
+  })
+    .then((res) => (res.ok ? res.json() : res.json().catch(() => ({})).then((b) => Promise.reject(new Error(b.error || 'Could not add to queue')))))
+    .then((body) => {
+      const entries = body && body.queue && Array.isArray(body.queue.entries) ? body.queue.entries : [];
+      if (position === 'next') {
+        showToast('Playing next');
+      } else {
+        const idx = body && body.added ? entries.findIndex((e) => e.uid === body.added.uid) : -1;
+        showToast(idx >= 0 ? `Queued - ${formatQueuePosition(idx + 1)}` : 'Added to queue');
+      }
+      refreshQueueChrome();
+      return body ? body.queue : null;
+    })
+    .catch((err) => { showToast(err.message || 'Could not add to queue'); return null; });
+}
+
 function queueButtonAlreadyInjected() {
   return Boolean(document.getElementById('queue-btn'));
 }
@@ -8955,6 +8990,7 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     // v1.63 playback queue: the chrome's pure decisions.
     shouldShowQueueButton, formatQueueBadge, buildQueueRowModel, buildQueueRowModels,
+    formatQueuePosition,
     // v1.31 P5 (FR5): repull-ack formatter.
     formatRepullAckText,
     // v1.32 (gate fix): the chip's one-line breaker summary.

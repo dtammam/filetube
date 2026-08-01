@@ -1238,6 +1238,14 @@ if (typeof module !== 'undefined' && module.exports) {
         downloadBtn.setAttribute('download', `${item.title || 'download'}${item.ext || ''}`);
       }
 
+      // v1.63 playback queue: arm both verbs with THIS load's id. Direct
+      // onclick (not addEventListener) so a re-arm on the next SPA load
+      // REPLACES the handler - the accumulate-listeners leak class.
+      const queueAddBtn = root.querySelector('#queue-add-btn');
+      const queueNextBtn = root.querySelector('#queue-next-btn');
+      if (queueAddBtn) queueAddBtn.onclick = () => addToQueue(plan.id, 'end');
+      if (queueNextBtn) queueNextBtn.onclick = () => addToQueue(plan.id, 'next');
+
       if (plan.isFullItem) {
         renderVideoDescription(item.tags, item.title);
         renderEmbeddedTags(item.tags, item.title);

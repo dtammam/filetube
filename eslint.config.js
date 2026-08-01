@@ -106,7 +106,9 @@ module.exports = [
     // v1.55: lib/ytdlp/client/subscriptions.js joined the consumers - it now
     // reads the shared action-status system (via typeof-guarded wrappers, so
     // Node `require`s of the file still work without common.js).
-    files: ['public/js/main.js', 'public/js/watch.js', 'public/js/setup.js', 'public/js/player.js', 'public/js/books.js', 'public/js/read.js', 'public/js/stats.js', 'lib/ytdlp/client/subscriptions.js'],
+    // v1.63: music.js joins the roster - it now calls a common.js shared
+    // helper (addToQueue) like its siblings.
+    files: ['public/js/main.js', 'public/js/watch.js', 'public/js/setup.js', 'public/js/player.js', 'public/js/books.js', 'public/js/read.js', 'public/js/stats.js', 'public/js/music.js', 'lib/ytdlp/client/subscriptions.js'],
     languageOptions: {
       globals: {
         clampPositionState: 'readonly',
@@ -146,6 +148,9 @@ module.exports = [
         // arm/disarm reducer (main.js only, but declared alongside its
         // sibling helpers here for consistency).
         showToast: 'readonly',
+        // v1.63 playback queue: THE one add verb (common.js), called by
+        // every affordance (main.js cards, watch.js verbs, music.js rows).
+        addToQueue: 'readonly',
         // v1.41.10 (QA gate): shared delete-outcome -> toast-message mapper
         // (common.js), used by both delete flows (main.js cards + watch.js).
         deleteResultToast: 'readonly',
