@@ -3,8 +3,10 @@
 This repo was seeded with the multi-agent SDLC pipeline from
 [handoff-harness](https://github.com/dtammam/handoff-harness). Dean retired
 it in favor of lean mode (see `CLAUDE.md` and
-`docs/CLAUDE-WORKING-STYLE.md`); this file preserves the reference so the
-installed `.claude/` files remain understandable. **Nothing here is an
+`docs/CLAUDE-WORKING-STYLE.md`). **The installed `.claude/` pipeline files
+(five role agents; the `/kickoff`, `/prep-*`, `/run-*`, `/seed`,
+`/show-me` commands) were DELETED in the 2026-08-01 harness cleanup** -
+this file is now the ONLY record of what they were. **Nothing here is an
 instruction to a working session.**
 
 ## What the pipeline was
@@ -69,16 +71,25 @@ coordination), but its header marks it HUMAN-MAINTAINED — no agent may
 modify it. It awaits Dean's own edit or retirement; until then, treat it
 as historical alongside this file.
 
-## Other v1 remnants on disk (inert, kept for the record)
+## Other v1 remnants — final disposition (2026-08-01 harness cleanup)
 
-- `scripts/run-*.sh` — specialist launchers; they read `.state/inbox/*`
-  and now fail closed (exit 1) since `.state/` was removed.
-- `setup.sh` — the v1 install verifier; its expected-dirs check now
-  reports `.state/*` as missing. Harmless; do not "fix" by recreating
+Nothing of the v1 install remains on disk except this archive and the
+still-used survivors. For the record (past tense - the gate caught this
+section describing deleted files in the present tense, the repo's own
+lying-doc class, in the very commit that deleted them):
+
+- `scripts/run-*.sh` (five specialist launchers) — DELETED. They had
+  read `.state/inbox/*` and failed closed since `.state/` was removed.
+- `setup.sh` — SURVIVES, modernized: it keeps the load-bearing
+  `core.hooksPath` wiring and chmod passes; the `.state/*` expected-dirs
+  checks and the `/seed` epilogue were removed. Do not recreate
   `.state/`.
-- `.harness/manifest.json` — the v1 install manifest; still lists the
-  deleted `.state/**/.gitkeep` files as harness-owned. A future harness
-  update pass should regenerate it.
+- `.harness/manifest.json` — DELETED in the same cleanup. It was the v1
+  install manifest and listed all the deleted agents/commands/scripts
+  (and `.state/**/.gitkeep`) as harness-owned; with nothing reading it
+  and 27 of its entries pointing at files removed by this cleanup alone
+  (31 counting the `.state/**/.gitkeep` entries retired back at
+  v1.41.19), it was stale beyond regeneration.
 - The five retired agent definitions and seventeen retired commands
-  under `.claude/` carry a `LEGACY` marker in their descriptions as of
-  v1.41.19 so tool rosters can't route sessions into the dead pipeline.
+  under `.claude/` (which had carried `LEGACY` markers since v1.41.19)
+  — DELETED. This document is their only record.

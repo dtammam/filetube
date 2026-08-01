@@ -255,7 +255,7 @@ clients (iOS Safari) can play them.
 
 - Single-node, single-process; state lives on local disk (no external services).
 - Requires FFmpeg/FFprobe on PATH; without them, metadata/transcode features degrade.
-- Node.js 22 LTS (`engines` ≥20).
+- Node.js 22 LTS (`engines` >=22.13.0 - node:sqlite needs it).
 - The transcode cache in `data/transcoded/` is **bounded**: a size-capped LRU
   eviction (default 5 GB, `TRANSCODE_CACHE_MAX_BYTES`/UI override) plus an optional
   age-retention sweep (default 30 days) keep it from growing unbounded. Age is keyed

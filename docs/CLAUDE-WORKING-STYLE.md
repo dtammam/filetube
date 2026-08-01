@@ -35,8 +35,13 @@ v1.26, and it has been the standard since (CLAUDE.md now codifies it):
   front, a written design for big waves (`docs/exec-plans/active/`),
   task decomposition with per-task tests, and independent review before
   merge.
-- `/kickoff`, `/prep-*`, `/run-*` commands are legacy; Dean doesn't use
-  them anymore.
+- The legacy pipeline's `.claude/` files (five role agents; the
+  `/kickoff`, `/prep-*`, `/run-*`, `/seed`, `/show-me` commands) were
+  DELETED in the 2026-08-01 harness cleanup — the archive doc is the
+  only remaining record. What lives in `.claude/` now is exactly the
+  working harness: the two gate-seat agents (`quality-assurance`,
+  `adversarial-reviewer`), `/commit-only`, `/commit-and-push`, and the
+  session-start hook.
 
 ## The lifecycle of a wave
 
@@ -83,15 +88,20 @@ v1.26, and it has been the standard since (CLAUDE.md now codifies it):
 
 ## The two-reviewer gate (the heart of this)
 
-Spawn TWO independent subagents against the branch diff:
+Spawn TWO independent subagents against the branch diff — both are
+CODIFIED agent types (2026-08-01; their standing discipline lives in
+`.claude/agents/`, so it loads deterministically instead of being
+re-composed per session):
 
-- **QA seat** (the repo's `quality-assurance` agent type): correctness,
+- **QA seat** (the `quality-assurance` agent): correctness,
   security, regressions, standards, comment accuracy — this repo treats
-  STALE COMMENTS as findings.
-- **Adversarial seat** (a `general-purpose` agent): prompt it to assume
-  both the implementer AND QA missed something. Name the attack surfaces
-  you know about (this frees it to hunt the ones you don't), demand
-  **verification against primary sources** (it has caught three CRITICALs
+  STALE COMMENTS as findings. It has Bash and runs the instruments
+  itself (it spent two gates asking for that).
+- **Adversarial seat** (the `adversarial-reviewer` agent): assumes
+  both the implementer AND QA missed something. Your brief still names
+  the attack surfaces you know about (this frees it to hunt the ones
+  you don't) and demands
+  **verification against primary sources** (it has caught CRITICALs
   by reading yt-dlp's and epub.js's actual source code — never accept
   "the docs say" for third-party behavior), and require a concrete
   failure scenario per finding.
