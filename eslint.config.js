@@ -165,6 +165,10 @@ module.exports = [
         // v1.63 playback queue: THE one add verb (common.js), called by
         // every affordance (main.js cards, watch.js verbs, music.js rows).
         addToQueue: 'readonly',
+        // v1.63.1: the stars display pref (common.js owns it; setup.js's
+        // toggle reflects + fires it).
+        shouldShowStarRatings: 'readonly',
+        applyStarRatingsPref: 'readonly',
         // v1.41.10 (QA gate): shared delete-outcome -> toast-message mapper
         // (common.js), used by both delete flows (main.js cards + watch.js).
         deleteResultToast: 'readonly',

@@ -5260,7 +5260,9 @@ function parseUserSettings(user) {
 // the device-local fast path, this is only the cross-device seed. Keys are
 // allowlisted and values bounded — settings_json must never become an
 // arbitrary client-writable blob.
-const MIRRORED_SETTING_KEYS = new Set(['theme', 'era', 'icons']);
+// v1.63.1: 'starRatings' ('shown'|'hidden') - Dean's hide-the-fake-stars
+// toggle rides the same display-pref mirror as theme/era/icons.
+const MIRRORED_SETTING_KEYS = new Set(['theme', 'era', 'icons', 'starRatings']);
 app.post('/api/me/settings', (req, res) => {
   const body = req.body || {};
   const merged = parseUserSettings(req.user);

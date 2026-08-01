@@ -246,4 +246,10 @@ test('/api/me/settings: allowlisted keys round-trip via /api/auth/me, per-user i
   assert.equal((await json('POST', '/api/me/settings', { icons: null })).status, 200);
   const cleared = await (await json('GET', '/api/auth/me')).json();
   assert.equal(cleared.settings.icons, undefined);
+
+  // v1.63.1: the stars pref rides the same mirror (allowlisted, bounded).
+  assert.equal((await json('POST', '/api/me/settings', { starRatings: 'hidden' })).status, 200);
+  const withStars = await (await json('GET', '/api/auth/me')).json();
+  assert.equal(withStars.settings.starRatings, 'hidden');
+  assert.equal((await json('POST', '/api/me/settings', { starRatings: 'x'.repeat(40) })).status, 400, 'bounded like its siblings');
 });

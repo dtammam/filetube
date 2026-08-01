@@ -8677,3 +8677,40 @@ a.queue-upnext-next:hover {
   text-transform: uppercase;
   padding: var(--space-1) var(--space-2);
 }
+
+/* ---- v1.63.1 (Dean, v1.63.0 device pass): the watch action rows center on
+   phones, and the fake stars become optional ------------------------------
+   The seven-button row wraps below the star rating at phone widths (the
+   DELIBERATE v1.25.6 whole-row wrap - forcing nowrap was the iOS
+   shrink-to-fit regression and stays dead). Dean's intent: each wrapped
+   line CENTERS - the icon row (queue ... reheat) as one centered line, the
+   stars (when shown) as their own centered line above it. Desktop
+   byte-identical. */
+@media (max-width: 768px) {
+  .watch-actions {
+    justify-content: center;
+  }
+}
+
+/* The hide-the-fake-stars pref: ONE rule gates every star writer (watch's
+   control, the cards' rating rows, and any future writer - the CSS is the
+   gate, so a new writer cannot forget it). display:none removes them from
+   layout entirely, so the icon row centers alone. */
+.ft-hide-stars .star-rating,
+.ft-hide-stars .card-rating {
+  display: none;
+}
+
+/* v1.63.1: class-based settings-checkbox styling (the page's legacy
+   checkboxes use inline style attrs - the #71 unscanned channel; new
+   markup uses THESE instead and existing ones migrate opportunistically). */
+.setup-subhead {
+  margin-top: var(--space-10);
+}
+
+.setup-check-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  font-weight: normal;
+}

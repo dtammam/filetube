@@ -155,6 +155,47 @@ async function pullMirroredDisplayPrefs() {
   if (!hasIcons && (s.icons === 'auto' || ICON_SETS.includes(s.icons))) {
     applyIconSet(s.icons); // persists the pref + re-resolves against the era
   }
+  // v1.63.1: the stars pref seeds the same way (locally-unchosen only).
+  let hasStars = null;
+  try { hasStars = localStorage.getItem('ft-star-ratings'); } catch (_) { /* storage off */ }
+  if (!hasStars && STAR_RATINGS_VALUES.includes(s.starRatings)) {
+    applyStarRatingsPref(s.starRatings); // no mirror - this IS the seed read-back
+  }
+}
+
+// ---- v1.63.1: the hide-the-fake-stars display pref (Dean) -------------------
+// The star ratings are the DETERMINISTIC MOCK (getStarRating) - real-looking,
+// deliberately fake, and now optional. ONE root class (.ft-hide-stars) + one
+// CSS rule hides EVERY star writer at once (watch's #star-rating-control,
+// the cards' .card-rating rows, and any future writer - the gate lives in
+// CSS, so a new writer cannot forget it). Same mirror pattern as
+// theme/era/icons: localStorage is the device truth, the user record is the
+// cross-device seed.
+
+const STAR_RATINGS_VALUES = ['shown', 'hidden'];
+
+// Pure: default and garbage both mean SHOWN (today's look).
+function shouldShowStarRatings(stored) {
+  return stored !== 'hidden';
+}
+
+function applyStarRatingsPref(value, opts) {
+  const v = STAR_RATINGS_VALUES.includes(value) ? value : 'shown';
+  if (typeof document !== 'undefined') {
+    document.documentElement.classList.toggle('ft-hide-stars', !shouldShowStarRatings(v));
+  }
+  try { localStorage.setItem('ft-star-ratings', v); } catch (_) { /* storage off - session-only */ }
+  if (opts && opts.mirror) mirrorUserSetting({ starRatings: v });
+}
+
+// Boot re-apply (never mirrors - the mirror fires only from the explicit
+// user-change site, the settings-page toggle).
+function bootStarRatingsPref() {
+  let stored = null;
+  try { stored = localStorage.getItem('ft-star-ratings'); } catch (_) { /* storage off */ }
+  if (typeof document !== 'undefined') {
+    document.documentElement.classList.toggle('ft-hide-stars', !shouldShowStarRatings(stored));
+  }
 }
 
 // ---- F1: deterministic avatar fallback (v1.24.0, T3; identicon glyph C3/T12) -
@@ -8835,6 +8876,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // user's record (async, after the local-first paint above -- a device
   // with local prefs is never overridden; a signed-out shell no-ops).
   pullMirroredDisplayPrefs();
+  bootStarRatingsPref(); // v1.63.1: apply the stars pref before first paint settles
 
   // v1.27.2 (SW removal): actively unregister any service worker a previous
   // FileTube version installed -- see unregisterStaleServiceWorkers' own
@@ -9022,6 +9064,8 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.63 playback queue: the chrome's pure decisions.
     shouldShowQueueButton, formatQueueBadge, buildQueueRowModel, buildQueueRowModels,
     formatQueuePosition,
+    // v1.63.1: the stars pref's pure decision.
+    shouldShowStarRatings,
     // v1.31 P5 (FR5): repull-ack formatter.
     formatRepullAckText,
     // v1.32 (gate fix): the chip's one-line breaker summary.
