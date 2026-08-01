@@ -87,8 +87,9 @@ lying-doc class, in the very commit that deleted them):
 - `.harness/manifest.json` — DELETED in the same cleanup. It was the v1
   install manifest and listed all the deleted agents/commands/scripts
   (and `.state/**/.gitkeep`) as harness-owned; with nothing reading it
-  and 27 of its entries pointing at removed files, it was stale beyond
-  regeneration.
+  and 27 of its entries pointing at files removed by this cleanup alone
+  (31 counting the `.state/**/.gitkeep` entries retired back at
+  v1.41.19), it was stale beyond regeneration.
 - The five retired agent definitions and seventeen retired commands
   under `.claude/` (which had carried `LEGACY` markers since v1.41.19)
   — DELETED. This document is their only record.

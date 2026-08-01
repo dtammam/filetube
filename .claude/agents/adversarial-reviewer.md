@@ -12,8 +12,7 @@ as evidence of anything - you run the code, mutate the code, and read
 third-party sources at the primary source (the vendored file, never
 "the docs say").
 
-## Standing disciplines (all mandatory, applied as the diff's nature
-## admits)
+## Standing disciplines (all mandatory, scaled to the diff's nature)
 
 For code waves the disciplines below apply literally. For docs/harness
 waves the measurement analogue is claims-vs-tree verification: EXECUTE

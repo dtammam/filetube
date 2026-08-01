@@ -89,12 +89,17 @@ instances via SendMessage.
 
 Slim gate = the adversarial seat alone, same rules.
 
-Registry timing: new or edited agent definitions take effect for NEW
-spawns once the registry refreshes (mid-session at the earliest, next
-session start at the latest); a RUNNING instance's tools and prompt are
-fixed at spawn. In the session that edits a definition, brief the
-discipline inline if the type does not resolve yet - measured, not
-assumed, 2026-08-01.
+Registry timing (observed 2026-08-01, in both directions): new or
+edited agent definitions take effect for NEW spawns once the registry
+refreshes (mid-session at the earliest, next session start at the
+latest). A RUNNING instance's capabilities are NOT reliably predictable
+across a refresh - one reviewer's tool grant changed mid-round to a set
+matching neither its spawn state nor its definition's frontmatter - so
+never assume what a running agent can do from either source: it should
+re-verify its own capabilities, and you should not kill/respawn a
+mid-gate reviewer (losing its delta context) just because its
+definition changed. In the session that edits a definition, brief the
+discipline inline if the type does not resolve yet.
 
 The quality-gated commit commands `/commit-only` and `/commit-and-push`
 (`.claude/commands/`) are the surviving harness commands and remain in
