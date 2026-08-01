@@ -54,6 +54,7 @@ const { buildWatchUrl, classifySingleVideo, isSafeVideoId, validateChannelUrl, e
 // needs the exact same predicate, and a leaf module lets both sides
 // `require()` it directly without any circular dependency.
 const { isYtdlpIntermediate } = require('./lib/ytdlpIntermediates');
+const { TRASH_DIR_NAME, computeTrashTarget } = require('./lib/trashPaths');
 // v1.37.0 books: the db.books namespace owner + the pure scanner core --
 // see docs/exec-plans/active/v1.37.0-books.md. Both are leaf modules over
 // deps this file already provides (loadDatabase/updateDatabase/getMediaId);
@@ -360,6 +361,8 @@ function loadDatabase() {
   // the view endpoint's own comment for why this lives OUTSIDE `db.metadata`
   // items).
   if (!db.viewCounts || typeof db.viewCounts !== 'object' || Array.isArray(db.viewCounts)) db.viewCounts = {};
+  // v1.65: backfill `trash` (trashed-item records) like every other top-level key.
+  if (!db.trash || typeof db.trash !== 'object' || Array.isArray(db.trash)) db.trash = {};
   // v1.42: when a container namespace EXISTS, backfill its per-key
   // sub-namespaces the same way. Under db.json, ensureBooks/ensureYtdlp
   // created these keys once and the empty `{}` persisted forever; under
@@ -4894,6 +4897,11 @@ async function scanDirRecursive(rootFolder, dirPath, results, unreadable, yieldS
   for (const file of files) {
     const fullPath = path.join(dirPath, file.name);
     if (file.isDirectory()) {
+      // v1.65: the trash directory is INVISIBLE to the walk -- a trashed
+      // file must never re-index (the resurrection class), and this skip is
+      // the only thing standing between the two (there is no other
+      // exclusion primitive; see docs/exec-plans/active/v1.65-trash.md).
+      if (file.name === TRASH_DIR_NAME) continue;
       await scanDirRecursive(rootFolder, fullPath, results, unreadable, yieldState);
     } else if (file.isFile()) {
       // v1.15.1 hotfix: a yt-dlp download that is killed (e.g. the download
@@ -7421,7 +7429,7 @@ app.delete('/api/settings/logo', async (req, res) => {
 // session secret is NEVER part of a bundle (secrets don't ride bundles —
 // per-instance cookie isolation depends on secrets differing).
 const BACKUP_SCHEMA = 'filetube-backup-v1';
-const BACKUP_NAMESPACE_KEYS = ['folders', 'folderSettings', 'progress', 'metadata', 'liked', 'deleteTombstones', 'viewCounts', 'settings', 'books', 'music', 'ytdlp'];
+const BACKUP_NAMESPACE_KEYS = ['folders', 'folderSettings', 'progress', 'metadata', 'liked', 'deleteTombstones', 'viewCounts', 'settings', 'trash', 'books', 'music', 'ytdlp'];
 
 app.get('/api/admin/backup', async (req, res) => {
   if (!requireAdmin(req, res)) return;
@@ -10027,6 +10035,280 @@ function rekeyInFlightState(oldId, newId, oldPath, newPath) {
     recentlyServed.set(newPath, recentlyServed.get(oldPath));
     recentlyServed.delete(oldPath);
   }
+}
+
+// ---- v1.65 trash core -------------------------------------------------------
+//
+// trashItem: move ONE library item into its root's trash directory
+// (lib/trashPaths.js), carrying its ENTIRE identity with it. Structurally a
+// sibling of `moveItemToFolder` above and it inherits that function's
+// battle-won ordering discipline wholesale:
+//
+//   exclusive link (EXDEV -> verified copy) -> ONE re-key mutator ->
+//   rollback-unlink on mutator failure -> post-commit rekeyInFlightState
+//   (pendingProgress + ALL NINE per-user carriers via rekeyMediaState) ->
+//   destroyMediaStreams -> source unlink last.
+//
+// The one structural difference from a move: the item LEAVES db.metadata and
+// its full record lands in db.trash[trashId] (trashId = md5(trashPath) --
+// the id system is untouched, trash is "just a move" to the carriers). The
+// doc-table carries (progress/liked/viewCounts) ride old->trash exactly like
+// a move so a restore re-links every scrap of history.
+//
+// NO pre-mutator tombstone retirement here (the move's mutator A): that
+// discipline protects a DESTINATION the scan can reap, and the scan never
+// walks TRASH_DIR_NAME (the v1.65 walker exclusion) -- no tombstone can ever
+// act on a trash-side path. restoreTrashItem (t3) re-occupies a REAL library
+// path and therefore DOES inherit mutator A. db.trash itself deliberately
+// does NOT join the move/prune mutators: its records reference trash-side
+// paths no move or scan ever touches.
+//
+// SOURCE-UNLINK FAILURE (the last step) mints a deletion tombstone for the
+// old path: the bytes are safely in trash and the library entry is gone, but
+// a leftover hard-linked dirent at the old path would be re-indexed by the
+// next scan under the ORIGINAL id (path unchanged -> same md5) -- the
+// resurrection class. The tombstone hands the leftover to the scan's
+// deferred-delete retry (mtime is preserved by the hard link, so the
+// `mtime <= deletedAt` guard is satisfied) instead of leaving a ghost.
+async function trashItem(deps, id, opts = {}) {
+  const d = deps || {};
+  const loadDb = d.loadDatabase;
+  const updateDb = d.updateDatabase;
+  const computeId = d.getMediaId;
+  const fsImpl = d.fs || fs;
+  if (typeof loadDb !== 'function' || typeof updateDb !== 'function' || typeof computeId !== 'function') {
+    return { ok: false, status: 500, error: 'trashItem: missing required deps (loadDatabase/updateDatabase/getMediaId)' };
+  }
+
+  const db = loadDb();
+  const item = db.metadata[id];
+  if (!item) {
+    return { ok: false, status: 404, error: 'Media file not found' };
+  }
+  const oldPath = item.filePath;
+  // The DELETE route resolves the ACTUAL on-disk entry (NFC/NFD, bracket-id,
+  // raw-Buffer names -- v1.37.5) before calling us; FS ops on the media file
+  // use that spelling, while ids/db keys stay derived from the STORED path.
+  const sourcePath = opts.sourcePath || oldPath;
+  const nowMs = typeof opts.nowMs === 'number' ? opts.nowMs : Date.now();
+
+  const matchedRoot = matchRootFolder(oldPath, configuredLibraryRoots(db));
+  const { trashDir, trashPath } = computeTrashTarget(oldPath, id, matchedRoot, nowMs);
+  const trashId = computeId(trashPath);
+
+  // A read-only mount can no more rename than unlink: both the mkdir and the
+  // link classify EROFS/EACCES/EPERM/EBUSY as the recoverable 409 the DELETE
+  // route has always surfaced (with its removeAnyway escape hatch).
+  try {
+    fsImpl.mkdirSync(trashDir, { recursive: true });
+  } catch (err) {
+    if (err && RECOVERABLE_DELETE_CODES.has(err.code)) {
+      return { ok: false, status: 409, code: err.code, error: `Could not create the trash folder (${err.code})` };
+    }
+    return { ok: false, status: 500, error: `Could not create the trash folder: ${err.message}` };
+  }
+
+  try {
+    fsImpl.linkSync(sourcePath, trashPath);
+  } catch (err) {
+    if (err && err.code === 'ENOENT') {
+      return { ok: false, status: 404, code: 'ENOENT', error: 'The source file no longer exists on disk' };
+    }
+    if (err && RECOVERABLE_DELETE_CODES.has(err.code)) {
+      return { ok: false, status: 409, code: err.code, error: `Could not move the file to trash (${err.code})` };
+    }
+    if (err && err.code === 'EEXIST') {
+      // ms-stamp + id-prefix collisions are not a thing in practice; refuse
+      // rather than clobber (the move's no-clobber posture).
+      return { ok: false, status: 500, error: 'Trash target collision -- nothing was moved' };
+    }
+    if (err && err.code === 'EXDEV') {
+      // A bind-mounted subtree inside a root: same design as the move's
+      // EXDEV branch -- EXCLUSIVE copy, fsync, size pre-filter, then full
+      // sha256 of both sides BEFORE the source is ever unlinked. The
+      // same-filesystem rename is the DESIGN (no copy, no doubled disk);
+      // this is the disclosed safety net for exotic mounts.
+      try {
+        fsImpl.copyFileSync(sourcePath, trashPath, fs.constants.COPYFILE_EXCL);
+      } catch (copyErr) {
+        return { ok: false, status: 500, error: `Could not move the file to trash across devices: ${copyErr.message}` };
+      }
+      try {
+        if (typeof fsImpl.openSync === 'function' && typeof fsImpl.fsyncSync === 'function') {
+          const fd = fsImpl.openSync(trashPath, 'r+');
+          try { fsImpl.fsyncSync(fd); } finally { fsImpl.closeSync(fd); }
+        }
+      } catch (syncErr) {
+        console.error(`Trash: could not fsync the cross-device copy at ${trashPath} (continuing):`, syncErr.message);
+      }
+      try {
+        const srcSize = fsImpl.statSync(sourcePath).size;
+        const dstSize = fsImpl.statSync(trashPath).size;
+        if (srcSize !== dstSize) {
+          try { fsImpl.unlinkSync(trashPath); } catch (_) { /* best-effort cleanup of the bad copy */ }
+          return { ok: false, status: 500, error: `Cross-device trash copy verification failed (${dstSize} of ${srcSize} bytes) -- the source file was left untouched` };
+        }
+        const [srcDigest, dstDigest] = await Promise.all([
+          hashFileStreaming(sourcePath, fsImpl),
+          hashFileStreaming(trashPath, fsImpl),
+        ]);
+        if (srcDigest !== dstDigest) {
+          try { fsImpl.unlinkSync(trashPath); } catch (_) { /* best-effort cleanup of the corrupt copy */ }
+          return { ok: false, status: 500, error: 'Cross-device trash copy verification failed (sha256 mismatch) -- the corrupt copy was removed and the source file was left untouched' };
+        }
+      } catch (verifyErr) {
+        try { fsImpl.unlinkSync(trashPath); } catch (_) { /* best-effort cleanup of the unverifiable copy */ }
+        return { ok: false, status: 500, error: `Could not verify the cross-device trash copy (${verifyErr.message}) -- the source file was left untouched` };
+      }
+    } else {
+      return { ok: false, status: 500, error: `Could not move the file to trash: ${err.message}` };
+    }
+  }
+
+  // Bytes now exist at BOTH paths (same inode, or a checksum-verified copy).
+  // Re-key the database FIRST; the source unlink comes only after the commit
+  // (the move's v1.41.6 ordering -- a crash here leaves a visible leftover,
+  // never a lost identity).
+  let mutatorResult;
+  try {
+    mutatorResult = await updateDb((freshDb) => {
+      const freshItem = freshDb.metadata[id];
+      if (!freshItem) return false; // concurrently deleted -- nothing left to trash
+
+      if (!freshDb.trash || typeof freshDb.trash !== 'object') freshDb.trash = {};
+      freshDb.trash[trashId] = {
+        originalId: id,
+        originalPath: oldPath,
+        trashPath,
+        trashedAt: nowMs,
+        rootFolder: freshItem.rootFolder || matchedRoot || null,
+        // The FULL metadata record, snapshotted verbatim (still carrying the
+        // ORIGINAL id/filePath): the Trash view renders from it and restore
+        // rebuilds db.metadata from it byte-identical.
+        item: { ...freshItem },
+      };
+      delete freshDb.metadata[id];
+
+      // Doc-table id-keyed carries, old -> trash (the move mutator's list;
+      // its standing order applies here too).
+      if (Object.prototype.hasOwnProperty.call(freshDb.progress, id)) {
+        freshDb.progress[trashId] = freshDb.progress[id];
+        delete freshDb.progress[id];
+      }
+      if (Array.isArray(freshDb.liked)) {
+        const likedIndex = freshDb.liked.indexOf(id);
+        if (likedIndex !== -1) freshDb.liked[likedIndex] = trashId;
+      }
+      if (freshDb.viewCounts && Object.prototype.hasOwnProperty.call(freshDb.viewCounts, id)) {
+        freshDb.viewCounts[trashId] = freshDb.viewCounts[id];
+        delete freshDb.viewCounts[id];
+      }
+      if (freshDb.deleteTombstones && typeof freshDb.deleteTombstones === 'object') {
+        delete freshDb.deleteTombstones[trashId];
+        delete freshDb.deleteTombstones[id];
+      }
+
+      // Id-keyed sidecars follow the id into trash (the move's set: thumbnail
+      // + transcode + background audio), so restore gets them back intact and
+      // purge can account for every artifact. Best-effort each.
+      try {
+        const oldThumb = path.join(THUMBNAIL_DIR, `${id}.jpg`);
+        const newThumb = path.join(THUMBNAIL_DIR, `${trashId}.jpg`);
+        if (fsImpl.existsSync(oldThumb)) fsImpl.renameSync(oldThumb, newThumb);
+      } catch (thumbErr) {
+        console.error(`Trash: failed to re-key thumbnail for ${id} -> ${trashId}:`, thumbErr.message);
+      }
+      try {
+        if (fsImpl.existsSync(transcodedPath(id))) fsImpl.renameSync(transcodedPath(id), transcodedPath(trashId));
+      } catch (transcodeErr) {
+        console.error(`Trash: failed to re-key transcode sidecar for ${id} -> ${trashId}:`, transcodeErr.message);
+      }
+      try {
+        if (fsImpl.existsSync(audioPath(id))) fsImpl.renameSync(audioPath(id), audioPath(trashId));
+      } catch (audioErr) {
+        console.error(`Trash: failed to re-key background-audio sidecar for ${id} -> ${trashId}:`, audioErr.message);
+      }
+
+      // Subtitle sidecars follow the file into the trash dir under the
+      // trash-side basename (the move's NARROW matcher -- never another
+      // item's sidecars).
+      try {
+        const oldDir = path.dirname(oldPath);
+        const oldBase = path.basename(oldPath, path.extname(oldPath));
+        const trashBase = path.basename(trashPath, path.extname(trashPath));
+        const sidecarSuffix = /^\.(?:[A-Za-z0-9_-]{1,15}\.)?(?:vtt|srt)$/i;
+        for (const name of fsImpl.readdirSync(oldDir)) {
+          if (!name.startsWith(`${oldBase}.`)) continue;
+          const suffix = name.slice(oldBase.length);
+          if (!sidecarSuffix.test(suffix)) continue;
+          const from = path.join(oldDir, name);
+          const to = path.join(trashDir, trashBase + suffix);
+          try {
+            if (fsImpl.existsSync(to)) continue;
+            fsImpl.renameSync(from, to);
+          } catch (renameErr) {
+            console.error(`Trash: failed to carry subtitle sidecar ${name}:`, renameErr.message);
+          }
+        }
+      } catch (subErr) {
+        console.error(`Trash: failed to carry subtitle sidecars for ${id}:`, subErr.message);
+      }
+
+      return trashId;
+    });
+  } catch (err) {
+    // Same rollback proof as the move: a mutator throw means saveDatabase
+    // never ran (or rolled back whole). The trash-side link is OURS
+    // (exclusive create moments ago) -- unlinking it restores the exact
+    // pre-trash state.
+    try {
+      fsImpl.unlinkSync(trashPath);
+    } catch (unlinkErr) {
+      console.error(`Trash: the database update failed and the trash copy at ${trashPath} could not be rolled back:`, unlinkErr.message);
+    }
+    return { ok: false, status: 500, error: `The database update failed, so the trash move was rolled back (the original is untouched): ${err.message}` };
+  }
+
+  if (mutatorResult === false) {
+    try {
+      fsImpl.unlinkSync(trashPath);
+    } catch (err) {
+      console.error(`Trash: item ${id} vanished mid-trash; could not remove the copy at ${trashPath}:`, err.message);
+    }
+    return { ok: false, status: 404, error: 'Media file was removed before the trash move could be recorded' };
+  }
+
+  // Committed. Carry process-memory + the nine per-user carriers (post-commit
+  // posture, same as the move), release our own read streams, then remove the
+  // source directory entry LAST.
+  rekeyInFlightState(id, trashId, oldPath, trashPath);
+  await destroyMediaStreams(oldPath);
+
+  let sourceUnlinkFailed = false;
+  try {
+    fsImpl.unlinkSync(sourcePath);
+  } catch (err) {
+    if (err && err.code === 'ENOENT') {
+      // Someone beat us to it -- the bytes are in trash, nothing to clean.
+    } else {
+      sourceUnlinkFailed = true;
+      console.error(`Trash: file moved to ${trashPath} but the old path ${oldPath} could not be removed:`, err.message);
+      // Hand the leftover dirent to the scan's deferred-delete retry (see
+      // the function comment). Best-effort: a failure here just means the
+      // leftover waits for the user instead of the scan.
+      try {
+        await updateDb((freshDb) => {
+          if (!freshDb.deleteTombstones || typeof freshDb.deleteTombstones !== 'object') freshDb.deleteTombstones = {};
+          freshDb.deleteTombstones[id] = { filePath: oldPath, deletedAt: Date.now(), youtubeId: null };
+          pruneDeleteTombstones(freshDb.deleteTombstones); // in-place prune (returns nothing)
+        });
+      } catch (tombErr) {
+        console.error(`Trash: could not record the leftover at ${oldPath} for deferred cleanup:`, tombErr.message);
+      }
+    }
+  }
+
+  return { ok: true, oldId: id, trashId, trashPath, sourceUnlinkFailed };
 }
 
 // API: Move a video/audio file into another configured library folder (C1).
@@ -13040,6 +13322,7 @@ module.exports = {
   // the full confinement + re-key design.
   computeMoveTarget,
   moveItemToFolder,
+  trashItem,
   configuredLibraryRoots,
   getMediaId,
   // T4 (v1.25 QoL): the one-time flat-one-off-into-channel-folder migration --

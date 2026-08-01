@@ -72,6 +72,16 @@ function fullState() {
     liked: ['vid1'],
     deleteTombstones: { gone1: { filePath: '/media/videos/gone.mp4', deletedAt: 1752600000000 } },
     viewCounts: { vid1: 9 },
+    // v1.65: trashed-item records ride the bundle (a restore that dropped
+    // them would strand un-restorable, un-purgeable files in the trash dirs).
+    trash: {
+      tr1: {
+        originalId: 'vidgone', originalPath: '/media/videos/old.mp4',
+        trashPath: '/media/videos/.filetube-trash/1750000000000-vidgone1-old.mp4',
+        trashedAt: 1750000000000, rootFolder: '/media/videos',
+        item: { id: 'vidgone', title: 'Old', filePath: '/media/videos/old.mp4', type: 'video', ext: '.mp4' },
+      },
+    },
     settings: { defaultView: 'grid' },
     books: {
       folders: ['/media/books'],

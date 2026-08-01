@@ -107,6 +107,7 @@ test('saveDatabase + loadDatabase: round-trips data faithfully', () => {
     liked: ['abc'],
     deleteTombstones: {}, // v1.41.3: backfilled like every other top-level key
     viewCounts: {}, // v1.42: backfilled like every other top-level key
+    trash: {}, // v1.65: backfilled like every other top-level key
     settings: DEFAULT_SETTINGS,
   };
   saveDatabase(original);
