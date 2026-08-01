@@ -80,6 +80,49 @@
 
 ## Shipped
 
+### v1.64.0 - Watch history (2026-08-01)
+
+The first of the three approved feature waves (History -> Trash -> Web
+Push). A real /history page: everything you watched or started,
+per-user, newest first, with resume points - built entirely on data the
+app already had (user_progress.updated_at + the v1.50 watched latch's
+completed_at, which had been write-only since it shipped). Rows carry
+the thumbnail, resume bar, Watched chip, relative time, and a two-tap
+per-row remove; a two-tap Clear-all sits in the toolbar. Removing an
+item deletes the user's own progress + latch rows (so its home
+?watch filter state honestly returns to "new" - inherent to
+remove-from-history, and re-watching re-adds it naturally), and every
+destructive op purges the progress coalescer's staged entries in the
+same synchronous handler - the design's headline hazard (a staged ping
+flushing seconds after a delete and silently resurrecting the row) is
+bound by a stage -> remove -> forced-flush -> still-gone repro test.
+Nav: a count-gated sidebar Library entry (visible iff >=1 history item,
+the Liked rule; deterministic Music > Books > History order), a History
+item in the customizable bottom bar on all nine shells (default
+VISIBLE - flipping to default-hidden is a cheap ruling at the Stop),
+and a real Material history glyph in the icon-mask system.
+
+**What the full gate caught (both seats REQUEST CHANGES -> APPROVE in
+one fix round):** `DELETE /api/history/` - the per-item form with a
+MISSING id, exactly what the client would build from a falsy data-id -
+aliased onto CLEAR-ALL via Express non-strict routing and wiped the
+entire history, measured live by the QA seat (now 400s server-side,
+bails client-side, destroys-NOTHING test-bound); the sidebar
+count-gate's always-inject mutant survived the full 5390-test suite
+(now DOM-bound in jsdom against the real injector); the channel-name
+escape was presence-not-binding (hostile-dirname assert added); the
+collision-guard's shell list had silently missed FOUR shells incl. the
+new one (all enumerated now); and a comment I wrote in this very wave
+overclaimed "the ONLY deletes" on the latch table - the lying-comment
+class, caught again. The seats DISAGREED on that comment (adversarial
+judged it accurate); the stricter reading shipped.
+
+Known gaps, disclosed: the sidebar entry is boot-gated - a user's
+first-ever history item makes it appear on the next page load, not
+live; bottom-bar customization remains device-local (tech-debt #42).
+Device probes below; Dean's device pass PENDING. Dual-Node of record:
+5399/5399 on v22.23.1 AND v24.14.0, sequential. Docker pull is Dean's.
+
 ### v1.63.1 - Centered phone rows + optional stars (2026-08-01)
 
 Dean's v1.63.0 device pass ("Excellence") came back with one finding - the seven-button watch row wraps below the stars on phones, exactly where the gate's headline probe pointed. His rulings, shipped: each wrapped line now CENTERS at phone widths (the icon row as one centered line, the stars as their own centered line above; the deliberate v1.25.6 whole-row wrap stays - forcing nowrap was the old iOS shrink-to-fit zoom bug), and the stars became OPTIONAL - they are the deterministic mock, and Settings -> Appearance now carries "Hide star ratings", a per-user display pref riding the exact theme/era/icons mirror machinery (device-local truth, cross-device seed) whose hide is ONE root class + ONE CSS rule covering the watch control AND every card's rating row, so no star writer present or future can escape it. All new styling on tokens; the new checkbox is class-styled rather than extending the settings page's legacy inline-style pattern.
