@@ -10623,6 +10623,13 @@ async function trashOrphanFile(filePath, opts = {}) {
 // configured library root, or under the trash dir's own parent tree (which
 // for an app-created record IS the item's own directory -- the
 // unattributable-file fallback). Residual by design: tech-debt #74.
+//
+// CONSUMPTION CONTRACT (gate round 4 suggestion): only `.restorable` is
+// read, by exactly the two call sites above. The sub-fields are diagnostic
+// -- and note `destConfined`'s inner `trashConfined &&` is dead logic while
+// that holds (`restorable` already ANDs them), so a future caller reading
+// `.destConfined` directly would silently change its meaning. Read
+// `.restorable`, or re-derive what you actually need.
 function trashRecordPlacement(rec, roots) {
   const isCleanAbs = (v) => typeof v === 'string' && path.isAbsolute(v) && !v.split(/[\\/]/).includes('..');
   const isWithin = (child, parent) => {
