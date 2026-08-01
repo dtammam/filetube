@@ -530,6 +530,20 @@ const RESUME_THRESHOLD_DEFAULT = 60;
 // on first visit / a garbage value / storage disabled) -- mirrors
 // resolveResumeThreshold's own "garbage/missing -> 60" fallback in
 // player.js so the two never disagree about what counts as valid.
+// v1.63.1 (Dean): the hide-the-fake-stars toggle. common.js OWNS the pref
+// semantics (applyStarRatingsPref: root class + localStorage + per-user
+// mirror); this control just reflects and fires it. Checked = hidden.
+function wireHideStarsControl(signal) {
+  const check = document.getElementById('hide-stars-check');
+  if (!check) return;
+  let stored = null;
+  try { stored = localStorage.getItem('ft-star-ratings'); } catch (_) { /* storage off */ }
+  check.checked = !shouldShowStarRatings(stored);
+  check.addEventListener('change', () => {
+    applyStarRatingsPref(check.checked ? 'hidden' : 'shown', { mirror: true });
+  }, { signal });
+}
+
 function loadResumeThresholdControl() {
   const input = document.getElementById('resume-threshold-input');
   if (!input) return;
@@ -1649,6 +1663,7 @@ function init(root) {
   wireMusicFolderControls(controller.signal); // v1.44 music
   renderThemePicker();
   renderIconPicker();
+  wireHideStarsControl(controller.signal); // v1.63.1: the fake-stars toggle
   loadResumeThresholdControl();
   loadDebugLifecycleControl();
   loadHomeRowControl('home-continue-listening-check', 'ft-home-continue-listening');

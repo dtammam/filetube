@@ -12,7 +12,10 @@
 //
 // The bug that motivated this: read.html and books.html were shipped WITHOUT
 // the theme guard the other four shells carried, so they flashed on every
-// refresh. These are structural locks (the repo has no jsdom harness -- see
+// refresh. These are structural locks (gate S-C correction: the repo DOES
+// have a jsdom harness now - star-pref-seed.test.js runs the real common.js
+// in jsdom+vm - but pre-paint behavior is exactly what jsdom cannot see, so
+// structural locks remain the right instrument here -- see
 // CONTRIBUTING.md): every header-bearing shell must carry BOTH guards, and the
 // guard must run before <body>. A new shell that forgets one fails here.
 
@@ -51,6 +54,14 @@ for (const shell of SHELLS) {
       `${shell} must read the custom-logo flag before <body>`);
     assert.match(head, /classList\.add\('ft-custom-logo'\)/,
       `${shell} must stamp html.ft-custom-logo before <body> so CSS hides the text wordmark pre-paint`);
+    // 3. v1.63.1 stars guard (slim gate W-A: the stamp shipped in nine
+    // shells with NO lock - removing it from watch.html, the one shell
+    // with static star markup, left all 5368 tests green): the
+    // hidden-stars flag is read and stamped before paint.
+    assert.match(head, /localStorage\.getItem\('ft-star-ratings'\)/,
+      `${shell} must read the stars pref before <body>`);
+    assert.match(head, /classList\.add\('ft-hide-stars'\)/,
+      `${shell} must stamp html.ft-hide-stars before <body> so hidden-pref users never see the stars flash`);
   });
 }
 

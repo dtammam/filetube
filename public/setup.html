@@ -72,6 +72,11 @@
            "FileTube" text wordmark before paint -- it never flashes before the
            image swaps in. common.js clears the flag on a 404/load error. */
         if (localStorage.getItem('ft-custom-logo') === '1') d.classList.add('ft-custom-logo');
+
+        /* v1.63.1 (slim gate W2): stars FOUC guard. A hidden-pref user must
+           never see the static star markup flash before common.js runs --
+           inline mirror of bootStarRatingsPref(); keep in sync. */
+        if (localStorage.getItem('ft-star-ratings') === 'hidden') d.classList.add('ft-hide-stars');
       } catch (_) {
         d.setAttribute('data-theme', '2021');
         d.setAttribute('data-mode', 'light');
@@ -140,6 +145,19 @@
         <p>Pick the icon style for FileTube's chrome. <strong>Auto</strong>
            matches it to the era above.</p>
         <div class="theme-picker" id="icon-picker"><!-- rendered by JS --></div>
+        <!-- v1.63.1 (Dean): the stars are decorative - a deterministic mock,
+             not real ratings - and now optional. common.js owns the pref
+             (localStorage truth + per-user mirror); ONE root class hides
+             every star writer. Class-based styling (setup-check-label),
+             NOT this page's legacy inline-style checkboxes - new markup
+             does not extend the #71 unscanned-channel debt. -->
+        <h3 class="setup-subhead">Star ratings</h3>
+        <p>The stars are decorative &mdash; a deterministic mock, not real
+           ratings. Hide them app-wide for a cleaner look.</p>
+        <label class="setup-check-label">
+          <input type="checkbox" id="hide-stars-check" />
+          Hide star ratings
+        </label>
         <!-- v1.32 (Dean, "white-label"): replaceable header logo.
              v1.33.1: split into per-mode variants -- a light-mode and a
              dark-mode logo; if only one is uploaded it is used for BOTH
