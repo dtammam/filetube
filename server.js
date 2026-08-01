@@ -59,6 +59,7 @@ const { isYtdlpIntermediate } = require('./lib/ytdlpIntermediates');
 // deps this file already provides (loadDatabase/updateDatabase/getMediaId);
 // requiring them has no side effects (the ytdlp direct-require posture).
 const booksStore = require('./lib/books/store');
+const queueStore = require('./lib/queue/store');
 const booksScan = require('./lib/books/scan');
 // v1.44 music library: same direct-require namespace-owner posture as books.
 const musicStore = require('./lib/music/store');
@@ -7930,6 +7931,87 @@ app.post('/api/notifications/clear', (req, res) => {
   if (!notificationsFeatureEnabled(db)) return res.status(404).json({ error: 'notifications disabled' });
   userStore.clearNotifications(req.user.id, Date.now());
   res.json({ success: true });
+});
+
+// ============ v1.63 playback queue ("think YouTube" - Dean) ==================
+// One per-user queue; ALL semantics live in lib/queue/store.js's pure
+// reducers - these routes run reducer -> persist (userStore.setQueue,
+// whole-set transaction) -> respond with the shaped queue (the pin-routes
+// posture). Dead media ids are filtered at READ - belt to the
+// removeMediaState carrier's suspenders (a restore from another library,
+// or a delete racing a stale client, must never 500 the panel).
+
+function shapedQueue(db, userId) {
+  const raw = userStore.getQueue(userId);
+  const live = queueStore.normalize(raw);
+  const entries = [];
+  for (const e of live.entries) {
+    const item = db.metadata[e.mediaId];
+    if (item) entries.push({ uid: e.uid, mediaId: e.mediaId, item });
+  }
+  // Dead-id filtering can orphan the pointer; normalize AGAIN on the
+  // filtered view so the client never sees a pointer to a missing row.
+  const view = queueStore.normalize({ entries, pointerUid: live.pointerUid });
+  return { entries: view.entries, pointerUid: view.pointerUid, updatedAt: raw.updatedAt || 0 };
+}
+
+app.get('/api/queue', (req, res) => {
+  res.json(shapedQueue(getCachedDatabase(), req.user.id));
+});
+
+app.post('/api/queue/items', (req, res) => {
+  const db = getCachedDatabase();
+  const body = req.body || {};
+  const mediaId = typeof body.mediaId === 'string' ? body.mediaId : '';
+  if (!db.metadata[mediaId]) return res.status(404).json({ error: 'Media file not found' });
+  const position = body.position === 'next' ? 'next' : 'end';
+  const result = queueStore.reduceAdd(userStore.getQueue(req.user.id), mediaId, position);
+  if (!result.changed) {
+    return res.status(400).json({ error: result.error === 'queue-full' ? `Queue is full (${queueStore.QUEUE_CAP} items)` : 'Could not add to queue' });
+  }
+  userStore.setQueue(req.user.id, result.state.entries, result.state.pointerUid, Date.now());
+  res.json({ added: result.added, queue: shapedQueue(db, req.user.id) });
+});
+
+app.delete('/api/queue/items/:uid', (req, res) => {
+  const result = queueStore.reduceRemove(userStore.getQueue(req.user.id), req.params.uid);
+  if (!result.changed) return res.status(404).json({ error: 'Queue entry not found' });
+  userStore.setQueue(req.user.id, result.state.entries, result.state.pointerUid, Date.now());
+  res.json({ queue: shapedQueue(getCachedDatabase(), req.user.id) });
+});
+
+// Strict uid bijection (the reducer refuses drops/inventions): a stale
+// client gets a 409 telling it to refresh, never a "helpful" merge.
+app.post('/api/queue/reorder', (req, res) => {
+  const orderedUids = req.body ? req.body.orderedUids : undefined;
+  if (!Array.isArray(orderedUids) || !orderedUids.every((u) => typeof u === 'string' && u !== '')) {
+    return res.status(400).json({ error: 'orderedUids must be an array of non-empty strings' });
+  }
+  const result = queueStore.reduceReorder(userStore.getQueue(req.user.id), orderedUids);
+  if (!result.changed) return res.status(409).json({ error: 'Queue changed - refresh and retry' });
+  userStore.setQueue(req.user.id, result.state.entries, result.state.pointerUid, Date.now());
+  res.json({ queue: shapedQueue(getCachedDatabase(), req.user.id) });
+});
+
+// The now-playing pointer. body.uid = an entry uid, or null to restart
+// (not-started semantics: the head is up next).
+app.post('/api/queue/pointer', (req, res) => {
+  const uid = req.body ? req.body.uid : undefined;
+  if (uid !== null && (typeof uid !== 'string' || uid === '')) {
+    return res.status(400).json({ error: 'uid must be an entry uid or null' });
+  }
+  const result = queueStore.reduceSetPointer(userStore.getQueue(req.user.id), uid);
+  if (!result.changed) return res.status(404).json({ error: 'Queue entry not found' });
+  userStore.setQueue(req.user.id, result.state.entries, result.state.pointerUid, Date.now());
+  res.json({ queue: shapedQueue(getCachedDatabase(), req.user.id) });
+});
+
+// Clear = the whole queue dies (icon disappears). Ephemeral by design -
+// one confirm toast client-side, no modal ceremony (Dean ruling 4).
+app.delete('/api/queue', (req, res) => {
+  const result = queueStore.reduceClear();
+  userStore.setQueue(req.user.id, result.state.entries, result.state.pointerUid, Date.now());
+  res.json({ queue: { entries: [], pointerUid: null, updatedAt: Date.now() } });
 });
 
 // API: Current transcode-cache size on disk, for the Settings-page display.

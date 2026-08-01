@@ -57,3 +57,57 @@ test('resolveEndedAction: missing/empty ctx defaults to stop (never throws)', ()
   assert.strictEqual(resolveEndedAction(), 'stop');
   assert.strictEqual(resolveEndedAction({}), 'stop');
 });
+
+// ---- v1.63: the queue joins the table (Dean ruling 2) ------------------------
+// Queue outranks the browse context; loop still outranks the queue ("Loop
+// would stop it" - Dean's own intake words); autoplay OFF ignores the queue
+// entirely (the queue is preserved, nothing advances).
+
+test('v1.63 resolveEndedAction: queue next + autoplay on -> queue-advance (outranks context next)', () => {
+  const assert = require('node:assert');
+  const { resolveEndedAction } = require('../../public/js/player.js');
+  assert.strictEqual(resolveEndedAction({ loop: false, autoplayNext: true, queueHasNext: true, hasNext: true }), 'queue-advance');
+  assert.strictEqual(resolveEndedAction({ loop: false, autoplayNext: true, queueHasNext: true, hasNext: false }), 'queue-advance');
+});
+
+test('v1.63 resolveEndedAction: loop STILL outranks a waiting queue', () => {
+  const assert = require('node:assert');
+  const { resolveEndedAction } = require('../../public/js/player.js');
+  assert.strictEqual(resolveEndedAction({ loop: true, autoplayNext: true, queueHasNext: true, hasNext: true }), 'repeat');
+});
+
+test('v1.63 resolveEndedAction: autoplay OFF ignores the queue (preserved, not consumed)', () => {
+  const assert = require('node:assert');
+  const { resolveEndedAction } = require('../../public/js/player.js');
+  assert.strictEqual(resolveEndedAction({ loop: false, autoplayNext: false, queueHasNext: true, hasNext: true }), 'stop');
+});
+
+test('v1.63 resolveEndedAction: queue exhausted -> exactly the pre-v1.63 table', () => {
+  const assert = require('node:assert');
+  const { resolveEndedAction } = require('../../public/js/player.js');
+  assert.strictEqual(resolveEndedAction({ loop: false, autoplayNext: true, queueHasNext: false, hasNext: true }), 'advance');
+  assert.strictEqual(resolveEndedAction({ loop: false, autoplayNext: true, queueHasNext: false, hasNext: false }), 'stop');
+});
+
+test('v1.63 computeQueueNext: the client mirror of the server nextEntry contract', () => {
+  const assert = require('node:assert');
+  const { computeQueueNext } = require('../../public/js/player.js');
+  const e = (uid) => ({ uid, mediaId: 'm-' + uid, item: { title: uid } });
+  assert.equal(computeQueueNext({ entries: [e('a'), e('b')], pointerUid: null }).uid, 'a', 'not-started -> head');
+  assert.equal(computeQueueNext({ entries: [e('a'), e('b')], pointerUid: 'a' }).uid, 'b', 'after the pointer');
+  assert.equal(computeQueueNext({ entries: [e('a'), e('b')], pointerUid: 'b' }), null, 'exhausted -> null (context flow resumes)');
+  assert.equal(computeQueueNext({ entries: [], pointerUid: null }), null, 'empty');
+  assert.equal(computeQueueNext(null), null);
+  assert.equal(computeQueueNext({ entries: [e('a')], pointerUid: 'ghost' }).uid, 'a', 'dangling pointer -> not-started (the server-normalize mirror)');
+});
+
+test('v1.63 gate NEW-2/residual: BOTH mirrors filter malformed entries identically', () => {
+  const assert = require('node:assert');
+  const { computeQueueNext, computeQueuePrev } = require('../../public/js/player.js');
+  const bad = { uid: '', mediaId: 'x' };
+  const a = { uid: 'a', mediaId: 'm-a' };
+  const b = { uid: 'b', mediaId: 'm-b' };
+  assert.equal(computeQueueNext({ entries: [bad, a], pointerUid: null }).uid, 'a', 'Next skips malformed');
+  assert.equal(computeQueuePrev({ entries: [bad, a, b], pointerUid: 'a' }), null, 'Prev never returns a malformed entry (pre-fix it did)');
+  assert.equal(computeQueuePrev({ entries: [a, bad, b], pointerUid: 'b' }).uid, 'a', 'Prev skips over malformed to the real predecessor');
+});

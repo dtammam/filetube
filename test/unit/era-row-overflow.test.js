@@ -64,15 +64,21 @@ test('every era ships the SAME type scale (but NOT the same density)', () => {
     '2005 must remain the tightest density -- it partially counteracts Verdana');
 });
 
-test('the DOMINANT cause is button count, not the era (5 buttons in the group)', () => {
-  // watch.html ships two; watch.js appends three more. The row Dean described
-  // by name -- "Download, Delete, Move, Like Share" -- is five items, which is
-  // why it overflows in Roboto too.
+test('the DOMINANT cause is button count, not the era (now 7 buttons in the group)', () => {
+  // watch.html ships two (Download + Delete); watch.js appends three more
+  // (Move, Like, Share) -- the five-item row of the original overflow
+  // diagnosis. v1.63 (DELIBERATE lock update): the queue verbs (Queue +
+  // Next) join the markup, making four static / seven total. The
+  // CONTAINMENT test below is the structural guarantee that holds for any
+  // count ("any future button added to the group" -- its own words), and
+  // both new buttons wrap their words in .btn-label, the phone-collapse
+  // treatment. The seven-item row at phone widths is a NAMED device probe
+  // for Dean in the v1.63 Stop packet.
   const WATCH_JS = fs.readFileSync(path.join(__dirname, '../../public/js/watch.js'), 'utf8');
   const HTML = fs.readFileSync(path.join(__dirname, '../../public/watch.html'), 'utf8');
   const group = HTML.slice(HTML.indexOf('<div class="watch-action-btns">'));
   const staticBtns = (group.slice(0, group.indexOf('</div>')).match(/class="btn"/g) || []).length;
-  assert.equal(staticBtns, 2, 'Download + Delete ship in markup');
+  assert.equal(staticBtns, 4, 'Download + Delete + Queue + Next ship in markup');
   for (const appended of ['Move', 'Like', 'Share']) {
     assert.ok(new RegExp(appended, 'i').test(WATCH_JS), `${appended} is appended by watch.js`);
   }

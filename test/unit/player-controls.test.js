@@ -353,9 +353,23 @@ test('v1.41.11 source-lock: wheel over the volume slider adjusts volume (slider 
 });
 
 test('v1.41.11 source-lock: watch.js registers its context-aware prev/next with the player trackNav seam', () => {
+  // v1.63 (DELIBERATE lock update): the registration now hands the
+  // queue-aware effPrev/effNext closures - the SAME wiring the on-page
+  // buttons use (queue entry first, context fallback), so media keys /
+  // lock screen / Shift+N/P can never disagree with the buttons about
+  // what "next" means. The lock still binds the one-registration seam.
+  // Gate CRITICAL-1 fix shape: context handlers arm IMMEDIATELY (a hung
+  // /api/queue must never leave dead buttons / unregistered media keys);
+  // the queue fetch UPGRADES the mutable refs and re-registers.
   const src = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'watch.js'), 'utf8');
-  assert.match(src, /window\.FileTube\.player\.setTrackNav\(\{\s*onPrev: prevId \? \(\) => navigateToWatch\(prevId\) : undefined,\s*onNext: nextId \? \(\) => navigateToWatch\(nextId\) : undefined,\s*\}\)/,
-    'setupPrevNext hands its computed neighbors to setTrackNav (media keys + lock screen + Shift+N/P all ride this one registration)');
+  assert.match(src, /let effNext = nextId \? \(\) => navigateToWatch\(nextId\) : null;/,
+    'context Next arms immediately - the queue is an upgrade, never a gate');
+  assert.match(src, /if \(queueNextEntry\) effNext = \(\) => goQueueEntry\(queueNextEntry\);/,
+    'the queue upgrade swaps the SAME mutable ref the buttons and seam read');
+  assert.match(src, /window\.FileTube\.player\.setTrackNav\(\{\s*onPrev: effPrev \? \(\) => \{ if \(effPrev\) effPrev\(\); \} : undefined,\s*onNext: effNext \? \(\) => \{ if \(effNext\) effNext\(\); \} : undefined,\s*\}\)/,
+    'setTrackNav reads the mutable refs (media keys + lock screen + Shift+N/P all ride this one registration)');
+  assert.match(src, /renderQueueUpNextBox\(q, mediaId\);[\s\S]{0,400}registerTrackNav\(\);/,
+    'the queue upgrade re-registers the seam (per-direction MediaSession availability tracks the upgraded handlers)');
 });
 
 test('v1.41.11 source-lock: setTrackNav stores handlers for the keyboard seam and still sets MediaSession per-direction', () => {

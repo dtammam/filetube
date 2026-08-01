@@ -220,6 +220,16 @@
                    `.watch-actions`/`.watch-action-btns` rules for the full
                    iOS shrink-to-fit regression story. -->
               <div class="watch-action-btns">
+                <!-- v1.63 playback queue (Dean rulings 3): both verbs, armed
+                     per media load by watch.js (inert until then, the
+                     download-btn posture). One shared verb helper
+                     (common.js addToQueue) - never a copied fetch. -->
+                <button type="button" class="btn" id="queue-add-btn" title="Add to queue" aria-label="Add to queue">
+                  <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M3 6h13v2H3V6zm0 4h13v2H3v-2zm0 4h9v2H3v-2zm14-1v6l5-3-5-3z" fill="currentColor"/></svg><span class="btn-label">Queue</span>
+                </button>
+                <button type="button" class="btn" id="queue-next-btn" title="Play next" aria-label="Play next">
+                  <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M4 5h2v14H4V5zm4 7 10-7v14L8 12z" fill="currentColor" transform="rotate(180 12 12)"/></svg><span class="btn-label">Next</span>
+                </button>
                 <!-- Download option (FR-3, v1.19.0): saves the ORIGINAL source
                      file to the device, via GET /video/:id?download=1 (server
                      sets Content-Disposition: attachment). href/download are
@@ -244,6 +254,12 @@
               </div>
             </div>
           </div>
+
+          <!-- v1.63: "Up next in queue" box (Dean ruling 5) - rendered by
+               watch.js when a queue is engaged; hidden otherwise. Sits in
+               the uploader block's slot, pushing it down (the YouTube
+               playlist-box treatment). -->
+          <div class="queue-upnext-box" id="queue-upnext-box" hidden></div>
 
           <!-- Uploader details -->
           <div class="uploader-info-panel">

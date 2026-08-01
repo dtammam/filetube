@@ -2581,6 +2581,399 @@ function injectNotificationBellIfEnabled() {
     .catch(() => { /* network failure -- fail closed, inject nothing */ });
 }
 
+// ---- v1.63: the playback queue (header icon + panel) ------------------------
+//
+// YouTube-style queue ("think YouTube" - Dean): a header icon that EXISTS
+// only while the user's queue does (ruling 4), left of the notification
+// bell, opening a notif-panel-style surface: now-playing highlighted,
+// per-row remove, up/down reorder (buttons work everywhere; desktop adds
+// drag), Clear with a two-tap confirm (toast ceremony, no modal - the
+// queue is ephemeral by spirit). Server-persisted per user (ruling 6) via
+// /api/queue; ALL semantics live server-side in lib/queue/store.js's
+// reducers - this chrome renders state and fires verbs, deciding nothing.
+//
+// Panel exclusivity with the bell comes free: both panels close on any
+// outside pointerdown, and each button is outside the other's panel.
+// dock() pair check (the v1.50.3 lesson): NOT applicable - that pair is
+// the PLAYER BAR's popups (reparented with the player); this panel is
+// body-mounted like the bell's and survives docking untouched.
+//
+// Pure decisions extracted for node:test (no DOM), the injector-file
+// division of labor.
+
+function shouldShowQueueButton(queue) {
+  return Boolean(queue && Array.isArray(queue.entries) && queue.entries.length > 0);
+}
+
+// Badge = TOTAL entries ("a queue of 8"), '' when empty (no bubble, and the
+// button itself hides), 20+ cap like the bell's.
+function formatQueueBadge(count) {
+  if (!Number.isInteger(count) || count <= 0) return '';
+  return count > 20 ? '20+' : String(count);
+}
+
+// Server entry ({uid, mediaId, item}) -> row model. Same fallback ladder as
+// the bell rows; `playing` drives the now-playing highlight; `played` dims
+// entries STRICTLY BEFORE the pointer - the pointer row itself is playing,
+// never played (ruling 6: played items stay, jump-back allowed).
+function buildQueueRowModel(entry, pointerUid) {
+  if (!entry || typeof entry.uid !== 'string' || entry.uid === '' || !entry.item) return null;
+  const item = entry.item;
+  const channelName = typeof item.channelName === 'string' ? item.channelName.trim() : '';
+  const folderName = typeof item.folderName === 'string' ? item.folderName.trim() : '';
+  return {
+    uid: entry.uid,
+    mediaId: entry.mediaId,
+    href: `/watch.html?v=${encodeURIComponent(entry.mediaId)}`,
+    title: typeof item.title === 'string' ? item.title : (typeof item.name === 'string' ? item.name : ''),
+    channelLabel: channelName || folderName || 'Library',
+    channelAvatarUrl: typeof item.channelAvatarUrl === 'string' ? item.channelAvatarUrl : '',
+    thumbnailUrl: item.hasThumbnail === true ? `/thumbnail/${entry.mediaId}` : null,
+    playing: Boolean(pointerUid) && entry.uid === pointerUid,
+    played: false, // position-relative; buildQueueRowModels owns it
+  };
+}
+
+// Annotate rows with played/playing in ONE ordered pass: rows strictly
+// BEFORE the pointer are `played` (dimmed, jump-back allowed - ruling 6);
+// the pointer row is `playing`; rows after are neither. No pointer = a
+// not-started queue: nothing played, nothing playing.
+function buildQueueRowModels(queue) {
+  const entries = (queue && Array.isArray(queue.entries)) ? queue.entries : [];
+  const pointerUid = (queue && typeof queue.pointerUid === 'string') ? queue.pointerUid : null;
+  const models = [];
+  // Gate S4: a DANGLING pointer (entry vanished) means not-started - dim
+  // nothing (mirrors normalize; unreachable via shapedQueue, closed anyway).
+  const pointerPresent = Boolean(pointerUid) && entries.some((e) => e && e.uid === pointerUid);
+  let beforePointer = pointerPresent;
+  for (const e of entries) {
+    const m = buildQueueRowModel(e, pointerUid);
+    if (m) {
+      if (m.playing) beforePointer = false;
+      m.played = beforePointer && !m.playing;
+      models.push(m);
+    } else if (e && e.uid === pointerUid) {
+      beforePointer = false; // a dropped (item-less) pointer row still ends the played span
+    }
+  }
+  return models;
+}
+
+// Ordinal for the add-toast ("Queued - 4th"). Pure, exported.
+function formatQueuePosition(n) {
+  if (!Number.isInteger(n) || n <= 0) return '';
+  const mod100 = n % 100;
+  if (mod100 >= 11 && mod100 <= 13) return `${n}th`;
+  const mod10 = n % 10;
+  return `${n}${mod10 === 1 ? 'st' : mod10 === 2 ? 'nd' : mod10 === 3 ? 'rd' : 'th'}`;
+}
+
+// THE one add-to-queue verb every affordance calls (cards, watch page,
+// music rows - the every-writer discipline: one helper, no copies).
+// position: 'end' (default) | 'next'. Toasts the outcome and refreshes the
+// header chrome; resolves with the server's shaped queue (or null on error
+// - callers needing more than the toast can inspect it).
+function addToQueue(mediaId, position) {
+  return fetch('/api/queue/items', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mediaId, position: position === 'next' ? 'next' : 'end' }),
+  })
+    .then((res) => (res.ok ? res.json() : res.json().catch(() => ({})).then((b) => Promise.reject(new Error(b.error || 'Could not add to queue')))))
+    .then((body) => {
+      const entries = body && body.queue && Array.isArray(body.queue.entries) ? body.queue.entries : [];
+      // Ruling 3's Undo: one tap deletes the just-added entry (uid-exact -
+      // safe against duplicates and later edits) and refreshes the chrome.
+      const undo = body && body.added ? {
+        label: 'Undo',
+        onAction: () => {
+          fetch(`/api/queue/items/${body.added.uid}`, { method: 'DELETE' })
+            .then(() => refreshQueueChrome())
+            .catch(() => { /* already gone / offline - the next read syncs */ });
+        },
+      } : undefined;
+      if (position === 'next') {
+        showToast('Playing next', undo);
+      } else {
+        const idx = body && body.added ? entries.findIndex((e) => e.uid === body.added.uid) : -1;
+        showToast(idx >= 0 ? `Queued - ${formatQueuePosition(idx + 1)}` : 'Added to queue', undo);
+      }
+      refreshQueueChrome();
+      return body ? body.queue : null;
+    })
+    .catch((err) => { showToast(err.message || 'Could not add to queue'); return null; });
+}
+
+function queueButtonAlreadyInjected() {
+  return Boolean(document.getElementById('queue-btn'));
+}
+
+// Module-scope refresh hook: card/watch add-to-queue actions call this after
+// a successful POST so the icon appears/updates without a reload. Bound to a
+// real implementation inside the injector.
+let refreshQueueChrome = () => {};
+
+function injectQueueChrome() {
+  if (typeof document === 'undefined' || typeof fetch === 'undefined') return;
+  if (queueButtonAlreadyInjected()) return;
+  const headerRight = document.querySelector('.header-right');
+  if (!headerRight) return; // shell without a header (login/welcome)
+
+  fetch('/api/queue')
+    .then((res) => (res.ok ? res.json() : null))
+    .then((queue) => {
+      if (!queue) return; // pre-auth / error: fail closed, inject nothing
+      if (queueButtonAlreadyInjected()) return; // async double-inject window
+
+      // ---- button + badge (createElement/textContent only) ---------------
+      const btn = document.createElement('button');
+      btn.id = 'queue-btn';
+      btn.className = 'queue-btn';
+      btn.setAttribute('aria-label', 'Playback queue');
+      btn.setAttribute('aria-haspopup', 'true');
+      btn.setAttribute('aria-expanded', 'false');
+      // Inline SVG like the bell (the era icon sets have no queue glyph):
+      // three list lines + a play triangle - YouTube's queue vocabulary.
+      const svgNs = 'http://www.w3.org/2000/svg';
+      const svg = document.createElementNS(svgNs, 'svg');
+      svg.setAttribute('viewBox', '0 0 24 24');
+      svg.setAttribute('width', '22');
+      svg.setAttribute('height', '22');
+      svg.setAttribute('aria-hidden', 'true');
+      const glyph = document.createElementNS(svgNs, 'path');
+      glyph.setAttribute('d', 'M3 6h13v2H3V6zm0 4h13v2H3v-2zm0 4h9v2H3v-2zm14-1v6l5-3-5-3z');
+      glyph.setAttribute('fill', 'currentColor');
+      svg.appendChild(glyph);
+      btn.appendChild(svg);
+      const badge = document.createElement('span');
+      badge.id = 'queue-btn-badge';
+      badge.className = 'queue-btn-badge';
+      badge.hidden = true;
+      btn.appendChild(badge);
+      // Beside the bell (ruling 4). Both injectors are async fetch-then-
+      // insert, so arrival ORDER races: insert directly before the bell
+      // when it already landed, else at firstChild - either race outcome
+      // leaves the two adjacent in the header's left cluster.
+      headerRight.insertBefore(btn, document.getElementById('notif-bell-btn') || headerRight.firstChild);
+
+      // ---- panel + (mobile) backdrop, body-mounted like the bell's --------
+      const backdrop = document.createElement('div');
+      backdrop.id = 'queue-panel-backdrop';
+      backdrop.className = 'queue-panel-backdrop';
+      backdrop.hidden = true;
+      const panel = document.createElement('div');
+      panel.id = 'queue-panel';
+      panel.className = 'queue-panel';
+      panel.hidden = true;
+      panel.setAttribute('role', 'dialog');
+      panel.setAttribute('aria-label', 'Playback queue');
+      const head = document.createElement('div');
+      head.className = 'queue-panel-header';
+      const heading = document.createElement('span');
+      heading.id = 'queue-panel-heading';
+      heading.textContent = 'Queue';
+      const clearBtn = document.createElement('button');
+      clearBtn.id = 'queue-clear-btn';
+      clearBtn.className = 'queue-clear-btn';
+      clearBtn.textContent = 'Clear queue';
+      head.appendChild(heading);
+      head.appendChild(clearBtn);
+      panel.appendChild(head);
+      const list = document.createElement('div');
+      list.id = 'queue-panel-list';
+      list.className = 'queue-panel-list';
+      panel.appendChild(list);
+      document.body.appendChild(backdrop);
+      document.body.appendChild(panel);
+
+      const setChrome = (q) => {
+        const count = Array.isArray(q.entries) ? q.entries.length : 0;
+        const label = formatQueueBadge(count);
+        badge.textContent = label;
+        badge.hidden = label === '';
+        btn.hidden = !shouldShowQueueButton(q);
+        heading.textContent = count > 0 ? `Queue - ${count} item${count === 1 ? '' : 's'}` : 'Queue';
+        if (btn.hidden && !panel.hidden) closePanel();
+      };
+      setChrome(queue);
+
+      const verb = (url, opts) => fetch(url, opts)
+        .then((res) => (res.ok ? res.json() : Promise.reject(new Error('queue-verb-failed'))))
+        .then((body) => {
+          if (body && body.queue) { setChrome(body.queue); if (!panel.hidden) renderRows(body.queue); }
+          return body;
+        });
+
+      const renderEmpty = (text) => {
+        list.textContent = '';
+        const empty = document.createElement('div');
+        empty.className = 'queue-empty';
+        empty.textContent = text;
+        list.appendChild(empty);
+      };
+
+      const renderRows = (q) => {
+        list.textContent = '';
+        const models = buildQueueRowModels(q);
+        if (models.length === 0) { renderEmpty('Queue is empty.'); return; }
+        const uids = models.map((m) => m.uid);
+        models.forEach((m, idx) => {
+          const row = document.createElement('div');
+          row.className = 'queue-row' + (m.playing ? ' queue-row-playing' : '') + (m.played ? ' queue-row-played' : '');
+          row.setAttribute('data-uid', m.uid);
+          // Reorder: up/down buttons (work on every input device; drag is a
+          // desktop nicety a later pass may add - disclosed in the plan).
+          const orderBox = document.createElement('span');
+          orderBox.className = 'queue-row-order';
+          const mkMove = (dir, label) => {
+            const b = document.createElement('button');
+            b.className = 'queue-row-move';
+            b.setAttribute('aria-label', label);
+            b.textContent = dir < 0 ? '▴' : '▾';
+            const target = idx + dir;
+            b.disabled = target < 0 || target >= uids.length;
+            b.addEventListener('click', (e) => {
+              e.stopPropagation();
+              const order = uids.slice();
+              const tmp = order[idx]; order[idx] = order[target]; order[target] = tmp;
+              verb('/api/queue/reorder', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ orderedUids: order }),
+              }).catch(() => refreshQueueChrome()); // 409 stale -> resync
+            });
+            return b;
+          };
+          orderBox.appendChild(mkMove(-1, 'Move up'));
+          orderBox.appendChild(mkMove(1, 'Move down'));
+          row.appendChild(orderBox);
+          const link = document.createElement('a');
+          link.className = 'queue-row-main';
+          link.href = m.href;
+          if (m.thumbnailUrl) {
+            const thumb = document.createElement('img');
+            thumb.className = 'queue-row-thumb';
+            thumb.src = m.thumbnailUrl;
+            thumb.alt = '';
+            thumb.loading = 'lazy';
+            link.appendChild(thumb);
+          }
+          const text = document.createElement('span');
+          text.className = 'queue-row-text';
+          const title = document.createElement('span');
+          title.className = 'queue-row-title';
+          title.textContent = m.title;
+          const channel = document.createElement('span');
+          channel.className = 'queue-row-channel';
+          channel.textContent = m.playing ? `Now playing - ${m.channelLabel}` : m.channelLabel;
+          text.appendChild(title);
+          text.appendChild(channel);
+          link.appendChild(text);
+          link.addEventListener('click', () => {
+            // Tapping a row makes it now-playing (server pointer) and rides
+            // the normal watch nav with a paint seed (the bell-row posture).
+            stashWatchSeed({
+              id: m.mediaId, title: m.title,
+              channelName: m.channelLabel === 'Library' ? '' : m.channelLabel,
+              channelAvatarUrl: m.channelAvatarUrl,
+              hasThumbnail: Boolean(m.thumbnailUrl),
+            });
+            fetch('/api/queue/pointer', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ uid: m.uid }), keepalive: true,
+            }).catch(() => { /* pointer re-syncs on next open */ });
+            closePanel();
+          });
+          row.appendChild(link);
+          const remove = document.createElement('button');
+          remove.className = 'queue-row-remove';
+          remove.setAttribute('aria-label', 'Remove from queue');
+          remove.textContent = '×';
+          remove.addEventListener('click', (e) => {
+            e.stopPropagation();
+            verb(`/api/queue/items/${m.uid}`, { method: 'DELETE' }).catch(() => refreshQueueChrome());
+          });
+          row.appendChild(remove);
+          list.appendChild(row);
+        });
+      };
+
+      const openPanel = () => {
+        if (!panel.hidden) return;
+        btn.setAttribute('aria-expanded', 'true');
+        openOverlay(backdrop, 'queue-open');
+        openOverlay(panel, 'queue-open');
+        renderEmpty('Loading…');
+        fetch('/api/queue')
+          .then((res) => (res.ok ? res.json() : Promise.reject(new Error('unavailable'))))
+          .then((q) => { setChrome(q); renderRows(q); })
+          .catch(() => renderEmpty('Could not load the queue.'));
+      };
+      const closePanel = () => {
+        if (panel.hidden) return;
+        btn.setAttribute('aria-expanded', 'false');
+        resetClearArm();
+        closeOverlayThen(backdrop, 'queue-open', () => { backdrop.hidden = true; });
+        closeOverlayThen(panel, 'queue-open', () => { panel.hidden = true; });
+      };
+
+      btn.addEventListener('click', () => {
+        if (panel.hidden) openPanel();
+        else closePanel();
+      });
+
+      // Clear = two-tap confirm in the button itself (toast ceremony, no
+      // modal - ruling 4). The armed state disarms on close or after 3s.
+      let clearArmTimer = null;
+      const resetClearArm = () => {
+        if (clearArmTimer) { clearTimeout(clearArmTimer); clearArmTimer = null; }
+        clearBtn.textContent = 'Clear queue';
+        clearBtn.classList.remove('queue-clear-armed');
+      };
+      clearBtn.addEventListener('click', () => {
+        if (!clearBtn.classList.contains('queue-clear-armed')) {
+          clearBtn.textContent = 'Really clear?';
+          clearBtn.classList.add('queue-clear-armed');
+          clearArmTimer = setTimeout(resetClearArm, 3000);
+          return;
+        }
+        resetClearArm();
+        verb('/api/queue', { method: 'DELETE' })
+          .then(() => { showToast('Queue cleared'); closePanel(); })
+          .catch(() => showToast('Could not clear the queue'));
+      });
+      backdrop.addEventListener('click', closePanel);
+
+      // Outside-close (click + pointerdown + touchstart - the bell's iOS
+      // posture) + capture-phase Escape.
+      const closeOnOutside = (e) => {
+        if (panel.hidden) return;
+        if (panel.contains(e.target) || btn.contains(e.target)) return;
+        closePanel();
+      };
+      document.addEventListener('click', closeOnOutside);
+      document.addEventListener('pointerdown', closeOnOutside);
+      document.addEventListener('touchstart', closeOnOutside, { passive: true });
+      document.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape' || panel.hidden) return;
+        e.stopImmediatePropagation();
+        closePanel();
+      }, true);
+
+      // The refresh hook: add-to-queue actions + tab-return resync (no
+      // standing poller - queue edits are user-initiated; cross-device drift
+      // heals on the next action or tab return, disclosed in the plan).
+      refreshQueueChrome = () => {
+        fetch('/api/queue')
+          .then((res) => (res.ok ? res.json() : null))
+          .then((q) => { if (q) { setChrome(q); if (!panel.hidden) renderRows(q); } })
+          .catch(() => { /* next action re-syncs */ });
+      };
+      const resync = () => { if (!document.hidden) refreshQueueChrome(); };
+      document.addEventListener('visibilitychange', resync);
+      window.addEventListener('pageshow', resync);
+    })
+    .catch(() => { /* network failure - fail closed, inject nothing */ });
+}
+
 // ---- v1.37.0 books nav-link injection (the D4 posture, books-gated) --------
 //
 // The Books link exists only when the operator has configured >=1 book
@@ -6911,21 +7304,39 @@ function deleteResultToast(data) {
   return 'File deleted.';
 }
 
-function showToast(msg) {
+function showToast(msg, action) {
   if (typeof document === 'undefined') return;
   const toast = document.createElement('div');
   toast.className = 'toast';
   toast.textContent = msg;
+  // v1.63 (gate: Dean's ruling 3 promised an Undo on the add toast): an
+  // optional single action button - {label, onAction}. Tapping it runs the
+  // action once and dismisses immediately; the auto-dismiss window widens
+  // to give the tap a real chance. createElement/textContent only.
+  let dismissed = false;
+  const dismiss = () => {
+    if (dismissed) return;
+    dismissed = true;
+    toast.classList.remove('toast-visible');
+    setTimeout(() => toast.remove(), 300); // let the fade-out finish first
+  };
+  if (action && typeof action.onAction === 'function' && typeof action.label === 'string') {
+    const btn = document.createElement('button');
+    btn.className = 'toast-action-btn';
+    btn.textContent = action.label;
+    btn.addEventListener('click', () => {
+      dismiss();
+      action.onAction();
+    }, { once: true });
+    toast.appendChild(btn);
+  }
   document.body.appendChild(toast);
   // Next frame so the initial (opacity:0) state is committed before adding
   // .toast-visible -- guarantees the fade-in actually transitions instead of
   // snapping straight to visible.
   const raf = typeof requestAnimationFrame === 'function' ? requestAnimationFrame : (fn) => setTimeout(fn, 0);
   raf(() => toast.classList.add('toast-visible'));
-  setTimeout(() => {
-    toast.classList.remove('toast-visible');
-    setTimeout(() => toast.remove(), 300); // let the fade-out finish first
-  }, 2500);
+  setTimeout(dismiss, action ? 5000 : 2500);
 }
 
 // v1.17.0 FR-3(b): pure arm/disarm reducer for the home/library card
@@ -8542,6 +8953,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // v1.51: the notification bell (top-right, every shared-header shell),
   // gated by its own capability probe exactly like the injections above.
   injectNotificationBellIfEnabled();
+  injectQueueChrome(); // v1.63: after the bell so insertBefore lands LEFT of it
 
   // v1.32 (Dean, "white-label"): swap the text logo for the user-uploaded
   // image when one is configured -- runs on every page (shared header).
@@ -8607,6 +9019,9 @@ document.addEventListener('DOMContentLoaded', () => {
 // `module` is undefined there).
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
+    // v1.63 playback queue: the chrome's pure decisions.
+    shouldShowQueueButton, formatQueueBadge, buildQueueRowModel, buildQueueRowModels,
+    formatQueuePosition,
     // v1.31 P5 (FR5): repull-ack formatter.
     formatRepullAckText,
     // v1.32 (gate fix): the chip's one-line breaker summary.

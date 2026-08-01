@@ -1238,6 +1238,14 @@ if (typeof module !== 'undefined' && module.exports) {
         downloadBtn.setAttribute('download', `${item.title || 'download'}${item.ext || ''}`);
       }
 
+      // v1.63 playback queue: arm both verbs with THIS load's id. Direct
+      // onclick (not addEventListener) so a re-arm on the next SPA load
+      // REPLACES the handler - the accumulate-listeners leak class.
+      const queueAddBtn = root.querySelector('#queue-add-btn');
+      const queueNextBtn = root.querySelector('#queue-next-btn');
+      if (queueAddBtn) queueAddBtn.onclick = () => addToQueue(plan.id, 'end');
+      if (queueNextBtn) queueNextBtn.onclick = () => addToQueue(plan.id, 'next');
+
       if (plan.isFullItem) {
         renderVideoDescription(item.tags, item.title);
         renderEmbeddedTags(item.tags, item.title);
@@ -1402,6 +1410,39 @@ if (typeof module !== 'undefined' && module.exports) {
     // already makes several small independent fetches per visit (config,
     // media, related, comments), so a second small fetch here is consistent
     // with the existing style rather than a new pattern.
+    // v1.63 (Dean ruling 5): the "playing from queue" box, rendered in the
+    // uploader block's slot (watch.html #queue-upnext-box) ONLY while this
+    // very item is the queue's pointer entry - browsing to an unrelated
+    // video leaves the box hidden even with a queue banked. createElement/
+    // textContent only. Re-rendered per load by setupPrevNext (which has
+    // the queue payload in hand).
+    function renderQueueUpNextBox(q, currentMediaId) {
+      const box = root.querySelector('#queue-upnext-box');
+      if (!box) return;
+      box.hidden = true;
+      box.textContent = '';
+      const entries = q && Array.isArray(q.entries) ? q.entries : [];
+      const pointerUid = q && typeof q.pointerUid === 'string' ? q.pointerUid : null;
+      if (!pointerUid || entries.length === 0) return;
+      const idx = entries.findIndex((e) => e && e.uid === pointerUid);
+      if (idx === -1 || !entries[idx] || entries[idx].mediaId !== currentMediaId) return;
+      const label = document.createElement('span');
+      label.className = 'queue-upnext-label';
+      label.textContent = `Playing from queue - ${idx + 1}/${entries.length}`;
+      box.appendChild(label);
+      const next = entries[idx + 1] || null;
+      const nextLine = document.createElement(next && next.item ? 'a' : 'span');
+      nextLine.className = 'queue-upnext-next';
+      if (next && next.item) {
+        nextLine.href = `/watch.html?v=${encodeURIComponent(next.mediaId)}`;
+        nextLine.textContent = `Up next: ${next.item.title || next.item.name || ''}`;
+      } else {
+        nextLine.textContent = 'Last in queue';
+      }
+      box.appendChild(nextLine);
+      box.hidden = false;
+    }
+
     async function setupPrevNext() {
       if (!prevBtn || !nextBtn) return;
       try {
@@ -1471,11 +1512,57 @@ if (typeof module !== 'undefined' && module.exports) {
         }
         const { prevId, nextId } = computeNeighbors(orderedIds, mediaId);
 
-        prevBtn.disabled = !prevId;
-        nextBtn.disabled = !nextId;
+        // v1.63 (Dean ruling 2, RESTRUCTURED at the gate - adversarial
+        // CRITICAL-1): the queue OWNS up-next, but the context wiring must
+        // arm IMMEDIATELY - the first cut awaited /api/queue before
+        // enabling the buttons, so a HUNG queue response (not just a
+        // rejected one) left Prev/Next dead and media keys unregistered
+        // forever, and the integration tier caught it red. Now: context
+        // handlers arm the moment the folder list resolves (byte-identical
+        // to pre-wave), and the queue fetch UPGRADES the mutable effective
+        // handlers when (if ever) it resolves - the same closures feed the
+        // buttons and setTrackNav, so every surface upgrades together.
+        const goQueueEntry = (entry) => {
+          // Pointer moves server-side (fire-and-forget - the next queue
+          // read re-syncs on failure), seed stashes, normal watch nav.
+          fetch('/api/queue/pointer', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ uid: entry.uid }), keepalive: true,
+          }).catch(() => {});
+          if (entry.item && window.FileTube && typeof window.FileTube.stashWatchSeed === 'function') {
+            window.FileTube.stashWatchSeed(entry.item);
+          }
+          // RAW id: navigateToWatch IS the one encoding layer (gate NEW-1 -
+          // the fix round double-encoded here and broke the function's
+          // argument contract vs its context-path caller).
+          navigateToWatch(entry.mediaId);
+        };
+        let effNext = nextId ? () => navigateToWatch(nextId) : null;
+        let effPrev = prevId ? () => navigateToWatch(prevId) : null;
 
-        if (prevId) prevBtn.addEventListener('click', () => navigateToWatch(prevId), { signal });
-        if (nextId) nextBtn.addEventListener('click', () => navigateToWatch(nextId), { signal });
+        prevBtn.disabled = !effPrev;
+        nextBtn.disabled = !effNext;
+        // ONE stable listener per button reading the mutable ref - the
+        // queue upgrade swaps the ref, never re-registers.
+        prevBtn.addEventListener('click', () => { if (effPrev) effPrev(); }, { signal });
+        nextBtn.addEventListener('click', () => { if (effNext) effNext(); }, { signal });
+
+        fetch('/api/queue')
+          .then((res) => (res.ok ? res.json() : null))
+          .then((q) => {
+            if (!q || signal.aborted) return; // late resolve from a departed view (the v1.41.11 staleness truth)
+            const queueNextEntry = computeQueueNext(q);
+            const queuePrevEntry = computeQueuePrev(q);
+            if (queueNextEntry) effNext = () => goQueueEntry(queueNextEntry);
+            if (queuePrevEntry) effPrev = () => goQueueEntry(queuePrevEntry);
+            prevBtn.disabled = !effPrev;
+            nextBtn.disabled = !effNext;
+            renderQueueUpNextBox(q, mediaId);
+            // Re-register trackNav so per-direction MediaSession availability
+            // tracks the upgraded handlers (same seam, same staleness guard).
+            registerTrackNav();
+          })
+          .catch(() => { /* queue unreachable - context behavior stands, buttons already live */ });
 
         // v1.41.11 (Dean: "play/pause works on my keyboard, but others
         // don't"): register the SAME context-aware neighbors with the
@@ -1497,13 +1584,21 @@ if (typeof module !== 'undefined' && module.exports) {
         // always sees aborted=true here and registers nothing. (read.js's
         // own registration is synchronous and never needed this.)
         if (signal.aborted) return;
-        if (window.FileTube && window.FileTube.player
-            && typeof window.FileTube.player.setTrackNav === 'function' && (prevId || nextId)) {
-          window.FileTube.player.setTrackNav({
-            onPrev: prevId ? () => navigateToWatch(prevId) : undefined,
-            onNext: nextId ? () => navigateToWatch(nextId) : undefined,
-          });
+        // v1.63: ONE registration function, called immediately with the
+        // context handlers and again on the queue upgrade - the buttons and
+        // this seam read the same mutable effPrev/effNext, so on-page Next,
+        // media keys, and the lock screen can never disagree.
+        function registerTrackNav() {
+          if (signal.aborted) return;
+          if (window.FileTube && window.FileTube.player
+              && typeof window.FileTube.player.setTrackNav === 'function' && (effPrev || effNext)) {
+            window.FileTube.player.setTrackNav({
+              onPrev: effPrev ? () => { if (effPrev) effPrev(); } : undefined,
+              onNext: effNext ? () => { if (effNext) effNext(); } : undefined,
+            });
+          }
         }
+        registerTrackNav();
       } catch (e) {
         console.error('Error deriving prev/next order:', e);
         prevBtn.disabled = true;
