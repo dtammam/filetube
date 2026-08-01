@@ -1891,6 +1891,8 @@ function activeNavItem(pathname, search) {
   if (pathname === '/books' || pathname === '/books.html' || pathname === '/read.html') return 'books';
   // v1.44 music: same posture (link injected only when >=1 music folder set).
   if (pathname === '/music' || pathname === '/music.html') return 'music';
+  // v1.64 history (count-gated entry, the Liked rule).
+  if (pathname === '/history' || pathname === '/history.html') return 'history';
   if (pathname === '/' || pathname === '/index.html') return 'home';
   return null;
 }
@@ -4122,6 +4124,8 @@ function deriveRouteView(pathname) {
   // v1.44 music: same unconditional-mapping posture -- the Music nav link is
   // only injected when >=1 music folder is configured.
   if (pathname === '/music' || pathname === '/music.html') return 'music';
+  // v1.64 history: same posture (the entry is count-gated like Liked).
+  if (pathname === '/history' || pathname === '/history.html') return 'history';
   return null;
 }
 
@@ -5213,7 +5217,7 @@ if (typeof window !== 'undefined') {
     const sidebar = document.getElementById('sidebar');
     if (sidebar) {
       sidebar.querySelectorAll('.sidebar-item.active').forEach((el) => el.classList.remove('active'));
-      const hrefByNavKey = { home: '/', settings: '/setup.html', subscriptions: '/subscriptions', books: '/books', music: '/music' };
+      const hrefByNavKey = { home: '/', settings: '/setup.html', subscriptions: '/subscriptions', books: '/books', music: '/music', history: '/history' };
       const href = key ? hrefByNavKey[key] : null;
       const match = href && sidebar.querySelector('a.sidebar-item[href="' + href + '"]');
       if (match) match.classList.add('active');
@@ -5258,6 +5262,7 @@ if (typeof window !== 'undefined') {
     books: '/js/books.js',
     read: '/js/read.js',
     music: '/js/music.js',
+    history: '/js/history.js',
   };
 
   function ensureViewScriptLoaded(view) {

@@ -5496,11 +5496,12 @@ function dropPendingProgressForUser(userId) {
 // this is always current, needs no bootstrap, and depends on nothing
 // client-side. Only full-page loads/refreshes hit this; in-app SPA nav keeps
 // the header, so there is no FOUC there to fix.
-const FOUC_SHELL_FILES = new Set(['index.html', 'watch.html', 'stats.html', 'setup.html', 'read.html', 'books.html', 'music.html', 'login.html', 'welcome.html']);
+const FOUC_SHELL_FILES = new Set(['index.html', 'watch.html', 'stats.html', 'setup.html', 'read.html', 'books.html', 'music.html', 'history.html', 'login.html', 'welcome.html']);
 function shellHtmlForRequestPath(p) {
   if (p === '/' || p === '/index.html') return 'index.html';
   if (p === '/books' || p === '/books.html') return 'books.html';
   if (p === '/music' || p === '/music.html') return 'music.html';
+  if (p === '/history' || p === '/history.html') return 'history.html';
   // v1.43 auth: the pretty routes /login and /welcome serve their shells (the
   // gate above lets them through the allowlist; here they get the same
   // custom-logo/no-cache treatment as every other shell).
