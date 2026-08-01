@@ -6836,12 +6836,15 @@ function showHardDeleteModal(item, onConfirm, doc) {
 
   const title = d.createElement('div');
   title.className = 'hard-delete-modal-title';
-  title.textContent = 'Permanently delete this local file?';
+  // v1.65: deletes route through TRASH now -- the copy tells the truth
+  // (recoverable for the retention window) while keeping the guard posture
+  // for a file that cannot be re-downloaded if it ages out.
+  title.textContent = 'Move this local file to Trash?';
   modal.appendChild(title);
 
   const warning = d.createElement('div');
   warning.className = 'hard-delete-modal-warning';
-  warning.textContent = 'This is a local file and cannot be recovered or re-downloaded once deleted.';
+  warning.textContent = 'This local file cannot be re-downloaded. It moves to Trash and can be restored from Library settings until the retention window empties it.';
   modal.appendChild(warning);
 
   const nameEl = d.createElement('div');
@@ -6860,7 +6863,7 @@ function showHardDeleteModal(item, onConfirm, doc) {
   checkbox.type = 'checkbox';
   checkbox.checked = false;
   checkboxLabel.appendChild(checkbox);
-  checkboxLabel.appendChild(d.createTextNode(' I understand this file cannot be recovered.'));
+  checkboxLabel.appendChild(d.createTextNode(' I understand it cannot be re-downloaded if the Trash empties it.'));
   modal.appendChild(checkboxLabel);
 
   const actionsRow = d.createElement('div');

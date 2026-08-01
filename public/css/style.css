@@ -8860,3 +8860,47 @@ a.queue-upnext-next:hover {
   .history-thumb { width: 160px; }
   .history-title { font-size: var(--fs-base); }
 }
+
+/* ---- v1.65 trash (Library settings section) -------------------------------- */
+.trash-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  margin-top: var(--space-6);
+}
+.trash-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+}
+.trash-thumb {
+  width: 84px;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: var(--radius);
+  background-color: var(--bg-secondary);
+  flex: 0 0 auto;
+}
+.trash-info {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.trash-title {
+  color: var(--text-primary);
+  font-size: var(--fs-md);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.trash-meta {
+  color: var(--text-secondary);
+  font-size: var(--fs-sm);
+}
+.trash-purge-confirm { display: none; }
+.trash-purge-btn.trash-confirming .trash-purge-label { display: none; }
+.trash-purge-btn.trash-confirming .trash-purge-confirm { display: inline; }
+.trash-purge-btn.trash-confirming { color: var(--yt-red); }
+.trash-empty {
+  color: var(--text-secondary);
+  padding: var(--space-6) 0;
+}
