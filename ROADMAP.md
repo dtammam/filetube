@@ -80,6 +80,14 @@
 
 ## Shipped
 
+### v1.62.0 - The ratchet is live: the token system defends itself now (2026-08-01)
+
+The token effort's final tranche (G). Linter v8.1 closes the #68 blind spot - declarations spanning physical lines (six real sites hid there through eight linter versions) now buffer, evaluate complete, attribute to their start line, and honor token-exempt across every code line they span - and `--enforce` turns the census's ZERO from a report into a wall: any raw literal in a governed style property now FAILS the commit (pre-commit hook) and the build (CI), pointing at CONTRIBUTING's mandatory styling section. Before any zero may pass, a ten-category known-violation self-canary must fire - a broken linter exits loud (the vacuous-CLEAN failure mode the census-zero gate proved in ledger-check, closed at the enforcement layer). Also: docs/AGENTS.md deleted per Dean's explicit ruling - the last pipeline-era file, whose HUMAN-MAINTAINED banner had reserved the call to him.
+
+**What the gate caught (both seats REQUEST CHANGES round 1 -> double-APPROVE):** the first canary covered four of ten categories - the adversarial seat broke a single regex and smuggled live literals past an exit-0 "enforcement" end-to-end; both seats independently found the EOF fail-open (v8.0 silently dropped an unterminated final declaration that browsers render and v7 counted); and both seats refuted my "the failure exits cannot be tested without mutating the tree" comment by driving both exits from hermetic scratch trees - that technique is now IN the suite, binding exit 1, exit 2, and the single-category-breakage case with anti-vacuity asserts. Disclosed residuals: a merged-line attribution imprecision after a buffered close-brace (diagnostics-only, commented) and one attribution-fix mutant with no binding (adversarial, non-blocking, recorded).
+
+**The token effort, end to end:** 692 raw literals at the v1.56 audit -> 298 -> 110 -> 54 -> 19 -> 0 (v1.61.0) -> ENFORCED at 0 (this release). Every literal that remains is a token, a recognized idiom, or a reasoned exemption - and the linter that guards it is the most-tested code in the repo. Dual-Node of record, sequential: 5327/5327 on v22.23.1 AND v24.14.0. On-device probe: none - dev-tooling only; nothing renders differently.
+
 ### v1.61.0 - The census is zero (2026-08-01)
 
 Dean closed ruling 1 ("I approve Both") and the number the token effort has chased since the 692-literal audit reads ZERO: --on-accent:#fff joins the contract as the 48th name and the final 19 sites adopt - 14 white-on-accent color sites, the autoplay knob, the two JS generated-avatar writers, plus two honest reclassifications to the EXISTING --on-overlay (.audio-player-visual canvas text and the eq bars - overlay chrome, not accent; same value, disclosed at execution). Zero visual delta: the differ reports exactly three white-vs-#ffffff keyword-textual pairs and nothing else. Baseline history: 692 -> 298 -> 110 -> 54 -> 19 -> 0.
