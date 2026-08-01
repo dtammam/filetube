@@ -18,8 +18,8 @@ else
   echo "⚠ Not a git repo — skipping hooks configuration"
 fi
 
-# Ensure scripts are executable
-chmod +x scripts/*.sh 2>/dev/null && echo "✓ Scripts marked executable" || true
+# Ensure hooks are executable (scripts/ is all .js now - the .sh chmod
+# was dead code after the 2026-08-01 cleanup, gate S2)
 chmod +x hooks/* 2>/dev/null && echo "✓ Git hooks marked executable" || true
 chmod +x .claude/hooks/*.sh 2>/dev/null && echo "✓ Claude hooks marked executable" || true
 

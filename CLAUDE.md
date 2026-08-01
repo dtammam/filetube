@@ -89,6 +89,17 @@ instances via SendMessage.
 
 Slim gate = the adversarial seat alone, same rules.
 
+Registry timing: new or edited agent definitions take effect for NEW
+spawns once the registry refreshes (mid-session at the earliest, next
+session start at the latest); a RUNNING instance's tools and prompt are
+fixed at spawn. In the session that edits a definition, brief the
+discipline inline if the type does not resolve yet - measured, not
+assumed, 2026-08-01.
+
+The quality-gated commit commands `/commit-only` and `/commit-and-push`
+(`.claude/commands/`) are the surviving harness commands and remain in
+use.
+
 Expect the gate to find real things in your work. That is it working,
 not failing.
 
@@ -120,6 +131,7 @@ not failing.
 | Active exec plans / tech debt | `docs/exec-plans/active/`, `docs/exec-plans/tech-debt-tracker.md` |
 | System architecture / coding standards (incl. the MANDATORY design-token rules) | `docs/ARCHITECTURE.md`, `docs/CONTRIBUTING.md` |
 | Release/Docker tagging mechanics | `docs/RELEASING.md` |
+| Reliability/operational hardening reference | `docs/RELIABILITY.md` |
 | The retired 2025 multi-agent pipeline this repo was seeded with (archive only - never route work through it) | `docs/references/legacy-agent-pipeline.md` |
 
 ## Environment
@@ -132,7 +144,7 @@ not failing.
 
 ## Project configuration
 
-- **Language/framework:** JavaScript (Node.js 22 LTS; `engines` >=20) / Express 4
+- **Language/framework:** JavaScript (Node.js 22 LTS; `engines` >=22.13.0 - node:sqlite needs it) / Express 4
 - **Build command:** `npm ci` (installs dependencies; no compile step - interpreted app)
 - **Test command:** `npm test` (unit + integration via `node:test`); `npm run test:unit` for the fast subset
 - **Lint command:** `npm run lint` (ESLint); `npm run lint:css` (the design-token census); `npm run ledger:check` (census ledger binding)

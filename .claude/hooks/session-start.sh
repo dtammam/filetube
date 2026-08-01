@@ -33,10 +33,11 @@ if [ -n "$PLANS" ]; then
   echo "$PLANS" | sed 's/^/  - /'
 fi
 echo "Tech debt items: $DEBT_COUNT"
-# Unfilled placeholder detection
+# Unfilled placeholder detection (the /seed auto-configure command was
+# deleted in the 2026-08-01 harness cleanup - placeholders are filled by
+# hand when this harness seeds a new repo)
 CLAUDE_MD="$ROOT/CLAUDE.md"
 if [ -f "$CLAUDE_MD" ] && grep -q '{{' "$CLAUDE_MD" 2>/dev/null; then
-  echo "Unfilled placeholders detected in CLAUDE.md."
-  echo "Run /seed to auto-configure your project."
+  echo "Unfilled {{placeholders}} detected in CLAUDE.md - fill them in before working."
 fi
 echo "======================"

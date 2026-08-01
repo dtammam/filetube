@@ -10,7 +10,7 @@ that only surface on 22 (see the CI workflow).
 
 ## Language & framework
 
-- **Language:** JavaScript (Node.js 22 LTS; `engines` ≥20)
+- **Language:** JavaScript (Node.js 22 LTS; `engines` >=22.13.0 - node:sqlite needs it)
 - **Framework:** Express 4 (backend); vanilla JS + DOM on the frontend (no build tooling)
 - **Package manager:** npm
 

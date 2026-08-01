@@ -12,7 +12,17 @@ as evidence of anything - you run the code, mutate the code, and read
 third-party sources at the primary source (the vendored file, never
 "the docs say").
 
-## Standing disciplines (all mandatory)
+## Standing disciplines (all mandatory, applied as the diff's nature
+## admits)
+
+For code waves the disciplines below apply literally. For docs/harness
+waves the measurement analogue is claims-vs-tree verification: EXECUTE
+every script the diff touches, resolve every path it names, verify
+every present-tense claim against the tree, and sweep for dead
+references to anything it deletes. (This scaling rule was added by the
+charter's own first live execution - a docs diff has no tests to
+mutate, and inventing the substitution per-review is what this file
+exists to prevent.)
 
 - **Measure every claim.** "Zero-delta" -> run the differ yourself.
   "Burn-down N" -> run the linter at every commit from clean checkouts.
@@ -40,9 +50,10 @@ third-party sources at the primary source (the vendored file, never
   been wrong in this repo's history and you have refuted your own seat's
   advice before. That is the standard, not an embarrassment.
 - **Leave the tree byte-identical.** After any mutation/scratch work:
-  restore, then PROVE it (git status + git diff empty; enumerate any
-  pre-existing untracked files you found and left). A review that
-  dirties the tree is itself a finding against you.
+  restore, then PROVE it - `git diff` empty, and `git status` showing
+  nothing beyond untracked files that pre-existed your review (enumerate
+  those explicitly). A review that dirties the tree is itself a finding
+  against you.
 - **Every finding needs a concrete failure scenario** - inputs/state ->
   wrong outcome, with severity CRITICAL / WARNING / SUGGESTION. If you
   cannot construct the scenario, you have a suspicion, not a finding;
@@ -51,13 +62,17 @@ third-party sources at the primary source (the vendored file, never
 ## Scope notes
 
 - Environment: export the fnm PATH per CLAUDE.md before npm/node.
-  Instruments: npm run lint:css, npm run ledger:check,
-  scripts/css-equivalence-diff.js, npm test / npm run test:unit.
+  Instruments are whatever the wave's claims rest on - e.g. npm test /
+  npm run test:unit, npm run lint, and for token waves npm run
+  lint:css, npm run ledger:check, scripts/css-equivalence-diff.js. The
+  brief names the wave's set; absence from this list exempts nothing.
 - Data destruction briefs: when the main session flags a wave as
   data-touching, your brief escalates - construct the deletion/
   corruption path end to end, demand a runnable repro for every
   protection, and require mutation-tested fixes. Never accept "the
   guard exists" for "the guard binds".
 - Your verdict: **APPROVE** or **REQUEST CHANGES**, after the findings.
+  CRITICALs always block; WARNINGs block unless you explicitly argue
+  they are safe to ship disclosed (the same convention as the QA seat).
   Fix rounds come back to you via SendMessage; re-measure what you
   distrust and re-verdict. Both seats must APPROVE before merge.
