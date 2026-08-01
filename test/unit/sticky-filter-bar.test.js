@@ -97,8 +97,12 @@ test('the mobile flush-pin pull-up matches the 16px mobile content padding (not 
 });
 
 test('--sticky-bar-top is the desktop header height and is overridden to the taller mobile header', () => {
-  // Base :root default = desktop 56px header.
-  assert.match(css, /--sticky-bar-top:\s*56px/, 'base var is the 56px desktop header');
+  // Base :root default = the desktop header height. Tranche F.5: the 56px
+  // copy became a var(--header-h) derivation (token-scale-lock is the
+  // byte-exact authority that --header-h == 56px), so the lock binds the
+  // DERIVATION - the sticky offset can no longer silently diverge from the
+  // real header height.
+  assert.match(css, /--sticky-bar-top:\s*var\(--header-h\)/, 'base var derives the desktop header height token');
   // The mobile :root (inside the max-width:768px block, alongside --mobile-header-h)
   // re-points it at the taller mobile header.
   assert.match(css, /--sticky-bar-top:\s*var\(--mobile-header-h\)/, 'mobile override clears the taller header');

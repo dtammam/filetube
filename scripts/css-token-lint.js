@@ -72,6 +72,47 @@ const G = RULE_CONFIG['filetube/no-raw-token-values'][1].governed;
 // metric); a new ladder name joins the contract, token-scale-lock, AND this
 // alternation together.
 const Z_LADDER_CALC = /^calc\(\s*var\(--z-(nav|chip|dock|header|player-max|sheet|panel|modal|top)\)\s*[+-]\s*\d+\s*\)$/;
+// v7 (tranche F.5, Dean's ruling 3): the radius sibling of the z idiom -
+// calc(var(--radius*) +/- Npx) consumes a real radius token; the pixel
+// offset is relational trim, not a raw radius. Pinned to the three real
+// radius token names ("no fake tokens").
+const RADIUS_CALC = /^calc\(\s*var\(--radius(?:-lg|-full)?\)\s*[+-]\s*\d+px\s*\)$/;
+
+// ONE value classifier for BOTH surfaces (CSS lintDecl + JS jsDecl) -
+// tech-debt #69 closed at its own trigger (this rule change): v6 had to
+// patch two copies, and a rule change that misses one silently recreates
+// the exact blind-spot class v6 was written against. Every value-shape
+// rule lives HERE and only here; the callers keep their surface-specific
+// pre-checks (era/def scope, exempt directives, positional exclusions).
+function classifyDecl(prop, value, hit) {
+  let bare = value;
+  // v7: a ZERO env() fallback is browser-API syntax, not a style value -
+  // env(safe-area-inset-bottom, 0px) renders byte-identically wherever
+  // env() is unsupported. NONZERO env fallbacks still count: they paint,
+  // the same class as var() fallbacks per Dean's standing ruling.
+  bare = bare.replace(/env\(\s*[\w-]+\s*,\s*0(?:px)?\s*\)/gi, '');
+  // var() strips, but FALLBACKS survive the strip: var(--ghost, #cc0000)
+  // renders its fallback literal and stays visible. Iterate for nesting.
+  for (let n = 0; n < 4; n++) {
+    const next = bare
+      .replace(/var\(\s*--[\w-]+\s*\)/g, '')
+      .replace(/var\(\s*--[\w-]+\s*,\s*([^()]*)\)/g, '$1');
+    if (next === bare) break;
+    bare = next;
+  }
+  bare = bare.trim();
+  if (bare === '' || /^(transparent|currentColor|inherit|none|auto|normal|unset|initial|0|100%|50%)$/i.test(bare)) return;
+  if (prop === 'z-index') { if (!Z_LADDER_CALC.test(value.trim()) && G['z-index'].test(bare)) hit('z-index'); return; }
+  if (prop === 'font-weight') { if (G['font-weight'].test(bare)) hit('font-weight'); return; }
+  if (prop === 'font-size') { if (G['font-size'].test(bare)) hit('font-size'); return; }
+  if (prop === 'line-height') { if (G['line-height'].test(bare)) hit('line-height'); return; }
+  if (prop === 'letter-spacing') { if (G['letter-spacing'].test(bare)) hit('letter-spacing'); return; }
+  if (prop === 'box-shadow' || prop === 'text-shadow') { if (G.shadow.test(bare)) hit('shadow'); return; }
+  if (MOTION_PROP.test(prop)) { if (G.motion.test(bare)) hit('motion'); return; }
+  if (RADIUS_PROP.test(prop)) { if (!RADIUS_CALC.test(value.trim()) && G['border-radius'].test(bare)) hit('border-radius'); return; }
+  if (SPACING_PROP.test(prop)) { if (G.spacing.test(bare)) hit('spacing'); return; }
+  if (G.color.test(bare)) hit('color');
+}
 const SPACING_PROP = /^(margin(-\w+)?|padding(-\w+)?|gap|row-gap|column-gap|top|right|bottom|left|inset(-\w+)?)$/;
 const MOTION_PROP = /^(transition(-\w+)?|animation(-\w+)?)$/;
 const RADIUS_PROP = /^border(-\w+)*-radius$/;
@@ -119,30 +160,8 @@ function lintCss(text, fname, lineOffset, out) {
       if (inOpaque) return;
       const nearest = [...selStack].reverse().find((f) => !f.at);
       if (nearest && DEF_SELECTOR.test(nearest.selector)) return; // era/def layer
-      // var() strips, but FALLBACKS survive the strip: var(--ghost, #cc0000)
-      // renders its fallback literal, and Dean's Tier 4 ruling keeps those
-      // 9 ghost-token sites visible in the burn-down. Iterate for nesting.
-      let bare = value;
-      for (let n = 0; n < 4; n++) {
-        const next = bare
-          .replace(/var\(\s*--[\w-]+\s*\)/g, '')
-          .replace(/var\(\s*--[\w-]+\s*,\s*([^()]*)\)/g, '$1');
-        if (next === bare) break;
-        bare = next;
-      }
-      bare = bare.trim();
-      if (bare === '' || /^(transparent|currentColor|inherit|none|auto|normal|unset|initial|0|100%|50%)$/i.test(bare)) return;
       const hit = (cat) => out.push({ cat, file: fname, line: lineNo, prop, value: value.slice(0, 60) });
-      if (prop === 'z-index') { if (!Z_LADDER_CALC.test(value.trim()) && G['z-index'].test(bare)) hit('z-index'); return; }
-      if (prop === 'font-weight') { if (G['font-weight'].test(bare)) hit('font-weight'); return; }
-      if (prop === 'font-size') { if (G['font-size'].test(bare)) hit('font-size'); return; }
-      if (prop === 'line-height') { if (G['line-height'].test(bare)) hit('line-height'); return; }
-      if (prop === 'letter-spacing') { if (G['letter-spacing'].test(bare)) hit('letter-spacing'); return; }
-      if (prop === 'box-shadow' || prop === 'text-shadow') { if (G.shadow.test(bare)) hit('shadow'); return; }
-      if (MOTION_PROP.test(prop)) { if (G.motion.test(bare)) hit('motion'); return; }
-      if (RADIUS_PROP.test(prop)) { if (G['border-radius'].test(bare)) hit('border-radius'); return; }
-      if (SPACING_PROP.test(prop)) { if (G.spacing.test(bare)) hit('spacing'); return; }
-      if (G.color.test(bare)) hit('color');
+      classifyDecl(prop, value, hit); // shared classifier (v7, #69)
     };
 
     let cursor = 0;
@@ -198,26 +217,12 @@ function lintJs(text, fname, out) {
   }
 }
 function jsDecl(prop, value, fname, lineNo, out) {
-  const bareRaw = value;
-  let bare = bareRaw;
-  for (let n = 0; n < 4; n++) {
-    const next = bare.replace(/var\(\s*--[\w-]+\s*\)/g, '').replace(/var\(\s*--[\w-]+\s*,\s*([^()]*)\)/g, '$1');
-    if (next === bare) break;
-    bare = next;
-  }
-  bare = bare.trim();
-  if (bare === '' || /^(transparent|currentColor|inherit|none|auto|normal|unset|initial|0|100%|50%)$/i.test(bare)) return;
+  // Surface-specific bits only: the hit shape. (The old copy carried a
+  // redundant top/right/bottom/left spacing alternation - SPACING_PROP
+  // already matches those four; behavior is identical through the shared
+  // classifier.) All value logic: classifyDecl (v7, #69).
   const hit = (cat) => out.push({ cat, file: fname, line: lineNo, prop, value: value.slice(0, 60) });
-  if (prop === 'z-index') { if (!Z_LADDER_CALC.test(value.trim()) && G['z-index'].test(bare)) hit('z-index'); return; }
-  if (prop === 'font-weight') { if (G['font-weight'].test(bare)) hit('font-weight'); return; }
-  if (prop === 'font-size') { if (G['font-size'].test(bare)) hit('font-size'); return; }
-  if (prop === 'line-height') { if (G['line-height'].test(bare)) hit('line-height'); return; }
-  if (prop === 'letter-spacing') { if (G['letter-spacing'].test(bare)) hit('letter-spacing'); return; }
-  if (prop === 'box-shadow' || prop === 'text-shadow') { if (G.shadow.test(bare)) hit('shadow'); return; }
-  if (MOTION_PROP.test(prop)) { if (G.motion.test(bare)) hit('motion'); return; }
-  if (RADIUS_PROP.test(prop)) { if (G['border-radius'].test(bare)) hit('border-radius'); return; }
-  if (SPACING_PROP.test(prop) || /^(top|right|bottom|left)$/.test(prop)) { if (G.spacing.test(bare)) hit('spacing'); return; }
-  if (G.color.test(bare)) hit('color');
+  classifyDecl(prop, value, hit);
 }
 
 module.exports = { lintCss, lintJs, RULE_CONFIG };
@@ -246,7 +251,7 @@ for (const dir of ['public/js', 'lib/ytdlp/client']) {
 const byCat = {};
 for (const v of out) byCat[v.cat] = (byCat[v.cat] || 0) + 1;
 console.log('css-token-lint (report-only) - raw literals in governed properties');
-console.log('  scope v6: style.css + subscriptions.html <style> + JS style surfaces (cssText/.style/setProperty; player.js positional excluded); exclusions: era/def layer, @keyframes/@font-face, token-exempt, keywords/var, z-ladder calc');
+console.log('  scope v7: style.css + subscriptions.html <style> + JS style surfaces (cssText/.style/setProperty; player.js positional excluded); exclusions: era/def layer, @keyframes/@font-face, token-exempt, keywords/var, z-ladder + radius calc idioms, zero env() fallbacks');
 for (const [cat, n] of Object.entries(byCat).sort((a, b) => b[1] - a[1])) {
   console.log(`  ${cat.padEnd(16)} ${n}`);
 }

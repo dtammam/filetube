@@ -97,6 +97,29 @@ design-token-phase1-verification.md for full detail)
 - The lint baseline is 628 (not the 641 first published - linter parser
   fix), 554 after Tier 1.
 
+## Addendum (Tranche F.5 - census toward zero, 2026-07-31)
+
+Eight names join the contract (all pinned byte-exact in
+token-scale-lock.test.js, per the three-place rule):
+
+- The reading themes, the reader's OWN AXIS (never era- or mode-wired;
+  read.js derives the same tokens via getComputedStyle for the epub
+  iframe, killing its duplicate literal copies):
+  `--reader-paper-bg:#f7f4ec --reader-paper-fg:#1c1c1c
+  --reader-sepia-bg:#f0e3c9 --reader-sepia-fg:#3a2f20
+  --reader-night-bg:#101014 --reader-night-fg:#c8c8d0`
+- The two structurally-coupled layout constants - a NARROW, Dean-ruled
+  amendment to "layout geometry stays literal" (each had 4+ in-tree
+  copies that had to stay in sync): `--header-h:56px --sidebar-w:230px`.
+  Player-bar reserves and all other geometry remain literal.
+
+Also this tranche: linter v7 (radius-calc idiom pinned to the three
+real radius names; ZERO-only env() fallbacks excluded; one shared
+classifier for the CSS and JS surfaces - tech-debt #69 closed), and
+every ruled singleton now carries a token-exempt reason in place. The
+census after F.5 is exactly the white-on-accent family, held open for
+Dean's --on-accent ruling.
+
 ## Addendum (Tier 4 execution, 2026-07-31)
 
 - `--thumbnail-bg:#222` DEFINED per Dean's OQ7 ruling (2026-07-30): the

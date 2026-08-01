@@ -99,6 +99,49 @@ test('v6: z-ladder-relative calc is tokenized; every impostor shape still counts
   assert.equal(lintj("el.style.zIndex = '2100';")[0].cat, 'z-index');
 });
 
+test('v7: radius-calc idiom is tokenized; impostors count; both surfaces share one classifier', () => {
+  assert.equal(lint('.x { border-radius: calc(var(--radius) + 1px); }').length, 0,
+    'the +Npx trim on a real radius token is tokenized');
+  assert.equal(lint('.x { border-radius: calc(var(--radius-lg) - 2px); }').length, 0,
+    'either sign, either real token');
+  assert.equal(lint('.x { border-radius: calc(4px + 1px); }')[0].cat, 'border-radius',
+    'raw-number calc is not the idiom');
+  assert.equal(lint('.x { border-radius: calc(var(--radius-hack) + 1px); }')[0].cat, 'border-radius',
+    'a fake radius token is not the idiom (names pinned per "no fake tokens")');
+  assert.equal(lint('.x { border-radius: calc(var(--radius) + 3px + 1px); }')[0].cat, 'border-radius',
+    'compound arithmetic is not the idiom');
+  // NOTE deliberately absent: calc(var(--radius) * 2) carries no px unit, so
+  // the /\d+px/ radius pattern has NEVER counted it (pre-existing metric
+  // scope, unchanged by v7 - recorded here so nobody reads its absence as
+  // an idiom allowance).
+  assert.equal(lint('.x { border-radius: calc(var(--radius) + 1px) 3px; }')[0].cat, 'border-radius',
+    'trailing content breaks the idiom (anchor control)');
+  assert.equal(lint('.x { border-radius: 6px calc(var(--radius) + 1px); }')[0].cat, 'border-radius',
+    'leading content breaks the idiom (kills the ^-anchor mutant the adversarial gate found surviving)');
+  assert.equal(lint('.x { border-radius: 4px; }')[0].cat, 'border-radius',
+    'raw radii still count');
+  // JS surface goes through the SAME classifier - one rule change covers both:
+  assert.equal(lintj("el.style.borderRadius = 'calc(var(--radius) + 1px)';").length, 0);
+  assert.equal(lintj("el.style.borderRadius = 'calc(var(--radius-hack) + 1px)';")[0].cat, 'border-radius');
+});
+
+test('v7: ZERO env() fallbacks are API syntax, not literals; nonzero env fallbacks still count', () => {
+  assert.equal(lint('.x { padding-bottom: calc(var(--space-2) + env(safe-area-inset-bottom, 0px)); }').length, 0,
+    'the safe-area pattern with a zero fallback is fully tokenized');
+  assert.equal(lint('.x { bottom: calc(24px + env(safe-area-inset-bottom, 0px)); }')[0].cat, 'spacing',
+    'the zero env strip must not hide OTHER literals in the same value');
+  assert.equal(lint('.x { padding-bottom: env(safe-area-inset-bottom, 0); }').length, 0,
+    'unitless zero fallback too');
+  assert.equal(lint('.x { padding-bottom: calc(var(--space-2) + env(safe-area-inset-bottom, 16px)); }')[0].cat, 'spacing',
+    'a NONZERO env fallback paints where env() is unsupported - it counts, same class as var fallbacks');
+  assert.equal(lint('.x { padding-bottom: env(safe-area-inset-bottom, 8px); }')[0].cat, 'spacing',
+    'a SINGLE-DIGIT nonzero env fallback counts (kills the 0->digit matcher mutant the adversarial gate found surviving)');
+  assert.equal(lintj("el.style.top = '10px';")[0].cat, 'spacing',
+    'bare positional prop on the JS surface - the old jsDecl alternation, preserved through the unified classifier (QA parity fixture)');
+  assert.equal(lintj("el.style.paddingBottom = 'calc(var(--space-2) + env(safe-area-inset-bottom, 0px))';").length, 0,
+    'JS surface, same classifier');
+});
+
 test('multi-line rules and selectors spanning lines resolve their scope correctly', () => {
   const out = lint(`
 [data-theme="2009"]
