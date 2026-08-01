@@ -268,10 +268,19 @@ test('v1.43 carrier: DELETE /api/videos/:id removes the deleting user\'s AND eve
 
   const res = await fetch(`${base}/api/videos/delCarrier`, { method: 'DELETE' });
   assert.equal(res.status, 200);
+  const body = await res.json();
 
-  assert.deepEqual(userStore.getLiked(uid), [], 'the deleter\'s like goes with the item');
-  assert.ok(!userStore.getLiked(second.user.id).includes('delCarrier'), 'every OTHER user\'s like goes too (no stale resurrection onto a same-path re-add)');
-  assert.equal(userStore.getOneProgress(second.user.id, 'delCarrier'), null, 'and their progress row');
+  // v1.65: a delete is a TRASH move now -- every user's rows RE-KEY to the
+  // trash id (restore fidelity) instead of being destroyed. The original id
+  // still carries nothing, so a same-path re-add still starts clean (the
+  // stale-resurrection claim this test has always made).
+  assert.equal(body.trashed, true);
+  assert.deepEqual(userStore.getLiked(uid), [body.trashId], 'the deleter\'s like follows the item INTO TRASH');
+  assert.ok(!userStore.getLiked(uid).includes('delCarrier'), 'nothing left under the original id');
+  assert.ok(!userStore.getLiked(second.user.id).includes('delCarrier'), 'every OTHER user\'s like re-keys too');
+  assert.ok(userStore.getLiked(second.user.id).includes(body.trashId));
+  assert.equal(userStore.getOneProgress(second.user.id, 'delCarrier'), null, 'no progress row under the original id');
+  assert.equal(userStore.getOneProgress(second.user.id, body.trashId).timestamp, 9, 'their progress survives under the trash id');
 });
 
 // ---- GET /api/videos/:id: derived `liked` field (not persisted) -----------

@@ -7383,7 +7383,14 @@ function deleteResultToast(data) {
     return 'Removed from library. The file is still held open on the storage side -- it will finish deleting when that handle closes.';
   }
   if (data && data.fileRemainsOnDisk) {
-    return 'Removed from library, but the file itself could not be deleted -- the next scan will retry.';
+    // v1.65: a trash move whose source dirent lingered still landed the
+    // bytes safely in Trash -- say so instead of the scarier legacy line.
+    return data.trashed
+      ? 'Moved to Trash. The original location will finish cleaning up on the next scan.'
+      : 'Removed from library, but the file itself could not be deleted -- the next scan will retry.';
+  }
+  if (data && data.trashed) {
+    return 'Moved to Trash.';
   }
   return 'File deleted.';
 }
@@ -9150,7 +9157,7 @@ if (typeof module !== 'undefined' && module.exports) {
     ACTIVE_ENTRY_STALE_MS, isFreshlyActiveEntry, ONEOFF_STATUS_POLL_MAX_MS, nextOneOffPollDelayMs,
     decideOneOffTerminalAction, applyOneOffTerminalAction, triggerLibraryRescanAndRefresh,
     injectOneOffDownloadButtonIfEnabled,
-    showToast, nextArmState,
+    showToast, nextArmState, deleteResultToast,
     deriveRouteView, shouldInterceptLinkClick, buildHistoryState, parseHistoryState,
     // v1.47.4 item 2: the pure zoom-policy decision + the viewport contents it
     // selects between, exported so tests assert the reader carve-out against the

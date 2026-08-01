@@ -159,13 +159,20 @@ test('FR-I: a video deleted via DELETE /api/videos/:id stays gone -- the downloa
   // path (server.js's own DELETE /api/videos/:id -- never bypassed/stubbed).
   const deleteRes = await fetch(`${base}/api/videos/${videoId}`, { method: 'DELETE' });
   assert.equal(deleteRes.status, 200);
-  assert.deepEqual(await deleteRes.json(), { success: true, message: 'File deleted successfully' });
+  const deleteBody = await deleteRes.json();
+  assert.equal(deleteBody.success, true);
+  // v1.65: the delete is a TRASH move now (the archive-append claim under
+  // test is unchanged -- it fires at trash time, so "stays gone" holds
+  // whether the item later gets purged or restored).
+  assert.equal(deleteBody.trashed, true);
+  assert.equal(deleteBody.message, 'Moved to Trash');
 
-  // The real delete path's normal cleanup happened: file, thumbnail,
-  // transcode sidecar, db.metadata row, and db.progress entry are all gone.
-  assert.equal(fs.existsSync(videoFilePath), false, 'the media file must be removed from disk');
-  assert.equal(fs.existsSync(path.join(THUMBNAIL_DIR, `${videoId}.jpg`)), false, 'the thumbnail must be removed');
-  assert.equal(fs.existsSync(sidecarPath), false, 'the transcode sidecar must be removed');
+  // The real delete path's cleanup happened: the file left its library
+  // path, and the id-keyed sidecars RE-KEYED to the trash id (no longer
+  // under the original id).
+  assert.equal(fs.existsSync(videoFilePath), false, 'the media file must leave its library path');
+  assert.equal(fs.existsSync(path.join(THUMBNAIL_DIR, `${videoId}.jpg`)), false, 'the thumbnail must leave the original id');
+  assert.equal(fs.existsSync(sidecarPath), false, 'the transcode sidecar must leave the original id');
   const dbAfterDelete = loadDatabase();
   assert.equal(dbAfterDelete.metadata[videoId], undefined, 'the db.metadata row must be gone');
   assert.equal(dbAfterDelete.progress[videoId], undefined, 'the db.progress entry must be gone');

@@ -69,7 +69,8 @@ after(async () => {
 
 beforeEach(async () => {
   await __resetDatabaseForTests();
-  for (const name of fs.readdirSync(libDir)) fs.rmSync(path.join(libDir, name), { force: true });
+  // recursive: v1.65 trash moves leave a .filetube-trash DIRECTORY here.
+  for (const name of fs.readdirSync(libDir)) fs.rmSync(path.join(libDir, name), { recursive: true, force: true });
   activeMediaStreams.clear();
 });
 
@@ -203,9 +204,23 @@ function patchDeletePending(filePath, { unlinkMode = 'throw' } = {}) {
     if (s === filePath) throw enoent('open', s); // delete-pending refuses every new open
     return realOpenSync(p, ...args);
   };
+  // v1.65: deletes route through TRASH (a hard link into the trash dir), and
+  // an ALREADY delete-pending file refuses new links exactly like new opens
+  // -- extend the simulated contract to the new seam. The 'noop' mode models
+  // the FIRST delete of a healthy file (pending only begins after the
+  // unlink), so there the link must still succeed.
+  const realLinkSync = fs.linkSync;
+  if (unlinkMode !== 'noop') {
+    fs.linkSync = (src, dst) => {
+      const s = Buffer.isBuffer(src) ? src.toString('utf8') : String(src);
+      if (s === filePath) throw enoent('link', s);
+      return realLinkSync(src, dst);
+    };
+  }
   return () => {
     fs.unlinkSync = realUnlinkSync;
     fs.openSync = realOpenSync;
+    fs.linkSync = realLinkSync;
   };
 }
 

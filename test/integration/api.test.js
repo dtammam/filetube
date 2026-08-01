@@ -286,8 +286,11 @@ test('DELETE /api/videos/:id returns a clear 409 (not a generic 500) on an EROFS
   const filePath = path.join(os.tmpdir(), `filetube-delete-erofs-${Date.now()}.mp4`);
   seedDeleteTarget('vidErofs', filePath);
 
-  const realUnlinkSync = fs.unlinkSync;
-  fs.unlinkSync = () => { const e = new Error('read-only file system'); e.code = 'EROFS'; throw e; };
+  // v1.65: deletes route through TRASH -- a read-only location now fails at
+  // the trash-link stage (rename needs the same write perms unlink did), so
+  // the mock moves there. Same 409 + removeAnyway contract as ever.
+  const realLinkSync = fs.linkSync;
+  fs.linkSync = () => { const e = new Error('read-only file system'); e.code = 'EROFS'; throw e; };
   try {
     const res = await fetch(`${base}/api/videos/vidErofs`, { method: 'DELETE' });
     assert.equal(res.status, 409);
@@ -299,17 +302,17 @@ test('DELETE /api/videos/:id returns a clear 409 (not a generic 500) on an EROFS
     assert.ok(dbAfter.metadata.vidErofs, 'db entry must be untouched without removeAnyway');
     assert.ok(dbAfter.progress.vidErofs, 'progress entry must be untouched without removeAnyway');
   } finally {
-    fs.unlinkSync = realUnlinkSync;
+    fs.linkSync = realLinkSync;
     fs.rmSync(filePath, { force: true });
   }
 });
 
-test('DELETE /api/videos/:id?removeAnyway=true removes the db entry when unlink fails with EROFS, and notes the next scan will retry the deletion', async () => {
+test('DELETE /api/videos/:id?removeAnyway=true removes the db entry when the trash link fails with EROFS, and notes the next scan will retry', async () => {
   const filePath = path.join(os.tmpdir(), `filetube-delete-erofs-anyway-${Date.now()}.mp4`);
   seedDeleteTarget('vidErofsAnyway', filePath);
 
-  const realUnlinkSync = fs.unlinkSync;
-  fs.unlinkSync = () => { const e = new Error('read-only file system'); e.code = 'EROFS'; throw e; };
+  const realLinkSync = fs.linkSync;
+  fs.linkSync = () => { const e = new Error('read-only file system'); e.code = 'EROFS'; throw e; };
   try {
     const res = await fetch(`${base}/api/videos/vidErofsAnyway?removeAnyway=true`, { method: 'DELETE' });
     assert.equal(res.status, 200);
@@ -327,9 +330,9 @@ test('DELETE /api/videos/:id?removeAnyway=true removes the db entry when unlink 
     // is gone) is unchanged.
     assert.ok(!dbAfter.metadata?.vidErofsAnyway, 'db entry must be removed with removeAnyway on a read-only failure');
     assert.ok(!dbAfter.progress?.vidErofsAnyway, 'progress entry must be removed too');
-    assert.ok(fs.existsSync(filePath), 'the underlying file must remain on disk (unlink was skipped)');
+    assert.ok(fs.existsSync(filePath), 'the underlying file must remain on disk (nothing reached trash)');
   } finally {
-    fs.unlinkSync = realUnlinkSync;
+    fs.linkSync = realLinkSync;
     fs.rmSync(filePath, { force: true });
   }
 });
@@ -359,12 +362,12 @@ test('DELETE /api/videos/:id succeeds (200) and removes the db entry when the fi
   }
 });
 
-test('DELETE /api/videos/:id returns a 409 distinguishable from EROFS on an EACCES unlink failure, and leaves the db untouched', async () => {
+test('DELETE /api/videos/:id returns a 409 distinguishable from EROFS on an EACCES trash-link failure, and leaves the db untouched', async () => {
   const filePath = path.join(os.tmpdir(), `filetube-delete-eacces-${Date.now()}.mp4`);
   seedDeleteTarget('vidEacces', filePath);
 
-  const realUnlinkSync = fs.unlinkSync;
-  fs.unlinkSync = () => { const e = new Error('permission denied'); e.code = 'EACCES'; throw e; };
+  const realLinkSync = fs.linkSync;
+  fs.linkSync = () => { const e = new Error('permission denied'); e.code = 'EACCES'; throw e; };
   try {
     const res = await fetch(`${base}/api/videos/vidEacces`, { method: 'DELETE' });
     assert.equal(res.status, 409);
@@ -376,17 +379,17 @@ test('DELETE /api/videos/:id returns a 409 distinguishable from EROFS on an EACC
     const dbAfter = readPersistedDatabase(process.env.DATA_DIR);
     assert.ok(dbAfter.metadata.vidEacces, 'db entry must be untouched without removeAnyway');
   } finally {
-    fs.unlinkSync = realUnlinkSync;
+    fs.linkSync = realLinkSync;
     fs.rmSync(filePath, { force: true });
   }
 });
 
-test('DELETE /api/videos/:id?removeAnyway=true removes the db entry when unlink fails with EACCES', async () => {
+test('DELETE /api/videos/:id?removeAnyway=true removes the db entry when the trash link fails with EACCES', async () => {
   const filePath = path.join(os.tmpdir(), `filetube-delete-eacces-anyway-${Date.now()}.mp4`);
   seedDeleteTarget('vidEaccesAnyway', filePath);
 
-  const realUnlinkSync = fs.unlinkSync;
-  fs.unlinkSync = () => { const e = new Error('permission denied'); e.code = 'EACCES'; throw e; };
+  const realLinkSync = fs.linkSync;
+  fs.linkSync = () => { const e = new Error('permission denied'); e.code = 'EACCES'; throw e; };
   try {
     const res = await fetch(`${base}/api/videos/vidEaccesAnyway?removeAnyway=true`, { method: 'DELETE' });
     assert.equal(res.status, 200);
@@ -397,17 +400,17 @@ test('DELETE /api/videos/:id?removeAnyway=true removes the db entry when unlink 
     const dbAfter = readPersistedDatabase(process.env.DATA_DIR);
     assert.ok(!dbAfter.metadata?.vidEaccesAnyway);
   } finally {
-    fs.unlinkSync = realUnlinkSync;
+    fs.linkSync = realLinkSync;
     fs.rmSync(filePath, { force: true });
   }
 });
 
-test('DELETE /api/videos/:id still returns a generic 500 (not 409) for a non-EROFS/EACCES unlink failure, and leaves the db untouched (regression)', async () => {
+test('DELETE /api/videos/:id still returns a generic 500 (not 409) for a non-recoverable trash-link failure, and leaves the db untouched (regression)', async () => {
   const filePath = path.join(os.tmpdir(), `filetube-delete-other-${Date.now()}.mp4`);
   seedDeleteTarget('vidOtherErr', filePath);
 
-  const realUnlinkSync = fs.unlinkSync;
-  fs.unlinkSync = () => { const e = new Error('input/output error'); e.code = 'EIO'; throw e; };
+  const realLinkSync = fs.linkSync;
+  fs.linkSync = () => { const e = new Error('input/output error'); e.code = 'EIO'; throw e; };
   try {
     const res = await fetch(`${base}/api/videos/vidOtherErr`, { method: 'DELETE' });
     assert.equal(res.status, 500);
@@ -417,7 +420,7 @@ test('DELETE /api/videos/:id still returns a generic 500 (not 409) for a non-ERO
     const dbAfter = readPersistedDatabase(process.env.DATA_DIR);
     assert.ok(dbAfter.metadata.vidOtherErr, 'db entry must stay untouched on a generic FS failure');
   } finally {
-    fs.unlinkSync = realUnlinkSync;
+    fs.linkSync = realLinkSync;
     fs.rmSync(filePath, { force: true });
   }
 });

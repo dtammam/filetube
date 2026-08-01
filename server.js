@@ -3788,21 +3788,15 @@ async function runScanDirectories() {
           // scan can self-heal instead of waiting on a client that may never
           // close -- destroy any registered streams before retrying.
           await destroyMediaStreams(filePath);
-          fs.unlinkSync(filePath);
-          console.log(`Scan: removed a deleted file that had survived its delete (deferred retry): ${filePath}`);
-          // Best-effort .vtt subtitle-sidecar sweep, keyed off the SCANNED
-          // basename (the original delete's sweep keyed off the stored
-          // spelling and, in the #35a class, missed them) -- mirrors the
-          // DELETE route's own v1.36.2 sweep; never blocks the scan.
-          try {
-            const dir = path.dirname(filePath);
-            const base = path.basename(filePath, path.extname(filePath));
-            for (const name of fs.readdirSync(dir)) {
-              if (name.startsWith(`${base}.`) && name.endsWith('.vtt')) {
-                try { fs.unlinkSync(path.join(dir, name)); } catch (_) { /* best-effort */ }
-              }
-            }
-          } catch (_) { /* best-effort -- e.g. the dir vanished */ }
+          // v1.65 (ruling 3): the deferred retry TRASHES the survivor
+          // instead of unlinking it -- so even a wrongly-reaped file (the
+          // 8-file incident's nightmare shape: every guard fooled at once)
+          // lands recoverable in the trash dir, and its subtitles ride
+          // along (narrow matcher) instead of being deleted. Link-stage
+          // errors rethrow verbatim: the ENOENT branch below keeps its
+          // delete-pending semantics, everything else re-indexes honestly.
+          await trashOrphanFile(filePath);
+          console.log(`Scan: trashed a deleted file that had survived its delete (deferred retry): ${filePath}`);
           // Keep /api/scan-status honest for this pass: this file was
           // processed (its processing was the removal), and the cooperative
           // yield must not be skipped on a reap-heavy pass.
@@ -8672,16 +8666,14 @@ app.delete('/api/videos/:id', async (req, res) => {
   // proceed. See docs/exec-plans/active/2026-07-06-v1.13-polish.md item 5.
   const removeAnyway = req.query.removeAnyway === 'true' || req.query.removeAnyway === '1';
   let fileRemainsOnDisk = false;
-  // v1.41.3: true ONLY when this handler itself watched fs.unlinkSync succeed
-  // on the resolved on-disk path. Every OTHER success-reporting conclusion
-  // (resolver `gone`, ENOENT `alreadyGone`, removeAnyway) is UNVERIFIED --
-  // the file may in fact survive -- and mints a deletion tombstone below so
-  // the next scan can finish the job (or honestly re-index). A verified
-  // unlink mints NOTHING: the file is provably gone, and a same-path file
-  // appearing later (even with an old mtime -- rsync -a, Syncthing, a backup
-  // restore all preserve mtimes) is the user putting content BACK, which the
-  // scan must index, never reap.
-  let unlinkVerified = false;
+  // v1.65 note on the v1.41.3 verified/unverified distinction: the happy
+  // path is now a TRASH move (trashItem below), which mints no tombstone --
+  // the scan never walks the trash dir, so there is nothing to defer. Every
+  // shape that still reaches the LEGACY cleanup mutator (resolver `gone`,
+  // vanished-mid-delete, removeAnyway) is an unverified conclusion by
+  // construction -- the file may in fact survive -- so that mutator now
+  // ALWAYS mints the deletion tombstone (the old `unlinkVerified` flag,
+  // true only after a watched in-route unlink, has no true case left).
 
   // v1.37.5: resolve the stored path to the REAL on-disk entry (handles an
   // NFC/NFD-variant name that `existsSync(item.filePath)` would miss) BEFORE
@@ -8733,128 +8725,100 @@ app.delete('/api/videos/:id', async (req, res) => {
     console.log(`Delete: destroyed ${releasedStreams} live read stream(s) on ${filePath} before unlinking.`);
   }
 
-  try {
-    // Delete actual file from filesystem
-    if (mediaPathOnDisk) {
-      // SEAM 1: when the resolver matched a non-round-tripping name via its raw
-      // bytes (`realPathRaw`, a Buffer path), unlink THAT actual dirent -- the
-      // string `mediaPathOnDisk` is a lossy U+FFFD reconstruction that would
-      // ENOENT. For every ordinary case realPathRaw is absent and this is the
-      // plain string path.
-      fs.unlinkSync(resolved.realPathRaw || mediaPathOnDisk);
-      unlinkVerified = true;
-      if (mediaPathOnDisk !== filePath) {
-        console.log(`Deleted file from disk (resolved a Unicode/name variant of the stored path): ${mediaPathOnDisk}`);
-      } else {
-        console.log(`Deleted file from disk: ${mediaPathOnDisk}`);
-      }
-    } else if (!fileRemainsOnDisk) {
-      // resolved.gone: genuinely absent (parent dir readable with no matching
-      // entry, or the dir itself is gone). The desired end state ("not on
-      // disk") already holds -> SUCCESS; fall through to remove the orphaned
-      // library entry, matching the v1.36.2 alreadyGone contract below.
-      console.warn(`File not on disk when deleting (already gone): ${filePath}`);
-    }
-
-    // Clean up thumbnail
-    const thumbPath = path.join(THUMBNAIL_DIR, `${item.id}.jpg`);
-    if (fs.existsSync(thumbPath)) {
-      fs.unlinkSync(thumbPath);
-    }
-
-    // Clean up transcoded MP4 sidecar, if any
-    const transcodeFile = transcodedPath(item.id);
-    if (fs.existsSync(transcodeFile)) {
-      fs.unlinkSync(transcodeFile);
-    }
-
-    // v1.36.2 (Dean): clean up subtitle sidecars living NEXT TO the media
-    // file (`<basename>.<lang>.vtt`, written by the yt-dlp download's
-    // --write-subs). Best-effort: an orphaned .vtt can't resurrect a
-    // library item (not a media extension), but leaving it litters the
-    // channel folder forever. Never blocks the delete.
-    try {
-      // v1.37.5: hang sidecar cleanup off the RESOLVED on-disk path (its
-      // `<basename>.<lang>.vtt` neighbours share the real file's exact name),
-      // falling back to the stored path when the media file was already gone.
-      const mediaPath = mediaPathOnDisk || filePath;
-      const dir = path.dirname(mediaPath);
-      const base = path.basename(mediaPath, path.extname(mediaPath));
-      for (const name of fs.readdirSync(dir)) {
-        if (name.startsWith(`${base}.`) && name.endsWith('.vtt')) {
-          try { fs.unlinkSync(path.join(dir, name)); } catch (_) { /* best-effort */ }
-        }
-      }
-    } catch (_) { /* best-effort -- e.g. the dir itself is gone */ }
-  } catch (err) {
-    // v1.36.2 (Dean: "sticky post-deletion" -- the "doesn't delete" half):
-    // EBUSY (file open/streaming, an overlay lock) and EPERM (NFS/SMB/
-    // overlay volume drivers) previously fell to the generic 500 below --
-    // an un-actionable dead end with NO removeAnyway escape hatch, so the
-    // item just stayed. They are now classified with EROFS/EACCES as
-    // RECOVERABLE: the client gets the same actionable 409 + the same
-    // opt-in "remove from library anyway" follow-up.
-    const readOnly = err && RECOVERABLE_DELETE_CODES.has(err.code);
-    const alreadyGone = err && err.code === 'ENOENT';
-
-    if (alreadyGone) {
-      // The file (or a sidecar) is already absent on disk -- the desired end
-      // state ("not on disk") is already true, so a delete here is a SUCCESS,
-      // not a failure. (Reached when existsSync() saw the file but the unlink
-      // then hit ENOENT: an external delete/move, a stored-path mismatch, or a
-      // TOCTOU race.) Best-effort the remaining sidecars and FALL THROUGH to
-      // the DB cleanup below so the orphaned library entry is finally removed
-      // -- fixes delete failing with a 500 and leaving the item stuck in the
-      // list, still appearing playable.
-      console.warn(`Delete: file already gone (${filePath}) -- removing the library entry anyway.`);
-      const thumbPath = path.join(THUMBNAIL_DIR, `${item.id}.jpg`);
-      try { if (fs.existsSync(thumbPath)) fs.unlinkSync(thumbPath); } catch (_) { /* best-effort */ }
-      const transcodeFile = transcodedPath(item.id);
-      try { if (fs.existsSync(transcodeFile)) fs.unlinkSync(transcodeFile); } catch (_) { /* best-effort */ }
-      // (fileRemainsOnDisk stays false -- the file is genuinely gone.)
-    } else if (readOnly && removeAnyway) {
-      // The caller has already been told about the read-only/permission
-      // failure and explicitly asked to remove the library entry anyway.
-      // Best-effort the sidecars too, but a sidecar failure must never block
-      // the db cleanup below -- the underlying file is deliberately left on
-      // disk. v1.41.3: the unverified tombstone minted below means the next
-      // scan RETRIES the unlink once (a transient EBUSY usually clears);
-      // only if that retry also fails is the file re-indexed.
-      fileRemainsOnDisk = true;
-      const thumbPath = path.join(THUMBNAIL_DIR, `${item.id}.jpg`);
-      try { if (fs.existsSync(thumbPath)) fs.unlinkSync(thumbPath); } catch (_) { /* best-effort */ }
-      const transcodeFile = transcodedPath(item.id);
-      try { if (fs.existsSync(transcodeFile)) fs.unlinkSync(transcodeFile); } catch (_) { /* best-effort */ }
-    } else if (readOnly) {
-      // Distinct, actionable failure -- db is left COMPLETELY untouched (the
-      // updateDatabase cleanup below never runs) so the client can offer a
-      // "remove from library anyway?" follow-up (re-request with
-      // ?removeAnyway=true) rather than silently losing the library entry.
-      console.error(`Cannot delete file ${filePath} (${err.code}):`, err.message);
+  // v1.65 (ruling 3, closes tech-debt #64): EVERY delete routes through
+  // TRASH. The resolvable-file case is an atomic rename into the root's
+  // trash dir -- trashItem() owns the whole identity carry (the db.trash
+  // record, doc-table carries, all nine per-user carriers, id-keyed sidecar
+  // renames) and its own rollback, so NONE of the legacy cleanup below runs
+  // for it. The legacy path survives only for the shapes with no file to
+  // move: resolver `gone`, a vanished-mid-delete ENOENT, and the
+  // removeAnyway escape (file deliberately left on a failing mount). Every
+  // legacy shape is an UNVERIFIED conclusion by construction (nothing here
+  // watches an unlink succeed anymore), so the legacy mutator below always
+  // mints the v1.41.3 tombstone.
+  let trashed = false;
+  let trashedId = null;
+  let trashedDeletePending = false;
+  if (mediaPathOnDisk && !fileRemainsOnDisk) {
+    const tr = await trashItem(
+      { loadDatabase, updateDatabase, getMediaId },
+      item.id,
+      { sourcePath: resolved.realPathRaw || mediaPathOnDisk }
+    );
+    if (tr.ok) {
+      trashed = true;
+      trashedId = tr.trashId;
+      // A leftover source dirent (the post-commit unlink failed or the
+      // v1.41.10 delete-pending probe fired inside trashItem) is honestly a
+      // file remaining on disk; trashItem already minted its deferred-
+      // cleanup tombstone, and the scan's retry now trashes it too.
+      fileRemainsOnDisk = tr.sourceUnlinkFailed === true;
+      trashedDeletePending = tr.sourceDeletePending === true;
+      console.log(`Moved to trash: ${mediaPathOnDisk} -> ${tr.trashPath}`);
+    } else if (tr.status === 409 && tr.code && !removeAnyway) {
+      // The same actionable 409 + opt-in removeAnyway follow-up contract the
+      // unlink path has surfaced since v1.36.2 (a read-only mount can no
+      // more rename than unlink).
+      console.error(`Cannot trash file ${filePath} (${tr.code}):`, tr.error);
       return res.status(409).json({
-        error: `Could not delete the file: this location is read-only, permission-denied, or the file is busy (${err.code}). The file was not removed.`,
-        code: err.code,
+        error: `Could not delete the file: this location is read-only, permission-denied, or the file is busy (${tr.code}). The file was not removed.`,
+        code: tr.code,
         readOnly: true,
       });
+    } else if (tr.status === 409 && tr.code && removeAnyway) {
+      // Opt-in: the entry leaves the library, the file stays on disk; the
+      // unverified tombstone below hands it to the scan's deferred retry.
+      fileRemainsOnDisk = true;
+    } else if (tr.status === 404) {
+      // Vanished between resolution and the link (TOCTOU): the desired end
+      // state ("not on disk") holds -- fall through to the legacy
+      // already-gone cleanup.
+      console.warn(`Delete: file already gone (${filePath}) -- removing the library entry anyway.`);
     } else {
-      // FS failure -- db is left completely untouched (the updateDatabase
-      // metadata/progress cleanup below never runs), preserving today's
-      // 500-on-FS-failure contract.
-      console.error(`Error deleting file ${filePath}:`, err);
-      return res.status(500).json({ error: `Could not delete file: ${err.message}` });
+      // trashItem rolled itself back; db and file are untouched.
+      console.error(`Error trashing file ${filePath}:`, tr.error);
+      return res.status(500).json({ error: `Could not delete file: ${tr.error}` });
+    }
+  } else if (!fileRemainsOnDisk) {
+    // resolved.gone: genuinely absent (parent dir readable with no matching
+    // entry, or the dir itself is gone). The desired end state already holds
+    // -> SUCCESS; fall through to remove the orphaned library entry.
+    console.warn(`File not on disk when deleting (already gone): ${filePath}`);
+  }
+
+  if (!trashed) {
+    // Legacy sidecar hygiene for the no-file shapes -- these ids never
+    // re-key, so their id-keyed sidecars die here. Best-effort throughout.
+    const thumbPath = path.join(THUMBNAIL_DIR, `${item.id}.jpg`);
+    try { if (fs.existsSync(thumbPath)) fs.unlinkSync(thumbPath); } catch (_) { /* best-effort */ }
+    try { if (fs.existsSync(transcodedPath(item.id))) fs.unlinkSync(transcodedPath(item.id)); } catch (_) { /* best-effort */ }
+    if (!fileRemainsOnDisk) {
+      // The greedy .vtt sweep (v1.36.2), only when the media file itself is
+      // genuinely gone -- a removeAnyway file keeps its subtitles.
+      try {
+        const mediaPath = mediaPathOnDisk || filePath;
+        const dir = path.dirname(mediaPath);
+        const base = path.basename(mediaPath, path.extname(mediaPath));
+        for (const name of fs.readdirSync(dir)) {
+          if (name.startsWith(`${base}.`) && name.endsWith('.vtt')) {
+            try { fs.unlinkSync(path.join(dir, name)); } catch (_) { /* best-effort */ }
+          }
+        }
+      } catch (_) { /* best-effort -- e.g. the dir itself is gone */ }
     }
   }
 
-  // v1.41.10: post-verify against the parent directory. BOTH success shapes
-  // above -- a watched unlinkSync AND the ENOENT->"already gone" conclusion --
-  // can lie when the server holds the file in DELETE_PENDING (an open handle
-  // this process failed to release, or one on another machine entirely): the
-  // unlink "succeeds" or ENOENTs, yet the dirent stays enumerable and the next
-  // scan re-indexes it. If the exact leaf bytes are still listed AND the leaf
+  // v1.41.10: post-verify against the parent directory. The legacy
+  // "already gone" conclusions can lie when the server holds the file in
+  // DELETE_PENDING (an open handle this process failed to release, or one on
+  // another machine entirely): the dirent stays enumerable and the next scan
+  // would re-index it. If the exact leaf bytes are still listed AND the leaf
   // is unopenable, the file is NOT gone: say so (fileRemainsOnDisk +
-  // deletePending below), and downgrade unlinkVerified so the tombstone mint
-  // fires -- by the tombstone contract (v1.41.3) a conclusion contradicted by
-  // the directory itself is the definition of unverified.
+  // deletePending below); the legacy mutator's tombstone covers the retry --
+  // by the tombstone contract (v1.41.3) a conclusion contradicted by the
+  // directory itself is the definition of unverified. (v1.65: a successful
+  // trash move never enters this probe -- trashItem watches its own source
+  // unlink and tombstones any leftover itself.)
   //
   // Adversarial-gate CRITICAL (C1, this release): "still enumerated" ALONE
   // must never downgrade a VERIFIED unlink. An external writer can land a
@@ -8882,8 +8846,11 @@ app.delete('/api/videos/:id', async (req, res) => {
   // survivor once. Self-healing: deleting the re-indexed card again lands in
   // the ENOENT shape above, which readdir (by then long past any cache TTL)
   // catches and tombstones. One extra user delete, never data loss.
-  let deletePending = false;
-  if (!fileRemainsOnDisk) {
+  let deletePending = trashedDeletePending;
+  // v1.65: the probe below only concerns the LEGACY shapes -- a trash move
+  // runs the same v1.41.10 post-verify inside trashItem and reported its
+  // verdict via sourceDeletePending above.
+  if (!trashed && !fileRemainsOnDisk) {
     const checkPath = resolved.realPathRaw || mediaPathOnDisk || filePath;
     if (leafStillEnumerated(checkPath)) {
       let openable = false;
@@ -8894,18 +8861,11 @@ app.delete('/api/videos/:id', async (req, res) => {
       if (!openable) {
         deletePending = true;
         fileRemainsOnDisk = true;
-        unlinkVerified = false;
-        console.warn(`Delete: ${filePath} is STILL enumerated by its parent directory and refuses opens after the unlink (server-side delete-pending: an open handle somewhere is pinning it) -- reporting honestly and minting a tombstone.`);
-      } else if (unlinkVerified) {
-        // Enumerated AND openable after a watched unlink: a NEW file landed at
-        // this leaf inside the window. It is not the user's delete target --
-        // keep the verified conclusion (and therefore NO tombstone) so the
-        // next scan indexes it as the new content it is.
-        console.log(`Delete: a different file appeared at ${filePath} immediately after the unlink -- leaving it alone (new content, not ours to remove).`);
+        console.warn(`Delete: ${filePath} is STILL enumerated by its parent directory and refuses opens (server-side delete-pending: an open handle somewhere is pinning it) -- reporting honestly and minting a tombstone.`);
       }
-      // (ENOENT shape + openable: keep the pre-existing v1.41.3 contract
-      // exactly -- success + unverified tombstone; the scan's mtime and
-      // fresh-db checks decide what the surviving bytes are.)
+      // (Enumerated + openable: the legacy mutator below mints its
+      // unverified tombstone either way; the scan's mtime and fresh-db
+      // checks decide what the surviving bytes are -- the v1.41.3 contract.)
     }
   }
 
@@ -8945,11 +8905,12 @@ app.delete('/api/videos/:id', async (req, res) => {
     console.error(`Delete: failed to record ${item.id} in the yt-dlp archive (continuing):`, err && err.message);
   }
 
-  // Clean up database entries -- either after the FS cleanup above succeeded,
-  // or after an opt-in removeAnyway on a read-only/permission failure.
-  // Idempotent under a concurrent duplicate delete (deleting an already-gone
-  // key is a no-op either way; `return true` unconditionally is fine since
-  // the mutator's `delete` calls are naturally idempotent).
+  // LEGACY db cleanup -- only for the shapes trashItem did not handle
+  // (resolver `gone`, vanished-mid-delete, removeAnyway): remove the entry
+  // and mint the unverified tombstone. A successful trash move already did
+  // all of this (and more) inside its own mutator. Idempotent under a
+  // concurrent duplicate delete.
+  if (!trashed) {
   try {
     await updateDatabase(freshDb => {
       delete freshDb.metadata[item.id];
@@ -8959,16 +8920,15 @@ app.delete('/api/videos/:id', async (req, res) => {
       // AND resurrect a stale count onto a future re-add of the same path
       // (same md5 id). Same reasoning as clearPersistedServedAt in the prune.
       if (freshDb.viewCounts) delete freshDb.viewCounts[item.id];
-      // v1.41.3: mint the deletion tombstone (tech-debt #32/#35a) in the SAME
-      // mutator that removes the entry -- but ONLY for an UNVERIFIED
-      // conclusion (see unlinkVerified's declaration): a false "already gone"
-      // on a non-round-tripping name, or a deliberately-skipped unlink
-      // (removeAnyway on a transient EBUSY). The scan's deferred-retry
-      // contract (pruneDeleteTombstones' header) finishes those deletes. A
-      // VERIFIED unlink mints nothing -- tombstoning it would turn every
-      // normal delete into a 90-day unlink trap for mtime-preserving
-      // restores (adversarial-gate CRITICAL, this release).
-      if (!unlinkVerified) {
+      // v1.41.3: mint the deletion tombstone in the SAME mutator that removes
+      // the entry. Every shape that reaches this legacy mutator is an
+      // UNVERIFIED conclusion by construction (v1.65: the verified case is
+      // now a trash move, which never reaches here and never tombstones --
+      // preserving the old contract's "a verified conclusion mints nothing"
+      // rule at its new home). The scan's deferred-retry contract
+      // (pruneDeleteTombstones' header) finishes these deletes -- and since
+      // v1.65 the retry TRASHES the survivor rather than unlinking it.
+      {
         if (!freshDb.deleteTombstones || typeof freshDb.deleteTombstones !== 'object' || Array.isArray(freshDb.deleteTombstones)) freshDb.deleteTombstones = {};
         // SEAM 2 (defense-in-depth): the tombstone is keyed by md5(storedPath),
         // but the scanner can only recompute md5(realDiskPath) -- and in this
@@ -9039,18 +8999,25 @@ app.delete('/api/videos/:id', async (req, res) => {
   } catch (err) {
     console.error(`Delete: failed to remove per-user progress/liked for ${item.id} (continuing):`, err.message);
   }
+  } // end !trashed (a trash move re-keyed the carriers instead of removing them)
 
   if (fileRemainsOnDisk) {
     return res.json({
       success: true,
       fileRemainsOnDisk: true,
+      ...(trashed ? { trashed: true, trashId: trashedId } : {}),
       ...(deletePending ? { deletePending: true } : {}),
       message: deletePending
         ? 'Removed from your library, but the storage side reports the file is still held open (by another program or device), so it stays on disk until that handle closes. Library scans will keep it hidden and keep retrying the deletion.'
-        : 'Removed from your library. Note: the file itself could not be deleted -- the next library scan will retry the deletion once; if it still cannot be deleted, it will reappear.',
+        : trashed
+          ? 'Moved to Trash, but the original location still shows the file -- the next library scan will finish the cleanup.'
+          : 'Removed from your library. Note: the file itself could not be deleted -- the next library scan will retry the deletion once; if it still cannot be deleted, it will reappear.',
     });
   }
 
+  if (trashed) {
+    return res.json({ success: true, trashed: true, trashId: trashedId, message: 'Moved to Trash' });
+  }
   res.json({ success: true, message: 'File deleted successfully' });
 });
 
@@ -10284,31 +10251,146 @@ async function trashItem(deps, id, opts = {}) {
   rekeyInFlightState(id, trashId, oldPath, trashPath);
   await destroyMediaStreams(oldPath);
 
-  let sourceUnlinkFailed = false;
+  let sourceUnlinkFailed = false;    // surfaces as fileRemainsOnDisk
+  let sourceDeletePending = false;   // surfaces as deletePending
+  let mintLeftoverTombstone = false; // any unverified conclusion tombstones
+  let unlinkEnoent = false;
   try {
     fsImpl.unlinkSync(sourcePath);
   } catch (err) {
     if (err && err.code === 'ENOENT') {
-      // Someone beat us to it -- the bytes are in trash, nothing to clean.
+      // Unverified (the v1.41.3 rule): "no such file" for a path we hard-
+      // linked FROM microseconds ago is a race or a lying layer -- tombstone
+      // it and let the scan's mtime + fresh-db checks decide.
+      unlinkEnoent = true;
+      mintLeftoverTombstone = true;
     } else {
       sourceUnlinkFailed = true;
+      mintLeftoverTombstone = true;
       console.error(`Trash: file moved to ${trashPath} but the old path ${oldPath} could not be removed:`, err.message);
-      // Hand the leftover dirent to the scan's deferred-delete retry (see
-      // the function comment). Best-effort: a failure here just means the
-      // leftover waits for the user instead of the scan.
-      try {
-        await updateDb((freshDb) => {
-          if (!freshDb.deleteTombstones || typeof freshDb.deleteTombstones !== 'object') freshDb.deleteTombstones = {};
-          freshDb.deleteTombstones[id] = { filePath: oldPath, deletedAt: Date.now(), youtubeId: null };
-          pruneDeleteTombstones(freshDb.deleteTombstones); // in-place prune (returns nothing)
-        });
-      } catch (tombErr) {
-        console.error(`Trash: could not record the leftover at ${oldPath} for deferred cleanup:`, tombErr.message);
+    }
+  }
+  // v1.41.10 post-verify AT ITS NEW HOME: both the clean-unlink and the
+  // ENOENT shapes can lie under SMB/CIFS DELETE_PENDING (the dirent stays
+  // enumerable while every new open is refused). Enumerated + unopenable =
+  // the file is NOT gone: report honestly + tombstone. Enumerated + openable
+  // after a CLEAN unlink = brand-new content landed in the window -- leave
+  // it alone, mint nothing (this release's C1 rule, preserved verbatim).
+  if (!sourceUnlinkFailed) {
+    try {
+      if (leafStillEnumerated(sourcePath)) {
+        let openable = false;
+        try {
+          fsImpl.closeSync(fsImpl.openSync(sourcePath, 'r'));
+          openable = true;
+        } catch (_) { /* unopenable: the delete-pending signature */ }
+        if (!openable) {
+          sourceUnlinkFailed = true;
+          sourceDeletePending = true;
+          mintLeftoverTombstone = true;
+          console.warn(`Trash: ${oldPath} is STILL enumerated and refuses opens after the source unlink (delete-pending) -- reporting honestly and minting a tombstone.`);
+        } else if (unlinkEnoent) {
+          // An openable survivor after an ENOENT: honest fileRemainsOnDisk
+          // (the tombstone is already queued above; the scan decides).
+          sourceUnlinkFailed = true;
+        }
       }
+    } catch (_) { /* probe is best-effort; the tombstone rules above stand */ }
+  }
+  if (mintLeftoverTombstone) {
+    // Hand the leftover/uncertain dirent to the scan's deferred-delete retry
+    // (which since v1.65 TRASHES survivors). Best-effort: a failure here
+    // just means the leftover waits for the user instead of the scan.
+    try {
+      await updateDb((freshDb) => {
+        if (!freshDb.deleteTombstones || typeof freshDb.deleteTombstones !== 'object') freshDb.deleteTombstones = {};
+        freshDb.deleteTombstones[id] = { filePath: oldPath, deletedAt: Date.now(), youtubeId: null };
+        pruneDeleteTombstones(freshDb.deleteTombstones); // in-place prune (returns nothing)
+      });
+    } catch (tombErr) {
+      console.error(`Trash: could not record the leftover at ${oldPath} for deferred cleanup:`, tombErr.message);
     }
   }
 
-  return { ok: true, oldId: id, trashId, trashPath, sourceUnlinkFailed };
+  return { ok: true, oldId: id, trashId, trashPath, sourceUnlinkFailed, sourceDeletePending };
+}
+
+// v1.65: the scan's deferred-delete retry routes through trash too (ruling
+// 3: EVERY delete path). By the time the retry fires, the original delete
+// already removed the library entry and every carrier -- this is an ORPHAN
+// move: bytes into the trash dir + a minimal db.trash record (a restore
+// puts the file back and the next scan re-indexes it into full metadata).
+// Sidecar subtitles ride along under the narrow matcher (the retry used to
+// greedily DELETE them; carrying is strictly better).
+//
+// Error contract, matched to the caller's existing branches: any LINK-stage
+// failure rethrows the raw fs error (the caller's ENOENT branch keeps its
+// delete-pending semantics; other codes fall to the honest re-index). A
+// mutator failure rolls the link back and throws a non-ENOENT error.
+// Returns the trashPath on success.
+async function trashOrphanFile(filePath, opts = {}) {
+  const nowMs = typeof opts.nowMs === 'number' ? opts.nowMs : Date.now();
+  const db = loadDatabase();
+  const originalId = getMediaId(filePath);
+  const matchedRoot = matchRootFolder(filePath, configuredLibraryRoots(db));
+  const { trashDir, trashPath } = computeTrashTarget(filePath, originalId, matchedRoot, nowMs);
+  const trashId = getMediaId(trashPath);
+
+  fs.mkdirSync(trashDir, { recursive: true });
+  fs.linkSync(filePath, trashPath); // throws verbatim -- see the contract above
+
+  try {
+    await updateDatabase((freshDb) => {
+      if (!freshDb.trash || typeof freshDb.trash !== 'object') freshDb.trash = {};
+      const ext = path.extname(filePath).toLowerCase();
+      freshDb.trash[trashId] = {
+        originalId,
+        originalPath: filePath,
+        trashPath,
+        trashedAt: nowMs,
+        rootFolder: matchedRoot || null,
+        item: {
+          id: originalId, filePath, name: path.basename(filePath),
+          title: path.basename(filePath, path.extname(filePath)),
+          ext, type: AUDIO_EXTENSIONS.includes(ext) ? 'audio' : 'video',
+          // Marks the minimal snapshot: a restore re-indexes for the rest.
+          orphanedByDeferredDelete: true,
+        },
+      };
+    });
+  } catch (err) {
+    try { fs.unlinkSync(trashPath); } catch (_) { /* best-effort rollback */ }
+    const wrapped = new Error(`trash record write failed: ${err.message}`);
+    wrapped.code = 'ETRASHDB';
+    throw wrapped;
+  }
+
+  // Narrow-matched subtitle carry into the trash dir (trashBase naming, so
+  // a restore's reverse sweep finds them). Best-effort.
+  try {
+    const dir = path.dirname(filePath);
+    const base = path.basename(filePath, path.extname(filePath));
+    const trashBase = path.basename(trashPath, path.extname(trashPath));
+    const sidecarSuffix = /^\.(?:[A-Za-z0-9_-]{1,15}\.)?(?:vtt|srt)$/i;
+    for (const name of fs.readdirSync(dir)) {
+      if (!name.startsWith(`${base}.`)) continue;
+      const suffix = name.slice(base.length);
+      if (!sidecarSuffix.test(suffix)) continue;
+      try {
+        const to = path.join(trashDir, trashBase + suffix);
+        if (!fs.existsSync(to)) fs.renameSync(path.join(dir, name), to);
+      } catch (_) { /* best-effort */ }
+    }
+  } catch (_) { /* best-effort */ }
+
+  try {
+    fs.unlinkSync(filePath);
+  } catch (err) {
+    // Bytes + record are safe in trash; the leftover dirent re-indexes on
+    // the next scan and a re-delete routes through the normal trash path.
+    console.error(`Scan: orphan moved to ${trashPath} but the old dirent ${filePath} could not be removed:`, err.message);
+  }
+  return trashPath;
 }
 
 // API: Move a video/audio file into another configured library folder (C1).
