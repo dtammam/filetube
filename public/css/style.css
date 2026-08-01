@@ -3596,7 +3596,8 @@ a.sub-row-channel-link:focus-visible {
 .icon-share,
 .icon-download,
 .icon-shuffle,
-.icon-flame {
+.icon-flame,
+.icon-history {
   display: inline-block;
   width: 1em;
   height: 1em;
@@ -3658,6 +3659,10 @@ a.sub-row-channel-link:focus-visible {
    file in that directory this one is FileTube's own drawing, not a Material
    asset -- see public/assets/icons/README.md. */
 .icon-flame { -webkit-mask-image: url(/assets/icons/flame.svg); mask-image: url(/assets/icons/flame.svg); }
+/* v1.64: the History clock glyph (Material `history`). Base directory only,
+   like heart/share/flame -- an icon with no set-specific variant falls back
+   to this one in every set (deliberate, not a gap). */
+.icon-history { -webkit-mask-image: url(/assets/icons/history.svg); mask-image: url(/assets/icons/history.svg); }
 
 /* Paint the icon fill only where CSS masks are supported, so a browser without
    mask support (or a failed/404 mask) renders nothing instead of a solid
@@ -3666,7 +3671,7 @@ a.sub-row-channel-link:focus-visible {
   .icon-home, .icon-folder, .icon-cog, .icon-delete, .icon-moon, .icon-sun,
   .icon-menu, .icon-search, .icon-play, .icon-refresh, .icon-arrow-up, .icon-arrow-down,
   .icon-grid, .icon-list, .icon-heart, .icon-share, .icon-download, .icon-shuffle,
-  .icon-flame {
+  .icon-flame, .icon-history {
     background-color: currentColor;
   }
 }
@@ -8718,4 +8723,140 @@ a.queue-upnext-next:hover {
   align-items: center;
   gap: var(--space-4);
   font-weight: normal;
+}
+
+/* ---- v1.64 watch history (/history) --------------------------------------- */
+.history-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-5);
+  margin-bottom: var(--space-6);
+}
+.history-toolbar h2 { margin: 0; }
+.history-toolbar-actions { display: flex; gap: var(--space-4); }
+
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  max-width: 860px;
+}
+
+.history-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-6);
+}
+
+.history-thumb {
+  position: relative;
+  flex: 0 0 auto;
+  width: 200px;
+  max-width: 42vw;
+  aspect-ratio: 16 / 9;
+  border-radius: var(--radius);
+  overflow: hidden;
+  background-color: var(--bg-secondary);
+}
+.history-thumb-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* The red resume bar, same visual weight as the card bar; the width rides
+   the --history-pct custom property (set via setProperty after insertion --
+   the player.js --seek-fill idiom, never an inline width literal). */
+.history-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 4px;
+  background-color: var(--scrim);
+}
+.history-bar-fill {
+  display: block;
+  width: var(--history-pct, 0%);
+  height: 100%;
+  background-color: var(--yt-red);
+}
+
+.history-info {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.history-title {
+  display: block;
+  color: var(--text-primary);
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-semibold);
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.history-title:hover { color: var(--text-link); }
+.history-meta {
+  margin-top: var(--space-2);
+  color: var(--text-secondary);
+  font-size: var(--fs-sm);
+}
+.history-channel {
+  color: var(--text-secondary);
+  text-decoration: none;
+}
+.history-channel:hover { color: var(--text-link); }
+.history-watched-chip {
+  display: inline-block;
+  margin-left: var(--space-2);
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  font-size: var(--fs-2xs);
+  text-transform: uppercase;
+}
+
+/* Per-row remove: icon-first, the label swaps in while armed (two-tap). */
+.history-remove-btn {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: var(--space-2);
+  border-radius: var(--radius);
+  font-size: var(--fs-sm);
+}
+.history-remove-btn:hover { color: var(--text-primary); background-color: var(--bg-secondary); }
+.history-remove-confirm { display: none; }
+.history-confirming .history-remove-confirm { display: inline; }
+.history-confirming.history-remove-btn { color: var(--yt-red); }
+/* The armed Clear-all swaps its label for "Sure?" (single-width control). */
+.history-clear-btn.history-confirming .history-clear-label { display: none; }
+.history-clear-btn.history-confirming { color: var(--yt-red); }
+
+.history-empty {
+  color: var(--text-secondary);
+  padding: var(--space-10) 0;
+}
+
+.history-more-wrap {
+  display: flex;
+  justify-content: center;
+  padding: var(--space-8) 0;
+}
+
+@media (max-width: 600px) {
+  .history-row { gap: var(--space-4); }
+  .history-thumb { width: 160px; }
+  .history-title { font-size: var(--fs-base); }
 }

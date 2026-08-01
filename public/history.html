@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <title>Music - FileTube</title>
+  <title>History - FileTube</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
   <link rel="icon" type="image/png" sizes="512x512" href="/icons/icon-512.png">
@@ -91,54 +91,25 @@
     </aside>
 
     <main class="main-content" id="main-content">
-      <div id="view-root" data-view="music">
-        <div class="music-toolbar">
-          <h2>Music</h2>
-          <div class="music-toolbar-actions">
-            <select id="music-sort-select" class="btn btn-sm" aria-label="Sort music">
-              <option value="newest">Recently added</option>
-              <option value="title-asc">Title A-Z</option>
-              <option value="title-desc">Title Z-A</option>
-              <option value="artist-asc">Artist</option>
-              <option value="album-asc">Album</option>
-              <option value="duration-desc">Longest</option>
-            </select>
-            <button class="btn btn-sm" id="music-shuffle-btn" type="button" title="Shuffle all">
-              <i class="icon-shuffle"></i> Shuffle
-            </button>
-            <button class="btn btn-sm" id="music-scan-btn" type="button" title="Scan music folders now">
-              <i class="icon-refresh"></i> Scan
+      <div id="view-root" data-view="history">
+        <div class="history-toolbar">
+          <h2>History</h2>
+          <div class="history-toolbar-actions">
+            <!-- Two-tap confirm (public/js/history.js): first tap arms
+                 ("Sure?" swaps in), second tap clears. Hidden while empty. -->
+            <button class="btn btn-sm history-clear-btn" id="history-clear-btn" type="button" title="Clear all watch history" hidden>
+              <i class="icon-delete"></i> <span class="history-clear-label">Clear all</span><span class="history-remove-confirm">Sure?</span>
             </button>
           </div>
         </div>
 
-        <!-- v1.44.2: tapping a song plays in the DOCKED mini-player (#player-dock,
-             in the shell below), NOT a FULL in-view player — the album header +
-             tracklist stay on screen (browse-while-playing). No #player-slot here.
-             The playing row highlights instead (public/js/music.js). -->
-        <!-- Transient status (e.g. "Preparing track…" while an ALAC rendition
-             transcodes on demand). -->
-        <div id="music-status" class="music-status" role="status" hidden></div>
-
-        <div class="music-tabs" id="music-tabs" role="tablist">
-          <button type="button" class="music-tab active" data-tab="albums" role="tab">Albums</button>
-          <button type="button" class="music-tab" data-tab="artists" role="tab">Artists</button>
-          <button type="button" class="music-tab" data-tab="songs" role="tab">Songs</button>
-          <button type="button" class="music-tab" data-tab="liked" role="tab">Liked</button>
+        <!-- Newest-first rows render into this host (GET /api/history). -->
+        <div id="history-list" class="history-list"></div>
+        <div class="history-empty" id="history-empty" hidden>
+          No watch history yet. Anything you watch or start shows up here.
         </div>
-
-        <!-- Drill-in breadcrumb (album/artist view); hidden on the top tabs. -->
-        <div class="music-crumb" id="music-crumb" hidden></div>
-
-        <!-- v1.44.2: "Playing from <Album>" context line — a sibling of
-             #music-content (survives its re-renders) that reflects the currently
-             playing music track and drills into its album on tap. -->
-        <button type="button" class="music-nowplaying" id="music-nowplaying" hidden></button>
-
-        <!-- Album/artist grids OR a song list render into this host. -->
-        <div id="music-content"></div>
-        <div class="music-empty" id="music-empty" hidden>
-          No music yet. Add a music folder in <a href="/setup.html">Library settings</a>, drop MP3/M4A/FLAC/WAV files in it, and scan.
+        <div class="history-more-wrap">
+          <button class="btn" id="history-loadmore" type="button" hidden>Load more</button>
         </div>
       </div>
     </main>
@@ -255,6 +226,6 @@
   <script src="/js/watch.js"></script>
   <script src="/js/setup.js"></script>
   <script src="/js/player.js"></script>
-  <script src="/js/music.js"></script>
+  <script src="/js/history.js"></script>
 </body>
 </html>

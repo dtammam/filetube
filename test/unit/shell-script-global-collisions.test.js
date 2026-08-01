@@ -39,6 +39,13 @@ const SHELLS = [
   'public/watch.html',
   'public/stats.html',
   'public/setup.html',
+  // v1.64 gate (adversarial W3): these four were silently missing from this
+  // hand-list, so their script sets escaped the very guard built for the
+  // v1.26.0-.2 silent-empty-page class. All shells are now enumerated.
+  'public/books.html',
+  'public/read.html',
+  'public/music.html',
+  'public/history.html',
   'lib/ytdlp/views/subscriptions.html',
 ];
 

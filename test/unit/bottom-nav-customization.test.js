@@ -9,7 +9,7 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const { resolveBottomNavLayout } = require('../../public/js/common.js');
 
-const ALL = ['home', 'playlists', 'subscriptions', 'oneoff-download', 'theme', 'settings'];
+const ALL = ['home', 'playlists', 'history', 'subscriptions', 'oneoff-download', 'theme', 'settings'];
 
 test('T12: default config keeps DOM order, home first + settings last', () => {
   const out = resolveBottomNavLayout(ALL, {});
@@ -19,18 +19,18 @@ test('T12: default config keeps DOM order, home first + settings last', () => {
 
 test('T12: hidden optionals are dropped from visible; home/settings can never be hidden', () => {
   const out = resolveBottomNavLayout(ALL, { hidden: ['subscriptions', 'home', 'settings'] });
-  assert.deepEqual(out.visible, ['home', 'playlists', 'oneoff-download', 'theme', 'settings'], 'home/settings ignore a hide request');
+  assert.deepEqual(out.visible, ['home', 'playlists', 'history', 'oneoff-download', 'theme', 'settings'], 'home/settings ignore a hide request');
   assert.deepEqual(out.hiddenPresent, ['subscriptions']);
 });
 
 test('T12: order reorders the optional middle; unlisted optionals keep their default order after', () => {
   const out = resolveBottomNavLayout(ALL, { order: ['theme', 'oneoff-download'] });
-  assert.deepEqual(out.visible, ['home', 'theme', 'oneoff-download', 'playlists', 'subscriptions', 'settings']);
+  assert.deepEqual(out.visible, ['home', 'theme', 'oneoff-download', 'playlists', 'history', 'subscriptions', 'settings']);
 });
 
 test('T12: order + hide compose', () => {
   const out = resolveBottomNavLayout(ALL, { order: ['oneoff-download', 'subscriptions', 'playlists', 'theme'], hidden: ['theme'] });
-  assert.deepEqual(out.visible, ['home', 'oneoff-download', 'subscriptions', 'playlists', 'settings']);
+  assert.deepEqual(out.visible, ['home', 'oneoff-download', 'subscriptions', 'playlists', 'history', 'settings']);
 });
 
 test('T12: a config entry for a NOT-present item is inert (module gate wins)', () => {

@@ -40,8 +40,12 @@ test('T10 SOURCE-LOCK: Books + Music are Library-section entries; NEITHER inject
   assert.ok(src.includes("injectLibraryNavEntry('music', '/music', 'Music'"), 'Music injects a Library-section entry');
   // The shared helper anchors above #sidebar-folders-list (the Library section).
   assert.ok(src.includes("getElementById('sidebar-folders-list')"), 'Library entries anchor at the folders list');
-  // Deterministic order: Music anchors before an existing Books entry.
-  assert.ok(src.includes("document.querySelector('[data-nav-sidebar=\"books\"]') || foldersList"), 'Music sits above Books deterministically');
+  // Deterministic order: Music anchors before an existing Books (or, since
+  // v1.64, History) entry. The full Music > Books > History order is
+  // BEHAVIOR-bound across all six race orders in
+  // test/integration/history-nav-gate.test.js; this lock pins the source
+  // shape only.
+  assert.ok(src.includes("document.querySelector('[data-nav-sidebar=\"books\"]') || document.querySelector('[data-nav-sidebar=\"history\"]') || foldersList"), 'Music sits above Books deterministically');
   // hrefByNavKey + VIEW_SCRIPT_SRC learn music.
   assert.ok(src.includes("music: '/music'"), 'hrefByNavKey lights the Music sidebar link after SPA nav');
   assert.ok(src.includes("music: '/js/music.js'"), 'the music view script is lazy-loadable');

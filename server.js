@@ -5496,11 +5496,12 @@ function dropPendingProgressForUser(userId) {
 // this is always current, needs no bootstrap, and depends on nothing
 // client-side. Only full-page loads/refreshes hit this; in-app SPA nav keeps
 // the header, so there is no FOUC there to fix.
-const FOUC_SHELL_FILES = new Set(['index.html', 'watch.html', 'stats.html', 'setup.html', 'read.html', 'books.html', 'music.html', 'login.html', 'welcome.html']);
+const FOUC_SHELL_FILES = new Set(['index.html', 'watch.html', 'stats.html', 'setup.html', 'read.html', 'books.html', 'music.html', 'history.html', 'login.html', 'welcome.html']);
 function shellHtmlForRequestPath(p) {
   if (p === '/' || p === '/index.html') return 'index.html';
   if (p === '/books' || p === '/books.html') return 'books.html';
   if (p === '/music' || p === '/music.html') return 'music.html';
+  if (p === '/history' || p === '/history.html') return 'history.html';
   // v1.43 auth: the pretty routes /login and /welcome serve their shells (the
   // gate above lets them through the allowlist; here they get the same
   // custom-logo/no-cache treatment as every other shell).
@@ -9141,6 +9142,97 @@ app.get('/api/liked', (req, res) => {
   });
 
   res.json({ items, total, offset, limit });
+});
+
+// ---- v1.64 watch history ---------------------------------------------------
+// Everything the signed-in user watched or started, newest first. The merged
+// set is user_progress (started) + user_watched (the completion latch); the
+// per-media order key is the freshest signal: a staged coalescer ping
+// (read-your-writes -- the overlay value carries its own updatedAt) beats
+// the committed row, and progress.updatedAt pairs with the latch's
+// completed_at via max(). ISO strings compare lexicographically, so string
+// max IS time max. Dead media ids are filtered at read time (the
+// shapedQueue posture): a row that outlives its file must never break the
+// page, and the media-delete prune remains the durable cleaner.
+app.get('/api/history', (req, res) => {
+  const db = getCachedDatabase(); // hot GET reader, same as /api/liked
+  const limit = videoQuery.normalizeLimit(req.query.limit);
+  const offset = videoQuery.normalizeOffset(req.query.offset);
+  const progressMap = userStore.getProgress(req.user.id);
+  for (const entry of pendingProgress.values()) {
+    if (entry.userId === req.user.id) progressMap[entry.mediaId] = entry.value;
+  }
+  const watchedTimes = userStore.getWatchedTimes(req.user.id);
+  const likedSet = new Set(userStore.getLiked(req.user.id));
+
+  // Per-media newest signal. A null updated_at (a legacy batch row) sorts
+  // as '' -- present in history, oldest possible position.
+  const lastById = Object.create(null);
+  for (const id of Object.keys(progressMap)) {
+    lastById[id] = typeof progressMap[id].updatedAt === 'string' ? progressMap[id].updatedAt : '';
+  }
+  for (const id of Object.keys(watchedTimes)) {
+    const at = typeof watchedTimes[id] === 'string' ? watchedTimes[id] : '';
+    if (!(id in lastById) || at > lastById[id]) lastById[id] = at;
+  }
+
+  const merged = Object.keys(lastById)
+    .filter((id) => Object.prototype.hasOwnProperty.call(db.metadata, id))
+    .sort((a, b) => {
+      if (lastById[a] !== lastById[b]) return lastById[a] > lastById[b] ? -1 : 1;
+      return a < b ? -1 : 1; // deterministic tiebreak
+    });
+
+  const total = merged.length;
+  const page = merged.slice(offset, offset + limit);
+  const items = page.map((id) => {
+    const item = db.metadata[id];
+    const progress = progressMap[id] || { timestamp: 0, duration: 0 };
+    const dur = typeof progress.duration === 'number' && Number.isFinite(progress.duration) && progress.duration > 0 ? progress.duration : 0;
+    const progressPercent = dur > 0 ? (progress.timestamp / dur) * 100 : 0;
+    return {
+      ...item,
+      liked: likedSet.has(id),
+      progress: progress.timestamp || 0,
+      progressPercent,
+      watchState: videoQuery.deriveWatchState(progressPercent, id in watchedTimes),
+      lastWatchedAt: lastById[id] || null
+    };
+  });
+
+  res.json({ items, total, offset, limit });
+});
+
+// Per-item remove-from-history. Idempotent 200 (an already-gone or even
+// dead-media id is a no-op, not a 404 -- a row that outlived its file must
+// still be removable). The staged coalescer entry is purged IN THE SAME
+// synchronous handler as the row delete: a staged ping left behind would be
+// flushed <=PROGRESS_FLUSH_MS later and silently resurrect the row. A ping
+// arriving AFTER this response re-adds the item -- that is the user still
+// watching, not a bug (the latch re-marks on the next threshold cross too).
+app.delete('/api/history/:id', (req, res) => {
+  const id = req.params.id;
+  pendingProgress.delete(pendingProgressKey(req.user.id, id));
+  userStore.removeHistory(req.user.id, id);
+  res.json({ success: true });
+});
+
+// Clear-all, strictly this user: the staged-entry sweep filters on
+// entry.userId (deleting from a Map while iterating it is safe in JS) and
+// clearHistory's DELETEs are user-scoped by statement.
+app.delete('/api/history', (req, res) => {
+  // QA gate W1 (v1.64): Express non-strict routing aliases
+  // 'DELETE /api/history/' -- the per-item form with a MISSING id -- onto
+  // this handler. A caller that meant to remove ONE item must never wipe
+  // the whole history: refuse the ambiguous trailing-slash form outright.
+  if (req.path !== '/api/history') {
+    return res.status(400).json({ error: 'item id required' });
+  }
+  for (const [key, entry] of pendingProgress) {
+    if (entry.userId === req.user.id) pendingProgress.delete(key);
+  }
+  userStore.clearHistory(req.user.id);
+  res.json({ success: true });
 });
 
 // ---- C1 (v1.24 UX Round, Wave 3): move files between folders + id re-key --

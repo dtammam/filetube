@@ -454,3 +454,28 @@ test('shell smoke: lib/ytdlp/views/subscriptions.html loads with zero uncaught e
     result.dom.window.close();
   }
 });
+
+// ---------------------------------------------------------------------------
+// history.html (v1.64)
+// ---------------------------------------------------------------------------
+
+test('shell smoke: history.html loads with zero uncaught errors and the history view registers/boots', async () => {
+  const result = await loadShell({ htmlPath: path.join(PUBLIC_DIR, 'history.html'), url: 'http://localhost/history' });
+  try {
+    assertNoLoadErrors(result, 'history.html');
+    assert.ok(result.dom.window.FileTube, 'expected window.FileTube to exist');
+    assert.ok(
+      result.dom.window.__ftRegisteredViews.includes('history'),
+      'expected history.js to have registered the "history" view'
+    );
+    // Strongest cheap signal past registration: init() fires the page fetch
+    // synchronously (fetchPage(0) before its first await), proving
+    // bootRouter() derived 'history' for /history and invoked init.
+    assert.ok(
+      result.dom.window.__ftFetchLog.includes('/api/history?limit=50&offset=0'),
+      'expected history.js init() to have called fetch on /api/history'
+    );
+  } finally {
+    result.dom.window.close();
+  }
+});

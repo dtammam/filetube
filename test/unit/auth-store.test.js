@@ -256,3 +256,51 @@ test('WARNING-1: setProgressBatch/setBookProgressBatch skip entries for a vanish
   ]));
   assert.equal(store.getOneBookProgress(a.id, 'bk1').percent, 50);
 });
+
+// ---- v1.64 watch history ----------------------------------------------------
+
+test('v1.64: getWatchedTimes returns the completed_at per media (the first live reader of the column)', () => {
+  const a = store.createFirstAdmin({ username: 'a', displayName: 'A', passwordHash: 'h' }, null, ISO);
+  store.markWatched(a.id, 'v1', '2026-07-01T00:00:00.000Z');
+  store.markWatched(a.id, 'v2', '2026-07-02T00:00:00.000Z');
+  const times = store.getWatchedTimes(a.id);
+  assert.deepEqual({ ...times }, { v1: '2026-07-01T00:00:00.000Z', v2: '2026-07-02T00:00:00.000Z' });
+  // The sticky latch keeps the FIRST crossing's stamp (idempotent re-mark).
+  store.markWatched(a.id, 'v1', '2026-07-09T00:00:00.000Z');
+  assert.equal(store.getWatchedTimes(a.id).v1, '2026-07-01T00:00:00.000Z');
+});
+
+test('v1.64: removeHistory deletes ONE user\'s progress + watched rows for ONE media id, nothing else', () => {
+  const a = store.createFirstAdmin({ username: 'a', displayName: 'A', passwordHash: 'h' }, null, ISO);
+  const b = store.createUser({ username: 'b', displayName: 'B', passwordHash: 'h', role: 'member' }, ISO);
+  for (const u of [a, b]) {
+    store.setProgress(u.id, 'gone', { timestamp: 5, duration: 10, updatedAt: ISO });
+    store.setProgress(u.id, 'kept', { timestamp: 6, duration: 10, updatedAt: ISO });
+    store.markWatched(u.id, 'gone', ISO);
+    store.markWatched(u.id, 'kept', ISO);
+  }
+  store.removeHistory(a.id, 'gone');
+  assert.equal(store.getOneProgress(a.id, 'gone'), null);
+  assert.equal(store.getWatchedTimes(a.id).gone, undefined, 'the latch row went with the progress row (no watched ghost)');
+  assert.equal(store.getOneProgress(a.id, 'kept').timestamp, 6);
+  assert.equal(store.getWatchedTimes(a.id).kept, ISO);
+  // b (a different user) keeps BOTH rows for the removed id.
+  assert.equal(store.getOneProgress(b.id, 'gone').timestamp, 5);
+  assert.equal(store.getWatchedTimes(b.id).gone, ISO);
+});
+
+test('v1.64: clearHistory wipes ONLY the calling user\'s progress + watched rows', () => {
+  const a = store.createFirstAdmin({ username: 'a', displayName: 'A', passwordHash: 'h' }, null, ISO);
+  const b = store.createUser({ username: 'b', displayName: 'B', passwordHash: 'h', role: 'member' }, ISO);
+  for (const u of [a, b]) {
+    store.setProgress(u.id, 'v1', { timestamp: 5, duration: 10, updatedAt: ISO });
+    store.markWatched(u.id, 'v1', ISO);
+    store.addLiked(u.id, 'v1', ISO);
+  }
+  store.clearHistory(a.id);
+  assert.equal(store.getOneProgress(a.id, 'v1'), null);
+  assert.deepEqual({ ...store.getWatchedTimes(a.id) }, {});
+  assert.deepEqual(store.getLiked(a.id), ['v1'], 'Likes are NOT history -- clear must not touch them');
+  assert.equal(store.getOneProgress(b.id, 'v1').timestamp, 5, 'the other user\'s history survives');
+  assert.equal(store.getWatchedTimes(b.id).v1, ISO);
+});

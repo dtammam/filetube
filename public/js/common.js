@@ -1891,6 +1891,8 @@ function activeNavItem(pathname, search) {
   if (pathname === '/books' || pathname === '/books.html' || pathname === '/read.html') return 'books';
   // v1.44 music: same posture (link injected only when >=1 music folder set).
   if (pathname === '/music' || pathname === '/music.html') return 'music';
+  // v1.64 history (count-gated entry, the Liked rule).
+  if (pathname === '/history' || pathname === '/history.html') return 'history';
   if (pathname === '/' || pathname === '/index.html') return 'home';
   return null;
 }
@@ -3060,9 +3062,14 @@ function injectLibraryNavEntry(key, href, label, iconClass) {
   icon.className = iconClass;
   link.appendChild(icon);
   link.appendChild(document.createTextNode(' ' + label));
+  // Deterministic visual order Music, Books, History regardless of which
+  // async probe resolves first (QA gate S2, v1.64): each key anchors before
+  // every entry that must sit BELOW it, falling back to the folders list.
   const anchor = (key === 'music')
-    ? (document.querySelector('[data-nav-sidebar="books"]') || foldersList)
-    : foldersList;
+    ? (document.querySelector('[data-nav-sidebar="books"]') || document.querySelector('[data-nav-sidebar="history"]') || foldersList)
+    : (key === 'books')
+      ? (document.querySelector('[data-nav-sidebar="history"]') || foldersList)
+      : foldersList;
   anchor.insertAdjacentElement('beforebegin', link);
   if (activeNavItem(window.location.pathname, window.location.search) === key) {
     link.classList.add('active');
@@ -3100,6 +3107,24 @@ function injectMusicNavLinkIfEnabled() {
     .catch(() => { /* network/parse failure -- fail closed, inject nothing */ });
 }
 
+// v1.64: the History sidebar entry, count-gated like Liked (visible iff the
+// user has >=1 history item) but injected as a Library-section entry (the
+// books/music pattern -- a SIBLING above #sidebar-folders-list, so folder
+// re-renders never wipe it; one boot call per page, no per-render re-apply).
+// Boot-gated only: the first-ever watch makes the entry appear on the next
+// page load, not live -- the Liked-entry trade-off, accepted at design.
+function injectHistoryNavLinkIfEnabled() {
+  if (typeof document === 'undefined' || typeof fetch === 'undefined') return;
+  if (document.querySelector('[data-nav-sidebar="history"]')) return;
+  fetch('/api/history?limit=1')
+    .then((res) => (res.ok ? res.json() : null))
+    .then((payload) => {
+      if (!payload || !(Number(payload.total) > 0)) return; // empty history -- inject nothing
+      injectLibraryNavEntry('history', '/history', 'History', 'icon-history');
+    })
+    .catch(() => { /* network/parse failure -- fail closed, inject nothing */ });
+}
+
 // ---- v1.44 T12: customizable bottom-bar -------------------------------------
 //
 // The user reorders/hides the OPTIONAL bottom-nav items (home stays first,
@@ -3112,7 +3137,7 @@ function injectMusicNavLinkIfEnabled() {
 const BOTTOM_NAV_FIXED_FIRST = 'home';
 const BOTTOM_NAV_FIXED_LAST = 'settings';
 // The optional items a user may reorder/hide (must carry a data-nav id).
-const BOTTOM_NAV_OPTIONAL = ['playlists', 'subscriptions', 'oneoff-download', 'theme'];
+const BOTTOM_NAV_OPTIONAL = ['playlists', 'history', 'subscriptions', 'oneoff-download', 'theme'];
 
 // Pure: given the bottom-nav item ids ACTUALLY present in the DOM and the
 // user's config, return the final visible order (home first, settings last,
@@ -4098,7 +4123,7 @@ function escapeAttr(text) {
 // below them is a thin, untested-by-necessity shell around them, the same
 // posture the rest of this file already uses for its nav-link injection.
 
-// The four routes this app knows about today. Anything else (external links,
+// The SPA routes this app knows about. Anything else (external links,
 // `/thumbnail/*`, downloads, a future route) falls through to a normal
 // browser navigation -- this router never tries to "handle" a path it doesn't
 // recognize, and adding a route here alone does not make it reachable (the
@@ -4122,6 +4147,8 @@ function deriveRouteView(pathname) {
   // v1.44 music: same unconditional-mapping posture -- the Music nav link is
   // only injected when >=1 music folder is configured.
   if (pathname === '/music' || pathname === '/music.html') return 'music';
+  // v1.64 history: same posture (the entry is count-gated like Liked).
+  if (pathname === '/history' || pathname === '/history.html') return 'history';
   return null;
 }
 
@@ -5213,7 +5240,7 @@ if (typeof window !== 'undefined') {
     const sidebar = document.getElementById('sidebar');
     if (sidebar) {
       sidebar.querySelectorAll('.sidebar-item.active').forEach((el) => el.classList.remove('active'));
-      const hrefByNavKey = { home: '/', settings: '/setup.html', subscriptions: '/subscriptions', books: '/books', music: '/music' };
+      const hrefByNavKey = { home: '/', settings: '/setup.html', subscriptions: '/subscriptions', books: '/books', music: '/music', history: '/history' };
       const href = key ? hrefByNavKey[key] : null;
       const match = href && sidebar.querySelector('a.sidebar-item[href="' + href + '"]');
       if (match) match.classList.add('active');
@@ -5258,6 +5285,7 @@ if (typeof window !== 'undefined') {
     books: '/js/books.js',
     read: '/js/read.js',
     music: '/js/music.js',
+    history: '/js/history.js',
   };
 
   function ensureViewScriptLoaded(view) {
@@ -5788,6 +5816,12 @@ function libraryEntriesHtml() {
     }
     if (document.querySelector('[data-nav-sidebar="books"]')) {
       html += '<a href="/books" class="sidebar-item"><i class="icon-folder"></i> Books</a>';
+    }
+    // v1.64: mirrors the count-gated sidebar marker, same as books/music
+    // mirror their capability markers -- the sheet and the sidebars can
+    // never disagree about whether History exists.
+    if (document.querySelector('[data-nav-sidebar="history"]')) {
+      html += '<a href="/history" class="sidebar-item"><i class="icon-history"></i> History</a>';
     }
   }
   return html;
@@ -8986,6 +9020,8 @@ document.addEventListener('DOMContentLoaded', () => {
   injectBooksNavLinkIfEnabled();
   // v1.44 music: same probe-gated Library-section injection.
   injectMusicNavLinkIfEnabled();
+  // v1.64 history: same injection, gated on >=1 history item (the Liked rule).
+  injectHistoryNavLinkIfEnabled();
   // v1.44 T12: apply the user's bottom-bar layout to the STATIC items now; the
   // async injectors (subscriptions/download) re-apply after inserting theirs.
   applyBottomNavCustomization();
@@ -9090,6 +9126,10 @@ if (typeof module !== 'undefined' && module.exports) {
     shouldInjectSubscriptionsNav,
     shouldInjectBooksNav,
     shouldInjectMusicNav,
+    // v1.64 (adversarial gate W1): the History count-gate is DOM-bound by
+    // test/integration/history-nav-gate.test.js through these two.
+    injectHistoryNavLinkIfEnabled,
+    injectLibraryNavEntry,
     resolveBottomNavLayout,
     pinDeleteEndpoint,
     fisherYatesShuffle, sortItems, shouldShowShuffleButton,
