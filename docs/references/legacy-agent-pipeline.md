@@ -67,9 +67,10 @@ mode kept the artifacts and dropped the ceremony.
 
 `docs/AGENTS.md` is the exception: its content is pure pipeline
 procedure (stage transitions, agent boundaries, state-file
-coordination), but its header marks it HUMAN-MAINTAINED — no agent may
-modify it. It awaits Dean's own edit or retirement; until then, treat it
-as historical alongside this file.
+coordination); its header marked it HUMAN-MAINTAINED — no agent may
+modify it — so its retirement was reserved for Dean. **He ruled
+"Delete" on 2026-08-01 and it was removed in the v1.62.0 ratchet wave**;
+this paragraph is its record.
 
 ## Other v1 remnants — final disposition (2026-08-01 harness cleanup)
 
