@@ -354,8 +354,12 @@ test('MOBILE: the Stats entry point is hidden at the phone breakpoint', () => {
   // between the two anchor classes -- match the list openly.
   assert.match(STATS_HTML, /class="setup-box[^"]*shortcuts-entry"/);
   assert.match(STATS_HTML, /id="show-shortcuts-btn"/);
-  const mobile = CSS.slice(CSS.lastIndexOf('@media (max-width: 768px)'));
-  assert.match(mobile, /\.shortcuts-entry \{\s*display: none;\s*\}/,
+  // v1.63 lock conversion (disclosed): this used to slice from the LAST
+  // phone media block - an incidental anchor that broke the day the queue
+  // panel appended a newer one. The semantics were always "SOME phone
+  // block hides the entry"; assert that directly across every block.
+  const phoneBlocks = CSS.split('@media (max-width: 768px)').slice(1);
+  assert.ok(phoneBlocks.some((b) => /\.shortcuts-entry \{\s*display: none;\s*\}/.test(b)),
     'a phone must not be offered a keyboard reference it cannot use');
 });
 
