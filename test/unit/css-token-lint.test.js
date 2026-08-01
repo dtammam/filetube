@@ -10,6 +10,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert');
+const fs = require('node:fs');
 const { lintCss } = require('../../scripts/css-token-lint.js');
 
 function lint(css) {
@@ -142,6 +143,82 @@ test('v7: ZERO env() fallbacks are API syntax, not literals; nonzero env fallbac
     'JS surface, same classifier');
 });
 
+test('v8 (#68): multi-line declarations are SEEN; exempt anywhere covers the WHOLE decl', () => {
+  const out1 = lint('.x {\n  background-image: linear-gradient(\n    90deg,\n    rgba(0, 0, 0, 0.5),\n    transparent\n  );\n}');
+  assert.equal(out1.length, 1, 'the continuation-line rgba is visible now (pre-v8: zero in every category - the blind spot that hid six real sites)');
+  assert.equal(out1[0].cat, 'color');
+  assert.equal(out1[0].line, 2, 'attributed to the declaration START line');
+  assert.equal(lint('.x {\n  background-image: linear-gradient(\n    rgba(0, 0, 0, 0.5), /* token-exempt: art */\n    transparent\n  );\n}').length, 0,
+    'exempt on a continuation line silences the whole decl');
+  // The census-zero gate's specified ratchet fixture: exempt MID-value with
+  // a BARE literal stop LATER in the same buffered decl (the dl-chip shape):
+  assert.equal(lint('.x {\n  background-image: repeating-linear-gradient(\n    rgba(255, 255, 255, 0.25) 0, /* token-exempt: stripes */\n    rgba(255, 255, 255, 0.25) 4px,\n    transparent 8px\n  );\n}').length, 0,
+    'whole-decl exempt coverage: a bare literal stop after the exempt comment is still covered');
+  assert.equal(lint('[data-theme="2009"] .x {\n  background-image: linear-gradient(\n    rgba(0,0,0,0.5)\n  );\n}').length, 0,
+    'era scope excludes multi-line decls too');
+  assert.equal(lint('.x {\n  color: #abc123\n}').length, 1,
+    'a no-semicolon decl terminated by a next-line brace is still detected');
+  assert.equal(lint('.a { margin: 4px; } .b { padding: 6px; }').length, 2,
+    'single-line behavior unchanged (v2-hole regression control)');
+});
+
+test('v8: the ratchet CLI (--enforce) runs the self-canary and passes on the zero census', () => {
+  const { execFileSync } = require('node:child_process');
+  const path = require('node:path');
+  const res = execFileSync(process.execPath, [path.join(__dirname, '..', '..', 'scripts', 'css-token-lint.js'), '--enforce'], { encoding: 'utf8' });
+  assert.match(res, /ENFORCING - the ratchet/);
+  assert.match(res, /TOTAL 0/);
+});
+
+test('v8.1: BOTH ratchet failure exits are bound HERMETICALLY (both gate seats refuted the "cannot be tested" claim by doing exactly this)', () => {
+  // The script resolves REPO relative to its own location, so a copy in a
+  // scratch tree with stub census files is fully self-contained - no
+  // mutation of the real repo.
+  const os = require('node:os');
+  const path = require('node:path');
+  const { spawnSync } = require('node:child_process');
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ratchet-exits-'));
+  try {
+    for (const d of ['scripts', 'public/css', 'public/js', 'lib/ytdlp/views', 'lib/ytdlp/client']) {
+      fs.mkdirSync(path.join(tmp, d), { recursive: true });
+    }
+    const src = fs.readFileSync(path.join(__dirname, '..', '..', 'scripts', 'css-token-lint.js'), 'utf8');
+    const script = path.join(tmp, 'scripts', 'css-token-lint.js');
+    fs.writeFileSync(path.join(tmp, 'lib/ytdlp/views/subscriptions.html'), '<html></html>\n');
+    // Exit 1: a smuggled raw literal fails the ratchet.
+    fs.writeFileSync(script, src);
+    fs.writeFileSync(path.join(tmp, 'public/css/style.css'), '.smuggled { color: #ff0000; }\n');
+    const r1 = spawnSync(process.execPath, [script, '--enforce'], { encoding: 'utf8' });
+    assert.equal(r1.status, 1, 'raw literal must exit 1; got ' + r1.status + '\n' + r1.stdout + r1.stderr);
+    assert.match(r1.stderr, /RATCHET FAILURE/);
+    // Exit 2: a fully-gutted classifier fails the self-canary.
+    const gutted = src.replace('function classifyDecl(prop, value, hit) {', 'function classifyDecl(prop, value, hit) { return;');
+    assert.notEqual(gutted, src, 'anti-vacuity: the sabotage replace must land');
+    fs.writeFileSync(script, gutted);
+    const r2 = spawnSync(process.execPath, [script, '--enforce'], { encoding: 'utf8' });
+    assert.equal(r2.status, 2, 'broken linter must exit 2; got ' + r2.status + '\n' + r2.stdout + r2.stderr);
+    assert.match(r2.stderr, /SELF-CHECK FAILED/);
+    // Exit 2 on a SINGLE-category breakage (the ADV-W1 smuggle class): a
+    // broken motion regex alone must fail the ten-category canary.
+    const motionBroken = src.replace('motion: /\\d+(\\.\\d+)?m?s\\b/,', 'motion: /$^/,');
+    assert.notEqual(motionBroken, src, 'anti-vacuity: the motion sabotage must land');
+    fs.writeFileSync(script, motionBroken);
+    fs.writeFileSync(path.join(tmp, 'public/css/style.css'), '.clean { color: var(--yt-red); }\n');
+    const r3 = spawnSync(process.execPath, [script, '--enforce'], { encoding: 'utf8' });
+    assert.equal(r3.status, 2, 'a single-category breakage must fail the canary; got ' + r3.status + '\n' + r3.stdout + r3.stderr);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('v8.1 (gate W2/W6): an unterminated decl at EOF is FLUSHED, not dropped (browsers render it; v7 counted it)', () => {
+  const out = lint('.x {\n  color: #abc123');
+  assert.equal(out.length, 1, 'the EOF fail-open regression the gate demonstrated');
+  assert.equal(out[0].cat, 'color');
+  assert.equal(lint('.x {\n  margin: 4px /* token-exempt: eof case */').length, 0,
+    'exempt still honored on the flushed decl');
+});
+
 test('multi-line rules and selectors spanning lines resolve their scope correctly', () => {
   const out = lint(`
 [data-theme="2009"]
@@ -166,7 +243,7 @@ test('width/height are ungoverned by design (layout geometry stays literal)', ()
   assert.equal(lint('.x { width: 240px; height: 44px; max-width: 85vh; }').length, 0);
 });
 
-test('report-only contract: the CLI always exits 0 (locked by source, asserted by run)', () => {
+test('report-only contract: the flagless CLI always exits 0 (--enforce is the ratchet, the deliberate exception since v1.62.0)', () => {
   const { execFileSync } = require('node:child_process');
   const path = require('node:path');
   const res = execFileSync(process.execPath, [path.join(__dirname, '..', '..', 'scripts', 'css-token-lint.js')], { encoding: 'utf8' });

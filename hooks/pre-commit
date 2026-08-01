@@ -17,6 +17,15 @@ fi
 echo "→ eslint"
 npm run --silent lint
 
+# THE TOKEN RATCHET (v1.62.0): the census hit zero at v1.61.0 and stays
+# there - any raw literal in a governed style property fails the commit
+# (adopt a token, use a recognized idiom, or annotate token-exempt with a
+# reason; docs/CONTRIBUTING.md, MANDATORY styling section). Runs its own
+# known-violation canary first, so a broken linter fails LOUD, never
+# passes quiet.
+echo "→ token ratchet (lint:css --enforce)"
+node scripts/css-token-lint.js --enforce
+
 # Fast unit tests only (no server boot)
 echo "→ unit tests"
 npm run --silent test:unit

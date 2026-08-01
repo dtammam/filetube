@@ -34,8 +34,11 @@
  * width/height are deliberately NOT governed: the audit keeps layout
  * geometry literal by design (only three control-size tokens exist).
  *
- * Always exits 0 (report-only). The printed total is the Tier 2+ burn-down
- * metric. `--verbose` lists every violation with file:line.
+ * Flagless = report-only, always exits 0; `--verbose` lists every
+ * violation with file:line. `--enforce` (THE RATCHET, v1.62.0) first runs
+ * a ten-category known-violation self-canary (broken linter -> exit 2,
+ * LOUD), then fails on any violation (exit 1) - the census reached zero
+ * at v1.61.0 and is held there by pre-commit and CI.
  */
 
 const fs = require('node:fs');
@@ -123,6 +126,41 @@ function lintCss(text, fname, lineOffset, out) {
   const selStack = []; // {selector, isAtRule, name}
   let pendingSelector = '';
   let inComment = false;
+  // v8 (#68): a declaration whose property and value sit on different
+  // physical lines was INVISIBLE to every prior version (six real sites
+  // hid there, two of them unexempted until the census-zero gate found
+  // them). An unterminated trailing decl now buffers across lines and is
+  // evaluated COMPLETE. Precision notes (gate-honed): exempt is
+  // line-scoped and OR'd across the CODE lines the decl spans - a
+  // token-exempt sitting on the interior line of a comment that itself
+  // spans lines is not seen (fails SAFE: the decl counts and the
+  // developer moves the annotation); line-scoped exempt also covers
+  // same-physical-line siblings, the long-standing semantics. Attribution
+  // is the decl's START line; other decls evaluated from a MERGED line
+  // after a buffered `}` attribute to the buffer start (diagnostics-only
+  // imprecision, disclosed - counts and categories are exact).
+  let pendingDecl = null; // {text, line, exempt}
+  // ONE decl evaluator at function scope (v8.1, gate fix: the per-line
+  // closures made an EOF flush impossible, and v8.0 silently DROPPED an
+  // unterminated decl at EOF - a fail-open regression vs v7, since
+  // browsers close open constructs at EOF and RENDER the decl).
+  const evalDecl = (rawProp, value, declLine, declExempt) => {
+    const prop = rawProp.toLowerCase();
+    if (prop.startsWith('--')) return; // token definition layer
+    if (declExempt) return; // audit-KEEP directive
+    const inOpaque = selStack.some((f) => f.at === '@keyframes' || f.at === '@font-face');
+    if (inOpaque) return;
+    const nearest = [...selStack].reverse().find((f) => !f.at);
+    if (nearest && DEF_SELECTOR.test(nearest.selector)) return; // era/def layer
+    const hit = (cat) => out.push({ cat, file: fname, line: declLine, prop, value: value.slice(0, 60) });
+    classifyDecl(prop, value, hit); // shared classifier (v7, #69)
+  };
+  const checkDecls = (segment, declLine, declExempt) => {
+    for (const m of segment.matchAll(/([\w-]+|--[\w-]+)\s*:\s*([^;{}]+)(;|$)/g)) {
+      if (selStack.length === 0) continue; // stray text outside any rule
+      evalDecl(m[1], m[2].trim(), declLine, declExempt);
+    }
+  };
   for (let idx = 0; idx < lines.length; idx++) {
     const lineNo = idx + 1 + lineOffset;
     let raw = lines[idx];
@@ -138,6 +176,14 @@ function lintCss(text, fname, lineOffset, out) {
     s = s.replace(/\/\*[\s\S]*?\*\//g, '');
     const open = s.indexOf('/*');
     if (open !== -1) { s = s.slice(0, open); inComment = true; }
+    let effLine = lineNo;
+    let effExempt = exempt;
+    if (pendingDecl) {
+      s = pendingDecl.text + ' ' + s;
+      effLine = pendingDecl.line;
+      effExempt = pendingDecl.exempt || exempt;
+      pendingDecl = null;
+    }
 
     // Segment-based scan: split the line at braces, tracking the selector
     // stack, and lint EVERY declaration segment - including declarations on
@@ -146,24 +192,6 @@ function lintCss(text, fname, lineOffset, out) {
     // by the font-weight:100 900 false positive. v2 skipped any line
     // containing a brace, silently exempting ONE-LINE RULES entirely -
     // caught by this script's own fixture suite, Tier 2 Step 1.)
-    const checkDecls = (segment) => {
-      for (const m of segment.matchAll(/([\w-]+|--[\w-]+)\s*:\s*([^;{}]+)(;|$)/g)) {
-        if (selStack.length === 0) continue; // stray text outside any rule
-        lintDecl(m[1], m[2].trim());
-      }
-    };
-    const lintDecl = (rawProp, value) => {
-      const prop = rawProp.toLowerCase();
-      if (prop.startsWith('--')) return; // token definition layer
-      if (exempt) return; // audit-KEEP directive
-      const inOpaque = selStack.some((f) => f.at === '@keyframes' || f.at === '@font-face');
-      if (inOpaque) return;
-      const nearest = [...selStack].reverse().find((f) => !f.at);
-      if (nearest && DEF_SELECTOR.test(nearest.selector)) return; // era/def layer
-      const hit = (cat) => out.push({ cat, file: fname, line: lineNo, prop, value: value.slice(0, 60) });
-      classifyDecl(prop, value, hit); // shared classifier (v7, #69)
-    };
-
     let cursor = 0;
     for (let ci = 0; ci < s.length; ci++) {
       const ch = s[ci];
@@ -174,16 +202,42 @@ function lintCss(text, fname, lineOffset, out) {
         pendingSelector = '';
         cursor = ci + 1;
       } else if (ch === '}') {
-        checkDecls(s.slice(cursor, ci));
+        checkDecls(s.slice(cursor, ci), effLine, effExempt);
         selStack.pop();
         pendingSelector = '';
         cursor = ci + 1;
       }
     }
     const tail = s.slice(cursor);
-    if (selStack.length > 0) checkDecls(tail);
+    if (selStack.length > 0) {
+      // v8 (#68): complete decls in the tail lint now; an unterminated
+      // trailing decl (decl-shaped start, no terminating ';') buffers
+      // into the next line instead of being evaluated with a PARTIAL
+      // value at end-of-line (the pre-v8 behavior that made multi-line
+      // values invisible - the value's literal-carrying stops lived on
+      // lines the evaluator never saw).
+      const lastSemi = tail.lastIndexOf(';');
+      const done = lastSemi === -1 ? '' : tail.slice(0, lastSemi + 1);
+      const rest = lastSemi === -1 ? tail : tail.slice(lastSemi + 1);
+      if (done) checkDecls(done, effLine, effExempt);
+      if (/^\s*[\w-]+\s*:/.test(rest) && rest.trim()) {
+        // v8.1 (gate S7): a NEW decl starting after a ';' on this physical
+        // line begins HERE, not at any earlier buffer's start line.
+        pendingDecl = done
+          ? { text: rest, line: lineNo, exempt: exempt }
+          : { text: rest, line: effLine, exempt: effExempt };
+      } else if (rest.trim()) {
+        checkDecls(rest, effLine, effExempt); // parity with pre-v8 for non-decl-shaped tails
+      }
+    }
     else if (tail.trim() && !tail.includes(':')) pendingSelector += ' ' + tail.trim();
     else if (tail.trim() && tail.includes(':') && !/;/.test(tail)) pendingSelector += ' ' + tail.trim();
+  }
+  if (pendingDecl) {
+    // v8.1 (gate W2/W6 - the EOF fail-open): an unterminated decl at EOF
+    // still renders (CSS error recovery closes open constructs), and v7
+    // counted it. Flush the buffer through the same machinery.
+    checkDecls(pendingDecl.text, pendingDecl.line, pendingDecl.exempt);
   }
 }
 
@@ -248,16 +302,43 @@ for (const dir of ['public/js', 'lib/ytdlp/client']) {
   }
 }
 
+const enforce = process.argv.includes('--enforce');
+
+if (enforce) {
+  // THE RATCHET's vacuity canary (#68, census-zero gate W3): before any
+  // "zero violations" verdict may pass a commit, prove the linter still
+  // detects ANYTHING. ledger-check's CLEAN went vacuous the day the
+  // census hit zero (empty vs empty trivially matches); a broken linter
+  // returning nothing must fail LOUD here, never pass quiet.
+  // Gate-hardened (ratchet round 1, ADV W1): the canary covers EVERY
+  // governed category with exact per-category counts - a single broken
+  // regex (motion, shadow, ...) must fail here, not smuggle quietly.
+  const canary = [];
+  lintCss('.canary { color: #b00b00; z-index: 1234; margin: 13px; font-size: 13px; font-weight: 700; line-height: 1.3; letter-spacing: 0.5px; box-shadow: 0 1px 2px rgba(0,0,0,0.4); transition: opacity 0.2s ease; border-radius: 6px; }', 'canary.css', 0, canary);
+  const canaryJs = [];
+  lintJs("el.style.cssText = 'font-size:13px; color:#b00b00;';", 'canary.js', canaryJs);
+  const expectCats = ['border-radius', 'color', 'font-size', 'font-weight', 'letter-spacing', 'line-height', 'motion', 'shadow', 'spacing', 'z-index'];
+  const gotCats = canary.map((v) => v.cat).sort();
+  if (gotCats.join(',') !== expectCats.join(',') || canaryJs.length !== 2) {
+    console.error(`css-token-lint: SELF-CHECK FAILED - the known-violation canary produced [${gotCats.join(',')}] (expected all ten governed categories) + ${canaryJs.length}/2 JS hits. The linter is broken; a zero from it proves nothing. Fix the linter before trusting any census.`);
+    process.exit(2);
+  }
+}
+
 const byCat = {};
 for (const v of out) byCat[v.cat] = (byCat[v.cat] || 0) + 1;
-console.log('css-token-lint (report-only) - raw literals in governed properties');
-console.log('  scope v7: style.css + subscriptions.html <style> + JS style surfaces (cssText/.style/setProperty; player.js positional excluded); exclusions: era/def layer, @keyframes/@font-face, token-exempt, keywords/var, z-ladder + radius calc idioms, zero env() fallbacks');
+console.log(`css-token-lint (${enforce ? 'ENFORCING - the ratchet' : 'report-only'}) - raw literals in governed properties`);
+console.log('  scope v8: style.css + subscriptions.html <style> + JS style surfaces (cssText/.style/setProperty; player.js positional excluded) + multi-line declarations (buffered, whole-decl exempt coverage); exclusions: era/def layer, @keyframes/@font-face, token-exempt, keywords/var, z-ladder + radius calc idioms, zero env() fallbacks');
 for (const [cat, n] of Object.entries(byCat).sort((a, b) => b[1] - a[1])) {
   console.log(`  ${cat.padEnd(16)} ${n}`);
 }
-console.log(`  TOTAL ${out.length}  (the Tier 2+ burn-down metric)`);
-if (process.argv.includes('--verbose')) {
+console.log(`  TOTAL ${out.length}  (the token census; ceiling ZERO since v1.61.0)`);
+if (process.argv.includes('--verbose') || (enforce && out.length > 0)) {
   for (const v of out) console.log(`    ${v.file}:${v.line}  ${v.prop}: ${v.value}  [${v.cat}]`);
+}
+if (enforce && out.length > 0) {
+  console.error(`css-token-lint: RATCHET FAILURE - ${out.length} raw literal(s) in governed properties. Adopt a token, use a recognized idiom, or annotate /* token-exempt: <reason> */ and defend the reason in review (docs/CONTRIBUTING.md, the MANDATORY styling section).`);
+  process.exit(1);
 }
 process.exit(0);
 }
