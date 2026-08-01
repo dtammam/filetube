@@ -8128,7 +8128,14 @@ app.post('/api/queue/reorder', (req, res) => {
   if (!Array.isArray(orderedUids) || !orderedUids.every((u) => typeof u === 'string' && u !== '')) {
     return res.status(400).json({ error: 'orderedUids must be an array of non-empty strings' });
   }
-  const result = queueStore.reduceReorder(userStore.getQueue(req.user.id), orderedUids);
+  // v1.65 (QA W1): lift the client's order over the VISIBLE entries back to
+  // the full raw multiset -- a trashed item's entry is hidden from the
+  // client but still lives in the raw queue (that is what buys restore
+  // fidelity), and without this every reorder after a trash 409s forever.
+  const rawQueue = userStore.getQueue(req.user.id);
+  const visibleUids = shapedQueue(getCachedDatabase(), req.user.id).entries.map((e) => e.uid);
+  const fullOrder = queueStore.expandVisibleOrder(rawQueue, visibleUids, orderedUids);
+  const result = queueStore.reduceReorder(rawQueue, fullOrder);
   if (!result.changed) return res.status(409).json({ error: 'Queue changed - refresh and retry' });
   userStore.setQueue(req.user.id, result.state.entries, result.state.pointerUid, Date.now());
   res.json({ queue: shapedQueue(getCachedDatabase(), req.user.id) });
@@ -10624,12 +10631,13 @@ async function trashOrphanFile(filePath, opts = {}) {
 // for an app-created record IS the item's own directory -- the
 // unattributable-file fallback). Residual by design: tech-debt #74.
 //
-// CONSUMPTION CONTRACT (gate round 4 suggestion): only `.restorable` is
-// read, by exactly the two call sites above. The sub-fields are diagnostic
-// -- and note `destConfined`'s inner `trashConfined &&` is dead logic while
-// that holds (`restorable` already ANDs them), so a future caller reading
-// `.destConfined` directly would silently change its meaning. Read
-// `.restorable`, or re-derive what you actually need.
+// CONSUMPTION CONTRACT (gate round 4 + QA S1): only `.restorable` is read,
+// by exactly the two call sites above; the sub-fields are diagnostic. The
+// inner `trashConfined &&` inside `destConfined` is redundant for
+// `.restorable`'s VALUE but LOAD-BEARING as a crash guard -- without it,
+// `path.dirname(path.dirname(trashPath))` evaluates on a possibly-undefined
+// trashPath and THROWS, which inside sweepTrash's record loop would reject
+// the whole boot/scan-slot sweep. Do not "simplify" it away.
 function trashRecordPlacement(rec, roots) {
   const isCleanAbs = (v) => typeof v === 'string' && path.isAbsolute(v) && !v.split(/[\\/]/).includes('..');
   const isWithin = (child, parent) => {
@@ -10906,9 +10914,9 @@ async function purgeTrashItem(deps, trashId) {
   // trashPath does not sit directly inside a TRASH_DIR_NAME directory is
   // corrupt or hostile -- that path is NOT ours to unlink. Retire the
   // record and its carriers WITHOUT touching the filesystem.
-  const trashPathConfined = typeof trashPath === 'string' && path.isAbsolute(trashPath)
-    && !trashPath.split(/[\\/]/).includes('..')
-    && path.basename(path.dirname(trashPath)) === TRASH_DIR_NAME;
+  // QA S2: the shared predicate, not a third hand-copy -- round 4 exists
+  // because a copy of exactly this rule diverged and destroyed bytes.
+  const trashPathConfined = trashRecordPlacement(rec, []).trashConfined;
   if (!trashPathConfined) {
     console.warn(`Purge: unconfined trashPath on record ${trashId} (${trashPath}) -- retiring the record, touching NOTHING on disk.`);
   }

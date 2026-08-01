@@ -710,3 +710,51 @@ test('R4 W1: ONE predicate -- a record restore refuses is NEVER auto-destroyed b
   assert.ok(fs.existsSync(bytesB), 'shape 2 bytes survive');
   assert.ok(loadDatabase().metadata[id], 'the live library is untouched');
 });
+
+test('QA-R2 W1: trashing a queued item must NOT brick queue reorder (the hidden entry stays pinned; restore brings it back)', async () => {
+  const { id } = seedLibrary();
+  // Two more queueable items so there is something visible to reorder.
+  const extra = ['x1', 'x2'].map((n) => {
+    const p = path.join(ROOT, 'Chan', `${n}.mp4`);
+    fs.writeFileSync(p, `${n}-bytes`);
+    return { n, p, id: getMediaId(p) };
+  });
+  await updateDatabase((db) => {
+    for (const e of extra) {
+      db.metadata[e.id] = {
+        id: e.id, name: `${e.n}.mp4`, title: e.n, filePath: e.p, folderName: 'Chan',
+        rootFolder: ROOT, size: 8, ext: '.mp4', type: 'video', addedAt: Date.now(), duration: 10,
+      };
+    }
+  });
+  userStore.setQueue(uid, [
+    { uid: 'q1', mediaId: id },        // this one gets trashed -> hidden
+    { uid: 'q2', mediaId: extra[0].id },
+    { uid: 'q3', mediaId: extra[1].id },
+  ], null, 1);
+
+  const tr = await trashItem(deps(), id);
+  assert.equal(tr.ok, true);
+
+  const visible = (await (await fetch(`${base}/api/queue`)).json()).entries.map((e) => e.uid);
+  assert.deepEqual(visible, ['q2', 'q3'], 'precondition: the trashed entry is hidden from the client');
+
+  // The client can only send what it was shown -- pre-fix this 409'd for
+  // the entire retention window with no workaround.
+  const res = await fetch(`${base}/api/queue/reorder`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ orderedUids: ['q3', 'q2'] }),
+  });
+  assert.equal(res.status, 200, 'THE binding: reorder works with a hidden entry in the raw queue');
+  assert.deepEqual((await res.json()).queue.entries.map((e) => e.uid), ['q3', 'q2']);
+
+  // The hidden entry survived (restore fidelity is the whole point) and is
+  // still pinned at its ORIGINAL ABSOLUTE INDEX in the raw queue -- an
+  // invisible row must never appear to move.
+  assert.deepEqual(userStore.getQueue(uid).entries.map((e) => e.uid), ['q1', 'q3', 'q2']);
+
+  const restored = await restoreTrashItem(deps(), tr.trashId);
+  assert.equal(restored.ok, true);
+  const after = (await (await fetch(`${base}/api/queue`)).json()).entries.map((e) => e.mediaId);
+  assert.ok(after.includes(id), 'the restored item reappears in the queue');
+});
