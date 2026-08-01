@@ -261,6 +261,9 @@ const DEFAULT_SETTINGS = {
   pruneMissing: true,
   cacheMaxBytes: null,
   cacheMaxAgeDays: 30,
+  // v1.65: trash retention (days a trashed item survives before auto-purge).
+  // 0 = keep forever (the cacheMaxAgeDays "Off" sentinel).
+  trashRetentionDays: 30,
   defaultView: '',
   // v1.16.0 FR-3 (T3): auto-plays the next video (per the client's
   // deriveOrderedIds/computeNeighbors, common.js) on the player's 'ended'
@@ -4848,6 +4851,8 @@ function armScanTimer() {
       scanBooks().catch(console.error);
       // v1.44 music: same piggyback slot; a music-less install no-ops.
       scanMusic().catch(console.error);
+      // v1.65: trash retention sweep, same piggyback slot (no second timer).
+      sweepTrash().catch(console.error);
     }, ms).unref();
   }
   return scanTimer;
@@ -6591,6 +6596,8 @@ const SCAN_INTERVAL_VALID_VALUES = new Set([0, ...SCAN_INTERVAL_MINUTE_OPTIONS])
 // existing (session-shuffle) behavior and is unaffected by this allowlist.
 const VALID_DEFAULT_SORTS = new Set(['newest', 'oldest', 'release-date', 'title-asc', 'title-desc', 'size-desc', 'size-asc']);
 const CACHE_MAX_AGE_DAYS_VALID_VALUES = new Set([0, 7, 14, 30, 90]);
+// v1.65: same allowed set for the trash retention (0 = keep forever).
+const TRASH_RETENTION_DAYS_VALID_VALUES = new Set([0, 7, 14, 30, 90]);
 
 // Shape returned by both GET and POST /api/settings — the five persisted keys
 // plus a read-only `effectiveCacheMaxBytes` (UI prefill for the "no override"
@@ -6601,6 +6608,8 @@ function settingsResponse(settings) {
     pruneMissing: settings.pruneMissing,
     cacheMaxBytes: settings.cacheMaxBytes,
     cacheMaxAgeDays: settings.cacheMaxAgeDays,
+    // v1.65: trash retention (see DEFAULT_SETTINGS).
+    trashRetentionDays: settings.trashRetentionDays,
     defaultView: settings.defaultView,
     autoplayNext: settings.autoplayNext,
     backgroundAudioForVideo: settings.backgroundAudioForVideo,
@@ -7724,7 +7733,7 @@ app.post('/api/settings', async (req, res) => {
   // test/integration/settings-cache-api.test.js's full-shape assertion, both
   // updated in the same commit): `relocateHydratedImports` joins the set --
   // the reheat's "move a hydrated import into its channel folder" lever.
-  const KNOWN_KEYS = ['scanIntervalMinutes', 'pruneMissing', 'cacheMaxBytes', 'cacheMaxAgeDays', 'defaultView', 'autoplayNext', 'backgroundAudioForVideo', 'defaultSort', 'mobileCustomPlayer', 'preExtractAudio', 'relocateHydratedImports', 'notificationsEnabled'];
+  const KNOWN_KEYS = ['scanIntervalMinutes', 'pruneMissing', 'cacheMaxBytes', 'cacheMaxAgeDays', 'trashRetentionDays', 'defaultView', 'autoplayNext', 'backgroundAudioForVideo', 'defaultSort', 'mobileCustomPlayer', 'preExtractAudio', 'relocateHydratedImports', 'notificationsEnabled'];
   for (const key of Object.keys(body)) {
     if (!KNOWN_KEYS.includes(key)) {
       return res.status(400).json({ error: `unknown settings key: ${key}` });
@@ -7744,6 +7753,9 @@ app.post('/api/settings', async (req, res) => {
   }
   if ('cacheMaxAgeDays' in body && !CACHE_MAX_AGE_DAYS_VALID_VALUES.has(body.cacheMaxAgeDays)) {
     return res.status(400).json({ error: 'cacheMaxAgeDays must be one of 0, 7, 14, 30, 90' });
+  }
+  if ('trashRetentionDays' in body && !TRASH_RETENTION_DAYS_VALID_VALUES.has(body.trashRetentionDays)) {
+    return res.status(400).json({ error: 'trashRetentionDays must be one of 0, 7, 14, 30, 90' });
   }
   // v1.14.0 item 4: defaultView is a free-form folder path/key (the same
   // identity as a folderSettings key / ?root= param) or '' for "Most
@@ -10698,6 +10710,66 @@ async function purgeTrashItem(deps, trashId) {
   return { ok: true, trashId };
 }
 
+// sweepTrash: the retention auto-purge (ruling 1). Record-driven pass first
+// (purgeTrashItem per expired record -- the only true unlink path), then an
+// ORPHAN pass over the trash directories themselves: files referenced by NO
+// record (crash windows whose rollback unlink failed, restore leftovers) age
+// by CTIME -- a hard link PRESERVES mtime (could be years old the moment it
+// lands) but link creation bumps ctime, so ctime is "when this appeared in
+// the trash dir". Every orphan class under the link-first discipline has its
+// bytes safe elsewhere, so this is hygiene, never data loss -- and the sweep
+// NEVER touches a path outside a trash directory (bound by test).
+// `now` injectable for tests. Runs at boot + on the scan timer slot (the
+// books/music piggyback precedent -- no second timer).
+async function sweepTrash(now = Date.now()) {
+  const db = loadDatabase();
+  const days = Number(db.settings && db.settings.trashRetentionDays);
+  if (!Number.isFinite(days) || days <= 0) return 0; // 0/absent = keep forever
+  const maxAgeMs = days * 86400000;
+  let purged = 0;
+
+  for (const [tid, rec] of Object.entries(db.trash || {})) {
+    if (!rec || typeof rec.trashedAt !== 'number') continue;
+    if (now - rec.trashedAt <= maxAgeMs) continue;
+    const result = await purgeTrashItem({ loadDatabase, updateDatabase }, tid);
+    if (result.ok) purged += 1;
+    else console.warn(`Trash sweep: could not purge ${tid} (${result.error}) -- will retry next sweep.`);
+  }
+
+  try {
+    const fresh = loadDatabase();
+    const referenced = new Set(Object.values(fresh.trash || {}).map((r) => r && r.trashPath).filter(Boolean));
+    const trashDirs = new Set(configuredLibraryRoots(fresh).map((r) => path.join(r, TRASH_DIR_NAME)));
+    for (const r of Object.values(fresh.trash || {})) {
+      if (r && r.trashPath) trashDirs.add(path.dirname(r.trashPath));
+    }
+    for (const dir of trashDirs) {
+      // Confinement belt: only ever sweep inside a directory NAMED as the
+      // trash dir -- a corrupted record's dirname can never widen the blast
+      // radius to a real library folder.
+      if (path.basename(dir) !== TRASH_DIR_NAME) continue;
+      let names;
+      try { names = fs.readdirSync(dir); } catch { continue; }
+      for (const name of names) {
+        const full = path.join(dir, name);
+        if (referenced.has(full)) continue;
+        try {
+          const st = fs.statSync(full);
+          if (!st.isFile()) continue;
+          if (now - st.ctimeMs > maxAgeMs) {
+            fs.unlinkSync(full);
+            console.log(`Trash sweep: removed an unreferenced trash-dir orphan past retention: ${full}`);
+          }
+        } catch { /* best-effort per entry */ }
+      }
+    }
+  } catch (err) {
+    console.warn('Trash sweep: orphan pass failed (continuing):', err && err.message);
+  }
+
+  return purged;
+}
+
 // API: Move a video/audio file into another configured library folder (C1).
 // Body: `{ targetFolder }`. See `moveItemToFolder`'s own comment for the full
 // confinement + id re-key design -- this route is a thin HTTP wrapper around
@@ -13549,6 +13621,8 @@ if (require.main === module) {
   // Age sweep runs as a separate step immediately before the size-cap
   // eviction (never folded into evictTranscodeCache itself).
   sweepAgedTranscodes(Date.now());
+  // v1.65: trash retention sweep at boot (async, never blocks startup).
+  sweepTrash().catch((err) => console.error('Trash sweep at boot failed:', err));
   // v1.38.0 T12: TTS cache hygiene -- sweep orphaned synth temps and reset any
   // stale 'processing'/'pending' or file-less 'ready' audio status.
   reconcileTtsCacheAtBoot();
@@ -13712,6 +13786,7 @@ module.exports = {
   trashItem,
   restoreTrashItem,
   purgeTrashItem,
+  sweepTrash,
   configuredLibraryRoots,
   getMediaId,
   // T4 (v1.25 QoL): the one-time flat-one-off-into-channel-folder migration --

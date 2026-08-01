@@ -95,6 +95,7 @@ test('GET /api/settings returns the 15-field shape with backfilled defaults on a
     pruneMissing: true,
     cacheMaxBytes: null,
     cacheMaxAgeDays: 30,
+    trashRetentionDays: 30, // v1.65: trash retention (deliberate key-set change)
     defaultView: '', // v1.14.0 item 4: '' is the "Most Recent" sentinel
     autoplayNext: false, // v1.16.0 FR-3 (T3): OFF by default
     backgroundAudioForVideo: false, // v1.27.0 (EXPERIMENTAL): OFF by default
