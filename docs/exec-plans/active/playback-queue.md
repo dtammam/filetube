@@ -94,3 +94,43 @@ q4 playback integration (ended/Next/Prev/MediaSession/loop precedence
 q5 polish pass (eras, mobile sheet, toasts) + Stop packet for Dean's
 device pass (headline probes: queue panel on phone, drag reorder
 touch, background-audio advancement, loop precedence).
+
+## EXECUTION RECORD (2026-08-01, branch feature/playback-queue)
+
+q1a schema v6 + store + reducers (11 tests) -> q1b routes + backup
+carrier + integration suite (10 tests) -> q2 header icon + panel chrome
+(6 pure tests; write-only state + a last-block CSS lock caught by the
+hook) -> q3 one add verb, every writer (cards 4th corner, watch's two
+verbs, music rows; era-row button census lock DELIBERATELY 2->4 static,
+7 total) -> q4 playback integration (resolveEndedAction extends the
+AC49 table; queue-first Next/Prev feeds setTrackNav; the up-next box;
+trackNav lock converted). All under the live ratchet - token-clean
+first contact every batch.
+
+DISCLOSED boundaries: the music page's internal track-nav advance keeps
+precedence over the global queue (its client queue is its own machine;
+queued audio plays via the watch page); related-list cards carry no
+add button (kebab-less; the watch verbs cover it); desktop drag-reorder
+is a later nicety (up/down buttons everywhere); no standing queue
+poller (refresh on own actions + tab return - cross-device drift heals
+on next action).
+
+## Dean's on-device probe list (the Stop)
+
+1. HEADLINE: the watch action row now holds SEVEN buttons - phone
+   widths, every era (the containment wrap + .btn-label collapse are
+   the guards; the census lock update is deliberate).
+2. Queue panel on the phone: bottom-sheet open/close, up/down reorder
+   taps, per-row remove, the two-tap Clear.
+3. The flow: queue 3 items from cards -> autoplay ON -> let one end ->
+   it should advance INTO the queue (up-next box showing "Playing from
+   queue - n/N"); turn LOOP on mid-queue -> the item must repeat, queue
+   untouched; loop off -> advancement resumes.
+4. Lock screen / media keys: Next while docked + backgrounded must
+   follow the queue.
+5. Autoplay OFF: ending an item must NOT consume the queue.
+6. Music page: album/list playback advances as before (the global
+   queue must NOT hijack it); a music row's queue button plays that
+   track via the watch page when tapped from the panel.
+7. Multi-device: queue on the desktop, open the phone - the icon and
+   contents should be there (server-persisted per user).
