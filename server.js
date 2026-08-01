@@ -7617,8 +7617,25 @@ function validateBackupBundle(bundle) {
       if (path.basename(path.dirname(rec.trashPath)) !== TRASH_DIR_NAME) {
         return `${where}: trashPath must sit directly inside a ${TRASH_DIR_NAME} directory`;
       }
+      // Gate round 2 (adversarial W4): the trash dir must sit under one of
+      // the BUNDLE's own declared roots -- a record pointing at a trash dir
+      // in an unrelated directory is refused at the door.
+      const bundleRoots = Array.isArray(bundle.folders) ? bundle.folders.filter((r) => typeof r === 'string' && r !== '') : [];
+      const underBundleRoot = bundleRoots.some((r) => {
+        const c = path.resolve(rec.trashPath);
+        const p = path.resolve(r);
+        return c === p || c.startsWith(p + path.sep);
+      });
+      if (!underBundleRoot) {
+        return `${where}: trashPath must sit under one of the bundle's library folders`;
+      }
       if (typeof rec.trashedAt !== 'number' || !Number.isFinite(rec.trashedAt)) {
         return `${where}: trashedAt must be a finite number`;
+      }
+      // Gate round 2 (adversarial W5): the snapshot feeds renderers (the
+      // thumbnail route's fallback among them) -- shape-check it.
+      if (rec.item !== undefined && (typeof rec.item !== 'object' || rec.item === null || Array.isArray(rec.item))) {
+        return `${where}: item must be an object`;
       }
     }
   }
@@ -10515,27 +10532,15 @@ async function trashItem(deps, id, opts = {}) {
 async function trashOrphanFile(filePath, opts = {}) {
   const nowMs = typeof opts.nowMs === 'number' ? opts.nowMs : Date.now();
   const db = loadDatabase();
-  // v1.65 gate fix (adversarial W8 + S1): a db.trash record already covering
-  // this exact path means the bytes are ALREADY in trash and this dirent is
-  // the leftover its tombstone was minted for. Unlink the leftover, mint
-  // nothing, and NEVER create a second record (a duplicate row is
-  // un-restorable noise that can shadow the rich snapshot). The unlink
-  // throws verbatim -- the caller's ENOENT/other-errno contracts stand.
-  const covering = Object.values(db.trash || {}).find((r) => r && r.originalPath === filePath);
-  if (covering) {
-    let sameInode = false;
-    try {
-      const a = fs.statSync(filePath);
-      const b = fs.statSync(covering.trashPath);
-      sameInode = a.ino !== undefined && a.ino === b.ino && a.dev === b.dev;
-    } catch (_) { /* not provably ours -- fall through to a normal orphan move */ }
-    if (sameInode) {
-      fs.unlinkSync(filePath);
-      return covering.trashPath;
-    }
-    // Different inode = NEW content at a tombstoned path: the normal orphan
-    // move below trashes it (recoverable), never a blind unlink.
-  }
+  // v1.65 gate round 2 (adversarial W2, the v1.48 mutually-masking-guards
+  // class): this function used to carry its own covering-record/same-inode
+  // branch, redundant with the scan's leftover reconcile -- which runs
+  // EARLIER in the same per-file loop and consumes the tombstone, so a
+  // record-covered same-inode dirent can never reach this function. The
+  // branch is deleted rather than bound; a DIFFERENT-inode file at a
+  // tombstoned path falls through to the normal orphan move below
+  // (recoverable in trash, never a blind unlink -- behavior-bound in
+  // trash-gate-bindings).
   const originalId = getMediaId(filePath);
   const matchedRoot = matchRootFolder(filePath, configuredLibraryRoots(db));
   const { trashDir, trashPath } = computeTrashTarget(filePath, originalId, matchedRoot, nowMs);
@@ -10643,9 +10648,19 @@ async function restoreTrashItem(deps, trashId) {
     const p = path.resolve(parent);
     return c === p || c.startsWith(p + path.sep);
   };
-  const trashConfined = cleanAbs(trashPath) && path.basename(path.dirname(trashPath)) === TRASH_DIR_NAME;
+  // Gate round 2 (adversarial W4): the "trash dir's parent" escape clause
+  // made ANY directory containing a .filetube-trash child a legal
+  // destination parent -- attacker-controlled via the record itself. The
+  // trash dir must now ITSELF sit under a configured root, so the fallback
+  // clause can only ever widen to root-contained parents. (A record whose
+  // root was since removed from the config becomes restore-refused /
+  // purge-only until the folder is re-added -- disclosed.)
+  const roots = configuredLibraryRoots(db).filter((r) => typeof r === 'string' && r !== '');
+  const trashConfined = cleanAbs(trashPath)
+    && path.basename(path.dirname(trashPath)) === TRASH_DIR_NAME
+    && roots.some((r) => within(trashPath, r));
   const destConfined = cleanAbs(originalPath) && (
-    configuredLibraryRoots(db).some((r) => typeof r === 'string' && r !== '' && within(originalPath, r))
+    roots.some((r) => within(originalPath, r))
     || (trashConfined && within(originalPath, path.dirname(path.dirname(trashPath))))
   );
   if (!trashConfined || !destConfined) {
@@ -10787,10 +10802,19 @@ async function restoreTrashItem(deps, trashId) {
       return originalId;
     });
   } catch (err) {
-    try {
-      fsImpl.unlinkSync(originalPath);
-    } catch (unlinkErr) {
-      console.error(`Restore: the database update failed and the restored copy at ${originalPath} could not be rolled back:`, unlinkErr.message);
+    // Same last-link guard as the record-vanished branch below (gate round
+    // 2, S-C symmetry): never unlink our fresh link unless the trash-side
+    // link demonstrably survives.
+    let trashSideSurvivesThrow = false;
+    try { trashSideSurvivesThrow = fsImpl.existsSync(trashPath); } catch (_) { /* keep the bytes */ }
+    if (trashSideSurvivesThrow) {
+      try {
+        fsImpl.unlinkSync(originalPath);
+      } catch (unlinkErr) {
+        console.error(`Restore: the database update failed and the restored copy at ${originalPath} could not be rolled back:`, unlinkErr.message);
+      }
+    } else {
+      console.warn(`Restore: the database update failed AND the trash copy is gone -- keeping the restored bytes at ${originalPath} (the only remaining link).`);
     }
     return { ok: false, status: 500, error: `The database update failed, so the restore was rolled back (the trash copy is untouched): ${err.message}` };
   }
@@ -13181,7 +13205,10 @@ app.get('/thumbnail/:id', (req, res) => {
 
   // Fallback: Generate SVG placeholder based on whether it is audio or video
   const isAudio = item ? item.type === 'audio' : false;
-  const title = item ? item.title : 'Media';
+  // v1.65 gate round 2 (adversarial W5): a trash record's snapshot may lack
+  // a string title (an orphan record, or a sparse bundle record) -- the
+  // placeholder path below calls title.length and 500'd on it.
+  const title = (item && typeof item.title === 'string' && item.title !== '') ? item.title : 'Media';
   const bgColor = isAudio ? '#2b3e50' : '#4a154b';
   const icon = isAudio ? 
     `<path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" fill="#ffffff"/>` : 

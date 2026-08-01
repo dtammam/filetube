@@ -167,9 +167,13 @@ test('ADV C2 (defense in depth): a corrupt record ALREADY in db.trash -- purge r
   const { id, filePath } = seedLibrary();
   // A corrupt record pointing at the live library file, planted directly
   // (modeling a pre-fix bundle or db corruption -- past the validator).
+  // Gate round 2 (adversarial C1 of the delta): HERMETIC out-of-tree
+  // targets -- a fixed shared-/tmp path made the release suite
+  // non-deterministic and faked ten kill verdicts inside the gate itself.
+  const OUT1 = fs.mkdtempSync(path.join(os.tmpdir(), 'ft-trashgate-out-'));
   await updateDatabase((db) => {
     db.trash.evil = {
-      originalId: 'x', originalPath: path.join(os.tmpdir(), 'ft-outside', 'planted.mp4'),
+      originalId: 'x', originalPath: path.join(OUT1, 'planted.mp4'),
       trashPath: filePath, trashedAt: Date.now() - 100 * DAY, rootFolder: null, item: { id: 'x', title: 'evil' },
     };
     db.settings.trashRetentionDays = 1e-9; // the smuggled amplifier
@@ -184,16 +188,17 @@ test('ADV C2 (defense in depth): a corrupt record ALREADY in db.trash -- purge r
   assert.ok(loadDatabase().metadata[id], 'the library entry is untouched');
 
   // Restore of a same-shaped corrupt record refuses cleanly.
+  const OUT2 = fs.mkdtempSync(path.join(os.tmpdir(), 'ft-trashgate-out-'));
   await updateDatabase((db) => {
     db.trash.evil2 = {
-      originalId: 'y', originalPath: path.join(os.tmpdir(), 'ft-outside2', 'planted2.mp4'),
+      originalId: 'y', originalPath: path.join(OUT2, 'deep', 'planted2.mp4'),
       trashPath: filePath, trashedAt: Date.now(), rootFolder: null, item: { id: 'y' },
     };
   });
   const res = await restoreTrashItem(deps(), 'evil2');
   assert.equal(res.ok, false);
   assert.equal(res.status, 400);
-  assert.ok(!fs.existsSync(path.join(os.tmpdir(), 'ft-outside2', 'planted2.mp4')), 'no arbitrary-path write happened');
+  assert.ok(!fs.existsSync(path.join(OUT2, 'deep', 'planted2.mp4')), 'no arbitrary-path write happened');
 });
 
 test('QA W2: restoring a trash-less (pre-v1.65) bundle PRESERVES the current trash records', async () => {
@@ -284,11 +289,11 @@ test('ADV W5: the destination tombstone is retired in its OWN commit BEFORE the 
   assert.equal(tombstoneAtLinkTime, 'already-retired', 'mutator A committed before the filesystem was touched');
 });
 
-test('ADV W8 + S1: a crash-shaped leftover (record + tombstone + source dirent) reconciles on the next scan -- no resurrection, no duplicate record', async () => {
+test('ADV W8 + S1 (tombstone shape): a failed source unlink (record + MINTED tombstone + dirent) reconciles on the next scan -- no resurrection, no duplicate record', async () => {
   const { id, filePath } = seedLibrary();
-  // Model the crash: the trash mutator committed (record + pre-minted
-  // tombstone) but the source unlink never ran -- via an fs whose
-  // unlinkSync dies on the source path.
+  // Model a source-unlink FAILURE (EIO): the record commits and the failure
+  // path mints the deferred-retry tombstone. (The no-tombstone pure-crash
+  // shape has its own test below -- the reconcile alone must cover it.)
   const dyingFs = new Proxy(fs, {
     get(target, prop) {
       if (prop === 'unlinkSync') {
@@ -303,7 +308,7 @@ test('ADV W8 + S1: a crash-shaped leftover (record + tombstone + source dirent) 
   const tr = await trashItem({ loadDatabase, updateDatabase, getMediaId, fs: dyingFs }, id);
   assert.equal(tr.ok, true);
   assert.ok(fs.existsSync(filePath), 'precondition: the leftover dirent survives');
-  assert.ok(loadDatabase().deleteTombstones[id], 'precondition: the pre-minted tombstone survives the crash shape');
+  assert.ok(loadDatabase().deleteTombstones[id], 'precondition: the failure path minted the tombstone');
 
   await scanDirectories();
 
@@ -353,4 +358,127 @@ test('ADV W9: the half-restored same-inode state COMPLETES the restore instead o
   assert.deepEqual(db.trash, {}, 'record retired');
   assert.equal(userStore.getOneProgress(uid, id).timestamp, 44, 'the stranded carriers re-linked home');
   assert.ok(fs.existsSync(filePath) && !fs.existsSync(tr.trashPath), 'exactly one link remains, at the library path');
+});
+
+// ---- Gate round 2: the delta seats' surviving mutants, each bound ----------
+
+test('R2 BIND-v (the TRUE crash shape): record + same-inode leftover, NO tombstone -- the scan reconcile alone must prevent resurrection', async () => {
+  const { id, filePath } = seedLibrary();
+  const tr = await trashItem(deps(), id);
+  assert.equal(tr.ok, true);
+  assert.deepEqual(loadDatabase().deleteTombstones, {}, 'precondition: a clean trash mints NO tombstone');
+  // The crash: re-create the leftover dirent as a hard link of the trash
+  // copy (exactly what death between commit and unlink leaves behind).
+  fs.linkSync(tr.trashPath, filePath);
+
+  await scanDirectories();
+
+  const db = loadDatabase();
+  assert.equal(db.metadata[id], undefined, 'THE binding: no tombstone, and the item still must not resurrect');
+  assert.ok(!fs.existsSync(filePath), 'the leftover was reconciled away');
+  assert.equal(Object.keys(db.trash).length, 1, 'single record');
+  assert.ok(fs.existsSync(tr.trashPath), 'bytes intact in trash');
+});
+
+test('R2 reconcile inode guard: NEW content at a record-covered path (no tombstone) indexes honestly, never blind-unlinked', async () => {
+  const { id, filePath } = seedLibrary();
+  const tr = await trashItem(deps(), id);
+  assert.equal(tr.ok, true);
+  fs.writeFileSync(filePath, 'BRAND-NEW-USER-CONTENT'); // different inode
+
+  await scanDirectories();
+
+  assert.ok(fs.existsSync(filePath), 'the new content survives');
+  assert.equal(fs.readFileSync(filePath, 'utf8'), 'BRAND-NEW-USER-CONTENT');
+  assert.ok(loadDatabase().metadata[id], 'and is indexed as the new content it is');
+  assert.ok(loadDatabase().trash[tr.trashId], 'the old record is untouched');
+});
+
+test('R2 BIND-cc: DIFFERENT-inode content at a TOMBSTONED record-covered path is orphan-trashed (recoverable), never blind-unlinked', async () => {
+  const { id, filePath } = seedLibrary();
+  const tr = await trashItem(deps(), id);
+  assert.equal(tr.ok, true);
+  // New content lands at the old path, and a tombstone targets it (the
+  // removeAnyway-of-a-successor distillation) with a covering record live.
+  fs.writeFileSync(filePath, 'NEW-CONTENT-THE-RETRY-MUST-NOT-DESTROY');
+  const past = new Date(Date.now() - 30 * DAY);
+  fs.utimesSync(filePath, past, past); // mtime <= deletedAt so the retry fires
+  await updateDatabase((db) => {
+    db.deleteTombstones[id] = { filePath, deletedAt: Date.now(), youtubeId: null };
+  });
+
+  await scanDirectories();
+
+  assert.ok(!fs.existsSync(filePath), 'the retry consumed the tombstoned path');
+  const recs = Object.values(loadDatabase().trash);
+  assert.equal(recs.length, 2, 'the new content became its own trash record');
+  const orphanRec = recs.find((r) => r.trashPath !== tr.trashPath);
+  assert.equal(fs.readFileSync(orphanRec.trashPath, 'utf8'), 'NEW-CONTENT-THE-RETRY-MUST-NOT-DESTROY', 'RECOVERABLE, never blind-unlinked');
+});
+
+test('R2 BIND-s: a smuggled out-of-set retention cannot rapid-purge LEGITIMATE records (the sweep clamp)', async () => {
+  const { id } = seedLibrary();
+  const tr = await trashItem(deps(), id, { nowMs: Date.now() - 5 * DAY }); // fresh under the 30d default
+  await updateDatabase((db) => { db.settings.trashRetentionDays = 1e-9; }); // past the POST validator
+
+  const purged = await sweepTrash(Date.now());
+  assert.equal(purged, 0, 'THE binding: the clamp treats 1e-9 as the default, not as microseconds');
+  assert.ok(loadDatabase().trash[tr.trashId], 'the legitimate record survives');
+  assert.ok(fs.existsSync(tr.trashPath), 'its bytes survive');
+});
+
+test('R2 BIND-z: GET /thumbnail/<trashId> serves the re-keyed sidecar (and a title-less record is a placeholder, never a 500)', async () => {
+  const { id } = seedLibrary();
+  fs.writeFileSync(path.join(process.env.DATA_DIR, '.thumbnails', `${id}.jpg`), 'jpeg-bytes');
+  await updateDatabase((db) => { db.metadata[id].hasThumbnail = true; });
+  const tr = await trashItem(deps(), id);
+  assert.equal(tr.ok, true);
+
+  const res = await fetch(`${base}/thumbnail/${tr.trashId}`);
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get('content-type') || '', /image\/jpeg/, 'THE binding: the trash fallback serves the real sidecar');
+
+  // The W5 regression: a snapshot with no title must fall to the SVG
+  // placeholder, never a 500.
+  await updateDatabase((db) => { delete db.trash[tr.trashId].item.title; });
+  const res2 = await fetch(`${base}/thumbnail/${tr.trashId}`);
+  assert.notEqual(res2.status, 500, 'a title-less record must not crash the route');
+});
+
+test('R2 (S-C): restore rollback on a mutator THROW unlinks the fresh link only when the trash side survives', async () => {
+  const { id, filePath } = seedLibrary();
+  const tr = await trashItem(deps(), id);
+  assert.equal(tr.ok, true);
+
+  let call = 0;
+  const throwingUpdate = async (mutator) => {
+    call += 1;
+    if (call === 2) throw new Error('boom'); // the main mutator
+    return updateDatabase(mutator);
+  };
+  const res = await restoreTrashItem({ loadDatabase, updateDatabase: throwingUpdate, getMediaId }, tr.trashId);
+  assert.equal(res.ok, false);
+  assert.equal(res.status, 500);
+  assert.ok(!fs.existsSync(filePath), 'the fresh link was rolled back (trash side survives, so this is safe)');
+  assert.ok(fs.existsSync(tr.trashPath), 'the trash copy is untouched');
+  assert.ok(loadDatabase().trash[tr.trashId], 'the record is intact for a retry');
+});
+
+test('R2 (W4): a record whose trash dir sits OUTSIDE every configured root is restore-refused (the escape clause is closed)', async () => {
+  seedLibrary();
+  const OUT = fs.mkdtempSync(path.join(os.tmpdir(), 'ft-trashgate-out-'));
+  fs.mkdirSync(path.join(OUT, TRASH_DIR_NAME), { recursive: true });
+  const plantedTrash = path.join(OUT, TRASH_DIR_NAME, 'planted.mp4');
+  fs.writeFileSync(plantedTrash, 'planted-bytes');
+  await updateDatabase((db) => {
+    db.trash.outside = {
+      originalId: 'o', originalPath: path.join(OUT, 'deep', 'written-outside.mp4'),
+      trashPath: plantedTrash, trashedAt: Date.now(), rootFolder: null, item: { id: 'o' },
+    };
+  });
+
+  const res = await restoreTrashItem(deps(), 'outside');
+  assert.equal(res.ok, false);
+  assert.equal(res.status, 400, 'a .filetube-trash parent outside every root is no longer a legal destination authority');
+  assert.ok(!fs.existsSync(path.join(OUT, 'deep', 'written-outside.mp4')), 'nothing was written');
 });
