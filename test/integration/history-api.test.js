@@ -160,3 +160,90 @@ test('a null updated_at row (legacy batch shape) still lists, sorted oldest', as
   assert.deepEqual(body.items.map((i) => i.id), ['vid-2', 'vid-1']);
   assert.equal(body.items[1].lastWatchedAt, null, 'an unknown stamp is surfaced as null, not an empty string');
 });
+
+// ---- h2: the destructive half ----------------------------------------------
+
+const del = (id) => fetch(`${base}/api/history/${encodeURIComponent(id)}`, { method: 'DELETE' });
+const clearAll = () => fetch(`${base}/api/history`, { method: 'DELETE' });
+
+test('DELETE /api/history/:id removes BOTH rows for that user+media, leaves everything else, and is idempotent', async () => {
+  userStore.setProgress(uid, 'vid-1', { timestamp: 95, duration: 100, updatedAt: T(1, 0) });
+  userStore.markWatched(uid, 'vid-1', T(1, 0));
+  userStore.setProgress(uid, 'vid-2', { timestamp: 10, duration: 100, updatedAt: T(2, 0) });
+
+  const r1 = await del('vid-1');
+  assert.equal(r1.status, 200);
+  assert.equal((await r1.json()).success, true);
+  assert.equal(userStore.getOneProgress(uid, 'vid-1'), null);
+  assert.equal(userStore.getWatchedTimes(uid)['vid-1'], undefined, 'the latch row went too (no watched ghost)');
+  const body = await GET();
+  assert.deepEqual(body.items.map((i) => i.id), ['vid-2'], 'the survivor stays listed');
+
+  const r2 = await del('vid-1'); // already gone
+  const r3 = await del('never-existed');
+  assert.equal(r2.status, 200);
+  assert.equal(r3.status, 200);
+});
+
+test('RESURRECTION REPRO: a staged ping + remove + forced flush stays REMOVED (the coalescer purge)', async () => {
+  await ping('vid-1', 42, 100); // staged only -- PROGRESS_FLUSH_MS is far away
+  assert.equal((await GET()).items.length, 1, 'precondition: the staged ping lists');
+
+  await del('vid-1');
+  await flushPendingProgress(); // the window closes AFTER the remove
+
+  assert.equal(userStore.getOneProgress(uid, 'vid-1'), null, 'the flush must not resurrect the removed row');
+  assert.deepEqual((await GET()).items, []);
+});
+
+test('remove flips the item\'s watch filters back to "new" -- inherent to remove-from-history, disclosed', async () => {
+  userStore.setProgress(uid, 'vid-1', { timestamp: 95, duration: 100, updatedAt: T(1, 0) });
+  userStore.markWatched(uid, 'vid-1', T(1, 0));
+  const before1 = await fetch(`${base}/api/videos?watch=watched`).then((r) => r.json());
+  assert.ok(before1.items.some((i) => i.id === 'vid-1'), 'precondition: it counts as watched');
+
+  await del('vid-1');
+  const watched = await fetch(`${base}/api/videos?watch=watched`).then((r) => r.json());
+  const fresh = await fetch(`${base}/api/videos?watch=new`).then((r) => r.json());
+  assert.ok(!watched.items.some((i) => i.id === 'vid-1'));
+  assert.ok(fresh.items.some((i) => i.id === 'vid-1'), 'no per-user rows left => "new"');
+});
+
+test('re-watching after a remove re-adds the item naturally (ping re-stages, latch re-marks)', async () => {
+  userStore.setProgress(uid, 'vid-1', { timestamp: 50, duration: 100, updatedAt: T(1, 0) });
+  await del('vid-1');
+  assert.deepEqual((await GET()).items, []);
+
+  await ping('vid-1', 95, 100); // crosses WATCHED_PCT -> latch re-marks on the ping
+  const body = await GET();
+  assert.deepEqual(body.items.map((i) => i.id), ['vid-1']);
+  assert.equal(body.items[0].watchState, 'watched');
+  assert.ok(userStore.getWatchedTimes(uid)['vid-1'], 'the latch row is back (durable, not just staged)');
+});
+
+test('DELETE /api/history (clear-all) wipes rows AND staged entries for THIS user only', async () => {
+  const { __mintTestSession } = require('../../server');
+  const second = __mintTestSession({ username: 'second-hist' });
+
+  userStore.setProgress(uid, 'vid-1', { timestamp: 10, duration: 100, updatedAt: T(1, 0) });
+  userStore.markWatched(uid, 'vid-2', T(2, 0));
+  await ping('vid-3', 30, 100); // mine, staged
+  // The OTHER user: one committed row + one staged ping (explicit Cookie
+  // bypasses the patched-fetch default).
+  userStore.setProgress(second.user.id, 'vid-1', { timestamp: 77, duration: 100, updatedAt: T(3, 0) });
+  await fetch(`${base}/api/progress`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Cookie: second.cookie },
+    body: JSON.stringify({ id: 'vid-4', timestamp: 33, duration: 100 }),
+  });
+
+  const r = await clearAll();
+  assert.equal(r.status, 200);
+  await flushPendingProgress(); // my staged vid-3 must NOT come back; their vid-4 must land
+
+  assert.deepEqual((await GET()).items, [], 'my history is empty, post-flush');
+  assert.equal(userStore.getOneProgress(uid, 'vid-3'), null);
+  assert.equal(userStore.getOneProgress(second.user.id, 'vid-1').timestamp, 77, 'their committed row survives');
+  assert.equal(userStore.getOneProgress(second.user.id, 'vid-4').timestamp, 33, 'their staged ping flushed normally');
+  assert.ok(userStore.getWatchedTimes(second.user.id) !== undefined);
+});

@@ -9202,6 +9202,31 @@ app.get('/api/history', (req, res) => {
   res.json({ items, total, offset, limit });
 });
 
+// Per-item remove-from-history. Idempotent 200 (an already-gone or even
+// dead-media id is a no-op, not a 404 -- a row that outlived its file must
+// still be removable). The staged coalescer entry is purged IN THE SAME
+// synchronous handler as the row delete: a staged ping left behind would be
+// flushed <=PROGRESS_FLUSH_MS later and silently resurrect the row. A ping
+// arriving AFTER this response re-adds the item -- that is the user still
+// watching, not a bug (the latch re-marks on the next threshold cross too).
+app.delete('/api/history/:id', (req, res) => {
+  const id = req.params.id;
+  pendingProgress.delete(pendingProgressKey(req.user.id, id));
+  userStore.removeHistory(req.user.id, id);
+  res.json({ success: true });
+});
+
+// Clear-all, strictly this user: the staged-entry sweep filters on
+// entry.userId (deleting from a Map while iterating it is safe in JS) and
+// clearHistory's DELETEs are user-scoped by statement.
+app.delete('/api/history', (req, res) => {
+  for (const [key, entry] of pendingProgress) {
+    if (entry.userId === req.user.id) pendingProgress.delete(key);
+  }
+  userStore.clearHistory(req.user.id);
+  res.json({ success: true });
+});
+
 // ---- C1 (v1.24 UX Round, Wave 3): move files between folders + id re-key --
 //
 // LOAD-BEARING GROUNDING FACT (docs/exec-plans/active/2026-07-09-v1.24-ux-round.md
