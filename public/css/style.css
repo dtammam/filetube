@@ -8689,6 +8689,11 @@ a.queue-upnext-next:hover {
 @media (max-width: 768px) {
   .watch-actions {
     justify-content: center;
+    /* Slim gate W3: definite width, or a lone icon row that FITS one line
+       hugs its content and sits at the column's flex-start (left) instead
+       of centering. width alone adds NO min-content growth - the v1.25.5
+       shrink-to-fit class stays dead. */
+    width: 100%;
   }
 }
 

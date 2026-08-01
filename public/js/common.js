@@ -130,13 +130,18 @@ function mirrorUserSetting(patch) {
 // from the user record (a fresh phone inherits the desktop's era/theme/icons
 // on first sign-in; a device with local prefs is never overridden).
 async function pullMirroredDisplayPrefs() {
-  let hasEra = null, hasMode = null, hasIcons = null;
+  let hasEra = null, hasMode = null, hasIcons = null, hasStars = null;
   try {
     hasEra = localStorage.getItem('ft-era');
     hasMode = localStorage.getItem('ft-mode');
     hasIcons = localStorage.getItem('ft-icons');
+    hasStars = localStorage.getItem('ft-star-ratings');
   } catch (_) { return; /* no storage -> nothing to seed into */ }
-  if (hasEra && hasMode && hasIcons) return; // fully chosen locally
+  // Fully chosen locally = ALL seedable prefs (slim gate CRITICAL: the
+  // stars seed sat BELOW this return without joining it, so any
+  // theme-customized device - i.e. Dean's actual devices - never seeded
+  // the stars pref at all; proven by the gate's jsdom repro).
+  if (hasEra && hasMode && hasIcons && hasStars) return;
   let me = null;
   try {
     const r = await fetch('/api/auth/me');
@@ -156,8 +161,6 @@ async function pullMirroredDisplayPrefs() {
     applyIconSet(s.icons); // persists the pref + re-resolves against the era
   }
   // v1.63.1: the stars pref seeds the same way (locally-unchosen only).
-  let hasStars = null;
-  try { hasStars = localStorage.getItem('ft-star-ratings'); } catch (_) { /* storage off */ }
   if (!hasStars && STAR_RATINGS_VALUES.includes(s.starRatings)) {
     applyStarRatingsPref(s.starRatings); // no mirror - this IS the seed read-back
   }
@@ -185,6 +188,12 @@ function applyStarRatingsPref(value, opts) {
     document.documentElement.classList.toggle('ft-hide-stars', !shouldShowStarRatings(v));
   }
   try { localStorage.setItem('ft-star-ratings', v); } catch (_) { /* storage off - session-only */ }
+  // Slim gate S4: the settings checkbox re-reflects when the async seed
+  // lands after the page wired it (fresh-device race).
+  if (typeof document !== 'undefined') {
+    const check = document.getElementById('hide-stars-check');
+    if (check) check.checked = !shouldShowStarRatings(v);
+  }
   if (opts && opts.mirror) mirrorUserSetting({ starRatings: v });
 }
 

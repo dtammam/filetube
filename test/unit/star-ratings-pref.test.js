@@ -31,6 +31,11 @@ test('the ONE CSS gate covers both star writers (source lock)', () => {
 test('the mobile centering rule exists inside a phone media block (source lock)', () => {
   const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
   const phoneBlocks = css.split('@media (max-width: 768px)').slice(1);
-  assert.ok(phoneBlocks.some((b) => /\.watch-actions \{\s*justify-content: center;\s*\}/.test(b)),
+  // Binds BOTH halves: centering (Dean's device finding) AND the definite
+  // width (slim gate W3 - without it, a lone fitting icon row hugs
+  // flex-start instead of centering).
+  assert.ok(phoneBlocks.some((b) => /\.watch-actions \{[^}]*justify-content: center;[^}]*\}/.test(b)),
     'each wrapped action line (stars, icons) centers at phone widths - Dean\'s v1.63.0 device finding');
+  assert.ok(phoneBlocks.some((b) => /\.watch-actions \{[^}]*width: 100%;[^}]*\}/.test(b)),
+    'definite width so a lone fitting row still centers (gate W3)');
 });

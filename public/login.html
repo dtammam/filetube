@@ -43,6 +43,11 @@
           : 'outlined';
         d.setAttribute('data-icons', iconSet);
         if (localStorage.getItem('ft-custom-logo') === '1') d.classList.add('ft-custom-logo');
+
+        /* v1.63.1 (slim gate W2): stars FOUC guard. A hidden-pref user must
+           never see the static star markup flash before common.js runs --
+           inline mirror of bootStarRatingsPref(); keep in sync. */
+        if (localStorage.getItem('ft-star-ratings') === 'hidden') d.classList.add('ft-hide-stars');
       } catch (_) {
         d.setAttribute('data-theme', '2021');
         d.setAttribute('data-mode', 'light');
