@@ -65,8 +65,12 @@ test('CRITICAL binding: a theme-customized device (trio set) STILL seeds the sta
 });
 
 test('a locally-chosen stars pref is never overridden by the server (locally-unchosen-only rule)', async () => {
+  // Gate W-B: ft-icons is deliberately ABSENT so the pull PROCEEDS past
+  // the early return and the seed's own !hasStars guard is what must
+  // gate - with all four set, this test would vacuously bind the early
+  // return twice and the guard-dropped mutant survived the full suite.
   const { w } = bootHarness({
-    localPrefs: { 'ft-era': '2014', 'ft-mode': 'dark', 'ft-icons': 'filled', 'ft-star-ratings': 'shown' },
+    localPrefs: { 'ft-era': '2014', 'ft-mode': 'dark', 'ft-star-ratings': 'shown' },
     serverSettings: { starRatings: 'hidden' },
   });
   w.document.dispatchEvent(new w.Event('DOMContentLoaded', { bubbles: true }));
