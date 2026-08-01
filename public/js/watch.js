@@ -1167,7 +1167,7 @@ if (typeof module !== 'undefined' && module.exports) {
       }
       el.style.overflow = '';
       el.style.backgroundColor = source.color;
-      el.style.color = '#ffffff'; // AVATAR_PALETTE entries are all dark -- keep the glyph legible regardless of era theme
+      el.style.color = 'var(--on-accent)'; // AVATAR_PALETTE entries are all dark -- the on-accent white keeps the glyph legible regardless of era theme
       el.textContent = source.glyph;
     }
 

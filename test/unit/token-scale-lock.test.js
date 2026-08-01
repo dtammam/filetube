@@ -44,10 +44,13 @@ const CONTRACT = {
   // constants - the NARROW amendment to "layout geometry stays literal".
   '--header-h': '56px',
   '--sidebar-w': '230px',
+  // F.5 ruling 1 close-out (Dean-approved 2026-08-01): white on saturated
+  // accent surfaces - the census's final family.
+  '--on-accent': '#fff',
 };
 
 test('every new-layer token is defined EXACTLY ONCE with its contract value (mode-invariant by construction)', () => {
-  assert.equal(Object.keys(CONTRACT).length, 47, 'the 38-name contract + --thumbnail-bg (Tier 4) + six --reader-* + --header-h/--sidebar-w (tranche F.5; --radius-lg predates the layer and lives in the era blocks)');
+  assert.equal(Object.keys(CONTRACT).length, 48, 'the 38-name contract + --thumbnail-bg (Tier 4) + six --reader-* + --header-h/--sidebar-w + --on-accent (tranche F.5; --radius-lg predates the layer and lives in the era blocks)');
   for (const [name, value] of Object.entries(CONTRACT)) {
     const defs = [...css.matchAll(new RegExp(name.replace(/[-]/g, '\\-') + '\\s*:\\s*([^;]+);', 'g'))]
       .map((m) => m[1].trim());

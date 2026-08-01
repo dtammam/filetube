@@ -1,6 +1,16 @@
 # Tokens tranche F.5 - census toward zero (pre-ratchet)
 
-STATUS: EXECUTING (branch tokens/census-zero, 2026-07-31). Dean's
+STATUS: CLOSED (2026-08-01). All five rulings executed; ruling 1
+closed same day ("I approve Both") on branch tokens/on-accent - 17
+sites -> var(--on-accent) (48th contract name), eq bars -> the
+existing var(--on-overlay), and ONE disclosed reclassification at
+execution: .audio-player-visual's canvas text filed under --on-overlay
+(overlay chrome, not accent; same #fff value). THE CENSUS IS ZERO
+(692 -> 298 -> 110 -> 54 -> 19 -> 0). Remaining token work: the
+ratchet only (tranche G, gated on tech-debt #68).
+
+Original opener follows.
+ Dean's
 rulings at the 54-literal walkthrough, same day as the v1.59.0 device
 pass:
 

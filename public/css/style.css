@@ -160,6 +160,18 @@ summary,
   --scrim: rgba(0, 0, 0, 0.55);
   --scrim-heavy: rgba(0, 0, 0, 0.8);
 
+  /* White text/glyphs on saturated ACCENT surfaces (F.5 ruling 1 close-out,
+     Dean-approved 2026-08-01): on-red buttons and badges, the logo/login
+     "Tube" spans, generated-avatar initials on their hash-colored
+     backgrounds, the autoplay switch knob (accent when checked; neutral
+     --border-dark track when off - the one filing where the surface is
+     accent only half the time, noted by both gate seats and kept per
+     Dean's explicit knob ruling). Mode- and era-invariant - the accent
+     surface itself varies (--yt-red is #e62117 in 2014), the white on
+     top never does. Distinct from --on-overlay (white on the DARK
+     overlay chrome family). */
+  --on-accent: #fff;
+
   /* Media placeholder surface (Tier 4, Dean's OQ7 ruling: DEFINE). The
      box behind thumbnails/covers while the image loads. Equals
      --overlay-surface only coincidentally - a thumbnail placeholder and
@@ -619,7 +631,7 @@ html.reader-immersive .app-container { padding-top: 0; }
 
 .logo span.tube {
   background-color: var(--yt-red);
-  color: #fff;
+  color: var(--on-accent);
   padding: var(--space-1) var(--space-3);
   border-radius: var(--radius);
   margin-left: var(--space-1);
@@ -761,7 +773,7 @@ html.reader-immersive .app-container { padding-top: 0; }
 
 .btn-primary {
   background-color: var(--yt-red);
-  color: white;
+  color: var(--on-accent);
   border-color: var(--yt-red-dark);
 }
 
@@ -1466,7 +1478,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   background-image: linear-gradient(
     90deg,
     transparent,
-    rgba(255, 255, 255, 0.14),
+    rgba(255, 255, 255, 0.14), /* token-exempt: shimmer-sweep wash, the skip-ripple class (census-zero gate W1 - this multi-line decl sits in the linter's #68 blind spot) */
     transparent
   );
   animation: skeleton-sweep 1.6s ease-in-out infinite; /* token-exempt: choreography */
@@ -1836,7 +1848,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   justify-content: center;
   align-items: center;
   background: radial-gradient(circle, #2c3e50 0%, #0f171e 100%); /* token-exempt: bespoke audio-canvas art (F.5 ruling 5) */
-  color: white;
+  color: var(--on-overlay);
   text-align: center;
   padding: var(--space-12);
 }
@@ -2151,7 +2163,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   left: 2px; /* token-exempt: positional geometry (Stop A Batch A) */
   width: 14px;
   height: 14px;
-  background-color: #fff;
+  background-color: var(--on-accent);
   border-radius: 50%;
   transition: transform var(--dur-fast) var(--ease-ui);
   box-shadow: var(--shadow);
@@ -2297,7 +2309,7 @@ html.reader-immersive .app-container { padding-top: 0; }
      an explicit backgroundColor (generated branch) or clears it behind an
      <img> (url branch), so this base tone only ever shows pre-paint. */
   background-color: var(--bg-secondary);
-  color: white;
+  color: var(--on-accent);
   border-radius: var(--radius);
   display: flex;
   align-items: center;
@@ -6124,7 +6136,7 @@ body.ft-css-fullscreen .bottom-nav {
   justify-content: center;
   font-size: var(--fs-xs);
   font-weight: var(--fw-bold);
-  color: #fff;
+  color: var(--on-accent);
   line-height: 1; /* token-exempt: glyph centering */
   text-transform: uppercase;
   /* background-color is set inline by buildPinAvatarNode per-entry -- not
@@ -6245,7 +6257,7 @@ body.ft-css-fullscreen .bottom-nav {
   border: 1px solid var(--yt-red);
   border-radius: calc(var(--radius) + 1px);
   background-color: var(--yt-red);
-  color: #fff;
+  color: var(--on-accent);
   font-size: var(--fs-base);
   font-weight: var(--fw-semibold);
   cursor: pointer;
@@ -6465,7 +6477,7 @@ body.ft-css-fullscreen .bottom-nav {
   background-color: var(--yt-red);
   background-image: repeating-linear-gradient(
     45deg,
-    rgba(255, 255, 255, 0.25) 0,
+    rgba(255, 255, 255, 0.25) 0, /* token-exempt: retro striped progress fill over --yt-red (census-zero gate W1 - multi-line decl, #68 blind spot; the stripe-over-accent class the chip's own design comment mandates) */
     rgba(255, 255, 255, 0.25) 4px,
     transparent 4px,
     transparent 8px
@@ -6588,7 +6600,7 @@ body.ft-css-fullscreen .bottom-nav {
 .dl-status-chip-retry-btn {
   background-color: var(--yt-red);
   border: 1px solid var(--yt-red-dark);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .dl-status-chip-dismiss-btn {
@@ -6779,7 +6791,7 @@ body.ft-css-fullscreen .bottom-nav {
 .pinned-unpin-btn.armed {
   opacity: 1;
   background: var(--yt-red);
-  color: #fff;
+  color: var(--on-accent);
   font-size: var(--fs-xs);
 }
 
@@ -6868,7 +6880,7 @@ body.ft-css-fullscreen .bottom-nav {
       background: none;
       color: inherit;
     }
-    .books-shelf-chip.active { background: var(--yt-red); color: #fff; border-color: transparent; }
+    .books-shelf-chip.active { background: var(--yt-red); color: var(--on-accent); border-color: transparent; }
     .books-shelf-pin-btn {
       border: none;
       background: none;
@@ -7346,7 +7358,7 @@ body.ft-css-fullscreen .bottom-nav {
 }
 .login-wordmark .tube {
   background: var(--yt-red);
-  color: #fff;
+  color: var(--on-accent);
   padding: var(--space-1) var(--space-4);
   border-radius: var(--radius);
   margin-left: 3px; /* token-exempt: optical nudge */
@@ -7414,7 +7426,7 @@ body.ft-css-fullscreen .bottom-nav {
   font-family: var(--font-family);
   font-size: var(--fs-lg);
   font-weight: var(--fw-bold);
-  color: #fff;
+  color: var(--on-accent);
   background: var(--yt-red);
   border: 1px solid var(--yt-red-dark, var(--yt-red));
   border-radius: var(--radius);
@@ -7462,7 +7474,7 @@ body.ft-css-fullscreen .bottom-nav {
   cursor: pointer;
 }
 .login-era-switch button[aria-pressed="true"] {
-  color: #fff;
+  color: var(--on-accent);
   background: var(--yt-red);
   border-color: var(--yt-red);
   font-weight: var(--fw-bold);
@@ -7727,7 +7739,7 @@ body.ft-css-fullscreen .bottom-nav {
 .music-eq i {
   width: 3px;
   height: 6px;
-  background: #fff;
+  background: var(--on-overlay);
   border-radius: 1px; /* token-exempt: geometry - eq bar tip (F.5 ruling 5) */
   animation: music-eq-bar 0.9s ease-in-out infinite; /* token-exempt: choreography */
 }
@@ -8036,7 +8048,7 @@ body.ft-css-fullscreen .bottom-nav {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #fff;
+  color: var(--on-accent);
   font-weight: var(--fw-semibold);
   font-size: var(--fs-base);
   background-color: var(--bg-secondary);
@@ -8118,7 +8130,7 @@ body.ft-css-fullscreen .bottom-nav {
   padding: 0 var(--space-2);
   border-radius: 8px; /* token-exempt: geometry - half the 16px badge height, pill (F.5 ruling 5) */
   background: var(--yt-red);
-  color: #fff;
+  color: var(--on-accent);
   font-size: var(--fs-xs);
   line-height: 16px; /* token-exempt: positional */
   font-weight: var(--fw-semibold);
@@ -8221,7 +8233,7 @@ body.ft-css-fullscreen .bottom-nav {
 }
 
 .notif-row-avatar-generated {
-  color: #fff;
+  color: var(--on-accent);
   font-weight: var(--fw-semibold);
   font-size: var(--fs-md);
 }
