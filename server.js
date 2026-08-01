@@ -7617,17 +7617,24 @@ function validateBackupBundle(bundle) {
       if (path.basename(path.dirname(rec.trashPath)) !== TRASH_DIR_NAME) {
         return `${where}: trashPath must sit directly inside a ${TRASH_DIR_NAME} directory`;
       }
-      // Gate round 2 (adversarial W4): the trash dir must sit under one of
-      // the BUNDLE's own declared roots -- a record pointing at a trash dir
-      // in an unrelated directory is refused at the door.
+      // Gate round 3 (adversarial C2): round 2 required the trash dir to sit
+      // under one of the bundle's declared folders -- which the app's own
+      // unattributable-file fallback does not satisfy, so the instance
+      // refused ITS OWN backup whole (refuse-whole means one such record
+      // blocked users, metadata, settings, everything). A validator must at
+      // minimum accept what the exporter can emit: either the trash dir is
+      // under a bundle folder, or the record has the app's structural shape
+      // (the item lived in the trash dir's own parent tree).
       const bundleRoots = Array.isArray(bundle.folders) ? bundle.folders.filter((r) => typeof r === 'string' && r !== '') : [];
-      const underBundleRoot = bundleRoots.some((r) => {
-        const c = path.resolve(rec.trashPath);
-        const p = path.resolve(r);
+      const underPath = (child, parent) => {
+        const c = path.resolve(child);
+        const p = path.resolve(parent);
         return c === p || c.startsWith(p + path.sep);
-      });
-      if (!underBundleRoot) {
-        return `${where}: trashPath must sit under one of the bundle's library folders`;
+      };
+      const underBundleRoot = bundleRoots.some((r) => underPath(rec.trashPath, r));
+      const appShaped = underPath(rec.originalPath, path.dirname(path.dirname(rec.trashPath)));
+      if (!underBundleRoot && !appShaped) {
+        return `${where}: trashPath must sit under one of the bundle's library folders, or beside the item's own original location`;
       }
       if (typeof rec.trashedAt !== 'number' || !Number.isFinite(rec.trashedAt)) {
         return `${where}: trashedAt must be a finite number`;
@@ -10648,17 +10655,27 @@ async function restoreTrashItem(deps, trashId) {
     const p = path.resolve(parent);
     return c === p || c.startsWith(p + path.sep);
   };
-  // Gate round 2 (adversarial W4): the "trash dir's parent" escape clause
-  // made ANY directory containing a .filetube-trash child a legal
-  // destination parent -- attacker-controlled via the record itself. The
-  // trash dir must now ITSELF sit under a configured root, so the fallback
-  // clause can only ever widen to root-contained parents. (A record whose
-  // root was since removed from the config becomes restore-refused /
-  // purge-only until the folder is re-added -- disclosed.)
+  // Gate round 3 (adversarial C1/C2): round 2 additionally required the
+  // trash dir to sit under a CONFIGURED ROOT -- which the app's own
+  // unattributable-file fallback (<dirname(file)>/.filetube-trash, the
+  // spec's design) and any since-removed folder both violate. That turned
+  // legitimate, app-created records into "malformed" un-restorable ones
+  // that the retention sweep then destroyed, and made the instance refuse
+  // its own backup whole. Both measured end-to-end by the seat.
+  //
+  // The rule is now exactly the app's TWO construction shapes: the
+  // destination sits under a configured root, or under the trash dir's own
+  // parent tree (which for an app-created record IS the item's own
+  // directory). trashConfined keeps the structural check only.
+  //
+  // Residual, DISCLOSED (adversarial round-2 N4): a crafted ADMIN bundle
+  // whose record names a trash dir in an unrelated directory can still aim
+  // a restore at that directory's tree -- and only if the attacker can also
+  // place bytes at the named trashPath, which an HTTP caller cannot. That
+  // is a hardening gap on an admin-only surface; refusing the app's own
+  // records to close it was strictly worse (tech-debt #74).
   const roots = configuredLibraryRoots(db).filter((r) => typeof r === 'string' && r !== '');
-  const trashConfined = cleanAbs(trashPath)
-    && path.basename(path.dirname(trashPath)) === TRASH_DIR_NAME
-    && roots.some((r) => within(trashPath, r));
+  const trashConfined = cleanAbs(trashPath) && path.basename(path.dirname(trashPath)) === TRASH_DIR_NAME;
   const destConfined = cleanAbs(originalPath) && (
     roots.some((r) => within(originalPath, r))
     || (trashConfined && within(originalPath, path.dirname(path.dirname(trashPath))))
@@ -10975,9 +10992,32 @@ async function sweepTrash(now = Date.now()) {
   const maxAgeMs = days * 86400000;
   let purged = 0;
 
+  const sweepRoots = configuredLibraryRoots(db).filter((r) => typeof r === 'string' && r !== '');
   for (const [tid, rec] of Object.entries(db.trash || {})) {
     if (!rec || typeof rec.trashedAt !== 'number') continue;
     if (now - rec.trashedAt <= maxAgeMs) continue;
+    // Gate round 3 (adversarial S-2): NEVER auto-destroy a record the user
+    // cannot currently restore. If restore would refuse this record (its
+    // destination sits neither under a configured root nor under the trash
+    // dir's own parent -- e.g. a library folder removed from the config),
+    // leave it standing for an EXPLICIT purge instead of silently reaping
+    // it in the background.
+    const restorableDest = typeof rec.originalPath === 'string' && typeof rec.trashPath === 'string' && (
+      sweepRoots.some((r) => {
+        const c = path.resolve(rec.originalPath);
+        const p = path.resolve(r);
+        return c === p || c.startsWith(p + path.sep);
+      })
+      || (() => {
+        const c = path.resolve(rec.originalPath);
+        const p = path.resolve(path.dirname(path.dirname(rec.trashPath)));
+        return c === p || c.startsWith(p + path.sep);
+      })()
+    );
+    if (!restorableDest) {
+      console.warn(`Trash sweep: ${tid} is past retention but NOT restorable right now (its library folder may be unconfigured) -- keeping it; purge it explicitly to remove it.`);
+      continue;
+    }
     const result = await purgeTrashItem({ loadDatabase, updateDatabase }, tid);
     if (result.ok) purged += 1;
     else console.warn(`Trash sweep: could not purge ${tid} (${result.error}) -- will retry next sweep.`);

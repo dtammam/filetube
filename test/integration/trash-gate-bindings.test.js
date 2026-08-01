@@ -180,12 +180,20 @@ test('ADV C2 (defense in depth): a corrupt record ALREADY in db.trash -- purge r
   });
 
   // The retention clamp: 1e-9 is not in the allowed set -> treated as the
-  // 30-day default, so the sweep runs -- and the record pass hits the
-  // corrupt record, whose purge must NOT unlink the library file.
+  // 30-day default. Gate round 3 (S-2): the sweep now KEEPS a record it
+  // cannot restore rather than reaping it in the background -- so the
+  // corrupt record survives the sweep untouched, and so does the live file.
   await sweepTrash(Date.now());
   assert.ok(fs.existsSync(filePath), 'the live library file survives the sweep');
-  assert.equal(loadDatabase().trash.evil, undefined, 'the corrupt record was retired harmlessly');
+  assert.ok(loadDatabase().trash.evil, 'S-2: an unrestorable record is NEVER auto-destroyed -- it waits for an explicit purge');
   assert.ok(loadDatabase().metadata[id], 'the library entry is untouched');
+
+  // An EXPLICIT purge retires it -- still without touching the file
+  // (layer 2: purge's own confinement).
+  const purged = await purgeTrashItem({ loadDatabase, updateDatabase }, 'evil');
+  assert.equal(purged.ok, true);
+  assert.equal(loadDatabase().trash.evil, undefined, 'the corrupt record was retired harmlessly');
+  assert.ok(fs.existsSync(filePath), 'and the live library file STILL survives');
 
   // Restore of a same-shaped corrupt record refuses cleanly.
   const OUT2 = fs.mkdtempSync(path.join(os.tmpdir(), 'ft-trashgate-out-'));
@@ -438,11 +446,16 @@ test('R2 BIND-z: GET /thumbnail/<trashId> serves the re-keyed sidecar (and a tit
   assert.equal(res.status, 200);
   assert.match(res.headers.get('content-type') || '', /image\/jpeg/, 'THE binding: the trash fallback serves the real sidecar');
 
-  // The W5 regression: a snapshot with no title must fall to the SVG
-  // placeholder, never a 500.
+  // The W5 regression, bound properly (gate round 3, adversarial W4: the
+  // first version left hasThumbnail+jpg in place, so the route sendFile'd
+  // and NEVER reached the placeholder branch that touches title.length --
+  // the assertion could not fail). Remove the sidecar so the placeholder
+  // path actually runs.
+  fs.unlinkSync(path.join(process.env.DATA_DIR, '.thumbnails', `${tr.trashId}.jpg`));
   await updateDatabase((db) => { delete db.trash[tr.trashId].item.title; });
   const res2 = await fetch(`${base}/thumbnail/${tr.trashId}`);
-  assert.notEqual(res2.status, 500, 'a title-less record must not crash the route');
+  assert.equal(res2.status, 200, 'a title-less record must not crash the route');
+  assert.match(res2.headers.get('content-type') || '', /image\/svg/, 'it falls to the SVG placeholder');
 });
 
 test('R2 (S-C): restore rollback on a mutator THROW unlinks the fresh link only when the trash side survives', async () => {
@@ -464,21 +477,146 @@ test('R2 (S-C): restore rollback on a mutator THROW unlinks the fresh link only 
   assert.ok(loadDatabase().trash[tr.trashId], 'the record is intact for a retry');
 });
 
-test('R2 (W4): a record whose trash dir sits OUTSIDE every configured root is restore-refused (the escape clause is closed)', async () => {
+test('R3: a record whose destination is UNRELATED to both a root and its own trash dir is refused (structural confinement)', async () => {
   seedLibrary();
   const OUT = fs.mkdtempSync(path.join(os.tmpdir(), 'ft-trashgate-out-'));
+  const ELSEWHERE = fs.mkdtempSync(path.join(os.tmpdir(), 'ft-trashgate-elsewhere-'));
   fs.mkdirSync(path.join(OUT, TRASH_DIR_NAME), { recursive: true });
   const plantedTrash = path.join(OUT, TRASH_DIR_NAME, 'planted.mp4');
   fs.writeFileSync(plantedTrash, 'planted-bytes');
   await updateDatabase((db) => {
     db.trash.outside = {
-      originalId: 'o', originalPath: path.join(OUT, 'deep', 'written-outside.mp4'),
+      // Destination in a THIRD tree: neither a configured root nor the
+      // trash dir's own parent -- no construction path produces this.
+      originalId: 'o', originalPath: path.join(ELSEWHERE, 'deep', 'written-outside.mp4'),
       trashPath: plantedTrash, trashedAt: Date.now(), rootFolder: null, item: { id: 'o' },
     };
   });
 
   const res = await restoreTrashItem(deps(), 'outside');
   assert.equal(res.ok, false);
-  assert.equal(res.status, 400, 'a .filetube-trash parent outside every root is no longer a legal destination authority');
-  assert.ok(!fs.existsSync(path.join(OUT, 'deep', 'written-outside.mp4')), 'nothing was written');
+  assert.equal(res.status, 400);
+  assert.ok(!fs.existsSync(path.join(ELSEWHERE, 'deep', 'written-outside.mp4')), 'nothing was written');
+});
+
+// ---- Gate round 3: the delta's criticals + its three unbound protections ---
+
+test('R3 CRITICAL-1a: an UNATTRIBUTABLE item (the app\'s own dirname fallback) round-trips trash -> restore', async () => {
+  // A file outside every configured root -- retained by the mount-loss /
+  // pruneMissing guards, trashed into <dirname(file)>/.filetube-trash per
+  // the spec's own fallback design.
+  seedLibrary();
+  const ODD = fs.mkdtempSync(path.join(os.tmpdir(), 'ft-trashgate-odd-'));
+  fs.mkdirSync(path.join(ODD, 'Chan'), { recursive: true });
+  const oddPath = path.join(ODD, 'Chan', 'retained.mp4');
+  fs.writeFileSync(oddPath, 'retained-bytes');
+  const oddId = getMediaId(oddPath);
+  await updateDatabase((db) => {
+    db.metadata[oddId] = {
+      id: oddId, name: 'retained.mp4', title: 'Retained', filePath: oddPath,
+      folderName: 'Chan', rootFolder: null, size: 14, ext: '.mp4', type: 'video',
+      addedAt: Date.now(), duration: 30,
+    };
+  });
+
+  const tr = await trashItem(deps(), oddId);
+  assert.equal(tr.ok, true);
+  assert.ok(tr.trashPath.includes(path.join('Chan', TRASH_DIR_NAME)), 'the app used its dirname fallback');
+
+  const res = await restoreTrashItem(deps(), tr.trashId);
+  assert.equal(res.ok, true, 'THE finding: the app\'s OWN record must never be "malformed"');
+  assert.ok(fs.existsSync(oddPath), 'the bytes came home');
+  assert.equal(fs.readFileSync(oddPath, 'utf8'), 'retained-bytes');
+});
+
+test('R3 CRITICAL-1b: removing the library folder does not make a trashed item un-restorable, and the sweep will NOT destroy it', async () => {
+  const { id, filePath } = seedLibrary();
+  const tr = await trashItem(deps(), id, { nowMs: Date.now() - 5 * DAY });
+  assert.equal(tr.ok, true);
+  await updateDatabase((db) => { db.folders = []; }); // the user removes the folder
+
+  // Still inside its window: the sweep leaves it alone regardless.
+  assert.equal(await sweepTrash(Date.now()), 0);
+  assert.ok(fs.existsSync(tr.trashPath), 'the bytes are still there');
+
+  // THE finding: round 2 made this a permanent 400. The record keeps the
+  // app's structural shape (the item lived under the trash dir's own
+  // parent), so it restores whether or not the folder is configured today.
+  const res = await restoreTrashItem(deps(), tr.trashId);
+  assert.equal(res.ok, true, 'the item restores on the app\'s structural shape');
+  assert.ok(fs.existsSync(filePath));
+});
+
+test('R3 CRITICAL-2: the instance can restore ITS OWN backup when a trash record is present (export -> import round trip)', async () => {
+  const { id } = seedLibrary();
+  const ODD = fs.mkdtempSync(path.join(os.tmpdir(), 'ft-trashgate-odd2-'));
+  fs.mkdirSync(path.join(ODD, 'Chan'), { recursive: true });
+  const oddPath = path.join(ODD, 'Chan', 'unattributed.mp4');
+  fs.writeFileSync(oddPath, 'odd-bytes');
+  const oddId = getMediaId(oddPath);
+  await updateDatabase((db) => {
+    db.metadata[oddId] = {
+      id: oddId, name: 'unattributed.mp4', title: 'Odd', filePath: oddPath,
+      folderName: 'Chan', rootFolder: null, size: 9, ext: '.mp4', type: 'video', addedAt: Date.now(), duration: 5,
+    };
+  });
+  await trashItem(deps(), oddId);   // the unattributable shape
+  await trashItem(deps(), id);      // and an ordinary root-attributed one
+
+  const bundle = await (await fetch(`${base}/api/admin/backup`)).json();
+  assert.equal(Object.keys(bundle.trash).length, 2, 'both records ride the bundle');
+  // Restoring users bumps every token_version (v1.43) and would invalidate
+  // this suite's session for the tests that follow -- the claim under test
+  // is the TRASH namespace round-tripping, so drop the accounts half.
+  delete bundle.users;
+
+  const res = await fetch(`${base}/api/admin/restore`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(bundle),
+  });
+  assert.equal(res.status, 200, 'THE finding: a backup the app refuses to restore is a DR failure');
+  assert.equal(Object.keys(loadDatabase().trash).length, 2, 'both records came back');
+});
+
+test('R3 BIND-n3a: restore\'s THROW rollback keeps the last link when the trash side is already gone', async () => {
+  const { id, filePath } = seedLibrary();
+  const tr = await trashItem(deps(), id);
+  assert.equal(tr.ok, true);
+
+  // A concurrent purge takes the trash-side link, THEN the main mutator
+  // throws -- the round-1 CRITICAL shape, on the throw branch this time.
+  let call = 0;
+  const hostileUpdate = async (mutator) => {
+    call += 1;
+    if (call === 2) {
+      fs.unlinkSync(tr.trashPath); // the purge's unlink half
+      throw new Error('boom');
+    }
+    return updateDatabase(mutator);
+  };
+  const res = await restoreTrashItem({ loadDatabase, updateDatabase: hostileUpdate, getMediaId }, tr.trashId);
+  assert.equal(res.ok, false);
+  assert.equal(res.status, 500);
+  assert.ok(fs.existsSync(filePath), 'THE binding: the fresh link is the last one and must be KEPT');
+  assert.ok(!fs.existsSync(tr.trashPath));
+});
+
+test('R3 BIND-n3d: a bundle trash record whose item is not an object is refused whole', async () => {
+  const { filePath } = seedLibrary();
+  const bundle = {
+    schema: 'filetube-backup-v1',
+    folders: [ROOT],
+    trash: {
+      bad: {
+        originalId: 'b', originalPath: path.join(ROOT, 'Chan', 'x.mp4'),
+        trashPath: path.join(ROOT, TRASH_DIR_NAME, '1-abcdefgh-x.mp4'),
+        trashedAt: 1, rootFolder: ROOT, item: ['not', 'an', 'object'],
+      },
+    },
+  };
+  const res = await fetch(`${base}/api/admin/restore`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(bundle),
+  });
+  assert.equal(res.status, 400);
+  assert.match((await res.json()).error, /item must be an object/);
+  assert.ok(fs.existsSync(filePath), 'nothing was restored');
 });
