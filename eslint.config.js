@@ -99,6 +99,19 @@ module.exports = [
     languageOptions: { globals: { ...globals.node, ...globals.browser } },
   },
 
+  // player.js exposes its pure queue mirrors as globals; declare them only
+  // for watch.js (the consumer) — player.js DEFINES them (the same
+  // definer-vs-consumer split as the common.js roster below).
+  {
+    files: ['public/js/watch.js'],
+    languageOptions: {
+      globals: {
+        computeQueueNext: 'readonly',
+        computeQueuePrev: 'readonly',
+      },
+    },
+  },
+
   // common.js is loaded first and exposes these helpers as globals. Declare them
   // only for the CONSUMER scripts (not common.js itself, which defines them —
   // declaring them there would trip no-redeclare).

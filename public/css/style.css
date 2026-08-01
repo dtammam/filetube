@@ -8641,3 +8641,41 @@ body.ft-css-fullscreen .bottom-nav {
 .music-queue-btn:hover {
   color: var(--text-primary);
 }
+
+/* v1.63: the "playing from queue" box (ruling 5) - the uploader block's
+   slot on watch, YouTube-playlist-box treatment. */
+.queue-upnext-box {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-5) var(--space-8);
+  margin-bottom: var(--space-6);
+  background: var(--bg-sidebar);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+}
+
+.queue-upnext-box[hidden] {
+  display: none;
+}
+
+.queue-upnext-label {
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.4px; /* token-exempt: micro-tracking on an all-caps label (single consumer) */
+}
+
+.queue-upnext-next {
+  font-size: var(--fs-sm);
+  color: var(--text-primary);
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+a.queue-upnext-next:hover {
+  text-decoration: underline;
+}

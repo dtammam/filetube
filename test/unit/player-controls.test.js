@@ -353,9 +353,16 @@ test('v1.41.11 source-lock: wheel over the volume slider adjusts volume (slider 
 });
 
 test('v1.41.11 source-lock: watch.js registers its context-aware prev/next with the player trackNav seam', () => {
+  // v1.63 (DELIBERATE lock update): the registration now hands the
+  // queue-aware effPrev/effNext closures - the SAME wiring the on-page
+  // buttons use (queue entry first, context fallback), so media keys /
+  // lock screen / Shift+N/P can never disagree with the buttons about
+  // what "next" means. The lock still binds the one-registration seam.
   const src = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'watch.js'), 'utf8');
-  assert.match(src, /window\.FileTube\.player\.setTrackNav\(\{\s*onPrev: prevId \? \(\) => navigateToWatch\(prevId\) : undefined,\s*onNext: nextId \? \(\) => navigateToWatch\(nextId\) : undefined,\s*\}\)/,
-    'setupPrevNext hands its computed neighbors to setTrackNav (media keys + lock screen + Shift+N/P all ride this one registration)');
+  assert.match(src, /window\.FileTube\.player\.setTrackNav\(\{\s*onPrev: effPrev \|\| undefined,\s*onNext: effNext \|\| undefined,\s*\}\)/,
+    'setupPrevNext hands its queue-aware effective handlers to setTrackNav (media keys + lock screen + Shift+N/P all ride this one registration)');
+  assert.match(src, /const effNext = queueNextEntry \? \(\) => goQueueEntry\(queueNextEntry\) : \(nextId \? \(\) => navigateToWatch\(nextId\) : null\);/,
+    'effNext = queue entry first, context fallback (the buttons and the seam share this one truth)');
 });
 
 test('v1.41.11 source-lock: setTrackNav stores handlers for the keyboard seam and still sets MediaSession per-direction', () => {

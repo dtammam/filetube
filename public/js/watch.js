@@ -1410,6 +1410,39 @@ if (typeof module !== 'undefined' && module.exports) {
     // already makes several small independent fetches per visit (config,
     // media, related, comments), so a second small fetch here is consistent
     // with the existing style rather than a new pattern.
+    // v1.63 (Dean ruling 5): the "playing from queue" box, rendered in the
+    // uploader block's slot (watch.html #queue-upnext-box) ONLY while this
+    // very item is the queue's pointer entry - browsing to an unrelated
+    // video leaves the box hidden even with a queue banked. createElement/
+    // textContent only. Re-rendered per load by setupPrevNext (which has
+    // the queue payload in hand).
+    function renderQueueUpNextBox(q, currentMediaId) {
+      const box = root.querySelector('#queue-upnext-box');
+      if (!box) return;
+      box.hidden = true;
+      box.textContent = '';
+      const entries = q && Array.isArray(q.entries) ? q.entries : [];
+      const pointerUid = q && typeof q.pointerUid === 'string' ? q.pointerUid : null;
+      if (!pointerUid || entries.length === 0) return;
+      const idx = entries.findIndex((e) => e && e.uid === pointerUid);
+      if (idx === -1 || !entries[idx] || entries[idx].mediaId !== currentMediaId) return;
+      const label = document.createElement('span');
+      label.className = 'queue-upnext-label';
+      label.textContent = `Playing from queue - ${idx + 1}/${entries.length}`;
+      box.appendChild(label);
+      const next = entries[idx + 1] || null;
+      const nextLine = document.createElement(next && next.item ? 'a' : 'span');
+      nextLine.className = 'queue-upnext-next';
+      if (next && next.item) {
+        nextLine.href = `/watch.html?v=${next.mediaId}`;
+        nextLine.textContent = `Up next: ${next.item.title || next.item.name || ''}`;
+      } else {
+        nextLine.textContent = 'Last in queue';
+      }
+      box.appendChild(nextLine);
+      box.hidden = false;
+    }
+
     async function setupPrevNext() {
       if (!prevBtn || !nextBtn) return;
       try {
@@ -1479,11 +1512,45 @@ if (typeof module !== 'undefined' && module.exports) {
         }
         const { prevId, nextId } = computeNeighbors(orderedIds, mediaId);
 
-        prevBtn.disabled = !prevId;
-        nextBtn.disabled = !nextId;
+        // v1.63 (Dean ruling 2): the queue OWNS up-next. A waiting queue
+        // entry overrides the context wiring for Next (and Prev while the
+        // queue is engaged); exhausted/empty queues leave the context
+        // behavior byte-identical. The same wiring feeds setTrackNav below,
+        // so media keys / lock screen / docked advancement follow the queue
+        // for free. Failure of this fetch degrades to context behavior -
+        // never a dead button.
+        let queueNextEntry = null;
+        let queuePrevEntry = null;
+        try {
+          const qRes = await fetch('/api/queue');
+          if (qRes.ok) {
+            const q = await qRes.json();
+            queueNextEntry = computeQueueNext(q);
+            queuePrevEntry = computeQueuePrev(q);
+            renderQueueUpNextBox(q, mediaId);
+          }
+        } catch (_) { /* queue unreachable - context behavior stands */ }
+        if (signal.aborted) return; // the await window: this view may be gone (the v1.41.11 staleness truth)
+        const goQueueEntry = (entry) => {
+          // Pointer moves server-side (fire-and-forget - the next queue
+          // read re-syncs on failure), seed stashes, normal watch nav.
+          fetch('/api/queue/pointer', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ uid: entry.uid }), keepalive: true,
+          }).catch(() => {});
+          if (entry.item && window.FileTube && typeof window.FileTube.stashWatchSeed === 'function') {
+            window.FileTube.stashWatchSeed(entry.item);
+          }
+          navigateToWatch(entry.mediaId);
+        };
+        const effNext = queueNextEntry ? () => goQueueEntry(queueNextEntry) : (nextId ? () => navigateToWatch(nextId) : null);
+        const effPrev = queuePrevEntry ? () => goQueueEntry(queuePrevEntry) : (prevId ? () => navigateToWatch(prevId) : null);
 
-        if (prevId) prevBtn.addEventListener('click', () => navigateToWatch(prevId), { signal });
-        if (nextId) nextBtn.addEventListener('click', () => navigateToWatch(nextId), { signal });
+        prevBtn.disabled = !effPrev;
+        nextBtn.disabled = !effNext;
+
+        if (effPrev) prevBtn.addEventListener('click', effPrev, { signal });
+        if (effNext) nextBtn.addEventListener('click', effNext, { signal });
 
         // v1.41.11 (Dean: "play/pause works on my keyboard, but others
         // don't"): register the SAME context-aware neighbors with the
@@ -1506,10 +1573,12 @@ if (typeof module !== 'undefined' && module.exports) {
         // own registration is synchronous and never needed this.)
         if (signal.aborted) return;
         if (window.FileTube && window.FileTube.player
-            && typeof window.FileTube.player.setTrackNav === 'function' && (prevId || nextId)) {
+            && typeof window.FileTube.player.setTrackNav === 'function' && (effPrev || effNext)) {
+          // v1.63: the SAME queue-aware wiring as the buttons - one truth
+          // for on-page Next, media keys, and the lock screen.
           window.FileTube.player.setTrackNav({
-            onPrev: prevId ? () => navigateToWatch(prevId) : undefined,
-            onNext: nextId ? () => navigateToWatch(nextId) : undefined,
+            onPrev: effPrev || undefined,
+            onNext: effNext || undefined,
           });
         }
       } catch (e) {

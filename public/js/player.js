@@ -723,8 +723,42 @@ function isDesktopClassPlatform(platform) {
 function resolveEndedAction(ctx) {
   var opts = ctx || {};
   if (opts.loop) return 'repeat';
+  // v1.63 (Dean ruling 2): the QUEUE owns up-next - with autoplay on and a
+  // queue entry waiting, 'ended' advances INTO the queue, never the browse
+  // context. Loop still outranks everything (loop = repeat THIS, the AC49
+  // precedence, "Loop would stop it" in Dean's own words). Queue exhausted
+  // or absent -> exactly the pre-v1.63 table.
+  if (opts.autoplayNext && opts.queueHasNext) return 'queue-advance';
   if (opts.autoplayNext && opts.hasNext) return 'advance';
   return 'stop';
+}
+
+// v1.63: the client-side mirror of lib/queue/store.js's nextEntry over the
+// SHAPED /api/queue payload (entries + pointerUid): the entry playback
+// should advance into, or null (exhausted/empty -> normal autoplay
+// behavior resumes). Pure, exported for node:test; the server reducers
+// stay the semantics authority - this mirrors, never extends.
+function computeQueueNext(queue) {
+  var entries = queue && Array.isArray(queue.entries) ? queue.entries : [];
+  if (entries.length === 0) return null;
+  var pointerUid = queue && typeof queue.pointerUid === 'string' ? queue.pointerUid : null;
+  if (!pointerUid) return entries[0] || null;
+  for (var i = 0; i < entries.length; i++) {
+    if (entries[i] && entries[i].uid === pointerUid) return entries[i + 1] || null;
+  }
+  return entries[0] || null; // dangling pointer -> not-started semantics (the server normalizes the same way)
+}
+
+// v1.63: the prevEntry mirror - the entry BEFORE the pointer (queue-aware
+// Prev), null when not engaged / at the front / dangling.
+function computeQueuePrev(queue) {
+  var entries = queue && Array.isArray(queue.entries) ? queue.entries : [];
+  var pointerUid = queue && typeof queue.pointerUid === 'string' ? queue.pointerUid : null;
+  if (!pointerUid) return null;
+  for (var i = 0; i < entries.length; i++) {
+    if (entries[i] && entries[i].uid === pointerUid) return i > 0 ? entries[i - 1] : null;
+  }
+  return null;
 }
 
 // ---- v1.41.12 (Dean): chapter loop pure helper ------------------------------
@@ -966,6 +1000,10 @@ function resolveChaptersMenuMaxHeight(geom) {
 // runtime guard immediately below.
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
+    // v1.63 playback queue: the ended-table extension + the client mirror
+    // of the server's nextEntry (the server reducers stay the authority).
+    computeQueueNext,
+    computeQueuePrev,
     isAdoptLoad,
     shouldDockOnTransition,
     nextPlayerState,
@@ -3251,6 +3289,40 @@ if (typeof module !== 'undefined' && module.exports) {
       .then(function (res) { return res.ok ? res.json() : null; })
       .then(function (settings) {
         if (!settings || !settings.autoplayNext) return; // OFF (default) -- 'ended' behavior stays exactly as today
+        // v1.63 (Dean ruling 2): the queue owns up-next. Consult it FIRST -
+        // a waiting entry advances there (pointer moved server-side, seed
+        // stashed, same navigate seam); exhausted/empty/unreachable falls
+        // through to the browse-context flow below unchanged. Same stale
+        // guard as that flow: the controller may have moved on while these
+        // fetches ran (docked nav, manual click) - endedId is the truth.
+        return fetch('/api/queue')
+          .then(function (res) { return res.ok ? res.json() : null; })
+          .catch(function () { return null; })
+          .then(function (queue) {
+            var queueNext = computeQueueNext(queue);
+            if (queueNext && currentId === endedId) {
+              fetch('/api/queue/pointer', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ uid: queueNext.uid }),
+                keepalive: true,
+              }).catch(function () { /* pointer re-syncs on the next queue read */ });
+              if (window.FileTube && typeof window.FileTube.navigate === 'function') {
+                if (typeof window.FileTube.stashWatchSeed === 'function' && queueNext.item) {
+                  window.FileTube.stashWatchSeed(queueNext.item);
+                }
+                recordLifecycleEvent('autoplay:queue-advance', { detail: 'to=' + queueNext.mediaId });
+                autoplayAdvancePending = true;
+                window.FileTube.navigate('/watch.html?v=' + queueNext.mediaId);
+              } else {
+                window.location.href = '/watch.html?v=' + queueNext.mediaId;
+              }
+              return null; // queue consumed the advance
+            }
+            return runContextAdvance();
+          });
+
+        function runContextAdvance() {
         // Scope autoplay-advance to the CURRENT ITEM'S FOLDER, identical to the
         // Prev/Next buttons (watch.js) via the SAME parentFolder helper -- so
         // "next" means the same thing whether you tap Next or a video ends
@@ -3320,6 +3392,7 @@ if (typeof module !== 'undefined' && module.exports) {
               window.FileTube.navigate('/watch.html?v=' + encodeURIComponent(neighbors.nextId) + (advanceRawCtx ? '&ctx=' + encodeURIComponent(advanceRawCtx) : ''));
             }
           });
+        } // end runContextAdvance (v1.63: the pre-queue context flow, verbatim)
       })
       .catch(function (e) {
         console.error('Autoplay-next check failed:', e);
