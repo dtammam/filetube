@@ -125,10 +125,21 @@ generated-avatar initials incl. the two JS writers, the autoplay knob).
 The eq bars adopted the EXISTING --on-overlay per the recommendation,
 and .audio-player-visual was reclassified to --on-overlay at execution
 (canvas text is overlay chrome, not accent - same value, honest
-semantic; disclosed). **THE CENSUS IS ZERO**: every raw literal in a
-governed property is now a token consumption, a recognized idiom, or a
-reasoned token-exempt annotation. Baseline history: 692 (audit) -> 298
-(v5) -> 110 (Step 3) -> 54 (Tier 4) -> 19 (F.5) -> 0.
+semantic; disclosed). **THE CENSUS IS ZERO** within the linter's
+declared scope: every raw literal there is a token consumption, a
+recognized idiom, or a reasoned token-exempt annotation. SCOPE
+QUALIFIER (census-zero gate, 2026-08-01): the linter does NOT scan
+setAttribute('style', ...) calls, innerHTML/template style attributes,
+or the HTML shells' inline style="" attrs - governed raws exist on
+those channels today (tech-debt #71) - and its line-based parser
+cannot see multi-line declarations (six known, all token-exempt'd;
+tech-debt #68 gates the ratchet, now also requiring a known-violation
+canary because ledger-check's CLEAN is vacuous at zero rows). Baseline
+history: 692 (audit) -> 298 (v5) -> 110 (Step 3) -> 54 (Tier 4) -> 19
+(F.5) -> 0. (Record correction: the census-zero commit message says
+"15 CSS color sites + the knob + two JS writers" - the true split is
+14 color sites + the knob's background-color + two JS writers = 17
+on-accent consumers; the docs and ledger were always correct.)
 
 ## Addendum (Tier 4 execution, 2026-07-31)
 

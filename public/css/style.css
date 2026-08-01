@@ -163,9 +163,12 @@ summary,
   /* White text/glyphs on saturated ACCENT surfaces (F.5 ruling 1 close-out,
      Dean-approved 2026-08-01): on-red buttons and badges, the logo/login
      "Tube" spans, generated-avatar initials on their hash-colored
-     backgrounds, the autoplay switch knob. Mode- and era-invariant - the
-     accent surface itself varies (--yt-red is #e62117 in 2014), the white
-     on top never does. Distinct from --on-overlay (white on the DARK
+     backgrounds, the autoplay switch knob (accent when checked; neutral
+     --border-dark track when off - the one filing where the surface is
+     accent only half the time, noted by both gate seats and kept per
+     Dean's explicit knob ruling). Mode- and era-invariant - the accent
+     surface itself varies (--yt-red is #e62117 in 2014), the white on
+     top never does. Distinct from --on-overlay (white on the DARK
      overlay chrome family). */
   --on-accent: #fff;
 
@@ -1475,7 +1478,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   background-image: linear-gradient(
     90deg,
     transparent,
-    rgba(255, 255, 255, 0.14),
+    rgba(255, 255, 255, 0.14), /* token-exempt: shimmer-sweep wash, the skip-ripple class (census-zero gate W1 - this multi-line decl sits in the linter's #68 blind spot) */
     transparent
   );
   animation: skeleton-sweep 1.6s ease-in-out infinite; /* token-exempt: choreography */
@@ -6474,7 +6477,7 @@ body.ft-css-fullscreen .bottom-nav {
   background-color: var(--yt-red);
   background-image: repeating-linear-gradient(
     45deg,
-    rgba(255, 255, 255, 0.25) 0,
+    rgba(255, 255, 255, 0.25) 0, /* token-exempt: retro striped progress fill over --yt-red (census-zero gate W1 - multi-line decl, #68 blind spot; the stripe-over-accent class the chip's own design comment mandates) */
     rgba(255, 255, 255, 0.25) 4px,
     transparent 4px,
     transparent 8px
