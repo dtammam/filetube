@@ -46,9 +46,15 @@ gaps disclosed in release notes). Neither is ever traded for speed.
 - **Main session** (the implementer): full lifecycle, all code, all git.
 - **QA reviewer** (subagent, fresh context): correctness, security,
   regressions, standards, comment accuracy — stale comments are findings.
+  Give it shell access: a QA seat that cannot run the project's own
+  instruments reviews prose, not reality.
 - **Adversarial reviewer** (subagent, fresh context): assumes both the
   implementer AND QA missed something; must verify claims against
   primary sources and produce a concrete failure scenario per finding.
+- Codify both seats as ACTUAL agent definitions in the repo's harness
+  (`.claude/agents/*.md` here) so their standing discipline loads
+  deterministically; the per-wave brief (branch, spec, named attack
+  surfaces) still comes from the main session at spawn time.
 - **Design explorer** (optional subagent, big waves): read-only
   explore/plan pass that drafts the exec plan for the main session to
   refine.

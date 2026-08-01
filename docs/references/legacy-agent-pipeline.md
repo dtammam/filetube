@@ -3,8 +3,10 @@
 This repo was seeded with the multi-agent SDLC pipeline from
 [handoff-harness](https://github.com/dtammam/handoff-harness). Dean retired
 it in favor of lean mode (see `CLAUDE.md` and
-`docs/CLAUDE-WORKING-STYLE.md`); this file preserves the reference so the
-installed `.claude/` files remain understandable. **Nothing here is an
+`docs/CLAUDE-WORKING-STYLE.md`). **The installed `.claude/` pipeline files
+(five role agents; the `/kickoff`, `/prep-*`, `/run-*`, `/seed`,
+`/show-me` commands) were DELETED in the 2026-08-01 harness cleanup** -
+this file is now the ONLY record of what they were. **Nothing here is an
 instruction to a working session.**
 
 ## What the pipeline was

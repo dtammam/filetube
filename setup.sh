@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
-# Post-hydration setup — wires git hooks, sets permissions, verifies structure.
+# FileTube repo setup — wires git hooks, sets permissions, verifies structure.
+# (Descended from the retired handoff-harness seeder; the .state/ pipeline
+# expectations were removed in the 2026-08-01 harness cleanup.)
 set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 
-echo "handoff-harness setup"
-echo "==================="
+echo "FileTube harness setup (lean mode)"
+echo "=================================="
 echo ""
 
 # Set git hooks path
@@ -28,10 +30,6 @@ EXPECTED_DIRS=(
   ".claude/agents"
   ".claude/commands"
   ".claude/hooks"
-  ".state/inbox"
-  ".state/plans/active"
-  ".state/plans/completed"
-  ".state/plans/legacy"
   "docs/exec-plans/active"
   "docs/exec-plans/completed"
   "docs/references"
@@ -57,13 +55,7 @@ else
 fi
 
 echo ""
-echo "Remaining setup:"
-echo "  1. Adapt hooks/pre-commit and hooks/pre-push to your tech stack"
-echo "  2. For brownfield repos: run the onboarding agent to generate"
-echo "     ARCHITECTURE.md from your existing codebase"
-echo ""
 echo "==============================================="
-echo "NEXT: Start a Claude Code session and run /seed"
-echo "This will auto-detect your project and fill in"
-echo "all {{placeholder}} values in your config files."
+echo "Hooks wired. Start a Claude Code session -"
+echo "CLAUDE.md is the entry point (lean mode)."
 echo "==============================================="
