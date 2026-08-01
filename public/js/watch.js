@@ -3100,10 +3100,12 @@ if (typeof module !== 'undefined' && module.exports) {
 
     deleteBtn.addEventListener('click', () => {
       if (isYtdlpManagedItem(mediaData)) {
-        // yt-dlp-managed -- existing, byte-unchanged confirm flow (AC47).
+        // yt-dlp-managed confirm flow (AC47). v1.65 gate fix (QA W3): the
+        // copy tells the trash truth now -- "permanent" became a lie the
+        // moment deletes started routing through Trash.
         showConfirmModal(
-          'Confirm permanent deletion',
-          `Are you sure you want to permanently delete <strong>${escapeHtml(mediaData.title)}</strong>?<br><br><span style="color:var(--yt-red); font-weight:bold;">Warning: This will delete the actual file from your computer's disk:</span><br><code style="word-break:break-all; font-size:11px;">${escapeHtml(mediaData.filePath)}</code>`,
+          'Move to Trash?',
+          `Move <strong>${escapeHtml(mediaData.title)}</strong> to Trash?<br><br><span style="color:var(--yt-red); font-weight:bold;">The file leaves your library now and is permanently removed when the Trash retention window empties it:</span><br><code style="word-break:break-all; font-size:11px;">${escapeHtml(mediaData.filePath)}</code>`,
           performMediaDelete
         );
       } else {

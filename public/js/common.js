@@ -6806,8 +6806,9 @@ function deleteFlowFor(item) {
  * node:test-covered against a fake DOM, mirroring `buildSubscribeModal`/
  * `buildOneOffModal`'s injectable-`doc` pattern above.
  *
- * The Delete button starts DISABLED and only enables once the "I understand
- * this file cannot be recovered" checkbox is ticked -- a conscious extra
+ * The Delete button starts DISABLED and only enables once the "I understand"
+ * checkbox (v1.65 copy: "...cannot be re-downloaded if the Trash empties
+ * it") is ticked -- a conscious extra
  * action beyond the existing confirm modal / two-tap arm (a 3rd, deliberate
  * step). Reuses the v1.17.0 one-off-modal backdrop-dismiss FULL-teardown
  * pattern (`.remove()`, not merely `hidden`, so it can never get stuck as a

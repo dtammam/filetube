@@ -3631,9 +3631,59 @@ async function runScanDirectories() {
   const deleteTombstones = (db.deleteTombstones && typeof db.deleteTombstones === 'object') ? db.deleteTombstones : {};
   const consumedTombstoneIds = new Set();
 
+  // v1.65 gate fix (adversarial W8, revised under the AC4.2 lock): a crash
+  // between the trash mutator's commit and the source unlink leaves a
+  // leftover hard-linked dirent with NO tombstone (pre-minting one would
+  // cost every happy-path delete a second durable write, which the
+  // coalescer suite's 1:1 lock refuses -- it caught exactly that in this
+  // fix round). The SCAN reconciles instead: a scanned file matching a
+  // trash record's originalPath AND sharing its trashPath's inode IS that
+  // leftover -- unlink it, never index it. A different inode is new content
+  // the user placed; it indexes honestly.
+  const trashByOriginalPath = new Map();
+  if (db.trash && typeof db.trash === 'object') {
+    for (const rec of Object.values(db.trash)) {
+      if (rec && typeof rec.originalPath === 'string' && typeof rec.trashPath === 'string') {
+        trashByOriginalPath.set(rec.originalPath, rec);
+      }
+    }
+  }
+
   for (const [filePath, info] of scannedFiles.entries()) {
     const id = getMediaId(filePath);
     const isAudio = AUDIO_EXTENSIONS.includes(info.ext);
+
+    // v1.65 (gate W8): trash-move leftover reconcile -- see the map above.
+    const coveringTrashRec = trashByOriginalPath.get(filePath);
+    if (coveringTrashRec) {
+      let sameInode = false;
+      try {
+        const a = fs.statSync(filePath);
+        const b = fs.statSync(coveringTrashRec.trashPath);
+        sameInode = a.ino !== undefined && a.ino === b.ino && a.dev === b.dev;
+      } catch (_) { /* stat failure -> not provably ours; index honestly */ }
+      if (sameInode) {
+        try {
+          await destroyMediaStreams(filePath);
+          fs.unlinkSync(filePath);
+          console.log(`Scan: reconciled a trash-move leftover (same inode as its trash record): ${filePath}`);
+        } catch (err) {
+          console.warn(`Scan: could not remove the trash-move leftover at ${filePath} (${(err && err.code) || 'unknown'}) -- keeping it hidden; the next scan retries.`);
+        }
+        // Either way a record-covered same-inode dirent is NEVER indexed
+        // (indexing it would resurrect a deleted item); a stale tombstone
+        // for this path is consumed -- the reconcile IS its deferred retry.
+        // (dbChanged: consumption must persist even on an otherwise
+        // no-change scan, same as the retry path's own bookkeeping.)
+        if (deleteTombstones[id]) {
+          consumedTombstoneIds.add(id);
+          dbChanged = true;
+        }
+        scanState.processed++;
+        await maybeYieldScan(yieldState);
+        continue;
+      }
+    }
 
     // v1.41.3: a re-discovered file whose id was DELETEd. The walk just
     // enumerated this exact path, so unlinking it here cannot suffer the
@@ -3808,7 +3858,7 @@ async function runScanDirectories() {
           continue; // stays gone -- never re-indexed
         } catch (err) {
           if (err && err.code === 'ENOENT') {
-            // v1.41.10: unlink says "no such file" for a path THIS SCAN just
+            // v1.41.10 (mechanism now the trash LINK, v1.65): "no such file" for a path THIS SCAN just
             // enumerated. That contradiction is the SMB/CIFS DELETE_PENDING
             // state (an open handle somewhere pins an already-deleted file;
             // the dirent stays enumerable while every new open is refused
@@ -7548,6 +7598,37 @@ function validateBackupBundle(bundle) {
       seenMediaIds.add(n.mediaId);
     }
   }
+  // v1.65 gate fix (adversarial C2): trash records reach THREE unlinkers
+  // (purge, the retention sweep, restore) with their paths used verbatim --
+  // a hostile or corrupt bundle must never smuggle an arbitrary-path
+  // record. Refuse-whole, field-level, before the wipe (the house posture).
+  if (bundle.trash !== undefined) {
+    if (typeof bundle.trash !== 'object' || bundle.trash === null || Array.isArray(bundle.trash)) return 'trash must be an object';
+    for (const tid of Object.keys(bundle.trash)) {
+      const rec = bundle.trash[tid];
+      const where = `trash['${tid}']`;
+      if (!rec || typeof rec !== 'object' || Array.isArray(rec)) return `${where}: must be an object`;
+      for (const field of ['originalPath', 'trashPath']) {
+        const v = rec[field];
+        if (typeof v !== 'string' || v === '' || !path.isAbsolute(v) || v.split(/[\\/]/).includes('..')) {
+          return `${where}: ${field} must be an absolute path with no '..' segments`;
+        }
+      }
+      if (path.basename(path.dirname(rec.trashPath)) !== TRASH_DIR_NAME) {
+        return `${where}: trashPath must sit directly inside a ${TRASH_DIR_NAME} directory`;
+      }
+      if (typeof rec.trashedAt !== 'number' || !Number.isFinite(rec.trashedAt)) {
+        return `${where}: trashedAt must be a finite number`;
+      }
+    }
+  }
+  // Same amplifier, settings side: the sweep also clamps (defense in depth),
+  // but a bundle with an out-of-set retention gets the clean 400 here.
+  if (bundle.settings && typeof bundle.settings === 'object' && !Array.isArray(bundle.settings)
+    && bundle.settings.trashRetentionDays !== undefined
+    && !TRASH_RETENTION_DAYS_VALID_VALUES.has(bundle.settings.trashRetentionDays)) {
+    return 'settings.trashRetentionDays must be one of 0, 7, 14, 30, 90';
+  }
   const known = new Set([...BACKUP_NAMESPACE_KEYS, 'schema', 'exportedAt', 'appVersion', 'customLogo', 'users', 'notifications']);
   for (const key of Object.keys(bundle)) {
     if (!known.has(key)) return `unknown bundle key '${key}' — refusing a lossy restore (was this exported by a newer FileTube?)`;
@@ -7639,6 +7720,14 @@ app.post('/api/admin/restore', (req, res, next) => {
   const dbPart = {};
   for (const key of BACKUP_NAMESPACE_KEYS) {
     if (bundle[key] !== undefined) dbPart[key] = bundle[key];
+  }
+  // v1.65 gate fix (QA W2, the v1.51 partial-restore lesson): a bundle
+  // without a trash key -- every pre-v1.65 export -- must PRESERVE the
+  // current trash records. Wiping them would strand the trashed files as
+  // unreferenced orphans that the retention sweep then silently destroys.
+  if (bundle.trash === undefined) {
+    const current = loadDatabase();
+    if (current.trash && Object.keys(current.trash).length > 0) dbPart.trash = current.trash;
   }
 
   try {
@@ -7879,6 +7968,17 @@ app.get('/api/notifications', (req, res) => {
     // forever (the v1.42 __proto__ row-key lesson).
     const item = Object.prototype.hasOwnProperty.call(metadata, row.mediaId) ? metadata[row.mediaId] : undefined;
     if (!item) {
+      // v1.65 gate fix (QA C1): a TRASHED item's feed row re-keyed to the
+      // trashId along with the other eight carriers -- it is HIDDEN, not
+      // phantom. The prune below calls removeMediaState, which would
+      // destroy every user's progress/likes/watched/queue for the trashed
+      // item and break restore's full-fidelity promise on the first
+      // bell-open (proven by the seat's runnable repro). Filter without
+      // pruning; restore re-keys the row home, purge retires it. (The
+      // badge counts the hidden row until then -- accepted, disclosed.)
+      if (db.trash && Object.prototype.hasOwnProperty.call(db.trash, row.mediaId)) {
+        continue;
+      }
       // GATE FIX (adversarial W3): a feed row whose item is GONE (a delete
       // whose removeMediaState call failed and was caught-and-continued, or
       // a restored feed referencing since-deleted media) is not just
@@ -8734,7 +8834,7 @@ app.delete('/api/videos/:id', async (req, res) => {
   const releasedStreams = (await Promise.all([...releasePaths].map((p) => destroyMediaStreams(p))))
     .reduce((a, b) => a + b, 0);
   if (releasedStreams > 0) {
-    console.log(`Delete: destroyed ${releasedStreams} live read stream(s) on ${filePath} before unlinking.`);
+    console.log(`Delete: destroyed ${releasedStreams} live read stream(s) on ${filePath} before the trash move.`);
   }
 
   // v1.65 (ruling 3, closes tech-debt #64): EVERY delete routes through
@@ -10236,6 +10336,11 @@ async function trashItem(deps, id, opts = {}) {
         delete freshDb.deleteTombstones[trashId];
         delete freshDb.deleteTombstones[id];
       }
+      // (Gate W8 note: the crash window between this commit and the source
+      // unlink is closed by the SCAN's same-inode leftover reconcile, not a
+      // pre-minted tombstone -- the AC4.2 1:1-write lock refuses a second
+      // durable write on the happy path, and it caught the first draft of
+      // this fix doing exactly that.)
 
       // Id-keyed sidecars follow the id into trash (the move's set: thumbnail
       // + transcode + background audio), so restore gets them back intact and
@@ -10276,7 +10381,20 @@ async function trashItem(deps, id, opts = {}) {
             if (fsImpl.existsSync(to)) continue;
             fsImpl.renameSync(from, to);
           } catch (renameErr) {
-            console.error(`Trash: failed to carry subtitle sidecar ${name}:`, renameErr.message);
+            if (renameErr && renameErr.code === 'EXDEV') {
+              // Gate fix (adversarial S2): the one layout the media EXDEV
+              // branch exists for would otherwise strand subtitles beside a
+              // media file that no longer exists -- copy-then-unlink, the
+              // move's own sidecar posture.
+              try {
+                fsImpl.copyFileSync(from, to, fs.constants.COPYFILE_EXCL);
+                fsImpl.unlinkSync(from);
+              } catch (copyErr) {
+                console.error(`Trash: failed to carry subtitle sidecar ${name} across devices:`, copyErr.message);
+              }
+            } else {
+              console.error(`Trash: failed to carry subtitle sidecar ${name}:`, renameErr.message);
+            }
           }
         }
       } catch (subErr) {
@@ -10315,15 +10433,19 @@ async function trashItem(deps, id, opts = {}) {
 
   let sourceUnlinkFailed = false;    // surfaces as fileRemainsOnDisk
   let sourceDeletePending = false;   // surfaces as deletePending
-  let mintLeftoverTombstone = false; // any unverified conclusion tombstones
+  // Unverified source-unlink conclusions mint the deferred-retry tombstone
+  // below; the VERIFIED clean path mints nothing (v1.41.3) and costs no
+  // extra write (the AC4.2 lock). The no-tombstone crash window is the
+  // scan reconcile's job (see the trash-leftover block in the scan).
+  let mintLeftoverTombstone = false;
   let unlinkEnoent = false;
   try {
     fsImpl.unlinkSync(sourcePath);
   } catch (err) {
     if (err && err.code === 'ENOENT') {
       // Unverified (the v1.41.3 rule): "no such file" for a path we hard-
-      // linked FROM microseconds ago is a race or a lying layer -- tombstone
-      // it and let the scan's mtime + fresh-db checks decide.
+      // linked FROM microseconds ago is a race or a lying layer -- keep the
+      // tombstone and let the scan's mtime + fresh-db checks decide.
       unlinkEnoent = true;
       mintLeftoverTombstone = true;
     } else {
@@ -10353,16 +10475,16 @@ async function trashItem(deps, id, opts = {}) {
           console.warn(`Trash: ${oldPath} is STILL enumerated and refuses opens after the source unlink (delete-pending) -- reporting honestly and minting a tombstone.`);
         } else if (unlinkEnoent) {
           // An openable survivor after an ENOENT: honest fileRemainsOnDisk
-          // (the tombstone is already queued above; the scan decides).
+          // (the tombstone stays; the scan decides).
           sourceUnlinkFailed = true;
         }
       }
-    } catch (_) { /* probe is best-effort; the tombstone rules above stand */ }
+    } catch (_) { /* probe is best-effort; the mint rules above stand */ }
   }
   if (mintLeftoverTombstone) {
     // Hand the leftover/uncertain dirent to the scan's deferred-delete retry
-    // (which since v1.65 TRASHES survivors). Best-effort: a failure here
-    // just means the leftover waits for the user instead of the scan.
+    // (which since v1.65 TRASHES survivors, or same-inode-reconciles a
+    // record-covered leftover). Best-effort.
     try {
       await updateDb((freshDb) => {
         if (!freshDb.deleteTombstones || typeof freshDb.deleteTombstones !== 'object') freshDb.deleteTombstones = {};
@@ -10393,6 +10515,27 @@ async function trashItem(deps, id, opts = {}) {
 async function trashOrphanFile(filePath, opts = {}) {
   const nowMs = typeof opts.nowMs === 'number' ? opts.nowMs : Date.now();
   const db = loadDatabase();
+  // v1.65 gate fix (adversarial W8 + S1): a db.trash record already covering
+  // this exact path means the bytes are ALREADY in trash and this dirent is
+  // the leftover its tombstone was minted for. Unlink the leftover, mint
+  // nothing, and NEVER create a second record (a duplicate row is
+  // un-restorable noise that can shadow the rich snapshot). The unlink
+  // throws verbatim -- the caller's ENOENT/other-errno contracts stand.
+  const covering = Object.values(db.trash || {}).find((r) => r && r.originalPath === filePath);
+  if (covering) {
+    let sameInode = false;
+    try {
+      const a = fs.statSync(filePath);
+      const b = fs.statSync(covering.trashPath);
+      sameInode = a.ino !== undefined && a.ino === b.ino && a.dev === b.dev;
+    } catch (_) { /* not provably ours -- fall through to a normal orphan move */ }
+    if (sameInode) {
+      fs.unlinkSync(filePath);
+      return covering.trashPath;
+    }
+    // Different inode = NEW content at a tombstoned path: the normal orphan
+    // move below trashes it (recoverable), never a blind unlink.
+  }
   const originalId = getMediaId(filePath);
   const matchedRoot = matchRootFolder(filePath, configuredLibraryRoots(db));
   const { trashDir, trashPath } = computeTrashTarget(filePath, originalId, matchedRoot, nowMs);
@@ -10487,15 +10630,56 @@ async function restoreTrashItem(deps, trashId) {
   const trashPath = rec.trashPath;
   const originalId = computeId(originalPath);
 
-  if (fsImpl.existsSync(originalPath)) {
-    return { ok: false, status: 409, error: 'A file already exists at the original location -- move or delete it first, then restore again' };
+  // v1.65 gate fix (adversarial C2): both paths reach FS ops verbatim and
+  // records can arrive from a restore bundle -- confine BEFORE anything
+  // runs. trashPath must sit directly inside a trash dir; originalPath must
+  // land inside a configured library root OR under the trash dir's own
+  // parent (the dirname-fallback layout trashItem uses for unattributable
+  // files). A malformed record is purge-only (purge retires it without
+  // touching the filesystem).
+  const cleanAbs = (v) => typeof v === 'string' && path.isAbsolute(v) && !v.split(/[\\/]/).includes('..');
+  const within = (child, parent) => {
+    const c = path.resolve(child);
+    const p = path.resolve(parent);
+    return c === p || c.startsWith(p + path.sep);
+  };
+  const trashConfined = cleanAbs(trashPath) && path.basename(path.dirname(trashPath)) === TRASH_DIR_NAME;
+  const destConfined = cleanAbs(originalPath) && (
+    configuredLibraryRoots(db).some((r) => typeof r === 'string' && r !== '' && within(originalPath, r))
+    || (trashConfined && within(originalPath, path.dirname(path.dirname(trashPath))))
+  );
+  if (!trashConfined || !destConfined) {
+    return { ok: false, status: 400, error: 'This trash record is malformed and cannot be restored -- purge it instead' };
   }
-  if (!fsImpl.existsSync(trashPath)) {
+
+  // v1.65 gate fix (adversarial W9): a crash between a previous restore's
+  // link and its mutator leaves originalPath and trashPath as the SAME
+  // inode with the record still present -- which used to be a permanent 409
+  // stranding the carriers at the trashId until the sweep destroyed them.
+  // Detect that half-restored state precisely (same device + inode) and
+  // COMPLETE the restore (skip the link); anything else at the path is a
+  // genuine conflict.
+  let alreadyLinked = false;
+  if (fsImpl.existsSync(originalPath)) {
+    try {
+      const a = fsImpl.statSync(originalPath);
+      const b = fsImpl.statSync(trashPath);
+      alreadyLinked = a.ino !== undefined && a.ino === b.ino && a.dev === b.dev;
+    } catch (_) { /* either stat failing means this is not our half-state */ }
+    if (!alreadyLinked) {
+      return { ok: false, status: 409, error: 'A file already exists at the original location -- move or delete it first, then restore again' };
+    }
+  }
+  if (!alreadyLinked && !fsImpl.existsSync(trashPath)) {
     // The bytes vanished out-of-band (manual cleanup inside the trash dir).
     // The record is KEPT -- purge is the honest way to retire it.
     return { ok: false, status: 404, error: 'The trashed file is missing on disk -- it can only be purged' };
   }
 
+  // Mutator A (the move's discipline): retire the DESTINATION tombstone in
+  // its own committed mutator BEFORE any FS write -- but AFTER the
+  // occupancy/confinement checks above (adversarial S4: a refused restore
+  // must not have consumed the destination's tombstone as a side effect).
   try {
     await updateDb((freshDb) => {
       if (!freshDb.deleteTombstones || typeof freshDb.deleteTombstones !== 'object') return false;
@@ -10508,8 +10692,10 @@ async function restoreTrashItem(deps, trashId) {
   }
 
   try {
-    fsImpl.mkdirSync(path.dirname(originalPath), { recursive: true });
-    fsImpl.linkSync(trashPath, originalPath);
+    if (!alreadyLinked) {
+      fsImpl.mkdirSync(path.dirname(originalPath), { recursive: true });
+      fsImpl.linkSync(trashPath, originalPath);
+    }
   } catch (err) {
     if (err && err.code === 'EEXIST') {
       return { ok: false, status: 409, error: 'A file already exists at the original location -- move or delete it first, then restore again' };
@@ -10610,10 +10796,24 @@ async function restoreTrashItem(deps, trashId) {
   }
 
   if (mutatorResult === false) {
-    try {
-      fsImpl.unlinkSync(originalPath);
-    } catch (err) {
-      console.error(`Restore: record ${trashId} vanished mid-restore; could not remove the copy at ${originalPath}:`, err.message);
+    // v1.65 gate fix (adversarial C1): the record vanishing mid-restore
+    // means a concurrent purge (the route, or the retention sweep firing on
+    // its timer) already unlinked the TRASH-side link -- our fresh link at
+    // originalPath is then the ONLY remaining link to the inode, and
+    // "rolling it back" would free the bytes forever (the seat's repro
+    // measured exactly that). Only unlink when the trash-side link
+    // demonstrably survives; otherwise KEEP the file -- the next scan
+    // indexes it (an implicit carrier-less restore beats destroyed bytes).
+    let trashSideSurvives = false;
+    try { trashSideSurvives = fsImpl.existsSync(trashPath); } catch (_) { /* treat as gone: keep the bytes */ }
+    if (trashSideSurvives) {
+      try {
+        fsImpl.unlinkSync(originalPath);
+      } catch (err) {
+        console.error(`Restore: record ${trashId} vanished mid-restore; could not remove the copy at ${originalPath}:`, err.message);
+      }
+    } else {
+      console.warn(`Restore: record ${trashId} was purged mid-restore -- keeping the restored bytes at ${originalPath} (the only remaining link); the next scan will index them.`);
     }
     return { ok: false, status: 404, error: 'Trash item was removed before the restore could be recorded' };
   }
@@ -10652,7 +10852,19 @@ async function purgeTrashItem(deps, trashId) {
     return { ok: false, status: 404, error: 'Trash item not found' };
   }
   const trashPath = rec.trashPath;
+  // v1.65 gate fix (adversarial C2): this function unlinks rec.trashPath
+  // VERBATIM, and records can arrive from a restore bundle. A record whose
+  // trashPath does not sit directly inside a TRASH_DIR_NAME directory is
+  // corrupt or hostile -- that path is NOT ours to unlink. Retire the
+  // record and its carriers WITHOUT touching the filesystem.
+  const trashPathConfined = typeof trashPath === 'string' && path.isAbsolute(trashPath)
+    && !trashPath.split(/[\\/]/).includes('..')
+    && path.basename(path.dirname(trashPath)) === TRASH_DIR_NAME;
+  if (!trashPathConfined) {
+    console.warn(`Purge: unconfined trashPath on record ${trashId} (${trashPath}) -- retiring the record, touching NOTHING on disk.`);
+  }
 
+  if (trashPathConfined) {
   try {
     fsImpl.unlinkSync(trashPath);
   } catch (err) {
@@ -10681,6 +10893,9 @@ async function purgeTrashItem(deps, trashId) {
       try { fsImpl.unlinkSync(path.join(trashDir, name)); } catch (_) { /* best-effort */ }
     }
   } catch (_) { /* best-effort -- e.g. the trash dir itself is gone */ }
+  } // end trashPathConfined -- the id-keyed sidecar unlinks above are safe
+    // either way (our own DATA_DIR caches keyed by trashId), but they sit
+    // inside the gate with the rest for simplicity of reasoning.
 
   try {
     await updateDb((freshDb) => {
@@ -10711,20 +10926,28 @@ async function purgeTrashItem(deps, trashId) {
 }
 
 // sweepTrash: the retention auto-purge (ruling 1). Record-driven pass first
-// (purgeTrashItem per expired record -- the only true unlink path), then an
-// ORPHAN pass over the trash directories themselves: files referenced by NO
-// record (crash windows whose rollback unlink failed, restore leftovers) age
-// by CTIME -- a hard link PRESERVES mtime (could be years old the moment it
-// lands) but link creation bumps ctime, so ctime is "when this appeared in
-// the trash dir". Every orphan class under the link-first discipline has its
-// bytes safe elsewhere, so this is hygiene, never data loss -- and the sweep
-// NEVER touches a path outside a trash directory (bound by test).
+// (purgeTrashItem per expired record -- the only true unlink path, itself
+// confined to TRASH_DIR_NAME paths, gate fix C2), then an ORPHAN pass over
+// the trash directories themselves: files referenced by NO record (crash
+// windows whose rollback unlink failed, restore leftovers) age by CTIME --
+// a hard link PRESERVES mtime (could be years old the moment it lands) but
+// link creation bumps ctime, so ctime is "when this appeared in the trash
+// dir". MEDIA orphans under the link-first discipline have their bytes safe
+// elsewhere; SUBTITLE sidecars carried beside a live record do NOT (gate
+// fix W4) -- so the pass skips anything whose name prefix-matches a
+// referenced record's trash-side basename. The sweep never touches a path
+// outside a directory literally named TRASH_DIR_NAME (belt, bound by test).
 // `now` injectable for tests. Runs at boot + on the scan timer slot (the
 // books/music piggyback precedent -- no second timer).
 async function sweepTrash(now = Date.now()) {
   const db = loadDatabase();
-  const days = Number(db.settings && db.settings.trashRetentionDays);
-  if (!Number.isFinite(days) || days <= 0) return 0; // 0/absent = keep forever
+  // v1.65 gate fix (adversarial C2 amplifier): the POST route validates the
+  // allowed set, but a restored bundle's settings arrive verbatim -- a
+  // smuggled 1e-9 would purge the whole trash on the next sweep. Clamp to
+  // the SAME allowed set here; anything else falls back to the default.
+  const raw = db.settings ? db.settings.trashRetentionDays : undefined;
+  const days = TRASH_RETENTION_DAYS_VALID_VALUES.has(raw) ? raw : DEFAULT_SETTINGS.trashRetentionDays;
+  if (days <= 0) return 0; // 0 = keep forever
   const maxAgeMs = days * 86400000;
   let purged = 0;
 
@@ -10739,6 +10962,10 @@ async function sweepTrash(now = Date.now()) {
   try {
     const fresh = loadDatabase();
     const referenced = new Set(Object.values(fresh.trash || {}).map((r) => r && r.trashPath).filter(Boolean));
+    // Gate fix W4: a live record's subtitle sidecars share its trash-side
+    // basename -- referenced in spirit, bytes exist nowhere else.
+    const referencedBases = new Set();
+    for (const p of referenced) referencedBases.add(path.basename(p, path.extname(p)));
     const trashDirs = new Set(configuredLibraryRoots(fresh).map((r) => path.join(r, TRASH_DIR_NAME)));
     for (const r of Object.values(fresh.trash || {})) {
       if (r && r.trashPath) trashDirs.add(path.dirname(r.trashPath));
@@ -10753,6 +10980,11 @@ async function sweepTrash(now = Date.now()) {
       for (const name of names) {
         const full = path.join(dir, name);
         if (referenced.has(full)) continue;
+        let coveredByRecord = false;
+        for (const b of referencedBases) {
+          if (name.startsWith(b)) { coveredByRecord = true; break; }
+        }
+        if (coveredByRecord) continue; // gate fix W4: a live record's sidecar set
         try {
           const st = fs.statSync(full);
           if (!st.isFile()) continue;
@@ -12928,7 +13160,14 @@ app.get('/api/subtitles/:id', (req, res) => {
 // Serve extracted thumbnail or fallback placeholder
 app.get('/thumbnail/:id', (req, res) => {
   const db = getCachedDatabase(); // v1.30 A3 (AC3.3 headline route): hot GET reader
-  const item = db.metadata[req.params.id];
+  // v1.65 gate fix (QA W1): a TRASHED item's thumbnail sidecar re-keyed to
+  // the trashId, but this route required a live metadata entry -- so the
+  // Trash view's rows always fell to the SVG placeholder. A db.trash
+  // record's snapshot is as good an authority for its own id.
+  const trashRec = (!Object.prototype.hasOwnProperty.call(db.metadata, req.params.id)
+    && db.trash && Object.prototype.hasOwnProperty.call(db.trash, req.params.id))
+    ? db.trash[req.params.id] : null;
+  const item = db.metadata[req.params.id] || (trashRec && trashRec.item) || undefined;
   const thumbPath = path.join(THUMBNAIL_DIR, `${req.params.id}.jpg`);
 
   if (item && item.hasThumbnail && fs.existsSync(thumbPath)) {

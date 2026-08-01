@@ -153,17 +153,23 @@ test('restore into a since-deleted folder re-creates the parents', async () => {
 });
 
 test('PURGE: verified destruction of the file, sidecars, record and carriers -- and NO tombstone', async () => {
-  const { id } = seedLibrary();
+  const { id, filePath } = seedLibrary();
   userStore.setProgress(uid, id, { timestamp: 44, duration: 90, updatedAt: ISO });
   userStore.setQueue(uid, [{ uid: 'q1', mediaId: id }], null, 1);
   fs.writeFileSync(path.join(THUMBNAIL_DIR, `${id}.jpg`), 'thumb');
+  // Gate fix binding (adversarial W10): the trash-side subtitle must die
+  // with the purge, not linger for the orphan pass.
+  fs.writeFileSync(path.join(ROOT, 'Chan', `${path.basename(filePath, '.mp4')}.en.vtt`), 'subs');
 
   const tid = (await (await delVideo(id)).json()).trashId;
   const trashPath = loadDatabase().trash[tid].trashPath;
+  const trashSub = path.join(path.dirname(trashPath), `${path.basename(trashPath, '.mp4')}.en.vtt`);
+  assert.ok(fs.existsSync(trashSub), 'precondition: the subtitle rode into trash');
 
   const res = await purge(tid);
   assert.equal(res.status, 200);
   assert.ok(!fs.existsSync(trashPath), 'the bytes are gone');
+  assert.ok(!fs.existsSync(trashSub), 'the trash-side subtitle went too (W10 binding)');
   assert.ok(!fs.existsSync(path.join(THUMBNAIL_DIR, `${tid}.jpg`)), 'the re-keyed thumbnail went too');
   const db = loadDatabase();
   assert.deepEqual(db.trash, {}, 'the record is gone');
