@@ -30,6 +30,12 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      # v1.62.0: the token ratchet - the design-token census reached zero at
+      # v1.61.0 and is ENFORCED there (self-canary first; see
+      # docs/CONTRIBUTING.md, MANDATORY styling section).
+      - name: Token ratchet
+        run: node scripts/css-token-lint.js --enforce
+
       # v1.47.8: the output is teed to a file and uploaded on failure.
       #
       # WHY: CI failed on `main` (run 338) and PASSED on a commit with a

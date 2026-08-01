@@ -123,6 +123,15 @@ function lintCss(text, fname, lineOffset, out) {
   const selStack = []; // {selector, isAtRule, name}
   let pendingSelector = '';
   let inComment = false;
+  // v8 (#68): a declaration whose property and value sit on different
+  // physical lines was INVISIBLE to every prior version (six real sites
+  // hid there, two of them unexempted until the census-zero gate found
+  // them). An unterminated trailing decl now buffers across lines: it
+  // keeps its START line for attribution, and token-exempt anywhere on
+  // ANY physical line it spans exempts the WHOLE declaration (the
+  // whole-decl-coverage semantics the census-zero gate specified for the
+  // ratchet fixture).
+  let pendingDecl = null; // {text, line, exempt}
   for (let idx = 0; idx < lines.length; idx++) {
     const lineNo = idx + 1 + lineOffset;
     let raw = lines[idx];
@@ -138,6 +147,14 @@ function lintCss(text, fname, lineOffset, out) {
     s = s.replace(/\/\*[\s\S]*?\*\//g, '');
     const open = s.indexOf('/*');
     if (open !== -1) { s = s.slice(0, open); inComment = true; }
+    let effLine = lineNo;
+    let effExempt = exempt;
+    if (pendingDecl) {
+      s = pendingDecl.text + ' ' + s;
+      effLine = pendingDecl.line;
+      effExempt = pendingDecl.exempt || exempt;
+      pendingDecl = null;
+    }
 
     // Segment-based scan: split the line at braces, tracking the selector
     // stack, and lint EVERY declaration segment - including declarations on
@@ -155,12 +172,12 @@ function lintCss(text, fname, lineOffset, out) {
     const lintDecl = (rawProp, value) => {
       const prop = rawProp.toLowerCase();
       if (prop.startsWith('--')) return; // token definition layer
-      if (exempt) return; // audit-KEEP directive
+      if (effExempt) return; // audit-KEEP directive (v8: OR'd across a buffered decl's physical lines)
       const inOpaque = selStack.some((f) => f.at === '@keyframes' || f.at === '@font-face');
       if (inOpaque) return;
       const nearest = [...selStack].reverse().find((f) => !f.at);
       if (nearest && DEF_SELECTOR.test(nearest.selector)) return; // era/def layer
-      const hit = (cat) => out.push({ cat, file: fname, line: lineNo, prop, value: value.slice(0, 60) });
+      const hit = (cat) => out.push({ cat, file: fname, line: effLine, prop, value: value.slice(0, 60) });
       classifyDecl(prop, value, hit); // shared classifier (v7, #69)
     };
 
@@ -181,7 +198,23 @@ function lintCss(text, fname, lineOffset, out) {
       }
     }
     const tail = s.slice(cursor);
-    if (selStack.length > 0) checkDecls(tail);
+    if (selStack.length > 0) {
+      // v8 (#68): complete decls in the tail lint now; an unterminated
+      // trailing decl (decl-shaped start, no terminating ';') buffers
+      // into the next line instead of being evaluated with a PARTIAL
+      // value at end-of-line (the pre-v8 behavior that made multi-line
+      // values invisible - the value's literal-carrying stops lived on
+      // lines the evaluator never saw).
+      const lastSemi = tail.lastIndexOf(';');
+      const done = lastSemi === -1 ? '' : tail.slice(0, lastSemi + 1);
+      const rest = lastSemi === -1 ? tail : tail.slice(lastSemi + 1);
+      if (done) checkDecls(done);
+      if (/^\s*[\w-]+\s*:/.test(rest) && rest.trim()) {
+        pendingDecl = { text: rest, line: effLine, exempt: effExempt };
+      } else if (rest.trim()) {
+        checkDecls(rest); // parity with pre-v8 for non-decl-shaped tails
+      }
+    }
     else if (tail.trim() && !tail.includes(':')) pendingSelector += ' ' + tail.trim();
     else if (tail.trim() && tail.includes(':') && !/;/.test(tail)) pendingSelector += ' ' + tail.trim();
   }
@@ -248,16 +281,38 @@ for (const dir of ['public/js', 'lib/ytdlp/client']) {
   }
 }
 
+const enforce = process.argv.includes('--enforce');
+
+if (enforce) {
+  // THE RATCHET's vacuity canary (#68, census-zero gate W3): before any
+  // "zero violations" verdict may pass a commit, prove the linter still
+  // detects ANYTHING. ledger-check's CLEAN went vacuous the day the
+  // census hit zero (empty vs empty trivially matches); a broken linter
+  // returning nothing must fail LOUD here, never pass quiet.
+  const canary = [];
+  lintCss('.canary { color: #b00b00; z-index: 1234; margin: 13px; }', 'canary.css', 0, canary);
+  const canaryJs = [];
+  lintJs("el.style.cssText = 'font-size:13px; color:#b00b00;';", 'canary.js', canaryJs);
+  if (canary.length !== 3 || canaryJs.length !== 2) {
+    console.error(`css-token-lint: SELF-CHECK FAILED - the known-violation canary produced ${canary.length}/3 CSS + ${canaryJs.length}/2 JS hits. The linter is broken; a zero from it proves nothing. Fix the linter before trusting any census.`);
+    process.exit(2);
+  }
+}
+
 const byCat = {};
 for (const v of out) byCat[v.cat] = (byCat[v.cat] || 0) + 1;
-console.log('css-token-lint (report-only) - raw literals in governed properties');
-console.log('  scope v7: style.css + subscriptions.html <style> + JS style surfaces (cssText/.style/setProperty; player.js positional excluded); exclusions: era/def layer, @keyframes/@font-face, token-exempt, keywords/var, z-ladder + radius calc idioms, zero env() fallbacks');
+console.log(`css-token-lint (${enforce ? 'ENFORCING - the ratchet' : 'report-only'}) - raw literals in governed properties`);
+console.log('  scope v8: style.css + subscriptions.html <style> + JS style surfaces (cssText/.style/setProperty; player.js positional excluded) + multi-line declarations (buffered, whole-decl exempt coverage); exclusions: era/def layer, @keyframes/@font-face, token-exempt, keywords/var, z-ladder + radius calc idioms, zero env() fallbacks');
 for (const [cat, n] of Object.entries(byCat).sort((a, b) => b[1] - a[1])) {
   console.log(`  ${cat.padEnd(16)} ${n}`);
 }
-console.log(`  TOTAL ${out.length}  (the Tier 2+ burn-down metric)`);
-if (process.argv.includes('--verbose')) {
+console.log(`  TOTAL ${out.length}  (the token census; ceiling ZERO since v1.61.0)`);
+if (process.argv.includes('--verbose') || (enforce && out.length > 0)) {
   for (const v of out) console.log(`    ${v.file}:${v.line}  ${v.prop}: ${v.value}  [${v.cat}]`);
+}
+if (enforce && out.length > 0) {
+  console.error(`css-token-lint: RATCHET FAILURE - ${out.length} raw literal(s) in governed properties. Adopt a token, use a recognized idiom, or annotate /* token-exempt: <reason> */ and defend the reason in review (docs/CONTRIBUTING.md, the MANDATORY styling section).`);
+  process.exit(1);
 }
 process.exit(0);
 }

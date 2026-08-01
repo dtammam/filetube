@@ -142,6 +142,36 @@ test('v7: ZERO env() fallbacks are API syntax, not literals; nonzero env fallbac
     'JS surface, same classifier');
 });
 
+test('v8 (#68): multi-line declarations are SEEN; exempt anywhere covers the WHOLE decl', () => {
+  const out1 = lint('.x {\n  background-image: linear-gradient(\n    90deg,\n    rgba(0, 0, 0, 0.5),\n    transparent\n  );\n}');
+  assert.equal(out1.length, 1, 'the continuation-line rgba is visible now (pre-v8: zero in every category - the blind spot that hid six real sites)');
+  assert.equal(out1[0].cat, 'color');
+  assert.equal(out1[0].line, 2, 'attributed to the declaration START line');
+  assert.equal(lint('.x {\n  background-image: linear-gradient(\n    rgba(0, 0, 0, 0.5), /* token-exempt: art */\n    transparent\n  );\n}').length, 0,
+    'exempt on a continuation line silences the whole decl');
+  // The census-zero gate's specified ratchet fixture: exempt MID-value with
+  // a BARE literal stop LATER in the same buffered decl (the dl-chip shape):
+  assert.equal(lint('.x {\n  background-image: repeating-linear-gradient(\n    rgba(255, 255, 255, 0.25) 0, /* token-exempt: stripes */\n    rgba(255, 255, 255, 0.25) 4px,\n    transparent 8px\n  );\n}').length, 0,
+    'whole-decl exempt coverage: a bare literal stop after the exempt comment is still covered');
+  assert.equal(lint('[data-theme="2009"] .x {\n  background-image: linear-gradient(\n    rgba(0,0,0,0.5)\n  );\n}').length, 0,
+    'era scope excludes multi-line decls too');
+  assert.equal(lint('.x {\n  color: #abc123\n}').length, 1,
+    'a no-semicolon decl terminated by a next-line brace is still detected');
+  assert.equal(lint('.a { margin: 4px; } .b { padding: 6px; }').length, 2,
+    'single-line behavior unchanged (v2-hole regression control)');
+});
+
+test('v8: the ratchet CLI (--enforce) runs the self-canary and passes on the zero census', () => {
+  const { execFileSync } = require('node:child_process');
+  const path = require('node:path');
+  const res = execFileSync(process.execPath, [path.join(__dirname, '..', '..', 'scripts', 'css-token-lint.js'), '--enforce'], { encoding: 'utf8' });
+  assert.match(res, /ENFORCING - the ratchet/);
+  assert.match(res, /TOTAL 0/);
+  // The failure paths (canary-broken exit 2, raw-literal exit 1) cannot be
+  // driven from here without mutating the real tree - they are bound by
+  // the wave's recorded post-commit mutation runs, per the gate.
+});
+
 test('multi-line rules and selectors spanning lines resolve their scope correctly', () => {
   const out = lint(`
 [data-theme="2009"]
@@ -166,7 +196,7 @@ test('width/height are ungoverned by design (layout geometry stays literal)', ()
   assert.equal(lint('.x { width: 240px; height: 44px; max-width: 85vh; }').length, 0);
 });
 
-test('report-only contract: the CLI always exits 0 (locked by source, asserted by run)', () => {
+test('report-only contract: the flagless CLI always exits 0 (--enforce is the ratchet, the deliberate exception since v1.62.0)', () => {
   const { execFileSync } = require('node:child_process');
   const path = require('node:path');
   const res = execFileSync(process.execPath, [path.join(__dirname, '..', '..', 'scripts', 'css-token-lint.js')], { encoding: 'utf8' });
