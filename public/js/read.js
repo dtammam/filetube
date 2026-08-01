@@ -469,12 +469,15 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.60.1 (Dean, on-device: "if I choose night I can't go back"):
     // NEVER use themes.register()+select() here. epub.js injects a
     // registered theme's rules as UNSCOPED `body {...}` into a per-theme
-    // style node in the current chapter iframe and re-selecting an
-    // already-injected theme is a no-op (its `injected` flag short-
-    // circuits), so whichever theme was injected LAST into that iframe
-    // wins the cascade forever - switching back only "works" after a
-    // chapter turn builds a fresh iframe. Pre-existing since the v1.37.0
-    // reader; surfaced by the F.5 flip-all-three probe.
+    // style node in the current chapter iframe; re-selecting an earlier
+    // theme re-inserts duplicate rules into that theme's EXISTING style
+    // node, which keeps its original document position - so the
+    // LAST-CREATED theme node wins the cascade forever (the class
+    // select() swaps is referenced by no injected rule, and the upstream
+    // `injected` flag is write-only dead code - gate-verified in the
+    // vendored source). Switching back only "works" after a chapter turn
+    // builds a fresh iframe. Pre-existing since the v1.37.0 reader;
+    // surfaced by the F.5 flip-all-three probe.
     // themes.override(prop, value) stores one value per property and
     // re-applies it to current AND future contents via contents.css() -
     // last call wins, fully reversible (verified in the vendored source).
