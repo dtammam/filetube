@@ -9143,6 +9143,65 @@ app.get('/api/liked', (req, res) => {
   res.json({ items, total, offset, limit });
 });
 
+// ---- v1.64 watch history ---------------------------------------------------
+// Everything the signed-in user watched or started, newest first. The merged
+// set is user_progress (started) + user_watched (the completion latch); the
+// per-media order key is the freshest signal: a staged coalescer ping
+// (read-your-writes -- the overlay value carries its own updatedAt) beats
+// the committed row, and progress.updatedAt pairs with the latch's
+// completed_at via max(). ISO strings compare lexicographically, so string
+// max IS time max. Dead media ids are filtered at read time (the
+// shapedQueue posture): a row that outlives its file must never break the
+// page, and the media-delete prune remains the durable cleaner.
+app.get('/api/history', (req, res) => {
+  const db = getCachedDatabase(); // hot GET reader, same as /api/liked
+  const limit = videoQuery.normalizeLimit(req.query.limit);
+  const offset = videoQuery.normalizeOffset(req.query.offset);
+  const progressMap = userStore.getProgress(req.user.id);
+  for (const entry of pendingProgress.values()) {
+    if (entry.userId === req.user.id) progressMap[entry.mediaId] = entry.value;
+  }
+  const watchedTimes = userStore.getWatchedTimes(req.user.id);
+  const likedSet = new Set(userStore.getLiked(req.user.id));
+
+  // Per-media newest signal. A null updated_at (a legacy batch row) sorts
+  // as '' -- present in history, oldest possible position.
+  const lastById = Object.create(null);
+  for (const id of Object.keys(progressMap)) {
+    lastById[id] = typeof progressMap[id].updatedAt === 'string' ? progressMap[id].updatedAt : '';
+  }
+  for (const id of Object.keys(watchedTimes)) {
+    const at = typeof watchedTimes[id] === 'string' ? watchedTimes[id] : '';
+    if (!(id in lastById) || at > lastById[id]) lastById[id] = at;
+  }
+
+  const merged = Object.keys(lastById)
+    .filter((id) => Object.prototype.hasOwnProperty.call(db.metadata, id))
+    .sort((a, b) => {
+      if (lastById[a] !== lastById[b]) return lastById[a] > lastById[b] ? -1 : 1;
+      return a < b ? -1 : 1; // deterministic tiebreak
+    });
+
+  const total = merged.length;
+  const page = merged.slice(offset, offset + limit);
+  const items = page.map((id) => {
+    const item = db.metadata[id];
+    const progress = progressMap[id] || { timestamp: 0, duration: 0 };
+    const dur = typeof progress.duration === 'number' && Number.isFinite(progress.duration) && progress.duration > 0 ? progress.duration : 0;
+    const progressPercent = dur > 0 ? (progress.timestamp / dur) * 100 : 0;
+    return {
+      ...item,
+      liked: likedSet.has(id),
+      progress: progress.timestamp || 0,
+      progressPercent,
+      watchState: videoQuery.deriveWatchState(progressPercent, id in watchedTimes),
+      lastWatchedAt: lastById[id] || null
+    };
+  });
+
+  res.json({ items, total, offset, limit });
+});
+
 // ---- C1 (v1.24 UX Round, Wave 3): move files between folders + id re-key --
 //
 // LOAD-BEARING GROUNDING FACT (docs/exec-plans/active/2026-07-09-v1.24-ux-round.md
