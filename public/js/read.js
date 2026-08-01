@@ -458,24 +458,47 @@ if (typeof module !== 'undefined' && module.exports) {
       allowScriptedContent: false,
     });
 
-    // Reading themes: epub.js injects these into the chapter iframe; the
-    // pane background is handled by the .reader-content theme class. The
-    // values are the --reader-* tokens (style.css :root, the reader's own
-    // axis) read via getComputedStyle - the iframe is a separate document,
-    // so CSS var() cannot reach it and a literal copy here would be the
-    // two-source divergence tranche F.5 exists to kill. token-scale-lock
-    // pins the token values byte-exactly.
+    // Reading themes: applied to the chapter iframe via themes.override()
+    // per property; the pane background is handled by the .reader-content
+    // theme class. The values are the --reader-* tokens (style.css :root,
+    // the reader's own axis) read via getComputedStyle - the iframe is a
+    // separate document, so CSS var() cannot reach it and a literal copy
+    // here would be the two-source divergence tranche F.5 exists to kill.
+    // token-scale-lock pins the token values byte-exactly.
+    //
+    // v1.60.1 (Dean, on-device: "if I choose night I can't go back"):
+    // NEVER use themes.register()+select() here. epub.js injects a
+    // registered theme's rules as UNSCOPED `body {...}` into a per-theme
+    // style node in the current chapter iframe; re-selecting an earlier
+    // theme re-inserts duplicate rules into that theme's EXISTING style
+    // node, which keeps its original document position - so the
+    // LAST-CREATED theme node wins the cascade forever (the class
+    // select() swaps is referenced by no injected rule, and the upstream
+    // `injected` flag is write-only dead code - gate-verified in the
+    // vendored source). Switching back only "works" after a chapter turn
+    // builds a fresh iframe. Pre-existing since the v1.37.0 reader;
+    // surfaced by the F.5 flip-all-three probe.
+    // themes.override(prop, value) stores one value per property and
+    // re-applies it to current AND future contents via contents.css() -
+    // last call wins, fully reversible (verified in the vendored source).
     const readerToken = (name) => {
       const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
       if (!v) throw new Error(`reader theme token ${name} missing from :root`);
       return v;
     };
-    rendition.themes.register('paper', { body: { color: readerToken('--reader-paper-fg'), background: readerToken('--reader-paper-bg') } });
-    rendition.themes.register('sepia', { body: { color: readerToken('--reader-sepia-fg'), background: readerToken('--reader-sepia-bg') } });
-    rendition.themes.register('night', { body: { color: readerToken('--reader-night-fg'), background: readerToken('--reader-night-bg') } });
+    const EPUB_THEMES = {
+      paper: { fg: readerToken('--reader-paper-fg'), bg: readerToken('--reader-paper-bg') },
+      sepia: { fg: readerToken('--reader-sepia-fg'), bg: readerToken('--reader-sepia-bg') },
+      night: { fg: readerToken('--reader-night-fg'), bg: readerToken('--reader-night-bg') },
+    };
+    function applyEpubTheme(name) {
+      const t = EPUB_THEMES[normalizeReaderTheme(name)];
+      rendition.themes.override('color', t.fg);
+      rendition.themes.override('background', t.bg);
+    }
 
     function applyPrefs() {
-      rendition.themes.select(normalizeReaderTheme(readPref(THEME_KEY, 'paper')));
+      applyEpubTheme(readPref(THEME_KEY, 'paper'));
       rendition.themes.fontSize(`${clampReaderFontSize(readPref(FONT_KEY, '100'))}%`);
     }
     applyPrefs();
@@ -569,7 +592,7 @@ if (typeof module !== 'undefined' && module.exports) {
       // narration. Best-effort; a bad index just no-ops.
       goToSpine: (idx) => rendition.display(idx).catch(() => {}),
       setFontSize: (pct) => rendition.themes.fontSize(`${pct}%`),
-      setTheme: (name) => rendition.themes.select(name),
+      setTheme: (name) => applyEpubTheme(name), // v1.60.1: override(), never select() - see the theme block above
       // v1.37.2: called (debounced) on window resize -- re-measures the
       // pane so pagination/spread track the new dimensions.
       refit: () => {
