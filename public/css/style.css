@@ -3596,7 +3596,8 @@ a.sub-row-channel-link:focus-visible {
 .icon-share,
 .icon-download,
 .icon-shuffle,
-.icon-flame {
+.icon-flame,
+.icon-history {
   display: inline-block;
   width: 1em;
   height: 1em;
@@ -3658,6 +3659,10 @@ a.sub-row-channel-link:focus-visible {
    file in that directory this one is FileTube's own drawing, not a Material
    asset -- see public/assets/icons/README.md. */
 .icon-flame { -webkit-mask-image: url(/assets/icons/flame.svg); mask-image: url(/assets/icons/flame.svg); }
+/* v1.64: the History clock glyph (Material `history`). Base directory only,
+   like heart/share/flame -- an icon with no set-specific variant falls back
+   to this one in every set (deliberate, not a gap). */
+.icon-history { -webkit-mask-image: url(/assets/icons/history.svg); mask-image: url(/assets/icons/history.svg); }
 
 /* Paint the icon fill only where CSS masks are supported, so a browser without
    mask support (or a failed/404 mask) renders nothing instead of a solid
@@ -3666,7 +3671,7 @@ a.sub-row-channel-link:focus-visible {
   .icon-home, .icon-folder, .icon-cog, .icon-delete, .icon-moon, .icon-sun,
   .icon-menu, .icon-search, .icon-play, .icon-refresh, .icon-arrow-up, .icon-arrow-down,
   .icon-grid, .icon-list, .icon-heart, .icon-share, .icon-download, .icon-shuffle,
-  .icon-flame {
+  .icon-flame, .icon-history {
     background-color: currentColor;
   }
 }

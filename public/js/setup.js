@@ -600,7 +600,7 @@ function wireHomeRowToggle(id, key, signal) {
 // (labels below), each with a Show toggle + up/down reorder, driving the
 // device-local config through common.js's exposed helpers. applyBottomNav-
 // Customization re-renders the live bar immediately.
-const BOTTOMBAR_LABELS = { playlists: 'Playlists', subscriptions: 'Subscriptions', 'oneoff-download': 'Download', theme: 'Light / Dark' };
+const BOTTOMBAR_LABELS = { playlists: 'Playlists', history: 'History', subscriptions: 'Subscriptions', 'oneoff-download': 'Download', theme: 'Light / Dark' };
 function renderBottomBarEditor(signal) {
   const host = document.getElementById('bottombar-editor');
   const FT = typeof window !== 'undefined' ? window.FileTube : null;

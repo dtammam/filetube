@@ -3102,6 +3102,24 @@ function injectMusicNavLinkIfEnabled() {
     .catch(() => { /* network/parse failure -- fail closed, inject nothing */ });
 }
 
+// v1.64: the History sidebar entry, count-gated like Liked (visible iff the
+// user has >=1 history item) but injected as a Library-section entry (the
+// books/music pattern -- a SIBLING above #sidebar-folders-list, so folder
+// re-renders never wipe it; one boot call per page, no per-render re-apply).
+// Boot-gated only: the first-ever watch makes the entry appear on the next
+// page load, not live -- the Liked-entry trade-off, accepted at design.
+function injectHistoryNavLinkIfEnabled() {
+  if (typeof document === 'undefined' || typeof fetch === 'undefined') return;
+  if (document.querySelector('[data-nav-sidebar="history"]')) return;
+  fetch('/api/history?limit=1')
+    .then((res) => (res.ok ? res.json() : null))
+    .then((payload) => {
+      if (!payload || !(Number(payload.total) > 0)) return; // empty history -- inject nothing
+      injectLibraryNavEntry('history', '/history', 'History', 'icon-history');
+    })
+    .catch(() => { /* network/parse failure -- fail closed, inject nothing */ });
+}
+
 // ---- v1.44 T12: customizable bottom-bar -------------------------------------
 //
 // The user reorders/hides the OPTIONAL bottom-nav items (home stays first,
@@ -3114,7 +3132,7 @@ function injectMusicNavLinkIfEnabled() {
 const BOTTOM_NAV_FIXED_FIRST = 'home';
 const BOTTOM_NAV_FIXED_LAST = 'settings';
 // The optional items a user may reorder/hide (must carry a data-nav id).
-const BOTTOM_NAV_OPTIONAL = ['playlists', 'subscriptions', 'oneoff-download', 'theme'];
+const BOTTOM_NAV_OPTIONAL = ['playlists', 'history', 'subscriptions', 'oneoff-download', 'theme'];
 
 // Pure: given the bottom-nav item ids ACTUALLY present in the DOM and the
 // user's config, return the final visible order (home first, settings last,
@@ -5793,6 +5811,12 @@ function libraryEntriesHtml() {
     }
     if (document.querySelector('[data-nav-sidebar="books"]')) {
       html += '<a href="/books" class="sidebar-item"><i class="icon-folder"></i> Books</a>';
+    }
+    // v1.64: mirrors the count-gated sidebar marker, same as books/music
+    // mirror their capability markers -- the sheet and the sidebars can
+    // never disagree about whether History exists.
+    if (document.querySelector('[data-nav-sidebar="history"]')) {
+      html += '<a href="/history" class="sidebar-item"><i class="icon-history"></i> History</a>';
     }
   }
   return html;
@@ -8991,6 +9015,8 @@ document.addEventListener('DOMContentLoaded', () => {
   injectBooksNavLinkIfEnabled();
   // v1.44 music: same probe-gated Library-section injection.
   injectMusicNavLinkIfEnabled();
+  // v1.64 history: same injection, gated on >=1 history item (the Liked rule).
+  injectHistoryNavLinkIfEnabled();
   // v1.44 T12: apply the user's bottom-bar layout to the STATIC items now; the
   // async injectors (subscriptions/download) re-apply after inserting theirs.
   applyBottomNavCustomization();
