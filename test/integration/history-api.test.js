@@ -231,6 +231,7 @@ test('DELETE /api/history (clear-all) wipes rows AND staged entries for THIS use
   // The OTHER user: one committed row + one staged ping (explicit Cookie
   // bypasses the patched-fetch default).
   userStore.setProgress(second.user.id, 'vid-1', { timestamp: 77, duration: 100, updatedAt: T(3, 0) });
+  userStore.markWatched(second.user.id, 'vid-2', T(3, 0));
   await fetch(`${base}/api/progress`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Cookie: second.cookie },
@@ -245,5 +246,20 @@ test('DELETE /api/history (clear-all) wipes rows AND staged entries for THIS use
   assert.equal(userStore.getOneProgress(uid, 'vid-3'), null);
   assert.equal(userStore.getOneProgress(second.user.id, 'vid-1').timestamp, 77, 'their committed row survives');
   assert.equal(userStore.getOneProgress(second.user.id, 'vid-4').timestamp, 33, 'their staged ping flushed normally');
-  assert.ok(userStore.getWatchedTimes(second.user.id) !== undefined);
+  assert.equal(userStore.getWatchedTimes(second.user.id)['vid-2'], T(3, 0), 'their watched latch survives my clear (QA S1: a real assert, not a vacuous one)');
+});
+
+test('QA gate W1: DELETE /api/history/ (trailing slash - a per-item call with a MISSING id) is 400 and destroys NOTHING', async () => {
+  userStore.setProgress(uid, 'vid-1', { timestamp: 10, duration: 100, updatedAt: T(1, 0) });
+  userStore.markWatched(uid, 'vid-2', T(2, 0));
+
+  // Express non-strict routing routes this onto the clear-all handler --
+  // which must refuse the ambiguous form instead of wiping the history.
+  const r = await fetch(`${base}/api/history/`, { method: 'DELETE' });
+  assert.equal(r.status, 400);
+
+  assert.equal(userStore.getOneProgress(uid, 'vid-1').timestamp, 10, 'progress intact');
+  assert.equal(userStore.getWatchedTimes(uid)['vid-2'], T(2, 0), 'latch intact');
+  const body = await GET();
+  assert.equal(body.total, 2, 'the history still lists both items');
 });

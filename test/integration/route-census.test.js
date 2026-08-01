@@ -116,7 +116,7 @@ test('route census: every registered route is gated unless it is on the exact al
 });
 
 test('route census: the shell catch-all + arbitrary static paths are gated (an unknown page 401s unauthenticated)', async () => {
-  for (const p of ['/some-unknown-page', '/index.html', '/js/main.js', '/js/watch.js', '/read.html', '/setup.html']) {
+  for (const p of ['/some-unknown-page', '/index.html', '/js/main.js', '/js/watch.js', '/read.html', '/setup.html', '/history', '/js/history.js']) {
     assert.equal(await probeGated('GET', p), true, `${p} must be gated pre-auth (not served by the catch-all/static before the gate)`);
   }
 });

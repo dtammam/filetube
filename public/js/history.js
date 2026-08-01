@@ -189,8 +189,13 @@ if (typeof module !== 'undefined' && module.exports) {
 
     function removeRow(row, btn) {
       disarm();
+      var id = btn.getAttribute('data-id');
+      // QA gate W1: a falsy id would build '/api/history/' -- which Express's
+      // non-strict routing aliases onto CLEAR-ALL (the server now 400s that
+      // form too; this is the belt to its suspenders).
+      if (!id) return;
       row.hidden = true; // optimistic HIDE
-      fetch('/api/history/' + encodeURIComponent(btn.getAttribute('data-id') || ''), { method: 'DELETE' })
+      fetch('/api/history/' + encodeURIComponent(id), { method: 'DELETE' })
         .then(function (r) {
           if (signal.aborted) return;
           if (!r.ok) throw new Error('remove failed: ' + r.status);

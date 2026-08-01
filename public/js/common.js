@@ -3062,9 +3062,14 @@ function injectLibraryNavEntry(key, href, label, iconClass) {
   icon.className = iconClass;
   link.appendChild(icon);
   link.appendChild(document.createTextNode(' ' + label));
+  // Deterministic visual order Music, Books, History regardless of which
+  // async probe resolves first (QA gate S2, v1.64): each key anchors before
+  // every entry that must sit BELOW it, falling back to the folders list.
   const anchor = (key === 'music')
-    ? (document.querySelector('[data-nav-sidebar="books"]') || foldersList)
-    : foldersList;
+    ? (document.querySelector('[data-nav-sidebar="books"]') || document.querySelector('[data-nav-sidebar="history"]') || foldersList)
+    : (key === 'books')
+      ? (document.querySelector('[data-nav-sidebar="history"]') || foldersList)
+      : foldersList;
   anchor.insertAdjacentElement('beforebegin', link);
   if (activeNavItem(window.location.pathname, window.location.search) === key) {
     link.classList.add('active');
@@ -9121,6 +9126,10 @@ if (typeof module !== 'undefined' && module.exports) {
     shouldInjectSubscriptionsNav,
     shouldInjectBooksNav,
     shouldInjectMusicNav,
+    // v1.64 (adversarial gate W1): the History count-gate is DOM-bound by
+    // test/integration/history-nav-gate.test.js through these two.
+    injectHistoryNavLinkIfEnabled,
+    injectLibraryNavEntry,
     resolveBottomNavLayout,
     pinDeleteEndpoint,
     fisherYatesShuffle, sortItems, shouldShowShuffleButton,

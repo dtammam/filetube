@@ -45,6 +45,8 @@ test('formatHistoryWhen: the full ladder, deterministic via injected now', () =>
 
 test('historyBarPercent: >0.5 threshold (the home-card rule), watched -> no partial bar, clamped to 100', () => {
   assert.equal(historyBarPercent({ progressPercent: 0.4 }), null);
+  assert.equal(historyBarPercent({ progressPercent: 0.5 }), null, 'exactly 0.5 is NOT >0.5 (adversarial gate: binds <= against a < mutant)');
+  assert.equal(historyBarPercent({ progressPercent: 0.51 }), 0.51);
   assert.equal(historyBarPercent({ progressPercent: 43.2 }), 43.2);
   assert.equal(historyBarPercent({ progressPercent: 250 }), 100);
   assert.equal(historyBarPercent({ progressPercent: 60, watchState: 'watched' }), null, 'the Watched chip carries completion; no partial bar');
@@ -52,13 +54,18 @@ test('historyBarPercent: >0.5 threshold (the home-card rule), watched -> no part
   assert.equal(historyBarPercent({ progressPercent: NaN }), null);
 });
 
-test('buildHistoryRowHtml: escapes hostile titles, carries data-id, and NEVER emits an inline style attribute', () => {
+test('buildHistoryRowHtml: escapes hostile titles AND channel names, carries data-id, and NEVER emits an inline style attribute', () => {
   const html = buildHistoryRowHtml({
-    id: 'abc123', title: '<script>alert(1)</script>', channelName: 'Chan "quoted"', folderName: 'Chan',
+    // A hostile CHANNEL too (adversarial gate W2): folder names come from
+    // on-disk dirnames, and '<img onerror=...>' is a legal Linux dirname --
+    // the channel escape must be BOUND, not merely present.
+    id: 'abc123', title: '<script>alert(1)</script>', channelName: '<img src=x onerror=alert(2)>', folderName: 'Chan',
     duration: 65, progressPercent: 43.2, watchState: 'watching', lastWatchedAt: '2026-07-20T09:00:00.000Z', type: 'video',
   }, NOW);
   assert.ok(!html.includes('<script>alert'), 'title is escaped');
   assert.ok(html.includes('&lt;script&gt;'), 'escaped title still renders as text');
+  assert.ok(!html.includes('<img src=x'), 'channel is escaped');
+  assert.ok(html.includes('&lt;img src=x onerror=alert(2)&gt;'), 'escaped channel still renders as text');
   assert.ok(html.includes('data-id="abc123"'));
   assert.ok(html.includes('href="/watch.html?v=abc123"'));
   assert.ok(html.includes('3 hours ago'));

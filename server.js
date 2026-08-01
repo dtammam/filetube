@@ -9221,6 +9221,13 @@ app.delete('/api/history/:id', (req, res) => {
 // entry.userId (deleting from a Map while iterating it is safe in JS) and
 // clearHistory's DELETEs are user-scoped by statement.
 app.delete('/api/history', (req, res) => {
+  // QA gate W1 (v1.64): Express non-strict routing aliases
+  // 'DELETE /api/history/' -- the per-item form with a MISSING id -- onto
+  // this handler. A caller that meant to remove ONE item must never wipe
+  // the whole history: refuse the ambiguous trailing-slash form outright.
+  if (req.path !== '/api/history') {
+    return res.status(400).json({ error: 'item id required' });
+  }
   for (const [key, entry] of pendingProgress) {
     if (entry.userId === req.user.id) pendingProgress.delete(key);
   }
