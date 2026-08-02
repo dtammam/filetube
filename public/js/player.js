@@ -1050,9 +1050,38 @@ function resolveCssFsScrollPlan(wasOn, nextOn, restoreEligible, savedY, currentY
   return { savedY: typeof savedY === 'number' && !isNaN(savedY) ? savedY : null, restoreTo: null };
 }
 
+// v1.68.2 (Dean's on-device FAIL of the v1.68.1 rotation fix): the rotation
+// DEAD-ZONE decision. Rotating the INLINE watch page (no fullscreen
+// involved) and back leaves the page "shifted up" - iOS preserves the
+// scroll offset in raw PIXELS across the rotation, but portrait stacks
+// ~190px more chrome above the player than landscape (logo row + search
+// row vs one bar), so rotate-and-back deposits exactly that layout delta
+// as residual scrollY and the video top tucks under the fixed header.
+// v1.68.1's cap nudge addressed a stale-vh BOX mechanism the screenshots
+// also supported; measured on-device it did not resolve the symptom - the
+// scroll delta is the real (or at least the dominant) mechanism.
+//
+// The decision is CAPTURE-FREE by design: after a rotation settles, a
+// scroll position strictly between page top and the player's own document
+// top is a "dead zone" - above the page's raison d'etre but below its
+// natural top. The user practically never parks there (the zone is the
+// header chrome), while the rotation bug deposits the page EXACTLY there.
+// Snap to top. Positions at/past the player (comments reading) are left
+// to iOS's own content anchoring, which is correct there. Capture-free
+// means no dependence on WHEN the orientation event fires relative to
+// iOS applying its erroneous shift - every settle pass just re-evaluates.
+// Non-numbers/NaN never snap (the coercion scar, as everywhere).
+function resolveRotationTopSnap(scrollY, playerDocTop) {
+  if (typeof scrollY !== 'number' || isNaN(scrollY)) return false;
+  if (typeof playerDocTop !== 'number' || isNaN(playerDocTop)) return false;
+  return scrollY > 0 && scrollY < playerDocTop;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     resolveCssFsScrollPlan,
+    // v1.68.2: the rotation dead-zone snap decision (see its header).
+    resolveRotationTopSnap,
     // v1.63 playback queue: the ended-table extension + the client mirror
     // of the server's nextEntry (the server reducers stay the authority).
     computeQueueNext,
@@ -1552,13 +1581,42 @@ if (typeof module !== 'undefined' && module.exports) {
     }
   }
 
+  // v1.68.2: the runtime half of the rotation dead-zone snap (pure decision:
+  // resolveRotationTopSnap, exported above with the other pure helpers).
+  // Every guard is re-checked at APPLY time, never trusted from the
+  // orientation event (the C1 lesson: a navigation can land between the
+  // event and this pass, and its scroll placement must win):
+  //   - mobile only (desktop window resizes cross the orientation MQ too);
+  //   - FULL only (a docked mini-player's page owns its own scroll);
+  //   - never under native or faux fullscreen (their keepers own scroll);
+  //   - host mounted (a torn-down player has no dead zone).
+  function snapRotationDeadZone() {
+    if (!isMobileFormFactor()) return;
+    if (state !== STATE_FULL) return;
+    if (inNativeFullscreen()) return;
+    if (host && host.classList.contains('css-fullscreen')) return;
+    if (!host || !host.isConnected) return;
+    var y = typeof window.pageYOffset === 'number' ? window.pageYOffset : window.scrollY;
+    var playerDocTop = host.getBoundingClientRect().top + y;
+    if (resolveRotationTopSnap(y, playerDocTop)) window.scrollTo(0, 0);
+  }
+
   // Two passes: a double-rAF for the common case where the viewport has
   // settled by the frame after the orientation event, plus one late timer
-  // pass as the belt for slower rotation animations (both idempotent - a
-  // nudge against already-correct caps re-resolves to the same values).
+  // pass as the belt for slower rotation animations (all idempotent - a
+  // nudge against already-correct caps re-resolves to the same values, a
+  // snap outside the dead zone is a no-op). ORDER inside each pass: caps
+  // first (the nudge changes layout heights, which moves the player's
+  // document top), THEN the dead-zone snap against the settled geometry.
   function scheduleViewportCapNudge() {
-    requestAnimationFrame(function () { requestAnimationFrame(nudgeViewportHeightCaps); });
-    setTimeout(nudgeViewportHeightCaps, 650);
+    requestAnimationFrame(function () { requestAnimationFrame(function () {
+      nudgeViewportHeightCaps();
+      snapRotationDeadZone();
+    }); });
+    setTimeout(function () {
+      nudgeViewportHeightCaps();
+      snapRotationDeadZone();
+    }, 650);
   }
 
   // Native-controls round: true while the native iOS/browser `controls` strip
