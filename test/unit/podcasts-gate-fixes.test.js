@@ -172,13 +172,15 @@ test('D2: episode identity is INDEPENDENT of the secrets map - an unrelated new 
 });
 
 test('D1: stripComments is linear - a many-comment in-cap document parses in bounded time, output shapes intact', () => {
-  // ~2.4MB, 4000 comments, zero CDATA: the shape that was O(comments x
-  // length). Linear parses this in tens of ms; the quadratic shipped shape
-  // took ~430ms at HALF this size and 4.9s at 12MB - 5s is ~50x headroom
-  // for the fix while still failing the quadratic form at this size.
+  // 8000 comments / ~4.1MB, zero CDATA: the shape that was O(comments x
+  // length). Sizing per the delta-round-2 measurement (E1 - the first
+  // version of this lock did NOT fail the quadratic mutant): the linear
+  // form runs this in 22-24ms (~42x headroom under the 1s ceiling); the
+  // reverted quadratic form takes ~7.3s (7.3x OVER it). Both margins
+  // measured, not extrapolated.
   const filler = 'x'.repeat(500);
   let doc = '<rss><channel><title>t</title>';
-  for (let i = 0; i < 4000; i += 1) {
+  for (let i = 0; i < 8000; i += 1) {
     doc += `<!-- c${i} -->${filler}`;
   }
   doc += '<item><title>Ep</title><guid>g1</guid><enclosure url="https://h.example/1.mp3" type="audio/mpeg"/></item></channel></rss>';
@@ -187,7 +189,7 @@ test('D1: stripComments is linear - a many-comment in-cap document parses in bou
   const elapsedMs = Number(process.hrtime.bigint() - t0) / 1e6;
   assert.strictEqual(r.ok, true);
   assert.strictEqual(r.items.length, 1, 'content survives the comment flood');
-  assert.ok(elapsedMs < 5000, `linear-time parse (took ${elapsedMs.toFixed(0)}ms)`);
+  assert.ok(elapsedMs < 1000, `linear-time parse (took ${elapsedMs.toFixed(0)}ms; the quadratic form measures ~7300ms here)`);
 });
 
 // ---- #3 timer arms on first subscription ------------------------------------
@@ -213,13 +215,34 @@ test('#3: armPodcastsTimer arms (and re-arms idempotently) from the add path sta
 
 // ---- #5 orphan secret sweep ---------------------------------------------------
 
-test('#5: sweepOrphanFeedSecrets reaps secrets with no owning subscription, keeps live ones', async () => {
+test('#5/E2: sweepOrphanFeedSecrets ARCHIVES orphans (0600 .orphaned, recoverable), keeps live ones', async () => {
   const id = await addSub('all');
   secrets.setFeedSecret(dataDir, 'ffffffffffffffffffffffffffff0bad', 'https://gone.example/rss?auth=OrphanedTok123');
   podcasts.sweepOrphanFeedSecrets(deps);
   const map = secrets.loadFeedSecrets(dataDir);
   assert.strictEqual(map[id], FEED_URL, 'the live secret survives');
-  assert.strictEqual(map['ffffffffffffffffffffffffffff0bad'], undefined, 'the orphan is reaped');
+  assert.strictEqual(map['ffffffffffffffffffffffffffff0bad'], undefined, 'the orphan leaves the live map');
+  // E2 lock (delta round 2, mutant MQ5): the credential is MOVED, not
+  // destroyed - dropping the archive call must fail here.
+  const archivePath = `${secrets.resolveSecretsPath(dataDir)}.orphaned`;
+  const archive = JSON.parse(fs.readFileSync(archivePath, 'utf8'));
+  assert.strictEqual(archive['ffffffffffffffffffffffffffff0bad'], 'https://gone.example/rss?auth=OrphanedTok123', 'the orphan is recoverable from the archive');
+  if (process.platform !== 'win32') {
+    assert.strictEqual(fs.statSync(archivePath).mode & 0o777, 0o600, 'the archive is 0600');
+  }
+});
+
+test('E3: a corrupt .orphaned archive is preserved aside, never silently overwritten', async () => {
+  const id = await addSub('all');
+  const archivePath = `${secrets.resolveSecretsPath(dataDir)}.orphaned`;
+  fs.writeFileSync(archivePath, '{corrupt json');
+  secrets.setFeedSecret(dataDir, 'ffffffffffffffffffffffffffff0bad', 'https://gone.example/rss?auth=Tok');
+  podcasts.sweepOrphanFeedSecrets(deps);
+  assert.ok(fs.existsSync(`${archivePath}.corrupt`), 'the corrupt archive is preserved as evidence');
+  assert.strictEqual(fs.readFileSync(`${archivePath}.corrupt`, 'utf8'), '{corrupt json');
+  const archive = JSON.parse(fs.readFileSync(archivePath, 'utf8'));
+  assert.ok(archive['ffffffffffffffffffffffffffff0bad'], 'the fresh archive carries the new orphan');
+  assert.strictEqual(secrets.loadFeedSecrets(dataDir)[id], FEED_URL, 'the live secret is untouched throughout');
 });
 
 // ---- #6 unsubscribe/pause stops the backfill ---------------------------------
@@ -241,7 +264,7 @@ test('#6: an unsubscribe taken mid-backfill stops the loop at the next episode b
   assert.strictEqual(calls, 1, 'no further episode downloads after the unsubscribe');
 });
 
-test('#6: a pause taken mid-backfill stops the loop the same way', async () => {
+test('#6/E2: a pause taken mid-backfill stops the loop AND writes an honest terminal status', async () => {
   const id = await addSub('all');
   let calls = 0;
   deps.downloadEnclosureImpl = async (url, destDir, finalName) => {
@@ -255,6 +278,11 @@ test('#6: a pause taken mid-backfill stops the loop the same way', async () => {
   };
   await podcasts.runPodcastPoll(deps, id);
   assert.strictEqual(calls, 1, 'pause stops the backfill at the boundary');
+  // E2 lock (delta round 2, mutant MQ4): the stop path must not strand
+  // "pending first check" - deleting the status write must fail here.
+  const sub = store.readPodcasts(db).subscriptions[0];
+  assert.strictEqual(sub.lastStatus, 'paused mid-check: 1 downloaded, 2 still queued');
+  assert.strictEqual(sub.lastCheckedAt, deps.now(), 'lastCheckedAt is stamped on the stop path');
 });
 
 // ---- #7 parser CDATA/comment interaction --------------------------------------
