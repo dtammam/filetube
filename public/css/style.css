@@ -8081,6 +8081,11 @@ body.ft-css-fullscreen .bottom-nav {
      real frame agree on phones. */
   .watch-container #player-slot:empty {
     max-height: 45vh;
+    /* v1.68.1 dvh twin (gate S1) - the mounted player caps at 45dvh now, so
+       the mirror must too or the reserved and real frames disagree by the
+       dynamic-toolbar delta in dvh browsers; same stale-vh rationale as the
+       three player caps. vh above stays as the no-dvh fallback. */
+    max-height: 45dvh;
   }
 }
 

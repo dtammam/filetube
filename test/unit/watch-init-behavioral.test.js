@@ -91,12 +91,13 @@ function buildWatchRealm({ cacheEntry, search = '?v=vid1' } = {}) {
     title: '',
   };
   let capturedInit = null;
+  const seedCalls = [];
   const windowShim = {
     FileTube: {
       player: new Proxy({ currentId: null, getState: () => ({ docked: false, loaded: false }), load: () => true, isLoopEnabled: () => false }, {
         get(t, p) { if (p in t) return t[p]; return () => undefined; },
       }),
-      consumeWatchSeed: () => ({ item: FULL_SEED_ITEM, folderSettings: null }),
+      consumeWatchSeed: (id) => { seedCalls.push(id); return { item: FULL_SEED_ITEM, folderSettings: null }; },
       registerView: (name, handlers) => { if (name === 'watch') capturedInit = handlers.init; },
     },
     location: { pathname: '/watch.html', search, origin: 'http://x', href: 'http://x/watch.html' + search },
@@ -130,7 +131,7 @@ function buildWatchRealm({ cacheEntry, search = '?v=vid1' } = {}) {
   const src = fs.readFileSync(path.join(REPO, 'public/js/watch.js'), 'utf8');
   vm.runInContext(src, sandbox, { filename: 'watch.js' });
   assert.ok(capturedInit, 'watch.js must register its init with the router');
-  return { init: capturedInit, els, loc: windowShim.location };
+  return { init: capturedInit, els, loc: windowShim.location, seedCalls };
 }
 
 const WARM_SUBSCRIBED_CACHE = {
@@ -198,6 +199,22 @@ test('legacy ?id= deep link (a pre-v1.67.4 push banner) initializes instead of b
 
   assert.equal(loc.href, 'http://x/watch.html?id=vid1',
     'href untouched: the tap must land ON the video, never bounce to /');
+});
+
+test('gate W1: v-over-id precedence bound at the USE - init consumes the ?v= id when both params are present', () => {
+  // The adversarial seat's verified probe: an init that inlines an id-first
+  // read (`urlParams.get('id') || urlParams.get('v')`) survived the full
+  // suite with the pure helper left exported, dead, and green. The seed
+  // consume rides init's REAL mediaId, so capturing its argument binds the
+  // precedence where it executes, not where it is defined.
+  const { init, els, seedCalls } = buildWatchRealm({ search: '?v=vid1&id=other' });
+  const root = makeEl('div');
+  root.querySelector = (sel) => { if (!els.has(sel)) els.set(sel, makeEl('div')); return els.get(sel); };
+
+  init(root);
+
+  assert.deepStrictEqual(seedCalls, ['vid1'],
+    'init consumed the seed for the ?v= id exactly once - never the legacy ?id=');
 });
 
 test('a watch URL with NO id still bounces home (the guard the fallback must not break)', () => {

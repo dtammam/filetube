@@ -125,6 +125,15 @@ test('css: the #player-slot media cap carries its 100dvh twin, twin after fallba
   assert.ok(vh < dvh, 'dvh twin AFTER the vh fallback');
 });
 
+test('css: the :empty reserved-frame mirror carries its 45dvh twin, twin after fallback (gate S1 - the fourth cap site)', () => {
+  // Anchored past the base (uncapped) :empty rule to the media-scoped twin.
+  const block = ruleBlock(STYLE_CSS, /\.watch-container #player-slot:empty \{\s*\n\s*max-height: 45vh;/);
+  const vh = block.indexOf('max-height: 45vh;');
+  const dvh = block.indexOf('max-height: 45dvh;');
+  assert.ok(vh !== -1 && dvh !== -1, 'both declarations present');
+  assert.ok(vh < dvh, 'dvh twin AFTER the vh fallback');
+});
+
 test('css: the portrait-media cap carries its 78dvh/100dvh twin, twin after fallback', () => {
   const block = ruleBlock(STYLE_CSS, /#player-wrapper\.portrait-media \{/);
   const vh = block.indexOf('max-height: min(78vh, calc(100vh - var(--mobile-header-h) - var(--mobile-bottom-nav-h)));');

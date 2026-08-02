@@ -7500,9 +7500,12 @@ function deleteResultToast(data) {
 // v1.68 (Dean ruling 4): a play also closes its own DELIVERED push banner,
 // so the phone's notification shade agrees with the app. The v1.66 worker
 // stamps each banner's deep link into notification.data.url
-// (/watch.html?v=<id> since v1.67.4) - matched here by PARSING the ?v param
-// (plan D4: URLSearchParams, never substring - "v=abc" must not close
-// "v=abc2"'s banner). Feature-detected at every step and total-silent
+// (/watch.html?v=<id> since v1.67.4; ?id=<id> before that) - matched here
+// by PARSING the params, ?v= primary with the legacy ?id= fallback
+// (v1.68.1: pre-v1.67.4 banners outlive that fix in the shade and must
+// retire on play too; mirrors watch.js's resolveWatchMediaId precedence).
+// Plan D4: URLSearchParams, never substring - "v=abc" must not close
+// "v=abc2"'s banner. Feature-detected at every step and total-silent
 // outside the PWA; resolves the count closed (tests) and never rejects.
 function closeDeliveredPushBanners(mediaId) {
   if (typeof mediaId !== 'string' || mediaId === '') return Promise.resolve(0);
