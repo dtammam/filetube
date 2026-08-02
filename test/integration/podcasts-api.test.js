@@ -111,7 +111,11 @@ test('PATCH: allowlisted fields only; unknown sub 404', async () => {
 let epDownloaded, epPending, mediaFile;
 
 test('seeded episodes: list newest-first with per-user state; stream honors Range; pending is not streamable', async () => {
-  const showDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ft-podshow-'));
+  // Seed INSIDE the podcasts root, as production always does - the v1.70
+  // delta-round read-confinement refuses to stream anything outside it (this
+  // seed used to be a temp dir, which the new guard correctly rejected).
+  const showDir = path.join(DATA_DIR, 'podcasts', 'Seeded Show');
+  fs.mkdirSync(showDir, { recursive: true });
   mediaFile = path.join(showDir, 'Ep Two [rss=g2].mp3');
   fs.writeFileSync(mediaFile, 'MP3BYTES-0123456789');
   epDownloaded = podcastStore.episodeIdFor(subId, 'g2');
@@ -331,6 +335,31 @@ test('v1.70 gate CRITICAL#1: a hostile record cannot read, write or destroy outs
   assert.strictEqual(r3.status, 409, 'deleting an out-of-root file refuses');
   assert.strictEqual(fs.readFileSync(victim, 'utf8'), 'SUPER-SECRET-SIGNING-KEY', 'still untouched after the delete attempt');
 
+  fs.rmSync(outside, { recursive: true, force: true });
+});
+
+test('v1.70 delta CRITICAL: /episode/:id refuses an out-of-root filePath (the READ primitive, no move needed)', async () => {
+  // With the move lanes sealed, the streaming route was the shortest path to
+  // the same arbitrary-file read - it served ep.filePath, which a restored
+  // bundle authors, with no confinement at all (the seat's repro returned a
+  // live session-secret over HTTP).
+  const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'ft-readvictim-'));
+  const victim = path.join(outside, 'session-secret');
+  fs.writeFileSync(victim, 'SUPER-SECRET-SIGNING-KEY');
+  const readId = podcastStore.episodeIdFor(subId, 'read-esc');
+  await updateDatabase((db) => {
+    const ns = podcastStore.ensurePodcasts(db);
+    podcastStore.reduceUpsertEpisodes(ns, subId, [{ guid: 'read-esc', title: 'X', pubDateMs: 1 }], 'pending', 5000);
+    // A fully 'downloaded' record whose file lives outside the root.
+    Object.assign(ns.episodes[readId], { status: 'downloaded', filePath: victim });
+    return true;
+  });
+  const r = await get(`/episode/${readId}`);
+  assert.strictEqual(r.status, 404, 'the read is refused');
+  const body = await r.text();
+  assert.ok(!body.includes('SUPER-SECRET'), 'no bytes of the victim leak');
+  assert.ok(!body.includes(victim), 'and the refusal never confirms the path');
+  assert.strictEqual(fs.readFileSync(victim, 'utf8'), 'SUPER-SECRET-SIGNING-KEY');
   fs.rmSync(outside, { recursive: true, force: true });
 });
 

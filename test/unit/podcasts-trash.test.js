@@ -290,3 +290,12 @@ test('delta WARNING#2: an expired trashed episode outside the current root is le
   assert.deepStrictEqual(purged, ['inside'], 'only the genuinely-purged episode retires its per-user rows');
   fs.rmSync(oldRoot, { recursive: true, force: true });
 });
+
+test('delta S2: the sweep\'s tombstone carries a FROM-state guard (a record that changed state is never retired)', () => {
+  const ns = nsWith('downloaded'); // e.g. restored between selection and mutation
+  assert.strictEqual(store.reduceEpisodeStatus(ns, 'ep1', 'tombstone', { from: 'trashed' }), false, 'refuses: not trashed any more');
+  assert.strictEqual(ns.episodes.ep1.status, 'downloaded', 'and leaves it alone');
+  const ns2 = nsWith('trashed', { trashPath: '/r/.filetube-trash/x', trashedAt: 1 });
+  assert.strictEqual(store.reduceEpisodeStatus(ns2, 'ep1', 'tombstone', { from: 'trashed' }), true, 'allows the genuine case');
+  assert.strictEqual(store.reduceEpisodeStatus(nsWith('downloaded'), 'ep1', 'deleted-on-disk'), true, 'unguarded callers are unaffected');
+});
