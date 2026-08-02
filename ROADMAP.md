@@ -80,6 +80,28 @@
 
 ## Shipped
 
+### v1.67.2 - Web Push: the diagnostic reaches the phone (2026-08-02)
+
+Dean's device re-test on v1.67.1 worked - the button now spoke - and what
+it said ("could not register with the push service") exposed one more miss:
+the RAW exception detail was gated behind `?pushdebug=1`, and the installed
+iOS PWA has no address bar in standalone mode, so the flag was unreachable
+on the one device that has no console. The flag is REMOVED (this supersedes
+the `?pushdebug=1` sentence in the v1.67.1 entry below - that flag no
+longer exists); the exception name and message now ALWAYS ride the visible
+message, e.g. "[AbortError: ...]". Nothing sensitive travels in a browser
+DOMException, and it is exactly what a console-less device must surface.
+
+The new runtime test drove a granted-permission click into a failing
+subscribe() and asserts the bracketed exception is visible - and the
+diagnostic proved itself before shipping: the test's first hand-typed
+fixture key was invalid base64url, and the on-screen message correctly
+named the InvalidCharacterError. The key is now constructed, never
+hand-typed. Slim gate, dual-Node 5583/5583. Dean's next Enable tap will
+name the exact failure; eliminated so far by his testing: DNS blocking
+(Pi-hole logs clean + whitelisted), Lockdown Mode (off), and the network
+path (fails identically on and off Wi-Fi).
+
 ### v1.67.1 - Web Push: the enable button stops whispering (2026-08-02)
 
 Hotfix found by Dean's iPhone device pass on v1.66: tapping "Enable

@@ -1946,9 +1946,6 @@ function initPushControls(signal) {
   // element and never seen. Route through setFieldError so the message
   // actually shows/clears like every other field error on this page.
   const setError = (msg) => setFieldError(errorEl, msg);
-  // ?pushdebug=1 appends raw diagnostics (the iOS DOMException name/message
-  // from subscribe(), which has no console on-device without a Mac).
-  const pushDebug = typeof window !== 'undefined' && /[?&]pushdebug=1\b/.test(window.location.search || '');
 
   const reflectDevice = (sub) => {
     const problem = pushSupportProblem();
@@ -2033,11 +2030,16 @@ function initPushControls(signal) {
           }
           reflectDevice(sub);
         } catch (err) {
-          // v1.67.1: name the failing step and, in debug, the raw error.
-          // This is the step that talks to the push service (Apple on iOS) -
-          // an AbortError here usually means the device could not reach it.
+          // v1.67.2: the raw exception ALWAYS rides the message. v1.67.1 hid
+          // it behind ?pushdebug=1, which is unreachable on the one device
+          // that needs it - the installed iOS PWA has no address bar to add
+          // a query string with. The name/message pair is exactly what a
+          // no-console device must surface: this is the step that talks to
+          // the push service (Apple on iOS), and e.g. an AbortError here
+          // usually means the device could not reach it (DNS blocker,
+          // Lockdown Mode, VPN). Nothing sensitive rides a DOMException.
           const base = 'Could not enable push on this device (the browser could not register with the push service).';
-          setError(pushDebug && err ? `${base} [${err.name}: ${err.message}]` : base);
+          setError(err ? `${base} [${err.name || 'Error'}: ${err.message || String(err)}]` : base);
           reflectDevice(null);
         } finally {
           enableBtn.disabled = false;

@@ -26,6 +26,9 @@ const { JSDOM, requestInterceptor } = require('jsdom');
 const ROOT = path.join(__dirname, '..', '..');
 const PUBLIC_DIR = path.join(ROOT, 'public');
 
+// 0x04 || 64 filler bytes -> 65 bytes, valid base64url by construction.
+const VALID_KEY_B64URL = Buffer.concat([Buffer.from([0x04]), Buffer.alloc(64, 7)]).toString('base64url');
+
 function contentTypeFor(filePath) {
   if (filePath.endsWith('.js')) return 'text/javascript';
   if (filePath.endsWith('.css')) return 'text/css';
@@ -35,7 +38,7 @@ function contentTypeFor(filePath) {
 // Load the real setup shell. `permission` is what Notification.requestPermission
 // resolves to; `capturePermissionCalls` records the calls. Resolves once the
 // push group is wired (or a short deadline).
-function loadSetupWithPush({ permission }) {
+function loadSetupWithPush({ permission, subscribeImpl }) {
   const html = fs.readFileSync(path.join(PUBLIC_DIR, 'setup.html'), 'utf8');
   return new Promise((resolve, reject) => {
     let dom;
@@ -65,19 +68,27 @@ function loadSetupWithPush({ permission }) {
           window.fetch = (input) => {
             const url = typeof input === 'string' ? input : (input && input.url) || '';
             if (url.indexOf('/api/push/key') !== -1) {
-              // A real 65-byte uncompressed P-256 point, base64url.
-              return Promise.resolve({ ok: true, json: () => Promise.resolve({ key: 'BEXGYxsr7N_eNgVRqvHtD0zTZsEc6-VV-JvLexhqUzORcxaOzi6-AYWXvTBHm4bjyPjs7Vd8pZGH6SRpkNtoIAiw4' }) });
+              // A structurally-valid 65-byte uncompressed point (0x04 || 64
+              // bytes), CONSTRUCTED not hand-typed: the first hand-typed
+              // fixture here was invalid base64url and atob threw before
+              // subscribe() was ever reached - which the on-screen
+              // diagnostic correctly reported, proving itself in the
+              // process (InvalidCharacterError, visible).
+              return Promise.resolve({ ok: true, json: () => Promise.resolve({ key: VALID_KEY_B64URL }) });
             }
             if (url.indexOf('/api/auth/me') !== -1) {
               return Promise.resolve({ ok: true, json: () => Promise.resolve({ user: { username: 'dean' }, settings: {} }) });
             }
             return new Promise(() => {}); // never settles
           };
-          // A ServiceWorkerContainer stub good enough for the DENIED path
-          // (which returns before touching it) and harmless otherwise.
+          // A ServiceWorkerContainer stub: the denied path returns before
+          // touching it; the granted path reaches subscribe(), which tests
+          // can drive via subscribeImpl (e.g. reject with an AbortError to
+          // exercise the catch's on-screen diagnostic).
+          const subscribe = subscribeImpl || (() => Promise.reject(new Error('not reached on denied')));
           window.navigator.serviceWorker = {
             register: () => Promise.resolve({}),
-            ready: Promise.resolve({ pushManager: { subscribe: () => Promise.reject(new Error('not reached on denied')) } }),
+            ready: Promise.resolve({ pushManager: { subscribe } }),
             getRegistration: () => Promise.resolve(null),
             addEventListener() {},
           };
@@ -151,5 +162,33 @@ test('dismissed prompt (default): the click reveals the distinct retry message, 
   assert.equal(err.style.display, 'block', 'the message is revealed');
   assert.match(err.textContent, /again/i, 'a dismissed prompt tells the user to retry');
   assert.doesNotMatch(err.textContent, /blocked/i, 'and does NOT show the blocked copy (distinct cause)');
+  dom.window.close();
+});
+
+// v1.67.2: the catch path's diagnostic must be VISIBLE and carry the raw
+// exception name/message. v1.67.1 gated it behind ?pushdebug=1 - which the
+// installed iOS PWA cannot reach (no address bar in standalone mode), i.e.
+// hidden on the one device that has no console. This is Dean's exact device
+// symptom: granted permission, then subscribe() fails against the push
+// service, and the screen must say precisely what the browser threw.
+test('granted permission + failing subscribe(): the visible message names the step AND carries the raw exception', async () => {
+  const dom = await loadSetupWithPush({
+    permission: 'granted',
+    subscribeImpl: () => Promise.reject(Object.assign(new Error('registration failed - push service unreachable'), { name: 'AbortError' })),
+  });
+  const doc = dom.window.document;
+  const btn = doc.getElementById('push-device-enable-btn');
+  const err = doc.getElementById('push-error');
+  assert.ok(btn && !btn.hidden, 'precondition: enable button shown');
+
+  btn.dispatchEvent(new dom.window.Event('click'));
+  await settle(dom);
+
+  assert.equal(err.style.display, 'block', 'the diagnostic is revealed');
+  assert.match(err.textContent, /could not register with the push service/i, 'names the failing step');
+  assert.match(err.textContent, /\[AbortError: registration failed - push service unreachable\]/,
+    'and carries the RAW exception - always, not behind a debug flag the standalone PWA cannot set');
+  const status = doc.getElementById('push-device-status');
+  assert.match(status.textContent, /not enabled/i, 'no false success');
   dom.window.close();
 });
