@@ -80,6 +80,96 @@
 
 ## Shipped
 
+### v1.66.0 - Web Push: your phone buzzes when a download lands (2026-08-02)
+
+The third of the approved waves, and the first that reaches OFF the page:
+when a subscription or one-off download lands in the notification bell's
+feed, every subscribed device gets a real OS push notification - the
+iPhone home-screen PWA included, locked screen and all. It is the bell's
+delivery channel, so it inherits the bell's on/off switch and its
+per-account seen/read view; the only new choices are per-device ("Enable
+notifications on this device", a real button because iOS requires the
+permission prompt to come from a tap) and a per-user pause that quiets
+every one of your devices at once.
+
+No new server dependency - the repo's law is ffmpeg and yt-dlp only, and
+this wave held to it. VAPID request signing (RFC 8292) and the payload
+encryption (RFC 8291, aes128gcm) are written in raw `node:crypto`, bound
+in the tests to the RFC's own published test vector byte-for-byte. The
+catch-up policy is Dean's: three or fewer missed downloads arrive as
+individual notifications, more collapse to a single "N new videos" so a
+phone that was off overnight during a big scan gets one buzz, not forty.
+A dead subscription (the browser forgot it) is pruned on the spot; a
+rate-limited one backs off and catches up on the next download. Delivery
+is fire-and-forget - a slow or dead push service can never delay or fail
+a download or a library scan.
+
+The service worker is PUSH-ONLY by design and by test: it has no `fetch`
+handler and never touches cache storage, which is the exact mechanism
+that got the v1.26.4 offline worker removed (it broke background video on
+iPhone). It ships at `/push-sw.js`, deliberately NOT the `/sw.js` the old
+worker used - see below for why that distinction turned out to matter.
+
+**What the gate caught - FOUR fix rounds across both seats, one a CRITICAL
+in my own code and one defect filed TWICE before it was really bound:**
+
+- The truncation guard I added mid-gate was a NON-TERMINATING LOOP: a
+  large backfill behind an unhealthy push service made delivery re-read
+  the same batch forever - measured at 314 rounds and 314 POSTs to a
+  dead endpoint before it was caught, with nothing crashing and the full
+  suite green. It was a defect in a defense the QA seat suggested and I
+  implemented without proving it terminated; we both own it. Fixed to
+  re-run only when a round actually delivered, and a second, subtler
+  route to the same spin (a delivery that claimed success without moving
+  its cursor) was closed in code rather than left resting on luck.
+
+- The push worker originally registered at `/sw.js` and the boot cleanup
+  was taught to spare that path - but the REMOVED v1.26.4 offline worker
+  registered at exactly `/sw.js` too, so the exemption spared the very
+  worker the cleanup exists to kill, quietly reopening the iPhone
+  background-video regression on any install that still carried it. Three
+  comments and a test fixture asserted the opposite. The worker moved to
+  its own path; the original "no `/sw.js`" lock is intact again.
+
+- A subscribe request with a malformed key HUNG the connection forever
+  instead of returning an error. A notification could announce "50 new
+  videos" when 120 had landed, stranding the rest. And the headline
+  "don't double-notify the phone you're looking at" rule was protected by
+  a substring grep, TWICE - a one-character inversion passed a green suite
+  both times - until it was finally bound by a test that EXECUTES the real
+  service-worker handler. A locked phone that gets no banner is exactly
+  the failure this wave exists to prevent; it earns an executed test.
+
+The crypto held up under direct attack: the adversarial seat mutated the
+encryptor six ways and the signer four across every round, and the RFC
+test vector killed all ten.
+
+**Known gaps, shipping disclosed (none block; all in the tech-debt tracker):**
+
+- A subscription pinned to a rotated signing key keeps being skipped
+  silently, and Settings still shows the device as active. It is not
+  hammered (one attempt per download) - it just never heals until the
+  device re-enables.
+- When a browser rotates a subscription on its own, the old server row
+  lingers until it naturally 404s, briefly occupying one of the 10
+  per-device slots.
+- **NOT introduced by this wave, surfaced by it, and it needs Dean's
+  call:** `session-secret`, the file that signs login cookies, has been a
+  TRACKED file in this repository since v1.43 (mode 0644) - anyone with
+  repo access can forge sessions for any instance still using that secret.
+  Rotating it logs out every user on that instance and purging it from git
+  history is a force-push, so the fix is Dean's to time. (tech-debt #77.)
+
+Backup note: push subscriptions deliberately do NOT ride backup bundles -
+they carry a shared secret and are cryptographically bound to one
+instance's signing key, so a restored copy could never deliver. A device
+re-registers itself automatically on its next visit, so nothing is lost.
+
+Dual-Node green (v22.23.1 and v24.14.0, 5539 tests each). Dean's on-device
+pass is the arbiter and is PENDING - headline probe: a locked iPhone
+home-screen PWA receiving one banner, and the same phone NOT
+double-notifying with the app open.
+
 ### v1.65.0 - Trash: deletes stop being permanent (2026-08-02)
 
 The second of the three approved waves, and the one that closes the
