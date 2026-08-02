@@ -163,6 +163,109 @@ function buildMusicHomeSectionHtml(items, heading, seeAllHref) {
   `;
 }
 
+// ---- v1.67: the card-corner renderer (plan D3) ------------------------------
+//
+// ONE module-scope, exported, pure renderer for the three assignable card
+// corners (bottom-right is RESERVED for the duration badge and has no pref).
+// Position comes from the `.card-corner-tl/tr/bl` classes; identity/look/
+// behavior stay on the control classes (`.card-delete-btn` etc.), so the
+// delete arm state machine and every delegated click handler keep keying off
+// the control class unchanged wherever the control lands. Never copy this
+// renderer (the v1.41.4 every-writer scar) - buildCardHtml is its one caller.
+
+const CARD_CORNER_KEYS = [
+  ['cornerTL', 'card-corner-tl'],
+  ['cornerTR', 'card-corner-tr'],
+  ['cornerBL', 'card-corner-bl'],
+];
+
+// C5: the defaults reproduce today's layout so nobody's muscle memory breaks.
+// Queue is deliberately UNASSIGNED by default - assigning it is how a user
+// opts back in, and its old fixed spot (bottom-right) collided with the
+// duration badge.
+const CARD_CORNER_DEFAULTS = { cornerTL: 'download', cornerTR: 'delete', cornerBL: 'like' };
+
+const CARD_CORNER_CONTROLS = ['download', 'delete', 'like', 'queue', 'share', 'reheat'];
+
+// Settings object (from GET /api/auth/me, or nothing) -> the resolved
+// three-corner layout. The server lane is SHAPE-only (plan D1), so THIS is
+// where garbage defends: an unknown value falls back to that corner's C5
+// default (the starRatings garbage-tolerance precedent); `none` is an
+// explicit empty corner and survives as-is.
+function resolveCardCornerPrefs(settings) {
+  const s = settings && typeof settings === 'object' ? settings : {};
+  const out = {};
+  for (const [key] of CARD_CORNER_KEYS) {
+    const v = s[key];
+    out[key] = (v === 'none' || CARD_CORNER_CONTROLS.includes(v)) ? v : CARD_CORNER_DEFAULTS[key];
+  }
+  return out;
+}
+
+// One corner control's markup, or '' when the control does not apply to this
+// item (C4: an inapplicable corner renders NOTHING, never a substitute).
+// Attribute shapes are byte-compatible with the pre-v1.67 inline template
+// (plus the appended corner class) so every delegated handler and CSS state
+// rule keeps matching.
+function buildCardCornerControlHtml(control, cornerClass, item, caps) {
+  const id = escapeBookRowHtml(item.id);
+  switch (control) {
+    case 'download':
+      return `<a class="card-download-btn ${cornerClass}" href="${buildCardDownloadHref(item.id)}" download="${escapeBookRowHtml(buildCardDownloadFilename(item.title, item.ext))}" aria-label="Save to device" title="Save to device">
+              <i class="icon-download"></i>
+            </a>`;
+    case 'delete':
+      return `<button type="button" class="card-delete-btn ${cornerClass}" data-id="${id}" aria-label="Delete this video">
+              <i class="icon-delete"></i><span class="card-delete-confirm">Sure?</span>
+            </button>`;
+    case 'like':
+      return `<button type="button" class="card-like-btn${item.liked ? ' liked' : ''} ${cornerClass}" data-id="${id}" aria-label="${item.liked ? 'Unlike' : 'Like'}" aria-pressed="${item.liked ? 'true' : 'false'}" title="Like">
+              <i class="icon-heart"></i>
+            </button>`;
+    case 'queue':
+      return `<button type="button" class="card-queue-btn ${cornerClass}" data-id="${id}" aria-label="Add to queue" title="Add to queue">
+              <i class="icon-queue"></i>
+            </button>`;
+    case 'share':
+      // Applies only when the server derived an original link (C4); the URL
+      // is the SERVER-resolved field, never re-approximated from the raw
+      // youtubeId client-side (the v1.52 lesson).
+      if (typeof item.watchUrl !== 'string' || item.watchUrl === '') return '';
+      return `<button type="button" class="card-share-btn ${cornerClass}" data-id="${id}" data-share-url="${escapeBookRowHtml(item.watchUrl)}" aria-label="Share the original YouTube link" title="Share">
+              <i class="icon-share"></i>
+            </button>`;
+    case 'reheat':
+      // Applies only when the yt-dlp module capability is affirmatively
+      // enabled (=== true, matching the watch page's module-health gate).
+      if (!caps || caps.reheatEnabled !== true) return '';
+      return `<button type="button" class="card-reheat-btn ${cornerClass}" data-id="${id}" aria-label="Reheat this video's metadata" title="Reheat">
+              <i class="icon-flame"></i>
+            </button>`;
+    default:
+      return '';
+  }
+}
+
+// The three corners' combined markup. Dedupe (plan D5): the editor enforces
+// C2, but a direct POST /api/me/settings can assign one control to two
+// corners - the FIRST assignment (TL > TR > BL) wins and later duplicates
+// render nothing. Deduped by ASSIGNMENT, not render outcome: applicability
+// is uniform per item, so an inapplicable duplicate is empty either way and
+// assignment-order keeps the rule deterministic.
+function buildCardCornerButtonsHtml(item, prefs, caps) {
+  const resolved = prefs && typeof prefs === 'object' ? prefs : resolveCardCornerPrefs(null);
+  const seen = new Set();
+  let html = '';
+  for (const [key, cornerClass] of CARD_CORNER_KEYS) {
+    const control = resolved[key];
+    if (!control || control === 'none' || seen.has(control)) continue;
+    seen.add(control);
+    const markup = buildCardCornerControlHtml(control, cornerClass, item, caps);
+    if (markup) html += `\n            ${markup}`;
+  }
+  return html;
+}
+
 // Home-row visibility toggles (device-local display prefs, like the sort/
 // resume prefs). Default ON. Pure so the Settings UI + the home render read
 // the SAME decision.
@@ -185,6 +288,8 @@ if (typeof module !== 'undefined' && module.exports) {
     buildMusicRowCardHtml,
     buildMusicHomeSectionHtml,
     homeRowEnabled,
+    resolveCardCornerPrefs,
+    buildCardCornerButtonsHtml,
   };
 }
 
@@ -835,18 +940,7 @@ if (typeof module !== 'undefined' && module.exports) {
               ${durationBadge}
               ${progressBar}
             </a>
-            <button type="button" class="card-delete-btn" data-id="${escapeHtml(item.id)}" aria-label="Delete this video">
-              <i class="icon-delete"></i><span class="card-delete-confirm">Sure?</span>
-            </button>
-            <a class="card-download-btn" href="${buildCardDownloadHref(item.id)}" download="${escapeHtml(buildCardDownloadFilename(item.title, item.ext))}" aria-label="Save to device" title="Save to device">
-              <i class="icon-download"></i>
-            </a>
-            <button type="button" class="card-like-btn${item.liked ? ' liked' : ''}" data-id="${escapeHtml(item.id)}" aria-label="${item.liked ? 'Unlike' : 'Like'}" aria-pressed="${item.liked ? 'true' : 'false'}" title="Like">
-              <i class="icon-heart"></i>
-            </button>
-            <button type="button" class="card-queue-btn" data-id="${escapeHtml(item.id)}" aria-label="Add to queue" title="Add to queue">
-              <i class="icon-queue"></i>
-            </button>
+            ${buildCardCornerButtonsHtml(item, resolveCardCornerPrefs(null), {})}
           </div>
           <div class="video-info">
             <a href="${watchHref}" class="video-title" title="${escapeHtml(item.title)}">

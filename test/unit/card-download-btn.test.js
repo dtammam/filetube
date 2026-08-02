@@ -77,8 +77,19 @@ test('buildCardDownloadFilename: returns the RAW (unescaped) string -- callers b
 });
 
 // ---- card template: sibling/isolation structure (AC64) ----------------------
+//
+// v1.67 UPDATE: the corner buttons moved out of the inline card template into
+// the ONE exported corner renderer (buildCardCornerButtonsHtml, plan D3).
+// The AC64 invariant is unchanged - the download <a> must never nest inside
+// the thumbnail's watch-link <a> - but it now decomposes into (1) the
+// template injects the corner markup AFTER the thumbnail anchor closes, and
+// (2) the renderer's OUTPUT keeps the overlays as flat standalone elements.
+// (2) is asserted on the rendered STRING, not the source text - stronger
+// than the old source parse.
 
-test('card template: .card-download-btn is a SIBLING of .thumbnail-container\'s <a>, never nested inside it', () => {
+const { buildCardCornerButtonsHtml, resolveCardCornerPrefs } = require('../../public/js/main.js');
+
+test('card template: the corner-renderer injection point sits AFTER the thumbnail anchor closes (never inside the watch-page link)', () => {
   const cardMatch = /<div class="video-card">([\s\S]*?)<div class="video-info">/.exec(mainJs);
   assert.ok(cardMatch, 'expected to find the video-card template block in main.js');
   const cardBody = cardMatch[1];
@@ -87,38 +98,37 @@ test('card template: .card-download-btn is a SIBLING of .thumbnail-container\'s 
   assert.ok(thumbOpenIdx !== -1, 'expected a .thumbnail-container anchor in the card template');
 
   // The FIRST </a> after the thumbnail anchor opens is that anchor's own
-  // closing tag (it contains only an <img> + non-anchor overlay divs, no
-  // nested <a>).
+  // closing tag (it contains only an <img> + non-anchor overlay divs).
   const thumbCloseIdx = cardBody.indexOf('</a>', thumbOpenIdx);
   assert.ok(thumbCloseIdx !== -1, 'expected the thumbnail anchor to close');
 
-  const downloadIdx = cardBody.indexOf('card-download-btn');
-  assert.ok(downloadIdx !== -1, 'expected a .card-download-btn element in the card template');
-
+  const injectIdx = cardBody.indexOf('buildCardCornerButtonsHtml');
+  assert.ok(injectIdx !== -1, 'expected the card template to inject the corner renderer');
   assert.ok(
-    downloadIdx > thumbCloseIdx,
-    '.card-download-btn must appear AFTER the thumbnail anchor closes (a sibling under .video-card), never between its open/close tags (which would nest it inside the watch-page link)'
+    injectIdx > thumbCloseIdx,
+    'the corner buttons must be injected AFTER the thumbnail anchor closes (siblings under .card-media), never between its open/close tags'
   );
 });
 
-test('card template: .card-download-btn is its own <a>, not nested inside the thumbnail-container <a> or the delete <button>', () => {
-  const cardMatch = /<div class="video-card">([\s\S]*?)<div class="video-info">/.exec(mainJs);
-  const cardBody = cardMatch[1];
+test('rendered corners: .card-download-btn is its own standalone <a>, not nested in the delete <button> (nor vice versa)', () => {
+  const html = buildCardCornerButtonsHtml(
+    { id: 'vid1', title: 'A Video', ext: '.mp4', liked: false },
+    resolveCardCornerPrefs(null), {}
+  );
 
-  const deleteBtnMatch = /<button[^>]*class="card-delete-btn"[\s\S]*?<\/button>/.exec(cardBody);
-  assert.ok(deleteBtnMatch, 'expected the existing .card-delete-btn button in the card template');
+  const deleteBtnMatch = /<button[^>]*class="card-delete-btn[^"]*"[\s\S]*?<\/button>/.exec(html);
+  assert.ok(deleteBtnMatch, 'expected the delete button in the default rendered corners');
 
-  const downloadBtnMatch = /<a[^>]*class="card-download-btn"[\s\S]*?<\/a>/.exec(cardBody);
+  const downloadBtnMatch = /<a[^>]*class="card-download-btn[^"]*"[\s\S]*?<\/a>/.exec(html);
   assert.ok(downloadBtnMatch, 'expected a standalone .card-download-btn <a>...</a> element');
 
-  // Neither overlay's markup contains the other's -- both are flat siblings
-  // directly under .video-card, not nested in one another.
+  // Neither overlay's markup contains the other's -- flat siblings.
   assert.ok(!deleteBtnMatch[0].includes('card-download-btn'));
   assert.ok(!downloadBtnMatch[0].includes('card-delete-btn'));
 });
 
-test('card template: the download anchor reuses buildCardDownloadHref/buildCardDownloadFilename (not a hand-rolled duplicate) and is escapeHtml-wrapped', () => {
+test('corner renderer source: the download anchor reuses buildCardDownloadHref/buildCardDownloadFilename (not a hand-rolled duplicate) and is attribute-escaped', () => {
   assert.match(mainJs, /href="\$\{buildCardDownloadHref\(item\.id\)\}"/);
-  assert.match(mainJs, /download="\$\{escapeHtml\(buildCardDownloadFilename\(item\.title, item\.ext\)\)\}"/);
+  assert.match(mainJs, /download="\$\{escapeBookRowHtml\(buildCardDownloadFilename\(item\.title, item\.ext\)\)\}"/);
   assert.match(mainJs, /aria-label="Save to device"/);
 });

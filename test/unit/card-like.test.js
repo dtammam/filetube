@@ -52,12 +52,20 @@ test('style.css: NOT the U+2665 emoji codepoint -- the heart is a mask asset, no
   assert.ok(!/\.icon-heart::before\s*\{\s*content/.test(css), 'heart must not be a ::before content glyph');
 });
 
-test('style.css: .card-like-btn is a bottom-left corner control that turns red when liked', () => {
-  const rule = /\.card-like-btn\s*\{([^}]*)\}/.exec(css);
-  assert.ok(rule, 'expected a .card-like-btn rule');
+test('style.css: .card-like-btn is an absolutely-positioned corner control that turns red when liked (v1.67: anchored via .card-corner-*, default bottom-left)', () => {
+  // v1.67 (plan D3): position split from identity. The like button's LOOK
+  // rule (now a selector group shared with share/reheat) keeps
+  // position:absolute; the ANCHOR lives on the corner classes, and the C5
+  // default assigns like to bottom-left (.card-corner-bl = bottom/left 6px).
+  const rule = /\.card-like-btn,[^{]*\{([^}]*)\}/.exec(css);
+  assert.ok(rule, 'expected the .card-like-btn look rule (grouped with share/reheat)');
   assert.match(rule[1], /position:\s*absolute;/);
-  assert.match(rule[1], /bottom:\s*6px;/);
-  assert.match(rule[1], /left:\s*6px;/);
+  assert.ok(!/bottom:/.test(rule[1]) && !/left:/.test(rule[1]),
+    'the look rule must NOT carry anchor geometry (that is the corner classes\' job)');
+  const bl = /\.card-corner-bl\s*\{([^}]*)\}/.exec(css);
+  assert.ok(bl, 'expected the .card-corner-bl anchor class');
+  assert.match(bl[1], /bottom:\s*6px;/);
+  assert.match(bl[1], /left:\s*6px;/);
   assert.match(css, /\.card-like-btn\.liked\s*\{[^}]*color:\s*var\(--yt-red\)/, 'liked state paints the heart red');
 });
 
@@ -77,7 +85,9 @@ test('the corner controls anchor to the thumbnail via .card-media (so bottom:6px
 });
 
 test('main.js: the card renders a .card-like-btn reflecting item.liked, and toggles via POST/DELETE /api/liked/:id (non-optimistic)', () => {
-  assert.ok(mainSrc.includes('class="card-like-btn${item.liked ? \' liked\' : \'\'}"'), 'the card seeds the liked class from item.liked');
+  // v1.67: the like markup moved into the corner renderer (one appended
+  // corner class after the liked flag); the seeding expression is unchanged.
+  assert.ok(mainSrc.includes('class="card-like-btn${item.liked ? \' liked\' : \'\'} ${cornerClass}"'), 'the card seeds the liked class from item.liked');
   assert.ok(mainSrc.includes("'/api/liked/' + encodeURIComponent(id)"), 'toggle hits the liked API by id');
   assert.ok(mainSrc.includes("method: currentlyLiked ? 'DELETE' : 'POST'"), 'DELETE when liked, POST when not');
   // Non-optimistic: the heart flips inside the resolved .then, guarded by res.ok.
