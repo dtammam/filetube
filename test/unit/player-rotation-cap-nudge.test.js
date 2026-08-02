@@ -133,6 +133,11 @@ test('resolveRotationTopSnap: non-numbers never snap (the coercion scar)', () =>
     assert.strictEqual(resolveRotationTopSnap(junk, 370), false, `scrollY=${String(junk)}`);
     assert.strictEqual(resolveRotationTopSnap(190, junk), false, `playerDocTop=${String(junk)}`);
   }
+  // Gate v1.68.2 S2 (measured): NUMERIC STRINGS are the rows that make this
+  // test non-vacuous against typeof-guard deletion - '190' compares true
+  // under bare >/< coercion where undefined/'x'/NaN already compare false.
+  assert.strictEqual(resolveRotationTopSnap('190', 370), false, 'numeric-string scrollY never snaps');
+  assert.strictEqual(resolveRotationTopSnap(190, '370'), false, 'numeric-string playerDocTop never snaps');
 });
 
 test('snapRotationDeadZone wiring: every guard re-checked at APPLY time, exact statements in guard-then-measure-then-snap order', () => {
@@ -158,6 +163,12 @@ test('snapRotationDeadZone wiring: every guard re-checked at APPLY time, exact s
   // Exactly one runtime consumer of the pure decision.
   const consumers = STRIPPED.match(/resolveRotationTopSnap\(y, playerDocTop\)/g) || [];
   assert.strictEqual(consumers.length, 1, 'the scheduler passes are the only path to a snap');
+  // Gate v1.68.2 S1 (measured): the exact-spelling count alone lets a SECOND
+  // consumer at a divergent spelling ride in unseen (the repo's known
+  // divergent-spelling class). Bare-name count = definition + the one
+  // consumer, nothing else.
+  const bareName = STRIPPED.match(/resolveRotationTopSnap\(/g) || [];
+  assert.strictEqual(bareName.length, 2, 'definition + ONE consumer - no divergent-spelling second call site');
 });
 
 // ---- layer 2: the CSS dvh twins ---------------------------------------------
