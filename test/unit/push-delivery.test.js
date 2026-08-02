@@ -527,3 +527,29 @@ test('trigger(): overlapping triggers never DOUBLE-SEND a row (the running latch
   assert.equal(h.sends.length, 1, 'six triggers, one feed row, ONE send - no double-notify');
   assert.equal(h.roundStarts.length, 2, 'and the collapse is total: 1 in-flight + 1 re-run');
 });
+
+// v1.67.4: the tapped-notification deep link. Delivery built /watch.html?id=
+// but the watch page reads ?v= - so a tapped push opened a shell that never
+// resolved (Dean's device pass: "flashing screen, video never loads"). The
+// URL rides the ENCRYPTED push body, so no delivery-round test could see it;
+// this binds it at the source AND cross-checks watch.js so the two files
+// cannot silently drift to different param names again.
+const fs = require('node:fs');
+const path = require('node:path');
+const { pushWatchUrl } = require('../../lib/push/deliver');
+test('pushWatchUrl uses the SAME query param the watch page reads (?v=), encoded', () => {
+  assert.equal(pushWatchUrl('abc123'), '/watch.html?v=abc123');
+  assert.equal(pushWatchUrl('a b/c&d'), `/watch.html?v=${encodeURIComponent('a b/c&d')}`, 'weird ids are percent-encoded');
+
+  // Cross-file lock: read the param watch.js actually consumes and assert
+  // the push URL builds THAT param. This is the check that was missing when
+  // ?id= shipped - a unit test on the builder alone would have codified the
+  // bug; pinning it against the reader cannot.
+  const watchSrc = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'watch.js'), 'utf8');
+  const m = watchSrc.match(/URLSearchParams\(window\.location\.search\)[\s\S]*?\.get\('([a-zA-Z0-9_]+)'\)/);
+  assert.ok(m, 'watch.js still reads a query param from location.search');
+  const readsParam = m[1];
+  assert.equal(readsParam, 'v', 'sanity: watch.js reads ?v=');
+  assert.ok(pushWatchUrl('x').includes(`?${readsParam}=`),
+    `the push deep link must use ?${readsParam}= (what watch.js reads) - a mismatch is the v1.67.4 flashing-shell bug`);
+});

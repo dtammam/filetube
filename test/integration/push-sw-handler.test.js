@@ -63,7 +63,7 @@ function windowsFor(visibilityStates) {
   }));
 }
 
-async function firePush(visibilityStates, payload = { title: 'Vid', body: 'Chan', url: '/watch.html?id=x' }) {
+async function firePush(visibilityStates, payload = { title: 'Vid', body: 'Chan', url: '/watch.html?v=x' }) {
   // Reset here too, not just in beforeEach: some tests fire more than once.
   captured.shown.length = 0;
   captured.posted.length = 0;
@@ -82,7 +82,7 @@ test('P4 by execution: no windows (locked phone) => ONE banner, no nudge', async
   assert.deepEqual(r, { notified: 1, nudged: 0 });
   assert.equal(captured.shown[0].title, 'Vid');
   assert.equal(captured.shown[0].opts.body, 'Chan');
-  assert.equal(captured.shown[0].opts.data.url, '/watch.html?id=x');
+  assert.equal(captured.shown[0].opts.data.url, '/watch.html?v=x');
 });
 
 test('P4 by execution: all-hidden windows still banner (backgrounded is not visible)', async () => {
@@ -111,12 +111,12 @@ test('notificationclick focuses + navigates an existing window; opens one when n
   globalThis.self.clients.matchAll = async () => windowsFor(['visible']);
   let waited;
   await listeners.notificationclick({
-    notification: { close() {}, data: { url: '/watch.html?id=y' } },
+    notification: { close() {}, data: { url: '/watch.html?v=y' } },
     waitUntil: (p) => { waited = p; },
   });
   await waited;
   assert.deepEqual(captured.focused, [true]);
-  assert.deepEqual(captured.navigated, ['/watch.html?id=y']);
+  assert.deepEqual(captured.navigated, ['/watch.html?v=y']);
   assert.deepEqual(captured.opened, [], 'an existing window is reused, never a second tab');
 
   // With no windows: openWindow to the url.
@@ -124,9 +124,9 @@ test('notificationclick focuses + navigates an existing window; opens one when n
   globalThis.self.clients.matchAll = async () => [];
   let waited2;
   await listeners.notificationclick({
-    notification: { close() {}, data: { url: '/watch.html?id=z' } },
+    notification: { close() {}, data: { url: '/watch.html?v=z' } },
     waitUntil: (p) => { waited2 = p; },
   });
   await waited2;
-  assert.deepEqual(captured.opened, ['/watch.html?id=z']);
+  assert.deepEqual(captured.opened, ['/watch.html?v=z']);
 });
