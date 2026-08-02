@@ -702,6 +702,9 @@ async function loadAutomationSettings() {
     if (defaultSortSelect) defaultSortSelect.value = typeof s.defaultSort === 'string' && s.defaultSort !== '' ? s.defaultSort : 'release-date';
     const cacheAgeSelect = document.getElementById('cache-age-select');
     if (cacheAgeSelect) cacheAgeSelect.value = String(s.cacheMaxAgeDays);
+    // v1.65: trash retention (same select pattern).
+    const trashRetentionSelect = document.getElementById('trash-retention-select');
+    if (trashRetentionSelect) trashRetentionSelect.value = String(s.trashRetentionDays);
     const capInput = document.getElementById('cache-cap-input');
     if (capInput) {
       capInput.value = s.cacheMaxBytes != null ? bytesToGb(s.cacheMaxBytes) : '';
@@ -1302,6 +1305,17 @@ function wireStaticControls(signal) {
     }, { signal });
   }
 
+  // v1.65: trash retention -- save, then re-render the list (the days-left
+  // labels depend on it).
+  const trashRetentionSelect = document.getElementById('trash-retention-select');
+  if (trashRetentionSelect) {
+    trashRetentionSelect.addEventListener('change', async (e) => {
+      await saveAutomationSetting('trashRetentionDays', parseInt(e.target.value, 10),
+        document.getElementById('trash-retention-error'));
+      if (typeof renderTrashSection.__refresh === 'function') renderTrashSection.__refresh();
+    }, { signal });
+  }
+
   // Resume-prompt threshold (D2, v1.24.0, T13): immediate-apply localStorage
   // write, same pattern as the theme/icon pickers (no Save button, no server
   // round-trip -- see the section comment above loadResumeThresholdControl).
@@ -1648,6 +1662,140 @@ function wireAddUserForm(signal, me) {
 
 // ---- Registered view module (FR-1, T1) ---------------------------------
 
+// ---- v1.65: the Trash section ----------------------------------------------
+
+// Pure row builders (node:test-covered without a browser -- the
+// transcodeNamesSuffix export posture).
+function escapeTrashHtml(text) {
+  return String(text == null ? '' : text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+// How long a trashed item has left before the retention sweep takes it.
+// nowMs injectable for deterministic tests.
+function trashDaysLeftLabel(trashedAt, retentionDays, nowMs) {
+  var days = Number(retentionDays);
+  if (!isFinite(days) || days <= 0) return 'kept until purged';
+  var now = typeof nowMs === 'number' ? nowMs : Date.now();
+  var left = Math.ceil((Number(trashedAt) + days * 86400000 - now) / 86400000);
+  if (!isFinite(left)) return 'kept until purged';
+  if (left <= 0) return 'purging soon';
+  return left === 1 ? '1 day left' : left + ' days left';
+}
+
+function formatTrashSize(bytes) {
+  var n = Number(bytes);
+  if (!isFinite(n) || n <= 0) return '';
+  if (n >= 1024 ** 3) return (n / 1024 ** 3).toFixed(1) + ' GB';
+  if (n >= 1024 ** 2) return (n / 1024 ** 2).toFixed(1) + ' MB';
+  return Math.max(1, Math.round(n / 1024)) + ' KB';
+}
+
+// One trash row: thumbnail (the sidecar re-keyed with the move, so
+// /thumbnail/<trashId> resolves), title, meta line, Restore + two-tap Purge.
+function buildTrashRowHtml(item, retentionDays, nowMs) {
+  var tid = escapeTrashHtml(item.trashId);
+  var title = escapeTrashHtml(item.title || item.name || 'Untitled');
+  var metaBits = [];
+  var size = formatTrashSize(item.size);
+  if (size) metaBits.push(escapeTrashHtml(size));
+  metaBits.push(escapeTrashHtml(trashDaysLeftLabel(item.trashedAt, retentionDays, nowMs)));
+  return '' +
+    '<div class="trash-row" data-trash-id="' + tid + '">' +
+    '<img class="trash-thumb" src="/thumbnail/' + encodeURIComponent(item.trashId || '') + '" alt="" loading="lazy" />' +
+    '<div class="trash-info">' +
+    '<div class="trash-title" title="' + title + '">' + title + '</div>' +
+    '<div class="trash-meta">' + metaBits.join(' &bull; ') + '</div>' +
+    '</div>' +
+    '<button type="button" class="btn btn-sm trash-restore-btn" data-trash-id="' + tid + '">Restore</button>' +
+    '<button type="button" class="btn btn-sm trash-purge-btn" data-trash-id="' + tid + '">' +
+    '<span class="trash-purge-label">Purge</span><span class="trash-purge-confirm">Sure?</span>' +
+    '</button>' +
+    '</div>';
+}
+
+// Fetch + render the Trash list; wires Restore (single tap -- it destroys
+// nothing) and the two-tap Purge (the history/queue arm pattern). Re-renders
+// after every action and after a retention change (the days-left labels).
+function renderTrashSection(signal) {
+  const listEl = document.getElementById('trash-list');
+  const emptyEl = document.getElementById('trash-empty');
+  if (!listEl) return;
+
+  let armed = null; // { id, timer }
+  function disarm() {
+    if (!armed) return;
+    clearTimeout(armed.timer);
+    const el = listEl.querySelector('.trash-purge-btn.trash-confirming');
+    if (el) el.classList.remove('trash-confirming');
+    armed = null;
+  }
+
+  function refresh() {
+    fetch('/api/trash')
+      .then((r) => { if (!r.ok) throw new Error('trash fetch failed: ' + r.status); return r.json(); })
+      .then((body) => {
+        if (signal.aborted) return;
+        disarm();
+        listEl.innerHTML = body.items.map((item) => buildTrashRowHtml(item, body.retentionDays)).join('');
+        if (emptyEl) emptyEl.hidden = body.items.length > 0;
+      })
+      .catch((err) => { if (!signal.aborted) console.error('Trash: list failed', err); });
+  }
+
+  listEl.addEventListener('click', (e) => {
+    const restoreBtn = e.target.closest('.trash-restore-btn');
+    if (restoreBtn) {
+      const tid = restoreBtn.getAttribute('data-trash-id');
+      if (!tid) return;
+      restoreBtn.disabled = true;
+      fetch('/api/trash/' + encodeURIComponent(tid) + '/restore', { method: 'POST' })
+        .then(async (r) => {
+          if (signal.aborted) return;
+          if (!r.ok) {
+            const body = await r.json().catch(() => ({}));
+            if (typeof showToast === 'function') showToast(body.error || 'Could not restore.');
+          } else if (typeof showToast === 'function') {
+            showToast('Restored.');
+          }
+          refresh();
+        })
+        .catch(() => { if (!signal.aborted) refresh(); });
+      return;
+    }
+    const purgeBtn = e.target.closest('.trash-purge-btn');
+    if (purgeBtn) {
+      const tid = purgeBtn.getAttribute('data-trash-id');
+      if (!tid) return;
+      if (!(armed && armed.id === tid)) {
+        disarm();
+        purgeBtn.classList.add('trash-confirming');
+        armed = { id: tid, timer: setTimeout(disarm, 3000) };
+        return;
+      }
+      disarm();
+      fetch('/api/trash/' + encodeURIComponent(tid), { method: 'DELETE' })
+        .then(async (r) => {
+          if (signal.aborted) return;
+          if (!r.ok) {
+            const body = await r.json().catch(() => ({}));
+            if (typeof showToast === 'function') showToast(body.error || 'Could not purge.');
+          }
+          refresh();
+        })
+        .catch(() => { if (!signal.aborted) refresh(); });
+    }
+  }, { signal });
+
+  refresh();
+  // Expose the re-render for the retention listener (labels change with it).
+  renderTrashSection.__refresh = refresh;
+}
+
 function init(root) {
   controller = new AbortController();
   configuredFolders = [];
@@ -1669,6 +1817,7 @@ function init(root) {
   loadHomeRowControl('home-continue-listening-check', 'ft-home-continue-listening');
   loadHomeRowControl('home-continue-reading-check', 'ft-home-continue-reading');
   renderBottomBarEditor(controller.signal); // v1.44 T12 bottom-bar editor
+  renderTrashSection(controller.signal); // v1.65 trash list + actions
 
   loadAutomationSettings();
   loadCacheSize();
@@ -1716,5 +1865,5 @@ if (typeof window !== 'undefined' && window.FileTube && typeof window.FileTube.r
 // Guarded so requiring this file in Node (for unit tests) never touches
 // `window`/`document` -- mirrors player.js's own module.exports guard.
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { transcodeNamesSuffix };
+  module.exports = { transcodeNamesSuffix, escapeTrashHtml, trashDaysLeftLabel, formatTrashSize, buildTrashRowHtml };
 }

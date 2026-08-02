@@ -104,3 +104,26 @@ test('reduceClear: everything gone, pointer gone', () => {
   const r = q.reduceClear();
   assert.deepEqual(r.state, { entries: [], pointerUid: null });
 });
+
+// ---- v1.65 gate (QA W1): reorder over a partially-hidden queue -------------
+
+test('expandVisibleOrder: hidden entries stay pinned at their absolute indices while visible ones reorder', () => {
+  const state = { entries: [{ uid: 'a', mediaId: 'm1' }, { uid: 'h', mediaId: 'trashed' }, { uid: 'b', mediaId: 'm2' }], pointerUid: null };
+  // The client sees a, b (h is trashed -> hidden) and moves b above a.
+  const full = q.expandVisibleOrder(state, ['a', 'b'], ['b', 'a']);
+  assert.deepEqual(full, ['b', 'h', 'a'], 'the hidden entry never appears to move');
+  const res = q.reduceReorder(state, full);
+  assert.equal(res.changed, true, 'and the strict bijection now passes');
+  assert.deepEqual(res.state.entries.map((e) => e.uid), ['b', 'h', 'a']);
+});
+
+test('expandVisibleOrder: no hidden entries -> the client order passes through untouched', () => {
+  const state = { entries: [{ uid: 'a', mediaId: 'm1' }, { uid: 'b', mediaId: 'm2' }], pointerUid: null };
+  assert.deepEqual(q.expandVisibleOrder(state, ['a', 'b'], ['b', 'a']), ['b', 'a']);
+});
+
+test('expandVisibleOrder: a stale/invented uid still reaches the reducer and is REFUSED (strictness preserved)', () => {
+  const state = { entries: [{ uid: 'a', mediaId: 'm1' }, { uid: 'h', mediaId: 'trashed' }], pointerUid: null };
+  const full = q.expandVisibleOrder(state, ['a'], ['ghost']);
+  assert.equal(q.reduceReorder(state, full).changed, false, 'an invented uid is never silently merged');
+});

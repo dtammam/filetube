@@ -43,6 +43,9 @@ const DEFAULT_SETTINGS = {
   pruneMissing: true,
   cacheMaxBytes: null,
   cacheMaxAgeDays: 30,
+  // v1.65 DELIBERATE key-set change: trash retention days; 0 = keep forever.
+  // 30 by default (Dean's ruling). See server.js DEFAULT_SETTINGS.
+  trashRetentionDays: 30,
   defaultView: '', // v1.14.0 item 4: '' is the "Most Recent" sentinel
   autoplayNext: false, // v1.16.0 FR-3 (T3): OFF by default
   backgroundAudioForVideo: false, // v1.27.0 (EXPERIMENTAL): OFF by default
@@ -107,6 +110,7 @@ test('saveDatabase + loadDatabase: round-trips data faithfully', () => {
     liked: ['abc'],
     deleteTombstones: {}, // v1.41.3: backfilled like every other top-level key
     viewCounts: {}, // v1.42: backfilled like every other top-level key
+    trash: {}, // v1.65: backfilled like every other top-level key
     settings: DEFAULT_SETTINGS,
   };
   saveDatabase(original);

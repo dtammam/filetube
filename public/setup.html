@@ -539,6 +539,30 @@
         </div>
       </details>
 
+      <!-- v1.65: Trash -- every delete lands here for the retention window;
+           rows render from GET /api/trash (public/js/setup.js). -->
+      <details class="setup-box sub-collapsible" data-collapse-key="trash" open>
+        <summary>Trash</summary>
+        <p>
+          Deleted videos move to a per-folder trash instead of being erased.
+          Restoring brings back watch history, likes and queue spots exactly
+          as they were.
+        </p>
+        <div class="form-group">
+          <label for="trash-retention-select">Purge trashed items after</label>
+          <select id="trash-retention-select" class="setup-select">
+            <option value="0">Never (keep until purged by hand)</option>
+            <option value="7">7 days</option>
+            <option value="14">14 days</option>
+            <option value="30" selected>30 days</option>
+            <option value="90">90 days</option>
+          </select>
+          <small id="trash-retention-error" class="field-error"></small>
+        </div>
+        <div id="trash-list" class="trash-list"></div>
+        <div id="trash-empty" class="trash-empty" hidden>Trash is empty.</div>
+      </details>
+
       <!-- v1.43: Account (everyone) - who you are + sign out. Markup lives
            INSIDE #view-root and styles in style.css (the v1.41.8 SPA-swap
            lesson). -->
