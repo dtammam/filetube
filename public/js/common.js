@@ -2363,6 +2363,10 @@ function notificationBellAlreadyInjected() {
   return Boolean(document.getElementById('notif-bell-btn'));
 }
 
+// v1.68: set by the injector below; called only by the jsdom test harness
+// (see the comment at its assignment).
+let __notifBellPollStopForTests = null;
+
 function injectNotificationBellIfEnabled() {
   if (typeof document === 'undefined' || typeof fetch === 'undefined') return;
   if (notificationBellAlreadyInjected()) return;
@@ -2505,6 +2509,50 @@ function injectNotificationBellIfEnabled() {
           const dot = document.createElement('span');
           dot.className = 'notif-row-dot';
           a.appendChild(dot);
+          // v1.68 (Dean ruling 3): the per-row dismiss X. A SIBLING of the
+          // row anchor inside a flex wrap - a <button> can never nest in an
+          // <a> (the card-corner rule). NON-OPTIMISTIC (v1.54 law): the row
+          // leaves only on a confirmed 2xx; failure re-enables for retry.
+          const wrap = document.createElement('div');
+          wrap.className = 'notif-row-wrap';
+          const dismissBtn = document.createElement('button');
+          dismissBtn.type = 'button';
+          dismissBtn.className = 'notif-row-dismiss';
+          dismissBtn.setAttribute('aria-label', 'Dismiss this notification');
+          dismissBtn.title = 'Dismiss';
+          dismissBtn.textContent = '✕';
+          dismissBtn.addEventListener('click', () => {
+            if (dismissBtn.disabled) return;
+            dismissBtn.disabled = true;
+            fetch('/api/notifications/dismiss', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ id: m.id }),
+            })
+              .then((res) => {
+                if (!res.ok) throw new Error(`dismiss failed: ${res.status}`);
+                wrap.remove();
+                if (!list.querySelector('.notif-row')) {
+                  renderEmpty('No notifications yet. New downloads land here.');
+                }
+                // The badge must agree with the shrunken panel - re-read the
+                // server truth rather than arithmetic on a stale count.
+                return fetch('/api/notifications/badge')
+                  .then((r) => (r.ok ? r.json() : null))
+                  .then((b) => { if (b) setBadge(b.count); })
+                  .catch(() => { /* cosmetic - next open reconciles */ });
+              })
+              .catch(() => {
+                dismissBtn.disabled = false;
+                // window.showToast, not the bare binding (the watch.js share
+                // pattern): present in the browser, absent under the jsdom
+                // harness so a failure-path toast's auto-dismiss timer never
+                // outlives a test's document.
+                if (typeof window !== 'undefined' && typeof window.showToast === 'function') {
+                  window.showToast('Could not dismiss the notification.');
+                }
+              });
+          });
           a.addEventListener('click', () => {
             // v1.52: partial seed -- the row model has title/channel/avatar/
             // thumbnail in hand; the watch painter fills these in frame one
@@ -2527,7 +2575,9 @@ function injectNotificationBellIfEnabled() {
             a.classList.remove('notif-row-unread');
             closePanel();
           });
-          list.appendChild(a);
+          wrap.appendChild(a);
+          wrap.appendChild(dismissBtn);
+          list.appendChild(wrap);
         }
       };
 
@@ -2622,6 +2672,15 @@ function injectNotificationBellIfEnabled() {
         pollTimer = setTimeout(pollOnce, NOTIF_BADGE_POLL_MS);
       };
       schedule();
+      // v1.68 test hook: the badge poll's pending setTimeout is a NODE
+      // timer under the jsdom harness - it survives dom.window.close(),
+      // fires after a test deletes the globals, and holds the runner's
+      // event loop. Tests stand the poll down explicitly (the server.js
+      // __-prefix convention); browsers never call this.
+      __notifBellPollStopForTests = () => {
+        stopped = true;
+        if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
+      };
       const resume = () => {
         if (stopped || document.hidden) return;
         if (pollTimer) clearTimeout(pollTimer);
@@ -9395,6 +9454,15 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.51: the notification bell's pure decisions (the DOM injector is the
     // usual untested-by-necessity thin shell around them).
     shouldInjectNotificationBell, formatNotificationBadge, buildNotificationRowModel,
+    // v1.68: the real injector, exported so the panel's per-row dismiss X is
+    // bound by EXECUTION in jsdom (the history-nav-gate pattern), plus the
+    // poll stand-down hook its harness needs (a pending badge-poll timer is
+    // a NODE timer that would outlive the test's document).
+    injectNotificationBellIfEnabled,
+    __stopNotificationBellPollForTests() {
+      if (typeof __notifBellPollStopForTests === 'function') __notifBellPollStopForTests();
+      __notifBellPollStopForTests = null;
+    },
     // v1.52: the instant-watch seed stash (single-entry, id-matched, aged) +
     // the pure paint-plan builder the watch painter applies verbatim.
     stashWatchSeed, consumeWatchSeed, deriveWatchPaintPlan, isFullWatchSeedItem,

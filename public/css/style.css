@@ -8264,6 +8264,40 @@ body.ft-css-fullscreen .bottom-nav {
   background-color: var(--bg-secondary);
 }
 
+/* v1.68: each panel row = anchor + dismiss X, flex siblings (a <button>
+   can never nest in an <a>). The anchor keeps its whole existing layout;
+   the X is a slim fixed column. */
+.notif-row-wrap {
+  display: flex;
+  align-items: stretch;
+}
+
+.notif-row-wrap .notif-row {
+  flex: 1;
+  min-width: 0; /* let the text column ellipsize instead of pushing the X out */
+}
+
+.notif-row-dismiss {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px; /* token-exempt: touch-target width (the bottombar-editor-btn convention) */
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  font-size: var(--fs-md);
+  cursor: pointer;
+  opacity: 0.7; /* token-exempt: resting de-emphasis, full on hover/focus */
+  touch-action: manipulation;
+}
+
+.notif-row-dismiss:hover,
+.notif-row-dismiss:focus-visible {
+  opacity: 1;
+  color: var(--text-primary);
+}
+
 .notif-row {
   display: flex;
   align-items: center;
