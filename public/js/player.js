@@ -1034,6 +1034,11 @@ function resolveChaptersMenuMaxHeight(geom) {
 // braces AND-ed with the FULL check there).
 function resolveCssFsScrollPlan(wasOn, nextOn, restoreEligible, savedY, currentY) {
   if (!wasOn && nextOn) {
+    // v1.68: capture-if-not-held. A capture can already be held when faux
+    // fullscreen enters: the rotate handoff (native enter captured, the
+    // intercept exits native and enters faux) - by faux-enter time iOS may
+    // have moved the page, so the ORIGINAL capture must survive.
+    if (typeof savedY === 'number' && !isNaN(savedY)) return { savedY: savedY, restoreTo: null };
     return { savedY: typeof currentY === 'number' && !isNaN(currentY) ? currentY : 0, restoreTo: null };
   }
   if (wasOn && !nextOn) {
@@ -1490,6 +1495,31 @@ if (typeof module !== 'undefined' && module.exports) {
     var plan = resolveCssFsScrollPlan(wasOn, !!on, restoreEligible, cssFsSavedScrollY, currentY);
     cssFsSavedScrollY = plan.savedY;
     if (plan.restoreTo !== null) window.scrollTo(0, plan.restoreTo);
+  }
+
+  // v1.68: the NATIVE-fullscreen half of the scroll keeper (iOS clobbers
+  // page scroll on native fullscreen exits - the Done/X path in
+  // native-controls mode; v1.67.5 covered faux only). Shares
+  // cssFsSavedScrollY with the faux plan so the rotate handoff carries ONE
+  // capture across both flavors. Mobile-only: desktop fullscreen behavior
+  // is deliberately untouched.
+  function keeperNativeFsCapture() {
+    if (!isMobileFormFactor()) return;
+    if (cssFsSavedScrollY !== null) return;
+    if (!inNativeFullscreen()) return; // element-scoped (FIX A: never a bare truthiness fullscreen check)
+    var y = typeof window.pageYOffset === 'number' ? window.pageYOffset : window.scrollY;
+    cssFsSavedScrollY = (typeof y === 'number' && !isNaN(y)) ? y : 0;
+  }
+
+  function keeperNativeFsExit() {
+    // The rotate handoff: the intercept exits native and enters faux in one
+    // motion - faux now owns the capture, this exit is not a user exit.
+    if (host && host.classList.contains('css-fullscreen')) return;
+    if (isMobileFormFactor() && state === STATE_FULL
+      && typeof cssFsSavedScrollY === 'number' && !isNaN(cssFsSavedScrollY)) {
+      window.scrollTo(0, cssFsSavedScrollY);
+    }
+    cssFsSavedScrollY = null;
   }
 
   // Native-controls round: true while the native iOS/browser `controls` strip
@@ -4951,7 +4981,7 @@ if (typeof module !== 'undefined' && module.exports) {
     wireSkipHoldGestures(mediaPlayer);
     wireSkipHoldGestures(audioBgArt, toggleArtPlayPause);
 
-    function onEnterFullscreen() { clearTimeout(holdTimer); releaseHold(); }
+    function onEnterFullscreen() { clearTimeout(holdTimer); releaseHold(); keeperNativeFsCapture(); }
     document.addEventListener('fullscreenchange', function () { if (document.fullscreenElement) onEnterFullscreen(); });
     mediaPlayer.addEventListener('webkitbeginfullscreen', onEnterFullscreen);
 
@@ -4962,6 +4992,9 @@ if (typeof module !== 'undefined' && module.exports) {
     function onFsChange() {
       if (inNativeFullscreen()) return;
       autoFullscreen = false;
+      // v1.68: a real native exit restores the pre-entry scroll (or clears
+      // the capture when ineligible - see the helper's guards).
+      keeperNativeFsExit();
     }
     document.addEventListener('fullscreenchange', onFsChange);
     mediaPlayer.addEventListener('webkitendfullscreen', onFsChange);
@@ -5255,6 +5288,11 @@ if (typeof module !== 'undefined' && module.exports) {
     if (ccTrack && ccTrack.track) ccTrack.track.mode = 'disabled';
     resetChaptersUi(); // v1.34 T3: menu closed/emptied, button hidden until next load
     setCssFullscreen(false); // v1.34.2: never leak the fixed overlay across loads
+    // v1.68: the LOAD BOUNDARY kills any held keeper capture outright - a
+    // capture from the previous video must never restore onto the next
+    // video's page at a later native Done-exit (the cross-page leak the C1
+    // round taught us to hunt).
+    cssFsSavedScrollY = null;
     // Feature B (v1.26.1): the outgoing media's caption overlay must never
     // bleed into the next item -- reset the on/off flag and force-hide/clear
     // the overlay itself (mirrors the CC button reset just above).
