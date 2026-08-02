@@ -202,6 +202,37 @@ if (API_TOKEN) {
   console.log('[auth] FILETUBE_API_TOKEN is set — the one-off download endpoint (POST /api/ytdlp/download) accepts it via the X-FileTube-Token header for the iOS Shortcut.');
 }
 
+// ---- v1.66 web push ---------------------------------------------------------
+// VAPID identity resolves at boot beside the session secret (same fail-closed
+// posture, same DATA_DIR-file home, same never-rides-bundles rule). The
+// delivery instance closes over LAZY readers (getCachedDatabase /
+// notificationsFeatureEnabled are hoisted declarations called per round, not
+// here) and is triggered DETACHED from the scan flush - never awaited there.
+const pushKeysLib = require('./lib/push/keys');
+const pushDeliverLib = require('./lib/push/deliver');
+const pushShortlink = require('./lib/ytdlp/shortlink');
+const PUSH_VAPID = pushKeysLib.resolveVapidKeys(DATA_DIR, process.env, (line) => console.log(line));
+// Test seams: integration suites swap the transport (capture/starve sends
+// without a network) and the guard's DNS lookup (fixture endpoints do not
+// resolve publicly). Production always uses the default HTTPS transport and
+// the real resolver.
+let pushTransportOverride = null;
+let pushGuardLookupOverride = null;
+function __setPushTransportForTests(fn) { pushTransportOverride = typeof fn === 'function' ? fn : null; }
+function __setPushGuardLookupForTests(fn) { pushGuardLookupOverride = typeof fn === 'function' ? fn : null; }
+const pushDelivery = pushDeliverLib.createPushDelivery({
+  store: userStore,
+  vapidKeys: PUSH_VAPID,
+  guardHop: (url) => pushShortlink.guardHop(url, { lookup: pushGuardLookupOverride || undefined }),
+  enabled: () => notificationsFeatureEnabled(getCachedDatabase()),
+  resolveMeta: (mediaId) => {
+    const item = getCachedDatabase().metadata && getCachedDatabase().metadata[mediaId];
+    if (!item) return null;
+    return { title: item.title || item.name, channel: item.folderName };
+  },
+  transport: (opts) => (pushTransportOverride || pushDeliverLib.defaultTransport)(opts),
+});
+
 // ---- v1.42: the beta safe-mode lever (exec plan AC8, owner-approved) --------
 // FILETUBE_READ_ONLY_MEDIA=1 turns the parallel-run operational rules ("no
 // deletes, no moves, no downloads from the beta") from remembered into
@@ -4855,7 +4886,13 @@ async function runScanDirectories() {
   // either way, a lost notification is cosmetic.
   if (pendingNotifications.length > 0) {
     try {
-      userStore.recordNotifications(pendingNotifications);
+      const inserted = userStore.recordNotifications(pendingNotifications);
+      // v1.66: push delivery fires DETACHED (trigger() schedules via
+      // setImmediate and coalesces overlapping rounds) - this function is
+      // awaited by the scan-coalescing state machine, and a slow push
+      // endpoint must never stall the next scan. Only the REAL record path
+      // triggers: boot seeding and restore never reach this site.
+      if (inserted > 0) pushDelivery.trigger('scan');
     } catch (err) {
       console.error('Scan: failed to record download notifications (continuing):', err && err.message);
     }
@@ -14156,6 +14193,12 @@ module.exports = {
   // it produces a genuine cookie exactly like a browser login would.
   __mintTestSession,
   __clearUsersForTests,
+  // v1.66: push test seams - swap the transport (capture/starve sends with
+  // no network), swap the SSRF guard's DNS lookup (fixture endpoints), and
+  // drive a delivery round directly.
+  __setPushTransportForTests,
+  __setPushGuardLookupForTests,
+  pushDelivery,
   userStore,
   AUTH_COOKIE_NAME,
   // v1.42 AC7: the Node-floor predicate, exported so the boot check's
