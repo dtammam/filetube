@@ -758,3 +758,74 @@ test('QA-R2 W1: trashing a queued item must NOT brick queue reorder (the hidden 
   const after = (await (await fetch(`${base}/api/queue`)).json()).entries.map((e) => e.mediaId);
   assert.ok(after.includes(id), 'the restored item reappears in the queue');
 });
+
+test('R5 (adversarial W1, its own round-4 RETRACTION): a malformed record cannot throw out of purge, and one must never abort the whole sweep', async () => {
+  const { id } = seedLibrary();
+  // A healthy, past-retention record that the sweep SHOULD purge...
+  const good = await trashItem(deps(), id, { nowMs: Date.now() - 100 * DAY });
+  assert.equal(good.ok, true);
+  // ...alongside malformed records whose trashPath is not a string. The
+  // crash guard inside destConfined (the `trashConfined &&` conjunct, which
+  // round 4 wrongly called dead logic) is the only thing stopping
+  // path.dirname from throwing on these -- and the throw would escape
+  // sweepTrash's record loop, silently stopping retention for everyone.
+  await updateDatabase((db) => {
+    let n = 0;
+    for (const bad of [undefined, null, 42, {}, []]) {
+      db.trash[`malformed-${n += 1}`] = {
+        originalId: 'm', originalPath: path.join(ROOT, 'Chan', 'm.mp4'),
+        trashPath: bad, trashedAt: Date.now() - 100 * DAY, rootFolder: null, item: { id: 'm' },
+      };
+    }
+  });
+
+  for (const key of ['malformed-1', 'malformed-2', 'malformed-3', 'malformed-4', 'malformed-5']) {
+    const res = await purgeTrashItem({ loadDatabase, updateDatabase }, key);
+    assert.equal(res.ok, true, `purge must not throw on ${key}`);
+  }
+
+  // Re-plant one and prove the SWEEP survives it and still does its job.
+  await updateDatabase((db) => {
+    db.trash.malformed = {
+      originalId: 'm', originalPath: path.join(ROOT, 'Chan', 'm.mp4'),
+      trashPath: undefined, trashedAt: Date.now() - 100 * DAY, rootFolder: null, item: { id: 'm' },
+    };
+  });
+  const purged = await sweepTrash(Date.now());
+  assert.ok(purged >= 1, 'the sweep completed instead of aborting on the malformed record');
+  assert.equal(loadDatabase().trash[good.trashId], undefined, 'and the healthy past-retention record WAS purged');
+  assert.ok(!fs.existsSync(good.trashPath));
+});
+
+test('R5 (adversarial S1): a client sending MORE uids than visible slots is REFUSED, never silently trimmed', async () => {
+  const { id } = seedLibrary();
+  const extra = ['y1', 'y2'].map((n) => {
+    const p = path.join(ROOT, 'Chan', `${n}.mp4`);
+    fs.writeFileSync(p, `${n}-bytes`);
+    return { n, p, id: getMediaId(p) };
+  });
+  await updateDatabase((db) => {
+    for (const e of extra) {
+      db.metadata[e.id] = {
+        id: e.id, name: `${e.n}.mp4`, title: e.n, filePath: e.p, folderName: 'Chan',
+        rootFolder: ROOT, size: 8, ext: '.mp4', type: 'video', addedAt: Date.now(), duration: 10,
+      };
+    }
+  });
+  userStore.setQueue(uid, [
+    { uid: 'r1', mediaId: id },          // trashed -> hidden
+    { uid: 'r2', mediaId: extra[0].id },
+    { uid: 'r3', mediaId: extra[1].id },
+  ], null, 1);
+  assert.equal((await trashItem(deps(), id)).ok, true);
+
+  // Two visible slots, THREE uids sent (the third invented). Without the
+  // leftover concat these would be trimmed to the visible count and the
+  // reorder would succeed -- the ledger-check posture says refuse.
+  const res = await fetch(`${base}/api/queue/reorder`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ orderedUids: ['r3', 'r2', 'ghost'] }),
+  });
+  assert.equal(res.status, 409, 'THE binding: an over-long order is refused, not helpfully merged');
+  assert.deepEqual(userStore.getQueue(uid).entries.map((e) => e.uid), ['r1', 'r2', 'r3'], 'raw queue untouched');
+});
