@@ -13,6 +13,10 @@ require('dotenv').config();
 // `isEnabled(config)` inside the functions themselves. See
 // lib/ytdlp/index.js for the dormant-wiring mechanism.
 const ytdlp = require('./lib/ytdlp');
+// v1.69: the podcasts place (RSS subscription engine). First-class like
+// music/books - routes always registered, nav gated client-side on content.
+const podcasts = require('./lib/podcasts');
+const heavyGate = require('./lib/heavyGate');
 // v1.28.0 (two-reviewer gate follow-up, F1): shared body-parser-error ->
 // JSON-response mapping, also required directly by lib/ytdlp/index.js for
 // its own route-scoped `express.text()` error middleware -- see that
@@ -14048,6 +14052,20 @@ ytdlp.registerRoutes(app, {
   dataDir: DATA_DIR,
 });
 
+// v1.69: the podcasts module's deps bundle - the same circular-require-
+// avoiding bridge as ytdlp's above. runExclusive is the SHARED heavy-job
+// gate (lib/heavyGate), so podcast enclosure downloads serialize against
+// yt-dlp polls/one-shots instead of competing for disk and network.
+podcasts.registerRoutes(app, {
+  updateDatabase,
+  loadDatabase,
+  getCachedDatabase,
+  dataDir: DATA_DIR,
+  userStore,
+  runExclusive: heavyGate.runExclusive,
+  sendRangeable,
+});
+
 // Start the server — but only when run directly (`node server.js`), not when
 // required by the test suite. This lets tests import `app` and the pure helpers
 // without binding a port or triggering a real scan.
@@ -14178,6 +14196,21 @@ if (require.main === module) {
     // own copy for the scheduled-poll run-log emit path to work, not just the
     // route-triggered one.
     ytdlp.startBackground({ updateDatabase, loadDatabase, scanDirectories, getMediaId, dataDir: DATA_DIR });
+
+    // v1.69 podcasts: boot hygiene (.ptpart sweep + reconcile) + the poll
+    // timer. Early-returns doing NOTHING (no dir, no timer) with zero
+    // subscriptions - the fresh-install no-op guarantee. Inside this guard
+    // for the same reason as ytdlp's: importing server.js for tests must
+    // never arm a poll timer.
+    podcasts.startBackground({
+      updateDatabase,
+      loadDatabase,
+      getCachedDatabase,
+      dataDir: DATA_DIR,
+      userStore,
+      runExclusive: heavyGate.runExclusive,
+      now: () => Date.now(),
+    });
 
     app.listen(PORT, '0.0.0.0', () => {
       console.log(`==================================================`);
