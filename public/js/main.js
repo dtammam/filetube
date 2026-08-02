@@ -401,6 +401,13 @@ if (typeof module !== 'undefined' && module.exports) {
     // BEFORE the first page fetch whenever no explicit pick exists.
     let currentItems = [];
     let folderSettings = {}; // { "<path>": { name, hidden, hiddenFromSidebar } } — for author display, shared with cards
+    // v1.67: the per-user corner layout + capability, latched by loadLibrary
+    // BEFORE the first card render (plan D2: server-authoritative per C1 -
+    // deliberately NO localStorage lane, the v1.53 cross-user-bleed class).
+    // C5 defaults until the latch lands; a signed-out shell or fetch failure
+    // keeps them.
+    let cardCornerPrefs = resolveCardCornerPrefs(null);
+    let cardCornerCaps = {};
     const storedSortPick = localStorage.getItem('filetube_sort');
     let currentSort = storedSortPick || 'release-date';
 
@@ -509,6 +516,39 @@ if (typeof module !== 'undefined' && module.exports) {
       videosHeader.textContent = `Playlist: ${folderFilter}`;
     }
 
+    // v1.67 (plan D2/D4): resolve the signed-in user's corner layout and -
+    // only when a corner actually assigns reheat - the module capability.
+    // Never throws (loadLibrary races it against /api/config in one
+    // Promise.all; a failure here must never block the grid): any failure
+    // resolves to the C5 defaults / an empty caps object, and C4 then
+    // renders nothing in a reheat corner rather than guessing.
+    async function fetchCardCornerState() {
+      let prefs = resolveCardCornerPrefs(null);
+      try {
+        const r = await fetch('/api/auth/me');
+        if (r.ok) {
+          const me = await r.json();
+          prefs = resolveCardCornerPrefs(me && me.settings);
+        }
+      } catch (_) { /* signed-out shell / network failure -> defaults */ }
+      const needsReheat = prefs.cornerTL === 'reheat' || prefs.cornerTR === 'reheat' || prefs.cornerBL === 'reheat';
+      if (!needsReheat) return { prefs, caps: {} };
+      // The same latched module-health capability the watch page and the
+      // subscriptions nav injector use (common.js capability cache; the
+      // fresh answer refreshes it for them too).
+      const cached = readCapabilityCache();
+      if (cached && typeof cached.moduleEnabled === 'boolean') {
+        return { prefs, caps: { reheatEnabled: cached.moduleEnabled === true } };
+      }
+      try {
+        const res = await fetch('/api/subscriptions/health');
+        writeCapabilityCache({ moduleEnabled: res.ok === true });
+        return { prefs, caps: { reheatEnabled: res.ok === true } };
+      } catch (_) {
+        return { prefs, caps: { reheatEnabled: false } };
+      }
+    }
+
     // Load configuration and files
     async function loadLibrary() {
       // Item 1 (v1.26.3): show skeleton placeholders immediately, before
@@ -521,8 +561,17 @@ if (typeof module !== 'undefined' && module.exports) {
       // stale error card sitting there while the retried fetch is in flight.
       videoGrid.innerHTML = buildSkeletonGrid(SKELETON_CARD_COUNT);
       try {
-        // 1. Check configs
-        const configRes = await fetch('/api/config');
+        // 1. Check configs (+ the v1.67 corner latch, raced in parallel so
+        // the pref never delays the grid behind a second round-trip; both
+        // must land BEFORE the first buildCardHtml call below - a
+        // paint-then-reshuffle of custom corners is exactly what plan D2
+        // rules out, and the skeleton grid above already covers the wait).
+        const [configRes, cornerState] = await Promise.all([
+          fetch('/api/config'),
+          fetchCardCornerState(),
+        ]);
+        cardCornerPrefs = cornerState.prefs;
+        cardCornerCaps = cornerState.caps;
         const configData = await configRes.json();
         const folders = configData.folders || [];
         folderSettings = configData.folderSettings || {};
@@ -940,7 +989,7 @@ if (typeof module !== 'undefined' && module.exports) {
               ${durationBadge}
               ${progressBar}
             </a>
-            ${buildCardCornerButtonsHtml(item, resolveCardCornerPrefs(null), {})}
+            ${buildCardCornerButtonsHtml(item, cardCornerPrefs, cardCornerCaps)}
           </div>
           <div class="video-info">
             <a href="${watchHref}" class="video-title" title="${escapeHtml(item.title)}">
@@ -1579,6 +1628,32 @@ if (typeof module !== 'undefined' && module.exports) {
         btn.disabled = false;
       }
     }
+    // v1.67: the card reheat corner fires the SAME per-item endpoint as the
+    // watch page's flame button, with the same status->toast vocabulary. On
+    // 202 the job runs server-side and its progress/result surface in the
+    // existing download status chip (watch parity - deliberately NO second
+    // progress mechanism and NO fake "done" state on the card; the watch
+    // page's completion-diff/relocation modal stays a watch-page
+    // affordance, disclosed in the plan).
+    async function triggerCardReheat(btn) {
+      const id = btn.dataset.id;
+      if (!id || btn.disabled) return;
+      btn.disabled = true;
+      try {
+        const res = await fetch(`/api/ytdlp/repull-metadata/item/${encodeURIComponent(id)}`, { method: 'POST' });
+        const body = await res.json().catch(() => ({}));
+        if (res.status === 202) { showToast('Reheating…'); return; }
+        if (res.status === 409) { showToast('A reheat is already running.'); return; }
+        if (res.status === 404) { showToast('This video has no source to reheat from.'); return; }
+        if (res.status === 403) { showToast('Read-only mode: reheat is disabled on this instance.'); return; }
+        showToast((body && body.error) || 'Reheat could not be started.');
+      } catch (_) {
+        showToast('Reheat could not be started.');
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
     videoGrid.addEventListener('click', (e) => {
       const likeBtn = e.target.closest('.card-like-btn');
       if (likeBtn) { e.preventDefault(); toggleCardLike(likeBtn); return; }
@@ -1586,6 +1661,24 @@ if (typeof module !== 'undefined' && module.exports) {
       // is THE one verb - toast + header-chrome refresh included).
       const cardQueueBtn = e.target.closest('.card-queue-btn');
       if (cardQueueBtn) { e.preventDefault(); addToQueue(cardQueueBtn.getAttribute('data-id')); return; }
+      // v1.67: the two NEW corner controls ride the same delegation. Share
+      // runs common.js's ONE share decision (plan D6) with the item's title
+      // for the sheet; the URL is the renderer-emitted data-share-url (the
+      // server-derived watchUrl, never assembled client-side).
+      const cardShareBtn = e.target.closest('.card-share-btn');
+      if (cardShareBtn) {
+        e.preventDefault();
+        const url = cardShareBtn.getAttribute('data-share-url');
+        if (url) {
+          const item = currentItems.find((it) => it.id === cardShareBtn.dataset.id);
+          shareExternalUrl(url, item && item.title).then((outcome) => {
+            if (outcome === 'copied') showToast('Link copied');
+          });
+        }
+        return;
+      }
+      const cardReheatBtn = e.target.closest('.card-reheat-btn');
+      if (cardReheatBtn) { e.preventDefault(); triggerCardReheat(cardReheatBtn); return; }
     }, { signal });
 
     videoGrid.addEventListener('click', (e) => {

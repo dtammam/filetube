@@ -7415,6 +7415,33 @@ function deleteResultToast(data) {
   return 'File deleted.';
 }
 
+// v1.67 (plan D6): THE share decision - native sheet vs clipboard vs nothing
+// - extracted from watch.js's handleShareClick so the card share corner and
+// the watch Share button run ONE decision function (the v1.41.7 lesson),
+// each keeping its own UI feedback. Resolves to an outcome string:
+//   'shared'      - the native sheet took it (or the user dismissed it -
+//                   an AbortError is the user closing the sheet, silently
+//                   fine, never an error; callers show no feedback either way)
+//   'copied'      - clipboard fallback wrote the URL (callers confirm)
+//   'copy-failed' - clipboard fallback threw (already console.error'd)
+//   'unavailable' - no share sheet AND no clipboard API (very old /
+//                   non-secure context; already console.error'd)
+function shareExternalUrl(url, title) {
+  if (typeof navigator.share === 'function') {
+    return navigator.share({ title: title || 'FileTube', url })
+      .catch(() => { /* sheet dismissed / share failed -- no-op */ })
+      .then(() => 'shared');
+  }
+  if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+    return navigator.clipboard.writeText(url).then(
+      () => 'copied',
+      (err) => { console.error('Share: clipboard copy failed:', err); return 'copy-failed'; }
+    );
+  }
+  console.error('Share: no navigator.share or clipboard API available');
+  return Promise.resolve('unavailable');
+}
+
 function showToast(msg, action) {
   if (typeof document === 'undefined') return;
   const toast = document.createElement('div');

@@ -165,6 +165,9 @@ module.exports = [
         // v1.63 playback queue: THE one add verb (common.js), called by
         // every affordance (main.js cards, watch.js verbs, music.js rows).
         addToQueue: 'readonly',
+        // v1.67 (plan D6): THE share decision (common.js), called by the
+        // watch Share button and the card share corner.
+        shareExternalUrl: 'readonly',
         // v1.63.1: the stars display pref (common.js owns it; setup.js's
         // toggle reflects + fires it).
         shouldShowStarRatings: 'readonly',
