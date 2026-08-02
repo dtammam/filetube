@@ -283,10 +283,16 @@ Design record: `docs/exec-plans/active/v1.69-podcasts-place.md` (moves to
   enclosure URLs embed the same token). Full URLs live ONLY in
   `<DATA_DIR>/podcast-feeds.json` (0600, atomic writes, corrupt-file
   preserved aside), which is structurally outside backup bundles; db records
-  carry origin+pathname display form only, every error/status string passes
-  `redactSecretText` (stored secrets + generic token shapes), and enclosure
-  URLs are never persisted at all (re-derived from the fresh feed each
-  cycle - Patreon signs them with expiring tokens anyway). Consequence,
+  carry origin+pathname display form only, and EVERY feed-derived string
+  (guid/link/title/description/author - the parser's guid fallback adopts
+  the enclosure URL, which carries the token) passes `redactSecretText`
+  (stored secrets + generic token shapes) at the persist boundary, as do
+  error/status strings. Raw enclosure URLs live in memory only for the
+  duration of a poll cycle (re-derived from the fresh feed each time -
+  Patreon signs them with expiring tokens anyway); what persists is at
+  most their redacted form. (v1.69 gate #2: the boundary redaction exists
+  because a guid-less item or a feed echoing its own tokened URL in prose
+  measurably leaked into the db/backup/API before it.) Consequence,
   disclosed: a bundle restored onto a fresh box marks tokened subs
   `secretMissing` and the UI asks for the URL again (same-feed display-form
   match required).

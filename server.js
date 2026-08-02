@@ -5608,6 +5608,11 @@ function shellHtmlForRequestPath(p) {
   if (p === '/' || p === '/index.html') return 'index.html';
   if (p === '/books' || p === '/books.html') return 'books.html';
   if (p === '/music' || p === '/music.html') return 'music.html';
+  // v1.69 gate fix (adversarial #4): without this arm the pretty /podcasts
+  // route - the one every nav link uses - fell through to a bare sendFile
+  // with no custom-logo injection and the wrong cache header, while only
+  // the never-linked /podcasts.html behaved.
+  if (p === '/podcasts' || p === '/podcasts.html') return 'podcasts.html';
   if (p === '/history' || p === '/history.html') return 'history.html';
   // v1.43 auth: the pretty routes /login and /welcome serve their shells (the
   // gate above lets them through the allowlist; here they get the same
@@ -7837,6 +7842,20 @@ app.post('/api/admin/restore', (req, res, next) => {
   if (bundle.trash === undefined) {
     const current = loadDatabase();
     if (current.trash && Object.keys(current.trash).length > 0) dbPart.trash = current.trash;
+  }
+  // v1.69 gate fix (adversarial #5, the SAME v1.51 partial-restore lesson):
+  // a bundle without a podcasts key - every pre-v1.69 export - must
+  // PRESERVE the current podcasts namespace. Wiping it would silently
+  // destroy the subscription list and the whole episode archive (forcing a
+  // full re-download) while orphaning the tokened secrets file.
+  if (bundle.podcasts === undefined) {
+    const current = loadDatabase();
+    if (current.podcasts && (
+      (Array.isArray(current.podcasts.subscriptions) && current.podcasts.subscriptions.length > 0)
+      || (current.podcasts.episodes && Object.keys(current.podcasts.episodes).length > 0)
+    )) {
+      dbPart.podcasts = current.podcasts;
+    }
   }
 
   try {

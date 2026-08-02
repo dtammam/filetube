@@ -177,6 +177,14 @@ test('progress: the shared player controller\'s {id, timestamp} body shape and t
   assert.strictEqual(never.position, 0, 'a never-played episode reads 0, not an error (the player treats it as start-from-top)');
 });
 
+test('v1.69 gate fix (adversarial #4): the pretty /podcasts route gets the shell treatment (no-cache), same as /music', async () => {
+  const pretty = await get('/podcasts');
+  assert.strictEqual(pretty.status, 200);
+  assert.strictEqual(pretty.headers.get('cache-control'), 'no-cache', 'the linked route rides the shell middleware');
+  const music = await get('/music');
+  assert.strictEqual(music.headers.get('cache-control'), 'no-cache', 'parity with the /music arm');
+});
+
 test('podcastart: SVG placeholder when no art exists', async () => {
   const r = await get(`/podcastart/${subId}`);
   assert.strictEqual(r.status, 200);
