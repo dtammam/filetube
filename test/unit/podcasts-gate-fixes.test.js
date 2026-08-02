@@ -112,7 +112,7 @@ test('#1: ALL episodes vanishing at once (root present + empty) tombstones NOTHI
 
 // ---- #2 boundary redaction --------------------------------------------------
 
-test('#2: a guid-less item and token-echoing prose persist only REDACTED forms; the namespace stays token-free', async () => {
+test('#2/D2: a guid-less item stores a 32-hex identity (guidKey, not redaction); the namespace stays token-free', async () => {
   const id = await addSub('all');
   deps.fetchFeedImpl = async () => ({
     ok: true,
@@ -126,14 +126,68 @@ test('#2: a guid-less item and token-echoing prose persist only REDACTED forms; 
   assert.ok(!json.includes(TOKEN), `the token appears NOWHERE in the namespace: ${json.slice(0, 400)}`);
   const eps = store.episodesForSub(ns.episodes, id);
   assert.strictEqual(eps.length, 1);
-  assert.ok(eps[0].guid.includes('/u/<redacted>/'), `the guid fallback stored the REDACTED enclosure URL: ${eps[0].guid}`);
-  assert.strictEqual(eps[0].status, 'downloaded', 'the redacted guid still keys the download pipeline');
+  // Delta round D2: the stored identity is guidKey's md5 of the raw guid -
+  // strictly stronger than asserting a redaction spelling, and independent
+  // of the secrets map by construction.
+  assert.match(eps[0].guid, /^[0-9a-f]{32}$/, `the guid fallback stores a 32-hex key: ${eps[0].guid}`);
+  assert.strictEqual(eps[0].status, 'downloaded', 'the hashed guid still keys the download pipeline');
   assert.ok(eps[0].description.includes('<redacted>') || !eps[0].description.includes('auth='), `description scrubbed: ${eps[0].description}`);
 
   // Stability: a second poll of the same feed creates NO duplicate record
-  // (the redacted guid is a stable archive key).
+  // (the hashed guid is a stable archive key).
   await podcasts.runPodcastPoll(deps, id);
   assert.strictEqual(store.episodesForSub(store.readPodcasts(db).episodes, id).length, 1);
+});
+
+test('D2: episode identity is INDEPENDENT of the secrets map - an unrelated new subscription never re-keys another show', async () => {
+  // Show A: permalink-style URL guids (the commonest shape in the wild).
+  const inputA = store.validateAddInput({ feedUrl: 'https://showa.invalid/rss' });
+  const idA = store.subscriptionIdFor(inputA.feed.url);
+  secrets.setFeedSecret(dataDir, idA, inputA.feed.url);
+  await deps.updateDatabase((mdb) => store.reduceAddSubscription(store.ensurePodcasts(mdb),
+    store.subscriptionRecordFrom({ id: idA, feed: inputA.feed, name: 'Show A', backfill: 'all', nowMs: 1, order: 0 })));
+  const feedA = '<rss><channel><title>Show A</title>'
+    + [1, 2, 3].map((n) => `<item><title>Ep ${n}</title><guid>https://showa.invalid/podcast/episode-${n}</guid><pubDate>Sun, 0${n} Aug 2026 15:00:00 GMT</pubDate><enclosure url="https://showa.invalid/audio/${n}.mp3" type="audio/mpeg"/></item>`).join('')
+    + '</channel></rss>';
+  deps.fetchFeedImpl = async () => ({ ok: true, body: feedA, finalUrl: 'https://x' });
+  await podcasts.runPodcastPoll(deps, idA);
+  assert.strictEqual(downloads.length, 3);
+  const guidsBefore = store.episodesForSub(store.readPodcasts(db).episodes, idA).map((e) => e.guid).sort();
+
+  // The user subscribes to an UNRELATED feed whose URL carries a mundane
+  // query value ('podcast') that substring-matches Show A's guids - the
+  // exact trigger that re-keyed and re-downloaded Show A under redaction-
+  // based identity.
+  const inputB = store.validateAddInput({ feedUrl: 'https://showb.invalid/rss?format=podcast' });
+  const idB = store.subscriptionIdFor(inputB.feed.url);
+  secrets.setFeedSecret(dataDir, idB, inputB.feed.url);
+  await deps.updateDatabase((mdb) => store.reduceAddSubscription(store.ensurePodcasts(mdb),
+    store.subscriptionRecordFrom({ id: idB, feed: inputB.feed, name: 'Show B', backfill: 'all', nowMs: 2, order: 0 })));
+
+  await podcasts.runPodcastPoll(deps, idA); // re-poll Show A with B's secret now in the map
+  const after = store.episodesForSub(store.readPodcasts(db).episodes, idA);
+  assert.strictEqual(after.length, 3, 'no duplicate records for the untouched show');
+  assert.deepStrictEqual(after.map((e) => e.guid).sort(), guidsBefore, 'identities unchanged by the unrelated subscription');
+  assert.strictEqual(downloads.length, 3, 'NO re-download of the untouched show');
+});
+
+test('D1: stripComments is linear - a many-comment in-cap document parses in bounded time, output shapes intact', () => {
+  // ~2.4MB, 4000 comments, zero CDATA: the shape that was O(comments x
+  // length). Linear parses this in tens of ms; the quadratic shipped shape
+  // took ~430ms at HALF this size and 4.9s at 12MB - 5s is ~50x headroom
+  // for the fix while still failing the quadratic form at this size.
+  const filler = 'x'.repeat(500);
+  let doc = '<rss><channel><title>t</title>';
+  for (let i = 0; i < 4000; i += 1) {
+    doc += `<!-- c${i} -->${filler}`;
+  }
+  doc += '<item><title>Ep</title><guid>g1</guid><enclosure url="https://h.example/1.mp3" type="audio/mpeg"/></item></channel></rss>';
+  const t0 = process.hrtime.bigint();
+  const r = feed.parsePodcastFeed(doc);
+  const elapsedMs = Number(process.hrtime.bigint() - t0) / 1e6;
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.items.length, 1, 'content survives the comment flood');
+  assert.ok(elapsedMs < 5000, `linear-time parse (took ${elapsedMs.toFixed(0)}ms)`);
 });
 
 // ---- #3 timer arms on first subscription ------------------------------------
@@ -250,8 +304,14 @@ test('#8: podcast downloads serialize through the REAL heavy gate - a concurrent
   const id = await addSub('all');
   const log = [];
   deps.runExclusive = heavyGate.runExclusive; // the REAL gate, not a passthrough
+  // Deterministic handshake (delta-round suggestion #6): the test waits for
+  // the FIRST download to signal it has started before enqueuing the
+  // contender - no timing sleep, so `starts >= 1` can never flake.
+  let signalFirstStart;
+  const firstStart = new Promise((r) => { signalFirstStart = r; });
   deps.downloadEnclosureImpl = async (url, destDir, finalName) => {
     log.push(`start:${finalName}`);
+    signalFirstStart();
     await new Promise((r) => setTimeout(r, 20));
     log.push(`end:${finalName}`);
     const p = path.join(destDir, finalName);
@@ -260,8 +320,7 @@ test('#8: podcast downloads serialize through the REAL heavy gate - a concurrent
   };
 
   const pollDone = podcasts.runPodcastPoll(deps, id);
-  // Give the poll a beat to enqueue its first download, then contend.
-  await new Promise((r) => setTimeout(r, 5));
+  await firstStart; // the first download is provably IN FLIGHT
   const contender = heavyGate.runExclusive(() => { log.push('contender'); });
   await Promise.all([pollDone, contender]);
 

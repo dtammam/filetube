@@ -274,11 +274,16 @@ feeds, or private tokened ones (e.g. Patreon's "listen in other podcast
 apps" URL). The nav entry appears once you have at least one subscription.
 
 Private feed URLs carry a personal access token. FileTube stores the full
-URL only in `<DATA_DIR>/podcast-feeds.json` (file mode 0600); the token is
-scrubbed out of every feed-derived string before anything is persisted, so
-it never appears in the UI, logs, API responses, or backup bundles. A
-backup restored onto a fresh machine therefore restores the subscriptions
-but asks you to re-enter each tokened feed's URL once.
+URL only in `<DATA_DIR>/podcast-feeds.json` (file mode 0600), and it never
+displays that URL again. Episode identities are one-way hashes (never the
+raw URL), and other feed-derived text is scrubbed by pattern - your stored
+feed URLs plus the known token shapes (`?auth=`/`?token=`/`?sig=`-style
+query values and `/u/<token>/` path segments) - before anything is
+persisted, logged, exported, or returned by the API. A feed that embeds a
+token in an unusual shape inside its own prose could still slip past a
+pattern scrub; the feed URL itself never rides anything but the 0600 file.
+A backup restored onto a fresh machine restores the subscriptions but asks
+you to re-enter each tokened feed's URL once.
 
 | Variable | Default | What it does |
 |----------|---------|---------------|
