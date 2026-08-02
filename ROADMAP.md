@@ -80,6 +80,27 @@
 
 ## Shipped
 
+### v1.67.1 - Web Push: the enable button stops whispering (2026-08-02)
+
+Hotfix found by Dean's iPhone device pass on v1.66: tapping "Enable
+notifications on this device" appeared to do nothing. Root cause was ours,
+not iOS's - the push error line (`.field-error`) is `display:none` until
+something reveals it, and the v1.66 enable flow set the message text but
+never un-hid the element. So every failure - a denied permission, an iOS
+`subscribe()` exception, a server refusal - was written to an invisible
+node. The button was never silent; you just couldn't see what it said.
+
+Three fixes: push errors now show like every other field error on the page;
+a not-granted permission gives a specific reason ("blocked - turn on in
+Settings > Notifications > FileTube" vs "dismissed - tap Enable again"); and
+`?pushdebug=1` appends the raw iOS exception, since the iPhone has no console
+without a Mac. The message decision is unit-tested, and - honoring the v1.66
+"test the decision, not its use" lesson - a jsdom test clicks Enable under a
+denied permission and asserts the message actually becomes VISIBLE (it
+reddens if anyone re-mutes it). Slim gate (adversarial seat), dual-Node
+5582/5582. Dean's device re-test PENDING: the button will now show WHY iOS
+push is or isn't subscribing.
+
 ### v1.67.0 - Card corners, your way (2026-08-02)
 
 Dean's request, verbatim intent: the video tiles have four corners and
