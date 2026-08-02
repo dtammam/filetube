@@ -9237,7 +9237,10 @@ a.queue-upnext-next:hover {
 
 /* The management row on a show's drill-in (v1.69 QA gate #3). */
 .podcast-manage-row { display: flex; gap: var(--space-4); flex-wrap: wrap; align-items: center; margin-top: var(--space-3); }
-.podcast-unsub-btn.confirming { color: var(--yt-red); border-color: var(--yt-red); }
+/* Shared confirming state - unsubscribe AND the v1.70 episode delete render
+   the same two-tap affordance from ONE rule (the styling-source law). */
+.podcast-unsub-btn.confirming,
+.podcast-ep-delete.confirming { color: var(--yt-red); border-color: var(--yt-red); }
 .podcast-reenter-row { display: flex; gap: var(--space-4); flex-wrap: wrap; align-items: center; width: 100%; margin-top: var(--space-3); }
 .podcast-reenter-row .search-input { flex: 1; min-width: 220px; }
 

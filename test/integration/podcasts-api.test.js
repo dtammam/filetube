@@ -213,6 +213,78 @@ test('settings: pollMinutes round-trips with validation; downloadDir is reported
   assert.strictEqual((await postJson('/api/podcasts/settings', {})).status, 400);
 });
 
+test('v1.70: delete -> trash -> restore round-trip; collisions and wrong states refuse; per-user state survives trash', async () => {
+  // The seeded downloaded episode lives OUTSIDE the podcasts root (a temp
+  // show dir) - move it inside first so computeTrashTarget confines
+  // correctly under the real root.
+  const root = path.join(DATA_DIR, 'podcasts');
+  const showDir = path.join(root, 'RoundTrip Show');
+  fs.mkdirSync(showDir, { recursive: true });
+  const epFile = path.join(showDir, 'Trip [rss=t1].mp3');
+  fs.writeFileSync(epFile, 'TRIPBYTES');
+  const epId = podcastStore.episodeIdFor(subId, 't1');
+  await updateDatabase((db) => {
+    const ns = podcastStore.ensurePodcasts(db);
+    podcastStore.reduceUpsertEpisodes(ns, subId, [{ guid: 't1', title: 'Trip', pubDateMs: 3000, durationSec: 100 }], 'pending', 5000);
+    podcastStore.reduceEpisodeDownloaded(ns, epId, { fileName: path.basename(epFile), filePath: epFile, bytes: 9, nowMs: 6000 });
+    return true;
+  });
+  // Per-user state before the trash trip.
+  await postJson('/api/podcasts/progress', { episodeId: epId, position: 42, duration: 100 });
+
+  // DELETE: file moves into <root>/.filetube-trash, record flips, row survives.
+  const del = await fetch(`${base}/api/podcasts/episodes/${epId}`, { method: 'DELETE' });
+  assert.strictEqual(del.status, 200);
+  assert.strictEqual((await del.json()).status, 'trashed');
+  assert.ok(!fs.existsSync(epFile), 'the original path is empty');
+  const trashDir = path.join(root, '.filetube-trash');
+  const trashed = fs.readdirSync(trashDir).filter((f) => f.includes('Trip'));
+  assert.strictEqual(trashed.length, 1, 'the bytes are IN the trash, recoverable');
+  let data = await (await get(`/api/podcasts/shows/${subId}/episodes`)).json();
+  let row = data.episodes.find((e) => e.id === epId);
+  assert.strictEqual(row.status, 'trashed');
+  assert.ok(Number.isFinite(row.trashedAt));
+  assert.ok(!('trashPath' in row), 'server paths never leak');
+  assert.strictEqual(row.progress.position, 42, 'per-user state SURVIVES the trash trip');
+
+  // Wrong-state refusals + the streaming guard now being load-bearing.
+  assert.strictEqual((await fetch(`${base}/api/podcasts/episodes/${epId}`, { method: 'DELETE' })).status, 400, 'double-delete refuses');
+  assert.strictEqual((await get(`/episode/${epId}`)).status, 404, 'a trashed episode does not stream (the status guard is now load-bearing)');
+
+  // Restore-collision: plant a file at the original path -> 409, trash intact.
+  fs.writeFileSync(epFile, 'INTRUDER');
+  const collide = await postJson(`/api/podcasts/episodes/${epId}/restore`, {});
+  assert.strictEqual(collide.status, 409);
+  assert.strictEqual(fs.readFileSync(epFile, 'utf8'), 'INTRUDER', 'never clobbers');
+  assert.strictEqual(fs.readdirSync(trashDir).filter((f) => f.includes('Trip')).length, 1, 'trash untouched');
+  fs.unlinkSync(epFile);
+
+  // Clean restore: bytes return, record flips, progress intact.
+  const restore = await postJson(`/api/podcasts/episodes/${epId}/restore`, {});
+  assert.strictEqual(restore.status, 200);
+  assert.strictEqual(fs.readFileSync(epFile, 'utf8'), 'TRIPBYTES', 'byte-identical bytes back at the original path');
+  data = await (await get(`/api/podcasts/shows/${subId}/episodes`)).json();
+  row = data.episodes.find((e) => e.id === epId);
+  assert.strictEqual(row.status, 'downloaded');
+  assert.strictEqual(row.progress.position, 42, 'resume position survives the whole round-trip');
+  assert.strictEqual((await postJson(`/api/podcasts/episodes/${epId}/restore`, {})).status, 400, 'restoring a non-trashed episode refuses');
+
+  // Vanished trash file: 410 + honest tombstone + per-user purge.
+  const del2 = await fetch(`${base}/api/podcasts/episodes/${epId}`, { method: 'DELETE' });
+  assert.strictEqual(del2.status, 200);
+  for (const f of fs.readdirSync(trashDir)) fs.unlinkSync(path.join(trashDir, f));
+  const gone = await postJson(`/api/podcasts/episodes/${epId}/restore`, {});
+  assert.strictEqual(gone.status, 410);
+  data = await (await get(`/api/podcasts/shows/${subId}/episodes`)).json();
+  assert.strictEqual(data.episodes.find((e) => e.id === epId).status, 'tombstone');
+  const { userStore } = require('../../server');
+  const u = userStore.listUsers()[0];
+  assert.strictEqual(userStore.getOnePodcastProgress(u.id, epId), null, 'purge retires the rows (trash kept them)');
+
+  // Phantom + non-downloaded refusals.
+  assert.strictEqual((await fetch(`${base}/api/podcasts/episodes/ffffffffffffffffffffffffffffffff`, { method: 'DELETE' })).status, 404);
+});
+
 test('the FOUR-way root guard: media/music/books configs all reject the podcasts root (both directions by shape)', async () => {
   const podcastsRoot = path.join(DATA_DIR, 'podcasts');
   const nested = path.join(podcastsRoot, 'Some Show');
