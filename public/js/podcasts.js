@@ -232,6 +232,12 @@
       counts.className = 'podcast-card-sub';
       counts.textContent = showCountLine(currentShow) + (currentShow.lastStatus ? ' · ' + currentShow.lastStatus : '');
       meta.appendChild(counts);
+      // The management row (v1.69 QA gate #3): pause/resume + unsubscribe +
+      // the secretMissing re-entry lane. RSS shows only - a ytdlp-sourced
+      // show is managed on its own /subscriptions page.
+      if (currentShow.source !== 'ytdlp') {
+        meta.appendChild(buildManageRow());
+      }
       head.appendChild(meta);
       content.appendChild(head);
 
@@ -245,6 +251,79 @@
       });
       content.appendChild(list);
       applyPlayingHighlight();
+    }
+
+    function buildManageRow() {
+      var row = document.createElement('div');
+      row.className = 'podcast-manage-row';
+
+      var pauseBtn = document.createElement('button');
+      pauseBtn.type = 'button';
+      pauseBtn.className = 'btn btn-sm';
+      pauseBtn.textContent = currentShow.paused ? 'Resume checks' : 'Pause checks';
+      pauseBtn.addEventListener('click', function () {
+        fetchJson('/api/podcasts/subscriptions/' + encodeURIComponent(currentShow.id), {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ paused: !currentShow.paused }),
+        }).then(function () {
+          currentShow.paused = !currentShow.paused;
+          pauseBtn.textContent = currentShow.paused ? 'Resume checks' : 'Pause checks';
+        }).catch(function () { setStatus('Could not update the subscription.'); });
+      }, { signal: signal });
+      row.appendChild(pauseBtn);
+
+      // Unsubscribe: the two-tap confirm (the trash-purge pattern), with the
+      // files-stay-on-disk disclosure IN the confirming label (D13).
+      var unsubBtn = document.createElement('button');
+      unsubBtn.type = 'button';
+      unsubBtn.className = 'btn btn-sm podcast-unsub-btn';
+      unsubBtn.textContent = 'Unsubscribe';
+      var confirming = false;
+      unsubBtn.addEventListener('click', function () {
+        if (!confirming) {
+          confirming = true;
+          unsubBtn.classList.add('confirming');
+          unsubBtn.textContent = 'Unsubscribe? Downloaded files stay on disk';
+          return;
+        }
+        fetchJson('/api/podcasts/subscriptions/' + encodeURIComponent(currentShow.id), { method: 'DELETE' })
+          .then(function () { backToGrid(); })
+          .catch(function () { setStatus('Could not unsubscribe.'); });
+      }, { signal: signal });
+      row.appendChild(unsubBtn);
+
+      // The secretMissing recovery lane (a restored backup lost the tokened
+      // URL): inline re-entry, wired to the same-feed-only route.
+      if (currentShow.secretMissing) {
+        var reenter = document.createElement('div');
+        reenter.className = 'podcast-reenter-row';
+        var input = document.createElement('input');
+        input.type = 'url';
+        input.className = 'search-input';
+        input.placeholder = 'Paste this feed’s URL again (with its token)';
+        reenter.appendChild(input);
+        var saveBtn = document.createElement('button');
+        saveBtn.type = 'button';
+        saveBtn.className = 'btn btn-sm btn-primary';
+        saveBtn.textContent = 'Save feed URL';
+        saveBtn.addEventListener('click', function () {
+          fetchJson('/api/podcasts/subscriptions/' + encodeURIComponent(currentShow.id) + '/feed-url', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ feedUrl: input.value.trim() }),
+          }).then(function () {
+            setStatus('Feed URL saved - checking the feed…');
+            startStatusPolling();
+            openShow(currentShow);
+          }).catch(function (err) {
+            setStatus(err.message || 'Could not save the feed URL.');
+          });
+        }, { signal: signal });
+        reenter.appendChild(saveBtn);
+        row.appendChild(reenter);
+      }
+      return row;
     }
 
     function buildEpisodeRow(ep) {
@@ -348,7 +427,7 @@
         channelName: currentShow.name,
         folderName: currentShow.name,
         duration: ep.durationSec || 0,
-        artUrl: '/podcastart/' + currentShow.id,
+        artUrl: '/podcastart/' + encodeURIComponent(currentShow.id),
         streamSrc: '/episode/' + ep.id,
         progressEndpoint: '/api/podcasts/progress',
         resumeMode: 'podcast',
@@ -432,6 +511,56 @@
         if (emptyNote) emptyNote.hidden = false;
       });
     }
+
+    // ---- the settings sheet (v1.69 QA gate #2) ----
+    var settingsBtn = root.querySelector('#podcasts-settings-btn');
+    var settingsSheet = root.querySelector('#podcasts-settings-sheet');
+    var settingsBackdrop = root.querySelector('#podcasts-settings-backdrop');
+    var settingsPoll = root.querySelector('#podcasts-settings-poll');
+    var settingsDir = root.querySelector('#podcasts-settings-dir');
+    var settingsSave = root.querySelector('#podcasts-settings-save');
+    var settingsCancel = root.querySelector('#podcasts-settings-cancel');
+    var settingsError = root.querySelector('#podcasts-settings-error');
+
+    function closeSettings() {
+      if (settingsSheet) settingsSheet.hidden = true;
+      if (settingsBackdrop) settingsBackdrop.hidden = true;
+    }
+    function openSettings() {
+      if (!settingsSheet) return;
+      if (settingsError) { settingsError.hidden = true; settingsError.textContent = ''; }
+      fetchJson('/api/podcasts/settings').then(function (s) {
+        if (settingsPoll) {
+          var v = String(s.pollMinutes);
+          // An interval outside the preset list still displays honestly.
+          if (![...settingsPoll.options].some(function (o) { return o.value === v; })) {
+            var opt = document.createElement('option');
+            opt.value = v;
+            opt.textContent = s.pollMinutes + ' minutes';
+            settingsPoll.appendChild(opt);
+          }
+          settingsPoll.value = v;
+        }
+        if (settingsDir) settingsDir.textContent = s.downloadDir + ' (set FILETUBE_PODCASTS_DIR to change)';
+        settingsSheet.hidden = false;
+        if (settingsBackdrop) settingsBackdrop.hidden = false;
+      }).catch(function () { setStatus('Could not load podcast settings.'); });
+    }
+    function saveSettings() {
+      fetchJson('/api/podcasts/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pollMinutes: Number(settingsPoll ? settingsPoll.value : 60) }),
+      }).then(function () {
+        closeSettings();
+      }).catch(function (err) {
+        if (settingsError) { settingsError.textContent = err.message || 'Could not save.'; settingsError.hidden = false; }
+      });
+    }
+    if (settingsBtn) settingsBtn.addEventListener('click', openSettings, { signal: signal });
+    if (settingsCancel) settingsCancel.addEventListener('click', closeSettings, { signal: signal });
+    if (settingsBackdrop) settingsBackdrop.addEventListener('click', closeSettings, { signal: signal });
+    if (settingsSave) settingsSave.addEventListener('click', saveSettings, { signal: signal });
 
     if (addBtn) addBtn.addEventListener('click', openSheet, { signal: signal });
     if (sheetCancel) sheetCancel.addEventListener('click', closeSheet, { signal: signal });

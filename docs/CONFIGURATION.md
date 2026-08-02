@@ -291,5 +291,9 @@ you to re-enter each tokened feed's URL once.
 
 Per-subscription download policy is chosen at add time: every episode (the
 default - a true offline cache; note a large back-catalog can be tens of
-GB), the latest N, or new episodes only. The feed check interval is set on
-the Podcasts page (default 60 minutes, `0` = manual checks only).
+GB), the latest N, or new episodes only. The feed check interval is set in
+the Podcasts page's **Settings** sheet (default 60 minutes, "manual checks
+only" to disable the timer); the same sheet shows where episodes are saved.
+Each show's own page carries pause/resume, unsubscribe (downloaded files
+always stay on disk), and - after a restore that lost a private feed's
+token - the "Save feed URL" re-entry field.

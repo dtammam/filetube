@@ -99,6 +99,9 @@
             <button class="btn btn-sm" id="podcasts-check-btn" type="button" title="Check every feed for new episodes now">
               <i class="icon-refresh"></i> Check feeds
             </button>
+            <button class="btn btn-sm" id="podcasts-settings-btn" type="button" title="Podcast settings">
+              <i class="icon-cog"></i> Settings
+            </button>
             <button class="btn btn-sm btn-primary" id="podcasts-add-btn" type="button" title="Subscribe to a podcast RSS feed">
               + Add podcast
             </button>
@@ -145,6 +148,31 @@
             <button type="button" class="btn btn-primary" id="podcasts-add-submit">Subscribe</button>
           </div>
           <div class="podcasts-add-error" id="podcasts-add-error" role="alert" hidden></div>
+        </div>
+
+        <!-- The podcast settings sheet (v1.69 QA gate #2/#3: the management
+             UI). Shares the add-sheet's classes - two surfaces rendering the
+             same affordance SHARE declarations, the styling-source rule. -->
+        <div class="podcasts-add-backdrop" id="podcasts-settings-backdrop" hidden></div>
+        <div class="podcasts-add-sheet" id="podcasts-settings-sheet" role="dialog" aria-modal="true" aria-labelledby="podcasts-settings-title" hidden>
+          <h3 id="podcasts-settings-title">Podcast settings</h3>
+          <label class="podcasts-add-label" for="podcasts-settings-poll">Check feeds every</label>
+          <select id="podcasts-settings-poll">
+            <option value="30">30 minutes</option>
+            <option value="60">Hour</option>
+            <option value="180">3 hours</option>
+            <option value="360">6 hours</option>
+            <option value="720">12 hours</option>
+            <option value="1440">Day</option>
+            <option value="0">Manual checks only</option>
+          </select>
+          <label class="podcasts-add-label">Episodes are saved to</label>
+          <p class="podcasts-add-hint" id="podcasts-settings-dir">&hellip;</p>
+          <div class="podcasts-add-actions">
+            <button type="button" class="btn" id="podcasts-settings-cancel">Cancel</button>
+            <button type="button" class="btn btn-primary" id="podcasts-settings-save">Save</button>
+          </div>
+          <div class="podcasts-add-error" id="podcasts-settings-error" role="alert" hidden></div>
         </div>
       </div>
     </main>

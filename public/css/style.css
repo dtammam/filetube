@@ -9235,7 +9235,15 @@ a.queue-upnext-next:hover {
   color: var(--text-inverse);
 }
 
-/* The add-subscription sheet: the playlists-sheet backdrop/panel idiom. */
+/* The management row on a show's drill-in (v1.69 QA gate #3). */
+.podcast-manage-row { display: flex; gap: var(--space-4); flex-wrap: wrap; align-items: center; margin-top: var(--space-3); }
+.podcast-unsub-btn.confirming { color: var(--yt-red); border-color: var(--yt-red); }
+.podcast-reenter-row { display: flex; gap: var(--space-4); flex-wrap: wrap; align-items: center; width: 100%; margin-top: var(--space-3); }
+.podcast-reenter-row .search-input { flex: 1; min-width: 220px; }
+
+/* The add-subscription sheet: the playlists-sheet backdrop/panel idiom.
+   The settings sheet (v1.69 QA #2) SHARES these classes - same affordance,
+   shared declarations, the styling-source rule. */
 .podcasts-add-backdrop {
   position: fixed;
   inset: 0;

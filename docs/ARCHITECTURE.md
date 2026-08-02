@@ -283,16 +283,19 @@ Design record: `docs/exec-plans/active/v1.69-podcasts-place.md` (moves to
   enclosure URLs embed the same token). Full URLs live ONLY in
   `<DATA_DIR>/podcast-feeds.json` (0600, atomic writes, corrupt-file
   preserved aside), which is structurally outside backup bundles; db records
-  carry origin+pathname display form only, and EVERY feed-derived string
-  (guid/link/title/description/author - the parser's guid fallback adopts
-  the enclosure URL, which carries the token) passes `redactSecretText`
-  (stored secrets + generic token shapes) at the persist boundary, as do
-  error/status strings. Raw enclosure URLs live in memory only for the
-  duration of a poll cycle (re-derived from the fresh feed each time -
-  Patreon signs them with expiring tokens anyway); what persists is at
-  most their redacted form. (v1.69 gate #2: the boundary redaction exists
-  because a guid-less item or a feed echoing its own tokened URL in prose
-  measurably leaked into the db/backup/API before it.) Consequence,
+  carry origin+pathname display form only. Episode identity (guid) is
+  normalized through `guidKey` - a one-way hash for anything outside the
+  safe charset, so the parser's guid fallback (a guid-less item adopts its
+  enclosure URL, which carries the token) can never persist a token, and
+  identity depends on nothing but the guid itself (NEVER on redaction:
+  gate CRITICAL D2 measured that keying identity through the secrets-map-
+  dependent scrubber let an unrelated subscription re-key and re-download
+  an untouched show's archive). Feed-derived PROSE (title/link/
+  description/author) passes `redactSecretText` (stored secrets + generic
+  token shapes) at the persist boundary, as do error/status strings. Raw
+  enclosure URLs live in memory only for the duration of a poll cycle
+  (re-derived from the fresh feed each time - Patreon signs them with
+  expiring tokens anyway). Consequence,
   disclosed: a bundle restored onto a fresh box marks tokened subs
   `secretMissing` and the UI asks for the URL again (same-feed display-form
   match required).
