@@ -54,7 +54,8 @@ function buildCardDownloadHref(id) {
 // title/ext can never produce a blank or "undefined"-suffixed filename.
 // Returned RAW (not HTML-escaped) -- callers building an HTML attribute
 // string must escape it themselves, exactly like this file's other
-// interpolated attribute values (see `escapeHtml` below).
+// interpolated attribute values (v1.67: the one caller is the corner
+// renderer, which escapes via module-scope `escapeBookRowHtml`).
 function buildCardDownloadFilename(title, ext) {
   return `${title || 'download'}${ext || ''}`;
 }
@@ -1674,6 +1675,10 @@ if (typeof module !== 'undefined' && module.exports) {
           const item = currentItems.find((it) => it.id === cardShareBtn.dataset.id);
           shareExternalUrl(url, item && item.title).then((outcome) => {
             if (outcome === 'copied') showToast('Link copied');
+            // QA S6: unlike the watch page (whose metadata block still shows
+            // the URL), a card has no visible fallback - a silent failure
+            // here reads as a dead button, so both failure outcomes toast.
+            if (outcome === 'copy-failed' || outcome === 'unavailable') showToast('Could not share the link.');
           });
         }
         return;

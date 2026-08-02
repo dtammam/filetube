@@ -57,7 +57,10 @@ test('style.css: .card-like-btn is an absolutely-positioned corner control that 
   // rule (now a selector group shared with share/reheat) keeps
   // position:absolute; the ANCHOR lives on the corner classes, and the C5
   // default assigns like to bottom-left (.card-corner-bl = bottom/left 6px).
-  const rule = /\.card-like-btn,[^{]*\{([^}]*)\}/.exec(css);
+  // Match the LOOK rule by its full selector group - a looser
+  // `.card-like-btn,` prefix match grabs the touch-action group at the top
+  // of the file (which .card-like-btn joined in gate round 2, QA S5).
+  const rule = /\.card-like-btn,\s*\.card-share-btn,\s*\.card-reheat-btn\s*\{([^}]*)\}/.exec(css);
   assert.ok(rule, 'expected the .card-like-btn look rule (grouped with share/reheat)');
   assert.match(rule[1], /position:\s*absolute;/);
   assert.ok(!/bottom:/.test(rule[1]) && !/left:/.test(rule[1]),

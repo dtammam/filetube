@@ -19,10 +19,12 @@
 // documented small-per-file-harness-duplication convention (see that file's
 // own header comment for the list of prior art this follows). `fetch` is
 // replaced with a fully controllable stub that answers `/api/config`,
-// `/api/settings`, and every `/api/videos?...` list request from an
-// in-memory fixture; `/api/subscriptions/pins` (an unrelated, independent
-// sidebar fetch) is left permanently unresolved, mirroring shell-smoke.test
-// .js's own "don't care about it" stubbing philosophy.
+// `/api/settings`, `/api/auth/me` (v1.67: the corner-pref latch made it a
+// fourth load-bearing home-boot endpoint - see the inline comment at the
+// stub), and every `/api/videos?...` list request from an in-memory
+// fixture; `/api/subscriptions/pins` (an unrelated, independent sidebar
+// fetch) is left permanently unresolved, mirroring shell-smoke.test.js's
+// own "don't care about it" stubbing philosophy.
 //
 // jsdom ships no `IntersectionObserver` implementation at all -- this suite
 // supplies its own small controllable stub (`beforeParse`) that records every

@@ -23,7 +23,11 @@ summary,
 .video-card,
 .sidebar-item,
 .card-download-btn,
-.card-delete-btn {
+.card-delete-btn,
+.card-like-btn,
+.card-queue-btn,
+.card-share-btn,
+.card-reheat-btn {
   touch-action: manipulation;
 }
 

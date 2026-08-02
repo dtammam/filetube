@@ -135,4 +135,8 @@ test('renderCardCornerEditor: a change POSTs exactly {cornerKey: value} and re-f
     const trValues = Array.from(selects[1].options).map((o) => o.value);
     assert.ok(!trValues.includes('share'), 'TR immediately drops TL\'s new pick (C2)');
     assert.ok(trValues.includes('download'), 'TL\'s ABANDONED default returns to the pool');
+    // QA S2: the C2 redraw destroys the changed <select>; the SAME slot's
+    // fresh select must be re-focused so an arrow-keying keyboard user
+    // (Firefox fires change per press) is not stranded on <body>.
+    assert.strictEqual(doc.activeElement, selects[0], 'focus returns to the changed slot after the redraw');
   }));

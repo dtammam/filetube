@@ -202,6 +202,26 @@ test('SHARE corner: renders only on items with the server-derived watchUrl; clic
   } finally { dom.window.close(); }
 });
 
+test('SHARE corner failure feedback (QA S6): no share sheet AND no clipboard -> a toast, never a silently dead button', async () => {
+  const { fetchImpl } = makeFetchStub({ meSettings: { cornerTL: 'share' } });
+  // beforeParse adds NO navigator.share; jsdom ships no navigator.clipboard
+  // either, so shareExternalUrl resolves 'unavailable' - the card path must
+  // surface that (the watch page's metadata block fallback does not exist
+  // on a card).
+  const dom = await loadIndex(fetchImpl);
+  try {
+    await settle();
+    const { document } = dom.window;
+    const btn = document.querySelector('#video-grid .card-share-btn[data-id="yt1"]');
+    assert.ok(btn, 'sanity: share corner rendered');
+    click(dom, btn.querySelector('i') || btn);
+    await settle();
+    const toasts = Array.from(document.querySelectorAll('.toast')).map((t) => t.textContent);
+    assert.ok(toasts.some((t) => t.includes('Could not share the link.')),
+      `expected the failure toast, saw: ${JSON.stringify(toasts)}`);
+  } finally { dom.window.close(); }
+});
+
 test('REHEAT corner: module health OK -> flame renders; click POSTs the per-item reheat endpoint', async () => {
   const { fetchImpl, calls } = makeFetchStub({ meSettings: { cornerBL: 'reheat' }, healthOk: true });
   const dom = await loadIndex(fetchImpl);

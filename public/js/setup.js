@@ -687,7 +687,13 @@ function drawCardCornerEditor(host, effective, signal) {
       // Redraw FIRST so the sibling pickers re-filter instantly (C2 live),
       // then persist; a failed save re-seeds the whole editor from the
       // server truth rather than leaving the UI lying about what stuck.
+      // QA S2: the redraw destroys the focused <select>, which strands a
+      // keyboard user (Firefox fires `change` per arrow press) - re-focus
+      // the SAME slot's fresh select so arrow-keying keeps working.
       drawCardCornerEditor(host, effective, signal);
+      const slotIndex = CORNER_EDITOR_SLOTS.findIndex((s) => s[0] === key);
+      const freshSelect = host.querySelectorAll('select')[slotIndex];
+      if (freshSelect) freshSelect.focus();
       fetch('/api/me/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
