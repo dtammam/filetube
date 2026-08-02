@@ -7486,6 +7486,36 @@ function deleteResultToast(data) {
 //   'copy-failed' - clipboard fallback threw (already console.error'd)
 //   'unavailable' - no share sheet AND no clipboard API (very old /
 //                   non-secure context; already console.error'd)
+// v1.68 (Dean ruling 4): a play also closes its own DELIVERED push banner,
+// so the phone's notification shade agrees with the app. The v1.66 worker
+// stamps each banner's deep link into notification.data.url
+// (/watch.html?v=<id> since v1.67.4) - matched here by PARSING the ?v param
+// (plan D4: URLSearchParams, never substring - "v=abc" must not close
+// "v=abc2"'s banner). Feature-detected at every step and total-silent
+// outside the PWA; resolves the count closed (tests) and never rejects.
+function closeDeliveredPushBanners(mediaId) {
+  if (typeof mediaId !== 'string' || mediaId === '') return Promise.resolve(0);
+  if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)
+    || !navigator.serviceWorker || typeof navigator.serviceWorker.getRegistration !== 'function') {
+    return Promise.resolve(0);
+  }
+  return navigator.serviceWorker.getRegistration()
+    .then((reg) => (reg && typeof reg.getNotifications === 'function' ? reg.getNotifications() : []))
+    .then((list) => {
+      let closed = 0;
+      for (const n of list || []) {
+        const url = n && n.data && typeof n.data.url === 'string' ? n.data.url : '';
+        let v = null;
+        try { v = new URL(url, 'http://localhost').searchParams.get('v'); } catch (_) { /* unparseable - skip */ }
+        if (v === mediaId) {
+          try { n.close(); closed++; } catch (_) { /* already gone */ }
+        }
+      }
+      return closed;
+    })
+    .catch(() => 0);
+}
+
 function shareExternalUrl(url, title) {
   if (typeof navigator.share === 'function') {
     return navigator.share({ title: title || 'FileTube', url })
@@ -9463,6 +9493,9 @@ if (typeof module !== 'undefined' && module.exports) {
       if (typeof __notifBellPollStopForTests === 'function') __notifBellPollStopForTests();
       __notifBellPollStopForTests = null;
     },
+    // v1.68 (ruling 4): the delivered-banner closer, executed in tests
+    // against a stubbed registration.
+    closeDeliveredPushBanners,
     // v1.52: the instant-watch seed stash (single-entry, id-matched, aged) +
     // the pure paint-plan builder the watch painter applies verbatim.
     stashWatchSeed, consumeWatchSeed, deriveWatchPaintPlan, isFullWatchSeedItem,

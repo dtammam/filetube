@@ -995,6 +995,11 @@ if (typeof module !== 'undefined' && module.exports) {
       if (viewPinged) return;
       viewPinged = true;
       fetch('/api/videos/' + encodeURIComponent(id) + '/view', { method: 'POST', signal }).catch(() => {});
+      // v1.68 (Dean ruling 4): the same play moment retires this video's
+      // DELIVERED push banner from the phone's shade (common.js helper -
+      // feature-detected, silent no-op outside the PWA). The server-side
+      // half (the bell-row dismissal) rides the ping above.
+      closeDeliveredPushBanners(id);
     }
 
     // Initialize page
