@@ -1000,8 +1000,54 @@ function resolveChaptersMenuMaxHeight(geom) {
 // Guarded so requiring this file in Node (for unit tests) never touches
 // `window`/`document` -- mirrors common.js's own `if (typeof window ...)`
 // runtime guard immediately below.
+// v1.67.5 (Dean's on-device trigger): the faux-fullscreen SCROLL KEEPER's
+// pure plan. iOS Safari does not lock body scrolling via
+// `body.ft-css-fullscreen { overflow: hidden }`, so touch gestures on the
+// fixed overlay (scrubbing, double-tap skip, rubber-banding) drift the page
+// scroll underneath faux-fullscreen; exiting restored the layout but not
+// the scroll, leaving the video top tucked under the fixed header.
+// `setCssFullscreen` runs this plan on every call:
+//   - OFF -> ON  captures the current scroll (the pre-entry position).
+//   - ON  -> OFF restores the capture - but ONLY while the player is still
+//     FULL. The dock/close off-path (`applyControlsMode`'s
+//     `state !== STATE_FULL` guard) fires AFTER a navigation's own scroll
+//     restore, and restoring the watch page's offset onto the DESTINATION
+//     view would clobber it. The capture is ALWAYS cleared on exit.
+//   - No-transition calls (the off-path re-asserts constantly; a second
+//     `on` from the webkitbeginfullscreen intercept) are inert - an
+//     already-on re-capture would save a DRIFTED position and defeat the
+//     whole restore.
+// `restoreTo` is null-or-number: 0 is a real position, and a non-number
+// capture never restores (typeof guard - the coercion scar).
+//
+// v1.67.5 gate C1 (adversarial, measured repro): `restoreEligible` is
+// CALLER eligibility, not player state. The first cut gated restore on
+// `state === STATE_FULL` alone - but watch->watch navigation never docks
+// (shouldDockOnTransition('watch','watch') is false), so the TEARDOWN
+// off-call runs with state still FULL, AFTER the router has already set the
+// new page's scroll, and the restore stamped the OLD page's capture onto
+// the NEW page - the exact symptom this fix exists to kill, reintroduced on
+// the queue/autoplay-advance and back-navigation paths. The teardown
+// ON->OFF is only ever reachable cross-page, so it must NEVER restore. The
+// discriminator is therefore the CALL SITE: only the explicit fullscreen
+// exit button opts in (setCssFullscreen's `restoreScroll` option, belt-and-
+// braces AND-ed with the FULL check there).
+function resolveCssFsScrollPlan(wasOn, nextOn, restoreEligible, savedY, currentY) {
+  if (!wasOn && nextOn) {
+    return { savedY: typeof currentY === 'number' && !isNaN(currentY) ? currentY : 0, restoreTo: null };
+  }
+  if (wasOn && !nextOn) {
+    return {
+      savedY: null,
+      restoreTo: (restoreEligible && typeof savedY === 'number' && !isNaN(savedY)) ? savedY : null,
+    };
+  }
+  return { savedY: typeof savedY === 'number' && !isNaN(savedY) ? savedY : null, restoreTo: null };
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
+    resolveCssFsScrollPlan,
     // v1.63 playback queue: the ended-table extension + the client mirror
     // of the server's nextEntry (the server reducers stay the authority).
     computeQueueNext,
@@ -1425,12 +1471,25 @@ if (typeof module !== 'undefined' && module.exports) {
 
   // v1.34.4: faux-fullscreen state setter -- host class (the fixed overlay
   // treatment) and body class (scroll freeze + header/nav hide) must always
-  // move together.
-  function setCssFullscreen(on) {
+  // move together. v1.67.5: plus the scroll keeper -- the body "freeze"
+  // (overflow: hidden) does NOT hold on iOS, so the pre-entry scroll is
+  // captured here and re-asserted on exit. Restore is CALL-SITE opt-in
+  // (`opts.restoreScroll`, passed ONLY by the fullscreen exit button):
+  // the teardown and dock off-paths run around navigations whose own
+  // scroll placement must win (gate C1 - see resolveCssFsScrollPlan's
+  // header for the measured watch->watch clobber the state-only gate had).
+  var cssFsSavedScrollY = null;
+  function setCssFullscreen(on, opts) {
+    var wasOn = !!(host && host.classList.contains('css-fullscreen'));
     if (host) host.classList.toggle('css-fullscreen', !!on);
     if (typeof document !== 'undefined' && document.body) {
       document.body.classList.toggle('ft-css-fullscreen', !!on);
     }
+    var currentY = typeof window.pageYOffset === 'number' ? window.pageYOffset : window.scrollY;
+    var restoreEligible = !!(opts && opts.restoreScroll) && state === STATE_FULL;
+    var plan = resolveCssFsScrollPlan(wasOn, !!on, restoreEligible, cssFsSavedScrollY, currentY);
+    cssFsSavedScrollY = plan.savedY;
+    if (plan.restoreTo !== null) window.scrollTo(0, plan.restoreTo);
   }
 
   // Native-controls round: true while the native iOS/browser `controls` strip
@@ -4355,7 +4414,10 @@ if (typeof module !== 'undefined' && module.exports) {
         // right behavior -- period.
         if (isMobileFormFactor() && !inNativeControlsMode() &&
             currentData && currentData.type !== 'audio' && state === STATE_FULL) {
-          setCssFullscreen(!host.classList.contains('css-fullscreen'));
+          // restoreScroll: the ONLY restore-eligible off-caller (gate C1) --
+          // an explicit user exit puts the page back where they left it;
+          // inert on the ON direction (the plan captures, never restores).
+          setCssFullscreen(!host.classList.contains('css-fullscreen'), { restoreScroll: true });
           return;
         }
         // 'native-fullscreen' -- EXISTING video path, byte-identical to

@@ -80,6 +80,39 @@
 
 ## Shipped
 
+### v1.67.5 - The video top stops hiding under the header (2026-08-02)
+
+Dean pinned an elusive intermittent bug to its trigger: on the mobile
+CUSTOM player, exit fullscreen with the button and the page sits
+partially scrolled - the video top tucked under the fixed header until
+you nudge it. Root cause: custom-mode mobile fullscreen is CSS
+faux-fullscreen (iPhone element-fullscreen is always the native player,
+so custom mode fakes it with a fixed overlay), and its only scroll
+defense was `body { overflow: hidden }` - which iOS Safari does NOT
+honor for body scrolling. Every scrub, double-tap skip, and rubber-band
+inside fullscreen could drift the page underneath; exit restored the
+layout and never the scroll. The fix captures the pre-entry scroll when
+faux-fullscreen engages and re-asserts it on exit.
+
+The slim gate earned its seat twice over. The first cut gated the
+restore on "player still fullscreen" - and the adversarial seat proved
+with a runnable repro that watch-to-watch navigation (queue/autoplay
+advancing to the next video, or back-button to a previous watch page)
+never docks the player, so the teardown path would have stamped the OLD
+page's scroll onto the NEW page: the exact reported symptom,
+reintroduced by the fix meant to kill it. Restore is now opt-in per
+call site - only the explicit exit button qualifies. The seat also
+crafted four mutants that slipped past the first-cut source locks
+(presence, not behavior); the locks are now exact-statement + ordering
+assertions, and seven total mutants die with zero survivors.
+
+DISCLOSED: the unit tier proves the scroll-plan logic and its wiring;
+the iOS gesture-drift itself is device-only. Dean's probes: (1) custom
+player, fullscreen, scrub around, exit with the button - the page sits
+where it was; (2) enter fullscreen scrolled partway down a watch page,
+let the queue auto-advance, confirm the NEXT video's page opens at the
+top. Dual-Node of record: v22.23.1 5593/5593, v24.14.0 5593/5593.
+
 ### v1.67.4 - Web Push: tapping the notification opens the video (2026-08-02)
 
 With delivery finally working (the fix was config, not code: Apple's push
