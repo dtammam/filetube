@@ -6,12 +6,15 @@
 // write each test to kill a named mutant).
 //
 // Mutants these exist to kill:
-//   M1: delete the shedder's /push-sw.js exemption line -> the push worker
-//       is unregistered on every page boot and pushes die within a day.
+//   M1: delete the shedder's worker exemption -> the push worker is
+//       unregistered on every page boot and pushes die within a day.
 //   M2: widen the exemption to '/sw.js' (the wave's FIRST draft, caught by
 //       the QA seat) -> the v1.26.4 offline worker, which registered at
 //       exactly that path, is spared forever and its fetch handler keeps
 //       intercepting media on old installs.
+//   (v1.67.3: the worker is /filetube-worker.js; the old /push-sw.js stays
+//   exempt so devices that subscribed under it keep push until the reconcile
+//   upgrades them in place.)
 //   M3: gut reconcilePushSubscription's POST -> a users-restore silently
 //       kills every device until each one re-enables by hand (the D2
 //       self-heal is the disclosed compensation for bundle exclusion).
@@ -61,22 +64,22 @@ function withPlatform({ registrations = [], registration = null, fetchImpl }, fn
   })();
 }
 
-test('shedder: sheds the REAL v1.26.4 offline worker (/sw.js) and anything foreign, but never /push-sw.js (kills M1+M2)', () =>
+test('shedder: sheds /sw.js and anything foreign, but spares BOTH FileTube worker names - the current /filetube-worker.js AND the old /push-sw.js (v1.67.3 migration) (kills M1+M2)', () =>
   withPlatform({
     registrations: [
       // The v1.26.4 worker's ACTUAL url - verified against d96a7f8, which
-      // registered '/sw.js'. The first version of this fixture invented
-      // '/sw-offline.js', so it asserted the shed of a worker that never
-      // existed while the real one was silently exempt (divergent fixture
-      // in the wrong direction; QA W2).
+      // registered '/sw.js'. (An earlier fixture invented '/sw-offline.js',
+      // asserting the shed of a worker that never existed while the real one
+      // was silently exempt - divergent fixture in the wrong direction, QA W2.)
       { scriptURL: 'https://filetube.example/sw.js' },
-      { scriptURL: 'https://filetube.example/push-sw.js' },    // the v1.66 push worker
+      { scriptURL: 'https://filetube.example/filetube-worker.js' }, // the v1.67.3 worker
+      { scriptURL: 'https://filetube.example/push-sw.js' },         // old-name device: MUST survive (live subscription)
       { scriptURL: 'https://filetube.example/js/other-sw.js' },
-      // A nested lookalike: a SUFFIX exemption would spare this too. The
-      // exemption matches the exact pathname, so it is shed.
+      // Nested lookalikes: a SUFFIX exemption would spare these. Exact
+      // pathname only, so both are shed.
+      { scriptURL: 'https://filetube.example/media/user/filetube-worker.js' },
       { scriptURL: 'https://filetube.example/media/user/push-sw.js' },
-      // Query-string and case variants must not sneak past either.
-      { scriptURL: 'https://filetube.example/push-sw.js?v=2' },
+      // Case variant must not sneak past.
       { scriptURL: 'https://filetube.example/PUSH-SW.js' },
       { scriptURL: '' }, // torn registration: fail closed, shed it
     ],
@@ -87,22 +90,26 @@ test('shedder: sheds the REAL v1.26.4 offline worker (/sw.js) and anything forei
       '',
       'https://filetube.example/PUSH-SW.js',
       'https://filetube.example/js/other-sw.js',
+      'https://filetube.example/media/user/filetube-worker.js',
       'https://filetube.example/media/user/push-sw.js',
       'https://filetube.example/sw.js',
-    ], 'the real offline worker, the foreign one, the nested lookalike, the case variant and a torn registration are ALL shed');
+    ], 'the offline worker, the foreign one, both nested lookalikes, the case variant and a torn registration are ALL shed');
+    assert.ok(!calls.unregistered.includes('https://filetube.example/filetube-worker.js'),
+      'the current worker survives');
     assert.ok(!calls.unregistered.includes('https://filetube.example/push-sw.js'),
-      'the push worker survives the shed pass');
-    assert.ok(calls.unregistered.includes('https://filetube.example/PUSH-SW.js'),
-      'case variants are not the push worker');
+      'the OLD-name worker survives too (its device carries a live subscription the reconcile upgrades)');
   }));
 
-test('shedder: a push worker registered with a cache-busting query string is still the push worker (pathname match, not URL match)', () =>
+test('shedder: either worker name with a cache-busting query string is still spared (pathname match, not URL match)', () =>
   withPlatform({
-    registrations: [{ scriptURL: 'https://filetube.example/push-sw.js?v=2' }],
+    registrations: [
+      { scriptURL: 'https://filetube.example/filetube-worker.js?v=2' },
+      { scriptURL: 'https://filetube.example/push-sw.js?v=9' },
+    ],
   }, async (calls) => {
     unregisterStaleServiceWorkers();
     await settle();
-    assert.deepEqual(calls.unregistered, [], 'a query string does not make it a foreign worker');
+    assert.deepEqual(calls.unregistered, [], 'a query string does not make either a foreign worker');
   }));
 
 test('reconcile: an existing device subscription re-POSTs to the server and freshens the worker (kills M3)', () => {
@@ -119,7 +126,7 @@ test('reconcile: an existing device subscription re-POSTs to the server and fres
     assert.ok(post, 'the subscription re-asserted server-side');
     assert.equal(post.opts.method, 'POST');
     assert.equal(JSON.parse(post.opts.body).endpoint, 'https://push.example/wp/Reconcile-1');
-    assert.deepEqual(calls.registered, ['/push-sw.js'], 'the worker file freshened through the ONE register site');
+    assert.deepEqual(calls.registered, ['/filetube-worker.js'], 'the worker file freshened through the ONE register site (the v1.67.3 name - this is also the in-place upgrade path for old-name devices)');
   });
 });
 

@@ -128,10 +128,13 @@ test('route census: the documented allowlist IS reachable pre-auth (positive con
   assert.equal(await probeGated('GET', '/css/style.css'), false);
   assert.equal(await probeGated('GET', '/js/common.js'), false);
   assert.equal(await probeGated('GET', '/js/login.js'), false, 'login.js must reach the browser pre-auth or sign-in is impossible');
-  assert.equal(await probeGated('GET', '/push-sw.js'), false, 'v1.66: the SW update check fetches this itself; a 401 body in the SW slot is the login.js failure shape one layer down');
-  // And the RETIRED v1.26.4 worker path is not allowlisted - nothing is
-  // served there, and it must never become a pre-auth hole by inheritance.
-  assert.equal(await probeGated('GET', '/sw.js'), true, '/sw.js stays gated: no push worker lives there');
+  assert.equal(await probeGated('GET', '/filetube-worker.js'), false, 'v1.66: the SW update check fetches this itself; a 401 body in the SW slot is the login.js failure shape one layer down');
+  // The retired worker paths are NOT allowlisted - nothing is served there,
+  // and neither must become a pre-auth hole by inheritance. /push-sw.js was
+  // renamed in v1.67.3 (ad-blocker filter-list collision); /sw.js is the
+  // v1.26.4 offline worker's dead path.
+  assert.equal(await probeGated('GET', '/sw.js'), true, '/sw.js stays gated: no worker lives there');
+  assert.equal(await probeGated('GET', '/push-sw.js'), true, '/push-sw.js stays gated: renamed in v1.67.3, no file there');
   assert.equal(await probeGated('GET', '/logo'), false);
   assert.equal(await probeGated('POST', '/api/auth/login'), false);
 });

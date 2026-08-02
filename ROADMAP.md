@@ -80,6 +80,30 @@
 
 ## Shipped
 
+### v1.67.3 - Web Push: the worker was named like an ad (2026-08-02)
+
+The reason iOS registration failed came out of the now-visible diagnostic:
+`[SecurityError: Script .../push-sw.js load failed]`. The server was proven
+healthy (valid cert, right MIME, a clean 200 from outside), so the block
+was on the phone - content blockers (uBlock Origin, Wipr, Vinegar) refuse
+to load scripts named like push-marketing SDKs, and `push-sw.js` is a
+canonical entry in their filter lists. Disabling the blockers made
+registration work; the durable fix is to stop naming the worker like the
+thing being blocked.
+
+The service worker is now **`/filetube-worker.js`** (no "push" or
+"notification" tokens for a blocklist to match) - this SUPERSEDES the
+`ships at /push-sw.js` line in the v1.66 entry below, and the worker still
+has no fetch handler and never touches cache storage. Devices that already
+subscribed under the old name keep their subscription: the boot reconcile
+re-registers the new script into the same scope (an in-place upgrade - the
+subscription belongs to the registration, not the URL), and the cleanup
+sweep spares both names during the transition. Slim gate (9 mutants, the
+migration exemption verified load-bearing), dual-Node 5583/5583.
+
+(Also note: the `?pushdebug=1` flag from the v1.67.1 entry no longer exists
+- v1.67.2 made that diagnostic always-on.)
+
 ### v1.67.2 - Web Push: the diagnostic reaches the phone (2026-08-02)
 
 Dean's device re-test on v1.67.1 worked - the button now spoke - and what

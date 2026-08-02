@@ -16,7 +16,7 @@
 // reliable background media is the product.
 //
 // v1.66 AMENDMENT (Dean's approved ruling, exec plan v1.66): a PUSH-ONLY
-// worker returns -- at public/PUSH-SW.js, deliberately NOT public/sw.js.
+// worker returns -- deliberately NOT at public/sw.js.
 // The removed v1.26.4 worker registered at exactly `/sw.js` (d96a7f8), so a
 // push worker on that path would make the boot shedder unable to tell the
 // two apart; the first draft of this wave did exactly that and the QA seat
@@ -25,13 +25,23 @@
 // the v1.27.2 failure mechanism is excluded BY CONSTRUCTION -- and stays
 // excluded only while the locks below hold:
 //   - public/sw.js must STILL not exist (the original lock, unchanged),
-//   - push-sw.js must NEVER add a 'fetch' listener or touch cache storage,
+//   - the worker must NEVER add a 'fetch' listener or touch cache storage,
 //   - exactly ONE serviceWorker.register() call site exists (common.js's
 //     registerPushWorker -- setup.js and the boot reconcile route through
-//     it), and it registers /push-sw.js,
-//   - the shedder unregisters every registration EXCEPT /push-sw.js --
-//     including /sw.js, forever.
+//     it), and it registers /filetube-worker.js,
+//   - the shedder unregisters every registration EXCEPT FileTube's own
+//     worker names -- including /sw.js, forever.
 // public/offline.html stays deleted forever.
+//
+// v1.67.3 AMENDMENT: the worker's second name, public/push-sw.js, is a
+// canonical push-marketing-SDK filename that ad-blocker FILTER LISTS match:
+// content blockers (uBlock/Wipr/Vinegar, measured on Dean's iPhone)
+// refused to load it -- [SecurityError: Script load failed] -- while every
+// sibling script loaded and the server was proven healthy. The file is now
+// public/filetube-worker.js (no blocklist tokens). push-sw.js must not
+// exist as a FILE, but its PATHNAME stays exempt in the shedder: devices
+// that registered under it carry live push subscriptions, and the boot
+// reconcile upgrades them in place (same scope keeps the subscription).
 //
 // (File keeps its v1264- name so the release-numbered history of what it
 // guards stays greppable next to the other v1264-* locks.)
@@ -43,30 +53,32 @@ const path = require('node:path');
 
 const ROOT = path.join(__dirname, '..', '..');
 const COMMON_JS = fs.readFileSync(path.join(ROOT, 'public', 'js', 'common.js'), 'utf8');
-const SW_JS = fs.readFileSync(path.join(ROOT, 'public', 'push-sw.js'), 'utf8');
+const SW_JS = fs.readFileSync(path.join(ROOT, 'public', 'filetube-worker.js'), 'utf8');
 const ESLINT_CONFIG = fs.readFileSync(path.join(ROOT, 'eslint.config.js'), 'utf8');
 
-test('amended lock: public/push-sw.js exists; public/sw.js and public/offline.html stay deleted', () => {
-  assert.ok(fs.existsSync(path.join(ROOT, 'public', 'push-sw.js')), 'public/push-sw.js is the v1.66 push worker');
+test('amended lock: public/filetube-worker.js exists; sw.js, push-sw.js and offline.html stay deleted', () => {
+  assert.ok(fs.existsSync(path.join(ROOT, 'public', 'filetube-worker.js')), 'public/filetube-worker.js is the push worker (v1.67.3 name)');
   assert.ok(!fs.existsSync(path.join(ROOT, 'public', 'sw.js')),
     'public/sw.js must STAY deleted -- it is the v1.26.4 offline worker\'s path, and the shedder must be free to kill anything found there');
+  assert.ok(!fs.existsSync(path.join(ROOT, 'public', 'push-sw.js')),
+    'public/push-sw.js must STAY deleted -- the name is an ad-blocker filter-list pattern (v1.67.3); only its shedder exemption survives, for old-name devices');
   assert.ok(!fs.existsSync(path.join(ROOT, 'public', 'offline.html')), 'public/offline.html must stay deleted');
 });
 
-test('push-only lock: push-sw.js has NO fetch listener and NO cache-storage use -- the v1.27.2 failure mechanism stays excluded', () => {
+test('push-only lock: the worker has NO fetch listener and NO cache-storage use -- the v1.27.2 failure mechanism stays excluded', () => {
   assert.ok(
     !/addEventListener\(\s*['"`]fetch['"`]/.test(SW_JS),
-    'push-sw.js must never listen for fetch events (WebKit 184447: even pass-through fetch handlers break media playback)'
+    'the worker must never listen for fetch events (WebKit 184447: even pass-through fetch handlers break media playback)'
   );
   assert.ok(!/\bonfetch\b/.test(SW_JS), 'no onfetch assignment either');
   assert.ok(
     !/\bcaches\s*[.[]/.test(SW_JS) && !/\bCacheStorage\b/.test(SW_JS) && !/caches\b\s*=>/.test(SW_JS),
-    'push-sw.js must never touch the cache storage API (no offline shell by another name)'
+    'the worker must never touch the cache storage API (no offline shell by another name)'
   );
   assert.match(SW_JS, /184447/, 'the WebKit rationale must survive at the contract site');
 });
 
-test('push-only lock: push-sw.js actually handles push + notificationclick (the reason it exists)', () => {
+test('push-only lock: the worker actually handles push + notificationclick (the reason it exists)', () => {
   assert.match(SW_JS, /addEventListener\(\s*'push'/);
   assert.match(SW_JS, /addEventListener\(\s*'notificationclick'/);
   assert.match(SW_JS, /addEventListener\(\s*'pushsubscriptionchange'/);
@@ -83,7 +95,7 @@ test('push-only lock: push-sw.js actually handles push + notificationclick (the 
 });
 
 // Ruling P4, bound by BEHAVIOR against the real exported decision.
-const { decidePushDisplay } = require('../../public/push-sw.js');
+const { decidePushDisplay } = require('../../public/filetube-worker.js');
 
 test('P4: any visible window suppresses the OS banner and nudges instead; no visible window notifies', () => {
   // [visibilityStates, expected] -- the whole truth table, including the
@@ -121,12 +133,12 @@ test('single-register lock: exactly ONE serviceWorker.register call site, in com
   }
   assert.deepEqual(sites, [['common.js', 1]],
     'the ONE register site is common.js registerPushWorker -- every other flow must route through it');
-  assert.match(COMMON_JS, /function registerPushWorker\(\) \{\s*\n\s*return navigator\.serviceWorker\.register\('\/push-sw\.js'\);/,
-    'and it registers exactly /push-sw.js at root scope -- never /sw.js');
-  assert.ok(!/serviceWorker\.register\(/.test(SW_JS), 'push-sw.js never registers workers');
+  assert.match(COMMON_JS, /return navigator\.serviceWorker\.register\('\/filetube-worker\.js'\);/,
+    'and it registers exactly /filetube-worker.js at root scope -- never /sw.js, never the blocklisted /push-sw.js');
+  assert.ok(!/serviceWorker\.register\(/.test(SW_JS), 'the worker never registers workers');
 });
 
-test('cleanup lock: unregisterStaleServiceWorkers() survives -- feature-detects, exempts ONLY /push-sw.js, unregisters everything else (INCLUDING /sw.js), swallows all failures', () => {
+test('cleanup lock: unregisterStaleServiceWorkers() survives -- exempts ONLY FileTube worker pathnames (new + old-name migration), unregisters everything else (INCLUDING /sw.js), swallows all failures', () => {
   const match = /function unregisterStaleServiceWorkers\(\) \{([\s\S]*?)\n\}/.exec(COMMON_JS);
   assert.ok(match, 'expected unregisterStaleServiceWorkers() in common.js -- old installs may still carry the v1.26.4 offline SW');
   const body = match[1];
@@ -140,10 +152,11 @@ test('cleanup lock: unregisterStaleServiceWorkers() survives -- feature-detects,
   const code = body.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
   assert.match(code, /if \(typeof navigator === 'undefined' \|\| !\('serviceWorker' in navigator\)\) return;/);
   assert.match(code, /getRegistrations\(\)/);
+  assert.match(code, /pathname === '\/filetube-worker\.js'\) return;/,
+    'the exemption is the EXACT pathname /filetube-worker.js -- an exemption matching /sw.js would spare the v1.26.4 offline worker itself (measured, QA W2), and a suffix match would spare any nested lookalike');
   assert.match(code, /pathname === '\/push-sw\.js'\) return;/,
-    'the v1.66 exemption is the EXACT pathname /push-sw.js -- an exemption matching /sw.js would spare the v1.26.4 offline worker itself (measured, QA W2), and a suffix match would spare any nested lookalike');
-  assert.ok(!/endsWith\('\/sw\.js'\)/.test(code), 'and it must never be widened back to /sw.js');
-  assert.ok(!/endsWith\('\/push-sw\.js'\)/.test(code), 'nor loosened back to a suffix match');
+    'the OLD name stays exempt (v1.67.3 migration): devices that registered under /push-sw.js carry live subscriptions the reconcile upgrades in place - shedding them would kill push on every existing device');
+  assert.ok(!/endsWith\(/.test(code), 'no suffix matching anywhere in the shedder - exact pathnames only');
   assert.match(code, /r\.unregister\(\)\.catch\(\(\) => \{\}\)/, 'each individual unregister failure must be swallowed');
   // This one MUST read the raw body: the swallow it locks is spelled with an
   // inline comment inside the catch block, which stripping would remove.
@@ -161,8 +174,8 @@ test('cleanup lock: the WebKit rationale is documented at the cleanup site (bug 
   assert.match(COMMON_JS, /suspends SW processes/i);
 });
 
-test('eslint lock: serviceworker globals exist and are scoped to EXACTLY public/push-sw.js', () => {
-  assert.match(ESLINT_CONFIG, /globals\.serviceworker/, 'push-sw.js needs its lint scope (v1.66)');
-  const block = /\{\s*\n\s*files: \['public\/push-sw\.js'\],[\s\S]*?globals\.serviceworker[\s\S]*?\}/.exec(ESLINT_CONFIG);
-  assert.ok(block, 'the serviceworker globals block is scoped to public/push-sw.js only');
+test('eslint lock: serviceworker globals exist and are scoped to EXACTLY public/filetube-worker.js', () => {
+  assert.match(ESLINT_CONFIG, /globals\.serviceworker/, 'the worker needs its lint scope (v1.66)');
+  const block = /\{\s*\n\s*files: \['public\/filetube-worker\.js'\],[\s\S]*?globals\.serviceworker[\s\S]*?\}/.exec(ESLINT_CONFIG);
+  assert.ok(block, 'the serviceworker globals block is scoped to public/filetube-worker.js only');
 });
