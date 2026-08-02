@@ -77,19 +77,21 @@ test('probe failure paths fail CLOSED: rejected fetch and non-ok response inject
   });
 });
 
-test('deterministic Library order Music > Books > History for EVERY injection race order (QA S2)', () =>
+test('deterministic Library order Music > Books > Podcasts > History for EVERY injection race order (QA S2; v1.69 QA S1: all 24 four-entry permutations)', () =>
   withDom(jsonResponse({ total: 1 }), async () => {
-    const orders = [
-      ['music', 'books', 'history'],
-      ['history', 'books', 'music'],
-      ['books', 'history', 'music'],
-      ['history', 'music', 'books'],
-      ['music', 'history', 'books'],
-      ['books', 'music', 'history'],
-    ];
+    // Every permutation of the four entries, generated - a hand list rots.
+    const keys = ['music', 'books', 'podcasts', 'history'];
+    const orders = [];
+    const permute = (rest, acc) => {
+      if (rest.length === 0) { orders.push(acc); return; }
+      for (const k of rest) permute(rest.filter((x) => x !== k), [...acc, k]);
+    };
+    permute(keys, []);
+    assert.equal(orders.length, 24);
     const spec = {
       music: ['/music', 'Music', 'icon-play'],
       books: ['/books', 'Books', 'icon-folder'],
+      podcasts: ['/podcasts', 'Podcasts', 'icon-podcast'],
       history: ['/history', 'History', 'icon-history'],
     };
     for (const order of orders) {
@@ -99,6 +101,6 @@ test('deterministic Library order Music > Books > History for EVERY injection ra
       for (const key of order) injectLibraryNavEntry(key, ...spec[key]);
       const seen = Array.from(list.parentElement.querySelectorAll('[data-nav-sidebar]'))
         .map((el) => el.getAttribute('data-nav-sidebar'));
-      assert.deepEqual(seen, ['music', 'books', 'history'], 'race order ' + order.join(','));
+      assert.deepEqual(seen, ['music', 'books', 'podcasts', 'history'], 'race order ' + order.join(','));
     }
   }));

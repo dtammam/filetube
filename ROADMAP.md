@@ -80,6 +80,56 @@
 
 ## Shipped
 
+### v1.69.0 - Podcasts: a first-class place + private-RSS engine (2026-08-02)
+
+Dean's ask: a true offline cache of his Patreon podcast library, grown
+into a Podcasts place alongside Books and Music. Subscribe to any
+podcast RSS feed - public, or private tokened ones (Patreon's "listen
+in other podcast apps" URL) - with per-feed backfill policy (every
+episode / latest N / new-only), a show grid -> episode drill UI,
+docked playback that ALWAYS resumes, per-user played/resume state
+(schema v9, the TENTH id-keyed carrier), and a per-sub "file under
+Podcasts" toggle for existing yt-dlp audio subscriptions. The feed URL
+is treated as a credential: stored only in a 0600 file outside the db
+and outside backups, episode identities are one-way hashes, prose is
+pattern-scrubbed, enclosure URLs never persist raw. Downloads ride the
+(newly shared) heavy-job gate, stream through atomic .ptpart temps,
+and reconcile under BOTH mount-loss guards. Designed against Dean's
+real feed: 484 episodes, 42.3 GB, single-line XML, tokened enclosures
+behind a CDN redirect.
+
+WHAT THE GATE CAUGHT (full gate, 4 adversarial rounds + QA + 2 hash
+re-confirms; every claim below measured, not read): a CRITICAL
+mount-loss gap (a transient unmount would have tombstoned the whole
+archive unrecoverably - the v1.33 empty-mountpoint lesson,
+re-learned); a token leak through guid/prose persistence into
+db/backup/API; the poll timer never arming until restart; /podcasts
+missing the shell treatment; pre-v1.69 backups wiping the podcasts
+namespace and stranding an unremovable credential; unsubscribe not
+stopping a running backfill; a parser CDATA/comment interaction that
+silently deleted items and paired an episode with ANOTHER episode's
+audio forever; a serialization claim with no binding test. Then the
+FIX round introduced two CRITICALs of its own (a quadratic parser
+freeze; episode identity coupled to the global secrets map - an
+unrelated new subscription re-downloaded an untouched show's archive),
+and the lock for the first one initially could not fail its own
+mutant. QA then found the management UI had never shipped over its
+routes (unsubscribe / settings / the restored-backup token re-entry
+lane) - shipped in the QA round rather than disclosed away.
+
+KNOWN GAPS, DISCLOSED: no per-episode delete verb (the v1.65 trash
+machinery is metadata-shaped; tech-debt #81) - unsubscribe keeps all
+files on disk by design; no abort for the episode currently in flight
+(#84, pause/unsubscribe stop at the next boundary); non-mp3 enclosures
+keep their native format (#82 - Patreon serves mp3 natively, 484/484
+measured); TOCTOU DNS rebinding inherited from the shared envelope
+(#80); the orphan-secret sweep's synchronous-writer dependency +
+presence-only catch-path reap (#85); rotated-token duplicate-add shape
+(#83). Dual-Node suites: v22.23.1 = 5766/5766 pass 0 fail; v24.14.0 =
+5766/5766 pass 0 fail. Dean's device pass PENDING - probes in the
+session report (look/feel, dock resume on a real episode, the two-tap
+unsubscribe, the first real 42.3 GB backfill).
+
 ### v1.68.3 - Design-language convergence (2026-08-02)
 
 Dean's on-device report, three findings, one theme: surfaces

@@ -3658,7 +3658,8 @@ a.sub-row-channel-link:focus-visible {
 .icon-shuffle,
 .icon-flame,
 .icon-history,
-.icon-queue {
+.icon-queue,
+.icon-podcast {
   display: inline-block;
   width: 1em;
   height: 1em;
@@ -3731,6 +3732,11 @@ a.sub-row-channel-link:focus-visible {
    back to this one in every set (deliberate, not a gap). FileTube's own
    drawing (the v1.63 glyph, preserved exactly), not a Material asset. */
 .icon-queue { -webkit-mask-image: url(/assets/icons/queue.svg); mask-image: url(/assets/icons/queue.svg); }
+/* v1.69: the Podcasts glyph (broadcast dot + stem + arcs). Base directory
+   only, like heart/share/flame/history/queue -- an icon with no set-specific
+   variant falls back to this one in every set (deliberate, not a gap).
+   FileTube's own drawing, not a Material asset. */
+.icon-podcast { -webkit-mask-image: url(/assets/icons/podcast.svg); mask-image: url(/assets/icons/podcast.svg); }
 
 /* Paint the icon fill only where CSS masks are supported, so a browser without
    mask support (or a failed/404 mask) renders nothing instead of a solid
@@ -3739,7 +3745,7 @@ a.sub-row-channel-link:focus-visible {
   .icon-home, .icon-folder, .icon-cog, .icon-delete, .icon-moon, .icon-sun,
   .icon-menu, .icon-search, .icon-play, .icon-refresh, .icon-arrow-up, .icon-arrow-down,
   .icon-grid, .icon-list, .icon-heart, .icon-share, .icon-download, .icon-shuffle,
-  .icon-flame, .icon-history, .icon-queue {
+  .icon-flame, .icon-history, .icon-queue, .icon-podcast {
     background-color: currentColor;
   }
 }
@@ -7655,6 +7661,12 @@ body.ft-css-fullscreen .bottom-nav {
   font-weight: var(--fw-semibold);
 }
 
+/* v1.69 gate suggestion #10: .music-status had NO binding rule since v1.44
+   (a pre-existing bare class music.html applied and podcasts.html then
+   copied). Bound now - a transient status line in the secondary voice. */
+.music-status { color: var(--text-secondary); font-size: var(--fs-sm); margin-bottom: var(--space-5); }
+.music-status[hidden] { display: none !important; }
+
 .music-crumb { display: flex; align-items: center; gap: var(--space-5); margin-bottom: var(--space-6); }
 .music-crumb[hidden] { display: none !important; }
 .music-crumb-label { font-size: var(--fs-lg); font-weight: var(--fw-semibold); color: var(--text-primary); }
@@ -9056,4 +9068,218 @@ a.queue-upnext-next:hover {
 .trash-empty {
   color: var(--text-secondary);
   padding: var(--space-6) 0;
+}
+
+/* ---- v1.69 Podcasts place ---------------------------------------------------
+   Era/mode tokens only (the type-scale lock); glyphs via icon-* masks never
+   emoji; [hidden] enforced; all markup inside #view-root so these rules live
+   HERE, never a shell <style> (the v1.41.8 SPA lesson). Reuses the music
+   toolbar/crumb/status/empty rules for the shared chrome; everything below
+   is the podcasts-specific surface. */
+
+.podcast-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: var(--space-8);
+}
+.podcast-card {
+  appearance: none;
+  border: none;
+  background: transparent;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+.podcast-card-art {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: var(--radius-lg);
+  object-fit: cover;
+  background: var(--thumbnail-bg);
+  box-shadow: var(--shadow-sm);
+  display: block;
+}
+.podcast-card-title {
+  font-size: var(--fs-base);
+  font-weight: var(--fw-semibold);
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.podcast-card-sub {
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.podcast-card-warn {
+  font-size: var(--fs-sm);
+  color: var(--yt-red);
+  font-weight: var(--fw-semibold);
+}
+
+.podcast-crumb-name {
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-semibold);
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.podcast-show-head {
+  display: flex;
+  gap: var(--space-8);
+  align-items: flex-start;
+  margin-bottom: var(--space-8);
+  min-width: 0;
+}
+.podcast-show-art {
+  width: 140px;
+  height: 140px;
+  border-radius: var(--radius-lg);
+  object-fit: cover;
+  background: var(--thumbnail-bg);
+  box-shadow: var(--shadow-lg);
+  flex-shrink: 0;
+}
+.podcast-show-meta { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }
+.podcast-show-meta h3 { margin: 0; font-size: var(--fs-2xl); font-weight: var(--fw-bold); color: var(--text-primary); }
+.podcast-show-author { font-size: var(--fs-base); color: var(--text-primary); }
+.podcast-show-desc {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.podcast-episode-list { display: flex; flex-direction: column; }
+.podcast-episode-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  border-radius: var(--radius-lg);
+}
+.podcast-episode-row:hover { background: var(--bg-secondary); }
+.podcast-episode-row.playing { background: var(--bg-secondary); }
+.podcast-episode-row.played .podcast-episode-title { color: var(--text-secondary); }
+.podcast-episode-main {
+  appearance: none;
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-3);
+  color: inherit;
+}
+.podcast-episode-main:disabled { cursor: default; opacity: 0.65; /* token-exempt: disabled-state dimming, the shared .btn:disabled idiom */ }
+.podcast-episode-title {
+  font-size: var(--fs-base);
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.podcast-episode-meta { font-size: var(--fs-sm); color: var(--text-secondary); }
+.podcast-episode-chip {
+  align-self: flex-start;
+  font-size: var(--fs-xs);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  padding: 0 var(--space-2);
+}
+.podcast-episode-chip.failed { color: var(--yt-red); border-color: var(--yt-red); }
+.podcast-episode-resume {
+  width: 100%;
+  max-width: 240px;
+  height: 3px; /* token-exempt: hairline progress track, the seek-bar idiom */
+  border-radius: var(--radius);
+  background: var(--border-color);
+  overflow: hidden;
+}
+.podcast-episode-resume-fill { height: 100%; background: var(--yt-red); }
+.podcast-played-toggle {
+  appearance: none;
+  border: 1px solid var(--border-color);
+  border-radius: 50%; /* token-exempt: circle = half of own box, not a scale radius */
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  margin-right: var(--space-3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--fs-sm);
+}
+.podcast-episode-row.played .podcast-played-toggle {
+  background: var(--yt-red);
+  border-color: var(--yt-red);
+  color: var(--text-inverse);
+}
+
+/* The management row on a show's drill-in (v1.69 QA gate #3). */
+.podcast-manage-row { display: flex; gap: var(--space-4); flex-wrap: wrap; align-items: center; margin-top: var(--space-3); }
+.podcast-unsub-btn.confirming { color: var(--yt-red); border-color: var(--yt-red); }
+.podcast-reenter-row { display: flex; gap: var(--space-4); flex-wrap: wrap; align-items: center; width: 100%; margin-top: var(--space-3); }
+.podcast-reenter-row .search-input { flex: 1; min-width: 220px; }
+
+/* The add-subscription sheet: the playlists-sheet backdrop/panel idiom.
+   The settings sheet (v1.69 QA #2) SHARES these classes - same affordance,
+   shared declarations, the styling-source rule. */
+.podcasts-add-backdrop {
+  position: fixed;
+  inset: 0;
+  background: var(--scrim);
+  z-index: calc(var(--z-modal) - 1);
+}
+.podcasts-add-backdrop[hidden] { display: none !important; }
+.podcasts-add-sheet {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(480px, calc(100vw - var(--space-8) * 2));
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  padding: var(--space-8);
+  z-index: var(--z-modal);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.podcasts-add-sheet[hidden] { display: none !important; }
+.podcasts-add-sheet h3 { margin: 0 0 var(--space-2); }
+.podcasts-add-label {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--text-primary);
+}
+.podcasts-add-hint { margin: 0; font-size: var(--fs-xs); color: var(--text-secondary); }
+.podcasts-add-actions { display: flex; justify-content: flex-end; gap: var(--space-4); margin-top: var(--space-4); }
+.podcasts-add-error { font-size: var(--fs-sm); color: var(--yt-red); }
+
+@media (max-width: 600px) {
+  .podcast-grid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: var(--space-6); }
+  .podcast-show-head { gap: var(--space-6); }
+  .podcast-show-art { width: 96px; height: 96px; }
 }

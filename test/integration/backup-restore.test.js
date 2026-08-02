@@ -748,3 +748,36 @@ test('v1.43.1 A1: an UNAUTHENTICATED oversized POST is 401d by the gate — the 
   const body = await res.json();
   assert.equal(body.authRequired, true, 'this is the GATE 401 (authRequired flag), not a handler 401');
 });
+
+test('v1.69 gate fix (adversarial #5): a pre-v1.69 bundle (no podcasts key) PRESERVES the live podcasts namespace', async () => {
+  const state = fullState();
+  state.podcasts = {
+    subscriptions: [{ id: 'podsub1', name: 'Show', feedUrlDisplay: 'https://x.example/rss', feedHost: 'x.example', order: 1, paused: false, backfill: 'all' }],
+    episodes: { ep1: { id: 'ep1', subId: 'podsub1', guid: 'g1', title: 'One', status: 'downloaded' } },
+    settings: { pollMinutes: 60 },
+  };
+  saveDatabase(state);
+
+  const bundle = await getBackup();
+  assert.ok(bundle.podcasts, 'a v1.69 export carries podcasts');
+  delete bundle.podcasts; // simulate every backup Dean already owns
+
+  const res = await postRestore(bundle);
+  assert.equal(res.status, 200);
+  const after = loadDatabase();
+  assert.deepEqual(after.podcasts.subscriptions, state.podcasts.subscriptions, 'subscriptions survive a pre-v1.69 restore');
+  assert.deepEqual(after.podcasts.episodes, state.podcasts.episodes, 'the episode archive survives (no forced 42GB re-download)');
+
+  // The users-restore bumped the operator's token_version (the CRITICAL-1
+  // floor) - re-sync the patched-fetch cookie, the suite's standing pattern.
+  auth.restore();
+  auth = authenticateFetch(server, base);
+
+  // And when the bundle DOES carry podcasts, the bundle wins (a real
+  // restore is authoritative - only ABSENCE preserves).
+  const bundle2 = await getBackup();
+  bundle2.podcasts = { subscriptions: [], episodes: {}, settings: {} };
+  const res2 = await postRestore(bundle2);
+  assert.equal(res2.status, 200);
+  assert.deepEqual(loadDatabase().podcasts.subscriptions, [], 'an explicit podcasts key restores verbatim');
+});

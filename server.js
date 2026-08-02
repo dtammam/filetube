@@ -13,6 +13,10 @@ require('dotenv').config();
 // `isEnabled(config)` inside the functions themselves. See
 // lib/ytdlp/index.js for the dormant-wiring mechanism.
 const ytdlp = require('./lib/ytdlp');
+// v1.69: the podcasts place (RSS subscription engine). First-class like
+// music/books - routes always registered, nav gated client-side on content.
+const podcasts = require('./lib/podcasts');
+const heavyGate = require('./lib/heavyGate');
 // v1.28.0 (two-reviewer gate follow-up, F1): shared body-parser-error ->
 // JSON-response mapping, also required directly by lib/ytdlp/index.js for
 // its own route-scoped `express.text()` error middleware -- see that
@@ -5599,11 +5603,16 @@ function dropPendingProgressForUser(userId) {
 // this is always current, needs no bootstrap, and depends on nothing
 // client-side. Only full-page loads/refreshes hit this; in-app SPA nav keeps
 // the header, so there is no FOUC there to fix.
-const FOUC_SHELL_FILES = new Set(['index.html', 'watch.html', 'stats.html', 'setup.html', 'read.html', 'books.html', 'music.html', 'history.html', 'login.html', 'welcome.html']);
+const FOUC_SHELL_FILES = new Set(['index.html', 'watch.html', 'stats.html', 'setup.html', 'read.html', 'books.html', 'music.html', 'podcasts.html', 'history.html', 'login.html', 'welcome.html']);
 function shellHtmlForRequestPath(p) {
   if (p === '/' || p === '/index.html') return 'index.html';
   if (p === '/books' || p === '/books.html') return 'books.html';
   if (p === '/music' || p === '/music.html') return 'music.html';
+  // v1.69 gate fix (adversarial #4): without this arm the pretty /podcasts
+  // route - the one every nav link uses - fell through to a bare sendFile
+  // with no custom-logo injection and the wrong cache header, while only
+  // the never-linked /podcasts.html behaved.
+  if (p === '/podcasts' || p === '/podcasts.html') return 'podcasts.html';
   if (p === '/history' || p === '/history.html') return 'history.html';
   // v1.43 auth: the pretty routes /login and /welcome serve their shells (the
   // gate above lets them through the allowlist; here they get the same
@@ -5841,6 +5850,15 @@ app.post('/api/config', async (req, res) => {
       const resolvedMusicRoot = path.resolve(musicRoot);
       if (resolved === resolvedMusicRoot || ytdlpArgs.isPathUnder(resolved, resolvedMusicRoot) || ytdlpArgs.isPathUnder(resolvedMusicRoot, resolved)) {
         return res.status(400).json({ error: `Media folder overlaps a music folder: ${trimmed} <-> ${musicRoot}` });
+      }
+    }
+    // v1.69 podcasts (D8, the FOUR-way): the podcasts download root is
+    // module-owned (env/default, not a configured list), but a media folder
+    // that equals/contains/lives inside it would double-own the episodes.
+    {
+      const podcastsRoot = podcasts.resolvePodcastsRoot(loadDatabase(), { dataDir: DATA_DIR });
+      if (resolved === podcastsRoot || ytdlpArgs.isPathUnder(resolved, podcastsRoot) || ytdlpArgs.isPathUnder(podcastsRoot, resolved)) {
+        return res.status(400).json({ error: `Media folder overlaps the podcasts folder: ${trimmed} <-> ${podcastsRoot}` });
       }
     }
     validFolders.push(trimmed);
@@ -6156,6 +6174,15 @@ app.post('/api/books/config', async (req, res) => {
     for (const musicRoot of musicFoldersForBooks) {
       if (bookRoot === musicRoot || ytdlpArgs.isPathUnder(bookRoot, musicRoot) || ytdlpArgs.isPathUnder(musicRoot, bookRoot)) {
         return res.status(400).json({ error: `Book folder overlaps a music folder: ${bookRoot} <-> ${musicRoot}` });
+      }
+    }
+  }
+  // v1.69 podcasts (D8): the four-way clause, same both-directions posture.
+  {
+    const podcastsRootForBooks = podcasts.resolvePodcastsRoot(cachedForBooks, { dataDir: DATA_DIR });
+    for (const bookRoot of resolved) {
+      if (bookRoot === podcastsRootForBooks || ytdlpArgs.isPathUnder(bookRoot, podcastsRootForBooks) || ytdlpArgs.isPathUnder(podcastsRootForBooks, bookRoot)) {
+        return res.status(400).json({ error: `Book folder overlaps the podcasts folder: ${bookRoot} <-> ${podcastsRootForBooks}` });
       }
     }
   }
@@ -6602,6 +6629,11 @@ app.get('/music', (req, res) => {
 
 app.get('/books', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'books.html'));
+});
+
+// v1.69: the clean /podcasts URL (same posture as /music and /books).
+app.get('/podcasts', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'podcasts.html'));
 });
 
 app.post('/api/books/:id/progress', (req, res) => {
@@ -7056,6 +7088,11 @@ app.post('/api/music/config', async (req, res) => {
       if (musicRoot === bookRoot || ytdlpArgs.isPathUnder(musicRoot, bookRoot) || ytdlpArgs.isPathUnder(bookRoot, musicRoot)) {
         return res.status(400).json({ error: `Music folder overlaps a book folder: ${musicRoot} <-> ${bookRoot}` });
       }
+    }
+    // v1.69 podcasts (D8): the four-way clause, same both-directions posture.
+    const podcastsRootForMusic = podcasts.resolvePodcastsRoot(cached, { dataDir: DATA_DIR });
+    if (musicRoot === podcastsRootForMusic || ytdlpArgs.isPathUnder(musicRoot, podcastsRootForMusic) || ytdlpArgs.isPathUnder(podcastsRootForMusic, musicRoot)) {
+      return res.status(400).json({ error: `Music folder overlaps the podcasts folder: ${musicRoot} <-> ${podcastsRootForMusic}` });
     }
   }
   try {
@@ -7528,7 +7565,10 @@ app.delete('/api/settings/logo', async (req, res) => {
 // session secret is NEVER part of a bundle (secrets don't ride bundles —
 // per-instance cookie isolation depends on secrets differing).
 const BACKUP_SCHEMA = 'filetube-backup-v1';
-const BACKUP_NAMESPACE_KEYS = ['folders', 'folderSettings', 'progress', 'metadata', 'liked', 'deleteTombstones', 'viewCounts', 'settings', 'trash', 'books', 'music', 'ytdlp'];
+// v1.69: 'podcasts' rides the bundle (subscriptions/episodes/settings) but
+// feed URLS do not - they are secrets, stored OUTSIDE the db (see
+// lib/podcasts/secrets.js), so a restored sub may need its URL re-entered.
+const BACKUP_NAMESPACE_KEYS = ['folders', 'folderSettings', 'progress', 'metadata', 'liked', 'deleteTombstones', 'viewCounts', 'settings', 'trash', 'books', 'music', 'podcasts', 'ytdlp'];
 
 app.get('/api/admin/backup', async (req, res) => {
   if (!requireAdmin(req, res)) return;
@@ -7607,7 +7647,9 @@ function validateBackupBundle(bundle) {
         // v1.51 notification reads (absent in pre-v1.51 bundles -- legal).
         ['notificationReads', 'array'],
         // v1.68 notification dismissals (absent in pre-v1.68 bundles -- legal).
-        ['notificationDismissals', 'array']]) {
+        ['notificationDismissals', 'array'],
+        // v1.69 podcast per-user state (absent in pre-v1.69 bundles -- legal).
+        ['podcastProgress', 'object'], ['podcastPlayed', 'object']]) {
         if (u[field] === undefined) continue;
         const ok = kind === 'array' ? Array.isArray(u[field]) : (typeof u[field] === 'object' && u[field] !== null && !Array.isArray(u[field]));
         if (!ok) return `${where}: ${field} must be an ${kind}`;
@@ -7708,7 +7750,7 @@ function validateBackupBundle(bundle) {
   // Container namespaces must be objects when present (delta-round
   // residual): catching a malformed shape HERE means a 400 before the wipe
   // even starts, rather than a mid-populate rollback.
-  for (const container of ['books', 'music', 'ytdlp']) {
+  for (const container of ['books', 'music', 'podcasts', 'ytdlp']) {
     if (bundle[container] !== undefined && (typeof bundle[container] !== 'object' || bundle[container] === null || Array.isArray(bundle[container]))) {
       return `bundle key '${container}' must be an object`;
     }
@@ -7800,6 +7842,20 @@ app.post('/api/admin/restore', (req, res, next) => {
   if (bundle.trash === undefined) {
     const current = loadDatabase();
     if (current.trash && Object.keys(current.trash).length > 0) dbPart.trash = current.trash;
+  }
+  // v1.69 gate fix (adversarial #5, the SAME v1.51 partial-restore lesson):
+  // a bundle without a podcasts key - every pre-v1.69 export - must
+  // PRESERVE the current podcasts namespace. Wiping it would silently
+  // destroy the subscription list and the whole episode archive (forcing a
+  // full re-download) while orphaning the tokened secrets file.
+  if (bundle.podcasts === undefined) {
+    const current = loadDatabase();
+    if (current.podcasts && (
+      (Array.isArray(current.podcasts.subscriptions) && current.podcasts.subscriptions.length > 0)
+      || (current.podcasts.episodes && Object.keys(current.podcasts.episodes).length > 0)
+    )) {
+      dbPart.podcasts = current.podcasts;
+    }
   }
 
   try {
@@ -14043,6 +14099,106 @@ ytdlp.registerRoutes(app, {
   dataDir: DATA_DIR,
 });
 
+// v1.69 (D15): the yt-dlp "file under Podcasts" surfacing. A ytdlp sub with
+// libraryPlace === 'podcasts' appears in the Podcasts place as a show whose
+// episodes are its channel dir's db.metadata items - watch-page playback and
+// watch-history state, untouched (D14d: dock-first parity is a follow-up).
+// Server-owned (db.metadata + ytdlpConfig + userStore live here) and
+// deps-injected into the podcasts module like every other bridge below.
+// Gated on ytdlp.isEnabled: a disabled ytdlp module surfaces nothing (its
+// routes are gone; the podcasts place must not advertise dead shows).
+function ytdlpPodcastItemDateMs(item) {
+  if (item && typeof item.releaseDate === 'number' && Number.isFinite(item.releaseDate)) return item.releaseDate;
+  if (item && typeof item.addedAt === 'number' && Number.isFinite(item.addedAt)) return item.addedAt;
+  return 0;
+}
+function ytdlpPodcastItemsUnder(db, dir) {
+  const prefix = dir.endsWith(path.sep) ? dir : dir + path.sep;
+  const items = [];
+  for (const id of Object.keys(db.metadata || {})) {
+    if (!Object.prototype.hasOwnProperty.call(db.metadata, id)) continue;
+    const it = db.metadata[id];
+    if (it && typeof it.filePath === 'string' && it.filePath.startsWith(prefix)) items.push(it);
+  }
+  items.sort((a, b) => ytdlpPodcastItemDateMs(b) - ytdlpPodcastItemDateMs(a));
+  return items;
+}
+function listYtdlpPodcastShows(db) {
+  const cfg = ytdlp.parseYtdlpConfig();
+  if (!ytdlp.isEnabled(cfg)) return [];
+  const subs = (db.ytdlp && Array.isArray(db.ytdlp.subscriptions) ? db.ytdlp.subscriptions : [])
+    .filter((s) => s && s.libraryPlace === 'podcasts');
+  return subs.map((sub) => {
+    let items = [];
+    try { items = ytdlpPodcastItemsUnder(db, ytdlpArgs.resolveChannelDir(cfg, sub)); } catch (_) { items = []; }
+    return {
+      id: `yt:${sub.id}`,
+      name: sub.name || sub.channelUrl,
+      author: '',
+      description: '',
+      source: 'ytdlp',
+      paused: sub.paused === true,
+      backfill: null,
+      episodeCount: items.length,
+      downloadedCount: items.length,
+      pendingCount: 0,
+      failedCount: 0,
+      newestPubDateMs: items.length ? ytdlpPodcastItemDateMs(items[0]) : null,
+      artUrl: items.length ? `/thumbnail/${items[0].id}` : null,
+      lastStatus: typeof sub.lastStatus === 'string' ? sub.lastStatus : '',
+      secretMissing: false,
+    };
+  });
+}
+function listYtdlpPodcastEpisodes(db, showId, userId) {
+  const shows = listYtdlpPodcastShows(db);
+  const show = shows.find((s) => s.id === showId);
+  if (!show) return null;
+  const sub = db.ytdlp.subscriptions.find((s) => s && `yt:${s.id}` === showId);
+  let items = [];
+  try { items = ytdlpPodcastItemsUnder(db, ytdlpArgs.resolveChannelDir(ytdlp.parseYtdlpConfig(), sub)); } catch (_) { items = []; }
+  const progress = userStore.getProgress(userId);
+  const watched = userStore.getWatchedTimes(userId);
+  return {
+    show,
+    episodes: items.map((it) => ({
+      id: it.id,
+      subId: showId,
+      title: cleanDisplayTitle(it.title || it.name || ''),
+      description: '',
+      link: '',
+      pubDateMs: ytdlpPodcastItemDateMs(it) || null,
+      durationSec: typeof it.duration === 'number' ? it.duration : null,
+      status: 'downloaded',
+      bytes: null,
+      downloadedAt: null,
+      progress: Object.prototype.hasOwnProperty.call(progress, it.id)
+        ? { position: progress[it.id].timestamp, duration: progress[it.id].duration, updatedAt: progress[it.id].updatedAt }
+        : null,
+      played: Object.prototype.hasOwnProperty.call(watched, it.id),
+      // Media items keep their watch-page playback (D14d) - the client
+      // navigates here instead of dock-loading /episode/:id.
+      watchHref: `/watch.html?v=${encodeURIComponent(it.id)}`,
+    })),
+  };
+}
+
+// v1.69: the podcasts module's deps bundle - the same circular-require-
+// avoiding bridge as ytdlp's above. runExclusive is the SHARED heavy-job
+// gate (lib/heavyGate), so podcast enclosure downloads serialize against
+// yt-dlp polls/one-shots instead of competing for disk and network.
+podcasts.registerRoutes(app, {
+  updateDatabase,
+  loadDatabase,
+  getCachedDatabase,
+  dataDir: DATA_DIR,
+  userStore,
+  runExclusive: heavyGate.runExclusive,
+  sendRangeable,
+  listExternalShows: listYtdlpPodcastShows,
+  listExternalEpisodes: listYtdlpPodcastEpisodes,
+});
+
 // Start the server — but only when run directly (`node server.js`), not when
 // required by the test suite. This lets tests import `app` and the pure helpers
 // without binding a port or triggering a real scan.
@@ -14173,6 +14329,21 @@ if (require.main === module) {
     // own copy for the scheduled-poll run-log emit path to work, not just the
     // route-triggered one.
     ytdlp.startBackground({ updateDatabase, loadDatabase, scanDirectories, getMediaId, dataDir: DATA_DIR });
+
+    // v1.69 podcasts: boot hygiene (.ptpart sweep + reconcile) + the poll
+    // timer. Early-returns doing NOTHING (no dir, no timer) with zero
+    // subscriptions - the fresh-install no-op guarantee. Inside this guard
+    // for the same reason as ytdlp's: importing server.js for tests must
+    // never arm a poll timer.
+    podcasts.startBackground({
+      updateDatabase,
+      loadDatabase,
+      getCachedDatabase,
+      dataDir: DATA_DIR,
+      userStore,
+      runExclusive: heavyGate.runExclusive,
+      now: () => Date.now(),
+    });
 
     app.listen(PORT, '0.0.0.0', () => {
       console.log(`==================================================`);
