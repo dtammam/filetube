@@ -122,6 +122,53 @@ test('replaceAllNotificationsRaw preserves dismissals by MEDIA id across the fee
   assert.deepStrictEqual(items, ['Vídeo-Other'], 'the dismissal re-resolved onto the regenerated row');
 });
 
+test('gate W1: a NON-first user\'s dismiss verbs write for THAT user - the admin\'s rows survive (kills the hardcoded-id-1 mutants)', () => {
+  // Every earlier writer-test acted as user id 1, so a wrong-user write
+  // (hardcoded id, swapped variable) shipped green. Here the ACTOR is the
+  // second user for BOTH write verbs; both users' panels are asserted.
+  const dean = mkAdmin();
+  const kim = mkUser('kim2');
+  assert.notStrictEqual(kim.id, 1, 'fixture sanity: the actor must not be user 1');
+  const idA = feed('Vídeo-W1a', 1);
+  feed('Vídeo-W1b', 2);
+
+  assert.strictEqual(store.dismissNotification(kim.id, idA, ACCOUNT_MS + 3 * HOUR), true);
+  assert.strictEqual(store.dismissNotificationByMedia(kim.id, 'Vídeo-W1b', ACCOUNT_MS + 3 * HOUR), true);
+  assert.deepStrictEqual(store.listNotifications(kim.id).items, [], 'the ACTOR\'s panel emptied');
+  assert.strictEqual(store.countUnseenNotifications(kim.id), 0);
+  assert.strictEqual(store.listNotifications(dean.id).items.length, 2, 'the admin (user 1) keeps BOTH rows');
+  assert.strictEqual(store.countUnseenNotifications(dean.id), 2, 'and the admin\'s badge');
+});
+
+test('gate W3: a rekey COLLISION scrubs the collided row\'s dismissals with its reads (no orphan)', () => {
+  const dean = mkAdmin();
+  const collidedId = feed('Vídeo-Dest', 1);
+  feed('Vídeo-Src', 2);
+  store.dismissNotification(dean.id, collidedId, ACCOUNT_MS + 3 * HOUR);
+  store.rekeyMediaState('Vídeo-Src', 'Vídeo-Dest'); // destination row already exists -> the collision scrub
+  const orphans = adapter.sql
+    .prepare('SELECT COUNT(*) AS c FROM user_notification_dismissals WHERE notification_id = ?')
+    .get(collidedId).c;
+  assert.strictEqual(orphans, 0, 'the collided row\'s dismissal went with it');
+});
+
+test('gate S1: the orphan-hygiene deletes are COUNT-bound (replace-on-same-media and the raw-feed restore leave zero stray rows)', () => {
+  const dean = mkAdmin();
+  const total = () => adapter.sql.prepare('SELECT COUNT(*) AS c FROM user_notification_dismissals').get().c;
+
+  feed('Vídeo-S1', 1);
+  store.dismissNotificationByMedia(dean.id, 'Vídeo-S1', ACCOUNT_MS + 2 * HOUR);
+  assert.strictEqual(total(), 1);
+  feed('Vídeo-S1', 5); // replace-on-same-media
+  assert.strictEqual(total(), 0, 'the replace loop deleted the old row\'s dismissal outright (not merely detached it)');
+
+  feed('Vídeo-S1b', 6);
+  store.dismissNotificationByMedia(dean.id, 'Vídeo-S1b', ACCOUNT_MS + 7 * HOUR);
+  assert.strictEqual(total(), 1);
+  store.replaceAllNotificationsRaw([{ mediaId: 'Vídeo-OTHER', createdAt: ACCOUNT_MS + 8 * HOUR }]);
+  assert.strictEqual(total(), 0, 'a feed replace that drops the row drops its dismissal (the snapshot re-resolve found no home)');
+});
+
 test('backup: per-user bundles carry dismissals; restore re-resolves them; a pre-v1.68 bundle (absent key) is legal', () => {
   const dean = mkAdmin();
   feed('Vídeo-Bundle', 1);

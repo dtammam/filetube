@@ -169,6 +169,10 @@ test('native keeper wiring: capture on the player\'s own native enter, restore i
   assert.ok(cap, 'capture body');
   assert.ok(cap[1].includes('if (!isMobileFormFactor()) return;'), 'mobile-only (desktop fullscreen behavior untouched)');
   assert.ok(cap[1].includes('if (cssFsSavedScrollY !== null) return;'), 'capture-if-not-held');
+  // Gate W2: the element-scoped guard (FIX A - never a bare truthiness
+  // fullscreen check). Without it, ANY element's fullscreen on mobile
+  // captures scroll and a later player exit restores that stale capture.
+  assert.ok(cap[1].includes('if (!inNativeFullscreen()) return;'), 'element-scoped to the player\'s OWN fullscreen');
   // Exit: handoff suppression BEFORE anything else, C1 state discipline,
   // unconditional clear.
   const ex = /function keeperNativeFsExit\(\) \{([\s\S]*?)\n {2}\}/.exec(stripped);
@@ -176,6 +180,7 @@ test('native keeper wiring: capture on the player\'s own native enter, restore i
   const handoffIdx = ex[1].indexOf("if (host && host.classList.contains('css-fullscreen')) return;");
   assert.ok(handoffIdx !== -1, 'the rotate handoff suppresses the restore (faux now owns the capture)');
   assert.ok(ex[1].includes('state === STATE_FULL'), 'the C1 discipline rides the native exit too');
+  assert.ok(ex[1].includes('isMobileFormFactor()'), 'gate S2: the restore is mobile-gated (desktop untouched)');
   const clearIdx = ex[1].indexOf('cssFsSavedScrollY = null;');
   assert.ok(clearIdx !== -1 && clearIdx > handoffIdx, 'the capture ALWAYS clears on a native exit (after the handoff early-return)');
   // Call sites: enter via onEnterFullscreen, exit via onFsChange, clear at

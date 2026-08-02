@@ -157,6 +157,22 @@ test('a dismissed row does not resurrect on re-play, and the dismissal fires eve
   assert.deepEqual((await panel()).items, [], 'B was dismissed by the gated-off play');
 });
 
+test('gate W1 (HTTP): a SECOND user\'s play dismisses THEIR row - the admin\'s row survives (kills the hardcoded-id-1 route mutant)', async () => {
+  // The earlier play-hook tests acted as the admin (user id 1), so a route
+  // that plumbed a hardcoded/wrong user id shipped green. Here the PLAYER
+  // is the second session; both panels are asserted.
+  await armFeature();
+  const other = __mintTestSession({ username: 'fourthuser', role: 'member' });
+  const res = await fetch(`${base}/api/videos/medi%C3%A4-A/view`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Cookie: other.cookie },
+  });
+  assert.equal(res.status, 200);
+  const otherPanel = await (await fetch(`${base}/api/notifications`, { headers: { Cookie: other.cookie } })).json();
+  assert.deepEqual(otherPanel.items.map((i) => i.mediaId), ['mediä-B'], 'the PLAYER lost their A row');
+  assert.equal((await panel()).items.length, 2, 'the admin (user 1) keeps BOTH rows');
+});
+
 test('the feature gate covers the new route: module off -> 404', async () => {
   await armFeature();
   delete process.env.FILETUBE_YTDLP_ENABLED;
