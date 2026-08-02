@@ -100,6 +100,8 @@ test('setCssFullscreen: reads the WAS state BEFORE toggling, runs the plan, appl
   assert.match(body, /state === STATE_FULL/, 'the FULL-state gate rides into the plan');
   assert.match(body, /window\.scrollTo\(0, /, 'the restore is applied');
   assert.match(body, /restoreTo !== null/, 'restore only when the plan says so (0 is a real position)');
+  assert.match(body, /cssFsSavedScrollY = plan\.savedY/,
+    'the plan\'s next capture PERSISTS to the keeper state (a plan consumed for restoreTo alone never saves, so exit would restore nothing - the vacuity this line closes)');
 });
 
 test('setCssFullscreen remains the SINGLE authority: no other site toggles ft-css-fullscreen or css-fullscreen classes', () => {
