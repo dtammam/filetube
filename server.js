@@ -12881,6 +12881,19 @@ app.post('/api/videos/:id/view', async (req, res) => {
     return res.status(500).json({ error: `Could not record view: ${err.message}` });
   }
   if (notFound) return res.status(404).json({ error: 'Media file not found' });
+  // v1.68 (Dean rulings 1-2): a play retires the player's own notification -
+  // the view ping is THE play-start signal (once per watch load, every web
+  // surface), so the bell row for this media leaves THIS user's panel and
+  // badge here, server-side. Deliberately NOT behind the bell's feature
+  // gate: the gate governs the panel surface, and a play while the bell is
+  // off must still dismiss so re-enabling it later cannot resurrect rows
+  // for already-watched videos. Best-effort: hygiene must never fail the
+  // ping (its suite locks the response contract).
+  try {
+    userStore.dismissNotificationByMedia(req.user.id, req.params.id, Date.now());
+  } catch (err) {
+    console.error(`Notification dismiss-on-play failed for ${req.params.id}:`, err && err.message);
+  }
   res.json({ success: true, viewCount });
 });
 

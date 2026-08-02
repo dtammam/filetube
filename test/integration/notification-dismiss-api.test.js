@@ -112,6 +112,51 @@ test('dismiss vs seen/read/clear interplay: dismissing an unread row drops the b
   assert.equal((await panel()).items.length, 0);
 });
 
+// ---- T2: the play hook ------------------------------------------------------
+
+test('PLAY dismisses (rulings 1-2): the view ping removes MY feed row for that media; the other user keeps theirs; badge agrees', async () => {
+  await armFeature();
+  const other = __mintTestSession({ username: 'thirduser', role: 'member' });
+
+  assert.equal((await jpost('/api/videos/medi%C3%A4-A/view')).status, 200, 'the ping itself still works');
+  const mine = await panel();
+  assert.deepEqual(mine.items.map((i) => i.mediaId), ['mediä-B'], 'playing A dismissed A for ME');
+  assert.equal(await badge(), 1);
+
+  const otherPanel = await (await fetch(`${base}/api/notifications`, { headers: { Cookie: other.cookie } })).json();
+  assert.equal(otherPanel.items.length, 2, 'the other user is untouched by MY play');
+});
+
+test('a play of media with NO feed row is a clean no-op, and the ping contract is unchanged (404 unknown id, viewCount returned)', async () => {
+  await armFeature();
+  await updateDatabase((db) => {
+    db.metadata['plaïn-local'] = {
+      id: 'plaïn-local', name: 'Löcal.mp4', title: 'Löcal', type: 'video', ext: '.mp4',
+      filePath: '/lib/Löcal.mp4', size: 10, addedAt: ITEM_ADDED_AT, folderName: 'Löose',
+    };
+  });
+  const res = await jpost('/api/videos/pla%C3%AFn-local/view');
+  assert.equal(res.status, 200);
+  assert.equal(typeof (await res.json()).viewCount, 'number', 'the ping response shape is untouched');
+  assert.equal((await panel()).items.length, 2, 'no feed row was harmed');
+  assert.equal((await jpost('/api/videos/never-existed/view')).status, 404, 'unknown media still 404s');
+});
+
+test('a dismissed row does not resurrect on re-play, and the dismissal fires even with the bell feature DISABLED at play time', async () => {
+  await armFeature();
+  assert.equal((await jpost('/api/videos/medi%C3%A4-A/view')).status, 200);
+  assert.equal((await jpost('/api/videos/medi%C3%A4-A/view')).status, 200, 're-play is fine');
+  assert.deepEqual((await panel()).items.map((i) => i.mediaId), ['mediä-B']);
+
+  // The bell gate governs the PANEL surface, not the hygiene: a play while
+  // the module is off must still dismiss, so re-enabling the bell later
+  // does not resurrect stale rows for videos already watched.
+  delete process.env.FILETUBE_YTDLP_ENABLED;
+  assert.equal((await jpost('/api/videos/medi%C3%A4-B/view')).status, 200);
+  process.env.FILETUBE_YTDLP_ENABLED = 'true';
+  assert.deepEqual((await panel()).items, [], 'B was dismissed by the gated-off play');
+});
+
 test('the feature gate covers the new route: module off -> 404', async () => {
   await armFeature();
   delete process.env.FILETUBE_YTDLP_ENABLED;
