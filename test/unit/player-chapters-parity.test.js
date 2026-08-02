@@ -122,7 +122,9 @@ test('v1.34.2: the chapters menu has an explicit close (header ✕), touchstart/
   assert.ok(playerSrc.includes("closeBtn.className = 'chapters-menu-close'"), 'an explicit ✕ close button in the menu header');
   assert.ok(playerSrc.includes("document.addEventListener('touchstart', closeChaptersMenuOnOutside, { passive: true })"), 'touchstart fallback (iOS click/pointer synthesis quirks)');
   assert.ok(playerSrc.includes("mediaPlayer.addEventListener('play', closeChaptersMenu)"), 'any playback interaction closes the menu');
-  assert.ok(playerSrc.includes("setCssFullscreen(!host.classList.contains('css-fullscreen'))"), 'custom-mode mobile fullscreen toggles the CSS faux-fullscreen (iPhone element-fullscreen is native-only)');
+  // v1.67.5: the exit button is the ONE restore-eligible caller (gate C1) -
+  // the toggle now passes { restoreScroll: true }.
+  assert.ok(playerSrc.includes("setCssFullscreen(!host.classList.contains('css-fullscreen'), { restoreScroll: true })"), 'custom-mode mobile fullscreen toggles the CSS faux-fullscreen (iPhone element-fullscreen is native-only)');
   assert.ok(playerSrc.includes('if (state !== STATE_FULL) setCssFullscreen(false)'), 'docking/closing drops the fixed overlay');
   const css = fs.readFileSync(path.join(ROOT, 'public', 'css', 'style.css'), 'utf8');
   assert.match(css, /#player-wrapper\.css-fullscreen \{\s*position: fixed;\s*inset: 0;/, 'the faux-fullscreen host treatment');
@@ -172,7 +174,7 @@ test('v1.34.4: faux fullscreen outranks header/nav, freezes the page, and the ba
   assert.match(css, /body\.ft-css-fullscreen header,\s*body\.ft-css-fullscreen \.bottom-nav \{\s*visibility: hidden;/, 'chrome explicitly hidden');
   assert.match(css, /#player-wrapper\.css-fullscreen:not\(\.audio-expanded\) \{\s*padding-bottom: 0 !important;/, 'the bar OVERLAYS the picture in faux fullscreen (no strip mismatch)');
   assert.match(css, /#player-wrapper\.css-fullscreen \.player-controls \{\s*height: auto;[\s\S]*?env\(safe-area-inset-bottom/, 'the bar grows for the home indicator instead of clipping its buttons row');
-  assert.ok(playerSrc.includes('function setCssFullscreen(on)'), 'host + body classes move together');
+  assert.ok(playerSrc.includes('function setCssFullscreen(on, opts)'), 'host + body classes move together (v1.67.5: + the scroll keeper opts)');
 });
 
 // ---- v1.34.5 (Dean round 5): the iOS rotate-to-native-fullscreen hijack -----

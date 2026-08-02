@@ -7,25 +7,25 @@
 // faux-fullscreen (`setCssFullscreen`, host position:fixed) whose only
 // scroll defense is `body.ft-css-fullscreen { overflow: hidden }` - and iOS
 // Safari does NOT lock body scrolling via overflow:hidden, so touch
-// gestures on the overlay (scrubbing, double-tap skip, rubber-banding)
-// drift the page scroll underneath; exiting restored the layout but never
-// the scroll.
+// gestures on the overlay drift the page scroll underneath; exiting
+// restored the layout but never the scroll.
 //
-// The fix: `setCssFullscreen` (the single authority both classes already
-// move through, v1.34.4) now captures window scroll on the OFF->ON
-// transition and restores it on ON->OFF - but ONLY while the player is
-// still FULL: the dock/close off-path (`applyControlsMode`'s
-// state !== STATE_FULL guard) fires AFTER a navigation's own scroll
-// restore, and restoring the watch page's saved offset onto the DESTINATION
-// view would clobber it (the cross-view hazard is the reason the pure plan
-// takes `stateFull` at all).
+// The fix: `setCssFullscreen` captures window scroll on OFF->ON and
+// restores it on ON->OFF - but ONLY for the restore-eligible caller. Gate
+// C1 (adversarial, measured): eligibility is the CALL SITE, not player
+// state - watch->watch navigation never docks, so the TEARDOWN off-call
+// runs with state still FULL, AFTER the router placed the new page's
+// scroll, and a state-gated restore stamped the OLD capture onto the NEW
+// page (the queue/autoplay-advance and back-navigation clobber). Only the
+// fullscreen exit button passes `{ restoreScroll: true }`.
 //
-// Shape per this file's established convention (player-orientation-fs-
-// resume / player-hardening precedent): the DECISION is a pure exported
-// helper unit-tested here; the WIRING inside the window-guarded IIFE is
-// locked against comment-stripped source; Dean's on-device pass (enter faux
-// fullscreen -> scrub around -> exit via the button -> the page sits where
-// it was) is the documented arbiter for the iOS gesture-drift itself.
+// Gate W1 (adversarial): the first-cut wiring locks bound PRESENCE, not
+// behavior - four crafted mutants survived (wrong plan field consumed,
+// persist gated behind the restore, inverted WAS read, widened gate). The
+// locks below are the seat's verified prescription: EXACT-STATEMENT
+// matches plus ordering assertions, each chosen to go red under the named
+// mutant. Dean's on-device pass stays the arbiter for the iOS gesture
+// drift itself.
 
 const { test } = require('node:test');
 const assert = require('node:assert');
@@ -37,18 +37,23 @@ const { resolveCssFsScrollPlan } = require('../../public/js/player.js');
 // ---- the pure plan ----------------------------------------------------------
 
 test('entering (off -> on) captures the current scroll and restores nothing', () => {
-  assert.deepStrictEqual(resolveCssFsScrollPlan(false, true, true, null, 340), { savedY: 340, restoreTo: null });
-  assert.deepStrictEqual(resolveCssFsScrollPlan(false, true, false, null, 0), { savedY: 0, restoreTo: null });
+  assert.deepStrictEqual(resolveCssFsScrollPlan(false, true, false, null, 340), { savedY: 340, restoreTo: null });
+  assert.deepStrictEqual(resolveCssFsScrollPlan(false, true, true, null, 0), { savedY: 0, restoreTo: null });
 });
 
-test('exiting (on -> off) while FULL restores the captured scroll and clears it', () => {
+test('exiting (on -> off) via the ELIGIBLE caller restores the capture and clears it', () => {
   assert.deepStrictEqual(resolveCssFsScrollPlan(true, false, true, 340, 512), { savedY: null, restoreTo: 340 });
   // A zero capture restores to zero (0 is a real position, not "nothing").
   assert.deepStrictEqual(resolveCssFsScrollPlan(true, false, true, 0, 87), { savedY: null, restoreTo: 0 });
 });
 
-test('exiting while NOT FULL (dock/close, incl. the navigate-away path) clears WITHOUT restoring - never clobber the destination view\'s scroll', () => {
-  assert.deepStrictEqual(resolveCssFsScrollPlan(true, false, false, 340, 512), { savedY: null, restoreTo: null });
+test('exiting via an INELIGIBLE caller clears WITHOUT restoring - the teardown/dock off-paths run around navigations whose scroll must win (gate C1)', () => {
+  // The C1 repro sequence, plan-level: video A fullscreen at capture 340;
+  // autoplay advances watch->watch (no dock, state stays FULL); the router
+  // scrolls the NEW page to 0; teardown fires ON->OFF. Eligibility is
+  // false (teardown never passes restoreScroll), so the plan must clear
+  // and NOT hand back 340 - video B's page stays where the router put it.
+  assert.deepStrictEqual(resolveCssFsScrollPlan(true, false, false, 340, 0), { savedY: null, restoreTo: null });
 });
 
 test('exiting with nothing captured restores nothing (off-calls can outnumber on-calls)', () => {
@@ -56,17 +61,15 @@ test('exiting with nothing captured restores nothing (off-calls can outnumber on
 });
 
 test('no-transition calls are inert: off -> off keeps nothing, on -> on keeps the ORIGINAL capture (never re-captures drifted scroll)', () => {
-  // applyControlsMode/resetForNextLoad re-assert `off` constantly - those
-  // must neither restore nor invent a capture.
   assert.deepStrictEqual(resolveCssFsScrollPlan(false, false, true, null, 512), { savedY: null, restoreTo: null });
   assert.deepStrictEqual(resolveCssFsScrollPlan(false, false, false, null, 512), { savedY: null, restoreTo: null });
-  // A second `on` while already on (e.g. the webkitbeginfullscreen
-  // intercept re-firing) must keep the PRE-ENTRY capture - re-capturing
-  // would save an already-drifted position and defeat the restore.
+  // A second `on` while already on (the webkitbeginfullscreen intercept
+  // re-firing) must keep the PRE-ENTRY capture - re-capturing would save
+  // an already-drifted position and defeat the restore.
   assert.deepStrictEqual(resolveCssFsScrollPlan(true, true, true, 340, 512), { savedY: 340, restoreTo: null });
 });
 
-test('garbage saved values never restore (typeof guard, the assert.equal-coercion scar)', () => {
+test('garbage saved values never restore (typeof + NaN guard, the coercion scar)', () => {
   for (const junk of [undefined, 'x', NaN]) {
     const plan = resolveCssFsScrollPlan(true, false, true, junk, 512);
     assert.strictEqual(plan.restoreTo, null, `saved=${String(junk)} must not restore`);
@@ -74,7 +77,7 @@ test('garbage saved values never restore (typeof guard, the assert.equal-coercio
   }
 });
 
-// ---- the wiring inside the IIFE (comment-stripped source contract) ----------
+// ---- the wiring inside the IIFE (comment-stripped EXACT-STATEMENT locks) ----
 
 const PLAYER_JS = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'player.js'), 'utf8');
 
@@ -86,28 +89,62 @@ function stripComments(src) {
     .join('\n');
 }
 
-const setCssFsMatch = /function setCssFullscreen\(on\) \{([\s\S]*?)\n {2}\}/.exec(stripComments(PLAYER_JS));
+const STRIPPED = stripComments(PLAYER_JS);
+const setCssFsMatch = /function setCssFullscreen\(on, opts\) \{([\s\S]*?)\n {2}\}/.exec(STRIPPED);
 
-test('setCssFullscreen: reads the WAS state BEFORE toggling, runs the plan, applies the restore via window.scrollTo', () => {
-  assert.ok(setCssFsMatch, 'expected the setCssFullscreen function body');
+test('setCssFullscreen wiring: exact statements, in the load-bearing order (each lock kills a measured W1 mutant)', () => {
+  assert.ok(setCssFsMatch, 'expected the setCssFullscreen(on, opts) function body');
   const body = setCssFsMatch[1];
-  const wasIdx = body.indexOf("classList.contains('css-fullscreen')");
+
+  // M3 killer: the exact WAS read (an inverted `!(...)` no longer matches),
+  // and it must precede the toggle (reading after always sees the NEW state).
+  const wasIdx = body.indexOf("var wasOn = !!(host && host.classList.contains('css-fullscreen'));");
+  assert.ok(wasIdx !== -1, 'exact WAS-read statement');
   const toggleIdx = body.indexOf("classList.toggle('css-fullscreen'");
-  assert.ok(wasIdx !== -1, 'reads the previous on/off state');
-  assert.ok(toggleIdx !== -1, 'still toggles the host class');
-  assert.ok(wasIdx < toggleIdx, 'the WAS read must precede the toggle (reading after always sees the NEW state and the plan never fires)');
-  assert.ok(body.includes('resolveCssFsScrollPlan('), 'the wiring consumes THE pure plan, not a re-derived copy');
-  assert.match(body, /state === STATE_FULL/, 'the FULL-state gate rides into the plan');
-  assert.match(body, /window\.scrollTo\(0, /, 'the restore is applied');
-  assert.match(body, /restoreTo !== null/, 'restore only when the plan says so (0 is a real position)');
-  assert.match(body, /cssFsSavedScrollY = plan\.savedY/,
-    'the plan\'s next capture PERSISTS to the keeper state (a plan consumed for restoreTo alone never saves, so exit would restore nothing - the vacuity this line closes)');
+  assert.ok(toggleIdx !== -1 && wasIdx < toggleIdx, 'WAS read precedes the toggle');
+
+  // M4 killer: the exact eligibility derivation - caller opt-in AND FULL.
+  assert.ok(
+    body.includes('var restoreEligible = !!(opts && opts.restoreScroll) && state === STATE_FULL;'),
+    'exact eligibility statement (no widened gate)'
+  );
+
+  // The exact five-arg plan call - the wiring consumes THE pure plan.
+  assert.ok(
+    body.includes('var plan = resolveCssFsScrollPlan(wasOn, !!on, restoreEligible, cssFsSavedScrollY, currentY);'),
+    'exact plan invocation'
+  );
+
+  // M2 killer: the persist is UNCONDITIONAL and PRECEDES the restore - a
+  // persist gated inside the restore branch never saves on entry.
+  const persistIdx = body.indexOf('cssFsSavedScrollY = plan.savedY;');
+  assert.ok(persistIdx !== -1, 'exact persist statement');
+
+  // M1 killer: the exact restore statement consumes restoreTo, guarded on
+  // restoreTo !== null (0 is a real position).
+  const restoreIdx = body.indexOf('if (plan.restoreTo !== null) window.scrollTo(0, plan.restoreTo);');
+  assert.ok(restoreIdx !== -1, 'exact restore statement');
+  assert.ok(persistIdx < restoreIdx, 'persist precedes restore (unconditional persist cannot hide inside the restore branch)');
 });
 
-test('setCssFullscreen remains the SINGLE authority: no other site toggles ft-css-fullscreen or css-fullscreen classes', () => {
-  const stripped = stripComments(PLAYER_JS);
-  const bodyToggles = stripped.match(/classList\.toggle\('ft-css-fullscreen'/g) || [];
+test('call sites: ONLY the fullscreen exit button opts into restore; teardown and the state off-guard stay clear-only (gate C1)', () => {
+  const optIns = STRIPPED.match(/restoreScroll: true/g) || [];
+  assert.strictEqual(optIns.length, 1, 'exactly ONE restore-eligible call site in the whole file');
+  assert.ok(
+    STRIPPED.includes("setCssFullscreen(!host.classList.contains('css-fullscreen'), { restoreScroll: true });"),
+    'and it is the exit button toggle'
+  );
+  // The clear-only callers must remain option-free: teardown (the C1
+  // clobber path) and the applyControlsMode state guard.
+  assert.ok(STRIPPED.includes('if (state !== STATE_FULL) setCssFullscreen(false);'),
+    'the applyControlsMode off-guard passes no options');
+  const bareOffCalls = STRIPPED.match(/setCssFullscreen\(false\);/g) || [];
+  assert.ok(bareOffCalls.length >= 2, 'teardown + the state guard remain bare clear-only calls');
+});
+
+test('setCssFullscreen remains the SINGLE authority: no other site toggles the fullscreen classes', () => {
+  const bodyToggles = STRIPPED.match(/classList\.toggle\('ft-css-fullscreen'/g) || [];
   assert.strictEqual(bodyToggles.length, 1, 'exactly one ft-css-fullscreen toggle (inside setCssFullscreen)');
-  const hostToggles = stripped.match(/classList\.toggle\('css-fullscreen'/g) || [];
+  const hostToggles = STRIPPED.match(/classList\.toggle\('css-fullscreen'/g) || [];
   assert.strictEqual(hostToggles.length, 1, 'exactly one css-fullscreen toggle (inside setCssFullscreen)');
 });

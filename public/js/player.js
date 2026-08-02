@@ -1019,14 +1019,27 @@ function resolveChaptersMenuMaxHeight(geom) {
 //     whole restore.
 // `restoreTo` is null-or-number: 0 is a real position, and a non-number
 // capture never restores (typeof guard - the coercion scar).
-function resolveCssFsScrollPlan(wasOn, nextOn, stateFull, savedY, currentY) {
+//
+// v1.67.5 gate C1 (adversarial, measured repro): `restoreEligible` is
+// CALLER eligibility, not player state. The first cut gated restore on
+// `state === STATE_FULL` alone - but watch->watch navigation never docks
+// (shouldDockOnTransition('watch','watch') is false), so the TEARDOWN
+// off-call runs with state still FULL, AFTER the router has already set the
+// new page's scroll, and the restore stamped the OLD page's capture onto
+// the NEW page - the exact symptom this fix exists to kill, reintroduced on
+// the queue/autoplay-advance and back-navigation paths. The teardown
+// ON->OFF is only ever reachable cross-page, so it must NEVER restore. The
+// discriminator is therefore the CALL SITE: only the explicit fullscreen
+// exit button opts in (setCssFullscreen's `restoreScroll` option, belt-and-
+// braces AND-ed with the FULL check there).
+function resolveCssFsScrollPlan(wasOn, nextOn, restoreEligible, savedY, currentY) {
   if (!wasOn && nextOn) {
     return { savedY: typeof currentY === 'number' && !isNaN(currentY) ? currentY : 0, restoreTo: null };
   }
   if (wasOn && !nextOn) {
     return {
       savedY: null,
-      restoreTo: (stateFull && typeof savedY === 'number' && !isNaN(savedY)) ? savedY : null,
+      restoreTo: (restoreEligible && typeof savedY === 'number' && !isNaN(savedY)) ? savedY : null,
     };
   }
   return { savedY: typeof savedY === 'number' && !isNaN(savedY) ? savedY : null, restoreTo: null };
@@ -1460,17 +1473,21 @@ if (typeof module !== 'undefined' && module.exports) {
   // treatment) and body class (scroll freeze + header/nav hide) must always
   // move together. v1.67.5: plus the scroll keeper -- the body "freeze"
   // (overflow: hidden) does NOT hold on iOS, so the pre-entry scroll is
-  // captured here and re-asserted on exit (see resolveCssFsScrollPlan's
-  // header for the full mechanism and the FULL-state cross-view guard).
+  // captured here and re-asserted on exit. Restore is CALL-SITE opt-in
+  // (`opts.restoreScroll`, passed ONLY by the fullscreen exit button):
+  // the teardown and dock off-paths run around navigations whose own
+  // scroll placement must win (gate C1 - see resolveCssFsScrollPlan's
+  // header for the measured watch->watch clobber the state-only gate had).
   var cssFsSavedScrollY = null;
-  function setCssFullscreen(on) {
+  function setCssFullscreen(on, opts) {
     var wasOn = !!(host && host.classList.contains('css-fullscreen'));
     if (host) host.classList.toggle('css-fullscreen', !!on);
     if (typeof document !== 'undefined' && document.body) {
       document.body.classList.toggle('ft-css-fullscreen', !!on);
     }
     var currentY = typeof window.pageYOffset === 'number' ? window.pageYOffset : window.scrollY;
-    var plan = resolveCssFsScrollPlan(wasOn, !!on, state === STATE_FULL, cssFsSavedScrollY, currentY);
+    var restoreEligible = !!(opts && opts.restoreScroll) && state === STATE_FULL;
+    var plan = resolveCssFsScrollPlan(wasOn, !!on, restoreEligible, cssFsSavedScrollY, currentY);
     cssFsSavedScrollY = plan.savedY;
     if (plan.restoreTo !== null) window.scrollTo(0, plan.restoreTo);
   }
@@ -4397,7 +4414,10 @@ if (typeof module !== 'undefined' && module.exports) {
         // right behavior -- period.
         if (isMobileFormFactor() && !inNativeControlsMode() &&
             currentData && currentData.type !== 'audio' && state === STATE_FULL) {
-          setCssFullscreen(!host.classList.contains('css-fullscreen'));
+          // restoreScroll: the ONLY restore-eligible off-caller (gate C1) --
+          // an explicit user exit puts the page back where they left it;
+          // inert on the ON direction (the plan captures, never restores).
+          setCssFullscreen(!host.classList.contains('css-fullscreen'), { restoreScroll: true });
           return;
         }
         // 'native-fullscreen' -- EXISTING video path, byte-identical to
