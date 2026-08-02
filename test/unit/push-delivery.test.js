@@ -254,6 +254,30 @@ async function settleRounds(counts, budgetMs = 3000) {
   }
 }
 
+// QA round-3 suggestion 2: a row whose keys or endpoint cannot even be
+// encrypted/signed must cost ONE subscription, never the whole round. Not
+// reachable through the route or store today (both validate first) - this
+// binds the containment so it stays true if a future writer is added.
+test('an UNSENDABLE subscription (garbage keys / endpoint) is skipped without aborting the round for its neighbours', async () => {
+  const poison = { endpoint: 'https://push.example/wp/Poison', lastPushedId: 12, cooldownUntil: 0, p256dh: 'not-a-point', auth: 'nope' };
+  const healthy = { endpoint: 'https://push.example/wp/Healthy', lastPushedId: 12, cooldownUntil: 0 };
+  const { store, sends, delivery } = harness({ subs: [poison, healthy], feed: FEED, responses: [] });
+  const c = await delivery.deliverRound();
+  assert.equal(sends.length, 1, 'only the healthy subscription produced a POST');
+  assert.equal(c.sent, 1);
+  assert.equal(store.state.get(healthy.endpoint).lastPushedId, 13, 'the neighbour still delivered');
+  assert.equal(store.state.get(poison.endpoint).lastPushedId, 12, 'the poisoned row advanced nothing');
+  assert.ok(store.state.has(poison.endpoint), 'and it is skipped, not pruned - a fixable row is not destroyed');
+
+  // A malformed ENDPOINT (vapidAuthorizationFor's new URL throws) is the
+  // other half of the same containment.
+  const badUrl = { endpoint: 'not a url at all', lastPushedId: 12, cooldownUntil: 0 };
+  const h2 = harness({ subs: [badUrl, { ...healthy }], feed: FEED, responses: [] });
+  const c2 = await h2.delivery.deliverRound();
+  assert.equal(h2.sends.length, 1, 'the malformed endpoint did not abort the round');
+  assert.equal(c2.sent, 1);
+});
+
 test('trigger(): a full-limit read against a FAILING endpoint terminates - it must never re-read the same batch forever', async () => {
   for (const status of [500, 429, 403]) {
     const h = spinHarness(status);

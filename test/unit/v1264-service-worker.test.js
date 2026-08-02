@@ -129,17 +129,22 @@ test('cleanup lock: unregisterStaleServiceWorkers() survives -- feature-detects,
   // Strip comments before the never-match assertions below: this file's own
   // explanatory comment NAMES the rejected `endsWith` form, and a lock that
   // a comment can satisfy (or violate) proves nothing about the code. The
-  // v1.50.3 lesson, re-learned here in-wave.
+  // v1.50.3 lesson, re-learned here in-wave. Applied SYMMETRICALLY: the
+  // must-match assertions run against stripped code too, because a future
+  // comment quoting the exemption line would satisfy them with the code
+  // deleted (QA round-3 suggestion 1).
   const code = body.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
-  assert.match(body, /if \(typeof navigator === 'undefined' \|\| !\('serviceWorker' in navigator\)\) return;/);
-  assert.match(body, /getRegistrations\(\)/);
-  assert.match(body, /pathname === '\/push-sw\.js'\) return;/,
+  assert.match(code, /if \(typeof navigator === 'undefined' \|\| !\('serviceWorker' in navigator\)\) return;/);
+  assert.match(code, /getRegistrations\(\)/);
+  assert.match(code, /pathname === '\/push-sw\.js'\) return;/,
     'the v1.66 exemption is the EXACT pathname /push-sw.js -- an exemption matching /sw.js would spare the v1.26.4 offline worker itself (measured, QA W2), and a suffix match would spare any nested lookalike');
   assert.ok(!/endsWith\('\/sw\.js'\)/.test(code), 'and it must never be widened back to /sw.js');
   assert.ok(!/endsWith\('\/push-sw\.js'\)/.test(code), 'nor loosened back to a suffix match');
-  assert.match(body, /r\.unregister\(\)\.catch\(\(\) => \{\}\)/, 'each individual unregister failure must be swallowed');
+  assert.match(code, /r\.unregister\(\)\.catch\(\(\) => \{\}\)/, 'each individual unregister failure must be swallowed');
+  // This one MUST read the raw body: the swallow it locks is spelled with an
+  // inline comment inside the catch block, which stripping would remove.
   assert.match(body, /\.catch\(\(\) => \{ \/\* best-effort cleanup only \*\/ \}\)/, 'the getRegistrations failure must be swallowed');
-  assert.match(body, /try \{/, 'the synchronous call path must be try/catch-wrapped so cleanup can never abort page boot');
+  assert.match(code, /try \{/, 'the synchronous call path must be try/catch-wrapped so cleanup can never abort page boot');
 });
 
 test('cleanup lock: the boot handler schedules the cleanup on load (or immediately when already complete)', () => {
