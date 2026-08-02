@@ -317,6 +317,47 @@ test('v1.43: the session secret NEVER rides the bundle (secrets do not ride bund
   assert.ok(!Object.keys(bundle).some((k) => /secret/i.test(k)), 'no secret-shaped bundle key');
 });
 
+test('v1.66 D2: push subscriptions NEVER ride the bundle; a users-less restore preserves them; a users restore drops them via cascade (disclosed)', async () => {
+  saveDatabase(fullState());
+  const { __mintTestSession } = require('../../server');
+  const owner = __mintTestSession({ username: 'wp-device-owner', role: 'member' });
+  const EP = 'https://push.example/wp/Bundle-Secret-XyZ?tok=qQ_17';
+  userStore.upsertPushSubscription(owner.user.id, { endpoint: EP, p256dh: 'PubPoint-b64', auth: 'AuthSecret-b64' }, 4, 1753900000000);
+
+  const bundle = await getBackup();
+  const serialized = JSON.stringify(bundle);
+  assert.ok(!serialized.includes(EP), 'the endpoint (capability URL) must not appear anywhere in the bundle');
+  assert.ok(!serialized.includes('AuthSecret-b64'), 'the auth secret must not appear anywhere in the bundle');
+  assert.ok(!serialized.toLowerCase().includes('push'), 'no push-shaped key or value rides the bundle at all');
+
+  // A users-LESS restore (docs only) must preserve what it does not
+  // repopulate: the subscription survives untouched.
+  const docsOnly = { ...bundle };
+  delete docsOnly.users;
+  delete docsOnly.notifications;
+  const res1 = await fetch(`${base}/api/admin/restore`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(docsOnly),
+  });
+  assert.equal(res1.status, 200);
+  const kept = userStore.getPushSubscription(EP);
+  assert.ok(kept, 'docs-only restore left the subscription row alone');
+  assert.equal(kept.lastPushedId, 4, 'cursor untouched');
+
+  // A restore WITH users replaces the accounts wholesale; the cascade drops
+  // subscription rows. That is the DISCLOSED D2 behavior (the client boot
+  // reconcile re-registers devices) - this assertion is the disclosure's
+  // binding, not a bug.
+  const res2 = await fetch(`${base}/api/admin/restore`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(bundle),
+  });
+  assert.equal(res2.status, 200);
+  assert.equal(userStore.getPushSubscription(EP), null, 'users-restore dropped subscriptions via cascade (devices re-register on next visit)');
+});
+
 test('v1.43: user accounts + per-user state round-trip through backup -> wipe -> restore, atomically with the doc tables', async () => {
   saveDatabase(fullState());
   const { __mintTestSession } = require('../../server');
