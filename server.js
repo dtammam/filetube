@@ -5356,7 +5356,10 @@ function parseUserSettings(user) {
 // arbitrary client-writable blob.
 // v1.63.1: 'starRatings' ('shown'|'hidden') - Dean's hide-the-fake-stars
 // toggle rides the same display-pref mirror as theme/era/icons.
-const MIRRORED_SETTING_KEYS = new Set(['theme', 'era', 'icons', 'starRatings']);
+// v1.66: 'pushEnabled' ('on'|'off') - the PER-USER push opt-out (ruling:
+// per-device subscribe, per-user opt-out). Delivery honors only the literal
+// 'off' (lib/push/deliver.js pushOptedOut); absent = on.
+const MIRRORED_SETTING_KEYS = new Set(['theme', 'era', 'icons', 'starRatings', 'pushEnabled']);
 app.post('/api/me/settings', (req, res) => {
   const body = req.body || {};
   const merged = parseUserSettings(req.user);
@@ -8109,6 +8112,78 @@ app.post('/api/notifications/clear', (req, res) => {
   if (!notificationsFeatureEnabled(db)) return res.status(404).json({ error: 'notifications disabled' });
   userStore.clearNotifications(req.user.id, Date.now());
   res.json({ success: true });
+});
+
+// ============ v1.66 web push =================================================
+// Same three-way feature gate as the bell (this is the bell's delivery
+// channel). Subscribe is the ONE route that accepts a client-supplied
+// remote URL, so it carries the full SSRF discipline: https-only, shape-
+// checked keys (decode + length, not regex), guardHop (literal-IP + DNS
+// resolve-all, fail-closed) - and delivery re-checks at send time.
+
+const PUSH_SUBSCRIPTIONS_PER_USER_CAP = 10;
+
+app.get('/api/push/key', (req, res) => {
+  const db = getCachedDatabase();
+  if (!notificationsFeatureEnabled(db)) return res.status(404).json({ error: 'notifications disabled' });
+  res.json({ key: PUSH_VAPID.publicKeyB64url });
+});
+
+app.post('/api/push/subscribe', async (req, res) => {
+  const db = getCachedDatabase();
+  if (!notificationsFeatureEnabled(db)) return res.status(404).json({ error: 'notifications disabled' });
+  const body = req.body || {};
+  const endpoint = body.endpoint;
+  const keys = body.keys && typeof body.keys === 'object' ? body.keys : {};
+  if (typeof endpoint !== 'string' || endpoint.length === 0 || endpoint.length > 2048) {
+    return res.status(400).json({ error: 'invalid endpoint' });
+  }
+  let parsed;
+  try { parsed = new URL(endpoint); } catch { return res.status(400).json({ error: 'invalid endpoint' }); }
+  // https only - push services are https, and http would leak the
+  // capability URL in cleartext. (guardHop alone would allow http.)
+  if (parsed.protocol !== 'https:') return res.status(400).json({ error: 'endpoint must be https' });
+  // The browser's keys, decoded and measured - a p256dh that is not an
+  // uncompressed P-256 point or an auth that is not 16 bytes could never
+  // decrypt anyway; refuse it at the door.
+  let p256dhOk = false;
+  let authOk = false;
+  try {
+    const p = Buffer.from(String(keys.p256dh || ''), 'base64url');
+    p256dhOk = p.length === 65 && p[0] === 0x04;
+    authOk = Buffer.from(String(keys.auth || ''), 'base64url').length === 16;
+  } catch { /* fall through to the 400 */ }
+  if (!p256dhOk || !authOk) return res.status(400).json({ error: 'invalid subscription keys' });
+  const guard = await pushShortlink.guardHop(endpoint, { lookup: pushGuardLookupOverride || undefined });
+  if (!guard.ok) return res.status(400).json({ error: 'endpoint refused' });
+  // Cap NEW endpoints per user (an unbounded roster is a delivery-time
+  // amplification primitive); re-registering an existing endpoint is free.
+  if (!userStore.getPushSubscription(endpoint)
+    && userStore.countPushSubscriptions(req.user.id) >= PUSH_SUBSCRIPTIONS_PER_USER_CAP) {
+    return res.status(409).json({ error: 'subscription limit reached for this account' });
+  }
+  // Cursor starts at the feed head: a fresh device is never back-flooded
+  // with history (ruling P1; the bell panel is the history surface).
+  userStore.upsertPushSubscription(
+    req.user.id,
+    { endpoint, p256dh: keys.p256dh, auth: keys.auth },
+    userStore.getMaxNotificationId(),
+    Date.now()
+  );
+  res.json({ success: true });
+});
+
+app.post('/api/push/unsubscribe', (req, res) => {
+  const db = getCachedDatabase();
+  if (!notificationsFeatureEnabled(db)) return res.status(404).json({ error: 'notifications disabled' });
+  const endpoint = (req.body || {}).endpoint;
+  if (typeof endpoint !== 'string' || endpoint.length === 0 || endpoint.length > 2048) {
+    return res.status(400).json({ error: 'invalid endpoint' });
+  }
+  // Owner-scoped: another user's endpoint is untouchable (removed:false,
+  // not a 403 - do not confirm the endpoint exists at all).
+  const removed = userStore.removeOwnPushSubscription(req.user.id, endpoint);
+  res.json({ removed });
 });
 
 // ============ v1.63 playback queue ("think YouTube" - Dean) ==================
