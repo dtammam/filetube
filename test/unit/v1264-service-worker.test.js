@@ -70,10 +70,14 @@ test('push-only lock: push-sw.js actually handles push + notificationclick (the 
   assert.match(SW_JS, /addEventListener\(\s*'push'/);
   assert.match(SW_JS, /addEventListener\(\s*'notificationclick'/);
   assert.match(SW_JS, /addEventListener\(\s*'pushsubscriptionchange'/);
-  // NOTE: ruling P4's actual BEHAVIOR is bound by the decidePushDisplay
-  // table below, not by grepping for a substring here. The v1.66 QA seat
-  // proved a presence-only assertion survives an INVERTED P4 (locked phone
-  // silent, visible windows double-notified) with the full suite green.
+  // NOTE: ruling P4's actual BEHAVIOR is bound in two places, neither of
+  // them this grep: the decidePushDisplay TABLE below (the pure decision)
+  // and test/integration/push-sw-handler.test.js (the handler's EXECUTION -
+  // it fires the real push listener against a stubbed `self`). This source
+  // lock only proves the handler ROUTES through the pure function; the
+  // adversarial gate showed twice that a grep alone lets an inverted P4
+  // ship (locked phone silent, visible window double-notified), which is
+  // why the execution test exists.
   assert.match(SW_JS, /decidePushDisplay\(wins\.map\(\(c\) => c\.visibilityState\)\)/,
     'the push handler must route its decision through the tested pure function, not an inline condition');
 });

@@ -289,6 +289,45 @@ test('trigger(): a full-limit read against a FAILING endpoint terminates - it mu
   }
 });
 
+test('trigger(): a full-limit read whose last row has a NON-INTEGER id terminates - applyResult must not claim sent without advancing', async () => {
+  // Adversarial gate: the progress gate's invariant ("sent > 0 => the cursor
+  // advanced") rested on applyResult, which used to return true even when it
+  // could not advance a non-integer id - so sent++ fired with the cursor
+  // stuck, and the truncated re-run spun on the identical batch (26 rounds /
+  // 25 POSTs measured). Unreachable in prod (ids are INTEGER AUTOINCREMENT),
+  // but the belt's termination must not DEPEND on that. Drive trigger().
+  const rows = [];
+  for (let i = 1; i <= FEED_READ_LIMIT; i++) {
+    rows.push({ id: i === FEED_READ_LIMIT ? String(i) : i, mediaId: `v${i}`, createdAt: NOW - i });
+  }
+  const meta = {};
+  for (const r of rows) meta[`v${Number(r.id)}`] = { title: 'T', channel: 'C' };
+  let cursor = 0;
+  const counts = { rounds: 0, posts: 0 };
+  const delivery = createPushDelivery({
+    store: {
+      listPushSubscriptionsForDelivery() {
+        counts.rounds++;
+        if (counts.rounds > ROUND_BREAKER) throw new Error('round breaker tripped (spin)');
+        return [{ endpoint: 'https://push.example/wp/nonint', p256dh: UA_P256DH, auth: UA_AUTH, lastPushedId: cursor, cooldownUntil: 0, settingsJson: '{}' }];
+      },
+      listNotificationsAfter: (c, l) => rows.filter((r) => Number(r.id) > c).slice(0, l),
+      advancePushCursor: (e, id) => { if (Number.isInteger(id)) cursor = Math.max(cursor, id); },
+      setPushCooldown() {}, removePushSubscription() {},
+    },
+    vapidKeys: VAPID_KEYS,
+    guardHop: async () => ({ ok: true }),
+    enabled: () => true,
+    resolveMeta: (id) => meta[id] || null,
+    transport: async () => { counts.posts++; await new Promise((r) => setTimeout(r, 0)); return { statusCode: 201, headers: {} }; },
+    now: () => NOW,
+    log: () => {},
+  });
+  delivery.trigger('scan');
+  await settleRounds(counts);
+  assert.ok(counts.rounds <= 2, `settled in ${counts.rounds} rounds (a non-integer id must not spin)`);
+});
+
 test('trigger(): a full-limit read against a HEALTHY endpoint still catches up (the belt does its job)', async () => {
   const h = spinHarness(201);
   h.delivery.trigger('scan');
