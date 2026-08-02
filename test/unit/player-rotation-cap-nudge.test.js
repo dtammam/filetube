@@ -66,15 +66,22 @@ test('nudgeViewportHeightCaps body: release -> forced layout -> CLEARED inline v
   assert.ok(body.includes('if (!el || !el.isConnected) continue;'), 'absent/disconnected guard');
 });
 
-test('scheduleViewportCapNudge: the double-rAF pass AND the late timer belt both invoke the nudge', () => {
+test('scheduleViewportCapNudge: both passes run the nudge THEN the dead-zone snap (v1.68.2 order - the snap must see settled geometry)', () => {
   const fn = /function scheduleViewportCapNudge\(\) \{([\s\S]*?)\n {2}\}/.exec(STRIPPED);
   assert.ok(fn, 'the scheduler exists');
-  assert.ok(
-    fn[1].includes('requestAnimationFrame(function () { requestAnimationFrame(nudgeViewportHeightCaps); });'),
-    'the settled-frame pass (double-rAF)'
-  );
-  assert.ok(fn[1].includes('setTimeout(nudgeViewportHeightCaps, 650);'),
+  const body = fn[1];
+  // The settled-frame pass is still double-rAF; the belt is still 650ms.
+  assert.ok(/requestAnimationFrame\(function \(\) \{ requestAnimationFrame\(function \(\) \{/.test(body),
+    'the settled-frame pass (double-rAF)');
+  assert.ok(/setTimeout\(function \(\) \{[\s\S]*?\}, 650\);/.test(body),
     'the late belt for slow rotation animations');
+  // BOTH actions in BOTH passes, nudge before snap each time.
+  const calls = body.match(/nudgeViewportHeightCaps\(\);|snapRotationDeadZone\(\);/g) || [];
+  assert.deepStrictEqual(
+    calls,
+    ['nudgeViewportHeightCaps();', 'snapRotationDeadZone();', 'nudgeViewportHeightCaps();', 'snapRotationDeadZone();'],
+    'two passes, each nudge-then-snap - a swapped order snaps against pre-nudge geometry'
+  );
 });
 
 test('wiring: onOrientationChange schedules the nudge AFTER the FULL-only gate and BEFORE the auto-fullscreen decision', () => {
@@ -93,6 +100,64 @@ test('wiring: onOrientationChange schedules the nudge AFTER the FULL-only gate a
   // seam owns this; nothing else (resize storms, scroll) may pile on.
   const sites = STRIPPED.match(/scheduleViewportCapNudge\(\);/g) || [];
   assert.strictEqual(sites.length, 1, 'exactly ONE call site');
+});
+
+// ---- v1.68.2: the rotation dead-zone snap -----------------------------------
+// Dean's on-device FAIL of the v1.68.1 cap fix re-diagnosed the symptom as a
+// SCROLL mechanism: iOS preserves the pixel scroll offset across rotation,
+// portrait stacks ~190px more chrome above the player than landscape, so
+// rotate-and-back deposits that delta as residual scrollY. The decision is
+// pure and EXECUTED here (resolveRotationTopSnap, a real export - not a
+// source lock); the runtime wiring below it remains source-locked per the
+// tech-debt #78 disclosure.
+
+const { resolveRotationTopSnap } = require('../../public/js/player.js');
+
+test('resolveRotationTopSnap: THE bug shape snaps - residual scroll strictly between page top and the player top', () => {
+  assert.strictEqual(resolveRotationTopSnap(190, 370), true, 'the measured on-device residual');
+  assert.strictEqual(resolveRotationTopSnap(1, 370), true, 'any dead-zone position snaps');
+  assert.strictEqual(resolveRotationTopSnap(369, 370), true, 'up to just above the player');
+});
+
+test('resolveRotationTopSnap: everything outside the dead zone is left alone', () => {
+  assert.strictEqual(resolveRotationTopSnap(0, 370), false, 'already at top - no-op');
+  assert.strictEqual(resolveRotationTopSnap(370, 370), false, 'AT the player top is a real position (boundary excluded)');
+  assert.strictEqual(resolveRotationTopSnap(1200, 370), false, 'reading comments - iOS content anchoring is correct there');
+  assert.strictEqual(resolveRotationTopSnap(-5, 370), false, 'rubber-band overscroll never snaps');
+  assert.strictEqual(resolveRotationTopSnap(100, 0), false, 'a player already at document top has NO dead zone');
+  assert.strictEqual(resolveRotationTopSnap(100, -10), false, 'negative doc top (mid-teardown geometry) never snaps');
+});
+
+test('resolveRotationTopSnap: non-numbers never snap (the coercion scar)', () => {
+  for (const junk of [undefined, null, 'x', NaN]) {
+    assert.strictEqual(resolveRotationTopSnap(junk, 370), false, `scrollY=${String(junk)}`);
+    assert.strictEqual(resolveRotationTopSnap(190, junk), false, `playerDocTop=${String(junk)}`);
+  }
+});
+
+test('snapRotationDeadZone wiring: every guard re-checked at APPLY time, exact statements in guard-then-measure-then-snap order', () => {
+  const fn = /function snapRotationDeadZone\(\) \{([\s\S]*?)\n {2}\}/.exec(STRIPPED);
+  assert.ok(fn, 'the runtime snap exists');
+  const body = fn[1];
+  // The C1 discipline: a navigation can land between the orientation event
+  // and this pass - every guard evaluates HERE, none is captured earlier.
+  const mobile = body.indexOf('if (!isMobileFormFactor()) return;');
+  const full = body.indexOf('if (state !== STATE_FULL) return;');
+  const native = body.indexOf('if (inNativeFullscreen()) return;');
+  const faux = body.indexOf("if (host && host.classList.contains('css-fullscreen')) return;");
+  const mounted = body.indexOf('if (!host || !host.isConnected) return;');
+  for (const [idx, name] of [[mobile, 'mobile'], [full, 'FULL'], [native, 'native-fs'], [faux, 'faux-fs'], [mounted, 'mounted']]) {
+    assert.ok(idx !== -1, `${name} guard present as an exact statement`);
+  }
+  const measure = body.indexOf('var playerDocTop = host.getBoundingClientRect().top + y;');
+  const snap = body.indexOf('if (resolveRotationTopSnap(y, playerDocTop)) window.scrollTo(0, 0);');
+  assert.ok(measure !== -1, 'document-top derivation is rect.top + CURRENT scroll');
+  assert.ok(snap !== -1, 'the snap consumes THE pure decision and targets exactly (0, 0)');
+  assert.ok(Math.max(mobile, full, native, faux, mounted) < measure && measure < snap,
+    'all guards precede the measurement, the measurement precedes the snap');
+  // Exactly one runtime consumer of the pure decision.
+  const consumers = STRIPPED.match(/resolveRotationTopSnap\(y, playerDocTop\)/g) || [];
+  assert.strictEqual(consumers.length, 1, 'the scheduler passes are the only path to a snap');
 });
 
 // ---- layer 2: the CSS dvh twins ---------------------------------------------
