@@ -15,6 +15,7 @@ const {
   shouldInjectNotificationBell,
   formatNotificationBadge,
   buildNotificationRowModel,
+  describePushEnableOutcome,
 } = require('../../public/js/common.js');
 
 test('shouldInjectNotificationBell: ONLY a genuine 2xx injects (the fail-closed probe)', () => {
@@ -80,4 +81,42 @@ test('buildNotificationRowModel: absence handling — no thumbnail, no avatar, g
   assert.equal(buildNotificationRowModel(null), null);
   assert.equal(buildNotificationRowModel({}), null, 'a row without a mediaId cannot render');
   assert.equal(buildNotificationRowModel({ ...FULL_ROW, mediaId: '' }), null);
+});
+
+// v1.67.1: the push-enable outcome message (the honest-feedback fix). The
+// v1.66 flow returned SILENTLY on a non-granted permission AND wrote to a
+// display:none element besides, so a locked iPhone got zero feedback. Only
+// 'granted' proceeds (null message); everything else names why.
+test('describePushEnableOutcome: granted -> null; denied and dismissed each get a distinct, actionable message', () => {
+  assert.equal(describePushEnableOutcome('granted'), null, 'granted proceeds with no error');
+  const denied = describePushEnableOutcome('denied');
+  assert.match(denied, /blocked/i);
+  assert.match(denied, /Settings > Notifications/i, 'denied points iOS users at the real toggle');
+  const dismissed = describePushEnableOutcome('default');
+  assert.match(dismissed, /again/i, 'a dismissed prompt tells the user to retry');
+  assert.notEqual(denied, dismissed, 'blocked and dismissed are DIFFERENT causes and must not share copy');
+  // Any unexpected value degrades to the retry message, never null (null
+  // would let the caller proceed as if granted).
+  assert.equal(describePushEnableOutcome(undefined), dismissed);
+  assert.equal(describePushEnableOutcome(''), dismissed);
+  assert.equal(describePushEnableOutcome('prompt'), dismissed);
+});
+
+// v1.67.1 regression guard (PRESENCE lock, not a runtime binding - setup.js
+// has no jsdom harness; Dean's device pass is the real arbiter and is what
+// caught the original bug). The root cause was that the push error element
+// (.field-error) is display:none and the enable flow's setError set
+// textContent ONLY, so every failure message was invisible. This asserts
+// setError routes through setFieldError (which toggles display) so a
+// regression back to the muted textContent-only form is caught in CI.
+const fs = require('node:fs');
+const path = require('node:path');
+test('v1.67.1: setup.js push setError reveals the element (routes through setFieldError, not muted textContent)', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'setup.js'), 'utf8');
+  // The push controls' setError must delegate to the show/hide helper.
+  assert.match(src, /const setError = \(msg\) => setFieldError\(errorEl, msg\);/,
+    'push setError must use setFieldError (which sets display:block); a textContent-only setError writes to a display:none element and is invisible');
+  // And setFieldError itself must still toggle display (the mechanism).
+  assert.match(src, /function setFieldError\(el, message\)[\s\S]*?el\.style\.display = 'block'/,
+    'setFieldError must set display:block when showing a message');
 });
