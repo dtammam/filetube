@@ -80,6 +80,52 @@
 
 ## Shipped
 
+### v1.68.0 - Notifications that clean up after themselves (2026-08-02)
+
+Dean's fixed wave, three rulings plus one add. Playing a video now
+retires its own notification: the bell row leaves YOUR panel and badge
+(server-side, at the view ping, so every play path counts - a card tap,
+a push deep-link, a queue advance) and the delivered push banner leaves
+your phone's shade (the PWA half, matched by PARSING the banner's deep
+link so one video's play can never close another's banner). Each bell
+row also gains its own dismiss X - single tap, no confirm, per-user
+(the row survives for everyone else), non-optimistic (the row leaves
+only when the server confirms), with keyboard focus handed to the next
+row. Clear-all stays. Under the hood: a new per-user dismissals table
+(schema v7 to v8), riding every carrier seam the reads lane rides -
+backup/restore included, proven by real HTTP cycles at the gate. The
+add: the scroll keeper grew its NATIVE-fullscreen half, closing the
+rotate-and-back door (iOS clobbers page scroll on native fullscreen
+exits; v1.67.5 covered only the CSS faux flavor).
+
+The full gate, two seats, two rounds each. The adversarial round's
+headline: the new lane's cross-user isolation was UNBOUND on the write
+side - every test actor was user 1, so a wrong-user write (one
+person's play deleting another's bell row) survived all 5616 tests.
+Now actor-bound at every layer and mutation-proof. It also caught a
+genuine leak (the rekey collision scrub purged reads but not
+dismissals) and two unlocked keeper guards. The QA round caught a
+LYING token-exempt comment (a 36px literal citing a convention that
+does not exist, where the exact control-size token was available), a
+badge race beside an open panel, the keyboard focus drop, and a
+born-complete schema list that had silently rotted across two
+releases. Seven mutant classes, zero survivors at the final hash.
+
+DISCLOSED, pending Dean's device pass:
+- The view ping is THE play hook: web surfaces dismiss on play; a Roku
+  play does not (its routes never ping).
+- Banner closing is PWA-only by nature (there is no shade to clean
+  elsewhere).
+- A push round already in flight can still deliver a banner for a
+  just-played video (cursor delivery is dismissal-blind); it closes on
+  that video's next play.
+- Downgrade posture: OLD FileTube code opening a v8 database works and
+  loses nothing - it simply shows dismissed rows again until upgraded
+  (the readers predate the table).
+
+Dual-Node of record: v22.23.1 5620/5620, v24.14.0 5620/5620 (0 fail
+both).
+
 ### v1.67.5 - The video top stops hiding under the header (2026-08-02)
 
 Dean pinned an elusive intermittent bug to its trigger: on the mobile
