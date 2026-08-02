@@ -759,40 +759,53 @@ test('QA-R2 W1: trashing a queued item must NOT brick queue reorder (the hidden 
   assert.ok(after.includes(id), 'the restored item reappears in the queue');
 });
 
-test('R5 (adversarial W1, its own round-4 RETRACTION): a malformed record cannot throw out of purge, and one must never abort the whole sweep', async () => {
-  const { id } = seedLibrary();
-  // A healthy, past-retention record that the sweep SHOULD purge...
-  const good = await trashItem(deps(), id, { nowMs: Date.now() - 100 * DAY });
-  assert.equal(good.ok, true);
-  // ...alongside malformed records whose trashPath is not a string. The
-  // crash guard inside destConfined (the `trashConfined &&` conjunct, which
-  // round 4 wrongly called dead logic) is the only thing stopping
-  // path.dirname from throwing on these -- and the throw would escape
-  // sweepTrash's record loop, silently stopping retention for everyone.
+// The two halves are SEPARATE tests deliberately (gate round 6): as one
+// test the purge half threw first and the sweep half was never reached, so
+// the sweep guarantee the name promised was unbound. Each half must kill
+// mutant q9 (dropping destConfined's `trashConfined &&` crash guard) alone.
+function plantMalformed(db, outsidePath, keys) {
+  // originalPath OUTSIDE every configured root: with it under a root,
+  // destConfined's root clause short-circuits TRUE and path.dirname is
+  // never evaluated -- the crash cannot occur and the test proves nothing.
+  for (const key of keys) {
+    db.trash[key] = {
+      originalId: 'm', originalPath: outsidePath,
+      trashPath: undefined, trashedAt: Date.now() - 100 * DAY, rootFolder: null, item: { id: 'm' },
+    };
+  }
+}
+
+test('R5a (adversarial W1): purgeTrashItem cannot THROW on a malformed record (the crash guard round 4 wrongly called dead logic)', async () => {
+  seedLibrary();
+  const OUT = fs.mkdtempSync(path.join(os.tmpdir(), 'ft-trashgate-w1a-'));
   await updateDatabase((db) => {
     let n = 0;
     for (const bad of [undefined, null, 42, {}, []]) {
       db.trash[`malformed-${n += 1}`] = {
-        originalId: 'm', originalPath: path.join(ROOT, 'Chan', 'm.mp4'),
+        originalId: 'm', originalPath: path.join(OUT, 'm.mp4'),
         trashPath: bad, trashedAt: Date.now() - 100 * DAY, rootFolder: null, item: { id: 'm' },
       };
     }
   });
-
   for (const key of ['malformed-1', 'malformed-2', 'malformed-3', 'malformed-4', 'malformed-5']) {
     const res = await purgeTrashItem({ loadDatabase, updateDatabase }, key);
     assert.equal(res.ok, true, `purge must not throw on ${key}`);
   }
+});
 
-  // Re-plant one and prove the SWEEP survives it and still does its job.
-  await updateDatabase((db) => {
-    db.trash.malformed = {
-      originalId: 'm', originalPath: path.join(ROOT, 'Chan', 'm.mp4'),
-      trashPath: undefined, trashedAt: Date.now() - 100 * DAY, rootFolder: null, item: { id: 'm' },
-    };
-  });
+test('R5b (adversarial W1): ONE malformed record must not abort the whole retention sweep -- the healthy record still purges', async () => {
+  const { id } = seedLibrary();
+  const OUT = fs.mkdtempSync(path.join(os.tmpdir(), 'ft-trashgate-w1b-'));
+  // Malformed FIRST so the record loop reaches it BEFORE the healthy one:
+  // under the mutant the sweep aborts there and the healthy record is left
+  // unpurged, which is the real cost (with the healthy one first it would
+  // already be purged before the throw and the severity would read wrong).
+  await updateDatabase((db) => plantMalformed(db, path.join(OUT, 'm.mp4'), ['malformed']));
+  const good = await trashItem(deps(), id, { nowMs: Date.now() - 100 * DAY });
+  assert.equal(good.ok, true);
+
   const purged = await sweepTrash(Date.now());
-  assert.ok(purged >= 1, 'the sweep completed instead of aborting on the malformed record');
+  assert.equal(purged, 1, 'the sweep completed instead of aborting on the malformed record');
   assert.equal(loadDatabase().trash[good.trashId], undefined, 'and the healthy past-retention record WAS purged');
   assert.ok(!fs.existsSync(good.trashPath));
 });
