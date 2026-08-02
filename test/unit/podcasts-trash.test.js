@@ -144,11 +144,99 @@ test('D1: a failed cover is REPORTED in the status and RETRIED next poll even wi
   assert.strictEqual(coverAttempts, 2, 'an existing cover is never re-fetched');
 });
 
-test('D1: a new-only sub with zero downloads still gets its cover (the dir is created for it)', async () => {
+test('D1: a new-only sub with zero downloads still gets its cover (the root exists from the add)', async () => {
   coverAttempts = 1; // skip the fake's one planned failure
   const id = await addSub('new');
+  // The ADD route creates the root (the one deliberate mkdir); this harness
+  // seeds records directly, so stand it up the same way here.
+  fs.mkdirSync(path.join(dataDir, 'podcasts'), { recursive: true });
   await podcasts.runPodcastPoll(deps, id);
   assert.ok(fs.existsSync(path.join(dataDir, 'podcasts', 'Show', 'cover.png')), 'cover lands with no episode downloads at all');
   const eps = store.episodesForSub(store.readPodcasts(db).episodes, id);
   assert.ok(eps.every((e) => e.status === 'skipped'), 'and the backfill policy was untouched');
+});
+
+// ---- gate fix round: the two CRITICALs + the unbound deliverables ----------
+
+test('CRITICAL#1: isConfinedUnderRoot refuses every escape shape (both trash endpoints ride this)', () => {
+  const root = '/data/podcasts';
+  for (const ok of ['/data/podcasts/Show/ep.mp3', '/data/podcasts/.filetube-trash/1-a-ep.mp3', '/data/podcasts/a/b/c.mp3']) {
+    assert.strictEqual(podcasts.isConfinedUnderRoot(ok, root), true, `inside: ${ok}`);
+  }
+  for (const bad of [
+    '/etc/passwd', '/data/podcasts', '/data/podcasts-evil/x.mp3', '/data/podcasts/../secret',
+    '/data/podcasts/Show/../../../etc/shadow', '', null, undefined, 42, '/data/session-secret',
+  ]) {
+    assert.strictEqual(podcasts.isConfinedUnderRoot(bad, root), false, `outside/invalid: ${String(bad)}`);
+  }
+});
+
+test('CRITICAL#2: the sweep treats all-trash-files-missing as an unmount and purges NOTHING; a partial miss still purges', async () => {
+  const DAY = 24 * 60 * 60 * 1000;
+  const root = path.join(dataDir, 'podcasts');
+  const trashDir = path.join(root, '.filetube-trash');
+  fs.mkdirSync(trashDir, { recursive: true });
+  const mk = (id, name) => {
+    const p = path.join(trashDir, name);
+    fs.writeFileSync(p, 'BYTES');
+    return { id, subId: 's1', guid: id, status: 'trashed', filePath: path.join(root, 'Show', `${id}.mp3`), trashPath: p, trashedAt: 1000 };
+  };
+  const purged = [];
+  db = { settings: { trashRetentionDays: 7 }, podcasts: { subscriptions: [], episodes: {}, settings: {} } };
+  for (const id of ['a', 'b', 'c']) db.podcasts.episodes[id] = mk(id, `${id}.mp3`);
+  deps.now = () => 1000 + 30 * DAY; // all three are long expired
+  deps.userStore = { removePodcastEpisodeState: (ids) => purged.push(...ids) };
+
+  // The unmount shape: the mountpoint is present (and holds the trash dir),
+  // but every tracked trash file has vanished at once.
+  for (const id of ['a', 'b', 'c']) fs.unlinkSync(db.podcasts.episodes[id].trashPath);
+  await podcasts.sweepExpiredTrash(deps);
+  assert.deepStrictEqual(Object.values(db.podcasts.episodes).map((e) => e.status), ['trashed', 'trashed', 'trashed'], 'nothing tombstoned');
+  assert.deepStrictEqual(purged, [], 'no per-user rows purged');
+  assert.ok(db.podcasts.episodes.a.trashPath, 'the trash pointers survive for the remount');
+
+  // One survivor defuses the signature: the genuinely-expired ones purge.
+  fs.writeFileSync(db.podcasts.episodes.c.trashPath, 'BYTES');
+  await podcasts.sweepExpiredTrash(deps);
+  const statuses = Object.values(db.podcasts.episodes).map((e) => e.status);
+  assert.deepStrictEqual(statuses, ['tombstone', 'tombstone', 'tombstone'], 'a real purge still works');
+  assert.deepStrictEqual(purged.sort(), ['a', 'b', 'c'], 'and retires the per-user rows');
+  assert.ok(!fs.existsSync(db.podcasts.episodes.c.trashPath), 'the surviving trash file is unlinked');
+});
+
+test('CRITICAL#2 (compounding half): the cover retry never RECREATES a vanished podcasts root', async () => {
+  const id = await addSub('all');
+  await podcasts.runPodcastPoll(deps, id); // establishes the root + cover
+  const root = path.join(dataDir, 'podcasts');
+  fs.rmSync(root, { recursive: true, force: true });
+  coverAttempts = 0;
+  deps.fetchFeedImpl = async () => ({
+    ok: true,
+    body: '<rss><channel><title>Show</title><itunes:image href="https://cdn.example/art/big.png"></itunes:image></channel></rss>',
+  });
+  await podcasts.runPodcastPoll(deps, id);
+  assert.strictEqual(fs.existsSync(root), false, 'a vanished root stays vanished - mkdir must never resurrect it');
+  assert.strictEqual(coverAttempts, 0, 'and no art fetch is attempted against a missing root');
+});
+
+test('WARNING#3: the cover fetch gets a 2-minute ceiling, never the episode hour', async () => {
+  const id = await addSub('all');
+  let seenOpts = null;
+  deps.downloadEnclosureImpl = async (url, destDir, finalName, opts) => {
+    if (finalName.startsWith('cover.')) { seenOpts = opts; return { ok: false, error: 'x' }; }
+    const p = path.join(destDir, finalName);
+    fs.writeFileSync(p, 'AUDIO');
+    return { ok: true, filePath: p, bytes: 5 };
+  };
+  await podcasts.runPodcastPoll(deps, id);
+  assert.strictEqual(seenOpts.totalTimeoutMs, podcasts.COVER_TOTAL_TIMEOUT_MS);
+  assert.strictEqual(podcasts.COVER_TOTAL_TIMEOUT_MS, 120000, 'two minutes');
+  assert.ok(seenOpts.totalTimeoutMs < 60 * 60 * 1000, 'strictly under the enclosure hour');
+});
+
+test('WARNING#4 (MV6): the cover cap constant is LOCKED above the measured real-world 15.5MB cover', () => {
+  // Dean's real Patreon cover measured 15,494,765 bytes; the 8MB cap is what
+  // silently killed it. A revert to 8MB must fail HERE.
+  assert.strictEqual(podcasts.COVER_MAX_BYTES, 32 * 1024 * 1024);
+  assert.ok(podcasts.COVER_MAX_BYTES > 15494765 * 2, 'at least 2x headroom over the measured real cover');
 });

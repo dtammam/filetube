@@ -285,6 +285,76 @@ test('v1.70: delete -> trash -> restore round-trip; collisions and wrong states 
   assert.strictEqual((await fetch(`${base}/api/podcasts/episodes/ffffffffffffffffffffffffffffffff`, { method: 'DELETE' })).status, 404);
 });
 
+test('v1.70 gate CRITICAL#1: a hostile record cannot read, write or destroy outside the podcasts root', async () => {
+  // The adversarial seat's exact attack shapes, reachable in production via
+  // an admin backup bundle (validateBackupBundle checks container shapes,
+  // not episode record contents). Every one must refuse BEFORE any I/O.
+  const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'ft-victim-'));
+  const victim = path.join(outside, 'session-secret');
+  fs.writeFileSync(victim, 'SUPER-SECRET-SIGNING-KEY');
+  const target = path.join(outside, 'planted.mp3');
+  const root = path.join(DATA_DIR, 'podcasts');
+  const legitTrash = path.join(root, '.filetube-trash', 'legit.mp3');
+  fs.mkdirSync(path.dirname(legitTrash), { recursive: true });
+  fs.writeFileSync(legitTrash, 'LEGITBYTES');
+
+  const escapeReadId = podcastStore.episodeIdFor(subId, 'esc-read');
+  const escapeWriteId = podcastStore.episodeIdFor(subId, 'esc-write');
+  const escapeDeleteId = podcastStore.episodeIdFor(subId, 'esc-del');
+  await updateDatabase((db) => {
+    const ns = podcastStore.ensurePodcasts(db);
+    podcastStore.reduceUpsertEpisodes(ns, subId, [
+      { guid: 'esc-read', title: 'R', pubDateMs: 1 },
+      { guid: 'esc-write', title: 'W', pubDateMs: 2 },
+      { guid: 'esc-del', title: 'D', pubDateMs: 3 },
+    ], 'pending', 5000);
+    // 1a: restore FROM outside (arbitrary read + destroy-at-source).
+    Object.assign(ns.episodes[escapeReadId], { status: 'trashed', trashPath: victim, filePath: path.join(root, 'S', 'stolen.mp3'), trashedAt: 1 });
+    // 1b: restore INTO outside (arbitrary create) from a legit trash file.
+    Object.assign(ns.episodes[escapeWriteId], { status: 'trashed', trashPath: legitTrash, filePath: target, trashedAt: 1 });
+    // 1b-mirror: DELETE a file that lives outside the root.
+    Object.assign(ns.episodes[escapeDeleteId], { status: 'downloaded', filePath: victim });
+    return true;
+  });
+
+  const r1 = await postJson(`/api/podcasts/episodes/${escapeReadId}/restore`, {});
+  assert.strictEqual(r1.status, 409, 'restore-from-outside refuses');
+  assert.strictEqual(fs.readFileSync(victim, 'utf8'), 'SUPER-SECRET-SIGNING-KEY', 'the victim file is untouched');
+  assert.strictEqual((await get(`/episode/${escapeReadId}`)).status, 404, 'and nothing is streamable');
+
+  const r2 = await postJson(`/api/podcasts/episodes/${escapeWriteId}/restore`, {});
+  assert.strictEqual(r2.status, 409, 'restore-into-outside refuses');
+  assert.ok(!fs.existsSync(target), 'no file planted outside the root');
+  assert.strictEqual(fs.readFileSync(legitTrash, 'utf8'), 'LEGITBYTES', 'the legit trash file is untouched');
+
+  const r3 = await fetch(`${base}/api/podcasts/episodes/${escapeDeleteId}`, { method: 'DELETE' });
+  assert.strictEqual(r3.status, 409, 'deleting an out-of-root file refuses');
+  assert.strictEqual(fs.readFileSync(victim, 'utf8'), 'SUPER-SECRET-SIGNING-KEY', 'still untouched after the delete attempt');
+
+  fs.rmSync(outside, { recursive: true, force: true });
+});
+
+test('v1.70 gate MV1: a non-downloaded episode never streams (the guard is load-bearing now)', async () => {
+  // Bound at last (this mutant survived the v1.69 gate as MP9 and the v1.70
+  // implementation as MV1): a pending episode with a REAL file on disk must
+  // still 404 - status, not file existence, is the authority.
+  const root = path.join(DATA_DIR, 'podcasts');
+  const showDir = path.join(root, 'Guard Show');
+  fs.mkdirSync(showDir, { recursive: true });
+  const realFile = path.join(showDir, 'Guarded [rss=gg1].mp3');
+  fs.writeFileSync(realFile, 'REALBYTES');
+  const gId = podcastStore.episodeIdFor(subId, 'gg1');
+  await updateDatabase((db) => {
+    const ns = podcastStore.ensurePodcasts(db);
+    podcastStore.reduceUpsertEpisodes(ns, subId, [{ guid: 'gg1', title: 'Guarded', pubDateMs: 9 }], 'pending', 5000);
+    ns.episodes[gId].filePath = realFile; // a real, readable file behind a non-downloaded status
+    return true;
+  });
+  assert.strictEqual((await get(`/episode/${gId}`)).status, 404, 'status is the authority, not file existence');
+  await updateDatabase((db) => podcastStore.reduceEpisodeDownloaded(podcastStore.ensurePodcasts(db), gId, { fileName: path.basename(realFile), filePath: realFile, bytes: 9, nowMs: 1 }));
+  assert.strictEqual((await get(`/episode/${gId}`)).status, 200, 'and it streams once genuinely downloaded');
+});
+
 test('the FOUR-way root guard: media/music/books configs all reject the podcasts root (both directions by shape)', async () => {
   const podcastsRoot = path.join(DATA_DIR, 'podcasts');
   const nested = path.join(podcastsRoot, 'Some Show');
