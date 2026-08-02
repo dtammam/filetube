@@ -7528,7 +7528,10 @@ app.delete('/api/settings/logo', async (req, res) => {
 // session secret is NEVER part of a bundle (secrets don't ride bundles —
 // per-instance cookie isolation depends on secrets differing).
 const BACKUP_SCHEMA = 'filetube-backup-v1';
-const BACKUP_NAMESPACE_KEYS = ['folders', 'folderSettings', 'progress', 'metadata', 'liked', 'deleteTombstones', 'viewCounts', 'settings', 'trash', 'books', 'music', 'ytdlp'];
+// v1.69: 'podcasts' rides the bundle (subscriptions/episodes/settings) but
+// feed URLS do not - they are secrets, stored OUTSIDE the db (see
+// lib/podcasts/secrets.js), so a restored sub may need its URL re-entered.
+const BACKUP_NAMESPACE_KEYS = ['folders', 'folderSettings', 'progress', 'metadata', 'liked', 'deleteTombstones', 'viewCounts', 'settings', 'trash', 'books', 'music', 'podcasts', 'ytdlp'];
 
 app.get('/api/admin/backup', async (req, res) => {
   if (!requireAdmin(req, res)) return;
@@ -7708,7 +7711,7 @@ function validateBackupBundle(bundle) {
   // Container namespaces must be objects when present (delta-round
   // residual): catching a malformed shape HERE means a 400 before the wipe
   // even starts, rather than a mid-populate rollback.
-  for (const container of ['books', 'music', 'ytdlp']) {
+  for (const container of ['books', 'music', 'podcasts', 'ytdlp']) {
     if (bundle[container] !== undefined && (typeof bundle[container] !== 'object' || bundle[container] === null || Array.isArray(bundle[container]))) {
       return `bundle key '${container}' must be an object`;
     }

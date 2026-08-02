@@ -249,6 +249,31 @@ test('unknown keys throw instead of being silently dropped (top-level and contai
     assert.throws(() => a.save({ folders: [], mystery: {} }), /unknown top-level db key 'mystery'/);
     assert.throws(() => a.save({ ytdlp: { tombstones: {} } }), /unknown db key 'ytdlp\.tombstones'/);
     assert.throws(() => a.save({ music: { playlists: {} } }), /unknown db key 'music\.playlists'/);
+    assert.throws(() => a.save({ podcasts: { feedUrls: {} } }), /unknown db key 'podcasts\.feedUrls'/,
+      'the namespace lock guards podcasts sub-keys too - a feed-URL map in the db would be a secret leak, not just drift');
+  } finally {
+    a.close();
+  }
+});
+
+test('v1.69: the podcasts namespace round-trips (subscriptions/settings singletons + per-episode kv rows)', () => {
+  const a = new SqliteAdapter(dbPath(), { log: () => {} });
+  try {
+    const db = {
+      podcasts: {
+        subscriptions: [{ id: 'p1', name: 'Show', feedUrlDisplay: 'https://x.example/rss', feedHost: 'x.example', order: 1, paused: false, backfill: 'all' }],
+        episodes: {
+          ep1: { id: 'ep1', subId: 'p1', guid: 'g1', title: 'One', status: 'downloaded' },
+          ep2: { id: 'ep2', subId: 'p1', guid: 'g2', title: 'Two', status: 'pending' },
+        },
+        settings: { pollMinutes: 60 },
+      },
+    };
+    a.save(db);
+    const back = readPersistedDatabase(dir);
+    assert.deepStrictEqual(back.podcasts.subscriptions, db.podcasts.subscriptions);
+    assert.deepStrictEqual(back.podcasts.episodes, db.podcasts.episodes);
+    assert.deepStrictEqual(back.podcasts.settings, db.podcasts.settings);
   } finally {
     a.close();
   }
