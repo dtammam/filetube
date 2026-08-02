@@ -5359,7 +5359,13 @@ function parseUserSettings(user) {
 // v1.66: 'pushEnabled' ('on'|'off') - the PER-USER push opt-out (ruling:
 // per-device subscribe, per-user opt-out). Delivery honors only the literal
 // 'off' (lib/push/deliver.js pushOptedOut); absent = on.
-const MIRRORED_SETTING_KEYS = new Set(['theme', 'era', 'icons', 'starRatings', 'pushEnabled']);
+// v1.67: cornerTL/TR/BL are the card-corner controls (Dean's ruling C1:
+// per-user SERVER-persisted; the server is the truth, not a device seed).
+// There is deliberately NO cornerBR - bottom-right is reserved for the
+// duration badge. Values are enum-ish control names; the lane stays
+// SHAPE-only like its siblings and the card renderer defends against
+// unknown values (plan D1).
+const MIRRORED_SETTING_KEYS = new Set(['theme', 'era', 'icons', 'starRatings', 'pushEnabled', 'cornerTL', 'cornerTR', 'cornerBL']);
 app.post('/api/me/settings', (req, res) => {
   const body = req.body || {};
   const merged = parseUserSettings(req.user);
@@ -8497,8 +8503,15 @@ app.get('/api/videos', (req, res) => {
   const items = page.map(item => {
     const progress = effectiveProgress(req.user.id, item.id) || { timestamp: 0, duration: 0 };
     const progressPercent = progress.duration > 0 ? (progress.timestamp / progress.duration) * 100 : 0;
+    // v1.67: the ORIGINAL YouTube watch URL, derived exactly like the
+    // single-item route (buildWatchUrl re-validates the id, null on
+    // anything unsafe) so the card share corner never re-approximates a
+    // server-resolved field from the spread's raw youtubeId (v1.52 lesson).
+    // Key absent when there is nothing safe to share (C4).
+    const watchUrl = typeof item.youtubeId === 'string' ? buildWatchUrl(item.youtubeId) : null;
     return {
       ...item,
+      ...(watchUrl ? { watchUrl } : {}),
       progress: progress.timestamp,
       progressPercent,
       // v1.40.0: per-item liked flag so the grid can render each card's Like
