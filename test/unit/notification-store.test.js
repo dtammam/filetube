@@ -44,8 +44,9 @@ test('schema v5: notification tables exist on a fresh adapter, and a v4 db forwa
   const names = () => adapter.sql
     .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE '%notification%' ORDER BY name")
     .all().map((r) => r.name);
-  assert.deepEqual(names(), ['notifications', 'user_notification_reads', 'user_notification_state']);
-  assert.equal(adapter.sql.prepare('PRAGMA user_version').get().user_version, 7);
+  // v1.68: user_notification_dismissals joins the family (schema v8).
+  assert.deepEqual(names(), ['notifications', 'user_notification_dismissals', 'user_notification_reads', 'user_notification_state']);
+  assert.equal(adapter.sql.prepare('PRAGMA user_version').get().user_version, 8);
 
   // Simulate a v1.50 file: drop the v5 tables, stamp user_version 4, reopen.
   adapter.sql.exec('DROP TABLE user_notification_reads; DROP TABLE user_notification_state; DROP TABLE notifications;');
@@ -53,8 +54,8 @@ test('schema v5: notification tables exist on a fresh adapter, and a v4 db forwa
   adapter.close();
   adapter = new SqliteAdapter(path.join(dir, SQLITE_FILENAME), { log: () => {} });
   store = createUserStore(adapter);
-  assert.deepEqual(names(), ['notifications', 'user_notification_reads', 'user_notification_state'], 'v4 -> v5 recreated the tables');
-  assert.equal(adapter.sql.prepare('PRAGMA user_version').get().user_version, 7);
+  assert.deepEqual(names(), ['notifications', 'user_notification_dismissals', 'user_notification_reads', 'user_notification_state'], 'v4 -> v8 recreated the tables');
+  assert.equal(adapter.sql.prepare('PRAGMA user_version').get().user_version, 8);
 });
 
 test('recordNotifications: valid rows land, garbage is skipped (never coerced), return value counts inserts', () => {

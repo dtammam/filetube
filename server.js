@@ -7605,7 +7605,9 @@ function validateBackupBundle(bundle) {
         // v1.50 watched latch (absent in pre-v1.50 bundles -- legal).
         ['watched', 'array'],
         // v1.51 notification reads (absent in pre-v1.51 bundles -- legal).
-        ['notificationReads', 'array']]) {
+        ['notificationReads', 'array'],
+        // v1.68 notification dismissals (absent in pre-v1.68 bundles -- legal).
+        ['notificationDismissals', 'array']]) {
         if (u[field] === undefined) continue;
         const ok = kind === 'array' ? Array.isArray(u[field]) : (typeof u[field] === 'object' && u[field] !== null && !Array.isArray(u[field]));
         if (!ok) return `${where}: ${field} must be an ${kind}`;
@@ -8105,6 +8107,19 @@ app.post('/api/notifications/read', (req, res) => {
   if (!notificationsFeatureEnabled(db)) return res.status(404).json({ error: 'notifications disabled' });
   const id = req.body ? req.body.id : undefined;
   if (!Number.isInteger(id) || !userStore.markNotificationRead(req.user.id, id, Date.now())) {
+    return res.status(400).json({ error: 'invalid notification id' });
+  }
+  res.json({ success: true });
+});
+
+// v1.68 (Dean ruling 3): per-row dismissal - the row leaves THIS user's
+// panel and badge, survives for every other user. Same phantom-id 400
+// discipline as /read (evicted/pruned/fabricated ids are never banked).
+app.post('/api/notifications/dismiss', (req, res) => {
+  const db = getCachedDatabase();
+  if (!notificationsFeatureEnabled(db)) return res.status(404).json({ error: 'notifications disabled' });
+  const id = req.body ? req.body.id : undefined;
+  if (!Number.isInteger(id) || !userStore.dismissNotification(req.user.id, id, Date.now())) {
     return res.status(400).json({ error: 'invalid notification id' });
   }
   res.json({ success: true });
