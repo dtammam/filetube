@@ -80,6 +80,26 @@
 
 ## Shipped
 
+### v1.67.4 - Web Push: tapping the notification opens the video (2026-08-02)
+
+With delivery finally working (the fix was config, not code: Apple's push
+service 403-rejects a VAPID `sub` it dislikes - the `mailto:...@...local`
+default among them - and our delivery treats a 403 as "skip", so a bad
+subject means silent nothing; setting FILETUBE_VAPID_SUBJECT to a real
+address fixes it), the next thing surfaced: tapping a notification opened
+the PWA to a flashing shell that never loaded the video, while tapping the
+same video from a card worked. The deep link was built as
+`/watch.html?id=<id>`, but the watch page - and the bell, and the cards -
+read `?v=`. The watch page got no id and sat on an empty skeleton forever.
+
+Now the notification opens `/watch.html?v=<id>` like everything else. The
+URL builder is a single shared function, bound by a test that reads the
+param `watch.js` actually consumes and forces the push link to match - so
+the four surfaces (push, bell, cards, watch) can't drift to different param
+names again. The mismatch had shipped green because the URL rides the
+ENCRYPTED push body, invisible to every delivery test. Slim gate,
+dual-Node 5584/5584.
+
 ### v1.67.3 - Web Push: the worker was named like an ad (2026-08-02)
 
 The reason iOS registration failed came out of the now-visible diagnostic:
