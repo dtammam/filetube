@@ -1939,7 +1939,16 @@ function initPushControls(signal) {
   const errorEl = document.getElementById('push-error');
   if (!group || !userCheck || !enableBtn || !disableBtn || !statusEl) return;
 
-  const setError = (msg) => { if (errorEl) errorEl.textContent = msg || ''; };
+  // v1.67.1 ROOT-CAUSE FIX: .field-error is display:none by default (it is
+  // only revealed by toggling display, see setFieldError). The v1.66 setError
+  // set textContent ONLY, so EVERY push error message - denied permission, a
+  // subscribe() DOMException, a server refusal - was written to a hidden
+  // element and never seen. Route through setFieldError so the message
+  // actually shows/clears like every other field error on this page.
+  const setError = (msg) => setFieldError(errorEl, msg);
+  // ?pushdebug=1 appends raw diagnostics (the iOS DOMException name/message
+  // from subscribe(), which has no console on-device without a Mac).
+  const pushDebug = typeof window !== 'undefined' && /[?&]pushdebug=1\b/.test(window.location.search || '');
 
   const reflectDevice = (sub) => {
     const problem = pushSupportProblem();
@@ -1995,7 +2004,13 @@ function initPushControls(signal) {
         enableBtn.disabled = true;
         try {
           const perm = await Notification.requestPermission();
-          if (perm !== 'granted') { reflectDevice(null); return; }
+          if (perm !== 'granted') {
+            // v1.67.1: was a SILENT return. Now says why (blocked vs
+            // dismissed) - the decision is table-tested in common.js.
+            setError(window.FileTube.describePushEnableOutcome(perm));
+            reflectDevice(null);
+            return;
+          }
           await window.FileTube.registerPushWorker();
           const reg = await navigator.serviceWorker.ready;
           const sub = await reg.pushManager.subscribe({
@@ -2017,8 +2032,12 @@ function initPushControls(signal) {
             return;
           }
           reflectDevice(sub);
-        } catch {
-          setError('Could not enable push on this device.');
+        } catch (err) {
+          // v1.67.1: name the failing step and, in debug, the raw error.
+          // This is the step that talks to the push service (Apple on iOS) -
+          // an AbortError here usually means the device could not reach it.
+          const base = 'Could not enable push on this device (the browser could not register with the push service).';
+          setError(pushDebug && err ? `${base} [${err.name}: ${err.message}]` : base);
           reflectDevice(null);
         } finally {
           enableBtn.disabled = false;

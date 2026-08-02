@@ -5811,6 +5811,7 @@ if (typeof window !== 'undefined') {
   // register call site + shares the key decoder.
   window.FileTube.registerPushWorker = registerPushWorker;
   window.FileTube.pushB64urlToUint8 = pushB64urlToUint8;
+  window.FileTube.describePushEnableOutcome = describePushEnableOutcome;
 }
 
 // Renders the Playlists sheet's folder list — functionally equivalent to the
@@ -8999,6 +9000,22 @@ function pushB64urlToUint8(b64url) {
   return out;
 }
 
+// v1.67.1: turn a Notification.requestPermission() result into the honest
+// message the Settings enable button must SHOW. The v1.66 flow returned
+// silently on a non-granted permission, and its error element was
+// display:none besides - so a locked iPhone that dismissed the prompt, or
+// denied it in a prior install, got no feedback at all. `granted` returns
+// null (proceed, no message). Pure + exported so the copy is table-tested,
+// not just wired (the v1.66 decision-vs-use lesson).
+function describePushEnableOutcome(perm) {
+  if (perm === 'granted') return null;
+  if (perm === 'denied') {
+    return 'Notifications are blocked for FileTube. On iPhone/iPad turn them on in Settings > Notifications > FileTube; on desktop, in the site settings.';
+  }
+  // 'default' (prompt dismissed / not answered) or any unexpected value.
+  return 'Permission was not granted. Tap Enable again and choose Allow when the prompt appears.';
+}
+
 // Boot reconcile (exec plan D2's self-heal): if THIS device already carries
 // a push subscription, re-POST it so the server row exists even after a
 // users-restore wiped the table, and freshen the worker file. Never
@@ -9252,6 +9269,7 @@ if (typeof module !== 'undefined' && module.exports) {
     unregisterStaleServiceWorkers,
     reconcilePushSubscription,
     pushB64urlToUint8,
+    describePushEnableOutcome,
     resolveBottomNavLayout,
     pinDeleteEndpoint,
     fisherYatesShuffle, sortItems, shouldShowShuffleButton,
