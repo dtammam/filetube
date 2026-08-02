@@ -1522,6 +1522,45 @@ if (typeof module !== 'undefined' && module.exports) {
     cssFsSavedScrollY = null;
   }
 
+  // v1.68.1: the ROTATION CAP NUDGE (Dean's on-device trigger: rotate the
+  // inline watch page to landscape and back and the player box renders at
+  // ~45% of the LANDSCAPE height with the picture cropped, until a manual
+  // scroll pops it back). Mechanism: the mobile-portrait height caps
+  // (`.player-container { max-height: 45vh }` and its two style.css
+  // siblings) live inside media queries that iOS DROPS in landscape and
+  // RE-APPLIES on rotate-back - and WebKit resolves their `vh` against
+  // stale (pre-rotation) viewport metrics and never revisits the value
+  // until something invalidates style. A manual scroll is exactly such an
+  // invalidation, which is why it "fixes" the box on-device. This helper
+  // performs the same invalidation deterministically: release the cap
+  // inline, force one layout with it off, then remove the inline value so
+  // the cascade re-resolves the rule NOW, against settled metrics. The
+  // inline value always ends CLEARED (never a frozen pixel copy), so the
+  // cascade - including `.audio-expanded`'s and fullscreen's own
+  // `max-height: none` overrides - stays the only authority. style.css
+  // additionally carries dvh twins on all three rules (dvh re-resolves on
+  // viewport changes by spec) - belt and suspenders, either alone should
+  // hold; Dean's device pass arbitrates.
+  function nudgeViewportHeightCaps() {
+    var els = [host, mediaPlayer];
+    for (var i = 0; i < els.length; i++) {
+      var el = els[i];
+      if (!el || !el.isConnected) continue;
+      el.style.maxHeight = 'none';
+      void el.offsetHeight;
+      el.style.maxHeight = '';
+    }
+  }
+
+  // Two passes: a double-rAF for the common case where the viewport has
+  // settled by the frame after the orientation event, plus one late timer
+  // pass as the belt for slower rotation animations (both idempotent - a
+  // nudge against already-correct caps re-resolves to the same values).
+  function scheduleViewportCapNudge() {
+    requestAnimationFrame(function () { requestAnimationFrame(nudgeViewportHeightCaps); });
+    setTimeout(nudgeViewportHeightCaps, 650);
+  }
+
   // Native-controls round: true while the native iOS/browser `controls` strip
   // is the active surface (mobile video, FULL only -- see `applyControlsMode`
   // above). Consulted by `wireSkipHoldGestures()`'s handlers below so the
@@ -5002,6 +5041,12 @@ if (typeof module !== 'undefined' && module.exports) {
     var mql = window.matchMedia('(orientation: landscape)');
     function onOrientationChange() {
       if (state !== STATE_FULL) return; // FULL-only shortcut/gesture surface
+      // v1.68.1: every FULL-state rotation re-resolves the mobile height
+      // caps (see nudgeViewportHeightCaps' header). Scheduled BEFORE the
+      // auto-fullscreen decision: the nudge is fullscreen-safe (the capped
+      // rules exclude fullscreen; the inline value ends cleared) and a
+      // rotate-into-fullscreen still wants correct caps on its later exit.
+      scheduleViewportCapNudge();
       var landscape = mql.matches;
       try {
         // v1.50 (Dean, item 6): `playing` joins the decision -- see
