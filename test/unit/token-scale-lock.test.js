@@ -77,11 +77,18 @@ test('v1.71: every fallback-less var() names a token the stylesheet defines (the
   const path = require('node:path');
   const raw = fs.readFileSync(path.join(__dirname, '../../public/css/style.css'), 'utf8');
   const css = raw.replace(/\/\*[\s\S]*?\*\//g, ''); // strip comments FIRST
-  const defined = new Set([...css.matchAll(/^\s*(--[a-z0-9-]+)\s*:/gim)].map((m) => m[1]));
+  // Definitions: ';{'-anchored (an inline `:root { --a: 1; --b: 2 }` defines
+  // BOTH) and case-SENSITIVE (custom properties are).
+  const defined = new Set([...css.matchAll(/(?:^|[;{])\s*(--[A-Za-z0-9_-]+)\s*:/gm)].map((m) => m[1]));
   // Custom properties set from JS at runtime (never declared in CSS).
   const jsSet = new Set(['--history-pct', '--media-aspect', '--music-sticky-top', '--ptr-pull', '--seek-fill', '--vol-fill']);
   const missing = new Set();
-  for (const m of css.matchAll(/var\((--[a-z0-9-]+)\s*\)/g)) { // no-fallback form only
+  // Usages: allow the whitespace shapes ordinary wrapped formatting produces
+  // (`var(\n  --token\n)`, tabs, spaces) and the full custom-property
+  // charset - the delta-round attack showed the first version missed five
+  // shapes including plain line-wrapping, i.e. it would not have caught the
+  // very bug it was written for had that line been formatted differently.
+  for (const m of css.matchAll(/var\(\s*(--[A-Za-z0-9_-]+)\s*\)/g)) { // no-fallback form only
     if (!defined.has(m[1]) && !jsSet.has(m[1])) missing.add(m[1]);
   }
   assert.deepStrictEqual([...missing].sort(), [],

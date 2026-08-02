@@ -240,3 +240,53 @@ test('WARNING#4 (MV6): the cover cap constant is LOCKED above the measured real-
   assert.strictEqual(podcasts.COVER_MAX_BYTES, 32 * 1024 * 1024);
   assert.ok(podcasts.COVER_MAX_BYTES > 15494765 * 2, 'at least 2x headroom over the measured real cover');
 });
+
+test('delta CRITICAL: the confinement ROOT is operator-controlled only - a bundle-supplied settings.downloadDir cannot move it', () => {
+  // The delta round's attack: the fix hardened the record's path fields,
+  // but the ROOT they are measured against also rode the backup bundle -
+  // so a crafted bundle MOVED the root and confinement approved everything
+  // under it (a live session-secret was round-tripped out and back and
+  // streamed over /episode/:id). No route has ever written this field.
+  const hostile = { podcasts: { subscriptions: [], episodes: {}, settings: { downloadDir: '/tmp/attacker-chosen' } } };
+  const resolved = podcasts.resolvePodcastsRoot(hostile, { dataDir: '/data' });
+  assert.strictEqual(resolved, path.resolve('/data/podcasts'), 'the db cannot relocate the filesystem boundary its own contents are checked against');
+  assert.notStrictEqual(resolved, '/tmp/attacker-chosen');
+});
+
+test('delta WARNING#2: an expired trashed episode outside the current root is left ENTIRELY alone (bytes AND record)', async () => {
+  const DAY = 24 * 60 * 60 * 1000;
+  const root = path.join(dataDir, 'podcasts');
+  fs.mkdirSync(path.join(root, '.filetube-trash'), { recursive: true });
+  // A survivor inside the root keeps the unmount signature from firing.
+  const insidePath = path.join(root, '.filetube-trash', 'inside.mp3');
+  fs.writeFileSync(insidePath, 'BYTES');
+  // The victim of an operator moving FILETUBE_PODCASTS_DIR: its trash file
+  // lives under the OLD root.
+  const oldRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ft-oldroot-'));
+  const outsidePath = path.join(oldRoot, 'orphan.mp3');
+  fs.writeFileSync(outsidePath, 'ONLYCOPY');
+
+  const purged = [];
+  db = {
+    settings: { trashRetentionDays: 7 },
+    podcasts: {
+      subscriptions: [],
+      episodes: {
+        inside: { id: 'inside', subId: 's1', guid: 'i', status: 'trashed', filePath: path.join(root, 'S', 'i.mp3'), trashPath: insidePath, trashedAt: 1000 },
+        outside: { id: 'outside', subId: 's1', guid: 'o', status: 'trashed', filePath: path.join(oldRoot, 'S', 'o.mp3'), trashPath: outsidePath, trashedAt: 1000 },
+      },
+      settings: {},
+    },
+  };
+  deps.now = () => 1000 + 30 * DAY;
+  deps.userStore = { removePodcastEpisodeState: (ids) => purged.push(...ids) };
+
+  await podcasts.sweepExpiredTrash(deps);
+  assert.strictEqual(db.podcasts.episodes.inside.status, 'tombstone', 'the in-root expiry purges normally');
+  assert.ok(!fs.existsSync(insidePath), 'and its bytes go');
+  assert.strictEqual(db.podcasts.episodes.outside.status, 'trashed', 'the out-of-root record is NOT tombstoned');
+  assert.strictEqual(db.podcasts.episodes.outside.trashPath, outsidePath, 'its pointer survives');
+  assert.strictEqual(fs.readFileSync(outsidePath, 'utf8'), 'ONLYCOPY', 'and the only copy of its bytes is untouched');
+  assert.deepStrictEqual(purged, ['inside'], 'only the genuinely-purged episode retires its per-user rows');
+  fs.rmSync(oldRoot, { recursive: true, force: true });
+});
