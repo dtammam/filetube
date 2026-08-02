@@ -559,6 +559,18 @@ function reconcileStoredComments(stored, makeFreshMock) {
   return { comments: [...mine, ...fresh()], changed: true };
 }
 
+// v1.68.1: the watch id from the query string -- `?v=`, with legacy `?id=` as
+// a fallback. Push banners minted before v1.67.4 (when lib/push/deliver.js's
+// pushWatchUrl built `?id=`) OUTLIVE that server-side fix in the phone's
+// notification shade: tapping one navigated here, found no `?v=`, and hit the
+// bounce-to-home guard in init() below -- which on-device reads as "the tap
+// did nothing". `?v=` wins when both are present (only ever minted alone, but
+// the precedence must not depend on that).
+function resolveWatchMediaId(search) {
+  const params = new URLSearchParams(search || '');
+  return params.get('v') || params.get('id') || null;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     resolveDisplayDescription,
@@ -573,6 +585,7 @@ if (typeof module !== 'undefined' && module.exports) {
     resolveUploaderLinkHref,
     resolveChannelDirFromFilePath,
     resolveWatchEntryReparentAction,
+    resolveWatchMediaId,
     MOCK_COMMENT_BANK,
     selectDeterministicComments,
     hashPersonaSeed,
@@ -772,9 +785,10 @@ if (typeof module !== 'undefined' && module.exports) {
     primePinnedSidebarFromCache();
     fetchAllPins().then((pins) => renderPinnedSidebar(pins));
 
-    // Parse media ID
+    // Parse media ID (?v=, with the legacy ?id= push-banner fallback -- see
+    // resolveWatchMediaId's own comment above).
     const urlParams = new URLSearchParams(window.location.search);
-    const mediaId = urlParams.get('v');
+    const mediaId = resolveWatchMediaId(window.location.search);
     // v1.36.2 (Dean): the LAUNCH-CONTEXT param -- which list the user was
     // browsing when they opened this video. Only 'liked' is recognized
     // today (an unknown/absent value degrades to the folder-scoped

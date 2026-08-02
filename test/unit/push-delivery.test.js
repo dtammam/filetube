@@ -545,11 +545,34 @@ test('pushWatchUrl uses the SAME query param the watch page reads (?v=), encoded
   // the push URL builds THAT param. This is the check that was missing when
   // ?id= shipped - a unit test on the builder alone would have codified the
   // bug; pinning it against the reader cannot.
+  // v1.68.1: the read is centralized in resolveWatchMediaId (?v= primary,
+  // legacy ?id= fallback for pre-v1.67.4 banners still in the shade) - the
+  // lock now binds the PRIMARY param of that helper, so builder and reader
+  // still cannot silently drift.
   const watchSrc = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'watch.js'), 'utf8');
-  const m = watchSrc.match(/URLSearchParams\(window\.location\.search\)[\s\S]*?\.get\('([a-zA-Z0-9_]+)'\)/);
-  assert.ok(m, 'watch.js still reads a query param from location.search');
+  const fn = watchSrc.match(/function resolveWatchMediaId\(search\) \{([\s\S]*?)\n\}/);
+  assert.ok(fn, 'watch.js still centralizes its id read in resolveWatchMediaId');
+  const m = fn[1].match(/\.get\('([a-zA-Z0-9_]+)'\)/);
+  assert.ok(m, 'resolveWatchMediaId still reads a query param');
   const readsParam = m[1];
-  assert.equal(readsParam, 'v', 'sanity: watch.js reads ?v=');
+  assert.equal(readsParam, 'v', 'sanity: the PRIMARY param watch.js reads is ?v=');
   assert.ok(pushWatchUrl('x').includes(`?${readsParam}=`),
     `the push deep link must use ?${readsParam}= (what watch.js reads) - a mismatch is the v1.67.4 flashing-shell bug`);
+
+  // Gate W1 (v1.68.1, adversarial - measured): the helper lock alone is
+  // presence-not-binding. An init that inlines or forks the read (e.g.
+  // `urlParams.get('id') || urlParams.get('v')`) leaves the helper exported,
+  // dead, and green while the REAL read drifts - the mutant survived the
+  // full 4110-test suite. This call-site lock binds init to THE helper
+  // (comment-stripped exact statement); the behavioral suite binds the
+  // precedence at the USE (the consumeWatchSeed capture).
+  const strippedWatch = watchSrc
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .split('\n')
+    .map((l) => l.replace(/\/\/.*$/, ''))
+    .join('\n');
+  assert.ok(
+    strippedWatch.includes('const mediaId = resolveWatchMediaId(window.location.search);'),
+    'init reads its id through resolveWatchMediaId - never an inline .get() fork'
+  );
 });

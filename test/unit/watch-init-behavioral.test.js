@@ -71,7 +71,7 @@ const FULL_SEED_ITEM = {
 
 // Builds a fresh sandbox, evaluates the REAL watch.js in it, and returns
 // {init, els} -- els is the shared selector->element map, pre-seedable.
-function buildWatchRealm({ cacheEntry } = {}) {
+function buildWatchRealm({ cacheEntry, search = '?v=vid1' } = {}) {
   storage.clear();
   if (cacheEntry) storage.set('ft-cap-cache-v1', JSON.stringify(cacheEntry));
 
@@ -91,15 +91,16 @@ function buildWatchRealm({ cacheEntry } = {}) {
     title: '',
   };
   let capturedInit = null;
+  const seedCalls = [];
   const windowShim = {
     FileTube: {
       player: new Proxy({ currentId: null, getState: () => ({ docked: false, loaded: false }), load: () => true, isLoopEnabled: () => false }, {
         get(t, p) { if (p in t) return t[p]; return () => undefined; },
       }),
-      consumeWatchSeed: () => ({ item: FULL_SEED_ITEM, folderSettings: null }),
+      consumeWatchSeed: (id) => { seedCalls.push(id); return { item: FULL_SEED_ITEM, folderSettings: null }; },
       registerView: (name, handlers) => { if (name === 'watch') capturedInit = handlers.init; },
     },
-    location: { pathname: '/watch.html', search: '?v=vid1', origin: 'http://x', href: 'http://x/watch.html?v=vid1' },
+    location: { pathname: '/watch.html', search, origin: 'http://x', href: 'http://x/watch.html' + search },
     addEventListener() {}, removeEventListener() {},
     matchMedia: () => ({ matches: false, addEventListener() {}, addListener() {} }),
     history: { replaceState() {}, pushState() {} },
@@ -130,7 +131,7 @@ function buildWatchRealm({ cacheEntry } = {}) {
   const src = fs.readFileSync(path.join(REPO, 'public/js/watch.js'), 'utf8');
   vm.runInContext(src, sandbox, { filename: 'watch.js' });
   assert.ok(capturedInit, 'watch.js must register its init with the router');
-  return { init: capturedInit, els };
+  return { init: capturedInit, els, loc: windowShim.location, seedCalls };
 }
 
 const WARM_SUBSCRIBED_CACHE = {
@@ -171,6 +172,59 @@ test('cached moduleEnabled:false HIDES but never removes (the confirmed answer m
   // hide; only a CONFIRMED answer removes.
   assert.equal(btn.hidden, true, 'hidden on the cached not-enabled answer');
   assert.equal(btn.isConnected, true, 'but STILL CONNECTED -- removal is reserved for confirmed answers');
+});
+
+// ---- v1.68.1: the legacy ?id= deep-link fallback, bound at the USE ---------
+// A pure-helper test alone would let a mutant revert init back to
+// urlParams.get('v') and stay green (the "testing a DECISION is not testing
+// its USE" class). These run the REAL init against the shim location.
+
+test('resolveWatchMediaId precedence table: v, id fallback, v-wins, absent, empty-string params', () => {
+  const { resolveWatchMediaId } = require('../../public/js/watch.js');
+  assert.equal(resolveWatchMediaId('?v=a'), 'a');
+  assert.equal(resolveWatchMediaId('?id=a'), 'a', 'the legacy push-banner lane');
+  assert.equal(resolveWatchMediaId('?v=a&id=b'), 'a', 'v wins when both are present');
+  assert.equal(resolveWatchMediaId('?id=b&v=a'), 'a', 'v wins regardless of order');
+  assert.equal(resolveWatchMediaId('?list=liked'), null);
+  assert.equal(resolveWatchMediaId(''), null);
+  assert.equal(resolveWatchMediaId('?v=&id=b'), 'b', 'an EMPTY v falls through to id');
+});
+
+test('legacy ?id= deep link (a pre-v1.67.4 push banner) initializes instead of bouncing home', () => {
+  const { init, els, loc } = buildWatchRealm({ search: '?id=vid1' });
+  const root = makeEl('div');
+  root.querySelector = (sel) => { if (!els.has(sel)) els.set(sel, makeEl('div')); return els.get(sel); };
+
+  init(root);
+
+  assert.equal(loc.href, 'http://x/watch.html?id=vid1',
+    'href untouched: the tap must land ON the video, never bounce to /');
+});
+
+test('gate W1: v-over-id precedence bound at the USE - init consumes the ?v= id when both params are present', () => {
+  // The adversarial seat's verified probe: an init that inlines an id-first
+  // read (`urlParams.get('id') || urlParams.get('v')`) survived the full
+  // suite with the pure helper left exported, dead, and green. The seed
+  // consume rides init's REAL mediaId, so capturing its argument binds the
+  // precedence where it executes, not where it is defined.
+  const { init, els, seedCalls } = buildWatchRealm({ search: '?v=vid1&id=other' });
+  const root = makeEl('div');
+  root.querySelector = (sel) => { if (!els.has(sel)) els.set(sel, makeEl('div')); return els.get(sel); };
+
+  init(root);
+
+  assert.deepStrictEqual(seedCalls, ['vid1'],
+    'init consumed the seed for the ?v= id exactly once - never the legacy ?id=');
+});
+
+test('a watch URL with NO id still bounces home (the guard the fallback must not break)', () => {
+  const { init, els, loc } = buildWatchRealm({ search: '?list=liked' });
+  const root = makeEl('div');
+  root.querySelector = (sel) => { if (!els.has(sel)) els.set(sel, makeEl('div')); return els.get(sel); };
+
+  init(root);
+
+  assert.equal(loc.href, '/', 'the no-id guard still redirects');
 });
 
 test('cold cache: init() completes and the button simply stays as the markup left it', () => {

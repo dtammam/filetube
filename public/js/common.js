@@ -7500,9 +7500,12 @@ function deleteResultToast(data) {
 // v1.68 (Dean ruling 4): a play also closes its own DELIVERED push banner,
 // so the phone's notification shade agrees with the app. The v1.66 worker
 // stamps each banner's deep link into notification.data.url
-// (/watch.html?v=<id> since v1.67.4) - matched here by PARSING the ?v param
-// (plan D4: URLSearchParams, never substring - "v=abc" must not close
-// "v=abc2"'s banner). Feature-detected at every step and total-silent
+// (/watch.html?v=<id> since v1.67.4; ?id=<id> before that) - matched here
+// by PARSING the params, ?v= primary with the legacy ?id= fallback
+// (v1.68.1: pre-v1.67.4 banners outlive that fix in the shade and must
+// retire on play too; mirrors watch.js's resolveWatchMediaId precedence).
+// Plan D4: URLSearchParams, never substring - "v=abc" must not close
+// "v=abc2"'s banner. Feature-detected at every step and total-silent
 // outside the PWA; resolves the count closed (tests) and never rejects.
 function closeDeliveredPushBanners(mediaId) {
   if (typeof mediaId !== 'string' || mediaId === '') return Promise.resolve(0);
@@ -7517,7 +7520,14 @@ function closeDeliveredPushBanners(mediaId) {
       for (const n of list || []) {
         const url = n && n.data && typeof n.data.url === 'string' ? n.data.url : '';
         let v = null;
-        try { v = new URL(url, 'http://localhost').searchParams.get('v'); } catch (_) { /* unparseable - skip */ }
+        try {
+          // v1.68.1: `?v=` with legacy `?id=` fallback - banners minted before
+          // v1.67.4's pushWatchUrl fix carry `?id=` and sit in the shade until
+          // something closes them; a play must retire those too (mirrors
+          // watch.js's resolveWatchMediaId, same precedence).
+          const sp = new URL(url, 'http://localhost').searchParams;
+          v = sp.get('v') || sp.get('id');
+        } catch (_) { /* unparseable - skip */ }
         if (v === mediaId) {
           try { n.close(); closed++; } catch (_) { /* already gone */ }
         }

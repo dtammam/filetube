@@ -4561,6 +4561,12 @@ a.sub-row-channel-link:focus-visible {
      system player, untouched by any of this. */
   #player-slot #player-wrapper:not(.audio-expanded):not(.css-fullscreen):not(:fullscreen) #media-player {
     max-height: calc(100vh - var(--mobile-header-h, 96px) - 96px);
+    /* v1.68.1 dvh twin (rotation cap staleness): iOS re-applies this block on
+       rotate-back with vh resolved against STALE pre-rotation metrics (the
+       cropped-player bug); dvh re-resolves on viewport changes by spec. The
+       vh line above stays as the fallback for browsers without dvh, and
+       player.js's nudgeViewportHeightCaps() is the JS belt for both. */
+    max-height: calc(100dvh - var(--mobile-header-h, 96px) - 96px);
   }
   /* Audio's cover-art layer fills the wrapper (absolute inset), which now
      tracks the capped element height -- nothing extra needed for audio. */
@@ -4580,6 +4586,10 @@ a.sub-row-channel-link:focus-visible {
 @media (max-width: 768px) and (orientation: portrait) {
   .player-container {
     max-height: 45vh;
+    /* v1.68.1 dvh twin - see the #player-slot cap above; this 45vh resolving
+       against the LANDSCAPE height on rotate-back IS the measured on-device
+       crop (box at ~45% of the landscape height, rendered in portrait). */
+    max-height: 45dvh;
   }
 
   /* Feature A (v1.26.1, Shorts player-size jump): a genuinely PORTRAIT item
@@ -4603,6 +4613,8 @@ a.sub-row-channel-link:focus-visible {
      edge-case tradeoff rather than a full width-shrink-to-fit relayout. */
   #player-wrapper.portrait-media {
     max-height: min(78vh, calc(100vh - var(--mobile-header-h) - var(--mobile-bottom-nav-h)));
+    /* v1.68.1 dvh twin - see the #player-slot cap above. */
+    max-height: min(78dvh, calc(100dvh - var(--mobile-header-h) - var(--mobile-bottom-nav-h)));
   }
 }
 
@@ -8069,6 +8081,11 @@ body.ft-css-fullscreen .bottom-nav {
      real frame agree on phones. */
   .watch-container #player-slot:empty {
     max-height: 45vh;
+    /* v1.68.1 dvh twin (gate S1) - the mounted player caps at 45dvh now, so
+       the mirror must too or the reserved and real frames disagree by the
+       dynamic-toolbar delta in dvh browsers; same stale-vh rationale as the
+       three player caps. vh above stays as the no-dvh fallback. */
+    max-height: 45dvh;
   }
 }
 

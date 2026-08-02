@@ -80,6 +80,57 @@
 
 ## Shipped
 
+### v1.68.1 - Stale banners land, rotations stop cropping (2026-08-02)
+
+Dean's fixed wave, two on-device reports, both root-caused to something
+other than the reported trigger. First: tapping a push notification
+"did nothing" - and the watched-filter correlation Dean observed was a
+bystander. The real mechanism: banners minted BEFORE v1.67.4's ?id= to
+?v= fix outlive that fix in the phone's shade; tapping one navigated to
+the watch page, which found no ?v= and bounced to home. Those same
+stale banners could also never retire on play (the banner-close helper
+parsed only ?v=). Both readers now accept legacy ?id= as a fallback
+(?v= wins when both are present), centralized in a resolveWatchMediaId
+helper. Second: rotating the inline watch page to landscape and back
+cropped the player until a manual scroll - measured from the
+screenshots as the mobile-portrait 45vh cap re-applied with vh
+resolved against STALE pre-rotation viewport metrics (WebKit never
+revisits until a style invalidation, which is what the manual scroll
+was). Two independent layers: a JS nudge at the orientation seam that
+performs that invalidation deterministically (release the caps, force
+one layout, clear - the caps re-resolve against settled metrics), and
+dvh twin declarations after all four vh cap sites (dvh re-resolves on
+viewport changes by spec; vh stays for browsers without it).
+
+Slim gate (adversarial seat), one fix round. The headline catch: the
+rebound builder/reader drift lock was presence-not-binding - an init
+inlining an id-first read survived the ENTIRE 4110-test suite with the
+helper left exported, dead, and green (the testing-a-DECISION-not-its-
+USE class, again). Closed by two verified bindings: the behavioral
+harness now captures WHICH id init consumes (?v= wins with both params
+present, exactly once) and an exact-statement lock binds init to the
+helper. The seat also found the fourth vh cap site this wave missed
+(the :empty reserved-frame mirror - twinned) and killed 12 of its 14
+crafted mutants against the shipped locks.
+
+DISCLOSED, pending Dean's device pass:
+- The rotation-cap-nudge locks are source-text only; nothing binds
+  EXECUTION of the nudge (tech-debt #78 - inherent to the no-jsdom
+  player IIFE precedent; the CSS dvh layer is the independent second
+  defense, and the device pass is the arbiter).
+- The S1 CSS pair assertion anchors to the first :empty block whose
+  first declaration is the 45vh cap; a two-edit refactor moving the
+  pair into the BASE :empty rule could hijack the anchor (adversarial
+  S1-c, runnable repro on record; second-order, same anchoring
+  strength as the pre-existing pair assertions - shipped disclosed on
+  the seat's own recommendation).
+- Old ?id= banners tapped BEFORE this release still bounced; ones
+  still sitting in the shade start working (and start retiring on
+  play) once the server runs v1.68.1.
+
+Dual-Node of record: v22.23.1 5632/5632, v24.14.0 5632/5632 (0 fail
+both).
+
 ### v1.68.0 - Notifications that clean up after themselves (2026-08-02)
 
 Dean's fixed wave, three rulings plus one add. Playing a video now

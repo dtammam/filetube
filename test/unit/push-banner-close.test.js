@@ -62,6 +62,23 @@ test('parse discipline end-to-end: closed flags land on the right banners', () =
   });
 });
 
+// v1.68.1: banners minted BEFORE v1.67.4's pushWatchUrl fix carry ?id= and
+// outlive that fix in the phone's shade - a play must retire those too.
+test('legacy ?id= banners close on play; ?v= wins over ?id= when both are present', () => {
+  const legacy = fakeBanner('/watch.html?id=abc');
+  const legacyDecoy = fakeBanner('/watch.html?id=abc2');   // substring hazard, legacy lane
+  const modern = fakeBanner('/watch.html?v=abc');
+  const bothParams = fakeBanner('/watch.html?v=other&id=abc'); // precedence: v wins, id ignored
+  return withRegistration([legacy, legacyDecoy, modern, bothParams], async () => {
+    const closed = await closeDeliveredPushBanners('abc');
+    assert.strictEqual(closed, 2, 'exactly the legacy ?id=abc and modern ?v=abc banners');
+    assert.strictEqual(legacy.closed, true, 'legacy ?id= banner closes');
+    assert.strictEqual(legacyDecoy.closed, false, 'the longer legacy id survives');
+    assert.strictEqual(modern.closed, true, 'modern ?v= banner closes');
+    assert.strictEqual(bothParams.closed, false, 'v takes precedence over a contradicting id');
+  });
+});
+
 test('garbage banners never throw: missing data, unparseable url, close() that throws', () =>
   withRegistration([
     { close() { throw new Error('gone'); }, data: { url: '/watch.html?v=abc' } },

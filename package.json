@@ -1,6 +1,6 @@
 {
   "name": "filetube",
-  "version": "1.68.0",
+  "version": "1.68.1",
   "description": "A self-hosted media server resembling old-school YouTube",
   "main": "server.js",
   "scripts": {
