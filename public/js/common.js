@@ -7517,7 +7517,14 @@ function closeDeliveredPushBanners(mediaId) {
       for (const n of list || []) {
         const url = n && n.data && typeof n.data.url === 'string' ? n.data.url : '';
         let v = null;
-        try { v = new URL(url, 'http://localhost').searchParams.get('v'); } catch (_) { /* unparseable - skip */ }
+        try {
+          // v1.68.1: `?v=` with legacy `?id=` fallback - banners minted before
+          // v1.67.4's pushWatchUrl fix carry `?id=` and sit in the shade until
+          // something closes them; a play must retire those too (mirrors
+          // watch.js's resolveWatchMediaId, same precedence).
+          const sp = new URL(url, 'http://localhost').searchParams;
+          v = sp.get('v') || sp.get('id');
+        } catch (_) { /* unparseable - skip */ }
         if (v === mediaId) {
           try { n.close(); closed++; } catch (_) { /* already gone */ }
         }
