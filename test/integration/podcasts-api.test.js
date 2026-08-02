@@ -205,6 +205,22 @@ test('settings: pollMinutes round-trips with validation; downloadDir is reported
   assert.strictEqual((await postJson('/api/podcasts/settings', {})).status, 400);
 });
 
+test('the FOUR-way root guard: media/music/books configs all reject the podcasts root (both directions by shape)', async () => {
+  const podcastsRoot = path.join(DATA_DIR, 'podcasts');
+  const nested = path.join(podcastsRoot, 'Some Show');
+  // The config routes silently drop NONEXISTENT folders before any guard
+  // runs - the overlap rejection is only reachable for real directories.
+  fs.mkdirSync(nested, { recursive: true });
+  for (const [route, key] of [['/api/config', 'folders'], ['/api/music/config', 'folders'], ['/api/books/config', 'folders']]) {
+    for (const target of [podcastsRoot, nested]) {
+      const r = await postJson(route, { [key]: [target] });
+      assert.strictEqual(r.status, 400, `${route} must reject ${target}`);
+      const body = await r.json();
+      assert.match(body.error, /podcasts folder/i, `${route}: ${body.error}`);
+    }
+  }
+});
+
 test('DELETE subscription: records + per-user rows + secret gone; the FILE stays on disk', async () => {
   const r = await del(`/api/podcasts/subscriptions/${subId}`);
   assert.strictEqual(r.status, 200);

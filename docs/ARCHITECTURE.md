@@ -264,6 +264,77 @@ clients (iOS Safari) can play them.
 - iOS Safari cannot play a non-seekable live stream, which is why mobile uses the
   pre-transcoded, seekable MP4 path.
 
+## Podcasts module (v1.69.0)
+
+A fourth media class: podcast RSS subscriptions (free feeds and private
+tokened ones - Patreon's "listen in other podcast apps" export) downloaded
+as an offline audio cache and browsed in a first-class Podcasts place.
+Design record: `docs/exec-plans/active/v1.69-podcasts-place.md` (moves to
+`completed/` at its Stop).
+
+- **Namespace**: `db.podcasts` (`subscriptions/episodes/settings`), owned by
+  `lib/podcasts/store.js` (ensure/read split, the music discipline). Episode
+  records are guid-derived-id keyed and DOUBLE as the download archive: a
+  `tombstone`/`deleted-on-disk` record blocks re-download forever (the ytdlp
+  "deleted stays gone" law). No scanner and no `db.metadata` involvement -
+  the engine writes episode records itself, structurally retiring the
+  persist-gate class (the books precedent).
+- **SECRETS**: a feed URL is a CREDENTIAL (Patreon `?auth=` tokens; the
+  enclosure URLs embed the same token). Full URLs live ONLY in
+  `<DATA_DIR>/podcast-feeds.json` (0600, atomic writes, corrupt-file
+  preserved aside), which is structurally outside backup bundles; db records
+  carry origin+pathname display form only, every error/status string passes
+  `redactSecretText` (stored secrets + generic token shapes), and enclosure
+  URLs are never persisted at all (re-derived from the fresh feed each
+  cycle - Patreon signs them with expiring tokens anyway). Consequence,
+  disclosed: a bundle restored onto a fresh box marks tokened subs
+  `secretMissing` and the UI asks for the URL again (same-feed display-form
+  match required).
+- **Fetching**: `lib/podcasts/fetchGuard.js` on the shortlink.js SSRF
+  envelope - guardHop (literal private/loopback reject + fail-closed DNS
+  resolve-then-check) on the start URL and EVERY manual redirect hop, for
+  feeds AND enclosures (feed-author-controlled = hostile). Enclosures
+  stream to a dot-prefixed `.ptpart` then fsync + atomic rename; any
+  failure unlinks the partial (a kill loses at most one partial, swept at
+  boot). Caps: 25 MB feeds, 2 GB/episode, absolute wall-clock deadlines.
+  Downloads serialize through the server-wide heavy-job gate
+  (`lib/heavyGate.js`, extracted verbatim from lib/ytdlp at v1.69 T2) so a
+  42 GB back-catalog backfill never runs alongside a yt-dlp job.
+- **Parser**: `lib/podcasts/feed.js`, a bounded indexOf scanner - NOT an
+  XML parser. No entity-expansion machinery exists, so XXE/billion-laughs
+  are structurally inert; caps everywhere with truncation FLAGS (silent
+  truncation forbidden); malformed input degrades, never throws.
+- **Files**: `<root>/<sanitized show title>/<title, <=100ch> [rss=<guidKey>].mp3`
+  (the universal bracket - `extractMediaRef` parses these with zero
+  changes); root = `db.podcasts.settings.downloadDir` >
+  `FILETUBE_PODCASTS_DIR` > `<DATA_DIR>/podcasts`, confined by the
+  resolveChannelDir two-line defense and joined to the FOUR-way
+  media/books/music/podcasts root-overlap rejection. Show cover downloads
+  once as `cover.jpg|png`. Reconcile tombstones `deleted-on-disk` only
+  while the root EXISTS (the mount-loss law); an unmounted root prunes
+  nothing.
+- **Per-user state**: schema v9 `user_podcast_progress` +
+  `user_podcast_played` (resume + played latch, manual toggle + >=95%
+  auto-latch), episode-id keyed - the TENTH id-keyed carrier: delete half
+  `removePodcastEpisodeState`, NO re-key half by construction (ids derive
+  from guid, not path), per-user backup halves ride the users bundle.
+  Progress pings are direct row upserts (no coalescer): SQLite row writes
+  are cheap and podcast listening is low-concurrency - revisit only if
+  write volume ever shows.
+- **The place**: `/podcasts` (shell + lazy `/js/podcasts.js` view), a
+  Library-section nav entry gated on CONTENT (>=1 show; zero subscriptions
+  renders byte-identical chrome). Episodes play in the DOCKED mini-player
+  with `resumeMode: 'podcast'` - ALWAYS resumes silently (the music 600s
+  smart-restart rule deliberately not inherited). A yt-dlp subscription
+  toggled `libraryPlace: 'podcasts'` (D15) surfaces as a show whose
+  episodes are its channel dir's db.metadata items - watch-page playback
+  and watch-history state, read-only played latch.
+- **No destructive per-episode verb ships in v1.69** (amended at T7): the
+  v1.65 trash machinery is welded to db.metadata, and a bare unlink would
+  violate the every-delete-is-recoverable law - sub deletion keeps files
+  on disk (disclosed in the confirm), external deletions reconcile to
+  tombstones. A trash-integrated episode delete is tracked tech debt.
+
 ## Books module (v1.37.0)
 
 A third media class alongside video/audio: EPUB + PDF libraries scanned from

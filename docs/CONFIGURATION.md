@@ -265,3 +265,25 @@ time - there is no runtime or in-app auto-update. To pick up a newer
 [Staying up to date](#staying-up-to-date-or-pinning-a-version), above).
 
 ---
+
+## Podcasts (v1.69.0)
+
+Podcasts is a first-class library place (like Music and Books): no enable
+flag. Subscribe to any podcast RSS feed from the **Podcasts** page - public
+feeds, or private tokened ones (e.g. Patreon's "listen in other podcast
+apps" URL). The nav entry appears once you have at least one subscription.
+
+Private feed URLs carry a personal access token. FileTube stores the full
+URL only in `<DATA_DIR>/podcast-feeds.json` (file mode 0600) - it never
+appears in the UI, logs, API responses, or backup bundles. A backup
+restored onto a fresh machine therefore restores the subscriptions but asks
+you to re-enter each tokened feed's URL once.
+
+| Variable | Default | What it does |
+|----------|---------|---------------|
+| `FILETUBE_PODCASTS_DIR` | `<DATA_DIR>/podcasts` | Where episode files are saved (one folder per show). Point it at your media volume if you want episodes on the big disk. |
+
+Per-subscription download policy is chosen at add time: every episode (the
+default - a true offline cache; note a large back-catalog can be tens of
+GB), the latest N, or new episodes only. The feed check interval is set on
+the Podcasts page (default 60 minutes, `0` = manual checks only).

@@ -5847,6 +5847,15 @@ app.post('/api/config', async (req, res) => {
         return res.status(400).json({ error: `Media folder overlaps a music folder: ${trimmed} <-> ${musicRoot}` });
       }
     }
+    // v1.69 podcasts (D8, the FOUR-way): the podcasts download root is
+    // module-owned (env/default, not a configured list), but a media folder
+    // that equals/contains/lives inside it would double-own the episodes.
+    {
+      const podcastsRoot = podcasts.resolvePodcastsRoot(loadDatabase(), { dataDir: DATA_DIR });
+      if (resolved === podcastsRoot || ytdlpArgs.isPathUnder(resolved, podcastsRoot) || ytdlpArgs.isPathUnder(podcastsRoot, resolved)) {
+        return res.status(400).json({ error: `Media folder overlaps the podcasts folder: ${trimmed} <-> ${podcastsRoot}` });
+      }
+    }
     validFolders.push(trimmed);
     originalByResolved.set(resolved, trimmed); // QW2
   }
@@ -6160,6 +6169,15 @@ app.post('/api/books/config', async (req, res) => {
     for (const musicRoot of musicFoldersForBooks) {
       if (bookRoot === musicRoot || ytdlpArgs.isPathUnder(bookRoot, musicRoot) || ytdlpArgs.isPathUnder(musicRoot, bookRoot)) {
         return res.status(400).json({ error: `Book folder overlaps a music folder: ${bookRoot} <-> ${musicRoot}` });
+      }
+    }
+  }
+  // v1.69 podcasts (D8): the four-way clause, same both-directions posture.
+  {
+    const podcastsRootForBooks = podcasts.resolvePodcastsRoot(cachedForBooks, { dataDir: DATA_DIR });
+    for (const bookRoot of resolved) {
+      if (bookRoot === podcastsRootForBooks || ytdlpArgs.isPathUnder(bookRoot, podcastsRootForBooks) || ytdlpArgs.isPathUnder(podcastsRootForBooks, bookRoot)) {
+        return res.status(400).json({ error: `Book folder overlaps the podcasts folder: ${bookRoot} <-> ${podcastsRootForBooks}` });
       }
     }
   }
@@ -7065,6 +7083,11 @@ app.post('/api/music/config', async (req, res) => {
       if (musicRoot === bookRoot || ytdlpArgs.isPathUnder(musicRoot, bookRoot) || ytdlpArgs.isPathUnder(bookRoot, musicRoot)) {
         return res.status(400).json({ error: `Music folder overlaps a book folder: ${musicRoot} <-> ${bookRoot}` });
       }
+    }
+    // v1.69 podcasts (D8): the four-way clause, same both-directions posture.
+    const podcastsRootForMusic = podcasts.resolvePodcastsRoot(cached, { dataDir: DATA_DIR });
+    if (musicRoot === podcastsRootForMusic || ytdlpArgs.isPathUnder(musicRoot, podcastsRootForMusic) || ytdlpArgs.isPathUnder(podcastsRootForMusic, musicRoot)) {
+      return res.status(400).json({ error: `Music folder overlaps the podcasts folder: ${musicRoot} <-> ${podcastsRootForMusic}` });
     }
   }
   try {
