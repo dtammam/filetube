@@ -308,15 +308,17 @@ module.exports = [
     },
   },
 
-  // v1.66: public/sw.js returned as a PUSH-ONLY worker (no fetch handler,
-  // no CacheStorage - locked by test/unit/v1264-service-worker.test.js;
-  // the v1.27.2 removal rationale lives on unregisterStaleServiceWorkers
-  // in public/js/common.js). Service-worker globals scoped to exactly this
-  // one file.
+  // v1.66: a PUSH-ONLY worker at public/push-sw.js (no fetch handler, no
+  // CacheStorage - locked by test/unit/v1264-service-worker.test.js; the
+  // v1.27.2 removal rationale lives on unregisterStaleServiceWorkers in
+  // public/js/common.js). Deliberately NOT public/sw.js - that path was the
+  // removed offline worker's and stays unclaimed so the boot shedder can
+  // still tell the two apart. Service-worker globals scoped to this one
+  // file; `module` is there for the decidePushDisplay test export.
   {
-    files: ['public/sw.js'],
+    files: ['public/push-sw.js'],
     languageOptions: {
-      globals: { ...globals.serviceworker },
+      globals: { ...globals.serviceworker, module: 'writable' },
     },
   },
 ];

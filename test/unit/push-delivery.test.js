@@ -12,7 +12,7 @@ const crypto = require('node:crypto');
 
 const {
   createPushDelivery, decideDeliveries, classifyPushResponse, pushOptedOut,
-  COLLAPSE_MAX, DEFAULT_COOLDOWN_MS, MAX_COOLDOWN_MS,
+  COLLAPSE_MAX, DEFAULT_COOLDOWN_MS, MAX_COOLDOWN_MS, FEED_READ_LIMIT,
 } = require('../../lib/push/deliver');
 const { mintVapidJwkPair, publicKeyToUncompressedB64url } = require('../../lib/push/keys');
 
@@ -164,6 +164,45 @@ test('summary mode: >3 missed rows = ONE post, cursor jumps to newest', async ()
   assert.equal(c.sent, 1);
   assert.equal(sends.length, 1, 'four missed rows collapse to one push');
   assert.equal(store.state.get(SUB.endpoint).lastPushedId, 13);
+});
+
+// QA W3: FEED_READ_LIMIT was 50 while the feed's own cap (NOTIFICATION_CAP)
+// is 200, so a >50-row gap truncated the read: the device got a summary
+// naming the WRONG count and the cursor stranded mid-gap, contradicting
+// ruling P2's "cursor advances to newest either way". Measured at 120 rows:
+// "50 new videos", cursor 50 of 120.
+test('a gap larger than the old read limit reports the TRUE count and advances the cursor to the newest row', async () => {
+  const big = [];
+  for (let i = 1; i <= 120; i++) big.push({ id: i, mediaId: `vid-Ä${i}`, createdAt: NOW - (200 - i) * 10 });
+  const meta = {};
+  for (const r of big) meta[r.mediaId] = { title: `T${r.id}`, channel: 'C' };
+  const { store, sends, delivery } = harness({
+    subs: [{ endpoint: 'https://push.example/wp/Gap', lastPushedId: 0, cooldownUntil: 0 }],
+    feed: big,
+    responses: [],
+    meta,
+  });
+  await delivery.deliverRound();
+  assert.equal(sends.length, 1, 'one summary push');
+  assert.equal(store.state.get('https://push.example/wp/Gap').lastPushedId, 120,
+    'cursor reaches the NEWEST row - no rows stranded behind the read limit');
+  assert.ok(FEED_READ_LIMIT >= 200,
+    'the read limit must cover the feed cap (NOTIFICATION_CAP=200) so truncation is unreachable by construction');
+});
+
+test('a full-limit read sets truncated so the trigger re-runs instead of stranding the cursor', async () => {
+  const over = [];
+  for (let i = 1; i <= FEED_READ_LIMIT + 5; i++) over.push({ id: i, mediaId: `v${i}`, createdAt: NOW - i });
+  const meta = {};
+  for (const r of over) meta[r.mediaId] = { title: 'T', channel: 'C' };
+  const { delivery } = harness({
+    subs: [{ endpoint: 'https://push.example/wp/Trunc', lastPushedId: 0, cooldownUntil: 0 }],
+    feed: over,
+    responses: [],
+    meta,
+  });
+  const c = await delivery.deliverRound();
+  assert.equal(c.truncated, true, 'a full read is reported as truncated so trigger() asks for another round');
 });
 
 test('stop-at-first-failure: cursor holds at the last delivered row (5xx skip)', async () => {

@@ -8926,10 +8926,13 @@ function probeAndReconcileRepullButton() {
 // otherwise keep intercepting until manually cleared. This runs on every
 // page boot; once no registrations remain it is a cheap no-op. Failures are
 // swallowed -- cleanup must never block or throw into page boot.
-// v1.66 amendment: the PUSH-ONLY worker at /sw.js (no fetch handler by lock
-// - see public/sw.js's contract comment) is the ONE registration allowed to
-// survive. Everything else - the old offline shell, anything foreign - is
-// still shed exactly as before.
+// v1.66 amendment: the PUSH-ONLY worker at /push-sw.js (no fetch handler by
+// lock - see public/push-sw.js's contract comment) is the ONE registration
+// allowed to survive. Everything else is still shed exactly as before -
+// INCLUDING the v1.26.4 offline shell, which registered at `/sw.js`. The
+// first draft of this exemption matched `/sw.js` and therefore spared that
+// exact worker; the v1.66 QA seat measured it. The push worker's distinct
+// path is what makes the exemption a discriminator instead of a hole.
 function unregisterStaleServiceWorkers() {
   if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
   try {
@@ -8938,7 +8941,7 @@ function unregisterStaleServiceWorkers() {
         regs.forEach((r) => {
           const worker = r.active || r.waiting || r.installing;
           const scriptURL = worker && worker.scriptURL ? worker.scriptURL : '';
-          if (scriptURL.endsWith('/sw.js')) return; // v1.66: the push worker lives
+          if (scriptURL.endsWith('/push-sw.js')) return; // v1.66: the push worker lives
           r.unregister().catch(() => {});
         });
       })
@@ -8951,7 +8954,7 @@ function unregisterStaleServiceWorkers() {
 // the Settings enable flow (setup.js) and the boot reconcile below route
 // through here. Registration is idempotent and doubles as the update check.
 function registerPushWorker() {
-  return navigator.serviceWorker.register('/sw.js');
+  return navigator.serviceWorker.register('/push-sw.js');
 }
 
 function pushB64urlToUint8(b64url) {

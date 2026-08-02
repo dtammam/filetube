@@ -112,9 +112,22 @@ test('subscribe refusal matrix: http endpoint, oversize, garbage keys, missing b
     ['auth wrong size', { endpoint: 'https://push.example/wp/x', keys: { p256dh: GOOD_P256DH, auth: 'AAAA' } }],
     ['no keys', { endpoint: 'https://push.example/wp/x' }],
     ['no body', undefined],
+    // QA W1: String(['abc']) === 'abc', so an ARRAY-wrapped key used to pass
+    // the route's coercing check and then throw inside the store. In an
+    // async Express 4 handler an uncaught throw is not a 500 - it is a
+    // socket that never answers. Measured hanging before the fix.
+    ['array-wrapped p256dh', { endpoint: 'https://push.example/wp/x', keys: { p256dh: [GOOD_P256DH], auth: GOOD_AUTH } }],
+    ['array-wrapped auth', { endpoint: 'https://push.example/wp/x', keys: { p256dh: GOOD_P256DH, auth: [GOOD_AUTH] } }],
+    ['object-wrapped keys', { endpoint: 'https://push.example/wp/x', keys: { p256dh: { toString: 1 }, auth: GOOD_AUTH } }],
+    ['numeric keys', { endpoint: 'https://push.example/wp/x', keys: { p256dh: 42, auth: 42 } }],
   ];
   for (const [label, body] of cases) {
-    const res = await json('POST', '/api/push/subscribe', body);
+    // A hang is the failure this binds, so every probe is deadlined: an
+    // unanswered socket must fail the test, not stall the suite.
+    const res = await Promise.race([
+      json('POST', '/api/push/subscribe', body),
+      new Promise((_, rej) => setTimeout(() => rej(new Error(`${label}: NO RESPONSE (handler hung)`)), 5000)),
+    ]);
     assert.equal(res.status, 400, `${label} refused`);
   }
   assert.equal(userStore.countPushSubscriptions(auth.user.id), 0, 'nothing landed');
