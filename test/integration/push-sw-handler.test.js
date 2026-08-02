@@ -14,7 +14,7 @@ const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert');
 const path = require('node:path');
 
-const SW_PATH = path.join(__dirname, '..', '..', 'public', 'push-sw.js');
+const SW_PATH = path.join(__dirname, '..', '..', 'public', 'filetube-worker.js');
 const listeners = {};
 const captured = { shown: [], posted: [], opened: [], focused: [], navigated: [] };
 let savedSelf;

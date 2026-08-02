@@ -118,7 +118,7 @@ async function newGuardedContext(browser, opts, record, tag) {
   // intercepted by a service worker are structurally INVISIBLE to
   // context.route - blocking SWs is the only way this guard covers them.
   // As of v1.66 FileTube DOES register a service worker (the push-only
-  // /push-sw.js, via common.js registerPushWorker), so this block is now
+  // /filetube-worker.js, via common.js registerPushWorker), so this block is now
   // load-bearing in the present tense, not just against a future: without
   // it, any request that worker intercepted would be invisible to the
   // route guard. Do not relax it. (Originally a QA-gate finding when no SW

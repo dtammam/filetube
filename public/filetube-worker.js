@@ -9,6 +9,18 @@
 // offline worker the shedder exists to kill. Distinct path, unambiguous
 // identity: `/sw.js` is still shed on sight, forever.
 //
+// WHY THIS FILE IS NOT /push-sw.js EITHER (v1.67.3): that was its second
+// name, and it is a canonical push-marketing-SDK filename that ad-blocker
+// filter lists match by PATTERN. Measured on Dean's iPhone: with uBlock
+// Origin/Wipr/Vinegar content blockers enabled, the standalone PWA's
+// register() failed with [SecurityError: Script load failed] while every
+// sibling script loaded - the server was proven healthy (valid cert, right
+// MIME, 200 cookie-less). Disabling the blockers made push work. The name
+// must carry NO blocklist tokens ("push", "notification"); devices that
+// registered under the old name keep their subscriptions because the boot
+// reconcile re-registers this file into the SAME scope (an in-place script
+// swap - the subscription belongs to the registration, not the script URL).
+//
 // THE CONTRACT (enforced by test/unit/v1264-service-worker.test.js): this
 // file must NEVER add a 'fetch' event listener and must NEVER touch the
 // cache storage API. The v1.26.4 offline-shell worker was removed in v1.27.2

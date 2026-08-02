@@ -8955,13 +8955,23 @@ function probeAndReconcileRepullButton() {
 // otherwise keep intercepting until manually cleared. This runs on every
 // page boot; once no registrations remain it is a cheap no-op. Failures are
 // swallowed -- cleanup must never block or throw into page boot.
-// v1.66 amendment: the PUSH-ONLY worker at /push-sw.js (no fetch handler by
-// lock - see public/push-sw.js's contract comment) is the ONE registration
-// allowed to survive. Everything else is still shed exactly as before -
-// INCLUDING the v1.26.4 offline shell, which registered at `/sw.js`. The
-// first draft of this exemption matched `/sw.js` and therefore spared that
-// exact worker; the v1.66 QA seat measured it. The push worker's distinct
-// path is what makes the exemption a discriminator instead of a hole.
+// v1.66 amendment: FileTube's own PUSH-ONLY worker (no fetch handler by
+// lock - see public/filetube-worker.js's contract comment) is the ONE
+// registration allowed to survive. Everything else is still shed exactly as
+// before - INCLUDING the v1.26.4 offline shell, which registered at
+// `/sw.js`. The first draft of this exemption matched `/sw.js` and
+// therefore spared that exact worker; the v1.66 QA seat measured it. The
+// push worker's distinct path is what makes the exemption a discriminator
+// instead of a hole.
+// v1.67.3 amendment: the worker's SECOND name, /push-sw.js, turned out to
+// be a canonical filter-list pattern - content blockers (uBlock/Wipr/
+// Vinegar, measured on Dean's iPhone) refuse to load scripts named like
+// push-marketing SDKs, so it is now /filetube-worker.js. The OLD name stays
+// exempt here: devices that registered under it carry LIVE push
+// subscriptions, and the boot reconcile upgrades them to the new script
+// IN PLACE (same scope keeps the subscription). Shedding them instead
+// would silently kill every existing device's push. `/sw.js` alone is
+// still shed forever.
 function unregisterStaleServiceWorkers() {
   if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
   try {
@@ -8970,13 +8980,15 @@ function unregisterStaleServiceWorkers() {
         regs.forEach((r) => {
           const worker = r.active || r.waiting || r.installing;
           const scriptURL = worker && worker.scriptURL ? worker.scriptURL : '';
-          // EXACT pathname, not a suffix: endsWith('/push-sw.js') would also
-          // spare a worker at /media/anything/push-sw.js. Unreachable without
-          // XSS, but an exemption should never be broader than the one file
-          // it names. A malformed URL falls through to the shed (fail closed).
+          // EXACT pathnames, never a suffix: a suffix match would also
+          // spare a worker at /media/anything/filetube-worker.js.
+          // Unreachable without XSS, but an exemption should never be
+          // broader than the files it names. A malformed URL falls through
+          // to the shed (fail closed).
           let pathname = '';
           try { pathname = new URL(scriptURL).pathname; } catch (_) { pathname = ''; }
-          if (pathname === '/push-sw.js') return; // v1.66: the push worker lives
+          if (pathname === '/filetube-worker.js') return; // the push worker lives
+          if (pathname === '/push-sw.js') return; // v1.67.3: old-name device, reconcile upgrades it
           r.unregister().catch(() => {});
         });
       })
@@ -8989,7 +9001,12 @@ function unregisterStaleServiceWorkers() {
 // the Settings enable flow (setup.js) and the boot reconcile below route
 // through here. Registration is idempotent and doubles as the update check.
 function registerPushWorker() {
-  return navigator.serviceWorker.register('/push-sw.js');
+  // Registering into scope '/' UPGRADES any existing registration there
+  // (including one still running the old /push-sw.js script) while KEEPING
+  // its push subscription - the subscription belongs to the registration,
+  // not the script URL. This is the v1.67.3 migration path for devices
+  // that enabled push under the old, blocklist-colliding name.
+  return navigator.serviceWorker.register('/filetube-worker.js');
 }
 
 function pushB64urlToUint8(b64url) {
