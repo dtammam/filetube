@@ -3257,6 +3257,22 @@ if (typeof module !== 'undefined' && module.exports) {
         .catch(function () { mediaPlayer.play().catch(function () {}); });
       return;
     }
+    // v1.69 podcasts: ALWAYS resume, silently - an episode is long-form by
+    // nature, so the music >10-min smart-resume rule deliberately does NOT
+    // apply (a 35-minute episode resumes at 34:50, never restarts), and the
+    // video "Resume at…" overlay never appears (the music no-prompt posture).
+    if (currentData && currentData.resumeMode === 'podcast') {
+      fetch(progressReadBase + '/' + id)
+        .then(function (res) { return res.json(); })
+        .then(function (data) {
+          if (gen !== loadGeneration) return;
+          savedProgress = data.position || data.timestamp || 0;
+          if (savedProgress > 5) resumeDirectly(savedProgress);
+          else { savedProgress = 0; mediaPlayer.play().catch(function () {}); }
+        })
+        .catch(function () { mediaPlayer.play().catch(function () {}); });
+      return;
+    }
     fetch('/api/progress/' + id)
       .then(function (res) { return res.json(); })
       .then(function (data) {

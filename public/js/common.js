@@ -1891,6 +1891,8 @@ function activeNavItem(pathname, search) {
   if (pathname === '/books' || pathname === '/books.html' || pathname === '/read.html') return 'books';
   // v1.44 music: same posture (link injected only when >=1 music folder set).
   if (pathname === '/music' || pathname === '/music.html') return 'music';
+  // v1.69 podcasts: same posture (link injected only when >=1 subscription).
+  if (pathname === '/podcasts' || pathname === '/podcasts.html') return 'podcasts';
   // v1.64 history (count-gated entry, the Liked rule).
   if (pathname === '/history' || pathname === '/history.html') return 'history';
   if (pathname === '/' || pathname === '/index.html') return 'home';
@@ -3132,6 +3134,13 @@ function shouldInjectMusicNav(payload) {
   return Boolean(payload && Array.isArray(payload.folders) && payload.folders.length > 0);
 }
 
+// v1.69 podcasts gate (the same CONTENT posture: /api/podcasts/health always
+// exists; the gate is shows > 0 - zero subscriptions renders byte-identical
+// chrome, the disabled-module guarantee).
+function shouldInjectPodcastsNav(payload) {
+  return Boolean(payload && Number(payload.shows) > 0);
+}
+
 // v1.44 IA rework: Books + Music are LIBRARY-section entries, NOT bottom-nav
 // items (Dean: the bottom-nav loses Books; Books+Music live in the Library
 // section alongside the folder-playlists, and in the mobile Playlists sheet).
@@ -3151,14 +3160,17 @@ function injectLibraryNavEntry(key, href, label, iconClass) {
   icon.className = iconClass;
   link.appendChild(icon);
   link.appendChild(document.createTextNode(' ' + label));
-  // Deterministic visual order Music, Books, History regardless of which
-  // async probe resolves first (QA gate S2, v1.64): each key anchors before
-  // every entry that must sit BELOW it, falling back to the folders list.
+  // Deterministic visual order Music, Books, Podcasts, History regardless of
+  // which async probe resolves first (QA gate S2, v1.64): each key anchors
+  // before every entry that must sit BELOW it, falling back to the folders
+  // list. v1.69: Podcasts slots between Books and History.
   const anchor = (key === 'music')
-    ? (document.querySelector('[data-nav-sidebar="books"]') || document.querySelector('[data-nav-sidebar="history"]') || foldersList)
+    ? (document.querySelector('[data-nav-sidebar="books"]') || document.querySelector('[data-nav-sidebar="podcasts"]') || document.querySelector('[data-nav-sidebar="history"]') || foldersList)
     : (key === 'books')
-      ? (document.querySelector('[data-nav-sidebar="history"]') || foldersList)
-      : foldersList;
+      ? (document.querySelector('[data-nav-sidebar="podcasts"]') || document.querySelector('[data-nav-sidebar="history"]') || foldersList)
+      : (key === 'podcasts')
+        ? (document.querySelector('[data-nav-sidebar="history"]') || foldersList)
+        : foldersList;
   anchor.insertAdjacentElement('beforebegin', link);
   if (activeNavItem(window.location.pathname, window.location.search) === key) {
     link.classList.add('active');
@@ -3192,6 +3204,19 @@ function injectMusicNavLinkIfEnabled() {
     .then((payload) => {
       if (!shouldInjectMusicNav(payload)) return; // music-less -- inject nothing
       injectLibraryNavEntry('music', '/music', 'Music', 'icon-play');
+    })
+    .catch(() => { /* network/parse failure -- fail closed, inject nothing */ });
+}
+
+// v1.69 podcasts: same probe-gated Library-section injection.
+function injectPodcastsNavLinkIfEnabled() {
+  if (typeof document === 'undefined' || typeof fetch === 'undefined') return;
+  if (document.querySelector('[data-nav-sidebar="podcasts"]')) return;
+  fetch('/api/podcasts/health')
+    .then((res) => (res.ok ? res.json() : null))
+    .then((payload) => {
+      if (!shouldInjectPodcastsNav(payload)) return; // podcast-less -- inject nothing
+      injectLibraryNavEntry('podcasts', '/podcasts', 'Podcasts', 'icon-podcast');
     })
     .catch(() => { /* network/parse failure -- fail closed, inject nothing */ });
 }
@@ -4236,6 +4261,8 @@ function deriveRouteView(pathname) {
   // v1.44 music: same unconditional-mapping posture -- the Music nav link is
   // only injected when >=1 music folder is configured.
   if (pathname === '/music' || pathname === '/music.html') return 'music';
+  // v1.69 podcasts: same posture (nav gated on >=1 subscription).
+  if (pathname === '/podcasts' || pathname === '/podcasts.html') return 'podcasts';
   // v1.64 history: same posture (the entry is count-gated like Liked).
   if (pathname === '/history' || pathname === '/history.html') return 'history';
   return null;
@@ -5329,7 +5356,7 @@ if (typeof window !== 'undefined') {
     const sidebar = document.getElementById('sidebar');
     if (sidebar) {
       sidebar.querySelectorAll('.sidebar-item.active').forEach((el) => el.classList.remove('active'));
-      const hrefByNavKey = { home: '/', settings: '/setup.html', subscriptions: '/subscriptions', books: '/books', music: '/music', history: '/history' };
+      const hrefByNavKey = { home: '/', settings: '/setup.html', subscriptions: '/subscriptions', books: '/books', music: '/music', podcasts: '/podcasts', history: '/history' };
       const href = key ? hrefByNavKey[key] : null;
       const match = href && sidebar.querySelector('a.sidebar-item[href="' + href + '"]');
       if (match) match.classList.add('active');
@@ -5374,6 +5401,7 @@ if (typeof window !== 'undefined') {
     books: '/js/books.js',
     read: '/js/read.js',
     music: '/js/music.js',
+    podcasts: '/js/podcasts.js',
     history: '/js/history.js',
   };
 
@@ -5910,6 +5938,10 @@ function libraryEntriesHtml() {
     }
     if (document.querySelector('[data-nav-sidebar="books"]')) {
       html += '<a href="/books" class="sidebar-item"><i class="icon-folder"></i> Books</a>';
+    }
+    // v1.69: Podcasts mirrors its capability marker the same way.
+    if (document.querySelector('[data-nav-sidebar="podcasts"]')) {
+      html += '<a href="/podcasts" class="sidebar-item"><i class="icon-podcast"></i> Podcasts</a>';
     }
     // v1.64: mirrors the count-gated sidebar marker, same as books/music
     // mirror their capability markers -- the sheet and the sidebars can
@@ -9288,6 +9320,8 @@ document.addEventListener('DOMContentLoaded', () => {
   injectBooksNavLinkIfEnabled();
   // v1.44 music: same probe-gated Library-section injection.
   injectMusicNavLinkIfEnabled();
+  // v1.69 podcasts: same injection, gated on >=1 subscription.
+  injectPodcastsNavLinkIfEnabled();
   // v1.64 history: same injection, gated on >=1 history item (the Liked rule).
   injectHistoryNavLinkIfEnabled();
   // v1.44 T12: apply the user's bottom-bar layout to the STATIC items now; the
@@ -9394,6 +9428,7 @@ if (typeof module !== 'undefined' && module.exports) {
     shouldInjectSubscriptionsNav,
     shouldInjectBooksNav,
     shouldInjectMusicNav,
+    shouldInjectPodcastsNav,
     // v1.64 (adversarial gate W1): the History count-gate is DOM-bound by
     // test/integration/history-nav-gate.test.js through these two.
     injectHistoryNavLinkIfEnabled,

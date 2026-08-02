@@ -5603,7 +5603,7 @@ function dropPendingProgressForUser(userId) {
 // this is always current, needs no bootstrap, and depends on nothing
 // client-side. Only full-page loads/refreshes hit this; in-app SPA nav keeps
 // the header, so there is no FOUC there to fix.
-const FOUC_SHELL_FILES = new Set(['index.html', 'watch.html', 'stats.html', 'setup.html', 'read.html', 'books.html', 'music.html', 'history.html', 'login.html', 'welcome.html']);
+const FOUC_SHELL_FILES = new Set(['index.html', 'watch.html', 'stats.html', 'setup.html', 'read.html', 'books.html', 'music.html', 'podcasts.html', 'history.html', 'login.html', 'welcome.html']);
 function shellHtmlForRequestPath(p) {
   if (p === '/' || p === '/index.html') return 'index.html';
   if (p === '/books' || p === '/books.html') return 'books.html';
@@ -6606,6 +6606,11 @@ app.get('/music', (req, res) => {
 
 app.get('/books', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'books.html'));
+});
+
+// v1.69: the clean /podcasts URL (same posture as /music and /books).
+app.get('/podcasts', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'podcasts.html'));
 });
 
 app.post('/api/books/:id/progress', (req, res) => {

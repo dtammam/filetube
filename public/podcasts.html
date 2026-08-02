@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Podcasts - FileTube</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
+  <link rel="icon" type="image/png" sizes="512x512" href="/icons/icon-512.png">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="theme-color" content="#cc0000">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="FileTube">
+  <link rel="preload" href="/fonts/roboto.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/css/style.css">
+  <script>
+    /* FOUC guard -- set era+mode+icons on <html> BEFORE first paint (mirror of
+       resolveTheme()/resolveIconSet() in /js/common.js; keep in sync). Same
+       block every shell carries. */
+    (function () {
+      var d = document.documentElement;
+      try {
+        var eras = ['2005', '2009', '2014', '2021'];
+        var modes = ['light', 'dark'];
+        var e = localStorage.getItem('ft-era');
+        var m = localStorage.getItem('ft-mode');
+        var legacy = localStorage.getItem('theme');
+        var era = eras.indexOf(e) >= 0 ? e : '2021';
+        var mode = modes.indexOf(m) >= 0 ? m
+          : (e == null && m == null && (legacy === 'dark' || legacy === 'light')) ? legacy
+          : 'light';
+        d.setAttribute('data-theme', era);
+        d.setAttribute('data-mode', mode);
+        var iconSets = ['outlined', 'rounded', 'filled', 'emoji'];
+        var iconAutoMap = { '2005': 'emoji', '2009': 'emoji', '2014': 'filled', '2021': 'rounded' };
+        var storedIcons = localStorage.getItem('ft-icons');
+        var iconSet = iconSets.indexOf(storedIcons) >= 0 ? storedIcons
+          : storedIcons === 'auto' ? iconAutoMap[era]
+          : 'outlined';
+        d.setAttribute('data-icons', iconSet);
+        if (localStorage.getItem('ft-custom-logo') === '1') d.classList.add('ft-custom-logo');
+
+        /* v1.63.1 (slim gate W2): stars FOUC guard. A hidden-pref user must
+           never see the static star markup flash before common.js runs --
+           inline mirror of bootStarRatingsPref(); keep in sync. */
+        if (localStorage.getItem('ft-star-ratings') === 'hidden') d.classList.add('ft-hide-stars');
+      } catch (_) {
+        d.setAttribute('data-theme', '2021');
+        d.setAttribute('data-mode', 'light');
+        d.setAttribute('data-icons', 'outlined');
+      }
+    })();
+  </script>
+</head>
+<body>
+  <header>
+    <div class="header-left">
+      <button class="menu-toggle" id="menu-toggle" aria-label="Open menu"><i class="icon-menu"></i></button>
+      <a href="/" class="logo">File<span class="tube">Tube</span></a>
+    </div>
+    <div class="header-search">
+      <div class="search-form">
+        <input type="text" id="search-input" class="search-input" placeholder="Search your files..." />
+        <button id="search-btn" class="search-btn">Search</button>
+      </div>
+    </div>
+    <div class="header-right">
+      <button class="theme-toggle" id="theme-toggle-btn" aria-label="Toggle light or dark mode"><i class="icon-moon"></i></button>
+    </div>
+  </header>
+
+  <div class="app-container">
+    <aside class="sidebar" id="sidebar">
+      <nav class="sidebar-section">
+        <a href="/" class="sidebar-item">
+          <i class="icon-home"></i> Home
+        </a>
+        <a href="/setup.html" class="sidebar-item">
+          <i class="icon-cog"></i> Library settings
+        </a>
+        <!-- Subscriptions + Books + Music + Podcasts sidebar links are
+             injected by public/js/common.js's capability probes -- never
+             hardcoded. -->
+      </nav>
+      <div class="sidebar-section">
+        <div class="sidebar-section-title">Library</div>
+        <div id="sidebar-folders-list"><!-- Populated dynamically --></div>
+      </div>
+    </aside>
+
+    <main class="main-content" id="main-content">
+      <div id="view-root" data-view="podcasts">
+        <div class="music-toolbar">
+          <h2>Podcasts</h2>
+          <div class="music-toolbar-actions">
+            <button class="btn btn-sm" id="podcasts-check-btn" type="button" title="Check every feed for new episodes now">
+              <i class="icon-refresh"></i> Check feeds
+            </button>
+            <button class="btn btn-sm btn-primary" id="podcasts-add-btn" type="button" title="Subscribe to a podcast RSS feed">
+              + Add podcast
+            </button>
+          </div>
+        </div>
+
+        <!-- Transient status line ("Checking feeds...", errors). -->
+        <div id="podcasts-status" class="music-status" role="status" hidden></div>
+
+        <!-- Drill-in breadcrumb (show -> episode list); hidden on the grid. -->
+        <div class="music-crumb" id="podcasts-crumb" hidden></div>
+
+        <!-- Show grid OR an episode list renders into this host
+             (public/js/podcasts.js). Playback happens in the DOCKED
+             mini-player (#player-dock below) - browse-while-listening,
+             the music-place pattern. -->
+        <div id="podcasts-content"></div>
+        <div class="music-empty" id="podcasts-empty" hidden>
+          No podcasts yet. Tap <strong>Add podcast</strong> and paste an RSS feed URL
+          - a public feed, or a private one from Patreon's "listen in other
+          podcast apps" (its URL carries your personal token; it is stored on
+          your server only).
+        </div>
+
+        <!-- The add-subscription sheet (hidden until Add podcast). -->
+        <div class="podcasts-add-backdrop" id="podcasts-add-backdrop" hidden></div>
+        <div class="podcasts-add-sheet" id="podcasts-add-sheet" role="dialog" aria-modal="true" aria-labelledby="podcasts-add-title" hidden>
+          <h3 id="podcasts-add-title">Add a podcast</h3>
+          <label class="podcasts-add-label" for="podcasts-add-url">RSS feed URL</label>
+          <input type="url" id="podcasts-add-url" class="search-input" placeholder="https://example.com/feed.xml" autocomplete="off" spellcheck="false" />
+          <p class="podcasts-add-hint">Private feed URLs (Patreon etc.) contain a personal
+            access token. FileTube keeps the URL on your server in a
+            permissions-restricted file - it never appears in the interface,
+            logs, or backups again.</p>
+          <label class="podcasts-add-label" for="podcasts-add-backfill">Download</label>
+          <select id="podcasts-add-backfill">
+            <option value="all">Every episode (full offline cache)</option>
+            <option value="10">The latest 10 episodes</option>
+            <option value="25">The latest 25 episodes</option>
+            <option value="new">New episodes only</option>
+          </select>
+          <div class="podcasts-add-actions">
+            <button type="button" class="btn" id="podcasts-add-cancel">Cancel</button>
+            <button type="button" class="btn btn-primary" id="podcasts-add-submit">Subscribe</button>
+          </div>
+          <div class="podcasts-add-error" id="podcasts-add-error" role="alert" hidden></div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <nav class="bottom-nav" id="bottom-nav" aria-label="Primary">
+    <a href="/" class="bottom-nav-item" data-nav="home">
+      <i class="icon-home"></i>
+      <span class="bottom-nav-label">Home</span>
+    </a>
+    <button type="button" class="bottom-nav-item" data-nav="playlists" id="nav-playlists-btn">
+      <i class="icon-folder"></i>
+      <span class="bottom-nav-label">Playlists</span>
+    </button>
+    <a href="/history" class="bottom-nav-item" data-nav="history">
+      <i class="icon-history"></i>
+      <span class="bottom-nav-label">History</span>
+    </a>
+    <button type="button" class="bottom-nav-item" data-nav="theme" id="nav-theme-toggle">
+      <i class="icon-moon"></i>
+      <span class="bottom-nav-label">Dark</span>
+    </button>
+    <a href="/setup.html" class="bottom-nav-item" data-nav="settings">
+      <i class="icon-cog"></i>
+      <span class="bottom-nav-label">Settings</span>
+    </a>
+  </nav>
+
+  <div class="playlists-sheet-backdrop" id="playlists-backdrop" hidden></div>
+  <aside class="playlists-sheet" id="playlists-sheet" hidden aria-label="Playlists">
+    <div class="playlists-sheet-header">
+      <span>Playlists</span>
+      <button type="button" class="playlists-sheet-close" id="playlists-close" aria-label="Close">&times;</button>
+    </div>
+    <div class="playlists-sheet-list" id="playlists-sheet-list"></div>
+  </aside>
+
+  <!-- Persistent player dock + host template -- identical to every other
+       shell (see music.html's comment for the full contract). -->
+  <div id="player-dock" hidden></div>
+  <template id="player-host-template">
+    <div class="player-container" id="player-wrapper">
+      <div id="audio-bg-art" class="audio-bg-art"></div>
+      <div id="art-play-glyph" class="art-play-glyph" aria-hidden="true"></div>
+      <div id="resume-overlay" class="resume-overlay" style="display: none;">
+        <h3>Resume playback?</h3>
+        <p>You watched this media up to <span id="resume-time-str">0:00</span>. Would you like to resume from there?</p>
+        <div class="resume-actions">
+          <button class="btn" id="resume-no-btn">Start from beginning</button>
+          <button class="btn btn-primary" id="resume-yes-btn">Resume</button>
+        </div>
+      </div>
+      <div id="transcode-overlay" class="resume-overlay" style="display: none;">
+        <div class="transcode-spinner" id="transcode-spinner"></div>
+        <h3 id="transcode-title">Preparing this video&hellip;</h3>
+        <p id="transcode-message">FileTube is converting this file to a browser-friendly format. This only happens once &mdash; it'll start playing automatically when it's ready.</p>
+      </div>
+      <video id="media-player" preload="metadata" playsinline webkit-playsinline x5-playsinline style="display: none;">
+        <track id="cc-track" kind="captions" srclang="en" label="English">
+        Your browser does not support HTML5 video player.
+      </video>
+      <div id="speed-badge" class="speed-badge" style="display: none;">2× ▶▶</div>
+      <div id="skip-controls" class="skip-controls" style="display: none;">
+        <button type="button" class="skip-btn skip-back" id="skip-back-btn" aria-label="Rewind 15 seconds">
+          <span class="skip-arrow">«</span><span class="skip-num">15</span>
+        </button>
+        <button type="button" class="skip-btn skip-forward" id="skip-fwd-btn" aria-label="Forward 15 seconds">
+          <span class="skip-num">15</span><span class="skip-arrow">»</span>
+        </button>
+        <div class="skip-ripple skip-ripple-left" id="skip-ripple-left">« 15s</div>
+        <div class="skip-ripple skip-ripple-right" id="skip-ripple-right">15s »</div>
+      </div>
+      <div id="audio-visualizer" class="audio-player-visual" style="display: none;">
+        <div class="audio-vinyl" id="vinyl-disc"></div>
+        <div class="audio-title" id="audio-visual-title">Audio track title</div>
+        <div class="audio-subtitle" id="audio-visual-folder">Playlist folder</div>
+      </div>
+      <div id="player-controls" class="player-controls">
+        <button type="button" id="pp-btn" class="pc-btn pp-btn" aria-label="Play" aria-pressed="false">
+          <span class="pp-icon-play" aria-hidden="true"></span>
+          <span class="pp-icon-pause" aria-hidden="true"></span>
+        </button>
+        <span id="time-cur" class="pc-time">0:00</span>
+        <input type="range" id="seek-bar" class="pc-range pc-seek" min="0" max="1" step="0.001" value="0" aria-label="Seek">
+        <span id="time-dur" class="pc-time">0:00</span>
+        <button type="button" id="mute-btn" class="pc-btn mute-btn" aria-label="Mute" aria-pressed="false">
+          <span class="mute-icon-on" aria-hidden="true"></span>
+          <span class="mute-icon-off" aria-hidden="true"></span>
+        </button>
+        <input type="range" id="vol-bar" class="pc-range pc-vol" min="0" max="1" step="0.01" value="1" aria-label="Volume">
+        <button type="button" id="speed-btn" class="pc-btn speed-btn" aria-label="Playback speed">1×</button>
+        <button type="button" id="fs-btn" class="pc-btn fs-btn" aria-label="Fullscreen">⛶</button>
+        <button type="button" id="pip-btn" class="pc-btn pip-btn" aria-label="Picture in picture">⧉</button>
+        <button type="button" id="cc-btn" class="pc-btn cc-btn" aria-label="Toggle captions" aria-pressed="false" style="display: none;">CC</button>
+        <button type="button" id="chapters-btn" class="pc-btn chapters-btn" aria-label="Chapters" aria-expanded="false" style="display: none;">Ch</button>
+        <div id="chapters-menu" class="chapters-menu" hidden></div>
+        <div id="speed-menu" class="chapters-menu speed-menu" hidden></div>
+      </div>
+    </div>
+  </template>
+
+  <script src="/js/common.js"></script>
+  <script src="/js/main.js"></script>
+  <script src="/js/watch.js"></script>
+  <script src="/js/setup.js"></script>
+  <script src="/js/player.js"></script>
+  <script src="/js/podcasts.js"></script>
+</body>
+</html>

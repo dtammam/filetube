@@ -45,7 +45,8 @@ test('T10 SOURCE-LOCK: Books + Music are Library-section entries; NEITHER inject
   // BEHAVIOR-bound across all six race orders in
   // test/integration/history-nav-gate.test.js; this lock pins the source
   // shape only.
-  assert.ok(src.includes("document.querySelector('[data-nav-sidebar=\"books\"]') || document.querySelector('[data-nav-sidebar=\"history\"]') || foldersList"), 'Music sits above Books deterministically');
+  // v1.69: Podcasts joined the chain between Books and History.
+  assert.ok(src.includes("document.querySelector('[data-nav-sidebar=\"books\"]') || document.querySelector('[data-nav-sidebar=\"podcasts\"]') || document.querySelector('[data-nav-sidebar=\"history\"]') || foldersList"), 'Music sits above Books/Podcasts/History deterministically');
   // hrefByNavKey + VIEW_SCRIPT_SRC learn music.
   assert.ok(src.includes("music: '/music'"), 'hrefByNavKey lights the Music sidebar link after SPA nav');
   assert.ok(src.includes("music: '/js/music.js'"), 'the music view script is lazy-loadable');

@@ -167,6 +167,16 @@ test('progress: phantom 400; real persists; >=95% auto-latches played; manual to
   assert.strictEqual((await postJson('/api/podcasts/episodes/ffffffffffffffffffffffffffffffff/played', {})).status, 400, 'phantom id 400');
 });
 
+test('progress: the shared player controller\'s {id, timestamp} body shape and the read route both work', async () => {
+  // saveProgressToServer (public/js/player.js) posts {id, timestamp, duration}
+  // to every progressEndpoint - the podcasts route must accept it.
+  assert.strictEqual((await postJson('/api/podcasts/progress', { id: epDownloaded, timestamp: 77, duration: 200 })).status, 200);
+  const read = await (await get(`/api/podcasts/progress/${epDownloaded}`)).json();
+  assert.strictEqual(read.position, 77, 'the player read route reflects the player write shape');
+  const never = await (await get('/api/podcasts/progress/ffffffffffffffffffffffffffffffff')).json();
+  assert.strictEqual(never.position, 0, 'a never-played episode reads 0, not an error (the player treats it as start-from-top)');
+});
+
 test('podcastart: SVG placeholder when no art exists', async () => {
   const r = await get(`/podcastart/${subId}`);
   assert.strictEqual(r.status, 200);

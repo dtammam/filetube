@@ -1,0 +1,110 @@
+'use strict';
+
+// [UNIT] v1.69.0 T8 - the Podcasts place's nav wiring (common.js router
+// helpers + source locks, the music-nav test's pattern) and the podcasts.js
+// controller's pure helpers.
+
+const { test } = require('node:test');
+const assert = require('node:assert');
+const fs = require('node:fs');
+const path = require('node:path');
+const common = require('../../public/js/common.js');
+const pod = require('../../public/js/podcasts.js');
+
+test('deriveRouteView + activeNavItem map /podcasts; existing mappings untouched', () => {
+  assert.equal(common.deriveRouteView('/podcasts'), 'podcasts');
+  assert.equal(common.deriveRouteView('/podcasts.html'), 'podcasts');
+  assert.equal(common.deriveRouteView('/podcastart/abc'), null, 'asset routes never become views');
+  assert.equal(common.activeNavItem('/podcasts', ''), 'podcasts');
+  assert.equal(common.activeNavItem('/music', ''), 'music');
+  assert.equal(common.activeNavItem('/history', ''), 'history');
+});
+
+test('shouldInjectPodcastsNav gates on CONTENT (>=1 show) - zero shows = byte-identical chrome', () => {
+  assert.equal(common.shouldInjectPodcastsNav({ shows: 1, episodes: 0 }), true);
+  assert.equal(common.shouldInjectPodcastsNav({ shows: 3, episodes: 500 }), true);
+  assert.equal(common.shouldInjectPodcastsNav({ shows: 0, episodes: 0 }), false);
+  assert.equal(common.shouldInjectPodcastsNav({}), false);
+  assert.equal(common.shouldInjectPodcastsNav(null), false);
+  assert.equal(common.shouldInjectPodcastsNav({ shows: 'junk' }), false);
+});
+
+test('SOURCE-LOCK: Podcasts is a Library-section entry (never bottom-nav), ordered between Books and History', () => {
+  const src = fs.readFileSync(path.join(__dirname, '../../public/js/common.js'), 'utf8');
+  assert.ok(!src.includes("setAttribute('data-nav', 'podcasts')"), 'no bottom-nav Podcasts item');
+  assert.ok(src.includes("injectLibraryNavEntry('podcasts', '/podcasts', 'Podcasts'"), 'Library-section entry via the shared helper');
+  // Books anchors above Podcasts; Podcasts anchors above History.
+  assert.ok(src.includes("(key === 'books')\n      ? (document.querySelector('[data-nav-sidebar=\"podcasts\"]') || document.querySelector('[data-nav-sidebar=\"history\"]') || foldersList)"), 'Books sits above Podcasts');
+  assert.ok(src.includes("(key === 'podcasts')\n        ? (document.querySelector('[data-nav-sidebar=\"history\"]') || foldersList)"), 'Podcasts sits above History');
+  assert.ok(src.includes("podcasts: '/podcasts'"), 'hrefByNavKey lights the sidebar link after SPA nav');
+  assert.ok(src.includes("podcasts: '/js/podcasts.js'"), 'the podcasts view script is lazy-loadable');
+  assert.ok(src.includes('href="/podcasts" class="sidebar-item"'), 'the Playlists sheet lists Podcasts when enabled');
+  // The gate probes /api/podcasts/health, injecting only on shows > 0.
+  assert.ok(src.includes("fetch('/api/podcasts/health')"), 'capability probe hits the health route');
+});
+
+test('SOURCE-LOCK: podcasts.html carries the dock + host template and the FOUC guard; styles live in style.css not the shell', () => {
+  const html = fs.readFileSync(path.join(__dirname, '../../public/podcasts.html'), 'utf8');
+  assert.ok(html.includes('id="player-dock"'), 'dock present (episodes play docked)');
+  assert.ok(html.includes('id="player-host-template"'), 'host template present for a direct /podcasts load');
+  assert.ok(html.includes('data-view="podcasts"'), '#view-root stamped for the SPA router');
+  assert.ok(html.includes("localStorage.getItem('ft-era')"), 'the FOUC guard block is present');
+  assert.ok(!/<style[\s>]/i.test(html), 'NO shell <style> block - the v1.41.8 SPA lesson (books.html:19)');
+  assert.ok(html.includes('/js/podcasts.js'), 'the view controller loads in the shell');
+});
+
+test('SOURCE-LOCK: every new podcast className in the controller is bound by a style.css rule (the v1.68.3 styling-source law)', () => {
+  const js = fs.readFileSync(path.join(__dirname, '../../public/js/podcasts.js'), 'utf8');
+  const css = fs.readFileSync(path.join(__dirname, '../../public/css/style.css'), 'utf8');
+  const classNames = new Set();
+  // Every string literal assigned to className / classList in the controller.
+  for (const m of js.matchAll(/className = '([a-z0-9- ]+)'/g)) {
+    for (const cls of m[1].split(/\s+/)) classNames.add(cls);
+  }
+  for (const m of js.matchAll(/classList\.(?:add|toggle)\('([a-z0-9-]+)'/g)) classNames.add(m[1]);
+  assert.ok(classNames.size >= 10, `sanity: the scan found the controller's classes (${classNames.size})`);
+  for (const cls of classNames) {
+    if (cls.startsWith('btn') || cls === 'icon-refresh') continue; // pre-existing shared affordances
+    assert.ok(new RegExp(`\\.${cls}[\\s,{.:\\[]`).test(css), `className '${cls}' has NO CSS rule binding it - a bare control (CONTRIBUTING.md styling-source rule)`);
+  }
+});
+
+test('formatEpisodeDuration/Meta: hours, minutes, degrade-independently pieces', () => {
+  assert.equal(pod.formatEpisodeDuration(4357), '1h 13m');
+  assert.equal(pod.formatEpisodeDuration(3600), '1h');
+  assert.equal(pod.formatEpisodeDuration(3599), '1h', 'rounds up to a clean hour, never 60m');
+  assert.equal(pod.formatEpisodeDuration(300), '5m');
+  assert.equal(pod.formatEpisodeDuration(45), '45s');
+  assert.equal(pod.formatEpisodeDuration(0), '');
+  assert.equal(pod.formatEpisodeDuration(null), '');
+  assert.ok(pod.formatEpisodeMeta({ pubDateMs: Date.UTC(2026, 7, 2), durationSec: 4357 }).includes('1h 13m'));
+  assert.equal(pod.formatEpisodeMeta({ durationSec: 300 }), '5m', 'date-less feeds still show duration');
+  assert.equal(pod.formatEpisodeMeta({}), '');
+});
+
+test('episodeChipLabel: downloaded = no chip; every other state named honestly', () => {
+  assert.equal(pod.episodeChipLabel({ status: 'downloaded' }), '');
+  assert.equal(pod.episodeChipLabel({ status: 'pending' }), 'Queued');
+  assert.equal(pod.episodeChipLabel({ status: 'failed' }), 'Download failed');
+  assert.equal(pod.episodeChipLabel({ status: 'skipped' }), 'Not downloaded');
+  assert.equal(pod.episodeChipLabel({ status: 'deleted-on-disk' }), 'File removed');
+  assert.equal(pod.episodeChipLabel(null), '');
+});
+
+test('resumeFraction: mid-episode only - unplayed, finished, played-latched, and duration-less all yield null', () => {
+  assert.equal(pod.resumeFraction({ progress: { position: 600, duration: 1200 }, played: false }), 0.5);
+  assert.equal(pod.resumeFraction({ progress: { position: 600 }, durationSec: 1200, played: false }), 0.5, 'falls back to the feed duration');
+  assert.equal(pod.resumeFraction({ progress: { position: 1195, duration: 1200 }, played: false }), null, '>=99% shows no bar');
+  assert.equal(pod.resumeFraction({ progress: { position: 2, duration: 1200 }, played: false }), null, 'first seconds show no bar');
+  assert.equal(pod.resumeFraction({ progress: { position: 600, duration: 1200 }, played: true }), null, 'played-latched shows no bar');
+  assert.equal(pod.resumeFraction({ progress: null, played: false }), null);
+  assert.equal(pod.resumeFraction(null), null);
+});
+
+test('showCountLine: partial vs complete vs empty', () => {
+  assert.equal(pod.showCountLine({ episodeCount: 484, downloadedCount: 12 }), '12 of 484 downloaded');
+  assert.equal(pod.showCountLine({ episodeCount: 484, downloadedCount: 484 }), '484 episodes');
+  assert.equal(pod.showCountLine({ episodeCount: 1, downloadedCount: 1 }), '1 episode');
+  assert.equal(pod.showCountLine({ episodeCount: 0, downloadedCount: 0 }), 'No episodes yet');
+  assert.equal(pod.showCountLine(null), '');
+});

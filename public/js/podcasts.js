@@ -1,0 +1,468 @@
+'use strict';
+
+// v1.69.0: the /podcasts place controller. Show grid -> episode list drill
+// (the music-place pattern: playback in the DOCKED mini-player, browse-while-
+// listening), the add-subscription sheet, per-user played/resume display.
+//
+// Security discipline (the subscriptions.js header contract): every server/
+// feed-derived string is assigned via textContent; innerHTML is NEVER used
+// for data. Pure list/format helpers are module-scope and exported behind
+// `typeof module !== 'undefined'` for node:test with a fake document.
+
+(function () {
+  // ---- pure helpers (node:test-covered) -----------------------------------
+
+  function formatEpisodeDuration(sec) {
+    if (!Number.isFinite(sec) || sec <= 0) return '';
+    if (sec < 60) return Math.round(sec) + 's';
+    var h = Math.floor(sec / 3600);
+    var m = Math.round((sec % 3600) / 60);
+    if (m === 60) { h += 1; m = 0; } // 3599s rounds up to a clean hour, never '60m'
+    if (h > 0) return m > 0 ? h + 'h ' + m + 'm' : h + 'h';
+    return m + 'm';
+  }
+
+  function formatEpisodeDate(pubDateMs) {
+    if (!Number.isFinite(pubDateMs)) return '';
+    try {
+      return new Date(pubDateMs).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+    } catch (_) { return ''; }
+  }
+
+  // One line under the title: "Aug 2, 2026 · 1h 12m". Pieces degrade
+  // independently - a date-less feed still shows its duration.
+  function formatEpisodeMeta(ep) {
+    var parts = [];
+    var date = formatEpisodeDate(ep && ep.pubDateMs);
+    var dur = formatEpisodeDuration(ep && ep.durationSec);
+    if (date) parts.push(date);
+    if (dur) parts.push(dur);
+    return parts.join(' · ');
+  }
+
+  // The row's state chip. Downloaded rows show no chip (playable IS the
+  // default); every other state is worth a word. Returns '' or a label.
+  function episodeChipLabel(ep) {
+    if (!ep) return '';
+    switch (ep.status) {
+      case 'pending': return 'Queued';
+      case 'failed': return 'Download failed';
+      case 'skipped': return 'Not downloaded';
+      case 'deleted-on-disk': return 'File removed';
+      case 'tombstone': return 'Deleted';
+      default: return '';
+    }
+  }
+
+  // Resume-bar fraction for a partially-played episode: null when there is
+  // nothing meaningful to show (unplayed, finished-and-latched, no duration).
+  function resumeFraction(ep) {
+    if (!ep || !ep.progress || ep.played) return null;
+    var pos = Number(ep.progress.position);
+    var dur = Number(ep.progress.duration) || Number(ep.durationSec);
+    if (!Number.isFinite(pos) || pos <= 0 || !Number.isFinite(dur) || dur <= 0) return null;
+    var f = pos / dur;
+    if (f <= 0.005 || f >= 0.99) return null;
+    return Math.min(1, Math.max(0, f));
+  }
+
+  // The show card's one-line summary: "12 of 484 downloaded" (or the plain
+  // count once everything is local).
+  function showCountLine(show) {
+    if (!show) return '';
+    var total = Number(show.episodeCount) || 0;
+    var down = Number(show.downloadedCount) || 0;
+    if (total === 0) return 'No episodes yet';
+    if (down >= total) return total + (total === 1 ? ' episode' : ' episodes');
+    return down + ' of ' + total + ' downloaded';
+  }
+
+  // ---- the view ------------------------------------------------------------
+
+  var controller = null;
+
+  function init(root) {
+    controller = new AbortController();
+    var signal = controller.signal;
+
+    var content = root.querySelector('#podcasts-content');
+    var emptyNote = root.querySelector('#podcasts-empty');
+    var crumb = root.querySelector('#podcasts-crumb');
+    var statusEl = root.querySelector('#podcasts-status');
+    var addBtn = root.querySelector('#podcasts-add-btn');
+    var checkBtn = root.querySelector('#podcasts-check-btn');
+    var sheet = root.querySelector('#podcasts-add-sheet');
+    var sheetBackdrop = root.querySelector('#podcasts-add-backdrop');
+    var sheetUrl = root.querySelector('#podcasts-add-url');
+    var sheetBackfill = root.querySelector('#podcasts-add-backfill');
+    var sheetSubmit = root.querySelector('#podcasts-add-submit');
+    var sheetCancel = root.querySelector('#podcasts-add-cancel');
+    var sheetError = root.querySelector('#podcasts-add-error');
+
+    var shows = [];
+    var currentShow = null; // null = the grid
+    var episodes = [];
+    var playable = []; // downloaded episodes of the current show, list order
+    var playingId = null;
+    var statusPollTimer = null;
+
+    function setStatus(msg) {
+      if (!statusEl) return;
+      if (msg) { statusEl.textContent = msg; statusEl.hidden = false; }
+      else { statusEl.textContent = ''; statusEl.hidden = true; }
+    }
+
+    function fetchJson(url, opts) {
+      return fetch(url, opts).then(function (res) {
+        if (!res.ok) return res.json().catch(function () { return {}; }).then(function (body) {
+          throw new Error(body && body.error ? body.error : ('HTTP ' + res.status));
+        });
+        return res.json();
+      });
+    }
+
+    // ---- the show grid ----
+    function renderShows() {
+      if (!content) return;
+      content.textContent = '';
+      if (crumb) { crumb.hidden = true; crumb.textContent = ''; }
+      if (emptyNote) emptyNote.hidden = shows.length > 0;
+      if (shows.length === 0) return;
+      var grid = document.createElement('div');
+      grid.className = 'podcast-grid';
+      shows.forEach(function (show) {
+        grid.appendChild(buildShowCard(show));
+      });
+      content.appendChild(grid);
+    }
+
+    function buildShowCard(show) {
+      var card = document.createElement('button');
+      card.type = 'button';
+      card.className = 'podcast-card';
+      var art = document.createElement('img');
+      art.className = 'podcast-card-art';
+      art.alt = '';
+      art.loading = 'lazy';
+      art.src = '/podcastart/' + encodeURIComponent(show.id);
+      card.appendChild(art);
+      var title = document.createElement('div');
+      title.className = 'podcast-card-title';
+      title.textContent = show.name;
+      card.appendChild(title);
+      var line = document.createElement('div');
+      line.className = 'podcast-card-sub';
+      line.textContent = showCountLine(show);
+      card.appendChild(line);
+      if (show.secretMissing) {
+        var warn = document.createElement('div');
+        warn.className = 'podcast-card-warn';
+        warn.textContent = 'Feed URL needs re-entry';
+        card.appendChild(warn);
+      }
+      card.addEventListener('click', function () { openShow(show); }, { signal: signal });
+      return card;
+    }
+
+    // ---- the episode list ----
+    function openShow(show) {
+      currentShow = show;
+      fetchJson('/api/podcasts/shows/' + encodeURIComponent(show.id) + '/episodes')
+        .then(function (data) {
+          if (signal.aborted) return;
+          currentShow = data.show || show;
+          episodes = data.episodes || [];
+          renderEpisodes();
+        })
+        .catch(function () { setStatus('Could not load episodes.'); });
+    }
+
+    function backToGrid() {
+      currentShow = null;
+      episodes = [];
+      loadShows();
+    }
+
+    function renderEpisodes() {
+      if (!content) return;
+      content.textContent = '';
+      if (emptyNote) emptyNote.hidden = true;
+      if (crumb) {
+        crumb.textContent = '';
+        crumb.hidden = false;
+        var back = document.createElement('button');
+        back.type = 'button';
+        back.className = 'btn btn-sm';
+        back.textContent = '‹ All podcasts';
+        back.addEventListener('click', backToGrid, { signal: signal });
+        crumb.appendChild(back);
+        var name = document.createElement('span');
+        name.className = 'podcast-crumb-name';
+        name.textContent = currentShow ? currentShow.name : '';
+        crumb.appendChild(name);
+      }
+
+      var head = document.createElement('div');
+      head.className = 'podcast-show-head';
+      var art = document.createElement('img');
+      art.className = 'podcast-show-art';
+      art.alt = '';
+      art.src = '/podcastart/' + encodeURIComponent(currentShow.id);
+      head.appendChild(art);
+      var meta = document.createElement('div');
+      meta.className = 'podcast-show-meta';
+      var h = document.createElement('h3');
+      h.textContent = currentShow.name;
+      meta.appendChild(h);
+      if (currentShow.author) {
+        var by = document.createElement('div');
+        by.className = 'podcast-show-author';
+        by.textContent = currentShow.author;
+        meta.appendChild(by);
+      }
+      if (currentShow.description) {
+        var desc = document.createElement('p');
+        desc.className = 'podcast-show-desc';
+        desc.textContent = currentShow.description;
+        meta.appendChild(desc);
+      }
+      var counts = document.createElement('div');
+      counts.className = 'podcast-card-sub';
+      counts.textContent = showCountLine(currentShow) + (currentShow.lastStatus ? ' · ' + currentShow.lastStatus : '');
+      meta.appendChild(counts);
+      head.appendChild(meta);
+      content.appendChild(head);
+
+      var list = document.createElement('div');
+      list.className = 'podcast-episode-list';
+      playable = episodes.filter(function (e) { return e.status === 'downloaded'; });
+      episodes.forEach(function (ep) {
+        list.appendChild(buildEpisodeRow(ep));
+      });
+      content.appendChild(list);
+      applyPlayingHighlight();
+    }
+
+    function buildEpisodeRow(ep) {
+      var row = document.createElement('div');
+      row.className = 'podcast-episode-row';
+      row.setAttribute('data-episode-id', ep.id);
+      if (ep.played) row.classList.add('played');
+
+      var main = document.createElement('button');
+      main.type = 'button';
+      main.className = 'podcast-episode-main';
+      main.disabled = ep.status !== 'downloaded';
+      var title = document.createElement('div');
+      title.className = 'podcast-episode-title';
+      title.textContent = ep.title || 'Untitled episode';
+      main.appendChild(title);
+      var meta = document.createElement('div');
+      meta.className = 'podcast-episode-meta';
+      meta.textContent = formatEpisodeMeta(ep);
+      main.appendChild(meta);
+      var chipLabel = episodeChipLabel(ep);
+      if (chipLabel) {
+        var chip = document.createElement('span');
+        chip.className = 'podcast-episode-chip' + (ep.status === 'failed' ? ' failed' : '');
+        chip.textContent = chipLabel;
+        main.appendChild(chip);
+      }
+      var frac = resumeFraction(ep);
+      if (frac !== null) {
+        var bar = document.createElement('div');
+        bar.className = 'podcast-episode-resume';
+        var fill = document.createElement('div');
+        fill.className = 'podcast-episode-resume-fill';
+        fill.style.width = (frac * 100).toFixed(1) + '%'; /* token-exempt: positional geometry (progress fraction) */
+        bar.appendChild(fill);
+        main.appendChild(bar);
+      }
+      if (ep.status === 'downloaded') {
+        main.addEventListener('click', function () {
+          var i = playable.indexOf(ep);
+          if (i !== -1) playAt(i);
+        }, { signal: signal });
+      }
+      row.appendChild(main);
+
+      var playedBtn = document.createElement('button');
+      playedBtn.type = 'button';
+      playedBtn.className = 'podcast-played-toggle';
+      playedBtn.title = ep.played ? 'Mark unplayed' : 'Mark played';
+      playedBtn.setAttribute('aria-pressed', ep.played ? 'true' : 'false');
+      playedBtn.textContent = '✓';
+      playedBtn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        togglePlayed(ep, row, playedBtn);
+      }, { signal: signal });
+      row.appendChild(playedBtn);
+      return row;
+    }
+
+    function togglePlayed(ep, row, btn) {
+      var next = !ep.played;
+      fetchJson('/api/podcasts/episodes/' + encodeURIComponent(ep.id) + '/played', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ played: next }),
+      }).then(function () {
+        ep.played = next;
+        row.classList.toggle('played', next);
+        btn.title = next ? 'Mark unplayed' : 'Mark played';
+        btn.setAttribute('aria-pressed', next ? 'true' : 'false');
+      }).catch(function () { setStatus('Could not update played state.'); });
+    }
+
+    function applyPlayingHighlight() {
+      if (!content) return;
+      content.querySelectorAll('.podcast-episode-row.playing').forEach(function (el) {
+        el.classList.remove('playing');
+      });
+      if (!playingId) return;
+      var row = content.querySelector('.podcast-episode-row[data-episode-id="' + playingId + '"]');
+      if (row) row.classList.add('playing');
+    }
+
+    function playAt(i) {
+      var ep = playable[i];
+      if (!ep || !currentShow) return;
+      var data = {
+        type: 'audio',
+        title: ep.title,
+        channelName: currentShow.name,
+        folderName: currentShow.name,
+        duration: ep.durationSec || 0,
+        artUrl: '/podcastart/' + currentShow.id,
+        streamSrc: '/episode/' + ep.id,
+        progressEndpoint: '/api/podcasts/progress',
+        resumeMode: 'podcast',
+        autoAdvanceViaTrackNav: true,
+        readerHref: '/podcasts',
+      };
+      playingId = ep.id;
+      applyPlayingHighlight();
+      window.FileTube.player.load(ep.id, data, { dock: true });
+      if (typeof window.FileTube.player.setTrackNav === 'function') {
+        window.FileTube.player.setTrackNav({
+          onPrev: i > 0 ? function () { playAt(i - 1); } : undefined,
+          onNext: i < playable.length - 1 ? function () { playAt(i + 1); } : undefined,
+        });
+      }
+    }
+
+    // ---- the add sheet ----
+    function openSheet() {
+      if (!sheet) return;
+      if (sheetError) { sheetError.hidden = true; sheetError.textContent = ''; }
+      if (sheetUrl) sheetUrl.value = '';
+      if (sheetBackfill) sheetBackfill.value = 'all';
+      sheet.hidden = false;
+      if (sheetBackdrop) sheetBackdrop.hidden = false;
+      if (sheetUrl) sheetUrl.focus();
+    }
+    function closeSheet() {
+      if (sheet) sheet.hidden = true;
+      if (sheetBackdrop) sheetBackdrop.hidden = true;
+    }
+    function submitSheet() {
+      var url = sheetUrl ? sheetUrl.value.trim() : '';
+      var backfill = sheetBackfill ? sheetBackfill.value : 'all';
+      if (sheetError) { sheetError.hidden = true; sheetError.textContent = ''; }
+      if (sheetSubmit) sheetSubmit.disabled = true;
+      fetchJson('/api/podcasts/subscriptions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ feedUrl: url, backfill: backfill }),
+      }).then(function () {
+        closeSheet();
+        setStatus('Subscribed - checking the feed…');
+        startStatusPolling();
+        loadShows();
+      }).catch(function (err) {
+        if (sheetError) { sheetError.textContent = err.message || 'Could not subscribe.'; sheetError.hidden = false; }
+      }).finally(function () {
+        if (sheetSubmit) sheetSubmit.disabled = false;
+      });
+    }
+
+    // ---- feed checking + live status ----
+    function startStatusPolling() {
+      if (statusPollTimer) return;
+      statusPollTimer = setInterval(function () {
+        fetchJson('/api/podcasts/status').then(function (s) {
+          if (signal.aborted) return;
+          var keys = Object.keys(s.activity || {});
+          if (s.polling && keys.length > 0) {
+            var a = s.activity[keys[0]];
+            setStatus(a && a.state === 'downloading' ? ('Downloading episodes… ' + (a.detail || '')) : 'Checking feeds…');
+          } else if (!s.polling) {
+            clearInterval(statusPollTimer);
+            statusPollTimer = null;
+            setStatus('');
+            if (currentShow) openShow(currentShow); else loadShows();
+          }
+        }).catch(function () { /* transient - keep polling */ });
+      }, 2500);
+      if (statusPollTimer.unref) statusPollTimer.unref();
+    }
+
+    function loadShows() {
+      fetchJson('/api/podcasts/shows').then(function (data) {
+        if (signal.aborted) return;
+        shows = data.shows || [];
+        if (!currentShow) renderShows();
+      }).catch(function () {
+        setStatus('Could not load podcasts.');
+        if (emptyNote) emptyNote.hidden = false;
+      });
+    }
+
+    if (addBtn) addBtn.addEventListener('click', openSheet, { signal: signal });
+    if (sheetCancel) sheetCancel.addEventListener('click', closeSheet, { signal: signal });
+    if (sheetBackdrop) sheetBackdrop.addEventListener('click', closeSheet, { signal: signal });
+    if (sheetSubmit) sheetSubmit.addEventListener('click', submitSheet, { signal: signal });
+    if (sheetUrl) {
+      sheetUrl.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') submitSheet();
+      }, { signal: signal });
+    }
+    if (checkBtn) {
+      checkBtn.addEventListener('click', function () {
+        fetchJson('/api/podcasts/check', { method: 'POST' }).then(function () {
+          setStatus('Checking feeds…');
+          startStatusPolling();
+        }).catch(function () { setStatus('Could not start the check.'); });
+      }, { signal: signal });
+    }
+
+    loadShows();
+
+    // Teardown extras the AbortController cannot cover.
+    controller.__podcastsCleanup = function () {
+      if (statusPollTimer) { clearInterval(statusPollTimer); statusPollTimer = null; }
+    };
+  }
+
+  function destroy() {
+    if (controller) {
+      if (controller.__podcastsCleanup) controller.__podcastsCleanup();
+      controller.abort();
+    }
+    controller = null;
+  }
+
+  if (typeof window !== 'undefined' && window.FileTube && typeof window.FileTube.registerView === 'function') {
+    window.FileTube.registerView('podcasts', { init: init, destroy: destroy });
+  }
+
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = {
+      formatEpisodeDuration: formatEpisodeDuration,
+      formatEpisodeMeta: formatEpisodeMeta,
+      episodeChipLabel: episodeChipLabel,
+      resumeFraction: resumeFraction,
+      showCountLine: showCountLine,
+    };
+  }
+})();
