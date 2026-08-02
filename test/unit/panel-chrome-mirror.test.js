@@ -5,9 +5,11 @@
 // Three findings from one report: (1) the v1.67 card-corner <select>s
 // shipped BARE - a class with no CSS behind it - because nothing styles
 // selects by default and no instrument can see a MISSING rule (the census
-// governs literals PRESENT in declarations); the move-modal select was
-// bare the same way, and the one-off modal had shipped this exact class
-// before (its scoped fix left the class open). (2) The queue panel slammed
+// governs literals PRESENT in declarations); the move-modal select and
+// the ytdlp failures-filter select (its 'form-input' class binds NO rule
+// anywhere - gate W1's catch) were bare the same way, and the one-off
+// modal had shipped this exact class before (its scoped fix left the
+// class open). (2) The queue panel slammed
 // shut on an empty queue instead of showing an empty state. (3) The queue
 // panel's clear button had drifted from the notification panel's design
 // language - two hand-rolled stylings for the same affordance.
@@ -78,6 +80,14 @@ for (const [queueSel, notifSel] of [
   test(`panel mirror: ${queueSel} is declaration-identical to ${notifSel}`, () => {
     assert.deepStrictEqual(declarations(STYLE_CSS, queueSel), declarations(STYLE_CSS, notifSel),
       `${queueSel} must carry exactly ${notifSel}'s declarations - one panel design language`);
+    // Gate v1.68.3 S2 (measured): the extractor reads the FIRST top-level
+    // rule; a later duplicate override could drift the render behind a
+    // green mirror. Each locked selector must define exactly ONE rule.
+    for (const sel of [queueSel, notifSel]) {
+      const esc = sel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const count = (STYLE_CSS.match(new RegExp(`(?:^|\\n)${esc} \\{`, 'g')) || []).length;
+      assert.strictEqual(count, 1, `${sel} defined exactly once - no shadowing duplicate`);
+    }
   });
 }
 
@@ -89,11 +99,16 @@ const STRIPPED_COMMON = COMMON_JS
   .map((l) => l.replace(/\/\/.*$/, ''))
   .join('\n');
 
-test('an OPEN queue panel never auto-closes on empty: the setChrome close call is GONE', () => {
-  assert.ok(!STRIPPED_COMMON.includes('if (btn.hidden && !panel.hidden) closePanel();'),
-    'the auto-close that raced ahead of the empty state must not return');
+test('an OPEN queue panel never auto-closes on empty: setChrome contains NO close call at all', () => {
+  // Gate v1.68.3 S1 (measured): the first cut asserted the absence of one
+  // exact spelling, and a reordered-condition respelling reintroduced the
+  // bug green. Bind the whole body: no closePanel token, any spelling.
+  const body = /const setChrome = \(q\) => \{([\s\S]*?)\n {6}\};/.exec(STRIPPED_COMMON);
+  assert.ok(body, 'setChrome body found');
+  assert.ok(!body[1].includes('closePanel'),
+    'setChrome must never close the panel - the empty state renders instead');
   // The button-hiding half of ruling 4 survives.
-  assert.ok(STRIPPED_COMMON.includes('btn.hidden = !shouldShowQueueButton(q);'),
+  assert.ok(body[1].includes('btn.hidden = !shouldShowQueueButton(q);'),
     'the queue button still hides when the queue empties (ruling 4)');
 });
 

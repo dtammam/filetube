@@ -2681,18 +2681,21 @@ html.reader-immersive .app-container { padding-top: 0; }
 }
 
 /* v1.68.3 (Dean, on-device): BASE <select> styling - the design language by
-   DEFAULT. History: every surface styled its selects ad hoc (.btn btn-sm on
-   the sort selects, .setup-select below, .oneoff-modal-row select - itself a
-   fix for selects that "read as bare native controls", form-input in the
-   ytdlp client) and TWO surfaces shipped bare because nothing catches a
-   MISSING rule: the v1.67 card-corner pickers (a class with no CSS behind
-   it) and the move-modal select (no class at all). The census governs raw
-   literals PRESENT in declarations; absence is invisible to every
-   instrument. This element-level rule makes the styled path the default -
-   a future select is tokened before anyone remembers to class it, and the
-   bug class dies structurally. Specificity 0-0-1: every existing class
-   pattern above still wins wholesale. Declarations mirror .setup-select
-   (the settings-page pattern the corner pickers sit beside). */
+   DEFAULT. History: the styled surfaces each did it ad hoc (.btn on the
+   music/books sort selects, .setup-select below, .oneoff-modal-row select -
+   itself a fix for selects that "read as bare native controls") and THREE
+   surfaces shipped bare because nothing catches a MISSING rule: the v1.67
+   card-corner pickers (a class with no CSS behind it), the move-modal
+   select (no class at all), and the ytdlp failures-filter select (gate
+   v1.68.3 W1: its 'form-input' class has NO rule anywhere in the tree -
+   the same class-with-no-CSS shape, miscounted as "styled" in this
+   comment's first draft). The census governs raw literals PRESENT in
+   declarations; absence is invisible to every instrument. This
+   element-level rule makes the styled path the default - a future select
+   is tokened before anyone remembers to class it, and the bug class dies
+   structurally. Specificity 0-0-1: every existing class pattern above
+   still wins wholesale. Declarations mirror .setup-select (the
+   settings-page pattern the corner pickers sit beside). */
 select {
   padding: var(--space-5) var(--space-6);
   border: 1px solid var(--border-dark);

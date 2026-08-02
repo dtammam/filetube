@@ -79,6 +79,35 @@ control-size value ANYWHERE (style.css, `<style>` blocks, `el.style.*` /
   exceptions: `--header-h`/`--sidebar-w`, whose coupled sites are the
   point).
 
+### Every rendered element must have a styling SOURCE - "none" is a finding
+
+Ruled by Dean after v1.68.3: the v1.67 card-corner `<select>`s shipped with
+a className that had NO CSS rule behind it and rendered browser-bare beside
+six properly-tokened siblings - through the cleanest gate on record. The
+instruments are structurally blind to this: the census only sees literals
+PRESENT in declarations (absence is invisible), and gate seats review code,
+not pixels. Two more selects were bare the same way (the move modal's, and
+the ytdlp failures filter's orphan `form-input` class); the one-off modal
+had shipped the same bug earlier and its point-wise fix left the class
+open. The rules, for ANY new control or surface:
+
+1. **Find the existing pattern FIRST.** Enumerate what the system already
+   has for that element type and leverage it (selects: the base `select`
+   element rule, `.setup-select`, `.btn`, scoped modal rules). Two surfaces
+   rendering the same affordance must SHARE declarations, never hand-roll
+   parallel stylings - if they must live in separate rules, add a mirror
+   lock (`test/unit/panel-chrome-mirror.test.js`, the queue/notif
+   clear-button precedent).
+2. **No pattern exists? Prefer a base element-level rule** over a new
+   one-off class - make the styled path the DEFAULT so forgetting a class
+   can never ship a bare control again (the v1.68.3 base `select` rule
+   precedent; specificity 0-0-1 so every class pattern still wins).
+3. **A className with no CSS rule binding it is a DEFECT, not a stub -
+   flag it.** Implementers: before shipping a new className, verify a rule
+   binds it or a base element rule covers the element. Reviewers: for
+   every new className in a diff, run that same check - it is one grep,
+   and it is exactly the check every automated instrument cannot do.
+
 ## File naming
 
 - Lowercase, single-word or hyphenated filenames (`server.js`, `watch.js`, `docker-compose.yml`)
