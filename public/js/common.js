@@ -2520,7 +2520,7 @@ function injectNotificationBellIfEnabled() {
           dismissBtn.className = 'notif-row-dismiss';
           dismissBtn.setAttribute('aria-label', 'Dismiss this notification');
           dismissBtn.title = 'Dismiss';
-          dismissBtn.textContent = '✕';
+          dismissBtn.textContent = '×';
           dismissBtn.addEventListener('click', () => {
             if (dismissBtn.disabled) return;
             dismissBtn.disabled = true;
@@ -2531,15 +2531,26 @@ function injectNotificationBellIfEnabled() {
             })
               .then((res) => {
                 if (!res.ok) throw new Error(`dismiss failed: ${res.status}`);
+                // QA gate: keep a keyboard user in the list - focus the next
+                // row's X (else the previous one's, else the bell) BEFORE the
+                // removal drops focus to <body>.
+                const wraps = Array.from(list.querySelectorAll('.notif-row-wrap'));
+                const idx = wraps.indexOf(wrap);
+                const nextWrap = wraps[idx + 1] || wraps[idx - 1] || null;
                 wrap.remove();
+                const nextFocus = (nextWrap && nextWrap.querySelector('.notif-row-dismiss')) || bellBtn;
+                if (nextFocus && document.activeElement === document.body) nextFocus.focus();
                 if (!list.querySelector('.notif-row')) {
                   renderEmpty('No notifications yet. New downloads land here.');
                 }
                 // The badge must agree with the shrunken panel - re-read the
-                // server truth rather than arithmetic on a stale count.
+                // server truth rather than arithmetic on a stale count. Same
+                // panel-open suppression as the poll (QA gate: an in-flight
+                // /seen could otherwise lose to this refetch and resurrect a
+                // stale count beside an open, fully-seen panel).
                 return fetch('/api/notifications/badge')
                   .then((r) => (r.ok ? r.json() : null))
-                  .then((b) => { if (b) setBadge(b.count); })
+                  .then((b) => { if (b && panel.hidden) setBadge(b.count); })
                   .catch(() => { /* cosmetic - next open reconciles */ });
               })
               .catch(() => {
@@ -9481,8 +9492,7 @@ if (typeof module !== 'undefined' && module.exports) {
     showConfirmModal,
     // v1.26.3 (Item 2/3): shared empty-state / error-state card builders.
     buildEmptyStateHtml, buildErrorStateHtml,
-    // v1.51: the notification bell's pure decisions (the DOM injector is the
-    // usual untested-by-necessity thin shell around them).
+    // v1.51: the notification bell's pure decisions.
     shouldInjectNotificationBell, formatNotificationBadge, buildNotificationRowModel,
     // v1.68: the real injector, exported so the panel's per-row dismiss X is
     // bound by EXECUTION in jsdom (the history-nav-gate pattern), plus the

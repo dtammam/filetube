@@ -91,6 +91,18 @@ test('each row renders a dismiss X as a SIBLING of the anchor; clicking it POSTs
     const rows = doc.querySelectorAll('#notif-panel-list .notif-row');
     assert.strictEqual(rows.length, 1, 'exactly one row left');
     assert.ok(rows[0].textContent.includes('Vídeo Two'), 'the OTHER row survived');
+    // QA gate: a keyboard user stays IN the list - focus moves to the
+    // remaining row's X, never dropped to <body>.
+    assert.strictEqual(doc.activeElement, doc.querySelector('.notif-row-dismiss'),
+      'focus lands on the surviving row\'s X after removal');
+    // QA gate: the badge refetch honors the panel-open suppression the 60s
+    // poll enforces - an open panel means /seen semantics own the badge, so
+    // the refetched count must NOT paint while the panel is visible.
+    const badgeEl = doc.getElementById('notif-bell-badge');
+    assert.ok(badgeEl.hidden || badgeEl.textContent === '',
+      'no stale count painted beside an open, fully-seen panel');
+    assert.strictEqual(doc.querySelector('.notif-row-dismiss').textContent, '×',
+      'the repo-standard U+00D7 close glyph (QA consistency note)');
   }));
 
 test('NON-OPTIMISTIC: a failed dismiss keeps the row and re-enables the X (v1.54 law)', () =>

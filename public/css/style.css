@@ -8282,7 +8282,7 @@ body.ft-css-fullscreen .bottom-nav {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 36px; /* token-exempt: touch-target width (the bottombar-editor-btn convention) */
+  width: var(--size-control); /* the control-size token (QA gate: the prior 36px literal cited a token-exempt convention that does not exist) */
   border: none;
   background: none;
   color: var(--text-secondary);

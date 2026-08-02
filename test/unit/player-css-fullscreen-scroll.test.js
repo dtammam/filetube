@@ -189,7 +189,10 @@ test('native keeper wiring: capture on the player\'s own native enter, restore i
   assert.ok(enterFn && enterFn[1].includes('keeperNativeFsCapture();'), 'onEnterFullscreen captures');
   const fsChange = /function onFsChange\(\) \{([\s\S]*?)\n {4}\}/.exec(stripped);
   assert.ok(fsChange && fsChange[1].includes('keeperNativeFsExit();'), 'onFsChange restores/clears');
-  assert.ok(stripped.includes('cssFsSavedScrollY = null; \n') || /setCssFullscreen\(false\);\s*\n\s*cssFsSavedScrollY = null;/.test(stripped),
+  // QA gate: the regex arm alone - the prior includes() disjunct was
+  // unsatisfiable at HEAD and any future comment-trailed clear anywhere
+  // would have satisfied it with the load-boundary clear deleted.
+  assert.ok(/setCssFullscreen\(false\);\s*\n\s*cssFsSavedScrollY = null;/.test(stripped),
     'the load boundary clears the keeper capture right after its faux off-call');
 });
 
