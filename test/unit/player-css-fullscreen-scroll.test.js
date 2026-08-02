@@ -77,6 +77,13 @@ test('garbage saved values never restore (typeof + NaN guard, the coercion scar)
   }
 });
 
+test('v1.68: entering with a capture ALREADY HELD keeps it (the native->faux rotate handoff must not re-capture clobbered scroll)', () => {
+  // Sequence: rotate -> native enter captured 340 -> the intercept exits
+  // native and enters faux. By faux-enter time iOS may have already moved
+  // the page; the ORIGINAL capture must survive.
+  assert.deepStrictEqual(resolveCssFsScrollPlan(false, true, false, 340, 999), { savedY: 340, restoreTo: null });
+});
+
 // ---- the wiring inside the IIFE (comment-stripped EXACT-STATEMENT locks) ----
 
 const PLAYER_JS = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'player.js'), 'utf8');
@@ -140,6 +147,53 @@ test('call sites: ONLY the fullscreen exit button opts into restore; teardown an
     'the applyControlsMode off-guard passes no options');
   const bareOffCalls = STRIPPED.match(/setCssFullscreen\(false\);/g) || [];
   assert.ok(bareOffCalls.length >= 2, 'teardown + the state guard remain bare clear-only calls');
+});
+
+// ---- v1.68: NATIVE fullscreen coverage (the remaining uncovered door) -------
+//
+// iOS clobbers page scroll on native fullscreen exits (the Done/X path in
+// native-controls mode) and v1.67.5's keeper only covered faux. The same
+// keeper state now serves both flavors: capture on the player's OWN native
+// enter (element-scoped, mobile-only, capture-if-not-held), restore on the
+// native exit event - suppressed when faux took over (the rotate handoff)
+// and when the player is no longer FULL (the C1 cross-view discipline) -
+// and the LOAD BOUNDARY clears the capture outright (a capture from video
+// A must never restore onto video B's page at a later Done-exit).
+
+test('native keeper wiring: capture on the player\'s own native enter, restore in onFsChange, clear at the load boundary (exact statements)', () => {
+  const stripped = STRIPPED;
+  assert.ok(stripped.includes('function keeperNativeFsCapture()'), 'the native capture helper exists');
+  assert.ok(stripped.includes('function keeperNativeFsExit()'), 'the native exit helper exists');
+  // Capture: mobile-only + capture-if-not-held, reading the same shared state.
+  const cap = /function keeperNativeFsCapture\(\) \{([\s\S]*?)\n {2}\}/.exec(stripped);
+  assert.ok(cap, 'capture body');
+  assert.ok(cap[1].includes('if (!isMobileFormFactor()) return;'), 'mobile-only (desktop fullscreen behavior untouched)');
+  assert.ok(cap[1].includes('if (cssFsSavedScrollY !== null) return;'), 'capture-if-not-held');
+  // Gate W2: the element-scoped guard (FIX A - never a bare truthiness
+  // fullscreen check). Without it, ANY element's fullscreen on mobile
+  // captures scroll and a later player exit restores that stale capture.
+  assert.ok(cap[1].includes('if (!inNativeFullscreen()) return;'), 'element-scoped to the player\'s OWN fullscreen');
+  // Exit: handoff suppression BEFORE anything else, C1 state discipline,
+  // unconditional clear.
+  const ex = /function keeperNativeFsExit\(\) \{([\s\S]*?)\n {2}\}/.exec(stripped);
+  assert.ok(ex, 'exit body');
+  const handoffIdx = ex[1].indexOf("if (host && host.classList.contains('css-fullscreen')) return;");
+  assert.ok(handoffIdx !== -1, 'the rotate handoff suppresses the restore (faux now owns the capture)');
+  assert.ok(ex[1].includes('state === STATE_FULL'), 'the C1 discipline rides the native exit too');
+  assert.ok(ex[1].includes('isMobileFormFactor()'), 'gate S2: the restore is mobile-gated (desktop untouched)');
+  const clearIdx = ex[1].indexOf('cssFsSavedScrollY = null;');
+  assert.ok(clearIdx !== -1 && clearIdx > handoffIdx, 'the capture ALWAYS clears on a native exit (after the handoff early-return)');
+  // Call sites: enter via onEnterFullscreen, exit via onFsChange, clear at
+  // the load boundary (teardown).
+  const enterFn = /function onEnterFullscreen\(\) \{([\s\S]*?)\}/.exec(stripped);
+  assert.ok(enterFn && enterFn[1].includes('keeperNativeFsCapture();'), 'onEnterFullscreen captures');
+  const fsChange = /function onFsChange\(\) \{([\s\S]*?)\n {4}\}/.exec(stripped);
+  assert.ok(fsChange && fsChange[1].includes('keeperNativeFsExit();'), 'onFsChange restores/clears');
+  // QA gate: the regex arm alone - the prior includes() disjunct was
+  // unsatisfiable at HEAD and any future comment-trailed clear anywhere
+  // would have satisfied it with the load-boundary clear deleted.
+  assert.ok(/setCssFullscreen\(false\);\s*\n\s*cssFsSavedScrollY = null;/.test(stripped),
+    'the load boundary clears the keeper capture right after its faux off-call');
 });
 
 test('setCssFullscreen remains the SINGLE authority: no other site toggles the fullscreen classes', () => {

@@ -168,6 +168,9 @@ module.exports = [
         // v1.67 (plan D6): THE share decision (common.js), called by the
         // watch Share button and the card share corner.
         shareExternalUrl: 'readonly',
+        // v1.68 (ruling 4): close a played video's delivered push banner
+        // (common.js), called by watch.js's pingView.
+        closeDeliveredPushBanners: 'readonly',
         // v1.63.1: the stars display pref (common.js owns it; setup.js's
         // toggle reflects + fires it).
         shouldShowStarRatings: 'readonly',
