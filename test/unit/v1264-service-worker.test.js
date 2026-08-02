@@ -126,11 +126,17 @@ test('cleanup lock: unregisterStaleServiceWorkers() survives -- feature-detects,
   const match = /function unregisterStaleServiceWorkers\(\) \{([\s\S]*?)\n\}/.exec(COMMON_JS);
   assert.ok(match, 'expected unregisterStaleServiceWorkers() in common.js -- old installs may still carry the v1.26.4 offline SW');
   const body = match[1];
+  // Strip comments before the never-match assertions below: this file's own
+  // explanatory comment NAMES the rejected `endsWith` form, and a lock that
+  // a comment can satisfy (or violate) proves nothing about the code. The
+  // v1.50.3 lesson, re-learned here in-wave.
+  const code = body.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
   assert.match(body, /if \(typeof navigator === 'undefined' \|\| !\('serviceWorker' in navigator\)\) return;/);
   assert.match(body, /getRegistrations\(\)/);
-  assert.match(body, /scriptURL\.endsWith\('\/push-sw\.js'\)\) return;/,
-    'the v1.66 exemption is EXACTLY /push-sw.js -- an exemption matching /sw.js would spare the v1.26.4 offline worker itself (measured, QA W2)');
-  assert.ok(!/endsWith\('\/sw\.js'\)/.test(body), 'and it must never be widened back to /sw.js');
+  assert.match(body, /pathname === '\/push-sw\.js'\) return;/,
+    'the v1.66 exemption is the EXACT pathname /push-sw.js -- an exemption matching /sw.js would spare the v1.26.4 offline worker itself (measured, QA W2), and a suffix match would spare any nested lookalike');
+  assert.ok(!/endsWith\('\/sw\.js'\)/.test(code), 'and it must never be widened back to /sw.js');
+  assert.ok(!/endsWith\('\/push-sw\.js'\)/.test(code), 'nor loosened back to a suffix match');
   assert.match(body, /r\.unregister\(\)\.catch\(\(\) => \{\}\)/, 'each individual unregister failure must be swallowed');
   assert.match(body, /\.catch\(\(\) => \{ \/\* best-effort cleanup only \*\/ \}\)/, 'the getRegistrations failure must be swallowed');
   assert.match(body, /try \{/, 'the synchronous call path must be try/catch-wrapped so cleanup can never abort page boot');

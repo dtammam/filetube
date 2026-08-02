@@ -190,6 +190,89 @@ test('a gap larger than the old read limit reports the TRUE count and advances t
     'the read limit must cover the feed cap (NOTIFICATION_CAP=200) so truncation is unreachable by construction');
 });
 
+// QA CRITICAL-1: the truncation belt above must never become a spin. The
+// previous binding called deliverRound() directly and so never touched
+// trigger(), which is where the do/while lives - a full-limit read against
+// a FAILING endpoint re-read the identical batch forever (measured: 314
+// rounds, 314 POSTs to a dead service, cursor at 0, coalescer latched for
+// good). These drive trigger() and assert TERMINATION.
+const ROUND_BREAKER = 25;
+function spinHarness(statusCode) {
+  const rows = [];
+  for (let i = 1; i <= FEED_READ_LIMIT; i++) rows.push({ id: i, mediaId: `v${i}`, createdAt: NOW - i });
+  const meta = {};
+  for (const r of rows) meta[r.mediaId] = { title: 'T', channel: 'C' };
+  let cursor = 0;
+  const counts = { rounds: 0, posts: 0 };
+  const delivery = createPushDelivery({
+    store: {
+      listPushSubscriptionsForDelivery() {
+        counts.rounds++;
+        // CIRCUIT BREAKER, and it is load-bearing for this test's honesty:
+        // an unbounded loop holds the event loop open forever, so a failed
+        // assertion could never surface - the run would just hang, which
+        // reads as "stuck CI", not "regression". Throwing here is caught by
+        // trigger()'s own catch, which clears `running` and ends the loop,
+        // letting the assertions below fail LOUDLY instead.
+        if (counts.rounds > ROUND_BREAKER) throw new Error('round breaker tripped (spin)');
+        return [{ endpoint: 'https://push.example/wp/spin', p256dh: UA_P256DH, auth: UA_AUTH, lastPushedId: cursor, cooldownUntil: 0, settingsJson: '{}' }];
+      },
+      listNotificationsAfter: (c, l) => rows.filter((r) => r.id > c).slice(0, l),
+      advancePushCursor: (e, id) => { cursor = Math.max(cursor, id); },
+      setPushCooldown() {}, removePushSubscription() {},
+    },
+    vapidKeys: VAPID_KEYS,
+    guardHop: async () => ({ ok: true }),
+    enabled: () => true,
+    resolveMeta: (id) => meta[id] || null,
+    // Yields to the TIMER phase like a real socket does. Without this a
+    // spinning do/while starves timers entirely and the watcher below can
+    // never run - the failure would present as a hung test run instead of
+    // a named assertion (QA measured exactly that starvation).
+    transport: async () => {
+      counts.posts++;
+      await new Promise((r) => setTimeout(r, 0));
+      return { statusCode, headers: {} };
+    },
+    now: () => NOW,
+    log: () => {},
+  });
+  return { delivery, counts, cursorOf: () => cursor };
+}
+
+// Settle by watching the round counter go quiet - a spinning loop never
+// does, so this fails by TIMEOUT rather than passing vacuously.
+async function settleRounds(counts, budgetMs = 3000) {
+  const t0 = Date.now();
+  let last = -1;
+  let stable = 0;
+  while (stable < 3) {
+    if (Date.now() - t0 > budgetMs) throw new Error(`delivery never settled: ${counts.rounds} rounds, ${counts.posts} posts (SPIN)`);
+    await new Promise((r) => setTimeout(r, 20));
+    if (counts.rounds === last) stable++;
+    else { stable = 0; last = counts.rounds; }
+  }
+}
+
+test('trigger(): a full-limit read against a FAILING endpoint terminates - it must never re-read the same batch forever', async () => {
+  for (const status of [500, 429, 403]) {
+    const h = spinHarness(status);
+    h.delivery.trigger('scan');
+    await settleRounds(h.counts);
+    assert.ok(h.counts.rounds <= 2, `status ${status}: settled in ${h.counts.rounds} rounds`);
+    assert.ok(h.counts.posts <= 2, `status ${status}: ${h.counts.posts} posts - a dead endpoint is not hammered`);
+    assert.equal(h.cursorOf(), 0, `status ${status}: nothing delivered, so the cursor holds`);
+  }
+});
+
+test('trigger(): a full-limit read against a HEALTHY endpoint still catches up (the belt does its job)', async () => {
+  const h = spinHarness(201);
+  h.delivery.trigger('scan');
+  await settleRounds(h.counts);
+  assert.equal(h.cursorOf(), FEED_READ_LIMIT, 'the whole batch was delivered and the cursor reached the newest row');
+  assert.ok(h.counts.rounds >= 2, 'the truncation re-run actually happened');
+});
+
 test('a full-limit read sets truncated so the trigger re-runs instead of stranding the cursor', async () => {
   const over = [];
   for (let i = 1; i <= FEED_READ_LIMIT + 5; i++) over.push({ id: i, mediaId: `v${i}`, createdAt: NOW - i });

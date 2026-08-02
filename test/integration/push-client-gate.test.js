@@ -72,16 +72,37 @@ test('shedder: sheds the REAL v1.26.4 offline worker (/sw.js) and anything forei
       { scriptURL: 'https://filetube.example/sw.js' },
       { scriptURL: 'https://filetube.example/push-sw.js' },    // the v1.66 push worker
       { scriptURL: 'https://filetube.example/js/other-sw.js' },
+      // A nested lookalike: a SUFFIX exemption would spare this too. The
+      // exemption matches the exact pathname, so it is shed.
+      { scriptURL: 'https://filetube.example/media/user/push-sw.js' },
+      // Query-string and case variants must not sneak past either.
+      { scriptURL: 'https://filetube.example/push-sw.js?v=2' },
+      { scriptURL: 'https://filetube.example/PUSH-SW.js' },
+      { scriptURL: '' }, // torn registration: fail closed, shed it
     ],
   }, async (calls) => {
     unregisterStaleServiceWorkers();
     await settle();
     assert.deepEqual(calls.unregistered.sort(), [
+      '',
+      'https://filetube.example/PUSH-SW.js',
       'https://filetube.example/js/other-sw.js',
+      'https://filetube.example/media/user/push-sw.js',
       'https://filetube.example/sw.js',
-    ], 'the real offline worker AND the foreign one are shed');
+    ], 'the real offline worker, the foreign one, the nested lookalike, the case variant and a torn registration are ALL shed');
     assert.ok(!calls.unregistered.includes('https://filetube.example/push-sw.js'),
       'the push worker survives the shed pass');
+    assert.ok(calls.unregistered.includes('https://filetube.example/PUSH-SW.js'),
+      'case variants are not the push worker');
+  }));
+
+test('shedder: a push worker registered with a cache-busting query string is still the push worker (pathname match, not URL match)', () =>
+  withPlatform({
+    registrations: [{ scriptURL: 'https://filetube.example/push-sw.js?v=2' }],
+  }, async (calls) => {
+    unregisterStaleServiceWorkers();
+    await settle();
+    assert.deepEqual(calls.unregistered, [], 'a query string does not make it a foreign worker');
   }));
 
 test('reconcile: an existing device subscription re-POSTs to the server and freshens the worker (kills M3)', () => {

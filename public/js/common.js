@@ -8941,7 +8941,13 @@ function unregisterStaleServiceWorkers() {
         regs.forEach((r) => {
           const worker = r.active || r.waiting || r.installing;
           const scriptURL = worker && worker.scriptURL ? worker.scriptURL : '';
-          if (scriptURL.endsWith('/push-sw.js')) return; // v1.66: the push worker lives
+          // EXACT pathname, not a suffix: endsWith('/push-sw.js') would also
+          // spare a worker at /media/anything/push-sw.js. Unreachable without
+          // XSS, but an exemption should never be broader than the one file
+          // it names. A malformed URL falls through to the shed (fail closed).
+          let pathname = '';
+          try { pathname = new URL(scriptURL).pathname; } catch (_) { pathname = ''; }
+          if (pathname === '/push-sw.js') return; // v1.66: the push worker lives
           r.unregister().catch(() => {});
         });
       })
