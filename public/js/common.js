@@ -2629,6 +2629,17 @@ function injectNotificationBellIfEnabled() {
       };
       document.addEventListener('visibilitychange', resume);
       window.addEventListener('pageshow', resume);
+      // v1.66: a push arriving while this window is visible shows no OS
+      // banner (ruling P4) - the service worker postMessages instead, and
+      // the badge refreshes on the resume fast path rather than the next
+      // 60s tick.
+      if ('serviceWorker' in navigator) {
+        try {
+          navigator.serviceWorker.addEventListener('message', (e) => {
+            if (e && e.data && e.data.type === 'ft-push') resume();
+          });
+        } catch (_) { /* older engines: the 60s poll still covers it */ }
+      }
     })
     .catch(() => { /* network failure -- fail closed, inject nothing */ });
 }
@@ -5795,6 +5806,10 @@ if (typeof window !== 'undefined') {
   window.FileTube.readBottomNavConfig = readBottomNavConfig;
   window.FileTube.writeBottomNavConfig = writeBottomNavConfig;
   window.FileTube.BOTTOM_NAV_OPTIONAL = BOTTOM_NAV_OPTIONAL;
+  // v1.66 web push: setup.js's enable flow routes through the ONE locked
+  // register call site + shares the key decoder.
+  window.FileTube.registerPushWorker = registerPushWorker;
+  window.FileTube.pushB64urlToUint8 = pushB64urlToUint8;
 }
 
 // Renders the Playlists sheet's folder list — functionally equivalent to the
@@ -8911,13 +8926,63 @@ function probeAndReconcileRepullButton() {
 // otherwise keep intercepting until manually cleared. This runs on every
 // page boot; once no registrations remain it is a cheap no-op. Failures are
 // swallowed -- cleanup must never block or throw into page boot.
+// v1.66 amendment: the PUSH-ONLY worker at /sw.js (no fetch handler by lock
+// - see public/sw.js's contract comment) is the ONE registration allowed to
+// survive. Everything else - the old offline shell, anything foreign - is
+// still shed exactly as before.
 function unregisterStaleServiceWorkers() {
   if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
   try {
     navigator.serviceWorker.getRegistrations()
-      .then((regs) => { regs.forEach((r) => { r.unregister().catch(() => {}); }); })
+      .then((regs) => {
+        regs.forEach((r) => {
+          const worker = r.active || r.waiting || r.installing;
+          const scriptURL = worker && worker.scriptURL ? worker.scriptURL : '';
+          if (scriptURL.endsWith('/sw.js')) return; // v1.66: the push worker lives
+          r.unregister().catch(() => {});
+        });
+      })
       .catch(() => { /* best-effort cleanup only */ });
   } catch (_) { /* best-effort cleanup only */ }
+}
+
+// ---- v1.66 web push client ---------------------------------------------------
+// THE one serviceWorker.register call site in the codebase (locked): both
+// the Settings enable flow (setup.js) and the boot reconcile below route
+// through here. Registration is idempotent and doubles as the update check.
+function registerPushWorker() {
+  return navigator.serviceWorker.register('/sw.js');
+}
+
+function pushB64urlToUint8(b64url) {
+  const b64 = b64url.replace(/-/g, '+').replace(/_/g, '/');
+  const raw = atob(b64 + '='.repeat((4 - (b64.length % 4)) % 4));
+  const out = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+  return out;
+}
+
+// Boot reconcile (exec plan D2's self-heal): if THIS device already carries
+// a push subscription, re-POST it so the server row exists even after a
+// users-restore wiped the table, and freshen the worker file. Never
+// registers a worker on a device that has not opted in; never prompts;
+// silently no-ops signed-out (401) and feature-off (404).
+function reconcilePushSubscription() {
+  if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
+  try {
+    navigator.serviceWorker.getRegistration().then((reg) => {
+      if (!reg || !reg.pushManager) return null;
+      return reg.pushManager.getSubscription().then((sub) => {
+        if (!sub) return null;
+        registerPushWorker().catch(() => {});
+        return fetch('/api/push/subscribe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(sub.toJSON()),
+        });
+      });
+    }).catch(() => { /* best-effort reconcile only */ });
+  } catch (_) { /* best-effort reconcile only */ }
 }
 
 // Sidebar toggle responsive menu helper. Guarded so requiring this file in Node
@@ -8941,8 +9006,12 @@ document.addEventListener('DOMContentLoaded', () => {
   if (typeof window !== 'undefined') {
     if (document.readyState === 'complete') {
       unregisterStaleServiceWorkers();
+      reconcilePushSubscription();
     } else {
       window.addEventListener('load', unregisterStaleServiceWorkers, { once: true });
+      // v1.66: after the shed pass, re-assert this device's push
+      // subscription server-side (see reconcilePushSubscription).
+      window.addEventListener('load', reconcilePushSubscription, { once: true });
     }
   }
 
@@ -9141,6 +9210,11 @@ if (typeof module !== 'undefined' && module.exports) {
     // test/integration/history-nav-gate.test.js through these two.
     injectHistoryNavLinkIfEnabled,
     injectLibraryNavEntry,
+    // v1.66 web push: the shedder's exemption + the reconcile are DOM/SW-
+    // bound by test/integration/push-client-gate.test.js through these.
+    unregisterStaleServiceWorkers,
+    reconcilePushSubscription,
+    pushB64urlToUint8,
     resolveBottomNavLayout,
     pinDeleteEndpoint,
     fisherYatesShuffle, sortItems, shouldShowShuffleButton,

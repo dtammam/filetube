@@ -308,7 +308,15 @@ module.exports = [
     },
   },
 
-  // (v1.27.2: the public/sw.js service-worker block that lived here was
-  // removed along with the service worker itself -- see
-  // unregisterStaleServiceWorkers in public/js/common.js for why.)
+  // v1.66: public/sw.js returned as a PUSH-ONLY worker (no fetch handler,
+  // no CacheStorage - locked by test/unit/v1264-service-worker.test.js;
+  // the v1.27.2 removal rationale lives on unregisterStaleServiceWorkers
+  // in public/js/common.js). Service-worker globals scoped to exactly this
+  // one file.
+  {
+    files: ['public/sw.js'],
+    languageOptions: {
+      globals: { ...globals.serviceworker },
+    },
+  },
 ];

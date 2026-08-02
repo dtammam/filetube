@@ -128,6 +128,7 @@ test('route census: the documented allowlist IS reachable pre-auth (positive con
   assert.equal(await probeGated('GET', '/css/style.css'), false);
   assert.equal(await probeGated('GET', '/js/common.js'), false);
   assert.equal(await probeGated('GET', '/js/login.js'), false, 'login.js must reach the browser pre-auth or sign-in is impossible');
+  assert.equal(await probeGated('GET', '/sw.js'), false, 'v1.66: the SW update check fetches this itself; a 401 body in the SW slot is the login.js failure shape one layer down');
   assert.equal(await probeGated('GET', '/logo'), false);
   assert.equal(await probeGated('POST', '/api/auth/login'), false);
 });

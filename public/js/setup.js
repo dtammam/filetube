@@ -1251,6 +1251,10 @@ function wireStaticControls(signal) {
     }, { signal });
   }
 
+  // v1.66: web push controls (see initPushControls below - probe-gated, so
+  // wiring lives with its own loader rather than this static block).
+  initPushControls(signal);
+
   // v1.34 T4: custom mobile player toggle -- same pattern as backgroundAudio.
   const mobileCustomPlayerCheck = document.getElementById('mobile-custom-player-check');
   if (mobileCustomPlayerCheck) {
@@ -1794,6 +1798,148 @@ function renderTrashSection(signal) {
   refresh();
   // Expose the re-render for the retention listener (labels change with it).
   renderTrashSection.__refresh = refresh;
+}
+
+// ---- v1.66 web push controls ------------------------------------------------
+// Visibility: the whole group stays hidden unless GET /api/push/key answers
+// 200 (the bell's three-way feature gate, probe-not-assume like the bell
+// itself). Support: without serviceWorker+PushManager the buttons hide and
+// the status line says WHY (iOS needs the home-screen app; push needs
+// HTTPS) - an honest explanation, never a dead button. The Enable button is
+// the USER GESTURE the permission prompt requires (iOS hard requirement).
+function pushSupportProblem() {
+  if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) {
+    if (typeof window !== 'undefined' && window.location && window.location.protocol === 'http:') {
+      return 'Push needs HTTPS - this page was loaded over plain http.';
+    }
+    return 'This browser does not support push here. On iPhone/iPad: Share → Add to Home Screen, then enable from the installed app.';
+  }
+  if (typeof window === 'undefined' || !('PushManager' in window) || !('Notification' in window)) {
+    return 'This browser does not support Web Push notifications.';
+  }
+  return null;
+}
+
+function initPushControls(signal) {
+  const group = document.getElementById('push-controls');
+  const userCheck = document.getElementById('push-user-enabled-check');
+  const enableBtn = document.getElementById('push-device-enable-btn');
+  const disableBtn = document.getElementById('push-device-disable-btn');
+  const statusEl = document.getElementById('push-device-status');
+  const errorEl = document.getElementById('push-error');
+  if (!group || !userCheck || !enableBtn || !disableBtn || !statusEl) return;
+
+  const setError = (msg) => { if (errorEl) errorEl.textContent = msg || ''; };
+
+  const reflectDevice = (sub) => {
+    const problem = pushSupportProblem();
+    if (problem) {
+      enableBtn.hidden = true;
+      disableBtn.hidden = true;
+      statusEl.textContent = problem;
+      return;
+    }
+    if (typeof Notification !== 'undefined' && Notification.permission === 'denied') {
+      enableBtn.hidden = true;
+      disableBtn.hidden = true;
+      statusEl.textContent = 'Notifications are blocked for this site in the browser settings.';
+      return;
+    }
+    enableBtn.hidden = Boolean(sub);
+    disableBtn.hidden = !sub;
+    statusEl.textContent = sub ? 'This device receives push notifications.' : 'Not enabled on this device.';
+  };
+
+  const currentSubscription = () => {
+    if (pushSupportProblem()) return Promise.resolve(null);
+    return navigator.serviceWorker.getRegistration()
+      .then((reg) => (reg && reg.pushManager ? reg.pushManager.getSubscription() : null))
+      .catch(() => null);
+  };
+
+  fetch('/api/push/key')
+    .then((res) => (res.ok ? res.json() : null))
+    .then((body) => {
+      if (!body || !body.key) return; // feature off -> the group stays hidden
+      group.hidden = false;
+      fetch('/api/auth/me')
+        .then((r) => (r.ok ? r.json() : null))
+        .then((me) => {
+          if (me) userCheck.checked = !(me.settings && me.settings.pushEnabled === 'off');
+        })
+        .catch(() => { /* default checked state stands */ });
+      currentSubscription().then(reflectDevice);
+
+      userCheck.addEventListener('change', (e) => {
+        setError('');
+        fetch('/api/me/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pushEnabled: e.target.checked ? 'on' : 'off' }),
+        }).then((r) => { if (!r.ok) setError('Could not save the push preference.'); })
+          .catch(() => setError('Could not save the push preference.'));
+      }, { signal });
+
+      enableBtn.addEventListener('click', async () => {
+        setError('');
+        enableBtn.disabled = true;
+        try {
+          const perm = await Notification.requestPermission();
+          if (perm !== 'granted') { reflectDevice(null); return; }
+          await window.FileTube.registerPushWorker();
+          const reg = await navigator.serviceWorker.ready;
+          const sub = await reg.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: window.FileTube.pushB64urlToUint8(body.key),
+          });
+          const res = await fetch('/api/push/subscribe', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(sub.toJSON()),
+          });
+          if (!res.ok) {
+            // The browser holds a subscription the server refused - drop it
+            // or the device believes it is enabled while receiving nothing.
+            await sub.unsubscribe().catch(() => {});
+            const b = await res.json().catch(() => null);
+            setError((b && b.error) || 'The server refused this subscription.');
+            reflectDevice(null);
+            return;
+          }
+          reflectDevice(sub);
+        } catch {
+          setError('Could not enable push on this device.');
+          reflectDevice(null);
+        } finally {
+          enableBtn.disabled = false;
+        }
+      }, { signal });
+
+      disableBtn.addEventListener('click', async () => {
+        setError('');
+        disableBtn.disabled = true;
+        try {
+          const sub = await currentSubscription();
+          if (sub) {
+            // Server first (needs the endpoint), then the browser side;
+            // either alone would leave a half-dead subscription, and the
+            // boot reconcile would resurrect a browser-side survivor.
+            await fetch('/api/push/unsubscribe', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ endpoint: sub.endpoint }),
+            }).catch(() => {});
+            await sub.unsubscribe().catch(() => {});
+          }
+          reflectDevice(null);
+        } catch {
+          setError('Could not disable push on this device.');
+        } finally {
+          disableBtn.disabled = false;
+        }
+      }, { signal });
+    })
+    .catch(() => { /* probe failure -> group stays hidden (fail closed) */ });
 }
 
 function init(root) {
