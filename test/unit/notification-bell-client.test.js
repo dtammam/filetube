@@ -102,13 +102,15 @@ test('describePushEnableOutcome: granted -> null; denied and dismissed each get 
   assert.equal(describePushEnableOutcome('prompt'), dismissed);
 });
 
-// v1.67.1 regression guard (PRESENCE lock, not a runtime binding - setup.js
-// has no jsdom harness; Dean's device pass is the real arbiter and is what
-// caught the original bug). The root cause was that the push error element
+// v1.67.1 regression guard (a cheap PRESENCE lock; the RUNTIME binding lives
+// in test/integration/push-settings-enable.test.js, which loads the real
+// setup shell in jsdom, clicks Enable under a denied permission, and asserts
+// #push-error actually becomes VISIBLE - that test reddens on the muted
+// textContent-only form). The root cause was that the push error element
 // (.field-error) is display:none and the enable flow's setError set
-// textContent ONLY, so every failure message was invisible. This asserts
-// setError routes through setFieldError (which toggles display) so a
-// regression back to the muted textContent-only form is caught in CI.
+// textContent ONLY, so every failure message was invisible. This source lock
+// is the fast belt to that suspenders: a regression to the muted form is
+// caught in the unit tier without booting jsdom.
 const fs = require('node:fs');
 const path = require('node:path');
 test('v1.67.1: setup.js push setError reveals the element (routes through setFieldError, not muted textContent)', () => {
