@@ -66,6 +66,19 @@ test('C2: none never drops from any picker (two empty corners are legal), and a 
   }
 });
 
+test('an INJECTED duplicate (bypassing the editor) still shows each corner\'s own stored value - never a lying first-option display (adversarial S1)', () => {
+  // Direct POSTs can store the same control in two corners (the plan's
+  // accepted residual). The grid's D5 dedupe renders the TL winner; the
+  // editor must DISPLAY the stored truth in both pickers (self-heals on any
+  // change) rather than silently showing the first option.
+  const effective = { cornerTL: 'like', cornerTR: 'like', cornerBL: 'download' };
+  for (const key of ['cornerTL', 'cornerTR']) {
+    const opts = buildCornerEditorOptions(effective, key, CONTROLS);
+    const selected = opts.filter((o) => o.selected);
+    assert.deepStrictEqual(selected.map((o) => o.value), ['like'], `${key} shows its own stored value`);
+  }
+});
+
 // ---- the real editor against a jsdom document -------------------------------
 
 function withEditorDom(meSettings, fn) {

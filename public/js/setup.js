@@ -633,7 +633,12 @@ function buildCornerEditorOptions(effective, cornerKey, controls) {
   );
   const options = [];
   for (const control of controls) {
-    if (chosenElsewhere.has(control)) continue;
+    // v1.67 gate (adversarial S1): a corner's OWN stored value is never
+    // filtered, even when a direct settings POST duplicated it into another
+    // corner (bypassing this editor is the plan's accepted residual). The
+    // select must display the stored truth - a filtered-out own-value left
+    // no selected option, so the browser showed the first entry as a lie.
+    if (chosenElsewhere.has(control) && effective[cornerKey] !== control) continue;
     options.push({
       value: control,
       label: CARD_CORNER_LABELS[control] || control,

@@ -77,7 +77,10 @@ function makeFetchStub(opts) {
       return Promise.resolve({ ok: true, status: 200, json: async () => ({ items, total: items.length, offset: 0, limit: 60 }) });
     }
     if (url.indexOf('/api/ytdlp/repull-metadata/item/') === 0 && method === 'POST') {
-      return Promise.resolve({ ok: false, status: 202, json: async () => ({ started: true }) });
+      // ok: true - a real fetch has ok truthy for ANY 2xx (adversarial S2:
+      // an ok:false-with-202 stub is this repo's divergent-fixture scar
+      // class - it would judge a future res.ok refactor against a lie).
+      return Promise.resolve({ ok: true, status: 202, json: async () => ({ started: true }) });
     }
     if (url === '/api/queue/items' && method === 'POST') {
       return Promise.resolve({ ok: true, status: 200, json: async () => ({ queue: { entries: [{ uid: 'q1', mediaId: 'yt1' }] } }) });
