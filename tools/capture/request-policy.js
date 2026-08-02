@@ -117,9 +117,12 @@ async function newGuardedContext(browser, opts, record, tag) {
   // playwright-core's own docs (types.d.ts, the route() entries), requests
   // intercepted by a service worker are structurally INVISIBLE to
   // context.route - blocking SWs is the only way this guard covers them.
-  // FileTube registers no SW today (common.js only unregisters stale
-  // ones), but Web Push is on the roadmap - this line is what keeps that
-  // future from reopening the hole (QA-gate finding).
+  // As of v1.66 FileTube DOES register a service worker (the push-only
+  // /push-sw.js, via common.js registerPushWorker), so this block is now
+  // load-bearing in the present tense, not just against a future: without
+  // it, any request that worker intercepted would be invisible to the
+  // route guard. Do not relax it. (Originally a QA-gate finding when no SW
+  // existed; corrected by the v1.66 QA seat once one did.)
   // bypassCSP: a SCREENSHOT harness must not die on any page's CSP -
   // field gate 4's "v1.57 CSP" was Express finalhandler's stock 404 page
   // (default-src 'none') served because ytdlp-off unregistered the

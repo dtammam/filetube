@@ -403,6 +403,25 @@
           <small id="notifications-enabled-error" class="field-error"></small>
         </div>
 
+        <!-- v1.66: web push. Hidden until the capability probe (GET
+             /api/push/key) says the notifications feature is on; the enable
+             button is the USER GESTURE the permission prompt requires. -->
+        <div class="form-group" id="push-controls" hidden>
+          <label style="display:flex; align-items:center; gap:8px; font-weight:normal;">
+            <input type="checkbox" id="push-user-enabled-check" />
+            Send push notifications to my devices
+          </label>
+          <small style="color: var(--text-secondary); margin-top:4px; display:block;">
+            Pushes each new download to your subscribed devices even when FileTube is closed. Unchecking pauses pushes to ALL your devices without forgetting them. Each device also has to be enabled once, below. On iPhone/iPad this works only for the home-screen-installed app (Share &rarr; Add to Home Screen), and only over HTTPS.
+          </small>
+          <div style="margin-top: 8px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+            <button type="button" class="btn btn-sm" id="push-device-enable-btn" hidden>Enable notifications on this device</button>
+            <button type="button" class="btn btn-sm" id="push-device-disable-btn" hidden>Disable on this device</button>
+            <small id="push-device-status" style="color: var(--text-secondary);"></small>
+          </div>
+          <small id="push-error" class="field-error"></small>
+        </div>
+
         <!-- v1.34 T4 (Dean): custom-vs-native mobile video controls. -->
         <div class="form-group">
           <label style="display:flex; align-items:center; gap:8px; font-weight:normal;">

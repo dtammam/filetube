@@ -202,6 +202,37 @@ if (API_TOKEN) {
   console.log('[auth] FILETUBE_API_TOKEN is set — the one-off download endpoint (POST /api/ytdlp/download) accepts it via the X-FileTube-Token header for the iOS Shortcut.');
 }
 
+// ---- v1.66 web push ---------------------------------------------------------
+// VAPID identity resolves at boot beside the session secret (same fail-closed
+// posture, same DATA_DIR-file home, same never-rides-bundles rule). The
+// delivery instance closes over LAZY readers (getCachedDatabase /
+// notificationsFeatureEnabled are hoisted declarations called per round, not
+// here) and is triggered DETACHED from the scan flush - never awaited there.
+const pushKeysLib = require('./lib/push/keys');
+const pushDeliverLib = require('./lib/push/deliver');
+const pushShortlink = require('./lib/ytdlp/shortlink');
+const PUSH_VAPID = pushKeysLib.resolveVapidKeys(DATA_DIR, process.env, (line) => console.log(line));
+// Test seams: integration suites swap the transport (capture/starve sends
+// without a network) and the guard's DNS lookup (fixture endpoints do not
+// resolve publicly). Production always uses the default HTTPS transport and
+// the real resolver.
+let pushTransportOverride = null;
+let pushGuardLookupOverride = null;
+function __setPushTransportForTests(fn) { pushTransportOverride = typeof fn === 'function' ? fn : null; }
+function __setPushGuardLookupForTests(fn) { pushGuardLookupOverride = typeof fn === 'function' ? fn : null; }
+const pushDelivery = pushDeliverLib.createPushDelivery({
+  store: userStore,
+  vapidKeys: PUSH_VAPID,
+  guardHop: (url) => pushShortlink.guardHop(url, { lookup: pushGuardLookupOverride || undefined }),
+  enabled: () => notificationsFeatureEnabled(getCachedDatabase()),
+  resolveMeta: (mediaId) => {
+    const item = getCachedDatabase().metadata && getCachedDatabase().metadata[mediaId];
+    if (!item) return null;
+    return { title: item.title || item.name, channel: item.folderName };
+  },
+  transport: (opts) => (pushTransportOverride || pushDeliverLib.defaultTransport)(opts),
+});
+
 // ---- v1.42: the beta safe-mode lever (exec plan AC8, owner-approved) --------
 // FILETUBE_READ_ONLY_MEDIA=1 turns the parallel-run operational rules ("no
 // deletes, no moves, no downloads from the beta") from remembered into
@@ -4855,7 +4886,13 @@ async function runScanDirectories() {
   // either way, a lost notification is cosmetic.
   if (pendingNotifications.length > 0) {
     try {
-      userStore.recordNotifications(pendingNotifications);
+      const inserted = userStore.recordNotifications(pendingNotifications);
+      // v1.66: push delivery fires DETACHED (trigger() schedules via
+      // setImmediate and coalesces overlapping rounds) - this function is
+      // awaited by the scan-coalescing state machine, and a slow push
+      // endpoint must never stall the next scan. Only the REAL record path
+      // triggers: boot seeding and restore never reach this site.
+      if (inserted > 0) pushDelivery.trigger('scan');
     } catch (err) {
       console.error('Scan: failed to record download notifications (continuing):', err && err.message);
     }
@@ -5319,7 +5356,10 @@ function parseUserSettings(user) {
 // arbitrary client-writable blob.
 // v1.63.1: 'starRatings' ('shown'|'hidden') - Dean's hide-the-fake-stars
 // toggle rides the same display-pref mirror as theme/era/icons.
-const MIRRORED_SETTING_KEYS = new Set(['theme', 'era', 'icons', 'starRatings']);
+// v1.66: 'pushEnabled' ('on'|'off') - the PER-USER push opt-out (ruling:
+// per-device subscribe, per-user opt-out). Delivery honors only the literal
+// 'off' (lib/push/deliver.js pushOptedOut); absent = on.
+const MIRRORED_SETTING_KEYS = new Set(['theme', 'era', 'icons', 'starRatings', 'pushEnabled']);
 app.post('/api/me/settings', (req, res) => {
   const body = req.body || {};
   const merged = parseUserSettings(req.user);
@@ -8072,6 +8112,93 @@ app.post('/api/notifications/clear', (req, res) => {
   if (!notificationsFeatureEnabled(db)) return res.status(404).json({ error: 'notifications disabled' });
   userStore.clearNotifications(req.user.id, Date.now());
   res.json({ success: true });
+});
+
+// ============ v1.66 web push =================================================
+// Same three-way feature gate as the bell (this is the bell's delivery
+// channel). Subscribe is the ONE route that accepts a client-supplied
+// remote URL, so it carries the full SSRF discipline: https-only, shape-
+// checked keys (decode + length, not regex), guardHop (literal-IP + DNS
+// resolve-all, fail-closed) - and delivery re-checks at send time.
+
+const PUSH_SUBSCRIPTIONS_PER_USER_CAP = 10;
+
+app.get('/api/push/key', (req, res) => {
+  const db = getCachedDatabase();
+  if (!notificationsFeatureEnabled(db)) return res.status(404).json({ error: 'notifications disabled' });
+  res.json({ key: PUSH_VAPID.publicKeyB64url });
+});
+
+// ASYNC HANDLER: Express 4 never observes a rejected async handler, so an
+// uncaught throw here is a SOCKET THAT HANGS FOREVER, not a 500 (the class
+// this repo already documented at the ytdlp async routes). The whole body is
+// try/caught for that reason - the v1.66 QA seat measured the unguarded
+// version hanging on an array-wrapped key that passed String() coercion and
+// then threw in the store.
+app.post('/api/push/subscribe', async (req, res) => {
+  try {
+    const db = getCachedDatabase();
+    if (!notificationsFeatureEnabled(db)) return res.status(404).json({ error: 'notifications disabled' });
+    const body = req.body || {};
+    const endpoint = body.endpoint;
+    const keys = body.keys && typeof body.keys === 'object' ? body.keys : {};
+    if (typeof endpoint !== 'string' || endpoint.length === 0 || endpoint.length > 2048) {
+      return res.status(400).json({ error: 'invalid endpoint' });
+    }
+    let parsed;
+    try { parsed = new URL(endpoint); } catch { return res.status(400).json({ error: 'invalid endpoint' }); }
+    // https only - push services are https, and http would leak the
+    // capability URL in cleartext. (guardHop alone would allow http.)
+    if (parsed.protocol !== 'https:') return res.status(400).json({ error: 'endpoint must be https' });
+    // The browser's keys, decoded and measured - a p256dh that is not an
+    // uncompressed P-256 point or an auth that is not 16 bytes could never
+    // decrypt anyway; refuse it at the door. TYPE first: String(['a']) is
+    // 'a', so a one-element array used to sail through this check and throw
+    // deeper in (QA W1).
+    let p256dhOk = false;
+    let authOk = false;
+    if (typeof keys.p256dh === 'string' && typeof keys.auth === 'string') {
+      try {
+        const p = Buffer.from(keys.p256dh, 'base64url');
+        p256dhOk = p.length === 65 && p[0] === 0x04;
+        authOk = Buffer.from(keys.auth, 'base64url').length === 16;
+      } catch { /* fall through to the 400 */ }
+    }
+    if (!p256dhOk || !authOk) return res.status(400).json({ error: 'invalid subscription keys' });
+    const guard = await pushShortlink.guardHop(endpoint, { lookup: pushGuardLookupOverride || undefined });
+    if (!guard.ok) return res.status(400).json({ error: 'endpoint refused' });
+    // Cap NEW endpoints per user (an unbounded roster is a delivery-time
+    // amplification primitive); re-registering an existing endpoint is free.
+    if (!userStore.getPushSubscription(endpoint)
+      && userStore.countPushSubscriptions(req.user.id) >= PUSH_SUBSCRIPTIONS_PER_USER_CAP) {
+      return res.status(409).json({ error: 'subscription limit reached for this account' });
+    }
+    // Cursor starts at the feed head: a fresh device is never back-flooded
+    // with history (ruling P1; the bell panel is the history surface).
+    userStore.upsertPushSubscription(
+      req.user.id,
+      { endpoint, p256dh: keys.p256dh, auth: keys.auth },
+      userStore.getMaxNotificationId(),
+      Date.now()
+    );
+    return res.json({ success: true });
+  } catch (err) {
+    console.error('POST /api/push/subscribe failed:', err && err.message);
+    return res.status(500).json({ error: 'could not save the subscription' });
+  }
+});
+
+app.post('/api/push/unsubscribe', (req, res) => {
+  const db = getCachedDatabase();
+  if (!notificationsFeatureEnabled(db)) return res.status(404).json({ error: 'notifications disabled' });
+  const endpoint = (req.body || {}).endpoint;
+  if (typeof endpoint !== 'string' || endpoint.length === 0 || endpoint.length > 2048) {
+    return res.status(400).json({ error: 'invalid endpoint' });
+  }
+  // Owner-scoped: another user's endpoint is untouchable (removed:false,
+  // not a 403 - do not confirm the endpoint exists at all).
+  const removed = userStore.removeOwnPushSubscription(req.user.id, endpoint);
+  res.json({ removed });
 });
 
 // ============ v1.63 playback queue ("think YouTube" - Dean) ==================
@@ -14156,6 +14283,12 @@ module.exports = {
   // it produces a genuine cookie exactly like a browser login would.
   __mintTestSession,
   __clearUsersForTests,
+  // v1.66: push test seams - swap the transport (capture/starve sends with
+  // no network), swap the SSRF guard's DNS lookup (fixture endpoints), and
+  // drive a delivery round directly.
+  __setPushTransportForTests,
+  __setPushGuardLookupForTests,
+  pushDelivery,
   userStore,
   AUTH_COOKIE_NAME,
   // v1.42 AC7: the Node-floor predicate, exported so the boot check's
