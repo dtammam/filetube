@@ -248,32 +248,97 @@ test('a THROWING transport skips that subscription round but the next subscripti
   assert.equal(store.state.get(b.endpoint).lastPushedId, 13, 'unaffected neighbor delivered');
 });
 
-test('trigger(): coalesces overlapping requests and re-runs once after the in-flight round', async () => {
-  let rounds = 0;
-  let release;
-  const gatePromise = new Promise((r) => { release = r; });
+// The coalescer harness: round 1 BLOCKS inside its transport until the test
+// releases it, so triggers arriving mid-round are genuinely overlapping (the
+// first draft of these tests only asserted a range that 1 round satisfied -
+// the re-run mutant survived; adversarial gate WARNING 2).
+function coalescerHarness() {
+  const rows = [{ id: 10, mediaId: 'vid-Ä1', createdAt: NOW - 1000 }];
+  const sub = { endpoint: 'https://push.example/wp/Coalesce', lastPushedId: 9, cooldownUntil: 0 };
+  const store = fakeStore([sub], rows);
+  const roundStarts = [];
+  const sends = [];
+  let gate = null;
   const delivery = createPushDelivery({
     store: {
-      listPushSubscriptionsForDelivery() { rounds++; return []; },
-      listNotificationsAfter() { return []; },
-      advancePushCursor() {}, setPushCooldown() {}, removePushSubscription() {},
+      listPushSubscriptionsForDelivery() {
+        roundStarts.push(Date.now());
+        return store.listPushSubscriptionsForDelivery();
+      },
+      listNotificationsAfter: (c, l) => store.listNotificationsAfter(c, l),
+      advancePushCursor: (e, i) => store.advancePushCursor(e, i),
+      setPushCooldown: (e, u) => store.setPushCooldown(e, u),
+      removePushSubscription: (e) => store.removePushSubscription(e),
     },
     vapidKeys: VAPID_KEYS,
     guardHop: async () => ({ ok: true }),
-    enabled: () => { if (rounds === 0) return true; return true; },
-    resolveMeta: () => null,
-    transport: async () => ({ statusCode: 201, headers: {} }),
+    enabled: () => true,
+    resolveMeta: () => ({ title: 'T', channel: 'C' }),
+    transport: async () => {
+      sends.push(1);
+      if (gate) { const g = gate; gate = null; await g; }
+      return { statusCode: 201, headers: {} };
+    },
     now: () => NOW,
     log: () => {},
   });
-  // Instrument: make the first round block until released.
-  const origRound = delivery.deliverRound;
-  void origRound;
-  delivery.trigger('t1');
-  delivery.trigger('t2'); // lands while t1's setImmediate is pending -> coalesced
-  delivery.trigger('t3');
+  return {
+    delivery, store, rows, sends, roundStarts,
+    blockNextSend() {
+      let release;
+      gate = new Promise((r) => { release = r; });
+      return release;
+    },
+  };
+}
+
+test('trigger(): a request arriving DURING an in-flight round forces exactly one re-run, which delivers the row added mid-round', async () => {
+  const h = coalescerHarness();
+  const release = h.blockNextSend();
+
+  h.delivery.trigger('t1');
+  // Let round 1 reach its blocked send.
+  await new Promise((r) => setTimeout(r, 20));
+  assert.equal(h.roundStarts.length, 1, 'round 1 is in flight');
+  assert.equal(h.sends.length, 1, 'and blocked inside its transport');
+
+  // A second scan lands mid-round with a NEW feed row. Without the re-run
+  // loop this row waits for an entirely separate trigger.
+  h.rows.push({ id: 11, mediaId: 'vid-Ä2', createdAt: NOW - 500 });
+  h.delivery.trigger('t2');
+  h.delivery.trigger('t3'); // further triggers collapse into the same re-run
+
   release();
-  await gatePromise;
-  await new Promise((r) => setTimeout(r, 30));
-  assert.ok(rounds >= 1 && rounds <= 2, `coalesced: ${rounds} rounds for three triggers (1 in-flight + at most 1 re-run)`);
+  await new Promise((r) => setTimeout(r, 60));
+
+  assert.equal(h.roundStarts.length, 2, 'exactly ONE re-run for the two mid-round triggers (not two, not zero)');
+  assert.equal(h.store.state.get('https://push.example/wp/Coalesce').lastPushedId, 11,
+    'the row added mid-round was delivered by the re-run - this is what the do/while exists for');
+});
+
+test('trigger(): triggers arriving AFTER a round completes start a fresh round (the latch releases)', async () => {
+  const h = coalescerHarness();
+  h.delivery.trigger('t1');
+  await new Promise((r) => setTimeout(r, 40));
+  assert.equal(h.roundStarts.length, 1);
+  h.rows.push({ id: 11, mediaId: 'vid-Ä2', createdAt: NOW - 500 });
+  h.delivery.trigger('t2');
+  await new Promise((r) => setTimeout(r, 40));
+  assert.equal(h.roundStarts.length, 2, 'the running latch cleared - a later trigger is not swallowed forever');
+  assert.equal(h.store.state.get('https://push.example/wp/Coalesce').lastPushedId, 11);
+});
+
+test('trigger(): overlapping triggers never DOUBLE-SEND a row (the running latch)', async () => {
+  const h = coalescerHarness();
+  const release = h.blockNextSend();
+  h.delivery.trigger('t1');
+  await new Promise((r) => setTimeout(r, 20));
+  // Five more triggers while round 1 is blocked mid-send.
+  for (let i = 0; i < 5; i++) h.delivery.trigger(`t${i + 2}`);
+  release();
+  await new Promise((r) => setTimeout(r, 60));
+  // One row in the feed: exactly one delivery attempt for it, plus the
+  // re-run's no-op pass (cursor already at 10 -> no rows -> no send).
+  assert.equal(h.sends.length, 1, 'six triggers, one feed row, ONE send - no double-notify');
+  assert.equal(h.roundStarts.length, 2, 'and the collapse is total: 1 in-flight + 1 re-run');
 });

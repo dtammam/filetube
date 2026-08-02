@@ -177,6 +177,17 @@ test('resolveVapidKeys: mints 0600 on first boot, is stable across resolves, hon
   }
 });
 
+test('the VAPID key file is gitignored at the repo-root dev landing spot (it holds a PRIVATE key)', () => {
+  // Adversarial gate WARNING 1: in local dev DATA_DIR resolves to the repo
+  // root, so vapid-keys.json lands beside db.json/filetube.db - both of
+  // which .gitignore names for exactly this reason. The file was found
+  // untracked-but-committable in a dev tree. This lock keeps the entry.
+  const gitignore = fs.readFileSync(path.join(__dirname, '..', '..', '.gitignore'), 'utf8');
+  const lines = gitignore.split('\n').map((l) => l.trim());
+  assert.ok(lines.includes(`/${VAPID_KEYS_FILENAME}`),
+    `.gitignore must contain /${VAPID_KEYS_FILENAME} - it holds the EC private key that IS this instance's push identity`);
+});
+
 test('resolveVapidKeys: corrupt JSON and mismatched pairs REFUSE boot (fail closed, never silently re-mint)', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-vapid-'));
   try {

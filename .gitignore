@@ -60,6 +60,12 @@ bin/
 /filetube.db.tmp
 /filetube.db.tmp-wal
 /filetube.db.tmp-shm
+# v1.66: the VAPID keypair (contains the EC PRIVATE key `d`). Same repo-root
+# landing spot as the files above in local dev, and it is a CREDENTIAL - an
+# instance's push identity. Never commit it. (Found by the adversarial gate:
+# the file was already sitting untracked in a dev tree, one `git add -A` from
+# being published.)
+/vapid-keys.json
 .thumbnails/
 /data/
 
