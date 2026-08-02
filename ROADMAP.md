@@ -80,6 +80,52 @@
 
 ## Shipped
 
+### v1.68.2 - The rotate-and-back shift, actually fixed (2026-08-02)
+
+Honesty first: v1.68.1's rotation fix was a MISS. Dean pulled 1.68.1,
+re-ran the probe, and the inline rotate-and-back shift persisted - the
+stale-vh box mechanism that release addressed (which the screenshots
+genuinely supported) was not the operative one. His refined report
+re-diagnosed it: iOS preserves the scroll offset in raw PIXELS across
+a rotation, and portrait stacks ~190px more chrome above the player
+than landscape (logo row + search row vs one bar), so rotate-and-back
+deposits exactly that layout delta as residual scroll - the video top
+tucks under the fixed header. The v1.68.1 cap nudge and dvh twins ship
+on as hardening.
+
+The fix is a CAPTURE-FREE dead-zone snap riding the same orientation
+seam: after each rotation settles, a scroll position strictly between
+page top and the player's own document top is a band only the bug
+deposits the page into (the player is the first element in the column;
+the zone is the fixed-header chrome) - snap to top. Positions at or
+past the player (reading comments) stay with iOS's own content
+anchoring, which is correct there. Capture-free means no dependence on
+when the orientation event fires relative to iOS applying its shift.
+Every guard re-checks at apply time (mobile, player mounted inline, no
+native or faux fullscreen) - the C1 navigation-clobber discipline.
+
+Slim gate, APPROVE both rounds. The seat structurally verified the
+dead-zone premise (fixed header, player-first column), swept the
+legitimate-states-in-the-zone question (router advances place 0;
+keyboard-open lands outside; keeper interplays bounded and corrective),
+and ran a 16-mutant campaign - 13 killed at the first hash, the two
+suggestion-grade survivors (divergent-spelling second consumer,
+vacuous coercion rows) closed with measured kills in the fix round.
+
+DISCLOSED, pending Dean's device pass:
+- Execution vacuity of the runtime wiring locks continues under
+  tech-debt #78 (the DECISION is a real executed export; the wiring
+  around it is source-locked - no-jsdom player IIFE precedent).
+- A fullscreen exit landing within 650ms of a rotation whose keeper
+  restore falls inside the dead zone would be re-snapped to top -
+  requires having ENTERED fullscreen parked under the header, not a
+  real parking spot; bounded and corrective if it ever fires.
+- A manual mid-flick stop inside the header band followed by a
+  rotation snaps to top (bounded, direction-corrective, accepted).
+
+Dual-Node of record: v22.23.1 5636/5636, v24.14.0 5636/5636 (0 fail
+both).
+
 ### v1.68.1 - Stale banners land, rotations stop cropping (2026-08-02)
 
 Dean's fixed wave, two on-device reports, both root-caused to something
