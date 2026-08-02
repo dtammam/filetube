@@ -80,6 +80,20 @@
 
 ## Shipped
 
+### v1.69.1 - The Podcasts zero-state door (2026-08-02)
+
+Dean's first device probe found what four adversarial rounds + QA
+missed: the Podcasts nav is content-gated (zero subscriptions = no
+link, correct by design) but the only place to CREATE a subscription
+is /podcasts - which nothing linked. A fresh install had no path in.
+Fix: a static Podcasts box on Library settings (the music/books
+pattern) with the set-FILETUBE_PODCASTS_DIR-first guidance and the
+door. Slim gate (adversarial alone, UI-only): APPROVE, zero findings;
+the seat killed four mutants against the new source lock and verified
+the door reaches members, not just admins. Dual-Node: v22.23.1 =
+5767/5767; v24.14.0 = 5767/5767. LESSON RECORDED: no instrument walks
+the fresh-install path to a new place - a human does.
+
 ### v1.69.0 - Podcasts: a first-class place + private-RSS engine (2026-08-02)
 
 Dean's ask: a true offline cache of his Patreon podcast library, grown

@@ -313,6 +313,31 @@
         </div>
       </details>
 
+      <!-- v1.69.1: the Podcasts zero-state DOOR (Dean's device-pass find).
+           Podcasts has no folder config here - subscriptions are managed on
+           the Podcasts page itself - but the nav entry is content-gated
+           (zero subscriptions = no sidebar link), so without this box a
+           fresh install had NO path to /podcasts at all (the chicken-and-egg
+           the v1.69.0 gate missed). A static link; no wiring. -->
+      <details class="setup-box sub-collapsible" data-collapse-key="podcasts-place" open>
+        <summary>Podcasts</summary>
+        <p>
+          Subscribe to podcast RSS feeds - public ones, or private tokened
+          feeds like Patreon's "listen in other podcast apps" URL - and
+          FileTube keeps an offline cache of the episodes. Subscriptions,
+          download policy, and the check interval are all managed on the
+          Podcasts page (its link appears in the sidebar once you have a
+          subscription; episodes save under the data directory unless
+          <code>FILETUBE_PODCASTS_DIR</code> points elsewhere - set that
+          before your first subscription).
+        </p>
+        <div class="action-footer">
+          <div class="action-bar">
+            <a class="btn btn-primary" href="/podcasts">Open the Podcasts page</a>
+          </div>
+        </div>
+      </details>
+
       <details class="setup-box sub-collapsible" data-collapse-key="automation-storage" open>
         <summary>Automation & Storage</summary>
         <p>
