@@ -19,10 +19,12 @@
 // documented small-per-file-harness-duplication convention (see that file's
 // own header comment for the list of prior art this follows). `fetch` is
 // replaced with a fully controllable stub that answers `/api/config`,
-// `/api/settings`, and every `/api/videos?...` list request from an
-// in-memory fixture; `/api/subscriptions/pins` (an unrelated, independent
-// sidebar fetch) is left permanently unresolved, mirroring shell-smoke.test
-// .js's own "don't care about it" stubbing philosophy.
+// `/api/settings`, `/api/auth/me` (v1.67: the corner-pref latch made it a
+// fourth load-bearing home-boot endpoint - see the inline comment at the
+// stub), and every `/api/videos?...` list request from an in-memory
+// fixture; `/api/subscriptions/pins` (an unrelated, independent sidebar
+// fetch) is left permanently unresolved, mirroring shell-smoke.test.js's
+// own "don't care about it" stubbing philosophy.
 //
 // jsdom ships no `IntersectionObserver` implementation at all -- this suite
 // supplies its own small controllable stub (`beforeParse`) that records every
@@ -109,6 +111,14 @@ function makeHomeFetchStub({ fullList }) {
     }
     if (url === '/api/settings' && method === 'GET') {
       return Promise.resolve({ ok: true, status: 200, json: async () => ({ defaultView: '' }) });
+    }
+    // v1.67: the corner-pref latch made /api/auth/me part of the home boot
+    // contract (loadLibrary races it with /api/config before the first card
+    // render), so the "leave it permanently unresolved" default below would
+    // hang the grid. Empty settings -> the C5 default corner layout; the
+    // corner BEHAVIOR itself is card-corners-fullchain.test.js's job.
+    if (url === '/api/auth/me' && method === 'GET') {
+      return Promise.resolve({ ok: true, status: 200, json: async () => ({ id: 1, username: 'u', settings: {} }) });
     }
     if (url.indexOf('/api/videos?') === 0 && method === 'GET') {
       return Promise.resolve({ ok: true, status: 200, json: async () => videosResponseFor(fullList, url) });

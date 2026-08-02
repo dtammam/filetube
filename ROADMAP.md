@@ -80,6 +80,63 @@
 
 ## Shipped
 
+### v1.67.0 - Card corners, your way (2026-08-02)
+
+Dean's request, verbatim intent: the video tiles have four corners and
+you should pick what lives in each. Settings > Appearance now has three
+pickers - top-left, top-right, bottom-left - each offering Download,
+Delete, Like, Queue, Share, Reheat, or None. Bottom-right is reserved
+for the duration badge and is not assignable: the v1.63 queue button
+had been sitting literally ON that badge (both anchored bottom-right),
+and this wave is the fix. The layout is per-user and SERVER-persisted
+(Dean overrode the device-local recommendation), so it follows you to
+every device; it rides the existing settings mirror with no schema
+change and free backup coverage. A control chosen in one corner drops
+from the other pickers (a duplicate is a UI bug, not a feature), and a
+control that does not apply to an item - Share on a local file with no
+original YouTube link, Reheat on an install without yt-dlp - renders
+NOTHING in that corner, never a substitute. Card tiles only; music and
+book rows are untouched. Under the hood: ONE exported corner renderer
+(position split from identity in CSS), the queue glyph promoted from an
+inline svg to a real `icon-queue` mask, share on cards runs the same
+single share-decision helper as the watch page, and reheat fires the
+same per-item endpoint with the same toast vocabulary.
+
+The gate (full two-seat, two rounds, both APPROVE at dd63291): the
+adversarial seat ran a 14-mutant campaign (all killed, including the
+decision-vs-use mutant this repo shipped three times in v1.66's wave),
+proved the injection/XSS chain dead at three independent layers,
+verified the relocated delete two-tap arm machine and the v1.65 trash
+semantics with real clicks, and proved backup/restore with a real
+cycle; its two code findings (an editor picker that DISPLAYED a lie
+under an injected duplicate, and a divergent ok:false-with-202 test
+fixture) were applied. The QA seat's five applied findings: keyboard
+focus restored after the editor's live re-filter, a test-harness header
+that under-enumerated its load-bearing stubs, a stale escape-pointer
+comment, `touch-action: manipulation` extended to all six card controls
+(a pre-existing two-control asymmetry), and a failure toast for a card
+share with no share sheet AND no clipboard (silence read as a dead
+button).
+
+DISCLOSED, pending Dean's device pass (the final arbiter):
+- **The queue button is GONE from cards by default** (ruling C5) -
+  assign it to a corner in Settings > Appearance to get it back. This
+  is deliberate: its old fixed spot obstructed the duration badge for
+  everyone.
+- Default card TAB ORDER changed (download before delete, matching
+  visual reading order); the rendered layout is pixel-identical.
+- Card reheat offers no relocation prompt - that stays a watch-page
+  affordance; the reheat itself is identical server-side.
+- Two inline queue-glyph copies remain by decision (the watch page's
+  Queue verb and the header's queue button - both are inline-svg chrome
+  paired with inline-svg siblings).
+- The reheat corner is module-gated like the watch flame, not per-item:
+  an ineligible item's flame click surfaces the server's honest "no
+  source to reheat from" toast.
+
+Dual-Node of record: v22.23.1 5578/5578, v24.14.0 5578/5578 (0 fail
+both).
+
 ### v1.66.0 - Web Push: your phone buzzes when a download lands (2026-08-02)
 
 The third of the approved waves, and the first that reaches OFF the page:

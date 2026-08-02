@@ -2524,46 +2524,35 @@ if (typeof module !== 'undefined' && module.exports) {
     // closing the sheet -- silently fine, never an error.
     function handleShareClick() {
       if (!mediaData || typeof mediaData.watchUrl !== 'string' || mediaData.watchUrl === '') return;
-      const url = mediaData.watchUrl;
-      if (typeof navigator.share === 'function') {
-        navigator.share({ title: mediaData.title || 'FileTube', url })
-          .catch(() => { /* sheet dismissed / share failed -- no-op */ });
-        return;
-      }
-      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
-        navigator.clipboard.writeText(url)
-          .then(() => {
-            if (!shareBtn) return;
-            // v1.47.6: write to the `.btn-label` span, NOT the button's own
-            // textContent -- that would wipe the icon element added alongside
-            // it. Falls back to the button itself if the span is somehow
-            // absent, so the feedback can never silently disappear.
-            //
-            // Note this branch is the DESKTOP fallback: mobile has
-            // `navigator.share` and returns above, so hiding the label at phone
-            // widths does not cost anyone this confirmation. On the rare mobile
-            // browser with no share sheet, the label is hidden and the
-            // clipboard write still succeeds -- the toast below covers it.
-            const label = shareBtn.querySelector('.btn-label') || shareBtn;
-            label.textContent = 'Copied!';
-            if (typeof window !== 'undefined' && typeof window.showToast === 'function') {
-              window.showToast('Link copied');
-            }
-            if (shareBtnResetTimer) clearTimeout(shareBtnResetTimer);
-            shareBtnResetTimer = setTimeout(() => {
-              if (shareBtn) {
-                const resetTarget = shareBtn.querySelector('.btn-label') || shareBtn;
-                resetTarget.textContent = 'Share';
-              }
-              shareBtnResetTimer = null;
-            }, 1500);
-          })
-          .catch((err) => console.error('Share: clipboard copy failed:', err));
-        return;
-      }
-      // No share sheet AND no clipboard API (very old / non-secure context):
-      // the URL is still in the page's metadata block; just log.
-      console.error('Share: no navigator.share or clipboard API available');
+      // v1.67 (plan D6): the share-sheet-vs-clipboard DECISION lives in
+      // common.js's shareExternalUrl (the card share corner runs the same
+      // one); only the watch-local "Copied!" label feedback stays here.
+      shareExternalUrl(mediaData.watchUrl, mediaData.title).then((outcome) => {
+        if (outcome !== 'copied' || !shareBtn) return;
+        // v1.47.6: write to the `.btn-label` span, NOT the button's own
+        // textContent -- that would wipe the icon element added alongside
+        // it. Falls back to the button itself if the span is somehow
+        // absent, so the feedback can never silently disappear.
+        //
+        // Note 'copied' is the DESKTOP fallback: mobile has
+        // `navigator.share` and resolves 'shared' above, so hiding the label
+        // at phone widths does not cost anyone this confirmation. On the
+        // rare mobile browser with no share sheet, the label is hidden and
+        // the clipboard write still succeeds -- the toast below covers it.
+        const label = shareBtn.querySelector('.btn-label') || shareBtn;
+        label.textContent = 'Copied!';
+        if (typeof window !== 'undefined' && typeof window.showToast === 'function') {
+          window.showToast('Link copied');
+        }
+        if (shareBtnResetTimer) clearTimeout(shareBtnResetTimer);
+        shareBtnResetTimer = setTimeout(() => {
+          if (shareBtn) {
+            const resetTarget = shareBtn.querySelector('.btn-label') || shareBtn;
+            resetTarget.textContent = 'Share';
+          }
+          shareBtnResetTimer = null;
+        }, 1500);
+      });
     }
 
     // Creates (once per view instance) and mounts the Share button as a

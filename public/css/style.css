@@ -23,7 +23,11 @@ summary,
 .video-card,
 .sidebar-item,
 .card-download-btn,
-.card-delete-btn {
+.card-delete-btn,
+.card-like-btn,
+.card-queue-btn,
+.card-share-btn,
+.card-reheat-btn {
   touch-action: manipulation;
 }
 
@@ -1191,18 +1195,40 @@ html.reader-immersive .app-container { padding-top: 0; }
 
 /* v1.17.0 FR-3(b), T2: home/library card trash-can affordance. A sibling of
    .thumbnail-container (not a child -- a <button> can't nest inside the
-   card's <a>), positioned via .video-card's own `position: relative` to sit
-   over the thumbnail's top-right corner, opposite .duration-badge
-   (bottom-right). Visible (not hover-only) at a reduced opacity by default
+   card's <a>), positioned via .video-card's own `position: relative` over
+   the thumbnail (v1.67: WHICH corner is a per-user pref via the
+   .card-corner-* classes; the C5 default keeps it top-right, opposite
+   .duration-badge). Visible (not hover-only) at a reduced opacity by default
    so it's equally discoverable on touch/mobile (no :hover there) and on
    desktop; full opacity on hover/focus/armed. First tap adds `.armed`
    (revealing the inline "Sure?" confirm via CSS, see main.js's
    nextArmState-driven click handler); a second tap on the SAME armed button
    deletes. Era tokens only. */
+/* ---- v1.67: card-corner position classes ----------------------------------
+   Position split from identity (plan D3): which corner a control occupies is
+   a per-user pref, so the anchor geometry lives on these three corner
+   classes and the control classes below keep ONLY look + behavior. The
+   renderer (main.js buildCardCornerButtonsHtml) appends exactly one corner
+   class per control. Bottom-right is RESERVED for .duration-badge - there is
+   deliberately no .card-corner-br. */
+.card-corner-tl {
+  top: 6px; /* token-exempt: positional geometry (the card-corner convention, Stop A Batch A) */
+  left: 6px; /* token-exempt: positional geometry */
+}
+
+.card-corner-tr {
+  top: 6px; /* token-exempt: positional geometry */
+  right: 6px; /* token-exempt: positional geometry */
+}
+
+.card-corner-bl {
+  bottom: 6px; /* token-exempt: positional geometry */
+  left: 6px; /* token-exempt: positional geometry */
+}
+
 .card-delete-btn {
   position: absolute;
-  top: 6px; /* token-exempt: positional geometry (Stop A Batch A) */
-  right: 6px; /* token-exempt: positional geometry (Stop A Batch A) */
+  /* v1.67: anchor geometry moved to the .card-corner-* classes above. */
   z-index: 2; /* token-exempt: local stacking */
   display: flex;
   align-items: center;
@@ -1248,15 +1274,14 @@ html.reader-immersive .app-container { padding-top: 0; }
    SIBLING of `.thumbnail-container` (not a child -- see main.js's card
    template comment: an `<a>` can't nest inside another `<a>` without
    breaking navigation semantics, so this button never intercepts the
-   thumbnail's watch-page link), positioned over the thumbnail's
-   TOP-LEFT corner -- opposite `.card-delete-btn` (top-right) so the two
-   overlays never overlap. Mirrors `.card-delete-btn`'s look/positioning
-   exactly (same size/opacity/hover behavior); no confirm step needed since
-   a download is non-destructive. Era tokens only. */
+   thumbnail's watch-page link), positioned via the .card-corner-* classes
+   (v1.67; the C5 default keeps it top-left, opposite `.card-delete-btn`).
+   Mirrors `.card-delete-btn`'s look exactly (same size/opacity/hover
+   behavior); no confirm step needed since a download is non-destructive.
+   Era tokens only. */
 .card-download-btn {
   position: absolute;
-  top: 6px; /* token-exempt: positional geometry (Stop A Batch A) */
-  left: 6px; /* token-exempt: positional geometry (Stop A Batch A) */
+  /* v1.67: anchor geometry moved to the .card-corner-* classes. */
   z-index: 2; /* token-exempt: local stacking */
   display: flex;
   align-items: center;
@@ -1284,15 +1309,18 @@ html.reader-immersive .app-container { padding-top: 0; }
 
 /* v1.40.0 (Dean): home/library card "Like" affordance. A SIBLING of
    `.thumbnail-container` (like the download/delete overlays -- never nested in
-   the watch-link `<a>`), positioned over the thumbnail's BOTTOM-LEFT corner --
-   the last free corner (duration badge = bottom-right, download = top-left,
-   delete = top-right). Mirrors `.card-download-btn`'s look/size/opacity. When
+   the watch-link `<a>`), positioned via the .card-corner-* classes (v1.67;
+   the C5 default keeps it bottom-left; bottom-right stays reserved for the
+   duration badge). Mirrors `.card-download-btn`'s look/size/opacity. When
    liked, the heart fills red (via currentColor on the mask) and stays fully
    opaque so the state is legible at a glance. Era tokens only. */
-.card-like-btn {
+/* v1.67: .card-share-btn / .card-reheat-btn are the two NEW corner controls
+   (Dean's request) and share this block - the same simple-icon-overlay
+   recipe as Like. Anchor geometry lives on the .card-corner-* classes. */
+.card-like-btn,
+.card-share-btn,
+.card-reheat-btn {
   position: absolute;
-  bottom: 6px; /* token-exempt: positional geometry (Stop A Batch A) */
-  left: 6px; /* token-exempt: positional geometry (Stop A Batch A) */
   z-index: 2; /* token-exempt: local stacking */
   display: flex;
   align-items: center;
@@ -1308,7 +1336,11 @@ html.reader-immersive .app-container { padding-top: 0; }
 }
 
 .card-like-btn:hover,
-.card-like-btn:focus-visible {
+.card-like-btn:focus-visible,
+.card-share-btn:hover,
+.card-share-btn:focus-visible,
+.card-reheat-btn:hover,
+.card-reheat-btn:focus-visible {
   opacity: 1;
 }
 
@@ -1317,7 +1349,9 @@ html.reader-immersive .app-container { padding-top: 0; }
   color: var(--yt-red);
 }
 
-.card-like-btn .icon-heart {
+.card-like-btn .icon-heart,
+.card-share-btn .icon-share,
+.card-reheat-btn .icon-flame {
   width: 14px;
   height: 14px;
 }
@@ -3597,7 +3631,8 @@ a.sub-row-channel-link:focus-visible {
 .icon-download,
 .icon-shuffle,
 .icon-flame,
-.icon-history {
+.icon-history,
+.icon-queue {
   display: inline-block;
   width: 1em;
   height: 1em;
@@ -3663,6 +3698,13 @@ a.sub-row-channel-link:focus-visible {
    like heart/share/flame -- an icon with no set-specific variant falls back
    to this one in every set (deliberate, not a gap). */
 .icon-history { -webkit-mask-image: url(/assets/icons/history.svg); mask-image: url(/assets/icons/history.svg); }
+/* v1.67: the playback-queue glyph (three list lines + a play triangle),
+   promoted from the v1.63 inline card <svg> so the card-corner renderer
+   treats all six corner controls uniformly. Base directory only, like
+   heart/share/flame/history -- an icon with no set-specific variant falls
+   back to this one in every set (deliberate, not a gap). FileTube's own
+   drawing (the v1.63 glyph, preserved exactly), not a Material asset. */
+.icon-queue { -webkit-mask-image: url(/assets/icons/queue.svg); mask-image: url(/assets/icons/queue.svg); }
 
 /* Paint the icon fill only where CSS masks are supported, so a browser without
    mask support (or a failed/404 mask) renders nothing instead of a solid
@@ -3671,7 +3713,7 @@ a.sub-row-channel-link:focus-visible {
   .icon-home, .icon-folder, .icon-cog, .icon-delete, .icon-moon, .icon-sun,
   .icon-menu, .icon-search, .icon-play, .icon-refresh, .icon-arrow-up, .icon-arrow-down,
   .icon-grid, .icon-list, .icon-heart, .icon-share, .icon-download, .icon-shuffle,
-  .icon-flame, .icon-history {
+  .icon-flame, .icon-history, .icon-queue {
     background-color: currentColor;
   }
 }
@@ -7796,6 +7838,21 @@ body.ft-css-fullscreen .bottom-nav {
 .bottom-nav-item[hidden] { display: none !important; }
 
 /* The Settings bottom-bar editor rows (toggle + up/down reorder). */
+/* v1.67: the card-corner editor rows (Appearance box) - the bottom-bar
+   editor's row idiom (label left, control right, hairline separators). */
+.card-corner-editor-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  padding: var(--space-4) 0;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.card-corner-editor-row .card-corner-editor-label {
+  flex: 1;
+  color: var(--text-primary);
+}
+
 .bottombar-editor-row {
   display: flex;
   align-items: center;
@@ -8604,14 +8661,13 @@ body.ft-css-fullscreen .bottom-nav {
   }
 }
 
-/* v1.63: the add-to-queue affordances (q3). Card button = the fourth
-   corner (download TL, delete TR, like BL, queue BR - same overlay
-   treatment). Music row button mirrors the row's like button. The watch
-   page's two verbs reuse the standard .btn. */
+/* v1.63: the add-to-queue affordances (q3), same overlay treatment as its
+   card siblings. v1.67: no fixed corner anymore - the old bottom-right
+   anchor sat ON the duration badge, so queue is now an ASSIGNABLE control
+   (unassigned by default, C5) positioned via the .card-corner-* classes.
+   The watch page's two verbs reuse the standard .btn. */
 .card-queue-btn {
   position: absolute;
-  bottom: 6px; /* token-exempt: positional geometry (the card-corner convention, Stop A Batch A) */
-  right: 6px; /* token-exempt: positional geometry */
   z-index: 2; /* token-exempt: local stacking */
   display: flex;
   align-items: center;
@@ -8630,6 +8686,15 @@ body.ft-css-fullscreen .bottom-nav {
 .card-queue-btn:focus-visible {
   opacity: 1;
   background-color: var(--scrim-heavy);
+}
+
+/* v1.67 T1: the promoted icon-queue mask, sized to the .card-*-btn sibling
+   convention (delete/download/heart are all 14px here; the v1.63 inline
+   <svg> was 16px -- normalized down 2px so any control reads identically
+   in any corner). */
+.card-queue-btn .icon-queue {
+  width: 14px;
+  height: 14px;
 }
 
 /* v1.63: the "playing from queue" box (ruling 5) - the uploader block's
