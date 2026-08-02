@@ -14057,6 +14057,90 @@ ytdlp.registerRoutes(app, {
   dataDir: DATA_DIR,
 });
 
+// v1.69 (D15): the yt-dlp "file under Podcasts" surfacing. A ytdlp sub with
+// libraryPlace === 'podcasts' appears in the Podcasts place as a show whose
+// episodes are its channel dir's db.metadata items - watch-page playback and
+// watch-history state, untouched (D14d: dock-first parity is a follow-up).
+// Server-owned (db.metadata + ytdlpConfig + userStore live here) and
+// deps-injected into the podcasts module like every other bridge below.
+// Gated on ytdlp.isEnabled: a disabled ytdlp module surfaces nothing (its
+// routes are gone; the podcasts place must not advertise dead shows).
+function ytdlpPodcastItemDateMs(item) {
+  if (item && typeof item.releaseDate === 'number' && Number.isFinite(item.releaseDate)) return item.releaseDate;
+  if (item && typeof item.addedAt === 'number' && Number.isFinite(item.addedAt)) return item.addedAt;
+  return 0;
+}
+function ytdlpPodcastItemsUnder(db, dir) {
+  const prefix = dir.endsWith(path.sep) ? dir : dir + path.sep;
+  const items = [];
+  for (const id of Object.keys(db.metadata || {})) {
+    if (!Object.prototype.hasOwnProperty.call(db.metadata, id)) continue;
+    const it = db.metadata[id];
+    if (it && typeof it.filePath === 'string' && it.filePath.startsWith(prefix)) items.push(it);
+  }
+  items.sort((a, b) => ytdlpPodcastItemDateMs(b) - ytdlpPodcastItemDateMs(a));
+  return items;
+}
+function listYtdlpPodcastShows(db) {
+  const cfg = ytdlp.parseYtdlpConfig();
+  if (!ytdlp.isEnabled(cfg)) return [];
+  const subs = (db.ytdlp && Array.isArray(db.ytdlp.subscriptions) ? db.ytdlp.subscriptions : [])
+    .filter((s) => s && s.libraryPlace === 'podcasts');
+  return subs.map((sub) => {
+    let items = [];
+    try { items = ytdlpPodcastItemsUnder(db, ytdlpArgs.resolveChannelDir(cfg, sub)); } catch (_) { items = []; }
+    return {
+      id: `yt:${sub.id}`,
+      name: sub.name || sub.channelUrl,
+      author: '',
+      description: '',
+      source: 'ytdlp',
+      paused: sub.paused === true,
+      backfill: null,
+      episodeCount: items.length,
+      downloadedCount: items.length,
+      pendingCount: 0,
+      failedCount: 0,
+      newestPubDateMs: items.length ? ytdlpPodcastItemDateMs(items[0]) : null,
+      artUrl: items.length ? `/thumbnail/${items[0].id}` : null,
+      lastStatus: typeof sub.lastStatus === 'string' ? sub.lastStatus : '',
+      secretMissing: false,
+    };
+  });
+}
+function listYtdlpPodcastEpisodes(db, showId, userId) {
+  const shows = listYtdlpPodcastShows(db);
+  const show = shows.find((s) => s.id === showId);
+  if (!show) return null;
+  const sub = db.ytdlp.subscriptions.find((s) => s && `yt:${s.id}` === showId);
+  let items = [];
+  try { items = ytdlpPodcastItemsUnder(db, ytdlpArgs.resolveChannelDir(ytdlp.parseYtdlpConfig(), sub)); } catch (_) { items = []; }
+  const progress = userStore.getProgress(userId);
+  const watched = userStore.getWatchedTimes(userId);
+  return {
+    show,
+    episodes: items.map((it) => ({
+      id: it.id,
+      subId: showId,
+      title: cleanDisplayTitle(it.title || it.name || ''),
+      description: '',
+      link: '',
+      pubDateMs: ytdlpPodcastItemDateMs(it) || null,
+      durationSec: typeof it.duration === 'number' ? it.duration : null,
+      status: 'downloaded',
+      bytes: null,
+      downloadedAt: null,
+      progress: Object.prototype.hasOwnProperty.call(progress, it.id)
+        ? { position: progress[it.id].timestamp, duration: progress[it.id].duration, updatedAt: progress[it.id].updatedAt }
+        : null,
+      played: Object.prototype.hasOwnProperty.call(watched, it.id),
+      // Media items keep their watch-page playback (D14d) - the client
+      // navigates here instead of dock-loading /episode/:id.
+      watchHref: `/watch.html?v=${encodeURIComponent(it.id)}`,
+    })),
+  };
+}
+
 // v1.69: the podcasts module's deps bundle - the same circular-require-
 // avoiding bridge as ytdlp's above. runExclusive is the SHARED heavy-job
 // gate (lib/heavyGate), so podcast enclosure downloads serialize against
@@ -14069,6 +14153,8 @@ podcasts.registerRoutes(app, {
   userStore,
   runExclusive: heavyGate.runExclusive,
   sendRangeable,
+  listExternalShows: listYtdlpPodcastShows,
+  listExternalEpisodes: listYtdlpPodcastEpisodes,
 });
 
 // Start the server — but only when run directly (`node server.js`), not when

@@ -144,7 +144,9 @@
       art.className = 'podcast-card-art';
       art.alt = '';
       art.loading = 'lazy';
-      art.src = '/podcastart/' + encodeURIComponent(show.id);
+      // A ytdlp-sourced show carries a server-built artUrl (a /thumbnail/
+      // path); RSS shows use the show-cover route.
+      art.src = show.artUrl || ('/podcastart/' + encodeURIComponent(show.id));
       card.appendChild(art);
       var title = document.createElement('div');
       title.className = 'podcast-card-title';
@@ -207,7 +209,7 @@
       var art = document.createElement('img');
       art.className = 'podcast-show-art';
       art.alt = '';
-      art.src = '/podcastart/' + encodeURIComponent(currentShow.id);
+      art.src = currentShow.artUrl || ('/podcastart/' + encodeURIComponent(currentShow.id));
       head.appendChild(art);
       var meta = document.createElement('div');
       meta.className = 'podcast-show-meta';
@@ -235,7 +237,9 @@
 
       var list = document.createElement('div');
       list.className = 'podcast-episode-list';
-      playable = episodes.filter(function (e) { return e.status === 'downloaded'; });
+      // Dock-playable = downloaded RSS episodes; external (watchHref) rows
+      // navigate to their watch page and never join the dock prev/next set.
+      playable = episodes.filter(function (e) { return e.status === 'downloaded' && !e.watchHref; });
       episodes.forEach(function (ep) {
         list.appendChild(buildEpisodeRow(ep));
       });
@@ -278,7 +282,13 @@
         bar.appendChild(fill);
         main.appendChild(bar);
       }
-      if (ep.status === 'downloaded') {
+      if (ep.watchHref) {
+        // A ytdlp-sourced episode is a media item: it plays on its watch
+        // page (watch-history state, chapters, everything) - navigate.
+        main.addEventListener('click', function () {
+          window.location.href = ep.watchHref;
+        }, { signal: signal });
+      } else if (ep.status === 'downloaded') {
         main.addEventListener('click', function () {
           var i = playable.indexOf(ep);
           if (i !== -1) playAt(i);
@@ -286,17 +296,22 @@
       }
       row.appendChild(main);
 
-      var playedBtn = document.createElement('button');
-      playedBtn.type = 'button';
-      playedBtn.className = 'podcast-played-toggle';
-      playedBtn.title = ep.played ? 'Mark unplayed' : 'Mark played';
-      playedBtn.setAttribute('aria-pressed', ep.played ? 'true' : 'false');
-      playedBtn.textContent = '✓';
-      playedBtn.addEventListener('click', function (e) {
-        e.stopPropagation();
-        togglePlayed(ep, row, playedBtn);
-      }, { signal: signal });
-      row.appendChild(playedBtn);
+      // The played toggle writes the podcast latch - external (media-item)
+      // episodes get their played state from watch history instead, shown
+      // read-only (no toggle).
+      if (!ep.watchHref) {
+        var playedBtn = document.createElement('button');
+        playedBtn.type = 'button';
+        playedBtn.className = 'podcast-played-toggle';
+        playedBtn.title = ep.played ? 'Mark unplayed' : 'Mark played';
+        playedBtn.setAttribute('aria-pressed', ep.played ? 'true' : 'false');
+        playedBtn.textContent = '✓';
+        playedBtn.addEventListener('click', function (e) {
+          e.stopPropagation();
+          togglePlayed(ep, row, playedBtn);
+        }, { signal: signal });
+        row.appendChild(playedBtn);
+      }
       return row;
     }
 

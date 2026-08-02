@@ -2038,10 +2038,12 @@ test('buildSettingsSheet: renders the channel name READ-ONLY (plain text, no inp
   assert.strictEqual(subtextEl.textContent, formatSubscribedDate(sub.addedAt));
 
   const selects = allNodes.filter((el) => el.tagName === 'SELECT');
-  assert.strictEqual(selects.length, 3, 'expected format/quality/filetype selects');
+  // v1.69 (D15): the file-under-Podcasts select joins the sheet.
+  assert.strictEqual(selects.length, 4, 'expected format/quality/filetype/libraryPlace selects');
   assert.strictEqual(selects[0].value, 'video');
   assert.strictEqual(selects[1].value, '720p');
   assert.strictEqual(selects[2].value, 'mkv');
+  assert.strictEqual(selects[3].value, 'default', 'libraryPlace defaults to Home for an untoggled sub');
 
   // v1.25 QoL (T5): retires the "download last N videos" number input --
   // replaced by a cutoff-DATE input, pre-filled from the sub's OWN current
