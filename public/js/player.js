@@ -1000,8 +1000,41 @@ function resolveChaptersMenuMaxHeight(geom) {
 // Guarded so requiring this file in Node (for unit tests) never touches
 // `window`/`document` -- mirrors common.js's own `if (typeof window ...)`
 // runtime guard immediately below.
+// v1.67.5 (Dean's on-device trigger): the faux-fullscreen SCROLL KEEPER's
+// pure plan. iOS Safari does not lock body scrolling via
+// `body.ft-css-fullscreen { overflow: hidden }`, so touch gestures on the
+// fixed overlay (scrubbing, double-tap skip, rubber-banding) drift the page
+// scroll underneath faux-fullscreen; exiting restored the layout but not
+// the scroll, leaving the video top tucked under the fixed header.
+// `setCssFullscreen` runs this plan on every call:
+//   - OFF -> ON  captures the current scroll (the pre-entry position).
+//   - ON  -> OFF restores the capture - but ONLY while the player is still
+//     FULL. The dock/close off-path (`applyControlsMode`'s
+//     `state !== STATE_FULL` guard) fires AFTER a navigation's own scroll
+//     restore, and restoring the watch page's offset onto the DESTINATION
+//     view would clobber it. The capture is ALWAYS cleared on exit.
+//   - No-transition calls (the off-path re-asserts constantly; a second
+//     `on` from the webkitbeginfullscreen intercept) are inert - an
+//     already-on re-capture would save a DRIFTED position and defeat the
+//     whole restore.
+// `restoreTo` is null-or-number: 0 is a real position, and a non-number
+// capture never restores (typeof guard - the coercion scar).
+function resolveCssFsScrollPlan(wasOn, nextOn, stateFull, savedY, currentY) {
+  if (!wasOn && nextOn) {
+    return { savedY: typeof currentY === 'number' && !isNaN(currentY) ? currentY : 0, restoreTo: null };
+  }
+  if (wasOn && !nextOn) {
+    return {
+      savedY: null,
+      restoreTo: (stateFull && typeof savedY === 'number' && !isNaN(savedY)) ? savedY : null,
+    };
+  }
+  return { savedY: typeof savedY === 'number' && !isNaN(savedY) ? savedY : null, restoreTo: null };
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
+    resolveCssFsScrollPlan,
     // v1.63 playback queue: the ended-table extension + the client mirror
     // of the server's nextEntry (the server reducers stay the authority).
     computeQueueNext,
@@ -1425,12 +1458,21 @@ if (typeof module !== 'undefined' && module.exports) {
 
   // v1.34.4: faux-fullscreen state setter -- host class (the fixed overlay
   // treatment) and body class (scroll freeze + header/nav hide) must always
-  // move together.
+  // move together. v1.67.5: plus the scroll keeper -- the body "freeze"
+  // (overflow: hidden) does NOT hold on iOS, so the pre-entry scroll is
+  // captured here and re-asserted on exit (see resolveCssFsScrollPlan's
+  // header for the full mechanism and the FULL-state cross-view guard).
+  var cssFsSavedScrollY = null;
   function setCssFullscreen(on) {
+    var wasOn = !!(host && host.classList.contains('css-fullscreen'));
     if (host) host.classList.toggle('css-fullscreen', !!on);
     if (typeof document !== 'undefined' && document.body) {
       document.body.classList.toggle('ft-css-fullscreen', !!on);
     }
+    var currentY = typeof window.pageYOffset === 'number' ? window.pageYOffset : window.scrollY;
+    var plan = resolveCssFsScrollPlan(wasOn, !!on, state === STATE_FULL, cssFsSavedScrollY, currentY);
+    cssFsSavedScrollY = plan.savedY;
+    if (plan.restoreTo !== null) window.scrollTo(0, plan.restoreTo);
   }
 
   // Native-controls round: true while the native iOS/browser `controls` strip
