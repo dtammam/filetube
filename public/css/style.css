@@ -2680,6 +2680,32 @@ html.reader-immersive .app-container { padding-top: 0; }
   outline: none;
 }
 
+/* v1.68.3 (Dean, on-device): BASE <select> styling - the design language by
+   DEFAULT. History: the styled surfaces each did it ad hoc (.btn on the
+   music/books sort selects, .setup-select below, .oneoff-modal-row select -
+   itself a fix for selects that "read as bare native controls") and THREE
+   surfaces shipped bare because nothing catches a MISSING rule: the v1.67
+   card-corner pickers (a class with no CSS behind it), the move-modal
+   select (no class at all), and the ytdlp failures-filter select (gate
+   v1.68.3 W1: its 'form-input' class has NO rule anywhere in the tree -
+   the same class-with-no-CSS shape, miscounted as "styled" in this
+   comment's first draft). The census governs raw literals PRESENT in
+   declarations; absence is invisible to every instrument. This
+   element-level rule makes the styled path the default - a future select
+   is tokened before anyone remembers to class it, and the bug class dies
+   structurally. Specificity 0-0-1: every existing class pattern above
+   still wins wholesale. Declarations mirror .setup-select (the
+   settings-page pattern the corner pickers sit beside). */
+select {
+  padding: var(--space-5) var(--space-6);
+  border: 1px solid var(--border-dark);
+  border-radius: var(--radius);
+  font-size: var(--fs-base);
+  background-color: var(--bg-color);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
 /* Settings <select> controls (Automation & Storage box) — same visual weight
    as the text/number inputs above, sized to content rather than full-width. */
 .setup-select {
@@ -8549,42 +8575,53 @@ body.ft-css-fullscreen .bottom-nav {
   transform: translateY(0);
 }
 
+/* v1.68.3 (Dean): the queue panel's chrome MIRRORS the notification
+   panel's - one panel design language, two surfaces. The four pairs below
+   (.queue-panel-header/.notif-panel-header, .queue-clear-btn and its
+   :hover/.notif-clear-btn's, .queue-empty/.notif-empty) are declaration-
+   identical and LOCKED by test/unit/panel-chrome-mirror.test.js - edit
+   either side and the mirror test forces the other (or a deliberate lock
+   update). .queue-clear-armed stays queue-specific (the two-tap confirm
+   has no bell counterpart). */
 .queue-panel-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--space-5) var(--space-8);
-  border-bottom: 1px solid var(--border-color);
+  padding: var(--space-6) var(--space-8);
+  font-weight: var(--fw-semibold);
+  border-bottom: 1px solid var(--bg-secondary);
   position: sticky;
   top: 0;
   background: var(--bg-sidebar);
-  font-weight: var(--fw-semibold);
 }
 
 .queue-clear-btn {
   background: none;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius);
-  color: var(--text-secondary);
-  cursor: pointer;
-  padding: var(--space-1) var(--space-4);
+  border: none;
+  color: var(--yt-red);
   font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  cursor: pointer;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius);
 }
 
 .queue-clear-btn:hover {
-  background: var(--bg-secondary);
+  background-color: var(--bg-secondary);
 }
 
+/* Armed ("Really clear?") = the hover surface LATCHED while the two-tap
+   confirm is live; the label change carries the message, the surface makes
+   the armed state survive pointer-out. */
 .queue-clear-btn.queue-clear-armed {
-  border-color: var(--yt-red);
-  color: var(--yt-red);
-  font-weight: var(--fw-semibold);
+  background-color: var(--bg-secondary);
 }
 
 .queue-empty {
   padding: var(--space-12) var(--space-8);
-  color: var(--text-secondary);
   text-align: center;
+  color: var(--text-secondary);
+  font-size: var(--fs-sm);
 }
 
 .queue-row {

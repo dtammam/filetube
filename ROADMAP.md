@@ -80,6 +80,54 @@
 
 ## Shipped
 
+### v1.68.3 - Design-language convergence (2026-08-02)
+
+Dean's on-device report, three findings, one theme: surfaces
+hand-rolling (or omitting) what the design system already provides.
+The v1.67 card-corner pickers had shipped BARE - a className with no
+CSS rule behind it, rendering browser-default beside six properly
+tokened settings selects - and the sweep found two more selects bare
+the same way (the move modal's, and the ytdlp failures filter's
+orphan form-input class, the gate's own catch after the first sweep
+miscounted it as styled). Root cause: nothing styled <select> by
+default, the census only sees literals PRESENT in declarations
+(absence is invisible to every instrument), and gate seats review
+code, not pixels. The structural fix: a BASE tokened `select` element
+rule - the styled path is now the default and the bug class dies for
+every future select. Second: tapping the queue with a stale-empty
+queue "loaded for a second and stopped" - an auto-close raced ahead
+of the empty state; the panel now stays open with the bell-posture
+message. Third: the queue panel's Clear button had drifted from the
+notification panel's design language; the four chrome pairs are now
+declaration-identical under a mirror lock that forces either side to
+follow the other.
+
+Codified for the future (Dean's ruling): CONTRIBUTING.md now carries
+"Every rendered element must have a styling SOURCE - none is a
+finding": find the existing pattern first; no pattern means prefer a
+base element rule; a className with no rule binding it is a defect to
+flag, for implementers and reviewers both.
+
+Slim gate, one fix round. The blocker: the base-rule comment's own
+blast-radius enumeration was measurably wrong (form-input listed as a
+styled pattern; it binds no rule anywhere) - corrected to three bare
+surfaces. Both round-1 surviving mutants (a respelled auto-close, a
+shadowing duplicate rule) die under the strengthened locks.
+
+DISCLOSED, pending Dean's device pass:
+- An INLINED panel-close in setChrome (never using the closePanel
+  token) would evade the body lock - the #78 source-lock class, the
+  seat's own honest residual on its own prescription.
+- The queue button still hides when the queue is empty (v1.63 ruling
+  4) - the empty message shows when the panel is OPEN as it empties,
+  or when a stale button is tapped; there is no persistent
+  empty-queue entry point by design.
+- Tech-debt #79 (pre-existing, the gate's find): music/books sort
+  selects sit at 12px, so iOS focus-zoom is possible there.
+
+Dual-Node of record: v22.23.1 5644/5644, v24.14.0 5644/5644 (0 fail
+both).
+
 ### v1.68.2 - The rotate-and-back shift, actually fixed (2026-08-02)
 
 Honesty first: v1.68.1's rotation fix was a MISS. Dean pulled 1.68.1,

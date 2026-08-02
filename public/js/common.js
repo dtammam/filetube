@@ -2927,7 +2927,14 @@ function injectQueueChrome() {
         badge.hidden = label === '';
         btn.hidden = !shouldShowQueueButton(q);
         heading.textContent = count > 0 ? `Queue - ${count} item${count === 1 ? '' : 's'}` : 'Queue';
-        if (btn.hidden && !panel.hidden) closePanel();
+        // v1.68.3 (Dean): an OPEN panel stays open on empty - renderRows'
+        // empty state gets to show (the bell's posture: dismissing the last
+        // row shows the empty message, never slams the panel shut). The old
+        // auto-close here raced ahead of renderRows on every open-with-
+        // stale-button tap: open -> "Loading..." -> fetch resolves empty ->
+        // panel closed = "it tries to load for a second and stops". The
+        // button itself still hides (ruling 4); the open panel closes via
+        // backdrop/outside tap as always.
       };
       setChrome(queue);
 
@@ -2949,7 +2956,7 @@ function injectQueueChrome() {
       const renderRows = (q) => {
         list.textContent = '';
         const models = buildQueueRowModels(q);
-        if (models.length === 0) { renderEmpty('Queue is empty.'); return; }
+        if (models.length === 0) { renderEmpty('No queued items yet. Items you queue up to play show here.'); return; }
         const uids = models.map((m) => m.uid);
         models.forEach((m, idx) => {
           const row = document.createElement('div');
