@@ -290,6 +290,7 @@ if (typeof module !== 'undefined' && module.exports) {
     homeRowEnabled,
     resolveCardCornerPrefs,
     buildCardCornerButtonsHtml,
+    CARD_CORNER_CONTROLS,
   };
 }
 

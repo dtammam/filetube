@@ -7834,6 +7834,21 @@ body.ft-css-fullscreen .bottom-nav {
 .bottom-nav-item[hidden] { display: none !important; }
 
 /* The Settings bottom-bar editor rows (toggle + up/down reorder). */
+/* v1.67: the card-corner editor rows (Appearance box) - the bottom-bar
+   editor's row idiom (label left, control right, hairline separators). */
+.card-corner-editor-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  padding: var(--space-4) 0;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.card-corner-editor-row .card-corner-editor-label {
+  flex: 1;
+  color: var(--text-primary);
+}
+
 .bottombar-editor-row {
   display: flex;
   align-items: center;

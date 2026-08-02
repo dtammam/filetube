@@ -272,6 +272,20 @@ module.exports = [
     },
   },
 
+  // v1.67 (plan D9): the corner VOCABULARY (resolver + control roster) is
+  // DEFINED at main.js module scope (main.js loads before setup.js on every
+  // shell) and consumed by setup.js's corner editor. Declared ONLY for the
+  // consumer, per the "declare only where consumed, not where defined" rule.
+  {
+    files: ['public/js/setup.js'],
+    languageOptions: {
+      globals: {
+        resolveCardCornerPrefs: 'readonly',
+        CARD_CORNER_CONTROLS: 'readonly',
+      },
+    },
+  },
+
   // `renderIconPicker` is DEFINED in public/js/setup.js (a real global
   // function, deliberately not IIFE-wrapped -- see that file's module
   // comment) and feature-detected/called from common.js's `applyIconSet()`.
