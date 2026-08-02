@@ -845,7 +845,7 @@ if (typeof module !== 'undefined' && module.exports) {
               <i class="icon-heart"></i>
             </button>
             <button type="button" class="card-queue-btn" data-id="${escapeHtml(item.id)}" aria-label="Add to queue" title="Add to queue">
-              <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M3 6h13v2H3V6zm0 4h13v2H3v-2zm0 4h9v2H3v-2zm14-1v6l5-3-5-3z" fill="currentColor"/></svg>
+              <i class="icon-queue"></i>
             </button>
           </div>
           <div class="video-info">

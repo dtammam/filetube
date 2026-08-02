@@ -2795,8 +2795,9 @@ function injectQueueChrome() {
       btn.setAttribute('aria-label', 'Playback queue');
       btn.setAttribute('aria-haspopup', 'true');
       btn.setAttribute('aria-expanded', 'false');
-      // Inline SVG like the bell (the era icon sets have no queue glyph):
-      // three list lines + a play triangle - YouTube's queue vocabulary.
+      // Inline SVG like the bell (paired header chrome - the bell is inline
+      // too; the cards use the icon-queue mask since v1.67): three list
+      // lines + a play triangle - YouTube's queue vocabulary.
       const svgNs = 'http://www.w3.org/2000/svg';
       const svg = document.createElementNS(svgNs, 'svg');
       svg.setAttribute('viewBox', '0 0 24 24');

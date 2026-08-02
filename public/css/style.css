@@ -3597,7 +3597,8 @@ a.sub-row-channel-link:focus-visible {
 .icon-download,
 .icon-shuffle,
 .icon-flame,
-.icon-history {
+.icon-history,
+.icon-queue {
   display: inline-block;
   width: 1em;
   height: 1em;
@@ -3663,6 +3664,13 @@ a.sub-row-channel-link:focus-visible {
    like heart/share/flame -- an icon with no set-specific variant falls back
    to this one in every set (deliberate, not a gap). */
 .icon-history { -webkit-mask-image: url(/assets/icons/history.svg); mask-image: url(/assets/icons/history.svg); }
+/* v1.67: the playback-queue glyph (three list lines + a play triangle),
+   promoted from the v1.63 inline card <svg> so the card-corner renderer
+   treats all six corner controls uniformly. Base directory only, like
+   heart/share/flame/history -- an icon with no set-specific variant falls
+   back to this one in every set (deliberate, not a gap). FileTube's own
+   drawing (the v1.63 glyph, preserved exactly), not a Material asset. */
+.icon-queue { -webkit-mask-image: url(/assets/icons/queue.svg); mask-image: url(/assets/icons/queue.svg); }
 
 /* Paint the icon fill only where CSS masks are supported, so a browser without
    mask support (or a failed/404 mask) renders nothing instead of a solid
@@ -3671,7 +3679,7 @@ a.sub-row-channel-link:focus-visible {
   .icon-home, .icon-folder, .icon-cog, .icon-delete, .icon-moon, .icon-sun,
   .icon-menu, .icon-search, .icon-play, .icon-refresh, .icon-arrow-up, .icon-arrow-down,
   .icon-grid, .icon-list, .icon-heart, .icon-share, .icon-download, .icon-shuffle,
-  .icon-flame, .icon-history {
+  .icon-flame, .icon-history, .icon-queue {
     background-color: currentColor;
   }
 }
@@ -8630,6 +8638,15 @@ body.ft-css-fullscreen .bottom-nav {
 .card-queue-btn:focus-visible {
   opacity: 1;
   background-color: var(--scrim-heavy);
+}
+
+/* v1.67 T1: the promoted icon-queue mask, sized to the .card-*-btn sibling
+   convention (delete/download/heart are all 14px here; the v1.63 inline
+   <svg> was 16px -- normalized down 2px so any control reads identically
+   in any corner). */
+.card-queue-btn .icon-queue {
+  width: 14px;
+  height: 14px;
 }
 
 /* v1.63: the "playing from queue" box (ruling 5) - the uploader block's
