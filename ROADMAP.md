@@ -80,6 +80,63 @@
 
 ## Shipped
 
+### v1.65.0 - Trash: deletes stop being permanent (2026-08-02)
+
+The second of the three approved waves, and the one that closes the
+2026-07-30 capture incident (tech-debt #64): a stray client tap used to
+unlink a file for good, and eight files went that way - one of them
+Dean's own, not re-downloadable. It cannot happen again. EVERY delete
+path now moves the file into a per-library-root `.filetube-trash`
+directory by atomic same-filesystem rename - the two-tap card delete,
+the watch-page delete, and the scan's deferred-delete retry, which is
+the nightmare shape where every guard is fooled at once. Purge, explicit
+or by retention, is the only code left in the app that unlinks library
+media.
+
+Restore is full-fidelity, and that is the headline: because an item's id
+is the hash of its path, trashing re-keys it and restoring re-keys it
+back, so all NINE per-user carriers come home - your resume position,
+your Like, the watched latch, and your queue slot, which visibly
+reappears where it was. Retention is 30 days by default and configurable
+in Library settings (7/14/30/90, or never), swept at boot and on the
+existing scan timer with no new machinery. The Trash view lives in
+Library settings: per-item Restore and a two-tap Purge, with the days
+each item has left. Every delete affordance's copy now tells the truth
+instead of promising permanence.
+
+**What the gate caught - SIX rounds, both seats, 78 mutants:** a purge
+racing a restore could free a file's last remaining link (measured, no
+crash and no hostile actor needed); trash records rode the backup bundle
+completely unvalidated into three separate unlinkers; the cross-device
+copy's checksum had no test at all, and its failure mode was "corrupt
+the file, then delete the original"; opening the notification bell while
+an item sat in Trash destroyed every user's state for it, so restore
+brought back nothing; and trashing a queued video silently bricked queue
+reorder for the whole retention window. Three of the last four rounds
+found defects in the FIXES, not the original wave: a confinement rule
+tightened so far it refused the app's own records and let the sweep
+destroy them, a binding suite that wrote into shared /tmp and faked ten
+mutation verdicts inside the gate itself, a rule hand-copied to a second
+site that then drifted and destroyed bytes the original refused to
+touch, and two tests of mine that documented guarantees they did not
+provide. The adversarial seat also retracted one of its own approved
+findings after the QA seat proved a line it had called dead logic was a
+live crash guard. None of this was visible from a green suite.
+
+**Known gaps, disclosed:** a crafted admin backup bundle can still aim a
+restore at a directory it also planted bytes into (tech-debt #74 -
+closing it refused the app's own records, which was strictly worse); two
+trash records for one original path make the scan's leftover reconcile
+last-record-wins; the second restore to an occupied path is a 409 by
+design, never a silent rename; and manual rescue OUT of a trash
+directory must use `mv` or `cp`, never `ln`/`cp -l`/`rsync
+--link-dest` - a hard-linked rescue looks exactly like a crash leftover
+to the reconcile and gets cleaned away (tech-debt #75).
+
+Dean's device pass is PENDING and is the arbiter. Dual-Node of record:
+5473/5473 on v22.23.1 AND v24.14.0, sequential, reviewers idle. The
+Docker pull is Dean's.
+
 ### v1.64.0 - Watch history (2026-08-01)
 
 The first of the three approved feature waves (History -> Trash -> Web
