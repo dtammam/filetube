@@ -6044,6 +6044,16 @@ if (typeof window !== 'undefined') {
 function libraryEntriesHtml() {
   let html = '';
   if (typeof document !== 'undefined') {
+    // v1.73.1 (slim-gate W1): Downloads mirrors its sidebar marker FIRST,
+    // like every other Library entry - and the href is read OFF the
+    // injected entry (the runtime-derived /?root= link), never re-derived.
+    // Without this mirror, filtering the sheet's folder rows would have
+    // removed mobile access to Downloads entirely (the bottom item is
+    // opt-in) - both halves land together.
+    const downloadsEntry = document.querySelector('[data-nav-sidebar="downloads"]');
+    if (downloadsEntry) {
+      html += '<a href="' + escapeAttr(downloadsEntry.getAttribute('href') || '/') + '" class="sidebar-item"><i class="icon-downloads"></i> Downloads</a>';
+    }
     if (document.querySelector('[data-nav-sidebar="music"]')) {
       html += '<a href="/music" class="sidebar-item"><i class="icon-play"></i> Music</a>';
     }
@@ -6064,11 +6074,11 @@ function libraryEntriesHtml() {
   return html;
 }
 
-function renderPlaylistsSheet(folders, folderSettings) {
+function renderPlaylistsSheet(folders, folderSettings, syntheticFolders) {
   const list = document.getElementById('playlists-sheet-list');
   if (!list) return;
   const settings = folderSettings || {};
-  const visible = visibleSidebarFolders(folders, settings);
+  const visible = visibleSidebarFolders(folders, settings, syntheticFolders); // v1.73.1: sheet/sidebar parity (slim-gate W1)
   const libEntries = libraryEntriesHtml();
   // v1.32 (Dean): the built-in Liked playlist entry -- fixed, first, static
   // markup. v1.33.1: no longer inlined here -- applied through the SAME
@@ -6808,7 +6818,7 @@ let playlistsSheetGeneration = 0;
  * point of item 9 -- callers must never render just one half.
  */
 function renderPlaylistsSheetContent(snapshot) {
-  renderPlaylistsSheet(snapshot.folders, snapshot.folderSettings);
+  renderPlaylistsSheet(snapshot.folders, snapshot.folderSettings, snapshot.syntheticFolders);
   renderPinnedPlaylists(snapshot.pins, snapshot.moduleEnabled);
 }
 
@@ -6849,6 +6859,7 @@ function openPlaylistsSheet() {
     playlistsSheetCache = {
       folders: config.folders || [],
       folderSettings: config.folderSettings || {},
+      syntheticFolders: Array.isArray(config.syntheticFolders) ? config.syntheticFolders : [],
       pins,
       moduleEnabled,
     };

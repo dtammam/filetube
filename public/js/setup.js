@@ -330,8 +330,12 @@ function populateDefaultViewSelect() {
       // same instead of leaking the raw directory basename. The VALUE
       // stays the path (the saved defaultView contract is unchanged, so
       // an existing selection keeps working).
+      // Slim-gate S1: a CUSTOM rename (Setup still advertises it, the
+      // server persists it, every other surface displays it) wins; only
+      // the un-renamed synthetic folder defaults to "Downloads" instead
+      // of leaking the raw directory basename.
       const label = isSyntheticFolder(f, syntheticFolders)
-        ? 'Downloads'
+        ? ((folderSettings[f] && folderSettings[f].name) || 'Downloads')
         : ((folderSettings[f] && folderSettings[f].name) || base);
       return `<option value="${escapeHtml(f)}">${escapeHtml(label)}</option>`;
     })
