@@ -770,6 +770,11 @@
               currentShow = data.show || show;
               episodes = data.episodes || [];
               renderEpisodes();
+              // QA W1: the deep-linked row scrolls into view - a card for an
+              // episode 80 rows deep must not land at the top of the list
+              // with its highlighted row off-screen.
+              var rowEl = content ? content.querySelector('[data-episode-id="' + epId + '"]') : null;
+              if (rowEl && typeof rowEl.scrollIntoView === 'function') rowEl.scrollIntoView({ block: 'center' });
               for (var i = 0; i < playable.length; i++) {
                 if (playable[i].id === epId) { playAt(i); return; }
               }

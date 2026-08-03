@@ -3520,8 +3520,11 @@ if (typeof module !== 'undefined' && module.exports) {
     // the queue), the queue owns up-next (ruling 2) and the advance goes to
     // the queue's next entry - never silently back into the show list. An
     // episode playing OUTSIDE the queue (or any fetch failure) keeps the
-    // trackNav flow exactly as before. Music is untouched in practice:
-    // track ids are never queueable, so the pointer can never match one.
+    // trackNav flow exactly as before. Music's OUTCOME is unchanged (track
+    // ids are never queueable, so the pointer can never match one), but
+    // music's previously-synchronous advance now rides this queue round
+    // trip too - the timing blast radius is tech-debt #90 (locked-phone
+    // advance is on the device-probe list).
     if (currentData && currentData.autoAdvanceViaTrackNav) {
       var fallbackToTrackNav = function () {
         if (trackNavHandlers && typeof trackNavHandlers.onNext === 'function') trackNavHandlers.onNext();

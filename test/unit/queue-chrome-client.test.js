@@ -110,11 +110,11 @@ test('SOURCE-LOCK (gate W5): both ended flows advance through the ONE queue seam
   assert.ok(seam.includes('window.FileTube.navigate(advanceHref)'), 'and the derived href is what actually navigates');
   const watchSrc = fs.readFileSync(path.join(__dirname, '../../public/js/watch.js'), 'utf8');
   assert.ok(watchSrc.includes('window.FileTube.queueEntryHref(next)'), 'the up-next box derives via the shared helper too');
-  // Gate S10: the queue panel's row-tap seed gate (the 5th consumer).
+  // Gate S10 (tightened per QA S4: containment, not adjacency - the seed
+  // call is the gate's FIRST statement, so moving it below the closed gate
+  // cannot pass).
   const commonSrc = fs.readFileSync(path.join(__dirname, '../../public/js/common.js'), 'utf8');
-  const tapIdx = commonSrc.indexOf("if (m.kind !== 'podcast') {");
-  assert.ok(tapIdx >= 0, 'the panel row tap gates its watch seed on kind');
-  assert.ok(commonSrc.indexOf('stashWatchSeed({', tapIdx) > tapIdx, 'and the seed sits INSIDE that gate');
+  assert.ok(commonSrc.includes("if (m.kind !== 'podcast') {\n              stashWatchSeed({"), 'the panel row tap\'s watch seed sits INSIDE the kind gate');
 });
 
 test('SOURCE-LOCK (gate W1): the trackNav ended path consults the queue before falling back to the show list', () => {
