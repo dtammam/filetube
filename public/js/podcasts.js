@@ -463,6 +463,21 @@
         row.appendChild(likeBtn);
       }
 
+      // v1.71 T6: add-to-queue through the ONE shared verb (toast + Undo),
+      // kind 'podcast' so the entry resolves against the episodes map.
+      if (!ep.watchHref && ep.status === 'downloaded') {
+        var queueBtn = document.createElement('button');
+        queueBtn.type = 'button';
+        queueBtn.className = 'btn btn-sm';
+        queueBtn.textContent = 'Queue';
+        queueBtn.title = 'Add to queue';
+        queueBtn.addEventListener('click', function (e) {
+          e.stopPropagation();
+          if (typeof window.addToQueue === 'function') window.addToQueue(ep.id, 'end', 'podcast');
+        }, { signal: signal });
+        row.appendChild(queueBtn);
+      }
+
       // v1.71: save-to-device (RSS episodes only - a ytdlp episode is a
       // media item and keeps its watch-page download affordance). An <a
       // download> pointed at the confined stream route's ?download=1 arm.

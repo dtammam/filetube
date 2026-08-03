@@ -15,6 +15,7 @@ const {
   formatQueueBadge,
   buildQueueRowModel,
   buildQueueRowModels,
+  queueEntryHref,
 } = require('../../public/js/common.js');
 
 const entry = (uid, over = {}) => ({
@@ -91,6 +92,38 @@ test('formatQueuePosition: ordinals incl. the 11th/12th/13th trap (gate S1)', ()
   assert.equal(formatQueuePosition(111), '111th');
   assert.equal(formatQueuePosition(0), '');
   assert.equal(formatQueuePosition('3'), '');
+});
+
+// ---- v1.71 T6: kind-aware entries -------------------------------------------
+
+test('v1.71 queueEntryHref: podcast -> /podcasts?play=, media/absent-kind -> /watch.html?v=, encoded; null on garbage', () => {
+  assert.equal(queueEntryHref({ mediaId: 'ep"1', kind: 'podcast' }), '/podcasts?play=ep%221');
+  assert.equal(queueEntryHref({ mediaId: 'vid1', kind: 'media' }), '/watch.html?v=vid1');
+  assert.equal(queueEntryHref({ mediaId: 'vid1' }), '/watch.html?v=vid1', 'a legacy kind-less entry stays a media link');
+  assert.equal(queueEntryHref({ kind: 'podcast' }), null);
+  assert.equal(queueEntryHref(null), null);
+});
+
+test('v1.71 buildQueueRowModel: a podcast entry links the podcasts place and shows the SHOW cover, never /thumbnail', () => {
+  const m = buildQueueRowModel({
+    uid: 'ü1', mediaId: 'ëp-9', kind: 'podcast',
+    item: { title: 'Ëp Title', channelName: 'Thë Show', artUrl: '/podcastart/süb-1', hasThumbnail: false },
+  }, null);
+  assert.equal(m.kind, 'podcast');
+  assert.equal(m.href, '/podcasts?play=' + encodeURIComponent('ëp-9'));
+  assert.equal(m.thumbnailUrl, '/podcastart/süb-1', 'the server-named art, not a thumbnail route');
+  assert.equal(m.channelLabel, 'Thë Show');
+  // The USE bind's mutant: a podcast entry must NEVER fall through to the
+  // media thumb contract even when hasThumbnail lies true.
+  const lying = buildQueueRowModel({ uid: 'ü2', mediaId: 'ëp-9', kind: 'podcast', item: { title: 'T', hasThumbnail: true } }, null);
+  assert.equal(lying.thumbnailUrl, null, 'no artUrl -> no art; hasThumbnail is a media-only field');
+});
+
+test('v1.71 buildQueueRowModel: media entries are BYTE-COMPATIBLE with pre-v1.71 rows (plus the explicit kind)', () => {
+  const m = buildQueueRowModel(entry('a'), null);
+  assert.equal(m.kind, 'media');
+  assert.equal(m.href, '/watch.html?v=' + encodeURIComponent('mëdia-a'));
+  assert.equal(m.thumbnailUrl, '/thumbnail/mëdia-a');
 });
 
 test('buildQueueRowModels: a FULLY-dangling pointer dims nothing (gate S4 - not-started semantics)', () => {

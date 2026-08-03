@@ -3511,15 +3511,24 @@ if (typeof module !== 'undefined' && module.exports) {
                 body: JSON.stringify({ uid: queueNext.uid }),
                 keepalive: true,
               }).catch(function () { /* pointer re-syncs on the next queue read */ });
+              // v1.71: the destination is kind-derived via the ONE shared
+              // helper (a podcast entry advances into /podcasts?play=,
+              // which resumes it in the dock). Fallback keeps the media
+              // shape if the helper is somehow absent (stale cache).
+              var advanceHref = (window.FileTube && typeof window.FileTube.queueEntryHref === 'function')
+                ? window.FileTube.queueEntryHref(queueNext)
+                : '/watch.html?v=' + encodeURIComponent(queueNext.mediaId);
               if (window.FileTube && typeof window.FileTube.navigate === 'function') {
-                if (typeof window.FileTube.stashWatchSeed === 'function' && queueNext.item) {
+                // The watch seed is a media-item shape; a podcast entry's
+                // projection must never prime the watch page it will not visit.
+                if (typeof window.FileTube.stashWatchSeed === 'function' && queueNext.item && queueNext.kind !== 'podcast') {
                   window.FileTube.stashWatchSeed(queueNext.item);
                 }
                 recordLifecycleEvent('autoplay:queue-advance', { detail: 'to=' + queueNext.mediaId });
                 autoplayAdvancePending = true;
-                window.FileTube.navigate('/watch.html?v=' + encodeURIComponent(queueNext.mediaId));
+                window.FileTube.navigate(advanceHref);
               } else {
-                window.location.href = '/watch.html?v=' + encodeURIComponent(queueNext.mediaId);
+                window.location.href = advanceHref;
               }
               return null; // queue consumed the advance
             }

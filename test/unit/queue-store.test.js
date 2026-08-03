@@ -40,6 +40,27 @@ test('reduceAdd next: inserts after the now-playing entry; at the FRONT when not
   assert.equal(notStarted.state.entries[0].mediaId, 'mY', 'front of a not-started queue');
 });
 
+test('v1.71 reduceAdd: kind is minted on the entry - podcast carries, everything else (absent/garbage) lands media', () => {
+  let r = q.reduceAdd(seed(0), 'ep1', 'end', 'podcast');
+  assert.equal(r.state.entries[0].kind, 'podcast');
+  r = q.reduceAdd(r.state, 'vid1');
+  assert.equal(r.state.entries[1].kind, 'media', 'a kind-less add stays media');
+  r = q.reduceAdd(r.state, 'x', 'end', 'garbage');
+  assert.equal(r.state.entries[2].kind, 'media', 'an unknown kind never persists as itself');
+});
+
+test('v1.71: kind survives normalize, remove and reorder untouched (entries pass through, never rebuilt)', () => {
+  let r = q.reduceAdd(seed(0), 'ep1', 'end', 'podcast');
+  r = q.reduceAdd(r.state, 'vid1');
+  const [pod, med] = r.state.entries;
+  const n = q.normalize(r.state);
+  assert.equal(n.entries.find((e) => e.uid === pod.uid).kind, 'podcast');
+  const reordered = q.reduceReorder(r.state, [med.uid, pod.uid]);
+  assert.deepEqual(reordered.state.entries.map((e) => e.kind), ['media', 'podcast']);
+  const removed = q.reduceRemove(reordered.state, med.uid);
+  assert.deepEqual(removed.state.entries.map((e) => e.kind), ['podcast']);
+});
+
 test('reduceAdd: refuses past the cap, loudly', () => {
   const full = seed(q.QUEUE_CAP);
   const r = q.reduceAdd(full, 'overflow');

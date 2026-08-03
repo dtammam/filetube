@@ -152,3 +152,97 @@ test('per-user isolation + backup export shape (the NINTH carrier rides users[])
   assert.equal(exported.queue.entries[0].mediaId, 'vid-1');
   assert.ok(Object.prototype.hasOwnProperty.call(exported.queue, 'pointerUid'));
 });
+
+// ---- v1.71 T6: one queue for all --------------------------------------------
+
+const podStore = require('../../lib/podcasts/store');
+
+test('v1.71: a podcast episode queues BY KIND, resolves to the show projection, and silently drops when trashed', async () => {
+  const epId = podStore.episodeIdFor('süb-q', 'g-q1');
+  await updateDatabase((db) => {
+    const ns = podStore.ensurePodcasts(db);
+    ns.subscriptions.push({ id: 'süb-q', name: 'Qüeue Show', feedUrlDisplay: 'https://q.invalid/f', addedAt: 1, backfill: 'all' });
+    podStore.reduceUpsertEpisodes(ns, 'süb-q', [{ guid: 'g-q1', title: 'Qüeued Ep', pubDateMs: 1000, durationSec: 60 }], 'pending', 2000);
+    podStore.reduceEpisodeDownloaded(ns, epId, { fileName: 'f.mp3', filePath: '/tmp/qf.mp3', bytes: 3, nowMs: 3000 });
+    return true;
+  });
+
+  // Kind discipline at the door: a phantom episode 404s; the SAME id posted
+  // as media kind 404s too (disjoint id spaces, never inferred).
+  const phantom = await fetch(`${base}/api/queue/items`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mediaId: 'ffffffffffffffffffffffffffffffff', kind: 'podcast' }),
+  });
+  assert.equal(phantom.status, 404);
+  const wrongKind = await fetch(`${base}/api/queue/items`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mediaId: epId }),
+  });
+  assert.equal(wrongKind.status, 404, 'an episode id under media kind never resolves');
+  const mediaAsPodcast = await fetch(`${base}/api/queue/items`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mediaId: 'vid-1', kind: 'podcast' }),
+  });
+  assert.equal(mediaAsPodcast.status, 404, 'a media id under podcast kind never resolves');
+
+  // The mixed queue: media + podcast, both shaped.
+  await add('vid-1');
+  const addedPod = await fetch(`${base}/api/queue/items`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mediaId: epId, kind: 'podcast' }),
+  }).then(j);
+  assert.equal(addedPod.status, 200);
+  let q = await GET();
+  assert.deepEqual(q.entries.map((e) => e.kind), ['media', 'podcast']);
+  const podRow = q.entries[1];
+  assert.equal(podRow.item.title, 'Qüeued Ep');
+  assert.equal(podRow.item.channelName, 'Qüeue Show');
+  assert.equal(podRow.item.artUrl, '/podcastart/' + encodeURIComponent('süb-q'));
+  assert.ok(!('filePath' in podRow.item) && !('trashPath' in podRow.item), 'server paths never leak');
+
+  // Trash the episode: the row vanishes from the shaped view (silent drop,
+  // the belt) while the raw store keeps it (restore fidelity)...
+  await updateDatabase((db) => {
+    const ns = podStore.ensurePodcasts(db);
+    return podStore.reduceEpisodeTrashed(ns, epId, { trashPath: '/tmp/.filetube-trash/qf.mp3', nowMs: 4000 });
+  });
+  q = await GET();
+  assert.deepEqual(q.entries.map((e) => e.kind), ['media'], 'the trashed episode left the panel');
+  assert.equal(userStore.getQueue(auth.user.id).entries.length, 2, 'the raw entry survives for restore fidelity');
+
+  // ...and the episode carrier retires the raw row for real (the purge path).
+  userStore.removePodcastEpisodeState([epId]);
+  assert.deepEqual(userStore.getQueue(auth.user.id).entries.map((e) => e.kind), ['media'], 'delQueueByEpisode took the podcast row only');
+});
+
+test('v1.71: media queue semantics are untouched by the widening (pointer, reorder, remove run mixed)', async () => {
+  const epId = podStore.episodeIdFor('süb-q2', 'g-q2');
+  await updateDatabase((db) => {
+    const ns = podStore.ensurePodcasts(db);
+    ns.subscriptions.push({ id: 'süb-q2', name: 'S2', feedUrlDisplay: 'https://q2.invalid/f', addedAt: 1, backfill: 'all' });
+    podStore.reduceUpsertEpisodes(ns, 'süb-q2', [{ guid: 'g-q2', title: 'E2', pubDateMs: 1000, durationSec: 60 }], 'pending', 2000);
+    podStore.reduceEpisodeDownloaded(ns, epId, { fileName: 'f2.mp3', filePath: '/tmp/qf2.mp3', bytes: 3, nowMs: 3000 });
+    return true;
+  });
+  await add('vid-1');
+  await fetch(`${base}/api/queue/items`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mediaId: epId, kind: 'podcast' }),
+  });
+  await add('vid-2');
+  let q = await GET();
+  const uids = q.entries.map((e) => e.uid);
+  // Pointer onto the podcast row, reorder it to the front, remove it -
+  // pointer steps BACK per the standing rule, all over HTTP.
+  await fetch(`${base}/api/queue/pointer`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ uid: uids[1] }) });
+  const reordered = await fetch(`${base}/api/queue/reorder`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ orderedUids: [uids[1], uids[0], uids[2]] }),
+  }).then(j);
+  assert.equal(reordered.status, 200, 'mixed-kind reorder holds the bijection');
+  assert.deepEqual(reordered.body.queue.entries.map((e) => e.kind), ['podcast', 'media', 'media']);
+  const removed = await fetch(`${base}/api/queue/items/${uids[1]}`, { method: 'DELETE' }).then(j);
+  assert.equal(removed.status, 200);
+  assert.equal(removed.body.queue.pointerUid, null, 'removing the now-playing FRONT entry restarts (pointer-back to null)');
+  assert.deepEqual(removed.body.queue.entries.map((e) => e.kind), ['media', 'media']);
+});

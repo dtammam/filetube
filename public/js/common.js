@@ -2751,6 +2751,18 @@ function formatQueueBadge(count) {
 // the bell rows; `playing` drives the now-playing highlight; `played` dims
 // entries STRICTLY BEFORE the pointer - the pointer row itself is playing,
 // never played (ruling 6: played items stay, jump-back allowed).
+// v1.71: ONE place derives a queue entry's destination from its kind. The
+// three consumers (row model here, player.js's autoplay advance, watch.js's
+// up-next box) must never hand-build this per site - the hardcoded
+// /watch.html lesson. A podcast entry deep-links the podcasts place, which
+// resumes the episode in the dock.
+function queueEntryHref(entry) {
+  if (!entry || typeof entry.mediaId !== 'string' || entry.mediaId === '') return null;
+  return entry.kind === 'podcast'
+    ? `/podcasts?play=${encodeURIComponent(entry.mediaId)}`
+    : `/watch.html?v=${encodeURIComponent(entry.mediaId)}`;
+}
+
 function buildQueueRowModel(entry, pointerUid) {
   if (!entry || typeof entry.uid !== 'string' || entry.uid === '' || !entry.item) return null;
   const item = entry.item;
@@ -2759,11 +2771,16 @@ function buildQueueRowModel(entry, pointerUid) {
   return {
     uid: entry.uid,
     mediaId: entry.mediaId,
-    href: `/watch.html?v=${encodeURIComponent(entry.mediaId)}`,
+    kind: entry.kind === 'podcast' ? 'podcast' : 'media',
+    href: queueEntryHref(entry),
     title: typeof item.title === 'string' ? item.title : (typeof item.name === 'string' ? item.name : ''),
     channelLabel: channelName || folderName || 'Library',
     channelAvatarUrl: typeof item.channelAvatarUrl === 'string' ? item.channelAvatarUrl : '',
-    thumbnailUrl: item.hasThumbnail === true ? `/thumbnail/${entry.mediaId}` : null,
+    // A podcast entry's art is the show cover the server names (artUrl);
+    // media entries keep the thumbnail contract.
+    thumbnailUrl: entry.kind === 'podcast'
+      ? (typeof item.artUrl === 'string' ? item.artUrl : null)
+      : (item.hasThumbnail === true ? `/thumbnail/${entry.mediaId}` : null),
     playing: Boolean(pointerUid) && entry.uid === pointerUid,
     played: false, // position-relative; buildQueueRowModels owns it
   };
@@ -2808,11 +2825,11 @@ function formatQueuePosition(n) {
 // position: 'end' (default) | 'next'. Toasts the outcome and refreshes the
 // header chrome; resolves with the server's shaped queue (or null on error
 // - callers needing more than the toast can inspect it).
-function addToQueue(mediaId, position) {
+function addToQueue(mediaId, position, kind) {
   return fetch('/api/queue/items', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ mediaId, position: position === 'next' ? 'next' : 'end' }),
+    body: JSON.stringify({ mediaId, position: position === 'next' ? 'next' : 'end', kind: kind === 'podcast' ? 'podcast' : 'media' }),
   })
     .then((res) => (res.ok ? res.json() : res.json().catch(() => ({})).then((b) => Promise.reject(new Error(b.error || 'Could not add to queue')))))
     .then((body) => {
@@ -5913,6 +5930,7 @@ if (typeof window !== 'undefined') {
   window.FileTube = window.FileTube || {};
   window.FileTube.registerView = registerView;
   window.FileTube.navigate = navigate;
+  window.FileTube.queueEntryHref = queueEntryHref;
   window.FileTube.bootRouter = bootRouter;
   // v1.52 instant watch: click surfaces stash, watch's init consumes.
   window.FileTube.stashWatchSeed = stashWatchSeed;
@@ -9420,7 +9438,7 @@ document.addEventListener('DOMContentLoaded', () => {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     // v1.63 playback queue: the chrome's pure decisions.
-    shouldShowQueueButton, formatQueueBadge, buildQueueRowModel, buildQueueRowModels,
+    shouldShowQueueButton, formatQueueBadge, buildQueueRowModel, buildQueueRowModels, queueEntryHref,
     formatQueuePosition,
     // v1.63.1: the stars pref's pure decision.
     shouldShowStarRatings,
