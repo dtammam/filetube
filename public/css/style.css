@@ -523,7 +523,9 @@ summary,
      Chromium 121+ implements the standard properties too, and specifying
      EITHER of them makes Chromium DISCARD all ::-webkit-scrollbar-* styling
      for that subtree. `@supports not selector(::-webkit-scrollbar)` is true
-     only in Firefox, so each engine sees exactly one system. Locked by
+     only in engines without the webkit pseudo (today: Firefox; Safari 18.2+
+     also implements the standard pair but parses the pseudo, so it stays on
+     the webkit path), so each engine sees exactly one system. Locked by
      test/unit/era-scrollbar-css.test.js.
 
    data-theme lives on <html> (applyTheme -> documentElement), and the
@@ -637,18 +639,23 @@ summary,
 }
 
 /* Firefox (no ::-webkit-scrollbar): the standard two-property system.
-   scrollbar-color inherits, so <html> covers every inner scroller; the era
-   selectors ARE <html> (attribute beats type, so they win the cascade).
-   MUST stay inside this guard - see the section header. */
+   scrollbar-color INHERITS but scrollbar-width does NOT (v1.74.0 gate W3) -
+   an html-only rule would leave every inner scroller (queue, sheets, modals,
+   reader) at the default width, so each rule pairs the root with a `*`
+   descendant form. Era selectors beat the base on both: [data-theme] (0,1,0)
+   over html (0,0,1), [data-theme] * (0,1,1) over html * (0,0,2).
+   MUST stay inside this guard - see the section header. (The guard is true
+   in any engine WITHOUT the webkit pseudo - today that means Firefox.) */
 @supports not selector(::-webkit-scrollbar) {
-  html {
+  html,
+  html * {
     /* 2021 Modern base: thin thumb floating on the page background. */
     scrollbar-width: thin;
     scrollbar-color: var(--border-dark) var(--bg-color);
   }
-  [data-theme="2005"],
-  [data-theme="2009"],
-  [data-theme="2014"] {
+  [data-theme="2005"], [data-theme="2005"] *,
+  [data-theme="2009"], [data-theme="2009"] *,
+  [data-theme="2014"], [data-theme="2014"] * {
     /* Retro eras: full-width bar (auto), visible track. Firefox exposes no
        thumb borders/radius, so the era palette is the whole statement here. */
     scrollbar-width: auto;
