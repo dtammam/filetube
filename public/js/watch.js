@@ -1515,7 +1515,14 @@ if (typeof module !== 'undefined' && module.exports) {
         if (browseCtx) {
           const res = await fetch(buildContextListUrl(browseCtx, FULL_LIST_QUERY_LIMIT));
           const data = await res.json();
-          const allFiles = Array.isArray(data.items) ? data.items : [];
+          // v1.72 (QA gate W1): /api/liked is MIXED-KIND now - a liked
+          // track/episode/book in the context order would make Prev/Next
+          // navigate /watch.html?v=<non-media id> and 404 the view. The
+          // watch page's walk is MEDIA-ONLY by definition; kind is CARRIED
+          // on every /api/liked item exactly so consumers can dispatch
+          // (/api/videos items carry kind:'media' or predate the field).
+          const allFiles = (Array.isArray(data.items) ? data.items : [])
+            .filter((it) => it && (it.kind === undefined || it.kind === 'media'));
           // v1.52: prev/next hops seed from these items (navigateToWatch).
           for (const it of allFiles) { if (it && it.id) watchSeedLookup.set(it.id, it); }
           orderedIds = allFiles.map((it) => it && it.id);
@@ -1526,7 +1533,10 @@ if (typeof module !== 'undefined' && module.exports) {
           const separator = baseUrl.includes('?') ? '&' : '?';
           const res = await fetch(`${baseUrl}${separator}limit=${FULL_LIST_QUERY_LIMIT}`);
           const data = await res.json();
-          const allFiles = Array.isArray(data.items) ? data.items : [];
+          // v1.72 (QA gate W1): same media-only filter as the ctx path
+          // above - this legacy arm can hit the mixed /api/liked too.
+          const allFiles = (Array.isArray(data.items) ? data.items : [])
+            .filter((it) => it && (it.kind === undefined || it.kind === 'media'));
           // v1.52: prev/next hops seed from these items (navigateToWatch).
           for (const it of allFiles) { if (it && it.id) watchSeedLookup.set(it.id, it); }
           // v1.34: same precedence as the home grid (main.js) -- explicit

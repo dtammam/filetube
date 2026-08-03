@@ -842,10 +842,13 @@
     if (playParam) consumeDeepLink(playParam);
 
     // v1.72 (intake ruling 5): /podcasts?show=<subId> - a pinned show in
-    // the Playlists surface deep-links its drill. A bad/gone id degrades
-    // to the plain grid (the ?play= posture). The show list may not have
-    // loaded yet, so the drill opens from the id alone - openShow fetches
-    // the authoritative record with the episodes.
+    // the Playlists surface deep-links its drill. A bad/gone id lands in
+    // openShow's catch, which paints "Could not load episodes." over the
+    // grid (deliberately LOUDER than ?play='s silent degrade: a dead pin
+    // deserves a visible signal - adversarial gate v1.72 S1 measured the
+    // difference; this comment records it honestly). The show list may not
+    // have loaded yet, so the drill opens from the id alone - openShow
+    // fetches the authoritative record with the episodes.
     var showParam = null;
     try { showParam = new URLSearchParams(window.location.search).get('show'); } catch (_) { showParam = null; }
     if (showParam && !playParam) {

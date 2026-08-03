@@ -249,3 +249,28 @@ test('filters over the merged set: format=video hides audio kinds; watch=watched
   const fresh = await (await get('/api/liked?watch=new')).json();
   assert.deepStrictEqual(fresh.items.map((i) => i.kind), ['media'], 'the un-started video stays new');
 });
+
+test('adversarial W2 bind: prototype-chain liked rows (a hostile restore can mint them) silent-drop in EVERY arm - own-property, never a plain lookup', async () => {
+  saveDatabase({
+    folders: [], folderSettings: {}, progress: {},
+    metadata: {}, liked: [], settings: baseSettings(),
+  });
+  await updateDatabase((db) => {
+    const ns = musicStore.ensureMusic(db);
+    ns.tracks = {};
+    return true;
+  });
+  // The carriers accept these (validateBackupBundle string-checks only) -
+  // proven by the adversarial seat's matrix. The VIEW must drop them: a
+  // plain `ns.x[id]` lookup would find Object.prototype for '__proto__'
+  // (truthy!) and serve a garbage prototype-derived item.
+  for (const key of ['__proto__', 'constructor']) {
+    userStore.addMusicLiked(uid, key, new Date().toISOString());
+    userStore.addBookLiked(uid, key, new Date().toISOString());
+    userStore.addPodcastLiked(uid, key, new Date().toISOString());
+  }
+  const body = await (await get('/api/liked?limit=50')).json();
+  assert.strictEqual(body.total, 0, 'no arm serves a prototype-derived ghost');
+  assert.deepStrictEqual(body.items, []);
+  assert.strictEqual(userStore.getMusicLiked(uid).length, 2, 'the hostile rows themselves persist inert (drop is the view\'s job)');
+});

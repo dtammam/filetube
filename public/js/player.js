@@ -3561,6 +3561,13 @@ if (typeof module !== 'undefined' && module.exports) {
               .then(function (res) { return res.ok ? res.json() : null; })
               .catch(function () { return null; })
               .then(function (settings) {
+                // QA gate W3 (the C6 lesson, again): this extra hop opened
+                // a window where the user starts DIFFERENT media before the
+                // settings resolve - acting then would advance (moving the
+                // server pointer) or trackNav-skip against the NEW context.
+                // Re-check staleness after EVERY async hop, like the video
+                // path below does.
+                if (currentId !== endedId) return;
                 if (settings && settings.autoplayNext) { advanceIntoQueueEntry(queueNext); return; }
                 fallbackToTrackNav();
               });
@@ -3626,7 +3633,12 @@ if (typeof module !== 'undefined' && module.exports) {
           .then(function (res) { return res.json(); })
           .then(function (data) {
             if (currentId !== endedId) return; // controller has moved on -- stale, no-op
-            var videos = Array.isArray(data && data.items) ? data.items : [];
+            // v1.72 (QA gate W1): the ctx list can be the MIXED /api/liked
+            // now - autoplay must never advance /watch.html into a
+            // track/episode/book id. Media-only, same filter as watch.js's
+            // Prev/Next walk (kind undefined = a pre-kind media payload).
+            var videos = (Array.isArray(data && data.items) ? data.items : [])
+              .filter(function (it) { return it && (it.kind === undefined || it.kind === 'media'); });
             var orderedIds;
             if (advanceBrowseCtx) {
               orderedIds = videos.map(function (it) { return it && it.id; }); // server order verbatim

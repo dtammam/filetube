@@ -116,7 +116,8 @@ test('SOURCE-LOCK (gate W5): both ended flows advance through the ONE queue seam
   // call is the gate's FIRST statement, so moving it below the closed gate
   // cannot pass).
   const commonSrc = fs.readFileSync(path.join(__dirname, '../../public/js/common.js'), 'utf8');
-  assert.ok(commonSrc.includes("if (m.kind !== 'podcast') {\n              stashWatchSeed({"), 'the panel row tap\'s watch seed sits INSIDE the kind gate');
+  // v1.72: the gate is media-POSITIVE now (tracks joined the kinds).
+  assert.ok(commonSrc.includes("if ((m.kind || 'media') === 'media') {\n              stashWatchSeed({"), 'the panel row tap\'s watch seed sits INSIDE the media-positive kind gate');
 });
 
 test('SOURCE-LOCK (gate W1): the trackNav ended path consults the queue before falling back to the show list', () => {
@@ -191,4 +192,32 @@ test('buildQueueRowModels: a FULLY-dangling pointer dims nothing (gate S4 - not-
   const entry = (uid) => ({ uid, mediaId: 'm-' + uid, item: { title: uid } });
   const models = buildQueueRowModels({ entries: [entry('g1'), entry('g2')], pointerUid: 'vanished' });
   assert.ok(models.every((m) => !m.played && !m.playing), 'dangling -> nothing played, nothing playing');
+});
+
+test('v1.72 QA W1 bind: every context-list consumer filters to MEDIA before building orderedIds (the mixed /api/liked never 404s a watch hop)', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const filter = "(it.kind === undefined || it.kind === 'media')";
+  const watchSrc = fs.readFileSync(path.join(__dirname, '../../public/js/watch.js'), 'utf8');
+  const watchHits = watchSrc.split(filter).length - 1;
+  assert.strictEqual(watchHits, 2, 'watch.js: BOTH the ctx path and the legacy liked path filter (two consumers, two filters)');
+  const playerSrc = fs.readFileSync(path.join(__dirname, '../../public/js/player.js'), 'utf8');
+  assert.ok(playerSrc.includes("return it && (it.kind === undefined || it.kind === 'media');"), 'player.js: the autoplay context advance filters too');
+  // Ordering, not mere presence: the filter runs BEFORE orderedIds derive.
+  const ctxIdx = watchSrc.indexOf(filter);
+  assert.ok(ctxIdx >= 0 && ctxIdx < watchSrc.indexOf('orderedIds = allFiles.map'), 'filter precedes the id-order build');
+});
+
+test('v1.72 QA W3 bind: the cross-kind consult re-checks staleness AFTER the settings hop (the C6 lesson)', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const playerSrc = fs.readFileSync(path.join(__dirname, '../../public/js/player.js'), 'utf8');
+  const branchStart = playerSrc.indexOf('currentData.autoAdvanceViaTrackNav) {');
+  const branch = playerSrc.slice(branchStart, playerSrc.indexOf('OFF (default)', branchStart));
+  const consultIdx = branch.indexOf("fetch('/api/settings')");
+  const tail = branch.slice(consultIdx);
+  const recheckIdx = tail.indexOf('if (currentId !== endedId) return;');
+  const actIdx = tail.indexOf('advanceIntoQueueEntry(queueNext)');
+  assert.ok(recheckIdx >= 0, 'the staleness re-check exists inside the consult');
+  assert.ok(actIdx > recheckIdx, 'and it runs BEFORE any action (pointer moves are server state)');
 });

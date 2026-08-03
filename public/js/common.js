@@ -3034,7 +3034,9 @@ function injectQueueChrome() {
             // the normal watch nav with a paint seed (the bell-row posture).
             // v1.71 (gate S2): media rows only - a podcast row navigates to
             // /podcasts and must never prime a watch page it will not visit.
-            if (m.kind !== 'podcast') {
+            // v1.72: 'track' joined the kinds, so the guard names media
+            // POSITIVELY (the advance seam's exact fix, same class).
+            if ((m.kind || 'media') === 'media') {
               stashWatchSeed({
                 id: m.mediaId, title: m.title,
                 channelName: m.channelLabel === 'Library' ? '' : m.channelLabel,
@@ -7465,7 +7467,8 @@ function applyCustomLogoIfSet(force) {
 // One shared helper so every surface that lists playlist/folder links (home
 // sidebar, watch sidebar, setup sidebar, stats/subscriptions shells, the
 // mobile Playlists sheet) shows the SAME built-in Liked entry under the SAME
-// rule: visible iff at least one liked video exists, hidden otherwise.
+// rule: visible iff at least one liked ITEM exists - v1.72: the total spans
+// every kind (videos, episodes, tracks, books) - hidden otherwise.
 // Count fetched once per page load (cached promise); `force: true` refreshes
 // it (the watch page calls that after a like/unlike so the entry appears the
 // moment the first like lands).

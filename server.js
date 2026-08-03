@@ -8355,6 +8355,7 @@ function shapedQueue(db, userId) {
   const raw = userStore.getQueue(userId);
   const live = queueStore.normalize(raw);
   const podcastNs = podcastStore.readPodcasts(db);
+  const musicNs = musicStore.readMusic(db);
   const entries = [];
   for (const e of live.entries) {
     if (e.kind === 'podcast') {
@@ -8389,8 +8390,9 @@ function shapedQueue(db, userId) {
       // v1.72: track entries resolve against ns.tracks, never db.metadata.
       // The silent-drop is preserved for this id space too - a pruned/
       // phantom track disappears from the panel, belt to the
-      // delQueueByTrack carrier's suspenders.
-      const track = ownTrack(musicStore.readMusic(db).tracks, e.mediaId);
+      // delQueueByTrack carrier's suspenders. (adversarial S3: the ns is
+      // hoisted like the podcast one, not re-read per entry.)
+      const track = ownTrack(musicNs.tracks, e.mediaId);
       if (track) {
         entries.push({
           uid: e.uid,
@@ -9667,12 +9669,14 @@ function shapedLikedTrackItems(db, userId) {
   const likedIds = userStore.getMusicLiked(userId);
   if (!likedIds.length) return [];
   const ns = musicStore.readMusic(db);
-  const progressMap = userStore.getMusicProgress(userId);
   const items = [];
   for (const id of likedIds) {
     const track = ownTrack(ns.tracks, id);
     if (!track) continue;
-    const prog = Object.prototype.hasOwnProperty.call(progressMap, id) ? progressMap[id] : null;
+    // QA gate S3: read-your-writes like the media arm - the coalescer
+    // overlay beats the committed row (liked sets are small; per-id reads
+    // are fine here).
+    const prog = effectiveMusicProgress(userId, id);
     const pct = prog && Number(prog.duration) > 0 ? (Number(prog.position) / Number(prog.duration)) * 100 : 0;
     items.push({
       kind: 'track',
@@ -9707,14 +9711,15 @@ function shapedLikedBookItems(db, userId) {
   const likedRows = userStore.getBookLiked(userId);
   if (!likedRows.length) return [];
   const ns = booksStore.readBooks(db);
-  const progressMap = userStore.getBookProgress(userId);
   const finishedMap = userStore.getBookFinished(userId);
   const items = [];
   for (const row of likedRows) {
     const id = row.bookId;
     const item = Object.prototype.hasOwnProperty.call(ns.items, id) ? ns.items[id] : null;
     if (!item) continue;
-    const prog = Object.prototype.hasOwnProperty.call(progressMap, id) ? progressMap[id] : null;
+    // QA gate S3: read-your-writes like the media arm (coalescer overlay
+    // first) - the track arm's exact posture.
+    const prog = effectiveBookProgress(userId, id);
     const pct = prog && typeof prog.percent === 'number' ? Math.min(100, Math.max(0, prog.percent)) : 0;
     items.push({
       kind: 'book',

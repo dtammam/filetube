@@ -211,3 +211,18 @@ test('v1.72: a MEDIA item (no kind) renders the corner markup byte-identically t
   assert.match(html, /href="\/video\/vid1\?download=1"/);
   assert.match(html, /class="card-delete-btn card-corner-tr"/);
 });
+
+test('v1.72 (adversarial W1): cardKindPresentation - the BOOK arm is bound (reader deep link, cover art, file download, never queue/delete/reheat)', () => {
+  const kp = cardKindPresentation({ id: 'bk9', kind: 'book', author: 'Frank Herbert' });
+  assert.strictEqual(kp.href, '/read.html?b=bk9');
+  assert.strictEqual(kp.thumbSrc, '/bookcover/bk9');
+  assert.strictEqual(kp.uploaderLabel, 'Frank Herbert');
+  assert.strictEqual(kp.uploaderHref, '/books');
+  assert.strictEqual(kp.downloadHref, '/book/bk9/file?download=1');
+  assert.strictEqual(kp.canQueue, false, 'books do not queue (Dean ruling 7)');
+  const bk = { id: 'bk9', kind: 'book', author: 'A', title: 'T', liked: true };
+  const html = buildCardCornerButtonsHtml(bk, { cornerTL: 'download', cornerTR: 'delete', cornerBL: 'queue' }, { reheatEnabled: true });
+  assert.match(html, /href="\/book\/bk9\/file\?download=1"/, 'the download anchor rides the book route');
+  assert.ok(!html.includes('card-delete-btn'), 'the media delete verb never renders on a book card');
+  assert.ok(!html.includes('card-queue-btn'), 'no queue button for a non-queueable kind');
+});
