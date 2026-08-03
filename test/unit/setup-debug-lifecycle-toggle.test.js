@@ -93,3 +93,40 @@ test('server.js: DEFAULT_SETTINGS does not include a lifecycle-debug key', () =>
 test('server.js never references the localStorage key string \'ft-debug-lifecycle\' anywhere (confirms this stays purely client-side)', () => {
   assert.ok(!SERVER_JS.includes('ft-debug-lifecycle'), 'the flag must never be persisted server-side');
 });
+
+// ---- v1.73.1: the default-view picker names the synthetic folder Downloads --
+
+test('v1.73.1 SOURCE-LOCK: the picker labels a synthetic folder "Downloads" while its VALUE stays the path (saved selections keep working)', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const src = fs.readFileSync(path.join(__dirname, '../../public/js/setup.js'), 'utf8');
+  assert.ok(src.includes("? ((folderSettings[f] && folderSettings[f].name) || 'Downloads')"), 'synthetic rows read Downloads in the picker UNLESS a custom rename exists (slim-gate S1)');
+  assert.ok(src.includes('`<option value="${escapeHtml(f)}">${escapeHtml(label)}</option>`'), 'the option VALUE is still the folder path - the defaultView contract is unchanged');
+  assert.ok(src.includes('visibleSidebarFolders(folders, settings, syntheticFolders)'), "setup's sidebar render threads the synthetic list");
+});
+
+
+// ---- v1.73.1 slim-gate W2: EVERY threaded call site is bound ----------------
+
+test('v1.73.1 SOURCE-LOCK (slim-gate W2/C1): all six synthetic-threading sites are bound - a dropped arg anywhere fails here', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const read = (f) => fs.readFileSync(path.join(__dirname, '../../public/js/', f), 'utf8');
+  const mainSrc = read('main.js');
+  assert.ok(mainSrc.includes('visibleSidebarFolders(folders, settings, syntheticFolderPaths)'), 'main.js renderer threads (mutant M3)');
+  assert.ok(mainSrc.includes('rebuildFullFolderOrder(allFolders, settings, newVisibleOrder, syntheticFolderPaths)'), 'main.js DnD rebuild threads (mutant M4)');
+  const setupSrc = read('setup.js');
+  assert.ok(setupSrc.includes('visibleSidebarFolders(folders, settings, syntheticFolders)'), 'setup.js renderer threads (mutant M5)');
+  assert.ok(setupSrc.includes('rebuildFullFolderOrder(folders, settings, newVisibleOrder, syntheticFolders)'), 'setup.js DnD rebuild threads (mutant M6)');
+  const watchSrc = read('watch.js');
+  assert.ok(watchSrc.includes('visibleSidebarFolders(folders, settings, watchSyntheticFolders)'), 'watch.js renderer threads (slim-gate C1 - the v1.41.4 site)');
+  const commonSrc = read('common.js');
+  assert.ok(commonSrc.includes('visibleSidebarFolders(folders, settings, syntheticFolders); // v1.73.1: sheet/sidebar parity'), 'the Playlists sheet threads (slim-gate W1)');
+  assert.ok(commonSrc.includes('renderPlaylistsSheet(snapshot.folders, snapshot.folderSettings, snapshot.syntheticFolders)'), 'and its caller passes the snapshot half');
+  // Slim-gate round-2 residual, closed as the one-liner it was: the
+  // snapshot BUILDER is the ninth link - without this, deleting its
+  // syntheticFolders field silently restored the mobile dupe (full suite
+  // green, the seat measured it).
+  assert.ok(commonSrc.includes('syntheticFolders: Array.isArray(config.syntheticFolders) ? config.syntheticFolders : []'), 'the sheet snapshot BUILDER carries the field (the ninth link)');
+  assert.ok(commonSrc.includes('[data-nav-sidebar="downloads"]'), 'the sheet MIRRORS the Downloads entry (removal without the mirror = no mobile access)');
+});

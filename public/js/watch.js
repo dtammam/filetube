@@ -814,6 +814,10 @@ if (typeof module !== 'undefined' && module.exports) {
     // (`false`) on every init(), like `currentSubState`/`moveBtn` above.
     let viewPinged = false;
     let folderSettings = {};   // { "<path>": { name, hidden } } — for channel display name
+    // v1.73.1 slim-gate C1: the module-contributed roots - the shared
+    // sidebar filter needs them HERE too (the v1.41.4 class re-bit at its
+    // own documented site: threaded on home/setup, skipped on watch).
+    let watchSyntheticFolders = [];
     // C1 follow-up (v1.24 UX Round, Wave 3): the FULL folders array from the
     // SAME `GET /api/config` fetch initWatch() already makes for the sidebar
     // (step 1 below) -- no new network call. Feeds `showMoveModal`'s
@@ -1039,6 +1043,7 @@ if (typeof module !== 'undefined' && module.exports) {
         ]);
         const configData = await configRes.json();
         folderSettings = configData.folderSettings || {};
+        watchSyntheticFolders = Array.isArray(configData.syntheticFolders) ? configData.syntheticFolders : [];
         currentFolders = configData.folders || [];
         renderSidebarFolders(configData.folders || [], folderSettings);
 
@@ -3241,7 +3246,7 @@ if (typeof module !== 'undefined' && module.exports) {
       // do via visibleSidebarFolders(). This list previously mapped the RAW
       // `folders` array, so opening a video re-showed every hidden folder in the
       // sidebar -- the visibility setting held on Home but was ignored on watch.
-      const visibleFolders = visibleSidebarFolders(folders, settings);
+      const visibleFolders = visibleSidebarFolders(folders, settings, watchSyntheticFolders); // v1.73.1: synthetic threads here too (slim-gate C1)
       if (visibleFolders.length === 0) {
         sidebarFoldersList.innerHTML = '<div style="padding: 6px 24px; font-style: italic; color: var(--text-secondary);">None</div>';
         // v1.33.1 (Dean): the count-gated Liked entry, via the SAME shared

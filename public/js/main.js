@@ -604,6 +604,10 @@ if (typeof module !== 'undefined' && module.exports) {
     // sidebar's drag-and-drop reorder can rebuild the full order after
     // reordering just the VISIBLE subset (see renderSidebarFolders below).
     let allFolders = [];
+    // v1.73.1: the module-contributed roots (GET /api/config syntheticFolders)
+    // - the sidebar folder list drops these (the hard Downloads entry owns
+    // that surface); the reorder math treats them like hiddenFromSidebar.
+    let syntheticFolderPaths = [];
     // Tracks the source index of an in-progress sidebar drag; per-init (like
     // every other piece of this view's state) so it always starts clean.
     let sidebarDragSrcIndex = null;
@@ -732,6 +736,7 @@ if (typeof module !== 'undefined' && module.exports) {
         const configData = await configRes.json();
         const folders = configData.folders || [];
         folderSettings = configData.folderSettings || {};
+        syntheticFolderPaths = Array.isArray(configData.syntheticFolders) ? configData.syntheticFolders : [];
 
         if (folders.length === 0) {
           welcomeMessage.style.display = 'block';
@@ -1232,7 +1237,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // fallback for reordering (this sidebar has no such fallback of its own).
     function renderSidebarFolders(folders, settings = {}) {
       allFolders = Array.isArray(folders) ? folders : [];
-      const visibleFolders = visibleSidebarFolders(folders, settings);
+      const visibleFolders = visibleSidebarFolders(folders, settings, syntheticFolderPaths);
       // v1.32 (Dean): the built-in Liked playlist entry -- fixed, first,
       // never draggable/reorderable (it isn't a db.folders row), active when
       // the ?liked=1 view is open. v1.33.1: no longer inlined -- applied via
@@ -1291,7 +1296,7 @@ if (typeof module !== 'undefined' && module.exports) {
           if (fromIndex === null || Number.isNaN(targetIndex)) return;
           const toIndex = computeDropIndex(fromIndex, targetIndex, before);
           const newVisibleOrder = moveArrayItem(visibleFolders, fromIndex, toIndex);
-          const rebuiltFull = rebuildFullFolderOrder(allFolders, settings, newVisibleOrder);
+          const rebuiltFull = rebuildFullFolderOrder(allFolders, settings, newVisibleOrder, syntheticFolderPaths);
           await persistSidebarFolderOrder(rebuiltFull, settings);
         }, { signal });
         el.addEventListener('dragend', () => {
@@ -1320,6 +1325,7 @@ if (typeof module !== 'undefined' && module.exports) {
         const getRes = await fetch('/api/config');
         const getData = await getRes.json();
         folderSettings = getData.folderSettings || {};
+        syntheticFolderPaths = Array.isArray(getData.syntheticFolders) ? getData.syntheticFolders : [];
         renderSidebarFolders(getData.folders || [], folderSettings);
       } catch (err) {
         console.error('Failed to persist sidebar folder reorder:', err);

@@ -246,7 +246,7 @@ let sidebarDragSrcIndex = null;
 function renderSidebarFolders(folders, settings = {}) {
   const sidebarContainer = document.getElementById('sidebar-folders-list');
   if (!sidebarContainer) return;
-  const visible = visibleSidebarFolders(folders, settings);
+  const visible = visibleSidebarFolders(folders, settings, syntheticFolders); // v1.73.1: the hard Downloads entry owns the sidebar surface
   if (visible.length === 0) {
     sidebarContainer.innerHTML = '<div style="padding: 6px 24px; font-style: italic; color: var(--text-secondary);">None</div>';
     // v1.33.1 (Dean): count-gated Liked entry, same shared helper as every
@@ -292,7 +292,7 @@ function renderSidebarFolders(folders, settings = {}) {
       if (fromIndex === null || Number.isNaN(targetIndex)) return;
       const toIndex = computeDropIndex(fromIndex, targetIndex, before);
       const newVisibleOrder = moveArrayItem(visible, fromIndex, toIndex);
-      const rebuiltFull = rebuildFullFolderOrder(folders, settings, newVisibleOrder);
+      const rebuiltFull = rebuildFullFolderOrder(folders, settings, newVisibleOrder, syntheticFolders);
       try {
         const res = await fetch('/api/config', {
           method: 'POST',
@@ -325,7 +325,18 @@ function populateDefaultViewSelect() {
   const options = ['<option value="">Most recent</option>'].concat(
     configuredFolders.map(f => {
       const base = f.split(/[\\/]/).pop() || f;
-      const label = (folderSettings[f] && folderSettings[f].name) || base;
+      // v1.73.1 (Dean's device find): the synthetic ytdlp folder is the
+      // "Downloads" library everywhere else now - the picker names it the
+      // same instead of leaking the raw directory basename. The VALUE
+      // stays the path (the saved defaultView contract is unchanged, so
+      // an existing selection keeps working).
+      // Slim-gate S1: a CUSTOM rename (Setup still advertises it, the
+      // server persists it, every other surface displays it) wins; only
+      // the un-renamed synthetic folder defaults to "Downloads" instead
+      // of leaking the raw directory basename.
+      const label = isSyntheticFolder(f, syntheticFolders)
+        ? ((folderSettings[f] && folderSettings[f].name) || 'Downloads')
+        : ((folderSettings[f] && folderSettings[f].name) || base);
       return `<option value="${escapeHtml(f)}">${escapeHtml(label)}</option>`;
     })
   );

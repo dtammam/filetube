@@ -43,7 +43,7 @@ test('watch.js renderSidebarFolders: derives visibleSidebarFolders(folders, sett
     // block, so a tight bound would FALSELY FAIL the day someone expands that
     // comment (slim-gate LOW-1). Non-greedy, so it still anchors to the FIRST
     // derivation inside this function.
-    /function renderSidebarFolders\(folders, settings = \{\}\) \{[\s\S]{0,2000}?const visibleFolders = visibleSidebarFolders\(folders, settings\);/,
+    /function renderSidebarFolders\(folders, settings = \{\}\) \{[\s\S]{0,2000}?const visibleFolders = visibleSidebarFolders\(folders, settings, watchSyntheticFolders\)/,
     'expected renderSidebarFolders to compute a visibleSidebarFolders() list'
   );
 });

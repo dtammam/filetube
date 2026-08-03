@@ -1629,10 +1629,18 @@ function buildContextListUrl(ctx, fullLimit) {
 // affects either list. A filtered-out folder is NOT removed from `folders`
 // itself -- it remains fully reachable via a direct /?root=<path> link; this
 // only controls whether a LINK to it is rendered. Exported for node:test.
-function visibleSidebarFolders(folders, settings) {
+// v1.73.1 (Dean's device find): the synthetic Downloads folder row retired
+// from the sidebar FOLDER list - the v1.73 hard "Downloads" Library entry
+// owns that surface now, and both rendering was a visible dupe. The folder
+// itself stays fully alive (Setup's management box, the default-view
+// picker, /?root= browsing); only the sidebar LINK moves house. Callers
+// that cannot know the synthetic list pass nothing and keep the old
+// behavior (fail toward showing).
+function visibleSidebarFolders(folders, settings, syntheticFolders) {
   const list = Array.isArray(folders) ? folders : [];
   const s = settings || {};
-  return list.filter((f) => !(s[f] && s[f].hiddenFromSidebar));
+  const synth = new Set(Array.isArray(syntheticFolders) ? syntheticFolders : []);
+  return list.filter((f) => !(s[f] && s[f].hiddenFromSidebar) && !synth.has(f));
 }
 
 // ---- Folder drag-and-drop reordering (v1.15.0 item 1) ----------------------
@@ -1692,9 +1700,12 @@ function computeDropIndex(fromIndex, targetIndex, insertBefore) {
 // so the synthetic Downloads folder's position -> `folderSettings.order`
 // exactly as the Setup page's up/down buttons already produce. Exported for
 // node:test.
-function rebuildFullFolderOrder(fullFolders, settings, newVisibleOrder) {
+function rebuildFullFolderOrder(fullFolders, settings, newVisibleOrder, syntheticFolders) {
   const full = Array.isArray(fullFolders) ? fullFolders : [];
-  const visibleSet = new Set(visibleSidebarFolders(full, settings));
+  // v1.73.1: the synthetic exclusion rides here too - a folder absent from
+  // the sidebar (hidden OR synthetic) keeps its absolute position, exactly
+  // the hiddenFromSidebar contract.
+  const visibleSet = new Set(visibleSidebarFolders(full, settings, syntheticFolders));
   const queue = Array.isArray(newVisibleOrder) ? newVisibleOrder.slice() : [];
   let i = 0;
   return full.map((f) => (visibleSet.has(f) ? queue[i++] : f));
@@ -6033,6 +6044,16 @@ if (typeof window !== 'undefined') {
 function libraryEntriesHtml() {
   let html = '';
   if (typeof document !== 'undefined') {
+    // v1.73.1 (slim-gate W1): Downloads mirrors its sidebar marker FIRST,
+    // like every other Library entry - and the href is read OFF the
+    // injected entry (the runtime-derived /?root= link), never re-derived.
+    // Without this mirror, filtering the sheet's folder rows would have
+    // removed mobile access to Downloads entirely (the bottom item is
+    // opt-in) - both halves land together.
+    const downloadsEntry = document.querySelector('[data-nav-sidebar="downloads"]');
+    if (downloadsEntry) {
+      html += '<a href="' + escapeAttr(downloadsEntry.getAttribute('href') || '/') + '" class="sidebar-item"><i class="icon-downloads"></i> Downloads</a>';
+    }
     if (document.querySelector('[data-nav-sidebar="music"]')) {
       html += '<a href="/music" class="sidebar-item"><i class="icon-play"></i> Music</a>';
     }
@@ -6053,11 +6074,11 @@ function libraryEntriesHtml() {
   return html;
 }
 
-function renderPlaylistsSheet(folders, folderSettings) {
+function renderPlaylistsSheet(folders, folderSettings, syntheticFolders) {
   const list = document.getElementById('playlists-sheet-list');
   if (!list) return;
   const settings = folderSettings || {};
-  const visible = visibleSidebarFolders(folders, settings);
+  const visible = visibleSidebarFolders(folders, settings, syntheticFolders); // v1.73.1: sheet/sidebar parity (slim-gate W1)
   const libEntries = libraryEntriesHtml();
   // v1.32 (Dean): the built-in Liked playlist entry -- fixed, first, static
   // markup. v1.33.1: no longer inlined here -- applied through the SAME
@@ -6797,7 +6818,7 @@ let playlistsSheetGeneration = 0;
  * point of item 9 -- callers must never render just one half.
  */
 function renderPlaylistsSheetContent(snapshot) {
-  renderPlaylistsSheet(snapshot.folders, snapshot.folderSettings);
+  renderPlaylistsSheet(snapshot.folders, snapshot.folderSettings, snapshot.syntheticFolders);
   renderPinnedPlaylists(snapshot.pins, snapshot.moduleEnabled);
 }
 
@@ -6838,6 +6859,7 @@ function openPlaylistsSheet() {
     playlistsSheetCache = {
       folders: config.folders || [],
       folderSettings: config.folderSettings || {},
+      syntheticFolders: Array.isArray(config.syntheticFolders) ? config.syntheticFolders : [],
       pins,
       moduleEnabled,
     };
