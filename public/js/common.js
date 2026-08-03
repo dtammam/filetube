@@ -7776,7 +7776,7 @@ function nextArmState(current, action) {
 
 // === v1.21.0 FR-8 (T7): app-wide active-download status chip ===============
 // See docs/exec-plans/active/2026-07-08-v1.21-polish-release.md ("FR-8 --
-// download retry + status chip") and docs/ui-research-2026-07.md §5.
+// download retry + status chip") and docs/references/ui-research-2026-07.md §5.
 //
 // A fixed, bottom-LEFT corner chip -- gated behind the SAME
 // `GET /api/subscriptions/health` capability probe every other optional-
