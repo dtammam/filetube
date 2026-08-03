@@ -72,7 +72,13 @@ const fmtRule = (r) => `${r.selector} { ${r.body} }`;
 // fixtures through these same functions - gate round 2 measured that a
 // hand-inlined copy let the real lock be neutered while the test that
 // certifies it stayed green.
-const orderOffenders = (rules) => rules.filter((r) => /bottom-nav/.test(r.selector) && ORDER_DECL.test(r.body)).map(fmtRule);
+// The selector test covers `data-nav=` as well as the `bottom-nav` token: a
+// rule spelled `[data-nav="home"] { order: 1 }` carries neither `#bottom-nav`
+// nor `.bottom-nav-item` and fully resurrects the ladder (gate round 2, S1).
+// `data-nav=` is exclusive to bottom-bar items in this tree, and the `=`
+// keeps `data-nav-sidebar=` out.
+const BAR_SELECTOR = /bottom-nav|data-nav\s*=/;
+const orderOffenders = (rules) => rules.filter((r) => BAR_SELECTOR.test(r.selector) && ORDER_DECL.test(r.body)).map(fmtRule);
 const flowOffenders = (rules) => rules.filter((r) => CONTAINER_SELECTOR.test(r.selector) && FLOW_DECL.test(r.body)).map(fmtRule);
 
 test('v1.75: NO css rule assigns flex `order` to a bottom-nav item - the resolver is the sole authority', () => {
@@ -102,7 +108,9 @@ test('v1.75: the lock catches every shape the ladder could come back in (verifie
   assert.ok(caught('.bottom-nav-item[data-nav="home"] {\n  order: 9;\n}'), 'alternate selector shape (survived round 1)');
   assert.ok(caught('#bottom-nav { flex-direction: row-reverse; }'), 'container reversal (survived round 1)');
   assert.ok(!caught('#bottom-nav .bottom-nav-item { border: 1px solid red; }'), 'border: is NOT order: (round 1 false-positived)');
-  assert.ok(!caught('.video-card [data-nav="home"] { order: 1; }'), 'a rule on some other surface is not our business');
+  assert.ok(caught('[data-nav="home"] {\n  order: 1;\n}'), 'a bare data-nav selector (survived round 2)');
+  assert.ok(!caught('.video-card .thumb { order: 1; }'), 'a rule on some other surface is not our business');
+  assert.ok(!caught('[data-nav-sidebar="history"] { order: 1; }'), 'the SIDEBAR marker is a different surface');
   assert.ok(!caught('.bottom-nav-item { flex-direction: column; }'), 'an ITEM is legitimately a column - only the container sequences');
 });
 
@@ -177,14 +185,27 @@ function withBar(config, fn) {
   global.window = dom.window;
   global.localStorage = dom.window.localStorage;
   if (config !== null) dom.window.localStorage.setItem('ft-bottomnav', JSON.stringify(config));
-  try {
-    return fn(dom);
-  } finally {
+  const cleanup = () => {
     delete global.document;
     delete global.window;
     delete global.localStorage;
     dom.window.close();
+  };
+  // Promise-aware: the injector tests below await a probe, and tearing the DOM
+  // globals down in a plain `finally` would pull them out from under the
+  // still-pending callback ("document is not defined" from inside common.js).
+  let result;
+  try {
+    result = fn(dom);
+  } catch (err) {
+    cleanup();
+    throw err;
   }
+  if (result && typeof result.then === 'function') {
+    return result.then((v) => { cleanup(); return v; }, (err) => { cleanup(); throw err; });
+  }
+  cleanup();
+  return result;
 }
 
 const renderedOrder = () => Array.prototype.slice
@@ -242,6 +263,102 @@ test('v1.75 USE: a corrupt/absent config renders the default bar rather than thr
     dom.window.localStorage.setItem('ft-bottomnav', '{not json');
     applyBottomNavCustomization();
     assert.deepEqual(renderedOrder(), ['home', 'playlists', 'history', 'theme', 'settings']);
+  });
+});
+
+// ---- 3b. gate round 2: the two DOM uses that were still unbound -------------
+
+test('W1: removing the Downloads item re-resolves, so a Downloads-only bar cannot be emptied by a probe', async () => {
+  // The only injector that REMOVES a bar item did so without re-applying. That
+  // was harmless while home/settings were un-hideable; since v1.75 a user can
+  // legally end up with a Downloads-ONLY bar (the >=1 floor accepts it while
+  // the item is mounted), and then a config change - or a transient /api/config
+  // failure - left a fixed, EMPTY, un-navigable bar that reproduced on every
+  // reload. Drives the REAL injector against both of its removal arms.
+  const onlyDownloads = { hidden: SHELL_ITEMS.map(([id]) => id).filter((id) => id !== 'downloads'), shown: ['downloads'] };
+  for (const [label, fetchImpl] of [
+    ['the module reports no download root', () => Promise.resolve({ ok: true, json: () => Promise.resolve({ syntheticFolders: [] }) })],
+    ['a transient /api/config failure', () => Promise.reject(new Error('network'))],
+  ]) {
+    const realFetch = global.fetch;
+    await withBar(onlyDownloads, async () => {
+      global.fetch = fetchImpl;
+      applyBottomNavCustomization();
+      assert.deepEqual(renderedOrder(), ['downloads'], `${label}: precondition - a legal Downloads-only bar`);
+      common.injectDownloadsNavLinkIfEnabled();
+      await new Promise((r) => setImmediate(r));
+      await new Promise((r) => setImmediate(r));
+      assert.equal(global.document.querySelector('#bottom-nav [data-nav="downloads"]'), null, `${label}: the item is removed (module gate wins)`);
+      assert.ok(renderedOrder().length > 0, `${label}: the bar must not be left EMPTY`);
+      assert.deepEqual(renderedOrder(), ['home', 'playlists', 'history', 'theme', 'settings'], `${label}: the floor's default bar renders`);
+    });
+    global.fetch = realFetch;
+  }
+});
+
+test('W2: the highlight DOM pass is bound, not just its two decisions', () => {
+  // Three mutants survived all 5955 tests while this pass lived inside the
+  // router closure: deleting the bottomNavKeyForHighlight call, hardcoding its
+  // second argument to true, and nulling the sidebar href.
+  const SIDEBAR = '<aside id="sidebar">'
+    + '<a class="sidebar-item" href="/">Home</a>'
+    + '<a class="sidebar-item sidebar-item-liked" href="/?liked=1">Liked</a>'
+    + '<a class="sidebar-item" href="/music">Music</a></aside>';
+  const litBottom = () => {
+    const el = global.document.querySelector('#bottom-nav .bottom-nav-item.active');
+    return el && el.getAttribute('data-nav');
+  };
+  const litSidebar = () => {
+    const el = global.document.querySelector('#sidebar .sidebar-item.active');
+    return el && el.getAttribute('href');
+  };
+
+  // Default device: Liked is opted OUT, so /?liked=1 lights HOME on the bar
+  // (v1.74's behaviour) while the sidebar's own count-gated Liked entry lights.
+  withBar({}, (dom) => {
+    dom.window.document.body.insertAdjacentHTML('beforeend', SIDEBAR);
+    applyBottomNavCustomization();
+    common.applyNavHighlight('/', '?liked=1');
+    assert.equal(litBottom(), 'home', 'the bar falls back to Home rather than going unlit');
+    assert.equal(litSidebar(), '/?liked=1', 'the sidebar lights Liked on its own terms');
+  });
+
+  // Opted IN: the bar lights Liked itself.
+  withBar({ shown: ['liked'] }, (dom) => {
+    dom.window.document.body.insertAdjacentHTML('beforeend', SIDEBAR);
+    applyBottomNavCustomization();
+    common.applyNavHighlight('/', '?liked=1');
+    assert.equal(litBottom(), 'liked');
+    assert.equal(litSidebar(), '/?liked=1');
+  });
+
+  // A plain home view lights Home in both places, and never Liked.
+  withBar({ shown: ['liked'] }, (dom) => {
+    dom.window.document.body.insertAdjacentHTML('beforeend', SIDEBAR);
+    applyBottomNavCustomization();
+    common.applyNavHighlight('/', '');
+    assert.equal(litBottom(), 'home');
+    assert.equal(litSidebar(), '/');
+  });
+
+  // Another route lights its own item; and repainting clears the previous one.
+  withBar({ shown: ['music'] }, (dom) => {
+    dom.window.document.body.insertAdjacentHTML('beforeend', SIDEBAR);
+    applyBottomNavCustomization();
+    common.applyNavHighlight('/', '');
+    common.applyNavHighlight('/music', '');
+    assert.equal(litBottom(), 'music', 'the stale Home highlight is cleared');
+    assert.equal(litSidebar(), '/music');
+    assert.equal(global.document.querySelectorAll('.bottom-nav-item.active').length, 1, 'exactly one item is ever lit');
+  });
+
+  // S4: a HIDDEN item is never lit - a hidden .active node reads as an unlit bar.
+  withBar({ hidden: ['music'] }, (dom) => {
+    dom.window.document.body.insertAdjacentHTML('beforeend', SIDEBAR);
+    applyBottomNavCustomization();
+    common.applyNavHighlight('/music', '');
+    assert.equal(litBottom(), null, 'no hidden item carries the highlight');
+    assert.equal(litSidebar(), '/music', 'the sidebar entry is unaffected by the BAR being hidden');
   });
 });
 

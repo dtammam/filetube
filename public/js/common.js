@@ -1935,6 +1935,44 @@ const SIDEBAR_HREF_BY_NAV_KEY = {
   history: '/history',
 };
 
+// Paints the shell's nav highlight (bottom bar + sidebar) for a location.
+//
+// v1.75 (adversarial gate round 2, W2): hoisted OUT of the router closure. The
+// two decisions below (bottomNavKeyForHighlight, SIDEBAR_HREF_BY_NAV_KEY) were
+// well covered as values while their only USE was unreachable from Node - and
+// three mutants on that use survived all 5955 tests: deleting the
+// bottomNavKeyForHighlight call (which re-opens the unlit-bar regression the
+// fallback exists to fix), passing it a hardcoded `true` (which lights the
+// HIDDEN Liked item), and nulling the sidebar href (which stops every sidebar
+// entry highlighting, app-wide). Testing a DECISION is not testing its USE -
+// the strike this repo keeps taking. Top-level and exported, exactly as
+// applyBottomNavCustomization already is, so the DOM pass is bound in jsdom.
+//
+// Must run AFTER applyBottomNavCustomization for a given paint: it reads
+// `hidden` off the Liked item, which that function is what sets.
+function applyNavHighlight(pathname, search) {
+  if (typeof document === 'undefined') return;
+  const key = activeNavItem(pathname, search);
+  const bottomNav = document.getElementById('bottom-nav');
+  if (bottomNav) {
+    bottomNav.querySelectorAll('.bottom-nav-item.active').forEach((el) => el.classList.remove('active'));
+    const likedItem = bottomNav.querySelector('[data-nav="liked"]');
+    const barKey = bottomNavKeyForHighlight(key, !!likedItem && !likedItem.hidden);
+    const item = barKey && bottomNav.querySelector('[data-nav="' + barKey + '"]');
+    // Never light an item the layout has hidden (adversarial gate round 2, S4):
+    // a floored/opt-in change between paints could otherwise strand `.active`
+    // on a display:none node, which reads to the user as an unlit bar.
+    if (item && !item.hidden) item.classList.add('active');
+  }
+  const sidebar = document.getElementById('sidebar');
+  if (sidebar) {
+    sidebar.querySelectorAll('.sidebar-item.active').forEach((el) => el.classList.remove('active'));
+    const href = key ? SIDEBAR_HREF_BY_NAV_KEY[key] : null;
+    const match = href && sidebar.querySelector('a.sidebar-item[href="' + href + '"]');
+    if (match) match.classList.add('active');
+  }
+}
+
 // Which BOTTOM-BAR item a resolved nav key lights. Pure, because the DOM shell
 // around it is one querySelector and this is the whole decision.
 // v1.75 (QA gate S3): the bottom-bar Liked entry is OPT-IN (default-hidden), so
@@ -3331,7 +3369,19 @@ function injectDownloadsNavLinkIfEnabled() {
         : [];
       const navItem = document.querySelector('.bottom-nav-item[data-nav="downloads"]');
       if (roots.length === 0) {
-        if (navItem && navItem.parentNode) navItem.parentNode.removeChild(navItem);
+        if (navItem && navItem.parentNode) {
+          navItem.parentNode.removeChild(navItem);
+          // v1.75 (adversarial gate round 2, W1): this is the only injector
+          // that REMOVES a bar item, and until now it did so without
+          // re-resolving. That was harmless while home/settings were
+          // un-hideable anchors; since v1.75 every entry is hidable, so a user
+          // whose bar is legally Downloads-only (the >=1 floor accepted it
+          // while the item was mounted) was left with a fixed, EMPTY,
+          // un-navigable bar the moment this probe said the module was gone -
+          // and it reproduced on every reload, because nothing re-ran the
+          // floor. Re-apply here so ruling R2's floor gets its say.
+          applyBottomNavCustomization();
+        }
         return; // module off / no download root -- inject nothing
       }
       const href = '/?root=' + encodeURIComponent(roots[0]);
@@ -3344,7 +3394,13 @@ function injectDownloadsNavLinkIfEnabled() {
       // misdirect. Remove it like the no-root arm; the next successful
       // boot probe re-upgrades a fresh shell's copy.
       const navItem = document.querySelector('.bottom-nav-item[data-nav="downloads"]');
-      if (navItem && navItem.parentNode) navItem.parentNode.removeChild(navItem);
+      if (navItem && navItem.parentNode) {
+        navItem.parentNode.removeChild(navItem);
+        // Same re-apply as the no-root arm above, and this one matters more:
+        // a TRANSIENT /api/config failure on a Downloads-only bar would
+        // otherwise empty it (adversarial gate round 2, W1).
+        applyBottomNavCustomization();
+      }
     });
 }
 
@@ -5560,22 +5616,7 @@ if (typeof window !== 'undefined') {
     // already runs after every view change and is location-driven, so the
     // resume pointer cannot drift out of sync with the router.
     recordLastSession();
-    const key = activeNavItem(window.location.pathname, window.location.search);
-    const bottomNav = document.getElementById('bottom-nav');
-    if (bottomNav) {
-      bottomNav.querySelectorAll('.bottom-nav-item.active').forEach((el) => el.classList.remove('active'));
-      const likedItem = bottomNav.querySelector('[data-nav="liked"]');
-      const barKey = bottomNavKeyForHighlight(key, !!likedItem && !likedItem.hidden);
-      const item = barKey && bottomNav.querySelector('[data-nav="' + barKey + '"]');
-      if (item) item.classList.add('active');
-    }
-    const sidebar = document.getElementById('sidebar');
-    if (sidebar) {
-      sidebar.querySelectorAll('.sidebar-item.active').forEach((el) => el.classList.remove('active'));
-      const href = key ? SIDEBAR_HREF_BY_NAV_KEY[key] : null;
-      const match = href && sidebar.querySelector('a.sidebar-item[href="' + href + '"]');
-      if (match) match.classList.add('active');
-    }
+    applyNavHighlight(window.location.pathname, window.location.search);
   }
 
   // Lazily fetches `/js/subscriptions.js` exactly once per session (T1 scope
@@ -9689,6 +9730,8 @@ if (typeof module !== 'undefined' && module.exports) {
     BOTTOM_NAV_OPTIONAL,
     BOTTOM_NAV_COMPAT_HEAD, BOTTOM_NAV_COMPAT_TAIL,
     likedScopeQuery, bottomNavKeyForHighlight, SIDEBAR_HREF_BY_NAV_KEY,
+    applyNavHighlight,
+    injectDownloadsNavLinkIfEnabled,
     // v1.75: the bar's ORDER is now decided in JS alone (the v1.39.2 CSS
     // `order:` ladder is gone), so the DOM pass that applies it is bound at
     // the DOM by test/unit/bottom-nav-order-authority.test.js - a resolver

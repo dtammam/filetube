@@ -320,6 +320,17 @@ test('W3: BOTTOM_NAV_OPTIONAL IS the default bar - derived from the shells, neve
   }
   // The two injected ids are not in any shell's HTML; both land after Settings.
   const present = perShell[0].concat(['oneoff-download', 'subscriptions']);
+  // Compare the roster against the SHELLS directly. Going through the resolver
+  // alone would be tautological now that it RANKS by this roster - the sequence
+  // follows any scramble of it (gate round 2, S2 measured exactly that). The
+  // one adjustment: `settings` is mounted mid-markup but resolves to the tail,
+  // so it moves to the end here before the comparison.
+  assert.deepEqual(
+    perShell[0].filter((id) => id !== 'settings').concat(['oneoff-download', 'subscriptions', 'settings']),
+    BOTTOM_NAV_OPTIONAL,
+    'the roster must be spelled in the order the shells mount the bar - it is what the Settings panel '
+    + 'lists and what the bar opens in, so a roster that drifts from the markup silently reorders both',
+  );
   assert.deepEqual(
     resolveBottomNavLayout(present, {}).sequence,
     BOTTOM_NAV_OPTIONAL,

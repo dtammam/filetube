@@ -750,6 +750,20 @@ function renderBottomBarEditor(signal) {
   const items = layout.sequence;
   // Checked-ness comes from the SAME resolution, not from a second copy of the
   // hidden/shown/default-hidden formula (the one-decision-function rule).
+  //
+  // It resolves against the ROSTER, deliberately, so a tick means "I want this
+  // in my bar whenever it is available" - which is what the panel's own copy
+  // promises ("Some items only appear when their feature is enabled"). The gate
+  // (round 2, S3) proposed resolving against the live bar instead, so the ticks
+  // would always mirror what is on screen; I measured that trade and did not
+  // take it. Availability-based ticks make the Subscriptions/Download rows
+  // un-tickable on a module-off device: the box would spring back on the next
+  // render even though the config write succeeded, which is a worse lie than
+  // the one it fixes. The residual it leaves is narrow and cosmetic - a config
+  // that hides every MOUNTED id while opting in only unmounted ones shows its
+  // ticks against a floored default bar - and the change-time floor below means
+  // this panel can no longer author that state; only a hand-edited config, or
+  // disabling a module after the fact, can reach it.
   const visibleSet = new Set(layout.visible);
   // The FLOOR is checked against the ids the bar ACTUALLY mounts, not the
   // roster: on a device with the yt-dlp module off, leaving only Subscriptions
