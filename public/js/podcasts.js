@@ -592,7 +592,10 @@
         progressEndpoint: '/api/podcasts/progress',
         resumeMode: 'podcast',
         autoAdvanceViaTrackNav: true,
-        readerHref: '/podcasts',
+        // v1.71 T7: tapping the docked player opens the expanded
+        // now-playing view in ONE gesture (Dean's ruling) - the ?nowplaying
+        // param tells this controller's init to expand into #player-slot.
+        readerHref: '/podcasts?nowplaying=1',
       };
       playingId = ep.id;
       applyPlayingHighlight();
@@ -777,6 +780,20 @@
     var playParam = null;
     try { playParam = new URLSearchParams(window.location.search).get('play'); } catch (_) { playParam = null; }
     if (playParam) consumeDeepLink(playParam);
+
+    // v1.71 T7: arriving via the docked player's tap (?nowplaying=1)
+    // expands the LIVE player into this page's #player-slot - the big
+    // audio-art now-playing view. Guarded to a docked player with media:
+    // a stale/bookmarked URL with nothing playing degrades to the grid.
+    var wantNowPlaying = false;
+    try { wantNowPlaying = new URLSearchParams(window.location.search).get('nowplaying') === '1'; } catch (_) { wantNowPlaying = false; }
+    if (wantNowPlaying && window.FileTube && window.FileTube.player
+        && typeof window.FileTube.player.getState === 'function'
+        && window.FileTube.player.getState() === 'docked'
+        && typeof window.FileTube.player.expand === 'function') {
+      var npSlot = root.querySelector('#player-slot');
+      if (npSlot) window.FileTube.player.expand(npSlot);
+    }
 
     // Teardown extras the AbortController cannot cover.
     controller.__podcastsCleanup = function () {

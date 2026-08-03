@@ -111,6 +111,13 @@
         <!-- Transient status line ("Checking feeds...", errors). -->
         <div id="podcasts-status" class="music-status" role="status" hidden></div>
 
+        <!-- v1.71 T7: the expanded now-playing view. Tapping the docked
+             player while a podcast plays lands on /podcasts?nowplaying=1
+             and the controller expands the live player FULL into this slot
+             (the read.html #player-slot pattern - inside #view-root so the
+             route swap docks it on leave). Empty until then. -->
+        <div id="player-slot"></div>
+
         <!-- Drill-in breadcrumb (show -> episode list); hidden on the grid. -->
         <div class="music-crumb" id="podcasts-crumb" hidden></div>
 

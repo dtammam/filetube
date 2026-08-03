@@ -66,6 +66,13 @@ test('shouldDockOnTransition: v1.44 -- leaving music (a track mounts FULL there)
   assert.strictEqual(shouldDockOnTransition('music', 'music'), false); // an in-page re-play adopts, no dock
 });
 
+test('shouldDockOnTransition: v1.71 -- leaving podcasts (the expanded now-playing FULL host) docks; podcasts->podcasts does not', () => {
+  assert.strictEqual(shouldDockOnTransition('podcasts', 'home'), true);
+  assert.strictEqual(shouldDockOnTransition('podcasts', 'watch'), true);
+  assert.strictEqual(shouldDockOnTransition('podcasts', 'music'), true);
+  assert.strictEqual(shouldDockOnTransition('podcasts', 'podcasts'), false); // the ?play=/?nowplaying= in-place nav adopts, no dock
+});
+
 test('shouldDockOnTransition: an unknown/null toView (progressive-enhancement boot has no "from") never docks', () => {
   assert.strictEqual(shouldDockOnTransition('watch', null), false);
   assert.strictEqual(shouldDockOnTransition(null, 'home'), false);
@@ -77,6 +84,7 @@ test('shouldDockOnTransition: player.js and common.js expose the identical decis
     ['watch', 'subscriptions'], ['setup', 'home'], ['watch', null], [null, 'watch'],
     ['read', 'home'], ['read', 'read'], ['read', 'watch'], ['books', 'read'],
     ['music', 'home'], ['music', 'music'], ['music', 'watch'], ['home', 'music'],
+    ['podcasts', 'home'], ['podcasts', 'podcasts'], ['podcasts', 'watch'], ['home', 'podcasts'],
   ];
   for (const [from, to] of cases) {
     assert.strictEqual(shouldDockOnTransition(from, to), routerShouldDockOnTransition(from, to));

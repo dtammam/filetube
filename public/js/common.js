@@ -5164,8 +5164,10 @@ function shouldDockOnTransition(fromView, toView) {
   // for a different view docks the persistent host into the shell #player-dock
   // so playback survives the #view-root swap (Dean: tapping Home while a track
   // plays keeps the mini-player going); staying (music->music etc.) adopts
-  // instead of docking. Mirrored in player.js.
-  return (fromView === 'watch' || fromView === 'read' || fromView === 'music') && typeof toView === 'string' && toView !== fromView;
+  // instead of docking. v1.71: 'podcasts' joins them (the expanded
+  // now-playing view mounts FULL into /podcasts' #player-slot). Mirrored
+  // in player.js.
+  return (fromView === 'watch' || fromView === 'read' || fromView === 'music' || fromView === 'podcasts') && typeof toView === 'string' && toView !== fromView;
 }
 
 // tech-debt #46: is this navigation a no-op — a request to go EXACTLY where we
