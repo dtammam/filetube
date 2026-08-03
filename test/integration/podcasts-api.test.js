@@ -316,6 +316,49 @@ test('v1.71 T3: /episode/:id?download=1 sends an attachment disposition with the
   assert.strictEqual(plain.headers.get('content-disposition'), null, 'no disposition without the flag - inline playback untouched');
 });
 
+test('v1.71 T4: episode likes - toggle round-trip, phantom 404, liked filter list with showName, no-filter 400', async () => {
+  const root = path.join(DATA_DIR, 'podcasts');
+  const showDir = path.join(root, 'RoundTrip Show');
+  fs.mkdirSync(showDir, { recursive: true });
+  const epFile = path.join(showDir, 'Liked [rss=like1].mp3');
+  fs.writeFileSync(epFile, 'LIKEBYTES');
+  const epId = podcastStore.episodeIdFor(subId, 'like1');
+  await updateDatabase((db) => {
+    const ns = podcastStore.ensurePodcasts(db);
+    podcastStore.reduceUpsertEpisodes(ns, subId, [{ guid: 'like1', title: 'Likeable', pubDateMs: 3300, durationSec: 10 }], 'pending', 5300);
+    podcastStore.reduceEpisodeDownloaded(ns, epId, { fileName: path.basename(epFile), filePath: epFile, bytes: 9, nowMs: 6300 });
+    return true;
+  });
+
+  // Phantom-id discipline on the like verb.
+  assert.strictEqual((await postJson('/api/podcasts/episodes/ffffffffffffffffffffffffffffffff/liked', {})).status, 404);
+
+  // Like -> the id lands in GET /api/podcasts/liked and the row's payload.
+  const like = await postJson(`/api/podcasts/episodes/${epId}/liked`, {});
+  assert.strictEqual(like.status, 200);
+  assert.deepStrictEqual(await like.json(), { liked: true });
+  const ids = await (await get('/api/podcasts/liked')).json();
+  assert.ok(ids.episodeIds.includes(epId));
+  const showData = await (await get(`/api/podcasts/shows/${subId}/episodes`)).json();
+  assert.strictEqual(showData.episodes.find((e) => e.id === epId).liked, true, 'the show list carries the heart state');
+
+  // The Liked lane list: cross-show shape with showName, downloaded only.
+  const lane = await (await get('/api/podcasts/episodes?filter=liked')).json();
+  const row = lane.episodes.find((e) => e.id === epId);
+  assert.ok(row, 'the liked episode is in the lane');
+  assert.strictEqual(typeof row.showName, 'string', 'the lane names the owning show');
+  assert.strictEqual(row.liked, true);
+  assert.ok(!('trashPath' in row) && !('filePath' in row), 'server paths never leak');
+
+  // Unlike: idempotent, and the lane empties.
+  assert.deepStrictEqual(await (await fetch(`${base}/api/podcasts/episodes/${epId}/liked`, { method: 'DELETE' })).json(), { liked: false });
+  assert.deepStrictEqual(await (await fetch(`${base}/api/podcasts/episodes/${epId}/liked`, { method: 'DELETE' })).json(), { liked: false }, 'unliking the unliked is a no-op success');
+  assert.ok(!(await (await get('/api/podcasts/liked')).json()).episodeIds.includes(epId));
+
+  // The selection surface refuses to be a catalog dump.
+  assert.strictEqual((await get('/api/podcasts/episodes')).status, 400);
+});
+
 test('v1.70 (QA S4): DELETE of an episode whose file already vanished records deleted-on-disk, no trash trip', async () => {
   const root = path.join(DATA_DIR, 'podcasts');
   const missing = path.join(root, 'RoundTrip Show', 'Gone [rss=gone1].mp3'); // never written
