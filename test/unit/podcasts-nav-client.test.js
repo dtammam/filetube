@@ -29,9 +29,17 @@ test('shouldInjectPodcastsNav gates on CONTENT (>=1 show) - zero shows = byte-id
   assert.equal(common.shouldInjectPodcastsNav({ shows: 'junk' }), false);
 });
 
-test('SOURCE-LOCK: Podcasts is a Library-section entry (never bottom-nav), ordered between Books and History', () => {
+test('SOURCE-LOCK: the sidebar Podcasts entry rides the Library section, ordered between Books and History (the bottom-bar item is v1.71 static shell HTML, not an injection)', () => {
   const src = fs.readFileSync(path.join(__dirname, '../../public/js/common.js'), 'utf8');
-  assert.ok(!src.includes("setAttribute('data-nav', 'podcasts')"), 'no bottom-nav Podcasts item');
+  // v1.71 (gate S1): the pre-v1.71 half of this lock asserted "never
+  // bottom-nav" - that policy was REVERSED by Dean's ruling (an optional,
+  // default-hidden bottom-bar item). The injector still never mints one
+  // (the item is static HTML in every shell + BOTTOM_NAV_OPTIONAL).
+  assert.ok(!src.includes("setAttribute('data-nav', 'podcasts')"), 'no INJECTED bottom-nav Podcasts item - the shell HTML owns it');
+  // Gate S7: the earlier "'podcasts']" spelling matched DEFAULT_HIDDEN too,
+  // so removing podcasts from the OPTIONAL roster (killing the ONLY opt-in
+  // path) survived the suite. Bind the roster membership itself.
+  assert.ok(src.includes("'oneoff-download', 'theme', 'podcasts']"), 'podcasts rides BOTTOM_NAV_OPTIONAL (the Settings toggle is the only opt-in path)');
   assert.ok(src.includes("injectLibraryNavEntry('podcasts', '/podcasts', 'Podcasts'"), 'Library-section entry via the shared helper');
   // Books anchors above Podcasts; Podcasts anchors above History.
   assert.ok(src.includes("(key === 'books')\n      ? (document.querySelector('[data-nav-sidebar=\"podcasts\"]') || document.querySelector('[data-nav-sidebar=\"history\"]') || foldersList)"), 'Books sits above Podcasts');
@@ -41,6 +49,19 @@ test('SOURCE-LOCK: Podcasts is a Library-section entry (never bottom-nav), order
   assert.ok(src.includes('href="/podcasts" class="sidebar-item"'), 'the Playlists sheet lists Podcasts when enabled');
   // The gate probes /api/podcasts/health, injecting only on shows > 0.
   assert.ok(src.includes("fetch('/api/podcasts/health')"), 'capability probe hits the health route');
+});
+
+test('SOURCE-LOCK (gate W2): podcasts init re-adopts a FULL player into the fresh #player-slot - a podcasts->podcasts swap must never strand live audio in a discarded #view-root', () => {
+  const js = fs.readFileSync(path.join(__dirname, '../../public/js/podcasts.js'), 'utf8');
+  // The exact re-adopt condition: a FULL player ALWAYS re-mounts (same-view
+  // swaps do not dock); a docked one expands only on ?nowplaying=1.
+  assert.ok(js.includes("pState === 'full' || (wantNowPlaying && pState === 'docked')"), 'the re-adopt condition stands verbatim');
+  assert.ok(js.includes('player.expand(npSlot)'), 'and it mounts into THIS view\'s slot');
+  const idxState = js.indexOf("pState === 'full'");
+  const idxExpand = js.indexOf('player.expand(npSlot)');
+  assert.ok(idxState >= 0 && idxExpand > idxState, 'condition precedes the mount (ordering, not mere presence)');
+  const html = fs.readFileSync(path.join(__dirname, '../../public/podcasts.html'), 'utf8');
+  assert.ok(html.includes('id="player-slot"'), 'the slot exists in the shell');
 });
 
 test('SOURCE-LOCK: podcasts.html carries the dock + host template and the FOUC guard; styles live in style.css not the shell', () => {

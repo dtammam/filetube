@@ -2751,6 +2751,18 @@ function formatQueueBadge(count) {
 // the bell rows; `playing` drives the now-playing highlight; `played` dims
 // entries STRICTLY BEFORE the pointer - the pointer row itself is playing,
 // never played (ruling 6: played items stay, jump-back allowed).
+// v1.71: ONE place derives a queue entry's destination from its kind. The
+// three consumers (row model here, player.js's autoplay advance, watch.js's
+// up-next box) must never hand-build this per site - the hardcoded
+// /watch.html lesson. A podcast entry deep-links the podcasts place, which
+// resumes the episode in the dock.
+function queueEntryHref(entry) {
+  if (!entry || typeof entry.mediaId !== 'string' || entry.mediaId === '') return null;
+  return entry.kind === 'podcast'
+    ? `/podcasts?play=${encodeURIComponent(entry.mediaId)}`
+    : `/watch.html?v=${encodeURIComponent(entry.mediaId)}`;
+}
+
 function buildQueueRowModel(entry, pointerUid) {
   if (!entry || typeof entry.uid !== 'string' || entry.uid === '' || !entry.item) return null;
   const item = entry.item;
@@ -2759,11 +2771,16 @@ function buildQueueRowModel(entry, pointerUid) {
   return {
     uid: entry.uid,
     mediaId: entry.mediaId,
-    href: `/watch.html?v=${encodeURIComponent(entry.mediaId)}`,
+    kind: entry.kind === 'podcast' ? 'podcast' : 'media',
+    href: queueEntryHref(entry),
     title: typeof item.title === 'string' ? item.title : (typeof item.name === 'string' ? item.name : ''),
     channelLabel: channelName || folderName || 'Library',
     channelAvatarUrl: typeof item.channelAvatarUrl === 'string' ? item.channelAvatarUrl : '',
-    thumbnailUrl: item.hasThumbnail === true ? `/thumbnail/${entry.mediaId}` : null,
+    // A podcast entry's art is the show cover the server names (artUrl);
+    // media entries keep the thumbnail contract.
+    thumbnailUrl: entry.kind === 'podcast'
+      ? (typeof item.artUrl === 'string' ? item.artUrl : null)
+      : (item.hasThumbnail === true ? `/thumbnail/${entry.mediaId}` : null),
     playing: Boolean(pointerUid) && entry.uid === pointerUid,
     played: false, // position-relative; buildQueueRowModels owns it
   };
@@ -2808,11 +2825,11 @@ function formatQueuePosition(n) {
 // position: 'end' (default) | 'next'. Toasts the outcome and refreshes the
 // header chrome; resolves with the server's shaped queue (or null on error
 // - callers needing more than the toast can inspect it).
-function addToQueue(mediaId, position) {
+function addToQueue(mediaId, position, kind) {
   return fetch('/api/queue/items', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ mediaId, position: position === 'next' ? 'next' : 'end' }),
+    body: JSON.stringify({ mediaId, position: position === 'next' ? 'next' : 'end', kind: kind === 'podcast' ? 'podcast' : 'media' }),
   })
     .then((res) => (res.ok ? res.json() : res.json().catch(() => ({})).then((b) => Promise.reject(new Error(b.error || 'Could not add to queue')))))
     .then((body) => {
@@ -3013,12 +3030,16 @@ function injectQueueChrome() {
           link.addEventListener('click', () => {
             // Tapping a row makes it now-playing (server pointer) and rides
             // the normal watch nav with a paint seed (the bell-row posture).
-            stashWatchSeed({
-              id: m.mediaId, title: m.title,
-              channelName: m.channelLabel === 'Library' ? '' : m.channelLabel,
-              channelAvatarUrl: m.channelAvatarUrl,
-              hasThumbnail: Boolean(m.thumbnailUrl),
-            });
+            // v1.71 (gate S2): media rows only - a podcast row navigates to
+            // /podcasts and must never prime a watch page it will not visit.
+            if (m.kind !== 'podcast') {
+              stashWatchSeed({
+                id: m.mediaId, title: m.title,
+                channelName: m.channelLabel === 'Library' ? '' : m.channelLabel,
+                channelAvatarUrl: m.channelAvatarUrl,
+                hasThumbnail: Boolean(m.thumbnailUrl),
+              });
+            }
             fetch('/api/queue/pointer', {
               method: 'POST', headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ uid: m.uid }), keepalive: true,
@@ -3251,17 +3272,26 @@ function injectHistoryNavLinkIfEnabled() {
 const BOTTOM_NAV_FIXED_FIRST = 'home';
 const BOTTOM_NAV_FIXED_LAST = 'settings';
 // The optional items a user may reorder/hide (must carry a data-nav id).
-const BOTTOM_NAV_OPTIONAL = ['playlists', 'history', 'subscriptions', 'oneoff-download', 'theme'];
+const BOTTOM_NAV_OPTIONAL = ['playlists', 'history', 'subscriptions', 'oneoff-download', 'theme', 'podcasts'];
+// v1.71: items that are OFF unless the user explicitly turns them on (the
+// config's `shown` list). A default-hidden item ships in every shell's DOM
+// but never appears until Settings enables it - Dean's ruling for podcasts.
+const BOTTOM_NAV_DEFAULT_HIDDEN = ['podcasts'];
 
 // Pure: given the bottom-nav item ids ACTUALLY present in the DOM and the
 // user's config, return the final visible order (home first, settings last,
 // hidden optionals dropped) plus the list of present-but-hidden ids. Unit-
-// tested without a DOM.
+// tested without a DOM. Visibility (v1.71): an id is hidden when the config
+// hides it, OR when it is default-hidden and the config's `shown` list has
+// not opted it in - so pre-v1.71 configs (no `shown` key) keep every
+// existing item exactly as before and hide the new default-hidden ones.
 function resolveBottomNavLayout(presentIds, config) {
   const present = Array.isArray(presentIds) ? presentIds.slice() : [];
   const cfg = (config && typeof config === 'object') ? config : {};
   const hidden = new Set(Array.isArray(cfg.hidden) ? cfg.hidden : []);
+  const shown = new Set(Array.isArray(cfg.shown) ? cfg.shown : []);
   const order = Array.isArray(cfg.order) ? cfg.order : [];
+  const isHidden = (id) => hidden.has(id) || (BOTTOM_NAV_DEFAULT_HIDDEN.indexOf(id) >= 0 && !shown.has(id));
   const middle = present.filter((id) => id !== BOTTOM_NAV_FIXED_FIRST && id !== BOTTOM_NAV_FIXED_LAST);
   const seen = new Set();
   const ordered = [];
@@ -3269,22 +3299,23 @@ function resolveBottomNavLayout(presentIds, config) {
   middle.forEach((id) => { if (!seen.has(id)) { ordered.push(id); seen.add(id); } });
   const visible = [];
   if (present.indexOf(BOTTOM_NAV_FIXED_FIRST) >= 0) visible.push(BOTTOM_NAV_FIXED_FIRST);
-  ordered.forEach((id) => { if (!hidden.has(id)) visible.push(id); });
+  ordered.forEach((id) => { if (!isHidden(id)) visible.push(id); });
   if (present.indexOf(BOTTOM_NAV_FIXED_LAST) >= 0) visible.push(BOTTOM_NAV_FIXED_LAST);
-  return { visible, hiddenPresent: ordered.filter((id) => hidden.has(id)) };
+  return { visible, hiddenPresent: ordered.filter(isHidden) };
 }
 
 function readBottomNavConfig() {
   try {
     const raw = localStorage.getItem('ft-bottomnav');
-    if (!raw) return { hidden: [], order: [] };
+    if (!raw) return { hidden: [], order: [], shown: [] };
     const parsed = JSON.parse(raw);
     return {
       hidden: Array.isArray(parsed && parsed.hidden) ? parsed.hidden : [],
       order: Array.isArray(parsed && parsed.order) ? parsed.order : [],
+      shown: Array.isArray(parsed && parsed.shown) ? parsed.shown : [],
     };
   } catch (_) {
-    return { hidden: [], order: [] };
+    return { hidden: [], order: [], shown: [] };
   }
 }
 
@@ -5137,8 +5168,10 @@ function shouldDockOnTransition(fromView, toView) {
   // for a different view docks the persistent host into the shell #player-dock
   // so playback survives the #view-root swap (Dean: tapping Home while a track
   // plays keeps the mini-player going); staying (music->music etc.) adopts
-  // instead of docking. Mirrored in player.js.
-  return (fromView === 'watch' || fromView === 'read' || fromView === 'music') && typeof toView === 'string' && toView !== fromView;
+  // instead of docking. v1.71: 'podcasts' joins them (the expanded
+  // now-playing view mounts FULL into /podcasts' #player-slot). Mirrored
+  // in player.js.
+  return (fromView === 'watch' || fromView === 'read' || fromView === 'music' || fromView === 'podcasts') && typeof toView === 'string' && toView !== fromView;
 }
 
 // tech-debt #46: is this navigation a no-op — a request to go EXACTLY where we
@@ -5903,6 +5936,7 @@ if (typeof window !== 'undefined') {
   window.FileTube = window.FileTube || {};
   window.FileTube.registerView = registerView;
   window.FileTube.navigate = navigate;
+  window.FileTube.queueEntryHref = queueEntryHref;
   window.FileTube.bootRouter = bootRouter;
   // v1.52 instant watch: click surfaces stash, watch's init consumes.
   window.FileTube.stashWatchSeed = stashWatchSeed;
@@ -5912,6 +5946,7 @@ if (typeof window !== 'undefined') {
   window.FileTube.readBottomNavConfig = readBottomNavConfig;
   window.FileTube.writeBottomNavConfig = writeBottomNavConfig;
   window.FileTube.BOTTOM_NAV_OPTIONAL = BOTTOM_NAV_OPTIONAL;
+  window.FileTube.BOTTOM_NAV_DEFAULT_HIDDEN = BOTTOM_NAV_DEFAULT_HIDDEN;
   // v1.66 web push: setup.js's enable flow routes through the ONE locked
   // register call site + shares the key decoder.
   window.FileTube.registerPushWorker = registerPushWorker;
@@ -9409,7 +9444,7 @@ document.addEventListener('DOMContentLoaded', () => {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     // v1.63 playback queue: the chrome's pure decisions.
-    shouldShowQueueButton, formatQueueBadge, buildQueueRowModel, buildQueueRowModels,
+    shouldShowQueueButton, formatQueueBadge, buildQueueRowModel, buildQueueRowModels, queueEntryHref,
     formatQueuePosition,
     // v1.63.1: the stars pref's pure decision.
     shouldShowStarRatings,
@@ -9440,6 +9475,7 @@ if (typeof module !== 'undefined' && module.exports) {
     pushB64urlToUint8,
     describePushEnableOutcome,
     resolveBottomNavLayout,
+    BOTTOM_NAV_DEFAULT_HIDDEN,
     pinDeleteEndpoint,
     fisherYatesShuffle, sortItems, shouldShowShuffleButton,
     deriveOrderedIds, computeNeighbors, parentFolder,

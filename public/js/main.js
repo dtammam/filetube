@@ -164,6 +164,31 @@ function buildMusicHomeSectionHtml(items, heading, seeAllHref) {
   `;
 }
 
+// v1.71 T5: the podcasts "Continue listening" row - the music row's chassis
+// (identical classes, zero new CSS), podcast fields. Deep-links
+// /podcasts?play=<episodeId>, which opens the owning show and starts the
+// dock at the saved position (the resumeMode:'podcast' ladder).
+function buildPodcastRowCardHtml(ep) {
+  return `
+    <a class="book-row-card music-row-card" href="/podcasts?play=${encodeURIComponent(ep.id)}" title="${escapeBookRowHtml(ep.title)}">
+      <span class="book-row-cover music-row-cover"><img src="/podcastart/${encodeURIComponent(ep.subId)}" alt="" loading="lazy" /></span>
+      <span class="book-row-title">${escapeBookRowHtml(ep.title)}</span>
+      <span class="music-row-artist">${escapeBookRowHtml(ep.showName || '')}</span>
+    </a>
+  `;
+}
+
+function buildPodcastHomeSectionHtml(items, heading, seeAllHref) {
+  if (!Array.isArray(items) || items.length === 0) return '';
+  const seeAll = seeAllHref ? `<a class="books-row-seeall" href="${escapeBookRowHtml(seeAllHref)}">See all</a>` : '';
+  return `
+    <section class="books-home-row music-home-row">
+      <div class="books-home-row-header"><h3>${escapeBookRowHtml(heading)}</h3>${seeAll}</div>
+      <div class="books-home-row-scroller">${items.map(buildPodcastRowCardHtml).join('')}</div>
+    </section>
+  `;
+}
+
 // ---- v1.67: the card-corner renderer (plan D3) ------------------------------
 //
 // ONE module-scope, exported, pure renderer for the three assignable card
@@ -288,6 +313,8 @@ if (typeof module !== 'undefined' && module.exports) {
     buildBooksHomeSectionHtml,
     buildMusicRowCardHtml,
     buildMusicHomeSectionHtml,
+    buildPodcastRowCardHtml,
+    buildPodcastHomeSectionHtml,
     homeRowEnabled,
     resolveCardCornerPrefs,
     buildCardCornerButtonsHtml,
@@ -1761,6 +1788,20 @@ if (typeof module !== 'undefined' && module.exports) {
               musicRowHost.innerHTML = buildMusicHomeSectionHtml(data.items, 'Continue listening', '/music');
             })
             .catch(() => { musicRowHost.innerHTML = ''; });
+        }
+        // v1.71: a podcasts continue-listening host sits BETWEEN music and
+        // books (inserted beforebegin the books host AFTER the music host,
+        // so the order is music, podcasts, books). Same rules: toggleable,
+        // podcast-less installs render NOTHING.
+        const podcastsRowHost = document.createElement('div');
+        booksRowHost.insertAdjacentElement('beforebegin', podcastsRowHost);
+        if (homeRowEnabled('ft-home-continue-podcasts')) {
+          fetch('/api/podcasts/episodes?filter=recent-listening&limit=10')
+            .then((r) => (r.ok ? r.json() : { episodes: [] }))
+            .then((data) => {
+              podcastsRowHost.innerHTML = buildPodcastHomeSectionHtml(data.episodes, 'Continue listening · Podcasts', '/podcasts');
+            })
+            .catch(() => { podcastsRowHost.innerHTML = ''; });
         }
         if (homeRowEnabled('ft-home-continue-reading')) {
           fetch('/api/books?filter=reading&limit=10')

@@ -288,6 +288,159 @@ test('v1.70: delete -> trash -> restore round-trip; collisions and wrong states 
   assert.strictEqual((await fetch(`${base}/api/podcasts/episodes/ffffffffffffffffffffffffffffffff`, { method: 'DELETE' })).status, 404);
 });
 
+test('v1.71 T3: /episode/:id?download=1 sends an attachment disposition with the episode title; plain streaming stays undisposed', async () => {
+  const root = path.join(DATA_DIR, 'podcasts');
+  const showDir = path.join(root, 'RoundTrip Show');
+  fs.mkdirSync(showDir, { recursive: true });
+  const epFile = path.join(showDir, 'Save Me [rss=dl1].mp3');
+  fs.writeFileSync(epFile, 'DOWNLOADBYTES');
+  const epId = podcastStore.episodeIdFor(subId, 'dl1');
+  await updateDatabase((db) => {
+    const ns = podcastStore.ensurePodcasts(db);
+    podcastStore.reduceUpsertEpisodes(ns, subId, [{ guid: 'dl1', title: 'Sävê "Me"', pubDateMs: 3200, durationSec: 10 }], 'pending', 5200);
+    podcastStore.reduceEpisodeDownloaded(ns, epId, { fileName: path.basename(epFile), filePath: epFile, bytes: 13, nowMs: 6200 });
+    return true;
+  });
+
+  const dl = await get(`/episode/${epId}?download=1`);
+  assert.strictEqual(dl.status, 200);
+  const dispo = dl.headers.get('content-disposition');
+  assert.ok(dispo && dispo.startsWith('attachment;'), `attachment disposition present: ${dispo}`);
+  assert.ok(dispo.includes("filename*=UTF-8''"), 'RFC 5987 arm present (the shared helper, not an ad-hoc header)');
+  assert.ok(dispo.includes('.mp3'), 'extension rides the filename');
+  assert.ok(!dispo.includes('"Sävê'), 'non-ASCII title never lands raw in the quoted ASCII arm');
+  assert.strictEqual(await dl.text(), 'DOWNLOADBYTES', 'the same confined bytes stream');
+
+  const plain = await get(`/episode/${epId}`);
+  assert.strictEqual(plain.status, 200);
+  assert.strictEqual(plain.headers.get('content-disposition'), null, 'no disposition without the flag - inline playback untouched');
+});
+
+test('v1.71 T4: episode likes - toggle round-trip, phantom 404, liked filter list with showName, no-filter 400', async () => {
+  const root = path.join(DATA_DIR, 'podcasts');
+  const showDir = path.join(root, 'RoundTrip Show');
+  fs.mkdirSync(showDir, { recursive: true });
+  const epFile = path.join(showDir, 'Liked [rss=like1].mp3');
+  fs.writeFileSync(epFile, 'LIKEBYTES');
+  const epId = podcastStore.episodeIdFor(subId, 'like1');
+  await updateDatabase((db) => {
+    const ns = podcastStore.ensurePodcasts(db);
+    podcastStore.reduceUpsertEpisodes(ns, subId, [{ guid: 'like1', title: 'Likeable', pubDateMs: 3300, durationSec: 10 }], 'pending', 5300);
+    podcastStore.reduceEpisodeDownloaded(ns, epId, { fileName: path.basename(epFile), filePath: epFile, bytes: 9, nowMs: 6300 });
+    return true;
+  });
+
+  // Phantom-id discipline on the like verb.
+  assert.strictEqual((await postJson('/api/podcasts/episodes/ffffffffffffffffffffffffffffffff/liked', {})).status, 404);
+
+  // Like -> the id lands in GET /api/podcasts/liked and the row's payload.
+  const like = await postJson(`/api/podcasts/episodes/${epId}/liked`, {});
+  assert.strictEqual(like.status, 200);
+  assert.deepStrictEqual(await like.json(), { liked: true });
+  const ids = await (await get('/api/podcasts/liked')).json();
+  assert.ok(ids.episodeIds.includes(epId));
+  const showData = await (await get(`/api/podcasts/shows/${subId}/episodes`)).json();
+  assert.strictEqual(showData.episodes.find((e) => e.id === epId).liked, true, 'the show list carries the heart state');
+
+  // The Liked lane list: cross-show shape with showName, downloaded only.
+  const lane = await (await get('/api/podcasts/episodes?filter=liked')).json();
+  const row = lane.episodes.find((e) => e.id === epId);
+  assert.ok(row, 'the liked episode is in the lane');
+  assert.strictEqual(typeof row.showName, 'string', 'the lane names the owning show');
+  assert.strictEqual(row.liked, true);
+  assert.ok(!('trashPath' in row) && !('filePath' in row), 'server paths never leak');
+
+  // Unlike: idempotent, and the lane empties.
+  assert.deepStrictEqual(await (await fetch(`${base}/api/podcasts/episodes/${epId}/liked`, { method: 'DELETE' })).json(), { liked: false });
+  assert.deepStrictEqual(await (await fetch(`${base}/api/podcasts/episodes/${epId}/liked`, { method: 'DELETE' })).json(), { liked: false }, 'unliking the unliked is a no-op success');
+  assert.ok(!(await (await get('/api/podcasts/liked')).json()).episodeIds.includes(epId));
+
+  // The selection surface refuses to be a catalog dump.
+  assert.strictEqual((await get('/api/podcasts/episodes')).status, 400);
+});
+
+test('v1.71 (gate W4): the like routes act as the AUTHENTICATED user - a wrong-user mutant fails HERE, at the route layer', async () => {
+  const { __mintTestSession } = require('../../server');
+  const b = __mintTestSession({ username: 'likeactor', role: 'member' });
+  const asB = (p, opts) => fetch(`${base}${p}`, { ...(opts || {}), headers: { ...((opts || {}).headers || {}), Cookie: b.cookie } });
+
+  const root = path.join(DATA_DIR, 'podcasts');
+  const showDir = path.join(root, 'RoundTrip Show');
+  fs.mkdirSync(showDir, { recursive: true });
+  const epFile = path.join(showDir, 'Actor [rss=act1].mp3');
+  fs.writeFileSync(epFile, 'ACTORBYTES');
+  const epId = podcastStore.episodeIdFor(subId, 'act1');
+  await updateDatabase((db) => {
+    const ns = podcastStore.ensurePodcasts(db);
+    podcastStore.reduceUpsertEpisodes(ns, subId, [{ guid: 'act1', title: 'Actor Ep', pubDateMs: 3500, durationSec: 10 }], 'pending', 5500);
+    podcastStore.reduceEpisodeDownloaded(ns, epId, { fileName: path.basename(epFile), filePath: epFile, bytes: 10, nowMs: 6500 });
+    return true;
+  });
+
+  // A likes; B must not see it - by ids, by lane, or on the row payload.
+  await postJson(`/api/podcasts/episodes/${epId}/liked`, {});
+  assert.ok(!(await (await asB('/api/podcasts/liked')).json()).episodeIds.includes(epId), 'B never sees A\'s like ids');
+  const bLane = await (await asB('/api/podcasts/episodes?filter=liked')).json();
+  assert.ok(!bLane.episodes.some((e) => e.id === epId), 'B\'s Liked lane is B\'s alone');
+  const bShow = await (await asB(`/api/podcasts/shows/${subId}/episodes`)).json();
+  assert.strictEqual(bShow.episodes.find((e) => e.id === epId).liked, false, 'B\'s row payload carries B\'s heart state');
+
+  // B likes then unlikes; A's like survives untouched.
+  await asB(`/api/podcasts/episodes/${epId}/liked`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+  assert.ok((await (await asB('/api/podcasts/liked')).json()).episodeIds.includes(epId), 'B\'s own like registered as B');
+  await asB(`/api/podcasts/episodes/${epId}/liked`, { method: 'DELETE' });
+  assert.ok((await (await get('/api/podcasts/liked')).json()).episodeIds.includes(epId), 'B\'s unlike NEVER touches A\'s like');
+
+  // Cleanup: unlike as A so later liked-count assertions stay honest.
+  await fetch(`${base}/api/podcasts/episodes/${epId}/liked`, { method: 'DELETE' });
+});
+
+test('v1.71 T5: recent-listening selection - position>0 downloaded episodes, updatedAt desc; single-episode GET resolves the deep link', async () => {
+  const root = path.join(DATA_DIR, 'podcasts');
+  const showDir = path.join(root, 'RoundTrip Show');
+  fs.mkdirSync(showDir, { recursive: true });
+  const mk = (guid) => {
+    const f = path.join(showDir, `${guid} [rss=${guid}].mp3`);
+    fs.writeFileSync(f, 'B');
+    return f;
+  };
+  const idA = podcastStore.episodeIdFor(subId, 'cl-a');
+  const idB = podcastStore.episodeIdFor(subId, 'cl-b');
+  const idC = podcastStore.episodeIdFor(subId, 'cl-c');
+  await updateDatabase((db) => {
+    const ns = podcastStore.ensurePodcasts(db);
+    podcastStore.reduceUpsertEpisodes(ns, subId, [
+      { guid: 'cl-a', title: 'A', pubDateMs: 3400, durationSec: 100 },
+      { guid: 'cl-b', title: 'B', pubDateMs: 3401, durationSec: 100 },
+      { guid: 'cl-c', title: 'C', pubDateMs: 3402, durationSec: 100 },
+    ], 'pending', 5400);
+    podcastStore.reduceEpisodeDownloaded(ns, idA, { fileName: 'a', filePath: mk('cl-a'), bytes: 1, nowMs: 6400 });
+    podcastStore.reduceEpisodeDownloaded(ns, idB, { fileName: 'b', filePath: mk('cl-b'), bytes: 1, nowMs: 6401 });
+    podcastStore.reduceEpisodeDownloaded(ns, idC, { fileName: 'c', filePath: mk('cl-c'), bytes: 1, nowMs: 6402 });
+    return true;
+  });
+  // A: older listen; B: newer listen; C: zero position (never counts).
+  await postJson('/api/podcasts/progress', { episodeId: idA, position: 10, duration: 100 });
+  await postJson('/api/podcasts/progress', { episodeId: idB, position: 20, duration: 100 });
+  await postJson('/api/podcasts/progress', { episodeId: idC, position: 0, duration: 100 });
+
+  const data = await (await get('/api/podcasts/episodes?filter=recent-listening&limit=10')).json();
+  const ids = data.episodes.map((e) => e.id).filter((id) => [idA, idB, idC].includes(id));
+  assert.ok(!ids.includes(idC), 'position 0 never rides the row');
+  assert.ok(ids.indexOf(idB) < ids.indexOf(idA), 'most recent listen first (updatedAt desc)');
+  const rowA = data.episodes.find((e) => e.id === idA);
+  assert.strictEqual(rowA.progress.position, 10, 'the card carries the resume position');
+  assert.strictEqual(typeof rowA.showName, 'string');
+
+  // The deep-link resolver.
+  const one = await (await get(`/api/podcasts/episodes/${idB}`)).json();
+  assert.strictEqual(one.subId, subId, 'names the owning show id');
+  assert.strictEqual(typeof one.showName, 'string');
+  assert.strictEqual(one.progress.position, 20);
+  assert.ok(!('trashPath' in one) && !('filePath' in one), 'server paths never leak');
+  assert.strictEqual((await get('/api/podcasts/episodes/ffffffffffffffffffffffffffffffff')).status, 404);
+});
+
 test('v1.70 (QA S4): DELETE of an episode whose file already vanished records deleted-on-disk, no trash trip', async () => {
   const root = path.join(DATA_DIR, 'podcasts');
   const missing = path.join(root, 'RoundTrip Show', 'Gone [rss=gone1].mp3'); // never written

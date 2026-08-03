@@ -1453,7 +1453,11 @@ if (typeof module !== 'undefined' && module.exports) {
       const nextLine = document.createElement(next && next.item ? 'a' : 'span');
       nextLine.className = 'queue-upnext-next';
       if (next && next.item) {
-        nextLine.href = `/watch.html?v=${encodeURIComponent(next.mediaId)}`;
+        // v1.71: kind-derived via the shared helper - a podcast entry's
+        // up-next link opens the podcasts place, not a dead watch page.
+        nextLine.href = (window.FileTube && typeof window.FileTube.queueEntryHref === 'function')
+          ? window.FileTube.queueEntryHref(next)
+          : `/watch.html?v=${encodeURIComponent(next.mediaId)}`;
         nextLine.textContent = `Up next: ${next.item.title || next.item.name || ''}`;
       } else {
         nextLine.textContent = 'Last in queue';

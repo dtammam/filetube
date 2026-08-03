@@ -130,8 +130,9 @@ function shouldDockOnTransition(fromView, toView) {
   // for a different view docks the persistent host into the shell #player-dock
   // so playback survives the #view-root swap (Dean: tapping Home while a track
   // plays keeps the mini-player going); staying in the same view adopts instead
-  // of docking. MUST match common.js's copy.
-  return (fromView === 'watch' || fromView === 'read' || fromView === 'music') && typeof toView === 'string' && toView !== fromView;
+  // of docking. v1.71: 'podcasts' joins them (the expanded now-playing view
+  // mounts FULL into /podcasts' #player-slot). MUST match common.js's copy.
+  return (fromView === 'watch' || fromView === 'read' || fromView === 'music' || fromView === 'podcasts') && typeof toView === 'string' && toView !== fromView;
 }
 
 // The FULL/DOCKED/CLOSED transition a NAVIGATION (not a direct dock [x]/tap
@@ -3471,6 +3472,34 @@ if (typeof module !== 'undefined' && module.exports) {
   // `currentId` no longer matches the captured id by resolution time, the
   // controller has since moved on to different media -- this is a no-op
   // rather than acting on stale data.
+  // v1.71 (gate W1): advance playback INTO a queue entry - ONE shared seam
+  // for both ended flows (the video autoplay path and the trackNav podcast
+  // path). Moves the server pointer, stashes the watch seed for MEDIA
+  // entries only (a podcast projection must never prime a watch page it
+  // will not visit), and navigates via the kind-derived queueEntryHref
+  // (podcast -> /podcasts?play=, which resumes in the dock).
+  function advanceIntoQueueEntry(queueNext) {
+    fetch('/api/queue/pointer', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ uid: queueNext.uid }),
+      keepalive: true,
+    }).catch(function () { /* pointer re-syncs on the next queue read */ });
+    var advanceHref = (window.FileTube && typeof window.FileTube.queueEntryHref === 'function')
+      ? window.FileTube.queueEntryHref(queueNext)
+      : '/watch.html?v=' + encodeURIComponent(queueNext.mediaId);
+    if (window.FileTube && typeof window.FileTube.navigate === 'function') {
+      if (typeof window.FileTube.stashWatchSeed === 'function' && queueNext.item && queueNext.kind !== 'podcast') {
+        window.FileTube.stashWatchSeed(queueNext.item);
+      }
+      recordLifecycleEvent('autoplay:queue-advance', { detail: 'to=' + queueNext.mediaId });
+      autoplayAdvancePending = true;
+      window.FileTube.navigate(advanceHref);
+    } else {
+      window.location.href = advanceHref;
+    }
+  }
+
   function handleAutoplayNext() {
     // FR-7 (TF, v1.22.0, AC49): loop takes precedence over autoplay-advance
     // -- when loop is ON, the new loop listener below (registered alongside
@@ -3485,8 +3514,38 @@ if (typeof module !== 'undefined' && module.exports) {
     // registered trackNav handler (staying on /music), never the video
     // autoplay path (which navigates to /watch.html and consults the global
     // autoplayNext setting). Music autoplays through its queue by default.
+    // v1.71 (gate W1): "one queue for all" makes podcast episodes queueable,
+    // so this short-circuit can no longer bypass the queue outright. When
+    // the ENDED item is the queue's now-playing entry (it was played FROM
+    // the queue), the queue owns up-next (ruling 2) and the advance goes to
+    // the queue's next entry - never silently back into the show list. An
+    // episode playing OUTSIDE the queue (or any fetch failure) keeps the
+    // trackNav flow exactly as before. Music's OUTCOME is unchanged (track
+    // ids are never queueable, so the pointer can never match one), but
+    // music's previously-synchronous advance now rides this queue round
+    // trip too - the timing blast radius is tech-debt #90 (locked-phone
+    // advance is on the device-probe list).
     if (currentData && currentData.autoAdvanceViaTrackNav) {
-      if (trackNavHandlers && typeof trackNavHandlers.onNext === 'function') trackNavHandlers.onNext();
+      var fallbackToTrackNav = function () {
+        if (trackNavHandlers && typeof trackNavHandlers.onNext === 'function') trackNavHandlers.onNext();
+      };
+      fetch('/api/queue')
+        .then(function (res) { return res.ok ? res.json() : null; })
+        .catch(function () { return null; })
+        .then(function (queue) {
+          var entries = (queue && Array.isArray(queue.entries)) ? queue.entries : [];
+          var pointerUid = (queue && typeof queue.pointerUid === 'string') ? queue.pointerUid : null;
+          var pointerEntry = null;
+          for (var i = 0; i < entries.length; i++) {
+            if (entries[i] && entries[i].uid === pointerUid) { pointerEntry = entries[i]; break; }
+          }
+          var queueNext = computeQueueNext(queue);
+          if (pointerEntry && pointerEntry.mediaId === endedId && queueNext && currentId === endedId) {
+            advanceIntoQueueEntry(queueNext);
+            return;
+          }
+          fallbackToTrackNav();
+        });
       return;
     }
     fetch('/api/settings')
@@ -3505,22 +3564,7 @@ if (typeof module !== 'undefined' && module.exports) {
           .then(function (queue) {
             var queueNext = computeQueueNext(queue);
             if (queueNext && currentId === endedId) {
-              fetch('/api/queue/pointer', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ uid: queueNext.uid }),
-                keepalive: true,
-              }).catch(function () { /* pointer re-syncs on the next queue read */ });
-              if (window.FileTube && typeof window.FileTube.navigate === 'function') {
-                if (typeof window.FileTube.stashWatchSeed === 'function' && queueNext.item) {
-                  window.FileTube.stashWatchSeed(queueNext.item);
-                }
-                recordLifecycleEvent('autoplay:queue-advance', { detail: 'to=' + queueNext.mediaId });
-                autoplayAdvancePending = true;
-                window.FileTube.navigate('/watch.html?v=' + encodeURIComponent(queueNext.mediaId));
-              } else {
-                window.location.href = '/watch.html?v=' + encodeURIComponent(queueNext.mediaId);
-              }
+              advanceIntoQueueEntry(queueNext);
               return null; // queue consumed the advance
             }
             return runContextAdvance();

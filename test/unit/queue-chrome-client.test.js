@@ -15,6 +15,7 @@ const {
   formatQueueBadge,
   buildQueueRowModel,
   buildQueueRowModels,
+  queueEntryHref,
 } = require('../../public/js/common.js');
 
 const entry = (uid, over = {}) => ({
@@ -91,6 +92,72 @@ test('formatQueuePosition: ordinals incl. the 11th/12th/13th trap (gate S1)', ()
   assert.equal(formatQueuePosition(111), '111th');
   assert.equal(formatQueuePosition(0), '');
   assert.equal(formatQueuePosition('3'), '');
+});
+
+// ---- v1.71 T6: kind-aware entries -------------------------------------------
+
+test('SOURCE-LOCK (gate W5): both ended flows advance through the ONE queue seam, whose href is kind-derived and whose watch seed is media-only', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const playerSrc = fs.readFileSync(path.join(__dirname, '../../public/js/player.js'), 'utf8');
+  assert.ok(playerSrc.includes('function advanceIntoQueueEntry(queueNext)'), 'the shared advance seam exists');
+  const calls = playerSrc.match(/advanceIntoQueueEntry\(queueNext\);/g) || [];
+  assert.ok(calls.length >= 2, `BOTH ended flows (trackNav + video autoplay) call the seam, found ${calls.length}`);
+  const seamStart = playerSrc.indexOf('function advanceIntoQueueEntry');
+  const seam = playerSrc.slice(seamStart, playerSrc.indexOf('function handleAutoplayNext', seamStart));
+  assert.ok(seam.includes('window.FileTube.queueEntryHref(queueNext)'), 'the destination derives from the shared kind-aware helper');
+  assert.ok(seam.includes("queueNext.kind !== 'podcast'"), 'the watch seed is suppressed for podcast entries');
+  assert.ok(seam.includes('window.FileTube.navigate(advanceHref)'), 'and the derived href is what actually navigates');
+  const watchSrc = fs.readFileSync(path.join(__dirname, '../../public/js/watch.js'), 'utf8');
+  assert.ok(watchSrc.includes('window.FileTube.queueEntryHref(next)'), 'the up-next box derives via the shared helper too');
+  // Gate S10 (tightened per QA S4: containment, not adjacency - the seed
+  // call is the gate's FIRST statement, so moving it below the closed gate
+  // cannot pass).
+  const commonSrc = fs.readFileSync(path.join(__dirname, '../../public/js/common.js'), 'utf8');
+  assert.ok(commonSrc.includes("if (m.kind !== 'podcast') {\n              stashWatchSeed({"), 'the panel row tap\'s watch seed sits INSIDE the kind gate');
+});
+
+test('SOURCE-LOCK (gate W1): the trackNav ended path consults the queue before falling back to the show list', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const playerSrc = fs.readFileSync(path.join(__dirname, '../../public/js/player.js'), 'utf8');
+  const branchStart = playerSrc.indexOf('currentData.autoAdvanceViaTrackNav) {');
+  assert.ok(branchStart >= 0, 'the trackNav branch exists');
+  const branch = playerSrc.slice(branchStart, playerSrc.indexOf("fetch('/api/settings')", branchStart));
+  assert.ok(branch.includes("fetch('/api/queue')"), 'the branch consults the queue');
+  assert.ok(branch.includes('pointerEntry.mediaId === endedId'), 'queue precedence keys on THIS item being the now-playing entry');
+  assert.ok(branch.includes('fallbackToTrackNav'), 'and the show-list flow survives as the fallback');
+  assert.ok(branch.indexOf("fetch('/api/queue')") < branch.indexOf('fallbackToTrackNav();'), 'consult-first ordering, not mere presence');
+});
+
+test('v1.71 queueEntryHref: podcast -> /podcasts?play=, media/absent-kind -> /watch.html?v=, encoded; null on garbage', () => {
+  assert.equal(queueEntryHref({ mediaId: 'ep"1', kind: 'podcast' }), '/podcasts?play=ep%221');
+  assert.equal(queueEntryHref({ mediaId: 'vid1', kind: 'media' }), '/watch.html?v=vid1');
+  assert.equal(queueEntryHref({ mediaId: 'vid1' }), '/watch.html?v=vid1', 'a legacy kind-less entry stays a media link');
+  assert.equal(queueEntryHref({ kind: 'podcast' }), null);
+  assert.equal(queueEntryHref(null), null);
+});
+
+test('v1.71 buildQueueRowModel: a podcast entry links the podcasts place and shows the SHOW cover, never /thumbnail', () => {
+  const m = buildQueueRowModel({
+    uid: 'ü1', mediaId: 'ëp-9', kind: 'podcast',
+    item: { title: 'Ëp Title', channelName: 'Thë Show', artUrl: '/podcastart/süb-1', hasThumbnail: false },
+  }, null);
+  assert.equal(m.kind, 'podcast');
+  assert.equal(m.href, '/podcasts?play=' + encodeURIComponent('ëp-9'));
+  assert.equal(m.thumbnailUrl, '/podcastart/süb-1', 'the server-named art, not a thumbnail route');
+  assert.equal(m.channelLabel, 'Thë Show');
+  // The USE bind's mutant: a podcast entry must NEVER fall through to the
+  // media thumb contract even when hasThumbnail lies true.
+  const lying = buildQueueRowModel({ uid: 'ü2', mediaId: 'ëp-9', kind: 'podcast', item: { title: 'T', hasThumbnail: true } }, null);
+  assert.equal(lying.thumbnailUrl, null, 'no artUrl -> no art; hasThumbnail is a media-only field');
+});
+
+test('v1.71 buildQueueRowModel: media entries are BYTE-COMPATIBLE with pre-v1.71 rows (plus the explicit kind)', () => {
+  const m = buildQueueRowModel(entry('a'), null);
+  assert.equal(m.kind, 'media');
+  assert.equal(m.href, '/watch.html?v=' + encodeURIComponent('mëdia-a'));
+  assert.equal(m.thumbnailUrl, '/thumbnail/mëdia-a');
 });
 
 test('buildQueueRowModels: a FULLY-dangling pointer dims nothing (gate S4 - not-started semantics)', () => {

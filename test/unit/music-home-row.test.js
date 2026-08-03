@@ -36,6 +36,27 @@ test('T11 (gate note): the Continue-listening CARD deep-links /music?play=<id> s
   assert.match(html, /href="\/music\?play=trk9"/, 'the card resumes the specific track, not the generic /music');
 });
 
+// ---- v1.71 T5: the podcasts Continue-listening row ----
+
+test('v1.71: buildPodcastHomeSectionHtml renders the music-row chassis with podcast art + show name; empty -> empty string', () => {
+  assert.equal(main.buildPodcastHomeSectionHtml([], 'Continue listening · Podcasts', '/podcasts'), '', 'podcast-less home stays byte-identical');
+  const html = main.buildPodcastHomeSectionHtml(
+    [{ id: 'ep1', subId: 'sub1', title: 'Episode <One>', showName: 'The "Show"' }],
+    'Continue listening · Podcasts',
+    '/podcasts',
+  );
+  assert.match(html, /music-home-row/, 'the music chassis - zero new CSS classes');
+  assert.match(html, /\/podcastart\/sub1/, 'show cover art');
+  assert.match(html, /Episode &lt;One&gt;/, 'title escaped');
+  assert.match(html, /The &quot;Show&quot;/, 'show name escaped');
+  assert.match(html, /href="\/podcasts"/, 'See all links the place');
+});
+
+test('v1.71 (the USE bind): the podcast card deep-links /podcasts?play=<episodeId> - the resume path, not the bare place', () => {
+  const html = main.buildPodcastRowCardHtml({ id: 'ep"9', subId: 's1', title: 'E', showName: 'S' });
+  assert.match(html, /href="\/podcasts\?play=ep%229"/, 'the card resumes the specific episode, encoded');
+});
+
 test('T11: homeRowEnabled defaults ON; only an explicit "0" disables', () => {
   const store = {};
   global.localStorage = {

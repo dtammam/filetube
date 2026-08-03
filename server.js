@@ -16,6 +16,7 @@ const ytdlp = require('./lib/ytdlp');
 // v1.69: the podcasts place (RSS subscription engine). First-class like
 // music/books - routes always registered, nav gated client-side on content.
 const podcasts = require('./lib/podcasts');
+const podcastStore = require('./lib/podcasts/store');
 const heavyGate = require('./lib/heavyGate');
 // v1.28.0 (two-reviewer gate follow-up, F1): shared body-parser-error ->
 // JSON-response mapping, also required directly by lib/ytdlp/index.js for
@@ -7649,7 +7650,9 @@ function validateBackupBundle(bundle) {
         // v1.68 notification dismissals (absent in pre-v1.68 bundles -- legal).
         ['notificationDismissals', 'array'],
         // v1.69 podcast per-user state (absent in pre-v1.69 bundles -- legal).
-        ['podcastProgress', 'object'], ['podcastPlayed', 'object']]) {
+        ['podcastProgress', 'object'], ['podcastPlayed', 'object'],
+        // v1.71 episode likes (absent in pre-v1.71 bundles -- legal).
+        ['podcastLiked', 'array']]) {
         if (u[field] === undefined) continue;
         const ok = kind === 'array' ? Array.isArray(u[field]) : (typeof u[field] === 'object' && u[field] !== null && !Array.isArray(u[field]));
         if (!ok) return `${where}: ${field} must be an ${kind}`;
@@ -8289,10 +8292,42 @@ app.post('/api/push/unsubscribe', (req, res) => {
 function shapedQueue(db, userId) {
   const raw = userStore.getQueue(userId);
   const live = queueStore.normalize(raw);
+  const podcastNs = podcastStore.readPodcasts(db);
   const entries = [];
   for (const e of live.entries) {
-    const item = db.metadata[e.mediaId];
-    if (item) entries.push({ uid: e.uid, mediaId: e.mediaId, item });
+    if (e.kind === 'podcast') {
+      // v1.71: podcast entries resolve against the episodes map, never
+      // db.metadata. The SILENT-DROP is deliberately preserved for this id
+      // space too - a trashed/tombstoned/phantom episode disappears from
+      // the panel, belt to the delQueueByEpisode carrier's suspenders.
+      const ep = Object.prototype.hasOwnProperty.call(podcastNs.episodes, e.mediaId) ? podcastNs.episodes[e.mediaId] : null;
+      if (ep && ep.status === 'downloaded') {
+        const sub = podcastNs.subscriptions.find((s) => s && s.id === ep.subId);
+        entries.push({
+          uid: e.uid,
+          mediaId: e.mediaId,
+          kind: 'podcast',
+          // The media-item projection the queue consumers expect, from
+          // podcast fields: show name as the channel label, show cover as
+          // artUrl (buildQueueRowModel's podcast thumb source).
+          item: {
+            title: ep.title,
+            name: ep.title,
+            channelName: sub ? sub.name : null,
+            folderName: sub ? sub.name : null,
+            artUrl: `/podcastart/${encodeURIComponent(ep.subId)}`,
+            durationSec: Number.isFinite(ep.durationSec) ? ep.durationSec : null,
+            hasThumbnail: false,
+          },
+        });
+      }
+      continue;
+    }
+    // hasOwnProperty (gate S9): a restored bundle can carry prototype-chain
+    // keys as mediaIds; they must silent-drop like any dead id, never serve
+    // a garbage item from the prototype.
+    const item = Object.prototype.hasOwnProperty.call(db.metadata, e.mediaId) ? db.metadata[e.mediaId] : null;
+    if (item) entries.push({ uid: e.uid, mediaId: e.mediaId, kind: 'media', item });
   }
   // Dead-id filtering can orphan the pointer; normalize AGAIN on the
   // filtered view so the client never sees a pointer to a missing row.
@@ -8308,9 +8343,22 @@ app.post('/api/queue/items', (req, res) => {
   const db = getCachedDatabase();
   const body = req.body || {};
   const mediaId = typeof body.mediaId === 'string' ? body.mediaId : '';
-  if (!db.metadata[mediaId]) return res.status(404).json({ error: 'Media file not found' });
+  // v1.71: the entry's kind is CARRIED, never inferred (episode ids are
+  // md5 hex exactly like media ids). Each kind existence-checks its own
+  // id space; a podcast add requires a playable (downloaded) episode.
+  const kind = body.kind === 'podcast' ? 'podcast' : 'media';
+  if (kind === 'podcast') {
+    const podcastNs = podcastStore.readPodcasts(db);
+    const ep = Object.prototype.hasOwnProperty.call(podcastNs.episodes, mediaId) ? podcastNs.episodes[mediaId] : null;
+    if (!ep || ep.status !== 'downloaded') return res.status(404).json({ error: 'Episode not found' });
+  } else if (!Object.prototype.hasOwnProperty.call(db.metadata, mediaId)) {
+    // hasOwnProperty (gate S5): a prototype-chain key ('__proto__',
+    // 'constructor', 'toString') must 404 like any phantom, never queue an
+    // item-less entry the shaped view then serves as garbage.
+    return res.status(404).json({ error: 'Media file not found' });
+  }
   const position = body.position === 'next' ? 'next' : 'end';
-  const result = queueStore.reduceAdd(userStore.getQueue(req.user.id), mediaId, position);
+  const result = queueStore.reduceAdd(userStore.getQueue(req.user.id), mediaId, position, kind);
   if (!result.changed) {
     return res.status(400).json({ error: result.error === 'queue-full' ? `Queue is full (${queueStore.QUEUE_CAP} items)` : 'Could not add to queue' });
   }
@@ -14195,6 +14243,7 @@ podcasts.registerRoutes(app, {
   userStore,
   runExclusive: heavyGate.runExclusive,
   sendRangeable,
+  contentDispositionAttachment,
   listExternalShows: listYtdlpPodcastShows,
   listExternalEpisodes: listYtdlpPodcastEpisodes,
 });

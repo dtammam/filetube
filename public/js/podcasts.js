@@ -106,6 +106,10 @@
     var playable = []; // downloaded episodes of the current show, list order
     var playingId = null;
     var statusPollTimer = null;
+    var likedCount = 0; // gates the Liked lane card (the count-gated rule)
+    // The Liked lane's pseudo-show: cross-show liked episodes. __likedLane
+    // routes refreshes to openLiked and strips the show-only chrome.
+    var LIKED_LANE = { id: '__liked__', name: 'Liked', source: 'liked', __likedLane: true };
 
     function setStatus(msg) {
       if (!statusEl) return;
@@ -131,10 +135,55 @@
       if (shows.length === 0) return;
       var grid = document.createElement('div');
       grid.className = 'podcast-grid';
+      // v1.71: the Liked lane rides first, count-gated like the sidebar
+      // Liked entry - zero likes, no card.
+      if (likedCount > 0) grid.appendChild(buildLikedCard());
       shows.forEach(function (show) {
         grid.appendChild(buildShowCard(show));
       });
       content.appendChild(grid);
+    }
+
+    function buildLikedCard() {
+      var card = document.createElement('button');
+      card.type = 'button';
+      card.className = 'podcast-card podcast-liked-card';
+      var art = document.createElement('div');
+      art.className = 'podcast-card-art podcast-liked-card-art';
+      var heart = document.createElement('i');
+      heart.className = 'icon-heart';
+      art.appendChild(heart);
+      card.appendChild(art);
+      var title = document.createElement('div');
+      title.className = 'podcast-card-title';
+      title.textContent = 'Liked';
+      card.appendChild(title);
+      var line = document.createElement('div');
+      line.className = 'podcast-card-sub';
+      line.textContent = likedCount === 1 ? '1 episode' : (likedCount + ' episodes');
+      card.appendChild(line);
+      card.addEventListener('click', openLiked, { signal: signal });
+      return card;
+    }
+
+    function openLiked() {
+      currentShow = LIKED_LANE;
+      fetchJson('/api/podcasts/episodes?filter=liked&limit=100')
+        .then(function (data) {
+          if (signal.aborted) return;
+          episodes = data.episodes || [];
+          renderEpisodes();
+        })
+        .catch(function () { setStatus('Could not load liked episodes.'); });
+    }
+
+    // Refresh whatever list is on screen from server state (delete/restore/
+    // like handlers) - the Liked lane is not a real show, so openShow can
+    // never be the blanket answer.
+    function refreshCurrentView() {
+      if (!currentShow) { loadShows(); return; }
+      if (currentShow.__likedLane) openLiked();
+      else openShow(currentShow);
     }
 
     function buildShowCard(show) {
@@ -207,11 +256,13 @@
 
       var head = document.createElement('div');
       head.className = 'podcast-show-head';
-      var art = document.createElement('img');
-      art.className = 'podcast-show-art';
-      art.alt = '';
-      art.src = currentShow.artUrl || ('/podcastart/' + encodeURIComponent(currentShow.id));
-      head.appendChild(art);
+      if (!currentShow.__likedLane) {
+        var art = document.createElement('img');
+        art.className = 'podcast-show-art';
+        art.alt = '';
+        art.src = currentShow.artUrl || ('/podcastart/' + encodeURIComponent(currentShow.id));
+        head.appendChild(art);
+      }
       var meta = document.createElement('div');
       meta.className = 'podcast-show-meta';
       var h = document.createElement('h3');
@@ -229,14 +280,17 @@
         desc.textContent = currentShow.description;
         meta.appendChild(desc);
       }
-      var counts = document.createElement('div');
-      counts.className = 'podcast-card-sub';
-      counts.textContent = showCountLine(currentShow) + (currentShow.lastStatus ? ' · ' + currentShow.lastStatus : '');
-      meta.appendChild(counts);
+      if (!currentShow.__likedLane) {
+        var counts = document.createElement('div');
+        counts.className = 'podcast-card-sub';
+        counts.textContent = showCountLine(currentShow) + (currentShow.lastStatus ? ' · ' + currentShow.lastStatus : '');
+        meta.appendChild(counts);
+      }
       // The management row (v1.69 QA gate #3): pause/resume + unsubscribe +
       // the secretMissing re-entry lane. RSS shows only - a ytdlp-sourced
-      // show is managed on its own /subscriptions page.
-      if (currentShow.source !== 'ytdlp') {
+      // show is managed on its own /subscriptions page, and the Liked lane
+      // is not a subscription at all.
+      if (currentShow.source !== 'ytdlp' && !currentShow.__likedLane) {
         meta.appendChild(buildManageRow());
       }
       head.appendChild(meta);
@@ -343,7 +397,10 @@
       main.appendChild(title);
       var meta = document.createElement('div');
       meta.className = 'podcast-episode-meta';
-      meta.textContent = formatEpisodeMeta(ep);
+      // The Liked lane is cross-show: name the show in the meta line.
+      meta.textContent = (currentShow && currentShow.__likedLane && ep.showName)
+        ? (ep.showName + ' · ' + formatEpisodeMeta(ep))
+        : formatEpisodeMeta(ep);
       main.appendChild(meta);
       var chipLabel = episodeChipLabel(ep);
       if (chipLabel) {
@@ -376,6 +433,66 @@
       }
       row.appendChild(main);
 
+      // v1.71 T4: the like heart (RSS episodes; the podcast arm of the
+      // music-liked pattern). Toggles server state; unliking inside the
+      // Liked lane drops the row on the refresh.
+      if (!ep.watchHref && ep.status === 'downloaded') {
+        var likeBtn = document.createElement('button');
+        likeBtn.type = 'button';
+        likeBtn.className = 'podcast-like-toggle' + (ep.liked ? ' liked' : '');
+        likeBtn.title = ep.liked ? 'Unlike' : 'Like';
+        likeBtn.setAttribute('aria-pressed', ep.liked ? 'true' : 'false');
+        var likeIcon = document.createElement('i');
+        likeIcon.className = 'icon-heart';
+        likeBtn.appendChild(likeIcon);
+        likeBtn.addEventListener('click', function (e) {
+          e.stopPropagation();
+          var next = !ep.liked;
+          fetchJson('/api/podcasts/episodes/' + encodeURIComponent(ep.id) + '/liked', { method: next ? 'POST' : 'DELETE' })
+            .then(function () {
+              ep.liked = next;
+              likedCount += next ? 1 : -1;
+              if (likedCount < 0) likedCount = 0;
+              likeBtn.classList.toggle('liked', next);
+              likeBtn.title = next ? 'Unlike' : 'Like';
+              likeBtn.setAttribute('aria-pressed', next ? 'true' : 'false');
+              if (currentShow && currentShow.__likedLane && !next) refreshCurrentView();
+            })
+            .catch(function () { setStatus('Could not update the like.'); });
+        }, { signal: signal });
+        row.appendChild(likeBtn);
+      }
+
+      // v1.71 T6: add-to-queue through the ONE shared verb (toast + Undo),
+      // kind 'podcast' so the entry resolves against the episodes map.
+      if (!ep.watchHref && ep.status === 'downloaded') {
+        var queueBtn = document.createElement('button');
+        queueBtn.type = 'button';
+        queueBtn.className = 'btn btn-sm';
+        queueBtn.textContent = 'Queue';
+        queueBtn.title = 'Add to queue';
+        queueBtn.addEventListener('click', function (e) {
+          e.stopPropagation();
+          if (typeof window.addToQueue === 'function') window.addToQueue(ep.id, 'end', 'podcast');
+        }, { signal: signal });
+        row.appendChild(queueBtn);
+      }
+
+      // v1.71: save-to-device (RSS episodes only - a ytdlp episode is a
+      // media item and keeps its watch-page download affordance). An <a
+      // download> pointed at the confined stream route's ?download=1 arm.
+      if (!ep.watchHref && ep.status === 'downloaded') {
+        var saveLink = document.createElement('a');
+        saveLink.className = 'btn btn-sm';
+        saveLink.href = '/episode/' + encodeURIComponent(ep.id) + '?download=1';
+        saveLink.setAttribute('download', '');
+        saveLink.textContent = 'Save';
+        saveLink.title = 'Save to device';
+        saveLink.setAttribute('aria-label', 'Save to device');
+        saveLink.addEventListener('click', function (e) { e.stopPropagation(); }, { signal: signal });
+        row.appendChild(saveLink);
+      }
+
       // v1.70: the recoverable delete (RSS episodes only). Downloaded rows
       // get a two-tap delete; trashed rows get Restore. Both refresh the
       // list from server state on success.
@@ -394,7 +511,7 @@
             return;
           }
           fetchJson('/api/podcasts/episodes/' + encodeURIComponent(ep.id), { method: 'DELETE' })
-            .then(function () { if (currentShow) openShow(currentShow); })
+            .then(function () { refreshCurrentView(); })
             .catch(function () { setStatus('Could not delete the episode.'); });
         }, { signal: signal });
         row.appendChild(delBtn);
@@ -407,7 +524,7 @@
         restoreBtn.addEventListener('click', function (e) {
           e.stopPropagation();
           fetchJson('/api/podcasts/episodes/' + encodeURIComponent(ep.id) + '/restore', { method: 'POST' })
-            .then(function () { if (currentShow) openShow(currentShow); })
+            .then(function () { refreshCurrentView(); })
             .catch(function (err) { setStatus(err.message || 'Could not restore the episode.'); });
         }, { signal: signal });
         row.appendChild(restoreBtn);
@@ -459,18 +576,26 @@
     function playAt(i) {
       var ep = playable[i];
       if (!ep || !currentShow) return;
+      // v1.71: derive show identity per-EPISODE where the payload carries it
+      // (the Liked lane is cross-show; ep.subId/showName are authoritative
+      // there). A plain show view falls back to currentShow as before.
+      var showName = ep.showName || currentShow.name;
+      var artSubId = ep.subId || currentShow.id;
       var data = {
         type: 'audio',
         title: ep.title,
-        channelName: currentShow.name,
-        folderName: currentShow.name,
+        channelName: showName,
+        folderName: showName,
         duration: ep.durationSec || 0,
-        artUrl: '/podcastart/' + encodeURIComponent(currentShow.id),
+        artUrl: '/podcastart/' + encodeURIComponent(artSubId),
         streamSrc: '/episode/' + ep.id,
         progressEndpoint: '/api/podcasts/progress',
         resumeMode: 'podcast',
         autoAdvanceViaTrackNav: true,
-        readerHref: '/podcasts',
+        // v1.71 T7: tapping the docked player opens the expanded
+        // now-playing view in ONE gesture (Dean's ruling) - the ?nowplaying
+        // param tells this controller's init to expand into #player-slot.
+        readerHref: '/podcasts?nowplaying=1',
       };
       playingId = ep.id;
       applyPlayingHighlight();
@@ -532,7 +657,7 @@
             clearInterval(statusPollTimer);
             statusPollTimer = null;
             setStatus('');
-            if (currentShow) openShow(currentShow); else loadShows();
+            refreshCurrentView();
           }
         }).catch(function () { /* transient - keep polling */ });
       }, 2500);
@@ -540,9 +665,15 @@
     }
 
     function loadShows() {
-      fetchJson('/api/podcasts/shows').then(function (data) {
+      // The liked count gates the lane card; fetched alongside the shows and
+      // NEVER allowed to fail the grid (a likes hiccup costs the card only).
+      var likesFetch = fetchJson('/api/podcasts/liked')
+        .then(function (d) { return Array.isArray(d.episodeIds) ? d.episodeIds.length : 0; })
+        .catch(function () { return 0; });
+      Promise.all([fetchJson('/api/podcasts/shows'), likesFetch]).then(function (results) {
         if (signal.aborted) return;
-        shows = data.shows || [];
+        shows = results[0].shows || [];
+        likedCount = results[1];
         if (!currentShow) renderShows();
       }).catch(function () {
         setStatus('Could not load podcasts.');
@@ -619,6 +750,64 @@
     }
 
     loadShows();
+
+    // v1.71 T5: /podcasts?play=<episodeId> - a home Continue-listening card
+    // (or a queue advance, T6) lands here and must open the owning show and
+    // start THAT episode in the dock; the resumeMode:'podcast' ladder
+    // applies the saved position server-side. A bad or gone id degrades to
+    // the plain grid (the music playTrackFromContinue posture).
+    function consumeDeepLink(epId) {
+      fetchJson('/api/podcasts/episodes/' + encodeURIComponent(epId))
+        .then(function (ep) {
+          if (signal.aborted || !ep || !ep.subId) return;
+          var show = null;
+          for (var k = 0; k < shows.length; k++) { if (shows[k].id === ep.subId) { show = shows[k]; break; } }
+          if (!show) show = { id: ep.subId, name: ep.showName || 'Podcast' };
+          currentShow = show;
+          return fetchJson('/api/podcasts/shows/' + encodeURIComponent(show.id) + '/episodes')
+            .then(function (data) {
+              if (signal.aborted) return;
+              currentShow = data.show || show;
+              episodes = data.episodes || [];
+              renderEpisodes();
+              // QA W1: the deep-linked row scrolls into view - a card for an
+              // episode 80 rows deep must not land at the top of the list
+              // with its highlighted row off-screen.
+              var rowEl = content ? content.querySelector('[data-episode-id="' + epId + '"]') : null;
+              if (rowEl && typeof rowEl.scrollIntoView === 'function') rowEl.scrollIntoView({ block: 'center' });
+              for (var i = 0; i < playable.length; i++) {
+                if (playable[i].id === epId) { playAt(i); return; }
+              }
+            });
+        })
+        .catch(function () { /* the grid stands */ });
+    }
+    var playParam = null;
+    try { playParam = new URLSearchParams(window.location.search).get('play'); } catch (_) { playParam = null; }
+    if (playParam) consumeDeepLink(playParam);
+
+    // v1.71 T7: arriving via the docked player's tap (?nowplaying=1)
+    // expands the LIVE player into this page's #player-slot - the big
+    // audio-art now-playing view. Guarded: a stale/bookmarked URL with
+    // nothing playing degrades to the grid.
+    //
+    // Gate W2: a podcasts->podcasts navigation (sidebar/bottom-bar Podcasts
+    // tap, ?play=, ?nowplaying=) swaps #view-root WITHOUT docking
+    // (shouldDockOnTransition same-view rule), which discards the old
+    // view's #player-slot with an EXPANDED player inside it - stranding
+    // live audio in a detached subtree. So a FULL player is re-adopted
+    // into THIS view's slot on every init (the read.js re-mount
+    // precedent), ?nowplaying or not.
+    var wantNowPlaying = false;
+    try { wantNowPlaying = new URLSearchParams(window.location.search).get('nowplaying') === '1'; } catch (_) { wantNowPlaying = false; }
+    var player = window.FileTube && window.FileTube.player;
+    if (player && typeof player.getState === 'function' && typeof player.expand === 'function') {
+      var pState = player.getState();
+      var npSlot = root.querySelector('#player-slot');
+      if (npSlot && (pState === 'full' || (wantNowPlaying && pState === 'docked'))) {
+        player.expand(npSlot);
+      }
+    }
 
     // Teardown extras the AbortController cannot cover.
     controller.__podcastsCleanup = function () {

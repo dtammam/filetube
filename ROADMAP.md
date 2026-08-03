@@ -80,6 +80,50 @@
 
 ## Shipped
 
+### v1.71.0 - Podcasts everywhere: Dean's seven items (2026-08-03)
+
+One branch, Dean's ruling, items 2-7 (item 1 shipped in v1.70.0).
+Schema v10: `user_podcast_liked` (the ELEVENTH id-keyed carrier, every
+arm in its birth commit) + `user_queue.entry_kind` - episode ids are
+md5 hex exactly like media ids, so the kind is CARRIED, never inferred.
+The six features: Podcasts as an optional bottom-bar item, OFF by
+default (a new default-hidden class in the resolver; pre-v1.71 configs
+untouched); episode save-to-device via the confined stream route's
+`?download=1`; episode likes with a count-gated Liked lane (the music
+pattern, own table - never show-level); a home Continue-listening row
+(music's exact selection contract) deep-linking `/podcasts?play=`,
+which opens the show, scrolls to the row and resumes in the dock; ONE
+queue for all - podcast episodes ride the v1.63 queue with kind-scoped
+lifecycle carriers, per-kind resolution with the silent-drop preserved,
+and every consumer deriving destinations from one shared
+`queueEntryHref`; and the one-tap expanded now-playing view
+(`?nowplaying=1` mounts the live player FULL into /podcasts' new
+`#player-slot`).
+
+The gate, honestly: full two-seat gate, two rounds each. Adversarial
+round 1 found the headline feature HALF-BUILT - a queued podcast
+episode never advanced the queue (the trackNav short-circuit returned
+before the queue consult); also a podcasts-to-podcasts navigation
+stranded the expanded player mid-audio, and three guards (kind-scope,
+route actor-identity, consumer conversions) each survived the full
+5814-test suite - the decision-vs-use class three times in one wave.
+All fixed and mutant-verified. QA found the deep link's promised
+scroll-to-row undelivered and one comment still carrying a corrected
+claim; both taken. Disclosed residuals: #89 (a docked VIDEO expands
+into /podcasts via a bookmarked ?nowplaying=1), #90 (music's ended
+path now AWAITS a queue read - outcome unchanged by construction,
+timing changed; the round-1 "music unaffected" claim was WRONG as
+stated and is corrected here), #91 (the trackNav queue advance ignores
+autoplayNext - a product call for Dean), #92 (auto-advance collapses
+the expanded view to the dock), #93 (Liked card count vs lane
+divergence + the silent 100 cap). Process failures on the record: a
+mutation-test restore clobbered an uncommitted fix (the
+against-a-COMMIT norm, violated and vindicated), and one unverified
+test count made it into a reviewer brief (4295; the real number was
+4265). Dual-Node: v22.23.1 = 5819/5819; v24.14.0 = 5819/5819 (failure
+greps empty, counts from the reporter lines). Device pass PENDING -
+the exec plan stays in active/ until Dean's probes close it.
+
 ### v1.70.0 - Recoverable episode delete + the 15.5MB cover fix (2026-08-03)
 
 Closes tech-debt #81: podcast episodes get their own trash lane. A
