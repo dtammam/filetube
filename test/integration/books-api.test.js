@@ -307,3 +307,17 @@ test('v1.43 carrier: the books scan prune removes EVERY user\'s reading position
   assert.equal(userStore.getOneBookProgress(uid, doomedId), null, 'the admin\'s position pruned with the book');
   assert.equal(userStore.getOneBookProgress(second.user.id, doomedId), null, 'every OTHER user\'s position too (no stale resurrection onto a same-path re-add)');
 });
+
+// ---- v1.72 (cap 7): the download header moves to the shared helper ----------
+
+test('v1.72: GET /book/:id/file?download=1 uses the shared injection-safe attachment helper (filename* form)', async () => {
+  const r = await fetch(`${base}/book/${pdfId}/file?download=1`);
+  assert.equal(r.status, 200);
+  const dispo = r.headers.get('content-disposition');
+  assert.match(dispo, /^attachment; filename="/);
+  assert.match(dispo, /filename\*=UTF-8''/, 'RFC 5987 form - the old hand-rolled encodeURIComponent header is gone');
+  assert.match(dispo, /\.pdf/, 'the format rides as the extension');
+  // No download param -> inline (no disposition header), unchanged.
+  const inline = await fetch(`${base}/book/${pdfId}/file`);
+  assert.equal(inline.headers.get('content-disposition'), null);
+});

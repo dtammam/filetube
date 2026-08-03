@@ -6415,7 +6415,11 @@ app.get('/book/:id/file', (req, res) => {
   if (!fs.existsSync(item.filePath)) return res.status(404).json({ error: 'Book file missing on disk' });
   res.setHeader('Content-Type', BOOK_CONTENT_TYPES[item.format] || 'application/octet-stream');
   if (req.query.download === '1') {
-    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(`${item.title || 'book'}.${item.format}`)}"`);
+    // v1.72 (cap 7): the shared injection-safe helper replaces the old
+    // hand-rolled header - encodeURIComponent in a bare filename= produced
+    // percent-encoded garbage names for any non-ASCII title, and the
+    // helper's filename* form is exactly the fix it exists to provide.
+    res.setHeader('Content-Disposition', contentDispositionAttachment(item.title || 'book', `.${item.format}`));
   }
   // sendFile provides Accept-Ranges/206 natively -- what pdf.js range
   // loading wants; harmless for the whole-file EPUB fetch.
@@ -7360,6 +7364,17 @@ app.get('/track/:id', (req, res) => {
   const track = ownTrack(ns.tracks, req.params.id);
   if (!track || typeof track.filePath !== 'string') return res.status(404).json({ error: 'no such track' });
   if (!fs.existsSync(track.filePath)) return res.status(404).json({ error: 'file missing' });
+  // v1.72 (cap 7): ?download=1 = the app-wide save-to-device affordance
+  // (the /video/:id?download=1 / /episode/:id?download=1 pattern). Serves
+  // the ORIGINAL bytes with an attachment disposition through the shared
+  // injection-safe helper - deliberately BEFORE the transcode branch, so a
+  // save always gets the source file (an ALAC master downloads as-is; the
+  // browser-compat rendition is a streaming concern, not an archive).
+  if (req.query.download === '1') {
+    res.setHeader('Content-Disposition', contentDispositionAttachment(track.title || 'track', track.ext));
+    const contentType = MUSIC_CONTENT_TYPES[track.ext] || 'application/octet-stream';
+    return sendRangeable(req, res, track.filePath, contentType);
+  }
   if (musicCodecNeedsTranscode(track.codec)) {
     const rendition = audioPath(track.id);
     if (fs.existsSync(rendition)) {

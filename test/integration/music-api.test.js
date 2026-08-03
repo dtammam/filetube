@@ -253,3 +253,33 @@ test('T8: POST /api/music/progress stages (read-your-writes), coalesces many pin
   const after = userStore.getOneMusicProgress(user.id, t1.id);
   assert.ok(after === null || after.position === 25, 'deleted-track ping did not resurrect/overwrite');
 });
+
+// ---- v1.72 (cap 7): save-to-device ------------------------------------------
+
+test('v1.72: GET /track/:id?download=1 serves the ORIGINAL bytes with the shared attachment disposition', async () => {
+  const { t1 } = await seedLibrary();
+  const r = await get(`/track/${t1.id}?download=1`);
+  assert.equal(r.status, 200);
+  const dispo = r.headers.get('content-disposition');
+  assert.match(dispo, /^attachment; filename="/, 'attachment disposition present');
+  assert.match(dispo, /filename\*=UTF-8''/, "the shared helper's RFC 5987 form, never a hand-rolled header");
+  assert.ok(dispo.includes('Mother'), 'named from the track title');
+  assert.equal(await r.text(), 'AUDIOBYTES', 'the original file bytes, byte-identical');
+});
+
+test('v1.72: ?download=1 bypasses the transcode branch - an ALAC track downloads its SOURCE bytes, never a 503', async () => {
+  const alacFull = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-alacdl-')), 'a.m4a');
+  fs.writeFileSync(alacFull, 'ALACSOURCE');
+  const alacId = 'b'.repeat(32);
+  await updateDatabase((db) => {
+    const ns = musicStore.ensureMusic(db);
+    ns.tracks[alacId] = { id: alacId, filePath: alacFull, rootFolder: path.dirname(alacFull), ext: '.m4a', title: 'Alac DL', artist: 'A', album: 'B', albumArtKey: null, codec: 'alac', durationSec: 100, addedAt: '2026-01-01T00:00:00Z' };
+    return true;
+  });
+  // The STREAM route would 503 (no rendition, no ffmpeg on CI) - the
+  // download arm must serve the source instead.
+  assert.equal((await get(`/track/${alacId}`)).status, 503, 'precondition: streaming this codec needs a rendition');
+  const dl = await get(`/track/${alacId}?download=1`);
+  assert.equal(dl.status, 200);
+  assert.equal(await dl.text(), 'ALACSOURCE', 'the archive gets the master, not a rendition');
+});
