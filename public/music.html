@@ -241,9 +241,15 @@
         <div class="audio-subtitle" id="audio-visual-folder">Playlist folder</div>
       </div>
       <div id="player-controls" class="player-controls">
+        <button type="button" id="track-prev-btn" class="pc-btn track-nav-btn" aria-label="Previous track" hidden>
+          <span class="track-nav-ico" aria-hidden="true"></span>
+        </button>
         <button type="button" id="pp-btn" class="pc-btn pp-btn" aria-label="Play" aria-pressed="false">
           <span class="pp-icon-play" aria-hidden="true"></span>
           <span class="pp-icon-pause" aria-hidden="true"></span>
+        </button>
+        <button type="button" id="track-next-btn" class="pc-btn track-nav-btn" aria-label="Next track" hidden>
+          <span class="track-nav-ico" aria-hidden="true"></span>
         </button>
         <span id="time-cur" class="pc-time">0:00</span>
         <input type="range" id="seek-bar" class="pc-range pc-seek" min="0" max="1" step="0.001" value="0" aria-label="Seek">

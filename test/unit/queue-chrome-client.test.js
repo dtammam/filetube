@@ -238,3 +238,33 @@ test('v1.73 (Dean device bug): the watch Prev/Next QUEUE arm dispatches by kind 
   assert.ok(seam.slice(gateIdx, stashIdx).includes('return;'), 'the non-media arm RETURNS before the watch seed and the watch nav');
   assert.ok(navIdx > stashIdx, 'the media arm keeps its seed-then-navigate order');
 });
+
+test('v1.73 (ruling 6): the audio Prev/Next pair - queue-aware steps, audio-mode-only visibility, every shell carries the buttons', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const playerSrc = fs.readFileSync(path.join(__dirname, '../../public/js/player.js'), 'utf8');
+  // The manual step: queue-first with the staleness re-check, context fallback.
+  const stepStart = playerSrc.indexOf('function manualTrackStep(dir)');
+  assert.ok(stepStart >= 0, 'manualTrackStep exists');
+  const step = playerSrc.slice(stepStart, playerSrc.indexOf('function setTrackNav', stepStart));
+  assert.ok(step.includes('if (currentId !== steppedId) return;'), 'staleness re-checked after the queue fetch (the C6 law)');
+  assert.ok(step.includes('pointerEntry.mediaId === steppedId && neighbor'), 'queue precedence keys on the CURRENT item being now-playing');
+  assert.ok(step.includes('advanceIntoQueueEntry(neighbor)'), 'a queue step rides the ONE kind-aware advance seam');
+  assert.ok(step.indexOf('advanceIntoQueueEntry') < step.indexOf('trackNavHandlers && (dir'), 'queue consult precedes the context fallback');
+  // Visibility: audio mode + registered context; both toggle sites call it.
+  assert.ok(playerSrc.includes("var audioMode = !!(host && host.classList.contains('audio-mode'));"), 'visibility keys on audio mode - the video chrome keeps its own page-level pair');
+  assert.ok((playerSrc.match(/updateTrackNavButtons\(\);/g) || []).length >= 3, 'setTrackNav + BOTH audio-mode toggle sites update visibility');
+  // Every shell carries the pair (the every-writer rule).
+  const pub = path.join(__dirname, '../../public');
+  const shells = fs.readdirSync(pub).filter((f) => f.endsWith('.html'))
+    .filter((f) => fs.readFileSync(path.join(pub, f), 'utf8').includes('player-host-template'));
+  assert.ok(shells.length >= 8, `expected the full template roster, found ${shells.length}`);
+  for (const f of shells) {
+    const html = fs.readFileSync(path.join(pub, f), 'utf8');
+    assert.ok(html.includes('id="track-prev-btn"') && html.includes('id="track-next-btn"'), `${f}: missing the track-nav pair`);
+  }
+  // The [hidden]-vs-display enforcement (the v1.44 class).
+  const css = fs.readFileSync(path.join(pub, 'css/style.css'), 'utf8');
+  assert.ok(css.includes('.track-nav-btn[hidden] { display: none !important; }'), 'pc-btn inline-flex would beat [hidden] without the enforcement rule');
+  assert.ok(css.includes('#player-dock #track-prev-btn'), 'the dock never shows the pair (full view only - the ruling)');
+});

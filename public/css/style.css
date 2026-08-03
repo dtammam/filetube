@@ -7204,6 +7204,40 @@ body.ft-css-fullscreen .bottom-nav {
   content: ''; position: absolute; top: 0; right: 12px; width: 3px; height: 14px; /* token-exempt: positional geometry (Stop A Batch A) */
   background: currentColor;
 }
+/* v1.73 (Dean ruling 6): Prev/Next TRACK buttons in the player's control
+   bar - the reader-np glyph technique (CSS triangle + bar, never emoji
+   codepoints) on neutral track-nav classes. [hidden] by default; player.js
+   unhides them in the expanded AUDIO view only (the dock and the reader
+   bar keep them off below - full view only, Dean's ruling). */
+.track-nav-btn { flex-shrink: 0; }
+.track-nav-btn:disabled { opacity: 0.35; cursor: default; }
+.track-nav-ico { position: relative; display: block; width: 15px; height: 14px; }
+#track-next-btn .track-nav-ico::before {
+  content: ''; position: absolute; top: 0; left: 0;
+  border-style: solid; border-width: 7px 0 7px 11px;
+  border-color: transparent transparent transparent currentColor;
+}
+#track-next-btn .track-nav-ico::after {
+  content: ''; position: absolute; top: 0; left: 12px; width: 3px; height: 14px; /* token-exempt: positional geometry (the reader-np glyph, v1.73 copy) */
+  background: currentColor;
+}
+#track-prev-btn .track-nav-ico::before {
+  content: ''; position: absolute; top: 0; right: 0;
+  border-style: solid; border-width: 7px 11px 7px 0;
+  border-color: transparent currentColor transparent transparent;
+}
+#track-prev-btn .track-nav-ico::after {
+  content: ''; position: absolute; top: 0; right: 12px; width: 3px; height: 14px; /* token-exempt: positional geometry (the reader-np glyph, v1.73 copy) */
+  background: currentColor;
+}
+/* Full view only: the dock's mini bar and the reader's narration bar never
+   show them (the reader has its own chapter prev/next). */
+#player-dock #track-prev-btn, #player-dock #track-next-btn,
+.reader-nowplaying #track-prev-btn, .reader-nowplaying #track-next-btn { display: none; }
+/* The .pc-btn base display (inline-flex) would beat [hidden] - the v1.44
+   bottom-nav-item lesson, enforced the same way. */
+.track-nav-btn[hidden] { display: none !important; }
+
 .reader-player-slot { flex: 1; min-width: 0; }
 /* Compact the FULL audio host into the bar: hide the cover art / video element /
    glyphs / video-only buttons; keep play/pause + scrub + time (+ speed). */
