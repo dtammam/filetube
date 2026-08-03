@@ -136,12 +136,18 @@ A first-class media kind delivers ALL of:
    ruling, a non-goal not a gap. Cross-kind advances consult
    autoplayNext; same-kind advances are unconditional.)
 4. **The global Liked playlist.** Content can be liked, and a liked
-   entry surfaces in THE Liked playlist (the `/?liked=1` surface and
-   its count-gated sidebar entry) - a kind-scoped Liked lane inside
-   the place is a complement, never the fulfillment. (v1.72: the
-   playlist is MIXED-KIND - videos, podcast episodes, music tracks
-   and books all surface, kind CARRIED on every item; the per-kind
-   like carriers stay the write authorities.)
+   entry surfaces in THE Liked playlist (the `/?liked=1` surface, its
+   count-gated sidebar entry, and - opt-in - a bottom-bar entry).
+   (v1.72: the playlist is MIXED-KIND - videos, podcast episodes,
+   music tracks and books all surface, kind CARRIED on every item;
+   the per-kind like carriers stay the write authorities.) (v1.75,
+   Dean's ruling: a kind-scoped Liked lane inside the place is not a
+   complement either - it is REDUNDANT and is now a defect to add.
+   The podcasts Liked card/lane and the music Liked tab were removed;
+   each showed a SUBSET of what the central playlist already shows in
+   full, with its own drift (tech-debt #93). One read surface, N write
+   surfaces: the per-kind HEART is how content enters the playlist and
+   stays on every row.)
 5. **Resume.** Per-user position persisted server-side; leaving
    mid-entry and returning resumes; in-progress entries surface in a
    home Continue row that deep-links back to the exact entry. (v1.72:
