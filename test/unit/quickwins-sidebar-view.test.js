@@ -80,3 +80,24 @@ test('resolveDefaultView: a hiddenFromSidebar folder can still be a valid defaul
   const result = resolveDefaultView('', '', '', '/media/hidden-from-sidebar', ['/media/hidden-from-sidebar']);
   assert.equal(result, '/media/hidden-from-sidebar');
 });
+
+// ---- v1.73.1 (Dean's device find): the synthetic folder leaves the sidebar --
+
+test('v1.73.1: visibleSidebarFolders drops synthetic folders (the hard Downloads entry owns the surface); absent list = old behavior', () => {
+  const { visibleSidebarFolders } = require('../../public/js/common.js');
+  const folders = ['/media/a', '/dl/ytdlp', '/media/b'];
+  assert.deepEqual(visibleSidebarFolders(folders, {}, ['/dl/ytdlp']), ['/media/a', '/media/b'], 'the synthetic row is gone from the sidebar list');
+  assert.deepEqual(visibleSidebarFolders(folders, {}), folders, 'no synthetic list passed = fail toward showing (legacy callers)');
+  assert.deepEqual(visibleSidebarFolders(folders, { '/media/a': { hiddenFromSidebar: true } }, ['/dl/ytdlp']), ['/media/b'], 'composes with hiddenFromSidebar');
+});
+
+test('v1.73.1: rebuildFullFolderOrder keeps a synthetic folder at its ABSOLUTE position through a sidebar DnD (the hiddenFromSidebar contract)', () => {
+  const { rebuildFullFolderOrder, visibleSidebarFolders } = require('../../public/js/common.js');
+  const full = ['/media/a', '/dl/ytdlp', '/media/b'];
+  const synth = ['/dl/ytdlp'];
+  const visible = visibleSidebarFolders(full, {}, synth);
+  const reordered = [visible[1], visible[0]]; // b, a
+  assert.deepEqual(rebuildFullFolderOrder(full, {}, reordered, synth),
+    ['/media/b', '/dl/ytdlp', '/media/a'],
+    'the synthetic slot never moves; the visible slots refill in the new order');
+});

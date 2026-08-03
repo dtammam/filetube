@@ -1629,10 +1629,18 @@ function buildContextListUrl(ctx, fullLimit) {
 // affects either list. A filtered-out folder is NOT removed from `folders`
 // itself -- it remains fully reachable via a direct /?root=<path> link; this
 // only controls whether a LINK to it is rendered. Exported for node:test.
-function visibleSidebarFolders(folders, settings) {
+// v1.73.1 (Dean's device find): the synthetic Downloads folder row retired
+// from the sidebar FOLDER list - the v1.73 hard "Downloads" Library entry
+// owns that surface now, and both rendering was a visible dupe. The folder
+// itself stays fully alive (Setup's management box, the default-view
+// picker, /?root= browsing); only the sidebar LINK moves house. Callers
+// that cannot know the synthetic list pass nothing and keep the old
+// behavior (fail toward showing).
+function visibleSidebarFolders(folders, settings, syntheticFolders) {
   const list = Array.isArray(folders) ? folders : [];
   const s = settings || {};
-  return list.filter((f) => !(s[f] && s[f].hiddenFromSidebar));
+  const synth = new Set(Array.isArray(syntheticFolders) ? syntheticFolders : []);
+  return list.filter((f) => !(s[f] && s[f].hiddenFromSidebar) && !synth.has(f));
 }
 
 // ---- Folder drag-and-drop reordering (v1.15.0 item 1) ----------------------
@@ -1692,9 +1700,12 @@ function computeDropIndex(fromIndex, targetIndex, insertBefore) {
 // so the synthetic Downloads folder's position -> `folderSettings.order`
 // exactly as the Setup page's up/down buttons already produce. Exported for
 // node:test.
-function rebuildFullFolderOrder(fullFolders, settings, newVisibleOrder) {
+function rebuildFullFolderOrder(fullFolders, settings, newVisibleOrder, syntheticFolders) {
   const full = Array.isArray(fullFolders) ? fullFolders : [];
-  const visibleSet = new Set(visibleSidebarFolders(full, settings));
+  // v1.73.1: the synthetic exclusion rides here too - a folder absent from
+  // the sidebar (hidden OR synthetic) keeps its absolute position, exactly
+  // the hiddenFromSidebar contract.
+  const visibleSet = new Set(visibleSidebarFolders(full, settings, syntheticFolders));
   const queue = Array.isArray(newVisibleOrder) ? newVisibleOrder.slice() : [];
   let i = 0;
   return full.map((f) => (visibleSet.has(f) ? queue[i++] : f));

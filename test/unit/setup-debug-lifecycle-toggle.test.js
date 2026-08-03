@@ -93,3 +93,14 @@ test('server.js: DEFAULT_SETTINGS does not include a lifecycle-debug key', () =>
 test('server.js never references the localStorage key string \'ft-debug-lifecycle\' anywhere (confirms this stays purely client-side)', () => {
   assert.ok(!SERVER_JS.includes('ft-debug-lifecycle'), 'the flag must never be persisted server-side');
 });
+
+// ---- v1.73.1: the default-view picker names the synthetic folder Downloads --
+
+test('v1.73.1 SOURCE-LOCK: the picker labels a synthetic folder "Downloads" while its VALUE stays the path (saved selections keep working)', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const src = fs.readFileSync(path.join(__dirname, '../../public/js/setup.js'), 'utf8');
+  assert.ok(src.includes("const label = isSyntheticFolder(f, syntheticFolders)\n        ? 'Downloads'"), 'synthetic rows read Downloads in the picker');
+  assert.ok(src.includes('`<option value="${escapeHtml(f)}">${escapeHtml(label)}</option>`'), 'the option VALUE is still the folder path - the defaultView contract is unchanged');
+  assert.ok(src.includes('visibleSidebarFolders(folders, settings, syntheticFolders)'), "setup's sidebar render threads the synthetic list");
+});
