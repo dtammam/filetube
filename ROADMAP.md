@@ -80,6 +80,54 @@
 
 ## Shipped
 
+### v1.72.0 - First-class parity: the full scoop (2026-08-03)
+
+Dean's overnight ruling: everything the ten-capability definition
+(CONTRIBUTING) demands, for every kind, in one wave. Headline =
+tech-debt #94: the Liked playlist is MIXED-KIND - /api/liked merges
+all four liked carriers (videos, podcast episodes, music tracks,
+books) with kind CARRIED on every item, per-id-space silent drops
+preserved, kind-aware cards through the one video-card template, and
+the count-gated sidebar entry spanning every id space. Also shipped:
+videos' home Continue-watching row + manual mark-as-watched toggle
+(POST/DELETE /api/watched/:id, the un-watch verb carrying the
+history-row-delete semantics); books likes + a manual-only finished
+latch + reader save/like/finished controls (schema v11 -
+user_book_liked/user_book_finished, the TWELFTH carrier, all arms);
+music + books in the bottom bar (default-hidden, the podcasts
+posture); music save-to-device (source bytes, never a rendition) and
+music in the ONE queue (entry_kind 'track' end to end); #91 fixed
+(cross-kind queue advances consult autoplayNext with a post-hop
+staleness re-check; same-kind unconditional); podcast shows pinnable
+in the Playlists surface (schema v12 - user_podcast_pins, the
+book-pins pattern, third pinSource); CONTRIBUTING now carries the
+post-wave standings + the future-agent onboarding contract for new
+kinds.
+
+What the gate caught (full gate, both seats, 2 rounds each): QA found
+the mixed Liked list silently breaking watch-page Prev/Next and
+autoplay inside the liked context (non-media ids 404ing the watch
+view - fixed with media filters at all three context consumers), a
+missing staleness re-check in the #91 consult, and a tech-debt id
+collision; the adversarial seat's 29-mutant battery found the book
+arms of the client kind dispatch and the own-property drop guards
+UNBOUND (4 surviving mutants, all now killed by named tests) while
+its 13-probe destruction matrix (four-kind id collisions at every
+destructive verb, hostile restores, wrong-user probes) held clean.
+The pre-gate suite run itself caught a deterministic hang: the pins
+table had been added by editing the already-executed v11 migration
+block - the append-only law is now written at SCHEMA_VERSION, the
+table moved to its own v12 block, and 11-stamped victim dbs
+self-heal.
+
+Known gaps, DISCLOSED: morning questions for Dean in tech-debt rows
+96-99 (books auto-finish threshold, music played latch, music/books
+delete verbs, music container pin) + row 100 (watch-detail
+watchState derivation divergence, cosmetic). #90's fix shape is
+marked obsolete (music is now intentionally queue-aware; any future
+fix is latency-shaped). Dual-Node: v22.23.1 = 5865/5865, 0 fail;
+v24.14.0 = 5865/5865, 0 fail. Device pass PENDING.
+
 ### v1.71.1 - Episode-row glyphs (2026-08-03)
 
 Dean's device find on v1.71.0: the Queue/Save/Delete text buttons
