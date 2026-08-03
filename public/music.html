@@ -114,8 +114,14 @@
 
         <!-- v1.44.2: tapping a song plays in the DOCKED mini-player (#player-dock,
              in the shell below), NOT a FULL in-view player — the album header +
-             tracklist stay on screen (browse-while-playing). No #player-slot here.
-             The playing row highlights instead (public/js/music.js). -->
+             tracklist stay on screen (browse-while-playing). The playing row
+             highlights instead (public/js/music.js).
+             v1.73 (Dean ruling 2): the podcasts now-playing contract arrives -
+             #player-slot hosts the EXPANDED big-art view, reached by tapping
+             the dock (?nowplaying=1) or re-adopted when a FULL player rides a
+             music->music swap; browse-while-playing is otherwise unchanged
+             (the slot sits empty during normal docked playback). -->
+        <div id="player-slot"></div>
         <!-- Transient status (e.g. "Preparing track…" while an ALAC rendition
              transcodes on demand). -->
         <div id="music-status" class="music-status" role="status" hidden></div>

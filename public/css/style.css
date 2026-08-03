@@ -1802,9 +1802,15 @@ html.reader-immersive .app-container { padding-top: 0; }
   position: absolute;
   inset: 0;
   z-index: 0; /* token-exempt: local stacking */
-  background-size: cover;
+  /* v1.73 (Dean ruling 9): CONTAIN, never cover - cover blew a SQUARE
+     album/show cover up to fill the wide wrapper, so a cropped echo of the
+     same image flanked the centered art ("a rectangle version of the same
+     image to both sides"). Contain renders the art clean; the letterbox
+     bands are the plain audio-canvas backdrop below. */
+  background-size: contain;
   background-position: center;
   background-repeat: no-repeat;
+  background-color: #0f171e; /* token-exempt: bespoke audio-canvas art (F.5 ruling 5 - matches the visualizer gradient's edge) */
   display: none;
   pointer-events: none;
 }
