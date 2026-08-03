@@ -80,6 +80,26 @@
 
 ## Shipped
 
+### v1.71.1 - Episode-row glyphs (2026-08-03)
+
+Dean's device find on v1.71.0: the Queue/Save/Delete text buttons
+truncated episode titles. All three are now glyph buttons (the card
+corner controls' icon-queue/download/delete vocabulary on the
+played/like-toggle circle chassis); the two-tap delete arms into a
+pill revealing "Move to trash?" - honesty kept, width reclaimed;
+title + aria-label carry the words. Slim gate (UI-only, adversarial
+alone): APPROVE, zero CRITICAL/WARNING - it measured behavior parity
+(all handlers byte-identical incl. stopPropagation), the confirm
+reveal's specificity chain via jsdom, accessibility names, both icon
+sets, and killed a CSS-block-deletion mutant against the styling
+lock. Its suggestions landed as honest comments + tech-debt #95 (the
+view has no DOM harness - a two-tap-guard mutant survives, the #78
+class, inherited not new). Also recorded: tech-debt #94, Dean's
+deferred intent that hearted episodes surface in the LIKED PLAYLIST
+(/?liked=1), not only the podcasts lane - the next wave's headline.
+Dual-Node: v22.23.1 = 5819/5819; v24.14.0 = 5819/5819. Device pass
+PENDING.
+
 ### v1.71.0 - Podcasts everywhere: Dean's seven items (2026-08-03)
 
 One branch, Dean's ruling, items 2-7 (item 1 shipped in v1.70.0).
