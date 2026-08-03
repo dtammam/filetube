@@ -41,8 +41,14 @@ test('SOURCE-LOCK: the sidebar Podcasts entry rides the Library section, ordered
   // path) survived the suite. Bind the roster membership itself.
   // v1.72: music + books joined the roster (cap 2) - the lock binds the
   // FULL list so a silent roster change can never pass as noise.
-  assert.ok(src.includes("'oneoff-download', 'theme', 'podcasts', 'music', 'books', 'downloads']"), 'podcasts/music/books/downloads ride BOTTOM_NAV_OPTIONAL (the Settings toggle is the only opt-in path)');
-  assert.ok(src.includes("BOTTOM_NAV_DEFAULT_HIDDEN = ['podcasts', 'music', 'books', 'downloads']"), 'all four items are default-hidden - nobody\'s bar changes on upgrade');
+  // v1.75: these two were SOURCE-TEXT matches on the roster literals, which
+  // the v1.75 roster rewrite broke without any behaviour changing. Bind the
+  // exported VALUES instead - same guarantee (a silent roster change cannot
+  // pass as noise), immune to how the array happens to be spelled.
+  for (const id of ['podcasts', 'music', 'books', 'downloads']) {
+    assert.ok(common.BOTTOM_NAV_OPTIONAL.includes(id), `${id} rides BOTTOM_NAV_OPTIONAL (the Settings toggle is the only opt-in path)`);
+    assert.ok(common.BOTTOM_NAV_DEFAULT_HIDDEN.includes(id), `${id} is default-hidden - nobody's bar changes on upgrade`);
+  }
   assert.ok(src.includes("injectLibraryNavEntry('podcasts', '/podcasts', 'Podcasts'"), 'Library-section entry via the shared helper');
   // Books anchors above Podcasts; Podcasts anchors above History.
   // v1.73: the ladder gained Downloads at the TOP (ruling 5) - each branch
